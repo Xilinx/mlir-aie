@@ -8,7 +8,8 @@
 //   bytes [kBody .. kBody+kTail)    : kNHeads * 8 B scale tail. For each
 //                                     Q head h:
 //                                       tail[h*8 + 0..+4] = q_scale_h  (fp32)
-//                                       tail[h*8 + 4..+8] = sv_inv_out_scale_h (fp32)
+//                                       tail[h*8 + 4..+8] = sv_inv_out_scale_h
+//                                       (fp32)
 //                                     Both are passed through unchanged
 //                                     so the downstream q-splitter +
 //                                     flowkv_mh kernel can find them.
@@ -29,11 +30,11 @@
 #define LLAMA_ROPE_MH_N_HEADS 32
 #endif
 
-static constexpr int kHD     = LLAMA_ROPE_MH_HEAD_DIM;
+static constexpr int kHD = LLAMA_ROPE_MH_HEAD_DIM;
 static constexpr int kNHeads = LLAMA_ROPE_MH_N_HEADS;
-static constexpr int kHalf   = kHD / 2;
-static constexpr int kBody   = kHD * kNHeads;
-static constexpr int kTail   = kNHeads * 8;
+static constexpr int kHalf = kHD / 2;
+static constexpr int kBody = kHD * kNHeads;
+static constexpr int kTail = kNHeads * 8;
 
 static constexpr int32_t I8_MAX = 127;
 static constexpr int32_t I8_MIN = -128;
@@ -45,8 +46,10 @@ static inline int8_t round_to_i8(float v) {
   float scaled = (float)sign * v * 2.0f + 1.0f;
   int32_t doubled = (int32_t)scaled;
   int32_t r = sign * (doubled / 2);
-  if (r > I8_MAX) r = I8_MAX;
-  if (r < I8_MIN) r = I8_MIN;
+  if (r > I8_MAX)
+    r = I8_MAX;
+  if (r < I8_MIN)
+    r = I8_MIN;
   return (int8_t)r;
 }
 
@@ -65,15 +68,15 @@ extern "C" void llama_rope_int8_mh_dyn(int8_t *restrict x,
     for (int i = 0; i < kHalf; i++) {
       float x1f = (float)x[base + i];
       float x2f = (float)x[base + kHalf + i];
-      float c1  = (float)cos[i];
-      float s1  = (float)sin[i];
-      float c2  = (float)cos[kHalf + i];
-      float s2  = (float)sin[kHalf + i];
+      float c1 = (float)cos[i];
+      float s1 = (float)sin[i];
+      float c2 = (float)cos[kHalf + i];
+      float s2 = (float)sin[kHalf + i];
 
       float o1 = x1f * c1 - x2f * s1;
       float o2 = x2f * c2 + x1f * s2;
 
-      out[base + i]         = round_to_i8(o1);
+      out[base + i] = round_to_i8(o1);
       out[base + kHalf + i] = round_to_i8(o2);
     }
   }

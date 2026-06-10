@@ -25,30 +25,29 @@ from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.device import NPU2, Tile
 from aie.helpers.taplib import TensorAccessPattern
 
-
 N_COLS = 8
 N_ROWS = 2  # rows 2 and 3 in DECODE_PLACEMENT
 
 
 def build(M: int, K: int, N: int):
-    w_blob_bytes  = N * K + N * 4 + N * 4         # per-tile, matches stub kernel
-    w_col_bytes   = N_ROWS * w_blob_bytes         # per-col weight slice
-    out_per_tile  = M * N
+    w_blob_bytes = N * K + N * 4 + N * 4  # per-tile, matches stub kernel
+    w_col_bytes = N_ROWS * w_blob_bytes  # per-col weight slice
+    out_per_tile = M * N
     out_col_bytes = N_ROWS * out_per_tile
 
-    total_w   = N_COLS * w_col_bytes
+    total_w = N_COLS * w_col_bytes
     total_out = N_COLS * out_col_bytes
 
-    act_ty           = np.ndarray[(M * K,),         np.dtype[np.int8]]
-    w_blob_ty        = np.ndarray[(w_blob_bytes,),  np.dtype[np.int8]]
-    w_col_ty         = np.ndarray[(w_col_bytes,),   np.dtype[np.int8]]
-    out_per_tile_ty  = np.ndarray[(out_per_tile,),  np.dtype[np.int8]]
-    out_col_ty       = np.ndarray[(out_col_bytes,), np.dtype[np.int8]]
+    act_ty = np.ndarray[(M * K,), np.dtype[np.int8]]
+    w_blob_ty = np.ndarray[(w_blob_bytes,), np.dtype[np.int8]]
+    w_col_ty = np.ndarray[(w_col_bytes,), np.dtype[np.int8]]
+    out_per_tile_ty = np.ndarray[(out_per_tile,), np.dtype[np.int8]]
+    out_col_ty = np.ndarray[(out_col_bytes,), np.dtype[np.int8]]
 
     # Runtime-arg-level types (consolidated big buffers).
-    rt_act_ty = np.ndarray[(M * K,),       np.dtype[np.int8]]
-    rt_w_ty   = np.ndarray[(total_w,),     np.dtype[np.int8]]
-    rt_out_ty = np.ndarray[(total_out,),   np.dtype[np.int8]]
+    rt_act_ty = np.ndarray[(M * K,), np.dtype[np.int8]]
+    rt_w_ty = np.ndarray[(total_w,), np.dtype[np.int8]]
+    rt_out_ty = np.ndarray[(total_out,), np.dtype[np.int8]]
 
     kernel = Kernel(
         "llama_gemm_int8_srs_pt",
@@ -66,16 +65,16 @@ def build(M: int, K: int, N: int):
         of_out.release(1)
 
     # Per-column fifos.
-    act_fifos      = []
-    w_fifos        = []
-    w_splits       = []
-    out_fifos      = []
-    out_joins      = []
-    workers        = []
+    act_fifos = []
+    w_fifos = []
+    w_splits = []
+    out_fifos = []
+    out_joins = []
+    workers = []
 
     for c in range(N_COLS):
         of_act_c = ObjectFifo(act_ty, name=f"act_{c}")
-        of_w_c   = ObjectFifo(w_col_ty, name=f"w_{c}")
+        of_w_c = ObjectFifo(w_col_ty, name=f"w_{c}")
         of_out_c = ObjectFifo(out_col_ty, name=f"out_{c}")
 
         w_split = of_w_c.cons().split(

@@ -37,8 +37,12 @@ def exp_lut(exp_quant_scale: float) -> np.ndarray:
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--exp-quant-scale", type=float, required=True,
-                   help="resolution of the LUT in score-units per index step")
+    p.add_argument(
+        "--exp-quant-scale",
+        type=float,
+        required=True,
+        help="resolution of the LUT in score-units per index step",
+    )
     p.add_argument("-o", required=True)
     args = p.parse_args(sys.argv[1:])
 

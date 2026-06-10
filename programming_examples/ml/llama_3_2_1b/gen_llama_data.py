@@ -45,25 +45,24 @@ from pathlib import Path
 import ml_dtypes
 import numpy as np
 
-
 # --- Llama 3.2 1B spec (mirrors cautious-eureka/npu2/llama_spec.py) ---
-VOCAB_SIZE    = 128_256
-EMB_DIM       = 2_048
-N_LAYERS      = 16
-N_HEADS       = 32
-N_KV_GROUPS   = 8
-HEAD_DIM      = EMB_DIM // N_HEADS      # 64
-HIDDEN_DIM    = 8_192
-Q_DIM         = N_HEADS    * HEAD_DIM   # 2048
-KV_DIM        = N_KV_GROUPS * HEAD_DIM  # 512
+VOCAB_SIZE = 128_256
+EMB_DIM = 2_048
+N_LAYERS = 16
+N_HEADS = 32
+N_KV_GROUPS = 8
+HEAD_DIM = EMB_DIM // N_HEADS  # 64
+HIDDEN_DIM = 8_192
+Q_DIM = N_HEADS * HEAD_DIM  # 2048
+KV_DIM = N_KV_GROUPS * HEAD_DIM  # 512
 
 
 _ST_DTYPE = {
     "BF16": ml_dtypes.bfloat16,
-    "F16":  np.float16,
-    "F32":  np.float32,
-    "I8":   np.int8,
-    "U8":   np.uint8,
+    "F16": np.float16,
+    "F32": np.float32,
+    "I8": np.int8,
+    "U8": np.uint8,
 }
 
 
@@ -98,7 +97,9 @@ class SafetensorsReader:
         with open(self.path, "rb") as fh:
             fh.seek(self.data_start + s)
             raw = fh.read(e - s)
-        return np.frombuffer(raw, dtype=ml_dtypes.bfloat16).reshape(meta["shape"]).copy()
+        return (
+            np.frombuffer(raw, dtype=ml_dtypes.bfloat16).reshape(meta["shape"]).copy()
+        )
 
 
 def quant_int8_perchan_absmax(w_f32: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
@@ -112,13 +113,17 @@ def quant_int8_perchan_absmax(w_f32: np.ndarray) -> tuple[np.ndarray, np.ndarray
     """
     assert w_f32.ndim == 2, f"expected 2D weight, got {w_f32.shape}"
     absmax = np.maximum(np.abs(w_f32).max(axis=1, keepdims=True), 1e-12)
-    scale = absmax / 127.0                  # (out_dim, 1)
+    scale = absmax / 127.0  # (out_dim, 1)
     q = np.round(w_f32 / scale).clip(-127, 127).astype(np.int8)
     return q, scale.squeeze(1).astype(np.float32)
 
 
-def dump_quantized(out_dir: Path, name: str, w_f32: np.ndarray,
-                   expected_shape: tuple[int, int] | None = None) -> None:
+def dump_quantized(
+    out_dir: Path,
+    name: str,
+    w_f32: np.ndarray,
+    expected_shape: tuple[int, int] | None = None,
+) -> None:
     """Quantize and dump (i8 weights, fp32 scales) to out_dir/name.{i8,scales.f32}.bin."""
     if expected_shape is not None and w_f32.shape != expected_shape:
         raise ValueError(f"{name}: got {w_f32.shape}, expected {expected_shape}")
@@ -127,8 +132,9 @@ def dump_quantized(out_dir: Path, name: str, w_f32: np.ndarray,
     (out_dir / f"{name}.scales.f32.bin").write_bytes(scales.tobytes())
 
 
-def dump_bf16(out_dir: Path, name: str, w_bf16: np.ndarray,
-              expected_shape: tuple | None = None) -> None:
+def dump_bf16(
+    out_dir: Path, name: str, w_bf16: np.ndarray, expected_shape: tuple | None = None
+) -> None:
     if expected_shape is not None and w_bf16.shape != expected_shape:
         raise ValueError(f"{name}: got {w_bf16.shape}, expected {expected_shape}")
     (out_dir / f"{name}.bf16.bin").write_bytes(w_bf16.tobytes())
@@ -136,12 +142,17 @@ def dump_bf16(out_dir: Path, name: str, w_bf16: np.ndarray,
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--weights", type=Path,
-                   default=Path("/scratch/roesti/models/llama_3.2_1b/model.safetensors"))
-    p.add_argument("--tokenizer", type=Path,
-                   default=Path("/scratch/roesti/models/llama_3.2_1b/tokenizer.model"))
-    p.add_argument("--out-dir", type=Path,
-                   default=Path(__file__).parent / "data")
+    p.add_argument(
+        "--weights",
+        type=Path,
+        default=Path("/scratch/roesti/models/llama_3.2_1b/model.safetensors"),
+    )
+    p.add_argument(
+        "--tokenizer",
+        type=Path,
+        default=Path("/scratch/roesti/models/llama_3.2_1b/tokenizer.model"),
+    )
+    p.add_argument("--out-dir", type=Path, default=Path(__file__).parent / "data")
     args = p.parse_args(sys.argv[1:])
 
     if not args.weights.exists():
@@ -151,13 +162,16 @@ def main():
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
     reader = SafetensorsReader(args.weights)
-    print(f"loaded safetensors header: {len(reader.keys())} tensors from {args.weights}")
+    print(
+        f"loaded safetensors header: {len(reader.keys())} tensors from {args.weights}"
+    )
 
     # --- Embedding (also serves as lm_head; tied in Llama 3.2 1B) ---
     embed_f32 = reader.load_f32("model.embed_tokens.weight")
     print(f"  embed_tokens: shape={embed_f32.shape} dtype=fp32")
-    dump_quantized(args.out_dir, "embed", embed_f32,
-                   expected_shape=(VOCAB_SIZE, EMB_DIM))
+    dump_quantized(
+        args.out_dir, "embed", embed_f32, expected_shape=(VOCAB_SIZE, EMB_DIM)
+    )
 
     # tied -> lm_head shares the same bytes. Use a symlink to avoid duplicating
     # the ~125 MB blob.
@@ -166,12 +180,11 @@ def main():
         dst = args.out_dir / f"lm_head.{suffix}"
         if dst.exists() or dst.is_symlink():
             dst.unlink()
-        dst.symlink_to(src.name)   # relative symlink within data/
+        dst.symlink_to(src.name)  # relative symlink within data/
 
     # --- Final RMSNorm gamma (bf16, no quant) ---
     final_norm_bf16 = reader.load_bf16("model.norm.weight")
-    dump_bf16(args.out_dir, "final_norm", final_norm_bf16,
-              expected_shape=(EMB_DIM,))
+    dump_bf16(args.out_dir, "final_norm", final_norm_bf16, expected_shape=(EMB_DIM,))
 
     # --- Per-layer weights ---
     for L in range(N_LAYERS):
@@ -179,9 +192,9 @@ def main():
         layer_dir.mkdir(parents=True, exist_ok=True)
         p = f"model.layers.{L}."
 
-        gamma_in   = reader.load_bf16(p + "input_layernorm.weight")
+        gamma_in = reader.load_bf16(p + "input_layernorm.weight")
         gamma_post = reader.load_bf16(p + "post_attention_layernorm.weight")
-        dump_bf16(layer_dir, "gamma_in",   gamma_in,   expected_shape=(EMB_DIM,))
+        dump_bf16(layer_dir, "gamma_in", gamma_in, expected_shape=(EMB_DIM,))
         dump_bf16(layer_dir, "gamma_post", gamma_post, expected_shape=(EMB_DIM,))
 
         # Attention projections
@@ -189,7 +202,7 @@ def main():
         wk = reader.load_f32(p + "self_attn.k_proj.weight")
         wv = reader.load_f32(p + "self_attn.v_proj.weight")
         wo = reader.load_f32(p + "self_attn.o_proj.weight")
-        dump_quantized(layer_dir, "wq", wq, expected_shape=(Q_DIM,  EMB_DIM))
+        dump_quantized(layer_dir, "wq", wq, expected_shape=(Q_DIM, EMB_DIM))
         dump_quantized(layer_dir, "wk", wk, expected_shape=(KV_DIM, EMB_DIM))
         dump_quantized(layer_dir, "wv", wv, expected_shape=(KV_DIM, EMB_DIM))
         dump_quantized(layer_dir, "wo", wo, expected_shape=(EMB_DIM, Q_DIM))
@@ -200,7 +213,7 @@ def main():
         wd = reader.load_f32(p + "mlp.down_proj.weight")
         dump_quantized(layer_dir, "wg", wg, expected_shape=(HIDDEN_DIM, EMB_DIM))
         dump_quantized(layer_dir, "wu", wu, expected_shape=(HIDDEN_DIM, EMB_DIM))
-        dump_quantized(layer_dir, "wd", wd, expected_shape=(EMB_DIM,    HIDDEN_DIM))
+        dump_quantized(layer_dir, "wd", wd, expected_shape=(EMB_DIM, HIDDEN_DIM))
 
         if L == 0 or L == N_LAYERS - 1:
             for k in ("wq", "wk", "wv", "wo", "wg", "wu", "wd"):

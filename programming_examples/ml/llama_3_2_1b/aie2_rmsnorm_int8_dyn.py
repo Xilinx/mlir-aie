@@ -16,8 +16,7 @@ from ml_dtypes import bfloat16
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.device import NPU2, Tile
 
-
-RMS_COL, RMS_ROW = 5, 4   # DECODE_PLACEMENT["rmsnorm"]
+RMS_COL, RMS_ROW = 5, 4  # DECODE_PLACEMENT["rmsnorm"]
 
 # Input scale stays a static kernel-call arg (it's the residual interlayer
 # scale, fixed across the chain). Only the output scale is dynamic.
@@ -25,9 +24,9 @@ ACT_SCALE_IN = 0.05
 
 
 def build(D: int):
-    x_ty   = np.ndarray[(D,),    np.dtype[np.int8]]
-    g_ty   = np.ndarray[(D,),    np.dtype[bfloat16]]
-    y_ty   = np.ndarray[(D + 8,), np.dtype[np.int8]]   # +8 B for scale tail
+    x_ty = np.ndarray[(D,), np.dtype[np.int8]]
+    g_ty = np.ndarray[(D,), np.dtype[bfloat16]]
+    y_ty = np.ndarray[(D + 8,), np.dtype[np.int8]]  # +8 B for scale tail
 
     of_x = ObjectFifo(x_ty, name="x")
     of_g = ObjectFifo(g_ty, name="gamma")

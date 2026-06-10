@@ -30,13 +30,13 @@ def build(M: int, K: int, N: int):
     # Stub ignores w_blob's contents -- we just need the bytes to flow.
     w_blob_bytes = N * K + N * 4 + N * 4
 
-    act_ty    = np.ndarray[(M * K,),     np.dtype[np.int8]]
+    act_ty = np.ndarray[(M * K,), np.dtype[np.int8]]
     w_blob_ty = np.ndarray[(w_blob_bytes,), np.dtype[np.int8]]
-    out_ty    = np.ndarray[(M * N,),     np.dtype[np.int8]]
+    out_ty = np.ndarray[(M * N,), np.dtype[np.int8]]
 
-    of_act    = ObjectFifo(act_ty,    name="act")
+    of_act = ObjectFifo(act_ty, name="act")
     of_w_blob = ObjectFifo(w_blob_ty, name="w_blob")
-    of_out    = ObjectFifo(out_ty,    name="out")
+    of_out = ObjectFifo(out_ty, name="out")
 
     kernel = Kernel(
         "llama_gemm_int8_srs_pt",
@@ -61,9 +61,9 @@ def build(M: int, K: int, N: int):
     rt = Runtime()
     with rt.sequence(act_ty, w_blob_ty, out_ty) as (a, w, o):
         rt.start(worker)
-        rt.fill(of_act.prod(),    a)
+        rt.fill(of_act.prod(), a)
         rt.fill(of_w_blob.prod(), w)
-        rt.drain(of_out.cons(),   o, wait=True)
+        rt.drain(of_out.cons(), o, wait=True)
 
     return Program(NPU2(), rt).resolve_program()
 

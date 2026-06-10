@@ -22,14 +22,15 @@ def round_to_i8(v):
 def numpy_rope(x_i8, cos_bf, sin_bf, n_heads, head_dim, act_scale):
     # Kernel uses sw_recip (Peano fp32 division is HW recip, NOT IEEE).
     from test_flowkv import sw_recip
+
     inv_scale = float(sw_recip(np.float32(act_scale)))
     half = head_dim // 2
     x_f = x_i8.astype(np.float32).reshape(n_heads, head_dim) * act_scale
     c = cos_bf.astype(np.float32)
     s = sin_bf.astype(np.float32)
     out = np.empty_like(x_f)
-    out[:, :half]  = x_f[:, :half] * c[:half]  - x_f[:, half:] * s[:half]
-    out[:, half:]  = x_f[:, half:] * c[half:]  + x_f[:, :half] * s[half:]
+    out[:, :half] = x_f[:, :half] * c[:half] - x_f[:, half:] * s[:half]
+    out[:, half:] = x_f[:, half:] * c[half:] + x_f[:, :half] * s[half:]
     return round_to_i8((out * inv_scale).flatten())
 
 
@@ -74,9 +75,9 @@ def main():
 
     cs = np.concatenate([cos, sin])  # packed cos || sin
 
-    x_t  = iron.tensor(x,  dtype=np.int8)
+    x_t = iron.tensor(x, dtype=np.int8)
     cs_t = iron.tensor(cs, dtype=bfloat16)
-    o_t  = iron.zeros([D], dtype=np.int8)
+    o_t = iron.zeros([D], dtype=np.int8)
 
     npu_opts = test_utils.create_npu_kernel(opts)
     rc = DefaultNPURuntime.run_test(
@@ -96,9 +97,14 @@ def main():
     diff = actual.astype(np.int16) - expected.astype(np.int16)
     n_diff = int((diff != 0).sum())
     max_abs = int(np.abs(diff).max()) if n_diff else 0
-    cos_sim = float(np.dot(actual.astype(np.float32), expected.astype(np.float32)) /
-                    (np.linalg.norm(actual.astype(np.float32)) *
-                     np.linalg.norm(expected.astype(np.float32)) + 1e-12))
+    cos_sim = float(
+        np.dot(actual.astype(np.float32), expected.astype(np.float32))
+        / (
+            np.linalg.norm(actual.astype(np.float32))
+            * np.linalg.norm(expected.astype(np.float32))
+            + 1e-12
+        )
+    )
 
     print(
         f"rope_int8 NPU vs numpy: heads={n_heads} d={head_dim}  "

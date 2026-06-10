@@ -39,7 +39,7 @@
 #endif
 
 static constexpr int kHD = LLAMA_FLOWKV_HEAD_DIM;
-static constexpr int kT  = LLAMA_FLOWKV_T;
+static constexpr int kT = LLAMA_FLOWKV_T;
 static constexpr int kREP = LLAMA_FLOWKV_REP;
 static constexpr float kExpQuantScale = LLAMA_FLOWKV_EXP_QUANT_SCALE;
 static constexpr float kInvExpQuantScale = 1.0f / LLAMA_FLOWKV_EXP_QUANT_SCALE;
@@ -49,16 +49,20 @@ static constexpr int32_t I8_MIN = -128;
 
 static inline int8_t round_to_i8(float v) {
   int32_t r = (int32_t)(v + (v >= 0.0f ? 0.5f : -0.5f));
-  if (r > I8_MAX) r = I8_MAX;
-  if (r < I8_MIN) r = I8_MIN;
+  if (r > I8_MAX)
+    r = I8_MAX;
+  if (r < I8_MIN)
+    r = I8_MIN;
   return (int8_t)r;
 }
 
 static inline int32_t quant_shifted(float shifted) {
   float v = shifted * kInvExpQuantScale;
   int32_t q = (int32_t)(v + (v >= 0.0f ? 0.5f : -0.5f));
-  if (q > 0) q = 0;
-  if (q < -128) q = -128;
+  if (q > 0)
+    q = 0;
+  if (q < -128)
+    q = -128;
   return q;
 }
 
@@ -88,10 +92,8 @@ static inline float sw_recip(float a) {
 // support). The combined wrapper reads T_used + per-head scales from
 // kv_one's prefix and forwards.
 extern "C" void llama_flowkv_mh(int8_t *restrict q_chunk,
-                                int8_t *restrict k_one,
-                                int8_t *restrict v_one,
-                                int8_t *restrict out_chunk,
-                                int T_used);
+                                int8_t *restrict k_one, int8_t *restrict v_one,
+                                int8_t *restrict out_chunk, int T_used);
 
 // Phase 8c kv_one layout (was: [k_scale | kbody | v_scale | vbody]):
 //   [0..4]:                       T_used (int32)   -- NEW Phase 8c
@@ -112,20 +114,18 @@ extern "C" void llama_flowkv_mh_kvc(int8_t *restrict q_chunk,
                                     int8_t *restrict out_chunk) {
   int T_used;
   memcpy(&T_used, kv_one, 4);
-  if (T_used <= 0) T_used = 1;
-  if (T_used > kT) T_used = kT;
+  if (T_used <= 0)
+    T_used = 1;
+  if (T_used > kT)
+    T_used = kT;
   constexpr int kKHalf = 4 + kT * kHD;
-  llama_flowkv_mh(q_chunk,
-                  kv_one + kTUsedPrefix,
-                  kv_one + kTUsedPrefix + kKHalf,
-                  out_chunk, T_used);
+  llama_flowkv_mh(q_chunk, kv_one + kTUsedPrefix,
+                  kv_one + kTUsedPrefix + kKHalf, out_chunk, T_used);
 }
 
 extern "C" void llama_flowkv_mh(int8_t *restrict q_chunk,
-                                int8_t *restrict k_one,
-                                int8_t *restrict v_one,
-                                int8_t *restrict out_chunk,
-                                int T_used) {
+                                int8_t *restrict k_one, int8_t *restrict v_one,
+                                int8_t *restrict out_chunk, int T_used) {
   event0();
   ::aie::set_rounding(aie::rounding_mode::conv_even);
   static_assert(kHD == 64, "qk_scale hardcoded for head_dim=64");
@@ -151,11 +151,11 @@ extern "C" void llama_flowkv_mh(int8_t *restrict q_chunk,
 
   for (int h = 0; h < kREP; h++) {
     float q_scale, sv_inv_out_scale;
-    memcpy(&q_scale,          tail + h * 8 + 0, 4);
+    memcpy(&q_scale, tail + h * 8 + 0, 4);
     memcpy(&sv_inv_out_scale, tail + h * 8 + 4, 4);
 
-    const float qk_scale  = q_scale * k_scale * kInvSqrtHD;
-    int8_t *restrict q_h   = q_chunk   + h * kHD;
+    const float qk_scale = q_scale * k_scale * kInvSqrtHD;
+    int8_t *restrict q_h = q_chunk + h * kHD;
     int8_t *restrict out_h = out_chunk + h * kHD;
 
     // 1) Scores: int32 dot -> ONE combined float multiply. Causal mask:
@@ -169,7 +169,8 @@ extern "C" void llama_flowkv_mh(int8_t *restrict q_chunk,
       }
       float s = (float)dot * qk_scale;
       scores[i] = s;
-      if (s > max_s) max_s = s;
+      if (s > max_s)
+        max_s = s;
     }
 
     // 2) Shift, quantize via LUT-step, sum.

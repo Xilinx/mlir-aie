@@ -39,17 +39,16 @@ def _i32(idx):
 GEMM_COL, GEMM_ROW = 0, 2
 
 
-def build(K: int, N: int, n_tile: int,
-          act_scale: float, inv_out_scale: float):
+def build(K: int, N: int, n_tile: int, act_scale: float, inv_out_scale: float):
     assert N % n_tile == 0, f"N={N} must be a multiple of N_TILE={n_tile}"
     n_tiles = N // n_tile
-    slot_bytes = n_tile * K + n_tile * 4 + n_tile * 4   # weights + bias + w_scales
+    slot_bytes = n_tile * K + n_tile * 4 + n_tile * 4  # weights + bias + w_scales
 
-    act_ty     = np.ndarray[(K,),                np.dtype[np.int8]]
-    w_ty       = np.ndarray[(slot_bytes,),       np.dtype[np.int8]]
-    out_ty     = np.ndarray[(N,),                np.dtype[np.int8]]  # full N, NOT per-tile
-    w_blob_ty  = np.ndarray[(n_tiles * slot_bytes,), np.dtype[np.int8]]
-    out_buf_ty = np.ndarray[(N,),                np.dtype[np.int8]]
+    act_ty = np.ndarray[(K,), np.dtype[np.int8]]
+    w_ty = np.ndarray[(slot_bytes,), np.dtype[np.int8]]
+    out_ty = np.ndarray[(N,), np.dtype[np.int8]]  # full N, NOT per-tile
+    w_blob_ty = np.ndarray[(n_tiles * slot_bytes,), np.dtype[np.int8]]
+    out_buf_ty = np.ndarray[(N,), np.dtype[np.int8]]
 
     of_act = ObjectFifo(act_ty, depth=1, name="act")
     # Output fifo carries the FULL N-byte vector (not per-tile) because
@@ -77,18 +76,20 @@ def build(K: int, N: int, n_tile: int,
         raise ValueError(f"K={K} not supported by per-channel kernel")
 
     kernel = Kernel(
-        sym, "llama_gemm_int8_srs_tiled_ffn.cc.o",
+        sym,
+        "llama_gemm_int8_srs_tiled_ffn.cc.o",
         [act_ty, w_ty, out_ty, np.int32, np.float32, np.float32],
     )
 
     def core_fn(c_act, c_w, c_out, k):
         a = c_act.acquire(1)
-        o = c_out.acquire(1)              # acquire ONCE -- full N bytes
+        o = c_out.acquire(1)  # acquire ONCE -- full N bytes
         for t in range_(n_tiles):
             w = c_w.acquire(1)
             k(a, w, o, _i32(t), act_scale, inv_out_scale)
             c_w.release(1)
-        c_out.release(1); c_act.release(1)
+        c_out.release(1)
+        c_act.release(1)
 
     worker = Worker(
         core_fn,
@@ -98,7 +99,8 @@ def build(K: int, N: int, n_tile: int,
     )
 
     def factor(nb):
-        if nb <= 1023: return (1, nb)
+        if nb <= 1023:
+            return (1, nb)
         for inner in range(min(nb, 1023), 0, -1):
             if nb % inner == 0 and nb // inner <= 1023:
                 return (nb // inner, inner)
@@ -119,17 +121,23 @@ def build(K: int, N: int, n_tile: int,
         act_tg = rt.task_group()
         rt.fill(of_act.prod(), a, task_group=act_tg)
         w_tg = rt.task_group()
-        rt.fill(of_w.prod(), w_blob,
-                tap=strided_tap(n_tiles * slot_bytes, 0, slot_bytes,
-                                slot_bytes, n_tiles),
-                task_group=w_tg)
+        rt.fill(
+            of_w.prod(),
+            w_blob,
+            tap=strided_tap(n_tiles * slot_bytes, 0, slot_bytes, slot_bytes, n_tiles),
+            task_group=w_tg,
+        )
         # Drain the full N-byte output in one shim DMA (no per-tile
         # strided pattern needed; kernel writes all tiles into one
         # of_out slot).
         o_tg = rt.task_group()
-        rt.drain(of_out.cons(), o_buf,
-                 tap=strided_tap(N, 0, N, N, 1),
-                 wait=True, task_group=o_tg)
+        rt.drain(
+            of_out.cons(),
+            o_buf,
+            tap=strided_tap(N, 0, N, N, 1),
+            wait=True,
+            task_group=o_tg,
+        )
         rt.finish_task_group(act_tg)
         rt.finish_task_group(w_tg)
         rt.finish_task_group(o_tg)
@@ -142,13 +150,18 @@ def main():
     p.add_argument("-K", type=int, default=2048)
     p.add_argument("-N", type=int, default=64)
     p.add_argument("--n-tile", type=int, default=4)
-    p.add_argument("--act-scale", type=float,
-                   default=float(os.environ.get("LLAMA_GEMM_ACT_SCALE", "0.05")))
-    p.add_argument("--inv-out-scale", type=float,
-                   default=float(os.environ.get("LLAMA_GEMM_INV_OUT_SCALE", "1.0")))
+    p.add_argument(
+        "--act-scale",
+        type=float,
+        default=float(os.environ.get("LLAMA_GEMM_ACT_SCALE", "0.05")),
+    )
+    p.add_argument(
+        "--inv-out-scale",
+        type=float,
+        default=float(os.environ.get("LLAMA_GEMM_INV_OUT_SCALE", "1.0")),
+    )
     args = p.parse_args(sys.argv[1:])
-    print(build(args.K, args.N, args.n_tile,
-                args.act_scale, args.inv_out_scale))
+    print(build(args.K, args.N, args.n_tile, args.act_scale, args.inv_out_scale))
 
 
 if __name__ == "__main__":

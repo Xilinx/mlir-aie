@@ -37,13 +37,17 @@ def sw_recip(a: float) -> float:
     return float(x)
 
 
-def numpy_rmsnorm_int8_dyn(x_i8: np.ndarray, gamma_bf16: np.ndarray,
-                           act_scale_in: float,
-                           eps: float = 1e-5):
+def numpy_rmsnorm_int8_dyn(
+    x_i8: np.ndarray, gamma_bf16: np.ndarray, act_scale_in: float, eps: float = 1e-5
+):
     """Returns (y_i8: int8[D], scale_dyn: fp32)."""
     sum_sq_i32 = int((x_i8.astype(np.int32) ** 2).sum())
-    var = np.float32(np.float32(sum_sq_i32) * np.float32(act_scale_in) *
-                     np.float32(act_scale_in) / np.float32(len(x_i8)))
+    var = np.float32(
+        np.float32(sum_sq_i32)
+        * np.float32(act_scale_in)
+        * np.float32(act_scale_in)
+        / np.float32(len(x_i8))
+    )
     inv_rms = sw_invsqrt(np.float32(var + np.float32(eps)))
     pre = np.float32(np.float32(act_scale_in) * np.float32(inv_rms))
 
@@ -93,30 +97,35 @@ def main():
     y_t.to("cpu")
     actual_full = y_t.numpy()
     actual_y = actual_full[:D]
-    actual_scale = struct.unpack("<f", actual_full[D:D + 4].tobytes())[0]
+    actual_scale = struct.unpack("<f", actual_full[D : D + 4].tobytes())[0]
 
     expected_y, expected_scale = numpy_rmsnorm_int8_dyn(x, g, ACT_SCALE_IN)
 
-    diff = (actual_y.astype(np.int16) - expected_y.astype(np.int16))
+    diff = actual_y.astype(np.int16) - expected_y.astype(np.int16)
     n_diff = int((diff != 0).sum())
     max_abs = int(np.abs(diff).max()) if n_diff else 0
-    scale_match = (
-        struct.pack("<f", actual_scale) == struct.pack("<f", expected_scale)
+    scale_match = struct.pack("<f", actual_scale) == struct.pack("<f", expected_scale)
+
+    print(
+        f"RMSNorm-int8-dyn: D={D}  int8 mismatches={n_diff}/{D}  "
+        f"max|int8 diff|={max_abs}  "
+        f"scale NPU={actual_scale:.10g}  ref={expected_scale:.10g}  "
+        f"scale {'EXACT' if scale_match else 'DIFFER'}"
     )
 
-    print(f"RMSNorm-int8-dyn: D={D}  int8 mismatches={n_diff}/{D}  "
-          f"max|int8 diff|={max_abs}  "
-          f"scale NPU={actual_scale:.10g}  ref={expected_scale:.10g}  "
-          f"scale {'EXACT' if scale_match else 'DIFFER'}")
-
     if n_diff <= opts.max_mismatches and scale_match:
-        print("BIT-EXACT PASS" if n_diff == 0 else
-              f"PASS (<={opts.max_mismatches} 1-LSB diffs)")
+        print(
+            "BIT-EXACT PASS"
+            if n_diff == 0
+            else f"PASS (<={opts.max_mismatches} 1-LSB diffs)"
+        )
         return 0
     print("FAIL")
     for i in np.argwhere(diff != 0).flatten()[:8]:
-        print(f"  i={i}: NPU={actual_y[i]}  expected={expected_y[i]}  "
-              f"diff={diff[i]}  x={x[i]}  g={float(g[i]):.4f}")
+        print(
+            f"  i={i}: NPU={actual_y[i]}  expected={expected_y[i]}  "
+            f"diff={diff[i]}  x={x[i]}  g={float(g[i]):.4f}"
+        )
     return 1
 
 

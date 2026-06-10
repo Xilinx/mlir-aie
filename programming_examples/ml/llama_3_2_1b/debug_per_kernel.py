@@ -29,10 +29,22 @@ import aie.utils.test as test_utils
 from aie.utils import DefaultNPURuntime
 
 from aie2_chain_real import (
-    D, QD, KVD, HD, HEAD_D, N_HEADS, T,
-    RIGHT_SHIFT, ACT_SCALE, INV_ACT_SCALE,
-    UP_SCALE, INV_OUT_SCALE_SI,
-    Q_SCALE, K_SCALE, V_SCALE, INV_OUT_SCALE_AT,
+    D,
+    QD,
+    KVD,
+    HD,
+    HEAD_D,
+    N_HEADS,
+    T,
+    RIGHT_SHIFT,
+    ACT_SCALE,
+    INV_ACT_SCALE,
+    UP_SCALE,
+    INV_OUT_SCALE_SI,
+    Q_SCALE,
+    K_SCALE,
+    V_SCALE,
+    INV_OUT_SCALE_AT,
 )
 from test_chain_real import gen_layer
 from test_rmsnorm_int8 import numpy_rmsnorm_int8
@@ -57,8 +69,9 @@ def dispatch_npu(xclbin, insts, tensors):
     opts = p.parse_args()
     sys.argv = saved_argv
     npu_opts = test_utils.create_npu_kernel(opts)
-    rc = DefaultNPURuntime.run_test(npu_opts.npu_kernel, tensors, {},
-                                    verify=False, verbosity=0)
+    rc = DefaultNPURuntime.run_test(
+        npu_opts.npu_kernel, tensors, {}, verify=False, verbosity=0
+    )
     if rc != 0:
         raise RuntimeError(f"NPU dispatch failed rc={rc}")
 
@@ -82,8 +95,10 @@ def main():
     layer = gen_layer(rng)  # uses LLAMA_CHAIN_ACTIVE_DATA env flag
 
     print(f"x_in[:8]={x_in[:8]}")
-    print(f"wq mean={float(np.abs(layer['wq']).mean()):.2f}  "
-          f"bq mean={float(np.abs(layer['bq']).mean()):.2f}")
+    print(
+        f"wq mean={float(np.abs(layer['wq']).mean()):.2f}  "
+        f"bq mean={float(np.abs(layer['bq']).mean()):.2f}"
+    )
 
     # --- Step 1: rmsnorm1 ---
     h1_numpy = numpy_rmsnorm_int8(x_in, layer["gamma_in"], ACT_SCALE, INV_ACT_SCALE)
@@ -92,9 +107,11 @@ def main():
     x_t = iron.tensor(x_in.copy(), dtype=np.int8)
     g_t = iron.tensor(layer["gamma_in"], dtype=bfloat16)
     o_t = iron.zeros([D], dtype=np.int8)
-    dispatch_npu("build/final_rmsnorm_int8_64.xclbin",
-                 "build/insts_rmsnorm_int8_64.bin",
-                 [x_t, g_t, o_t])
+    dispatch_npu(
+        "build/final_rmsnorm_int8_64.xclbin",
+        "build/insts_rmsnorm_int8_64.bin",
+        [x_t, g_t, o_t],
+    )
     o_t.to("cpu")
     h1_npu = o_t.numpy()
     print(f"  NPU   h1[:8]={h1_npu[:8]}")
@@ -107,14 +124,17 @@ def main():
     qf_numpy = numpy_gemm(h1, layer["wq"], layer["bq"])
     print(f"\nStep 2: q_proj gemm (D->QD, K=N=64)")
     print(f"  numpy qf[:8]={qf_numpy[:8]}")
-    w_packed = np.concatenate([layer["wq"].flatten().view(np.int8),
-                               layer["bq"].view(np.int8).flatten()])
+    w_packed = np.concatenate(
+        [layer["wq"].flatten().view(np.int8), layer["bq"].view(np.int8).flatten()]
+    )
     act_t = iron.tensor(h1.copy(), dtype=np.int8)
-    w_t   = iron.tensor(w_packed, dtype=np.int8)
+    w_t = iron.tensor(w_packed, dtype=np.int8)
     out_t = iron.zeros([QD], dtype=np.int8)
-    dispatch_npu("build/final_gemm_srs_64x64.xclbin",
-                 "build/insts_gemm_srs_64x64.bin",
-                 [act_t, w_t, out_t])
+    dispatch_npu(
+        "build/final_gemm_srs_64x64.xclbin",
+        "build/insts_gemm_srs_64x64.bin",
+        [act_t, w_t, out_t],
+    )
     out_t.to("cpu")
     qf_npu = out_t.numpy()
     print(f"  NPU   qf[:8]={qf_npu[:8]}")
@@ -124,8 +144,7 @@ def main():
     # --- Step 3: rope (need a rope xclbin at head_dim=64, n_heads=1) ---
     # Skipping rope if no matching xclbin -- chain uses n_heads=1.
     # The existing standalone rope is at head_dim=64, n_heads=8 (8x size).
-    qr_numpy = numpy_rope(qf, layer["cos"], layer["sin"],
-                          N_HEADS, HEAD_D, ACT_SCALE)
+    qr_numpy = numpy_rope(qf, layer["cos"], layer["sin"], N_HEADS, HEAD_D, ACT_SCALE)
     print(f"\nStep 3: rope (head_dim=64, n_heads=1)")
     print(f"  numpy qr[:8]={qr_numpy[:8]}")
     # Use NPU rope at head_dim=64,n_heads=8 -- need a single-head xclbin.
@@ -136,8 +155,11 @@ def main():
         x_t = iron.tensor(qf.copy(), dtype=np.int8)
         cs_t = iron.tensor(cs_packed, dtype=bfloat16)
         o_t = iron.zeros([QD], dtype=np.int8)
-        dispatch_npu("build/final_rope_64x1.xclbin",
-                     "build/insts_rope_64x1.bin", [x_t, cs_t, o_t])
+        dispatch_npu(
+            "build/final_rope_64x1.xclbin",
+            "build/insts_rope_64x1.bin",
+            [x_t, cs_t, o_t],
+        )
         o_t.to("cpu")
         qr_npu = o_t.numpy()
         print(f"  NPU   qr[:8]={qr_npu[:8]}")
@@ -150,16 +172,28 @@ def main():
     # --- Step 4: flowkv (head_dim=64, T=16) ---
     print(f"\nStep 4: flowkv (head_dim=64, T=16)")
     lut_exp = exp_lut(EXP_QUANT_SCALE)
-    af_numpy = numpy_attention(qr, layer["kcache"], layer["vcache"], HEAD_D, T,
-                               Q_SCALE, K_SCALE, V_SCALE, INV_OUT_SCALE_AT, lut_exp)
+    af_numpy = numpy_attention(
+        qr,
+        layer["kcache"],
+        layer["vcache"],
+        HEAD_D,
+        T,
+        Q_SCALE,
+        K_SCALE,
+        V_SCALE,
+        INV_OUT_SCALE_AT,
+        lut_exp,
+    )
     print(f"  numpy af[:8]={af_numpy[:8]}")
     q_t = iron.tensor(qr.copy(), dtype=np.int8)
     k_t = iron.tensor(layer["kcache"], dtype=np.int8)
     v_t = iron.tensor(layer["vcache"], dtype=np.int8)
     o_t = iron.zeros([QD], dtype=np.int8)
-    dispatch_npu("build/final_flowkv_64x16.xclbin",
-                 "build/insts_flowkv_64x16.bin",
-                 [q_t, k_t, v_t, o_t])
+    dispatch_npu(
+        "build/final_flowkv_64x16.xclbin",
+        "build/insts_flowkv_64x16.bin",
+        [q_t, k_t, v_t, o_t],
+    )
     o_t.to("cpu")
     af_npu = o_t.numpy()
     print(f"  NPU   af[:8]={af_npu[:8]}")

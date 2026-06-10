@@ -30,7 +30,7 @@
 #define LLAMA_RMSNORM_COLS 2048
 #endif
 #ifndef LLAMA_RMSNORM_N
-#define LLAMA_RMSNORM_N 16   // bf16 vector lane count
+#define LLAMA_RMSNORM_N 16 // bf16 vector lane count
 #endif
 
 extern "C" {
@@ -65,7 +65,7 @@ void llama_rmsnorm_bf16(bfloat16 *restrict input, bfloat16 *restrict gamma,
     ::aie::vector<bfloat16, kN> x = ::aie::load_v<kN>(input + i * kN);
     ::aie::vector<bfloat16, kN> g = ::aie::load_v<kN>(gamma + i * kN);
     ::aie::vector<bfloat16, kN> norm = ::aie::mul(x, inv_rms_v);
-    ::aie::vector<bfloat16, kN> out  = ::aie::mul(norm, g);
+    ::aie::vector<bfloat16, kN> out = ::aie::mul(norm, g);
     ::aie::store_v(output + i * kN, out);
   }
 

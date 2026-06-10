@@ -23,7 +23,10 @@ import numpy as np
 from ml_dtypes import bfloat16
 
 from aie2_layer_d2048 import (
-    ACT_SCALE, INV_ACT_SCALE, SILU_GATE_SCALE, GATE_INV_OUT_SCALE,
+    ACT_SCALE,
+    INV_ACT_SCALE,
+    SILU_GATE_SCALE,
+    GATE_INV_OUT_SCALE,
 )
 from test_rmsnorm_int8 import numpy_rmsnorm_int8
 from test_rope_int8 import numpy_rope_dyn
@@ -35,23 +38,21 @@ from gen_exp_lut import exp_lut
 from gen_silu_lut import silu_lut
 from gen_llama_data import quant_int8_perchan_absmax
 
-
 # --- Multi-head GQA shape constants ---
-D            = 2048
-N_HEADS_Q    = 32
-N_HEADS_KV   = 8
-HEAD_DIM     = 64
-REP          = N_HEADS_Q // N_HEADS_KV     # 4
-Q_DIM        = N_HEADS_Q * HEAD_DIM        # 2048
-KV_DIM       = N_HEADS_KV * HEAD_DIM       # 512
-HD           = 8192
-T            = 128
+D = 2048
+N_HEADS_Q = 32
+N_HEADS_KV = 8
+HEAD_DIM = 64
+REP = N_HEADS_Q // N_HEADS_KV  # 4
+Q_DIM = N_HEADS_Q * HEAD_DIM  # 2048
+KV_DIM = N_HEADS_KV * HEAD_DIM  # 512
+HD = 8192
+T = 128
 
 
 def requant(fp, inv):
     s = fp * np.float32(inv)
-    r = np.where(s >= 0, np.floor(s + np.float32(0.5)),
-                          np.ceil(s - np.float32(0.5)))
+    r = np.where(s >= 0, np.floor(s + np.float32(0.5)), np.ceil(s - np.float32(0.5)))
     return r.clip(-128, 127).astype(np.int8)
 
 
@@ -62,43 +63,53 @@ def gen_real_layer_mh(L: int, data_dir, rng: np.random.Generator) -> dict:
     Mirrors test_chain_dynscale.gen_real_layer but without head-0 slicing.
     """
     from pathlib import Path
+
     ld = Path(data_dir) / f"layer_{L:02d}"
 
     def _i8(name, shape):
-        return np.frombuffer((ld / name).read_bytes(),
-                             dtype=np.int8).reshape(shape).copy()
-    def _f32(name, shape):
-        return np.frombuffer((ld / name).read_bytes(),
-                             dtype=np.float32).reshape(shape).copy()
-    def _bf16(name, shape):
-        return np.frombuffer((ld / name).read_bytes(),
-                             dtype=bfloat16).reshape(shape).copy()
+        return (
+            np.frombuffer((ld / name).read_bytes(), dtype=np.int8).reshape(shape).copy()
+        )
 
-    wq_i8 = _i8("wq.i8.bin",         (Q_DIM, D))
+    def _f32(name, shape):
+        return (
+            np.frombuffer((ld / name).read_bytes(), dtype=np.float32)
+            .reshape(shape)
+            .copy()
+        )
+
+    def _bf16(name, shape):
+        return (
+            np.frombuffer((ld / name).read_bytes(), dtype=bfloat16)
+            .reshape(shape)
+            .copy()
+        )
+
+    wq_i8 = _i8("wq.i8.bin", (Q_DIM, D))
     wq_sc = _f32("wq.scales.f32.bin", (Q_DIM,))
-    bq    = np.zeros(Q_DIM, np.int32)
+    bq = np.zeros(Q_DIM, np.int32)
 
     # k_proj, v_proj: (KV_DIM, D) -- Phase 8a real K/V projection.
-    wk_i8 = _i8("wk.i8.bin",         (KV_DIM, D))
+    wk_i8 = _i8("wk.i8.bin", (KV_DIM, D))
     wk_sc = _f32("wk.scales.f32.bin", (KV_DIM,))
-    wv_i8 = _i8("wv.i8.bin",         (KV_DIM, D))
+    wv_i8 = _i8("wv.i8.bin", (KV_DIM, D))
     wv_sc = _f32("wv.scales.f32.bin", (KV_DIM,))
 
-    wo_i8 = _i8("wo.i8.bin",         (D, Q_DIM))
+    wo_i8 = _i8("wo.i8.bin", (D, Q_DIM))
     wo_sc = _f32("wo.scales.f32.bin", (D,))
-    bo    = np.zeros(D, np.int32)
+    bo = np.zeros(D, np.int32)
 
-    wg_i8 = _i8("wg.i8.bin",         (HD, D))
+    wg_i8 = _i8("wg.i8.bin", (HD, D))
     wg_sc = _f32("wg.scales.f32.bin", (HD,))
-    bg    = np.zeros(HD, np.int32)
-    wu_i8 = _i8("wu.i8.bin",         (HD, D))
+    bg = np.zeros(HD, np.int32)
+    wu_i8 = _i8("wu.i8.bin", (HD, D))
     wu_sc = _f32("wu.scales.f32.bin", (HD,))
-    bu    = np.zeros(HD, np.int32)
-    wd_i8 = _i8("wd.i8.bin",         (D, HD))
+    bu = np.zeros(HD, np.int32)
+    wd_i8 = _i8("wd.i8.bin", (D, HD))
     wd_sc = _f32("wd.scales.f32.bin", (D,))
-    bd    = np.zeros(D, np.int32)
+    bd = np.zeros(D, np.int32)
 
-    gamma_in   = _bf16("gamma_in.bf16.bin",   (D,))
+    gamma_in = _bf16("gamma_in.bf16.bin", (D,))
     gamma_post = _bf16("gamma_post.bf16.bin", (D,))
 
     half = HEAD_DIM // 2
@@ -117,32 +128,54 @@ def gen_real_layer_mh(L: int, data_dir, rng: np.random.Generator) -> dict:
     v_scales = np.full(N_HEADS_KV, 1e-6, dtype=np.float32)
 
     return dict(
-        wq_i8=wq_i8, wq_sc=wq_sc, bq=bq,
-        wk_i8=wk_i8, wk_sc=wk_sc,
-        wv_i8=wv_i8, wv_sc=wv_sc,
-        wo_i8=wo_i8, wo_sc=wo_sc, bo=bo,
-        wg_i8=wg_i8, wg_sc=wg_sc, bg=bg,
-        wu_i8=wu_i8, wu_sc=wu_sc, bu=bu,
-        wd_i8=wd_i8, wd_sc=wd_sc, bd=bd,
-        cos=cos, sin=sin,
-        kcaches=kcaches, vcaches=vcaches,
-        k_scales=k_scales, v_scales=v_scales,
-        gamma_in=gamma_in, gamma_post=gamma_post,
+        wq_i8=wq_i8,
+        wq_sc=wq_sc,
+        bq=bq,
+        wk_i8=wk_i8,
+        wk_sc=wk_sc,
+        wv_i8=wv_i8,
+        wv_sc=wv_sc,
+        wo_i8=wo_i8,
+        wo_sc=wo_sc,
+        bo=bo,
+        wg_i8=wg_i8,
+        wg_sc=wg_sc,
+        bg=bg,
+        wu_i8=wu_i8,
+        wu_sc=wu_sc,
+        bu=bu,
+        wd_i8=wd_i8,
+        wd_sc=wd_sc,
+        bd=bd,
+        cos=cos,
+        sin=sin,
+        kcaches=kcaches,
+        vcaches=vcaches,
+        k_scales=k_scales,
+        v_scales=v_scales,
+        gamma_in=gamma_in,
+        gamma_post=gamma_post,
     )
 
 
 def gen_layer_mh(rng: np.random.Generator) -> dict:
     """Random per-layer fixture at multi-head GQA shapes."""
+
     def random_w(out_dim, in_dim):
         base = rng.standard_normal((out_dim, in_dim)).astype(np.float32) * 0.05
         row_scale = rng.uniform(0.1, 1.0, size=out_dim).astype(np.float32)
         return base * row_scale[:, None]
 
-    wq_fp = random_w(Q_DIM,  D);    bq = np.zeros(Q_DIM,  np.int32)
-    wo_fp = random_w(D,      Q_DIM); bo = np.zeros(D,      np.int32)
-    wg_fp = random_w(HD,     D);    bg = np.zeros(HD,     np.int32)
-    wu_fp = random_w(HD,     D);    bu = np.zeros(HD,     np.int32)
-    wd_fp = random_w(D,      HD);   bd = np.zeros(D,      np.int32)
+    wq_fp = random_w(Q_DIM, D)
+    bq = np.zeros(Q_DIM, np.int32)
+    wo_fp = random_w(D, Q_DIM)
+    bo = np.zeros(D, np.int32)
+    wg_fp = random_w(HD, D)
+    bg = np.zeros(HD, np.int32)
+    wu_fp = random_w(HD, D)
+    bu = np.zeros(HD, np.int32)
+    wd_fp = random_w(D, HD)
+    bd = np.zeros(D, np.int32)
     wq_i8, wq_sc = quant_int8_perchan_absmax(wq_fp)
     wo_i8, wo_sc = quant_int8_perchan_absmax(wo_fp)
     wg_i8, wg_sc = quant_int8_perchan_absmax(wg_fp)
@@ -158,15 +191,21 @@ def gen_layer_mh(rng: np.random.Generator) -> dict:
     sin = np.concatenate([sin_half, sin_half])
 
     # Per-KV-head cache + scale.
-    kcaches = [rng.integers(-32, 33, size=T * HEAD_DIM, dtype=np.int8)
-               for _ in range(N_HEADS_KV)]
-    vcaches = [rng.integers(-32, 33, size=T * HEAD_DIM, dtype=np.int8)
-               for _ in range(N_HEADS_KV)]
+    kcaches = [
+        rng.integers(-32, 33, size=T * HEAD_DIM, dtype=np.int8)
+        for _ in range(N_HEADS_KV)
+    ]
+    vcaches = [
+        rng.integers(-32, 33, size=T * HEAD_DIM, dtype=np.int8)
+        for _ in range(N_HEADS_KV)
+    ]
     k_scales = np.full(N_HEADS_KV, 0.05, dtype=np.float32)
     v_scales = np.full(N_HEADS_KV, 0.05, dtype=np.float32)
 
-    gamma_in   = (1.0 + 0.1 * rng.standard_normal(D).astype(np.float32)).astype(bfloat16)
-    gamma_post = (1.0 + 0.1 * rng.standard_normal(D).astype(np.float32)).astype(bfloat16)
+    gamma_in = (1.0 + 0.1 * rng.standard_normal(D).astype(np.float32)).astype(bfloat16)
+    gamma_post = (1.0 + 0.1 * rng.standard_normal(D).astype(np.float32)).astype(
+        bfloat16
+    )
 
     # Phase 8a: wk/wv drawn LAST so adding them doesn't shift earlier rng
     # consumers (kcaches/vcaches/gammas) -- preserves test_chain_mh BIT-EXACT.
@@ -176,17 +215,33 @@ def gen_layer_mh(rng: np.random.Generator) -> dict:
     wv_i8, wv_sc = quant_int8_perchan_absmax(wv_fp)
 
     return dict(
-        wq_i8=wq_i8, wq_sc=wq_sc, bq=bq,
-        wk_i8=wk_i8, wk_sc=wk_sc,
-        wv_i8=wv_i8, wv_sc=wv_sc,
-        wo_i8=wo_i8, wo_sc=wo_sc, bo=bo,
-        wg_i8=wg_i8, wg_sc=wg_sc, bg=bg,
-        wu_i8=wu_i8, wu_sc=wu_sc, bu=bu,
-        wd_i8=wd_i8, wd_sc=wd_sc, bd=bd,
-        cos=cos, sin=sin,
-        kcaches=kcaches, vcaches=vcaches,
-        k_scales=k_scales, v_scales=v_scales,
-        gamma_in=gamma_in, gamma_post=gamma_post,
+        wq_i8=wq_i8,
+        wq_sc=wq_sc,
+        bq=bq,
+        wk_i8=wk_i8,
+        wk_sc=wk_sc,
+        wv_i8=wv_i8,
+        wv_sc=wv_sc,
+        wo_i8=wo_i8,
+        wo_sc=wo_sc,
+        bo=bo,
+        wg_i8=wg_i8,
+        wg_sc=wg_sc,
+        bg=bg,
+        wu_i8=wu_i8,
+        wu_sc=wu_sc,
+        bu=bu,
+        wd_i8=wd_i8,
+        wd_sc=wd_sc,
+        bd=bd,
+        cos=cos,
+        sin=sin,
+        kcaches=kcaches,
+        vcaches=vcaches,
+        k_scales=k_scales,
+        v_scales=v_scales,
+        gamma_in=gamma_in,
+        gamma_post=gamma_post,
     )
 
 
@@ -197,17 +252,31 @@ def numpy_layer_mh_forward(x, layer, position=None):
     dynamic scale that the on-device design needs in its wblob/kvblob
     prefixes/tails.
     """
-    lut_exp  = layer["lut_exp"]
+    lut_exp = layer["lut_exp"]
     lut_silu = layer["lut_silu"]
-    gamma_in = layer["gamma_in"]; gamma_post = layer["gamma_post"]
-    wq_i8 = layer["wq_i8"]; wq_sc = layer["wq_sc"]; bq = layer["bq"]
-    wo_i8 = layer["wo_i8"]; wo_sc = layer["wo_sc"]; bo = layer["bo"]
-    wg_i8 = layer["wg_i8"]; wg_sc = layer["wg_sc"]; bg = layer["bg"]
-    wu_i8 = layer["wu_i8"]; wu_sc = layer["wu_sc"]; bu = layer["bu"]
-    wd_i8 = layer["wd_i8"]; wd_sc = layer["wd_sc"]; bd = layer["bd"]
-    cos = layer["cos"]; sin = layer["sin"]
-    kcaches = layer["kcaches"]; vcaches = layer["vcaches"]
-    k_scales = layer["k_scales"]; v_scales = layer["v_scales"]
+    gamma_in = layer["gamma_in"]
+    gamma_post = layer["gamma_post"]
+    wq_i8 = layer["wq_i8"]
+    wq_sc = layer["wq_sc"]
+    bq = layer["bq"]
+    wo_i8 = layer["wo_i8"]
+    wo_sc = layer["wo_sc"]
+    bo = layer["bo"]
+    wg_i8 = layer["wg_i8"]
+    wg_sc = layer["wg_sc"]
+    bg = layer["bg"]
+    wu_i8 = layer["wu_i8"]
+    wu_sc = layer["wu_sc"]
+    bu = layer["bu"]
+    wd_i8 = layer["wd_i8"]
+    wd_sc = layer["wd_sc"]
+    bd = layer["bd"]
+    cos = layer["cos"]
+    sin = layer["sin"]
+    kcaches = layer["kcaches"]
+    vcaches = layer["vcaches"]
+    k_scales = layer["k_scales"]
+    v_scales = layer["v_scales"]
 
     # 1) rmsnorm1 -> h1
     h1 = numpy_rmsnorm_int8(x, gamma_in, ACT_SCALE, INV_ACT_SCALE)
@@ -216,12 +285,20 @@ def numpy_layer_mh_forward(x, layer, position=None):
     # cache append at `position`. Only runs when caller passes position;
     # otherwise the test-fixture caches are used as-is (Phase 7 behavior).
     if position is not None:
-        wk_i8 = layer["wk_i8"]; wk_sc = layer["wk_sc"]
-        wv_i8 = layer["wv_i8"]; wv_sc = layer["wv_sc"]
-        k_fp = (wk_i8.astype(np.int32) @ h1.astype(np.int32)).astype(np.float32) \
-               * np.float32(ACT_SCALE) * wk_sc.astype(np.float32)   # (KV_DIM,)
-        v_fp = (wv_i8.astype(np.int32) @ h1.astype(np.int32)).astype(np.float32) \
-               * np.float32(ACT_SCALE) * wv_sc.astype(np.float32)
+        wk_i8 = layer["wk_i8"]
+        wk_sc = layer["wk_sc"]
+        wv_i8 = layer["wv_i8"]
+        wv_sc = layer["wv_sc"]
+        k_fp = (
+            (wk_i8.astype(np.int32) @ h1.astype(np.int32)).astype(np.float32)
+            * np.float32(ACT_SCALE)
+            * wk_sc.astype(np.float32)
+        )  # (KV_DIM,)
+        v_fp = (
+            (wv_i8.astype(np.int32) @ h1.astype(np.int32)).astype(np.float32)
+            * np.float32(ACT_SCALE)
+            * wv_sc.astype(np.float32)
+        )
         # Apply rope to k per KV head (Llama half-split convention).
         # cos / sin are full HEAD_DIM (two copies of half), bf16; cast to fp32.
         cosf = np.asarray(cos, dtype=np.float32)
@@ -229,38 +306,44 @@ def numpy_layer_mh_forward(x, layer, position=None):
         half = HEAD_DIM // 2
         k_rope = np.empty_like(k_fp)
         for h in range(N_HEADS_KV):
-            kh = k_fp[h * HEAD_DIM:(h + 1) * HEAD_DIM].copy()
-            x1 = kh[:half]; x2 = kh[half:]
-            kh[:half]  = x1 * cosf[:half]  - x2 * sinf[:half]
-            kh[half:]  = x2 * cosf[half:]  + x1 * sinf[half:]
-            k_rope[h * HEAD_DIM:(h + 1) * HEAD_DIM] = kh
+            kh = k_fp[h * HEAD_DIM : (h + 1) * HEAD_DIM].copy()
+            x1 = kh[:half]
+            x2 = kh[half:]
+            kh[:half] = x1 * cosf[:half] - x2 * sinf[:half]
+            kh[half:] = x2 * cosf[half:] + x1 * sinf[half:]
+            k_rope[h * HEAD_DIM : (h + 1) * HEAD_DIM] = kh
         # Per-KV-head dynamic quant + cache append at slot `position`.
         for h in range(N_HEADS_KV):
-            kh = k_rope[h * HEAD_DIM:(h + 1) * HEAD_DIM]
-            vh = v_fp  [h * HEAD_DIM:(h + 1) * HEAD_DIM]
+            kh = k_rope[h * HEAD_DIM : (h + 1) * HEAD_DIM]
+            vh = v_fp[h * HEAD_DIM : (h + 1) * HEAD_DIM]
             ks = float(np.maximum(np.abs(kh).max(), 1e-12)) / 127.0
             vs = float(np.maximum(np.abs(vh).max(), 1e-12)) / 127.0
             k_scales[h] = np.float32(ks)
             v_scales[h] = np.float32(vs)
-            kcaches[h][position * HEAD_DIM:(position + 1) * HEAD_DIM] = \
-                requant(kh, np.float32(1.0) / np.float32(ks))
-            vcaches[h][position * HEAD_DIM:(position + 1) * HEAD_DIM] = \
-                requant(vh, np.float32(1.0) / np.float32(vs))
+            kcaches[h][position * HEAD_DIM : (position + 1) * HEAD_DIM] = requant(
+                kh, np.float32(1.0) / np.float32(ks)
+            )
+            vcaches[h][position * HEAD_DIM : (position + 1) * HEAD_DIM] = requant(
+                vh, np.float32(1.0) / np.float32(vs)
+            )
 
     # 2) q_proj (full Q_DIM=2048)
-    fp_q_full = (wq_i8.astype(np.int32) @ h1.astype(np.int32) + bq).astype(np.float32) \
-                * np.float32(ACT_SCALE) * wq_sc.astype(np.float32)
+    fp_q_full = (
+        (wq_i8.astype(np.int32) @ h1.astype(np.int32) + bq).astype(np.float32)
+        * np.float32(ACT_SCALE)
+        * wq_sc.astype(np.float32)
+    )
 
     # 3) Per-Q-head requant. qf shape (Q_DIM,).
     q_out_scales = np.zeros(N_HEADS_Q, dtype=np.float32)
-    q_inv_outs   = np.zeros(N_HEADS_Q, dtype=np.float32)
+    q_inv_outs = np.zeros(N_HEADS_Q, dtype=np.float32)
     qf = np.zeros(Q_DIM, dtype=np.int8)
     for h in range(N_HEADS_Q):
-        slice_h = fp_q_full[h * HEAD_DIM:(h + 1) * HEAD_DIM]
+        slice_h = fp_q_full[h * HEAD_DIM : (h + 1) * HEAD_DIM]
         s = float(np.maximum(np.abs(slice_h).max(), 1e-12)) / 127.0
         q_out_scales[h] = np.float32(s)
-        q_inv_outs[h]   = np.float32(1.0) / np.float32(s)
-        qf[h * HEAD_DIM:(h + 1) * HEAD_DIM] = requant(slice_h, q_inv_outs[h])
+        q_inv_outs[h] = np.float32(1.0) / np.float32(s)
+        qf[h * HEAD_DIM : (h + 1) * HEAD_DIM] = requant(slice_h, q_inv_outs[h])
 
     # 4) rope (per-head). numpy_rope_dyn reshapes to (n_heads, head_dim) internally.
     qr = numpy_rope_dyn(qf, cos, sin, N_HEADS_Q, HEAD_DIM)
@@ -272,33 +355,51 @@ def numpy_layer_mh_forward(x, layer, position=None):
     #    T slots (Phase 7 / 8a behavior, preserves BIT-EXACT for
     #    random-fixture tests).
     t_used = (position + 1) if position is not None else T
-    sv_out_scales      = np.zeros(N_HEADS_Q, dtype=np.float32)
-    sv_inv_out_scales  = np.zeros(N_HEADS_Q, dtype=np.float32)
-    sv_i8_per_head     = []
+    sv_out_scales = np.zeros(N_HEADS_Q, dtype=np.float32)
+    sv_inv_out_scales = np.zeros(N_HEADS_Q, dtype=np.float32)
+    sv_i8_per_head = []
     for h_q in range(N_HEADS_Q):
         kvh = h_q // REP
-        q_h = qr[h_q * HEAD_DIM:(h_q + 1) * HEAD_DIM]
-        k_slice = kcaches[kvh][:t_used * HEAD_DIM]
-        v_slice = vcaches[kvh][:t_used * HEAD_DIM]
-        sv_fp_h = compute_sv_fp(q_h, k_slice, v_slice, HEAD_DIM, t_used,
-                                float(q_out_scales[h_q]),
-                                float(k_scales[kvh]), float(v_scales[kvh]),
-                                lut_exp)
+        q_h = qr[h_q * HEAD_DIM : (h_q + 1) * HEAD_DIM]
+        k_slice = kcaches[kvh][: t_used * HEAD_DIM]
+        v_slice = vcaches[kvh][: t_used * HEAD_DIM]
+        sv_fp_h = compute_sv_fp(
+            q_h,
+            k_slice,
+            v_slice,
+            HEAD_DIM,
+            t_used,
+            float(q_out_scales[h_q]),
+            float(k_scales[kvh]),
+            float(v_scales[kvh]),
+            lut_exp,
+        )
         s = float(np.maximum(np.abs(sv_fp_h).max(), 1e-12)) / 127.0
-        sv_out_scales[h_q]     = np.float32(s)
+        sv_out_scales[h_q] = np.float32(s)
         sv_inv_out_scales[h_q] = np.float32(1.0) / np.float32(s)
-        sv_i8 = numpy_attention(q_h, k_slice, v_slice, HEAD_DIM, t_used,
-                                float(q_out_scales[h_q]),
-                                float(k_scales[kvh]), float(v_scales[kvh]),
-                                float(sv_inv_out_scales[h_q]), lut_exp)
+        sv_i8 = numpy_attention(
+            q_h,
+            k_slice,
+            v_slice,
+            HEAD_DIM,
+            t_used,
+            float(q_out_scales[h_q]),
+            float(k_scales[kvh]),
+            float(v_scales[kvh]),
+            float(sv_inv_out_scales[h_q]),
+            lut_exp,
+        )
         sv_i8_per_head.append(sv_i8)
 
     # 6) af-concat: per-head dequant (using each head's sv_out_scale),
     #    concat to Q_DIM fp32, then global requant with o_act_scale.
-    af_fp = np.concatenate([sv_i8_per_head[h].astype(np.float32)
-                            * np.float32(sv_out_scales[h])
-                            for h in range(N_HEADS_Q)])
-    o_act_scale     = float(np.maximum(np.abs(af_fp).max(), 1e-12)) / 127.0
+    af_fp = np.concatenate(
+        [
+            sv_i8_per_head[h].astype(np.float32) * np.float32(sv_out_scales[h])
+            for h in range(N_HEADS_Q)
+        ]
+    )
+    o_act_scale = float(np.maximum(np.abs(af_fp).max(), 1e-12)) / 127.0
     o_inv_act_scale = float(np.float32(1.0) / np.float32(o_act_scale))
     af = requant(af_fp, o_inv_act_scale)
 
@@ -310,15 +411,21 @@ def numpy_layer_mh_forward(x, layer, position=None):
     h2 = numpy_rmsnorm_int8(x1, gamma_post, ACT_SCALE, INV_ACT_SCALE)
 
     # 9) gate (closure-baked GATE_INV_OUT_SCALE = 1/SILU_GATE_SCALE)
-    fp_gate = (wg_i8.astype(np.int32) @ h2.astype(np.int32) + bg).astype(np.float32) \
-              * np.float32(ACT_SCALE) * wg_sc.astype(np.float32)
+    fp_gate = (
+        (wg_i8.astype(np.int32) @ h2.astype(np.int32) + bg).astype(np.float32)
+        * np.float32(ACT_SCALE)
+        * wg_sc.astype(np.float32)
+    )
     gf = requant(fp_gate, GATE_INV_OUT_SCALE)
 
     # 10) up (dynamic out scale)
-    fp_up = (wu_i8.astype(np.int32) @ h2.astype(np.int32) + bu).astype(np.float32) \
-            * np.float32(ACT_SCALE) * wu_sc.astype(np.float32)
+    fp_up = (
+        (wu_i8.astype(np.int32) @ h2.astype(np.int32) + bu).astype(np.float32)
+        * np.float32(ACT_SCALE)
+        * wu_sc.astype(np.float32)
+    )
     up_out_scale = float(np.maximum(np.abs(fp_up).max(), 1e-12)) / 127.0
-    up_inv_out   = float(np.float32(1.0) / np.float32(up_out_scale))
+    up_inv_out = float(np.float32(1.0) / np.float32(up_out_scale))
     uf = requant(fp_up, up_inv_out)
 
     # 11) silu_mul
@@ -326,7 +433,7 @@ def numpy_layer_mh_forward(x, layer, position=None):
     s_gate_fp = lut_silu[gf.astype(np.int32) + 128].astype(np.float32)
     s_up_fp = uf.astype(np.float32) * np.float32(silu_up_scale)
     sf_fp = s_gate_fp * s_up_fp
-    silu_out_scale     = float(np.maximum(np.abs(sf_fp).max(), 1e-12)) / 127.0
+    silu_out_scale = float(np.maximum(np.abs(sf_fp).max(), 1e-12)) / 127.0
     silu_inv_out_scale = float(np.float32(1.0) / np.float32(silu_out_scale))
     sf = numpy_silu_mul(gf, uf, lut_silu, silu_up_scale, silu_inv_out_scale)
 
@@ -338,12 +445,18 @@ def numpy_layer_mh_forward(x, layer, position=None):
     x_out = i8_add_wrap(df, x1)
 
     scales = dict(
-        q_out_scales=q_out_scales, q_inv_outs=q_inv_outs,
-        sv_out_scales=sv_out_scales, sv_inv_out_scales=sv_inv_out_scales,
-        o_act_scale=o_act_scale, o_inv_act_scale=o_inv_act_scale,
-        k_scales=k_scales, v_scales=v_scales,
-        up_out_scale=up_out_scale, up_inv_out=up_inv_out,
-        silu_up_scale=silu_up_scale, silu_inv_out_scale=silu_inv_out_scale,
+        q_out_scales=q_out_scales,
+        q_inv_outs=q_inv_outs,
+        sv_out_scales=sv_out_scales,
+        sv_inv_out_scales=sv_inv_out_scales,
+        o_act_scale=o_act_scale,
+        o_inv_act_scale=o_inv_act_scale,
+        k_scales=k_scales,
+        v_scales=v_scales,
+        up_out_scale=up_out_scale,
+        up_inv_out=up_inv_out,
+        silu_up_scale=silu_up_scale,
+        silu_inv_out_scale=silu_inv_out_scale,
         down_act_scale=down_act_scale,
     )
     return x_out, scales
@@ -354,7 +467,7 @@ def _selftest():
     matches, no NaNs, scale magnitudes are plausible."""
     rng = np.random.default_rng(0)
     layer = gen_layer_mh(rng)
-    layer["lut_exp"]  = exp_lut(EXP_QUANT_SCALE).astype(np.float32)
+    layer["lut_exp"] = exp_lut(EXP_QUANT_SCALE).astype(np.float32)
     layer["lut_silu"] = silu_lut(SILU_GATE_SCALE)
 
     x = rng.integers(-32, 33, size=D, dtype=np.int8)
@@ -365,10 +478,14 @@ def _selftest():
     sat = int((y == 127).sum() + (y == -128).sum())
 
     print(f"selftest: out shape={y.shape} dtype={y.dtype} sat={sat}/{D}")
-    print(f"  q_out_scales:     min={scales['q_out_scales'].min():.4f} "
-          f"max={scales['q_out_scales'].max():.4f}")
-    print(f"  sv_out_scales:    min={scales['sv_out_scales'].min():.4f} "
-          f"max={scales['sv_out_scales'].max():.4f}")
+    print(
+        f"  q_out_scales:     min={scales['q_out_scales'].min():.4f} "
+        f"max={scales['q_out_scales'].max():.4f}"
+    )
+    print(
+        f"  sv_out_scales:    min={scales['sv_out_scales'].min():.4f} "
+        f"max={scales['sv_out_scales'].max():.4f}"
+    )
     print(f"  o_act_scale:      {scales['o_act_scale']:.4f}")
     print(f"  up_out_scale:     {scales['up_out_scale']:.4f}")
     print(f"  silu_out_scale:   {scales['silu_inv_out_scale']:.4f}^-1")
@@ -378,4 +495,5 @@ def _selftest():
 
 if __name__ == "__main__":
     import sys
+
     sys.exit(_selftest())

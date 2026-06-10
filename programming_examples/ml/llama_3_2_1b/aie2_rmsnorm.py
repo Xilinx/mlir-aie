@@ -19,7 +19,6 @@ from ml_dtypes import bfloat16  # in ironenv
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.device import NPU2, Tile
 
-
 # DECODE_PLACEMENT["rmsnorm"] = Tile(5, 4)
 RMS_COL, RMS_ROW = 5, 4
 
@@ -27,8 +26,8 @@ RMS_COL, RMS_ROW = 5, 4
 def build(D: int):
     bf16_ty = np.ndarray[(D,), np.dtype[bfloat16]]
 
-    of_x   = ObjectFifo(bf16_ty, name="x")
-    of_g   = ObjectFifo(bf16_ty, name="gamma")
+    of_x = ObjectFifo(bf16_ty, name="x")
+    of_g = ObjectFifo(bf16_ty, name="gamma")
     of_out = ObjectFifo(bf16_ty, name="out")
 
     kernel = Kernel(

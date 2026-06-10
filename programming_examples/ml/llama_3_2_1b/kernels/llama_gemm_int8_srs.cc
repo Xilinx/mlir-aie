@@ -22,12 +22,12 @@
 #include "../../../../aie_kernels/aie_kernel_utils.h"
 
 // Llama 3.2 1B integration test sizes (small for first bring-up).
-static constexpr int kD  = 64;
+static constexpr int kD = 64;
 static constexpr int kHD = 256;
 #ifndef LLAMA_GEMM_VOCAB
-#define LLAMA_GEMM_VOCAB 256        // first-cut lm_head vocab (Phase 6b)
+#define LLAMA_GEMM_VOCAB 256 // first-cut lm_head vocab (Phase 6b)
 #endif
-static constexpr int kV  = LLAMA_GEMM_VOCAB;
+static constexpr int kV = LLAMA_GEMM_VOCAB;
 
 static constexpr int32_t I8_MAX = 127;
 static constexpr int32_t I8_MIN = -128;
@@ -46,8 +46,7 @@ static inline void gemm_impl(int8_t *act, int8_t *w_packed, int8_t *out,
   constexpr int kGroups = kK / kVec;
 
   const int8_t *weights = w_packed;
-  const int32_t *bias =
-      reinterpret_cast<const int32_t *>(w_packed + kN * kK);
+  const int32_t *bias = reinterpret_cast<const int32_t *>(w_packed + kN * kK);
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
   ::aie::set_rounding(aie::rounding_mode::conv_even);
@@ -67,8 +66,10 @@ static inline void gemm_impl(int8_t *act, int8_t *w_packed, int8_t *out,
 
     int32_t sum = aie::reduce_add(acc.template to_vector<int32>()) + bias[n];
     int32_t s = banker_srs(sum, right_shift);
-    if (s > I8_MAX) s = I8_MAX;
-    if (s < I8_MIN) s = I8_MIN;
+    if (s > I8_MAX)
+      s = I8_MAX;
+    if (s < I8_MIN)
+      s = I8_MIN;
     out[n] = (int8_t)s;
   }
   event1();
@@ -77,17 +78,21 @@ static inline void gemm_impl(int8_t *act, int8_t *w_packed, int8_t *out,
 extern "C" {
 
 // Shape-specific entry points for the per-layer integration design.
-void llama_gemm_int8_srs_D_to_D(int8_t *act, int8_t *w, int8_t *out, int32_t rs) {
+void llama_gemm_int8_srs_D_to_D(int8_t *act, int8_t *w, int8_t *out,
+                                int32_t rs) {
   gemm_impl<kD, kD>(act, w, out, rs);
 }
-void llama_gemm_int8_srs_D_to_HD(int8_t *act, int8_t *w, int8_t *out, int32_t rs) {
+void llama_gemm_int8_srs_D_to_HD(int8_t *act, int8_t *w, int8_t *out,
+                                 int32_t rs) {
   gemm_impl<kD, kHD>(act, w, out, rs);
 }
-void llama_gemm_int8_srs_HD_to_D(int8_t *act, int8_t *w, int8_t *out, int32_t rs) {
+void llama_gemm_int8_srs_HD_to_D(int8_t *act, int8_t *w, int8_t *out,
+                                 int32_t rs) {
   gemm_impl<kHD, kD>(act, w, out, rs);
 }
 // lm_head: D-dim activation -> V-dim int8 logits.
-void llama_gemm_int8_srs_D_to_V(int8_t *act, int8_t *w, int8_t *out, int32_t rs) {
+void llama_gemm_int8_srs_D_to_V(int8_t *act, int8_t *w, int8_t *out,
+                                int32_t rs) {
   gemm_impl<kD, kV>(act, w, out, rs);
 }
 

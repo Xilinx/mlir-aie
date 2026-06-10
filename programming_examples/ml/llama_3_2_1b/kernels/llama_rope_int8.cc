@@ -42,8 +42,9 @@ static inline int8_t round_to_i8(float v) {
   // Half-away-from-zero rounding implemented in INTEGER math to be
   // deterministic regardless of inherited fp rounding mode or 1-ULP
   // noise. Trick: compute s*((int)(s*v*2 + 1)/2) where s = sign.
-  //   For v = -52.5:   s=-1, s*v*2 = 105.0, +1 = 106.0, (int)/2 = 53, *s = -53. (matches numpy half-away)
-  //   For v = -52.499: s=-1, s*v*2 = 104.998, +1 = 105.998, (int)/2 = 52, *s = -52.
+  //   For v = -52.5:   s=-1, s*v*2 = 105.0, +1 = 106.0, (int)/2 = 53, *s = -53.
+  //   (matches numpy half-away) For v = -52.499: s=-1, s*v*2 = 104.998, +1 =
+  //   105.998, (int)/2 = 52, *s = -52.
   // The integer truncation in `(int32_t)(scaled) / 2` is what gives us
   // the half-away semantics deterministically -- (int) cast on a value
   // that ROUNDED to an integer-plus-one is independent of fp rounding
@@ -52,8 +53,10 @@ static inline int8_t round_to_i8(float v) {
   float scaled = (float)sign * v * 2.0f + 1.0f;
   int32_t doubled = (int32_t)scaled;
   int32_t r = sign * (doubled / 2);
-  if (r > I8_MAX) r = I8_MAX;
-  if (r < I8_MIN) r = I8_MIN;
+  if (r > I8_MAX)
+    r = I8_MAX;
+  if (r < I8_MIN)
+    r = I8_MIN;
   return (int8_t)r;
 }
 
@@ -81,9 +84,9 @@ void llama_rope_int8(int8_t *restrict x, bfloat16 *restrict cs_packed,
                      int8_t *restrict out, float act_scale) {
   event0();
 
-  constexpr int kHD     = LLAMA_ROPE_HEAD_DIM;
+  constexpr int kHD = LLAMA_ROPE_HEAD_DIM;
   constexpr int kNHeads = LLAMA_ROPE_N_HEADS;
-  constexpr int kHalf   = kHD / 2;
+  constexpr int kHalf = kHD / 2;
 
   static_assert(kHD % 2 == 0, "head_dim must be even");
 
@@ -96,17 +99,17 @@ void llama_rope_int8(int8_t *restrict x, bfloat16 *restrict cs_packed,
   for (int h = 0; h < kNHeads; h++) {
     int base = h * kHD;
     for (int i = 0; i < kHalf; i++) {
-      float x1f = (float)x[base + i]          * act_scale;
-      float x2f = (float)x[base + kHalf + i]  * act_scale;
-      float c1  = (float)cos[i];
-      float s1  = (float)sin[i];
-      float c2  = (float)cos[kHalf + i];
-      float s2  = (float)sin[kHalf + i];
+      float x1f = (float)x[base + i] * act_scale;
+      float x2f = (float)x[base + kHalf + i] * act_scale;
+      float c1 = (float)cos[i];
+      float s1 = (float)sin[i];
+      float c2 = (float)cos[kHalf + i];
+      float s2 = (float)sin[kHalf + i];
 
       float o1 = x1f * c1 - x2f * s1;
       float o2 = x2f * c2 + x1f * s2;
 
-      out[base + i]         = round_to_i8(o1 * inv_scale);
+      out[base + i] = round_to_i8(o1 * inv_scale);
       out[base + kHalf + i] = round_to_i8(o2 * inv_scale);
     }
   }
@@ -126,10 +129,10 @@ void llama_rope_int8_dyn(int8_t *restrict x, bfloat16 *restrict cs_packed,
   ::aie::set_rounding(aie::rounding_mode::conv_even);
   ::aie::set_saturation(aie::saturation_mode::saturate);
 
-  constexpr int kHD     = LLAMA_ROPE_HEAD_DIM;
+  constexpr int kHD = LLAMA_ROPE_HEAD_DIM;
   constexpr int kNHeads = LLAMA_ROPE_N_HEADS;
-  constexpr int kHalf   = kHD / 2;
-  constexpr int kBody   = kHD * kNHeads;
+  constexpr int kHalf = kHD / 2;
+  constexpr int kBody = kHD * kNHeads;
 
   static_assert(kHD % 2 == 0, "head_dim must be even");
 
@@ -153,15 +156,15 @@ void llama_rope_int8_dyn(int8_t *restrict x, bfloat16 *restrict cs_packed,
     for (int i = 0; i < kHalf; i++) {
       float x1f = (float)x[base + i];
       float x2f = (float)x[base + kHalf + i];
-      float c1  = (float)cos[i];
-      float s1  = (float)sin[i];
-      float c2  = (float)cos[kHalf + i];
-      float s2  = (float)sin[kHalf + i];
+      float c1 = (float)cos[i];
+      float s1 = (float)sin[i];
+      float c2 = (float)cos[kHalf + i];
+      float s2 = (float)sin[kHalf + i];
 
       float o1 = x1f * c1 - x2f * s1;
       float o2 = x2f * c2 + x1f * s2;
 
-      out[base + i]         = round_to_i8(o1);
+      out[base + i] = round_to_i8(o1);
       out[base + kHalf + i] = round_to_i8(o2);
     }
   }

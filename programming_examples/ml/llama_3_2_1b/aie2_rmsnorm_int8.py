@@ -17,14 +17,13 @@ from ml_dtypes import bfloat16
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.device import NPU2, Tile
 
-
-RMS_COL, RMS_ROW = 5, 4   # DECODE_PLACEMENT["rmsnorm"]
+RMS_COL, RMS_ROW = 5, 4  # DECODE_PLACEMENT["rmsnorm"]
 
 
 def build(D: int):
-    x_ty   = np.ndarray[(D,), np.dtype[np.int8]]
-    g_ty   = np.ndarray[(D,), np.dtype[bfloat16]]
-    y_ty   = np.ndarray[(D,), np.dtype[np.int8]]
+    x_ty = np.ndarray[(D,), np.dtype[np.int8]]
+    g_ty = np.ndarray[(D,), np.dtype[bfloat16]]
+    y_ty = np.ndarray[(D,), np.dtype[np.int8]]
 
     of_x = ObjectFifo(x_ty, name="x")
     of_g = ObjectFifo(g_ty, name="gamma")
@@ -65,8 +64,8 @@ def build(D: int):
 
 
 # Scales are baked at MLIR-gen time. Test must use the same values.
-ACT_SCALE_IN      = 0.05         # matches chain's ACT_SCALE
-INV_ACT_SCALE_OUT = 1.0 / 0.05   # matches chain's INV_ACT_SCALE
+ACT_SCALE_IN = 0.05  # matches chain's ACT_SCALE
+INV_ACT_SCALE_OUT = 1.0 / 0.05  # matches chain's INV_ACT_SCALE
 
 
 def main():

@@ -27,12 +27,12 @@ def main():
     M, K, N = opts.M, opts.K, opts.N
     w_blob_bytes = N * K + N * 4 + N * 4  # matches aie2_gemm_int8_srs.py
     rng = np.random.default_rng(0)
-    act    = rng.integers(-128, 128, size=M * K,        dtype=np.int8)
+    act = rng.integers(-128, 128, size=M * K, dtype=np.int8)
     w_blob = rng.integers(-128, 128, size=w_blob_bytes, dtype=np.int8)
 
-    act_t    = iron.tensor(act,    dtype=np.int8)
+    act_t = iron.tensor(act, dtype=np.int8)
     w_blob_t = iron.tensor(w_blob, dtype=np.int8)
-    out_t    = iron.zeros([M * N], dtype=np.int8)
+    out_t = iron.zeros([M * N], dtype=np.int8)
 
     npu_opts = test_utils.create_npu_kernel(opts)
     rc = DefaultNPURuntime.run_test(

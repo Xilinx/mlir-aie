@@ -435,19 +435,20 @@ static bool setBufferAddressMultiBank(BufferOp buffer, int numBanks,
                                       std::vector<BankLimits> &bankLimits) {
   int64_t size = buffer.getAllocationSize();
   if (size <= bankSize)
-    return false;  // single-bank path is the correct choice
-  int spanBanks = (size + bankSize - 1) / bankSize;  // ceil
+    return false; // single-bank path is the correct choice
+  int spanBanks = (size + bankSize - 1) / bankSize; // ceil
   if (spanBanks > numBanks)
     return false;
 
   for (int trial = 0; trial < numBanks; trial++) {
     int firstBank = (startBankIndex + trial) % numBanks;
     if (firstBank + spanBanks > numBanks)
-      continue;  // can't wrap a single buffer across the top of L1
+      continue; // can't wrap a single buffer across the top of L1
     // All spanned banks must be empty (start == nextAddr).
     bool clean = true;
     for (int j = 0; j < spanBanks; j++) {
-      if (nextAddrInBanks[firstBank + j] != bankLimits[firstBank + j].startAddr) {
+      if (nextAddrInBanks[firstBank + j] !=
+          bankLimits[firstBank + j].startAddr) {
         clean = false;
         break;
       }
@@ -490,8 +491,7 @@ static bool setBufferAddressMultiBank(BufferOp buffer, int numBanks,
 // Returns true if the buffer was successfully allocated, false otherwise.
 // If no bank has enough space to accommodate the buffer, an error is emitted.
 
-static int setBufferAddress(BufferOp buffer, int numBanks,
-                            int64_t bankSize,
+static int setBufferAddress(BufferOp buffer, int numBanks, int64_t bankSize,
                             uint32_t tileAlignBitWidth, int &startBankIndex,
                             std::vector<int64_t> &nextAddrInBanks,
                             std::vector<BankLimits> &bankLimits) {
@@ -521,9 +521,9 @@ static int setBufferAddress(BufferOp buffer, int numBanks,
   // Single-bank placement failed; try multi-bank spanning for
   // larger-than-one-bank buffers before giving up.
   if (!allocated) {
-    if (setBufferAddressMultiBank(buffer, numBanks, bankSize,
-                                  tileAlignBitWidth, startBankIndex,
-                                  nextAddrInBanks, bankLimits)) {
+    if (setBufferAddressMultiBank(buffer, numBanks, bankSize, tileAlignBitWidth,
+                                  startBankIndex, nextAddrInBanks,
+                                  bankLimits)) {
       allocated = true;
     }
   }

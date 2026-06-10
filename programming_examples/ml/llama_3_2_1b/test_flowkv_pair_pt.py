@@ -25,7 +25,7 @@ def main():
     rng = np.random.default_rng(0)
     in_data = rng.integers(-128, 128, size=n, dtype=np.int8)
 
-    in_t  = iron.tensor(in_data, dtype=np.int8)
+    in_t = iron.tensor(in_data, dtype=np.int8)
     out_t = iron.zeros([n], dtype=np.int8)
 
     npu_opts = test_utils.create_npu_kernel(opts)

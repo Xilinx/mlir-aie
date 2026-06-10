@@ -17,10 +17,10 @@
 //     kth = k-th largest z[]
 //     mask z[i] < kth to a sentinel (-inf-like, large negative)
 //   max  = max(z)
-//   for each i: q[i] = quant_shifted(z[i] - max)                (int32 [-128,0])
-//   sum  = sum(lookup_exp(q[i]))                                (fp32)
-//   u    = xoshiro_uniform() * sum                              (inverse-CDF draw)
-//   token = first i such that running_cumsum(lookup_exp(q[i])) > u
+//   for each i: q[i] = quant_shifted(z[i] - max)                (int32
+//   [-128,0]) sum  = sum(lookup_exp(q[i])) (fp32) u    = xoshiro_uniform() *
+//   sum                              (inverse-CDF draw) token = first i such
+//   that running_cumsum(lookup_exp(q[i])) > u
 //
 // temperature <= 0 short-circuits to greedy argmax (no PRNG used).
 //
@@ -47,8 +47,8 @@
 #define LLAMA_SAMPLE_EXP_QUANT_SCALE 0.05f
 #endif
 
-static constexpr int   kV = LLAMA_SAMPLE_VOCAB;
-static constexpr float kExpQuantScale    = LLAMA_SAMPLE_EXP_QUANT_SCALE;
+static constexpr int kV = LLAMA_SAMPLE_VOCAB;
+static constexpr float kExpQuantScale = LLAMA_SAMPLE_EXP_QUANT_SCALE;
 static constexpr float kInvExpQuantScale = 1.0f / LLAMA_SAMPLE_EXP_QUANT_SCALE;
 
 // Sentinel "masked-out" score in shifted-units. exp_quant clamp at -128
@@ -60,13 +60,16 @@ static constexpr float kInvExpQuantScale = 1.0f / LLAMA_SAMPLE_EXP_QUANT_SCALE;
 // Reference produces identical value because identical clamp path.
 static constexpr float kMaskSentinel = -1.0e9f;
 
-// --- exp LUT shared with flowkv (build/exp_lut.h emits llama_exp_lut_raw[256]) ---
+// --- exp LUT shared with flowkv (build/exp_lut.h emits llama_exp_lut_raw[256])
+// ---
 
 static inline int32_t quant_shifted(float shifted) {
   float v = shifted * kInvExpQuantScale;
   int32_t q = (int32_t)(v + (v >= 0.0f ? 0.5f : -0.5f));
-  if (q > 0) q = 0;
-  if (q < -128) q = -128;
+  if (q > 0)
+    q = 0;
+  if (q < -128)
+    q = -128;
   return q;
 }
 
@@ -93,7 +96,9 @@ static inline float sw_recip(float a) {
 
 // --- xoshiro128++ PRNG (Blackman & Vigna 2018) ---
 
-struct Xoshiro128 { uint32_t s[4]; };
+struct Xoshiro128 {
+  uint32_t s[4];
+};
 
 // Peano AIE2P backend cannot legalize G_ROTL (the canonical
 // `(x << k) | (x >> (32-k))` lowers to G_ROTL which fails -- file as
@@ -121,8 +126,10 @@ static inline uint32_t xoshiro_next(Xoshiro128 &g) {
 static inline void xoshiro_seed(Xoshiro128 &g, uint32_t seed) {
   uint64_t x = ((uint64_t)seed) * 0x9E3779B97F4A7C15ULL + 1ULL;
   for (int i = 0; i < 4; i++) {
-    x ^= x >> 30; x *= 0xBF58476D1CE4E5B9ULL;
-    x ^= x >> 27; x *= 0x94D049BB133111EBULL;
+    x ^= x >> 30;
+    x *= 0xBF58476D1CE4E5B9ULL;
+    x ^= x >> 27;
+    x *= 0x94D049BB133111EBULL;
     x ^= x >> 31;
     g.s[i] = (uint32_t)(x ^ (x >> 32));
   }
@@ -142,15 +149,13 @@ extern "C" {
 // DMA budget): [0] = temperature as raw fp32 bits, [1] = top_k as int32,
 // [2] = seed as uint32. Host packs in the same order; numpy ref reads
 // the same layout from the test.
-void llama_sample(int8_t   *restrict logits,
-                  int32_t  *restrict token_id,
+void llama_sample(int8_t *restrict logits, int32_t *restrict token_id,
                   uint32_t *restrict params) {
   float temperature;
   uint32_t tbits = params[0];
   memcpy(&temperature, &tbits, 4);
-  const int32_t  top_k = (int32_t)params[1];
-  const uint32_t seed  = params[2];
-
+  const int32_t top_k = (int32_t)params[1];
+  const uint32_t seed = params[2];
 
   // Greedy short-circuit: argmax with first-occurrence tie-break.
   if (temperature <= 0.0f) {
@@ -158,7 +163,10 @@ void llama_sample(int8_t   *restrict logits,
     int32_t best_val = (int32_t)logits[0];
     for (int32_t v = 1; v < kV; v++) {
       int32_t l = (int32_t)logits[v];
-      if (l > best_val) { best_val = l; best_idx = v; }
+      if (l > best_val) {
+        best_val = l;
+        best_idx = v;
+      }
     }
     token_id[0] = best_idx;
     return;
@@ -197,19 +205,25 @@ void llama_sample(int8_t   *restrict logits,
   // raw fp value strictly less than threshold.
   if (top_k > 0 && top_k < kV) {
     int8_t masked[kV];
-    for (int v = 0; v < kV; v++) masked[v] = 0;
+    for (int v = 0; v < kV; v++)
+      masked[v] = 0;
 
     float threshold = 0.0f;
     for (int iter = 0; iter < top_k; iter++) {
-      int   best_v = -1;
+      int best_v = -1;
       float best_z = 0.0f;
       for (int v = 0; v < kV; v++) {
-        if (masked[v]) continue;
+        if (masked[v])
+          continue;
         float zv;
         memcpy(&zv, &z_bits[v], 4);
-        if (best_v < 0 || zv > best_z) { best_v = v; best_z = zv; }
+        if (best_v < 0 || zv > best_z) {
+          best_v = v;
+          best_z = zv;
+        }
       }
-      if (best_v < 0) break;     // should not happen when top_k < kV
+      if (best_v < 0)
+        break; // should not happen when top_k < kV
       threshold = best_z;
       masked[best_v] = 1;
     }
@@ -233,7 +247,8 @@ void llama_sample(int8_t   *restrict logits,
   for (int v = 1; v < kV; v++) {
     float zv;
     memcpy(&zv, &z_bits[v], 4);
-    if (zv > max_z) max_z = zv;
+    if (zv > max_z)
+      max_z = zv;
   }
 
   // Pass 2: per-element quantize (z[v] - max) and accumulate sum_exp.
@@ -262,7 +277,10 @@ void llama_sample(int8_t   *restrict logits,
   int32_t pick = kV - 1;
   for (int v = 0; v < kV; v++) {
     c += lookup_exp(qvals[v]);
-    if (c > u) { pick = v; break; }
+    if (c > u) {
+      pick = v;
+      break;
+    }
   }
   token_id[0] = pick;
 }

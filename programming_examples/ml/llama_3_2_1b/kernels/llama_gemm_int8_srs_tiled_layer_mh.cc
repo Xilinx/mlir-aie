@@ -14,7 +14,7 @@
 #include <stdint.h>
 #include <string.h>
 
-static constexpr int32_t I8_MAX =  127;
+static constexpr int32_t I8_MAX = 127;
 static constexpr int32_t I8_MIN = -128;
 
 // q_proj-mh prefix layout (448 B, 64-aligned):
@@ -23,9 +23,9 @@ static constexpr int32_t I8_MIN = -128;
 //   [8..136]  32 q_inv_outs fp32 (kernel reads to requant per head)
 //   [136..392] 32 * 8 B [q_out_scale, sv_inv_out_scale] (mirrored to out tail)
 //   [392..448] padding
-constexpr int kMhPrefix       = 448;
-constexpr int kMhTailOffset   = 136;
-constexpr int kMhTailBytes    = 32 * 8;   // 256
+constexpr int kMhPrefix = 448;
+constexpr int kMhTailOffset = 136;
+constexpr int kMhTailBytes = 32 * 8; // 256
 
 // Standard v2 (used by o_proj-mh at K=2048).
 template <int kK, int kNTile, int kPrefix = 64>
@@ -37,7 +37,7 @@ static inline void gemm_tile_perchan_v2_impl(int8_t *restrict act,
                 "prefix must be a multiple of 64 to keep aie::load_v<64> "
                 "of the weights aligned");
   float act_scale, inv_out_scale;
-  memcpy(&act_scale,     w_tile,     4);
+  memcpy(&act_scale, w_tile, 4);
   memcpy(&inv_out_scale, w_tile + 4, 4);
 
   int8_t *body = w_tile + kPrefix;
@@ -46,10 +46,9 @@ static inline void gemm_tile_perchan_v2_impl(int8_t *restrict act,
                 "K must be a multiple of 64 (one aie::mac lane group)");
   constexpr int kGroups = kK / kVec;
 
-  const int8_t  *weights = body;
-  const int32_t *bias =
-      reinterpret_cast<const int32_t *>(body + kNTile * kK);
-  const float   *w_scales =
+  const int8_t *weights = body;
+  const int32_t *bias = reinterpret_cast<const int32_t *>(body + kNTile * kK);
+  const float *w_scales =
       reinterpret_cast<const float *>(body + kNTile * kK + kNTile * 4);
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
@@ -72,8 +71,10 @@ static inline void gemm_tile_perchan_v2_impl(int8_t *restrict act,
     float scaled = fp * inv_out_scale;
 
     int32_t r = (int32_t)(scaled + (scaled >= 0.0f ? 0.5f : -0.5f));
-    if (r > I8_MAX) r = I8_MAX;
-    if (r < I8_MIN) r = I8_MIN;
+    if (r > I8_MAX)
+      r = I8_MAX;
+    if (r < I8_MIN)
+      r = I8_MIN;
     out_tile[n] = (int8_t)r;
   }
 }
@@ -97,8 +98,7 @@ static inline void gemm_tile_perchan_v2_qmh_impl(int8_t *restrict act,
   memcpy(&act_scale, w_tile, 4);
 
   // Per-head q_inv_outs live at prefix[8 .. 8 + kNHeadsQ*4].
-  const float *q_inv_outs =
-      reinterpret_cast<const float *>(w_tile + 8);
+  const float *q_inv_outs = reinterpret_cast<const float *>(w_tile + 8);
 
   int head_idx = tile_idx / (kHD / kNTile);
   float inv_out_scale = q_inv_outs[head_idx];
@@ -107,8 +107,7 @@ static inline void gemm_tile_perchan_v2_qmh_impl(int8_t *restrict act,
   // Done every tile call (idempotent, same as single-head v2_up_q pattern).
   {
     constexpr int kOutDim = kNHeadsQ * kHD;
-    memcpy(out_full_base + kOutDim,
-           w_tile + kMhTailOffset, kMhTailBytes);
+    memcpy(out_full_base + kOutDim, w_tile + kMhTailOffset, kMhTailBytes);
   }
 
   int8_t *body = w_tile + kMhPrefix;
@@ -117,10 +116,9 @@ static inline void gemm_tile_perchan_v2_qmh_impl(int8_t *restrict act,
                 "K must be a multiple of 64 (one aie::mac lane group)");
   constexpr int kGroups = kK / kVec;
 
-  const int8_t  *weights = body;
-  const int32_t *bias =
-      reinterpret_cast<const int32_t *>(body + kNTile * kK);
-  const float   *w_scales =
+  const int8_t *weights = body;
+  const int32_t *bias = reinterpret_cast<const int32_t *>(body + kNTile * kK);
+  const float *w_scales =
       reinterpret_cast<const float *>(body + kNTile * kK + kNTile * 4);
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
@@ -143,8 +141,10 @@ static inline void gemm_tile_perchan_v2_qmh_impl(int8_t *restrict act,
     float scaled = fp * inv_out_scale;
 
     int32_t r = (int32_t)(scaled + (scaled >= 0.0f ? 0.5f : -0.5f));
-    if (r > I8_MAX) r = I8_MAX;
-    if (r < I8_MIN) r = I8_MIN;
+    if (r > I8_MAX)
+      r = I8_MAX;
+    if (r < I8_MIN)
+      r = I8_MIN;
     out_tile[n] = (int8_t)r;
   }
 }
@@ -154,10 +154,9 @@ extern "C" {
 // Multi-head q_proj. tile_idx in [0, 512); each tile writes 4 i8 to
 // out_full[tile_idx*4 .. tile_idx*4+4]. tile_idx==0 mirrors the 256 B
 // scale tail into out_full[QD..QD+256] for rope_mh / q_split.
-void llama_gemm_tiled_layer_K2048_N4_perchan_v2_up_q_mh(int8_t *restrict act,
-                                                        int8_t *restrict w_tile,
-                                                        int8_t *restrict out_full,
-                                                        int32_t tile_idx) {
+void llama_gemm_tiled_layer_K2048_N4_perchan_v2_up_q_mh(
+    int8_t *restrict act, int8_t *restrict w_tile, int8_t *restrict out_full,
+    int32_t tile_idx) {
   event0();
   gemm_tile_perchan_v2_qmh_impl<2048, 4, 64, 32>(
       act, w_tile, out_full + tile_idx * 4, out_full, tile_idx);
@@ -170,8 +169,7 @@ void llama_gemm_tiled_layer_K2048_N4_perchan_v2_o_mh(int8_t *restrict act,
                                                      int8_t *restrict out_full,
                                                      int32_t tile_idx) {
   event0();
-  gemm_tile_perchan_v2_impl<2048, 4, 64>(act, w_tile,
-                                         out_full + tile_idx * 4);
+  gemm_tile_perchan_v2_impl<2048, 4, 64>(act, w_tile, out_full + tile_idx * 4);
   event1();
 }
 

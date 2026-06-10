@@ -18,16 +18,47 @@ import aie.utils.test as test_utils
 from aie.utils import DefaultNPURuntime
 
 from aie2_chain_real import (
-    D, QD, KVD, HD, HEAD_D, N_HEADS, N_KV, T, N_LAYERS,
-    OFF_GAMMA_IN, OFF_GAMMA_POST, OFF_WQ, OFF_WO,
-    OFF_WG, OFF_WU, OFF_WD, OFF_CS,
-    OFF_K, OFF_V,
-    GAMMA_BYTES, WQ_BYTES, WO_BYTES, WG_BYTES, WU_BYTES, WD_BYTES, CS_BYTES,
-    KCACHE_BYTES, VCACHE_BYTES,
-    PER_LAYER_W, PER_LAYER_KV, TOTAL_W, TOTAL_KV,
-    RIGHT_SHIFT, ACT_SCALE, INV_ACT_SCALE,
-    UP_SCALE, INV_OUT_SCALE_SI,
-    Q_SCALE, K_SCALE, V_SCALE, INV_OUT_SCALE_AT,
+    D,
+    QD,
+    KVD,
+    HD,
+    HEAD_D,
+    N_HEADS,
+    N_KV,
+    T,
+    N_LAYERS,
+    OFF_GAMMA_IN,
+    OFF_GAMMA_POST,
+    OFF_WQ,
+    OFF_WO,
+    OFF_WG,
+    OFF_WU,
+    OFF_WD,
+    OFF_CS,
+    OFF_K,
+    OFF_V,
+    GAMMA_BYTES,
+    WQ_BYTES,
+    WO_BYTES,
+    WG_BYTES,
+    WU_BYTES,
+    WD_BYTES,
+    CS_BYTES,
+    KCACHE_BYTES,
+    VCACHE_BYTES,
+    PER_LAYER_W,
+    PER_LAYER_KV,
+    TOTAL_W,
+    TOTAL_KV,
+    RIGHT_SHIFT,
+    ACT_SCALE,
+    INV_ACT_SCALE,
+    UP_SCALE,
+    INV_OUT_SCALE_SI,
+    Q_SCALE,
+    K_SCALE,
+    V_SCALE,
+    INV_OUT_SCALE_AT,
 )
 from test_rmsnorm_int8 import numpy_rmsnorm_int8
 from test_gemm_int8_srs_real import banker_srs
@@ -57,8 +88,18 @@ def numpy_single_layer(x_in, layer):
     qf = numpy_gemm(h1, layer["wq"], layer["bq"], D, QD, RIGHT_SHIFT)
     qr = numpy_rope(qf, layer["cos"], layer["sin"], N_HEADS, HEAD_D, ACT_SCALE)
     lut = exp_lut(EXP_QUANT_SCALE)
-    af = numpy_attention(qr, layer["kcache"], layer["vcache"], HEAD_D, T,
-                         Q_SCALE, K_SCALE, V_SCALE, INV_OUT_SCALE_AT, lut)
+    af = numpy_attention(
+        qr,
+        layer["kcache"],
+        layer["vcache"],
+        HEAD_D,
+        T,
+        Q_SCALE,
+        K_SCALE,
+        V_SCALE,
+        INV_OUT_SCALE_AT,
+        lut,
+    )
     op = numpy_gemm(af, layer["wo"], layer["bo"], QD, D, RIGHT_SHIFT)
     x1 = i8_add_wrap(op, x_in)
     h2 = numpy_rmsnorm_int8(x1, layer["gamma_post"], ACT_SCALE, INV_ACT_SCALE)
@@ -79,34 +120,50 @@ def gen_layer(rng):
     surfaces a per-kernel-ref precision modeling gap; see DEBUG note
     in chain commit)."""
     import os
+
     active = os.environ.get("LLAMA_CHAIN_ACTIVE_DATA", "0") == "1"
     if active:
+
         def randw(*shape):
             return rng.integers(-64, 65, size=shape, dtype=np.int8)
+
         def randb(n):
             return rng.integers(-1000, 1000, size=n, dtype=np.int32)
+
     else:
+
         def randw(*shape):
             return rng.integers(-32, 33, size=shape, dtype=np.int8)
+
         def randb(n):
             return rng.integers(-100, 100, size=n, dtype=np.int32)
+
     def randg(n):
         return (1.0 + 0.1 * rng.standard_normal(n).astype(np.float32)).astype(bfloat16)
 
     ang = rng.uniform(0, 2 * np.pi, size=HEAD_D // 2).astype(np.float32)
-    ch = np.cos(ang).astype(bfloat16); sh = np.sin(ang).astype(bfloat16)
-    cos = np.concatenate([ch, ch]); sin = np.concatenate([sh, sh])
+    ch = np.cos(ang).astype(bfloat16)
+    sh = np.sin(ang).astype(bfloat16)
+    cos = np.concatenate([ch, ch])
+    sin = np.concatenate([sh, sh])
 
     return {
-        "gamma_in":   randg(D),
+        "gamma_in": randg(D),
         "gamma_post": randg(D),
-        "wq": randw(QD, D), "bq": randb(QD),
-        "wo": randw(D, QD), "bo": randb(D),
-        "wg": randw(HD, D), "bg": randb(HD),
-        "wu": randw(HD, D), "bu": randb(HD),
-        "wd": randw(D, HD), "bd": randb(D),
-        "cos": cos, "sin": sin,
-        "cos_half": ch, "sin_half": sh,
+        "wq": randw(QD, D),
+        "bq": randb(QD),
+        "wo": randw(D, QD),
+        "bo": randb(D),
+        "wg": randw(HD, D),
+        "bg": randb(HD),
+        "wu": randw(HD, D),
+        "bu": randb(HD),
+        "wd": randw(D, HD),
+        "bd": randb(D),
+        "cos": cos,
+        "sin": sin,
+        "cos_half": ch,
+        "sin_half": sh,
         "kcache": rng.integers(-32, 33, size=T * KVD, dtype=np.int8),
         "vcache": rng.integers(-32, 33, size=T * KVD, dtype=np.int8),
     }
@@ -114,23 +171,25 @@ def gen_layer(rng):
 
 def pack_one_layer(buf, off, layer):
     """Pack one layer's weights into `buf` at byte offset `off`."""
+
     def put_bf16(b, o, arr):
         as_bytes = arr.view(np.int8)
-        b[o:o + as_bytes.size] = as_bytes
-    def put_packed(b, o, w_i8, b_i32):
-        b[o:o + w_i8.size] = w_i8.flatten()
-        bb = b_i32.view(np.int8).flatten()
-        b[o + w_i8.size:o + w_i8.size + bb.size] = bb
+        b[o : o + as_bytes.size] = as_bytes
 
-    put_bf16(buf,   off + OFF_GAMMA_IN,   layer["gamma_in"])
-    put_bf16(buf,   off + OFF_GAMMA_POST, layer["gamma_post"])
+    def put_packed(b, o, w_i8, b_i32):
+        b[o : o + w_i8.size] = w_i8.flatten()
+        bb = b_i32.view(np.int8).flatten()
+        b[o + w_i8.size : o + w_i8.size + bb.size] = bb
+
+    put_bf16(buf, off + OFF_GAMMA_IN, layer["gamma_in"])
+    put_bf16(buf, off + OFF_GAMMA_POST, layer["gamma_post"])
     put_packed(buf, off + OFF_WQ, layer["wq"], layer["bq"])
     put_packed(buf, off + OFF_WO, layer["wo"], layer["bo"])
     put_packed(buf, off + OFF_WG, layer["wg"], layer["bg"])
     put_packed(buf, off + OFF_WU, layer["wu"], layer["bu"])
     put_packed(buf, off + OFF_WD, layer["wd"], layer["bd"])
     cs_packed = np.concatenate([layer["cos"], layer["sin"]])
-    put_bf16(buf,   off + OFF_CS, cs_packed)
+    put_bf16(buf, off + OFF_CS, cs_packed)
 
 
 def main():
@@ -138,6 +197,7 @@ def main():
     opts = p.parse_args()
 
     import os
+
     seed = int(os.environ.get("LLAMA_CHAIN_SEED", "0"))
     rng = np.random.default_rng(seed)
     x_in = rng.integers(-32, 33, size=D, dtype=np.int8)
@@ -148,23 +208,34 @@ def main():
     # all layers; the rest stay distinct. Whichever category yields 0
     # diffs implicates that fifo's per-layer delivery.
     import os
+
     bisect = os.environ.get("LLAMA_CHAIN_BISECT", "")
     if bisect:
         print(f"[bisect] forcing {bisect} identical across layers")
         keys_by_group = {
-            "gamma":  ["gamma_in", "gamma_post"],
+            "gamma": ["gamma_in", "gamma_post"],
             "gamma_in": ["gamma_in"],
             "gamma_post": ["gamma_post"],
-            "wq":     ["wq", "bq"],
-            "wo":     ["wo", "bo"],
-            "wg":     ["wg", "bg"],
-            "wu":     ["wu", "bu"],
-            "wd":     ["wd", "bd"],
-            "cs":     ["cos", "sin", "cos_half", "sin_half"],
-            "kv":     ["kcache", "vcache"],
-            "ffn":    ["wg", "bg", "wu", "bu", "wd", "bd"],   # all FFN weights
-            "attn":   ["wq", "bq", "wo", "bo", "kcache", "vcache",
-                       "cos", "sin", "cos_half", "sin_half"],
+            "wq": ["wq", "bq"],
+            "wo": ["wo", "bo"],
+            "wg": ["wg", "bg"],
+            "wu": ["wu", "bu"],
+            "wd": ["wd", "bd"],
+            "cs": ["cos", "sin", "cos_half", "sin_half"],
+            "kv": ["kcache", "vcache"],
+            "ffn": ["wg", "bg", "wu", "bu", "wd", "bd"],  # all FFN weights
+            "attn": [
+                "wq",
+                "bq",
+                "wo",
+                "bo",
+                "kcache",
+                "vcache",
+                "cos",
+                "sin",
+                "cos_half",
+                "sin_half",
+            ],
         }
         keys = keys_by_group[bisect]
         for L in range(1, N_LAYERS):
@@ -172,13 +243,13 @@ def main():
                 layers[L][k] = layers[0][k]
 
     # --- Pack blobs ---
-    wblob = np.zeros(TOTAL_W,  dtype=np.int8)
+    wblob = np.zeros(TOTAL_W, dtype=np.int8)
     kvblob = np.zeros(TOTAL_KV, dtype=np.int8)
     for L, layer in enumerate(layers):
         pack_one_layer(wblob, L * PER_LAYER_W, layer)
         base_kv = L * PER_LAYER_KV
-        kvblob[base_kv + OFF_K:base_kv + OFF_K + KCACHE_BYTES] = layer["kcache"]
-        kvblob[base_kv + OFF_V:base_kv + OFF_V + VCACHE_BYTES] = layer["vcache"]
+        kvblob[base_kv + OFF_K : base_kv + OFF_K + KCACHE_BYTES] = layer["kcache"]
+        kvblob[base_kv + OFF_V : base_kv + OFF_V + VCACHE_BYTES] = layer["vcache"]
 
     # --- Numpy chain reference ---
     x = x_in.copy()
@@ -187,10 +258,10 @@ def main():
     expected = x
 
     # --- NPU dispatch ---
-    x_t  = iron.tensor(x_in.copy(), dtype=np.int8)
-    w_t  = iron.tensor(wblob,       dtype=np.int8)
-    kv_t = iron.tensor(kvblob,      dtype=np.int8)
-    o_t  = iron.zeros([D],          dtype=np.int8)
+    x_t = iron.tensor(x_in.copy(), dtype=np.int8)
+    w_t = iron.tensor(wblob, dtype=np.int8)
+    kv_t = iron.tensor(kvblob, dtype=np.int8)
+    o_t = iron.zeros([D], dtype=np.int8)
 
     npu_opts = test_utils.create_npu_kernel(opts)
     rc = DefaultNPURuntime.run_test(
@@ -209,8 +280,10 @@ def main():
     diff = actual.astype(np.int16) - expected.astype(np.int16)
     n_diff = int((diff != 0).sum())
     max_abs = int(np.abs(diff).max()) if n_diff else 0
-    print(f"chain_real NPU vs chained-numpy: N_LAYERS={N_LAYERS}  "
-          f"D={D}  mismatches={n_diff}/{D}  max|diff|={max_abs}")
+    print(
+        f"chain_real NPU vs chained-numpy: N_LAYERS={N_LAYERS}  "
+        f"D={D}  mismatches={n_diff}/{D}  max|diff|={max_abs}"
+    )
 
     if n_diff == 0:
         print(f"BIT-EXACT PASS  ({N_LAYERS}-layer decode chain)")

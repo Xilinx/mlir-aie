@@ -16,7 +16,6 @@ import aie.iron as iron
 import aie.utils.test as test_utils
 from aie.utils import DefaultNPURuntime
 
-
 N_COLS = 8
 N_ROWS = 2
 
@@ -30,15 +29,15 @@ def main():
 
     M, K, N = opts.M, opts.K, opts.N
     w_blob_bytes = N * K + N * 4 + N * 4
-    total_w      = N_COLS * N_ROWS * w_blob_bytes
-    total_out    = N_COLS * N_ROWS * M * N
+    total_w = N_COLS * N_ROWS * w_blob_bytes
+    total_out = N_COLS * N_ROWS * M * N
 
     rng = np.random.default_rng(0)
-    act_data = rng.integers(-128, 128, size=M * K,    dtype=np.int8)
-    w_data   = rng.integers(-128, 128, size=total_w,  dtype=np.int8)
+    act_data = rng.integers(-128, 128, size=M * K, dtype=np.int8)
+    w_data = rng.integers(-128, 128, size=total_w, dtype=np.int8)
 
     act_t = iron.tensor(act_data, dtype=np.int8)
-    w_t   = iron.tensor(w_data,   dtype=np.int8)
+    w_t = iron.tensor(w_data, dtype=np.int8)
     out_t = iron.zeros([total_out], dtype=np.int8)
 
     npu_opts = test_utils.create_npu_kernel(opts)

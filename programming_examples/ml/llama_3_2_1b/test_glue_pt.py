@@ -57,7 +57,9 @@ def main():
         print(f"MISMATCH: {n_diff}/{n} bytes differ")
         diffs = np.argwhere(actual != expected)[:8]
         for (i,) in diffs:
-            print(f"  out[{i}]={actual[i]}  expected={expected[i]} (in1={in1[i]} in2={in2[i]})")
+            print(
+                f"  out[{i}]={actual[i]}  expected={expected[i]} (in1={in1[i]} in2={in2[i]})"
+            )
     return 1
 
 

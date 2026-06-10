@@ -35,7 +35,6 @@ import aie.iron as iron
 import aie.utils.test as test_utils
 from aie.utils import DefaultNPURuntime
 
-
 D = 2048
 
 
@@ -57,7 +56,7 @@ def main():
     rng = np.random.default_rng(0)
     x_in = rng.integers(-128, 128, size=D, dtype=np.int8)
 
-    in_t  = iron.tensor(x_in, dtype=np.int8)
+    in_t = iron.tensor(x_in, dtype=np.int8)
     out_t = iron.zeros([D], dtype=np.int8)
 
     npu_opts = test_utils.create_npu_kernel(opts)
@@ -89,7 +88,9 @@ def main():
     else:
         diffs = np.argwhere(actual != expected)[:8]
         for (i,) in diffs:
-            print(f"  out[{i}]={actual[i]}  expected={expected[i]}  x_in[{i}]={x_in[i]}")
+            print(
+                f"  out[{i}]={actual[i]}  expected={expected[i]}  x_in[{i}]={x_in[i]}"
+            )
     return 1
 
 

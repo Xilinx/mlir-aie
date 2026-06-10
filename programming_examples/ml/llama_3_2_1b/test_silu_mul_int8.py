@@ -29,7 +29,7 @@ def round_to_i8(v):
 
 def numpy_silu_mul(gate, up, lut, up_scale, inv_out_scale):
     # silu_bf via LUT; matches the kernel byte for byte.
-    silu_bf = lut[(gate.astype(np.int32) + 128)]      # bf16
+    silu_bf = lut[(gate.astype(np.int32) + 128)]  # bf16
     s_f = silu_bf.astype(np.float32)
     u_f = up.astype(np.float32) * up_scale
     out_f = s_f * u_f * inv_out_scale
@@ -44,12 +44,12 @@ def main():
     D = opts.D
     rng = np.random.default_rng(0)
     gate = rng.integers(-128, 128, size=D, dtype=np.int8)
-    up   = rng.integers(-128, 128, size=D, dtype=np.int8)
+    up = rng.integers(-128, 128, size=D, dtype=np.int8)
 
     lut = silu_lut(GATE_SCALE)  # exact same arithmetic as the kernel's baked LUT
 
     g_t = iron.tensor(gate, dtype=np.int8)
-    u_t = iron.tensor(up,   dtype=np.int8)
+    u_t = iron.tensor(up, dtype=np.int8)
     o_t = iron.zeros([D], dtype=np.int8)
 
     npu_opts = test_utils.create_npu_kernel(opts)
@@ -71,16 +71,20 @@ def main():
     n_diff = int((diff != 0).sum())
     max_abs = int(np.abs(diff).max()) if n_diff else 0
 
-    print(f"silu_mul_int8 NPU vs numpy (LUT-matched): D={D}  "
-          f"mismatches={n_diff}/{D}  max|int8 diff|={max_abs}")
+    print(
+        f"silu_mul_int8 NPU vs numpy (LUT-matched): D={D}  "
+        f"mismatches={n_diff}/{D}  max|int8 diff|={max_abs}"
+    )
 
     if n_diff == 0:
         print("BIT-EXACT PASS")
         return 0
     print("FAIL")
     for i in np.argwhere(diff != 0).flatten()[:8]:
-        print(f"  i={i}: NPU={actual[i]}  expected={expected[i]}  "
-              f"gate={gate[i]} (lut={float(lut[gate[i]+128]):.4f})  up={up[i]}")
+        print(
+            f"  i={i}: NPU={actual[i]}  expected={expected[i]}  "
+            f"gate={gate[i]} (lut={float(lut[gate[i]+128]):.4f})  up={up[i]}"
+        )
     return 1
 
 

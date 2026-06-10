@@ -26,11 +26,11 @@ def main():
     w_blob_bytes = N * K + N * 4 + N * 4
 
     rng = np.random.default_rng(0)
-    act = rng.integers(-128, 128, size=M * K,             dtype=np.int8)
-    w   = rng.integers(-128, 128, size=2 * w_blob_bytes,  dtype=np.int8)
+    act = rng.integers(-128, 128, size=M * K, dtype=np.int8)
+    w = rng.integers(-128, 128, size=2 * w_blob_bytes, dtype=np.int8)
 
     act_t = iron.tensor(act, dtype=np.int8)
-    w_t   = iron.tensor(w,   dtype=np.int8)
+    w_t = iron.tensor(w, dtype=np.int8)
     out_t = iron.zeros([2 * M * N], dtype=np.int8)
 
     npu_opts = test_utils.create_npu_kernel(opts)
@@ -61,8 +61,8 @@ def main():
 
     print(f"MISMATCH: {n_diff}/{2*M*N} bytes differ")
     # Show top/bot breakdown.
-    top_diff = int((actual[:M*N] != expected[:M*N]).sum())
-    bot_diff = int((actual[M*N:] != expected[M*N:]).sum())
+    top_diff = int((actual[: M * N] != expected[: M * N]).sum())
+    bot_diff = int((actual[M * N :] != expected[M * N :]).sum())
     print(f"  top-tile slice (bytes 0..{M*N}): {top_diff} diffs")
     print(f"  bot-tile slice (bytes {M*N}..{2*M*N}): {bot_diff} diffs")
     diffs = np.argwhere(actual != expected)[:8]

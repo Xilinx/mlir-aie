@@ -37,9 +37,10 @@
 
 extern "C" {
 
-void llama_gemm_int8_srs_pt(int8_t *act,     // (M, K)
-                            int8_t *w_blob,  // weights+bias+scale, ignored by stub
-                            int8_t *out) {   // (M, N)
+void llama_gemm_int8_srs_pt(
+    int8_t *act,    // (M, K)
+    int8_t *w_blob, // weights+bias+scale, ignored by stub
+    int8_t *out) {  // (M, N)
   (void)w_blob;
 
   constexpr int kOutBytes = LLAMA_GEMM_PT_M * LLAMA_GEMM_PT_N;

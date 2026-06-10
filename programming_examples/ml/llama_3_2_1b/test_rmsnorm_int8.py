@@ -29,7 +29,7 @@ def sw_invsqrt(a: float) -> float:
     """Quake-III + 2 NR; matches the kernel's sw_invsqrt byte-for-byte."""
     a32 = np.float32(a)
     bits = a32.view(np.int32)
-    new_bits = np.int32(np.uint32(0x5f3759df)) - (bits >> np.int32(1))
+    new_bits = np.int32(np.uint32(0x5F3759DF)) - (bits >> np.int32(1))
     x = new_bits.view(np.float32)
     half = np.float32(0.5)
     onehalf = np.float32(1.5)
@@ -38,21 +38,30 @@ def sw_invsqrt(a: float) -> float:
     return float(x)
 
 
-def numpy_rmsnorm_int8(x_i8: np.ndarray, gamma_bf16: np.ndarray,
-                       act_scale_in: float, inv_act_scale_out: float,
-                       eps: float = 1e-5) -> np.ndarray:
+def numpy_rmsnorm_int8(
+    x_i8: np.ndarray,
+    gamma_bf16: np.ndarray,
+    act_scale_in: float,
+    inv_act_scale_out: float,
+    eps: float = 1e-5,
+) -> np.ndarray:
     # Match the kernel exactly: int32 sum-of-squares, fp32 scalar var/
     # invsqrt/combined, then bf16 mul chain on activations.
-    sum_sq_i32 = int((x_i8.astype(np.int32) ** 2).sum())   # exact int sum
-    var = np.float32(np.float32(sum_sq_i32) * np.float32(act_scale_in) *
-                     np.float32(act_scale_in) / np.float32(len(x_i8)))
+    sum_sq_i32 = int((x_i8.astype(np.int32) ** 2).sum())  # exact int sum
+    var = np.float32(
+        np.float32(sum_sq_i32)
+        * np.float32(act_scale_in)
+        * np.float32(act_scale_in)
+        / np.float32(len(x_i8))
+    )
     inv_rms = sw_invsqrt(np.float32(var + np.float32(eps)))
-    combined = np.float32(np.float32(act_scale_in) * np.float32(inv_rms) *
-                          np.float32(inv_act_scale_out))
+    combined = np.float32(
+        np.float32(act_scale_in) * np.float32(inv_rms) * np.float32(inv_act_scale_out)
+    )
     # Match the kernel exactly: single fp32 multiplication chain per
     # element, no bf16 truncation in pass 2.
     g_f = gamma_bf16.astype(np.float32)  # bf16 -> fp32 (exact)
-    x_f = x_i8.astype(np.float32)        # int8 -> fp32 (exact)
+    x_f = x_i8.astype(np.float32)  # int8 -> fp32 (exact)
     out_f = (x_f * combined * g_f).astype(np.float32)
     return round_to_i8(out_f)
 
@@ -92,7 +101,7 @@ def main():
     actual = y_t.numpy()
     expected = numpy_rmsnorm_int8(x, g, ACT_SCALE_IN, INV_ACT_SCALE_OUT)
 
-    diff = (actual.astype(np.int16) - expected.astype(np.int16))
+    diff = actual.astype(np.int16) - expected.astype(np.int16)
     n_diff = int((diff != 0).sum())
     max_abs = int(np.abs(diff).max()) if n_diff else 0
 
@@ -110,7 +119,9 @@ def main():
     print("FAIL")
     # Show some examples.
     for i in np.argwhere(diff != 0).flatten()[:8]:
-        print(f"  i={i}: NPU={actual[i]}  expected={expected[i]}  diff={diff[i]}  x={x[i]}  g={float(g[i]):.4f}")
+        print(
+            f"  i={i}: NPU={actual[i]}  expected={expected[i]}  diff={diff[i]}  x={x[i]}  g={float(g[i]):.4f}"
+        )
     return 1
 
 

@@ -32,13 +32,13 @@ def main():
     n_tiles = N // n_tile
 
     rng = np.random.default_rng(0)
-    act     = rng.integers(-128, 128, size=K,    dtype=np.int8)
+    act = rng.integers(-128, 128, size=K, dtype=np.int8)
     weights = rng.integers(-128, 128, size=(N, K), dtype=np.int8)
     # Bias range scaled so post-SRS results land mostly in i8 range
     # (not all-saturated). For random i8 act/w at K=2048, |sum| ~ K *
     # 128 * 128 / 3 in expectation ~ 10M; after >>12 ~ 2500; clamp to
     # [-128, 127]. Bias should be on the same order to be meaningful.
-    bias    = rng.integers(-2**14, 2**14, size=N, dtype=np.int32)
+    bias = rng.integers(-(2**14), 2**14, size=N, dtype=np.int32)
 
     # --- Numpy reference (bit-exact same path as the kernel) ---
     sums = weights.astype(np.int32) @ act.astype(np.int32) + bias
@@ -49,34 +49,38 @@ def main():
     w_blob = np.zeros(n_tiles * slot_bytes, dtype=np.int8)
     for t in range(n_tiles):
         base = t * slot_bytes
-        w_slice = weights[t * n_tile:(t + 1) * n_tile].flatten()
-        b_slice = bias[t * n_tile:(t + 1) * n_tile].view(np.int8).flatten()
-        w_blob[base:base + w_slice.size] = w_slice
-        w_blob[base + w_slice.size:base + w_slice.size + b_slice.size] = b_slice
+        w_slice = weights[t * n_tile : (t + 1) * n_tile].flatten()
+        b_slice = bias[t * n_tile : (t + 1) * n_tile].view(np.int8).flatten()
+        w_blob[base : base + w_slice.size] = w_slice
+        w_blob[base + w_slice.size : base + w_slice.size + b_slice.size] = b_slice
 
     # --- NPU dispatch ---
-    a_t = iron.tensor(act,   dtype=np.int8)
+    a_t = iron.tensor(act, dtype=np.int8)
     w_t = iron.tensor(w_blob, dtype=np.int8)
-    o_t = iron.zeros([N],     dtype=np.int8)
+    o_t = iron.zeros([N], dtype=np.int8)
 
     npu_opts = test_utils.create_npu_kernel(opts)
     rc = DefaultNPURuntime.run_test(
         npu_opts.npu_kernel,
         [a_t, w_t, o_t],
-        {}, verify=False, verbosity=opts.verbosity,
+        {},
+        verify=False,
+        verbosity=opts.verbosity,
     )
     if rc != 0:
         return rc
     o_t.to("cpu")
     actual = o_t.numpy()
 
-    diff = (actual.astype(np.int16) - expected.astype(np.int16))
+    diff = actual.astype(np.int16) - expected.astype(np.int16)
     n_diff = int((diff != 0).sum())
     max_abs = int(np.abs(diff).max()) if n_diff else 0
     sat = int((expected == 127).sum() + (expected == -128).sum())
-    print(f"tiled_gemm NPU vs numpy: K={K} N={N} N_TILE={n_tile} "
-          f"({n_tiles} tile iters)  mismatches={n_diff}/{N}  "
-          f"max|diff|={max_abs}  saturated={sat}/{N}")
+    print(
+        f"tiled_gemm NPU vs numpy: K={K} N={N} N_TILE={n_tile} "
+        f"({n_tiles} tile iters)  mismatches={n_diff}/{N}  "
+        f"max|diff|={max_abs}  saturated={sat}/{N}"
+    )
 
     if n_diff == 0:
         print("BIT-EXACT PASS")

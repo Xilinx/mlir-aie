@@ -23,13 +23,15 @@ from aie.iron.device import NPU2
 
 
 def build(M: int, K: int, N: int):
-    w_blob_bytes = N * K + N * 4 + N * 4  # per-tile weights+bias+scale, matches the stub
+    w_blob_bytes = (
+        N * K + N * 4 + N * 4
+    )  # per-tile weights+bias+scale, matches the stub
 
-    act_ty           = np.ndarray[(M * K,),           np.dtype[np.int8]]
-    w_blob_ty        = np.ndarray[(w_blob_bytes,),    np.dtype[np.int8]]
-    w_combined_ty    = np.ndarray[(2 * w_blob_bytes,), np.dtype[np.int8]]
-    out_per_tile_ty  = np.ndarray[(M * N,),           np.dtype[np.int8]]
-    out_combined_ty  = np.ndarray[(2 * M * N,),       np.dtype[np.int8]]
+    act_ty = np.ndarray[(M * K,), np.dtype[np.int8]]
+    w_blob_ty = np.ndarray[(w_blob_bytes,), np.dtype[np.int8]]
+    w_combined_ty = np.ndarray[(2 * w_blob_bytes,), np.dtype[np.int8]]
+    out_per_tile_ty = np.ndarray[(M * N,), np.dtype[np.int8]]
+    out_combined_ty = np.ndarray[(2 * M * N,), np.dtype[np.int8]]
 
     # Activation: one producer at shim, broadcast to both CTs.
     of_act = ObjectFifo(act_ty, name="act")
@@ -78,7 +80,7 @@ def build(M: int, K: int, N: int):
     with rt.sequence(act_ty, w_combined_ty, out_combined_ty) as (a, w, o):
         rt.start(worker_top, worker_bot)
         rt.fill(of_act.prod(), a)
-        rt.fill(of_w.prod(),   w)
+        rt.fill(of_w.prod(), w)
         rt.drain(of_out.cons(), o, wait=True)
 
     return Program(NPU2(), rt).resolve_program()

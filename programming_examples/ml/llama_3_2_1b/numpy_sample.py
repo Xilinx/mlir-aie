@@ -12,13 +12,14 @@ from __future__ import annotations
 import numpy as np
 
 from gen_exp_lut import exp_lut
-from test_flowkv import sw_recip   # IEEE fp32 reciprocal NR, matches kernel
+from test_flowkv import sw_recip  # IEEE fp32 reciprocal NR, matches kernel
 
 EXP_QUANT_SCALE = 0.05
-MASK_SENTINEL   = np.float32(-1.0e9)
+MASK_SENTINEL = np.float32(-1.0e9)
 
 
 # --- xoshiro128++ PRNG (uint32 arithmetic, must match the C kernel) ---
+
 
 def _u32(x):
     return np.uint32(x & 0xFFFFFFFF)
@@ -38,8 +39,10 @@ def xoshiro_seed(seed: int) -> list:
     x = _u64(int(seed) * 0x9E3779B97F4A7C15 + 1)
     s = []
     for _ in range(4):
-        x = _u64(int(x) ^ (int(x) >> 30)); x = _u64(int(x) * 0xBF58476D1CE4E5B9)
-        x = _u64(int(x) ^ (int(x) >> 27)); x = _u64(int(x) * 0x94D049BB133111EB)
+        x = _u64(int(x) ^ (int(x) >> 30))
+        x = _u64(int(x) * 0xBF58476D1CE4E5B9)
+        x = _u64(int(x) ^ (int(x) >> 27))
+        x = _u64(int(x) * 0x94D049BB133111EB)
         x = _u64(int(x) ^ (int(x) >> 31))
         s.append(_u32(int(x) ^ (int(x) >> 32)))
     return s
@@ -65,11 +68,13 @@ def xoshiro_uniform(s: list) -> tuple:
 
 # --- Kernel building blocks (mirror llama_sample.cc one-for-one) ---
 
+
 def quant_shifted(shifted_f32: np.ndarray) -> np.ndarray:
     inv = np.float32(1.0) / np.float32(EXP_QUANT_SCALE)
     v = (shifted_f32.astype(np.float32) * inv).astype(np.float32)
-    q = np.where(v >= 0, np.floor(v + np.float32(0.5)),
-                         np.ceil(v - np.float32(0.5))).astype(np.int32)
+    q = np.where(
+        v >= 0, np.floor(v + np.float32(0.5)), np.ceil(v - np.float32(0.5))
+    ).astype(np.int32)
     return np.clip(q, -128, 0)
 
 
@@ -77,9 +82,13 @@ def lookup_exp(q: np.ndarray, lut: np.ndarray) -> np.ndarray:
     return lut[(q + 128).astype(np.int32)].astype(np.float32)
 
 
-def sample_reference(logits_i8: np.ndarray,
-                     temperature: float, top_k: int, seed: int,
-                     lut: np.ndarray | None = None) -> int:
+def sample_reference(
+    logits_i8: np.ndarray,
+    temperature: float,
+    top_k: int,
+    seed: int,
+    lut: np.ndarray | None = None,
+) -> int:
     V = logits_i8.size
 
     # Greedy short-circuit.
@@ -87,11 +96,12 @@ def sample_reference(logits_i8: np.ndarray,
         # First-occurrence argmax via scalar loop (matches kernel; np.argmax
         # tie-breaks the same way on a contiguous array, but be explicit).
         best_v = 0
-        best   = int(logits_i8[0])
+        best = int(logits_i8[0])
         for v in range(1, V):
             l = int(logits_i8[v])
             if l > best:
-                best = l; best_v = v
+                best = l
+                best_v = v
         return best_v
 
     if lut is None:
@@ -116,7 +126,8 @@ def sample_reference(logits_i8: np.ndarray,
                 if masked[v]:
                     continue
                 if best_v < 0 or z[v] > best_z:
-                    best_v = v; best_z = z[v]
+                    best_v = v
+                    best_z = z[v]
             if best_v < 0:
                 break
             threshold = best_z

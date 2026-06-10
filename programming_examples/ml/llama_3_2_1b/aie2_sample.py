@@ -15,24 +15,24 @@ import numpy as np
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.device import NPU2, Tile
 
-
-SAMPLE_COL, SAMPLE_ROW = 5, 5   # DECODE_PLACEMENT["sample"]
+SAMPLE_COL, SAMPLE_ROW = 5, 5  # DECODE_PLACEMENT["sample"]
 
 
 def build(V: int):
-    logits_ty = np.ndarray[(V,),  np.dtype[np.int8]]
-    token_ty  = np.ndarray[(1,),  np.dtype[np.int32]]
+    logits_ty = np.ndarray[(V,), np.dtype[np.int8]]
+    token_ty = np.ndarray[(1,), np.dtype[np.int32]]
     # Pack the 3 per-call scalars (temperature fp32 + top_k int32 + seed
     # uint32) into ONE 12-byte fifo. Tile DMA budget is 2 in/2 out per
     # CT, and four separate scalar fifos would blow that.
-    params_ty = np.ndarray[(3,),  np.dtype[np.uint32]]
+    params_ty = np.ndarray[(3,), np.dtype[np.uint32]]
 
     of_l = ObjectFifo(logits_ty, name="logits")
-    of_t = ObjectFifo(token_ty,  name="token")
+    of_t = ObjectFifo(token_ty, name="token")
     of_p = ObjectFifo(params_ty, name="params")
 
     kernel = Kernel(
-        "llama_sample", "llama_sample.cc.o",
+        "llama_sample",
+        "llama_sample.cc.o",
         [logits_ty, token_ty, params_ty],
     )
 
@@ -41,7 +41,9 @@ def build(V: int):
         t = c_t.acquire(1)
         p = c_p.acquire(1)
         k(l, t, p)
-        c_l.release(1); c_t.release(1); c_p.release(1)
+        c_l.release(1)
+        c_t.release(1)
+        c_p.release(1)
 
     # Stack budget: kernel allocates z_bits[V] + qvals[V] (int32, 8KB at
     # V=1024) plus masked[V] (int8, 1KB) plus the usual call frames. The

@@ -21,7 +21,6 @@ import numpy as np
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.device import NPU2, Tile
 
-
 # Decode pair0 (col 0, rows 4 and 5).
 PAIR_COL = 0
 QK_ROW = 4
@@ -31,8 +30,8 @@ SV_ROW = 5
 def build(bytes_per_call: int):
     buf_ty = np.ndarray[(bytes_per_call,), np.dtype[np.int8]]
 
-    of_in  = ObjectFifo(buf_ty, name="in")
-    of_mid = ObjectFifo(buf_ty, name="mid")   # CT0 (qk) -> CT1 (sv)
+    of_in = ObjectFifo(buf_ty, name="in")
+    of_mid = ObjectFifo(buf_ty, name="mid")  # CT0 (qk) -> CT1 (sv)
     of_out = ObjectFifo(buf_ty, name="out")
 
     k_qk = Kernel("llama_flowkv_qk_pt", "llama_flowkv_pt.cc.o", [buf_ty, buf_ty])

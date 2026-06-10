@@ -28,22 +28,21 @@ input_layernorm, post_attention_layernorm.
 from dataclasses import dataclass
 from typing import Optional
 
-
 # ---------------------------------------------------------------------------
 # Model config (Llama 3.2 1B)
 # ---------------------------------------------------------------------------
-VOCAB_SIZE      = 128_256
-EMB_DIM         = 2_048          # hidden_size
-N_LAYERS        = 16
-N_HEADS         = 32
-N_KV_GROUPS     = 8              # num_key_value_heads (GQA: 32/8 = 4-way share)
-HEAD_DIM        = EMB_DIM // N_HEADS  # 64
-HIDDEN_DIM      = 8_192          # FFN intermediate_size
-ROPE_BASE       = 500_000.0
-MAX_CONTEXT     = 131_072
-TIE_EMBED_LMHEAD = True          # Llama 3.2 1B specifically
+VOCAB_SIZE = 128_256
+EMB_DIM = 2_048  # hidden_size
+N_LAYERS = 16
+N_HEADS = 32
+N_KV_GROUPS = 8  # num_key_value_heads (GQA: 32/8 = 4-way share)
+HEAD_DIM = EMB_DIM // N_HEADS  # 64
+HIDDEN_DIM = 8_192  # FFN intermediate_size
+ROPE_BASE = 500_000.0
+MAX_CONTEXT = 131_072
+TIE_EMBED_LMHEAD = True  # Llama 3.2 1B specifically
 
-Q_DIM  = N_HEADS    * HEAD_DIM   # 2048
+Q_DIM = N_HEADS * HEAD_DIM  # 2048
 KV_DIM = N_KV_GROUPS * HEAD_DIM  # 512
 
 
@@ -61,8 +60,8 @@ class Linear:
     name: str
     in_dim: int
     out_dim: int
-    weight_name: str = ""          # HF safetensors key, for the loader
-    bias: bool = False             # Llama: no bias on any linear
+    weight_name: str = ""  # HF safetensors key, for the loader
+    bias: bool = False  # Llama: no bias on any linear
     activation: Optional[str] = None  # set on FFN gate output if absorbed
 
 
@@ -75,7 +74,7 @@ class MatMul:
     """
 
     name: str
-    a_shape: tuple   # symbolic shape, may contain "M" placeholder
+    a_shape: tuple  # symbolic shape, may contain "M" placeholder
     b_shape: tuple
     out_shape: tuple
 
@@ -100,8 +99,8 @@ class RoPE:
     is a constant table of size (max_ctx, head_dim/2) precomputed."""
 
     name: str
-    n_heads: int        # 32 for Q, 8 for K (post-GQA)
-    head_dim: int       # 64
+    n_heads: int  # 32 for Q, 8 for K (post-GQA)
+    head_dim: int  # 64
     seq_dim: str = "M"  # sequence length, parameterized
 
 
@@ -115,7 +114,7 @@ class Softmax:
     """
 
     name: str
-    shape: tuple        # (B, H, M, M) for full; (B, H, 1, M) for decode
+    shape: tuple  # (B, H, M, M) for full; (B, H, 1, M) for decode
 
 
 @dataclass(frozen=True)
@@ -158,62 +157,83 @@ class Embedding:
 # ---------------------------------------------------------------------------
 LAYER_OPS: tuple = (
     # --- Attention block ---------------------------------------------------
-    RMSNorm("input_layernorm", EMB_DIM,
-            weight_name="model.layers.{i}.input_layernorm.weight"),
-
+    RMSNorm(
+        "input_layernorm",
+        EMB_DIM,
+        weight_name="model.layers.{i}.input_layernorm.weight",
+    ),
     # QKV projections. K, V are smaller than Q due to GQA.
-    Linear("q_proj", EMB_DIM, Q_DIM,
-           weight_name="model.layers.{i}.self_attn.q_proj.weight"),
-    Linear("k_proj", EMB_DIM, KV_DIM,
-           weight_name="model.layers.{i}.self_attn.k_proj.weight"),
-    Linear("v_proj", EMB_DIM, KV_DIM,
-           weight_name="model.layers.{i}.self_attn.v_proj.weight"),
-
+    Linear(
+        "q_proj", EMB_DIM, Q_DIM, weight_name="model.layers.{i}.self_attn.q_proj.weight"
+    ),
+    Linear(
+        "k_proj",
+        EMB_DIM,
+        KV_DIM,
+        weight_name="model.layers.{i}.self_attn.k_proj.weight",
+    ),
+    Linear(
+        "v_proj",
+        EMB_DIM,
+        KV_DIM,
+        weight_name="model.layers.{i}.self_attn.v_proj.weight",
+    ),
     # RoPE on Q and K only (V passes through).
-    RoPE("rope_q", n_heads=N_HEADS,    head_dim=HEAD_DIM),
+    RoPE("rope_q", n_heads=N_HEADS, head_dim=HEAD_DIM),
     RoPE("rope_k", n_heads=N_KV_GROUPS, head_dim=HEAD_DIM),
-
     # KV cache concat is implicit (not a tile op; it's a memory move).
     # After concat: K, V have shape ("L+M", N_KV_GROUPS, HEAD_DIM).
-
     # Q @ Kᵀ -- the YOLO m9/attn/qk analogue. GQA: each KV head serves 4 Q heads.
     # Shapes: Q=(B, N_HEADS, M, HEAD_DIM), K=(B, N_KV_GROUPS, L+M, HEAD_DIM).
     # In practice the kernel either repeats K (B, N_HEADS, L+M, HEAD_DIM) or
     # broadcasts the GQA inside the tile.
-    MatMul("attn_qk",
-           a_shape=("B", N_HEADS, "M", HEAD_DIM),       # Q
-           b_shape=("B", N_KV_GROUPS, "L+M", HEAD_DIM), # K (GQA-broadcast)
-           out_shape=("B", N_HEADS, "M", "L+M")),
-
+    MatMul(
+        "attn_qk",
+        a_shape=("B", N_HEADS, "M", HEAD_DIM),  # Q
+        b_shape=("B", N_KV_GROUPS, "L+M", HEAD_DIM),  # K (GQA-broadcast)
+        out_shape=("B", N_HEADS, "M", "L+M"),
+    ),
     # Numerically-stable softmax along L+M dim. Includes causal mask for
     # prefill (decode is always [1, L+1] so no masking).
     Softmax("attn_softmax", shape=("B", N_HEADS, "M", "L+M")),
-
     # Softmax @ V -- the YOLO m9/attn/sv analogue.
-    MatMul("attn_sv",
-           a_shape=("B", N_HEADS, "M", "L+M"),
-           b_shape=("B", N_KV_GROUPS, "L+M", HEAD_DIM),
-           out_shape=("B", N_HEADS, "M", HEAD_DIM)),
-
+    MatMul(
+        "attn_sv",
+        a_shape=("B", N_HEADS, "M", "L+M"),
+        b_shape=("B", N_KV_GROUPS, "L+M", HEAD_DIM),
+        out_shape=("B", N_HEADS, "M", HEAD_DIM),
+    ),
     # Output projection: re-mix heads back to emb_dim.
-    Linear("o_proj", Q_DIM, EMB_DIM,
-           weight_name="model.layers.{i}.self_attn.o_proj.weight"),
-
+    Linear(
+        "o_proj", Q_DIM, EMB_DIM, weight_name="model.layers.{i}.self_attn.o_proj.weight"
+    ),
     ResidualAdd("attn_residual", shape=("B", "M", EMB_DIM)),
-
     # --- FFN (SwiGLU) ------------------------------------------------------
-    RMSNorm("post_attention_layernorm", EMB_DIM,
-            weight_name="model.layers.{i}.post_attention_layernorm.weight"),
-
+    RMSNorm(
+        "post_attention_layernorm",
+        EMB_DIM,
+        weight_name="model.layers.{i}.post_attention_layernorm.weight",
+    ),
     # gate and up share input; can be packed into one (K=emb, N=2*hidden) GEMM.
-    Linear("gate_proj", EMB_DIM, HIDDEN_DIM,
-           weight_name="model.layers.{i}.mlp.gate_proj.weight"),
-    Linear("up_proj",   EMB_DIM, HIDDEN_DIM,
-           weight_name="model.layers.{i}.mlp.up_proj.weight"),
+    Linear(
+        "gate_proj",
+        EMB_DIM,
+        HIDDEN_DIM,
+        weight_name="model.layers.{i}.mlp.gate_proj.weight",
+    ),
+    Linear(
+        "up_proj",
+        EMB_DIM,
+        HIDDEN_DIM,
+        weight_name="model.layers.{i}.mlp.up_proj.weight",
+    ),
     SiLUMul("silu_mul", shape=("B", "M", HIDDEN_DIM)),
-    Linear("down_proj", HIDDEN_DIM, EMB_DIM,
-           weight_name="model.layers.{i}.mlp.down_proj.weight"),
-
+    Linear(
+        "down_proj",
+        HIDDEN_DIM,
+        EMB_DIM,
+        weight_name="model.layers.{i}.mlp.down_proj.weight",
+    ),
     ResidualAdd("ffn_residual", shape=("B", "M", EMB_DIM)),
 )
 
@@ -225,8 +245,12 @@ PRE_OPS: tuple = (
     # Embedding lookup: token_id -> (B, M, EMB_DIM). Trivial bandwidth per
     # token (one row of the huge table), but the table itself dominates the
     # non-layer parameter count.
-    Embedding("embed_tokens", vocab=VOCAB_SIZE, dim=EMB_DIM,
-              weight_name="model.embed_tokens.weight"),
+    Embedding(
+        "embed_tokens",
+        vocab=VOCAB_SIZE,
+        dim=EMB_DIM,
+        weight_name="model.embed_tokens.weight",
+    ),
 )
 
 POST_OPS: tuple = (
@@ -234,8 +258,9 @@ POST_OPS: tuple = (
     RMSNorm("model.norm", EMB_DIM, weight_name="model.norm.weight"),
     # lm_head: project to vocab logits. TIED to embed_tokens in Llama 3.2 1B,
     # so no new weight bytes -- but the matmul is huge (M x EMB x VOCAB).
-    Linear("lm_head", EMB_DIM, VOCAB_SIZE,
-           weight_name="model.embed_tokens.weight"),  # same tensor, transposed
+    Linear(
+        "lm_head", EMB_DIM, VOCAB_SIZE, weight_name="model.embed_tokens.weight"
+    ),  # same tensor, transposed
 )
 
 
@@ -282,16 +307,18 @@ def _self_check():
     assert len(matmul_ops(LAYER_OPS)) == 2, len(matmul_ops(LAYER_OPS))
     # Per-layer param count: 4M + 1M + 1M + 4M + 16M + 16M + 16M = 58M
     expected_layer = (
-        EMB_DIM * Q_DIM           # q_proj
-        + EMB_DIM * KV_DIM        # k_proj
-        + EMB_DIM * KV_DIM        # v_proj
-        + Q_DIM * EMB_DIM         # o_proj
-        + EMB_DIM * HIDDEN_DIM    # gate_proj
-        + EMB_DIM * HIDDEN_DIM    # up_proj
-        + HIDDEN_DIM * EMB_DIM    # down_proj
+        EMB_DIM * Q_DIM  # q_proj
+        + EMB_DIM * KV_DIM  # k_proj
+        + EMB_DIM * KV_DIM  # v_proj
+        + Q_DIM * EMB_DIM  # o_proj
+        + EMB_DIM * HIDDEN_DIM  # gate_proj
+        + EMB_DIM * HIDDEN_DIM  # up_proj
+        + HIDDEN_DIM * EMB_DIM  # down_proj
     )
     assert layer_weight_params() == expected_layer, (
-        layer_weight_params(), expected_layer)
+        layer_weight_params(),
+        expected_layer,
+    )
     # 60_817_408 expected (4M + 1M + 1M + 4M + 16M + 16M + 16M, exactly)
     assert expected_layer == 60_817_408, expected_layer
 
@@ -305,7 +332,9 @@ _self_check()
 if __name__ == "__main__":
     print(f"Llama 3.2 1B spec: {N_LAYERS} identical transformer layers")
     print(f"  emb={EMB_DIM}  hidden={HIDDEN_DIM}  vocab={VOCAB_SIZE}")
-    print(f"  n_heads={N_HEADS} (Q)  n_kv_groups={N_KV_GROUPS} (K,V)  head_dim={HEAD_DIM}")
+    print(
+        f"  n_heads={N_HEADS} (Q)  n_kv_groups={N_KV_GROUPS} (K,V)  head_dim={HEAD_DIM}"
+    )
     print(f"  tie_embed_lmhead={TIE_EMBED_LMHEAD}")
     print()
     print(f"Per-layer ops ({len(LAYER_OPS)}):")
@@ -326,4 +355,6 @@ if __name__ == "__main__":
     print(f"Per-layer RMSNorm params:  {norm_p/1e6:8.2f} M  ({norm_p} bytes INT8)")
     print(f"All {N_LAYERS} layers:             {N_LAYERS*(layer_p+norm_p)/1e6:8.2f} M")
     print(f"Embed (tied with lm_head): {VOCAB_SIZE*EMB_DIM/1e6:8.2f} M")
-    print(f"Network total:             {net_p/1e6:8.2f} M  ({net_p/(1<<20):.1f} MB INT8)")
+    print(
+        f"Network total:             {net_p/1e6:8.2f} M  ({net_p/(1<<20):.1f} MB INT8)"
+    )

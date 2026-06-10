@@ -10,7 +10,8 @@
 //   Output layout (8 * 288 = 2304 B):
 //     for g in 0..8:
 //       out[g*288 .. g*288+256]   = body[g*256 .. g*256+256]      (4 Q heads)
-//       out[g*288+256 .. g*288+288] = tail[g*32 .. g*32+32]       (4 scale pairs)
+//       out[g*288+256 .. g*288+288] = tail[g*32 .. g*32+32]       (4 scale
+//       pairs)
 //
 // llama_af_concat:
 //   Take the concatenated 8x256 = 2048 B int8 sv buffer (produced by
@@ -39,34 +40,35 @@
 #define LLAMA_GQA_N_HEADS_KV 8
 #endif
 
-static constexpr int kHD       = LLAMA_GQA_HEAD_DIM;
-static constexpr int kNHeadsQ  = LLAMA_GQA_N_HEADS_Q;
+static constexpr int kHD = LLAMA_GQA_HEAD_DIM;
+static constexpr int kNHeadsQ = LLAMA_GQA_N_HEADS_Q;
 static constexpr int kNHeadsKV = LLAMA_GQA_N_HEADS_KV;
-static constexpr int kREP      = kNHeadsQ / kNHeadsKV;
-static constexpr int kQD       = kNHeadsQ * kHD;             // 2048
-static constexpr int kBodyChunk = kREP * kHD;                // 256
-static constexpr int kTailChunk = kREP * 8;                  // 32
-static constexpr int kChunk     = kBodyChunk + kTailChunk;   // 288
+static constexpr int kREP = kNHeadsQ / kNHeadsKV;
+static constexpr int kQD = kNHeadsQ * kHD;             // 2048
+static constexpr int kBodyChunk = kREP * kHD;          // 256
+static constexpr int kTailChunk = kREP * 8;            // 32
+static constexpr int kChunk = kBodyChunk + kTailChunk; // 288
 
 static constexpr int32_t I8_MAX = 127;
 static constexpr int32_t I8_MIN = -128;
 
 static inline int8_t round_to_i8(float v) {
   int32_t r = (int32_t)(v + (v >= 0.0f ? 0.5f : -0.5f));
-  if (r > I8_MAX) r = I8_MAX;
-  if (r < I8_MIN) r = I8_MIN;
+  if (r > I8_MAX)
+    r = I8_MAX;
+  if (r < I8_MIN)
+    r = I8_MIN;
   return (int8_t)r;
 }
 
 // Trivial sv_lo + sv_hi -> sv_full memcpy worker. Needed because af_concat
 // can't pull from 3 input fifos on one CT (2-in DMA channel cap), so we
 // merge the two halves first.
-extern "C" void llama_sv_merge(int8_t *restrict in_lo,
-                               int8_t *restrict in_hi,
+extern "C" void llama_sv_merge(int8_t *restrict in_lo, int8_t *restrict in_hi,
                                int8_t *restrict out) {
   event0();
   constexpr int kHalf = (kNHeadsQ / 2) * kHD;
-  memcpy(out,         in_lo, kHalf);
+  memcpy(out, in_lo, kHalf);
   memcpy(out + kHalf, in_hi, kHalf);
   event1();
 }
@@ -74,11 +76,10 @@ extern "C" void llama_sv_merge(int8_t *restrict in_lo,
 // 2-output split: lower half (KV groups 0..kHalf) and upper half. Required
 // to keep memtile DMA fanout under 4-out per stage; one memtile can't
 // emit all 8 streams.
-static constexpr int kHalfKV    = kNHeadsKV / 2;             // 4
-static constexpr int kHalfChunk = kHalfKV * kChunk;          // 1152
+static constexpr int kHalfKV = kNHeadsKV / 2;       // 4
+static constexpr int kHalfChunk = kHalfKV * kChunk; // 1152
 
-extern "C" void llama_q_split(int8_t *restrict in_full,
-                              int8_t *restrict out_lo,
+extern "C" void llama_q_split(int8_t *restrict in_full, int8_t *restrict out_lo,
                               int8_t *restrict out_hi) {
   event0();
   int8_t *body = in_full;
@@ -87,7 +88,7 @@ extern "C" void llama_q_split(int8_t *restrict in_full,
     int8_t *base = (g < kHalfKV) ? out_lo : out_hi;
     int local = (g < kHalfKV) ? g : (g - kHalfKV);
     int8_t *dst = base + local * kChunk;
-    memcpy(dst,              body + g * kBodyChunk, kBodyChunk);
+    memcpy(dst, body + g * kBodyChunk, kBodyChunk);
     memcpy(dst + kBodyChunk, tail + g * kTailChunk, kTailChunk);
   }
   event1();
@@ -95,19 +96,17 @@ extern "C" void llama_q_split(int8_t *restrict in_full,
 
 // af_concat consumes the full merged sv buffer (2048 B = 32 heads * 64).
 // Per-Q-head dequant (sv_out_scale[h]) + global requant (o_inv_act_scale).
-extern "C" void llama_af_concat(int8_t *restrict af_in,
-                                int8_t *restrict scales,
+extern "C" void llama_af_concat(int8_t *restrict af_in, int8_t *restrict scales,
                                 int8_t *restrict af_out) {
   event0();
   ::aie::set_rounding(aie::rounding_mode::conv_even);
-  const float *sv_out_scales =
-      reinterpret_cast<const float *>(scales);
+  const float *sv_out_scales = reinterpret_cast<const float *>(scales);
   float o_inv_act_scale;
   memcpy(&o_inv_act_scale, scales + 128, 4);
 
   for (int h = 0; h < kNHeadsQ; h++) {
     float combined = sv_out_scales[h] * o_inv_act_scale;
-    int8_t *src = af_in  + h * kHD;
+    int8_t *src = af_in + h * kHD;
     int8_t *dst = af_out + h * kHD;
     for (int j = 0; j < kHD; j++) {
       dst[j] = round_to_i8((float)src[j] * combined);

@@ -28,8 +28,7 @@ def pack_params(temperature, top_k, seed):
     [0]=temperature fp32 bits, [1]=top_k int32, [2]=seed uint32."""
     t_bits = np.frombuffer(np.float32(temperature).tobytes(), dtype=np.uint32)[0]
     tk_bits = np.frombuffer(np.int32(top_k).tobytes(), dtype=np.uint32)[0]
-    return np.asarray([t_bits, tk_bits, np.uint32(seed & 0xFFFFFFFF)],
-                      dtype=np.uint32)
+    return np.asarray([t_bits, tk_bits, np.uint32(seed & 0xFFFFFFFF)], dtype=np.uint32)
 
 
 def run_npu(npu_opts, logits, temperature, top_k, seed, opts):
@@ -66,9 +65,11 @@ def main():
     # --- Greedy ---
     actual = run_npu(npu_opts, logits, temperature=0.0, top_k=0, seed=0, opts=opts)
     expected = sample_reference(logits, temperature=0.0, top_k=0, seed=0, lut=lut)
-    print(f"[greedy ]  V={V}  NPU={actual}  ref={expected}  "
-          f"logit_NPU={int(logits[actual])}  logit_ref={int(logits[expected])}")
-    greedy_ok = (actual == expected)
+    print(
+        f"[greedy ]  V={V}  NPU={actual}  ref={expected}  "
+        f"logit_NPU={int(logits[actual])}  logit_ref={int(logits[expected])}"
+    )
+    greedy_ok = actual == expected
 
     # --- Full-vocab multinomial across seeds ---
     seeds = [0, 1, 7, 42]
@@ -77,7 +78,7 @@ def main():
     for s in seeds:
         a = run_npu(npu_opts, logits, temperature=0.7, top_k=0, seed=s, opts=opts)
         e = sample_reference(logits, temperature=0.7, top_k=0, seed=s, lut=lut)
-        ok = (a == e)
+        ok = a == e
         full_ok = full_ok and ok
         print(f"   seed={s:3d}  NPU={a:5d}  ref={e:5d}  {'OK' if ok else 'MISMATCH'}")
 
@@ -87,7 +88,7 @@ def main():
     for s in seeds:
         a = run_npu(npu_opts, logits, temperature=0.7, top_k=40, seed=s, opts=opts)
         e = sample_reference(logits, temperature=0.7, top_k=40, seed=s, lut=lut)
-        ok = (a == e)
+        ok = a == e
         topk_ok = topk_ok and ok
         print(f"   seed={s:3d}  NPU={a:5d}  ref={e:5d}  {'OK' if ok else 'MISMATCH'}")
 

@@ -24,14 +24,36 @@ from aie.utils import DefaultNPURuntime
 
 # Use the SINGLE-layer constants and packing.
 from aie2_layer_real import (
-    D, HD, HEAD_D, T,
-    OFF_GAMMA_IN, OFF_GAMMA_POST,
-    OFF_WQ, OFF_WO, OFF_WG, OFF_WU, OFF_WD, OFF_CS,
-    GAMMA_BYTES, WQ_BYTES, WO_BYTES, WG_BYTES, WU_BYTES, WD_BYTES, CS_BYTES,
-    KCACHE_BYTES, VCACHE_BYTES, TOTAL_W, KV_TOTAL, OFF_K, OFF_V,
+    D,
+    HD,
+    HEAD_D,
+    T,
+    OFF_GAMMA_IN,
+    OFF_GAMMA_POST,
+    OFF_WQ,
+    OFF_WO,
+    OFF_WG,
+    OFF_WU,
+    OFF_WD,
+    OFF_CS,
+    GAMMA_BYTES,
+    WQ_BYTES,
+    WO_BYTES,
+    WG_BYTES,
+    WU_BYTES,
+    WD_BYTES,
+    CS_BYTES,
+    KCACHE_BYTES,
+    VCACHE_BYTES,
+    TOTAL_W,
+    KV_TOTAL,
+    OFF_K,
+    OFF_V,
 )
 from test_chain_real import (
-    gen_layer, pack_one_layer, numpy_single_layer,
+    gen_layer,
+    pack_one_layer,
+    numpy_single_layer,
 )
 from aie2_chain_real import N_LAYERS, PER_LAYER_KV
 
@@ -41,6 +63,7 @@ def main():
     opts = p.parse_args()
 
     import os
+
     seed = int(os.environ.get("LLAMA_CHAIN_SEED", "0"))
     rng = np.random.default_rng(seed)
 
@@ -66,18 +89,21 @@ def main():
         # Compute numpy BEFORE NPU to rule out aliasing
         layer_expected = numpy_single_layer(x, layer)
         print(f"  L={L} numpy (pre-NPU): out[:8]={layer_expected[:8]}", flush=True)
-        print(f"  L={L} layer['wq'].sum()={int(layer['wq'].sum())} mean={float(np.abs(layer['wq']).mean()):.2f}", flush=True)
+        print(
+            f"  L={L} layer['wq'].sum()={int(layer['wq'].sum())} mean={float(np.abs(layer['wq']).mean()):.2f}",
+            flush=True,
+        )
         wblob = np.zeros(TOTAL_W, dtype=np.int8)
         pack_one_layer(wblob, 0, layer)
         print(f"  L={L} packed", flush=True)
         kvbuf = np.zeros(KV_TOTAL, dtype=np.int8)
-        kvbuf[OFF_K:OFF_K + KCACHE_BYTES] = layer["kcache"]
-        kvbuf[OFF_V:OFF_V + VCACHE_BYTES] = layer["vcache"]
+        kvbuf[OFF_K : OFF_K + KCACHE_BYTES] = layer["kcache"]
+        kvbuf[OFF_V : OFF_V + VCACHE_BYTES] = layer["vcache"]
 
-        x_t = iron.tensor(x.copy(),  dtype=np.int8)
-        w_t = iron.tensor(wblob,     dtype=np.int8)
-        kv_t = iron.tensor(kvbuf,    dtype=np.int8)
-        o_t = iron.zeros([D],        dtype=np.int8)
+        x_t = iron.tensor(x.copy(), dtype=np.int8)
+        w_t = iron.tensor(wblob, dtype=np.int8)
+        kv_t = iron.tensor(kvbuf, dtype=np.int8)
+        o_t = iron.zeros([D], dtype=np.int8)
 
         rc = DefaultNPURuntime.run_test(
             npu_opts.npu_kernel,
@@ -103,7 +129,9 @@ def main():
         x = layer_out
 
     diff = (x != expected).sum()
-    print(f"host-orchestrated chain: N_LAYERS={N_LAYERS}  total mismatches={int(diff)}/{D}")
+    print(
+        f"host-orchestrated chain: N_LAYERS={N_LAYERS}  total mismatches={int(diff)}/{D}"
+    )
     if diff == 0:
         print("BIT-EXACT vs numpy chain (so IRON-dataflow chain has its own bug)")
     else:

@@ -43,8 +43,10 @@ static constexpr int32_t I8_MIN = -128;
 
 static inline int8_t round_to_i8(float v) {
   int32_t r = (int32_t)(v + (v >= 0.0f ? 0.5f : -0.5f));
-  if (r > I8_MAX) r = I8_MAX;
-  if (r < I8_MIN) r = I8_MIN;
+  if (r > I8_MAX)
+    r = I8_MAX;
+  if (r < I8_MIN)
+    r = I8_MIN;
   return (int8_t)r;
 }
 
@@ -81,8 +83,8 @@ static inline float sw_invsqrt(float a) {
 extern "C" {
 
 void llama_rmsnorm_int8(int8_t *restrict x, bfloat16 *restrict gamma,
-                        int8_t *restrict y,
-                        float act_scale_in, float inv_act_scale_out) {
+                        int8_t *restrict y, float act_scale_in,
+                        float inv_act_scale_out) {
   event0();
 
   constexpr int kCols = LLAMA_RMSNORM_COLS;
@@ -117,9 +119,9 @@ void llama_rmsnorm_int8(int8_t *restrict x, bfloat16 *restrict gamma,
   // identical value bit-for-bit. Vec optimization (and bringing back
   // the bf16 math path) is a follow-up.
   for (int i = 0; i < kCols; i++) {
-    float xf = (float)x[i];                  // int8 -> fp32 (exact)
-    float gf = (float)gamma[i];              // bf16 -> fp32 (exact)
-    float vf = xf * combined * gf;           // single fp32 chain
+    float xf = (float)x[i];        // int8 -> fp32 (exact)
+    float gf = (float)gamma[i];    // bf16 -> fp32 (exact)
+    float vf = xf * combined * gf; // single fp32 chain
     y[i] = round_to_i8(vf);
   }
 
@@ -153,7 +155,7 @@ void llama_rmsnorm_int8_dyn(int8_t *restrict x, bfloat16 *restrict gamma,
   }
   float var = (float)sum_sq_i32 * act_scale_in * act_scale_in / (float)kCols;
   float inv_rms = sw_invsqrt(var + kEps);
-  float pre = act_scale_in * inv_rms;   // x_i8 * pre * gamma = y_f (pre-requant)
+  float pre = act_scale_in * inv_rms; // x_i8 * pre * gamma = y_f (pre-requant)
 
   // Pass A: scan fp32 y_f, find absmax. No fp32 array kept across loops.
   float absmax = 0.0f;
@@ -161,16 +163,19 @@ void llama_rmsnorm_int8_dyn(int8_t *restrict x, bfloat16 *restrict gamma,
     float xf = (float)x[i];
     float gf = (float)gamma[i];
     float vf = xf * pre * gf;
-    float a  = vf >= 0.0f ? vf : -vf;
-    if (a > absmax) absmax = a;
+    float a = vf >= 0.0f ? vf : -vf;
+    if (a > absmax)
+      absmax = a;
   }
 
   // Guard against all-zero rows (avoid div-by-zero); 1e-12 matches the
   // numpy reference's floor in cautious-eureka quant_act.
-  if (absmax < 1e-12f) absmax = 1e-12f;
-  float scale_dyn = absmax * (1.0f / 127.0f);   // fp32 const; literal /127 is fine
-  float inv_dyn   = sw_recip(scale_dyn);
-  float combined  = pre * inv_dyn;
+  if (absmax < 1e-12f)
+    absmax = 1e-12f;
+  float scale_dyn =
+      absmax * (1.0f / 127.0f); // fp32 const; literal /127 is fine
+  float inv_dyn = sw_recip(scale_dyn);
+  float combined = pre * inv_dyn;
 
   // Pass B: recompute the same chain, round to int8 with the dynamic scale.
   for (int i = 0; i < kCols; i++) {

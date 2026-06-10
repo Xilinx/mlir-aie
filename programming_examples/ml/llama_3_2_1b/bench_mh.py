@@ -27,18 +27,18 @@ from gen_silu_lut import silu_lut
 def main():
     p = test_utils.create_default_argparser()
     p.add_argument("--warmup", type=int, default=2)
-    p.add_argument("--iters",  type=int, default=5)
+    p.add_argument("--iters", type=int, default=5)
     opts = p.parse_args()
     npu_kernel = test_utils.create_npu_kernel(opts).npu_kernel
 
     rng = np.random.default_rng(0)
     x = rng.integers(-32, 33, size=D, dtype=np.int8)
-    lut_exp  = exp_lut(EXP_QUANT_SCALE).astype(np.float32)
+    lut_exp = exp_lut(EXP_QUANT_SCALE).astype(np.float32)
     lut_silu = silu_lut(SILU_GATE_SCALE)
     layers = []
     for _ in range(N_LAYERS):
         layer = gen_layer_mh(rng)
-        layer["lut_exp"]  = lut_exp
+        layer["lut_exp"] = lut_exp
         layer["lut_silu"] = lut_silu
         layers.append(layer)
 
@@ -53,20 +53,22 @@ def main():
     wblob, kvblob = pack_blobs(layers)
     t_pack = time.time() - t0
 
-    x_t  = iron.tensor(x,     dtype=np.int8)
-    w_t  = iron.tensor(wblob, dtype=np.int8)
+    x_t = iron.tensor(x, dtype=np.int8)
+    w_t = iron.tensor(wblob, dtype=np.int8)
     kv_t = iron.tensor(kvblob, dtype=np.int8)
-    o_t  = iron.zeros([D], dtype=np.int8)
+    o_t = iron.zeros([D], dtype=np.int8)
 
     for _ in range(opts.warmup):
-        DefaultNPURuntime.run_test(npu_kernel, [x_t, w_t, kv_t, o_t],
-                                   {}, verify=False, verbosity=0)
+        DefaultNPURuntime.run_test(
+            npu_kernel, [x_t, w_t, kv_t, o_t], {}, verify=False, verbosity=0
+        )
         o_t.to("cpu")
     times = []
     for _ in range(opts.iters):
         t0 = time.time()
-        DefaultNPURuntime.run_test(npu_kernel, [x_t, w_t, kv_t, o_t],
-                                   {}, verify=False, verbosity=0)
+        DefaultNPURuntime.run_test(
+            npu_kernel, [x_t, w_t, kv_t, o_t], {}, verify=False, verbosity=0
+        )
         o_t.to("cpu")
         times.append(time.time() - t0)
     dispatch_ms = float(np.median(times)) * 1000.0
@@ -75,14 +77,22 @@ def main():
     print(f"chain_mh N={N_LAYERS} perf:")
     print(f"  numpy calib (host, {N_LAYERS} layers):  {t_numpy*1000:8.1f} ms")
     print(f"  blob pack (host):                    {t_pack *1000:8.1f} ms")
-    print(f"  NPU dispatch (median of {opts.iters}):     {dispatch_ms:8.1f} ms"
-          f"  ({dispatch_ms/N_LAYERS:.2f} ms/layer)")
-    print(f"  wblob: {wblob.nbytes/1024/1024:.1f} MB, "
-          f"kvblob: {kvblob.nbytes/1024:.1f} KB")
-    print(f"  end-to-end per token:                {total_ms:8.1f} ms"
-          f"  ({1000.0/total_ms:.2f} tok/s)")
-    print(f"  NPU-only ceiling:                                "
-          f"({1000.0/dispatch_ms:.2f} tok/s)")
+    print(
+        f"  NPU dispatch (median of {opts.iters}):     {dispatch_ms:8.1f} ms"
+        f"  ({dispatch_ms/N_LAYERS:.2f} ms/layer)"
+    )
+    print(
+        f"  wblob: {wblob.nbytes/1024/1024:.1f} MB, "
+        f"kvblob: {kvblob.nbytes/1024:.1f} KB"
+    )
+    print(
+        f"  end-to-end per token:                {total_ms:8.1f} ms"
+        f"  ({1000.0/total_ms:.2f} tok/s)"
+    )
+    print(
+        f"  NPU-only ceiling:                                "
+        f"({1000.0/dispatch_ms:.2f} tok/s)"
+    )
     return 0
 
 

@@ -21,14 +21,12 @@ from aie.iron.device import NPU2, Tile
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorAccessPattern
 
-
 GEMM_COL, GEMM_ROW = 0, 2
 
 RIGHT_SHIFT = 12
 
 
-def build(K: int, N: int, n_tile: int, w_depth: int = None,
-          split_bias: bool = None):
+def build(K: int, N: int, n_tile: int, w_depth: int = None, split_bias: bool = None):
     assert N % n_tile == 0, f"N={N} must be a multiple of N_TILE={n_tile}"
     n_tiles = N // n_tile
 
@@ -40,7 +38,7 @@ def build(K: int, N: int, n_tile: int, w_depth: int = None,
     BANK = 16 * 1024
 
     weight_slot_bytes = n_tile * K
-    bias_slot_bytes   = n_tile * 4
+    bias_slot_bytes = n_tile * 4
     inlined_slot_bytes = weight_slot_bytes + bias_slot_bytes
 
     if w_depth is None:
@@ -53,14 +51,14 @@ def build(K: int, N: int, n_tile: int, w_depth: int = None,
         used2 = K + 2 * inlined_slot_bytes + 2 * n_tile + 1024
         w_depth = 2 if (bank_ok and used2 <= 48 * 1024) else 1
 
-    act_ty  = np.ndarray[(K,),     np.dtype[np.int8]]
-    out_ty  = np.ndarray[(n_tile,), np.dtype[np.int8]]
-    out_buf_ty = np.ndarray[(N,),   np.dtype[np.int8]]
+    act_ty = np.ndarray[(K,), np.dtype[np.int8]]
+    out_ty = np.ndarray[(n_tile,), np.dtype[np.int8]]
+    out_buf_ty = np.ndarray[(N,), np.dtype[np.int8]]
 
     of_act = ObjectFifo(act_ty, depth=1, name="act")
     of_out = ObjectFifo(out_ty, depth=2, name="out")
 
-    w_ty = np.ndarray[(inlined_slot_bytes,),        np.dtype[np.int8]]
+    w_ty = np.ndarray[(inlined_slot_bytes,), np.dtype[np.int8]]
     w_blob_ty = np.ndarray[(n_tiles * inlined_slot_bytes,), np.dtype[np.int8]]
 
     of_w = ObjectFifo(w_ty, depth=w_depth, name="w")
@@ -77,7 +75,8 @@ def build(K: int, N: int, n_tile: int, w_depth: int = None,
             w = c_w.acquire(1)
             o = c_out.acquire(1)
             k(a, w, o, RIGHT_SHIFT)
-            c_w.release(1); c_out.release(1)
+            c_w.release(1)
+            c_out.release(1)
         c_act.release(1)
 
     worker = Worker(
@@ -115,15 +114,23 @@ def build(K: int, N: int, n_tile: int, w_depth: int = None,
         rt.fill(of_act.prod(), a, task_group=act_tg)
 
         w_tg = rt.task_group()
-        rt.fill(of_w.prod(), w_blob,
-                tap=strided_tap(blob_total, 0, inlined_slot_bytes,
-                                inlined_slot_bytes, n_tiles),
-                task_group=w_tg)
+        rt.fill(
+            of_w.prod(),
+            w_blob,
+            tap=strided_tap(
+                blob_total, 0, inlined_slot_bytes, inlined_slot_bytes, n_tiles
+            ),
+            task_group=w_tg,
+        )
 
         o_tg = rt.task_group()
-        rt.drain(of_out.cons(), o_buf,
-                 tap=strided_tap(N, 0, n_tile, n_tile, n_tiles),
-                 wait=True, task_group=o_tg)
+        rt.drain(
+            of_out.cons(),
+            o_buf,
+            tap=strided_tap(N, 0, n_tile, n_tile, n_tiles),
+            wait=True,
+            task_group=o_tg,
+        )
 
         rt.finish_task_group(act_tg)
         rt.finish_task_group(w_tg)

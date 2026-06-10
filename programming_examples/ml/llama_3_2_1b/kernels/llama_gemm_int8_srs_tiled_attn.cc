@@ -22,7 +22,7 @@
 #include <stdint.h>
 #include <string.h>
 
-static constexpr int32_t I8_MAX =  127;
+static constexpr int32_t I8_MAX = 127;
 static constexpr int32_t I8_MIN = -128;
 
 static inline int32_t banker_srs(int32_t sum, int32_t rs) {
@@ -30,8 +30,7 @@ static inline int32_t banker_srs(int32_t sum, int32_t rs) {
 }
 
 template <int kK, int kNTile>
-static inline void gemm_tile_impl(int8_t *restrict act,
-                                  int8_t *restrict w_tile,
+static inline void gemm_tile_impl(int8_t *restrict act, int8_t *restrict w_tile,
                                   int8_t *restrict out_tile,
                                   int32_t right_shift) {
   constexpr int kVec = 64;
@@ -39,9 +38,8 @@ static inline void gemm_tile_impl(int8_t *restrict act,
                 "K must be a multiple of 64 (one aie::mac lane group)");
   constexpr int kGroups = kK / kVec;
 
-  const int8_t  *weights = w_tile;
-  const int32_t *bias =
-      reinterpret_cast<const int32_t *>(w_tile + kNTile * kK);
+  const int8_t *weights = w_tile;
+  const int32_t *bias = reinterpret_cast<const int32_t *>(w_tile + kNTile * kK);
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
   ::aie::set_rounding(aie::rounding_mode::conv_even);
@@ -57,11 +55,12 @@ static inline void gemm_tile_impl(int8_t *restrict act,
       acc = aie::mac(acc, w_v, x_v);
     }
 
-    int32_t sum =
-        aie::reduce_add(acc.template to_vector<int32>()) + bias[n];
+    int32_t sum = aie::reduce_add(acc.template to_vector<int32>()) + bias[n];
     int32_t s = banker_srs(sum, right_shift);
-    if (s > I8_MAX) s = I8_MAX;
-    if (s < I8_MIN) s = I8_MIN;
+    if (s > I8_MAX)
+      s = I8_MAX;
+    if (s < I8_MIN)
+      s = I8_MIN;
     out_tile[n] = (int8_t)s;
   }
 }
@@ -70,7 +69,8 @@ static inline void gemm_tile_impl(int8_t *restrict act,
 // Per-channel + dynamic-scale variants (Phase 6c.5b.3).
 // Mirror llama_gemm_int8_srs_tiled_ffn.cc's perchan/v2/v2_up templates.
 // Slot layouts:
-//   _perchan_v2 (o_proj): [kPrefix B prefix | N_TILE*K weights | N_TILE i32 bias
+//   _perchan_v2 (o_proj): [kPrefix B prefix | N_TILE*K weights | N_TILE i32
+//   bias
 //                          | N_TILE fp32 w_scales]. First 8 B of prefix are
 //                          (act_scale fp32, inv_out_scale fp32); rest is pad.
 //   _perchan_v2_up (q_proj): same as v2 but with 8 B of "downstream scales"
@@ -89,7 +89,7 @@ static inline void gemm_tile_perchan_v2_impl(int8_t *restrict act,
                 "prefix must be a multiple of 64 to keep aie::load_v<64> "
                 "of the weights aligned");
   float act_scale, inv_out_scale;
-  memcpy(&act_scale,     w_tile,     4);
+  memcpy(&act_scale, w_tile, 4);
   memcpy(&inv_out_scale, w_tile + 4, 4);
 
   int8_t *body = w_tile + kPrefix;
@@ -98,10 +98,9 @@ static inline void gemm_tile_perchan_v2_impl(int8_t *restrict act,
                 "K must be a multiple of 64 (one aie::mac lane group)");
   constexpr int kGroups = kK / kVec;
 
-  const int8_t  *weights = body;
-  const int32_t *bias =
-      reinterpret_cast<const int32_t *>(body + kNTile * kK);
-  const float   *w_scales =
+  const int8_t *weights = body;
+  const int32_t *bias = reinterpret_cast<const int32_t *>(body + kNTile * kK);
+  const float *w_scales =
       reinterpret_cast<const float *>(body + kNTile * kK + kNTile * 4);
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
@@ -124,27 +123,29 @@ static inline void gemm_tile_perchan_v2_impl(int8_t *restrict act,
     float scaled = fp * inv_out_scale;
 
     int32_t r = (int32_t)(scaled + (scaled >= 0.0f ? 0.5f : -0.5f));
-    if (r > I8_MAX) r = I8_MAX;
-    if (r < I8_MIN) r = I8_MIN;
+    if (r > I8_MAX)
+      r = I8_MAX;
+    if (r < I8_MIN)
+      r = I8_MIN;
     out_tile[n] = (int8_t)r;
   }
 }
 
 template <int kK, int kNTile, int kOutDim, int kPrefix = 64>
-static inline void gemm_tile_perchan_v2_up_impl(int8_t *restrict act,
-                                                int8_t *restrict w_tile,
-                                                int8_t *restrict out_tile,
-                                                int8_t *out_full_base) {
-  // out_full_base aliases out_tile (out_tile = out_full_base + tile_idx*kNTile),
-  // so it's deliberately NOT marked restrict. The tail write at
-  // out_full_base[kOutDim..] and per-tile writes at out_tile[0..kNTile] do
+static inline void
+gemm_tile_perchan_v2_up_impl(int8_t *restrict act, int8_t *restrict w_tile,
+                             int8_t *restrict out_tile, int8_t *out_full_base) {
+  // out_full_base aliases out_tile (out_tile = out_full_base +
+  // tile_idx*kNTile), so it's deliberately NOT marked restrict. The tail write
+  // at out_full_base[kOutDim..] and per-tile writes at out_tile[0..kNTile] do
   // not overlap, but the aliasing makes restrict UB.
-  static_assert(kPrefix >= 16, "v2_up prefix must hold 8 B own + 8 B downstream");
+  static_assert(kPrefix >= 16,
+                "v2_up prefix must hold 8 B own + 8 B downstream");
   static_assert(kPrefix % 64 == 0,
                 "prefix must be a multiple of 64 to keep aie::load_v<64> "
                 "of the weights aligned");
   float act_scale, inv_out_scale;
-  memcpy(&act_scale,     w_tile,     4);
+  memcpy(&act_scale, w_tile, 4);
   memcpy(&inv_out_scale, w_tile + 4, 4);
   // downstream scales sit at slot[8..16]; copy them through to out tail.
   memcpy(out_full_base + kOutDim, w_tile + 8, 8);
@@ -155,10 +156,9 @@ static inline void gemm_tile_perchan_v2_up_impl(int8_t *restrict act,
                 "K must be a multiple of 64 (one aie::mac lane group)");
   constexpr int kGroups = kK / kVec;
 
-  const int8_t  *weights = body;
-  const int32_t *bias =
-      reinterpret_cast<const int32_t *>(body + kNTile * kK);
-  const float   *w_scales =
+  const int8_t *weights = body;
+  const int32_t *bias = reinterpret_cast<const int32_t *>(body + kNTile * kK);
+  const float *w_scales =
       reinterpret_cast<const float *>(body + kNTile * kK + kNTile * 4);
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
@@ -181,8 +181,10 @@ static inline void gemm_tile_perchan_v2_up_impl(int8_t *restrict act,
     float scaled = fp * inv_out_scale;
 
     int32_t r = (int32_t)(scaled + (scaled >= 0.0f ? 0.5f : -0.5f));
-    if (r > I8_MAX) r = I8_MAX;
-    if (r < I8_MIN) r = I8_MIN;
+    if (r > I8_MAX)
+      r = I8_MAX;
+    if (r < I8_MIN)
+      r = I8_MIN;
     out_tile[n] = (int8_t)r;
   }
 }
@@ -192,10 +194,8 @@ extern "C" {
 // q_proj: K = D = 2048, N_TILE = 4.
 // Worker passes the FULL output buffer + a tile_idx scalar; kernel
 // pointer-offsets to the right slice.
-void llama_gemm_tiled_K2048_N4(int8_t *restrict act,
-                               int8_t *restrict w_tile,
-                               int8_t *restrict out_full,
-                               int32_t tile_idx,
+void llama_gemm_tiled_K2048_N4(int8_t *restrict act, int8_t *restrict w_tile,
+                               int8_t *restrict out_full, int32_t tile_idx,
                                int32_t right_shift) {
   event0();
   gemm_tile_impl<2048, 4>(act, w_tile, out_full + tile_idx * 4, right_shift);
@@ -204,10 +204,8 @@ void llama_gemm_tiled_K2048_N4(int8_t *restrict act,
 
 // o_proj: K = HEAD_DIM = 64, N_TILE = 4. K=64 fits in one MAC group so
 // the inner loop trivially unrolls.
-void llama_gemm_tiled_K64_N4(int8_t *restrict act,
-                             int8_t *restrict w_tile,
-                             int8_t *restrict out_full,
-                             int32_t tile_idx,
+void llama_gemm_tiled_K64_N4(int8_t *restrict act, int8_t *restrict w_tile,
+                             int8_t *restrict out_full, int32_t tile_idx,
                              int32_t right_shift) {
   event0();
   gemm_tile_impl<64, 4>(act, w_tile, out_full + tile_idx * 4, right_shift);

@@ -31,14 +31,14 @@ RIGHT_SHIFT = 12
 
 
 def build(K: int, N: int):
-    w_packed_bytes = N * K + N * 4   # weights[N*K] + bias[N*4]
+    w_packed_bytes = N * K + N * 4  # weights[N*K] + bias[N*4]
 
-    act_ty      = np.ndarray[(K,),              np.dtype[np.int8]]
-    w_ty        = np.ndarray[(w_packed_bytes,), np.dtype[np.int8]]
-    out_ty      = np.ndarray[(N,),              np.dtype[np.int8]]
+    act_ty = np.ndarray[(K,), np.dtype[np.int8]]
+    w_ty = np.ndarray[(w_packed_bytes,), np.dtype[np.int8]]
+    out_ty = np.ndarray[(N,), np.dtype[np.int8]]
 
     of_act = ObjectFifo(act_ty, name="act")
-    of_w   = ObjectFifo(w_ty,   name="w_packed")
+    of_w = ObjectFifo(w_ty, name="w_packed")
     of_out = ObjectFifo(out_ty, name="out")
 
     kernel = Kernel(
@@ -66,7 +66,7 @@ def build(K: int, N: int):
     with rt.sequence(act_ty, w_ty, out_ty) as (a, w, o):
         rt.start(worker)
         rt.fill(of_act.prod(), a)
-        rt.fill(of_w.prod(),   w)
+        rt.fill(of_w.prod(), w)
         rt.drain(of_out.cons(), o, wait=True)
 
     return Program(NPU2(), rt).resolve_program()

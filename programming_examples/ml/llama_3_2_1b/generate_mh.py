@@ -40,15 +40,22 @@ def embed_token_to_int8(model, token_id: int) -> np.ndarray:
 
 def main():
     p = test_utils.create_default_argparser()
-    p.add_argument("--prompt",     type=str, default="The capital of France is")
+    p.add_argument("--prompt", type=str, default="The capital of France is")
     p.add_argument("--new-tokens", type=int, default=4)
-    p.add_argument("--data-dir",   type=str,
-                   default=str(Path(__file__).parent / "data"))
-    p.add_argument("--rng-seed",   type=int, default=0,
-                   help="Seeds the random per-layer KV cache + cos/sin.")
-    p.add_argument("--layer",      type=int, default=0,
-                   help="Which Llama layer's weights to load (mh xclbin "
-                        "runs ONE layer per dispatch).")
+    p.add_argument("--data-dir", type=str, default=str(Path(__file__).parent / "data"))
+    p.add_argument(
+        "--rng-seed",
+        type=int,
+        default=0,
+        help="Seeds the random per-layer KV cache + cos/sin.",
+    )
+    p.add_argument(
+        "--layer",
+        type=int,
+        default=0,
+        help="Which Llama layer's weights to load (mh xclbin "
+        "runs ONE layer per dispatch).",
+    )
     opts = p.parse_args()
 
     data_dir = Path(opts.data_dir)
@@ -60,7 +67,7 @@ def main():
 
     rng = np.random.default_rng(opts.rng_seed)
     layer = gen_real_layer_mh(opts.layer, data_dir, rng)
-    layer["lut_exp"]  = exp_lut(EXP_QUANT_SCALE).astype(np.float32)
+    layer["lut_exp"] = exp_lut(EXP_QUANT_SCALE).astype(np.float32)
     layer["lut_silu"] = silu_lut(SILU_GATE_SCALE)
 
     prompt_ids = [128000] + enc.encode(opts.prompt)
@@ -75,13 +82,16 @@ def main():
         layer["scales"] = scales
 
         wblob, kvblob = pack_blobs(layer)
-        x_t  = iron.tensor(x_in,  dtype=np.int8)
-        w_t  = iron.tensor(wblob, dtype=np.int8)
+        x_t = iron.tensor(x_in, dtype=np.int8)
+        w_t = iron.tensor(wblob, dtype=np.int8)
         kv_t = iron.tensor(kvblob, dtype=np.int8)
-        o_t  = iron.zeros([D], dtype=np.int8)
+        o_t = iron.zeros([D], dtype=np.int8)
         rc = DefaultNPURuntime.run_test(
-            npu_kernel, [x_t, w_t, kv_t, o_t],
-            {}, verify=False, verbosity=opts.verbosity,
+            npu_kernel,
+            [x_t, w_t, kv_t, o_t],
+            {},
+            verify=False,
+            verbosity=opts.verbosity,
         )
         if rc != 0:
             print(f"NPU dispatch returned {rc}", file=sys.stderr)

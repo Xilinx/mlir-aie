@@ -36,14 +36,14 @@
 #define LLAMA_GEMM_TILED_N_TILE 8
 #endif
 
-static constexpr int kK     = LLAMA_GEMM_TILED_K;
+static constexpr int kK = LLAMA_GEMM_TILED_K;
 static constexpr int kNTile = LLAMA_GEMM_TILED_N_TILE;
-static constexpr int kVec   = 64;
+static constexpr int kVec = 64;
 static_assert(kK % kVec == 0,
               "K must be a multiple of 64 (one aie::mac lane group)");
 static constexpr int kGroups = kK / kVec;
 
-static constexpr int32_t I8_MAX =  127;
+static constexpr int32_t I8_MAX = 127;
 static constexpr int32_t I8_MIN = -128;
 
 // Identical arithmetic to llama_gemm_int8_srs.cc -- a single shared
@@ -53,10 +53,10 @@ static inline int32_t banker_srs(int32_t sum, int32_t rs) {
 }
 
 // Shared core: kNTile rows of (i8 weights, i32 bias) -> kNTile i8 out.
-static inline void gemm_tile_core(const int8_t  *__restrict act,
-                                  const int8_t  *__restrict weights,
+static inline void gemm_tile_core(const int8_t *__restrict act,
+                                  const int8_t *__restrict weights,
                                   const int32_t *__restrict bias,
-                                  int8_t        *__restrict out_tile,
+                                  int8_t *__restrict out_tile,
                                   int32_t right_shift) {
 
   ::aie::set_saturation(aie::saturation_mode::saturate);
@@ -73,11 +73,12 @@ static inline void gemm_tile_core(const int8_t  *__restrict act,
       acc = aie::mac(acc, w_v, x_v);
     }
 
-    int32_t sum =
-        aie::reduce_add(acc.template to_vector<int32>()) + bias[n];
+    int32_t sum = aie::reduce_add(acc.template to_vector<int32>()) + bias[n];
     int32_t s = banker_srs(sum, right_shift);
-    if (s > I8_MAX) s = I8_MAX;
-    if (s < I8_MIN) s = I8_MIN;
+    if (s > I8_MAX)
+      s = I8_MAX;
+    if (s < I8_MIN)
+      s = I8_MIN;
     out_tile[n] = (int8_t)s;
   }
 }
@@ -89,14 +90,11 @@ extern "C" {
 // Works when N_TILE*K + N_TILE*4 fits cleanly in one L1 bank
 // (16 KB). Used by K=2048 N_TILE=4 (slot=8208 B). Hits Peano Bug 3a
 // at K=8192 because slot then spans an awkward (2-bank + 16 B) layout.
-void llama_gemm_int8_srs_tiled(int8_t *restrict act,
-                               int8_t *restrict w_tile,
-                               int8_t *restrict out_tile,
-                               int32_t right_shift) {
+void llama_gemm_int8_srs_tiled(int8_t *restrict act, int8_t *restrict w_tile,
+                               int8_t *restrict out_tile, int32_t right_shift) {
   event0();
-  const int8_t  *weights = w_tile;
-  const int32_t *bias =
-      reinterpret_cast<const int32_t *>(w_tile + kNTile * kK);
+  const int8_t *weights = w_tile;
+  const int32_t *bias = reinterpret_cast<const int32_t *>(w_tile + kNTile * kK);
   gemm_tile_core(act, weights, bias, out_tile, right_shift);
   event1();
 }
@@ -104,10 +102,10 @@ void llama_gemm_int8_srs_tiled(int8_t *restrict act,
 // Split-bias entry. Weights and bias arrive on separate ObjectFifos so
 // the weight buffer can be sized to an exact bank multiple. Required
 // for K=8192 N_TILE=4 (weight slot = 32 KB = exactly 2 banks).
-void llama_gemm_int8_srs_tiled_split(int8_t  *restrict act,
-                                     int8_t  *restrict w_tile,
+void llama_gemm_int8_srs_tiled_split(int8_t *restrict act,
+                                     int8_t *restrict w_tile,
                                      int32_t *restrict b_tile,
-                                     int8_t  *restrict out_tile,
+                                     int8_t *restrict out_tile,
                                      int32_t right_shift) {
   event0();
   gemm_tile_core(act, w_tile, b_tile, out_tile, right_shift);

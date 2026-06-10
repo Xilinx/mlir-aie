@@ -31,17 +31,25 @@ import numpy as np
 from ml_dtypes import bfloat16
 
 from aie2_chain_dynscale_mh import (
-    D, N_LAYERS, ACT_SCALE, INV_ACT_SCALE, SILU_GATE_SCALE, HEAD_D, T,
+    D,
+    N_LAYERS,
+    ACT_SCALE,
+    INV_ACT_SCALE,
+    SILU_GATE_SCALE,
+    HEAD_D,
+    T,
 )
 from numpy_layer_mh import gen_real_layer_mh, numpy_layer_mh_forward, requant
 from test_flowkv import EXP_QUANT_SCALE
 from gen_exp_lut import exp_lut
 from gen_silu_lut import silu_lut
 from numpy_llama_ref import (
-    load_model, lm_head_logits, rope_cos_sin, forward_full,
+    load_model,
+    lm_head_logits,
+    rope_cos_sin,
+    forward_full,
 )
 from generate import load_tokenizer
-
 
 # Curated set: each prompt has a "naturally correct" next token for a
 # well-tuned Llama 3.2 1B. We let the fp16 ref tell us the ground-truth
@@ -96,9 +104,11 @@ def int8_chain_next_token(model, layers, cos_lut, sin_lut, token_ids):
             print(f"  WARNING: prompt longer than cache T={T}; truncating")
             break
         x = embed_token_to_int8(model, int(tok))
-        c = cos_lut[pos].astype(bfloat16); s = sin_lut[pos].astype(bfloat16)
+        c = cos_lut[pos].astype(bfloat16)
+        s = sin_lut[pos].astype(bfloat16)
         for layer in layers:
-            layer["cos"] = c; layer["sin"] = s
+            layer["cos"] = c
+            layer["sin"] = s
         xc = x.copy()
         for L in range(N_LAYERS):
             xc, scales = numpy_layer_mh_forward(xc, layers[L], position=pos)
@@ -112,16 +122,21 @@ def int8_chain_next_token(model, layers, cos_lut, sin_lut, token_ids):
 
 def fp16_ref_next_token(model, token_ids):
     """Ground-truth next token via numpy_llama_ref.forward_full."""
-    logits = forward_full(model, np.array(token_ids))   # (M, V)
+    logits = forward_full(model, np.array(token_ids))  # (M, V)
     return int(np.argmax(logits[-1]))
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--data-dir", type=str,
-                        default=str(Path(__file__).parent / "data"))
-    parser.add_argument("--prompts", type=str, default=None,
-                        help="Comma-separated indices into PROMPTS (default: all)")
+    parser.add_argument(
+        "--data-dir", type=str, default=str(Path(__file__).parent / "data")
+    )
+    parser.add_argument(
+        "--prompts",
+        type=str,
+        default=None,
+        help="Comma-separated indices into PROMPTS (default: all)",
+    )
     parser.add_argument("--rng-seed", type=int, default=0)
     opts = parser.parse_args()
 
@@ -131,22 +146,25 @@ def main():
     enc = load_tokenizer(data_dir / "tokenizer.model")
 
     rng = np.random.default_rng(opts.rng_seed)
-    lut_exp  = exp_lut(EXP_QUANT_SCALE).astype(np.float32)
+    lut_exp = exp_lut(EXP_QUANT_SCALE).astype(np.float32)
     lut_silu = silu_lut(SILU_GATE_SCALE)
     layers = []
     for L in range(N_LAYERS):
         layer = gen_real_layer_mh(L, data_dir, rng)
-        layer["lut_exp"]  = lut_exp
+        layer["lut_exp"] = lut_exp
         layer["lut_silu"] = lut_silu
         layers.append(layer)
     cos_lut, sin_lut = rope_cos_sin(np.arange(T), HEAD_D)
     print(f"loaded {N_LAYERS} mh layers + lm_head\n", flush=True)
 
-    indices = (range(len(PROMPTS)) if opts.prompts is None
-               else [int(s) for s in opts.prompts.split(",")])
+    indices = (
+        range(len(PROMPTS))
+        if opts.prompts is None
+        else [int(s) for s in opts.prompts.split(",")]
+    )
     n_total = 0
     n_match = 0
-    results = []   # list of (prompt, ref_tok, our_tok, match)
+    results = []  # list of (prompt, ref_tok, our_tok, match)
 
     for idx in indices:
         prompt = PROMPTS[idx]
@@ -157,18 +175,22 @@ def main():
         t0 = time.time()
         our_tok = int8_chain_next_token(model, layers, cos_lut, sin_lut, ids)
         t_int8 = time.time() - t0
-        match = (ref_tok == our_tok)
+        match = ref_tok == our_tok
         n_total += 1
         n_match += int(match)
         results.append((prompt, ref_tok, our_tok, match))
         mark = "OK" if match else "FAIL"
-        print(f"  [{mark}] {prompt!r:50} -> fp16={enc.decode([ref_tok])!r} "
-              f"int8={enc.decode([our_tok])!r}  "
-              f"(t_fp16={t_fp16:.1f}s t_int8={t_int8:.1f}s)",
-              flush=True)
+        print(
+            f"  [{mark}] {prompt!r:50} -> fp16={enc.decode([ref_tok])!r} "
+            f"int8={enc.decode([our_tok])!r}  "
+            f"(t_fp16={t_fp16:.1f}s t_int8={t_int8:.1f}s)",
+            flush=True,
+        )
 
-    print(f"\ntop-1 agreement: {n_match}/{n_total} = "
-          f"{100.0 * n_match / max(1, n_total):.1f}%")
+    print(
+        f"\ntop-1 agreement: {n_match}/{n_total} = "
+        f"{100.0 * n_match / max(1, n_total):.1f}%"
+    )
     return 0 if n_match == n_total else 1
 
 

@@ -40,7 +40,13 @@ import aie.utils.test as test_utils
 from aie.utils import DefaultNPURuntime
 
 from aie2_chain_dynscale_mh import (
-    D, N_LAYERS, ACT_SCALE, INV_ACT_SCALE, SILU_GATE_SCALE, HEAD_D, T,
+    D,
+    N_LAYERS,
+    ACT_SCALE,
+    INV_ACT_SCALE,
+    SILU_GATE_SCALE,
+    HEAD_D,
+    T,
 )
 from numpy_layer_mh import gen_real_layer_mh, numpy_layer_mh_forward, requant
 from test_chain_mh import pack_blobs
@@ -82,13 +88,16 @@ def numpy_forward_all_layers(x, layers, pos):
 
 def main():
     p = test_utils.create_default_argparser()
-    p.add_argument("--prompt",     type=str, default="The capital of France is")
+    p.add_argument("--prompt", type=str, default="The capital of France is")
     p.add_argument("--new-tokens", type=int, default=4)
-    p.add_argument("--data-dir",   type=str,
-                   default=str(Path(__file__).parent / "data"))
-    p.add_argument("--rng-seed",   type=int, default=0,
-                   help="Seeds the empty-cache fixture randomness (gammas, "
-                        "cos/sin are overwritten per token).")
+    p.add_argument("--data-dir", type=str, default=str(Path(__file__).parent / "data"))
+    p.add_argument(
+        "--rng-seed",
+        type=int,
+        default=0,
+        help="Seeds the empty-cache fixture randomness (gammas, "
+        "cos/sin are overwritten per token).",
+    )
     opts = p.parse_args()
 
     data_dir = Path(opts.data_dir)
@@ -99,27 +108,28 @@ def main():
     enc = load_tokenizer(data_dir / "tokenizer.model")
 
     rng = np.random.default_rng(opts.rng_seed)
-    lut_exp  = exp_lut(EXP_QUANT_SCALE).astype(np.float32)
+    lut_exp = exp_lut(EXP_QUANT_SCALE).astype(np.float32)
     lut_silu = silu_lut(SILU_GATE_SCALE)
     layers = []
     for L in range(N_LAYERS):
         layer = gen_real_layer_mh(L, data_dir, rng)
-        layer["lut_exp"]  = lut_exp
+        layer["lut_exp"] = lut_exp
         layer["lut_silu"] = lut_silu
         layers.append(layer)
-    print(f"loaded {N_LAYERS} mh layers (real wk/wv; empty K/V caches)",
-          flush=True)
+    print(f"loaded {N_LAYERS} mh layers (real wk/wv; empty K/V caches)", flush=True)
 
     # Pre-compute rope (cos, sin) for every position in the cache window.
-    cos_lut, sin_lut = rope_cos_sin(np.arange(T), HEAD_D)   # (T, HEAD_D) fp32
+    cos_lut, sin_lut = rope_cos_sin(np.arange(T), HEAD_D)  # (T, HEAD_D) fp32
 
     prompt_ids = [128000] + enc.encode(opts.prompt)
     tokens = list(prompt_ids)
     print(f"prompt: {opts.prompt!r} -> {len(prompt_ids)} tokens", flush=True)
     if len(prompt_ids) + opts.new_tokens > T:
-        print(f"WARNING: prompt+new_tokens ({len(prompt_ids)+opts.new_tokens}) "
-              f"exceeds cache size T={T}; later positions will overwrite earlier.",
-              file=sys.stderr)
+        print(
+            f"WARNING: prompt+new_tokens ({len(prompt_ids)+opts.new_tokens}) "
+            f"exceeds cache size T={T}; later positions will overwrite earlier.",
+            file=sys.stderr,
+        )
 
     # --- Prompt prefill (numpy only, no NPU dispatch) ----------------------
     # Build per-layer K/V cache up to position len(prompt_ids)-2. The last
@@ -128,12 +138,14 @@ def main():
         x_in = embed_token_to_int8(model, tokens[pos])
         update_layer_cos_sin(layers, cos_lut, sin_lut, pos)
         _ = numpy_forward_all_layers(x_in, layers, pos)
-    print(f"prefill done: K/V cache populated for positions "
-          f"0..{len(prompt_ids) - 2}", flush=True)
+    print(
+        f"prefill done: K/V cache populated for positions " f"0..{len(prompt_ids) - 2}",
+        flush=True,
+    )
 
     # --- Decode loop -------------------------------------------------------
     for step in range(opts.new_tokens):
-        pos = len(tokens) - 1   # position we're now processing
+        pos = len(tokens) - 1  # position we're now processing
         x_in = embed_token_to_int8(model, tokens[pos])
         update_layer_cos_sin(layers, cos_lut, sin_lut, pos)
 
@@ -142,13 +154,16 @@ def main():
 
         # Pack + dispatch.
         wblob, kvblob = pack_blobs(layers)
-        x_t  = iron.tensor(x_in,  dtype=np.int8)
-        w_t  = iron.tensor(wblob, dtype=np.int8)
+        x_t = iron.tensor(x_in, dtype=np.int8)
+        w_t = iron.tensor(wblob, dtype=np.int8)
         kv_t = iron.tensor(kvblob, dtype=np.int8)
-        o_t  = iron.zeros([D], dtype=np.int8)
+        o_t = iron.zeros([D], dtype=np.int8)
         rc = DefaultNPURuntime.run_test(
-            npu_kernel, [x_t, w_t, kv_t, o_t],
-            {}, verify=False, verbosity=opts.verbosity,
+            npu_kernel,
+            [x_t, w_t, kv_t, o_t],
+            {},
+            verify=False,
+            verbosity=opts.verbosity,
         )
         if rc != 0:
             print(f"NPU dispatch returned {rc}", file=sys.stderr)
@@ -161,8 +176,7 @@ def main():
         next_tok = int(np.argmax(logits))
         tokens.append(next_tok)
         decoded = enc.decode([next_tok])
-        print(f"  step {step}: pos={pos} token={next_tok} {decoded!r}",
-              flush=True)
+        print(f"  step {step}: pos={pos} token={next_tok} {decoded!r}", flush=True)
 
     full = enc.decode(tokens[1:])
     print(f"\nfinal: {full!r}")

@@ -39,22 +39,27 @@ def main():
     # Test BOTH at the original full-range data (where the standalone
     # bit-exact was claimed) AND at the smaller chain-test magnitudes
     # to see if either gives diff > 0.
-    act      = rng.integers(-128, 128, size=K,    dtype=np.int8)
-    weights  = rng.integers(-128, 128, size=N*K,  dtype=np.int8).reshape(N, K)
-    bias     = rng.integers(-1000, 1000, size=N,  dtype=np.int32)
-    print(f"act range: [{act.min()}, {act.max()}], weights range: [{weights.min()}, {weights.max()}]")
+    act = rng.integers(-128, 128, size=K, dtype=np.int8)
+    weights = rng.integers(-128, 128, size=N * K, dtype=np.int8).reshape(N, K)
+    bias = rng.integers(-1000, 1000, size=N, dtype=np.int32)
+    print(
+        f"act range: [{act.min()}, {act.max()}], weights range: [{weights.min()}, {weights.max()}]"
+    )
 
     # Pack: weights[N*K] || bias[N*4].
-    w_packed = np.concatenate([weights.flatten().view(np.int8),
-                               bias.view(np.int8).flatten()])
+    w_packed = np.concatenate(
+        [weights.flatten().view(np.int8), bias.view(np.int8).flatten()]
+    )
 
     # Expected (numpy with same banker_srs).
-    acc = (weights.astype(np.int32) @ act.astype(np.int32))  # (N,) int32 dot product per row
+    acc = weights.astype(np.int32) @ act.astype(
+        np.int32
+    )  # (N,) int32 dot product per row
     sums = acc + bias
     expected = banker_srs(sums, RIGHT_SHIFT).clip(-128, 127).astype(np.int8)
 
     act_t = iron.tensor(act, dtype=np.int8)
-    w_t   = iron.tensor(w_packed, dtype=np.int8)
+    w_t = iron.tensor(w_packed, dtype=np.int8)
     out_t = iron.zeros([N], dtype=np.int8)
 
     npu_opts = test_utils.create_npu_kernel(opts)
@@ -71,7 +76,7 @@ def main():
     out_t.to("cpu")
     actual = out_t.numpy()
 
-    diff = (actual.astype(np.int16) - expected.astype(np.int16))
+    diff = actual.astype(np.int16) - expected.astype(np.int16)
     n_diff = int((diff != 0).sum())
     max_abs = int(np.abs(diff).max()) if n_diff else 0
 
@@ -85,7 +90,9 @@ def main():
         return 0
     print("FAIL")
     for i in np.argwhere(diff != 0).flatten()[:8]:
-        print(f"  i={i}: NPU={actual[i]} expected={expected[i]} sum={sums[i]} acc={acc[i]} bias={bias[i]}")
+        print(
+            f"  i={i}: NPU={actual[i]} expected={expected[i]} sum={sums[i]} acc={acc[i]} bias={bias[i]}"
+        )
     return 1
 
 

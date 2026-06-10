@@ -24,31 +24,30 @@ import numpy as np
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.device import NPU2, Tile
 
-
 PAIR_COL = 0
 QK_ROW = 4
 SV_ROW = 5
 
 # Per-tensor scales baked at build time (test uses these).
-Q_SCALE       = 0.05
-K_SCALE       = 0.05
-V_SCALE       = 0.05
+Q_SCALE = 0.05
+K_SCALE = 0.05
+V_SCALE = 0.05
 INV_OUT_SCALE = 1.0 / 0.05
 
 
 def build(head_dim: int, t: int):
-    q_ty     = np.ndarray[(head_dim,),       np.dtype[np.int8]]
-    kv_ty    = np.ndarray[(t * head_dim,),   np.dtype[np.int8]]
+    q_ty = np.ndarray[(head_dim,), np.dtype[np.int8]]
+    kv_ty = np.ndarray[(t * head_dim,), np.dtype[np.int8]]
     # fp32 probs on the CT0 -> CT1 stream; no bf16 truncation so the
     # softmax probabilities arrive bit-identical to what qk computed.
-    probs_ty = np.ndarray[(t,),              np.dtype[np.float32]]
-    out_ty   = np.ndarray[(head_dim,),       np.dtype[np.int8]]
+    probs_ty = np.ndarray[(t,), np.dtype[np.float32]]
+    out_ty = np.ndarray[(head_dim,), np.dtype[np.int8]]
 
-    of_q     = ObjectFifo(q_ty,     name="q")
-    of_k     = ObjectFifo(kv_ty,    name="k")
-    of_v     = ObjectFifo(kv_ty,    name="v")
+    of_q = ObjectFifo(q_ty, name="q")
+    of_k = ObjectFifo(kv_ty, name="k")
+    of_v = ObjectFifo(kv_ty, name="v")
     of_probs = ObjectFifo(probs_ty, name="probs")
-    of_out   = ObjectFifo(out_ty,   name="out")
+    of_out = ObjectFifo(out_ty, name="out")
 
     k_qk = Kernel(
         "llama_flowkv_qk",

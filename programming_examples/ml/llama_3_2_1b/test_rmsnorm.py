@@ -68,8 +68,10 @@ def main():
     rel_err = abs_err / (np.abs(expected) + 1e-7)
     max_abs = float(abs_err.max())
     max_rel = float(rel_err.max())
-    cos = float(np.dot(actual, expected) /
-                (np.linalg.norm(actual) * np.linalg.norm(expected) + 1e-12))
+    cos = float(
+        np.dot(actual, expected)
+        / (np.linalg.norm(actual) * np.linalg.norm(expected) + 1e-12)
+    )
 
     print(
         f"RMSNorm NPU vs numpy: D={D}  max|abs|={max_abs:.4g}  "
@@ -83,8 +85,10 @@ def main():
     # Show top-error positions.
     bad = np.argsort(abs_err)[-5:]
     for i in bad:
-        print(f"  i={i}: NPU={actual[i]:.6g} expected={expected[i]:.6g} "
-              f"abs={abs_err[i]:.4g}  rel={rel_err[i]:.4g}")
+        print(
+            f"  i={i}: NPU={actual[i]:.6g} expected={expected[i]:.6g} "
+            f"abs={abs_err[i]:.4g}  rel={rel_err[i]:.4g}"
+        )
     return 1
 
 

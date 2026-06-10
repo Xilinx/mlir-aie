@@ -17,7 +17,6 @@ import numpy as np
 from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.device import NPU2, Tile
 
-
 GLUE_COL = 5
 GLUE_ROW = 4  # placement.DECODE_PLACEMENT["rmsnorm"]
 

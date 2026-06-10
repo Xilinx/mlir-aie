@@ -99,7 +99,6 @@ from dataclasses import dataclass
 
 import llama_spec as spec
 
-
 # ---------------------------------------------------------------------------
 # Tile — use the real IRON class if mlir-aie is installed, else a local
 # dataclass so the placement is loadable for static checking outside IRON.
@@ -107,6 +106,7 @@ import llama_spec as spec
 try:
     from aie.iron.device import Tile  # type: ignore
 except ImportError:
+
     @dataclass(frozen=True)
     class Tile:  # type: ignore[no-redef]
         col: int
@@ -128,7 +128,7 @@ MEMTILE_ROW = 1
 # ---------------------------------------------------------------------------
 _SHIM = {
     "weights": [Tile(c, SHIM_ROW) for c in range(N_COLS)],  # 8-col fan-out
-    "io":      Tile(0, SHIM_ROW),       # token-id(s) in, (token_id, eos) out
+    "io": Tile(0, SHIM_ROW),  # token-id(s) in, (token_id, eos) out
 }
 # NOTE: tiles span all 8 columns, but the per-column weight-DMA *byte
 # allocation* is a separate (DMA-scheduling) decision. If the Phase-0
@@ -150,21 +150,18 @@ DECODE_PLACEMENT: dict = {
     # Projection: 16 CTs, rows 2-3 x all 8 cols. One GEMM/GEMV kernel
     # serves q/k/v/o/gate/up/down/lm_head, weight base BD-patched per call.
     "projection": [Tile(c, r) for r in (2, 3) for c in range(N_COLS)],
-
     # FlowKV attention: 4 vertical pairs in cols 0-3, rows 4 (CT0) / 5 (CT1).
     # 2 KV heads per pair (4 pairs x 2 = 8 KV heads).
     "attention": {
         f"pair{p}": {"qk": Tile(p, 4), "sv": Tile(p, 5)}  # CT0 row 4, CT1 row 5
         for p in range(4)
     },
-
     # Glue (1 CT each).
-    "rope":    Tile(4, 4),
-    "rmsnorm": Tile(5, 4),   # RMSNorm + residual add (fused)
-    "silu":    Tile(4, 5),   # SiLU + gate*up multiply (fused)
-    "sample":  Tile(5, 5),   # temperature + top-k + multinomial + EOS
-
-    "embedding": None,       # pure DMA — no compute tile
+    "rope": Tile(4, 4),
+    "rmsnorm": Tile(5, 4),  # RMSNorm + residual add (fused)
+    "silu": Tile(4, 5),  # SiLU + gate*up multiply (fused)
+    "sample": Tile(5, 5),  # temperature + top-k + multinomial + EOS
+    "embedding": None,  # pure DMA — no compute tile
     "spare": [Tile(c, r) for r in (4, 5) for c in (6, 7)],  # 4 CTs, v2 headroom
     "shim": _SHIM,
     "memtile": _MEMTILE,
@@ -193,7 +190,6 @@ PREFILL_PLACEMENT: dict = {
     # larger T_MC); weights amortized over M tokens so DMA is not the binding
     # cost here — compute is.
     "projection": [Tile(c, r) for r in (2, 3, 4) for c in range(N_COLS)],
-
     # FlowKV attention: 2 horizontal pairs in row 5 (c0->c1, c2->c3), 4 KV
     # heads each. Flash-attention chunked along M (the M=512 score matrix is
     # 32 MiB, exceeds L2). Horizontal neighbors share memory for the CT0->CT1
@@ -202,15 +198,13 @@ PREFILL_PLACEMENT: dict = {
         "pair0": {"qk": Tile(0, 5), "sv": Tile(1, 5)},
         "pair1": {"qk": Tile(2, 5), "sv": Tile(3, 5)},
     },
-
     # Glue (1 CT each, row 5).
-    "rope":    Tile(4, 5),
+    "rope": Tile(4, 5),
     "rmsnorm": Tile(5, 5),
-    "silu":    Tile(6, 5),
-    "sample":  Tile(7, 5),   # fires once, on the final prefill position
-
-    "embedding": None,       # pure DMA
-    "spare": [],             # none — compute-bound regime uses the whole array
+    "silu": Tile(6, 5),
+    "sample": Tile(7, 5),  # fires once, on the final prefill position
+    "embedding": None,  # pure DMA
+    "spare": [],  # none — compute-bound regime uses the whole array
     "shim": _SHIM,
     "memtile": _MEMTILE,
 }
@@ -225,13 +219,13 @@ PLACEMENT = DECODE_PLACEMENT
 # Used by _validate to confirm every op has a placement home.
 # ---------------------------------------------------------------------------
 OP_UNIT = {
-    "Linear":      "projection",   # q/k/v/o/gate/up/down (+ lm_head, post-layer)
-    "MatMul":      "attention",    # attn_qk, attn_sv  (FlowKV pairs)
-    "Softmax":     "attention",    # folded into FlowKV CT0
-    "RMSNorm":     "rmsnorm",
-    "RoPE":        "rope",
-    "SiLUMul":     "silu",
-    "ResidualAdd": "rmsnorm",      # fused at the residual write-back
+    "Linear": "projection",  # q/k/v/o/gate/up/down (+ lm_head, post-layer)
+    "MatMul": "attention",  # attn_qk, attn_sv  (FlowKV pairs)
+    "Softmax": "attention",  # folded into FlowKV CT0
+    "RMSNorm": "rmsnorm",
+    "RoPE": "rope",
+    "SiLUMul": "silu",
+    "ResidualAdd": "rmsnorm",  # fused at the residual write-back
 }
 
 
@@ -242,9 +236,7 @@ OP_UNIT = {
 # prefill — both are cardinal-neighbor adjacencies on AIE2P).
 # ---------------------------------------------------------------------------
 def flows(placement: dict) -> tuple:
-    return tuple(
-        (pair["qk"], pair["sv"]) for pair in placement["attention"].values()
-    )
+    return tuple((pair["qk"], pair["sv"]) for pair in placement["attention"].values())
 
 
 DECODE_FLOWS = flows(DECODE_PLACEMENT)
@@ -278,21 +270,29 @@ def _validate(placement: dict, name: str, expect_used: int) -> None:
     # (a) all compute tiles in rows 2-5, cols 0-7
     for unit, sub, t in compute:
         assert 0 <= t.col < N_COLS, f"[{name}] {unit}/{sub}: col {t.col} out of range"
-        assert t.row in COMPUTE_ROWS, f"[{name}] {unit}/{sub}: row {t.row} not a compute row"
+        assert (
+            t.row in COMPUTE_ROWS
+        ), f"[{name}] {unit}/{sub}: row {t.row} not a compute row"
 
     # (b) no two functions collide on a compute tile
     seen: dict = {}
     for unit, sub, t in compute:
         key = (t.col, t.row)
         if key in seen:
-            raise AssertionError(f"[{name}] tile collision at {t}: {unit}/{sub} vs {seen[key]}")
+            raise AssertionError(
+                f"[{name}] tile collision at {t}: {unit}/{sub} vs {seen[key]}"
+            )
         seen[key] = f"{unit}/{sub}"
 
     # (c) tile budget
     used = [x for x in compute if x[0] != "spare"]
     spare = [x for x in compute if x[0] == "spare"]
-    assert len(used) == expect_used, f"[{name}] expected {expect_used} used CTs, got {len(used)}"
-    assert len(compute) == 32, f"[{name}] expected 32 compute tiles total, got {len(compute)}"
+    assert (
+        len(used) == expect_used
+    ), f"[{name}] expected {expect_used} used CTs, got {len(used)}"
+    assert (
+        len(compute) == 32
+    ), f"[{name}] expected 32 compute tiles total, got {len(compute)}"
     assert len(used) + len(spare) == 32, f"[{name}] used+spare != 32"
 
     # (d) every layer-op kind has a placement home present in this placement
@@ -300,7 +300,9 @@ def _validate(placement: dict, name: str, expect_used: int) -> None:
     missing = op_kinds - set(OP_UNIT)
     assert not missing, f"layer-op kinds with no OP_UNIT mapping: {missing}"
     for kind, unit in OP_UNIT.items():
-        assert unit in placement, f"[{name}] OP_UNIT maps {kind}->{unit}, not in placement"
+        assert (
+            unit in placement
+        ), f"[{name}] OP_UNIT maps {kind}->{unit}, not in placement"
 
     # (e) shim/memtile rows
     for t in placement["shim"]["weights"] + [placement["shim"]["io"]]:
@@ -309,7 +311,7 @@ def _validate(placement: dict, name: str, expect_used: int) -> None:
         assert t.row == MEMTILE_ROW, f"[{name}] memtile {t} not on row {MEMTILE_ROW}"
 
 
-_validate(DECODE_PLACEMENT,  "decode",  expect_used=28)
+_validate(DECODE_PLACEMENT, "decode", expect_used=28)
 _validate(PREFILL_PLACEMENT, "prefill", expect_used=32)
 
 
@@ -319,10 +321,16 @@ _validate(PREFILL_PLACEMENT, "prefill", expect_used=32)
 def render_diagram(placement: dict, name: str):
     label = {}
     for unit, sub, t in _all_compute_tiles(placement):
-        if unit == "projection":   label[(t.col, t.row)] = "proj"
-        elif unit == "attention":  label[(t.col, t.row)] = sub.replace("pair", "att").replace("/qk", "0").replace("/sv", "1")
-        elif unit == "spare":      label[(t.col, t.row)] = "----"
-        else:                      label[(t.col, t.row)] = unit[:6]
+        if unit == "projection":
+            label[(t.col, t.row)] = "proj"
+        elif unit == "attention":
+            label[(t.col, t.row)] = (
+                sub.replace("pair", "att").replace("/qk", "0").replace("/sv", "1")
+            )
+        elif unit == "spare":
+            label[(t.col, t.row)] = "----"
+        else:
+            label[(t.col, t.row)] = unit[:6]
     print(f"  === {name} overlay ===")
     print("        " + "".join(f"c{c:<6d}" for c in range(N_COLS)))
     for r in (5, 4, 3, 2):
@@ -331,15 +339,19 @@ def render_diagram(placement: dict, name: str):
     print(f"  r1   {'MEMTILE ' * N_COLS}  (L2 weight/KV staging)")
     print(f"  r0   {'SHIM    ' * N_COLS}  (DRAM, 8-col fan-out)")
     used = sum(1 for u, _, _ in _all_compute_tiles(placement) if u != "spare")
-    print(f"  tiles used: {used}/32   spare: {32 - used}   "
-          f"proj: {len(placement['projection'])}   attn pairs: {len(placement['attention'])}")
+    print(
+        f"  tiles used: {used}/32   spare: {32 - used}   "
+        f"proj: {len(placement['projection'])}   attn pairs: {len(placement['attention'])}"
+    )
 
 
 if __name__ == "__main__":
     render_diagram(DECODE_PLACEMENT, "decode")
     print()
     render_diagram(PREFILL_PLACEMENT, "prefill")
-    print(f"\n  FlowKV flows: decode={len(DECODE_FLOWS)} pairs, prefill={len(PREFILL_FLOWS)} pairs")
+    print(
+        f"\n  FlowKV flows: decode={len(DECODE_FLOWS)} pairs, prefill={len(PREFILL_FLOWS)} pairs"
+    )
     print(f"\n  layer-op -> functional unit (shared by both overlays):")
     for op in spec.LAYER_OPS:
         kind = type(op).__name__
