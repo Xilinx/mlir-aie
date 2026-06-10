@@ -246,7 +246,8 @@ def gen_layer_mh(rng: np.random.Generator) -> dict:
     )
 
 
-def numpy_layer_mh_forward(x, layer, position=None, residual_fp32=False):
+def numpy_layer_mh_forward(x, layer, position=None, residual_fp32=False,
+                           residual_dyn=False):
     """Multi-head GQA single-layer forward + per-Q-head scale calibration.
 
     Returns (x_out, scales) where scales is a dict packing every
@@ -289,10 +290,22 @@ def numpy_layer_mh_forward(x, layer, position=None, residual_fp32=False):
     k_scales = layer["k_scales"]
     v_scales = layer["v_scales"]
 
-    # Residual entering this layer: int8 path uses x as-is at static
-    # ACT_SCALE; fp32 path quantizes per-token (scale tracks the residual's
-    # actual magnitude, which static 0.05 cannot across 16 layers).
-    if residual_fp32:
+    # Residual entering this layer. Three modes:
+    #  - int8 static (default): x is int8[D] at the baked ACT_SCALE=0.05 (the
+    #    quality-collapsing legacy path; kept for the device bit-exact contract
+    #    of the OLD design).
+    #  - residual_fp32 (Phase A proof): x is fp32, quantized per-token here.
+    #  - residual_dyn (Phase B, device-faithful): x is a tuple (x_i8, x_scale)
+    #    carrying a per-token dynamic residual scale; o_proj/down emit dynamic
+    #    int8+scale; each add requants to a new per-token residual scale. This
+    #    is the on-device target.
+    if residual_dyn:
+        x_i8, res_scale = x  # int8[D], fp32
+        x_i8 = np.asarray(x_i8, dtype=np.int8)
+        res_scale = np.float32(res_scale)
+        x_resid_fp = x_i8.astype(np.float32) * res_scale  # for fp32 adds below
+        rms_in_scale = float(res_scale)
+    elif residual_fp32:
         x_resid_fp = x.astype(np.float32)
         res_scale = float(np.maximum(np.abs(x_resid_fp).max(), 1e-12)) / 127.0
         x_i8 = requant(x_resid_fp, np.float32(1.0) / np.float32(res_scale))
@@ -431,31 +444,34 @@ def numpy_layer_mh_forward(x, layer, position=None, residual_fp32=False):
         _cap["h1_fp"] = h1.astype(np.float32) * np.float32(act_scale1)
         _cap["af_fp"] = af_fp.copy()
 
-    # 7) o_proj
-    if residual_fp32:
-        # Dequant o_proj to fp32 and add to the fp32 residual (no int8
-        # residual clipping). op_fp = (acc * o_act_scale * wo_sc).
-        op_acc = wo_i8.astype(np.int32) @ af.astype(np.int32) + bo
-        op_fp = (
-            op_acc.astype(np.float32)
-            * np.float32(o_act_scale)
-            * wo_sc.astype(np.float32)
-        )
+    # 7) o_proj. op_fp = (acc * o_act_scale * wo_sc) is the true fp32 o_proj
+    # output (o_act_scale is the per-token af input scale, already dynamic).
+    op_acc = wo_i8.astype(np.int32) @ af.astype(np.int32) + bo
+    op_fp = (
+        op_acc.astype(np.float32) * np.float32(o_act_scale) * wo_sc.astype(np.float32)
+    )
+    if residual_dyn:
+        # Rescale-add: fp32 sum of (residual + o_proj), requant to a new
+        # per-token residual scale. (Device: o_proj emits dynamic int8+scale,
+        # rescale-add kernel reconstructs both and requants.)
+        x1_fp = x_resid_fp + op_fp
+        x1_scale = np.float32(np.maximum(np.abs(x1_fp).max(), 1e-12) / 127.0)
+        x1_i8 = requant(x1_fp, np.float32(1.0) / x1_scale)
+        h2, act_scale2 = numpy_rmsnorm_int8_dyn(x1_i8, gamma_post, float(x1_scale))
+    elif residual_fp32:
         x1 = x_resid_fp + op_fp  # fp32 residual
-    else:
-        op = numpy_gemm_perchan(af, o_act_scale, wo_i8, wo_sc, bo, INV_ACT_SCALE)
-        x1 = i8_add_wrap(op, x)
-
-    if _cap is not None:
-        _cap["x1"] = np.asarray(x1, np.float32).copy()
-
-    # 8) rmsnorm2 (per-token dynamic output scale).
-    if residual_fp32:
         x1_scale = float(np.maximum(np.abs(x1).max(), 1e-12)) / 127.0
         x1_i8 = requant(x1, np.float32(1.0) / np.float32(x1_scale))
         h2, act_scale2 = numpy_rmsnorm_int8_dyn(x1_i8, gamma_post, x1_scale)
     else:
+        op = numpy_gemm_perchan(af, o_act_scale, wo_i8, wo_sc, bo, INV_ACT_SCALE)
+        x1 = i8_add_wrap(op, x)
         h2, act_scale2 = numpy_rmsnorm_int8_dyn(x1, gamma_post, ACT_SCALE)
+
+    if _cap is not None:
+        _cap["x1"] = (
+            x1_fp.copy() if residual_dyn else np.asarray(x1, np.float32).copy()
+        )
 
     # 9) gate (closure-baked GATE_INV_OUT_SCALE = 1/SILU_GATE_SCALE)
     fp_gate = (
@@ -490,9 +506,20 @@ def numpy_layer_mh_forward(x, layer, position=None, residual_fp32=False):
         _cap["up_fp"] = fp_up.copy()
         _cap["sf_fp"] = sf_fp.copy()
 
-    # 12) down
+    # 12) down + 13) residual add.
     down_act_scale = silu_out_scale
-    if residual_fp32:
+    if residual_dyn:
+        df_acc = wd_i8.astype(np.int32) @ sf.astype(np.int32) + bd
+        df_fp = (
+            df_acc.astype(np.float32)
+            * np.float32(down_act_scale)
+            * wd_sc.astype(np.float32)
+        )
+        xo_fp = x1_fp + df_fp
+        xo_scale = np.float32(np.maximum(np.abs(xo_fp).max(), 1e-12) / 127.0)
+        xo_i8 = requant(xo_fp, np.float32(1.0) / xo_scale)
+        x_out = (xo_i8, float(xo_scale))  # (int8[D], fp32) per-token residual
+    elif residual_fp32:
         df_acc = wd_i8.astype(np.int32) @ sf.astype(np.int32) + bd
         df_fp = (
             df_acc.astype(np.float32)

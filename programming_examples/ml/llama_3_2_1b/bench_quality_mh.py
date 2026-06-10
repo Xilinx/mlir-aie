@@ -85,7 +85,7 @@ def embed_token_to_int8(model, token_id):
 
 
 def int8_chain_next_token(model, layers, cos_lut, sin_lut, token_ids,
-                          residual_fp32=False):
+                          residual_fp32=False, residual_dyn=False):
     """Run our INT8 chain over `token_ids`. Returns the predicted next
     token id. Resets layer caches before running (so prompts are
     independent)."""
@@ -104,10 +104,13 @@ def int8_chain_next_token(model, layers, cos_lut, sin_lut, token_ids,
         if pos >= T:
             print(f"  WARNING: prompt longer than cache T={T}; truncating")
             break
+        row = model.embed_i8[int(tok)].astype(np.float32) * model.embed_sc[int(tok)]
         if residual_fp32:
-            # Keep the residual in fp32 from the embedding onward.
-            row = model.embed_i8[int(tok)].astype(np.float32) * model.embed_sc[int(tok)]
             x = row.astype(np.float32)
+        elif residual_dyn:
+            # Seed the residual with a per-token dynamic scale (int8, scale).
+            sc = np.float32(max(float(np.abs(row).max()), 1e-12) / 127.0)
+            x = (requant(row, np.float32(1.0) / sc), float(sc))
         else:
             x = embed_token_to_int8(model, int(tok))
         c = cos_lut[pos].astype(bfloat16)
@@ -115,16 +118,22 @@ def int8_chain_next_token(model, layers, cos_lut, sin_lut, token_ids,
         for layer in layers:
             layer["cos"] = c
             layer["sin"] = s
-        xc = x.copy()
+        xc = x.copy() if not residual_dyn else (x[0].copy(), x[1])
         for L in range(N_LAYERS):
             xc, scales = numpy_layer_mh_forward(
-                xc, layers[L], position=pos, residual_fp32=residual_fp32
+                xc, layers[L], position=pos,
+                residual_fp32=residual_fp32, residual_dyn=residual_dyn,
             )
             layers[L]["scales"] = scales
             layers[L]["t_used"] = pos + 1
         last_hidden = xc
-    # fp32 residual: last_hidden already fp32. int8 path: dequant by ACT_SCALE.
-    hidden_fp = last_hidden if residual_fp32 else last_hidden.astype(np.float32) * ACT_SCALE
+    # Final hidden -> fp32 for lm_head.
+    if residual_fp32:
+        hidden_fp = last_hidden
+    elif residual_dyn:
+        hidden_fp = last_hidden[0].astype(np.float32) * np.float32(last_hidden[1])
+    else:
+        hidden_fp = last_hidden.astype(np.float32) * ACT_SCALE
     logits = lm_head_logits(model, hidden_fp[None, :])[0]
     return int(np.argmax(logits))
 
@@ -152,6 +161,12 @@ def main():
         action="store_true",
         help="carry the residual stream in fp32 (per-token dynamic) instead "
         "of int8@static-0.05 — proof-of-concept for the residual-format fix",
+    )
+    parser.add_argument(
+        "--residual-dyn",
+        action="store_true",
+        help="device-faithful per-token int8 residual (int8 + fp32 scale "
+        "tail; o_proj/down dynamic-out, rescale-add) — the Phase B target",
     )
     opts = parser.parse_args()
 
@@ -189,7 +204,8 @@ def main():
         t_fp16 = time.time() - t0
         t0 = time.time()
         our_tok = int8_chain_next_token(
-            model, layers, cos_lut, sin_lut, ids, residual_fp32=opts.residual_fp32
+            model, layers, cos_lut, sin_lut, ids,
+            residual_fp32=opts.residual_fp32, residual_dyn=opts.residual_dyn,
         )
         t_int8 = time.time() - t0
         match = ref_tok == our_tok
