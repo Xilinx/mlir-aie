@@ -84,7 +84,8 @@ def embed_token_to_int8(model, token_id):
     return requant(row, INV_ACT_SCALE)
 
 
-def int8_chain_next_token(model, layers, cos_lut, sin_lut, token_ids):
+def int8_chain_next_token(model, layers, cos_lut, sin_lut, token_ids,
+                          residual_fp32=False):
     """Run our INT8 chain over `token_ids`. Returns the predicted next
     token id. Resets layer caches before running (so prompts are
     independent)."""
@@ -103,7 +104,12 @@ def int8_chain_next_token(model, layers, cos_lut, sin_lut, token_ids):
         if pos >= T:
             print(f"  WARNING: prompt longer than cache T={T}; truncating")
             break
-        x = embed_token_to_int8(model, int(tok))
+        if residual_fp32:
+            # Keep the residual in fp32 from the embedding onward.
+            row = model.embed_i8[int(tok)].astype(np.float32) * model.embed_sc[int(tok)]
+            x = row.astype(np.float32)
+        else:
+            x = embed_token_to_int8(model, int(tok))
         c = cos_lut[pos].astype(bfloat16)
         s = sin_lut[pos].astype(bfloat16)
         for layer in layers:
@@ -111,11 +117,14 @@ def int8_chain_next_token(model, layers, cos_lut, sin_lut, token_ids):
             layer["sin"] = s
         xc = x.copy()
         for L in range(N_LAYERS):
-            xc, scales = numpy_layer_mh_forward(xc, layers[L], position=pos)
+            xc, scales = numpy_layer_mh_forward(
+                xc, layers[L], position=pos, residual_fp32=residual_fp32
+            )
             layers[L]["scales"] = scales
             layers[L]["t_used"] = pos + 1
         last_hidden = xc
-    hidden_fp = last_hidden.astype(np.float32) * ACT_SCALE
+    # fp32 residual: last_hidden already fp32. int8 path: dequant by ACT_SCALE.
+    hidden_fp = last_hidden if residual_fp32 else last_hidden.astype(np.float32) * ACT_SCALE
     logits = lm_head_logits(model, hidden_fp[None, :])[0]
     return int(np.argmax(logits))
 
@@ -138,6 +147,12 @@ def main():
         help="Comma-separated indices into PROMPTS (default: all)",
     )
     parser.add_argument("--rng-seed", type=int, default=0)
+    parser.add_argument(
+        "--residual-fp32",
+        action="store_true",
+        help="carry the residual stream in fp32 (per-token dynamic) instead "
+        "of int8@static-0.05 — proof-of-concept for the residual-format fix",
+    )
     opts = parser.parse_args()
 
     data_dir = Path(opts.data_dir)
@@ -173,7 +188,9 @@ def main():
         ref_tok = fp16_ref_next_token(model, ids)
         t_fp16 = time.time() - t0
         t0 = time.time()
-        our_tok = int8_chain_next_token(model, layers, cos_lut, sin_lut, ids)
+        our_tok = int8_chain_next_token(
+            model, layers, cos_lut, sin_lut, ids, residual_fp32=opts.residual_fp32
+        )
         t_int8 = time.time() - t0
         match = ref_tok == our_tok
         n_total += 1

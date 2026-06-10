@@ -196,6 +196,7 @@ def build():
     rt_out_ty = _i8(D)
 
     t_D_i8 = _i8(D)
+    t_D8_i8 = _i8(D + 8)  # rmsnorm-dyn output: D int8 + 4 B fp32 scale + 4 B pad
     t_QF_i8 = _i8(QF_BYTES)
     t_QR_i8 = _i8(QR_BYTES)
     t_QCHUNKS_HALF_i8 = _i8(QCHUNKS_HALF_BYTES)
@@ -221,7 +222,7 @@ def build():
 
     # Attention side
     of_gam_in = ObjectFifo(t_D_bf16, depth=1, name="gam_in")
-    of_h1 = ObjectFifo(t_D_i8, depth=1, name="h1")
+    of_h1 = ObjectFifo(t_D8_i8, depth=1, name="h1")
     of_wq = ObjectFifo(t_WQ_slot, depth=1, name="wq")
     of_qf = ObjectFifo(t_QF_i8, depth=1, name="qf")
     of_cs = ObjectFifo(t_CS_bf16, depth=1, name="cs")
@@ -288,7 +289,7 @@ def build():
 
     # FFN side (unchanged)
     of_gam_post = ObjectFifo(t_D_bf16, depth=1, name="gam_post")
-    of_h2 = ObjectFifo(t_D_i8, depth=1, name="h2")
+    of_h2 = ObjectFifo(t_D8_i8, depth=1, name="h2")
     of_wg = ObjectFifo(t_WG_slot, depth=1, name="wg")
     of_wu = ObjectFifo(t_WU_slot, depth=1, name="wu")
     of_wd = ObjectFifo(t_WD_slot, depth=1, name="wd")
@@ -309,13 +310,13 @@ def build():
     KO_PT = "llama_layer_pt.cc.o"
 
     k_rms = Kernel(
-        "llama_rmsnorm_int8", KO_RMS, [t_D_i8, t_D_bf16, t_D_i8, np.float32, np.float32]
+        "llama_rmsnorm_int8_dyn", KO_RMS, [t_D_i8, t_D_bf16, t_D8_i8, np.float32]
     )
-    # q_proj-mh
+    # q_proj-mh (acttail: act_scale read from h1 tail)
     k_q = Kernel(
-        "llama_gemm_tiled_layer_K2048_N4_perchan_v2_up_q_mh",
+        "llama_gemm_tiled_layer_K2048_N4_perchan_v2_up_q_mh_acttail",
         KO_GEMM2,
-        [t_D_i8, t_WQ_slot, t_QF_i8, np.int32],
+        [t_D8_i8, t_WQ_slot, t_QF_i8, np.int32],
     )
     # o_proj-mh
     k_o = Kernel(
@@ -323,16 +324,16 @@ def build():
         KO_GEMM2,
         [t_AF_i8, t_WO_slot, t_D_i8, np.int32],
     )
-    # gate
+    # gate (acttail: act_scale read from h2 tail; inv_out stays silu-lock arg)
     k_gate = Kernel(
-        "llama_gemm_tiled_layer_K2048_N4_perchan_gate",
+        "llama_gemm_tiled_layer_K2048_N4_perchan_gate_acttail",
         KO_GEMM,
-        [t_D_i8, t_WG_slot, t_HD_i8, np.int32, np.float32, np.float32],
+        [t_D8_i8, t_WG_slot, t_HD_i8, np.int32, np.float32],
     )
     k_up = Kernel(
-        "llama_gemm_tiled_layer_K2048_N4_perchan_v2_up_u",
+        "llama_gemm_tiled_layer_K2048_N4_perchan_v2_up_u_acttail",
         KO_GEMM,
-        [t_D_i8, t_WU_slot, t_UF_i8, np.int32],
+        [t_D8_i8, t_WU_slot, t_UF_i8, np.int32],
     )
     k_down = Kernel(
         "llama_gemm_tiled_layer_K8192_N4_perchan_v2_d",
@@ -360,7 +361,7 @@ def build():
         x = c_in.acquire(1)
         g = c_gamma.acquire(1)
         o = c_out.acquire(1)
-        k(x, g, o, ACT_SCALE, INV_ACT_SCALE)
+        k(x, g, o, ACT_SCALE)
         c_in.release(1)
         c_gamma.release(1)
         c_out.release(1)
@@ -390,7 +391,7 @@ def build():
         o = c_out.acquire(1)
         for t in range_(N_TILES_G):
             w = c_w.acquire(1)
-            k(a, w, o, _i32(t), ACT_SCALE, GATE_INV_OUT_SCALE)
+            k(a, w, o, _i32(t), GATE_INV_OUT_SCALE)
             c_w.release(1)
         c_act.release(1)
         c_out.release(1)

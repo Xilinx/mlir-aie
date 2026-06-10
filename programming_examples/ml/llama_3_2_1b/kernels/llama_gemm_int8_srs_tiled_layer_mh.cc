@@ -149,7 +149,87 @@ static inline void gemm_tile_perchan_v2_qmh_impl(int8_t *restrict act,
   }
 }
 
+// Multi-head q_proj, activation-tail act_scale. Identical to the qmh impl
+// except act_scale comes from the activation tail (act[kK..kK+4]) written by
+// the upstream dyn rmsnorm, instead of the weight-slot prefix. Per-head
+// q_inv_outs and the 256 B downstream tail still come from the weight prefix.
+// Activation buffer must be int8[kK + 8].
+template <int kK, int kNTile, int kHD, int kNHeadsQ>
+static inline void gemm_tile_perchan_v2_qmh_acttail_impl(
+    int8_t *restrict act, int8_t *restrict w_tile, int8_t *restrict out_tile,
+    int8_t *restrict out_full_base, int32_t tile_idx) {
+  static_assert(kHD % kNTile == 0,
+                "HEAD_DIM must be a multiple of N_TILE so each tile maps "
+                "to exactly one head");
+  static_assert(kMhPrefix % 64 == 0,
+                "prefix must be a multiple of 64 for aligned weight loads");
+
+  float act_scale;
+  memcpy(&act_scale, act + kK, 4);
+
+  // Per-head q_inv_outs live at prefix[8 .. 8 + kNHeadsQ*4].
+  const float *q_inv_outs = reinterpret_cast<const float *>(w_tile + 8);
+
+  int head_idx = tile_idx / (kHD / kNTile);
+  float inv_out_scale = q_inv_outs[head_idx];
+
+  // Mirror 256 B tail (per-head [q_out_scale, sv_inv_out_scale] pairs).
+  {
+    constexpr int kOutDim = kNHeadsQ * kHD;
+    memcpy(out_full_base + kOutDim, w_tile + kMhTailOffset, kMhTailBytes);
+  }
+
+  int8_t *body = w_tile + kMhPrefix;
+  constexpr int kVec = 64;
+  static_assert(kK % kVec == 0,
+                "K must be a multiple of 64 (one aie::mac lane group)");
+  constexpr int kGroups = kK / kVec;
+
+  const int8_t *weights = body;
+  const int32_t *bias = reinterpret_cast<const int32_t *>(body + kNTile * kK);
+  const float *w_scales =
+      reinterpret_cast<const float *>(body + kNTile * kK + kNTile * 4);
+
+  ::aie::set_saturation(aie::saturation_mode::saturate);
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
+
+  for (int n = 0; n < kNTile; n++) {
+    aie::accum<acc32, kVec> acc;
+    acc.from_vector(aie::zeros<int32, kVec>());
+
+    const int8_t *__restrict w_row = weights + n * kK;
+    for (int g = 0; g < kGroups; g++) {
+      aie::vector<int8, kVec> w_v = aie::load_v<kVec>(w_row + g * kVec);
+      aie::vector<int8, kVec> x_v = aie::load_v<kVec>(act + g * kVec);
+      acc = aie::mac(acc, w_v, x_v);
+    }
+    int32_t sum_i32 =
+        aie::reduce_add(acc.template to_vector<int32>()) + bias[n];
+
+    float fp = (float)sum_i32 * act_scale * w_scales[n];
+    float scaled = fp * inv_out_scale;
+
+    int32_t r = (int32_t)(scaled + (scaled >= 0.0f ? 0.5f : -0.5f));
+    if (r > I8_MAX)
+      r = I8_MAX;
+    if (r < I8_MIN)
+      r = I8_MIN;
+    out_tile[n] = (int8_t)r;
+  }
+}
+
 extern "C" {
+
+// Multi-head q_proj, activation-tail act_scale variant. Same contract as
+// ..._v2_up_q_mh but act is int8[2048+8] with the per-token scale in the tail.
+void llama_gemm_tiled_layer_K2048_N4_perchan_v2_up_q_mh_acttail(
+    int8_t *restrict act, int8_t *restrict w_tile, int8_t *restrict out_full,
+    int32_t tile_idx) {
+  event0();
+  gemm_tile_perchan_v2_qmh_acttail_impl<2048, 4, 64, 32>(
+      act, w_tile, out_full + tile_idx * 4, out_full, tile_idx);
+  event1();
+}
 
 // Multi-head q_proj. tile_idx in [0, 512); each tile writes 4 i8 to
 // out_full[tile_idx*4 .. tile_idx*4+4]. tile_idx==0 mirrors the 256 B

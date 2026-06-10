@@ -215,7 +215,7 @@ run_rmsnorm: rmsnorm
 
 # ---------- rmsnorm int8 real kernel (Phase 2) ----------
 RMSI8_D ?= 2048
-RMSI8_FLAGS := ${PEANOWRAP2P_FLAGS} -DLLAMA_RMSNORM_COLS=${RMSI8_D}
+RMSI8_FLAGS := ${PEANOWRAP2P_FLAGS} -ffp-contract=off -DLLAMA_RMSNORM_COLS=${RMSI8_D}
 
 # Per-shape rmsnorm .o files. The chain/layer designs use the D=64
 # version (their fifos are 64-byte); the standalone rmsnorm test
@@ -557,6 +557,7 @@ ${BUILD}/llama_gemm_int8_srs_tiled_ffn.cc.o: ${KDIR}/llama_gemm_int8_srs_tiled_f
 ${BUILD}/llama_rmsnorm_int8_2048.cc.o: ${KDIR}/llama_rmsnorm_int8.cc
 	mkdir -p ${@D}
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} \
+		-ffp-contract=off \
 		-DLLAMA_RMSNORM_COLS=2048 -c $< -o ${@F}
 
 ${BUILD}/llama_silu_mul_int8_8192.cc.o: ${KDIR}/llama_silu_mul_int8.cc ${BUILD}/silu_lut.h
@@ -704,7 +705,7 @@ LAYER_D2048_T ?= 128
 
 ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o: ${KDIR}/llama_gemm_int8_srs_tiled_layer.cc
 	mkdir -p ${@D}
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -ffp-contract=off -c $< -o ${@F}
 
 LAYER_D2048_DEPS = ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o \
                    ${BUILD}/llama_rmsnorm_int8_2048.cc.o \
@@ -850,7 +851,7 @@ ${BUILD}/llama_gqa_glue.cc.o: ${KDIR}/llama_gqa_glue.cc
 
 ${BUILD}/llama_gemm_int8_srs_tiled_layer_mh.cc.o: ${KDIR}/llama_gemm_int8_srs_tiled_layer_mh.cc
 	mkdir -p ${@D}
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -ffp-contract=off -c $< -o ${@F}
 
 LAYER_MH_DEPS = ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o \
                 ${BUILD}/llama_gemm_int8_srs_tiled_layer_mh.cc.o \

@@ -72,10 +72,11 @@ def main():
     p = test_utils.create_default_argparser()
     p.add_argument("-D", type=int, default=2048)
     p.add_argument("--max-mismatches", type=int, default=0)
+    p.add_argument("--seed", type=int, default=0)
     opts = p.parse_args()
 
     D = opts.D
-    rng = np.random.default_rng(0)
+    rng = np.random.default_rng(opts.seed)
     x = rng.integers(-128, 128, size=D, dtype=np.int8)
     g = (1.0 + 0.1 * rng.standard_normal(D).astype(np.float32)).astype(bfloat16)
 
