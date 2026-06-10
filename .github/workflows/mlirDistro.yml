@@ -177,8 +177,14 @@ jobs:
       uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
       with:
         # checkout just the actions in order to pick and choose
-        # where the actual repo is checked out manually (see actions/setup_base)
-        sparse-checkout: .github/actions
+        # where the actual repo is checked out manually (see actions/setup_base).
+        # requirements_dev.lock is pulled too so setup_base can hash-pin its
+        # build tooling (cibuildwheel/wheel) before the full tree is cloned.
+        # Single-file paths require non-cone mode.
+        sparse-checkout: |
+          .github/actions
+          python/requirements_dev.lock
+        sparse-checkout-cone-mode: false
 
     - uses: ./.github/actions/setup_base
       id: setup_base
