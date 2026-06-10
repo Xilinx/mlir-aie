@@ -4,10 +4,9 @@
 // npu1 variant of objectfifo_cyclostatic_two_core_pipeline. Same shim->A->B
 // ->shim pipeline (B is the cyclostatic consumer) targeted at Phoenix so the
 // cross-core peel is exercised on both architectures in CI. Reuses the
-// sibling directory's aie2.py and test.py to keep them in sync.
+// sibling directory's IRON test.py; %run_on_npu1% drives @iron.jit to the
+// npu1 device.
 //
 // REQUIRES: ryzen_ai_npu1, peano, xrt_python_bindings
 //
-// RUN: %python %S/../objectfifo_cyclostatic_two_core_pipeline/aie2.py npu1 > aie.mlir
-// RUN: %python aiecc.py --no-aiesim --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --xclbin-name=aie.xclbin --npu-insts-name=insts.bin ./aie.mlir
-// RUN: %run_on_npu1% %python %S/../objectfifo_cyclostatic_two_core_pipeline/test.py -x aie.xclbin -k MLIR_AIE -i insts.bin
+// RUN: %run_on_npu1% %python %S/../objectfifo_cyclostatic_two_core_pipeline/test.py
