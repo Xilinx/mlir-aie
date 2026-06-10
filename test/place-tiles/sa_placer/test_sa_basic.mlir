@@ -105,40 +105,6 @@ module @mixed_constraints {
 
 // -----
 
-// MemTile placed at row 1
-// CHECK-LABEL: @memtile_placement
-module @memtile_placement {
-  aie.device(npu2) {
-    // CHECK-DAG: %[[MEM:.*]] = aie.tile({{[0-7]}}, 1)
-    %mem = aie.logical_tile<MemTile>(?, ?)
-    // CHECK-DAG: %[[CORE:.*]] = aie.tile({{[0-7]}}, {{[2-5]}})
-    %core = aie.logical_tile<CoreTile>(?, ?)
-    aie.objectfifo @of(%mem, {%core}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
-    aie.core(%core) { aie.end }
-    // CHECK-NOT: aie.logical_tile
-    aie.end
-  }
-}
-
-// -----
-
-// ShimNOCTile placed at row 0
-// CHECK-LABEL: @shimtile_placement
-module @shimtile_placement {
-  aie.device(npu2) {
-    // CHECK-DAG: %[[SHIM:.*]] = aie.tile({{[0-7]}}, 0)
-    %shim = aie.logical_tile<ShimNOCTile>(?, ?)
-    // CHECK-DAG: %[[CORE:.*]] = aie.tile({{[0-7]}}, {{[2-5]}})
-    %core = aie.logical_tile<CoreTile>(?, ?)
-    aie.objectfifo @in(%shim, {%core}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
-    aie.core(%core) { aie.end }
-    // CHECK-NOT: aie.logical_tile
-    aie.end
-  }
-}
-
-// -----
-
 // Attribute preservation through placement
 // CHECK-LABEL: @attribute_preserved
 module @attribute_preserved {

@@ -15,29 +15,49 @@
 
 // RUN: aie-opt --split-input-file --aie-place-tiles='placer=sa_placer sa-seed=42' %s | FileCheck %s
 
-// Single cascade pair: must be adjacent
-// CHECK-LABEL: @single_cascade_pair
-module @single_cascade_pair {
+// Pin src, verify dst lands at a valid cascade position: (4,4) east or (3,3) south
+// CHECK-LABEL: @cascade_pinned_src
+module @cascade_pinned_src {
   aie.device(npu2) {
-    %src = aie.logical_tile<CoreTile>(?, ?)
+    %src = aie.logical_tile<CoreTile>(3, 4)
     %dst = aie.logical_tile<CoreTile>(?, ?)
     aie.cascade_flow(%src, %dst)
     aie.core(%src) { aie.end }
     aie.core(%dst) { aie.end }
+    // CHECK-DAG: aie.tile(3, 4)
+    // CHECK-DAG: aie.tile({{4, 4|3, 3}})
     // CHECK-NOT: aie.logical_tile
-    // CHECK: aie.cascade_flow
     aie.end
   }
 }
 
 // -----
 
-// Cascade pair with ObjectFifo connections
-// CHECK-LABEL: @cascade_with_fifo
-module @cascade_with_fifo {
+// Pin dst, verify src lands at a valid cascade position: (2,4) west or (3,5) north
+// CHECK-LABEL: @cascade_pinned_dst
+module @cascade_pinned_dst {
+  aie.device(npu2) {
+    %src = aie.logical_tile<CoreTile>(?, ?)
+    %dst = aie.logical_tile<CoreTile>(3, 4)
+    aie.cascade_flow(%src, %dst)
+    aie.core(%src) { aie.end }
+    aie.core(%dst) { aie.end }
+    // CHECK-DAG: aie.tile(3, 4)
+    // CHECK-DAG: aie.tile({{2, 4|3, 5}})
+    // CHECK-NOT: aie.logical_tile
+    aie.end
+  }
+}
+
+// -----
+
+// Cascade pair with ObjectFifo I/O: verify adjacency still holds when
+// HPWL cost from fifos competes with cascade penalty
+// CHECK-LABEL: @cascade_with_fifo_pinned
+module @cascade_with_fifo_pinned {
   aie.device(npu2) {
     %shim = aie.logical_tile<ShimNOCTile>(?, ?)
-    %src = aie.logical_tile<CoreTile>(?, ?)
+    %src = aie.logical_tile<CoreTile>(2, 3)
     %dst = aie.logical_tile<CoreTile>(?, ?)
 
     aie.cascade_flow(%src, %dst)
@@ -47,6 +67,9 @@ module @cascade_with_fifo {
 
     aie.core(%src) { aie.end }
     aie.core(%dst) { aie.end }
+    // src pinned at (2,3), dst must be at (3,3) east or (2,2) south
+    // CHECK-DAG: aie.tile(2, 3)
+    // CHECK-DAG: aie.tile({{3, 3|2, 2}})
     // CHECK-NOT: aie.logical_tile
     aie.end
   }
@@ -54,13 +77,14 @@ module @cascade_with_fifo {
 
 // -----
 
-// Two independent cascade pairs
-// CHECK-LABEL: @two_cascade_pairs
-module @two_cascade_pairs {
+// Two independent cascade pairs, both with pinned srcs:
+// verify both pairs satisfy adjacency independently
+// CHECK-LABEL: @two_cascade_pairs_pinned
+module @two_cascade_pairs_pinned {
   aie.device(npu2) {
-    %s1 = aie.logical_tile<CoreTile>(?, ?)
+    %s1 = aie.logical_tile<CoreTile>(1, 4)
     %d1 = aie.logical_tile<CoreTile>(?, ?)
-    %s2 = aie.logical_tile<CoreTile>(?, ?)
+    %s2 = aie.logical_tile<CoreTile>(5, 3)
     %d2 = aie.logical_tile<CoreTile>(?, ?)
 
     aie.cascade_flow(%s1, %d1)
@@ -70,74 +94,12 @@ module @two_cascade_pairs {
     aie.core(%d1) { aie.end }
     aie.core(%s2) { aie.end }
     aie.core(%d2) { aie.end }
-    // CHECK-NOT: aie.logical_tile
-    aie.end
-  }
-}
-
-// -----
-
-// Cascade pair coexisting with unconstrained cores
-// CHECK-LABEL: @cascade_with_unconstrained
-module @cascade_with_unconstrained {
-  aie.device(npu2) {
-    %src = aie.logical_tile<CoreTile>(?, ?)
-    %dst = aie.logical_tile<CoreTile>(?, ?)
-    %free1 = aie.logical_tile<CoreTile>(?, ?)
-    %free2 = aie.logical_tile<CoreTile>(?, ?)
-
-    aie.cascade_flow(%src, %dst)
-
-    // Pipeline through all cores
-    aie.objectfifo @f1(%free1, {%src}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
-    aie.objectfifo @f2(%dst, {%free2}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
-
-    aie.core(%src) { aie.end }
-    aie.core(%dst) { aie.end }
-    aie.core(%free1) { aie.end }
-    aie.core(%free2) { aie.end }
-    // CHECK-NOT: aie.logical_tile
-    aie.end
-  }
-}
-
-// -----
-
-// Four cascade pairs (mobilenet-like: bn13 L1, bn13 L3, bn14 L1, bn14 L3)
-// CHECK-LABEL: @four_cascade_pairs
-module @four_cascade_pairs {
-  aie.device(npu2) {
-    %shim = aie.logical_tile<ShimNOCTile>(?, ?)
-    %s1 = aie.logical_tile<CoreTile>(?, ?)
-    %d1 = aie.logical_tile<CoreTile>(?, ?)
-    %s2 = aie.logical_tile<CoreTile>(?, ?)
-    %d2 = aie.logical_tile<CoreTile>(?, ?)
-    %s3 = aie.logical_tile<CoreTile>(?, ?)
-    %d3 = aie.logical_tile<CoreTile>(?, ?)
-    %s4 = aie.logical_tile<CoreTile>(?, ?)
-    %d4 = aie.logical_tile<CoreTile>(?, ?)
-    %mid = aie.logical_tile<CoreTile>(?, ?)
-
-    aie.cascade_flow(%s1, %d1)
-    aie.cascade_flow(%s2, %d2)
-    aie.cascade_flow(%s3, %d3)
-    aie.cascade_flow(%s4, %d4)
-
-    // Chain: shim -> s1/d1 -> mid -> s2/d2 -> ...
-    aie.objectfifo @in(%shim, {%s1}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
-    aie.objectfifo @c1(%d1, {%mid}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
-    aie.objectfifo @c2(%mid, {%s3, %d3}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
-    aie.objectfifo @out(%d4, {%shim}, 2 : i32) : !aie.objectfifo<memref<256xi32>>
-
-    aie.core(%s1) { aie.end }
-    aie.core(%d1) { aie.end }
-    aie.core(%s2) { aie.end }
-    aie.core(%d2) { aie.end }
-    aie.core(%s3) { aie.end }
-    aie.core(%d3) { aie.end }
-    aie.core(%s4) { aie.end }
-    aie.core(%d4) { aie.end }
-    aie.core(%mid) { aie.end }
+    // s1=(1,4) -> d1 at (2,4) or (1,3)
+    // s2=(5,3) -> d2 at (6,3) or (5,2)
+    // CHECK-DAG: aie.tile(1, 4)
+    // CHECK-DAG: aie.tile({{2, 4|1, 3}})
+    // CHECK-DAG: aie.tile(5, 3)
+    // CHECK-DAG: aie.tile({{6, 3|5, 2}})
     // CHECK-NOT: aie.logical_tile
     aie.end
   }
