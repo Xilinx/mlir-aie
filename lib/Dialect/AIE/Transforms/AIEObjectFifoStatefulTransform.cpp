@@ -24,6 +24,7 @@
 
 #include "mlir/IR/Operation.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 
 #include <numeric>
 #include <set>
@@ -378,14 +379,14 @@ struct AIEObjectFifoStatefulTransformPass
   }
 
   ObjectFifoCreateOp
-  createObjectFifo(OpBuilder &builder, AIEObjectFifoType datatype,
+  createObjectFifo(OpBuilder &builder, Location loc, AIEObjectFifoType datatype,
                    std::string name, Value prodTile, Value consTile,
                    Attribute depth, BDDimLayoutArrayAttr dimensionsToStream,
                    BDDimLayoutArrayArrayAttr dimensionsFromStreamPerConsumer) {
     auto ofName = builder.getStringAttr(name);
     auto fifo = ObjectFifoCreateOp::create(
-        builder, builder.getUnknownLoc(), ofName, prodTile, consTile, depth,
-        datatype, dimensionsToStream, dimensionsFromStreamPerConsumer);
+        builder, loc, ofName, prodTile, consTile, depth, datatype,
+        dimensionsToStream, dimensionsFromStreamPerConsumer);
     return fifo;
   }
 
@@ -414,14 +415,15 @@ struct AIEObjectFifoStatefulTransformPass
       if (!state.externalBuffersPerFifo[op].empty())
         numElem = state.externalBuffersPerFifo[op].size();
     }
+    Location ofLoc = op.getLoc();
     if (target.getTargetArch() == AIEArch::AIE1) {
       for (int i = 0; i < numElem; i++) {
         // create corresponding aie1 locks
         int initValue = op.getInitValues().has_value() ? 1 : 0;
         int lockID = lockAnalysis.getLockID(creation_tile);
         assert(lockID >= 0 && "No more locks to allocate!");
-        auto lock = LockOp::create(builder, builder.getUnknownLoc(),
-                                   creation_tile, lockID, initValue);
+        auto lock =
+            LockOp::create(builder, ofLoc, creation_tile, lockID, initValue);
         lock.getOperation()->setAttr(SymbolTable::getSymbolAttrName(),
                                      builder.getStringAttr(op.name().str() +
                                                            "_lock_" +
@@ -437,9 +439,8 @@ struct AIEObjectFifoStatefulTransformPass
         int prodLockID = lockAnalysis.getLockID(creation_tile);
         assert(prodLockID >= 0 && "No more locks to allocate!");
         int prodLockValue = (numElem - initValues) * repeatCount;
-        auto prodLock =
-            LockOp::create(builder, builder.getUnknownLoc(), creation_tile,
-                           prodLockID, prodLockValue);
+        auto prodLock = LockOp::create(builder, ofLoc, creation_tile,
+                                       prodLockID, prodLockValue);
         prodLock.getOperation()->setAttr(
             SymbolTable::getSymbolAttrName(),
             builder.getStringAttr(op.name().str() + "_prod_lock_" +
@@ -449,9 +450,8 @@ struct AIEObjectFifoStatefulTransformPass
         int consLockID = lockAnalysis.getLockID(creation_tile);
         assert(consLockID >= 0 && "No more locks to allocate!");
         int consLockValue = initValues * repeatCount;
-        auto consLock =
-            LockOp::create(builder, builder.getUnknownLoc(), creation_tile,
-                           consLockID, consLockValue);
+        auto consLock = LockOp::create(builder, ofLoc, creation_tile,
+                                       consLockID, consLockValue);
         consLock.getOperation()->setAttr(
             SymbolTable::getSymbolAttrName(),
             builder.getStringAttr(op.name().str() + "_cons_lock_" +
@@ -583,7 +583,7 @@ struct AIEObjectFifoStatefulTransformPass
     }
 
     builder.setInsertionPointAfter(insertAfter);
-    auto newTile = TileOp::create(builder, builder.getUnknownLoc(), col, row);
+    auto newTile = TileOp::create(builder, hostTile.getLoc(), col, row);
 
     builder.restoreInsertionPoint(savedInsertionPoint);
 
@@ -783,8 +783,7 @@ struct AIEObjectFifoStatefulTransformPass
           }
         }
         auto buff = BufferOp::create(
-            builder, builder.getUnknownLoc(), elemType,
-            current_buf_allocation_tile,
+            builder, op.getLoc(), elemType, current_buf_allocation_tile,
             builder.getStringAttr(op.name().str() + "_buff_" +
                                   std::to_string(of_elem_index)),
             /*address*/ nullptr, initValues,
@@ -826,31 +825,27 @@ struct AIEObjectFifoStatefulTransformPass
 
   /// Function used to create a Bd block.
   template <typename MyOp>
-  void createBd(OpBuilder &builder, LockOp acqLock, int acqMode,
+  void createBd(OpBuilder &builder, Location loc, LockOp acqLock, int acqMode,
                 LockAction acqLockAction, LockOp relLock, int relMode,
                 MyOp buff, int offset, int len, Block *succ,
                 BDDimLayoutArrayAttr dims, BDPadLayoutArrayAttr padDimensions,
                 std::optional<PacketInfoAttr> bdPacket) {
     if (acqLock)
-      UseLockOp::create(builder, builder.getUnknownLoc(), acqLock,
-                        acqLockAction, acqMode);
+      UseLockOp::create(builder, loc, acqLock, acqLockAction, acqMode);
     if (bdPacket) {
-      DMABDPACKETOp::create(builder, builder.getUnknownLoc(),
-                            bdPacket->getPktType(), bdPacket->getPktId());
+      DMABDPACKETOp::create(builder, loc, bdPacket->getPktType(),
+                            bdPacket->getPktId());
     }
     if (!dims.getValue().empty() && padDimensions) {
-      DMABDOp::create(builder, builder.getUnknownLoc(), buff, offset, len, dims,
-                      padDimensions);
+      DMABDOp::create(builder, loc, buff, offset, len, dims, padDimensions);
     } else if (!dims.getValue().empty()) {
-      DMABDOp::create(builder, builder.getUnknownLoc(), buff, offset, len,
-                      dims);
+      DMABDOp::create(builder, loc, buff, offset, len, dims);
     } else {
-      DMABDOp::create(builder, builder.getUnknownLoc(), buff, offset, len);
+      DMABDOp::create(builder, loc, buff, offset, len);
     }
     if (acqLock)
-      UseLockOp::create(builder, builder.getUnknownLoc(), relLock,
-                        LockAction::Release, relMode);
-    NextBDOp::create(builder, builder.getUnknownLoc(), succ);
+      UseLockOp::create(builder, loc, relLock, LockAction::Release, relMode);
+    NextBDOp::create(builder, loc, succ);
   }
 
   /// Function used to create a Bd block.
@@ -906,8 +901,8 @@ struct AIEObjectFifoStatefulTransformPass
                       : state.locksPerFifo[op][prodLockIndex];
       }
     }
-    createBd(builder, acqLock, acqMode, acqLockAction, relLock, relMode, buff,
-             offset, len, succ, dims, padDimensions, bdPacket);
+    createBd(builder, op.getLoc(), acqLock, acqMode, acqLockAction, relLock,
+             relMode, buff, offset, len, succ, dims, padDimensions, bdPacket);
   }
 
   /// Function that either calls createAIETileDMA(), createShimDMA() or
@@ -985,12 +980,11 @@ struct AIEObjectFifoStatefulTransformPass
     if (producerMem == nullptr) {
       OpBuilder::InsertionGuard g(builder);
       builder.setInsertionPoint(device.getBody()->getTerminator());
-      auto newMemOp =
-          MemOp::create(builder, builder.getUnknownLoc(), objFifoTileOp);
+      auto newMemOp = MemOp::create(builder, op.getLoc(), objFifoTileOp);
       {
         OpBuilder::InsertionGuard g(builder);
         builder.setInsertionPointToStart(&newMemOp.getRegion().emplaceBlock());
-        EndOp::create(builder, builder.getUnknownLoc());
+        EndOp::create(builder, op.getLoc());
       }
       producerMem = newMemOp.getOperation();
     }
@@ -1006,8 +1000,8 @@ struct AIEObjectFifoStatefulTransformPass
     int dmaRepeatCount = useHwRepeat ? repeatCount - 1 : 0;
     int bdRepeatCount = useHwRepeat ? 1 : repeatCount;
     builder.setInsertionPointToStart(dmaBlock);
-    DMAStartOp::create(builder, builder.getUnknownLoc(), channelDir,
-                       channelIndex, dmaRepeatCount, bdBlock, endBlock);
+    DMAStartOp::create(builder, op.getLoc(), channelDir, channelIndex,
+                       dmaRepeatCount, bdBlock, endBlock);
     if (lastDmaBlock != nullptr)
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 
@@ -1065,12 +1059,12 @@ struct AIEObjectFifoStatefulTransformPass
     if (producerDMA == nullptr) {
       OpBuilder::InsertionGuard g(builder);
       builder.setInsertionPoint(device.getBody()->getTerminator());
-      auto newDMAOp = ShimDMAOp::create(builder, builder.getUnknownLoc(),
+      auto newDMAOp = ShimDMAOp::create(builder, op.getLoc(),
                                         builder.getIndexType(), objFifoTileOp);
       {
         OpBuilder::InsertionGuard g(builder);
         builder.setInsertionPointToStart(&newDMAOp.getRegion().emplaceBlock());
-        EndOp::create(builder, builder.getUnknownLoc());
+        EndOp::create(builder, op.getLoc());
       }
       producerDMA = newDMAOp.getOperation();
     }
@@ -1082,8 +1076,8 @@ struct AIEObjectFifoStatefulTransformPass
 
     // create DMA channel
     builder.setInsertionPointToStart(dmaBlock);
-    DMAStartOp::create(builder, builder.getUnknownLoc(), channelDir,
-                       channelIndex, /*repeatCout*/ 0, bdBlock, endBlock);
+    DMAStartOp::create(builder, op.getLoc(), channelDir, channelIndex,
+                       /*repeatCout*/ 0, bdBlock, endBlock);
     if (lastDmaBlock != nullptr)
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 
@@ -1228,12 +1222,11 @@ struct AIEObjectFifoStatefulTransformPass
     if (producerDMA == nullptr) {
       OpBuilder::InsertionGuard g(builder);
       builder.setInsertionPoint(device.getBody()->getTerminator());
-      auto newDMAOp =
-          MemTileDMAOp::create(builder, builder.getUnknownLoc(), objFifoTileOp);
+      auto newDMAOp = MemTileDMAOp::create(builder, op.getLoc(), objFifoTileOp);
       {
         OpBuilder::InsertionGuard g(builder);
         builder.setInsertionPointToStart(&newDMAOp.getRegion().emplaceBlock());
-        EndOp::create(builder, builder.getUnknownLoc());
+        EndOp::create(builder, op.getLoc());
       }
       producerDMA = newDMAOp.getOperation();
     }
@@ -1259,8 +1252,8 @@ struct AIEObjectFifoStatefulTransformPass
     if (useHwRepeat)
       taskCount = repeatCount - 1;
     int bdRepeatFactor = useHwRepeat ? 1 : repeatCount;
-    DMAStartOp::create(builder, builder.getUnknownLoc(), channelDir,
-                       channelIndex, taskCount, bdBlock, endBlock);
+    DMAStartOp::create(builder, op.getLoc(), channelDir, channelIndex,
+                       taskCount, bdBlock, endBlock);
     if (lastDmaBlock != nullptr)
       lastDmaBlock->getTerminator()->setSuccessor(dmaBlock, 1);
 
@@ -1284,7 +1277,7 @@ struct AIEObjectFifoStatefulTransformPass
             // Create a separate terminating block with aie.end for this
             // specific DMA channel
             builder.setInsertionPointToStart(succ);
-            EndOp::create(builder, builder.getUnknownLoc());
+            EndOp::create(builder, op.getLoc());
           } else {
             succ = bdBlock;
           }
@@ -1451,9 +1444,9 @@ struct AIEObjectFifoStatefulTransformPass
                              BufferOp globalNextIndex, arith::ConstantOp index,
                              arith::ConstantOp size) {
     builder.setInsertionPointAfter(relOp);
-    Value oldCounter = memref::LoadOp::create(
-        builder, builder.getUnknownLoc(), globalNextIndex,
-        ValueRange(ArrayRef({index.getResult()})));
+    Value oldCounter =
+        memref::LoadOp::create(builder, relOp.getLoc(), globalNextIndex,
+                               ValueRange(ArrayRef({index.getResult()})));
     Value val =
         arith::ConstantOp::create(builder, oldCounter.getLoc(),
                                   builder.getI32IntegerAttr(relOp.getSize()));
@@ -1467,6 +1460,455 @@ struct AIEObjectFifoStatefulTransformPass
                             ValueRange(ArrayRef({index.getResult()})));
   }
 
+  using FifoPort = std::pair<ObjectFifoCreateOp, ObjectFifoPort>;
+
+  // Returns the innermost enclosing scf.for / scf.while that contains op
+  // without crossing another loop boundary, or null. For scf.while, only
+  // matches if op is in the after-region (the body); the before-region
+  // (the condition) is not analyzed.
+  Operation *innermostEnclosingLoop(Operation *op) {
+    Operation *cur = op->getParentOp();
+    Region *prev = op->getParentRegion();
+    while (cur) {
+      if (isa<scf::ForOp>(cur))
+        return cur;
+      if (auto w = dyn_cast<scf::WhileOp>(cur)) {
+        if (prev == &w.getAfter())
+          return cur;
+        return nullptr;
+      }
+      if (isa<CoreOp>(cur))
+        return nullptr;
+      prev = cur->getParentRegion();
+      cur = cur->getParentOp();
+    }
+    return nullptr;
+  }
+
+  // True if op is nested inside an scf.if anywhere strictly below loopOp.
+  bool isInsideIfInsideLoop(Operation *op, Operation *loopOp) {
+    Operation *cur = op->getParentOp();
+    while (cur && cur != loopOp) {
+      if (isa<scf::IfOp>(cur))
+        return true;
+      cur = cur->getParentOp();
+    }
+    return false;
+  }
+
+  // Conservative model of the lock-lowering's "currently held" count per
+  // (fifo, port) at the IR point immediately before `loopOp`.
+  //
+  // Scope: only the loop's immediate parent block is walked. Earlier
+  // peeled siblings show up correctly, but acq/rel in enclosing scopes
+  // outside the parent block are invisible. This relies on a contract
+  // with the lock-lowering: AcquireGreaterEqual semantics make it
+  // tolerant of an over-estimated peel-acquire (the runtime clamps
+  // against currently-held instead of acquiring redundantly), so a
+  // missed enclosing-scope acq/rel produces redundant IR rather than
+  // a producer-pool deadlock. If that lowering ever changes, this scope
+  // must be widened.
+  //
+  // Straight-line acq/rel update the count as expected. For nested ops we
+  // model what the lock-lowering would leave behind:
+  //  - a nested loop body's net contribution to `held` is the body's
+  //    per-iteration peak acquire size minus the in-body release sum,
+  //    floored at 0. After the user's trailing-release drain (which
+  //    appears as straight-line ops later in this same walk) the count
+  //    returns to its true post-drain value.
+  //  - a nested scf.if takes the max of its branches.
+  //  - any other nested op containing acq/rel that we can't analyze
+  //    marks the (fifo, port) "tainted" — the caller will not peel it.
+  llvm::MapVector<FifoPort, int>
+  heldBeforeLoop(Operation *loopOp, llvm::SetVector<FifoPort> &tainted) {
+    llvm::MapVector<FifoPort, int> held;
+    std::function<void(Operation &)> step;
+    step = [&](Operation &op) {
+      if (auto a = dyn_cast<ObjectFifoAcquireOp>(&op)) {
+        FifoPort fp{a.getObjectFifo(), a.getPort()};
+        held[fp] = std::max(held.lookup(fp), a.acqNumber());
+        return;
+      }
+      if (auto r = dyn_cast<ObjectFifoReleaseOp>(&op)) {
+        FifoPort fp{r.getObjectFifo(), r.getPort()};
+        held[fp] = std::max(0, held.lookup(fp) - r.relNumber());
+        return;
+      }
+      if (isa<scf::ForOp, scf::WhileOp>(&op)) {
+        // Per (fifo, port) used directly in the body: post-loop held delta
+        // is max(max_acq - sum_rel, 0). Bail (taint) on anything we can't
+        // see straight through (conditionals, nested loops in the body).
+        Region *body = isa<scf::ForOp>(&op)
+                           ? &cast<scf::ForOp>(&op).getRegion()
+                           : &cast<scf::WhileOp>(&op).getAfter();
+        llvm::MapVector<FifoPort, int> maxAcq, sumRel;
+        bool clean = true;
+        body->walk([&](Operation *inner) {
+          if (auto a = dyn_cast<ObjectFifoAcquireOp>(inner)) {
+            if (innermostEnclosingLoop(a) != &op ||
+                isInsideIfInsideLoop(a, &op)) {
+              tainted.insert({a.getObjectFifo(), a.getPort()});
+              clean = false;
+              return;
+            }
+            FifoPort fp{a.getObjectFifo(), a.getPort()};
+            maxAcq[fp] = std::max(maxAcq.lookup(fp), a.acqNumber());
+          } else if (auto r = dyn_cast<ObjectFifoReleaseOp>(inner)) {
+            if (innermostEnclosingLoop(r) != &op ||
+                isInsideIfInsideLoop(r, &op)) {
+              tainted.insert({r.getObjectFifo(), r.getPort()});
+              clean = false;
+              return;
+            }
+            FifoPort fp{r.getObjectFifo(), r.getPort()};
+            sumRel[fp] = sumRel.lookup(fp) + r.relNumber();
+          }
+        });
+        if (!clean)
+          return;
+        for (const auto &kv : maxAcq) {
+          int delta = std::max(0, kv.second - sumRel.lookup(kv.first));
+          held[kv.first] = std::max(held.lookup(kv.first), delta);
+        }
+        return;
+      }
+      // Any other op carrying acq/rel is unanalyzable.
+      bool unanalyzable = false;
+      op.walk([&](Operation *inner) {
+        if (auto a = dyn_cast<ObjectFifoAcquireOp>(inner)) {
+          tainted.insert({a.getObjectFifo(), a.getPort()});
+          unanalyzable = true;
+        } else if (auto r = dyn_cast<ObjectFifoReleaseOp>(inner)) {
+          tainted.insert({r.getObjectFifo(), r.getPort()});
+          unanalyzable = true;
+        }
+      });
+      (void)unanalyzable;
+    };
+    for (Operation &op : *loopOp->getBlock()) {
+      if (&op == loopOp)
+        break;
+      step(op);
+    }
+    return held;
+  }
+
+  // Decide whether loopOp's body has positive cyclostatic carry on at least
+  // one (fifo, port). Diagnostics:
+  //   - any in-body acq/rel inside an scf.if -> *condDiag is set and we
+  //     return false (caller emits the diagnostic).
+  // Sets `taintedDiag` if peel must be skipped because a fifo's pre-loop
+  // held count cannot be analyzed (sibling loop / scf.if touched the same
+  // fifo) — this is silent, not an error, since the lowering still produces
+  // correct (just unoptimized) code.
+  bool bodyHasCyclostaticCarry(Region *bodyRegion, Operation *loopOp,
+                               Operation *&condDiag) {
+    llvm::MapVector<FifoPort, int> maxAcq;
+    llvm::MapVector<FifoPort, int> sumRel;
+    llvm::SetVector<FifoPort> condFifos;
+    condDiag = nullptr;
+
+    bodyRegion->walk([&](Operation *op) {
+      if (auto a = dyn_cast<ObjectFifoAcquireOp>(op)) {
+        if (innermostEnclosingLoop(a) != loopOp)
+          return;
+        FifoPort fp{a.getObjectFifo(), a.getPort()};
+        if (isInsideIfInsideLoop(a, loopOp)) {
+          condFifos.insert(fp);
+          if (!condDiag)
+            condDiag = a;
+        } else {
+          maxAcq[fp] = std::max(maxAcq.lookup(fp), a.acqNumber());
+        }
+      } else if (auto r = dyn_cast<ObjectFifoReleaseOp>(op)) {
+        if (innermostEnclosingLoop(r) != loopOp)
+          return;
+        FifoPort fp{r.getObjectFifo(), r.getPort()};
+        if (isInsideIfInsideLoop(r, loopOp)) {
+          condFifos.insert(fp);
+          if (!condDiag)
+            condDiag = r;
+        } else {
+          sumRel[fp] = sumRel.lookup(fp) + r.relNumber();
+        }
+      }
+    });
+
+    // If a (fifo, port) has both conditional and unconditional acq/rel in
+    // the body, the straight-line carry computation is unsound — flag it.
+    // Pure-conditional fifos (no unconditional ops in the body) are well-
+    // formed: each conditional path is its own straight-line acq/rel
+    // sequence that the lock-lowering handles correctly without peeling.
+    for (const auto &fp : condFifos) {
+      if (maxAcq.count(fp) || sumRel.count(fp))
+        return false; // condDiag already attached above
+    }
+    condDiag = nullptr; // pure-conditional — no diagnostic
+
+    llvm::SetVector<FifoPort> tainted;
+    auto held = heldBeforeLoop(loopOp, tainted);
+    for (const auto &kv : maxAcq) {
+      if (tainted.contains(kv.first))
+        continue;
+      int carry = kv.second - sumRel.lookup(kv.first);
+      int peelCarry = carry - held.lookup(kv.first);
+      if (peelCarry > 0)
+        return true;
+    }
+    return false;
+  }
+
+  // Detect cyclostatic acquire/release patterns inside loop bodies and peel
+  // iteration 0 in place so that the in-body acquire's emitted
+  // `AcquireGreaterEqual` value naturally becomes the steady-state delta.
+  // Peeling preserves the user's body ordering between operations on
+  // different fifos — critical for cross-core sync correctness.
+  //
+  // Walk order matters: peel inner loops first. `Operation::walk` defaults
+  // to post-order, so children are collected before their parents — relied
+  // on here. If an outer loop is peeled before its child, the cloned inner
+  // loop sitting in the peeled iter-0 body is not in `loopOps` and never
+  // gets peeled (the lock-lowering's AcquireGreaterEqual clamping keeps that
+  // correct, but the IR is redundant). Do not change to PreOrder.
+  LogicalResult peelCyclostaticAcquires(CoreOp coreOp, OpBuilder &builder) {
+    SmallVector<Operation *> loopOps;
+    coreOp.walk<WalkOrder::PostOrder>([&](Operation *op) {
+      if (isa<scf::ForOp, scf::WhileOp>(op))
+        loopOps.push_back(op);
+    });
+
+    LogicalResult overall = success();
+    for (Operation *loopOp : loopOps) {
+      Region *bodyRegion;
+      if (auto f = dyn_cast<scf::ForOp>(loopOp))
+        bodyRegion = &f.getRegion();
+      else
+        bodyRegion = &cast<scf::WhileOp>(loopOp).getAfter();
+
+      Operation *condDiag = nullptr;
+      if (!bodyHasCyclostaticCarry(bodyRegion, loopOp, condDiag)) {
+        if (condDiag) {
+          condDiag->emitOpError(
+              "cannot statically analyze cyclostatic acquire pattern: "
+              "acquire/release is inside a conditional");
+          overall = failure();
+        }
+        continue;
+      }
+
+      if (auto forOp = dyn_cast<scf::ForOp>(loopOp)) {
+        if (failed(peelScfFor(forOp, builder)))
+          overall = failure();
+      } else {
+        if (failed(peelScfWhile(cast<scf::WhileOp>(loopOp), builder)))
+          overall = failure();
+      }
+    }
+    return overall;
+  }
+
+  // Peel iteration 0 of `forOp` in place. The peeled body is inserted
+  // immediately before the loop; the loop's lb is advanced by step. When
+  // bounds are not statically known to execute at least once, the peeled
+  // body is wrapped in scf.if guarded by a runtime trip-count check.
+  //
+  // Returns success without peeling (a no-op) if the step sign cannot be
+  // determined at compile time, since the runtime guard predicate is
+  // sign-dependent. The loop still lowers correctly via the unoptimized
+  // path; only the AcquireGreaterEqual delta optimization is skipped.
+  LogicalResult peelScfFor(scf::ForOp forOp, OpBuilder &builder) {
+    Location loc = forOp.getLoc();
+    Value lb = forOp.getLowerBound();
+    Value ub = forOp.getUpperBound();
+    Value step = forOp.getStep();
+    OperandRange initArgs = forOp.getInitArgs();
+    Type ivTy = lb.getType();
+    assert(ivTy.isIndex() || ivTy.isSignlessInteger());
+
+    auto cLb = getConstantIntValue(lb);
+    auto cUb = getConstantIntValue(ub);
+    auto cStep = getConstantIntValue(step);
+
+    // scf.for requires step != 0 with consistent sign progression. Without
+    // a known step sign we can't pick the right runtime guard predicate
+    // (positive: lb+step <= ub; negative: lb+step >= ub), so bail out.
+    // This is correctness, not just optimization: the wrong predicate on
+    // a negative-step loop would skip the entire trimmed loop body.
+    if (!cStep)
+      return success();
+    bool positiveStep = *cStep > 0;
+    bool provablyAtLeastOne =
+        ivTy.isIndex() && cLb && cUb && positiveStep && (*cUb - *cLb) >= *cStep;
+
+    builder.setInsertionPoint(forOp);
+
+    auto cloneBody = [&](OpBuilder &b,
+                         ValueRange ivAndArgs) -> SmallVector<Value> {
+      IRMapping map;
+      Block &srcBlock = forOp.getRegion().front();
+      map.map(srcBlock.getArgument(0), ivAndArgs[0]);
+      for (unsigned i = 0; i < initArgs.size(); ++i)
+        map.map(srcBlock.getArgument(1 + i), ivAndArgs[1 + i]);
+      for (Operation &op : srcBlock.without_terminator())
+        b.clone(op, map);
+      auto yieldOp = cast<scf::YieldOp>(srcBlock.getTerminator());
+      SmallVector<Value> yielded;
+      for (Value v : yieldOp.getOperands())
+        yielded.push_back(map.lookupOrDefault(v));
+      return yielded;
+    };
+
+    SmallVector<Value> peelResults;
+    if (provablyAtLeastOne) {
+      SmallVector<Value> ivAndArgs{lb};
+      ivAndArgs.append(initArgs.begin(), initArgs.end());
+      peelResults = cloneBody(builder, ivAndArgs);
+    } else {
+      // Guard: (lb + step) does not pass ub. For positive step that's
+      // ub - lb >= step (sge); for negative step lb - ub >= -step (sge,
+      // with both sides flipped). step's sign is known at this point —
+      // the early return above bails out otherwise.
+      Value diff = positiveStep ? arith::SubIOp::create(builder, loc, ub, lb)
+                                : arith::SubIOp::create(builder, loc, lb, ub);
+      Value absStep =
+          positiveStep
+              ? step
+              : arith::SubIOp::create(
+                    builder, loc,
+                    arith::ConstantOp::create(
+                        builder, loc,
+                        ivTy.isIndex()
+                            ? cast<TypedAttr>(builder.getIndexAttr(0))
+                            : cast<TypedAttr>(builder.getIntegerAttr(ivTy, 0))),
+                    step);
+      Value cond = arith::CmpIOp::create(
+          builder, loc, arith::CmpIPredicate::sge, diff, absStep);
+      SmallVector<Type> resultTypes(initArgs.getTypes());
+      auto ifOp = scf::IfOp::create(builder, loc, resultTypes, cond,
+                                    /*withElseRegion=*/true);
+      Block &thenBlock = ifOp.getThenRegion().front();
+      OpBuilder thenBuilder(&thenBlock, thenBlock.begin());
+      SmallVector<Value> ivAndArgs{lb};
+      ivAndArgs.append(initArgs.begin(), initArgs.end());
+      SmallVector<Value> y = cloneBody(thenBuilder, ivAndArgs);
+      thenBlock.getTerminator()->erase();
+      thenBuilder.setInsertionPointToEnd(&thenBlock);
+      scf::YieldOp::create(thenBuilder, loc, y);
+
+      Block &elseBlock = ifOp.getElseRegion().front();
+      elseBlock.getTerminator()->erase();
+      OpBuilder elseBuilder(&elseBlock, elseBlock.end());
+      scf::YieldOp::create(elseBuilder, loc, ValueRange(initArgs));
+
+      peelResults.assign(ifOp.getResults().begin(), ifOp.getResults().end());
+    }
+
+    Value newLb = arith::AddIOp::create(builder, loc, lb, step);
+    forOp.getLowerBoundMutable().assign(newLb);
+    if (!peelResults.empty()) {
+      assert(peelResults.size() == initArgs.size());
+      forOp.getInitArgsMutable().assign(peelResults);
+    }
+    return success();
+  }
+
+  // Peel iteration 0 of `whileOp`. Strategy: clone the before-region inline
+  // to get the iter-0 condition and forwarded values, then build an
+  // scf.if(iter0Cond) whose then-branch runs iter-0 of the after-region and
+  // re-enters a fresh clone of the while-loop for iterations 1..N. The
+  // original while is erased.
+  LogicalResult peelScfWhile(scf::WhileOp whileOp, OpBuilder &builder) {
+    Location loc = whileOp.getLoc();
+    Region &beforeRegion = whileOp.getBefore();
+    Region &afterRegion = whileOp.getAfter();
+    OperandRange initArgs = whileOp.getInits();
+
+    // Cloning the before-region twice would execute its side effects twice;
+    // bail out cleanly if any are present.
+    for (Operation &op : beforeRegion.front().without_terminator()) {
+      if (!isMemoryEffectFree(&op)) {
+        whileOp.emitWarning(
+            "cyclostatic acquire peel skipped: scf.while before-region has "
+            "side effects (duplicating it would change semantics); the loop "
+            "lowers correctly without the AcquireGreaterEqual delta "
+            "optimization. Rewrite as scf.for to enable it.");
+        return success();
+      }
+    }
+
+    builder.setInsertionPoint(whileOp);
+
+    // Iter-0 condition + forwarded values (clone of before-region).
+    IRMapping beforeMap;
+    for (unsigned i = 0; i < initArgs.size(); ++i)
+      beforeMap.map(beforeRegion.front().getArgument(i), initArgs[i]);
+    for (Operation &op : beforeRegion.front().without_terminator())
+      builder.clone(op, beforeMap);
+    auto beforeTerm =
+        cast<scf::ConditionOp>(beforeRegion.front().getTerminator());
+    Value iter0Cond = beforeMap.lookupOrDefault(beforeTerm.getCondition());
+    SmallVector<Value> iter0Vals;
+    for (Value v : beforeTerm.getArgs())
+      iter0Vals.push_back(beforeMap.lookupOrDefault(v));
+
+    SmallVector<Type> resultTypes(whileOp.getResultTypes());
+    auto ifOp = scf::IfOp::create(builder, loc, resultTypes, iter0Cond,
+                                  /*withElseRegion=*/!resultTypes.empty());
+
+    // Then branch: peeled iter-0 body, followed by a fresh while running
+    // iterations 1..N seeded by the after-region's yielded values.
+    OpBuilder thenBuilder = ifOp.getThenBodyBuilder();
+    IRMapping afterMap;
+    Block &abb = afterRegion.front();
+    for (unsigned i = 0; i < iter0Vals.size(); ++i)
+      afterMap.map(abb.getArgument(i), iter0Vals[i]);
+    for (Operation &op : abb.without_terminator())
+      thenBuilder.clone(op, afterMap);
+    auto afterYield = cast<scf::YieldOp>(abb.getTerminator());
+    SmallVector<Value> nextInits;
+    for (Value v : afterYield.getOperands())
+      nextInits.push_back(afterMap.lookupOrDefault(v));
+
+    auto trimmedWhile =
+        scf::WhileOp::create(thenBuilder, loc, resultTypes, nextInits);
+    {
+      IRMapping bMap;
+      trimmedWhile.getBefore().push_back(new Block());
+      Block &nb = trimmedWhile.getBefore().front();
+      for (auto t : initArgs.getTypes())
+        nb.addArgument(t, loc);
+      for (unsigned i = 0; i < initArgs.size(); ++i)
+        bMap.map(beforeRegion.front().getArgument(i), nb.getArgument(i));
+      OpBuilder b(&nb, nb.end());
+      for (Operation &op : beforeRegion.front())
+        b.clone(op, bMap);
+    }
+    {
+      IRMapping aMap;
+      trimmedWhile.getAfter().push_back(new Block());
+      Block &na = trimmedWhile.getAfter().front();
+      for (auto t : llvm::to_vector(beforeTerm.getArgs().getTypes()))
+        na.addArgument(t, loc);
+      for (unsigned i = 0; i < na.getNumArguments(); ++i)
+        aMap.map(afterRegion.front().getArgument(i), na.getArgument(i));
+      OpBuilder b(&na, na.end());
+      for (Operation &op : afterRegion.front())
+        b.clone(op, aMap);
+    }
+
+    if (!resultTypes.empty())
+      scf::YieldOp::create(thenBuilder, loc, trimmedWhile.getResults());
+
+    if (!resultTypes.empty()) {
+      OpBuilder elseBuilder = ifOp.getElseBodyBuilder();
+      scf::YieldOp::create(elseBuilder, loc, iter0Vals);
+    }
+
+    whileOp.replaceAllUsesWith(ifOp.getResults());
+    whileOp.erase();
+    return success();
+  }
+
   // Function that generates the IR for objectfifo accesses to be handled at
   // runtime.
   LogicalResult dynamicGlobalObjectFifos(DeviceOp &device, OpBuilder &builder,
@@ -1475,6 +1917,8 @@ struct AIEObjectFifoStatefulTransformPass
     for (auto coreOp : device.getOps<CoreOp>()) {
       if (objectFifoTiles.count(coreOp.getTileOp()) <= 0)
         continue;
+      if (failed(peelCyclostaticAcquires(coreOp, builder)))
+        return failure();
       if (objectFifoTiles.count(coreOp.getTileOp()) > 0) {
         // For each core: count the number of objectFifos and create
         // a global buffer just before the core to track index of
@@ -1493,8 +1937,8 @@ struct AIEObjectFifoStatefulTransformPass
 
         int index = 0;
         builder.setInsertionPointToStart(&(coreOp.getBody().front()));
-        Value initVal = arith::ConstantOp::create(
-            builder, builder.getUnknownLoc(), builder.getI32IntegerAttr(0));
+        Value initVal = arith::ConstantOp::create(builder, coreOp.getLoc(),
+                                                  builder.getI32IntegerAttr(0));
         coreOp.walk([&](ObjectFifoAcquireOp acqOp) {
           ObjectFifoCreateOp op = acqOp.getObjectFifo();
           ObjectFifoPort port = acqOp.getPort();
@@ -1515,7 +1959,7 @@ struct AIEObjectFifoStatefulTransformPass
             MemRefType::get(SmallVector<int64_t>{(int64_t)fifoSizes.size()},
                             builder.getI32Type());
         auto globalNextIndex = BufferOp::create(
-            builder, builder.getUnknownLoc(), memrefTy, coreOp.getTile(),
+            builder, coreOp.getLoc(), memrefTy, coreOp.getTile(),
             /*sym_name*/ nullptr, /*address*/ nullptr,
             /*initial_value*/ nullptr, /*mem_bank*/ nullptr,
             /*aligned*/ nullptr);
@@ -1524,7 +1968,7 @@ struct AIEObjectFifoStatefulTransformPass
         for (auto i : constantSizes) {
           builder.setInsertionPointAfter(i.second);
           memref::StoreOp::create(
-              builder, builder.getUnknownLoc(), initVal, globalNextIndex,
+              builder, coreOp.getLoc(), initVal, globalNextIndex,
               ValueRange(ArrayRef({globalIndices[i.first].getResult()})));
         }
 
@@ -1559,11 +2003,11 @@ struct AIEObjectFifoStatefulTransformPass
               // Create a switch for each subview access
               builder.setInsertionPointAfter(accessOp);
               auto switchIndexAsInteger = memref::LoadOp::create(
-                  builder, builder.getUnknownLoc(), globalNextIndex,
+                  builder, acqOp.getLoc(), globalNextIndex,
                   ValueRange(
                       ArrayRef({globalIndices[{createOp, port}].getResult()})));
               auto switchIndex = arith::IndexCastOp::create(
-                  builder, builder.getUnknownLoc(), builder.getIndexType(),
+                  builder, acqOp.getLoc(), builder.getIndexType(),
                   switchIndexAsInteger);
               unsigned caseRegionCounts = fifoSizes[{createOp, port}];
               SmallVector<int64_t, 4> caseValues;
@@ -1581,7 +2025,7 @@ struct AIEObjectFifoStatefulTransformPass
               auto bufferIndex = (accessOp.getIndex()) % createOp.size();
               builder.setInsertionPointToStart(&(switchOp.getDefaultBlock()));
               scf::YieldOp::create(
-                  builder, builder.getUnknownLoc(),
+                  builder, accessOp.getLoc(),
                   state.buffersPerFifo[createOp][bufferIndex].getResult());
               for (int i = 0; i < fifoSizes[{createOp, port}]; ++i) {
                 // Create other cases of IndexSwitchOp
@@ -1645,7 +2089,7 @@ struct AIEObjectFifoStatefulTransformPass
         lockMode = 1;
       for (int i = 0; i < numLocks; i++) {
         int lockID = acc[{op, portNum}];
-        UseLockOp::create(builder, builder.getUnknownLoc(),
+        UseLockOp::create(builder, op.getLoc(),
                           state.locksPerFifo[target][lockID], lockAction,
                           lockMode);
         acc[{op, portNum}] =
@@ -1675,8 +2119,7 @@ struct AIEObjectFifoStatefulTransformPass
         else
           lock = state.locksPerFifo[target][0];
       }
-      UseLockOp::create(builder, builder.getUnknownLoc(), lock, lockAction,
-                        numLocks);
+      UseLockOp::create(builder, op.getLoc(), lock, lockAction, numLocks);
       acc[{op, portNum}] = (acc[{op, portNum}] + numLocks) %
                            op.size(); // update to next objFifo elem
     }
@@ -1788,7 +2231,7 @@ struct AIEObjectFifoStatefulTransformPass
     std::string alloc_name = getShimAllocationName(objFifoOp.getName());
     // SymbolRefAttr::get(ctx, objFifoOp.getName())
     ShimDMAAllocationOp::create(
-        builder, builder.getUnknownLoc(), StringAttr::get(ctx, alloc_name),
+        builder, objFifoOp.getLoc(), StringAttr::get(ctx, alloc_name),
         shimTile.getResult(), DMAChannelDirAttr::get(ctx, channelDir),
         builder.getI64IntegerAttr(channelIndex), builder.getBoolAttr(plio),
         packetInfo);
@@ -1952,9 +2395,10 @@ struct AIEObjectFifoStatefulTransformPass
             BDDimLayoutArrayArrayAttr::get(builder.getContext(),
                                            singletonFromStreamDims);
 
-        ObjectFifoCreateOp consumerFifo = createObjectFifo(
-            builder, datatype, consumerFifoName, consumerTile, consumerTile,
-            consumerObjFifoSize, emptyDims, fromStreamDims);
+        ObjectFifoCreateOp consumerFifo =
+            createObjectFifo(builder, createOp.getLoc(), datatype,
+                             consumerFifoName, consumerTile, consumerTile,
+                             consumerObjFifoSize, emptyDims, fromStreamDims);
         if (createOp.getDisableSynchronization())
           consumerFifo.setDisableSynchronization(true);
         // Propagate iter_count attribute from the original createOp
@@ -2149,14 +2593,14 @@ struct AIEObjectFifoStatefulTransformPass
           // create packet flow
           builder.setInsertionPointAfter(producer);
           packetflow = builder.create<PacketFlowOp>(
-              builder.getUnknownLoc(),
+              producer.getLoc(),
               builder.getIntegerAttr(builder.getI8Type(), bdPacket->getPktId()),
               nullptr, nullptr);
           {
             OpBuilder::InsertionGuard g(builder);
             builder.setInsertionPointToStart(
                 &packetflow.getRegion().emplaceBlock());
-            builder.create<EndOp>(builder.getUnknownLoc());
+            builder.create<EndOp>(producer.getLoc());
           }
         }
       }
@@ -2200,7 +2644,7 @@ struct AIEObjectFifoStatefulTransformPass
 
           if (clPacketSwObjectFifos) {
             builder.setInsertionPointToStart(&packetflow.getPorts().front());
-            builder.create<PacketDestOp>(builder.getUnknownLoc(),
+            builder.create<PacketDestOp>(consumer.getLoc(),
                                          consumer.getProducerTile(),
                                          WireBundle::DMA, consumerChan.channel);
           }
@@ -2232,16 +2676,16 @@ struct AIEObjectFifoStatefulTransformPass
         if (!clPacketSwObjectFifos) {
           // create flow
           builder.setInsertionPointAfter(producer);
-          FlowOp::create(builder, builder.getUnknownLoc(),
-                         producer.getProducerTile(), producerWireType,
-                         producerChan.channel, consumer.getProducerTile(),
-                         consumerWireType, consumerChan.channel);
+          FlowOp::create(builder, producer.getLoc(), producer.getProducerTile(),
+                         producerWireType, producerChan.channel,
+                         consumer.getProducerTile(), consumerWireType,
+                         consumerChan.channel);
         }
       }
 
       if (clPacketSwObjectFifos) {
         builder.setInsertionPointToStart(&packetflow.getPorts().front());
-        PacketSourceOp::create(builder, builder.getUnknownLoc(),
+        PacketSourceOp::create(builder, producer.getLoc(),
                                producer.getProducerTile(), WireBundle::DMA,
                                producerChan.channel);
       }
@@ -2479,7 +2923,10 @@ struct AIEObjectFifoStatefulTransformPass
       // Replace subview.access ops
       //===----------------------------------------------------------------===//
       res = coreOp.walk([&](ObjectFifoSubviewAccessOp accessOp) {
+        // Verifier guarantees the defining op is a direct acquire.
         auto acqOp = accessOp.getSubview().getDefiningOp<ObjectFifoAcquireOp>();
+        assert(acqOp && "ObjectFifoSubviewAccessOp verifier should reject "
+                        "non-direct subview operands");
         if (ObjectFifoCreateOp op = acqOp.getObjectFifo()) {
           if (auto linkOp = getOptionalLinkOp(op); linkOp.has_value()) {
             if (!linkOp->isDistribute() && !linkOp->isJoin()) {

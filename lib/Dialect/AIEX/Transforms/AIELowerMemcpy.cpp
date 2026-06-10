@@ -46,9 +46,10 @@ struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
   LowerAIEMemcpy(MLIRContext *context, PatternBenefit benefit = 1)
       : OpConversionPattern<MemcpyOp>(context, benefit) {}
 
-  void createDMABlocksAndOps(MemOp &mem, StringRef tokenName, int acquireTknVal,
-                             int releaseTknVal, Value buf, int offset, int len,
-                             DMAChannelDir dmaDir, int channelIndex,
+  void createDMABlocksAndOps(MemOp &mem, Location loc, StringRef tokenName,
+                             int acquireTknVal, int releaseTknVal, Value buf,
+                             int offset, int len, DMAChannelDir dmaDir,
+                             int channelIndex,
                              ConversionPatternRewriter &rewriter) const {
 
     Region &r = mem.getBody();
@@ -57,7 +58,7 @@ struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
     Block *bdBlock = rewriter.createBlock(&endBlock);
 
     rewriter.setInsertionPointToStart(dmaBlock);
-    DMAStartOp::create(rewriter, rewriter.getUnknownLoc(), dmaDir, channelIndex,
+    DMAStartOp::create(rewriter, loc, dmaDir, channelIndex,
                        /*repeatCount*/ 0, bdBlock, &endBlock);
 
     // Setup bd Block
@@ -65,12 +66,12 @@ struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
     // for specifying DMA Block description (which buffer type (A/B), transfer
     // length/address, etc.)
     rewriter.setInsertionPointToStart(bdBlock);
-    UseTokenOp::create(rewriter, rewriter.getUnknownLoc(), tokenName,
-                       acquireTknVal, LockAction::Acquire);
-    DMABDOp::create(rewriter, rewriter.getUnknownLoc(), buf, offset, len);
-    UseTokenOp::create(rewriter, rewriter.getUnknownLoc(), tokenName,
-                       releaseTknVal, LockAction::Release);
-    NextBDOp::create(rewriter, rewriter.getUnknownLoc(), &endBlock);
+    UseTokenOp::create(rewriter, loc, tokenName, acquireTknVal,
+                       LockAction::Acquire);
+    DMABDOp::create(rewriter, loc, buf, offset, len);
+    UseTokenOp::create(rewriter, loc, tokenName, releaseTknVal,
+                       LockAction::Release);
+    NextBDOp::create(rewriter, loc, &endBlock);
   }
 
   LogicalResult
@@ -90,12 +91,12 @@ struct LowerAIEMemcpy : public OpConversionPattern<MemcpyOp> {
     MemOp srcMem = srcTileOp(op).getMemOp();
     MemOp dstMem = dstTileOp(op).getMemOp();
 
-    createDMABlocksAndOps(srcMem, tokenName, acquireTknVal, releaseTknVal,
-                          srcBuf, srcOffset, srcLen, DMAChannelDir::MM2S, 0,
-                          rewriter);
-    createDMABlocksAndOps(dstMem, tokenName, acquireTknVal, releaseTknVal,
-                          dstBuf, dstOffset, dstLen, DMAChannelDir::S2MM, 0,
-                          rewriter);
+    createDMABlocksAndOps(srcMem, op.getLoc(), tokenName, acquireTknVal,
+                          releaseTknVal, srcBuf, srcOffset, srcLen,
+                          DMAChannelDir::MM2S, 0, rewriter);
+    createDMABlocksAndOps(dstMem, op.getLoc(), tokenName, acquireTknVal,
+                          releaseTknVal, dstBuf, dstOffset, dstLen,
+                          DMAChannelDir::S2MM, 0, rewriter);
 
     rewriter.eraseOp(op);
     return success();
@@ -126,8 +127,8 @@ struct AIELowerMemcpyPass
       assert(destChannel[op.getDstTile()] <= 2 &&
              "Could not allocate more than two dest. channel when creating "
              "FlowOp");
-      FlowOp::create(builder, builder.getUnknownLoc(), srcTile, WireBundle::DMA,
-                     0, dstTile, WireBundle::DMA, destChannel[op.getDstTile()]);
+      FlowOp::create(builder, op.getLoc(), srcTile, WireBundle::DMA, 0, dstTile,
+                     WireBundle::DMA, destChannel[op.getDstTile()]);
       destChannel[op.getDstTile()]++;
     }
 

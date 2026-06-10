@@ -67,7 +67,7 @@ struct AIELowerMulticastPass
           TileOp destTile =
               dyn_cast<TileOp>(multiDest.getTile().getDefiningOp());
           Port destPort = multiDest.port();
-          FlowOp::create(builder, builder.getUnknownLoc(), srcTile,
+          FlowOp::create(builder, multiDest.getLoc(), srcTile,
                          sourcePort.bundle, sourcePort.channel, destTile,
                          destPort.bundle, destPort.channel);
         }
