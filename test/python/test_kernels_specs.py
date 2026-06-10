@@ -692,7 +692,15 @@ def test_arg_types_length(spec: KernelSpec):
 @pytest.mark.parametrize("spec", KERNEL_SPECS, ids=_ids(KERNEL_SPECS))
 def test_default_function_name(spec: KernelSpec):
     ef = spec.factory(**spec.kwargs)
-    assert ef._name == spec.expected_name
+    # The logical (original) name is the stable identity; a parameterized
+    # kernel's effective symbol is the original name with a deterministic
+    # digest prefix (see _make_extern).  Assert on the order-independent
+    # original name rather than the prefixed symbol.
+    assert ef._original_name == spec.expected_name
+    if ef._symbol_prefix is not None:
+        assert ef._name == f"{ef._symbol_prefix}_{spec.expected_name}"
+    else:
+        assert ef._name == spec.expected_name
 
 
 _NAME_VARIANTS = _flat(KERNEL_SPECS, "name_variants")
@@ -705,7 +713,13 @@ _NAME_VARIANTS = _flat(KERNEL_SPECS, "name_variants")
 )
 def test_name_variant(spec: KernelSpec, kwargs: dict, expected_name: str):
     ef = spec.factory(**kwargs)
-    assert ef._name == expected_name
+    # See test_default_function_name: assert on the order-independent original
+    # name; a parameterized variant carries a deterministic digest prefix.
+    assert ef._original_name == expected_name
+    if ef._symbol_prefix is not None:
+        assert ef._name == f"{ef._symbol_prefix}_{expected_name}"
+    else:
+        assert ef._name == expected_name
 
 
 _INVALID = _flat(KERNEL_SPECS, "invalid_kwargs")

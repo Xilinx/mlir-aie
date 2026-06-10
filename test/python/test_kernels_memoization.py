@@ -214,29 +214,34 @@ def test_mm_no_longer_carries_only_flags():
 # ---------------------------------------------------------------------------
 
 
-def test_kernels_mm_first_version_keeps_unprefixed_name():
-    """First call (no existing same-named ExternalFunction): no auto-prefix."""
+def test_kernels_mm_parameterized_symbol_is_digest_prefixed():
+    """A parameterized variant's symbol is digest-prefixed and the digest is a
+    pure function of the kernel's identity — never of registration order, so a
+    separate build (e.g. the full-model .o cache vs. a per-block design)
+    computes the SAME symbol and .o filename and can reuse the object."""
     ef = kernels.mm(
         dim_m=64, dim_k=64, dim_n=32, input_dtype=np.int16, output_dtype=np.int16
     )
-    assert ef._name == ef._original_name == "matmul_i16_i16"
-    assert ef._symbol_prefix is None
+    assert ef._original_name == "matmul_i16_i16"
+    assert ef._symbol_prefix is not None and len(ef._symbol_prefix) == 8
+    assert ef._name == f"{ef._symbol_prefix}_matmul_i16_i16"
 
 
 def test_kernels_mm_two_versions_get_distinct_symbol_names():
-    """Second call (existing same-named ExternalFunction) gets auto-prefixed
-    so MLIR + linker don't see two `func.func @matmul_i16_i16` declarations."""
+    """Two parameterizations get two distinct digest-prefixed symbols so MLIR +
+    linker don't see two `func.func @matmul_i16_i16` declarations."""
     ef1 = kernels.mm(dim_m=64, dim_k=64, dim_n=32, c_col_maj=False)
     ef2 = kernels.mm(dim_m=64, dim_k=64, dim_n=32, c_col_maj=True)
     assert ef1._name != ef2._name
-    # The first one keeps the canonical symbol, the second one is prefixed.
-    assert ef1._name == "matmul_i16_i16"
-    assert ef2._name.endswith("_matmul_i16_i16")
-    assert ef2._symbol_prefix is not None and len(ef2._symbol_prefix) == 8
+    # Both are digest-prefixed; the prefix is order-independent.
+    for ef in (ef1, ef2):
+        assert ef._symbol_prefix is not None and len(ef._symbol_prefix) == 8
+        assert ef._name == f"{ef._symbol_prefix}_matmul_i16_i16"
 
 
 def test_kernels_mm_three_versions_all_distinct_names():
-    """Three distinct parameterizations get three distinct effective names."""
+    """Three distinct parameterizations get three distinct effective names,
+    each digest-prefixed."""
     efs = [
         kernels.mm(dim_m=64, dim_k=64, dim_n=32, b_col_maj=False, c_col_maj=False),
         kernels.mm(dim_m=64, dim_k=64, dim_n=32, b_col_maj=True, c_col_maj=False),
@@ -244,15 +249,12 @@ def test_kernels_mm_three_versions_all_distinct_names():
     ]
     names = [e._name for e in efs]
     assert len(set(names)) == 3
-    # First instance still canonical, others prefixed.
-    assert efs[0]._symbol_prefix is None
-    assert all(e._symbol_prefix is not None for e in efs[1:])
+    assert all(e._symbol_prefix is not None for e in efs)
 
 
-def test_kernels_mm_prefixed_object_file_matches_prefixed_name():
-    """The auto-prefixed instance's object_file_name aligns with the prefix
-    so the .o filename advertises the same disambiguation as the symbol."""
-    kernels.mm(dim_m=64, dim_k=64, dim_n=32, c_col_maj=False)  # prime the registry
-    ef2 = kernels.mm(dim_m=64, dim_k=64, dim_n=32, c_col_maj=True)
-    assert ef2._object_file_name.startswith(ef2._symbol_prefix)
-    assert "matmul_i16_i16" in ef2._object_file_name
+def test_kernels_mm_object_file_name_is_order_independent():
+    """object_file_name is the suffix form ``{name}_{digest}.o`` and embeds the
+    same digest as the symbol prefix — so the on-disk filename a separate build
+    reuses by name is identical regardless of registration order."""
+    ef = kernels.mm(dim_m=64, dim_k=64, dim_n=32, c_col_maj=True)
+    assert ef._object_file_name == f"matmul_i16_i16_{ef._symbol_prefix}.o"

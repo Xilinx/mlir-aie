@@ -244,28 +244,27 @@ def _make_extern(
         digest = None
         object_file_name = None  # ExternalFunction default → ``<name>.o``
 
-    # Auto-prefix the SYMBOL name when an existing ExternalFunction with the
-    # same _original_name is already registered.  Without this, two helper
-    # calls with different parameterizations produce two ExternalFunctions
-    # whose compiled .o files BOTH export the same C symbol — MLIR rejects
-    # the duplicate `func.func` declaration; the linker rejects the duplicate
-    # symbol.  The first call keeps the unprefixed name (preserves byte-
-    # identity for the common single-version case).  Subsequent calls get
-    # `<digest>_<name>` so each parameterization lives at a unique symbol.
-    # The .o file is built and the symbol renamed via the existing
-    # `symbol_prefix` plumbing in ExternalFunction.
-    symbol_prefix = None
-    if digest is not None:
-        for existing in ExternalFunction._instances:
-            if existing._original_name == func_name:
-                symbol_prefix = digest
-                # The auto-suffixed object_file_name we built above already
-                # embeds the same digest; once symbol_prefix is in play,
-                # ExternalFunction.__init__ rebuilds object_file_name from
-                # `<prefix>_<name>.o` if we leave it None — keep the
-                # explicit name so we control its layout.
-                object_file_name = f"{digest}_{func_name}.o"
-                break
+    # Prefix the SYMBOL name with the digest whenever this is a parameterized
+    # kernel.  Two helper calls with different parameterizations compile two
+    # .o files that would otherwise BOTH export the same C symbol — MLIR
+    # rejects the duplicate `func.func` declaration and the linker rejects the
+    # duplicate symbol.  Prefixing with ``<digest>`` gives each
+    # parameterization a unique symbol; the rename is applied via the existing
+    # ``symbol_prefix`` plumbing in ExternalFunction.
+    #
+    # Both the symbol AND ``object_file_name`` must be a pure function of the
+    # kernel's identity (``digest``), never of registration order.  A separate
+    # build reuses a kernel's .o by filename and then links against the symbol
+    # it exports; if either depended on "is another same-named instance already
+    # registered?", the full-model ``make objs`` cache and a per-block design
+    # would disagree (one emits the unprefixed name, the other the prefixed
+    # one), breaking .o reuse — undefined symbol at link, or a missing-file
+    # copy.  ``digest`` is a pure function of ``cache_key``, so prefixing every
+    # parameterized variant unconditionally keeps the symbol and the
+    # suffix-form ``f"{func_name}_{digest}.o"`` filename identical across builds.
+    # When ``digest`` is None (unparameterized default-name kernel, or a pinned
+    # ``shared_object_file_name``) this leaves the symbol unprefixed.
+    symbol_prefix = digest
 
     extern = ExternalFunction(
         func_name,

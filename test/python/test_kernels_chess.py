@@ -110,9 +110,10 @@ def test_kernels_mm_chess_memoized_same_params():
 
 
 def test_kernels_mm_chess_triggers_auto_symbol_prefix():
-    """When chess and peano variants of the same kernel coexist, the second
-    one through must get an auto-prefixed symbol — otherwise both .o files
-    export the same symbol and the linker rejects the duplicate.
+    """Chess and peano variants of the same kernel must get distinct symbols —
+    otherwise both .o files export the same symbol and the linker rejects the
+    duplicate.  use_chess is part of the cache key, so the two variants carry
+    different deterministic digest prefixes.
 
     Mirrors the existing two-versions test but along the use_chess axis
     instead of c_col_maj.
@@ -120,8 +121,9 @@ def test_kernels_mm_chess_triggers_auto_symbol_prefix():
     ef_first = kernels.mm(dim_m=64, dim_k=64, dim_n=32, use_chess=False)
     ef_second = kernels.mm(dim_m=64, dim_k=64, dim_n=32, use_chess=True)
     assert ef_first._name != ef_second._name
-    assert ef_first._symbol_prefix is None
-    assert ef_second._symbol_prefix is not None and len(ef_second._symbol_prefix) == 8
+    for ef in (ef_first, ef_second):
+        assert ef._symbol_prefix is not None and len(ef._symbol_prefix) == 8
+        assert ef._name == f"{ef._symbol_prefix}_{ef._original_name}"
 
 
 @pytest.mark.parametrize(
