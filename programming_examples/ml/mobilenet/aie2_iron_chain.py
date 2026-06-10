@@ -237,7 +237,7 @@ def _make_argparser():
 
 def main():
     opts = _make_argparser().parse_args()
-    set_current_device(device_from_args(opts))
+    set_current_device(device_from_args(opts, n_cols=None))
     print(_chain_iron(opts.mode, opts.data_dir, opts.scales_json))
 
 

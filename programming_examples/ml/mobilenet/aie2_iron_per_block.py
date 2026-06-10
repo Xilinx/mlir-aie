@@ -302,7 +302,7 @@ def _make_argparser():
 
 def main():
     opts = _make_argparser().parse_args()
-    set_current_device(device_from_args(opts))
+    set_current_device(device_from_args(opts, n_cols=None))
     print(
         per_block_iron(opts.block, data_dir=opts.data_dir, scales_json=opts.scales_json)
     )
