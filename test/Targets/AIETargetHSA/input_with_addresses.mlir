@@ -55,7 +55,13 @@ module {
     aie.runtime_sequence(%arg0: memref<64xi32>, %arg1: memref<32xi32>, %arg2: memref<64xi32>) {
       aiex.npu.dma_memcpy_nd (%arg2[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1]) {id = 0 : i64, metadata = @out0} : memref<64xi32>
       aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1]) {id = 1 : i64, metadata = @in0} : memref<64xi32>
-      aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
+      %column = arith.constant 0 : i32
+      %row = arith.constant 0 : i32
+      %direction = arith.constant 0 : i32
+      %channel = arith.constant 0 : i32
+      %column_num = arith.constant 1 : i32
+      %row_num = arith.constant 1 : i32
+      aiex.npu.sync(%column, %row, %direction, %channel, %column_num, %row_num) : i32, i32, i32, i32, i32, i32
     }
   }
 }

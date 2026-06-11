@@ -185,7 +185,13 @@ module {
       aiex.npu.dma_memcpy_nd(%arg1[0, 0, 0, 0][1, 1, 1, 96][0, 0, 0, 1]) {id = 0 : i64, metadata = @airMemcpyId4} : memref<96xi32>
       aiex.npu.dma_memcpy_nd(%arg2[0, 0, 0, 0][1, 1, 1, 96][0, 0, 0, 1]) {id = 0 : i64, metadata = @airMemcpyId5} : memref<96xi32>
       aiex.npu.dma_memcpy_nd(%arg3[0, 0, 0, 0][1, 1, 1, 9][0, 0, 0, 1]) {id = 0 : i64, metadata = @airMemcpyId12} : memref<9xi32>
-      aiex.npu.sync {channel = 0 : i32, column = 2 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
+      %column = arith.constant 2 : i32
+      %row = arith.constant 0 : i32
+      %direction = arith.constant 0 : i32
+      %channel = arith.constant 0 : i32
+      %column_num = arith.constant 1 : i32
+      %row_num = arith.constant 1 : i32
+      aiex.npu.sync(%column, %row, %direction, %channel, %column_num, %row_num) : i32, i32, i32, i32, i32, i32
     }
   }
 }

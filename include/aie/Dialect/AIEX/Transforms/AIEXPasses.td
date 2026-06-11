@@ -142,6 +142,7 @@ def AIEDmaToNpu : Pass<"aie-dma-to-npu", "AIE::DeviceOp"> {
   let constructor = "xilinx::AIEX::createAIEDmaToNpuPass()";
   let dependentDialects = [
     "mlir::func::FuncDialect",
+    "mlir::arith::ArithDialect",
     "xilinx::AIE::AIEDialect",
     "xilinx::AIEX::AIEXDialect",
   ];
@@ -248,6 +249,7 @@ def AIECtrlPacketToDma : Pass<"aie-ctrl-packet-to-dma", "AIE::DeviceOp"> {
   let dependentDialects = [
     "xilinx::AIE::AIEDialect",
     "xilinx::AIEX::AIEXDialect",
+    "mlir::arith::ArithDialect",
   ];
 }
 

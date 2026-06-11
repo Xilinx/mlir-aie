@@ -137,16 +137,23 @@ struct NpuSyncToCertWaitTCTS : OpConversionPattern<AIEX::NpuSyncOp> {
   LogicalResult
   matchAndRewrite(AIEX::NpuSyncOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    uint32_t row = op.getRow();
-    uint32_t col = op.getColumn();
+    auto rowC = AIEX::getConstantIntOperand(op.getRow());
+    auto colC = AIEX::getConstantIntOperand(op.getColumn());
+    auto chanC = AIEX::getConstantIntOperand(op.getChannel());
+    auto dirC = AIEX::getConstantIntOperand(op.getDirection());
+    if (!rowC || !colC || !chanC || !dirC)
+      return op.emitOpError(
+          "cannot lower runtime (non-constant) operands to cert");
+    uint32_t row = *rowC;
+    uint32_t col = *colC;
 
     // These are the shift amounts from the tct packet format.
     // The firmware expects the row and column packed and shifted down to zero.
     const int row_id_shift = 16;
     const int col_id_shift = 21;
     uint16_t tile_id = col << (col_id_shift - row_id_shift) | row;
-    uint32_t channel = op.getChannel();
-    uint32_t direction = op.getDirection();
+    uint32_t channel = *chanC;
+    uint32_t direction = *dirC;
 
     const std::vector<int> chan2actor_shim_s2mm = {0, 2};
     const std::vector<int> chan2actor_shim_mm2s = {6, 7, 8, 9};

@@ -599,25 +599,13 @@ private:
       return success();
     }
 
-    // AIEX sync - handles both static and dynamic forms.
     if (auto syncOp = dyn_cast<AIEX::NpuSyncOp>(op)) {
-      Value col, row, dir, chan, ncol, nrow;
-      if (syncOp.hasDynamicOperands()) {
-        col = mapping.lookupOrDefault(syncOp.getDynColumn());
-        row = mapping.lookupOrDefault(syncOp.getDynRow());
-        dir = mapping.lookupOrDefault(syncOp.getDynDirection());
-        chan = mapping.lookupOrDefault(syncOp.getDynChannel());
-        ncol = mapping.lookupOrDefault(syncOp.getDynColumnNum());
-        nrow = mapping.lookupOrDefault(syncOp.getDynRowNum());
-      } else {
-        col = createU32Constant(builder, opLoc, syncOp.getColumn());
-        row = createU32Constant(builder, opLoc, syncOp.getRow());
-        dir = createU32Constant(builder, opLoc,
-                                static_cast<uint32_t>(syncOp.getDirection()));
-        chan = createU32Constant(builder, opLoc, syncOp.getChannel());
-        ncol = createU32Constant(builder, opLoc, syncOp.getColumnNum());
-        nrow = createU32Constant(builder, opLoc, syncOp.getRowNum());
-      }
+      Value col = mapping.lookupOrDefault(syncOp.getColumn());
+      Value row = mapping.lookupOrDefault(syncOp.getRow());
+      Value dir = mapping.lookupOrDefault(syncOp.getDirection());
+      Value chan = mapping.lookupOrDefault(syncOp.getChannel());
+      Value ncol = mapping.lookupOrDefault(syncOp.getColumnNum());
+      Value nrow = mapping.lookupOrDefault(syncOp.getRowNum());
       emitTxnSync(builder, opLoc, txnVec, col, row, dir, chan, ncol, nrow);
       return success();
     }

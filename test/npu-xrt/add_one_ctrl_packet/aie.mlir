@@ -129,12 +129,24 @@ module {
       aiex.npu.address_patch {addr = 0x1d004 : ui32, arg_idx = 1 : i32, arg_plus = 0 : i32}
       aiex.npu.maskwrite32 {address = 0x1d210 : ui32, column = 0 : i32, row = 0 : i32, mask = 0x00000F00 : ui32, value = 0x400 : ui32}
       aiex.npu.write32 {address = 0x1d214 : ui32, column = 0 : i32, row = 0 : i32, value = 0x80000000 : ui32}
-      aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
+      %column = arith.constant 0 : i32
+      %row = arith.constant 0 : i32
+      %direction = arith.constant 1 : i32
+      %channel = arith.constant 0 : i32
+      %column_num = arith.constant 1 : i32
+      %row_num = arith.constant 1 : i32
+      aiex.npu.sync(%column, %row, %direction, %channel, %column_num, %row_num) : i32, i32, i32, i32, i32, i32
 
       // patch bd0 address for packet 1, push to mm2s_0_task_queue, wait
       aiex.npu.address_patch {addr = 0x1d004 : ui32, arg_idx = 1 : i32, arg_plus = 8 : i32}
       aiex.npu.write32 {address = 0x1d214 : ui32, column = 0 : i32, row = 0 : i32, value = 0x80000000 : ui32}
-      aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
+      %column_1 = arith.constant 0 : i32
+      %row_1 = arith.constant 0 : i32
+      %direction_1 = arith.constant 1 : i32
+      %channel_1 = arith.constant 0 : i32
+      %column_num_1 = arith.constant 1 : i32
+      %row_num_1 = arith.constant 1 : i32
+      aiex.npu.sync(%column_1, %row_1, %direction_1, %channel_1, %column_num_1, %row_num_1) : i32, i32, i32, i32, i32, i32
 
       // wait for dma output
       aiex.npu.dma_wait {symbol = @out0}
@@ -143,12 +155,24 @@ module {
       aiex.npu.write32 {address = 0x1d000 : ui32, column = 0 : i32, row = 0 : i32, value = 1 : ui32}
       aiex.npu.address_patch {addr = 0x1d004 : ui32, arg_idx = 1 : i32, arg_plus = 16 : i32}
       aiex.npu.write32 {address = 0x1d214 : ui32, column = 0 : i32, row = 0 : i32, value = 0x80000000 : ui32}
-      aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
+      %column_2 = arith.constant 0 : i32
+      %row_2 = arith.constant 0 : i32
+      %direction_2 = arith.constant 1 : i32
+      %channel_2 = arith.constant 0 : i32
+      %column_num_2 = arith.constant 1 : i32
+      %row_num_2 = arith.constant 1 : i32
+      aiex.npu.sync(%column_2, %row_2, %direction_2, %channel_2, %column_num_2, %row_num_2) : i32, i32, i32, i32, i32, i32
 
       // patch bd0 address for packet 3, push to mm2s_0_task_queue, wait
       aiex.npu.address_patch {addr = 0x1d004 : ui32, arg_idx = 1 : i32, arg_plus = 20 : i32}
       aiex.npu.write32 {address = 0x1d214 : ui32, column = 0 : i32, row = 0 : i32, value = 0x80000000 : ui32}
-      aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
+      %column_3 = arith.constant 0 : i32
+      %row_3 = arith.constant 0 : i32
+      %direction_3 = arith.constant 1 : i32
+      %channel_3 = arith.constant 0 : i32
+      %column_num_3 = arith.constant 1 : i32
+      %row_num_3 = arith.constant 1 : i32
+      aiex.npu.sync(%column_3, %row_3, %direction_3, %channel_3, %column_num_3, %row_num_3) : i32, i32, i32, i32, i32, i32
 
       // wait for control port output
       aiex.npu.dma_wait {symbol = @ctrl0}

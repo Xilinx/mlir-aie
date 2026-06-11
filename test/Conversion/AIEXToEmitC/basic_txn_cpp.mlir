@@ -44,7 +44,13 @@ module {
   aie.device(npu2) {
     aie.runtime_sequence(%buf : memref<16xi32>) {
       aiex.npu.write32 {address = 196612 : ui32, value = 42 : ui32}
-      aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
+      %column = arith.constant 0 : i32
+      %row = arith.constant 0 : i32
+      %direction = arith.constant 0 : i32
+      %channel = arith.constant 0 : i32
+      %column_num = arith.constant 1 : i32
+      %row_num = arith.constant 1 : i32
+      aiex.npu.sync(%column, %row, %direction, %channel, %column_num, %row_num) : i32, i32, i32, i32, i32, i32
       aiex.npu.address_patch {addr = 196616 : ui32, arg_idx = 0 : i32, arg_plus = 0 : i32}
     }
   }

@@ -12,6 +12,7 @@
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/TypeUtilities.h"
@@ -369,6 +370,13 @@ bool AIEX::isContiguousTransfer(llvm::ArrayRef<int64_t> sizes,
   if (sizes[2] > 1 && strides[2] != sizes[0] * sizes[1])
     return false;
   return true;
+}
+
+std::optional<uint32_t> AIEX::getConstantIntOperand(mlir::Value v) {
+  mlir::APInt cst;
+  if (!mlir::matchPattern(v, mlir::m_ConstantInt(&cst)))
+    return std::nullopt;
+  return static_cast<uint32_t>(cst.getZExtValue());
 }
 
 // dma_memcpy_nd transfers of the form [*, 1, 1, len][*, 0, 0, 1] do not
@@ -1100,95 +1108,6 @@ LogicalResult AIEX::NpuMaskWrite32Op::verify() {
         if (intType.getWidth() != 32)
           return emitOpError("dynamic operands must be 32-bit integers");
       }
-    }
-  }
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// NpuSyncOp parse/print/verify
-//===----------------------------------------------------------------------===//
-
-/// Parse: `aiex.npu.sync(%c, %r, %d, %ch, %cn, %rn) {attrs} : i32, ...`
-/// or:    `aiex.npu.sync {attrs}`
-ParseResult AIEX::NpuSyncOp::parse(OpAsmParser &parser,
-                                   OperationState &result) {
-  SmallVector<OpAsmParser::UnresolvedOperand, 6> dynOperands;
-  SmallVector<Type, 6> dynTypes;
-
-  bool hasDynamic = false;
-  if (succeeded(parser.parseOptionalLParen())) {
-    hasDynamic = true;
-    for (unsigned i = 0; i < 6; ++i) {
-      if (i > 0 && parser.parseComma())
-        return failure();
-      dynOperands.emplace_back();
-      if (parser.parseOperand(dynOperands.back()))
-        return failure();
-    }
-    if (parser.parseRParen())
-      return failure();
-  }
-
-  if (parser.parseOptionalAttrDict(result.attributes))
-    return failure();
-
-  if (hasDynamic) {
-    if (parser.parseColon())
-      return failure();
-    for (unsigned i = 0; i < 6; ++i) {
-      if (i > 0 && parser.parseComma())
-        return failure();
-      dynTypes.emplace_back();
-      if (parser.parseType(dynTypes.back()))
-        return failure();
-    }
-    for (unsigned i = 0; i < 6; ++i)
-      if (parser.resolveOperand(dynOperands[i], dynTypes[i], result.operands))
-        return failure();
-  }
-
-  // Set operand segment sizes: [dyn_column..dyn_row_num] (6 segments)
-  int seg = hasDynamic ? 1 : 0;
-  result.addAttribute(
-      "operandSegmentSizes",
-      parser.getBuilder().getDenseI32ArrayAttr({seg, seg, seg, seg, seg, seg}));
-
-  return success();
-}
-
-void AIEX::NpuSyncOp::print(OpAsmPrinter &p) {
-  if (hasDynamicOperands()) {
-    p << '(' << getDynColumn() << ", " << getDynRow() << ", "
-      << getDynDirection() << ", " << getDynChannel() << ", "
-      << getDynColumnNum() << ", " << getDynRowNum() << ')';
-  }
-  p.printOptionalAttrDict((*this)->getAttrs(),
-                          /*elidedAttrs=*/{"operandSegmentSizes"});
-  if (hasDynamicOperands()) {
-    p << " : " << getDynColumn().getType() << ", " << getDynRow().getType()
-      << ", " << getDynDirection().getType() << ", "
-      << getDynChannel().getType() << ", " << getDynColumnNum().getType()
-      << ", " << getDynRowNum().getType();
-  }
-}
-
-LogicalResult AIEX::NpuSyncOp::verify() {
-  bool hasAny = getDynColumn() != nullptr;
-  bool allPresent = hasAny && getDynRow() != nullptr &&
-                    getDynDirection() != nullptr &&
-                    getDynChannel() != nullptr &&
-                    getDynColumnNum() != nullptr && getDynRowNum() != nullptr;
-  if (hasAny && !allPresent)
-    return emitOpError(
-        "dynamic operands must be provided together (all or none)");
-
-  if (hasAny) {
-    for (Value v : {getDynColumn(), getDynRow(), getDynDirection(),
-                    getDynChannel(), getDynColumnNum(), getDynRowNum()}) {
-      if (!v.getType().isSignlessInteger(32))
-        return emitOpError(
-            "all dynamic operands must be 32-bit signless integers");
     }
   }
   return success();

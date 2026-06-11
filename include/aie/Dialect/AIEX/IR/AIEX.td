@@ -979,67 +979,34 @@ def AIE_NpuBlockWriteOp: AIEX_Op<"npu.blockwrite", []> {
 }
 
 // OP_SYNC
-def AIE_NpuSyncOp: AIEX_Op<"npu.sync", [AttrSizedOperandSegments]> {
+def AIE_NpuSyncOp: AIEX_Op<"npu.sync", []> {
   let summary = "sync operator";
   let arguments = (
-    ins I32Attr:$column,
-        I32Attr:$row,
-        I32Attr:$direction,
-        I32Attr:$channel,
-        I32Attr:$column_num,
-        I32Attr:$row_num,
-        Optional<AnySignlessInteger>:$dyn_column,
-        Optional<AnySignlessInteger>:$dyn_row,
-        Optional<AnySignlessInteger>:$dyn_direction,
-        Optional<AnySignlessInteger>:$dyn_channel,
-        Optional<AnySignlessInteger>:$dyn_column_num,
-        Optional<AnySignlessInteger>:$dyn_row_num
+    ins I32:$column,
+        I32:$row,
+        I32:$direction,
+        I32:$channel,
+        I32:$column_num,
+        I32:$row_num
   );
   let results = (outs );
-  let hasCustomAssemblyFormat = 1;
-  let hasVerifier = 1;
+  let assemblyFormat = [{
+    `(` $column `,` $row `,` $direction `,` $channel `,` $column_num `,` $row_num `)` attr-dict `:` type(operands)
+  }];
   let description = [{
     The sync operation blocks execution of the instruction stream until a task-complete token (TCT) is received on `column`, `row`, channel `channel`, direction `direction` (where `0` is `S2MM` and `1` is `MM2S`).
+
+    All parameters are SSA values. Use `arith.constant` for compile-time-known
+    values; pass runtime sequence arguments (or values derived from them)
+    directly for runtime-parameterized sequences.
 
     #### Troubleshooting
 
     If this operation appears to deadlock, ensure that at least one buffer descriptor is configured to issue a TCT on the channel you expect.
     By default, `dma_memcpy_nd` operations only issue tokens for `S2MM` channels, and `issue_token` must be set to `true` to issue tokens for `MM2S` channels.
 
-    Optionally, SSA values can be provided for all parameters to enable
-    runtime-parameterized sequences.
-
-    Static syntax: `aiex.npu.sync {column = 0 : i32, ...}`
-    Dynamic syntax: `aiex.npu.sync(%col, %row, %dir, %chan, %ncol, %nrow) {column = 0 : i32, ...} : i32, i32, i32, i32, i32, i32`
+    Syntax: `aiex.npu.sync(%col, %row, %dir, %chan, %ncol, %nrow) : i32, i32, i32, i32, i32, i32`
   }];
-  let extraClassDeclaration = [{
-    bool hasDynamicOperands() { return getDynColumn() != nullptr; }
-  }];
-  let builders = [
-    OpBuilder<(ins "int32_t":$column, "int32_t":$row,
-               "int32_t":$direction, "int32_t":$channel,
-               "int32_t":$column_num, "int32_t":$row_num), [{
-      build($_builder, $_state,
-            $_builder.getI32IntegerAttr(column),
-            $_builder.getI32IntegerAttr(row),
-            $_builder.getI32IntegerAttr(direction),
-            $_builder.getI32IntegerAttr(channel),
-            $_builder.getI32IntegerAttr(column_num),
-            $_builder.getI32IntegerAttr(row_num),
-            /*dyn_column=*/Value(), /*dyn_row=*/Value(),
-            /*dyn_direction=*/Value(), /*dyn_channel=*/Value(),
-            /*dyn_column_num=*/Value(), /*dyn_row_num=*/Value());
-    }]>,
-    OpBuilder<(ins "mlir::IntegerAttr":$column, "mlir::IntegerAttr":$row,
-               "mlir::IntegerAttr":$direction, "mlir::IntegerAttr":$channel,
-               "mlir::IntegerAttr":$column_num, "mlir::IntegerAttr":$row_num), [{
-      build($_builder, $_state,
-            column, row, direction, channel, column_num, row_num,
-            /*dyn_column=*/Value(), /*dyn_row=*/Value(),
-            /*dyn_direction=*/Value(), /*dyn_channel=*/Value(),
-            /*dyn_column_num=*/Value(), /*dyn_row_num=*/Value());
-    }]>
-  ];
 }
 
 // XAIE_IO_CUSTOM_OP_BEGIN + 1 (address patch)

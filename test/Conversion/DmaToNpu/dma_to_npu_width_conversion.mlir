@@ -18,7 +18,14 @@
 // CHECK:       aiex.npu.blockwrite(%0) {address = 67227648 : ui32} : memref<8xi32>
 // CHECK:       aiex.npu.address_patch {addr = 67227652 : ui32, arg_idx = 0 : i32, arg_plus = 0 : i32}
 // CHECK:       aiex.npu.write32 {address = 67228164 : ui32, value = 2147680256 : ui32}
-// CHECK:       aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
+// sync(column, row, direction, channel, column_num, row_num) = (0, 0, 0, 0, 1, 1)
+// CHECK:       %[[COL:.+]] = arith.constant 0 : i32
+// CHECK:       %[[ROW:.+]] = arith.constant 0 : i32
+// CHECK:       %[[DIR:.+]] = arith.constant 0 : i32
+// CHECK:       %[[CHAN:.+]] = arith.constant 0 : i32
+// CHECK:       %[[CNUM:.+]] = arith.constant 1 : i32
+// CHECK:       %[[RNUM:.+]] = arith.constant 1 : i32
+// CHECK:       aiex.npu.sync(%[[COL]], %[[ROW]], %[[DIR]], %[[CHAN]], %[[CNUM]], %[[RNUM]])
 // CHECK:     }
 // CHECK:     aie.shim_dma_allocation @toMem(%shim_noc_tile_2_0, S2MM, 0)
 // CHECK:   }
@@ -28,7 +35,13 @@ module @shimDmaMemcpy{
   aie.device(xcve2302) {
     aie.runtime_sequence(%arg0: memref<65536xbf16>, %arg1: memref<65536xbf16>, %arg2: memref<65536xbf16>) {
       aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][4, 4, 64, 64][0, 64, 256, 1]) {id = 0 : i64, metadata = @toMem} : memref<65536xbf16>
-      aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
+      %col = arith.constant 0 : i32
+      %row = arith.constant 0 : i32
+      %dir = arith.constant 0 : i32
+      %chan = arith.constant 0 : i32
+      %col_num = arith.constant 1 : i32
+      %row_num = arith.constant 1 : i32
+      aiex.npu.sync(%col, %row, %dir, %chan, %col_num, %row_num) : i32, i32, i32, i32, i32, i32
     }
     %tile_2_0 = aie.tile(2, 0)
     aie.shim_dma_allocation @toMem (%tile_2_0, S2MM, 0)

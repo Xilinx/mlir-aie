@@ -17,6 +17,7 @@
 #include "aie/Runtime/TxnEncoding.h"
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 
@@ -57,14 +58,28 @@ reserveAndGetTail(std::vector<uint32_t> &instructions, uint64_t tailSize) {
 
 // Thin wrappers that extract MLIR attributes and delegate to TxnEncoding.h.
 
+// Read a compile-time-constant uint32 from an SSA operand. Returns failure if
+// the operand is not constant (i.e. a runtime value), in which case the op
+// cannot be lowered to a static TXN binary.
+static LogicalResult getConstantOperand(Value v, uint32_t &out) {
+  APInt cst;
+  if (!matchPattern(v, m_ConstantInt(&cst)))
+    return failure();
+  out = static_cast<uint32_t>(cst.getZExtValue());
+  return success();
+}
+
 LogicalResult appendSync(std::vector<uint32_t> &instructions, NpuSyncOp op) {
-  if (op.hasDynamicOperands())
-    return op.emitOpError("cannot translate dynamic operands to binary; use "
-                          "--aie-generate-txn-cpp instead");
-  aie_runtime::txn_append_sync(instructions, op.getColumn(), op.getRow(),
-                               static_cast<uint32_t>(op.getDirection()),
-                               op.getChannel(), op.getColumnNum(),
-                               op.getRowNum());
+  uint32_t col, row, dir, chan, ncol, nrow;
+  if (failed(getConstantOperand(op.getColumn(), col)) ||
+      failed(getConstantOperand(op.getRow(), row)) ||
+      failed(getConstantOperand(op.getDirection(), dir)) ||
+      failed(getConstantOperand(op.getChannel(), chan)) ||
+      failed(getConstantOperand(op.getColumnNum(), ncol)) ||
+      failed(getConstantOperand(op.getRowNum(), nrow)))
+    return op.emitOpError("cannot translate runtime (non-constant) operands to "
+                          "binary; use --aie-generate-txn-cpp instead");
+  aie_runtime::txn_append_sync(instructions, col, row, dir, chan, ncol, nrow);
   return success();
 }
 

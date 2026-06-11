@@ -34,9 +34,23 @@ module {
       aiex.dma_start_task(%t1)
       // CHECK: aiex.npu.push_queue(2, 0, S2MM : 1) {bd_id = 8 : i32, issue_token = true, repeat_count = 2 : i32}
       aiex.dma_start_task(%t2)
-      // CHECK: aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
+      // sync(column, row, direction, channel, column_num, row_num) = (0, 0, 1, 0, 1, 1)
+      // CHECK: %[[COL:.+]] = arith.constant 0 : i32
+      // CHECK: %[[ROW:.+]] = arith.constant 0 : i32
+      // CHECK: %[[DIR:.+]] = arith.constant 1 : i32
+      // CHECK: %[[CHAN:.+]] = arith.constant 0 : i32
+      // CHECK: %[[CNUM:.+]] = arith.constant 1 : i32
+      // CHECK: %[[RNUM:.+]] = arith.constant 1 : i32
+      // CHECK: aiex.npu.sync(%[[COL]], %[[ROW]], %[[DIR]], %[[CHAN]], %[[CNUM]], %[[RNUM]])
       aiex.dma_await_task(%t1)
-      // CHECK: aiex.npu.sync {channel = 1 : i32, column = 2 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
+      // sync(column, row, direction, channel, column_num, row_num) = (2, 0, 0, 1, 1, 1)
+      // CHECK: %[[COL2:.+]] = arith.constant 2 : i32
+      // CHECK: %[[ROW2:.+]] = arith.constant 0 : i32
+      // CHECK: %[[DIR2:.+]] = arith.constant 0 : i32
+      // CHECK: %[[CHAN2:.+]] = arith.constant 1 : i32
+      // CHECK: %[[CNUM2:.+]] = arith.constant 1 : i32
+      // CHECK: %[[RNUM2:.+]] = arith.constant 1 : i32
+      // CHECK: aiex.npu.sync(%[[COL2]], %[[ROW2]], %[[DIR2]], %[[CHAN2]], %[[CNUM2]], %[[RNUM2]])
       aiex.dma_await_task(%t2)
     }
   }

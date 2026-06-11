@@ -1005,7 +1005,13 @@ aie.device(npu1_3col) {
       aiex.npu.dma_memcpy_nd(0, 0, %wts0[0, 0, 0, %total_wts][1, 1, 1, %total_wts_2][0, 0, 0, 1]) {id = 1 : i64, metadata = @inOF_wts_1_L3L2} : memref<53248xi32>
       aiex.npu.dma_memcpy_nd(0, 0, %wts0[0, 0, 0, %total_wts_3_off][1, 1, 1, %total_wts_3][0, 0, 0, 1]) {id = 1 : i64, metadata = @inOF_wts_2_L3L2} : memref<53248xi32>
 
-      aiex.npu.sync {channel = 0 : i32, column = 1 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
+      %column = arith.constant 1 : i32
+      %row = arith.constant 0 : i32
+      %direction = arith.constant 0 : i32
+      %channel = arith.constant 0 : i32
+      %column_num = arith.constant 1 : i32
+      %row_num = arith.constant 1 : i32
+      aiex.npu.sync(%column, %row, %direction, %channel, %column_num, %row_num) : i32, i32, i32, i32, i32, i32
     }
 
     }

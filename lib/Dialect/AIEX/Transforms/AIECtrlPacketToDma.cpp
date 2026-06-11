@@ -13,6 +13,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Pass/Pass.h"
@@ -201,14 +202,19 @@ struct AIECtrlPacketToDmaPass
                                  /*offset_parameter=*/FlatSymbolRefAttr(),
                                  /*offset_state_table_idx=*/IntegerAttr());
 
-        auto shimRow = builder.getI32IntegerAttr(0);
-        auto shimCol = builder.getI32IntegerAttr(col);
-        auto dir = builder.getI32IntegerAttr(1); // MM2S
-        auto chan = builder.getI32IntegerAttr(batchIt->shimChan);
-        auto col_num = builder.getI32IntegerAttr(1);
-        auto row_num = builder.getI32IntegerAttr(1);
-        AIEX::NpuSyncOp::create(builder, loc, shimCol, shimRow, dir, chan,
-                                col_num, row_num);
+        Type i32 = builder.getI32Type();
+        auto cst = [&](int32_t v) -> Value {
+          return arith::ConstantIntOp::create(builder, loc, i32, v);
+        };
+        // Operand order: column, row, direction, channel, column_num, row_num.
+        Value column = cst(col);
+        Value row = cst(0);
+        Value direction = cst(1); // MM2S
+        Value channel = cst(batchIt->shimChan);
+        Value columnNum = cst(1);
+        Value rowNum = cst(1);
+        AIEX::NpuSyncOp::create(builder, loc, column, row, direction, channel,
+                                columnNum, rowNum);
         ++batchIt;
       }
 

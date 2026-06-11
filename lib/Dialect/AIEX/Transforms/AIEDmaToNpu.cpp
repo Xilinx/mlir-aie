@@ -1008,10 +1008,22 @@ public:
 
     // Create with `column_num == 1` and `row_num == 1` to check for a single
     // column and row.
-    (void)rewriter.replaceOpWithNewOp<NpuSyncOp>(
-        op, shimTile.getCol(), shimTile.getRow(),
-        static_cast<uint32_t>(shimDmaAllocOp.getChannelDir()),
-        shimDmaAllocOp.getChannelIndex(), 1, 1);
+    Location loc = op.getLoc();
+    Type i32 = rewriter.getI32Type();
+    auto cst = [&](int32_t v) -> Value {
+      return arith::ConstantIntOp::create(rewriter, loc, i32, v);
+    };
+    // Emit constants in operand order (column, row, direction, channel,
+    // column_num, row_num) so the generated IR reads top-to-bottom.
+    Value column = cst(shimTile.getCol());
+    Value row = cst(shimTile.getRow());
+    Value direction =
+        cst(static_cast<int32_t>(shimDmaAllocOp.getChannelDir()));
+    Value channel = cst(shimDmaAllocOp.getChannelIndex());
+    Value columnNum = cst(1);
+    Value rowNum = cst(1);
+    (void)rewriter.replaceOpWithNewOp<NpuSyncOp>(op, column, row, direction,
+                                                 channel, columnNum, rowNum);
 
     return success();
   }

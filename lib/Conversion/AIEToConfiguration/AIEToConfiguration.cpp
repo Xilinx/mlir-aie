@@ -15,6 +15,8 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Targets/AIERT.h"
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
+
 #include "llvm/Support/Debug.h"
 #include <llvm/ADT/APInt.h>
 
@@ -479,13 +481,18 @@ emitTransactionOps(OpBuilder &builder, Location fallbackLoc,
         return failure();
       }
       const TransactionBinaryOperation::SyncPayload &sync = *op.sync;
-      AIEX::NpuSyncOp::create(builder, loc,
-                              builder.getI32IntegerAttr(sync.column),
-                              builder.getI32IntegerAttr(sync.row),
-                              builder.getI32IntegerAttr(sync.direction),
-                              builder.getI32IntegerAttr(sync.channel),
-                              builder.getI32IntegerAttr(sync.columnCount),
-                              builder.getI32IntegerAttr(sync.rowCount));
+      Type i32 = builder.getI32Type();
+      auto cst = [&](int32_t v) -> Value {
+        return arith::ConstantIntOp::create(builder, loc, i32, v);
+      };
+      Value column = cst(sync.column);
+      Value row = cst(sync.row);
+      Value direction = cst(sync.direction);
+      Value channel = cst(sync.channel);
+      Value columnNum = cst(sync.columnCount);
+      Value rowNum = cst(sync.rowCount);
+      AIEX::NpuSyncOp::create(builder, loc, column, row, direction, channel,
+                              columnNum, rowNum);
     } else if (op.cmd.Opcode == 0x8 /* XAie_TxnOpcode::XAIE_IO_LOAD_PDI */) {
       if (!op.loadPdi) {
         llvm::errs() << "Missing load_pdi payload while emitting transaction\n";

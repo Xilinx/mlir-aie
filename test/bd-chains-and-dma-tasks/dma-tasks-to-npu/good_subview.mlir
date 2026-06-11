@@ -26,7 +26,14 @@ module {
       
       // CHECK: aiex.npu.push_queue(0, 0, MM2S : 0) {bd_id = 7 : i32, issue_token = true, repeat_count = 0 : i32}
       aiex.dma_start_task(%t1)
-      // CHECK: aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
+      // sync(column, row, direction, channel, column_num, row_num) = (0, 0, 1, 0, 1, 1)
+      // CHECK: %[[COL:.+]] = arith.constant 0 : i32
+      // CHECK: %[[ROW:.+]] = arith.constant 0 : i32
+      // CHECK: %[[DIR:.+]] = arith.constant 1 : i32
+      // CHECK: %[[CHAN:.+]] = arith.constant 0 : i32
+      // CHECK: %[[CNUM:.+]] = arith.constant 1 : i32
+      // CHECK: %[[RNUM:.+]] = arith.constant 1 : i32
+      // CHECK: aiex.npu.sync(%[[COL]], %[[ROW]], %[[DIR]], %[[CHAN]], %[[CNUM]], %[[RNUM]])
       aiex.dma_await_task(%t1)
     }
   }

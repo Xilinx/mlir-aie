@@ -44,7 +44,28 @@ from ..helpers.taplib import TensorAccessPattern
 # Comes from _aie
 register_dialect(get_dialect_registry())
 
-npu_sync = partial(npu_sync, column_num=1, row_num=1)
+# The generated npu_sync builder takes its six parameters as SSA i32 operands.
+# This wrapper accepts plain Python ints (materialized as arith.constant) or
+# existing SSA Values, so call sites can pass compile-time-known values
+# directly. column_num/row_num default to 1.
+_npu_sync_gen = npu_sync
+
+
+def _as_i32(v):
+    if isinstance(v, Value):
+        return v
+    return _arith.constant(IntegerType.get_signless(32), int(v))
+
+
+def npu_sync(column, row, direction, channel, column_num=1, row_num=1):
+    return _npu_sync_gen(
+        _as_i32(column),
+        _as_i32(row),
+        _as_i32(direction),
+        _as_i32(channel),
+        _as_i32(column_num),
+        _as_i32(row_num),
+    )
 
 
 def dma_wait(*args: ObjectFifoCreateOp | str):
@@ -225,26 +246,6 @@ def npu_maskwrite32_dynamic(
         dyn_address=dyn_address,
         dyn_value=dyn_value,
         dyn_mask=dyn_mask,
-    )
-
-
-def npu_sync_dynamic(
-    dyn_column, dyn_row, dyn_direction, dyn_channel, dyn_column_num, dyn_row_num
-):
-    """sync with SSA value operands for runtime-parameterized sequences."""
-    return NpuSyncOp(
-        column=0,
-        row=0,
-        direction=0,
-        channel=0,
-        column_num=0,
-        row_num=0,
-        dyn_column=dyn_column,
-        dyn_row=dyn_row,
-        dyn_direction=dyn_direction,
-        dyn_channel=dyn_channel,
-        dyn_column_num=dyn_column_num,
-        dyn_row_num=dyn_row_num,
     )
 
 

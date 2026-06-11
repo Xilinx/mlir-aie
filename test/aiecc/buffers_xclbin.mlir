@@ -46,13 +46,31 @@ module {
     aie.runtime_sequence(%arg0: memref<1024xi32>, %arg1: memref<1024xi32>, %arg2: memref<1024xi32>, %arg3: memref<1024xi32>, %arg4: memref<1024xi32>, %arg5: memref<1024xi32>) {
       aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 1, 1024][0, 0, 0, 1]) {id = 0 : i64, metadata = @in0} : memref<1024xi32>
       aiex.npu.dma_memcpy_nd (%arg1[0, 0, 0, 0][1, 1, 1, 1024][0, 0, 0, 1]) {id = 1 : i64, metadata = @out0} : memref<1024xi32>
-      aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
+      %column = arith.constant 0 : i32
+      %row = arith.constant 0 : i32
+      %direction = arith.constant 0 : i32
+      %channel = arith.constant 0 : i32
+      %column_num = arith.constant 1 : i32
+      %row_num = arith.constant 1 : i32
+      aiex.npu.sync(%column, %row, %direction, %channel, %column_num, %row_num) : i32, i32, i32, i32, i32, i32
       aiex.npu.dma_memcpy_nd (%arg2[0, 0, 0, 0][1, 1, 1, 1024][0, 0, 0, 1]) {id = 2 : i64, metadata = @in1} : memref<1024xi32>
       aiex.npu.dma_memcpy_nd (%arg3[0, 0, 0, 0][1, 1, 1, 1024][0, 0, 0, 1]) {id = 3 : i64, metadata = @out1} : memref<1024xi32>
-      aiex.npu.sync {channel = 1 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
+      %column_1 = arith.constant 0 : i32
+      %row_1 = arith.constant 0 : i32
+      %direction_1 = arith.constant 0 : i32
+      %channel_1 = arith.constant 1 : i32
+      %column_num_1 = arith.constant 1 : i32
+      %row_num_1 = arith.constant 1 : i32
+      aiex.npu.sync(%column_1, %row_1, %direction_1, %channel_1, %column_num_1, %row_num_1) : i32, i32, i32, i32, i32, i32
       aiex.npu.dma_memcpy_nd (%arg4[0, 0, 0, 0][1, 1, 1, 1024][0, 0, 0, 1]) {id = 2 : i64, metadata = @in2} : memref<1024xi32>
       aiex.npu.dma_memcpy_nd (%arg5[0, 0, 0, 0][1, 1, 1, 1024][0, 0, 0, 1]) {id = 3 : i64, metadata = @out2} : memref<1024xi32>
-      aiex.npu.sync {channel = 0 : i32, column = 2 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
+      %column_2 = arith.constant 2 : i32
+      %row_2 = arith.constant 0 : i32
+      %direction_2 = arith.constant 0 : i32
+      %channel_2 = arith.constant 0 : i32
+      %column_num_2 = arith.constant 1 : i32
+      %row_num_2 = arith.constant 1 : i32
+      aiex.npu.sync(%column_2, %row_2, %direction_2, %channel_2, %column_num_2, %row_num_2) : i32, i32, i32, i32, i32, i32
     }
   }
 }

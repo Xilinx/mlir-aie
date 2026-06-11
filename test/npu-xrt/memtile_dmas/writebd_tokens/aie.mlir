@@ -42,14 +42,26 @@ module {
       aiex.npu.write32 {address = 0xa0604 : ui32, column = 0 : i32, row = 1 : i32, value = 0x80000000 : ui32}
 
       // sync with the copy into memtile before starting copy out of memtile
-      aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 1 : i32, row_num = 1 : i32}
+      %column = arith.constant 0 : i32
+      %row = arith.constant 1 : i32
+      %direction = arith.constant 0 : i32
+      %channel = arith.constant 0 : i32
+      %column_num = arith.constant 1 : i32
+      %row_num = arith.constant 1 : i32
+      aiex.npu.sync(%column, %row, %direction, %channel, %column_num, %row_num) : i32, i32, i32, i32, i32, i32
 
       // BD1, DMA_MM2S_0_Start_Queue
       aiex.npu.writebd {bd_id = 1 : i32, buffer_length = 4096 : i32, buffer_offset = 0 : i32, column = 0 : i32, d0_size = 0 : i32, d0_stride = 0 : i32, d0_zero_after = 0 : i32, d0_zero_before = 0 : i32, d1_size = 0 : i32, d1_stride = 0 : i32, d1_zero_after = 0 : i32, d1_zero_before = 0 : i32, d2_size = 0 : i32, d2_stride = 0 : i32, d2_zero_after = 0 : i32, d2_zero_before = 0 : i32, enable_packet = 0 : i32, iteration_current = 0 : i32, iteration_size = 0 : i32, iteration_stride = 0 : i32, lock_acq_enable = 0 : i32, lock_acq_id = 0 : i32, lock_acq_val = 0 : i32, lock_rel_id = 0 : i32, lock_rel_val = 0 : i32, next_bd = 0 : i32, out_of_order_id = 0 : i32, packet_id = 0 : i32, packet_type = 0 : i32, row = 1 : i32, use_next_bd = 0 : i32, valid_bd = 1 : i32}
       aiex.npu.write32 {address = 0xa0634 : ui32, column = 0 : i32, row = 1 : i32, value = 1 : ui32}
 
       // sync with the copy out via shimdma
-      aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
+      %column_1 = arith.constant 0 : i32
+      %row_1 = arith.constant 0 : i32
+      %direction_1 = arith.constant 0 : i32
+      %channel_1 = arith.constant 0 : i32
+      %column_num_1 = arith.constant 1 : i32
+      %row_num_1 = arith.constant 1 : i32
+      aiex.npu.sync(%column_1, %row_1, %direction_1, %channel_1, %column_num_1, %row_num_1) : i32, i32, i32, i32, i32, i32
     }
   }
 }

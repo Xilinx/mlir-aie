@@ -171,9 +171,21 @@ struct DMAAwaitTaskOpPattern : OpConversionPattern<DMAAwaitTaskOp> {
       return err;
     }
     AIE::TileOp tile = task_op.getTileOp();
-    rewriter.replaceOpWithNewOp<NpuSyncOp>(op, tile.getCol(), tile.getRow(),
-                                           (uint32_t)task_op.getDirection(),
-                                           task_op.getChannel(), 1, 1);
+    Location loc = op.getLoc();
+    Type i32 = rewriter.getI32Type();
+    auto cst = [&](int32_t v) -> Value {
+      return arith::ConstantIntOp::create(rewriter, loc, i32, v);
+    };
+    // Emit constants in operand order (column, row, direction, channel,
+    // column_num, row_num) so the generated IR reads top-to-bottom.
+    Value column = cst(tile.getCol());
+    Value row = cst(tile.getRow());
+    Value direction = cst((int32_t)task_op.getDirection());
+    Value channel = cst(task_op.getChannel());
+    Value columnNum = cst(1);
+    Value rowNum = cst(1);
+    rewriter.replaceOpWithNewOp<NpuSyncOp>(op, column, row, direction, channel,
+                                           columnNum, rowNum);
     return success();
   }
 };

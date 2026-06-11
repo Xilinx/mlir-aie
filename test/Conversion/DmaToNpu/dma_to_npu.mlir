@@ -37,13 +37,14 @@ module  {
 // CHECK-SAME: arg_idx = 0 : i32
 // CHECK: aiex.npu.write32
 // CHECK-SAME: value = 2147483649
-// CHECK: aiex.npu.sync 
-// CHECK-SAME: channel = 0 : i32
-// CHECK-SAME: column = 0 : i32
-// CHECK-SAME: column_num = 1 : i32
-// CHECK-SAME: direction = 0 : i32
-// CHECK-SAME: row = 0 : i32
-// CHECK-SAME: row_num = 1 : i32
+// sync(column, row, direction, channel, column_num, row_num) = (0, 0, 0, 0, 1, 1)
+// CHECK: %[[COL:.+]] = arith.constant 0 : i32
+// CHECK: %[[ROW:.+]] = arith.constant 0 : i32
+// CHECK: %[[DIR:.+]] = arith.constant 0 : i32
+// CHECK: %[[CHAN:.+]] = arith.constant 0 : i32
+// CHECK: %[[CNUM:.+]] = arith.constant 1 : i32
+// CHECK: %[[RNUM:.+]] = arith.constant 1 : i32
+// CHECK: aiex.npu.sync(%[[COL]], %[[ROW]], %[[DIR]], %[[CHAN]], %[[CNUM]], %[[RNUM]])
 module  {
   aie.device(npu1) {
     aie.runtime_sequence(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {
@@ -63,13 +64,14 @@ module  {
 // CHECK-SAME: arg_idx = 0 : i32
 // CHECK: aiex.npu.write32
 // CHECK-SAME: value = 2147483649
-// CHECK: aiex.npu.sync 
-// CHECK-SAME: channel = 1 : i32
-// CHECK-SAME: column = 1 : i32
-// CHECK-SAME: column_num = 1 : i32
-// CHECK-SAME: direction = 1 : i32
-// CHECK-SAME: row = 0 : i32
-// CHECK-SAME: row_num = 1 : i32
+// sync(column, row, direction, channel, column_num, row_num) = (1, 0, 1, 1, 1, 1)
+// CHECK: %[[COL:.+]] = arith.constant 1 : i32
+// CHECK: %[[ROW:.+]] = arith.constant 0 : i32
+// CHECK: %[[DIR:.+]] = arith.constant 1 : i32
+// CHECK: %[[CHAN:.+]] = arith.constant 1 : i32
+// CHECK: %[[CNUM:.+]] = arith.constant 1 : i32
+// CHECK: %[[RNUM:.+]] = arith.constant 1 : i32
+// CHECK: aiex.npu.sync(%[[COL]], %[[ROW]], %[[DIR]], %[[CHAN]], %[[CNUM]], %[[RNUM]])
 module  {
   aie.device(npu1) {
     aie.runtime_sequence(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {

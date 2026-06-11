@@ -341,23 +341,71 @@ module {
 
       // write bd0
       aiex.npu.dma_memcpy_nd(%arg1[%c0_i64, %c0_i64, %c0_i64, %c0_i64] [%c1_i64, %c1_i64, %c1_i64, %c2_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64], packet = <pkt_id = 27, pkt_type = 1>) {id = 6 : i64, issue_token = true, metadata = @ctrlin0} : memref<8xi32>
-      aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
+      %column = arith.constant 0 : i32
+      %row = arith.constant 0 : i32
+      %direction = arith.constant 1 : i32
+      %channel = arith.constant 0 : i32
+      %column_num = arith.constant 1 : i32
+      %row_num = arith.constant 1 : i32
+      aiex.npu.sync(%column, %row, %direction, %channel, %column_num, %row_num) : i32, i32, i32, i32, i32, i32
       aiex.npu.dma_memcpy_nd(%arg1[%c0_i64, %c0_i64, %c0_i64, %c4_i64] [%c1_i64, %c1_i64, %c1_i64, %c2_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64], packet = <pkt_id = 29, pkt_type = 1>) {id = 7 : i64, issue_token = true, metadata = @ctrlin1} : memref<8xi32>
-      aiex.npu.sync {channel = 1 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
+      %column_1 = arith.constant 0 : i32
+      %row_1 = arith.constant 0 : i32
+      %direction_1 = arith.constant 1 : i32
+      %channel_1 = arith.constant 1 : i32
+      %column_num_1 = arith.constant 1 : i32
+      %row_num_1 = arith.constant 1 : i32
+      aiex.npu.sync(%column_1, %row_1, %direction_1, %channel_1, %column_num_1, %row_num_1) : i32, i32, i32, i32, i32, i32
       aiex.npu.dma_memcpy_nd(%arg1[%c0_i64, %c0_i64, %c0_i64, %c8_i64] [%c1_i64, %c1_i64, %c1_i64, %c2_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64], packet = <pkt_id = 30, pkt_type = 1>) {id = 8 : i64, issue_token = true, metadata = @ctrlin1} : memref<8xi32>
-      aiex.npu.sync {channel = 1 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
+      %column_2 = arith.constant 0 : i32
+      %row_2 = arith.constant 0 : i32
+      %direction_2 = arith.constant 1 : i32
+      %channel_2 = arith.constant 1 : i32
+      %column_num_2 = arith.constant 1 : i32
+      %row_num_2 = arith.constant 1 : i32
+      aiex.npu.sync(%column_2, %row_2, %direction_2, %channel_2, %column_num_2, %row_num_2) : i32, i32, i32, i32, i32, i32
       aiex.npu.dma_memcpy_nd(%arg1[%c0_i64, %c0_i64, %c0_i64, %c12_i64] [%c1_i64, %c1_i64, %c1_i64, %c2_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64], packet = <pkt_id = 31, pkt_type = 1>) {id = 9 : i64, issue_token = true, metadata = @ctrlin1} : memref<8xi32>
-      aiex.npu.sync {channel = 1 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
+      %column_3 = arith.constant 0 : i32
+      %row_3 = arith.constant 0 : i32
+      %direction_3 = arith.constant 1 : i32
+      %channel_3 = arith.constant 1 : i32
+      %column_num_3 = arith.constant 1 : i32
+      %row_num_3 = arith.constant 1 : i32
+      aiex.npu.sync(%column_3, %row_3, %direction_3, %channel_3, %column_num_3, %row_num_3) : i32, i32, i32, i32, i32, i32
 
       // patch bd0 address for packet 1, push to mm2s_0_task_queue, wait
       aiex.npu.dma_memcpy_nd(%arg1[%c0_i64, %c0_i64, %c0_i64, %c2_i64] [%c1_i64, %c1_i64, %c1_i64, %c2_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64], packet = <pkt_id = 27, pkt_type = 1>) {id = 6 : i64, issue_token = true, metadata = @ctrlin0} : memref<8xi32>
-      aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
+      %column_4 = arith.constant 0 : i32
+      %row_4 = arith.constant 0 : i32
+      %direction_4 = arith.constant 1 : i32
+      %channel_4 = arith.constant 0 : i32
+      %column_num_4 = arith.constant 1 : i32
+      %row_num_4 = arith.constant 1 : i32
+      aiex.npu.sync(%column_4, %row_4, %direction_4, %channel_4, %column_num_4, %row_num_4) : i32, i32, i32, i32, i32, i32
       aiex.npu.dma_memcpy_nd(%arg1[%c0_i64, %c0_i64, %c0_i64, %c6_i64] [%c1_i64, %c1_i64, %c1_i64, %c2_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64], packet = <pkt_id = 29, pkt_type = 1>) {id = 7 : i64, issue_token = true, metadata = @ctrlin1} : memref<8xi32>
-      aiex.npu.sync {channel = 1 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
+      %column_5 = arith.constant 0 : i32
+      %row_5 = arith.constant 0 : i32
+      %direction_5 = arith.constant 1 : i32
+      %channel_5 = arith.constant 1 : i32
+      %column_num_5 = arith.constant 1 : i32
+      %row_num_5 = arith.constant 1 : i32
+      aiex.npu.sync(%column_5, %row_5, %direction_5, %channel_5, %column_num_5, %row_num_5) : i32, i32, i32, i32, i32, i32
       aiex.npu.dma_memcpy_nd(%arg1[%c0_i64, %c0_i64, %c0_i64, %c10_i64] [%c1_i64, %c1_i64, %c1_i64, %c2_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64], packet = <pkt_id = 30, pkt_type = 1>) {id = 8 : i64, issue_token = true, metadata = @ctrlin1} : memref<8xi32>
-      aiex.npu.sync {channel = 1 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
+      %column_6 = arith.constant 0 : i32
+      %row_6 = arith.constant 0 : i32
+      %direction_6 = arith.constant 1 : i32
+      %channel_6 = arith.constant 1 : i32
+      %column_num_6 = arith.constant 1 : i32
+      %row_num_6 = arith.constant 1 : i32
+      aiex.npu.sync(%column_6, %row_6, %direction_6, %channel_6, %column_num_6, %row_num_6) : i32, i32, i32, i32, i32, i32
       aiex.npu.dma_memcpy_nd(%arg1[%c0_i64, %c0_i64, %c0_i64, %c14_i64] [%c1_i64, %c1_i64, %c1_i64, %c2_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64], packet = <pkt_id = 31, pkt_type = 1>) {id = 9 : i64, issue_token = true, metadata = @ctrlin1} : memref<8xi32>
-      aiex.npu.sync {channel = 1 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
+      %column_7 = arith.constant 0 : i32
+      %row_7 = arith.constant 0 : i32
+      %direction_7 = arith.constant 1 : i32
+      %channel_7 = arith.constant 1 : i32
+      %column_num_7 = arith.constant 1 : i32
+      %row_num_7 = arith.constant 1 : i32
+      aiex.npu.sync(%column_7, %row_7, %direction_7, %channel_7, %column_num_7, %row_num_7) : i32, i32, i32, i32, i32, i32
 
       // wait for dma output
       aiex.npu.dma_wait {symbol = @out0}

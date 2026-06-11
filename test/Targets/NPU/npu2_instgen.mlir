@@ -78,7 +78,13 @@ module {
       // CHECK: 00000010
       // CHECK: 00030401
       // CHECK: 05010200
-      aiex.npu.sync { column = 3 : i32, row = 4 : i32, direction = 1 : i32, channel = 5 : i32, column_num = 1 : i32, row_num = 2 : i32 }
+      %column = arith.constant 3 : i32
+      %row = arith.constant 4 : i32
+      %direction = arith.constant 1 : i32
+      %channel = arith.constant 5 : i32
+      %column_num = arith.constant 1 : i32
+      %row_num = arith.constant 2 : i32
+      aiex.npu.sync(%column, %row, %direction, %channel, %column_num, %row_num) : i32, i32, i32, i32, i32, i32
 
       // CHECK: 00000306
       aiex.npu.preempt { level = 3 : ui8 }

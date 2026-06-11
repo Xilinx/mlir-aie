@@ -110,7 +110,13 @@ module {
         scf.yield %new_acc : i32
       }
 
-      aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
+      %sync_col = arith.constant 0 : i32
+      %sync_row = arith.constant 0 : i32
+      %sync_dir = arith.constant 0 : i32
+      %sync_chan = arith.constant 0 : i32
+      %sync_col_num = arith.constant 1 : i32
+      %sync_row_num = arith.constant 1 : i32
+      aiex.npu.sync(%sync_col, %sync_row, %sync_dir, %sync_chan, %sync_col_num, %sync_row_num) : i32, i32, i32, i32, i32, i32
     }
   }
 }

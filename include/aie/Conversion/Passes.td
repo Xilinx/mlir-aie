@@ -71,7 +71,8 @@ def ConvertAIEToTransaction : Pass<"convert-aie-to-transaction",
   }];
   let constructor = "xilinx::AIE::createConvertAIEToTransactionPass()";
   let dependentDialects = ["xilinx::AIE::AIEDialect",
-                           "xilinx::AIEX::AIEXDialect"];
+                           "xilinx::AIEX::AIEXDialect",
+                           "mlir::arith::ArithDialect"];
   let options = [
       Option<"clElfDir", "elf-dir", "std::string", /*default=*/"",
              "Where to find ELF files">,

@@ -63,6 +63,12 @@ bool isLinearTransfer(llvm::ArrayRef<int64_t> sizes,
 bool isContiguousTransfer(llvm::ArrayRef<int64_t> sizes,
                           llvm::ArrayRef<int64_t> strides);
 
+// Read a compile-time-constant integer from an SSA operand of an npu.* op.
+// Returns std::nullopt when the operand is a runtime value (not an
+// arith.constant or other constant-like op), which means the op cannot be
+// lowered to a static representation (binary TXN, cert, etc.).
+std::optional<uint32_t> getConstantIntOperand(mlir::Value v);
+
 } // namespace AIEX
 } // namespace xilinx
 
