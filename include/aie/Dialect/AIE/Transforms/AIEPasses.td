@@ -76,7 +76,7 @@ def AIEPlaceTiles : Pass<"aie-place-tiles", "DeviceOp"> {
            "aie.logical_tile is pinned to its own physical tile. CoreTile "
            "placement is unaffected.">,
     Option<"clSASeed", "sa-seed", "int",
-           /*default=*/"0",
+           /*default=*/"1",
            "Random seed for SA placer (0 = non-deterministic).">
   ];
 }

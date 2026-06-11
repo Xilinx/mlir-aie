@@ -439,18 +439,18 @@ int SAPlacer::computePenaltyFromMaps() const {
 }
 
 // Simulates per-buffer MemTile allocation with neighbor spillover.
-// The stateful transform allocates each buffer individually on the home
-// MemTile, spilling to adjacent MemTiles (left first, then right) when
-// the home tile is full. We simulate this with per-buffer granularity
-// so that competing spills from adjacent MemTiles correctly consume
-// shared neighbor capacity.
+// Matches the stateful transform's allocation strategy: buffers are
+// collected globally across all MemTile columns, sorted largest-first,
+// and each buffer is placed on its home column when possible, spilling
+// to the neighbor with the most remaining capacity when the home is full.
 int SAPlacer::computeMemTileSpilloverPenalty() const {
   int64_t memTileCapacity = targetModel->getMemTileSize();
   int numCols = targetModel->columns();
   int penalty = 0;
 
-  // Collect individual buffer sizes per MemTile column.
-  llvm::SmallVector<llvm::SmallVector<int64_t>> memTileBufs(numCols);
+  // Collect all MemTile buffers globally, each tagged with its home column.
+  // Pair: (bufferSize, homeColumn).
+  llvm::SmallVector<std::pair<int64_t, int>> allBufs;
   llvm::SmallVector<int64_t> memTileBaseline(numCols, 0);
 
   for (size_t fi = 0; fi < fifoBuffers.size(); fi++) {
@@ -471,7 +471,7 @@ int SAPlacer::computeMemTileSpilloverPenalty() const {
 
     int col = prodPos.col;
     for (int d = 0; d < fb.producerDepth; d++)
-      memTileBufs[col].push_back(fb.producerSizeBytes);
+      allBufs.push_back({fb.producerSizeBytes, col});
 
     for (size_t ci = 0; ci < fb.consumers.size(); ci++) {
       auto *cons = fb.consumers[ci];
@@ -488,7 +488,7 @@ int SAPlacer::computeMemTileSpilloverPenalty() const {
       int consDepth = (ci < fb.consumerDepths.size()) ? fb.consumerDepths[ci]
                                                       : fb.producerDepth;
       for (int d = 0; d < consDepth; d++)
-        memTileBufs[consCol].push_back(fb.consumerSizeBytes);
+        allBufs.push_back({fb.consumerSizeBytes, consCol});
     }
   }
 
@@ -512,30 +512,32 @@ int SAPlacer::computeMemTileSpilloverPenalty() const {
                               static_cast<int64_t>(0));
   }
 
-  // Sort descending (large buffers first, matching stateful transform).
-  for (int col = 0; col < numCols; col++)
-    llvm::sort(memTileBufs[col], std::greater<int64_t>());
+  // Sort globally by size descending (matching stateful transform).
+  llvm::sort(allBufs,
+             [](const auto &a, const auto &b) { return a.first > b.first; });
 
-  // Try home first, then left, then right.
-  for (int col = 0; col < numCols; col++) {
-    for (int64_t bufSize : memTileBufs[col]) {
-      if (remaining[col] >= bufSize) {
-        remaining[col] -= bufSize;
-      } else {
-        bool placed = false;
-        for (int nbr : {col - 1, col + 1}) {
-          if (nbr < 0 || nbr >= numCols)
-            continue;
-          if (targetModel->getTileType(nbr, 1) != AIETileType::MemTile)
-            continue;
-          if (remaining[nbr] >= bufSize) {
-            remaining[nbr] -= bufSize;
-            placed = true;
-            break;
-          }
+  // Place each buffer: try home first, then neighbor with most capacity.
+  for (auto &[bufSize, homeCol] : allBufs) {
+    if (remaining[homeCol] >= bufSize) {
+      remaining[homeCol] -= bufSize;
+    } else {
+      // Pick neighbor with the most remaining capacity.
+      int bestNbr = -1;
+      int64_t bestCap = -1;
+      for (int nbr : {homeCol - 1, homeCol + 1}) {
+        if (nbr < 0 || nbr >= numCols)
+          continue;
+        if (targetModel->getTileType(nbr, 1) != AIETileType::MemTile)
+          continue;
+        if (remaining[nbr] >= bufSize && remaining[nbr] > bestCap) {
+          bestCap = remaining[nbr];
+          bestNbr = nbr;
         }
-        if (!placed)
-          penalty += ((bufSize + 1023) / 1024) * kMemPenaltyFactor;
+      }
+      if (bestNbr >= 0) {
+        remaining[bestNbr] -= bufSize;
+      } else {
+        penalty += ((bufSize + 1023) / 1024) * kMemPenaltyFactor;
       }
     }
   }

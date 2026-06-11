@@ -61,10 +61,8 @@ struct AIEPlaceTilesPass
 
   AIEPlaceTilesPass() = default;
 
-  AIEPlaceTilesPass(const AIEPlaceTilesOptions &options) {
-    clCoresPerCol = options.clCoresPerCol;
-    clMergeLogicalTiles = options.clMergeLogicalTiles;
-  }
+  AIEPlaceTilesPass(const AIEPlaceTilesOptions &options)
+      : AIEPlaceTilesBase(options) {}
 
   void runOnOperation() override {
     DeviceOp device = getOperation();

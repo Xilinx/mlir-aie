@@ -26,9 +26,15 @@ targetname = color_detect
 
 aie_py_src=${targetname}.py
 use_placed?=0
+use_sa_placer?=0
 
 ifeq (${use_placed}, 1)
 aie_py_src=${targetname}_placed.py
+endif
+
+PLACER_ARGS=
+ifeq (${use_sa_placer}, 1)
+PLACER_ARGS=--placer=sa_placer --sa-seed=1
 endif
 
 all: build/final_${COLORDETECT_WIDTH}.xclbin
@@ -57,6 +63,7 @@ ifeq ($(device),npu)
 		--xclbin-name=${@F} --npu-insts-name=insts.bin $(<:%=../%)
 else ifeq ($(device),npu2)
 	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --alloc-scheme=basic-sequential \
+		${PLACER_ARGS} \
 		--xclbin-name=${@F} --npu-insts-name=insts.bin $(<:%=../%)
 endif
 

@@ -64,7 +64,15 @@ rt = Runtime()
 with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
     rt.start(my_worker)
 ```
-All the components are tied together into a `Program` which represents all design information needed to run the design on a device. The program emits `aie.logical_tile` ops for unplaced tiles, and the `--aie-place-tiles` compiler pass assigns physical tile coordinates during compilation. Finally, the program is printed to produce the corresponding MLIR definitions from the IRON library and python language bindings.
+All the components are tied together into a `Program` which represents all design information needed to run the design on a device. The program emits `aie.logical_tile` ops for unplaced tiles, and the `--aie-place-tiles` compiler pass assigns physical tile coordinates during compilation. By default, the sequential placer assigns tiles in column-major order. For larger designs with memory or routing constraints, the simulated annealing (SA) placer can potentially find better placements:
+
+```bash
+aiecc.py --placer=sa_placer --sa-seed=3 ...
+```
+
+The SA placer optimizes wire length while respecting memory capacity, DMA channel limits, and cascade adjacency constraints. Not all seeds produce legal placements for every design — if compilation fails with a buffer overflow or routing error, try different seed values (e.g. sweep seeds 1–10) to find one that works. See [color_detect](../../programming_examples/vision/color_detect/) for an example using `use_sa_placer=1` in the Makefile.
+
+Finally, the program is printed to produce the corresponding MLIR definitions from the IRON library and python language bindings.
 ```python
 # Create the program from the device type and runtime
 my_program = Program(NPU1Col1(), rt)
