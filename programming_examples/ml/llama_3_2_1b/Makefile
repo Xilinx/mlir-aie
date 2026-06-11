@@ -159,6 +159,33 @@ run_glue: glue
 		-i ${BUILD}/insts_glue_${GLUE_BYTES}.bin \
 		-k MLIR_AIE --bytes ${GLUE_BYTES}
 
+# ---------- Stage 0: KV append plumbing prototype ----------
+KVP_T ?= 128
+${BUILD}/llama_kv_proto.cc.o: ${KDIR}/llama_kv_proto.cc
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -ffp-contract=off \
+		-DLLAMA_KVP_HEAD_DIM=64 -DLLAMA_KVP_T=${KVP_T} -c $< -o ${@F}
+
+${BUILD}/aie_kv_proto.mlir: ${srcdir}/aie2_kv_proto.py
+	mkdir -p ${@D}
+	python3 $< > $@
+
+${BUILD}/final_kv_proto.xclbin: ${BUILD}/aie_kv_proto.mlir ${BUILD}/llama_kv_proto.cc.o
+	mkdir -p ${@D}
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-xchesscc --no-xbridge \
+		--xclbin-name=${@F} \
+		--npu-insts-name=insts_kv_proto.bin \
+		$(notdir $<)
+
+kv_proto: ${BUILD}/final_kv_proto.xclbin
+
+run_kv_proto: kv_proto
+	cd ${srcdir} && python3 test_kv_proto.py \
+		-x ${BUILD}/final_kv_proto.xclbin \
+		-i ${BUILD}/insts_kv_proto.bin \
+		-k MLIR_AIE
+
 # ---------- full single-layer integration stub (Phase 1.9) ----------
 ${BUILD}/llama_layer_pt.cc.o: ${KDIR}/llama_layer_pt.cc
 	mkdir -p ${@D}
