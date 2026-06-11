@@ -21,7 +21,8 @@ Weight delivery:
   L1 and L3 split weights are streamed via ObjectFifos (Shim → MemTile → tiles).
   L2 DW weights are static Buffers (baked into the tile at compile time).
 
-Tile placement is handled by the SA placer (--aie-place-tiles='placer=sa_placer').
+Tile placement is either passed explicitly via the placement dict or
+handled automatically by the --aie-place-tiles compiler pass.
 """
 
 import numpy as np
@@ -476,7 +477,7 @@ def cascade_bottlenecks(
     act_in: ObjectFifo,
     sf: dict,
     *,
-    placement: dict = None,
+    placement: dict | None = None,
     data_dir: str,
 ) -> tuple:
     """Build bn13 and bn14 from network_spec.NETWORK + scale-factor JSON.

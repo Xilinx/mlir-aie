@@ -116,6 +116,8 @@ def post_l2(act_in, sf, *, placement=None, data_dir):
                 fc2_data.reshape(fc_full_per_tile),
             ],
         )
+        # Pin the producer to a MemTile. Normally a Worker sets its fifo
+        # endpoint implicitly, but this fifo has no producing Worker.
         wts_mt = (
             placement["wts_memtiles"][i] if placement is not None else AnyMemTile.copy()
         )

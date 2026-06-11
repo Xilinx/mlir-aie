@@ -65,6 +65,9 @@ def post_l1(act_in, sf, *, placement=None, data_dir):
         init_values=[post_l1_wts_data.reshape(post_l1_wts_full_sz)],
         repeat_count=PostRepeatChannels,
     )
+    # Pin the producer (source of weight data) to a MemTile. Normally a
+    # Worker sets its fifo endpoint implicitly, but this fifo has no
+    # producing Worker.
     memtile = placement["memtile"] if placement is not None else AnyMemTile.copy()
     post_l1_wts_of.prod().endpoint = ObjectFifoEndpoint(memtile)
 

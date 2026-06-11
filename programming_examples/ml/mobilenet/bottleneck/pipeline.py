@@ -334,7 +334,7 @@ def pipeline_bottlenecks(
     act_in: ObjectFifo,
     sf: dict,
     *,
-    placement: dict = None,
+    placement: dict | None = None,
     data_dir: str,
 ) -> tuple:
     """Build bn10..bn12 from network_spec.NETWORK + scale-factor JSON.
