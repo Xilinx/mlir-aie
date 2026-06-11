@@ -19,19 +19,18 @@ import numpy as np
 from aie.iron import Kernel, ObjectFifo, Worker
 from aie.iron.controlflow import range_
 from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
+from aie.iron.device import AnyMemTile
 
-from bottleneck._common import i8, load_wts
+from bottleneck._common import i8, load_wts, tile_kw
 from network_spec import block as nsblock
 
 
-def post_l2(act_in, sf, *, placement, data_dir):
+def post_l2(act_in, sf, *, placement=None, data_dir):
     """Build the post-L2 (4-tile FC1+FC2) block.
 
     Args:
         act_in: ObjectFifo  — host-scratch fill of the avgpool output (uint16).
         sf: dict            — full scale-factor mapping; uses sf["POST"]["FC1"], ["FC2"].
-        placement: dict     — PLACEMENT["post_l2"] with keys "wts_memtiles",
-                              "compute", "join_memtile".
         data_dir: str       — directory holding FC{1,2}_{0..3}_chain.txt.
 
     Returns:
@@ -77,11 +76,8 @@ def post_l2(act_in, sf, *, placement, data_dir):
         offsets=[i * fc_out_per_tile for i in range(n_fc_tiles)],
         depths=[2] * n_fc_tiles,
         obj_types=[np.ndarray[(co,), np.dtype[np.uint16]]] * n_fc_tiles,
-        tile=placement["join_memtile"],
+        **tile_kw(placement, "join_memtile"),
     )
-
-    wts_memtiles = placement["wts_memtiles"]
-    fc_comptiles = placement["compute"]
 
     def _u16(shape):
         return np.ndarray[shape, np.dtype[np.uint16]]
@@ -120,9 +116,10 @@ def post_l2(act_in, sf, *, placement, data_dir):
                 fc2_data.reshape(fc_full_per_tile),
             ],
         )
-        # Pin the producer to a MemTile. Normally a Worker sets its fifo
-        # endpoint implicitly, but this fifo has no producing Worker
-        fc_wts_of.prod().endpoint = ObjectFifoEndpoint(wts_memtiles[i])
+        wts_mt = (
+            placement["wts_memtiles"][i] if placement is not None else AnyMemTile.copy()
+        )
+        fc_wts_of.prod().endpoint = ObjectFifoEndpoint(wts_mt)
 
         def post_l2_fn(
             act_in,
@@ -164,7 +161,7 @@ def post_l2(act_in, sf, *, placement, data_dir):
                 post_fc1_sf,
                 post_fc2_sf,
             ],
-            tile=fc_comptiles[i],
+            **({"tile": placement["compute"][i]} if placement is not None else {}),
         )
         post_l2_workers.append(w)
 

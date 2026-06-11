@@ -7,8 +7,8 @@
 """Init conv block (3x3 stride-2) for MobileNet V3 IRON API.
 
 Single builder `init_conv` mirrors the sibling-bottleneck signature shape:
-takes the block's scale factors and placement, owns its own activations
-fifos / weights buffer / kernel / worker, returns `(workers, act_in,
+takes the block's scale factors, owns its own activations fifos /
+weights buffer / kernel / worker, returns `(workers, act_in,
 act_init_out)`. `act_in` is the shim-DMA destination for the design's
 input activations and is exposed so the runtime sequence's `rt.fill`
 can address it.
@@ -19,11 +19,11 @@ import numpy as np
 from aie.iron import Buffer, Kernel, ObjectFifo, Worker
 from aie.iron.controlflow import range_
 
-from bottleneck._common import i8, u8, load_wts
+from bottleneck._common import i8, u8, load_wts, tile_kw
 from network_spec import block as nsblock
 
 
-def init_conv(sf, *, placement, data_dir):
+def init_conv(sf, *, placement=None, data_dir):
     """Build the init 3x3 stride-2 conv block.
 
     Returns:
@@ -135,7 +135,7 @@ def init_conv(sf, *, placement, data_dir):
             init_OutC,
             init_scaleFactor,
         ],
-        tile=placement,
+        **tile_kw(placement),
     )
 
     return [w_init], act_in, act_init_out

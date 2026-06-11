@@ -75,6 +75,10 @@ build/${MLIR_FILE}.mlir: ${srcdir}/${MLIR_FILE}.py
 	mkdir -p ${@D}
 	python3 $< > $@
 
+build/${MLIR_FILE}_unplaced.mlir: ${srcdir}/${MLIR_FILE}.py
+	mkdir -p ${@D}
+	python3 $< --no-placement > $@
+
 # build/${MLIR_FILE}_trace.mlir: ${srcdir}/${MLIR_FILE}_trace.py 
 build/${MLIR_FILE}_trace.mlir: ${srcdir}/${MLIR_FILE}.py 
 	mkdir -p ${@D}
@@ -321,6 +325,22 @@ else
 		--aie-generate-npu-insts --npu-insts-name=insts.bin ${<F}
 endif
 
+SA_SEED ?= 3
+build/sa_mobilenet.xclbin: build/${MLIR_FILE}_unplaced.mlir $(OBJ)
+	mkdir -p ${@D}
+ifeq ($(CHESS), true)
+	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+		--dynamic-objFifos=false \
+		--placer=sa_placer --sa-seed=$(SA_SEED) \
+		--aie-generate-npu-insts --npu-insts-name=sa_insts.bin ${<F}
+else
+	cd ${@D} && aiecc.py --verbose --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+   		--no-xchesscc --no-xbridge \
+		--dynamic-objFifos=false \
+		--placer=sa_placer --sa-seed=$(SA_SEED) \
+		--aie-generate-npu-insts --npu-insts-name=sa_insts.bin ${<F}
+endif
+
 build/trace_mobilenet.xclbin: build/${MLIR_FILE}_trace.mlir $(OBJ)
 	mkdir -p ${@D}
 ifeq ($(CHESS), true)
@@ -334,6 +354,9 @@ endif
 
 run_py: build/final_mobilenet.xclbin build/${MLIR_FILE}.mlir
 	${powershell} python3 ${srcdir}/${TEST_FILE}.py -x build/final_mobilenet.xclbin -i build/insts.bin -k MLIR_AIE
+
+run_sa: build/sa_mobilenet.xclbin build/${MLIR_FILE}_unplaced.mlir
+	${powershell} python3 ${srcdir}/${TEST_FILE}.py -x build/sa_mobilenet.xclbin -i build/sa_insts.bin -k MLIR_AIE
 
 trace_py: build/trace_mobilenet.xclbin build/${MLIR_FILE}_trace.mlir
 	${powershell} python3 ${srcdir}/${TEST_FILE}.py -x build/trace_mobilenet.xclbin -i build/insts.bin -k MLIR_AIE -t ${trace_size}

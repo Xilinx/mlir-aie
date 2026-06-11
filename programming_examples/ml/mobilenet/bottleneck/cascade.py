@@ -21,7 +21,7 @@ Weight delivery:
   L1 and L3 split weights are streamed via ObjectFifos (Shim → MemTile → tiles).
   L2 DW weights are static Buffers (baked into the tile at compile time).
 
-Tile placements live in PLACEMENT["cascade"] in aie2_mobilenet_iron.py.
+Tile placement is handled by the SA placer (--aie-place-tiles='placer=sa_placer').
 """
 
 import numpy as np
@@ -30,7 +30,12 @@ from aie.iron import Buffer, Kernel, ObjectFifo, Worker
 from aie.iron.dataflow.cascadeflow import CascadeFlow
 from aie.iron.controlflow import range_
 
-from bottleneck._common import load_wts, layer_sf as _layer_sf, skip_sf as _skip_sf
+from bottleneck._common import (
+    load_wts,
+    layer_sf as _layer_sf,
+    skip_sf as _skip_sf,
+    tile_kw,
+)
 from network_spec import block as nsblock
 
 # ---------------------------------------------------------------------------
@@ -274,7 +279,7 @@ def _l3_get_fn(
 # ---------------------------------------------------------------------------
 # build_cascade — one full cascade block (5 compute workers + 2 weight fifos)
 # ---------------------------------------------------------------------------
-def build_cascade(blk, l3_get_sym, act_in, skip_in, sf, *, data_dir, tiles):
+def build_cascade(blk, l3_get_sym, act_in, skip_in, sf, *, data_dir, tiles=None):
     """One full cascade block (5 compute workers + 2 weight fifos).
 
     blk:         Block from network_spec.NETWORK (bn13 or bn14).
@@ -284,8 +289,8 @@ def build_cascade(blk, l3_get_sym, act_in, skip_in, sf, *, data_dir, tiles):
     act_in:      activation input ObjectFifo (drives L1 PUT and L1 GET)
     skip_in:     ObjectFifo whose .cons() forwards a skip row to L3 GET
                  (often the same as act_in; for bn14 it's bn13's output)
-    tiles:       dict with keys: l1_put, l1_get, l2, l3_put, l3_get,
-                                 mem_l1, mem_l3, mem_skip
+    tiles:       optional dict with keys: l1_put, l1_get, l2, l3_put, l3_get,
+                                          mem_l1, mem_l3, mem_skip
     Returns (out_fifo, wts_l1_full, wts_l3_full, [workers]).
     """
     name = blk.name
@@ -332,16 +337,16 @@ def build_cascade(blk, l3_get_sym, act_in, skip_in, sf, *, data_dir, tiles):
         offsets=[0, _l1_full_wts_sz // 2],
         depths=[1, 1],
         obj_types=[_ty_l1_split_wts, _ty_l1_split_wts],
-        tile=tiles["mem_l1"],
         repeat_counts=[_InH, _InH],
+        **tile_kw(tiles, "mem_l1"),
     )
     wts_l3_full = ObjectFifo(_ty_l3_full_wts, depth=1)
     wts_l3_put_h, wts_l3_get_h = wts_l3_full.cons().split(
         offsets=[0, _l3_full_wts_sz // 2],
         depths=[1, 1],
         obj_types=[_ty_l3_split_wts, _ty_l3_split_wts],
-        tile=tiles["mem_l3"],
         repeat_counts=[_InH, _InH],
+        **tile_kw(tiles, "mem_l3"),
     )
 
     # L2 DW weights are static (compile-time bake-in)
@@ -372,7 +377,7 @@ def build_cascade(blk, l3_get_sym, act_in, skip_in, sf, *, data_dir, tiles):
     l1_get_cons = act_in.cons()
     # depth=6 on the cons handle lets the skip path buffer enough rows to
     # outlive the 5-tile cascade pipeline lag (l1_put → l1_get → l2 → l3_put → l3_get).
-    skip_fifo = skip_in.cons(depth=6).forward(depth=2, tile=tiles["mem_skip"])
+    skip_fifo = skip_in.cons(depth=6).forward(depth=2, **tile_kw(tiles, "mem_skip"))
 
     bws = [
         Worker(
@@ -389,7 +394,7 @@ def build_cascade(blk, l3_get_sym, act_in, skip_in, sf, *, data_dir, tiles):
                 _OC8,
                 s1,
             ],
-            tile=tiles["l1_put"],
+            **tile_kw(tiles, "l1_put"),
         ),
         Worker(
             _l1_get_fn,
@@ -406,7 +411,7 @@ def build_cascade(blk, l3_get_sym, act_in, skip_in, sf, *, data_dir, tiles):
                 _OC8,
                 s1,
             ],
-            tile=tiles["l1_get"],
+            **tile_kw(tiles, "l1_get"),
         ),
         Worker(
             _l2_fn,
@@ -420,7 +425,7 @@ def build_cascade(blk, l3_get_sym, act_in, skip_in, sf, *, data_dir, tiles):
                 _L1_OutC,
                 s2,
             ],
-            tile=tiles["l2"],
+            **tile_kw(tiles, "l2"),
         ),
         Worker(
             _l3_put_fn,
@@ -436,7 +441,7 @@ def build_cascade(blk, l3_get_sym, act_in, skip_in, sf, *, data_dir, tiles):
                 _OC8_out,
                 s3,
             ],
-            tile=tiles["l3_put"],
+            **tile_kw(tiles, "l3_put"),
         ),
         Worker(
             _l3_get_fn,
@@ -455,7 +460,7 @@ def build_cascade(blk, l3_get_sym, act_in, skip_in, sf, *, data_dir, tiles):
                 s3,
                 s_add,
             ],
-            tile=tiles["l3_get"],
+            **tile_kw(tiles, "l3_get"),
         ),
     ]
     # Cascade flows: L1 put→get and L3 put→get share streams between adjacent tiles.
@@ -471,7 +476,7 @@ def cascade_bottlenecks(
     act_in: ObjectFifo,
     sf: dict,
     *,
-    placement: dict,
+    placement: dict = None,
     data_dir: str,
 ) -> tuple:
     """Build bn13 and bn14 from network_spec.NETWORK + scale-factor JSON.
@@ -484,6 +489,7 @@ def cascade_bottlenecks(
         (workers, act_bn14_out, wts_fifos) where wts_fifos is the 4 full-weight
         ObjectFifos the host DMA writes into (bn13_l1, bn13_l3, bn14_l1, bn14_l3).
     """
+    p = placement or {}
     workers = []
 
     # bn13: cascade-split bottleneck (5 compute workers).
@@ -494,7 +500,7 @@ def cascade_bottlenecks(
         skip_in=act_in,
         sf=sf,
         data_dir=data_dir,
-        tiles=placement["bn13"],
+        tiles=p.get("bn13"),
     )
     workers += bn13_workers
 
@@ -506,7 +512,7 @@ def cascade_bottlenecks(
         skip_in=act_bn13_out,
         sf=sf,
         data_dir=data_dir,
-        tiles=placement["bn14"],
+        tiles=p.get("bn14"),
     )
     workers += bn14_workers
 
