@@ -106,16 +106,15 @@ extern "C" void llama_q_split(int8_t *restrict in_full, int8_t *restrict out_lo,
 //   cs (cos+sin bf16, 256 B) is shared across all heads (one decode pos).
 // Sizes: kfp region = 8 heads * 64 fp32 = 2048 B; same for vfp. So
 //   kvcs = [kfp 2048 | vfp 2048 | cs 256] = 4352 B; combined chunk = 1056 B.
-static constexpr int kKfpHead = kHD * 4;        // 256 (64 fp32 for one head)
-static constexpr int kCsBytes = 2 * kHD * 2;    // 256 (cos+sin bf16)
+static constexpr int kKfpHead = kHD * 4;     // 256 (64 fp32 for one head)
+static constexpr int kCsBytes = 2 * kHD * 2; // 256 (cos+sin bf16)
 static constexpr int kCombChunk = kChunk + 2 * kKfpHead + kCsBytes; // 1056
 
-extern "C" void llama_qkv_combine(int8_t *restrict qr,
-                                  int8_t *restrict kvcs,
+extern "C" void llama_qkv_combine(int8_t *restrict qr, int8_t *restrict kvcs,
                                   int8_t *restrict out_lo,
                                   int8_t *restrict out_hi) {
   event0();
-  constexpr int kKfpRegion = kNHeadsKV * kKfpHead;   // 8*256 = 2048
+  constexpr int kKfpRegion = kNHeadsKV * kKfpHead; // 8*256 = 2048
   int8_t *qr_body = qr;
   int8_t *qr_tail = qr + kQD;
   int8_t *kfp = kvcs;

@@ -170,14 +170,20 @@ def pack_blobs(layers):
         # wk / wv (on-chip KV append): 64 B zero prefix (act_scale from h1 tail).
         off = OFF_WK + L * N_TILES_K * WK_SLOT
         wk_packed = pack_perchan_slots(
-            layer["wk_i8"], layer["wk_sc"], np.zeros(KV_DIM, np.int32), N_TILE,
+            layer["wk_i8"],
+            layer["wk_sc"],
+            np.zeros(KV_DIM, np.int32),
+            N_TILE,
             prefix_bytes=b"\x00" * 64,
         )
         assert wk_packed.size == N_TILES_K * WK_SLOT
         wblob[off : off + wk_packed.size] = wk_packed
         off = OFF_WV + L * N_TILES_V * WV_SLOT
         wv_packed = pack_perchan_slots(
-            layer["wv_i8"], layer["wv_sc"], np.zeros(KV_DIM, np.int32), N_TILE,
+            layer["wv_i8"],
+            layer["wv_sc"],
+            np.zeros(KV_DIM, np.int32),
+            N_TILE,
             prefix_bytes=b"\x00" * 64,
         )
         assert wv_packed.size == N_TILES_V * WV_SLOT
@@ -260,7 +266,11 @@ def run_one_seed(seed: int, opts, lut_exp, lut_silu, npu_kernel) -> int:
     x_cur = (x_i8.copy(), float(res_scale))
     for L in range(N_LAYERS):
         x_cur, scales = numpy_layer_mh_forward(
-            x_cur, layers[L], position=P, residual_dyn=True, attn_perslot=True,
+            x_cur,
+            layers[L],
+            position=P,
+            residual_dyn=True,
+            attn_perslot=True,
             attn_lut=True,
         )
         layers[L]["scales"] = scales
@@ -322,21 +332,47 @@ def run_one_seed(seed: int, opts, lut_exp, lut_silu, npu_kernel) -> int:
             tu = base + h * PER_KV_HEAD_BYTES
             k_off = tu + T_USED_BYTES
             v_off = k_off + KCACHE_PADDED
-            kb = kv_dev[k_off + KV_HEADER + P * HEAD_D : k_off + KV_HEADER + (P + 1) * HEAD_D]
-            vb = kv_dev[v_off + KV_HEADER + P * HEAD_D : v_off + KV_HEADER + (P + 1) * HEAD_D]
-            kd = int(np.abs(kb.astype(np.int32) - kref[L][h][P * HEAD_D : (P + 1) * HEAD_D].astype(np.int32)).max())
-            vd = int(np.abs(vb.astype(np.int32) - vref[L][h][P * HEAD_D : (P + 1) * HEAD_D].astype(np.int32)).max())
-            ks_dev = struct.unpack("<f", kv_dev[k_off + P * 4 : k_off + P * 4 + 4].tobytes())[0]
-            vs_dev = struct.unpack("<f", kv_dev[v_off + P * 4 : v_off + P * 4 + 4].tobytes())[0]
-            ks_rel = abs(ks_dev - float(ksref[L][h, P])) / max(float(ksref[L][h, P]), 1e-12)
-            vs_rel = abs(vs_dev - float(vsref[L][h, P])) / max(float(vsref[L][h, P]), 1e-12)
-            if not (kd <= kd_tol and vd <= kd_tol and ks_rel < ks_tol and vs_rel < ks_tol):
+            kb = kv_dev[
+                k_off + KV_HEADER + P * HEAD_D : k_off + KV_HEADER + (P + 1) * HEAD_D
+            ]
+            vb = kv_dev[
+                v_off + KV_HEADER + P * HEAD_D : v_off + KV_HEADER + (P + 1) * HEAD_D
+            ]
+            kd = int(
+                np.abs(
+                    kb.astype(np.int32)
+                    - kref[L][h][P * HEAD_D : (P + 1) * HEAD_D].astype(np.int32)
+                ).max()
+            )
+            vd = int(
+                np.abs(
+                    vb.astype(np.int32)
+                    - vref[L][h][P * HEAD_D : (P + 1) * HEAD_D].astype(np.int32)
+                ).max()
+            )
+            ks_dev = struct.unpack(
+                "<f", kv_dev[k_off + P * 4 : k_off + P * 4 + 4].tobytes()
+            )[0]
+            vs_dev = struct.unpack(
+                "<f", kv_dev[v_off + P * 4 : v_off + P * 4 + 4].tobytes()
+            )[0]
+            ks_rel = abs(ks_dev - float(ksref[L][h, P])) / max(
+                float(ksref[L][h, P]), 1e-12
+            )
+            vs_rel = abs(vs_dev - float(vsref[L][h, P])) / max(
+                float(vsref[L][h, P]), 1e-12
+            )
+            if not (
+                kd <= kd_tol and vd <= kd_tol and ks_rel < ks_tol and vs_rel < ks_tol
+            ):
                 append_fails += 1
 
     diff = y_dev.astype(np.int32) - y_ref.astype(np.int32)
     n_mismatch = int((diff != 0).sum())
     max_abs = int(np.abs(diff).max()) if n_mismatch else 0
-    scale_match = struct.pack("<f", dev_scale) == struct.pack("<f", np.float32(xo_scale))
+    scale_match = struct.pack("<f", dev_scale) == struct.pack(
+        "<f", np.float32(xo_scale)
+    )
 
     # Per-slot KV attention is NOT byte-exact (Peano fp32 mul ~1 ULP on the
     # score, flipping an exp-LUT bucket; benign, proven quality-neutral via

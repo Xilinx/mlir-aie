@@ -150,13 +150,19 @@ def pack_blobs(layer):
     # wk / wv (on-chip KV append): 64 B zero prefix (fp32out_acttail reads
     # act_scale from the h1 tail, not the weight prefix).
     wk_packed = pack_perchan_slots(
-        layer["wk_i8"], layer["wk_sc"], np.zeros(KV_DIM, np.int32), N_TILE,
+        layer["wk_i8"],
+        layer["wk_sc"],
+        np.zeros(KV_DIM, np.int32),
+        N_TILE,
         prefix_bytes=b"\x00" * 64,
     )
     assert wk_packed.size == N_TILES_K * WK_SLOT
     wblob[OFF_WK : OFF_WK + wk_packed.size] = wk_packed
     wv_packed = pack_perchan_slots(
-        layer["wv_i8"], layer["wv_sc"], np.zeros(KV_DIM, np.int32), N_TILE,
+        layer["wv_i8"],
+        layer["wv_sc"],
+        np.zeros(KV_DIM, np.int32),
+        N_TILE,
         prefix_bytes=b"\x00" * 64,
     )
     assert wv_packed.size == N_TILES_V * WV_SLOT
@@ -288,8 +294,12 @@ def run_one_seed(seed: int, opts, lut_exp, lut_silu, npu_kernel) -> int:
     # slot P (overwriting layer["kcaches"]/k_scales_slot in place), then
     # attention over 0..P. Device-faithful: residual_dyn + attn_lut.
     (xo_i8, xo_scale), scales = numpy_layer_mh_forward(
-        (x_i8, res_scale), layer, position=P, residual_dyn=True,
-        attn_perslot=True, attn_lut=True,
+        (x_i8, res_scale),
+        layer,
+        position=P,
+        residual_dyn=True,
+        attn_perslot=True,
+        attn_lut=True,
     )
     y_ref = xo_i8
     layer["scales"] = scales
@@ -341,19 +351,31 @@ def run_one_seed(seed: int, opts, lut_exp, lut_silu, npu_kernel) -> int:
     for h in range(N_HEADS_KV):
         k_off = kv_off_k(h)
         v_off = kv_off_v(h)
-        kb = kv_dev[k_off + KV_HEADER + P * HEAD_D : k_off + KV_HEADER + (P + 1) * HEAD_D]
-        vb = kv_dev[v_off + KV_HEADER + P * HEAD_D : v_off + KV_HEADER + (P + 1) * HEAD_D]
+        kb = kv_dev[
+            k_off + KV_HEADER + P * HEAD_D : k_off + KV_HEADER + (P + 1) * HEAD_D
+        ]
+        vb = kv_dev[
+            v_off + KV_HEADER + P * HEAD_D : v_off + KV_HEADER + (P + 1) * HEAD_D
+        ]
         kb_ref = kcaches_ref[h][P * HEAD_D : (P + 1) * HEAD_D]
         vb_ref = vcaches_ref[h][P * HEAD_D : (P + 1) * HEAD_D]
         kbody_ok = np.array_equal(kb, kb_ref)
         vbody_ok = np.array_equal(vb, vb_ref)
-        ks_dev = struct.unpack("<f", kv_dev[k_off + P * 4 : k_off + P * 4 + 4].tobytes())[0]
-        vs_dev = struct.unpack("<f", kv_dev[v_off + P * 4 : v_off + P * 4 + 4].tobytes())[0]
+        ks_dev = struct.unpack(
+            "<f", kv_dev[k_off + P * 4 : k_off + P * 4 + 4].tobytes()
+        )[0]
+        vs_dev = struct.unpack(
+            "<f", kv_dev[v_off + P * 4 : v_off + P * 4 + 4].tobytes()
+        )[0]
         # Scale: relative tol. The append body is computed with the device's
         # own scale, so a tiny scale diff (scalar-fp32 absmax/sw_recip floor)
         # can flip a handful of body LSBs -- allow <=1 LSB body + 1e-3 rel scale.
-        ks_rel = abs(ks_dev - float(k_slot_ref[h, P])) / max(float(k_slot_ref[h, P]), 1e-12)
-        vs_rel = abs(vs_dev - float(v_slot_ref[h, P])) / max(float(v_slot_ref[h, P]), 1e-12)
+        ks_rel = abs(ks_dev - float(k_slot_ref[h, P])) / max(
+            float(k_slot_ref[h, P]), 1e-12
+        )
+        vs_rel = abs(vs_dev - float(v_slot_ref[h, P])) / max(
+            float(v_slot_ref[h, P]), 1e-12
+        )
         kd = int(np.abs(kb.astype(np.int32) - kb_ref.astype(np.int32)).max())
         vd = int(np.abs(vb.astype(np.int32) - vb_ref.astype(np.int32)).max())
         if not (kd <= 1 and vd <= 1 and ks_rel < 1e-3 and vs_rel < 1e-3):
@@ -367,7 +389,9 @@ def run_one_seed(seed: int, opts, lut_exp, lut_silu, npu_kernel) -> int:
     diff = y_dev.astype(np.int32) - y_ref.astype(np.int32)
     n_mismatch = int((diff != 0).sum())
     max_abs = int(np.abs(diff).max()) if n_mismatch else 0
-    scale_match = struct.pack("<f", dev_scale) == struct.pack("<f", np.float32(xo_scale))
+    scale_match = struct.pack("<f", dev_scale) == struct.pack(
+        "<f", np.float32(xo_scale)
+    )
 
     # Residual path is byte-exact; the per-slot KV attention path is NOT.
     # When K slot-scales vary, the device's fp32 score (q_scale*k_slot[i]*0.125

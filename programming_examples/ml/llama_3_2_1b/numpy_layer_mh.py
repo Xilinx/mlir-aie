@@ -66,8 +66,9 @@ def _dyn_scale(fp):
     return np.float32(absmax * np.float32(1.0 / 127.0))
 
 
-def attention_perslot(q_i8, k_i8, v_i8, head_dim, t, q_scale, k_slot_scales,
-                      v_slot_scales, inv_out_scale):
+def attention_perslot(
+    q_i8, k_i8, v_i8, head_dim, t, q_scale, k_slot_scales, v_slot_scales, inv_out_scale
+):
     """Per-cache-slot-scale attention (the correct multi-token decode path).
 
     Each cached position is dequantized by ITS OWN k/v scale, fixing the
@@ -89,8 +90,18 @@ def attention_perslot(q_i8, k_i8, v_i8, head_dim, t, q_scale, k_slot_scales,
     return requant(sv, np.float32(inv_out_scale)), sv.astype(np.float32)
 
 
-def numpy_attention_perslot_lut(q_i8, k_i8, v_i8, head_dim, t, q_scale,
-                                k_slot_scales, v_slot_scales, inv_out_scale, lut):
+def numpy_attention_perslot_lut(
+    q_i8,
+    k_i8,
+    v_i8,
+    head_dim,
+    t,
+    q_scale,
+    k_slot_scales,
+    v_slot_scales,
+    inv_out_scale,
+    lut,
+):
     """Bit-exact mirror of the device flowkv_mh per-slot kernel.
 
     Per-cache-slot k/v scales (fixes the per-head-scalar bug) AND the exp-LUT
@@ -327,9 +338,15 @@ def gen_layer_mh(rng: np.random.Generator) -> dict:
     )
 
 
-def numpy_layer_mh_forward(x, layer, position=None, residual_fp32=False,
-                           residual_dyn=False, attn_perslot=None,
-                           attn_lut=False):
+def numpy_layer_mh_forward(
+    x,
+    layer,
+    position=None,
+    residual_fp32=False,
+    residual_dyn=False,
+    attn_perslot=None,
+    attn_lut=False,
+):
     """Multi-head GQA single-layer forward + per-Q-head scale calibration.
 
     Returns (x_out, scales) where scales is a dict packing every
@@ -522,15 +539,28 @@ def numpy_layer_mh_forward(x, layer, position=None, residual_fp32=False,
             )
             # First pass to derive this head's sv_out_scale.
             _, sv_fp_h = attn_fn(
-                q_h, k_slice, v_slice, HEAD_DIM, t_used,
-                float(q_out_scales[h_q]), ksl, vsl, 1.0,
+                q_h,
+                k_slice,
+                v_slice,
+                HEAD_DIM,
+                t_used,
+                float(q_out_scales[h_q]),
+                ksl,
+                vsl,
+                1.0,
             )
             s = float(np.maximum(np.abs(sv_fp_h).max(), 1e-12)) / 127.0
             sv_out_scales[h_q] = np.float32(s)
             sv_inv_out_scales[h_q] = np.float32(1.0) / np.float32(s)
             sv_i8, _ = attn_fn(
-                q_h, k_slice, v_slice, HEAD_DIM, t_used,
-                float(q_out_scales[h_q]), ksl, vsl,
+                q_h,
+                k_slice,
+                v_slice,
+                HEAD_DIM,
+                t_used,
+                float(q_out_scales[h_q]),
+                ksl,
+                vsl,
                 float(sv_inv_out_scales[h_q]),
             )
             sv_i8_per_head.append(sv_i8)
@@ -609,9 +639,7 @@ def numpy_layer_mh_forward(x, layer, position=None, residual_fp32=False,
         h2, act_scale2 = numpy_rmsnorm_int8_dyn(x1, gamma_post, ACT_SCALE)
 
     if _cap is not None:
-        _cap["x1"] = (
-            x1_fp.copy() if residual_dyn else np.asarray(x1, np.float32).copy()
-        )
+        _cap["x1"] = x1_fp.copy() if residual_dyn else np.asarray(x1, np.float32).copy()
 
     # 9) gate (closure-baked GATE_INV_OUT_SCALE = 1/SILU_GATE_SCALE)
     fp_gate = (

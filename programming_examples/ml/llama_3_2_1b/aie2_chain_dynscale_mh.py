@@ -378,9 +378,7 @@ def build():
         [t_QR_i8, t_KVCS_i8, t_COMB_HALF_i8, t_COMB_HALF_i8],
     )
     KO_KVA = "llama_kv_append.cc.o"
-    k_append = Kernel(
-        "llama_kv_append_combined", KO_KVA, [t_COMB_i8, t_KV_i8, t_KV_i8]
-    )
+    k_append = Kernel("llama_kv_append_combined", KO_KVA, [t_COMB_i8, t_KV_i8, t_KV_i8])
     k_svmerge = Kernel(
         "llama_sv_merge",
         KO_GLUE,
@@ -628,7 +626,13 @@ def build():
         ),
         Worker(
             w_qkvcomb,
-            [of_qr.cons(), of_kvcs.cons(), of_comb_lo.prod(), of_comb_hi.prod(), k_qkvcomb],
+            [
+                of_qr.cons(),
+                of_kvcs.cons(),
+                of_comb_lo.prod(),
+                of_comb_hi.prod(),
+                k_qkvcomb,
+            ],
             tile=Tile(0, 5),
         ),
         # 8 co-located append+flowkv workers (cols 1, 2 -- rows 2-5)

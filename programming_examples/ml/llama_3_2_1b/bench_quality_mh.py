@@ -84,9 +84,16 @@ def embed_token_to_int8(model, token_id):
     return requant(row, INV_ACT_SCALE)
 
 
-def int8_chain_next_token(model, layers, cos_lut, sin_lut, token_ids,
-                          residual_fp32=False, residual_dyn=False,
-                          attn_lut=False):
+def int8_chain_next_token(
+    model,
+    layers,
+    cos_lut,
+    sin_lut,
+    token_ids,
+    residual_fp32=False,
+    residual_dyn=False,
+    attn_lut=False,
+):
     """Run our INT8 chain over `token_ids`. Returns the predicted next
     token id. Resets layer caches before running (so prompts are
     independent)."""
@@ -126,8 +133,11 @@ def int8_chain_next_token(model, layers, cos_lut, sin_lut, token_ids,
         xc = x.copy() if not residual_dyn else (x[0].copy(), x[1])
         for L in range(N_LAYERS):
             xc, scales = numpy_layer_mh_forward(
-                xc, layers[L], position=pos,
-                residual_fp32=residual_fp32, residual_dyn=residual_dyn,
+                xc,
+                layers[L],
+                position=pos,
+                residual_fp32=residual_fp32,
+                residual_dyn=residual_dyn,
                 attn_lut=attn_lut,
             )
             layers[L]["scales"] = scales
@@ -150,8 +160,9 @@ def fp16_ref_next_token(model, token_ids):
     return int(np.argmax(logits[-1]))
 
 
-def device_chain_next_token(model, layers, cos_lut, sin_lut, token_ids, dev,
-                            self_prefill=False):
+def device_chain_next_token(
+    model, layers, cos_lut, sin_lut, token_ids, dev, self_prefill=False
+):
     """Real-weight device decode validation.
 
     Two modes:
@@ -276,7 +287,10 @@ def _set_kv_t_used(kvblob, t_used):
     """Write per-head T_used into every KV-head prefix of the device cache."""
     import numpy as _np
     from aie2_chain_dynscale_mh import (
-        N_LAYERS, N_HEADS_KV, PER_LAYER_KV, PER_KV_HEAD_BYTES,
+        N_LAYERS,
+        N_HEADS_KV,
+        PER_LAYER_KV,
+        PER_KV_HEAD_BYTES,
     )
 
     tb = _np.frombuffer(_np.int32(t_used).tobytes(), dtype=_np.int8)
@@ -364,9 +378,9 @@ def main():
         from aie.utils import DefaultNPURuntime
         import aie.utils.test as test_utils
 
-        assert opts.xclbin and opts.instr and opts.kernel, (
-            "--device requires -x <xclbin> -i <instr> -k <kernel>"
-        )
+        assert (
+            opts.xclbin and opts.instr and opts.kernel
+        ), "--device requires -x <xclbin> -i <instr> -k <kernel>"
         from test_chain_mh import pack_blobs as chain_pack_blobs
 
         npu_kernel = test_utils.create_npu_kernel(opts).npu_kernel
@@ -396,13 +410,23 @@ def main():
         t0 = time.time()
         if opts.device:
             our_tok = device_chain_next_token(
-                model, layers, cos_lut, sin_lut, ids, dev,
+                model,
+                layers,
+                cos_lut,
+                sin_lut,
+                ids,
+                dev,
                 self_prefill=opts.self_prefill,
             )
         else:
             our_tok = int8_chain_next_token(
-                model, layers, cos_lut, sin_lut, ids,
-                residual_fp32=opts.residual_fp32, residual_dyn=opts.residual_dyn,
+                model,
+                layers,
+                cos_lut,
+                sin_lut,
+                ids,
+                residual_fp32=opts.residual_fp32,
+                residual_dyn=opts.residual_dyn,
                 attn_lut=opts.attn_lut,
             )
         t_int8 = time.time() - t0

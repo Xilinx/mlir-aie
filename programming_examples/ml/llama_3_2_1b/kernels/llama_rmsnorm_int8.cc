@@ -200,7 +200,8 @@ void llama_rmsnorm_int8_dyn(int8_t *restrict x, bfloat16 *restrict gamma,
 // rescale-add), instead of a kernel argument. Mirrors the gemm acttail
 // pattern (...gate_acttail reads act + kK). Caller must allocate BOTH x and y
 // as int8[kCols + 8].
-void llama_rmsnorm_int8_dyn_acttail(int8_t *restrict x, bfloat16 *restrict gamma,
+void llama_rmsnorm_int8_dyn_acttail(int8_t *restrict x,
+                                    bfloat16 *restrict gamma,
                                     int8_t *restrict y) {
   event0();
 

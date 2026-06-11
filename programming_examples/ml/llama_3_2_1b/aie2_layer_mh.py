@@ -429,9 +429,7 @@ def build():
     # co-located KV append (reads [kf|vf|cs] at offset 288 of the combined
     # chunk; writes the updated head cache).
     KO_KVA = "llama_kv_append.cc.o"
-    k_append = Kernel(
-        "llama_kv_append_combined", KO_KVA, [t_COMB_i8, t_KV_i8, t_KV_i8]
-    )
+    k_append = Kernel("llama_kv_append_combined", KO_KVA, [t_COMB_i8, t_KV_i8, t_KV_i8])
     k_svmerge = Kernel(
         "llama_sv_merge",
         KO_GLUE,
@@ -627,7 +625,13 @@ def build():
         ),
         Worker(
             w_qkvcomb,
-            [of_qr.cons(), of_kvcs.cons(), of_comb_lo.prod(), of_comb_hi.prod(), k_qkvcomb],
+            [
+                of_qr.cons(),
+                of_kvcs.cons(),
+                of_comb_lo.prod(),
+                of_comb_hi.prod(),
+                k_qkvcomb,
+            ],
             tile=Tile(0, 5),
         ),
         # ---- 8 co-located append+flowkv workers (cols 1-2, rows 2-5) ----
@@ -756,10 +760,22 @@ def build():
         # Device-owned cache: drain the updated cache back over kvblob.
         kvout_lo_tg = rt.task_group()
         tgs.append(kvout_lo_tg)
-        rt.drain(of_kvout_lo.cons(), kvblob, tap=strided_tap(KV_BYTES, 0, KV_HALF_BYTES, KV_HALF_BYTES, 1), wait=True, task_group=kvout_lo_tg)
+        rt.drain(
+            of_kvout_lo.cons(),
+            kvblob,
+            tap=strided_tap(KV_BYTES, 0, KV_HALF_BYTES, KV_HALF_BYTES, 1),
+            wait=True,
+            task_group=kvout_lo_tg,
+        )
         kvout_hi_tg = rt.task_group()
         tgs.append(kvout_hi_tg)
-        rt.drain(of_kvout_hi.cons(), kvblob, tap=strided_tap(KV_BYTES, KV_HALF_BYTES, KV_HALF_BYTES, KV_HALF_BYTES, 1), wait=True, task_group=kvout_hi_tg)
+        rt.drain(
+            of_kvout_hi.cons(),
+            kvblob,
+            tap=strided_tap(KV_BYTES, KV_HALF_BYTES, KV_HALF_BYTES, KV_HALF_BYTES, 1),
+            wait=True,
+            task_group=kvout_hi_tg,
+        )
 
         for tg in tgs:
             rt.finish_task_group(tg)

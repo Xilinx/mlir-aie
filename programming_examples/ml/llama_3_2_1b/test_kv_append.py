@@ -17,7 +17,15 @@ import aie.iron as iron
 import aie.utils.test as test_utils
 from aie.utils import DefaultNPURuntime
 
-from aie2_kv_append import HEAD_D, T, PREFIX, SCALE_BYTES, BODY_BYTES, PER_HEAD, KVFP_BYTES
+from aie2_kv_append import (
+    HEAD_D,
+    T,
+    PREFIX,
+    SCALE_BYTES,
+    BODY_BYTES,
+    PER_HEAD,
+    KVFP_BYTES,
+)
 from test_rmsnorm_int8_dyn import sw_recip
 
 
@@ -70,7 +78,10 @@ def run_one(pos: int, opts, npu_kernel) -> int:
     kvin_t = iron.tensor(kv_in.copy(), dtype=np.int8)
     kvout_t = iron.zeros([PER_HEAD], dtype=np.int8)
     rc = DefaultNPURuntime.run_test(
-        npu_kernel, [fp_t, kvin_t, kvout_t], {}, verify=False,
+        npu_kernel,
+        [fp_t, kvin_t, kvout_t],
+        {},
+        verify=False,
         verbosity=opts.verbosity,
     )
     if rc != 0:
@@ -103,9 +114,13 @@ def run_one(pos: int, opts, npu_kernel) -> int:
     # ULP: ks/vs come from scalar-fp32 absmax + sw_recip, which has the
     # documented irreducible ~1-ULP Peano-vs-numpy drift (Bug 11c). Accept a
     # <=1-ULP scale diff on slot[pos]; everything else must match exactly.
-    dev_ks_bits = int.from_bytes(kv_out[k_scales + pos * 4 : k_scales + pos * 4 + 4].tobytes(), "little")
+    dev_ks_bits = int.from_bytes(
+        kv_out[k_scales + pos * 4 : k_scales + pos * 4 + 4].tobytes(), "little"
+    )
     ref_ks_bits = int.from_bytes(np.float32(ks).tobytes(), "little")
-    dev_vs_bits = int.from_bytes(kv_out[v_scales + pos * 4 : v_scales + pos * 4 + 4].tobytes(), "little")
+    dev_vs_bits = int.from_bytes(
+        kv_out[v_scales + pos * 4 : v_scales + pos * 4 + 4].tobytes(), "little"
+    )
     ref_vs_bits = int.from_bytes(np.float32(vs).tobytes(), "little")
     scale_ulp = max(abs(dev_ks_bits - ref_ks_bits), abs(dev_vs_bits - ref_vs_bits))
     # Mask the two slot-scale words, then require everything else byte-exact.
@@ -127,8 +142,12 @@ def run_one(pos: int, opts, npu_kernel) -> int:
     vb = kv_out[v_body + pos * HEAD_D : v_body + (pos + 1) * HEAD_D]
     kd = int(np.abs(kb.astype(np.int32) - k_i8.astype(np.int32)).max())
     vd = int(np.abs(vb.astype(np.int32) - v_i8.astype(np.int32)).max())
-    dev_ks = struct.unpack("<f", kv_out[k_scales + pos * 4 : k_scales + pos * 4 + 4].tobytes())[0]
-    dev_vs = struct.unpack("<f", kv_out[v_scales + pos * 4 : v_scales + pos * 4 + 4].tobytes())[0]
+    dev_ks = struct.unpack(
+        "<f", kv_out[k_scales + pos * 4 : k_scales + pos * 4 + 4].tobytes()
+    )[0]
+    dev_vs = struct.unpack(
+        "<f", kv_out[v_scales + pos * 4 : v_scales + pos * 4 + 4].tobytes()
+    )[0]
     regions = {
         "prefix": (0, PREFIX),
         "k_scales": (k_scales, k_body),
@@ -136,7 +155,10 @@ def run_one(pos: int, opts, npu_kernel) -> int:
         "v_scales": (v_scales, v_body),
         "v_body": (v_body, PER_HEAD),
     }
-    hit = {r: int(((diff_idx >= a) & (diff_idx < b)).sum()) for r, (a, b) in regions.items()}
+    hit = {
+        r: int(((diff_idx >= a) & (diff_idx < b)).sum())
+        for r, (a, b) in regions.items()
+    }
     print(
         f"pos {pos}: FAIL  mismatch={nmis}/{PER_HEAD}  k_body max|d|={kd} v_body max|d|={vd}"
         f"  ks dev={dev_ks:.7g} ref={float(ks):.7g}  vs dev={dev_vs:.7g} ref={float(vs):.7g}"

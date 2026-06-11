@@ -95,7 +95,9 @@ def build():
 
     KO_RMS = "llama_rmsnorm_int8.cc.o"
     KO_GEMM2 = "llama_gemm_int8_srs_tiled_layer_mh.cc.o"
-    k_rms = Kernel("llama_rmsnorm_int8_dyn_acttail", KO_RMS, [t_D8_i8, t_D_bf16, t_D8_i8])
+    k_rms = Kernel(
+        "llama_rmsnorm_int8_dyn_acttail", KO_RMS, [t_D8_i8, t_D_bf16, t_D8_i8]
+    )
     k_kv = Kernel(
         "llama_gemm_tiled_layer_K2048_N4_perchan_fp32out_acttail",
         KO_GEMM2,
@@ -123,7 +125,9 @@ def build():
 
     PSK = 8192
     workers = [
-        Worker(w_rms, [of_xin.cons(), of_gam.cons(), of_h1.prod(), k_rms], tile=Tile(0, 2)),
+        Worker(
+            w_rms, [of_xin.cons(), of_gam.cons(), of_h1.prod(), k_rms], tile=Tile(0, 2)
+        ),
         Worker(
             lambda a, w, o, k: w_proj(a, w, o, k, N_TILES_K),
             [of_h1.cons(), of_wk.cons(), of_kfp.prod(), k_kv],
@@ -139,14 +143,21 @@ def build():
     ]
 
     rt = Runtime()
-    with rt.sequence(rt_xin_ty, rt_w_ty, rt_kfp_ty, rt_vfp_ty) as (xin, wblob, kfp, vfp):
+    with rt.sequence(rt_xin_ty, rt_w_ty, rt_kfp_ty, rt_vfp_ty) as (
+        xin,
+        wblob,
+        kfp,
+        vfp,
+    ):
         rt.start(*workers)
         tgs = []
 
         def fill(prod, off, slot, n):
             tg = rt.task_group()
             tgs.append(tg)
-            rt.fill(prod, wblob, tap=strided_tap(WEIGHTS_BYTES, off, slot, n), task_group=tg)
+            rt.fill(
+                prod, wblob, tap=strided_tap(WEIGHTS_BYTES, off, slot, n), task_group=tg
+            )
 
         xin_tg = rt.task_group()
         tgs.append(xin_tg)

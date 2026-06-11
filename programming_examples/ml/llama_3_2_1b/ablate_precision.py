@@ -102,9 +102,11 @@ def _attn(q, kc, vc, attn_mode):
     if attn_mode == "fp32":
         return attention_full_gqa(q, kc, vc)
     if attn_mode == "int8kv":
+
         def rt(c):
             s = np.maximum(np.abs(c).max(axis=-1, keepdims=True), 1e-12) / 127.0
             return (np.clip(np.round(c / s), -127, 127) * s).astype(np.float32)
+
         return attention_full_gqa(q, rt(kc), rt(vc))
     raise ValueError(attn_mode)
 
@@ -174,8 +176,9 @@ def lm_head_fp32(model, x):
     return h @ _dequant_w(model.embed_i8, model.embed_sc).T
 
 
-def run_variant(model, enc, ref_toks, prompt_ids, residual_mode, attn_mode,
-                lm_head_mode="int8"):
+def run_variant(
+    model, enc, ref_toks, prompt_ids, residual_mode, attn_mode, lm_head_mode="int8"
+):
     from numpy_llama_ref import embed_tokens
 
     n_match = 0
@@ -203,9 +206,7 @@ def main():
     enc = load_tokenizer(data_dir / "tokenizer.model")
     from numpy_llama_ref import forward_full
 
-    prompt_ids = [
-        np.array([128000] + enc.encode(p), dtype=np.int64) for p in PROMPTS
-    ]
+    prompt_ids = [np.array([128000] + enc.encode(p), dtype=np.int64) for p in PROMPTS]
     n = len(PROMPTS)
 
     # Ground truth = TRUE fp32-activation forward (weights dequantized). This
@@ -224,11 +225,11 @@ def main():
     # Cascade: progressively add quantization, measure top-1 vs fp32 ceiling.
     # residual x attn x lm_head. Each row isolates one added noise source.
     variants = [
-        ("fp32", "fp32", "fp32"),        # ceiling: only weights are int8
-        ("fp32", "fp32", "int8"),        # + int8 lm_head activations
+        ("fp32", "fp32", "fp32"),  # ceiling: only weights are int8
+        ("fp32", "fp32", "int8"),  # + int8 lm_head activations
         ("int8pertok", "fp32", "fp32"),  # + int8 per-token residual
-        ("int8pertok", "int8kv", "fp32"),# + int8 KV cache
-        ("int8pertok", "int8kv", "int8"),# full W8A8 (our target dataflow)
+        ("int8pertok", "int8kv", "fp32"),  # + int8 KV cache
+        ("int8pertok", "int8kv", "int8"),  # full W8A8 (our target dataflow)
     ]
     print(f"\n{'residual':>12} {'attn':>8} {'lm_head':>8} {'top-1':>8}")
     for rm, am, lm in variants:

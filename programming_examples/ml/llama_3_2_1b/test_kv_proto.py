@@ -26,7 +26,10 @@ def run_one(pos: int, opts, npu_kernel) -> int:
     kv_out_t = iron.zeros([PER_HEAD], dtype=np.int8)
     read_t = iron.zeros([16], dtype=np.int8)
     rc = DefaultNPURuntime.run_test(
-        npu_kernel, [kv_in_t, kv_out_t, read_t], {}, verify=False,
+        npu_kernel,
+        [kv_in_t, kv_out_t, read_t],
+        {},
+        verify=False,
         verbosity=opts.verbosity,
     )
     if rc != 0:

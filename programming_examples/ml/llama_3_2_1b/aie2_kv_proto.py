@@ -60,7 +60,9 @@ def build():
         c_out.release(1)
 
     workers = [
-        Worker(w_append, [of_kv_in.cons(), of_kv_out.prod(), k_append], tile=Tile(0, 2)),
+        Worker(
+            w_append, [of_kv_in.cons(), of_kv_out.prod(), k_append], tile=Tile(0, 2)
+        ),
         # kv_out fans to BOTH the read worker and the host drain.
         Worker(w_read, [of_kv_out.cons(), of_read.prod(), k_read], tile=Tile(0, 3)),
     ]

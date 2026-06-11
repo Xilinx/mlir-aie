@@ -50,12 +50,16 @@ def run_one(seed: int, opts, npu_kernel) -> int:
 
     # numpy oracle: h1 then k_fp/v_fp.
     h1, act_scale1 = numpy_rmsnorm_int8_dyn(x_i8, gamma_in, float(res_scale))
-    k_fp = (wk_i8.astype(np.int32) @ h1.astype(np.int32)).astype(np.float32) * np.float32(
-        act_scale1
-    ) * wk_sc.astype(np.float32)
-    v_fp = (wv_i8.astype(np.int32) @ h1.astype(np.int32)).astype(np.float32) * np.float32(
-        act_scale1
-    ) * wv_sc.astype(np.float32)
+    k_fp = (
+        (wk_i8.astype(np.int32) @ h1.astype(np.int32)).astype(np.float32)
+        * np.float32(act_scale1)
+        * wk_sc.astype(np.float32)
+    )
+    v_fp = (
+        (wv_i8.astype(np.int32) @ h1.astype(np.int32)).astype(np.float32)
+        * np.float32(act_scale1)
+        * wv_sc.astype(np.float32)
+    )
 
     # Pack wblob.
     wblob = np.zeros(WEIGHTS_BYTES, dtype=np.int8)
