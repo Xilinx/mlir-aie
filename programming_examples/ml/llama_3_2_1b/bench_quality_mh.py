@@ -150,6 +150,82 @@ def fp16_ref_next_token(model, token_ids):
     return int(np.argmax(logits[-1]))
 
 
+def device_chain_next_token(model, layers, cos_lut, sin_lut, token_ids, dev):
+    """Real-weight device decode validation. Prefill the prompt in numpy
+    (builds per-layer KV caches + the last token's per-layer dynamic scales --
+    the device chain has no on-device k/v projection or cache append, so the
+    host must supply a prefilled cache), then dispatch the N=16 chain xclbin
+    ONCE for the last token (16 real layers on real weights, residual_dyn +
+    per-slot KV) and return final_norm->lm_head->argmax of the DEVICE hidden.
+
+    `dev` is a dict: {npu_kernel, pack_blobs, iron, DefaultNPURuntime}.
+    Always device-faithful: residual_dyn=True, attn_lut=True.
+    """
+    import numpy as _np
+
+    # Reset caches per prompt.
+    for layer in layers:
+        for h in range(len(layer["kcaches"])):
+            layer["kcaches"][h] = _np.zeros_like(layer["kcaches"][h])
+            layer["vcaches"][h] = _np.zeros_like(layer["vcaches"][h])
+        layer["k_scales"][:] = 1e-6
+        layer["v_scales"][:] = 1e-6
+        if "k_scales_slot" in layer:
+            layer["k_scales_slot"][:] = 1e-6
+            layer["v_scales_slot"][:] = 1e-6
+
+    last_seed = None  # (int8[D], scale) embedding of the final token
+    for pos, tok in enumerate(token_ids):
+        if pos >= T:
+            print(f"  WARNING: prompt longer than cache T={T}; truncating")
+            break
+        row = model.embed_i8[int(tok)].astype(np.float32) * model.embed_sc[int(tok)]
+        sc = np.float32(max(float(np.abs(row).max()), 1e-12) / 127.0)
+        x = (requant(row, np.float32(1.0) / sc), float(sc))
+        c = cos_lut[pos].astype(bfloat16)
+        s = sin_lut[pos].astype(bfloat16)
+        for layer in layers:
+            layer["cos"] = c
+            layer["sin"] = s
+        # Numpy forward updates KV caches + per-layer scales at this position.
+        xc = (x[0].copy(), x[1])
+        for L in range(N_LAYERS):
+            xc, scales = numpy_layer_mh_forward(
+                xc, layers[L], position=pos, residual_dyn=True, attn_lut=True
+            )
+            layers[L]["scales"] = scales
+            layers[L]["t_used"] = pos + 1
+        last_seed = (x[0].copy(), float(x[1]))
+
+    # Dispatch the device chain for the LAST token: re-seed with its embedding
+    # (residual int8[D+8]); the device recomputes all 16 layers using the
+    # host-supplied prefilled KV caches + per-layer scales just captured.
+    wblob, kvblob = dev["pack_blobs"](layers)
+    x_i8, res_scale = last_seed
+    xin = _np.zeros(D + 8, dtype=_np.int8)
+    xin[:D] = x_i8
+    xin[D : D + 4] = _np.frombuffer(np.float32(res_scale).tobytes(), dtype=_np.int8)
+
+    iron = dev["iron"]
+    x_t = iron.tensor(xin, dtype=_np.int8)
+    w_t = iron.tensor(wblob, dtype=_np.int8)
+    kv_t = iron.tensor(kvblob, dtype=_np.int8)
+    o_t = iron.zeros([D + 8], dtype=_np.int8)
+    rc = dev["DefaultNPURuntime"].run_test(
+        dev["npu_kernel"], [x_t, w_t, kv_t, o_t], {}, verify=False, verbosity=0
+    )
+    if rc != 0:
+        raise RuntimeError(f"device dispatch returned {rc}")
+    o_t.to("cpu")
+    out_full = o_t.numpy()
+    import struct
+
+    dev_scale = struct.unpack("<f", out_full[D : D + 4].tobytes())[0]
+    hidden_fp = out_full[:D].astype(np.float32) * np.float32(dev_scale)
+    logits = lm_head_logits(model, hidden_fp[None, :])[0]
+    return int(np.argmax(logits))
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -181,6 +257,18 @@ def main():
         "(flowkv_mh mirror) instead of the fp32-softmax golden — measures "
         "whether the LUT ULP noise affects top-1",
     )
+    parser.add_argument(
+        "--device",
+        action="store_true",
+        help="run the INT8 decode of the last token on HARDWARE via the N=16 "
+        "chain xclbin (prefill stays in numpy; the device has no on-chip KV "
+        "append). Requires -x/-i/-k. Implies residual_dyn + attn_lut.",
+    )
+    # NPU kernel args (-x/-i/-k) only needed with --device.
+    parser.add_argument("-x", "--xclbin", type=str, default=None, dest="xclbin")
+    parser.add_argument("-i", "--instr", type=str, default=None, dest="instr")
+    parser.add_argument("-k", "--kernel", type=str, default=None, dest="kernel")
+    parser.add_argument("-v", "--verbosity", type=int, default=0)
     opts = parser.parse_args()
 
     data_dir = Path(opts.data_dir)
@@ -200,6 +288,28 @@ def main():
     cos_lut, sin_lut = rope_cos_sin(np.arange(T), HEAD_D)
     print(f"loaded {N_LAYERS} mh layers + lm_head\n", flush=True)
 
+    # Device setup (only with --device): build the NPU kernel + a dev dict
+    # that device_chain_next_token uses to pack blobs and dispatch.
+    dev = None
+    if opts.device:
+        import aie.iron as iron
+        from aie.utils import DefaultNPURuntime
+        import aie.utils.test as test_utils
+
+        assert opts.xclbin and opts.instr and opts.kernel, (
+            "--device requires -x <xclbin> -i <instr> -k <kernel>"
+        )
+        from test_chain_mh import pack_blobs as chain_pack_blobs
+
+        npu_kernel = test_utils.create_npu_kernel(opts).npu_kernel
+        dev = {
+            "npu_kernel": npu_kernel,
+            "pack_blobs": chain_pack_blobs,
+            "iron": iron,
+            "DefaultNPURuntime": DefaultNPURuntime,
+        }
+        print(f"device mode: N={N_LAYERS} chain xclbin {opts.xclbin}\n", flush=True)
+
     indices = (
         range(len(PROMPTS))
         if opts.prompts is None
@@ -216,11 +326,16 @@ def main():
         ref_tok = fp16_ref_next_token(model, ids)
         t_fp16 = time.time() - t0
         t0 = time.time()
-        our_tok = int8_chain_next_token(
-            model, layers, cos_lut, sin_lut, ids,
-            residual_fp32=opts.residual_fp32, residual_dyn=opts.residual_dyn,
-            attn_lut=opts.attn_lut,
-        )
+        if opts.device:
+            our_tok = device_chain_next_token(
+                model, layers, cos_lut, sin_lut, ids, dev
+            )
+        else:
+            our_tok = int8_chain_next_token(
+                model, layers, cos_lut, sin_lut, ids,
+                residual_fp32=opts.residual_fp32, residual_dyn=opts.residual_dyn,
+                attn_lut=opts.attn_lut,
+            )
         t_int8 = time.time() - t0
         match = ref_tok == our_tok
         n_total += 1
