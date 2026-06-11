@@ -186,6 +186,33 @@ run_kv_proto: kv_proto
 		-i ${BUILD}/insts_kv_proto.bin \
 		-k MLIR_AIE
 
+# ---------- Stage 1 unit: isolated KV append kernel ----------
+KVA_T ?= 128
+${BUILD}/llama_kv_append.cc.o: ${KDIR}/llama_kv_append.cc
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -ffp-contract=off \
+		-DLLAMA_KVA_HEAD_DIM=64 -DLLAMA_KVA_T=${KVA_T} -c $< -o ${@F}
+
+${BUILD}/aie_kv_append.mlir: ${srcdir}/aie2_kv_append.py
+	mkdir -p ${@D}
+	python3 $< > $@
+
+${BUILD}/final_kv_append.xclbin: ${BUILD}/aie_kv_append.mlir ${BUILD}/llama_kv_append.cc.o
+	mkdir -p ${@D}
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-xchesscc --no-xbridge \
+		--xclbin-name=${@F} \
+		--npu-insts-name=insts_kv_append.bin \
+		$(notdir $<)
+
+kv_append: ${BUILD}/final_kv_append.xclbin
+
+run_kv_append: kv_append
+	cd ${srcdir} && python3 test_kv_append.py \
+		-x ${BUILD}/final_kv_append.xclbin \
+		-i ${BUILD}/insts_kv_append.bin \
+		-k MLIR_AIE
+
 # ---------- full single-layer integration stub (Phase 1.9) ----------
 ${BUILD}/llama_layer_pt.cc.o: ${KDIR}/llama_layer_pt.cc
 	mkdir -p ${@D}
