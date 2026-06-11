@@ -150,18 +150,33 @@ def fp16_ref_next_token(model, token_ids):
     return int(np.argmax(logits[-1]))
 
 
-def device_chain_next_token(model, layers, cos_lut, sin_lut, token_ids, dev):
-    """Real-weight device decode validation. Prefill the prompt in numpy
-    (builds per-layer KV caches + the last token's per-layer dynamic scales --
-    the device chain has no on-device k/v projection or cache append, so the
-    host must supply a prefilled cache), then dispatch the N=16 chain xclbin
-    ONCE for the last token (16 real layers on real weights, residual_dyn +
-    per-slot KV) and return final_norm->lm_head->argmax of the DEVICE hidden.
+def device_chain_next_token(model, layers, cos_lut, sin_lut, token_ids, dev,
+                            self_prefill=False):
+    """Real-weight device decode validation.
+
+    Two modes:
+    - host-prefill (default): numpy prefills the prompt (builds per-layer KV
+      caches + last-token scales), then the device dispatches ONCE for the last
+      token using the host-supplied cache. Validates the decode dataflow.
+    - self_prefill=True (on-chip KV append): the device computes + stores K/V
+      itself. Dispatch the chain ONCE PER PROMPT TOKEN, carrying the device-
+      DRAINED cache forward as the next token's input cache -- no numpy K/V
+      math. numpy still computes the per-layer dynamic SCALES each token (the
+      device reads them from wblob prefixes; on-chip self-calibration is a
+      future step). Returns final_norm->lm_head->argmax of the last token's
+      DEVICE hidden.
 
     `dev` is a dict: {npu_kernel, pack_blobs, iron, DefaultNPURuntime}.
     Always device-faithful: residual_dyn=True, attn_lut=True.
     """
+    import struct
+
     import numpy as _np
+
+    iron = dev["iron"]
+    run_test = dev["DefaultNPURuntime"].run_test
+    npu = dev["npu_kernel"]
+    pack_blobs = dev["pack_blobs"]
 
     # Reset caches per prompt.
     for layer in layers:
@@ -174,7 +189,11 @@ def device_chain_next_token(model, layers, cos_lut, sin_lut, token_ids, dev):
             layer["k_scales_slot"][:] = 1e-6
             layer["v_scales_slot"][:] = 1e-6
 
-    last_seed = None  # (int8[D], scale) embedding of the final token
+    # Device-owned KV cache carried across per-token dispatches (self_prefill).
+    # Built once; each dispatch reads it and the drain overwrites it in place.
+    kv_state = None
+
+    last_out = None  # (int8[D], scale) hidden of the last processed token
     for pos, tok in enumerate(token_ids):
         if pos >= T:
             print(f"  WARNING: prompt longer than cache T={T}; truncating")
@@ -187,7 +206,10 @@ def device_chain_next_token(model, layers, cos_lut, sin_lut, token_ids, dev):
         for layer in layers:
             layer["cos"] = c
             layer["sin"] = s
-        # Numpy forward updates KV caches + per-layer scales at this position.
+
+        # Numpy forward: in self_prefill it provides the per-layer SCALES only
+        # (and advances its own caches, unused by the device); in host-prefill
+        # it provides BOTH scales and the cache.
         xc = (x[0].copy(), x[1])
         for L in range(N_LAYERS):
             xc, scales = numpy_layer_mh_forward(
@@ -195,35 +217,74 @@ def device_chain_next_token(model, layers, cos_lut, sin_lut, token_ids, dev):
             )
             layers[L]["scales"] = scales
             layers[L]["t_used"] = pos + 1
-        last_seed = (x[0].copy(), float(x[1]))
 
-    # Dispatch the device chain for the LAST token: re-seed with its embedding
-    # (residual int8[D+8]); the device recomputes all 16 layers using the
-    # host-supplied prefilled KV caches + per-layer scales just captured.
-    wblob, kvblob = dev["pack_blobs"](layers)
-    x_i8, res_scale = last_seed
-    xin = _np.zeros(D + 8, dtype=_np.int8)
-    xin[:D] = x_i8
-    xin[D : D + 4] = _np.frombuffer(np.float32(res_scale).tobytes(), dtype=_np.int8)
+        if not self_prefill:
+            last_out = x  # device re-seeds with the embedding (host-prefill)
+            continue
 
-    iron = dev["iron"]
-    x_t = iron.tensor(xin, dtype=_np.int8)
-    w_t = iron.tensor(wblob, dtype=_np.int8)
-    kv_t = iron.tensor(kvblob, dtype=_np.int8)
-    o_t = iron.zeros([D + 8], dtype=_np.int8)
-    rc = dev["DefaultNPURuntime"].run_test(
-        dev["npu_kernel"], [x_t, w_t, kv_t, o_t], {}, verify=False, verbosity=0
-    )
-    if rc != 0:
-        raise RuntimeError(f"device dispatch returned {rc}")
-    o_t.to("cpu")
-    out_full = o_t.numpy()
-    import struct
+        # self_prefill: dispatch the device for THIS token. wblob carries this
+        # token's scales; kvblob carries the device-owned cache so far (slots
+        # 0..pos-1), with slot pos to be written on-chip. The device appends
+        # slot pos, attends over 0..pos, and drains the updated cache back.
+        wblob, _kvblob_host = pack_blobs(layers)
+        if kv_state is None:
+            # First token: start from an all-zero device cache.
+            kv_state = _np.zeros_like(_kvblob_host)
+        # Set per-head T_used = pos+1 in the device cache (flowkv/append read it).
+        _set_kv_t_used(kv_state, pos + 1)
 
-    dev_scale = struct.unpack("<f", out_full[D : D + 4].tobytes())[0]
-    hidden_fp = out_full[:D].astype(np.float32) * np.float32(dev_scale)
+        xin = _np.zeros(D + 8, dtype=_np.int8)
+        xin[:D] = x[0]
+        xin[D : D + 4] = _np.frombuffer(np.float32(x[1]).tobytes(), dtype=_np.int8)
+
+        x_t = iron.tensor(xin, dtype=_np.int8)
+        w_t = iron.tensor(wblob, dtype=_np.int8)
+        kv_t = iron.tensor(kv_state, dtype=_np.int8)
+        o_t = iron.zeros([D + 8], dtype=_np.int8)
+        rc = run_test(npu, [x_t, w_t, kv_t, o_t], {}, verify=False, verbosity=0)
+        if rc != 0:
+            raise RuntimeError(f"device dispatch returned {rc}")
+        kv_t.to("cpu")
+        kv_state = kv_t.numpy().copy()  # device-owned cache for the next token
+        o_t.to("cpu")
+        last_out = o_t.numpy()
+
+    if not self_prefill:
+        # host-prefill: dispatch ONCE for the last token.
+        wblob, kvblob = pack_blobs(layers)
+        x_i8, res_scale = last_out
+        xin = _np.zeros(D + 8, dtype=_np.int8)
+        xin[:D] = x_i8
+        xin[D : D + 4] = _np.frombuffer(np.float32(res_scale).tobytes(), dtype=_np.int8)
+        x_t = iron.tensor(xin, dtype=_np.int8)
+        w_t = iron.tensor(wblob, dtype=_np.int8)
+        kv_t = iron.tensor(kvblob, dtype=_np.int8)
+        o_t = iron.zeros([D + 8], dtype=_np.int8)
+        rc = run_test(npu, [x_t, w_t, kv_t, o_t], {}, verify=False, verbosity=0)
+        if rc != 0:
+            raise RuntimeError(f"device dispatch returned {rc}")
+        o_t.to("cpu")
+        last_out = o_t.numpy()
+
+    dev_scale = struct.unpack("<f", last_out[D : D + 4].tobytes())[0]
+    hidden_fp = last_out[:D].astype(np.float32) * np.float32(dev_scale)
     logits = lm_head_logits(model, hidden_fp[None, :])[0]
     return int(np.argmax(logits))
+
+
+def _set_kv_t_used(kvblob, t_used):
+    """Write per-head T_used into every KV-head prefix of the device cache."""
+    import numpy as _np
+    from aie2_chain_dynscale_mh import (
+        N_LAYERS, N_HEADS_KV, PER_LAYER_KV, PER_KV_HEAD_BYTES,
+    )
+
+    tb = _np.frombuffer(_np.int32(t_used).tobytes(), dtype=_np.int8)
+    for L in range(N_LAYERS):
+        base = L * PER_LAYER_KV
+        for h in range(N_HEADS_KV):
+            off = base + h * PER_KV_HEAD_BYTES
+            kvblob[off : off + 4] = tb
 
 
 def main():
@@ -263,6 +324,13 @@ def main():
         help="run the INT8 decode of the last token on HARDWARE via the N=16 "
         "chain xclbin (prefill stays in numpy; the device has no on-chip KV "
         "append). Requires -x/-i/-k. Implies residual_dyn + attn_lut.",
+    )
+    parser.add_argument(
+        "--self-prefill",
+        action="store_true",
+        help="device self-prefills via on-chip KV append: dispatch the chain "
+        "once per prompt token, carrying the device-drained cache forward (no "
+        "numpy K/V math). Requires --device + an on-chip-append xclbin.",
     )
     # NPU kernel args (-x/-i/-k) only needed with --device.
     parser.add_argument("-x", "--xclbin", type=str, default=None, dest="xclbin")
@@ -328,7 +396,8 @@ def main():
         t0 = time.time()
         if opts.device:
             our_tok = device_chain_next_token(
-                model, layers, cos_lut, sin_lut, ids, dev
+                model, layers, cos_lut, sin_lut, ids, dev,
+                self_prefill=opts.self_prefill,
             )
         else:
             our_tok = int8_chain_next_token(
