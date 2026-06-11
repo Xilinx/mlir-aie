@@ -298,7 +298,11 @@ void SAPlacer::addFifoContribution(size_t fifoIdx, int sign) {
           int64_t consUsed =
               currentMemUsage.count(consPos) ? currentMemUsage[consPos] : 0;
           bufTile = (prodUsed <= consUsed) ? prodPos : consPos;
-          sharedMemDestination[fifoIdx] = bufTile;
+          // Only track shared-mem destination for single-consumer fifos.
+          // allocate ops require all endpoints share access to the delegate
+          // tile, which is only guaranteed for single-consumer fifos.
+          if (fb.consumers.size() == 1)
+            sharedMemDestination[fifoIdx] = bufTile;
         } else {
           auto it = sharedMemDestination.find(fifoIdx);
           bufTile = (it != sharedMemDestination.end()) ? it->second : prodPos;
@@ -1521,8 +1525,6 @@ void SAPlacer::runSAMainLoop() {
 
   int greedyIters = 50 * numMovable;
 
-  double coolingRate = 0.999;
-
   int numSamples = std::max(10 * numMovable, 50);
   double estimatedT = estimateInitialTemperature(numSamples);
   double initTemp =
@@ -1530,15 +1532,10 @@ void SAPlacer::runSAMainLoop() {
   initTemp = std::max(initTemp, 1.0);
 
   LLVM_DEBUG(llvm::dbgs() << "[SA] Schedule: movesPerIter=" << movesPerIter
-                          << " maxIters=" << maxIters << " cooling="
-                          << coolingRate << " initTemp=" << initTemp << "\n");
-
-  if (initTemp > 1.0) {
-    coolingRate = std::pow(1.0 / initTemp, 1.0 / (0.7 * maxIters));
-  }
+                          << " maxIters=" << maxIters
+                          << " initTemp=" << initTemp << "\n");
 
   schedule = SASchedule(initTemp, movesPerIter, maxIters, greedyIters);
-  schedule.setCoolingFactor(coolingRate);
 
   bestPlacement = currentPlacement;
   bestCost =
@@ -1563,7 +1560,8 @@ void SAPlacer::runSAMainLoop() {
           numNonCore++;
       double nonCoreFrac =
           numMovable > 0 ? static_cast<double>(numNonCore) / numMovable : 0.0;
-      double shiftProb = (1.0 - coreOccupancy) + nonCoreFrac * 0.2;
+      double shiftProb =
+          std::min(1.0, (1.0 - coreOccupancy) + nonCoreFrac * 0.2);
 
       if (r < 1.0 - shiftProb) {
         Operation *tile1 = nullptr, *tile2 = nullptr;

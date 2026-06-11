@@ -120,7 +120,7 @@ struct AIEPlaceTilesPass
         TileOp delegateTile = TileOp::getOrCreate(
             builder, device, delegateTileID.col, delegateTileID.row);
         ObjectFifoAllocateOp::create(
-            builder, builder.getUnknownLoc(),
+            builder, ofOp.getLoc(),
             SymbolRefAttr::get(builder.getContext(), ofOp.getSymName()),
             delegateTile.getResult());
       }

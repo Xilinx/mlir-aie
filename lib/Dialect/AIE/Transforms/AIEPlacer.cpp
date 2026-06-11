@@ -46,6 +46,8 @@ void Placer::Adjacency::addEdgeFromValues(Value a, Value b) {
 
 void Placer::initialize(const AIETargetModel &tm) {
   targetModel = &tm;
+  availability.compTiles.clear();
+  availability.nonCompTiles.clear();
   for (int col = 0; col < tm.columns(); col++) {
     for (int row = 0; row < tm.rows(); row++) {
       TileID id = {col, row};
