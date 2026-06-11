@@ -56,11 +56,13 @@ SVCHUNK_BYTES = REP * HEAD_D  # 256
 SV_CONCAT_HALF = (N_HEADS_KV // 2) * SVCHUNK_BYTES  # 1024
 AF_BYTES = N_HEADS_Q * HEAD_D  # 2048
 
-KV_HEADER = 4
+# Per-slot KV: each cached position carries its OWN k/v scale (fixes the
+# per-head-scalar bug). Header is T fp32 per-slot scales.
+KV_HEADER = T * 4
 KCACHE_BYTES = T * HEAD_D  # 8192
 VCACHE_BYTES = T * HEAD_D  # 8192
-KCACHE_PADDED = KV_HEADER + KCACHE_BYTES  # 8196
-VCACHE_PADDED = KV_HEADER + VCACHE_BYTES  # 8196
+KCACHE_PADDED = KV_HEADER + KCACHE_BYTES
+VCACHE_PADDED = KV_HEADER + VCACHE_BYTES
 
 AF_SCALES_BYTES = 192
 
@@ -138,6 +140,10 @@ def _bf16(n):
     return np.ndarray[(int(n),), np.dtype[bfloat16]]
 
 
+def _f32(n):
+    return np.ndarray[(int(n),), np.dtype[np.float32]]
+
+
 def factor(nb):
     if nb <= 1023:
         return (1, nb)
@@ -158,12 +164,16 @@ def strided_tap(total, base_off, per_slot_stride, slot_bytes, n_slots):
 
 
 def build():
-    rt_xin_ty = _i8(D)
+    # Residual stream carries a per-token dynamic scale in an int8[D+8] tail
+    # (Phase B residual_dyn): xin seed + layer out are both int8[D+8].
+    rt_xin_ty = _i8(D + 8)
     rt_w_ty = _i8(WEIGHTS_BYTES)
     rt_kv_ty = _i8(KV_BYTES)
-    rt_out_ty = _i8(D)
+    rt_out_ty = _i8(D + 8)
 
     t_D_i8 = _i8(D)
+    t_D8_i8 = _i8(D + 8)  # residual / rmsnorm-dyn: D int8 + 4 B scale + 4 B pad
+    t_D_f32 = _f32(D)  # o_proj / down fp32 output -> rescale-add
     t_QF_i8 = _i8(QF_BYTES)
     t_QR_i8 = _i8(QR_BYTES)
     t_QCHUNKS_HALF_i8 = _i8(QCHUNKS_HALF_BYTES)
@@ -185,14 +195,14 @@ def build():
     t_KV_HALF_i8 = _i8(KV_HALF_BYTES)
 
     # --- ObjectFifos (all depth=1) ---
-    # Residual loop-back.
-    of_seed = ObjectFifo(t_D_i8, depth=1, name="seed")
-    of_back = ObjectFifo(t_D_i8, depth=1, name="back")
-    of_routed = ObjectFifo(t_D_i8, depth=1, name="routed")  # rmsnorm1 + add1
-    of_out = ObjectFifo(t_D_i8, depth=1, name="layer_out")
+    # Residual loop-back. All carry the per-token scale tail (int8[D+8]).
+    of_seed = ObjectFifo(t_D8_i8, depth=1, name="seed")
+    of_back = ObjectFifo(t_D8_i8, depth=1, name="back")
+    of_routed = ObjectFifo(t_D8_i8, depth=1, name="routed")  # rmsnorm1 + add1
+    of_out = ObjectFifo(t_D8_i8, depth=1, name="layer_out")
 
     of_gam_in = ObjectFifo(t_D_bf16, depth=1, name="gam_in")
-    of_h1 = ObjectFifo(t_D_i8, depth=1, name="h1")
+    of_h1 = ObjectFifo(t_D8_i8, depth=1, name="h1")
     of_wq = ObjectFifo(t_WQ_slot, depth=2, name="wq")
     of_qf = ObjectFifo(t_QF_i8, depth=1, name="qf")
     of_cs = ObjectFifo(t_CS_bf16, depth=1, name="cs")
@@ -244,19 +254,19 @@ def build():
     of_afscales = ObjectFifo(t_AFSCALES_i8, depth=1, name="af_scales")
     of_af = ObjectFifo(t_AF_i8, depth=1, name="af")
     of_wo = ObjectFifo(t_WO_slot, depth=2, name="wo")
-    of_op = ObjectFifo(t_D_i8, depth=1, name="op")
+    of_op = ObjectFifo(t_D_f32, depth=1, name="op")  # fp32 o_proj output
 
-    of_x1 = ObjectFifo(t_D_i8, depth=1, name="x1")
+    of_x1 = ObjectFifo(t_D8_i8, depth=1, name="x1")  # residual int8[D+8]
 
     of_gam_post = ObjectFifo(t_D_bf16, depth=1, name="gam_post")
-    of_h2 = ObjectFifo(t_D_i8, depth=1, name="h2")
+    of_h2 = ObjectFifo(t_D8_i8, depth=1, name="h2")
     of_wg = ObjectFifo(t_WG_slot, depth=2, name="wg")
     of_wu = ObjectFifo(t_WU_slot, depth=2, name="wu")
     of_wd = ObjectFifo(t_WD_slot, depth=1, name="wd")  # K=8192 L1 budget
     of_gf = ObjectFifo(t_HD_i8, depth=1, name="gf")
     of_uf = ObjectFifo(t_UF_i8, depth=1, name="uf")
     of_sf = ObjectFifo(t_HD_i8, depth=1, name="sf")
-    of_df = ObjectFifo(t_D_i8, depth=1, name="df")
+    of_df = ObjectFifo(t_D_f32, depth=1, name="df")  # fp32 down output
 
     KO_RMS = "llama_rmsnorm_int8.cc.o"
     KO_GEMM = "llama_gemm_int8_srs_tiled_layer.cc.o"
@@ -267,33 +277,36 @@ def build():
     KO_GLUE = "llama_gqa_glue.cc.o"
     KO_PT = "llama_layer_pt.cc.o"
 
+    # rmsnorm acttail: per-token input scale read from the residual tail.
     k_rms = Kernel(
-        "llama_rmsnorm_int8", KO_RMS, [t_D_i8, t_D_bf16, t_D_i8, np.float32, np.float32]
+        "llama_rmsnorm_int8_dyn_acttail", KO_RMS, [t_D8_i8, t_D_bf16, t_D8_i8]
     )
     k_q = Kernel(
-        "llama_gemm_tiled_layer_K2048_N4_perchan_v2_up_q_mh",
+        "llama_gemm_tiled_layer_K2048_N4_perchan_v2_up_q_mh_acttail",
         KO_GEMM2,
-        [t_D_i8, t_WQ_slot, t_QF_i8, np.int32],
+        [t_D8_i8, t_WQ_slot, t_QF_i8, np.int32],
     )
+    # o_proj-mh, fp32 output (consumed by rescale-add)
     k_o = Kernel(
-        "llama_gemm_tiled_layer_K2048_N4_perchan_v2_o_mh",
+        "llama_gemm_tiled_layer_K2048_N4_perchan_v2_o_mh_fp32out",
         KO_GEMM2,
-        [t_AF_i8, t_WO_slot, t_D_i8, np.int32],
+        [t_AF_i8, t_WO_slot, t_D_f32, np.int32],
     )
+    # gate acttail (act_scale from h2 tail; inv_out stays silu-lock arg)
     k_gate = Kernel(
-        "llama_gemm_tiled_layer_K2048_N4_perchan_gate",
+        "llama_gemm_tiled_layer_K2048_N4_perchan_gate_acttail",
         KO_GEMM,
-        [t_D_i8, t_WG_slot, t_HD_i8, np.int32, np.float32, np.float32],
+        [t_D8_i8, t_WG_slot, t_HD_i8, np.int32, np.float32],
     )
     k_up = Kernel(
-        "llama_gemm_tiled_layer_K2048_N4_perchan_v2_up_u",
+        "llama_gemm_tiled_layer_K2048_N4_perchan_v2_up_u_acttail",
         KO_GEMM,
-        [t_D_i8, t_WU_slot, t_UF_i8, np.int32],
+        [t_D8_i8, t_WU_slot, t_UF_i8, np.int32],
     )
     k_down = Kernel(
-        "llama_gemm_tiled_layer_K8192_N4_perchan_v2_d",
+        "llama_gemm_tiled_layer_K8192_N4_perchan_v2_d_fp32out",
         KO_GEMM,
-        [t_HD_i8, t_WD_slot, t_D_i8, np.int32],
+        [t_HD_i8, t_WD_slot, t_D_f32, np.int32],
     )
     k_rope = Kernel("llama_rope_int8_mh_dyn", KO_ROPE, [t_QF_i8, t_CS_bf16, t_QR_i8])
     k_qsplit = Kernel(
@@ -309,20 +322,23 @@ def build():
     )
     k_fkv = Kernel("llama_flowkv_mh_kvc", KO_FKV, [t_QCHUNK_i8, t_KV_i8, t_SVCHUNK_i8])
     k_silu = Kernel("llama_silu_mul_int8_dyn", KO_SILU, [t_HD_i8, t_UF_i8, t_HD_i8])
-    k_add = Kernel("llama_pt_add_D", KO_PT, [t_D_i8, t_D_i8, t_D_i8])
+    # rescale-add: (residual int8[D+8], proj fp32[D]) -> residual int8[D+8].
+    KO_RADD = "llama_rescale_add.cc.o"
+    k_add = Kernel("llama_rescale_add_D", KO_RADD, [t_D8_i8, t_D_f32, t_D8_i8])
 
     # --- Worker bodies (each loops N_LAYERS times) ---
     def w_router(c_seed, c_back, p_routed):
+        # Copy D+8: body + per-token residual scale tail (4 B scale + 4 B pad).
         x = c_seed.acquire(1)
         o = p_routed.acquire(1)
-        for i in range_(D):
+        for i in range_(D + 8):
             o[i] = x[i]
         p_routed.release(1)
         c_seed.release(1)
         for _ in range_(N_LAYERS - 1):
             x = c_back.acquire(1)
             o = p_routed.acquire(1)
-            for i in range_(D):
+            for i in range_(D + 8):
                 o[i] = x[i]
             p_routed.release(1)
             c_back.release(1)
@@ -332,7 +348,7 @@ def build():
             x = c_in.acquire(1)
             g = c_gamma.acquire(1)
             o = c_out.acquire(1)
-            k(x, g, o, ACT_SCALE, INV_ACT_SCALE)
+            k(x, g, o)  # act_scale read from input tail x[D..D+4]
             c_in.release(1)
             c_gamma.release(1)
             c_out.release(1)
@@ -365,7 +381,7 @@ def build():
             o = c_out.acquire(1)
             for t in range_(N_TILES_G):
                 w = c_w.acquire(1)
-                k(a, w, o, _i32(t), ACT_SCALE, GATE_INV_OUT_SCALE)
+                k(a, w, o, _i32(t), GATE_INV_OUT_SCALE)
                 c_w.release(1)
             c_act.release(1)
             c_out.release(1)
@@ -452,32 +468,33 @@ def build():
             c_u.release(1)
             c_out.release(1)
 
-    def w_add1(c_a, c_b, c_out, k):
+    # rescale-add: c_resid = residual int8[D+8], c_proj = projection fp32[D].
+    def w_add1(c_resid, c_proj, c_out, k):
         for _ in range_(N_LAYERS):
-            a = c_a.acquire(1)
-            b = c_b.acquire(1)
+            r = c_resid.acquire(1)
+            p = c_proj.acquire(1)
             o = c_out.acquire(1)
-            k(a, b, o)
-            c_a.release(1)
-            c_b.release(1)
+            k(r, p, o)
+            c_resid.release(1)
+            c_proj.release(1)
             c_out.release(1)
 
     # add2 with peeled final iter: writes to `back` for L=0..N-2, `out` for L=N-1.
-    def w_add2(c_a, c_b, c_back, c_out, k):
+    def w_add2(c_resid, c_proj, c_back, c_out, k):
         for _ in range_(N_LAYERS - 1):
-            a = c_a.acquire(1)
-            b = c_b.acquire(1)
+            r = c_resid.acquire(1)
+            p = c_proj.acquire(1)
             o = c_back.acquire(1)
-            k(a, b, o)
-            c_a.release(1)
-            c_b.release(1)
+            k(r, p, o)
+            c_resid.release(1)
+            c_proj.release(1)
             c_back.release(1)
-        a = c_a.acquire(1)
-        b = c_b.acquire(1)
+        r = c_resid.acquire(1)
+        p = c_proj.acquire(1)
         o = c_out.acquire(1)
-        k(a, b, o)
-        c_a.release(1)
-        c_b.release(1)
+        k(r, p, o)
+        c_resid.release(1)
+        c_proj.release(1)
         c_out.release(1)
 
     PSK = 8192
@@ -579,7 +596,7 @@ def build():
         ),
         Worker(
             w_add1,
-            [of_op.cons(), of_routed.cons(), of_x1.prod(), k_add],
+            [of_routed.cons(), of_op.cons(), of_x1.prod(), k_add],
             tile=Tile(6, 5),
         ),
         # FFN (match layer_d2048 placement; Bug 12: PSK=8192 only)
@@ -615,7 +632,7 @@ def build():
         # add2 with peeled final iter
         Worker(
             w_add2,
-            [of_df.cons(), of_x1.cons(), of_back.prod(), of_out.prod(), k_add],
+            [of_x1.cons(), of_df.cons(), of_back.prod(), of_out.prod(), k_add],
             tile=Tile(7, 5),
         ),
     ]
