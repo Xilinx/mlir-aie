@@ -1009,7 +1009,7 @@ def AIE_NpuSyncOp: AIEX_Op<"npu.sync", [AttrSizedOperandSegments]> {
     Optionally, SSA values can be provided for all parameters to enable
     runtime-parameterized sequences.
 
-    Static syntax (unchanged): `aiex.npu.sync {column = 0 : i32, ...}`
+    Static syntax: `aiex.npu.sync {column = 0 : i32, ...}`
     Dynamic syntax: `aiex.npu.sync(%col, %row, %dir, %chan, %ncol, %nrow) {column = 0 : i32, ...} : i32, i32, i32, i32, i32, i32`
   }];
   let extraClassDeclaration = [{

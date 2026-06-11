@@ -15,7 +15,7 @@
 
 // RUN: aie-opt --split-input-file --aie-assign-runtime-sequence-bd-ids --aie-dma-tasks-to-npu --verify-diagnostics %s | FileCheck %s
 
-// All-static fast path: emits a single npu.writebd blockwrite (unchanged).
+// All-static fast path: emits a single npu.writebd blockwrite.
 // CHECK-LABEL: aie.device(npu1)
 // CHECK: aiex.npu.writebd
 // CHECK-NOT: aiex.npu.write32
