@@ -891,6 +891,16 @@ public:
                                 /*dyn_arg_plus=*/Value{});
     }
 
+    // If this DMA op has an offset_state_table_idx, emit an
+    // update_from_scratchpad to add the runtime offset to the BD address
+    // register.
+    if (op.getOffsetStateTableIdxAttr()) {
+      auto bufType = cast<BaseMemRefType>(op.getMemref().getType());
+      if (failed(emitUpdateBdAddressFromOffsetParameter(rewriter, op, bufType,
+                                                        patchAddr)))
+        return failure();
+    }
+
     // --- Queue push ---
     // Determine issue_token
     bool issueTokenVal = op.getIssueToken();

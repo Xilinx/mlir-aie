@@ -42,15 +42,15 @@ struct AIEObjectFifoRegisterProcessPass
     : xilinx::AIE::impl::AIEObjectFifoRegisterProcessBase<
           AIEObjectFifoRegisterProcessPass> {
 
-  scf::ForOp createForLoop(OpBuilder &builder, int length) {
-    auto lowerBound = arith::ConstantOp::create(
-        builder, builder.getUnknownLoc(), builder.getIndexAttr(0));
-    auto upperBound = arith::ConstantOp::create(
-        builder, builder.getUnknownLoc(), builder.getIndexAttr(length));
-    auto step = arith::ConstantOp::create(builder, builder.getUnknownLoc(),
-                                          builder.getIndexAttr(1));
-    auto forLoop = scf::ForOp::create(builder, builder.getUnknownLoc(),
-                                      lowerBound, upperBound, step);
+  scf::ForOp createForLoop(OpBuilder &builder, Location loc, int length) {
+    auto lowerBound =
+        arith::ConstantOp::create(builder, loc, builder.getIndexAttr(0));
+    auto upperBound =
+        arith::ConstantOp::create(builder, loc, builder.getIndexAttr(length));
+    auto step =
+        arith::ConstantOp::create(builder, loc, builder.getIndexAttr(1));
+    auto forLoop =
+        scf::ForOp::create(builder, loc, lowerBound, upperBound, step);
     return forLoop;
   }
 
@@ -58,10 +58,11 @@ struct AIEObjectFifoRegisterProcessPass
                      ObjectFifoRegisterProcessOp regOp, MemRefType elementType,
                      IntegerAttr acqNumber, IntegerAttr relNumber, int length) {
     auto ctx = device->getContext();
+    Location loc = regOp.getLoc();
     // create for loop
     scf::ForOp forLoop;
     if (length > 1) {
-      forLoop = createForLoop(builder, length);
+      forLoop = createForLoop(builder, loc, length);
       Region &forRegion = forLoop.getRegion();
       builder.setInsertionPointToStart(&forRegion.back());
     }
@@ -70,13 +71,13 @@ struct AIEObjectFifoRegisterProcessPass
     if (acqNumber.getInt() > 0) {
       auto acqType = AIEObjectFifoSubviewType::get(elementType);
       auto acqOp = ObjectFifoAcquireOp::create(
-          builder, builder.getUnknownLoc(), acqType, regOp.getPortAttr(),
+          builder, loc, acqType, regOp.getPortAttr(),
           SymbolRefAttr::get(ctx, regOp.getObjFifoName()), acqNumber);
 
       // subview accesses
       for (int i = 0; i < acqNumber.getInt(); i++)
         (void)ObjectFifoSubviewAccessOp::create(
-            builder, builder.getUnknownLoc(), elementType, acqOp.getSubview(),
+            builder, loc, elementType, acqOp.getSubview(),
             builder.getIntegerAttr(builder.getI32Type(), i));
 
       // apply kernel
@@ -87,14 +88,13 @@ struct AIEObjectFifoRegisterProcessPass
           break;
         }
       }
-      func::CallOp::create(builder, builder.getUnknownLoc(),
-                           func /*, acc.output()*/);
+      func::CallOp::create(builder, loc, func /*, acc.output()*/);
     }
 
     // releases
     if (relNumber.getInt() > 0) {
       auto relOp = ObjectFifoReleaseOp::create(
-          builder, builder.getUnknownLoc(), regOp.getPortAttr(),
+          builder, loc, regOp.getPortAttr(),
           SymbolRefAttr::get(ctx, regOp.getObjFifoName()), relNumber);
       builder.setInsertionPointAfter(relOp);
     }
@@ -143,13 +143,13 @@ struct AIEObjectFifoRegisterProcessPass
           /*AllowRepeats=*/false);
       // retrieve core associated to above tile or create new one
       if (!op) {
-        CoreOp coreOp = CoreOp::create(builder, builder.getUnknownLoc(),
+        CoreOp coreOp = CoreOp::create(builder, registerOp.getLoc(),
                                        builder.getIndexType(), tile);
         Region &r = coreOp.getBody();
         r.push_back(new Block);
         Block &block = r.back();
         builder.setInsertionPointToStart(&block);
-        EndOp::create(builder, builder.getUnknownLoc());
+        EndOp::create(builder, registerOp.getLoc());
         builder.setInsertionPointToStart(&block);
       } else {
         CoreOp coreOp = llvm::dyn_cast<CoreOp>(op);

@@ -37,6 +37,7 @@
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/JSON.h"
+#include "llvm/Support/raw_ostream.h"
 
 #include <fstream>
 #include <iostream>
@@ -165,6 +166,14 @@ void registerAIETranslations() {
       "aie-sequence-name", llvm::cl::init(""),
       llvm::cl::desc(
           "Specify the name of the aiex.runtime_sequence to translate"));
+  static llvm::cl::opt<std::string> npuEmitLocmap(
+      "aie-npu-emit-locmap", llvm::cl::init(""),
+      llvm::cl::value_desc("filename"),
+      llvm::cl::desc(
+          "For aie-npu-to-binary, also write a JSON sidecar mapping each "
+          "transaction word's byte offset to its source MLIR Location (and "
+          "regdb register name where applicable) to the given file. The binary "
+          "is still emitted to the main output."));
 
   TranslateFromMLIRRegistration registrationMMap(
       "aie-generate-mmap", "Generate AIE memory map",
@@ -369,16 +378,34 @@ void registerAIETranslations() {
       "aie-npu-to-binary", "Translate npu instructions to binary",
       [](ModuleOp module, raw_ostream &output) {
         std::vector<uint32_t> instructions;
+        std::vector<TxnLocEntry> locmap;
+        bool emitLocmap = !npuEmitLocmap.empty();
         auto r = AIETranslateNpuToBinary(module, instructions, deviceName,
-                                         sequenceName);
+                                         sequenceName,
+                                         emitLocmap ? &locmap : nullptr);
         if (failed(r))
           return r;
+        // The binary (or hex text) is always emitted to the main output.
         if (outputBinary) {
           output.write(reinterpret_cast<const char *>(instructions.data()),
                        instructions.size() * sizeof(uint32_t));
         } else {
           for (auto w : instructions)
             output << llvm::format("%08X\n", w);
+        }
+        // With -aie-npu-emit-locmap=<file>, additionally write the JSON
+        // location sidecar (mapping each transaction word's byte offset to its
+        // source MLIR Location) to that file.
+        if (emitLocmap) {
+          std::error_code ec;
+          llvm::raw_fd_ostream locFile(npuEmitLocmap, ec,
+                                       llvm::sys::fs::OF_Text);
+          if (ec) {
+            llvm::errs() << "Error opening locmap file '" << npuEmitLocmap
+                         << "': " << ec.message() << "\n";
+            return failure();
+          }
+          emitNpuLocmapJSON(locFile, deviceName, /*binaryName=*/"", locmap);
         }
         return success();
       },

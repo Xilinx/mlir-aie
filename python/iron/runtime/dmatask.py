@@ -31,6 +31,7 @@ class DMATask(RuntimeTask):
         offset=None,
         sizes=None,
         strides=None,
+        offset_parameter: str | None = None,
     ):
         """A RuntimeTask that will resolve to a DMA Operation.
 
@@ -43,11 +44,13 @@ class DMATask(RuntimeTask):
             offset (int | None, optional): Byte offset into the runtime buffer for the start of the transfer. Mutually exclusive with ``tap``. Defaults to None.
             sizes (list[int] | None, optional): Multi-dimensional transfer sizes (up to 4D) describing the shape of each DMA tile. Mutually exclusive with ``tap``. Defaults to None.
             strides (list[int] | None, optional): Multi-dimensional strides (in element granularity) corresponding to ``sizes``. Mutually exclusive with ``tap``. Defaults to None.
+            offset_parameter (str | None, optional): Name of a ScratchpadParameter whose value is used as the element offset for this DMA transfer. Defaults to None.
         """
         self._object_fifo = object_fifo
         self._rt_data = rt_data
         self._tap = tap
         self._wait = wait
+        self._offset_parameter = offset_parameter
         self._task = None
         self._offset = offset
         self._sizes = sizes
@@ -188,5 +191,6 @@ class DMATask(RuntimeTask):
             sizes=self._sizes,
             strides=self._strides,
             issue_token=self._wait,
+            offset_parameter=self._offset_parameter,
         )
         dma_start_task(self._task)

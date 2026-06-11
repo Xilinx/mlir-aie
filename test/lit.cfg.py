@@ -7,6 +7,7 @@
 # (c) Copyright 2021-2026 Xilinx Inc.
 
 import os
+import shutil
 import sys
 
 # Add shared AIE lit utilities to path
@@ -179,6 +180,11 @@ lit_config.parallelism_groups["concurrency"] = 1
 
 # NPU XRT tests should run serially to avoid resource contention
 lit_config.parallelism_groups["npu-xrt"] = 1
+
+# shutil.which picks up the platform's executable suffix (.exe on Windows
+# via PATHEXT) so the feature gate fires correctly on every OS.
+if shutil.which("aie-lsp-server", path=config.llvm_tools_dir) is not None:
+    config.available_features.add("aie-lsp-server")
 
 if config.python_passes:
     config.available_features.add("python_passes")

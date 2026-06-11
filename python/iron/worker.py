@@ -19,6 +19,7 @@ from ..dialects._aie_enum_gen import AIETileType  # type: ignore
 from .dataflow.objectfifo import ObjectFifoHandle, ObjectFifo
 from .dataflow.endpoint import ObjectFifoEndpoint
 from .buffer import Buffer
+from .scratchpad_parameter import ScratchpadParameter
 from .resolvable import Resolvable
 
 
@@ -115,6 +116,8 @@ class Worker(ObjectFifoEndpoint):
                         f"cannot reassign to {self._tile}"
                     )
                 arg._tile = self._tile
+            elif isinstance(arg, ScratchpadParameter):
+                pass  # ScratchpadParameters are device-level symbols; no tile placement needed
             elif isinstance(arg, ObjectFifo):
                 # This is an easy error to make, so we catch it early
                 raise ValueError(

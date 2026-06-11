@@ -106,8 +106,8 @@ struct AIECreateCoresPass
       // get or create TileOp
       if (!tiles[{colIndex, rowIndex}]) {
         builder.setInsertionPointToStart(device.getBody());
-        TileOp tile = TileOp::create(builder, builder.getUnknownLoc(), colIndex,
-                                     rowIndex);
+        TileOp tile =
+            TileOp::create(builder, callOp.getLoc(), colIndex, rowIndex);
         tiles[{colIndex, rowIndex}] = tile;
       }
       Operation *tileOp = tiles[{colIndex, rowIndex}];
@@ -130,21 +130,21 @@ struct AIECreateCoresPass
           assert(t && "Unsupported type!");
           coreBufTypes.push_back({t, i});
           BufferOp buf = BufferOp::create(
-              builder, builder.getUnknownLoc(), t, tile, /*sym_name*/ nullptr,
+              builder, callOp.getLoc(), t, tile, /*sym_name*/ nullptr,
               /*address*/ nullptr, /*initial_value*/ nullptr,
               /*mem_bank*/ nullptr, /*aligned*/ nullptr);
           buffers[callOperands[i]] = buf;
           operand.replaceAllUsesWith(buf.getResult());
         }
 
-        MemOp mem = MemOp::create(builder, builder.getUnknownLoc(),
+        MemOp mem = MemOp::create(builder, callOp.getLoc(),
                                   builder.getIndexType(), tile);
         Region &r = mem.getBody();
         Block *endBlock = builder.createBlock(&r);
 
         // block terminator
         builder.setInsertionPointToStart(endBlock);
-        EndOp::create(builder, builder.getUnknownLoc());
+        EndOp::create(builder, callOp.getLoc());
         mems[tileOp] = mem;
       }
 
@@ -163,7 +163,7 @@ struct AIECreateCoresPass
           Block *currentBlock;
 
           if (!cores[tileOp]) {
-            core = CoreOp::create(builder, builder.getUnknownLoc(), tile);
+            core = CoreOp::create(builder, callOp.getLoc(), tile);
             Region &r = core.getBody();
             currentBlock = builder.createBlock(&r);
             builder.setInsertionPointToStart(currentBlock);
@@ -187,10 +187,10 @@ struct AIECreateCoresPass
               assert(pair.first.getShape()[0] == 1 &&
                      "Expected MemRefType of single element");
 
-              Value zero = arith::ConstantIndexOp::create(
-                  builder, builder.getUnknownLoc(), 0);
-              auto loadOp = memref::LoadOp::create(
-                  builder, builder.getUnknownLoc(), arg.getType(), buf, zero);
+              Value zero =
+                  arith::ConstantIndexOp::create(builder, callOp.getLoc(), 0);
+              auto loadOp = memref::LoadOp::create(builder, callOp.getLoc(),
+                                                   arg.getType(), buf, zero);
               mapper.map(arg, loadOp);
             } else {
               mapper.map(arg, buf);
@@ -207,7 +207,7 @@ struct AIECreateCoresPass
           }
           if (!cores[tileOp]) {
             // block terminator
-            EndOp::create(builder, builder.getUnknownLoc());
+            EndOp::create(builder, callOp.getLoc());
             cores[tileOp] = core;
           }
         }
@@ -233,7 +233,7 @@ struct AIECreateCoresPass
     //          "Could not allocate more than two dest. channel when creating
     //          FlowOp");
     //   // WireBundle[1] = DMA
-    //   FlowOp::create(builder, builder.getUnknownLoc(), srcTile, 1, 0,
+    //   FlowOp::create(builder, callOp.getLoc(), srcTile, 1, 0,
     //   dstTile, 1, destChannel[op.dstTile()]); destChannel[op.dstTile()]++;
     // }
 

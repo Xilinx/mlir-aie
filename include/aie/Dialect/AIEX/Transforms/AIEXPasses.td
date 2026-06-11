@@ -271,6 +271,47 @@ def AIELowerSetLock : Pass<"aie-lower-set-lock", "AIE::DeviceOp"> {
   ];
 }
 
+def AIELowerScratchpadParameters : Pass<"aie-lower-scratchpad-parameters", "mlir::ModuleOp"> {
+  let summary = "Lower scratchpad parameter ops and emit parameter-sync preambles";
+  let description = [{
+    Lowers `aiex.scratchpad_parameter` and `aiex.read_scratchpad_parameter`
+    ops into concrete scratchpad-based communication between host and AIE
+    cores.
+
+    Assigns globally-unique state table indices to every
+    `aiex.scratchpad_parameter` in the module (indices in [0, 32), since the
+    scratchpad is a single hardware resource shared by all PDIs loaded by a
+    runtime sequence). Creates per-core buffers for each
+    `aiex.read_scratchpad_parameter` usage. Automatically emits a
+    parameter-sync preamble driven by the `emit_parameter_sync_preamble`
+    attribute on `aie.core` and `aie.runtime_sequence`:
+    - In each qualifying core: inserts `aie.lock` + `aie.use_lock(Acquire, 1)`.
+    - In each qualifying runtime sequence: inserts `aiex.npu.create_scratchpad`,
+      per-parameter `aiex.npu.write32` + `aiex.npu.update_from_scratchpad`,
+      and `aiex.set_lock` for each core lock.
+
+    Sets a `kind` attribute on each `aiex.scratchpad_parameter` based on how
+    it is used: `core` if read by `aiex.read_scratchpad_parameter`, `addr` if
+    used as a DMA `offset_parameter`. A parameter may not be used as both.
+
+    Optionally emits a `params.txt` file describing every parameter in the
+    module (name, global state_table_idx, type, and kind).
+  }];
+
+  let constructor = "xilinx::AIEX::createAIELowerScratchpadParametersPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+    "mlir::arith::ArithDialect",
+    "mlir::memref::MemRefDialect",
+  ];
+  let options = [
+    Option<"outputParamsFile", "output-params-file", "std::string",
+           /*default=*/"\"\"",
+           "Path to write the parameter layout file to.">
+  ];
+}
+
 def AIETransformBfpTypes : Pass<"aie-transform-bfp-types", "AIE::DeviceOp"> {
   let summary = "Transform bfp types to standard builtin types";
 

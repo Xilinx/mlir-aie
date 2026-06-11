@@ -10,7 +10,6 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 
-#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/DialectImplementation.h"
@@ -125,6 +124,15 @@ uint32_t xilinx::AIE::getShimBurstLengthEncoding(const AIE::AIETargetModel &tm,
                                                  uint32_t burstLength) {
 
   return getShimBurstLength(tm, burstLength).first;
+}
+
+std::string xilinx::AIE::generateUniqueSymbolName(
+    mlir::Operation *symbolTableOp, llvm::StringRef prefix, unsigned &counter) {
+  std::string name;
+  do {
+    name = (prefix + llvm::Twine(counter++)).str();
+  } while (mlir::SymbolTable::lookupSymbolIn(symbolTableOp, name));
+  return name;
 }
 
 LogicalResult
@@ -1124,8 +1132,19 @@ LogicalResult ObjectFifoSubviewAccessOp::verify() {
       parent == nullptr)
     return emitOpError("must be called from inside a CoreOp");
 
-  if (auto acqOp = getSubview().getDefiningOp<ObjectFifoAcquireOp>();
-      getIndex() >= acqOp.acqNumber())
+  // The subview operand must be the direct SSA result of an
+  // aie.objectfifo.acquire. Flowing it through scf.yield / iter_args / any
+  // other region boundary loses the link to the originating acquire that
+  // every downstream pass needs (the acquire's size for the bounds check
+  // here, and the (fifo, port) identity for lock lowering). Reject here
+  // rather than crashing on a null defining op later.
+  auto acqOp = getSubview().getDefiningOp<ObjectFifoAcquireOp>();
+  if (!acqOp)
+    return emitOpError("subview operand must be the direct result of an "
+                       "aie.objectfifo.acquire; flowing the subview through "
+                       "scf.yield / iter_args / region results is not "
+                       "supported");
+  if (getIndex() >= acqOp.acqNumber())
     return emitOpError("accessed farther than number of acquired elements "
                        "(index out of bounds).");
 
@@ -1660,8 +1679,8 @@ TileOp TileOp::getOrCreate(mlir::OpBuilder builder, DeviceOp device, int col,
     OpBuilder::InsertionGuard guard(builder);
     mlir::Block &device_start_block = *device.getBodyRegion().begin();
     builder.setInsertionPointToStart(&device_start_block);
-    tile = TileOp::create(builder, builder.getUnknownLoc(),
-                          builder.getIndexType(), col, row);
+    tile = TileOp::create(builder, device.getLoc(), builder.getIndexType(), col,
+                          row);
   }
   return tile;
 }
@@ -3132,6 +3151,11 @@ ParseResult RuntimeSequenceOp::parse(OpAsmParser &parser,
     return argParseResult;
   }
 
+  // Optional `attributes { ... }` clause (before the body so it does not
+  // conflict with the `{` that opens the region).
+  if (parser.parseOptionalAttrDictWithKeyword(result.attributes))
+    return failure();
+
   // Body
   auto *body = result.addRegion();
   ParseResult bodyParseResult = parser.parseRegion(*body, entryArgs, false);
@@ -3162,6 +3186,10 @@ void RuntimeSequenceOp::print(OpAsmPrinter &printer) {
     printer.printRegionArgument(body.getArgument(i));
   }
   printer << ')';
+
+  printer.printOptionalAttrDictWithKeyword(
+      (*this)->getAttrs(),
+      /*elidedAttrs=*/{mlir::SymbolTable::getSymbolAttrName()});
 
   printer << ' ';
   printer.printRegion(body, false, true);
@@ -3229,7 +3257,8 @@ LogicalResult RuntimeSequenceOp::verifyBeforeMaterialization() {
                 << "references symbol '"
                 << symbolRef.getRootReference().getValue()
                 << "' which must be either a ShimDMAAllocationOp, DeviceOp, "
-                   "RuntimeSequenceOp, BufferOp or GlobalOp, but got: "
+                   "RuntimeSequenceOp, BufferOp, or GlobalOp, "
+                   "but got: "
                 << symbolDefOp->getName().getStringRef();
             return WalkResult::interrupt();
           }

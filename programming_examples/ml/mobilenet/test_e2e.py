@@ -56,7 +56,8 @@ def _load_input_chw(fix, mode, target, shape):
         path = fix + f"input_bn{target[2:]}_single.txt"
     else:
         path = fix + "before_ifm_mem_fmt_1x1.txt"
-    raw = np.loadtxt(path, delimiter=",", dtype=np.int8)
+    # bottleneck_A's IFM is in [0,255]; numpy 2.x rejects direct dtype=int8.
+    raw = np.loadtxt(path, delimiter=",", dtype=np.int64).astype(np.uint8).view(np.int8)
     assert raw.size == in_h * in_w * in_c, f"{path}: {raw.size} != {in_h*in_w*in_c}"
     return raw.reshape(in_c, in_h, in_w)
 
@@ -68,7 +69,7 @@ def _load_golden_chw(fix, mode, target, shape):
         path = fix + f"golden_output_bn{target[2:]}_single.txt"
     else:
         path = fix + "golden_output.txt"
-    raw = np.loadtxt(path, delimiter=",", dtype=np.int8)
+    raw = np.loadtxt(path, delimiter=",", dtype=np.int64).astype(np.uint8).view(np.int8)
     assert (
         raw.size == out_h * out_w * out_c
     ), f"{path}: {raw.size} != {out_h*out_w*out_c}"

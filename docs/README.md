@@ -73,7 +73,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
     ```bash
     # Python versions 3.11, 3.12, 3.13, and 3.14 are currently supported by our wheels
     sudo apt install \
-    build-essential clang clang-14 lld lld-14 cmake ninja-build python3-venv python3-pip
+    build-essential clang clang-14 lld lld-14 cmake ninja-build python3-venv python3-pip uuid-dev
     ```
 
     > **Note:** CMake **3.30 or newer** is required. If your distribution provides an older
@@ -115,7 +115,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    1. **Latest:** For the latest wheels (not necessarily a release):
       ```bash
       # Install IRON library and mlir-aie from the latest wheel
-      python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-3
+      python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-4
       ```
 
    1. **Latest Release:** Alternatively, you can install the latest released version of `mlir-aie`.

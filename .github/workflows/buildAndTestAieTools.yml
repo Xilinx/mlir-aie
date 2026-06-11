@@ -1,5 +1,9 @@
 name: Build and Test with AIE tools
 
+permissions:
+  contents: read
+  packages: read
+
 on:
   push:
     branches:
@@ -41,7 +45,7 @@ jobs:
     steps:
 
       - name: Free disk space
-        uses: descriptinc/free-disk-space@main
+        uses: descriptinc/free-disk-space@1b4b157593c6801212a2ed488c205e0a810b4592  # main
         with:
           tool-cache: true
           android: true
@@ -55,7 +59,7 @@ jobs:
         run: |
           docker system prune -a -f
 
-      - uses: uraimo/run-on-arch-action@v3
+      - uses: uraimo/run-on-arch-action@fd7aa8593480287702b446a273a68f788a9bad3a  # v3
         name: Run commands
         id: runcmd
         with:
@@ -64,6 +68,8 @@ jobs:
           githubToken: ${{ github.token }}
           dockerRunArgs: |
             --mac-address ${{ secrets.XILINX_MAC }}
+          env: |
+            HEAD_REF: ${{ github.head_ref }}
           run: |
             ls -l /opt/Xilinx/Vitis/2023.2/
 
@@ -75,7 +81,7 @@ jobs:
             git clone https://github.com/Xilinx/mlir-aie.git
             cd /mlir-aie
 
-            git checkout ${{ github.head_ref }}
+            git checkout "$HEAD_REF"
             if [ x"${{ inputs.AIE_COMMIT }}" != x"" ]; then
               git reset --hard ${{ inputs.AIE_COMMIT }}
             fi
@@ -90,7 +96,7 @@ jobs:
                 --requirements python/requirements.txt \
                 --install-non-eudsl
             pip install -r python/requirements_notebook.txt
-            pip install -r python/requirements_dev.txt
+            python -m pip install --require-hashes -r python/requirements_dev.lock
 
             VERSION=$(utils/clone-llvm.sh --get-wheel-version)
             pip -q download mlir==$VERSION \

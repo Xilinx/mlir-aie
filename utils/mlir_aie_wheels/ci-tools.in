@@ -1,0 +1,14 @@
+# Auxiliary tools used by the wheel-build CI workflows.
+# Linux-only: auditwheel + patchelf (neither has a Windows wheel).
+# delvewheel is only USED on Windows but ships as a pure-Python universal
+# wheel, so we leave it unmarked (installs harmlessly on Linux too).
+#
+# Source for utils/mlir_aie_wheels/ci-tools.lock. After editing this file,
+# regenerate the .lock with:
+#   utils/regenerate_lockfiles.sh
+auditwheel; platform_system == "Linux"
+delvewheel
+patchelf;   platform_system == "Linux"
+pkginfo
+twine
+wheel

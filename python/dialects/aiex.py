@@ -136,6 +136,7 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
         issue_token: bool | None = None,
         burst_length: int = 0,
         packet: tuple[int] | None = None,
+        offset_parameter: str | None = None,
     ):
         if tap and not (offsets is None and sizes is None and strides is None):
             raise ValueError(
@@ -184,6 +185,7 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
             issue_token=issue_token,
             burst_length=burst_length,
             packet=packet,
+            offset_parameter=offset_parameter,
         )
 
 
@@ -447,6 +449,7 @@ def shim_dma_bd(
     transfer_len: int | None = None,
     burst_length: int = 0,
     packet: tuple[int] | None = None,
+    offset_parameter: str | None = None,
 ):
     if tap and not (offset is None and sizes is None and strides is None):
         raise ValueError(
@@ -487,6 +490,7 @@ def shim_dma_bd(
         strides=list(strides),
         burst_length=burst_length,
         packet=packet,
+        offset_parameter=offset_parameter,
     )
 
 
@@ -501,6 +505,7 @@ def shim_dma_single_bd_task(
     issue_token: bool = False,
     burst_length: int = 0,
     packet: tuple[int] | None = None,
+    offset_parameter: str | None = None,
 ):
     """_summary_
     Enables data transfers between the AIE Engine array and external memory.
@@ -556,6 +561,7 @@ def shim_dma_single_bd_task(
                 transfer_len=transfer_len,
                 burst_length=burst_length,
                 packet=packet,
+                offset_parameter=offset_parameter,
             )
             EndOp()
     return task
@@ -599,3 +605,27 @@ def dma_start_task(*args: DMAConfigureTaskForOp):
 
 def set_lock_value(lock: aie.LockOp, value: int):
     return set_lock(lock, value)
+
+
+# Parameter ops
+
+_orig_read_scratchpad_parameter = read_scratchpad_parameter
+
+
+def read_scratchpad_parameter(
+    name: str, result_type: Type
+) -> _orig_read_scratchpad_parameter:
+    """Read a scratchpad runtime parameter inside an `aie.core` body.
+
+    Args:
+        name: The `@sym_name` of the `aiex.scratchpad_parameter` declaration.
+        result_type: The MLIR scalar type of the result (e.g. `T.bf16()`, `T.i32()`).
+
+    Returns:
+        An SSA value of the given type.
+
+    Example::
+
+        val = aiex.read_scratchpad_parameter("foo", T.bf16())
+    """
+    return _orig_read_scratchpad_parameter(result_type, name)

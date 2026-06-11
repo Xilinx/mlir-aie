@@ -81,6 +81,7 @@ std::unique_ptr<RegisterDatabase> RegisterDatabase::loadAIE2() {
   auto db = std::unique_ptr<RegisterDatabase>(new RegisterDatabase());
   if (!db->loadFromJSON(*registerPath, *eventPath))
     return nullptr;
+  db->buildOffsetIndex();
 
   return db;
 }
@@ -259,6 +260,30 @@ const RegisterInfo *RegisterDatabase::lookupRegister(StringRef name,
   std::transform(key.begin(), key.end(), key.begin(), ::tolower);
   auto it = registers_.find(key);
   return it != registers_.end() ? &it->second : nullptr;
+}
+
+void RegisterDatabase::buildOffsetIndex() {
+  registersByOffset_.clear();
+  for (const auto &entry : registers_) {
+    const RegisterInfo &info = entry.second;
+    std::string moduleKey = info.module;
+    std::transform(moduleKey.begin(), moduleKey.end(), moduleKey.begin(),
+                   ::tolower);
+    registersByOffset_[moduleKey][info.offset] = &info;
+  }
+}
+
+const RegisterInfo *
+RegisterDatabase::lookupRegisterByOffset(uint32_t offset,
+                                         StringRef module) const {
+  std::string moduleKey = module.lower();
+  auto modIt = registersByOffset_.find(moduleKey);
+  if (modIt == registersByOffset_.end())
+    return nullptr;
+  auto offIt = modIt->second.find(offset);
+  if (offIt == modIt->second.end())
+    return nullptr;
+  return offIt->second;
 }
 
 std::optional<uint32_t> RegisterDatabase::lookupEvent(StringRef name,
