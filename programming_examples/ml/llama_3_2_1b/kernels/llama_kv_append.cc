@@ -72,6 +72,21 @@ static inline float sw_recip(float a) {
 
 extern "C" {
 
+// Co-located variant: the attn tile holds one COMBINED per-head chunk
+//   [q_chunk 288 B | k_fp 256 B | v_fp 256 B | cs 256 B]
+// The append step reads [k_fp|v_fp|cs] at offset 288 (= kQChunkBytes). This
+// wrapper lets the same tile feed flowkv_mh_kvc(combined, ...) (which reads
+// only the first 288 B) and append(combined+288, ...) without pointer math
+// in the IRON worker body. kQChunkBytes = REP*HEAD_DIM (256) + REP*8 (32).
+void llama_kv_append_head(int8_t *restrict kvfp_packed, int8_t *restrict kv_in,
+                          int8_t *restrict kv_out);
+void llama_kv_append_combined(int8_t *restrict combined,
+                             int8_t *restrict kv_in, int8_t *restrict kv_out) {
+  constexpr int kREP = 4; // N_HEADS_Q / N_HEADS_KV for Llama 3.2 1B
+  constexpr int kQChunkBytes = kREP * kHD + kREP * 8; // 288
+  llama_kv_append_head(combined + kQChunkBytes, kv_in, kv_out);
+}
+
 // One KV head. kvfp_packed is ONE input fifo packing [k_fp fp32[HEAD_DIM] |
 // v_fp fp32[HEAD_DIM] | cs bf16[2*HEAD_DIM]] -- packed to stay within the
 // 2-in/2-out compute-tile DMA budget (k_fp + v_fp + cs as 3 separate inputs
@@ -89,8 +104,12 @@ void llama_kv_append_head(int8_t *restrict kvfp_packed, int8_t *restrict kv_in,
   const bfloat16 *cs_packed =
       reinterpret_cast<const bfloat16 *>(kvfp_packed + kHD * 8);
 
-  int32_t pos;
-  memcpy(&pos, kv_in, 4);
+  // The cache prefix [0..4] holds T_used (the flowkv_mh_kvc contract: number
+  // of valid cached slots including the one we're about to write). The append
+  // slot index is therefore position = T_used - 1.
+  int32_t t_used;
+  memcpy(&t_used, kv_in, 4);
+  int32_t pos = t_used - 1;
   if (pos < 0)
     pos = 0;
   if (pos >= kT)

@@ -63,7 +63,8 @@ def run_one(pos: int, opts, npu_kernel) -> int:
     kvfp[HEAD_D * 8 :] = np.frombuffer(cs.tobytes(), dtype=np.int8)
 
     kv_in = rng.integers(-50, 50, size=PER_HEAD, dtype=np.int8)
-    kv_in[0:4] = np.frombuffer(np.int32(pos).tobytes(), dtype=np.int8)
+    # Prefix [0:4] = T_used (flowkv contract); append writes slot T_used-1 = pos.
+    kv_in[0:4] = np.frombuffer(np.int32(pos + 1).tobytes(), dtype=np.int8)
 
     fp_t = iron.tensor(kvfp.copy(), dtype=np.int8)
     kvin_t = iron.tensor(kv_in.copy(), dtype=np.int8)

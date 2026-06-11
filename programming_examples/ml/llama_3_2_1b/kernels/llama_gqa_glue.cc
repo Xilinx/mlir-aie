@@ -94,6 +94,48 @@ extern "C" void llama_q_split(int8_t *restrict in_full, int8_t *restrict out_lo,
   event1();
 }
 
+// qkv_combine (on-chip KV append): build per-head COMBINED chunks
+//   [ q_chunk 288 B | k_fp 256 B | v_fp 256 B | cs 256 B ]   (1056 B/head)
+// from rope's q output and a pre-joined kvcs buffer. Split into lo (heads
+// 0..3) / hi (heads 4..7) like q_split, to keep memtile fanout <=4.
+//
+// qr layout (input, 2304 B): [QD body 2048 | 32-head scale tail 256]
+//   q_chunk_g = [ qr_body[g*256 .. +256] | qr_tail[g*32 .. +32] ]   (288 B)
+// kvcs layout (input, 1280 B, memtile-joined): [ kfp 512 | vfp 512 | cs 256 ]
+//   kfp/vfp are 8 heads * 64 fp32 contiguous; head g = bytes g*256 .. +256.
+//   cs (cos+sin bf16, 256 B) is shared across all heads (one decode pos).
+// Sizes: kfp region = 8 heads * 64 fp32 = 2048 B; same for vfp. So
+//   kvcs = [kfp 2048 | vfp 2048 | cs 256] = 4352 B; combined chunk = 1056 B.
+static constexpr int kKfpHead = kHD * 4;        // 256 (64 fp32 for one head)
+static constexpr int kCsBytes = 2 * kHD * 2;    // 256 (cos+sin bf16)
+static constexpr int kCombChunk = kChunk + 2 * kKfpHead + kCsBytes; // 1056
+
+extern "C" void llama_qkv_combine(int8_t *restrict qr,
+                                  int8_t *restrict kvcs,
+                                  int8_t *restrict out_lo,
+                                  int8_t *restrict out_hi) {
+  event0();
+  constexpr int kKfpRegion = kNHeadsKV * kKfpHead;   // 8*256 = 2048
+  int8_t *qr_body = qr;
+  int8_t *qr_tail = qr + kQD;
+  int8_t *kfp = kvcs;
+  int8_t *vfp = kvcs + kKfpRegion;
+  int8_t *cs = kvcs + 2 * kKfpRegion;
+  for (int g = 0; g < kNHeadsKV; g++) {
+    int8_t *base = (g < kHalfKV) ? out_lo : out_hi;
+    int local = (g < kHalfKV) ? g : (g - kHalfKV);
+    int8_t *dst = base + local * kCombChunk;
+    // q_chunk: body (256) + tail (32)
+    memcpy(dst, qr_body + g * kBodyChunk, kBodyChunk);
+    memcpy(dst + kBodyChunk, qr_tail + g * kTailChunk, kTailChunk);
+    // k_fp, v_fp, cs
+    memcpy(dst + kChunk, kfp + g * kKfpHead, kKfpHead);
+    memcpy(dst + kChunk + kKfpHead, vfp + g * kKfpHead, kKfpHead);
+    memcpy(dst + kChunk + 2 * kKfpHead, cs, kCsBytes);
+  }
+  event1();
+}
+
 // af_concat consumes the full merged sv buffer (2048 B = 32 heads * 64).
 // Per-Q-head dequant (sv_out_scale[h]) + global requant (o_inv_act_scale).
 extern "C" void llama_af_concat(int8_t *restrict af_in, int8_t *restrict scales,
