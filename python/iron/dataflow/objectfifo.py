@@ -51,7 +51,10 @@ class ObjectFifo(Resolvable):
         delegate_tile: PlacementTile | None = None,
         via_DMA: bool = False,
         init_values: list[np.ndarray] | None = None,
+        producer_mem_bank=None,
+        consumer_mem_banks=None,
         consumer_obj_type: type[np.ndarray] | None = None,
+        exact_depth: bool = False,
     ):
         """Construct an ObjectFifo.
 
@@ -67,11 +70,17 @@ class ObjectFifo(Resolvable):
             delegate_tile (PlacementTile | None, optional): Shared-memory delegate tile. When set, the ObjectFifo's underlying buffer pool is allocated on this tile's memory module instead of the default placement. Lowers to ``aie.objectfifo.allocate``. *Only valid when both producer and consumer have shared-memory access to the delegate tile* (e.g. self-loop fifos where prod == cons, or fifos between adjacent tiles spilling to a neighboring MemTile). The delegate is the storage location, not a producer- or consumer-side concept; the underlying op verifier rejects this if either endpoint cannot share memory with the delegate. Defaults to None.
             init_values (list[np.ndarray] | None, optional): Per-buffer static initial values for the producer endpoint. One ndarray per producer-side buffer; the producer tile must be able to hold static data at design startup (e.g. a MemTile). Lowers to the ``initValues`` attribute on the underlying ``aie.objectfifo`` op. Defaults to None.
             consumer_obj_type (type[np.ndarray] | None, optional): Consumer element type for asymmetric transfer granularity. When set, the producer sends obj_type-sized transfers and the consumer receives consumer_obj_type-sized transfers. Producer element count must be an integer multiple of consumer element count. Defaults to None.
+            exact_depth (bool, optional): Default ``exact_depth`` for this ObjectFifo's
+                endpoints. When True, the declared depth is honored verbatim by the
+                lowering; when False (default) it is a ceiling the lowering may minimize
+                to the kernel's max-acquire. Individual ``prod()``/``cons()`` calls may
+                still override this per endpoint. Defaults to False.
 
         Raises:
             ValueError: If ``depth`` is provided and is less than 1.
         """
         self._depth = depth
+        self._exact_depth = exact_depth
         if self._depth is not None and self._depth < 1:
             raise ValueError(
                 f"Default ObjectFifo depth must be > 0, but got {self._depth}"
@@ -98,6 +107,8 @@ class ObjectFifo(Resolvable):
         self._delegate_tile: PlacementTile | None = delegate_tile
         self._via_DMA: bool = via_DMA
         self._init_values: list[np.ndarray] | None = init_values
+        self._producer_mem_bank = producer_mem_bank
+        self._consumer_mem_banks = consumer_mem_banks
         self._consumer_obj_type: type[np.ndarray] | None = consumer_obj_type
 
     @classmethod
@@ -167,12 +178,18 @@ class ObjectFifo(Resolvable):
             f"prod={prod_endpoint}, cons={[c.endpoint for c in self._cons]})"
         )
 
-    def prod(self, depth: int | None = None) -> ObjectFifoHandle:
+    def prod(
+        self, depth: int | None = None, exact_depth: bool | None = None
+    ) -> ObjectFifoHandle:
         """Returns an ObjectFifoHandle of type producer. Each ObjectFifo may have only one producer
         handle, so if one already exists, a new reference to this handle will be returned.
 
         Args:
             depth (int | None, optional): The depth of the buffers at the endpoint corresponding to the producer handle. Defaults to None.
+            exact_depth (bool | None, optional): When True, pin the producer pool to
+                the declared depth instead of letting the lowering minimize it to the
+                kernel's max-acquire. Use for pipeline run-ahead the analysis cannot
+                infer. When None (default), inherits the ObjectFifo's exact_depth.
 
         Raises:
             ValueError: Arguments are validated
@@ -181,6 +198,8 @@ class ObjectFifo(Resolvable):
         Returns:
             ObjectFifoHandle: The producer handle to this ObjectFifo.
         """
+        if exact_depth is None:
+            exact_depth = self._exact_depth
         if self._prod:
             if depth is None:
                 if self._depth is None:
@@ -190,13 +209,14 @@ class ObjectFifo(Resolvable):
             elif depth < 1:
                 raise ValueError(f"Depth must be > 1, but got {depth}")
         else:
-            self._prod = ObjectFifoHandle(self, True, depth)
+            self._prod = ObjectFifoHandle(self, True, depth, exact_depth=exact_depth)
         return self._prod
 
     def cons(
         self,
         depth: int | None = None,
         dims_from_stream: list[Sequence[int]] | None = None,
+        exact_depth: bool | None = None,
     ) -> ObjectFifoHandle:
         """Returns an ObjectFifoHandle of type consumer. Each ObjectFifo may have multiple consumers, so this
         will return a new consumer handle every time it is called.
@@ -204,6 +224,10 @@ class ObjectFifo(Resolvable):
         Args:
             depth (int | None, optional): The depth of the buffers at the endpoint corresponding to this consumer handle. Defaults to None.
             dims_from_stream (list[Sequence[int]] | None, optional): Dimensions from stream for this consumer. Defaults to None.
+            exact_depth (bool | None, optional): When True, pin this consumer pool to
+                the declared depth instead of letting the lowering minimize it to the
+                kernel's max-acquire. Use for pipeline run-ahead the analysis cannot
+                infer. When None (default), inherits the ObjectFifo's exact_depth.
 
         Raises:
             ValueError: Arguments are validated
@@ -211,6 +235,8 @@ class ObjectFifo(Resolvable):
         Returns:
             ObjectFifoHandle: A consumer handle to this ObjectFifo.
         """
+        if exact_depth is None:
+            exact_depth = self._exact_depth
         if depth is None:
             if self._depth is None:
                 raise ValueError(f"If depth is None, then depth must be specified.")
@@ -221,7 +247,11 @@ class ObjectFifo(Resolvable):
             dims_from_stream = self._dims_from_stream_per_cons
         self._cons.append(
             ObjectFifoHandle(
-                self, is_prod=False, depth=depth, dims_from_stream=dims_from_stream
+                self,
+                is_prod=False,
+                depth=depth,
+                dims_from_stream=dims_from_stream,
+                exact_depth=exact_depth,
             )
         )
         return self._cons[-1]
@@ -270,20 +300,6 @@ class ObjectFifo(Resolvable):
             )
         return [cons.endpoint.tile.op for cons in self._cons]
 
-    def _get_depths(self) -> int | list[int]:
-        if not self._prod:
-            raise ValueError(
-                "Cannot return depths since prod ObjectFifoHandle is not created."
-            )
-        if len(self._cons) == 0:
-            raise ValueError(
-                "Cannot return depths since no cons ObjectFifoHandles are created."
-            )
-        depths = [self._prod.depth] + [con.depth for con in self._cons]
-        if len(set(depths)) == 1:
-            return depths[0]
-        return depths
-
     def _get_endpoint(self, is_prod: bool) -> list[ObjectFifoEndpoint]:
         if is_prod:
             if self._prod:
@@ -307,16 +323,52 @@ class ObjectFifo(Resolvable):
                 for con in self._cons
             ]
 
+            if not self._prod:
+                raise ValueError(
+                    f"ObjectFifo {self.name}: producer handle not created."
+                )
+            if len(self._cons) == 0:
+                raise ValueError(
+                    f"ObjectFifo {self.name}: no consumer handles created."
+                )
+            # Depth encoding controls the stateful-transform's auto-minimize:
+            #   - single int  -> per-endpoint depth is pruned to the kernel's
+            #     actual max-acquire (findObjectFifoSize), the true minimum
+            #     ("minimal resource usage", per the aie.objectfifo .td).
+            #   - ArrayAttr    -> declared per-handle depths are honored verbatim
+            #     ("overrides the depth analysis").
+            #
+            # Default to the single-int (minimize) form, which is safe whenever
+            # the declared depth is just a ceiling. Emit the ArrayAttr override
+            # only when honoring exact depths is required:
+            #   - any endpoint opted in with exact_depth=True (pipeline run-ahead
+            #     the analysis cannot infer), or
+            #   - multiple consumers (fanout: one consumer may buffer ahead of
+            #     the others -- a cross-consumer dependency the minimize cannot
+            #     see, so declared depths must be honored), or
+            #   - prod/cons depths differ (asymmetry only the array can express).
+            cons_depths = [con.depth for con in self._cons]
+            any_exact = self._prod.exact_depth or any(
+                con.exact_depth for con in self._cons
+            )
+            depths = [self._prod.depth] + cons_depths
+            uniform_single_cons = (
+                len(self._cons) == 1 and self._prod.depth == cons_depths[0]
+            )
+            if uniform_single_cons and not any_exact:
+                depths = self._prod.depth
+
             consumer_datatype = (
                 np_ndarray_type_to_memref_type(self._consumer_obj_type)
                 if self._consumer_obj_type is not None
                 else None
             )
+
             self._op = object_fifo(
                 self.name,
                 self._prod_tile_op(),
                 self._cons_tiles_ops(),
-                self._get_depths(),
+                depths,
                 np_ndarray_type_to_memref_type(self._obj_type),
                 dimensionsToStream=self._dims_to_stream,
                 dimensionsFromStreamPerConsumer=dims_from_stream_per_cons,
@@ -326,6 +378,8 @@ class ObjectFifo(Resolvable):
                 disable_synchronization=self._disable_synchronization or None,
                 via_DMA=self._via_DMA or None,
                 initValues=self._init_values,
+                producer_mem_bank=self._producer_mem_bank,
+                consumer_mem_banks=self._consumer_mem_banks,
                 consumer_datatype=consumer_datatype,
             )
 
@@ -372,6 +426,7 @@ class ObjectFifoHandle(Resolvable):
         is_prod: bool,
         depth: int | None = None,
         dims_from_stream: list[Sequence[int]] | None = None,
+        exact_depth: bool = False,
     ):
         """Construct an ObjectFifoHandle
 
@@ -380,6 +435,10 @@ class ObjectFifoHandle(Resolvable):
             is_prod (bool): Whether the handle should be producer or consumer handle.
             depth (int | None, optional): The depth of the ObjectFifo at this endpoint. Defaults to None.
             dims_from_stream (list[Sequence[int]] | None, optional): A unique dimensions from stream. This is only valid for consumer handles. Defaults to None.
+            exact_depth (bool, optional): When True, pin this endpoint's depth to the
+                declared value (the lowering honors it verbatim). When False (default),
+                the depth is a ceiling the lowering may minimize to the kernel's
+                max-acquire to save L1. Defaults to False.
 
         Raises:
             ValueError: Arguments are validated.
@@ -404,6 +463,7 @@ class ObjectFifoHandle(Resolvable):
         self._is_prod = is_prod
         self._object_fifo = of
         self._depth = depth
+        self._exact_depth = exact_depth
         self._endpoint = None
         self._dims_from_stream = dims_from_stream
 
@@ -483,6 +543,11 @@ class ObjectFifoHandle(Resolvable):
     def depth(self) -> int:
         """The depth of this ObjectFifoHandle"""
         return self._depth
+
+    @property
+    def exact_depth(self) -> bool:
+        """When True, this endpoint's declared depth is honored verbatim (not minimized)."""
+        return self._exact_depth
 
     @property
     def dims_from_stream(self) -> list[Sequence[int]]:

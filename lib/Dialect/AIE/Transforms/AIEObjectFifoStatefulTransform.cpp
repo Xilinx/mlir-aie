@@ -400,10 +400,24 @@ struct AIEObjectFifoStatefulTransformPass
     std::vector<LockOp> locks;
     if (op.getDisableSynchronization())
       return locks;
-    // Static-init no-link producer cycled via iter_count: source side needs
-    // no sync; skip allocation to free the lock IDs.
-    if (op.getInitValues().has_value() && op.getIterCount().has_value() &&
-        op.getIterCount().value() > 1 && !getOptionalLinkOp(op).has_value() &&
+    // Static-init no-link producer that cycles its BD chain: source side
+    // needs no sync; skip allocation to free the lock IDs.
+    //
+    // Two cycling modes qualify:
+    //   - iter_count > 1: BD chain restarts via the channel's task_count
+    //     after each pass.
+    //   - iter_count unset: BD chain self-loops infinitely via next_bd(self).
+    //
+    // In both, source-side locks would acquire/release on the first pass
+    // and never get replenished (no upstream S2MM refills the buffers),
+    // deadlocking the second pass. Back-pressure to the downstream
+    // consumer is handled by the DMA stream's flow control.
+    //
+    // iter_count == 1 (single pass) is excluded — source locks behave
+    // normally there since the chain doesn't restart.
+    if (op.getInitValues().has_value() &&
+        (!op.getIterCount().has_value() || op.getIterCount().value() > 1) &&
+        !getOptionalLinkOp(op).has_value() &&
         static_cast<int>(op.getInitValues().value().size()) == numElem)
       return locks;
     auto dev = op->getParentOfType<DeviceOp>();
@@ -782,12 +796,34 @@ struct AIEObjectFifoStatefulTransformPass
             }
           }
         }
+        // Consult OF's producer_mem_bank / consumer_mem_banks when the
+        // buffer landed on its original target tile (not an overflow
+        // neighbor). Default behavior (no user attr OR overflowed) →
+        // nullptr → byte-identical to pre-bank-aware codegen.
+        mlir::IntegerAttr memBankAttr = nullptr;
+        if (current_buf_allocation_tile == creation_tile) {
+          if (creation_tile == op.getProducerTileOp()) {
+            if (auto pb = op.getProducerMemBank())
+              memBankAttr = builder.getI32IntegerAttr(*pb);
+          } else if (auto consumerBanks = op.getConsumerMemBanks()) {
+            auto consumerTiles = op.getConsumerTiles();
+            for (size_t idx = 0; idx < consumerTiles.size(); ++idx) {
+              if (creation_tile ==
+                  dyn_cast<TileOp>(consumerTiles[idx].getDefiningOp())) {
+                if (idx < consumerBanks->size())
+                  memBankAttr = builder.getI32IntegerAttr(
+                      cast<IntegerAttr>((*consumerBanks)[idx]).getInt());
+                break;
+              }
+            }
+          }
+        }
         auto buff = BufferOp::create(
             builder, op.getLoc(), elemType, current_buf_allocation_tile,
             builder.getStringAttr(op.name().str() + "_buff_" +
                                   std::to_string(of_elem_index)),
-            /*address*/ nullptr, initValues,
-            /*mem_bank*/ nullptr, /*aligned*/ nullptr);
+            /*address*/ nullptr, initValues, memBankAttr,
+            /*aligned*/ nullptr);
         buffers.push_back(buff);
       }
       of_elem_index++;
@@ -864,16 +900,17 @@ struct AIEObjectFifoStatefulTransformPass
     int acqMode = 1;
     int relMode = 1;
     auto acqLockAction = LockAction::Acquire;
-    // Static-init producer cycled via iter_count > 1 with no upstream link:
-    // skip source-side locks. The BD chain restarts via the channel's
-    // task_count, but the per-BD lock state never gets replenished (no
-    // upstream S2MM refills the buffers) so the chain would deadlock on
-    // the second pass. Back-pressure to the downstream consumer is handled
-    // by the DMA stream's flow control; source-side locking is unnecessary
-    // for correctness in this configuration.
+    // Static-init no-link producer that cycles its BD chain: skip the
+    // source-side acquire/release. Mirrors the lock-creation skip in
+    // createObjectFifoLocks. Qualifies for both iter_count > 1 (chain
+    // restarts via task_count) and iter_count unset (chain self-loops via
+    // next_bd). The per-BD lock state never gets replenished (no upstream
+    // S2MM refills the buffers), so emitting use_lock here would deadlock
+    // on the second pass. Back-pressure to the downstream consumer is
+    // handled by the DMA stream's flow control.
     bool isCycledStaticInitProducer =
         channelDir == DMAChannelDir::MM2S && op.getInitValues().has_value() &&
-        op.getIterCount().has_value() && op.getIterCount().value() > 1 &&
+        (!op.getIterCount().has_value() || op.getIterCount().value() > 1) &&
         !getOptionalLinkOp(op).has_value();
     if (state.locksPerFifo[op].size() > 0 && !isCycledStaticInitProducer) {
       auto dev = op->getParentOfType<DeviceOp>();

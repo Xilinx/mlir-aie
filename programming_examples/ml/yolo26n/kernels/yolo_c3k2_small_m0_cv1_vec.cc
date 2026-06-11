@@ -1,0 +1,315 @@
+//===- yolo_c3k2_small_m0_cv1_vec.cc -------------------------------*- C++
+//-*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2026, Advanced Micro Devices, Inc.
+//
+// Vectorized 3x3 stride-1 INT8 conv with OIYXI8O8 weight layout. Drop-in
+// .o-level replacement for yolo_c3k2_small_m0_cv1.cc on AIE2P.
+//
+// Same math as Phase 1's stride-2 vec kernel but stride-1: 4 contiguous
+// output pixels per mmul<4,8,8> call, input pixel cols = x_out + kx - 1
+// (vs 2*x_out + kx - 1 for stride-2).
+//
+// Per-block deep-opt: if YOLO_C3K2_M0CV1_IN_W etc. are defined at compile
+// time (passed via -D from the Makefile for blocks that have shape-stable
+// kernels), shape constants fold into shifts/immediates and inner loop
+// trip counts become compile-time. Blocks without these defines fall
+// back to the runtime-arg path (slower but works for any shape).
+//
+//===----------------------------------------------------------------------===//
+
+#define NOCPP
+
+#include <stdint.h>
+
+#include <aie_api/aie.hpp>
+
+#include "../../../../aie_kernels/aie_kernel_utils.h"
+
+// Per-block symbol mangling.
+#ifndef KERNEL_SUFFIX
+#define KERNEL_SUFFIX
+#endif
+#define _PASTE(a, b) a##b
+#define _MAKE(name, suffix) _PASTE(name, suffix)
+#define KERNEL_NAME(base) _MAKE(base, KERNEL_SUFFIX)
+
+// Loop hints: we use the official aie_kernel_utils.h macros so peano
+// gets the right clang loop pragmas (min_iteration_count for trip count,
+// loop unroll(full) for kx). Note that AIE_PREPARE_FOR_PIPELINING is
+// empty on peano — peano's auto-scheduler does the pipelining without
+// an explicit hint (verified by m1 deep-opt which uses the same macros).
+
+// Compile-time shape macros — required. The runtime-arg fallback path
+// was removed in the master-class cleanup pass; callers must -D the
+// expected shape at build time.
+#ifndef YOLO_C3K2_M0CV1_IN_W
+#error "YOLO_C3K2_M0CV1_IN_W must be defined at compile time"
+#endif
+#ifndef YOLO_C3K2_M0CV1_IN_C
+#error "YOLO_C3K2_M0CV1_IN_C must be defined at compile time"
+#endif
+#ifndef YOLO_C3K2_M0CV1_OUT_C
+#error "YOLO_C3K2_M0CV1_OUT_C must be defined at compile time"
+#endif
+#define IN_W YOLO_C3K2_M0CV1_IN_W
+#define IN_C YOLO_C3K2_M0CV1_IN_C
+#define OUT_C YOLO_C3K2_M0CV1_OUT_C
+#define KW 3
+#define KH 3
+
+static constexpr int32_t I8_MAX = 127;
+static constexpr int32_t I8_MIN = -128;
+
+static inline int wts_tile_off(int oc_tile, int ic_tile, int ky, int kx,
+                               int ic_tiles, int kH, int kW) {
+  return (((oc_tile * ic_tiles + ic_tile) * kH + ky) * kW + kx) << 6;
+}
+
+// 8 int32 biases -> 32-wide acc<acc32>. Seeds the mmul so to_vector<int8>(rs)
+// emits bias+SRS+saturate in one vec op.
+static __attribute__((always_inline)) inline aie::accum<acc32, 32>
+make_bias_acc(const int32_t *bias_8) {
+  aie::vector<int32, 8> b8 = aie::load_v<8>(bias_8);
+  aie::vector<int32, 16> b16 = aie::concat(b8, b8);
+  aie::vector<int32, 32> b32 = aie::concat(b16, b16);
+  aie::accum<acc32, 32> a;
+  a.from_vector(b32);
+  return a;
+}
+
+// mmul-packed epilogue: SiLU LUT scalar lookup into silu_buf, then one
+// 32-byte vec_store at (oc_t, x_tile) in the 4-pixel block layout.
+// noinline preserves the program-memory savings note from the prior version
+// (the 4X-fold has 4 epilogues per x_quad which share this body).
+static __attribute__((noinline)) void
+write_x_tile_result(aie::vector<int8, 32> srs_v, int8_t *silu_lut,
+                    int8_t *output, int oc_t, int x_tile, int oc_stride) {
+  alignas(32) int8_t silu_buf[32];
+  for (int i = 0; i < 32; ++i)
+    silu_buf[i] = silu_lut[int(srs_v[i]) + 128];
+  aie::vector<int8, 32> silu_v = aie::load_v<32>(silu_buf);
+  aie::store_v(output + oc_t * oc_stride + x_tile * 32, silu_v);
+}
+
+// 4-pixel mmul A load with kx slide from mmul-packed line buffer (consumer-
+// side mirror of cv1_split's packed output). kx=1 single vlda<32>; kx=0/2
+// load 2 adjacent 4-pixel blocks (concat -> vec<int8, 64>) and shuffle_down
+// the desired 32 bytes. Out-of-bounds blocks zero-filled.
+template <int IN_C_LOCAL, int IN_W_LOCAL>
+static __attribute__((always_inline)) inline aie::vector<int8, 32>
+load_a_mmul_kx_4p(int8_t *line_ptr, int ic_t, int x_tile, int kx) {
+  constexpr int kXTiles4 = IN_W_LOCAL / 4;
+  constexpr int kIcStride = kXTiles4 * 32;
+  int8_t *base = line_ptr + ic_t * kIcStride;
+  if (kx == 1) {
+    return aie::load_v<32>(base + x_tile * 32);
+  }
+  int blk_lo = (kx == 0) ? x_tile - 1 : x_tile;
+  int blk_hi = blk_lo + 1;
+  aie::vector<int8, 32> lo = (blk_lo >= 0 && blk_lo < kXTiles4)
+                                 ? aie::load_v<32>(base + blk_lo * 32)
+                                 : aie::zeros<int8, 32>();
+  aie::vector<int8, 32> hi = (blk_hi >= 0 && blk_hi < kXTiles4)
+                                 ? aie::load_v<32>(base + blk_hi * 32)
+                                 : aie::zeros<int8, 32>();
+  aie::vector<int8, 64> combined = aie::concat(lo, hi);
+  const unsigned shift = (kx == 0) ? 24u : 8u;
+  return aie::shuffle_down(combined, shift).template extract<32>(0);
+}
+
+extern "C" {
+
+void KERNEL_NAME(yolo_c3k2_small_m0_cv1_conv2dk3_silu_bias_i8_i8)(
+    int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts, int32_t *bias,
+    int8_t *silu_lut, int8_t *output, const int32_t input_width,
+    const int32_t input_channels, const int32_t output_channels,
+    const int32_t kernel_width, const int32_t kernel_height,
+    const int32_t border, const int32_t right_shift,
+    const int32_t /*padding*/) {
+#ifdef NOOP_KERNEL
+  return;
+#endif
+  event0();
+
+  // Runtime args must match compile-time shape macros.
+  // Cheap assert; can be compiled out with -DNDEBUG (already on by default).
+  (void)input_width;
+  (void)input_channels;
+  (void)output_channels;
+  (void)kernel_width;
+  (void)kernel_height;
+
+  const bool skip_top = (border == 0);
+  const bool skip_bot = (border == 2);
+  const int ky_start = skip_top ? 1 : 0;
+  const int ky_end = skip_bot ? 2 : 3;
+
+  const int ic_tiles = IN_C / 8;
+  const int oc_tiles = OUT_C / 8;
+
+  ::aie::set_saturation(aie::saturation_mode::saturate);
+  // conv_even rounding matches scalar banker_srs semantics.
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
+
+  using MMUL4x8x8 = aie::mmul<4, 8, 8, int8, int8>;
+
+  int8_t *line[3] = {line0, line1, line2};
+
+  // Output width == input width for stride-1.
+  const int output_width = IN_W;
+  const int x_tiles = output_width / 4;
+
+  // Compile-time trip counts for the deep-opt path. Required for chess
+  // loop_range pragmas to inform peano of exact bounds.
+  constexpr int kIcTiles = IN_C / 8;
+  constexpr int kOcTiles = OUT_C / 8;
+  constexpr int kXTiles = IN_W / 4;
+  constexpr int kInteriorStart = 1;
+  constexpr int kInteriorEnd = kXTiles - 1;
+  constexpr int kInteriorN = kInteriorEnd - kInteriorStart;
+  constexpr int kXQuads = kInteriorN / 4;
+  constexpr int kXTailStart = kInteriorStart + kXQuads * 4;
+  // For m2 (IN_W=128): kXTiles=32, kInteriorN=30, kXQuads=7, tail tiles 29..30
+  // For m4 (IN_W=64):  kXTiles=16, kInteriorN=14, kXQuads=3, tail tiles 13..14
+
+  for (int oc_t = 0; oc_t < kOcTiles; ++oc_t) {
+    // Bias seed for this oc_t; reused across all x_tile paths below.
+    auto bias_acc = make_bias_acc(&bias[oc_t * 8]);
+
+    constexpr int kOcStride = kXTiles * 32;
+
+    // --- Left edge: x_tile = 0 (col=-1 invalid for kx=0,p=0) -----------
+    {
+      MMUL4x8x8 acc;
+      acc = bias_acc;
+      AIE_LOOP_RANGE(kIcTiles, kIcTiles)
+      for (int ic_t = 0; ic_t < kIcTiles; ++ic_t) {
+        AIE_LOOP_RANGE(1, 3)
+        for (int ky = ky_start; ky < ky_end; ++ky) {
+          int8_t *line_ptr = line[ky];
+          AIE_LOOP_UNROLL_FULL
+          for (int kx = 0; kx < 3; ++kx) {
+            aie::vector<int8, 32> in_a =
+                load_a_mmul_kx_4p<IN_C, IN_W>(line_ptr, ic_t, 0, kx);
+            int wts_off = wts_tile_off(oc_t, ic_t, ky, kx, kIcTiles, 3, 3);
+            aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);
+            acc.mac(in_a, in_b);
+          }
+        }
+      }
+      aie::vector<int8, 32> srs_v = acc.template to_vector<int8>(right_shift);
+      write_x_tile_result(srs_v, silu_lut, output, oc_t, 0, kOcStride);
+    }
+
+    // --- Interior 4X fold: 4 x_tiles per outer iter, branchless gather --
+    // Per (ic_t, ky, kx): 4 gathers (all guaranteed valid since interior) +
+    // 1 weight load + 4 macs back-to-back. The 4-mac sequence is what
+    // peano can software-pipeline (1 acc was the prior problem).
+    AIE_LOOP_RANGE(kXQuads, kXQuads)
+    for (int xq = 0; xq < kXQuads; ++xq) {
+      const int x_tile_base = kInteriorStart + 4 * xq;
+      const int x_out_base = x_tile_base * 4;
+      const int x_in_base0 = x_out_base - 1; // x_tile 4q+0
+      const int x_in_base1 = x_in_base0 + 4;
+      const int x_in_base2 = x_in_base0 + 8;
+      const int x_in_base3 = x_in_base0 + 12;
+
+      MMUL4x8x8 acc0, acc1, acc2, acc3;
+      acc0 = bias_acc;
+      acc1 = bias_acc;
+      acc2 = bias_acc;
+      acc3 = bias_acc;
+
+      AIE_LOOP_RANGE(kIcTiles, kIcTiles)
+      for (int ic_t = 0; ic_t < kIcTiles; ++ic_t) {
+        AIE_LOOP_RANGE(1, 3)
+        for (int ky = ky_start; ky < ky_end; ++ky) {
+          int8_t *line_ptr = line[ky];
+          AIE_LOOP_UNROLL_FULL
+          for (int kx = 0; kx < 3; ++kx) {
+            aie::vector<int8, 32> in_a0 = load_a_mmul_kx_4p<IN_C, IN_W>(
+                line_ptr, ic_t, x_tile_base + 0, kx);
+            aie::vector<int8, 32> in_a1 = load_a_mmul_kx_4p<IN_C, IN_W>(
+                line_ptr, ic_t, x_tile_base + 1, kx);
+            aie::vector<int8, 32> in_a2 = load_a_mmul_kx_4p<IN_C, IN_W>(
+                line_ptr, ic_t, x_tile_base + 2, kx);
+            aie::vector<int8, 32> in_a3 = load_a_mmul_kx_4p<IN_C, IN_W>(
+                line_ptr, ic_t, x_tile_base + 3, kx);
+            int wts_off = wts_tile_off(oc_t, ic_t, ky, kx, kIcTiles, 3, 3);
+            aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);
+            acc0.mac(in_a0, in_b);
+            acc1.mac(in_a1, in_b);
+            acc2.mac(in_a2, in_b);
+            acc3.mac(in_a3, in_b);
+          }
+        }
+      }
+      aie::vector<int8, 32> v0 = acc0.template to_vector<int8>(right_shift);
+      aie::vector<int8, 32> v1 = acc1.template to_vector<int8>(right_shift);
+      aie::vector<int8, 32> v2 = acc2.template to_vector<int8>(right_shift);
+      aie::vector<int8, 32> v3 = acc3.template to_vector<int8>(right_shift);
+      write_x_tile_result(v0, silu_lut, output, oc_t, x_tile_base + 0,
+                          kOcStride);
+      write_x_tile_result(v1, silu_lut, output, oc_t, x_tile_base + 1,
+                          kOcStride);
+      write_x_tile_result(v2, silu_lut, output, oc_t, x_tile_base + 2,
+                          kOcStride);
+      write_x_tile_result(v3, silu_lut, output, oc_t, x_tile_base + 3,
+                          kOcStride);
+    }
+
+    // --- Interior tail (leftover x_tiles when kInteriorN % 4 != 0) ------
+    // For m2: 2 tail tiles (29, 30); for m4: 2 tail tiles (13, 14).
+    for (int x_tile = kXTailStart; x_tile < kInteriorEnd; ++x_tile) {
+      MMUL4x8x8 acc;
+      acc = bias_acc;
+      for (int ic_t = 0; ic_t < kIcTiles; ++ic_t) {
+        for (int ky = ky_start; ky < ky_end; ++ky) {
+          int8_t *line_ptr = line[ky];
+          for (int kx = 0; kx < 3; ++kx) {
+            aie::vector<int8, 32> in_a =
+                load_a_mmul_kx_4p<IN_C, IN_W>(line_ptr, ic_t, x_tile, kx);
+            int wts_off = wts_tile_off(oc_t, ic_t, ky, kx, kIcTiles, 3, 3);
+            aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);
+            acc.mac(in_a, in_b);
+          }
+        }
+      }
+      aie::vector<int8, 32> srs_v = acc.template to_vector<int8>(right_shift);
+      write_x_tile_result(srs_v, silu_lut, output, oc_t, x_tile, kOcStride);
+    }
+
+    // --- Right edge: x_tile = kXTiles-1 (col=IN_W invalid for kx=2,p=3) -
+    {
+      MMUL4x8x8 acc;
+      acc = bias_acc;
+      AIE_LOOP_RANGE(kIcTiles, kIcTiles)
+      for (int ic_t = 0; ic_t < kIcTiles; ++ic_t) {
+        AIE_LOOP_RANGE(1, 3)
+        for (int ky = ky_start; ky < ky_end; ++ky) {
+          int8_t *line_ptr = line[ky];
+          AIE_LOOP_UNROLL_FULL
+          for (int kx = 0; kx < 3; ++kx) {
+            aie::vector<int8, 32> in_a =
+                load_a_mmul_kx_4p<IN_C, IN_W>(line_ptr, ic_t, kXTiles - 1, kx);
+            int wts_off = wts_tile_off(oc_t, ic_t, ky, kx, kIcTiles, 3, 3);
+            aie::vector<int8, 64> in_b = aie::load_v<64>(&wts[wts_off]);
+            acc.mac(in_a, in_b);
+          }
+        }
+      }
+      aie::vector<int8, 32> srs_v = acc.template to_vector<int8>(right_shift);
+      write_x_tile_result(srs_v, silu_lut, output, oc_t, kXTiles - 1,
+                          kOcStride);
+    }
+  }
+
+  event1();
+}
+
+} // extern "C"

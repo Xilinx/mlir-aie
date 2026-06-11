@@ -328,6 +328,7 @@ class buffer(BufferOp):
         datatype: MemRefType | type[np.ndarray],
         name: str | None = None,
         address=None,
+        mem_bank=None,
         initial_value: np.ndarray | None = None,
         use_write_rtp: bool = False,
         loc=None,
@@ -347,6 +348,7 @@ class buffer(BufferOp):
             tile=tile,
             sym_name=name,
             address=address,
+            mem_bank=mem_bank,
             initial_value=initial_value,
             loc=loc,
             ip=ip,
@@ -466,6 +468,8 @@ class object_fifo(ObjectFifoCreateOp):
         padDimensions=None,
         disable_synchronization=None,
         iter_count=None,
+        producer_mem_bank=None,
+        consumer_mem_banks=None,
         consumer_datatype=None,
     ):
         self.datatype = try_convert_np_type_to_mlir_type(datatype)
@@ -506,6 +510,8 @@ class object_fifo(ObjectFifoCreateOp):
             disable_synchronization=disable_synchronization,
             initValues=initValues,
             iter_count=iter_count,
+            producer_mem_bank=producer_mem_bank,
+            consumer_mem_banks=consumer_mem_banks,
         )
         if consumerElemType is not None:
             self.attributes["consumerElemType"] = consumerElemType

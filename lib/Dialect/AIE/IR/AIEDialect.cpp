@@ -544,6 +544,46 @@ LogicalResult ObjectFifoCreateOp::verify() {
       return emitError("`iter_count` is currently only supported on MemTiles");
   }
 
+  // Validate per-tile mem-bank pinning attributes.
+  // - producer_mem_bank must be in [0, numBanks(producerTile))
+  // - consumer_mem_banks length must match number of consumer tiles, and
+  //   each entry must be in [0, numBanks(thatConsumerTile))
+  const auto &targetModel = getTargetModel(*this);
+  if (auto prodBankAttr = getProducerMemBankAttr()) {
+    auto prodTileOp = dyn_cast<TileOp>(getProducerTile().getDefiningOp());
+    if (prodTileOp) {
+      uint32_t nBanks =
+          targetModel.getNumBanks(prodTileOp.getCol(), prodTileOp.getRow());
+      int bank = prodBankAttr.getInt();
+      if (bank < 0 || (uint32_t)bank >= nBanks)
+        return emitOpError("`producer_mem_bank` (")
+               << bank << ") out of range [0, " << nBanks << ") for tile ("
+               << prodTileOp.getCol() << ", " << prodTileOp.getRow() << ")";
+    }
+  }
+  if (auto consBanksAttr = getConsumerMemBanksAttr()) {
+    if (consBanksAttr.size() != getConsumerTiles().size())
+      return emitOpError(
+          "`consumer_mem_banks` length must equal number of consumer tiles");
+    for (size_t i = 0; i < consBanksAttr.size(); ++i) {
+      auto intAttr = dyn_cast<IntegerAttr>(consBanksAttr[i]);
+      if (!intAttr)
+        return emitOpError(
+            "`consumer_mem_banks` entries must be 32-bit integers");
+      auto consTileOp = dyn_cast<TileOp>(getConsumerTiles()[i].getDefiningOp());
+      if (!consTileOp)
+        continue;
+      uint32_t nBanks =
+          targetModel.getNumBanks(consTileOp.getCol(), consTileOp.getRow());
+      int bank = intAttr.getInt();
+      if (bank < 0 || (uint32_t)bank >= nBanks)
+        return emitOpError("`consumer_mem_banks[")
+               << i << "]` (" << bank << ") out of range [0, " << nBanks
+               << ") for tile (" << consTileOp.getCol() << ", "
+               << consTileOp.getRow() << ")";
+    }
+  }
+
   if (getConsumerElemType().has_value()) {
     auto consType =
         llvm::dyn_cast<AIEObjectFifoType>(getConsumerElemType().value());
