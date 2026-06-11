@@ -365,12 +365,16 @@ def numpy_layer_mh_forward(x, layer, position=None, residual_fp32=False,
         half = HEAD_DIM // 2
         k_rope = np.empty_like(k_fp)
         for h in range(N_HEADS_KV):
-            kh = k_fp[h * HEAD_DIM : (h + 1) * HEAD_DIM].copy()
-            x1 = kh[:half]
-            x2 = kh[half:]
-            kh[:half] = x1 * cosf[:half] - x2 * sinf[:half]
-            kh[half:] = x2 * cosf[half:] + x1 * sinf[half:]
-            k_rope[h * HEAD_DIM : (h + 1) * HEAD_DIM] = kh
+            kh = k_fp[h * HEAD_DIM : (h + 1) * HEAD_DIM]
+            # Snapshot both halves as COPIES — x1/x2 must not be views of kh,
+            # or writing the first half corrupts x1 before the second half
+            # reads it (in-place rotate-half aliasing bug).
+            x1 = kh[:half].copy()
+            x2 = kh[half:].copy()
+            out = np.empty(HEAD_DIM, dtype=np.float32)
+            out[:half] = x1 * cosf[:half] - x2 * sinf[:half]
+            out[half:] = x2 * cosf[half:] + x1 * sinf[half:]
+            k_rope[h * HEAD_DIM : (h + 1) * HEAD_DIM] = out
         # Per-slot scale storage (per position per head). Needed for correct
         # multi-token decode: each cached position must be dequantized by ITS
         # OWN scale, not the latest token's (the per-head-scalar k/v_scales
