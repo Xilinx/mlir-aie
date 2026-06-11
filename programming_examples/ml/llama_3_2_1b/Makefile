@@ -838,7 +838,7 @@ ${BUILD}/llama_rope_int8_mh_T${LAYER_MH_T}.cc.o: ${KDIR}/llama_rope_int8_mh.cc
 
 ${BUILD}/llama_flowkv_mh_T${LAYER_MH_T}.cc.o: ${KDIR}/llama_flowkv_mh.cc ${BUILD}/exp_lut.h
 	mkdir -p ${@D}
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} \
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -ffp-contract=off \
 		-DLLAMA_FLOWKV_HEAD_DIM=64 -DLLAMA_FLOWKV_T=${LAYER_MH_T} \
 		-DLLAMA_FLOWKV_REP=4 -DLLAMA_FLOWKV_EXP_QUANT_SCALE=0.05f \
 		-I${srcdir} -c $< -o ${@F}

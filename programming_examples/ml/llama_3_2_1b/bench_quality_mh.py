@@ -85,7 +85,8 @@ def embed_token_to_int8(model, token_id):
 
 
 def int8_chain_next_token(model, layers, cos_lut, sin_lut, token_ids,
-                          residual_fp32=False, residual_dyn=False):
+                          residual_fp32=False, residual_dyn=False,
+                          attn_lut=False):
     """Run our INT8 chain over `token_ids`. Returns the predicted next
     token id. Resets layer caches before running (so prompts are
     independent)."""
@@ -127,6 +128,7 @@ def int8_chain_next_token(model, layers, cos_lut, sin_lut, token_ids,
             xc, scales = numpy_layer_mh_forward(
                 xc, layers[L], position=pos,
                 residual_fp32=residual_fp32, residual_dyn=residual_dyn,
+                attn_lut=attn_lut,
             )
             layers[L]["scales"] = scales
             layers[L]["t_used"] = pos + 1
@@ -172,6 +174,13 @@ def main():
         help="device-faithful per-token int8 residual (int8 + fp32 scale "
         "tail; o_proj/down dynamic-out, rescale-add) — the Phase B target",
     )
+    parser.add_argument(
+        "--attn-lut",
+        action="store_true",
+        help="device-faithful per-slot KV attention with the exp-LUT softmax "
+        "(flowkv_mh mirror) instead of the fp32-softmax golden — measures "
+        "whether the LUT ULP noise affects top-1",
+    )
     opts = parser.parse_args()
 
     data_dir = Path(opts.data_dir)
@@ -210,6 +219,7 @@ def main():
         our_tok = int8_chain_next_token(
             model, layers, cos_lut, sin_lut, ids,
             residual_fp32=opts.residual_fp32, residual_dyn=opts.residual_dyn,
+            attn_lut=opts.attn_lut,
         )
         t_int8 = time.time() - t0
         match = ref_tok == our_tok

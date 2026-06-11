@@ -71,12 +71,13 @@ SVCHUNK_BYTES = REP * HEAD_D  # 256
 SV_CONCAT_HALF = (N_HEADS_KV // 2) * SVCHUNK_BYTES  # 1024 (4 chunks)
 AF_BYTES = N_HEADS_Q * HEAD_D  # 2048
 
-# kv-per-head: 4 B scale header + T*HEAD_D body.
-KV_HEADER = 4
+# kv-per-head: per-slot scale header (T fp32) + T*HEAD_D body. Each cached
+# position carries its OWN k/v scale (fixes the per-head-scalar KV bug).
+KV_HEADER = T * 4  # T per-slot fp32 scales
 KCACHE_BYTES = T * HEAD_D  # 8192
 VCACHE_BYTES = T * HEAD_D  # 8192
-KCACHE_PADDED = KV_HEADER + KCACHE_BYTES  # 8196
-VCACHE_PADDED = KV_HEADER + VCACHE_BYTES  # 8196
+KCACHE_PADDED = KV_HEADER + KCACHE_BYTES
+VCACHE_PADDED = KV_HEADER + VCACHE_BYTES
 
 # af_concat scales buffer (host-packed): 32 sv_out_scales + o_inv_act_scale + pad.
 AF_SCALES_BYTES = 192

@@ -89,6 +89,55 @@ def attention_perslot(q_i8, k_i8, v_i8, head_dim, t, q_scale, k_slot_scales,
     return requant(sv, np.float32(inv_out_scale)), sv.astype(np.float32)
 
 
+def numpy_attention_perslot_lut(q_i8, k_i8, v_i8, head_dim, t, q_scale,
+                                k_slot_scales, v_slot_scales, inv_out_scale, lut):
+    """Bit-exact mirror of the device flowkv_mh per-slot kernel.
+
+    Per-cache-slot k/v scales (fixes the per-head-scalar bug) AND the exp-LUT
+    softmax (matches the device kernel, unlike the fp32-softmax attention_perslot
+    which is the QUALITY golden). Op order replicates llama_flowkv_mh exactly:
+      score[i] = dot_i32 * (q_scale*0.125 * k_slot[i])     (strict fp32)
+      sv[j]   += (lut_exp*inv_sum) * v_slot[i] * v[i,j]    (strict fp32)
+    q_i8: (head_dim,); k_i8/v_i8: (t*head_dim,); *_slot_scales: (>=t,).
+    """
+    from test_flowkv import quant_shifted, round_to_i8, sw_recip
+
+    qs = np.float32(q_scale)
+    inv_sqrt = np.float32(0.125)
+
+    k_mat = k_i8.astype(np.int32).reshape(t, head_dim)
+    dots = (k_mat @ q_i8.astype(np.int32)).astype(np.int32)  # (t,)
+    ksl = np.asarray(k_slot_scales, dtype=np.float32)[:t]
+    # Scale order (q_scale * k_slot[i]) * 0.125 mirrors the kernel and the
+    # bit-exact per-head predecessor; (q*0.125)*k diverges ~1 ULP and flips
+    # LUT-quant boundaries.
+    qk = ((qs * ksl).astype(np.float32) * inv_sqrt).astype(np.float32)
+    scores = (dots.astype(np.float32) * qk).astype(np.float32)
+
+    max_s = np.float32(scores.max())
+    shifted = (scores - max_s).astype(np.float32)
+    q = quant_shifted(shifted)
+    exp_v = lut[q + 128].astype(np.float32)
+
+    sum_e = np.float32(0.0)
+    for i in range(t):
+        sum_e = (sum_e + exp_v[i]).astype(np.float32)
+    inv_sum = sw_recip(sum_e)
+    probs = (exp_v * inv_sum).astype(np.float32)
+
+    # sv: kernel accumulates acc[j] += p[i] * v_slot[i] * v[i,j], strictly
+    # left-to-right per output channel.
+    vsl = np.asarray(v_slot_scales, dtype=np.float32)[:t]
+    v_mat = v_i8.astype(np.int32).reshape(t, head_dim).astype(np.float32)
+    acc = np.zeros(head_dim, dtype=np.float32)
+    for i in range(t):
+        acc = (acc + (probs[i] * vsl[i]).astype(np.float32) * v_mat[i]).astype(
+            np.float32
+        )
+    out_f = (acc * np.float32(inv_out_scale)).astype(np.float32)
+    return round_to_i8(out_f), acc.astype(np.float32)
+
+
 def gen_real_layer_mh(L: int, data_dir, rng: np.random.Generator) -> dict:
     """Phase 7a real-weight loader: full Q_DIM/KV_DIM Llama 3.2 1B weights
     sliced into the 8 KV-head layout the mh xclbin expects. KV cache stays
@@ -279,7 +328,8 @@ def gen_layer_mh(rng: np.random.Generator) -> dict:
 
 
 def numpy_layer_mh_forward(x, layer, position=None, residual_fp32=False,
-                           residual_dyn=False, attn_perslot=None):
+                           residual_dyn=False, attn_perslot=None,
+                           attn_lut=False):
     """Multi-head GQA single-layer forward + per-Q-head scale calibration.
 
     Returns (x_out, scales) where scales is a dict packing every
@@ -457,20 +507,28 @@ def numpy_layer_mh_forward(x, layer, position=None, residual_fp32=False,
         q_h = qr[h_q * HEAD_DIM : (h_q + 1) * HEAD_DIM]
         k_slice = kcaches[kvh][: t_used * HEAD_DIM]
         v_slice = vcaches[kvh][: t_used * HEAD_DIM]
-        if attn_perslot:
+        if attn_perslot or attn_lut:
             # Per-slot-scale attention: each cached position dequantized by
             # its own k/v scale (fixes the per-head-scalar KV bug).
+            # attn_lut=True is the DEVICE-FAITHFUL path: exp-LUT softmax
+            # (bit-exact mirror of flowkv_mh). attn_lut=False keeps the fp32
+            # np.exp softmax (the quality golden). Both use per-slot scales.
             ksl = layer["k_scales_slot"][kvh]
             vsl = layer["v_scales_slot"][kvh]
+            attn_fn = (
+                (lambda *a: numpy_attention_perslot_lut(*a, lut_exp))
+                if attn_lut
+                else attention_perslot
+            )
             # First pass to derive this head's sv_out_scale.
-            _, sv_fp_h = attention_perslot(
+            _, sv_fp_h = attn_fn(
                 q_h, k_slice, v_slice, HEAD_DIM, t_used,
                 float(q_out_scales[h_q]), ksl, vsl, 1.0,
             )
             s = float(np.maximum(np.abs(sv_fp_h).max(), 1e-12)) / 127.0
             sv_out_scales[h_q] = np.float32(s)
             sv_inv_out_scales[h_q] = np.float32(1.0) / np.float32(s)
-            sv_i8, _ = attention_perslot(
+            sv_i8, _ = attn_fn(
                 q_h, k_slice, v_slice, HEAD_DIM, t_used,
                 float(q_out_scales[h_q]), ksl, vsl,
                 float(sv_inv_out_scales[h_q]),

@@ -89,25 +89,24 @@ static inline float sw_recip(float a) {
 }
 
 // Forward decl of the inner kernel with explicit T_used (causal-mask
-// support). The combined wrapper reads T_used + per-head scales from
-// kv_one's prefix and forwards.
+// support). The combined wrapper reads T_used + per-slot scale arrays from
+// kv_one's prefix and forwards. k_slot/v_slot are per-cache-slot fp32 scale
+// arrays (one entry per cached position) -- each cached K/V position is
+// dequantized by ITS OWN scale (fixes the per-head-scalar bug where the whole
+// cache was dequantized with the latest token's scale).
 extern "C" void llama_flowkv_mh(int8_t *restrict q_chunk,
-                                int8_t *restrict k_one, int8_t *restrict v_one,
+                                float *restrict k_slot, int8_t *restrict k_body,
+                                float *restrict v_slot, int8_t *restrict v_body,
                                 int8_t *restrict out_chunk, int T_used);
 
-// Phase 8c kv_one layout (was: [k_scale | kbody | v_scale | vbody]):
-//   [0..4]:                       T_used (int32)   -- NEW Phase 8c
-//   [4..8]:                       pad (host writes 0; needed so the next
-//                                       region starts at offset 8 -> total
-//                                       slot 16400 B = factorable for the
-//                                       shim DMA TAP)
-//   [8..12]:                      k_scale (float32)
-//   [12..12+kT*kHD]:              k body
-//   [12+kT*kHD..16+kT*kHD]:       v_scale (float32)
-//   [16+kT*kHD..16+2*kT*kHD]:     v body
-// k_one passed to inner kernel is kv_one + 8 (skips T_used + pad), so
-// the inner kernel's "k_one[0..4] = k_scale, k_one+4 = k_body" layout
-// matches the pre-8c convention. v_one is k_one + (4 + kT*kHD).
+// Per-slot kv_one layout (per KV head):
+//   [0..4]:                          T_used (int32)
+//   [4..8]:                          pad (so the scale region starts at 8)
+//   [8 .. 8+kT*4]:                   k_slot_scales (kT fp32)
+//   [8+kT*4 .. 8+kT*4+kT*kHD]:       k body (kT * kHD int8)
+//   [.. + kT*4]:                     v_slot_scales (kT fp32)
+//   [.. + kT*kHD]:                   v body (kT * kHD int8)
+// Total per head = 8 + 2*(kT*4 + kT*kHD).
 constexpr int kTUsedPrefix = 8;
 extern "C" void llama_flowkv_mh_kvc(int8_t *restrict q_chunk,
                                     int8_t *restrict kv_one,
@@ -118,25 +117,24 @@ extern "C" void llama_flowkv_mh_kvc(int8_t *restrict q_chunk,
     T_used = 1;
   if (T_used > kT)
     T_used = kT;
-  constexpr int kKHalf = 4 + kT * kHD;
-  llama_flowkv_mh(q_chunk, kv_one + kTUsedPrefix,
-                  kv_one + kTUsedPrefix + kKHalf, out_chunk, T_used);
+  constexpr int kSlotBytes = kT * 4;
+  constexpr int kBodyBytes = kT * kHD;
+  constexpr int kKHalf = kSlotBytes + kBodyBytes;
+  int8_t *k_region = kv_one + kTUsedPrefix;
+  int8_t *v_region = k_region + kKHalf;
+  llama_flowkv_mh(q_chunk, reinterpret_cast<float *>(k_region),
+                  k_region + kSlotBytes, reinterpret_cast<float *>(v_region),
+                  v_region + kSlotBytes, out_chunk, T_used);
 }
 
 extern "C" void llama_flowkv_mh(int8_t *restrict q_chunk,
-                                int8_t *restrict k_one, int8_t *restrict v_one,
+                                float *restrict k_slot, int8_t *restrict k_body,
+                                float *restrict v_slot, int8_t *restrict v_body,
                                 int8_t *restrict out_chunk, int T_used) {
   event0();
   ::aie::set_rounding(aie::rounding_mode::conv_even);
   static_assert(kHD == 64, "qk_scale hardcoded for head_dim=64");
   constexpr float kInvSqrtHD = 0.125f;
-
-  // Static-per-call scales: shared across all REP Q heads in this group.
-  float k_scale, v_scale;
-  memcpy(&k_scale, k_one, 4);
-  memcpy(&v_scale, v_one, 4);
-  int8_t *restrict k_body = k_one + 4;
-  int8_t *restrict v_body = v_one + 4;
 
   // Per-head scale tail layout: tail[h*8..h*8+4] = q_scale_h,
   //                             tail[h*8+4..h*8+8] = sv_inv_out_scale_h.
@@ -154,20 +152,24 @@ extern "C" void llama_flowkv_mh(int8_t *restrict q_chunk,
     memcpy(&q_scale, tail + h * 8 + 0, 4);
     memcpy(&sv_inv_out_scale, tail + h * 8 + 4, 4);
 
-    const float qk_scale = q_scale * k_scale * kInvSqrtHD;
     int8_t *restrict q_h = q_chunk + h * kHD;
     int8_t *restrict out_h = out_chunk + h * kHD;
 
-    // 1) Scores: int32 dot -> ONE combined float multiply. Causal mask:
-    // only iterate over the first T_used positions. When T_used == kT
-    // (Phase 7b legacy path) the loop is identical to before.
+    // 1) Scores: int32 dot -> per-slot combined float multiply. Each cached
+    // position uses its OWN k_slot[i] scale (the per-slot KV fix). Causal
+    // mask: only the first T_used positions. Scale order (q_scale*k_slot[i])
+    // * kInvSqrtHD mirrors the numpy reference (and the per-head predecessor's
+    // q_scale*k_scale*kInvSqrtHD). NOTE: with varying per-slot scales this is
+    // NOT byte-exact vs numpy -- Peano fp32 mul differs by ~1 ULP on a few
+    // positions, flipping an exp-LUT bucket (<=2 LSB on the output). Proven
+    // quality-neutral; see numpy_attention_perslot_lut + test_layer_mh.
     float max_s = -1e30f;
     for (int i = 0; i < T_used; i++) {
       int32_t dot = 0;
       for (int d = 0; d < kHD; d++) {
         dot += (int32_t)q_h[d] * (int32_t)k_body[i * kHD + d];
       }
-      float s = (float)dot * qk_scale;
+      float s = (float)dot * ((q_scale * k_slot[i]) * kInvSqrtHD);
       scores[i] = s;
       if (s > max_s)
         max_s = s;
@@ -182,16 +184,17 @@ extern "C" void llama_flowkv_mh(int8_t *restrict q_chunk,
     }
     const float inv_sum = sw_recip(sum);
 
-    // 3) sv: probs @ V then requant. j-outer / i-inner matches the
-    // single-head kernel; probs[i] recomputed from qvals[i] each i to
-    // avoid Bug 2 (fp32 stack array between loops).
+    // 3) sv: probs @ V then requant. Per-slot V scale folds into the inner
+    // term: acc += (p * v_slot[i]) * v[i,j]. j-outer / i-inner matches the
+    // single-head kernel; probs[i] recomputed from qvals[i] each i to avoid
+    // Bug 2 (fp32 stack array between loops).
     for (int j = 0; j < kHD; j++) {
       float acc = 0.0f;
       for (int i = 0; i < T_used; i++) {
         float p = lookup_exp(qvals[i]) * inv_sum;
-        acc += p * (float)v_body[i * kHD + j];
+        acc += p * v_slot[i] * (float)v_body[i * kHD + j];
       }
-      out_h[j] = round_to_i8(acc * v_scale * sv_inv_out_scale);
+      out_h[j] = round_to_i8(acc * sv_inv_out_scale);
     }
   }
 
