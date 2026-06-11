@@ -940,6 +940,7 @@ LAYER_MH_DEPS = ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o \
                 ${BUILD}/llama_gemm_int8_srs_tiled_layer_mh.cc.o \
                 ${BUILD}/llama_rmsnorm_int8_2048.cc.o \
                 ${BUILD}/llama_rescale_add.cc.o \
+                ${BUILD}/llama_kv_append.cc.o \
                 ${BUILD}/llama_silu_mul_int8_8192.cc.o \
                 ${BUILD}/llama_rope_int8_mh_T${LAYER_MH_T}.cc.o \
                 ${BUILD}/llama_flowkv_mh_T${LAYER_MH_T}.cc.o \

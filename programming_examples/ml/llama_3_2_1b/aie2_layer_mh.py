@@ -247,35 +247,55 @@ def build():
     t_WG_slot = _i8(WG_SLOT)
     t_WU_slot = _i8(WU_SLOT)
     t_WD_slot = _i8(WD_SLOT)
+    t_WK_slot = _i8(WK_SLOT)
+    t_WV_slot = _i8(WV_SLOT)
     t_KCACHE_i8 = _i8(KCACHE_PADDED)
     t_VCACHE_i8 = _i8(VCACHE_PADDED)
 
     # --- ObjectFifos ---
     of_xin = ObjectFifo(t_D8_i8, depth=1, name="xin")
 
+    t_KVfp = _f32(KV_DIM)
+    t_KVCS_i8 = _i8(KVCS_BYTES)
+    t_COMB_i8 = _i8(COMB_CHUNK_BYTES)
+    t_COMB_HALF_i8 = _i8(COMB_HALF_BYTES)
+
     # Attention side
     of_gam_in = ObjectFifo(t_D_bf16, depth=1, name="gam_in")
     of_h1 = ObjectFifo(t_D8_i8, depth=1, name="h1")
     of_wq = ObjectFifo(t_WQ_slot, depth=1, name="wq")
+    of_wk = ObjectFifo(t_WK_slot, depth=1, name="wk")
+    of_wv = ObjectFifo(t_WV_slot, depth=1, name="wv")
     of_qf = ObjectFifo(t_QF_i8, depth=1, name="qf")
     of_cs = ObjectFifo(t_CS_bf16, depth=1, name="cs")
     of_qr = ObjectFifo(t_QR_i8, depth=1, name="qr")
-    # q_split writes 2 halves (chunks 0..3 and 4..7) into 2 separate
-    # staging fifos -- each memtile then fans out 4 ways, within DMA
-    # channel budget.
-    of_qchunks_lo = ObjectFifo(t_QCHUNKS_HALF_i8, depth=1, name="qchunks_lo")
-    of_qchunks_hi = ObjectFifo(t_QCHUNKS_HALF_i8, depth=1, name="qchunks_hi")
-    qchunk_lo_eps = of_qchunks_lo.cons().split(
-        offsets=[i * QCHUNK_BYTES for i in range(N_HEADS_KV // 2)],
-        obj_types=[t_QCHUNK_i8] * (N_HEADS_KV // 2),
-        names=[f"qchunk_{i}" for i in range(N_HEADS_KV // 2)],
+
+    # On-chip KV append: k_proj/v_proj fp32 outputs + cos/sin are joined at a
+    # memtile into one kvcs buffer [kfp 2048 | vfp 2048 | cs 256]. k_proj
+    # writes join endpoint 0, v_proj endpoint 1, and cs is filled (from wblob)
+    # into endpoint 2. The joined of_kvcs feeds qkv_combine alongside qr.
+    of_kvcs = ObjectFifo(t_KVCS_i8, depth=1, name="kvcs")
+    kvcs_eps = of_kvcs.prod().join(
+        offsets=[0, KFP_ALL, 2 * KFP_ALL],
+        obj_types=[t_KVfp, t_KVfp, _i8(CS_PACK_BYTES)],
+        names=["kvcs_k", "kvcs_v", "kvcs_cs"],
     )
-    qchunk_hi_eps = of_qchunks_hi.cons().split(
-        offsets=[i * QCHUNK_BYTES for i in range(N_HEADS_KV // 2)],
-        obj_types=[t_QCHUNK_i8] * (N_HEADS_KV // 2),
-        names=[f"qchunk_{N_HEADS_KV // 2 + i}" for i in range(N_HEADS_KV // 2)],
+
+    # qkv_combine writes 2 halves of per-head COMBINED chunks
+    # [q_chunk 288 | k_fp 256 | v_fp 256 | cs 256]; each memtile fans out 4.
+    of_comb_lo = ObjectFifo(t_COMB_HALF_i8, depth=1, name="comb_lo")
+    of_comb_hi = ObjectFifo(t_COMB_HALF_i8, depth=1, name="comb_hi")
+    comb_lo_eps = of_comb_lo.cons().split(
+        offsets=[i * COMB_CHUNK_BYTES for i in range(N_HEADS_KV // 2)],
+        obj_types=[t_COMB_i8] * (N_HEADS_KV // 2),
+        names=[f"comb_{i}" for i in range(N_HEADS_KV // 2)],
     )
-    qchunk_eps = list(qchunk_lo_eps) + list(qchunk_hi_eps)
+    comb_hi_eps = of_comb_hi.cons().split(
+        offsets=[i * COMB_CHUNK_BYTES for i in range(N_HEADS_KV // 2)],
+        obj_types=[t_COMB_i8] * (N_HEADS_KV // 2),
+        names=[f"comb_{N_HEADS_KV // 2 + i}" for i in range(N_HEADS_KV // 2)],
+    )
+    comb_eps = list(comb_lo_eps) + list(comb_hi_eps)
 
     # Combined KV per head: [k_header | kcache | v_header | vcache] = 16392 B.
     # To drop shim NoC usage, pack 4 KV heads per shim fill and split via
@@ -296,6 +316,24 @@ def build():
         names=[f"kv_{N_HEADS_KV // 2 + i}" for i in range(N_HEADS_KV // 2)],
     )
     of_kvs = list(kv_lo_eps) + list(kv_hi_eps)
+
+    # Device-owned cache round-trip: each co-located attn worker writes its
+    # head's UPDATED cache (append wrote slot[pos]); 8 outputs join into 2
+    # halves that drain back over the kvblob runtime buffer. Keeps the cache
+    # device-owned (host does an opaque byte round-trip).
+    of_kvout_lo = ObjectFifo(t_KV_HALF_i8, depth=1, name="kvout_lo")
+    of_kvout_hi = ObjectFifo(t_KV_HALF_i8, depth=1, name="kvout_hi")
+    kvout_lo_eps = of_kvout_lo.prod().join(
+        offsets=[i * PER_KV_HEAD_BYTES for i in range(N_HEADS_KV // 2)],
+        obj_types=[t_KV_i8] * (N_HEADS_KV // 2),
+        names=[f"kvout_{i}" for i in range(N_HEADS_KV // 2)],
+    )
+    kvout_hi_eps = of_kvout_hi.prod().join(
+        offsets=[i * PER_KV_HEAD_BYTES for i in range(N_HEADS_KV // 2)],
+        obj_types=[t_KV_i8] * (N_HEADS_KV // 2),
+        names=[f"kvout_{N_HEADS_KV // 2 + i}" for i in range(N_HEADS_KV // 2)],
+    )
+    kvout_eps = list(kvout_lo_eps) + list(kvout_hi_eps)
 
     # sv-concat split in 2 halves to keep memtile DMA in-channels under 4.
     of_svconcat_lo = ObjectFifo(t_SVCONCAT_HALF_i8, depth=1, name="sv_concat_lo")
@@ -376,8 +414,23 @@ def build():
         [t_HD_i8, t_WD_slot, t_D_f32, np.int32],
     )
     k_rope = Kernel("llama_rope_int8_mh_dyn", KO_ROPE, [t_QF_i8, t_CS_bf16, t_QR_i8])
-    k_qsplit = Kernel(
-        "llama_q_split", KO_GLUE, [t_QR_i8, t_QCHUNKS_HALF_i8, t_QCHUNKS_HALF_i8]
+    # k_proj / v_proj: fp32 out, act_scale from h1 tail (one symbol, both).
+    k_kv = Kernel(
+        "llama_gemm_tiled_layer_K2048_N4_perchan_fp32out_acttail",
+        KO_GEMM2,
+        [t_D8_i8, t_WK_slot, t_KVfp, np.int32],
+    )
+    # qkv_combine: qr + joined kvcs -> 2 halves of combined per-head chunks.
+    k_qkvcomb = Kernel(
+        "llama_qkv_combine",
+        KO_GLUE,
+        [t_QR_i8, t_KVCS_i8, t_COMB_HALF_i8, t_COMB_HALF_i8],
+    )
+    # co-located KV append (reads [kf|vf|cs] at offset 288 of the combined
+    # chunk; writes the updated head cache).
+    KO_KVA = "llama_kv_append.cc.o"
+    k_append = Kernel(
+        "llama_kv_append_combined", KO_KVA, [t_COMB_i8, t_KV_i8, t_KV_i8]
     )
     k_svmerge = Kernel(
         "llama_sv_merge",
@@ -387,7 +440,9 @@ def build():
     k_afconcat = Kernel(
         "llama_af_concat", KO_GLUE, [_i8(AF_BYTES), t_AFSCALES_i8, t_AF_i8]
     )
-    k_fkv = Kernel("llama_flowkv_mh_kvc", KO_FKV, [t_QCHUNK_i8, t_KV_i8, t_SVCHUNK_i8])
+    # flowkv consumes the combined chunk (reads only the first 288 B q_chunk);
+    # cache_out (post-append) is its kv input.
+    k_fkv = Kernel("llama_flowkv_mh_kvc", KO_FKV, [t_COMB_i8, t_KV_i8, t_SVCHUNK_i8])
     k_silu = Kernel("llama_silu_mul_int8_dyn", KO_SILU, [t_HD_i8, t_UF_i8, t_HD_i8])
     # rescale-add: (residual int8[D+8], proj fp32[D]) -> residual int8[D+8].
     KO_RADD = "llama_rescale_add.cc.o"
@@ -462,12 +517,25 @@ def build():
         c_cs.release(1)
         c_out.release(1)
 
-    def w_qsplit(c_in, c_lo, c_hi, k):
-        x = c_in.acquire(1)
+    # k_proj / v_proj: same shape as w_q but N_TILES_K iters -> fp32 KV_DIM.
+    def w_kv(c_act, c_w, c_out, k):
+        a = c_act.acquire(1)
+        o = c_out.acquire(1)
+        for t in range_(N_TILES_K):
+            w = c_w.acquire(1)
+            k(a, w, o, _i32(t))
+            c_w.release(1)
+        c_act.release(1)
+        c_out.release(1)
+
+    def w_qkvcomb(c_qr, c_kvcs, c_lo, c_hi, k):
+        qr = c_qr.acquire(1)
+        kvcs = c_kvcs.acquire(1)
         lo = c_lo.acquire(1)
         hi = c_hi.acquire(1)
-        k(x, lo, hi)
-        c_in.release(1)
+        k(qr, kvcs, lo, hi)
+        c_qr.release(1)
+        c_kvcs.release(1)
         c_lo.release(1)
         c_hi.release(1)
 
@@ -489,14 +557,21 @@ def build():
         c_sc.release(1)
         c_out.release(1)
 
-    def w_attn(c_q, c_kv, c_out, k):
-        q = c_q.acquire(1)
-        kv = c_kv.acquire(1)
-        o = c_out.acquire(1)
-        k(q, kv, o)
-        c_q.release(1)
-        c_kv.release(1)
-        c_out.release(1)
+    # Co-located KV append + flowkv on one tile:
+    #   k_app(combined, cache_in -> cache_out)  -- writes slot[pos] on-chip
+    #   k_fk(combined, cache_out -> sv)         -- attends over the appended cache
+    # cache_out is BOTH read by flowkv and drained back (device-owned cache).
+    def w_attn(c_comb, c_kvin, c_kvout, c_sv, k_app, k_fk):
+        comb = c_comb.acquire(1)
+        kvin = c_kvin.acquire(1)
+        kvout = c_kvout.acquire(1)
+        sv = c_sv.acquire(1)
+        k_app(comb, kvin, kvout)
+        k_fk(comb, kvout, sv)
+        c_comb.release(1)
+        c_kvin.release(1)
+        c_kvout.release(1)
+        c_sv.release(1)
 
     def w_silu(c_g, c_u, c_out, k):
         g = c_g.acquire(1)
@@ -537,60 +612,41 @@ def build():
         Worker(
             w_rope, [of_qf.cons(), of_cs.cons(), of_qr.prod(), k_rope], tile=Tile(0, 4)
         ),
+        # k_proj / v_proj (h1 broadcast); fp32 out -> memtile kvcs join.
         Worker(
-            w_qsplit,
-            [of_qr.cons(), of_qchunks_lo.prod(), of_qchunks_hi.prod(), k_qsplit],
+            w_kv,
+            [of_h1.cons(), of_wk.cons(), kvcs_eps[0].prod(), k_kv],
+            tile=Tile(7, 2),
+            stack_size=PSK,
+        ),
+        Worker(
+            w_kv,
+            [of_h1.cons(), of_wv.cons(), kvcs_eps[1].prod(), k_kv],
+            tile=Tile(7, 3),
+            stack_size=PSK,
+        ),
+        Worker(
+            w_qkvcomb,
+            [of_qr.cons(), of_kvcs.cons(), of_comb_lo.prod(), of_comb_hi.prod(), k_qkvcomb],
             tile=Tile(0, 5),
         ),
-        # ---- 8 attn workers spread across cols 1-2 ----
-        Worker(
-            w_attn,
-            [qchunk_eps[0].cons(), of_kvs[0].cons(), svchunk_eps[0].prod(), k_fkv],
-            tile=Tile(1, 2),
-            stack_size=ATSK,
-        ),
-        Worker(
-            w_attn,
-            [qchunk_eps[1].cons(), of_kvs[1].cons(), svchunk_eps[1].prod(), k_fkv],
-            tile=Tile(1, 3),
-            stack_size=ATSK,
-        ),
-        Worker(
-            w_attn,
-            [qchunk_eps[2].cons(), of_kvs[2].cons(), svchunk_eps[2].prod(), k_fkv],
-            tile=Tile(1, 4),
-            stack_size=ATSK,
-        ),
-        Worker(
-            w_attn,
-            [qchunk_eps[3].cons(), of_kvs[3].cons(), svchunk_eps[3].prod(), k_fkv],
-            tile=Tile(1, 5),
-            stack_size=ATSK,
-        ),
-        Worker(
-            w_attn,
-            [qchunk_eps[4].cons(), of_kvs[4].cons(), svchunk_eps[4].prod(), k_fkv],
-            tile=Tile(2, 2),
-            stack_size=ATSK,
-        ),
-        Worker(
-            w_attn,
-            [qchunk_eps[5].cons(), of_kvs[5].cons(), svchunk_eps[5].prod(), k_fkv],
-            tile=Tile(2, 3),
-            stack_size=ATSK,
-        ),
-        Worker(
-            w_attn,
-            [qchunk_eps[6].cons(), of_kvs[6].cons(), svchunk_eps[6].prod(), k_fkv],
-            tile=Tile(2, 4),
-            stack_size=ATSK,
-        ),
-        Worker(
-            w_attn,
-            [qchunk_eps[7].cons(), of_kvs[7].cons(), svchunk_eps[7].prod(), k_fkv],
-            tile=Tile(2, 5),
-            stack_size=ATSK,
-        ),
+        # ---- 8 co-located append+flowkv workers (cols 1-2, rows 2-5) ----
+        *[
+            Worker(
+                w_attn,
+                [
+                    comb_eps[i].cons(),
+                    of_kvs[i].cons(),
+                    kvout_eps[i].prod(),
+                    svchunk_eps[i].prod(),
+                    k_append,
+                    k_fkv,
+                ],
+                tile=Tile(1 + i // 4, 2 + i % 4),
+                stack_size=ATSK,
+            )
+            for i in range(N_HEADS_KV)
+        ],
         # ---- Attention back ----
         Worker(
             w_svmerge,
@@ -684,6 +740,10 @@ def build():
         add_fill(of_wg.prod(), wblob, OFF_WG, WG_SLOT, N_TILES_G, WEIGHTS_BYTES)
         add_fill(of_wu.prod(), wblob, OFF_WU, WU_SLOT, N_TILES_U, WEIGHTS_BYTES)
         add_fill(of_wd.prod(), wblob, OFF_WD, WD_SLOT, N_TILES_D, WEIGHTS_BYTES)
+        add_fill(of_wk.prod(), wblob, OFF_WK, WK_SLOT, N_TILES_K, WEIGHTS_BYTES)
+        add_fill(of_wv.prod(), wblob, OFF_WV, WV_SLOT, N_TILES_V, WEIGHTS_BYTES)
+        # cos/sin for append's rope_k: same host cos/sin as rope (OFF_CS).
+        add_fill(kvcs_eps[2].prod(), wblob, OFF_CS, CS_PACK_BYTES, 1, WEIGHTS_BYTES)
 
         # 2 KV fills (4 heads each).
         add_fill(of_kv_lo.prod(), kvblob, 0, KV_HALF_BYTES, 1, KV_BYTES)
@@ -692,6 +752,14 @@ def build():
         out_tg = rt.task_group()
         tgs.append(out_tg)
         rt.drain(of_out.cons(), out, wait=True, task_group=out_tg)
+
+        # Device-owned cache: drain the updated cache back over kvblob.
+        kvout_lo_tg = rt.task_group()
+        tgs.append(kvout_lo_tg)
+        rt.drain(of_kvout_lo.cons(), kvblob, tap=strided_tap(KV_BYTES, 0, KV_HALF_BYTES, KV_HALF_BYTES, 1), wait=True, task_group=kvout_lo_tg)
+        kvout_hi_tg = rt.task_group()
+        tgs.append(kvout_hi_tg)
+        rt.drain(of_kvout_hi.cons(), kvblob, tap=strided_tap(KV_BYTES, KV_HALF_BYTES, KV_HALF_BYTES, KV_HALF_BYTES, 1), wait=True, task_group=kvout_hi_tg)
 
         for tg in tgs:
             rt.finish_task_group(tg)
