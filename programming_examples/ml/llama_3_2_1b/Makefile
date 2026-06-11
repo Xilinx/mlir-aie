@@ -213,6 +213,31 @@ run_kv_append: kv_append
 		-i ${BUILD}/insts_kv_append.bin \
 		-k MLIR_AIE
 
+# ---------- Stage 1b-i: KV-projection front half ----------
+KVPROJ_DEPS = ${BUILD}/llama_rmsnorm_int8_2048.cc.o \
+              ${BUILD}/llama_gemm_int8_srs_tiled_layer_mh.cc.o
+
+${BUILD}/aie_kvproj.mlir: ${srcdir}/aie2_kvproj.py
+	mkdir -p ${@D}
+	python3 $< > $@
+
+${BUILD}/final_kvproj.xclbin: ${BUILD}/aie_kvproj.mlir ${KVPROJ_DEPS}
+	mkdir -p ${@D}
+	cp ${BUILD}/llama_rmsnorm_int8_2048.cc.o ${BUILD}/llama_rmsnorm_int8.cc.o
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-xchesscc --no-xbridge \
+		--xclbin-name=${@F} \
+		--npu-insts-name=insts_kvproj.bin \
+		$(notdir $<)
+
+kvproj: ${BUILD}/final_kvproj.xclbin
+
+run_kvproj: kvproj
+	cd ${srcdir} && python3 test_kvproj.py \
+		-x ${BUILD}/final_kvproj.xclbin \
+		-i ${BUILD}/insts_kvproj.bin \
+		-k MLIR_AIE
+
 # ---------- full single-layer integration stub (Phase 1.9) ----------
 ${BUILD}/llama_layer_pt.cc.o: ${KDIR}/llama_layer_pt.cc
 	mkdir -p ${@D}

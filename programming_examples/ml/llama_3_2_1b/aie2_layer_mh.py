@@ -53,6 +53,7 @@ N_HEADS_KV = 8
 REP = N_HEADS_Q // N_HEADS_KV  # 4
 QD = N_HEADS_Q * HEAD_D  # 2048
 KVD_PER_HEAD = HEAD_D  # 64
+KV_DIM = N_HEADS_KV * HEAD_D  # 512 (k_proj / v_proj output dim)
 T = int(_os.environ.get("LLAMA_LAYER_T", "128"))
 N_TILE = 4
 
@@ -65,6 +66,17 @@ QCHUNK_BODY = REP * HEAD_D  # 256
 QCHUNK_TAIL = REP * 8  # 32
 QCHUNK_BYTES = QCHUNK_BODY + QCHUNK_TAIL  # 288
 QCHUNKS_HALF_BYTES = (N_HEADS_KV // 2) * QCHUNK_BYTES  # 1152 (4 chunks)
+
+# On-chip KV append: k_proj/v_proj emit fp32[KV_DIM]; per-KV-head fp32 slice.
+KFP_HEAD = HEAD_D * 4  # 256 B (64 fp32) per KV head
+KFP_ALL = N_HEADS_KV * KFP_HEAD  # 2048 (= KV_DIM fp32)
+CS_PACK_BYTES = HEAD_D * 2 * 2  # 256 (cos+sin bf16), shared across heads
+# kvcs (memtile join of kfp|vfp|cs): [kfp 2048 | vfp 2048 | cs 256] = 4352.
+KVCS_BYTES = 2 * KFP_ALL + CS_PACK_BYTES
+# Combined per-head chunk fed to a co-located append+flowkv tile:
+#   [ q_chunk 288 | k_fp 256 | v_fp 256 | cs 256 ] = 1056 B
+COMB_CHUNK_BYTES = QCHUNK_BYTES + 2 * KFP_HEAD + CS_PACK_BYTES  # 1056
+COMB_HALF_BYTES = (N_HEADS_KV // 2) * COMB_CHUNK_BYTES  # 4224 (4 chunks)
 
 # attn worker output: REP heads of HEAD_D each.
 SVCHUNK_BYTES = REP * HEAD_D  # 256
@@ -94,28 +106,39 @@ assert WQ_PREFIX % 64 == 0
 
 # Perchan slot layout per stage:
 #   [PREFIX | N_TILE*K i8 weights | N_TILE i32 bias | N_TILE fp32 w_scales]
+# k_proj/v_proj prefix: fp32out_acttail reads act_scale from the h1 tail, so
+# the weight prefix only needs the 64 B alignment pad (no scale fields used).
+WK_PREFIX = PREFIX_ALIGN
+WV_PREFIX = PREFIX_ALIGN
+
 WQ_SLOT = WQ_PREFIX + N_TILE * D + N_TILE * 4 + N_TILE * 4  # K=2048
 WO_SLOT = WO_PREFIX + N_TILE * QD + N_TILE * 4 + N_TILE * 4  # K=2048 (mh)
 WG_SLOT = WG_PREFIX + N_TILE * D + N_TILE * 4 + N_TILE * 4  # K=2048
 WU_SLOT = WU_PREFIX + N_TILE * D + N_TILE * 4 + N_TILE * 4  # K=2048
 WD_SLOT = WD_PREFIX + N_TILE * HD + N_TILE * 4 + N_TILE * 4  # K=8192
+WK_SLOT = WK_PREFIX + N_TILE * D + N_TILE * 4 + N_TILE * 4  # K=2048 (KV proj)
+WV_SLOT = WV_PREFIX + N_TILE * D + N_TILE * 4 + N_TILE * 4  # K=2048
 
 N_TILES_Q = QD // N_TILE  # 512 (was 16 for single-head)
 N_TILES_O = D // N_TILE  # 512
 N_TILES_G = HD // N_TILE  # 2048
 N_TILES_U = N_TILES_G
 N_TILES_D = D // N_TILE  # 512
+N_TILES_K = KV_DIM // N_TILE  # 128 (k_proj / v_proj)
+N_TILES_V = N_TILES_K
 
 WQ_TOTAL = N_TILES_Q * WQ_SLOT
 WO_TOTAL = N_TILES_O * WO_SLOT
 WG_TOTAL = N_TILES_G * WG_SLOT
 WU_TOTAL = N_TILES_U * WU_SLOT
 WD_TOTAL = N_TILES_D * WD_SLOT
+WK_TOTAL = N_TILES_K * WK_SLOT
+WV_TOTAL = N_TILES_V * WV_SLOT
 
 GAMMA_BYTES = D * 2  # bf16
 CS_BYTES = HEAD_D * 2 * 2  # cos + sin, bf16
 
-# Weights blob layout.
+# Weights blob layout. wk/wv appended after wd (keeps existing offsets stable).
 OFF_GAMMA_IN = 0
 OFF_WQ = OFF_GAMMA_IN + GAMMA_BYTES
 OFF_CS = OFF_WQ + WQ_TOTAL
@@ -125,7 +148,9 @@ OFF_GAMMA_POST = OFF_AF_SCALES + AF_SCALES_BYTES
 OFF_WG = OFF_GAMMA_POST + GAMMA_BYTES
 OFF_WU = OFF_WG + WG_TOTAL
 OFF_WD = OFF_WU + WU_TOTAL
-WEIGHTS_BYTES = OFF_WD + WD_TOTAL
+OFF_WK = OFF_WD + WD_TOTAL
+OFF_WV = OFF_WK + WK_TOTAL
+WEIGHTS_BYTES = OFF_WV + WV_TOTAL
 
 # KV cache blob layout: 8 KV heads sequentially. Phase 8c adds a 4-byte
 # T_used prefix at the start of each KV head's slot (read by the
