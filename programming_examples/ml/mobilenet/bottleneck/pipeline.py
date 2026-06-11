@@ -26,7 +26,6 @@ from bottleneck._common import (
     load_wts as _load_weights,
     layer_sf as _layer_sf,
     skip_sf as _skip_sf,
-    tile_kw,
     wts_buffer as _wts_buf,
 )
 from network_spec import block as nsblock
@@ -129,18 +128,17 @@ def build_3tile_pipeline(blk, act_in, sf, *, data_dir, tiles=None, skip_in=None)
         # L3 reads a forwarded skip path — caller passes skip_in already; we
         # only need its .cons() handle for this Worker.
         skip_h = skip_in.cons()
+    t = tiles.get if tiles else lambda k: None
     workers = [
-        Worker(l1_fn, [l1_in_h, of_12.prod(), l1_wts, k_l1], **tile_kw(tiles, "l1")),
-        Worker(
-            l2_fn, [of_12.cons(), of_23.prod(), l2_wts, k_l2], **tile_kw(tiles, "l2")
-        ),
+        Worker(l1_fn, [l1_in_h, of_12.prod(), l1_wts, k_l1], tile=t("l1")),
+        Worker(l2_fn, [of_12.cons(), of_23.prod(), l2_wts, k_l2], tile=t("l2")),
     ]
     if has_skip:
         workers.append(
             Worker(
                 l3_fn,
                 [of_23.cons(), skip_h, out_fifo.prod(), l3_wts, k_l3],
-                **tile_kw(tiles, "l3"),
+                tile=t("l3"),
             )
         )
     else:
@@ -148,7 +146,7 @@ def build_3tile_pipeline(blk, act_in, sf, *, data_dir, tiles=None, skip_in=None)
             Worker(
                 l3_fn,
                 [of_23.cons(), out_fifo.prod(), l3_wts, k_l3],
-                **tile_kw(tiles, "l3"),
+                tile=t("l3"),
             )
         )
     return out_fifo, workers
@@ -305,11 +303,12 @@ def build_bn12_2tile(blk, act_in, sf, *, data_dir, tiles=None):
         dw_tmp_prod.release(1)
         _pw()
 
+    t = tiles.get if tiles else lambda k: None
     workers = [
         Worker(
             bn12_l1_fn,
             [act_in.cons(), bn12_of_12.prod(), bn12_l1_wts, k_bn12_l1],
-            **tile_kw(tiles, "l1"),
+            tile=t("l1"),
         ),
         Worker(
             bn12_l23_fn,
@@ -322,7 +321,7 @@ def build_bn12_2tile(blk, act_in, sf, *, data_dir, tiles=None):
                 k_bn12_dw,
                 k_bn12_pw,
             ],
-            **tile_kw(tiles, "l23"),
+            tile=t("l23"),
         ),
     ]
     return act_bn12_out, workers
@@ -354,7 +353,9 @@ def pipeline_bottlenecks(
         tiles = p.get(name)
         skip_in = None
         if has_skip:
-            skip_in = act.cons(depth=6).forward(depth=2, **tile_kw(tiles, "mem_skip"))
+            skip_in = act.cons(depth=6).forward(
+                depth=2, tile=tiles.get("mem_skip") if tiles else None
+            )
             # Strip mem_skip so only l1/l2/l3 are passed to the builder.
             if tiles is not None:
                 tiles = {k: tiles[k] for k in ("l1", "l2", "l3")}

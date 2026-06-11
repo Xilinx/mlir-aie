@@ -48,7 +48,7 @@ class Worker(ObjectFifoEndpoint):
         Args:
             core_fn (Callable | None): The task to run on a core. If None, a busy-loop (`while(true): pass`) core will be generated.
             fn_args (list, optional): Pointers to arguments, which should include all context the core_fn needs to run. Defaults to [].
-            tile (Tile, optional): The compute tile for the Worker. Defaults to AnyComputeTile.
+            tile (Tile, optional): The compute tile for the Worker. Also accepts None (treated as AnyComputeTile). Defaults to AnyComputeTile.
             while_true (bool, optional): If true, will wrap the core_fn in a while(true) loop to ensure it runs until reconfiguration. Defaults to True.
             stack_size (int, optional): The stack_size in bytes to be allocated for the worker. Defaults to 1024 bytes.
             allocation_scheme (str, optional): The memory allocation scheme to use for the Worker, either 'basic-sequential' or 'bank-aware'. If None, defaults to bank-aware.
@@ -66,8 +66,8 @@ class Worker(ObjectFifoEndpoint):
         Raises:
             ValueError: Parameters are validated.
         """
-        if tile is AnyComputeTile:
-            tile = tile.copy()
+        if tile is None or tile is AnyComputeTile:
+            tile = AnyComputeTile.copy()
         if tile.tile_type is not None and tile.tile_type != AIETileType.CoreTile:
             raise ValueError(
                 f"Worker requires a compute tile, but got tile_type={tile.tile_type}"

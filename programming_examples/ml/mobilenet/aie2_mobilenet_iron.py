@@ -38,7 +38,6 @@ import pathlib
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
-from bottleneck._common import tile_kw
 from bottleneck.init import init_conv
 from bottleneck.regular import regular_bottlenecks
 from bottleneck.pipeline import pipeline_bottlenecks
@@ -168,7 +167,7 @@ def mobilenet_iron(use_placement=True):
         rt.fill(
             act_in.prod(depth=1),
             inp,
-            **tile_kw(shim.get("input")),
+            tile=shim.get("input"),
             task_group=tg1,
         )
         # bn13/14 L1+L3 weight chunks from the combined cascade buffer
@@ -180,7 +179,7 @@ def mobilenet_iron(use_placement=True):
                 fifo.prod(),
                 cascade_wts,
                 _wts_tap(off, sz),
-                **tile_kw(s),
+                tile=s,
                 task_group=tg1,
             )
         # Round-trip avgpool output through L3 (shim 30/40 hop). Reuse `inp`
@@ -203,7 +202,7 @@ def mobilenet_iron(use_placement=True):
             tap=_post_l1_scratch_tap,
             wait=True,
             task_group=tg1,
-            **tile_kw(shim.get("scratch_drain")),
+            tile=shim.get("scratch_drain"),
         )
         rt.finish_task_group(tg1)
 
@@ -218,7 +217,7 @@ def mobilenet_iron(use_placement=True):
             inp,
             tap=_post_l1_scratch_tap,
             task_group=tg2,
-            **tile_kw(shim.get("fc_fill")),
+            tile=shim.get("fc_fill"),
         )
         _post_fc_out_tap = TensorAccessPattern(
             (_inp_sz_i32,),
@@ -232,7 +231,7 @@ def mobilenet_iron(use_placement=True):
             tap=_post_fc_out_tap,
             wait=True,
             task_group=tg2,
-            **tile_kw(shim.get("fc_drain")),
+            tile=shim.get("fc_drain"),
         )
         rt.finish_task_group(tg2)
 
@@ -243,14 +242,14 @@ def mobilenet_iron(use_placement=True):
             inp,
             tap=_post_fc_out_tap,
             task_group=tg3,
-            **tile_kw(shim.get("fc_fill")),
+            tile=shim.get("fc_fill"),
         )
         rt.drain(
             act_out_of.cons(),
             out,
             wait=True,
             task_group=tg3,
-            **tile_kw(shim.get("fc_drain")),
+            tile=shim.get("fc_drain"),
         )
         rt.finish_task_group(tg3)
 

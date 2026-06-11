@@ -34,7 +34,6 @@ from bottleneck._common import (
     load_wts,
     layer_sf as _layer_sf,
     skip_sf as _skip_sf,
-    tile_kw,
 )
 from network_spec import block as nsblock
 
@@ -332,13 +331,14 @@ def build_cascade(blk, l3_get_sym, act_in, skip_in, sf, *, data_dir, tiles=None)
     )
 
     # Streaming weight fifos (Shim → MemTile → split → put/get tiles)
+    t = tiles.get if tiles else lambda k: None
     wts_l1_full = ObjectFifo(_ty_l1_full_wts, depth=1)
     wts_l1_put_h, wts_l1_get_h = wts_l1_full.cons().split(
         offsets=[0, _l1_full_wts_sz // 2],
         depths=[1, 1],
         obj_types=[_ty_l1_split_wts, _ty_l1_split_wts],
         repeat_counts=[_InH, _InH],
-        **tile_kw(tiles, "mem_l1"),
+        tile=t("mem_l1"),
     )
     wts_l3_full = ObjectFifo(_ty_l3_full_wts, depth=1)
     wts_l3_put_h, wts_l3_get_h = wts_l3_full.cons().split(
@@ -346,7 +346,7 @@ def build_cascade(blk, l3_get_sym, act_in, skip_in, sf, *, data_dir, tiles=None)
         depths=[1, 1],
         obj_types=[_ty_l3_split_wts, _ty_l3_split_wts],
         repeat_counts=[_InH, _InH],
-        **tile_kw(tiles, "mem_l3"),
+        tile=t("mem_l3"),
     )
 
     # L2 DW weights are static (compile-time bake-in)
@@ -377,7 +377,7 @@ def build_cascade(blk, l3_get_sym, act_in, skip_in, sf, *, data_dir, tiles=None)
     l1_get_cons = act_in.cons()
     # depth=6 on the cons handle lets the skip path buffer enough rows to
     # outlive the 5-tile cascade pipeline lag (l1_put → l1_get → l2 → l3_put → l3_get).
-    skip_fifo = skip_in.cons(depth=6).forward(depth=2, **tile_kw(tiles, "mem_skip"))
+    skip_fifo = skip_in.cons(depth=6).forward(depth=2, tile=t("mem_skip"))
 
     bws = [
         Worker(
@@ -394,7 +394,7 @@ def build_cascade(blk, l3_get_sym, act_in, skip_in, sf, *, data_dir, tiles=None)
                 _OC8,
                 s1,
             ],
-            **tile_kw(tiles, "l1_put"),
+            tile=t("l1_put"),
         ),
         Worker(
             _l1_get_fn,
@@ -411,7 +411,7 @@ def build_cascade(blk, l3_get_sym, act_in, skip_in, sf, *, data_dir, tiles=None)
                 _OC8,
                 s1,
             ],
-            **tile_kw(tiles, "l1_get"),
+            tile=t("l1_get"),
         ),
         Worker(
             _l2_fn,
@@ -425,7 +425,7 @@ def build_cascade(blk, l3_get_sym, act_in, skip_in, sf, *, data_dir, tiles=None)
                 _L1_OutC,
                 s2,
             ],
-            **tile_kw(tiles, "l2"),
+            tile=t("l2"),
         ),
         Worker(
             _l3_put_fn,
@@ -441,7 +441,7 @@ def build_cascade(blk, l3_get_sym, act_in, skip_in, sf, *, data_dir, tiles=None)
                 _OC8_out,
                 s3,
             ],
-            **tile_kw(tiles, "l3_put"),
+            tile=t("l3_put"),
         ),
         Worker(
             _l3_get_fn,
@@ -460,7 +460,7 @@ def build_cascade(blk, l3_get_sym, act_in, skip_in, sf, *, data_dir, tiles=None)
                 s3,
                 s_add,
             ],
-            **tile_kw(tiles, "l3_get"),
+            tile=t("l3_get"),
         ),
     ]
     # Cascade flows: L1 put→get and L3 put→get share streams between adjacent tiles.

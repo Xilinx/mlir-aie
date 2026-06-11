@@ -22,7 +22,7 @@ from aie.iron.controlflow import range_
 from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
 from aie.iron.device import AnyMemTile
 
-from bottleneck._common import i8, load_wts, tile_kw
+from bottleneck._common import i8, load_wts
 from network_spec import block as nsblock
 
 
@@ -154,7 +154,7 @@ def post_l1(act_in, sf, *, placement=None, data_dir):
         # loop intact with 1 call site). The dynamic lowering uses runtime
         # modulo indexing, preserving the loop structure.
         dynamic_objfifo_lowering=True,
-        **tile_kw(placement, "compute"),
+        tile=placement["compute"] if placement else None,
     )
 
     return [w_post_l1], act_out_post_avgpool_shim

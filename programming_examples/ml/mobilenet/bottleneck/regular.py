@@ -30,7 +30,6 @@ from bottleneck._common import (
     u8 as _u8,
     layer_sf as _layer_sf,
     skip_sf as _skip_sf,
-    tile_kw,
     wts_buffer as _wts_buffer,
 )
 from network_spec import block as nsblock
@@ -270,7 +269,7 @@ def build_3layer(blk, act_in, sf, *, data_dir, tile=None):
             k_l3,
         ],
         while_true=False,
-        **tile_kw(tile),
+        tile=tile,
     )
     return out_fifo, worker
 
@@ -386,7 +385,7 @@ def build_2layer_skip(blk, act_in, sf, *, data_dir, tile=None):
             k_skip,
         ],
         while_true=False,
-        **tile_kw(tile),
+        tile=tile,
     )
     return out_fifo, worker
 
@@ -473,14 +472,12 @@ def build_fused_pair(
     out_fifo = ObjectFifo(_i8((in_w, 1, b_out_c)), depth=out_depth)
 
     # Self-loop fifos (no synchronization — single core).
-    _dt = tile_kw(alloc_tile, kw="delegate_tile")
-
     def _of(ch, depth):
         return ObjectFifo(
             _u8((in_w, 1, ch)),
             depth=depth,
             disable_synchronization=True,
-            **_dt,
+            delegate_tile=alloc_tile,
         )
 
     f_a12 = _of(a_dw_ch, 3)
@@ -489,7 +486,7 @@ def build_fused_pair(
         _i8((in_w, 1, a_out_c)),
         depth=2,
         disable_synchronization=True,
-        **_dt,
+        delegate_tile=alloc_tile,
     )
     f_b12 = _of(b_dw_ch, 3)
     f_b23 = _of(b_dw_ch, 1)
@@ -666,7 +663,7 @@ def build_fused_pair(
             kb_skip,
         ],
         while_true=False,
-        **tile_kw(compute_tile),
+        tile=compute_tile,
     )
     return out_fifo, worker
 

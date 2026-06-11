@@ -19,7 +19,7 @@ import numpy as np
 from aie.iron import Buffer, Kernel, ObjectFifo, Worker
 from aie.iron.controlflow import range_
 
-from bottleneck._common import i8, u8, load_wts, tile_kw
+from bottleneck._common import i8, u8, load_wts
 from network_spec import block as nsblock
 
 
@@ -135,7 +135,7 @@ def init_conv(sf, *, placement=None, data_dir):
             init_OutC,
             init_scaleFactor,
         ],
-        **tile_kw(placement),
+        tile=placement,
     )
 
     return [w_init], act_in, act_init_out

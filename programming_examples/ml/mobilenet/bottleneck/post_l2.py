@@ -21,7 +21,7 @@ from aie.iron.controlflow import range_
 from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
 from aie.iron.device import AnyMemTile
 
-from bottleneck._common import i8, load_wts, tile_kw
+from bottleneck._common import i8, load_wts
 from network_spec import block as nsblock
 
 
@@ -76,7 +76,7 @@ def post_l2(act_in, sf, *, placement=None, data_dir):
         offsets=[i * fc_out_per_tile for i in range(n_fc_tiles)],
         depths=[2] * n_fc_tiles,
         obj_types=[np.ndarray[(co,), np.dtype[np.uint16]]] * n_fc_tiles,
-        **tile_kw(placement, "join_memtile"),
+        tile=placement["join_memtile"] if placement else None,
     )
 
     def _u16(shape):

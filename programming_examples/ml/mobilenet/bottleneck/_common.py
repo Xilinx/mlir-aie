@@ -63,21 +63,3 @@ def layer_sf(blk, sf, idx):
 def skip_sf(blk, sf):
     """Scale factor for the skip-add (only valid when blk.skip is True)."""
     return sf[sf_key(blk.name)][blk.skip_sf_key]
-
-
-def tile_kw(tile_or_dict, dict_key=None, *, kw="tile"):
-    """Build a keyword-arg dict for optional tile placement.
-
-    Returns ``{kw: tile}`` when a tile is provided, or ``{}`` when ``None``.
-    Intended for ``**tile_kw(...)`` splat into Worker / ObjectFifo calls so
-    that placement is only passed when explicitly requested.
-
-    Args:
-        tile_or_dict: A Tile, a dict of tiles, or None.
-        dict_key: If *tile_or_dict* is a dict, extract this key.
-        kw: Keyword name to use (default ``"tile"``).
-    """
-    if tile_or_dict is None:
-        return {}
-    tile = tile_or_dict[dict_key] if dict_key is not None else tile_or_dict
-    return {kw: tile}
