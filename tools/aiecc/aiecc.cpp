@@ -217,6 +217,21 @@ static cl::opt<int> coresPerCol(
     cl::desc("Limit cores per column for tile placement (-1 = no limit)"),
     cl::init(-1), cl::cat(aieCompilerOptions));
 
+static cl::opt<xilinx::AIE::PlacerType> placerType(
+    "placer", cl::desc("Placement algorithm to use"),
+    cl::values(clEnumValN(xilinx::AIE::PlacerType::SequentialPlacer,
+                          "sequential_placer",
+                          "Sequential column-major placement"),
+               clEnumValN(xilinx::AIE::PlacerType::SAPlacer, "sa_placer",
+                          "Simulated annealing placement")),
+    cl::init(xilinx::AIE::PlacerType::SequentialPlacer),
+    cl::cat(aieCompilerOptions));
+
+static cl::opt<int>
+    saSeed("sa-seed",
+           cl::desc("Random seed for SA placer (0 = non-deterministic)"),
+           cl::init(1), cl::cat(aieCompilerOptions));
+
 static cl::opt<bool>
     generateNpuInsts("aie-generate-npu-insts",
                      cl::desc("Generate NPU instruction stream"),
@@ -1360,7 +1375,9 @@ static LogicalResult runPlacementPipeline(ModuleOp moduleOp,
 
   OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
   xilinx::AIE::AIEPlaceTilesOptions placeTilesOpts;
+  placeTilesOpts.clPlacerType = placerType;
   placeTilesOpts.clCoresPerCol = coresPerCol;
+  placeTilesOpts.clSASeed = saSeed;
   devicePm.addPass(xilinx::AIE::createAIEPlaceTilesPass(placeTilesOpts));
 
   if (verbose) {
