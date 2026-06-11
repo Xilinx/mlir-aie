@@ -194,4 +194,58 @@ void llama_rmsnorm_int8_dyn(int8_t *restrict x, bfloat16 *restrict gamma,
   event1();
 }
 
+// Activation-tail variant of the dynamic-output rmsnorm. Identical math to
+// llama_rmsnorm_int8_dyn, but act_scale_in is read from the INPUT buffer tail
+// x[kCols..kCols+4] (the per-token residual scale written by the upstream
+// rescale-add), instead of a kernel argument. Mirrors the gemm acttail
+// pattern (...gate_acttail reads act + kK). Caller must allocate BOTH x and y
+// as int8[kCols + 8].
+void llama_rmsnorm_int8_dyn_acttail(int8_t *restrict x, bfloat16 *restrict gamma,
+                                    int8_t *restrict y) {
+  event0();
+
+  constexpr int kCols = LLAMA_RMSNORM_COLS;
+
+  float act_scale_in;
+  memcpy(&act_scale_in, x + kCols, 4);
+
+  int32_t sum_sq_i32 = 0;
+  for (int i = 0; i < kCols; i++) {
+    int32_t xi = x[i];
+    sum_sq_i32 += xi * xi;
+  }
+  float var = (float)sum_sq_i32 * act_scale_in * act_scale_in / (float)kCols;
+  float inv_rms = sw_invsqrt(var + kEps);
+  float pre = act_scale_in * inv_rms;
+
+  float absmax = 0.0f;
+  for (int i = 0; i < kCols; i++) {
+    float xf = (float)x[i];
+    float gf = (float)gamma[i];
+    float vf = xf * pre * gf;
+    float a = vf >= 0.0f ? vf : -vf;
+    if (a > absmax)
+      absmax = a;
+  }
+
+  if (absmax < 1e-12f)
+    absmax = 1e-12f;
+  float scale_dyn = absmax * (1.0f / 127.0f);
+  float inv_dyn = sw_recip(scale_dyn);
+  float combined = pre * inv_dyn;
+
+  for (int i = 0; i < kCols; i++) {
+    float xf = (float)x[i];
+    float gf = (float)gamma[i];
+    float vf = xf * combined * gf;
+    y[i] = round_to_i8(vf);
+  }
+
+  memcpy(y + kCols, &scale_dyn, 4);
+  int32_t zero = 0;
+  memcpy(y + kCols + 4, &zero, 4);
+
+  event1();
+}
+
 } // extern "C"

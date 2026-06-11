@@ -221,21 +221,42 @@ def pack_blobs(layer):
 
 
 def run_one_seed(seed: int, opts, lut_exp, lut_silu, npu_kernel) -> int:
+    import struct
+
+    from numpy_layer_mh import requant
+
     rng = np.random.default_rng(seed)
     layer = gen_layer_mh(rng)
     layer["lut_exp"] = lut_exp
     layer["lut_silu"] = lut_silu
 
-    x = rng.integers(-32, 33, size=D, dtype=np.int8)
-    y_ref, scales = numpy_layer_mh_forward(x, layer)
+    # Phase B residual_dyn: the residual stream is int8 + a per-token fp32
+    # scale carried in the buffer tail. Seed a per-token-quantized residual.
+    x_fp = rng.uniform(-1.6, 1.6, size=D).astype(np.float32)
+    res_scale = np.float32(np.maximum(np.abs(x_fp).max(), 1e-12) / 127.0)
+    x_i8 = requant(x_fp, np.float32(1.0) / res_scale)
+
+    # residual_dyn=True exercises the new per-token residual path; attn_perslot
+    # =False keeps the legacy per-head-scalar exp-LUT attention that the device
+    # flowkv_mh still implements (the KV per-slot fix is a separate follow-up),
+    # so this test validates the residual change in isolation, bit-exact.
+    (xo_i8, xo_scale), scales = numpy_layer_mh_forward(
+        (x_i8, res_scale), layer, residual_dyn=True, attn_perslot=False
+    )
+    y_ref = xo_i8
     layer["scales"] = scales
 
     wblob, kvblob = pack_blobs(layer)
 
-    x_t = iron.tensor(x, dtype=np.int8)
+    # xin buffer is int8[D+8]: body + 4 B res_scale + 4 B pad.
+    xin = np.zeros(D + 8, dtype=np.int8)
+    xin[:D] = x_i8
+    xin[D : D + 4] = np.frombuffer(np.float32(res_scale).tobytes(), dtype=np.int8)
+
+    x_t = iron.tensor(xin, dtype=np.int8)
     w_t = iron.tensor(wblob, dtype=np.int8)
     kv_t = iron.tensor(kvblob, dtype=np.int8)
-    o_t = iron.zeros([D], dtype=np.int8)
+    o_t = iron.zeros([D + 8], dtype=np.int8)
     rc = DefaultNPURuntime.run_test(
         npu_kernel,
         [x_t, w_t, kv_t, o_t],
@@ -247,19 +268,26 @@ def run_one_seed(seed: int, opts, lut_exp, lut_silu, npu_kernel) -> int:
         print(f"seed {seed}: NPU dispatch returned {rc}", file=sys.stderr)
         return rc
     o_t.to("cpu")
-    y_dev = o_t.numpy()
+    out_full = o_t.numpy()
+    y_dev = out_full[:D]
+    dev_scale = struct.unpack("<f", out_full[D : D + 4].tobytes())[0]
 
     diff = y_dev.astype(np.int32) - y_ref.astype(np.int32)
     n_mismatch = int((diff != 0).sum())
-    if n_mismatch == 0:
+    scale_match = struct.pack("<f", dev_scale) == struct.pack("<f", np.float32(xo_scale))
+    if n_mismatch == 0 and scale_match:
         print(
-            f"seed {seed}: BIT-EXACT  (sat={int((y_ref==127).sum()+(y_ref==-128).sum())}/{D})"
+            f"seed {seed}: BIT-EXACT  (sat={int((y_ref==127).sum()+(y_ref==-128).sum())}/{D}"
+            f"  scale={dev_scale:.10g})"
         )
         return 0
     # diagnostic
-    max_abs = int(np.abs(diff).max())
+    max_abs = int(np.abs(diff).max()) if n_mismatch else 0
     idx = np.where(diff != 0)[0][:10]
-    print(f"seed {seed}: FAIL  mismatch={n_mismatch}/{D}  max|d|={max_abs}")
+    print(
+        f"seed {seed}: FAIL  mismatch={n_mismatch}/{D}  max|d|={max_abs}  "
+        f"scale_match={scale_match} dev_scale={dev_scale:.10g} ref_scale={float(xo_scale):.10g}"
+    )
     for i in idx:
         print(f"  i={i}: dev={int(y_dev[i])} ref={int(y_ref[i])}")
     return 1

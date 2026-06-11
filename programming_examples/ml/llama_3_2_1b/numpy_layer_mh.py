@@ -29,7 +29,7 @@ from aie2_layer_d2048 import (
     GATE_INV_OUT_SCALE,
 )
 from test_rmsnorm_int8 import numpy_rmsnorm_int8
-from test_rmsnorm_int8_dyn import numpy_rmsnorm_int8_dyn
+from test_rmsnorm_int8_dyn import numpy_rmsnorm_int8_dyn, sw_recip
 from test_rope_int8 import numpy_rope_dyn
 from test_flowkv import numpy_attention, EXP_QUANT_SCALE
 from test_silu_mul_int8 import numpy_silu_mul
@@ -55,6 +55,15 @@ def requant(fp, inv):
     s = fp * np.float32(inv)
     r = np.where(s >= 0, np.floor(s + np.float32(0.5)), np.ceil(s - np.float32(0.5)))
     return r.clip(-128, 127).astype(np.int8)
+
+
+def _dyn_scale(fp):
+    """Per-token dynamic scale, bit-identical to the device rescale-add kernel:
+    absmax (fp32, 1e-12 floor) * (1.0f/127.0f). Using float64 /127.0 diverges
+    by ~1 ULP and flips knife-edge requant roundings, so keep everything fp32
+    (matches the dyn-rmsnorm HW mirror in test_rmsnorm_int8_dyn)."""
+    absmax = np.float32(max(float(np.abs(fp).max()), 1e-12))
+    return np.float32(absmax * np.float32(1.0 / 127.0))
 
 
 def attention_perslot(q_i8, k_i8, v_i8, head_dim, t, q_scale, k_slot_scales,
@@ -270,7 +279,7 @@ def gen_layer_mh(rng: np.random.Generator) -> dict:
 
 
 def numpy_layer_mh_forward(x, layer, position=None, residual_fp32=False,
-                           residual_dyn=False):
+                           residual_dyn=False, attn_perslot=None):
     """Multi-head GQA single-layer forward + per-Q-head scale calibration.
 
     Returns (x_out, scales) where scales is a dict packing every
@@ -433,6 +442,13 @@ def numpy_layer_mh_forward(x, layer, position=None, residual_fp32=False,
     #    T slots (Phase 7 / 8a behavior, preserves BIT-EXACT for
     #    random-fixture tests).
     t_used = (position + 1) if position is not None else T
+    # attn_perslot selects the per-cache-slot-scale fp32-softmax attention
+    # (the KV-fix path). It defaults to follow residual_dyn so the quality
+    # bench gets both fixes, but is decoupled so the device single-layer test
+    # (whose flowkv_mh is still the legacy per-head-scalar exp-LUT kernel) can
+    # validate the residual fix in isolation with attn_perslot=False.
+    if attn_perslot is None:
+        attn_perslot = residual_dyn
     sv_out_scales = np.zeros(N_HEADS_Q, dtype=np.float32)
     sv_inv_out_scales = np.zeros(N_HEADS_Q, dtype=np.float32)
     sv_i8_per_head = []
@@ -441,7 +457,7 @@ def numpy_layer_mh_forward(x, layer, position=None, residual_fp32=False,
         q_h = qr[h_q * HEAD_DIM : (h_q + 1) * HEAD_DIM]
         k_slice = kcaches[kvh][: t_used * HEAD_DIM]
         v_slice = vcaches[kvh][: t_used * HEAD_DIM]
-        if residual_dyn:
+        if attn_perslot:
             # Per-slot-scale attention: each cached position dequantized by
             # its own k/v scale (fixes the per-head-scalar KV bug).
             ksl = layer["k_scales_slot"][kvh]
@@ -517,8 +533,12 @@ def numpy_layer_mh_forward(x, layer, position=None, residual_fp32=False,
         # per-token residual scale. (Device: o_proj emits dynamic int8+scale,
         # rescale-add kernel reconstructs both and requants.)
         x1_fp = x_resid_fp + op_fp
-        x1_scale = np.float32(np.maximum(np.abs(x1_fp).max(), 1e-12) / 127.0)
-        x1_i8 = requant(x1_fp, np.float32(1.0) / x1_scale)
+        # Scale computed EXACTLY as the device rescale-add kernel:
+        # absmax (fp32, 1e-12 floor) * (1.0f/127.0f), inverse via sw_recip.
+        # The /127.0-in-float64 form diverges by ~1 ULP and flips dozens of
+        # knife-edge requant roundings (matches the dyn-rmsnorm HW mirror).
+        x1_scale = _dyn_scale(x1_fp)
+        x1_i8 = requant(x1_fp, np.float32(sw_recip(x1_scale)))
         h2, act_scale2 = numpy_rmsnorm_int8_dyn(x1_i8, gamma_post, float(x1_scale))
     elif residual_fp32:
         x1 = x_resid_fp + op_fp  # fp32 residual
@@ -577,9 +597,14 @@ def numpy_layer_mh_forward(x, layer, position=None, residual_fp32=False,
             * np.float32(down_act_scale)
             * wd_sc.astype(np.float32)
         )
-        xo_fp = x1_fp + df_fp
-        xo_scale = np.float32(np.maximum(np.abs(xo_fp).max(), 1e-12) / 127.0)
-        xo_i8 = requant(xo_fp, np.float32(1.0) / xo_scale)
+        # The device add2 reconstructs the residual from the int8+scale that
+        # flowed through the of_x1 fifo (x1_i8 * x1_scale), NOT the exact
+        # pre-quant x1_fp. Mirror that: reconstruct from the quantized x1.
+        x1_resid_fp = x1_i8.astype(np.float32) * np.float32(x1_scale)
+        xo_fp = x1_resid_fp + df_fp
+        # Scale computed EXACTLY as the device rescale-add kernel (see add1).
+        xo_scale = _dyn_scale(xo_fp)
+        xo_i8 = requant(xo_fp, np.float32(sw_recip(xo_scale)))
         x_out = (xo_i8, float(xo_scale))  # (int8[D], fp32) per-token residual
     elif residual_fp32:
         df_acc = wd_i8.astype(np.int32) @ sf.astype(np.int32) + bd
