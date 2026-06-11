@@ -96,6 +96,10 @@ def int8_chain_next_token(model, layers, cos_lut, sin_lut, token_ids,
             layer["vcaches"][h] = np.zeros_like(layer["vcaches"][h])
         layer["k_scales"][:] = 1e-6
         layer["v_scales"][:] = 1e-6
+        # Reset per-slot KV scales too (per-position; created lazily).
+        if "k_scales_slot" in layer:
+            layer["k_scales_slot"][:] = 1e-6
+            layer["v_scales_slot"][:] = 1e-6
 
     # Process each token through the layers. The last token's hidden
     # output -> lm_head -> argmax = next token.

@@ -57,6 +57,29 @@ def requant(fp, inv):
     return r.clip(-128, 127).astype(np.int8)
 
 
+def attention_perslot(q_i8, k_i8, v_i8, head_dim, t, q_scale, k_slot_scales,
+                      v_slot_scales, inv_out_scale):
+    """Per-cache-slot-scale attention (the correct multi-token decode path).
+
+    Each cached position is dequantized by ITS OWN k/v scale, fixing the
+    per-head-scalar bug where the whole cache was dequantized with the latest
+    token's scale. fp32 softmax (no exp-LUT) — this defines the NEW on-device
+    target (the flowkv kernel + KV fifo format must carry a per-slot scale).
+    q_i8: (head_dim,) int8; k_i8/v_i8: (t*head_dim,) int8; *_slot_scales: (t,).
+    Returns int8[head_dim] at inv_out_scale.
+    """
+    qf = q_i8.astype(np.float32) * np.float32(q_scale)
+    k_mat = k_i8.astype(np.float32).reshape(t, head_dim) * k_slot_scales[:t, None]
+    v_mat = v_i8.astype(np.float32).reshape(t, head_dim) * v_slot_scales[:t, None]
+    scale = np.float32(1.0) / np.sqrt(np.float32(head_dim))
+    scores = (k_mat @ qf) * scale  # (t,)
+    scores = scores - scores.max()
+    e = np.exp(scores)
+    probs = e / e.sum()
+    sv = probs @ v_mat  # (head_dim,)
+    return requant(sv, np.float32(inv_out_scale)), sv.astype(np.float32)
+
+
 def gen_real_layer_mh(L: int, data_dir, rng: np.random.Generator) -> dict:
     """Phase 7a real-weight loader: full Q_DIM/KV_DIM Llama 3.2 1B weights
     sliced into the 8 KV-head layout the mh xclbin expects. KV cache stays
@@ -348,6 +371,19 @@ def numpy_layer_mh_forward(x, layer, position=None, residual_fp32=False,
             kh[:half] = x1 * cosf[:half] - x2 * sinf[:half]
             kh[half:] = x2 * cosf[half:] + x1 * sinf[half:]
             k_rope[h * HEAD_DIM : (h + 1) * HEAD_DIM] = kh
+        # Per-slot scale storage (per position per head). Needed for correct
+        # multi-token decode: each cached position must be dequantized by ITS
+        # OWN scale, not the latest token's (the per-head-scalar k/v_scales
+        # bug). Lazily created; (N_HEADS_KV, T).
+        k_scales_slot = layer.get("k_scales_slot")
+        if k_scales_slot is None:
+            k_scales_slot = np.full((N_HEADS_KV, T), 1e-6, dtype=np.float32)
+            v_scales_slot = np.full((N_HEADS_KV, T), 1e-6, dtype=np.float32)
+            layer["k_scales_slot"] = k_scales_slot
+            layer["v_scales_slot"] = v_scales_slot
+        else:
+            v_scales_slot = layer["v_scales_slot"]
+
         # Per-KV-head dynamic quant + cache append at slot `position`.
         for h in range(N_HEADS_KV):
             kh = k_rope[h * HEAD_DIM : (h + 1) * HEAD_DIM]
@@ -356,6 +392,8 @@ def numpy_layer_mh_forward(x, layer, position=None, residual_fp32=False,
             vs = float(np.maximum(np.abs(vh).max(), 1e-12)) / 127.0
             k_scales[h] = np.float32(ks)
             v_scales[h] = np.float32(vs)
+            k_scales_slot[h, position] = np.float32(ks)
+            v_scales_slot[h, position] = np.float32(vs)
             kcaches[h][position * HEAD_DIM : (position + 1) * HEAD_DIM] = requant(
                 kh, np.float32(1.0) / np.float32(ks)
             )
@@ -399,6 +437,26 @@ def numpy_layer_mh_forward(x, layer, position=None, residual_fp32=False,
         q_h = qr[h_q * HEAD_DIM : (h_q + 1) * HEAD_DIM]
         k_slice = kcaches[kvh][: t_used * HEAD_DIM]
         v_slice = vcaches[kvh][: t_used * HEAD_DIM]
+        if residual_dyn:
+            # Per-slot-scale attention: each cached position dequantized by
+            # its own k/v scale (fixes the per-head-scalar KV bug).
+            ksl = layer["k_scales_slot"][kvh]
+            vsl = layer["v_scales_slot"][kvh]
+            # First pass to derive this head's sv_out_scale.
+            _, sv_fp_h = attention_perslot(
+                q_h, k_slice, v_slice, HEAD_DIM, t_used,
+                float(q_out_scales[h_q]), ksl, vsl, 1.0,
+            )
+            s = float(np.maximum(np.abs(sv_fp_h).max(), 1e-12)) / 127.0
+            sv_out_scales[h_q] = np.float32(s)
+            sv_inv_out_scales[h_q] = np.float32(1.0) / np.float32(s)
+            sv_i8, _ = attention_perslot(
+                q_h, k_slice, v_slice, HEAD_DIM, t_used,
+                float(q_out_scales[h_q]), ksl, vsl,
+                float(sv_inv_out_scales[h_q]),
+            )
+            sv_i8_per_head.append(sv_i8)
+            continue
         sv_fp_h = compute_sv_fp(
             q_h,
             k_slice,
