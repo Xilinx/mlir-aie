@@ -27,7 +27,7 @@
 // RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-txn-cpp \
 // RUN:   --txn-cpp-name=%t.h --no-compile --no-link --verbose %s 2>&1 | FileCheck %s
 
-// CHECK: NPU lowering pipeline completed successfully
+// CHECK: Wrote C++ TXN code to:
 
 // Also test unified compilation (XCLBIN + TXN from same MLIR):
 // RUN: aiecc --no-xchesscc --no-xbridge --peano %PEANO_INSTALL_DIR \
@@ -35,7 +35,7 @@
 // RUN:   --aie-generate-txn-cpp --txn-cpp-name=%t_unified.h \
 // RUN:   --verbose %s 2>&1 | FileCheck %s --check-prefix=UNIFIED
 
-// UNIFIED: NPU lowering pipeline completed successfully
+// UNIFIED: Wrote C++ TXN code to:
 
 module {
   aie.device(npu2) {
@@ -68,7 +68,7 @@ module {
       aie.objectfifo.release @of_in(Consume, 1)
       aie.objectfifo.release @of_out(Produce, 1)
       aie.end
-    } {link_with = ""}
+    }
 
     // Runtime sequence with SSA parameters, SCF loops, and dynamic DMA
     aie.runtime_sequence(%in : memref<16xi32>, %out : memref<16xi32>, %n : i32) {
