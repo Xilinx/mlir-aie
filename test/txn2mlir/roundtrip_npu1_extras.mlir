@@ -22,7 +22,8 @@
 // CHECK: %[[RNUM:.+]] = arith.constant 1 : i32
 // CHECK: aiex.npu.sync(%[[COL]], %[[ROW]], %[[DIR]], %[[CHAN]], %[[CNUM]], %[[RNUM]])
 // CHECK: aiex.npu.load_pdi {address = 305419896 : ui64, id = 7 : i32, size = 4096 : i32}
-// CHECK: aiex.npu.address_patch {addr = 123456 : ui32, arg_idx = 3 : i32, arg_plus = 4 : i32}
+// CHECK: %[[AP0:.+]] = arith.constant 4 : i32
+// CHECK: aiex.npu.address_patch(%[[AP0]] : i32) {addr = 123456 : ui32, arg_idx = 3 : i32}
 // CHECK: aiex.npu.preempt {level = 2 : ui8}
 // CHECK: aiex.npu.write32 {address = 2224128 : ui32, value = 2 : ui32}
 // CHECK: aiex.npu.blockwrite
@@ -38,7 +39,8 @@ module {
       %row_num = arith.constant 1 : i32
       aiex.npu.sync(%col, %row, %dir, %chan, %col_num, %row_num) : i32, i32, i32, i32, i32, i32
       aiex.npu.load_pdi {id = 7 : i32, size = 4096 : i32, address = 305419896 : ui64}
-      aiex.npu.address_patch {addr = 123456 : ui32, arg_idx = 3 : i32, arg_plus = 4 : i32}
+      %arg_plus = arith.constant 4 : i32
+      aiex.npu.address_patch(%arg_plus : i32) {addr = 123456 : ui32, arg_idx = 3 : i32}
       aiex.npu.preempt {level = 2 : ui8}
       aiex.npu.write32 {address = 2224128 : ui32, value = 2 : ui32}
       %0 = memref.get_global @blockwrite_data : memref<2xi32>

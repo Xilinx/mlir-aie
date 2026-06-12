@@ -18,9 +18,9 @@
 
 // CHECK-LABEL: aie.runtime_sequence
 // CHECK-SAME: memref<2x256xi32>
-// CHECK: aiex.npu.address_patch
+// CHECK: %[[AP0:.+]] = arith.constant 1024 : i32
+// CHECK: aiex.npu.address_patch(%[[AP0]] : i32)
 // CHECK-SAME: arg_idx = 0 : i32
-// CHECK-SAME: arg_plus = 1024 : i32
 module {
   aie.device(npu1) {
     aie.runtime_sequence(%arg0: memref<2x256xi32>) {
@@ -43,9 +43,9 @@ module {
 
 // CHECK-LABEL: aie.runtime_sequence
 // CHECK-SAME: memref<4x8x32xi32>
-// CHECK: aiex.npu.address_patch
+// CHECK: %[[AP1:.+]] = arith.constant 2432 : i32
+// CHECK: aiex.npu.address_patch(%[[AP1]] : i32)
 // CHECK-SAME: arg_idx = 0 : i32
-// CHECK-SAME: arg_plus = 2432 : i32
 module {
   aie.device(npu1) {
     aie.runtime_sequence(%arg0: memref<4x8x32xi32>) {
@@ -69,9 +69,9 @@ module {
 
 // CHECK-LABEL: aie.runtime_sequence
 // CHECK-SAME: memref<2x4x8x32xi32>
-// CHECK: aiex.npu.address_patch
+// CHECK: %[[AP2:.+]] = arith.constant 6528 : i32
+// CHECK: aiex.npu.address_patch(%[[AP2]] : i32)
 // CHECK-SAME: arg_idx = 0 : i32
-// CHECK-SAME: arg_plus = 6528 : i32
 module {
   aie.device(npu1) {
     aie.runtime_sequence(%arg0: memref<2x4x8x32xi32>) {
@@ -94,9 +94,9 @@ module {
 
 // CHECK-LABEL: aie.runtime_sequence
 // CHECK-SAME: memref<2x512xbf16>
-// CHECK: aiex.npu.address_patch
+// CHECK: %[[AP3:.+]] = arith.constant 1024 : i32
+// CHECK: aiex.npu.address_patch(%[[AP3]] : i32)
 // CHECK-SAME: arg_idx = 0 : i32
-// CHECK-SAME: arg_plus = 1024 : i32
 module {
   aie.device(npu1) {
     aie.runtime_sequence(%arg0: memref<2x512xbf16>) {
@@ -120,9 +120,9 @@ module {
 
 // CHECK-LABEL: aie.runtime_sequence
 // CHECK-SAME: memref<2x4x256xi32>
-// CHECK: aiex.npu.address_patch
+// CHECK: %[[AP4:.+]] = arith.constant 6144 : i32
+// CHECK: aiex.npu.address_patch(%[[AP4]] : i32)
 // CHECK-SAME: arg_idx = 0 : i32
-// CHECK-SAME: arg_plus = 6144 : i32
 module {
   aie.device(npu1) {
     aie.runtime_sequence(%arg0: memref<2x4x256xi32>) {

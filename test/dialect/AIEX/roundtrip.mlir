@@ -33,10 +33,12 @@ aie.device(npu1) {
 // -----
 
 // CHECK: aie.device
-// CHECK: aiex.npu.address_patch {addr = 123 : ui32, arg_idx = 3 : i32, arg_plus = 0 : i32}
+// CHECK: %[[AP0:.+]] = arith.constant 0 : i32
+// CHECK: aiex.npu.address_patch(%[[AP0]] : i32) {addr = 123 : ui32, arg_idx = 3 : i32}
 aie.device(npu1) {
   aie.runtime_sequence() {
-    aiex.npu.address_patch {addr = 123 : ui32, arg_idx = 3 : i32, arg_plus = 0 : i32}
+    %arg_plus = arith.constant 0 : i32
+    aiex.npu.address_patch(%arg_plus : i32) {addr = 123 : ui32, arg_idx = 3 : i32}
   }
 }
 

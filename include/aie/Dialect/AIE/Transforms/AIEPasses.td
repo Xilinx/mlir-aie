@@ -489,6 +489,7 @@ def AIEInsertTraceFlows : Pass<"aie-insert-trace-flows", "DeviceOp"> {
   let dependentDialects = [
     "xilinx::AIE::AIEDialect",
     "xilinx::AIEX::AIEXDialect",
+    "mlir::arith::ArithDialect",
   ];
 
   let options = [

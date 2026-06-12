@@ -115,16 +115,10 @@ void emitTxnSync(OpBuilder &builder, Location loc, Value txnVec, Value col,
 
 // Emit: aie_runtime::txn_append_address_patch(txn, addr, arg_idx, arg_plus)
 void emitTxnAddressPatch(OpBuilder &builder, Location loc, Value txnVec,
-                         uint32_t addr, int32_t argIdx, int32_t argPlus,
-                         Value dynArgPlus) {
+                         uint32_t addr, int32_t argIdx, Value argPlus) {
   auto addrVal = createU32Constant(builder, loc, addr);
   auto idxVal = createU32Constant(builder, loc, static_cast<uint32_t>(argIdx));
-  Value plusVal;
-  if (dynArgPlus) {
-    plusVal = dynArgPlus;
-  } else {
-    plusVal = createU32Constant(builder, loc, static_cast<uint32_t>(argPlus));
-  }
+  auto plusVal = castToU32(builder, loc, argPlus);
   emitc::CallOpaqueOp::create(builder, loc, TypeRange{},
                               "aie_runtime::txn_append_address_patch",
                               ValueRange{txnVec, addrVal, idxVal, plusVal});
@@ -484,12 +478,10 @@ private:
 
       emitTxnBlockWriteDynamicWords(builder, blockWrite.getLoc(), txnVec,
                                     blockAddr, data, dynamicWords);
-      Value dynPlus = matchedPatch.getDynArgPlus();
-      if (dynPlus)
-        dynPlus = mapping.lookupOrDefault(dynPlus);
+      Value argPlus = mapping.lookupOrDefault(matchedPatch.getArgPlus());
       emitTxnAddressPatch(builder, matchedPatch.getLoc(), txnVec,
                           matchedPatch.getAddr(), matchedPatch.getArgIdx(),
-                          matchedPatch.getArgPlus(), dynPlus);
+                          argPlus);
 
       // All overrides + intervening arith ops + addrPatch are consumed.
       // Set it = scanIt so the loop's ++it advances past the addrPatch.
@@ -611,12 +603,9 @@ private:
     }
 
     if (auto addrPatch = dyn_cast<AIEX::NpuAddressPatchOp>(op)) {
-      Value dynPlus = addrPatch.getDynArgPlus();
-      if (dynPlus)
-        dynPlus = mapping.lookupOrDefault(dynPlus);
+      Value argPlus = mapping.lookupOrDefault(addrPatch.getArgPlus());
       emitTxnAddressPatch(builder, opLoc, txnVec, addrPatch.getAddr(),
-                          addrPatch.getArgIdx(), addrPatch.getArgPlus(),
-                          dynPlus);
+                          addrPatch.getArgIdx(), argPlus);
       return success();
     }
 

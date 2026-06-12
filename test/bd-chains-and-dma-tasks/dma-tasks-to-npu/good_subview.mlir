@@ -16,7 +16,8 @@ module {
     aie.runtime_sequence(%arg0: memref<1024xi16>) {
       // Create a subview at offset 64 elements (128 bytes for i16)
       // CHECK: aiex.npu.writebd
-      // CHECK: aiex.npu.address_patch {addr = {{.*}}, arg_idx = 0 : i32, arg_plus = 128 : i32}
+      // CHECK: %[[AP:.+]] = arith.constant 128 : i32
+      // CHECK: aiex.npu.address_patch(%[[AP]] : i32) {addr = {{.*}}, arg_idx = 0 : i32}
       %subview = memref.subview %arg0[64] [128] [1] : memref<1024xi16> to memref<128xi16, strided<[1], offset: 64>>
       %reinterpret = memref.reinterpret_cast %subview to offset: [0], sizes: [128], strides: [1] : memref<128xi16, strided<[1], offset: 64>> to memref<128xi16>
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {

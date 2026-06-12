@@ -112,11 +112,15 @@ void appendLoadPdi(std::vector<uint32_t> &instructions, NpuLoadPdiOp op) {
                                   op.getAddress());
 }
 
-void appendAddressPatch(std::vector<uint32_t> &instructions,
-                        NpuAddressPatchOp op) {
+LogicalResult appendAddressPatch(std::vector<uint32_t> &instructions,
+                                 NpuAddressPatchOp op) {
+  uint32_t argPlus;
+  if (failed(getConstantOperand(op.getArgPlus(), argPlus)))
+    return op.emitOpError("cannot translate runtime (non-constant) arg_plus to "
+                          "binary; use --aie-generate-txn-cpp instead");
   aie_runtime::txn_append_address_patch(instructions, op.getAddr(),
-                                        op.getArgIdx(),
-                                        static_cast<uint32_t>(op.getArgPlus()));
+                                        op.getArgIdx(), argPlus);
+  return success();
 }
 
 LogicalResult appendBlockWrite(std::vector<uint32_t> &instructions,
@@ -360,7 +364,8 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
           .Case<NpuAddressPatchOp>([&](auto op) {
             count++;
             uint32_t before = byteOffset();
-            appendAddressPatch(instructions, op);
+            if (failed(appendAddressPatch(instructions, op)))
+              result = failure();
             pushLocEntry(locmap, before, byteOffset(), "ADDRESS_PATCH",
                          op->getName().getStringRef(), op.getAddr(), op, tm);
           })

@@ -13,9 +13,9 @@
 // Test that memref.subview is correctly traced through to adjust address patches
 
 // CHECK-LABEL: module
-// CHECK: aiex.npu.address_patch
+// CHECK: %[[AP:.+]] = arith.constant 512 : i32
+// CHECK: aiex.npu.address_patch(%[[AP]] : i32)
 // CHECK-SAME: arg_idx = 0 : i32
-// CHECK-SAME: arg_plus = 512 : i32
 module {
   aie.device(npu1) {
     aie.runtime_sequence(%arg0: memref<1024xi32>) {

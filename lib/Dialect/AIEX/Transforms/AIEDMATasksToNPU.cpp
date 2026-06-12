@@ -360,37 +360,40 @@ struct AIEDMATasksToNPUPass
       }
 
       unsigned arg_idx = buf_arg.getArgNumber();
-      // Dynamic-offset path: use the SSA value as dyn_arg_plus, leave the
-      // static byte offset at the subview-derived base only. The runtime
-      // adds dyn_arg_plus on top of arg_plus.
+      auto i32ty = builder.getIntegerType(32);
+      // arg_plus is an SSA operand. For the dynamic-offset path it is the
+      // runtime offset (in bytes) added to the static subview base; for the
+      // static path it is simply an arith.constant byte offset.
+      Value argPlus;
       if (Value dynOff = bd_op.getDynOffset()) {
-        // dynOff is i64 in element-width units; trunc to i32 (the
-        // dyn_arg_plus operand width) then convert to bytes via mul by
-        // element-width-in-bytes.
-        auto i32ty = builder.getIntegerType(32);
+        // dynOff is i64 in element-width units; trunc to i32 then convert to
+        // bytes via mul by element-width-in-bytes.
         Value dynOff32 =
             arith::TruncIOp::create(builder, bd_op.getLoc(), i32ty, dynOff);
         int32_t elemBytes = bd_op.getBufferElementTypeWidthInBytes();
         Value dynBytes = dynOff32;
         if (elemBytes != 1) {
-          Value mulFactor = arith::ConstantOp::create(
-              builder, bd_op.getLoc(), IntegerAttr::get(i32ty, elemBytes));
+          Value mulFactor = arith::ConstantIntOp::create(builder, bd_op.getLoc(),
+                                                         i32ty, elemBytes);
           dynBytes = arith::MulIOp::create(builder, bd_op.getLoc(), dynOff32,
                                            mulFactor);
         }
-        NpuAddressPatchOp::create(builder, bd_op.getLoc(),
-                                  /*addr*/ register_addr,
-                                  /*arg_idx*/ arg_idx,
-                                  /*arg_plus*/ static_cast<uint32_t>(offset),
-                                  /*dyn_arg_plus=*/dynBytes);
+        // Add the static subview base offset on top of the runtime offset.
+        if (offset != 0) {
+          Value base = arith::ConstantIntOp::create(
+              builder, bd_op.getLoc(), i32ty, static_cast<int32_t>(offset));
+          dynBytes =
+              arith::AddIOp::create(builder, bd_op.getLoc(), dynBytes, base);
+        }
+        argPlus = dynBytes;
       } else {
         offset += bd_op.getOffsetInBytes();
-        NpuAddressPatchOp::create(builder, bd_op.getLoc(),
-                                  /*addr*/ register_addr,
-                                  /*arg_idx*/ arg_idx,
-                                  /*arg_plus*/ offset,
-                                  /*dyn_arg_plus=*/Value{});
+        argPlus = arith::ConstantIntOp::create(builder, bd_op.getLoc(), i32ty,
+                                               static_cast<int32_t>(offset));
       }
+      NpuAddressPatchOp::create(builder, bd_op.getLoc(),
+                                /*addr*/ register_addr,
+                                /*arg_idx*/ arg_idx, argPlus);
     } else if (AIE::BufferOp buffer =
                    llvm::dyn_cast<AIE::BufferOp>(buf.getDefiningOp())) {
       uint64_t buf_addr;

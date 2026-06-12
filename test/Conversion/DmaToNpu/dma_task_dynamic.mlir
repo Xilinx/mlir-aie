@@ -41,8 +41,9 @@ module {
 // CHECK-LABEL: aie.device(npu1)
 // CHECK: aiex.npu.writebd
 // CHECK-NOT: aiex.npu.write32
-// CHECK: aiex.npu.address_patch
-// CHECK-SAME: arg_plus = 0
+// Dynamic offset: arg_plus is a runtime value (element offset * elem bytes).
+// CHECK: %[[AP:.+]] = arith.muli
+// CHECK: aiex.npu.address_patch(%[[AP]] : i32)
 // CHECK: aiex.npu.push_queue
 module {
   aie.device(npu1) {

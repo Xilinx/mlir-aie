@@ -1015,17 +1015,16 @@ def AIE_NpuAddressPatchOp: AIEX_Op<"npu.address_patch", []> {
   let arguments = (
     ins UI32Attr:$addr,
         I32Attr:$arg_idx,
-        I32Attr:$arg_plus,
-        Optional<I32>:$dyn_arg_plus
+        I32:$arg_plus
   );
   let results = (outs );
   let assemblyFormat = [{
-    (`(` $dyn_arg_plus^ `:` type($dyn_arg_plus) `)`)? attr-dict
+    `(` $arg_plus `:` type($arg_plus) `)` attr-dict
   }];
   let description = [{
-    address patch operator.
-    When `dyn_arg_plus` is provided, it is used instead of the static
-    `arg_plus` attribute. This enables runtime-parameterized buffer offsets.
+    address patch operator. `arg_plus` is an SSA value; use arith.constant for
+    a compile-time-known offset or pass a runtime sequence value for a
+    runtime-parameterized buffer offset.
   }];
 }
 

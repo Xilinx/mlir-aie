@@ -12,6 +12,7 @@
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/Pass/Pass.h"
 
@@ -710,10 +711,12 @@ struct AIEInsertTraceFlowsPass
         // baseOffset + bufferSizeBytes when distribute is active).
         uint32_t bdAddress = computeBDAddress(shimCol, chanDesc.bdId,
                                               shimInfo.shimTile, targetModel);
+        Value argPlus = arith::ConstantIntOp::create(
+            builder, runtimeSeq.getLoc(), builder.getI32Type(),
+            static_cast<int32_t>(chanDesc.bufferOffset));
         xilinx::AIEX::NpuAddressPatchOp::create(builder, runtimeSeq.getLoc(),
                                                 bdAddress, chanDesc.argIdx,
-                                                chanDesc.bufferOffset,
-                                                /*dyn_arg_plus=*/Value{});
+                                                argPlus);
 
         // 4e. DMA channel configuration — set Controller_ID from tile attribute
         uint32_t ctrlAddr =

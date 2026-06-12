@@ -14,7 +14,8 @@
 // CHECK: aie.runtime_sequence
 // CHECK:   %[[VALUE:.*]] = memref.get_global {{.*}} : memref<8xi32>
 // CHECK:   aiex.npu.blockwrite(%[[VALUE]]) {address = 118784 : ui32} : memref<8xi32>
-// CHECK:   aiex.npu.address_patch {addr = 118788 : ui32, arg_idx = 0 : i32, arg_plus = 16384 : i32}
+// CHECK: %[[AP0:.+]] = arith.constant 16384 : i32
+// CHECK: aiex.npu.address_patch(%[[AP0]] : i32) {addr = 118788 : ui32, arg_idx = 0 : i32}
 // CHECK:   aiex.npu.write32 {address = 119316 : ui32, value = 0 : ui32}
 // CHECK: }
 

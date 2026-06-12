@@ -51,7 +51,8 @@ module {
       %column_num = arith.constant 1 : i32
       %row_num = arith.constant 1 : i32
       aiex.npu.sync(%column, %row, %direction, %channel, %column_num, %row_num) : i32, i32, i32, i32, i32, i32
-      aiex.npu.address_patch {addr = 196616 : ui32, arg_idx = 0 : i32, arg_plus = 0 : i32}
+      %arg_plus = arith.constant 0 : i32
+      aiex.npu.address_patch(%arg_plus : i32) {addr = 196616 : ui32, arg_idx = 0 : i32}
     }
   }
 }

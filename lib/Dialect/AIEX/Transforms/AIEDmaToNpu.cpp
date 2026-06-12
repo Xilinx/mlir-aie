@@ -505,8 +505,9 @@ public:
       uint64_t addr =
           targetModel.getDmaBdAddress(tileCol, tileRow, op.getId()) +
           targetModel.getDmaBdAddressOffset(tileCol, tileRow);
-      NpuAddressPatchOp::create(rewriter, op->getLoc(), addr, arg_idx, offset,
-                                /*dyn_arg_plus=*/Value{});
+      Value argPlus = arith::ConstantIntOp::create(
+          rewriter, op->getLoc(), rewriter.getI32Type(), offset);
+      NpuAddressPatchOp::create(rewriter, op->getLoc(), addr, arg_idx, argPlus);
 
       // push the patched bd onto the dma task queue
       NpuPushQueueOp::create(
@@ -878,18 +879,15 @@ public:
     // --- Address patch ---
     uint64_t patchAddr =
         bdAddr + targetModel.getDmaBdAddressOffset(tileCol, tileRow);
-    if (dynOffset) {
-      // Dynamic offset: pass 0 as static arg_plus and provide SSA value
-      NpuAddressPatchOp::create(rewriter, loc, static_cast<uint32_t>(patchAddr),
-                                static_cast<uint32_t>(arg_idx),
-                                /*arg_plus=*/static_cast<uint32_t>(0),
-                                /*dyn_arg_plus=*/dynOffset);
-    } else {
-      NpuAddressPatchOp::create(rewriter, loc, static_cast<uint32_t>(patchAddr),
-                                static_cast<uint32_t>(arg_idx),
-                                static_cast<uint32_t>(staticOffset),
-                                /*dyn_arg_plus=*/Value{});
-    }
+    // arg_plus is an SSA operand: a runtime value when the offset is dynamic,
+    // otherwise an arith.constant carrying the static offset.
+    Value argPlus = dynOffset
+                        ? dynOffset
+                        : arith::ConstantIntOp::create(
+                              rewriter, loc, rewriter.getI32Type(),
+                              static_cast<int32_t>(staticOffset));
+    NpuAddressPatchOp::create(rewriter, loc, static_cast<uint32_t>(patchAddr),
+                              static_cast<uint32_t>(arg_idx), argPlus);
 
     // If this DMA op has an offset_state_table_idx, emit an
     // update_from_scratchpad to add the runtime offset to the BD address
