@@ -631,28 +631,6 @@ private:
       return success();
     }
 
-    if (auto minOp = dyn_cast<arith::MinSIOp>(op)) {
-      Value lhs = mapping.lookupOrDefault(minOp.getLhs());
-      Value rhs = mapping.lookupOrDefault(minOp.getRhs());
-      auto cmp = builder.create<arith::CmpIOp>(opLoc, arith::CmpIPredicate::slt,
-                                               lhs, rhs);
-      auto select =
-          builder.create<arith::SelectOp>(opLoc, cmp.getResult(), lhs, rhs);
-      mapping.map(minOp.getResult(), select.getResult());
-      return success();
-    }
-
-    if (auto maxOp = dyn_cast<arith::MaxSIOp>(op)) {
-      Value lhs = mapping.lookupOrDefault(maxOp.getLhs());
-      Value rhs = mapping.lookupOrDefault(maxOp.getRhs());
-      auto cmp = builder.create<arith::CmpIOp>(opLoc, arith::CmpIPredicate::sgt,
-                                               lhs, rhs);
-      auto select =
-          builder.create<arith::SelectOp>(opLoc, cmp.getResult(), lhs, rhs);
-      mapping.map(maxOp.getResult(), select.getResult());
-      return success();
-    }
-
     if (isa<AIE::EndOp>(op))
       return success();
 
