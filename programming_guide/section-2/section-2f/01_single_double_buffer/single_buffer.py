@@ -10,7 +10,7 @@
 Two workers pipelined through a single-buffer ObjectFifo: worker 1
 writes 16 elements of value ``1`` into ``of_in``; worker 2 copies them
 into ``of_out``.  Both FIFOs have ``depth=1`` (single buffer, no
-ping-pong) — the section illustrates the depth knob.
+ping-pong) — the section illustrates the depth parameter.
 """
 
 import argparse

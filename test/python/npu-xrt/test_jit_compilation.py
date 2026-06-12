@@ -12,7 +12,7 @@ import pytest
 import numpy as np
 import aie.iron as iron
 
-from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 
 
@@ -22,8 +22,8 @@ def vector_vector_add(
     input1: In,
     output: Out,
     *,
-    num_elements: Compile[int],
-    dtype: Compile[object] = np.int32,
+    num_elements: CompileTime[int],
+    dtype: CompileTime[object] = np.int32,
 ):
     n = 16
     N_div_n = num_elements // n

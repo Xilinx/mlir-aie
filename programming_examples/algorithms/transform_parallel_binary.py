@@ -17,7 +17,7 @@ import argparse
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Compile, In, Out
+from aie.iron import CompileTime, In, Out
 from aie.iron.algorithms import transform_parallel_binary_typed
 from aie.utils.verify import assert_pass
 
@@ -28,9 +28,9 @@ def transform_parallel_binary(
     input1: In,
     output: Out,
     *,
-    num_elements: Compile[int],
-    dtype: Compile[type],
-    tile_size: Compile[int] = 16,
+    num_elements: CompileTime[int],
+    dtype: CompileTime[type],
+    tile_size: CompileTime[int] = 16,
 ):
     tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
     return transform_parallel_binary_typed(

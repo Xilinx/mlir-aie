@@ -25,7 +25,7 @@ import numpy as np
 import aie.iron as iron
 from aie.extras.dialects import arith
 from aie.helpers.util import np_dtype_to_mlir_type
-from aie.iron import Buffer, Compile, In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import Buffer, CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import device_from_args
 from aie.iron.kernel import ExternalFunction
@@ -45,7 +45,7 @@ def group0(
     c_out: Out,
     _unused: In,
     *,
-    trace_size: Compile[int] = 0,
+    trace_size: CompileTime[int] = 0,
 ):
     din_size = 2048
     dout_size = 4096

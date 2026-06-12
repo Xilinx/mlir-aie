@@ -15,12 +15,12 @@ stack.  All tests run a real kernel on the NPU and verify output correctness.
 
 Coverage:
 - @iron.jit bare decorator (compile params at call time)
-- @iron.jit with pre-bound Compile[T] params (Triton style)
+- @iron.jit with pre-bound CompileTime[T] params (Triton style)
 - @iron.compileconfig + explicit CompilableDesign + CallableDesign (AOT path)
 - Compile-on-demand: first call compiles, second call reuses the cached kernel
 - Cache invalidation: different compile_kwargs produce different cached kernels
 - Correct output for each configuration
-- Compile[T] param missing → TypeError before any NPU interaction
+- CompileTime[T] param missing → TypeError before any NPU interaction
 """
 
 import numpy as np
@@ -28,7 +28,7 @@ import pytest
 
 import aie.iron as iron
 from aie.iron import (
-    Compile,
+    CompileTime,
     In,
     Out,
     CallableDesign,
@@ -49,7 +49,7 @@ _TILE_SIZE = 16
 
 
 def _add_const_design(
-    input_buf: In, output_buf: Out, N: Compile[int], add_value: Compile[int]
+    input_buf: In, output_buf: Out, N: CompileTime[int], add_value: CompileTime[int]
 ):
     """Add ``add_value`` to every element of a length-N int32 vector.
 
@@ -57,9 +57,9 @@ def _add_const_design(
     ----------
     input_buf, output_buf : In / Out
         Runtime DMA tensors.
-    N : Compile[int]
+    N : CompileTime[int]
         Total element count — compile-time; determines the generated loop bounds.
-    add_value : Compile[int]
+    add_value : CompileTime[int]
         Constant to add — compile-time; baked into the AIE core at generation time.
     """
     tile_ty = np.ndarray[(_TILE_SIZE,), np.dtype[np.int32]]
@@ -102,20 +102,20 @@ def input_array(N):
 
 
 # ---------------------------------------------------------------------------
-# 1. @iron.jit bare — Compile[T] params passed at call time
+# 1. @iron.jit bare — CompileTime[T] params passed at call time
 # ---------------------------------------------------------------------------
 
 
 @iron.jit
 def add_const_jit(
-    input_buf: In, output_buf: Out, *, N: Compile[int], add_value: Compile[int]
+    input_buf: In, output_buf: Out, *, N: CompileTime[int], add_value: CompileTime[int]
 ):
     return _add_const_design(input_buf, output_buf, N=N, add_value=add_value)
 
 
 @pytest.mark.parametrize("add_value", [1, 5, 100])
 def test_jit_bare_correct_output(input_array, N, add_value):
-    """Bare @iron.jit with Compile[T] params supplied at call time."""
+    """Bare @iron.jit with CompileTime[T] params supplied at call time."""
     output = iron.zeros(N, dtype=np.int32, device="npu")
     add_const_jit(input_array, output, N=N, add_value=add_value)
     output.to("cpu")
@@ -129,7 +129,7 @@ def test_jit_bare_correct_output(input_array, N, add_value):
 
 @iron.jit(N=1024, add_value=7)
 def add_seven(
-    input_buf: In, output_buf: Out, *, N: Compile[int], add_value: Compile[int]
+    input_buf: In, output_buf: Out, *, N: CompileTime[int], add_value: CompileTime[int]
 ):
     return _add_const_design(input_buf, output_buf, N=N, add_value=add_value)
 
@@ -149,7 +149,7 @@ def test_jit_prebound_params_correct_output(input_array, N):
 
 @compileconfig
 def add_const_design(
-    input_buf: In, output_buf: Out, *, N: Compile[int], add_value: Compile[int]
+    input_buf: In, output_buf: Out, *, N: CompileTime[int], add_value: CompileTime[int]
 ):
     return _add_const_design(input_buf, output_buf, N=N, add_value=add_value)
 
@@ -177,7 +177,11 @@ def test_compile_on_demand_second_call_hits_cache(input_array, N):
 
     @iron.jit(N=N, add_value=2)
     def add_two(
-        input_buf: In, output_buf: Out, *, N: Compile[int], add_value: Compile[int]
+        input_buf: In,
+        output_buf: Out,
+        *,
+        N: CompileTime[int],
+        add_value: CompileTime[int],
     ):
         return _add_const_design(input_buf, output_buf, N=N, add_value=add_value)
 
@@ -204,7 +208,11 @@ def test_different_compile_kwargs_produce_different_correct_outputs(input_array,
 
     @iron.jit
     def add_dynamic(
-        input_buf: In, output_buf: Out, *, N: Compile[int], add_value: Compile[int]
+        input_buf: In,
+        output_buf: Out,
+        *,
+        N: CompileTime[int],
+        add_value: CompileTime[int],
     ):
         return _add_const_design(input_buf, output_buf, N=N, add_value=add_value)
 
@@ -222,12 +230,12 @@ def test_different_compile_kwargs_produce_different_correct_outputs(input_array,
 
 
 # ---------------------------------------------------------------------------
-# 6. Missing Compile[T] param → TypeError before NPU interaction
+# 6. Missing CompileTime[T] param → TypeError before NPU interaction
 # ---------------------------------------------------------------------------
 
 
 def test_missing_compile_param_raises_type_error():
-    """Supplying compile_kwargs without a required Compile[T] param raises TypeError."""
+    """Supplying compile_kwargs without a required CompileTime[T] param raises TypeError."""
     design = CompilableDesign(
         add_const_design.mlir_generator,
         compile_kwargs={"N": 1024},  # add_value missing
@@ -244,7 +252,11 @@ def test_missing_compile_param_raises_type_error():
 def test_use_cache_false_recompiles_but_output_correct(input_array, N):
     @iron.jit(N=N, add_value=4, use_cache=False)
     def add_four_nocache(
-        input_buf: In, output_buf: Out, *, N: Compile[int], add_value: Compile[int]
+        input_buf: In,
+        output_buf: Out,
+        *,
+        N: CompileTime[int],
+        add_value: CompileTime[int],
     ):
         return _add_const_design(input_buf, output_buf, N=N, add_value=add_value)
 
@@ -271,9 +283,9 @@ def test_trace_config_forwarded_to_kernel(input_array, N):
         input_buf: In,
         output_buf: Out,
         *,
-        N: Compile[int],
-        add_value: Compile[int],
-        trace_config: Compile[TraceConfig | None] = None,
+        N: CompileTime[int],
+        add_value: CompileTime[int],
+        trace_config: CompileTime[TraceConfig | None] = None,
     ):
         return _add_const_design(input_buf, output_buf, N=N, add_value=add_value)
 

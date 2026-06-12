@@ -31,11 +31,11 @@ The simplest factory call wires straight into a `Worker`:
 ```python
 import numpy as np
 import aie.iron as iron
-from aie.iron import ObjectFifo, Worker, Runtime, Program, In, Out, Compile
+from aie.iron import ObjectFifo, Worker, Runtime, Program, In, Out, CompileTime
 import aie.iron.kernels as kernels
 
 @iron.jit
-def passthrough_design(a: In, b: Out, *, N: Compile[int]):
+def passthrough_design(a: In, b: Out, *, N: CompileTime[int]):
     line_ty = np.ndarray[(N,), np.dtype[np.uint8]]
     of_in = ObjectFifo(line_ty, name="in")
     of_out = ObjectFifo(line_ty, name="out")

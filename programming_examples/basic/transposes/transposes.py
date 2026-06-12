@@ -44,7 +44,7 @@ from pathlib import Path
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import AnyComputeTile
 from aie.iron.kernel import ExternalFunction
@@ -71,9 +71,9 @@ def _transpose_dma(
     A: In,
     C: Out,
     *,
-    M: Compile[int] = 64,
-    K: Compile[int] = 64,
-    dtype_bytes: Compile[int] = 4,
+    M: CompileTime[int] = 64,
+    K: CompileTime[int] = 64,
+    dtype_bytes: CompileTime[int] = 4,
 ):
     if dtype_bytes != 4:
         raise ValueError(
@@ -97,9 +97,9 @@ def _transpose_dma_packet(
     A: In,
     C: Out,
     *,
-    M: Compile[int] = 64,
-    K: Compile[int] = 64,
-    dtype_bytes: Compile[int] = 4,
+    M: CompileTime[int] = 64,
+    K: CompileTime[int] = 64,
+    dtype_bytes: CompileTime[int] = 4,
 ):
     if dtype_bytes != 4:
         raise ValueError(
@@ -128,9 +128,9 @@ def _transpose_shuffle(
     A: In,
     C: Out,
     *,
-    M: Compile[int] = 16,
-    K: Compile[int] = 16,
-    dtype_bytes: Compile[int] = 1,
+    M: CompileTime[int] = 16,
+    K: CompileTime[int] = 16,
+    dtype_bytes: CompileTime[int] = 1,
 ):
     if (dtype_bytes, M, K) != (1, 16, 16):
         raise ValueError(
@@ -176,12 +176,12 @@ def _transpose_combined(
     A: In,
     C: Out,
     *,
-    M: Compile[int] = 64,
-    K: Compile[int] = 64,
-    m: Compile[int] = 16,
-    n: Compile[int] = 16,
-    s: Compile[int] = 8,
-    dtype_bytes: Compile[int] = 4,
+    M: CompileTime[int] = 64,
+    K: CompileTime[int] = 64,
+    m: CompileTime[int] = 16,
+    n: CompileTime[int] = 16,
+    s: CompileTime[int] = 8,
+    dtype_bytes: CompileTime[int] = 4,
 ):
     if dtype_bytes not in (1, 2, 4):
         raise ValueError(

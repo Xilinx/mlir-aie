@@ -10,7 +10,7 @@ import numpy as np
 from ml_dtypes import bfloat16
 
 import aie.iron as iron
-from aie.iron import Compile, ExternalFunction, In, Out
+from aie.iron import CompileTime, ExternalFunction, In, Out
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.utils.config import cxx_header_path
 from aie.utils.verify import assert_pass
@@ -22,7 +22,12 @@ from aie.utils.verify import assert_pass
 #     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
 @iron.jit
 def saxpy(
-    input0: In, input1: In, output: Out, *, N: Compile[int], element_type: Compile[type]
+    input0: In,
+    input1: In,
+    output: Out,
+    *,
+    N: CompileTime[int],
+    element_type: CompileTime[type]
 ):
 
     # --------------------------------------------------------------------------

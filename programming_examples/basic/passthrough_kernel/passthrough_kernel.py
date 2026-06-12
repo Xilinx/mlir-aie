@@ -14,7 +14,7 @@ import numpy as np
 
 import aie.iron as iron
 from aie.iron import (
-    Compile,
+    CompileTime,
     In,
     ObjectFifo,
     Out,
@@ -34,8 +34,8 @@ def my_passthrough_kernel(
     in_tensor: In,
     out_tensor: Out,
     *,
-    n: Compile[int],
-    trace_config: Compile[TraceConfig | None] = None,
+    n: CompileTime[int],
+    trace_config: CompileTime[TraceConfig | None] = None,
 ):
     in1_dtype = np.uint8
     n_lines = 4

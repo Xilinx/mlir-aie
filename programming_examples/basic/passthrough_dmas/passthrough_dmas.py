@@ -32,7 +32,7 @@ import sys
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime
 from aie.iron.device import AnyShimTile, Tile
 from aie.utils.hostruntime.argparse import device_from_args
 from aie.dialects._aie_enum_gen import AIETileType
@@ -59,8 +59,8 @@ def passthrough_dmas(
     _b_unused: In,
     c_out: Out,
     *,
-    n: Compile[int] = 4096,
-    plio_mode: Compile[str] = "none",
+    n: CompileTime[int] = 4096,
+    plio_mode: CompileTime[str] = "none",
 ):
     if plio_mode not in ("none", "input", "output"):
         raise ValueError(

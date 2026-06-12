@@ -12,11 +12,11 @@
 
 | Design name | Data type | Description |
 |-|-|-|
-| [Eltwise (Add / Mul)](../../programming_examples/ml/eltwise/) | bfloat16 | Element-wise addition or multiplication of two vectors (`op={add,mul}` knob). |
-| [Eltwise Unary (ReLU / SiLU / GELU)](../../programming_examples/ml/eltwise_unary/) | bfloat16 | Element-wise ReLU, SiLU, or GELU activation on a vector (`op={relu,silu,gelu}` knob). |
+| [Eltwise (Add / Mul)](../../programming_examples/ml/eltwise/) | bfloat16 | Element-wise addition or multiplication of two vectors (`op={add,mul}` option). |
+| [Eltwise Unary (ReLU / SiLU / GELU)](../../programming_examples/ml/eltwise_unary/) | bfloat16 | Element-wise ReLU, SiLU, or GELU activation on a vector (`op={relu,silu,gelu}` option). |
 | [SwiGLU](../../programming_examples/ml/swiglu/) | bfloat16 | Swish-Gated Linear Unit (SwiGLU) activation function on a vector |
 | [Softmax](../../programming_examples/ml/softmax/) | bfloat16 | Softmax operation on a matrix  |
-| [Norm (RMS / Layer)](../../programming_examples/ml/norm/) | bfloat16 | Row-wise RMSNorm or LayerNorm on a matrix (`op={rms,layer}` knob). |
+| [Norm (RMS / Layer)](../../programming_examples/ml/norm/) | bfloat16 | Row-wise RMSNorm or LayerNorm on a matrix (`op={rms,layer}` option). |
 | [RoPE](../../programming_examples/ml/rope/) | bfloat16 | Rotary Position Embedding on a matrix |
 | [Scale Shift](../../programming_examples/ml/scale_shift/) | bfloat16 | Element-wise scale (multiply) and shift (add) on vectors |
 | [Conv2D (optional fused ReLU)](../../programming_examples/ml/conv2d) | i8 | 1x1 Conv2D for CNNs; `fuse_relu=1` swaps the output to uint8 saturation, fusing ReLU at the vector register level. |

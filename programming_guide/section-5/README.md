@@ -46,8 +46,8 @@ The [passthrough DMAs](../../programming_examples/basic/passthrough_dmas/) examp
 
 | Design name | Data type | Description | 
 |-|-|-|
-| [Eltwise (Add / Mul)](../../programming_examples/ml/eltwise/) | bfloat16 | Element-wise addition or multiplication of two vectors (`op={add,mul}` knob). |
-| [Eltwise Unary (ReLU / SiLU / GELU)](../../programming_examples/ml/eltwise_unary/) | bfloat16 | Element-wise ReLU, SiLU, or GELU activation on a vector (`op={relu,silu,gelu}` knob). |
+| [Eltwise (Add / Mul)](../../programming_examples/ml/eltwise/) | bfloat16 | Element-wise addition or multiplication of two vectors (`op={add,mul}` option). |
+| [Eltwise Unary (ReLU / SiLU / GELU)](../../programming_examples/ml/eltwise_unary/) | bfloat16 | Element-wise ReLU, SiLU, or GELU activation on a vector (`op={relu,silu,gelu}` option). |
 | [Softmax](../../programming_examples/ml/softmax/) | bfloat16 | Softmax operation on a matrix  |
 | [Conv2D (optional fused ReLU)](../../programming_examples/ml/conv2d/) | i8 | 1x1 Conv2D for CNNs; `fuse_relu=1` swaps the output to uint8 saturation, fusing ReLU at the vector register level. |
 

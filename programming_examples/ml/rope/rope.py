@@ -26,7 +26,7 @@ import numpy as np
 from ml_dtypes import bfloat16
 
 import aie.iron as iron
-from aie.iron import Compile, In, Out, ObjectFifo, Program, Runtime, Worker
+from aie.iron import CompileTime, In, Out, ObjectFifo, Program, Runtime, Worker
 from aie.utils.hostruntime.argparse import device_from_args
 from aie.iron.controlflow import range_
 from aie.iron.kernel import ExternalFunction
@@ -54,8 +54,8 @@ def rope(
     lut_in: In,
     c_out: Out,
     *,
-    sequence_length: Compile[int] = 64,
-    embedding_dim: Compile[int] = 4096,
+    sequence_length: CompileTime[int] = 64,
+    embedding_dim: CompileTime[int] = 4096,
 ):
     device = iron.get_current_device()
     n_cores = 4

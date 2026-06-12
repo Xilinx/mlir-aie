@@ -14,7 +14,7 @@ per-tile kernel is the library passthrough.
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Compile, In, Out, kernels
+from aie.iron import CompileTime, In, Out, kernels
 from aie.iron.algorithms import transform_parallel_typed
 from aie.utils.benchmark import run_iters
 from aie.utils.verify import assert_pass
@@ -25,8 +25,8 @@ def my_memcpy(
     input0: In,
     output: Out,
     *,
-    size: Compile[int],
-    xfr_dtype: Compile[type] = np.int32,
+    size: CompileTime[int],
+    xfr_dtype: CompileTime[type] = np.int32,
 ):
     return transform_parallel_typed(
         kernels.passthrough(tile_size=1024, dtype=xfr_dtype),

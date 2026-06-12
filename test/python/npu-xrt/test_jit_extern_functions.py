@@ -17,7 +17,7 @@ import pytest
 _skip_float32 = pytest.mark.skip(reason="Peano -O2 float32 FPU pipeline hazard")
 
 import aie.iron as iron
-from aie.iron import Compile, ExternalFunction, In, Out, jit
+from aie.iron import CompileTime, ExternalFunction, In, Out, jit
 from aie.iron import ObjectFifo, Worker, Runtime, Program
 
 from aie.iron.controlflow import range_
@@ -28,9 +28,9 @@ def transform(
     input: In,
     output: Out,
     *,
-    func: Compile[object],
-    num_elements: Compile[int] = 1024,
-    dtype: Compile[object] = np.int32,
+    func: CompileTime[object],
+    num_elements: CompileTime[int] = 1024,
+    dtype: CompileTime[object] = np.int32,
 ):
     """Transform kernel that applies a function to input tensor and stores result in output tensor."""
     # Extract tile size from ExternalFunction (using first argument)

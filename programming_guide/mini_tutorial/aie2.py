@@ -9,7 +9,7 @@
 import numpy as np
 import sys
 
-from aie.iron import Out, In, Compile, Program, Runtime, Worker, ObjectFifo
+from aie.iron import Out, In, CompileTime, Program, Runtime, Worker, ObjectFifo
 from aie.iron.controlflow import range_
 
 import aie.iron as iron

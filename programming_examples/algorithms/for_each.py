@@ -17,7 +17,7 @@ import argparse
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Compile, InOut
+from aie.iron import CompileTime, InOut
 from aie.iron.algorithms import for_each_typed
 from aie.utils.verify import assert_pass
 
@@ -26,9 +26,9 @@ from aie.utils.verify import assert_pass
 def for_each(
     tensor: InOut,
     *,
-    num_elements: Compile[int],
-    dtype: Compile[type],
-    tile_size: Compile[int] = 16,
+    num_elements: CompileTime[int],
+    dtype: CompileTime[type],
+    tile_size: CompileTime[int] = 16,
 ):
     tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
     return for_each_typed(lambda a: a + 1, tensor_ty, tile_size=tile_size)

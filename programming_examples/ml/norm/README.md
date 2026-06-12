@@ -10,7 +10,7 @@
 
 # Row-wise Norm (RMS | Layer)
 
-This design implements a `bfloat16` row-wise norm — either **RMSNorm** or **LayerNorm** — across an 8-core sequence. The op is selected at compile time via the `op` knob; the structural design and host harness are shared. NPU2-only (the underlying kernels live under `aie_kernels/aie2p/`).
+This design implements a `bfloat16` row-wise norm — either **RMSNorm** or **LayerNorm** — across an 8-core sequence. The op is selected at compile time via the `op` parameter; the structural design and host harness are shared. NPU2-only (the underlying kernels live under `aie_kernels/aie2p/`).
 
 Per row:
 
@@ -20,7 +20,7 @@ Per row:
 
 ## Source Files Overview
 
-1. `norm.py`: IRON design. `op` is a `Compile[str]` knob that selects `rms_norm.cc` or `layer_norm.cc`. Per-op reference and tolerance live in a small dispatch table.
+1. `norm.py`: IRON design. `op` is a `CompileTime[str]` parameter that selects `rms_norm.cc` or `layer_norm.cc`. Per-op reference and tolerance live in a small dispatch table.
 
 1. `rms_norm.cc` / `layer_norm.cc`: AIE2P kernels pulled from [`aie_kernels/aie2p/`](../../../aie_kernels/aie2p/).
 

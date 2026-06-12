@@ -39,7 +39,7 @@ def _compute_recipe_hash(
     aiecc_flags: list[str] | tuple[str, ...],
     compile_flags: list[str] | tuple[str, ...],
 ) -> str:
-    """Hash of the "recipe": generator bytecode + Compile[T] kwargs + flags.
+    """Hash of the "recipe": generator bytecode + CompileTime[T] kwargs + flags.
 
     Pure function of the design specification; does not touch the filesystem
     or environment.  Two CompilableDesigns with the same recipe_hash will

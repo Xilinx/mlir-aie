@@ -62,7 +62,7 @@ def run_design_cli(
          * If an ``emit_mlir`` callback was supplied, call ``emit_mlir(opts)``.
          * Otherwise print ``design.specialize(**compile_kwargs).as_mlir()``
            — the right answer for almost every design (no tensor args needed
-           when shapes come from ``Compile[T]`` params).
+           when shapes come from ``CompileTime[T]`` params).
 
          Then return.
 
@@ -105,7 +105,7 @@ def run_design_cli(
             falls back to printing
             ``design.specialize(**compile_kwargs).as_mlir()`` — sufficient
             for any design whose generator reads its shapes from
-            ``Compile[T]`` params (i.e. doesn't read shape off the
+            ``CompileTime[T]`` params (i.e. doesn't read shape off the
             passed-in tensor).  Pass an explicit callable when the
             generator needs real ``iron.tensor`` instances at MLIR-gen
             time.

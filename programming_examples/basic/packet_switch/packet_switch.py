@@ -17,7 +17,7 @@ the ``--op`` flag picks which packet ID to use:
 
 The whole topology is expressed in iron-level primitives:
 :class:`PacketFlow` for the routes (with explicit ``pkt_id`` + the
-``keep_pkt_header=True`` knob ObjectFifo doesn't expose),
+``keep_pkt_header=True`` option ObjectFifo doesn't expose),
 :class:`TileDma` for each tile's DMA program (compute tile + memtile),
 :class:`Worker` for the compute body, plus iron :class:`Buffer` and
 :class:`Lock` for shared state.  The runtime sequence still needs the
@@ -41,7 +41,7 @@ from aie.iron import (
     Acquire,
     Bd,
     Buffer,
-    Compile,
+    CompileTime,
     DmaChannel,
     ExternalFunction,
     In,
@@ -83,8 +83,8 @@ def packet_switch(
     A: In,
     B: Out,
     *,
-    in_out_size: Compile[int] = 256,
-    input_packet_id: Compile[int] = 0,
+    in_out_size: CompileTime[int] = 256,
+    input_packet_id: CompileTime[int] = 0,
 ):
     dev = iron.get_current_device()
     in_out_ty = np.dtype[np.int8]

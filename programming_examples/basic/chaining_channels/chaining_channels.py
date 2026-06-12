@@ -32,7 +32,7 @@ from aie.iron import (
     Acquire,
     Bd,
     Buffer,
-    Compile,
+    CompileTime,
     DmaChannel,
     Flow,
     In,
@@ -70,9 +70,9 @@ def chaining_channels(
     a_in: In,
     b_out: Out,
     *,
-    length_bytes: Compile[int] = 1024,
-    col: Compile[int] = 0,
-    trace_size: Compile[int] = 0,
+    length_bytes: CompileTime[int] = 1024,
+    col: CompileTime[int] = 0,
+    trace_size: CompileTime[int] = 0,
 ):
     # ---- types + tiles -------------------------------------------------
     n_elements = length_bytes // np.dtype(np.int32).itemsize

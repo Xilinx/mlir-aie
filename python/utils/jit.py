@@ -9,7 +9,7 @@
 
 ``@iron.jit`` is a thin wrapper that creates a ``CallableDesign``.  Extra
 kwargs that are not recognised as configuration keys become ``compile_kwargs``
-(i.e. values for ``Compile[T]``-annotated generator parameters).
+(i.e. values for ``CompileTime[T]``-annotated generator parameters).
 
 Three usage patterns are supported:
 
@@ -17,7 +17,7 @@ Three usage patterns are supported:
 
        @iron.jit
        def gemm(a: In, b: In, c: Out, *,
-                M: Compile[int], K: Compile[int], N: Compile[int]):
+                M: CompileTime[int], K: CompileTime[int], N: CompileTime[int]):
            ...
 
        gemm(a, b, c, M=512, K=512, N=512)   # compile params at call time
@@ -25,14 +25,14 @@ Three usage patterns are supported:
 2. **With configuration only** — source files, flags, etc., no compile params::
 
        @iron.jit(source_files=["kernel.cc"])
-       def gemm(a: In, b: In, c: Out, *, M: Compile[int], ...):
+       def gemm(a: In, b: In, c: Out, *, M: CompileTime[int], ...):
            ...
 
 3. **With pre-bound compile params** — Triton-style, params fixed at decoration::
 
        @iron.jit(M=512, K=512, N=512)
        def gemm(a: In, b: In, c: Out, *,
-                M: Compile[int], K: Compile[int], N: Compile[int]):
+                M: CompileTime[int], K: CompileTime[int], N: CompileTime[int]):
            ...
 
        gemm(a, b, c)   # no compile params needed at call time
@@ -69,7 +69,7 @@ def jit(mlir_generator: Callable | None = None, **kwargs):
     Standard configuration kwargs (``use_cache``, ``source_files``,
     ``aiecc_flags``, ``compile_flags``, ``include_paths``, ``object_files``,
     ``trace_config``) are forwarded to ``CallableDesign``.  All other kwargs
-    become ``compile_kwargs`` (values for ``Compile[T]``-annotated parameters).
+    become ``compile_kwargs`` (values for ``CompileTime[T]``-annotated parameters).
 
     Args:
         mlir_generator: The MLIR generator callable (supplied automatically
@@ -88,13 +88,13 @@ def jit(mlir_generator: Callable | None = None, **kwargs):
     config = {k: v for k, v in kwargs.items() if k in _JIT_CONFIG_KEYS}
     compile_kwargs = {k: v for k, v in kwargs.items() if k not in _JIT_CONFIG_KEYS}
 
-    # --- Validate Compile[T] params when generator is callable ---
+    # --- Validate CompileTime[T] params when generator is callable ---
     if callable(mlir_generator):
         from aie.utils.compile.jit.compilabledesign import split_params
 
         compile_params, _, scalar_params = split_params(mlir_generator)
 
-        # Guard 1-A: reject any compile kwarg that doesn't match a Compile[T]
+        # Guard 1-A: reject any compile kwarg that doesn't match a CompileTime[T]
         # param. Failing fast at decoration time catches typos like @jit(NN=...)
         # before they silently run a kernel with no value bound.
         if compile_kwargs:
@@ -102,9 +102,9 @@ def jit(mlir_generator: Callable | None = None, **kwargs):
             if unknown:
                 raise TypeError(
                     f"@iron.jit received keyword argument(s) that do not match any "
-                    f"Compile[T]-annotated parameter of {mlir_generator.__name__!r}: "
+                    f"CompileTime[T]-annotated parameter of {mlir_generator.__name__!r}: "
                     f"{sorted(unknown)}.\n"
-                    f"  Valid Compile[T] params: {compile_params}.\n"
+                    f"  Valid CompileTime[T] params: {compile_params}.\n"
                     f"  Config keys: {sorted(_JIT_CONFIG_KEYS)}."
                 )
 
@@ -125,17 +125,17 @@ def jit(mlir_generator: Callable | None = None, **kwargs):
             raise TypeError(
                 f"@iron.jit: parameter(s) {silent_default_scalars!r} of "
                 f"{mlir_generator.__name__!r} have default values but no "
-                f"In / Out / InOut / Compile[T] annotation.  The framework has "
+                f"In / Out / InOut / CompileTime[T] annotation.  The framework has "
                 f"no runtime-scalar plumbing yet, so the default would be "
                 f"baked into the compiled kernel and per-call overrides "
                 f"silently ignored.\n"
                 f"  Fix options:\n"
-                f"    * Use Compile[T] = default to keep the default and "
+                f"    * Use CompileTime[T] = default to keep the default and "
                 f"recompile on per-call change.\n"
                 f"    * Annotate as In / Out / InOut if it's a tensor."
             )
 
-        # Guard: Compile[T] params must be keyword-only (unless pre-bound or
+        # Guard: CompileTime[T] params must be keyword-only (unless pre-bound or
         # have a signature default).  Pre-bound and defaulted params are exempt
         # because callers can omit them at the call site, so positional-vs-
         # keyword ambiguity does not arise.
@@ -154,17 +154,17 @@ def jit(mlir_generator: Callable | None = None, **kwargs):
         ]
         if non_kw_compile_params:
             raise TypeError(
-                f"@iron.jit: Compile[T] parameter(s) {non_kw_compile_params!r} "
+                f"@iron.jit: CompileTime[T] parameter(s) {non_kw_compile_params!r} "
                 f"in {mlir_generator.__name__!r} are not keyword-only.\n"
-                f"Place a bare '*' before your Compile[T] parameters:\n\n"
+                f"Place a bare '*' before your CompileTime[T] parameters:\n\n"
                 f"  # Before:\n"
                 f"  def {mlir_generator.__name__}(a: In, b: Out, "
-                + ", ".join(f"{n}: Compile[...]" for n in non_kw_compile_params)
+                + ", ".join(f"{n}: CompileTime[...]" for n in non_kw_compile_params)
                 + "):\n"
                 f"      ...\n\n"
                 f"  # After:\n"
                 f"  def {mlir_generator.__name__}(a: In, b: Out, *, "
-                + ", ".join(f"{n}: Compile[...]" for n in non_kw_compile_params)
+                + ", ".join(f"{n}: CompileTime[...]" for n in non_kw_compile_params)
                 + "):\n"
                 f"      ..."
             )

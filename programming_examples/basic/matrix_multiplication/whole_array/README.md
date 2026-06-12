@@ -277,7 +277,7 @@ rt.finish_task_group(tg)
 
 The two-phase `task_group` open/finish dance is the IRON equivalent of the old "ping/pong" buffer-descriptor split: while half the shim DMA BDs are still running, the other half are being reconfigured for the next set of tiles.  This overlap is what keeps the array fed.
 
-`tb_max_n_rows` controls how many tile-rows live in one ping-pong half; `tb_n_rows = tb_max_n_rows // 2` is the number of A row-blocks per half.  Setting either knob too low starves the cores; too high overflows the shim DMA BD pool.
+`tb_max_n_rows` controls how many tile-rows live in one ping-pong half; `tb_n_rows = tb_max_n_rows // 2` is the number of A row-blocks per half.  Setting either parameter too low starves the cores; too high overflows the shim DMA BD pool.
 
 ## Compute Microkernels
 

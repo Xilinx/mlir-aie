@@ -23,7 +23,7 @@ import numpy as np
 
 import aie.iron as iron
 from aie.iron import (
-    Compile,
+    CompileTime,
     In,
     ObjectFifo,
     Out,
@@ -52,18 +52,18 @@ def single_core(
     B: In,
     C: Out,
     *,
-    M: Compile[int],
-    K: Compile[int],
-    N: Compile[int],
-    m: Compile[int],
-    k: Compile[int],
-    n: Compile[int],
-    dtype_in_str: Compile[str],
-    dtype_out_str: Compile[str],
-    b_col_maj: Compile[int] = 0,
-    emulate_bf16_mmul_with_bfp16: Compile[bool] = False,
-    use_chess: Compile[bool] = False,
-    trace_config: Compile[TraceConfig | None] = None,
+    M: CompileTime[int],
+    K: CompileTime[int],
+    N: CompileTime[int],
+    m: CompileTime[int],
+    k: CompileTime[int],
+    n: CompileTime[int],
+    dtype_in_str: CompileTime[str],
+    dtype_out_str: CompileTime[str],
+    b_col_maj: CompileTime[int] = 0,
+    emulate_bf16_mmul_with_bfp16: CompileTime[bool] = False,
+    use_chess: CompileTime[bool] = False,
+    trace_config: CompileTime[TraceConfig | None] = None,
 ):
     dtype_in = str_to_dtype(dtype_in_str)
     dtype_out = str_to_dtype(dtype_out_str)

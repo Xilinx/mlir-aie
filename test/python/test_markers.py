@@ -7,14 +7,14 @@
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
 
 # RUN: %pytest %s
-"""Unit tests for Compile[T], In, Out, InOut annotation markers — no NPU required."""
+"""Unit tests for CompileTime[T], In, Out, InOut annotation markers — no NPU required."""
 
 import inspect
 from typing import get_args, get_origin
 
 import pytest
 
-from aie.utils.compile.jit.markers import Compile, In, InOut, Out
+from aie.utils.compile.jit.markers import CompileTime, In, InOut, Out
 from aie.utils.compile.jit.compilabledesign import (
     _is_compile_param,
     _is_tensor_param,
@@ -22,30 +22,30 @@ from aie.utils.compile.jit.compilabledesign import (
 )
 
 # ---------------------------------------------------------------------------
-# Compile[T] — generic parameterisation
+# CompileTime[T] — generic parameterisation
 # ---------------------------------------------------------------------------
 
 
 def test_compile_int_origin_is_compile():
-    assert get_origin(Compile[int]) is Compile
+    assert get_origin(CompileTime[int]) is CompileTime
 
 
 def test_compile_str_origin_is_compile():
-    assert get_origin(Compile[str]) is Compile
+    assert get_origin(CompileTime[str]) is CompileTime
 
 
 def test_compile_float_origin_is_compile():
-    assert get_origin(Compile[float]) is Compile
+    assert get_origin(CompileTime[float]) is CompileTime
 
 
 def test_compile_type_arg_preserved():
-    assert get_args(Compile[int]) == (int,)
-    assert get_args(Compile[str]) == (str,)
+    assert get_args(CompileTime[int]) == (int,)
+    assert get_args(CompileTime[str]) == (str,)
 
 
 def test_bare_compile_is_not_parameterised():
-    # Bare Compile has no origin.
-    assert get_origin(Compile) is None
+    # Bare CompileTime has no origin.
+    assert get_origin(CompileTime) is None
 
 
 # ---------------------------------------------------------------------------
@@ -54,15 +54,15 @@ def test_bare_compile_is_not_parameterised():
 
 
 def test_is_compile_param_with_int():
-    assert _is_compile_param(Compile[int]) is True
+    assert _is_compile_param(CompileTime[int]) is True
 
 
 def test_is_compile_param_with_str():
-    assert _is_compile_param(Compile[str]) is True
+    assert _is_compile_param(CompileTime[str]) is True
 
 
 def test_is_compile_param_bare():
-    assert _is_compile_param(Compile) is True
+    assert _is_compile_param(CompileTime) is True
 
 
 def test_is_compile_param_rejects_in():
@@ -109,8 +109,8 @@ def test_is_tensor_param_inout():
 
 
 def test_is_tensor_param_rejects_compile():
-    assert _is_tensor_param(Compile[int]) is False
-    assert _is_tensor_param(Compile) is False
+    assert _is_tensor_param(CompileTime[int]) is False
+    assert _is_tensor_param(CompileTime) is False
 
 
 def test_is_tensor_param_rejects_scalars():
@@ -139,9 +139,9 @@ def test_tensor_markers_are_distinct():
 
 
 def test_tensor_markers_are_not_compile():
-    assert In is not Compile
-    assert Out is not Compile
-    assert InOut is not Compile
+    assert In is not CompileTime
+    assert Out is not CompileTime
+    assert InOut is not CompileTime
 
 
 # ---------------------------------------------------------------------------
@@ -150,7 +150,7 @@ def test_tensor_markers_are_not_compile():
 
 
 def test_split_params_all_compile():
-    def f(*, M: Compile[int], K: Compile[int]):
+    def f(*, M: CompileTime[int], K: CompileTime[int]):
         pass
 
     compile_params, tensor_params, scalar_params = split_params(f)
@@ -200,7 +200,7 @@ def test_split_params_no_params():
 
 
 def test_split_params_mixed_all_three():
-    def f(a: In, b: Out, alpha: float, *, M: Compile[int], N: Compile[int]):
+    def f(a: In, b: Out, alpha: float, *, M: CompileTime[int], N: CompileTime[int]):
         pass
 
     compile_params, tensor_params, scalar_params = split_params(f)
@@ -210,7 +210,7 @@ def test_split_params_mixed_all_three():
 
 
 def test_split_params_inout_goes_in_tensor():
-    def f(x: InOut, *, M: Compile[int]):
+    def f(x: InOut, *, M: CompileTime[int]):
         pass
 
     compile_params, tensor_params, scalar_params = split_params(f)
@@ -229,7 +229,7 @@ def test_split_params_preserves_declaration_order_for_tensors():
 
 
 def test_split_params_preserves_declaration_order_for_compile():
-    def f(*, N: Compile[int], M: Compile[int], K: Compile[int]):
+    def f(*, N: CompileTime[int], M: CompileTime[int], K: CompileTime[int]):
         pass
 
     compile_params, _, _ = split_params(f)
@@ -240,7 +240,7 @@ def test_split_params_compile_with_default():
     """Parameters with defaults are still categorised correctly."""
     import numpy as np
 
-    def f(a: In, *, M: Compile[int], dtype: Compile[type] = np.float32):
+    def f(a: In, *, M: CompileTime[int], dtype: CompileTime[type] = np.float32):
         pass
 
     compile_params, tensor_params, scalar_params = split_params(f)
@@ -250,7 +250,7 @@ def test_split_params_compile_with_default():
 
 
 def test_split_params_scalar_with_default():
-    def f(a: In, alpha: float = 1.0, *, N: Compile[int] = 512):
+    def f(a: In, alpha: float = 1.0, *, N: CompileTime[int] = 512):
         pass
 
     compile_params, tensor_params, scalar_params = split_params(f)

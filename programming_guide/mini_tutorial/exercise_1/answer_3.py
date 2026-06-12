@@ -9,7 +9,7 @@
 import sys
 import numpy as np
 
-from aie.iron import Out, In, Compile, Program, Runtime, ObjectFifo
+from aie.iron import Out, In, CompileTime, Program, Runtime, ObjectFifo
 
 import aie.iron as iron
 
@@ -19,8 +19,8 @@ def exercise_1(
     input0: In,
     output: Out,
     *,
-    data_size: Compile[int],
-    element_type: Compile[type],
+    data_size: CompileTime[int],
+    element_type: CompileTime[type],
 ):
     data_ty = np.ndarray[(data_size,), np.dtype[element_type]]
 

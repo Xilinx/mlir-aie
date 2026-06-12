@@ -20,7 +20,7 @@ from aie.dialects.aiex import v8bfp16ebs8
 
 import aie.iron as iron
 from aie.iron import (
-    Compile,
+    CompileTime,
     ExternalFunction,
     In,
     ObjectFifo,
@@ -46,12 +46,12 @@ def single_core_no_tiling(
     B: In,
     C: Out,
     *,
-    M: Compile[int] = 64,
-    K: Compile[int] = 128,
-    N: Compile[int] = 64,
-    m: Compile[int] = 64,
-    k: Compile[int] = 128,
-    n: Compile[int] = 64,
+    M: CompileTime[int] = 64,
+    K: CompileTime[int] = 128,
+    N: CompileTime[int] = 64,
+    m: CompileTime[int] = 64,
+    k: CompileTime[int] = 128,
+    n: CompileTime[int] = 64,
 ):
     # bfp16ebs8 matmul mac unit is 8x8x8; m/k/n must be multiples of these.
     r = s = t = 8

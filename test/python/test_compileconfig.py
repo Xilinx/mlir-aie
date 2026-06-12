@@ -18,7 +18,7 @@ import pytest
 
 from aie.utils.compile.jit.compilabledesign import CompilableDesign
 from aie.utils.compile.jit.compileconfig import compileconfig
-from aie.utils.compile.jit.markers import Compile, In, Out
+from aie.utils.compile.jit.markers import CompileTime, In, Out
 
 # ---------------------------------------------------------------------------
 # Bare decorator: @compileconfig (no parentheses)
@@ -27,7 +27,7 @@ from aie.utils.compile.jit.markers import Compile, In, Out
 
 def test_bare_decorator_returns_compilable_design():
     @compileconfig
-    def gen(a: In, M: Compile[int]):
+    def gen(a: In, M: CompileTime[int]):
         pass
 
     assert isinstance(gen, CompilableDesign)
@@ -57,7 +57,7 @@ def test_bare_decorator_does_not_bind_compile_kwargs():
     """@compileconfig must not pre-bind compile_kwargs — those come from jit/CompilableDesign."""
 
     @compileconfig
-    def gen(a: In, M: Compile[int]):
+    def gen(a: In, M: CompileTime[int]):
         pass
 
     assert gen.compile_kwargs == {}
@@ -65,7 +65,7 @@ def test_bare_decorator_does_not_bind_compile_kwargs():
 
 def test_bare_decorator_preserves_generator():
     @compileconfig
-    def my_generator(a: In, M: Compile[int]):
+    def my_generator(a: In, M: CompileTime[int]):
         pass
 
     assert my_generator.mlir_generator.__name__ == "my_generator"
@@ -148,7 +148,7 @@ def test_kwargs_decorator_all_options_together():
         include_paths=["/inc"],
         object_files=["a.o"],
     )
-    def gen(a: In, M: Compile[int]):
+    def gen(a: In, M: CompileTime[int]):
         pass
 
     assert gen.use_cache is False
@@ -182,7 +182,7 @@ def test_partial_application_is_not_compilable_design():
 def test_partial_application_produces_compilable_design_when_called():
     decorator = compileconfig(use_cache=False)
 
-    def my_gen(a: In, M: Compile[int]):
+    def my_gen(a: In, M: CompileTime[int]):
         pass
 
     result = decorator(my_gen)
@@ -258,7 +258,7 @@ def test_compileconfig_design_accepts_compile_kwargs_later():
     by constructing a new CompilableDesign with the generator."""
 
     @compileconfig(use_cache=False)
-    def gemm_design(a: In, b: In, c: Out, M: Compile[int], N: Compile[int]):
+    def gemm_design(a: In, b: In, c: Out, M: CompileTime[int], N: CompileTime[int]):
         pass
 
     # The @compileconfig result is itself a CompilableDesign.  To bind

@@ -248,7 +248,7 @@ print(dma_compression.as_mlir(config='both'))
 its ``.as_mlir(**compile_kwargs)`` runs the generator and returns the
 serialised MLIR without any aiecc work.  See
 [`compilation_stages.md`](../../../programming_guide/compilation_stages.md)
-§Inspecting an intermediate stage for the other introspection knobs.
+§Inspecting an intermediate stage for the other introspection options.
 
 ## Strix npu2 (AIE2P) support
 

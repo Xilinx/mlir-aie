@@ -16,7 +16,7 @@ import numpy as np
 
 import aie.iron as iron
 from aie.iron import (
-    Compile,
+    CompileTime,
     In,
     ObjectFifo,
     Out,
@@ -39,12 +39,12 @@ def matrix_vector(
     B: In,
     C: Out,
     *,
-    M: Compile[int],
-    K: Compile[int],
-    m: Compile[int],
-    k: Compile[int],
-    vectorized: Compile[bool] = True,
-    use_chess: Compile[bool] = False,
+    M: CompileTime[int],
+    K: CompileTime[int],
+    m: CompileTime[int],
+    k: CompileTime[int],
+    vectorized: CompileTime[bool] = True,
+    use_chess: CompileTime[bool] = False,
 ):
     n_cores = 1
     M_div_n_cores = M // n_cores

@@ -17,7 +17,7 @@ import numpy as np
 
 import aie.iron as iron
 from aie.iron import (
-    Compile,
+    CompileTime,
     ExternalFunction,
     In,
     ObjectFifo,
@@ -310,7 +310,7 @@ def dma_compression(
     in_tensor: In,
     out_tensor: Out,
     *,
-    config: Compile[str] = "base",
+    config: CompileTime[str] = "base",
 ):
     """Build the IRON program for one compression config and return its MLIR module."""
     if config not in CONFIGS:

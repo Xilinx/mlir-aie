@@ -31,7 +31,7 @@ import sys
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Compile, In, Out
+from aie.iron import CompileTime, In, Out
 from aie.iron.algorithms import transform_binary_typed
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
@@ -43,9 +43,9 @@ def vector_vector_modulo(
     input1: In,
     output: Out,
     *,
-    num_elements: Compile[int] = 256,
-    dtype: Compile[type] = np.int32,
-    tile_size: Compile[int] = 16,
+    num_elements: CompileTime[int] = 256,
+    dtype: CompileTime[type] = np.int32,
+    tile_size: CompileTime[int] = 16,
 ):
     tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
     return transform_binary_typed(lambda a, b: a % b, tensor_ty, tile_size=tile_size)

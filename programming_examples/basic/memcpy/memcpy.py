@@ -22,7 +22,7 @@ import sys
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.utils.hostruntime.argparse import device_from_args
 from aie.helpers.taplib.tensortiler2d import TensorTiler2D
 from aie.utils.hostruntime.argparse import add_compile_args
@@ -35,10 +35,10 @@ def memcpy(
     a_in: In,
     b_out: Out,
     *,
-    size: Compile[int] = 16384,
-    num_columns: Compile[int] = 1,
-    num_channels: Compile[int] = 1,
-    bypass: Compile[bool] = True,
+    size: CompileTime[int] = 16384,
+    num_columns: CompileTime[int] = 1,
+    num_channels: CompileTime[int] = 1,
+    bypass: CompileTime[bool] = True,
 ):
     xfr_dtype = np.int32
     line_size = 1024

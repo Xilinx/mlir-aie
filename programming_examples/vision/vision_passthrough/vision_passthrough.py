@@ -17,7 +17,7 @@ import argparse
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
@@ -29,8 +29,8 @@ def vision_passthrough(
     _unused: In,
     out_tensor: Out,
     *,
-    width: Compile[int] = 1920,
-    height: Compile[int] = 1080,
+    width: CompileTime[int] = 1920,
+    height: CompileTime[int] = 1080,
 ):
     tensor_size = width * height
     tensor_ty = np.ndarray[(tensor_size,), np.dtype[np.int8]]

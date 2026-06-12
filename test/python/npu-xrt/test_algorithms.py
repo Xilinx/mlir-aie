@@ -14,7 +14,7 @@ import pytest
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Compile, ExternalFunction, In, Out
+from aie.iron import CompileTime, ExternalFunction, In, Out
 from aie.iron.algorithms import (
     for_each_typed,
     transform_binary_typed,
@@ -44,12 +44,12 @@ def run_transform(
     input: In,
     output: Out,
     *,
-    func: Compile[object],
-    N_in: Compile[int],
-    N_out: Compile[int],
-    dtype_in: Compile[object],
-    dtype_out: Compile[object],
-    tile_size: Compile[int] = 16,
+    func: CompileTime[object],
+    N_in: CompileTime[int],
+    N_out: CompileTime[int],
+    dtype_in: CompileTime[object],
+    dtype_out: CompileTime[object],
+    tile_size: CompileTime[int] = 16,
 ):
     if N_in != N_out:
         raise ValueError(f"Tensor 1 shape ({N_out},) doesn't match expected ({N_in},)")
@@ -67,10 +67,10 @@ def run_transform_binary(
     second: In,
     output: Out,
     *,
-    func: Compile[object],
-    N: Compile[int],
-    dtype: Compile[object],
-    tile_size: Compile[int] = 16,
+    func: CompileTime[object],
+    N: CompileTime[int],
+    dtype: CompileTime[object],
+    tile_size: CompileTime[int] = 16,
 ):
     tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
     return transform_binary_typed(func, tensor_ty, tile_size=tile_size)
@@ -81,12 +81,12 @@ def run_transform_parallel(
     input: In,
     output: Out,
     *,
-    func: Compile[object],
-    N_in: Compile[int],
-    N_out: Compile[int],
-    dtype_in: Compile[object],
-    dtype_out: Compile[object],
-    tile_size: Compile[int] = 16,
+    func: CompileTime[object],
+    N_in: CompileTime[int],
+    N_out: CompileTime[int],
+    dtype_in: CompileTime[object],
+    dtype_out: CompileTime[object],
+    tile_size: CompileTime[int] = 16,
 ):
     if N_in != N_out:
         raise ValueError(f"Tensor 1 shape ({N_out},) doesn't match expected ({N_in},)")
@@ -103,11 +103,11 @@ def run_transform_parallel_with_scalar(
     input: In,
     output: Out,
     *,
-    func: Compile[object],
-    N: Compile[int],
-    dtype: Compile[object],
-    scalar_param: Compile[int],
-    tile_size: Compile[int] = 16,
+    func: CompileTime[object],
+    N: CompileTime[int],
+    dtype: CompileTime[object],
+    scalar_param: CompileTime[int],
+    tile_size: CompileTime[int] = 16,
 ):
     tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
     return transform_parallel_typed(func, tensor_ty, scalar_param, tile_size=tile_size)
@@ -119,10 +119,10 @@ def run_transform_parallel_binary(
     second: In,
     output: Out,
     *,
-    func: Compile[object],
-    N: Compile[int],
-    dtype: Compile[object],
-    tile_size: Compile[int] = 16,
+    func: CompileTime[object],
+    N: CompileTime[int],
+    dtype: CompileTime[object],
+    tile_size: CompileTime[int] = 16,
 ):
     tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
     return transform_parallel_binary_typed(func, tensor_ty, tile_size=tile_size)
@@ -132,10 +132,10 @@ def run_transform_parallel_binary(
 def run_for_each(
     data: In,
     *,
-    func: Compile[object],
-    N: Compile[int],
-    dtype: Compile[object],
-    tile_size: Compile[int] = 16,
+    func: CompileTime[object],
+    N: CompileTime[int],
+    dtype: CompileTime[object],
+    tile_size: CompileTime[int] = 16,
 ):
     tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
     return for_each_typed(func, tensor_ty, tile_size=tile_size)

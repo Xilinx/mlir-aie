@@ -26,7 +26,7 @@ from pathlib import Path
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import device_from_args
 from aie.iron.kernel import ExternalFunction
@@ -44,10 +44,10 @@ def row_wise_bias_add(
     bias: In,
     out: Out,
     *,
-    M: Compile[int] = 768,
-    N: Compile[int] = 2304,
-    m: Compile[int] = 96,
-    n: Compile[int] = 32,
+    M: CompileTime[int] = 768,
+    N: CompileTime[int] = 2304,
+    m: CompileTime[int] = 96,
+    n: CompileTime[int] = 32,
 ):
     assert M % m == 0
     assert N % n == 0

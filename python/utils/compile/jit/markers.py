@@ -9,7 +9,7 @@
 
 Three annotation categories are defined here (all exported from ``aie.iron``):
 
-``Compile[T]``
+``CompileTime[T]``
     Marks a generator function parameter as compile-time.  Changing its value
     causes a recompile and a new cache entry.  Inspired by ``tl.constexpr`` in
     Triton.  Standard ``Generic[T]``, fully compatible with mypy/pyright.
@@ -30,7 +30,7 @@ Any parameter without one of these four annotations is currently rejected at
 ``@iron.jit`` decoration time when the parameter has a default value — there
 is no runtime-scalar plumbing yet (tracked separately as future work), so the
 default would be baked into the compiled kernel and per-call overrides
-silently ignored.  Annotate as ``Compile[T]`` (recompiles on change) or
+silently ignored.  Annotate as ``CompileTime[T]`` (recompiles on change) or
 ``In``/``Out``/``InOut`` (DMA tensor) instead.
 """
 
@@ -41,14 +41,14 @@ from typing import Generic, TypeVar
 T = TypeVar("T")
 
 
-class Compile(Generic[T]):
+class CompileTime(Generic[T]):
     """Compile-time parameter annotation.
 
     Use as a type annotation on generator function parameters that affect the
     generated MLIR.  The value must be supplied at ``CompilableDesign``
     construction time (or bound by ``@iron.jit(...)``).
 
-    Changing a ``Compile[T]``-annotated value → new cache key → recompile.
+    Changing a ``CompileTime[T]``-annotated value → new cache key → recompile.
     Required unless a default is given.
 
     Example::
@@ -56,8 +56,8 @@ class Compile(Generic[T]):
         from ml_dtypes import bfloat16
 
         def gemm(a: In, b: In, c: Out,
-                 M: Compile[int], K: Compile[int], N: Compile[int],
-                 dtype: Compile[type] = bfloat16):
+                 M: CompileTime[int], K: CompileTime[int], N: CompileTime[int],
+                 dtype: CompileTime[type] = bfloat16):
             ...
     """
 

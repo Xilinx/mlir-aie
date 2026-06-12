@@ -29,11 +29,11 @@ The whole design lives in [`aie_trace.py`](./aie_trace.py).  Custom event lists 
 
 ```python
 import aie.iron as iron
-from aie.iron import Compile, In, Out, ObjectFifo, Runtime, Worker
+from aie.iron import CompileTime, In, Out, ObjectFifo, Runtime, Worker
 from aie.utils.trace.events import CoreEvent, MemEvent, MemTileEvent, ShimTileEvent
 
 @iron.jit
-def aie_trace(A: In, F: In, C: Out, *, tensor_size: Compile[int] = 4096, ...):
+def aie_trace(A: In, F: In, C: Out, *, tensor_size: CompileTime[int] = 4096, ...):
     of_in = ObjectFifo(...)
     ...
     # `trace=1` flags the worker for hardware tracing.

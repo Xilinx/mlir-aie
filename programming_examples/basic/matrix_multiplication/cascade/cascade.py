@@ -20,7 +20,7 @@ import aie.iron as iron
 from aie.iron import (
     Buffer,
     CascadeFlow,
-    Compile,
+    CompileTime,
     In,
     ObjectFifo,
     Out,
@@ -56,15 +56,15 @@ def cascade(
     B: In,
     C: Out,
     *,
-    M: Compile[int],
-    K: Compile[int],
-    N: Compile[int],
-    m: Compile[int],
-    k: Compile[int],
-    n: Compile[int],
-    n_aie_cols: Compile[int],
-    dtype_in_str: Compile[str],
-    dtype_out_str: Compile[str],
+    M: CompileTime[int],
+    K: CompileTime[int],
+    N: CompileTime[int],
+    m: CompileTime[int],
+    k: CompileTime[int],
+    n: CompileTime[int],
+    n_aie_cols: CompileTime[int],
+    dtype_in_str: CompileTime[str],
+    dtype_out_str: CompileTime[str],
 ):
     n_aie_rows = 4
     n_aie_cores = n_aie_rows * n_aie_cols

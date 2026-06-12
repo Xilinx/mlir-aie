@@ -15,7 +15,7 @@ import os
 
 
 import aie.iron as iron
-from aie.iron import Compile, ExternalFunction, In, Out
+from aie.iron import CompileTime, ExternalFunction, In, Out
 from aie.iron import ObjectFifo, Worker, Runtime, Program
 
 from aie.iron.controlflow import range_
@@ -29,9 +29,9 @@ def transform(
     input: In,
     output: Out,
     *,
-    func: Compile[object],
-    num_elements: Compile[int],
-    dtype: Compile[object] = np.int32,
+    func: CompileTime[object],
+    num_elements: CompileTime[int],
+    dtype: CompileTime[object] = np.int32,
 ):
     """Transform kernel that applies a function to input tensor and stores result in output tensor."""
     if isinstance(func, iron.ExternalFunction):

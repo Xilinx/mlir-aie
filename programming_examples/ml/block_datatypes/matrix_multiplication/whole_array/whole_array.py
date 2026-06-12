@@ -21,7 +21,7 @@ from aie.helpers.taplib import TensorTiler2D
 
 import aie.iron as iron
 from aie.iron import (
-    Compile,
+    CompileTime,
     ExternalFunction,
     In,
     ObjectFifo,
@@ -48,13 +48,13 @@ def whole_array_matmul(
     B: In,
     C: Out,
     *,
-    M: Compile[int] = 512,
-    K: Compile[int] = 512,
-    N: Compile[int] = 512,
-    m: Compile[int] = 64,
-    k: Compile[int] = 64,
-    n: Compile[int] = 64,
-    n_aie_cols: Compile[int] = 4,
+    M: CompileTime[int] = 512,
+    K: CompileTime[int] = 512,
+    N: CompileTime[int] = 512,
+    m: CompileTime[int] = 64,
+    k: CompileTime[int] = 64,
+    n: CompileTime[int] = 64,
+    n_aie_cols: CompileTime[int] = 4,
 ):
     n_aie_rows = 4
     n_aie_cores = n_aie_rows * n_aie_cols

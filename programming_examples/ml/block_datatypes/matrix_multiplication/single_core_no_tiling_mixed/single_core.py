@@ -21,7 +21,7 @@ from aie.dialects.aiex import v8bfp16ebs8
 
 import aie.iron as iron
 from aie.iron import (
-    Compile,
+    CompileTime,
     ExternalFunction,
     In,
     ObjectFifo,
@@ -47,12 +47,12 @@ def single_core_no_tiling_mixed(
     B: In,
     C: Out,
     *,
-    M: Compile[int] = 64,
-    K: Compile[int] = 64,
-    N: Compile[int] = 64,
-    m: Compile[int] = 64,
-    k: Compile[int] = 64,
-    n: Compile[int] = 64,
+    M: CompileTime[int] = 64,
+    K: CompileTime[int] = 64,
+    N: CompileTime[int] = 64,
+    m: CompileTime[int] = 64,
+    k: CompileTime[int] = 64,
+    n: CompileTime[int] = 64,
 ):
     r, s, t = 8, 8, 8
 

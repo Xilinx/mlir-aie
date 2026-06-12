@@ -26,7 +26,7 @@ import numpy as np
 from ml_dtypes import bfloat16
 
 import aie.iron as iron
-from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.iron.controlflow import range_
 
 # ---------------------------------------------------------------------------
@@ -41,7 +41,7 @@ def test_passthrough_int32_e2e():
     N = 4 * LINE  # 4 LINE-sized chunks
 
     @iron.jit
-    def passthrough_design(x: In, y: Out, *, n: Compile[int]):
+    def passthrough_design(x: In, y: Out, *, n: CompileTime[int]):
         line_ty = np.ndarray[(LINE,), np.dtype[np.int32]]
         vec_ty = np.ndarray[(n,), np.dtype[np.int32]]
 
@@ -88,7 +88,7 @@ def test_reduce_max_bfloat16_output_alignment_e2e():
     TILE = 1024
 
     @iron.jit
-    def reduce_max_design(x: In, y: Out, *, n: Compile[int]):
+    def reduce_max_design(x: In, y: Out, *, n: CompileTime[int]):
         in_ty = np.ndarray[(n,), np.dtype[bfloat16]]
         tile_ty = np.ndarray[(TILE,), np.dtype[bfloat16]]
 

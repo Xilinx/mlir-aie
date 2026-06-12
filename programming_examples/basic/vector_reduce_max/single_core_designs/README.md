@@ -10,7 +10,7 @@
 
 # Vector Reduce Max (single-core):
 
-A single AIE compute tile finds the maximum of an N-element input vector and writes the result back.  Supports both `int32` (default; `N = 2048` for the default 8192-byte input) and `bfloat16` (`N = 4096`) element types -- the design picks `reduce_max_vector` or `reduce_max_vector_bfloat16` from `reduce_max.cc` based on the `dtype` Compile knob.
+A single AIE compute tile finds the maximum of an N-element input vector and writes the result back.  Supports both `int32` (default; `N = 2048` for the default 8192-byte input) and `bfloat16` (`N = 4096`) element types -- the design picks `reduce_max_vector` or `reduce_max_vector_bfloat16` from `reduce_max.cc` based on the `dtype` CompileTime parameter.
 
 The design body is a single `aie.iron.algorithms.reduce_typed(reduce_max, in_ty, out_ty, trace_size=trace_size)` call; the algorithms library handles the ObjectFifo / Worker / Runtime plumbing, including the optional trace.
 

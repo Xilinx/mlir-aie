@@ -16,7 +16,7 @@ and the moment XRT runs it on the NPU.
 This page is a reference, not a tutorial. If you only want to *use*
 `@iron.jit`, the [landing page](./README.md) and
 [Section 3](./section-3/) are enough. Come here when you need to debug
-a cache miss, plumb a custom kernel object, or understand which knob
+a cache miss, plumb a custom kernel object, or understand which setting
 lives at which stage.
 
 ## The pipeline
@@ -24,7 +24,7 @@ lives at which stage.
 ```
    Python function (@iron.jit)
         │
-        │  decoration: capture generator + Compile[T] params + flags
+        │  decoration: capture generator + CompileTime[T] params + flags
         ▼
    CompilableDesign           ◄── frozen recipe (immutable inputs)
         │
@@ -65,7 +65,7 @@ The decorator captures four things and returns a `CallableDesign` (or
 `CompilableDesign` for `@compileconfig`):
 
 - the **generator function** itself,
-- any **pre-bound `Compile[T]` values** passed to the decorator
+- any **pre-bound `CompileTime[T]` values** passed to the decorator
   (`@iron.jit(N=1024)`-style),
 - `compile_flags` (passed to `aie-opt` for MLIR-side switches),
 - `aiecc_flags` (passed to `aiecc.main` for tool-chain switches like
@@ -219,7 +219,7 @@ on the same arg all give the host-tensor size directly without
 re-folding multi-DMA patterns.
 
 A mismatch raises `RuntimeError` *before* the kernel runs, naming the
-parameter and the `Compile[T]` settings that produced the expected
+parameter and the `CompileTime[T]` settings that produced the expected
 size:
 
 ```python
@@ -230,7 +230,7 @@ except RuntimeError as e:
     print(e)
 # Tensor argument 'a_in' has 99 elements but the kernel was compiled
 # for 4096 elements.
-# Compile[T] parameters used at compile time: {'N': 4096}
+# CompileTime[T] parameters used at compile time: {'N': 4096}
 ```
 
 The check runs on both fresh compiles and cache hits.  It is silently
@@ -240,11 +240,11 @@ root (multi-device programs that route through `aiex.run` from several
 top-level sequences).  Args wired only to runtime params and never DMA-
 transferred (expected entry `0`) are also skipped.
 
-## Knob → stage cheat-sheet
+## Setting → stage cheat-sheet
 
-| Knob | Set at | Affects |
+| Setting | Set at | Affects |
 |---|---|---|
-| `@iron.jit(N=...)` (pre-bound `Compile[T]`) | decoration | recipe_hash (stage 2) |
+| `@iron.jit(N=...)` (pre-bound `CompileTime[T]`) | decoration | recipe_hash (stage 2) |
 | Call-time `cd(a, b, N=...)` kwarg | each call | merged recipe for that call (stage 5) |
 | `@iron.jit(compile_flags=[...])` | decoration | aie-opt pass options (stage 4) |
 | `@iron.jit(aiecc_flags=[...])` | decoration | aiecc.main switches (stage 4) |
@@ -253,7 +253,7 @@ transferred (expected entry `0`) are also skipped.
 | `@iron.jit(use_cache=False)` | decoration | bypass on-disk cache; always rebuild (stage 4) |
 | `@iron.jit(elf_path=...)` | decoration | also emit `insts.elf` for the `xrt::elf` testbench flow (stage 4) |
 | `$NPU_CACHE_HOME` env var | process-wide | where `aiecc` reads/writes artifacts (stage 4) |
-| `trace_config=` kwarg at call-time | each call | forwarded to `NPUKernel.__init__` (stage 5); **not** a Compile[T] kwarg |
+| `trace_config=` kwarg at call-time | each call | forwarded to `NPUKernel.__init__` (stage 5); **not** a CompileTime[T] kwarg |
 | `iron.set_current_device(...)` | before generator runs | target architecture baked into the generator's `Program` (stage 3) |
 
 ## Inspecting an intermediate stage
@@ -276,7 +276,7 @@ unspecialised handle:
 ```python
 @iron.jit
 def add_const(x: In, y: Out, *,
-              N: Compile[int], dtype: Compile[type]):
+              N: CompileTime[int], dtype: CompileTime[type]):
     ...
 
 half  = add_const.specialize(N=4096)         # bind N now
@@ -321,27 +321,27 @@ design.specialize(N=4096).compile()
 logging.getLogger("aie.utils.compile").setLevel(logging.WARNING)
 ```
 
-## Appendix A: three ways to bind `Compile[T]` parameters
+## Appendix A: three ways to bind `CompileTime[T]` parameters
 
-`Compile[T]`-annotated parameters are part of the compile recipe (they
+`CompileTime[T]`-annotated parameters are part of the compile recipe (they
 participate in the recipe hash), so the value has to be known by
 stage 4.  Three places can supply it; later wins.  All three are
-keyword-only — `Compile[T]` params must sit after a `*,` in the
-signature (the framework rejects positional `Compile[T]` at decoration
+keyword-only — `CompileTime[T]` params must sit after a `*,` in the
+signature (the framework rejects positional `CompileTime[T]` at decoration
 time with a fix-it `TypeError`).
 
 ```python
 # A — bare decorator; params supplied at call time
 @iron.jit
 def gemm_a(a: In, b: In, c: Out, *,
-           M: Compile[int], N: Compile[int]):
+           M: CompileTime[int], N: CompileTime[int]):
     ...
 gemm_a(a, b, c, M=512, N=512)            # call-time bind
 
 # B — pre-bound at decoration; call-time can still override
 @iron.jit(M=512, N=512)
 def gemm_b(a: In, b: In, c: Out, *,
-           M: Compile[int], N: Compile[int]):
+           M: CompileTime[int], N: CompileTime[int]):
     ...
 gemm_b(a, b, c)                          # uses pre-bound 512×512
 gemm_b(a, b, c, M=1024)                  # call-time override wins → recompile
@@ -349,8 +349,8 @@ gemm_b(a, b, c, M=1024)                  # call-time override wins → recompile
 # C — signature defaults; used at lowering time if not bound otherwise
 @iron.jit
 def gemm_c(a: In, b: In, c: Out, *,
-           M: Compile[int] = 256,
-           N: Compile[int] = 256):
+           M: CompileTime[int] = 256,
+           N: CompileTime[int] = 256):
     ...
 gemm_c(a, b, c)                          # uses 256×256
 ```
@@ -360,16 +360,16 @@ immediately rather than silently running a kernel with the wrong value
 baked in:
 
 - **Unknown kwargs to `@iron.jit`** raise `TypeError` listing the valid
-  `Compile[T]` params and the recognised config keys
+  `CompileTime[T]` params and the recognised config keys
   (`aiecc_flags`, `source_files`, `use_cache`, …).  Catches typos like
   `@jit(NN=512)` instead of `@jit(N=512)`.
 - **Unannotated scalar params with default values** raise `TypeError`
-  with a fix-it message pointing at either `Compile[T] = default`
+  with a fix-it message pointing at either `CompileTime[T] = default`
   (recompile on per-call change) or `In / Out / InOut` (tensor).
   Prevents silently baking a default into the compiled MLIR while a
   per-call override is ignored.
 
-A defaulted *and* call-time-overridden `Compile[T]` recompiles for the
+A defaulted *and* call-time-overridden `CompileTime[T]` recompiles for the
 new value; the cache key includes the resolved value, not the source
 default.
 

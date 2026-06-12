@@ -8,7 +8,7 @@
 """Section-4b trace example — ``@iron.jit`` (vector * scalar).
 
 Same vector*scalar design as section-3/4a; this version exposes a
-``trace_size`` knob and calls ``rt.enable_trace(trace_size,
+``trace_size`` parameter and calls ``rt.enable_trace(trace_size,
 workers=[my_worker])`` to capture core-tile trace events into a DDR
 buffer.  See README.md for a walk-through of the customizable
 ``coretile_events`` / ``coremem_events`` / ``memtile_events`` /
@@ -32,7 +32,7 @@ import numpy as np
 
 import aie.iron as iron
 from aie.iron import (
-    Compile,
+    CompileTime,
     ExternalFunction,
     In,
     ObjectFifo,
@@ -66,7 +66,7 @@ def vector_scalar_mul(
     f_in: In,
     c_out: Out,
     *,
-    trace_size: Compile[int] = 0,
+    trace_size: CompileTime[int] = 0,
 ):
     scale_fn = ExternalFunction(
         "vector_scalar_mul_aie_scalar",

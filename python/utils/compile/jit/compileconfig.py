@@ -60,7 +60,7 @@ def compileconfig(
 
         @iron.compileconfig(source_files=["kernel.cc"])
         def gemm_design(a: In, b: In, c: Out,
-                        M: Compile[int], K: Compile[int], N: Compile[int]):
+                        M: CompileTime[int], K: CompileTime[int], N: CompileTime[int]):
             ...
 
         design = CompilableDesign(gemm_design, compile_kwargs={"M": 512, ...})

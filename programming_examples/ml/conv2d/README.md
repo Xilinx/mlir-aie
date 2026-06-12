@@ -10,12 +10,12 @@
 
 # <ins>1x1 Conv2D (int8, optionally fused with ReLU)</ins>
 
-A vectorized 1x1 `int8` Conv2D in the IRON API, with an optional fused-ReLU mode selected at compile time via the `fuse_relu` knob.
+A vectorized 1x1 `int8` Conv2D in the IRON API, with an optional fused-ReLU mode selected at compile time via the `fuse_relu` flag.
 
 * `fuse_relu=0` (default): `kernels.conv2dk1_i8`; signed `int8` output.
 * `fuse_relu=1`: `kernels.conv2dk1(act_dtype=int8)`; unsigned `uint8` output.  The unsigned saturation IS the fused ReLU.
 
-The `scale` runtime parameter is lifted to a `Compile[int]` so the design skips the RTP buffer + barrier dance.
+The `scale` runtime parameter is lifted to a `CompileTime[int]` so the design skips the RTP buffer + barrier dance.
 
 ## Introduction
 
@@ -73,7 +73,7 @@ Matching the two layouts lets the kernel stream a vector load + a vector MAC per
 
 ## Source files
 
-1. `conv2d.py` — IRON design with the `fuse_relu` knob.  Kernel factory, output dtype, default scale, and worker stack size all branch on this single flag.
+1. `conv2d.py` — IRON design with the `fuse_relu` flag.  Kernel factory, output dtype, default scale, and worker stack size all branch on this single flag.
 2. `test.py` — torch-based host harness.  Pass `--fuse_relu` to match the compiled design — picks the ReLU layer and `uint8` output in the reference model.
 3. `act_layout.png` — figure for the activation layout discussed above.
 
@@ -86,4 +86,4 @@ make clean && make fuse_relu=1 && make fuse_relu=1 run_py      # fused ReLU
 
 ### Configuring problem shape
 
-The data width, height, and channel counts come from variables at the top of the [`Makefile`](./Makefile) — `width`, `height`, `in_channels`, `out_channels` — and are forwarded into the design via `Compile[int]` params.  Override on the make command line: `make width=64 height=64 run_py`.
+The data width, height, and channel counts come from variables at the top of the [`Makefile`](./Makefile) — `width`, `height`, `in_channels`, `out_channels` — and are forwarded into the design via `CompileTime[int]` params.  Override on the make command line: `make width=64 height=64 run_py`.

@@ -96,10 +96,10 @@ def reduce_typed(func, input_ty, output_ty, *, trace_size=0):
     reductions: hands the whole input to ``func`` in a single kernel call
     rather than iterating per-tile.  Intended for use inside ``@iron.jit``
     generator bodies where input/output shapes are expressed as
-    ``Compile[T]`` parameters::
+    ``CompileTime[T]`` parameters::
 
         @iron.jit
-        def my_design(inp: In, out: Out, *, N: Compile[int]):
+        def my_design(inp: In, out: Out, *, N: CompileTime[int]):
             in_ty = np.ndarray[(N,), np.dtype[np.int32]]
             out_ty = np.ndarray[(1,), np.dtype[np.int32]]
             return reduce_typed(my_reduce_kernel, in_ty, out_ty)

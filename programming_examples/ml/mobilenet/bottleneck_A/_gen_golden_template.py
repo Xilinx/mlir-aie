@@ -49,7 +49,7 @@ VECTOR_SIZE = 8
 
 @dataclass
 class BottleneckSpec:
-    """Shape + structural knobs for one bottleneck_A per-block fixture."""
+    """Shape + structural parameters for one bottleneck_A per-block fixture."""
 
     name: str  # "bn1", "bn2", ...
     tensor_in_w: int

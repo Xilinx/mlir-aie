@@ -19,12 +19,12 @@ def for_each_typed(func, tensor_ty, tile_size=16):
 
     Like :func:`for_each` but accepts a numpy ``ndarray`` type descriptor
     instead of a real tensor.  Intended for use inside ``@iron.jit``
-    generator bodies where shape and dtype are expressed as ``Compile[T]``
+    generator bodies where shape and dtype are expressed as ``CompileTime[T]``
     parameters::
 
         @iron.jit
         def my_design(data: InOut,
-                      N: Compile[int], dtype: Compile[type] = np.int32):
+                      N: CompileTime[int], dtype: CompileTime[type] = np.int32):
             tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
             return iron.algorithms.for_each_typed(lambda x: x + 1, tensor_ty)
 

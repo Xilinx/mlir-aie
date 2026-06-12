@@ -23,7 +23,7 @@ import numpy as np
 import aie.iron as iron
 from aie.iron import (
     Buffer,
-    Compile,
+    CompileTime,
     In,
     ObjectFifo,
     Out,
@@ -47,8 +47,8 @@ def edge_detect(
     _b_unused: In,
     out_tensor: Out,
     *,
-    width: Compile[int] = 1920,
-    height: Compile[int] = 1080,
+    width: CompileTime[int] = 1920,
+    height: CompileTime[int] = 1080,
 ):
     height_minus_1 = height - 1
     line_width = width

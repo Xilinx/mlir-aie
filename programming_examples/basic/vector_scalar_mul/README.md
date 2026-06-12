@@ -40,7 +40,7 @@ It is important to note that the Shim Tile and Compute Tile DMAs move data concu
 
 The `@iron.jit`-decorated `vector_scalar_mul(A, F, C, ...)` function expresses the design in IRON primitives:
 
-1. **Compile-time configuration:** `in1_size`, `int_bit_width`, `vectorized`, `trace_size`, and `use_chess` are `Compile[...]` knobs, so different specializations live in separate JIT artifacts.
+1. **Compile-time configuration:** `in1_size`, `int_bit_width`, `vectorized`, `trace_size`, and `use_chess` are `CompileTime[...]` parameters, so different specializations live in separate JIT artifacts.
 
 1. **Scaling Function Declaration:** A single `ExternalFunction` references `scale.cc` and selects the `vector_scalar_mul_vector` or `vector_scalar_mul_scalar` symbol based on `vectorized`.
 

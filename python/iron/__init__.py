@@ -15,7 +15,7 @@ Provides the primary abstractions for describing NPU designs:
 - dtype helpers (:func:`str_to_dtype`, :func:`dtype_to_str`)
 - :class:`CompilableDesign` / :func:`compileconfig` -- bundle a generator with compile-time config
 - :class:`CallableDesign` / :func:`jit` -- JIT-compile and run on the NPU (Triton-style)
-- :class:`Compile` / :class:`In` / :class:`Out` / :class:`InOut` -- type-annotation markers
+- :class:`CompileTime` / :class:`In` / :class:`Out` / :class:`InOut` -- type-annotation markers
 - :func:`get_compile_arg` -- dynamic compile-time injection (advanced)
 
 .. note::
@@ -58,7 +58,7 @@ from .dtype import str_to_dtype, dtype_to_str
 from aie.utils.compile.jit import (
     CompilableDesign,
     compile_context,
-    Compile,
+    CompileTime,
     In,
     InOut,
     Out,
@@ -108,7 +108,7 @@ __all__ = [
     "Release",
     "TileDma",
     # Compile-time / JIT API
-    "Compile",
+    "CompileTime",
     "In",
     "Out",
     "InOut",

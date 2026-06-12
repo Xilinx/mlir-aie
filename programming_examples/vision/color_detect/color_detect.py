@@ -16,7 +16,7 @@ import argparse
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.utils.hostruntime.argparse import (
     device_from_args,
     add_compile_args,
@@ -31,8 +31,8 @@ def color_detect(
     _b_unused: In,
     out_tensor: Out,
     *,
-    width: Compile[int] = 1920,
-    height: Compile[int] = 1080,
+    width: CompileTime[int] = 1920,
+    height: CompileTime[int] = 1080,
 ):
     line_width = width
     line_width_in_bytes = width * 4  # 4 channels (RGBA)

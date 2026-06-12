@@ -8,7 +8,7 @@
 """Element-wise bf16 binary op (add or mul) — IRON API + ``@iron.jit``.
 
 Body delegates to ``iron.algorithms.transform_parallel_binary_typed``; the
-per-tile kernel is selected by the ``op`` Compile knob and pulled from
+per-tile kernel is selected by the ``op`` CompileTime parameter and pulled from
 ``aie.iron.kernels`` (``kernels.add`` or ``kernels.mul``).
 """
 
@@ -18,7 +18,7 @@ import numpy as np
 from ml_dtypes import bfloat16
 
 import aie.iron as iron
-from aie.iron import Compile, In, Out, kernels
+from aie.iron import CompileTime, In, Out, kernels
 from aie.iron.algorithms import transform_parallel_binary_typed
 from aie.utils.hostruntime.argparse import (
     device_from_args,
@@ -37,9 +37,9 @@ def eltwise(
     b_in: In,
     c_out: Out,
     *,
-    size: Compile[int] = 65536,
-    num_channels: Compile[int] = 1,
-    op: Compile[str] = "add",
+    size: CompileTime[int] = 65536,
+    num_channels: CompileTime[int] = 1,
+    op: CompileTime[str] = "add",
 ):
     return transform_parallel_binary_typed(
         _KERNEL_FACTORIES[op](tile_size=1024),

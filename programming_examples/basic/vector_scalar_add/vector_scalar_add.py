@@ -23,7 +23,7 @@ import argparse
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Compile, In, Out
+from aie.iron import CompileTime, In, Out
 from aie.iron.algorithms import transform_typed
 from aie.utils.hostruntime.argparse import (
     device_from_args,
@@ -38,8 +38,8 @@ def vector_scalar_add(
     inp: In,
     out: Out,
     *,
-    problem_size: Compile[int] = 1024,
-    aie_tile_width: Compile[int] = 32,
+    problem_size: CompileTime[int] = 1024,
+    aie_tile_width: CompileTime[int] = 32,
 ):
     tensor_ty = np.ndarray[(problem_size,), np.dtype[np.int32]]
     return transform_typed(lambda x: x + 1, tensor_ty, tile_size=aie_tile_width)

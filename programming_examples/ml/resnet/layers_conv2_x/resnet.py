@@ -9,7 +9,7 @@
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile
 from aie.helpers.taplib import TensorAccessPattern
@@ -21,10 +21,10 @@ def resnet_conv2_x(
     weights_in: In,
     activations_out: Out,
     *,
-    tensorInW: Compile[int] = 32,
-    tensorInH: Compile[int] = 32,
-    tensorInCInit: Compile[int] = 64,
-    repeat: Compile[int] = 2,
+    tensorInW: CompileTime[int] = 32,
+    tensorInH: CompileTime[int] = 32,
+    tensorInCInit: CompileTime[int] = 64,
+    repeat: CompileTime[int] = 2,
 ):
     tensorInCRest = 4 * tensorInCInit
     n_cols = repeat + 1

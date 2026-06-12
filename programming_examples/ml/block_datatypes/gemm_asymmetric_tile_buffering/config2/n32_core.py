@@ -23,7 +23,7 @@ from aie.helpers.taplib import TensorTiler2D
 
 import aie.iron as iron
 from aie.iron import (
-    Compile,
+    CompileTime,
     ExternalFunction,
     In,
     ObjectFifo,
@@ -51,12 +51,12 @@ def n32_core_gemm(
     B: In,
     C: Out,
     *,
-    M: Compile[int] = 4096,
-    K: Compile[int] = 4096,
-    N: Compile[int] = 2048,
-    m: Compile[int] = 128,
-    k: Compile[int] = 64,
-    n: Compile[int] = 128,
+    M: CompileTime[int] = 4096,
+    K: CompileTime[int] = 4096,
+    N: CompileTime[int] = 2048,
+    m: CompileTime[int] = 128,
+    k: CompileTime[int] = 64,
+    n: CompileTime[int] = 128,
 ):
     n_aie_cols = 8
     n_aie_rows = 4

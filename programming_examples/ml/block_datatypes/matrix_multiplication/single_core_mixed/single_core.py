@@ -23,7 +23,7 @@ from aie.helpers.taplib.tensortiler2d import TensorTiler2D
 
 import aie.iron as iron
 from aie.iron import (
-    Compile,
+    CompileTime,
     ExternalFunction,
     In,
     ObjectFifo,
@@ -50,12 +50,12 @@ def single_core_mixed(
     B: In,
     C: Out,
     *,
-    M: Compile[int] = 128,
-    K: Compile[int] = 128,
-    N: Compile[int] = 128,
-    m: Compile[int] = 64,
-    k: Compile[int] = 64,
-    n: Compile[int] = 64,
+    M: CompileTime[int] = 128,
+    K: CompileTime[int] = 128,
+    N: CompileTime[int] = 128,
+    m: CompileTime[int] = 64,
+    k: CompileTime[int] = 64,
+    n: CompileTime[int] = 64,
 ):
     M_div_m = M // m
     K_div_k = K // k

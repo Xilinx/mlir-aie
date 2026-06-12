@@ -26,7 +26,7 @@ import sys
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Compile, In, Out, kernels
+from aie.iron import CompileTime, In, Out, kernels
 from aie.iron.algorithms import transform_typed
 from aie.utils.hostruntime.argparse import device_from_args
 from aie.utils.benchmark import run_iters
@@ -45,11 +45,11 @@ def vector_scalar_mul(
     C: Out,
     F: In,
     *,
-    in1_size: Compile[int],
-    int_bit_width: Compile[int] = 16,
-    vectorized: Compile[bool] = True,
-    trace_size: Compile[int] = 0,
-    use_chess: Compile[bool] = False,
+    in1_size: CompileTime[int],
+    int_bit_width: CompileTime[int] = 16,
+    vectorized: CompileTime[bool] = True,
+    trace_size: CompileTime[int] = 0,
+    use_chess: CompileTime[bool] = False,
 ):
     in1_dtype = np.int16 if int_bit_width == 16 else np.int32
     tensor_size = in1_size // np.dtype(in1_dtype).itemsize

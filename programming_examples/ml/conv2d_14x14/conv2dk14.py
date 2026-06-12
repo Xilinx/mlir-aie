@@ -46,7 +46,7 @@ import torch.nn as nn
 
 import aie.iron as iron
 from aie.utils.ml import DataShaper
-from aie.iron import Compile, In, Out, ObjectFifo, Program, Runtime, Worker
+from aie.iron import CompileTime, In, Out, ObjectFifo, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile
 from aie.utils.hostruntime.argparse import device_from_args
@@ -91,9 +91,9 @@ def conv2dk14(
     w_in: In,
     b_out: Out,
     *,
-    width: Compile[int] = 896,
-    height: Compile[int] = 896,
-    scale: Compile[int] = 14,
+    width: CompileTime[int] = 896,
+    height: CompileTime[int] = 896,
+    scale: CompileTime[int] = 14,
 ):
     if width % 8 != 0 or width < 8:
         raise ValueError("width must be a multiple of 8 and >= 8")
@@ -200,9 +200,9 @@ def conv2dk14_multi(
     w_in: In,
     b_out: Out,
     *,
-    width: Compile[int] = 896,
-    height: Compile[int] = 896,
-    scale: Compile[int] = 14,
+    width: CompileTime[int] = 896,
+    height: CompileTime[int] = 896,
+    scale: CompileTime[int] = 14,
 ):
     """32-core (8 cols x 4 rows) variant.
 
@@ -401,7 +401,7 @@ _INT8_SCALE = 0.03125
 
 
 def _run_and_verify(opts):
-    """Compile, run on NPU, and check against a torch Conv2d golden."""
+    """CompileTime, run on NPU, and check against a torch Conv2d golden."""
     design = conv2dk14_multi if opts.multi else conv2dk14
     width, height, ksz = int(opts.width), int(opts.height), int(opts.scale)
     ci, co = _IN_CHANNELS, _OUT_CHANNELS

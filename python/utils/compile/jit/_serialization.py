@@ -47,7 +47,7 @@ class _TensorPlaceholder:
     """Sentinel for ``In``/``Out``/``InOut`` params during MLIR generation.
 
     Any attribute access raises so generator bodies can't read tensor
-    shape/dtype at compile time (use ``Compile[T]`` for that instead).
+    shape/dtype at compile time (use ``CompileTime[T]`` for that instead).
     """
 
     def __init__(self, param_name: str) -> None:
@@ -59,7 +59,7 @@ class _TensorPlaceholder:
         raise RuntimeError(
             f"Generator parameter {name!r} is a runtime tensor (In/Out/InOut) "
             f"and is not available at compile time{suffix}. "
-            f"Use Compile[T] parameters for shape/dtype information instead."
+            f"Use CompileTime[T] parameters for shape/dtype information instead."
         )
 
     def __getattr__(self, name: str):

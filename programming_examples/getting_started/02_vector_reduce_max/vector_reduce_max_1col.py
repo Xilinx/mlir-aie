@@ -8,7 +8,7 @@ from ml_dtypes import bfloat16
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Compile, In, Out
+from aie.iron import CompileTime, In, Out
 from aie.iron import ObjectFifo, Program, Runtime, Worker, Buffer, kernels
 from aie.iron.controlflow import range_
 from aie.helpers.util import np_ndarray_type_get_shape
@@ -25,8 +25,8 @@ def vector_reduce_max(
     input0: In,
     output: Out,
     *,
-    in_tensor_size: Compile[int],
-    element_type: Compile[type],
+    in_tensor_size: CompileTime[int],
+    element_type: CompileTime[type],
 ):
 
     n_cores = 4

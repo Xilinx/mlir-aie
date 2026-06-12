@@ -9,7 +9,7 @@
 import sys
 import numpy as np
 
-from aie.iron import Out, In, Compile, Program, Runtime, Worker, ObjectFifo
+from aie.iron import Out, In, CompileTime, Program, Runtime, Worker, ObjectFifo
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorAccessPattern
 
@@ -21,8 +21,8 @@ def exercise_5a(
     input0: In,
     output: Out,
     *,
-    data_size: Compile[int],
-    element_type: Compile[type],
+    data_size: CompileTime[int],
+    element_type: CompileTime[type],
 ):
     # Define tile size
     tile_height = 3

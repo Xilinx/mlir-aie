@@ -198,7 +198,7 @@ There are two compiled-artifact shapes the host code can load:
 * **XCLBIN + `xrt::elf`** — a newer load path where instructions are
   wrapped into an ELF via `aiebu-asm` and loaded through `xrt::elf` +
   `xrt::module`.  Opt in via `@iron.jit(elf_path=...)` (see
-  [compilation_stages.md](../compilation_stages.md) §Knob →
+  [compilation_stages.md](../compilation_stages.md) §Setting →
   stage cheat-sheet); `programming_examples/ml/eltwise_unary` is the
   canonical demo.
 

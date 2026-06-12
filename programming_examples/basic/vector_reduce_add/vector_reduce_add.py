@@ -24,7 +24,7 @@ import argparse
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Compile, In, Out, kernels
+from aie.iron import CompileTime, In, Out, kernels
 from aie.iron.algorithms import reduce_typed
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
@@ -36,7 +36,7 @@ def vector_reduce_add(
     a_in: In,
     c_out: Out,
     *,
-    num_elements: Compile[int] = 1024,
+    num_elements: CompileTime[int] = 1024,
 ):
     in_ty = np.ndarray[(num_elements,), np.dtype[np.int32]]
     out_ty = np.ndarray[(1,), np.dtype[np.int32]]

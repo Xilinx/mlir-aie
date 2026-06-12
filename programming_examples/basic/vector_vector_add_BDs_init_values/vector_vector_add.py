@@ -38,7 +38,7 @@ from aie.iron import (
     Acquire,
     Bd,
     Buffer,
-    Compile,
+    CompileTime,
     DmaChannel,
     Flow,
     In,
@@ -84,7 +84,7 @@ def vector_vector_add(
     A: In,
     C: Out,
     *,
-    col: Compile[int] = 0,
+    col: CompileTime[int] = 0,
 ):
     dev = iron.get_current_device()
     N = 256

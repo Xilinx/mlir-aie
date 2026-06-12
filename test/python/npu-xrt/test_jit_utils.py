@@ -19,7 +19,7 @@ import numpy as np
 
 import aie.iron as iron
 from aie.iron import ExternalFunction, ObjectFifo, Worker, Runtime, Program
-from aie.iron import Compile, In, Out
+from aie.iron import CompileTime, In, Out
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2, NPU2Col1
 from aie.utils.compile.utils import compile_external_kernel
@@ -248,7 +248,7 @@ _tensor_ty = np.ndarray[(_NUM_ELEMS,), np.dtype[np.int32]]
 
 
 @iron.jit
-def _transform(input_tensor: In, output_tensor: Out, *, kernel_fn: Compile[object]):
+def _transform(input_tensor: In, output_tensor: Out, *, kernel_fn: CompileTime[object]):
     """JIT-compiled element-wise transform using a caller-supplied lambda.
 
     ``kernel_fn`` is a compile-time callable — changing it produces a new cache

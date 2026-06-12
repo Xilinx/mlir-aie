@@ -27,7 +27,7 @@ import sys
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Compile, In, Out, kernels, str_to_dtype
+from aie.iron import CompileTime, In, Out, kernels, str_to_dtype
 from aie.iron.algorithms import reduce_typed
 from aie.utils.hostruntime.argparse import add_compile_args, add_trace_arg
 from aie.utils.hostruntime.cli import run_design_cli
@@ -39,9 +39,9 @@ def vector_reduce_max(
     a_in: In,
     c_out: Out,
     *,
-    num_elements: Compile[int] = 2048,
-    dtype: Compile[type] = np.int32,
-    trace_size: Compile[int] = 0,
+    num_elements: CompileTime[int] = 2048,
+    dtype: CompileTime[type] = np.int32,
+    trace_size: CompileTime[int] = 0,
 ):
     # Output buffer is always 4 bytes (the size of one int32) -- the original
     # test.cpp / test.py treat it as a 4-byte slot regardless of element dtype,

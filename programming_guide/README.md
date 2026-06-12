@@ -74,7 +74,7 @@ my_design(a, b)              # compile + run + sync back
 | Optimizing — measure, then tune | [Section 4](./section-4/) (timers, trace, vectorization) |
 | Catalog of worked example designs | [Section 5](./section-5/) (basic) and [Section 6](./section-6/) (vision + ML) |
 | The implicit-MLIR-context error you just hit | [`implicit_mlir_context.md`](./implicit_mlir_context.md) |
-| Knob-by-knob configuration (cache dir, tensor backend, log level) | [`iron_configuration.md`](./iron_configuration.md) |
+| Setting-by-setting configuration (cache dir, tensor backend, log level) | [`iron_configuration.md`](./iron_configuration.md) |
 | What happens between `@iron.jit` and the NPU running | [`compilation_stages.md`](./compilation_stages.md) |
 | Ready-made compute kernels (matmul, conv, eltwise, vision) | [`kernels_library.md`](./kernels_library.md) |
 
@@ -96,7 +96,7 @@ my_design(a, b)              # compile + run + sync back
 * To force a clean build, `rm -rf "$NPU_CACHE_HOME"` (or the per-design `build/` directory the Makefile writes to).
 * First-call compile time depends on design complexity. A simple vector_scalar_mul-style design compiles in single-digit seconds; multi-core matmul or convolution can take 30s+. Subsequent calls with a warm cache are essentially instant.
 
-More configuration knobs (tensor backend, XRT context cache, log level) are in [`iron_configuration.md`](./iron_configuration.md).
+More configuration options (tensor backend, XRT context cache, log level) are in [`iron_configuration.md`](./iron_configuration.md).
 
 ## Terminology — the words this guide uses
 

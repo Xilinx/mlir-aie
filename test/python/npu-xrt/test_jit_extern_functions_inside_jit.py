@@ -12,7 +12,7 @@ import numpy as np
 import tempfile
 
 import aie.iron as iron
-from aie.iron import Compile, ExternalFunction, In, Out, jit
+from aie.iron import CompileTime, ExternalFunction, In, Out, jit
 from aie.iron import ObjectFifo, Worker, Runtime, Program
 
 from aie.iron.controlflow import range_
@@ -23,8 +23,8 @@ def transform_with_internal_func_with_options(
     input: In,
     output: Out,
     *,
-    num_elements: Compile[int] = 1024,
-    dtype: Compile[object] = np.int32,
+    num_elements: CompileTime[int] = 1024,
+    dtype: CompileTime[object] = np.int32,
 ):
     """Transform kernel that creates ExternalFunction internally with compiler options."""
     # Create ExternalFunction inside the transform with compiler options
@@ -94,8 +94,8 @@ def transform_with_internal_func_from_file(
     input: In,
     output: Out,
     *,
-    num_elements: Compile[int] = 1024,
-    dtype: Compile[object] = np.int32,
+    num_elements: CompileTime[int] = 1024,
+    dtype: CompileTime[object] = np.int32,
 ):
     """Transform kernel that creates ExternalFunction internally from a file."""
 
@@ -170,8 +170,8 @@ def transform_with_internal_func(
     input: In,
     output: Out,
     *,
-    num_elements: Compile[int] = 1024,
-    dtype: Compile[object] = np.int32,
+    num_elements: CompileTime[int] = 1024,
+    dtype: CompileTime[object] = np.int32,
 ):
     """Transform kernel that creates ExternalFunction internally."""
 

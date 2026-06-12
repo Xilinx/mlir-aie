@@ -135,7 +135,7 @@ has a docstring; `help(obj)` or `print(obj.__doc__)` shows it.
 | Helper | What it does |
 |--------|--------------|
 | `iron.{tensor, zeros, ones, full, rand, randint, arange, zeros_like}` | Host-tensor factories (default `device="npu"`, also accept `device="cpu"`); see also [`set_tensor_class`](#default-iron-tensor-class). |
-| `iron.{In, Out, InOut, Compile}` | Type annotation markers for `@iron.jit` generator parameters (see [`compilation_stages.md`](./compilation_stages.md) §Appendix A). |
+| `iron.{In, Out, InOut, CompileTime}` | Type annotation markers for `@iron.jit` generator parameters (see [`compilation_stages.md`](./compilation_stages.md) §Appendix A). |
 | `iron.{jit, CompilableDesign, CallableDesign}` | The JIT decorator + the two design wrapper classes (`CompilableDesign` is the recipe; `CallableDesign` is the ready-to-run wrapper). |
 | `iron.ceildiv(a, b)` | Pure-integer ceiling division.  Same value on every code path; here so designs don't redefine it locally. |
 | `iron.{set_current_device, get_current_device}` | Read/write the active `Device` (see [§Default IRON Device](#default-iron-device)). |
@@ -166,7 +166,7 @@ has a docstring; `help(obj)` or `print(obj.__doc__)` shows it.
 ### `compile_context` for nested generator helpers
 
 Most designs supply compile-time values via the explicit
-`Compile[T]`-annotated generator signature.  Some patterns — composite
+`CompileTime[T]`-annotated generator signature.  Some patterns — composite
 generators, helper functions reused across designs — want to inject
 values *through* a helper that doesn't take them as explicit kwargs.
 `compile_context` opens a per-thread context that `get_compile_arg`
@@ -190,9 +190,9 @@ of_in, of_out = make_fifo_pair(line_ty)            # in, out (default)
 Contexts nest — inner values shadow outer ones for the duration of the
 inner `with` block.  Implemented on top of `contextvars`, so it is
 thread- and async-safe.  `CompilableDesign.compile()` uses the same
-mechanism internally to surface the bound `Compile[T]` kwargs to the
+mechanism internally to surface the bound `CompileTime[T]` kwargs to the
 generator body.
 
-Prefer explicit `Compile[T]` parameters when you can; reserve
+Prefer explicit `CompileTime[T]` parameters when you can; reserve
 `compile_context` for the cases where threading the value through every
 helper signature would obscure the design.

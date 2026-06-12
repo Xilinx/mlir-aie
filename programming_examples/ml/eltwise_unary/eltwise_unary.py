@@ -9,7 +9,7 @@
 
 Body delegates to ``iron.algorithms.transform_parallel_typed`` with
 ``num_channels=2`` so both shim DMA channels per column are driven; the
-per-tile kernel is selected by the ``op`` Compile knob and pulled from
+per-tile kernel is selected by the ``op`` CompileTime parameter and pulled from
 ``aie.iron.kernels``.
 """
 
@@ -19,7 +19,7 @@ import numpy as np
 from ml_dtypes import bfloat16
 
 import aie.iron as iron
-from aie.iron import Compile, In, Out, kernels
+from aie.iron import CompileTime, In, Out, kernels
 from aie.iron.algorithms import transform_parallel_typed
 from aie.utils.hostruntime.argparse import (
     device_from_args,
@@ -54,9 +54,9 @@ def eltwise_unary(
     a_in: In,
     b_out: Out,
     *,
-    size: Compile[int] = 65536,
-    num_channels: Compile[int] = 2,
-    op: Compile[str] = "relu",
+    size: CompileTime[int] = 65536,
+    num_channels: CompileTime[int] = 2,
+    op: CompileTime[str] = "relu",
 ):
     return transform_parallel_typed(
         _KERNEL_FACTORIES[op](tile_size=1024),

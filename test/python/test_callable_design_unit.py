@@ -20,7 +20,7 @@ import pytest
 from unittest.mock import MagicMock, patch
 
 from aie.utils.compile.jit.compilabledesign import CompilableDesign
-from aie.utils.compile.jit.markers import Compile, In, InOut, Out
+from aie.utils.compile.jit.markers import CompileTime, In, InOut, Out
 from aie.utils.callabledesign import CallableDesign
 from aie.utils.jit import _JIT_CONFIG_KEYS, jit
 from aie.iron.kernel import ExternalFunction, Kernel
@@ -37,7 +37,7 @@ from aie.iron.kernel import ExternalFunction, Kernel
 
 
 def test_repr_contains_callable_design():
-    def gen(a: In, *, M: Compile[int]):
+    def gen(a: In, *, M: CompileTime[int]):
         pass
 
     cd = CallableDesign(gen, compile_kwargs={"M": 1})
@@ -58,7 +58,7 @@ class TestJitDecorator:
             warnings.simplefilter("ignore", UserWarning)
 
             @jit
-            def gen(a: In, *, M: Compile[int]):
+            def gen(a: In, *, M: CompileTime[int]):
                 pass
 
         assert isinstance(gen, CallableDesign)
@@ -70,7 +70,7 @@ class TestJitDecorator:
             warnings.simplefilter("ignore", UserWarning)
 
             @jit
-            def gen(a: In, *, M: Compile[int]):
+            def gen(a: In, *, M: CompileTime[int]):
                 pass
 
         assert gen.compilable.compile_kwargs == {}
@@ -84,7 +84,7 @@ class TestJitDecorator:
 
     def test_with_compile_params_only(self):
         @jit(M=512, N=512)
-        def gen(a: In, b: In, c: Out, *, M: Compile[int], N: Compile[int]):
+        def gen(a: In, b: In, c: Out, *, M: CompileTime[int], N: CompileTime[int]):
             pass
 
         assert isinstance(gen, CallableDesign)
@@ -97,7 +97,7 @@ class TestJitDecorator:
             warnings.simplefilter("ignore", UserWarning)
 
             @jit(use_cache=False)
-            def gen(a: In, *, M: Compile[int]):
+            def gen(a: In, *, M: CompileTime[int]):
                 pass
 
         assert isinstance(gen, CallableDesign)
@@ -106,7 +106,7 @@ class TestJitDecorator:
 
     def test_with_mixed_config_and_compile_kwargs(self):
         @jit(M=256, use_cache=False, aiecc_flags=["--verbose"])
-        def gen(a: In, *, M: Compile[int]):
+        def gen(a: In, *, M: CompileTime[int]):
             pass
 
         assert gen.compilable.compile_kwargs == {"M": 256}
@@ -145,7 +145,7 @@ class TestJitDecorator:
         partial = jit(M=512)
         assert callable(partial)
 
-        def gen(a: In, *, M: Compile[int]):
+        def gen(a: In, *, M: CompileTime[int]):
             pass
 
         result = partial(gen)
@@ -173,20 +173,22 @@ class TestJitDecorator:
 
     def test_unknown_key_becomes_compile_kwarg(self):
         @jit(my_custom_param=42)
-        def gen(a: In, *, my_custom_param: Compile[int]):
+        def gen(a: In, *, my_custom_param: CompileTime[int]):
             pass
 
         assert gen.compilable.compile_kwargs == {"my_custom_param": 42}
 
     def test_multiple_compile_params_all_captured(self):
         @jit(M=512, K=256, N=128)
-        def gen(a: In, *, M: Compile[int], K: Compile[int], N: Compile[int]):
+        def gen(
+            a: In, *, M: CompileTime[int], K: CompileTime[int], N: CompileTime[int]
+        ):
             pass
 
         assert gen.compilable.compile_kwargs == {"M": 512, "K": 256, "N": 128}
 
     def test_guard_1a_unknown_kwarg_to_jit_raises(self):
-        """@iron.jit must raise TypeError when a kwarg matches neither a config key nor a Compile[T] param.
+        """@iron.jit must raise TypeError when a kwarg matches neither a config key nor a CompileTime[T] param.
 
         Fails fast at decoration time so a typo like @jit(TYPO=512) doesn't
         silently run a kernel with no value bound.
@@ -196,11 +198,11 @@ class TestJitDecorator:
         with pytest.raises(TypeError, match="TYPO"):
 
             @jit(TYPO=512)
-            def gen(a: In, *, M: Compile[int]):
+            def gen(a: In, *, M: CompileTime[int]):
                 pass
 
     def test_guard_1b_unbound_required_compile_params_logs_at_debug(self, caplog):
-        """Bare @iron.jit with required Compile[T] params and no pre-binding
+        """Bare @iron.jit with required CompileTime[T] params and no pre-binding
         must log at DEBUG (not warn) — TypeError is the actual safety net at
         compile time, so decoration-time noise was demoted to debug.
         """
@@ -209,7 +211,7 @@ class TestJitDecorator:
         with caplog.at_level(logging.DEBUG, logger="aie.utils.callabledesign"):
 
             @jit  # bare — no pre-bound compile params
-            def gen(a: In, *, M: Compile[int], N: Compile[int]):
+            def gen(a: In, *, M: CompileTime[int], N: CompileTime[int]):
                 pass
 
         relevant = [
@@ -220,7 +222,7 @@ class TestJitDecorator:
         ]
         assert (
             relevant
-        ), "Expected a DEBUG-level log for unbound required Compile[T] params"
+        ), "Expected a DEBUG-level log for unbound required CompileTime[T] params"
         msg = relevant[-1].getMessage()
         assert (
             "M" in msg or "N" in msg
@@ -235,7 +237,7 @@ class TestJitDecorator:
             warnings.simplefilter("always")
 
             @jit
-            def gen(a: In, *, M: Compile[int], N: Compile[int]):
+            def gen(a: In, *, M: CompileTime[int], N: CompileTime[int]):
                 pass
 
         unbound_warnings = [
@@ -246,7 +248,7 @@ class TestJitDecorator:
         ]
         assert not unbound_warnings, (
             "@jit decoration must not emit a UserWarning for unbound required "
-            "Compile[T] params at default log level (it should be DEBUG-only). "
+            "CompileTime[T] params at default log level (it should be DEBUG-only). "
             f"Got: {[str(x.message) for x in unbound_warnings]}"
         )
 
@@ -254,11 +256,11 @@ class TestJitDecorator:
         """An unannotated non-tensor param with a default value would silently
         bake the default into the compiled MLIR and ignore per-call overrides.
         @iron.jit must reject this at decoration time and point users at
-        Compile[T] = default (or, eventually, Rtp[T])."""
+        CompileTime[T] = default (or, eventually, Rtp[T])."""
         with pytest.raises(TypeError, match="silently ignored"):
 
             @jit
-            def gen(x: In, y: Out, *, factor: int = 7, N: Compile[int]):
+            def gen(x: In, y: Out, *, factor: int = 7, N: CompileTime[int]):
                 pass
 
     def test_guard_1c_unannotated_scalar_no_default_is_allowed(self):
@@ -268,29 +270,29 @@ class TestJitDecorator:
 
         # Should NOT raise at decoration time.
         @jit
-        def gen(x: In, y: Out, *, factor: int, N: Compile[int]):
+        def gen(x: In, y: Out, *, factor: int, N: CompileTime[int]):
             pass
 
         assert isinstance(gen, CallableDesign)
 
     def test_guard_1c_compile_t_with_default_is_allowed(self):
-        """Compile[T] with default IS the supported way to express 'I want a
+        """CompileTime[T] with default IS the supported way to express 'I want a
         default value, recompile on per-call change'.  Must not be rejected
         by Guard 1-C."""
 
         @jit
-        def gen(x: In, y: Out, *, N: Compile[int] = 1024):
+        def gen(x: In, y: Out, *, N: CompileTime[int] = 1024):
             pass
 
         assert isinstance(gen, CallableDesign)
 
     def test_jit_creates_distinct_designs_per_decoration(self):
         @jit(M=256)
-        def gen_a(a: In, *, M: Compile[int]):
+        def gen_a(a: In, *, M: CompileTime[int]):
             pass
 
         @jit(M=512)
-        def gen_b(a: In, *, M: Compile[int]):
+        def gen_b(a: In, *, M: CompileTime[int]):
             pass
 
         assert gen_a.compilable.compile_kwargs != gen_b.compilable.compile_kwargs
@@ -341,7 +343,7 @@ def test_external_function_positional_not_in_tensor_args():
 def test_guard_3a_tensor_param_as_runtime_kwarg_raises():
     """Tensor-annotated params passed as keyword args must raise TypeError."""
 
-    def gen(a: In, b: Out, *, M: Compile[int]):
+    def gen(a: In, b: Out, *, M: CompileTime[int]):
         pass
 
     cd = CallableDesign(gen, compile_kwargs={"M": 1})
@@ -359,7 +361,7 @@ def test_guard_3a_tensor_param_as_runtime_kwarg_raises():
 def test_guard_3c_too_many_positional_raises():
     """More positional args than tensor+scalar slots must raise TypeError."""
 
-    def gen(a: In, *, M: Compile[int]):
+    def gen(a: In, *, M: CompileTime[int]):
         pass  # only 1 tensor slot, 0 scalar slots
 
     cd = CallableDesign(gen, compile_kwargs={"M": 1})
@@ -368,13 +370,13 @@ def test_guard_3c_too_many_positional_raises():
 
 
 def test_as_mlir_call_time_kwarg_overrides_prebound():
-    """as_mlir() must let call-time Compile[T] kwargs override pre-bound values.
+    """as_mlir() must let call-time CompileTime[T] kwargs override pre-bound values.
 
     Call-time-wins semantics are shared with __call__ so the MLIR you
     inspect matches the MLIR that would be compiled for the same kwargs.
     """
 
-    def gen(a: In, b: Out, *, N: Compile[int] = 1024):
+    def gen(a: In, b: Out, *, N: CompileTime[int] = 1024):
         pass
 
     cd = CallableDesign(gen, compile_kwargs={"N": 1024})
@@ -408,7 +410,7 @@ def test_as_mlir_no_warning_when_no_conflict():
     """as_mlir() must not warn when call-time kwargs match pre-bound values."""
     import warnings as _warnings
 
-    def gen(a: In, b: Out, *, N: Compile[int] = 1024):
+    def gen(a: In, b: Out, *, N: CompileTime[int] = 1024):
         pass
 
     cd = CallableDesign(gen, compile_kwargs={"N": 1024})

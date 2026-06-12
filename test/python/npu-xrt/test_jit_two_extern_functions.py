@@ -22,7 +22,7 @@ import numpy as np
 import pytest
 
 import aie.iron as iron
-from aie.iron import Compile, ExternalFunction, In, Out, jit
+from aie.iron import CompileTime, ExternalFunction, In, Out, jit
 from aie.iron import ObjectFifo, Worker, Runtime, Program
 
 from aie.iron.controlflow import range_
@@ -33,10 +33,10 @@ def add_then_scale(
     input: In,
     output: Out,
     *,
-    add_func: Compile[object],
-    scale_func: Compile[object],
-    num_elements: Compile[int] = 32,
-    dtype: Compile[object] = np.int32,
+    add_func: CompileTime[object],
+    scale_func: CompileTime[object],
+    num_elements: CompileTime[int] = 32,
+    dtype: CompileTime[object] = np.int32,
 ):
     """Apply add_func then scale_func sequentially on each tile."""
     tile_size = add_func.tile_size(0)

@@ -27,7 +27,7 @@ from ml_dtypes import bfloat16
 import aie.iron as iron
 from aie.iron import (
     Buffer,
-    Compile,
+    CompileTime,
     In,
     Out,
     ObjectFifo,
@@ -64,7 +64,7 @@ def scale_shift(
     c_in: In,
     d_out: Out,
     *,
-    size: Compile[int] = 65536,
+    size: CompileTime[int] = 65536,
 ):
     device = iron.get_current_device()
     n_cores = 2

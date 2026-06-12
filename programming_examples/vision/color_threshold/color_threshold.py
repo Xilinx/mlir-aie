@@ -22,7 +22,7 @@ import numpy as np
 import aie.iron as iron
 from aie.iron import (
     Buffer,
-    Compile,
+    CompileTime,
     In,
     ObjectFifo,
     Out,
@@ -48,8 +48,8 @@ def color_threshold(
     _b_unused: In,
     out_tensor: Out,
     *,
-    width: Compile[int] = 1920,
-    height: Compile[int] = 1080,
+    width: CompileTime[int] = 1920,
+    height: CompileTime[int] = 1080,
 ):
     line_width = width
     line_width_channels = width * 4  # 4 channels (RGBA)

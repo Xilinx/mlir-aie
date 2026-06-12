@@ -12,7 +12,7 @@ pairs into the current thread/task context so that any code called transitively
 during MLIR generation can read them via ``get_compile_arg``.
 
 This is an advanced/dynamic-case mechanism.  The primary API is the explicit
-``Compile[T]``-annotated generator function signature — ``compile_context`` is
+``CompileTime[T]``-annotated generator function signature — ``compile_context`` is
 used internally by ``CompilableDesign.compile()`` and exposed as a public API
 for composite/nested generator patterns.
 """

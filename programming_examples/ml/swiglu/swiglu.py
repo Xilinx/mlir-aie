@@ -18,7 +18,7 @@ import numpy as np
 from ml_dtypes import bfloat16
 
 import aie.iron as iron
-from aie.iron import Compile, In, Out, ObjectFifo, Program, Runtime, Worker, kernels
+from aie.iron import CompileTime, In, Out, ObjectFifo, Program, Runtime, Worker, kernels
 from aie.utils.hostruntime.argparse import device_from_args
 from aie.helpers.taplib.tensortiler2d import TensorTiler2D
 from aie.utils.hostruntime.argparse import add_compile_args
@@ -32,8 +32,8 @@ def swiglu(
     w_in: In,
     b_out: Out,
     *,
-    size: Compile[int] = 16384,
-    num_columns: Compile[int] = 4,
+    size: CompileTime[int] = 16384,
+    num_columns: CompileTime[int] = 4,
 ):
     xfr_dtype = bfloat16
     device = iron.get_current_device()

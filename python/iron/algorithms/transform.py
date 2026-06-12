@@ -570,12 +570,12 @@ def transform_typed(func, tensor_ty, *params, tile_size=16, trace_size=0):
 
     Like :func:`transform` but accepts a numpy ``ndarray`` type descriptor
     instead of a real tensor.  Intended for use inside ``@iron.jit`` generator
-    bodies where the tensor's shape and dtype are expressed as ``Compile[T]``
+    bodies where the tensor's shape and dtype are expressed as ``CompileTime[T]``
     parameters and the actual tensors are not yet available::
 
         @iron.jit
         def my_design(inp: In, out: Out,
-                      N: Compile[int], dtype: Compile[type] = np.int32):
+                      N: CompileTime[int], dtype: CompileTime[type] = np.int32):
             tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
             return iron.algorithms.transform_typed(lambda x: x + 1, tensor_ty)
 

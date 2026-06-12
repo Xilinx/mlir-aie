@@ -20,7 +20,7 @@ from pathlib import Path
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Buffer, Compile, In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import Buffer, CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile
 from aie.utils.hostruntime.argparse import device_from_args
@@ -42,7 +42,7 @@ def group2(
     _dummy: In,
     c_out: Out,
     *,
-    trace_size: Compile[int] = 0,
+    trace_size: CompileTime[int] = 0,
 ):
     din_size = 16 * 43
     dout_size = 214

@@ -26,7 +26,7 @@ import argparse
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Compile, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import CompileTime, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorTiler2D
 from aie.helpers.util import np_dtype_to_mlir_type
@@ -40,10 +40,10 @@ import aie.extras.dialects.arith as arith
 def tile_group(
     tensor_out: Out,
     *,
-    tensor_height: Compile[int] = 8,
-    tensor_width: Compile[int] = 8,
-    tile_height: Compile[int] = 2,
-    tile_width: Compile[int] = 2,
+    tensor_height: CompileTime[int] = 8,
+    tensor_width: CompileTime[int] = 8,
+    tile_height: CompileTime[int] = 2,
+    tile_width: CompileTime[int] = 2,
 ):
     dtype = np.int32
     tensor_size = tensor_height * tensor_width

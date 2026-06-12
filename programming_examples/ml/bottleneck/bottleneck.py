@@ -17,7 +17,7 @@ Per-layer kernels come from the library:
 The 3x3 stage is pinned to Tile(0,3) and Tile(0,5) to sidestep an
 auto-placer limitation on bottleneck (see project memory
 ``project_iron_placer_constraint_bugs.md``). The three RTP scales are
-lifted to ``Compile[int]`` so the design drops the RTP buffer +
+lifted to ``CompileTime[int]`` so the design drops the RTP buffer +
 WorkerRuntimeBarrier dance.
 """
 
@@ -26,7 +26,7 @@ import argparse
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Compile, In, Out, ObjectFifo, Program, Runtime, Worker, kernels
+from aie.iron import CompileTime, In, Out, ObjectFifo, Program, Runtime, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.iron.device import AnyMemTile, Tile
 from aie.utils.hostruntime.argparse import (
@@ -42,13 +42,13 @@ def bottleneck(
     w_in: In,
     b_out: Out,
     *,
-    tensor_w: Compile[int] = 32,
-    tensor_h: Compile[int] = 32,
-    tensor_in_c: Compile[int] = 256,
-    scale_1x1: Compile[int] = 1,
-    scale_3x3: Compile[int] = 11,
-    scale_skip: Compile[int] = 1,
-    skip_scale: Compile[int] = 0,
+    tensor_w: CompileTime[int] = 32,
+    tensor_h: CompileTime[int] = 32,
+    tensor_in_c: CompileTime[int] = 256,
+    scale_1x1: CompileTime[int] = 1,
+    scale_3x3: CompileTime[int] = 11,
+    scale_skip: CompileTime[int] = 1,
+    skip_scale: CompileTime[int] = 0,
 ):
     device = iron.get_current_device()
 

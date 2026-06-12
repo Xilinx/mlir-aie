@@ -23,7 +23,7 @@ import numpy as np
 
 import aie.iron as iron
 from aie.iron import (
-    Compile,
+    CompileTime,
     In,
     Out,
     ObjectFifo,
@@ -51,10 +51,10 @@ def matrix_multiplication_single_core(
     input1: In,
     output: Out,
     *,
-    M: Compile[int],
-    K: Compile[int],
-    N: Compile[int],
-    element_type: Compile[type],
+    M: CompileTime[int],
+    K: CompileTime[int],
+    N: CompileTime[int],
+    element_type: CompileTime[type],
 ):
     m, k, n = _TILE_M, _TILE_K, _TILE_N
 

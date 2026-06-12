@@ -23,7 +23,7 @@ from aie.helpers.taplib import TensorTiler2D
 
 import aie.iron as iron
 from aie.iron import (
-    Compile,
+    CompileTime,
     ExternalFunction,
     In,
     ObjectFifo,
@@ -50,12 +50,12 @@ def single_core_matmul(
     B: In,
     C: Out,
     *,
-    M: Compile[int] = 128,
-    K: Compile[int] = 128,
-    N: Compile[int] = 128,
-    m: Compile[int] = 64,
-    k: Compile[int] = 64,
-    n: Compile[int] = 64,
+    M: CompileTime[int] = 128,
+    K: CompileTime[int] = 128,
+    N: CompileTime[int] = 128,
+    m: CompileTime[int] = 64,
+    k: CompileTime[int] = 64,
+    n: CompileTime[int] = 64,
 ):
     # bfp16ebs8 matmul mac unit is 8x8x8; m/k/n must be multiples of these.
     r = s = t = 8

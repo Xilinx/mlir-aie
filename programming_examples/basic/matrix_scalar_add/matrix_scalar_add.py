@@ -26,7 +26,7 @@ import argparse
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import device_from_args
 from aie.helpers.taplib import TensorTiler2D
@@ -40,10 +40,10 @@ def matrix_scalar_add(
     inp: In,
     out: Out,
     *,
-    matrix_height: Compile[int] = 16,
-    matrix_width: Compile[int] = 128,
-    tile_height: Compile[int] = 8,
-    tile_width: Compile[int] = 16,
+    matrix_height: CompileTime[int] = 16,
+    matrix_width: CompileTime[int] = 128,
+    tile_height: CompileTime[int] = 8,
+    tile_width: CompileTime[int] = 16,
 ):
     matrix_shape = (matrix_height, matrix_width)
     tile_shape = (tile_height, tile_width)

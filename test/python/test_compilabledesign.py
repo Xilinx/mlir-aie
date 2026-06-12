@@ -25,7 +25,7 @@ from aie.iron.kernel import ExternalFunction, Kernel
 from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
 from aie.utils.compile.jit.compilabledesign import CompilableDesign, _compute_hash
 from aie.utils.compile.jit.context import get_compile_arg
-from aie.utils.compile.jit.markers import Compile, In, InOut, Out
+from aie.utils.compile.jit.markers import CompileTime, In, InOut, Out
 from aie.utils.hostruntime import set_current_device
 
 # ---------------------------------------------------------------------------
@@ -35,7 +35,13 @@ from aie.utils.hostruntime import set_current_device
 
 def _gemm_gen():
     def gemm(
-        a: In, b: In, c: Out, *, M: Compile[int], K: Compile[int], N: Compile[int]
+        a: In,
+        b: In,
+        c: Out,
+        *,
+        M: CompileTime[int],
+        K: CompileTime[int],
+        N: CompileTime[int],
     ):
         pass
 
@@ -43,14 +49,14 @@ def _gemm_gen():
 
 
 def _scalar_gen():
-    def f(a: In, c: Out, alpha: float, *, N: Compile[int]):
+    def f(a: In, c: Out, alpha: float, *, N: CompileTime[int]):
         pass
 
     return f
 
 
 def _inout_gen():
-    def f(x: InOut, *, M: Compile[int]):
+    def f(x: InOut, *, M: CompileTime[int]):
         pass
 
     return f
@@ -238,11 +244,11 @@ def test_hash_differs_for_different_compile_flags():
 
 def test_hash_differs_for_different_generators():
     # Use meaningfully different bodies so that co_code differs.
-    def gen_a(*, M: Compile[int]):
+    def gen_a(*, M: CompileTime[int]):
         x = M + 1  # noqa: F841
         return x
 
-    def gen_b(*, M: Compile[int]):
+    def gen_b(*, M: CompileTime[int]):
         x = M * 2  # noqa: F841
         return x
 
@@ -329,7 +335,7 @@ def test_get_artifacts_returns_none_before_compile():
 
 
 def test_split_all_positional_tensors():
-    def f(a: In, b: Out, *, N: Compile[int]):
+    def f(a: In, b: Out, *, N: CompileTime[int]):
         pass
 
     d = CompilableDesign(f, compile_kwargs={"N": 256})
@@ -349,7 +355,7 @@ def test_split_tensor_and_scalar_kwarg():
 
 
 def test_split_inout_classified_as_tensor():
-    def f(x: InOut, *, M: Compile[int]):
+    def f(x: InOut, *, M: CompileTime[int]):
         pass
 
     d = CompilableDesign(f, compile_kwargs={"M": 128})
@@ -360,7 +366,7 @@ def test_split_inout_classified_as_tensor():
 
 
 def test_split_all_kwargs_tensors():
-    def f(a: In, b: Out, *, N: Compile[int]):
+    def f(a: In, b: Out, *, N: CompileTime[int]):
         pass
 
     d = CompilableDesign(f, compile_kwargs={"N": 256})
@@ -373,7 +379,7 @@ def test_split_all_kwargs_tensors():
 def test_split_compile_params_excluded_from_walk():
     """compile_kwargs params must not consume runtime positional args."""
 
-    def f(a: In, *, M: Compile[int]):
+    def f(a: In, *, M: CompileTime[int]):
         pass
 
     d = CompilableDesign(f, compile_kwargs={"M": 512})
@@ -383,7 +389,7 @@ def test_split_compile_params_excluded_from_walk():
 
 
 def test_split_empty_args_and_kwargs():
-    def f(a: In, *, N: Compile[int]):
+    def f(a: In, *, N: CompileTime[int]):
         pass
 
     d = CompilableDesign(f, compile_kwargs={"N": 256})
@@ -393,7 +399,7 @@ def test_split_empty_args_and_kwargs():
 
 
 def test_split_scalar_positional_arg():
-    def f(a: In, alpha: float, *, N: Compile[int]):
+    def f(a: In, alpha: float, *, N: CompileTime[int]):
         pass
 
     d = CompilableDesign(f, compile_kwargs={"N": 256})
@@ -516,9 +522,9 @@ def test_from_json_compile_kwargs_round_trip_typed():
 
 
 def test_generate_mlir_raises_type_error_for_missing_compile_param():
-    """TypeError when a required Compile[T] param is absent from compile_kwargs."""
+    """TypeError when a required CompileTime[T] param is absent from compile_kwargs."""
 
-    def gen(*, M: Compile[int], K: Compile[int]):
+    def gen(*, M: CompileTime[int], K: CompileTime[int]):
         pass
 
     d = CompilableDesign(gen, compile_kwargs={"M": 512})  # K missing
@@ -529,7 +535,7 @@ def test_generate_mlir_raises_type_error_for_missing_compile_param():
 
 def test_generate_mlir_type_error_message_includes_generator_name():
 
-    def my_special_gen(*, M: Compile[int]):
+    def my_special_gen(*, M: CompileTime[int]):
         pass
 
     d = CompilableDesign(my_special_gen, compile_kwargs={})  # M missing
@@ -543,7 +549,7 @@ def test_generate_mlir_injects_compile_context():
 
     observed = {}
 
-    def gen(*, M: Compile[int], K: Compile[int]):
+    def gen(*, M: CompileTime[int], K: CompileTime[int]):
         observed["M"] = get_compile_arg("M")
         observed["K"] = get_compile_arg("K")
         # Return a real (empty) MLIR module via the unplaced path.
@@ -565,7 +571,7 @@ def test_generate_mlir_clears_external_function_instances_before_call():
     stale = object()
     ExternalFunction._instances.add(stale)
 
-    def gen(*, M: Compile[int]):
+    def gen(*, M: CompileTime[int]):
         # Verify the stale instance was cleared before we ran.
         assert stale not in ExternalFunction._instances
 
@@ -590,7 +596,7 @@ def test_generate_mlir_unplaced_style_uses_return_value():
     real_module = ctx.module
     expected_text = str(real_module)
 
-    def gen(*, M: Compile[int]):
+    def gen(*, M: CompileTime[int]):
         return real_module  # unplaced style
 
     d = CompilableDesign(gen, compile_kwargs={"M": 1})
@@ -606,7 +612,7 @@ def test_generate_mlir_unplaced_style_uses_return_value():
 def test_generate_mlir_guard_2a_tensor_name_in_compile_kwargs():
     """compile_kwargs must not contain names annotated as In/Out/InOut."""
 
-    def gen(a: In, *, M: Compile[int]):
+    def gen(a: In, *, M: CompileTime[int]):
         pass
 
     d = CompilableDesign(gen, compile_kwargs={"a": object(), "M": 1})
@@ -617,7 +623,7 @@ def test_generate_mlir_guard_2a_tensor_name_in_compile_kwargs():
 def test_generate_mlir_guard_2b_unknown_key_in_compile_kwargs():
     """compile_kwargs must not contain keys absent from the generator signature."""
 
-    def gen(a: In, *, M: Compile[int]):
+    def gen(a: In, *, M: CompileTime[int]):
         pass
 
     d = CompilableDesign(gen, compile_kwargs={"M": 1, "NOSUCHPARAM": 99})
@@ -632,7 +638,7 @@ def test_generate_mlir_raises_on_verification_failure():
     bad_module = MagicMock()
     bad_module.operation.verify.return_value = False
 
-    def gen(*, M: Compile[int]):
+    def gen(*, M: CompileTime[int]):
         return bad_module  # unplaced style — returns a module directly
 
     d = CompilableDesign(gen, compile_kwargs={"M": 1})

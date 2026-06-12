@@ -61,7 +61,7 @@ from ._introspect import (
 )
 from ._serialization import _TensorPlaceholder, _decode_kwarg, _encode_kwarg
 from .context import compile_context
-from .markers import Compile, In, InOut, Out
+from .markers import CompileTime, In, InOut, Out
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +70,7 @@ class CompilableDesign:
     """Bundles an MLIR generator with compile-time parameters.
 
     Args:
-        mlir_generator: A callable that accepts ``Compile[T]`` kwargs and
+        mlir_generator: A callable that accepts ``CompileTime[T]`` kwargs and
             either returns an MLIR module (e.g., built inside an
             ``mlir_mod_ctx()`` block) or returns ``None`` after building the
             module into the active MLIR context (e.g., via
@@ -78,7 +78,7 @@ class CompilableDesign:
             OR a ``pathlib.Path`` to a pre-written ``.mlir`` file.
         use_cache: When ``True`` (default), a file-system cache keyed by the
             bytecode+kwargs hash is consulted before recompiling.
-        compile_kwargs: Values for the ``Compile[T]``-annotated parameters.
+        compile_kwargs: Values for the ``CompileTime[T]``-annotated parameters.
             Validated against the generator signature via ``inspect.Signature.bind``.
         compile_flags: Extra flags forwarded to the Peano C++ compiler.
         source_files: Paths to C++ kernel source files.  Their mtimes are
@@ -147,7 +147,7 @@ class CompilableDesign:
     # ------------------------------------------------------------------
 
     def specialize(self, **compile_kwargs) -> "CompilableDesign":
-        """Return a new ``CompilableDesign`` with additional ``Compile[T]`` kwargs bound.
+        """Return a new ``CompilableDesign`` with additional ``CompileTime[T]`` kwargs bound.
 
         The given kwargs are merged onto ``self.compile_kwargs`` with call-time
         values winning.  All other config (``source_files``, ``aiecc_flags``,
@@ -473,7 +473,7 @@ class CompilableDesign:
                 raise RuntimeError(
                     f"Tensor argument {param_name!r} has {actual} elements but "
                     f"the kernel was compiled for {expected} elements.\n"
-                    f"Compile[T] parameters used at compile time: "
+                    f"CompileTime[T] parameters used at compile time: "
                     f"{self.compile_kwargs!r}"
                 )
 
@@ -551,7 +551,7 @@ class CompilableDesign:
 
     @property
     def recipe_hash(self) -> str:
-        """Hash of the design recipe: generator + Compile[T] kwargs + flags.
+        """Hash of the design recipe: generator + CompileTime[T] kwargs + flags.
 
         Stable across rebuilds; identifies the *what* of compilation. Two
         designs with equal ``recipe_hash`` produce identical MLIR.
@@ -620,9 +620,9 @@ class CompilableDesign:
             raise TypeError(
                 f"CompilableDesign for {self.generator_name!r}: "
                 f"compile_kwargs contains name(s) annotated as runtime tensors "
-                f"(In/Out/InOut), not Compile[T] parameters: {confused_tensor_keys}.\n"
+                f"(In/Out/InOut), not CompileTime[T] parameters: {confused_tensor_keys}.\n"
                 f"  Tensor params must be supplied at call time, not compile time.\n"
-                f"  Compile[T] params are: {self.compile_params}."
+                f"  CompileTime[T] params are: {self.compile_params}."
             )
 
         # Guard 2-B: compile_kwargs must not contain entirely unknown keys.
@@ -635,7 +635,7 @@ class CompilableDesign:
                 f"CompilableDesign for {self.generator_name!r}: "
                 f"compile_kwargs contains key(s) not in the generator signature: "
                 f"{unknown_keys}.\n"
-                f"  Valid Compile[T] params are: {self.compile_params}."
+                f"  Valid CompileTime[T] params are: {self.compile_params}."
             )
 
         sig = self._sig
@@ -652,7 +652,7 @@ class CompilableDesign:
         except TypeError as exc:
             raise TypeError(
                 f"CompilableDesign for '{self.generator_name}': "
-                f"compile_kwargs do not match Compile[T] parameters — {exc}"
+                f"compile_kwargs do not match CompileTime[T] parameters — {exc}"
             ) from exc
 
         ExternalFunction._instances.clear()
@@ -662,7 +662,7 @@ class CompilableDesign:
         }
         _gen_call_kwargs = {**_tensor_placeholders, **self.compile_kwargs}
 
-        # Re-register any ExternalFunction instances passed as Compile[T] params
+        # Re-register any ExternalFunction instances passed as CompileTime[T] params
         # so the generator's kernel-call paths see them already-registered.
         for _v in _gen_call_kwargs.values():
             if isinstance(_v, ExternalFunction):

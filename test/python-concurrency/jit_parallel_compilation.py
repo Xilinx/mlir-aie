@@ -24,7 +24,7 @@ def test_parallel_compilation_subprocess():
     # Create a temporary cache directory for this test
     with tempfile.TemporaryDirectory() as temp_cache_dir:
         # Create a simple test script that does JIT compilation.
-        # Uses In/Out + Compile[T] (the post-unify-compilation-workflow API);
+        # Uses In/Out + CompileTime[T] (the post-unify-compilation-workflow API);
         # an unannotated def simple_add(input0, input1, output) would trip
         # Guard 1-A / TypeError at compile time because tensor params would
         # be classified as scalar_params and never forwarded to the generator.
@@ -32,14 +32,14 @@ def test_parallel_compilation_subprocess():
 import sys
 import numpy as np
 import aie.iron as iron
-from aie.iron import Compile, In, Out, ObjectFifo, Program, Runtime, Worker
+from aie.iron import CompileTime, In, Out, ObjectFifo, Program, Runtime, Worker
 
 from aie.iron.controlflow import range_
 
 @iron.jit
 def simple_add(
     input0: In, input1: In, output: Out,
-    *, num_elements: Compile[int], dtype: Compile[type],
+    *, num_elements: CompileTime[int], dtype: CompileTime[type],
 ):
     n = 16
     if num_elements % n != 0:

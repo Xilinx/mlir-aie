@@ -20,7 +20,7 @@ import numpy as np
 from ml_dtypes import bfloat16
 
 import aie.iron as iron
-from aie.iron import Compile, In, Out, kernels
+from aie.iron import CompileTime, In, Out, kernels
 from aie.iron.algorithms import transform_parallel_typed
 from aie.utils.hostruntime.argparse import (
     device_from_args,
@@ -35,8 +35,8 @@ def softmax(
     a_in: In,
     b_out: Out,
     *,
-    size: Compile[int] = 262144,
-    num_channels: Compile[int] = 2,
+    size: CompileTime[int] = 262144,
+    num_channels: CompileTime[int] = 2,
 ):
     return transform_parallel_typed(
         kernels.softmax(tile_size=1024),

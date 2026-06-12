@@ -25,7 +25,7 @@ from aie.dialects.aiex import (
     runtime_sequence,
     shim_dma_single_bd_task,
 )
-from aie.iron import Compile, In, Out
+from aie.iron import CompileTime, In, Out
 from aie.iron.controlflow import range_
 
 
@@ -34,8 +34,8 @@ def passthrough(
     input: In,
     output: Out,
     *,
-    num_elements: Compile[int],
-    dtype: Compile[object] = np.int32,
+    num_elements: CompileTime[int],
+    dtype: CompileTime[object] = np.int32,
 ):
     tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
 

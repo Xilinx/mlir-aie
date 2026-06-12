@@ -252,7 +252,7 @@ def device_from_args(
         from_name(args.dev, n_cols=None)   # "use all cols"
         from_name(args.dev, n_cols=1)      # "single col"
 
-    into one helper with an explicit ``n_cols`` knob.
+    into one helper with an explicit ``n_cols`` parameter.
 
     Args:
         args: An ``argparse.Namespace`` with a ``.dev`` attribute (or

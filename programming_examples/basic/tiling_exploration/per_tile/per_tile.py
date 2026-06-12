@@ -26,7 +26,7 @@ import argparse
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Buffer, Compile, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import Buffer, CompileTime, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorTiler2D
 from aie.utils.hostruntime.argparse import add_compile_args
@@ -38,10 +38,10 @@ from aie.utils.verify import assert_pass
 def per_tile(
     tensor_out: Out,
     *,
-    tensor_height: Compile[int] = 8,
-    tensor_width: Compile[int] = 8,
-    tile_height: Compile[int] = 2,
-    tile_width: Compile[int] = 2,
+    tensor_height: CompileTime[int] = 8,
+    tensor_width: CompileTime[int] = 8,
+    tile_height: CompileTime[int] = 2,
+    tile_width: CompileTime[int] = 2,
 ):
     dtype = np.int32
     tensor_size = tensor_height * tensor_width

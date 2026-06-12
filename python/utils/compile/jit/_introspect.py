@@ -6,7 +6,7 @@
 #
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
 """Annotation introspection helpers used to classify generator parameters
-into ``Compile[T]`` / tensor / scalar buckets.
+into ``CompileTime[T]`` / tensor / scalar buckets.
 
 Carved out of ``compilabledesign.py`` to keep the main file focused on the
 ``CompilableDesign`` class itself.  The public surface is
@@ -22,7 +22,7 @@ import logging
 import typing
 from typing import Callable, get_args, get_origin
 
-from .markers import Compile, In, InOut, Out
+from .markers import CompileTime, In, InOut, Out
 
 logger = logging.getLogger(__name__)
 
@@ -31,13 +31,13 @@ _TENSOR_ANNOTATIONS = (In, Out, InOut)
 
 
 def _is_compile_param(annotation) -> bool:
-    """Return True for ``Compile[T]`` or ``Optional[Compile[T]]``."""
-    if annotation is Compile:
+    """Return True for ``CompileTime[T]`` or ``Optional[CompileTime[T]]``."""
+    if annotation is CompileTime:
         return True
     origin = get_origin(annotation)
-    if origin is Compile:
+    if origin is CompileTime:
         return True
-    # get_type_hints rewrites `Compile[T] = None` defaults to Optional[...].
+    # get_type_hints rewrites `CompileTime[T] = None` defaults to Optional[...].
     if origin is typing.Union:
         return any(_is_compile_param(arg) for arg in get_args(annotation))
     return False
@@ -96,7 +96,7 @@ def _introspect_generator(generator: Callable):
 def split_params(generator: Callable) -> tuple[list[str], list[str], list[str]]:
     """Inspect *generator* and return ``(compile_params, tensor_params, scalar_params)``.
 
-    * ``compile_params``  — names with ``Compile[T]`` annotation
+    * ``compile_params``  — names with ``CompileTime[T]`` annotation
     * ``tensor_params``   — names with ``In``/``Out``/``InOut`` annotation (in order)
     * ``scalar_params``   — names with any other annotation (runtime scalars)
 

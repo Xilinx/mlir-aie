@@ -10,14 +10,14 @@
 
 # Eltwise Unary (ReLU | SiLU | GELU)
 
-This design implements a `bfloat16` element-wise unary op (ReLU, SiLU, or GELU), parallelized across both shim DMA channels per column (`num_channels=2`). The op is selected at compile time via the `op` knob; the structural design and host harness are shared.
+This design implements a `bfloat16` element-wise unary op (ReLU, SiLU, or GELU), parallelized across both shim DMA channels per column (`num_channels=2`). The op is selected at compile time via the `op` parameter; the structural design and host harness are shared.
 
 ReLU is exact; SiLU and GELU use LUT-backed kernels and have per-op verification tolerances.
 
 
 ## Source Files Overview
 
-1. `eltwise_unary.py`: IRON design. `op` is a `Compile[str]` knob that selects `kernels.relu`, `kernels.silu`, or `kernels.gelu`. Per-op reference and tolerance live in a small dispatch table.
+1. `eltwise_unary.py`: IRON design. `op` is a `CompileTime[str]` parameter that selects `kernels.relu`, `kernels.silu`, or `kernels.gelu`. Per-op reference and tolerance live in a small dispatch table.
 
 1. `relu.cc` / `silu.cc` / `gelu.cc`: Vectorized AIE kernels pulled from the IRON kernel library. Sources under [`aie_kernels/aie2/`](../../../aie_kernels/aie2/).
 

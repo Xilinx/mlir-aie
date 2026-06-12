@@ -24,7 +24,7 @@ import argparse
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Compile, In, Out
+from aie.iron import CompileTime, In, Out
 from aie.iron.algorithms import transform_binary_typed
 from aie.utils.hostruntime.argparse import device_from_args
 from aie.utils.benchmark import print_benchmark, run_iters
@@ -42,9 +42,9 @@ def vector_vector_mul(
     input1: In,
     output: Out,
     *,
-    num_elements: Compile[int],
-    dtype: Compile[type] = np.int32,
-    tile_size: Compile[int] = 16,
+    num_elements: CompileTime[int],
+    dtype: CompileTime[type] = np.int32,
+    tile_size: CompileTime[int] = 16,
 ):
     tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
     return transform_binary_typed(lambda a, b: a * b, tensor_ty, tile_size=tile_size)

@@ -293,7 +293,7 @@ Under the hood, the [DefaultNPURuntime](../../../python/utils/hostruntime/hostru
 #### `@iron.jit` integration
 
 For designs using `@iron.jit`, `TraceConfig` can travel as a
-`Compile[T]`-style argument and be evaluated **inside** the generator,
+`CompileTime[T]`-style argument and be evaluated **inside** the generator,
 so the trace-vs-no-trace decision lives in the design itself instead
 of the host:
 
@@ -305,8 +305,8 @@ def passthrough_with_trace(
     x: In,
     y: Out,
     *,
-    N: Compile[int],
-    trace_config: Compile[TraceConfig | None] = None,
+    N: CompileTime[int],
+    trace_config: CompileTime[TraceConfig | None] = None,
 ):
     line_size = N // 4
     line_ty = np.ndarray[(line_size,), np.dtype[np.uint8]]

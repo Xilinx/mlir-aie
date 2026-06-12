@@ -12,12 +12,12 @@
 
 This design implements a `bfloat16` element-wise binary op (addition or multiplication) between two vectors, performed in parallel on two cores in a single column.  Element-wise ops usually end up being I/O bound due to the low compute intensity. In a practical ML implementation, this is the kind of kernel best fused onto a more compute-dense kernel (e.g., a convolution or GEMM).
 
-The op is selected at compile time via the `op` knob (`add` or `mul`); the structural design and host harness are shared.
+The op is selected at compile time via the `op` parameter (`add` or `mul`); the structural design and host harness are shared.
 
 
 ## Source Files Overview
 
-1. `eltwise.py`: A Python script that defines the AIE array structural design using the IRON API. `op` is a `Compile[str]` knob so the body picks `kernels.add` or `kernels.mul` accordingly; everything else (placement, fifos, runtime sequence) is shared.
+1. `eltwise.py`: A Python script that defines the AIE array structural design using the IRON API. `op` is a `CompileTime[str]` parameter so the body picks `kernels.add` or `kernels.mul` accordingly; everything else (placement, fifos, runtime sequence) is shared.
 
 1. `add.cc` / `mul.cc`: Vectorized AIE kernels for vector add / multiply, pulled from the IRON kernel library. Sources live under [`aie_kernels/aie2/add.cc`](../../../aie_kernels/aie2/add.cc) and [`mul.cc`](../../../aie_kernels/aie2/mul.cc).
 

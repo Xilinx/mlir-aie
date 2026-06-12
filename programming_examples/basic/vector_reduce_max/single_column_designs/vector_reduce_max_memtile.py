@@ -32,7 +32,7 @@ from ml_dtypes import bfloat16
 import aie.iron as iron
 from aie.iron import (
     Buffer,
-    Compile,
+    CompileTime,
     In,
     ObjectFifo,
     Out,
@@ -55,10 +55,10 @@ def vector_reduce_max(
     a_in: In,
     c_out: Out,
     *,
-    in1_size: Compile[int] = 524288,
-    out_size: Compile[int] = 4,
-    dtype_str: Compile[str] = "i32",
-    trace_size: Compile[int] = 0,
+    in1_size: CompileTime[int] = 524288,
+    out_size: CompileTime[int] = 4,
+    dtype_str: CompileTime[str] = "i32",
+    trace_size: CompileTime[int] = 0,
 ):
     if out_size != 4:
         raise ValueError("Output buffer must be size 4 (4 bytes = 1 integer).")

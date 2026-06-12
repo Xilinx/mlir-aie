@@ -8,14 +8,14 @@
 """1x1 int8 Conv2D (optionally fused with ReLU) — IRON + ``@iron.jit``.
 
 The per-tile kernel comes from the IRON kernel library, selected at compile
-time by the ``fuse_relu`` knob:
+time by the ``fuse_relu`` flag:
 
 * ``fuse_relu=False`` (default) — ``kernels.conv2dk1_i8``; signed int8 output.
 * ``fuse_relu=True``            — ``kernels.conv2dk1(act_dtype=int8)``;
                                   unsigned uint8 output (the unsigned
                                   saturation IS the fused ReLU).
 
-The runtime ``scale`` parameter is lifted to a ``Compile[int]`` so the
+The runtime ``scale`` parameter is lifted to a ``CompileTime[int]`` so the
 design skips the RTP buffer + barrier dance.
 
 Compile-only entrypoint:
@@ -29,7 +29,7 @@ import argparse
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Compile, In, Out, ObjectFifo, Program, Runtime, Worker, kernels
+from aie.iron import CompileTime, In, Out, ObjectFifo, Program, Runtime, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import (
     device_from_args,
@@ -44,12 +44,12 @@ def conv2d(
     w_in: In,
     b_out: Out,
     *,
-    width: Compile[int] = 32,
-    height: Compile[int] = 32,
-    in_channels: Compile[int] = 64,
-    out_channels: Compile[int] = 64,
-    scale: Compile[int] = 10,
-    fuse_relu: Compile[bool] = False,
+    width: CompileTime[int] = 32,
+    height: CompileTime[int] = 32,
+    in_channels: CompileTime[int] = 64,
+    out_channels: CompileTime[int] = 64,
+    scale: CompileTime[int] = 10,
+    fuse_relu: CompileTime[bool] = False,
 ):
     if width % 8 != 0 or width < 8:
         raise ValueError("width must be a multiple of 8 and >= 8")

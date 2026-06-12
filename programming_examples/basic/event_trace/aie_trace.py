@@ -12,7 +12,7 @@ Same compute as ``basic/vector_scalar_mul`` (a single AIE core scales an
 plumbed through ``rt.enable_trace()``.  The pedagogical point is
 showing that the high-level IRON Runtime API also accepts the same
 ``coretile_events`` / ``coremem_events`` / ``memtile_events`` /
-``shimtile_events`` knobs as the lower-level ``configure_trace``.
+``shimtile_events`` parameters as the lower-level ``configure_trace``.
 
 Two invocation modes:
 
@@ -26,7 +26,7 @@ import numpy as np
 
 import aie.iron as iron
 from aie.iron import (
-    Compile,
+    CompileTime,
     In,
     ObjectFifo,
     Out,
@@ -56,9 +56,9 @@ def aie_trace(
     F: In,
     C: Out,
     *,
-    tensor_size: Compile[int] = 4096,
-    tile_size: Compile[int] = 1024,
-    trace_size: Compile[int] = 8192,
+    tensor_size: CompileTime[int] = 4096,
+    tile_size: CompileTime[int] = 1024,
+    trace_size: CompileTime[int] = 8192,
 ):
     num_sub_vectors = tensor_size // tile_size
 

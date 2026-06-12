@@ -18,7 +18,7 @@ import numpy as np
 from ml_dtypes import bfloat16
 
 import aie.iron as iron
-from aie.iron import Compile, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.utils.verify import count_mismatches
 
@@ -31,7 +31,7 @@ def vector_exp(
     x: In,
     y: Out,
     *,
-    N: Compile[int],
+    N: CompileTime[int],
 ):
     n = _TILE
     n_cores = _N_CORES

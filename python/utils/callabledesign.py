@@ -12,11 +12,11 @@ and provides a ``__call__`` interface that:
 
 1. Compiles the MLIR generator on first invocation (or returns a cached kernel
    on subsequent calls with the same compile configuration).
-2. Supports two usage patterns for ``Compile[T]`` parameters:
+2. Supports two usage patterns for ``CompileTime[T]`` parameters:
 
    * **Pre-bound** (``@iron.jit(M=512)``): compile params fixed at decoration
      time; no extra kwargs needed at call time.
-   * **Call-time** (bare ``@iron.jit``): ``Compile[T]``-annotated params
+   * **Call-time** (bare ``@iron.jit``): ``CompileTime[T]``-annotated params
      passed as kwargs at each call site; different values produce independently
      cached kernels.
 
@@ -73,13 +73,13 @@ def _evict_xrt_context(xclbin_path: Path) -> None:
 class CallableDesign:
     """JIT-compiling, callable wrapper around a ``CompilableDesign``.
 
-    Supports two ``Compile[T]`` binding patterns:
+    Supports two ``CompileTime[T]`` binding patterns:
 
     * **Pre-bound** — pass compile params at decoration time (Triton style)::
 
           @iron.jit(M=512, K=512, N=512)
           def gemm(a: In, b: In, c: Out,
-                   M: Compile[int], K: Compile[int], N: Compile[int]):
+                   M: CompileTime[int], K: CompileTime[int], N: CompileTime[int]):
               ...
 
           gemm(a, b, c)  # compiles once, cached thereafter
@@ -88,7 +88,7 @@ class CallableDesign:
 
           @iron.jit
           def gemm(a: In, b: In, c: Out,
-                   M: Compile[int], K: Compile[int], N: Compile[int]):
+                   M: CompileTime[int], K: CompileTime[int], N: CompileTime[int]):
               ...
 
           gemm(a, b, c, M=512, K=512, N=512)  # compiled for this shape
@@ -97,7 +97,7 @@ class CallableDesign:
     Args:
         mlir_generator: A callable, ``Path`` to a ``.mlir`` file, or an
             existing ``CompilableDesign`` instance.
-        compile_kwargs: Values for ``Compile[T]``-annotated parameters.
+        compile_kwargs: Values for ``CompileTime[T]``-annotated parameters.
             Ignored when *mlir_generator* is already a ``CompilableDesign``.
         use_cache: Enable filesystem caching. Forwarded to ``CompilableDesign``.
         source_files: C++ kernel source files. Forwarded to ``CompilableDesign``.
@@ -108,7 +108,7 @@ class CallableDesign:
         trace_config: Optional ``TraceConfig`` for hardware trace collection.
             When set, ``trace_config.trace_size`` is injected as a
             ``trace_size`` compile kwarg so generators can use
-            ``trace_size: Compile[int] = 0`` instead of receiving the full
+            ``trace_size: CompileTime[int] = 0`` instead of receiving the full
             ``TraceConfig`` object.
     """
 
@@ -166,7 +166,7 @@ class CallableDesign:
             ]
             if unbound_required:
                 logger.debug(
-                    "%r has Compile[T] parameters with no defaults and no "
+                    "%r has CompileTime[T] parameters with no defaults and no "
                     "pre-bound values: %s. Pass these as keyword arguments at "
                     "every call site: kernel(..., %s).",
                     self.compilable.generator_name,
@@ -242,7 +242,7 @@ class CallableDesign:
     def __call__(self, *runtime_args, **runtime_kwargs):
         """Compile (if needed), then run the kernel.
 
-        ``Compile[T]``-annotated kwargs in *runtime_kwargs* are extracted and
+        ``CompileTime[T]``-annotated kwargs in *runtime_kwargs* are extracted and
         merged with any pre-bound ``compile_kwargs``; remaining kwargs are
         forwarded to the NPU kernel as scalar arguments.
 
@@ -251,15 +251,15 @@ class CallableDesign:
 
         Args:
             *runtime_args: Runtime tensor and/or scalar positional arguments.
-            **runtime_kwargs: Mix of call-time ``Compile[T]`` params and
+            **runtime_kwargs: Mix of call-time ``CompileTime[T]`` params and
                 runtime scalar kernel arguments.
 
         Returns:
             The result of ``NPUKernel.__call__``.
         """
-        # --- Split call-time Compile[T] params from runtime scalar kwargs ---
-        # trace_config is handled specially: if annotated as Compile[object] on
-        # the generator, it flows through the normal Compile[T] classification so
+        # --- Split call-time CompileTime[T] params from runtime scalar kwargs ---
+        # trace_config is handled specially: if annotated as CompileTime[object] on
+        # the generator, it flows through the normal CompileTime[T] classification so
         # the generator receives it and can conditionally enable tracing in the
         # generated MLIR.  We extract it from effective_compile_kwargs after the
         # merge (below) rather than popping it here.
@@ -275,7 +275,7 @@ class CallableDesign:
                 f"{self.compilable.generator_name!r} received tensor "
                 f"param(s) as keyword arguments: {confused_tensor_kwargs}.\n"
                 f"  Params annotated In/Out/InOut must be passed positionally.\n"
-                f"  Compile[T] params (passed as kwargs): "
+                f"  CompileTime[T] params (passed as kwargs): "
                 f"{self.compilable.compile_params}."
             )
 
@@ -291,7 +291,7 @@ class CallableDesign:
                     f"(tensor: {len(self.compilable.tensor_params)}, "
                     f"scalar: {len(self.compilable.scalar_params)}) "
                     f"but {len(runtime_args)} were given.\n"
-                    f"  Compile[T] parameters {self.compilable.compile_params} "
+                    f"  CompileTime[T] parameters {self.compilable.compile_params} "
                     f"must be keyword arguments, not positional."
                 )
 
@@ -314,7 +314,7 @@ class CallableDesign:
 
         # In-process key includes runtime_args (tensor shapes); on-disk key in
         # _compute_cache_hash does not. Divergence is intentional: if a generator
-        # omits Compile[T] for shape, the disk artifact reuses but the in-process
+        # omits CompileTime[T] for shape, the disk artifact reuses but the in-process
         # slot changes, so validate_tensor_args() surfaces the mismatch.
         generator = compilable.mlir_generator
         if callable(generator):
@@ -364,7 +364,7 @@ class CallableDesign:
             return kernel(*tensor_args, **remaining_scalars)
 
     def specialize(self, **compile_kwargs) -> "CallableDesign":
-        """Return a new ``CallableDesign`` with additional ``Compile[T]`` kwargs bound.
+        """Return a new ``CallableDesign`` with additional ``CompileTime[T]`` kwargs bound.
 
         The given kwargs are merged onto any pre-bound ``compile_kwargs`` with
         call-time values winning — matching ``__call__`` / ``as_mlir`` semantics.
@@ -415,7 +415,7 @@ class CallableDesign:
 
         Accepts the same arguments as ``__call__``.  Tensor args may be real
         tensors (shape and dtype are read from them) or ``None`` (in which case
-        the generator body must use ``Compile[T]`` params for all shape/dtype
+        the generator body must use ``CompileTime[T]`` params for all shape/dtype
         info).
 
         Returns:
