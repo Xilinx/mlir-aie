@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;1c5260c03c4b034f1862f6223e9fb23eb7195db8</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;14273685bebf296798cc86facd3459b5a017cda7</span>
    </div>
   </td>
  </tr>
@@ -75,6 +75,7 @@ $(function() {
 <div class="header">
   <div class="summary">
 <a href="#pub-methods">Public Member Functions</a> &#124;
+<a href="#pub-static-methods">Static Public Member Functions</a> &#124;
 <a href="#pub-attribs">Public Attributes</a> &#124;
 <a href="#pro-attribs">Protected Attributes</a> &#124;
 <a href="classiron_1_1worker_1_1Worker-members.html">List of all members</a>  </div>
@@ -104,8 +105,8 @@ Collaboration diagram for iron.worker.Worker:</div>
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:a20846179d6d61afbbfadd349fccd833e" id="r_a20846179d6d61afbbfadd349fccd833e"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1worker_1_1Worker.html#a20846179d6d61afbbfadd349fccd833e">__init__</a> (self, Callable|None <a class="el" href="classiron_1_1worker_1_1Worker.html#a15ecd070e55b67be77d2bdce2cce9476">core_fn</a>, list <a class="el" href="classiron_1_1worker_1_1Worker.html#ae62c026d16faacefe8d6945eaec9be4c">fn_args</a>=[], <a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a> <a class="el" href="classiron_1_1dataflow_1_1endpoint_1_1ObjectFifoEndpoint.html#a2106e61451a30c770d857a0ce1a839de">tile</a>=AnyComputeTile, bool while_true=True, int <a class="el" href="classiron_1_1worker_1_1Worker.html#aeb350baef4bd70400fe64d2a0943f2a9">stack_size</a>=None, str <a class="el" href="classiron_1_1worker_1_1Worker.html#a1c8282d3e34e9b94c10ff60901e7031a">allocation_scheme</a>=None, int <a class="el" href="classiron_1_1worker_1_1Worker.html#a10a553d64267f4b1337e7050a08226f0">trace</a>=None, list <a class="el" href="classiron_1_1worker_1_1Worker.html#a7de61d33d6e9e3bbc13a091738882a16">trace_events</a>=None, bool|None dynamic_objfifo_lowering=None)</td></tr>
-<tr class="separator:a20846179d6d61afbbfadd349fccd833e"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ac02800125b68491cc137972c8dae79a3" id="r_ac02800125b68491cc137972c8dae79a3"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1worker_1_1Worker.html#ac02800125b68491cc137972c8dae79a3">__init__</a> (self, Callable|None <a class="el" href="classiron_1_1worker_1_1Worker.html#a15ecd070e55b67be77d2bdce2cce9476">core_fn</a>, list|None <a class="el" href="classiron_1_1worker_1_1Worker.html#ae62c026d16faacefe8d6945eaec9be4c">fn_args</a>=None, <a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a> <a class="el" href="classiron_1_1dataflow_1_1endpoint_1_1ObjectFifoEndpoint.html#a2106e61451a30c770d857a0ce1a839de">tile</a>=AnyComputeTile, bool while_true=True, int <a class="el" href="classiron_1_1worker_1_1Worker.html#aeb350baef4bd70400fe64d2a0943f2a9">stack_size</a>=None, str <a class="el" href="classiron_1_1worker_1_1Worker.html#a1c8282d3e34e9b94c10ff60901e7031a">allocation_scheme</a>=None, int <a class="el" href="classiron_1_1worker_1_1Worker.html#a10a553d64267f4b1337e7050a08226f0">trace</a>=None, list <a class="el" href="classiron_1_1worker_1_1Worker.html#a7de61d33d6e9e3bbc13a091738882a16">trace_events</a>=None, bool|None dynamic_objfifo_lowering=None)</td></tr>
+<tr class="separator:ac02800125b68491cc137972c8dae79a3"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ae9e00ef2d147ca99e95ceb9fa33a7200" id="r_ae9e00ef2d147ca99e95ceb9fa33a7200"><td class="memItemLeft" align="right" valign="top">list[<a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html">ObjectFifoHandle</a>]&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1worker_1_1Worker.html#ae9e00ef2d147ca99e95ceb9fa33a7200">fifos</a> (self)</td></tr>
 <tr class="separator:ae9e00ef2d147ca99e95ceb9fa33a7200"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ac4538a627bae0ec105071751e472898e" id="r_ac4538a627bae0ec105071751e472898e"><td class="memItemLeft" align="right" valign="top">list[<a class="el" href="classiron_1_1buffer_1_1Buffer.html">Buffer</a>]&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1worker_1_1Worker.html#ac4538a627bae0ec105071751e472898e">buffers</a> (self)</td></tr>
@@ -115,6 +116,11 @@ Public Member Functions</h2></td></tr>
 <tr class="inherit_header pub_methods_classiron_1_1dataflow_1_1endpoint_1_1ObjectFifoEndpoint"><td colspan="2" onclick="javascript:toggleInherit('pub_methods_classiron_1_1dataflow_1_1endpoint_1_1ObjectFifoEndpoint')"><img src="closed.png" alt="-"/>&#160;Public Member Functions inherited from <a class="el" href="classiron_1_1dataflow_1_1endpoint_1_1ObjectFifoEndpoint.html">iron.dataflow.endpoint.ObjectFifoEndpoint</a></td></tr>
 <tr class="memitem:a2106e61451a30c770d857a0ce1a839de inherit pub_methods_classiron_1_1dataflow_1_1endpoint_1_1ObjectFifoEndpoint" id="r_a2106e61451a30c770d857a0ce1a839de"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a>|None&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1endpoint_1_1ObjectFifoEndpoint.html#a2106e61451a30c770d857a0ce1a839de">tile</a> (self)</td></tr>
 <tr class="separator:a2106e61451a30c770d857a0ce1a839de inherit pub_methods_classiron_1_1dataflow_1_1endpoint_1_1ObjectFifoEndpoint"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-static-methods" name="pub-static-methods"></a>
+Static Public Member Functions</h2></td></tr>
+<tr class="memitem:a8d11496a1b39ea742dbf00520c30883c" id="r_a8d11496a1b39ea742dbf00520c30883c"><td class="memItemLeft" align="right" valign="top">list[list[&quot;Worker&quot;]]&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1worker_1_1Worker.html#a8d11496a1b39ea742dbf00520c30883c">grid</a> (int rows, int cols, Callable[[int, int], &quot;Worker&quot;] factory)</td></tr>
+<tr class="separator:a8d11496a1b39ea742dbf00520c30883c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-attribs" name="pub-attribs"></a>
 Public Attributes</h2></td></tr>
@@ -156,8 +162,8 @@ A Worker takes a ``core_fn`` callable and the arguments it needs (ObjectFIFO han
 Buffers, Kernels, etc.). Each Worker is placed on a single compute tile, either
 explicitly via ``tile`` or automatically by the ``--aie-place-tiles`` compiler pass.
 </pre> </div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
-<a id="a20846179d6d61afbbfadd349fccd833e" name="a20846179d6d61afbbfadd349fccd833e"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a20846179d6d61afbbfadd349fccd833e">&#9670;&#160;</a></span>__init__()</h2>
+<a id="ac02800125b68491cc137972c8dae79a3" name="ac02800125b68491cc137972c8dae79a3"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ac02800125b68491cc137972c8dae79a3">&#9670;&#160;</a></span>__init__()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -177,8 +183,8 @@ explicitly via ``tile`` or automatically by the ``--aie-place-tiles`` compiler p
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">list &#160;</td>
-          <td class="paramname"><em>fn_args</em> = <code>[]</code>, </td>
+          <td class="paramtype">list | None &#160;</td>
+          <td class="paramname"><em>fn_args</em> = <code>None</code>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
@@ -233,7 +239,7 @@ explicitly via ``tile`` or automatically by the ``--aie-place-tiles`` compiler p
 
 Args:
     core_fn (Callable | None): The task to run on a core. If None, a busy-loop (`while(true): pass`) core will be generated.
-    fn_args (list, optional): Pointers to arguments, which should include all context the core_fn needs to run. Defaults to [].
+    fn_args (list | None, optional): Pointers to arguments, which should include all context the core_fn needs to run. Defaults to None (empty list).
     tile (Tile, optional): The compute tile for the Worker. Defaults to AnyComputeTile.
     while_true (bool, optional): If true, will wrap the core_fn in a while(true) loop to ensure it runs until reconfiguration. Defaults to True.
     stack_size (int, optional): The stack_size in bytes to be allocated for the worker. Defaults to 1024 bytes.
@@ -298,6 +304,67 @@ Returns:
 
 Returns:
     list[ObjectFifoHandle]: ObjectFifoHandles used by the Worker.
+</pre> 
+</div>
+</div>
+<a id="a8d11496a1b39ea742dbf00520c30883c" name="a8d11496a1b39ea742dbf00520c30883c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a8d11496a1b39ea742dbf00520c30883c">&#9670;&#160;</a></span>grid()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname"> list[list[&quot;Worker&quot;]] iron.worker.Worker.grid </td>
+          <td>(</td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>rows</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int&#160;</td>
+          <td class="paramname"><em>cols</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">Callable[[int, int], &quot;Worker&quot;]&#160;</td>
+          <td class="paramname"><em>factory</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">static</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+<pre class="fragment">Build a 2D grid of Workers; ``factory(r, c)`` returns one Worker.
+
+Replaces the common pattern::
+
+    ws = [Worker(...) for i in range(R) for j in range(C)]
+    ws[i * C + j]  # 1-D index arithmetic
+
+with::
+
+    ws = Worker.grid(R, C, lambda r, c: Worker(...))
+    ws[i][j]       # natural 2-D access
+
+Args:
+    rows: Outer-dimension count (e.g. column index).
+    cols: Inner-dimension count (e.g. channel index).
+    factory: Called once per cell with ``(r, c)``; must return a Worker.
+
+Returns:
+    ``rows``-by-``cols`` nested list of Worker instances.
 </pre> 
 </div>
 </div>

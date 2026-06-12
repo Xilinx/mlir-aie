@@ -1,9 +1,5 @@
 var searchData=
 [
-  ['cache_0',['cache',['../classcircular__cache_1_1CircularCache.html#ad7dfa14aa2a3767e7e26c70e28a56b1b',1,'circular_cache::CircularCache']]],
-  ['class_5fname_1',['class_name',['../namespaceiron_1_1device_1_1device.html#afc5be58ebcd0ebd7207c4ab77bdaf68a',1,'iron::device::device']]],
-  ['cleanup_2',['cleanup',['../classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1CachedXRTRuntime.html#a3200df73e0a04c22b2be5a6cbe586b49',1,'utils::hostruntime::xrtruntime::hostruntime::CachedXRTRuntime']]],
-  ['col_3',['col',['../classiron_1_1device_1_1tile_1_1Tile.html#a8053059fbbf1a446c59254cf30cec64b',1,'iron::device::tile::Tile']]],
-  ['context_4',['context',['../classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1XRTKernelHandle.html#a4452f097d1e6125b533a2f6c0cb0c9c7',1,'utils::hostruntime::xrtruntime::hostruntime::XRTKernelHandle']]],
-  ['core_5ffn_5',['core_fn',['../classiron_1_1worker_1_1Worker.html#a15ecd070e55b67be77d2bdce2cce9476',1,'iron::worker::Worker']]]
+  ['bds_0',['bds',['../classiron_1_1dataflow_1_1tile__dma_1_1DmaChannel.html#afe80da64340a8d9d51a34e8d3c44e926',1,'iron::dataflow::tile_dma::DmaChannel']]],
+  ['buffer_1',['buffer',['../classiron_1_1dataflow_1_1tile__dma_1_1Bd.html#a9ebe72ffcbbaff8a3ec0553bbbdea2d8',1,'iron::dataflow::tile_dma::Bd']]]
 ];

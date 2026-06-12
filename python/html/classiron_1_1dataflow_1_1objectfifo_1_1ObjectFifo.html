@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;1c5260c03c4b034f1862f6223e9fb23eb7195db8</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;14273685bebf296798cc86facd3459b5a017cda7</span>
    </div>
   </td>
  </tr>
@@ -78,8 +78,7 @@ $(function() {
 <a href="#pub-attribs">Public Attributes</a> &#124;
 <a href="#pro-methods">Protected Member Functions</a> &#124;
 <a href="#pro-attribs">Protected Attributes</a> &#124;
-<a href="#pri-methods">Private Member Functions</a> &#124;
-<a href="#pri-static-attribs">Static Private Attributes</a> &#124;
+<a href="#pro-static-attribs">Static Protected Attributes</a> &#124;
 <a href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo-members.html">List of all members</a>  </div>
   <div class="headertitle"><div class="title">iron.dataflow.objectfifo.ObjectFifo Class Reference</div></div>
 </div><!--header-->
@@ -92,7 +91,7 @@ Inheritance diagram for iron.dataflow.objectfifo.ObjectFifo:</div>
 <area shape="rect" title=" " alt="" coords="15,152,190,192"/>
 <area shape="rect" href="classiron_1_1resolvable_1_1Resolvable.html" title=" " alt="" coords="5,79,200,104"/>
 <area shape="poly" title=" " alt="" coords="105,118,105,152,100,152,100,118"/>
-<area shape="rect" title=" " alt="" coords="78,5,127,31"/>
+<area shape="rect" title=" " alt="" coords="65,5,140,31"/>
 <area shape="poly" title=" " alt="" coords="105,44,105,79,100,79,100,44"/>
 </map>
 <center><span class="legend">[<a href="graph_legend.html">legend</a>]</span></center></div>
@@ -104,21 +103,21 @@ Collaboration diagram for iron.dataflow.objectfifo.ObjectFifo:</div>
 <area shape="rect" title=" " alt="" coords="15,152,190,192"/>
 <area shape="rect" href="classiron_1_1resolvable_1_1Resolvable.html" title=" " alt="" coords="5,79,200,104"/>
 <area shape="poly" title=" " alt="" coords="105,118,105,152,100,152,100,118"/>
-<area shape="rect" title=" " alt="" coords="78,5,127,31"/>
+<area shape="rect" title=" " alt="" coords="65,5,140,31"/>
 <area shape="poly" title=" " alt="" coords="105,44,105,79,100,79,100,44"/>
 </map>
 <center><span class="legend">[<a href="graph_legend.html">legend</a>]</span></center></div>
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:a72a3a53bfd5bae67bf1ed4627974baf9" id="r_a72a3a53bfd5bae67bf1ed4627974baf9"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a72a3a53bfd5bae67bf1ed4627974baf9">__init__</a> (self, type[np.ndarray] <a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a9dfb84dd852bf7ca96418064817245ef">obj_type</a>, int|None <a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a52fa60e2e75287e53008e22c5b0b3be8">depth</a>=2, str|None <a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a737a0a6fc7d916320bb88228ab55c8ae">name</a>=None, list[Sequence[int]]|None <a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a2ce8065bb36b6b51517ffee42d4bfd8b">dims_to_stream</a>=None, list[Sequence[int]]|None <a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a52e9bb25690984482a2f0d43c7b37b04">dims_from_stream_per_cons</a>=None, bool plio=False, list[Sequence[int]]|None pad_dimensions=None, bool disable_synchronization=False, int|None repeat_count=None, PlacementTile|None delegate_tile=None, bool via_DMA=False, list[np.ndarray]|None init_values=None, type[np.ndarray]|None consumer_obj_type=None)</td></tr>
-<tr class="separator:a72a3a53bfd5bae67bf1ed4627974baf9"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a76274f56c8d33b221809f7258d3e2bc0" id="r_a76274f56c8d33b221809f7258d3e2bc0"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a76274f56c8d33b221809f7258d3e2bc0">__init__</a> (self, type[np.ndarray] <a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a9dfb84dd852bf7ca96418064817245ef">obj_type</a>, *int|None <a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a52fa60e2e75287e53008e22c5b0b3be8">depth</a>=2, str|None <a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a737a0a6fc7d916320bb88228ab55c8ae">name</a>=None, <a class="el" href="namespaceiron_1_1dataflow_1_1objectfifo.html#a68960f5718ef870d8c1cd9d667357e77">StreamDims</a>|None <a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a11759a26787a405b00cd4e7c9c0e95a3">dims_to_stream</a>=None, <a class="el" href="namespaceiron_1_1dataflow_1_1objectfifo.html#a68960f5718ef870d8c1cd9d667357e77">StreamDims</a>|None <a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a45f37c3a28a64b08380e554f51c914ad">dims_from_stream_per_cons</a>=None, bool plio=False, <a class="el" href="namespaceiron_1_1dataflow_1_1objectfifo.html#aa6debc38d6bd098935e8c172aa1f6efa">PadDims</a>|None pad_dimensions=None, bool disable_synchronization=False, int|None repeat_count=None, PlacementTile|None delegate_tile=None, bool via_DMA=False, list[np.ndarray]|None init_values=None, type[np.ndarray]|None consumer_obj_type=None, tuple[int, int]|None aie_stream=None)</td></tr>
+<tr class="separator:a76274f56c8d33b221809f7258d3e2bc0"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a52fa60e2e75287e53008e22c5b0b3be8" id="r_a52fa60e2e75287e53008e22c5b0b3be8"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a52fa60e2e75287e53008e22c5b0b3be8">depth</a> (self)</td></tr>
 <tr class="separator:a52fa60e2e75287e53008e22c5b0b3be8"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a52e9bb25690984482a2f0d43c7b37b04" id="r_a52e9bb25690984482a2f0d43c7b37b04"><td class="memItemLeft" align="right" valign="top">list[Sequence[int]]&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a52e9bb25690984482a2f0d43c7b37b04">dims_from_stream_per_cons</a> (self)</td></tr>
-<tr class="separator:a52e9bb25690984482a2f0d43c7b37b04"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a2ce8065bb36b6b51517ffee42d4bfd8b" id="r_a2ce8065bb36b6b51517ffee42d4bfd8b"><td class="memItemLeft" align="right" valign="top">list[Sequence[int]]&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a2ce8065bb36b6b51517ffee42d4bfd8b">dims_to_stream</a> (self)</td></tr>
-<tr class="separator:a2ce8065bb36b6b51517ffee42d4bfd8b"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a45f37c3a28a64b08380e554f51c914ad" id="r_a45f37c3a28a64b08380e554f51c914ad"><td class="memItemLeft" align="right" valign="top"><a class="el" href="namespaceiron_1_1dataflow_1_1objectfifo.html#a68960f5718ef870d8c1cd9d667357e77">StreamDims</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a45f37c3a28a64b08380e554f51c914ad">dims_from_stream_per_cons</a> (self)</td></tr>
+<tr class="separator:a45f37c3a28a64b08380e554f51c914ad"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a11759a26787a405b00cd4e7c9c0e95a3" id="r_a11759a26787a405b00cd4e7c9c0e95a3"><td class="memItemLeft" align="right" valign="top"><a class="el" href="namespaceiron_1_1dataflow_1_1objectfifo.html#a68960f5718ef870d8c1cd9d667357e77">StreamDims</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a11759a26787a405b00cd4e7c9c0e95a3">dims_to_stream</a> (self)</td></tr>
+<tr class="separator:a11759a26787a405b00cd4e7c9c0e95a3"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a34982456c57a909184754296a1053f48" id="r_a34982456c57a909184754296a1053f48"><td class="memItemLeft" align="right" valign="top">ObjectFifoCreateOp&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a34982456c57a909184754296a1053f48">op</a> (self)</td></tr>
 <tr class="separator:a34982456c57a909184754296a1053f48"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a528ff4dca1a1357f5f4840331f3c9efa" id="r_a528ff4dca1a1357f5f4840331f3c9efa"><td class="memItemLeft" align="right" valign="top">Sequence[int]&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a528ff4dca1a1357f5f4840331f3c9efa">shape</a> (self)</td></tr>
@@ -133,8 +132,8 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:ae0480885d061abe0ef3ef22bae2bc0fa"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a99b554ace7626a3b65076e54123aced2" id="r_a99b554ace7626a3b65076e54123aced2"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html">ObjectFifoHandle</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a99b554ace7626a3b65076e54123aced2">prod</a> (self, int|None <a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a52fa60e2e75287e53008e22c5b0b3be8">depth</a>=None)</td></tr>
 <tr class="separator:a99b554ace7626a3b65076e54123aced2"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a9074a9e04b32080262f3755b0f24b36a" id="r_a9074a9e04b32080262f3755b0f24b36a"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html">ObjectFifoHandle</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a9074a9e04b32080262f3755b0f24b36a">cons</a> (self, int|None <a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a52fa60e2e75287e53008e22c5b0b3be8">depth</a>=None, list[Sequence[int]]|None dims_from_stream=None)</td></tr>
-<tr class="separator:a9074a9e04b32080262f3755b0f24b36a"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a3bf6dd4c9ef74753e09c4fd80f7871dd" id="r_a3bf6dd4c9ef74753e09c4fd80f7871dd"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html">ObjectFifoHandle</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a3bf6dd4c9ef74753e09c4fd80f7871dd">cons</a> (self, int|None <a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a52fa60e2e75287e53008e22c5b0b3be8">depth</a>=None, <a class="el" href="namespaceiron_1_1dataflow_1_1objectfifo.html#a68960f5718ef870d8c1cd9d667357e77">StreamDims</a>|None dims_from_stream=None)</td></tr>
+<tr class="separator:a3bf6dd4c9ef74753e09c4fd80f7871dd"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aa4f5fc19bab7134b9f1b08b4344e7c2b" id="r_aa4f5fc19bab7134b9f1b08b4344e7c2b"><td class="memItemLeft" align="right" valign="top">list[<a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a>]&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#aa4f5fc19bab7134b9f1b08b4344e7c2b">tiles</a> (self, bool cons_only=False)</td></tr>
 <tr class="separator:aa4f5fc19bab7134b9f1b08b4344e7c2b"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a1375c3b7a192dcc58819524d9b6eb549" id="r_a1375c3b7a192dcc58819524d9b6eb549"><td class="memItemLeft" align="right" valign="top">bool&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a1375c3b7a192dcc58819524d9b6eb549">can_used_shared_mem</a> (self, <a class="el" href="classiron_1_1device_1_1device_1_1Device.html">Device</a> device, bool cons_only=False)</td></tr>
@@ -190,16 +189,13 @@ Protected Attributes</h2></td></tr>
 <tr class="separator:a525861a22c7e6095fe9c67a5180afe42"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a2b0451ca61cf5637dd31e90ec5b2354c" id="r_a2b0451ca61cf5637dd31e90ec5b2354c"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a2b0451ca61cf5637dd31e90ec5b2354c">_repeat_count</a></td></tr>
 <tr class="separator:a2b0451ca61cf5637dd31e90ec5b2354c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a64c0f8636ef48115206a21ccd6e28a31" id="r_a64c0f8636ef48115206a21ccd6e28a31"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a64c0f8636ef48115206a21ccd6e28a31">_aie_stream</a></td></tr>
+<tr class="separator:a64c0f8636ef48115206a21ccd6e28a31"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
-<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pri-methods" name="pri-methods"></a>
-Private Member Functions</h2></td></tr>
-<tr class="memitem:ab5ebcedefa8b163d44c081faaa33345c" id="r_ab5ebcedefa8b163d44c081faaa33345c"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#ab5ebcedefa8b163d44c081faaa33345c">__get_index</a> (cls)</td></tr>
-<tr class="separator:ab5ebcedefa8b163d44c081faaa33345c"><td class="memSeparator" colspan="2">&#160;</td></tr>
-</table><table class="memberdecls">
-<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pri-static-attribs" name="pri-static-attribs"></a>
-Static Private Attributes</h2></td></tr>
-<tr class="memitem:abcba213ef96369f1b67b6b7ba45ca69e" id="r_abcba213ef96369f1b67b6b7ba45ca69e"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#abcba213ef96369f1b67b6b7ba45ca69e">__of_index</a> = 0</td></tr>
-<tr class="separator:abcba213ef96369f1b67b6b7ba45ca69e"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pro-static-attribs" name="pro-static-attribs"></a>
+Static Protected Attributes</h2></td></tr>
+<tr class="memitem:a560180800a66740aff841958d99f6e84" id="r_a560180800a66740aff841958d99f6e84"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a560180800a66740aff841958d99f6e84">_of_index</a> = itertools.count()</td></tr>
+<tr class="separator:a560180800a66740aff841958d99f6e84"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><pre class="fragment">An ObjectFifo is a method of representing synchronized, explicit dataflow between
@@ -209,8 +205,8 @@ Internally, it is a circular buffer with a given depth and type of buffer. The
 users of an ObjectFifo are explicitly either a Producer or a Consumer, and each
 user has a Placeable endpoint.
 </pre> </div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
-<a id="a72a3a53bfd5bae67bf1ed4627974baf9" name="a72a3a53bfd5bae67bf1ed4627974baf9"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a72a3a53bfd5bae67bf1ed4627974baf9">&#9670;&#160;</a></span>__init__()</h2>
+<a id="a76274f56c8d33b221809f7258d3e2bc0" name="a76274f56c8d33b221809f7258d3e2bc0"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a76274f56c8d33b221809f7258d3e2bc0">&#9670;&#160;</a></span>__init__()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -230,7 +226,7 @@ user has a Placeable endpoint.
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">int | None &#160;</td>
+          <td class="paramtype">*int | None &#160;</td>
           <td class="paramname"><em>depth</em> = <code>2</code>, </td>
         </tr>
         <tr>
@@ -242,13 +238,13 @@ user has a Placeable endpoint.
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">list[Sequence[int]] | None &#160;</td>
+          <td class="paramtype"><a class="el" href="namespaceiron_1_1dataflow_1_1objectfifo.html#a68960f5718ef870d8c1cd9d667357e77">StreamDims</a> | None &#160;</td>
           <td class="paramname"><em>dims_to_stream</em> = <code>None</code>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">list[Sequence[int]] | None &#160;</td>
+          <td class="paramtype"><a class="el" href="namespaceiron_1_1dataflow_1_1objectfifo.html#a68960f5718ef870d8c1cd9d667357e77">StreamDims</a> | None &#160;</td>
           <td class="paramname"><em>dims_from_stream_per_cons</em> = <code>None</code>, </td>
         </tr>
         <tr>
@@ -260,7 +256,7 @@ user has a Placeable endpoint.
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">list[Sequence[int]] | None &#160;</td>
+          <td class="paramtype"><a class="el" href="namespaceiron_1_1dataflow_1_1objectfifo.html#aa6debc38d6bd098935e8c172aa1f6efa">PadDims</a> | None &#160;</td>
           <td class="paramname"><em>pad_dimensions</em> = <code>None</code>, </td>
         </tr>
         <tr>
@@ -297,7 +293,13 @@ user has a Placeable endpoint.
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">type[np.ndarray] | None &#160;</td>
-          <td class="paramname"><em>consumer_obj_type</em> = <code>None</code>&#160;</td>
+          <td class="paramname"><em>consumer_obj_type</em> = <code>None</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">tuple[int, int] | None &#160;</td>
+          <td class="paramname"><em>aie_stream</em> = <code>None</code>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -312,14 +314,15 @@ Args:
     obj_type (type[np.ndarray]): The type of each buffer in the ObjectFifo
     depth (int | None, optional): The default depth of the ObjectFifo endpoints. Defaults to 2.
     name (str | None, optional): The name of the ObjectFifo. If None is given, a unique name will be generated. Defaults to None.
-    dims_to_stream (list[Sequence[int]] | None, optional): Data layout transformations applied when data is pushed onto the AXI stream, described as pairs of (size, stride) from highest to lowest dimension. Defaults to None.
-    dims_from_stream_per_cons (list[Sequence[int]] | None, optional): List of data layout transformations applied by each consumer when data is read from the AXI stream, described as pairs of (size, stride) from highest to lowest dimension. Defaults to None.
+    dims_to_stream (StreamDims | None, optional): Data layout transformations applied when data is pushed onto the AXI stream, described as pairs of (size, stride) from highest to lowest dimension. Defaults to None.
+    dims_from_stream_per_cons (StreamDims | None, optional): List of data layout transformations applied by each consumer when data is read from the AXI stream, described as pairs of (size, stride) from highest to lowest dimension. Defaults to None.
     plio (bool, optional): Whether the ObjectFifo uses PLIO connections. Defaults to False.
     disable_synchronization (bool, optional): When True, disables lock-based synchronization on the ObjectFifo. Defaults to False.
     repeat_count (int | None, optional): If set, causes the MemTile DMA to replay the buffer descriptor this many times without a new DMA transfer from L3. Distinct from ``iter_count`` (BD-chain iteration count). Defaults to None.
     delegate_tile (PlacementTile | None, optional): Shared-memory delegate tile. When set, the ObjectFifo's underlying buffer pool is allocated on this tile's memory module instead of the default placement. Lowers to ``aie.objectfifo.allocate``. *Only valid when both producer and consumer have shared-memory access to the delegate tile* (e.g. self-loop fifos where prod == cons, or fifos between adjacent tiles spilling to a neighboring MemTile). The delegate is the storage location, not a producer- or consumer-side concept; the underlying op verifier rejects this if either endpoint cannot share memory with the delegate. Defaults to None.
     init_values (list[np.ndarray] | None, optional): Per-buffer static initial values for the producer endpoint. One ndarray per producer-side buffer; the producer tile must be able to hold static data at design startup (e.g. a MemTile). Lowers to the ``initValues`` attribute on the underlying ``aie.objectfifo`` op. Defaults to None.
     consumer_obj_type (type[np.ndarray] | None, optional): Consumer element type for asymmetric transfer granularity. When set, the producer sends obj_type-sized transfers and the consumer receives consumer_obj_type-sized transfers. Producer element count must be an integer multiple of consumer element count. Defaults to None.
+    aie_stream (tuple[int, int] | None, optional): Mark the fifo as a direct AIE-stream connection by stamping the ``aie_stream`` / ``aie_stream_port`` attributes ``(end, port)`` on the underlying ``aie.objectfifo`` op. Use with kernels that emit on the wire via ``put_ms()`` instead of going through an L1 buffer. Defaults to None.
 
 Raises:
     ValueError: If ``depth`` is provided and is less than 1.
@@ -327,32 +330,6 @@ Raises:
 </div>
 </div>
 <h2 class="groupheader">Member Function Documentation</h2>
-<a id="ab5ebcedefa8b163d44c081faaa33345c" name="ab5ebcedefa8b163d44c081faaa33345c"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ab5ebcedefa8b163d44c081faaa33345c">&#9670;&#160;</a></span>__get_index()</h2>
-
-<div class="memitem">
-<div class="memproto">
-<table class="mlabels">
-  <tr>
-  <td class="mlabels-left">
-      <table class="memname">
-        <tr>
-          <td class="memname"> int iron.dataflow.objectfifo.ObjectFifo.__get_index </td>
-          <td>(</td>
-          <td class="paramtype">&#160;</td>
-          <td class="paramname"><em>cls</em></td><td>)</td>
-          <td></td>
-        </tr>
-      </table>
-  </td>
-  <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel">private</span></span>  </td>
-  </tr>
-</table>
-</div><div class="memdoc">
-
-</div>
-</div>
 <a id="ae0480885d061abe0ef3ef22bae2bc0fa" name="ae0480885d061abe0ef3ef22bae2bc0fa"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#ae0480885d061abe0ef3ef22bae2bc0fa">&#9670;&#160;</a></span>__str__()</h2>
 
@@ -603,8 +580,8 @@ Raises:
 <pre class="fragment">Check if all endpoints have legal memory affinity.</pre> 
 </div>
 </div>
-<a id="a9074a9e04b32080262f3755b0f24b36a" name="a9074a9e04b32080262f3755b0f24b36a"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a9074a9e04b32080262f3755b0f24b36a">&#9670;&#160;</a></span>cons()</h2>
+<a id="a3bf6dd4c9ef74753e09c4fd80f7871dd" name="a3bf6dd4c9ef74753e09c4fd80f7871dd"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a3bf6dd4c9ef74753e09c4fd80f7871dd">&#9670;&#160;</a></span>cons()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -624,7 +601,7 @@ Raises:
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">list[Sequence[int]] | None &#160;</td>
+          <td class="paramtype"><a class="el" href="namespaceiron_1_1dataflow_1_1objectfifo.html#a68960f5718ef870d8c1cd9d667357e77">StreamDims</a> | None &#160;</td>
           <td class="paramname"><em>dims_from_stream</em> = <code>None</code>&#160;</td>
         </tr>
         <tr>
@@ -639,7 +616,7 @@ will return a new consumer handle every time it is called.
 
 Args:
     depth (int | None, optional): The depth of the buffers at the endpoint corresponding to this consumer handle. Defaults to None.
-    dims_from_stream (list[Sequence[int]] | None, optional): Dimensions from stream for this consumer. Defaults to None.
+    dims_from_stream (StreamDims | None, optional): Dimensions from stream for this consumer. Defaults to None.
 
 Raises:
     ValueError: Arguments are validated
@@ -667,14 +644,14 @@ Returns:
 <pre class="fragment">The default depth of the ObjectFifo. This may be overridden by an ObjectFifoHandle upon construction.</pre> 
 </div>
 </div>
-<a id="a52e9bb25690984482a2f0d43c7b37b04" name="a52e9bb25690984482a2f0d43c7b37b04"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a52e9bb25690984482a2f0d43c7b37b04">&#9670;&#160;</a></span>dims_from_stream_per_cons()</h2>
+<a id="a45f37c3a28a64b08380e554f51c914ad" name="a45f37c3a28a64b08380e554f51c914ad"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a45f37c3a28a64b08380e554f51c914ad">&#9670;&#160;</a></span>dims_from_stream_per_cons()</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname"> list[Sequence[int]] iron.dataflow.objectfifo.ObjectFifo.dims_from_stream_per_cons </td>
+          <td class="memname"> <a class="el" href="namespaceiron_1_1dataflow_1_1objectfifo.html#a68960f5718ef870d8c1cd9d667357e77">StreamDims</a> iron.dataflow.objectfifo.ObjectFifo.dims_from_stream_per_cons </td>
           <td>(</td>
           <td class="paramtype">&#160;</td>
           <td class="paramname"><em>self</em></td><td>)</td>
@@ -685,14 +662,14 @@ Returns:
 <pre class="fragment">The default dimensions from stream per consumer value. This may be overridden by an ObjectFifoHandle of type consumer.</pre> 
 </div>
 </div>
-<a id="a2ce8065bb36b6b51517ffee42d4bfd8b" name="a2ce8065bb36b6b51517ffee42d4bfd8b"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a2ce8065bb36b6b51517ffee42d4bfd8b">&#9670;&#160;</a></span>dims_to_stream()</h2>
+<a id="a11759a26787a405b00cd4e7c9c0e95a3" name="a11759a26787a405b00cd4e7c9c0e95a3"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a11759a26787a405b00cd4e7c9c0e95a3">&#9670;&#160;</a></span>dims_to_stream()</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname"> list[Sequence[int]] iron.dataflow.objectfifo.ObjectFifo.dims_to_stream </td>
+          <td class="memname"> <a class="el" href="namespaceiron_1_1dataflow_1_1objectfifo.html#a68960f5718ef870d8c1cd9d667357e77">StreamDims</a> iron.dataflow.objectfifo.ObjectFifo.dims_to_stream </td>
           <td>(</td>
           <td class="paramtype">&#160;</td>
           <td class="paramname"><em>self</em></td><td>)</td>
@@ -932,8 +909,8 @@ Returns:
 </div>
 </div>
 <h2 class="groupheader">Member Data Documentation</h2>
-<a id="abcba213ef96369f1b67b6b7ba45ca69e" name="abcba213ef96369f1b67b6b7ba45ca69e"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#abcba213ef96369f1b67b6b7ba45ca69e">&#9670;&#160;</a></span>__of_index</h2>
+<a id="a64c0f8636ef48115206a21ccd6e28a31" name="a64c0f8636ef48115206a21ccd6e28a31"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a64c0f8636ef48115206a21ccd6e28a31">&#9670;&#160;</a></span>_aie_stream</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -942,12 +919,12 @@ Returns:
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">int iron.dataflow.objectfifo.ObjectFifo.__of_index = 0</td>
+          <td class="memname">iron.dataflow.objectfifo.ObjectFifo._aie_stream</td>
         </tr>
       </table>
   </td>
   <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel">static</span><span class="mlabel">private</span></span>  </td>
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
   </tr>
 </table>
 </div><div class="memdoc">
@@ -1102,6 +1079,28 @@ Returns:
   </td>
   <td class="mlabels-right">
 <span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<a id="a560180800a66740aff841958d99f6e84" name="a560180800a66740aff841958d99f6e84"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a560180800a66740aff841958d99f6e84">&#9670;&#160;</a></span>_of_index</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">iron.dataflow.objectfifo.ObjectFifo._of_index = itertools.count()</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">static</span><span class="mlabel">protected</span></span>  </td>
   </tr>
 </table>
 </div><div class="memdoc">

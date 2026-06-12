@@ -1,5 +1,4 @@
 var searchData=
 [
-  ['max_5fsize_0',['max_size',['../classcircular__cache_1_1CircularCache.html#a149a8c75a470a65ea3e9559469d7a3f4',1,'circular_cache::CircularCache']]],
-  ['message_1',['message',['../classiron_1_1resolvable_1_1NotResolvedError.html#ad2d4e87bd0cb19836b84a08ee3c2512f',1,'iron::resolvable::NotResolvedError']]]
+  ['kernel_0',['kernel',['../classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1XRTKernelHandle.html#a3c80ff50b8ff78ca076b38630c90f69a',1,'utils::hostruntime::xrtruntime::hostruntime::XRTKernelHandle']]]
 ];

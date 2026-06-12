@@ -1,6 +1,22 @@
 var searchData=
 [
-  ['bfloat16_5fsafe_5fallclose_0',['bfloat16_safe_allclose',['../namespaceutils_1_1hostruntime.html#adb1d092f6ded65a723011f10c557662e',1,'utils::hostruntime']]],
-  ['buffer_5fobject_1',['buffer_object',['../classutils_1_1hostruntime_1_1xrtruntime_1_1tensor_1_1XRTTensor.html#afca1e6e1446fe1edd955c5194cee8665',1,'utils::hostruntime::xrtruntime::tensor::XRTTensor']]],
-  ['buffers_2',['buffers',['../classiron_1_1worker_1_1Worker.html#ac4538a627bae0ec105071751e472898e',1,'iron::worker::Worker']]]
+  ['bf16_5fexp_0',['bf16_exp',['../namespaceiron_1_1kernels_1_1activation.html#a0a5c878710023052995841b540a94e5d',1,'iron::kernels::activation']]],
+  ['bf16_5fexp_5fref_1',['bf16_exp_ref',['../namespaceiron_1_1kernels_1_1activation.html#a81cf78d31f92c0ab7e4c5df88f53b878',1,'iron::kernels::activation']]],
+  ['bfloat16_5fsafe_5fallclose_2',['bfloat16_safe_allclose',['../namespaceutils_1_1hostruntime.html#adb1d092f6ded65a723011f10c557662e',1,'utils::hostruntime']]],
+  ['bitwise_5fand_3',['bitwise_and',['../namespaceiron_1_1kernels_1_1vision.html#a48ec8477b7c38bdcc58128e09fd1263c',1,'iron::kernels::vision']]],
+  ['bitwise_5for_4',['bitwise_or',['../namespaceiron_1_1kernels_1_1vision.html#a4fcfa1b4a33519931a2e7fad47cf560a',1,'iron::kernels::vision']]],
+  ['bn_5fconv2dk1_5fi8_5',['bn_conv2dk1_i8',['../namespaceiron_1_1kernels_1_1conv.html#a5f3411b5286daece9834d434e4dab94c',1,'iron::kernels::conv']]],
+  ['bn_5fconv2dk1_5finput_5fsplit_5fpartial_5fput_5fui8_6',['bn_conv2dk1_input_split_partial_put_ui8',['../namespaceiron_1_1kernels_1_1conv.html#aaedfe348dae6cfa85cac31f205bd3700',1,'iron::kernels::conv']]],
+  ['bn_5fconv2dk1_5finput_5fsplit_5fpartial_5fskip_5fget_7',['bn_conv2dk1_input_split_partial_skip_get',['../namespaceiron_1_1kernels_1_1conv.html#a4e6b3b03cd9475f7c4031fb6acf4ff95',1,'iron::kernels::conv']]],
+  ['bn_5fconv2dk1_5fpartial_5fget_5frelu_5fi8_8',['bn_conv2dk1_partial_get_relu_i8',['../namespaceiron_1_1kernels_1_1conv.html#a96706ca4048ae684a9e123ca53bd72b4',1,'iron::kernels::conv']]],
+  ['bn_5fconv2dk1_5fpartial_5fput_5fi8_9',['bn_conv2dk1_partial_put_i8',['../namespaceiron_1_1kernels_1_1conv.html#a383f45dcdd0357a1e9bfa088aeff2d8c',1,'iron::kernels::conv']]],
+  ['bn_5fconv2dk1_5frelu_10',['bn_conv2dk1_relu',['../namespaceiron_1_1kernels_1_1conv.html#ae2766a4998c59e68279fada58b30f27e',1,'iron::kernels::conv']]],
+  ['bn_5fconv2dk1_5frelu_5fxy_5fpool_5fpadded_11',['bn_conv2dk1_relu_xy_pool_padded',['../namespaceiron_1_1kernels_1_1conv.html#ac23040596b89aee612736228578a557e',1,'iron::kernels::conv']]],
+  ['bn_5fconv2dk1_5fskip_12',['bn_conv2dk1_skip',['../namespaceiron_1_1kernels_1_1conv.html#ae4958b4d1ad7039d8efb99f8f0389450',1,'iron::kernels::conv']]],
+  ['bn_5fconv2dk3_13',['bn_conv2dk3',['../namespaceiron_1_1kernels_1_1conv.html#a492f7313d66d80b721d7cd954be4dbb5',1,'iron::kernels::conv']]],
+  ['bn_5fconv2dk3_5fdw_14',['bn_conv2dk3_dw',['../namespaceiron_1_1kernels_1_1conv.html#a5591346b7c7d491a25b34f1884159dca',1,'iron::kernels::conv']]],
+  ['bn_5fconv2dk3_5fdw_5fout_5fsplit_15',['bn_conv2dk3_dw_out_split',['../namespaceiron_1_1kernels_1_1conv.html#a81780d25560cf4056d580ceb6ad10dc0',1,'iron::kernels::conv']]],
+  ['bn_5ffc_5frelu_5fui16_5fpad_16',['bn_fc_relu_ui16_pad',['../namespaceiron_1_1kernels_1_1conv.html#aa70c58f9fb16218dd5fdbb5f1b22918b',1,'iron::kernels::conv']]],
+  ['buffer_5fobject_17',['buffer_object',['../classutils_1_1hostruntime_1_1xrtruntime_1_1tensor_1_1XRTTensor.html#afca1e6e1446fe1edd955c5194cee8665',1,'utils::hostruntime::xrtruntime::tensor::XRTTensor']]],
+  ['buffers_18',['buffers',['../classiron_1_1worker_1_1Worker.html#ac4538a627bae0ec105071751e472898e',1,'iron::worker::Worker']]]
 ];

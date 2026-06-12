@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;1c5260c03c4b034f1862f6223e9fb23eb7195db8</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;14273685bebf296798cc86facd3459b5a017cda7</span>
    </div>
   </td>
  </tr>
@@ -82,10 +82,14 @@ $(function() {
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="func-members" name="func-members"></a>
 Functions</h2></td></tr>
-<tr class="memitem:a5eccdf9a88419ce0dcd81ed66fed542c" id="r_a5eccdf9a88419ce0dcd81ed66fed542c"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1compile_1_1utils.html#a5eccdf9a88419ce0dcd81ed66fed542c">compile_cxx_core_function</a> (str source_path, str target_arch, str output_path, list[str]|None include_dirs=None, list[str]|None compile_args=None, str|None cwd=None)</td></tr>
-<tr class="separator:a5eccdf9a88419ce0dcd81ed66fed542c"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a8fe36ca913e727468ae01c8c09aef774" id="r_a8fe36ca913e727468ae01c8c09aef774"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1compile_1_1utils.html#a8fe36ca913e727468ae01c8c09aef774">compile_mlir_module</a> (str mlir_module, str|Path|None insts_path=None, str|Path|None pdi_path=None, str|Path|None xclbin_path=None, verbose=False, str|Path|None work_dir=None, options=None)</td></tr>
-<tr class="separator:a8fe36ca913e727468ae01c8c09aef774"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a8369487704e22a409502fc803b13d846" id="r_a8369487704e22a409502fc803b13d846"><td class="memItemLeft" align="right" valign="top">str&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1compile_1_1utils.html#a8369487704e22a409502fc803b13d846">resolve_target_arch</a> (device=None)</td></tr>
+<tr class="separator:a8369487704e22a409502fc803b13d846"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:add7615b33d6b43b69d390abccbe720dd" id="r_add7615b33d6b43b69d390abccbe720dd"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1compile_1_1utils.html#add7615b33d6b43b69d390abccbe720dd">compile_cxx_core_function</a> (str source_path, str target_arch, str output_path, list[str]|None include_dirs=None, list[str]|None compile_args=None, str|None cwd=None, bool use_chess=False)</td></tr>
+<tr class="separator:add7615b33d6b43b69d390abccbe720dd"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a5d315f84c19de57987498cb6d5cd12ba" id="r_a5d315f84c19de57987498cb6d5cd12ba"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1compile_1_1utils.html#a5d315f84c19de57987498cb6d5cd12ba">compile_mlir_module</a> (str mlir_module, str|Path|None insts_path=None, str|Path|None pdi_path=None, str|Path|None xclbin_path=None, str|Path|None elf_path=None, verbose=False, str|Path|None work_dir=None, options=None, bool use_chess=False, device=None)</td></tr>
+<tr class="separator:a5d315f84c19de57987498cb6d5cd12ba"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:add500f3d6eb4dffecdbcd2566bdf8cb2" id="r_add500f3d6eb4dffecdbcd2566bdf8cb2"><td class="memItemLeft" align="right" valign="top">None&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1compile_1_1utils.html#add500f3d6eb4dffecdbcd2566bdf8cb2">_rename_symbol_in_object</a> (str object_path, str old_name, str new_name)</td></tr>
+<tr class="separator:add500f3d6eb4dffecdbcd2566bdf8cb2"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a513d68013b69c23c55adc01c00de04f2" id="r_a513d68013b69c23c55adc01c00de04f2"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1compile_1_1utils.html#a513d68013b69c23c55adc01c00de04f2">compile_external_kernel</a> (func, kernel_dir, target_arch)</td></tr>
 <tr class="separator:a513d68013b69c23c55adc01c00de04f2"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a7f0589bae0c551479e57c9ce6719a539" id="r_a7f0589bae0c551479e57c9ce6719a539"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1compile_1_1utils.html#a7f0589bae0c551479e57c9ce6719a539">_cleanup_failed_compilation</a> (cache_dir)</td></tr>
@@ -124,8 +128,50 @@ Variables</h2></td></tr>
 <pre class="fragment">Clean up cache directory after failed compilation, preserving the lock file.</pre> 
 </div>
 </div>
-<a id="a5eccdf9a88419ce0dcd81ed66fed542c" name="a5eccdf9a88419ce0dcd81ed66fed542c"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a5eccdf9a88419ce0dcd81ed66fed542c">&#9670;&#160;</a></span>compile_cxx_core_function()</h2>
+<a id="add500f3d6eb4dffecdbcd2566bdf8cb2" name="add500f3d6eb4dffecdbcd2566bdf8cb2"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#add500f3d6eb4dffecdbcd2566bdf8cb2">&#9670;&#160;</a></span>_rename_symbol_in_object()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname"> None utils.compile.utils._rename_symbol_in_object </td>
+          <td>(</td>
+          <td class="paramtype">str&#160;</td>
+          <td class="paramname"><em>object_path</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">str&#160;</td>
+          <td class="paramname"><em>old_name</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">str&#160;</td>
+          <td class="paramname"><em>new_name</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+<pre class="fragment">Rename a symbol in a compiled object file using llvm-objcopy.</pre> 
+</div>
+</div>
+<a id="add7615b33d6b43b69d390abccbe720dd" name="add7615b33d6b43b69d390abccbe720dd"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#add7615b33d6b43b69d390abccbe720dd">&#9670;&#160;</a></span>compile_cxx_core_function()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -164,7 +210,13 @@ Variables</h2></td></tr>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">str | None &#160;</td>
-          <td class="paramname"><em>cwd</em> = <code>None</code>&#160;</td>
+          <td class="paramname"><em>cwd</em> = <code>None</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">bool &#160;</td>
+          <td class="paramname"><em>use_chess</em> = <code>False</code>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -173,15 +225,25 @@ Variables</h2></td></tr>
         </tr>
       </table>
 </div><div class="memdoc">
-<pre class="fragment">Compile a C++ core function.
-This function supports only the Peano compiler.
+<pre class="fragment">Compile a C++ core function via either Peano (default) or the Chess
+compiler (``use_chess=True``).
+
 Parameters:
     source_path (str): Path to C++ source.
     target_arch (str): Target architecture, e.g., aie2.
     output_path (str): Output object file path.
     include_dirs (list[str], optional): List of include directories to add with -I.
-    compile_args (list[str], optional): Additional compile arguments to peano.
+    compile_args (list[str], optional): Additional compile arguments
+        forwarded verbatim to the chosen compiler.
     cwd (str, optional): Overrides the current working directory.
+    use_chess (bool): When True, invoke ``xchesscc_wrapper`` instead of
+        ``clang++`` (Peano).  Equivalent to the makefile-common
+        ``KERNEL_CC=xchesscc_wrapper`` path used by the matmul examples'
+        ``use_chess=1`` configurations.  ``xchesscc_wrapper`` reads
+        ``AIETOOLS_DIR`` (or auto-detects from the path of ``xchesscc``)
+        for the AIE-tools include directory; the standard mlir-aie
+        include path is added explicitly here so it doesn't depend on
+        the Chess wrapper's include search.
 </pre> 
 </div>
 </div>
@@ -231,8 +293,8 @@ Args:
 </pre> 
 </div>
 </div>
-<a id="a8fe36ca913e727468ae01c8c09aef774" name="a8fe36ca913e727468ae01c8c09aef774"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a8fe36ca913e727468ae01c8c09aef774">&#9670;&#160;</a></span>compile_mlir_module()</h2>
+<a id="a5d315f84c19de57987498cb6d5cd12ba" name="a5d315f84c19de57987498cb6d5cd12ba"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a5d315f84c19de57987498cb6d5cd12ba">&#9670;&#160;</a></span>compile_mlir_module()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -264,6 +326,12 @@ Args:
         <tr>
           <td class="paramkey"></td>
           <td></td>
+          <td class="paramtype">str | Path | None &#160;</td>
+          <td class="paramname"><em>elf_path</em> = <code>None</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
           <td class="paramtype">&#160;</td>
           <td class="paramname"><em>verbose</em> = <code>False</code>, </td>
         </tr>
@@ -277,7 +345,19 @@ Args:
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">&#160;</td>
-          <td class="paramname"><em>options</em> = <code>None</code>&#160;</td>
+          <td class="paramname"><em>options</em> = <code>None</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">bool &#160;</td>
+          <td class="paramname"><em>use_chess</em> = <code>False</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>device</em> = <code>None</code>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -286,17 +366,54 @@ Args:
         </tr>
       </table>
 </div><div class="memdoc">
-<pre class="fragment">Compile an MLIR module to instruction, PDI, and/or xclbin files using the aiecc module.
-This function supports only the Peano compiler.
+<pre class="fragment">Compile an MLIR module to instruction, PDI, ELF, and/or xclbin files using the aiecc module.
+
 Parameters:
     mlir_module (str): MLIR module to compile.
     insts_path (str): Path to the instructions binary file.
     pdi_path (str): Path to the PDI file.
     xclbin_path (str): Path to the xclbin file.
+    elf_path (str): Path to an ELF-wrapped version of the NPU instructions
+        (produced via ``aiebu-asm``).  Required by C++ testbenches that
+        load instructions through ``xrt::elf`` + ``xrt::module``;
+        independent of ``insts_path`` (the Python runtime consumes the
+        raw ``.bin``).
     verbose (bool): If True, enable verbose output.
     work_dir (str): Compilation working directory.
     options (list[str]): List of additional options.
+    use_chess (bool): When True, drive aiecc with the Chess front-end
+        (``--unified``) instead of the Peano front-end.  Must agree
+        with the per-ExternalFunction ``_use_chess`` settings — the
+        JIT compile orchestration in ``compilabledesign.py`` enforces
+        agreement and raises on a mixed peano/chess design.
+    device: Optional IRON device (or ``AIEDevice`` enum) used to pick
+        the target architecture (aie2 vs aie2p) for any
+        :class:`aie.iron.kernel.ExternalFunction` instances that have
+        a ``source_file=`` and haven't been compiled yet.  When set
+        and ``work_dir`` is provided, those externals are auto-built
+        into ``work_dir`` before aiecc runs (matching the @iron.jit
+        behavior).  Without this, low-level designs going through
+        ``compile_mlir_module`` directly (e.g. ``basic/packet_switch``)
+        still need a Makefile-side ``.o`` rule.
 </pre> 
+</div>
+</div>
+<a id="a8369487704e22a409502fc803b13d846" name="a8369487704e22a409502fc803b13d846"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a8369487704e22a409502fc803b13d846">&#9670;&#160;</a></span>resolve_target_arch()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"> str utils.compile.utils.resolve_target_arch </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>device</em> = <code>None</code></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<pre class="fragment">Return ``'aie2'`` or ``'aie2p'`` for the given device, or ``'aie2'`` if device is None.</pre> 
 </div>
 </div>
 <h2 class="groupheader">Variable Documentation</h2>

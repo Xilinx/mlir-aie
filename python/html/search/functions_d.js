@@ -1,8 +1,7 @@
 var searchData=
 [
-  ['name_0',['name',['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html#aa14fd266f46c72f6cfc83169d1bd8cd9',1,'iron.dataflow.objectfifo.ObjectFifoHandle.name()'],['../classiron_1_1scratchpad__parameter_1_1ScratchpadParameter.html#a9baa1f17a812af9a01e9a7588768839e',1,'iron.scratchpad_parameter.ScratchpadParameter.name()']]],
-  ['nbytes_1',['nbytes',['../classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#adebcfcd20b5c28e7ab4753d92e1ec5f5',1,'utils::hostruntime::tensor_class::Tensor']]],
-  ['npu_5ftime_2',['npu_time',['../classutils_1_1hostruntime_1_1hostruntime_1_1KernelResult.html#aaac04dad245be2e39d3d527160e1cdc1',1,'utils::hostruntime::hostruntime::KernelResult']]],
-  ['numel_3',['numel',['../classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#a6acd63ccc0d8799b8e4ed6397ce74ca7',1,'utils::hostruntime::tensor_class::Tensor']]],
-  ['numpy_4',['numpy',['../classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#a3192aecdf1d3eb08ed5d7dbaba3cfcbb',1,'utils::hostruntime::tensor_class::Tensor']]]
+  ['make_5fparam_5fdescriptor_0',['make_param_descriptor',['../namespaceiron_1_1algorithms_1_1transform.html#a9ff6dc2cab01bf092e20f602374ec124',1,'iron::algorithms::transform']]],
+  ['mm_1',['mm',['../namespaceiron_1_1kernels_1_1linalg.html#a69fc1dfb474ad2d17bf2301793edf5f5',1,'iron::kernels::linalg']]],
+  ['mul_2',['mul',['../namespaceiron_1_1kernels_1_1eltwise.html#a5a2970e042a9155da09d00d842055ec2',1,'iron::kernels::eltwise']]],
+  ['mv_3',['mv',['../namespaceiron_1_1kernels_1_1linalg.html#a567de2cfa4ac59a60c60d276c49e3e15',1,'iron::kernels::linalg']]]
 ];

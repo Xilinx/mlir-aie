@@ -1,7 +1,25 @@
 <map id="Graphical Class Hierarchy" name="Graphical Class Hierarchy">
-<area shape="rect" id="Node000000" title=" " alt="" coords="39,5,137,31"/>
-<area shape="rect" id="Node000001" href="$classtaplib_1_1tas_1_1TensorAccessSequence.html" title=" " alt="" coords="219,31,456,56"/>
-<area shape="poly" id="edge1_Node000000_Node000001" title=" " alt="" coords="151,22,219,29,218,34,151,27"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,55,171,80"/>
-<area shape="poly" id="edge2_Node000002_Node000001" title=" " alt="" coords="184,55,218,52,219,57,185,61"/>
+<area shape="rect" id="Node000000" title=" " alt="" coords="5,109,55,134"/>
+<area shape="rect" id="Node000001" href="$classutils_1_1hostruntime_1_1hostruntime_1_1HostRuntime.html" title=" " alt="" coords="103,5,323,45"/>
+<area shape="poly" id="edge1_Node000000_Node000001" title=" " alt="" coords="50,96,74,75,101,55,127,43,130,48,104,60,77,79,54,100"/>
+<area shape="rect" id="Node000004" href="$classutils_1_1hostruntime_1_1hostruntime_1_1KernelHandle.html" title=" " alt="" coords="103,69,323,109"/>
+<area shape="poly" id="edge4_Node000000_Node000004" title=" " alt="" coords="68,112,102,106,103,111,69,117"/>
+<area shape="rect" id="Node000007" href="$classutils_1_1hostruntime_1_1hostruntime_1_1KernelResult.html" title=" " alt="" coords="103,133,323,173"/>
+<area shape="poly" id="edge7_Node000000_Node000007" title=" " alt="" coords="69,125,103,131,102,137,68,131"/>
+<area shape="rect" id="Node000009" href="$classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html" title=" " alt="" coords="123,197,302,237"/>
+<area shape="poly" id="edge9_Node000000_Node000009" title=" " alt="" coords="54,143,77,164,104,183,130,195,127,200,101,188,74,168,50,147"/>
+<area shape="rect" id="Node000002" href="$classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1XRTHostRuntime.html" title=" " alt="" coords="371,5,664,45"/>
+<area shape="poly" id="edge2_Node000001_Node000002" title=" " alt="" coords="337,23,370,23,370,28,337,28"/>
+<area shape="rect" id="Node000003" href="$classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1CachedXRTRuntime.html" title=" " alt="" coords="712,5,1005,45"/>
+<area shape="poly" id="edge3_Node000002_Node000003" title=" " alt="" coords="678,23,712,23,712,28,678,28"/>
+<area shape="rect" id="Node000005" href="$classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1XRTKernelHandle.html" title=" " alt="" coords="371,69,664,109"/>
+<area shape="poly" id="edge5_Node000004_Node000005" title=" " alt="" coords="337,87,370,87,370,92,337,92"/>
+<area shape="rect" id="Node000006" href="$classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1CachedXRTKernelHandle.html" title=" " alt="" coords="712,69,1005,109"/>
+<area shape="poly" id="edge6_Node000005_Node000006" title=" " alt="" coords="678,87,712,87,712,92,678,92"/>
+<area shape="rect" id="Node000008" href="$classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1XRTKernelResult.html" title=" " alt="" coords="371,133,664,173"/>
+<area shape="poly" id="edge8_Node000007_Node000008" title=" " alt="" coords="337,151,370,151,370,156,337,156"/>
+<area shape="rect" id="Node000010" href="$classutils_1_1hostruntime_1_1tensor__class_1_1CPUOnlyTensor.html" title=" " alt="" coords="428,197,607,237"/>
+<area shape="poly" id="edge10_Node000009_Node000010" title=" " alt="" coords="316,215,428,215,428,220,316,220"/>
+<area shape="rect" id="Node000011" href="$classutils_1_1hostruntime_1_1xrtruntime_1_1tensor_1_1XRTTensor.html" title=" " alt="" coords="390,261,645,301"/>
+<area shape="poly" id="edge11_Node000009_Node000011" title=" " alt="" coords="316,236,422,259,421,264,315,241"/>
 </map>

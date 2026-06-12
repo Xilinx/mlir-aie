@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;1c5260c03c4b034f1862f6223e9fb23eb7195db8</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;14273685bebf296798cc86facd3459b5a017cda7</span>
    </div>
   </td>
  </tr>
@@ -82,101 +82,56 @@ $(function() {
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="func-members" name="func-members"></a>
 Functions</h2></td></tr>
-<tr class="memitem:a3ce948b82456ce00160e343877e04971" id="r_a3ce948b82456ce00160e343877e04971"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1jit.html#a3ce948b82456ce00160e343877e04971">jit</a> (function=None, use_cache=True)</td></tr>
-<tr class="separator:a3ce948b82456ce00160e343877e04971"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:afe76838a07fbc8ee0e692cdbd3f4b20e" id="r_afe76838a07fbc8ee0e692cdbd3f4b20e"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1jit.html#afe76838a07fbc8ee0e692cdbd3f4b20e">_filter_tensor_args</a> (args)</td></tr>
-<tr class="separator:afe76838a07fbc8ee0e692cdbd3f4b20e"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a669fbdff6cbb64841a02c98956f5bf5d" id="r_a669fbdff6cbb64841a02c98956f5bf5d"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1jit.html#a669fbdff6cbb64841a02c98956f5bf5d">hash_module</a> (module, external_kernels=None, target_arch=None)</td></tr>
-<tr class="separator:a669fbdff6cbb64841a02c98956f5bf5d"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a2c8f1075fcc9f416ea8ff8bdea5e2236" id="r_a2c8f1075fcc9f416ea8ff8bdea5e2236"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1jit.html#a2c8f1075fcc9f416ea8ff8bdea5e2236">jit</a> (Callable|None mlir_generator=None, **kwargs)</td></tr>
+<tr class="separator:a2c8f1075fcc9f416ea8ff8bdea5e2236"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="var-members" name="var-members"></a>
 Variables</h2></td></tr>
-<tr class="memitem:a7c705e3a7fb7b14b5b028e59e5e62430" id="r_a7c705e3a7fb7b14b5b028e59e5e62430"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1jit.html#a7c705e3a7fb7b14b5b028e59e5e62430">_compiled_kernels</a> = CircularCache(max_size=1)</td></tr>
-<tr class="separator:a7c705e3a7fb7b14b5b028e59e5e62430"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:af259dbdd00400a8e3eee2d5af4f56d29" id="r_af259dbdd00400a8e3eee2d5af4f56d29"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1jit.html#af259dbdd00400a8e3eee2d5af4f56d29">_JIT_CONFIG_KEYS</a></td></tr>
+<tr class="separator:af259dbdd00400a8e3eee2d5af4f56d29"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
-<div class="textblock"><pre class="fragment">JIT decorator for compiling and running IRON-decorated functions on the NPU.</pre> </div><h2 class="groupheader">Function Documentation</h2>
-<a id="afe76838a07fbc8ee0e692cdbd3f4b20e" name="afe76838a07fbc8ee0e692cdbd3f4b20e"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#afe76838a07fbc8ee0e692cdbd3f4b20e">&#9670;&#160;</a></span>_filter_tensor_args()</h2>
+<div class="textblock"><pre class="fragment">``@iron.jit`` decorator — Triton-style JIT compilation for the NPU.
 
-<div class="memitem">
-<div class="memproto">
-<table class="mlabels">
-  <tr>
-  <td class="mlabels-left">
-      <table class="memname">
-        <tr>
-          <td class="memname">utils.jit._filter_tensor_args </td>
-          <td>(</td>
-          <td class="paramtype">&#160;</td>
-          <td class="paramname"><em>args</em></td><td>)</td>
-          <td></td>
-        </tr>
-      </table>
-  </td>
-  <td class="mlabels-right">
-<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
-  </tr>
-</table>
-</div><div class="memdoc">
-<pre class="fragment">Filter out non-tensor arguments from args.
+``@iron.jit`` is a thin wrapper that creates a ``CallableDesign``.  Extra
+kwargs that are not recognised as configuration keys become ``compile_kwargs``
+(i.e. values for ``CompileTime[T]``-annotated generator parameters).
 
-Algorithm functions may include Kernel/ExternalFunction instances and scalar
-compile-time constants in their Python signature that must not be forwarded
-to the NPU kernel as runtime buffer arguments.
+Three usage patterns are supported:
 
-Removes:
-- Kernel and ExternalFunction instances (resolved at compile time via link_with)
-- Scalar values (int, float, np.integer, np.floating) used as MLIR constants
-- Callables (e.g. lambda configuration helpers)
-</pre> 
-</div>
-</div>
-<a id="a669fbdff6cbb64841a02c98956f5bf5d" name="a669fbdff6cbb64841a02c98956f5bf5d"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a669fbdff6cbb64841a02c98956f5bf5d">&#9670;&#160;</a></span>hash_module()</h2>
+1. **Bare decorator** — no pre-bound compile params::
 
-<div class="memitem">
-<div class="memproto">
-      <table class="memname">
-        <tr>
-          <td class="memname">utils.jit.hash_module </td>
-          <td>(</td>
-          <td class="paramtype">&#160;</td>
-          <td class="paramname"><em>module</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">&#160;</td>
-          <td class="paramname"><em>external_kernels</em> = <code>None</code>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">&#160;</td>
-          <td class="paramname"><em>target_arch</em> = <code>None</code>&#160;</td>
-        </tr>
-        <tr>
-          <td></td>
-          <td>)</td>
-          <td></td><td></td>
-        </tr>
-      </table>
-</div><div class="memdoc">
-<pre class="fragment">Hash the MLIR module and ExternalFunction compiler options to create a unique identifier.
+       @iron.jit
+       def gemm(a: In, b: In, c: Out, *,
+                M: CompileTime[int], K: CompileTime[int], N: CompileTime[int]):
+           ...
 
-Args:
-    module: The MLIR module.
-    external_kernels (list, optional): List of external kernels. Defaults to None.
-    target_arch (str, optional): Target architecture. Defaults to None.
+       gemm(a, b, c, M=512, K=512, N=512)   # compile params at call time
 
-Returns:
-    str: The hash string.
-</pre> 
-</div>
-</div>
-<a id="a3ce948b82456ce00160e343877e04971" name="a3ce948b82456ce00160e343877e04971"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a3ce948b82456ce00160e343877e04971">&#9670;&#160;</a></span>jit()</h2>
+2. **With configuration only** — source files, flags, etc., no compile params::
+
+       @iron.jit(source_files=["kernel.cc"])
+       def gemm(a: In, b: In, c: Out, *, M: CompileTime[int], ...):
+           ...
+
+3. **With pre-bound compile params** — Triton-style, params fixed at decoration::
+
+       @iron.jit(M=512, K=512, N=512)
+       def gemm(a: In, b: In, c: Out, *,
+                M: CompileTime[int], K: CompileTime[int], N: CompileTime[int]):
+           ...
+
+       gemm(a, b, c)   # no compile params needed at call time
+
+.. note::
+   The decorated function body runs inside an implicit MLIR context
+   (thread-local ``Location`` / ``InsertionPoint``).  See
+   ``programming_guide/implicit_mlir_context.md`` for the model and
+   for the most common gotchas (e.g. why ``@func`` pykernels must be
+   decorated at module scope).
+</pre> </div><h2 class="groupheader">Function Documentation</h2>
+<a id="a2c8f1075fcc9f416ea8ff8bdea5e2236" name="a2c8f1075fcc9f416ea8ff8bdea5e2236"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a2c8f1075fcc9f416ea8ff8bdea5e2236">&#9670;&#160;</a></span>jit()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -184,14 +139,14 @@ Returns:
         <tr>
           <td class="memname">utils.jit.jit </td>
           <td>(</td>
-          <td class="paramtype">&#160;</td>
-          <td class="paramname"><em>function</em> = <code>None</code>, </td>
+          <td class="paramtype">Callable | None &#160;</td>
+          <td class="paramname"><em>mlir_generator</em> = <code>None</code>, </td>
         </tr>
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">&#160;</td>
-          <td class="paramname"><em>use_cache</em> = <code>True</code>&#160;</td>
+          <td class="paramtype">**&#160;</td>
+          <td class="paramname"><em>kwargs</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -200,25 +155,27 @@ Returns:
         </tr>
       </table>
 </div><div class="memdoc">
-<pre class="fragment">Decorator to compile an NPU kernel into a binary to run on the NPU.
+<pre class="fragment">Decorator for JIT compilation and NPU execution.
 
-The decorated function may either return an MLIR module directly (unplaced
-style, using the IRON API) or return None and populate the module implicitly
-through the active ``mlir_mod_ctx`` context (placed style, using low-level
-dialects).  The mode is detected automatically from the return value.
+Standard configuration kwargs (``use_cache``, ``source_files``,
+``aiecc_flags``, ``compile_flags``, ``include_paths``, ``object_files``,
+``trace_config``) are forwarded to ``CallableDesign``.  All other kwargs
+become ``compile_kwargs`` (values for ``CompileTime[T]``-annotated parameters).
 
 Args:
-    function (callable, optional): The function to compile.
-    use_cache (bool, optional): Use cached MLIR module if available. Defaults to True.
+    mlir_generator: The MLIR generator callable (supplied automatically
+        when used as a bare decorator).
+    **kwargs: Mix of config options and/or compile-time parameter values.
 
 Returns:
-    callable: The decorated function.
+    A ``CallableDesign`` instance (or a partial decorator when called with
+    kwargs before the generator is known).
 </pre> 
 </div>
 </div>
 <h2 class="groupheader">Variable Documentation</h2>
-<a id="a7c705e3a7fb7b14b5b028e59e5e62430" name="a7c705e3a7fb7b14b5b028e59e5e62430"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a7c705e3a7fb7b14b5b028e59e5e62430">&#9670;&#160;</a></span>_compiled_kernels</h2>
+<a id="af259dbdd00400a8e3eee2d5af4f56d29" name="af259dbdd00400a8e3eee2d5af4f56d29"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#af259dbdd00400a8e3eee2d5af4f56d29">&#9670;&#160;</a></span>_JIT_CONFIG_KEYS</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -227,7 +184,7 @@ Returns:
   <td class="mlabels-left">
       <table class="memname">
         <tr>
-          <td class="memname">utils.jit._compiled_kernels = CircularCache(max_size=1)</td>
+          <td class="memname">utils.jit._JIT_CONFIG_KEYS</td>
         </tr>
       </table>
   </td>
@@ -236,7 +193,12 @@ Returns:
   </tr>
 </table>
 </div><div class="memdoc">
-
+<b>Initial value:</b><div class="fragment"><div class="line"><span class="lineno">    1</span>=  frozenset(</div>
+<div class="line"><span class="lineno">    2</span>    p</div>
+<div class="line"><span class="lineno">    3</span>    <span class="keywordflow">for</span> p <span class="keywordflow">in</span> _inspect.signature(_CallableDesign.__init__).parameters</div>
+<div class="line"><span class="lineno">    4</span>    <span class="keywordflow">if</span> p <span class="keywordflow">not</span> <span class="keywordflow">in</span> (<span class="stringliteral">&quot;self&quot;</span>, <span class="stringliteral">&quot;mlir_generator&quot;</span>, <span class="stringliteral">&quot;compile_kwargs&quot;</span>)</div>
+<div class="line"><span class="lineno">    5</span>)</div>
+</div><!-- fragment -->
 </div>
 </div>
 </div><!-- contents -->

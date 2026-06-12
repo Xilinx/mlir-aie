@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;1c5260c03c4b034f1862f6223e9fb23eb7195db8</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;14273685bebf296798cc86facd3459b5a017cda7</span>
    </div>
   </td>
  </tr>
@@ -75,6 +75,7 @@ $(function() {
 <div class="header">
   <div class="summary">
 <a href="#pub-methods">Public Member Functions</a> &#124;
+<a href="#pro-static-attribs">Static Protected Attributes</a> &#124;
 <a href="classiron_1_1runtime_1_1endpoint_1_1RuntimeEndpoint-members.html">List of all members</a>  </div>
   <div class="headertitle"><div class="title">iron.runtime.endpoint.RuntimeEndpoint Class Reference</div></div>
 </div><!--header-->
@@ -112,6 +113,11 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:a2106e61451a30c770d857a0ce1a839de inherit pub_methods_classiron_1_1dataflow_1_1endpoint_1_1ObjectFifoEndpoint" id="r_a2106e61451a30c770d857a0ce1a839de"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html">Tile</a>|None&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1dataflow_1_1endpoint_1_1ObjectFifoEndpoint.html#a2106e61451a30c770d857a0ce1a839de">tile</a> (self)</td></tr>
 <tr class="separator:a2106e61451a30c770d857a0ce1a839de inherit pub_methods_classiron_1_1dataflow_1_1endpoint_1_1ObjectFifoEndpoint"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pro-static-attribs" name="pro-static-attribs"></a>
+Static Protected Attributes</h2></td></tr>
+<tr class="memitem:acee125c76ff450261df2001b4c213333" id="r_acee125c76ff450261df2001b4c213333"><td class="memItemLeft" align="right" valign="top">tuple&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1runtime_1_1endpoint_1_1RuntimeEndpoint.html#acee125c76ff450261df2001b4c213333">_SHIM_TILE_TYPES</a> = (AIETileType.ShimNOCTile, AIETileType.ShimPLTile)</td></tr>
+<tr class="separator:acee125c76ff450261df2001b4c213333"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="inherited" name="inherited"></a>
 Additional Inherited Members</h2></td></tr>
 <tr class="inherit_header pro_attribs_classiron_1_1dataflow_1_1endpoint_1_1ObjectFifoEndpoint"><td colspan="2" onclick="javascript:toggleInherit('pro_attribs_classiron_1_1dataflow_1_1endpoint_1_1ObjectFifoEndpoint')"><img src="closed.png" alt="-"/>&#160;Protected Attributes inherited from <a class="el" href="classiron_1_1dataflow_1_1endpoint_1_1ObjectFifoEndpoint.html">iron.dataflow.endpoint.ObjectFifoEndpoint</a></td></tr>
@@ -120,7 +126,9 @@ Additional Inherited Members</h2></td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><pre class="fragment">An ObjectFifo endpoint representing data transfer between the host and the device.
-Operates on a shim tile.
+Operates on a shim tile — either a ShimNOCTile (the default, used by NPU
+host-driven DMA) or a ShimPLTile (used by VCK5000 PLIO designs where the
+runtime DMA is wired to the PL side of the shim).
 </pre> </div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
 <a id="af1c95fc6cbf6f66f8fd8b24c5f4cd48e" name="af1c95fc6cbf6f66f8fd8b24c5f4cd48e"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#af1c95fc6cbf6f66f8fd8b24c5f4cd48e">&#9670;&#160;</a></span>__init__()</h2>
@@ -195,6 +203,29 @@ Operates on a shim tile.
           <td></td>
         </tr>
       </table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<h2 class="groupheader">Member Data Documentation</h2>
+<a id="acee125c76ff450261df2001b4c213333" name="acee125c76ff450261df2001b4c213333"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#acee125c76ff450261df2001b4c213333">&#9670;&#160;</a></span>_SHIM_TILE_TYPES</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">tuple iron.runtime.endpoint.RuntimeEndpoint._SHIM_TILE_TYPES = (AIETileType.ShimNOCTile, AIETileType.ShimPLTile)</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">static</span><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
 </div><div class="memdoc">
 
 </div>

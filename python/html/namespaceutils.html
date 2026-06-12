@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;1c5260c03c4b034f1862f6223e9fb23eb7195db8</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;14273685bebf296798cc86facd3459b5a017cda7</span>
    </div>
   </td>
  </tr>
@@ -102,12 +102,16 @@ Functions</h2></td></tr>
 <tr class="separator:acb53d4eefbc892f63cef3714083d6133"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a1820c78e07ddd420c7ced11bacdb829a" id="r_a1820c78e07ddd420c7ced11bacdb829a"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils.html#a1820c78e07ddd420c7ced11bacdb829a">file_lock</a> (lock_file_path, timeout_seconds=60)</td></tr>
 <tr class="separator:a1820c78e07ddd420c7ced11bacdb829a"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a80088109d271e48b93a4379838d1d9bd" id="r_a80088109d271e48b93a4379838d1d9bd"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils.html#a80088109d271e48b93a4379838d1d9bd">ceildiv</a> (a, b)</td></tr>
+<tr class="separator:a80088109d271e48b93a4379838d1d9bd"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aa3cd9f974aedf5d065d3e75f61daebaa" id="r_aa3cd9f974aedf5d065d3e75f61daebaa"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils.html#aa3cd9f974aedf5d065d3e75f61daebaa">tensor</a> (*args, **kwargs)</td></tr>
 <tr class="separator:aa3cd9f974aedf5d065d3e75f61daebaa"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a5011be1cb49f9f26d9f451edc4a3397a" id="r_a5011be1cb49f9f26d9f451edc4a3397a"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils.html#a5011be1cb49f9f26d9f451edc4a3397a">ones</a> (*args, **kwargs)</td></tr>
 <tr class="separator:a5011be1cb49f9f26d9f451edc4a3397a"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a17e481382e5c752b0c882bc597fc17f4" id="r_a17e481382e5c752b0c882bc597fc17f4"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils.html#a17e481382e5c752b0c882bc597fc17f4">zeros</a> (*args, **kwargs)</td></tr>
 <tr class="separator:a17e481382e5c752b0c882bc597fc17f4"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a215a7d2ab7972cc6a804665a0c300d4c" id="r_a215a7d2ab7972cc6a804665a0c300d4c"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils.html#a215a7d2ab7972cc6a804665a0c300d4c">full</a> (*args, **kwargs)</td></tr>
+<tr class="separator:a215a7d2ab7972cc6a804665a0c300d4c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a3cce380013189829ec6cb76683a6521a" id="r_a3cce380013189829ec6cb76683a6521a"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils.html#a3cce380013189829ec6cb76683a6521a">randint</a> (*args, **kwargs)</td></tr>
 <tr class="separator:a3cce380013189829ec6cb76683a6521a"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a8a47e39304d27aad20e01d0527112507" id="r_a8a47e39304d27aad20e01d0527112507"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils.html#a8a47e39304d27aad20e01d0527112507">rand</a> (*args, **kwargs)</td></tr>
@@ -377,6 +381,34 @@ Returns:
 </pre> 
 </div>
 </div>
+<a id="a80088109d271e48b93a4379838d1d9bd" name="a80088109d271e48b93a4379838d1d9bd"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a80088109d271e48b93a4379838d1d9bd">&#9670;&#160;</a></span>ceildiv()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">utils.ceildiv </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>a</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>b</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<pre class="fragment">Ceiling division: smallest integer &gt;= a/b.</pre> 
+</div>
+</div>
 <a id="a1820c78e07ddd420c7ced11bacdb829a" name="a1820c78e07ddd420c7ced11bacdb829a"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a1820c78e07ddd420c7ced11bacdb829a">&#9670;&#160;</a></span>file_lock()</h2>
 
@@ -406,6 +438,42 @@ Returns:
 Args:
     lock_file_path (str): Path to the lock file
     timeout_seconds (int): Maximum time to wait for lock acquisition in seconds
+</pre> 
+</div>
+</div>
+<a id="a215a7d2ab7972cc6a804665a0c300d4c" name="a215a7d2ab7972cc6a804665a0c300d4c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a215a7d2ab7972cc6a804665a0c300d4c">&#9670;&#160;</a></span>full()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname">utils.full </td>
+          <td>(</td>
+          <td class="paramtype">*&#160;</td>
+          <td class="paramname"><em>args</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">**&#160;</td>
+          <td class="paramname"><em>kwargs</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<pre class="fragment">Create a tensor filled with a scalar value using the default tensor class.
+
+Args:
+    *args: Arguments passed to the full method (size, fill_value).
+    **kwargs: Keyword arguments passed to the full method.
+
+Returns:
+    Tensor: The created tensor.
 </pre> 
 </div>
 </div>
@@ -590,8 +658,14 @@ Raises:
 </div><div class="memdoc">
 <pre class="fragment">Create a tensor using the default tensor class.
 
+Passing a typed ``ndarray`` together with a mismatched ``dtype=``
+kwarg raises :class:`TypeError`.  Matching kwargs are passed through
+unchanged (the underlying tensor backend uses ``dtype`` for buffer
+allocation, so silently stripping it would surprise callers).
+
 Args:
-    *args: Arguments passed to the tensor constructor.
+    *args: Arguments passed to the tensor constructor.  ``args[0]`` is
+        either a shape ``tuple`` or an array-like.
     **kwargs: Keyword arguments passed to the tensor constructor.
 
 Returns:

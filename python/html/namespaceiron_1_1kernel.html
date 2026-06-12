@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;1c5260c03c4b034f1862f6223e9fb23eb7195db8</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;14273685bebf296798cc86facd3459b5a017cda7</span>
    </div>
   </td>
  </tr>
@@ -75,6 +75,7 @@ $(function() {
 <div class="header">
   <div class="summary">
 <a href="#nested-classes">Classes</a> &#124;
+<a href="#func-members">Functions</a> &#124;
 <a href="#var-members">Variables</a>  </div>
   <div class="headertitle"><div class="title">iron.kernel Namespace Reference</div></div>
 </div><!--header-->
@@ -89,13 +90,90 @@ Classes</h2></td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classiron_1_1kernel_1_1Kernel.html">Kernel</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="func-members" name="func-members"></a>
+Functions</h2></td></tr>
+<tr class="memitem:afe33e8b64f2cdf5e1226abe59d882c1d" id="r_afe33e8b64f2cdf5e1226abe59d882c1d"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1kernel.html#afe33e8b64f2cdf5e1226abe59d882c1d">_is_contiguous_row_major</a> (mr)</td></tr>
+<tr class="separator:afe33e8b64f2cdf5e1226abe59d882c1d"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:af0ba71c76fc30bc07a3fa7da77dad6fc" id="r_af0ba71c76fc30bc07a3fa7da77dad6fc"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1kernel.html#af0ba71c76fc30bc07a3fa7da77dad6fc">_maybe_collapse_to_match</a> (arg, expected_ty)</td></tr>
+<tr class="separator:af0ba71c76fc30bc07a3fa7da77dad6fc"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="var-members" name="var-members"></a>
 Variables</h2></td></tr>
 <tr class="memitem:aaec40ed1a00e8e2418b919563bb06436" id="r_aaec40ed1a00e8e2418b919563bb06436"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1kernel.html#aaec40ed1a00e8e2418b919563bb06436">logger</a> = logging.getLogger(__name__)</td></tr>
 <tr class="separator:aaec40ed1a00e8e2418b919563bb06436"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
-<div class="textblock"><pre class="fragment">Kernel and ExternalFunction: wrappers for pre-compiled and C++ AIE compute kernels.</pre> </div><h2 class="groupheader">Variable Documentation</h2>
+<div class="textblock"><pre class="fragment">Kernel and ExternalFunction: wrappers for pre-compiled and C++ AIE compute kernels.</pre> </div><h2 class="groupheader">Function Documentation</h2>
+<a id="afe33e8b64f2cdf5e1226abe59d882c1d" name="afe33e8b64f2cdf5e1226abe59d882c1d"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#afe33e8b64f2cdf5e1226abe59d882c1d">&#9670;&#160;</a></span>_is_contiguous_row_major()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">iron.kernel._is_contiguous_row_major </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>mr</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+<pre class="fragment">True iff ``mr`` is fully-static row-major contiguous at offset 0;
+required before ``memref.collapse_shape`` (UB on non-contiguous dims).</pre> 
+</div>
+</div>
+<a id="af0ba71c76fc30bc07a3fa7da77dad6fc" name="af0ba71c76fc30bc07a3fa7da77dad6fc"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#af0ba71c76fc30bc07a3fa7da77dad6fc">&#9670;&#160;</a></span>_maybe_collapse_to_match()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">iron.kernel._maybe_collapse_to_match </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>arg</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>expected_ty</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+<pre class="fragment">Bridge an N-D contiguous memref arg to a 1-D kernel signature via
+``memref.collapse_shape``. Iron L1 buffers are multi-dim (e.g.
+``memref&lt;64x64xi16&gt;``) but ``aie.iron.kernels.X`` helpers declare
+flat 1-D args; without this adapter MLIR rejects the call even though
+bytes line up. Aliases storage — no copy emitted. Returns ``arg``
+unchanged for any case that isn't safely collapsible, so real bugs
+still surface in MLIR verification.</pre> 
+</div>
+</div>
+<h2 class="groupheader">Variable Documentation</h2>
 <a id="aaec40ed1a00e8e2418b919563bb06436" name="aaec40ed1a00e8e2418b919563bb06436"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#aaec40ed1a00e8e2418b919563bb06436">&#9670;&#160;</a></span>logger</h2>
 

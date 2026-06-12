@@ -1,9 +1,26 @@
 var searchData=
 [
-  ['taplib_0',['taplib',['../namespacetaplib.html',1,'']]],
-  ['taplib_3a_3atap_1',['tap',['../namespacetaplib_1_1tap.html',1,'taplib']]],
-  ['taplib_3a_3atas_2',['tas',['../namespacetaplib_1_1tas.html',1,'taplib']]],
-  ['taplib_3a_3atensortiler2d_3',['tensortiler2d',['../namespacetaplib_1_1tensortiler2d.html',1,'taplib']]],
-  ['taplib_3a_3autils_4',['utils',['../namespacetaplib_1_1utils.html',1,'taplib']]],
-  ['taplib_3a_3avisualization2d_5',['visualization2d',['../namespacetaplib_1_1visualization2d.html',1,'taplib']]]
+  ['utils_0',['utils',['../namespaceutils.html',1,'']]],
+  ['utils_3a_3acompile_1',['compile',['../namespaceutils_1_1compile.html',1,'utils']]],
+  ['utils_3a_3acompile_3a_3ajit_2',['jit',['../namespaceutils_1_1compile_1_1jit.html',1,'utils::compile']]],
+  ['utils_3a_3acompile_3a_3ajit_3a_3a_5fdma_5fsize_5fparser_3',['_dma_size_parser',['../namespaceutils_1_1compile_1_1jit_1_1__dma__size__parser.html',1,'utils::compile::jit']]],
+  ['utils_3a_3acompile_3a_3ajit_3a_3a_5fhash_4',['_hash',['../namespaceutils_1_1compile_1_1jit_1_1__hash.html',1,'utils::compile::jit']]],
+  ['utils_3a_3acompile_3a_3ajit_3a_3a_5fintrospect_5',['_introspect',['../namespaceutils_1_1compile_1_1jit_1_1__introspect.html',1,'utils::compile::jit']]],
+  ['utils_3a_3acompile_3a_3ajit_3a_3a_5fserialization_6',['_serialization',['../namespaceutils_1_1compile_1_1jit_1_1__serialization.html',1,'utils::compile::jit']]],
+  ['utils_3a_3acompile_3a_3ajit_3a_3acompilabledesign_7',['compilabledesign',['../namespaceutils_1_1compile_1_1jit_1_1compilabledesign.html',1,'utils::compile::jit']]],
+  ['utils_3a_3acompile_3a_3ajit_3a_3acompileconfig_8',['compileconfig',['../namespaceutils_1_1compile_1_1jit_1_1compileconfig.html',1,'utils::compile::jit']]],
+  ['utils_3a_3acompile_3a_3ajit_3a_3acontext_9',['context',['../namespaceutils_1_1compile_1_1jit_1_1context.html',1,'utils::compile::jit']]],
+  ['utils_3a_3acompile_3a_3ajit_3a_3amarkers_10',['markers',['../namespaceutils_1_1compile_1_1jit_1_1markers.html',1,'utils::compile::jit']]],
+  ['utils_3a_3acompile_3a_3autils_11',['utils',['../namespaceutils_1_1compile_1_1utils.html',1,'utils::compile']]],
+  ['utils_3a_3ahostruntime_12',['hostruntime',['../namespaceutils_1_1hostruntime.html',1,'utils']]],
+  ['utils_3a_3ahostruntime_3a_3aargparse_13',['argparse',['../namespaceutils_1_1hostruntime_1_1argparse.html',1,'utils::hostruntime']]],
+  ['utils_3a_3ahostruntime_3a_3acli_14',['cli',['../namespaceutils_1_1hostruntime_1_1cli.html',1,'utils::hostruntime']]],
+  ['utils_3a_3ahostruntime_3a_3ahostruntime_15',['hostruntime',['../namespaceutils_1_1hostruntime_1_1hostruntime.html',1,'utils::hostruntime']]],
+  ['utils_3a_3ahostruntime_3a_3atensor_5fclass_16',['tensor_class',['../namespaceutils_1_1hostruntime_1_1tensor__class.html',1,'utils::hostruntime']]],
+  ['utils_3a_3ahostruntime_3a_3axrtruntime_17',['xrtruntime',['../namespaceutils_1_1hostruntime_1_1xrtruntime.html',1,'utils::hostruntime']]],
+  ['utils_3a_3ahostruntime_3a_3axrtruntime_3a_3ahostruntime_18',['hostruntime',['../namespaceutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime.html',1,'utils::hostruntime::xrtruntime']]],
+  ['utils_3a_3ahostruntime_3a_3axrtruntime_3a_3aparameter_5fscratchpad_19',['parameter_scratchpad',['../namespaceutils_1_1hostruntime_1_1xrtruntime_1_1parameter__scratchpad.html',1,'utils::hostruntime::xrtruntime']]],
+  ['utils_3a_3ahostruntime_3a_3axrtruntime_3a_3atensor_20',['tensor',['../namespaceutils_1_1hostruntime_1_1xrtruntime_1_1tensor.html',1,'utils::hostruntime::xrtruntime']]],
+  ['utils_3a_3ajit_21',['jit',['../namespaceutils_1_1jit.html',1,'utils']]],
+  ['utils_3a_3anpukernel_22',['npukernel',['../namespaceutils_1_1npukernel.html',1,'utils']]]
 ];

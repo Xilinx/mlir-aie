@@ -1,5 +1,4 @@
 var searchData=
 [
-  ['worker_0',['Worker',['../classiron_1_1worker_1_1Worker.html',1,'iron::worker']]],
-  ['workerruntimebarrier_1',['WorkerRuntimeBarrier',['../classiron_1_1worker_1_1WorkerRuntimeBarrier.html',1,'iron::worker']]]
+  ['scratchpadparameter_0',['ScratchpadParameter',['../classiron_1_1scratchpad__parameter_1_1ScratchpadParameter.html',1,'iron::scratchpad_parameter']]]
 ];

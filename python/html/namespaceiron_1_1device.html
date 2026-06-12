@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;1c5260c03c4b034f1862f6223e9fb23eb7195db8</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;14273685bebf296798cc86facd3459b5a017cda7</span>
    </div>
   </td>
  </tr>
@@ -74,7 +74,9 @@ $(function() {
 </div><!-- top -->
 <div class="header">
   <div class="summary">
-<a href="#namespaces">Namespaces</a>  </div>
+<a href="#namespaces">Namespaces</a> &#124;
+<a href="#func-members">Functions</a> &#124;
+<a href="#var-members">Variables</a>  </div>
   <div class="headertitle"><div class="title">iron.device Namespace Reference</div></div>
 </div><!--header-->
 <div class="contents">
@@ -85,9 +87,132 @@ Namespaces</h2></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:namespaceiron_1_1device_1_1tile" id="r_namespaceiron_1_1device_1_1tile"><td class="memItemLeft" align="right" valign="top">namespace &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1device_1_1tile.html">tile</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="func-members" name="func-members"></a>
+Functions</h2></td></tr>
+<tr class="memitem:af2e4d577da73c58d24998d0d542e3db3" id="r_af2e4d577da73c58d24998d0d542e3db3"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classiron_1_1device_1_1device_1_1Device.html">Device</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1device.html#af2e4d577da73c58d24998d0d542e3db3">from_name</a> (str name, *int|None n_cols=1)</td></tr>
+<tr class="separator:af2e4d577da73c58d24998d0d542e3db3"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="var-members" name="var-members"></a>
+Variables</h2></td></tr>
+<tr class="memitem:a76122b3917b9455f828ceed37edfea76" id="r_a76122b3917b9455f828ceed37edfea76"><td class="memItemLeft" align="right" valign="top">dict&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1device.html#a76122b3917b9455f828ceed37edfea76">_NAME_TO_BASE</a></td></tr>
+<tr class="separator:a76122b3917b9455f828ceed37edfea76"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a72d91463a632a806bc79bc0e677349e6" id="r_a72d91463a632a806bc79bc0e677349e6"><td class="memItemLeft" align="right" valign="top">dict&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1device.html#a72d91463a632a806bc79bc0e677349e6">_MAX_COLS</a> = {&quot;NPU1&quot;: 4, &quot;NPU2&quot;: 8}</td></tr>
+<tr class="separator:a72d91463a632a806bc79bc0e677349e6"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
-<div class="textblock"><pre class="fragment">Device representations for supported AMD Ryzen AI NPU targets.</pre> </div></div><!-- contents -->
+<div class="textblock"><pre class="fragment">Device representations for supported AMD Ryzen AI NPU targets.</pre> </div><h2 class="groupheader">Function Documentation</h2>
+<a id="af2e4d577da73c58d24998d0d542e3db3" name="af2e4d577da73c58d24998d0d542e3db3"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#af2e4d577da73c58d24998d0d542e3db3">&#9670;&#160;</a></span>from_name()</h2>
+
+<div class="memitem">
+<div class="memproto">
+      <table class="memname">
+        <tr>
+          <td class="memname"> <a class="el" href="classiron_1_1device_1_1device_1_1Device.html">Device</a> iron.device.from_name </td>
+          <td>(</td>
+          <td class="paramtype">str&#160;</td>
+          <td class="paramname"><em>name</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">*int | None &#160;</td>
+          <td class="paramname"><em>n_cols</em> = <code>1</code>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+</div><div class="memdoc">
+<pre class="fragment">Resolve a device-name string (and optional column count) to a Device.
+
+Designed to consume the ``--dev`` CLI flag that almost every
+programming example exposes.  Replaces the per-example
+``_device_for(dev_str)`` boilerplate.
+
+Args:
+    name: One of:
+
+      - ``"npu"`` / ``"npu1"`` — Phoenix/Hawk Point (AIE2)
+      - ``"npu2"`` — Strix/Krackan (AIE2P)
+      - ``"xcvc1902"`` / ``"xcve2302"`` / ``"xcve2802"`` — Versal AIE1
+
+      Case-insensitive.
+    n_cols: Number of columns to use for NPU devices.  ``1`` (the
+      default) selects the single-column variant
+      (``NPU1Col1`` / ``NPU2Col1``).  ``2..N-1`` selects
+      ``NPU{1,2}Col{n_cols}``.  Passing the device's max
+      (``4`` for NPU1, ``8`` for NPU2) — or ``None`` as a
+      family-agnostic "max" sentinel — selects the unrestricted
+      multi-column device (``NPU1`` / ``NPU2``).  Ignored for
+      Versal devices.
+
+Returns:
+    Device instance.
+
+Raises:
+    ValueError: ``name`` unrecognized, or ``n_cols`` out of range
+        for the chosen NPU family.
+</pre> 
+</div>
+</div>
+<h2 class="groupheader">Variable Documentation</h2>
+<a id="a72d91463a632a806bc79bc0e677349e6" name="a72d91463a632a806bc79bc0e677349e6"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a72d91463a632a806bc79bc0e677349e6">&#9670;&#160;</a></span>_MAX_COLS</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">dict iron.device._MAX_COLS = {&quot;NPU1&quot;: 4, &quot;NPU2&quot;: 8}</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+</div>
+</div>
+<a id="a76122b3917b9455f828ceed37edfea76" name="a76122b3917b9455f828ceed37edfea76"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a76122b3917b9455f828ceed37edfea76">&#9670;&#160;</a></span>_NAME_TO_BASE</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">dict iron.device._NAME_TO_BASE</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+<b>Initial value:</b><div class="fragment"><div class="line"><span class="lineno">    1</span>=  {</div>
+<div class="line"><span class="lineno">    2</span>    <span class="stringliteral">&quot;npu&quot;</span>: <span class="stringliteral">&quot;NPU1&quot;</span>,</div>
+<div class="line"><span class="lineno">    3</span>    <span class="stringliteral">&quot;npu1&quot;</span>: <span class="stringliteral">&quot;NPU1&quot;</span>,</div>
+<div class="line"><span class="lineno">    4</span>    <span class="stringliteral">&quot;npu2&quot;</span>: <span class="stringliteral">&quot;NPU2&quot;</span>,</div>
+<div class="line"><span class="lineno">    5</span>    <span class="stringliteral">&quot;xcvc1902&quot;</span>: <span class="stringliteral">&quot;XCVC1902&quot;</span>,</div>
+<div class="line"><span class="lineno">    6</span>    <span class="stringliteral">&quot;xcve2302&quot;</span>: <span class="stringliteral">&quot;XCVE2302&quot;</span>,</div>
+<div class="line"><span class="lineno">    7</span>    <span class="stringliteral">&quot;xcve2802&quot;</span>: <span class="stringliteral">&quot;XCVE2802&quot;</span>,</div>
+<div class="line"><span class="lineno">    8</span>}</div>
+</div><!-- fragment -->
+</div>
+</div>
+</div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
 Generated by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8

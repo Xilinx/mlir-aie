@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;1c5260c03c4b034f1862f6223e9fb23eb7195db8</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;14273685bebf296798cc86facd3459b5a017cda7</span>
    </div>
   </td>
  </tr>
@@ -73,9 +73,7 @@ $(function() {
 
 <h3><a id="index__5F" name="index__5F"></a>- _ -</h3><ul>
 <li>__class__&#160;:&#160;<a class="el" href="classtaplib_1_1tap_1_1TensorAccessPattern.html#a8e1c1ba4a0bb04ed1eae3adf3fd3fc30">taplib.tap.TensorAccessPattern</a>, <a class="el" href="classtaplib_1_1tas_1_1TensorAccessSequence.html#a16fad0ea8ba15b27277b134b2779fc05">taplib.tas.TensorAccessSequence</a></li>
-<li>__gbuf_index&#160;:&#160;<a class="el" href="classiron_1_1buffer_1_1Buffer.html#a94f33538df57d5983cc45fc46e01696e">iron.buffer.Buffer</a></li>
-<li>__of_index&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#abcba213ef96369f1b67b6b7ba45ca69e">iron.dataflow.objectfifo.ObjectFifo</a></li>
-<li>__task_group_index&#160;:&#160;<a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a2da3cf7b0c71cfef57f2dfd0a9274356">iron.runtime.runtime.Runtime</a></li>
+<li>_aie_stream&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a64c0f8636ef48115206a21ccd6e28a31">iron.dataflow.objectfifo.ObjectFifo</a></li>
 <li>_arg_types&#160;:&#160;<a class="el" href="classiron_1_1kernel_1_1BaseKernel.html#a6224ff2fba314f084d50880cbab1b2c8">iron.kernel.BaseKernel</a>, <a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#a7dc364ac42afb6f0637959c6ef74aae5">iron.kernel.ExternalFunction</a></li>
 <li>_args&#160;:&#160;<a class="el" href="classiron_1_1runtime_1_1task_1_1InlineOpRuntimeTask.html#ae207c6cad9521efff087529acb89777c">iron.runtime.task.InlineOpRuntimeTask</a></li>
 <li>_arr_type&#160;:&#160;<a class="el" href="classiron_1_1buffer_1_1Buffer.html#a10e824bf88964a491582353d6e16f1e0">iron.buffer.Buffer</a>, <a class="el" href="classiron_1_1runtime_1_1data_1_1RuntimeData.html#a6d8e212bb2036c48abebe54a34357cc3">iron.runtime.data.RuntimeData</a></li>
@@ -83,6 +81,7 @@ $(function() {
 <li>_bo&#160;:&#160;<a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1parameter__scratchpad_1_1ParameterScratchpad.html#ad7d6bab2548c94285f97d7efef82aab4">utils.hostruntime.xrtruntime.parameter_scratchpad.ParameterScratchpad</a>, <a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1tensor_1_1XRTTensor.html#a5561c85a272e9d0b472c6e7ffc57677e">utils.hostruntime.xrtruntime.tensor.XRTTensor</a></li>
 <li>_buffers&#160;:&#160;<a class="el" href="classiron_1_1worker_1_1Worker.html#a783d3eb9b71c8dc4ba3a413bd23ddc3a">iron.worker.Worker</a></li>
 <li>_cache_size&#160;:&#160;<a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1CachedXRTRuntime.html#a21825382dd4305b0501837014f13bdae">utils.hostruntime.xrtruntime.hostruntime.CachedXRTRuntime</a></li>
+<li>_cached_digest&#160;:&#160;<a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#a9721b43f23d635413337f680b179cfed">iron.kernel.ExternalFunction</a></li>
 <li>_compile_flags&#160;:&#160;<a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#afa9dce01f7ea46b98a83ae15f661048a">iron.kernel.ExternalFunction</a></li>
 <li>_compiled&#160;:&#160;<a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#a0ceed22a08bd6ff240696854f0ecec45">iron.kernel.ExternalFunction</a></li>
 <li>_cons&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a01b2ae3f4bea8c442b9ed7d65fff94e3">iron.dataflow.objectfifo.ObjectFifo</a></li>
@@ -100,166 +99,104 @@ $(function() {
 <li>_dims_from_stream&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html#a2ad684d2936c5d3f86b2b921c1e04638">iron.dataflow.objectfifo.ObjectFifoHandle</a></li>
 <li>_dims_from_stream_per_cons&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#ab631362de837ac391a9842be74b418a1">iron.dataflow.objectfifo.ObjectFifo</a></li>
 <li>_dims_to_stream&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#acc347763b7c48709177386a24908a6f1">iron.dataflow.objectfifo.ObjectFifo</a></li>
-<li>_dst&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1cascadeflow_1_1CascadeFlow.html#a468ef22215bbd3736ae1b733564e31fa">iron.dataflow.cascadeflow.CascadeFlow</a></li>
+<li>_dst&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1cascadeflow_1_1CascadeFlow.html#a468ef22215bbd3736ae1b733564e31fa">iron.dataflow.cascadeflow.CascadeFlow</a>, <a class="el" href="classiron_1_1dataflow_1_1flow_1_1Flow.html#a5a6c353f00c9f84d10ffbaca1f63912a">iron.dataflow.flow.Flow</a>, <a class="el" href="classiron_1_1dataflow_1_1flow_1_1PacketFlow.html#a79bb64952daeb361802e5b525922e547">iron.dataflow.flow.PacketFlow</a></li>
+<li>_dst_channel&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1flow_1_1Flow.html#a8cb7609cbf55330884f0eaaa6c834f8a">iron.dataflow.flow.Flow</a>, <a class="el" href="classiron_1_1dataflow_1_1flow_1_1PacketFlow.html#abaf9d17485e990167fdb60076433ffad">iron.dataflow.flow.PacketFlow</a></li>
 <li>_dst_offsets&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoLink.html#accc7642a8b986eb6f4895fe8c2820365">iron.dataflow.objectfifo.ObjectFifoLink</a></li>
+<li>_dst_port&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1flow_1_1Flow.html#a9796270dbb07f9880940125b11638065">iron.dataflow.flow.Flow</a>, <a class="el" href="classiron_1_1dataflow_1_1flow_1_1PacketFlow.html#ae82502ca9b523a3d8d8dea9df9e49d7e">iron.dataflow.flow.PacketFlow</a></li>
 <li>_dsts&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoLink.html#a01dd3760bae2039d43dabbbc7a21f79b">iron.dataflow.objectfifo.ObjectFifoLink</a></li>
 <li>_dtype&#160;:&#160;<a class="el" href="classiron_1_1scratchpad__parameter_1_1ScratchpadParameter.html#a6331805df4bfa1a23c5d677ae9ff50b1">iron.scratchpad_parameter.ScratchpadParameter</a></li>
 <li>_DTYPE&#160;:&#160;<a class="el" href="classtaplib_1_1tap_1_1TensorAccessPattern.html#a8f00f6d90a27e9af97dd3d2e902116bd">taplib.tap.TensorAccessPattern</a>, <a class="el" href="classtaplib_1_1tensortiler2d_1_1TensorTiler2D.html#ad453d446c7a2032f66600d2afe0a81c4">taplib.tensortiler2d.TensorTiler2D</a></li>
 <li>_dynamic_objfifo_lowering&#160;:&#160;<a class="el" href="classiron_1_1worker_1_1Worker.html#af8cc851ded4a0a6fd48883cee0b8d086">iron.worker.Worker</a></li>
+<li>_egress_shim_col&#160;:&#160;<a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a589682e50ffbc868b210aa4b0d529be0">iron.runtime.runtime.Runtime</a></li>
 <li>_endpoint&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html#a53f0442d8a0d320cde04f21c552dd573">iron.dataflow.objectfifo.ObjectFifoHandle</a></li>
+<li>_expected_tensor_sizes&#160;:&#160;<a class="el" href="classutils_1_1compile_1_1jit_1_1compilabledesign_1_1CompilableDesign.html#a5c303741c0bd76f6aa8fa586afb8c32d">utils.compile.jit.compilabledesign.CompilableDesign</a></li>
+<li>_extra_dsts&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1flow_1_1PacketFlow.html#ad7773a9559e956244fe9fdc73935e265">iron.dataflow.flow.PacketFlow</a></li>
 <li>_fifos&#160;:&#160;<a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a0808addbcfe69055af4201f05dc18f79">iron.runtime.runtime.Runtime</a>, <a class="el" href="classiron_1_1worker_1_1Worker.html#ab1fc5bcf156146d4a2a40d64345cbd48">iron.worker.Worker</a></li>
+<li>_flows&#160;:&#160;<a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#addf9a5aacba19aa21adad83a65fa7c91">iron.runtime.runtime.Runtime</a></li>
 <li>_fn&#160;:&#160;<a class="el" href="classiron_1_1runtime_1_1task_1_1InlineOpRuntimeTask.html#a653c7e2d2e92c8123e71b5bb8b32074d">iron.runtime.task.InlineOpRuntimeTask</a></li>
+<li>_gbuf_index&#160;:&#160;<a class="el" href="classiron_1_1buffer_1_1Buffer.html#a24ef3076a61e087337ffd0e3ef5c0529">iron.buffer.Buffer</a></li>
+<li>_glock_index&#160;:&#160;<a class="el" href="classiron_1_1lock_1_1Lock.html#a3e5d4e464b2c47daf8882ff68271c63c">iron.lock.Lock</a></li>
 <li>_group_id&#160;:&#160;<a class="el" href="classiron_1_1runtime_1_1taskgroup_1_1RuntimeTaskGroup.html#a6e67a3284c7797cdeaa9202cf1879949">iron.runtime.taskgroup.RuntimeTaskGroup</a></li>
+<li>_hints&#160;:&#160;<a class="el" href="classutils_1_1compile_1_1jit_1_1compilabledesign_1_1CompilableDesign.html#ac9e59eadf59ce6156d127748a82db53e">utils.compile.jit.compilabledesign.CompilableDesign</a></li>
 <li>_impl&#160;:&#160;<a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1parameter__scratchpad_1_1ParameterScratchpad.html#afe2e28596230fa2dd9e3f60e81c17d8a">utils.hostruntime.xrtruntime.parameter_scratchpad.ParameterScratchpad</a></li>
 <li>_include_dirs&#160;:&#160;<a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#aa678ee2cfa21bdd6603fcc17a5eb2b90">iron.kernel.ExternalFunction</a></li>
+<li>_init&#160;:&#160;<a class="el" href="classiron_1_1lock_1_1Lock.html#ab300f6e627b6f288a0434f407328a315">iron.lock.Lock</a></li>
 <li>_initial_value&#160;:&#160;<a class="el" href="classiron_1_1buffer_1_1Buffer.html#ad9f1541239653828560de1636b18922c">iron.buffer.Buffer</a></li>
+<li>_inst_path&#160;:&#160;<a class="el" href="classutils_1_1compile_1_1jit_1_1compilabledesign_1_1CompilableDesign.html#a88e4b18cec8745c21247795d4620d047">utils.compile.jit.compilabledesign.CompilableDesign</a></li>
 <li>_instances&#160;:&#160;<a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#ac63c147c035ae23982087249fcdd2b20">iron.kernel.ExternalFunction</a></li>
 <li>_insts_cache&#160;:&#160;<a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1CachedXRTRuntime.html#abd3b4716bc1998d9edf96bdf2220ff8a">utils.hostruntime.xrtruntime.hostruntime.CachedXRTRuntime</a></li>
+<li>_insts_content_cache&#160;:&#160;<a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1CachedXRTRuntime.html#a9073214c9f074fb3abc11cbb52fb5ab2">utils.hostruntime.xrtruntime.hostruntime.CachedXRTRuntime</a></li>
 <li>_insts_path&#160;:&#160;<a class="el" href="classutils_1_1npukernel_1_1NPUKernel.html#abbdd94fe27ba1f2558fe8a655794b44f">utils.npukernel.NPUKernel</a></li>
 <li>_is_prod&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html#acb0dd47cdceb21722998c3e8f197a9b4">iron.dataflow.objectfifo.ObjectFifoHandle</a></li>
 <li>_is_valid&#160;:&#160;<a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1CachedXRTKernelHandle.html#a09f332f756022dd20e86a07f94076c00">utils.hostruntime.xrtruntime.hostruntime.CachedXRTKernelHandle</a></li>
 <li>_iter_count&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a86eb78bde4834d451011f01c5e07c427">iron.dataflow.objectfifo.ObjectFifo</a></li>
+<li>_keep_pkt_header&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1flow_1_1PacketFlow.html#a9e02d23b022ec525adbc5746f0885b64">iron.dataflow.flow.PacketFlow</a></li>
+<li>_kernel_dir&#160;:&#160;<a class="el" href="classutils_1_1compile_1_1jit_1_1compilabledesign_1_1CompilableDesign.html#ad857273a305c8fca55a5b644b5b86acb">utils.compile.jit.compilabledesign.CompilableDesign</a></li>
 <li>_kernel_name&#160;:&#160;<a class="el" href="classutils_1_1npukernel_1_1NPUKernel.html#a3cb4eb1837f298285a4975f428b22bfe">utils.npukernel.NPUKernel</a></li>
+<li>_lock_id&#160;:&#160;<a class="el" href="classiron_1_1lock_1_1Lock.html#a571ffa5358bcc68554989179c3840bd4">iron.lock.Lock</a></li>
+<li>_locks&#160;:&#160;<a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#aeb24a5f5da4e44d2d9f9903cfc0a657e">iron.runtime.runtime.Runtime</a></li>
 <li>_memtile_events&#160;:&#160;<a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#ad81eead716385e1b3e82cd9841e58b0c">iron.runtime.runtime.Runtime</a></li>
 <li>_mv&#160;:&#160;<a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1parameter__scratchpad_1_1ParameterScratchpad.html#a5eb2b5c7f855c0a2c98ba8345ffa932e">utils.hostruntime.xrtruntime.parameter_scratchpad.ParameterScratchpad</a></li>
-<li>_name&#160;:&#160;<a class="el" href="classiron_1_1buffer_1_1Buffer.html#a91c9dd0475131a642a9077f7f54ac1e8">iron.buffer.Buffer</a>, <a class="el" href="classiron_1_1kernel_1_1BaseKernel.html#ad4aa82f9e55fd081115632e3468ae435">iron.kernel.BaseKernel</a>, <a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#a5888cfa2b7ebd1406a9e1430e474aa47">iron.kernel.ExternalFunction</a>, <a class="el" href="classiron_1_1kernel_1_1Kernel.html#abbbfb6171b851b24ed941677840c4331">iron.kernel.Kernel</a>, <a class="el" href="classiron_1_1scratchpad__parameter_1_1ScratchpadParameter.html#aa4f711c5718bd9d6522a6653941a9e3a">iron.scratchpad_parameter.ScratchpadParameter</a></li>
+<li>_name&#160;:&#160;<a class="el" href="classiron_1_1buffer_1_1Buffer.html#a91c9dd0475131a642a9077f7f54ac1e8">iron.buffer.Buffer</a>, <a class="el" href="classiron_1_1kernel_1_1BaseKernel.html#ad4aa82f9e55fd081115632e3468ae435">iron.kernel.BaseKernel</a>, <a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#a5888cfa2b7ebd1406a9e1430e474aa47">iron.kernel.ExternalFunction</a>, <a class="el" href="classiron_1_1kernel_1_1Kernel.html#abbbfb6171b851b24ed941677840c4331">iron.kernel.Kernel</a>, <a class="el" href="classiron_1_1lock_1_1Lock.html#a835f3adaefe6433ad77fdba80fb6292a">iron.lock.Lock</a>, <a class="el" href="classiron_1_1scratchpad__parameter_1_1ScratchpadParameter.html#aa4f711c5718bd9d6522a6653941a9e3a">iron.scratchpad_parameter.ScratchpadParameter</a></li>
 <li>_npu_time&#160;:&#160;<a class="el" href="classutils_1_1hostruntime_1_1hostruntime_1_1KernelResult.html#a73d4942436333fdde3d11a82d131ac46">utils.hostruntime.hostruntime.KernelResult</a></li>
 <li>_NUM_DIMS&#160;:&#160;<a class="el" href="classtaplib_1_1tensortiler2d_1_1TensorTiler2D.html#a7a54f92c409c00cfe29ff5390060f79b">taplib.tensortiler2d.TensorTiler2D</a></li>
 <li>_obj_type&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a6d8cad4aa0881aec93b10d7f3a676fb4">iron.dataflow.objectfifo.ObjectFifo</a></li>
 <li>_object_fifo&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html#a4845f46e6b6d3f7c68a2147c83296f51">iron.dataflow.objectfifo.ObjectFifoHandle</a>, <a class="el" href="classiron_1_1runtime_1_1dmatask_1_1DMATask.html#a359c824e0911f7dde2094e1ade5d9f8f">iron.runtime.dmatask.DMATask</a></li>
-<li>_object_file_name&#160;:&#160;<a class="el" href="classiron_1_1kernel_1_1Kernel.html#a6b6adae65bd2063226abbd7231b69f83">iron.kernel.Kernel</a></li>
+<li>_object_file_name&#160;:&#160;<a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#a3df7a08604b0b3c660b0678669e2384f">iron.kernel.ExternalFunction</a>, <a class="el" href="classiron_1_1kernel_1_1Kernel.html#a6b6adae65bd2063226abbd7231b69f83">iron.kernel.Kernel</a></li>
+<li>_of_index&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a560180800a66740aff841958d99f6e84">iron.dataflow.objectfifo.ObjectFifo</a></li>
 <li>_offset&#160;:&#160;<a class="el" href="classtaplib_1_1tap_1_1TensorAccessPattern.html#ad687fed5001ff968a399d0e0f380cbe1">taplib.tap.TensorAccessPattern</a></li>
 <li>_offset_parameter&#160;:&#160;<a class="el" href="classiron_1_1runtime_1_1dmatask_1_1DMATask.html#a7af4f68596a0b0b4423fc82875577cb1">iron.runtime.dmatask.DMATask</a></li>
-<li>_op&#160;:&#160;<a class="el" href="classiron_1_1buffer_1_1Buffer.html#ade9c6586feb11f892696bbf3373de4aa">iron.buffer.Buffer</a>, <a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a525861a22c7e6095fe9c67a5180afe42">iron.dataflow.objectfifo.ObjectFifo</a>, <a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoLink.html#ad6b7f1f877b8dcd0b638b26ad586e9d9">iron.dataflow.objectfifo.ObjectFifoLink</a>, <a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html#ad3085f982e5b11bac5770a0004aac18b">iron.device.tile.Tile</a>, <a class="el" href="classiron_1_1kernel_1_1BaseKernel.html#aaa35f5cf405fa2513e6e23b914d154f3">iron.kernel.BaseKernel</a>, <a class="el" href="classiron_1_1kernel_1_1Kernel.html#ae137135d99a4c515742d7d7fd5457d49">iron.kernel.Kernel</a>, <a class="el" href="classiron_1_1runtime_1_1data_1_1RuntimeData.html#a42546a944f3ea395e1bb434eab1029fe">iron.runtime.data.RuntimeData</a></li>
+<li>_op&#160;:&#160;<a class="el" href="classiron_1_1buffer_1_1Buffer.html#ade9c6586feb11f892696bbf3373de4aa">iron.buffer.Buffer</a>, <a class="el" href="classiron_1_1dataflow_1_1flow_1_1Flow.html#a63dc07ba09083181b5aa74238b5b4542">iron.dataflow.flow.Flow</a>, <a class="el" href="classiron_1_1dataflow_1_1flow_1_1PacketFlow.html#a52e6f50e328fd68391cf1b9fd03c725e">iron.dataflow.flow.PacketFlow</a>, <a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a525861a22c7e6095fe9c67a5180afe42">iron.dataflow.objectfifo.ObjectFifo</a>, <a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoLink.html#ad6b7f1f877b8dcd0b638b26ad586e9d9">iron.dataflow.objectfifo.ObjectFifoLink</a>, <a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html#ad3085f982e5b11bac5770a0004aac18b">iron.device.tile.Tile</a>, <a class="el" href="classiron_1_1kernel_1_1BaseKernel.html#aaa35f5cf405fa2513e6e23b914d154f3">iron.kernel.BaseKernel</a>, <a class="el" href="classiron_1_1kernel_1_1Kernel.html#ae137135d99a4c515742d7d7fd5457d49">iron.kernel.Kernel</a>, <a class="el" href="classiron_1_1lock_1_1Lock.html#a3f872d0d67a91133adc9b9596688a530">iron.lock.Lock</a>, <a class="el" href="classiron_1_1runtime_1_1data_1_1RuntimeData.html#a42546a944f3ea395e1bb434eab1029fe">iron.runtime.data.RuntimeData</a></li>
 <li>_open_task_groups&#160;:&#160;<a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a5f67560cc342e90c7065c601a9c455ce">iron.runtime.runtime.Runtime</a></li>
+<li>_original_name&#160;:&#160;<a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#a62452b99f533d3fda7aa37e512a75e40">iron.kernel.ExternalFunction</a></li>
+<li>_owner_worker&#160;:&#160;<a class="el" href="classiron_1_1buffer_1_1Buffer.html#a728b840cd2309f72b967dbfe47bebba0">iron.buffer.Buffer</a></li>
+<li>_packet&#160;:&#160;<a class="el" href="classiron_1_1runtime_1_1dmatask_1_1DMATask.html#a250b8063cc737e7ad2e60fbe4d8642e0">iron.runtime.dmatask.DMATask</a></li>
 <li>_pad_dimensions&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a316362f17a306f4edc2361dc37354938">iron.dataflow.objectfifo.ObjectFifo</a></li>
+<li>_pkt_id&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1flow_1_1PacketFlow.html#a978f2f162e247dd1369bbe21df45ac64">iron.dataflow.flow.PacketFlow</a></li>
 <li>_plio&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a53e54fae171dc492bf1d6e35ff48ddae">iron.dataflow.objectfifo.ObjectFifo</a></li>
 <li>_port&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html#a7b858111c030cf735fc56b52a39eb147">iron.dataflow.objectfifo.ObjectFifoHandle</a></li>
 <li>_prod&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a211807c38e7d3e32dba480db578004cc">iron.dataflow.objectfifo.ObjectFifo</a></li>
 <li>_repeat_count&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a2b0451ca61cf5637dd31e90ec5b2354c">iron.dataflow.objectfifo.ObjectFifo</a></li>
-<li>_resolved&#160;:&#160;<a class="el" href="classiron_1_1scratchpad__parameter_1_1ScratchpadParameter.html#a695e715deb31c1cb3b507f6225970043">iron.scratchpad_parameter.ScratchpadParameter</a></li>
+<li>_resolved&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1tile__dma_1_1TileDma.html#a778ead9091d499820d059d0b53eb2b33">iron.dataflow.tile_dma.TileDma</a>, <a class="el" href="classiron_1_1scratchpad__parameter_1_1ScratchpadParameter.html#a695e715deb31c1cb3b507f6225970043">iron.scratchpad_parameter.ScratchpadParameter</a></li>
 <li>_resolving&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#ac26a99d9a71f06e7fedd40877b9ff908">iron.dataflow.objectfifo.ObjectFifo</a>, <a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoLink.html#a5cfddb2ce80c7c1eeba80d43b4c759b3">iron.dataflow.objectfifo.ObjectFifoLink</a></li>
 <li>_rt&#160;:&#160;<a class="el" href="classiron_1_1program_1_1Program.html#ab7f70b790037e21512ec1891b33e2d49">iron.program.Program</a></li>
 <li>_rt_data&#160;:&#160;<a class="el" href="classiron_1_1runtime_1_1dmatask_1_1DMATask.html#ab7d108c5e1298e7e8ee5b7d74be96f50">iron.runtime.dmatask.DMATask</a>, <a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a61d27e624110acc84202e7e999a19f68">iron.runtime.runtime.Runtime</a></li>
 <li>_shape&#160;:&#160;<a class="el" href="classutils_1_1hostruntime_1_1tensor__class_1_1CPUOnlyTensor.html#acd5921db342b39063c92e3d2d4ee431d">utils.hostruntime.tensor_class.CPUOnlyTensor</a>, <a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1tensor_1_1XRTTensor.html#a751885355f89386802e0e28272173dd2">utils.hostruntime.xrtruntime.tensor.XRTTensor</a></li>
+<li>_shim_symbol&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1flow_1_1Flow.html#af24502d132099a24584a3d8f46d5713e">iron.dataflow.flow.Flow</a>, <a class="el" href="classiron_1_1dataflow_1_1flow_1_1PacketFlow.html#aee2dca9e71fe913a731c639a5ef35dbb">iron.dataflow.flow.PacketFlow</a></li>
+<li>_SHIM_TILE_TYPES&#160;:&#160;<a class="el" href="classiron_1_1runtime_1_1endpoint_1_1RuntimeEndpoint.html#acee125c76ff450261df2001b4c213333">iron.runtime.endpoint.RuntimeEndpoint</a></li>
 <li>_shimtile_events&#160;:&#160;<a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#ad7644c7dcf45974d396144cc3b1043d5">iron.runtime.runtime.Runtime</a></li>
+<li>_sig&#160;:&#160;<a class="el" href="classutils_1_1compile_1_1jit_1_1compilabledesign_1_1CompilableDesign.html#a6543fd1282d7e814567b8d6ecd30897c">utils.compile.jit.compilabledesign.CompilableDesign</a></li>
 <li>_sizes&#160;:&#160;<a class="el" href="classtaplib_1_1tap_1_1TensorAccessPattern.html#a2a41468080c9721a39ee537b8beebc40">taplib.tap.TensorAccessPattern</a></li>
 <li>_source_file&#160;:&#160;<a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#a97605152feef5dce2070e74aa59cfb0c">iron.kernel.ExternalFunction</a></li>
 <li>_source_string&#160;:&#160;<a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#a669fcdd0fa1cdeb06e1108f9bb31506d">iron.kernel.ExternalFunction</a></li>
-<li>_src&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1cascadeflow_1_1CascadeFlow.html#a865e697ae6f5e1ed566dee3f96f73f04">iron.dataflow.cascadeflow.CascadeFlow</a></li>
+<li>_src&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1cascadeflow_1_1CascadeFlow.html#a865e697ae6f5e1ed566dee3f96f73f04">iron.dataflow.cascadeflow.CascadeFlow</a>, <a class="el" href="classiron_1_1dataflow_1_1flow_1_1Flow.html#a6218e269298c4743b672df3b481039e0">iron.dataflow.flow.Flow</a>, <a class="el" href="classiron_1_1dataflow_1_1flow_1_1PacketFlow.html#a06ec976feeadca60b825376585a85bd3">iron.dataflow.flow.PacketFlow</a></li>
+<li>_src_channel&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1flow_1_1Flow.html#a961b29cee563e81b61ff21e1a1a4105c">iron.dataflow.flow.Flow</a>, <a class="el" href="classiron_1_1dataflow_1_1flow_1_1PacketFlow.html#a2277b302f9d5d83aaeb01ca350493b2e">iron.dataflow.flow.PacketFlow</a></li>
 <li>_src_offsets&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoLink.html#aabab2775e92c29ac94c9cb8c92522bec">iron.dataflow.objectfifo.ObjectFifoLink</a></li>
+<li>_src_port&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1flow_1_1Flow.html#a734fcaf4c97f8d4df1e6bf5523a661bd">iron.dataflow.flow.Flow</a>, <a class="el" href="classiron_1_1dataflow_1_1flow_1_1PacketFlow.html#a832e63a6ea6fe867fadefbb6962ad208">iron.dataflow.flow.PacketFlow</a></li>
 <li>_srcs&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoLink.html#a04e0b24ad872d20276abcbb819b38c79">iron.dataflow.objectfifo.ObjectFifoLink</a></li>
 <li>_strict_task_groups&#160;:&#160;<a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a57f55b7ceaf4584dce8a8338bd15a186">iron.runtime.runtime.Runtime</a></li>
 <li>_strides&#160;:&#160;<a class="el" href="classtaplib_1_1tap_1_1TensorAccessPattern.html#a44c102578a8da1ffab9f4bbd6c0674e9">taplib.tap.TensorAccessPattern</a></li>
+<li>_symbol_prefix&#160;:&#160;<a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#aa74020e36e8cbd95d70f272b4693e494">iron.kernel.ExternalFunction</a></li>
 <li>_tap&#160;:&#160;<a class="el" href="classiron_1_1runtime_1_1dmatask_1_1DMATask.html#a1798f5c294a3e3767db6c85c7acc1229">iron.runtime.dmatask.DMATask</a></li>
 <li>_taps&#160;:&#160;<a class="el" href="classtaplib_1_1tas_1_1TensorAccessSequence.html#a15cf08d939f7c97b665318eccf3608ea">taplib.tas.TensorAccessSequence</a></li>
 <li>_task&#160;:&#160;<a class="el" href="classiron_1_1runtime_1_1dmatask_1_1DMATask.html#aa6db0c5b0e6198fd9cc3ea99523d57f7">iron.runtime.dmatask.DMATask</a></li>
 <li>_task_group&#160;:&#160;<a class="el" href="classiron_1_1runtime_1_1task_1_1RuntimeTask.html#ad3872ba810e307999f22d8c81d63c110">iron.runtime.task.RuntimeTask</a></li>
+<li>_task_group_index&#160;:&#160;<a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#ad5e230f561fcf6f561f5eccc5993a92f">iron.runtime.runtime.Runtime</a></li>
 <li>_tensor_class&#160;:&#160;<a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1XRTHostRuntime.html#ac02f7e58a4048729e823bb46b83b6b2e">utils.hostruntime.xrtruntime.hostruntime.XRTHostRuntime</a></li>
 <li>_tensor_dims&#160;:&#160;<a class="el" href="classtaplib_1_1tap_1_1TensorAccessPattern.html#ab470f618aabea37590227ae31d6d933d">taplib.tap.TensorAccessPattern</a>, <a class="el" href="classtaplib_1_1tas_1_1TensorAccessSequence.html#ab3aee24ce65c98e3bb882bfd2ff42037">taplib.tas.TensorAccessSequence</a></li>
-<li>_tile&#160;:&#160;<a class="el" href="classiron_1_1buffer_1_1Buffer.html#a997b42b35c9d73be44dd7c56ad93b6e4">iron.buffer.Buffer</a>, <a class="el" href="classiron_1_1dataflow_1_1endpoint_1_1ObjectFifoEndpoint.html#a1b0371bc2837c99b2709e4c7c8487a8e">iron.dataflow.endpoint.ObjectFifoEndpoint</a>, <a class="el" href="classiron_1_1worker_1_1Worker.html#ac1e50fec53fc58c53adb6b3718cbb909">iron.worker.Worker</a></li>
+<li>_tile&#160;:&#160;<a class="el" href="classiron_1_1buffer_1_1Buffer.html#a997b42b35c9d73be44dd7c56ad93b6e4">iron.buffer.Buffer</a>, <a class="el" href="classiron_1_1dataflow_1_1endpoint_1_1ObjectFifoEndpoint.html#a1b0371bc2837c99b2709e4c7c8487a8e">iron.dataflow.endpoint.ObjectFifoEndpoint</a>, <a class="el" href="classiron_1_1dataflow_1_1tile__dma_1_1TileDma.html#a2962f1846c5ae41c1560a121c78c4849">iron.dataflow.tile_dma.TileDma</a>, <a class="el" href="classiron_1_1lock_1_1Lock.html#a78885903b60faeaa2925decbd3246472">iron.lock.Lock</a>, <a class="el" href="classiron_1_1worker_1_1Worker.html#ac1e50fec53fc58c53adb6b3718cbb909">iron.worker.Worker</a></li>
+<li>_tile_dmas&#160;:&#160;<a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#ae45b11ba297a94fc451efae479a80fac">iron.runtime.runtime.Runtime</a></li>
 <li>_tm&#160;:&#160;<a class="el" href="classiron_1_1device_1_1device_1_1Device.html#a2492b796033f467161e871dceecfedd4">iron.device.device.Device</a></li>
 <li>_trace_config&#160;:&#160;<a class="el" href="classutils_1_1hostruntime_1_1hostruntime_1_1KernelResult.html#a51059e4e984c4c29f5d243f2c38bafd7">utils.hostruntime.hostruntime.KernelResult</a>, <a class="el" href="classutils_1_1npukernel_1_1NPUKernel.html#af9e190a193156347efd2d0cce8488df9">utils.npukernel.NPUKernel</a></li>
 <li>_trace_size&#160;:&#160;<a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#ae10f79d3eaa7f02877b800558ca57bc5">iron.runtime.runtime.Runtime</a></li>
 <li>_trace_workers&#160;:&#160;<a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a82d7df3e6c606fc3ed6ce41831e3111d">iron.runtime.runtime.Runtime</a></li>
+<li>_use_chess&#160;:&#160;<a class="el" href="classiron_1_1kernel_1_1ExternalFunction.html#adebd279c84d10f3efb55e10f68182a07">iron.kernel.ExternalFunction</a></li>
 <li>_use_write_rtp&#160;:&#160;<a class="el" href="classiron_1_1buffer_1_1Buffer.html#ae38112a6eaf458ee20d32a96e9a3c350">iron.buffer.Buffer</a></li>
 <li>_wait&#160;:&#160;<a class="el" href="classiron_1_1runtime_1_1dmatask_1_1DMATask.html#adef1f313b2fdb72835190ab348812972">iron.runtime.dmatask.DMATask</a></li>
 <li>_while_true&#160;:&#160;<a class="el" href="classiron_1_1worker_1_1Worker.html#ab1d1268c13258da14964b1e5a94de9b8">iron.worker.Worker</a></li>
 <li>_worker&#160;:&#160;<a class="el" href="classiron_1_1runtime_1_1task_1_1RuntimeStartTask.html#a3b561eb3971aa14a3f2c3a07029fc5e3">iron.runtime.task.RuntimeStartTask</a></li>
 <li>_workers&#160;:&#160;<a class="el" href="classiron_1_1runtime_1_1runtime_1_1Runtime.html#a7d171329ac29cfe2a833b4aa9dbd80ae">iron.runtime.runtime.Runtime</a></li>
-<li>_xclbin_path&#160;:&#160;<a class="el" href="classutils_1_1npukernel_1_1NPUKernel.html#a7683975217b0209b589b9a51a6b3f27c">utils.npukernel.NPUKernel</a></li>
-</ul>
-
-
-<h3><a id="index_a" name="index_a"></a>- a -</h3><ul>
-<li>allocation_scheme&#160;:&#160;<a class="el" href="classiron_1_1worker_1_1Worker.html#a1c8282d3e34e9b94c10ff60901e7031a">iron.worker.Worker</a></li>
-</ul>
-
-
-<h3><a id="index_c" name="index_c"></a>- c -</h3><ul>
-<li>cache&#160;:&#160;<a class="el" href="classcircular__cache_1_1CircularCache.html#ad7dfa14aa2a3767e7e26c70e28a56b1b">circular_cache.CircularCache</a></li>
-<li>cleanup&#160;:&#160;<a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1CachedXRTRuntime.html#a3200df73e0a04c22b2be5a6cbe586b49">utils.hostruntime.xrtruntime.hostruntime.CachedXRTRuntime</a></li>
-<li>col&#160;:&#160;<a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html#a8053059fbbf1a446c59254cf30cec64b">iron.device.tile.Tile</a></li>
-<li>context&#160;:&#160;<a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1XRTKernelHandle.html#a4452f097d1e6125b533a2f6c0cb0c9c7">utils.hostruntime.xrtruntime.hostruntime.XRTKernelHandle</a></li>
-<li>core_fn&#160;:&#160;<a class="el" href="classiron_1_1worker_1_1Worker.html#a15ecd070e55b67be77d2bdce2cce9476">iron.worker.Worker</a></li>
-</ul>
-
-
-<h3><a id="index_d" name="index_d"></a>- d -</h3><ul>
-<li>data&#160;:&#160;<a class="el" href="classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#af7494856b23c363f90c49b772a600739">utils.hostruntime.tensor_class.Tensor</a></li>
-<li>DEFAULT_DEVICE&#160;:&#160;<a class="el" href="classutils_1_1hostruntime_1_1tensor__class_1_1CPUOnlyTensor.html#a78fc6c163867ecc174b687b6a0b6c050">utils.hostruntime.tensor_class.CPUOnlyTensor</a>, <a class="el" href="classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#a0ca317d31d76bd3a44139aac34762104">utils.hostruntime.tensor_class.Tensor</a></li>
-<li>DEFAULT_FLOAT_DTYPE&#160;:&#160;<a class="el" href="classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#a8d27fced638b0a81045494cc7c5332f7">utils.hostruntime.tensor_class.Tensor</a></li>
-<li>DEFAULT_INT_DTYPE&#160;:&#160;<a class="el" href="classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#af135e2854cbc95087501e7ee42a370b4">utils.hostruntime.tensor_class.Tensor</a></li>
-<li>device&#160;:&#160;<a class="el" href="classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#a86ce202dea58b77c7f87ff3b51380ff8">utils.hostruntime.tensor_class.Tensor</a>, <a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1tensor_1_1XRTTensor.html#af7a30b53dcba17ef617d14119f83213a">utils.hostruntime.xrtruntime.tensor.XRTTensor</a></li>
-<li>DEVICES&#160;:&#160;<a class="el" href="classutils_1_1hostruntime_1_1tensor__class_1_1CPUOnlyTensor.html#aa4c6d13ef14e8c9163ca800d86a41191">utils.hostruntime.tensor_class.CPUOnlyTensor</a>, <a class="el" href="classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#a98879edf547277d12197e74766e15ace">utils.hostruntime.tensor_class.Tensor</a></li>
-<li>dtype&#160;:&#160;<a class="el" href="classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#af1331c6a7be3726736893c6e114fe8c6">utils.hostruntime.tensor_class.Tensor</a>, <a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1tensor_1_1XRTTensor.html#a5ebab8526e3a7d94baad1e57f6848051">utils.hostruntime.xrtruntime.tensor.XRTTensor</a></li>
-</ul>
-
-
-<h3><a id="index_f" name="index_f"></a>- f -</h3><ul>
-<li>fn_args&#160;:&#160;<a class="el" href="classiron_1_1worker_1_1Worker.html#ae62c026d16faacefe8d6945eaec9be4c">iron.worker.Worker</a></li>
-</ul>
-
-
-<h3><a id="index_i" name="index_i"></a>- i -</h3><ul>
-<li>index&#160;:&#160;<a class="el" href="classcircular__cache_1_1CircularCache.html#adb419ef60812e542fbfbb1cfaca43b6d">circular_cache.CircularCache</a></li>
-<li>initial_value&#160;:&#160;<a class="el" href="classiron_1_1worker_1_1WorkerRuntimeBarrier.html#a12e97eb033a09a86975721371dc2ab99">iron.worker.WorkerRuntimeBarrier</a></li>
-<li>insts&#160;:&#160;<a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1XRTKernelHandle.html#a2b7aae8f07167057d775ef6d5ad6525f">utils.hostruntime.xrtruntime.hostruntime.XRTKernelHandle</a></li>
-<li>insts_bo&#160;:&#160;<a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1XRTKernelHandle.html#a5f28cf44b8d35dda4564016d22a7b1e2">utils.hostruntime.xrtruntime.hostruntime.XRTKernelHandle</a></li>
-</ul>
-
-
-<h3><a id="index_k" name="index_k"></a>- k -</h3><ul>
-<li>kernel&#160;:&#160;<a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1XRTKernelHandle.html#a3c80ff50b8ff78ca076b38630c90f69a">utils.hostruntime.xrtruntime.hostruntime.XRTKernelHandle</a></li>
-<li>keys&#160;:&#160;<a class="el" href="classcircular__cache_1_1CircularCache.html#a5ea074f5c44ec0e5534ceae945685e88">circular_cache.CircularCache</a></li>
-</ul>
-
-
-<h3><a id="index_m" name="index_m"></a>- m -</h3><ul>
-<li>max_size&#160;:&#160;<a class="el" href="classcircular__cache_1_1CircularCache.html#a149a8c75a470a65ea3e9559469d7a3f4">circular_cache.CircularCache</a></li>
-<li>message&#160;:&#160;<a class="el" href="classiron_1_1resolvable_1_1NotResolvedError.html#ad2d4e87bd0cb19836b84a08ee3c2512f">iron.resolvable.NotResolvedError</a></li>
-</ul>
-
-
-<h3><a id="index_n" name="index_n"></a>- n -</h3><ul>
-<li>name&#160;:&#160;<a class="el" href="classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a737a0a6fc7d916320bb88228ab55c8ae">iron.dataflow.objectfifo.ObjectFifo</a></li>
-<li>NPU_CONTEXT_CACHE_SIZE&#160;:&#160;<a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1CachedXRTRuntime.html#a7ac87b875ffe07ac9bd36e3f3b7f39b8">utils.hostruntime.xrtruntime.hostruntime.CachedXRTRuntime</a></li>
-<li>NPU_MODELS&#160;:&#160;<a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1XRTHostRuntime.html#a9a6b4b90a90b0128bab4fa8ccccd0003">utils.hostruntime.xrtruntime.hostruntime.XRTHostRuntime</a></li>
-<li>npu_str&#160;:&#160;<a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1XRTHostRuntime.html#a87de8a590a2748a151c95e892e8b5363">utils.hostruntime.xrtruntime.hostruntime.XRTHostRuntime</a></li>
-</ul>
-
-
-<h3><a id="index_r" name="index_r"></a>- r -</h3><ul>
-<li>ret&#160;:&#160;<a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1XRTKernelResult.html#a8ee412d86d9438177df3f4f3f59b24d4">utils.hostruntime.xrtruntime.hostruntime.XRTKernelResult</a></li>
-<li>row&#160;:&#160;<a class="el" href="classiron_1_1device_1_1tile_1_1Tile.html#a57e95aebfffee07240dfbe3211437bc5">iron.device.tile.Tile</a></li>
-</ul>
-
-
-<h3><a id="index_s" name="index_s"></a>- s -</h3><ul>
-<li>shape&#160;:&#160;<a class="el" href="classiron_1_1runtime_1_1data_1_1RuntimeData.html#a87e2206e3b27e05dec5f46a3482ee9d5">iron.runtime.data.RuntimeData</a>, <a class="el" href="classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#a5f8f57fc262d840a65dd879e92bcc4ff">utils.hostruntime.tensor_class.Tensor</a></li>
-<li>stack_size&#160;:&#160;<a class="el" href="classiron_1_1worker_1_1Worker.html#aeb350baef4bd70400fe64d2a0943f2a9">iron.worker.Worker</a></li>
-</ul>
-
-
-<h3><a id="index_t" name="index_t"></a>- t -</h3><ul>
-<li>trace&#160;:&#160;<a class="el" href="classiron_1_1worker_1_1Worker.html#a10a553d64267f4b1337e7050a08226f0">iron.worker.Worker</a></li>
-<li>trace_events&#160;:&#160;<a class="el" href="classiron_1_1worker_1_1Worker.html#a7de61d33d6e9e3bbc13a091738882a16">iron.worker.Worker</a></li>
-</ul>
-
-
-<h3><a id="index_v" name="index_v"></a>- v -</h3><ul>
-<li>value&#160;:&#160;<a class="el" href="classiron_1_1worker_1_1__BarrierSetOp.html#a0e13bb6ac03092234cf11a7bcd68317f">iron.worker._BarrierSetOp</a></li>
-</ul>
-
-
-<h3><a id="index_w" name="index_w"></a>- w -</h3><ul>
-<li>worker_locks&#160;:&#160;<a class="el" href="classiron_1_1worker_1_1WorkerRuntimeBarrier.html#aa2278632b0686a6336de4a34c0a2c353">iron.worker.WorkerRuntimeBarrier</a></li>
-</ul>
-
-
-<h3><a id="index_x" name="index_x"></a>- x -</h3><ul>
-<li>xclbin&#160;:&#160;<a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1XRTKernelHandle.html#af94a190a771bf737305a2813e845e56f">utils.hostruntime.xrtruntime.hostruntime.XRTKernelHandle</a></li>
-<li>xrt_device&#160;:&#160;<a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1tensor_1_1XRTTensor.html#a1029819820fee381b0998a170dcc433d">utils.hostruntime.xrtruntime.tensor.XRTTensor</a></li>
+<li>_xclbin_path&#160;:&#160;<a class="el" href="classutils_1_1compile_1_1jit_1_1compilabledesign_1_1CompilableDesign.html#a14d23841ad5bebd23b67cdb027d4073f">utils.compile.jit.compilabledesign.CompilableDesign</a>, <a class="el" href="classutils_1_1npukernel_1_1NPUKernel.html#a7683975217b0209b589b9a51a6b3f27c">utils.npukernel.NPUKernel</a></li>
 </ul>
 </div><!-- contents -->
 <!-- start footer part -->
