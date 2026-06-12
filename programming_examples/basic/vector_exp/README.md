@@ -4,53 +4,43 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2024, Advanced Micro Devices, Inc.
-// 
+// Copyright (C) 2024-2026, Advanced Micro Devices, Inc.
+//
 //===----------------------------------------------------------------------===//-->
 
 
 # Vector $e^x$
 
-This example shows how the look up table capability of the AIE can be used to perform approximations to well-known functions like $e^x$. 
-This design uses 4 cores, and each core operates on `1024` `bfloat16` numbers.  Each core contains a lookup table approximation of the $e^x$ function, which is then used to perform the operation.  
-$e^x$ is typically used in machine learning applications with relatively small numbers, typically around 0..1, and also will return infinity for input values larger than 89, so a small look up table approximation method is often accurate enough compared to a more exact approximation like Taylor series expansion.
+Demonstrates how the AIE's lookup-table capability is used to approximate
+$e^x$.  Four cores each operate on `1024` `bfloat16` numbers; each core uses
+a LUT approximation of $e^x$.  $e^x$ is typically used in machine learning
+on relatively small inputs (≈ 0..1) and overflows to infinity for inputs
+larger than ~89, so a small LUT approximation is usually accurate enough
+compared to a Taylor-series evaluation.
 
-## Source Files Overview
+## Source Files
 
-1. `vector_exp.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc` to produce design binaries (i.e., XCLBIN and inst.bin for the NPU in Ryzen™ AI). 
-
-1. `vector_exp_placed.py`: A functionally equivalent design to `vector_exp.py` that uses a lower-level IRON API than `vector_exp.py`
-
-1. `bf16_exp.cc`: A C++ implementation of vectorized table lookup operations for AIE cores. The lookup operation `getExpBf16` operates on vectors of size `16`, loading the vectorized accumulator registers with the look up table results.  It is then necessary to copy the accumulator register to a regular vector register before storing it back into memory.  The source can be found [here](../../../aie_kernels/aie2/bf16_exp.cc).
-
-1. `test.cpp`: This C++ code is a testbench for the design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the program verifies the results.
-
-The design also uses a single file from the AIE runtime to initialize the look up table contents to approximate the $e^x$ function.
-
+1. [`vector_exp.py`](vector_exp.py) — IRON structural design plus the host
+   driver. Decorated with `@iron.jit`; the design uses
+   [`aie.iron.kernels.bf16_exp`](../../../python/iron/kernels/activation.py),
+   which wraps [`aie_kernels/aie2/bf16_exp.cc`](../../../aie_kernels/aie2/bf16_exp.cc)
+   and bundles the AIE runtime's
+   [`lut_based_ops.cpp`](../../../aie_runtime_lib/AIE2/lut_based_ops.cpp)
+   automatically.  No per-example `.cc` / `kernels.a` / xclbin step is
+   needed.
+2. [`bf16_exp.cc`](../../../aie_kernels/aie2/bf16_exp.cc) — vectorized table-lookup
+   implementation for AIE cores.  Operates on vectors of size 16, loading
+   the vectorized accumulator with LUT results before storing back.
 
 ## Usage
 
-### Compilation
-
-To compile the design:
 ```shell
-make
+make run        # compile + execute on NPU1 (npu)
+NPU2=1 make run # execute on NPU2 (npu2)
+make clean
 ```
 
-To compile the placed design:
-```shell
-env use_placed=1 make
-```
-
-### C++ Testbench
-
-To compile the C++ testbench:
-```shell
-make vector_exp.exe
-```
-
-To run the design:
-```shell
-make run
-```
-
+The host driver tests every possible bfloat16 value (every uint16
+reinterpreted as bf16, 65536 inputs total) and verifies the LUT output
+against `numpy.exp` within the same 0.128 absolute tolerance the original
+C++ testbench used.

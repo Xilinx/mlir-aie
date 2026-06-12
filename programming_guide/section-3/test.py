@@ -6,13 +6,14 @@
 #
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
 
+import argparse
 import numpy as np
 from pathlib import Path
 import sys
 
 import aie.iron as iron
 import aie.utils
-import aie.utils.test as test_utils
+from aie.utils.hostruntime.argparse import add_runtime_args
 from aie.utils.npukernel import NPUKernel
 
 
@@ -22,12 +23,11 @@ def main(opts):
     # ------------------------------------------------------------
 
     # Initialize data buffers and reference for verification
-    ref_buffer = np.arange(1, 4096 + 1, dtype=np.int32)
-    in_buffer = iron.tensor(ref_buffer, dtype=np.int32)
+    in_buffer = iron.arange(1, 4096 + 1, dtype=np.int32)
     scale_factor = 3
-    in_factor = iron.tensor([scale_factor], dtype=np.int32)
+    in_factor = iron.full((1,), scale_factor, dtype=np.int32)
     out = iron.zeros(4096, dtype=np.int32)
-    ref_buffer = ref_buffer * scale_factor
+    ref_buffer = in_buffer.numpy() * scale_factor
 
     # ----------------------------------------------------
     # Prepare buffers and load compiled artifacts onto the device
@@ -71,6 +71,7 @@ def main(opts):
 
 
 if __name__ == "__main__":
-    p = test_utils.create_default_argparser()
+    p = argparse.ArgumentParser()
+    add_runtime_args(p)
     opts = p.parse_args(sys.argv[1:])
     main(opts)

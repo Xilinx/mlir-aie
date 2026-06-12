@@ -16,21 +16,21 @@ Input:  (1,1,1280) uint16  Output: (1,1,1280) uint16 (4 tiles, joined)
 
 import numpy as np
 
-from aie.iron import Kernel, ObjectFifo, Worker
+from aie.iron import ObjectFifo, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
 
-from bottleneck._common import i8, load_wts
-from network_spec import block as nsblock
+from ._common import i8, load_wts
+from ..network_spec import block as nsblock
 
 
-def post_l2(act_in, sf, *, placement, data_dir):
+def post_l2(act_in, sf, *, tiles, data_dir):
     """Build the post-L2 (4-tile FC1+FC2) block.
 
     Args:
         act_in: ObjectFifo  — host-scratch fill of the avgpool output (uint16).
         sf: dict            — full scale-factor mapping; uses sf["POST"]["FC1"], ["FC2"].
-        placement: dict     — PLACEMENT["post_l2"] with keys "wts_memtiles",
+        tiles: dict     — PLACEMENT["post_l2"] with keys "wts_memtiles",
                               "compute", "join_memtile".
         data_dir: str       — directory holding FC{1,2}_{0..3}_chain.txt.
 
@@ -77,29 +77,20 @@ def post_l2(act_in, sf, *, placement, data_dir):
         offsets=[i * fc_out_per_tile for i in range(n_fc_tiles)],
         depths=[2] * n_fc_tiles,
         obj_types=[np.ndarray[(co,), np.dtype[np.uint16]]] * n_fc_tiles,
-        tile=placement["join_memtile"],
+        tile=tiles["join_memtile"],
     )
 
-    wts_memtiles = placement["wts_memtiles"]
-    fc_comptiles = placement["compute"]
+    wts_memtiles = tiles["wts_memtiles"]
+    fc_comptiles = tiles["compute"]
 
     def _u16(shape):
         return np.ndarray[shape, np.dtype[np.uint16]]
 
     # Post-L2 FC: uint16 input (avgpool output) → uint16 output, in `co`-element slices.
-    k_post_l2 = Kernel(
-        "post_L2_conv2dk1_relu_i16_ui16_pad",
-        "post_L2_conv2dk1_relu_ui16_ui16_pad.o",
-        [
-            np.ndarray[(post_L2_InC,), np.dtype[np.uint16]],
-            i8((fc_recv_per_tile,)),
-            _u16((co,)),
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
+    k_post_l2 = kernels.bn_fc_relu_ui16_pad(
+        input_channels=post_L2_InC,
+        output_channels=co,
+        weight_chunk_count=fc_recv_per_tile,
     )
 
     post_l2_workers = []

@@ -1,4 +1,4 @@
-//===- test.cpp -------------------------------------------000---*- C++ -*-===//
+//===- test.cpp ------------------------------------------------*- C++ -*-===//
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -99,10 +99,8 @@ int main(int argc, const char *argv[]) {
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
   auto bo_inA = xrt::bo(device, IN_SIZE * sizeof(int32_t),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
-  auto bo_inB = xrt::bo(device, IN_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
   auto bo_out = xrt::bo(device, OUT_SIZE * sizeof(int32_t),
-                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
+                        XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects.\n";
@@ -113,23 +111,23 @@ int main(int argc, const char *argv[]) {
     srcVecA.push_back(i + 1);
   memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
 
-  uint32_t *bufInB = bo_inB.map<uint32_t *>();
+  // Reference data only: the design holds the same arange(N) values in
+  // an L1 buffer initialized at design startup (no shim DMA needed for
+  // this operand), so we don't allocate or send a device buffer for it.
   std::vector<uint32_t> srcVecB;
   for (int i = 0; i < IN_SIZE; i++)
     srcVecB.push_back(i);
-  memcpy(bufInB, srcVecB.data(), (srcVecB.size() * sizeof(uint32_t)));
 
   void *bufInstr = bo_instr.map<void *>();
   memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
 
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-  bo_inB.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   if (verbosity >= 1)
     std::cout << "Running Kernel.\n";
   unsigned int opcode = 3;
-  auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_inB, bo_out);
+  auto run = kernel(opcode, bo_instr, instr_v.size(), bo_inA, bo_out);
   run.wait();
 
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
@@ -139,17 +137,18 @@ int main(int argc, const char *argv[]) {
   int errors = 0;
 
   for (uint32_t i = 0; i < OUT_SIZE; i++) {
-    if (*(bufOut + i) != *(bufInA + i) + *(bufInB + i)) {
+    if (*(bufOut + i) != *(bufInA + i) + *(srcVecB.data() + i)) {
       if (verbosity >= 1) {
         std::cout << "Error in output " << *(bufOut + i)
-                  << " != " << *(bufInA + i) << " + " << *(bufInB + i)
+                  << " != " << *(bufInA + i) << " + " << *(srcVecB.data() + i)
                   << std::endl;
       }
       errors++;
     } else {
       if (verbosity >= 1)
         std::cout << "Correct output " << *(bufOut + i)
-                  << " == " << *(bufInA + i) + *(bufInB + i) << std::endl;
+                  << " == " << *(bufInA + i) + *(srcVecB.data() + i)
+                  << std::endl;
     }
   }
 

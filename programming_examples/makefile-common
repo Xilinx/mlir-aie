@@ -5,6 +5,12 @@ AIE2_INCLUDE_DIR ?= ${AIETOOLS_DIR}/data/aie_ml/lib
 
 MLIR_AIE_DIR ?= $(shell python3 -c "from aie.utils.config import root_path; print(root_path())")
 
+# Default NPU device family.  Per-example Makefiles can pin a specific
+# device with ``devicename = npu2`` (or ``?= npu2``) before including
+# this file; otherwise the ``NPU2=1`` env var selects between npu1 and
+# npu2 the same way our lit tests do.
+devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
+
 WARNING_FLAGS = -Wno-parentheses -Wno-attributes -Wno-macro-redefined -Wno-empty-body -Wno-missing-template-arg-list-after-template-kw
 
 CHESSCC1_FLAGS = -f -p me -P ${AIE_INCLUDE_DIR} -I ${AIETOOLS_DIR}/include
@@ -28,3 +34,72 @@ endif
 
 CC ?= gcc-13
 CXX ?= g++-13
+
+
+# ----------------------------------------------------------------------------
+# Reusable rule templates
+#
+# Use ``$(eval $(call <name>,...))`` from a per-example Makefile to instantiate.
+# All templates rely on ``${srcdir}`` (set by each Makefile to its own dir)
+# and the ``${powershell}`` / ``${getwslpath}`` variables defined above.
+# ----------------------------------------------------------------------------
+
+# Suffix that cmake appends to host executables on Windows/powershell.
+ifeq "${powershell}" "powershell.exe"
+host_exe_suffix := .exe
+else
+host_exe_suffix :=
+endif
+
+
+# jit_xclbin — drive an @iron.jit design's compile() via --xclbin-path /
+#   --insts-path and have it write the artifacts directly into the
+#   Makefile's build/ dir.  No separate kernel.o rule needed; the JIT
+#   pipeline auto-builds any aie.iron.kernels (or device=-supplied
+#   ExternalFunctions inside compile_mlir_module) into the same dir.
+#
+# Args:
+#   $1 = xclbin output path
+#   $2 = insts output path
+#   $3 = python source basename (relative to ${srcdir})
+#   $4 = python args (typically ${aieargs}, plus any extras)
+define jit_xclbin
+$(1) $(2) &: $${srcdir}/$(3)
+	mkdir -p $$(@D)
+	python3 $$< $(4) --xclbin-path=$(1) --insts-path=$(2)
+endef
+
+
+# jit_xclbin_elf — same as jit_xclbin but also emits an ELF-wrapped insts
+#   file via --elf-path (for testbenches that use xrt::elf + xrt::module).
+#
+# Args:
+#   $1 = xclbin path, $2 = insts path, $3 = elf path
+#   $4 = py source basename, $5 = python args
+define jit_xclbin_elf
+$(1) $(2) $(3) &: $${srcdir}/$(4)
+	mkdir -p $$(@D)
+	python3 $$< $(5) --xclbin-path=$(1) --insts-path=$(2) --elf-path=$(3)
+endef
+
+
+# build_host_exe — cmake-wrap a test.cpp-style host binary into a single
+#   .exe (or platform-native binary), copying the cmake output into the
+#   Makefile's working dir.
+#
+# Args:
+#   $1 = target name (output is $(1).exe)
+#   $2 = build subdir (e.g. _build)
+#   $3 = test source basename (relative to ${srcdir}); used as a
+#        prerequisite, so ``../test.cpp`` works when the cmake project
+#        lives in a parent dir
+#   $4 = extra cmake -D flags (optional)
+#   $5 = cmake project dir (optional; defaults to ${srcdir})
+define build_host_exe
+$(1).exe: $${srcdir}/$(3)
+	rm -rf $(2)
+	mkdir -p $(2)
+	cd $(2) && $${powershell} cmake `$${getwslpath} $(if $(5),$(5),$${srcdir})` -DTARGET_NAME=$(1) $(4)
+	cd $(2) && $${powershell} cmake --build . --config Release
+	cp $(2)/$(1)$${host_exe_suffix} $$@
+endef

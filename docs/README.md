@@ -108,8 +108,8 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 1. Install IRON library by installing the `mlir-aie` wheels:
 
    For installing the `mlir-aie` wheels, there are 3 options. Note that for whichever path you take,
-   it is important to sync the `mlir-aie` wheels version, the github repo commit, and the requirements versions. 
-   If you install from something other than the latest wheels, make sure 
+   it is important to sync the `mlir-aie` wheels version, the github repo commit, and the requirements versions.
+   If you install from something other than the latest wheels, make sure
    you use the repo commit -- and installation instructions -- from that point in time.
 
    1. **Latest:** For the latest wheels (not necessarily a release):
@@ -203,7 +203,7 @@ For your design of interest, for instance from [programming_examples](../program
 
 ## Learn more about NPU programming with IRON
 
-1. Continue to the [IRON AIE Application Programming Guide](programming_guide)
+1. Continue to the [IRON AIE Application Programming Guide](../programming_guide)
 
 1. Additional MLIR-AIE documentation is available on the [website](https://xilinx.github.io/mlir-aie/)
 
@@ -269,7 +269,7 @@ Be sure you have the latest BIOS for your laptop or mini PC, this will ensure th
 
 [MLIR Dialect and Compiler Documentation](https://xilinx.github.io/mlir-aie/)
 
-Interested in contributing MLIR-AIE? [Information for developers](./CONTRIBUTING.md)
+Interested in contributing MLIR-AIE? [Information for developers](../CONTRIBUTING.md)
 
 -----
 
@@ -277,17 +277,17 @@ Interested in contributing MLIR-AIE? [Information for developers](./CONTRIBUTING
 
 ![](dialects.png)
 
-Generated Code Documentation
-- [AIE Dialect](AIEDialect.md) - [AIE Passes](AIEPasses.md)
-- [AIEX Experimental Dialect](AIEXDialect.md) - [AIEX Experimental Passes](AIEXPasses.md)
-- [AIEVec Dialect](AIEVecDialect.md) - [AIEVec Passes](AIEVecPasses.md)
-- [ADF Dialect](ADFDialect.md) - [ADF Passes](ADFPasses.md)
+Generated Code Documentation (rendered on the website):
+- [AIE Dialect](https://xilinx.github.io/mlir-aie/AIEDialect.html) - [AIE Passes](https://xilinx.github.io/mlir-aie/AIEPasses.html)
+- [AIEX Experimental Dialect](https://xilinx.github.io/mlir-aie/AIEXDialect.html) - [AIEX Experimental Passes](https://xilinx.github.io/mlir-aie/AIEXPasses.html)
+- [AIEVec Dialect](https://xilinx.github.io/mlir-aie/AIEVecDialect.html) - [AIEVec Passes](https://xilinx.github.io/mlir-aie/AIEVecPasses.html)
+- [ADF Dialect](https://xilinx.github.io/mlir-aie/ADFDialect.html) - [ADF Passes](https://xilinx.github.io/mlir-aie/ADFPasses.html)
 
 MLIR Tutorials
 - [Step-by-step Tutorial](../mlir_exercises/README.md)
-- [AIE Design Patterns](AIEDesignPatterns)
-- [AIE Routing](AIERouting)
-- [AIE Vectorization of Scalar Code](AIEVectorization)
+- [AIE Design Patterns](AIEDesignPatterns.md)
+- [AIE Routing](AIERouting.md)
+- [AIE Vectorization of Scalar Code](AIEVectorization.md)
 
 -----
 

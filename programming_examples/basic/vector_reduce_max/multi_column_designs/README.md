@@ -16,13 +16,11 @@ Both BF16 and INT32 data types are supported, leveraging kernels from `reduce_ma
 ## Source Files Overview
 
 ### Design Source Files
-1. `col_wise_vector_reduce_max.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc` to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI). The Sequential placer is set to use a limited number of cores per column, thereby generating a design with reduction executed horizontally across the columns. 
+1. `col_wise_vector_reduce_max.py`: An `@iron.jit`-decorated IRON design that limits the number of cores per column, generating a design with reduction executed horizontally across the columns.
 
 <br><img src="assets/Multi-col.png" alt="Multi-column Design" width="1250"/>
 
-2. `row_wise_vector_reduce_max.py`: An alternative design `col_wise_vector_reduce_max.py` using the (default) maximum number of cores per column wiht the Sequential Placer, thereby generating a design with reduction executed verticallly across the rows. 
-
-3. `row_wise_vector_reduce_max_placed.py`: A version of `row_wise_vector_reduce_max.py` expressed in a lower-level version of IRON. 
+2. `row_wise_vector_reduce_max.py`: An alternative to `col_wise_vector_reduce_max.py` using the maximum number of cores per column, generating a design with reduction executed vertically across the rows.
 
 <br><img src="assets/Multi-col-row-wise.png" alt="Multi-column Design" width="500"/>
 
@@ -30,16 +28,11 @@ Both BF16 and INT32 data types are supported, leveraging kernels from `reduce_ma
 
 ### Compilation
 
-To compile the design (default is the cascade design):
+The two variants are selected with the `VARIANT` Makefile variable (default: `col_wise`):
 
 ```shell
-make
-```
-
-To compile the placed design:
-
-```shell
-env use_placed=1 make
+make                            # builds VARIANT=col_wise
+env VARIANT=row_wise make
 ```
 
 To compile the C++ testbench:
@@ -47,18 +40,21 @@ To compile the C++ testbench:
 ```shell
 make vector_reduce_max.exe
 ```
+
 ### C++ Testbench
 
 To run the design:
 
 ```shell
-make run
+make run                        # runs VARIANT=col_wise
+env VARIANT=row_wise make run
 ```
 
 ### Trace
 
-To generate a [trace file](../../../programming_guide/section-4/section-4b/README.md) for the default cascade design:
+To generate a [trace file](../../../programming_guide/section-4/section-4b/README.md):
 
 ```shell
-make trace
+make trace                      # traces VARIANT=col_wise
+env VARIANT=row_wise make trace
 ```

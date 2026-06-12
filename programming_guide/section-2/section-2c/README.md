@@ -144,9 +144,9 @@ When using the implicit copy feature of the Object FIFO for a join or distribute
 
 The runtime sequence uses another representation of data layout transformations named `Tensor Access Pattern`, or `tap`, which is available in the `taplib` library on AIEs with IRON. An in-depth introduction to `taplib` is available [here](../../../programming_examples/basic/tiling_exploration/README.md).
 
-Runtime sequence operations such as `fill()` and `drain()` at the highest IRON abstraction level, or `dma_wait` and `npu_dma_memcpy_nd` at the placed level, can optionally take a `tap` as input to change the access pattern to/from external memory on-the-fly. For more details on programming the runtime sequence please see the corresponding [section](../section-2d/README.md).
+Runtime sequence operations such as `fill()` and `drain()` in IRON, or `dma_wait` and `npu_dma_memcpy_nd` in the AIE dialect, can optionally take a `tap` as input to change the access pattern to/from external memory on-the-fly. For more details on programming the runtime sequence please see the corresponding [section](../section-2d/README.md).
 
-Examples containing `tap`s are available in the [programming_examples](../../../programming_examples/). A few notable ones are [dma_transpose](../../../programming_examples/basic/dma_transpose/) and [row_wise_bias_add](../../../programming_examples/basic/row_wise_bias_add/).
+Examples containing `tap`s are available in the [programming_examples](../../../programming_examples/). A few notable ones are [transposes](../../../programming_examples/basic/transposes/) (specifically `--strategy=dma`) and [row_wise_bias_add](../../../programming_examples/basic/row_wise_bias_add/).
 
 -----
 [[Prev - Section 2b](../section-2b/)] [[Up](..)] [[Next - Section 2d](../section-2d/)]

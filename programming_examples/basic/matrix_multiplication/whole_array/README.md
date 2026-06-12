@@ -18,53 +18,44 @@ At a high level, the code does the following (in order):
 
 1. [**Constructing an AIE Array Configuration:**](#2-constructing-an-aie-array-configuration) The NPU hardware is comprised of components laid out in a two-dimensional grid of rows and columns. Based on the matrix sizes and tiling factors, we choose the number of rows, columns, and total number of compute cores of the AIE device that the design should utilize. We then configure the AI Engine array, memory tiles, and shim tiles.
 
-1. [**Defining Data Movement Inside the NPU:**](#3-defining-data-movement-inside-the-npu) ObjectFIFOs are a data movement abstraction for buffering data and synchronizing between AIE components. We configure ObjectFIFOs for `A`, `B` and `C` to transfer and buffer data between AIE components in chunks of the previously defined sizes (`m`&times;`k`, `k`&times;`n` and `m`&times;`n`, respecively).
+1. [**Defining Data Movement Inside the NPU:**](#3-defining-data-movement-inside-the-npu) ObjectFifos are a data movement abstraction for buffering data and synchronizing between AIE components. We configure ObjectFifos for `A`, `B` and `C` to transfer and buffer data between AIE components in chunks of the previously defined sizes (`m`&times;`k`, `k`&times;`n` and `m`&times;`n`, respectively).
 
-1. [**Defining Core Computations:**](#4-defining-core-computations) The `core_body()` function contains the code that will be loaded onto each AIE core. This code describes the matrix multiplication using the input submatrices `a` and `b` acquired through the ObjectFIFOs. The results are accumulated in the output submatrix `c`.
+1. [**Defining Core Computations:**](#4-defining-core-computations) The `core_fn()` function — wrapped in a `Worker` — contains the code that will be loaded onto each AIE core. This code calls the matrix-multiply microkernel from the library (`kernels.mm`) on the input sub-matrix elements acquired through the ObjectFifos, accumulating into the output sub-matrix.
 
-1. [**Defining External Data Transfer Sequences:**](#5-defining-external-data-transfer-sequences) The `aie.runtime_sequence()` op sets up matrix data movement from the host into the AIE compute cores, and back to the host after computation. It initializes Direct Memory Access (DMA) transfers, sets memory access patterns, and performs synchronization.
+1. [**Defining External Data Transfer Sequences:**](#5-defining-external-data-transfer-sequences) `Runtime.sequence()` sets up matrix data movement from the host into the AIE compute cores, and back to the host after computation, via `rt.fill()` / `rt.drain()` calls that consume `TensorTiler2D`-generated access patterns.
 
-1. **Generating the Design:** The `my_matmul()` function triggers the code generation process and represents the main entry point of the design. The final print statement outputs the MLIR representation of the AIE array configuration.
+1. **Generating the Design:** The `_build_design()` function constructs the IRON design and resolves it to an MLIR module. The `@iron.jit`-decorated `whole_array()` is the single entry point for compilation; `main()` either compiles + runs on hardware or compiles ahead-of-time to caller-specified xclbin/insts paths (used by the Makefile so `test.cpp` + `sweep.sh` can drive the design).  The `generate_taps()` helper calls into the same design body to produce TAP sequences for the visualization notebook.
 
 In summary, this design leverages an AI Engine accelerator to accomplish matrix multiplication efficiently by breaking large matrices into smaller, manageable submatrices. The design uses parallelism, pipelining, and efficient data movement strategies to minimize computation time on the AI Engine array.
 
 ## Building and Running the Design
 
-With the default configuration, this design will set up an array of AIEs to perform matrix-matrix multiplication on a `int16` input data type (`int32` output). The tiling size is configured as `64` &times; `64` for `a`, `b`, and `c` by default.
+With the default configuration, this design will set up an array of AIEs to perform matrix-matrix multiplication on an `int16` input data type (`int32` output). The tiling size is configured as `64` &times; `64` for `a`, `b`, and `c` by default.
 
-You will need C++23 for `bfloat16_t` support in the `test.cpp`, which can be found in `g++-13`: [https://lindevs.com/install-g-on-ubuntu](https://lindevs.com/install-g-on-ubuntu)
+The Python source ([`whole_array.py`](./whole_array.py)) supports two execution paths:
 
-To compile and run the design:
+* **`make`-driven, with `test.cpp` host harness:** the Makefile invokes Python with `--xclbin-path` / `--insts-path` so the JIT pipeline writes artifacts straight to `build/`; `test.cpp` then runs against them. All existing lit configs and the matmul sweep go through this path. You will need C++23 for `bfloat16_t` support in the `test.cpp`, which can be found in `g++-13`: [https://lindevs.com/install-g-on-ubuntu](https://lindevs.com/install-g-on-ubuntu).
 
-```shell
-make
-make whole_array.exe
-make run
-```
+  ```shell
+  make
+  make run
+  ```
 
-To compile and run the placed design with tiling:
+* **Direct Python run + verify:** invoke the script with no `--xclbin-path` and it compiles + runs on the attached NPU in one step, verifying against a numpy reference. Useful for fast iteration and avoids the C++ test harness entirely.
 
-```shell
-env use_placed=1 make
-env use_placed=1 make whole_array.exe
-env use_placed=1 make run
-```
+  ```shell
+  python3 whole_array.py                            # default 4-col i16/i16, 512x512x512
+  python3 whole_array.py --c-col-maj 1              # column-major C output
+  python3 whole_array.py --b-col-maj 1              # column-major B input
+  python3 whole_array.py --dtype_in bf16 --dtype_out bf16
+  python3 whole_array.py --help                     # full flag list
+  ```
 
-To compile and run the placed design with higher-level IRON:
-
-```shell
-env use_iron=1 make
-env use_iron=1 make whole_array.exe
-env use_iron=1 make run
-```
+Both paths share one design body and one set of `@iron.jit` compile machinery — the only difference is whether artifacts land in `build/` (for `test.cpp`) or in the JIT cache (for direct run).
 
 ## Detailed Design Explanation
 
-The configuration of the AI Engine array is described in the [`whole_array.py`](./whole_array.py) file. There are two placed versions of this design:
-* [`whole_array_placed.py`](./whole_array_placed.py): This design integrates some data visualization tools for runtime data movement, which can be viewed using the accompanying [notebook](./mat_mul_whole_array_visualization.ipynb). It also features the use of placed instructions in the runtime sequence but is intended to be functionally equivalent to the orginal design.
-* [`whole_array_iron.py`](./whole_array_iron.py): This design uses a higher-level version of IRON but is also intended to be functionally equivalent. Note that this design does not support tracing at this time.
-
-It is linked against a compute microkernel which is implemented in C++.
+The configuration of the AI Engine array is described in the [`whole_array.py`](./whole_array.py) file, which uses the IRON high-level builders (`Worker` / `Runtime` / `Program`) and is decorated with `@iron.jit`. The design is linked against a compute microkernel which is implemented in C++. The accompanying [notebook](./mat_mul_whole_array_visualization.ipynb) provides data-movement visualization for the runtime sequence (driven by the same source file via the `generate_taps()` helper).
 The following sections elaborate on each of the steps outlined in the high-level summary above.
 
 > Note: The term "tile" has two distinct meanings in the following discussion that should be distinguishable from context:
@@ -86,7 +77,7 @@ The input and output matrix sizes are given by the user. We subdivide the input 
 
 1. **Tiling to Compute Core Submatrix Chunks:** The input and output matrices stream to/from the AIE compute cores in chunks of size of `m`&times;`k`, `k`&times;`n` and `n`&times;`m`. Tiling into these chunks allows each of the computation cores to concurrently work on distinct sub-sections of the input matrices in parallel, which improves performance. This also reduces on-chip memory requirements. The final result is re-assembled using the sub-matrix results of all cores.
 
-    > This tiling occurs in the `aie.runtime_sequence()` operation describing the host-to-memory-tile transfer.
+    > This tiling occurs in the `Runtime.sequence()` body's host-to-memtile `rt.fill()` calls.
 We describe it further below, in section *"5. Defining External Data Transfer Sequences"*.
 
 1. **Tiling to Vector Intrinsic Size:** The AIE compute cores calculate the matrix multiplication using efficient "multiply-accumulate" vector intrinsic instructions (`MAC` instructions). These hardware instructions process very small blocks of the matrix: size `r`&times;`s` blocks of `A` and size `s`&times;`t` blocks of  `B`, producing an output of size `r`&times;`t` (`C`). 
@@ -96,60 +87,51 @@ We describe it further below, in section *"5. Defining External Data Transfer Se
 
 ### 2. Constructing an AIE Array Configuration
 
-In the next section of the code, we obtain handles to the components of the hardware. 
+The Neural Processing Unit (NPU) is physically structured as an array of 6 rows and 4 columns (or up to 8 columns on NPU2 / Strix).  The lower two rows contain so-called "shim" and "memory" tiles, and the upper four rows are made up of AIE compute cores:
 
-The Neural Processing Unit (NPU) is physically structured as an array of 6 rows and 4 columns. The lower two rows contain so-called "shim" and "memory" tiles, and the upper four rows are made up of AIE compute cores (AIEs):
+1. **Shim tiles** (row 0): interface with the external host for data movement.
 
-1. **Shim tiles:** A single row of shim tiles on the bottom of the core array is responsible for interfacing with the external host for data movement. In our code, they are represented by a list: `[_0_ShimTile, _1_ShimTile, _2_ShimTile, _3_ShimTile]`
+1. **Memory tiles** (row 1): scratchpad memory that stages and distributes data during processing.
 
-1. **Memory tiles:** A row of memory tiles with scratchpad memory is located above the shim tiles. These memory cores are responsible for staging and distributing the data during processing. In our code, they are represented by a list: `[_0_MemTile, _1_MemTile, _2_MemTile, _3_MemTile]`
+1. **Compute tiles** (rows 2–5): the AIE cores that run the matmul microkernel.  Across `n_aie_cols` columns × 4 rows we get a 4 × `n_aie_cols` grid of cores (16 by default with `n_aie_cols=4`).
 
-1. **Compute tiles:** In each of the four columns, there are 4 rows of computation tiles above the memory tiles. This makes for a total of 16 computation cores, which in this design are configured to perform the matrix multiplication. In our code, they are represented by a list of lists, `cores`, showing their two-dimensional arrangement.
+In IRON we don't usually enumerate tiles by name.  Instead, the design picks the device family (and column count) via `from_name(opts.dev, n_cols=…)`, builds explicit `Tile(col, row)` handles where needed (for the per-worker placement and for the shim/memtile endpoints of `ObjectFifo.split()` / `forward()` / `join()` calls), and lets the rest of the placement fall out of the FIFO topology:
+
+```python
+core_tiles = tiles[2:]                # rows 2..5: compute tiles
+# ...
+workers.append(Worker(core_fn, [...], tile=Tile(tile_col, tile_row)))
+```
+
+The 4 × `n_aie_cols` `workers` list is the design's "tile grid"; each `Worker` is implicitly pinned to one compute tile.
 
 ### 3. Defining Data Movement Inside the NPU: 
 
-We use "ObjectFIFOs" to abstractly describe the data movement and synchronization between AIE Compute, Memory and Shim tiles. ObjectFIFOs present an interface that behaves like a First-In-First-Out queue. To achieve this, they take care of DMA configuration, acquiring and releasing locks, and managing buffers. 
+We use `ObjectFifo`s to abstractly describe the data movement and synchronization between AIE Compute, Memory and Shim tiles. An `ObjectFifo` presents a First-In-First-Out interface; under the hood it takes care of DMA configuration, lock acquisition / release, and double-buffering.
 
-There are several ObjectFIFOs used in this design, which are created using the `object_fifo()` Python binding:
+The design names FIFOs after the level-of-hierarchy hop they implement (L3 = host DDR / shim, L2 = memtile, L1 = compute tile):
 
-1. Host &rightarrow; Memory Tiles: `inA_fifos`, `inB_fifos` move the input matrices from the external host (via the shim tiles) in row 0 to the memory tiles in row 1.
+1. **Host → Memory tiles (L3 → L2):** `A_l3l2_fifos[i]` / `B_l3l2_fifos[col]` move the input matrices from the host through the shim tiles into the memtiles.
 
-2. Memory Tiles &rightarrow; Compute Tiles: `memA_fifos`, `memB_fifos` move input data from the memory tiles in row 1 to the compute tiles in rows 2-5.
+2. **Memory tiles → Compute tiles (L2 → L1):** `A_l2l1_fifos[row]` / `B_l2l1_fifos[col]` deliver each compute tile's `(m, k)` / `(k, n)` sub-matrix.  These are *derived* from the corresponding L3↔L2 FIFOs — there is no separate hand-wired `object_fifo_link` in the IRON version.  Instead, you call `.cons().split(...)` on the L3↔L2 producer FIFO (for A) or `.cons().forward(...)` (for B), and IRON emits the equivalent staged transfer.
 
-3. Compute Tiles &rightarrow; Memory Tiles &rightarrow; Host: Analogously, `memC_fifos` and `OutC_fifos` move the output data out from the compute cores to the memory tiles (`memC_fifos`) and from there out to the external host via the shim tiles (`OutC_fifos`).
+3. **Compute tiles → Memory tiles → Host (L1 → L2 → L3):** `C_l1l2_fifos[row][col]` move per-tile `(m, n)` results into the memtile, and `C_l2l3_fifos[col]` from the memtile back to the shim.  The L1↔L2 set is built via `C_l2l3_fifos[col].prod().join(...)` — again, the link is implicit in the construction.
 
-Each of `inA_fifos`, `inB_fifos`, `OutC_fifos`, `memA_fifos`, `memB_fifos` and `memC_fifos` are Python dictionaries, containing a separate ObjectFIFO instance for each column of AIE compute cores in the array. The respective `*_names` lists contain the names of these ObjectFIFOs.
+Concretely, for matrix A the chain looks like (simplified):
 
-Of note is the `object_fifo_link()` operation. This operation establishes a connection between the `mem*` FIFOs and the `in*` and `outC` FIFOs. By linking ObjectFIFOs, the output received at one end of the source FIFO is fed as input into the ObjectFIFO listed as the destination.
+```python
+A_l3l2_fifos[i] = ObjectFifo(A_l2_ty, name=f"A_L3L2_{i}", depth=fifo_depth)
+A_l2l1_fifos[start_row : stop_row] = A_l3l2_fifos[i].cons().split(
+    of_offsets,
+    obj_types=[A_l1_ty] * (stop_row - start_row),
+    dims_to_stream=dims_to_stream,
+    tile=Tile(2 * i if n_aie_cols == 8 else i, 1),  # memtile row 1
+)
+```
+
+`split()` consumes the L3→L2 stream and fans it out into per-compute-row L2→L1 FIFOs; the `dims_to_stream=` argument carries the wraps/strides DMA-layout transform described below.  Matrix B uses `.cons().forward(...)` (1 → 1) since each column gets one shared B sub-tile; matrix C uses `.prod().join(...)` (n_aie_rows → 1) to combine per-row outputs.
 
 [![data movement diagram](diagram.png)](https://excalidraw.com/#room=23df780b85d72d80cbc6,1czLdPr_vK9-OjtxFIWTpw)
-
-<!-- 2. Creation of Object Fifos for Matrix A:
-
-    * The input matrix A is streamed from the host to the AIE array using object fifos. `inA_fifos` and `memA_fifos` are dictionaries created to store the object fifos for input matrix A. `inA_fifo_names` and `memA_fifo_names` are lists storing the names of corresponding object fifos.
-    * For each column `i` in the AIE array:
-        * An object fifo `inA_fifos[inA_fifo_names[i]]` is created to connect the shim tile to the memory tile. The matrix A data is sent from the shim tile to the memory tile using `inA_fifos`.
-        *  An object fifo `memA_fifos[memA_fifo_names[i]]` is created to connect the memory tile to the cores in column `i`. The submatrices of A are sent from the memory tile to each core in column `i` using `memA_fifos`.
-        *  Then, `object_fifo_link()` establishes the connection between those two FIFOs, creating a data movement pipeline. -->
-
-
-<!--
-1. Creation of Object Fifos for Matrix B:
-
-    * The input matrix B is streamed from the host to the AIE array using object fifos. `inB_fifos` and `memB_fifos` are dictionaries created to store the object fifos for input matrix B. `inB_fifo_names` and `memB_fifo_names` are lists storing the names of corresponding object fifos.
-    * For each column `i` in the AIE array:
-        * An object fifo `inB_fifos[inB_fifo_names[i]]` is created to connect the shim tile to the memory tile. The matrix B data is sent from the shim tile to the memory tile using `inB_fifos`.
-        * An object fifo `memB_fifos[memB_fifo_names[i]]` is created to connect the memory tile to the cores in row `i`. The submatrices of B are sent from the memory tile to each core in row `i` using `memB_fifos`.
-        *  Then, `object_fifo_link()` establishes the connection between those two FIFOs, creating a data movement pipeline.
--->
-
-<!--
-2.	Creation of Object Fifos for Matrix C:
-    * The output matrix C is streamed from the AIE array to the host using object fifos. `outC_fifos` is a dictionary created to store the object fifos for output matrix C. `outC_fifo_names` is a list storing the names of corresponding object fifos.
-    * For each column `i` in the AIE array:
-        * An object fifo `memC_fifos[i][memC_fifo_names[i][j]]` is created for each row `j` to connect the cores to the memory tile. The results of the matrix multiplication are sent from each core to the memory tile using `memC_fifos`.
-        * An object fifo `outC_fifos[outC_fifo_names[i]]` is created to connect the memory tile to the shim tile. The output matrix C data is sent from the memory tile to the shim tile using `outC_fifos`.
-    -->
 
 #### Tiling and Data Layout Transformations
 
@@ -157,7 +139,7 @@ We assume our data are stored in **row-major format** in the host's memory. For 
 
 #### Runtime Sequence Tiling and Data Layout Transformations Notebook
 
-There is a notebook that includes visualization for the runtime sequence `npu_dma_memcpy_nd` operations use to transfer matrices A, B, and C.
+There is a notebook that includes visualization for the runtime sequence's `rt.fill` / `rt.drain` shim DMA transfers for matrices A, B, and C — its TAPs come from the same `TensorTiler2D` calls the design uses, surfaced via the design's `generate_taps=True` mode.
 
 To run the notebook:
 * Start a jupyter server at the root directory of your clone of `mlir-aie`.
@@ -173,20 +155,14 @@ To run the notebook:
 * Double click `mat_mul_whole_array_visualization.ipynb` to start the notebook; choose the ipykernel called `ironenv`.
 * You should now be good to go! Note that generating the animations in the notebook can take several minutes.
 
-#### Run the Notebook as a Script
-```bash
-make clean
-make run
-```
-
 ##### Tiling to Vector Intrinsic Size
 
-The `memA_fifos` and `memB_fifos` receive sub-matrices of size `m`&times;`k` and `k`&times;`n`, respectively. The FIFOs translate those matrices from a row-major format (or, placedly, column-major for `B` if `b_col_maj` is set) into the `r`&times;`s`-sized and `s`&times;`t`-sized blocks required by the hardware's vector instrinsics before sending them into the compute cores memory.
+The `A_l2l1_fifos` and `B_l2l1_fifos` deliver sub-matrices of size `m`&times;`k` and `k`&times;`n` to each core.  Along the way the FIFOs translate those matrices from row-major (or column-major for `B` when `b_col_maj` is set) into the `r`&times;`s`-sized and `s`&times;`t`-sized blocks the hardware's MAC vector intrinsics expect.
 
-For matrix A (`memA_fifos`), this transformation is expressed using the following wraps and strides as a list of tuples `(wrap, stride)`, given as arguments to the `object_fifo()` operation:
+For matrix A this transformation is expressed as the `dims_to_stream=` argument passed to `A_l3l2_fifos[i].cons().split(...)`, as a list of `(wrap, stride)` tuples:
 (Note that `//` denotes integer floor-division in Python.)
 
-    
+
 ```python
     [
         (m // r, r * k),   # Pair 1
@@ -217,40 +193,91 @@ Let us break down each component of this pattern. We do so back-to-front for eas
 
 > You can use this [data layout visualizer](http://andreroesti.com/data-layout-viz/data_layout.html) to better understand data layout transformations expressed as wraps and strides.
 
-The matrix B transformation (`memB_fifos`) is equivalent after substituting the correct dimensions (`k`&times;`n` instead of `m`&times;`k` and `s`&times;`t` isntead of `r`&times;`s`). If a column-major layout is used for `B` (argument `b_col_maj` is set), the transformation is analogous but transposed.
+The matrix B transformation (`B_l2l1_fifos`) is equivalent after substituting the correct dimensions (`k`&times;`n` instead of `m`&times;`k` and `s`&times;`t` instead of `r`&times;`s`). If a column-major layout is used for `B` (argument `b_col_maj` is set), the transformation is analogous but transposed.
 
-Analogously, the output matrix C is transformed back from `r`&times;`t`-sized blocks back into a row-major matrix of contiguous rows with size `m`&times;`n`.
+Analogously, the output matrix C is transformed back from `r`&times;`t`-sized blocks into a row-major matrix of contiguous rows of size `m`&times;`n` (or column-major when `c_col_maj` is set), via the `dims_to_stream=` argument on the `C_l2l3_fifos[col]` ObjectFifo constructor.
 
 
 ### 4. Defining Core Computations
 
-The `core_body()` function defines the computation that each core will perform.
-We define a `core_body()` function for each compute core `i`, inside of which we do the following:
+A single `core_fn(in_a, in_b, out_c, zero, matmul)` body is shared by all `4 * n_aie_cols` workers — each `Worker` binds the same function to a different `(row, col)` pair of `ObjectFifo` endpoints plus a tile placement:
 
- * We acquire a slot in the output buffer into which we will produce the next `m`&times;`n`-tile of output in `memC_fifos`. We name the acquired buffer `elem_out`.
- * We zero out the acquired output slot, since it may contain stale results using `call(zero [elem_out])`.
- * `K // k` times, we:
-    * We acquire the next `m`&times;`k`-tile of `A`, and the next `k`&times;`n` tile of `B` from ObjectFIFOs `memA_fifos[i]` and `memB_fifos[i]`, respectively, as `elem_in_a` and `elem_in_b`.
-    * We call our compute microkernel (implemented in C++ and linked against this design) to perform the matrix multiplication calculation, with `call(matmul, [elem_in_a, elem_in_b, elem_out])`.
-    The result is summed element-wise in `elem_out` together with previous iterations.
-    * We release `elem_in_a` and `elem_in_b`.
-* After the complete result for the current `m`&times;`n`-block has been calculated, we can release `elem_out`.
+```python
+def core_fn(in_a, in_b, out_c, zero, matmul):
+    for _ in range_(n_tiles_per_core):
+        elem_out = out_c.acquire(1)
+        zero(elem_out)                                  # clear C tile
+        for _ in range_(K // k):
+            elem_in_a = in_a.acquire(1)
+            elem_in_b = in_b.acquire(1)
+            matmul(elem_in_a, elem_in_b, elem_out)      # accumulate
+            in_a.release(1)
+            in_b.release(1)
+        out_c.release(1)
+
+for row in range(n_aie_rows):
+    for col in range(n_aie_cols):
+        workers.append(Worker(core_fn, [
+            A_l2l1_fifos[row].cons(),
+            B_l2l1_fifos[col].cons(),
+            C_l1l2_fifos[row][col].prod(),
+            zero_kernel,
+            matmul_kernel,
+        ], tile=Tile(*core_tiles[row][col])))
+```
+
+Per output tile, each core: acquires an `m`&times;`n` slot from `C_l1l2_fifos`, zero-initialises it, then for each of the `K // k` k-iterations acquires its next `(m, k)` and `(k, n)` input tiles and calls `matmul(...)`.  Result is accumulated into `elem_out` and released once the full reduction is done.
+
+Both `zero_kernel` and `matmul_kernel` come from the library — `kernels.mm(dim_m=m, dim_k=k, dim_n=n, input_dtype=…, output_dtype=…)` returns the matmul `ExternalFunction` with a `.zero` attribute that pairs the matching zeroing kernel.  See [Compute Microkernels](#compute-microkernels) below for the C++ side.
 
 ### 5. Defining External Data Transfer Sequences
 
-The signature of the `aie.runtime_sequence()` operation lists as its arguments all the external buffers from the host that we wish to read from or write to on the AI Engine's shim tiles. The body of this function describes how these buffers are transfered from and to the host, including tiling the input matrices into `m`&times;`k` and `k`&times;`n`-sized sub-matrices, and combining the `m`&times;`n`-sized output tiles into the larger output `M`&times;`N` matrix buffer.
+`rt.sequence(A_ty, B_ty, C_ty)` opens a host-side block whose handles (`A`, `B`, `C`) stand in for the three external buffers on the AIE's shim tiles.  Inside that block, `rt.fill(fifo.prod(), buffer, tap=tap)` and `rt.drain(fifo.cons(), buffer, tap=tap)` describe the per-shim DMA transfers — `tap` is a `TensorAccessPattern` that encodes the wraps/strides for tiling `M`&times;`K`, `K`&times;`N`, and `M`&times;`N` into the sub-matrices the in-array FIFOs expect.
 
-* The `tb` variable segments the M (rows of A) into smaller chunks, each containing `tb_max_rows` tile rows. This is done so the buffer descriptors (BDs) can be reused for efficient DMA transfers.
-* For each column `i`:
-    * For each `tile_row` in the current row block:
-        * The DMA transfer function `npu_dma_memcpy_nd` loads a segment of matrix A and matrix B data (submatrix a, submatrix b) from the host into the corresponding `inA_fifos` for the respective column, maintaining the appropriate strides and offsets.
-        * Analogously to the data layout transformations described [further above](#tiling-and-data-layout-transformations) to translate a `m`&times;`k` matrix into blocks of `r`&times;`s`-submatrices, this transfer translates the input `M`&times;`K` and `K`&times;`N` matrices into submatrices of size `m`&times;`k` and `k`&times;`n`.
-    * The DMA transfer function `npu_dma_memcpy_nd` sends a segment of matrix C data (submatrix c) from the corresponding `outC_fifos` for the respective column, back to the host while maintaining the appropriate strides and offsets.
-    * After completing DMA transfers for each column, `dma_wait` is used to synchronize their completion.
+The full set of TAPs is produced once via `TensorTiler2D`:
 
-The aforementioned transfers of rows of tiles of the `A` matrix are further split into a "ping" and a "pong" phase.
-This allows us to reconfigure half of the buffer descriptors used for transferring `A` concurrently with the other half running (transferring data).
-This interleaved design improves performance thanks to overlapped reconfiguration and data movement, especially if there is a large number of rows of tiles of `A`.
+```python
+A_tiles = TensorTiler2D.group_tiler(
+    (M, K), (m * n_A_tiles_per_shim, k), (1, K // k),
+    pattern_repeat=N // n // n_aie_cols, prune_step=False)
+B_tiles = TensorTiler2D.step_tiler(
+    (K, N), (k, n),
+    tile_group_repeats=(K // k, N // n // n_aie_cols),
+    tile_group_steps=(1, n_aie_cols), tile_group_col_major=True,
+    prune_step=False)
+C_tiles = TensorTiler2D.step_tiler(
+    (M, N), (m * n_aie_rows, n),
+    tile_group_repeats=(tb_n_rows, N // n // n_aie_cols),
+    tile_group_steps=(1, n_aie_cols), prune_step=False)
+```
+
+(The two `b_col_maj=1` / `c_col_maj=1` branches build slightly different `step_tiler` configs that emit the col-major DMA pattern.)
+
+The runtime body then walks the tile-row blocks with explicit ping-pong:
+
+```python
+tg = rt.task_group()
+for tb in range(ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
+    for pingpong in [0, 1]:
+        for col in range(n_aie_cols):
+            rt.drain(C_l2l3_fifos[col].cons(), C, tap=C_tiles[c_index],
+                     wait=True, task_group=tg, tile=Tile(col, 0))
+            c_index += 1
+            for tile_row in range(current_tb_n_rows):
+                # interleave A and B fills with the C drain
+                rt.fill(A_l3l2_fifos[col].prod(), A,
+                        tap=A_tiles[…], task_group=tg, tile=Tile(…, 0))
+                rt.fill(B_l3l2_fifos[col].prod(), B,
+                        tap=B_tiles[col], task_group=tg, tile=Tile(col, 0))
+        if tb > 0 or pingpong > 0:
+            rt.finish_task_group(tg)        # awaits half the BDs
+            tg = rt.task_group()            # opens the next half
+rt.finish_task_group(tg)
+```
+
+The two-phase `task_group` open/finish dance is the IRON equivalent of the old "ping/pong" buffer-descriptor split: while half the shim DMA BDs are still running, the other half are being reconfigured for the next set of tiles.  This overlap is what keeps the array fed.
+
+`tb_max_n_rows` controls how many tile-rows live in one ping-pong half; `tb_n_rows = tb_max_n_rows // 2` is the number of A row-blocks per half.  Setting either parameter too low starves the cores; too high overflows the shim DMA BD pool.
 
 ## Compute Microkernels
 

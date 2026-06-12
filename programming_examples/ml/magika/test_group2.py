@@ -5,16 +5,19 @@
 #
 # Copyright (C) 2024, Advanced Micro Devices, Inc.
 
-import sys
+import argparse
 import math
-
-import time
 import os
-import numpy as np
-import aie.utils.test as test_utils
-import aie.iron as iron
-from aie.utils import TraceConfig, HostRuntime, NPUKernel, DefaultNPURuntime
+import sys
+import time
 from pathlib import Path
+
+import ml_dtypes
+import numpy as np
+
+import aie.iron as iron
+from aie.utils import DefaultNPURuntime, HostRuntime, NPUKernel, TraceConfig
+from aie.utils.hostruntime.argparse import add_runtime_args
 
 
 def get_evm(array_len, gold, dut):
@@ -94,8 +97,6 @@ def main(opts):
     # ------------------------------------------------------
     # Reorder input data-layout
     # ------------------------------------------------------
-    import ml_dtypes
-
     before_input_orig = int_inp.astype(dtype_in)
     before_input_orig.tofile(log_folder + "/before_g2_orig.txt", sep=",", format="%d")
 
@@ -181,6 +182,7 @@ def main(opts):
 
 
 if __name__ == "__main__":
-    p = test_utils.create_default_argparser()
+    p = argparse.ArgumentParser()
+    add_runtime_args(p, with_io_sizes=True)
     opts = p.parse_args(sys.argv[1:])
     main(opts)

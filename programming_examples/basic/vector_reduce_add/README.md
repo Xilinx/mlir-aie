@@ -4,49 +4,39 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2024, Advanced Micro Devices, Inc.
-// 
+// Copyright (C) 2024-2026, Advanced Micro Devices, Inc.
+//
 //===----------------------------------------------------------------------===//-->
 
 # Vector Reduce Add:
 
-Single tile performs a very simple reduction operation where the kernel loads data from local memory, performs the `add` reduction and stores the resulting value back.
+A single AIE compute tile performs a simple reduction: it sums an `N`-element `int32` input vector into a `1`-element `int32` output.  Input data is brought to the local memory of the Compute tile via a Shim tile (default `N = 1024`), the reduction is performed in one kernel invocation, and the single output value is copied back to the Shim tile.
 
-Input data is brought to the local memory of the Compute tile via a Shim tile. The size of the input data `N` from the Shim tile is `1024xi32`. The data is copied to the AIE tile, where the reduction is performed. The single output data value is copied from the AIE tile to the Shim tile.
+The design body is a single `aie.iron.algorithms.reduce_typed(reduce_add_vector, in_ty, out_ty)` call; the algorithms library handles the ObjectFifo / Worker / Runtime plumbing for the reduce shape (whole-input single-kernel-call).
 
 ## Source Files Overview
 
-1. `vector_reduce_add.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc` to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI). 
+1. `vector_reduce_add.py`: An `@iron.jit`-decorated design that delegates its dataflow body to `aie.iron.algorithms.reduce_typed`.  Supports standalone (`python3 vector_reduce_add.py`) and compile-only (`--xclbin-path` / `--insts-path`, used by the `Makefile`) modes.
 
-1. `vector_reduce_add_placed.py`: An alternative version of the design in `vector_reduce_add.py`, that is expressed in a lower-level version of IRON.
+1. `reduce_add.cc`: A C++ implementation of a vectorized `add` reduction for AIE cores. The kernel uses the AIE API, documented [here](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/index.html).  Source: [here](../../../aie_kernels/aie2/reduce_add.cc).
 
-1. `reduce_add.cc`: A C++ implementation of a vectorized `add` reduction operation for AIE cores. The code uses the AIE API, which is a C++ header-only library providing types and operations that get translated into efficient low-level intrinsics, and whose documentation can be found [here](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/index.html).  The source can be found [here](../../../aie_kernels/aie2/reduce_add.cc).
-
-1. `test.cpp`: This C++ code is a testbench for the design example targetting Ryzen™ AI (AIE2). The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the program verifies the results.
+1. `test.cpp`: C++ testbench. Loads the compiled XCLBIN, supplies input, runs on the NPU, and verifies the result.
 
 ## Ryzen™ AI Usage
 
-### Compilation
+### Standalone
 
-To compile the design:
+```shell
+python3 vector_reduce_add.py
+```
+
+`-d npu2` for Strix; `-n` to override the input length.
+
+### Makefile + C++ testbench
+
 ```shell
 make
-```
-
-To compile the placed design:
-```shell
-env use_placed=1 make
-```
-
-To compile the C++ testbench:
-```shell
-make vector_reduce_add.exe
-```
-
-### C++ Testbench
-
-To run the design:
-```shell
 make run
 ```
 
+For NPU2 (Strix): `make devicename=npu2 && make run devicename=npu2`.

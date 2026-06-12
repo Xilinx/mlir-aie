@@ -457,7 +457,38 @@ class Tensor(ABC):
         return t
 
     @classmethod
-    def randint(cls, low, high, size, *, out=None, dtype=None, device=None, **kwargs):
+    def full(cls, size, fill_value, *, out=None, dtype=None, device=None, **kwargs):
+        """
+        Returns a tensor of shape `size` filled with `fill_value`.
+
+        Args:
+            size (int or tuple/list of int): Shape of the returned tensor.
+            fill_value (scalar): Value to fill the tensor with.
+            out (Tensor, optional): Optional output tensor to write into.
+            dtype (np.dtype, optional): Desired dtype. Defaults to np.float32.
+            device (str, optional): Target device. Defaults to 'npu'.
+            **kwargs: Additional keyword args.
+
+        Returns:
+            Tensor: A tensor filled with `fill_value`.
+        """
+        t = cls.__check_or_create(size, out=out, dtype=dtype, device=device, **kwargs)
+        t.fill_(fill_value)
+        return t
+
+    @classmethod
+    def randint(
+        cls,
+        low,
+        high,
+        size,
+        *,
+        out=None,
+        dtype=None,
+        device=None,
+        generator=None,
+        **kwargs,
+    ):
         """
         Returns a tensor filled with random integers uniformly sampled from [low, high).
 
@@ -468,6 +499,8 @@ class Tensor(ABC):
             out (Tensor, optional): Optional tensor to write the result into.
             dtype (np.dtype, optional): Data type. Defaults to np.int64.
             device (str, optional): Target device. Defaults to 'npu'.
+            generator (np.random.Generator, optional): Source RNG for reproducibility.
+                If None, uses np.random module-level state.
             **kwargs: Additional arguments passed to the constructor.
 
         Returns:
@@ -477,7 +510,10 @@ class Tensor(ABC):
         device = device or cls.DEFAULT_DEVICE
 
         t = cls.__check_or_create(size, out=out, dtype=dtype, device=device, **kwargs)
-        random_val = np.random.randint(low, high, size=size, dtype=dtype)
+        if generator is not None:
+            random_val = generator.integers(low, high, size=size, dtype=dtype)
+        else:
+            random_val = np.random.randint(low, high, size=size, dtype=dtype)
         if size == ():
             t.data.fill(random_val)
         else:
@@ -487,7 +523,7 @@ class Tensor(ABC):
         return t
 
     @classmethod
-    def rand(cls, *size, out=None, dtype=None, device=None, **kwargs):
+    def rand(cls, *size, out=None, dtype=None, device=None, generator=None, **kwargs):
         """
         Returns a tensor filled with random numbers from a uniform distribution on [0, 1).
 
@@ -496,6 +532,8 @@ class Tensor(ABC):
             out (Tensor, optional): Output tensor to write into.
             dtype (np.dtype, optional): Desired data type. Defaults to np.float32.
             device (str, optional): Target device. Defaults to 'npu'.
+            generator (np.random.Generator, optional): Source RNG for reproducibility.
+                If None, uses np.random module-level state.
             **kwargs: Additional arguments passed to constructor.
 
         Returns:
@@ -507,7 +545,10 @@ class Tensor(ABC):
         device = device or cls.DEFAULT_DEVICE
 
         t = cls.__check_or_create(*size, out=out, dtype=dtype, device=device, **kwargs)
-        random_val = np.random.uniform(0.0, 1.0, size=t.shape).astype(dtype)
+        if generator is not None:
+            random_val = generator.uniform(0.0, 1.0, size=t.shape).astype(dtype)
+        else:
+            random_val = np.random.uniform(0.0, 1.0, size=t.shape).astype(dtype)
         # Ensure values are < 1.0 for low-precision types
         is_bfloat16 = False
         try:
@@ -532,21 +573,32 @@ class Tensor(ABC):
 
     @classmethod
     def arange(
-        cls, start=0, end=None, step=1, *, out=None, dtype=None, device=None, **kwargs
+        cls,
+        start=0,
+        end=None,
+        step=1,
+        *,
+        shape=None,
+        out=None,
+        dtype=None,
+        device=None,
+        **kwargs,
     ):
         """
-        Returns a 1-D tensor with values from the interval [start, end) with spacing `step`.
+        Returns a tensor with values from the interval [start, end) with spacing `step`.
 
         Args:
             start (number): Start of interval. Defaults to 0.
             end (number): End of interval (exclusive). Required if only one argument is given.
             step (number): Gap between elements. Defaults to 1.
+            shape (tuple, optional): If given, reshape the 1-D sequence to this shape.
+                `prod(shape)` must equal the length of the generated range.
             dtype (np.dtype, optional): Desired output data type. Inferred if not provided.
             out (Tensor, optional): Optional tensor to write output to (must match shape and dtype).
             device (str, optional): Target device. Defaults to 'npu'.
 
         Returns:
-            Tensor: 1-D tensor containing the sequence.
+            Tensor: Tensor containing the sequence (1-D by default, or `shape` if given).
         """
 
         if end is None:
@@ -562,8 +614,19 @@ class Tensor(ABC):
 
         data = np.arange(start, end, step, dtype=dtype)
 
+        if shape is not None:
+            shape = tuple(shape)
+            if int(np.prod(shape)) != data.size:
+                raise ValueError(
+                    f"iron.arange: shape={shape} (prod={int(np.prod(shape))}) does "
+                    f"not match generated range size {data.size}"
+                )
+            data = data.reshape(shape)
+        else:
+            shape = (data.size,)
+
         if out is not None:
-            if out.shape != (data.size,) or out.dtype != dtype or out.device != device:
+            if out.shape != shape or out.dtype != dtype or out.device != device:
                 raise ValueError(
                     "Provided `out` tensor must match shape, dtype, and device"
                 )
@@ -572,7 +635,7 @@ class Tensor(ABC):
                 out._sync_to_device()
             return out
 
-        t = cls((data.size,), dtype=dtype, device=device, **kwargs)
+        t = cls(shape, dtype=dtype, device=device, **kwargs)
         t.data[...] = data
         if device == "npu":
             t._sync_to_device()

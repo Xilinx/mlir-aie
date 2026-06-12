@@ -1,58 +1,35 @@
 ##===- Makefile -----------------------------------------------------------===##
-# 
+#
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-# 
+#
 ##===----------------------------------------------------------------------===##
+#
+# distribute_and_join_L2.py runs end-to-end on the NPU (`make run` /
+# `make emit-mlir`).  join_L2.py is structural-only and is built via
+# `make emit-mlir-join` (no NPU run path; no compute to verify).
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../../../programming_examples/makefile-common
 
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
-targetname ?= distribute_and_join_L2
 
-aie_py_src=${targetname}.py
-use_placed?=0
+.PHONY: all run emit-mlir emit-mlir-join clean
 
-ifeq (${use_placed}, 1)
-aie_py_src=${targetname}_placed.py
-endif
+all: run
 
-all: build/final.xclbin
+run:
+	${powershell} python3 ${srcdir}/distribute_and_join_L2.py --dev ${devicename}
 
-build/aie.mlir: ${srcdir}/${aie_py_src}
-	mkdir -p ${@D}
-	python3 $< ${devicename} > $@
+emit-mlir:
+	mkdir -p build
+	${powershell} python3 ${srcdir}/distribute_and_join_L2.py --dev ${devicename} --emit-mlir > build/aie.mlir
 
-.PHONY: inst/insts.bin
-inst/insts.bin: ${srcdir}/${aie_py_src}
-	rm -rf inst
-	mkdir -p inst 
-	python3 $< ${LENGTH} > inst/aie.mlir
-	pushd inst && aiecc --aie-only-generate-npu --npu-insts-name=insts.bin aie.mlir && popd
-	${powershell} ./build/${targetname}.exe -x build/final.xclbin -i inst/insts.bin -k MLIR_AIE -l ${LENGTH}
-
-build/final.xclbin: build/aie.mlir
-	mkdir -p ${@D}
-	cd ${@D} && aiecc --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
-				--no-xchesscc --no-xbridge \
-				--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
-
-${targetname}.exe: ${srcdir}/test.cpp
-	rm -rf _build
-	mkdir -p _build
-	cd _build && ${powershell} cmake -E env CXXFLAGS="-std=c++23 -ggdb" cmake `${getwslpath} ${srcdir}` -D CMAKE_C_COMPILER=${CC} -D CMAKE_CXX_COMPILER=${CXX} -DTARGET_NAME=${targetname} 
-	cd _build && ${powershell} cmake --build . --config Release
-ifeq "${powershell}" "powershell.exe"
-	cp _build/${targetname}.exe $@
-else
-	cp _build/${targetname} $@ 
-endif
-
-run: ${targetname}.exe build/final.xclbin
-	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
+emit-mlir-join:
+	mkdir -p build
+	${powershell} python3 ${srcdir}/join_L2.py --dev ${devicename} --emit-mlir > build/aie_join.mlir
 
 clean:
-	rm -rf build _build ${targetname}.exe
+	rm -rf build

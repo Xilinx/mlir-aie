@@ -5,15 +5,19 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
-"""Abstract base class for objects that lower to MLIR operations."""
+"""Structural protocol for objects that lower to MLIR operations."""
 
-from abc import ABC, abstractmethod
+from typing import Protocol, runtime_checkable
 
 from .. import ir  # type: ignore
 
 
-class Resolvable(ABC):
-    @abstractmethod
+# Structural typing via @runtime_checkable Protocol: any class with both
+# .resolve() and .tiles() passes isinstance(x, Resolvable).  The two-method
+# requirement is the safeguard against false positives from classes that
+# happen to define an unrelated .resolve() (e.g. pathlib.Path).
+@runtime_checkable
+class Resolvable(Protocol):
     def resolve(
         self,
         loc: ir.Location | None = None,
