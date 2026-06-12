@@ -225,38 +225,45 @@ public:
   DmaToNpuPattern(MLIRContext *context, PatternBenefit benefit = 1)
       : OpConversionPattern(context, benefit) {}
 
+  // Shim DMA allocation info resolved from the op's metadata symbol, shared by
+  // both BD-lowering paths.
+  struct ShimInfo {
+    AIE::ShimDMAAllocationOp infoOp;
+    AIE::TileOp shimTile;
+    AIE::DMAChannelDir channelDir;
+    bool isMM2S;
+    int tileCol;
+    int tileRow;
+  };
+
   LogicalResult
   matchAndRewrite(NpuDmaMemcpyNdOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    const auto &targetModel = AIE::getTargetModel(op);
-    BaseMemRefType bufferType = op.getMemref().getType();
-    auto *ctx = op->getContext();
-    auto i32ty = IntegerType::get(ctx, 32);
-    auto zero = IntegerAttr::get(i32ty, 0);
-    auto memref = adaptor.getMemref();
-
     auto dev = op->getParentOfType<AIE::DeviceOp>();
     if (!dev)
       return failure();
 
     auto infoOp = AIE::ShimDMAAllocationOp::getForSymbol(
         dev, op.getMetadata().getRootReference());
-    if (!infoOp) {
+    if (!infoOp)
       return op->emitOpError("couldn't find shim_dma_allocation op.");
-    }
 
     AIE::TileOp shimTile = infoOp.getTileOp();
-    if (!shimTile) {
+    if (!shimTile)
       return op->emitOpError(
           "shim_dma_allocation op must reference a valid TileOp.");
-    }
 
-    auto channelDir = infoOp.getChannelDir();
-    bool isMM2S = channelDir == AIE::DMAChannelDir::MM2S;
-    int tileCol = shimTile.getCol();
-    int tileRow = shimTile.getRow();
+    AIE::DMAChannelDir channelDir = infoOp.getChannelDir();
+    ShimInfo shim{infoOp,
+                  shimTile,
+                  channelDir,
+                  channelDir == AIE::DMAChannelDir::MM2S,
+                  shimTile.getCol(),
+                  shimTile.getRow()};
 
-    // Check whether all sizes and strides are compile-time constants.
+    // All-constant sizes/strides take the static path (a single blockwrite of
+    // the BD template); any SSA size/stride takes the dynamic path (per-word
+    // write32 overrides computed with arith ops).
     bool allSizesConstant =
         llvm::all_of(op.getMixedSizes(), [](OpFoldResult s) {
           return getConstantIntValue(s).has_value();
@@ -266,7 +273,28 @@ public:
           return getConstantIntValue(s).has_value();
         });
 
-    if (allSizesConstant && allStridesConstant) {
+    if (allSizesConstant && allStridesConstant)
+      return lowerStaticBd(op, adaptor, rewriter, shim);
+    return lowerDynamicBd(op, adaptor, rewriter, shim);
+  }
+
+  // Lower a fully-constant DMA descriptor: emit a single npu.writebd (rendered
+  // downstream as a blockwrite), an address_patch for the buffer pointer, and a
+  // queue push.
+  LogicalResult lowerStaticBd(NpuDmaMemcpyNdOp op, OpAdaptor adaptor,
+                              ConversionPatternRewriter &rewriter,
+                              const ShimInfo &shim) const {
+    const auto &targetModel = AIE::getTargetModel(op);
+    BaseMemRefType bufferType = op.getMemref().getType();
+    auto *ctx = op->getContext();
+    auto i32ty = IntegerType::get(ctx, 32);
+    auto zero = IntegerAttr::get(i32ty, 0);
+    auto memref = adaptor.getMemref();
+    AIE::ShimDMAAllocationOp infoOp = shim.infoOp;
+    bool isMM2S = shim.isMM2S;
+    int tileCol = shim.tileCol;
+    int tileRow = shim.tileRow;
+    {
       // =====================================================================
       // STATIC CODE PATH -- all sizes/strides are constants
       // =====================================================================
@@ -518,16 +546,30 @@ public:
       rewriter.eraseOp(op);
       return success();
     }
+  }
 
-    // =====================================================================
-    // DYNAMIC CODE PATH -- some sizes/strides are SSA values
-    // =====================================================================
-    // We cannot use NpuWriteBdOp (which expects all-constant fields).
-    // Instead, we compute the BD words using arith ops and emit:
-    //   1. npu_blockwrite with a static BD template (all-zero or partial)
-    //   2. npu_write32_dynamic for each BD word that depends on SSA values
-    //   3. npu_address_patch for the buffer pointer (same as static path)
-    //   4. npu_write32_dynamic for queue push if repeat_count is dynamic
+  // Lower a DMA descriptor with one or more SSA (runtime) sizes/strides. The BD
+  // words are computed with arith ops and emitted as:
+  //   1. npu.blockwrite with a static BD template,
+  //   2. npu.write32 (tagged with bd_group) for each BD word depending on an
+  //      SSA value,
+  //   3. npu.address_patch for the buffer pointer (same as the static path),
+  //   4. npu.write32 for the queue push when repeat_count is dynamic.
+  LogicalResult lowerDynamicBd(NpuDmaMemcpyNdOp op, OpAdaptor adaptor,
+                               ConversionPatternRewriter &rewriter,
+                               const ShimInfo &shim) const {
+    const auto &targetModel = AIE::getTargetModel(op);
+    BaseMemRefType bufferType = op.getMemref().getType();
+    auto *ctx = op->getContext();
+    auto i32ty = IntegerType::get(ctx, 32);
+    auto zero = IntegerAttr::get(i32ty, 0);
+    auto memref = adaptor.getMemref();
+    AIE::ShimDMAAllocationOp infoOp = shim.infoOp;
+    AIE::TileOp shimTile = shim.shimTile;
+    AIE::DMAChannelDir channelDir = shim.channelDir;
+    bool isMM2S = shim.isMM2S;
+    int tileCol = shim.tileCol;
+    int tileRow = shim.tileRow;
 
     // Currently only ShimNOC tiles are supported for the dynamic path
     if (!targetModel.isShimNOCTile(tileCol, tileRow)) {
@@ -572,6 +614,10 @@ public:
     // values, so we compute an SSA Value for the offset.
     bool allOffsetsConstant =
         llvm::all_of(op.getMixedOffsets(), [](OpFoldResult s) {
+          return getConstantIntValue(s).has_value();
+        });
+    bool allStridesConstant =
+        llvm::all_of(op.getMixedStrides(), [](OpFoldResult s) {
           return getConstantIntValue(s).has_value();
         });
     int64_t staticOffset = subviewOffset;
@@ -880,11 +926,11 @@ public:
         bdAddr + targetModel.getDmaBdAddressOffset(tileCol, tileRow);
     // arg_plus is an SSA operand: a runtime value when the offset is dynamic,
     // otherwise an arith.constant carrying the static offset.
-    Value argPlus = dynOffset
-                        ? dynOffset
-                        : arith::ConstantIntOp::create(
-                              rewriter, loc, rewriter.getI32Type(),
-                              static_cast<int32_t>(staticOffset));
+    Value argPlus =
+        dynOffset
+            ? dynOffset
+            : arith::ConstantIntOp::create(rewriter, loc, rewriter.getI32Type(),
+                                           static_cast<int32_t>(staticOffset));
     NpuAddressPatchOp::create(rewriter, loc, static_cast<uint32_t>(patchAddr),
                               static_cast<uint32_t>(arg_idx), argPlus);
 
@@ -1013,8 +1059,7 @@ public:
     // column_num, row_num) so the generated IR reads top-to-bottom.
     Value column = cst(shimTile.getCol());
     Value row = cst(shimTile.getRow());
-    Value direction =
-        cst(static_cast<int32_t>(shimDmaAllocOp.getChannelDir()));
+    Value direction = cst(static_cast<int32_t>(shimDmaAllocOp.getChannelDir()));
     Value channel = cst(shimDmaAllocOp.getChannelIndex());
     Value columnNum = cst(1);
     Value rowNum = cst(1);
