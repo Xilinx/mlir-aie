@@ -463,9 +463,14 @@ emitTransactionOps(OpBuilder &builder, Location fallbackLoc,
   for (auto [op, payload] : llvm::zip(operations, global_data)) {
     Location loc = op.sourceLoc.value_or(fallbackLoc);
 
+    Type i32 = builder.getI32Type();
+    auto cst = [&](uint32_t v) -> Value {
+      return arith::ConstantIntOp::create(builder, loc, i32, v);
+    };
     if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_WRITE) {
-      AIEX::NpuWrite32Op::create(builder, loc, op.cmd.RegOff, op.cmd.Value,
-                                 nullptr, nullptr, nullptr);
+      AIEX::NpuWrite32Op::create(builder, loc, cst(op.cmd.RegOff),
+                                 cst(op.cmd.Value), nullptr, nullptr, nullptr,
+                                 /*bd_group=*/nullptr);
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_BLOCKWRITE) {
       auto memref = memref::GetGlobalOp::create(builder, loc, payload.getType(),
                                                 payload.getName());
@@ -473,18 +478,15 @@ emitTransactionOps(OpBuilder &builder, Location fallbackLoc,
           builder, loc, builder.getUI32IntegerAttr(op.cmd.RegOff),
           memref.getResult(), nullptr, nullptr, nullptr);
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_MASKWRITE) {
-      AIEX::NpuMaskWrite32Op::create(builder, loc, op.cmd.RegOff, op.cmd.Value,
-                                     op.cmd.Mask, nullptr, nullptr, nullptr);
+      AIEX::NpuMaskWrite32Op::create(builder, loc, cst(op.cmd.RegOff),
+                                     cst(op.cmd.Value), cst(op.cmd.Mask),
+                                     nullptr, nullptr, nullptr);
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_TCT) {
       if (!op.sync) {
         llvm::errs() << "Missing sync payload while emitting transaction\n";
         return failure();
       }
       const TransactionBinaryOperation::SyncPayload &sync = *op.sync;
-      Type i32 = builder.getI32Type();
-      auto cst = [&](int32_t v) -> Value {
-        return arith::ConstantIntOp::create(builder, loc, i32, v);
-      };
       Value column = cst(sync.column);
       Value row = cst(sync.row);
       Value direction = cst(sync.direction);
@@ -520,13 +522,10 @@ emitTransactionOps(OpBuilder &builder, Location fallbackLoc,
       }
       const TransactionBinaryOperation::AddressPatchPayload &patch =
           *op.addressPatch;
-      Value argPlus = arith::ConstantIntOp::create(
-          builder, loc, builder.getI32Type(),
-          static_cast<int32_t>(patch.argPlus));
       AIEX::NpuAddressPatchOp::create(builder, loc,
                                       builder.getUI32IntegerAttr(patch.addr),
                                       builder.getI32IntegerAttr(patch.argIdx),
-                                      argPlus);
+                                      cst(patch.argPlus));
     } else if (op.cmd.Opcode == 0x6 /*  XAie_TxnOpcode::XAIE_IO_PREEMPT */) {
       auto ui8Ty =
           IntegerType::get(builder.getContext(), 8, IntegerType::Unsigned);

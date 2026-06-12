@@ -35,8 +35,8 @@ module  {
 // CHECK: module
 // CHECK: aiex.npu.address_patch
 // CHECK-SAME: arg_idx = 0 : i32
+// CHECK: %{{.+}} = arith.constant -2147483647 : i32
 // CHECK: aiex.npu.write32
-// CHECK-SAME: value = 2147483649
 // sync(column, row, direction, channel, column_num, row_num) = (0, 0, 0, 0, 1, 1)
 // CHECK: %[[COL:.+]] = arith.constant 0 : i32
 // CHECK: %[[ROW:.+]] = arith.constant 0 : i32
@@ -62,8 +62,8 @@ module  {
 // CHECK: aiex.npu.blockwrite
 // CHECK: aiex.npu.address_patch
 // CHECK-SAME: arg_idx = 0 : i32
+// CHECK: %{{.+}} = arith.constant -2147483647 : i32
 // CHECK: aiex.npu.write32
-// CHECK-SAME: value = 2147483649
 // sync(column, row, direction, channel, column_num, row_num) = (1, 0, 1, 1, 1, 1)
 // CHECK: %[[COL:.+]] = arith.constant 1 : i32
 // CHECK: %[[ROW:.+]] = arith.constant 0 : i32
@@ -86,13 +86,17 @@ module  {
 // -----
 
 // CHECK: runtime_sequence
-// CHECK: aiex.npu.write32 {address = 2098576 : ui32, value = 1234 : ui32}
+// CHECK-DAG: %[[WA0:.+]] = arith.constant 2098576 : i32
+// CHECK-DAG: %[[WV0:.+]] = arith.constant 1234 : i32
+// CHECK: aiex.npu.write32(%[[WA0]], %[[WV0]])
 module {
   aie.device(npu1_1col) {
     %tile02 = aie.tile(0,2)
     %data = aie.buffer(%tile02) {address = 1024 : i32, sym_name = "data"} : memref<128xi32>
     aie.runtime_sequence() {
-      aiex.npu.write32 {buffer = @data, address = 100 : ui32, value = 1234 : ui32}
+      %addr = arith.constant 100 : i32
+      %val = arith.constant 1234 : i32
+      aiex.npu.write32(%addr, %val) {buffer = @data} : i32, i32
     }
   }
 }
@@ -116,13 +120,19 @@ module {
 // -----
 
 // CHECK: runtime_sequence
-// CHECK: aiex.npu.maskwrite32 {address = 3147552 : ui32, mask = 65535 : ui32, value = 321 : ui32}
+// CHECK-DAG: %[[MWA:.+]] = arith.constant 3147552 : i32
+// CHECK-DAG: %[[MWV:.+]] = arith.constant 321 : i32
+// CHECK-DAG: %[[MWM:.+]] = arith.constant 65535 : i32
+// CHECK: aiex.npu.maskwrite32(%[[MWA]], %[[MWV]], %[[MWM]])
 module {
   aie.device(npu1_1col) {
     %tile03 = aie.tile(0,3)
     %s = aie.buffer(%tile03) {address = 1024 : i32, sym_name = "stuff"} : memref<128xi32>
     aie.runtime_sequence() {
-      aiex.npu.maskwrite32 {buffer = @stuff, address = 200 : ui32, value = 321 : ui32, mask = 0xffff : ui32}
+      %addr = arith.constant 200 : i32
+      %val = arith.constant 321 : i32
+      %mask = arith.constant 0xffff : i32
+      aiex.npu.maskwrite32(%addr, %val, %mask) {buffer = @stuff} : i32, i32, i32
     }
   }
 }

@@ -114,10 +114,12 @@ module {
       // Static N=4096; second rtp_write value is the derived %n+1 = 4097.
       %c4096_i32 = arith.constant 4096 : i32
       %c4097_i32 = arith.constant 4097 : i32
-      aiex.npu.rtp_write(@rtp, 0 : ui32, %c4096_i32) : i32
-      aiex.npu.rtp_write(@rtp, 4 : ui32, %c4097_i32) : i32
+      aiex.npu.rtp_write(@rtp, 0, %c4096_i32) : i32
+      aiex.npu.rtp_write(@rtp, 4, %c4097_i32) : i32
 
-      aiex.npu.write32 {address = 196612 : ui32, value = 42 : ui32}
+      %w32_addr = arith.constant 196612 : i32
+      %w32_val = arith.constant 42 : i32
+      aiex.npu.write32(%w32_addr, %w32_val) : i32, i32
 
       %c0   = arith.constant    0 : i64
       %c1   = arith.constant    1 : i64

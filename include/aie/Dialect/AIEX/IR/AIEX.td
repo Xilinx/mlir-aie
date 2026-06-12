@@ -776,19 +776,16 @@ def AIE_NpuWriteRTPOp: AIEX_Op<"npu.rtp_write", []> {
   let arguments = (
     ins FlatSymbolRefAttr:$buffer,
         UI32Attr:$index,
-        OptionalAttr<I32Attr>:$value,
-        Optional<I32>:$dyn_value
+        I32:$value
   );
   let results = (outs );
-  let hasCustomAssemblyFormat = 1;
-  let hasVerifier = 1;
-  let description = [{
-    rtp write operator.
-    When `dyn_value` is provided, it supplies the RTP value at runtime
-    instead of the static `value` attribute.
+  let assemblyFormat = [{
+    `(` $buffer `,` $index `,` $value `)` attr-dict `:` type($value)
   }];
-  let extraClassDeclaration = [{
-    bool hasDynamicValue() { return getDynValue() != nullptr; }
+  let description = [{
+    rtp write operator. `value` is an SSA operand; use arith.constant for a
+    compile-time-known value or pass a runtime sequence value to supply the RTP
+    value at runtime.
   }];
 }
 
@@ -815,100 +812,70 @@ def AIE_NpuPushQueueOp: AIEX_Op<"npu.push_queue", []> {
 }
 
 // WRITE32
-def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", [AttrSizedOperandSegments]> {
+def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", []> {
   let summary = "write32 operator";
   let arguments = (
-    ins UI32Attr:$address,
-        UI32Attr:$value,
+    ins I32:$address,
+        I32:$value,
         OptionalAttr<FlatSymbolRefAttr>:$buffer,
         OptionalAttr<I32Attr>:$column,
         OptionalAttr<I32Attr>:$row,
-        Optional<AnySignlessInteger>:$dyn_address,
-        Optional<AnySignlessInteger>:$dyn_value,
         OptionalAttr<UI32Attr>:$bd_group
   );
   let results = (outs );
-  let hasCustomAssemblyFormat = 1;
+  let assemblyFormat = [{
+    `(` $address `,` $value `)` attr-dict `:` type($address) `,` type($value)
+  }];
   let hasVerifier = 1;
   let description = [{
     NPU write32 operator writes a 32bit value to the AIE array.
+
+    'address' and 'value' are SSA operands; use arith.constant for
+    compile-time-known values or pass runtime sequence values for
+    runtime-parameterized sequences.
+
     If 'buffer' is present then 'address' is interpreted as an offset into the
     aie.buffer with symbol name 'buffer'.
     If 'column' and 'row' are present then 'address' is interpreted as an offset
     into the memory space of aie.tile(column, row).
     If 'buffer' is not present and 'column' and 'row' are not present then
     'address' is interpreted as a full 32-bit address in the AIE array.
-
-    Optionally, SSA values can be provided for 'dyn_address' and 'dyn_value'
-    to enable runtime-parameterized sequences. When dynamic operands are present,
-    the static attributes serve as placeholders (typically 0) and the SSA values
-    are used instead.
 
     When 'bd_group' is present, this write32 overrides a word within the BD at
     the given base address. The EmitC conversion uses this to fuse the override
     into the parent blockwrite, producing a single TXN blockwrite instruction.
 
-    Static syntax: `aiex.npu.write32 {address = 123 : ui32, value = 456 : ui32}`
-    Dynamic syntax: `aiex.npu.write32(%addr, %val) {address = 0 : ui32, value = 0 : ui32} : i32, i32`
+    Syntax: `aiex.npu.write32(%addr, %val) : i32, i32`
   }];
   let extraClassDeclaration = [{
+    // Compile-time absolute address, or nullopt if 'address' is not constant.
     std::optional<uint32_t> getAbsoluteAddress();
-    bool hasDynamicOperands() { return getDynAddress() != nullptr; }
   }];
-  let builders = [
-    OpBuilder<(ins "uint32_t":$address, "uint32_t":$value,
-               "mlir::FlatSymbolRefAttr":$buffer,
-               "mlir::IntegerAttr":$column, "mlir::IntegerAttr":$row), [{
-      build($_builder, $_state,
-            $_builder.getUI32IntegerAttr(address),
-            $_builder.getUI32IntegerAttr(value),
-            buffer, column, row,
-            /*dyn_address=*/Value(), /*dyn_value=*/Value(),
-            /*bd_group=*/mlir::IntegerAttr());
-    }]>,
-    OpBuilder<(ins "mlir::IntegerAttr":$address, "mlir::IntegerAttr":$value,
-               "mlir::FlatSymbolRefAttr":$buffer,
-               "mlir::IntegerAttr":$column, "mlir::IntegerAttr":$row), [{
-      build($_builder, $_state,
-            address, value,
-            buffer, column, row,
-            /*dyn_address=*/Value(), /*dyn_value=*/Value(),
-            /*bd_group=*/mlir::IntegerAttr());
-    }]>,
-    OpBuilder<(ins "uint32_t":$address, "uint32_t":$value,
-               "mlir::FlatSymbolRefAttr":$buffer,
-               "mlir::IntegerAttr":$column, "mlir::IntegerAttr":$row,
-               "mlir::Value":$dyn_address, "mlir::Value":$dyn_value,
-               "uint32_t":$bd_group_addr), [{
-      build($_builder, $_state,
-            $_builder.getUI32IntegerAttr(address),
-            $_builder.getUI32IntegerAttr(value),
-            buffer, column, row,
-            dyn_address, dyn_value,
-            $_builder.getUI32IntegerAttr(bd_group_addr));
-    }]>
-  ];
 }
 
 // MASKWRITE
-def AIE_NpuMaskWrite32Op: AIEX_Op<"npu.maskwrite32", [AttrSizedOperandSegments]> {
+def AIE_NpuMaskWrite32Op: AIEX_Op<"npu.maskwrite32", []> {
   let summary = "Write a masked 32-bit value to the AIE array";
   let arguments = (
-    ins UI32Attr:$address,
-        UI32Attr:$value,
-        UI32Attr:$mask,
+    ins I32:$address,
+        I32:$value,
+        I32:$mask,
         OptionalAttr<FlatSymbolRefAttr>:$buffer,
         OptionalAttr<I32Attr>:$column,
-        OptionalAttr<I32Attr>:$row,
-        Optional<AnySignlessInteger>:$dyn_address,
-        Optional<AnySignlessInteger>:$dyn_value,
-        Optional<AnySignlessInteger>:$dyn_mask
+        OptionalAttr<I32Attr>:$row
   );
   let results = (outs );
-  let hasCustomAssemblyFormat = 1;
+  let assemblyFormat = [{
+    `(` $address `,` $value `,` $mask `)` attr-dict `:` type($address) `,` type($value) `,` type($mask)
+  }];
   let hasVerifier = 1;
   let description = [{
     NPU mask write32 operator writes a masked 32bit value to the AIE array.
+
+    'address', 'value', and 'mask' are SSA operands; use arith.constant for
+    compile-time-known values or pass runtime sequence values for
+    runtime-parameterized sequences.
+
     If 'buffer' is present then 'address' is interpreted as an offset into the
     aie.buffer with symbol name 'buffer'.
     If 'column' and 'row' are present then 'address' is interpreted as an offset
@@ -916,37 +883,12 @@ def AIE_NpuMaskWrite32Op: AIEX_Op<"npu.maskwrite32", [AttrSizedOperandSegments]>
     If 'buffer' is not present and 'column' and 'row' are not present then
     'address' is interpreted as a full 32-bit address in the AIE array.
 
-    Optionally, SSA values can be provided for 'dyn_address', 'dyn_value', and
-    'dyn_mask' to enable runtime-parameterized sequences.
-
-    Static syntax: `aiex.npu.maskwrite32 {address = 123 : ui32, ...}`
-    Dynamic syntax: `aiex.npu.maskwrite32(%addr, %val, %mask) {address = 0 : ui32, ...} : i32, i32, i32`
+    Syntax: `aiex.npu.maskwrite32(%addr, %val, %mask) : i32, i32, i32`
   }];
   let extraClassDeclaration = [{
+    // Compile-time absolute address, or nullopt if 'address' is not constant.
     std::optional<uint32_t> getAbsoluteAddress();
-    bool hasDynamicOperands() { return getDynAddress() != nullptr; }
   }];
-  let builders = [
-    OpBuilder<(ins "uint32_t":$address, "uint32_t":$value, "uint32_t":$mask,
-               "mlir::FlatSymbolRefAttr":$buffer,
-               "mlir::IntegerAttr":$column, "mlir::IntegerAttr":$row), [{
-      build($_builder, $_state,
-            $_builder.getUI32IntegerAttr(address),
-            $_builder.getUI32IntegerAttr(value),
-            $_builder.getUI32IntegerAttr(mask),
-            buffer, column, row,
-            /*dyn_address=*/Value(), /*dyn_value=*/Value(), /*dyn_mask=*/Value());
-    }]>,
-    OpBuilder<(ins "mlir::IntegerAttr":$address, "mlir::IntegerAttr":$value,
-               "mlir::IntegerAttr":$mask,
-               "mlir::FlatSymbolRefAttr":$buffer,
-               "mlir::IntegerAttr":$column, "mlir::IntegerAttr":$row), [{
-      build($_builder, $_state,
-            address, value, mask,
-            buffer, column, row,
-            /*dyn_address=*/Value(), /*dyn_value=*/Value(), /*dyn_mask=*/Value());
-    }]>
-  ];
 }
 
 // BLOCKWRITE

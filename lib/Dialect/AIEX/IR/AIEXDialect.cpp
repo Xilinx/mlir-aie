@@ -715,8 +715,14 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
 // NpuWrite32Op
 //===----------------------------------------------------------------------===//
 
+// Resolve the absolute hardware address for an npu.* op given its raw address
+// offset. `buffer`/`column`/`row` come from the op's attributes; the address
+// offset is supplied by the caller (a constant attribute for blockwrite /
+// update_from_scratchpad, or a constant extracted from the SSA `address`
+// operand for write32 / maskwrite32).
 template <typename T>
-static std::optional<uint32_t> getAbsoluteAddress(T *op) {
+static std::optional<uint32_t> getAbsoluteAddress(T *op,
+                                                  uint32_t addressOffset) {
   AIE::DeviceOp device =
       op->getOperation()->template getParentOfType<AIE::DeviceOp>();
   if (!device) {
@@ -747,11 +753,11 @@ static std::optional<uint32_t> getAbsoluteAddress(T *op) {
     uint32_t col = buffer.getTileOp().getCol();
     uint32_t row = buffer.getTileOp().getRow();
     address = static_cast<uint32_t>(*buffer.getAddress()) +
-              op->getAddress() * sizeof(uint32_t);
+              addressOffset * sizeof(uint32_t);
     address = ((col & 0xff) << tm.getColumnShift()) |
               ((row & 0xff) << tm.getRowShift()) | (address & 0xfffff);
   } else { // otherwise, the given address is absolute
-    address = op->getAddress();
+    address = addressOffset;
     std::optional<uint32_t> col = op->getColumn();
     std::optional<uint32_t> row = op->getRow();
     if (col && row) {
@@ -766,9 +772,10 @@ static std::optional<uint32_t> getAbsoluteAddress(T *op) {
 }
 
 std::optional<uint32_t> AIEX::NpuWrite32Op::getAbsoluteAddress() {
-  if (hasDynamicOperands())
+  std::optional<uint32_t> addressOffset = getConstantIntOperand(getAddress());
+  if (!addressOffset)
     return std::nullopt;
-  return ::getAbsoluteAddress(this);
+  return ::getAbsoluteAddress(this, *addressOffset);
 }
 
 //===----------------------------------------------------------------------===//
@@ -776,7 +783,7 @@ std::optional<uint32_t> AIEX::NpuWrite32Op::getAbsoluteAddress() {
 //===----------------------------------------------------------------------===//
 
 std::optional<uint32_t> AIEX::NpuUpdateFromScratchpadOp::getAbsoluteAddress() {
-  return ::getAbsoluteAddress(this);
+  return ::getAbsoluteAddress(this, getAddress());
 }
 
 LogicalResult AIEX::NpuUpdateFromScratchpadOp::verify() {
@@ -805,74 +812,13 @@ LogicalResult AIEX::NpuUpdateFromScratchpadOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// NpuWrite32Op parse/print/verify
+// NpuWrite32Op verify
 //===----------------------------------------------------------------------===//
 
-ParseResult AIEX::NpuWrite32Op::parse(OpAsmParser &parser,
-                                      OperationState &result) {
-  SmallVector<OpAsmParser::UnresolvedOperand, 2> dynOperands;
-  SmallVector<Type, 2> dynTypes;
-
-  bool hasDynamic = false;
-  if (succeeded(parser.parseOptionalLParen())) {
-    hasDynamic = true;
-    OpAsmParser::UnresolvedOperand addr, val;
-    if (parser.parseOperand(addr) || parser.parseComma() ||
-        parser.parseOperand(val) || parser.parseRParen())
-      return failure();
-    dynOperands.push_back(addr);
-    dynOperands.push_back(val);
-  }
-
-  if (parser.parseOptionalAttrDict(result.attributes))
-    return failure();
-
-  if (hasDynamic) {
-    if (parser.parseColon() || parser.parseType(dynTypes.emplace_back()) ||
-        parser.parseComma() || parser.parseType(dynTypes.emplace_back()))
-      return failure();
-    if (parser.resolveOperand(dynOperands[0], dynTypes[0], result.operands) ||
-        parser.resolveOperand(dynOperands[1], dynTypes[1], result.operands))
-      return failure();
-  }
-
-  result.addAttribute("operandSegmentSizes",
-                      parser.getBuilder().getDenseI32ArrayAttr(
-                          {hasDynamic ? 1 : 0, hasDynamic ? 1 : 0}));
-
-  return success();
-}
-
-void AIEX::NpuWrite32Op::print(OpAsmPrinter &p) {
-  if (hasDynamicOperands()) {
-    p << '(' << getDynAddress() << ", " << getDynValue() << ')';
-  }
-  p.printOptionalAttrDict((*this)->getAttrs(),
-                          /*elidedAttrs=*/{"operandSegmentSizes"});
-  if (hasDynamicOperands()) {
-    p << " : " << getDynAddress().getType() << ", " << getDynValue().getType();
-  }
-}
-
 LogicalResult AIEX::NpuWrite32Op::verify() {
-  bool hasAddr = getDynAddress() != nullptr;
-  bool hasVal = getDynValue() != nullptr;
-  if (hasAddr != hasVal)
+  if (getBuffer() && (getColumn() || getRow()))
     return emitOpError(
-        "dynamic operands must be provided together (both or neither)");
-
-  if (hasAddr) {
-    auto addrType = getDynAddress().getType();
-    auto valType = getDynValue().getType();
-    if (auto intType = dyn_cast<IntegerType>(addrType)) {
-      if (intType.getWidth() != 32)
-        return emitOpError("dynamic address must be a 32-bit integer");
-    }
-    if (auto intType = dyn_cast<IntegerType>(valType)) {
-      if (intType.getWidth() != 32)
-        return emitOpError("dynamic value must be a 32-bit integer");
-    }
-  }
+        "either 'buffer' or 'column'/'row' may be specified, not both");
   return success();
 }
 
@@ -929,187 +875,22 @@ LogicalResult AIEX::NpuCreateScratchpadOp::verify() {
   return success();
 }
 
-//===----------------------------------------------------------------------===//
-// NpuWriteRTPOp parse/print/verify
-//===----------------------------------------------------------------------===//
-
-ParseResult AIEX::NpuWriteRTPOp::parse(OpAsmParser &parser,
-                                       OperationState &result) {
-  if (parser.parseLParen())
-    return failure();
-
-  FlatSymbolRefAttr bufferAttr;
-  if (parser.parseAttribute(bufferAttr))
-    return failure();
-  result.addAttribute("buffer", bufferAttr);
-
-  if (parser.parseComma())
-    return failure();
-
-  IntegerAttr indexAttr;
-  if (parser.parseAttribute(indexAttr))
-    return failure();
-  auto ui32Type = parser.getBuilder().getIntegerType(32, /*isSigned=*/false);
-  if (indexAttr.getType() != ui32Type)
-    indexAttr = IntegerAttr::get(ui32Type, indexAttr.getInt());
-  result.addAttribute("index", indexAttr);
-
-  if (parser.parseComma())
-    return failure();
-
-  OpAsmParser::UnresolvedOperand dynVal;
-  bool hasDynamic = false;
-
-  auto optResult = parser.parseOptionalOperand(dynVal);
-  if (optResult.has_value()) {
-    if (failed(*optResult))
-      return failure();
-    hasDynamic = true;
-  } else {
-    IntegerAttr valueAttr;
-    if (parser.parseAttribute(valueAttr))
-      return failure();
-    auto i32Type = parser.getBuilder().getIntegerType(32);
-    if (valueAttr.getType() != i32Type)
-      valueAttr = IntegerAttr::get(i32Type, valueAttr.getInt());
-    result.addAttribute("value", valueAttr);
-  }
-
-  if (parser.parseRParen())
-    return failure();
-
-  if (hasDynamic) {
-    Type dynType;
-    if (parser.parseColon() || parser.parseType(dynType))
-      return failure();
-    if (parser.resolveOperand(dynVal, dynType, result.operands))
-      return failure();
-  }
-
-  if (parser.parseOptionalAttrDict(result.attributes))
-    return failure();
-
-  return success();
-}
-
-void AIEX::NpuWriteRTPOp::print(OpAsmPrinter &p) {
-  p << "(";
-  p.printAttribute(getBufferAttr());
-  p << ", ";
-  p.printAttribute(getIndexAttr());
-  p << ", ";
-  if (hasDynamicValue()) {
-    p.printOperand(getDynValue());
-    p << ")";
-  } else {
-    p.printAttribute(getValueAttr());
-    p << ")";
-  }
-
-  if (hasDynamicValue()) {
-    p << " : " << getDynValue().getType();
-  }
-
-  SmallVector<StringRef> elidedAttrs = {"buffer", "index",
-                                        "operandSegmentSizes"};
-  if (!hasDynamicValue())
-    elidedAttrs.push_back("value");
-  p.printOptionalAttrDict((*this)->getAttrs(), elidedAttrs);
-}
-
-LogicalResult AIEX::NpuWriteRTPOp::verify() {
-  bool hasStaticVal = getValueAttr() != nullptr;
-  bool hasDynVal = getDynValue() != nullptr;
-
-  if (hasStaticVal == hasDynVal)
-    return emitOpError(
-        "exactly one of 'value' (static) or 'dyn_value' (dynamic) "
-        "must be provided");
-
-  return success();
-}
 
 //===----------------------------------------------------------------------===//
 // NpuMaskWrite32Op
 //===----------------------------------------------------------------------===//
 
 std::optional<uint32_t> AIEX::NpuMaskWrite32Op::getAbsoluteAddress() {
-  if (hasDynamicOperands())
+  std::optional<uint32_t> addressOffset = getConstantIntOperand(getAddress());
+  if (!addressOffset)
     return std::nullopt;
-  return ::getAbsoluteAddress(this);
-}
-
-/// Parse: `aiex.npu.maskwrite32(%addr, %val, %mask) {attrs} : type, type, type`
-/// or:    `aiex.npu.maskwrite32 {attrs}`
-ParseResult AIEX::NpuMaskWrite32Op::parse(OpAsmParser &parser,
-                                          OperationState &result) {
-  SmallVector<OpAsmParser::UnresolvedOperand, 3> dynOperands;
-  SmallVector<Type, 3> dynTypes;
-
-  bool hasDynamic = false;
-  if (succeeded(parser.parseOptionalLParen())) {
-    hasDynamic = true;
-    OpAsmParser::UnresolvedOperand addr, val, mask;
-    if (parser.parseOperand(addr) || parser.parseComma() ||
-        parser.parseOperand(val) || parser.parseComma() ||
-        parser.parseOperand(mask) || parser.parseRParen())
-      return failure();
-    dynOperands.push_back(addr);
-    dynOperands.push_back(val);
-    dynOperands.push_back(mask);
-  }
-
-  if (parser.parseOptionalAttrDict(result.attributes))
-    return failure();
-
-  if (hasDynamic) {
-    if (parser.parseColon() || parser.parseType(dynTypes.emplace_back()) ||
-        parser.parseComma() || parser.parseType(dynTypes.emplace_back()) ||
-        parser.parseComma() || parser.parseType(dynTypes.emplace_back()))
-      return failure();
-    for (unsigned i = 0; i < 3; ++i)
-      if (parser.resolveOperand(dynOperands[i], dynTypes[i], result.operands))
-        return failure();
-  }
-
-  // Set operand segment sizes: [dyn_address, dyn_value, dyn_mask]
-  int seg = hasDynamic ? 1 : 0;
-  result.addAttribute(
-      "operandSegmentSizes",
-      parser.getBuilder().getDenseI32ArrayAttr({seg, seg, seg}));
-
-  return success();
-}
-
-void AIEX::NpuMaskWrite32Op::print(OpAsmPrinter &p) {
-  if (hasDynamicOperands()) {
-    p << '(' << getDynAddress() << ", " << getDynValue() << ", " << getDynMask()
-      << ')';
-  }
-  p.printOptionalAttrDict((*this)->getAttrs(),
-                          /*elidedAttrs=*/{"operandSegmentSizes"});
-  if (hasDynamicOperands()) {
-    p << " : " << getDynAddress().getType() << ", " << getDynValue().getType()
-      << ", " << getDynMask().getType();
-  }
+  return ::getAbsoluteAddress(this, *addressOffset);
 }
 
 LogicalResult AIEX::NpuMaskWrite32Op::verify() {
-  bool hasAddr = getDynAddress() != nullptr;
-  bool hasVal = getDynValue() != nullptr;
-  bool hasMask = getDynMask() != nullptr;
-  if (hasAddr != hasVal || hasAddr != hasMask)
+  if (getBuffer() && (getColumn() || getRow()))
     return emitOpError(
-        "dynamic operands must be provided together (all or none)");
-
-  if (hasAddr) {
-    for (Value v : {getDynAddress(), getDynValue(), getDynMask()}) {
-      if (auto intType = dyn_cast<IntegerType>(v.getType())) {
-        if (intType.getWidth() != 32)
-          return emitOpError("dynamic operands must be 32-bit integers");
-      }
-    }
-  }
+        "either 'buffer' or 'column'/'row' may be specified, not both");
   return success();
 }
 
@@ -1118,7 +899,7 @@ LogicalResult AIEX::NpuMaskWrite32Op::verify() {
 //===----------------------------------------------------------------------===//
 
 std::optional<uint32_t> AIEX::NpuBlockWriteOp::getAbsoluteAddress() {
-  return ::getAbsoluteAddress(this);
+  return ::getAbsoluteAddress(this, getAddress());
 }
 
 DenseIntElementsAttr AIEX::NpuBlockWriteOp::getDataWords() {

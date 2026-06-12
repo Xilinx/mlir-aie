@@ -311,8 +311,12 @@ module {
     aie.device(npu1) {
     %tile_0_2 = aie.tile(0, 2)
     aie.runtime_sequence() {
-        aiex.npu.write32 {address = 0x32000 : ui32, column = 0 : i32, row = 2 : i32, value = 1 : ui32}
-        aiex.npu.write32 {address = 0x20010 : ui32, column = 0 : i32, row = 2 : i32, value = 0 : ui32}
+        %w32_addr = arith.constant 204800 : i32
+        %w32_val = arith.constant 1 : i32
+        aiex.npu.write32(%w32_addr, %w32_val) {column = 0 : i32, row = 2 : i32} : i32, i32
+        %w32_addr_1 = arith.constant 131088 : i32
+        %w32_val_1 = arith.constant 0 : i32
+        aiex.npu.write32(%w32_addr_1, %w32_val_1) {column = 0 : i32, row = 2 : i32} : i32, i32
     }
     }
 }

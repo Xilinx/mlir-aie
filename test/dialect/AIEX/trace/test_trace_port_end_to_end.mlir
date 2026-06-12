@@ -20,7 +20,11 @@ module {
 }
 
 // CHECK: aie.runtime_sequence @seq
-// CHECK: aiex.npu.write32 {address = 213200
-// CHECK: aiex.npu.write32 {address = 213204
-// CHECK: aiex.npu.write32 {address = 261888
-// CHECK: aiex.npu.write32 {address = 213216
+// CHECK: %[[A0:.+]] = arith.constant 213200 : i32
+// CHECK: aiex.npu.write32(%[[A0]],
+// CHECK: %[[A1:.+]] = arith.constant 213204 : i32
+// CHECK: aiex.npu.write32(%[[A1]],
+// CHECK: %[[A2:.+]] = arith.constant 261888 : i32
+// CHECK: aiex.npu.write32(%[[A2]],
+// CHECK: %[[A3:.+]] = arith.constant 213216 : i32
+// CHECK: aiex.npu.write32(%[[A3]],

@@ -16,7 +16,9 @@
 // CHECK:   aiex.npu.blockwrite(%[[VALUE]]) {address = 118784 : ui32} : memref<8xi32>
 // CHECK: %[[AP0:.+]] = arith.constant 16384 : i32
 // CHECK: aiex.npu.address_patch(%[[AP0]] : i32) {addr = 118788 : ui32, arg_idx = 0 : i32}
-// CHECK:   aiex.npu.write32 {address = 119316 : ui32, value = 0 : ui32}
+// CHECK: %[[WA0:.+]] = arith.constant 119316 : i32
+// CHECK: %[[WV0:.+]] = arith.constant 0 : i32
+// CHECK: aiex.npu.write32(%[[WA0]], %[[WV0]])
 // CHECK: }
 
 module {

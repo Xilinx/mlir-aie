@@ -23,18 +23,29 @@ module {
       %0 = memref.get_global @blockwrite_data_0 : memref<8xi32>
       aiex.npu.blockwrite(%0) {address = 118784 : ui32} : memref<8xi32>
       aiex.npu.address_patch {addr = 118788 : ui32, arg_idx = 2 : i32, arg_plus = 0 : i32}
-      aiex.npu.write32 {address = 119300 : ui32, column = 0 : i32, row = 0 : i32, value = 2147483648 : ui32}
+      %w32_addr = arith.constant 119300 : i32
+      %w32_val = arith.constant 2147483648 : i32
+      aiex.npu.write32(%w32_addr, %w32_val) {column = 0 : i32, row = 0 : i32} : i32, i32
       %1 = memref.get_global @blockwrite_data_2 : memref<6xi32>
       aiex.npu.blockwrite(%1) {address = 2215936 : ui32, column = 0 : i32, row = 2 : i32} : memref<6xi32>
-      aiex.npu.write32 {address = 2219524 : ui32, column = 0 : i32, row = 2 : i32, value = 0 : ui32}
+      %w32_addr_1 = arith.constant 2219524 : i32
+      %w32_val_1 = arith.constant 0 : i32
+      aiex.npu.write32(%w32_addr_1, %w32_val_1) {column = 0 : i32, row = 2 : i32} : i32, i32
       %2 = memref.get_global @blockwrite_data_3 : memref<6xi32>
       aiex.npu.blockwrite(%2) {address = 2215968 : ui32, column = 0 : i32, row = 2 : i32} : memref<6xi32>
-      aiex.npu.write32 {address = 2219540 : ui32, column = 0 : i32, row = 2 : i32, value = 1 : ui32}
+      %w32_addr_2 = arith.constant 2219540 : i32
+      %w32_val_2 = arith.constant 1 : i32
+      aiex.npu.write32(%w32_addr_2, %w32_val_2) {column = 0 : i32, row = 2 : i32} : i32, i32
       %3 = memref.get_global @blockwrite_data_1 : memref<8xi32>
       aiex.npu.blockwrite(%3) {address = 118816 : ui32} : memref<8xi32>
       aiex.npu.address_patch {addr = 118820 : ui32, arg_idx = 0 : i32, arg_plus = 0 : i32}
-      aiex.npu.maskwrite32 {address = 119296 : ui32, column = 0 : i32, mask = 3840 : ui32, row = 0 : i32, value = 256 : ui32}
-      aiex.npu.write32 {address = 119316 : ui32, column = 0 : i32, row = 0 : i32, value = 1 : ui32}
+      %mw_addr_3 = arith.constant 119296 : i32
+      %mw_val_3 = arith.constant 256 : i32
+      %mw_mask_3 = arith.constant 3840 : i32
+      aiex.npu.maskwrite32(%mw_addr_3, %mw_val_3, %mw_mask_3) {column = 0 : i32, row = 0 : i32} : i32, i32, i32
+      %w32_addr_4 = arith.constant 119316 : i32
+      %w32_val_4 = arith.constant 1 : i32
+      aiex.npu.write32(%w32_addr_4, %w32_val_4) {column = 0 : i32, row = 0 : i32} : i32, i32
       %column = arith.constant 0 : i32
       %row = arith.constant 0 : i32
       %direction = arith.constant 0 : i32

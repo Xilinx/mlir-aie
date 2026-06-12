@@ -551,25 +551,47 @@ class MLIRModuleAnnotator:
         value = None
         mask = None
 
-        # Get address - could be 'address' or 'addr' attribute
+        # npu.write32 / npu.maskwrite32 take address/value/mask as SSA operands
+        # (an arith.constant for compile-time-known values); other ops keep them
+        # as attributes. Read whichever form is present.
+        def const_of(ssa_value):
+            defining = ssa_value.owner
+            owner_op = getattr(defining, "opview", defining)
+            if hasattr(owner_op, "value"):
+                attr = owner_op.value
+                if hasattr(attr, "value"):
+                    return int(attr.value)
+            return None
+
+        # Get address - SSA operand on write32/maskwrite32, else 'address'/'addr'
+        # attribute on the other ops.
         if hasattr(op, "address") and op.address is not None:
-            address = int(op.address.value)
+            if hasattr(op.address, "value"):
+                address = int(op.address.value)
+            else:
+                address = const_of(op.address)
         elif hasattr(op, "addr") and op.addr is not None:
             address = int(op.addr.value)
 
-        # Get row and column if present
+        # Get row and column if present (always attributes)
         if hasattr(op, "row") and op.row is not None:
             row = int(op.row.value)
         if hasattr(op, "column") and op.column is not None:
             col = int(op.column.value)
 
-        # Get value if present
+        # Get value if present (SSA operand on write32/maskwrite32)
         if hasattr(op, "value") and op.value is not None:
-            value = int(op.value.value)
+            if hasattr(op.value, "value"):
+                value = int(op.value.value)
+            else:
+                value = const_of(op.value)
 
-        # Get mask if present (for maskwrite32)
+        # Get mask if present (SSA operand on maskwrite32)
         if hasattr(op, "mask") and op.mask is not None:
-            mask = int(op.mask.value)
+            if hasattr(op.mask, "value"):
+                mask = int(op.mask.value)
+            else:
+                mask = const_of(op.mask)
 
         # If row/col not present, extract from address
         if address is not None and row is None and col is None:

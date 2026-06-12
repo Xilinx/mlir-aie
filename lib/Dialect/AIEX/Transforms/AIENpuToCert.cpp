@@ -72,8 +72,12 @@ struct NpuWrite32ToCertWrite32 : OpConversionPattern<AIEX::NpuWrite32Op> {
   LogicalResult
   matchAndRewrite(AIEX::NpuWrite32Op op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<AIEX::CertWrite32Op>(op, op.getAddress(),
-                                                     op.getValue());
+    auto address = AIEX::getConstantIntOperand(op.getAddress());
+    auto value = AIEX::getConstantIntOperand(op.getValue());
+    if (!address || !value)
+      return op.emitOpError(
+          "cannot lower runtime (non-constant) operands to cert");
+    rewriter.replaceOpWithNewOp<AIEX::CertWrite32Op>(op, *address, *value);
     return success();
   }
 };
@@ -85,8 +89,14 @@ struct NpuMaskWrite32ToCertMaskWrite32
   LogicalResult
   matchAndRewrite(AIEX::NpuMaskWrite32Op op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<AIEX::CertMaskWrite32Op>(
-        op, op.getAddress(), op.getMask(), op.getValue());
+    auto address = AIEX::getConstantIntOperand(op.getAddress());
+    auto mask = AIEX::getConstantIntOperand(op.getMask());
+    auto value = AIEX::getConstantIntOperand(op.getValue());
+    if (!address || !mask || !value)
+      return op.emitOpError(
+          "cannot lower runtime (non-constant) operands to cert");
+    rewriter.replaceOpWithNewOp<AIEX::CertMaskWrite32Op>(op, *address, *mask,
+                                                         *value);
     return success();
   }
 };

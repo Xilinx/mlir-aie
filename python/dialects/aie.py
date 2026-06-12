@@ -149,12 +149,11 @@ class npu_write_rtp(NpuWriteRTPOp):
         buff_name = buffer
         if isinstance(buffer, BufferOp):
             buff_name = buffer.sym_name.value
-        if isinstance(value, Value):
-            super().__init__(
-                buffer=buff_name, index=index, dyn_value=value, loc=loc, ip=ip
-            )
-        else:
-            super().__init__(buffer=buff_name, index=index, value=value, loc=loc, ip=ip)
+        # `value` is an SSA operand: materialize an arith.constant for plain
+        # ints, otherwise pass the runtime SSA value through.
+        if not isinstance(value, Value):
+            value = constant(int(value), IntegerType.get_signless(32), loc=loc, ip=ip)
+        super().__init__(buffer=buff_name, index=index, value=value, loc=loc, ip=ip)
 
 
 class external_func(FuncOp):

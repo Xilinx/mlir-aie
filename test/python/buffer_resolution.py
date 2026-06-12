@@ -30,8 +30,10 @@ data_ty = np.ndarray[(64,), np.dtype[np.int32]]
 # Test 1: Buffer given to a Worker is resolved before inline_ops fires,
 #         so element writes inside the callback produce correct rtp_write ops.
 # CHECK-LABEL: TEST: rtp_buffer_written_in_inline_ops
-# CHECK: aiex.npu.rtp_write(@my_rtp, 0 : ui32, 7 : i32)
-# CHECK: aiex.npu.rtp_write(@my_rtp, 1 : ui32, 3 : i32)
+# CHECK: %[[RV0:.+]] = arith.constant 7 : i32
+# CHECK: aiex.npu.rtp_write(@my_rtp, 0, %[[RV0]]) : i32
+# CHECK: %[[RV1:.+]] = arith.constant 3 : i32
+# CHECK: aiex.npu.rtp_write(@my_rtp, 1, %[[RV1]]) : i32
 # ---------------------------------------------------------------------------
 print("\nTEST: rtp_buffer_written_in_inline_ops")
 
@@ -70,9 +72,12 @@ print(module)
 # Test 2: Multiple RTP buffers (one per worker) in a list, all written in one
 #         inline_ops callback — mirrors the resnet layers_conv2_x pattern.
 # CHECK-LABEL: TEST: multiple_rtp_buffers_in_inline_ops
-# CHECK: aiex.npu.rtp_write(@rtp_w0, 0 : ui32, 1 : i32)
-# CHECK: aiex.npu.rtp_write(@rtp_w1, 0 : ui32, 2 : i32)
-# CHECK: aiex.npu.rtp_write(@rtp_w2, 0 : ui32, 3 : i32)
+# CHECK: %[[RV2:.+]] = arith.constant 1 : i32
+# CHECK: aiex.npu.rtp_write(@rtp_w0, 0, %[[RV2]]) : i32
+# CHECK: %[[RV3:.+]] = arith.constant 2 : i32
+# CHECK: aiex.npu.rtp_write(@rtp_w1, 0, %[[RV3]]) : i32
+# CHECK: %[[RV4:.+]] = arith.constant 3 : i32
+# CHECK: aiex.npu.rtp_write(@rtp_w2, 0, %[[RV4]]) : i32
 # ---------------------------------------------------------------------------
 print("\nTEST: multiple_rtp_buffers_in_inline_ops")
 

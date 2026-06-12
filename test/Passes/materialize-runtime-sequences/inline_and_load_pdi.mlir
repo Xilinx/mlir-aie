@@ -18,18 +18,24 @@ module {
   aie.device(npu2) @main {
     %tile00 = aie.tile(0, 0)
     
+    // CHECK-DAG: %[[IA0:.+]] = arith.constant 100 : i32
+    // CHECK-DAG: %[[IV0:.+]] = arith.constant 42 : i32
+    // CHECK-DAG: %[[IA1:.+]] = arith.constant 200 : i32
+    // CHECK-DAG: %[[IV1:.+]] = arith.constant 99 : i32
     // CHECK-LABEL: aie.runtime_sequence @main_seq
     // CHECK-SAME: (%[[ARG0:.*]]: memref<16xi32>)
     aie.runtime_sequence @main_seq(%arg0: memref<16xi32>) {
-      // CHECK: aiex.npu.load_pdi {device_ref = @config_a}
       // CHECK-NOT: aiex.configure
       // CHECK-NOT: aiex.run
-      // CHECK: aiex.npu.write32 {address = 100 : ui32, column = 1 : i32, row = 0 : i32, value = 42 : ui32}
+      // CHECK: aiex.npu.load_pdi {device_ref = @config_a}
+      // CHECK: aiex.npu.write32(%[[IA0]], %[[IV0]]) {column = 1 : i32, row = 0 : i32}
+      // CHECK: aiex.npu.write32(%[[IA1]], %[[IV1]]) {column = 0 : i32, row = 0 : i32}
       aiex.configure @config_a {
         aiex.run @seq_a(%arg0) : (memref<16xi32>)
       }
-      // CHECK: aiex.npu.write32 {address = 200 : ui32, column = 0 : i32, row = 0 : i32, value = 99 : ui32}
-      aiex.npu.write32 {address = 200 : ui32, column = 0 : i32, row = 0 : i32, value = 99 : ui32}
+      %w32_addr = arith.constant 200 : i32
+      %w32_val = arith.constant 99 : i32
+      aiex.npu.write32(%w32_addr, %w32_val) {column = 0 : i32, row = 0 : i32} : i32, i32
     }
   }
   
@@ -38,7 +44,9 @@ module {
     %tile10 = aie.tile(1, 0)
     
     aie.runtime_sequence @seq_a(%arg0: memref<16xi32>) {
-      aiex.npu.write32 {address = 100 : ui32, column = 1 : i32, row = 0 : i32, value = 42 : ui32}
+      %w32_addr_1 = arith.constant 100 : i32
+      %w32_val_1 = arith.constant 42 : i32
+      aiex.npu.write32(%w32_addr_1, %w32_val_1) {column = 1 : i32, row = 0 : i32} : i32, i32
     }
   }
 }

@@ -88,7 +88,9 @@ module {
 module {
   aie.device(npu2) @callee_dev {
     aie.runtime_sequence @seq_expects_i16 (%arg0: memref<16xi16>) {
-      aiex.npu.write32 {address = 100 : ui32, column = 1 : i32, row = 0 : i32, value = 42 : ui32}
+      %w32_addr = arith.constant 100 : i32
+      %w32_val = arith.constant 42 : i32
+      aiex.npu.write32(%w32_addr, %w32_val) {column = 1 : i32, row = 0 : i32} : i32, i32
     }
   }
   aie.device(npu2) {

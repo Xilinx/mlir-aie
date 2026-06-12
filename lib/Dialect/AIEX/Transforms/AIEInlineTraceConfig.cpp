@@ -14,6 +14,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/Pass/Pass.h"
 
@@ -107,13 +108,17 @@ struct AIEInlineTraceConfigPass
         }
 
         // Generate aiex.npu.write32 operation with col/row
-        builder.create<AIEX::NpuWrite32Op>(
-            regOp.getLoc(), builder.getUI32IntegerAttr(regInfo->offset),
-            builder.getUI32IntegerAttr(value),
-            nullptr,                        // buffer
-            builder.getI32IntegerAttr(col), // column
-            builder.getI32IntegerAttr(row)  // row
-        );
+        Type i32 = builder.getI32Type();
+        Value addrV =
+            arith::ConstantIntOp::create(builder, regOp.getLoc(), i32,
+                                         static_cast<int32_t>(regInfo->offset));
+        Value valV = arith::ConstantIntOp::create(builder, regOp.getLoc(), i32,
+                                                  static_cast<int32_t>(value));
+        AIEX::NpuWrite32Op::create(builder, regOp.getLoc(), addrV, valV,
+                                   /*buffer=*/nullptr,
+                                   builder.getI32IntegerAttr(col),
+                                   builder.getI32IntegerAttr(row),
+                                   /*bd_group=*/nullptr);
       }
 
       // Remove the start_config invocation

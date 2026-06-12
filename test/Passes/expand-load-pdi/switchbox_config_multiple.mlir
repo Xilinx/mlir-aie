@@ -49,16 +49,28 @@ module {
         // CHECK: aie.runtime_sequence(%arg0: memref<1xi32>) {
         aie.runtime_sequence (%arg0: memref<1xi32>) {
             // CHECK: aiex.npu.load_pdi {device_ref = @empty_0}
-            // CHECK: aiex.npu.write32 {address = 2355200 : ui32, value = 2147483653 : ui32}
-            // CHECK: aiex.npu.write32 {address = 2355476 : ui32, value = 2147483648 : ui32}
+            // CHECK-DAG: %[[WA0:.+]] = arith.constant 2355200 : i32
+            // CHECK-DAG: %[[WV0:.+]] = arith.constant -2147483643 : i32
+            // CHECK: aiex.npu.write32(%[[WA0]], %[[WV0]])
+            // CHECK-DAG: %[[WA1:.+]] = arith.constant 2355476 : i32
+            // CHECK-DAG: %[[WV1:.+]] = arith.constant -2147483648 : i32
+            // CHECK: aiex.npu.write32(%[[WA1]], %[[WV1]])
             aiex.npu.load_pdi { device_ref = @my_switchbox_device_1 }
             // CHECK: aiex.npu.load_pdi {device_ref = @empty_1}
-            // CHECK: aiex.npu.write32 {address = 2355200 : ui32, value = 2147483663 : ui32}
-            // CHECK: aiex.npu.write32 {address = 2355516 : ui32, value = 2147483648 : ui32}
+            // CHECK-DAG: %[[WA2:.+]] = arith.constant 2355200 : i32
+            // CHECK-DAG: %[[WV2:.+]] = arith.constant -2147483633 : i32
+            // CHECK: aiex.npu.write32(%[[WA2]], %[[WV2]])
+            // CHECK-DAG: %[[WA3:.+]] = arith.constant 2355516 : i32
+            // CHECK-DAG: %[[WV3:.+]] = arith.constant -2147483648 : i32
+            // CHECK: aiex.npu.write32(%[[WA3]], %[[WV3]])
             aiex.npu.load_pdi { device_ref = @my_switchbox_device_2 }
             // CHECK: aiex.npu.load_pdi {device_ref = @empty_0}
-            // CHECK: aiex.npu.write32 {address = 2355204 : ui32, value = 2147483653 : ui32}
-            // CHECK: aiex.npu.write32 {address = 2355476 : ui32, value = 2147483648 : ui32}
+            // CHECK-DAG: %[[WA4:.+]] = arith.constant 2355204 : i32
+            // CHECK-DAG: %[[WV4:.+]] = arith.constant -2147483643 : i32
+            // CHECK: aiex.npu.write32(%[[WA4]], %[[WV4]])
+            // CHECK-DAG: %[[WA5:.+]] = arith.constant 2355476 : i32
+            // CHECK-DAG: %[[WV5:.+]] = arith.constant -2147483648 : i32
+            // CHECK: aiex.npu.write32(%[[WA5]], %[[WV5]])
             aiex.npu.load_pdi { device_ref = @my_switchbox_device_3 }
         }
         // CHECK:     }

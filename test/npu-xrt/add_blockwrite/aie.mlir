@@ -74,7 +74,9 @@ module {
       %c64_i64 = arith.constant 64 : i64
       %0 = memref.get_global @myData : memref<8xi32>
       aiex.npu.blockwrite(%0) {buffer = @constant_buffer, address = 0 : ui32} : memref<8xi32>
-      aiex.npu.write32 {buffer = @constant_buffer, address = 4 : ui32, value = 42 : ui32}
+      %w32_addr = arith.constant 4 : i32
+      %w32_val = arith.constant 42 : i32
+      aiex.npu.write32(%w32_addr, %w32_val) {buffer = @constant_buffer} : i32, i32
       aiex.npu.dma_memcpy_nd(%arg0[%c0_i64, %c0_i64, %c0_i64, %c0_i64] [%c1_i64, %c1_i64, %c1_i64, %c64_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64]) {id = 0 : i64, issue_token = true, metadata = @objFifo_in0} : memref<64xi32>
       aiex.npu.dma_memcpy_nd(%arg2[%c0_i64, %c0_i64, %c0_i64, %c0_i64] [%c1_i64, %c1_i64, %c1_i64, %c64_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64]) {id = 1 : i64, issue_token = true, metadata = @objFifo_out0} : memref<64xi32>
       aiex.npu.dma_wait {symbol = @objFifo_in0}

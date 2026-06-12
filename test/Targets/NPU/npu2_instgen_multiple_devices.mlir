@@ -14,16 +14,22 @@
 module {
   aie.device(npu2) @device_a {
     aie.runtime_sequence @sequence_a(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
-      aiex.npu.write32 { column = 2 : i32, row = 2 : i32, address = 0x01010101 : ui32, value = 0x01010101 : ui32 }
+      %w32_addr = arith.constant 16843009 : i32
+      %w32_val = arith.constant 16843009 : i32
+      aiex.npu.write32(%w32_addr, %w32_val) {column = 2 : i32, row = 2 : i32} : i32, i32
     }
     aie.runtime_sequence @sequence_b(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
-      aiex.npu.write32 { column = 2 : i32, row = 2 : i32, address = 0x02020202 : ui32, value = 0x02020202 : ui32 }
+      %w32_addr_1 = arith.constant 33686018 : i32
+      %w32_val_1 = arith.constant 33686018 : i32
+      aiex.npu.write32(%w32_addr_1, %w32_val_1) {column = 2 : i32, row = 2 : i32} : i32, i32
     }
   }
 
   aie.device(npu2) @device_b {
     aie.runtime_sequence @sequence_a(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
-      aiex.npu.write32 { column = 2 : i32, row = 2 : i32, address = 0x03030303 : ui32, value = 0x03030303 : ui32 }
+      %w32_addr_2 = arith.constant 50529027 : i32
+      %w32_val_2 = arith.constant 50529027 : i32
+      aiex.npu.write32(%w32_addr_2, %w32_val_2) {column = 2 : i32, row = 2 : i32} : i32, i32
     }
     aie.runtime_sequence @sequence_b(%arg0: memref<16xf32>, %arg1: memref<16xf32>) {
       // CHECK: 06040100
@@ -36,7 +42,9 @@ module {
       // CHECK: 00000000
       // CHECK: 04040404
       // CHECK: 00000018
-      aiex.npu.write32 { column = 2 : i32, row = 2 : i32, address = 0x04040404 : ui32, value = 0x04040404 : ui32 }
+      %w32_addr_3 = arith.constant 67372036 : i32
+      %w32_val_3 = arith.constant 67372036 : i32
+      aiex.npu.write32(%w32_addr_3, %w32_val_3) {column = 2 : i32, row = 2 : i32} : i32, i32
     }
   }
 }

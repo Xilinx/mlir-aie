@@ -46,10 +46,14 @@ aie.device(npu1) {
 
 // CHECK: aie.device
 // CHECK: runtime_sequence @seq(%arg0: memref<1xi32>)
-// CHECK: aiex.npu.write32 {address = 432 : ui32, value = 1 : ui32}
+// CHECK: %[[WA0:.+]] = arith.constant 432 : i32
+// CHECK: %[[WV0:.+]] = arith.constant 1 : i32
+// CHECK: aiex.npu.write32(%[[WA0]], %[[WV0]])
 aie.device(npu1) {
   aie.runtime_sequence @seq(%arg0 : memref<1xi32>) {
-    aiex.npu.write32 {address = 432 : ui32, value = 1 : ui32}
+    %w32_addr = arith.constant 432 : i32
+    %w32_val = arith.constant 1 : i32
+    aiex.npu.write32(%w32_addr, %w32_val) : i32, i32
   }
 }
 

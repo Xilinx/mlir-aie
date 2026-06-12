@@ -8,9 +8,13 @@
 
 // RUN: aie-opt --aie-dma-to-npu %s | FileCheck %s
 // CHECK: aiex.npu.blockwrite(%{{.*}}) {address = 118816 : ui32} : memref<8xi32>
-// CHECK: aiex.npu.write32 {address = 119300 : ui32, value = 2147483649 : ui32}
+// CHECK: %[[WA0:.+]] = arith.constant 119300 : i32
+// CHECK: %[[WV0:.+]] = arith.constant -2147483647 : i32
+// CHECK: aiex.npu.write32(%[[WA0]], %[[WV0]])
 // CHECK: aiex.npu.blockwrite(%{{.*}}) {address = 118784 : ui32} : memref<8xi32>
-// CHECK: aiex.npu.write32 {address = 119316 : ui32, value = 0 : ui32}
+// CHECK: %[[WA1:.+]] = arith.constant 119316 : i32
+// CHECK: %[[WV1:.+]] = arith.constant 0 : i32
+// CHECK: aiex.npu.write32(%[[WA1]], %[[WV1]])
 
 module {
   aie.device(npu1) {

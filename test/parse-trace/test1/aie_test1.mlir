@@ -44,19 +44,42 @@ module {
       aie.packet_dest<%shim_noc_tile_0_0, DMA : 1>
     } {keep_pkt_header = true}
     aie.runtime_sequence @sequence(%arg0: memref<4096xi16>, %arg1: memref<1xi32>, %arg2: memref<4096xi16>) {
-      aiex.npu.write32 {address = 213200 : ui32, column = 0 : i32, row = 2 : i32, value = 2038038528 : ui32}
-      aiex.npu.write32 {address = 213204 : ui32, column = 0 : i32, row = 2 : i32, value = 1 : ui32}
-      aiex.npu.write32 {address = 213216 : ui32, column = 0 : i32, row = 2 : i32, value = 1260724769 : ui32}
-      aiex.npu.write32 {address = 213220 : ui32, column = 0 : i32, row = 2 : i32, value = 439168079 : ui32}
-      aiex.npu.write32 {address = 261888 : ui32, column = 0 : i32, row = 2 : i32, value = 289 : ui32}
-      aiex.npu.write32 {address = 261892 : ui32, column = 0 : i32, row = 2 : i32, value = 0 : ui32}
-      aiex.npu.write32 {address = 212992 : ui32, column = 0 : i32, row = 2 : i32, value = 31232 : ui32}
+      %w32_addr = arith.constant 213200 : i32
+      %w32_val = arith.constant 2038038528 : i32
+      aiex.npu.write32(%w32_addr, %w32_val) {column = 0 : i32, row = 2 : i32} : i32, i32
+      %w32_addr_1 = arith.constant 213204 : i32
+      %w32_val_1 = arith.constant 1 : i32
+      aiex.npu.write32(%w32_addr_1, %w32_val_1) {column = 0 : i32, row = 2 : i32} : i32, i32
+      %w32_addr_2 = arith.constant 213216 : i32
+      %w32_val_2 = arith.constant 1260724769 : i32
+      aiex.npu.write32(%w32_addr_2, %w32_val_2) {column = 0 : i32, row = 2 : i32} : i32, i32
+      %w32_addr_3 = arith.constant 213220 : i32
+      %w32_val_3 = arith.constant 439168079 : i32
+      aiex.npu.write32(%w32_addr_3, %w32_val_3) {column = 0 : i32, row = 2 : i32} : i32, i32
+      %w32_addr_4 = arith.constant 261888 : i32
+      %w32_val_4 = arith.constant 289 : i32
+      aiex.npu.write32(%w32_addr_4, %w32_val_4) {column = 0 : i32, row = 2 : i32} : i32, i32
+      %w32_addr_5 = arith.constant 261892 : i32
+      %w32_val_5 = arith.constant 0 : i32
+      aiex.npu.write32(%w32_addr_5, %w32_val_5) {column = 0 : i32, row = 2 : i32} : i32, i32
+      %w32_addr_6 = arith.constant 212992 : i32
+      %w32_val_6 = arith.constant 31232 : i32
+      aiex.npu.write32(%w32_addr_6, %w32_val_6) {column = 0 : i32, row = 2 : i32} : i32, i32
       aiex.npu.writebd {bd_id = 15 : i32, buffer_length = 8192 : i32, buffer_offset = 0 : i32, burst_length = 64 : i32, column = 0 : i32, d0_size = 0 : i32, d0_stride = 0 : i32, d0_zero_after = 0 : i32, d0_zero_before = 0 : i32, d1_size = 0 : i32, d1_stride = 0 : i32, d1_zero_after = 0 : i32, d1_zero_before = 0 : i32, d2_size = 0 : i32, d2_stride = 0 : i32, d2_zero_after = 0 : i32, d2_zero_before = 0 : i32, enable_packet = 1 : i32, iteration_current = 0 : i32, iteration_size = 0 : i32, iteration_stride = 0 : i32, lock_acq_enable = 0 : i32, lock_acq_id = 0 : i32, lock_acq_val = 0 : i32, lock_rel_id = 0 : i32, lock_rel_val = 0 : i32, next_bd = 0 : i32, out_of_order_id = 0 : i32, packet_id = 1 : i32, packet_type = 0 : i32, row = 0 : i32, use_next_bd = 0 : i32, valid_bd = 1 : i32}
-      aiex.npu.address_patch {addr = 119268 : ui32, arg_idx = 4 : i32, arg_plus = 0 : i32}
-      aiex.npu.write32 {address = 119308 : ui32, column = 0 : i32, row = 0 : i32, value = 15 : ui32}
-      aiex.npu.write32 {address = 212992 : ui32, column = 0 : i32, row = 0 : i32, value = 32512 : ui32}
-      aiex.npu.write32 {address = 213068 : ui32, column = 0 : i32, row = 0 : i32, value = 127 : ui32}
-      aiex.npu.write32 {address = 213000 : ui32, column = 0 : i32, row = 0 : i32, value = 127 : ui32}
+      %ap_arg_plus = arith.constant 0 : i32
+      aiex.npu.address_patch(%ap_arg_plus : i32) {addr = 119268 : ui32, arg_idx = 4 : i32}
+      %w32_addr_7 = arith.constant 119308 : i32
+      %w32_val_7 = arith.constant 15 : i32
+      aiex.npu.write32(%w32_addr_7, %w32_val_7) {column = 0 : i32, row = 0 : i32} : i32, i32
+      %w32_addr_8 = arith.constant 212992 : i32
+      %w32_val_8 = arith.constant 32512 : i32
+      aiex.npu.write32(%w32_addr_8, %w32_val_8) {column = 0 : i32, row = 0 : i32} : i32, i32
+      %w32_addr_9 = arith.constant 213068 : i32
+      %w32_val_9 = arith.constant 127 : i32
+      aiex.npu.write32(%w32_addr_9, %w32_val_9) {column = 0 : i32, row = 0 : i32} : i32, i32
+      %w32_addr_10 = arith.constant 213000 : i32
+      %w32_val_10 = arith.constant 127 : i32
+      aiex.npu.write32(%w32_addr_10, %w32_val_10) {column = 0 : i32, row = 0 : i32} : i32, i32
       %0 = aiex.dma_configure_task_for @in {
         aie.dma_bd(%arg0 : memref<4096xi16>, 0, 4096, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1, stride = 0>, <size = 4096, stride = 1>]) {burst_length = 0 : i32}
         aie.end
@@ -75,8 +98,12 @@ module {
       aiex.dma_await_task(%2)
       aiex.dma_free_task(%0)
       aiex.dma_free_task(%1)
-      aiex.npu.write32 {address = 213064 : ui32, column = 0 : i32, row = 0 : i32, value = 126 : ui32}
-      aiex.npu.write32 {address = 213000 : ui32, column = 0 : i32, row = 0 : i32, value = 126 : ui32}
+      %w32_addr_11 = arith.constant 213064 : i32
+      %w32_val_11 = arith.constant 126 : i32
+      aiex.npu.write32(%w32_addr_11, %w32_val_11) {column = 0 : i32, row = 0 : i32} : i32, i32
+      %w32_addr_12 = arith.constant 213000 : i32
+      %w32_val_12 = arith.constant 126 : i32
+      aiex.npu.write32(%w32_addr_12, %w32_val_12) {column = 0 : i32, row = 0 : i32} : i32, i32
     }
   }
 }

@@ -51,8 +51,11 @@ struct Write32SymToAddr : OpConversionPattern<NpuWrite32Op> {
       return failure();
     }
 
-    rewriter.replaceOpWithNewOp<NpuWrite32Op>(op, *address, op.getValue(),
-                                              nullptr, nullptr, nullptr);
+    Value addrV = arith::ConstantIntOp::create(rewriter, op->getLoc(),
+                                               rewriter.getI32Type(), *address);
+    rewriter.replaceOpWithNewOp<NpuWrite32Op>(op, addrV, op.getValue(),
+                                              /*buffer=*/nullptr, nullptr,
+                                              nullptr, /*bd_group=*/nullptr);
     return success();
   }
 };
@@ -98,9 +101,11 @@ struct MaskWrite32SymToAddr : OpConversionPattern<NpuMaskWrite32Op> {
       return failure();
     }
 
-    rewriter.replaceOpWithNewOp<NpuMaskWrite32Op>(op, *absoluteAddress,
-                                                  op.getValue(), op.getMask(),
-                                                  nullptr, nullptr, nullptr);
+    Value addrV = arith::ConstantIntOp::create(
+        rewriter, op->getLoc(), rewriter.getI32Type(), *absoluteAddress);
+    rewriter.replaceOpWithNewOp<NpuMaskWrite32Op>(
+        op, addrV, op.getValue(), op.getMask(),
+        /*buffer=*/nullptr, nullptr, nullptr);
     return success();
   }
 };
@@ -132,33 +137,17 @@ struct RtpToWrite32Pattern : OpConversionPattern<NpuWriteRTPOp> {
     uint32_t idx = op.getIndex() * sizeof(uint32_t);
     uint32_t address = buffer.getAddress().value() + idx;
 
-    if (op.hasDynamicValue()) {
-      // Dynamic RTP write: compute absolute address, pass value as SSA
-      const AIE::AIETargetModel &tm = device.getTargetModel();
-      uint32_t colShift = tm.getColumnShift();
-      uint32_t rowShift = tm.getRowShift();
-      uint32_t absAddr = (static_cast<uint32_t>(tile.getCol()) << colShift) |
-                         (static_cast<uint32_t>(tile.getRow()) << rowShift) |
-                         (address & 0xfffff);
-
-      auto i32Type = rewriter.getI32Type();
-      auto addrConst = arith::ConstantOp::create(
-          rewriter, op->getLoc(), rewriter.getIntegerAttr(i32Type, absAddr));
-
-      NpuWrite32Op::create(rewriter, op->getLoc(),
-                           /*address=*/0u, /*value=*/0u,
-                           /*buffer=*/nullptr, /*column=*/nullptr,
-                           /*row=*/nullptr,
-                           /*dyn_address=*/addrConst.getResult(),
-                           /*dyn_value=*/adaptor.getDynValue(),
-                           /*bd_group=*/IntegerAttr{});
-    } else {
-      // Static path
-      NpuWrite32Op::create(rewriter, op->getLoc(), address,
-                           static_cast<uint32_t>(*op.getValue()), nullptr,
-                           rewriter.getI32IntegerAttr(tile.getCol()),
-                           rewriter.getI32IntegerAttr(tile.getRow()));
-    }
+    // The RTP value is an SSA operand (arith.constant for static values, a
+    // runtime value otherwise). The buffer-relative address is a constant; the
+    // column/row attributes drive absolute-address resolution downstream.
+    auto i32Type = rewriter.getI32Type();
+    Value addrConst =
+        arith::ConstantIntOp::create(rewriter, op->getLoc(), i32Type, address);
+    NpuWrite32Op::create(rewriter, op->getLoc(), addrConst, op.getValue(),
+                         /*buffer=*/nullptr,
+                         rewriter.getI32IntegerAttr(tile.getCol()),
+                         rewriter.getI32IntegerAttr(tile.getRow()),
+                         /*bd_group=*/IntegerAttr{});
 
     rewriter.eraseOp(op);
     return success();
@@ -193,8 +182,15 @@ public:
             shimTile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
         uint32_t data = controller_id_attr.getPktId() << 8;
         uint32_t mask = 0x00001F00;
-        NpuMaskWrite32Op::create(rewriter, op->getLoc(), ctrl_offset, data,
-                                 mask, nullptr, nullptr, nullptr);
+        auto i32Type = rewriter.getI32Type();
+        Value addrV = arith::ConstantIntOp::create(rewriter, op->getLoc(),
+                                                   i32Type, ctrl_offset);
+        Value dataV =
+            arith::ConstantIntOp::create(rewriter, op->getLoc(), i32Type, data);
+        Value maskV =
+            arith::ConstantIntOp::create(rewriter, op->getLoc(), i32Type, mask);
+        NpuMaskWrite32Op::create(rewriter, op->getLoc(), addrV, dataV, maskV,
+                                 nullptr, nullptr, nullptr);
       }
     }
 
@@ -210,8 +206,13 @@ public:
     if (op.getIssueToken())
       cmd |= 0x80000000;
 
-    NpuWrite32Op::create(rewriter, op->getLoc(), queue_offset, cmd, nullptr,
-                         nullptr, nullptr);
+    auto i32Type = rewriter.getI32Type();
+    Value queueAddr = arith::ConstantIntOp::create(rewriter, op->getLoc(),
+                                                   i32Type, queue_offset);
+    Value cmdV = arith::ConstantIntOp::create(rewriter, op->getLoc(), i32Type,
+                                              static_cast<int32_t>(cmd));
+    NpuWrite32Op::create(rewriter, op->getLoc(), queueAddr, cmdV, nullptr,
+                         nullptr, nullptr, /*bd_group=*/IntegerAttr{});
     rewriter.eraseOp(op);
     return success();
   }
@@ -822,14 +823,12 @@ public:
       uint32_t wordAddr = bdAddrU32 + wordIdx * 4;
       Value addrSSA = cst(wordAddr);
       NpuWrite32Op::create(rewriter, loc,
-                           /*address=*/static_cast<uint32_t>(0),
-                           /*value=*/static_cast<uint32_t>(0),
+                           /*address=*/addrSSA,
+                           /*value=*/wordValue,
                            /*buffer=*/FlatSymbolRefAttr{},
                            /*column=*/IntegerAttr{},
                            /*row=*/IntegerAttr{},
-                           /*dyn_address=*/addrSSA,
-                           /*dyn_value=*/wordValue,
-                           /*bd_group=*/bdAddrU32);
+                           /*bd_group=*/rewriter.getUI32IntegerAttr(bdAddrU32));
     };
 
     // word[0]: buffer_length — dynamic if any of d0/d1/d2 sizes are dynamic
@@ -928,8 +927,8 @@ public:
               shimTile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
           uint32_t data = controllerIdAttr.getPktId() << 8;
           uint32_t mask = 0x00001F00;
-          NpuMaskWrite32Op::create(rewriter, loc, ctrlOffset, data, mask,
-                                   nullptr, nullptr, nullptr);
+          NpuMaskWrite32Op::create(rewriter, loc, cst(ctrlOffset), cst(data),
+                                   cst(mask), nullptr, nullptr, nullptr);
         }
       }
 
@@ -944,12 +943,11 @@ public:
         cmd = arith::OrIOp::create(rewriter, loc, cmd, tokenBit);
       }
       Value queueAddrSSA = cst(queueOffset);
-      NpuWrite32Op::create(rewriter, loc, rewriter.getUI32IntegerAttr(0),
-                           rewriter.getUI32IntegerAttr(0),
+      NpuWrite32Op::create(rewriter, loc, /*address=*/queueAddrSSA,
+                           /*value=*/cmd,
                            /*buffer=*/FlatSymbolRefAttr(),
                            /*column=*/IntegerAttr(),
                            /*row=*/IntegerAttr(),
-                           /*dyn_address=*/queueAddrSSA, /*dyn_value=*/cmd,
                            /*bd_group=*/IntegerAttr{});
     } else {
       // Static queue push

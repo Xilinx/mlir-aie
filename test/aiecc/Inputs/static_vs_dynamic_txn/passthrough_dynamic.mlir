@@ -68,10 +68,12 @@ module {
       %c1_i32 = arith.constant 1 : i32
       %n_plus_1 = arith.addi %n, %c1_i32 : i32
 
-      aiex.npu.rtp_write(@rtp, 0 : ui32, %n)        : i32
-      aiex.npu.rtp_write(@rtp, 4 : ui32, %n_plus_1) : i32
+      aiex.npu.rtp_write(@rtp, 0, %n)        : i32
+      aiex.npu.rtp_write(@rtp, 4, %n_plus_1) : i32
 
-      aiex.npu.write32 {address = 196612 : ui32, value = 42 : ui32}
+      %w32_addr = arith.constant 196612 : i32
+      %w32_val = arith.constant 42 : i32
+      aiex.npu.write32(%w32_addr, %w32_val) : i32, i32
 
       // First 4-D pattern: sizes=[2,4,8,64], strides=[2048,512,64,1] over %out.
       // dma_memcpy_nd offsets/sizes/strides are i64 SSA values (TODO: i32).

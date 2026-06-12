@@ -430,19 +430,28 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None):
         target_model = aiedialect.get_target_model(device)
         events_module = get_events_for_device(str(device))
 
+    def const_of(ssa_value):
+        # write32 address/value are SSA operands (arith.constant for static
+        # values); read the constant from the defining op.
+        defining = ssa_value.owner
+        owner_op = getattr(defining, "opview", defining)
+        if hasattr(owner_op, "value") and hasattr(owner_op.value, "value"):
+            return int(owner_op.value.value)
+        return None
+
     for write32 in write32s:
         address = None
         row = None
         col = None
         value = None
         if write32.address:
-            address = write32.address.value
+            address = const_of(write32.address)
         if write32.row:
             row = write32.row.value
         if write32.column:
             col = write32.column.value
         if write32.value:
-            value = write32.value.value
+            value = const_of(write32.value)
 
         if row is None and col is None:
             row = (address >> target_model.get_row_shift()) & 0x1F

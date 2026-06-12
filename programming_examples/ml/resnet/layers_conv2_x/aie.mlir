@@ -909,9 +909,13 @@ aie.device(npu1_3col) {
 
 
       // Trace_Event0  (4 slots)
-      aiex.npu.write32 { column = 2 : i32, row = 4 : i32, address = 0x340E0 : ui32, value = 0x4B222125 : ui32 }
+      %w32_addr = arith.constant 213216 : i32
+      %w32_val = arith.constant 1260527909 : i32
+      aiex.npu.write32(%w32_addr, %w32_val) {column = 2 : i32, row = 4 : i32} : i32, i32
       // Trace_Event1  (4 slots)
-      aiex.npu.write32 { column = 2 : i32, row = 4 : i32, address = 0x340E4 : ui32, value = 0x2D2C1A4F : ui32 }
+      %w32_addr_1 = arith.constant 213220 : i32
+      %w32_val_1 = arith.constant 757865039 : i32
+      aiex.npu.write32(%w32_addr_1, %w32_val_1) {column = 2 : i32, row = 4 : i32} : i32, i32
 
       // Event slots as configured above:
       // 0: Kernel executes vector instruction
@@ -925,10 +929,14 @@ aie.device(npu1_3col) {
 
       // Stream_Switch_Event_Port_Selection_0
       // This is necessary to capture the Port_Running_0 and Port_Running_1 events
-      aiex.npu.write32 { column = 2 : i32, row = 4 : i32, address = 0x3FF00 : ui32, value = 0x121 : ui32 }
+      %w32_addr_2 = arith.constant 261888 : i32
+      %w32_val_2 = arith.constant 289 : i32
+      aiex.npu.write32(%w32_addr_2, %w32_val_2) {column = 2 : i32, row = 4 : i32} : i32, i32
 
       // Trace_Control0: Define trace start and stop triggers. Set start event TRUE.
-      aiex.npu.write32 { column = 2 : i32, row = 4 : i32, address = 0x340D0 : ui32, value = 0x10000 : ui32 }
+      %w32_addr_3 = arith.constant 213200 : i32
+      %w32_val_3 = arith.constant 65536 : i32
+      aiex.npu.write32(%w32_addr_3, %w32_val_3) {column = 2 : i32, row = 4 : i32} : i32, i32
 
       // Start trace copy out.
       aiex.npu.writebd { bd_id = 3 : i32,
@@ -964,30 +972,48 @@ aie.device(npu1_3col) {
                                   next_bd = 0 : i32,
                                   use_next_bd = 0 : i32,
                                   valid_bd = 1 : i32}
-      aiex.npu.write32 { column = 0 : i32, row = 0 : i32, address = 0x1D20C : ui32, value = 0x3 : ui32 }
+      %w32_addr_4 = arith.constant 119308 : i32
+      %w32_val_4 = arith.constant 3 : i32
+      aiex.npu.write32(%w32_addr_4, %w32_val_4) {column = 0 : i32, row = 0 : i32} : i32, i32
 
     //End trace dump
 
 
 
-      aiex.npu.rtp_write(@rtp2, 0, 1)
-      aiex.npu.rtp_write(@rtp3, 0, 1)
-      aiex.npu.rtp_write(@rtp4, 0, 1)
-      aiex.npu.rtp_write(@rtp5, 0, 1)
-      aiex.npu.rtp_write(@rtp5, 1, 0)
-      aiex.npu.rtp_write(@rtp5, 2, 1)
+      %rtp_val_0 = arith.constant 1 : i32
+      aiex.npu.rtp_write(@rtp2, 0, %rtp_val_0) : i32
+      %rtp_val_1 = arith.constant 1 : i32
+      aiex.npu.rtp_write(@rtp3, 0, %rtp_val_1) : i32
+      %rtp_val_2 = arith.constant 1 : i32
+      aiex.npu.rtp_write(@rtp4, 0, %rtp_val_2) : i32
+      %rtp_val_3 = arith.constant 1 : i32
+      aiex.npu.rtp_write(@rtp5, 0, %rtp_val_3) : i32
+      %rtp_val_4 = arith.constant 0 : i32
+      aiex.npu.rtp_write(@rtp5, 1, %rtp_val_4) : i32
+      %rtp_val_5 = arith.constant 1 : i32
+      aiex.npu.rtp_write(@rtp5, 2, %rtp_val_5) : i32
 
-      aiex.npu.rtp_write(@rtp15, 0, 1)
-      aiex.npu.rtp_write(@rtp14, 0, 1)
-      aiex.npu.rtp_write(@rtp12, 0, 1)
-      aiex.npu.rtp_write(@rtp13, 0, 1)
-      aiex.npu.rtp_write(@rtp13, 1, 0)
+      %rtp_val_6 = arith.constant 1 : i32
+      aiex.npu.rtp_write(@rtp15, 0, %rtp_val_6) : i32
+      %rtp_val_7 = arith.constant 1 : i32
+      aiex.npu.rtp_write(@rtp14, 0, %rtp_val_7) : i32
+      %rtp_val_8 = arith.constant 1 : i32
+      aiex.npu.rtp_write(@rtp12, 0, %rtp_val_8) : i32
+      %rtp_val_9 = arith.constant 1 : i32
+      aiex.npu.rtp_write(@rtp13, 0, %rtp_val_9) : i32
+      %rtp_val_10 = arith.constant 0 : i32
+      aiex.npu.rtp_write(@rtp13, 1, %rtp_val_10) : i32
 
-      aiex.npu.rtp_write(@rtp22, 0, 1)
-      aiex.npu.rtp_write(@rtp23, 0, 1)
-      aiex.npu.rtp_write(@rtp25, 0, 1)
-      aiex.npu.rtp_write(@rtp24, 0, 1)
-      aiex.npu.rtp_write(@rtp24, 1, 0)
+      %rtp_val_11 = arith.constant 1 : i32
+      aiex.npu.rtp_write(@rtp22, 0, %rtp_val_11) : i32
+      %rtp_val_12 = arith.constant 1 : i32
+      aiex.npu.rtp_write(@rtp23, 0, %rtp_val_12) : i32
+      %rtp_val_13 = arith.constant 1 : i32
+      aiex.npu.rtp_write(@rtp25, 0, %rtp_val_13) : i32
+      %rtp_val_14 = arith.constant 1 : i32
+      aiex.npu.rtp_write(@rtp24, 0, %rtp_val_14) : i32
+      %rtp_val_15 = arith.constant 0 : i32
+      aiex.npu.rtp_write(@rtp24, 1, %rtp_val_15) : i32
 
       %c0 = arith.constant 0 : i32
       %c1 = arith.constant 1 : i32

@@ -58,7 +58,10 @@ module {
       %c1 = arith.constant 1 : i64
       %c64 = arith.constant 64 : i64
       // Set Core_Processor_Bus register Enable = 1. Without this the core will hang on access to the processor bus
-      aiex.npu.maskwrite32 {address = 0x32038 : ui32, row = 2 : i32, column = 0 : i32, value = 0x1 : ui32, mask = 0x1 : ui32}
+      %mw_addr = arith.constant 204856 : i32
+      %mw_val = arith.constant 1 : i32
+      %mw_mask = arith.constant 1 : i32
+      aiex.npu.maskwrite32(%mw_addr, %mw_val, %mw_mask) {row = 2 : i32, column = 0 : i32} : i32, i32, i32
       aiex.npu.dma_memcpy_nd (%in[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c64][%c0,%c0,%c0, %c1]) { metadata = @objFifo_in0, id = 0 : i64 } : memref<64xi32>
       aiex.npu.dma_memcpy_nd (%out[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c64][%c0,%c0,%c0, %c1]) { metadata = @objFifo_out0, id = 1 : i64, issue_token = true } : memref<64xi32>
       aiex.npu.dma_wait { symbol = @objFifo_out0 }

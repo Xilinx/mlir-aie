@@ -7,8 +7,12 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-dma-to-npu %s | FileCheck %s
-// CHECK: aiex.npu.write32 {address = 1536 : ui32, column = 2 : i32, row = 3 : i32, value = 50 : ui32}
-// CHECK: aiex.npu.write32 {address = 3216 : ui32, column = 0 : i32, row = 2 : i32, value = 99 : ui32}
+// CHECK-DAG: %[[RA0:.+]] = arith.constant 1536 : i32
+// CHECK-DAG: %[[RV0:.+]] = arith.constant 50 : i32
+// CHECK: aiex.npu.write32(%[[RA0]], %[[RV0]]) {column = 2 : i32, row = 3 : i32}
+// CHECK-DAG: %[[RA1:.+]] = arith.constant 3216 : i32
+// CHECK-DAG: %[[RV1:.+]] = arith.constant 99 : i32
+// CHECK: aiex.npu.write32(%[[RA1]], %[[RV1]]) {column = 0 : i32, row = 2 : i32}
 
 module {
   aie.device(npu1) {
@@ -17,8 +21,10 @@ module {
     %2 = aie.tile(0, 2)
     %3 = aie.buffer(%2) {address = 3200 : i32, sym_name = "RTP"} : memref<16xi32>
     aie.runtime_sequence() {
-      aiex.npu.rtp_write(@rtp, 0, 50)
-      aiex.npu.rtp_write(@RTP, 4, 99)
+      %v0 = arith.constant 50 : i32
+      aiex.npu.rtp_write(@rtp, 0, %v0) : i32
+      %v1 = arith.constant 99 : i32
+      aiex.npu.rtp_write(@RTP, 4, %v1) : i32
     }
   }
 }

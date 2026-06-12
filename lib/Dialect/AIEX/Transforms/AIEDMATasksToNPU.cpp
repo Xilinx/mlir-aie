@@ -121,8 +121,8 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
                 t->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
             uint32_t data = controllerIdAttr.getPktId() << 8;
             uint32_t mask = 0x00001F00;
-            NpuMaskWrite32Op::create(rewriter, loc, ctrlOffset, data, mask,
-                                     nullptr, nullptr, nullptr);
+            NpuMaskWrite32Op::create(rewriter, loc, cst(ctrlOffset), cst(data),
+                                     cst(mask), nullptr, nullptr, nullptr);
             break;
           }
         }
@@ -131,13 +131,11 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
       // Emit NpuWrite32Op to queue register.
       uint32_t queueOffset = ctrlOffset + 0x4;
       NpuWrite32Op::create(rewriter, loc,
-                           /*address=*/static_cast<uint32_t>(0),
-                           /*value=*/static_cast<uint32_t>(0),
+                           /*address=*/cst(queueOffset),
+                           /*value=*/cmd,
                            /*buffer=*/FlatSymbolRefAttr{},
                            /*column=*/IntegerAttr{},
                            /*row=*/IntegerAttr{},
-                           /*dyn_address=*/cst(queueOffset),
-                           /*dyn_value=*/cmd,
                            /*bd_group=*/IntegerAttr{});
       rewriter.eraseOp(op);
       return success();
@@ -405,10 +403,14 @@ struct AIEDMATasksToNPUPass
       }
       buf_addr = *buffer.getAddress();
       buf_addr += bd_op.getOffsetInBytes();
+      Type i32 = builder.getI32Type();
+      auto cst = [&](uint32_t v) -> Value {
+        return arith::ConstantIntOp::create(builder, bd_op.getLoc(), i32, v);
+      };
       if (target_model.isCoreTile(col, row)) {
-        NpuMaskWrite32Op::create(builder, bd_op.getLoc(), register_addr,
-                                 (buf_addr / 4) << 14, 0x0fffc000, nullptr,
-                                 nullptr, nullptr);
+        NpuMaskWrite32Op::create(builder, bd_op.getLoc(), cst(register_addr),
+                                 cst((buf_addr / 4) << 14), cst(0x0fffc000),
+                                 nullptr, nullptr, nullptr);
       } else if (target_model.isMemTile(col, row)) {
         // On AIE2p (NPU2), memtile DMAs use an offset-based address
         // space where the base depends on the relative position of the
@@ -422,12 +424,13 @@ struct AIEDMATasksToNPUPass
           if (addrOffset)
             buf_addr += addrOffset.value();
         }
-        NpuMaskWrite32Op::create(builder, bd_op.getLoc(), register_addr,
-                                 buf_addr / 4, 0x0007FFFF, nullptr, nullptr,
-                                 nullptr);
+        NpuMaskWrite32Op::create(builder, bd_op.getLoc(), cst(register_addr),
+                                 cst(buf_addr / 4), cst(0x0007FFFF), nullptr,
+                                 nullptr, nullptr);
       } else {
-        NpuWrite32Op::create(builder, bd_op.getLoc(), register_addr, buf_addr,
-                             nullptr, nullptr, nullptr);
+        NpuWrite32Op::create(builder, bd_op.getLoc(), cst(register_addr),
+                             cst(buf_addr), nullptr, nullptr, nullptr,
+                             /*bd_group=*/nullptr);
       }
     } else {
       return bd_op->emitOpError(
@@ -704,14 +707,12 @@ struct AIEDMATasksToNPUPass
     auto emitDynBdWord = [&](uint32_t wordIdx, Value wordValue) {
       uint32_t wordAddr = bdAddrU32 + wordIdx * 4;
       NpuWrite32Op::create(builder, loc,
-                           /*address=*/static_cast<uint32_t>(0),
-                           /*value=*/static_cast<uint32_t>(0),
+                           /*address=*/cst(wordAddr),
+                           /*value=*/wordValue,
                            /*buffer=*/FlatSymbolRefAttr{},
                            /*column=*/IntegerAttr{},
                            /*row=*/IntegerAttr{},
-                           /*dyn_address=*/cst(wordAddr),
-                           /*dyn_value=*/wordValue,
-                           /*bd_group=*/bdAddrU32);
+                           /*bd_group=*/builder.getUI32IntegerAttr(bdAddrU32));
     };
 
     // word[0]: buffer_length — dynamic if any of d0/d1/d2 sizes are dynamic

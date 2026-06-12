@@ -13,6 +13,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 
@@ -55,9 +56,14 @@ public:
     auto localLockAddress =
         tm.getLocalLockAddress(lockID, lockOp.getTileID()).value();
 
+    Type i32 = rewriter.getI32Type();
+    Value addrV = arith::ConstantIntOp::create(
+        rewriter, op.getLoc(), i32, static_cast<int32_t>(localLockAddress));
+    Value valV = arith::ConstantIntOp::create(rewriter, op.getLoc(), i32,
+                                              op.getValue());
     rewriter.replaceOpWithNewOp<NpuWrite32Op>(
-        op, localLockAddress, op.getValue(), nullptr,
-        rewriter.getI32IntegerAttr(col), rewriter.getI32IntegerAttr(row));
+        op, addrV, valV, /*buffer=*/nullptr, rewriter.getI32IntegerAttr(col),
+        rewriter.getI32IntegerAttr(row), /*bd_group=*/nullptr);
 
     return success();
   };
@@ -71,6 +77,7 @@ struct AIELowerSetLockPass
 
     ConversionTarget target(getContext());
     target.addLegalOp<NpuWrite32Op>();
+    target.addLegalDialect<arith::ArithDialect>();
     target.addIllegalOp<SetLockOp>();
 
     RewritePatternSet patterns(&getContext());

@@ -85,25 +85,34 @@ LogicalResult appendSync(std::vector<uint32_t> &instructions, NpuSyncOp op) {
 
 LogicalResult appendWrite32(std::vector<uint32_t> &instructions,
                             NpuWrite32Op op) {
-  if (op.hasDynamicOperands())
-    return op.emitOpError("cannot translate dynamic operands to binary; use "
-                          "--aie-generate-txn-cpp instead");
+  uint32_t value;
+  if (failed(getConstantOperand(op.getValue(), value)))
+    return op.emitOpError("cannot translate runtime (non-constant) value to "
+                          "binary; use --aie-generate-txn-cpp instead");
   if (op.getBuffer())
     return op.emitOpError("Cannot translate symbolic address");
-  aie_runtime::txn_append_write32(instructions, *op.getAbsoluteAddress(),
-                                  op.getValue());
+  std::optional<uint32_t> address = op.getAbsoluteAddress();
+  if (!address)
+    return op.emitOpError("cannot translate runtime (non-constant) address to "
+                          "binary; use --aie-generate-txn-cpp instead");
+  aie_runtime::txn_append_write32(instructions, *address, value);
   return success();
 }
 
 LogicalResult appendMaskWrite32(std::vector<uint32_t> &instructions,
                                 NpuMaskWrite32Op op) {
-  if (op.hasDynamicOperands())
-    return op.emitOpError("cannot translate dynamic operands to binary; use "
-                          "--aie-generate-txn-cpp instead");
+  uint32_t value, mask;
+  if (failed(getConstantOperand(op.getValue(), value)) ||
+      failed(getConstantOperand(op.getMask(), mask)))
+    return op.emitOpError("cannot translate runtime (non-constant) operands to "
+                          "binary; use --aie-generate-txn-cpp instead");
   if (op.getBuffer())
     return op.emitOpError("Cannot translate symbolic address");
-  aie_runtime::txn_append_maskwrite32(instructions, *op.getAbsoluteAddress(),
-                                      op.getValue(), op.getMask());
+  std::optional<uint32_t> address = op.getAbsoluteAddress();
+  if (!address)
+    return op.emitOpError("cannot translate runtime (non-constant) address to "
+                          "binary; use --aie-generate-txn-cpp instead");
+  aie_runtime::txn_append_maskwrite32(instructions, *address, value, mask);
   return success();
 }
 

@@ -25,8 +25,12 @@ module {
   aie.device(npu1) {
     memref.global "private" constant @write_data : memref<4xi32> = dense<[1, 2, 3, 4]>
     aie.runtime_sequence(%arg0: memref<16xf32>) {
-      aiex.npu.write32 { address = 0xabc00def : ui32, value = 0x42 : ui32 } loc(#name_w32)
-      aiex.npu.write32 { address = 0x0 : ui32, value = 0x1 : ui32 } loc(#name_zero)
+      %w32_addr = arith.constant 0xabc00def : i32
+      %w32_val = arith.constant 0x42 : i32
+      aiex.npu.write32(%w32_addr, %w32_val) : i32, i32 loc(#name_w32)
+      %w32_addr_z = arith.constant 0x0 : i32
+      %w32_val_z = arith.constant 0x1 : i32
+      aiex.npu.write32(%w32_addr_z, %w32_val_z) : i32, i32 loc(#name_zero)
       %0 = memref.get_global @write_data : memref<4xi32>
       aiex.npu.blockwrite (%0) { address = 0x12345678 : ui32 } : memref<4xi32> loc(#name_bw)
     }

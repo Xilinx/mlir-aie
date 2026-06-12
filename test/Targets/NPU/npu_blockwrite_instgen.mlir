@@ -76,7 +76,9 @@ module {
       // CHECK: 00000000
       // CHECK: 00000042
       // CHECK: 00000018
-      aiex.npu.write32 { column = 3 : i32, row = 4 : i32, address = 0xabc00def : ui32, value = 0x42 : ui32 }
+      %w32_addr = arith.constant 2881490415 : i32
+      %w32_val = arith.constant 66 : i32
+      aiex.npu.write32(%w32_addr, %w32_val) {column = 3 : i32, row = 4 : i32} : i32, i32
 
       // CHECK: 00000080
       // CHECK: 00000010

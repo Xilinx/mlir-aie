@@ -213,39 +213,28 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
 npu_dma_memcpy_nd = NpuDmaMemcpyNd
 
 
-# Dynamic convenience wrappers
-# These create unified ops with SSA value operands for runtime-parameterized
-# sequences. The static attributes serve as placeholders (0) and the dynamic
-# SSA values override them at runtime.
+# npu.write32 / npu.maskwrite32 take their address/value/mask as SSA operands.
+# These wrappers accept plain Python ints (materialized as arith.constant) or
+# existing SSA Values, so call sites can pass compile-time-known values
+# directly or runtime sequence values for runtime-parameterized sequences.
+_npu_write32_gen = npu_write32
+_npu_maskwrite32_gen = npu_maskwrite32
 
 
-def npu_write32_dynamic(dyn_address, dyn_value, *, buffer=None, column=None, row=None):
-    """write32 with SSA value operands for runtime-parameterized sequences."""
-    return NpuWrite32Op(
-        address=0,
-        value=0,
-        buffer=buffer,
-        column=column,
-        row=row,
-        dyn_address=dyn_address,
-        dyn_value=dyn_value,
+def npu_write32(address, value, *, buffer=None, column=None, row=None):
+    return _npu_write32_gen(
+        _as_i32(address), _as_i32(value), buffer=buffer, column=column, row=row
     )
 
 
-def npu_maskwrite32_dynamic(
-    dyn_address, dyn_value, dyn_mask, *, buffer=None, column=None, row=None
-):
-    """maskwrite32 with SSA value operands for runtime-parameterized sequences."""
-    return NpuMaskWrite32Op(
-        address=0,
-        value=0,
-        mask=0,
+def npu_maskwrite32(address, value, mask, *, buffer=None, column=None, row=None):
+    return _npu_maskwrite32_gen(
+        _as_i32(address),
+        _as_i32(value),
+        _as_i32(mask),
         buffer=buffer,
         column=column,
         row=row,
-        dyn_address=dyn_address,
-        dyn_value=dyn_value,
-        dyn_mask=dyn_mask,
     )
 
 

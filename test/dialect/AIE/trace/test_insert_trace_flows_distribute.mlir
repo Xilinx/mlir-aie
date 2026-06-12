@@ -47,8 +47,10 @@ module @distribute_two_traces {
     // CHECK-DAG: aiex.npu.writebd {bd_id = 14
     // Both channels share arg_idx=4, split by offset within the trace buffer.
     // Channel 0 at offset 0, channel 1 at offset 8192 (= buffer_size).
-    // CHECK-DAG: aiex.npu.address_patch {{{.*}}arg_idx = 4 : i32, arg_plus = 0
-    // CHECK-DAG: aiex.npu.address_patch {{{.*}}arg_idx = 4 : i32, arg_plus = 8192
+    // CHECK-DAG: %[[O0:.+]] = arith.constant 0 : i32
+    // CHECK-DAG: %[[O1:.+]] = arith.constant 8192 : i32
+    // CHECK-DAG: aiex.npu.address_patch(%[[O0]] : i32) {{{.*}}arg_idx = 4 : i32
+    // CHECK-DAG: aiex.npu.address_patch(%[[O1]] : i32) {{{.*}}arg_idx = 4 : i32
 
     // First trace -> channel 1 (default shim-channel), second -> channel 0
     // CHECK-DAG: aie.packet_dest<%{{.*}}, DMA : 1>
@@ -127,8 +129,10 @@ module @distribute_auto_argidx {
     // CHECK-DAG: aie.packet_dest<%{{.*}}, DMA : 0>
     // CHECK-DAG: aiex.npu.writebd {bd_id = 15
     // CHECK-DAG: aiex.npu.writebd {bd_id = 14
-    // CHECK-DAG: aiex.npu.address_patch {{{.*}}arg_idx = 0 : i32, arg_plus = 64
-    // CHECK-DAG: aiex.npu.address_patch {{{.*}}arg_idx = 0 : i32, arg_plus = 8256
+    // CHECK-DAG: %[[P0:.+]] = arith.constant 64 : i32
+    // CHECK-DAG: %[[P1:.+]] = arith.constant 8256 : i32
+    // CHECK-DAG: aiex.npu.address_patch(%[[P0]] : i32) {{{.*}}arg_idx = 0 : i32
+    // CHECK-DAG: aiex.npu.address_patch(%[[P1]] : i32) {{{.*}}arg_idx = 0 : i32
   }
 }
 
@@ -189,8 +193,10 @@ module @distribute_four_traces_three_cols {
     // CHECK-DAG: aiex.npu.writebd {bd_id = 15
     // CHECK-DAG: aiex.npu.writebd {bd_id = 14
     // Both channels share arg_idx, split by offset
-    // CHECK-DAG: aiex.npu.address_patch {{{.*}}arg_idx = 4 : i32, arg_plus = 0
-    // CHECK-DAG: aiex.npu.address_patch {{{.*}}arg_idx = 4 : i32, arg_plus = 8192
+    // CHECK-DAG: %[[Q0:.+]] = arith.constant 0 : i32
+    // CHECK-DAG: %[[Q1:.+]] = arith.constant 8192 : i32
+    // CHECK-DAG: aiex.npu.address_patch(%[[Q0]] : i32) {{{.*}}arg_idx = 4 : i32
+    // CHECK-DAG: aiex.npu.address_patch(%[[Q1]] : i32) {{{.*}}arg_idx = 4 : i32
 
     // Without distribute, all 4 traces use same channel
     // NODIST: aie.packet_dest<%{{.*}}, DMA : 1>

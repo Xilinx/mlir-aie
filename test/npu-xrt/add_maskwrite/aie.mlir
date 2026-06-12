@@ -66,11 +66,19 @@ module {
       %c1_i64 = arith.constant 1 : i64
       %c8_i64 = arith.constant 8 : i64
 
-      aiex.npu.maskwrite32 {row = 2 : i32, column = 0 : i32, address = 1024 : ui32, value = 0x12345678 : ui32, mask = 0xF0F0F0F0 : ui32}
-      aiex.npu.maskwrite32 {buffer = @input_buffer, address = 1 : ui32, value = 0x9ABCDEF0 : ui32, mask = 0x0F0F0F0F : ui32}
+      %mw_addr = arith.constant 1024 : i32
+      %mw_val = arith.constant 305419896 : i32
+      %mw_mask = arith.constant 4042322160 : i32
+      aiex.npu.maskwrite32(%mw_addr, %mw_val, %mw_mask) {row = 2 : i32, column = 0 : i32} : i32, i32, i32
+      %mw_addr_1 = arith.constant 1 : i32
+      %mw_val_1 = arith.constant 2596069104 : i32
+      %mw_mask_1 = arith.constant 252645135 : i32
+      aiex.npu.maskwrite32(%mw_addr_1, %mw_val_1, %mw_mask_1) {buffer = @input_buffer} : i32, i32, i32
 
       aiex.npu.dma_memcpy_nd(%arg0[%c0_i64, %c0_i64, %c0_i64, %c0_i64] [%c1_i64, %c1_i64, %c1_i64, %c8_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64]) {id = 0 : i64, issue_token = true, metadata = @out0} : memref<8xi32>
-      aiex.npu.write32 { row = 2 : i32, column = 0 : i32, address = 0x0001F000 : ui32, value = 1 : ui32 }
+      %w32_addr_2 = arith.constant 126976 : i32
+      %w32_val_2 = arith.constant 1 : i32
+      aiex.npu.write32(%w32_addr_2, %w32_val_2) {row = 2 : i32, column = 0 : i32} : i32, i32
       aiex.npu.dma_wait {symbol = @out0}
     }
   }

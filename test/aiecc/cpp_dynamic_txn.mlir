@@ -77,7 +77,7 @@ module {
       %c16_i32 = arith.constant 16 : i32
 
       // Dynamic RTP write
-      aiex.npu.rtp_write(@rtp, 0 : ui32, %n) : i32
+      aiex.npu.rtp_write(@rtp, 0, %n) : i32
 
       // Derived value
       %n_div_16 = arith.divui %n, %c16_i32 : i32

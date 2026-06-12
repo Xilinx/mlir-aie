@@ -43,7 +43,9 @@
 module {
   aie.device(npu2) {
     aie.runtime_sequence(%buf : memref<16xi32>) {
-      aiex.npu.write32 {address = 196612 : ui32, value = 42 : ui32}
+      %w32_addr = arith.constant 196612 : i32
+      %w32_val = arith.constant 42 : i32
+      aiex.npu.write32(%w32_addr, %w32_val) : i32, i32
       %column = arith.constant 0 : i32
       %row = arith.constant 0 : i32
       %direction = arith.constant 0 : i32

@@ -418,7 +418,7 @@ private:
           if (bdGroupAttr &&
               bdGroupAttr.getValue().getZExtValue() == blockAddr) {
             auto addrConst =
-                w32.getDynAddress().getDefiningOp<arith::ConstantOp>();
+                w32.getAddress().getDefiningOp<arith::ConstantOp>();
             auto addrAttr = addrConst
                                 ? dyn_cast<IntegerAttr>(addrConst.getValue())
                                 : nullptr;
@@ -473,7 +473,7 @@ private:
       SmallVector<std::pair<uint32_t, Value>> dynamicWords;
       for (auto &[wordIdx, w32] : dynWrite32s) {
         dynamicWords.push_back(
-            {wordIdx, mapping.lookupOrDefault(w32.getDynValue())});
+            {wordIdx, mapping.lookupOrDefault(w32.getValue())});
       }
 
       emitTxnBlockWriteDynamicWords(builder, blockWrite.getLoc(), txnVec,
@@ -555,38 +555,28 @@ private:
                         Value txnVec) {
     Location opLoc = op->getLoc();
 
-    // AIEX write32 - handles both static and dynamic forms.
     if (auto write32 = dyn_cast<AIEX::NpuWrite32Op>(op)) {
-      Value addrVal, valVal;
-      if (write32.hasDynamicOperands()) {
-        addrVal = mapping.lookupOrDefault(write32.getDynAddress());
-        valVal = mapping.lookupOrDefault(write32.getDynValue());
-      } else {
-        uint32_t addr = write32.getAddress();
-        if (auto absAddr = write32.getAbsoluteAddress())
-          addr = *absAddr;
-        addrVal = createU32Constant(builder, opLoc, addr);
-        valVal = createU32Constant(builder, opLoc, write32.getValue());
-      }
+      // When the address is a compile-time constant resolvable through
+      // buffer/column/row, emit the absolute address; otherwise pass the SSA
+      // address operand through.
+      Value addrVal;
+      if (auto absAddr = write32.getAbsoluteAddress())
+        addrVal = createU32Constant(builder, opLoc, *absAddr);
+      else
+        addrVal = mapping.lookupOrDefault(write32.getAddress());
+      Value valVal = mapping.lookupOrDefault(write32.getValue());
       emitTxnWrite32(builder, opLoc, txnVec, addrVal, valVal);
       return success();
     }
 
-    // AIEX maskwrite32 - handles both static and dynamic forms.
     if (auto maskWrite = dyn_cast<AIEX::NpuMaskWrite32Op>(op)) {
-      Value addrVal, valVal, maskVal;
-      if (maskWrite.hasDynamicOperands()) {
-        addrVal = mapping.lookupOrDefault(maskWrite.getDynAddress());
-        valVal = mapping.lookupOrDefault(maskWrite.getDynValue());
-        maskVal = mapping.lookupOrDefault(maskWrite.getDynMask());
-      } else {
-        uint32_t addr = maskWrite.getAddress();
-        if (auto absAddr = maskWrite.getAbsoluteAddress())
-          addr = *absAddr;
-        addrVal = createU32Constant(builder, opLoc, addr);
-        valVal = createU32Constant(builder, opLoc, maskWrite.getValue());
-        maskVal = createU32Constant(builder, opLoc, maskWrite.getMask());
-      }
+      Value addrVal;
+      if (auto absAddr = maskWrite.getAbsoluteAddress())
+        addrVal = createU32Constant(builder, opLoc, *absAddr);
+      else
+        addrVal = mapping.lookupOrDefault(maskWrite.getAddress());
+      Value valVal = mapping.lookupOrDefault(maskWrite.getValue());
+      Value maskVal = mapping.lookupOrDefault(maskWrite.getMask());
       emitTxnMaskWrite32(builder, opLoc, txnVec, addrVal, valVal, maskVal);
       return success();
     }

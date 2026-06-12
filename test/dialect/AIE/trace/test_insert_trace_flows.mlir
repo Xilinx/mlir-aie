@@ -303,7 +303,8 @@ module @trace_after_last_tensor {
       aie.trace.stop broadcast=14
     }
     aie.runtime_sequence(%arg0: memref<16xi32>, %arg1: memref<1024xi32>) {
-      // CHECK: aiex.npu.address_patch {{{.*}}arg_idx = 1{{.*}}arg_plus = 4096{{.*}}}
+      // CHECK: %[[AP:.+]] = arith.constant 4096 : i32
+      // CHECK: aiex.npu.address_patch(%[[AP]] : i32) {{{.*}}arg_idx = 1{{.*}}}
       aie.trace.host_config buffer_size = 8192 arg_idx = -1
       aie.trace.start_config @core_trace
     }

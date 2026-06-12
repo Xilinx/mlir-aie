@@ -31,6 +31,31 @@ using namespace xilinx::AIE;
 
 namespace {
 
+// npu.write32 / npu.maskwrite32 take their address/value/mask as SSA operands.
+// These helpers materialize compile-time-known register writes by building the
+// arith.constant operands, keeping the (many) trace-config call sites concise.
+static void emitNpuWrite32(OpBuilder &builder, Location loc, uint32_t address,
+                           uint32_t value, mlir::IntegerAttr column,
+                           mlir::IntegerAttr row) {
+  Type i32 = builder.getI32Type();
+  Value addr = arith::ConstantIntOp::create(builder, loc, i32, address);
+  Value val = arith::ConstantIntOp::create(builder, loc, i32, value);
+  xilinx::AIEX::NpuWrite32Op::create(builder, loc, addr, val,
+                                     /*buffer=*/nullptr, column, row,
+                                     /*bd_group=*/nullptr);
+}
+
+static void emitNpuMaskWrite32(OpBuilder &builder, Location loc,
+                               uint32_t address, uint32_t value, uint32_t mask,
+                               mlir::IntegerAttr column, mlir::IntegerAttr row) {
+  Type i32 = builder.getI32Type();
+  Value addr = arith::ConstantIntOp::create(builder, loc, i32, address);
+  Value val = arith::ConstantIntOp::create(builder, loc, i32, value);
+  Value msk = arith::ConstantIntOp::create(builder, loc, i32, mask);
+  xilinx::AIEX::NpuMaskWrite32Op::create(builder, loc, addr, val, msk,
+                                         /*buffer=*/nullptr, column, row);
+}
+
 struct TraceInfo {
   TraceOp traceOp;
   TileOp tile;
@@ -665,8 +690,8 @@ struct AIEInsertTraceFlowsPass
       uint32_t timerCtrlValue =
           targetModel.encodeFieldValue(*resetField, *broadcastEvent);
 
-      xilinx::AIEX::NpuWrite32Op::create(
-          builder, runtimeSeq.getLoc(), timerCtrlAddr, timerCtrlValue, nullptr,
+      emitNpuWrite32(
+          builder, runtimeSeq.getLoc(), timerCtrlAddr, timerCtrlValue,
           builder.getI32IntegerAttr(col), builder.getI32IntegerAttr(row));
     }
 
@@ -742,10 +767,9 @@ struct AIEInsertTraceFlowsPass
         if (!ctrlIdMask)
           llvm::report_fatal_error(
               "Controller_ID field does not fit in 32-bit register");
-        xilinx::AIEX::NpuMaskWrite32Op::create(
+        emitNpuMaskWrite32(
             builder, runtimeSeq.getLoc(), ctrlAddr, ctrlIdValue, *ctrlIdMask,
-            nullptr, builder.getI32IntegerAttr(shimCol),
-            builder.getI32IntegerAttr(0));
+            builder.getI32IntegerAttr(shimCol), builder.getI32IntegerAttr(0));
 
         // Push BD to task queue
         std::string taskQueueRegName = (chanDesc.channel == 0)
@@ -765,8 +789,8 @@ struct AIEInsertTraceFlowsPass
         uint32_t queueValue =
             targetModel.encodeFieldValue(*tokenField, 1) |
             targetModel.encodeFieldValue(*bdIdField, chanDesc.bdId);
-        xilinx::AIEX::NpuWrite32Op::create(
-            builder, runtimeSeq.getLoc(), queueReg->offset, queueValue, nullptr,
+        emitNpuWrite32(
+            builder, runtimeSeq.getLoc(), queueReg->offset, queueValue,
             builder.getI32IntegerAttr(shimCol), builder.getI32IntegerAttr(0));
       }
 
@@ -791,10 +815,9 @@ struct AIEInsertTraceFlowsPass
               "Failed to lookup Reset_Event in shim Timer_Control");
         uint32_t shimTimerCtrlValue =
             targetModel.encodeFieldValue(*shimResetField, *userEvent1);
-        xilinx::AIEX::NpuWrite32Op::create(
+        emitNpuWrite32(
             builder, runtimeSeq.getLoc(), shimTimerCtrlAddr, shimTimerCtrlValue,
-            nullptr, builder.getI32IntegerAttr(shimCol),
-            builder.getI32IntegerAttr(0));
+            builder.getI32IntegerAttr(shimCol), builder.getI32IntegerAttr(0));
 
         // Configure broadcast register with USER_EVENT_1
         std::string broadcastRegName =
@@ -804,20 +827,18 @@ struct AIEInsertTraceFlowsPass
         if (!broadcastReg)
           llvm::report_fatal_error(llvm::Twine("Failed to lookup ") +
                                    broadcastRegName);
-        xilinx::AIEX::NpuWrite32Op::create(
+        emitNpuWrite32(
             builder, runtimeSeq.getLoc(), broadcastReg->offset, *userEvent1,
-            nullptr, builder.getI32IntegerAttr(shimCol),
-            builder.getI32IntegerAttr(0));
+            builder.getI32IntegerAttr(shimCol), builder.getI32IntegerAttr(0));
 
         // Generate USER_EVENT_1 to trigger the broadcast
         const RegisterInfo *eventGenReg = targetModel.lookupRegister(
             "Event_Generate", shimInfo.shimTile.getTileID());
         if (!eventGenReg)
           llvm::report_fatal_error("Failed to lookup Event_Generate register");
-        xilinx::AIEX::NpuWrite32Op::create(
+        emitNpuWrite32(
             builder, runtimeSeq.getLoc(), eventGenReg->offset, *userEvent1,
-            nullptr, builder.getI32IntegerAttr(shimCol),
-            builder.getI32IntegerAttr(0));
+            builder.getI32IntegerAttr(shimCol), builder.getI32IntegerAttr(0));
       }
     }
 
@@ -845,19 +866,17 @@ struct AIEInsertTraceFlowsPass
       if (!broadcastReg)
         llvm::report_fatal_error(llvm::Twine("Failed to lookup ") +
                                  broadcastRegName);
-      xilinx::AIEX::NpuWrite32Op::create(
+      emitNpuWrite32(
           builder, runtimeSeq.getLoc(), broadcastReg->offset, *userEvent0,
-          nullptr, builder.getI32IntegerAttr(shimCol),
-          builder.getI32IntegerAttr(0));
+          builder.getI32IntegerAttr(shimCol), builder.getI32IntegerAttr(0));
 
       const RegisterInfo *stopEventGenReg = targetModel.lookupRegister(
           "Event_Generate", shimInfo.shimTile.getTileID());
       if (!stopEventGenReg)
         llvm::report_fatal_error("Failed to lookup Event_Generate register");
-      xilinx::AIEX::NpuWrite32Op::create(
+      emitNpuWrite32(
           builder, runtimeSeq.getLoc(), stopEventGenReg->offset, *userEvent0,
-          nullptr, builder.getI32IntegerAttr(shimCol),
-          builder.getI32IntegerAttr(0));
+          builder.getI32IntegerAttr(shimCol), builder.getI32IntegerAttr(0));
     }
   }
 

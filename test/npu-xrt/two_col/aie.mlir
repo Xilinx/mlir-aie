@@ -132,14 +132,22 @@ module {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
       %c2048 = arith.constant 2048 : i64
-      aiex.npu.rtp_write(@rtp0, 0, 50)
-      aiex.npu.rtp_write(@rtp1, 0, 50)
-      aiex.npu.rtp_write(@rtp2, 0, 50)
-      aiex.npu.rtp_write(@rtp3, 0, 50)
-      aiex.npu.rtp_write(@rtp0, 1, 0)
-      aiex.npu.rtp_write(@rtp1, 1, 0)
-      aiex.npu.rtp_write(@rtp2, 1, 0)
-      aiex.npu.rtp_write(@rtp3, 1, 0)
+      %rtp_val_0 = arith.constant 50 : i32
+      aiex.npu.rtp_write(@rtp0, 0, %rtp_val_0) : i32
+      %rtp_val_1 = arith.constant 50 : i32
+      aiex.npu.rtp_write(@rtp1, 0, %rtp_val_1) : i32
+      %rtp_val_2 = arith.constant 50 : i32
+      aiex.npu.rtp_write(@rtp2, 0, %rtp_val_2) : i32
+      %rtp_val_3 = arith.constant 50 : i32
+      aiex.npu.rtp_write(@rtp3, 0, %rtp_val_3) : i32
+      %rtp_val_4 = arith.constant 0 : i32
+      aiex.npu.rtp_write(@rtp0, 1, %rtp_val_4) : i32
+      %rtp_val_5 = arith.constant 0 : i32
+      aiex.npu.rtp_write(@rtp1, 1, %rtp_val_5) : i32
+      %rtp_val_6 = arith.constant 0 : i32
+      aiex.npu.rtp_write(@rtp2, 1, %rtp_val_6) : i32
+      %rtp_val_7 = arith.constant 0 : i32
+      aiex.npu.rtp_write(@rtp3, 1, %rtp_val_7) : i32
       aiex.npu.dma_memcpy_nd (%out[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c2048][%c0,%c0,%c0, %c1]) { metadata = @objFifo_out0, id = 1 : i64, issue_token = true } : memref<2048xi32>
       aiex.npu.dma_memcpy_nd (%in[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c2048][%c0,%c0,%c0, %c1]) { metadata = @objFifo_in0, id = 0 : i64 } : memref<2048xi32>
       aiex.npu.dma_wait {symbol = @objFifo_out0}

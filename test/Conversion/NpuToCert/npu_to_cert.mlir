@@ -11,7 +11,9 @@
 // CHECK: aiex.cert.write32(12345, 65244)
 aie.device(npu2) {
   aie.runtime_sequence @configure() {
-    aiex.npu.write32 {address = 12345 : ui32, value = 0xfedc : ui32}
+    %w32_addr = arith.constant 12345 : i32
+    %w32_val = arith.constant 65244 : i32
+    aiex.npu.write32(%w32_addr, %w32_val) : i32, i32
   }
 }
 
@@ -54,7 +56,8 @@ aie.device(npu2) {
   aie.runtime_sequence @sequence(%arg0: memref<9216xi32>, %arg1: memref<9216xi32>, %arg2: memref<9216xi32>) {
       %21 = memref.get_global @blockwrite_data_21 : memref<9xi32>
       aiex.npu.blockwrite(%21) {address = 6 : ui32} : memref<9xi32>
-      aiex.npu.address_patch {addr = 10 : ui32, arg_idx = 2 : i32, arg_plus = 0 : i32}
+      %ap_arg_plus = arith.constant 0 : i32
+      aiex.npu.address_patch(%ap_arg_plus : i32) {addr = 10 : ui32, arg_idx = 2 : i32}
   }
 }
 
