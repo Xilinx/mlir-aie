@@ -61,6 +61,21 @@ static inline int8_t round_to_i8(float v) {
   return (int8_t)r;
 }
 
+// Pure IEEE fp32 reciprocal (Peano `/` is a HW approx, Bug 1). Matches the
+// dyn-rmsnorm sw_recip so the numpy reference and device share the function.
+static inline float sw_recip(float a) {
+  int32_t bits;
+  memcpy(&bits, &a, 4);
+  bits = (int32_t)0x7EF477D5 - bits;
+  float x;
+  memcpy(&x, &bits, 4);
+  x = x * (2.0f - a * x);
+  x = x * (2.0f - a * x);
+  x = x * (2.0f - a * x);
+  x = x * (2.0f - a * x);
+  return x;
+}
+
 // Trivial sv_lo + sv_hi -> sv_full memcpy worker. Needed because af_concat
 // can't pull from 3 input fifos on one CT (2-in DMA channel cap), so we
 // merge the two halves first.
@@ -70,6 +85,38 @@ extern "C" void llama_sv_merge(int8_t *restrict in_lo, int8_t *restrict in_hi,
   constexpr int kHalf = (kNHeadsQ / 2) * kHD;
   memcpy(out, in_lo, kHalf);
   memcpy(out + kHalf, in_hi, kHalf);
+  event1();
+}
+
+// q_requant (Phase 2a self-cal): the q_proj gemm now emits fp32[kQD]; this
+// stage computes each Q head's q_out_scale ON-CHIP (absmax over the head's
+// 64-wide fp32 slice) and requants to int8, writing the per-head scale tail
+// rope/q_split/flowkv expect: out[kQD + h*8 + 0..4] = q_scale_h, [+4..8] = pad
+// (the old sv_inv_out slot, now self-calibrated by flowkv -- kept for the 8 B
+// stride those kernels hardcode). out is int8[kQD + kNHeadsQ*8].
+extern "C" void llama_q_requant(float *restrict q_fp, int8_t *restrict out) {
+  event0();
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
+  int8_t *tail = out + kQD;
+  for (int h = 0; h < kNHeadsQ; h++) {
+    float *src = q_fp + h * kHD;
+    int8_t *dst = out + h * kHD;
+    float absmax = 0.0f;
+    for (int j = 0; j < kHD; j++) {
+      float a = src[j] >= 0.0f ? src[j] : -src[j];
+      if (a > absmax)
+        absmax = a;
+    }
+    if (absmax < 1e-12f)
+      absmax = 1e-12f;
+    float q_scale = absmax * (1.0f / 127.0f);
+    float q_inv = sw_recip(q_scale);
+    for (int j = 0; j < kHD; j++)
+      dst[j] = round_to_i8(src[j] * q_inv);
+    memcpy(tail + h * 8 + 0, &q_scale, 4);
+    int32_t zero = 0;
+    memcpy(tail + h * 8 + 4, &zero, 4);
+  }
   event1();
 }
 
@@ -183,21 +230,6 @@ extern "C" void llama_af_concat(int8_t *restrict af_in, int8_t *restrict scales,
     }
   }
   event1();
-}
-
-// Pure IEEE fp32 reciprocal (Peano `/` is a HW approx, Bug 1). Matches the
-// dyn-rmsnorm sw_recip so the numpy reference and device share the function.
-static inline float sw_recip(float a) {
-  int32_t bits;
-  memcpy(&bits, &a, 4);
-  bits = (int32_t)0x7EF477D5 - bits;
-  float x;
-  memcpy(&x, &bits, 4);
-  x = x * (2.0f - a * x);
-  x = x * (2.0f - a * x);
-  x = x * (2.0f - a * x);
-  x = x * (2.0f - a * x);
-  return x;
 }
 
 // Self-calibrating af_concat: computes the global o_act_scale on-chip (absmax

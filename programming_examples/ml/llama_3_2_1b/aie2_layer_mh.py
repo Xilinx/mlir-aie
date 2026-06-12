@@ -272,7 +272,8 @@ def build():
     of_wq = ObjectFifo(t_WQ_slot, depth=1, name="wq")
     of_wk = ObjectFifo(t_WK_slot, depth=1, name="wk")
     of_wv = ObjectFifo(t_WV_slot, depth=1, name="wv")
-    of_qf = ObjectFifo(t_QF_i8, depth=1, name="qf")
+    of_qfp = ObjectFifo(_f32(QD), depth=1, name="qfp")  # fp32 q_proj out (2a)
+    of_qf = ObjectFifo(t_QF_i8, depth=1, name="qf")  # int8 q + per-head scale tail
     of_cs = ObjectFifo(t_CS_bf16, depth=1, name="cs")
     of_qr = ObjectFifo(t_QR_i8, depth=1, name="qr")
 
@@ -392,12 +393,15 @@ def build():
     k_rms = Kernel(
         "llama_rmsnorm_int8_dyn_acttail", KO_RMS, [t_D8_i8, t_D_bf16, t_D8_i8]
     )
-    # q_proj-mh (acttail: act_scale read from h1 tail)
+    # q_proj-mh fp32 out (2a self-cal): act_scale from h1 tail; q_out_scales
+    # computed downstream by q_requant.
     k_q = Kernel(
-        "llama_gemm_tiled_layer_K2048_N4_perchan_v2_up_q_mh_acttail",
+        "llama_gemm_tiled_layer_K2048_N4_perchan_q_mh_fp32out_acttail",
         KO_GEMM2,
-        [t_D8_i8, t_WQ_slot, t_QF_i8, np.int32],
+        [t_D8_i8, t_WQ_slot, _f32(QD), np.int32],
     )
+    # q_requant: fp32[QD] -> per-Q-head absmax -> q_out_scale + int8 qf + tail.
+    k_qrequant = Kernel("llama_q_requant", KO_GLUE, [_f32(QD), t_QF_i8])
     # o_proj-mh, fp32 output. act_scale (o_act_scale) from the self-calibrated
     # af tail at af[QD] (reuses the K=2048 fp32out_acttail symbol; af is
     # int8[AF_BYTES+8]).
@@ -483,6 +487,13 @@ def build():
             k(a, w, o, _i32(t))
             c_w.release(1)
         c_act.release(1)
+        c_out.release(1)
+
+    def w_qrequant(c_in, c_out, k):
+        x = c_in.acquire(1)
+        o = c_out.acquire(1)
+        k(x, o)
+        c_in.release(1)
         c_out.release(1)
 
     def w_o(c_act, c_w, c_out, k):
@@ -626,9 +637,13 @@ def build():
         ),
         Worker(
             w_q,
-            [of_h1.cons(), of_wq.cons(), of_qf.prod(), k_q],
+            [of_h1.cons(), of_wq.cons(), of_qfp.prod(), k_q],
             tile=Tile(0, 3),
             stack_size=PSK,
+        ),
+        # q_requant (2a): fp32 q -> per-head self-cal q_out_scale -> int8 + tail.
+        Worker(
+            w_qrequant, [of_qfp.cons(), of_qf.prod(), k_qrequant], tile=Tile(4, 3)
         ),
         Worker(
             w_rope, [of_qf.cons(), of_cs.cons(), of_qr.prod(), k_rope], tile=Tile(0, 4)

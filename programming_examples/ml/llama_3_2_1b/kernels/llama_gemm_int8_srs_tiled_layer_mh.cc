@@ -343,6 +343,21 @@ void llama_gemm_tiled_layer_K2048_N4_perchan_v2_o_mh_fp32out_acttail(
   event1();
 }
 
+// q_proj-mh, fp32 out (Phase 2a self-cal): act_scale from the h1 tail; the
+// downstream q_requant computes per-Q-head q_out_scales. K=D=2048, out=QD=2048.
+// Distinct symbol from k/v-proj (out shape QD vs KV_DIM) and o_proj (input is
+// h1[D+8] not af).
+void llama_gemm_tiled_layer_K2048_N4_perchan_q_mh_fp32out_acttail(
+    int8_t *restrict act, int8_t *restrict w_tile, float *restrict out_full,
+    int32_t tile_idx) {
+  event0();
+  // q uses the 448 B mh prefix (kMhPrefix), so the weight body starts at +448,
+  // NOT +64. Pass kPrefix=kMhPrefix or the MAC reads garbage weights.
+  gemm_tile_perchan_v2_fp32out_acttail_impl<2048, 4, kMhPrefix>(
+      act, w_tile, out_full + tile_idx * 4);
+  event1();
+}
+
 // Multi-head q_proj, activation-tail act_scale variant. Same contract as
 // ..._v2_up_q_mh but act is int8[2048+8] with the per-token scale in the tail.
 void llama_gemm_tiled_layer_K2048_N4_perchan_v2_up_q_mh_acttail(
