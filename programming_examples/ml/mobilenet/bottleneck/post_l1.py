@@ -17,21 +17,21 @@ Input:  (7,1,80) int8   Output: (1,1,1280) uint16 (post_L2_InC wide)
 
 import numpy as np
 
-from aie.iron import Kernel, ObjectFifo, Worker
+from aie.iron import ObjectFifo, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
 
-from bottleneck._common import i8, load_wts
-from network_spec import block as nsblock
+from ._common import i8, load_wts
+from ..network_spec import block as nsblock
 
 
-def post_l1(act_in, sf, *, placement, data_dir):
+def post_l1(act_in, sf, *, tiles, data_dir):
     """Build the post-L1 (avg-pool + 1x1 expand) block.
 
     Args:
         act_in: ObjectFifo  — handoff from the cascade bottleneck (bn14 out).
         sf: dict            — full scale-factor mapping (uses sf["POST"]["conv1x1_1"]).
-        placement: dict     — PLACEMENT["post_l1"] with keys "compute", "memtile".
+        tiles: dict     — PLACEMENT["post_l1"] with keys "compute", "memtile".
         data_dir: str       — directory holding `post_conv_chain.txt`.
 
     Returns:
@@ -68,7 +68,7 @@ def post_l1(act_in, sf, *, placement, data_dir):
     # Pin the producer (source of weight data) to a MemTile. Normally a
     # Worker sets its fifo endpoint implicitly, but this fifo has no
     # producing Worker.
-    post_l1_wts_of.prod().endpoint = ObjectFifoEndpoint(placement["memtile"])
+    post_l1_wts_of.prod().endpoint = ObjectFifoEndpoint(tiles["memtile"])
 
     # Round-trip avgpool output through L3 (DDR) so it can be re-broadcast to
     # all 4 PostL2 FC tiles — a direct compute→4-compute fan-out exceeds
@@ -80,22 +80,11 @@ def post_l1(act_in, sf, *, placement, data_dir):
         depth=2,
     )
 
-    k_post_l1 = Kernel(
-        "conv2dk1_xy_pool_fused_relu_large_padded_i8_ui8",
-        "post_conv2dk1_relu_xy_pool_padded_i8_ui8.o",
-        [
-            i8((post_L1_InW, 1, post_L1_InC)),
-            i8((post_l1_wts_chunk,)),
-            np.ndarray[(post_L2_InC,), np.dtype[np.uint16]],
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
+    k_post_l1 = kernels.bn_conv2dk1_relu_xy_pool_padded(
+        input_width=post_L1_InW,
+        input_channels=post_L1_InC,
+        output_channels=post_L2_InC,
+        weight_chunk_count=post_l1_wts_chunk,
     )
 
     def post_l1_fn(
@@ -148,7 +137,7 @@ def post_l1(act_in, sf, *, placement, data_dir):
             post_L2_InC,  # outC_padd=1280 (next layer's input width)
             post_sf,
         ],
-        tile=placement["compute"],
+        tile=tiles["compute"],
         # dynamic_objfifo_lowering keeps the inner loop intact instead of
         # unrolling for ping-pong; kernel uses runtime modulo indexing.
         # Without this attribute, the static objfifo lowering UNROLLS the

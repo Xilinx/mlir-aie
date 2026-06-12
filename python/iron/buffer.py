@@ -7,6 +7,7 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 """Named memory region accessible by both Workers and the Runtime."""
 
+import itertools
 import numpy as np
 from typing import Sequence
 
@@ -26,7 +27,7 @@ class Buffer(Resolvable):
     """
 
     # Used to generate unique names when none is provided during construction.
-    __gbuf_index = 0
+    _gbuf_index = itertools.count()
 
     def __init__(
         self,
@@ -58,20 +59,27 @@ class Buffer(Resolvable):
         self._op = None
         self._arr_type = type
         if not self._name:
-            self._name = f"buf_{self.__get_index()}"
+            self._name = f"buf_{next(Buffer._gbuf_index)}"
         self._use_write_rtp = use_write_rtp
         self._tile = tile
+        self._owner_worker = None
 
     @property
     def tile(self) -> Tile | None:
         """The tile this buffer is on."""
         return self._tile
 
-    @classmethod
-    def __get_index(cls) -> int:
-        idx = cls.__gbuf_index
-        cls.__gbuf_index += 1
-        return idx
+    def tiles(self) -> list:
+        """Tile dependency for Program.resolve tile discovery.
+
+        Pinned Buffers (e.g. a compute Worker reading a neighbor tile's L1
+        directly) need their tile registered with the Device before
+        :meth:`resolve` runs.  Worker-attached Buffers without an explicit
+        placement get pinned to the Worker's tile in :class:`Worker.__init__`,
+        which is already discoverable via ``Worker.tile``; this method just
+        exposes any extra (cross-tile) placements.
+        """
+        return [self._tile] if self._tile is not None else []
 
     @property
     def shape(self) -> Sequence[int]:

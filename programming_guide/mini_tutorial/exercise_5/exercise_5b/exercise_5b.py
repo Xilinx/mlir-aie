@@ -11,7 +11,7 @@ import glob
 import sys
 import numpy as np
 
-from aie.iron import Program, Runtime, Worker, ObjectFifo
+from aie.iron import Out, In, CompileTime, Program, Runtime, Worker, ObjectFifo
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorAccessPattern, TensorAccessSequence
 
@@ -23,14 +23,18 @@ data_width = 16
 
 
 @iron.jit
-def exercise_5b(input0, output):
+def exercise_5b(
+    input0: In,
+    output: Out,
+    *,
+    data_size: CompileTime[int],
+    element_type: CompileTime[type],
+):
     # Define tile size
     tile_height = 3
     tile_width = 8
     tile_size = tile_height * tile_width
 
-    data_size = input0.numel()
-    element_type = input0.dtype
     data_ty = np.ndarray[(data_size,), np.dtype[element_type]]
     tile_ty = np.ndarray[(tile_size,), np.dtype[element_type]]
 
@@ -101,7 +105,7 @@ def main():
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
-    exercise_5b(input0, output)
+    exercise_5b(input0, output, data_size=input0.numel(), element_type=input0.dtype)
 
     # Check the correctness of the result
     errors = 0

@@ -10,6 +10,9 @@ import sys
 import numpy as np
 
 from aie.iron import (
+    CompileTime,
+    In,
+    Out,
     Program,
     Runtime,
     Worker,
@@ -23,9 +26,12 @@ import aie.iron as iron
 
 
 @iron.jit
-def exercise_4(output):
-    data_size = output.numel()
-    element_type = output.dtype
+def exercise_4(
+    output: Out,
+    *,
+    data_size: CompileTime[int],
+    element_type: CompileTime[type],
+):
     data_ty = np.ndarray[(data_size,), np.dtype[element_type]]
 
     # Dataflow with ObjectFifos
@@ -87,7 +93,7 @@ def main():
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
-    exercise_4(output)
+    exercise_4(output, data_size=output.numel(), element_type=output.dtype)
 
     # Check the correctness of the result
     USE_INPUT_VEC = False  # Set to False to switch to output for user testing

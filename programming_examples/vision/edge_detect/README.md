@@ -4,17 +4,15 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2022, Advanced Micro Devices, Inc.
-// 
+// Copyright (C) 2022-2026, Advanced Micro Devices, Inc.
+//
 //===----------------------------------------------------------------------===//-->
 
 # <ins>Edge Detect</ins>
 
-The Edge Detect pipeline design consists of the following blocks arranged in a pipeline fashion for the detection of edges in a sequence of images : `rgba2gray`, `filter2D`, `threshold`, `gray2rgba`, `addWeighted`.
+The Edge Detect pipeline detects edges in a sequence of images via five line-based kernels arranged in a pipeline: `rgba2gray`, `filter2D`, `threshold`, `gray2rgba`, `addWeighted`. All five kernels are pulled from `aie.iron.kernels.vision`; the design body wires them up with `ObjectFifo` and four `Worker` stages.
 
-In the placed design, [`edge_detect_placed.py`](./edge_detect_placed.py), placement values above are explicitly set as described below. This is because this placed design uses a lower-level version of IRON. The primary design, [`edge_detect.py`](./edge_detect.py), uses a higher-level form of IRON and relies on the `SequentialPlacer()` to assign components of the design to tiles on the device.
-
-The pipeline is mapped onto a single column of the npu device, with one Shim tile (0, 0), one Mem tile (0, 1) and four AIE compute tiles (0, 2) through (0, 5). As shown in the image below, the `rgba2gray`, `filter2D` and `threshold` kernels are each mapped onto one compute tile, while `gray2rgba` and `addWeighted` are mapped together on AIE tile (0, 5). 
+The pipeline is mapped onto a single column of the NPU: one Shim tile (0, 0), one Mem tile (0, 1), and four compute tiles (0, 2)–(0, 5). `SequentialPlacer()` (the IRON default) assigns these for us. `rgba2gray`, `filter2D`, and `threshold` each get their own compute tile; `gray2rgba` + `addWeighted` share tile (0, 5).
 
 <p align="center">
   <img
@@ -22,24 +20,25 @@ The pipeline is mapped onto a single column of the npu device, with one Shim til
     width="1050">
 </p>
 
-The data movement of this pipeline is described using the ObjectFIFO primitive. Input data is brought into the array via the Shim tile. The data then needs to be broadcasted both to AIE tile (0, 2) and AIE tile (0, 5). However, tile (0, 5) has to wait for additional data from the other kernels before it can proceed with its execution, so in order to avoid any stalls in the broadcast, data for tile (0, 5) is instead buffered in the Mem tile. Because of the size of the data, the buffering couldn't directly be done in the smaller L1 memory module of tile (0, 5). This is described using two ObjectFIFOs, one for the broadcast to tile (0, 2) and the Mem tile, and one for the data movement between the Mem tile and tile (0, 5). The two ObjectFIFOs are linked to express that data from the first ObjectFIFO should be copied to the second ObjectFIFO implicitly through the Mem tile's DMA.
+Input data enters via the Shim tile and is broadcast both to tile (0, 2) and tile (0, 5). Tile (0, 5) waits for the post-threshold edge map before combining with the original RGBA via `addWeighted`, so its copy of the input is buffered in the Mem tile to avoid stalling the broadcast. The two ObjectFifos (`inOF_L3L2` and `inOF_L2L1` via `cons(7).forward(...)`) describe this: the first carries the broadcast to tile (0, 2) and the Mem tile, the second carries the staged data from the Mem tile to tile (0, 5).
 
-Starting from tile (0, 2) data is processed by each compute tile and the result is sent to the next tile. This is described by a series of one-to-one ObjectFIFOs. As the two kernels `gray2rgba` and `addWeighted` are mapped together on AIE tile (0, 5), an ObjectFIFO is also created with tile (0, 5) being both its source and destination to describe the data movement between the two kernels. Finally, the output is sent from tile (0, 5) to the Mem tile and finally back to the output through the Shim tile.
+Compute results flow through one-to-one ObjectFifos between consecutive stages. The shared-tile `gray2rgba` + `addWeighted` worker uses an extra `of_local` ObjectFifo internally (source = destination = tile (0, 5)) to hand data between the two kernels. The final RGBA edge-overlaid output goes back through the Mem tile and out the Shim tile.
 
-To compile the design:
+## Usage
+
+### Standalone (no Makefile, no OpenCV)
+
+```shell
+python3 edge_detect.py
+```
+
+`-d npu2` for Strix; `-W` / `-H` override the image dimensions. This mode JIT-compiles + runs on random data without verifying pixels — use the C++/OpenCV host below for pixel-level checks.
+
+### Makefile + C++ testbench (OpenCV required)
+
 ```shell
 make
-make edge_detect.exe
-```
-
-To compile the placed design:
-```shell
-env use_placed=1 make
-make edge_detect.exe
-```
-
-
-To run the design:
-```shell
 make run
 ```
+
+For NPU2 (Strix): `make devicename=npu2 && make run devicename=npu2`.

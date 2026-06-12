@@ -58,12 +58,22 @@ combined tradeoff) see Sections 3 – 5 of the paper.
 
 ## Examples
 
-These designs use the placed (`*_placed.py`) IRON flow and are currently only
-supported with the **chess** compiler. Build any of them with:
+These designs use IRON and currently require the **chess** compiler (each
+`config*/n32_core.py` declares its bfp16 mac kernel with `use_chess=True`
+on the `ExternalFunction`).  Peano's AIE2P backend still crashes on the
+bfp16 matmul kernels — verified June 2026 with `llvm-aie 21.0.0.2026052701+9e603b76`:
+
+```
+fatal error: error in backend: unable to legalize instruction:
+  %242:_(<8 x s8>) = G_BUILD_VECTOR %243:_(s8), %243:_(s8), ...
+  (in function: matmul_vectorized_bfp16)
+```
+
+Build any of them with:
 
 ```shell
 cd <config_dir>
-make use_chess=1 use_placed=1 devicename=npu2 run
+make devicename=npu2 run
 ```
 
 The Makefile defaults match the paper-scale shapes listed in the table
@@ -80,7 +90,7 @@ example:
 
 ```shell
 cd config1
-make use_chess=1 use_placed=1 devicename=npu2 run M=4096 K=4096 N=2048
+make devicename=npu2 run M=4096 K=4096 N=2048
 ```
 
 ## Notes

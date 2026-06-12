@@ -125,6 +125,14 @@ extern "C" {
 #define DIM_N 64
 #endif
 
+// MATMUL_ONLY / ZERO_ONLY gates — see mm_bfp.cc for the rationale.
+// Without any macro, both symbols are emitted (legacy behaviour).
+#if !defined(MATMUL_ONLY) && !defined(ZERO_ONLY)
+#define MATMUL_ONLY
+#define ZERO_ONLY
+#endif
+
+#ifdef MATMUL_ONLY
 void matmul_vectorized_different_datatypes(bfloat16 *__restrict pA,
                                            bfp16ebs8 *__restrict pB,
                                            bfloat16 *__restrict pC) {
@@ -143,8 +151,11 @@ void matmul_vectorized_different_datatypes(bfloat16 *__restrict pA,
 
   matmul_vectorized_2x2_bfp16_bf16<m / r, k / s, n / t, r, s, t>(pA, pB, pC);
 }
+#endif
 
+#ifdef ZERO_ONLY
 void zero_kernel_bf16(bfloat16 *__restrict cOut) {
   zero_vectorized<bfloat16, DIM_M, DIM_N>(cOut);
 }
+#endif
 }

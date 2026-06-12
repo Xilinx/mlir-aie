@@ -6,13 +6,14 @@
 #
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
 
+import argparse
 import numpy as np
 import sys
 from pathlib import Path
 
 import aie.iron as iron
 import aie.utils
-import aie.utils.test as test_utils
+from aie.utils.hostruntime.argparse import add_runtime_args
 from aie.utils.npukernel import NPUKernel
 
 
@@ -22,12 +23,11 @@ def main(opts):
     # ------------------------------------------------------------
 
     # Initialize data buffers and reference for verification
-    ref_buffer = np.arange(1, 4096 + 1, dtype=np.int32)
-    in_buffer = iron.tensor(ref_buffer, dtype=np.int32)
+    in_buffer = iron.arange(1, 4096 + 1, dtype=np.int32)
     scale_factor = 3
-    in_factor = iron.tensor([scale_factor], dtype=np.int32)
+    in_factor = iron.full((1,), scale_factor, dtype=np.int32)
     out = iron.zeros(4096, dtype=np.int32)
-    ref_buffer = ref_buffer * scale_factor
+    ref_buffer = in_buffer.numpy() * scale_factor
 
     # ----------------------------------------------------
     # Prepare buffers and load compiled artifacts onto the device
@@ -38,7 +38,7 @@ def main(opts):
     # ------------------------------------------------------
     # Initialize run configs
     # ------------------------------------------------------
-    num_iter = opts.iters + opts.warmup_iters
+    num_iter = opts.iters + opts.warmup
     npu_time_total = 0
     npu_time_min = 9999999
     npu_time_max = 0
@@ -55,7 +55,7 @@ def main(opts):
         npu_time = result.npu_time
 
         # Warmup iterations do not count towards average runtime.
-        if i < opts.warmup_iters:
+        if i < opts.warmup:
             continue
 
         # Copy output results and verify they are correct
@@ -79,7 +79,7 @@ def main(opts):
         "\nNumber of iterations:",
         str(opts.iters),
         "(warmup iterations:",
-        str(opts.warmup_iters),
+        str(opts.warmup),
         ")",
     )
 
@@ -97,6 +97,7 @@ def main(opts):
 
 
 if __name__ == "__main__":
-    p = test_utils.create_default_argparser()
+    p = argparse.ArgumentParser()
+    add_runtime_args(p, with_benchmark=True)
     opts = p.parse_args(sys.argv[1:])
     main(opts)

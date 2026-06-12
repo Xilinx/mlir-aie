@@ -14,7 +14,7 @@ This reference design demonstrates low-level DMA control and channel chaining on
 
 ## Overview
 
-This [design](./chaining_channels_placed.py) showcases advanced DMA programming techniques:
+This [design](./chaining_channels.py) showcases advanced DMA programming techniques:
 
 1. **MemTile Buffer Initialization**: A 1kB buffer in MemTile (row 1) is initialized with values 1-256 using the `initial_value` parameter.
 

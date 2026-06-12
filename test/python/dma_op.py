@@ -24,7 +24,6 @@ from aie.ir import InsertionPoint, Block
 
 from util import construct_and_print_module
 
-
 # CHECK:  module {
 #  aie.device(xcve2302) {
 #   %tile_0_0 = aie.tile(0, 0)

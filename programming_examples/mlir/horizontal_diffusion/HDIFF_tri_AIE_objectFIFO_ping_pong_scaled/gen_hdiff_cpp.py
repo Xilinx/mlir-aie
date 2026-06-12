@@ -95,8 +95,7 @@ def main():
             val = noc_columns[15]
         return val
 
-    f.write(
-        """#include "test_library.h"
+    f.write("""#include "test_library.h"
 #include <cassert>
 #include <cmath>
 #include <cstdio>
@@ -115,12 +114,10 @@ def main():
 #define HDIFF_COL 3 //columns
 #define START_ROW 1
 #define INPUT_ROWS 9
-"""
-    )
+""")
     f.write("#define TOTAL_B_BLOCK %d\n" % (total_b_block))
 
-    f.write(
-        """#include "aie_inc.cpp"
+    f.write("""#include "aie_inc.cpp"
 
 int main(int argc, char *argv[]) {
   printf("test start.");
@@ -147,8 +144,7 @@ int main(int argc, char *argv[]) {
   printf("before configure switchboxes.");
   mlir_aie_configure_switchboxes(_xaie);
   mlir_aie_initialize_locks(_xaie);
-"""
-    )
+""")
 
     # setting timing locks
     b_col_shift = 0
@@ -188,24 +184,20 @@ int main(int argc, char *argv[]) {
             b_row_shift = 0
         # f.write("\n")
 
-    f.write(
-        """
+    f.write("""
   usleep(sleep_u);
   printf("before configure DMA");
   mlir_aie_configure_dmas(_xaie);
   int errors = 0;
-"""
-    )
+""")
 
     f.write("  mlir_aie_init_mems(_xaie, %d);\n" % (total_b_block * 2))
 
-    f.write(
-        """
+    f.write("""
   printf("Finish configure");
   #define DMA_COUNT_IN 256*INPUT_ROWS
   #define DMA_COUNT_OUT 256*2*B_BLOCK_DEPTH
-"""
-    )
+""")
     for i in range(0, total_b_block):  # col 0 is reserved in aie
         f.write(
             "  int *ddr_ptr_in_%d = mlir_aie_mem_alloc(_xaie, %d, DMA_COUNT_IN);\n"
@@ -249,8 +241,7 @@ int main(int argc, char *argv[]) {
         if block % 2 == 0:
             shim_place = noc_div_two_channel(block)
             f.write("    mlir_aie_configure_shimdma_%d0(_xaie);\n" % (shim_place))
-    f.write(
-        """
+    f.write("""
   printf("before core start");
   // mlir_aie_print_tile_status(_xaie, 7, 3);
 
@@ -264,8 +255,7 @@ int main(int argc, char *argv[]) {
   ///// --- start counter-----
   t = clock(); 
   mlir_aie_start_cores(_xaie);
-"""
-    )
+""")
 
     # release timing locks
     b_col_shift = 0
@@ -288,8 +278,7 @@ int main(int argc, char *argv[]) {
         else:
             b_row_shift = 0
 
-    f.write(
-        """
+    f.write("""
 
   t = clock() - t; 
 
@@ -300,8 +289,7 @@ int main(int argc, char *argv[]) {
   // mlir_aie_print_tile_status(_xaie, 7, 3);
 
   usleep(sleep_u);
-"""
-    )
+""")
     for i in range(0, total_b_block):  # col 0 is reserved in aie
         f.write(
             "  mlir_aie_sync_mem_cpu(_xaie, %d); //// only used in libaiev2 //sync up with output\n"
@@ -310,8 +298,7 @@ int main(int argc, char *argv[]) {
 
     f.write("\n")
 
-    f.write(
-        """
+    f.write("""
   for (int i =0; i < 512; i ++ ){
     printf("Location %d:  %d\\n", i, ddr_ptr_out_0[i]);
   }
@@ -323,8 +310,7 @@ int main(int argc, char *argv[]) {
   } else {
     printf("Fail!");
     res = -1;
-  } """
-    )
+  } """)
 
     f.write("\n")
     # setting timing locks
@@ -346,8 +332,7 @@ int main(int argc, char *argv[]) {
         else:
             b_row_shift = 0
 
-    f.write(
-        """
+    f.write("""
 
   mlir_aie_deinit_libxaie(_xaie);
 
@@ -358,8 +343,7 @@ int main(int argc, char *argv[]) {
 
     
     
-    """
-    )
+    """)
 
 
 if __name__ == "__main__":
