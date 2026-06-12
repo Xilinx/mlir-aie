@@ -63,9 +63,15 @@ KVCS_BYTES = 2 * KFP_ALL + CS_PACK_BYTES  # 4352
 COMB_CHUNK_BYTES = QCHUNK_BYTES + 2 * KFP_HEAD + CS_PACK_BYTES  # 1056
 COMB_HALF_BYTES = (N_HEADS_KV // 2) * COMB_CHUNK_BYTES  # 4224
 
-SVCHUNK_BYTES = REP * HEAD_D  # 256
-SV_CONCAT_HALF = (N_HEADS_KV // 2) * SVCHUNK_BYTES  # 1024
+# attn worker output: REP heads of HEAD_D body + REP per-head sv_out_scale
+# (self-cal 1c): [REP*HEAD_D body | REP*4 scale].
+SVCHUNK_BODY = REP * HEAD_D  # 256
+SVCHUNK_TAIL = REP * 4  # 16
+SVCHUNK_BYTES = SVCHUNK_BODY + SVCHUNK_TAIL  # 272
+SV_CONCAT_HALF = (N_HEADS_KV // 2) * SVCHUNK_BYTES  # 1088
 AF_BYTES = N_HEADS_Q * HEAD_D  # 2048
+# sv_merge_selfcal output: [AF_BYTES bodies | N_HEADS_Q*4 sv_out_scales].
+SVFULL_BYTES = AF_BYTES + N_HEADS_Q * 4  # 2176
 
 # Per-slot KV: each cached position carries its OWN k/v scale (fixes the
 # per-head-scalar bug). Header is T fp32 per-slot scales.
@@ -206,6 +212,7 @@ def build():
     t_SVCONCAT_HALF_i8 = _i8(SV_CONCAT_HALF)
     t_AFSCALES_i8 = _i8(AF_SCALES_BYTES)
     t_AF_i8 = _i8(AF_BYTES)
+    t_AF8_i8 = _i8(AF_BYTES + 8)  # af + self-cal o_act tail (1b)
     t_HD_i8 = _i8(HD)
     t_UF_i8 = _i8(HD + 8)
     t_D_bf16 = _bf16(D)
@@ -236,6 +243,7 @@ def build():
     of_wq = ObjectFifo(t_WQ_slot, depth=2, name="wq")
     of_wk = ObjectFifo(t_WK_slot, depth=2, name="wk")
     of_wv = ObjectFifo(t_WV_slot, depth=2, name="wv")
+    of_qfp = ObjectFifo(_f32(QD), depth=1, name="qfp")  # fp32 q_proj out (2a)
     of_qf = ObjectFifo(t_QF_i8, depth=1, name="qf")
     of_cs = ObjectFifo(t_CS_bf16, depth=1, name="cs")
     of_qr = ObjectFifo(t_QR_i8, depth=1, name="qr")
@@ -307,9 +315,10 @@ def build():
     )
     svchunk_eps = list(svchunk_lo_eps) + list(svchunk_hi_eps)
 
-    of_svfull = ObjectFifo(_i8(AF_BYTES), depth=1, name="sv_full")
-    of_afscales = ObjectFifo(t_AFSCALES_i8, depth=1, name="af_scales")
-    of_af = ObjectFifo(t_AF_i8, depth=1, name="af")
+    of_svfull = ObjectFifo(_i8(SVFULL_BYTES), depth=1, name="sv_full")  # bodies+scales
+    # of_afscales removed: sv_out_scales self-calibrated (1c) via merged sv tail;
+    # o_act_scale self-calibrated (1b) via af tail.
+    of_af = ObjectFifo(t_AF8_i8, depth=1, name="af")  # AF+8: self-cal o_act tail
     of_wo = ObjectFifo(t_WO_slot, depth=2, name="wo")
     of_op = ObjectFifo(t_D_f32, depth=1, name="op")  # fp32 o_proj output
 
@@ -318,11 +327,15 @@ def build():
     of_gam_post = ObjectFifo(t_D_bf16, depth=1, name="gam_post")
     of_h2 = ObjectFifo(t_D8_i8, depth=1, name="h2")
     of_wg = ObjectFifo(t_WG_slot, depth=2, name="wg")
-    of_wu = ObjectFifo(t_WU_slot, depth=2, name="wu")
+    # depth=1 (not 2 like sibling weight fifos): self-cal adds of_ufp
+    # (fp32[HD]=32KB) on the up tile (5,2); double-buffering of_wu too overflows
+    # L1 there -> corruption (N=2 0/4 with depth=2). depth=1 fits + passes.
+    of_wu = ObjectFifo(t_WU_slot, depth=1, name="wu")
     of_wd = ObjectFifo(t_WD_slot, depth=1, name="wd")  # K=8192 L1 budget
     of_gf = ObjectFifo(t_HD_i8, depth=1, name="gf")
-    of_uf = ObjectFifo(t_UF_i8, depth=1, name="uf")
-    of_sf = ObjectFifo(t_HD_i8, depth=1, name="sf")
+    of_ufp = ObjectFifo(_f32(HD), depth=1, name="ufp")  # fp32 up_proj out (2b)
+    of_uf = ObjectFifo(t_UF_i8, depth=1, name="uf")  # int8 up + up_out_scale tail
+    of_sf = ObjectFifo(t_UF_i8, depth=1, name="sf")  # HD+8: self-cal silu_out tail
     of_df = ObjectFifo(t_D_f32, depth=1, name="df")  # fp32 down output
 
     KO_RMS = "llama_rmsnorm_int8.cc.o"
@@ -338,16 +351,18 @@ def build():
     k_rms = Kernel(
         "llama_rmsnorm_int8_dyn_acttail", KO_RMS, [t_D8_i8, t_D_bf16, t_D8_i8]
     )
+    # q_proj-mh fp32 out (2a): act_scale from h1 tail; q_out_scales downstream.
     k_q = Kernel(
-        "llama_gemm_tiled_layer_K2048_N4_perchan_v2_up_q_mh_acttail",
+        "llama_gemm_tiled_layer_K2048_N4_perchan_q_mh_fp32out_acttail",
         KO_GEMM2,
-        [t_D8_i8, t_WQ_slot, t_QF_i8, np.int32],
+        [t_D8_i8, t_WQ_slot, _f32(QD), np.int32],
     )
-    # o_proj-mh, fp32 output (consumed by rescale-add)
+    k_qrequant = Kernel("llama_q_requant", KO_GLUE, [_f32(QD), t_QF_i8])
+    # o_proj-mh fp32 out, act_scale from the self-cal af tail (1b).
     k_o = Kernel(
-        "llama_gemm_tiled_layer_K2048_N4_perchan_v2_o_mh_fp32out",
+        "llama_gemm_tiled_layer_K2048_N4_perchan_v2_o_mh_fp32out_acttail",
         KO_GEMM2,
-        [t_AF_i8, t_WO_slot, t_D_f32, np.int32],
+        [t_AF8_i8, t_WO_slot, t_D_f32, np.int32],
     )
     # gate acttail (act_scale from h2 tail; inv_out stays silu-lock arg)
     k_gate = Kernel(
@@ -355,15 +370,17 @@ def build():
         KO_GEMM,
         [t_D8_i8, t_WG_slot, t_HD_i8, np.int32, np.float32],
     )
+    # up_proj fp32 out (2b): act_scale from h2 tail; up_out_scale downstream.
     k_up = Kernel(
-        "llama_gemm_tiled_layer_K2048_N4_perchan_v2_up_u_acttail",
+        "llama_gemm_tiled_layer_K2048_N4_perchan_v2_up_fp32out_acttail",
         KO_GEMM,
-        [t_D8_i8, t_WU_slot, t_UF_i8, np.int32],
+        [t_D8_i8, t_WU_slot, _f32(HD), np.int32],
     )
+    k_uprequant = Kernel("llama_up_requant", KO_SILU, [_f32(HD), t_UF_i8])
     k_down = Kernel(
-        "llama_gemm_tiled_layer_K8192_N4_perchan_v2_d_fp32out",
+        "llama_gemm_tiled_layer_K8192_N4_perchan_v2_d_fp32out_acttail",
         KO_GEMM,
-        [t_HD_i8, t_WD_slot, t_D_f32, np.int32],
+        [t_UF_i8, t_WD_slot, t_D_f32, np.int32],
     )
     k_rope = Kernel("llama_rope_int8_mh_dyn", KO_ROPE, [t_QF_i8, t_CS_bf16, t_QR_i8])
     # k_proj / v_proj: fp32 out, act_scale from h1 tail (one symbol, both).
@@ -379,18 +396,22 @@ def build():
     )
     KO_KVA = "llama_kv_append.cc.o"
     k_append = Kernel("llama_kv_append_combined", KO_KVA, [t_COMB_i8, t_KV_i8, t_KV_i8])
+    # sv_merge_selfcal: de-interleave [body|sv_out_scale] chunks (1c).
     k_svmerge = Kernel(
-        "llama_sv_merge",
+        "llama_sv_merge_selfcal",
         KO_GLUE,
-        [t_SVCONCAT_HALF_i8, t_SVCONCAT_HALF_i8, _i8(AF_BYTES)],
+        [t_SVCONCAT_HALF_i8, t_SVCONCAT_HALF_i8, _i8(SVFULL_BYTES)],
     )
+    # af_concat fully self-cal (1b+1c): 1 input (merged sv); o_act -> af tail.
     k_afconcat = Kernel(
-        "llama_af_concat", KO_GLUE, [_i8(AF_BYTES), t_AFSCALES_i8, t_AF_i8]
+        "llama_af_concat_selfcal2", KO_GLUE, [_i8(SVFULL_BYTES), t_AF8_i8]
     )
-    # flowkv consumes the combined chunk (reads first 288 B q_chunk); kv input
-    # is the post-append cache.
-    k_fkv = Kernel("llama_flowkv_mh_kvc", KO_FKV, [t_COMB_i8, t_KV_i8, t_SVCHUNK_i8])
-    k_silu = Kernel("llama_silu_mul_int8_dyn", KO_SILU, [t_HD_i8, t_UF_i8, t_HD_i8])
+    # flowkv self-cal (1c): per-Q-head sv_out_scale -> out_chunk tail.
+    k_fkv = Kernel(
+        "llama_flowkv_mh_kvc_selfcal", KO_FKV, [t_COMB_i8, t_KV_i8, t_SVCHUNK_i8]
+    )
+    # silu self-cal (1a): writes silu_out_scale to sf tail.
+    k_silu = Kernel("llama_silu_mul_int8_selfcal", KO_SILU, [t_HD_i8, t_UF_i8, t_UF_i8])
     # rescale-add: (residual int8[D+8], proj fp32[D]) -> residual int8[D+8].
     KO_RADD = "llama_rescale_add.cc.o"
     k_add = Kernel("llama_rescale_add_D", KO_RADD, [t_D8_i8, t_D_f32, t_D8_i8])
@@ -431,6 +452,15 @@ def build():
                 k(a, w, o, _i32(t))
                 c_w.release(1)
             c_act.release(1)
+            c_out.release(1)
+
+    # 1-in/1-out requant reduce stages (2a q, 2b up), per layer.
+    def w_requant(c_in, c_out, k):
+        for _ in range_(N_LAYERS):
+            x = c_in.acquire(1)
+            o = c_out.acquire(1)
+            k(x, o)
+            c_in.release(1)
             c_out.release(1)
 
     def w_o(c_act, c_w, c_out, k):
@@ -521,14 +551,13 @@ def build():
             c_hi.release(1)
             c_out.release(1)
 
-    def w_afconcat(c_in, c_sc, c_out, k):
+    # af_concat (self-cal): 1 input (merged sv with bodies+sv_out_scales).
+    def w_afconcat(c_in, c_out, k):
         for _ in range_(N_LAYERS):
             x = c_in.acquire(1)
-            s = c_sc.acquire(1)
             o = c_out.acquire(1)
-            k(x, s, o)
+            k(x, o)
             c_in.release(1)
-            c_sc.release(1)
             c_out.release(1)
 
     # Co-located KV append + flowkv (per layer): append writes slot[pos] then
@@ -587,6 +616,9 @@ def build():
 
     PSK = 8192
     ATSK = 16384
+    # FFN-side stack: of_sf grows to HD+8 (silu self-cal) -> Bug-12 stack/fifo
+    # alias at 8192 on the FFN tiles; 4096 clears it (see single-layer 1a).
+    FFNSK = int(_os.environ.get("LLAMA_FFNSK", "4096"))
 
     workers = [
         # Router
@@ -604,9 +636,13 @@ def build():
         ),
         Worker(
             w_q,
-            [of_h1.cons(), of_wq.cons(), of_qf.prod(), k_q],
+            [of_h1.cons(), of_wq.cons(), of_qfp.prod(), k_q],
             tile=Tile(0, 3),
             stack_size=PSK,
+        ),
+        # q_requant (2a): fp32 q -> per-head self-cal q_out_scale -> int8 + tail.
+        Worker(
+            w_requant, [of_qfp.cons(), of_qf.prod(), k_qrequant], tile=Tile(4, 3)
         ),
         Worker(
             w_rope, [of_qf.cons(), of_cs.cons(), of_qr.prod(), k_rope], tile=Tile(0, 4)
@@ -660,7 +696,7 @@ def build():
         ),
         Worker(
             w_afconcat,
-            [of_svfull.cons(), of_afscales.cons(), of_af.prod(), k_afconcat],
+            [of_svfull.cons(), of_af.prod(), k_afconcat],
             tile=Tile(3, 3),
         ),
         Worker(
@@ -674,7 +710,7 @@ def build():
             [of_routed.cons(), of_op.cons(), of_x1.prod(), k_add],
             tile=Tile(6, 5),
         ),
-        # FFN (match layer_d2048 placement; Bug 12: PSK=8192 only)
+        # FFN (FFNSK=4096: of_sf=HD+8 self-cal Bug-12 alias, see single layer)
         Worker(
             w_rms,
             [of_x1.cons(), of_gam_post.cons(), of_h2.prod(), k_rms],
@@ -684,25 +720,30 @@ def build():
             w_gate,
             [of_h2.cons(), of_wg.cons(), of_gf.prod(), k_gate],
             tile=Tile(4, 2),
-            stack_size=PSK,
+            stack_size=FFNSK,
         ),
         Worker(
             w_up,
-            [of_h2.cons(), of_wu.cons(), of_uf.prod(), k_up],
+            [of_h2.cons(), of_wu.cons(), of_ufp.prod(), k_up],
             tile=Tile(5, 2),
-            stack_size=PSK,
+            stack_size=FFNSK,
+        ),
+        # up_requant (2b): fp32 up -> self-cal up_out_scale -> int8 + tail.
+        Worker(
+            w_requant, [of_ufp.cons(), of_uf.prod(), k_uprequant], tile=Tile(5, 3),
+            stack_size=FFNSK,
         ),
         Worker(
             w_silu,
             [of_gf.cons(), of_uf.cons(), of_sf.prod(), k_silu],
             tile=Tile(4, 5),
-            stack_size=PSK,
+            stack_size=FFNSK,
         ),
         Worker(
             w_down,
             [of_sf.cons(), of_wd.cons(), of_df.prod(), k_down],
             tile=Tile(6, 2),
-            stack_size=PSK,
+            stack_size=FFNSK,
         ),
         # add2 with peeled final iter
         Worker(
@@ -774,15 +815,7 @@ def build():
             N_TILES_O,
             WEIGHTS_BYTES,
         )
-        add_per_layer(
-            of_afscales.prod(),
-            wblob,
-            OFF_AF_SCALES,
-            AF_SCALES_BYTES,
-            AF_SCALES_BYTES,
-            1,
-            WEIGHTS_BYTES,
-        )
+        # (of_afscales fill removed -- sv_out_scales/o_act self-calibrated.)
         add_per_layer(
             of_gam_post.prod(),
             wblob,
