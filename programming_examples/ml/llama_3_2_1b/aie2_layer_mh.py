@@ -366,7 +366,7 @@ def build():
     of_wd = ObjectFifo(t_WD_slot, depth=1, name="wd")
     of_gf = ObjectFifo(t_HD_i8, depth=1, name="gf")
     of_uf = ObjectFifo(t_UF_i8, depth=1, name="uf")
-    of_sf = ObjectFifo(t_HD_i8, depth=1, name="sf")
+    of_sf = ObjectFifo(t_UF_i8, depth=1, name="sf")  # HD+8: self-cal silu_out tail
     of_df = ObjectFifo(t_D_f32, depth=1, name="df")  # fp32 down output
 
     of_out = ObjectFifo(t_D8_i8, depth=1, name="layer_out")  # residual int8[D+8]
@@ -408,10 +408,12 @@ def build():
         KO_GEMM,
         [t_D8_i8, t_WU_slot, t_UF_i8, np.int32],
     )
+    # down: fp32 out, act_scale (down_act_scale) from the self-calibrated sf
+    # tail at act[HD]. act buffer is sf = int8[HD+8].
     k_down = Kernel(
-        "llama_gemm_tiled_layer_K8192_N4_perchan_v2_d_fp32out",
+        "llama_gemm_tiled_layer_K8192_N4_perchan_v2_d_fp32out_acttail",
         KO_GEMM,
-        [t_HD_i8, t_WD_slot, t_D_f32, np.int32],
+        [t_UF_i8, t_WD_slot, t_D_f32, np.int32],
     )
     k_rope = Kernel("llama_rope_int8_mh_dyn", KO_ROPE, [t_QF_i8, t_CS_bf16, t_QR_i8])
     # k_proj / v_proj: fp32 out, act_scale from h1 tail (one symbol, both).
@@ -441,7 +443,9 @@ def build():
     # flowkv consumes the combined chunk (reads only the first 288 B q_chunk);
     # cache_out (post-append) is its kv input.
     k_fkv = Kernel("llama_flowkv_mh_kvc", KO_FKV, [t_COMB_i8, t_KV_i8, t_SVCHUNK_i8])
-    k_silu = Kernel("llama_silu_mul_int8_dyn", KO_SILU, [t_HD_i8, t_UF_i8, t_HD_i8])
+    # silu self-calibrates its OUTPUT scale: writes silu_out_scale to the sf
+    # tail (sf int8[HD+8]); reads up_scale from the up tail.
+    k_silu = Kernel("llama_silu_mul_int8_selfcal", KO_SILU, [t_HD_i8, t_UF_i8, t_UF_i8])
     # rescale-add: (residual int8[D+8], proj fp32[D]) -> residual int8[D+8].
     KO_RADD = "llama_rescale_add.cc.o"
     k_add = Kernel("llama_rescale_add_D", KO_RADD, [t_D8_i8, t_D_f32, t_D8_i8])
@@ -592,7 +596,12 @@ def build():
 
     PSK = 8192  # match layer_d2048 exactly
     ATSK = 16384  # attn workers (flowkv_mh has local arrays + many loops)
-    FFNSK = PSK
+    # FFN-side stack: with the self-cal silu growing of_sf to HD+8, the L1
+    # layout shifts so an FFN worker's 8192 B stack ALIASES a fifo buffer
+    # (Bug 12), corrupting the FFN output (proven: FFNSK=8192 -> max|d|=171,
+    # FFNSK=4096 -> bit-exact, sole variable). 4096 fits the FFN gemms' frames
+    # and clears the alias. Env-overridable for future layout changes.
+    FFNSK = int(_os.environ.get("LLAMA_FFNSK", "4096"))
 
     workers = [
         # ---- Attention front ----
