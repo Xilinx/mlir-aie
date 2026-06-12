@@ -292,6 +292,53 @@ struct ConvertAIEXToEmitCPass
   }
 
 private:
+  // Device-relative values resolved on the original in-device ops, keyed by
+  // their clone in the emitc.func. getAbsoluteAddress() and getDataWords()
+  // resolve buffer/column/row and memref.global symbols against the parent
+  // aie.device, so they must be computed before the ops are cloned out of it.
+  struct DeviceResolved {
+    // Absolute address for write32/maskwrite32/blockwrite clones whose address
+    // resolves through buffer/column/row (absent when the address is a plain
+    // SSA value to pass through).
+    llvm::DenseMap<Operation *, uint32_t> absoluteAddr;
+    // BD data words for blockwrite clones.
+    llvm::DenseMap<Operation *, DenseIntElementsAttr> blockWriteData;
+  };
+
+  // Resolve the device-dependent values of `orig` (still under the device) and
+  // store them keyed by `clone`.
+  void recordDeviceResolved(Operation *orig, Operation *clone,
+                            DeviceResolved &resolved) {
+    if (auto w = dyn_cast<AIEX::NpuWrite32Op>(orig)) {
+      if (auto a = w.getAbsoluteAddress())
+        resolved.absoluteAddr[clone] = *a;
+    } else if (auto mw = dyn_cast<AIEX::NpuMaskWrite32Op>(orig)) {
+      if (auto a = mw.getAbsoluteAddress())
+        resolved.absoluteAddr[clone] = *a;
+    } else if (auto bw = dyn_cast<AIEX::NpuBlockWriteOp>(orig)) {
+      if (auto a = bw.getAbsoluteAddress())
+        resolved.absoluteAddr[clone] = *a;
+      if (auto d = bw.getDataWords())
+        resolved.blockWriteData[clone] = d;
+    }
+  }
+
+  // Walk `orig` and its structurally-identical `clone` subtree in lockstep,
+  // resolving every AIEX op (including those nested in scf regions). builder
+  // .clone produces an isomorphic op/region/block structure, so a parallel
+  // pre-order walk pairs each original op with its clone.
+  void recordDeviceResolvedRecursive(Operation *orig, Operation *clone,
+                                     DeviceResolved &resolved) {
+    recordDeviceResolved(orig, clone, resolved);
+    for (auto [origRegion, cloneRegion] :
+         llvm::zip(orig->getRegions(), clone->getRegions()))
+      for (auto [origBlock, cloneBlock] :
+           llvm::zip(origRegion.getBlocks(), cloneRegion.getBlocks()))
+        for (auto [origOp, cloneOp] :
+             llvm::zip(origBlock.getOperations(), cloneBlock.getOperations()))
+          recordDeviceResolvedRecursive(&origOp, &cloneOp, resolved);
+  }
+
   LogicalResult createGeneratedFunction(OpBuilder &builder, ModuleOp moduleOp,
                                         AIE::RuntimeSequenceOp seqOp,
                                         AIE::DeviceOp deviceOp,
@@ -343,13 +390,23 @@ private:
     if (failed(cloneExternalConstants(seqOp, funcBuilder, mapping)))
       return failure();
 
-    for (Operation &op : entryBlock.without_terminator())
-      funcBuilder.clone(op, mapping);
+    // Device-relative resolution (absolute addresses, blockwrite data) must
+    // happen while the ops still live under the aie.device. Clone each
+    // top-level op (which deep-clones its regions), then walk the original and
+    // cloned subtrees in lockstep to resolve every AIEX op -- including those
+    // nested in scf.for/scf.if -- keyed by its clone. convertTxnOps then reads
+    // from these maps instead of calling device-dependent accessors on the
+    // (detached) cloned ops.
+    DeviceResolved resolved;
+    for (Operation &op : entryBlock.without_terminator()) {
+      Operation *clone = funcBuilder.clone(op, mapping);
+      recordDeviceResolvedRecursive(&op, clone, resolved);
+    }
 
     // Convert the cloned AIEX txn ops (and fuse BD blockwrites) in place,
     // appending to `txn`. arith/scf left behind are lowered afterwards by the
     // upstream conversions.
-    if (failed(convertTxnOps(funcOp, txnVec)))
+    if (failed(convertTxnOps(funcOp, txnVec, resolved)))
       return failure();
 
     const auto &tm = deviceOp.getTargetModel();
@@ -395,13 +452,14 @@ private:
   // regions) was already cloned verbatim, so a post-order walk reaches txn ops
   // at any nesting depth without reconstructing control flow by hand. BD
   // blockwrite fusion is handled per-block before the generic walk.
-  LogicalResult convertTxnOps(emitc::FuncOp funcOp, Value txnVec) {
+  LogicalResult convertTxnOps(emitc::FuncOp funcOp, Value txnVec,
+                              const DeviceResolved &resolved) {
     // First fuse BD blockwrites within each block. Collect blocks up front so
     // the in-place erasis during fusion don't perturb iteration.
     SmallVector<Block *> blocks;
     funcOp.walk([&](Block *block) { blocks.push_back(block); });
     for (Block *block : blocks)
-      if (failed(fuseBlockWrites(*block, txnVec)))
+      if (failed(fuseBlockWrites(*block, txnVec, resolved)))
         return failure();
 
     // Then convert the remaining standalone AIEX txn ops. Gather first; the
@@ -419,10 +477,10 @@ private:
         txnOps.push_back(op);
     });
     for (Operation *op : txnOps)
-      if (failed(convertOneTxnOp(op, txnVec)))
+      if (failed(convertOneTxnOp(op, txnVec, resolved)))
         return failure();
     for (Operation *op : getGlobals)
-      if (failed(convertOneTxnOp(op, txnVec)))
+      if (failed(convertOneTxnOp(op, txnVec, resolved)))
         return failure();
 
     // Any AIEX op left behind (e.g. npu.push_queue, npu.writebd,
@@ -446,7 +504,8 @@ private:
   // blockwrite and the consumed ops are erased. write32s are matched by their
   // bd_group attribute (robust to reordering), the address_patch by its
   // address (blockAddr + 4).
-  LogicalResult fuseBlockWrites(Block &block, Value txnVec) {
+  LogicalResult fuseBlockWrites(Block &block, Value txnVec,
+                                const DeviceResolved &resolved) {
     SmallVector<AIEX::NpuBlockWriteOp> blockWrites;
     for (Operation &op : block)
       if (auto bw = dyn_cast<AIEX::NpuBlockWriteOp>(op))
@@ -454,8 +513,9 @@ private:
 
     for (AIEX::NpuBlockWriteOp blockWrite : blockWrites) {
       uint32_t blockAddr = blockWrite.getAddress();
-      if (auto absAddr = blockWrite.getAbsoluteAddress())
-        blockAddr = *absAddr;
+      if (auto it = resolved.absoluteAddr.find(blockWrite);
+          it != resolved.absoluteAddr.end())
+        blockAddr = it->second;
 
       SmallVector<std::pair<uint32_t, AIEX::NpuWrite32Op>> dynWrite32s;
       AIEX::NpuAddressPatchOp matchedPatch = nullptr;
@@ -490,15 +550,20 @@ private:
       if (!matchedPatch || dynWrite32s.empty())
         continue;
 
-      auto data = blockWrite.getDataWords();
-      if (!data)
+      auto dataIt = resolved.blockWriteData.find(blockWrite);
+      if (dataIt == resolved.blockWriteData.end())
         return failure();
+      DenseIntElementsAttr data = dataIt->second;
 
       SmallVector<std::pair<uint32_t, Value>> dynamicWords;
       for (auto &[wordIdx, w32] : dynWrite32s)
         dynamicWords.push_back({wordIdx, w32.getValue()});
 
-      OpBuilder builder(blockWrite);
+      // Insert the fused calls at the address_patch, which follows the
+      // blockwrite and all the dynamic-word value definitions in program order.
+      // Building here keeps every referenced SSA value dominating its use (the
+      // override values are defined between the blockwrite and the patch).
+      OpBuilder builder(matchedPatch);
       emitTxnBlockWriteDynamicWords(builder, blockWrite.getLoc(), txnVec,
                                     blockAddr, data, dynamicWords);
       emitTxnAddressPatch(builder, matchedPatch.getLoc(), txnVec,
@@ -517,16 +582,19 @@ private:
   // inserted in place, then erase the op. Operands are the cloned SSA values,
   // so they are used directly (no remapping). scf/arith are left untouched for
   // the upstream conversions; only AIEX txn ops are handled here.
-  LogicalResult convertOneTxnOp(Operation *op, Value txnVec) {
+  LogicalResult convertOneTxnOp(Operation *op, Value txnVec,
+                                const DeviceResolved &resolved) {
     Location opLoc = op->getLoc();
     OpBuilder builder(op);
 
     if (auto write32 = dyn_cast<AIEX::NpuWrite32Op>(op)) {
       // A compile-time-constant address resolvable through buffer/column/row is
-      // emitted as the absolute address; otherwise the SSA address is used.
+      // emitted as the absolute address (resolved before cloning); otherwise
+      // the SSA address operand is used directly.
       Value addrVal;
-      if (auto absAddr = write32.getAbsoluteAddress())
-        addrVal = createU32Constant(builder, opLoc, *absAddr);
+      if (auto it = resolved.absoluteAddr.find(op);
+          it != resolved.absoluteAddr.end())
+        addrVal = createU32Constant(builder, opLoc, it->second);
       else
         addrVal = write32.getAddress();
       emitTxnWrite32(builder, opLoc, txnVec, addrVal, write32.getValue());
@@ -536,8 +604,9 @@ private:
 
     if (auto maskWrite = dyn_cast<AIEX::NpuMaskWrite32Op>(op)) {
       Value addrVal;
-      if (auto absAddr = maskWrite.getAbsoluteAddress())
-        addrVal = createU32Constant(builder, opLoc, *absAddr);
+      if (auto it = resolved.absoluteAddr.find(op);
+          it != resolved.absoluteAddr.end())
+        addrVal = createU32Constant(builder, opLoc, it->second);
       else
         addrVal = maskWrite.getAddress();
       emitTxnMaskWrite32(builder, opLoc, txnVec, addrVal, maskWrite.getValue(),
@@ -563,12 +632,13 @@ private:
 
     if (auto blockWrite = dyn_cast<AIEX::NpuBlockWriteOp>(op)) {
       uint32_t addr = blockWrite.getAddress();
-      if (auto absAddr = blockWrite.getAbsoluteAddress())
-        addr = *absAddr;
-      auto data = blockWrite.getDataWords();
-      if (!data)
+      if (auto it = resolved.absoluteAddr.find(op);
+          it != resolved.absoluteAddr.end())
+        addr = it->second;
+      auto dataIt = resolved.blockWriteData.find(op);
+      if (dataIt == resolved.blockWriteData.end())
         return failure();
-      emitTxnBlockWrite(builder, opLoc, txnVec, addr, data);
+      emitTxnBlockWrite(builder, opLoc, txnVec, addr, dataIt->second);
       op->erase();
       return success();
     }
