@@ -28,20 +28,23 @@ We welcome contributions, additions, and amendments to existing skills.
 
 ## Using a skill
 
-**With Claude Code.** Symlink or copy a skill into a discovered skills
-location so it auto-loads:
+**With Claude Code.** Symlink this whole `skills/` directory into a
+discovered skills location once, and every skill here (current and future)
+auto-loads — no per-skill step:
 
 ```shell
 # Project-scoped (this repo only):
-mkdir -p .claude/skills
-ln -s ../../skills/aie-kernel-opt .claude/skills/aie-kernel-opt
+mkdir -p .claude
+ln -s ../skills .claude/skills
 
 # Or personal (all your projects):
-ln -s "$(pwd)/skills/aie-kernel-opt" ~/.claude/skills/aie-kernel-opt
+ln -s "$(pwd)/skills" ~/.claude/skills
 ```
 
 Claude Code scans `.claude/skills/` (walking up to the repo root) and
-`~/.claude/skills/` at startup and loads each `SKILL.md` it finds.
+`~/.claude/skills/` at startup and loads each `SKILL.md` it finds. To pull
+in just one skill instead of the whole collection, symlink that single
+subdirectory (e.g. `mkdir -p .claude/skills && ln -s ../../skills/aie-kernel-opt .claude/skills/aie-kernel-opt`).
 
 **With any other agent, or by hand.** A `SKILL.md` is plain Markdown — read
 it directly, or point your agent's instructions file at the relevant skill.

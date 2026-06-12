@@ -29,6 +29,20 @@ loop", "epilogue" generically for your kernel. Concrete vector widths and
 differ across AIE/AIE-ML/AIE2P); take them as worked examples and check the
 aie-api headers for your target's actual widths.
 
+## Architecture names
+
+The codebase, marketing material, and silicon teams use different names for
+the same architecture. The internal name (left column) is what you pass to
+the toolchain (`--target=aie2-none-unknown-elf`, `--dev npu2`, etc.) and
+what gates code in the aie-api headers.
+
+| internal name(s)   | marketing name   | chips with this architecture          |
+|--------------------|------------------|---------------------------------------|
+| `aie`              | AIE              | Versal VCK5000                        |
+| `aie2` (== NPU1)   | AIE-ML (XDNA)    | Phoenix                               |
+| `aie2p` (== NPU2)  | XDNA2            | Strix Point, Strix Halo, Krackan      |
+| `aie2ps`           | AIE-MLv2         | Telluride                             |
+
 ## Before you start (methodology — don't skip)
 
 **Measure before modeling; verify before trusting.** Static analysis of
@@ -63,6 +77,31 @@ inspection, not a cycle count in your head.
      confirm vector ops actually appear (scalar-only `mac`/`lda`/`st` means
      the kernel didn't vectorize at all — fix that before anything else).
    - `llvm-nm build/X.o | grep __div` — should be empty (see lever #3).
+
+   **Read the disassembly — for a compute-bound kernel it can replace HW
+   timing.** AIE cores don't stall (no cache, no dynamic scheduling, no
+   branch misprediction), so the hot loop's instruction count ÷ core clock
+   ≈ its execution time. This is *not* the source-level paper-compute
+   modeling warned against above: that fails because you can't know what the
+   compiler emitted, whereas counting instructions in the emitted assembly
+   is counting exactly what runs. Disassemble with relocations (the `-r`
+   marks the start/end of the zero-overhead loop):
+   ```shell
+   $PEANO_INSTALL_DIR/bin/llvm-objdump -d -r build/X.o
+   ```
+   Or compile straight to assembly, skipping the object file:
+   ```shell
+   $PEANO_INSTALL_DIR/bin/clang++ -O2 -std=c++20 \
+     -I$MLIR_AIE_INSTALL_DIR/include --target=aie2-none-unknown-elf \
+     -S my_kernel.cc -o kernel.s
+   # (swap aie2 for aie2p/etc. per the architecture table above)
+   ```
+   In the **zero-overhead loop** body (a hardware loop whose bounds are
+   programmed once, so it repeats a fixed instruction block with no
+   per-iteration branch/counter overhead), count two things: total
+   instructions, and inserted **`nop`s** — padding emitted when the compiler
+   can't fill a VLIW slot, i.e. visible evidence the loop isn't packed
+   tight. Fewer of each is directly faster.
 6. **Don't trust "I cleaned the build."** Make tracks file mtimes, not
    flag changes, and `.prj/` dirs cache stale ELFs. Confirm the `.o`
    actually rebuilt and contains your edit (see "Verifying any change took
@@ -350,7 +389,10 @@ Make's incremental rebuild tracks file mtimes, not flag changes, and
    `__divsi3` disappear, did the function size move the way you expected?
 3. Only then trust the wall-time delta.
 
-The aie-api headers (`aie_api/aie.hpp`, `detail/aie*/*`) are the ground
-truth for what each intrinsic lowers to; the matmul programming example
+The aie-api headers are the ground truth for what each intrinsic lowers to.
+In this repo they're vendored at `third_party/aie_api/include/aie_api/`
+(`aie.hpp` is the umbrella header; per-arch lowerings live under
+`detail/aie*/`); after a build they're also copied to
+`install/include/aie_api/`. The matmul programming example
 (`programming_examples/.../matrix_multiplication/`) is a good reference for
 DMA-delivered mmul-ready operand layouts.
