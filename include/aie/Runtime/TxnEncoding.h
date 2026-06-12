@@ -27,8 +27,15 @@
 
 namespace aie_runtime {
 
-// Transaction opcodes - mirroring xaie_txn.h from aie-rt.
-// See aie-rt commit a6196eb, xaiengine/xaie_txn.h.
+// Transaction opcodes - hand-mirrored from aie-rt's xaiengine/xaie_txn.h
+// (as of aie-rt commit a6196eb). These are intentionally duplicated here to
+// keep this header free of any aie-rt/MLIR/LLVM dependency.
+//
+// DRIFT WARNING: this enum is a manual copy. When bumping the aie-rt submodule
+// (or on any firmware TXN-format change), re-verify these values against
+// third_party/aie-rt/.../xaiengine/xaie_txn.h. A future improvement is to
+// generate this block from that header (e.g. a small sed/codegen step) so it
+// can never silently diverge.
 enum TxnOpcode : uint32_t {
   TXN_OPC_WRITE = 0,
   TXN_OPC_BLOCKWRITE = 1,
@@ -109,6 +116,12 @@ inline void txn_append_sync(std::vector<uint32_t> &txn, uint32_t col,
 
 // Append a variable-length blockwrite instruction.
 // `data` points to `count` uint32_t words of payload.
+//
+// Unlike txn_append_sync, this takes only `addr` (no row/col): a blockwrite's
+// destination tile is already encoded in the absolute `addr` (column/row are
+// folded into the upper address bits by the compiler before this point), so the
+// TXN blockwrite format carries a single flat address rather than separate
+// row/col fields.
 inline void txn_append_blockwrite(std::vector<uint32_t> &txn, uint32_t addr,
                                   const uint32_t *data, size_t count) {
   const unsigned headerSize = 4;
