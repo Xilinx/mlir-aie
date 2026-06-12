@@ -410,13 +410,14 @@ def run_one_seed(seed: int, opts, lut_exp, lut_silu, npu_kernel) -> int:
     # quality gate is bench_quality_mh.py --residual-dyn --attn-lut (==
     # fp32-softmax golden, 15/20, same prompts); this unit tol just bounds the
     # per-element amplification.
-    BODY_TOL = 4  # LSB
-    # On-chip append computes the per-slot K/V scale on-device (scalar-fp32
-    # absmax/sw_recip floor), adding a touch more boundary noise than when the
-    # host supplied the exact scale, so the residual scale drifts up to ~7e-3
-    # on some seeds (vs ~5e-3 for the host-cache path). Append BODY is bit-exact
-    # on every seed; this only bounds the downstream scale amplification.
-    SCALE_REL_TOL = 1e-2
+    BODY_TOL = 5  # LSB
+    # Each on-chip self-calibrated scale (KV append k/v, silu_out, o_act,
+    # sv_out) adds a scalar-fp32 absmax/sw_recip floor vs numpy's exact value,
+    # so the benign per-slot-KV boundary noise compounds: the residual scale
+    # drifts up to ~1.3e-2 on the one boundary seed (seed 1) with all four
+    # self-cal scales on-chip. Bodies bit-exact on the other seeds; this only
+    # bounds the downstream amplification. AUTHORITATIVE gate = the bench.
+    SCALE_REL_TOL = 1.5e-2
     scale_ok = scale_match or (
         abs(dev_scale - float(xo_scale)) <= SCALE_REL_TOL * abs(float(xo_scale))
     )
@@ -457,7 +458,7 @@ def main():
         fails += run_one_seed(s, opts, lut_exp, lut_silu, npu_kernel) != 0
     print(
         f"\nlayer_mh: {len(seeds) - fails}/{len(seeds)} seeds PASS "
-        f"(residual byte-exact; per-slot KV attention within <=4 LSB tol)"
+        f"(self-cal scales on-chip; attention within <=5 LSB tol)"
     )
     return 0 if fails == 0 else 1
 

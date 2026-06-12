@@ -73,6 +73,35 @@ extern "C" void llama_sv_merge(int8_t *restrict in_lo, int8_t *restrict in_hi,
   event1();
 }
 
+// Self-calibrating sv_merge: the selfcal flowkv writes each KV group's chunk
+// as [REP*kHD body | REP*4 sv_out_scale] (272 B). The memtile join packs 4
+// such chunks per half (in_lo/in_hi). This kernel DE-INTERLEAVES them into
+//   out[0 .. kQD]                 = all 32 Q-head sv bodies, contiguous
+//   out[kQD .. kQD + kNHeadsQ*4]  = all 32 per-Q-head sv_out_scales (fp32)
+// so the downstream af_concat reads both bodies and sv_out_scales from this
+// single buffer (no host af_scales fifo). Q-head order is preserved:
+// KV group g holds Q heads [g*REP .. g*REP+REP).
+static constexpr int kSvBody = kREP * kHD;        // 256 (one KV group's body)
+static constexpr int kSvTail = kREP * 4;          // 16  (one KV group's scales)
+static constexpr int kSvChunk = kSvBody + kSvTail; // 272
+static constexpr int kSvScalesOff = kQD;          // scales region start in out
+static constexpr int kSvHalfKV = kNHeadsKV / 2;   // 4
+
+extern "C" void llama_sv_merge_selfcal(int8_t *restrict in_lo,
+                                       int8_t *restrict in_hi,
+                                       int8_t *restrict out) {
+  event0();
+  int8_t *scales_out = out + kSvScalesOff;
+  for (int g = 0; g < kNHeadsKV; g++) {
+    int8_t *src = (g < kSvHalfKV) ? in_lo : in_hi;
+    int local = (g < kSvHalfKV) ? g : (g - kSvHalfKV);
+    int8_t *chunk = src + local * kSvChunk;
+    memcpy(out + g * kSvBody, chunk, kSvBody);            // body -> contiguous
+    memcpy(scales_out + g * kSvTail, chunk + kSvBody, kSvTail);  // scales
+  }
+  event1();
+}
+
 // 2-output split: lower half (KV groups 0..kHalf) and upper half. Required
 // to keep memtile DMA fanout under 4-out per stage; one memtile can't
 // emit all 8 streams.
@@ -206,6 +235,51 @@ extern "C" void llama_af_concat_selfcal(int8_t *restrict af_in,
   for (int h = 0; h < kNHeadsQ; h++) {
     float combined = sv_out_scales[h] * o_inv_act_scale;
     int8_t *src = af_in + h * kHD;
+    int8_t *dst = af_out + h * kHD;
+    for (int j = 0; j < kHD; j++) {
+      dst[j] = round_to_i8((float)src[j] * combined);
+    }
+  }
+
+  memcpy(af_out + kOutDim, &o_act_scale, 4);
+  int32_t zero = 0;
+  memcpy(af_out + kOutDim + 4, &zero, 4);
+  event1();
+}
+
+// Fully self-calibrating af_concat (1b+1c): sv_out_scales come from the MERGED
+// sv buffer tail (written by sv_merge_selfcal), NOT a host scales fifo. Input
+// `sv` = [kQD bodies | kNHeadsQ*4 sv_out_scales]. Computes o_act_scale on-chip
+// and writes it to af_out[kOutDim..kOutDim+4]. Single input -> af_concat drops
+// from 2-in to 1-in (the host af_scales fifo is gone).
+extern "C" void llama_af_concat_selfcal2(int8_t *restrict sv,
+                                         int8_t *restrict af_out) {
+  event0();
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
+  constexpr int kOutDim = kNHeadsQ * kHD;
+  const float *sv_out_scales = reinterpret_cast<const float *>(sv + kOutDim);
+
+  // Pass A: absmax of af_fp = sv[h]*sv_out_scale[h].
+  float absmax = 0.0f;
+  for (int h = 0; h < kNHeadsQ; h++) {
+    float s = sv_out_scales[h];
+    int8_t *src = sv + h * kHD;
+    for (int j = 0; j < kHD; j++) {
+      float v = (float)src[j] * s;
+      float a = v >= 0.0f ? v : -v;
+      if (a > absmax)
+        absmax = a;
+    }
+  }
+  if (absmax < 1e-12f)
+    absmax = 1e-12f;
+  float o_act_scale = absmax * (1.0f / 127.0f);
+  float o_inv_act_scale = sw_recip(o_act_scale);
+
+  // Pass B: requant.
+  for (int h = 0; h < kNHeadsQ; h++) {
+    float combined = sv_out_scales[h] * o_inv_act_scale;
+    int8_t *src = sv + h * kHD;
     int8_t *dst = af_out + h * kHD;
     for (int j = 0; j < kHD; j++) {
       dst[j] = round_to_i8((float)src[j] * combined);

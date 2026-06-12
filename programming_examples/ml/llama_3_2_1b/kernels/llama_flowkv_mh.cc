@@ -200,3 +200,112 @@ extern "C" void llama_flowkv_mh(int8_t *restrict q_chunk,
 
   event1();
 }
+
+// Self-calibrating inner: computes each Q head's sv_out_scale ON-CHIP (absmax
+// of the head's fp32 sv) instead of reading sv_inv_out_scale from the q_chunk
+// tail. Writes the per-head sv_out_scale to the out_chunk tail at
+// out_chunk[kREP*kHD + h*4] (out_chunk is REP*kHD + REP*4 bytes) so the
+// downstream sv_merge/af_concat read sv_out_scales from the merged sv tail
+// instead of the host scales buffer. q_scale per head still from the q_chunk
+// tail (q_proj's per-head scale; that's a Phase-2 tiled scale).
+// Two-pass over the sv accumulation (Bug 2: no fp32 stack array across loops;
+// recompute acc in pass B). The doubled sv cost is acceptable (correctness).
+extern "C" void llama_flowkv_mh_selfcal(int8_t *restrict q_chunk,
+                                        float *restrict k_slot,
+                                        int8_t *restrict k_body,
+                                        float *restrict v_slot,
+                                        int8_t *restrict v_body,
+                                        int8_t *restrict out_chunk, int T_used) {
+  event0();
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
+  static_assert(kHD == 64, "qk_scale hardcoded for head_dim=64");
+  constexpr float kInvSqrtHD = 0.125f;
+
+  int8_t *tail = q_chunk + kREP * kHD;        // per-head [q_scale, sv_inv_out]
+  int8_t *out_tail = out_chunk + kREP * kHD;  // per-head sv_out_scale (REP*4)
+
+  float scores[kT];
+  int32_t qvals[kT];
+
+  for (int h = 0; h < kREP; h++) {
+    float q_scale;
+    memcpy(&q_scale, tail + h * 8 + 0, 4);  // sv_inv_out (tail+4) now ignored
+
+    int8_t *restrict q_h = q_chunk + h * kHD;
+    int8_t *restrict out_h = out_chunk + h * kHD;
+
+    // 1) scores (identical to llama_flowkv_mh).
+    float max_s = -1e30f;
+    for (int i = 0; i < T_used; i++) {
+      int32_t dot = 0;
+      for (int d = 0; d < kHD; d++) {
+        dot += (int32_t)q_h[d] * (int32_t)k_body[i * kHD + d];
+      }
+      float s = (float)dot * ((q_scale * k_slot[i]) * kInvSqrtHD);
+      scores[i] = s;
+      if (s > max_s)
+        max_s = s;
+    }
+
+    // 2) shift, LUT-quantize, sum.
+    float sum = 0.0f;
+    for (int i = 0; i < T_used; i++) {
+      int32_t q = quant_shifted(scores[i] - max_s);
+      qvals[i] = q;
+      sum += lookup_exp(q);
+    }
+    const float inv_sum = sw_recip(sum);
+
+    // 3a) Pass A: compute sv acc[j] on the fly, track absmax (no fp32 array).
+    float absmax = 0.0f;
+    for (int j = 0; j < kHD; j++) {
+      float acc = 0.0f;
+      for (int i = 0; i < T_used; i++) {
+        float p = lookup_exp(qvals[i]) * inv_sum;
+        acc += p * v_slot[i] * (float)v_body[i * kHD + j];
+      }
+      float a = acc >= 0.0f ? acc : -acc;
+      if (a > absmax)
+        absmax = a;
+    }
+    if (absmax < 1e-12f)
+      absmax = 1e-12f;
+    float sv_out_scale = absmax * (1.0f / 127.0f);
+    float sv_inv_out_scale = sw_recip(sv_out_scale);
+
+    // 3b) Pass B: recompute acc[j], requant with the self-computed scale.
+    for (int j = 0; j < kHD; j++) {
+      float acc = 0.0f;
+      for (int i = 0; i < T_used; i++) {
+        float p = lookup_exp(qvals[i]) * inv_sum;
+        acc += p * v_slot[i] * (float)v_body[i * kHD + j];
+      }
+      out_h[j] = round_to_i8(acc * sv_inv_out_scale);
+    }
+    memcpy(out_tail + h * 4, &sv_out_scale, 4);
+  }
+
+  event1();
+}
+
+// Self-calibrating kvc wrapper (mirrors llama_flowkv_mh_kvc but calls the
+// selfcal inner). out_chunk is REP*kHD + REP*4.
+extern "C" void llama_flowkv_mh_kvc_selfcal(int8_t *restrict q_chunk,
+                                            int8_t *restrict kv_one,
+                                            int8_t *restrict out_chunk) {
+  int T_used;
+  memcpy(&T_used, kv_one, 4);
+  if (T_used <= 0)
+    T_used = 1;
+  if (T_used > kT)
+    T_used = kT;
+  constexpr int kSlotBytes = kT * 4;
+  constexpr int kBodyBytes = kT * kHD;
+  constexpr int kKHalf = kSlotBytes + kBodyBytes;
+  int8_t *k_region = kv_one + kTUsedPrefix;
+  int8_t *v_region = k_region + kKHalf;
+  llama_flowkv_mh_selfcal(q_chunk, reinterpret_cast<float *>(k_region),
+                          k_region + kSlotBytes,
+                          reinterpret_cast<float *>(v_region),
+                          v_region + kSlotBytes, out_chunk, T_used);
+}

@@ -78,10 +78,15 @@ KVCS_BYTES = 2 * KFP_ALL + CS_PACK_BYTES
 COMB_CHUNK_BYTES = QCHUNK_BYTES + 2 * KFP_HEAD + CS_PACK_BYTES  # 1056
 COMB_HALF_BYTES = (N_HEADS_KV // 2) * COMB_CHUNK_BYTES  # 4224 (4 chunks)
 
-# attn worker output: REP heads of HEAD_D each.
-SVCHUNK_BYTES = REP * HEAD_D  # 256
-SV_CONCAT_HALF = (N_HEADS_KV // 2) * SVCHUNK_BYTES  # 1024 (4 chunks)
+# attn worker output: REP heads of HEAD_D body + REP per-head sv_out_scale
+# (self-cal, 1c): [REP*HEAD_D body | REP*4 scale].
+SVCHUNK_BODY = REP * HEAD_D  # 256
+SVCHUNK_TAIL = REP * 4  # 16 (per-Q-head sv_out_scale, self-calibrated)
+SVCHUNK_BYTES = SVCHUNK_BODY + SVCHUNK_TAIL  # 272
+SV_CONCAT_HALF = (N_HEADS_KV // 2) * SVCHUNK_BYTES  # 1088 (4 chunks)
 AF_BYTES = N_HEADS_Q * HEAD_D  # 2048
+# sv_merge_selfcal output: [AF_BYTES bodies | N_HEADS_Q*4 sv_out_scales].
+SVFULL_BYTES = AF_BYTES + N_HEADS_Q * 4  # 2176
 
 # kv-per-head: per-slot scale header (T fp32) + T*HEAD_D body. Each cached
 # position carries its OWN k/v scale (fixes the per-head-scalar KV bug).
@@ -351,8 +356,9 @@ def build():
     )
     svchunk_eps = list(svchunk_lo_eps) + list(svchunk_hi_eps)
 
-    of_svfull = ObjectFifo(_i8(AF_BYTES), depth=1, name="sv_full")
-    of_afscales = ObjectFifo(t_AFSCALES_i8, depth=1, name="af_scales")
+    of_svfull = ObjectFifo(_i8(SVFULL_BYTES), depth=1, name="sv_full")  # bodies+scales
+    # of_afscales removed: sv_out_scales are now self-calibrated on-chip (1c)
+    # and flow via the merged sv tail; o_act_scale via the af tail (1b).
     of_af = ObjectFifo(t_AF8_i8, depth=1, name="af")  # AF+8: self-cal o_act tail
     of_wo = ObjectFifo(t_WO_slot, depth=1, name="wo")
     of_op = ObjectFifo(t_D_f32, depth=1, name="op")  # fp32 o_proj output
@@ -435,20 +441,23 @@ def build():
     # chunk; writes the updated head cache).
     KO_KVA = "llama_kv_append.cc.o"
     k_append = Kernel("llama_kv_append_combined", KO_KVA, [t_COMB_i8, t_KV_i8, t_KV_i8])
+    # sv_merge_selfcal: de-interleave the 8 [body|sv_out_scale] chunks into
+    # [AF_BYTES bodies | N_HEADS_Q*4 sv_out_scales].
     k_svmerge = Kernel(
-        "llama_sv_merge",
+        "llama_sv_merge_selfcal",
         KO_GLUE,
-        [t_SVCONCAT_HALF_i8, t_SVCONCAT_HALF_i8, _i8(AF_BYTES)],
+        [t_SVCONCAT_HALF_i8, t_SVCONCAT_HALF_i8, _i8(SVFULL_BYTES)],
     )
-    # af_concat self-calibrates o_act_scale: writes it to the af tail at af[QD]
-    # (af int8[AF_BYTES+8]); reads sv_out_scales from the afscales buffer (1c
-    # moves those on-chip too).
+    # af_concat fully self-cal (1b+1c): sv_out_scales from the merged sv tail
+    # (no host af_scales fifo), o_act_scale computed on-chip -> af tail.
     k_afconcat = Kernel(
-        "llama_af_concat_selfcal", KO_GLUE, [_i8(AF_BYTES), t_AFSCALES_i8, t_AF8_i8]
+        "llama_af_concat_selfcal2", KO_GLUE, [_i8(SVFULL_BYTES), t_AF8_i8]
     )
-    # flowkv consumes the combined chunk (reads only the first 288 B q_chunk);
-    # cache_out (post-append) is its kv input.
-    k_fkv = Kernel("llama_flowkv_mh_kvc", KO_FKV, [t_COMB_i8, t_KV_i8, t_SVCHUNK_i8])
+    # flowkv self-calibrates per-Q-head sv_out_scale: out_chunk is
+    # [REP*HEAD_D body | REP*4 sv_out_scale] = SVCHUNK_BYTES (272).
+    k_fkv = Kernel(
+        "llama_flowkv_mh_kvc_selfcal", KO_FKV, [t_COMB_i8, t_KV_i8, t_SVCHUNK_i8]
+    )
     # silu self-calibrates its OUTPUT scale: writes silu_out_scale to the sf
     # tail (sf int8[HD+8]); reads up_scale from the up tail.
     k_silu = Kernel("llama_silu_mul_int8_selfcal", KO_SILU, [t_HD_i8, t_UF_i8, t_UF_i8])
@@ -556,13 +565,12 @@ def build():
         c_hi.release(1)
         c_out.release(1)
 
-    def w_afconcat(c_in, c_sc, c_out, k):
+    # af_concat (self-cal): 1 input (merged sv with bodies+sv_out_scales).
+    def w_afconcat(c_in, c_out, k):
         x = c_in.acquire(1)
-        s = c_sc.acquire(1)
         o = c_out.acquire(1)
-        k(x, s, o)
+        k(x, o)
         c_in.release(1)
-        c_sc.release(1)
         c_out.release(1)
 
     # Co-located KV append + flowkv on one tile:
@@ -674,7 +682,7 @@ def build():
         ),
         Worker(
             w_afconcat,
-            [of_svfull.cons(), of_afscales.cons(), of_af.prod(), k_afconcat],
+            [of_svfull.cons(), of_af.prod(), k_afconcat],
             tile=Tile(3, 5),
         ),
         Worker(
@@ -750,9 +758,7 @@ def build():
         add_fill(of_wq.prod(), wblob, OFF_WQ, WQ_SLOT, N_TILES_Q, WEIGHTS_BYTES)
         add_fill(of_cs.prod(), wblob, OFF_CS, CS_BYTES, 1, WEIGHTS_BYTES)
         add_fill(of_wo.prod(), wblob, OFF_WO, WO_SLOT, N_TILES_O, WEIGHTS_BYTES)
-        add_fill(
-            of_afscales.prod(), wblob, OFF_AF_SCALES, AF_SCALES_BYTES, 1, WEIGHTS_BYTES
-        )
+        # (of_afscales fill removed -- sv_out_scales/o_act self-calibrated.)
         add_fill(
             of_gam_post.prod(), wblob, OFF_GAMMA_POST, GAMMA_BYTES, 1, WEIGHTS_BYTES
         )
