@@ -155,3 +155,65 @@ extern "C" void llama_af_concat(int8_t *restrict af_in, int8_t *restrict scales,
   }
   event1();
 }
+
+// Pure IEEE fp32 reciprocal (Peano `/` is a HW approx, Bug 1). Matches the
+// dyn-rmsnorm sw_recip so the numpy reference and device share the function.
+static inline float sw_recip(float a) {
+  int32_t bits;
+  memcpy(&bits, &a, 4);
+  bits = (int32_t)0x7EF477D5 - bits;
+  float x;
+  memcpy(&x, &bits, 4);
+  x = x * (2.0f - a * x);
+  x = x * (2.0f - a * x);
+  x = x * (2.0f - a * x);
+  x = x * (2.0f - a * x);
+  return x;
+}
+
+// Self-calibrating af_concat: computes the global o_act_scale on-chip (absmax
+// of af_fp = sv_in[h]*sv_out_scale[h] over the whole Q_DIM vector) instead of
+// reading o_inv_act_scale from the host scales buffer. Two-pass; writes
+// o_act_scale to af_out[kOutDim..kOutDim+4] (af_out is int8[kOutDim+8]) so the
+// downstream o_proj reads its act_scale from the af tail. sv_out_scales still
+// come from the host scales buffer (that's 1c). kOutDim = N_HEADS_Q*HEAD_DIM.
+extern "C" void llama_af_concat_selfcal(int8_t *restrict af_in,
+                                        int8_t *restrict scales,
+                                        int8_t *restrict af_out) {
+  event0();
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
+  constexpr int kOutDim = kNHeadsQ * kHD;
+  const float *sv_out_scales = reinterpret_cast<const float *>(scales);
+
+  // Pass A: absmax of af_fp = src * sv_out_scale[h].
+  float absmax = 0.0f;
+  for (int h = 0; h < kNHeadsQ; h++) {
+    float s = sv_out_scales[h];
+    int8_t *src = af_in + h * kHD;
+    for (int j = 0; j < kHD; j++) {
+      float v = (float)src[j] * s;
+      float a = v >= 0.0f ? v : -v;
+      if (a > absmax)
+        absmax = a;
+    }
+  }
+  if (absmax < 1e-12f)
+    absmax = 1e-12f;
+  float o_act_scale = absmax * (1.0f / 127.0f);
+  float o_inv_act_scale = sw_recip(o_act_scale);
+
+  // Pass B: requant with the self-computed global scale.
+  for (int h = 0; h < kNHeadsQ; h++) {
+    float combined = sv_out_scales[h] * o_inv_act_scale;
+    int8_t *src = af_in + h * kHD;
+    int8_t *dst = af_out + h * kHD;
+    for (int j = 0; j < kHD; j++) {
+      dst[j] = round_to_i8((float)src[j] * combined);
+    }
+  }
+
+  memcpy(af_out + kOutDim, &o_act_scale, 4);
+  int32_t zero = 0;
+  memcpy(af_out + kOutDim + 4, &zero, 4);
+  event1();
+}

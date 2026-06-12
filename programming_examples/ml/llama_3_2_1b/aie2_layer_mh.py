@@ -238,6 +238,7 @@ def build():
     t_SVCONCAT_HALF_i8 = _i8(SV_CONCAT_HALF)
     t_AFSCALES_i8 = _i8(AF_SCALES_BYTES)
     t_AF_i8 = _i8(AF_BYTES)
+    t_AF8_i8 = _i8(AF_BYTES + 8)  # af + self-cal o_act_scale tail (1b)
     t_HD_i8 = _i8(HD)
     t_UF_i8 = _i8(HD + 8)
     t_D_bf16 = _bf16(D)
@@ -352,7 +353,7 @@ def build():
 
     of_svfull = ObjectFifo(_i8(AF_BYTES), depth=1, name="sv_full")
     of_afscales = ObjectFifo(t_AFSCALES_i8, depth=1, name="af_scales")
-    of_af = ObjectFifo(t_AF_i8, depth=1, name="af")
+    of_af = ObjectFifo(t_AF8_i8, depth=1, name="af")  # AF+8: self-cal o_act tail
     of_wo = ObjectFifo(t_WO_slot, depth=1, name="wo")
     of_op = ObjectFifo(t_D_f32, depth=1, name="op")  # fp32 o_proj output
 
@@ -391,11 +392,13 @@ def build():
         KO_GEMM2,
         [t_D8_i8, t_WQ_slot, t_QF_i8, np.int32],
     )
-    # o_proj-mh, fp32 output (consumed by rescale-add)
+    # o_proj-mh, fp32 output. act_scale (o_act_scale) from the self-calibrated
+    # af tail at af[QD] (reuses the K=2048 fp32out_acttail symbol; af is
+    # int8[AF_BYTES+8]).
     k_o = Kernel(
-        "llama_gemm_tiled_layer_K2048_N4_perchan_v2_o_mh_fp32out",
+        "llama_gemm_tiled_layer_K2048_N4_perchan_v2_o_mh_fp32out_acttail",
         KO_GEMM2,
-        [t_AF_i8, t_WO_slot, t_D_f32, np.int32],
+        [t_AF8_i8, t_WO_slot, t_D_f32, np.int32],
     )
     # gate (acttail: act_scale read from h2 tail; inv_out stays silu-lock arg)
     k_gate = Kernel(
@@ -437,8 +440,11 @@ def build():
         KO_GLUE,
         [t_SVCONCAT_HALF_i8, t_SVCONCAT_HALF_i8, _i8(AF_BYTES)],
     )
+    # af_concat self-calibrates o_act_scale: writes it to the af tail at af[QD]
+    # (af int8[AF_BYTES+8]); reads sv_out_scales from the afscales buffer (1c
+    # moves those on-chip too).
     k_afconcat = Kernel(
-        "llama_af_concat", KO_GLUE, [_i8(AF_BYTES), t_AFSCALES_i8, t_AF_i8]
+        "llama_af_concat_selfcal", KO_GLUE, [_i8(AF_BYTES), t_AFSCALES_i8, t_AF8_i8]
     )
     # flowkv consumes the combined chunk (reads only the first 288 B q_chunk);
     # cache_out (post-append) is its kv input.
