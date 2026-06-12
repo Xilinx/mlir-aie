@@ -432,72 +432,87 @@ private:
           &channelRequirements);
 };
 
+// Configuration for the SA placer's cost model and schedule.
+//
+// The SA placer minimizes a total cost with four components:
+//
+//   totalCost = HPWL + resourcePenalty + cascadePenalty + memoryPressure
+//
+// 1. HPWL (half-perimeter wire length): sum of bounding-box perimeters
+//    across all nets.
+//
+// 2. Resource penalty (hard, blocks legality): penalizes MemTile buffer
+//    overflow, core tile overflow, DMA channel overuse, and BD count
+//    overuse.
+//
+// 3. Cascade penalty (hard, blocks legality): penalizes cascade put/get
+//    pairs that aren't adjacent.
+//
+// 4. Memory pressure (soft, guides optimization): quadratic penalty when
+//    tile utilization exceeds a threshold.
+struct SAConfig {
+  // HPWL (cost 1)
+  int multicastThreshold = 4;  // consumer count above which penalty applies
+  int multicastMultiplier = 2; // HPWL multiplier for multicast nets
+
+  // Resource penalty (cost 2)
+  int memPenaltyPerKB = 30;      // per KB of unresolved memory overflow
+  int dmaPenaltyPerChannel = 20; // per DMA channel or BD over limit
+
+  // Cascade penalty (cost 3)
+  int cascadeWeightPerDist = 30; // per Manhattan distance to valid position
+
+  // Memory pressure (cost 4)
+  int pressurePerKB = 3;           // quadratic pressure above threshold
+  double pressureThreshold = 0.75; // utilization fraction triggering pressure
+
+  // Adaptive cooling
+  double coolFast = 0.995;        // accept ratio > 96%: cool faster
+  double coolSteady = 0.998;      // accept ratio > 80%: steady progress
+  double coolBalanced = 0.999;    // accept ratio > 15%: balanced exploration
+  double coolStuck = 0.9998;      // accept ratio <= 15%: barely cool
+  double greedyThreshold = 0.005; // switch to greedy (T=0) below this
+
+  // Schedule sizing
+  int minMovesPerIter = 100;
+  int maxMovesPerIter = 2000;
+  int minMaxIters = 10000;
+  int greedyMultiplier = 50;       // greedyIters = multiplier * numMovable
+  double tempScaleEstimate = 10.0; // initTemp cap: scale * estimated T
+  double tempScaleCost = 2.0;      // initTemp cap: scale * totalCost
+
+  // Temperature estimation
+  int tempSearchIters = 100;         // binary search iterations
+  double tempSearchCeiling = 5.0;    // highT = ceiling * maxDelta
+  double tempSearchEpsilon = 1e-10;  // zero guard in binary search
+  double tempSearchTolerance = 1e-6; // convergence tolerance
+
+  // SA loop intervals
+  int debugInterval = 5000;          // iterations between debug log lines
+  int fullRecomputeInterval = 10000; // iterations between full cost recompute
+
+  // Move generation
+  int maxMoveAttempts = 20; // retries per move before giving up
+
+  // Acceptance tracking
+  int windowSize = 100; // sliding window for acceptance ratio
+};
+
 // SA temperature schedule with windowed acceptance tracking.
 class SASchedule {
 public:
   SASchedule() = default;
-  SASchedule(double startTemp, int movesPerIter, int maxIters, int greedyIters)
-      : temperature(startTemp), movesPerIter(movesPerIter), maxIters(maxIters),
-        greedyIters(greedyIters), windowSize(std::max(movesPerIter, 100)) {}
+  SASchedule(double startTemp, int movesPerIter, int maxIters, int greedyIters,
+             const SAConfig &cfg = {});
 
   double getTemperature() const { return temperature; }
   int getIteration() const { return currIteration; }
   int getMovesPerIter() const { return movesPerIter; }
   bool isGreedy() const { return inGreedyStage; }
-  void setCoolingFactor(double cf) { coolingFactor = cf; }
-
-  bool limitReached() const {
-    return currIteration >= maxIters ||
-           (inGreedyStage && currGreedyIteration >= greedyIters);
-  }
-
-  double getAcceptanceRatio() const {
-    int total = acceptCount + rejectCount;
-    return (total == 0) ? 1.0 : static_cast<double>(acceptCount) / total;
-  }
-
-  void recordAccept() {
-    history.push_back(1);
-    acceptCount++;
-    trimWindow();
-  }
-
-  void recordReject() {
-    history.push_back(0);
-    rejectCount++;
-    trimWindow();
-  }
-
-  void cool() {
-    // Adaptive cooling based on acceptance ratio.
-    // When stuck (low acceptance), slow cooling to give more exploration.
-    // When progressing well, cool faster to converge.
-    if (!inGreedyStage) {
-      double ratio = getAcceptanceRatio();
-      // Adaptive factors close to 1.0 since cool() is called per
-      // iteration (every movesPerIter moves). Temperature should reach ~1
-      // around 70% of iterations.
-      double adaptiveFactor;
-      if (ratio > 0.96)
-        adaptiveFactor = 0.995; // accepting too much → cool faster
-      else if (ratio > 0.8)
-        adaptiveFactor = 0.998; // good progress → steady
-      else if (ratio > 0.15)
-        adaptiveFactor = 0.999; // balanced exploration
-      else
-        adaptiveFactor = 0.9998; // stuck → barely cool, keep exploring
-
-      temperature *= adaptiveFactor;
-
-      if (ratio < 0.005 || temperature < 1e-8) {
-        inGreedyStage = true;
-        temperature = 0.0;
-      }
-    } else {
-      currGreedyIteration++;
-    }
-    currIteration++;
-  }
+  bool limitReached() const;
+  double getAcceptanceRatio() const;
+  void record(bool accepted);
+  void cool();
 
 private:
   double temperature = 0.0;
@@ -507,21 +522,13 @@ private:
   int maxIters = 5000;
   int greedyIters = 100;
   int windowSize = 100;
-  double coolingFactor = 0.999;
+  SAConfig config;
   bool inGreedyStage = false;
   std::deque<int> history;
   int acceptCount = 0;
   int rejectCount = 0;
 
-  void trimWindow() {
-    while (static_cast<int>(history.size()) > windowSize) {
-      if (history.front() == 1)
-        acceptCount--;
-      else
-        rejectCount--;
-      history.pop_front();
-    }
-  }
+  void trimWindow();
 };
 
 // Per-net bounding box state for incremental HPWL updates.
@@ -548,107 +555,115 @@ struct NetInfo {
 // same column onto a shared physical tile when DMA capacity permits.
 class SAPlacer : public Placer {
 public:
-  explicit SAPlacer(unsigned seed = 0) : rngSeed(seed) {}
+  explicit SAPlacer(unsigned seed = 0, SAConfig config = {})
+      : rngSeed(seed), config(config) {}
 
   mlir::LogicalResult place(DeviceOp device) override;
   llvm::StringRef getName() const override { return "sa_placer"; }
 
 private:
-  // Phases of place().
-  mlir::LogicalResult collectAndBuildModel(DeviceOp device);
-  mlir::LogicalResult generateInitialPlacement();
-  void initializeSAState();
-  void runSAMainLoop();
-  mlir::LogicalResult finalizePlacement(DeviceOp device);
-
-  // Evaluate and accept/reject a multi-tile move.
-  void tryMultiTileMove(
-      llvm::SmallVector<std::pair<mlir::Operation *, TileID>> &moves);
-
+  // Configuration
   unsigned rngSeed;
+  SAConfig config;
   std::mt19937 rng;
   SASchedule schedule;
+
+  // Collected IR state
   CollectedOps collected;
+  llvm::DenseMap<mlir::Operation *, AIETileType> tileTypes;
+  llvm::DenseMap<mlir::Operation *, int64_t> staticBufferSizes;
+  llvm::DenseMap<mlir::Operation *, int64_t> stackSizes;
 
   // Net model
+  struct FifoBufferInfo {
+    mlir::Operation *fifoOp = nullptr;
+    mlir::Operation *producer = nullptr;
+    llvm::SmallVector<mlir::Operation *> consumers;
+    int64_t producerSizeBytes = 0;
+    int64_t consumerSizeBytes = 0;
+    int producerDepth = 0;
+    llvm::SmallVector<int> consumerDepths;
+    int producerDMADepth = 0;
+    llvm::SmallVector<int> consumerDMADepths;
+    bool forcesDMA = false;
+    bool linkSharedProd = false;
+
+    int consumerDepthAt(size_t ci) const {
+      return (ci < consumerDepths.size()) ? consumerDepths[ci] : producerDepth;
+    }
+  };
   llvm::SmallVector<NetInfo> nets;
   llvm::DenseMap<mlir::Operation *, llvm::SmallVector<size_t>> tileToNetIndices;
+  llvm::SmallVector<FifoBufferInfo> fifoBuffers;
 
-  // SA placement state
+  // Placement state
   llvm::DenseMap<mlir::Operation *, TileID> currentPlacement;
   llvm::DenseMap<TileID, mlir::Operation *> physToLogical;
   llvm::SmallVector<mlir::Operation *> movableTiles;
   llvm::DenseSet<mlir::Operation *> constrainedTiles;
 
-  // Tile type for each logical tile (cached for fast lookup)
-  llvm::DenseMap<mlir::Operation *, AIETileType> tileTypes;
+  // Resource tracking
+  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<size_t>>
+      tileToFifoIndices;
+  llvm::DenseMap<TileID, int64_t> currentMemUsage;
+  llvm::DenseMap<TileID, std::pair<int, int>> currentDMAUsage;
+  llvm::DenseMap<size_t, TileID> sharedMemDestination;
+  int cachedResourcePenalty = 0;
 
-  // Static buffer sizes per logical tile
-  llvm::DenseMap<mlir::Operation *, int64_t> staticBufferSizes;
-  // Core stack sizes (from CoreOp::getStackSize(), reserved by buffer
-  // assignment)
-  llvm::DenseMap<mlir::Operation *, int64_t> stackSizes;
-
-  // Cascade adjacency edges from aie.cascade_flow ops.
+  // Cascade
   Adjacency cascadeAdjacency;
-  // Valid offsets for cascade_flow(src, dst): dst at src+(col,row).
   static constexpr std::pair<int, int> kCascadeOffsets[] = {{1, 0}, {0, -1}};
 
-  struct FifoBufferInfo {
-    mlir::Operation *fifoOp;
-    mlir::Operation *producer;
-    llvm::SmallVector<mlir::Operation *> consumers;
-    int64_t producerSizeBytes; // producer buffer element size in bytes
-    int64_t consumerSizeBytes; // consumer buffer element size (differs with
-                               // consumerElemType, else same as producer)
-    int producerDepth;         // declared depth (used for shared-mem)
-    llvm::SmallVector<int> consumerDepths; // declared depths
-    int producerDMADepth; // maxAcquire+1 depth (used for DMA connections)
-    llvm::SmallVector<int> consumerDMADepths; // maxAcquire+1 depths
-    bool forcesDMA = false; // requires DMA even when adjacent (skip shared-mem)
-    bool linkSharedProd = false; // producer buffers shared with link input
-                                 // (skip producer mem charge on MemTile)
-  };
-  llvm::SmallVector<FifoBufferInfo> fifoBuffers;
+  // SA loop state
+  int totalCost = 0;
+  int cascadePen = 0;
+  int bestCost = INT_MAX;        // best legal (resPenalty==0 && cascade==0)
+  int bestOverallCost = INT_MAX; // best regardless of legality (fallback)
+  PlacementResult bestPlacement; // corresponds to bestCost
+  PlacementResult bestOverallPlacement; // corresponds to bestOverallCost
+  std::uniform_real_distribution<double> acceptDist{0.0, 1.0};
+  int deviceSlots = 0;
+  int zeroDeltaMoves = 0, posDeltaMoves = 0, negDeltaMoves = 0;
+  int acceptedUphill = 0, rejectedMoves = 0;
+  std::chrono::steady_clock::time_point startTime;
 
-  // Resource tracking: full init once, then incremental updates per move
+  // Phase methods
+  mlir::LogicalResult collectAndBuildModel(DeviceOp device);
+  mlir::LogicalResult generateInitialPlacement();
+  void initializeSAState();
+  void runSAMainLoop();
+  mlir::LogicalResult finalizePlacement(DeviceOp device);
+  mlir::LogicalResult mergeMemShimTiles(DeviceOp device);
+
+  // Cost and resource methods
   void initResourceTracking();
+  void addFifoContribution(size_t fifoIdx, int sign);
   int updateResourcePenalty(
       const llvm::SmallVector<std::pair<mlir::Operation *, TileID>>
           &oldPlacements);
   int getResourcePenalty() const { return cachedResourcePenalty; }
-
-  // Add/subtract a single fifo's contribution (sign = +1 or -1)
-  void addFifoContribution(size_t fifoIdx, int sign);
-  // Compute hard penalty from current maps (blocks legality)
-  int computePenaltyFromMaps() const;
-  int computeMemTileSpilloverPenalty() const;
-  int computeCoreTileOverflowPenalty() const;
+  int computePenalty() const;
+  int computeMemSpilloverPenalty() const;
+  int computeCoreOverflowPenalty() const;
   int computeDMAChannelPenalty() const;
   int computeBDCountPenalty() const;
-  // Soft memory pressure (guides optimization, not legality)
   int computeMemoryPressure() const;
-  // Adjacency violation penalty: weighted Manhattan distance to nearest
-  // valid offset for each edge. Used for cascade adjacency.
   int computeAdjacencyPenalty(const Adjacency &adj,
                               llvm::ArrayRef<std::pair<int, int>> validOffsets,
                               int weight) const;
-  // Generate objectfifo.allocate ops for:
-  // (A) intratile fifos relocated to neighbor tiles (overflow resolution)
-  // (B) shared-mem fifos where SA chose non-default buffer tile
   void generateAllocates();
 
-  // Reverse index: tile operation -> fifo buffer indices
-  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<size_t>>
-      tileToFifoIndices;
-  // Persistent resource state
-  llvm::DenseMap<TileID, int64_t> currentMemUsage;
-  llvm::DenseMap<TileID, std::pair<int, int>> currentDMAUsage;
-  // Per-fifo shared-mem destination: records which tile was charged for
-  // bidirectional shared-mem fifos, ensuring subtract/add consistency.
-  llvm::DenseMap<size_t, TileID> sharedMemDestination;
-  int cachedResourcePenalty = 0;
+  // Move methods
+  void tryMove(llvm::SmallVector<std::pair<mlir::Operation *, TileID>> &moves);
+  bool
+  generateMove(llvm::SmallVector<std::pair<mlir::Operation *, TileID>> &moves);
+  int evaluateMove(
+      mlir::Operation *tile, TileID newPos,
+      llvm::SmallVector<std::pair<size_t, NetBoundingBox>> &backups);
+  void
+  revertMove(llvm::SmallVector<std::pair<size_t, NetBoundingBox>> &backups);
 
+  // Utility methods
   void buildNetModel(llvm::SmallVector<ObjectFifoCreateOp> &objectFifos,
                      llvm::SmallVector<ObjectFifoLinkOp> &objectFifoLinks);
   void buildFifoBufferInfo(DeviceOp device,
@@ -657,39 +672,10 @@ private:
   int computeNetHPWL(const NetInfo &net) const;
   int computeTotalHPWL() const;
   void initBoundingBoxes();
-
-  // Returns delta cost; modifies net BBs in place.
-  // Caller must save/restore via backups if move is rejected.
-  int evaluateMove(
-      mlir::Operation *tile, TileID newPos,
-      llvm::SmallVector<std::pair<size_t, NetBoundingBox>> &backups);
-  void
-  revertMove(llvm::SmallVector<std::pair<size_t, NetBoundingBox>> &backups);
-  bool generateShiftMove(mlir::Operation *&tile, TileID &newPos);
-  bool generateSwapMove(mlir::Operation *&tile1, mlir::Operation *&tile2);
-
   double estimateInitialTemperature(int numSamples);
   bool isLegalPosition(mlir::Operation *tile, TileID pos) const;
-  void printPlacementStats(int64_t elapsedMs) const;
-
-  // SA loop state shared between runSAMainLoop and tryMultiTileMove.
-  int totalCost = 0;
-  int cascadePen = 0;
-  int bestCost = INT_MAX;
-  int bestOverallCost = INT_MAX;
-  PlacementResult bestPlacement;
-  PlacementResult bestOverallPlacement;
-  std::uniform_real_distribution<double> acceptDist{0.0, 1.0};
-  int deviceSlots = 0;
-  int zeroDeltaMoves = 0, posDeltaMoves = 0, negDeltaMoves = 0;
-  int acceptedUphill = 0, rejectedMoves = 0;
-  std::chrono::steady_clock::time_point startTime;
-
-  // Placement-independent memory weight estimate for initial placement sorting
   int64_t computeTileMemoryWeight(mlir::Operation *tile) const;
-
-  // Post-SA: merge mem/shim tiles in the same column
-  mlir::LogicalResult mergeMemShimTiles(DeviceOp device);
+  void printPlacementStats(int64_t elapsedMs) const;
 };
 
 } // namespace xilinx::AIE
