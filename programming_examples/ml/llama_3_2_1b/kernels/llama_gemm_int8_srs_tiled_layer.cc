@@ -223,6 +223,46 @@ static inline void gemm_tile_perchan_v2_fp32out_impl(int8_t *restrict act,
   }
 }
 
+// fp32-out, activation-tail act_scale: act is int8[kK+8] with the per-token
+// scale in act[kK..kK+4] (e.g. the self-calibrated silu sf tail). Used by the
+// down gemm when silu self-calibrates its output scale.
+template <int kK, int kNTile, int kPrefix = 64>
+static inline void gemm_tile_perchan_v2_fp32out_acttail_impl(
+    int8_t *restrict act, int8_t *restrict w_tile, float *restrict out_tile) {
+  static_assert(kPrefix % 64 == 0,
+                "prefix must be a multiple of 64 for aligned weight loads");
+  float act_scale;
+  memcpy(&act_scale, act + kK, 4);
+
+  int8_t *body = w_tile + kPrefix;
+  constexpr int kVec = 64;
+  static_assert(kK % kVec == 0, "K must be a multiple of 64");
+  constexpr int kGroups = kK / kVec;
+
+  const int8_t *weights = body;
+  const int32_t *bias = reinterpret_cast<const int32_t *>(body + kNTile * kK);
+  const float *w_scales =
+      reinterpret_cast<const float *>(body + kNTile * kK + kNTile * 4);
+
+  ::aie::set_saturation(aie::saturation_mode::saturate);
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
+
+  for (int n = 0; n < kNTile; n++) {
+    aie::accum<acc32, kVec> acc;
+    acc.from_vector(aie::zeros<int32, kVec>());
+    const int8_t *__restrict w_row = weights + n * kK;
+    for (int g = 0; g < kGroups; g++) {
+      aie::vector<int8, kVec> w_v = aie::load_v<kVec>(w_row + g * kVec);
+      aie::vector<int8, kVec> x_v = aie::load_v<kVec>(act + g * kVec);
+      acc = aie::mac(acc, w_v, x_v);
+    }
+    int32_t sum_i32 =
+        aie::reduce_add(acc.template to_vector<int32>()) + bias[n];
+
+    out_tile[n] = (float)sum_i32 * act_scale * w_scales[n];
+  }
+}
+
 // Dynamic-scale + downstream-scale mirror variant: slot prefix bytes
 // [8..16] are 8 B of "downstream" scales that the kernel mirrors into
 // out_full[kOutDim..kOutDim+8] each iter so the next consumer can pick
@@ -519,6 +559,17 @@ void llama_gemm_tiled_layer_K8192_N4_perchan_v2_d_fp32out(
   event0();
   gemm_tile_perchan_v2_fp32out_impl<8192, 4, 64>(act, w_tile,
                                                  out_full + tile_idx * 4);
+  event1();
+}
+
+// down_proj fp32 out, act_scale from the sf activation tail (= the
+// self-calibrated silu_out_scale). Used when silu self-calibrates its output.
+void llama_gemm_tiled_layer_K8192_N4_perchan_v2_d_fp32out_acttail(
+    int8_t *restrict act, int8_t *restrict w_tile, float *restrict out_full,
+    int32_t tile_idx) {
+  event0();
+  gemm_tile_perchan_v2_fp32out_acttail_impl<8192, 4, 64>(
+      act, w_tile, out_full + tile_idx * 4);
   event1();
 }
 

@@ -49,6 +49,21 @@ static inline bfloat16 silu_lookup(int8_t g) {
   return bf;
 }
 
+// Pure IEEE fp32 reciprocal (Peano `/` is a HW approx, Bug 1). NR over a
+// bit-hack init; matches the dyn-rmsnorm sw_recip so numpy and device share it.
+static inline float sw_recip(float a) {
+  int32_t bits;
+  memcpy(&bits, &a, 4);
+  bits = (int32_t)0x7EF477D5 - bits;
+  float x;
+  memcpy(&x, &bits, 4);
+  x = x * (2.0f - a * x);
+  x = x * (2.0f - a * x);
+  x = x * (2.0f - a * x);
+  x = x * (2.0f - a * x);
+  return x;
+}
+
 extern "C" {
 
 void llama_silu_mul_int8(int8_t *restrict gate, int8_t *restrict up,
@@ -89,6 +104,50 @@ void llama_silu_mul_int8_dyn(int8_t *restrict gate, int8_t *restrict up,
     float out_f = s_f * u_f * inv_out_scale;
     out[i] = round_to_i8(out_f);
   }
+
+  event1();
+}
+
+// Self-calibrating variant: computes its OWN output scale on-chip (the
+// per-token silu_out_scale = down's act_scale) instead of reading
+// inv_out_scale from the up tail. Two-pass over s_f*u_f (it holds the whole
+// HD vector): pass A finds absmax, pass B requants with inv=sw_recip(absmax/
+// 127). Writes silu_out_scale to out[kCols..kCols+4] (out is int8[kCols+8])
+// so the downstream down gemm reads its act_scale from the sf tail. Still
+// reads up_scale (= up_out_scale, a Phase-2 tiled scale) from the up tail.
+void llama_silu_mul_int8_selfcal(int8_t *restrict gate, int8_t *restrict up,
+                                 int8_t *restrict out) {
+  event0();
+
+  constexpr int kCols = LLAMA_SILU_MUL_COLS;
+  float up_scale;
+  memcpy(&up_scale, up + kCols, 4);
+
+  // Pass A: absmax of s_f * u_f (no fp32 array kept across loops).
+  float absmax = 0.0f;
+  for (int i = 0; i < kCols; i++) {
+    float s_f = (float)silu_lookup(gate[i]);
+    float u_f = (float)up[i] * up_scale;
+    float v = s_f * u_f;
+    float a = v >= 0.0f ? v : -v;
+    if (a > absmax)
+      absmax = a;
+  }
+  if (absmax < 1e-12f)
+    absmax = 1e-12f;
+  float out_scale = absmax * (1.0f / 127.0f);
+  float inv_out_scale = sw_recip(out_scale);
+
+  // Pass B: recompute + round.
+  for (int i = 0; i < kCols; i++) {
+    float s_f = (float)silu_lookup(gate[i]);
+    float u_f = (float)up[i] * up_scale;
+    out[i] = round_to_i8(s_f * u_f * inv_out_scale);
+  }
+
+  memcpy(out + kCols, &out_scale, 4);
+  int32_t zero = 0;
+  memcpy(out + kCols + 4, &zero, 4);
 
   event1();
 }

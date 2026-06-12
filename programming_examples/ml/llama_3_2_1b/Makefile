@@ -641,7 +641,7 @@ ${BUILD}/llama_rmsnorm_int8_2048.cc.o: ${KDIR}/llama_rmsnorm_int8.cc
 
 ${BUILD}/llama_silu_mul_int8_8192.cc.o: ${KDIR}/llama_silu_mul_int8.cc ${BUILD}/silu_lut.h
 	mkdir -p ${@D}
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} \
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -ffp-contract=off \
 		-DLLAMA_SILU_MUL_COLS=8192 -I${srcdir} -c $< -o ${@F}
 
 FFN_HALF_DEPS = ${BUILD}/llama_gemm_int8_srs_tiled_ffn.cc.o \
