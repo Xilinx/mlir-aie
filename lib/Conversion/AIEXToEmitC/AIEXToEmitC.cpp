@@ -323,6 +323,12 @@ private:
     Value txnVec =
         emitc::LiteralOp::create(funcBuilder, loc, txnVecType, "txn");
 
+    // Clone the runtime-sequence body verbatim into the function. builder.clone
+    // copies nested regions (scf.for/scf.if bodies, their yields and iter-args)
+    // and remaps all SSA values through `mapping`, so we never reconstruct
+    // control flow by hand. Memref block arguments are dropped (the NPU
+    // lowering already replaced DMA ops referencing them); they have no
+    // remaining uses at this point.
     IRMapping mapping;
     unsigned paramIdx = 0;
     for (auto arg : entryBlock.getArguments()) {
@@ -331,10 +337,19 @@ private:
       mapping.map(arg, funcBlock->getArgument(paramIdx++));
     }
 
+    // Ops in the sequence may reference arith.constants defined outside it
+    // (e.g. hoisted to the device). Clone those into the function first so the
+    // verbatim body clone below has every operand available in `mapping`.
     if (failed(cloneExternalConstants(seqOp, funcBuilder, mapping)))
       return failure();
 
-    if (failed(cloneBlock(entryBlock, funcBuilder, mapping, txnVec)))
+    for (Operation &op : entryBlock.without_terminator())
+      funcBuilder.clone(op, mapping);
+
+    // Convert the cloned AIEX txn ops (and fuse BD blockwrites) in place,
+    // appending to `txn`. arith/scf left behind are lowered afterwards by the
+    // upstream conversions.
+    if (failed(convertTxnOps(funcOp, txnVec)))
       return failure();
 
     const auto &tm = deviceOp.getTargetModel();
@@ -375,45 +390,84 @@ private:
     return prescan.wasInterrupted() ? failure() : success();
   }
 
-  LogicalResult cloneBlock(Block &block, OpBuilder &builder, IRMapping &mapping,
-                           Value txnVec) {
-    for (auto it = block.begin(), e = block.end(); it != e; ++it) {
-      Operation *op = &*it;
+  // Convert the AIEX txn ops cloned into `funcOp` into aie_runtime emitc
+  // calls, in place. The runtime-sequence body (including scf.for/scf.if
+  // regions) was already cloned verbatim, so a post-order walk reaches txn ops
+  // at any nesting depth without reconstructing control flow by hand. BD
+  // blockwrite fusion is handled per-block before the generic walk.
+  LogicalResult convertTxnOps(emitc::FuncOp funcOp, Value txnVec) {
+    // First fuse BD blockwrites within each block. Collect blocks up front so
+    // the in-place erasis during fusion don't perturb iteration.
+    SmallVector<Block *> blocks;
+    funcOp.walk([&](Block *block) { blocks.push_back(block); });
+    for (Block *block : blocks)
+      if (failed(fuseBlockWrites(*block, txnVec)))
+        return failure();
 
-      auto blockWrite = dyn_cast<AIEX::NpuBlockWriteOp>(op);
-      if (!blockWrite) {
-        if (failed(cloneOp(builder, op, mapping, txnVec)))
-          return failure();
-        continue;
+    // Then convert the remaining standalone AIEX txn ops. Gather first; the
+    // conversion erases ops, which a live walk dislikes. memref.get_global ops
+    // are handled last: a blockwrite reads its data through get_global, so the
+    // blockwrites must be converted before their get_global is dropped.
+    SmallVector<Operation *> txnOps;
+    SmallVector<Operation *> getGlobals;
+    funcOp.walk([&](Operation *op) {
+      if (isa<memref::GetGlobalOp>(op))
+        getGlobals.push_back(op);
+      else if (isa<AIEX::NpuWrite32Op, AIEX::NpuMaskWrite32Op, AIEX::NpuSyncOp,
+                   AIEX::NpuAddressPatchOp, AIEX::NpuBlockWriteOp, AIE::EndOp>(
+                   op))
+        txnOps.push_back(op);
+    });
+    for (Operation *op : txnOps)
+      if (failed(convertOneTxnOp(op, txnVec)))
+        return failure();
+    for (Operation *op : getGlobals)
+      if (failed(convertOneTxnOp(op, txnVec)))
+        return failure();
+
+    // Any AIEX op left behind (e.g. npu.push_queue, npu.writebd,
+    // npu.control_packet) has no C++ TXN representation.
+    WalkResult leftover = funcOp.walk([&](Operation *op) {
+      if (isa<AIEX::AIEXDialect>(op->getDialect())) {
+        op->emitOpError("not supported in dynamic TXN C++ generation");
+        return WalkResult::interrupt();
       }
+      return WalkResult::advance();
+    });
+    if (leftover.wasInterrupted())
+      return failure();
+    return success();
+  }
 
+  // Fuse, within a single block, each npu.blockwrite together with the
+  // bd_group-tagged npu.write32 word overrides and the matching
+  // npu.address_patch into a single txn_append_blockwrite plus
+  // txn_append_address_patch. The fused emitc calls are inserted at the
+  // blockwrite and the consumed ops are erased. write32s are matched by their
+  // bd_group attribute (robust to reordering), the address_patch by its
+  // address (blockAddr + 4).
+  LogicalResult fuseBlockWrites(Block &block, Value txnVec) {
+    SmallVector<AIEX::NpuBlockWriteOp> blockWrites;
+    for (Operation &op : block)
+      if (auto bw = dyn_cast<AIEX::NpuBlockWriteOp>(op))
+        blockWrites.push_back(bw);
+
+    for (AIEX::NpuBlockWriteOp blockWrite : blockWrites) {
       uint32_t blockAddr = blockWrite.getAddress();
       if (auto absAddr = blockWrite.getAbsoluteAddress())
         blockAddr = *absAddr;
 
-      // Collect dynamic NpuWrite32Ops that override words in this BD.
-      // Write32s are matched by their bd_group attribute (set by the
-      // lowering pass), not by adjacency or ordering — this is robust
-      // against op reordering or interleaving.
-      //
-      // Also find the NpuAddressPatchOp for this BD (address at
-      // blockAddr + 4, the buffer-address word).
       SmallVector<std::pair<uint32_t, AIEX::NpuWrite32Op>> dynWrite32s;
       AIEX::NpuAddressPatchOp matchedPatch = nullptr;
-      auto scanIt = it; // default: no ops consumed beyond the blockwrite
-
-      for (auto fwdIt = std::next(it); fwdIt != e; ++fwdIt) {
-        Operation *cur = &*fwdIt;
-
-        if (auto patch = dyn_cast<AIEX::NpuAddressPatchOp>(cur)) {
+      for (Operation &op : block) {
+        if (auto patch = dyn_cast<AIEX::NpuAddressPatchOp>(op)) {
           if (patch.getAddr() == blockAddr + 4) {
             matchedPatch = patch;
-            scanIt = fwdIt;
+            break;
           }
-          break;
+          continue;
         }
-
-        if (auto w32 = dyn_cast<AIEX::NpuWrite32Op>(cur)) {
+        if (auto w32 = dyn_cast<AIEX::NpuWrite32Op>(op)) {
           auto bdGroupAttr = w32.getBdGroupAttr();
           if (bdGroupAttr &&
               bdGroupAttr.getValue().getZExtValue() == blockAddr) {
@@ -428,144 +482,55 @@ private:
                   static_cast<uint32_t>((w32Addr - blockAddr) / 4);
               dynWrite32s.push_back({wordIdx, w32});
             }
-            scanIt = fwdIt;
-            continue;
           }
-          if (!w32.getBdGroupAttr())
-            break;
         }
-
-        if (isPure(cur)) {
-          scanIt = fwdIt;
-          continue;
-        }
-        break;
       }
 
-      if (!matchedPatch || dynWrite32s.empty()) {
-        if (failed(cloneOp(builder, op, mapping, txnVec)))
-          return failure();
+      // No dynamic overrides: leave the blockwrite for the generic conversion.
+      if (!matchedPatch || dynWrite32s.empty())
         continue;
-      }
 
       auto data = blockWrite.getDataWords();
       if (!data)
         return failure();
 
-      // Pre-clone all source ops between the source blockwrite (exclusive)
-      // and the matched address_patch (exclusive), except for the consumed
-      // override NpuWrite32Ops themselves. This ensures each override's
-      // dyn_value SSA ref is materialized in the new IR before we emit
-      // the consolidated `txn_append_blockwrite` call (which assigns those
-      // values into _bd_data[wordIdx]).
-      llvm::SmallPtrSet<Operation *, 8> consumed;
-      for (auto &[idx, w32] : dynWrite32s)
-        consumed.insert(w32.getOperation());
-
-      for (auto innerIt = std::next(it); innerIt != scanIt; ++innerIt) {
-        Operation *innerOp = &*innerIt;
-        if (consumed.contains(innerOp))
-          continue;
-        if (failed(cloneOp(builder, innerOp, mapping, txnVec)))
-          return failure();
-      }
-
       SmallVector<std::pair<uint32_t, Value>> dynamicWords;
-      for (auto &[wordIdx, w32] : dynWrite32s) {
-        dynamicWords.push_back(
-            {wordIdx, mapping.lookupOrDefault(w32.getValue())});
-      }
+      for (auto &[wordIdx, w32] : dynWrite32s)
+        dynamicWords.push_back({wordIdx, w32.getValue()});
 
+      OpBuilder builder(blockWrite);
       emitTxnBlockWriteDynamicWords(builder, blockWrite.getLoc(), txnVec,
                                     blockAddr, data, dynamicWords);
-      Value argPlus = mapping.lookupOrDefault(matchedPatch.getArgPlus());
       emitTxnAddressPatch(builder, matchedPatch.getLoc(), txnVec,
                           matchedPatch.getAddr(), matchedPatch.getArgIdx(),
-                          argPlus);
+                          matchedPatch.getArgPlus());
 
-      // All overrides + intervening arith ops + addrPatch are consumed.
-      // Set it = scanIt so the loop's ++it advances past the addrPatch.
-      it = scanIt;
+      matchedPatch.erase();
+      for (auto &[wordIdx, w32] : dynWrite32s)
+        w32.erase();
+      blockWrite.erase();
     }
     return success();
   }
 
-  LogicalResult cloneScfFor(OpBuilder &builder, scf::ForOp forOp,
-                            IRMapping &mapping, Value txnVec) {
-    Location loc = forOp.getLoc();
-    SmallVector<Value> initArgs;
-    for (Value initArg : forOp.getInitArgs())
-      initArgs.push_back(mapping.lookupOrDefault(initArg));
-
-    auto newFor = scf::ForOp::create(
-        builder, loc, mapping.lookupOrDefault(forOp.getLowerBound()),
-        mapping.lookupOrDefault(forOp.getUpperBound()),
-        mapping.lookupOrDefault(forOp.getStep()), initArgs);
-
-    for (auto [oldResult, newResult] :
-         llvm::zip(forOp.getResults(), newFor.getResults()))
-      mapping.map(oldResult, newResult);
-
-    Block &newBody = newFor.getRegion().front();
-    newBody.getOperations().clear();
-    IRMapping nestedMapping = mapping;
-    nestedMapping.map(forOp.getInductionVar(), newFor.getInductionVar());
-    for (auto [oldArg, newArg] :
-         llvm::zip(forOp.getRegionIterArgs(), newFor.getRegionIterArgs()))
-      nestedMapping.map(oldArg, newArg);
-
-    OpBuilder bodyBuilder = OpBuilder::atBlockBegin(&newBody);
-    return cloneBlock(forOp.getRegion().front(), bodyBuilder, nestedMapping,
-                      txnVec);
-  }
-
-  LogicalResult cloneScfIf(OpBuilder &builder, scf::IfOp ifOp,
-                           IRMapping &mapping, Value txnVec) {
-    Location loc = ifOp.getLoc();
-    auto newIf = scf::IfOp::create(builder, loc, ifOp.getResultTypes(),
-                                   mapping.lookupOrDefault(ifOp.getCondition()),
-                                   !ifOp.getElseRegion().empty());
-
-    for (auto [oldResult, newResult] :
-         llvm::zip(ifOp.getResults(), newIf.getResults()))
-      mapping.map(oldResult, newResult);
-
-    Block &thenBlock = newIf.getThenRegion().front();
-    thenBlock.getOperations().clear();
-    OpBuilder thenBuilder = OpBuilder::atBlockBegin(&thenBlock);
-    if (failed(cloneBlock(ifOp.getThenRegion().front(), thenBuilder, mapping,
-                          txnVec)))
-      return failure();
-
-    if (!ifOp.getElseRegion().empty()) {
-      Block &elseBlock = newIf.getElseRegion().front();
-      elseBlock.getOperations().clear();
-      OpBuilder elseBuilder = OpBuilder::atBlockBegin(&elseBlock);
-      if (failed(cloneBlock(ifOp.getElseRegion().front(), elseBuilder, mapping,
-                            txnVec)))
-        return failure();
-    }
-
-    return success();
-  }
-
-  /// Clone a source operation into the generated function, converting only the
-  /// AIEX TXN ops directly to EmitC.
-  LogicalResult cloneOp(OpBuilder &builder, Operation *op, IRMapping &mapping,
-                        Value txnVec) {
+  // Convert one already-cloned AIEX txn op into emitc aie_runtime calls,
+  // inserted in place, then erase the op. Operands are the cloned SSA values,
+  // so they are used directly (no remapping). scf/arith are left untouched for
+  // the upstream conversions; only AIEX txn ops are handled here.
+  LogicalResult convertOneTxnOp(Operation *op, Value txnVec) {
     Location opLoc = op->getLoc();
+    OpBuilder builder(op);
 
     if (auto write32 = dyn_cast<AIEX::NpuWrite32Op>(op)) {
-      // When the address is a compile-time constant resolvable through
-      // buffer/column/row, emit the absolute address; otherwise pass the SSA
-      // address operand through.
+      // A compile-time-constant address resolvable through buffer/column/row is
+      // emitted as the absolute address; otherwise the SSA address is used.
       Value addrVal;
       if (auto absAddr = write32.getAbsoluteAddress())
         addrVal = createU32Constant(builder, opLoc, *absAddr);
       else
-        addrVal = mapping.lookupOrDefault(write32.getAddress());
-      Value valVal = mapping.lookupOrDefault(write32.getValue());
-      emitTxnWrite32(builder, opLoc, txnVec, addrVal, valVal);
+        addrVal = write32.getAddress();
+      emitTxnWrite32(builder, opLoc, txnVec, addrVal, write32.getValue());
+      op->erase();
       return success();
     }
 
@@ -574,28 +539,25 @@ private:
       if (auto absAddr = maskWrite.getAbsoluteAddress())
         addrVal = createU32Constant(builder, opLoc, *absAddr);
       else
-        addrVal = mapping.lookupOrDefault(maskWrite.getAddress());
-      Value valVal = mapping.lookupOrDefault(maskWrite.getValue());
-      Value maskVal = mapping.lookupOrDefault(maskWrite.getMask());
-      emitTxnMaskWrite32(builder, opLoc, txnVec, addrVal, valVal, maskVal);
+        addrVal = maskWrite.getAddress();
+      emitTxnMaskWrite32(builder, opLoc, txnVec, addrVal, maskWrite.getValue(),
+                         maskWrite.getMask());
+      op->erase();
       return success();
     }
 
     if (auto syncOp = dyn_cast<AIEX::NpuSyncOp>(op)) {
-      Value col = mapping.lookupOrDefault(syncOp.getColumn());
-      Value row = mapping.lookupOrDefault(syncOp.getRow());
-      Value dir = mapping.lookupOrDefault(syncOp.getDirection());
-      Value chan = mapping.lookupOrDefault(syncOp.getChannel());
-      Value ncol = mapping.lookupOrDefault(syncOp.getColumnNum());
-      Value nrow = mapping.lookupOrDefault(syncOp.getRowNum());
-      emitTxnSync(builder, opLoc, txnVec, col, row, dir, chan, ncol, nrow);
+      emitTxnSync(builder, opLoc, txnVec, syncOp.getColumn(), syncOp.getRow(),
+                  syncOp.getDirection(), syncOp.getChannel(),
+                  syncOp.getColumnNum(), syncOp.getRowNum());
+      op->erase();
       return success();
     }
 
     if (auto addrPatch = dyn_cast<AIEX::NpuAddressPatchOp>(op)) {
-      Value argPlus = mapping.lookupOrDefault(addrPatch.getArgPlus());
       emitTxnAddressPatch(builder, opLoc, txnVec, addrPatch.getAddr(),
-                          addrPatch.getArgIdx(), argPlus);
+                          addrPatch.getArgIdx(), addrPatch.getArgPlus());
+      op->erase();
       return success();
     }
 
@@ -607,46 +569,29 @@ private:
       if (!data)
         return failure();
       emitTxnBlockWrite(builder, opLoc, txnVec, addr, data);
+      op->erase();
       return success();
-    }
-
-    if (auto forOp = dyn_cast<scf::ForOp>(op)) {
-      return cloneScfFor(builder, forOp, mapping, txnVec);
-    }
-
-    if (auto ifOp = dyn_cast<scf::IfOp>(op)) {
-      return cloneScfIf(builder, ifOp, mapping, txnVec);
     }
 
     if (auto getGlobal = dyn_cast<memref::GetGlobalOp>(op)) {
       for (Operation *user : getGlobal->getUsers()) {
-        if (!isa<AIEX::NpuBlockWriteOp>(user)) {
+        if (!isa<AIEX::NpuBlockWriteOp>(user))
           return op->emitOpError(
               "unsupported memref.get_global use in TXN EmitC conversion");
-        }
       }
-      // Blockwrite lowering consumes the referenced data directly; cloning the
-      // memref.get_global would leave a dangling reference once module-level
-      // memref.global ops are erased.
+      // Blockwrite lowering inlines the referenced data; the get_global has no
+      // remaining users once blockwrites are converted, so drop it (the
+      // module-level memref.global is erased afterwards).
+      op->erase();
       return success();
     }
 
-    if (isa<AIE::EndOp>(op))
+    if (isa<AIE::EndOp>(op)) {
+      op->erase();
       return success();
+    }
 
-    if (isa<AIEX::NpuControlPacketOp, AIEX::NpuPushQueueOp, AIEX::NpuWriteBdOp>(
-            op))
-      return op->emitOpError("not supported in dynamic TXN C++ generation");
-
-    if (op->getNumRegions() != 0)
-      return op->emitOpError(
-          "unsupported region operation in TXN EmitC conversion");
-
-    Operation *cloned = builder.clone(*op, mapping);
-    for (auto [oldResult, newResult] :
-         llvm::zip(op->getResults(), cloned->getResults()))
-      mapping.map(oldResult, newResult);
-    return success();
+    return op->emitOpError("unsupported op in TXN EmitC conversion");
   }
 
   LogicalResult lowerRemainingUnrealizedCasts(ModuleOp moduleOp) {
