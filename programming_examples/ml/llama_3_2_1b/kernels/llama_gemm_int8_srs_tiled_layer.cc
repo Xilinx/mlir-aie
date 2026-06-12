@@ -573,4 +573,15 @@ void llama_gemm_tiled_layer_K8192_N4_perchan_v2_d_fp32out_acttail(
   event1();
 }
 
+// up_proj fp32 out (Phase 2b self-cal): K=D=2048, output HD=8192. act_scale
+// from the h2 activation tail; up_out_scale computed downstream by up_requant.
+void llama_gemm_tiled_layer_K2048_N4_perchan_v2_up_fp32out_acttail(
+    int8_t *restrict act, int8_t *restrict w_tile, float *restrict out_full,
+    int32_t tile_idx) {
+  event0();
+  gemm_tile_perchan_v2_fp32out_acttail_impl<2048, 4, 64>(
+      act, w_tile, out_full + tile_idx * 4);
+  event1();
+}
+
 } // extern "C"

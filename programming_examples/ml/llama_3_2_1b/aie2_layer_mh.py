@@ -373,7 +373,8 @@ def build():
     of_wu = ObjectFifo(t_WU_slot, depth=1, name="wu")
     of_wd = ObjectFifo(t_WD_slot, depth=1, name="wd")
     of_gf = ObjectFifo(t_HD_i8, depth=1, name="gf")
-    of_uf = ObjectFifo(t_UF_i8, depth=1, name="uf")
+    of_ufp = ObjectFifo(_f32(HD), depth=1, name="ufp")  # fp32 up_proj out (2b)
+    of_uf = ObjectFifo(t_UF_i8, depth=1, name="uf")  # int8 up + up_out_scale tail
     of_sf = ObjectFifo(t_UF_i8, depth=1, name="sf")  # HD+8: self-cal silu_out tail
     of_df = ObjectFifo(t_D_f32, depth=1, name="df")  # fp32 down output
 
@@ -416,11 +417,15 @@ def build():
         KO_GEMM,
         [t_D8_i8, t_WG_slot, t_HD_i8, np.int32, np.float32],
     )
+    # up_proj fp32 out (2b self-cal): act_scale from h2 tail; up_out_scale
+    # computed downstream by up_requant.
     k_up = Kernel(
-        "llama_gemm_tiled_layer_K2048_N4_perchan_v2_up_u_acttail",
+        "llama_gemm_tiled_layer_K2048_N4_perchan_v2_up_fp32out_acttail",
         KO_GEMM,
-        [t_D8_i8, t_WU_slot, t_UF_i8, np.int32],
+        [t_D8_i8, t_WU_slot, _f32(HD), np.int32],
     )
+    # up_requant: fp32[HD] -> global absmax -> up_out_scale + int8 uf + tail.
+    k_uprequant = Kernel("llama_up_requant", KO_SILU, [_f32(HD), t_UF_i8])
     # down: fp32 out, act_scale (down_act_scale) from the self-calibrated sf
     # tail at act[HD]. act buffer is sf = int8[HD+8].
     k_down = Kernel(
@@ -524,6 +529,13 @@ def build():
             k(a, w, o, _i32(t))
             c_w.release(1)
         c_act.release(1)
+        c_out.release(1)
+
+    def w_uprequant(c_in, c_out, k):
+        x = c_in.acquire(1)
+        o = c_out.acquire(1)
+        k(x, o)
+        c_in.release(1)
         c_out.release(1)
 
     def w_down(c_act, c_w, c_out, k):
@@ -723,8 +735,13 @@ def build():
         ),
         Worker(
             w_up,
-            [of_h2.cons(), of_wu.cons(), of_uf.prod(), k_up],
+            [of_h2.cons(), of_wu.cons(), of_ufp.prod(), k_up],
             tile=Tile(5, 2),
+            stack_size=FFNSK,
+        ),
+        # up_requant (2b): fp32 up -> global self-cal up_out_scale -> int8 + tail.
+        Worker(
+            w_uprequant, [of_ufp.cons(), of_uf.prod(), k_uprequant], tile=Tile(5, 3),
             stack_size=FFNSK,
         ),
         Worker(

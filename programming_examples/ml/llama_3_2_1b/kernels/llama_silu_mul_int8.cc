@@ -152,4 +152,29 @@ void llama_silu_mul_int8_selfcal(int8_t *restrict gate, int8_t *restrict up,
   event1();
 }
 
+// up_requant (Phase 2b self-cal): the up_proj gemm now emits fp32[kCols]; this
+// stage computes up_out_scale ON-CHIP (global absmax) and requants to int8,
+// writing up_out_scale to out[kCols..kCols+4] (out is int8[kCols+8]) so the
+// downstream silu reads up_scale from the up tail (as it already does).
+void llama_up_requant(float *restrict up_fp, int8_t *restrict out) {
+  event0();
+  constexpr int kCols = LLAMA_SILU_MUL_COLS;
+  float absmax = 0.0f;
+  for (int i = 0; i < kCols; i++) {
+    float a = up_fp[i] >= 0.0f ? up_fp[i] : -up_fp[i];
+    if (a > absmax)
+      absmax = a;
+  }
+  if (absmax < 1e-12f)
+    absmax = 1e-12f;
+  float up_scale = absmax * (1.0f / 127.0f);
+  float up_inv = sw_recip(up_scale);
+  for (int i = 0; i < kCols; i++)
+    out[i] = round_to_i8(up_fp[i] * up_inv);
+  memcpy(out + kCols, &up_scale, 4);
+  int32_t zero = 0;
+  memcpy(out + kCols + 4, &zero, 4);
+  event1();
+}
+
 } // extern "C"
