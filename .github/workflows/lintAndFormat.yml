@@ -92,7 +92,27 @@ jobs:
 
           ninja aie-headers mlir-headers
 
+          # Assemble the Python package sources (hand-written + tablegen'd op/enum
+          # wrappers) into build/python/aie. This needs only tablegen, not a full
+          # C++ build, so it stays cheap enough for the lint job. pyright resolves
+          # generated bindings from here; aie._mlir_libs (compiled) is not required
+          # because the few core-IR symbols it would provide are already handled by
+          # targeted per-line ignores in the sources.
+          ninja \
+            python/AIEPythonSources.Dialects.aie.ops_gen \
+            python/AIEPythonSources.Dialects.aiex.ops_gen \
+            python/AIEPythonSources.Dialects.aievec.ops_gen \
+            python/AIEPythonModules.sources.AIEPythonSources
+
           popd
+
+      - name: Type check Python (pyright)
+        run: |
+          # pyrightconfig.json expects the built aie tree at install/python (see
+          # utils/pyright_stubs/README.md). Point it at the lint build output.
+          rm -rf install && mkdir install
+          ln -sfn "$PWD/build/python" install/python
+          pyright
 
       - name: Analyze
         id: clang-tidy-fixes
