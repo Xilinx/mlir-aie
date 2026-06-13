@@ -74,6 +74,32 @@ emitDynamicHwBdEncoding(mlir::OpBuilder &builder, mlir::Location loc,
                         llvm::ArrayRef<mlir::OpFoldResult> mixedSizesRev,
                         llvm::ArrayRef<mlir::OpFoldResult> mixedStridesRev);
 
+/// Compile-time-constant counterpart of HwBdEncoding: the hardware BD field
+/// values for the constant subset of a (possibly partially-dynamic) transfer.
+/// Each field is the actual hardware value when its inputs are constant, or 0
+/// as a placeholder when any contributing input is an SSA value (the dynamic
+/// lowering then overrides that BD word via npu.write32). All values are in
+/// hardware (address-gen) units, matching emitDynamicHwBdEncoding.
+struct StaticBdPlaceholders {
+  int64_t d0Size = 0;
+  int64_t d0Stride = 0;
+  int64_t d1Size = 0;
+  int64_t d1Stride = 0;
+  int64_t d2Stride = 0;
+  int64_t iterSize = 0;
+  int64_t iterStride = 0;
+  int64_t bufLen = 0; // d0Size * d1Size * d2Size when all three are constant
+};
+
+/// Compute the static placeholder BD field values for the constant subset of a
+/// transfer. `mixedSizesRev`/`mixedStridesRev` are innermost-first
+/// (`[d0, d1, d2, iter]`). Shared by both dynamic lowering paths
+/// (`npu.dma_memcpy_nd` and `aie.dma_bd`).
+StaticBdPlaceholders
+computeStaticBdPlaceholders(llvm::ArrayRef<mlir::OpFoldResult> mixedSizesRev,
+                            llvm::ArrayRef<mlir::OpFoldResult> mixedStridesRev,
+                            uint64_t elemWidth, uint32_t addrGran);
+
 } // namespace AIEX
 } // namespace xilinx
 

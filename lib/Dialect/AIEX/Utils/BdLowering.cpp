@@ -220,4 +220,67 @@ HwBdEncoding emitDynamicHwBdEncoding(OpBuilder &builder, Location loc,
                       bufLen,   repeatCount};
 }
 
+StaticBdPlaceholders
+computeStaticBdPlaceholders(ArrayRef<OpFoldResult> mixedSizesRev,
+                            ArrayRef<OpFoldResult> mixedStridesRev,
+                            uint64_t elemWidth, uint32_t addrGran) {
+  auto isConst = [](OpFoldResult ofr) {
+    return getConstantIntValue(ofr).has_value();
+  };
+  auto constOr0 = [](OpFoldResult ofr) -> int64_t {
+    return getConstantIntValue(ofr).value_or(0);
+  };
+  // Scale a value from element units to address-gen units.
+  auto scale = [&](int64_t v) -> int64_t {
+    return v * static_cast<int64_t>(elemWidth) / static_cast<int64_t>(addrGran);
+  };
+
+  bool d0SizeDyn = !isConst(mixedSizesRev[0]);
+  bool d1SizeDyn = !isConst(mixedSizesRev[1]);
+  bool d2SizeDyn = !isConst(mixedSizesRev[2]);
+  bool d3SizeDyn = !isConst(mixedSizesRev[3]);
+  bool d0StrideDyn = !isConst(mixedStridesRev[0]);
+  bool d1StrideDyn = !isConst(mixedStridesRev[1]);
+  bool d2StrideDyn = !isConst(mixedStridesRev[2]);
+  bool d3StrideDyn = !isConst(mixedStridesRev[3]);
+
+  StaticBdPlaceholders p;
+
+  if (!d0SizeDyn)
+    p.d0Size = scale(constOr0(mixedSizesRev[0]));
+  // d0_stride is forced to 0 (hw "1") whenever element width differs from the
+  // address granularity; otherwise it is the user stride minus one.
+  if (!d0StrideDyn && elemWidth == addrGran)
+    p.d0Stride = constOr0(mixedStridesRev[0]) - 1;
+
+  if (!d1SizeDyn)
+    p.d1Size = constOr0(mixedSizesRev[1]);
+  if (!d1StrideDyn && !d1SizeDyn && constOr0(mixedSizesRev[1]) > 1)
+    p.d1Stride = scale(constOr0(mixedStridesRev[1])) - 1;
+
+  if (!d2StrideDyn && !d2SizeDyn && constOr0(mixedSizesRev[2]) > 1)
+    p.d2Stride = scale(constOr0(mixedStridesRev[2])) - 1;
+
+  if (!d3SizeDyn) {
+    int64_t s3 = constOr0(mixedSizesRev[3]);
+    // iteration_size is suppressed when the iteration stride is a known
+    // non-positive (repeat-via-queue-push) value.
+    bool strideRepeats = !d3StrideDyn && constOr0(mixedStridesRev[3]) <= 0;
+    if (s3 > 1 && !strideRepeats)
+      p.iterSize = s3 - 1;
+  }
+  if (!d3StrideDyn && !d3SizeDyn) {
+    int64_t s3 = constOr0(mixedSizesRev[3]);
+    int64_t st3 = constOr0(mixedStridesRev[3]);
+    if (s3 > 1 && st3 > 0)
+      p.iterStride = scale(st3) - 1;
+  }
+
+  if (!d0SizeDyn && !d1SizeDyn && !d2SizeDyn)
+    p.bufLen =
+        p.d0Size * constOr0(mixedSizesRev[1]) * constOr0(mixedSizesRev[2]);
+
+  return p;
+}
+
 } // namespace xilinx::AIEX

@@ -371,8 +371,8 @@ struct AIEDMATasksToNPUPass
         int32_t elemBytes = bd_op.getBufferElementTypeWidthInBytes();
         Value dynBytes = dynOff32;
         if (elemBytes != 1) {
-          Value mulFactor = arith::ConstantIntOp::create(builder, bd_op.getLoc(),
-                                                         i32ty, elemBytes);
+          Value mulFactor = arith::ConstantIntOp::create(
+              builder, bd_op.getLoc(), i32ty, elemBytes);
           dynBytes = arith::MulIOp::create(builder, bd_op.getLoc(), dynOff32,
                                            mulFactor);
         }
@@ -553,11 +553,6 @@ struct AIEDMATasksToNPUPass
     auto isConst = [](OpFoldResult ofr) {
       return getConstantIntValue(ofr).has_value();
     };
-    auto getConstOr0 = [](OpFoldResult ofr) -> int64_t {
-      if (auto v = getConstantIntValue(ofr))
-        return *v;
-      return 0;
-    };
 
     bool d0SizeDyn = !isConst(mixedSizesRev[0]);
     bool d1SizeDyn = !isConst(mixedSizesRev[1]);
@@ -568,73 +563,11 @@ struct AIEDMATasksToNPUPass
     bool d2StrideDyn = !isConst(mixedStridesRev[2]);
     bool d3StrideDyn = !isConst(mixedStridesRev[3]);
 
-    // --- Compute static placeholder values for NpuWriteBdOp ---
-    // For constant fields use actual hw value; for dynamic fields use 0.
-    auto computeStaticHwD0Size = [&]() -> int64_t {
-      if (d0SizeDyn)
-        return 0;
-      return getConstOr0(mixedSizesRev[0]) * static_cast<int64_t>(elemWidth) /
-             static_cast<int64_t>(addrGran);
-    };
-    auto computeStaticHwD0Stride = [&]() -> int64_t {
-      if (d0StrideDyn)
-        return 0;
-      if (elemWidth < addrGran || elemWidth > addrGran)
-        return 0;
-      return getConstOr0(mixedStridesRev[0]) - 1;
-    };
-    auto computeStaticHwD1Size = [&]() -> int64_t {
-      return d1SizeDyn ? 0 : getConstOr0(mixedSizesRev[1]);
-    };
-    auto computeStaticHwD1Stride = [&]() -> int64_t {
-      if (d1StrideDyn || d1SizeDyn)
-        return 0;
-      int64_t s = getConstOr0(mixedStridesRev[1]);
-      int64_t sz = getConstOr0(mixedSizesRev[1]);
-      if (sz <= 1)
-        return 0;
-      return s * static_cast<int64_t>(elemWidth) /
-                 static_cast<int64_t>(addrGran) -
-             1;
-    };
-    auto computeStaticHwD2Stride = [&]() -> int64_t {
-      if (d2StrideDyn || d2SizeDyn)
-        return 0;
-      int64_t s = getConstOr0(mixedStridesRev[2]);
-      int64_t sz = getConstOr0(mixedSizesRev[2]);
-      if (sz <= 1)
-        return 0;
-      return s * static_cast<int64_t>(elemWidth) /
-                 static_cast<int64_t>(addrGran) -
-             1;
-    };
-    auto computeStaticIterSize = [&]() -> int64_t {
-      if (d3SizeDyn)
-        return 0;
-      int64_t s3 = getConstOr0(mixedSizesRev[3]);
-      if (s3 <= 1)
-        return 0;
-      if (!d3StrideDyn && getConstOr0(mixedStridesRev[3]) <= 0)
-        return 0;
-      return s3 - 1;
-    };
-    auto computeStaticIterStride = [&]() -> int64_t {
-      if (d3StrideDyn || d3SizeDyn)
-        return 0;
-      int64_t s3 = getConstOr0(mixedSizesRev[3]);
-      int64_t st3 = getConstOr0(mixedStridesRev[3]);
-      if (s3 <= 1 || st3 <= 0)
-        return 0;
-      return st3 * static_cast<int64_t>(elemWidth) /
-                 static_cast<int64_t>(addrGran) -
-             1;
-    };
-
-    int64_t staticBufLen = 0;
-    if (!d0SizeDyn && !d1SizeDyn && !d2SizeDyn) {
-      staticBufLen = computeStaticHwD0Size() * getConstOr0(mixedSizesRev[1]) *
-                     getConstOr0(mixedSizesRev[2]);
-    }
+    // --- Compute static placeholder values for NpuWriteBdOp via the shared
+    // helper. Constant fields get their actual hardware value; dynamic fields
+    // come back as 0 and are overridden by the write32 patches below.
+    StaticBdPlaceholders sp = computeStaticBdPlaceholders(
+        mixedSizesRev, mixedStridesRev, elemWidth, addrGran);
 
     // --- Packet info ---
     int32_t enable_packet = 0, packet_id = 0, packet_type = 0,
@@ -682,22 +615,22 @@ struct AIEDMATasksToNPUPass
         builder, loc,
         /*column=*/IntegerAttr::get(i32ty, tile.getCol()),
         /*bd_id=*/IntegerAttr::get(i32ty, bd_id),
-        /*buffer_length=*/IntegerAttr::get(i32ty, staticBufLen),
+        /*buffer_length=*/IntegerAttr::get(i32ty, sp.bufLen),
         /*buffer_offset=*/zero,
         /*enable_packet=*/IntegerAttr::get(i32ty, enable_packet),
         /*out_of_order_id=*/IntegerAttr::get(i32ty, out_of_order_id),
         /*packet_id=*/IntegerAttr::get(i32ty, packet_id),
         /*packet_type=*/IntegerAttr::get(i32ty, packet_type),
-        /*d0_size=*/IntegerAttr::get(i32ty, computeStaticHwD0Size()),
-        /*d0_stride=*/IntegerAttr::get(i32ty, computeStaticHwD0Stride()),
-        /*d1_size=*/IntegerAttr::get(i32ty, computeStaticHwD1Size()),
-        /*d1_stride=*/IntegerAttr::get(i32ty, computeStaticHwD1Stride()),
+        /*d0_size=*/IntegerAttr::get(i32ty, sp.d0Size),
+        /*d0_stride=*/IntegerAttr::get(i32ty, sp.d0Stride),
+        /*d1_size=*/IntegerAttr::get(i32ty, sp.d1Size),
+        /*d1_stride=*/IntegerAttr::get(i32ty, sp.d1Stride),
         /*d2_size=*/zero,
-        /*d2_stride=*/IntegerAttr::get(i32ty, computeStaticHwD2Stride()),
+        /*d2_stride=*/IntegerAttr::get(i32ty, sp.d2Stride),
         /*iteration_current=*/zero,
-        /*iteration_size=*/IntegerAttr::get(i32ty, computeStaticIterSize()),
+        /*iteration_size=*/IntegerAttr::get(i32ty, sp.iterSize),
         /*iteration_stride=*/
-        IntegerAttr::get(i32ty, computeStaticIterStride()),
+        IntegerAttr::get(i32ty, sp.iterStride),
         /*next_bd=*/IntegerAttr::get(i32ty, next_bd_id),
         /*row=*/IntegerAttr::get(i32ty, tile.getRow()),
         /*use_next_bd=*/IntegerAttr::get(i32ty, use_next_bd),

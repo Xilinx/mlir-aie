@@ -754,16 +754,6 @@ public:
     auto isConst = [](OpFoldResult ofr) {
       return getConstantIntValue(ofr).has_value();
     };
-    // Returns the compile-time constant value of an OpFoldResult, or 0 as a
-    // placeholder for dynamic (SSA) values. The placeholder 0s are written
-    // into the NpuWriteBdOp template; dynamic fields are then overridden by
-    // selective NpuWrite32Op patches emitted below.
-    auto getConstOr0 = [](OpFoldResult ofr) -> int64_t {
-      if (auto v = getConstantIntValue(ofr))
-        return *v;
-      return 0;
-    };
-
     // Determine which input sizes/strides are dynamic
     bool d0SizeDyn = !isConst(mixedSizesRev[0]);
     bool d1SizeDyn = !isConst(mixedSizesRev[1]);
@@ -778,80 +768,16 @@ public:
     // For constant fields, use the actual hardware value; for dynamic
     // fields, use 0 as placeholder (will be overridden by write32).
 
-    // Compute static hardware values for constant fields (replicating
-    // getHardwareStridesWraps logic for constants only).
-    auto computeStaticHwD0Size = [&]() -> int64_t {
-      if (d0SizeDyn)
-        return 0;
-      int64_t s = getConstOr0(mixedSizesRev[0]);
-      return s * static_cast<int64_t>(elemWidth) /
-             static_cast<int64_t>(addrGran);
-    };
-    auto computeStaticHwD0Stride = [&]() -> int64_t {
-      if (d0StrideDyn)
-        return 0;
-      if (elemWidth < addrGran || elemWidth > addrGran)
-        return 0;
-      return getConstOr0(mixedStridesRev[0]) - 1;
-    };
-    auto computeStaticHwD1Size = [&]() -> int64_t {
-      return d1SizeDyn ? 0 : getConstOr0(mixedSizesRev[1]);
-    };
-    auto computeStaticHwD1Stride = [&]() -> int64_t {
-      if (d1StrideDyn || d1SizeDyn)
-        return 0;
-      int64_t s = getConstOr0(mixedStridesRev[1]);
-      int64_t sz = getConstOr0(mixedSizesRev[1]);
-      if (sz <= 1)
-        return 0;
-      int64_t scaled =
-          s * static_cast<int64_t>(elemWidth) / static_cast<int64_t>(addrGran);
-      return scaled - 1;
-    };
-    auto computeStaticHwD2Stride = [&]() -> int64_t {
-      if (d2StrideDyn || d2SizeDyn)
-        return 0;
-      int64_t s = getConstOr0(mixedStridesRev[2]);
-      int64_t sz = getConstOr0(mixedSizesRev[2]);
-      if (sz <= 1)
-        return 0;
-      int64_t scaled =
-          s * static_cast<int64_t>(elemWidth) / static_cast<int64_t>(addrGran);
-      return scaled - 1;
-    };
-    auto computeStaticIterSize = [&]() -> int64_t {
-      if (d3SizeDyn)
-        return 0;
-      int64_t s3 = getConstOr0(mixedSizesRev[3]);
-      if (s3 <= 1)
-        return 0;
-      if (!d3StrideDyn && getConstOr0(mixedStridesRev[3]) <= 0)
-        return 0;
-      return s3 - 1;
-    };
-    auto computeStaticIterStride = [&]() -> int64_t {
-      if (d3StrideDyn || d3SizeDyn)
-        return 0;
-      int64_t s3 = getConstOr0(mixedSizesRev[3]);
-      int64_t st3 = getConstOr0(mixedStridesRev[3]);
-      if (s3 <= 1 || st3 <= 0)
-        return 0;
-      int64_t scaled = st3 * static_cast<int64_t>(elemWidth) /
-                       static_cast<int64_t>(addrGran);
-      return scaled - 1;
-    };
-
-    // Compute static buffer_length for constant fields
-    int64_t staticBufLen = 0;
-    if (!d0SizeDyn && !d1SizeDyn && !d2SizeDyn) {
-      staticBufLen = computeStaticHwD0Size() * getConstOr0(mixedSizesRev[1]) *
-                     getConstOr0(mixedSizesRev[2]);
-    }
+    // Compute static hardware values for the constant subset of fields via the
+    // shared helper (dynamic fields come back as 0 and are overridden by the
+    // write32 patches emitted below).
+    StaticBdPlaceholders sp = computeStaticBdPlaceholders(
+        mixedSizesRev, mixedStridesRev, elemWidth, addrGran);
 
     // Build NpuWriteBdOp attrs
     auto column = IntegerAttr::get(i32ty, tileCol);
     auto bd_id = IntegerAttr::get(i32ty, bdId);
-    auto buffer_length = IntegerAttr::get(i32ty, staticBufLen);
+    auto buffer_length = IntegerAttr::get(i32ty, sp.bufLen);
     auto buffer_offset = IntegerAttr::get(i32ty, 0);
     auto enable_packet = zero;
     auto out_of_order_id = zero;
@@ -862,15 +788,15 @@ public:
       packet_type = IntegerAttr::get(i32ty, packetInfo->getPktType());
       packet_id = IntegerAttr::get(i32ty, packetInfo->getPktId());
     }
-    auto d0_size = IntegerAttr::get(i32ty, computeStaticHwD0Size());
-    auto d0_stride = IntegerAttr::get(i32ty, computeStaticHwD0Stride());
-    auto d1_size = IntegerAttr::get(i32ty, computeStaticHwD1Size());
-    auto d1_stride = IntegerAttr::get(i32ty, computeStaticHwD1Stride());
+    auto d0_size = IntegerAttr::get(i32ty, sp.d0Size);
+    auto d0_stride = IntegerAttr::get(i32ty, sp.d0Stride);
+    auto d1_size = IntegerAttr::get(i32ty, sp.d1Size);
+    auto d1_stride = IntegerAttr::get(i32ty, sp.d1Stride);
     auto d2_size = zero;
-    auto d2_stride = IntegerAttr::get(i32ty, computeStaticHwD2Stride());
+    auto d2_stride = IntegerAttr::get(i32ty, sp.d2Stride);
     auto iteration_current = zero;
-    auto iteration_size = IntegerAttr::get(i32ty, computeStaticIterSize());
-    auto iteration_stride = IntegerAttr::get(i32ty, computeStaticIterStride());
+    auto iteration_size = IntegerAttr::get(i32ty, sp.iterSize);
+    auto iteration_stride = IntegerAttr::get(i32ty, sp.iterStride);
     auto next_bd = zero;
     auto row = IntegerAttr::get(i32ty, tileRow);
     auto use_next_bd = zero;
