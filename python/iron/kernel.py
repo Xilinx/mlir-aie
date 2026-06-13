@@ -129,12 +129,14 @@ class BaseKernel(Resolvable):
                 argument at that index is not an array type.
         """
         arg = self._resolve_arg(arg_index)
-        if hasattr(arg, "__args__") and len(arg.__args__) > 0:
-            shape_arg = arg.__args__[0]
+        type_args = getattr(arg, "__args__", None)
+        if type_args is not None and len(type_args) > 0:
+            shape_arg = type_args[0]
             if isinstance(shape_arg, tuple):
                 return shape_arg
-        if hasattr(arg, "shape"):
-            return tuple(arg.shape)
+        shape = getattr(arg, "shape", None)
+        if shape is not None:
+            return tuple(shape)
         raise ValueError(
             f"Argument {arg_index} does not have a shape or is not an array type."
         )
@@ -150,11 +152,14 @@ class BaseKernel(Resolvable):
                 argument at that index is not an array type.
         """
         arg = self._resolve_arg(arg_index)
-        if hasattr(arg, "__args__") and len(arg.__args__) >= 2:
-            dt = arg.__args__[1]
-            return np.dtype(dt.__args__[0]) if hasattr(dt, "__args__") else np.dtype(dt)
-        if hasattr(arg, "dtype"):
-            return np.dtype(arg.dtype)
+        type_args = getattr(arg, "__args__", None)
+        if type_args is not None and len(type_args) >= 2:
+            dt = type_args[1]
+            dt_args = getattr(dt, "__args__", None)
+            return np.dtype(dt_args[0]) if dt_args is not None else np.dtype(dt)
+        dtype = getattr(arg, "dtype", None)
+        if dtype is not None:
+            return np.dtype(dtype)
         raise ValueError(
             f"Argument {arg_index} does not have a dtype or is not an array type."
         )
@@ -270,6 +275,15 @@ class ExternalFunction(Kernel):
     """
 
     _instances: set = set()  # Registry of all live ExternalFunction instances.
+
+    # Optional sibling bindings attached by the linalg kernel factories
+    # (kernels.mm / mv / cascade_mm). Declared here so the dynamic
+    # assignment of these contract attributes type-checks.
+    mac_dims: tuple
+    zero: "Kernel"
+    get_only: "Kernel"
+    put_only: "Kernel"
+    put_get: "Kernel"
 
     def __init__(
         self,

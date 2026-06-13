@@ -89,5 +89,7 @@ class ScratchpadParameter(Resolvable):
         """Emit ``aiex.scratchpad_parameter @name : type`` at module scope."""
         if not self._resolved:
             mlir_type = np_dtype_to_mlir_type(self._dtype)
-            aiex.scratchpad_parameter(self._name, mlir_type, loc=loc, ip=ip)
+            aiex.scratchpad_parameter(  # pyright: ignore[reportAttributeAccessIssue]
+                self._name, mlir_type, loc=loc, ip=ip
+            )
             self._resolved = True

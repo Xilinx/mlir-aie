@@ -7,7 +7,9 @@
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
 """CascadeFlow: a directed cascade stream connection between two Workers."""
 
-from ...dialects.aie import cascade_flow as _cascade_flow_op
+from ...dialects.aie import (
+    cascade_flow as _cascade_flow_op,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from ..resolvable import Resolvable
 
 

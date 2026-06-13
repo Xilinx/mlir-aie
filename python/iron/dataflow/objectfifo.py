@@ -23,6 +23,7 @@ from ...dialects._aie_enum_gen import AIETileType, ObjectFifoPort  # type: ignor
 from ...dialects._aie_ops_gen import ObjectFifoCreateOp  # type: ignore
 from ...dialects.aie import object_fifo, object_fifo_link
 from ...helpers.util import (
+    NpuDType,
     np_ndarray_type_to_memref_type,
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
@@ -31,7 +32,7 @@ from ...util import single_elem_or_list_to_list
 
 from ..resolvable import Resolvable, NotResolvedError
 from .endpoint import ObjectFifoEndpoint
-from ..device import Device, Tile, AnyMemTile
+from ..device import Tile, AnyMemTile
 
 
 class ObjectFifo(Resolvable):
@@ -58,7 +59,7 @@ class ObjectFifo(Resolvable):
         pad_dimensions: PadDims | None = None,
         disable_synchronization: bool = False,
         repeat_count: int | None = None,
-        delegate_tile: PlacementTile | None = None,
+        delegate_tile: Tile | None = None,
         via_DMA: bool = False,
         init_values: list[np.ndarray] | None = None,
         consumer_obj_type: type[np.ndarray] | None = None,
@@ -75,7 +76,7 @@ class ObjectFifo(Resolvable):
             plio (bool, optional): Whether the ObjectFifo uses PLIO connections. Defaults to False.
             disable_synchronization (bool, optional): When True, disables lock-based synchronization on the ObjectFifo. Defaults to False.
             repeat_count (int | None, optional): If set, causes the MemTile DMA to replay the buffer descriptor this many times without a new DMA transfer from L3. Distinct from ``iter_count`` (BD-chain iteration count). Defaults to None.
-            delegate_tile (PlacementTile | None, optional): Shared-memory delegate tile. When set, the ObjectFifo's underlying buffer pool is allocated on this tile's memory module instead of the default placement. Lowers to ``aie.objectfifo.allocate``. *Only valid when both producer and consumer have shared-memory access to the delegate tile* (e.g. self-loop fifos where prod == cons, or fifos between adjacent tiles spilling to a neighboring MemTile). The delegate is the storage location, not a producer- or consumer-side concept; the underlying op verifier rejects this if either endpoint cannot share memory with the delegate. Defaults to None.
+            delegate_tile (Tile | None, optional): Shared-memory delegate tile. When set, the ObjectFifo's underlying buffer pool is allocated on this tile's memory module instead of the default placement. Lowers to ``aie.objectfifo.allocate``. *Only valid when both producer and consumer have shared-memory access to the delegate tile* (e.g. self-loop fifos where prod == cons, or fifos between adjacent tiles spilling to a neighboring MemTile). The delegate is the storage location, not a producer- or consumer-side concept; the underlying op verifier rejects this if either endpoint cannot share memory with the delegate. Defaults to None.
             init_values (list[np.ndarray] | None, optional): Per-buffer static initial values for the producer endpoint. One ndarray per producer-side buffer; the producer tile must be able to hold static data at design startup (e.g. a MemTile). Lowers to the ``initValues`` attribute on the underlying ``aie.objectfifo`` op. Defaults to None.
             consumer_obj_type (type[np.ndarray] | None, optional): Consumer element type for asymmetric transfer granularity. When set, the producer sends obj_type-sized transfers and the consumer receives consumer_obj_type-sized transfers. Producer element count must be an integer multiple of consumer element count. Defaults to None.
             aie_stream (tuple[int, int] | None, optional): Mark the fifo as a direct AIE-stream connection by stamping the ``aie_stream`` / ``aie_stream_port`` attributes ``(end, port)`` on the underlying ``aie.objectfifo`` op. Use with kernels that emit on the wire via ``put_ms()`` instead of going through an L1 buffer. Defaults to None.
@@ -107,24 +108,24 @@ class ObjectFifo(Resolvable):
         # Delegate tile for shared-memory buffer placement (lowers to aie.objectfifo.allocate).
         # Must be resolved before resolve() runs — Program.resolve() picks this up via
         # ObjectFifo._delegate_tile when collecting tiles to assign MLIR ops to.
-        self._delegate_tile: PlacementTile | None = delegate_tile
+        self._delegate_tile: Tile | None = delegate_tile
         self._via_DMA: bool = via_DMA
         self._init_values: list[np.ndarray] | None = init_values
         self._consumer_obj_type: type[np.ndarray] | None = consumer_obj_type
         self._aie_stream: tuple[int, int] | None = aie_stream
 
     @property
-    def depth(self) -> int:
+    def depth(self) -> int | None:
         """The default depth of the ObjectFifo. This may be overridden by an ObjectFifoHandle upon construction."""
         return self._depth
 
     @property
-    def dims_from_stream_per_cons(self) -> StreamDims:
+    def dims_from_stream_per_cons(self) -> StreamDims | None:
         """The default dimensions from stream per consumer value. This may be overridden by an ObjectFifoHandle of type consumer."""
         return self._dims_from_stream_per_cons
 
     @property
-    def dims_to_stream(self) -> StreamDims:
+    def dims_to_stream(self) -> StreamDims | None:
         """The dimensions to stream value. This will be shared by the ObjectFifoHandle of type producer."""
         return self._dims_to_stream
 
@@ -140,7 +141,7 @@ class ObjectFifo(Resolvable):
         return np_ndarray_type_get_shape(self._obj_type)
 
     @property
-    def dtype(self) -> np.dtype:
+    def dtype(self) -> NpuDType:
         """The per-element data type of each element in each buffer belonging to the ObjectFifo"""
         return np_ndarray_type_get_dtype(self._obj_type)
 
@@ -249,25 +250,27 @@ class ObjectFifo(Resolvable):
                 raise ValueError(
                     "Cannot return prod.tile.op because prod was not created."
                 )
+            if self._prod.endpoint is None:
+                raise ValueError(f"Prod endpoint not set for {self}")
+            assert self._prod.endpoint.tile is not None
             tiles += [self._prod.endpoint.tile]
         if self._cons == []:
             raise ValueError("Cannot return cons tiles because cons were not created.")
-        tiles += [cons.endpoint.tile for cons in self._cons]
+        for cons in self._cons:
+            if cons.endpoint is None:
+                raise ValueError(f"Cons endpoint not set for {self}")
+            assert cons.endpoint.tile is not None
+            tiles.append(cons.endpoint.tile)
         return tiles
-
-    def can_used_shared_mem(self, device: Device, cons_only: bool = False) -> bool:
-        """Check if all endpoints have legal memory affinity."""
-        tiles = self.tiles(cons_only=cons_only)
-        for t in tiles:
-            if device.is_mem_accessible(t, tiles):
-                return True
-        return False
 
     def _prod_tile_op(self) -> Tile:
         if self._prod == None:
             raise ValueError(
                 f"Cannot return prod.tile.op for ObjectFifo {self.name} because prod was not created."
             )
+        if self._prod.endpoint is None:
+            raise ValueError(f"Prod endpoint not set for {self}")
+        assert self._prod.endpoint.tile is not None
         return self._prod.endpoint.tile.op
 
     def _cons_tiles_ops(self) -> list[Tile]:
@@ -275,7 +278,13 @@ class ObjectFifo(Resolvable):
             raise ValueError(
                 f"Cannot return cons.tile.op for ObjectFifo {self.name} because no consumers were created."
             )
-        return [cons.endpoint.tile.op for cons in self._cons]
+        ops = []
+        for cons in self._cons:
+            if cons.endpoint is None:
+                raise ValueError(f"Cons endpoint not set for {self}")
+            assert cons.endpoint.tile is not None
+            ops.append(cons.endpoint.tile.op)
+        return ops
 
     def _get_depths(self) -> int | list[int]:
         if not self._prod:
@@ -294,13 +303,20 @@ class ObjectFifo(Resolvable):
     def _get_endpoint(self, is_prod: bool) -> list[ObjectFifoEndpoint]:
         if is_prod:
             if self._prod:
+                if self._prod.endpoint is None:
+                    raise ValueError(f"Prod endpoint not set for {self}")
                 return [self._prod.endpoint]
             else:
                 raise ValueError(f"Prod endpoint not set for {self}")
         else:
             if len(self._cons) < 1:
                 raise ValueError(f"Cons endpoint not set for {self}")
-            return [con.endpoint for con in self._cons]
+            endpoints = []
+            for con in self._cons:
+                if con.endpoint is None:
+                    raise ValueError(f"Cons endpoint not set for {self}")
+                endpoints.append(con.endpoint)
+            return endpoints
 
     def resolve(
         self,
@@ -319,7 +335,7 @@ class ObjectFifo(Resolvable):
                 if self._consumer_obj_type is not None
                 else None
             )
-            self._op = object_fifo(
+            op = object_fifo(
                 self.name,
                 self._prod_tile_op(),
                 self._cons_tiles_ops(),
@@ -335,19 +351,21 @@ class ObjectFifo(Resolvable):
                 initValues=self._init_values,
                 consumer_datatype=consumer_datatype,
             )
+            self._op = op
 
             if self._repeat_count is not None:
-                self._op.set_repeat_count(self._repeat_count)
+                op.set_repeat_count(self._repeat_count)
 
             if self._aie_stream is not None:
-                self._op.set_aie_stream(*self._aie_stream)
+                op.set_aie_stream(*self._aie_stream)
 
             # Shared-memory delegate: redirect the fifo's buffer pool to a tile
             # whose memory module is shared with both prod and cons. See the
             # delegate_tile docstring on ObjectFifo for the constraint.
             if self._delegate_tile is not None:
-                self._op.allocate(self._delegate_tile.op)
+                op.allocate(self._delegate_tile.op)
 
+            assert self._prod is not None
             if isinstance(self._prod.endpoint, ObjectFifoLink):
                 self._prod.endpoint.resolve()
             for con in self._cons:
@@ -478,7 +496,7 @@ class ObjectFifoHandle(Resolvable):
         return self._object_fifo.shape
 
     @property
-    def dtype(self) -> np.dtype:
+    def dtype(self) -> NpuDType:
         """The per-element datatype of the ObjectFifo"""
         return self._object_fifo.dtype
 
@@ -495,7 +513,7 @@ class ObjectFifoHandle(Resolvable):
         return self._depth
 
     @property
-    def dims_from_stream(self) -> StreamDims:
+    def dims_from_stream(self) -> StreamDims | None:
         """The dimensions from stream of a consumer ObjectFifoHandle"""
         if self._is_prod:
             raise ValueError("prod ObjectFifoHandles cannot have dims_from_stream")
@@ -533,10 +551,10 @@ class ObjectFifoHandle(Resolvable):
         offsets: list[int],
         tile: Tile = AnyMemTile,
         depths: list[int] | None = None,
-        obj_types: list[type[np.ndarray]] = None,
+        obj_types: list[type[np.ndarray]] | None = None,
         names: list[str] | None = None,
-        dims_to_stream: list[list[Sequence[int] | None]] | None = None,
-        dims_from_stream: list[list[Sequence[int] | None]] | None = None,
+        dims_to_stream: list[StreamDims] | None = None,
+        dims_from_stream: list[StreamDims] | None = None,
         plio: bool = False,
         repeat_counts: list[int | None] | None = None,
     ) -> list[ObjectFifo]:
@@ -593,7 +611,7 @@ class ObjectFifoHandle(Resolvable):
             )
 
         if repeat_counts is None:
-            repeat_counts = [None] * num_subfifos
+            repeat_counts = [None for _ in range(num_subfifos)]
         elif len(repeat_counts) != num_subfifos:
             raise ValueError("Number of repeat_counts does not match number of offsets")
 
@@ -613,7 +631,7 @@ class ObjectFifoHandle(Resolvable):
 
         subfifo_cons = [
             s.cons(depth=depths[i], dims_from_stream=dims_from_stream[i])
-            for s in subfifos
+            for i, s in enumerate(subfifos)
         ]
         _ = ObjectFifoLink(subfifo_cons, self, tile, offsets, [])
         return subfifos
@@ -623,7 +641,7 @@ class ObjectFifoHandle(Resolvable):
         offsets: list[int],
         tile: Tile = AnyMemTile,
         depths: list[int] | None = None,
-        obj_types: list[type[np.ndarray]] = None,
+        obj_types: list[type[np.ndarray]] | None = None,
         names: list[str] | None = None,
         dims_to_stream: list[StreamDims] | None = None,
         dims_from_stream: list[StreamDims] | None = None,
@@ -683,7 +701,7 @@ class ObjectFifoHandle(Resolvable):
             )
 
         if repeat_counts is None:
-            repeat_counts = [None] * num_subfifos
+            repeat_counts = [None for _ in range(num_subfifos)]
         elif len(repeat_counts) != num_subfifos:
             raise ValueError("Number of repeat_counts does not match number of offsets")
 
@@ -739,27 +757,20 @@ class ObjectFifoHandle(Resolvable):
         """
         if self._is_prod:
             raise ValueError(f"Cannot forward a {self.handle_type} ObjectFifoHandle")
-        if obj_type:
-            obj_type = [obj_type]
-        if depth:
-            depth = [depth]
-        if name:
-            name = [name]
-        else:
-            name = [self._object_fifo.name + "_fwd"]
-        if dims_to_stream:
-            dims_to_stream = [dims_to_stream]
-        if dims_from_stream:
-            dims_from_stream = [dims_from_stream]
+        obj_types = [obj_type] if obj_type else None
+        depths = [depth] if depth else None
+        names = [name] if name else [self._object_fifo.name + "_fwd"]
+        dims_to_stream_arg = [dims_to_stream] if dims_to_stream else None
+        dims_from_stream_arg = [dims_from_stream] if dims_from_stream else None
 
         forward_fifo = self.split(
             [0],
             tile=tile,
-            obj_types=obj_type,
-            depths=depth,
-            names=name,
-            dims_to_stream=dims_to_stream,
-            dims_from_stream=dims_from_stream,
+            obj_types=obj_types,
+            depths=depths,
+            names=names,
+            dims_to_stream=dims_to_stream_arg,
+            dims_from_stream=dims_from_stream_arg,
             plio=plio,
             repeat_counts=[repeat_count] if repeat_count is not None else None,
         )

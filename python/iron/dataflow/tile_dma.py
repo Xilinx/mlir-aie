@@ -31,14 +31,14 @@ from ...dialects._aie_enum_gen import (  # type: ignore
     LockAction,
 )
 from ...dialects.aie import (
-    EndOp,
-    dma_bd,
+    EndOp,  # pyright: ignore[reportAttributeAccessIssue]
+    dma_bd,  # pyright: ignore[reportAttributeAccessIssue]
     dma_start,
     mem,
     memtile_dma,
     next_bd,
     shim_mem,
-    use_lock,
+    use_lock,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from ..buffer import Buffer
 from ..lock import Lock

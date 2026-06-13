@@ -35,7 +35,7 @@ from ...dialects._aie_enum_gen import (  # type: ignore
 from ...dialects.aie import (
     flow as _flow_op,
     packetflow as _packetflow_op,
-    shim_dma_allocation,
+    shim_dma_allocation,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from ..device import Tile  # noqa: F401  (re-exported via package)
 from ..resolvable import NotResolvedError, Resolvable
@@ -151,7 +151,7 @@ class PacketDest:
     it).
     """
 
-    tile: object  # Tile (avoid forward-ref import)
+    tile: Tile
     port: WireBundle = WireBundle.DMA
     channel: int = 0
 

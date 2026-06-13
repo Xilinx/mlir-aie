@@ -81,6 +81,6 @@ class DMATask(RuntimeTask):
             tap=self._tap,
             issue_token=self._wait,
             offset_parameter=self._offset_parameter,
-            packet=self._packet,
+            packet=self._packet,  # pyright: ignore[reportArgumentType]
         )
         dma_start_task(self._task)

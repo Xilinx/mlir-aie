@@ -11,8 +11,15 @@ import sys
 from typing import Callable
 
 from .. import ir  # type: ignore
-from ..dialects.aie import core, lock, use_lock
-from ..dialects.aiex import set_lock_value, LockAction
+from ..dialects.aie import (
+    core,
+    lock,
+    use_lock,  # pyright: ignore[reportAttributeAccessIssue]
+)
+from ..dialects.aiex import (
+    set_lock_value,
+    LockAction,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from ..helpers.dialects.scf import _for as range_
 from .device import Tile, AnyComputeTile
 from ..dialects._aie_enum_gen import AIETileType  # type: ignore
@@ -37,10 +44,10 @@ class Worker(ObjectFifoEndpoint):
         fn_args: list | None = None,
         tile: Tile = AnyComputeTile,
         while_true: bool = True,
-        stack_size: int = None,
-        allocation_scheme: str = None,
-        trace: int = None,
-        trace_events: list = None,
+        stack_size: int | None = None,
+        allocation_scheme: str | None = None,
+        trace: int | None = None,
+        trace_events: list | None = None,
         dynamic_objfifo_lowering: bool | None = None,
     ):
         """Construct a Worker
@@ -137,6 +144,40 @@ class Worker(ObjectFifoEndpoint):
             # func.call ops when invoked inside core_fn and carry link_with on their
             # func.func declaration. Other unrecognized args are assumed to be
             # metaprogramming values (Python scalars, etc.).
+
+    @staticmethod
+    def grid(
+        rows: int,
+        cols: int,
+        factory: Callable[[int, int], "Worker"],
+    ) -> list[list["Worker"]]:
+        """Build a 2D grid of Workers; ``factory(r, c)`` returns one Worker.
+
+        Replaces the common pattern::
+
+            ws = [Worker(...) for i in range(R) for j in range(C)]
+            ws[i * C + j]  # 1-D index arithmetic
+
+        with::
+
+            ws = Worker.grid(R, C, lambda r, c: Worker(...))
+            ws[i][j]       # natural 2-D access
+
+        Args:
+            rows: Outer-dimension count (e.g. column index).
+            cols: Inner-dimension count (e.g. channel index).
+            factory: Called once per cell with ``(r, c)``; must return a Worker.
+
+        Returns:
+            ``rows``-by-``cols`` nested list of Worker instances.
+        """
+        return [[factory(r, c) for c in range(cols)] for r in range(rows)]
+
+    @property
+    def tile(self) -> Tile:
+        """The compute tile this Worker is placed on."""
+        assert self._tile is not None
+        return self._tile
 
     @staticmethod
     def grid(

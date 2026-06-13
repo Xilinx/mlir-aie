@@ -36,6 +36,7 @@ class RuntimeEndpoint(ObjectFifoEndpoint):
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, RuntimeEndpoint):
             return NotImplemented
+        assert self.tile is not None and other.tile is not None
         return (self.tile.col, self.tile.row) == (other.tile.col, other.tile.row)
 
     def __str__(self) -> str:

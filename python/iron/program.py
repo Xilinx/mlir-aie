@@ -53,7 +53,7 @@ class Program:
             # This preserves the device configuration while ensuring clean state
             device_type = type(self._device)
             # For dynamically created device classes, the constructor takes no arguments
-            self._device = device_type()
+            self._device = device_type()  # pyright: ignore[reportCallIssue]
 
             # Resolve parameters at module scope (before the aie.device).
             # aiex.scratchpad_parameter ops are global across all devices because the

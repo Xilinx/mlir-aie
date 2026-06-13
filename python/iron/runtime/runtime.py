@@ -22,7 +22,10 @@ from ...utils import trace as trace_utils
 from ... import ir  # type: ignore
 
 from ...dialects.aie import tile
-from ...dialects.aiex import runtime_sequence, sync_scratchpad_parameters_from_host
+from ...dialects.aiex import (
+    runtime_sequence,
+    sync_scratchpad_parameters_from_host,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from ...dialects._aiex_ops_gen import dma_await_task, dma_free_task  # type: ignore
 from ...helpers.taplib import TensorAccessPattern
 from ..dataflow import ObjectFifoHandle
@@ -63,9 +66,9 @@ class Runtime(Resolvable):
 
         """
         self._rt_data = []
-        self._tasks: list[RuntimeTask] = []
-        self._fifos = set()
-        self._workers = []
+        self._tasks: list[Resolvable] = []
+        self._fifos: set[ObjectFifoHandle] = set()
+        self._workers: list[Worker] = []
         # Lower-level explicit-routing primitives (peers of ObjectFifo for
         # designs that hand-wire flows + DMA programs instead of letting
         # ObjectFifo manage them).
@@ -332,7 +335,7 @@ class Runtime(Resolvable):
 
     def enable_trace(
         self,
-        trace_size: int = None,
+        trace_size: int | None = None,
         workers: list | None = None,
         ddr_id: int = 4,
         coretile_events: list | None = None,
@@ -403,17 +406,7 @@ class Runtime(Resolvable):
     @property
     def fifos(self) -> list[ObjectFifoHandle]:
         """The ObjectFifoHandles associated with the Runtime by calls to fill() and drain()"""
-        return self._fifos.copy()
-
-    def get_first_cons_shimtile(self):
-        """Find the first consumer side of an objfifo that is in the 0th row
-        and uses it as the trace shim tile
-        """
-        for of_handle in self._fifos:
-            if not of_handle._is_prod:
-                endpoint_tile = of_handle._object_fifo._cons[0]._endpoint._tile
-                if endpoint_tile.row == 0:
-                    return endpoint_tile.op
+        return list(self._fifos)
 
     def resolve(
         self,
@@ -457,7 +450,8 @@ class Runtime(Resolvable):
                         if fn != dma_await_task and fn != dma_free_task
                     ]
                     raise IronRuntimeError(
-                        f"Unknown action type detected: {','.join(unknown_actions)}"
+                        f"Unknown action type detected: "
+                        f"{','.join(str(a) for a in unknown_actions)}"
                     )
 
                 for fn, args in wait_tasks + free_tasks:

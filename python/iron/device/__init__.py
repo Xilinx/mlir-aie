@@ -10,19 +10,19 @@
 from . import device as _device_module
 from .device import (
     Device,
-    NPU1,
-    NPU1Col1,
-    NPU1Col2,
-    NPU1Col3,
-    NPU2,
-    NPU2Col1,
-    NPU2Col2,
-    NPU2Col3,
-    NPU2Col4,
-    NPU2Col5,
-    NPU2Col6,
-    NPU2Col7,
-    XCVC1902,
+    NPU1,  # pyright: ignore[reportAttributeAccessIssue]
+    NPU1Col1,  # pyright: ignore[reportAttributeAccessIssue]
+    NPU1Col2,  # pyright: ignore[reportAttributeAccessIssue]
+    NPU1Col3,  # pyright: ignore[reportAttributeAccessIssue]
+    NPU2,  # pyright: ignore[reportAttributeAccessIssue]
+    NPU2Col1,  # pyright: ignore[reportAttributeAccessIssue]
+    NPU2Col2,  # pyright: ignore[reportAttributeAccessIssue]
+    NPU2Col3,  # pyright: ignore[reportAttributeAccessIssue]
+    NPU2Col4,  # pyright: ignore[reportAttributeAccessIssue]
+    NPU2Col5,  # pyright: ignore[reportAttributeAccessIssue]
+    NPU2Col6,  # pyright: ignore[reportAttributeAccessIssue]
+    NPU2Col7,  # pyright: ignore[reportAttributeAccessIssue]
+    XCVC1902,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from .tile import AnyShimTile, AnyMemTile, AnyComputeTile, Tile
 
