@@ -24,7 +24,7 @@ This design implements a `bfloat16` based SwiGLU on a vector, distributed in par
 
 1. `swiglu_bf16` kernel: A vectorized C++ implementation of SwiGLU for AIE cores, compiled into `kernels.a`. The kernel accepts two 1024-element `bfloat16` weight chunks and one activation chunk per invocation.
 
-1. `test.cpp`: This C++ code is a testbench for the design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the testbench verifies the SwiGLU results against a CPU reference.
+1. `test.cpp`: This C++ code is a testbench for the design example. The code is responsible for loading the compiled XCLBIN + `insts.bin`, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the testbench verifies the SwiGLU results against a CPU reference.
 
 ## Usage
 

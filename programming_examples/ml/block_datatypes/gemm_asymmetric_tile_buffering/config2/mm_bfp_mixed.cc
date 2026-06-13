@@ -39,8 +39,17 @@ constexpr int t = 8;
 
 extern "C" {
 
+// MATMUL_ONLY / ZERO_ONLY gates — distinct ExternalFunction .o builds
+// of this TU emit exactly one symbol. Without any macro, both symbols
+// are emitted (legacy behaviour).
+#if !defined(MATMUL_ONLY) && !defined(ZERO_ONLY)
+#define MATMUL_ONLY
+#define ZERO_ONLY
+#endif
+
 static int g_counter = 0;
 
+#ifdef MATMUL_ONLY
 void matmul_vectorized_bfp16(bfp16ebs8 *__restrict pA, bfp16ebs8 *__restrict pB,
                              bfp16ebs8 *__restrict pC) {
   event0();
@@ -237,8 +246,11 @@ void matmul_vectorized_bfp16(bfp16ebs8 *__restrict pA, bfp16ebs8 *__restrict pB,
     }
   }
 }
+#endif
 
+#ifdef ZERO_ONLY
 void zero_kernel(bfp16ebs8 *__restrict cOut) {
   zero_vectorized_v64bfp16ebs8<DIM_M, DIM_N>(cOut);
 }
+#endif
 }

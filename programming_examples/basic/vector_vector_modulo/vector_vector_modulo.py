@@ -4,68 +4,110 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
-import numpy as np
+# (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
+"""Element-wise vector % vector — IRON API design with ``@iron.jit``.
+
+The design body delegates to ``aie.iron.algorithms.transform_binary_typed``,
+which handles the ObjectFifo / Worker / Runtime plumbing.  The entry point
+supports three invocation modes so the same file drives both the Ryzen AI
+NPU @iron.jit pipeline and the aiecc-based vck5000 (Versal AIE1) flow:
+
+  * standalone:  ``python3 vector_vector_modulo.py``
+        JIT-compile + run + verify via ``iron.tensor``.
+
+  * compile-only:  ``... --xclbin-path=PATH --insts-path=PATH``
+        Used by the NPU ``Makefile`` to drive @iron.jit's ``compile()`` and
+        hand the artifacts to the C++ ``test.cpp`` host.
+
+  * emit-MLIR:  ``... -d {npu,npu2,xcvc1902} --emit-mlir``
+        Print the resolved MLIR module to stdout for the aiecc
+        Makefile rule (used by the vck5000 path; aiecc consumes the
+        printed MLIR and produces ``test.elf`` via Chess + HSA).
+"""
+
+import argparse
 import sys
 
-from aie.iron import ObjectFifo, Program, Runtime, Worker
-from aie.iron.device import NPU1Col1, NPU2Col1, XCVC1902
-from aie.iron.controlflow import range_
+import numpy as np
+
+import aie.iron as iron
+from aie.iron import CompileTime, In, Out
+from aie.iron.algorithms import transform_binary_typed
+from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.cli import run_design_cli
 
 
-def my_vector_mod():
-    N = 256
-    n = 16
-    N_div_n = N // n
-
-    if len(sys.argv) != 3:
-        raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
-
-    if sys.argv[1] == "npu":
-        dev = NPU1Col1()
-    elif sys.argv[1] == "npu2":
-        dev = NPU2Col1()
-    elif sys.argv[1] == "xcvc1902":
-        dev = XCVC1902()
-    else:
-        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
-
-    # Define tensor types
-    tensor_ty = np.ndarray[(N,), np.dtype[np.int32]]
-    tile_ty = np.ndarray[(n,), np.dtype[np.int32]]
-
-    # AIE-array data movement with object fifos
-    of_in1 = ObjectFifo(tile_ty, name="in1")
-    of_in2 = ObjectFifo(tile_ty, name="in2")
-    of_out = ObjectFifo(tile_ty, name="out")
-
-    # Define a task that can run on a compute tile
-    def core_body(of_in1, of_in2, of_out):
-        # Number of sub-vector "tile" iterations
-        for _ in range_(N_div_n):
-            elem_in1 = of_in1.acquire(1)
-            elem_in2 = of_in2.acquire(1)
-            elem_out = of_out.acquire(1)
-            for i in range_(n):
-                elem_out[i] = elem_in1[i] % elem_in2[i]
-            of_in1.release(1)
-            of_in2.release(1)
-            of_out.release(1)
-
-    # Create a worker to run the task on a compute tile
-    worker = Worker(core_body, fn_args=[of_in1.cons(), of_in2.cons(), of_out.prod()])
-
-    # Runtime operations to move data to/from the AIE-array
-    rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty, tensor_ty) as (A, B, C):
-        rt.start(worker)
-        rt.fill(of_in1.prod(), A)
-        rt.fill(of_in2.prod(), B)
-        rt.drain(of_out.cons(), C, wait=True)
-
-    # Place program components (assign them resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program()
+@iron.jit
+def vector_vector_modulo(
+    input0: In,
+    input1: In,
+    output: Out,
+    *,
+    num_elements: CompileTime[int] = 256,
+    dtype: CompileTime[type] = np.int32,
+    tile_size: CompileTime[int] = 16,
+):
+    tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
+    return transform_binary_typed(lambda a, b: a % b, tensor_ty, tile_size=tile_size)
 
 
-module = my_vector_mod()
-print(module)
+def _make_argparser():
+    p = argparse.ArgumentParser(prog="AIE Vector Vector Modulo")
+    add_compile_args(p, dev_choices=("npu", "npu2", "xcvc1902"), with_emit_mlir=True)
+    p.add_argument("-n", "--num-elements", type=int, default=256)
+    p.add_argument("--tile-size", type=int, default=16)
+    p.add_argument("-v", "--verbose", action="store_true")
+    return p
+
+
+def _compile_kwargs(opts):
+    return dict(
+        num_elements=opts.num_elements,
+        dtype=np.int32,
+        tile_size=opts.tile_size,
+    )
+
+
+def _run_and_verify(opts):
+    input0 = iron.randint(1, 100, (opts.num_elements,), dtype=np.int32, device="npu")
+    input1 = iron.randint(1, 100, (opts.num_elements,), dtype=np.int32, device="npu")
+    output = iron.zeros_like(input0)
+
+    vector_vector_modulo(
+        input0,
+        input1,
+        output,
+        num_elements=opts.num_elements,
+        dtype=np.int32,
+        tile_size=opts.tile_size,
+    )
+
+    expected = input0.numpy() % input1.numpy()
+    actual = output.numpy()
+    errors = int(np.sum(actual != expected))
+
+    if opts.verbose:
+        for i in range(min(opts.num_elements, 16)):
+            print(
+                f"{i:3}: {int(input0[i]):4} % {int(input1[i]):4} = {int(output[i]):4}"
+            )
+
+    if errors:
+        print(f"\nError count: {errors}\nFailed.\n")
+        sys.exit(-1)
+    print("\nPASS!\n")
+    sys.exit(0)
+
+
+def main():
+    opts = _make_argparser().parse_args()
+    run_design_cli(
+        vector_vector_modulo,
+        opts,
+        compile_kwargs=_compile_kwargs,
+        run_and_verify=_run_and_verify,
+    )
+
+
+if __name__ == "__main__":
+    main()

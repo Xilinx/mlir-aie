@@ -47,7 +47,8 @@ static void emitNpuWrite32(OpBuilder &builder, Location loc, uint32_t address,
 
 static void emitNpuMaskWrite32(OpBuilder &builder, Location loc,
                                uint32_t address, uint32_t value, uint32_t mask,
-                               mlir::IntegerAttr column, mlir::IntegerAttr row) {
+                               mlir::IntegerAttr column,
+                               mlir::IntegerAttr row) {
   Type i32 = builder.getI32Type();
   Value addr = arith::ConstantIntOp::create(builder, loc, i32, address);
   Value val = arith::ConstantIntOp::create(builder, loc, i32, value);
@@ -690,9 +691,9 @@ struct AIEInsertTraceFlowsPass
       uint32_t timerCtrlValue =
           targetModel.encodeFieldValue(*resetField, *broadcastEvent);
 
-      emitNpuWrite32(
-          builder, runtimeSeq.getLoc(), timerCtrlAddr, timerCtrlValue,
-          builder.getI32IntegerAttr(col), builder.getI32IntegerAttr(row));
+      emitNpuWrite32(builder, runtimeSeq.getLoc(), timerCtrlAddr,
+                     timerCtrlValue, builder.getI32IntegerAttr(col),
+                     builder.getI32IntegerAttr(row));
     }
 
     // 4c-4f. Insert per-shim configurations
@@ -739,9 +740,8 @@ struct AIEInsertTraceFlowsPass
         Value argPlus = arith::ConstantIntOp::create(
             builder, runtimeSeq.getLoc(), builder.getI32Type(),
             static_cast<int32_t>(chanDesc.bufferOffset));
-        xilinx::AIEX::NpuAddressPatchOp::create(builder, runtimeSeq.getLoc(),
-                                                bdAddress, chanDesc.argIdx,
-                                                argPlus);
+        xilinx::AIEX::NpuAddressPatchOp::create(
+            builder, runtimeSeq.getLoc(), bdAddress, chanDesc.argIdx, argPlus);
 
         // 4e. DMA channel configuration — set Controller_ID from tile attribute
         uint32_t ctrlAddr =
@@ -767,9 +767,9 @@ struct AIEInsertTraceFlowsPass
         if (!ctrlIdMask)
           llvm::report_fatal_error(
               "Controller_ID field does not fit in 32-bit register");
-        emitNpuMaskWrite32(
-            builder, runtimeSeq.getLoc(), ctrlAddr, ctrlIdValue, *ctrlIdMask,
-            builder.getI32IntegerAttr(shimCol), builder.getI32IntegerAttr(0));
+        emitNpuMaskWrite32(builder, runtimeSeq.getLoc(), ctrlAddr, ctrlIdValue,
+                           *ctrlIdMask, builder.getI32IntegerAttr(shimCol),
+                           builder.getI32IntegerAttr(0));
 
         // Push BD to task queue
         std::string taskQueueRegName = (chanDesc.channel == 0)
@@ -789,9 +789,9 @@ struct AIEInsertTraceFlowsPass
         uint32_t queueValue =
             targetModel.encodeFieldValue(*tokenField, 1) |
             targetModel.encodeFieldValue(*bdIdField, chanDesc.bdId);
-        emitNpuWrite32(
-            builder, runtimeSeq.getLoc(), queueReg->offset, queueValue,
-            builder.getI32IntegerAttr(shimCol), builder.getI32IntegerAttr(0));
+        emitNpuWrite32(builder, runtimeSeq.getLoc(), queueReg->offset,
+                       queueValue, builder.getI32IntegerAttr(shimCol),
+                       builder.getI32IntegerAttr(0));
       }
 
       // 4f. Shim timer and broadcast control (only if start broadcast is used)
@@ -815,9 +815,9 @@ struct AIEInsertTraceFlowsPass
               "Failed to lookup Reset_Event in shim Timer_Control");
         uint32_t shimTimerCtrlValue =
             targetModel.encodeFieldValue(*shimResetField, *userEvent1);
-        emitNpuWrite32(
-            builder, runtimeSeq.getLoc(), shimTimerCtrlAddr, shimTimerCtrlValue,
-            builder.getI32IntegerAttr(shimCol), builder.getI32IntegerAttr(0));
+        emitNpuWrite32(builder, runtimeSeq.getLoc(), shimTimerCtrlAddr,
+                       shimTimerCtrlValue, builder.getI32IntegerAttr(shimCol),
+                       builder.getI32IntegerAttr(0));
 
         // Configure broadcast register with USER_EVENT_1
         std::string broadcastRegName =
@@ -827,18 +827,18 @@ struct AIEInsertTraceFlowsPass
         if (!broadcastReg)
           llvm::report_fatal_error(llvm::Twine("Failed to lookup ") +
                                    broadcastRegName);
-        emitNpuWrite32(
-            builder, runtimeSeq.getLoc(), broadcastReg->offset, *userEvent1,
-            builder.getI32IntegerAttr(shimCol), builder.getI32IntegerAttr(0));
+        emitNpuWrite32(builder, runtimeSeq.getLoc(), broadcastReg->offset,
+                       *userEvent1, builder.getI32IntegerAttr(shimCol),
+                       builder.getI32IntegerAttr(0));
 
         // Generate USER_EVENT_1 to trigger the broadcast
         const RegisterInfo *eventGenReg = targetModel.lookupRegister(
             "Event_Generate", shimInfo.shimTile.getTileID());
         if (!eventGenReg)
           llvm::report_fatal_error("Failed to lookup Event_Generate register");
-        emitNpuWrite32(
-            builder, runtimeSeq.getLoc(), eventGenReg->offset, *userEvent1,
-            builder.getI32IntegerAttr(shimCol), builder.getI32IntegerAttr(0));
+        emitNpuWrite32(builder, runtimeSeq.getLoc(), eventGenReg->offset,
+                       *userEvent1, builder.getI32IntegerAttr(shimCol),
+                       builder.getI32IntegerAttr(0));
       }
     }
 
@@ -866,17 +866,17 @@ struct AIEInsertTraceFlowsPass
       if (!broadcastReg)
         llvm::report_fatal_error(llvm::Twine("Failed to lookup ") +
                                  broadcastRegName);
-      emitNpuWrite32(
-          builder, runtimeSeq.getLoc(), broadcastReg->offset, *userEvent0,
-          builder.getI32IntegerAttr(shimCol), builder.getI32IntegerAttr(0));
+      emitNpuWrite32(builder, runtimeSeq.getLoc(), broadcastReg->offset,
+                     *userEvent0, builder.getI32IntegerAttr(shimCol),
+                     builder.getI32IntegerAttr(0));
 
       const RegisterInfo *stopEventGenReg = targetModel.lookupRegister(
           "Event_Generate", shimInfo.shimTile.getTileID());
       if (!stopEventGenReg)
         llvm::report_fatal_error("Failed to lookup Event_Generate register");
-      emitNpuWrite32(
-          builder, runtimeSeq.getLoc(), stopEventGenReg->offset, *userEvent0,
-          builder.getI32IntegerAttr(shimCol), builder.getI32IntegerAttr(0));
+      emitNpuWrite32(builder, runtimeSeq.getLoc(), stopEventGenReg->offset,
+                     *userEvent0, builder.getI32IntegerAttr(shimCol),
+                     builder.getI32IntegerAttr(0));
     }
   }
 

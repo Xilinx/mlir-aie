@@ -2044,57 +2044,39 @@ struct CoreCompilationResult {
 /// - 'nocreateundeforpoison' attribute (with any trailing whitespace)
 static std::string downgradeIRForPeano(StringRef ir) {
   std::string result = ir.str();
-  // Strip 'nuw' from 'getelementptr inbounds nuw' -> 'getelementptr inbounds'
-  const std::string nuwFrom = "getelementptr inbounds nuw";
-  const std::string nuwTo = "getelementptr inbounds";
-  size_t pos = 0;
-  while ((pos = result.find(nuwFrom, pos)) != std::string::npos) {
-    result.erase(pos + nuwTo.size(), nuwFrom.size() - nuwTo.size());
-    pos += nuwTo.size();
-  }
-  // Strip 'nocreateundeforpoison' and any trailing whitespace
+  // Strip 'nocreateundeforpoison' and any trailing whitespace: current Peano
+  // LLVM cannot parse this attribute.
   const std::string nocreate = "nocreateundeforpoison";
-  pos = 0;
+  size_t pos = 0;
   while ((pos = result.find(nocreate, pos)) != std::string::npos) {
     size_t end = pos + nocreate.size();
     while (end < result.size() && (result[end] == ' ' || result[end] == '\t'))
       ++end;
     result.erase(pos, end - pos);
   }
-  // Strip ', align <N>' attributes (matches old Python
-  // drop_alignment_for_peano)
-  const std::string alignPat = ", align ";
-  pos = 0;
-  while ((pos = result.find(alignPat, pos)) != std::string::npos) {
-    size_t end = pos + alignPat.size();
-    while (end < result.size() && result[end] >= '0' && result[end] <= '9')
-      ++end;
-    if (end > pos + alignPat.size())
-      result.erase(pos, end - pos);
-    else
-      pos = end;
-  }
   return result;
 }
 
-/// Apply peanohack: read LLVM IR, downgrade for Peano, write to output path.
-static LogicalResult applyPeanoHack(StringRef inputPath, StringRef outputPath) {
+/// Read LLVM IR, downgrade it for Peano compatibility, write to output path.
+static LogicalResult applyPeanoCompat(StringRef inputPath,
+                                      StringRef outputPath) {
   auto bufOrErr = llvm::MemoryBuffer::getFile(inputPath);
   if (!bufOrErr) {
     std::lock_guard<std::mutex> lock(outputMutex);
-    llvm::errs() << "Error reading LLVM IR for peanohack: "
+    llvm::errs() << "Error reading LLVM IR for Peano compatibility: "
                  << bufOrErr.getError().message() << "\n";
     return failure();
   }
-  std::string hacked = downgradeIRForPeano((*bufOrErr)->getBuffer());
+  std::string downgraded = downgradeIRForPeano((*bufOrErr)->getBuffer());
   std::error_code ec;
   llvm::raw_fd_ostream out(outputPath, ec);
   if (ec) {
     std::lock_guard<std::mutex> lock(outputMutex);
-    llvm::errs() << "Error writing peanohack file: " << ec.message() << "\n";
+    llvm::errs() << "Error writing Peano-compatible IR: " << ec.message()
+                 << "\n";
     return failure();
   }
-  out << hacked;
+  out << downgraded;
   return success();
 }
 
@@ -2352,15 +2334,15 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
       return failure();
     }
 
-    // Apply peanohack to downgrade IR for Peano compatibility
-    SmallString<128> peanohackPath(tmpDirName);
-    sys::path::append(peanohackPath,
+    // Downgrade IR for Peano compatibility
+    SmallString<128> peanoCompatPath(tmpDirName);
+    sys::path::append(peanoCompatPath,
                       deviceName.str() + "_core_" + std::to_string(core.col) +
-                          "_" + std::to_string(core.row) + ".peanohack.ll");
-    if (failed(applyPeanoHack(llvmIRPath, peanohackPath)))
+                          "_" + std::to_string(core.row) + ".peano-compat.ll");
+    if (failed(applyPeanoCompat(llvmIRPath, peanoCompatPath)))
       return failure();
 
-    // Run opt on peanohacked IR.
+    // Run opt on Peano-compatible IR.
     // Cap opt level at O1 for Peano to match old Python aiecc behavior.
     // Higher levels cause SLP vectorizer to create types that crash GlobalISel.
     SmallString<128> optPath(tmpDirName);
@@ -2375,7 +2357,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
         "--passes=default<O" + std::to_string(safeOptLevel) + ">",
         "-inline-threshold=10",
         "-S",
-        std::string(peanohackPath),
+        std::string(peanoCompatPath),
         "-o",
         std::string(optPath)};
 
@@ -3055,11 +3037,11 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
       return failure();
     }
 
-    // Apply peanohack to downgrade IR for Peano compatibility
-    SmallString<128> peanohackPath(tmpDirName);
-    sys::path::append(peanohackPath,
-                      deviceName.str() + "_input.llpeanohack.ll");
-    if (failed(applyPeanoHack(llvmIRPath, peanohackPath)))
+    // Downgrade IR for Peano compatibility
+    SmallString<128> peanoCompatPath(tmpDirName);
+    sys::path::append(peanoCompatPath,
+                      deviceName.str() + "_input.peano-compat.ll");
+    if (failed(applyPeanoCompat(llvmIRPath, peanoCompatPath)))
       return failure();
 
     // Run opt (cap at O1 to match old Python aiecc, prevent SLP vectorizer
@@ -3074,7 +3056,7 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
         "--passes=default<O" + std::to_string(safeOptLevel) + ">",
         "-inline-threshold=10",
         "-S",
-        std::string(peanohackPath),
+        std::string(peanoCompatPath),
         "-o",
         std::string(optPath)};
 

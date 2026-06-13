@@ -13,10 +13,11 @@ from .conv_pipeline import (
     row_at_a_time_with_skip,
     sliding_3row,
 )
-from .for_each import for_each
+from .for_each import for_each_typed
+from .reduce import reduce_typed
 from .transform import (
-    transform,
-    transform_binary,
-    transform_parallel,
-    transform_parallel_binary,
+    transform_binary_typed,
+    transform_parallel_binary_typed,
+    transform_parallel_typed,
+    transform_typed,
 )

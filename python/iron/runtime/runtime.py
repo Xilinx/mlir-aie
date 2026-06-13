@@ -11,6 +11,7 @@ from __future__ import annotations
 import bisect
 from collections import defaultdict, deque
 from contextlib import contextmanager
+import itertools
 import logging
 import numpy as np
 from typing import Callable
@@ -69,6 +70,10 @@ class _RuntimeBdIdAllocator:
         bisect.insort(free_ids, bd_id)
 
 
+class IronRuntimeError(Exception):
+    """Raised by the IRON Runtime when resolution encounters an unrecoverable state."""
+
+
 class Runtime(Resolvable):
     """A Runtime contains that operations and structure of all operations that
     need to be taken care of by the host/runtime in order to run a program.
@@ -89,13 +94,46 @@ class Runtime(Resolvable):
         self._tasks: list[RuntimeTask] = []
         self._fifos = set()
         self._workers = []
+        # Lower-level explicit-routing primitives (peers of ObjectFifo for
+        # designs that hand-wire flows + DMA programs instead of letting
+        # ObjectFifo manage them).
+        self._flows = []
+        self._locks = []
+        self._tile_dmas = []
         self._scratchpad_parameters: list[ScratchpadParameter] = []
         self._open_task_groups = []
         self._trace_size = None
         self._trace_workers = None
         self._strict_task_groups = strict_task_groups
+        self._task_group_index = itertools.count()
         self._ddr_id = 4
-        self.__task_group_index = 0
+        self._egress_shim_col = 0
+
+    def add_flow(self, flow) -> None:
+        """Register an explicit :class:`Flow` (or :class:`PacketFlow`) so the
+        Program resolves it alongside the ObjectFifos."""
+        self._flows.append(flow)
+
+    def add_lock(self, lock) -> None:
+        """Register an explicit :class:`Lock` shared between a Worker and a
+        :class:`TileDma`."""
+        self._locks.append(lock)
+
+    def add_tile_dma(self, tile_dma) -> None:
+        """Register an explicit :class:`TileDma` program."""
+        self._tile_dmas.append(tile_dma)
+
+    @property
+    def flows(self):
+        return list(self._flows)
+
+    @property
+    def locks(self):
+        return list(self._locks)
+
+    @property
+    def tile_dmas(self):
+        return list(self._tile_dmas)
 
     @contextmanager
     def sequence(self, *input_types):
@@ -169,9 +207,8 @@ class Runtime(Resolvable):
         Returns:
             RuntimeTaskGroup: The new RuntimeTaskGroup
         """
-        tg = RuntimeTaskGroup(self.__task_group_index)
+        tg = RuntimeTaskGroup(next(self._task_group_index))
         self._open_task_groups.append(tg)
-        self.__task_group_index += 1
         return tg
 
     def finish_task_group(self, task_group: RuntimeTaskGroup):
@@ -195,6 +232,7 @@ class Runtime(Resolvable):
         task_group: RuntimeTaskGroup | None = None,
         wait: bool = False,
         tile: Tile = AnyShimTile,
+        packet: tuple[int, int] | None = None,
         offset_parameter: "ScratchpadParameter | str | None" = None,
     ) -> None:
         """Conceptually fill an ObjectFifoHandle (of type producer) with data from a runtime buffer.
@@ -213,6 +251,11 @@ class Runtime(Resolvable):
             task_group (RuntimeTaskGroup | None, optional): A TaskGroup to associate this task with. Defaults to None.
             wait (bool, optional): Whether this Task should be awaited on or not. If not, it will be freed when the task group is finished. Defaults to False.
             tile (Tile | None, optional): The Shim tile to associate the data transfer with. Defaults to AnyShimTile.
+            packet (tuple[int, int] | None, optional): Stamp the shim DMA's BD
+                with a packet header ``(pkt_type, pkt_id)``.  Pairs with
+                downstream packet-switched routing (e.g. ObjectFifos lowered
+                with ``--packet-sw-objFifos`` or an explicit
+                :class:`~aie.iron.PacketFlow`).  Defaults to None.
             offset_parameter (ScratchpadParameter | str | None, optional): A ScratchpadParameter (or its name) whose value is used as the element offset for this DMA transfer. Defaults to None.
 
         Raises:
@@ -249,6 +292,7 @@ class Runtime(Resolvable):
                 sizes=sizes,
                 strides=strides,
                 offset_parameter=offset_param_name,
+                packet=packet,
             )
         )
 
@@ -263,6 +307,7 @@ class Runtime(Resolvable):
         task_group: RuntimeTaskGroup | None = None,
         wait: bool = False,
         tile: Tile = AnyShimTile,
+        packet: tuple[int, int] | None = None,
         offset_parameter: "ScratchpadParameter | str | None" = None,
     ) -> None:
         """Conceptually fill an ObjectFifoHandle (of type consumer) of data and write that data to a runtime buffer.
@@ -281,6 +326,11 @@ class Runtime(Resolvable):
             task_group (RuntimeTaskGroup | None, optional): A TaskGroup to associate this task with. Defaults to None.
             wait (bool, optional): Whether this Task should be awaited on or not. If not, it will be freed when the task group is finished. Defaults to False.
             tile (Tile | None, optional): The Shim tile to associate the data transfer with. Defaults to AnyShimTile.
+            packet (tuple[int, int] | None, optional): Stamp the shim DMA's BD
+                with a packet header ``(pkt_type, pkt_id)``.  Pairs with
+                downstream packet-switched routing (e.g. ObjectFifos lowered
+                with ``--packet-sw-objFifos`` or an explicit
+                :class:`~aie.iron.PacketFlow`).  Defaults to None.
             offset_parameter (ScratchpadParameter | str | None, optional): A ScratchpadParameter (or its name) whose value is used as the element offset for this DMA transfer. Defaults to None.
 
         Raises:
@@ -317,6 +367,7 @@ class Runtime(Resolvable):
                 sizes=sizes,
                 strides=strides,
                 offset_parameter=offset_param_name,
+                packet=packet,
             )
         )
 
@@ -356,6 +407,7 @@ class Runtime(Resolvable):
         coremem_events: list | None = None,
         memtile_events: list | None = None,
         shimtile_events: list | None = None,
+        egress_shim_col: int = 0,
     ):
         """Enable hardware tracing for this program.
 
@@ -380,6 +432,8 @@ class Runtime(Resolvable):
                 Defaults to None (uses hardware defaults).
             shimtile_events (list | None, optional): List of up to 8 shim tile trace events.
                 Defaults to None (uses hardware defaults).
+            egress_shim_col (int, optional): Column of the shim tile used to
+                egress trace packets to DDR. Defaults to 0.
         """
         self._trace_size = trace_size
         self._trace_workers = workers
@@ -388,6 +442,7 @@ class Runtime(Resolvable):
         self._coremem_events = coremem_events
         self._memtile_events = memtile_events
         self._shimtile_events = shimtile_events
+        self._egress_shim_col = egress_shim_col
 
     def set_barrier(self, barrier: WorkerRuntimeBarrier, value: int):
         """Set the value of a worker barrier.
@@ -468,6 +523,7 @@ class Runtime(Resolvable):
                     trace_size=self._trace_size,
                     ddr_id=self._ddr_id,
                     routing="single",
+                    egress_shim_col=self._egress_shim_col,
                 )
 
             for item, arg_val in zip(sequence_items, args):
@@ -485,7 +541,7 @@ class Runtime(Resolvable):
                         for (kind, task) in actions
                         if kind not in ("wait", "free")
                     ]
-                    raise Exception(
+                    raise IronRuntimeError(
                         f"Unknown action type detected: {','.join(unknown_actions)}"
                     )
 
@@ -524,7 +580,7 @@ class Runtime(Resolvable):
                     finish_task_group(task.task_group, task_group_actions)
 
             if self._strict_task_groups and default_tasks and task_group_tasks:
-                raise Exception(
+                raise IronRuntimeError(
                     f"Mixing explicit task groups and the default task group is prohibited. "
                     f"Please assign all default tasks ({task_group_actions[default_task_group]}) to a task group."
                 )

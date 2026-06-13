@@ -26,12 +26,12 @@ Tile placements live in PLACEMENT["cascade"] in aie2_mobilenet_iron.py.
 
 import numpy as np
 
-from aie.iron import Buffer, Kernel, ObjectFifo, Worker
+from aie.iron import Buffer, ObjectFifo, Worker, kernels
 from aie.iron.dataflow.cascadeflow import CascadeFlow
 from aie.iron.controlflow import range_
 
-from bottleneck._common import load_wts, layer_sf as _layer_sf, skip_sf as _skip_sf
-from network_spec import block as nsblock
+from ._common import load_wts, layer_sf as _layer_sf, skip_sf as _skip_sf
+from ..network_spec import block as nsblock
 
 # ---------------------------------------------------------------------------
 # Algorithm dimensions — derived from network_spec (bn13 and bn14 share shape)
@@ -274,13 +274,10 @@ def _l3_get_fn(
 # ---------------------------------------------------------------------------
 # build_cascade — one full cascade block (5 compute workers + 2 weight fifos)
 # ---------------------------------------------------------------------------
-def build_cascade(blk, l3_get_sym, act_in, skip_in, sf, *, data_dir, tiles):
+def build_cascade(blk, act_in, skip_in, sf, *, data_dir, tiles):
     """One full cascade block (5 compute workers + 2 weight fifos).
 
     blk:         Block from network_spec.NETWORK (bn13 or bn14).
-    l3_get_sym:  L3 GET kernel symbol name (the one outlier whose name doesn't
-                 follow the `{name}_...` template — it has the form
-                 `bn_<N>_2_conv2dk1_..._get_new`).
     act_in:      activation input ObjectFifo (drives L1 PUT and L1 GET)
     skip_in:     ObjectFifo whose .cons() forwards a skip row to L3 GET
                  (often the same as act_in; for bn14 it's bn13's output)
@@ -289,41 +286,56 @@ def build_cascade(blk, l3_get_sym, act_in, skip_in, sf, *, data_dir, tiles):
     Returns (out_fifo, wts_l1_full, wts_l3_full, [workers]).
     """
     name = blk.name
+    # Module-level _InW/_InH/_InC/_L1_OutC/_L3_OutC are derived from bn13's
+    # shape (line 39). bn14 reuses the same cascade topology because it has
+    # the same shape — enforce that here instead of leaving it implicit.
+    assert blk.layers[0].in_shape == (_InW, _InH, _InC), (
+        f"cascade builder is shape-locked to bn13 ({_InW},{_InH},{_InC}); "
+        f"{name} has in_shape {blk.layers[0].in_shape}"
+    )
+    assert blk.layers[0].out_shape[2] == _L1_OutC, (
+        f"cascade builder expects L1 out_c={_L1_OutC}; "
+        f"{name} layer[0] out_c={blk.layers[0].out_shape[2]}"
+    )
+    assert blk.layers[-1].out_shape[2] == _L3_OutC, (
+        f"cascade builder expects L3 out_c={_L3_OutC}; "
+        f"{name} layer[-1] out_c={blk.layers[-1].out_shape[2]}"
+    )
+    block_index = int(name[2:])  # bn13 / bn14 → 13 / 14
     s1, s2, s3 = (_layer_sf(blk, sf, i) for i in (0, 1, 2))
     s_add = _skip_sf(blk, sf)
 
-    k_l1_put = Kernel(
-        f"{name}_1_conv2dk1_i8_ui8_partial_width_put_new",
-        f"{name}_1_conv2dk1_put.o",
-        [_ty_act_in, _ty_l1_split_wts] + [np.int32] * 7,
+    k_l1_put = kernels.bn_conv2dk1_partial_put_i8(
+        input_width=_InW,
+        input_channels=_InC,
+        weight_count=_l1_split_wts_sz,
+        block_index=block_index,
     )
-    k_l1_get = Kernel(
-        f"{name}_1_conv2dk1_i8_ui8_partial_width_get_new",
-        f"{name}_1_conv2dk1_get.o",
-        [_ty_act_in, _ty_l1_split_wts, _ty_l1_out_full] + [np.int32] * 9,
+    k_l1_get = kernels.bn_conv2dk1_partial_get_relu_i8(
+        input_width=_InW,
+        input_channels=_InC,
+        output_channels=_L1_OutC,
+        weight_count=_l1_split_wts_sz,
+        block_index=block_index,
     )
-    k_l2_dw = Kernel(
-        f"{name}_conv2dk3_ui8_out_split",
-        f"{name}_conv2dk3_dw.o",
-        [
-            _ty_l1_out_full,
-            _ty_l1_out_full,
-            _ty_l1_out_full,
-            _ty_l2_wts,
-            _ty_l1_out_split,
-            _ty_l1_out_split,
-        ]
-        + [np.int32] * 8,
+    k_l2_dw = kernels.bn_conv2dk3_dw_out_split(
+        input_width=_InW,
+        input_channels=_L1_OutC,
+        output_split_channels=_L1_SplitC,
+        block_index=block_index,
     )
-    k_l3_put = Kernel(
-        f"{name}_1_conv2dk1_ui8_ui8_input_split_partial_width_put_new",
-        f"{name}_conv2dk1_put.o",
-        [_ty_l1_out_split, _ty_l3_split_wts] + [np.int32] * 7,
+    k_l3_put = kernels.bn_conv2dk1_input_split_partial_put_ui8(
+        input_width=_InW,
+        input_channels=_L1_SplitC,
+        weight_count=_l3_split_wts_sz,
+        block_index=block_index,
     )
-    k_l3_get = Kernel(
-        l3_get_sym,
-        f"{name}_conv2dk1_skip_get.o",
-        [_ty_l1_out_split, _ty_l3_split_wts, _ty_act_out, _ty_act_in] + [np.int32] * 10,
+    k_l3_get = kernels.bn_conv2dk1_input_split_partial_skip_get(
+        input_width=_InW,
+        input_channels=_L1_SplitC,
+        output_channels=_L3_OutC,
+        weight_count=_l3_split_wts_sz,
+        block_index=block_index,
     )
 
     # Streaming weight fifos (Shim → MemTile → split → put/get tiles)
@@ -489,7 +501,6 @@ def cascade_bottlenecks(
     # bn13: cascade-split bottleneck (5 compute workers).
     act_bn13_out, bn13_wts_l1_full, bn13_wts_l3_full, bn13_workers = build_cascade(
         nsblock("bn13"),
-        l3_get_sym="bn_13_2_conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new",
         act_in=act_in,
         skip_in=act_in,
         sf=sf,
@@ -501,7 +512,6 @@ def cascade_bottlenecks(
     # bn14: cascade-split bottleneck (5 compute workers, skip = bn13 output).
     act_bn14_out, bn14_wts_l1_full, bn14_wts_l3_full, bn14_workers = build_cascade(
         nsblock("bn14"),
-        l3_get_sym="bn_14_2_conv2dk1_ui8_i8_i8_scalar_input_split_partial_width_get_new",
         act_in=act_bn13_out,
         skip_in=act_bn13_out,
         sf=sf,

@@ -4,64 +4,52 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2022, Advanced Micro Devices, Inc.
-// 
+// Copyright (C) 2022-2026, Advanced Micro Devices, Inc.
+//
 //===----------------------------------------------------------------------===//-->
 
 # <ins>Vector Vector Multiply</ins>
 
-A simple binary operator, which uses a single AIE core to multiply two vectors together.  The overall vector size in this design is `256` and it processed by the core in smaller sub tiles of size `16`.  It shows how simple it can be to just feed data into the AIEs using the ObjectFIFO abstraction, and drain the results back to external memory.  This reference design can be run on either a Ryzen™ AI NPU or a VCK5000. 
+A simple binary operator: a single AIE compute tile multiplies two `int32` vectors element-wise. The default vector size is `256`, fed into the core in sub-tiles of `16` via three depth-2 ObjectFifos (two consumer-side, one producer-side). Because the multiply is expressed as an inline Python loop on `int32`, no external compiled C++ kernel is bound — the operation lives entirely inside the IRON design.
 
-The kernel executes on AIE tile (`col`, 2). Both input vectors are brought into the tile from Shim tile (`col`, 0). The value of `col` is dependent on whether the application is targeting NPU or VCK5000. The AIE tile performs the multiplication operations and the Shim tile brings the data back out to external memory.
+The example targets the Ryzen™ AI NPU through the IRON `@iron.jit` host runtime, and the VCK5000 PCIe card through the `aiecc` + HSA toolchain. Both paths share the same design body.
 
-## Source Files Overview
+## Source Files
 
-1. `vector_vector_mul.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc` to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI). 
+1. [`vector_vector_mul.py`](vector_vector_mul.py) — IRON structural design plus host-side test driver. Decorated with `@iron.jit`; on first call it compiles the design and runs it on the NPU, then verifies the result against `a * b` computed on the host. The same design body is reused by the `--emit-mlir-vck5000` flag, which prints MLIR for the VCK5000 toolchain.
+1. [`test_vck5000.cpp`](test_vck5000.cpp) — host testbench for the VCK5000 path; loads the HSA-linked `test.elf`, drives the AIE array, and verifies output.
 
-1. `vector_vector_mul_placed.py`: An alternative version of the design in `vector_vector_mul.py`, that is expressed in a lower-level version of IRON.
+## Design Overview
 
-1. `test.cpp`: This C++ code is a testbench for the design example targetting Ryzen™ AI (AIE-ML). The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the program verifies the results.
-
-1. `test_vck5000.cpp`: This C++ code is a testbench for the design example targetting the VCK5000 PCIe card (AIE). The code is responsible for configuring the AIEs, allocating memory, providing input data, and executing the AIE design on the VCK5000. After executing, the program verifies the results.
+1. ObjectFifos `in1` and `in2` connect a Shim Tile to a Compute Tile; `out` connects the Compute Tile back to the Shim Tile.
+2. The runtime moves `256` `int32` from each input host buffer into the compute tile and drains the result back.
+3. The compute tile acquires one tile of `16` elements from each input fifo, multiplies them element-wise, releases the result through `out`, and repeats for `256 / 16 = 16` tiles.
+4. ObjectFifos are double-buffered (default depth `2`), so Shim and Compute DMAs run concurrently with the AIE core.
 
 ## Ryzen™ AI Usage
 
-### Compilation
-
-To compile the design:
 ```shell
-make
+make run        # compile + execute on the attached NPU (auto-detected)
+make clean
 ```
 
-To compile the placed design:
-```shell
-env use_placed=1 make
-```
+The NPU generation (NPU1 / NPU2) is auto-detected by the IRON runtime at JIT time, so no device flag is needed. `make run` reports both NPU latency (from the runtime) and end-to-end Python wall-clock so the host-side overhead delta is visible.
 
-To compile the C++ testbench:
-```shell
-make vector_vector_mul.exe
-```
-
-### C++ Testbench
-
-To run the design:
+For finer-grained benchmarking, invoke the script directly:
 
 ```shell
-make run
+python3 vector_vector_mul.py -n 256 -w 20 -i 100   # vector size, warmup, iters
 ```
+
+Run `python3 vector_vector_mul.py --help` for the full flag list.
 
 ## VCK5000 Usage
 
-To compile the design and C++ testbench:
+The VCK5000 path bypasses `@iron.jit` (which is NPU-only) and uses the MLIR-to-HSA flow:
 
 ```shell
-make vck5000
+make vck5000    # emits MLIR via --emit-mlir-vck5000, then aiecc + test_vck5000.cpp
+./test.elf      # run on a VCK5000-attached host
 ```
 
-To run the design:
-
-```shell
-./test.elf
-```
-
+`make vck5000` invokes `python3 vector_vector_mul.py --emit-mlir-vck5000 > build/aie.mlir` and feeds the result to `aiecc` together with `test_vck5000.cpp`.

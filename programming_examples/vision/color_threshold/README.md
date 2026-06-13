@@ -24,13 +24,21 @@ The data movement of this pipeline is described using the ObjectFIFO primitive. 
 
 Each AIE tile applies a threshold kernel on its data and sends its result back to the Mem tile, this is represented by one ObjectFIFO for each compute tile. The results are then joined back together in the Mem tile and sent back to the output through the Shim tile. This is again described using a Link operation in which the ordering of the input ObjectFIFOs expresses how the different results should be joined together before being sent to the output ObjectFIFO, to the Shim tile.
 
-To compile design in Windows:
-```
-make
-make colorThreshold.exe
+## Usage
+
+### Standalone (no Makefile, no OpenCV)
+
+```shell
+python3 color_threshold.py
 ```
 
-To run the design:
-```
+`-d npu2` for Strix; `-W` / `-H` override the image dimensions. This mode JIT-compiles + runs on random data without verifying pixels.
+
+### Makefile + C++ testbench (OpenCV)
+
+```shell
+make
 make run
 ```
+
+For NPU2 (Strix): `make devicename=npu2 && make run devicename=npu2`.

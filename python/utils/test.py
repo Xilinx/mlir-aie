@@ -5,117 +5,27 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc.
-"""
-Test/ Host code utilities.
+"""Host-harness helpers shared by the ``test.py``-style example drivers.
 
-* `create_default_argparser`
-    * This creates a ArgumentParser with the following args: --xclbin, --kernel, --instr, -v, --verify, --iters, --warmup, --trace_sz, --trace_file
-    * It returns the ArgumentParser which allows you to add more arguments
-* `parse_args`
-    * Calls create_default_argparser and returns the parsed results
-    * Useful if you don't need additional custom args
+CLI flag wiring lives in :mod:`aie.utils.hostruntime.argparse` —
+specifically :func:`add_runtime_args`.  This module only exposes the
+NPU-kernel construction helper.
 """
 
-import argparse
-from aie.utils import TraceConfig, NPUKernel
-
-
-# Add default args to standard parser object
-def create_default_argparser():
-    p = argparse.ArgumentParser()
-    p.add_argument(
-        "-x", "--xclbin", required=True, dest="xclbin", help="the input xclbin path"
-    )
-    p.add_argument(
-        "-k",
-        "--kernel",
-        required=True,
-        dest="kernel",
-        default="MLIR_AIE",
-        help="the kernel name in the XCLBIN (for instance MLIR_AIE)",
-    )
-    p.add_argument(
-        "-v", "--verbosity", default=0, type=int, help="the verbosity of the output"
-    )
-    p.add_argument(
-        "-i",
-        "--instr",
-        dest="instr",
-        default="instr.txt",
-        help="path of file containing userspace instructions sent to the NPU",
-    )
-    p.add_argument(
-        "--verify",
-        dest="verify",
-        default=True,
-        help="whether to verify the AIE computed output",
-    )
-    p.add_argument(
-        "--iters",
-        dest="iters",
-        default=1,
-        type=int,
-        help="number of benchmark iterations",
-    )
-    p.add_argument(
-        "--warmup",
-        dest="warmup_iters",
-        default=0,
-        type=int,
-        help="number of warmup iterations",
-    )
-    p.add_argument(
-        "-t",
-        "--trace-sz",
-        dest="trace_size",
-        default=0,
-        type=int,
-        help="trace size in bytes",
-    )
-    p.add_argument(
-        "--trace-file",
-        dest="trace_file",
-        default="trace.txt",
-        help="where to store trace output",
-    )
-    p.add_argument(
-        "-i1s",
-        "--in1-size",
-        dest="in1_size",
-        default=0,
-        help="Input 1 buffer size in bytes",
-    )
-    p.add_argument(
-        "-i2s",
-        "--in2-size",
-        dest="in2_size",
-        default=0,
-        help="Input 2 buffer size in bytes",
-    )
-    p.add_argument(
-        "-os",
-        "--out-size",
-        dest="out_size",
-        default=0,
-        help="Output buffer size in bytes",
-    )
-    p.add_argument(
-        "--ddr-id",
-        dest="ddr_id",
-        type=int,
-        default=4,
-        help="DDR buffer index for trace (0-4, or -1 to append after last tensor)",
-    )
-    p.add_argument(
-        "--enable-ctrl-pkts",
-        dest="enable_ctrl_pkts",
-        action="store_true",
-        help="Enable control packets",
-    )
-    return p
+from aie.utils import NPUKernel, TraceConfig
 
 
 def create_npu_kernel(opts):
+    """Build an :class:`NPUKernel` (with optional trace config) from parsed CLI opts.
+
+    Reads ``opts.xclbin``, ``opts.instr``, ``opts.kernel``, and the
+    optional trace fields (``trace_size``, ``trace_file``, ``ddr_id``,
+    ``enable_ctrl_pkts``) — all produced by
+    :func:`aie.utils.hostruntime.argparse.add_runtime_args`.
+
+    Stashes the resulting kernel on ``opts.npu_kernel`` and returns
+    ``opts`` for chaining.
+    """
     trace_config = None
     trace_size = getattr(opts, "trace_size", 0)
     if trace_size > 0:
@@ -132,10 +42,3 @@ def create_npu_kernel(opts):
         trace_config=trace_config,
     )
     return opts
-
-
-# options
-def parse_args(args):
-    p = create_default_argparser()
-    opts = p.parse_args(args)
-    return create_npu_kernel(opts)

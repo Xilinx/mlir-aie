@@ -32,6 +32,7 @@ class DMATask(RuntimeTask):
         sizes=None,
         strides=None,
         offset_parameter: str | None = None,
+        packet: tuple[int, int] | None = None,
     ):
         """A RuntimeTask that will resolve to a DMA Operation.
 
@@ -45,12 +46,18 @@ class DMATask(RuntimeTask):
             sizes (list[int] | None, optional): Multi-dimensional transfer sizes (up to 4D) describing the shape of each DMA tile. Mutually exclusive with ``tap``. Defaults to None.
             strides (list[int] | None, optional): Multi-dimensional strides (in element granularity) corresponding to ``sizes``. Mutually exclusive with ``tap``. Defaults to None.
             offset_parameter (str | None, optional): Name of a ScratchpadParameter whose value is used as the element offset for this DMA transfer. Defaults to None.
+            packet (tuple[int, int] | None, optional): Stamp the shim DMA's
+                BD with a packet header ``(pkt_type, pkt_id)``.  Pairs with
+                downstream packet-switched routing (e.g. ObjectFifos
+                lowered with ``--packet-sw-objFifos`` or an explicit
+                :class:`PacketFlow`).  Defaults to None.
         """
         self._object_fifo = object_fifo
         self._rt_data = rt_data
         self._tap = tap
         self._wait = wait
         self._offset_parameter = offset_parameter
+        self._packet = packet
         self._task = None
         self._offset = offset
         self._sizes = sizes
@@ -192,5 +199,6 @@ class DMATask(RuntimeTask):
             strides=self._strides,
             issue_token=self._wait,
             offset_parameter=self._offset_parameter,
+            packet=self._packet,
         )
         dma_start_task(self._task)

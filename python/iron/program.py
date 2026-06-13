@@ -100,6 +100,14 @@ class Program:
                     # explicitly so resolve_tile() runs on it before fifo resolution.
                     if f._object_fifo._delegate_tile is not None:
                         all_tiles.append(f._object_fifo._delegate_tile)
+                # Lower-level: explicit Flow / TileDma / Lock primitives
+                # contribute tiles too.
+                for fl in self._rt.flows:
+                    all_tiles.extend(fl.all_tiles())
+                for td in self._rt.tile_dmas:
+                    all_tiles.extend(td.all_tiles())
+                for lk in self._rt.locks:
+                    all_tiles.append(lk.tile)
 
                 # Resolve tiles
                 for t in all_tiles:
@@ -108,6 +116,25 @@ class Program:
                 # Generate fifos
                 for f in all_fifos:
                     f.resolve()
+
+                # Generate explicit Flows (peers of ObjectFifo)
+                for fl in self._rt.flows:
+                    fl.resolve()
+
+                # Generate explicit Locks (must come before TileDma + Worker
+                # bodies that reference them; Buffers attached to worker
+                # fn_args are still resolved in the worker loop below).
+                for lk in self._rt.locks:
+                    lk.resolve()
+
+                # Resolve any Buffers referenced by explicit TileDma programs
+                # (those aren't reached via worker.fn_args).
+                for td in self._rt.tile_dmas:
+                    bufs, _ = td.all_buffers_and_locks()
+                    for b in bufs:
+                        if b.tile is None:
+                            b._tile = td.tile
+                        b.resolve()
 
                 # generate functions - this may call resolve() more than once on the same fifo, but that's ok
                 for w in self._rt.workers:
@@ -126,6 +153,11 @@ class Program:
                 for w in self._rt.workers:
                     for cf in w._outgoing_cascades:
                         cf.resolve()
+
+                # Generate explicit per-tile DMA programs (lower-level peers
+                # of ObjectFifo, paired with Flow + Lock).
+                for td in self._rt.tile_dmas:
+                    td.resolve()
 
                 # Generate trace routes
                 # TODO Need to iterate over all tiles or workers & fifos to make list of tiles to trace
@@ -159,4 +191,4 @@ class Program:
     def _print_verify(self, ctx):
         verify = ctx.module.operation.verify()
         if verify != True:
-            raise RuntimeError(f"MLIR verification failed: {verify}")
+            raise RuntimeError(f"MLIR module failed verification: {verify}")

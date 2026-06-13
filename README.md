@@ -141,8 +141,8 @@ xrt-smi examine
 1. Install IRON library by installing the `mlir-aie` wheels:
 
    For installing the `mlir-aie` wheels, there are 3 options. Note that for whichever path you take,
-   it is important to sync the `mlir-aie` wheels version, the github repo commit, and the requirements versions. 
-   If you install from something other than the latest wheels, make sure 
+   it is important to sync the `mlir-aie` wheels version, the github repo commit, and the requirements versions.
+   If you install from something other than the latest wheels, make sure
    you use the repo commit -- and installation instructions -- from that point in time.
 
    1. **Latest:** For the latest wheels (not necessarily a release):
@@ -220,7 +220,7 @@ xrt-smi examine
 
 ## Build an IRON Design for AIEs in the AMD Ryzen™ AI NPU
 
-For your design of interest, for instance from [programming_examples](../programming_examples/), 2 steps are needed: (i) build the AIE design and then (ii) build the host code.
+For your design of interest, for instance from [programming_examples](programming_examples/), 2 steps are needed: (i) build the AIE design and then (ii) build the host code.
 
 ### Build Device AIE Part
 

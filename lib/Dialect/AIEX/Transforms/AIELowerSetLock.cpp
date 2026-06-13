@@ -59,8 +59,8 @@ public:
     Type i32 = rewriter.getI32Type();
     Value addrV = arith::ConstantIntOp::create(
         rewriter, op.getLoc(), i32, static_cast<int32_t>(localLockAddress));
-    Value valV = arith::ConstantIntOp::create(rewriter, op.getLoc(), i32,
-                                              op.getValue());
+    Value valV =
+        arith::ConstantIntOp::create(rewriter, op.getLoc(), i32, op.getValue());
     rewriter.replaceOpWithNewOp<NpuWrite32Op>(
         op, addrV, valV, /*buffer=*/nullptr, rewriter.getI32IntegerAttr(col),
         rewriter.getI32IntegerAttr(row), /*bd_group=*/nullptr);

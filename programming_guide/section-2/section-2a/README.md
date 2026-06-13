@@ -85,9 +85,9 @@ As the Object FIFO may only have one producer process, each call to `prod()` wil
 
 At the beginning of this section it was mentioned that the compiler can infer the endpoints of an Object FIFO based on its usage. This specifically refers to the usage of the `ObjectFifoHandle`s which can be used to collect the producer and consumers of an Object FIFO. One can thus observe different data movement patterns which are the subject of the next [section](../section-2b/README.md#key-object-fifo-patterns).
 
-During the next steps of the compiler flow, the Object FIFO producer and consumer Worker processes are mapped to explicit AIE tiles (see [Section 1 - Basic AI Engine building blocks](../../section-1/)) using a [Placer](../../../python/iron/placers.py). Under the hood, the data movement configuration for different types of tiles (Shim tiles, Memory tiles, and Compute tiles) is different, but there is no difference between them when using an Object FIFO. 
+During the next steps of the compiler flow, the Object FIFO producer and consumer Worker processes are mapped to explicit AIE tiles (see [Section 1 - Basic AI Engine building blocks](../../section-1/)) by the `--aie-place-tiles` compiler pass (defined in [`AIEPlaceTiles.cpp`](../../../lib/Dialect/AIE/Transforms/AIEPlaceTiles.cpp)). Under the hood, the data movement configuration for different types of tiles (Shim tiles, Mem tiles, and Compute tiles) is different, but there is no difference between them when using an Object FIFO. 
 
-To initialize an Object FIFO using the closer-to-metal IRON API, users can use the `object_fifo` class constructor (defined in [aie.py](../../../python/dialects/aie.py)):
+The same Object FIFO is also constructible directly from the AIE dialect (the form `@iron.jit` ultimately compiles to). Users who need fine control over placement or the underlying MLIR can use the `object_fifo` class constructor in [aie.py](../../../python/dialects/aie.py):
 ```python
 class object_fifo:
     def __init__(
@@ -107,7 +107,7 @@ class object_fifo:
 ```
 Some of the inputs are the same as they were at the higher level, while the other inputs differ slightly. We will now go over each of the inputs, what they represent and why they are required by the abstraction. We will first focus on the mandatory inputs then go over the default-valued inputs later in this section. The `dimensionsToStream` and `dimensionsFromStreamPerConsumer` inputs have their own dedicated section (see Data Layout Transformations in [section-2c](../section-2c/README.md#data-layout-transformations)).
 
-Just like at the highest level of abstraction, the Object FIFO functions as an ordered buffer that has a count of `depth` objects of specified `datatype`. Currently, all objects in an Object FIFO have to be of the same datatype. The `datatype` is a tensor-like attribute where the size of the tensor and the type of the individual elements are specified at the same time (i.e. `<16xi32>`). Unlike before, the `depth` can be defined as either an integer or an array of integers. The latter is explained further down in this section.
+Just like in the IRON form, the Object FIFO functions as an ordered buffer that has a count of `depth` objects of specified `datatype`. Currently, all objects in an Object FIFO have to be of the same datatype. The `datatype` is a tensor-like attribute where the size of the tensor and the type of the individual elements are specified at the same time (i.e. `<16xi32>`). Unlike before, the `depth` can be defined as either an integer or an array of integers. The latter is explained further down in this section.
 
 An Object FIFO is created between a producer, or source tile, and a consumer, or destination tile. The tiles are where producer and consumer processes accessing the Object FIFO will be executed. These processes are also referred to as the "actors" of the Object FIFO, based on dataflow theory terminology. Below, you can see an example where `of_in` is created between producer tile A and consumer tile B with depth `3`:
 ```python
@@ -183,7 +183,7 @@ The closer-to-metal API variants of the `acquire()` and `release()` functions of
 def acquire(self, port, num_elem)
 def release(self, port, num_elem)
 ```
-The following code snippet shows how the same example as above is written at a lower level of abstraction with explicitly placed endpoints.
+The following code snippet shows how the same example as above is written in the AIE dialect (the form `@iron.jit` compiles to) with explicit tile endpoints.
 ```python
 A = tile(1, 3)
 B = tile(2, 4)
@@ -235,7 +235,7 @@ def core_fn(of_in, of_out, test_func, test_func2):
 # Create workers to perform the tasks
 my_worker = Worker(core_fn, [of0.prod(), of0.cons(), test_fn, test_fn2])
 ```
-The following code snippet shows how the same example as above is written at a lower level of abstraction with explicitly placed endpoints:
+The following code snippet shows how the same example as above is written in the AIE dialect (the form `@iron.jit` compiles to) with explicit tile endpoints:
 ```python
 A = tile(1, 3)
 of0 = object_fifo("objfifo0", A, A, 3, np.ndarray[(256,), np.dtype[np.int32]])
@@ -258,7 +258,7 @@ The AIE architecture is a spatial architecture that requires explicit data movem
 
 A more in-depth, yet still abstract, view of the Object FIFO's depth is that the producer and each consumer have their own working resource pool available in their local memory modules which they can use to send and receive data in relation to the data movement described by the Object FIFO. The Object FIFO primitive and its lowering typically allocate the depth of each of these pools such that the resulting behaviour matches that of the conceptual depth.
 
-The user does however have the possibility to manually choose the depth of these pools. This feature is available because, while the Object FIFO primitive tries to offer a unified representation of the data movement across the AIE array, it also aims to provide performance programmers with the tools to control it more finely. <u>This feature is available at the explicitly placed level of Object FIFO abstraction.</u>
+The user does however have the possibility to manually choose the depth of these pools. This feature is available because, while the Object FIFO primitive tries to offer a unified representation of the data movement across the AIE array, it also aims to provide performance programmers with the tools to control it more finely. <u>This feature is available in the AIE dialect Object FIFO.</u>
 
 For example, in the code snippet below `of0` describes the data movement between producer A and consumer B:
 ```python

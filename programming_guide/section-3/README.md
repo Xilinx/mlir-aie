@@ -24,30 +24,99 @@ The host code can be written in either C++ (as shown in the figure) or in Python
 
 Throughout this section, a [vector scalar multiplication](../../programming_examples/basic/vector_scalar_mul/) (`c = a * factor`) will be used as an example. Vector scalar multiplication takes an input vector `a` and computes the output vector `c` by multiplying each element of `a` with a `factor`. In this example, the total vector size is set to 4096 (32b) that will processed in chunks of 1024.
 
-This design is also available in the [programming_examples](../../programming_examples) of this repository. We will first introduce the AIE-array structural description, review the kernel code and then introduce the host code. Finally we will show how to run the design on Ryzen™ AI enabled hardware.
+This design is also available in the [programming_examples](../../programming_examples) of this repository.
 
-## AIE-array Structural Description
+## The Compact Form: `@iron.jit`
+
+The shortest path to running this design on the NPU is the `@iron.jit` form in [vector_scalar_mul.py](./vector_scalar_mul.py).  The IRON structural description is wrapped in a single decorated function; the first time you call it, IRON JIT-compiles the design (including the external C++ kernel referenced by `ExternalFunction(source_file=...)`) and runs it on the attached NPU.
+
+```python
+@iron.jit
+def vector_scalar_mul(a_in: In, f_in: In, c_out: Out):
+    scale_fn = ExternalFunction(
+        "vector_scalar_mul_aie_scalar",
+        source_file=str(_KERNEL_SRC),
+        arg_types=[tile_ty, tile_ty, scalar_ty, np.int32],
+    )
+
+    of_in = ObjectFifo(tile_ty, name="in")
+    of_factor = ObjectFifo(scalar_ty, name="infactor")
+    of_out = ObjectFifo(tile_ty, name="out")
+
+    def core_fn(of_in, of_factor, of_out, scale):
+        elem_factor = of_factor.acquire(1)
+        for _ in range_(tensor_size // tile_size):
+            elem_in = of_in.acquire(1)
+            elem_out = of_out.acquire(1)
+            scale(elem_in, elem_out, elem_factor, tile_size)
+            of_in.release(1)
+            of_out.release(1)
+        of_factor.release(1)
+
+    my_worker = Worker(
+        core_fn, [of_in.cons(), of_factor.cons(), of_out.prod(), scale_fn]
+    )
+
+    rt = Runtime()
+    with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (a, f, c):
+        rt.start(my_worker)
+        rt.fill(of_in.prod(), a)
+        rt.fill(of_factor.prod(), f)
+        rt.drain(of_out.cons(), c, wait=True)
+
+    return Program(iron.get_current_device(), rt).resolve_program()
+```
+
+The host side is just three tensors and one call:
+
+```python
+a_in = iron.arange(1, tensor_size + 1, dtype=np.int32, device="npu")
+f_in = iron.tensor([3], dtype=np.int32, device="npu")
+c_out = iron.zeros(tensor_size, dtype=np.int32, device="npu")
+
+vector_scalar_mul(a_in, f_in, c_out)
+```
+
+To run it end-to-end (JIT-compile + execute + verify):
+
+```sh
+make run
+```
+
+To inspect the lowered MLIR without touching the NPU:
+
+```sh
+make emit-mlir            # writes build/aie.mlir
+```
+
+The rest of this section walks down through what `@iron.jit` is doing for you — the AIE-array structural description, the external kernel, and the explicit-XRT host code (both C++ and Python). The same `vector_scalar_mul.py` is also used as the *design source* for the explicit walkthrough: `make` produces the xclbin + insts pair via `--xclbin-path`/`--insts-path`, then `make run_cpp` and `make run_py` drive those artifacts through the standalone host harnesses below.
+
+## What `@iron.jit` Does For You
+
+The `@iron.jit`-decorated function builds a complete IRON `Program` (see [section-1](../section-1)) and then hands the resulting MLIR to the AIE compiler.  The next subsections look at each piece in turn — the AIE-array structural description (the body of the decorated function), the external kernel (the `.cc` source the `ExternalFunction(source_file=...)` factory points at), and the host code that loads + runs the compiled artifacts (XCLBIN + `insts.bin`, or XCLBIN + `xrt::elf`) when you don't go through the `@iron.jit` call.
+
+### AIE-array Structural Description
 
 <img align="right" width="150" height="400" src="../assets/vectorScalarMulPhysicalDataFlow.svg">
 
-The [aie2.py](./aie2.py) AIE-array structural description (see [section-1](../section-1)) deploys both a compute core (green) for the multiplication and a shimDMA (purple) for data movement of both input vector `a` and output vector `c` residing in external memory.
+The structural description (see [section-1](../section-1)) inside `vector_scalar_mul()` deploys both a compute core (green) for the multiplication and a shimDMA (purple) for data movement of both input vector `a` and output vector `c` residing in external memory.
 
-The compute core will run an external function: a kernel written in C++ that will be linked into the design as pre-compiled kernel (more details below). To get our initial design running on the AIE-array, we will run a generic version of the vector scalar multiply design here in this directory that is run on the scalar processor of the AIE. This local version will use `int32_t` datatype instead of the default `int16_t`for the [programming_examples version](../../programming_examples/basic/vector_scalar_mul/).
+The compute core runs an external function: a kernel written in C++ and linked into the design via `ExternalFunction(source_file=...)`. To get our initial design running on the AIE-array, we use a generic version of the vector scalar multiply that runs on the scalar processor of the AIE.  This local version uses `int32_t` instead of the default `int16_t` from the [programming_examples version](../../programming_examples/basic/vector_scalar_mul/).
 
 ```python
 tensor_size = 4096
-tile_size = tensor_size // 4
+tile_size = 1024
 
 # Define tensor types
 tensor_ty = np.ndarray[(tensor_size,), np.dtype[np.int32]]
 tile_ty = np.ndarray[(tile_size,), np.dtype[np.int32]]
 scalar_ty = np.ndarray[(1,), np.dtype[np.int32]]
 
-# External, binary kernel definition
-scale_fn = Kernel(
+# External C++ kernel — auto-built into the JIT cache from the .cc source.
+scale_fn = ExternalFunction(
     "vector_scalar_mul_aie_scalar",
-    "scale.o",
-    [tile_ty, tile_ty, scalar_ty, np.int32],
+    source_file=str(_KERNEL_SRC),  # vector_scalar_mul.cc next to this file
+    arg_types=[tile_ty, tile_ty, scalar_ty, np.int32],
 )
 ```
 
@@ -84,12 +153,12 @@ This access and execute pattern runs on the AIE compute core and needs to get li
 
 ```python
 # Task for the core to perform
-def core_fn(of_in, of_factor, of_out, scale_scalar):
+def core_fn(of_in, of_factor, of_out, scale):
     elem_factor = of_factor.acquire(1)
-    for _ in range_(4):
+    for _ in range_(tensor_size // tile_size):
         elem_in = of_in.acquire(1)
         elem_out = of_out.acquire(1)
-        scale_scalar(elem_in, elem_out, elem_factor, 1024)
+        scale(elem_in, elem_out, elem_factor, tile_size)
         of_in.release(1)
         of_out.release(1)
     of_factor.release(1)
@@ -99,7 +168,7 @@ def core_fn(of_in, of_factor, of_out, scale_scalar):
 my_worker = Worker(core_fn, [of_in.cons(), of_factor.cons(), of_out.prod(), scale_fn])
 ```
 
-## Kernel Code
+### Kernel Code
 
 We can program the AIE compute core using C++ code and compile it with the selected single-core AIE compiler into a kernel object file. For our local version of vector scalar multiply, we will use a generic implementation of the `scale.cc` source (called [vector_scalar_mul.cc](./vector_scalar_mul.cc)) that can run on the scalar processor part of the AIE. The `vector_scalar_mul_aie_scalar` function processes one data element at a time, taking advantage of AIE scalar datapath to load, multiply and store data elements.
 
@@ -116,9 +185,25 @@ void vector_scalar_mul_aie_scalar(int32_t *a, int32_t *c,
 
 Note that since the scalar factor is communicated through an object, it is provided as an array of size one to the C++ kernel code and hence needs to be dereferenced.
 
-## Host Code 
+### Host Code
 
-The host code acts as an environment setup and testbench for the Vector Scalar Multiplication design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and kick off the execution of the AIE design on the NPU. After running, it verifies the results and optionally outputs trace data (to be covered in [section-4b](../section-4/section-4b/)). Both C++ [test.cpp](./test.cpp) and Python [test.py](./test.py) variants of this code are available.
+When you don't call `vector_scalar_mul()` directly (the `@iron.jit` path), the host code takes over: it loads the compiled artifacts, configures the AIE module, provides input data, and kicks off execution.  After running, it verifies the results and optionally outputs trace data (covered in [section-4b](../section-4/section-4b/)). Both C++ [test.cpp](./test.cpp) and Python [test.py](./test.py) variants are available — they consume the xclbin + insts pair produced by the compile-only path (`make` runs `vector_scalar_mul.py --xclbin-path ... --insts-path ...`).
+
+There are two compiled-artifact shapes the host code can load:
+
+* **XCLBIN + `insts.bin`** — the classic path; the host opens the
+  xclbin via `xrt::xclbin` and reads instructions out of `insts.bin`
+  separately.  Driven by `@iron.jit(..., --xclbin-path ... --insts-path ...)`.
+  This is what the examples in this section use.
+* **XCLBIN + `xrt::elf`** — a newer load path where instructions are
+  wrapped into an ELF via `aiebu-asm` and loaded through `xrt::elf` +
+  `xrt::module`.  Opt in via `@iron.jit(elf_path=...)` (see
+  [compilation_stages.md](../compilation_stages.md) §Setting →
+  stage cheat-sheet); `programming_examples/ml/eltwise_unary` is the
+  canonical demo.
+
+Either path uses the same XCLBIN — they differ only in how the host
+loads instructions.
 
 For convenience, a set of test utilities support common elements of command line parsing, the XRT-based environment setup and testbench functionality: [test_utils.h](../../runtime_lib/test_lib/test_utils.h) or [test.py](../../python/utils/test.py).   
 
@@ -249,10 +334,11 @@ The host code contains the following sections (with C/C++ code examples):
 
 The same configuration steps in the C++ host code is also required for the python version. However, the python version is able to leverage python classes built into IRON which simplifies the is designed to abstract away the lower level parameters.
 
-1. *Parse program arguments*: Functions the same way as the C++ via the python argument parser. The parser functions under `test_utils` are defined under [aie.utils.test](../../python/utils/test.py).
+1. *Parse program arguments*: Functions the same way as the C++ via the python argument parser. The shared `add_runtime_args` helper lives in [aie.utils.hostruntime.argparse](../../python/utils/hostruntime/argparse.py) and adds the standard `--xclbin` / `--instr` / `--kernel` options.
 
     ```python
-    p = test_utils.create_default_argparser()
+    p = argparse.ArgumentParser()
+    add_runtime_args(p)
     opts = p.parse_args(sys.argv[1:])
     main(opts)
     ```
@@ -290,39 +376,28 @@ The same configuration steps in the C++ host code is also required for the pytho
 
 ## Running the Program
 
-To compile the design and C/C++ host code:
+`@iron.jit` end-to-end run:
 
 ```sh
-make
+make run                # JIT-compile + run vector_scalar_mul.py on the attached NPU
+make emit-mlir          # print the lowered MLIR to build/aie.mlir without touching the NPU
 ```
 
-To run the design:
+Explicit-XRT walkthrough — build the xclbin + insts pair via `vector_scalar_mul.py --xclbin-path ... --insts-path ...`, then drive them through the standalone C++ or Python host:
 
 ```sh
-make run
-```
-
-### Python Testbench
-
-To compile the design and run the Python host code:
-
-```sh
-make
-```
-
-To run the design:
-
-```sh
-make run_py
+make                    # build/final.xclbin + build/insts.bin + vectorScalar.exe
+make run_cpp            # run the C++ host harness (test.cpp) against the artifacts
+make run_py             # run the Python host harness (test.py) against the artifacts
 ```
 
 ## Host code templates and design practices
 Because our design is defined in several different files such as:
-* top level design - aie2.py
+* top level design - vector_scalar_mul.py
 * kernel source - vector_scalar_mul.cc
-* host code - test.cpp/test.py
+* host code - test.cpp / test.py (only used in the decomposed walkthrough; `@iron.jit` does this for you)
 
-ensuring that top level design parameters stay consistent is important so we don't, for example, get system hangs when buffer sizes in the host code don't match the buffer size in the top level design. To help with this, we will share example design templates in [section-4b](../section-4/section-4b) which puts these top level parameters in the `Makefile` and passes them to the other design files. More details will be described in [section-4b](../section-4/section-4b) or can be directly seen in example designs like [vector_scalar_mul](../../programming_examples/basic/vector_scalar_mul).
+ensuring that top level design parameters stay consistent is important so we don't, for example, get system hangs when buffer sizes in the host code don't match the buffer size in the top level design. The `@iron.jit` path handles this automatically — the same design function defines the shapes used to allocate `iron.tensor` inputs and the runtime sequence. For the explicit-XRT walkthrough, [section-4b](../section-4/section-4b) shares example design templates that put these top level parameters in the `Makefile` and pass them to the other design files; the same pattern is visible in example designs like [vector_scalar_mul](../../programming_examples/basic/vector_scalar_mul).
 
 -----
 [[Prev - Section 2](../section-2/)] [[Top](..)] [[Next - Section 4](../section-4/)]

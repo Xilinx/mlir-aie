@@ -21,18 +21,18 @@ NETWORK and dispatches to the right builder per block.
 
 import numpy as np
 
-from aie.iron import Kernel, ObjectFifo, Worker
+from aie.iron import ObjectFifo, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.extras.dialects.memref import view as memref_view
 
-from bottleneck._common import (
+from ._common import (
     i8 as _i8,
     u8 as _u8,
     layer_sf as _layer_sf,
     skip_sf as _skip_sf,
     wts_buffer as _wts_buffer,
 )
-from network_spec import block as nsblock
+from ..network_spec import block as nsblock
 
 
 # ---------------------------------------------------------------------------
@@ -66,36 +66,29 @@ def build_3layer(blk, act_in, sf, *, data_dir, tile):
     l2_out_ty = _u8((out_w, 1, dw_ch))
     l3_out_ty = _i8((out_w, 1, out_c))
 
-    k_1x1_relu = Kernel(
-        f"{name}_conv2dk1_relu_i8_ui8",
-        f"{name}_conv2dk1_fused_relu.o",
-        [
-            l1_in_ty,
-            _i8((l1_sz,)),
-            l1_out_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
+    k_1x1_relu = kernels.bn_conv2dk1_relu(
+        input_width=in_w,
+        input_channels=in_c,
+        output_channels=dw_ch,
     )
-    k_dw = Kernel(
-        f"{name}_conv2dk3_{dw_obj}_relu_ui8_ui8",
-        f"{name}_conv2dk3_{dw_obj}.o",
-        [l1_out_ty, l1_out_ty, l1_out_ty, _i8((l2_sz,)), l2_out_ty] + [np.int32] * 8,
+    k_dw = kernels.bn_conv2dk3_dw(
+        input_width=in_w,
+        input_channels=dw_ch,
+        output_channels=dw_ch,
+        stride=stride,
     )
     if has_skip:
-        k_l3 = Kernel(
-            f"{name}_conv2dk1_skip_ui8_i8_i8",
-            f"{name}_conv2dk1_skip.o",
-            [l2_out_ty, _i8((l3_sz,)), l3_out_ty, l3_out_ty] + [np.int32] * 5,
+        k_l3 = kernels.bn_conv2dk1_skip(
+            input_width=out_w,
+            input_channels=dw_ch,
+            output_channels=out_c,
+            skip_dtype=np.int8,
         )
     else:
-        k_l3 = Kernel(
-            f"{name}_conv2dk1_ui8_i8",
-            f"{name}_conv2dk1_i8.o",
-            [l2_out_ty, _i8((l3_sz,)), l3_out_ty]
-            + [np.int32, np.int32, np.int32, np.int32],
+        k_l3 = kernels.bn_conv2dk1_i8(
+            input_width=out_w,
+            input_channels=dw_ch,
+            output_channels=out_c,
         )
 
     out_fifo = ObjectFifo(l3_out_ty, depth=2)
@@ -301,15 +294,17 @@ def build_2layer_skip(blk, act_in, sf, *, data_dir, tile):
     dw_out_ty = _u8((in_w, 1, dw_ch))
     out_ty = _i8((in_w, 1, out_c))
 
-    k_dw = Kernel(
-        f"{name}_conv2dk3_dw_stride1_relu_ui8_ui8",
-        f"{name}_conv2dk3_dw_stride1.o",
-        [in_ty, in_ty, in_ty, _i8((dw_wts_sz,)), dw_out_ty] + [np.int32] * 8,
+    k_dw = kernels.bn_conv2dk3_dw(
+        input_width=in_w,
+        input_channels=dw_ch,
+        output_channels=dw_ch,
+        stride=1,
     )
-    k_skip = Kernel(
-        f"{name}_conv2dk1_skip_ui8_ui8_i8",
-        f"{name}_conv2dk1_skipui8.o",
-        [dw_out_ty, _i8((skip_wts_sz,)), out_ty, in_ty] + [np.int32] * 5,
+    k_skip = kernels.bn_conv2dk1_skip(
+        input_width=in_w,
+        input_channels=dw_ch,
+        output_channels=out_c,
+        skip_dtype=np.uint8,
     )
 
     out_fifo = ObjectFifo(out_ty, depth=2)
@@ -441,26 +436,23 @@ def build_fused_pair(
     wts_buf = _wts_buffer(data_dir, chain_filename, wts_sz)
 
     def _kernels(name, dw_ch, in_c_local, out_c_local, l1_sz, l2_sz, l3_sz):
-        l1_in_ty = _i8((in_w, 1, in_c_local))
-        l1_out_ty = _u8((in_w, 1, dw_ch))
-        l2_out_ty = _u8((in_w, 1, dw_ch))  # stride-1 keeps width
-        l3_out_ty = _i8((in_w, 1, out_c_local))
         return (
-            Kernel(
-                f"{name}_conv2dk1_relu_i8_ui8",
-                f"{name}_conv2dk1_fused_relu.o",
-                [l1_in_ty, _i8((l1_sz,)), l1_out_ty] + [np.int32] * 4,
+            kernels.bn_conv2dk1_relu(
+                input_width=in_w,
+                input_channels=in_c_local,
+                output_channels=dw_ch,
             ),
-            Kernel(
-                f"{name}_conv2dk3_dw_stride1_relu_ui8_ui8",
-                f"{name}_conv2dk3_dw_stride1.o",
-                [l1_out_ty, l1_out_ty, l1_out_ty, _i8((l2_sz,)), l2_out_ty]
-                + [np.int32] * 8,
+            kernels.bn_conv2dk3_dw(
+                input_width=in_w,
+                input_channels=dw_ch,
+                output_channels=dw_ch,
+                stride=1,
             ),
-            Kernel(
-                f"{name}_conv2dk1_skip_ui8_i8_i8",
-                f"{name}_conv2dk1_skip.o",
-                [l2_out_ty, _i8((l3_sz,)), l3_out_ty, l3_out_ty] + [np.int32] * 5,
+            kernels.bn_conv2dk1_skip(
+                input_width=in_w,
+                input_channels=dw_ch,
+                output_channels=out_c_local,
+                skip_dtype=np.int8,
             ),
         )
 
