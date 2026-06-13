@@ -28,7 +28,7 @@ module {
         : memref<2x256xi32> to memref<256xi32, strided<[1], offset: 256>>
       %row_cast = memref.reinterpret_cast %row to offset: [0], sizes: [256], strides: [1]
         : memref<256xi32, strided<[1], offset: 256>> to memref<256xi32>
-      aiex.npu.dma_memcpy_nd (%row_cast[0, 0, 0, 0][1, 1, 1, 256][0, 0, 0, 1])
+      aiex.npu.dma_memcpy_nd (%row_cast[0, 0, 0][1, 1, 256][0, 0, 1])
         { metadata = @buffer_2d_1d, id = 0 : i64 } : memref<256xi32>
     }
     %tile_0_0 = aie.tile(0, 0)
@@ -53,7 +53,7 @@ module {
         : memref<4x8x32xi32> to memref<32xi32, strided<[1], offset: 608>>
       %row_cast = memref.reinterpret_cast %row to offset: [0], sizes: [32], strides: [1]
         : memref<32xi32, strided<[1], offset: 608>> to memref<32xi32>
-      aiex.npu.dma_memcpy_nd (%row_cast[0, 0, 0, 0][1, 1, 1, 32][0, 0, 0, 1])
+      aiex.npu.dma_memcpy_nd (%row_cast[0, 0, 0][1, 1, 32][0, 0, 1])
         { metadata = @buffer_3d_1d, id = 0 : i64 } : memref<32xi32>
     }
     %tile_0_0 = aie.tile(0, 0)
@@ -79,7 +79,7 @@ module {
         : memref<2x4x8x32xi32> to memref<32xi32, strided<[1], offset: 1632>>
       %row_cast = memref.reinterpret_cast %row to offset: [0], sizes: [32], strides: [1]
         : memref<32xi32, strided<[1], offset: 1632>> to memref<32xi32>
-      aiex.npu.dma_memcpy_nd (%row_cast[0, 0, 0, 0][1, 1, 1, 32][0, 0, 0, 1])
+      aiex.npu.dma_memcpy_nd (%row_cast[0, 0, 0][1, 1, 32][0, 0, 1])
         { metadata = @buffer_4d_1d, id = 0 : i64 } : memref<32xi32>
     }
     %tile_0_0 = aie.tile(0, 0)
@@ -104,7 +104,7 @@ module {
         : memref<2x512xbf16> to memref<512xbf16, strided<[1], offset: 512>>
       %row_cast = memref.reinterpret_cast %row to offset: [0], sizes: [512], strides: [1]
         : memref<512xbf16, strided<[1], offset: 512>> to memref<512xbf16>
-      aiex.npu.dma_memcpy_nd (%row_cast[0, 0, 0, 0][1, 1, 1, 512][0, 0, 0, 1])
+      aiex.npu.dma_memcpy_nd (%row_cast[0, 0, 0][1, 1, 512][0, 0, 1])
         { metadata = @buffer_bf16, id = 0 : i64 } : memref<512xbf16>
     }
     %tile_0_0 = aie.tile(0, 0)
@@ -133,7 +133,7 @@ module {
         to memref<256xi32, strided<[1], offset: 1536>>
       %row_cast = memref.reinterpret_cast %row to offset: [0], sizes: [256], strides: [1]
         : memref<256xi32, strided<[1], offset: 1536>> to memref<256xi32>
-      aiex.npu.dma_memcpy_nd (%row_cast[0, 0, 0, 0][1, 1, 1, 256][0, 0, 0, 1])
+      aiex.npu.dma_memcpy_nd (%row_cast[0, 0, 0][1, 1, 256][0, 0, 1])
         { metadata = @buffer_chain, id = 0 : i64 } : memref<256xi32>
     }
     %tile_0_0 = aie.tile(0, 0)

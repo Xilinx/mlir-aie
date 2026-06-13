@@ -14,10 +14,10 @@
 // When numBlocks == 1 and repeat_count > 1, the stateful transform generates
 // 1 BD with dma_start repeat_count instead of N identical BDs.
 
-// MemTile with repeat_count=3, depth=1: 1 BD + repeat_count=2
+// MemTile with repeat_count=3, depth=1: 1 BD + repeat_count=3
 // CHECK-LABEL: @memtile_hw_repeat
 // CHECK:       %memtile_dma
-// CHECK:         aie.dma_start(MM2S, 0, ^[[BD:.*]], ^{{.*}}, repeat_count = 2)
+// CHECK:         aie.dma_start(MM2S, 0, ^[[BD:.*]], ^{{.*}}, repeat_count = 3)
 // CHECK:       ^[[BD]]:
 // CHECK:         aie.dma_bd(
 // CHECK:         aie.next_bd ^[[BD]]
@@ -32,10 +32,10 @@ module @memtile_hw_repeat {
 
 // -----
 
-// Core tile with repeat_count=4, depth=1: 1 BD + repeat_count=3
+// Core tile with repeat_count=4, depth=1: 1 BD + repeat_count=4
 // CHECK-LABEL: @core_hw_repeat
 // CHECK:       %mem_0_2 = aie.mem
-// CHECK:         aie.dma_start(MM2S, 0, ^[[BD:.*]], ^{{.*}}, repeat_count = 3)
+// CHECK:         aie.dma_start(MM2S, 0, ^[[BD:.*]], ^{{.*}}, repeat_count = 4)
 // CHECK:       ^[[BD]]:
 // CHECK:         aie.dma_bd(
 // CHECK:         aie.next_bd ^[[BD]]
