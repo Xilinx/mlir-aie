@@ -27,7 +27,8 @@ module {
 
       // BD0, DMA_S2MM_0_Task_Queue
       aiex.npu.writebd {bd_id = 0 : i32, buffer_length = 4096 : i32, buffer_offset = 0 : i32, column = 0 : i32, d0_size = 0 : i32, d0_stride = 0 : i32, d0_zero_after = 0 : i32, d0_zero_before = 0 : i32, d1_size = 0 : i32, d1_stride = 0 : i32, d1_zero_after = 0 : i32, d1_zero_before = 0 : i32, d2_size = 0 : i32, d2_stride = 0 : i32, d2_zero_after = 0 : i32, d2_zero_before = 0 : i32, enable_packet = 0 : i32, iteration_current = 0 : i32, iteration_size = 0 : i32, iteration_stride = 0 : i32, lock_acq_enable = 0 : i32, lock_acq_id = 0 : i32, lock_acq_val = 0 : i32, lock_rel_id = 0 : i32, lock_rel_val = 0 : i32, next_bd = 0 : i32, out_of_order_id = 0 : i32, packet_id = 0 : i32, packet_type = 0 : i32, row = 0 : i32, use_next_bd = 0 : i32, valid_bd = 1 : i32}
-      aiex.npu.address_patch {addr = 0x1d004 : ui32, arg_idx = 2 : i32, arg_plus = 0 : i32}
+      %ap_argplus_c0 = arith.constant 0 : i32
+      aiex.npu.address_patch(%ap_argplus_c0 : i32) {addr = 0x1d004 : ui32, arg_idx = 2 : i32}
       %mw_addr = arith.constant 119296 : i32
       %mw_val = arith.constant 512 : i32
       %mw_mask = arith.constant 3840 : i32
@@ -38,7 +39,8 @@ module {
 
       // BD1, DMA_MM2S_0_Task_Queue
       aiex.npu.writebd {bd_id = 1 : i32, buffer_length = 4096 : i32, buffer_offset = 0 : i32, column = 0 : i32, d0_size = 0 : i32, d0_stride = 0 : i32, d0_zero_after = 0 : i32, d0_zero_before = 0 : i32, d1_size = 0 : i32, d1_stride = 0 : i32, d1_zero_after = 0 : i32, d1_zero_before = 0 : i32, d2_size = 0 : i32, d2_stride = 0 : i32, d2_zero_after = 0 : i32, d2_zero_before = 0 : i32, enable_packet = 0 : i32, iteration_current = 0 : i32, iteration_size = 0 : i32, iteration_stride = 0 : i32, lock_acq_enable = 0 : i32, lock_acq_id = 0 : i32, lock_acq_val = 0 : i32, lock_rel_id = 0 : i32, lock_rel_val = 0 : i32, next_bd = 0 : i32, out_of_order_id = 0 : i32, packet_id = 0 : i32, packet_type = 0 : i32, row = 0 : i32, use_next_bd = 0 : i32, valid_bd = 1 : i32}
-      aiex.npu.address_patch {addr = 0x1d024 : ui32, arg_idx = 0 : i32, arg_plus = 0 : i32}
+      %ap_argplus_c1 = arith.constant 0 : i32
+      aiex.npu.address_patch(%ap_argplus_c1 : i32) {addr = 0x1d024 : ui32, arg_idx = 0 : i32}
       %w32_addr_2 = arith.constant 119316 : i32
       %w32_val_2 = arith.constant 1 : i32
       aiex.npu.write32(%w32_addr_2, %w32_val_2) {column = 0 : i32, row = 0 : i32} : i32, i32

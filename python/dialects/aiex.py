@@ -213,12 +213,14 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
 npu_dma_memcpy_nd = NpuDmaMemcpyNd
 
 
-# npu.write32 / npu.maskwrite32 take their address/value/mask as SSA operands.
-# These wrappers accept plain Python ints (materialized as arith.constant) or
-# existing SSA Values, so call sites can pass compile-time-known values
-# directly or runtime sequence values for runtime-parameterized sequences.
+# npu.write32 / npu.maskwrite32 / npu.address_patch take their value operands as
+# SSA values. These wrappers accept plain Python ints (materialized as
+# arith.constant) or existing SSA Values, so call sites can pass
+# compile-time-known values directly or runtime sequence values for
+# runtime-parameterized sequences.
 _npu_write32_gen = npu_write32
 _npu_maskwrite32_gen = npu_maskwrite32
+_npu_address_patch_gen = npu_address_patch
 
 
 def npu_write32(address, value, *, buffer=None, column=None, row=None):
@@ -235,6 +237,12 @@ def npu_maskwrite32(address, value, mask, *, buffer=None, column=None, row=None)
         buffer=buffer,
         column=column,
         row=row,
+    )
+
+
+def npu_address_patch(addr, arg_idx, arg_plus):
+    return _npu_address_patch_gen(
+        addr=addr, arg_idx=arg_idx, arg_plus=_as_i32(arg_plus)
     )
 
 

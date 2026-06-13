@@ -567,12 +567,24 @@ module {
     aie.shim_dma_allocation @airMemcpyId5 (%tile_0_0, MM2S, 1)
     aie.runtime_sequence(%arg0: memref<16x16xi32>, %arg1: memref<16x16xi32>, %arg2: memref<16x16xi32>) {
       // <trace>
-      aiex.npu.write32 {address = 212992 : ui32, column = 3 : i32, row = 2 : i32, value = 31232 : ui32} // [14:8] reset event: 122(BROADCAST_15)	
-      aiex.npu.write32 {address = 213200 : ui32, column = 3 : i32, row = 2 : i32, value = 7995392 : ui32} // [22:16] start event: 122(BROADCAST_15)
-      aiex.npu.write32 {address = 213204 : ui32, column = 3 : i32, row = 2 : i32, value = 3 : ui32} // packet_type: 0(core), packet_id: 3
-      aiex.npu.write32 {address = 213216 : ui32, column = 3 : i32, row = 2 : i32, value = 1260527873 : ui32} // events: 0x4B(port0 run) 22(event1) 21(event0) 01(true)
-      aiex.npu.write32 {address = 213220 : ui32, column = 3 : i32, row = 2 : i32, value = 6735 : ui32} // events: 0x00 00 1A(lock stall) 4F(port1 run)
-      aiex.npu.write32 {address = 261888 : ui32, column = 3 : i32, row = 2 : i32, value = 289 : ui32} // [13:8] port1 MM2S-0+1, [5:0] port0 S2MM-0+1
+      %w32_addr_c0 = arith.constant 212992 : i32
+      %w32_val_c0 = arith.constant 31232 : i32
+      aiex.npu.write32(%w32_addr_c0, %w32_val_c0) {column = 3 : i32, row = 2 : i32} : i32, i32 // [14:8] reset event: 122(BROADCAST_15)	
+      %w32_addr_c1 = arith.constant 213200 : i32
+      %w32_val_c1 = arith.constant 7995392 : i32
+      aiex.npu.write32(%w32_addr_c1, %w32_val_c1) {column = 3 : i32, row = 2 : i32} : i32, i32 // [22:16] start event: 122(BROADCAST_15)
+      %w32_addr_c2 = arith.constant 213204 : i32
+      %w32_val_c2 = arith.constant 3 : i32
+      aiex.npu.write32(%w32_addr_c2, %w32_val_c2) {column = 3 : i32, row = 2 : i32} : i32, i32 // packet_type: 0(core), packet_id: 3
+      %w32_addr_c3 = arith.constant 213216 : i32
+      %w32_val_c3 = arith.constant 1260527873 : i32
+      aiex.npu.write32(%w32_addr_c3, %w32_val_c3) {column = 3 : i32, row = 2 : i32} : i32, i32 // events: 0x4B(port0 run) 22(event1) 21(event0) 01(true)
+      %w32_addr_c4 = arith.constant 213220 : i32
+      %w32_val_c4 = arith.constant 6735 : i32
+      aiex.npu.write32(%w32_addr_c4, %w32_val_c4) {column = 3 : i32, row = 2 : i32} : i32, i32 // events: 0x00 00 1A(lock stall) 4F(port1 run)
+      %w32_addr_c5 = arith.constant 261888 : i32
+      %w32_val_c5 = arith.constant 289 : i32
+      aiex.npu.write32(%w32_addr_c5, %w32_val_c5) {column = 3 : i32, row = 2 : i32} : i32, i32 // [13:8] port1 MM2S-0+1, [5:0] port0 S2MM-0+1
       %w32_addr = arith.constant 261892 : i32
       %w32_val = arith.constant 0 : i32
       aiex.npu.write32(%w32_addr, %w32_val) {column = 3 : i32, row = 2 : i32} : i32, i32
@@ -581,12 +593,24 @@ module {
       %w32_val_1 = arith.constant 15 : i32
       aiex.npu.write32(%w32_addr_1, %w32_val_1) {column = 3 : i32, row = 0 : i32} : i32, i32
 
-      aiex.npu.write32 {address = 212992 : ui32, column = 2 : i32, row = 2 : i32, value = 31232 : ui32} // [14:8] reset event: 122(BROADCAST_15)	
-      aiex.npu.write32 {address = 213200 : ui32, column = 2 : i32, row = 2 : i32, value = 7995392 : ui32} // [22:16] start event: 122(BROADCAST_15)
-      aiex.npu.write32 {address = 213204 : ui32, column = 2 : i32, row = 2 : i32, value = 2 : ui32} // packet_type: 0(core), packet_id: 2
-      aiex.npu.write32 {address = 213216 : ui32, column = 2 : i32, row = 2 : i32, value = 1260527873 : ui32} // events: 0x4B(port0 run) 22(event1) 21(event0) 01(true)
-      aiex.npu.write32 {address = 213220 : ui32, column = 2 : i32, row = 2 : i32, value = 6735 : ui32} // events: 0x00 00 1A(lock stall) 4F(port1 run)
-      aiex.npu.write32 {address = 261888 : ui32, column = 2 : i32, row = 2 : i32, value = 289 : ui32} // [13:8] port1 MM2S-0+1, [5:0] port0 S2MM-0+1
+      %w32_addr_c6 = arith.constant 212992 : i32
+      %w32_val_c6 = arith.constant 31232 : i32
+      aiex.npu.write32(%w32_addr_c6, %w32_val_c6) {column = 2 : i32, row = 2 : i32} : i32, i32 // [14:8] reset event: 122(BROADCAST_15)	
+      %w32_addr_c7 = arith.constant 213200 : i32
+      %w32_val_c7 = arith.constant 7995392 : i32
+      aiex.npu.write32(%w32_addr_c7, %w32_val_c7) {column = 2 : i32, row = 2 : i32} : i32, i32 // [22:16] start event: 122(BROADCAST_15)
+      %w32_addr_c8 = arith.constant 213204 : i32
+      %w32_val_c8 = arith.constant 2 : i32
+      aiex.npu.write32(%w32_addr_c8, %w32_val_c8) {column = 2 : i32, row = 2 : i32} : i32, i32 // packet_type: 0(core), packet_id: 2
+      %w32_addr_c9 = arith.constant 213216 : i32
+      %w32_val_c9 = arith.constant 1260527873 : i32
+      aiex.npu.write32(%w32_addr_c9, %w32_val_c9) {column = 2 : i32, row = 2 : i32} : i32, i32 // events: 0x4B(port0 run) 22(event1) 21(event0) 01(true)
+      %w32_addr_c10 = arith.constant 213220 : i32
+      %w32_val_c10 = arith.constant 6735 : i32
+      aiex.npu.write32(%w32_addr_c10, %w32_val_c10) {column = 2 : i32, row = 2 : i32} : i32, i32 // events: 0x00 00 1A(lock stall) 4F(port1 run)
+      %w32_addr_c11 = arith.constant 261888 : i32
+      %w32_val_c11 = arith.constant 289 : i32
+      aiex.npu.write32(%w32_addr_c11, %w32_val_c11) {column = 2 : i32, row = 2 : i32} : i32, i32 // [13:8] port1 MM2S-0+1, [5:0] port0 S2MM-0+1
       %w32_addr_2 = arith.constant 261892 : i32
       %w32_val_2 = arith.constant 0 : i32
       aiex.npu.write32(%w32_addr_2, %w32_val_2) {column = 2 : i32, row = 2 : i32} : i32, i32
@@ -595,12 +619,24 @@ module {
       %w32_val_3 = arith.constant 14 : i32
       aiex.npu.write32(%w32_addr_3, %w32_val_3) {column = 2 : i32, row = 0 : i32} : i32, i32
 
-      aiex.npu.write32 {address = 212992 : ui32, column = 1 : i32, row = 2 : i32, value = 31232 : ui32} // [14:8] reset event: 122(BROADCAST_15)	
-      aiex.npu.write32 {address = 213200 : ui32, column = 1 : i32, row = 2 : i32, value = 7995392 : ui32} // [22:16] start event: 122(BROADCAST_15)
-      aiex.npu.write32 {address = 213204 : ui32, column = 1 : i32, row = 2 : i32, value = 1 : ui32} // packet_type: 0(core), packet_id: 1
-      aiex.npu.write32 {address = 213216 : ui32, column = 1 : i32, row = 2 : i32, value = 1260527873 : ui32} // events: 0x4B(port0 run) 22(event1) 21(event0) 01(true)
-      aiex.npu.write32 {address = 213220 : ui32, column = 1 : i32, row = 2 : i32, value = 6735 : ui32} // events: 0x00 00 1A(lock stall) 4F(port1 run)
-      aiex.npu.write32 {address = 261888 : ui32, column = 1 : i32, row = 2 : i32, value = 289 : ui32} // [13:8] port1 MM2S-0+1, [5:0] port0 S2MM-0+1
+      %w32_addr_c12 = arith.constant 212992 : i32
+      %w32_val_c12 = arith.constant 31232 : i32
+      aiex.npu.write32(%w32_addr_c12, %w32_val_c12) {column = 1 : i32, row = 2 : i32} : i32, i32 // [14:8] reset event: 122(BROADCAST_15)	
+      %w32_addr_c13 = arith.constant 213200 : i32
+      %w32_val_c13 = arith.constant 7995392 : i32
+      aiex.npu.write32(%w32_addr_c13, %w32_val_c13) {column = 1 : i32, row = 2 : i32} : i32, i32 // [22:16] start event: 122(BROADCAST_15)
+      %w32_addr_c14 = arith.constant 213204 : i32
+      %w32_val_c14 = arith.constant 1 : i32
+      aiex.npu.write32(%w32_addr_c14, %w32_val_c14) {column = 1 : i32, row = 2 : i32} : i32, i32 // packet_type: 0(core), packet_id: 1
+      %w32_addr_c15 = arith.constant 213216 : i32
+      %w32_val_c15 = arith.constant 1260527873 : i32
+      aiex.npu.write32(%w32_addr_c15, %w32_val_c15) {column = 1 : i32, row = 2 : i32} : i32, i32 // events: 0x4B(port0 run) 22(event1) 21(event0) 01(true)
+      %w32_addr_c16 = arith.constant 213220 : i32
+      %w32_val_c16 = arith.constant 6735 : i32
+      aiex.npu.write32(%w32_addr_c16, %w32_val_c16) {column = 1 : i32, row = 2 : i32} : i32, i32 // events: 0x00 00 1A(lock stall) 4F(port1 run)
+      %w32_addr_c17 = arith.constant 261888 : i32
+      %w32_val_c17 = arith.constant 289 : i32
+      aiex.npu.write32(%w32_addr_c17, %w32_val_c17) {column = 1 : i32, row = 2 : i32} : i32, i32 // [13:8] port1 MM2S-0+1, [5:0] port0 S2MM-0+1
       %w32_addr_4 = arith.constant 261892 : i32
       %w32_val_4 = arith.constant 0 : i32
       aiex.npu.write32(%w32_addr_4, %w32_val_4) {column = 1 : i32, row = 2 : i32} : i32, i32
@@ -609,12 +645,24 @@ module {
       %w32_val_5 = arith.constant 13 : i32
       aiex.npu.write32(%w32_addr_5, %w32_val_5) {column = 1 : i32, row = 0 : i32} : i32, i32
       
-      aiex.npu.write32 {address = 212992 : ui32, column = 0 : i32, row = 2 : i32, value = 31232 : ui32} // [14:8] reset event: 122(BROADCAST_15)
-      aiex.npu.write32 {address = 213200 : ui32, column = 0 : i32, row = 2 : i32, value = 7995392 : ui32} // [22:16] start event: 122(BROADCAST_15)
-      aiex.npu.write32 {address = 213204 : ui32, column = 0 : i32, row = 2 : i32, value = 0 : ui32} // packet_type: 0(core), packet_id: 0
-      aiex.npu.write32 {address = 213216 : ui32, column = 0 : i32, row = 2 : i32, value = 1260527873 : ui32} // events: 0x4B(port0 run) 22(event1) 21(event0) 01(true)
-      aiex.npu.write32 {address = 213220 : ui32, column = 0 : i32, row = 2 : i32, value = 6735 : ui32} // events:0x00 00 1A(lock stall) 4F(port1 run)
-      aiex.npu.write32 {address = 261888 : ui32, column = 0 : i32, row = 2 : i32, value = 289 : ui32} // [13:8] port1 MM2S-0+1, [5:0] port0 S2MM-0+1
+      %w32_addr_c18 = arith.constant 212992 : i32
+      %w32_val_c18 = arith.constant 31232 : i32
+      aiex.npu.write32(%w32_addr_c18, %w32_val_c18) {column = 0 : i32, row = 2 : i32} : i32, i32 // [14:8] reset event: 122(BROADCAST_15)
+      %w32_addr_c19 = arith.constant 213200 : i32
+      %w32_val_c19 = arith.constant 7995392 : i32
+      aiex.npu.write32(%w32_addr_c19, %w32_val_c19) {column = 0 : i32, row = 2 : i32} : i32, i32 // [22:16] start event: 122(BROADCAST_15)
+      %w32_addr_c20 = arith.constant 213204 : i32
+      %w32_val_c20 = arith.constant 0 : i32
+      aiex.npu.write32(%w32_addr_c20, %w32_val_c20) {column = 0 : i32, row = 2 : i32} : i32, i32 // packet_type: 0(core), packet_id: 0
+      %w32_addr_c21 = arith.constant 213216 : i32
+      %w32_val_c21 = arith.constant 1260527873 : i32
+      aiex.npu.write32(%w32_addr_c21, %w32_val_c21) {column = 0 : i32, row = 2 : i32} : i32, i32 // events: 0x4B(port0 run) 22(event1) 21(event0) 01(true)
+      %w32_addr_c22 = arith.constant 213220 : i32
+      %w32_val_c22 = arith.constant 6735 : i32
+      aiex.npu.write32(%w32_addr_c22, %w32_val_c22) {column = 0 : i32, row = 2 : i32} : i32, i32 // events:0x00 00 1A(lock stall) 4F(port1 run)
+      %w32_addr_c23 = arith.constant 261888 : i32
+      %w32_val_c23 = arith.constant 289 : i32
+      aiex.npu.write32(%w32_addr_c23, %w32_val_c23) {column = 0 : i32, row = 2 : i32} : i32, i32 // [13:8] port1 MM2S-0+1, [5:0] port0 S2MM-0+1
       %w32_addr_6 = arith.constant 261892 : i32
       %w32_val_6 = arith.constant 0 : i32
       aiex.npu.write32(%w32_addr_6, %w32_val_6) {column = 0 : i32, row = 2 : i32} : i32, i32
@@ -623,33 +671,67 @@ module {
       %w32_val_7 = arith.constant 12 : i32
       aiex.npu.write32(%w32_addr_7, %w32_val_7) {column = 0 : i32, row = 0 : i32} : i32, i32
       
-      aiex.npu.write32 {address = 606208 : ui32, column = 1 : i32, row = 1 : i32, value = 40192 : ui32} // [15:8] reset event: 157(BROADCAST_15)
-      aiex.npu.write32 {address = 606416 : ui32, column = 1 : i32, row = 1 : i32, value = 10289152 : ui32} // [23:16] start event: 157(BROADCAST_15)
-      aiex.npu.write32 {address = 606420 : ui32, column = 1 : i32, row = 1 : i32, value = 12293 : ui32} // [14:12] packet_type: 3(mem_tile), [4:0] packet_id: 5
-      aiex.npu.write32 {address = 606432 : ui32, column = 1 : i32, row = 1 : i32, value = 336 : ui32} // events: 0x00 00 01(true) 50(port0 run)
-      aiex.npu.write32 {address = 606436 : ui32, column = 1 : i32, row = 1 : i32, value = 1415076960 : ui32} // events: 0x54(port1 run) 58(port2 run) 5C(port3 run) 60(port4 run) 
-      aiex.npu.write32 {address = 724736 : ui32, column = 1 : i32, row = 1 : i32, value = 33620000 : ui32} // [29:24] port3 MM2S-2, [21:16] port2 MM2S-1, [13:8] port1 MM2S-0, [5:0] port0 S2MM-0
-      aiex.npu.write32 {address = 724740: ui32, column = 1 : i32, row = 1 : i32, value = 3 : ui32} // [5:0] port4 MM2S-3
+      %w32_addr_c24 = arith.constant 606208 : i32
+      %w32_val_c24 = arith.constant 40192 : i32
+      aiex.npu.write32(%w32_addr_c24, %w32_val_c24) {column = 1 : i32, row = 1 : i32} : i32, i32 // [15:8] reset event: 157(BROADCAST_15)
+      %w32_addr_c25 = arith.constant 606416 : i32
+      %w32_val_c25 = arith.constant 10289152 : i32
+      aiex.npu.write32(%w32_addr_c25, %w32_val_c25) {column = 1 : i32, row = 1 : i32} : i32, i32 // [23:16] start event: 157(BROADCAST_15)
+      %w32_addr_c26 = arith.constant 606420 : i32
+      %w32_val_c26 = arith.constant 12293 : i32
+      aiex.npu.write32(%w32_addr_c26, %w32_val_c26) {column = 1 : i32, row = 1 : i32} : i32, i32 // [14:12] packet_type: 3(mem_tile), [4:0] packet_id: 5
+      %w32_addr_c27 = arith.constant 606432 : i32
+      %w32_val_c27 = arith.constant 336 : i32
+      aiex.npu.write32(%w32_addr_c27, %w32_val_c27) {column = 1 : i32, row = 1 : i32} : i32, i32 // events: 0x00 00 01(true) 50(port0 run)
+      %w32_addr_c28 = arith.constant 606436 : i32
+      %w32_val_c28 = arith.constant 1415076960 : i32
+      aiex.npu.write32(%w32_addr_c28, %w32_val_c28) {column = 1 : i32, row = 1 : i32} : i32, i32 // events: 0x54(port1 run) 58(port2 run) 5C(port3 run) 60(port4 run) 
+      %w32_addr_c29 = arith.constant 724736 : i32
+      %w32_val_c29 = arith.constant 33620000 : i32
+      aiex.npu.write32(%w32_addr_c29, %w32_val_c29) {column = 1 : i32, row = 1 : i32} : i32, i32 // [29:24] port3 MM2S-2, [21:16] port2 MM2S-1, [13:8] port1 MM2S-0, [5:0] port0 S2MM-0
+      %w32_addr_c30 = arith.constant 724740 : i32
+      %w32_val_c30 = arith.constant 3 : i32
+      aiex.npu.write32(%w32_addr_c30, %w32_val_c30) {column = 1 : i32, row = 1 : i32} : i32, i32 // [5:0] port4 MM2S-3
       aiex.npu.writebd {bd_id = 11 : i32, buffer_length = 8192 : i32, buffer_offset = 9216 : i32, column = 1 : i32, row = 0 : i32, d0_size = 0 : i32, d0_stride = 0 : i32, d0_zero_after = 0 : i32, d0_zero_before = 0 : i32, d1_size = 0 : i32, d1_stride = 0 : i32, d1_zero_after = 0 : i32, d1_zero_before = 0 : i32, d2_size = 0 : i32, d2_stride = 0 : i32, d2_zero_after = 0 : i32, d2_zero_before = 0 : i32, ddr_id = 2 : i32, enable_packet = 1 : i32, iteration_current = 0 : i32, iteration_size = 0 : i32, iteration_stride = 0 : i32, lock_acq_enable = 0 : i32, lock_acq_id = 0 : i32, lock_acq_val = 0 : i32, lock_rel_id = 0 : i32, lock_rel_val = 0 : i32, next_bd = 0 : i32, out_of_order_id = 0 : i32, packet_id = 5: i32, packet_type = 3 : i32, use_next_bd = 0 : i32, valid_bd = 1 : i32}
       %w32_addr_8 = arith.constant 119308 : i32
       %w32_val_8 = arith.constant 11 : i32
       aiex.npu.write32(%w32_addr_8, %w32_val_8) {column = 1 : i32, row = 0 : i32} : i32, i32
       
-      aiex.npu.write32 {address = 606208 : ui32, column = 0 : i32, row = 1 : i32, value = 40192 : ui32} // [15:8] reset event: 157(BROADCAST_15)
-      aiex.npu.write32 {address = 606416 : ui32, column = 0 : i32, row = 1 : i32, value = 10289152 : ui32} // [23:16] start event: 157(BROADCAST_15)
-      aiex.npu.write32 {address = 606420 : ui32, column = 0 : i32, row = 1 : i32, value = 12292 : ui32} // [14:12] packet_type: 3(mem_tile), [4:0] packet_id: 4
-      aiex.npu.write32 {address = 606432 : ui32, column = 0 : i32, row = 1 : i32, value = 760239192 : ui32} // events: 0x2D(lock release) 50(port0 run) 0x54(port1 run) 58(port2 run)
-      aiex.npu.write32 {address = 606436 : ui32, column = 0 : i32, row = 1 : i32, value = 1549821032 : ui32} // events: 5C(port3 run) 60(port4 run) 64(port5 run) 68(port6 run)
-      aiex.npu.write32 {address = 724736 : ui32, column = 0 : i32, row = 1 : i32, value = 33620000 : ui32} // [29:24] port3 MM2S-2, [21:16] port2 MM2S-1, [13:8] port1 MM2S-0, [5:0] port0 S2MM-0
-      aiex.npu.write32 {address = 724740: ui32, column = 0 : i32, row = 1 : i32, value = 270595 : ui32} // [21:16] port6 MM2S-4, [13:8] port5 S2MM-1, [5:0] port4 MM2S-3
+      %w32_addr_c31 = arith.constant 606208 : i32
+      %w32_val_c31 = arith.constant 40192 : i32
+      aiex.npu.write32(%w32_addr_c31, %w32_val_c31) {column = 0 : i32, row = 1 : i32} : i32, i32 // [15:8] reset event: 157(BROADCAST_15)
+      %w32_addr_c32 = arith.constant 606416 : i32
+      %w32_val_c32 = arith.constant 10289152 : i32
+      aiex.npu.write32(%w32_addr_c32, %w32_val_c32) {column = 0 : i32, row = 1 : i32} : i32, i32 // [23:16] start event: 157(BROADCAST_15)
+      %w32_addr_c33 = arith.constant 606420 : i32
+      %w32_val_c33 = arith.constant 12292 : i32
+      aiex.npu.write32(%w32_addr_c33, %w32_val_c33) {column = 0 : i32, row = 1 : i32} : i32, i32 // [14:12] packet_type: 3(mem_tile), [4:0] packet_id: 4
+      %w32_addr_c34 = arith.constant 606432 : i32
+      %w32_val_c34 = arith.constant 760239192 : i32
+      aiex.npu.write32(%w32_addr_c34, %w32_val_c34) {column = 0 : i32, row = 1 : i32} : i32, i32 // events: 0x2D(lock release) 50(port0 run) 0x54(port1 run) 58(port2 run)
+      %w32_addr_c35 = arith.constant 606436 : i32
+      %w32_val_c35 = arith.constant 1549821032 : i32
+      aiex.npu.write32(%w32_addr_c35, %w32_val_c35) {column = 0 : i32, row = 1 : i32} : i32, i32 // events: 5C(port3 run) 60(port4 run) 64(port5 run) 68(port6 run)
+      %w32_addr_c36 = arith.constant 724736 : i32
+      %w32_val_c36 = arith.constant 33620000 : i32
+      aiex.npu.write32(%w32_addr_c36, %w32_val_c36) {column = 0 : i32, row = 1 : i32} : i32, i32 // [29:24] port3 MM2S-2, [21:16] port2 MM2S-1, [13:8] port1 MM2S-0, [5:0] port0 S2MM-0
+      %w32_addr_c37 = arith.constant 724740 : i32
+      %w32_val_c37 = arith.constant 270595 : i32
+      aiex.npu.write32(%w32_addr_c37, %w32_val_c37) {column = 0 : i32, row = 1 : i32} : i32, i32 // [21:16] port6 MM2S-4, [13:8] port5 S2MM-1, [5:0] port4 MM2S-3
       aiex.npu.writebd {bd_id = 10 : i32, buffer_length = 8192 : i32, buffer_offset = 1024 : i32, column = 0 : i32, row = 0 : i32, d0_size = 0 : i32, d0_stride = 0 : i32, d0_zero_after = 0 : i32, d0_zero_before = 0 : i32, d1_size = 0 : i32, d1_stride = 0 : i32, d1_zero_after = 0 : i32, d1_zero_before = 0 : i32, d2_size = 0 : i32, d2_stride = 0 : i32, d2_zero_after = 0 : i32, d2_zero_before = 0 : i32, ddr_id = 2 : i32, enable_packet = 1 : i32, iteration_current = 0 : i32, iteration_size = 0 : i32, iteration_stride = 0 : i32, lock_acq_enable = 0 : i32, lock_acq_id = 0 : i32, lock_acq_val = 0 : i32, lock_rel_id = 0 : i32, lock_rel_val = 0 : i32, next_bd = 0 : i32, out_of_order_id = 0 : i32, packet_id = 4: i32, packet_type = 3 : i32, use_next_bd = 0 : i32, valid_bd = 1 : i32}
       %w32_addr_9 = arith.constant 119308 : i32
       %w32_val_9 = arith.constant 10 : i32
       aiex.npu.write32(%w32_addr_9, %w32_val_9) {column = 0 : i32, row = 0 : i32} : i32, i32
      
-      aiex.npu.write32 {address = 212992: ui32, column = 0 : i32, row = 0 : i32, value = 32512 : ui32} // [14:8] reset event: 127(USER_EVENT_1)
-      aiex.npu.write32 {address = 213068: ui32, column = 0 : i32, row = 0 : i32, value = 127 : ui32} // [6:0] broadcast 15: 127(USER_EVENT_1)
-      aiex.npu.write32 {address = 213000: ui32, column = 0 : i32, row = 0 : i32, value = 127 : ui32} // event generate [6:0]: 127(USER_EVENT_1)
+      %w32_addr_c38 = arith.constant 212992 : i32
+      %w32_val_c38 = arith.constant 32512 : i32
+      aiex.npu.write32(%w32_addr_c38, %w32_val_c38) {column = 0 : i32, row = 0 : i32} : i32, i32 // [14:8] reset event: 127(USER_EVENT_1)
+      %w32_addr_c39 = arith.constant 213068 : i32
+      %w32_val_c39 = arith.constant 127 : i32
+      aiex.npu.write32(%w32_addr_c39, %w32_val_c39) {column = 0 : i32, row = 0 : i32} : i32, i32 // [6:0] broadcast 15: 127(USER_EVENT_1)
+      %w32_addr_c40 = arith.constant 213000 : i32
+      %w32_val_c40 = arith.constant 127 : i32
+      aiex.npu.write32(%w32_addr_c40, %w32_val_c40) {column = 0 : i32, row = 0 : i32} : i32, i32 // event generate [6:0]: 127(USER_EVENT_1)
      
       // </trace>
       memref.assume_alignment %arg0, 64 : memref<16x16xi32>
