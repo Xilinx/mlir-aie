@@ -591,6 +591,27 @@ public:
           "dynamic sizes/strides are only supported for shim tile DMAs");
     }
 
+    // INVARIANTS DEFERRED TO THE USER. The op verifier (NpuDmaMemcpyNdOp::
+    // verify) and getHardwareStridesWraps/verifyStridesWraps enforce the
+    // following for the all-constant (static) path, but they are intentionally
+    // skipped (see NpuDmaMemcpyNdOp::verify) when any size/stride is an SSA
+    // value, because the checks need concrete integers. On this dynamic path
+    // the caller is responsible for ensuring, for every runtime value:
+    //   * inner-most stride (d0) == 1 (contiguous innermost element scan);
+    //   * each size >= 1 and each applied stride (where size > 1) >= 1;
+    //   * sizes/strides * elemWidth are multiples of the address granularity
+    //     (4 bytes on all current hardware), i.e. naturally aligned;
+    //   * hardware field ranges: d0/d1 size <= 1023 (10-bit, see the dynamic
+    //     d0_size warning in emitDynamicHwBdEncoding), iteration size <= 64
+    //     (6-bit), and all strides <= 2^20 (20-bit).
+    // A runtime value that violates these is masked into its BD field and
+    // silently misbehaves rather than erroring. Constant operands that happen
+    // to be mixed into an otherwise-dynamic transfer are NOT separately range-
+    // checked here: verifyStridesWraps operates on hardware-unit values with
+    // size-1 exemptions and the stride "-1" encoding, and reproducing only its
+    // constant subset here would risk diverging from that single source of
+    // truth. Such cases are rare; the documented contract above governs.
+
     Location loc = op->getLoc();
 
     // --- Common setup: arg_idx, offset, seq_op ---

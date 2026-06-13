@@ -475,6 +475,19 @@ struct AIEDMATasksToNPUPass
           "pad_dimensions is incompatible with dynamic dma_bd operands.");
     }
 
+    // INVARIANTS DEFERRED TO THE USER. DMABDOp::verify performs only the
+    // structural dynamic-operand checks (all-or-nothing dyn_sizes/strides,
+    // mutual exclusion with static attributes); the hardware stride/wrap range
+    // and alignment checks require concrete integers and cannot run for SSA
+    // operands. On this dynamic path the caller is responsible for ensuring,
+    // for every runtime value: innermost stride == 1; sizes >= 1 and applied
+    // strides >= 1; sizes/strides * elemWidth aligned to the address
+    // granularity; and hardware field ranges (d0/d1 size <= 1023, iteration
+    // size <= 64, strides <= 2^20). Out-of-range runtime values are masked
+    // into their BD field and silently misbehave. See the matching note in
+    // AIEDmaToNpu.cpp lowerDynamicBd and the dynamic-operand warning in
+    // emitDynamicHwBdEncoding (BdLowering.cpp).
+
     auto loc = bd_op.getLoc();
     auto i32ty = builder.getIntegerType(32);
     auto zero = IntegerAttr::get(i32ty, 0);

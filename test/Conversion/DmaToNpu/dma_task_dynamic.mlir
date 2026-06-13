@@ -105,6 +105,7 @@ module {
     %tile_0_0 = aie.tile(0, 0)
     aie.runtime_sequence(%arg0: memref<128xi32>, %M: i64, %S: i64) {
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
+        // expected-warning@+1 {{dynamic inner size (d0) cannot be checked against the 10-bit hardware limit}}
         aie.dma_bd(%arg0 : memref<128xi32>) dyn_offset(%M : i64) dyn_len(%M : i64) dyn_sizes(%M, %S, %M, %S : i64, i64, i64, i64) dyn_strides(%S, %M, %S, %M : i64, i64, i64, i64) {bd_id = 0 : i32}
         aie.end
       } {issue_token = true}

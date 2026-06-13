@@ -96,6 +96,11 @@ HwBdEncoding emitDynamicHwBdEncoding(OpBuilder &builder, Location loc,
   }
 
   // Warn at compile time if a statically-known d0_size exceeds 10 bits.
+  // For a dynamic (SSA) inner size the limit cannot be enforced here: the
+  // value is masked into a 10-bit BD field at runtime, so an out-of-range
+  // size truncates silently. Warn so the caller knows the bound is now their
+  // responsibility (the static path's linear-mode escape hatch does not apply
+  // to dynamic transfers).
   if (auto d0Const = getConstantIntValue(mixedSizesRev[0])) {
     uint64_t hwD0 = (*d0Const * elemWidth) / addrGran;
     if (hwD0 > 1023)
@@ -103,6 +108,12 @@ HwBdEncoding emitDynamicHwBdEncoding(OpBuilder &builder, Location loc,
           << "hardware d0_size (" << hwD0
           << ") exceeds 10-bit limit (1023); transfer will be truncated. "
              "Consider restructuring to use smaller inner dimensions.";
+  } else {
+    mlir::emitWarning(loc)
+        << "dynamic inner size (d0) cannot be checked against the 10-bit "
+           "hardware limit (max 1023 address-gen units); a runtime value that "
+           "exceeds it will be silently truncated. Ensure the inner size stays "
+           "within range.";
   }
 
   // Hardware d0_stride: if elemWidth != addrGran, stride = 0; otherwise
