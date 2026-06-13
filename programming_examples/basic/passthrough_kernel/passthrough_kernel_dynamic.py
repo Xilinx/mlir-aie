@@ -10,7 +10,7 @@
 
 import argparse
 
-from aie.iron.device import NPU1, NPU2
+from aie.iron.device import NPU1Col1, NPU2
 
 from passthrough_kernel import my_passthrough_kernel
 
@@ -21,7 +21,9 @@ if __name__ == "__main__":
     p.add_argument("-os", "--out_size", type=int, default=4096)
     args = p.parse_args()
 
-    dev = NPU2() if args.device == "npu2" else NPU1()
+    # Match the device selection used by passthrough_kernel.main: a single
+    # column for "npu" (this is a one-column passthrough design).
+    dev = NPU2() if args.device == "npu2" else NPU1Col1()
     print(
         my_passthrough_kernel(
             dev,

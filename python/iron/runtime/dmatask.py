@@ -10,9 +10,9 @@
 from ... import ir  # type: ignore
 from ...ir import Value  # type: ignore
 
-from ...dialects.arith import ExtUIOp
 from ...dialects.aiex import dma_free_task, dma_start_task, dma_wait, npu_dma_memcpy_nd
 from ...dialects.aiex import shim_dma_single_bd_task
+from ...dialects.aiex import _cast_to_i64
 from ..dataflow import ObjectFifoHandle
 from .data import RuntimeData, RuntimeScalar
 from ...helpers.taplib import TensorAccessPattern
@@ -136,10 +136,10 @@ class DMATask(RuntimeTask):
 
     @staticmethod
     def _to_i64_value(value: Value) -> Value:
-        i64_ty = ir.IntegerType.get_signless(64)
-        if value.type == i64_ty:
-            return value
-        return ExtUIOp(i64_ty, value).result
+        # Delegate to the shared coercion in dialects.aiex so index / i32 /
+        # wider-than-64 inputs are all handled consistently (a plain extui
+        # here would reject index and mis-handle >64-bit values).
+        return _cast_to_i64(value)
 
     def resolve(
         self,

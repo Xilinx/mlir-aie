@@ -183,11 +183,11 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
         dynamic_strides, _packed_strides, static_strides = _dispatch_mixed_values(
             strides
         )
-        # The op operands $offsets/$sizes/$strides are Variadic<I64>.
-        # Whatever the user's SSA
-        # arithmetic produced (index from scf.for, i64 from a wider compute,
-        # iN from a custom path), normalise it to i32 here so callers do not
-        # have to insert arith.index_cast / trunci / extui themselves.
+        # The op operands $offsets/$sizes/$strides are Variadic<I64>. Whatever
+        # the user's SSA arithmetic produced (index from scf.for, i32 from a
+        # runtime_sequence arg, iN from a custom path), normalise it to i64
+        # here so callers do not have to insert arith.index_cast / trunci /
+        # extui themselves.
         dynamic_offsets = [_cast_to_i64(v) for v in dynamic_offsets]
         dynamic_sizes = [_cast_to_i64(v) for v in dynamic_sizes]
         dynamic_strides = [_cast_to_i64(v) for v in dynamic_strides]

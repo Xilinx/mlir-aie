@@ -36,7 +36,7 @@ def dma_bd(
 ):
     """Backward-compatible wrapper for the auto-generated `aie.dma_bd` op.
 
-    The TableGen op gained `Variadic<I32>` `dyn_sizes` / `dyn_strides`
+    The TableGen op gained `Variadic<I64>` `dyn_sizes` / `dyn_strides`
     operands, which the auto-generated builder exposes as required positional
     arguments. To keep existing call-sites working (e.g. `dma_bd(buf,
     offset=0, len=N, dimensions=[...])`) we default them to empty lists

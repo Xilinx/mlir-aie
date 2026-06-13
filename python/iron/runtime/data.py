@@ -7,7 +7,7 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 
 import numpy as np
-from typing import Sequence
+from typing import Callable, Sequence, Union
 
 from ...extras.dialects.memref import MemRefValue  # type: ignore
 from ...helpers.util import (
@@ -66,12 +66,13 @@ class RuntimeData:
 class RuntimeScalar:
     """A handle to a scalar runtime parameter (e.g. T.i32()) in the Runtime sequence."""
 
-    def __init__(self, mlir_type: MlirType):
+    def __init__(self, mlir_type: Union[MlirType, Callable[[], MlirType]]):
         """Construct a handle to a scalar Runtime parameter.
 
         Args:
-            mlir_type (MlirType): The MLIR type of the scalar, or a zero-arg
-                callable that produces one within an active MLIR context.
+            mlir_type: The MLIR type of the scalar, or a zero-arg callable
+                that produces one within an active MLIR context (deferred so
+                the type can be built lazily inside a runtime sequence).
         """
         self._mlir_type = mlir_type
         self._op = None
