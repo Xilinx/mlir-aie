@@ -173,11 +173,15 @@ public:
     // control packet for issuing token
     if (op.getIssueToken()) {
       // set the task-complete-token controller ID field in the dma control
-      // register
-      AIE::TileOp shimTile = AIE::TileOp::getOrCreate(
-          rewriter, op->getParentOfType<AIE::DeviceOp>(), op.getColumn(),
-          op.getRow());
-      if (shimTile->hasAttr("controller_id")) {
+      // register. Look up the existing shim TileOp read-only rather than
+      // getOrCreate: this pattern runs during conversion and a mutating create
+      // can collide with the tile created elsewhere in the same device.
+      auto device = op->getParentOfType<AIE::DeviceOp>();
+      for (auto shimTile : device.getOps<AIE::TileOp>()) {
+        if (static_cast<uint32_t>(shimTile.getCol()) != op.getColumn() ||
+            static_cast<uint32_t>(shimTile.getRow()) != op.getRow() ||
+            !shimTile->hasAttr("controller_id"))
+          continue;
         AIE::PacketInfoAttr controller_id_attr =
             shimTile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
         uint32_t data = controller_id_attr.getPktId() << 8;
@@ -191,6 +195,7 @@ public:
             arith::ConstantIntOp::create(rewriter, op->getLoc(), i32Type, mask);
         NpuMaskWrite32Op::create(rewriter, op->getLoc(), addrV, dataV, maskV,
                                  nullptr, nullptr, nullptr);
+        break;
       }
     }
 
@@ -537,6 +542,15 @@ public:
       Value argPlus = arith::ConstantIntOp::create(
           rewriter, op->getLoc(), rewriter.getI32Type(), offset);
       NpuAddressPatchOp::create(rewriter, op->getLoc(), addr, arg_idx, argPlus);
+
+      // If this DMA op has an offset_state_table_idx, emit an
+      // update_from_scratchpad to add the runtime offset to the BD address
+      // register.
+      if (op.getOffsetStateTableIdxAttr()) {
+        if (failed(emitUpdateBdAddressFromOffsetParameter(rewriter, op,
+                                                          bufferType, addr)))
+          return failure();
+      }
 
       // push the patched bd onto the dma task queue
       NpuPushQueueOp::create(

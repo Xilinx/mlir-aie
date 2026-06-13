@@ -155,3 +155,22 @@ module {
     aie.shim_dma_allocation @toMem (%tile_0_0, S2MM, 0)
   }
 }
+
+// -----
+
+// A DMA with all-constant sizes/strides takes the static lowering path, but
+// must still emit update_from_scratchpad when offset_state_table_idx is set
+// (otherwise the runtime BD-address offset is silently dropped).
+// CHECK: runtime_sequence
+// CHECK: aiex.npu.blockwrite
+// CHECK: aiex.npu.address_patch
+// CHECK: aiex.npu.update_from_scratchpad
+module {
+  aie.device(npu1_1col) {
+    aie.runtime_sequence(%arg0: memref<16xi32>) {
+      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 16, 16][0, 0, 64, 1]) { metadata = @toMem, id = 1 : i64, offset_state_table_idx = 0 : ui8 } : memref<16xi32>
+    }
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @toMem (%tile_0_0, S2MM, 0)
+  }
+}
