@@ -1,11 +1,11 @@
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
 from collections import defaultdict
 import numpy as np
-from typing import Sequence, get_args, get_origin
+from typing import Any, Sequence, get_args, get_origin
 from aie._mlir_libs import _aie as CustomTypes
 
-from ..extras import types as T
-from ..ir import (
+from ..extras import types as T  # pyright: ignore[reportMissingImports]
+from ..ir import (  # pyright: ignore[reportMissingImports]
     F32Type,
     F64Type,
     IntegerType,
@@ -221,16 +221,17 @@ def try_convert_np_type_to_mlir_type(input_type):
 def get_arg_types(objs: Sequence[int | float | Value | OpView]):
     my_types = []
     for o in objs:
+        op: Any = o
         if isinstance(o, Value):
-            my_types.append(o.type)
+            my_types.append(op.type)
         elif isinstance(o, OpView):
-            if len(o.results.types) != 1:
+            if len(op.results.types) != 1:
                 raise AttributeError(
                     f"Operation given to a region op as a parameter ({o}) has more "
                     "than one return type ({o.results.types}), which would lead to a mismatch "
                     "between number of operands and number of operand types"
                 )
-            my_types += o.results.types
+            my_types += op.results.types
         elif isinstance(o, (int, float)):
             my_types.append(type(o))
         else:

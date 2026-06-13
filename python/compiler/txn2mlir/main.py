@@ -22,7 +22,7 @@ def main():
     # Read the data from the file
     data = args.file.read()
 
-    with Context() as ctx:
+    with Context() as ctx:  # pyright: ignore[reportUndefinedVariable]
         module = transaction_binary_to_mlir(ctx, data)
 
     print(str(module))

@@ -1,14 +1,25 @@
+import inspect
 import numpy as np
 from functools import lru_cache, update_wrapper
 import sys
-from typing import get_args, get_origin
+from typing import get_args, get_origin, Any, List
 
-from ...extras.meta import op_region_builder
-from ...extras.util import get_user_code_loc, make_maybe_no_args_decorator
+from ...extras.meta import op_region_builder  # pyright: ignore[reportMissingImports]
+from ...extras.util import (  # pyright: ignore[reportMissingImports]
+    get_user_code_loc,
+    make_maybe_no_args_decorator,
+)
 from ..util import get_arg_types, NpuDType, try_convert_np_type_to_mlir_type
-from ...dialects._ods_common import get_op_result_or_op_results
-from ...dialects.func import *
-from ...ir import (
+from ...dialects._ods_common import (  # pyright: ignore[reportMissingImports]
+    get_op_result_or_op_results,
+)
+from ...dialects.func import *  # pyright: ignore[reportMissingImports]
+from ...dialects.func import (  # pyright: ignore[reportMissingImports]
+    FuncOp,
+    CallOp,
+    ReturnOp,
+)
+from ...ir import (  # pyright: ignore[reportMissingImports]
     Context,
     FlatSymbolRefAttr,
     FunctionType,
@@ -19,8 +30,15 @@ from ...ir import (
     TypeAttr,
     Value,
 )
-from ...extras.dialects.arith import ScalarValue, index_cast
-from ...ir import IndexType, IntegerType, OpResult
+from ...extras.dialects.arith import (  # pyright: ignore[reportMissingImports]
+    ScalarValue,
+    index_cast,
+)
+from ...ir import (  # pyright: ignore[reportMissingImports]
+    IndexType,
+    IntegerType,
+    OpResult,
+)
 
 
 def call(
@@ -37,6 +55,7 @@ def call(
     if loc is None:
         loc = get_user_code_loc()
     if isinstance(callee_or_results, FuncOp.__base__):
+        func_op: Any = callee_or_results
         if not isinstance(arguments_or_callee, (list, tuple)):
             raise ValueError(
                 "when constructing a call to a function, expected "
@@ -47,15 +66,14 @@ def call(
             raise ValueError(
                 "unexpected third argument when constructing a call" + "to a function"
             )
-        if len(arguments_or_callee) != len(
-            callee_or_results.function_type.value.inputs
-        ):
+        if len(arguments_or_callee) != len(func_op.function_type.value.inputs):
             raise ValueError(
-                f"Expected {len(callee_or_results.function_type.value.inputs)} arguments, but got {len(arguments_or_callee)} arguments"
+                f"Expected {len(func_op.function_type.value.inputs)} arguments, but got {len(arguments_or_callee)} arguments"
             )
         args = []
         for i, a in enumerate(arguments_or_callee):
-            expected_type = callee_or_results.function_type.value.inputs[i]
+            expected_type = func_op.function_type.value.inputs[i]
+            operand: Any = a
             if isinstance(a, (int, float)):
                 # Get the type to convert the python value to based on the expected input to the function
                 # TODO: should check if it's safe to do this? What is int value is outside range?
@@ -63,7 +81,11 @@ def call(
             elif (
                 isinstance(a, (Value, Operation, OpView, OpResult))
                 and isinstance(
-                    a.type if isinstance(a, (Value, OpResult)) else a.result.type,
+                    (
+                        operand.type
+                        if isinstance(a, (Value, OpResult))
+                        else operand.result.type
+                    ),
                     IndexType,
                 )
                 and isinstance(expected_type, IntegerType)
@@ -78,8 +100,8 @@ def call(
 
         return get_op_result_or_op_results(
             call_op_ctor(
-                callee_or_results.function_type.value.results,
-                FlatSymbolRefAttr.get(callee_or_results.sym_name.value),
+                func_op.function_type.value.results,
+                FlatSymbolRefAttr.get(func_op.sym_name.value),
                 args,
                 loc=loc,
                 ip=ip,
@@ -196,9 +218,7 @@ class FuncBase:
         self.qualname = qualname
 
         self.sym_visibility = sym_visibility
-        self.func_attrs = func_attrs
-        if self.func_attrs is None:
-            self.func_attrs = {}
+        self.func_attrs: dict = func_attrs if func_attrs is not None else {}
 
         if return_types is None:
             return_types = []
@@ -277,9 +297,13 @@ class FuncBase:
                 nonlocal return_types
                 results = self.body_builder(*args)
                 if isinstance(results, (tuple, list)):
-                    return_types.extend(get_arg_types(results))
+                    arg_types = get_arg_types(results)
                 elif results is not None:
-                    return_types.extend(get_arg_types([results]))
+                    arg_types = get_arg_types([results])
+                else:
+                    arg_types = None
+                if arg_types is not None:
+                    return_types.extend(arg_types)
                 return results
 
             builder_wrapper(grab_results)
@@ -322,7 +346,7 @@ def func(
         loc=loc,
         ip=ip,
     )
-    func = update_wrapper(func, f)
+    update_wrapper(func, f)
     if emit:
         func.emit()
     return func

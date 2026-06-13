@@ -198,7 +198,7 @@ class TensorTiler2D:
             step_dims=tile_group_steps,
             repeat_dims=tile_group_repeats,
         )
-        num_steps = np.prod(steps_per_dim)
+        num_steps = int(np.prod(steps_per_dim))
 
         # Define a function to calculate the offset of each tap in the sequence.
         def offset_fn(step_num: int, _prev_offset: int) -> int:
@@ -215,7 +215,11 @@ class TensorTiler2D:
                 total_offset += (
                     offset
                     * tile_dim
-                    * (np.prod(tensor_dims[dim + 1 :]) if dim < num_dims - 1 else 1)
+                    * (
+                        int(np.prod(tensor_dims[dim + 1 :]))
+                        if dim < num_dims - 1
+                        else 1
+                    )
                 )
             return total_offset
 
@@ -430,9 +434,12 @@ class TensorTiler2D:
 
         # May calculate sizes/strides with some unused values in upper dimensions
         # Let's remove those.
-        iter_sizes, iter_strides = validate_and_clean_sizes_strides(
+        cleaned_sizes, cleaned_strides = validate_and_clean_sizes_strides(
             iter_sizes, iter_strides
         )
+        assert cleaned_sizes is not None and cleaned_strides is not None
+        iter_sizes = list(cleaned_sizes)
+        iter_strides = list(cleaned_strides)
 
         # This is the one special case which is device specific
         # Namely we can only have a pure repeat (nonzero size, 0 stride) in the uppermost (0th) dimension.
@@ -446,8 +453,8 @@ class TensorTiler2D:
                 )
             iter_sizes[0] = pattern_repeat
 
-        iter_sizes, iter_strides = validate_and_clean_sizes_strides(
+        cleaned_sizes, cleaned_strides = validate_and_clean_sizes_strides(
             iter_sizes, iter_strides
         )
-
-        return iter_sizes, iter_strides
+        assert cleaned_sizes is not None and cleaned_strides is not None
+        return cleaned_sizes, cleaned_strides

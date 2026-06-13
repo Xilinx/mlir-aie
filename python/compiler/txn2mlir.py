@@ -6,7 +6,7 @@
 #
 # Copyright (C) 2024-2025, Advanced Micro Devices, Inc. All rights reserved.
 
-from aie.compiler.txn2mlir.main import main
+from aie.compiler.txn2mlir.main import main  # pyright: ignore[reportMissingImports]
 
 if __name__ == "__main__":
     main()

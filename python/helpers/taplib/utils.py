@@ -49,11 +49,11 @@ def validate_and_clean_sizes_strides(
     if sizes and strides:
         if expected_dims:
             if len(sizes) != expected_dims:
-                raise (
+                raise ValueError(
                     f"Num dimensions of sizes ({sizes}) is not expected number of dimensions ({expected_dims})"
                 )
             if len(strides) != expected_dims:
-                raise (
+                raise ValueError(
                     f"Num dimensions of strides ({strides}) is not expected number of dimensions ({expected_dims})"
                 )
         elif len(strides) != len(sizes):
@@ -63,6 +63,7 @@ def validate_and_clean_sizes_strides(
     if strides:
         num_dims = len(strides)
     else:
+        assert sizes is not None
         num_dims = len(sizes)
 
     # Validate sizes/strides values
@@ -79,12 +80,10 @@ def validate_and_clean_sizes_strides(
 
     # Clean (set size=1, stride=0 for as many dims as possible)
     if sizes and strides:
+        strides = list(strides)
         # Leave last dimension strides as whatever it happens to be
         for i in range(num_dims - 1):
             if sizes[i] == 1:
-                if isinstance(strides, tuple):
-                    # Tuple is immutable, so convert if necessary
-                    strides = list(strides)
                 strides[i] = 0
             else:
                 break
