@@ -34,12 +34,12 @@ The softmax function is a mathematical function commonly used in machine learnin
 
 ## Design Overview
 
-Softmax is computed independently per 1024-element tile (no cross-tile reduction), so the design scales like `ml/eltwise_unary` — the body delegates to `iron.algorithms.transform_parallel_typed` with `num_channels=2`. The per-tile kernel comes from `aie.iron.kernels.softmax`, which uses a lookup-table approximation of `e^x` (similar to [`basic/vector_exp`](../../basic/vector_exp/)).
+Softmax is computed independently per 1024-element tile (no cross-tile reduction), so the design scales like `ml/eltwise_unary` — the body delegates to `iron.algorithms.transform_parallel` with `num_channels=2`. The per-tile kernel comes from `aie.iron.kernels.softmax`, which uses a lookup-table approximation of `e^x` (similar to [`basic/vector_exp`](../../basic/vector_exp/)).
 
 
 ## Source Files Overview
 
-1. `softmax.py`: IRON design driven by `@iron.jit`; one `transform_parallel_typed` call over `kernels.softmax(tile_size=1024)`.
+1. `softmax.py`: IRON design driven by `@iron.jit`; one `transform_parallel` call over `kernels.softmax(tile_size=1024)`.
 
 1. `test.cpp`: C++ testbench that loads the compiled XCLBIN + `insts.bin`, runs the kernel, and verifies the output against a CPU reference.
 

@@ -7,7 +7,7 @@
 
 Uses every shim DMA in-out pair on the device to saturate DDR bandwidth.
 The design body is a one-liner delegating to
-``iron.algorithms.transform_parallel_typed`` with ``num_channels=2``; the
+``iron.algorithms.transform_parallel`` with ``num_channels=2``; the
 per-tile kernel is the library passthrough.
 """
 
@@ -15,7 +15,7 @@ import numpy as np
 
 import aie.iron as iron
 from aie.iron import CompileTime, In, Out, kernels
-from aie.iron.algorithms import transform_parallel_typed
+from aie.iron.algorithms import transform_parallel
 from aie.utils.benchmark import run_iters
 from aie.utils.verify import assert_pass
 
@@ -28,7 +28,7 @@ def my_memcpy(
     size: CompileTime[int],
     xfr_dtype: CompileTime[type] = np.int32,
 ):
-    return transform_parallel_typed(
+    return transform_parallel(
         kernels.passthrough(tile_size=1024, dtype=xfr_dtype),
         np.ndarray[(size,), np.dtype[xfr_dtype]],
         tile_size=1024,

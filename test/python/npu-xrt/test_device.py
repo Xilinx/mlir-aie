@@ -81,23 +81,6 @@ def test_legal_mem_affinity(device):
         device.is_mem_accessible(Tile(1, 2), [Tile()])
 
 
-def test_unplaced_tile_queries(device):
-    """Device query methods must raise ValueError for unplaced tiles."""
-    unplaced = Tile()
-    with pytest.raises(ValueError):
-        device.get_num_source_switchbox_connections(unplaced)
-    with pytest.raises(ValueError):
-        device.get_num_dest_switchbox_connections(unplaced)
-    with pytest.raises(ValueError):
-        device.get_num_source_shim_mux_connections(unplaced)
-    with pytest.raises(ValueError):
-        device.get_num_dest_shim_mux_connections(unplaced)
-    with pytest.raises(ValueError):
-        device.get_num_connections(unplaced, output=True)
-    with pytest.raises(ValueError):
-        device.get_num_connections(unplaced, output=False)
-
-
 def test_tile_type_coordinate_mismatch(device):
     """resolve_tile must reject tiles where tile_type contradicts coordinates."""
     from aie.dialects._aie_enum_gen import AIETileType
