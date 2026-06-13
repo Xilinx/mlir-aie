@@ -74,12 +74,17 @@ def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
         from aie import ir
         from aie._mlir_libs import get_dialect_registry
 
-        ctx = ir.Context()
+        ir_context = ir.Context  # pyright: ignore[reportAttributeAccessIssue]
+        ir_location = ir.Location  # pyright: ignore[reportAttributeAccessIssue]
+        ir_module = ir.Module  # pyright: ignore[reportAttributeAccessIssue]
+
+        ctx = ir_context()
         ctx.append_dialect_registry(get_dialect_registry())
         ctx.load_all_available_dialects()
         ctx.allow_unregistered_dialects = True
-        with ctx, ir.Location.unknown():
-            module = ir.Module.parse(mlir_path.read_text())
+        mlir_text = mlir_path.read_text()
+        with ctx, ir_location.unknown():
+            module = ir_module.parse(mlir_text)
 
         # Pass 1: collect every runtime_sequence + record aiex.run call edges.
         all_sequences: list = []
@@ -120,9 +125,10 @@ def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
         # Pass 3: read each arg's memref element count.
         seq_block = entry.regions[0].blocks[0]
         sizes: list[int] = []
+        memref_type = ir.MemRefType  # pyright: ignore[reportAttributeAccessIssue]
         for arg in seq_block.arguments:
             t = arg.type
-            if not isinstance(t, ir.MemRefType):
+            if not isinstance(t, memref_type):
                 return None
             if not t.has_static_shape:
                 return None

@@ -17,12 +17,13 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 import numpy as np
-import pyxrt
+import pyxrt  # pyright: ignore[reportMissingImports]
 
 from ..hostruntime import HostRuntime, HostRuntimeError, KernelHandle, KernelResult
 
 if TYPE_CHECKING:
     from aie.iron.device import Device
+    from ...trace import TraceConfig
 from .tensor import XRTTensor
 
 logger = logging.getLogger(__name__)
@@ -59,9 +60,9 @@ class XRTKernelResult(KernelResult):
         self,
         ret: pyxrt.ert_cmd_state,
         npu_time: int,
-        trace_data: XRTTensor | None = None,
+        trace_config: "TraceConfig | None" = None,
     ):
-        super().__init__(npu_time, trace_data)
+        super().__init__(npu_time, trace_config)
         self.ret = ret
 
     def is_success(self) -> bool:
@@ -134,7 +135,7 @@ class XRTHostRuntime(HostRuntime):
 
         self._device_type_str = self._device.get_info(pyxrt.xrt_info_device.name)
 
-        self.npu_str = None
+        self.npu_str: str | None = None
         for key, value in self.NPU_MODELS.items():
             if any([model in self._device_type_str for model in self.NPU_MODELS[key]]):
                 self.npu_str = key
@@ -221,10 +222,11 @@ class XRTHostRuntime(HostRuntime):
 
     def run(
         self,
-        kernel_handle: XRTKernelHandle,
+        kernel_handle: KernelHandle,
         args,
         trace_config=None,
         fail_on_error: bool = True,
+        only_if_loaded: bool = False,
         **kwargs,
     ) -> XRTKernelResult:
         """
@@ -235,6 +237,7 @@ class XRTHostRuntime(HostRuntime):
             args: Arguments to pass to the kernel.
             trace_config (optional): Configuration for tracing. Defaults to None.
             fail_on_error (bool, optional): Whether to raise an exception on kernel failure. Defaults to True.
+            only_if_loaded (bool, optional): Accepted for API compatibility with the runtime base class.
             **kwargs: Additional arguments.
 
         Returns:
@@ -243,6 +246,7 @@ class XRTHostRuntime(HostRuntime):
         Raises:
             HostRuntimeError: If arguments are invalid or kernel execution fails (and fail_on_error is True).
         """
+        assert isinstance(kernel_handle, XRTKernelHandle)
         self.check_device_consistency()
         # Filter out callable functions and check arg types
         args = [a for a in args if not callable(a)]
@@ -294,7 +298,10 @@ class XRTHostRuntime(HostRuntime):
         Raises:
             HostRuntimeError: If the device string is unknown.
         """
-        from aie.iron.device import NPU1, NPU2
+        from aie.iron.device import (
+            NPU1,  # pyright: ignore[reportAttributeAccessIssue]
+            NPU2,  # pyright: ignore[reportAttributeAccessIssue]
+        )
 
         devices = {
             "npu1": NPU1(),
@@ -381,17 +388,20 @@ class CachedXRTRuntime(XRTHostRuntime):
         self._insts_content_cache = OrderedDict()
 
         # Set default from dict if present
-        self._cache_size = None
-        if self.npu_str in self.NPU_CONTEXT_CACHE_SIZE.keys():
-            self._cache_size = self.NPU_CONTEXT_CACHE_SIZE[self.npu_str]
+        cache_size: int | None = None
+        if self.npu_str is not None and self.npu_str in self.NPU_CONTEXT_CACHE_SIZE:
+            cache_size = self.NPU_CONTEXT_CACHE_SIZE[self.npu_str]
 
         # Environment variable always override default values
         # TODO: should probably emit warning if exceeds recorded max size.
-        self._cache_size = os.environ.get("XRT_CONTEXT_CACHE_SIZE", self._cache_size)
+        _env_cache_size = os.environ.get("XRT_CONTEXT_CACHE_SIZE")
+        if _env_cache_size is not None:
+            cache_size = int(_env_cache_size)
 
         # Error if no default and no env var
-        if self._cache_size is None:
+        if cache_size is None:
             raise HostRuntimeError(f"No known cache size for {self.npu_str}")
+        self._cache_size: int = cache_size
 
         atexit.register(self.cleanup)
 
@@ -458,7 +468,7 @@ class CachedXRTRuntime(XRTHostRuntime):
 
     def run(
         self,
-        kernel_handle: XRTKernelHandle,
+        kernel_handle: KernelHandle,
         args,
         trace_config=None,
         fail_on_error: bool = True,

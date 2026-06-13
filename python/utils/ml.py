@@ -23,7 +23,7 @@ import os
 import sys
 
 import numpy as np
-import torch
+import torch  # pyright: ignore[reportMissingImports]
 
 
 class CSVLoggerError(Exception):
@@ -51,6 +51,7 @@ class CSVLogger:
     def append(self, row):
         if self.columns is None:
             self.set_columns(row.keys())
+        assert self.columns is not None
         self.csvwriter.writerow([row.get(k, "-") for k in self.columns])
         self.count += 1
         if self.count > 100:
@@ -272,7 +273,7 @@ class DataShaper:
                         mat = mat.reshape(mat.shape[: idx + 1] + (-1,))
                         pad = a - (mat.shape[-1] % a)
                         if pad < a:
-                            mp = np.zeros((len(mat.shape), 2), dtype=np.int)
+                            mp = np.zeros((len(mat.shape), 2), dtype=np.int_)
                             mp[-1, -1] = pad
                             mat = np.pad(mat, mp, "constant")
         else:
@@ -465,6 +466,8 @@ def run_conv_torch_test(
 
     npu_kernel_kwargs = {} if kernel_name is None else {"kernel_name": kernel_name}
     npu_kernel = NPUKernel(xclbin_path, insts_path, **npu_kernel_kwargs)
+    if DefaultNPURuntime is None:
+        raise RuntimeError("No default NPU runtime available (is XRT installed?)")
     kernel_handle = DefaultNPURuntime.load(npu_kernel)
     ret = DefaultNPURuntime.run(kernel_handle, buffers)
 

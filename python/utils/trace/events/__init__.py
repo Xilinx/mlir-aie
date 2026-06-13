@@ -33,7 +33,10 @@ from aie.dialects._aie_enum_gen import (
     MemTileEventAIE2P,
 )
 
-from aie.dialects.aie import WireBundle, DMAChannelDir
+from aie.dialects.aie import (
+    WireBundle,  # pyright: ignore[reportAttributeAccessIssue]
+    DMAChannelDir,  # pyright: ignore[reportAttributeAccessIssue]
+)
 
 # Default to AIE2 for backwards compatibility
 CoreEvent = CoreEventAIE2

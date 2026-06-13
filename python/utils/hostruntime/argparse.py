@@ -278,8 +278,13 @@ def device_from_args(
     from aie.iron.device import from_name
 
     dev = getattr(args, dev_attr)
+    resolved_cols: int | None
     if n_cols == "auto":
-        n_cols = getattr(args, "n_cols", None)
-        if n_cols is None:
-            n_cols = 1
-    return from_name(dev, n_cols=n_cols)
+        resolved_cols = getattr(args, "n_cols", None)
+        if resolved_cols is None:
+            resolved_cols = 1
+    elif isinstance(n_cols, str):
+        raise ValueError(f"n_cols must be an int, None, or 'auto'; got {n_cols!r}")
+    else:
+        resolved_cols = n_cols
+    return from_name(dev, n_cols=resolved_cols)

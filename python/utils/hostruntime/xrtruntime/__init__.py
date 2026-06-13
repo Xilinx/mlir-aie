@@ -7,6 +7,6 @@
 # (c) Copyright 2025-2026 Advanced Micro Devices, Inc.
 
 try:
-    import pyxrt as xrt
+    import pyxrt as xrt  # pyright: ignore[reportMissingImports]
 except Exception as e:
     raise ImportError(f"Cannot import pyxrt (err={e})... is XRT installed?")

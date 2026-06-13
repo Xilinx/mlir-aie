@@ -8,6 +8,7 @@ import json
 import re
 import os
 import sys
+from typing import Optional
 from .events import NUM_TRACE_TYPES
 
 logger = logging.getLogger(__name__)
@@ -46,7 +47,7 @@ def create_ctrl_pkt(
     return header
 
 
-def get_kernel_code(test: dict, solutions_path: str = None) -> str:
+def get_kernel_code(test: dict, solutions_path: Optional[str] = None) -> Optional[str]:
     """Fetch the kernel code from the provided solution path, if none provided default
     to canonical solution."""
     if not solutions_path:
@@ -160,7 +161,22 @@ def get_cycles_summary(trace_path):
         return deltas
     except Exception:
         logger.exception("Exception found")
-        return np.inf
+        return []
+
+
+def print_cycles_summary(trace_path):
+    cycles = get_cycles_summary(trace_path)
+    for entry in cycles:
+        print(entry[0])
+        runs = len(entry) - 1
+        print(f"Total number of full kernel invocations is {runs}")
+        if runs > 0:
+            samples = entry[1:]
+            print(
+                "First/Min/Avg/Max cycles is "
+                f"{samples[0]}/ {min(samples)}/ "
+                f"{sum(samples) / runs}/ {max(samples)}"
+            )
 
 
 def print_cycles_summary(trace_path):
@@ -340,7 +356,7 @@ def convert_to_commands(byte_stream_list, zero=True):
                         commands[t][key].append(com)
                         cursor = cursor + 3
                     if (byte_stream[cursor] & 0b11110000) == 0b11000000:
-                        com = {"type": "Multiple0"}
+                        com: dict = {"type": "Multiple0"}
                         com["cycles"] = byte_stream[cursor + 1] & 0b1111
                         events = (byte_stream[cursor] & 0b1111) << 4
                         events = events + (byte_stream[cursor + 1] >> 4)

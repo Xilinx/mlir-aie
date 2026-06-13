@@ -17,7 +17,7 @@ from .utils import (
     convert_to_byte_stream,
     convert_to_commands,
 )
-from .trace.events import (
+from .events import (
     NUM_TRACE_TYPES,
     CoreEvent,
     MemEvent,
@@ -81,49 +81,6 @@ def flatten_repeat_command(commands):
     return flat_commands
 
 
-# Using trace_event_0 = 0x4B222125, trace_event_1 = 0x2D2C1A4F
-def lookupEventNameInStr(event, pid, pid_events):
-    # TODO Expand to other pid for multiple cores? even/odd
-    # For now, we assume a single trace event and key based on that
-    # in the future, the pid will be used to match the right events
-    return lookup_event_name_by_code(pid_events[0][int(event)])
-
-    # if pid == 0 or pid == 2: # Core trace
-    #     if event == "0":
-    #         return "KernelExecutesVectorInstruction"
-    #     elif event == "1":
-    #         return "KernelStarts"
-    #     elif event == "2":
-    #         return "KernelDone"
-    #     elif event == "3":
-    #         return "PortRunning0"
-    #     elif event == "4":
-    #         return "PortRunning1"
-    #     elif event == "5":
-    #         return "LockStall"
-    #     elif event == "6":
-    #         return "LockAcquireInstr"
-    #     elif event == "7":lookupEventNameInstr
-    #         return "LockReleaseInstr"
-    # elif pid == 1 or pid == 3: # Memory trace
-    #     if event == "0":
-    #         return "S2mm0StartTask"
-    #     elif event == "1":
-    #         return "S2mm1StartTask"
-    #     elif event == "2":
-    #         return "Mm2s0StartTask"
-    #     elif event == "3":
-    #         return "Mm2s1StartTask"
-    #     elif event == "4":
-    #         return "S2mm0FinishedTask"
-    #     elif event == "5":
-    #         return "S2mm1FinishedTask"
-    #     elif event == "6":
-    #         return "Mm2s0FinishedTask"
-    #     elif event == "7":
-    #         return "Mm2s1FinishedTask"
-
-
 # multiples is a list of events that are being activated
 def deactivate(
     multiples, active_events, timer, cycles, pid, trace_type, loc, pid_events
@@ -136,7 +93,7 @@ def deactivate(
                 # trace_event = {'name':events_to_name[k]}
                 # trace_event = {'name':lookupEventNameInStr(str(k), pid, pid_events)}
                 # trace_event = {'name':lookup_event_name_by_type(trace_type, str(k), pid_events)} # TODO remove
-                trace_event = {
+                trace_event: dict = {
                     "name": lookup_event_name_by_type(
                         trace_type, pid_events[trace_type][loc][k]
                     )
@@ -228,7 +185,7 @@ def convert_commands_to_json(trace_events, commands, pid_events):
                             # trace_event = {'name':events_to_name[event]}
                             # trace_event = {'name':lookupEventNameInStr(str(event), pid, pid_events)}
                             # trace_event = {'name':lookupEventNameInStr(str(event), pid, pid_events)} # TODO
-                            trace_event = {
+                            trace_event: dict = {
                                 "name": lookup_event_name_by_type(
                                     tt, pid_events[tt][loc][event]
                                 )
@@ -310,7 +267,7 @@ def convert_commands_to_json(trace_events, commands, pid_events):
 
 
 def process_name_metadata(trace_events, pid, trace_type, loc):
-    trace_event = {"name": "process_name"}
+    trace_event: dict = {"name": "process_name"}
     trace_event["ph"] = "M"
     trace_event["pid"] = pid
     trace_event["args"] = {}
@@ -331,7 +288,7 @@ def process_name_metadata(trace_events, pid, trace_type, loc):
 # def thread_name_metadata(trace_events, pid, tid, pid_events):
 def thread_name_metadata(trace_events, trace_type, loc, pid, tid, pid_events):
     # def thread_name_metadata(trace_events, trace_type, pid, tid):
-    trace_event = {"name": "thread_name"}
+    trace_event: dict = {"name": "thread_name"}
     trace_event["ph"] = "M"
     trace_event["pid"] = pid
     trace_event["tid"] = tid
@@ -637,7 +594,7 @@ def convert_eventIR_to_json(trace_events, lines, pid_events):
                 )
                 try:  # TODO if matching event (how to deal with start even 161)
                     # trace_event = {'name':lookup_event_name_by_type(tt, pid_events[tt][loc][event])}
-                    trace_event = {"name": lookup_event_name_by_type(tt, event)}
+                    trace_event: dict = {"name": lookup_event_name_by_type(tt, event)}
                     trace_event["ts"] = curr_time
                     trace_event["ph"] = "B" if asserted else "E"
                     trace_event["pid"] = pid_events[tt][loc][NUM_EVENTS]
@@ -666,9 +623,13 @@ def create_target():
 
 
 def print_config_json(pid_events):
+    loc = None
+    eventArray = None
     for key, value in pid_events[0].items():
         loc = key
         eventArray = value
+    if loc is None or eventArray is None:
+        return
     try:
         with open("config.json", "wt") as f:
             f.write("{\n")

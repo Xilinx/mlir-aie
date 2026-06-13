@@ -49,7 +49,7 @@ from aie.utils.compile import (
 from aie.utils.compile.cache.utils import file_lock
 from aie.utils.compile.utils import _cleanup_failed_compilation
 from aie.extras.context import mlir_mod_ctx
-from aie.ir import Module as _Module
+from aie.ir import Module as _Module  # pyright: ignore[reportAttributeAccessIssue]
 
 from ._dma_size_parser import parse_dma_sizes
 from ._hash import _compute_artifact_hash, _compute_hash, _compute_recipe_hash
@@ -157,11 +157,11 @@ class CompilableDesign:
             self.mlir_generator,
             compile_kwargs={**self.compile_kwargs, **compile_kwargs},
             use_cache=self.use_cache,
-            compile_flags=self.compile_flags,
-            source_files=self.source_files,
-            include_paths=self.include_paths,
-            aiecc_flags=self.aiecc_flags,
-            object_files=self.object_files,
+            compile_flags=list(self.compile_flags),
+            source_files=list(self.source_files),
+            include_paths=list(self.include_paths),
+            aiecc_flags=list(self.aiecc_flags),
+            object_files=list(self.object_files),
         )
 
     def compile(
@@ -201,6 +201,7 @@ class CompilableDesign:
                 f"inst_path={inst_path!r}."
             )
         explicit_paths = xclbin_path is not None
+        cache_hash = None
 
         if elf_path is not None and not explicit_paths:
             raise ValueError(
@@ -209,6 +210,7 @@ class CompilableDesign:
             )
 
         if explicit_paths:
+            assert xclbin_path is not None and inst_path is not None
             # Absolutize so compile_external_kernel's `cwd=kernel_dir` doesn't
             # turn relative paths into "build/build/foo.cc" etc.
             xclbin_path = Path(xclbin_path).resolve()
@@ -324,7 +326,7 @@ class CompilableDesign:
                 # (missing xclbinutil/bootgen); verify outputs exist.
                 expected_outputs = [xclbin_path, inst_path]
                 if elf_path is not None:
-                    expected_outputs.append(elf_path)
+                    expected_outputs.append(Path(elf_path))
                 missing = [p for p in expected_outputs if not p.exists()]
                 if missing:
                     raise RuntimeError(
@@ -370,8 +372,8 @@ class CompilableDesign:
         if not callable(self.mlir_generator):
             # Static .mlir file: pass everything through as tensors,
             # but still filter compile-time-only kernel objects.
-            runtime_args = [a for a in runtime_args if not isinstance(a, Kernel)]
-            return runtime_args, runtime_kwargs
+            filtered = [a for a in runtime_args if not isinstance(a, Kernel)]
+            return filtered, runtime_kwargs
 
         tensor_args = []
         scalar_kwargs = dict(runtime_kwargs)
@@ -379,6 +381,7 @@ class CompilableDesign:
         # Reuse the cached intro from __init__ — same generator, same hints/sig.
         hints = self._hints
         sig = self._sig
+        assert sig is not None
         params = [
             (name, p)
             for name, p in sig.parameters.items()
@@ -439,7 +442,7 @@ class CompilableDesign:
         addressable footprint extracted from the compiled
         ``aiex.runtime_sequence``.  ``parse_dma_sizes`` returns
         ``max(offset + len)`` so multi-column fan-outs, repeated transfers
-        (matmul B reloaded each tile_row), and InOut buffers (for_each_typed
+        (matmul B reloaded each tile_row), and InOut buffers (for_each
         fill+drain on the same arg) all give the host-tensor size directly.
 
         Args with no associated DMA (entry == 0) are skipped — those are
@@ -639,6 +642,7 @@ class CompilableDesign:
             )
 
         sig = self._sig
+        assert sig is not None
         compile_only_params = {
             name: p
             for name, p in sig.parameters.items()
@@ -669,7 +673,7 @@ class CompilableDesign:
                 ExternalFunction._instances.add(_v)
 
         with compile_context(**self.compile_kwargs):
-            with mlir_mod_ctx() as ctx:
+            with mlir_mod_ctx() as ctx:  # pyright: ignore[reportGeneralTypeIssues]
                 result = self.mlir_generator(**_gen_call_kwargs)
                 module = ctx.module if result is None else result
                 if not module.operation.verify():
@@ -691,7 +695,7 @@ class CompilableDesign:
         """
         mlir_text, external_kernels = self._generated
         ExternalFunction._instances.update(external_kernels)
-        with mlir_mod_ctx():
+        with mlir_mod_ctx():  # pyright: ignore[reportGeneralTypeIssues]
             return _Module.parse(mlir_text)
 
     def __hash__(self) -> int:

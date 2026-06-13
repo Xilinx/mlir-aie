@@ -107,6 +107,7 @@ class HostRuntime(ABC):
         accept any override whose arch matches and whose column count is <=
         the runtime device's column count.
         """
+        assert __package__ is not None
         mod = sys.modules[__package__]
         override = getattr(mod, "_CURRENT_DEVICE", None)
         if override is None:
@@ -141,18 +142,22 @@ class HostRuntime(ABC):
     def run(
         self,
         kernel_handle: KernelHandle,
-        *args,
+        args,
         trace_config: TraceConfig | None = None,
+        fail_on_error: bool = True,
         only_if_loaded=False,
+        **kwargs,
     ) -> KernelResult:
         """
         Run a loaded kernel.
 
         Args:
             kernel_handle (KernelHandle): The handle to the loaded kernel.
-            *args: Arguments to pass to the kernel.
+            args: Arguments to pass to the kernel.
             trace_config (TraceConfig | None, optional): Configuration for tracing. Defaults to None.
+            fail_on_error (bool, optional): Whether to raise an exception on kernel failure. Defaults to True.
             only_if_loaded (bool, optional): If True, only run if already loaded. Defaults to False.
+            **kwargs: Additional arguments.
 
         Returns:
             KernelResult: The result of the kernel execution.
@@ -304,7 +309,7 @@ class HostRuntime(ABC):
     @classmethod
     def extract_trace_from_args(
         cls, args: list[Tensor], trace_config: TraceConfig
-    ) -> tuple[Tensor, Tensor | None]:
+    ) -> tuple[np.ndarray, np.ndarray | None]:
         """
         Extract trace and control buffers from the arguments.
 
@@ -313,7 +318,7 @@ class HostRuntime(ABC):
             trace_config (TraceConfig): Trace configuration.
 
         Returns:
-            tuple[Tensor, Tensor | None]: A tuple containing the trace buffer and optionally the control buffer.
+            tuple[np.ndarray, np.ndarray | None]: A tuple containing the trace buffer and optionally the control buffer.
         """
         trace_buff = None
         ctrl_buff = None

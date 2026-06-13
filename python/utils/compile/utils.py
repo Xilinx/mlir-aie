@@ -23,7 +23,9 @@ def resolve_target_arch(device=None) -> str:
     if device is None:
         return "aie2"
     from aie.dialects._aie_enum_gen import AIEArch
-    from aie.dialects.aie import get_target_model
+    from aie.dialects.aie import (
+        get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
+    )
     from aie.iron.device import Device
 
     if isinstance(device, Device):

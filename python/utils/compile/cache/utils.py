@@ -134,7 +134,7 @@ def _create_function_cache_key(function, args, kwargs):
                         code.co_names,
                         code.co_filename,
                         (
-                            code.co_qualname
+                            code.co_qualname  # pyright: ignore[reportAttributeAccessIssue]
                             if hasattr(code, "co_qualname")
                             else code.co_name
                         ),
@@ -170,7 +170,7 @@ def _create_function_cache_key(function, args, kwargs):
                         code.co_names,
                         code.co_filename,
                         (
-                            code.co_qualname
+                            code.co_qualname  # pyright: ignore[reportAttributeAccessIssue]
                             if hasattr(code, "co_qualname")
                             else code.co_name
                         ),
