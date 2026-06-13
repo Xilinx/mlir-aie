@@ -185,10 +185,9 @@ struct AIECtrlPacketToDmaPass
         int col = ctrlPktOp.getColumnFromAddr();
 
         // Emit the batched DMA operation for this (col, row) pair
-        const std::vector<int64_t> staticOffsets = {0, 0, 0,
-                                                    batchIt->startOffset};
-        const std::vector<int64_t> staticSizes = {1, 1, 1, batchIt->totalSize};
-        const std::vector<int64_t> staticStrides = {0, 0, 0, 1};
+        const std::vector<int64_t> staticOffsets = {0, 0, batchIt->startOffset};
+        const std::vector<int64_t> staticSizes = {1, 1, batchIt->totalSize};
+        const std::vector<int64_t> staticStrides = {0, 0, 1};
 
         SymbolRefAttr metadata =
             SymbolRefAttr::get(builder.getContext(), batchIt->shimDmaAllocName);

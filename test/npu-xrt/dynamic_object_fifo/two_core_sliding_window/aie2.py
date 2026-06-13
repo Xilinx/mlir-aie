@@ -91,8 +91,8 @@ def two_core_sliding_window():
 
             @runtime_sequence(tensor_ty, tensor_ty)
             def sequence(A, C):
-                npu_dma_memcpy_nd(metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, 1, N])
-                npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, N])
+                npu_dma_memcpy_nd(metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, N])
+                npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, N])
                 dma_wait(of_out)
 
     print(ctx.module)

@@ -89,7 +89,7 @@ def my_passthrough_kernel(in1_size, out_size):
                 core_chunk_ty,
                 iter_count=in_num_iterations,
             )
-            split_fifo.set_repeat_count(repeat_counter)
+            split_fifo.set_repeat_count(repeat_counter - 1)
             of_split.append(split_fifo)
 
         split_offsets = [i * elements_per_core_per_chunk for i in range(n_cores)]
@@ -139,11 +139,11 @@ def my_passthrough_kernel(in1_size, out_size):
         def sequence(inTensor, outTensor, notUsed):
             trace_utils.start_trace()
 
-            in_task = shim_dma_single_bd_task(of_in, inTensor, sizes=[1, 1, 1, N])
+            in_task = shim_dma_single_bd_task(of_in, inTensor, sizes=[1, 1, N])
             dma_start_task(in_task)
 
             out_task = shim_dma_single_bd_task(
-                of_out, outTensor, sizes=[1, 1, 1, N_out], issue_token=True
+                of_out, outTensor, sizes=[1, 1, N_out], issue_token=True
             )
             dma_start_task(out_task)
             dma_await_task(out_task)

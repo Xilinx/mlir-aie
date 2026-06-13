@@ -238,17 +238,27 @@ void collectBuffers(
 // linearized by the compiler.
 bool isContiguousBDTransfer(llvm::ArrayRef<BDDimLayoutAttr> dims);
 
-// Verify that a BD's per-dimension sizes and strides (innermost-first) are
-// realizable for hardware with the given address generation granularity.
-// Checks: positive sizes; innermost contiguous run is a granularity multiple;
-// positive strides for non-repeat dims (last stride may be zero); each
-// non-innermost stride byte-aligned to granularity (innermost stride==1 is
-// always allowed); for elemWidth > granularity, innermost stride must be 1.
-mlir::LogicalResult verifyBDSizesStrides(mlir::Operation *forOp,
-                                         unsigned elemWidthBits,
-                                         uint32_t addressGranularityBits,
-                                         llvm::ArrayRef<int64_t> inputSizes,
-                                         llvm::ArrayRef<int64_t> inputStrides);
+// Verify that a DMA buffer descriptor's data-layout transform and explicit
+// iteration are realizable on the given tile type. The data-layout dims
+// (`inputSizes`/`inputStrides`, innermost-first, in element-width units) are
+// pure access dims: all sizes positive, all strides positive (no magic stride-0
+// "repeat" -- iteration is a separate input here). Iteration is described by
+// logical `iterSize`/`iterStride` (element-width units, iterSize == 0 means no
+// iteration). The tile type selects the dimension-count limit and the wrap /
+// step / iteration register bit-widths from the target model.
+//
+// Checks: dim count within getDmaBdMaxDims(tileType); positive sizes/strides;
+// innermost contiguous run is a granularity multiple; sub-word innermost runs
+// rejected; each non-innermost stride byte-aligned to granularity (innermost
+// stride==1 always allowed); for elemWidth > granularity innermost stride must
+// be 1; per-dimension wrap/step ranges (skipped when skipTransformationChecks,
+// e.g. a contiguous shim transfer lowered to linear mode); iteration wrap/step
+// ranges and positive iterStride when iterSize > 1.
+mlir::LogicalResult verifyBDDataLayoutAndIteration(
+    mlir::Operation *forOp, const AIETargetModel &targetModel,
+    AIETileType tileType, unsigned elemWidthBits,
+    llvm::ArrayRef<int64_t> inputSizes, llvm::ArrayRef<int64_t> inputStrides,
+    int64_t iterSize, int64_t iterStride, bool skipTransformationChecks);
 
 } // namespace xilinx::AIE
 

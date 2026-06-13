@@ -92,8 +92,8 @@ module {
         aie.runtime_sequence @sequence(%xy: memref<128xi32>) {
             aiex.npu.rtp_write(@rtp2, 0, 1)
             // read first row and write to second row
-            aiex.npu.dma_memcpy_nd(%xy[0, 0, 0, 0][1, 1, 1, 16][0, 0, 0, 1]) {id = 0 : i64, metadata = @mem_In} : memref<128xi32>
-            aiex.npu.dma_memcpy_nd(%xy[0, 0, 0, 16][1, 1, 1, 16][0, 0, 0, 1]) {id = 2 : i64, metadata = @mem_out} : memref<128xi32>
+            aiex.npu.dma_memcpy_nd(%xy[0, 0, 0][1, 1, 16][0, 0, 1]) {id = 0 : i64, metadata = @mem_In} : memref<128xi32>
+            aiex.npu.dma_memcpy_nd(%xy[0, 0, 16][1, 1, 16][0, 0, 1]) {id = 2 : i64, metadata = @mem_out} : memref<128xi32>
             aiex.npu.dma_wait {symbol = @mem_out}
             //┌───────────────────────────────┐
             //│Output:                        │
@@ -107,8 +107,8 @@ module {
 
             // read first two rows and write to the third row
             aiex.npu.rtp_write(@rtp2, 1, 2)
-            aiex.npu.dma_memcpy_nd(%xy[0, 0, 0, 0][1, 1, 2, 16][0, 0, 16, 1]) {id = 0 : i64, metadata = @mem_In} : memref<128xi32>
-            aiex.npu.dma_memcpy_nd(%xy[0, 0, 0, 32][1, 1, 1, 16][0, 0, 0, 1]) {id = 2 : i64, metadata = @mem_out} : memref<128xi32>
+            aiex.npu.dma_memcpy_nd(%xy[0, 0, 0][1, 2, 16][0, 16, 1]) {id = 0 : i64, metadata = @mem_In} : memref<128xi32>
+            aiex.npu.dma_memcpy_nd(%xy[0, 0, 32][1, 1, 16][0, 0, 1]) {id = 2 : i64, metadata = @mem_out} : memref<128xi32>
             aiex.npu.dma_wait {symbol = @mem_out}
             //┌───────────────────────────────┐
             //│Output:                        │
@@ -124,24 +124,24 @@ module {
 
             // read first three rows and write to the 4th row
             aiex.npu.rtp_write(@rtp2, 2, 3)
-            aiex.npu.dma_memcpy_nd(%xy[0, 0, 0, 0][1, 1, 3, 16][0, 0, 16, 1]) {id = 0 : i64, metadata = @mem_In} : memref<128xi32>
-            aiex.npu.dma_memcpy_nd(%xy[0, 0, 0, 48][1, 1, 1, 16][0, 0, 0, 1]) {id = 2 : i64, metadata = @mem_out} : memref<128xi32>
+            aiex.npu.dma_memcpy_nd(%xy[0, 0, 0][1, 3, 16][0, 16, 1]) {id = 0 : i64, metadata = @mem_In} : memref<128xi32>
+            aiex.npu.dma_memcpy_nd(%xy[0, 0, 48][1, 1, 16][0, 0, 1]) {id = 2 : i64, metadata = @mem_out} : memref<128xi32>
             aiex.npu.dma_wait {symbol = @mem_out}
             aiex.npu.rtp_write(@rtp2, 3, 4)
-            aiex.npu.dma_memcpy_nd(%xy[0, 0, 0, 0][1, 1, 4, 16][0, 0, 16, 1]) {id = 0 : i64, metadata = @mem_In} : memref<128xi32>
-            aiex.npu.dma_memcpy_nd(%xy[0, 0, 0, 64][1, 1, 1, 16][0, 0, 0, 1]) {id = 2 : i64, metadata = @mem_out} : memref<128xi32>
+            aiex.npu.dma_memcpy_nd(%xy[0, 0, 0][1, 4, 16][0, 16, 1]) {id = 0 : i64, metadata = @mem_In} : memref<128xi32>
+            aiex.npu.dma_memcpy_nd(%xy[0, 0, 64][1, 1, 16][0, 0, 1]) {id = 2 : i64, metadata = @mem_out} : memref<128xi32>
             aiex.npu.dma_wait {symbol = @mem_out}
             aiex.npu.rtp_write(@rtp2, 4, 5)
-            aiex.npu.dma_memcpy_nd(%xy[0, 0, 0, 0][1, 1, 5, 16][0, 0, 16, 1]) {id = 0 : i64, metadata = @mem_In} : memref<128xi32>
-            aiex.npu.dma_memcpy_nd(%xy[0, 0, 0, 80][1, 1, 1, 16][0, 0, 0, 1]) {id = 2 : i64, metadata = @mem_out} : memref<128xi32>
+            aiex.npu.dma_memcpy_nd(%xy[0, 0, 0][1, 5, 16][0, 16, 1]) {id = 0 : i64, metadata = @mem_In} : memref<128xi32>
+            aiex.npu.dma_memcpy_nd(%xy[0, 0, 80][1, 1, 16][0, 0, 1]) {id = 2 : i64, metadata = @mem_out} : memref<128xi32>
             aiex.npu.dma_wait {symbol = @mem_out}
             aiex.npu.rtp_write(@rtp2, 5, 6)
-            aiex.npu.dma_memcpy_nd(%xy[0, 0, 0, 0][1, 1, 6, 16][0, 0, 16, 1]) {id = 0 : i64, metadata = @mem_In} : memref<128xi32>
-            aiex.npu.dma_memcpy_nd(%xy[0, 0, 0, 96][1, 1, 1, 16][0, 0, 0, 1]) {id = 2 : i64, metadata = @mem_out} : memref<128xi32>
+            aiex.npu.dma_memcpy_nd(%xy[0, 0, 0][1, 6, 16][0, 16, 1]) {id = 0 : i64, metadata = @mem_In} : memref<128xi32>
+            aiex.npu.dma_memcpy_nd(%xy[0, 0, 96][1, 1, 16][0, 0, 1]) {id = 2 : i64, metadata = @mem_out} : memref<128xi32>
             aiex.npu.dma_wait {symbol = @mem_out}
             aiex.npu.rtp_write(@rtp2, 6, 7)
-            aiex.npu.dma_memcpy_nd(%xy[0, 0, 0, 0][1, 1, 7, 16][0, 0, 16, 1]) {id = 0 : i64, metadata = @mem_In} : memref<128xi32>
-            aiex.npu.dma_memcpy_nd(%xy[0, 0, 0, 112][1, 1, 1, 16][0, 0, 0, 1]) {id = 2 : i64, metadata = @mem_out} : memref<128xi32>
+            aiex.npu.dma_memcpy_nd(%xy[0, 0, 0][1, 7, 16][0, 16, 1]) {id = 0 : i64, metadata = @mem_In} : memref<128xi32>
+            aiex.npu.dma_memcpy_nd(%xy[0, 0, 112][1, 1, 16][0, 0, 1]) {id = 2 : i64, metadata = @mem_out} : memref<128xi32>
             aiex.npu.dma_wait {symbol = @mem_out}
         }
     }

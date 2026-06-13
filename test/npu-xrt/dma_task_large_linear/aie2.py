@@ -57,13 +57,13 @@ def design():
                 in_act_task = dma_configure_task_for(of_in, issue_token=True)
                 with bds(in_act_task) as bd:
                     with bd[0]:
-                        shim_dma_bd(A, sizes=[1, 1, 1, BUFFER_LEN])
+                        shim_dma_bd(A, sizes=[1, 1, BUFFER_LEN])
                         EndOp()
 
                 out_task = dma_configure_task_for(of_out, issue_token=True)
                 with bds(out_task) as bd:
                     with bd[0]:
-                        shim_dma_bd(B, sizes=[1, 1, 1, BUFFER_LEN])
+                        shim_dma_bd(B, sizes=[1, 1, BUFFER_LEN])
                         EndOp()
 
                 dma_start_task(in_act_task, out_task)

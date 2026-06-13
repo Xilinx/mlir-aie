@@ -294,6 +294,18 @@ public:
   /// Return the number of buffer descriptors for a given tile type.
   virtual uint32_t getNumBDs(AIETileType tileType) const = 0;
 
+  /// Return the maximum number of data-layout transformation dimensions a DMA
+  /// buffer descriptor supports on the given tile type. Iteration/repeat is a
+  /// separate buffer-descriptor feature and is not counted here.
+  virtual uint32_t getDmaBdMaxDims(AIETileType tileType) const = 0;
+
+  /// Return the bit width of, respectively, the wrap (size), step (stride), and
+  /// iteration-wrap registers in a DMA buffer descriptor for the given tile
+  /// type. A value of N means the field holds an unsigned [0, 2^N - 1].
+  virtual uint32_t getDmaBdWrapBits(AIETileType tileType) const = 0;
+  virtual uint32_t getDmaBdStepBits(AIETileType tileType) const = 0;
+  virtual uint32_t getDmaBdIterBits(AIETileType tileType) const = 0;
+
   /// Get stream switch port index for a given port specification
   /// Return port index for Stream_Switch_Event_Port_Selection register, or
   /// nullopt if invalid
@@ -480,6 +492,10 @@ public:
   uint32_t getNumBDs(AIETileType tileType) const override {
     return 16; // AIE1 has no MemTiles, always 16
   }
+  uint32_t getDmaBdMaxDims(AIETileType tileType) const override { return 3; }
+  uint32_t getDmaBdWrapBits(AIETileType tileType) const override { return 10; }
+  uint32_t getDmaBdStepBits(AIETileType tileType) const override { return 20; }
+  uint32_t getDmaBdIterBits(AIETileType tileType) const override { return 6; }
   bool isBdChannelAccessible(int col, int row, uint32_t bd_id,
                              int channel) const override {
     return true;
@@ -585,6 +601,24 @@ public:
   uint32_t getNumBDs(AIETileType tileType) const override {
     return tileType == AIETileType::MemTile ? 48 : 16;
   }
+
+  uint32_t getDmaBdMaxDims(AIETileType tileType) const override {
+    return tileType == AIETileType::MemTile ? 4 : 3;
+  }
+  uint32_t getDmaBdWrapBits(AIETileType tileType) const override {
+    return tileType == AIETileType::CoreTile ? 8 : 10;
+  }
+  uint32_t getDmaBdStepBits(AIETileType tileType) const override {
+    switch (tileType) {
+    case AIETileType::CoreTile:
+      return 13;
+    case AIETileType::MemTile:
+      return 17;
+    default: // ShimNOC / ShimPL
+      return 20;
+    }
+  }
+  uint32_t getDmaBdIterBits(AIETileType tileType) const override { return 6; }
 
   bool isBdChannelAccessible(int col, int row, uint32_t bd_id,
                              int channel) const override {

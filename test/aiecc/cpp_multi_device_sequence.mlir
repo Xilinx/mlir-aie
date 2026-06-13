@@ -64,8 +64,8 @@ module {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
       %c16 = arith.constant 16 : i64
-      aiex.npu.dma_memcpy_nd(%arg1[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c16][%c0,%c0,%c0,%c1]) {metadata = @out1, id = 1 : i64} : memref<16xi32>
-      aiex.npu.dma_memcpy_nd(%arg0[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c16][%c0,%c0,%c0,%c1]) {metadata = @in1, id = 0 : i64, issue_token = true} : memref<16xi32>
+      aiex.npu.dma_memcpy_nd(%arg1[%c0,%c0,%c0][%c1,%c1,%c16][%c0,%c0,%c1]) {metadata = @out1, id = 1 : i64} : memref<16xi32>
+      aiex.npu.dma_memcpy_nd(%arg0[%c0,%c0,%c0][%c1,%c1,%c16][%c0,%c0,%c1]) {metadata = @in1, id = 0 : i64, issue_token = true} : memref<16xi32>
       aiex.npu.dma_wait {symbol = @out1}
     }
 
@@ -73,8 +73,8 @@ module {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
       %c16 = arith.constant 16 : i64
-      aiex.npu.dma_memcpy_nd(%arg1[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c16][%c0,%c0,%c0,%c1]) {metadata = @out1, id = 1 : i64} : memref<16xi32>
-      aiex.npu.dma_memcpy_nd(%arg0[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c16][%c0,%c0,%c0,%c1]) {metadata = @in1, id = 0 : i64, issue_token = true} : memref<16xi32>
+      aiex.npu.dma_memcpy_nd(%arg1[%c0,%c0,%c0][%c1,%c1,%c16][%c0,%c0,%c1]) {metadata = @out1, id = 1 : i64} : memref<16xi32>
+      aiex.npu.dma_memcpy_nd(%arg0[%c0,%c0,%c0][%c1,%c1,%c16][%c0,%c0,%c1]) {metadata = @in1, id = 0 : i64, issue_token = true} : memref<16xi32>
       aiex.npu.dma_wait {symbol = @out1}
     }
   }
@@ -94,8 +94,8 @@ module {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
       %c16 = arith.constant 16 : i64
-      aiex.npu.dma_memcpy_nd(%arg1[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c16][%c0,%c0,%c0,%c1]) {metadata = @out2, id = 1 : i64} : memref<16xi32>
-      aiex.npu.dma_memcpy_nd(%arg0[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c16][%c0,%c0,%c0,%c1]) {metadata = @in2, id = 0 : i64, issue_token = true} : memref<16xi32>
+      aiex.npu.dma_memcpy_nd(%arg1[%c0,%c0,%c0][%c1,%c1,%c16][%c0,%c0,%c1]) {metadata = @out2, id = 1 : i64} : memref<16xi32>
+      aiex.npu.dma_memcpy_nd(%arg0[%c0,%c0,%c0][%c1,%c1,%c16][%c0,%c0,%c1]) {metadata = @in2, id = 0 : i64, issue_token = true} : memref<16xi32>
       aiex.npu.dma_wait {symbol = @out2}
     }
   }

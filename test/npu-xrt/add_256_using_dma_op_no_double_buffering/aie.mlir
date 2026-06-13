@@ -100,8 +100,8 @@ module {
     aie.shim_dma_allocation @data_in (%tile_0_0, MM2S, 0)
     aie.shim_dma_allocation @data_out (%tile_0_0, S2MM, 0)
     aie.runtime_sequence(%arg0: memref<64xi32>, %arg1: memref<32xi32>, %arg2: memref<64xi32>) {
-      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1]) {id = 0 : i64, metadata = @data_in} : memref<64xi32>
-      aiex.npu.dma_memcpy_nd (%arg2[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1]) {id = 1 : i64, metadata = @data_out, issue_token = true} : memref<64xi32>
+      aiex.npu.dma_memcpy_nd (%arg0[0,0,0][1,1,64][0,0,1]) {id = 0 : i64, metadata = @data_in} : memref<64xi32>
+      aiex.npu.dma_memcpy_nd (%arg2[0,0,0][1,1,64][0,0,1]) {id = 1 : i64, metadata = @data_out, issue_token = true} : memref<64xi32>
       aiex.npu.dma_wait {symbol = @data_out}
     }
   }

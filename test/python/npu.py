@@ -70,8 +70,8 @@ def my_vector_scalar(module):
 
         @runtime_sequence(N_ty, N_ty, N_ty)
         def sequence(A, B, C):
-            npu_dma_memcpy_nd(metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, 1, N])
-            npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, N])
+            npu_dma_memcpy_nd(metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, N])
+            npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, N])
             dma_wait(of_out)
 
     assert module.operation.verify()
@@ -184,24 +184,29 @@ def my_matmul(module):
                         metadata=of_inA,
                         bd_id=2 * tile_row + 1,
                         mem=A,
-                        offsets=[0, 0, 0, A_row_offset_in_i32s],
-                        sizes=[N_div_n, K_div_k, m, k_in_i32s],
-                        strides=[0, k_in_i32s, K_in_i32s, 1],
+                        offsets=[0, 0, A_row_offset_in_i32s],
+                        sizes=[K_div_k, m, k_in_i32s],
+                        strides=[k_in_i32s, K_in_i32s, 1],
+                        repeat_count=N_div_n - 1,
                     )
                     npu_dma_memcpy_nd(
                         metadata=of_inB,
                         bd_id=2 * tile_row + 2,
                         mem=B,
-                        sizes=[N_div_n, K_div_k, k, n_in_i32s],
-                        strides=[n_in_i32s, k_x_N_in_i32s, N_in_i32s, 1],
+                        sizes=[K_div_k, k, n_in_i32s],
+                        strides=[k_x_N_in_i32s, N_in_i32s, 1],
+                        iter_size=N_div_n,
+                        iter_stride=n_in_i32s,
                     )
                 npu_dma_memcpy_nd(
                     metadata=of_outC,
                     bd_id=0,
                     mem=C,
-                    offsets=[0, 0, 0, C_row_offset_in_i32s],
-                    sizes=[num_tile_rows, N_div_n, m, n_in_i32s_out],
-                    strides=[m_x_N_in_i32s_out, n_in_i32s_out, N_in_i32s_out, 1],
+                    offsets=[0, 0, C_row_offset_in_i32s],
+                    sizes=[N_div_n, m, n_in_i32s_out],
+                    strides=[n_in_i32s_out, N_in_i32s_out, 1],
+                    iter_size=num_tile_rows,
+                    iter_stride=m_x_N_in_i32s_out,
                 )
                 dma_wait(of_outC)
 
@@ -395,15 +400,15 @@ def edge_detect(module):
                 metadata=inOF_L3L2,
                 bd_id=1,
                 mem=I,
-                sizes=[1, 1, 36, 64],
-                strides=[0, 0, 64, 1],
+                sizes=[1, 36, 64],
+                strides=[0, 64, 1],
             )
             npu_dma_memcpy_nd(
                 metadata=outOF_L2L3,
                 bd_id=0,
                 mem=O,
-                sizes=[1, 1, 36, 64],
-                strides=[0, 0, 64, 1],
+                sizes=[1, 36, 64],
+                strides=[0, 64, 1],
             )
             dma_wait(outOF_L2L3)
 
@@ -447,11 +452,9 @@ def my_add_one_objFifo(module):
             np.ndarray[(64,), np.dtype[np.int32]],
         )
         def sequence(inTensor, notUsed, outTensor):
+            npu_dma_memcpy_nd(metadata=of_in0, bd_id=1, mem=inTensor, sizes=[1, 1, 64])
             npu_dma_memcpy_nd(
-                metadata=of_in0, bd_id=1, mem=inTensor, sizes=[1, 1, 1, 64]
-            )
-            npu_dma_memcpy_nd(
-                metadata=of_out0, bd_id=0, mem=outTensor, sizes=[1, 1, 1, 64]
+                metadata=of_out0, bd_id=0, mem=outTensor, sizes=[1, 1, 64]
             )
             dma_wait(of_out0)
 

@@ -59,9 +59,9 @@ def passthrough(
 
         @runtime_sequence(tensor_ty, tensor_ty)
         def sequence(A, B):
-            in_task = shim_dma_single_bd_task(of_in, A, sizes=[1, 1, 1, num_elements])
+            in_task = shim_dma_single_bd_task(of_in, A, sizes=[1, 1, num_elements])
             out_task = shim_dma_single_bd_task(
-                of_out, B, sizes=[1, 1, 1, num_elements], issue_token=True
+                of_out, B, sizes=[1, 1, num_elements], issue_token=True
             )
             dma_start_task(in_task, out_task)
             dma_await_task(out_task)

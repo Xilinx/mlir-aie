@@ -651,16 +651,24 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
     The hardware only supports a single static offset, and this offset is calculated at compile time.
     Thus, all offsets can be equivalently expressed with the lowest dimension only.
 
+    #### Iteration and Repeat
+
+    `sizes`/`strides` describe up to three pure data-layout dimensions. To replay
+    the whole transfer, use `repeat_count` (a pure repeat, no address increment;
+    `repeat_count == 0` means a single pass) or the explicit `iter_size` /
+    `iter_stride` / `iter_current` attributes (a strided iteration). This matches
+    `aie.dma_bd` and the `dma_task` ops; there is no magic stride-0 dimension.
+
     #### Automatic Linearization of Contiguous Accesses
 
     A canonicalization pattern automatically folds a contiguous row-major access pattern into
-    the canonical linear form `[s3, 1, 1, N][st3, 0, 0, 1]`, where N is the product of the
-    inner three sizes. An access is contiguous when `strides[0] == 1` and each outer stride
+    the canonical linear form `[1, 1, N][0, 0, 1]`, where N is the product of the
+    three sizes. An access is contiguous when `strides[0] == 1` and each outer stride
     equals the product of the inner sizes (i.e. a standard row-major scan).
 
     This means users can express naturally multidimensional accesses such as a 2D image
-    `[1, 1, height, width][0, 0, width, 1]` or a 3D activation tensor
-    `[1, H, W, C][0, W*C, C, 1]` without worrying about hardware dimension size limits.
+    `[1, height, width][0, width, 1]` or a 3D activation tensor
+    `[H, W, C][W*C, C, 1]` without worrying about hardware dimension size limits.
     The compiler will fold them to the linear form, which uses a wider hardware register
     and avoids the 10-bit d0 wrap-size constraint that applies to ND transfers.
 
@@ -673,13 +681,16 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
 
   let arguments = (
     ins AnyRankedOrUnrankedMemRef:$memref,
-        // NOTE: these are in reverse order: offset3, offset2, ...
+        // NOTE: these are in reverse order: offset2, offset1, offset0
+        // These describe up to three pure data-layout dimensions. Iteration and
+        // repeat are expressed separately (see iter_* and repeat_count below),
+        // consistent with aie.dma_bd and the dma_task ops.
         Variadic<I64>:$offsets,
         Variadic<I64>:$sizes,
         Variadic<I64>:$strides,
-        ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_offsets,
-        ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_sizes,
-        ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<4>]>:$static_strides,
+        ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<3>]>:$static_offsets,
+        ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<3>]>:$static_sizes,
+        ConfinedAttr<DenseI64ArrayAttr, [DenseArrayCount<3>]>:$static_strides,
         OptionalAttr<PacketInfoAttr>:$packet,
         SymbolRefAttr:$metadata,
         I64Attr:$id,
@@ -696,7 +707,18 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
         // Set by --aie-lower-scratchpad-parameters from $offset_parameter: the scratchpad
         // state-table index whose value is used as the BD address offset.
         // After lowering, $offset_parameter is removed in favor of this attribute.
-        OptionalAttr<UI8Attr>:$offset_state_table_idx
+        OptionalAttr<UI8Attr>:$offset_state_table_idx,
+        // Explicit buffer-descriptor iteration ("repeat with stride"), logical
+        // (1-based) values in element-width units, matching aie.dma_bd's iter_*.
+        // iter_size == 0 means no iteration. Mutually exclusive with a non-zero
+        // repeat_count.
+        DefaultValuedOptionalAttr<I64Attr, "0">:$iter_size,
+        DefaultValuedOptionalAttr<I64Attr, "0">:$iter_stride,
+        DefaultValuedOptionalAttr<I64Attr, "0">:$iter_current,
+        // Number of extra times to replay the whole buffer descriptor with no
+        // address increment (a pure repeat). The default 0 means a single pass
+        // (no repeat); this matches the convention on aie.dma_bd / dma_task.
+        DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count
   );
 
   let assemblyFormat = [{
@@ -726,7 +748,7 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
 
   let extraClassDefinition = [{
     unsigned $cppClass::getOffsetSizeAndStrideStartOperandIndex() { return 1; }
-    std::array<unsigned, 3> $cppClass::getArrayAttrMaxRanks() { return {4, 4, 4}; }
+    std::array<unsigned, 3> $cppClass::getArrayAttrMaxRanks() { return {3, 3, 3}; }
     uint64_t $cppClass::getElementTypeBitwidth() {
       DataLayout dataLayout = DataLayout::closest(*this);
       return dataLayout.getTypeSizeInBits(getMemref().getType().getElementType());

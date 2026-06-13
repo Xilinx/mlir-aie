@@ -23,7 +23,7 @@ module {
       %subview = memref.subview %arg0[128] [256] [1] : memref<1024xi32> to memref<256xi32, strided<[1], offset: 128>>
       %reinterpret = memref.reinterpret_cast %subview to offset: [0], sizes: [256], strides: [1] : memref<256xi32, strided<[1], offset: 128>> to memref<256xi32>
       // DMA should use the reinterpreted memref, and the pass should trace back to %arg0 with offset
-      aiex.npu.dma_memcpy_nd (%reinterpret[0, 0, 0, 0][1, 1, 1, 256][0, 0, 0, 1]) { metadata = @buffer, id = 0 : i64 } : memref<256xi32>
+      aiex.npu.dma_memcpy_nd (%reinterpret[0,0,0][1,1,256][0,0,1]) { metadata = @buffer, id = 0 : i64 } : memref<256xi32>
     }
     %tile_0_0 = aie.tile(0, 0)
     aie.shim_dma_allocation @buffer (%tile_0_0, S2MM, 0)

@@ -41,14 +41,6 @@ void getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
                              llvm::SmallVector<int64_t, 4> inputStrides,
                              llvm::SmallVector<int64_t, 4> &sizes,
                              llvm::SmallVector<int64_t, 4> &strides);
-mlir::LogicalResult
-verifyStridesWraps(mlir::Operation *forOp,
-                   mlir::BaseMemRefType referencedBufType, int tileCol,
-                   int tileRow, llvm::SmallVector<int64_t, 4> inputSizes,
-                   llvm::SmallVector<int64_t, 4> inputStrides,
-                   llvm::SmallVector<int64_t, 4> hardwareSizes,
-                   llvm::SmallVector<int64_t, 4> hardwareStrides,
-                   bool skipTransformationChecks = false);
 bool isLinearTransfer(llvm::ArrayRef<int64_t> sizes,
                       llvm::ArrayRef<int64_t> strides);
 

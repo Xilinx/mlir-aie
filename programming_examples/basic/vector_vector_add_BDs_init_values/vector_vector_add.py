@@ -204,9 +204,9 @@ def vector_vector_add(
     )
 
     def emit_seq(A_data, C_data):
-        in1_task = shim_dma_single_bd_task("of_in1", A_data.op, sizes=[1, 1, 1, N])
+        in1_task = shim_dma_single_bd_task("of_in1", A_data.op, sizes=[1, 1, N])
         out_task = shim_dma_single_bd_task(
-            "of_out", C_data.op, sizes=[1, 1, 1, N], issue_token=True
+            "of_out", C_data.op, sizes=[1, 1, N], issue_token=True
         )
         dma_start_task(in1_task, out_task)
         dma_await_task(out_task)

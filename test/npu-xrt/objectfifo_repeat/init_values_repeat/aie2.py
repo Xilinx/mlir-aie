@@ -65,7 +65,7 @@ def init_values_repeat():
                     np.arange(1, N + 1, dtype=np.int32),
                 ],
             )
-            of_in.set_repeat_count(memtile_repeat_count)
+            of_in.set_repeat_count(memtile_repeat_count - 1)
             of_out = object_fifo("out", ComputeTile, ShimTile, 1, tensor_ty)
 
             # Compute tile
@@ -87,7 +87,7 @@ def init_values_repeat():
                     metadata=of_out,
                     bd_id=0,
                     mem=C,
-                    sizes=[1, 1, 1, data_out_size],
+                    sizes=[1, 1, data_out_size],
                 )
                 # of_out will only complete after of_in completes, so we just wait on of_out instead of both
                 dma_wait(of_out)

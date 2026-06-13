@@ -1023,6 +1023,17 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
         // state-table index whose value is used as the BD address offset.
         // After lowering, $offset_parameter is removed in favor of this attribute.
         OptionalAttr<UI8Attr>:$offset_state_table_idx,
+        // Explicit buffer-descriptor iteration ("repeat with stride"). These
+        // are logical (1-based) values, denominated -- like the data-layout
+        // strides -- in multiples of the element width. iter_size is the
+        // iteration wrap (number of replays of the BD); iter_size == 0 means no
+        // iteration. iter_stride is the address step added between iterations.
+        // iter_current is the starting iteration index (almost always 0).
+        // Iteration is a separate hardware feature from the $dimensions
+        // data-layout transform; do not encode repeats inside $dimensions.
+        DefaultValuedOptionalAttr<AIEI32Attr, "0">:$iter_size,
+        DefaultValuedOptionalAttr<AIEI32Attr, "0">:$iter_stride,
+        DefaultValuedOptionalAttr<AIEI32Attr, "0">:$iter_current,
         // should never be assigned by user...
         OptionalAttr<AIEI32Attr>:$next_bd_id
   );
@@ -1858,8 +1869,10 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         // disable_synchronization==true will skip lock generation for
         // objectfifo synchronous accesses
         DefaultValuedAttr<BoolAttr, "false">:$disable_synchronization,
-        // repeat_count==1 means "do it once"
-        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$repeat_count,
+        // repeat_count counts EXTRA replays of the BD chain; 0 means "do it
+        // once" (no repeat), matching aie.dma_start / the dma_task ops /
+        // aiex.npu.dma_memcpy_nd. So N replays the chain N+1 times total.
+        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$repeat_count,
         // aie_stream==0 means enable aie stream port on producer tile
         // aie_stream==1 means enable aie stream port on consumer tile
         // aie_stream==2 means enable aie stream ports on producer and consumer tiles

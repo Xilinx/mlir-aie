@@ -793,13 +793,15 @@ struct AIEObjectFifoStatefulTransformPass
       of_elem_index++;
     }
 
+    // repeat_count is the number of EXTRA replays (0 == once), so the number of
+    // times the chain runs is repeat_count + 1.
     int repeatCount = 1;
     int joinDistribFactor = 1;
     if (op.getRepeatCount().has_value())
-      repeatCount = op.getRepeatCount().value();
+      repeatCount = op.getRepeatCount().value() + 1;
     if (linked) {
       if (linkOp->getRepeatCount().has_value())
-        repeatCount = linkOp->getRepeatCount().value();
+        repeatCount = linkOp->getRepeatCount().value() + 1;
       if (linkOp->isDistribute())
         joinDistribFactor *= linkOp->getFifoOuts().size();
       else if (linkOp->isJoin())
@@ -946,10 +948,10 @@ struct AIEObjectFifoStatefulTransformPass
     auto elemType = llvm::cast<MemRefType>(fifo.getElementType());
     int len = elemType.getNumElements();
 
-    // check for repeat count
+    // check for repeat count (number of EXTRA replays; 0 == once)
     int repeatCount = 1;
     if (op.getRepeatCount().has_value())
-      repeatCount = op.getRepeatCount().value();
+      repeatCount = op.getRepeatCount().value() + 1;
 
     // search for the buffers/locks (based on if this objFifo has a link)
     ObjectFifoCreateOp target = op;
@@ -959,8 +961,8 @@ struct AIEObjectFifoStatefulTransformPass
         target = state.objFifoLinks[linkOp.value()];
         if (target == op) {
           if (linkOp->getRepeatCount().has_value()) {
-            acqNum *= linkOp->getRepeatCount().value();
-            relNum *= linkOp->getRepeatCount().value();
+            acqNum *= linkOp->getRepeatCount().value() + 1;
+            relNum *= linkOp->getRepeatCount().value() + 1;
           }
         }
       }
@@ -1125,10 +1127,10 @@ struct AIEObjectFifoStatefulTransformPass
     int acqNum = 1;
     int relNum = 1;
 
-    // check for repeat count
+    // check for repeat count (number of EXTRA replays; 0 == once)
     int repeatCount = 1;
     if (op.getRepeatCount().has_value())
-      repeatCount = op.getRepeatCount().value();
+      repeatCount = op.getRepeatCount().value() + 1;
 
     // check for BD chain repeat count
     auto bdChainIterCount = op.getIterCount();
@@ -1150,8 +1152,8 @@ struct AIEObjectFifoStatefulTransformPass
 
         if (linkOp->getRepeatCount().has_value())
           if (linkOp->getInputObjectFifos()[0] == op) {
-            acqNum *= linkOp->getRepeatCount().value();
-            relNum *= linkOp->getRepeatCount().value();
+            acqNum *= linkOp->getRepeatCount().value() + 1;
+            relNum *= linkOp->getRepeatCount().value() + 1;
           }
 
         if (linkOp->isJoin()) {
@@ -2775,9 +2777,9 @@ struct AIEObjectFifoStatefulTransformPass
 
         // release locks
         int numLocks = releaseOp.relNumber();
-        // account for repetition
+        // account for repetition (repeat_count is EXTRA replays; 0 == once)
         if (op.getRepeatCount().has_value())
-          numLocks *= op.getRepeatCount().value();
+          numLocks *= op.getRepeatCount().value() + 1;
         createUseLocks(builder, op, port, relPerFifo, numLocks,
                        LockAction::Release, state);
 
@@ -2881,9 +2883,9 @@ struct AIEObjectFifoStatefulTransformPass
         else
           numCreate = 0;
 
-        // account for repetition
+        // account for repetition (repeat_count is EXTRA replays; 0 == once)
         if (op.getRepeatCount().has_value())
-          numCreate *= op.getRepeatCount().value();
+          numCreate *= op.getRepeatCount().value() + 1;
 
         auto dev = op->getParentOfType<DeviceOp>();
         if (auto &targetArch = dev.getTargetModel();

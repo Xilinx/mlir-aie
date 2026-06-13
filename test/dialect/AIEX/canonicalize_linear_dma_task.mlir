@@ -32,7 +32,7 @@
 // CHECK:         aie.runtime_sequence @mixed_task_and_memcpy_nd
 // -- The dma_memcpy_nd should be folded to linear form.
 // CHECK:           aiex.npu.dma_memcpy_nd
-// CHECK-SAME:        [0, 0, 0, 0][1, 1, 1, 1024][0, 0, 0, 1]
+// CHECK-SAME:        [0, 0, 0][1, 1, 1024][0, 0, 1]
 // -- The dma_configure_task op itself must still be present.
 // CHECK:           aiex.dma_configure_task
 // CHECK:           aiex.dma_start_task
@@ -43,7 +43,7 @@ module {
 
     aie.runtime_sequence @mixed_task_and_memcpy_nd(%arg0 : memref<2x512xi32>) {
       // This op is contiguous and should be linearised by --canonicalize.
-      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 2, 512][0, 0, 512, 1])
+      aiex.npu.dma_memcpy_nd (%arg0[0,0,0][1,2,512][0,512,1])
         { metadata = @of_fromMem, id = 0 : i64 } : memref<2x512xi32>
 
       // This DMA task op uses a different op (aie.dma_bd) and is not touched
@@ -67,12 +67,12 @@ module {
 // CHECK-LABEL: aie.device(npu1)
 // CHECK:         aie.runtime_sequence @dma_task_style_fold
 // CHECK:           aiex.npu.dma_memcpy_nd
-// CHECK-SAME:        [0, 0, 0, 0][1, 1, 1, 1024][0, 0, 0, 1]
+// CHECK-SAME:        [0, 0, 0][1, 1, 1024][0, 0, 1]
 // CHECK-SAME:        issue_token = true
 module {
   aie.device(npu1) {
     aie.runtime_sequence @dma_task_style_fold(%arg0 : memref<2x512xi32>) {
-      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 2, 512][0, 0, 512, 1])
+      aiex.npu.dma_memcpy_nd (%arg0[0,0,0][1,2,512][0,512,1])
         { metadata = @of_fromMem, id = 0 : i64, issue_token = true } : memref<2x512xi32>
     }
     %tile = aie.tile(0, 0)

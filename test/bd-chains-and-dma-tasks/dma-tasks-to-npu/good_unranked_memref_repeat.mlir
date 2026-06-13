@@ -31,7 +31,7 @@ module {
         // The len = 128 covers only the lowest 3 dimensions (8 * 4 * 4)
         // The 4th dimension (size=4, stride=128) is the iteration/repeat
         aie.dma_bd(%arg0 : memref<*xbf16>, 0, 128,
-                   [<size=4, stride=128>, <size=8, stride=64>, <size=4, stride=16>, <size=4, stride=1>]) {bd_id = 0 : i32}
+                   [<size=8, stride=64>, <size=4, stride=16>, <size=4, stride=1>]) {bd_id = 0 : i32, iter_size = 4 : i32, iter_stride = 128 : i32}
         aie.end
       } {issue_token = true}
 

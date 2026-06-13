@@ -64,9 +64,9 @@ def reduction():
             @runtime_sequence(tensor_in_ty, tensor_out_ty)
             def sequence(A, C):
                 npu_dma_memcpy_nd(
-                    metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, 1, N], issue_token=True
+                    metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, N], issue_token=True
                 )
-                npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, O])
+                npu_dma_memcpy_nd(metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, O])
                 dma_wait(of_in, of_out)
 
     print(ctx.module)

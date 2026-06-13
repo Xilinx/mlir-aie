@@ -266,12 +266,24 @@ public:
 
     auto issue_token = BoolAttr::get(ctx, false);
     auto repeat_count = zero;
-    llvm::SmallVector<int64_t, 4> inputSizes = llvm::map_to_vector(
+    // Up to three pure data-layout dims (innermost-first). Iteration is carried
+    // by the op's explicit iter_* attributes, in the index-3 slot expected by
+    // getHardwareStridesWraps; a pure repeat is carried by repeat_count.
+    llvm::SmallVector<int64_t, 4> dataSizes = llvm::map_to_vector(
         llvm::reverse(op.getMixedSizes()),
         [](OpFoldResult s) { return getConstantIntValue(s).value(); });
-    llvm::SmallVector<int64_t, 4> inputStrides = llvm::map_to_vector(
+    llvm::SmallVector<int64_t, 4> dataStrides = llvm::map_to_vector(
         llvm::reverse(op.getMixedStrides()),
         [](OpFoldResult s) { return getConstantIntValue(s).value(); });
+    llvm::SmallVector<int64_t, 4> inputSizes(dataSizes.begin(),
+                                             dataSizes.end());
+    llvm::SmallVector<int64_t, 4> inputStrides(dataStrides.begin(),
+                                               dataStrides.end());
+    // Pad data dims out to 3, then append the iteration dim at index 3.
+    inputSizes.resize(3, 1);
+    inputStrides.resize(3, 0);
+    inputSizes.push_back(op.getIterSize() > 0 ? op.getIterSize() : 1);
+    inputStrides.push_back(op.getIterStride());
     llvm::SmallVector<int64_t, 4> sizes(4);
     llvm::SmallVector<int64_t, 4> strides(4);
     getHardwareStridesWraps(targetModel, op, bufferType, inputSizes,
@@ -291,9 +303,15 @@ public:
     bool isLinear = op.isLinearTransferWithoutTransformation() ||
                     (targetModel.isShimNOCTile(tileCol, tileRow) &&
                      isContiguousTransfer(inputSizes, inputStrides));
-    if (failed(verifyStridesWraps(op, bufferType, tileCol, tileRow, inputSizes,
-                                  inputStrides, sizes, strides, isLinear))) {
-      return failure();
+    {
+      llvm::ArrayRef<int64_t> verifySizes(inputSizes.data(), 3);
+      llvm::ArrayRef<int64_t> verifyStrides(inputStrides.data(), 3);
+      if (failed(AIE::verifyBDDataLayoutAndIteration(
+              op, targetModel, infoOp.getTileOp().getTileType(),
+              op.getElementTypeBitwidth(), verifySizes, verifyStrides,
+              op.getIterSize(), op.getIterStride(), isLinear))) {
+        return failure();
+      }
     }
 
     // arg_idx and offset for block arguments
@@ -376,21 +394,17 @@ public:
       else
         d2_size = IntegerAttr::get(i32ty, 0);
     }
-    // iteration_current, iteration_size, iteration_stride, repeat_count
-    if (inputSizes[3] > 1) {
-      if (inputStrides[3] > 0) {
-        iteration_size = IntegerAttr::get(i32ty, sizes[3]);
-        iteration_stride = IntegerAttr::get(i32ty, strides[3]);
-      } else {
-        // We allow users to encode the repeat_count as a dimension 3 stride
-        // of 0. This must lower to a iteration wrap of 0, so no stride is
-        // ever added. We then repeat the BD using the repeat_count in
-        // NpuPushQueueOp.
-        iteration_size = zero;
-        iteration_stride = zero;
-      }
+    // iteration_current, iteration_size, iteration_stride: strided BD iteration,
+    // taken from the op's explicit iter_* attributes (index-3 slot).
+    if (op.getIterSize() > 0) {
+      iteration_current = IntegerAttr::get(i32ty, op.getIterCurrent());
+      iteration_size = IntegerAttr::get(i32ty, sizes[3]);
+      iteration_stride = IntegerAttr::get(i32ty, strides[3]);
     }
-    repeat_count = IntegerAttr::get(i32ty, sizes[3]);
+    // repeat_count: a pure replay of the whole BD (no address increment),
+    // pushed via the queue. Both the op attribute and the push-queue hardware
+    // field count EXTRA replays (0 == a single pass), so they map directly.
+    repeat_count = IntegerAttr::get(i32ty, op.getRepeatCount());
 
     // next_bd
 

@@ -2215,73 +2215,132 @@ void DMABDOp::print(::mlir::OpAsmPrinter &printer) {
   printer.printOptionalAttrDict((*this)->getAttrs(), elidedAttrs);
 }
 
-// A BDDimLayoutAttr array (outermost-first) describes a contiguous row-major
-// scan when the innermost stride is 1 and each outer stride equals the product
-// of all inner sizes.  Used by both DMABDOp verification and canonicalization.
-mlir::LogicalResult xilinx::AIE::verifyBDSizesStrides(
-    mlir::Operation *forOp, unsigned elemWidthBits,
-    uint32_t addressGranularityBits, llvm::ArrayRef<int64_t> inputSizes,
-    llvm::ArrayRef<int64_t> inputStrides) {
+// Shared verifier for a DMA buffer descriptor's data-layout transform and its
+// explicit iteration. Used by DMABDOp::verify and by the AIEX runtime-sequence
+// lowerings (dma_memcpy_nd, dma_task). See the header comment for the contract.
+//
+// `inputSizes`/`inputStrides` are the pure data-layout dims, innermost-first, in
+// element-width units; all strides are positive (iteration is NOT folded in as a
+// magic stride-0 outer dim). `iterSize`/`iterStride` describe iteration in
+// logical, element-width units (iterSize == 0 means no iteration).
+mlir::LogicalResult xilinx::AIE::verifyBDDataLayoutAndIteration(
+    mlir::Operation *forOp, const AIETargetModel &targetModel,
+    AIETileType tileType, unsigned elemWidthBits,
+    llvm::ArrayRef<int64_t> inputSizes, llvm::ArrayRef<int64_t> inputStrides,
+    int64_t iterSize, int64_t iterStride, bool skipTransformationChecks) {
   assert(inputSizes.size() == inputStrides.size());
   const int n = static_cast<int>(inputSizes.size());
+  const uint32_t granularity = targetModel.getAddressGenGranularity();
+  const uint32_t maxDims = targetModel.getDmaBdMaxDims(tileType);
+  const uint32_t wrapBits = targetModel.getDmaBdWrapBits(tileType);
+  const uint32_t stepBits = targetModel.getDmaBdStepBits(tileType);
+  const uint32_t iterBits = targetModel.getDmaBdIterBits(tileType);
+
+  if (static_cast<uint32_t>(n) > maxDims)
+    return forOp->emitOpError("Cannot give more than ")
+           << maxDims << " dimensions for step sizes and wraps in this tile "
+           << "(got " << n << ").";
+
   if (n == 0)
     return success();
 
   for (int i = 0; i < n; ++i) {
     if (inputSizes[i] <= 0)
       return forOp->emitOpError("Size ") << i << " must be a positive integer.";
+    // A size-1 dimension's stride is never applied (the loop runs once), so any
+    // stride value is allowed for it. For any larger size the stride must be a
+    // positive integer (iteration/repeat is expressed separately, not as a
+    // stride-0 outer dim).
+    if (inputSizes[i] > 1 && inputStrides[i] < 1)
+      return forOp->emitOpError("Stride ")
+             << i << " must be a positive integer.";
   }
 
   // Innermost contiguous run must be a multiple of address granularity --
   // hardware moves whole words; a sub-word innermost run is unrealizable.
-  if (inputSizes[0] * elemWidthBits % addressGranularityBits != 0) {
+  if (inputSizes[0] * elemWidthBits % granularity != 0) {
     std::stringstream msg;
-    msg << "Transfer sizes must be multiples of "
-        << (addressGranularityBits / 8) << " bytes. " << inputSizes[0]
-        << " elements at " << (elemWidthBits / 8) << " bytes each equal "
-        << (inputSizes[0] * elemWidthBits / 8)
-        << " bytes, which is not divisible by " << (addressGranularityBits / 8)
-        << ". ";
+    msg << "Transfer sizes must be multiples of " << (granularity / 8)
+        << " bytes. " << inputSizes[0] << " elements at " << (elemWidthBits / 8)
+        << " bytes each equal " << (inputSizes[0] * elemWidthBits / 8)
+        << " bytes, which is not divisible by " << (granularity / 8) << ". ";
     return forOp->emitOpError(msg.str());
-  }
-
-  // Non-repeat dim strides must be positive when the corresponding size > 1
-  // (the repeat dim, if present as the outermost, may have stride 0).
-  const int repeatDim = n - 1;
-  for (int i = 0; i < n; ++i) {
-    if (inputSizes[i] > 1 && inputStrides[i] < 1) {
-      if (i == repeatDim && inputStrides[i] == 0)
-        continue;
-      return forOp->emitOpError("Stride ")
-             << i << " must be a positive integer.";
-    }
   }
 
   // Stride byte-alignment: innermost stride==1 is always allowed (sub-word
   // packed contiguous run, paired with the granularity check above); any other
   // stride must be a granularity multiple in bytes.
+  auto checkStrideAlignment = [&](int i, int64_t stride,
+                                  const char *what) -> mlir::LogicalResult {
+    if (stride * elemWidthBits % granularity != 0) {
+      std::stringstream msg;
+      msg << what << " " << i << " is " << stride << " elements * "
+          << (elemWidthBits / 8) << " bytes = " << (stride * elemWidthBits / 8)
+          << " bytes, which is not divisible by " << (granularity / 8) << ". ";
+      return forOp->emitOpError(msg.str());
+    }
+    return success();
+  };
   for (int i = 0; i < n; ++i) {
     if (i == 0 && inputStrides[i] == 1)
       continue;
-    if (inputStrides[i] * elemWidthBits % addressGranularityBits != 0) {
-      std::stringstream msg;
-      msg << "Stride " << i << " is " << inputStrides[i] << " elements * "
-          << (elemWidthBits / 8)
-          << " bytes = " << (inputStrides[i] * elemWidthBits / 8)
-          << " bytes, which is not divisible by "
-          << (addressGranularityBits / 8) << ". ";
-      return forOp->emitOpError(msg.str());
-    }
+    if (inputSizes[i] == 1)
+      continue; // stride never applied
+    if (failed(checkStrideAlignment(i, inputStrides[i], "Stride")))
+      return failure();
   }
 
-  // For element widths larger than the granularity (e.g. bfp blocks, i64),
-  // the hardware cannot encode a non-1 innermost stride; getHardwareStrides-
-  // Wraps would silently drop the stride. Force innermost stride == 1.
-  if (elemWidthBits > addressGranularityBits && inputStrides[0] != 1)
+  // For element widths larger than the granularity (e.g. bfp blocks, i64), the
+  // hardware cannot encode a non-1 innermost stride; getHardwareStridesWraps
+  // would silently drop it. Express such accesses with an extra dimension.
+  if (elemWidthBits > granularity && inputStrides[0] != 1)
     return forOp->emitOpError(
                "For element widths larger than the address granularity (")
-           << (addressGranularityBits / 8)
-           << " bytes), innermost dim stride must be 1.";
+           << (granularity / 8)
+           << " bytes), innermost dim stride must be 1; express a strided "
+              "access as an additional dimension instead.";
+
+  // Hardware register-width range checks. The innermost wrap counts whole
+  // granularity words; outer wraps count elements. Strides are encoded as
+  // (stride_in_words - 1), so the field holds up to 2^stepBits.
+  if (!skipTransformationChecks) {
+    int64_t innerWrapWords = inputSizes[0] * elemWidthBits / granularity;
+    if (innerWrapWords > (1L << wrapBits) - 1)
+      return forOp->emitOpError("Size 0 exceeds the [0:")
+             << ((1L << wrapBits) - 1) << "] range.";
+    for (int i = 1; i < n; ++i)
+      if (inputSizes[i] > (1L << wrapBits) - 1)
+        return forOp->emitOpError("Size ")
+               << i << " exceeds the [0:" << ((1L << wrapBits) - 1)
+               << "] range.";
+  }
+  for (int i = 0; i < n; ++i) {
+    if (i == 0 && inputStrides[i] == 1)
+      continue;
+    if (inputSizes[i] == 1)
+      continue; // stride never applied
+    int64_t strideWords = inputStrides[i] * elemWidthBits / granularity;
+    if (strideWords > (1L << stepBits))
+      return forOp->emitOpError("Stride ")
+             << i << " exceeds the [1:" << (1L << stepBits) << "] range.";
+  }
+
+  // Iteration (logical). iterSize == 0/1 means a single pass (no replay).
+  if (iterSize > 1) {
+    if (iterStride <= 0)
+      return forOp->emitOpError(
+          "Iteration stride must be a positive integer when iteration size > "
+          "1.");
+    if (failed(checkStrideAlignment(0, iterStride, "Iteration stride")))
+      return failure();
+    if (iterSize - 1 > (1L << iterBits))
+      return forOp->emitOpError("Iteration size exceeds the [1:")
+             << (1L << iterBits) << "] range.";
+    int64_t iterStrideWords = iterStride * elemWidthBits / granularity;
+    if (iterStrideWords > (1L << stepBits))
+      return forOp->emitOpError("Iteration stride exceeds the [1:")
+             << (1L << stepBits) << "] range.";
+  }
 
   return success();
 }
@@ -2348,16 +2407,6 @@ LogicalResult DMABDOp::verify() {
       nextBdId.has_value() && static_cast<uint32_t>(*nextBdId) >= maxBds)
     return emitOpError("nextBdId attribute exceeds max: ") << maxBds - 1;
   if (auto dims = getDimensions(); dims.has_value()) {
-    size_t maxNDims = 3;
-    if (getOperation()->getParentOfType<MemTileDMAOp>())
-      maxNDims = 4;
-    if (dims->size() > maxNDims)
-      return emitOpError() << "Cannot give more than "
-                           << std::to_string(maxNDims)
-                           << " dimensions for step sizes and wraps in this "
-                              " tile (got "
-                           << std::to_string(dims->size()) << " dimensions).";
-
     auto buffer = llvm::dyn_cast<MemRefType>(getBuffer().getType());
     if (!buffer)
       return emitOpError() << "dimensions attribute cannot be used with "
@@ -2369,36 +2418,27 @@ LogicalResult DMABDOp::verify() {
                            << std::to_string(maxIdx) << " in memref of length "
                            << std::to_string(buffer.getNumElements()) << ".";
 
-    // A contiguous row-major access on a shim tile is lowered to linear mode
-    // by aie-dma-tasks-to-npu / aie-dma-to-npu, using the wide buffer_length
-    // register which is exempt from the 10-bit ND wrap-size limit.
-    // Skip the per-dimension size check when the BD is on a shim tile and the
-    // access is contiguous, so the natural ND form can be written without
-    // triggering a spurious verifier error before lowering.
-    //
-    // Note: the verifier early-exit above means we only reach this code when
-    // the parent op is MemOp, MemTileDMAOp, ShimDMAOp, or DMAOp -- all of
-    // which are TileElements, so parentTile is always non-null here.
-    bool skipSizeCheck =
-        parentTile.isShimTile() && xilinx::AIE::isContiguousBDTransfer(*dims);
-
-    for (BDDimLayoutAttr dim : *dims) {
-      if (0 == dim.getStride())
-        return emitOpError()
-               << "Invalid step size; must be a positive integer.";
+    for (BDDimLayoutAttr dim : *dims)
       if (dim.getStride() > buffer.getNumElements())
         return emitOpError() << "Step size " << std::to_string(dim.getStride())
                              << " exceeds memref size "
                              << std::to_string(buffer.getNumElements());
-      if (!skipSizeCheck && dim.getSize() >= (1UL << 9) + 1)
-        return emitOpError() << "Size may not exceed 1023.";
-      if (dim.getStride() >= (1UL << 19))
-        return emitOpError() << "Stride may not exceed " << (1 << 20);
-    }
 
-    // Granularity / sub-word / stride alignment checks, shared with
-    // AIEX::verifyStridesWraps. dims are stored outermost-first; the helper
-    // expects innermost-first.
+    // A contiguous row-major access on a shim tile is lowered to linear mode
+    // by aie-dma-tasks-to-npu / aie-dma-to-npu, using the wide buffer_length
+    // register which is exempt from the per-dimension wrap-size limit. Skip the
+    // per-dimension range check when the BD is on a shim tile and the access is
+    // contiguous, so the natural ND form can be written without triggering a
+    // spurious verifier error before lowering.
+    //
+    // Note: the verifier early-exit above means we only reach this code when
+    // the parent op is MemOp, MemTileDMAOp, ShimDMAOp, or DMAOp -- all of
+    // which are TileElements, so parentTile is always non-null here.
+    bool skipTransformationChecks =
+        parentTile.isShimTile() && xilinx::AIE::isContiguousBDTransfer(*dims);
+
+    // dims are stored outermost-first; the shared verifier expects
+    // innermost-first.
     SmallVector<int64_t, 4> inputSizes, inputStrides;
     for (auto it = dims->rbegin(); it != dims->rend(); ++it) {
       inputSizes.push_back(static_cast<int64_t>(it->getSize()));
@@ -2407,10 +2447,16 @@ LogicalResult DMABDOp::verify() {
     DataLayout dataLayout = DataLayout::closest(getOperation());
     unsigned elemWidthBits =
         dataLayout.getTypeSizeInBits(buffer.getElementType());
-    if (failed(xilinx::AIE::verifyBDSizesStrides(
-            getOperation(), elemWidthBits,
-            targetModel.getAddressGenGranularity(), inputSizes, inputStrides)))
+    if (failed(xilinx::AIE::verifyBDDataLayoutAndIteration(
+            getOperation(), targetModel, parentTile.getTileType(), elemWidthBits,
+            inputSizes, inputStrides, getIterSize(), getIterStride(),
+            skipTransformationChecks)))
       return failure();
+  } else if (getIterSize() > 1 && !getLen()) {
+    // Iteration with neither data-layout dims nor a length describes nothing to
+    // replay. (A linearized BD legitimately has a length but no dims.)
+    return emitOpError() << "Iteration requires a transfer length or n-d data "
+                            "layouts expressed as wrap(s) and stride(s).";
   }
   if (auto paddims = getPadDimensions(); paddims.has_value()) {
     auto dims = getDimensions();
@@ -2579,15 +2625,18 @@ struct LinearizeContiguousBDTransfer : public mlir::OpRewritePattern<DMABDOp> {
     for (BDDimLayoutAttr dim : *dims)
       product *= dim.getSize();
 
-    // len < product: the outermost dim describes a hardware BD iteration
-    // (preserved downstream as iteration_size/stride). Don't fold it away.
+    // Only the data-layout dims participate here; iteration is carried by the
+    // explicit iter_* attributes and is preserved across this fold. (A
+    // mismatch between len and the data-dim product would be a malformed BD;
+    // leave it for the verifier rather than folding.)
     if (auto lenVal = op.getLen())
       if (static_cast<int64_t>(*lenVal) != product)
         return mlir::failure();
     int32_t len = static_cast<int32_t>(product);
 
     // Drop the dimensions attribute in-place; all other attributes (offset,
-    // len, packet, burst_length, bd_id, etc.) are preserved automatically.
+    // len, packet, burst_length, bd_id, iter_*, etc.) are preserved
+    // automatically.
     rewriter.modifyOpInPlace(op, [&]() {
       op.setLen(len);
       op->removeAttr("dimensions");

@@ -170,70 +170,6 @@ void AIEX::getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
   }
 }
 
-mlir::LogicalResult
-AIEX::verifyStridesWraps(mlir::Operation *forOp,
-                         mlir::BaseMemRefType referencedBufType, int tileCol,
-                         int tileRow, llvm::SmallVector<int64_t, 4> inputSizes,
-                         llvm::SmallVector<int64_t, 4> inputStrides,
-                         llvm::SmallVector<int64_t, 4> hardwareSizes,
-                         llvm::SmallVector<int64_t, 4> hardwareStrides,
-                         bool skipTransformationChecks) {
-  const auto &targetModel = AIE::getTargetModel(forOp);
-  auto addressGranularity = targetModel.getAddressGenGranularity();
-  DataLayout dataLayout = DataLayout::closest(forOp);
-  auto elemWidth =
-      dataLayout.getTypeSizeInBits(referencedBufType.getElementType());
-
-  uint32_t wrap_bits = 0;
-  uint32_t step_bits = 0;
-  uint32_t iter_bits = 6;
-  if (targetModel.isShimNOCTile(tileCol, tileRow)) {
-    step_bits = 20; // XAIEMLGBL_NOC_MODULE_DMA_BD0_3_D0_STEPSIZE_WIDTH
-    wrap_bits = 10; // XAIEMLGBL_NOC_MODULE_DMA_BD0_3_D0_WRAP_WIDTH
-  } else if (targetModel.isMemTile(tileCol, tileRow)) {
-    step_bits = 17; // XAIEMLGBL_MEM_TILE_MODULE_DMA_BD0_2_D0_STEPSIZE_WIDTH
-    wrap_bits = 10; // XAIEMLGBL_MEM_TILE_MODULE_DMA_BD0_2_D0_WRAP_WIDTH
-  } else if (targetModel.isCoreTile(tileCol, tileRow)) {
-    step_bits = 13; // XAIEMLGBL_MEMORY_MODULE_DMA_BD0_2_D0_STEPSIZE_WIDTH
-    wrap_bits = 8;  // XAIEMLGBL_MEMORY_MODULE_DMA_BD0_3_D0_WRAP_WIDTH
-  } else {
-    return forOp->emitOpError(
-        "Unsupported tile type at (" + std::to_string(tileCol) + ", " +
-        std::to_string(tileRow) + ") Must be ShimNOC, Mem or Core.");
-  }
-
-  if (failed(AIE::verifyBDSizesStrides(forOp, elemWidth, addressGranularity,
-                                       inputSizes, inputStrides)))
-    return failure();
-
-  if (!skipTransformationChecks && hardwareSizes[0] > (1 << wrap_bits) - 1)
-    return forOp->emitOpError(
-        "Size 0 exceeds the [0:" + std::to_string((1 << wrap_bits) - 1) +
-        "] range.");
-  if (!skipTransformationChecks && hardwareSizes[1] > (1 << wrap_bits) - 1)
-    return forOp->emitOpError(
-        "Size 1 exceeds the [0:" + std::to_string((1 << wrap_bits) - 1) +
-        "] range.");
-  if (hardwareSizes[3] > (1 << iter_bits))
-    return forOp->emitOpError(
-        "Size 3 exceeds the [1:" + std::to_string(1 << iter_bits) + "] range.");
-  if (hardwareStrides[0] > (1 << step_bits))
-    return forOp->emitOpError("Stride 0 exceeds the [1:" +
-                              std::to_string(1 << step_bits) + "] range.");
-  if (hardwareStrides[1] > (1 << step_bits))
-    return forOp->emitOpError("Stride 1 exceeds the [1:" +
-                              std::to_string(1 << step_bits) + "] range.");
-  if (hardwareStrides[2] > (1 << step_bits))
-    return forOp->emitOpError("Stride 2 exceeds the [1:" +
-                              std::to_string(1 << step_bits) + "] range.");
-  // strides[3] exceeding the range is ok iff the sizes[3] is one, which is
-  // checked below
-  if (hardwareStrides[3] > (1 << step_bits) && hardwareSizes[3] > 0)
-    return forOp->emitOpError("Stride 3 exceeds the [1:" +
-                              std::to_string(1 << step_bits) + "] range.");
-
-  return success();
-}
 
 //===----------------------------------------------------------------------===//
 // UseTokenOp
@@ -394,16 +330,17 @@ struct LinearizeContiguousTransfer
       return mlir::failure();
 
     // getMixedSizes/Strides/Offsets return outermost-first; reverse to
-    // innermost-first so index 0 = d0 (innermost) and index 3 = repeat.
-    llvm::SmallVector<int64_t, 4> sizes = llvm::map_to_vector(
+    // innermost-first so index 0 = d0 (innermost). These are the 3 pure
+    // data-layout dims; iteration/repeat live in the iter_*/repeat_count attrs.
+    llvm::SmallVector<int64_t, 3> sizes = llvm::map_to_vector(
         llvm::reverse(op.getMixedSizes()), [](mlir::OpFoldResult s) {
           return mlir::getConstantIntValue(s).value();
         });
-    llvm::SmallVector<int64_t, 4> strides = llvm::map_to_vector(
+    llvm::SmallVector<int64_t, 3> strides = llvm::map_to_vector(
         llvm::reverse(op.getMixedStrides()), [](mlir::OpFoldResult s) {
           return mlir::getConstantIntValue(s).value();
         });
-    llvm::SmallVector<int64_t, 4> offsets = llvm::map_to_vector(
+    llvm::SmallVector<int64_t, 3> offsets = llvm::map_to_vector(
         llvm::reverse(op.getMixedOffsets()), [](mlir::OpFoldResult s) {
           return mlir::getConstantIntValue(s).value();
         });
@@ -412,21 +349,20 @@ struct LinearizeContiguousTransfer
     if (!AIEX::isContiguousTransfer(sizes, strides))
       return mlir::failure();
 
-    // Fold d0/d1/d2 into one linear count; keep the repeat dimension intact.
-    // Build directly in outermost-first order for the replacement op.
+    // Fold the 3 data dims into one linear count. Iteration/repeat are carried
+    // by attributes and are preserved unchanged. Build outermost-first.
     int64_t N = sizes[0] * sizes[1] * sizes[2];
-    llvm::SmallVector<int64_t, 4> newSizesOuter = {sizes[3], 1, 1, N};
-    llvm::SmallVector<int64_t, 4> newStridesOuter = {strides[3], 0, 0, 1};
+    llvm::SmallVector<int64_t, 3> newSizesOuter = {1, 1, N};
+    llvm::SmallVector<int64_t, 3> newStridesOuter = {0, 0, 1};
 
     // getOffsetInBytes() computes: sum(offsets[i] * strides[i] * elemSize).
     // After folding, the intermediate strides become 0, so any non-zero offset
     // in those dimensions would silently contribute 0 bytes.  Preserve the
-    // correct start address by collapsing the innermost three offset/stride
-    // pairs into a single linear element index at d0.
+    // correct start address by collapsing the three offset/stride pairs into a
+    // single linear element index at d0.
     int64_t linearOffset = offsets[0] * strides[0] + offsets[1] * strides[1] +
                            offsets[2] * strides[2];
-    llvm::SmallVector<int64_t, 4> newOffsetsOuter = {offsets[3], 0, 0,
-                                                     linearOffset};
+    llvm::SmallVector<int64_t, 3> newOffsetsOuter = {0, 0, linearOffset};
 
     rewriter.replaceOpWithNewOp<AIEX::NpuDmaMemcpyNdOp>(
         op, op.getMemref(),
@@ -441,7 +377,9 @@ struct LinearizeContiguousTransfer
         op.getD1ZeroBeforeAttr(), op.getD2ZeroBeforeAttr(),
         op.getD0ZeroAfterAttr(), op.getD1ZeroAfterAttr(),
         op.getD2ZeroAfterAttr(), op.getBurstLengthAttr(),
-        op.getOffsetParameterAttr(), op.getOffsetStateTableIdxAttr());
+        op.getOffsetParameterAttr(), op.getOffsetStateTableIdxAttr(),
+        op.getIterSizeAttr(), op.getIterStrideAttr(), op.getIterCurrentAttr(),
+        op.getRepeatCountAttr());
     return mlir::success();
   }
 };
@@ -519,10 +457,6 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
       llvm::map_to_vector(llvm::reverse(getMixedStrides()), [](OpFoldResult s) {
         return getConstantIntValue(s).value();
       });
-  llvm::SmallVector<int64_t, 4> hardwareSizes(4);
-  llvm::SmallVector<int64_t, 4> hardwareStrides(4);
-  getHardwareStridesWraps(targetModel, getOperation(), buffer, inputSizes,
-                          inputStrides, hardwareSizes, hardwareStrides);
   int64_t offset = getOffsetInBytes();
 
   auto errorMessage = checkBurstLength(targetModel, getBurstLength());
@@ -561,9 +495,17 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
         isLinearTransferWithoutTransformation() ||
         (targetModel.isShimNOCTile(col, row) &&
          AIEX::isContiguousTransfer(inputSizes, inputStrides));
-    if (failed(verifyStridesWraps(*this, buffer, col, row, inputSizes,
-                                  inputStrides, hardwareSizes, hardwareStrides,
-                                  skipTransformationChecks))) {
+    // dma_memcpy_nd carries up to three pure data dims (innermost-first);
+    // iteration and repeat are expressed by separate attributes.
+    DataLayout dataLayout = DataLayout::closest(getOperation());
+    unsigned elemWidthBits =
+        dataLayout.getTypeSizeInBits(buffer.getElementType());
+    if (getRepeatCount() != 0 && getIterSize() != 0)
+      return emitOpError("repeat_count and iter_size are mutually exclusive.");
+    if (failed(AIE::verifyBDDataLayoutAndIteration(
+            *this, targetModel, tile.getTileType(), elemWidthBits, inputSizes,
+            inputStrides, getIterSize(), getIterStride(),
+            skipTransformationChecks))) {
       return failure();
     }
   }

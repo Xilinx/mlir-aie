@@ -71,9 +71,9 @@ def design():
                             metadata=fifo_input,
                             bd_id=j,
                             mem=input,
-                            offsets=[0, 0, 0, i * 16 + j],
-                            sizes=[1, 1, 1, 1],
-                            strides=[0, 0, 0, 1],
+                            offsets=[0, 0, i * 16 + j],
+                            sizes=[1, 1, 1],
+                            strides=[0, 0, 1],
                             issue_token=True,
                         )
                         dma_wait(fifo_input)
@@ -83,9 +83,9 @@ def design():
                         metadata=fifo_output,
                         bd_id=0,
                         mem=output,
-                        offsets=[0, 0, 0, i],
-                        sizes=[1, 1, 1, 1],
-                        strides=[0, 0, 0, 1],
+                        offsets=[0, 0, i],
+                        sizes=[1, 1, 1],
+                        strides=[0, 0, 1],
                     )
                     dma_wait(fifo_output)
 

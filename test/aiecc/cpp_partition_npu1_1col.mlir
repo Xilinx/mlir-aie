@@ -31,7 +31,7 @@ module {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
       %c16 = arith.constant 16 : i64
-      aiex.npu.dma_memcpy_nd(%arg0[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c16][%c0,%c0,%c0,%c1]) {metadata = @of, id = 0 : i64} : memref<16xi32>
+      aiex.npu.dma_memcpy_nd(%arg0[%c0,%c0,%c0][%c1,%c1,%c16][%c0,%c0,%c1]) {metadata = @of, id = 0 : i64} : memref<16xi32>
     }
   }
 }

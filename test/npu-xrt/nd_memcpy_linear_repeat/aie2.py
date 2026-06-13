@@ -58,15 +58,16 @@ def design():
                     metadata=fifo_a,
                     bd_id=1,
                     mem=A,
-                    sizes=[repeat_count, 1, 1, a_len],
-                    strides=[0, 0, 0, 1],
+                    sizes=[1, 1, a_len],
+                    strides=[0, 0, 1],
+                    repeat_count=repeat_count - 1,
                 )
                 npu_dma_memcpy_nd(
                     metadata=fifo_c,
                     bd_id=0,
                     mem=C,
-                    sizes=[1, 1, 1, c_len],
-                    strides=[0, 0, 0, 1],
+                    sizes=[1, 1, c_len],
+                    strides=[0, 0, 1],
                 )
                 dma_wait(fifo_c)
 

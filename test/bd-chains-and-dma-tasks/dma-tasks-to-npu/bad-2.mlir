@@ -18,9 +18,9 @@ module {
 
     aie.runtime_sequence(%arg0: memref<32xi8>) {
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-          // expected-error@+1 {{At most four data layout transformation dimensions may be provided}}
+          // expected-error@+1 {{At most three data layout transformation dimensions may be provided for a runtime-sequence DMA task.}}
           aie.dma_bd(%arg0 : memref<32xi8>, 4, 32,
-                     [<size=1, stride=4>, <size=1, stride=4>, <size=2, stride=4>, <size=2, stride=8>, <size=4, stride=1>]) {bd_id = 0 : i32}
+                     [<size=1, stride=4>, <size=2, stride=4>, <size=2, stride=8>, <size=4, stride=1>]) {bd_id = 0 : i32}
           aie.end
       }
     }

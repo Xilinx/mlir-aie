@@ -76,8 +76,8 @@ module {
       %c61_i64 = arith.constant 61 : i64
       %c64_i64 = arith.constant 64 : i64
       aiex.configure @main {
-        aiex.npu.dma_memcpy_nd (%arg1[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c64_i64, %c64_i64][%c0_i64, %c0_i64, %c64_i64, %c1_i64], packet = <pkt_id = 3, pkt_type = 0>) {id = 0 : i64, metadata = @objFifo_in0} : memref<64x64xi8>
-        aiex.npu.dma_memcpy_nd (%arg2[%c0_i64, %c0_i64, %c0_i64, %c0_i64][%c1_i64, %c1_i64, %c64_i64, %c64_i64][%c0_i64, %c0_i64, %c64_i64, %c1_i64]) {id = 1 : i64, metadata = @objFifo_out0, issue_token = true} : memref<64x64xi8>
+        aiex.npu.dma_memcpy_nd (%arg1[%c0_i64,%c0_i64,%c0_i64][%c1_i64,%c64_i64,%c64_i64][%c0_i64,%c64_i64,%c1_i64], packet = <pkt_id = 3, pkt_type = 0>) {id = 0 : i64, metadata = @objFifo_in0} : memref<64x64xi8>
+        aiex.npu.dma_memcpy_nd (%arg2[%c0_i64,%c0_i64,%c0_i64][%c1_i64,%c64_i64,%c64_i64][%c0_i64,%c64_i64,%c1_i64]) {id = 1 : i64, metadata = @objFifo_out0, issue_token = true} : memref<64x64xi8>
         aiex.npu.dma_wait { symbol = @objFifo_out0 }
       }
     }

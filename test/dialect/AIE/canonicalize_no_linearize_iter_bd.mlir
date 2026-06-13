@@ -16,10 +16,12 @@
 
 // -----
 
-// len < product: outer dim is an iteration dim, must NOT linearize.
+// Explicit iteration: the data dims (product == len) are contiguous and DO
+// linearize, while the explicit iter_* attributes are preserved.
 // CANON-LABEL: @iter_bd_no_linearize
-// CANON:         aie.dma_bd(%arg0 : memref<131072xbf16>, 0, 4096,
-// CANON-SAME:        [<size = 32, stride = 4096>, <size = 1, stride = 64>, <size = 64, stride = 64>, <size = 64, stride = 1>]
+// CANON:         aie.dma_bd(%arg0 : memref<131072xbf16>, 0, 4096)
+// CANON-SAME:      {bd_id = 0 : i32, iter_size = 32 : i32, iter_stride = 4096 : i32}
+// CANON-NOT:         [<
 // LOWER-LABEL: @iter_bd_no_linearize
 // LOWER:         aiex.npu.writebd
 // LOWER-SAME:      buffer_length = 2048
@@ -32,8 +34,9 @@ module {
     aie.runtime_sequence @iter_bd_no_linearize(%arg0 : memref<131072xbf16>) {
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
         aie.dma_bd(%arg0 : memref<131072xbf16>, 0, 4096,
-          [<size = 32, stride = 4096>, <size = 1, stride = 64>,
-           <size = 64, stride = 64>, <size = 64, stride = 1>]) {bd_id = 0 : i32}
+          [<size = 1, stride = 64>,
+           <size = 64, stride = 64>, <size = 64, stride = 1>])
+          {bd_id = 0 : i32, iter_size = 32 : i32, iter_stride = 4096 : i32}
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%t)

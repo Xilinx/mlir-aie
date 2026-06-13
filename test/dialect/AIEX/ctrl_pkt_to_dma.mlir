@@ -14,7 +14,7 @@
 
 // CHECK-LABEL: aie.device(npu1_1col) {
 // CHECK: aie.runtime_sequence(%[[ARG0:.*]]: memref<?xi32>) {
-// CHECK: aiex.npu.dma_memcpy_nd(%[[ARG0]][0, 0, 0, 0][1, 1, 1, 3][0, 0, 0, 1]) {id = 0 : i64, issue_token = true, metadata = @ctrlpkt_col0_mm2s_chan0} : memref<?xi32>
+// CHECK: aiex.npu.dma_memcpy_nd(%[[ARG0]][0, 0, 0][1, 1, 3][0, 0, 1]) {id = 0 : i64, issue_token = true, metadata = @ctrlpkt_col0_mm2s_chan0} : memref<?xi32>
 // CHECK: aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
 
 aie.device(npu1_1col) {
@@ -29,7 +29,7 @@ aie.device(npu1_1col) {
 
 // CHECK-LABEL: aie.device(npu1_1col) {
 // CHECK: aie.runtime_sequence(%[[ARG0:.*]]: memref<?xi32>) {
-// CHECK: aiex.npu.dma_memcpy_nd(%[[ARG0]][0, 0, 0, 0][1, 1, 1, 3][0, 0, 0, 1]) {id = 0 : i64, issue_token = true, metadata = @ctrlpkt_col0_mm2s_chan0} : memref<?xi32>
+// CHECK: aiex.npu.dma_memcpy_nd(%[[ARG0]][0, 0, 0][1, 1, 3][0, 0, 1]) {id = 0 : i64, issue_token = true, metadata = @ctrlpkt_col0_mm2s_chan0} : memref<?xi32>
 // CHECK: aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
 
 aie.device(npu1_1col) {
@@ -46,11 +46,11 @@ aie.device(npu1_1col) {
 // Check that control packets writes are not combined on npu1
 
 // CHECK-LABEL: aie.device(npu1) {
-// CHECK: aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 3][0, 0, 0, 1])
-// CHECK: aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 3][1, 1, 1, 3][0, 0, 0, 1])
-// CHECK: aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 6][1, 1, 1, 3][0, 0, 0, 1])
-// CHECK: aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 9][1, 1, 1, 3][0, 0, 0, 1])
-// CHECK: aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 12][1, 1, 1, 3][0, 0, 0, 1])
+// CHECK: aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0][1, 1, 3][0, 0, 1])
+// CHECK: aiex.npu.dma_memcpy_nd(%arg0[0, 0, 3][1, 1, 3][0, 0, 1])
+// CHECK: aiex.npu.dma_memcpy_nd(%arg0[0, 0, 6][1, 1, 3][0, 0, 1])
+// CHECK: aiex.npu.dma_memcpy_nd(%arg0[0, 0, 9][1, 1, 3][0, 0, 1])
+// CHECK: aiex.npu.dma_memcpy_nd(%arg0[0, 0, 12][1, 1, 3][0, 0, 1])
 aie.device(npu1) {
   aie.runtime_sequence() {
     aiex.control_packet {address = 0 : ui32, data = array<i32: 100>, opcode = 0 : i32, stream_id = 0 : i32}
@@ -66,7 +66,7 @@ aie.device(npu1) {
 // Check that control packets writes are combined on npu2
 
 // CHECK-LABEL: aie.device(npu2) {
-// CHECK: aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 15][0, 0, 0, 1])
+// CHECK: aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0][1, 1, 15][0, 0, 1])
 aie.device(npu2) {
   aie.runtime_sequence() {
     aiex.control_packet {address = 0 : ui32, data = array<i32: 100>, opcode = 0 : i32, stream_id = 0 : i32}
@@ -82,10 +82,10 @@ aie.device(npu2) {
 // Check that control packets writes are not combined across other operations
 
 // CHECK-LABEL: aie.device(npu2) {
-// CHECK: aiex.npu.dma_memcpy_nd(%{{.*}}[0, 0, 0, 0][1, 1, 1, 6][0, 0, 0, 1])
+// CHECK: aiex.npu.dma_memcpy_nd(%{{.*}}[0, 0, 0][1, 1, 6][0, 0, 1])
 // CHECK: aiex.npu.sync
 // CHECK: aiex.npu.maskwrite32
-// CHECK: aiex.npu.dma_memcpy_nd(%{{.*}}[0, 0, 0, 6][1, 1, 1, 9][0, 0, 0, 1])
+// CHECK: aiex.npu.dma_memcpy_nd(%{{.*}}[0, 0, 6][1, 1, 9][0, 0, 1])
 // CHECK: aiex.npu.sync
 aie.device(npu2) {
   aie.runtime_sequence() {

@@ -111,9 +111,15 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     int elementWidthInBytes = 0;
     int ndims = 0;
     ArrayRef<BDDimLayoutAttr> dims;
+    uint32_t iterSize = 0;
+    uint32_t iterStride = 0;
+    uint32_t iterCurrent = 0;
     //      StringRef FifoMode = disable; // FIXME: when to enable FIFO mode?
     for (auto op : block->getOps<DMABDOp>()) {
       foundBd = true;
+      iterSize = op.getIterSize();
+      iterStride = op.getIterStride();
+      iterCurrent = op.getIterCurrent();
       if (!targetModel.isShimNOCTile(col, row)) {
         assert(op.getBufferOp().getAddress() &&
                "buffer must have address assigned");
@@ -237,6 +243,21 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
         generateXAieDmaSetMultiDimAddr(output, ndims, dims, col, row, bdNum,
                                        BaseAddrA, offsetA, lenA,
                                        elementWidthInBytes, "1");
+
+      // Explicit BD iteration (a strided replay of the whole BD).
+      // XAie_DmaSetBdIteration takes LOGICAL (1-based) Wrap/StepSize; the driver
+      // subtracts 1 when packing the registers. StepSize is in 32b words.
+      if (iterSize > 0) {
+        uint32_t iterStepSizeWords =
+            (uint32_t)((double)iterStride * (double)elementWidthInBytes / 4.0);
+        if (iterStepSizeWords == 0)
+          iterStepSizeWords = 1;
+        output << "__mlir_aie_try(XAie_DmaSetBdIteration("
+               << tileDMAInstRefStr(col, row, bdNum) << ", "
+               << " /* stepsize */ " << iterStepSizeWords << ", "
+               << " /* wrap */ " << iterSize << ", "
+               << " /* iterCurrent */ " << iterCurrent << "));\n";
+      }
 
       if (block->getNumSuccessors() > 0) {
         Block *nextBlock = block->getSuccessors()[0]; // should have only one

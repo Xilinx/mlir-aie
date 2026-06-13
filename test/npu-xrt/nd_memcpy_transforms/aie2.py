@@ -78,25 +78,25 @@ def design():
                     metadata=fifo_a,
                     bd_id=1,
                     mem=A,
-                    offsets=[0, 0, 0, 0],
-                    sizes=[1, a_len // 4, 2, 2],
-                    strides=[0, 2, a_len // 2, 1],
+                    offsets=[0, 0, 0],
+                    sizes=[a_len // 4, 2, 2],
+                    strides=[2, a_len // 2, 1],
                 )
                 npu_dma_memcpy_nd(
                     metadata=fifo_b,
                     bd_id=1,
                     mem=B,
-                    offsets=[0, 0, 0, 0],
-                    sizes=[1, 2, b_len // 4, 2],
-                    strides=[0, 2, 4, 1],
+                    offsets=[0, 0, 0],
+                    sizes=[2, b_len // 4, 2],
+                    strides=[2, 4, 1],
                 )
                 npu_dma_memcpy_nd(
                     metadata=fifo_c,
                     bd_id=0,
                     mem=C,
-                    offsets=[0, 0, 0, c_offset],
-                    sizes=[1, 1, 1, c_len],
-                    strides=[0, 0, 0, 1],
+                    offsets=[0, 0, c_offset],
+                    sizes=[1, 1, c_len],
+                    strides=[0, 0, 1],
                 )
                 dma_wait(fifo_c)
 

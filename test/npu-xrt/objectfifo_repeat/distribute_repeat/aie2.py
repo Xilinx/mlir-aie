@@ -64,8 +64,8 @@ def distribute_repeat():
             of_in = object_fifo("in", ShimTile, MemTile, 1, in_ty)
             of_in2 = object_fifo("in2", MemTile, ComputeTile2, 2, half_ty)
             of_in3 = object_fifo("in3", MemTile, ComputeTile3, 2, half_ty)
-            of_in2.set_repeat_count(repeat_counter)
-            of_in3.set_repeat_count(repeat_counter)
+            of_in2.set_repeat_count(repeat_counter - 1)
+            of_in3.set_repeat_count(repeat_counter - 1)
             object_fifo_link(of_in, [of_in2, of_in3], [], [0, N // 2])
 
             of_out2 = object_fifo("out2", ComputeTile2, MemTile, 2, half_ty)
@@ -100,9 +100,9 @@ def distribute_repeat():
             # To/from AIE-array data movement
             @runtime_sequence(in_ty, in_ty, out_ty)
             def sequence(A, B, C):
-                npu_dma_memcpy_nd(metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, 1, N])
+                npu_dma_memcpy_nd(metadata=of_in, bd_id=1, mem=A, sizes=[1, 1, N])
                 npu_dma_memcpy_nd(
-                    metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, 1, out_size]
+                    metadata=of_out, bd_id=0, mem=C, sizes=[1, 1, out_size]
                 )
                 # of_out will only complete after of_in completes, so we just wait on of_out instead of both
                 dma_wait(of_out)

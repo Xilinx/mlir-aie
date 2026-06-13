@@ -90,8 +90,8 @@ module @memtileRepeat {
     %tile12 = aie.tile(1, 2)
     %tile33 = aie.tile(3, 3)
 
-    aie.objectfifo @of0 (%tile12, {%tile11}, 1 : i32) {repeat_count = 3 : i32} : !aie.objectfifo<memref<16xi32>>
-    aie.objectfifo @of1 (%tile33, {%tile11}, 1 : i32) {repeat_count = 3 : i32} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of0 (%tile12, {%tile11}, 1 : i32) {repeat_count = 2 : i32} : !aie.objectfifo<memref<16xi32>>
+    aie.objectfifo @of1 (%tile33, {%tile11}, 1 : i32) {repeat_count = 2 : i32} : !aie.objectfifo<memref<16xi32>>
     aie.objectfifo @of2 (%tile11, {%tile10}, 1 : i32) : !aie.objectfifo<memref<32xi32>>
     aie.objectfifo.link [@of0, @of1] -> [@of2] ([0, 16] [])
  }
