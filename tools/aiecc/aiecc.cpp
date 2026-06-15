@@ -1998,14 +1998,23 @@ struct CoreCompilationResult {
 
 /// Downgrade LLVM IR for Peano compatibility.
 /// Strips LLVM 23+ features that Peano 19's opt/llc can't parse:
-/// - 'nuw' flag on getelementptr (LLVM 23 feature)
+/// - 'nuw' flag on getelementptr (inferred by ConstantFolding/InstCombine)
 /// - 'nocreateundeforpoison' attribute (with any trailing whitespace)
 static std::string downgradeIRForPeano(StringRef ir) {
   std::string result = ir.str();
+  // Strip 'nuw' from 'getelementptr inbounds nuw' -> 'getelementptr inbounds':
+  // recent main LLVM infers nuw on geps, which Peano's opt cannot parse.
+  const std::string nuwFrom = "getelementptr inbounds nuw";
+  const std::string nuwTo = "getelementptr inbounds";
+  size_t pos = 0;
+  while ((pos = result.find(nuwFrom, pos)) != std::string::npos) {
+    result.erase(pos + nuwTo.size(), nuwFrom.size() - nuwTo.size());
+    pos += nuwTo.size();
+  }
   // Strip 'nocreateundeforpoison' and any trailing whitespace: current Peano
   // LLVM cannot parse this attribute.
   const std::string nocreate = "nocreateundeforpoison";
-  size_t pos = 0;
+  pos = 0;
   while ((pos = result.find(nocreate, pos)) != std::string::npos) {
     size_t end = pos + nocreate.size();
     while (end < result.size() && (result[end] == ' ' || result[end] == '\t'))
