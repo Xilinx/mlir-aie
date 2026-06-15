@@ -184,6 +184,15 @@ jobs:
           sudo prlimit -lunlimited --pid $$
           source /opt/xilinx/xrt/setup.sh
           export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
+          # Diagnostics: quick_setup.sh sources under `set -e -o pipefail` and
+          # bails the instant `xrt-smi examine | grep <NPU>` finds no device,
+          # before printing its own "NPU not found" message. Dump the NPU/driver
+          # state first so a runner that has lost its NPU is obvious in the log.
+          # `|| true` keeps these probes from failing the step themselves.
+          echo "::group::NPU diagnostics (pre quick_setup)"
+          which xrt-smi || echo "xrt-smi not on PATH"
+          xrt-smi examine || echo "xrt-smi examine failed (NPU likely not enumerated)"
+          echo "::endgroup::"
           source utils/quick_setup.sh
           # quick_setup changes directory to programming_examples, so we need to return to mlir-aie
           cd ..
