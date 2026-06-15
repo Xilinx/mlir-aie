@@ -11,10 +11,10 @@ from typing import Generator
 from ... import ir  # type: ignore
 from ...dialects._aie_enum_gen import AIEArch, AIETileType  # type: ignore
 from ...dialects.aie import (
-    AIEDevice,  # pyright: ignore[reportAttributeAccessIssue]
+    AIEDevice,
     logical_tile,
     LogicalTileOp,
-    get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
+    get_target_model,
 )
 from ..resolvable import Resolvable
 from .tile import Tile
@@ -235,3 +235,13 @@ def create_class(class_name, device):
 for device in AIEDevice:
     class_name = re.sub(r"NPU(\d+)_(\d+)COL", r"NPU\1Col\2", device.name.upper())
     create_class(class_name, device)
+
+
+def __getattr__(name: str) -> type[Device]:
+    # The per-device subclasses (NPU1, NPU2Col4, XCVC1902, ...) are generated
+    # from the AIEDevice enum by the loop above and live in module globals, so
+    # this fallback only fires for names that were never generated. Raising
+    # keeps real typos failing at import time; the annotation lets a static
+    # type checker resolve the generated names as Device subclasses without a
+    # hand-maintained list that would drift as devices are added.
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -8,23 +8,17 @@
 """Device representations for supported AMD Ryzen AI NPU targets."""
 
 from . import device as _device_module
-from .device import (
-    Device,
-    NPU1,  # pyright: ignore[reportAttributeAccessIssue]
-    NPU1Col1,  # pyright: ignore[reportAttributeAccessIssue]
-    NPU1Col2,  # pyright: ignore[reportAttributeAccessIssue]
-    NPU1Col3,  # pyright: ignore[reportAttributeAccessIssue]
-    NPU2,  # pyright: ignore[reportAttributeAccessIssue]
-    NPU2Col1,  # pyright: ignore[reportAttributeAccessIssue]
-    NPU2Col2,  # pyright: ignore[reportAttributeAccessIssue]
-    NPU2Col3,  # pyright: ignore[reportAttributeAccessIssue]
-    NPU2Col4,  # pyright: ignore[reportAttributeAccessIssue]
-    NPU2Col5,  # pyright: ignore[reportAttributeAccessIssue]
-    NPU2Col6,  # pyright: ignore[reportAttributeAccessIssue]
-    NPU2Col7,  # pyright: ignore[reportAttributeAccessIssue]
-    XCVC1902,  # pyright: ignore[reportAttributeAccessIssue]
-)
+from .device import Device
 from .tile import AnyShimTile, AnyMemTile, AnyComputeTile, Tile
+
+
+def __getattr__(name: str) -> type[Device]:
+    # Re-export the per-device subclasses (NPU1, NPU2Col4, XCVC1902, ...) that
+    # device.py generates from the AIEDevice enum, so callers can still do
+    # ``from aie.iron.device import NPU2`` without this package carrying a
+    # hand-maintained name list that would drift as devices are added.
+    return getattr(_device_module, name)
+
 
 # Map from CLI device name → base class name (max-column variant).
 _NAME_TO_BASE: dict[str, str] = {

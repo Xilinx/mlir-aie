@@ -298,14 +298,11 @@ class XRTHostRuntime(HostRuntime):
         Raises:
             HostRuntimeError: If the device string is unknown.
         """
-        from aie.iron.device import (
-            NPU1,  # pyright: ignore[reportAttributeAccessIssue]
-            NPU2,  # pyright: ignore[reportAttributeAccessIssue]
-        )
+        from aie.iron.device import from_name
 
         devices = {
-            "npu1": NPU1(),
-            "npu2": NPU2(),
+            "npu1": from_name("npu1", n_cols=None),
+            "npu2": from_name("npu2", n_cols=None),
         }
 
         if self.npu_str in devices:
