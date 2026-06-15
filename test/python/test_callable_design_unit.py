@@ -25,6 +25,11 @@ from aie.utils.callabledesign import CallableDesign
 from aie.utils.jit import _JIT_CONFIG_KEYS, jit
 from aie.iron.kernel import ExternalFunction, Kernel
 
+
+def _path_text(path) -> str:
+    """Render paths with POSIX separators so assertions are host-independent."""
+    return str(path).replace("\\", "/")
+
 # ---------------------------------------------------------------------------
 # CallableDesign construction
 # ---------------------------------------------------------------------------
@@ -132,7 +137,7 @@ class TestJitDecorator:
         def gen(a: In):
             pass
 
-        assert any("/opt/inc" in str(p) for p in gen.compilable.include_paths)
+        assert any("/opt/inc" in _path_text(p) for p in gen.compilable.include_paths)
 
     def test_object_files_forwarded(self):
         @jit(object_files=["add.o"])

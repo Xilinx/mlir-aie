@@ -126,12 +126,18 @@ def _compute_artifact_hash(
     if not isinstance(generator, Path):
         try:
             import aie.iron as _iron
-            from aie.utils import DefaultNPURuntime
             from aie.utils.compile.utils import resolve_target_arch
 
             try:
                 device = _iron.get_current_device()
-            except (RuntimeError, AttributeError):
+            except AttributeError:
+                # Older/minimal iron imports may not expose get_current_device();
+                # only then fall back to DefaultNPURuntime.  Importing
+                # DefaultNPURuntime eagerly probes XRT via aie.utils.__getattr__,
+                # which breaks hardware-less CI and ignores an explicit
+                # set_current_device(...) override.
+                from aie.utils import DefaultNPURuntime
+
                 device = (
                     DefaultNPURuntime.device()
                     if DefaultNPURuntime is not None

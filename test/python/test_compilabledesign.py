@@ -28,6 +28,11 @@ from aie.utils.compile.jit.context import get_compile_arg
 from aie.utils.compile.jit.markers import CompileTime, In, InOut, Out
 from aie.utils.hostruntime import set_current_device
 
+
+def _path_text(path) -> str:
+    """Render paths with POSIX separators so assertions are host-independent."""
+    return str(path).replace("\\", "/")
+
 # ---------------------------------------------------------------------------
 # Shared generator factories
 # ---------------------------------------------------------------------------
@@ -451,7 +456,7 @@ def test_to_json_contains_all_fields():
     assert data["aiecc_flags"] == ["--verbose"]
     assert data["compile_flags"] == ["-O3"]
     assert "kernel.cc" in data["source_files"][0]
-    assert "/opt/inc" in data["include_paths"][0]
+    assert "/opt/inc" in _path_text(data["include_paths"][0])
     assert "add.o" in data["object_files"][0]
     assert "generator_name" in data
     assert "cache_hash" in data
@@ -497,7 +502,7 @@ def test_from_json_restores_source_and_include_paths():
     d = CompilableDesign(gen, source_files=["k.cc"], include_paths=["/opt"])
     d2 = CompilableDesign.from_json(d.to_json(), generator=gen)
     assert any("k.cc" in str(sf) for sf in d2.source_files)
-    assert any("/opt" in str(p) for p in d2.include_paths)
+    assert any("/opt" in _path_text(p) for p in d2.include_paths)
 
 
 def test_from_json_with_object_files():

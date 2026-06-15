@@ -191,7 +191,6 @@ class CompilableDesign:
         too — the cache path doesn't track ELF artifacts.
         """
         from aie.iron.kernel import ExternalFunction
-        from aie.utils import DefaultNPURuntime
 
         if (xclbin_path is None) != (inst_path is None):
             raise ValueError(
@@ -277,7 +276,13 @@ class CompilableDesign:
                 # of aie2p — link succeeds, runtime times out (ERT_CMD_STATE_TIMEOUT).
                 try:
                     device = _iron.get_current_device()
-                except (RuntimeError, AttributeError):
+                except AttributeError:
+                    # Do not import DefaultNPURuntime unless iron lacks the
+                    # override-aware accessor.  The import itself can probe XRT
+                    # through aie.utils.__getattr__, which breaks no-device CI
+                    # and can preempt explicit argument validation.
+                    from aie.utils import DefaultNPURuntime
+
                     device = (
                         DefaultNPURuntime.device()
                         if DefaultNPURuntime is not None
