@@ -87,8 +87,11 @@ def _compute_recipe_hash(
         kwargs_json = repr(sorted(compile_kwargs.items())).encode()
     h.update(kwargs_json)
 
-    h.update(repr(sorted(aiecc_flags)).encode())
-    h.update(repr(sorted(compile_flags)).encode())
+    # Flag *order* is semantically meaningful (-I search order, -D overrides,
+    # repeated --xchess args), so hash in the given order. Only compile_kwargs
+    # above is order-independent and therefore sorted.
+    h.update(repr(tuple(aiecc_flags)).encode())
+    h.update(repr(tuple(compile_flags)).encode())
 
     return h.hexdigest()
 
@@ -97,12 +100,13 @@ def _compute_artifact_hash(
     generator: Callable | Path,
     source_files: list[Path] | tuple[Path, ...],
     object_files: list[Path] | tuple[Path, ...],
+    include_paths: list[Path] | tuple[Path, ...] = (),
 ) -> str:
-    """Hash of the "artifacts": source/object mtimes + tool mtimes + target arch.
+    """Hash of the "artifacts": source/object/header mtimes + tool mtimes + arch.
 
     Captures everything that can change the *output* of compilation without
-    changing the *recipe*: edited C++ kernels, swapped object files, upgraded
-    Peano / aiecc, retargeted device.
+    changing the *recipe*: edited C++ kernels, swapped object files, edited
+    headers under an ``-I`` dir, upgraded Peano / aiecc, retargeted device.
     """
     h = hashlib.sha256()
 
@@ -119,6 +123,29 @@ def _compute_artifact_hash(
             h.update(str(Path(of).stat().st_mtime).encode())
         except (FileNotFoundError, OSError):
             pass
+
+    # Include dirs (-I): hash the path string so swapping which dir is used
+    # invalidates, plus the mtime of every header under it so editing a header
+    # invalidates (source_files mtimes alone would miss it).
+    for ip in sorted(include_paths, key=str):
+        h.update(str(ip).encode())
+        try:
+            headers = sorted(
+                (
+                    p
+                    for ext in ("*.h", "*.hpp", "*.hh", "*.inc", "*.cuh")
+                    for p in Path(ip).rglob(ext)
+                ),
+                key=str,
+            )
+        except OSError:
+            continue
+        for hp in headers:
+            h.update(str(hp).encode())
+            try:
+                h.update(str(hp.stat().st_mtime).encode())
+            except (FileNotFoundError, OSError):
+                pass
 
     # Static .mlir is arch-agnostic; compiled kernels need a target identifier.
     # Missing components collapse to a constant + WARNING log so cross-arch cache
@@ -195,8 +222,11 @@ def _compute_hash(
     object_files: list[Path] | tuple[Path, ...],
     aiecc_flags: list[str] | tuple[str, ...],
     compile_flags: list[str] | tuple[str, ...],
+    include_paths: list[Path] | tuple[Path, ...] = (),
 ) -> str:
     """Stable 24-hex SHA-256 cache key combining recipe + artifact hashes."""
     recipe = _compute_recipe_hash(generator, compile_kwargs, aiecc_flags, compile_flags)
-    artifact = _compute_artifact_hash(generator, source_files, object_files)
+    artifact = _compute_artifact_hash(
+        generator, source_files, object_files, include_paths
+    )
     return hashlib.sha256(f"{recipe}|{artifact}".encode()).hexdigest()[:24]

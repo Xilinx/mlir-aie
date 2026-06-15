@@ -27,15 +27,20 @@
 
 namespace aie_runtime {
 
-// Transaction opcodes - hand-mirrored from aie-rt's xaiengine/xaie_txn.h
-// (as of aie-rt commit a6196eb). These are intentionally duplicated here to
-// keep this header free of any aie-rt/MLIR/LLVM dependency.
+// Transaction opcodes for the firmware TXN format the compiler currently
+// targets. Duplicated here to keep this header free of any aie-rt/MLIR/LLVM
+// dependency.
 //
-// DRIFT WARNING: this enum is a manual copy. When bumping the aie-rt submodule
-// (or on any firmware TXN-format change), re-verify these values against
-// third_party/aie-rt/.../xaiengine/xaie_txn.h. A future improvement is to
-// generate this block from that header (e.g. a small sed/codegen step) so it
-// can never silently diverge.
+// These DO NOT match the pinned third_party/aie-rt xaie_txn.h enum, which is an
+// older layout (CONFIG_SHIMDMA_BD=5, no NOOP/PREEMPT/LOADPDI block). They match
+// the newer firmware opcodes also defined in AIETargetNPU.cpp (e.g.
+// CREATE_SCRATCHPAD=0x0A, UPDATE_REG=0x0C) — that file is the sibling source of
+// truth, NOT the submodule header.
+//
+// DRIFT WARNING: when the firmware TXN format changes, keep these values in sync
+// with the opcode defines in lib/Targets/AIETargetNPU.cpp. Do not "correct"
+// them against the submodule's xaie_txn.h — it tracks a different (older)
+// numbering and reconciling to it would break the emitted transactions.
 enum TxnOpcode : uint32_t {
   TXN_OPC_WRITE = 0,
   TXN_OPC_BLOCKWRITE = 1,

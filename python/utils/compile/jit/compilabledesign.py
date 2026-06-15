@@ -574,6 +574,7 @@ class CompilableDesign:
             self.mlir_generator,
             self.source_files,
             self.object_files,
+            self.include_paths,
         )
 
     def _compute_cache_hash(self) -> str:
@@ -584,6 +585,7 @@ class CompilableDesign:
             self.object_files,
             self.aiecc_flags,
             self.compile_flags,
+            self.include_paths,
         )
 
     @functools.cached_property
