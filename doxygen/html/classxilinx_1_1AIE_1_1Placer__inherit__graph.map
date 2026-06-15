@@ -1,5 +1,7 @@
 <map id="xilinx::AIE::Placer" name="xilinx::AIE::Placer">
-<area shape="rect" id="Node000001" title=" " alt="" coords="40,5,175,31"/>
-<area shape="rect" id="Node000002" href="$classxilinx_1_1AIE_1_1SequentialPlacer.html" title=" " alt="" coords="5,79,209,104"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="110,44,110,79,105,79,105,44"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="116,5,251,31"/>
+<area shape="rect" id="Node000002" href="$classxilinx_1_1AIE_1_1SAPlacer.html" title=" " alt="" coords="5,79,159,104"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="157,41,100,81,97,76,154,36"/>
+<area shape="rect" id="Node000003" href="$classxilinx_1_1AIE_1_1SequentialPlacer.html" title=" " alt="" coords="183,79,387,104"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="212,36,270,76,267,81,209,41"/>
 </map>

@@ -1,5 +1,17 @@
 <map id="xilinx::AIE::Placer" name="xilinx::AIE::Placer">
-<area shape="rect" id="Node000001" title=" " alt="" coords="40,108,175,133"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,209,45"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="110,59,110,108,105,108,105,59"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="713,95,848,121"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="375,5,579,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="590,46,690,72,749,93,747,98,689,77,588,51"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="373,70,581,95"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="595,90,713,100,713,105,595,95"/>
+<area shape="rect" id="Node000004" href="$classxilinx_1_1AIE_1_1AIETargetModel.html" title=" " alt="" coords="379,119,575,145"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="589,130,689,124,725,118,726,123,690,129,589,136"/>
+<area shape="rect" id="Node000005" href="$structxilinx_1_1AIE_1_1TileAvailability.html" title=" " alt="" coords="381,169,573,194"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="587,171,638,163,689,151,726,136,758,118,760,123,728,140,690,156,639,168,587,177"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="32,119,163,145"/>
+<area shape="poly" id="edge5_Node000005_Node000006" title=" " alt="" coords="177,138,350,159,399,166,398,171,349,164,176,143"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="21,169,173,194"/>
+<area shape="poly" id="edge6_Node000005_Node000007" title=" " alt="" coords="187,179,381,179,381,184,187,184"/>
+<area shape="rect" id="Node000008" title=" " alt="" coords="5,229,189,254"/>
+<area shape="poly" id="edge7_Node000005_Node000008" title=" " alt="" coords="203,232,275,225,349,213,435,192,437,197,350,219,276,230,204,237"/>
 </map>

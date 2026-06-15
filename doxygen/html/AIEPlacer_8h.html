@@ -54,12 +54,15 @@ $(function() {
 <a href="#nested-classes">Classes</a> &#124;
 <a href="#namespaces">Namespaces</a> &#124;
 <a href="#typedef-members">Typedefs</a> &#124;
-<a href="#enum-members">Enumerations</a>  </div>
+<a href="#enum-members">Enumerations</a> &#124;
+<a href="#func-members">Functions</a>  </div>
   <div class="headertitle"><div class="title">AIEPlacer.h File Reference</div></div>
 </div><!--header-->
 <div class="contents">
 <div class="textblock"><code>#include &quot;<a class="el" href="AIEDialect_8h_source.html">aie/Dialect/AIE/IR/AIEDialect.h</a>&quot;</code><br />
 <code>#include &quot;<a class="el" href="AIETargetModel_8h_source.html">aie/Dialect/AIE/IR/AIETargetModel.h</a>&quot;</code><br />
+<code>#include &lt;deque&gt;</code><br />
+<code>#include &lt;random&gt;</code><br />
 </div><div class="textblock"><div id="dynsection-0" onclick="return toggleVisibility(this)" class="dynheader closed" style="cursor:pointer;">
   <img id="dynsection-0-trigger" src="closed.png" alt="+"/> Include dependency graph for AIEPlacer.h:</div>
 <div id="dynsection-0-summary" class="dynsummary" style="display:block;">
@@ -67,16 +70,20 @@ $(function() {
 <div id="dynsection-0-content" class="dyncontent" style="display:none;">
 <div class="center"><img src="AIEPlacer_8h__incl.png" border="0" usemap="#ainclude_2aie_2Dialect_2AIE_2Transforms_2AIEPlacer_8h" alt=""/></div>
 <map name="ainclude_2aie_2Dialect_2AIE_2Transforms_2AIEPlacer_8h" id="ainclude_2aie_2Dialect_2AIE_2Transforms_2AIEPlacer_8h">
-<area shape="rect" title=" " alt="" coords="765,5,963,45"/>
+<area shape="rect" title=" " alt="" coords="1402,5,1601,45"/>
 <area shape="rect" href="AIEDialect_8h.html" title=" " alt="" coords="1373,93,1507,133"/>
-<area shape="poly" title=" " alt="" coords="964,39,1359,97,1359,103,963,44"/>
+<area shape="poly" title=" " alt="" coords="1490,47,1464,84,1459,81,1486,44"/>
 <area shape="rect" href="AIETargetModel_8h.html" title=" " alt="" coords="107,181,245,221"/>
-<area shape="poly" title=" " alt="" coords="790,48,259,182,258,177,789,43"/>
+<area shape="poly" title=" " alt="" coords="1402,38,1196,59,914,90,590,132,259,184,259,179,590,127,913,85,1195,53,1401,33"/>
+<area shape="rect" title=" " alt="" coords="1531,101,1594,126"/>
+<area shape="poly" title=" " alt="" coords="1517,44,1549,88,1544,91,1513,47"/>
+<area shape="rect" title=" " alt="" coords="1619,101,1691,126"/>
+<area shape="poly" title=" " alt="" coords="1536,43,1624,92,1621,96,1534,48"/>
 <area shape="rect" href="AIEEnums_8h.html" title=" " alt="" coords="2532,277,2631,302"/>
-<area shape="poly" title=" " alt="" coords="1508,113,1746,117,2061,128,2216,136,2351,147,2455,161,2491,170,2515,179,2536,196,2554,218,2576,262,2571,265,2549,221,2532,200,2512,184,2489,175,2454,167,2351,153,2215,141,2061,133,1746,122,1507,118"/>
+<area shape="poly" title=" " alt="" coords="1508,129,1520,131,1590,135,1708,137,2022,140,2186,143,2333,150,2448,161,2488,169,2515,179,2536,196,2554,218,2576,262,2571,265,2549,221,2533,200,2512,184,2487,174,2447,167,2333,155,2186,148,2022,145,1708,142,1590,140,1520,136,1507,134"/>
 <area shape="poly" title=" " alt="" coords="1373,120,826,143,505,162,259,184,259,179,504,156,826,137,1372,114"/>
 <area shape="rect" title=" " alt="" coords="1588,365,1745,390"/>
-<area shape="poly" title=" " alt="" coords="1508,114,1748,122,2060,136,2337,155,2428,166,2456,172,2471,179,2483,201,2480,221,2463,239,2435,256,2351,285,2239,311,2112,332,1982,349,1759,372,1759,366,1981,344,2112,327,2238,306,2349,280,2432,251,2459,235,2475,218,2478,201,2468,183,2455,177,2427,171,2336,160,2060,141,1747,127,1507,119"/>
+<area shape="poly" title=" " alt="" coords="1508,129,1520,131,1588,134,1702,134,2007,131,2165,134,2305,141,2412,155,2449,166,2471,179,2483,200,2480,220,2463,239,2435,255,2351,285,2240,310,2113,332,1982,349,1759,371,1759,366,1982,344,2112,326,2239,305,2350,280,2433,251,2460,235,2475,218,2478,201,2467,183,2447,171,2411,161,2305,146,2164,139,2007,137,1702,139,1588,139,1520,136,1507,134"/>
 <area shape="rect" title=" " alt="" coords="269,189,451,214"/>
 <area shape="poly" title=" " alt="" coords="1372,119,985,138,726,157,463,184,430,189,429,184,462,179,726,151,985,132,1372,114"/>
 <area shape="rect" title=" " alt="" coords="475,181,624,221"/>
@@ -94,13 +101,13 @@ $(function() {
 <area shape="rect" title=" " alt="" coords="1675,181,1821,221"/>
 <area shape="poly" title=" " alt="" coords="1508,131,1668,175,1667,180,1507,136"/>
 <area shape="rect" title=" " alt="" coords="1846,181,1981,221"/>
-<area shape="poly" title=" " alt="" coords="1508,122,1653,146,1833,179,1832,184,1652,151,1507,127"/>
+<area shape="poly" title=" " alt="" coords="1508,128,1520,131,1675,154,1833,179,1832,184,1674,160,1520,136,1507,133"/>
 <area shape="rect" title=" " alt="" coords="2005,181,2139,221"/>
-<area shape="poly" title=" " alt="" coords="1508,118,1720,140,1853,157,1991,178,1990,184,1853,162,1719,145,1507,123"/>
+<area shape="poly" title=" " alt="" coords="1508,128,1520,131,1651,148,1754,155,1858,161,1991,178,1991,184,1858,167,1754,160,1650,153,1520,136,1507,134"/>
 <area shape="rect" title=" " alt="" coords="2163,181,2298,221"/>
-<area shape="poly" title=" " alt="" coords="1508,115,1785,135,1965,153,2150,178,2149,184,1964,158,1784,140,1507,121"/>
+<area shape="poly" title=" " alt="" coords="1508,129,1520,131,1615,143,1695,150,1833,155,1972,159,2054,166,2150,179,2149,184,2054,171,1972,165,1833,160,1695,155,1614,148,1520,136,1507,134"/>
 <area shape="rect" title=" " alt="" coords="2322,181,2457,221"/>
-<area shape="poly" title=" " alt="" coords="1508,114,1651,119,1848,130,2075,149,2308,178,2308,184,2074,155,1848,135,1651,124,1507,119"/>
+<area shape="poly" title=" " alt="" coords="1508,129,1520,131,1639,145,1739,152,1913,155,2087,157,2189,164,2308,179,2308,184,2188,169,2086,162,1912,160,1739,158,1638,150,1520,136,1507,134"/>
 <area shape="rect" title=" " alt="" coords="2673,365,2833,390"/>
 <area shape="poly" title=" " alt="" coords="2606,300,2719,356,2717,361,2603,305"/>
 <area shape="rect" title=" " alt="" coords="2363,365,2490,390"/>
@@ -141,13 +148,15 @@ $(function() {
 <div id="dynsection-1-content" class="dyncontent" style="display:none;">
 <div class="center"><img src="AIEPlacer_8h__dep__incl.png" border="0" usemap="#ainclude_2aie_2Dialect_2AIE_2Transforms_2AIEPlacer_8hdep" alt=""/></div>
 <map name="ainclude_2aie_2Dialect_2AIE_2Transforms_2AIEPlacer_8hdep" id="ainclude_2aie_2Dialect_2AIE_2Transforms_2AIEPlacer_8hdep">
-<area shape="rect" title=" " alt="" coords="3865,5,4064,45"/>
+<area shape="rect" title=" " alt="" coords="3931,5,4129,45"/>
 <area shape="rect" href="AIEPasses_8h.html" title=" " alt="" coords="2601,93,2805,133"/>
-<area shape="poly" title=" " alt="" coords="3852,37,2806,108,2806,102,3852,32"/>
+<area shape="poly" title=" " alt="" coords="3917,37,2806,108,2805,103,3916,31"/>
 <area shape="rect" href="AIEPlaceTiles_8cpp.html" title=" " alt="" coords="4993,181,5182,221"/>
-<area shape="poly" title=" " alt="" coords="3965,59,3971,98,3979,116,3992,131,4015,143,4053,152,4165,166,4312,174,4476,176,4792,176,4981,179,4993,180,4992,185,4980,184,4792,181,4476,182,4312,179,4165,171,4052,158,4013,148,3988,135,3975,119,3966,99,3960,60"/>
+<area shape="poly" title=" " alt="" coords="4006,58,3994,77,3985,96,3984,115,3992,131,4008,138,4042,144,4153,154,4479,167,4981,179,4993,180,4992,185,4980,184,4479,173,4153,159,4041,149,4006,143,3988,135,3979,116,3980,95,3989,74,4002,55"/>
 <area shape="rect" href="AIEPlacer_8cpp.html" title=" " alt="" coords="4002,93,4191,133"/>
-<area shape="poly" title=" " alt="" coords="4007,51,4069,91,4066,95,4004,55"/>
+<area shape="poly" title=" " alt="" coords="4055,55,4084,91,4080,95,4051,58"/>
+<area shape="rect" href="AIESAPlacer_8cpp.html" title=" " alt="" coords="4215,93,4405,133"/>
+<area shape="poly" title=" " alt="" coords="4105,47,4249,91,4248,96,4104,52"/>
 <area shape="rect" href="Registration_8cpp.html" title=" " alt="" coords="5,189,188,214"/>
 <area shape="poly" title=" " alt="" coords="2588,118,2101,123,1410,134,712,153,420,167,200,184,151,191,150,186,199,179,420,162,712,148,1410,128,2101,117,2588,113"/>
 <area shape="rect" href="AIEAssignBufferDescriptorIDs_8cpp.html" title=" " alt="" coords="212,181,456,221"/>
@@ -202,9 +211,21 @@ Classes</h2></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1Placer.html">xilinx::AIE::Placer</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structxilinx_1_1AIE_1_1Placer_1_1Adjacency.html">xilinx::AIE::Placer::Adjacency</a></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structxilinx_1_1AIE_1_1Placer_1_1CollectedOps.html">xilinx::AIE::Placer::CollectedOps</a></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1SequentialPlacer.html">xilinx::AIE::SequentialPlacer</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structxilinx_1_1AIE_1_1SequentialPlacer_1_1Adjacency.html">xilinx::AIE::SequentialPlacer::Adjacency</a></td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structxilinx_1_1AIE_1_1SAConfig.html">xilinx::AIE::SAConfig</a></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1SASchedule.html">xilinx::AIE::SASchedule</a></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structxilinx_1_1AIE_1_1NetBoundingBox.html">xilinx::AIE::NetBoundingBox</a></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structxilinx_1_1AIE_1_1NetInfo.html">xilinx::AIE::NetInfo</a></td></tr>
+<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1SAPlacer.html">xilinx::AIE::SAPlacer</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="namespaces" name="namespaces"></a>
@@ -223,14 +244,27 @@ Typedefs</h2></td></tr>
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="enum-members" name="enum-members"></a>
 Enumerations</h2></td></tr>
 <tr class="memitem:aa2563beb859cb084f3d19eb1bde66af0" id="r_aa2563beb859cb084f3d19eb1bde66af0"><td class="memItemLeft" align="right" valign="top">enum class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#aa2563beb859cb084f3d19eb1bde66af0">xilinx::AIE::PlacerType</a> { <a class="el" href="namespacexilinx_1_1AIE.html#aa2563beb859cb084f3d19eb1bde66af0a347b888eacfd3c2cefc320f61eedaaf4">xilinx::AIE::SequentialPlacer</a>
+, <a class="el" href="namespacexilinx_1_1AIE.html#aa2563beb859cb084f3d19eb1bde66af0a0ced24c0733550141f4039e265a39fe7">xilinx::AIE::SAPlacer</a>
  }</td></tr>
 <tr class="memdesc:aa2563beb859cb084f3d19eb1bde66af0"><td class="mdescLeft">&#160;</td><td class="mdescRight">Placement algorithm type for pass option.  <a href="namespacexilinx_1_1AIE.html#aa2563beb859cb084f3d19eb1bde66af0">More...</a><br /></td></tr>
 <tr class="separator:aa2563beb859cb084f3d19eb1bde66af0"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="func-members" name="func-members"></a>
+Functions</h2></td></tr>
+<tr class="memitem:aa8b87c2729e1e7e88fc9c9c17620a676" id="r_aa8b87c2729e1e7e88fc9c9c17620a676"><td class="memItemLeft" align="right" valign="top">std::pair&lt; int, int &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#aa8b87c2729e1e7e88fc9c9c17620a676">xilinx::AIE::getDMACapacity</a> (const <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html">AIETargetModel</a> &amp;tm, <a class="el" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> tile)</td></tr>
+<tr class="memdesc:aa8b87c2729e1e7e88fc9c9c17620a676"><td class="mdescLeft">&#160;</td><td class="mdescRight">Get DMA channel capacity (maxIn, maxOut) for a tile position.  <br /></td></tr>
+<tr class="separator:aa8b87c2729e1e7e88fc9c9c17620a676"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a20e51e2d465a0c72301e71e36042527a" id="r_a20e51e2d465a0c72301e71e36042527a"><td class="memTemplParams" colspan="2">template&lt;typename F &gt; </td></tr>
+<tr class="memitem:a20e51e2d465a0c72301e71e36042527a"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#a20e51e2d465a0c72301e71e36042527a">xilinx::AIE::forEachPeer</a> (mlir::Operation *op, const <a class="el" href="structxilinx_1_1AIE_1_1Placer_1_1Adjacency.html">Placer::Adjacency</a> &amp;adjacency, F &amp;&amp;fn)</td></tr>
+<tr class="separator:a20e51e2d465a0c72301e71e36042527a"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a6ea53c342465474f0ffec5a524fa8aff" id="r_a6ea53c342465474f0ffec5a524fa8aff"><td class="memTemplParams" colspan="2">template&lt;typename F &gt; </td></tr>
+<tr class="memitem:a6ea53c342465474f0ffec5a524fa8aff"><td class="memTemplItemLeft" align="right" valign="top">void&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIE.html#a6ea53c342465474f0ffec5a524fa8aff">xilinx::AIE::forEachMemAffinityNeighbor</a> (const <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html">AIETargetModel</a> &amp;targetModel, <a class="el" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> at, F &amp;&amp;fn)</td></tr>
+<tr class="separator:a6ea53c342465474f0ffec5a524fa8aff"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Fri Jun 12 2026 21:45:15 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Mon Jun 15 2026 20:45:50 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

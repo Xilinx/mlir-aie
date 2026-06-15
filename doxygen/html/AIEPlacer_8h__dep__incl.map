@@ -1,11 +1,13 @@
 <map id="include/aie/Dialect/AIE/Transforms/AIEPlacer.h" name="include/aie/Dialect/AIE/Transforms/AIEPlacer.h">
-<area shape="rect" id="Node000001" title=" " alt="" coords="3865,5,4064,45"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="3931,5,4129,45"/>
 <area shape="rect" id="Node000002" href="$AIEPasses_8h.html" title=" " alt="" coords="2601,93,2805,133"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="3852,37,2806,108,2806,102,3852,32"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="3917,37,2806,108,2805,103,3916,31"/>
 <area shape="rect" id="Node000020" href="$AIEPlaceTiles_8cpp.html" title=" " alt="" coords="4993,181,5182,221"/>
-<area shape="poly" id="edge24_Node000001_Node000020" title=" " alt="" coords="3965,59,3971,98,3979,116,3992,131,4015,143,4053,152,4165,166,4312,174,4476,176,4792,176,4981,179,4993,180,4992,185,4980,184,4792,181,4476,182,4312,179,4165,171,4052,158,4013,148,3988,135,3975,119,3966,99,3960,60"/>
+<area shape="poly" id="edge24_Node000001_Node000020" title=" " alt="" coords="4006,58,3994,77,3985,96,3984,115,3992,131,4008,138,4042,144,4153,154,4479,167,4981,179,4993,180,4992,185,4980,184,4479,173,4153,159,4041,149,4006,143,3988,135,3979,116,3980,95,3989,74,4002,55"/>
 <area shape="rect" id="Node000025" href="$AIEPlacer_8cpp.html" title=" " alt="" coords="4002,93,4191,133"/>
-<area shape="poly" id="edge25_Node000001_Node000025" title=" " alt="" coords="4007,51,4069,91,4066,95,4004,55"/>
+<area shape="poly" id="edge25_Node000001_Node000025" title=" " alt="" coords="4055,55,4084,91,4080,95,4051,58"/>
+<area shape="rect" id="Node000026" href="$AIESAPlacer_8cpp.html" title=" " alt="" coords="4215,93,4405,133"/>
+<area shape="poly" id="edge26_Node000001_Node000026" title=" " alt="" coords="4105,47,4249,91,4248,96,4104,52"/>
 <area shape="rect" id="Node000003" href="$Registration_8cpp.html" title=" " alt="" coords="5,189,188,214"/>
 <area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="2588,118,2101,123,1410,134,712,153,420,167,200,184,151,191,150,186,199,179,420,162,712,148,1410,128,2101,117,2588,113"/>
 <area shape="rect" id="Node000004" href="$AIEAssignBufferDescriptorIDs_8cpp.html" title=" " alt="" coords="212,181,456,221"/>
