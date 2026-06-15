@@ -98,11 +98,21 @@ jobs:
           # generated bindings from here; aie._mlir_libs (compiled) is not required
           # because the few core-IR symbols it would provide are already handled by
           # targeted per-line ignores in the sources.
+          #
+          # The MLIRPythonSources.Core.Python[.Extras] targets stage aie.ir,
+          # aie.passmanager, and the aie.extras package root; the _aie_enum_gen.py
+          # copy stages the trace/event enum bindings. Without these, those package
+          # roots don't exist in build/python and the imports fail with
+          # reportMissingImports (which the per-line reportAttributeAccessIssue
+          # ignores do not cover).
           ninja \
             python/AIEPythonSources.Dialects.aie.ops_gen \
             python/AIEPythonSources.Dialects.aiex.ops_gen \
             python/AIEPythonSources.Dialects.aievec.ops_gen \
-            python/AIEPythonModules.sources.AIEPythonSources
+            python/AIEPythonModules.sources.AIEPythonSources \
+            python/AIEPythonModules.sources.MLIRPythonSources.Core.Python \
+            python/AIEPythonModules.sources.MLIRPythonSources.Core.Python.Extras \
+            python/aie/dialects/_aie_enum_gen.py
 
           popd
 

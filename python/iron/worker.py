@@ -179,34 +179,6 @@ class Worker(ObjectFifoEndpoint):
         assert self._tile is not None
         return self._tile
 
-    @staticmethod
-    def grid(
-        rows: int,
-        cols: int,
-        factory: Callable[[int, int], "Worker"],
-    ) -> list[list["Worker"]]:
-        """Build a 2D grid of Workers; ``factory(r, c)`` returns one Worker.
-
-        Replaces the common pattern::
-
-            ws = [Worker(...) for i in range(R) for j in range(C)]
-            ws[i * C + j]  # 1-D index arithmetic
-
-        with::
-
-            ws = Worker.grid(R, C, lambda r, c: Worker(...))
-            ws[i][j]       # natural 2-D access
-
-        Args:
-            rows: Outer-dimension count (e.g. column index).
-            cols: Inner-dimension count (e.g. channel index).
-            factory: Called once per cell with ``(r, c)``; must return a Worker.
-
-        Returns:
-            ``rows``-by-``cols`` nested list of Worker instances.
-        """
-        return [[factory(r, c) for c in range(cols)] for r in range(rows)]
-
     @property
     def fifos(self) -> list[ObjectFifoHandle]:
         """Returns a list of ObjectFifoHandles given to the Worker via fn_args.

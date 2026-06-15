@@ -179,21 +179,6 @@ def print_cycles_summary(trace_path):
             )
 
 
-def print_cycles_summary(trace_path):
-    cycles = get_cycles_summary(trace_path)
-    for entry in cycles:
-        print(entry[0])
-        runs = len(entry) - 1
-        print(f"Total number of full kernel invocations is {runs}")
-        if runs > 0:
-            samples = entry[1:]
-            print(
-                "First/Min/Avg/Max cycles is "
-                f"{samples[0]}/ {min(samples)}/ "
-                f"{sum(samples) / runs}/ {max(samples)}"
-            )
-
-
 def get_vector_time(trace):
     """This function extracts the total time spent on the vectorized unit
     from an NPUEval AIE trace (this must have exactly 1 event0 and 1 event1

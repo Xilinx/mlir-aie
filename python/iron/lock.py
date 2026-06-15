@@ -100,7 +100,6 @@ class Lock(Resolvable):
         """Emit ``aie.use_lock(self, Acquire, value=value)`` (exact match)."""
         _use_lock(self.op, LockAction.Acquire, value=value)
 
-
     def release(self, value: int = 1) -> None:
         """Emit ``aie.use_lock(self, Release, value=value)``."""
         _use_lock(self.op, LockAction.Release, value=value)
