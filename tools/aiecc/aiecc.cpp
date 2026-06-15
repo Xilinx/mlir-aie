@@ -104,6 +104,7 @@
 #endif
 
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -2017,19 +2018,36 @@ static std::string downgradeIRForPeano(StringRef ir) {
   // Recent main LLVM prints special float values as 'inf'/'-inf'/'nan'
   // keywords; Peano's opt only accepts the hex form. The literals appear
   // prefixed by their type in initializers (the position we emit), so anchor
-  // the rewrite on the type keyword to pick the correct hex width.
-  replaceAll("half -inf", "half 0xHFC00");
-  replaceAll("half inf", "half 0xH7C00");
-  replaceAll("half nan", "half 0xH7E00");
-  replaceAll("bfloat -inf", "bfloat 0xRFF80");
-  replaceAll("bfloat inf", "bfloat 0xR7F80");
-  replaceAll("bfloat nan", "bfloat 0xR7FC0");
-  replaceAll("float -inf", "float 0xFFF0000000000000");
-  replaceAll("float inf", "float 0x7FF0000000000000");
-  replaceAll("float nan", "float 0x7FF8000000000000");
-  replaceAll("double -inf", "double 0xFFF0000000000000");
-  replaceAll("double inf", "double 0x7FF0000000000000");
-  replaceAll("double nan", "double 0x7FF8000000000000");
+  // the rewrite on the type keyword to pick the correct hex width. Require a
+  // non-identifier char before the keyword so 'float' does not match inside
+  // 'bfloat' (which would corrupt the wider type's already-correct text).
+  auto isIdentChar = [](char c) {
+    return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
+  };
+  auto replaceTypedLiteral = [&](StringRef from, StringRef to) {
+    size_t pos = 0;
+    while ((pos = result.find(from.data(), pos, from.size())) !=
+           std::string::npos) {
+      if (pos == 0 || !isIdentChar(result[pos - 1])) {
+        result.replace(pos, from.size(), to.data(), to.size());
+        pos += to.size();
+      } else {
+        pos += from.size();
+      }
+    }
+  };
+  replaceTypedLiteral("half -inf", "half 0xHFC00");
+  replaceTypedLiteral("half inf", "half 0xH7C00");
+  replaceTypedLiteral("half nan", "half 0xH7E00");
+  replaceTypedLiteral("bfloat -inf", "bfloat 0xRFF80");
+  replaceTypedLiteral("bfloat inf", "bfloat 0xR7F80");
+  replaceTypedLiteral("bfloat nan", "bfloat 0xR7FC0");
+  replaceTypedLiteral("float -inf", "float 0xFFF0000000000000");
+  replaceTypedLiteral("float inf", "float 0x7FF0000000000000");
+  replaceTypedLiteral("float nan", "float 0x7FF8000000000000");
+  replaceTypedLiteral("double -inf", "double 0xFFF0000000000000");
+  replaceTypedLiteral("double inf", "double 0x7FF0000000000000");
+  replaceTypedLiteral("double nan", "double 0x7FF8000000000000");
   // Strip 'nocreateundeforpoison' and any trailing whitespace: current Peano
   // LLVM cannot parse this attribute.
   const std::string nocreate = "nocreateundeforpoison";
