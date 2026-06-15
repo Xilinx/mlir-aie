@@ -58,7 +58,7 @@ class Buffer(Resolvable):
             raise ValueError("Must provide either type, initial value, or both.")
         if type is None:
             assert initial_value is not None
-            type = np.ndarray[initial_value.shape, np.dtype[initial_value.dtype]]
+            type = np.ndarray[initial_value.shape, np.dtype[initial_value.dtype.type]]
         self._initial_value = initial_value
         self._name = name
         self._op = None

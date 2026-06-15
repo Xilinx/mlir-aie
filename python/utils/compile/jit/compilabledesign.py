@@ -48,7 +48,7 @@ from aie.utils.compile import (
 )
 from aie.utils.compile.cache.utils import file_lock
 from aie.utils.compile.utils import _cleanup_failed_compilation
-from aie.extras.context import mlir_mod_ctx
+from aie.extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
 from aie.ir import Module as _Module  # pyright: ignore[reportAttributeAccessIssue]
 
 from ._dma_size_parser import parse_dma_sizes

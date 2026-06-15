@@ -324,9 +324,10 @@ class HostRuntime(ABC):
         ctrl_buff = None
 
         if trace_config.ddr_id == -1:
-            args[-1], trace_buff = cls._extract_prefix(
+            prefix, trace_buff = cls._extract_prefix(
                 args[-1], trace_config.last_tensor_shape, trace_config.last_tensor_dtype
             )
+            args[-1] = prefix  # pyright: ignore[reportArgumentType]
         else:
             # The trace position is always last.
             trace_buff = args[-1].numpy()

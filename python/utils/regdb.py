@@ -636,7 +636,7 @@ class MLIRModuleAnnotator:
             Number of operations annotated
         """
         # Import here to avoid circular imports and allow module to load without MLIR
-        from aie.extras.util import find_ops
+        from aie.extras.util import find_ops  # pyright: ignore[reportMissingImports]
         import aie.dialects.aie as aiedialect
         import aie.dialects.aiex as aiexdialect
 
