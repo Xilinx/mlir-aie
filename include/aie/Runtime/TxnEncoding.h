@@ -37,10 +37,10 @@ namespace aie_runtime {
 // CREATE_SCRATCHPAD=0x0A, UPDATE_REG=0x0C) — that file is the sibling source of
 // truth, NOT the submodule header.
 //
-// DRIFT WARNING: when the firmware TXN format changes, keep these values in sync
-// with the opcode defines in lib/Targets/AIETargetNPU.cpp. Do not "correct"
-// them against the submodule's xaie_txn.h — it tracks a different (older)
-// numbering and reconciling to it would break the emitted transactions.
+// DRIFT WARNING: when the firmware TXN format changes, keep these values in
+// sync with the opcode defines in lib/Targets/AIETargetNPU.cpp. Do not
+// "correct" them against the submodule's xaie_txn.h — it tracks a different
+// (older) numbering and reconciling to it would break the emitted transactions.
 enum TxnOpcode : uint32_t {
   TXN_OPC_WRITE = 0,
   TXN_OPC_BLOCKWRITE = 1,
