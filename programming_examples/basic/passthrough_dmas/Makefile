@@ -1,68 +1,84 @@
 ##===- Makefile -----------------------------------------------------------===##
-# 
+#
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024, Advanced Micro Devices, Inc.
-# 
+# Copyright (C) 2024-2026, Advanced Micro Devices, Inc.
+#
 ##===----------------------------------------------------------------------===##
+#
+# NPU paths use @iron.jit's compile() directly via --xclbin-path / --insts-path.
+# The vck5000 (Versal AIE1) path uses the legacy print-MLIR + aiecc flow.
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-all: build/final.xclbin
+SHELL := /bin/bash
 
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = passthrough_dmas
 LENGTH ?= 4096
 
-aie_py_src=${targetname}.py
-use_placed?=0
+aie_py_src = ${targetname}.py
+aieargs = -d ${devicename} -n ${LENGTH}
 
-ifeq (${use_placed}, 1)
-aie_py_src=${targetname}_placed.py
-endif
+xclbin_target = build/final.xclbin
+insts_target = build/insts.bin
 
-build/aie.mlir: ${srcdir}/${aie_py_src}
+.PHONY: all
+all: ${xclbin_target} ${insts_target}
+
+$(eval $(call jit_xclbin,${xclbin_target},${insts_target},${aie_py_src},${aieargs}))
+$(eval $(call build_host_exe,${targetname},_build,test.cpp))
+
+.PHONY: run
+run: ${targetname}.exe ${xclbin_target} ${insts_target}
+	${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE -l ${LENGTH}
+
+# vck5000 (Versal AIE1) path stays on the legacy print-MLIR + aiecc flow.
+# Three topologies share the design body, picked via PLIO=none|input|output:
+#   * vck5000              — non-PLIO (shim → memtile → shim)
+#   * vck5000_plio_input   — PLIO ObjectFifo on input side
+#   * vck5000_plio_output  — PLIO ObjectFifo on output side
+
+build/aie_vck5000.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	python3 $< ${LENGTH} ${devicename} ${col} > $@
+	python3 $< -d xcvc1902 -n ${LENGTH} --plio none --emit-mlir > $@
 
-build/final.xclbin: build/aie.mlir
+build/aie_vck5000_plio_input.mlir: ${srcdir}/${aie_py_src}
 	mkdir -p ${@D}
-	cd ${@D} && aiecc --aie-generate-xclbin --xclbin-name=${@F} \
-		--no-xchesscc --no-xbridge \
-		--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
+	python3 $< -d xcvc1902 -n ${LENGTH} --plio input --emit-mlir > $@
 
-${targetname}.exe: ${srcdir}/test.cpp
-	rm -rf _build
-	mkdir -p _build
-	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}` -DTARGET_NAME=${targetname}
-	cd _build && ${powershell} cmake --build . --config Release
-ifeq "${powershell}" "powershell.exe"
-	cp _build/${targetname}.exe $@
-else
-	cp _build/${targetname} $@ 
-endif
+build/aie_vck5000_plio_output.mlir: ${srcdir}/${aie_py_src}
+	mkdir -p ${@D}
+	python3 $< -d xcvc1902 -n ${LENGTH} --plio output --emit-mlir > $@
 
-run: ${targetname}.exe build/final.xclbin
-	${powershell} ./$< -x build/final.xclbin -i build/insts.bin -k MLIR_AIE -l ${LENGTH}
-
-# Changing variables when we target VCK5000
-vck5000: devicename=xcvc1902
-vck5000: col=6
-
-vck5000: build/aie.mlir
-	aiecc --link_against_hsa --host-target=x86_64-amd-linux-gnu build/aie.mlir \
+define vck5000_link
+	aiecc --link_against_hsa --host-target=x86_64-amd-linux-gnu $1 \
 		-I${srcdir}/../../../install/runtime_lib/x86_64-hsa/test_lib/include \
 		-L/lib/x86_64-linux-gnu/ \
 		${srcdir}/test_vck5000.cpp \
 		${srcdir}/../../../install/runtime_lib/x86_64-hsa/test_lib/src/test_library.cpp \
-		-Wl,--whole-archive -Wl,--no-whole-archive -lstdc++ -ldl -lelf -o test.elf
+		-Wl,--whole-archive -Wl,--no-whole-archive -lstdc++ -ldl -lelf -o $2
+endef
 
+.PHONY: vck5000
+vck5000: build/aie_vck5000.mlir
+	$(call vck5000_link,$<,test.elf)
+
+.PHONY: vck5000_plio_input
+vck5000_plio_input: build/aie_vck5000_plio_input.mlir
+	$(call vck5000_link,$<,input.elf)
+
+.PHONY: vck5000_plio_output
+vck5000_plio_output: build/aie_vck5000_plio_output.mlir
+	$(call vck5000_link,$<,output.elf)
+
+.PHONY: run_vck5000
 run_vck5000:
-	test.elf
+	./test.elf
 
+.PHONY: clean
 clean:
-	rm -rf build _build inst aie.mlir.prj core_* test.elf ${targetname}.exe
+	rm -rf build _build inst aie.mlir.prj core_* test.elf input.elf output.elf ${targetname}.exe

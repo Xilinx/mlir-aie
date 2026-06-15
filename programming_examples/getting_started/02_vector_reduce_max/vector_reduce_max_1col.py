@@ -6,16 +6,14 @@
 
 from ml_dtypes import bfloat16
 import numpy as np
-import sys
-import os
 
 import aie.iron as iron
-from aie.iron import ExternalFunction
-from aie.iron import ObjectFifo, Program, Runtime, Worker, Buffer
+from aie.iron import CompileTime, In, Out
+from aie.iron import ObjectFifo, Program, Runtime, Worker, Buffer, kernels
 from aie.iron.controlflow import range_
 from aie.helpers.util import np_ndarray_type_get_shape
 from aie.helpers.dialects.scf import if_, else_
-from aie.utils.config import cxx_header_path
+from aie.utils.verify import assert_pass
 
 
 # JIT decorator for IRON
@@ -23,11 +21,13 @@ from aie.utils.config import cxx_header_path
 # Parameters:
 #     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
 @iron.jit
-def vector_reduce_max(input0, output):
-    element_type = output.dtype
-
-    in_tensor_size = input0.shape[0]  # Input tensor size
-    out_tensor_size = output.shape[0]  # Output tensor size
+def vector_reduce_max(
+    input0: In,
+    output: Out,
+    *,
+    in_tensor_size: CompileTime[int],
+    element_type: CompileTime[type],
+):
 
     n_cores = 4
     N = 2048
@@ -41,8 +41,14 @@ def vector_reduce_max(input0, output):
 
     in_ty = np.ndarray[(in_tensor_size,), np.dtype[element_type]]
     mem_ty = np.ndarray[(N,), np.dtype[element_type]]
-    op_ty = np.ndarray[(elems_per_core,), np.dtype[element_type]]
-    out_ty = np.ndarray[(out_tensor_size,), np.dtype[element_type]]
+
+    # Build the reduction kernel up front so its arg types drive the FIFO/Buffer
+    # types — guarantees the example's data layout matches what the kernel
+    # consumes/produces (the bf16 output is padded to 2 elements internally to
+    # satisfy 4-byte shim-DMA alignment).
+    reduce_max_vector = kernels.reduce_max(tile_size=elems_per_core, dtype=element_type)
+    op_ty, out_ty, _ = reduce_max_vector.arg_types()
+    out_elems = out_ty.__args__[0][0]
 
     # Input A and Output C
     of_in = ObjectFifo(mem_ty, name="of_in")
@@ -67,33 +73,26 @@ def vector_reduce_max(input0, output):
         names=[f"memA{i}" for i in range(n_cores)],
     )
 
-    min_val = np.array([bfloat16(float("-inf"))], dtype=element_type)
+    min_val = np.full(out_elems, bfloat16(float("-inf")), dtype=element_type)
     nextC_buffers = []
     tmp_buffers = []
     for i in range(n_cores):
         out_fifos.append(ObjectFifo(out_ty, name=f"memC{i}"))
         nextC_buffers.append(
             Buffer(
-                type=np.ndarray[(out_tensor_size,), np.dtype[element_type]],
+                type=out_ty,
                 initial_value=min_val,
             )
         )
         tmp_buffers.append(
             Buffer(
-                type=np.ndarray[(out_tensor_size,), np.dtype[element_type]],
+                type=out_ty,
                 initial_value=min_val,
             )
         )
     # --------------------------------------------------------------------------
     # Task each core will run
     # --------------------------------------------------------------------------
-
-    reduce_max_vector = ExternalFunction(
-        f"reduce_max_vector_bfloat16",
-        source_file=os.path.join(os.path.dirname(__file__), "reduce_max_vector.cc"),
-        arg_types=[op_ty, out_ty, np.int32],
-        include_dirs=[cxx_header_path()],
-    )
 
     # final_core_body: runs on the last core in the cascade. This core does not
     # read results from a downstream neighbor — it is the terminal node that
@@ -182,45 +181,27 @@ def main():
     out_size = 4
     element_type = bfloat16
 
-    assert (
-        out_size == 4
-    ), "Output buffer must be size 4 (4 bytes = 2 bfloat16 elements)."
-
     in_tensor_size = in_size // element_type(0).nbytes
-    out_tensor_size = out_size // element_type(0).nbytes
 
-    # Construct an input tensor and an output zeroed tensor
-    # The two tensors are in memory accessible to the NPU
+    # Allocate output with enough elements for 4-byte DMA alignment.
+    _dma_align = 4
+    out_elems = (_dma_align + element_type(0).nbytes - 1) // element_type(0).nbytes
     input0 = iron.arange(in_tensor_size, dtype=element_type, device="npu")
-    output = iron.arange(out_tensor_size, dtype=element_type, device="npu")
+    output = iron.zeros(out_elems, dtype=element_type, device="npu")
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
-    vector_reduce_max(input0, output)
+    vector_reduce_max(
+        input0, output, in_tensor_size=in_tensor_size, element_type=element_type
+    )
 
-    # Check the correctness of the result and print.
-    # Initialize to -inf so the reference is correct for all-negative inputs.
-    ref_max = bfloat16(float("-inf"))
-    for i in input0:
-        if i > ref_max:
-            ref_max = i
-
-    errors = 0
-    if output[0] != ref_max:
-        print(f"Error: {output} != {ref_max}")
-        errors += 1
-    else:
-        print(f"Correct output: {output} == {ref_max}")
-
-    # If the result is correct, exit with a success code
-    # Otherwise, exit with a failure code
-    if not errors:
-        print("\nPASS!\n")
-        sys.exit(0)
-    else:
-        print("\nError count: ", errors)
-        print("\nfailed.\n")
-        sys.exit(1)
+    # Numpy reference: vector-max over the whole input (bf16-safe).
+    ref_max = input0.numpy().max()
+    assert_pass(
+        output.numpy()[0],
+        ref_max,
+        fail_msg=f"reduce-max output {output.numpy()[0]} does not match host max {ref_max}",
+    )
 
 
 if __name__ == "__main__":

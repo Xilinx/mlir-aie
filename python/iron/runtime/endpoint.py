@@ -15,16 +15,22 @@ from ...dialects._aie_enum_gen import AIETileType  # type: ignore
 
 class RuntimeEndpoint(ObjectFifoEndpoint):
     """An ObjectFifo endpoint representing data transfer between the host and the device.
-    Operates on a shim tile.
+    Operates on a shim tile — either a ShimNOCTile (the default, used by NPU
+    host-driven DMA) or a ShimPLTile (used by VCK5000 PLIO designs where the
+    runtime DMA is wired to the PL side of the shim).
     """
+
+    _SHIM_TILE_TYPES = (AIETileType.ShimNOCTile, AIETileType.ShimPLTile)
 
     def __init__(self, tile: Tile = AnyShimTile) -> None:
         tile = tile.copy()
-        if tile.tile_type is not None and tile.tile_type != AIETileType.ShimNOCTile:
+        if tile.tile_type is not None and tile.tile_type not in self._SHIM_TILE_TYPES:
             raise ValueError(
-                f"RuntimeEndpoint requires a shim tile, but got tile_type={tile.tile_type}"
+                f"RuntimeEndpoint requires a shim tile (ShimNOCTile or "
+                f"ShimPLTile), but got tile_type={tile.tile_type}"
             )
-        tile.tile_type = AIETileType.ShimNOCTile
+        if tile.tile_type is None:
+            tile.tile_type = AIETileType.ShimNOCTile
         super().__init__(tile)
 
     def __eq__(self, other: object) -> bool:

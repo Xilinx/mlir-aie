@@ -38,10 +38,10 @@ If we imagine the 24-element wide tensor as 3 rows of 8 elements, the transforma
 
 > **NOTE:**  While the end-result is the same, the pattern in this example differs from the one in the [to_stream_transformations](../to_stream_transformations/) design. This is because the Worker has no control over how the data arrives from the AXI stream, whereas in the [to_stream.py](../to_stream_transformations/to_stream.py) example, the Worker can access the data directly in the order in which it will push it onto the stream.
 
-It is possible to compile, run and test this design with the following commands:
+The design is wrapped in `@iron.jit`, so a single command JIT-compiles and runs it on the attached NPU:
 ```bash
-make
-make run
+make run                              # builds + runs on the NPU (devicename={npu,npu2})
+make emit-mlir                        # writes the lowered MLIR to build/aie.mlir without touching the NPU
 ```
 
-The [test.cpp](./test.cpp) as well as the `# To/from AIE-array data movement` section of the design code will be described in detail in [Section 2d](../../section-2d/).
+The `# To/from AIE-array data movement` section of the design code is described in detail in [Section 2d](../../section-2d/).

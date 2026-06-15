@@ -25,26 +25,30 @@ Usage:
     python3 aie2_mobilenet_iron.py > mobilenet_iron.mlir
 """
 
-import json
+import argparse
 import os
 import sys
+
 import numpy as np
 
-from aie.iron import ObjectFifo, Program, Runtime
-from aie.iron.device import NPU2
+import aie.iron as iron
+from aie.iron import In, ObjectFifo, Out, Program, Runtime
+from aie.utils.hostruntime.argparse import device_from_args
+from aie.helpers.taplib import TensorAccessPattern
+from aie.utils.hostruntime import set_current_device
+from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.cli import run_design_cli
 
-# Allow importing the local bottleneck/ package when running this file directly.
-import pathlib
-
-sys.path.insert(0, str(pathlib.Path(__file__).parent))
-
-from bottleneck.init import init_conv
-from bottleneck.regular import regular_bottlenecks
-from bottleneck.pipeline import pipeline_bottlenecks
-from bottleneck.cascade import cascade_bottlenecks
-from bottleneck.post_l1 import post_l1
-from bottleneck.post_l2 import post_l2
-from network_spec import block as nsblock
+# Sibling imports below resolve via the script's parent dir (auto-added
+# to sys.path[0] when invoked as ``python3 .../aie2_mobilenet_iron.py``).
+from .bottleneck.init import init_conv
+from .bottleneck.regular import regular_bottlenecks
+from .bottleneck.pipeline import pipeline_bottlenecks
+from .bottleneck.cascade import cascade_bottlenecks
+from .bottleneck.post_l1 import post_l1
+from .bottleneck.post_l2 import post_l2
+from .network_spec import block as nsblock
+from . import mb_utils
 
 # ---------------------------------------------------------------------------
 # Configuration
@@ -52,8 +56,7 @@ from network_spec import block as nsblock
 data_dir = os.path.join(os.path.dirname(__file__), "data") + "/"
 scale_factor_file = "scale_factors_final.json"
 
-with open(data_dir + scale_factor_file) as f:
-    sf = json.load(f)
+sf = mb_utils.read_scale_factors(data_dir + scale_factor_file)
 
 
 # ---------------------------------------------------------------------------
@@ -67,14 +70,26 @@ post_L2_OutC = nsblock("post_l2").layers[-1].out_shape[2]
 
 
 # Physical tile placement lives in placement.py (algorithm/mapping split).
-from placement import PLACEMENT
+from .placement import PLACEMENT
 
 
 # ---------------------------------------------------------------------------
 # Design top-level function
 # ---------------------------------------------------------------------------
-def mobilenet_iron():
-    """Build the full mobilenet IRON design and return the resolved Program."""
+@iron.jit(aiecc_flags=["--dynamic-objFifos=false"])
+def mobilenet_iron(inp: In, cascade_wts: In, out: Out):
+    """Build the full mobilenet IRON design and return the resolved Program.
+
+    Runtime args (declared via In/Out so @iron.jit knows the design takes
+    three host tensors): activations + scratch, cascade weights, final FC2
+    output.  The body's ``rt.sequence(...)`` matches.
+
+    aiecc_flags=["--dynamic-objFifos=false"]: the init core's constant-trip
+    loops fully unroll under the global dynamic-objfifo lowering to ~3360
+    kernel calls, producing an ELF that overflows the 64KB AIE tile
+    program memory.  Per-core dynamic_objfifo_lowering attribute is only
+    honoured when the global flag is false.
+    """
     # Runtime arg types: i32 element view over the underlying byte buffers.
     #   arg0 (act_in / scratch):  100352 i32 = 401408 bytes
     #   arg2 (final FC2 output):    640 i32 =   2560 bytes
@@ -89,7 +104,7 @@ def mobilenet_iron():
     # returns the activation handoff for the next stage.
     # ------------------------------------------------------------------
     init_workers, act_in, act_init_out = init_conv(
-        sf, placement=PLACEMENT["init"], data_dir=data_dir
+        sf, tile=PLACEMENT["init"], data_dir=data_dir
     )
     a_workers, act_bn9_out = regular_bottlenecks(
         act_init_out, sf, placement=PLACEMENT["regular"], data_dir=data_dir
@@ -101,7 +116,7 @@ def mobilenet_iron():
         act_bn12_out, sf, placement=PLACEMENT["cascade"], data_dir=data_dir
     )
     l1_workers, act_out_post_avgpool_shim = post_l1(
-        act_bn14_out, sf, placement=PLACEMENT["post_l1"], data_dir=data_dir
+        act_bn14_out, sf, tiles=PLACEMENT["post_l1"], data_dir=data_dir
     )
 
     # post_l1 drains to host scratch and post_l2 fills from host scratch; this
@@ -113,7 +128,7 @@ def mobilenet_iron():
     )
 
     l2_workers, act_out_of = post_l2(
-        act_out_post_shim_FC, sf, placement=PLACEMENT["post_l2"], data_dir=data_dir
+        act_out_post_shim_FC, sf, tiles=PLACEMENT["post_l2"], data_dir=data_dir
     )
 
     # ------------------------------------------------------------------
@@ -126,8 +141,6 @@ def mobilenet_iron():
     # Combined cascade weight tensor — test_mobilenet.py concatenates 4 chunks
     # into a single buffer in this exact order:
     #   bn13_L1(76800) | bn13_L3(76800) | bn14_L1(76800) | bn14_L3(76800)
-    from aie.helpers.taplib import TensorAccessPattern
-
     _BN_L1_SZ = 80 * 960  # 76800 bytes per L1 weight chunk
     _BN_L3_SZ = 480 * 80 * 2  # 76800 bytes per L3 weight chunk (put+get)
     _CASCADE_OFFSETS = [0, _BN_L1_SZ, 2 * _BN_L1_SZ, 3 * _BN_L1_SZ]
@@ -145,10 +158,10 @@ def mobilenet_iron():
 
     # Use the gemm-style "one task_group at a time" pattern. Each task_group
     # holds a batch of fills + a wait=True drain, and finish_task_group()
-    # awaits the drain AND frees every task in the group atomically. This
-    # avoids the previous bug of `dma_free_task` being emitted for tasks
-    # that were never awaited (act_in, weights, FC fills) — which deallocated
-    # their BD IDs while their DMAs were potentially still in flight.
+    # awaits the drain AND frees every task in the group atomically. Required
+    # so `dma_free_task` is not emitted for tasks that were never awaited
+    # (act_in, weights, FC fills) — otherwise their BD IDs would be
+    # deallocated while their DMAs were potentially still in flight.
     rt = Runtime()
     with rt.sequence(in_ty, cascade_wts_ty, out_ty) as (inp, cascade_wts, out):
         rt.start(*all_workers)
@@ -243,8 +256,34 @@ def mobilenet_iron():
     # ------------------------------------------------------------------
     # Generate MLIR
     # ------------------------------------------------------------------
-    return Program(NPU2(), rt).resolve_program()
+    return Program(iron.get_current_device(), rt).resolve_program()
+
+
+def _make_argparser():
+    p = argparse.ArgumentParser(prog="MobileNet V3 — IRON API design")
+    add_compile_args(p, default_dev="npu2", with_emit_mlir=True)
+    return p
+
+
+def _run_and_verify(opts):
+    sys.exit(
+        "aie2_mobilenet_iron.py has no built-in NPU host harness — "
+        "use test_mobilenet.py for end-to-end NPU runs, or pass "
+        "--xclbin-path/--insts-path to compile only, or --emit-mlir "
+        "to print the resolved MLIR."
+    )
+
+
+def main():
+    opts = _make_argparser().parse_args()
+    run_design_cli(
+        mobilenet_iron,
+        opts,
+        compile_kwargs={},
+        device=lambda o: device_from_args(o, n_cols=None),
+        run_and_verify=_run_and_verify,
+    )
 
 
 if __name__ == "__main__":
-    print(mobilenet_iron())
+    main()

@@ -1,8 +1,11 @@
 // (c) Copyright 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
+// Cyclostatic acquire on BOTH outer (W) and inner (X) loops with different
+// fifos (#2463). Each loop drains its hoisted carry via a trailing release;
+// the IRON design in test.py declares both nested loops and the peel rewrite
+// keeps both producer-side locks draining instead of deadlocking.
+//
 // REQUIRES: ryzen_ai_npu2, peano, xrt_python_bindings
 //
-// RUN: %python %S/aie2.py npu2 > aie.mlir
-// RUN: %python aiecc.py --no-aiesim --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --xclbin-name=aie.xclbin --npu-insts-name=insts.bin ./aie.mlir
-// RUN: %run_on_npu2% %python %S/test.py -x aie.xclbin -k MLIR_AIE -i insts.bin
+// RUN: %run_on_npu2% %python %S/test.py

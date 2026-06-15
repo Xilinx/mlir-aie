@@ -4,96 +4,154 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024-2025 Advanced Micro Devices, Inc. or its affiliates
-import numpy as np
+# (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
+"""Passthrough kernel — IRON API design with ``@iron.jit`` compilation."""
+
 import argparse
 import sys
 
-from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
-from aie.iron.device import NPU1Col1, NPU2
+import numpy as np
+
+import aie.iron as iron
+from aie.iron import (
+    CompileTime,
+    In,
+    ObjectFifo,
+    Out,
+    Program,
+    Runtime,
+    Worker,
+    kernels,
+)
+from aie.utils.benchmark import print_benchmark, run_iters
+from aie.utils.trace import TraceConfig
+from aie.utils.trace.utils import print_cycles_summary
+from aie.utils.verify import assert_pass
 
 
-def my_passthrough_kernel(dev, in1_size, out_size, trace_size):
+@iron.jit
+def my_passthrough_kernel(
+    in_tensor: In,
+    out_tensor: Out,
+    *,
+    n: CompileTime[int],
+    trace_config: CompileTime[TraceConfig | None] = None,
+):
     in1_dtype = np.uint8
-    out_dtype = np.uint8
-
-    enable_trace = 1 if trace_size > 0 else 0
-
-    # Define tensor types
-    line_size = in1_size // in1_dtype(0).nbytes
+    n_lines = 4
+    line_size = n // n_lines
     line_type = np.ndarray[(line_size,), np.dtype[in1_dtype]]
-    vector_type = np.ndarray[(line_size,), np.dtype[in1_dtype]]
+    vector_type = np.ndarray[(n,), np.dtype[in1_dtype]]
 
-    # Dataflow with ObjectFifos
     of_in = ObjectFifo(line_type, name="in")
     of_out = ObjectFifo(line_type, name="out")
 
-    # External, binary kernel definition
-    passthrough_fn = Kernel(
-        "passThroughLine",
-        "passThrough.cc.o",
-        [line_type, line_type, np.int32],
-    )
+    pass_through_line = kernels.passthrough(tile_size=line_size, dtype=in1_dtype)
 
-    # Task for the core to perform
-    def core_fn(of_in, of_out, passThroughLine):
-        elemOut = of_out.acquire(1)
-        elemIn = of_in.acquire(1)
-        passThroughLine(elemIn, elemOut, line_size)
+    def core_fn(of_in, of_out, pass_through_line):
+        # Worker wraps this body in `while True` by default (while_true=True).
+        elem_out = of_out.acquire(1)
+        elem_in = of_in.acquire(1)
+        pass_through_line(elem_in, elem_out, line_size)
         of_in.release(1)
         of_out.release(1)
 
-    # Create a worker to perform the task
-    my_worker = Worker(
+    worker = Worker(
         core_fn,
-        [of_in.cons(), of_out.prod(), passthrough_fn],
-        trace=enable_trace,
+        [of_in.cons(), of_out.prod(), pass_through_line],
+        trace=1 if trace_config else 0,
     )
 
-    # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
-    with rt.sequence(vector_type, vector_type, vector_type) as (a_in, b_out, _):
-        rt.enable_trace(trace_size)
-        rt.start(my_worker)
+    with rt.sequence(vector_type, vector_type) as (a_in, b_out):
+        if trace_config:
+            rt.enable_trace(trace_config.trace_size, workers=[worker])
+        rt.start(worker)
         rt.fill(of_in.prod(), a_in)
         rt.drain(of_out.cons(), b_out, wait=True)
 
-    # Place components (assign the resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program()
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
-p = argparse.ArgumentParser()
-p.add_argument("-d", "--dev", required=True, dest="device", help="AIE Device")
-p.add_argument(
-    "-i1s", "--in1_size", required=True, dest="in1_size", help="Input 1 size"
-)
-p.add_argument("-os", "--out_size", required=True, dest="out_size", help="Output size")
-p.add_argument(
-    "-t",
-    "--trace_size",
-    required=False,
-    dest="trace_size",
-    default=0,
-    help="Trace buffer size",
-)
-opts = p.parse_args(sys.argv[1:])
-
-if opts.device == "npu":
-    dev = NPU1Col1()
-elif opts.device == "npu2":
-    dev = NPU2()
-else:
-    raise ValueError("[ERROR] Device name {} is unknown".format(opts.device))
-
-in1_size = int(opts.in1_size)
-if in1_size % 64 != 0 or in1_size < 512:
-    print(
-        "In1 buffer size ("
-        + str(in1_size)
-        + ") must be a multiple of 64 and greater than or equal to 512"
+def main():
+    p = argparse.ArgumentParser()
+    p.add_argument(
+        "-i1s",
+        "--in1_size",
+        type=int,
+        default=4096,
+        help=(
+            "Input buffer size in bytes "
+            "(equals element count here because the kernel is hardcoded to uint8)"
+        ),
     )
-    raise ValueError
-out_size = int(opts.out_size)
-trace_size = int(opts.trace_size)
+    p.add_argument(
+        "-t",
+        "--trace_size",
+        type=int,
+        default=0,
+        help="Trace buffer size in bytes (0 disables tracing)",
+    )
+    p.add_argument("-w", "--warmup", type=int, default=10)
+    p.add_argument("-n", "--iters", type=int, default=20)
+    opts = p.parse_args()
 
-print(my_passthrough_kernel(dev, in1_size, out_size, trace_size))
+    in1_size = opts.in1_size
+    if in1_size % 64 != 0 or in1_size < 512:
+        sys.exit(f"in1_size ({in1_size}) must be a multiple of 64 and >= 512")
+
+    in1_dtype = np.uint8
+    n_elems = in1_size // np.dtype(in1_dtype).itemsize
+
+    # iron.{arange,zeros_like} target the NPU; the actual NPU generation
+    # (NPU1 vs NPU2) is auto-detected by DefaultNPURuntime at JIT time.
+    in_tensor = iron.arange(n_elems, dtype=in1_dtype, device="npu")
+    out_tensor = iron.zeros_like(in_tensor)
+
+    trace_config = (
+        TraceConfig(trace_size=opts.trace_size) if opts.trace_size > 0 else None
+    )
+
+    if trace_config is not None:
+        # trace.txt is overwritten each call, so only one iteration is meaningful
+        warmup, iters = 0, 1
+    else:
+        warmup, iters = opts.warmup, opts.iters
+
+    bench = run_iters(
+        my_passthrough_kernel,
+        in_tensor,
+        out_tensor,
+        n=n_elems,
+        trace_config=trace_config,
+        warmup=warmup,
+        iters=iters,
+    )
+
+    assert_pass(
+        out_tensor.numpy(),
+        in_tensor.numpy(),
+        fail_msg="output does not match input",
+        print_pass=False,
+    )
+
+    print()
+    print_benchmark(bench)
+
+    if trace_config is not None:
+        if trace_config.physical_mlir_path is None:
+            sys.exit(
+                "trace requested but physical_mlir_path was not set by the JIT "
+                "runtime — cannot parse trace events."
+            )
+        trace_json = "trace_passthrough_kernel.json"
+        trace_config.trace_to_json(
+            trace_config.physical_mlir_path, output_name=trace_json
+        )
+        print_cycles_summary(trace_json)
+
+    print("PASS!")
+
+
+if __name__ == "__main__":
+    main()

@@ -14,7 +14,6 @@ from aie.ir import Context, Module
 from aie.passmanager import PassManager
 from aie.runtime import get_ranked_memref_descriptor
 
-
 # RUN: %PYTHON %s 2>&1 | FileCheck %s
 # REQUIRES: has_mlir_runtime_libraries
 
@@ -45,8 +44,7 @@ def lowerToLLVM(module):
 # CHECK-LABEL: TEST: testSharedLibLoad
 def testSharedLibLoad():
     with Context():
-        module = Module.parse(
-            """\
+        module = Module.parse("""\
             module  {
               func.func @main(%arg0: memref<1xf32>) attributes { llvm.emit_c_interface } {
                 %c0 = arith.constant 0 : index
@@ -58,8 +56,7 @@ def testSharedLibLoad():
               }
               func.func private @printMemrefF32(memref<*xf32>) attributes { llvm.emit_c_interface }
             }
-        """
-        )
+        """)
         arg0 = np.array([0.0]).astype(np.float32)
 
         arg0_memref_ptr = ctypes.pointer(
@@ -94,8 +91,7 @@ run(testSharedLibLoad)
 # CHECK-LABEL: TEST: testNanoTime
 def testNanoTime():
     with Context():
-        module = Module.parse(
-            """\
+        module = Module.parse("""\
             module {
               func.func @main() attributes { llvm.emit_c_interface } {
                 %now = call @nanoTime() : () -> i64
@@ -109,8 +105,7 @@ def testNanoTime():
               func.func private @nanoTime() -> i64 attributes { llvm.emit_c_interface }
               func.func private @printMemrefI64(memref<*xi64>) attributes { llvm.emit_c_interface }
             }
-            """
-        )
+            """)
 
         if sys.platform == "win32":
             lib_dir = "bin"
@@ -142,15 +137,13 @@ def testDumpToObjectFile():
 
     try:
         with Context():
-            module = Module.parse(
-                """
+            module = Module.parse("""
                 module {
                   func.func @main() attributes { llvm.emit_c_interface } {
                     return
                   }
                 }
-            """
-            )
+            """)
 
             execution_engine = ExecutionEngine(lowerToLLVM(module), opt_level=3)
 

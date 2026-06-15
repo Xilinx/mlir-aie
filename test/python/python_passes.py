@@ -555,8 +555,7 @@ def test_over_flows():
 # CHECK-LABEL: TEST: test_overlap
 @run
 def test_overlap():
-    src = dedent(
-        """\
+    src = dedent("""\
         module @aie.herd_0 {
           aie.device(xcvc1902) {
             %tile_3_0 = aie.tile(3, 0)
@@ -577,8 +576,7 @@ def test_overlap():
             aie.flow(%tile_6_1, South : 1, %tile_7_3, DMA : 1)
           }
         }
-    """
-    )
+    """)
     mlir_module = Module.parse(src)
     r = Router(timeout=TIMEOUT)
     pass_ = create_python_router_pass(r)
@@ -593,8 +591,7 @@ def test_overlap():
 # CHECK-LABEL: TEST: test_routed_herd_3x1_mine_1
 @run
 def test_routed_herd_3x1_mine_1():
-    src = dedent(
-        """\
+    src = dedent("""\
         module {
           aie.device(xcvc1902) {
             %tile_0_0 = aie.tile(0, 0)
@@ -782,8 +779,7 @@ def test_routed_herd_3x1_mine_1():
             aie.flow(%tile_19_0, DMA : 0, %tile_7_0, North : 0)
           }
         }
-        """
-    )
+        """)
 
     mlir_module = Module.parse(src)
     r = Router(timeout=TIMEOUT)
@@ -806,8 +802,7 @@ def test_routed_herd_3x1_mine_1():
 # CHECK-LABEL: TEST: test_routed_herd_3x1_mine_2
 @run
 def test_routed_herd_3x1_mine_2():
-    src = dedent(
-        """\
+    src = dedent("""\
         module {
           aie.device(xcvc1902) {
             %tile_0_0 = aie.tile(0, 0)
@@ -1032,8 +1027,7 @@ def test_routed_herd_3x1_mine_2():
             aie.flow(%tile_19_0, DMA : 1, %tile_11_0, North : 1)
           }
         }
-        """
-    )
+        """)
 
     mlir_module = Module.parse(src)
     r = Router(timeout=TIMEOUT)
@@ -1061,8 +1055,7 @@ def test_routed_herd_3x1_mine_2():
 # CHECK-LABEL: TEST: test_routed_herd_3x2_mine_1
 @run
 def test_routed_herd_3x2_mine_1():
-    src = dedent(
-        """\
+    src = dedent("""\
         module {
           aie.device(xcvc1902) {
             %tile_0_0 = aie.tile(0, 0)
@@ -1368,8 +1361,7 @@ def test_routed_herd_3x2_mine_1():
           }
         }
 
-        """
-    )
+        """)
 
     mlir_module = Module.parse(src)
     r = Router(timeout=TIMEOUT)

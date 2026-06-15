@@ -26,11 +26,13 @@ void zero_vectorized_v64bfp16ebs8(bfp16ebs8 *__restrict cOut) {
   }
 }
 
-// There is a CPU version of this function in the helper.h file
-void scalarShuffleMatrixForBfp16ebs8(size_t tileWidth, size_t tileHeight,
-                                     uint8_t *inBfpMatrix,
-                                     uint8_t *outBfpMatrix,
-                                     bool unshuffle = false) {
+// There is a CPU version of this function in the helper.h file.
+// `static` so distinct ExternalFunction .o builds of this TU (e.g.
+// MATMUL_ONLY vs ZERO_ONLY) don't both emit the symbol and clash at link.
+[[maybe_unused]] static void
+scalarShuffleMatrixForBfp16ebs8(size_t tileWidth, size_t tileHeight,
+                                uint8_t *inBfpMatrix, uint8_t *outBfpMatrix,
+                                bool unshuffle = false) {
 
   tileWidth = tileWidth * 1.125;
 
@@ -168,6 +170,18 @@ extern "C" {
 #define DIM_N 64
 #endif
 
+// MATMUL_ONLY / ZERO_ONLY / SHUFFLE_ONLY let callers (e.g. @iron.jit
+// ExternalFunction) compile a .o containing exactly one of the three
+// entry points, avoiding duplicate-symbol errors when the same .cc is
+// compiled multiple times for distinct ExternalFunctions in one design.
+// Without any macro, all three symbols are emitted (legacy behaviour).
+#if !defined(MATMUL_ONLY) && !defined(ZERO_ONLY) && !defined(SHUFFLE_ONLY)
+#define MATMUL_ONLY
+#define ZERO_ONLY
+#define SHUFFLE_ONLY
+#endif
+
+#ifdef MATMUL_ONLY
 void matmul_vectorized_bfp16(bfp16ebs8 *__restrict pA, bfp16ebs8 *__restrict pB,
                              bfp16ebs8 *__restrict pC) {
 
@@ -185,13 +199,18 @@ void matmul_vectorized_bfp16(bfp16ebs8 *__restrict pA, bfp16ebs8 *__restrict pB,
 
   matmul_vectorized_2x2_bfp16<m / r, k / s, n / t, r, s, t>(pA, pB, pC);
 }
+#endif
 
+#ifdef ZERO_ONLY
 void zero_kernel(bfp16ebs8 *__restrict cOut) {
   zero_vectorized_v64bfp16ebs8<DIM_M, DIM_N>(cOut);
 }
+#endif
 
+#ifdef SHUFFLE_ONLY
 void scalar_shuffle(uint8_t *pA, uint8_t *pC, size_t tileWidth,
                     size_t tileHeight, bool unshuffle = false) {
   scalarShuffleMatrixForBfp16ebs8(tileWidth, tileHeight, pA, pC, unshuffle);
 }
+#endif
 }

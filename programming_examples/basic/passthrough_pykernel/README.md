@@ -14,15 +14,13 @@ This IRON design flow example, called "Passthrough Kernel", demonstrates a simpl
 
 ## Source Files Overview
 
-1. `passthrough_pykernel.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. The file generates MLIR that is then compiled using `aiecc` to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI). 
+1. `passthrough_pykernel.py`: An `@iron.jit`-decorated design that demonstrates the **pykernel pattern** — the per-tile copy is a `@func`-decorated Python function (`passthrough_fn`) handed to a `Worker` like any other ExternalFunction. The file builds both the xclbin/insts (via `@iron.jit`'s `compile()`) and runs end-to-end when invoked standalone.
 
-1. `passthrough_pykernel_placed.py`: A Python script that defines an alternative AIE array structural design using MLIR-AIE operations defined with a lower-level version of IRON than that used in `passthrough_pykernel.py`. The file generates MLIR that is then compiled using `aiecc` to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI). 
+1. `test.cpp`: C++ testbench. Loads the compiled XCLBIN, configures the AIE module, supplies input data, executes on the NPU, and verifies the memcpy results.
 
-1. `test.cpp`: This C++ code is a testbench for the Passthrough Kernel design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the script verifies the memcpy results and optionally outputs trace data.
+1. `test.py`: Python equivalent of `test.cpp` for the prebuilt-artifacts run path.
 
-1. `test.py`: This Python code is a testbench for the Passthrough Kernel design example. The code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the script verifies the memcpy results and optionally outputs trace data.
-
-1. `passthrough_pykernel.ipynb`: This notebook contains the design (which is duplicated from `passthrough_pykernel_placed.py`) and test code (which is duplicated from `test.py`) for an alternative way of interacting with the example.
+1. `passthrough_pykernel.ipynb`: Notebook with a standalone design + test cell for interactive use.
 
 ## Design Overview
 
@@ -38,44 +36,39 @@ It is important to note that the Shim Tile and Compute Tile DMAs move data concu
 
 ## Design Component Details
 
-### AIE Array Structural Placed Design
+### IRON Design Walkthrough
 
-This design performs a memcpy operation on a vector of input data. The AIE design is described in a Python module as follows:
+`passthrough_pykernel.py` is an `@iron.jit`-decorated function that returns an MLIR module.  The pieces:
 
-1. **Constants & Configuration:** The script defines input/output dimension (`N`), buffer sizes in `lineWidthInBytes` and `lineWidthInInt32s`.
+1. **Pykernel definition:** `passthrough_fn` is a `@func`-decorated Python function — instead of a C++ external function, the per-tile copy is written in Python and emitted as MLIR by the `@func` decorator.
 
-1. **AIE Device Definition:** `@device` defines the target device. The `device_body` function contains the AIE array design definition.
+1. **ObjectFifos:** `of_in` connects the shim to the compute tile; `of_out` connects the compute tile back to the shim.  Default `depth=2` enables ping-pong.
 
-1. **Kernel Function Declarations:** `passThroughLine` is a function defined in Python that performs a scalar copy of the data.
+1. **Worker:** a single `Worker` runs `core_body`, which loops over sub-vectors, acquires elements from `of_in`, calls `passthrough_fn`, and releases them to `of_out`.  Tile placement is left to the auto-placer.
 
-1. **Tile Definitions:** `ShimTile` handles data movement, and `ComputeTile2` processes the memcpy operations.
+1. **Runtime sequence:** `rt.fill(of_in.prod(), A)` / `rt.drain(of_out.cons(), C)` express the host-side data movement.
 
-1. **Object Fifos:** `of_in` and `of_out` are defined to facilitate communication between `ShimTile` and `ComputeTile2`.
+1. **Trace (optional):** when `--trace-size` is set, a `TraceConfig` is wired up at runtime.
 
-1. **Tracing Flow Setup (Optional):** A circuit-switched flow is set up for tracing information when enabled.
-
-1. **Core Definition:** The `core_body` function loops through sub-vectors of the input data, acquiring elements from `of_in`, processing using `passThroughLine`, and outputting the result to `of_out`.
-
-1. **Data Movement Configuration:** The `aie.runtime_sequence` operation configures data movement and synchronization on the `ShimTile` for input and output buffer management.
-
-1. **Tracing Configuration (Optional):** Trace control, event groups, and buffer descriptors are set up in the `aie.runtime_sequence` operation when tracing is enabled.
-
-1. **Generate the design:** The `passthroughKernel()` function triggers the code generation process. The final print statement outputs the MLIR representation of the AIE array configuration.
+1. **`Program(device, rt).resolve_program()`** returns the MLIR module; `@iron.jit`'s `compile()` then drives `compile_mlir_module` to produce xclbin/insts.
 
 ## Usage
 
-### Compile the design:
+### Standalone (no Makefile)
 
-To compile the design:
+```shell
+python3 passthrough_pykernel.py
+```
+
+`-d npu2` for Strix.
+
+### Compile the design (Makefile)
 
 ```shell
 make
 ```
 
-To compile the placed design:
-```shell
-env use_placed=1 make
-```
+For NPU2 (Strix): `make devicename=npu2`.
 
 ### C++ Testbench
 

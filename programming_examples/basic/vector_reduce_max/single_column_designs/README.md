@@ -30,43 +30,16 @@ All designs support both BF16 and INT32 data types and utilize kernels from `red
 
 3. `vector_reduce_max_memtile.py`: Leverages memory tiles to aggregate partial results from the column, which is then sent to one of the AIE cores for the final reduction step.
 
-For each design, there are also "placed" variants (e.g., `vector_reduce_max_shared_placed.py`) that use the low-level IRON API to explicitly control tile placement and resource allocation.
-
 ## Ryzen™ AI Usage
 
 ### Compilation
 
-To compile the design (default is the shared memory-based design):
+The three variants are selected with the `VARIANT` Makefile variable (default: `shared`):
 
 ```shell
-make
-```
-
-To compile the chained design:
-
-```shell
-env use_chained=1 make
-```
-
-To compile the memory tile-based design:
-
-```shell
-env use_memtile=1 make
-```
-
-To compile any of the "placed" design variants, add `use_placed=1` to the corresponding command. For example, to compile the placed cascade design:
-
-```shell
-env use_placed=1 make
-```
-
-You can also combine options:
-
-```shell
-env use_memtile=1 use_placed=1 make
-```
-```shell
-env use_chained=1 use_placed=1 make
+make                          # builds VARIANT=shared
+env VARIANT=chained make
+env VARIANT=memtile make
 ```
 
 To compile the C++ testbench:
@@ -74,30 +47,23 @@ To compile the C++ testbench:
 ```shell
 make vector_reduce_max.exe
 ```
+
 ### C++ Testbench
 
 To run the design:
 
 ```shell
-make run
+make run                      # runs VARIANT=shared
+env VARIANT=chained make run
+env VARIANT=memtile make run
 ```
 
 ### Trace
 
-To generate a [trace file](../../../programming_guide/section-4/section-4b/README.md) for the default cascade design:
+To generate a [trace file](../../../programming_guide/section-4/section-4b/README.md):
 
 ```shell
-make trace
-```
-
-To generate a trace file for the shared memory-based design:
-
-```shell
-env use_chained=1 make trace
-```
-
-To generate a trace file for the memory tile-based design:
-
-```shell
-env use_memtile=1 make trace
+make trace                    # traces VARIANT=shared
+env VARIANT=chained make trace
+env VARIANT=memtile make trace
 ```

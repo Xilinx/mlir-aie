@@ -16,13 +16,48 @@ import sys
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import ExternalFunction, ObjectFifo, Program, Runtime, Worker
+from aie.iron import (
+    CompileTime,
+    ExternalFunction,
+    In,
+    ObjectFifo,
+    Out,
+    Program,
+    Runtime,
+    Worker,
+)
 from aie.iron.controlflow import range_
 from aie.helpers.dialects.func import func
 from aie.iron.device import Tile
 from aie.helpers.taplib.tap import TensorAccessPattern
 from aie.dialects._aie_enum_gen import AIETileType
-from aie.dialects.aiex import npu_maskwrite32
+from aie.dialects.aie import (
+    device,
+    tile,
+    buffer,
+    lock,
+    mem,
+    dma_start,
+    dma_bd,
+    next_bd,
+    use_lock,
+    flow,
+    end as aie_end,
+    core,
+    AIEDevice,
+    DMAChannelDir,
+    LockAction,
+    WireBundle,
+    shim_dma_allocation,
+)
+from aie.dialects.aiex import (
+    npu_maskwrite32,
+    runtime_sequence,
+    shim_dma_single_bd_task,
+    dma_start_task,
+    dma_await_task,
+)
+from aie.extras.context import mlir_mod_ctx
 
 N = 4096
 LINE_SIZE = 1024
@@ -109,44 +144,22 @@ def _linear_tap(n_elems):
     return TensorAccessPattern((1, N), 0, [1, 1, 1, n_elems], [0, 0, 0, 1])
 
 
-def _build_multi_cmp_only(dev=None):
+def _build_multi_cmp_only():
     """Asymmetric inter-tile compression: CT(0,2) MM2S compresses, CT(0,3)
     S2MM does NOT decompress, so the CT(0,3) and shim S2MM BDs are
     hand-sized to RATIOED_PER_LINE to avoid a length-mismatch stall.
     Built from low-level aie dialect because IRON's link API doesn't
     expose per-side BD sizing.
     """
-    from aie.dialects.aie import (
-        device,
-        tile,
-        buffer,
-        lock,
-        mem,
-        dma_start,
-        dma_bd,
-        next_bd,
-        use_lock,
-        flow,
-        end as aie_end,
-        core,
-        AIEDevice,
-        DMAChannelDir,
-        LockAction,
-        WireBundle,
-        shim_dma_allocation,
-    )
-    from aie.extras.context import mlir_mod_ctx
-    from aie.dialects.aiex import (
-        runtime_sequence,
-        shim_dma_single_bd_task,
-        dma_start_task,
-        dma_await_task,
-    )
 
     raw_ty = np.ndarray[(LINE_SIZE,), np.dtype[np.int32]]
     comp_ty = np.ndarray[(RATIOED_PER_LINE,), np.dtype[np.int32]]
     vec_ty_in = np.ndarray[(N,), np.dtype[np.int32]]
-    vec_ty_out = np.ndarray[(RATIOED_N,), np.dtype[np.int32]]
+    # Host-facing out memref is full N so the JIT tensor-size check accepts
+    # the test's N-element out_tensor; the shim S2MM BD below still writes
+    # only RATIOED_N ints (the compressed stream length), leaving the tail
+    # at SENTINEL — which the test scores as "untouched".
+    vec_ty_out = np.ndarray[(N,), np.dtype[np.int32]]
 
     def _emit_passthrough_mem(t, buf0, buf1, full_lock, empty_lock):
         """2-BD ping-pong S2MM ch0 -> MM2S ch0 on tile `t` (pure DMA)."""
@@ -179,8 +192,7 @@ def _build_multi_cmp_only(dev=None):
             with block[6]:
                 aie_end()
 
-    active = dev or iron.get_current_device()
-    resolved = active.resolve() if active is not None else AIEDevice.npu1_1col
+    resolved = iron.get_current_device().resolve()
     aie_dev = (
         AIEDevice.npu2_1col
         if resolved in (AIEDevice.npu2, AIEDevice.npu2_1col)
@@ -252,7 +264,7 @@ def _build_multi_cmp_only(dev=None):
     return ctx.module
 
 
-def _build_regdump(dev):
+def _build_regdump():
     """Core-side write_tm + read_tm self-test. Host enables the processor bus;
     kernel writes COMPRESS_BIT to each BD?_1 and reads it back. Driver
     asserts each post-write read equals COMPRESS_BIT."""
@@ -290,30 +302,25 @@ def _build_regdump(dev):
         rt.inline_ops(enable_processor_bus, [])
         rt.start(worker)
         rt.drain(of_out.cons(), c_out, wait=True)
-    return Program(
-        dev if dev is not None else iron.get_current_device(), rt
-    ).resolve_program()
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
-def dma_compression(in_tensor, out_tensor, config: str = "base", dev=None):
+@iron.jit
+def dma_compression(
+    in_tensor: In,
+    out_tensor: Out,
+    *,
+    config: CompileTime[str] = "base",
+):
     """Build the IRON program for one compression config and return its MLIR module."""
     if config not in CONFIGS:
         raise ValueError(f"unknown config {config!r}; pick from {CONFIGS}")
 
     if config == "multi_cmp_only":
-        return _build_multi_cmp_only(dev)
+        return _build_multi_cmp_only()
 
     if config == "regdump":
-        return _build_regdump(dev)
-
-    # Reset the @func cache so a previous build's FuncOp doesn't leak.
-    passthrough_line._func_op = None
-
-    n = int(np.size(in_tensor))
-    assert n == N and int(np.size(out_tensor)) == N, (
-        f"in/out tensors must both be {N} elements, got "
-        f"in={np.size(in_tensor)} out={np.size(out_tensor)}"
-    )
+        return _build_regdump()
 
     vec_ty = np.ndarray[(N,), np.dtype[np.int32]]
 
@@ -387,9 +394,7 @@ def dma_compression(in_tensor, out_tensor, config: str = "base", dev=None):
             rt.start(ct_worker)
             rt.fill(of_a.prod(), a_in)
             rt.drain(of_c.cons(), c_out, tap=out_tap_rt, wait=True)
-        return Program(
-            dev if dev is not None else iron.get_current_device(), rt
-        ).resolve_program()
+        return Program(iron.get_current_device(), rt).resolve_program()
 
     is_memtile = config in MEMTILE_CONFIGS
     if is_memtile:
@@ -500,6 +505,4 @@ def dma_compression(in_tensor, out_tensor, config: str = "base", dev=None):
         rt.fill(of_in.prod(), a_in, tap=in_tap)
         rt.drain(of_out.cons(), c_out, tap=out_tap, wait=True)
 
-    return Program(
-        dev if dev is not None else iron.get_current_device(), rt
-    ).resolve_program()
+    return Program(iron.get_current_device(), rt).resolve_program()

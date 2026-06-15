@@ -1,43 +1,36 @@
 ##===- Makefile -----------------------------------------------------------===##
-# 
+#
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024, Advanced Micro Devices, Inc.
-# 
+# Copyright (C) 2024-2026, Advanced Micro Devices, Inc.
+#
 ##===----------------------------------------------------------------------===##
+#
+# Drives the unified @iron.jit passthrough_pykernel.py via --xclbin-path /
+# --insts-path; test.cpp + test.py consume the artifacts.  The standalone
+# notebook (passthrough_pykernel.ipynb) is independent of this Makefile's
+# build flow.
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = passthrough_pykernel
-VPATH := ${srcdir}/../../../aie_kernels/generic
 data_size = 4096
-PASSTHROUGH_SIZE = ${data_size}
 
-aie_py_src=${targetname}.py
-use_placed?=0
+aie_py_src = ${targetname}.py
+aieargs = -d ${devicename} -s ${data_size}
 
-ifeq (${use_placed}, 1)
-aie_py_src=${targetname}_placed.py
-endif
+xclbin_target = build/final_${data_size}.xclbin
+insts_target = build/insts_${data_size}.bin
 
-.PHONY: all template clean
+.PHONY: all template clean clean_notebook
 
-all: build/final_${data_size}.xclbin
+all: ${xclbin_target} ${insts_target}
 
-build/aie.mlir: ${srcdir}/${aie_py_src}
-	mkdir -p ${@D}
-	python3 $< ${PASSTHROUGH_SIZE} ${devicename} > $@
-
-build/final_${data_size}.xclbin: build/aie.mlir
-	mkdir -p ${@D}
-	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host \
-		--no-xchesscc --no-xbridge \
-		--xclbin-name=${@F} --npu-insts-name=insts_${data_size}.bin $(<:%=../%)
+$(eval $(call jit_xclbin,${xclbin_target},${insts_target},${aie_py_src},${aieargs}))
 
 ${targetname}_${data_size}.exe: ${srcdir}/test.cpp
 	rm -rf _build
@@ -47,14 +40,14 @@ ${targetname}_${data_size}.exe: ${srcdir}/test.cpp
 ifeq "${powershell}" "powershell.exe"
 	cp _build/${targetname}.exe $@
 else
-	cp _build/${targetname} $@ 
+	cp _build/${targetname} $@
 endif
 
-run: ${targetname}_${data_size}.exe build/final_${data_size}.xclbin build/insts_${data_size}.bin
-	${powershell} ./$< -x build/final_${data_size}.xclbin -i build/insts_${data_size}.bin -k MLIR_AIE 
+run: ${targetname}_${data_size}.exe ${xclbin_target} ${insts_target}
+	${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE
 
-run_py: build/final_${data_size}.xclbin build/insts_${data_size}.bin
-	${powershell} python3 ${srcdir}/test.py -s ${data_size} -x build/final_${data_size}.xclbin -i build/insts_${data_size}.bin -k MLIR_AIE
+run_py: ${xclbin_target} ${insts_target}
+	${powershell} python3 ${srcdir}/test.py -s ${data_size} --xclbin ${xclbin_target} --instr ${insts_target} --kernel MLIR_AIE
 
 clean:
 	rm -rf build _build ${targetname}*.exe

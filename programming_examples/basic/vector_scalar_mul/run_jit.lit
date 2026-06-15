@@ -1,7 +1,10 @@
 // (c) Copyright 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// REQUIRES: ryzen_ai, peano 
+// REQUIRES: ryzen_ai, peano
 //
-// RUN: %run_on_npu1% python3 %S/vector_scalar_mul_jit.py --iters 10 --warmup 10 -n 4096
-// RUN: %run_on_npu2% python3 %S/vector_scalar_mul_jit.py --iters 10 --warmup 10 -n 4096
+// Exercises the unified design as a standalone @iron.jit script (no Makefile):
+// the .py compiles + runs + verifies in one shot via iron.tensor + run_iters.
+//
+// RUN: %run_on_npu1% python3 %S/vector_scalar_mul.py -d npu  --iters 10 --warmup 10
+// RUN: %run_on_npu2% python3 %S/vector_scalar_mul.py -d npu2 --iters 10 --warmup 10

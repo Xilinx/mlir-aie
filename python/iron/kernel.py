@@ -14,11 +14,69 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 from .. import ir  # type: ignore
+from ..dialects import memref  # type: ignore
 from ..extras.dialects.func import FuncOp  # type: ignore
 from ..helpers.dialects.func import call
 from ..dialects.aie import external_func
 from .resolvable import Resolvable
 from .buffer import Buffer
+
+
+def _is_contiguous_row_major(mr):
+    """True iff ``mr`` is fully-static row-major contiguous at offset 0;
+    required before ``memref.collapse_shape`` (UB on non-contiguous dims)."""
+    if any(d < 0 for d in mr.shape):
+        return False
+    try:
+        strides, offset = mr.get_strides_and_offset()
+    except Exception:
+        return False
+    if offset != 0:
+        return False
+    expected = []
+    running = 1
+    for d in reversed(mr.shape):
+        expected.append(running)
+        running *= d
+    expected.reverse()
+    return list(strides) == expected
+
+
+def _maybe_collapse_to_match(arg, expected_ty):
+    """Bridge an N-D contiguous memref arg to a 1-D kernel signature via
+    ``memref.collapse_shape``. Iron L1 buffers are multi-dim (e.g.
+    ``memref<64x64xi16>``) but ``aie.iron.kernels.X`` helpers declare
+    flat 1-D args; without this adapter MLIR rejects the call even though
+    bytes line up. Aliases storage — no copy emitted. Returns ``arg``
+    unchanged for any case that isn't safely collapsible, so real bugs
+    still surface in MLIR verification."""
+    if not isinstance(arg, ir.Value):
+        return arg
+    arg_ty = arg.type
+    if not (
+        isinstance(arg_ty, ir.MemRefType) and isinstance(expected_ty, ir.MemRefType)
+    ):
+        return arg
+    arg_mr = arg_ty
+    exp_mr = expected_ty
+    if arg_mr == exp_mr:
+        return arg
+    if arg_mr.element_type != exp_mr.element_type:
+        return arg
+    if exp_mr.rank != 1 or arg_mr.rank < 1:
+        return arg
+    if any(d < 0 for d in exp_mr.shape):
+        return arg
+    if not _is_contiguous_row_major(arg_mr):
+        return arg
+    arg_count = 1
+    for d in arg_mr.shape:
+        arg_count *= d
+    if arg_count != exp_mr.shape[0]:
+        return arg
+    # All N input dims collapse into the single output dim.
+    reassociation = [list(range(arg_mr.rank))]
+    return memref.collapse_shape(exp_mr, arg, reassociation)
 
 
 class BaseKernel(Resolvable):
@@ -29,24 +87,24 @@ class BaseKernel(Resolvable):
         ExternalFunction: compiles C/C++ source at JIT time.
     """
 
-    def __init__(self, name: str, arg_types: list[type[np.ndarray] | np.dtype] = []):
+    def __init__(
+        self,
+        name: str,
+        arg_types: list[type[np.ndarray] | np.dtype] | None = None,
+    ):
         """
         Args:
             name: Symbol name of the function.
-            arg_types: Type signature of the function arguments.  Defaults to [].
+            arg_types: Type signature of the function arguments.  Defaults to None (empty list).
         """
         if not name:
             raise ValueError("Kernel name cannot be empty.")
         self._name = name
-        self._arg_types = arg_types
+        self._arg_types = arg_types if arg_types is not None else []
         self._op: FuncOp | None = None
 
-    def tile_size(self, arg_index: int = 0) -> int:
-        """Return the first dimension of the array argument at ``arg_index``.
-
-        Args:
-            arg_index: Index into ``arg_types``.  Defaults to 0.
-        """
+    def _resolve_arg(self, arg_index: int):
+        """Validate ``arg_index`` and return the underlying type entry."""
         if not self._arg_types:
             raise ValueError("No argument types defined.")
         if arg_index >= len(self._arg_types):
@@ -54,28 +112,89 @@ class BaseKernel(Resolvable):
                 f"Argument index {arg_index} out of range "
                 f"(max: {len(self._arg_types) - 1})"
             )
-        arg = self._arg_types[arg_index]
+        return self._arg_types[arg_index]
 
-        # numpy array type, e.g. np.ndarray[(16,), np.dtype[np.int32]]
+    def arg_shape(self, arg_index: int = 0) -> tuple[int, ...]:
+        """Return the shape tuple of the array argument at ``arg_index``.
+
+        Works for both ``np.ndarray[(...,), np.dtype[T]]`` parameterized
+        types (the canonical iron kernel signature) and MLIR MemRefType
+        operands.
+
+        Args:
+            arg_index: Index into ``arg_types``.  Defaults to 0.
+
+        Raises:
+            ValueError: When ``arg_index`` is out of range or the
+                argument at that index is not an array type.
+        """
+        arg = self._resolve_arg(arg_index)
         if hasattr(arg, "__args__") and len(arg.__args__) > 0:
             shape_arg = arg.__args__[0]
-            if isinstance(shape_arg, tuple) and len(shape_arg) > 0:
-                return shape_arg[0]
-
-        # MLIR MemRefType
-        if hasattr(arg, "shape") and len(arg.shape) > 0:
-            return arg.shape[0]
-
+            if isinstance(shape_arg, tuple):
+                return shape_arg
+        if hasattr(arg, "shape"):
+            return tuple(arg.shape)
         raise ValueError(
             f"Argument {arg_index} does not have a shape or is not an array type."
         )
+
+    def arg_dtype(self, arg_index: int = 0):
+        """Return the numpy dtype of the array argument at ``arg_index``.
+
+        Args:
+            arg_index: Index into ``arg_types``.  Defaults to 0.
+
+        Raises:
+            ValueError: When ``arg_index`` is out of range or the
+                argument at that index is not an array type.
+        """
+        arg = self._resolve_arg(arg_index)
+        if hasattr(arg, "__args__") and len(arg.__args__) >= 2:
+            dt = arg.__args__[1]
+            return np.dtype(dt.__args__[0]) if hasattr(dt, "__args__") else np.dtype(dt)
+        if hasattr(arg, "dtype"):
+            return np.dtype(arg.dtype)
+        raise ValueError(
+            f"Argument {arg_index} does not have a dtype or is not an array type."
+        )
+
+    def tile_size(self, arg_index: int = 0) -> int:
+        """Return the first dimension of the array argument at ``arg_index``.
+
+        Convenience wrapper over :meth:`arg_shape` for the common case of
+        a 1-D buffer argument.  ``tile_size(i)`` is equivalent to
+        ``arg_shape(i)[0]``.
+
+        Args:
+            arg_index: Index into ``arg_types``.  Defaults to 0.
+        """
+        shape = self.arg_shape(arg_index)
+        if len(shape) == 0:
+            raise ValueError(
+                f"Argument {arg_index} does not have a shape or is not an array type."
+            )
+        return shape[0]
 
     def arg_types(self) -> list:
         """Return a copy of the argument type list."""
         return self._arg_types.copy()
 
     def __call__(self, *args, **kwargs):
-        """Emit a func.call to this kernel, validating argument count."""
+        """Emit a func.call to this kernel, validating argument count.
+
+        Each argument is passed through :func:`_maybe_collapse_to_match`
+        before the call.  This silently inserts a ``memref.collapse_shape``
+        when an N-D contiguous memref arg is being fed into a 1-D kernel
+        signature with the same element count and dtype — the typical case
+        when an iron design holds 2-D ObjectFifo elements but the
+        ``aie.iron.kernels.X`` helper declares a flat 1-D arg.  See that
+        helper's docstring for the full set of conditions.  Real shape /
+        dtype mismatches still fail at MLIR verification time.
+
+        ``**kwargs`` are forwarded to the underlying ``func.call`` builder
+        (typically ``loc=``, ``ip=`` for MLIR location / insertion point).
+        """
         if not self._op:
             raise ValueError("Kernel must be resolved before it can be called.")
         if len(args) != len(self._arg_types):
@@ -84,7 +203,12 @@ class BaseKernel(Resolvable):
                 f"argument(s), but {len(args)} were provided."
             )
         arg_ops = [a.op if isinstance(a, Buffer) else a for a in args]
-        call(self._op, arg_ops, **kwargs)
+        expected_input_types = self._op.function_type.value.inputs
+        adapted = [
+            _maybe_collapse_to_match(a, expected_ty)
+            for a, expected_ty in zip(arg_ops, expected_input_types)
+        ]
+        call(self._op, adapted, **kwargs)
 
 
 class Kernel(BaseKernel):
@@ -103,7 +227,7 @@ class Kernel(BaseKernel):
         self,
         name: str,
         object_file_name: str,
-        arg_types: list[type[np.ndarray] | np.dtype] = [],
+        arg_types: list[type[np.ndarray] | np.dtype] | None = None,
     ) -> None:
         """
         Args:
@@ -111,7 +235,7 @@ class Kernel(BaseKernel):
             object_file_name: Filename of the pre-compiled object file
                 (e.g. ``"add_one.o"``).  Must be on the linker search path
                 at compile time.
-            arg_types: Type signature of the function arguments.  Defaults to [].
+            arg_types: Type signature of the function arguments.  Defaults to None (empty list).
         """
         super().__init__(name, arg_types)
         self._object_file_name = object_file_name
@@ -153,30 +277,49 @@ class ExternalFunction(Kernel):
         object_file_name: str | None = None,
         source_file: str | None = None,
         source_string: str | None = None,
-        arg_types: list[type[np.ndarray] | np.dtype] = [],
-        include_dirs: list[str] = [],
-        compile_flags: list[str] = [],
+        arg_types: list[type[np.ndarray] | np.dtype] | None = None,
+        include_dirs: list[str] | None = None,
+        compile_flags: list[str] | None = None,
+        *,
+        symbol_prefix: str | None = None,
+        use_chess: bool = False,
     ) -> None:
         """
         Args:
             name: Symbol name of the function as it will appear in the object
                 file.
             object_file_name: Output object file name.  Defaults to
-                ``<name>.o``.
+                ``<effective_name>.o``.
             source_file: Path to a C/C++ source file on disk.  Mutually
                 exclusive with ``source_string``.
             source_string: Inline C/C++ source code.  Mutually exclusive with
                 ``source_file``.
             arg_types: Type signature of the function arguments.  Defaults to
-                [].
-            include_dirs: Additional ``-I`` directories passed to the Peano
-                compiler.  Defaults to [].
-            compile_flags: Additional flags passed verbatim to the Peano
-                compiler.  Defaults to [].
+                None (empty list).
+            include_dirs: Additional ``-I`` directories passed to the chosen
+                compiler (Peano by default; xchesscc when ``use_chess=True``).
+                Defaults to None (empty list).
+            compile_flags: Additional flags passed verbatim to the chosen
+                compiler.  Defaults to None (empty list).
+            symbol_prefix: Optional prefix for the exported symbol name.  When
+                set, the effective symbol name becomes ``<symbol_prefix>_<name>``
+                and the object file is named accordingly.  The original name is
+                preserved in ``_original_name`` for source file naming.
+            use_chess: When ``True``, this ExternalFunction's source is
+                compiled with ``xchesscc_wrapper`` instead of Peano's
+                ``clang++``.  The JIT compile orchestration auto-detects the
+                design-level toolchain from the registered EFs and switches
+                aiecc's front-end accordingly; mixing chess + peano EFs in
+                one design is rejected loudly because aiecc only invokes one
+                front-end per compile.
         """
+        self._original_name = name
+        self._symbol_prefix = symbol_prefix
+        effective_name = f"{symbol_prefix}_{name}" if symbol_prefix else name
+        object_file_name_explicit = object_file_name is not None
         if not object_file_name:
-            object_file_name = f"{name}.o"
-        super().__init__(name, object_file_name, arg_types)
+            object_file_name = f"{effective_name}.o"
+        super().__init__(effective_name, object_file_name, arg_types)
 
         if source_file is not None:
             self._source_file = source_file
@@ -187,15 +330,42 @@ class ExternalFunction(Kernel):
         else:
             raise ValueError("source_file or source_string must be provided.")
 
-        self._include_dirs = include_dirs
-        self._compile_flags = compile_flags
+        self._include_dirs = include_dirs if include_dirs is not None else []
+        self._compile_flags = compile_flags if compile_flags is not None else []
+        self._use_chess = use_chess
         self._compiled = False
+        self._cached_digest: str | None = None
 
-        # Register this instance so the @jit decorator can compile it.
+        # Two same-name EFs with default object_file_name would collide on
+        # the same .o path. Auto-suffix defaulted names with a content digest;
+        # raise on explicit names so silent renames don't surprise the caller.
+        for existing in ExternalFunction._instances:
+            if (
+                existing._name == effective_name
+                and existing._object_file_name == object_file_name
+                and existing._content_digest() != self._content_digest()
+            ):
+                if object_file_name_explicit:
+                    raise ValueError(
+                        f"ExternalFunction '{effective_name}' would collide with "
+                        f"an already-registered instance: same name and "
+                        f"explicit object_file_name='{object_file_name}' but "
+                        f"different compile_flags / source.  Distinguish them "
+                        f"by passing a distinct `object_file_name=...` or "
+                        f"`name=...`."
+                    )
+                suffix = self._content_digest()[:8]
+                object_file_name = f"{effective_name}_{suffix}.o"
+                self._object_file_name = object_file_name
+                break
         ExternalFunction._instances.add(self)
 
     def __call__(self, *args, **kwargs):
-        """Call with argument count and type validation before emitting MLIR."""
+        """Call with argument count and type validation before emitting MLIR.
+
+        ``**kwargs`` are forwarded to the base ``BaseKernel.__call__``
+        and ultimately to the MLIR ``func.call`` builder.
+        """
         if len(args) != len(self._arg_types):
             raise ValueError(
                 f"ExternalFunction '{self._name}' expects "
@@ -223,19 +393,64 @@ class ExternalFunction(Kernel):
                     f"got {arg.shape}/{arg.dtype}"
                 )
 
-    def __hash__(self):
-        """Hash based on source content and compiler options for cache keying."""
-        # TODO: extend to cover included headers (issue #2543)
-        hash_parts = [
+    def _content_digest(self) -> str:
+        """Return a 64-bit hex SHA-256 digest of this instance's content.
+
+        Used by both ``__hash__`` and ``__eq__`` so the two are consistent.
+        Memoised on the instance: source-file reads and stat() calls would
+        otherwise run on every dict lookup and noticeably regress hot
+        compile-cache paths.  Instance state is treated as immutable after
+        construction; mutating ``_source_*`` / ``_include_dirs`` /
+        ``_compile_flags`` / ``_arg_types`` afterwards is not supported.
+        """
+        if self._cached_digest is not None:
+            return self._cached_digest
+
+        from pathlib import Path as _Path
+
+        include_dir_mtimes = []
+        for d in sorted(self._include_dirs):
+            try:
+                mtime = str(_Path(d).stat().st_mtime)
+            except (FileNotFoundError, OSError):
+                mtime = "missing"
+            include_dir_mtimes.append(f"{d}:{mtime}")
+
+        parts = [
             self._name,
             str(self._arg_types),
-            str(sorted(self._include_dirs)),
+            str(include_dir_mtimes),
             str(sorted(self._compile_flags)),
+            # Toolchain choice (peano vs chess) changes the resulting .o
+            # contents even when name + arg_types + flags + source are
+            # identical, so the digest must distinguish them.
+            f"chess={self._use_chess}",
         ]
         if self._source_string:
-            hash_parts.append(self._source_string)
+            parts.append(self._source_string)
         elif self._source_file:
-            with open(self._source_file, "r") as f:
-                hash_parts.append(f.read())
-        combined = "|".join(hash_parts)
-        return int(hashlib.sha256(combined.encode("utf-8")).hexdigest()[:8], 16)
+            try:
+                with open(self._source_file) as f:
+                    parts.append(f.read())
+            except OSError:
+                parts.append(f"<unreadable:{self._source_file}>")
+        self._cached_digest = hashlib.sha256("|".join(parts).encode()).hexdigest()[:16]
+        return self._cached_digest
+
+    def __hash__(self) -> int:
+        """Content-based hash for use as a dict/set key and in cache signatures."""
+        return int(self._content_digest(), 16)
+
+    def __eq__(self, other: object) -> bool:
+        """Content-based equality so hash collisions never produce false cache hits."""
+        if not isinstance(other, ExternalFunction):
+            return NotImplemented
+        return self._content_digest() == other._content_digest()
+
+    def __repr__(self) -> str:
+        """Content-based repr so str(ef) is stable across GC cycles.
+
+        Default ``object.__repr__`` uses the recyclable memory address; two
+        distinct EFs can then alias onto the same _compute_hash cache slot.
+        """
+        return f"ExternalFunction({self._name!r}, digest={self._content_digest()})"

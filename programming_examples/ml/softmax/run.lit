@@ -1,0 +1,23 @@
+// (c) Copyright 2024-2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai, peano
+//
+// Default tile-wise softmax (size=262144, chans=2) on both NPU families.
+// RUN: make -f %S/Makefile clean
+// RUN: make -f %S/Makefile devicename=npu
+// RUN: %run_on_npu1% make -f %S/Makefile devicename=npu run
+// RUN: make -f %S/Makefile clean
+// RUN: make -f %S/Makefile devicename=npu2
+// RUN: %run_on_npu2% make -f %S/Makefile devicename=npu2 run
+//
+// Channel sweep: the unified @iron.jit softmax.py exposes `chans` (1 or 2)
+// as the parallelism parameter.  The historical 1x4 / 4x4 / 8x4 whole-array
+// sweep that `run_strix_makefile_whole_array_placed.lit` covered on
+// origin/main was driven by `whole_array_cols={1,4,8}` against the
+// now-removed `softmax_whole_array_placed.py`; the unified `softmax.py`
+// scales parallelism via `chans`, not a per-column parameter, so the
+// column-sweep matrix is intentionally dropped here.
+// RUN: make -f %S/Makefile clean
+// RUN: make -f %S/Makefile devicename=npu2 chans=1
+// RUN: %run_on_npu2% make -f %S/Makefile devicename=npu2 chans=1 run

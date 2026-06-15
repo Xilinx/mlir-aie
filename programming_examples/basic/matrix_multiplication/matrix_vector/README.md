@@ -4,46 +4,36 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2023, Advanced Micro Devices, Inc.
-// 
+// Copyright (C) 2023-2026, Advanced Micro Devices, Inc.
+//
 //===----------------------------------------------------------------------===//-->
 
 # Matrix-Vector Multiplication
 
-In this design, one or multiple AI Engine compute cores (spread across hardware columns, configurable as `n_cores`) perform a matrix-*vector* multiplication. We use a `bfloat16` data type, and the dimensions of the `A` matrix `M`&times;`K` are set to `288`&times;`288` by default (`N`, the number of columns in `B`, is always `1`, since `B` is a vector). The kernel itself consumes chunks of `32`&times;`32` (`M`&times;`K`) of `A`, so it is invoked multiple times to complete the full result.
+A single AI Engine compute core computes `c = A @ b`, where `A` is `M`x`K` and `b` is a length-`K` vector.  Default config: `int16` inputs / `int32` outputs, `M`=`K`=`288`, kernel tile `m`=`k`=`32`.
 
-> This design relies on the same basic concepts as the [whole-array matrix-matrix multiplication design](../whole_array/README.md), and it is structured very similarly to that design. Please refer to the in-depth explanation of that design along with the below outlined differences for a better understanding of this design.
+> Built on the same data-movement concepts as the [whole-array design](../whole_array/README.md); see that README for the IRON walkthrough.
 
-The orignal implementation of the design is found at [matrix_vector.py](./matrix_vector.py). An alternative version of the design, featuring different runtime operations,
-is found at [matrix_vector_placed.py](./matrix_vector_placed.py). A version written in a higher-level form of IRON is found at [matrix_vector_iron.py](./matrix_vector_iron.py).
+## Differences from the [Whole-Array Design](../whole_array/README.md)
 
-## Differences from the [Whole-Array Matrix-Matrix Multiplication Design](../whole_array/README.md)
-
-- A specialized matrix-*vector* microkernel, named `matvec_vectorized` is used in this design, as opposed to the more general matrix-matrix microkernel (`matmul_vectorized`) used in the matrix-matrix-multiplication designs.
-- The data movement in this design varies as follows: An identical `32`-element chunk of the vector `B` is **broadcast** to the cores in all columns, whereas _distinct_ subsequent `32`&times;`32`-sized tiles of the `A` matrix are **distributed** to the cores. As such, each core is responsible for a distinct `32`-element chunk of the output vector `C`. These chunks are assembled (**joined**) at the shim tile level (in the `aiex.runtime_sequence()`).
-- This design does not use all available compute cores. Instead, it uses at most one core in each hardware column. The variable `n_cores` defines the number of columns to be used. It would however be possible to extend this design to use all cores.
+- A specialized matrix-*vector* microkernel (`kernels.mv`) is used instead of the general matrix-matrix microkernel.  Defaults to the vectorized path; pass `--scalar` to fall back to the scalar variant.
+- Data movement: an identical `K`-element chunk of `b` is broadcast; subsequent `m`x`k` tiles of `A` are distributed.  This is a single-core design; multi-core extension is left for a future revision.
 
 ## Building and Running the Design
 
-You need C++23 for `bfloat16_t` support. It can be found in g++-13: https://lindevs.com/install-g-on-ubuntu
+You need C++23 for `bfloat16_t` support — `g++-13` works: [https://lindevs.com/install-g-on-ubuntu](https://lindevs.com/install-g-on-ubuntu).
 
-To compile and run the original design:
+`matrix_vector.py` is `@iron.jit`-decorated.  The Makefile drives the JIT pipeline via `--xclbin-path` so artifacts land in `build/` for `test.cpp` to consume:
+
 ```shell
 make
-make matrix_vector.exe
 make run
 ```
 
-To compile and run the placed design:
-```shell
-env use_placed=1 make
-env use_placed=1 make matrix_vector.exe
-env use_placed=1 make run
-```
+For direct Python run + numpy verify:
 
-To compile and run the higher-level IRON design:
 ```shell
-env use_iron=1 make
-env use_iron=1 make matrix_vector.exe
-env use_iron=1 make run
+python3 matrix_vector.py                  # default M=K=288 i16/i32
+python3 matrix_vector.py --use-chess 1    # chess kernel build
+python3 matrix_vector.py --help           # full flag list
 ```
