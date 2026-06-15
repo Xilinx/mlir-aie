@@ -14,10 +14,25 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 
+#include <deque>
+#include <random>
+
 namespace xilinx::AIE {
 
 /// Placement algorithm type for pass option
-enum class PlacerType { SequentialPlacer };
+enum class PlacerType { SequentialPlacer, SAPlacer };
+
+/// Get DMA channel capacity (maxIn, maxOut) for a tile position.
+inline std::pair<int, int> getDMACapacity(const AIETargetModel &tm,
+                                          TileID tile) {
+  if (tile.row == 0)
+    return {
+        tm.getNumDestShimMuxConnections(tile.col, tile.row, WireBundle::DMA),
+        tm.getNumSourceShimMuxConnections(tile.col, tile.row, WireBundle::DMA)};
+  return {
+      tm.getNumDestSwitchboxConnections(tile.col, tile.row, WireBundle::DMA),
+      tm.getNumSourceSwitchboxConnections(tile.col, tile.row, WireBundle::DMA)};
+}
 
 // maps logical tile operations to physical coordinates
 using PlacementResult = llvm::DenseMap<mlir::Operation *, TileID>;
@@ -48,7 +63,7 @@ public:
   Placer() = default;
   virtual ~Placer() = default;
 
-  virtual void initialize(const AIETargetModel &targetModel) = 0;
+  virtual void initialize(const AIETargetModel &targetModel);
 
   virtual mlir::LogicalResult place(DeviceOp device) = 0;
 
@@ -61,9 +76,110 @@ public:
     return std::nullopt;
   }
 
+  // Buffer allocation redirects: (ObjectFifoCreateOp, delegate TileID)
+  // Generated when a core tile's buffers exceed local memory and must
+  // spill to a neighbor tile's memory module.
+  using AllocateInfo = std::pair<mlir::Operation *, TileID>;
+  llvm::SmallVector<AllocateInfo> &getAllocates() { return allocates; }
+
+  // Per-LTO peer edges indexed by either endpoint. `tileToEdges` only
+  // indexes `LogicalTileOp` endpoints; `TileOp` peers carry their own
+  // coords.
+  struct Adjacency {
+    llvm::SmallVector<std::pair<TileLike, TileLike>, 4> edges;
+    llvm::DenseMap<mlir::Operation *, llvm::SmallVector<unsigned, 2>>
+        tileToEdges;
+
+    void addEdge(TileLike first, TileLike second);
+
+    // Convenience for IR walkers: skip if either Value isn't a TileLike.
+    void addEdgeFromValues(mlir::Value a, mlir::Value b);
+
+    // True if `op` has at least one edge in this adjacency.
+    bool hasEdges(mlir::Operation *op) const {
+      return tileToEdges.count(op) != 0;
+    }
+  };
+
+  // IR operations collected from a DeviceOp for placement.
+  struct CollectedOps {
+    llvm::SmallVector<LogicalTileOp> logicalTiles;
+    llvm::SmallVector<ObjectFifoCreateOp> objectFifos;
+    llvm::SmallVector<ObjectFifoLinkOp> objectFifoLinks;
+    llvm::SmallVector<CascadeFlowOp> cascadeFlows;
+    llvm::SmallVector<FlowOp> flows;
+    llvm::SmallVector<PacketFlowOp> pktFlows;
+  };
+
+  // Collect all placement-relevant operations from the device.
+  static CollectedOps collectOperations(DeviceOp device);
+
+  // Check if a logical tile's col/row constraints are satisfied at a position.
+  static bool satisfiesConstraints(mlir::Operation *tile, TileID pos);
+
+  // Adjacency builders: pure IR walkers with no placer-specific state.
+
+  // Edge: (cascade source, dest).
+  static Adjacency
+  buildCascadeAdjacency(llvm::ArrayRef<CascadeFlowOp> cascadeFlows);
+
+  // Edge: (producer LTO, consumer LTO) for every ObjectFifo whose producer
+  // AND consumer are CoreTile LTOs.
+  static Adjacency
+  buildComputePeerAdjacency(llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
+
+  // Edge: (producer, consumer_i) per fifo.
+  static Adjacency
+  buildObjectFifoAdjacency(llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
+
+  // Edge: (src, dst) per `aie.flow`; cross-product per `aie.packet_flow`.
+  static Adjacency buildFlowAdjacency(llvm::ArrayRef<FlowOp> flows,
+                                      llvm::ArrayRef<PacketFlowOp> pktFlows);
+
 protected:
   PlacementResult result;
+  llvm::SmallVector<AllocateInfo> allocates;
+  const AIETargetModel *targetModel = nullptr;
+  TileAvailability availability;
 };
+
+// Invoke `fn(peer, thisIsFirst)` for each edge in `adjacency` that
+// mentions `op`. `peer` is the OTHER endpoint of the edge; `thisIsFirst`
+// is true when `op` is `edge.first`.
+template <typename F>
+inline void forEachPeer(mlir::Operation *op, const Placer::Adjacency &adjacency,
+                        F &&fn) {
+  auto it = adjacency.tileToEdges.find(op);
+  if (it == adjacency.tileToEdges.end())
+    return;
+  for (unsigned idx : it->second) {
+    auto [first, second] = adjacency.edges[idx];
+    bool thisIsFirst = first.getOperation() == op;
+    TileLike peer = thisIsFirst ? second : first;
+    fn(peer, thisIsFirst);
+  }
+}
+
+// Invoke `fn(TileID)` on every CoreTile neighbor of `at` that is a legal
+// shared-L1 mem-affinity neighbor per the target model.
+template <typename F>
+inline void forEachMemAffinityNeighbor(const AIETargetModel &targetModel,
+                                       TileID at, F &&fn) {
+  for (auto [dc, dr] :
+       {std::pair{0, -1}, std::pair{0, 1}, std::pair{-1, 0}, std::pair{1, 0}}) {
+    int nc = at.col + dc;
+    int nr = at.row + dr;
+    if (nc < 0 || nc >= targetModel.columns())
+      continue;
+    if (nr < 0 || nr >= targetModel.rows())
+      continue;
+    if (targetModel.getTileType(nc, nr) != AIETileType::CoreTile)
+      continue;
+    if (!targetModel.isLegalMemAffinity(at.col, at.row, nc, nr))
+      continue;
+    fn(TileID{nc, nr});
+  }
+}
 
 // Sequential placement algorithm
 //
@@ -110,26 +226,6 @@ public:
 
   llvm::StringRef getName() const override { return "sequential_placer"; }
 
-  // Per-LTO peer edges indexed by either endpoint. `tileToEdges` only
-  // indexes `LogicalTileOp` endpoints; `TileOp` peers carry their own
-  // coords. Public so file-local helpers in AIEPlacer.cpp (notably the
-  // forEachPeer template) can take it by reference.
-  struct Adjacency {
-    llvm::SmallVector<std::pair<TileLike, TileLike>, 4> edges;
-    llvm::DenseMap<mlir::Operation *, llvm::SmallVector<unsigned, 2>>
-        tileToEdges;
-
-    void addEdge(TileLike first, TileLike second);
-
-    // Convenience for IR walkers: skip if either Value isn't a TileLike.
-    void addEdgeFromValues(mlir::Value a, mlir::Value b);
-
-    // True if `op` has at least one edge in this adjacency.
-    bool hasEdges(mlir::Operation *op) const {
-      return tileToEdges.count(op) != 0;
-    }
-  };
-
 private:
   std::optional<int> coresPerCol;
   bool mergeLogicalTiles;
@@ -138,8 +234,6 @@ private:
   // non-core aie.logical_tile onto a tile that already hosts one.
   llvm::DenseSet<TileID> assignedNonCoreTiles;
   int deviceCoresPerCol = 0; // Actual cores per column in device
-  TileAvailability availability;
-  const AIETargetModel *targetModel = nullptr;
 
   // DMA channel direction selector.
   enum class DmaDir { In, Out };
@@ -261,29 +355,8 @@ private:
                                  const UnpinnedPlacementInputs &inputs);
 
   // Edge: (consumer LTO, owner tile). Predicate: `isLegalMemAffinity`.
+  // SequentialPlacer-only: walks CoreOps and BufferOps.
   Adjacency buildBufferAdjacency(llvm::ArrayRef<LogicalTileOp> logicalTiles);
-
-  // Edge: (cascade source, dest).
-  Adjacency buildCascadeAdjacency(llvm::ArrayRef<CascadeFlowOp> cascadeFlows);
-
-  // Edge: (producer LTO, consumer LTO) for every ObjectFifo whose producer
-  // AND consumer are CoreTile LTOs. Used to constrain placement so that
-  // high-fanin compute Workers (those whose total fifo count exceeds the
-  // compute-tile DMA budget) land on tiles with their peer producers as
-  // physical neighbors — the peer fifo then uses shared neighbor memory
-  // instead of a DMA channel.
-  Adjacency
-  buildComputePeerAdjacency(llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
-
-  // Edge: (producer, consumer_i) per fifo. Linked fifos connect transitively
-  // through the link tile (it's the consumer of every source fifo and the
-  // producer of every destination fifo), so per-fifo emission suffices.
-  Adjacency
-  buildObjectFifoAdjacency(llvm::ArrayRef<ObjectFifoCreateOp> objectFifos);
-
-  // Edge: (src, dst) per `aie.flow`; cross-product per `aie.packet_flow`.
-  Adjacency buildFlowAdjacency(llvm::ArrayRef<FlowOp> flows,
-                               llvm::ArrayRef<PacketFlowOp> pktFlows);
 
   // Phase 4 driver: for every still-unplaced non-core LTO, place it near
   // the centroid column of its core peers. Internally builds the per-fifo
@@ -357,6 +430,252 @@ private:
       llvm::ArrayRef<FlowOp> flows, llvm::ArrayRef<PacketFlowOp> pktFlows,
       llvm::DenseMap<mlir::Operation *, std::pair<int, int>>
           &channelRequirements);
+};
+
+// Configuration for the SA placer's cost model and schedule.
+//
+// The SA placer minimizes a total cost with four components:
+//
+//   totalCost = HPWL + resourcePenalty + cascadePenalty + memoryPressure
+//
+// 1. HPWL (half-perimeter wire length): sum of bounding-box perimeters
+//    across all nets.
+//
+// 2. Resource penalty (hard, blocks legality): penalizes MemTile buffer
+//    overflow, core tile overflow, DMA channel overuse, and BD count
+//    overuse.
+//
+// 3. Cascade penalty (hard, blocks legality): penalizes cascade put/get
+//    pairs that aren't adjacent.
+//
+// 4. Memory pressure (soft, guides optimization): quadratic penalty when
+//    tile utilization exceeds a threshold.
+struct SAConfig {
+  // HPWL (cost 1)
+  int multicastThreshold = 4;  // consumer count above which penalty applies
+  int multicastMultiplier = 2; // HPWL multiplier for multicast nets
+
+  // Resource penalty (cost 2)
+  int memPenaltyPerKB = 30;      // per KB of unresolved memory overflow
+  int dmaPenaltyPerChannel = 20; // per DMA channel or BD over limit
+
+  // Cascade penalty (cost 3)
+  int cascadeWeightPerDist = 30; // per Manhattan distance to valid position
+
+  // Memory pressure (cost 4)
+  int pressurePerKB = 3;           // quadratic pressure above threshold
+  double pressureThreshold = 0.75; // utilization fraction triggering pressure
+
+  // Adaptive cooling
+  double coolFast = 0.995;        // accept ratio > 96%: cool faster
+  double coolSteady = 0.998;      // accept ratio > 80%: steady progress
+  double coolBalanced = 0.999;    // accept ratio > 15%: balanced exploration
+  double coolStuck = 0.9998;      // accept ratio <= 15%: barely cool
+  double greedyThreshold = 0.005; // switch to greedy (T=0) below this
+
+  // Schedule sizing
+  int minMovesPerIter = 100;
+  int maxMovesPerIter = 2000;
+  int minMaxIters = 10000;
+  int greedyMultiplier = 50;       // greedyIters = multiplier * numMovable
+  double tempScaleEstimate = 10.0; // initTemp cap: scale * estimated T
+  double tempScaleCost = 2.0;      // initTemp cap: scale * totalCost
+
+  // Temperature estimation
+  int tempSearchIters = 100;         // binary search iterations
+  double tempSearchCeiling = 5.0;    // highT = ceiling * maxDelta
+  double tempSearchEpsilon = 1e-10;  // zero guard in binary search
+  double tempSearchTolerance = 1e-6; // convergence tolerance
+
+  // SA loop intervals
+  int debugInterval = 5000;          // iterations between debug log lines
+  int fullRecomputeInterval = 10000; // iterations between full cost recompute
+
+  // Move generation
+  int maxMoveAttempts = 20; // retries per move before giving up
+
+  // Acceptance tracking
+  int windowSize = 100; // sliding window for acceptance ratio
+};
+
+// SA temperature schedule with windowed acceptance tracking.
+class SASchedule {
+public:
+  SASchedule() = default;
+  SASchedule(double startTemp, int movesPerIter, int maxIters, int greedyIters,
+             const SAConfig &cfg = {});
+
+  double getTemperature() const { return temperature; }
+  int getIteration() const { return currIteration; }
+  int getMovesPerIter() const { return movesPerIter; }
+  bool isGreedy() const { return inGreedyStage; }
+  bool limitReached() const;
+  double getAcceptanceRatio() const;
+  void record(bool accepted);
+  void cool();
+
+private:
+  double temperature = 0.0;
+  int currIteration = 0;
+  int currGreedyIteration = 0;
+  int movesPerIter = 100;
+  int maxIters = 5000;
+  int greedyIters = 100;
+  int windowSize = 100;
+  SAConfig config;
+  bool inGreedyStage = false;
+  std::deque<int> history;
+  int acceptCount = 0;
+  int rejectCount = 0;
+
+  void trimWindow();
+};
+
+// Per-net bounding box state for incremental HPWL updates.
+// countAt* tracks how many endpoints sit at each extreme so we can avoid
+// full rescans when an endpoint moves away from a non-unique extreme.
+struct NetBoundingBox {
+  int minCol = 0, maxCol = 0, minRow = 0, maxRow = 0;
+  int countAtMinCol = 0, countAtMaxCol = 0;
+  int countAtMinRow = 0, countAtMaxRow = 0;
+};
+
+struct NetInfo {
+  llvm::SmallVector<mlir::Operation *> endpoints; // producer + all consumers
+  NetBoundingBox bb;
+  bool isMulticast = false; // >4 consumers triggers 2x HPWL penalty
+};
+
+// Simulated annealing placement algorithm
+//
+// Uses HPWL (half-perimeter wire length) cost with incremental bounding-box
+// updates. Nets are derived from ObjectFifo producer/consumer connectivity.
+// All tile types (compute, mem, shim) participate in SA moves. After SA
+// converges, a merge pass collapses mem/shim logical tiles that landed in the
+// same column onto a shared physical tile when DMA capacity permits.
+class SAPlacer : public Placer {
+public:
+  explicit SAPlacer(unsigned seed = 0, SAConfig config = {})
+      : rngSeed(seed), config(config) {}
+
+  mlir::LogicalResult place(DeviceOp device) override;
+  llvm::StringRef getName() const override { return "sa_placer"; }
+
+private:
+  // Configuration
+  unsigned rngSeed;
+  SAConfig config;
+  std::mt19937 rng;
+  SASchedule schedule;
+
+  // Collected IR state
+  CollectedOps collected;
+  llvm::DenseMap<mlir::Operation *, AIETileType> tileTypes;
+  llvm::DenseMap<mlir::Operation *, int64_t> staticBufferSizes;
+  llvm::DenseMap<mlir::Operation *, int64_t> stackSizes;
+
+  // Net model
+  struct FifoBufferInfo {
+    mlir::Operation *fifoOp = nullptr;
+    mlir::Operation *producer = nullptr;
+    llvm::SmallVector<mlir::Operation *> consumers;
+    int64_t producerSizeBytes = 0;
+    int64_t consumerSizeBytes = 0;
+    int producerDepth = 0;
+    llvm::SmallVector<int> consumerDepths;
+    int producerDMADepth = 0;
+    llvm::SmallVector<int> consumerDMADepths;
+    bool forcesDMA = false;
+    bool linkSharedProd = false;
+
+    int consumerDepthAt(size_t ci) const {
+      return (ci < consumerDepths.size()) ? consumerDepths[ci] : producerDepth;
+    }
+  };
+  llvm::SmallVector<NetInfo> nets;
+  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<size_t>> tileToNetIndices;
+  llvm::SmallVector<FifoBufferInfo> fifoBuffers;
+
+  // Placement state
+  llvm::DenseMap<mlir::Operation *, TileID> currentPlacement;
+  llvm::DenseMap<TileID, mlir::Operation *> physToLogical;
+  llvm::SmallVector<mlir::Operation *> movableTiles;
+  llvm::DenseSet<mlir::Operation *> constrainedTiles;
+
+  // Resource tracking
+  llvm::DenseMap<mlir::Operation *, llvm::SmallVector<size_t>>
+      tileToFifoIndices;
+  llvm::DenseMap<TileID, int64_t> currentMemUsage;
+  llvm::DenseMap<TileID, std::pair<int, int>> currentDMAUsage;
+  llvm::DenseMap<size_t, TileID> sharedMemDestination;
+  int cachedResourcePenalty = 0;
+
+  // Cascade
+  Adjacency cascadeAdjacency;
+  static constexpr std::pair<int, int> kCascadeOffsets[] = {{1, 0}, {0, -1}};
+
+  // SA loop state
+  int totalCost = 0;
+  int cascadePen = 0;
+  int bestCost = INT_MAX;        // best legal (resPenalty==0 && cascade==0)
+  int bestOverallCost = INT_MAX; // best regardless of legality (fallback)
+  PlacementResult bestPlacement; // corresponds to bestCost
+  PlacementResult bestOverallPlacement; // corresponds to bestOverallCost
+  std::uniform_real_distribution<double> acceptDist{0.0, 1.0};
+  int deviceSlots = 0;
+  int zeroDeltaMoves = 0, posDeltaMoves = 0, negDeltaMoves = 0;
+  int acceptedUphill = 0, rejectedMoves = 0;
+  std::chrono::steady_clock::time_point startTime;
+
+  // Phase methods
+  mlir::LogicalResult collectAndBuildModel(DeviceOp device);
+  mlir::LogicalResult generateInitialPlacement();
+  void initializeSAState();
+  void runSAMainLoop();
+  mlir::LogicalResult finalizePlacement(DeviceOp device);
+  mlir::LogicalResult mergeMemShimTiles(DeviceOp device);
+
+  // Cost and resource methods
+  void initResourceTracking();
+  void addFifoContribution(size_t fifoIdx, int sign);
+  int updateResourcePenalty(
+      const llvm::SmallVector<std::pair<mlir::Operation *, TileID>>
+          &oldPlacements);
+  int getResourcePenalty() const { return cachedResourcePenalty; }
+  int computePenalty() const;
+  int computeMemSpilloverPenalty() const;
+  int computeCoreOverflowPenalty() const;
+  int computeDMAChannelPenalty() const;
+  int computeBDCountPenalty() const;
+  int computeMemoryPressure() const;
+  int computeAdjacencyPenalty(const Adjacency &adj,
+                              llvm::ArrayRef<std::pair<int, int>> validOffsets,
+                              int weight) const;
+  void generateAllocates();
+
+  // Move methods
+  void tryMove(llvm::SmallVector<std::pair<mlir::Operation *, TileID>> &moves);
+  bool
+  generateMove(llvm::SmallVector<std::pair<mlir::Operation *, TileID>> &moves);
+  int evaluateMove(
+      mlir::Operation *tile, TileID newPos,
+      llvm::SmallVector<std::pair<size_t, NetBoundingBox>> &backups);
+  void
+  revertMove(llvm::SmallVector<std::pair<size_t, NetBoundingBox>> &backups);
+
+  // Utility methods
+  void buildNetModel(llvm::SmallVector<ObjectFifoCreateOp> &objectFifos,
+                     llvm::SmallVector<ObjectFifoLinkOp> &objectFifoLinks);
+  void buildFifoBufferInfo(DeviceOp device,
+                           llvm::ArrayRef<ObjectFifoCreateOp> objectFifos,
+                           llvm::ArrayRef<ObjectFifoLinkOp> objectFifoLinks);
+  int computeNetHPWL(const NetInfo &net) const;
+  int computeTotalHPWL() const;
+  void initBoundingBoxes();
+  double estimateInitialTemperature(int numSamples);
+  bool isLegalPosition(mlir::Operation *tile, TileID pos) const;
+  int64_t computeTileMemoryWeight(mlir::Operation *tile) const;
+  void printPlacementStats(int64_t elapsedMs) const;
 };
 
 } // namespace xilinx::AIE
