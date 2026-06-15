@@ -18,6 +18,8 @@ declare_mlir_python_sources(AIEPythonExtensions)
 
 declare_mlir_python_sources(AIEPythonSources.Dialects
   ADD_TO_PARENT AIEPythonSources
+  SOURCES
+    dialects/__init__.py
 )
 
 declare_mlir_python_sources(AIEPythonSources.Util
