@@ -74,9 +74,9 @@ def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
         from aie import ir
         from aie._mlir_libs import get_dialect_registry
 
-        ir_context = ir.Context  # pyright: ignore[reportAttributeAccessIssue]
-        ir_location = ir.Location  # pyright: ignore[reportAttributeAccessIssue]
-        ir_module = ir.Module  # pyright: ignore[reportAttributeAccessIssue]
+        ir_context = ir.Context
+        ir_location = ir.Location
+        ir_module = ir.Module
 
         ctx = ir_context()
         ctx.append_dialect_registry(get_dialect_registry())
@@ -125,7 +125,7 @@ def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
         # Pass 3: read each arg's memref element count.
         seq_block = entry.regions[0].blocks[0]
         sizes: list[int] = []
-        memref_type = ir.MemRefType  # pyright: ignore[reportAttributeAccessIssue]
+        memref_type = ir.MemRefType
         for arg in seq_block.arguments:
             t = arg.type
             if not isinstance(t, memref_type):

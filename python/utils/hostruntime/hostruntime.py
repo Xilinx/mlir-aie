@@ -327,7 +327,7 @@ class HostRuntime(ABC):
             prefix, trace_buff = cls._extract_prefix(
                 args[-1], trace_config.last_tensor_shape, trace_config.last_tensor_dtype
             )
-            args[-1] = prefix  # pyright: ignore[reportArgumentType]
+            args[-1] = prefix
         else:
             # The trace position is always last.
             trace_buff = args[-1].numpy()

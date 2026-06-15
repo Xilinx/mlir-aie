@@ -11,10 +11,10 @@ from typing import Generator
 from ... import ir  # type: ignore
 from ...dialects._aie_enum_gen import AIEArch, AIETileType  # type: ignore
 from ...dialects.aie import (
-    AIEDevice,
+    AIEDevice,  # pyright: ignore[reportAttributeAccessIssue]
     logical_tile,
     LogicalTileOp,
-    get_target_model,
+    get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from ..resolvable import Resolvable
 from .tile import Tile
