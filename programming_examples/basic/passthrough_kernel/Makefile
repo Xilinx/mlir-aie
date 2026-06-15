@@ -14,6 +14,7 @@ include ${srcdir}/../../makefile-common
 
 targetname = passthrough_kernel
 in1_size = 4096 # in bytes (also element count, since the kernel is uint8)
+data_size = ${in1_size} # transfer size used to name dynamic-TXN build artifacts
 trace_size = 8192
 
 aie_py_src=${targetname}.py
@@ -40,7 +41,7 @@ trace_py:
 # and generate both XCLBIN and C++ TXN in one invocation.
 build/dynsize/aie_dynamic.mlir: ${srcdir}/passthrough_kernel_dynamic.py
 	mkdir -p ${@D}
-	python3 $< -d ${devicename} -i1s ${in1_size} -os ${out_size} > $@
+	python3 $< -d ${devicename} -i1s ${in1_size} > $@
 
 build/dynsize/final_dynamic.xclbin build/dynsize/generated_txn.h &: build/dynsize/aie_dynamic.mlir build/passThrough.cc.o
 	mkdir -p build/dynsize
@@ -56,7 +57,7 @@ ${targetname}_dynamic_${data_size}.exe: ${srcdir}/test.cpp build/dynsize/generat
 	mkdir -p _build_dynamic
 	cd _build_dynamic && ${powershell} cmake `${getwslpath} ${srcdir}` \
 		-DTARGET_NAME=${targetname}_dynamic \
-		-DIN1_SIZE=${in1_size} -DOUT_SIZE=${out_size} \
+		-DIN1_SIZE=${in1_size} -DOUT_SIZE=${in1_size} \
 		-DCMAKE_CXX_FLAGS="-DUSE_DYNAMIC_TXN -I${CURDIR}/build/dynsize -I$(shell cd ${srcdir}/../../.. && pwd)/include"
 	cd _build_dynamic && ${powershell} cmake --build . --config Release
 ifeq "${powershell}" "powershell.exe"

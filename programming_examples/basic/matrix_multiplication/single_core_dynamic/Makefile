@@ -37,6 +37,14 @@ KERNEL_DEFINES=-D${dtype_in}_${dtype_out}_ONLY -DDIM_M=${m} -DDIM_K=${k} -DDIM_N
 
 include ${srcdir}/../makefile-common
 
+# The dynamic flow feeds a hand-rolled aiecc invocation that needs the kernel
+# .o on disk, so this Makefile builds it directly (unlike the @iron.jit
+# examples, where makefile-common defers kernel compilation to Python).
+# npu2 -> aie2p kernels + Peano.
+kernels_dir = ${srcdir}/../../../../aie_kernels/aie2p
+KERNEL_CC = ${PEANO_INSTALL_DIR}/bin/clang++
+KERNEL_CFLAGS = ${PEANOWRAP2P_FLAGS}
+
 build/mm_${m}x${k}x${n}.o: ${kernels_dir}/mm.cc
 	mkdir -p ${@D}
 	cd ${@D} && ${KERNEL_CC} ${KERNEL_CFLAGS} ${KERNEL_DEFINES} -c $< -o ${@F}

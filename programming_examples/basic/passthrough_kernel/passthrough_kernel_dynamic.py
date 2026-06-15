@@ -30,7 +30,6 @@ if __name__ == "__main__":
     p = argparse.ArgumentParser()
     p.add_argument("-d", "--device", choices=["npu", "npu2"], default="npu2")
     p.add_argument("-i1s", "--in1_size", type=int, default=4096)
-    p.add_argument("-os", "--out_size", type=int, default=4096)
     args = p.parse_args()
 
     # Match the device selection used by passthrough_kernel.main: a single
