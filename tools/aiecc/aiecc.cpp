@@ -2000,21 +2000,40 @@ struct CoreCompilationResult {
 /// Strips LLVM 23+ features that Peano 19's opt/llc can't parse:
 /// - 'nuw' flag on getelementptr (inferred by ConstantFolding/InstCombine)
 /// - 'nocreateundeforpoison' attribute (with any trailing whitespace)
+/// - 'inf'/'-inf'/'nan' float-literal keywords (rewritten to hex form)
 static std::string downgradeIRForPeano(StringRef ir) {
   std::string result = ir.str();
+  auto replaceAll = [&](StringRef from, StringRef to) {
+    size_t pos = 0;
+    while ((pos = result.find(from.data(), pos, from.size())) !=
+           std::string::npos) {
+      result.replace(pos, from.size(), to.data(), to.size());
+      pos += to.size();
+    }
+  };
   // Strip 'nuw' from 'getelementptr inbounds nuw' -> 'getelementptr inbounds':
   // recent main LLVM infers nuw on geps, which Peano's opt cannot parse.
-  const std::string nuwFrom = "getelementptr inbounds nuw";
-  const std::string nuwTo = "getelementptr inbounds";
-  size_t pos = 0;
-  while ((pos = result.find(nuwFrom, pos)) != std::string::npos) {
-    result.erase(pos + nuwTo.size(), nuwFrom.size() - nuwTo.size());
-    pos += nuwTo.size();
-  }
+  replaceAll("getelementptr inbounds nuw", "getelementptr inbounds");
+  // Recent main LLVM prints special float values as 'inf'/'-inf'/'nan'
+  // keywords; Peano's opt only accepts the hex form. The literals appear
+  // prefixed by their type in initializers (the position we emit), so anchor
+  // the rewrite on the type keyword to pick the correct hex width.
+  replaceAll("half -inf", "half 0xHFC00");
+  replaceAll("half inf", "half 0xH7C00");
+  replaceAll("half nan", "half 0xH7E00");
+  replaceAll("bfloat -inf", "bfloat 0xRFF80");
+  replaceAll("bfloat inf", "bfloat 0xR7F80");
+  replaceAll("bfloat nan", "bfloat 0xR7FC0");
+  replaceAll("float -inf", "float 0xFFF0000000000000");
+  replaceAll("float inf", "float 0x7FF0000000000000");
+  replaceAll("float nan", "float 0x7FF8000000000000");
+  replaceAll("double -inf", "double 0xFFF0000000000000");
+  replaceAll("double inf", "double 0x7FF0000000000000");
+  replaceAll("double nan", "double 0x7FF8000000000000");
   // Strip 'nocreateundeforpoison' and any trailing whitespace: current Peano
   // LLVM cannot parse this attribute.
   const std::string nocreate = "nocreateundeforpoison";
-  pos = 0;
+  size_t pos = 0;
   while ((pos = result.find(nocreate, pos)) != std::string::npos) {
     size_t end = pos + nocreate.size();
     while (end < result.size() && (result[end] == ' ' || result[end] == '\t'))
