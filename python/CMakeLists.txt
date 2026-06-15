@@ -418,6 +418,22 @@ else ()
 
 endif ()
 
+# Stage the MLIR core type stubs (Context, Location, Module, ...) next to the
+# compiled extension. aie/ir.py re-exports those symbols via
+# `from ._mlir_libs._mlir.ir import *`; the .py sources we assemble don't carry
+# their types, so a static type checker can only resolve them from these stubs.
+# They ship with the MLIR distro but aren't copied by add_mlir_python_modules.
+add_custom_command(
+  TARGET AIEPythonModules POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${MLIR_INSTALL_PREFIX}/src/python/MLIRPythonExtension.Core.type_stub_gen/_mlir_libs/_mlir/__init__.pyi"
+    "${MLIR_INSTALL_PREFIX}/src/python/MLIRPythonExtension.Core.type_stub_gen/_mlir_libs/_mlir/ir.pyi"
+    "${MLIR_INSTALL_PREFIX}/src/python/MLIRPythonExtension.Core.type_stub_gen/_mlir_libs/_mlir/passmanager.pyi"
+    "${MLIR_INSTALL_PREFIX}/src/python/MLIRPythonExtension.Core.type_stub_gen/_mlir_libs/_mlir/rewrite.pyi"
+    "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs/_mlir/"
+  COMMENT "Staging MLIR core type stubs for pyright"
+)
+
 ################################################################################
 # ParameterScratchpad pybind11 module (no MLIR/XRT deps — uses buffer pointer)
 ################################################################################
