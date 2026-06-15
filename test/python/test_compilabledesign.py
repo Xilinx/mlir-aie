@@ -33,6 +33,7 @@ def _path_text(path) -> str:
     """Render paths with POSIX separators so assertions are host-independent."""
     return str(path).replace("\\", "/")
 
+
 # ---------------------------------------------------------------------------
 # Shared generator factories
 # ---------------------------------------------------------------------------
