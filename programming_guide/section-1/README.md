@@ -61,7 +61,6 @@ rt = Runtime()
 with rt.sequence(data_ty) as _:
     rt.start(my_worker)
 ```
-
 Finally we wrap everything in a `Program`. The program emits `aie.logical_tile` ops for any unplaced tiles (none here, since we pinned the Worker) and the `--aie-place-tiles` compiler pass assigns physical tile coordinates during compilation. Wrapping the design in `@iron.jit` (at the top of the function) means a call site like `section_one(out)` triggers compile + run end-to-end.
 
 ```python
@@ -72,6 +71,14 @@ def section_one(b_out: Out):
 ```
 
 > **NOTE:** Every IRON component above inherits from the `resolvable` interface, which defers the creation of MLIR operations until `resolve()` is called. The `Program.resolve_program()` call ties them together and raises if anything is under-specified.
+
+By default the `--aie-place-tiles` pass uses a sequential placer that assigns tiles in column-major order. For larger designs with memory or routing constraints, the simulated annealing (SA) placer can potentially find better placements by passing `--placer=sa_placer --sa-seed=<N>` through to `aiecc` (via the design's `aiecc_flags`):
+
+```bash
+aiecc.py --placer=sa_placer --sa-seed=3 ...
+```
+
+The SA placer optimizes wire length while respecting memory capacity, DMA channel limits, and cascade adjacency constraints. Not all seeds produce legal placements for every design — if compilation fails with a buffer overflow or routing error, try different seed values (e.g. sweep seeds 1–10) to find one that works. See [color_detect](../../programming_examples/vision/color_detect/) for an example that wires this up as `make use_sa_placer=1`.
 
 ## <ins>Other Tile Types</ins>
 

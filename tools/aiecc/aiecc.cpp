@@ -107,6 +107,7 @@
 #endif
 
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -219,6 +220,21 @@ static cl::opt<int> coresPerCol(
     "cores-per-col",
     cl::desc("Limit cores per column for tile placement (-1 = no limit)"),
     cl::init(-1), cl::cat(aieCompilerOptions));
+
+static cl::opt<xilinx::AIE::PlacerType> placerType(
+    "placer", cl::desc("Placement algorithm to use"),
+    cl::values(clEnumValN(xilinx::AIE::PlacerType::SequentialPlacer,
+                          "sequential_placer",
+                          "Sequential column-major placement"),
+               clEnumValN(xilinx::AIE::PlacerType::SAPlacer, "sa_placer",
+                          "Simulated annealing placement")),
+    cl::init(xilinx::AIE::PlacerType::SequentialPlacer),
+    cl::cat(aieCompilerOptions));
+
+static cl::opt<int>
+    saSeed("sa-seed",
+           cl::desc("Random seed for SA placer (0 = non-deterministic)"),
+           cl::init(1), cl::cat(aieCompilerOptions));
 
 static cl::opt<bool>
     generateNpuInsts("aie-generate-npu-insts",
@@ -1382,7 +1398,9 @@ static LogicalResult runPlacementPipeline(ModuleOp moduleOp,
 
   OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
   xilinx::AIE::AIEPlaceTilesOptions placeTilesOpts;
+  placeTilesOpts.clPlacerType = placerType;
   placeTilesOpts.clCoresPerCol = coresPerCol;
+  placeTilesOpts.clSASeed = saSeed;
   devicePm.addPass(xilinx::AIE::createAIEPlaceTilesPass(placeTilesOpts));
 
   if (verbose) {
@@ -2040,10 +2058,55 @@ struct CoreCompilationResult {
 
 /// Downgrade LLVM IR for Peano compatibility.
 /// Strips LLVM 23+ features that Peano 19's opt/llc can't parse:
-/// - 'nuw' flag on getelementptr (LLVM 23 feature)
+/// - 'nuw' flag on getelementptr (inferred by ConstantFolding/InstCombine)
 /// - 'nocreateundeforpoison' attribute (with any trailing whitespace)
+/// - 'inf'/'-inf'/'nan' float-literal keywords (rewritten to hex form)
 static std::string downgradeIRForPeano(StringRef ir) {
   std::string result = ir.str();
+  auto replaceAll = [&](StringRef from, StringRef to) {
+    size_t pos = 0;
+    while ((pos = result.find(from.data(), pos, from.size())) !=
+           std::string::npos) {
+      result.replace(pos, from.size(), to.data(), to.size());
+      pos += to.size();
+    }
+  };
+  // Strip 'nuw' from 'getelementptr inbounds nuw' -> 'getelementptr inbounds':
+  // recent main LLVM infers nuw on geps, which Peano's opt cannot parse.
+  replaceAll("getelementptr inbounds nuw", "getelementptr inbounds");
+  // Recent main LLVM prints special float values as 'inf'/'-inf'/'nan'
+  // keywords; Peano's opt only accepts the hex form. The literals appear
+  // prefixed by their type in initializers (the position we emit), so anchor
+  // the rewrite on the type keyword to pick the correct hex width. Require a
+  // non-identifier char before the keyword so 'float' does not match inside
+  // 'bfloat' (which would corrupt the wider type's already-correct text).
+  auto isIdentChar = [](char c) {
+    return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
+  };
+  auto replaceTypedLiteral = [&](StringRef from, StringRef to) {
+    size_t pos = 0;
+    while ((pos = result.find(from.data(), pos, from.size())) !=
+           std::string::npos) {
+      if (pos == 0 || !isIdentChar(result[pos - 1])) {
+        result.replace(pos, from.size(), to.data(), to.size());
+        pos += to.size();
+      } else {
+        pos += from.size();
+      }
+    }
+  };
+  replaceTypedLiteral("half -inf", "half 0xHFC00");
+  replaceTypedLiteral("half inf", "half 0xH7C00");
+  replaceTypedLiteral("half nan", "half 0xH7E00");
+  replaceTypedLiteral("bfloat -inf", "bfloat 0xRFF80");
+  replaceTypedLiteral("bfloat inf", "bfloat 0xR7F80");
+  replaceTypedLiteral("bfloat nan", "bfloat 0xR7FC0");
+  replaceTypedLiteral("float -inf", "float 0xFFF0000000000000");
+  replaceTypedLiteral("float inf", "float 0x7FF0000000000000");
+  replaceTypedLiteral("float nan", "float 0x7FF8000000000000");
+  replaceTypedLiteral("double -inf", "double 0xFFF0000000000000");
+  replaceTypedLiteral("double inf", "double 0x7FF0000000000000");
+  replaceTypedLiteral("double nan", "double 0x7FF8000000000000");
   // Strip 'nocreateundeforpoison' and any trailing whitespace: current Peano
   // LLVM cannot parse this attribute.
   const std::string nocreate = "nocreateundeforpoison";

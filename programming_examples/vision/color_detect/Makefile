@@ -22,9 +22,14 @@ COLORDETECT_HEIGHT = 1080
 #COLORDETECT_HEIGHT = 480
 
 targetname = color_detect
+use_sa_placer ?= 0
 
 aie_py_src = ${targetname}.py
 aieargs = -d ${devicename} -W ${COLORDETECT_WIDTH} -H ${COLORDETECT_HEIGHT}
+
+ifeq (${use_sa_placer}, 1)
+aieargs += --placer=sa_placer --sa-seed=1
+endif
 
 xclbin_target = build/final_${COLORDETECT_WIDTH}.xclbin
 insts_target = build/insts.bin
