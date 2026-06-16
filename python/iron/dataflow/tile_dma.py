@@ -24,8 +24,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Iterable
 
-from ... import ir  # type: ignore
-from ...dialects._aie_enum_gen import (  # type: ignore
+from ... import ir  # pyright: ignore[reportMissingImports]
+from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     AIETileType,
     DMAChannelDir,
     LockAction,

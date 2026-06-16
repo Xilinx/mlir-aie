@@ -9,7 +9,9 @@
 import numpy as np
 from typing import Sequence
 
-from ...extras.dialects.memref import MemRefValue  # type: ignore
+from ...extras.dialects.memref import (  # pyright: ignore[reportMissingImports]
+    MemRefValue,
+)
 from ...helpers.util import (
     NpuDType,
     np_ndarray_type_get_dtype,

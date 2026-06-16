@@ -19,14 +19,17 @@ logger = logging.getLogger(__name__)
 
 from ...utils import trace as trace_utils
 
-from ... import ir  # type: ignore
+from ... import ir  # pyright: ignore[reportMissingImports]
 
 from ...dialects.aie import tile
 from ...dialects.aiex import (
     runtime_sequence,
     sync_scratchpad_parameters_from_host,  # pyright: ignore[reportAttributeAccessIssue]
 )
-from ...dialects._aiex_ops_gen import dma_await_task, dma_free_task  # type: ignore
+from ...dialects._aiex_ops_gen import (  # pyright: ignore[reportMissingImports]
+    dma_await_task,
+    dma_free_task,
+)
 from ...helpers.taplib import TensorAccessPattern
 from ..dataflow import ObjectFifoHandle
 from ..device import Tile, AnyShimTile

@@ -10,7 +10,7 @@
 import sys
 from typing import Callable
 
-from .. import ir  # type: ignore
+from .. import ir  # pyright: ignore[reportMissingImports]
 from ..dialects.aie import (
     core,
     lock,
@@ -22,7 +22,9 @@ from ..dialects.aiex import (
 )
 from ..helpers.dialects.scf import _for as range_
 from .device import Tile, AnyComputeTile
-from ..dialects._aie_enum_gen import AIETileType  # type: ignore
+from ..dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
+    AIETileType,
+)
 from .dataflow.objectfifo import ObjectFifoHandle, ObjectFifo
 from .dataflow.endpoint import ObjectFifoEndpoint
 from .buffer import Buffer

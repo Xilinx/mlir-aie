@@ -8,8 +8,11 @@
 
 from typing import Generator
 
-from ... import ir  # type: ignore
-from ...dialects._aie_enum_gen import AIEArch, AIETileType  # type: ignore
+from ... import ir  # pyright: ignore[reportMissingImports]
+from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
+    AIEArch,
+    AIETileType,
+)
 from ...dialects.aie import (
     AIEDevice,  # pyright: ignore[reportAttributeAccessIssue]
     logical_tile,

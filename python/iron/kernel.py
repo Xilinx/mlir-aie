@@ -13,9 +13,9 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-from .. import ir  # type: ignore
-from ..dialects import memref  # type: ignore
-from ..extras.dialects.func import FuncOp  # type: ignore
+from .. import ir  # pyright: ignore[reportMissingImports]
+from ..dialects import memref  # pyright: ignore[reportAttributeAccessIssue]
+from ..extras.dialects.func import FuncOp  # pyright: ignore[reportMissingImports]
 from ..helpers.dialects.func import call
 from ..dialects.aie import external_func
 from .resolvable import Resolvable

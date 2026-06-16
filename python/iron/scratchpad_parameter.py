@@ -9,7 +9,7 @@
 
 import numpy as np
 
-from .. import ir  # type: ignore
+from .. import ir  # pyright: ignore[reportMissingImports]
 from ..dialects import aiex
 from ..helpers.util import np_dtype_to_mlir_type, NpuDType
 from .resolvable import Resolvable

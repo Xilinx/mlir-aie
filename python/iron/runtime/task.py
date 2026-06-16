@@ -7,7 +7,7 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 from typing import Callable
 
-from ... import ir  # type: ignore
+from ... import ir  # pyright: ignore[reportMissingImports]
 
 from ..buffer import Buffer
 from ..resolvable import Resolvable

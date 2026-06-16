@@ -18,9 +18,14 @@ from typing import Sequence, TypeAlias
 StreamDims: TypeAlias = list[Sequence[int]]
 PadDims: TypeAlias = list[Sequence[int]]
 
-from ... import ir  # type: ignore
-from ...dialects._aie_enum_gen import AIETileType, ObjectFifoPort  # type: ignore
-from ...dialects._aie_ops_gen import ObjectFifoCreateOp  # type: ignore
+from ... import ir  # pyright: ignore[reportMissingImports]
+from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
+    AIETileType,
+    ObjectFifoPort,
+)
+from ...dialects._aie_ops_gen import (  # pyright: ignore[reportMissingImports]
+    ObjectFifoCreateOp,
+)
 from ...dialects.aie import object_fifo, object_fifo_link
 from ...helpers.util import (
     NpuDType,

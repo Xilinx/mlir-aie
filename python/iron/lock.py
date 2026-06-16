@@ -14,8 +14,8 @@ instead of letting :class:`ObjectFifo` manage it.
 
 import itertools
 
-from .. import ir  # type: ignore
-from ..dialects._aie_enum_gen import LockAction  # type: ignore
+from .. import ir  # pyright: ignore[reportMissingImports]
+from ..dialects._aie_enum_gen import LockAction  # pyright: ignore[reportMissingImports]
 from ..dialects.aie import (
     lock as _lock_op,
     use_lock as _use_lock,  # pyright: ignore[reportAttributeAccessIssue]

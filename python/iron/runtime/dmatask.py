@@ -7,9 +7,11 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 """DMATask: a RuntimeTask that generates a shim DMA transfer operation."""
 
-from ... import ir  # type: ignore
+from ... import ir  # pyright: ignore[reportMissingImports]
 
-from ...dialects._aiex_ops_gen import dma_start_task  # type: ignore
+from ...dialects._aiex_ops_gen import (  # pyright: ignore[reportMissingImports]
+    dma_start_task,
+)
 from ...dialects.aiex import shim_dma_single_bd_task
 from ..dataflow import ObjectFifoHandle
 from .data import RuntimeData
