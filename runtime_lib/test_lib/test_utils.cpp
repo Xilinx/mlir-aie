@@ -57,7 +57,7 @@ void test_utils::add_default_options(cxxopts::Options &options) {
 
 void test_utils::parse_options(int argc, const char *argv[],
                                cxxopts::Options &options,
-                               cxxopts::ParseResult &vm) {
+                               cxxopts::ParseResult &vm, bool require_instr) {
   try {
     vm = options.parse(argc, argv);
 
@@ -73,7 +73,10 @@ void test_utils::parse_options(int argc, const char *argv[],
 
   try {
     check_arg_file_exists(vm, "xclbin");
-    check_arg_file_exists(vm, "instr");
+    // Designs that build their NPU instructions at runtime (dynamic TXN) supply
+    // them via generate_instr rather than an --instr file.
+    if (require_instr)
+      check_arg_file_exists(vm, "instr");
   } catch (const std::exception &ex) {
     std::cerr << ex.what() << "\n\n";
   }

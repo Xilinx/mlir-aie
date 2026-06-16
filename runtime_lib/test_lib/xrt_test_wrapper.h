@@ -38,7 +38,13 @@ struct args parse_args(int argc, const char *argv[]) {
 
   struct args myargs;
 
+#ifdef USE_DYNAMIC_TXN
+  // Dynamic TXN builds generate NPU instructions at runtime via generate_instr,
+  // so an --instr file is not required.
+  test_utils::parse_options(argc, argv, options, vm, /*require_instr=*/false);
+#else
   test_utils::parse_options(argc, argv, options, vm);
+#endif
   myargs.verbosity = vm["verbosity"].as<int>();
   myargs.do_verify = vm["verify"].as<bool>();
   myargs.n_iterations = vm["iters"].as<int>();

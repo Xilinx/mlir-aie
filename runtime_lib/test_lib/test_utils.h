@@ -42,7 +42,7 @@ void check_arg_file_exists(const cxxopts::ParseResult &result,
 void add_default_options(cxxopts::Options &options);
 
 void parse_options(int argc, const char *argv[], cxxopts::Options &options,
-                   cxxopts::ParseResult &result);
+                   cxxopts::ParseResult &result, bool require_instr = true);
 
 std::vector<uint32_t> load_instr_sequence(std::string instr_path);
 std::vector<uint32_t> load_instr_binary(std::string instr_path);
