@@ -90,9 +90,12 @@ def passthrough_dmas(
         drain_tile = AnyShimTile
 
     rt = Runtime()
-    with rt.sequence(vector_ty, vector_ty, vector_ty) as (a, _, c):
-        rt.fill(of_in.prod(), a, tile=fill_tile)
-        rt.drain(of_out.cons(), c, tile=drain_tile, wait=True)
+
+    def sequence(a, _unused0, c):
+        of_in.prod().fill(a, tile=fill_tile)
+        of_out.cons().drain(c, tile=drain_tile, wait=True)
+
+    rt.sequence(sequence, [vector_ty, vector_ty, vector_ty])
 
     return Program(iron.get_current_device(), rt).resolve_program()
 

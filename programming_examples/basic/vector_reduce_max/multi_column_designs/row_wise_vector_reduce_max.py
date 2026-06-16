@@ -171,21 +171,21 @@ def vector_reduce_max(
         workers.append(Worker(core_body, fn_args=fifo_args, trace=enable_trace))
 
     rt = Runtime()
-    with rt.sequence(in_ty, out_ty) as (a, c):
+
+    def sequence(a, c):
         if trace_size > 0:
             rt.enable_trace(trace_size)
-        rt.start(*workers)
         for i in range(n_channels):
-            rt.fill(in_fifos[i].prod(), a, taps[i])
-        rt.drain(
-            out_fifos[
-                0 if n_cores == 1 else 1 if n_cores < 5 else 4 if n_cores == 5 else 5
-            ].cons(),
-            c,
-            wait=True,
-        )
+            in_fifos[i].prod().fill(a, taps[i])
+        out_fifos[
+            0 if n_cores == 1 else 1 if n_cores < 5 else 4 if n_cores == 5 else 5
+        ].cons().drain(c, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt.sequence(sequence, [in_ty, out_ty])
+
+    return Program(
+        iron.get_current_device(), rt, workers=list(workers)
+    ).resolve_program()
 
 
 def _make_argparser():

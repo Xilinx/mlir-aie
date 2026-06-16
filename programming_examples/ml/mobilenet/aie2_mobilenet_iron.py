@@ -32,7 +32,7 @@ import sys
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import In, ObjectFifo, Out, Program, Runtime
+from aie.iron import TaskGroup, In, ObjectFifo, Out, Program, Runtime
 from aie.utils.hostruntime.argparse import device_from_args
 from aie.helpers.taplib import TensorAccessPattern
 from aie.utils.hostruntime import set_current_device
@@ -163,25 +163,21 @@ def mobilenet_iron(inp: In, cascade_wts: In, out: Out):
     # (act_in, weights, FC fills) — otherwise their BD IDs would be
     # deallocated while their DMAs were potentially still in flight.
     rt = Runtime()
-    with rt.sequence(in_ty, cascade_wts_ty, out_ty) as (inp, cascade_wts, out):
-        rt.start(*all_workers)
+
+    def sequence(inp, cascade_wts, out):
 
         # ---- Group 1: input + weights + avgpool drain ----
         # All upstream fills + the first sync drain in the same group. By the
         # time the avgpool drain completes, init_conv has consumed all of
         # act_in and bn13/14 have consumed their weights, so freeing all of
         # those at finish_task_group() is safe (causal closure).
-        tg1 = rt.task_group()
-        rt.fill(
-            act_in.prod(depth=1), inp, tile=PLACEMENT["shim"]["input"], task_group=tg1
-        )
+        tg1 = TaskGroup()
+        act_in.prod(depth=1).fill(inp, tile=PLACEMENT["shim"]["input"], group=tg1)
         # bn13/14 L1+L3 weight chunks from the combined cascade buffer
         for fifo, off, sz, shim in zip(
             wts_fifos, _CASCADE_OFFSETS, _CASCADE_SIZES, PLACEMENT["shim"]["wts"]
         ):
-            rt.fill(
-                fifo.prod(), cascade_wts, _wts_tap(off, sz), tile=shim, task_group=tg1
-            )
+            fifo.prod().fill(cascade_wts, _wts_tap(off, sz), tile=shim, group=tg1)
         # Round-trip avgpool output through L3 (shim 30/40 hop). Reuse `inp`
         # as scratch — input is fully consumed by the time PostL1 emits output.
         # Offsets/sizes are i32 elements (4 bytes each):
@@ -196,28 +192,23 @@ def mobilenet_iron(inp: In, cascade_wts: In, out: Out):
             sizes=[1, 1, 1, _post_l1_out_sz_i32],
             strides=[0, 0, 0, 1],
         )
-        rt.drain(
-            act_out_post_avgpool_shim.cons(),
+        act_out_post_avgpool_shim.cons().drain(
             inp,
             tap=_post_l1_scratch_tap,
             wait=True,
-            task_group=tg1,
+            group=tg1,
             tile=PLACEMENT["shim"]["scratch_drain"],
         )
-        rt.finish_task_group(tg1)
+        tg1.resolve()
 
         # ---- Group 2: FC1 fill + FC1 drain ----
         # FC1 fill reads the avgpool scratch (drained above). FC1 drain
         # waits for FC compute to consume the fill, then drains FC1 output
         # to L3. By finish_task_group, both FC1 fill and FC1 drain have
         # completed.
-        tg2 = rt.task_group()
-        rt.fill(
-            act_out_post_shim_FC.prod(),
-            inp,
-            tap=_post_l1_scratch_tap,
-            tile=PLACEMENT["shim"]["fc_fill"],
-            task_group=tg2,
+        tg2 = TaskGroup()
+        act_out_post_shim_FC.prod().fill(
+            inp, tap=_post_l1_scratch_tap, tile=PLACEMENT["shim"]["fc_fill"], group=tg2
         )
         _post_fc_out_tap = TensorAccessPattern(
             (_inp_sz_i32,),
@@ -225,38 +216,33 @@ def mobilenet_iron(inp: In, cascade_wts: In, out: Out):
             sizes=[1, 1, 1, _post_l1_out_sz_i32],
             strides=[0, 0, 0, 1],
         )
-        rt.drain(
-            act_out_of.cons(),
+        act_out_of.cons().drain(
             inp,
             tap=_post_fc_out_tap,
             wait=True,
-            task_group=tg2,
+            group=tg2,
             tile=PLACEMENT["shim"]["fc_drain"],
         )
-        rt.finish_task_group(tg2)
+        tg2.resolve()
 
         # ---- Group 3: FC2 fill + FC2 final drain to host ----
-        tg3 = rt.task_group()
-        rt.fill(
-            act_out_post_shim_FC.prod(),
-            inp,
-            tap=_post_fc_out_tap,
-            tile=PLACEMENT["shim"]["fc_fill"],
-            task_group=tg3,
+        tg3 = TaskGroup()
+        act_out_post_shim_FC.prod().fill(
+            inp, tap=_post_fc_out_tap, tile=PLACEMENT["shim"]["fc_fill"], group=tg3
         )
-        rt.drain(
-            act_out_of.cons(),
-            out,
-            wait=True,
-            tile=PLACEMENT["shim"]["fc_drain"],
-            task_group=tg3,
+        act_out_of.cons().drain(
+            out, wait=True, tile=PLACEMENT["shim"]["fc_drain"], group=tg3
         )
-        rt.finish_task_group(tg3)
+        tg3.resolve()
+
+    rt.sequence(sequence, [in_ty, cascade_wts_ty, out_ty])
 
     # ------------------------------------------------------------------
     # Generate MLIR
     # ------------------------------------------------------------------
-    return Program(iron.get_current_device(), rt).resolve_program()
+    return Program(
+        iron.get_current_device(), rt, workers=list(all_workers)
+    ).resolve_program()
 
 
 def _make_argparser():

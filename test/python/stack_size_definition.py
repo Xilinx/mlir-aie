@@ -12,10 +12,15 @@ from aie.iron.device import NPU1
 my_worker = Worker(None, stack_size=2048, while_true=False)
 
 rt = Runtime()
-with rt.sequence():
-    rt.start(my_worker)
 
-my_program = Program(NPU1(), rt)
+
+def sequence():
+    pass
+
+
+rt.sequence(sequence, [])
+
+my_program = Program(NPU1(), rt, workers=[my_worker])
 
 module = my_program.resolve_program()
 

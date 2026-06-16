@@ -60,13 +60,15 @@ def passthrough_local_buff():
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
-    with rt.sequence(vector_type, vector_type, vector_type) as (a_in, b_out, _):
-        rt.start(my_worker)
-        rt.fill(of_in.prod(), a_in)
-        rt.drain(of_out.cons(), b_out, wait=True)
+
+    def sequence(a_in, b_out, _unused0):
+        of_in.prod().fill(a_in)
+        of_out.cons().drain(b_out, wait=True)
+
+    rt.sequence(sequence, [vector_type, vector_type, vector_type])
 
     # Place components (assign them resources on the device) and generate an MLIR module
-    return Program(NPU2Col1(), rt).resolve_program()
+    return Program(NPU2Col1(), rt, workers=[my_worker]).resolve_program()
 
 
 print(passthrough_local_buff())

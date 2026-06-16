@@ -55,14 +55,16 @@ def vector_vector_add(
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty, tensor_ty) as (A, B, C):
-        rt.start(worker)
-        rt.fill(of_in1.prod(), A)
-        rt.fill(of_in2.prod(), B)
-        rt.drain(of_out.cons(), C, wait=True)
+
+    def sequence(A, B, C):
+        of_in1.prod().fill(A)
+        of_in2.prod().fill(B)
+        of_out.cons().drain(C, wait=True)
+
+    rt.sequence(sequence, [tensor_ty, tensor_ty, tensor_ty])
 
     # Place program components (assign them resources on the device) and generate an MLIR module
-    return Program(iron.get_current_device(), rt).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 @pytest.mark.parametrize("num_elements", [16, 64])

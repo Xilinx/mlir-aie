@@ -55,10 +55,13 @@ def test_symmetric_depths_collapse_to_int():
     w_cons_b = Worker(cons_body, fn_args=[of_sym.cons()], tile=Tile(0, 4))
 
     rt = Runtime()
-    with rt.sequence():
-        rt.start(w_prod, w_cons_a, w_cons_b)
 
-    module = Program(dev, rt).resolve_program()
+    def sequence():
+        pass
+
+    rt.sequence(sequence, [])
+
+    module = Program(dev, rt, workers=[w_prod, w_cons_a, w_cons_b]).resolve_program()
     print(module)
 
 
@@ -110,10 +113,13 @@ def test_skip_connection_emits_array():
     )
 
     rt = Runtime()
-    with rt.sequence() as ():
-        rt.start(w_a, w_b, w_c)
 
-    module = Program(dev, rt).resolve_program()
+    def sequence():
+        pass
+
+    rt.sequence(sequence, [])
+
+    module = Program(dev, rt, workers=[w_a, w_b, w_c]).resolve_program()
     print(module)
 
 

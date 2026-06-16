@@ -73,17 +73,19 @@ def saxpy(
     # --------------------------------------------------------------------------
 
     rt = Runtime()
-    with rt.sequence(in_ty, in_ty, out_ty) as (a_x, a_y, c_z):
-        rt.start(worker)
-        rt.fill(of_x.prod(), a_x)
-        rt.fill(of_y.prod(), a_y)
-        rt.drain(of_z.cons(), c_z, wait=True)
+
+    def sequence(a_x, a_y, c_z):
+        of_x.prod().fill(a_x)
+        of_y.prod().fill(a_y)
+        of_z.cons().drain(c_z, wait=True)
+
+    rt.sequence(sequence, [in_ty, in_ty, out_ty])
 
     # --------------------------------------------------------------------------
     # Place and generate MLIR program
     # --------------------------------------------------------------------------
 
-    my_program = Program(iron.get_current_device(), rt)
+    my_program = Program(iron.get_current_device(), rt, workers=[worker])
     return my_program.resolve_program()
 
 

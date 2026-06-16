@@ -188,12 +188,16 @@ def color_detect(
     )
 
     rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_16x16_ty, tensor_ty) as (i_in, _b, o_out):
-        rt.start(worker2, worker3, worker4, worker5)
-        rt.fill(in_of_l3l2.prod(), i_in)
-        rt.drain(out_of_l2l3.cons(), o_out, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    def sequence(i_in, _b, o_out):
+        in_of_l3l2.prod().fill(i_in)
+        out_of_l2l3.cons().drain(o_out, wait=True)
+
+    rt.sequence(sequence, [tensor_ty, tensor_16x16_ty, tensor_ty])
+
+    return Program(
+        iron.get_current_device(), rt, workers=[worker2, worker3, worker4, worker5]
+    ).resolve_program()
 
 
 def _make_argparser():

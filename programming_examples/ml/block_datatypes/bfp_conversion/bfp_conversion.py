@@ -105,17 +105,21 @@ def bfp_conversion(a_in: In, b_in: In, c_out: Out):
     ]
 
     rt = Runtime()
-    with rt.sequence(_TENSOR_BF16_TY, _TENSOR_BF16_TY, _TENSOR_BFP16_TY) as (A, B, C):
-        rt.start(*workers)
-        rt.fill(of_in1.prod(), A)
+
+    def sequence(A, B, C):
+        of_in1.prod().fill(A)
         # Aligning dot products with bfp blocks requires transposing the second
         # matrix before conversion to bfp; bf16's element size (2B) precludes a
         # 4B-aligned transpose at this level, so transposition happens inside
         # the multiplication kernel.
-        rt.fill(of_in2.prod(), B)
-        rt.drain(of_out.cons(), C, wait=True)
+        of_in2.prod().fill(B)
+        of_out.cons().drain(C, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt.sequence(sequence, [_TENSOR_BF16_TY, _TENSOR_BF16_TY, _TENSOR_BFP16_TY])
+
+    return Program(
+        iron.get_current_device(), rt, workers=list(workers)
+    ).resolve_program()
 
 
 def _make_argparser():

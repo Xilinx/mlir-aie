@@ -13,10 +13,15 @@ from aie.iron.device import NPU1, Tile
 my_worker = Worker(None, tile=Tile(1, 2, allocation_scheme="bank-aware"))
 
 rt = Runtime()
-with rt.sequence():
-    rt.start(my_worker)
 
-my_program = Program(NPU1(), rt)
+
+def sequence():
+    pass
+
+
+rt.sequence(sequence, [])
+
+my_program = Program(NPU1(), rt, workers=[my_worker])
 
 module = my_program.resolve_program()
 
@@ -28,10 +33,15 @@ print(module)
 my_worker = Worker(None)
 
 rt = Runtime()
-with rt.sequence():
-    rt.start(my_worker)
 
-my_program = Program(NPU1(), rt)
+
+def sequence():
+    pass
+
+
+rt.sequence(sequence, [])
+
+my_program = Program(NPU1(), rt, workers=[my_worker])
 
 module = my_program.resolve_program()
 
@@ -47,10 +57,15 @@ my_worker = Worker(
 )
 
 rt = Runtime()
-with rt.sequence():
-    rt.start(my_worker)
 
-my_program = Program(NPU1(), rt)
+
+def sequence():
+    pass
+
+
+rt.sequence(sequence, [])
+
+my_program = Program(NPU1(), rt, workers=[my_worker])
 
 module = my_program.resolve_program()
 
@@ -62,10 +77,15 @@ print(module)
 my_worker = Worker(None, tile=Tile(1, 2), allocation_scheme="bank-aware")
 
 rt = Runtime()
-with rt.sequence():
-    rt.start(my_worker)
 
-my_program = Program(NPU1(), rt)
+
+def sequence():
+    pass
+
+
+rt.sequence(sequence, [])
+
+my_program = Program(NPU1(), rt, workers=[my_worker])
 
 module = my_program.resolve_program()
 
@@ -77,10 +97,15 @@ print(module)
 my_worker = Worker(None, allocation_scheme="basic-sequential")
 
 rt = Runtime()
-with rt.sequence():
-    rt.start(my_worker)
 
-my_program = Program(NPU1(), rt)
+
+def sequence():
+    pass
+
+
+rt.sequence(sequence, [])
+
+my_program = Program(NPU1(), rt, workers=[my_worker])
 
 module = my_program.resolve_program()
 

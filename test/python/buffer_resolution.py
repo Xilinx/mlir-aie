@@ -53,18 +53,22 @@ def core_fn(of_in, of_out, rtp):
 worker = Worker(core_fn, [of_in.cons(), of_out.prod(), rtp_buf])
 
 rt = Runtime()
-with rt.sequence(data_ty, data_ty) as (inp, out):
+
+
+def sequence(inp, out):
 
     def set_rtp(buf):
         buf[0] = 7
         buf[1] = 3
 
     rt.inline_ops(set_rtp, [rtp_buf])
-    rt.start(worker)
-    rt.fill(of_in.prod(), inp)
-    rt.drain(of_out.cons(), out, wait=True)
+    of_in.prod().fill(inp)
+    of_out.cons().drain(out, wait=True)
 
-module = Program(NPU1Col1(), rt).resolve_program()
+
+rt.sequence(sequence, [data_ty, data_ty])
+
+module = Program(NPU1Col1(), rt, workers=[worker]).resolve_program()
 print(module)
 
 
@@ -101,14 +105,9 @@ workers = [
 ]
 
 rt2 = Runtime()
-with rt2.sequence(data_ty, data_ty, data_ty, data_ty, data_ty, data_ty) as (
-    i0,
-    i1,
-    i2,
-    o0,
-    o1,
-    o2,
-):
+
+
+def sequence(i0, i1, i2, o0, o1, o2):
 
     def set_rtps(rtps):
         rtps[0][0] = 1
@@ -116,15 +115,17 @@ with rt2.sequence(data_ty, data_ty, data_ty, data_ty, data_ty, data_ty) as (
         rtps[2][0] = 3
 
     rt2.inline_ops(set_rtps, [rtps])
-    rt2.start(*workers)
-    rt2.fill(of_ins[0].prod(), i0)
-    rt2.fill(of_ins[1].prod(), i1)
-    rt2.fill(of_ins[2].prod(), i2)
-    rt2.drain(of_outs[0].cons(), o0, wait=True)
-    rt2.drain(of_outs[1].cons(), o1, wait=True)
-    rt2.drain(of_outs[2].cons(), o2, wait=True)
+    of_ins[0].prod().fill(i0)
+    of_ins[1].prod().fill(i1)
+    of_ins[2].prod().fill(i2)
+    of_outs[0].cons().drain(o0, wait=True)
+    of_outs[1].cons().drain(o1, wait=True)
+    of_outs[2].cons().drain(o2, wait=True)
 
-module2 = Program(NPU2(), rt2).resolve_program()
+
+rt2.sequence(sequence, [data_ty, data_ty, data_ty, data_ty, data_ty, data_ty])
+
+module2 = Program(NPU2(), rt2, workers=list(workers)).resolve_program()
 print(module2)
 
 
@@ -156,19 +157,23 @@ def core_fn3(of_in, of_out, rtp):
 worker3 = Worker(core_fn3, [of_in3.cons(), of_out3.prod(), placed_rtp])
 
 rt3 = Runtime()
-with rt3.sequence(data_ty, data_ty) as (inp3, out3):
+
+
+def sequence(inp3, out3):
 
     def write_both(placed, orphan):
         placed[0] = 1
         orphan[0] = 1  # orphan has no tile → should raise ValueError
 
     rt3.inline_ops(write_both, [placed_rtp, orphan_rtp])
-    rt3.start(worker3)
-    rt3.fill(of_in3.prod(), inp3)
-    rt3.drain(of_out3.cons(), out3, wait=True)
+    of_in3.prod().fill(inp3)
+    of_out3.cons().drain(out3, wait=True)
+
+
+rt3.sequence(sequence, [data_ty, data_ty])
 
 try:
-    Program(NPU1Col1(), rt3).resolve_program()
+    Program(NPU1Col1(), rt3, workers=[worker3]).resolve_program()
     print("FAILED: expected ValueError but no exception was raised")
 except ValueError as e:
     assert "placed" in str(e).lower(), f"unexpected message: {e}"

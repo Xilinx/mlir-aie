@@ -114,14 +114,18 @@ def matrix_vector(
     )[0]
 
     rt = Runtime()
-    with rt.sequence(A_ty, B_ty, C_ty) as (a_in, b_in, c_out):
-        rt.start(*workers)
-        rt.fill(B_fifo.prod(), b_in, b_tap)
-        for i, (a_tap, c_tap) in enumerate(zip(A_taps, C_taps)):
-            rt.fill(memA_fifos[i].prod(), a_in, a_tap)
-            rt.drain(outC_fifos[i].cons(), c_out, c_tap, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    def sequence(a_in, b_in, c_out):
+        B_fifo.prod().fill(b_in, b_tap)
+        for i, (a_tap, c_tap) in enumerate(zip(A_taps, C_taps)):
+            memA_fifos[i].prod().fill(a_in, a_tap)
+            outC_fifos[i].cons().drain(c_out, c_tap, wait=True)
+
+    rt.sequence(sequence, [A_ty, B_ty, C_ty])
+
+    return Program(
+        iron.get_current_device(), rt, workers=list(workers)
+    ).resolve_program()
 
 
 def _make_argparser():

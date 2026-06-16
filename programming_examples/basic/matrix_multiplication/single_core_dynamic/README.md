@@ -1,47 +1,47 @@
 # Dynamic Single-Core Matrix Multiplication
 
-Single-core bf16 GEMM with **runtime-configurable matrix dimensions**. One compiled XCLBIN supports any M/K/N that are multiples of 32 — matrix sizes are determined at runtime, not compile time.
+Single-core GEMM with **runtime-configurable matrix dimensions**, written in the
+high-level IRON API (`@iron.jit`). One compiled XCLBIN supports any `(M, K, N)`
+that are multiples of the tile size — the problem size is supplied to the runtime
+sequence as SSA values, not baked in at compile time.
+
+This is a minimal delta over [`../single_core/single_core.py`](../single_core/single_core.py).
+The two differences are:
+
+1. The runtime sequence takes `M, K, N` as scalar arguments and derives its loop
+   trip counts and DMA geometry from them using `range_` / `if_` (which emit
+   `scf.for` / `scf.if`) and arithmetic on the SSA values.
+2. The core reads its loop trip counts from an RTP `Buffer` that the host
+   populates at the start of the sequence, so one fixed core ELF runs any size.
 
 ## Quick Start
 
 ```bash
-# Build everything (XCLBIN + C++ TXN code + test executable)
-make build/dynsize/final_dynamic.xclbin M=128 K=128 N=128 devicename=npu2
-make dynamic_generated.exe M=128 K=128 N=128 devicename=npu2
-
-# Run multiple sizes from the same XCLBIN
-./dynamic_generated.exe -x build/dynsize/final_dynamic.xclbin -k MLIR_AIE -M 32 -K 32 -N 32 -v 1
-./dynamic_generated.exe -x build/dynsize/final_dynamic.xclbin -k MLIR_AIE -M 64 -K 64 -N 64 -v 1
-./dynamic_generated.exe -x build/dynsize/final_dynamic.xclbin -k MLIR_AIE -M 128 -K 128 -N 128 -v 1
-
-# Or run all at once
-make run_dynamic_generated M=128 K=128 N=128 devicename=npu2
+# Build the XCLBIN + generated C++ TXN header + test executable, then run a
+# sweep of sizes from the single XCLBIN.
+make run_dynamic M=128 K=128 N=128 devicename=npu2
 ```
 
-## Performance
-
-All sizes from a single XCLBIN on NPU Strix Halo (NPU2):
-
-| Size | TXN Instructions | Time | GFLOPS | Status |
-|------|-----------------|------|--------|--------|
-| 32x32x32 | 225 words | 1275 us | 0.05 | PASS |
-| 64x32x64 | 357 words | 1096 us | 0.24 | PASS |
-| 64x64x64 | 357 words | 866 us | 0.61 | PASS |
-| 96x96x96 | 566 words | 760 us | 2.33 | PASS |
-| 128x64x128 | 698 words | 1103 us | 1.90 | PASS |
-| 128x128x128 | 698 words | 1575 us | 2.66 | PASS |
+This builds `build/dynsize/final_dynamic.xclbin` and `generated_gemm_txn.h` in
+one `aiecc` invocation, compiles `test_dynamic.cpp` against the generated TXN
+header, and runs 32³ / 64³ / 96³ / 128³ from the same XCLBIN.
 
 ## How It Works
 
-The design has a fixed **tile size** (32x32x32 bf16->f32) but **variable problem size** (M, K, N). The core runs an infinite loop that reads iteration counts from RTP (Runtime Tunable Parameters), and the host generates DMA instruction sequences at runtime for each problem size.
+The design has a fixed **tile size** (e.g. 32x32x32) but **variable problem
+size** (M, K, N). The core loops over output tiles, reading the iteration counts
+from RTP (Runtime Tunable Parameters); the host generates the DMA instruction
+stream at runtime for each problem size via the generated
+`generate_txn_sequence(M, K, N)` C++ function.
 
 ### Architecture
 
 ```
-                    ┌──────────────────────────┐
-                    │   single_core_dynamic.py  │
-                    │      --dynamic-txn        │
-                    └────────────┬─────────────┘
+                    ┌──────────────────────────────┐
+                    │  single_core_dynamic_txn.py   │
+                    │  (.as_mlir on the @iron.jit   │
+                    │   single_core_dynamic design) │
+                    └────────────┬─────────────────┘
                                  │
                        aie_gemm_dynamic.mlir
                     (one MLIR, three regions)
@@ -158,12 +158,11 @@ Those values control the nested loops on the core:
 - inner loop over K accumulation steps
 
 So one fixed ELF can execute many GEMM sizes as long as M, K, and N remain
-multiples of 32.
+multiples of the tile size.
 
 #### 3. Runtime sequence as a parameterized TXN program
 
-With `--dynamic-txn`, the runtime sequence itself takes `M`, `K`, and `N` as
-SSA values:
+The runtime sequence itself takes `M`, `K`, and `N` as SSA values:
 
 ```mlir
 aie.runtime_sequence(A, B, C, M, K, N)
@@ -264,49 +263,42 @@ while the cheap part changes at runtime:
 That is the core value of the feature: **compile once, vary GEMM shape at
 runtime by regenerating only the TXN program**.
 
-## Design Variants
-
-| File | Description |
-|------|-------------|
-| `single_core_dynamic.py` | Low-level dialect with `--dynamic-txn` flag |
-| `single_core_dynamic_placed.py` | Placed API variant |
-| `single_core_dynamic_iron.py` | IRON high-level API variant |
-
 ## Key Design Decisions
 
-**Fixed tile size (32x32x32)**: The AIE core microkernel (`mm.cc`) operates on fixed 32x32 tiles. The dynamic part is how many tiles are processed and the DMA pattern for streaming them.
+**RTP for loop bounds**: The core reads `K_div_k` and `tiles` from an RTP `Buffer`
+(`use_write_rtp=True`) via `memref.load`. The host writes these at the start of the
+runtime sequence; the DMA start acts as an implicit ordering barrier.
 
-**RTP for loop bounds**: The core reads K_div_k and total_tiles from an RTP buffer via `memref.load`. The host writes these before issuing DMAs. The DMA start acts as an implicit ordering barrier.
-
-**Pingpong DMA pattern**: Two sets of BDs (even/odd) overlap compute and data movement. Each half-block processes up to 2 tile rows. The `scf.for` in the runtime_sequence iterates over tile-row blocks, with `scf.if` guards for boundary conditions.
+**Pingpong DMA pattern**: Two `TaskGroup`s overlap compute and data movement —
+the previous group is finished (`prev.resolve()`) only after the next group's
+transfers are issued. The `range_` in the runtime sequence iterates over tile-row
+blocks, with `if_` guards for boundary conditions.
 
 **SCF preservation**: `aiecc` explicitly keeps `aie.runtime_sequence` legal
 during the module-level SCF-to-CF conversion, so SCF stays available for the
-EmitC path while `aie.core` regions continue through the normal lowering flow.
+EmitC / TXN-C++ path while `aie.core` regions continue through the normal
+lowering flow.
 
 ## Constraints
 
-- M, K, N must be multiples of 32 (the tile size)
-- bf16 input, f32 output only (kernel constraint)
-- Single core (tile 0,2) — no multi-core parallelism
-- NPU2 (Strix Halo) target only
+- M, K, N must be multiples of the tile size (`m`, `k`, `n`)
+- input/output dtype must both be integral or both float; output ≥ input width
+- Single core — no multi-core parallelism
+- The dynamic (SSA-size) sequence is lowered through the TXN-C++ flow, not a
+  static `insts.bin`
 
 ## Files
 
 ```
 single_core_dynamic/
-├── single_core_dynamic.py      # Python design (static + --dynamic-txn)
-├── single_core_dynamic_placed.py
-├── single_core_dynamic_iron.py
-├── test_dynamic.cpp            # Test harness (auto-generated TXN path)
+├── single_core_dynamic.py       # @iron.jit design (SSA M/K/N runtime sequence)
+├── single_core_dynamic_txn.py   # Driver: emits MLIR / compiles XCLBIN + TXN header
+├── test_dynamic.cpp             # Host test harness (auto-generated TXN path)
 ├── Makefile
-├── tests/
-│   ├── run_strix_makefile.lit
-│   ├── run_strix_makefile_placed.lit
-│   ├── run_strix_makefile_iron.lit
-│   └── run_strix_makefile_generated.lit
-└── build/dynsize/              # Generated artifacts
-    ├── aie_gemm_dynamic.mlir   # Dynamic MLIR (with SSA M/K/N)
-    ├── final_dynamic.xclbin    # Hardware configuration
-    └── generated_gemm_txn.h    # Auto-generated C++ TXN function
+├── run_makefile_dynamic.lit
+├── run_strix_makefile_dynamic.lit
+└── build/dynsize/               # Generated artifacts
+    ├── aie_gemm_dynamic.mlir    # Dynamic MLIR (with SSA M/K/N)
+    ├── final_dynamic.xclbin     # Hardware configuration
+    └── generated_gemm_txn.h     # Auto-generated C++ TXN function
 ```

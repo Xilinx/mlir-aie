@@ -56,21 +56,25 @@ def design():
 
     # Runtime sequence
     rt = Runtime()
-    with rt.sequence(in_ty, out_ty) as (in_tensor, out_tensor):
+
+    def sequence(in_tensor, out_tensor):
         rt.inline_ops(lambda: npu_load_pdi(device_ref="empty"), [])
         rt.inline_ops(lambda: npu_load_pdi(device_ref=device_name), [])
-        rt.start(worker)
 
         # Input DMA — offset_parameter patches the BD address at runtime
         in_tap = TensorAccessPattern(
             (32,), offset=0, sizes=[1, 1, 1, 8], strides=[0, 0, 0, 1]
         )
-        rt.fill(of_in.prod(), in_tensor, tap=in_tap, offset_parameter=input_offset)
+        of_in.prod().fill(in_tensor, tap=in_tap, offset_parameter=input_offset)
 
         # Output DMA
-        rt.drain(of_out.cons(), out_tensor, wait=True)
+        of_out.cons().drain(out_tensor, wait=True)
 
-    module = Program(NPU2Col1(), rt).resolve_program(device_name=device_name)
+    rt.sequence(sequence, [in_ty, out_ty])
+
+    module = Program(NPU2Col1(), rt, workers=[worker]).resolve_program(
+        device_name=device_name
+    )
 
     # Insert empty device to force PDI reload
     mlir_text = str(module)

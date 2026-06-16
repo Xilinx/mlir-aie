@@ -67,12 +67,16 @@ def section_2e_multi(a_in: In, b_out: Out):
     ]
 
     rt = Runtime()
-    with rt.sequence(data_ty, data_ty) as (a, b):
-        rt.start(*workers)
-        rt.fill(of_in.prod(), a)
-        rt.drain(of_out.cons(), b, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    def sequence(a, b):
+        of_in.prod().fill(a)
+        of_out.cons().drain(b, wait=True)
+
+    rt.sequence(sequence, [data_ty, data_ty])
+
+    return Program(
+        iron.get_current_device(), rt, workers=list(workers)
+    ).resolve_program()
 
 
 def _run_and_verify(opts):

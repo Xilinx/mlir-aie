@@ -271,11 +271,13 @@ def _transform(input_tensor: In, output_tensor: Out, *, kernel_fn: CompileTime[o
 
     worker = Worker(core_body, fn_args=[of_in.cons(), of_out.prod()])
     rt = Runtime()
-    with rt.sequence(_tensor_ty, _tensor_ty) as (A, B):
-        rt.start(worker)
-        rt.fill(of_in.prod(), A)
-        rt.drain(of_out.cons(), B, wait=True)
-    return Program(iron.get_current_device(), rt).resolve_program()
+
+    def sequence(A, B):
+        of_in.prod().fill(A)
+        of_out.cons().drain(B, wait=True)
+
+    rt.sequence(sequence, [_tensor_ty, _tensor_ty])
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 @pytest.mark.parametrize("add_value", [1, 2, 3])

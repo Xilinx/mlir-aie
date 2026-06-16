@@ -65,31 +65,29 @@ def my_passthrough_kernel(
     )
 
     rt = Runtime()
+    if trace_config:
+        rt.enable_trace(trace_config.trace_size, workers=[worker])
+
     if dynamic_txn:
         # Runtime-parameterized transfer length: `buffer_length` is an SSA
         # value of the runtime sequence (not baked in at compile time), so a
         # single compiled design serves any size up to `n`.  Consumed by the
         # aiecc TXN-C++ flow (see passthrough_kernel_dynamic.py); this path
         # emits MLIR for that flow rather than executing on the NPU.
-        with rt.sequence(vector_type, vector_type, T.i32) as (
-            a_in,
-            b_out,
-            buffer_length,
-        ):
-            if trace_config:
-                rt.enable_trace(trace_config.trace_size, workers=[worker])
-            rt.start(worker)
-            rt.fill(of_in.prod(), a_in, sizes=[1, 1, 1, buffer_length])
-            rt.drain(of_out.cons(), b_out, sizes=[1, 1, 1, buffer_length], wait=True)
-    else:
-        with rt.sequence(vector_type, vector_type) as (a_in, b_out):
-            if trace_config:
-                rt.enable_trace(trace_config.trace_size, workers=[worker])
-            rt.start(worker)
-            rt.fill(of_in.prod(), a_in)
-            rt.drain(of_out.cons(), b_out, wait=True)
+        def sequence(a_in, b_out, buffer_length):
+            of_in.prod().fill(a_in, sizes=[1, 1, 1, buffer_length])
+            of_out.cons().drain(b_out, sizes=[1, 1, 1, buffer_length], wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+        rt.sequence(sequence, [vector_type, vector_type, T.i32])
+    else:
+
+        def sequence(a_in, b_out):
+            of_in.prod().fill(a_in)
+            of_out.cons().drain(b_out, wait=True)
+
+        rt.sequence(sequence, [vector_type, vector_type])
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def main():

@@ -44,13 +44,15 @@ def custom_loop_type(loop_dtype):
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
-    with rt.sequence(vector_type, vector_type, vector_type) as (a_in, b_out, _):
-        rt.start(my_worker)
-        rt.fill(of_in.prod(), a_in)
-        rt.drain(of_out.cons(), b_out, wait=True)
+
+    def sequence(a_in, b_out, _unused0):
+        of_in.prod().fill(a_in)
+        of_out.cons().drain(b_out, wait=True)
+
+    rt.sequence(sequence, [vector_type, vector_type, vector_type])
 
     # Create the program from the device type and runtime
-    my_program = Program(NPU2(), rt)
+    my_program = Program(NPU2(), rt, workers=[my_worker])
 
     # Place components (assign them resources on the device) and generate an MLIR module
     module = my_program.resolve_program()

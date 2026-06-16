@@ -21,6 +21,7 @@ from aie.helpers.taplib import TensorTiler2D
 
 import aie.iron as iron
 from aie.iron import (
+    TaskGroup,
     Buffer,
     CompileTime,
     ExternalFunction,
@@ -202,9 +203,9 @@ def whole_array_shuffle(
     c_index = 0
 
     rt = Runtime()
-    with rt.sequence(A_ty, B_ty, C_ty) as (a, b, c):
-        rt.start(*[w for row in workers for w in row])
-        tg = rt.task_group()
+
+    def sequence(a, b, c):
+        tg = TaskGroup()
         for tb in range(iron.ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
             for pingpong in [0, 1]:
                 if c_index >= len(C_tiles):
@@ -214,12 +215,8 @@ def whole_array_shuffle(
                     [tb_max_n_rows // 2, M // m // n_aie_rows - row_base]
                 )
                 for col in range(n_aie_cols):
-                    rt.drain(
-                        C_l2l3_fifos[col].cons(),
-                        c,
-                        tap=C_tiles[c_index],
-                        wait=True,
-                        task_group=tg,
+                    C_l2l3_fifos[col].cons().drain(
+                        c, tap=C_tiles[c_index], wait=True, group=tg
                     )
                     c_index += 1
                     for tile_row in range(current_tb_n_rows):
@@ -227,24 +224,20 @@ def whole_array_shuffle(
                             (row_base + tile_row) * n_shim_mem_A + col
                         ) % len(A_tiles)
                         if col < n_aie_rows:
-                            rt.fill(
-                                A_l3l2_fifos[col].prod(),
-                                a,
-                                tap=A_tiles[tile_offset],
-                                task_group=tg,
+                            A_l3l2_fifos[col].prod().fill(
+                                a, tap=A_tiles[tile_offset], group=tg
                             )
-                        rt.fill(
-                            B_l3l2_fifos[col].prod(),
-                            b,
-                            tap=B_tiles[col],
-                            task_group=tg,
-                        )
+                        B_l3l2_fifos[col].prod().fill(b, tap=B_tiles[col], group=tg)
                 if tb > 0 or (tb == 0 and pingpong > 0):
-                    rt.finish_task_group(tg)
-                    tg = rt.task_group()
-        rt.finish_task_group(tg)
+                    tg.resolve()
+                    tg = TaskGroup()
+        tg.resolve()
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt.sequence(sequence, [A_ty, B_ty, C_ty])
+
+    return Program(
+        iron.get_current_device(), rt, workers=[w for row in workers for w in row]
+    ).resolve_program()
 
 
 def _make_argparser():

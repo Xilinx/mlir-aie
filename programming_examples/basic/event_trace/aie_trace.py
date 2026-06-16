@@ -89,7 +89,8 @@ def aie_trace(
     )
 
     rt = Runtime()
-    with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (a_in, f_in, c_out):
+
+    def sequence(a_in, f_in, c_out):
         # Custom per-tile-class event lists, forwarded by IRON's Runtime
         # to the same configure_trace() the dialect-level example used.
         rt.enable_trace(
@@ -136,12 +137,13 @@ def aie_trace(
                 ShimTileEvent.DMA_S2MM_1_STREAM_STARVATION,
             ],
         )
-        rt.start(worker)
-        rt.fill(of_in.prod(), a_in)
-        rt.fill(of_factor.prod(), f_in)
-        rt.drain(of_out.cons(), c_out, wait=True)
+        of_in.prod().fill(a_in)
+        of_factor.prod().fill(f_in)
+        of_out.cons().drain(c_out, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt.sequence(sequence, [tensor_ty, scalar_ty, tensor_ty])
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def _make_argparser():

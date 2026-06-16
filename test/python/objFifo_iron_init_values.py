@@ -53,11 +53,13 @@ def test_objectfifo_init_values():
 
     rt = Runtime()
     tensor_ty = np.ndarray[(32,), np.dtype[np.int32]]
-    with rt.sequence(tensor_ty) as a:
-        rt.start(cons)
-        rt.drain(of_out.cons(), a, wait=True)
 
-    module = Program(dev, rt).resolve_program()
+    def sequence(a):
+        of_out.cons().drain(a, wait=True)
+
+    rt.sequence(sequence, [tensor_ty])
+
+    module = Program(dev, rt, workers=[cons]).resolve_program()
     print(module)
 
 

@@ -60,12 +60,14 @@ def vector_passthrough(a_in: In, b_out: Out):
     worker = Worker(core_fn, [of_in.cons(), of_out.prod(), passthrough_func])
 
     rt = Runtime()
-    with rt.sequence(_TENSOR_TY, _TENSOR_TY) as (A, B):
-        rt.start(worker)
-        rt.fill(of_in.prod(), A)
-        rt.drain(of_out.cons(), B, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    def sequence(A, B):
+        of_in.prod().fill(A)
+        of_out.cons().drain(B, wait=True)
+
+    rt.sequence(sequence, [_TENSOR_TY, _TENSOR_TY])
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def _make_argparser():

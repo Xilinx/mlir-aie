@@ -52,12 +52,14 @@ def ext_to_core_L2(a_in: In, c_out: Out):
     my_worker = Worker(core_fn, [of_in1.cons(), of_out1.prod()])
 
     rt = Runtime()
-    with rt.sequence(data_ty, data_ty) as (a, c):
-        rt.start(my_worker)
-        rt.fill(of_in0.prod(), a)
-        rt.drain(of_out0.cons(), c, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    def sequence(a, c):
+        of_in0.prod().fill(a)
+        of_out0.cons().drain(c, wait=True)
+
+    rt.sequence(sequence, [data_ty, data_ty])
+
+    return Program(iron.get_current_device(), rt, workers=[my_worker]).resolve_program()
 
 
 def _run_and_verify(opts):

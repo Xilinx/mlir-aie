@@ -138,14 +138,16 @@ def group2(
     )
 
     rt = Runtime()
-    with rt.sequence(din_ty, scalar_ty, dout_ty) as (a, _b, c):
+
+    def sequence(a, _b, c):
         if trace_size > 0:
             rt.enable_trace(trace_size)
-        rt.start(worker)
-        rt.fill(of_din_L3L2.prod(), a, tile=shim_tile)
-        rt.drain(of_dout_L1L3.cons(), c, tile=shim_tile, wait=True)
+        of_din_L3L2.prod().fill(a, tile=shim_tile)
+        of_dout_L1L3.cons().drain(c, tile=shim_tile, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt.sequence(sequence, [din_ty, scalar_ty, dout_ty])
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def _make_argparser():

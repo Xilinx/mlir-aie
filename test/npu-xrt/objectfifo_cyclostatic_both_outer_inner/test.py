@@ -71,13 +71,15 @@ def cyclostatic_both_outer_inner(w_tensor: In, x_tensor: In, out_tensor: Out):
     )
 
     rt = Runtime()
-    with rt.sequence(w_in_ty, x_in_ty, out_ty) as (w_in, x_in, c_out):
-        rt.start(worker)
-        rt.fill(of_w_l3l2.prod(), w_in)
-        rt.fill(of_x_l3l2.prod(), x_in)
-        rt.drain(of_out_l2l3.cons(), c_out, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    def sequence(w_in, x_in, c_out):
+        of_w_l3l2.prod().fill(w_in)
+        of_x_l3l2.prod().fill(x_in)
+        of_out_l2l3.cons().drain(c_out, wait=True)
+
+    rt.sequence(sequence, [w_in_ty, x_in_ty, out_ty])
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def main():

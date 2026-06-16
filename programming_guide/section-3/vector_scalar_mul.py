@@ -84,13 +84,15 @@ def vector_scalar_mul(a_in: In, f_in: In, c_out: Out):
     )
 
     rt = Runtime()
-    with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (a, f, c):
-        rt.start(my_worker)
-        rt.fill(of_in.prod(), a)
-        rt.fill(of_factor.prod(), f)
-        rt.drain(of_out.cons(), c, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    def sequence(a, f, c):
+        of_in.prod().fill(a)
+        of_factor.prod().fill(f)
+        of_out.cons().drain(c, wait=True)
+
+    rt.sequence(sequence, [tensor_ty, scalar_ty, tensor_ty])
+
+    return Program(iron.get_current_device(), rt, workers=[my_worker]).resolve_program()
 
 
 def _make_inputs():

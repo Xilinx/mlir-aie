@@ -93,15 +93,17 @@ def vector_scalar_mul(
     )
 
     rt = Runtime()
-    with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (a, f, c):
+
+    def sequence(a, f, c):
         if trace_size > 0:
             rt.enable_trace(trace_size, workers=[my_worker])
-        rt.start(my_worker)
-        rt.fill(of_in.prod(), a)
-        rt.fill(of_factor.prod(), f)
-        rt.drain(of_out.cons(), c, wait=True)
+        of_in.prod().fill(a)
+        of_factor.prod().fill(f)
+        of_out.cons().drain(c, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt.sequence(sequence, [tensor_ty, scalar_ty, tensor_ty])
+
+    return Program(iron.get_current_device(), rt, workers=[my_worker]).resolve_program()
 
 
 def _make_inputs():

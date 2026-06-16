@@ -79,11 +79,13 @@ def _add_const_design(
 
     worker = Worker(core_body, fn_args=[of_in.cons(), of_out.prod()])
     rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty) as (a, b):
-        rt.start(worker)
-        rt.fill(of_in.prod(), a)
-        rt.drain(of_out.cons(), b, wait=True)
-    return Program(iron.get_current_device(), rt).resolve_program()
+
+    def sequence(a, b):
+        of_in.prod().fill(a)
+        of_out.cons().drain(b, wait=True)
+
+    rt.sequence(sequence, [tensor_ty, tensor_ty])
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 # ---------------------------------------------------------------------------

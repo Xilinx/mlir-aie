@@ -66,12 +66,16 @@ def vector_exp(
     ]
 
     rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty) as (a_in, c_out):
-        rt.start(*workers)
-        rt.fill(A_fifo.prod(), a_in)
-        rt.drain(C_fifo.cons(), c_out, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    def sequence(a_in, c_out):
+        A_fifo.prod().fill(a_in)
+        C_fifo.cons().drain(c_out, wait=True)
+
+    rt.sequence(sequence, [tensor_ty, tensor_ty])
+
+    return Program(
+        iron.get_current_device(), rt, workers=list(workers)
+    ).resolve_program()
 
 
 def main():

@@ -185,13 +185,15 @@ def conv2dk14(
     )
 
     rt = Runtime()
-    with rt.sequence(tensor_in_ty, tensor_wts_ty, tensor_out_ty) as (I, W, O):
-        rt.start(worker)
-        rt.fill(of_act_l3l2.prod(), I)
-        rt.fill(of_wts_l3l2.prod(), W)
-        rt.drain(of_out_l3.cons(), O, wait=True)
 
-    return Program(device, rt).resolve_program()
+    def sequence(I, W, O):
+        of_act_l3l2.prod().fill(I)
+        of_wts_l3l2.prod().fill(W)
+        of_out_l3.cons().drain(O, wait=True)
+
+    rt.sequence(sequence, [tensor_in_ty, tensor_wts_ty, tensor_out_ty])
+
+    return Program(device, rt, workers=[worker]).resolve_program()
 
 
 @iron.jit
@@ -348,8 +350,8 @@ def conv2dk14_multi(
     )
 
     rt = Runtime()
-    with rt.sequence(tensor_in_ty, tensor_wts_ty, tensor_out_ty) as (I, W, O):
-        rt.start(*[w for row in workers for w in row])
+
+    def sequence(I, W, O):
         row_chunk = tensor_in_size // n_rows
         wts_chunk = tensor_wts_size // n_cols
         out_chunk = tensor_out_size // n_cols
@@ -360,7 +362,7 @@ def conv2dk14_multi(
                 [act_repeat, 1, 1, row_chunk],
                 [0, 0, 0, 1],
             )
-            rt.fill(of_act_l3l2[j].prod(), I, tap)
+            of_act_l3l2[j].prod().fill(I, tap)
         for i in range(n_cols):
             wts_tap = TensorAccessPattern(
                 (1, tensor_wts_size),
@@ -374,10 +376,14 @@ def conv2dk14_multi(
                 [1, 1, 1, out_chunk],
                 [0, 0, 0, 1],
             )
-            rt.fill(of_wts[i].prod(), W, wts_tap)
-            rt.drain(of_out_l2l3[i].cons(), O, out_tap, wait=True)
+            of_wts[i].prod().fill(W, wts_tap)
+            of_out_l2l3[i].cons().drain(O, out_tap, wait=True)
 
-    return Program(device, rt).resolve_program()
+    rt.sequence(sequence, [tensor_in_ty, tensor_wts_ty, tensor_out_ty])
+
+    return Program(
+        device, rt, workers=[w for row in workers for w in row]
+    ).resolve_program()
 
 
 def _make_argparser():

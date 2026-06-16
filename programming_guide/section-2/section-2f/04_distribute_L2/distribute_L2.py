@@ -52,11 +52,15 @@ def distribute_L2(a_in: In):
     workers = [Worker(core_fn, [of_ins[w].cons()]) for w in range(n_workers)]
 
     rt = Runtime()
-    with rt.sequence(data_ty) as a:
-        rt.start(*workers)
-        rt.fill(of_in.prod(), a)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    def sequence(a):
+        of_in.prod().fill(a)
+
+    rt.sequence(sequence, [data_ty])
+
+    return Program(
+        iron.get_current_device(), rt, workers=list(workers)
+    ).resolve_program()
 
 
 def main():

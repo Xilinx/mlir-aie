@@ -52,14 +52,18 @@ def design():
 
     # Runtime sequence: load empty device first to force PDI reconfiguration
     rt = Runtime()
-    with rt.sequence(out_ty) as out_tensor:
+
+    def sequence(out_tensor):
         rt.inline_ops(lambda: npu_load_pdi(device_ref="empty"), [])
         rt.inline_ops(lambda: npu_load_pdi(device_ref=device_name), [])
         rt.sync_parameters()
-        rt.start(worker)
-        rt.drain(of_out.cons(), out_tensor, wait=True)
+        of_out.cons().drain(out_tensor, wait=True)
 
-    module = Program(NPU2Col1(), rt).resolve_program(device_name=device_name)
+    rt.sequence(sequence, [out_ty])
+
+    module = Program(NPU2Col1(), rt, workers=[worker]).resolve_program(
+        device_name=device_name
+    )
 
     # Insert empty device at the beginning of the module to force PDI reload.
     # The firmware skips reloading a PDI if it's the same as the last one loaded,

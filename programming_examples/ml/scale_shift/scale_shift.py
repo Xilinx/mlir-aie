@@ -26,6 +26,7 @@ from ml_dtypes import bfloat16
 
 import aie.iron as iron
 from aie.iron import (
+    TaskGroup,
     Buffer,
     CompileTime,
     In,
@@ -156,30 +157,32 @@ def scale_shift(
         return _impl
 
     rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty, tensor_ty, tensor_ty) as (A, B, C, D):
-        rt.start(*workers)
+
+    def sequence(A, B, C, D):
 
         # Phase 1: multiply (rtp=1).
         rt.inline_ops(_set_rtps_to(1), rtps)
         for i in range(n_cores):
             rt.set_barrier(barriers[i], 1)
-        tg1 = rt.task_group()
-        rt.fill(inA.prod(), A, task_group=tg1)
-        rt.fill(inB.prod(), B, task_group=tg1)
-        rt.drain(outC.cons(), D, wait=True, task_group=tg1)
-        rt.finish_task_group(tg1)
+        tg1 = TaskGroup()
+        inA.prod().fill(A, group=tg1)
+        inB.prod().fill(B, group=tg1)
+        outC.cons().drain(D, wait=True, group=tg1)
+        tg1.resolve()
 
         # Phase 2: add (rtp=0).  D = (A*B) feeds back as the lhs.
         rt.inline_ops(_set_rtps_to(0), rtps)
         for i in range(n_cores):
             rt.set_barrier(barriers[i], 1)
-        tg2 = rt.task_group()
-        rt.fill(inA.prod(), D, task_group=tg2)
-        rt.fill(inB.prod(), C, task_group=tg2)
-        rt.drain(outC.cons(), D, wait=True, task_group=tg2)
-        rt.finish_task_group(tg2)
+        tg2 = TaskGroup()
+        inA.prod().fill(D, group=tg2)
+        inB.prod().fill(C, group=tg2)
+        outC.cons().drain(D, wait=True, group=tg2)
+        tg2.resolve()
 
-    return Program(device, rt).resolve_program()
+    rt.sequence(sequence, [tensor_ty, tensor_ty, tensor_ty, tensor_ty])
+
+    return Program(device, rt, workers=list(workers)).resolve_program()
 
 
 def _make_argparser():

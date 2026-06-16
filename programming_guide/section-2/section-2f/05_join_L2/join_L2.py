@@ -52,11 +52,15 @@ def join_L2(c_out: Out):
     workers = [Worker(core_fn, [of_outs[w].prod()]) for w in range(n_workers)]
 
     rt = Runtime()
-    with rt.sequence(data_ty) as c:
-        rt.start(*workers)
-        rt.drain(of_out.cons(), c, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    def sequence(c):
+        of_out.cons().drain(c, wait=True)
+
+    rt.sequence(sequence, [data_ty])
+
+    return Program(
+        iron.get_current_device(), rt, workers=list(workers)
+    ).resolve_program()
 
 
 def main():

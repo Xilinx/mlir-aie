@@ -45,9 +45,7 @@ if __name__ == "__main__":
     utils.set_current_device(dev)
 
     n_elems = args.in1_size  # uint8 kernel: byte size == element count
-    mlir_module = my_passthrough_kernel.as_mlir(
-        None, None, n=n_elems, dynamic_txn=True
-    )
+    mlir_module = my_passthrough_kernel.as_mlir(None, None, n=n_elems, dynamic_txn=True)
 
     if args.xclbin_path is None:
         print(mlir_module)

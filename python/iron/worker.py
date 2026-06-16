@@ -97,6 +97,7 @@ class Worker(ObjectFifoEndpoint):
         self._fifos = []
         self._buffers = []
         self._barriers = []
+        self._barrier_locks_resolved = False
         # CascadeFlow objects whose source is this Worker. Populated by
         # CascadeFlow(src, dst).__init__ and consumed by Program.resolve()
         # to emit aie.cascade_flow ops after worker placement.
@@ -184,6 +185,22 @@ class Worker(ObjectFifoEndpoint):
         """
         return self._buffers.copy()
 
+    def resolve_barrier_locks(self) -> None:
+        """Create the worker's barrier locks at device scope.
+
+        Split out of :meth:`resolve` so the Program can create these before the
+        runtime sequence resolves — ``rt.set_barrier`` in the sequence body emits
+        ``set_lock`` against these locks, and the sequence now resolves ahead of
+        the core bodies. Idempotent: only creates locks once per worker.
+        """
+        if not self._tile:
+            raise ValueError("Must place Worker before it can be resolved.")
+        if self._barrier_locks_resolved:
+            return
+        for barrier in self._barriers:
+            barrier._add_worker_lock(lock(self._tile.op))
+        self._barrier_locks_resolved = True
+
     def resolve(
         self,
         loc: ir.Location | None = None,
@@ -193,11 +210,10 @@ class Worker(ObjectFifoEndpoint):
             raise ValueError("Must place Worker before it can be resolved.")
         my_tile = self._tile.op
 
-        # Create the necessary locks for the core operation to synchronize with the runtime sequence
-        # and register them in the corresponding barriers.
-        for barrier in self._barriers:
-            l = lock(my_tile)
-            barrier._add_worker_lock(l)
+        # Locks may already be created by resolve_barrier_locks() (the Program
+        # does this before the runtime sequence); create them here otherwise so a
+        # Worker resolved on its own still works.
+        self.resolve_barrier_locks()
 
         @core(
             my_tile,

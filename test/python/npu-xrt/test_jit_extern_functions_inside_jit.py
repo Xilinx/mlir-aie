@@ -80,13 +80,15 @@ def transform_with_internal_func_with_options(
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty) as (A, B):
-        rt.start(worker)
-        rt.fill(of_in.prod(), A)
-        rt.drain(of_out.cons(), B, wait=True)
+
+    def sequence(A, B):
+        of_in.prod().fill(A)
+        of_out.cons().drain(B, wait=True)
+
+    rt.sequence(sequence, [tensor_ty, tensor_ty])
 
     # Place program components and generate an MLIR module
-    return Program(iron.get_current_device(), rt).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 @jit
@@ -156,13 +158,15 @@ def transform_with_internal_func_from_file(
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty) as (A, B):
-        rt.start(worker)
-        rt.fill(of_in.prod(), A)
-        rt.drain(of_out.cons(), B, wait=True)
+
+    def sequence(A, B):
+        of_in.prod().fill(A)
+        of_out.cons().drain(B, wait=True)
+
+    rt.sequence(sequence, [tensor_ty, tensor_ty])
 
     # Place program components and generate an MLIR module
-    return Program(iron.get_current_device(), rt).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 @jit
@@ -227,13 +231,15 @@ def transform_with_internal_func(
 
     # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty) as (A, B):
-        rt.start(worker)
-        rt.fill(of_in.prod(), A)
-        rt.drain(of_out.cons(), B, wait=True)
+
+    def sequence(A, B):
+        of_in.prod().fill(A)
+        of_out.cons().drain(B, wait=True)
+
+    rt.sequence(sequence, [tensor_ty, tensor_ty])
 
     # Place program components and generate an MLIR module
-    return Program(iron.get_current_device(), rt).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def test_transform_with_internal_func_with_options_inside():

@@ -226,11 +226,12 @@ def vector_vector_add(
         rt.add_lock(lk)
     rt.add_tile_dma(compute_dma)
 
-    with rt.sequence(tensor_ty, tensor_ty) as (A, C):
-        rt.start(worker)
+    def sequence(A, C):
         rt.inline_ops(emit_seq, [A, C])
 
-    return Program(dev, rt).resolve_program()
+    rt.sequence(sequence, [tensor_ty, tensor_ty])
+
+    return Program(dev, rt, workers=[worker]).resolve_program()
 
 
 def _make_argparser():

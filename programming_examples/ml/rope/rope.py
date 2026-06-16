@@ -101,15 +101,17 @@ def rope(
     )
 
     rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty, tensor_ty) as (a, lut, c):
-        rt.start(*workers)
-        for i in range(n_cores):
-            rt.fill(of_ins[i].prod(), a, taps[i])
-            rt.fill(of_luts[i].prod(), lut, taps[i])
-        for i in range(n_cores):
-            rt.drain(of_outs[i].cons(), c, taps[i], wait=True)
 
-    return Program(device, rt).resolve_program()
+    def sequence(a, lut, c):
+        for i in range(n_cores):
+            of_ins[i].prod().fill(a, taps[i])
+            of_luts[i].prod().fill(lut, taps[i])
+        for i in range(n_cores):
+            of_outs[i].cons().drain(c, taps[i], wait=True)
+
+    rt.sequence(sequence, [tensor_ty, tensor_ty, tensor_ty])
+
+    return Program(device, rt, workers=list(workers)).resolve_program()
 
 
 def _make_argparser():

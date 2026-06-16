@@ -1,7 +1,7 @@
 # Copyright (C) 2025, Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 import numpy as np
-from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron import TaskGroup, ObjectFifo, Program, Runtime, Worker
 
 from aie.iron.device import NPU2
 from util import construct_and_print_module
@@ -32,16 +32,18 @@ def task_group_drain_sequence(module):
     worker = Worker(core_fn, [of_0.cons(), of_1.prod(), of_2.prod()])
 
     rt = Runtime()
-    with rt.sequence(n_ty, n_ty, n_ty) as (A, B, C):
-        rt.start(worker)
 
-        tg = rt.task_group()
-        rt.fill(of_0.prod(), A, task_group=tg)
-        rt.drain(of_1.cons(), B, task_group=tg, wait=True)
-        rt.drain(of_2.cons(), C, task_group=tg, wait=True)
-        rt.finish_task_group(tg)
+    def sequence(A, B, C):
 
-    module = Program(NPU2(), rt).resolve_program()
+        tg = TaskGroup()
+        of_0.prod().fill(A, group=tg)
+        of_1.cons().drain(B, group=tg, wait=True)
+        of_2.cons().drain(C, group=tg, wait=True)
+        tg.resolve()
+
+    rt.sequence(sequence, [n_ty, n_ty, n_ty])
+
+    module = Program(NPU2(), rt, workers=[worker]).resolve_program()
     return module
 
 
@@ -68,14 +70,16 @@ def default_rt_drain_sequence(module):
     worker = Worker(core_fn, [of_0.cons(), of_1.prod(), of_2.prod()])
 
     rt = Runtime()
-    with rt.sequence(n_ty, n_ty, n_ty) as (A, B, C):
-        rt.start(worker)
 
-        rt.fill(of_0.prod(), A)
-        rt.drain(of_1.cons(), B, wait=True)
-        rt.drain(of_2.cons(), C, wait=True)
+    def sequence(A, B, C):
 
-    module = Program(NPU2(), rt).resolve_program()
+        of_0.prod().fill(A)
+        of_1.cons().drain(B, wait=True)
+        of_2.cons().drain(C, wait=True)
+
+    rt.sequence(sequence, [n_ty, n_ty, n_ty])
+
+    module = Program(NPU2(), rt, workers=[worker]).resolve_program()
     return module
 
 
@@ -99,13 +103,15 @@ def default_rt_basic_sequence(module):
     worker = Worker(core_fn, [of_0.cons(), of_1.prod()])
 
     rt = Runtime()
-    with rt.sequence(n_ty, n_ty, n_ty) as (A, B, C):
-        rt.start(worker)
 
-        rt.fill(of_0.prod(), A)
-        rt.drain(of_1.cons(), B, wait=True)
+    def sequence(A, B, C):
 
-    module = Program(NPU2(), rt).resolve_program()
+        of_0.prod().fill(A)
+        of_1.cons().drain(B, wait=True)
+
+    rt.sequence(sequence, [n_ty, n_ty, n_ty])
+
+    module = Program(NPU2(), rt, workers=[worker]).resolve_program()
     return module
 
 
@@ -132,14 +138,16 @@ def default_rt_fill_sequence(module):
     worker = Worker(core_fn, [of_0.cons(), of_1.cons(), of_2.prod()])
 
     rt = Runtime()
-    with rt.sequence(n_ty, n_ty, n_ty) as (A, B, C):
-        rt.start(worker)
 
-        rt.fill(of_0.prod(), A)
-        rt.fill(of_1.prod(), B)
-        rt.drain(of_2.cons(), C, wait=True)
+    def sequence(A, B, C):
 
-    module = Program(NPU2(), rt).resolve_program()
+        of_0.prod().fill(A)
+        of_1.prod().fill(B)
+        of_2.cons().drain(C, wait=True)
+
+    rt.sequence(sequence, [n_ty, n_ty, n_ty])
+
+    module = Program(NPU2(), rt, workers=[worker]).resolve_program()
     return module
 
 
@@ -166,21 +174,31 @@ def rt_drain_then_fill_sequence(module):
     worker = Worker(core_fn, [of_0.cons(), of_1.cons(), of_2.prod()])
 
     rt = Runtime()
-    with rt.sequence(n_ty, n_ty, n_ty) as (A, B, C):
-        rt.start(worker)
 
-        rt.drain(of_2.cons(), C, wait=True)
-        rt.fill(of_0.prod(), A)
-        rt.fill(of_1.prod(), B)
+    def sequence(A, B, C):
 
-    module = Program(NPU2(), rt).resolve_program()
+        of_2.cons().drain(C, wait=True)
+        of_0.prod().fill(A)
+        of_1.prod().fill(B)
+
+    rt.sequence(sequence, [n_ty, n_ty, n_ty])
+
+    module = Program(NPU2(), rt, workers=[worker]).resolve_program()
     return module
 
 
-# CHECK-LABEL: TEST: rt_strict_mixed_sequence
-# CHECK: success!
+# A TaskGroup may be mixed with ungrouped transfers (the ungrouped one joins the
+# implicit default group, resolved at end-of-sequence). The eager runtime has no
+# default-vs-explicit hazard, so this is always allowed.
+# CHECK-LABEL: TEST: rt_mixed_group_and_default_sequence
+# CHECK: aiex.dma_start_task([[T0:%.*]])
+# CHECK: aiex.dma_start_task([[T1:%.*]])
+# CHECK: aiex.dma_start_task([[T2:%.*]])
+# CHECK: aiex.dma_await_task([[T0]])
+# CHECK: aiex.dma_free_task([[T1]])
+# CHECK: aiex.dma_free_task([[T2]])
 @construct_and_print_module
-def rt_strict_mixed_sequence(module):
+def rt_mixed_group_and_default_sequence(module):
     n = 1024
 
     n_ty = np.ndarray[(n,), np.dtype[np.int32]]
@@ -195,55 +213,17 @@ def rt_strict_mixed_sequence(module):
     worker = Worker(core_fn, [of_0.cons(), of_1.cons(), of_2.prod()])
 
     rt = Runtime()
-    with rt.sequence(n_ty, n_ty, n_ty) as (A, B, C):
-        rt.start(worker)
 
-        tg = rt.task_group()
-        rt.drain(of_2.cons(), C, wait=True, task_group=tg)
-        rt.fill(of_0.prod(), A, task_group=tg)
-        rt.fill(of_1.prod(), B)
-        rt.finish_task_group(tg)
+    def sequence(A, B, C):
+        tg = TaskGroup()
+        of_2.cons().drain(C, wait=True, group=tg)
+        of_0.prod().fill(A, group=tg)
+        of_1.prod().fill(B)
+        tg.resolve()
 
-    try:
-        Program(NPU2(), rt).resolve_program()
-    except Exception as e:
-        print("success!")
-    return module
+    rt.sequence(sequence, [n_ty, n_ty, n_ty])
 
-
-# CHECK-LABEL: TEST: rt_not_strict_mixed_sequence
-# CHECK: aiex.dma_start_task([[T0:%.*]])
-# CHECK: aiex.dma_start_task([[T1:%.*]])
-# CHECK: aiex.dma_start_task([[T2:%.*]])
-# CHECK: aiex.dma_await_task([[T0]])
-# CHECK: aiex.dma_free_task([[T1]])
-# CHECK: aiex.dma_free_task([[T2]])
-@construct_and_print_module
-def rt_not_strict_mixed_sequence(module):
-    n = 1024
-
-    n_ty = np.ndarray[(n,), np.dtype[np.int32]]
-
-    of_0 = ObjectFifo(n_ty, name="of0")
-    of_1 = ObjectFifo(n_ty, name="of1")
-    of_2 = ObjectFifo(n_ty, name="iof2")
-
-    def core_fn(of_0, of_1, of_2):
-        pass
-
-    worker = Worker(core_fn, [of_0.cons(), of_1.cons(), of_2.prod()])
-
-    rt = Runtime(strict_task_groups=False)
-    with rt.sequence(n_ty, n_ty, n_ty) as (A, B, C):
-        rt.start(worker)
-
-        tg = rt.task_group()
-        rt.drain(of_2.cons(), C, wait=True, task_group=tg)
-        rt.fill(of_0.prod(), A, task_group=tg)
-        rt.fill(of_1.prod(), B)
-        rt.finish_task_group(tg)
-
-    module = Program(NPU2(), rt).resolve_program()
+    module = Program(NPU2(), rt, workers=[worker]).resolve_program()
     return module
 
 
@@ -270,16 +250,18 @@ def rt_two_task_group_sequence(module):
     worker = Worker(core_fn, [of_0.cons(), of_1.cons(), of_2.prod()])
 
     rt = Runtime()
-    with rt.sequence(n_ty, n_ty, n_ty) as (A, B, C):
-        rt.start(worker)
 
-        tg = rt.task_group()
-        tg2 = rt.task_group()
-        rt.drain(of_2.cons(), C, wait=True, task_group=tg)
-        rt.fill(of_0.prod(), A, task_group=tg)
-        rt.fill(of_1.prod(), B, task_group=tg2)
-        rt.finish_task_group(tg)
-        rt.finish_task_group(tg2)
+    def sequence(A, B, C):
 
-    module = Program(NPU2(), rt).resolve_program()
+        tg = TaskGroup()
+        tg2 = TaskGroup()
+        of_2.cons().drain(C, wait=True, group=tg)
+        of_0.prod().fill(A, group=tg)
+        of_1.prod().fill(B, group=tg2)
+        tg.resolve()
+        tg2.resolve()
+
+    rt.sequence(sequence, [n_ty, n_ty, n_ty])
+
+    module = Program(NPU2(), rt, workers=[worker]).resolve_program()
     return module

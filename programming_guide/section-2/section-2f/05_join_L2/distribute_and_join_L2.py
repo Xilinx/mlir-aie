@@ -66,12 +66,16 @@ def distribute_and_join_L2(a_in: In, c_out: Out):
     ]
 
     rt = Runtime()
-    with rt.sequence(data_ty, data_ty) as (a, c):
-        rt.start(*workers)
-        rt.fill(of_in.prod(), a)
-        rt.drain(of_out.cons(), c, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    def sequence(a, c):
+        of_in.prod().fill(a)
+        of_out.cons().drain(c, wait=True)
+
+    rt.sequence(sequence, [data_ty, data_ty])
+
+    return Program(
+        iron.get_current_device(), rt, workers=list(workers)
+    ).resolve_program()
 
 
 def _run_and_verify(opts):

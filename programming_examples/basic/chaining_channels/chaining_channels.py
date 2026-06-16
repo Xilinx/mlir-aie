@@ -287,7 +287,7 @@ def chaining_channels(
     rt.add_tile_dma(memtile_dma)
     rt.add_tile_dma(compute_dma)
 
-    with rt.sequence(vector_ty, vector_ty_read) as (a, b):
+    def sequence(a, b):
         if trace_size > 0:
             rt.enable_trace(
                 trace_size,
@@ -321,10 +321,11 @@ def chaining_channels(
                     ),
                 ],
             )
-        rt.start(worker)
         rt.inline_ops(manual_bd_writes, [a, b])
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt.sequence(sequence, [vector_ty, vector_ty_read])
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def _compile_kwargs(opts):

@@ -162,16 +162,18 @@ def vector_reduce_max(
     # --------------------------------------------------------------------------
 
     rt = Runtime()
-    with rt.sequence(in_ty, out_ty) as (a_in, c_out):
-        rt.start(*workers)
-        rt.fill(of_in.prod(), a_in)
-        rt.drain(out_fifos[0].cons(), c_out, wait=True)
+
+    def sequence(a_in, c_out):
+        of_in.prod().fill(a_in)
+        out_fifos[0].cons().drain(c_out, wait=True)
+
+    rt.sequence(sequence, [in_ty, out_ty])
 
     # --------------------------------------------------------------------------
     # Place and generate MLIR program
     # --------------------------------------------------------------------------
 
-    my_program = Program(iron.get_current_device(), rt)
+    my_program = Program(iron.get_current_device(), rt, workers=list(workers))
     return my_program.resolve_program()
 
 

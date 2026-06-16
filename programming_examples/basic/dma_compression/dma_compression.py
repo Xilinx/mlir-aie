@@ -288,7 +288,8 @@ def _build_regdump():
     worker = Worker(regdump_core, [of_out.prod(), dump_fn], tile=compute_tile)
 
     rt = Runtime()
-    with rt.sequence(vec_ty, vec_ty) as (a_in, c_out):
+
+    def sequence(a_in, c_out):
 
         def enable_processor_bus():
             npu_maskwrite32(
@@ -300,9 +301,10 @@ def _build_regdump():
             )
 
         rt.inline_ops(enable_processor_bus, [])
-        rt.start(worker)
-        rt.drain(of_out.cons(), c_out, wait=True)
-    return Program(iron.get_current_device(), rt).resolve_program()
+        of_out.cons().drain(c_out, wait=True)
+
+    rt.sequence(sequence, [vec_ty, vec_ty])
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 @iron.jit
@@ -375,7 +377,8 @@ def dma_compression(
         )
 
         rt = Runtime()
-        with rt.sequence(vec_ty, vec_ty) as (a_in, c_out):
+
+        def sequence(a_in, c_out):
 
             def configure_compression_roundtrip():
                 if engage_compress:
@@ -391,10 +394,13 @@ def dma_compression(
 
             if engage_compress or engage_decompress:
                 rt.inline_ops(configure_compression_roundtrip, [])
-            rt.start(ct_worker)
-            rt.fill(of_a.prod(), a_in)
-            rt.drain(of_c.cons(), c_out, tap=out_tap_rt, wait=True)
-        return Program(iron.get_current_device(), rt).resolve_program()
+            of_a.prod().fill(a_in)
+            of_c.cons().drain(c_out, tap=out_tap_rt, wait=True)
+
+        rt.sequence(sequence, [vec_ty, vec_ty])
+        return Program(
+            iron.get_current_device(), rt, workers=[ct_worker]
+        ).resolve_program()
 
     is_memtile = config in MEMTILE_CONFIGS
     if is_memtile:
@@ -476,7 +482,8 @@ def dma_compression(
     base_config = config in ("base", "memtile_base")
 
     rt = Runtime()
-    with rt.sequence(vec_ty, vec_ty) as (a_in, c_out):
+
+    def sequence(a_in, c_out):
         if is_host_compression and not base_config:
 
             def configure_compression_host():
@@ -500,9 +507,13 @@ def dma_compression(
                 )
 
             rt.inline_ops(enable_processor_bus, [])
-            rt.start(core_worker)
+            pass
 
-        rt.fill(of_in.prod(), a_in, tap=in_tap)
-        rt.drain(of_out.cons(), c_out, tap=out_tap, wait=True)
+        of_in.prod().fill(a_in, tap=in_tap)
+        of_out.cons().drain(c_out, tap=out_tap, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt.sequence(sequence, [vec_ty, vec_ty])
+
+    return Program(
+        iron.get_current_device(), rt, workers=[core_worker]
+    ).resolve_program()

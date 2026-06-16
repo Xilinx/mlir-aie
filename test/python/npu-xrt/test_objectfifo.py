@@ -188,12 +188,14 @@ def test_workers_cannot_share_tile():
     w1 = Worker(None, [of1.cons()], tile=shared_tile)
     w2 = Worker(None, [of2.cons()], tile=shared_tile)
     rt = Runtime()
-    with rt.sequence(n_ty, n_ty) as (A, B):
-        rt.start(w1, w2)
-        rt.fill(of1.prod(), A)
-        rt.fill(of2.prod(), B)
+
+    def sequence(A, B):
+        of1.prod().fill(A)
+        of2.prod().fill(B)
+
+    rt.sequence(sequence, [n_ty, n_ty])
     with pytest.raises(ValueError, match="Multiple workers cannot share the same tile"):
-        Program(NPU2(), rt).resolve_program()
+        Program(NPU2(), rt, workers=[w1, w2]).resolve_program()
 
 
 def test_workers_cannot_share_tile_by_coordinates():
@@ -206,12 +208,14 @@ def test_workers_cannot_share_tile_by_coordinates():
     w1 = Worker(None, [of1.cons()], tile=tile_1)
     w2 = Worker(None, [of2.cons()], tile=tile_2)
     rt = Runtime()
-    with rt.sequence(n_ty, n_ty) as (A, B):
-        rt.start(w1, w2)
-        rt.fill(of1.prod(), A)
-        rt.fill(of2.prod(), B)
+
+    def sequence(A, B):
+        of1.prod().fill(A)
+        of2.prod().fill(B)
+
+    rt.sequence(sequence, [n_ty, n_ty])
     with pytest.raises(ValueError, match="Multiple workers cannot share the same tile"):
-        Program(NPU2(), rt).resolve_program()
+        Program(NPU2(), rt, workers=[w1, w2]).resolve_program()
 
 
 def test_buffer_cannot_be_shared_across_workers():
@@ -249,12 +253,16 @@ def test_fill_conflicting_tiles_errors():
     n_ty = np.ndarray[(1024,), np.dtype[np.int32]]
     of = ObjectFifo(n_ty, name="conflict_of")
     prod = of.prod()
+    worker = Worker(None, [of.cons()])
     rt = Runtime()
-    with rt.sequence(n_ty, n_ty) as (A, _):
-        rt.start(Worker(None, [of.cons()]))
-        rt.fill(prod, A, tile=Tile(0, 0))
-        with pytest.raises(ValueError, match="Endpoint already set"):
-            rt.fill(prod, A, tile=Tile(1, 0))
+
+    def sequence(A, _unused0):
+        prod.fill(A, tile=Tile(0, 0))
+        prod.fill(A, tile=Tile(1, 0))
+
+    rt.sequence(sequence, [n_ty, n_ty])
+    with pytest.raises(ValueError, match="Endpoint already set"):
+        Program(NPU2(), rt, workers=[worker]).resolve_program()
 
 
 def test_fill_same_tile_allowed():
@@ -262,11 +270,15 @@ def test_fill_same_tile_allowed():
     n_ty = np.ndarray[(1024,), np.dtype[np.int32]]
     of = ObjectFifo(n_ty, name="same_of")
     prod = of.prod()
+    worker = Worker(None, [of.cons()])
     rt = Runtime()
-    with rt.sequence(n_ty, n_ty) as (A, _):
-        rt.start(Worker(None, [of.cons()]))
-        rt.fill(prod, A, tile=Tile(0, 0))
-        rt.fill(prod, A, tile=Tile(0, 0))  # same coords — no error
+
+    def sequence(A, _unused0):
+        prod.fill(A, tile=Tile(0, 0))
+        prod.fill(A, tile=Tile(0, 0))  # same coords — no error
+
+    rt.sequence(sequence, [n_ty, n_ty])
+    Program(NPU2(), rt, workers=[worker]).resolve_program()
 
 
 def test_fill_unplaced_tile_allowed():
@@ -274,8 +286,12 @@ def test_fill_unplaced_tile_allowed():
     n_ty = np.ndarray[(1024,), np.dtype[np.int32]]
     of = ObjectFifo(n_ty, name="unplaced_of")
     prod = of.prod()
+    worker = Worker(None, [of.cons()])
     rt = Runtime()
-    with rt.sequence(n_ty, n_ty) as (A, _):
-        rt.start(Worker(None, [of.cons()]))
-        rt.fill(prod, A)
-        rt.fill(prod, A)  # both default AnyShimTile — no error
+
+    def sequence(A, _unused0):
+        prod.fill(A)
+        prod.fill(A)  # both default AnyShimTile — no error
+
+    rt.sequence(sequence, [n_ty, n_ty])
+    Program(NPU2(), rt, workers=[worker]).resolve_program()

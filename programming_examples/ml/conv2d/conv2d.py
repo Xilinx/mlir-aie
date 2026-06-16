@@ -118,13 +118,15 @@ def conv2d(
     )
 
     rt = Runtime()
-    with rt.sequence(tensor_in_ty, weights_ty, tensor_out_ty) as (I, W, O):
-        rt.start(worker)
-        rt.fill(of_act_l3l2.prod(), I)
-        rt.fill(of_wts_l3l2.prod(), W)
-        rt.drain(of_out_l3.cons(), O, wait=True)
 
-    return Program(device, rt).resolve_program()
+    def sequence(I, W, O):
+        of_act_l3l2.prod().fill(I)
+        of_wts_l3l2.prod().fill(W)
+        of_out_l3.cons().drain(O, wait=True)
+
+    rt.sequence(sequence, [tensor_in_ty, weights_ty, tensor_out_ty])
+
+    return Program(device, rt, workers=[worker]).resolve_program()
 
 
 def _make_argparser():

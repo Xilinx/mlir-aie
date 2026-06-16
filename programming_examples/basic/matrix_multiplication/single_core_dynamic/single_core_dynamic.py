@@ -3,416 +3,285 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2026 AMD Inc.
-#
-# Dynamic single-core matrix multiplication.
-#
-# This is a minimal delta over single_core.py. The differences are:
-#   1. The runtime_sequence takes M, K, N as SSA i32 inputs, so the same
-#      compiled XCLBIN handles any (multiple-of-tile) shape at runtime.
-#   2. The runtime_sequence body uses range_ / if_ (which emit scf.for /
-#      scf.if at MLIR build time) wherever single_core.py uses Python
-#      range / if (which elaborate at Python time over Python-int bounds).
-#   3. The core body reads its loop trip counts from an RTP buffer that
-#      the host populates at the start of the runtime_sequence.
+# (c) Copyright 2026 Advanced Micro Devices, Inc.
+"""Dynamic single-core matrix multiply — IRON ``@iron.jit`` design.
+
+A minimal delta over ``../single_core/single_core.py``: the problem size
+``(M, K, N)`` is supplied to the runtime sequence as SSA ``i32`` values rather
+than baked in at compile time, so one compiled design serves any
+multiple-of-tile shape at runtime.
+
+Two things change versus the static design:
+
+1. The runtime sequence takes ``M, K, N`` as scalar arguments and derives its
+   loop trip counts / DMA geometry from them with ``range_`` / ``if_`` (which
+   emit ``scf.for`` / ``scf.if``) and arithmetic on the SSA values.
+2. The core reads its loop trip counts from an RTP :class:`Buffer` the host
+   populates at the start of the sequence, so one fixed ELF runs any size.
+
+Because the sequence sizes are runtime values, the NPU program can't be frozen
+to a static ``insts.bin``; the design is driven through the aiecc TXN-C++ flow
+(see ``single_core_dynamic_txn.py``), which emits a ``generate_txn_sequence``
+host function that rebuilds the instruction stream for each ``(M, K, N)``.
+"""
+
 import argparse
+
 import numpy as np
-import sys
 
-from aie.extras.context import mlir_mod_ctx
-from aie.dialects.aie import *
-from aie.dialects.aiex import *
-from aie.dialects import arith, memref
-from aie.helpers.dialects.scf import if_
-from aie.extras.dialects.arith import constant
-import aie.utils.trace as trace_utils
+import aie.iron as iron
+from aie.iron import (
+    Buffer,
+    CompileTime,
+    In,
+    ObjectFifo,
+    Out,
+    Program,
+    Runtime,
+    TaskGroup,
+    Worker,
+    kernels,
+    str_to_dtype,
+)
 from aie.iron.controlflow import range_
-from aie.iron.dtype import str_to_dtype
+from aie.dialects import arith
+from aie.extras.dialects.arith import constant
 from aie.extras import types as T
-
-microkernel_mac_dim_map = {
-    "npu": {
-        "bf16": (4, 8, 4),
-        "i8": (4, 8, 8),
-        "i16": (4, 4, 4),
-    },
-    "npu2": {
-        "bf16": {
-            # emulate_bf16_mmul_with_bfp16
-            True: (8, 8, 8),
-            False: (4, 8, 8),
-        },
-        "i8": (8, 8, 8),
-        "i16": (4, 4, 8),
-    },
-}
+from aie.helpers.dialects.scf import if_
+from aie.helpers.taplib import TensorTiler2D
+from aie.utils.hostruntime.argparse import add_compile_args
 
 
-def main():
-    argparser = argparse.ArgumentParser(
-        prog="AIE Matrix Multiplication MLIR Design (Single Core, Dynamic)",
-        description=(
-            "Emits MLIR for a matrix multiplication design where M, K, N are "
-            "SSA i32 inputs to the runtime_sequence. The compiled XCLBIN can "
-            "be re-driven at any (multiple-of-tile) shape at host time."
-        ),
-    )
-    argparser.add_argument("--dev", type=str, choices=["npu", "npu2"], default="npu")
-    argparser.add_argument("-M", type=int, default=256)
-    argparser.add_argument("-K", type=int, default=256)
-    argparser.add_argument("-N", type=int, default=256)
-    argparser.add_argument("-m", type=int, default=64)
-    argparser.add_argument("-k", type=int, default=64)
-    argparser.add_argument("-n", type=int, default=32)
-    argparser.add_argument(
-        "--dtype_in", type=str, choices=["bf16", "i8", "i16"], default="i16"
-    )
-    argparser.add_argument(
-        "--dtype_out",
-        type=str,
-        choices=["bf16", "i8", "i16", "f32", "i32"],
-        default="i32",
-    )
-    argparser.add_argument("--b-col-maj", type=int, choices=[0, 1], default=0)
-    argparser.add_argument("--emulate-bf16-mmul-with-bfp16", type=bool, default=False)
-    argparser.add_argument("--trace_size", type=int, default=0)
-    args = argparser.parse_args()
-    my_matmul(
-        args.dev,
-        args.M,
-        args.K,
-        args.N,
-        args.m,
-        args.k,
-        args.n,
-        args.dtype_in,
-        args.dtype_out,
-        args.b_col_maj,
-        args.emulate_bf16_mmul_with_bfp16,
-        args.trace_size,
-    )
-
-
-def ceildiv(a, b):
-    return (a + b - 1) // b
-
-
-def my_matmul(
-    dev,
-    M,
-    K,
-    N,
-    m,
-    k,
-    n,
-    dtype_in_str,
-    dtype_out_str,
-    b_col_maj,
-    emulate_bf16_mmul_with_bfp16,
-    trace_size,
+@iron.jit(aiecc_flags=["--alloc-scheme=basic-sequential"])
+def single_core_dynamic(
+    A: In,
+    B: In,
+    C: Out,
+    *,
+    m: CompileTime[int],
+    k: CompileTime[int],
+    n: CompileTime[int],
+    dtype_in_str: CompileTime[str],
+    dtype_out_str: CompileTime[str],
+    b_col_maj: CompileTime[int] = 0,
+    emulate_bf16_mmul_with_bfp16: CompileTime[bool] = False,
+    use_chess: CompileTime[bool] = False,
+    max_m: CompileTime[int] = 4096,
+    max_k: CompileTime[int] = 4096,
+    max_n: CompileTime[int] = 4096,
 ):
-
-    assert M % m == 0
-    assert K % k == 0
-    assert N % n == 0
-
-    # r, s, t are the dimensions required by the microkernel MAC instructions.
-    mac_dims = microkernel_mac_dim_map[dev][dtype_in_str]
-    if dev == "npu2" and dtype_in_str == "bf16":
-        r, s, t = mac_dims[emulate_bf16_mmul_with_bfp16]
-    else:
-        r, s, t = mac_dims
-
-    assert m % r == 0
-    assert k % s == 0
-    assert n % t == 0
-
-    vectorized = True
-    enable_tracing = trace_size > 0
-
     dtype_in = str_to_dtype(dtype_in_str)
     dtype_out = str_to_dtype(dtype_out_str)
 
     assert np.issubdtype(dtype_in, np.integer) == np.issubdtype(
         dtype_out, np.integer
-    ), f"Input dtype ({dtype_in}) and output dtype ({dtype_out}) must either both be integral or both be float"
+    ), "input and output dtypes must both be integral or both be float"
     assert (
         np.dtype(dtype_out).itemsize >= np.dtype(dtype_in).itemsize
-    ), f"Output dtype ({dtype_out}) must be equal or larger to input dtype ({dtype_in})"
+    ), "output dtype must be equal or larger to input dtype"
 
-    A_sz = M * K
-    B_sz = K * N
-    C_sz = M * N
+    matmul_kernel = kernels.mm(
+        dim_m=m,
+        dim_k=k,
+        dim_n=n,
+        input_dtype=dtype_in,
+        output_dtype=dtype_out,
+        b_col_maj=bool(b_col_maj),
+        use_chess=use_chess,
+        emulate_bf16_mmul_with_bfp16=emulate_bf16_mmul_with_bfp16,
+    )
+    zero_kernel = matmul_kernel.zero
+    r, s, t = matmul_kernel.mac_dims
+    assert m % r == 0
+    assert k % s == 0
+    assert n % t == 0
 
-    with mlir_mod_ctx() as ctx:
+    # Host buffer types are sized to the compiled-in maximum; the runtime only
+    # streams the (M, K, N) sub-region requested at call time.
+    A_ty = np.ndarray[(max_m * max_k,), np.dtype[dtype_in]]
+    B_ty = np.ndarray[(max_k * max_n,), np.dtype[dtype_in]]
+    C_ty = np.ndarray[(max_m * max_n,), np.dtype[dtype_out]]
+    a_ty = np.ndarray[(m, k), np.dtype[dtype_in]]
+    b_ty = np.ndarray[(k, n), np.dtype[dtype_in]]
+    c_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
 
-        if dev == "npu":
-            dev_ty = AIEDevice.npu1_1col
-        else:
-            dev_ty = AIEDevice.npu2
+    inA = ObjectFifo(a_ty, name="inA")
+    a_dims = [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
+    memA = inA.cons().forward(name="memA", dims_to_stream=a_dims)
 
-        @device(dev_ty)
-        def device_body():
-            a_ty = np.ndarray[(m, k), np.dtype[dtype_in]]
-            b_ty = np.ndarray[(k, n), np.dtype[dtype_in]]
-            c_ty = np.ndarray[(m, n), np.dtype[dtype_out]]
+    inB = ObjectFifo(b_ty, name="inB")
+    if b_col_maj:
+        b_dims = [(n // t, t * k), (k // s, s), (t, k), (s, 1)]
+    else:
+        b_dims = [(k // s, s * n), (n // t, t), (s, n), (t, 1)]
+    memB = inB.cons().forward(name="memB", dims_to_stream=b_dims)
 
-            # AIE Core Function declarations
-            func_type = "" if vectorized else "scalar_"
-            zero = external_func(
-                f"zero_{func_type}{dtype_out_str}",
-                inputs=[c_ty],
-                link_with=f"mm_{m}x{k}x{n}.o",
-            )
-            matmul_func_name = f"matmul_{func_type}{dtype_in_str}_{dtype_out_str}"
-            matmul = external_func(
-                matmul_func_name,
-                inputs=[a_ty, b_ty, c_ty],
-                link_with=f"mm_{m}x{k}x{n}.o",
-            )
+    memC = ObjectFifo(c_ty, name="memC")
+    c_dims = [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
+    outC = memC.cons().forward(name="outC", dims_to_stream=c_dims)
 
-            # Tile declarations
-            shim_tile = tile(0, 0)
-            mem_tile = tile(0, 1)
-            compute_tile2_col, compute_tile2_row = 0, 2
-            compute_tile2 = tile(compute_tile2_col, compute_tile2_row)
+    # RTP buffer the host writes loop trip counts into:
+    #   rtp[0] = K_div_k  (inner-K accumulation count)
+    #   rtp[1] = tiles    (outer output-tile count = M_div_m * N_div_n)
+    rtp = Buffer(
+        np.ndarray[(2,), np.dtype[np.int32]],
+        name="rtp",
+        use_write_rtp=True,
+    )
 
-            # AIE-array data movement with object fifos
-            # Input A
-            inA = object_fifo("inA", shim_tile, mem_tile, 2, a_ty)
-            memA = object_fifo(
-                "memA",
-                mem_tile,
-                compute_tile2,
-                2,
-                a_ty,
-                (
-                    [
-                        (m // r, r * k),
-                        (k // s, s),
-                        (r, k),
-                        (s, 1),
-                    ]
-                    if vectorized
-                    else []
-                ),
-            )
-            object_fifo_link(inA, memA)
+    def core_fn(of_a, of_b, of_c, my_rtp, zero, matmul):
+        # Trip counts come from RTP, not Python ints, so the compiled core runs
+        # any (M, K, N) the host writes. The outer loop runs to the largest
+        # supported tile count; the host-written `tiles` bounds the real work.
+        K_div_k = my_rtp[0]
+        tiles = my_rtp[1]
+        for _ in range_(tiles):
+            elem_out = of_c.acquire(1)
+            zero(elem_out)
+            for _ in range_(K_div_k):
+                elem_in_a = of_a.acquire(1)
+                elem_in_b = of_b.acquire(1)
+                matmul(elem_in_a, elem_in_b, elem_out)
+                of_a.release(1)
+                of_b.release(1)
+            of_c.release(1)
 
-            # Input B
-            inB = object_fifo("inB", shim_tile, mem_tile, 2, b_ty)
+    worker = Worker(
+        core_fn,
+        [memA.cons(), memB.cons(), memC.prod(), rtp, zero_kernel, matmul_kernel],
+        stack_size=0xD00,
+        dynamic_objfifo_lowering=True,
+    )
 
-            B_transformations = []
-            if vectorized:
-                if not b_col_maj:
-                    B_transformations = [
-                        (k // s, s * n),
-                        (n // t, t),
-                        (s, n),
-                        (t, 1),
-                    ]
-                else:
-                    B_transformations = [
-                        (n // t, t * k),
-                        (k // s, s),
-                        (t, k),
-                        (s, 1),
-                    ]
+    rows_per_block = 4
 
-            memB = object_fifo(
-                "memB",
-                mem_tile,
-                compute_tile2,
-                2,
-                b_ty,
-                B_transformations,
-            )
+    rt = Runtime()
 
-            object_fifo_link(inB, memB)
+    def sequence(A, B, C, M, K, N):
+        M_div_m = M // m
+        K_div_k = K // k
+        N_div_n = N // n
+        tiles = M_div_m * N_div_n
 
-            # Output C
-            memC = object_fifo("memC", compute_tile2, mem_tile, 2, c_ty)
-            outC = object_fifo(
-                "outC",
-                mem_tile,
-                shim_tile,
-                2,
-                c_ty,
-                (
-                    [
-                        (m // r, r * n),
-                        (r, t),
-                        (n // t, r * t),
-                        (t, 1),
-                    ]
-                    if vectorized
-                    else []
-                ),
-            )
-            object_fifo_link(memC, outC)
+        rtp[0] = K_div_k
+        rtp[1] = tiles
 
-            # RTP buffer shared with the host. Layout:
-            #   rtp[0] = K_div_k  (inner-K loop trip count)
-            #   rtp[1] = tiles    (outer tile loop trip count)
-            rtp_buf = buffer(compute_tile2, T.memref(2, T.i32()), name="rtp")
-
-            # Set up a packet-switched flow from core to shim for tracing information
-            tiles_to_trace = [compute_tile2]
-            if trace_size > 0:
-                trace_utils.configure_trace(
-                    tiles_to_trace,
-                    coretile_events=[
-                        # captures input A (PORT_RUNNING_0, DMA channel 0, master for inputs)
-                        trace_utils.events.PortEvent(
-                            trace_utils.events.CoreEvent.PORT_RUNNING_0,
-                            trace_utils.events.WireBundle.DMA,
-                            0,
-                            True,
-                        ),
-                        # captures input B (PORT_RUNNING_1, DMA channel 1, master for inputs)
-                        trace_utils.events.PortEvent(
-                            trace_utils.events.CoreEvent.PORT_RUNNING_1,
-                            trace_utils.events.WireBundle.DMA,
-                            1,
-                            True,
-                        ),
-                        # captures output C (PORT_RUNNING_2, DMA channel 0, slave for outputs)
-                        trace_utils.events.PortEvent(
-                            trace_utils.events.CoreEvent.PORT_RUNNING_2,
-                            trace_utils.events.WireBundle.DMA,
-                            0,
-                            False,
-                        ),
-                        trace_utils.events.CoreEvent.INSTR_EVENT_0,
-                        trace_utils.events.CoreEvent.INSTR_EVENT_1,
-                        trace_utils.events.CoreEvent.MEMORY_STALL,
-                        trace_utils.events.CoreEvent.LOCK_STALL,
-                        trace_utils.events.CoreEvent.INSTR_VECTOR,
-                    ],
+        prev = None
+        for tile_row_block in range_(iron.ceildiv(max_m // m, rows_per_block)):
+            for pingpong in [0, 1]:
+                row_base = (
+                    tile_row_block * rows_per_block + pingpong * rows_per_block // 2
                 )
+                C_row_offset = row_base * m * N
+                # Clamp the rows handled this half-block to what remains.
+                num_tile_rows = arith.minsi(
+                    constant(rows_per_block // 2, T.i32()),
+                    M_div_m - row_base,
+                )
+                with if_(num_tile_rows > 0, hasElse=False):
+                    tg = TaskGroup()
+                    outC.cons().drain(
+                        C,
+                        offset=C_row_offset,
+                        sizes=[num_tile_rows, N_div_n, m, n],
+                        strides=[m * N, n, N, 1],
+                        group=tg,
+                        wait=True,
+                    )
+                    for tile_row in range(rows_per_block // 2):
+                        A_row_offset = (row_base + tile_row) * m * K
 
-            # The stack size choice is an important choice!
-            # The Peano compiler uses a stack size in this kernel greater than the default one
-            # (default is 0x400, chess' stack size is smaller).
-            # Exceding the stack size leads to wrong results from the kernel, but no error is triggered.
-            # Stack usage can be checked as explained here:
-            # https://github.com/Xilinx/llvm-aie/issues/487#issuecomment-2969438585
-            @core(compute_tile2, stack_size=0xD00, dynamic_objfifo_lowering=True)
-            def core_body():
-                # Loop trip counts come from RTP rather than Python ints, so
-                # the compiled core handles any (M, K, N) the host writes.
-                c0_idx = constant(0, index=True)
-                c1_idx = constant(1, index=True)
-                for _ in range_(0xFFFFFFFF):
-                    tiles = memref.load(rtp_buf, [c1_idx])
-                    K_div_k = memref.load(rtp_buf, [c0_idx])
-                    for _ in range_(tiles):
-
-                        elem_out = memC.acquire(ObjectFifoPort.Produce, 1)
-                        zero(elem_out)
-
-                        for _ in range_(K_div_k):
-                            elem_in_a = memA.acquire(ObjectFifoPort.Consume, 1)
-                            elem_in_b = memB.acquire(ObjectFifoPort.Consume, 1)
-                            matmul(elem_in_a, elem_in_b, elem_out)
-                            memA.release(ObjectFifoPort.Consume, 1)
-                            memB.release(ObjectFifoPort.Consume, 1)
-
-                        memC.release(ObjectFifoPort.Produce, 1)
-
-            # To/from AIE-array data movement
-
-            @runtime_sequence(
-                np.ndarray[(A_sz,), np.dtype[dtype_in]],
-                np.ndarray[(B_sz,), np.dtype[dtype_in]],
-                np.ndarray[(C_sz,), np.dtype[dtype_out]],
-                T.i32(),  # M
-                T.i32(),  # K
-                T.i32(),  # N
-            )
-            def sequence(A, B, C, M, K, N):
-
-                if enable_tracing:
-                    trace_utils.start_trace(trace_size=trace_size)
-
-                M_div_m = M // m
-                K_div_k = K // k
-                N_div_n = N // n
-                tiles = M_div_m * N_div_n
-
-                npu_rtp_write("rtp", 0, K_div_k)
-                npu_rtp_write("rtp", 1, tiles)
-
-                rows_per_block = 4
-                for tile_row_block in range_(ceildiv(M_div_m, rows_per_block)):
-                    for pingpong in [0, 1]:
-                        C_row_offset = (
-                            tile_row_block * rows_per_block * m * N
-                            + pingpong * rows_per_block // 2 * m * N
-                        )
-                        row_base = (
-                            tile_row_block * rows_per_block
-                            + pingpong * rows_per_block // 2
-                        )
-                        bd_id_base = 8 * pingpong
-                        num_tile_rows = arith.minsi(
-                            constant(rows_per_block // 2, T.i32()),
-                            M_div_m - row_base,
-                        )
-                        with if_(num_tile_rows > 0, hasElse=False):
-                            npu_dma_memcpy_nd(
-                                metadata=outC,
-                                bd_id=bd_id_base,
-                                mem=C,
-                                offsets=[0, 0, 0, C_row_offset],
-                                sizes=[num_tile_rows, N_div_n, m, n],
-                                strides=[m * N, n, N, 1],
+                        def emit_ab():
+                            inA.prod().fill(
+                                A,
+                                offset=A_row_offset,
+                                sizes=[N_div_n, K_div_k, m, k],
+                                strides=[0, k, K, 1],
+                                group=tg,
                             )
-                            for tile_row in range(rows_per_block // 2):
-                                A_row_offset = (row_base + tile_row) * m * K
-
-                                def emit_ab():
-                                    npu_dma_memcpy_nd(
-                                        metadata=inA,
-                                        bd_id=bd_id_base + 2 * tile_row + 1,
-                                        mem=A,
-                                        offsets=[0, 0, 0, A_row_offset],
-                                        sizes=[N_div_n, K_div_k, m, k],
-                                        strides=[0, k, K, 1],
-                                    )
-                                    if not b_col_maj:
-                                        B_sizes = [N_div_n, K_div_k, k, n]
-                                        B_strides = [n, k * N, N, 1]
-                                    else:
-                                        B_sizes = [N_div_n, K_div_k, n, k]
-                                        B_strides = [n * K, k, K, 1]
-                                    npu_dma_memcpy_nd(
-                                        metadata=inB,
-                                        bd_id=bd_id_base + 2 * tile_row + 2,
-                                        mem=B,
-                                        sizes=B_sizes,
-                                        strides=B_strides,
-                                    )
-
-                                if tile_row == 0:
-                                    emit_ab()
-                                else:
-                                    with if_(num_tile_rows > tile_row, hasElse=False):
-                                        emit_ab()
-
-                            if pingpong > 0:
-                                dma_wait(outC)
+                            if not b_col_maj:
+                                b_sizes = [N_div_n, K_div_k, k, n]
+                                b_strides = [n, k * N, N, 1]
                             else:
-                                with if_(tile_row_block > 0, hasElse=False):
-                                    dma_wait(outC)
+                                b_sizes = [N_div_n, K_div_k, n, k]
+                                b_strides = [n * K, k, K, 1]
+                            inB.prod().fill(
+                                B,
+                                sizes=b_sizes,
+                                strides=b_strides,
+                                group=tg,
+                            )
 
-                dma_wait(outC)
+                        if tile_row == 0:
+                            emit_ab()
+                        else:
+                            with if_(num_tile_rows > tile_row, hasElse=False):
+                                emit_ab()
 
-    print(ctx.module)
+                    if prev is not None:
+                        prev.resolve()
+                    prev = tg
+        if prev is not None:
+            prev.resolve()
+
+    rt.sequence(sequence, [A_ty, B_ty, C_ty, T.i32, T.i32, T.i32])
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+
+
+def _make_argparser():
+    p = argparse.ArgumentParser(
+        prog="AIE Matrix Multiplication (Single Core, Dynamic)",
+        description=(
+            "Single-core GEMM whose (M, K, N) are runtime SSA values, so one "
+            "compiled design serves any multiple-of-tile shape."
+        ),
+    )
+    add_compile_args(p, short_dev=None)
+    p.add_argument("-m", type=int, default=32)
+    p.add_argument("-k", type=int, default=32)
+    p.add_argument("-n", type=int, default=32)
+    p.add_argument(
+        "--dtype_in", type=str, choices=["bf16", "i8", "i16"], default="bf16"
+    )
+    p.add_argument(
+        "--dtype_out",
+        type=str,
+        choices=["bf16", "i8", "i16", "f32", "i32"],
+        default="f32",
+    )
+    p.add_argument("--b-col-maj", type=int, choices=[0, 1], default=0)
+    p.add_argument(
+        "--emulate-bf16-mmul-with-bfp16", type=int, choices=[0, 1], default=0
+    )
+    p.add_argument("--use-chess", type=int, choices=[0, 1], default=0)
+    p.add_argument("--max-m", type=int, default=4096)
+    p.add_argument("--max-k", type=int, default=4096)
+    p.add_argument("--max-n", type=int, default=4096)
+    return p
+
+
+def main():
+    opts = _make_argparser().parse_args()
+    # Emit MLIR for the TXN flow (see single_core_dynamic_txn.py to compile it).
+    mlir_module = single_core_dynamic.as_mlir(
+        None,
+        None,
+        None,
+        m=opts.m,
+        k=opts.k,
+        n=opts.n,
+        dtype_in_str=opts.dtype_in,
+        dtype_out_str=opts.dtype_out,
+        b_col_maj=opts.b_col_maj,
+        emulate_bf16_mmul_with_bfp16=bool(opts.emulate_bf16_mmul_with_bfp16),
+        use_chess=bool(opts.use_chess),
+        max_m=opts.max_m,
+        max_k=opts.max_k,
+        max_n=opts.max_n,
+    )
+    print(mlir_module)
 
 
 if __name__ == "__main__":
     main()
-else:
-    print("Not meant to be imported")
-    sys.exit(1)

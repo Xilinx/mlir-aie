@@ -23,33 +23,11 @@ dtype_in=bf16
 dtype_out=f32
 devicename?=npu2
 
-kernels=mm_${m}x${k}x${n}
-
-use_placed?=0
-
-ifeq (${use_placed}, 1)
-aie_py_src=single_core_dynamic_placed.py
-else
-aie_py_src=single_core_dynamic.py
-endif
-
-KERNEL_DEFINES=-D${dtype_in}_${dtype_out}_ONLY -DDIM_M=${m} -DDIM_K=${k} -DDIM_N=${n}
+aie_py_src=single_core_dynamic_txn.py
 
 include ${srcdir}/../makefile-common
 
-# The dynamic flow feeds a hand-rolled aiecc invocation that needs the kernel
-# .o on disk, so this Makefile builds it directly (unlike the @iron.jit
-# examples, where makefile-common defers kernel compilation to Python).
-# npu2 -> aie2p kernels + Peano.
-kernels_dir = ${srcdir}/../../../../aie_kernels/aie2p
-KERNEL_CC = ${PEANO_INSTALL_DIR}/bin/clang++
-KERNEL_CFLAGS = ${PEANOWRAP2P_FLAGS}
-
-build/mm_${m}x${k}x${n}.o: ${kernels_dir}/mm.cc
-	mkdir -p ${@D}
-	cd ${@D} && ${KERNEL_CC} ${KERNEL_CFLAGS} ${KERNEL_DEFINES} -c $< -o ${@F}
-
-# --- Auto-generated TXN targets (via aiecc --aie-generate-txn-cpp) ---
+# --- Auto-generated TXN targets (driven by single_core_dynamic_txn.py) ---
 
 MLIR_AIE_ROOT ?= $(if $(MLIR_AIE_INSTALL_DIR),$(MLIR_AIE_INSTALL_DIR),$(shell cd ${srcdir}/../../../.. && pwd))
 RUNTIME_LIB_ROOT ?= $(if $(MLIR_AIE_INSTALL_DIR),${MLIR_AIE_ROOT}/runtime_lib/x86_64,${MLIR_AIE_ROOT}/runtime_lib)
@@ -57,24 +35,17 @@ XRT_INC_DIR ?= /opt/xilinx/xrt/include
 XRT_LIB_DIR ?= /opt/xilinx/xrt/lib
 TEST_UTILS_DIR ?= $(if $(MLIR_AIE_INSTALL_DIR),${RUNTIME_LIB_ROOT}/test_lib/include,${RUNTIME_LIB_ROOT}/test_lib)
 
-# Generate dynamic MLIR with SSA M/K/N parameters in runtime_sequence
-build/dynsize/aie_gemm_dynamic.mlir: ${srcdir}/single_core_dynamic.py
-	mkdir -p ${@D}
-	python3 $< --dev ${devicename} -M ${M} -K ${K} -N ${N} -m ${m} -k ${k} -n ${n} \
-	    --dtype_in ${dtype_in} --dtype_out ${dtype_out} > $@
-
-# Build XCLBIN and generate C++ TXN in one unified aiecc invocation.
-# The aiecc SCF→CF lowering explicitly keeps aie.runtime_sequence legal, so
-# SCF is preserved for EmitC while core bodies are lowered for codegen.
-# Both XCLBIN and TXN use identical buffer addresses from the same MLIR.
-build/dynsize/final_dynamic.xclbin build/dynsize/generated_gemm_txn.h &: build/dynsize/aie_gemm_dynamic.mlir build/mm_${m}x${k}x${n}.o
+# Build XCLBIN and generate the C++ TXN header from the @iron.jit design.
+# The driver drives compile_mlir_module, which compiles the content-hashed
+# kernel .o itself and runs aiecc with --aie-generate-txn-cpp (SCF is kept legal
+# in aie.runtime_sequence so it survives for the TXN-C++ path). Both XCLBIN and
+# TXN come from the same MLIR with identical buffer addresses.
+build/dynsize/final_dynamic.xclbin build/dynsize/generated_gemm_txn.h &: ${srcdir}/single_core_dynamic_txn.py ${srcdir}/single_core_dynamic.py
 	mkdir -p build/dynsize
-	cp build/mm_${m}x${k}x${n}.o build/dynsize/
-	cd build/dynsize && aiecc --alloc-scheme=basic-sequential \
-		--aie-generate-xclbin --xclbin-name=final_dynamic.xclbin \
-		--aie-generate-txn-cpp --txn-cpp-name=generated_gemm_txn.h \
-		--no-xchesscc --no-xbridge --peano ${PEANO_INSTALL_DIR} \
-		$(<:%=../../%)
+	python3 $< -d ${devicename} -m ${m} -k ${k} -n ${n} \
+	    --dtype_in ${dtype_in} --dtype_out ${dtype_out} \
+	    --max-m ${M} --max-k ${K} --max-n ${N} \
+	    --xclbin-path build/dynsize/final_dynamic.xclbin
 
 # Build test executable using auto-generated TXN (no --instr needed)
 dynamic_generated.exe: ${srcdir}/test_dynamic.cpp build/dynsize/generated_gemm_txn.h

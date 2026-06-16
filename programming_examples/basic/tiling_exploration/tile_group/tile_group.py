@@ -66,11 +66,13 @@ def tile_group(
     worker = Worker(access_order, [of_out.prod()])
 
     rt = Runtime()
-    with rt.sequence(flattened_tensor) as tensor_out:
-        rt.start(worker)
-        rt.drain(of_out.cons(), tensor_out, tap, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    def sequence(tensor_out):
+        of_out.cons().drain(tensor_out, tap, wait=True)
+
+    rt.sequence(sequence, [flattened_tensor])
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def _make_argparser():

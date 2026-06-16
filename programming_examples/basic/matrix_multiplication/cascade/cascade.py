@@ -18,6 +18,7 @@ import numpy as np
 
 import aie.iron as iron
 from aie.iron import (
+    TaskGroup,
     Buffer,
     CascadeFlow,
     CompileTime,
@@ -304,42 +305,33 @@ def cascade(
     )
 
     rt = Runtime()
-    with rt.sequence(A_ty, B_ty, C_ty) as (A, B, C):
-        rt.start(*flat_workers)
+
+    def sequence(A, B, C):
 
         c_index = 0
         for tb in range(iron.ceildiv(M // m, tb_max_n_rows)):
             tb_n_rows = min([tb_max_n_rows, M // m - tb * tb_max_n_rows])
-            tg = rt.task_group()
+            tg = TaskGroup()
             for col in range(n_aie_cols):
-                rt.drain(
-                    C_l2l3_fifos[col].cons(),
-                    C,
-                    tap=C_taps[c_index],
-                    wait=True,
-                    task_group=tg,
-                    tile=Tile(col, 0),
+                C_l2l3_fifos[col].cons().drain(
+                    C, tap=C_taps[c_index], wait=True, group=tg, tile=Tile(col, 0)
                 )
                 c_index += 1
                 for tile_row in range(tb_n_rows):
                     a_idx = ((tb * tb_max_n_rows) + tile_row) * n_aie_cols + col
-                    rt.fill(
-                        A_l3l2_fifos[col].prod(),
-                        A,
-                        tap=A_taps[a_idx],
-                        task_group=tg,
-                        tile=Tile(col, 0),
+                    A_l3l2_fifos[col].prod().fill(
+                        A, tap=A_taps[a_idx], group=tg, tile=Tile(col, 0)
                     )
-                    rt.fill(
-                        B_l3l2_fifos[col].prod(),
-                        B,
-                        tap=B_taps[col],
-                        task_group=tg,
-                        tile=Tile(col, 0),
+                    B_l3l2_fifos[col].prod().fill(
+                        B, tap=B_taps[col], group=tg, tile=Tile(col, 0)
                     )
-            rt.finish_task_group(tg)
+            tg.resolve()
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt.sequence(sequence, [A_ty, B_ty, C_ty])
+
+    return Program(
+        iron.get_current_device(), rt, workers=list(flat_workers)
+    ).resolve_program()
 
 
 def _make_argparser():

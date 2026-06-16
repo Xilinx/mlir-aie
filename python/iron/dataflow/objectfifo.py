@@ -528,6 +528,142 @@ class ObjectFifoHandle(Resolvable):
             is_prod=True
         ) + self._object_fifo._get_endpoint(is_prod=False)
 
+    def fill(
+        self,
+        source,
+        tap=None,
+        offset=None,
+        sizes=None,
+        strides=None,
+        group=None,
+        wait: bool = False,
+        tile=None,
+        packet: tuple[int, int] | None = None,
+        offset_parameter=None,
+    ) -> None:
+        """Fill this (producer) fifo with data from a runtime buffer.
+
+        Issues a host→array shim DMA transfer. Must be called inside the function
+        passed to :meth:`Runtime.sequence`.
+
+        Args:
+            source (RuntimeData): The runtime input buffer (a sequence argument).
+            tap (TensorAccessPattern | None): Access pattern over ``source``.
+                Mutually exclusive with offset/sizes/strides. Defaults to a
+                linear transfer of the whole buffer.
+            offset / sizes / strides: Explicit transfer geometry; ``sizes`` and
+                ``strides`` may include runtime SSA values for dynamic shapes.
+            group (TaskGroup | None): Completion group. Defaults to the
+                sequence's implicit default group (finished at end-of-sequence).
+            wait (bool): Whether completion is awaited (vs. freed).
+            tile (Tile | None): Shim tile to bind the transfer to. Defaults to
+                any shim tile.
+            packet (tuple[int, int] | None): Optional packet header.
+            offset_parameter (ScratchpadParameter | str | None): Parameter whose
+                value is used as the transfer's element offset.
+        """
+        if not self._is_prod:
+            raise ValueError("fill() requires a producer ObjectFifoHandle")
+        self._emit_transfer(
+            source,
+            tap,
+            offset,
+            sizes,
+            strides,
+            group,
+            wait,
+            tile,
+            packet,
+            offset_parameter,
+        )
+
+    def drain(
+        self,
+        dest,
+        tap=None,
+        offset=None,
+        sizes=None,
+        strides=None,
+        group=None,
+        wait: bool = False,
+        tile=None,
+        packet: tuple[int, int] | None = None,
+        offset_parameter=None,
+    ) -> None:
+        """Drain this (consumer) fifo into a runtime buffer.
+
+        Issues an array→host shim DMA transfer. See :meth:`fill` for arguments.
+        """
+        if self._is_prod:
+            raise ValueError("drain() requires a consumer ObjectFifoHandle")
+        self._emit_transfer(
+            dest,
+            tap,
+            offset,
+            sizes,
+            strides,
+            group,
+            wait,
+            tile,
+            packet,
+            offset_parameter,
+        )
+
+    def _emit_transfer(
+        self,
+        rt_data,
+        tap,
+        offset,
+        sizes,
+        strides,
+        group,
+        wait,
+        tile,
+        packet,
+        offset_parameter,
+    ) -> None:
+        # Imported lazily: these modules import objectfifo, so importing them at
+        # module scope would create a cycle.
+        from ..device import AnyShimTile
+        from ..runtime._context import active_sequence
+        from ..runtime.dmatask import DMATask
+        from ..runtime.endpoint import RuntimeEndpoint
+        from ..scratchpad_parameter import ScratchpadParameter
+
+        seq = active_sequence()
+        if tile is None:
+            tile = AnyShimTile
+
+        # Establish this handle's runtime-facing (shim) endpoint and record the
+        # fifo so the runtime can create its op after the body (the DMA op below
+        # references the fifo by symbol name, so the fifo op need not exist yet).
+        if self.endpoint is None:
+            self.endpoint = RuntimeEndpoint(tile)
+        seq.record_touched_fifo(self)
+
+        offset_param_name = None
+        if offset_parameter is not None:
+            if isinstance(offset_parameter, ScratchpadParameter):
+                offset_param_name = offset_parameter.name
+            else:
+                offset_param_name = offset_parameter
+
+        if tap is None and offset is None and sizes is None and strides is None:
+            tap = rt_data.default_tap()
+
+        task = DMATask(
+            self,
+            rt_data,
+            tap=tap,
+            wait=wait,
+            offset=offset,
+            sizes=sizes,
+            strides=strides,
+            offset_parameter=offset_param_name,
+            packet=packet,
+        )
+        seq.emit_transfer(task, group)
+
     def join(
         self,
         offsets: list[int],

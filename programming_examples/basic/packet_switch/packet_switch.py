@@ -437,11 +437,12 @@ def packet_switch(
     for td in (c02_dma, c03_dma, mem_dma):
         rt.add_tile_dma(td)
 
-    with rt.sequence(vector_ty, vector_ty) as (A, B):
-        rt.start(c02_worker, c03_worker)
+    def sequence(A, B):
         rt.inline_ops(emit_seq, [A, B])
 
-    return Program(dev, rt).resolve_program()
+    rt.sequence(sequence, [vector_ty, vector_ty])
+
+    return Program(dev, rt, workers=[c02_worker, c03_worker]).resolve_program()
 
 
 def _make_argparser():

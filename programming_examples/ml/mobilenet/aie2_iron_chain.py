@@ -31,7 +31,7 @@ import json
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import ObjectFifo, Program, Runtime
+from aie.iron import TaskGroup, ObjectFifo, Program, Runtime
 from aie.iron.device import Tile
 from aie.utils.hostruntime.argparse import device_from_args
 from aie.utils.hostruntime import set_current_device
@@ -177,53 +177,34 @@ def _chain_iron(mode, data_dir, scales_json):
                 strides=[0, 0, 0, 1],
             )
 
-        with rt.sequence(in_ty, wts_ty, out_ty) as (inp, all_wts, out):
-            rt.start(*workers)
-            tg = rt.task_group()
-            rt.fill(
-                act_in.prod(depth=1),
-                inp,
-                tile=CHAIN_PLACEMENT["shim_input"],
-                task_group=tg,
-            )
+        def sequence(inp, all_wts, out):
+            tg = TaskGroup()
+            act_in.prod(depth=1).fill(inp, tile=CHAIN_PLACEMENT["shim_input"], group=tg)
             for fifo, off, shim in zip(
                 wts_fifos, offsets_i32, CHAIN_PLACEMENT["shim_wts"]
             ):
-                rt.fill(
-                    fifo.prod(),
-                    all_wts,
-                    _wts_tap(off),
-                    tile=shim,
-                    task_group=tg,
-                )
-            rt.drain(
-                act_out.cons(),
-                out,
-                wait=True,
-                tile=CHAIN_PLACEMENT["shim_output"],
-                task_group=tg,
+                fifo.prod().fill(all_wts, _wts_tap(off), tile=shim, group=tg)
+            act_out.cons().drain(
+                out, wait=True, tile=CHAIN_PLACEMENT["shim_output"], group=tg
             )
-            rt.finish_task_group(tg)
-    else:
-        with rt.sequence(in_ty, out_ty) as (inp, out):
-            rt.start(*workers)
-            tg = rt.task_group()
-            rt.fill(
-                act_in.prod(depth=1),
-                inp,
-                tile=CHAIN_PLACEMENT["shim_input"],
-                task_group=tg,
-            )
-            rt.drain(
-                act_out.cons(),
-                out,
-                wait=True,
-                tile=CHAIN_PLACEMENT["shim_output"],
-                task_group=tg,
-            )
-            rt.finish_task_group(tg)
+            tg.resolve()
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+        rt.sequence(sequence, [in_ty, wts_ty, out_ty])
+    else:
+
+        def sequence(inp, out):
+            tg = TaskGroup()
+            act_in.prod(depth=1).fill(inp, tile=CHAIN_PLACEMENT["shim_input"], group=tg)
+            act_out.cons().drain(
+                out, wait=True, tile=CHAIN_PLACEMENT["shim_output"], group=tg
+            )
+            tg.resolve()
+
+        rt.sequence(sequence, [in_ty, out_ty])
+
+    return Program(
+        iron.get_current_device(), rt, workers=list(workers)
+    ).resolve_program()
 
 
 def _make_argparser():

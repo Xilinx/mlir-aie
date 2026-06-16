@@ -95,26 +95,24 @@ def memcpy(
     taps = TensorTiler2D.simple_tiler((1, size), (1, chunk))
 
     rt = Runtime()
-    with rt.sequence(transfer_type, transfer_type) as (a, b):
+
+    def sequence(a, b):
         if my_workers:
-            rt.start(*my_workers)
+            pass
         for i in range(num_columns):
             for j in range(num_channels):
-                rt.fill(
-                    of_ins[i * num_channels + j].prod(),
-                    a,
-                    taps[i * num_channels + j],
-                )
+                of_ins[i * num_channels + j].prod().fill(a, taps[i * num_channels + j])
         for i in range(num_columns):
             for j in range(num_channels):
-                rt.drain(
-                    of_outs[i * num_channels + j].cons(),
-                    b,
-                    taps[i * num_channels + j],
-                    wait=True,
+                of_outs[i * num_channels + j].cons().drain(
+                    b, taps[i * num_channels + j], wait=True
                 )
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt.sequence(sequence, [transfer_type, transfer_type])
+
+    return Program(
+        iron.get_current_device(), rt, workers=list(my_workers)
+    ).resolve_program()
 
 
 def _make_argparser():
