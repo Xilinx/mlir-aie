@@ -201,11 +201,38 @@ def _make_argparser():
     add_compile_args(p)
     p.add_argument("-W", "--width", type=int, default=1920)
     p.add_argument("-H", "--height", type=int, default=1080)
+    p.add_argument(
+        "--placer",
+        type=str,
+        default=None,
+        help="tile placement algorithm to forward to aiecc (e.g. sa_placer)",
+    )
+    p.add_argument(
+        "--sa-seed",
+        type=int,
+        default=None,
+        help="random seed for the SA placer (0 = non-deterministic)",
+    )
     return p
 
 
 def _compile_kwargs(opts):
     return dict(width=opts.width, height=opts.height)
+
+
+def _design_for(opts):
+    """Return the color_detect design, adding placer flags when requested.
+
+    ``--placer`` / ``--sa-seed`` are appended to the design's baseline
+    ``aiecc_flags`` so the SA placer can be exercised end-to-end from the
+    Makefile without editing the module-level decorator.
+    """
+    if not opts.placer:
+        return color_detect
+    flags = list(color_detect.compilable.aiecc_flags) + [f"--placer={opts.placer}"]
+    if opts.sa_seed is not None:
+        flags.append(f"--sa-seed={opts.sa_seed}")
+    return iron.jit(aiecc_flags=flags)(color_detect.compilable.mlir_generator)
 
 
 def _rgba2hue_ref(rgba_uint8):
@@ -280,7 +307,7 @@ def _run_and_verify(opts):
     b_t = iron.zeros(16 * 16, dtype=np.int32, device="npu")
     out_t = iron.zeros(tensor_size, dtype=np.int8, device="npu")
 
-    color_detect(in_t, b_t, out_t, **_compile_kwargs(opts))
+    _design_for(opts)(in_t, b_t, out_t, **_compile_kwargs(opts))
 
     in_uint8 = in_np.view(np.uint8)
     expected_uint8 = _color_detect_ref(in_uint8)
@@ -296,7 +323,7 @@ def _run_and_verify(opts):
 def main():
     opts = _make_argparser().parse_args()
     run_design_cli(
-        color_detect,
+        _design_for(opts),
         opts,
         compile_kwargs=_compile_kwargs,
         run_and_verify=_run_and_verify,
