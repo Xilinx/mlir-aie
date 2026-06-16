@@ -272,6 +272,11 @@ struct ConvertAIEXToEmitCPass
     // to lower. The Python front-end naturally produces these ops from
     // expressions like `M // m` on SSA i32 runtime-sequence arguments.
     arith::populateCeilFloorDivExpandOpsPatterns(patterns);
+    // Expand arith.minsi / maxsi / minui / maxui into cmpi + select, which the
+    // upstream ArithToEmitC patterns can lower (EmitC has no min/max op). The
+    // Python front-end produces these from runtime-sequence tail-tile clamps
+    // like `arith.minsi(rows_per_block // 2, M_div_m - row_base)`.
+    arith::populateArithExpandOpsPatterns(patterns);
     populateArithToEmitCPatterns(typeConverter, patterns);
     populateSCFToEmitCConversionPatterns(patterns, typeConverter);
 
