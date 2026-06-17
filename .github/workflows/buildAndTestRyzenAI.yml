@@ -69,6 +69,9 @@ jobs:
     env:
       NPU_CACHE_HOME: ${{ github.workspace }}/iron-cache-${{ matrix.runner_type }}-${{ github.run_id }}
       PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-${{ matrix.runner_type }}-${{ github.run_id }}
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
         with:
@@ -83,6 +86,51 @@ jobs:
         # click on "launch_tmate_terminal_for_debug"
         if: github.event_name == 'workflow_dispatch'
                 && inputs.launch_tmate_terminal_for_debug
+
+      - name: Fetch baseline UNSUPPORTED list from base branch
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BASE_REF="${{ github.base_ref }}"
+          RUNNER="${{ matrix.runner_type }}"
+          WORKFLOW="Build and Test with AIE tools on Ryzen AI"
+
+          # Find the last successful run of this workflow on the base branch
+          BASE_RUN_ID=$(gh api \
+            "repos/${{ github.repository }}/actions/runs?branch=${BASE_REF}&status=success&per_page=20" \
+            --jq ".workflow_runs[] | select(.name == \"${WORKFLOW}\") | .id" \
+            | head -1)
+
+          if [ -z "$BASE_RUN_ID" ]; then
+            echo "No successful base-branch run found; skipping baseline fetch."
+            touch $GITHUB_WORKSPACE/baseline_unsupported_tests.txt
+            exit 0
+          fi
+
+          echo "Using base run ID: $BASE_RUN_ID"
+
+          # Find the job matching our runner in that run
+          JOB_ID=$(gh api \
+            "repos/${{ github.repository }}/actions/runs/${BASE_RUN_ID}/jobs" \
+            --jq ".jobs[] | select(.name | test(\"Run Tests on Ryzen AI.*${RUNNER}\")) | .id" \
+            | head -1)
+
+          if [ -z "$JOB_ID" ]; then
+            echo "No matching job found in base run; skipping baseline fetch."
+            touch $GITHUB_WORKSPACE/baseline_unsupported_tests.txt
+            exit 0
+          fi
+
+          echo "Using base job ID: $JOB_ID"
+
+          gh api "repos/${{ github.repository }}/actions/jobs/${JOB_ID}/logs" \
+            | grep -oP '(?<=AIE_TEST :: ).*' \
+            | grep -vP '^(npu-xrt|python/npu-xrt)/.*/test\.py$' \
+            | sort \
+            > $GITHUB_WORKSPACE/baseline_unsupported_tests.txt
+
+          echo "Baseline has $(wc -l < $GITHUB_WORKSPACE/baseline_unsupported_tests.txt) UNSUPPORTED tests."
 
       - name: Run commands
         run: |
@@ -101,7 +149,7 @@ jobs:
           # Install llvm-aie (Peano) which is needed for unittests requiring compiling NPU code
           pip install -I llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
           export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep ^Location: | awk '{print $2}')/llvm-aie"
-          
+
           sed -i.bak 's/OUTPUT_TIMEOUT = 10/OUTPUT_TIMEOUT = 100/g' \
             $(python -c 'import site; print(site.getsitepackages()[0])')/jupyter_client/runapp.py
 
@@ -126,7 +174,7 @@ jobs:
           fi
 
           export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
-          
+
           cmake .. -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DPython3_EXECUTABLE=$(which python) \
@@ -144,9 +192,54 @@ jobs:
           export XRT_CONTEXT_CACHE_SIZE=2
 
           ninja install
-          ninja check-aie
+          ninja check-aie 2>&1 | tee $GITHUB_WORKSPACE/lit_output_tests.txt
           ninja check-aie-concurrency
           popd
+
+      - name: Check for newly UNSUPPORTED tests
+        if: github.event_name == 'pull_request' && success()
+        run: |
+          grep -oP '(?<=AIE_TEST :: ).*' $GITHUB_WORKSPACE/lit_output_tests.txt \
+            | grep -vP '^(npu-xrt|python/npu-xrt)/.*/test\.py$' \
+            | sort > $GITHUB_WORKSPACE/current_unsupported_tests.txt
+
+          comm -13 \
+            $GITHUB_WORKSPACE/baseline_unsupported_tests.txt \
+            $GITHUB_WORKSPACE/current_unsupported_tests.txt \
+            > $GITHUB_WORKSPACE/new_unsupported_tests.txt
+
+          COUNT=$(wc -l < $GITHUB_WORKSPACE/new_unsupported_tests.txt)
+          RUNNER="${{ matrix.runner_type }}"
+
+          if [ "$COUNT" -gt 0 ]; then
+            {
+              echo "<!-- lit-unsupported-tests-${RUNNER} -->"
+              echo "### ⚠️ Newly UNSUPPORTED tests on \`${RUNNER}\` (Run Tests job)"
+              echo ""
+              echo "These tests were passing on \`${{ github.base_ref }}\` but are now UNSUPPORTED:"
+              echo ""
+              while IFS= read -r test; do
+                echo "- \`${test}\`"
+              done < $GITHUB_WORKSPACE/new_unsupported_tests.txt
+            } > $GITHUB_WORKSPACE/pr_comment_tests.txt
+          else
+            {
+              echo "<!-- lit-unsupported-tests-${RUNNER} -->"
+              echo "### ✅ No newly UNSUPPORTED tests on \`${RUNNER}\` (Run Tests job)"
+            } > $GITHUB_WORKSPACE/pr_comment_tests.txt
+          fi
+
+      - name: Post PR comment for newly UNSUPPORTED tests
+        if: >
+          github.event_name == 'pull_request' && success() &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        uses: edumserrano/find-create-or-update-comment@82880b65c8a3a6e4c70aa05a204995b6c9696f53  # v3
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body-includes: '<!-- lit-unsupported-tests-${{ matrix.runner_type }} -->'
+          comment-author: 'github-actions[bot]'
+          body-path: ${{ github.workspace }}/pr_comment_tests.txt
+          edit-mode: replace
 
       - name: Cleanup NPU_CACHE_HOME
         if: always()
@@ -164,6 +257,9 @@ jobs:
     env:
       NPU_CACHE_HOME: ${{ github.workspace }}/iron-cache-${{ matrix.runner_type }}-${{ github.run_id }}
       PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-${{ matrix.runner_type }}-${{ github.run_id }}
+    permissions:
+      contents: read
+      pull-requests: write
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
         with:
@@ -178,6 +274,48 @@ jobs:
         # click on "launch_tmate_terminal_for_debug"
         if: github.event_name == 'workflow_dispatch'
                 && inputs.launch_tmate_terminal_for_debug
+
+      - name: Fetch baseline UNSUPPORTED list from base branch
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BASE_REF="${{ github.base_ref }}"
+          RUNNER="${{ matrix.runner_type }}"
+          WORKFLOW="Build and Test with AIE tools on Ryzen AI"
+
+          BASE_RUN_ID=$(gh api \
+            "repos/${{ github.repository }}/actions/runs?branch=${BASE_REF}&status=success&per_page=20" \
+            --jq ".workflow_runs[] | select(.name == \"${WORKFLOW}\") | .id" \
+            | head -1)
+
+          if [ -z "$BASE_RUN_ID" ]; then
+            echo "No successful base-branch run found; skipping baseline fetch."
+            touch $GITHUB_WORKSPACE/baseline_unsupported_examples.txt
+            exit 0
+          fi
+
+          echo "Using base run ID: $BASE_RUN_ID"
+
+          JOB_ID=$(gh api \
+            "repos/${{ github.repository }}/actions/runs/${BASE_RUN_ID}/jobs" \
+            --jq ".jobs[] | select(.name | test(\"Run Examples on Ryzen AI.*${RUNNER}\")) | .id" \
+            | head -1)
+
+          if [ -z "$JOB_ID" ]; then
+            echo "No matching job found in base run; skipping baseline fetch."
+            touch $GITHUB_WORKSPACE/baseline_unsupported_examples.txt
+            exit 0
+          fi
+
+          echo "Using base job ID: $JOB_ID"
+
+          gh api "repos/${{ github.repository }}/actions/jobs/${JOB_ID}/logs" \
+            | grep -oP '(?<=AIE_PROGRAMMING_EXAMPLES :: ).*' \
+            | sort \
+            > $GITHUB_WORKSPACE/baseline_unsupported_examples.txt
+
+          echo "Baseline has $(wc -l < $GITHUB_WORKSPACE/baseline_unsupported_examples.txt) UNSUPPORTED examples."
 
       - name: Run commands
         run: |
@@ -232,12 +370,63 @@ jobs:
           # atb_chess parallelism group and need a longer timeout than the
           # rest of the suite. Split into two invocations so the timeout
           # extension applies only to those tests.
-          LIT_FILTER_OUT="gemm_asymmetric_tile_buffering" ninja check-reference-designs
-          ninja check-programming-guide
+          LIT_FILTER_OUT="gemm_asymmetric_tile_buffering" ninja check-reference-designs \
+            2>&1 | tee $GITHUB_WORKSPACE/lit_output_examples_1.txt
+          ninja check-programming-guide \
+            2>&1 | tee $GITHUB_WORKSPACE/lit_output_examples_2.txt
           LIT_OPTS="-j4 -sv --time-tests --timeout 1200 --show-unsupported --show-excluded" \
             LIT_FILTER="gemm_asymmetric_tile_buffering" \
-            ninja check-reference-designs
+            ninja check-reference-designs \
+            2>&1 | tee $GITHUB_WORKSPACE/lit_output_examples_3.txt
           popd
+
+      - name: Check for newly UNSUPPORTED examples
+        if: github.event_name == 'pull_request' && success()
+        run: |
+          cat $GITHUB_WORKSPACE/lit_output_examples_1.txt \
+              $GITHUB_WORKSPACE/lit_output_examples_2.txt \
+              $GITHUB_WORKSPACE/lit_output_examples_3.txt \
+            | grep -oP '(?<=AIE_PROGRAMMING_EXAMPLES :: ).*' \
+            | sort \
+            > $GITHUB_WORKSPACE/current_unsupported_examples.txt
+
+          comm -13 \
+            $GITHUB_WORKSPACE/baseline_unsupported_examples.txt \
+            $GITHUB_WORKSPACE/current_unsupported_examples.txt \
+            > $GITHUB_WORKSPACE/new_unsupported_examples.txt
+
+          COUNT=$(wc -l < $GITHUB_WORKSPACE/new_unsupported_examples.txt)
+          RUNNER="${{ matrix.runner_type }}"
+
+          if [ "$COUNT" -gt 0 ]; then
+            {
+              echo "<!-- lit-unsupported-examples-${RUNNER} -->"
+              echo "### ⚠️ Newly UNSUPPORTED examples on \`${RUNNER}\` (Run Examples job)"
+              echo ""
+              echo "These examples were passing on \`${{ github.base_ref }}\` but are now UNSUPPORTED:"
+              echo ""
+              while IFS= read -r test; do
+                echo "- \`${test}\`"
+              done < $GITHUB_WORKSPACE/new_unsupported_examples.txt
+            } > $GITHUB_WORKSPACE/pr_comment_examples.txt
+          else
+            {
+              echo "<!-- lit-unsupported-examples-${RUNNER} -->"
+              echo "### ✅ No newly UNSUPPORTED examples on \`${RUNNER}\` (Run Examples job)"
+            } > $GITHUB_WORKSPACE/pr_comment_examples.txt
+          fi
+
+      - name: Post PR comment for newly UNSUPPORTED examples
+        if: >
+          github.event_name == 'pull_request' && success() &&
+          github.event.pull_request.head.repo.full_name == github.repository
+        uses: edumserrano/find-create-or-update-comment@82880b65c8a3a6e4c70aa05a204995b6c9696f53  # v3
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body-includes: '<!-- lit-unsupported-examples-${{ matrix.runner_type }} -->'
+          comment-author: 'github-actions[bot]'
+          body-path: ${{ github.workspace }}/pr_comment_examples.txt
+          edit-mode: replace
 
       - name: Cleanup NPU_CACHE_HOME
         if: always()
