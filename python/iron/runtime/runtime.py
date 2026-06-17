@@ -257,14 +257,6 @@ class Runtime(Resolvable):
         self._locks = []
         self._tile_dmas = []
         self._scratchpad_parameters: list[ScratchpadParameter] = []
-        self._trace_size = None
-        self._trace_workers = None
-        self._ddr_id = 4
-        self._coretile_events = None
-        self._coremem_events = None
-        self._memtile_events = None
-        self._shimtile_events = None
-        self._egress_shim_col = 0
         self._active = None  # ActiveSequence while the body is being emitted
 
     # -- lower-level explicit-routing registration ----------------------------
@@ -378,40 +370,6 @@ class Runtime(Resolvable):
         active_sequence()  # enforce in-sequence use
         _BarrierSetOp(barrier, value).resolve()
 
-    def enable_trace(
-        self,
-        trace_size: int = None,
-        workers: list | None = None,
-        ddr_id: int = 4,
-        coretile_events: list | None = None,
-        coremem_events: list | None = None,
-        memtile_events: list | None = None,
-        shimtile_events: list | None = None,
-        egress_shim_col: int = 0,
-    ):
-        """Enable hardware tracing for this program.
-
-        Configures the AIE trace units and routes trace packets to DDR via the
-        shim DMA. Trace setup is emitted at the start of the sequence body.
-
-        Args:
-            trace_size (int): Size of the trace buffer in bytes.
-            workers (list[Worker] | None, optional): Specific workers to trace.
-                If None, all workers with ``trace`` set are traced.
-            ddr_id (int, optional): XRT inout buffer index (0-4) for trace data.
-            coretile_events / coremem_events / memtile_events / shimtile_events
-                (list | None, optional): Up to 8 trace events per tile type.
-            egress_shim_col (int, optional): Shim column used to egress trace.
-        """
-        self._trace_size = trace_size
-        self._trace_workers = workers
-        self._ddr_id = ddr_id
-        self._coretile_events = coretile_events
-        self._coremem_events = coremem_events
-        self._memtile_events = memtile_events
-        self._shimtile_events = shimtile_events
-        self._egress_shim_col = egress_shim_col
-
     def sync_parameters(self):
         """Emit ``aiex.sync_scratchpad_parameters_from_host`` in the sequence.
 
@@ -471,12 +429,19 @@ class Runtime(Resolvable):
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
         device=None,
+        trace=None,
     ) -> None:
         """Emit the runtime sequence into the current device.
 
         Builds the ``aie.runtime_sequence`` op, binds each declared argument to
         its block argument, then runs the user body inside the builder so its
         control flow and data movement lower in place.
+
+        Args:
+            trace: Optional :class:`TraceBuffer`. When set, the trace egress-DMA
+                setup for the single shared buffer is emitted at the start of the
+                sequence body. The per-tile trace units are configured separately
+                by the Program (at device scope) before this runs.
         """
         if self._sequence_fn is None:
             raise IronRuntimeError(
@@ -485,6 +450,11 @@ class Runtime(Resolvable):
 
         rt_dtypes = []
         for item in self._sequence_items:
+            if isinstance(item, (RuntimeData, RuntimeScalar)):
+                # A handle reused across builds carries an SSA value from the
+                # prior build; clear it so the set-once guard below stays a
+                # within-build invariant rather than a single-use one.
+                item.reset_op()
             if isinstance(item, RuntimeData):
                 rt_dtypes.append(item.arr_type)
             elif isinstance(item, RuntimeScalar):
@@ -501,12 +471,12 @@ class Runtime(Resolvable):
         # split/join/forward link groups resolve correctly).
         @runtime_sequence(*rt_dtypes)
         def sequence(*args):
-            if self._trace_size:
+            if trace is not None:
                 trace_utils.start_trace(
-                    trace_size=self._trace_size,
-                    ddr_id=self._ddr_id,
+                    trace_size=trace.trace_size,
+                    ddr_id=trace.ddr_id,
                     routing="single",
-                    egress_shim_col=self._egress_shim_col,
+                    egress_shim_col=trace.egress_shim_col,
                 )
             # Tensor args expose a RuntimeData handle (carries shape/tap); scalar
             # args are the live SSA value (arithmetic in the body).

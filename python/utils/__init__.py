@@ -200,7 +200,7 @@ def set_tensor_class(cls):
 from .hostruntime import set_current_device
 from . import hostruntime
 from .hostruntime.hostruntime import HostRuntime
-from .trace import TraceConfig
+from .trace import TraceBuffer, TileTrace
 from .npukernel import NPUKernel
 
 if has_xrt:

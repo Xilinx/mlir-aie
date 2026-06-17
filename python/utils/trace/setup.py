@@ -303,8 +303,40 @@ def _get_packet_type_for_tile(tile_op, is_mem_trace=False):
         raise ValueError(f"Unknown tile type for {tile_op}")
 
 
+# A "unit" is one hardware trace unit. A compute tile has two ("core" and
+# "mem"); mem tiles and shim tiles have one each ("memtile" / "shim"). These
+# helpers key off the unit name directly so callers that already know the unit
+# (the TileTrace path) don't have to re-derive it from tile type + occurrence.
+_PACKET_TYPE_BY_UNIT = {
+    "core": TracePacketType.Core,
+    "mem": TracePacketType.Mem,
+    "memtile": TracePacketType.MemTile,
+    "shim": TracePacketType.ShimTile,
+}
+
+_NONE_EVENT_BY_UNIT = {
+    "core": CoreEvent.NONE,
+    "mem": MemEvent.NONE,
+    "memtile": MemTileEvent.NONE,
+    "shim": ShimTileEvent.NONE,
+}
+
+
+def _default_events_for_unit(tile_op, unit):
+    """Default event list for a single trace unit on a tile."""
+    if unit == "mem":
+        return _get_default_events_for_tile(tile_op, is_mem_trace=True)
+    return _get_default_events_for_tile(tile_op, is_mem_trace=False)
+
+
 def _get_default_events_for_tile(tile_op, is_mem_trace=False):
-    """Get default trace events for a tile type."""
+    """Get default trace events for a tile type.
+
+    Uses the module-level (AIE2) event enums. The AIE2 and AIE2P default-event
+    encodings are identical, so this is correct for both NPU generations; if
+    AIE1 trace support is added, these defaults must become device-aware (pick
+    the arch enum via ``get_events_for_device``, symmetric with ``parse.py``).
+    """
     if tile_op.is_core_tile():
         if is_mem_trace:
             # Core memory trace defaults
@@ -376,6 +408,111 @@ def _get_default_events_for_tile(tile_op, is_mem_trace=False):
         return []
 
 
+def _emit_trace_unit(tile_op, unit, events, trace_seq, start_broadcast, stop_broadcast):
+    """Emit one aie.trace op for a single trace unit on a tile.
+
+    Args:
+        tile_op: The tile to trace.
+        unit: The hardware trace unit ("core"/"mem"/"memtile"/"shim").
+        events: Explicit event list, or None to use the unit's defaults.
+        trace_seq: Sequence number for the unique trace name.
+        start_broadcast/stop_broadcast: Broadcast channels for start/stop.
+
+    Appends the generated trace name to ``_configured_trace_names``.
+    """
+    if events is None:
+        events = _default_events_for_unit(tile_op, unit)
+
+    # Wrap bare enum values so every event is a GenericEvent.
+    events = [e if isinstance(e, GenericEvent) else GenericEvent(e) for e in events]
+
+    if len(events) > 8:
+        raise RuntimeError(
+            f"At most 8 events can be traced at once, have {len(events)}."
+        )
+
+    trace_name = f"trace_{unit}_{trace_seq}"
+    packet_type = _PACKET_TYPE_BY_UNIT[unit]
+    is_core_trace = unit == "core"
+
+    # Pad events to 8 with NONE events for this unit.
+    none_event = _NONE_EVENT_BY_UNIT[unit]
+    padded_events = (list(events) + [none_event] * 8)[:8]
+
+    # Collect and validate port events - multiple events can share a slot
+    # (e.g., PORT_RUNNING_0 and PORT_TLAST_0 both use slot 0) but must have
+    # the same port configuration.
+    port_configs = {}  # slot -> (port, channel, direction, event_name)
+    for event in padded_events:
+        if isinstance(event, BasePortEvent):
+            slot = event.slot
+            config = (event.port, event.channel, event.direction)
+            if slot in port_configs:
+                prev_config, prev_name = port_configs[slot]
+                if prev_config != config:
+                    raise ValueError(
+                        f"Conflicting port configurations for slot {slot}: "
+                        f"{prev_name} uses {prev_config}, but "
+                        f"{event.code.name} uses {config}. "
+                        f"Events sharing a slot must monitor the same port."
+                    )
+            else:
+                port_configs[slot] = (config, event.code.name)
+
+    # Generate the aie.trace op
+    @trace(tile_op, trace_name)
+    def trace_body():
+        if is_core_trace:
+            trace_mode(TraceMode.EventTime)
+        # id auto-assigned in (col, row) order by
+        # -aie-insert-trace-flows after placement.
+        trace_packet(type=packet_type)
+
+        for event in padded_events:
+            trace_event(event)
+
+        # Emit one trace_port per unique slot
+        for slot, (config, _) in port_configs.items():
+            port, channel, direction = config
+            trace_port(slot, port, channel, direction)
+
+        # All tiles use broadcast start/stop. Trace lowering pass
+        # handles special case where a traced shim tile is also
+        # the trace destination and configures timer control with
+        # USER_EVENT_1
+        trace_start(broadcast=start_broadcast)
+        trace_stop(broadcast=stop_broadcast)
+
+    _configured_trace_names.append(trace_name)
+
+
+def configure_trace_specs(specs, start_broadcast=15, stop_broadcast=14):
+    """Generate aie.trace ops from explicit per-unit trace specs.
+
+    This is the unit-granular entry point used by the IRON ``TileTrace`` path:
+    each spec names exactly one hardware trace unit on one tile, so different
+    tiles (and the two units of a single compute tile) can carry independent
+    event sets.
+
+    Args:
+        specs: Iterable of ``(tile_op, unit, events)`` tuples, where ``unit`` is
+            one of "core"/"mem"/"memtile"/"shim" and ``events`` is an explicit
+            event list or ``None`` for that unit's defaults.
+        start_broadcast/stop_broadcast: Broadcast channels for start/stop.
+    """
+    _configured_trace_names.clear()
+
+    # Packet IDs are intentionally NOT assigned here. IRON workers may be
+    # unplaced at this point, so a stable (col, row)-derived id can't be
+    # computed in Python. -aie-insert-trace-flows assigns ids in
+    # (col, row) order after the placer runs, keeping the trace overlay's
+    # routing-rule layout a pure function of the active trace tile set.
+    for trace_seq, (tile_op, unit, events) in enumerate(specs, start=1):
+        _emit_trace_unit(
+            tile_op, unit, events, trace_seq, start_broadcast, stop_broadcast
+        )
+
+
 def configure_trace(
     tiles_to_trace,
     start_broadcast=15,
@@ -385,10 +522,12 @@ def configure_trace(
     memtile_events=None,
     shimtile_events=None,
 ):
-    """Generate aie.trace ops for a list of tiles.
+    """Generate aie.trace ops for a list of tiles (tile-granular API).
 
-    This function emits declarative aie.trace operations that define what
-    events to trace.
+    Lower-level entry point: each tile in ``tiles_to_trace`` is configured with
+    one event list per tile class. A compute tile listed twice gets its core
+    unit on the first occurrence and its core-memory unit on the second. For
+    per-tile / per-unit control, prefer :func:`configure_trace_specs`.
 
     Args:
         tiles_to_trace: List of tile operations to configure tracing for.
@@ -399,124 +538,29 @@ def configure_trace(
         memtile_events: List of events for mem tile tracing (max 8).
         shimtile_events: List of events for shim tile tracing (max 8).
     """
-    _configured_trace_names.clear()
-
     if not tiles_to_trace:
+        _configured_trace_names.clear()
         return
 
-    # Packet IDs are intentionally NOT assigned here. IRON workers may be
-    # unplaced at this point, so a stable (col, row)-derived id can't be
-    # computed in Python. -aie-insert-trace-flows assigns ids in
-    # (col, row) order after the placer runs, keeping the trace overlay's
-    # routing-rule layout a pure function of the active trace tile set.
-    trace_seq = 1
+    # Translate the tile-granular inputs into per-unit specs, preserving the
+    # "second occurrence of a core tile == its mem unit" convention.
+    specs = []
     seen_core_tiles = set()
-
     for tile_op in tiles_to_trace:
-        # Determine if this is a core tile memory trace (second occurrence)
-        is_mem_trace = False
         if tile_op.is_core_tile():
             if tile_op in seen_core_tiles:
-                is_mem_trace = True
+                specs.append((tile_op, "mem", coremem_events))
             else:
                 seen_core_tiles.add(tile_op)
-
-        # Generate unique trace name based on tile type
-        if tile_op.is_core_tile():
-            trace_type = "mem" if is_mem_trace else "core"
+                specs.append((tile_op, "core", coretile_events))
         elif tile_op.is_mem_tile():
-            trace_type = "memtile"
+            specs.append((tile_op, "memtile", memtile_events))
         elif tile_op.is_shim_tile():
-            trace_type = "shim"
+            specs.append((tile_op, "shim", shimtile_events))
         else:
             raise ValueError(f"Unknown tile type for tracing: {tile_op}")
 
-        trace_name = f"trace_{trace_type}_{trace_seq}"
-
-        # Get events for this tile type
-        if tile_op.is_core_tile():
-            events = coremem_events if is_mem_trace else coretile_events
-            if events is None:
-                events = _get_default_events_for_tile(tile_op, is_mem_trace)
-        elif tile_op.is_mem_tile():
-            events = memtile_events
-            if events is None:
-                events = _get_default_events_for_tile(tile_op)
-        elif tile_op.is_shim_tile():
-            events = shimtile_events
-            if events is None:
-                events = _get_default_events_for_tile(tile_op)
-        else:
-            raise ValueError(f"Unknown tile type for tracing: {tile_op}")
-
-        # Validate events - wrap in GenericEvent if not already
-        events = [e if isinstance(e, GenericEvent) else GenericEvent(e) for e in events]
-
-        # Get packet type
-        packet_type = _get_packet_type_for_tile(tile_op, is_mem_trace)
-        is_core_trace = tile_op.is_core_tile() and not is_mem_trace
-
-        # Pad events to 8 with NONE events
-        if len(events) > 8:
-            raise RuntimeError(
-                f"At most 8 events can be traced at once, have {len(events)}."
-            )
-        if tile_op.is_core_tile():
-            none_event = MemEvent.NONE if is_mem_trace else CoreEvent.NONE
-        elif tile_op.is_mem_tile():
-            none_event = MemTileEvent.NONE
-        elif tile_op.is_shim_tile():
-            none_event = ShimTileEvent.NONE
-        else:
-            none_event = CoreEvent.NONE
-        padded_events = (list(events) + [none_event] * 8)[:8]
-
-        # Collect and validate port events - multiple events can share a slot
-        # (e.g., PORT_RUNNING_0 and PORT_TLAST_0 both use slot 0) but must have
-        # the same port configuration.
-        port_configs = {}  # slot -> (port, channel, direction, event_name)
-        for event in padded_events:
-            if isinstance(event, BasePortEvent):
-                slot = event.slot
-                config = (event.port, event.channel, event.direction)
-                if slot in port_configs:
-                    prev_config, prev_name = port_configs[slot]
-                    if prev_config != config:
-                        raise ValueError(
-                            f"Conflicting port configurations for slot {slot}: "
-                            f"{prev_name} uses {prev_config}, but "
-                            f"{event.code.name} uses {config}. "
-                            f"Events sharing a slot must monitor the same port."
-                        )
-                else:
-                    port_configs[slot] = (config, event.code.name)
-
-        # Generate the aie.trace op
-        @trace(tile_op, trace_name)
-        def trace_body():
-            if is_core_trace:
-                trace_mode(TraceMode.EventTime)
-            # id auto-assigned in (col, row) order by
-            # -aie-insert-trace-flows after placement.
-            trace_packet(type=packet_type)
-
-            for event in padded_events:
-                trace_event(event)
-
-            # Emit one trace_port per unique slot
-            for slot, (config, _) in port_configs.items():
-                port, channel, direction = config
-                trace_port(slot, port, channel, direction)
-
-            # All tiles use broadcast start/stop. Trace lowering pass
-            # handles special case where a traced shim tile is also
-            # the trace destination and configures timer control with
-            # USER_EVENT_1
-            trace_start(broadcast=start_broadcast)
-            trace_stop(broadcast=stop_broadcast)
-
-        _configured_trace_names.append(trace_name)
-        trace_seq += 1
+    configure_trace_specs(specs, start_broadcast, stop_broadcast)
 
 
 def start_trace(

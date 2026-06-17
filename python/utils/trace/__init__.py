@@ -529,14 +529,16 @@ to
 which reduces the timer from 11,091,042 cycles to 381,175 seems to fix it.
 """
 
-from .config import TraceConfig
+from .config import TraceBuffer
 from .parse import parse_trace
 from .setup import (
     configure_packet_ctrl_flow,
     config_ctrl_pkts_aie,
     configure_trace,
+    configure_trace_specs,
     start_trace,
 )
+from .tiletrace import TileTrace, build_trace_specs, _event_unit, _UNITS_FOR_TILE
 from .utils import (
     parity,
     extract_tile,

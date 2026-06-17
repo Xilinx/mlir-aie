@@ -7,9 +7,11 @@ from .parse import parse_trace
 from .utils import parity, extract_tile
 
 
-class TraceConfig:
+class TraceBuffer:
     DEFAULT_TRACE_BUFFER_INDEX = 4
     DEFAULT_TRACE_FILE = "trace.txt"
+
+    DEFAULT_EGRESS_SHIM_COL = 0
 
     def __init__(
         self,
@@ -17,15 +19,32 @@ class TraceConfig:
         trace_file: str = DEFAULT_TRACE_FILE,
         ddr_id: int = DEFAULT_TRACE_BUFFER_INDEX,
         enable_ctrl_pkts: bool = False,
+        egress_shim_col: int = DEFAULT_EGRESS_SHIM_COL,
         last_tensor_shape=None,
         last_tensor_dtype=None,
     ):
+        """The trace output buffer: where trace packets land and how they egress.
+
+        All traced tiles multiplex into this single shared DDR buffer (the
+        hardware distinguishes them by packet id; ``parse_trace`` demuxes them
+        host-side). This object is purely the *sink* -- what to capture is
+        declared per source via :class:`TileTrace` (on each Worker, or in
+        ``Program(trace_tiles=...)``).
+
+        Args:
+            trace_size: Size of the shared trace buffer in bytes.
+            trace_file: Host file the trace buffer is written to.
+            ddr_id: XRT inout buffer index (0-4) the trace DMA egresses to.
+            enable_ctrl_pkts: Use control packets for trace configuration.
+            egress_shim_col: Shim column used to egress trace data to DDR.
+        """
         if trace_size <= 0:
             raise ValueError(f"Invalid trace size: {trace_size}")
         self.trace_size = trace_size
         self.trace_file = trace_file
         self.ddr_id = ddr_id
         self.enable_ctrl_pkts = enable_ctrl_pkts
+        self.egress_shim_col = egress_shim_col
         self.last_tensor_shape = last_tensor_shape
         self.last_tensor_dtype = last_tensor_dtype
         # Path to physical MLIR with lowered trace ops (set by NPUKernel)
@@ -33,7 +52,7 @@ class TraceConfig:
 
     def __repr__(self) -> str:
         # Eval-faithful: only constructor kwargs.  ``eval(repr(cfg))``
-        # round-trips to an equivalent fresh TraceConfig.  Post-run mutable
+        # round-trips to an equivalent fresh TraceBuffer.  Post-run mutable
         # state (physical_mlir_path, last_tensor_*) lives in __str__.
         # Defaults are skipped to keep the rendering tight.
         bits = [f"trace_size={self.trace_size}"]
@@ -43,7 +62,9 @@ class TraceConfig:
             bits.append(f"ddr_id={self.ddr_id}")
         if self.enable_ctrl_pkts:
             bits.append("enable_ctrl_pkts=True")
-        return f"TraceConfig({', '.join(bits)})"
+        if self.egress_shim_col != self.DEFAULT_EGRESS_SHIM_COL:
+            bits.append(f"egress_shim_col={self.egress_shim_col}")
+        return f"TraceBuffer({', '.join(bits)})"
 
     def __str__(self) -> str:
         # Human-readable: starts with the eval-faithful repr, then appends

@@ -69,11 +69,18 @@ class Program:
         device: Device,
         rt: Runtime,
         workers: list | None = None,
+        trace_tiles: list | None = None,
+        trace: "TraceBuffer | None" = None,
     ):
         """A Program represents all design information needed to run the design on a device.
 
         Note: MLIR verification (``ctx.module.operation.verify()``) is performed inside
         :meth:`resolve_program`, not during construction.
+
+        Tracing has two parts: the *sources* (what to capture, where) and the
+        *sink* (where bytes land). Sources are declared per Worker via
+        ``Worker(trace=TileTrace(...))`` and, for non-worker tiles, via
+        ``trace_tiles``. The sink is the ``trace`` :class:`TraceBuffer`.
 
         Args:
             device (Device): The device used to generate the final MLIR for the design.
@@ -82,10 +89,19 @@ class Program:
                 The runtime sequence references their fifos; the Program resolves
                 their tiles, cores, and fifos. Defaults to None (no Workers — a
                 pure host-driven data-movement design).
+            trace_tiles (list[TileTrace] | None, optional): Trace sources for
+                tiles not owned by a Worker (mem tiles, shim tiles, or a
+                worker-less core). Each TileTrace must carry an explicit ``tile``.
+                Defaults to None.
+            trace (TraceBuffer | None, optional): The trace output buffer (sink):
+                size, ddr_id, file, egress column. Required for any tracing to
+                take effect. Defaults to None (no tracing).
         """
         self._device = device
         self._rt = rt
         self._workers = list(workers) if workers is not None else []
+        self._trace_tiles = list(trace_tiles) if trace_tiles is not None else []
+        self._trace = trace
         # Let the runtime discover the fifos it touches (by walking the fifo
         # link graph from the Workers) so they resolve in a deterministic order.
         self._rt.discover_fifos(self._workers)
@@ -166,6 +182,10 @@ class Program:
                     all_tiles.extend(td.all_tiles())
                 for lk in self._rt.locks:
                     all_tiles.append(lk.tile)
+                # Non-worker tiles named for tracing must be placed too.
+                for tt in self._trace_tiles:
+                    if tt.tile is not None:
+                        all_tiles.append(tt.tile)
 
                 # Resolve tiles
                 for t in all_tiles:
@@ -214,28 +234,21 @@ class Program:
                         elif isinstance(arg, Resolvable):
                             arg.resolve()
 
-                # Generate trace routes
-                # TODO Need to iterate over all tiles or workers & fifos to make list of tiles to trace
-                #      Alternatively, we merge the mechanism for packet routed objfifos so we use unique
-                #      route IDs for trace as well
-
-                # Scan workers and build list of tiles to trace
-                tiles_to_trace = []
-                if self._rt._trace_workers is not None:
-                    for w in self._rt._trace_workers:
-                        tiles_to_trace.append(w.tile.op)
-                else:
-                    for w in self._workers:
-                        if w.trace is not None:
-                            tiles_to_trace.append(w.tile.op)
-                if self._rt._trace_size is not None and self._rt._trace_size > 0:
-                    trace_utils.configure_trace(
-                        tiles_to_trace,
-                        coretile_events=self._rt._coretile_events,
-                        coremem_events=self._rt._coremem_events,
-                        memtile_events=self._rt._memtile_events,
-                        shimtile_events=self._rt._shimtile_events,
+                # Generate trace routes. Each traced Worker contributes its
+                # compute tile (via its TileTrace); trace_tiles adds non-worker
+                # tiles. The per-unit specs drive the declarative aie.trace ops;
+                # -aie-insert-trace-flows assigns packet ids and routes after
+                # placement.
+                if self._trace is not None:
+                    worker_traces = [
+                        (w.tile.op, w.trace)
+                        for w in self._workers
+                        if w.trace is not None
+                    ]
+                    specs = trace_utils.build_trace_specs(
+                        worker_traces, self._trace_tiles
                     )
+                    trace_utils.configure_trace_specs(specs)
 
                 # Create worker barrier locks before the runtime sequence so
                 # rt.set_barrier(...) in the sequence body can emit set_lock
@@ -247,7 +260,9 @@ class Program:
                 # symbol name, then creates the runtime-touched fifo ops at device
                 # scope once their endpoints are known. Emitted before the cores
                 # so those fifo ops exist by the time the cores reference them.
-                self._rt.resolve(device=self._device)
+                # The trace config (if any) is passed so the sequence emits the
+                # trace egress-DMA setup for the single shared buffer.
+                self._rt.resolve(device=self._device, trace=self._trace)
 
                 # Resolve any remaining worker-side fifos (idempotent) before the
                 # cores reference them.

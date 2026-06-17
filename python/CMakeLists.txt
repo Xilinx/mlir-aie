@@ -73,6 +73,7 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/trace/get_trace_summary.py
     utils/trace/parse.py
     utils/trace/setup.py
+    utils/trace/tiletrace.py
     utils/trace/utils.py
 )
 

@@ -21,6 +21,7 @@ from .dataflow.endpoint import ObjectFifoEndpoint
 from .buffer import Buffer
 from .scratchpad_parameter import ScratchpadParameter
 from .resolvable import Resolvable
+from ..utils.trace import TileTrace
 
 
 class Worker(ObjectFifoEndpoint):
@@ -39,8 +40,7 @@ class Worker(ObjectFifoEndpoint):
         while_true: bool = True,
         stack_size: int = None,
         allocation_scheme: str = None,
-        trace: int = None,
-        trace_events: list = None,
+        trace: "TileTrace | None" = None,
         dynamic_objfifo_lowering: bool | None = None,
     ):
         """Construct a Worker
@@ -53,8 +53,12 @@ class Worker(ObjectFifoEndpoint):
             stack_size (int, optional): The stack_size in bytes to be allocated for the worker. Defaults to 1024 bytes.
             allocation_scheme (str, optional): The memory allocation scheme to use for the Worker, either 'basic-sequential' or 'bank-aware'. If None, defaults to bank-aware.
                 Will override any allocation scheme set on the tile.
-            trace (int, optional): If >0, enable tracing for this worker.
-            trace_events (list | None, optional): Custom list of trace events for this worker. Defaults to None.
+            trace (TileTrace | None, optional): Trace configuration for this worker's
+                compute tile. ``TileTrace()`` traces both the core and core-memory
+                units with default events; ``TileTrace(events=[...])`` selects events
+                (the hardware unit of each event is inferred from its type). Defaults
+                to None (no tracing). The ``tile`` field of the TileTrace is ignored:
+                the worker supplies its own compute tile.
             dynamic_objfifo_lowering (bool | None, optional): Per-core override for the
                 ``aie-objectFifo-stateful-transform`` pass's lowering choice. ``True`` forces
                 dynamic (loop-preserving) lowering for this core; ``False`` forces static
@@ -81,7 +85,6 @@ class Worker(ObjectFifoEndpoint):
         if allocation_scheme:
             self._tile.allocation_scheme = allocation_scheme
         self.trace = trace
-        self.trace_events = trace_events
 
         # If no core_fn is given, make a simple while(true) loop.
         if core_fn is None:
