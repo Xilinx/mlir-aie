@@ -38,6 +38,17 @@
 #define XAIE_IO_UPDATE_REG 0x0C
 #endif
 
+// The TXN opcodes used by this file and TxnEncoding.h must stay in lockstep
+// (see the DRIFT WARNING in TxnEncoding.h). These asserts fail the build the
+// instant the two tables disagree, rather than emitting a corrupt transaction.
+static_assert(XAIE_IO_CREATE_SCRATCHPAD ==
+                  aie_runtime::TXN_OPC_CREATE_SCRATCHPAD,
+              "CREATE_SCRATCHPAD opcode drifted between AIETargetNPU.cpp and "
+              "TxnEncoding.h");
+static_assert(XAIE_IO_UPDATE_REG == aie_runtime::TXN_OPC_UPDATE_REG,
+              "UPDATE_REG opcode drifted between AIETargetNPU.cpp and "
+              "TxnEncoding.h");
+
 using namespace mlir;
 using namespace xilinx;
 using namespace xilinx::AIE;
@@ -143,18 +154,13 @@ LogicalResult appendBlockWrite(std::vector<uint32_t> &instructions,
   for (auto d : data)
     payload.push_back(d.getZExtValue());
 
-  // Use encoding library for the core format, then fix up col/row field.
-  aie_runtime::txn_append_blockwrite(instructions, *address, payload.data(),
-                                     payload.size());
-
-  // The encoding library leaves word[1] as 0. If col/row are present, set it.
+  // col/row default to 0 (flat address); when present they are folded into both
+  // the absolute address and the word[1] col/row field by the encoder.
   auto col = op.getColumn();
   auto row = op.getRow();
-  if (col && row) {
-    // word[1] is at position (current_size - headerSize - count + 1)
-    size_t headerPos = instructions.size() - 4 - payload.size();
-    instructions[headerPos + 1] = (*col & 0xff) | ((*row & 0xff) << 8);
-  }
+  aie_runtime::txn_append_blockwrite(instructions, *address, payload.data(),
+                                     payload.size(), col.value_or(0),
+                                     row.value_or(0));
   return success();
 }
 

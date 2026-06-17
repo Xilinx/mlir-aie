@@ -379,6 +379,18 @@ std::optional<uint32_t> AIEX::getConstantIntOperand(mlir::Value v) {
   return static_cast<uint32_t>(cst.getZExtValue());
 }
 
+std::optional<AIE::PacketInfoAttr>
+AIEX::findControllerId(AIE::DeviceOp device, uint32_t col, uint32_t row) {
+  for (auto tile : device.getOps<AIE::TileOp>()) {
+    if (static_cast<uint32_t>(tile.getCol()) != col ||
+        static_cast<uint32_t>(tile.getRow()) != row ||
+        !tile->hasAttr("controller_id"))
+      continue;
+    return tile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
+  }
+  return std::nullopt;
+}
+
 // dma_memcpy_nd transfers of the form [*, 1, 1, len][*, 0, 0, 1] do not
 // specify any data layout transformation, but simply express a contiguous
 // transfer of `len`. The 4th dimension is excluded because a repeat count

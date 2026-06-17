@@ -65,7 +65,9 @@ def dma_bd(
     )
 
 
-# TraceShimRouting enum (from AIETraceAttrs.td, not yet auto-generated)
+# Hand-written stand-in for the TraceShimRouting enum in AIETraceAttrs.td. Only
+# the Single routing mode is wired up today; replace this with the generated
+# binding (and add the remaining modes) once the .td enum is exposed to Python.
 class TraceShimRouting(IntEnum):
     Single = 0
 

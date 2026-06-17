@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc.
+# (c) Copyright 2024-2026 Advanced Micro Devices, Inc.
 
 import numpy as np
 from typing import Callable, Sequence, Union
@@ -62,6 +62,10 @@ class RuntimeData:
             raise ValueError("Cannot set operation for RuntimeData more than once.")
         self._op = op
 
+    def reset_op(self) -> None:
+        """Clear the bound SSA value so the handle can be rebound on a fresh build."""
+        self._op = None
+
 
 class RuntimeScalar:
     """A handle to a scalar runtime parameter (e.g. T.i32()) in the Runtime sequence."""
@@ -96,3 +100,7 @@ class RuntimeScalar:
         if self._op is not None:
             raise ValueError("Cannot set operation for RuntimeScalar more than once.")
         self._op = op
+
+    def reset_op(self) -> None:
+        """Clear the bound SSA value so the handle can be rebound on a fresh build."""
+        self._op = None

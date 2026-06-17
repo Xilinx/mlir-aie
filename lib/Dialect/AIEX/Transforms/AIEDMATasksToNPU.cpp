@@ -68,7 +68,8 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
     }
 
     if (firstBd && !firstBd.getDynSizes().empty()) {
-      // Dynamic repeat_count path — mirrors AIEDmaToNpu.cpp lines 900-934.
+      // Dynamic repeat_count path — mirrors the repeat-count handling in
+      // DmaToNpuPattern::lowerDynamicBd (AIEDmaToNpu.cpp).
       auto loc = op.getLoc();
       auto i32ty = rewriter.getIntegerType(32);
       auto cst = [&](int64_t v) -> Value {
@@ -113,18 +114,11 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
           tileCol, tileRow, channelIdx, channelDir);
       if (task_op.getIssueToken()) {
         auto device = op->getParentOfType<AIE::DeviceOp>();
-        for (auto t : device.getOps<AIE::TileOp>()) {
-          if (static_cast<uint32_t>(t.getCol()) == tileCol &&
-              static_cast<uint32_t>(t.getRow()) == tileRow &&
-              t->hasAttr("controller_id")) {
-            auto controllerIdAttr =
-                t->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
-            uint32_t data = controllerIdAttr.getPktId() << 8;
-            uint32_t mask = 0x00001F00;
-            NpuMaskWrite32Op::create(rewriter, loc, cst(ctrlOffset), cst(data),
-                                     cst(mask), nullptr, nullptr, nullptr);
-            break;
-          }
+        if (auto controllerId = findControllerId(device, tileCol, tileRow)) {
+          uint32_t data = controllerId->getPktId() << 8;
+          uint32_t mask = 0x00001F00;
+          NpuMaskWrite32Op::create(rewriter, loc, cst(ctrlOffset), cst(data),
+                                   cst(mask), nullptr, nullptr, nullptr);
         }
       }
 
@@ -549,20 +543,6 @@ struct AIEDMATasksToNPUPass
       bufLen = cst(totalUnits);
     }
 
-    // --- Determine which fields are dynamic vs static ---
-    auto isConst = [](OpFoldResult ofr) {
-      return getConstantIntValue(ofr).has_value();
-    };
-
-    bool d0SizeDyn = !isConst(mixedSizesRev[0]);
-    bool d1SizeDyn = !isConst(mixedSizesRev[1]);
-    bool d2SizeDyn = !isConst(mixedSizesRev[2]);
-    bool d3SizeDyn = !isConst(mixedSizesRev[3]);
-    bool d0StrideDyn = !isConst(mixedStridesRev[0]);
-    bool d1StrideDyn = !isConst(mixedStridesRev[1]);
-    bool d2StrideDyn = !isConst(mixedStridesRev[2]);
-    bool d3StrideDyn = !isConst(mixedStridesRev[3]);
-
     // --- Compute static placeholder values for NpuWriteBdOp via the shared
     // helper. Constant fields get their actual hardware value; dynamic fields
     // come back as 0 and are overridden by the write32 patches below.
@@ -646,59 +626,26 @@ struct AIEDMATasksToNPUPass
         /*burst_length=*/IntegerAttr::get(i32ty, bd_op.getBurstLength()));
 
     // --- Emit NpuWrite32Op overrides only for dynamic BD words ---
+    // The shared helper owns the BD word layout and which words are dynamic;
+    // we just supply the sink that creates the npu.write32 op. word[0] uses the
+    // locally-computed bufLen (which may come from a dyn_len operand).
     uint64_t bdAddr =
         target_model.getDmaBdAddress(tile.getCol(), tile.getRow(), bd_id);
-
     uint32_t bdAddrU32 = static_cast<uint32_t>(bdAddr);
-    auto emitDynBdWord = [&](uint32_t wordIdx, Value wordValue) {
-      uint32_t wordAddr = bdAddrU32 + wordIdx * 4;
-      NpuWrite32Op::create(builder, loc,
-                           /*address=*/cst(wordAddr),
-                           /*value=*/wordValue,
-                           /*buffer=*/FlatSymbolRefAttr{},
-                           /*column=*/IntegerAttr{},
-                           /*row=*/IntegerAttr{},
-                           /*bd_group=*/builder.getUI32IntegerAttr(bdAddrU32));
-    };
-
-    // word[0]: buffer_length — dynamic if any of d0/d1/d2 sizes are dynamic
-    if (d0SizeDyn || d1SizeDyn || d2SizeDyn) {
-      emitDynBdWord(0, bufLen);
-    }
-
-    // word[3]: d0_size, d0_stride
-    if (d0SizeDyn || d0StrideDyn) {
-      emitDynBdWord(3, buildBdWord(builder, loc,
-                                   {{hw.d0Size, 0x3FFu, 20u},
-                                    {hw.d0Stride, 0xFFFFFu, 0u}}));
-    }
-
-    // word[4]: burst_length (static), d1_size, d1_stride
-    if (d1SizeDyn || d1StrideDyn) {
-      uint32_t burstEnc =
-          AIE::getShimBurstLengthEncoding(target_model, bd_op.getBurstLength());
-      Value burstVal = cst(static_cast<int64_t>((burstEnc & 0x3u) << 30));
-      Value sizeStride =
-          buildBdWord(builder, loc,
-                      {{hw.d1Size, 0x3FFu, 20u}, {hw.d1Stride, 0xFFFFFu, 0u}});
-      emitDynBdWord(4,
-                    arith::OrIOp::create(builder, loc, burstVal, sizeStride));
-    }
-
-    // word[5]: AXCache (static), d2_stride
-    if (d2StrideDyn || d2SizeDyn) {
-      Value axcache = cst((2u & 0xfu) << 24);
-      Value strMasked =
-          buildBdWord(builder, loc, {{hw.d2Stride, 0xFFFFFu, 0u}});
-      emitDynBdWord(5, arith::OrIOp::create(builder, loc, axcache, strMasked));
-    }
-
-    // word[6]: iteration_size, iteration_stride
-    if (d3SizeDyn || d3StrideDyn) {
-      emitDynBdWord(6, buildBdWord(builder, loc,
-                                   {{hw.iterSize, 0x3Fu, 20u},
-                                    {hw.iterStride, 0xFFFFFu, 0u}}));
-    }
+    uint32_t burstEnc =
+        AIE::getShimBurstLengthEncoding(target_model, bd_op.getBurstLength());
+    emitDynamicBdWordOverrides(
+        builder, loc, hw, bufLen, mixedSizesRev, mixedStridesRev, burstEnc,
+        [&](uint32_t wordIdx, Value wordValue) {
+          NpuWrite32Op::create(
+              builder, loc,
+              /*address=*/cst(bdAddrU32 + wordIdx * 4),
+              /*value=*/wordValue,
+              /*buffer=*/FlatSymbolRefAttr{},
+              /*column=*/IntegerAttr{},
+              /*row=*/IntegerAttr{},
+              /*bd_group=*/builder.getUI32IntegerAttr(bdAddrU32));
+        });
 
     return setAddressForSingleBD(builder, bd_op, tile);
   }

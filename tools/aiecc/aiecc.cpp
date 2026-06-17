@@ -1585,27 +1585,31 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
   }
 
   // Step 5: Convert SCF to CF in aie.core bodies only.
-  // Walk each CoreOp and apply the conversion within its region. This avoids
-  // touching aie.runtime_sequence (which preserves SCF for EmitC codegen)
-  // without needing fragile ConversionTarget exclusion lists.
+  // We scope the conversion by walking each CoreOp and converting within its
+  // region, rather than running a module-wide conversion that would also have
+  // to exclude aie.runtime_sequence (which preserves SCF for EmitC codegen).
+  // The target and patterns are invariant across cores, so build them once.
   {
     MLIRContext *ctx = moduleOp.getContext();
+    ConversionTarget scfTarget(*ctx);
+    scfTarget.addLegalDialect<cf::ControlFlowDialect>();
+    scfTarget.addLegalDialect<arith::ArithDialect>();
+    scfTarget.addLegalDialect<func::FuncDialect>();
+    scfTarget.addLegalDialect<memref::MemRefDialect>();
+    scfTarget.addLegalDialect<xilinx::AIE::AIEDialect>();
+    scfTarget.addLegalDialect<xilinx::AIEX::AIEXDialect>();
+    scfTarget.addIllegalDialect<scf::SCFDialect>();
+    FrozenRewritePatternSet scfPatterns = [&] {
+      RewritePatternSet patterns(ctx);
+      populateSCFToControlFlowConversionPatterns(patterns);
+      return FrozenRewritePatternSet(std::move(patterns));
+    }();
+
     LogicalResult coreConvResult = success();
     moduleOp.walk([&](xilinx::AIE::CoreOp coreOp) {
       if (failed(coreConvResult))
         return;
-      ConversionTarget scfTarget(*ctx);
-      scfTarget.addLegalDialect<cf::ControlFlowDialect>();
-      scfTarget.addLegalDialect<arith::ArithDialect>();
-      scfTarget.addLegalDialect<func::FuncDialect>();
-      scfTarget.addLegalDialect<memref::MemRefDialect>();
-      scfTarget.addLegalDialect<xilinx::AIE::AIEDialect>();
-      scfTarget.addLegalDialect<xilinx::AIEX::AIEXDialect>();
-      scfTarget.addIllegalDialect<scf::SCFDialect>();
-      RewritePatternSet scfPatterns(ctx);
-      populateSCFToControlFlowConversionPatterns(scfPatterns);
-      if (failed(applyPartialConversion(coreOp, scfTarget,
-                                        std::move(scfPatterns)))) {
+      if (failed(applyPartialConversion(coreOp, scfTarget, scfPatterns))) {
         coreOp.emitError("SCF to CF conversion failed");
         coreConvResult = failure();
       }

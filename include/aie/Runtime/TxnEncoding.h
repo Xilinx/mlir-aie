@@ -122,18 +122,20 @@ inline void txn_append_sync(std::vector<uint32_t> &txn, uint32_t col,
 // Append a variable-length blockwrite instruction.
 // `data` points to `count` uint32_t words of payload.
 //
-// Unlike txn_append_sync, this takes only `addr` (no row/col): a blockwrite's
-// destination tile is already encoded in the absolute `addr` (column/row are
-// folded into the upper address bits by the compiler before this point), so the
-// TXN blockwrite format carries a single flat address rather than separate
-// row/col fields.
+// The destination tile is encoded twice in the firmware blockwrite format: once
+// in the upper bits of the absolute `addr` (column/row folded in by the
+// compiler before this point) and once in the dedicated col/row field at
+// word[1]. Callers that build an absolute address from a tile pass that same
+// (col, row) here so both representations agree; callers with a purely flat
+// address pass 0/0.
 inline void txn_append_blockwrite(std::vector<uint32_t> &txn, uint32_t addr,
-                                  const uint32_t *data, size_t count) {
+                                  const uint32_t *data, size_t count,
+                                  uint32_t col = 0, uint32_t row = 0) {
   const unsigned headerSize = 4;
   size_t pos = txn.size();
   txn.resize(pos + headerSize + count, 0);
   txn[pos + 0] = TXN_OPC_BLOCKWRITE;
-  // txn[pos + 1] is col/row (set to 0; caller can set if needed)
+  txn[pos + 1] = (col & 0xff) | ((row & 0xff) << 8);
   txn[pos + 2] = addr;
   txn[pos + 3] = static_cast<uint32_t>((headerSize + count) * sizeof(uint32_t));
   for (size_t i = 0; i < count; ++i)

@@ -17,6 +17,7 @@ from .aie import (
     Neighbors,
     TileOp,
     bds,
+    npu_write_rtp,
 )
 from .transform.structured import MixedValues, _dispatch_mixed_values
 from .._mlir_libs import get_dialect_registry
@@ -223,13 +224,23 @@ _npu_maskwrite32_gen = npu_maskwrite32
 _npu_address_patch_gen = npu_address_patch
 
 
-def npu_write32(address, value, *, buffer=None, column=None, row=None):
+def npu_write32(
+    address, value, *, buffer=None, column=None, row=None, loc=None, ip=None
+):
     return _npu_write32_gen(
-        _as_i32(address), _as_i32(value), buffer=buffer, column=column, row=row
+        _as_i32(address),
+        _as_i32(value),
+        buffer=buffer,
+        column=column,
+        row=row,
+        loc=loc,
+        ip=ip,
     )
 
 
-def npu_maskwrite32(address, value, mask, *, buffer=None, column=None, row=None):
+def npu_maskwrite32(
+    address, value, mask, *, buffer=None, column=None, row=None, loc=None, ip=None
+):
     return _npu_maskwrite32_gen(
         _as_i32(address),
         _as_i32(value),
@@ -237,18 +248,18 @@ def npu_maskwrite32(address, value, mask, *, buffer=None, column=None, row=None)
         buffer=buffer,
         column=column,
         row=row,
+        loc=loc,
+        ip=ip,
     )
 
 
-def npu_address_patch(addr, arg_idx, arg_plus):
+def npu_address_patch(addr, arg_idx, arg_plus, *, loc=None, ip=None):
     return _npu_address_patch_gen(
-        addr=addr, arg_idx=arg_idx, arg_plus=_as_i32(arg_plus)
+        addr=addr, arg_idx=arg_idx, arg_plus=_as_i32(arg_plus), loc=loc, ip=ip
     )
 
 
 # Delegate to the canonical implementation in aie.py to avoid duplication.
-from .aie import npu_write_rtp
-
 npu_rtp_write = npu_write_rtp
 
 

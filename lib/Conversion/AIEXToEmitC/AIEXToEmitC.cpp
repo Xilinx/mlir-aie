@@ -128,7 +128,8 @@ void emitTxnAddressPatch(OpBuilder &builder, Location loc, Value txnVec,
 // Emit: aie_runtime::txn_append_blockwrite(txn, addr, data, count)
 // For blockwrite, we emit the data as an inline array literal.
 void emitTxnBlockWrite(OpBuilder &builder, Location loc, Value txnVec,
-                       uint32_t addr, DenseIntElementsAttr data) {
+                       uint32_t addr, DenseIntElementsAttr data, uint32_t col,
+                       uint32_t row) {
   // Build inline array data string: "uint32_t data_N[] = {0x..., 0x..., ...};"
   std::string arrayStr = "{";
   llvm::raw_string_ostream ss(arrayStr);
@@ -146,7 +147,8 @@ void emitTxnBlockWrite(OpBuilder &builder, Location loc, Value txnVec,
   std::string stmt = "{\n  static const uint32_t _bd_data[] = " + arrayStr +
                      ";\n  aie_runtime::txn_append_blockwrite(txn, " +
                      std::to_string(addr) + "u, _bd_data, " +
-                     std::to_string(data.size()) + ");\n}";
+                     std::to_string(data.size()) + ", " + std::to_string(col) +
+                     "u, " + std::to_string(row) + "u);\n}";
   emitc::VerbatimOp::create(builder, loc, stmt);
   emitIncrementOpCount(builder, loc);
 }
@@ -158,7 +160,8 @@ void emitTxnBlockWrite(OpBuilder &builder, Location loc, Value txnVec,
 void emitTxnBlockWriteDynamicWords(
     OpBuilder &builder, Location loc, Value txnVec, uint32_t addr,
     DenseIntElementsAttr data,
-    ArrayRef<std::pair<uint32_t, Value>> dynamicWords) {
+    ArrayRef<std::pair<uint32_t, Value>> dynamicWords, uint32_t col,
+    uint32_t row) {
   auto *ctx = builder.getContext();
   auto u32Type = getU32Type(ctx);
   auto arrayType = emitc::ArrayType::get(
@@ -191,9 +194,12 @@ void emitTxnBlockWriteDynamicWords(
   auto addrVal = createU32Constant(builder, loc, addr);
   auto countVal =
       createU32Constant(builder, loc, static_cast<uint32_t>(data.size()));
-  emitc::CallOpaqueOp::create(
-      builder, loc, TypeRange{}, "aie_runtime::txn_append_blockwrite",
-      ValueRange{txnVec, addrVal, arrayVar.getResult(), countVal});
+  auto colVal = createU32Constant(builder, loc, col);
+  auto rowVal = createU32Constant(builder, loc, row);
+  emitc::CallOpaqueOp::create(builder, loc, TypeRange{},
+                              "aie_runtime::txn_append_blockwrite",
+                              ValueRange{txnVec, addrVal, arrayVar.getResult(),
+                                         countVal, colVal, rowVal});
   emitIncrementOpCount(builder, loc);
 }
 
@@ -460,7 +466,7 @@ private:
   LogicalResult convertTxnOps(emitc::FuncOp funcOp, Value txnVec,
                               const DeviceResolved &resolved) {
     // First fuse BD blockwrites within each block. Collect blocks up front so
-    // the in-place erasis during fusion don't perturb iteration.
+    // the in-place erasures during fusion don't perturb iteration.
     SmallVector<Block *> blocks;
     funcOp.walk([&](Block *block) { blocks.push_back(block); });
     for (Block *block : blocks)
@@ -522,6 +528,10 @@ private:
           it != resolved.absoluteAddr.end())
         blockAddr = it->second;
 
+      // Bind to the first not-yet-fused address_patch matching this BD's base
+      // address. blockWrites is in program order and each fused patch is erased
+      // below, so when the same BD address is reused (e.g. ping/pong buffers)
+      // the Nth blockwrite pairs with the Nth patch.
       SmallVector<std::pair<uint32_t, AIEX::NpuWrite32Op>> dynWrite32s;
       AIEX::NpuAddressPatchOp matchedPatch = nullptr;
       for (Operation &op : block) {
@@ -569,8 +579,9 @@ private:
       // Building here keeps every referenced SSA value dominating its use (the
       // override values are defined between the blockwrite and the patch).
       OpBuilder builder(matchedPatch);
-      emitTxnBlockWriteDynamicWords(builder, blockWrite.getLoc(), txnVec,
-                                    blockAddr, data, dynamicWords);
+      emitTxnBlockWriteDynamicWords(
+          builder, blockWrite.getLoc(), txnVec, blockAddr, data, dynamicWords,
+          blockWrite.getColumn().value_or(0), blockWrite.getRow().value_or(0));
       emitTxnAddressPatch(builder, matchedPatch.getLoc(), txnVec,
                           matchedPatch.getAddr(), matchedPatch.getArgIdx(),
                           matchedPatch.getArgPlus());
@@ -643,7 +654,9 @@ private:
       auto dataIt = resolved.blockWriteData.find(op);
       if (dataIt == resolved.blockWriteData.end())
         return failure();
-      emitTxnBlockWrite(builder, opLoc, txnVec, addr, dataIt->second);
+      emitTxnBlockWrite(builder, opLoc, txnVec, addr, dataIt->second,
+                        blockWrite.getColumn().value_or(0),
+                        blockWrite.getRow().value_or(0));
       op->erase();
       return success();
     }

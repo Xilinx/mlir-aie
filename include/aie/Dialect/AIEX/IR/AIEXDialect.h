@@ -69,6 +69,15 @@ bool isContiguousTransfer(llvm::ArrayRef<int64_t> sizes,
 // lowered to a static representation (binary TXN, cert, etc.).
 std::optional<uint32_t> getConstantIntOperand(mlir::Value v);
 
+// Find the `controller_id` packet info for the shim tile at (col, row), used to
+// emit the task-complete-token maskwrite on a DMA queue push. Scans every
+// TileOp in the device read-only (rather than trusting a single TileOp handle),
+// because getOrCreate may have produced more than one TileOp at the same
+// coordinates and only one carries the attribute. Returns std::nullopt when no
+// matching tile has a controller_id.
+std::optional<AIE::PacketInfoAttr> findControllerId(AIE::DeviceOp device,
+                                                    uint32_t col, uint32_t row);
+
 } // namespace AIEX
 } // namespace xilinx
 

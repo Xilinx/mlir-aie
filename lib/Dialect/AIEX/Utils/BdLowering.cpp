@@ -133,43 +133,30 @@ HwBdEncoding emitDynamicHwBdEncoding(OpBuilder &builder, Location loc,
   Value zeroVal = cst(0);
   Value oneVal = cst(1);
 
-  // d1_size = inputSizes[1]
-  Value hwD1Size = inSize1;
-  // d1_stride = inputStrides[1] * elemWidth / addrGran - 1, guarded by size>1
-  Value hwD1Stride;
-  {
-    Value scaled;
-    if (elemWidth != addrGran) {
-      Value s = arith::MulIOp::create(builder, loc, inStride1, cst(elemWidth));
-      scaled = arith::DivUIOp::create(builder, loc, s, cst(addrGran));
-    } else {
-      scaled = inStride1;
-    }
-    Value strideMinusOne = arith::SubIOp::create(builder, loc, scaled, oneVal);
+  // Scale a stride from element units to address-gen units (no-op when the
+  // element width already matches the granularity).
+  auto scaleStride = [&](Value inStride) -> Value {
+    if (elemWidth == addrGran)
+      return inStride;
+    Value s = arith::MulIOp::create(builder, loc, inStride, cst(elemWidth));
+    return arith::DivUIOp::create(builder, loc, s, cst(addrGran));
+  };
+  // hw stride = max(scale(inStride) - 1, 0), but only when inSize > 1 (a stride
+  // is never applied across a size-1 dimension, so it is forced to 0/"1").
+  auto sizeGatedStride = [&](Value inStride, Value inSize) -> Value {
+    Value strideMinusOne =
+        arith::SubIOp::create(builder, loc, scaleStride(inStride), oneVal);
     Value sizeGt1 = arith::CmpIOp::create(
-        builder, loc, arith::CmpIPredicate::sgt, inSize1, oneVal);
-    hwD1Stride =
-        arith::SelectOp::create(builder, loc, sizeGt1, strideMinusOne, zeroVal);
-  }
+        builder, loc, arith::CmpIPredicate::sgt, inSize, oneVal);
+    return arith::SelectOp::create(builder, loc, sizeGt1, strideMinusOne,
+                                   zeroVal);
+  };
 
-  // d2_size = inputSizes[2]
+  Value hwD1Size = inSize1;
+  Value hwD1Stride = sizeGatedStride(inStride1, inSize1);
+
   Value hwD2Size = inSize2;
-  // d2_stride = inputStrides[2] * elemWidth / addrGran - 1, guarded by size>1
-  Value hwD2Stride;
-  {
-    Value scaled;
-    if (elemWidth != addrGran) {
-      Value s = arith::MulIOp::create(builder, loc, inStride2, cst(elemWidth));
-      scaled = arith::DivUIOp::create(builder, loc, s, cst(addrGran));
-    } else {
-      scaled = inStride2;
-    }
-    Value strideMinusOne = arith::SubIOp::create(builder, loc, scaled, oneVal);
-    Value sizeGt1 = arith::CmpIOp::create(
-        builder, loc, arith::CmpIPredicate::sgt, inSize2, oneVal);
-    hwD2Stride =
-        arith::SelectOp::create(builder, loc, sizeGt1, strideMinusOne, zeroVal);
-  }
+  Value hwD2Stride = sizeGatedStride(inStride2, inSize2);
 
   // iteration_size = inputSizes[3] - 1 when > 1 else 0
   Value hwIterSize;
@@ -181,17 +168,13 @@ HwBdEncoding emitDynamicHwBdEncoding(OpBuilder &builder, Location loc,
         arith::SelectOp::create(builder, loc, sizeGt1, sizeMinusOne, zeroVal);
   }
 
-  // iteration_stride = inputStrides[3] * elemWidth / addrGran - 1
+  // iteration_stride = scale(inputStrides[3]) - 1, active only when the
+  // iteration dimension both repeats (size > 1) and has a positive stride; a
+  // zero stride means "repeat via push queue", which also zeroes iterSize.
   Value hwIterStride;
   {
-    Value scaled;
-    if (elemWidth != addrGran) {
-      Value s = arith::MulIOp::create(builder, loc, inStride3, cst(elemWidth));
-      scaled = arith::DivUIOp::create(builder, loc, s, cst(addrGran));
-    } else {
-      scaled = inStride3;
-    }
-    Value strideMinusOne = arith::SubIOp::create(builder, loc, scaled, oneVal);
+    Value strideMinusOne =
+        arith::SubIOp::create(builder, loc, scaleStride(inStride3), oneVal);
     Value sizeGt1 = arith::CmpIOp::create(
         builder, loc, arith::CmpIPredicate::sgt, inSize3, oneVal);
     Value strideGt0 = arith::CmpIOp::create(
@@ -199,7 +182,6 @@ HwBdEncoding emitDynamicHwBdEncoding(OpBuilder &builder, Location loc,
     Value active = arith::AndIOp::create(builder, loc, sizeGt1, strideGt0);
     hwIterStride =
         arith::SelectOp::create(builder, loc, active, strideMinusOne, zeroVal);
-    // Override iterSize to 0 when stride is 0 (repeat via push queue)
     hwIterSize =
         arith::SelectOp::create(builder, loc, active, hwIterSize, zeroVal);
   }
@@ -281,6 +263,59 @@ computeStaticBdPlaceholders(ArrayRef<OpFoldResult> mixedSizesRev,
         p.d0Size * constOr0(mixedSizesRev[1]) * constOr0(mixedSizesRev[2]);
 
   return p;
+}
+
+void emitDynamicBdWordOverrides(
+    OpBuilder &builder, Location loc, const HwBdEncoding &hw, Value word0BufLen,
+    ArrayRef<OpFoldResult> mixedSizesRev,
+    ArrayRef<OpFoldResult> mixedStridesRev, uint32_t burstEnc,
+    llvm::function_ref<void(uint32_t, Value)> writeWord) {
+  auto i32ty = IntegerType::get(builder.getContext(), 32);
+  auto cst = [&](int64_t v) {
+    return arith::ConstantOp::create(builder, loc, IntegerAttr::get(i32ty, v))
+        .getResult();
+  };
+  auto isDyn = [](OpFoldResult ofr) { return !getConstantIntValue(ofr); };
+
+  bool d0SizeDyn = isDyn(mixedSizesRev[0]);
+  bool d1SizeDyn = isDyn(mixedSizesRev[1]);
+  bool d2SizeDyn = isDyn(mixedSizesRev[2]);
+  bool d3SizeDyn = isDyn(mixedSizesRev[3]);
+  bool d0StrideDyn = isDyn(mixedStridesRev[0]);
+  bool d1StrideDyn = isDyn(mixedStridesRev[1]);
+  bool d2StrideDyn = isDyn(mixedStridesRev[2]);
+  bool d3StrideDyn = isDyn(mixedStridesRev[3]);
+
+  // word[0]: buffer_length — dynamic if any of d0/d1/d2 sizes are dynamic.
+  if (d0SizeDyn || d1SizeDyn || d2SizeDyn)
+    writeWord(0, word0BufLen);
+
+  // word[3]: d0_size [29:20], d0_stride [19:0].
+  if (d0SizeDyn || d0StrideDyn)
+    writeWord(3,
+              buildBdWord(builder, loc,
+                          {{hw.d0Size, 0x3FF, 20}, {hw.d0Stride, 0xFFFFF, 0}}));
+
+  // word[4]: burst_length [31:30] (static), d1_size [29:20], d1_stride [19:0].
+  if (d1SizeDyn || d1StrideDyn) {
+    Value burstVal = cst(static_cast<int64_t>((burstEnc & 0x3u) << 30));
+    Value sizeStride = buildBdWord(
+        builder, loc, {{hw.d1Size, 0x3FF, 20}, {hw.d1Stride, 0xFFFFF, 0}});
+    writeWord(4, arith::OrIOp::create(builder, loc, burstVal, sizeStride));
+  }
+
+  // word[5]: AXCache [27:24] (static), d2_stride [19:0].
+  if (d2StrideDyn || d2SizeDyn) {
+    Value axcache = cst(static_cast<int64_t>((2u & 0xfu) << 24));
+    Value strMasked = buildBdWord(builder, loc, {{hw.d2Stride, 0xFFFFF, 0}});
+    writeWord(5, arith::OrIOp::create(builder, loc, axcache, strMasked));
+  }
+
+  // word[6]: iteration_size [25:20], iteration_stride [19:0].
+  if (d3SizeDyn || d3StrideDyn)
+    writeWord(
+        6, buildBdWord(builder, loc,
+                       {{hw.iterSize, 0x3F, 20}, {hw.iterStride, 0xFFFFF, 0}}));
 }
 
 } // namespace xilinx::AIEX

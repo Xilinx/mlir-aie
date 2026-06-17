@@ -25,6 +25,7 @@
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Value.h"
 #include "llvm/ADT/ArrayRef.h"
+#include "llvm/ADT/STLFunctionalExtras.h"
 
 #include <cstdint>
 #include <tuple>
@@ -99,6 +100,24 @@ StaticBdPlaceholders
 computeStaticBdPlaceholders(llvm::ArrayRef<mlir::OpFoldResult> mixedSizesRev,
                             llvm::ArrayRef<mlir::OpFoldResult> mixedStridesRev,
                             uint64_t elemWidth, uint32_t addrGran);
+
+/// Emit the npu.write32 overrides for the BD words that contain runtime
+/// content. This is the single source of truth for the dynamic BD word layout
+/// (masks, shifts, the static burst_length/AXCache bits folded into words 4/5)
+/// shared by both `npu.dma_memcpy_nd` and `aie.dma_bd` lowering. A word is
+/// overridden iff one of the fields it packs is non-constant in
+/// `mixed{Sizes,Strides}Rev` (innermost-first `[d0, d1, d2, iter]`), so this
+/// also owns the definition of which words are dynamic. `word0BufLen` is the
+/// value written for word[0] when any d0/d1/d2 size is dynamic; callers pass
+/// `hw.bufLen` unless they have an overriding length source (e.g.
+/// `aie.dma_bd`'s `dyn_len`). `writeWord(wordIdx, value)` is the
+/// caller-supplied sink that creates the actual npu.write32 (the AIEX dialect
+/// op lives outside this Utils library, so creation is delegated).
+void emitDynamicBdWordOverrides(
+    mlir::OpBuilder &builder, mlir::Location loc, const HwBdEncoding &hw,
+    mlir::Value word0BufLen, llvm::ArrayRef<mlir::OpFoldResult> mixedSizesRev,
+    llvm::ArrayRef<mlir::OpFoldResult> mixedStridesRev, uint32_t burstEnc,
+    llvm::function_ref<void(uint32_t, mlir::Value)> writeWord);
 
 } // namespace AIEX
 } // namespace xilinx

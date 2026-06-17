@@ -173,18 +173,13 @@ public:
     // control packet for issuing token
     if (op.getIssueToken()) {
       // set the task-complete-token controller ID field in the dma control
-      // register. Look up the existing shim TileOp read-only rather than
-      // getOrCreate: this pattern runs during conversion and a mutating create
-      // can collide with the tile created elsewhere in the same device.
+      // register. findControllerId looks up the shim TileOp read-only rather
+      // than getOrCreate: this pattern runs during conversion and a mutating
+      // create can collide with the tile created elsewhere in the same device.
       auto device = op->getParentOfType<AIE::DeviceOp>();
-      for (auto shimTile : device.getOps<AIE::TileOp>()) {
-        if (static_cast<uint32_t>(shimTile.getCol()) != op.getColumn() ||
-            static_cast<uint32_t>(shimTile.getRow()) != op.getRow() ||
-            !shimTile->hasAttr("controller_id"))
-          continue;
-        AIE::PacketInfoAttr controller_id_attr =
-            shimTile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
-        uint32_t data = controller_id_attr.getPktId() << 8;
+      if (auto controllerId =
+              findControllerId(device, op.getColumn(), op.getRow())) {
+        uint32_t data = controllerId->getPktId() << 8;
         uint32_t mask = 0x00001F00;
         auto i32Type = rewriter.getI32Type();
         Value addrV = arith::ConstantIntOp::create(rewriter, op->getLoc(),
@@ -195,7 +190,6 @@ public:
             arith::ConstantIntOp::create(rewriter, op->getLoc(), i32Type, mask);
         NpuMaskWrite32Op::create(rewriter, op->getLoc(), addrV, dataV, maskV,
                                  nullptr, nullptr, nullptr);
-        break;
       }
     }
 
@@ -579,7 +573,6 @@ public:
     auto zero = IntegerAttr::get(i32ty, 0);
     auto memref = adaptor.getMemref();
     AIE::ShimDMAAllocationOp infoOp = shim.infoOp;
-    AIE::TileOp shimTile = shim.shimTile;
     AIE::DMAChannelDir channelDir = shim.channelDir;
     bool isMM2S = shim.isMM2S;
     int tileCol = shim.tileCol;
@@ -712,16 +705,8 @@ public:
     // values exceeding 1023 will be silently truncated by the hardware.
     HwBdEncoding hw = emitDynamicHwBdEncoding(
         rewriter, loc, targetModel, bufferType, mixedSizesRev, mixedStridesRev);
-    Value hwD0Size = hw.d0Size;
-    Value hwD0Stride = hw.d0Stride;
-    Value hwD1Size = hw.d1Size;
-    Value hwD1Stride = hw.d1Stride;
-    Value hwD2Stride = hw.d2Stride;
-    // hw.d2Size is not extracted: ShimNOC BDs always set d2_size=0 in the
-    // template and use bufLen (word[0]) instead.
-    Value hwIterSize = hw.iterSize;
-    Value hwIterStride = hw.iterStride;
-    Value bufLen = hw.bufLen;
+    // hw.d2Size is unused: ShimNOC BDs always set d2_size=0 in the template and
+    // use bufLen (word[0]) instead.
     Value repeatCount = hw.repeatCount;
 
     // Element width / address-gen granularity are used by the static
@@ -749,20 +734,6 @@ public:
 
     uint32_t burstEnc =
         getShimBurstLengthEncoding(targetModel, op.getBurstLength());
-
-    // Helper: check if an OpFoldResult is a compile-time constant
-    auto isConst = [](OpFoldResult ofr) {
-      return getConstantIntValue(ofr).has_value();
-    };
-    // Determine which input sizes/strides are dynamic
-    bool d0SizeDyn = !isConst(mixedSizesRev[0]);
-    bool d1SizeDyn = !isConst(mixedSizesRev[1]);
-    bool d2SizeDyn = !isConst(mixedSizesRev[2]);
-    bool d3SizeDyn = !isConst(mixedSizesRev[3]);
-    bool d0StrideDyn = !isConst(mixedStridesRev[0]);
-    bool d1StrideDyn = !isConst(mixedStridesRev[1]);
-    bool d2StrideDyn = !isConst(mixedStridesRev[2]);
-    bool d3StrideDyn = !isConst(mixedStridesRev[3]);
 
     // Compute static placeholder values for NpuWriteBdOp attributes.
     // For constant fields, use the actual hardware value; for dynamic
@@ -824,59 +795,21 @@ public:
         d1_zero_after, d2_zero_after, burst_length);
 
     // --- Emit NpuWrite32Op overrides for dynamic BD words ---
-    // Only emit write32 for words that contain dynamic content.
+    // The shared helper owns the BD word layout and which words are dynamic;
+    // we just supply the sink that creates the npu.write32 op.
     uint32_t bdAddrU32 = static_cast<uint32_t>(bdAddr);
-    auto emitDynBdWord = [&](uint32_t wordIdx, Value wordValue) {
-      uint32_t wordAddr = bdAddrU32 + wordIdx * 4;
-      Value addrSSA = cst(wordAddr);
-      NpuWrite32Op::create(rewriter, loc,
-                           /*address=*/addrSSA,
-                           /*value=*/wordValue,
-                           /*buffer=*/FlatSymbolRefAttr{},
-                           /*column=*/IntegerAttr{},
-                           /*row=*/IntegerAttr{},
-                           /*bd_group=*/rewriter.getUI32IntegerAttr(bdAddrU32));
-    };
-
-    // word[0]: buffer_length — dynamic if any of d0/d1/d2 sizes are dynamic
-    bool word0Dyn = d0SizeDyn || d1SizeDyn || d2SizeDyn;
-    if (word0Dyn) {
-      emitDynBdWord(0, bufLen);
-    }
-
-    // word[3]: d0_size, d0_stride — dynamic if either is dynamic
-    bool word3Dyn = d0SizeDyn || d0StrideDyn;
-    if (word3Dyn) {
-      emitDynBdWord(
-          3, buildBdWord(rewriter, loc,
-                         {{hwD0Size, 0x3FF, 20}, {hwD0Stride, 0xFFFFF, 0}}));
-    }
-
-    // word[4]: burst_length (static), d1_size, d1_stride
-    bool word4Dyn = d1SizeDyn || d1StrideDyn;
-    if (word4Dyn) {
-      Value burstVal = cst((burstEnc & 0x3) << 30);
-      Value sizeStride = buildBdWord(
-          rewriter, loc, {{hwD1Size, 0x3FF, 20}, {hwD1Stride, 0xFFFFF, 0}});
-      emitDynBdWord(4,
-                    arith::OrIOp::create(rewriter, loc, burstVal, sizeStride));
-    }
-
-    // word[5]: AXCache (static), d2_stride
-    bool word5Dyn = d2StrideDyn || d2SizeDyn;
-    if (word5Dyn) {
-      Value axcache = cst((2u & 0xf) << 24);
-      Value strMasked = buildBdWord(rewriter, loc, {{hwD2Stride, 0xFFFFF, 0}});
-      emitDynBdWord(5, arith::OrIOp::create(rewriter, loc, axcache, strMasked));
-    }
-
-    // word[6]: iteration_size, iteration_stride
-    bool word6Dyn = d3SizeDyn || d3StrideDyn;
-    if (word6Dyn) {
-      emitDynBdWord(
-          6, buildBdWord(rewriter, loc,
-                         {{hwIterSize, 0x3F, 20}, {hwIterStride, 0xFFFFF, 0}}));
-    }
+    emitDynamicBdWordOverrides(
+        rewriter, loc, hw, hw.bufLen, mixedSizesRev, mixedStridesRev, burstEnc,
+        [&](uint32_t wordIdx, Value wordValue) {
+          NpuWrite32Op::create(
+              rewriter, loc,
+              /*address=*/cst(bdAddrU32 + wordIdx * 4),
+              /*value=*/wordValue,
+              /*buffer=*/FlatSymbolRefAttr{},
+              /*column=*/IntegerAttr{},
+              /*row=*/IntegerAttr{},
+              /*bd_group=*/rewriter.getUI32IntegerAttr(bdAddrU32));
+        });
 
     // word[1] (base_addr) and word[2] (packet ctrl) are always static
     // word[7] (valid_bd) is always static
@@ -929,10 +862,9 @@ public:
       // emits the controller_id maskwrite for that case, so emitting it
       // here too would duplicate the op.)
       if (issueTokenVal) {
-        if (shimTile->hasAttr("controller_id")) {
-          AIE::PacketInfoAttr controllerIdAttr =
-              shimTile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
-          uint32_t data = controllerIdAttr.getPktId() << 8;
+        auto device = op->getParentOfType<AIE::DeviceOp>();
+        if (auto controllerId = findControllerId(device, tileCol, tileRow)) {
+          uint32_t data = controllerId->getPktId() << 8;
           uint32_t mask = 0x00001F00;
           NpuMaskWrite32Op::create(rewriter, loc, cst(ctrlOffset), cst(data),
                                    cst(mask), nullptr, nullptr, nullptr);
