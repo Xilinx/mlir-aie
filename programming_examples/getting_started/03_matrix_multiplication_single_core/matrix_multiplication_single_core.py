@@ -145,7 +145,7 @@ def matrix_multiplication_single_core(
             fifo_C_L2L3.cons().drain(
                 C, tap=c_taps[tile_row], group=task_group, wait=True
             )
-            task_group.resolve()
+            task_group.finish()
 
     return Program(
         iron.get_current_device(),

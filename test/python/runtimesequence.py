@@ -37,7 +37,7 @@ def task_group_drain_sequence(module):
         of_0.prod().fill(A, group=tg)
         of_1.cons().drain(B, group=tg, wait=True)
         of_2.cons().drain(C, group=tg, wait=True)
-        tg.resolve()
+        tg.finish()
 
     module = Program(
         NPU2(), runtime_sequence, arg_types=[n_ty, n_ty, n_ty], workers=[worker]
@@ -207,7 +207,7 @@ def rt_mixed_group_and_default_sequence(module):
         of_2.cons().drain(C, wait=True, group=tg)
         of_0.prod().fill(A, group=tg)
         of_1.prod().fill(B)
-        tg.resolve()
+        tg.finish()
 
     module = Program(
         NPU2(), runtime_sequence, arg_types=[n_ty, n_ty, n_ty], workers=[worker]
@@ -244,8 +244,8 @@ def rt_two_task_group_sequence(module):
         of_2.cons().drain(C, wait=True, group=tg)
         of_0.prod().fill(A, group=tg)
         of_1.prod().fill(B, group=tg2)
-        tg.resolve()
-        tg2.resolve()
+        tg.finish()
+        tg2.finish()
 
     module = Program(
         NPU2(), runtime_sequence, arg_types=[n_ty, n_ty, n_ty], workers=[worker]

@@ -165,7 +165,7 @@ def scale_shift(
         inA.prod().fill(A, group=tg1)
         inB.prod().fill(B, group=tg1)
         outC.cons().drain(D, wait=True, group=tg1)
-        tg1.resolve()
+        tg1.finish()
 
         # Phase 2: add (rtp=0).  D = (A*B) feeds back as the lhs.
         _set_rtps_to(0)(*rtps)
@@ -175,7 +175,7 @@ def scale_shift(
         inA.prod().fill(D, group=tg2)
         inB.prod().fill(C, group=tg2)
         outC.cons().drain(D, wait=True, group=tg2)
-        tg2.resolve()
+        tg2.finish()
 
     return Program(
         device,

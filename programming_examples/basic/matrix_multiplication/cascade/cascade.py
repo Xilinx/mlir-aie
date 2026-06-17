@@ -322,7 +322,7 @@ def cascade(
                     B_l3l2_fifos[col].prod().fill(
                         B, tap=B_taps[col], group=tg, tile=Tile(col, 0)
                     )
-            tg.resolve()
+            tg.finish()
 
     return Program(
         iron.get_current_device(),

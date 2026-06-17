@@ -73,7 +73,7 @@ def runtime_sequence(A, B, C):
         fifo_A_L3L2.prod().fill(A, tap=a_taps[tile_row], group=task_group)
         fifo_B_L3L2.prod().fill(B, tap=b_tap, group=task_group)
         fifo_C_L2L3.cons().drain(C, tap=c_taps[tile_row], group=task_group, wait=True)
-        task_group.resolve()
+        task_group.finish()
 
 # The worker is passed to the Program rather than started inside the sequence.
 Program(

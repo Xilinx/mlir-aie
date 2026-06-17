@@ -186,7 +186,7 @@ def _chain_iron(mode, data_dir, scales_json):
             act_out.cons().drain(
                 out, wait=True, tile=CHAIN_PLACEMENT["shim_output"], group=tg
             )
-            tg.resolve()
+            tg.finish()
 
         arg_types_list = [in_ty, wts_ty, out_ty]
     else:
@@ -197,7 +197,7 @@ def _chain_iron(mode, data_dir, scales_json):
             act_out.cons().drain(
                 out, wait=True, tile=CHAIN_PLACEMENT["shim_output"], group=tg
             )
-            tg.resolve()
+            tg.finish()
 
         arg_types_list = [in_ty, out_ty]
 

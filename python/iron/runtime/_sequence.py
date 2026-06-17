@@ -232,15 +232,15 @@ class ActiveSequence:
     # -- finalization ---------------------------------------------------------
 
     def finalize(self) -> None:
-        """Resolve the implicit default group and check for leaked groups."""
+        """Finish the implicit default group and check for leaked groups."""
         if self._default_group is not None:
-            self._default_group.resolve()
-        unresolved = [tg for tg in self._task_groups if not tg.resolved]
-        if unresolved:
-            names = ", ".join(str(tg) for tg in unresolved)
+            self._default_group.finish()
+        unfinished = [tg for tg in self._task_groups if not tg.finished]
+        if unfinished:
+            names = ", ".join(str(tg) for tg in unfinished)
             raise IronRuntimeError(
-                f"Runtime sequence ended with unresolved task group(s): {names}. "
-                f"Call group.resolve() for every TaskGroup you create."
+                f"Runtime sequence ended with unfinished task group(s): {names}. "
+                f"Call group.finish() for every TaskGroup you create."
             )
 
 

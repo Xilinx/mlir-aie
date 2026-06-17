@@ -67,7 +67,7 @@ In this exercise, you'll use the `memcpy` design to measure memory bandwidth acr
 
 	* **Pass workers (if not bypassing)** to the `Program` so they run during the sequence
 	* **Group drain tasks** in a `TaskGroup()` so they all begin execution concurrently
-	* **Call `tg.resolve()`** to explicitly synchronize the completion of the group
+	* **Call `tg.finish()`** to explicitly synchronize the completion of the group
 
 	*Key Code Snippet:*
 
@@ -93,7 +93,7 @@ In this exercise, you'll use the `memcpy` design to measure memory bandwidth acr
 	                group=tg_out,  # Add task to the group
 	            )
 
-	    tg_out.resolve()  # Wait for all drain tasks together
+	    tg_out.finish()  # Wait for all drain tasks together
 
 	# Workers (when not bypassing) are passed to the Program, not started in
 	# the sequence.

@@ -269,9 +269,9 @@ def runtime_sequence(A, B, C):
                     A_l3l2_fifos[col].prod().fill(A, tap=A_tiles[…], group=tg)
                     B_l3l2_fifos[col].prod().fill(B, tap=B_tiles[col], group=tg)
             if tb > 0 or pingpong > 0:
-                tg.resolve()        # awaits half the BDs
+                tg.finish()        # awaits half the BDs
                 tg = TaskGroup()    # opens the next half
-    tg.resolve()
+    tg.finish()
 
 Program(
     iron.get_current_device(),

@@ -216,10 +216,10 @@ def single_core_dynamic(
                                 emit_ab()
 
                     if prev is not None:
-                        prev.resolve()
+                        prev.finish()
                     prev = tg
         if prev is not None:
-            prev.resolve()
+            prev.finish()
 
     return Program(
         iron.get_current_device(),

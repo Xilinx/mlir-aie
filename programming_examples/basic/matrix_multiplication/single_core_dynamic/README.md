@@ -270,7 +270,7 @@ runtime by regenerating only the TXN program**.
 runtime sequence; the DMA start acts as an implicit ordering barrier.
 
 **Pingpong DMA pattern**: Two `TaskGroup`s overlap compute and data movement —
-the previous group is finished (`prev.resolve()`) only after the next group's
+the previous group is finished (`prev.finish()`) only after the next group's
 transfers are issued. The `range_` in the runtime sequence iterates over tile-row
 blocks, with `if_` guards for boundary conditions.
 

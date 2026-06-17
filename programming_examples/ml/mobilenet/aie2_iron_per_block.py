@@ -238,7 +238,7 @@ def per_block_iron(block_name, data_dir=None, scales_json=None):
             out_fifo.cons().drain(
                 out, wait=True, tile=TEST_PLACEMENT["shim_output"], group=tg
             )
-            tg.resolve()
+            tg.finish()
 
         arg_types_list = [in_ty, wts_ty, wts_ty, out_ty]
     else:
@@ -249,7 +249,7 @@ def per_block_iron(block_name, data_dir=None, scales_json=None):
             out_fifo.cons().drain(
                 out, wait=True, tile=TEST_PLACEMENT["shim_output"], group=tg
             )
-            tg.resolve()
+            tg.finish()
 
         arg_types_list = [in_ty, out_ty]
 

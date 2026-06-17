@@ -193,10 +193,10 @@ It may be desirable to reconfigure a runtime sequence and reuse some of the reso
 
 To facilitate this reconfiguration step, IRON introduces `TaskGroup`s which are created by constructing a `TaskGroup()` inside the sequence callable, as defined in [taskgroup.py](../../../python/iron/runtime/taskgroup.py).
 
-`fill`/`drain` tasks can be added to a task group by specifying their `group` input. Tasks in the same group will be appended to the runtime sequence and executed in order. The group's `resolve()` method is used to mark the end of a task group. This call waits for tasks in the group annotated with `wait=True` to complete, and then frees _all_ resources used by the task.
+`fill`/`drain` tasks can be added to a task group by specifying their `group` input. Tasks in the same group will be appended to the runtime sequence and executed in order. The group's `finish()` method is used to mark the end of a task group. This call waits for tasks in the group annotated with `wait=True` to complete, and then frees _all_ resources used by the task.
 If a `TaskGroup` is not explicitly specified for DMA tasks defined in a runtime sequence, then a single default task group (finished at end-of-sequence) is used.
 
-> **NOTE:**  A call to  `tg.resolve()` blocks the runtime sequence until all of the group's tasks annotated with `wait=True`  ("awaited tasks") have completed. After waiting, all resources of the task group -- including those _not_ annotated with `wait=True` ("unawaited tasks") -- will be freed and reused for subsequent tasks. 
+> **NOTE:**  A call to  `tg.finish()` blocks the runtime sequence until all of the group's tasks annotated with `wait=True`  ("awaited tasks") have completed. After waiting, all resources of the task group -- including those _not_ annotated with `wait=True` ("unawaited tasks") -- will be freed and reused for subsequent tasks. 
 > 
 > To avoid race conditions, any unawaited tasks in the group should form a dependency of an awaited task.
 > It is only safe to remove a `wait=True` if you can reason that another, awaited task in the same group can only complete if the awaited task also completed.
@@ -211,9 +211,9 @@ def runtime_sequence(a_in, b, c_out):
     for _ in [0, 1]:
         of_in.prod().fill(a_in, group=tg)
         of_out.cons().drain(c_out, group=tg, wait=True)
-        tg.resolve()
+        tg.finish()
         tg = TaskGroup() # start second task group
-    tg.resolve()
+    tg.finish()
 
 Program(
     device,

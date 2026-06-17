@@ -101,7 +101,7 @@ def swiglu(
             of_wts[i].prod().fill(w, taps_wts[i], group=tg)
         for i in range(num_columns):
             of_outs[i].cons().drain(b, taps[i], wait=True, group=tg)
-        tg.resolve()
+        tg.finish()
 
     return Program(
         device,

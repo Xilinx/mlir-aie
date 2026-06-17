@@ -144,9 +144,9 @@ def single_core_mixed(
                 outC.cons().drain(c, tap=C_tiles[c_index], group=tgs[-1], wait=True)
                 c_index += 1
                 if tile_row_block > 0 or (tile_row_block == 0 and pingpong > 0):
-                    tgs[-2].resolve()
+                    tgs[-2].finish()
                     del tgs[-2]
-        tgs[-1].resolve()
+        tgs[-1].finish()
         del tgs[-1]
 
     return Program(

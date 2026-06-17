@@ -334,9 +334,9 @@ def _build_design(
                         B_taps.append(B_tiles[col])
 
                 if tb > 0 or (tb == 0 and pingpong > 0):
-                    tg.resolve()
+                    tg.finish()
                     tg = TaskGroup()
-        tg.resolve()
+        tg.finish()
 
     if generate_taps:
         return (

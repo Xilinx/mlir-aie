@@ -452,7 +452,7 @@ def _transform_parallel_gen(
                     of_inputs[inp_idx][col][chan].prod().fill(
                         input_seq_args[inp_idx], tap, group=tg_in
                     )
-        tg_in.resolve()
+        tg_in.finish()
 
         # Fill tensor param ObjectFifos (ExternalFunction only, shared across workers)
         for of_param, param_arg in zip(param_of_list, param_seq_args):
@@ -468,7 +468,7 @@ def _transform_parallel_gen(
                     wait=True,
                     group=tg_out,
                 )
-        tg_out.resolve()
+        tg_out.finish()
 
     # Place program components and generate an MLIR module
     return Program(

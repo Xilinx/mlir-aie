@@ -229,9 +229,9 @@ def whole_array_mixed(
                             )
                         B_l3l2_fifos[col].prod().fill(b, tap=B_tiles[col], group=tg)
                 if tb > 0 or (tb == 0 and pingpong > 0):
-                    tg.resolve()
+                    tg.finish()
                     tg = TaskGroup()
-        tg.resolve()
+        tg.finish()
 
     return Program(
         iron.get_current_device(),

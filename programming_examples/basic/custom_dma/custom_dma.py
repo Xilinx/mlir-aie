@@ -235,7 +235,7 @@ def custom_dma_design(dev):
         tg = TaskGroup()
         of_out.cons().drain(b_out, wait=True, group=tg)
         rt_start_memtile_dma(scatter)
-        tg.resolve()
+        tg.finish()
 
     return Program(
         dev,

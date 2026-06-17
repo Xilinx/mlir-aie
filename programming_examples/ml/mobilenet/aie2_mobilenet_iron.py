@@ -197,7 +197,7 @@ def mobilenet_iron(inp: In, cascade_wts: In, out: Out):
             group=tg1,
             tile=PLACEMENT["shim"]["scratch_drain"],
         )
-        tg1.resolve()
+        tg1.finish()
 
         # ---- Group 2: FC1 fill + FC1 drain ----
         # FC1 fill reads the avgpool scratch (drained above). FC1 drain
@@ -221,7 +221,7 @@ def mobilenet_iron(inp: In, cascade_wts: In, out: Out):
             group=tg2,
             tile=PLACEMENT["shim"]["fc_drain"],
         )
-        tg2.resolve()
+        tg2.finish()
 
         # ---- Group 3: FC2 fill + FC2 final drain to host ----
         tg3 = TaskGroup()
@@ -231,7 +231,7 @@ def mobilenet_iron(inp: In, cascade_wts: In, out: Out):
         act_out_of.cons().drain(
             out, wait=True, tile=PLACEMENT["shim"]["fc_drain"], group=tg3
         )
-        tg3.resolve()
+        tg3.finish()
 
     # ------------------------------------------------------------------
     # Generate MLIR
