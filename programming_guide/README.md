@@ -49,12 +49,16 @@ def my_design(a_in: In, b_out: Out):
     w = Worker(core_fn, [of_in.cons(), of_out.prod()])
 
     rt = Runtime()
-    with rt.sequence(*[np.ndarray[(1024,), np.dtype[np.int32]]] * 2) as (a, b):
-        rt.start(w)
-        rt.fill(of_in.prod(),  a)
-        rt.drain(of_out.cons(), b, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    def sequence(a, b):
+        of_in.prod().fill(a)
+        of_out.cons().drain(b, wait=True)
+
+    rt.sequence(sequence, [np.ndarray[(1024,), np.dtype[np.int32]]] * 2)
+
+    return Program(
+        iron.get_current_device(), rt, workers=[w]
+    ).resolve_program()
 
 a = iron.arange(1024, dtype=np.int32, device="npu")
 b = iron.zeros(1024,  dtype=np.int32, device="npu")

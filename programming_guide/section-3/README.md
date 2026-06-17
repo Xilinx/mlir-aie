@@ -58,13 +58,17 @@ def vector_scalar_mul(a_in: In, f_in: In, c_out: Out):
     )
 
     rt = Runtime()
-    with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (a, f, c):
-        rt.start(my_worker)
-        rt.fill(of_in.prod(), a)
-        rt.fill(of_factor.prod(), f)
-        rt.drain(of_out.cons(), c, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    def sequence(a, f, c):
+        of_in.prod().fill(a)
+        of_factor.prod().fill(f)
+        of_out.cons().drain(c, wait=True)
+
+    rt.sequence(sequence, [tensor_ty, scalar_ty, tensor_ty])
+
+    return Program(
+        iron.get_current_device(), rt, workers=[my_worker]
+    ).resolve_program()
 ```
 
 The host side is just three tensors and one call:
@@ -134,17 +138,22 @@ of_factor = ObjectFifo(scalar_ty, name="infactor")
 # Output data movement
 of_out = ObjectFifo(tile_ty, name="out")
 ```
-We also need to set up the data movement to/from the AIE-array: configure n-dimensional DMA transfers in the shimDMAs to read/write to/from L3 external memory. For NPU, this is done in the runtime sequence (more details in [section 2d](../section-2/section-2d)). Note that the n-dimensional transfer has a size of 4096 int32 elements and that the `fill()` and `drain()` runtime functions have the `ObjectFifoHandle` argument match either a producer handle (for `of_in` and `of_factor`) or a consumer handle (for `of_out`).
+We also need to set up the data movement to/from the AIE-array: configure n-dimensional DMA transfers in the shimDMAs to read/write to/from L3 external memory. For NPU, this is done in the runtime sequence (more details in [section 2d](../section-2/section-2d)). Note that the n-dimensional transfer has a size of 4096 int32 elements and that `fill()` and `drain()` are methods called on an `ObjectFifoHandle` — a producer handle (for `of_in` and `of_factor`) or a consumer handle (for `of_out`).
 Note that for transfers into the AIE-array that we want to explicitly wait on, we must specify `wait=True`.
 
 ```python
 # Runtime operations to move data to/from the AIE-array
 rt = Runtime()
-with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (a_in, f_in, c_out):
-    rt.start(my_worker)
-    rt.fill(of_in.prod(), a_in)
-    rt.fill(of_factor.prod(), f_in)
-    rt.drain(of_out.cons(), c_out, wait=True)
+
+def sequence(a_in, f_in, c_out):
+    of_in.prod().fill(a_in)
+    of_factor.prod().fill(f_in)
+    of_out.cons().drain(c_out, wait=True)
+
+rt.sequence(sequence, [tensor_ty, scalar_ty, tensor_ty])
+
+# The worker is passed to the Program rather than started in the sequence.
+Program(device, rt, workers=[my_worker]).resolve_program()
 ```
 
 Finally, we need to configure how the compute core accesses the data moved to its L1 memory, in Object FIFO terminology: we need to program the acquire and release patterns of `of_in`, `of_factor` and `of_out`. Only a single factor is needed for the complete 4096 vector, while for every processing iteration on a sub-vector, we need to acquire an object of 1024 integers to read from `of_in` and one similar sized object from `of_out`. Then we call our previously declared external function with the acquired objects as operands. After the vector scalar operation, we need to release both objects to their respective `of_in` and `of_out` Object FIFOs. Finally, after the 4 sub-vector iterations, we release the `of_factor` Object FIFO.

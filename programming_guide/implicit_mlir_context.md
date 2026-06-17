@@ -43,16 +43,20 @@ def passthrough(a_in: In, b_out: Out):
     worker = Worker(core_fn, [of.cons(), of_out.prod(), kernel])
 
     rt = Runtime()
-    with rt.sequence(line_ty, line_ty) as (a, b):
-        rt.start(worker)
-        rt.fill(of.prod(), a)
-        rt.drain(of_out.cons(), b, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    def sequence(a, b):
+        of.prod().fill(a)
+        of_out.cons().drain(b, wait=True)
+
+    rt.sequence(sequence, [line_ty, line_ty])
+
+    return Program(
+        iron.get_current_device(), rt, workers=[worker]
+    ).resolve_program()
 ```
 
 When `passthrough` is called, IRON wraps the body in an implicit
-`mlir_mod_ctx()`.  Every `ObjectFifo(...)`, `Worker(...)`, `rt.fill(...)`,
+`mlir_mod_ctx()`.  Every `ObjectFifo(...)`, `Worker(...)`, `fifo.prod().fill(...)`,
 and `kernel(...)` call that runs inside that body emits MLIR
 operations into the active `InsertionPoint` of that context.  The
 final `Program.resolve_program()` call walks the user-level Python

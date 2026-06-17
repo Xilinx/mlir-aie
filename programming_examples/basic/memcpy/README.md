@@ -65,41 +65,43 @@ In this exercise, you'll use the `memcpy` design to measure memory bandwidth acr
 
 	Modify your IRON runtime sequences to optimize performance using **task groups**:
 
-	* **Start workers (if not bypassing)** before enqueueing transfers
-	* **Group drain tasks** using `task_group()` so they all begin execution concurrently
-	* **Use `finish_task_group()`** to explicitly synchronize the completion of the group
+	* **Pass workers (if not bypassing)** to the `Program` so they run during the sequence
+	* **Group drain tasks** in a `TaskGroup()` so they all begin execution concurrently
+	* **Call `tg.resolve()`** to explicitly synchronize the completion of the group
 
 	*Key Code Snippet:*
 
 	```python
 	rt = Runtime()
-	with rt.sequence(transfer_type, transfer_type) as (a_in, b_out):
-	    if not bypass:
-	        rt.start(*my_workers)
-	
-	    tg_out = rt.task_group()  # Initialize a group for parallel drain tasks
-	
+
+	def sequence(a_in, b_out):
+	    tg_out = TaskGroup()  # Initialize a group for parallel drain tasks
+
 	    # Fill the input FIFOs (these will start immediately)
 	    for i in range(num_columns):
 	        for j in range(num_channels):
-	            rt.fill(
-	                of_ins[i * num_channels + j].prod(),
+	            of_ins[i * num_channels + j].prod().fill(
 	                a_in,
 	                taps[i * num_channels + j],
 	            )
-	
+
 	    # Drain the outputs into host buffer and wait for all to finish
 	    for i in range(num_columns):
 	        for j in range(num_channels):
-	            rt.drain(
-	                of_outs[i * num_channels + j].cons(),
+	            of_outs[i * num_channels + j].cons().drain(
 	                b_out,
 	                taps[i * num_channels + j],
 	                wait=True,
-	                task_group=tg_out,  # Add task to the group
+	                group=tg_out,  # Add task to the group
 	            )
-	
-	    rt.finish_task_group(tg_out)  # Wait for all drain tasks together
+
+	    tg_out.resolve()  # Wait for all drain tasks together
+
+	rt.sequence(sequence, [transfer_type, transfer_type])
+
+	# Workers (when not bypassing) are passed to the Program, not started in
+	# the sequence.
+	Program(device, rt, workers=list(my_workers)).resolve_program()
 	```
 
  	*Why This Matters:*

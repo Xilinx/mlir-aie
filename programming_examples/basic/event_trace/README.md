@@ -4,7 +4,7 @@ Vector × scalar AIE design with custom hardware-event tracing on AMD NPU device
 
 ## Contents
 
-- `aie_trace.py` — IRON (`@iron.jit`) design that wires custom `coretile_events` / `coremem_events` / `memtile_events` / `shimtile_events` lists straight through `rt.enable_trace()`.  The AIE compute kernel is the library `kernels.scale` (scalar variant) — `event0()` / `event1()` markers are already baked into the library source.
+- `aie_trace.py` — IRON (`@iron.jit`) design that attaches custom hardware-event lists via `Worker(trace=TileTrace(events=[...]))` for the compute tile and `Program(trace_tiles=[TileTrace(tile=..., events=[...])])` for the mem and shim tiles, with the trace sink configured by `Program(trace=TraceBuffer(...))`.  The AIE compute kernel is the library `kernels.scale` (scalar variant) — `event0()` / `event1()` markers are already baked into the library source.
 - `test.cpp` / `test.py` — host runners (C++ via `make run_trace`, Python via `make run_trace_py`).
 - `visualize_trace.py` — renders a PNG timeline from parsed trace JSON.
 - `run_makefile.lit` / `run_strix_makefile.lit` — lit test definitions for NPU1 and NPU2.
@@ -25,40 +25,64 @@ After `make run_trace` or `make run_trace_py`:
 
 ## How the trace is wired
 
-The whole design lives in [`aie_trace.py`](./aie_trace.py).  Custom event lists go straight on the IRON `Runtime`:
+The whole design lives in [`aie_trace.py`](./aie_trace.py).  Custom event lists are attached per tile via `TileTrace`, and the trace sink is the `TraceBuffer` passed to `Program`:
 
 ```python
 import aie.iron as iron
-from aie.iron import CompileTime, In, Out, ObjectFifo, Runtime, Worker
-from aie.utils.trace.events import CoreEvent, MemEvent, MemTileEvent, ShimTileEvent
+from aie.iron import CompileTime, In, Out, ObjectFifo, Program, Runtime, Worker
+from aie.iron import TileTrace, TraceBuffer
+from aie.utils.trace.events import (
+    CoreEvent, MemEvent, MemTileEvent, ShimTileEvent, PortEvent, WireBundle,
+)
 
 @iron.jit
 def aie_trace(A: In, F: In, C: Out, *, tensor_size: CompileTime[int] = 4096, ...):
     of_in = ObjectFifo(...)
     ...
-    # `trace=1` flags the worker for hardware tracing.
-    worker = Worker(core_fn, fn_args=[...], trace=1)
+    # A single mixed event list configures both hardware units of the compute
+    # tile: TileTrace infers the unit from each event's type (CoreEvent.* -> core
+    # unit, MemEvent.* -> core-memory unit). The old coretile_events /
+    # coremem_events lists combine into this one events=[...] list.
+    worker = Worker(
+        core_fn,
+        fn_args=[...],
+        trace=TileTrace(
+            events=[
+                CoreEvent.INSTR_EVENT_0,             # core-unit events
+                CoreEvent.INSTR_EVENT_1,
+                MemEvent.DMA_S2MM_0_START_TASK,      # core-memory-unit events
+                ...,
+            ],
+        ),
+    )
 
     rt = Runtime()
-    with rt.sequence(...) as (a_in, f_in, c_out):
-        rt.enable_trace(
-            trace_size=8192,
-            workers=[worker],
-            coretile_events=[CoreEvent.INSTR_EVENT_0, ...],   # up to 8
-            coremem_events=[MemEvent.DMA_S2MM_0_START_TASK, ...],
-            memtile_events=[...],
-            shimtile_events=[...],
-        )
-        rt.start(worker)
+    def sequence(a_in, f_in, c_out):
+        of_in.prod().fill(a_in)
         ...
+    rt.sequence(sequence, [tensor_ty, scalar_ty, tensor_ty])
+
+    # Non-worker trace sources (mem tile / shim tile) go through trace_tiles, and
+    # the trace sink is the TraceBuffer (trace_size / ddr_id / trace_file live on
+    # it). The worker's compute tile is traced via Worker(trace=...) above.
+    return Program(
+        iron.get_current_device(),
+        rt,
+        workers=[worker],
+        trace_tiles=[
+            TileTrace(tile=mem_tile, events=[MemTileEvent...]),
+            TileTrace(tile=shim_tile, events=[ShimTileEvent...]),
+        ],
+        trace=TraceBuffer(trace_size=8192),
+    ).resolve_program()
 ```
 
-IRON's `rt.enable_trace()` forwards the four event lists to the same `aie.utils.trace.configure_trace` machinery the lower-level dialect API uses; the difference is you no longer have to talk to `@device` / `tile()` / `object_fifo` / `configure_trace` directly.
+`TileTrace` / `TraceBuffer` forward to the same `aie.utils.trace.configure_trace` machinery the lower-level dialect API uses; the difference is you no longer have to talk to `@device` / `tile()` / `object_fifo` / `configure_trace` directly.
 
 ## Lowering reference
 
 For direct MLIR usage, the declarative `aie.trace` syntax that
-`rt.enable_trace()` ultimately lowers to looks like:
+`TileTrace` / `TraceBuffer` ultimately lower to looks like:
 
 ```mlir
 aie.trace @core_trace(%tile_0_2) {

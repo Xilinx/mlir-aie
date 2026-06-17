@@ -68,14 +68,19 @@ b_tap = TensorTiler2D.group_tiler((K, N), (k, n), (K // k, N // n), tile_group_c
 c_taps = TensorTiler2D.group_tiler((M, N), (m, n), (1, N // n))
 
 rt = Runtime()
-with rt.sequence(A_ty, B_ty, C_ty) as (A, B, C):
-    rt.start(worker)
+
+def sequence(A, B, C):
     for tile_row in range(M // m):
-        task_group = rt.task_group()
-        rt.fill(fifo_A_L3L2.prod(), A, tap=a_taps[tile_row], task_group=task_group)
-        rt.fill(fifo_B_L3L2.prod(), B, tap=b_tap, task_group=task_group)
-        rt.drain(fifo_C_L2L3.cons(), C, tap=c_taps[tile_row], task_group=task_group, wait=True)
-        rt.finish_task_group(task_group)
+        task_group = TaskGroup()
+        fifo_A_L3L2.prod().fill(A, tap=a_taps[tile_row], group=task_group)
+        fifo_B_L3L2.prod().fill(B, tap=b_tap, group=task_group)
+        fifo_C_L2L3.cons().drain(C, tap=c_taps[tile_row], group=task_group, wait=True)
+        task_group.resolve()
+
+rt.sequence(sequence, [A_ty, B_ty, C_ty])
+
+# The worker is passed to the Program rather than started inside the sequence.
+Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 ```
 
 As `A` and `B` are moved in from DRAM, our design splits these matrices up into

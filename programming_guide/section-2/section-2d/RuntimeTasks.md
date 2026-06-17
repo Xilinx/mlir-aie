@@ -21,84 +21,102 @@
 
 -----
 
-IRON provides a `Runtime` class with a `sequence()` function which can be programmed with `RuntimeTasks` that will launch one or more `Worker`s and fill and drain Object FIFOs with data from/to external memory. All IRON constructs introduced in this section are available [here](../../../python/iron/runtime/).
+IRON provides a `Runtime` class with a `sequence()` function. You register a Python callable that runs eagerly to describe the runtime data movement: it fills and drains Object FIFOs with data from/to external memory. The `Worker`s that perform the compute are passed to the `Program` (via `workers=[...]`) rather than started inside the sequence. All IRON constructs introduced in this section are available [here](../../../python/iron/runtime/).
 
 To create a `Runtime` `sequence` users can write:
 ```python
 # To/from AIE-array runtime data movement
 rt = Runtime()
-with rt.sequence(data_ty_a, data_ty_b, data_ty_c) as (a, b, c):
+
+def sequence(a, b, c):
     # runtime tasks
+    pass
+
+rt.sequence(sequence, [data_ty_a, data_ty_b, data_ty_c])
 ```
-The arguments to this function describe buffers that will be available on the host side; the body of the function describes how those buffers are moved into the AIE-array.
+`rt.sequence()` takes the callable and a list of argument types. The parameters of the callable (`a`, `b`, `c`) describe buffers that will be available on the host side; the body of the callable describes how those buffers are moved into the AIE-array.
 
 #### **Runtime Tasks**
 
-`Runtime` tasks are performed during runtime and they may be synchronous or asynchronous. Tasks can be added to the `Runtime`'s `sequence` during the creation of the IRON design, and they can also be queued during runtime.
+`Runtime` tasks are performed during runtime and they may be synchronous or asynchronous. The body of the sequence callable describes these tasks during the creation of the IRON design.
 
-The `start()` operation is used to start one or multiple `Worker`s that were declared in the IRON design. It is shown below and defined in [runtime.py](../../../python/iron/runtime/runtime.py):
-```python
-def start(self, *args: Worker)
-```
-If more than one `Worker` is given as input, they will be started in order.
-
-The code snippet below shows how one `Worker`, `my_worker`, is started:
+`Worker`s are not started from inside the sequence; instead they are passed to the `Program` via its `workers=[...]` argument. The code snippet below shows how one `Worker`, `my_worker`, is provided to the design:
 ```python
 rt = Runtime()
-with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
-    rt.start(my_worker)
+
+def sequence(a, b, c):
+    pass
+
+rt.sequence(sequence, [data_ty, data_ty, data_ty])
+
+Program(device, rt, workers=[my_worker]).resolve_program()
 ```
 
-To start multiple `Worker`s with a single use of this operation users can write:
+To run multiple `Worker`s, pass them all in the list:
 ```python
 workers = []
 # create and append Workers to the "workers" array
 
 rt = Runtime()
-with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
-    rt.start(*workers)
+
+def sequence(a, b, c):
+    pass
+
+rt.sequence(sequence, [data_ty, data_ty, data_ty])
+
+Program(device, rt, workers=workers).resolve_program()
 ```
 
-The `fill()` operation is used to fill an `in_fifo` `ObjectFifoHandle` of type producer with data from a `source` runtime buffer. It is shown below and defined in [runtime.py](../../../python/iron/runtime/runtime.py):
+The `fill()` operation is a method on a producer `ObjectFifoHandle`; it fills that fifo with data from a `source` runtime buffer. It is shown below and defined in [objectfifo.py](../../../python/iron/dataflow/objectfifo.py):
 ```python
 def fill(
         self,
-        in_fifo: ObjectFifoHandle,
         source: RuntimeData,
         tap: TensorAccessPattern | None = None,
-        task_group: RuntimeTaskGroup | None = None,
+        offset=None,
+        sizes=None,
+        strides=None,
+        group: TaskGroup | None = None,
         wait: bool = False,
-        tile: Tile = AnyShimTile,
+        tile: Tile | None = None,
     )
 ```
-When the `wait` input is set to `True` this operation will be waited upon, i.e., a token will be produced when the operation is finished that a controller is waiting on. A `tile` (Shim tile) can also be explicitly specified, otherwise the compiler will choose one. The `task_group` is explained further in this section.
+When the `wait` input is set to `True` this operation will be waited upon, i.e., a token will be produced when the operation is finished that a controller is waiting on. A `tile` (Shim tile) can also be explicitly specified, otherwise the compiler will choose one. The `group` (a `TaskGroup`) is explained further in this section.
 
 The code snippet below shows how data from a source runtime buffer `a_in` is sent to the producer `ObjectFifoHandle` of `of_in`. This data could then be read via a consumer `ObjectFifoHandle` of the same Object FIFO.
 ```python
 rt = Runtime()
-with rt.sequence(data_ty, data_ty, data_ty) as (a_in, _, _):
-    rt.fill(of_in.prod(), a_in)
+
+def sequence(a_in, b, c):
+    of_in.prod().fill(a_in)
+
+rt.sequence(sequence, [data_ty, data_ty, data_ty])
 ```
 
-The `drain()` operation is used to fill an `out_fifo` `ObjectFifoHandle` of type consumer of data and write that data to a `dest` runtime buffer. It is shown below and defined in [runtime.py](../../../python/iron/runtime/runtime.py):
+The `drain()` operation is a method on a consumer `ObjectFifoHandle`; it drains that fifo of data and writes it to a `dest` runtime buffer. It is shown below and defined in [objectfifo.py](../../../python/iron/dataflow/objectfifo.py):
 ```python
 def drain(
     self,
-    out_fifo: ObjectFifoHandle,
     dest: RuntimeData,
     tap: TensorAccessPattern | None = None,
-    task_group: RuntimeTaskGroup | None = None,
+    offset=None,
+    sizes=None,
+    strides=None,
+    group: TaskGroup | None = None,
     wait: bool = False,
-    tile: Tile = AnyShimTile,
+    tile: Tile | None = None,
 )
 ```
-When the `wait` input is set to `True` this operation will be waited upon, i.e., a token will be produced when the operation is finished that a controller is waiting on. A `tile` (Shim tile) can also be explicitly specified, otherwise the compiler will choose one. The `task_group` is explained further in this section.
+When the `wait` input is set to `True` this operation will be waited upon, i.e., a token will be produced when the operation is finished that a controller is waiting on. A `tile` (Shim tile) can also be explicitly specified, otherwise the compiler will choose one. The `group` (a `TaskGroup`) is explained further in this section.
 
 The code snippet below shows how data from a consumer `ObjectFifoHandle` of `of_out` is drained into a destination runtime buffer `c_out`. Data could be produced into `of_out` via its producer `ObjectFifoHandle`. Additionally, the `wait` input of the `drain()` task is set meaning that this task will be waited on until completion, i.e., until the `c_out` runtime buffer had received enough data as described by the `data_ty`.
 ```python
 rt = Runtime()
-with rt.sequence(data_ty, data_ty, data_ty) as (_, _, c_out):
-    rt.drain(of_out.cons(), c_out, wait=True)
+
+def sequence(a, b, c_out):
+    of_out.cons().drain(c_out, wait=True)
+
+rt.sequence(sequence, [data_ty, data_ty, data_ty])
 ```
 
 #### **Inline Operations into a `Runtime`'s `Sequence`**
@@ -127,7 +145,8 @@ for i in range(4):
 The actual values of the runtime parameters will be loaded into each of the buffers at runtime:
 ```python
 rt = Runtime()
-with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
+
+def sequence(a, b, c):
 
     # Set runtime parameters
     def set_rtps(*args):
@@ -137,6 +156,8 @@ with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
             rtp[2] = 0
 
     rt.inline_ops(set_rtps, rtps)
+
+rt.sequence(sequence, [data_ty, data_ty, data_ty])
 ```
 The propagation of data to these global buffers is not instantaneous and may lead to workers reading runtime parameters before they are available. To solve this, it is possible to instantiate `WorkerRuntimeBarrier`s defined in [worker.py](../../../python/iron/worker.py):
 ```python
@@ -159,14 +180,17 @@ def core_fn(of_in, of_out, rtp, barrier):
 ...
 
 rt = Runtime()
-with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
+
+def sequence(a, b, c):
 
     ...
 
     rt.inline_ops(set_rtps, rtps)
-    
+
     for i in range(4):
         rt.set_barrier(workerBarriers[i], 1)
+
+rt.sequence(sequence, [data_ty, data_ty, data_ty])
 ```
 Currently, a `WorkerRuntimeBarrier` may take any value between 0 and 63. This is due to the fact that these barriers leverage the lock mechansim of the architecture under-the-hood.
 
@@ -176,12 +200,12 @@ Currently, a `WorkerRuntimeBarrier` may take any value between 0 and 63. This is
 
 It may be desirable to reconfigure a `Runtime`'s `sequence` and reuse some of the resources from a previous configuration, especially given that some of these resources, like the BDs in a DMA task queue, are limited.
 
-To facilitate this reconfiguration step, IRON introduces `RuntimeTaskGroup`s which can be created using the `task_group()` function as defined in [runtime.py](../../../python/iron/runtime/runtime.py).
+To facilitate this reconfiguration step, IRON introduces `TaskGroup`s which are created by constructing a `TaskGroup()` inside the sequence callable, as defined in [taskgroup.py](../../../python/iron/runtime/taskgroup.py).
 
-`RuntimeTask`s can be added to a task group by specifying their `task_group` input. Tasks in the same group will be appended to the runtime sequence and executed in order. The `finish_task_group()` operation is used to mark the end of a task group. This call waits for tasks in the group annotated with `wait=True` to complete, and then frees _all_ resources used by the task.
-If a `RuntimeTask` group is not explicitly defined for DMA tasks defined in a `Runtime`'s `sequence`, then a single default task group is used.
+`fill`/`drain` tasks can be added to a task group by specifying their `group` input. Tasks in the same group will be appended to the runtime sequence and executed in order. The group's `resolve()` method is used to mark the end of a task group. This call waits for tasks in the group annotated with `wait=True` to complete, and then frees _all_ resources used by the task.
+If a `TaskGroup` is not explicitly specified for DMA tasks defined in a `Runtime`'s `sequence`, then a single default task group (finished at end-of-sequence) is used.
 
-> **NOTE:**  A call to  `finish_task_group()` blocks the runtime sequence until all of the group's tasks annotated with `wait=True`  ("awaited tasks") have completed. After waiting, all resources of the task group -- including those _not_ annotated with `wait=True` ("unawaited tasks") -- will be freed and reused for subsequent tasks. 
+> **NOTE:**  A call to  `tg.resolve()` blocks the runtime sequence until all of the group's tasks annotated with `wait=True`  ("awaited tasks") have completed. After waiting, all resources of the task group -- including those _not_ annotated with `wait=True` ("unawaited tasks") -- will be freed and reused for subsequent tasks. 
 > 
 > To avoid race conditions, any unawaited tasks in the group should form a dependency of an awaited task.
 > It is only safe to remove a `wait=True` if you can reason that another, awaited task in the same group can only complete if the awaited task also completed.
@@ -189,19 +213,22 @@ If a `RuntimeTask` group is not explicitly defined for DMA tasks defined in a `R
 >
 > If you suspect a race condition, the safest (but possibly slower) solution is to annotated _all_ tasks (including inputs) with `wait=True`.
 
-The `Runtime` `sequence` in the code snippet below has two task groups. We can observe that the creation of the second task group happens at the end of execution of the first task group.
+The `Runtime` `sequence` in the code snippet below has two task groups. We can observe that the creation of the second task group happens at the end of execution of the first task group. (The `Worker`s are passed to the `Program` separately.)
 ```python
 rt = Runtime()
-with rt.sequence(data_ty, data_ty, data_ty) as (a_in, _, c_out):
-    rt.start(*workers)
 
-    tg = rt.task_group() # start first task group
+def sequence(a_in, b, c_out):
+    tg = TaskGroup() # start first task group
     for _ in [0, 1]:
-        rt.fill(of_in.prod(), a_in, task_group=tg)
-        rt.drain(of_out.cons(), c_out, task_group=tg, wait=True)
-        rt.finish_task_group(tg)
-        tg = rt.task_group() # start second task group
-    rt.finish_task_group(tg)
+        of_in.prod().fill(a_in, group=tg)
+        of_out.cons().drain(c_out, group=tg, wait=True)
+        tg.resolve()
+        tg = TaskGroup() # start second task group
+    tg.resolve()
+
+rt.sequence(sequence, [data_ty, data_ty, data_ty])
+
+Program(device, rt, workers=workers).resolve_program()
 ```
 
 -----

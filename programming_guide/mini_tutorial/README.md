@@ -72,8 +72,14 @@ for _ in range(n_workers):
     )
 
 rt = Runtime()
-with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
-    rt.start(*workers)
+
+def sequence(a, b, c):
+    pass
+
+rt.sequence(sequence, [data_ty, data_ty, data_ty])
+
+# Workers run during the sequence by being passed to the Program.
+Program(device, rt, workers=workers).resolve_program()
 ```
 More on programming for multiple workers in [Section 2e](../section-2/section-2e/README.md) of the programming guide.
 
@@ -184,17 +190,22 @@ of_in = ObjectFifo(data_ty, name="in")
 of_out = ObjectFifo(data_ty, name="out")
 
 rt = Runtime()
-with rt.sequence(tile_ty, tile_ty) as (a_in, c_out):
-    rt.start(my_worker)
-    rt.fill(of_in.prod(), a_in)
-    rt.drain(of_out.cons(), c_out, wait=True)
+
+def sequence(a_in, c_out):
+    of_in.prod().fill(a_in)
+    of_out.cons().drain(c_out, wait=True)
+
+rt.sequence(sequence, [tile_ty, tile_ty])
+
+# The worker is passed to the Program rather than started in the sequence.
+Program(device, rt, workers=[my_worker]).resolve_program()
 ```
 
 Up to five buffers are supported in the runtime sequence, where the fifth is typically used for trace support. This is further described in [Section 4b](../section-4/section-4b/README.md) of the programming guide.
 
 Runtime sequence commands are submitted to and executed by a dedicated command processor in order. The command processor will wait on commands that are set to `wait` until a token associated with their completion is generated. When all the commands in the runtime sequence have been executed the command processor sends an interrupt to the host processor.
 
-IRON also supports grouping of runtime sequence commands using `task_group`s. Commands that are in the same group begin execution concurrently, and the completion of the group can be explicitly synchronized using the `finish_task_group()` command. These features can be combined to achieve an optimized grouping of waits for parallel tasks, as is shown in [this](../../programming_examples/basic/memcpy/README.md) programming example.
+IRON also supports grouping of runtime sequence commands using `TaskGroup`s. Commands that are in the same group begin execution concurrently, and the completion of the group can be explicitly synchronized by calling the group's `resolve()` method. These features can be combined to achieve an optimized grouping of waits for parallel tasks, as is shown in [this](../../programming_examples/basic/memcpy/README.md) programming example.
 
 More on the runtime sequence in [Section 2d](../section-2/section-2d/RuntimeTasks.md) of the programming guide.
 
@@ -236,7 +247,8 @@ for worker in range(n_workers):
     )
 
 rt = Runtime()
-with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
+
+def sequence(a, b, c):
 
     # Set runtime parameters
     def set_rtps(*args):
@@ -246,6 +258,11 @@ with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
             rtp[2] = 0
 
     rt.inline_ops(set_rtps, rtps)
+
+rt.sequence(sequence, [data_ty, data_ty, data_ty])
+
+# Workers run during the sequence by being passed to the Program.
+Program(device, rt, workers=workers).resolve_program()
 ```
 To ensure that RTPs are not read prematurely, `WorkerRuntimeBarriers` can be used to synchronize a Worker with the runtime sequence:
 ```python
@@ -275,13 +292,19 @@ for worker in range(n_workers):
     )
 
 rt = Runtime()
-with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
+
+def sequence(a, b, c):
     # Set runtime parameters
     # ...
     rt.inline_ops(set_rtps, rtps)
-    
+
     for worker in range(n_workers):
         rt.set_barrier(workerBarriers[worker], 1)
+
+rt.sequence(sequence, [data_ty, data_ty, data_ty])
+
+# Workers run during the sequence by being passed to the Program.
+Program(device, rt, workers=workers).resolve_program()
 ```
 More on the runtime parameters and barriers in [Section 2d](../section-2/section-2d/RuntimeTasks.md) of the programming guide and in the [worker.py](../../python/iron/worker.py).
 
@@ -322,10 +345,15 @@ tap = TensorAccessPattern(
 A `TensorAccessPattern` can be applied to the `fill()` and `drain()` runtime operations:
 ```python
 rt = Runtime()
-with rt.sequence(data_ty, data_ty) as (a_in, c_out):
-    rt.start(my_worker)
-    rt.fill(of_in.prod(), a_in, tap)
-    rt.drain(of_out.cons(), c_out, tap, wait=True)
+
+def sequence(a_in, c_out):
+    of_in.prod().fill(a_in, tap)
+    of_out.cons().drain(c_out, tap, wait=True)
+
+rt.sequence(sequence, [data_ty, data_ty])
+
+# The worker is passed to the Program rather than started in the sequence.
+Program(device, rt, workers=[my_worker]).resolve_program()
 ```
 
 The `TensorAccessPattern` can be visualized in two ways:

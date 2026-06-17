@@ -125,14 +125,18 @@ def manual_bd_writes(a, b):
     npu_push_queue(...)
     npu_sync(column=col, row=0, ...)
 
-with rt.sequence(in_ty, out_ty) as (a, b):
-    rt.start(worker)
+def sequence(a, b):
     rt.inline_ops(manual_bd_writes, [a, b])
+
+rt.sequence(sequence, [in_ty, out_ty])
+
+# The worker is passed to the Program rather than started in the sequence.
+Program(device, rt, workers=[worker]).resolve_program()
 ```
 
 `rt.inline_ops(fn, [args])` calls `fn(*args)` inside the runtime
 sequence's MLIR region with the host-side tensor handles already in
-scope — exactly what `rt.fill` / `rt.drain` are built on top of, but
+scope — exactly what `fill` / `drain` are built on top of, but
 with no protocol assumptions baked in.
 
 ### Worked example: tile-to-tile copy
@@ -261,7 +265,7 @@ tile S2MM with:
 * a runtime sequence that opens the data flow with `npu_writebd` /
   `npu_address_patch` / `npu_push_queue` / `npu_sync` inside an
   `rt.inline_ops(...)` block — the *teaching point* of the example,
-  because the manual BD writes are exactly what `rt.fill` / `rt.drain`
+  because the manual BD writes are exactly what `fill` / `drain`
   normally hide.
 
 That design is the right starting place when copying this pattern.

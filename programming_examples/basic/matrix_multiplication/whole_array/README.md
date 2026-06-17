@@ -22,7 +22,7 @@ At a high level, the code does the following (in order):
 
 1. [**Defining Core Computations:**](#4-defining-core-computations) The `core_fn()` function — wrapped in a `Worker` — contains the code that will be loaded onto each AIE core. This code calls the matrix-multiply microkernel from the library (`kernels.mm`) on the input sub-matrix elements acquired through the ObjectFifos, accumulating into the output sub-matrix.
 
-1. [**Defining External Data Transfer Sequences:**](#5-defining-external-data-transfer-sequences) `Runtime.sequence()` sets up matrix data movement from the host into the AIE compute cores, and back to the host after computation, via `rt.fill()` / `rt.drain()` calls that consume `TensorTiler2D`-generated access patterns.
+1. [**Defining External Data Transfer Sequences:**](#5-defining-external-data-transfer-sequences) `Runtime.sequence()` registers a host-side callable that sets up matrix data movement from the host into the AIE compute cores, and back to the host after computation, via `fifo.prod().fill()` / `fifo.cons().drain()` calls that consume `TensorTiler2D`-generated access patterns.
 
 1. **Generating the Design:** The `_build_design()` function constructs the IRON design and resolves it to an MLIR module. The `@iron.jit`-decorated `whole_array()` is the single entry point for compilation; `main()` either compiles + runs on hardware or compiles ahead-of-time to caller-specified xclbin/insts paths (used by the Makefile so `test.cpp` + `sweep.sh` can drive the design).  The `generate_taps()` helper calls into the same design body to produce TAP sequences for the visualization notebook.
 
@@ -77,7 +77,7 @@ The input and output matrix sizes are given by the user. We subdivide the input 
 
 1. **Tiling to Compute Core Submatrix Chunks:** The input and output matrices stream to/from the AIE compute cores in chunks of size of `m`&times;`k`, `k`&times;`n` and `n`&times;`m`. Tiling into these chunks allows each of the computation cores to concurrently work on distinct sub-sections of the input matrices in parallel, which improves performance. This also reduces on-chip memory requirements. The final result is re-assembled using the sub-matrix results of all cores.
 
-    > This tiling occurs in the `Runtime.sequence()` body's host-to-memtile `rt.fill()` calls.
+    > This tiling occurs in the `Runtime.sequence()` body's host-to-memtile `fifo.prod().fill()` calls.
 We describe it further below, in section *"5. Defining External Data Transfer Sequences"*.
 
 1. **Tiling to Vector Intrinsic Size:** The AIE compute cores calculate the matrix multiplication using efficient "multiply-accumulate" vector intrinsic instructions (`MAC` instructions). These hardware instructions process very small blocks of the matrix: size `r`&times;`s` blocks of `A` and size `s`&times;`t` blocks of  `B`, producing an output of size `r`&times;`t` (`C`). 
@@ -139,7 +139,7 @@ We assume our data are stored in **row-major format** in the host's memory. For 
 
 #### Runtime Sequence Tiling and Data Layout Transformations Notebook
 
-There is a notebook that includes visualization for the runtime sequence's `rt.fill` / `rt.drain` shim DMA transfers for matrices A, B, and C — its TAPs come from the same `TensorTiler2D` calls the design uses, surfaced via the design's `generate_taps=True` mode.
+There is a notebook that includes visualization for the runtime sequence's `fifo.prod().fill()` / `fifo.cons().drain()` shim DMA transfers for matrices A, B, and C — its TAPs come from the same `TensorTiler2D` calls the design uses, surfaced via the design's `generate_taps=True` mode.
 
 To run the notebook:
 * Start a jupyter server at the root directory of your clone of `mlir-aie`.
@@ -232,7 +232,7 @@ Both `zero_kernel` and `matmul_kernel` come from the library — `kernels.mm(dim
 
 ### 5. Defining External Data Transfer Sequences
 
-`rt.sequence(A_ty, B_ty, C_ty)` opens a host-side block whose handles (`A`, `B`, `C`) stand in for the three external buffers on the AIE's shim tiles.  Inside that block, `rt.fill(fifo.prod(), buffer, tap=tap)` and `rt.drain(fifo.cons(), buffer, tap=tap)` describe the per-shim DMA transfers — `tap` is a `TensorAccessPattern` that encodes the wraps/strides for tiling `M`&times;`K`, `K`&times;`N`, and `M`&times;`N` into the sub-matrices the in-array FIFOs expect.
+`rt.sequence(sequence, [A_ty, B_ty, C_ty])` registers the host-side callable `sequence(A, B, C)`, whose parameters (`A`, `B`, `C`) stand in for the three external buffers on the AIE's shim tiles.  Inside that function, `fifo.prod().fill(buffer, tap=tap)` and `fifo.cons().drain(buffer, tap=tap)` describe the per-shim DMA transfers — `tap` is a `TensorAccessPattern` that encodes the wraps/strides for tiling `M`&times;`K`, `K`&times;`N`, and `M`&times;`N` into the sub-matrices the in-array FIFOs expect.
 
 The full set of TAPs is produced once via `TensorTiler2D`:
 
@@ -253,29 +253,30 @@ C_tiles = TensorTiler2D.step_tiler(
 
 (The two `b_col_maj=1` / `c_col_maj=1` branches build slightly different `step_tiler` configs that emit the col-major DMA pattern.)
 
-The runtime body then walks the tile-row blocks with explicit ping-pong:
+The runtime body — the `sequence(A, B, C)` callable passed to `rt.sequence` — then walks the tile-row blocks with explicit ping-pong:
 
 ```python
-tg = rt.task_group()
-for tb in range(ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
-    for pingpong in [0, 1]:
-        for col in range(n_aie_cols):
-            rt.drain(C_l2l3_fifos[col].cons(), C, tap=C_tiles[c_index],
-                     wait=True, task_group=tg, tile=Tile(col, 0))
-            c_index += 1
-            for tile_row in range(current_tb_n_rows):
-                # interleave A and B fills with the C drain
-                rt.fill(A_l3l2_fifos[col].prod(), A,
-                        tap=A_tiles[…], task_group=tg, tile=Tile(…, 0))
-                rt.fill(B_l3l2_fifos[col].prod(), B,
-                        tap=B_tiles[col], task_group=tg, tile=Tile(col, 0))
-        if tb > 0 or pingpong > 0:
-            rt.finish_task_group(tg)        # awaits half the BDs
-            tg = rt.task_group()            # opens the next half
-rt.finish_task_group(tg)
+def sequence(A, B, C):
+    tg = TaskGroup()
+    for tb in range(ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
+        for pingpong in [0, 1]:
+            for col in range(n_aie_cols):
+                C_l2l3_fifos[col].cons().drain(
+                    C, tap=C_tiles[c_index], wait=True, group=tg)
+                c_index += 1
+                for tile_row in range(current_tb_n_rows):
+                    # interleave A and B fills with the C drain
+                    A_l3l2_fifos[col].prod().fill(A, tap=A_tiles[…], group=tg)
+                    B_l3l2_fifos[col].prod().fill(B, tap=B_tiles[col], group=tg)
+            if tb > 0 or pingpong > 0:
+                tg.resolve()        # awaits half the BDs
+                tg = TaskGroup()    # opens the next half
+    tg.resolve()
+
+rt.sequence(sequence, [A_ty, B_ty, C_ty])
 ```
 
-The two-phase `task_group` open/finish dance is the IRON equivalent of the old "ping/pong" buffer-descriptor split: while half the shim DMA BDs are still running, the other half are being reconfigured for the next set of tiles.  This overlap is what keeps the array fed.
+The two-phase `TaskGroup` create/resolve dance is the IRON equivalent of the old "ping/pong" buffer-descriptor split: while half the shim DMA BDs are still running, the other half are being reconfigured for the next set of tiles.  This overlap is what keeps the array fed.
 
 `tb_max_n_rows` controls how many tile-rows live in one ping-pong half; `tb_n_rows = tb_max_n_rows // 2` is the number of A row-blocks per half.  Setting either parameter too low starves the cores; too high overflows the shim DMA BD pool.
 
