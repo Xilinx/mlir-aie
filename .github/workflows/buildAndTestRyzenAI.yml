@@ -126,6 +126,13 @@ jobs:
           gh api "repos/${{ github.repository }}/actions/jobs/${JOB_ID}/logs" \
             | grep -oP '(?<=AIE_TEST :: ).*' \
             | grep -vP '^(npu-xrt|python/npu-xrt)/.*/test\.py$' \
+            | while IFS= read -r test; do
+                src="$GITHUB_WORKSPACE/test/${test}"
+                if [ -f "$src" ] && grep -qE "REQUIRES:.*aiesimulator" "$src"; then
+                  continue
+                fi
+                echo "$test"
+              done \
             | sort \
             > $GITHUB_WORKSPACE/baseline_unsupported_tests.txt
 
@@ -205,6 +212,15 @@ jobs:
           comm -13 \
             $GITHUB_WORKSPACE/baseline_unsupported_tests.txt \
             $GITHUB_WORKSPACE/current_unsupported_tests.txt \
+            | while IFS= read -r test; do
+                # Skip tests that legitimately require the AIE simulator — those
+                # run on the Vitis runner instead and are expected UNSUPPORTED here.
+                src="$GITHUB_WORKSPACE/test/${test}"
+                if [ -f "$src" ] && grep -qE "REQUIRES:.*aiesimulator" "$src"; then
+                  continue
+                fi
+                echo "$test"
+              done \
             > $GITHUB_WORKSPACE/new_unsupported_tests.txt
 
           COUNT=$(wc -l < $GITHUB_WORKSPACE/new_unsupported_tests.txt)
