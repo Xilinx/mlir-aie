@@ -18,7 +18,7 @@ import argparse
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import ObjectFifo, Out, Program, Worker
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import (
     device_from_args,
@@ -52,14 +52,15 @@ def single_buffer(c_out: Out):
     w1 = Worker(producer, [of_in.prod()])
     w2 = Worker(copier, [of_in.cons(), of_out.prod()])
 
-    rt = Runtime()
-
-    def sequence(c):
+    def runtime_sequence(c):
         of_out.cons().drain(c, wait=True)
 
-    rt.sequence(sequence, [data_ty])
-
-    return Program(iron.get_current_device(), rt, workers=[w1, w2]).resolve_program()
+    return Program(
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[data_ty],
+        workers=[w1, w2],
+    ).resolve_program()
 
 
 def _run_and_verify(opts):

@@ -19,7 +19,7 @@ Covers the bug reported in https://github.com/Xilinx/mlir-aie/issues/3011:
 
 import numpy as np
 
-from aie.iron import Buffer, ObjectFifo, Program, Runtime, Worker
+from aie.iron import Buffer, ObjectFifo, Program, Worker
 from aie.iron.device import NPU1Col1, NPU2
 
 rtp_ty = np.ndarray[(16,), np.dtype[np.int32]]
@@ -52,23 +52,24 @@ def core_fn(of_in, of_out, rtp):
 
 worker = Worker(core_fn, [of_in.cons(), of_out.prod(), rtp_buf])
 
-rt = Runtime()
 
-
-def sequence(inp, out):
+def runtime_sequence(inp, out):
 
     def set_rtp(buf):
         buf[0] = 7
         buf[1] = 3
 
-    rt.inline_ops(set_rtp, [rtp_buf])
+    set_rtp(rtp_buf)
     of_in.prod().fill(inp)
     of_out.cons().drain(out, wait=True)
 
 
-rt.sequence(sequence, [data_ty, data_ty])
-
-module = Program(NPU1Col1(), rt, workers=[worker]).resolve_program()
+module = Program(
+    NPU1Col1(),
+    runtime_sequence,
+    arg_types=[data_ty, data_ty],
+    workers=[worker],
+).resolve_program()
 print(module)
 
 
@@ -104,17 +105,15 @@ workers = [
     for i in range(n_workers)
 ]
 
-rt2 = Runtime()
 
-
-def sequence(i0, i1, i2, o0, o1, o2):
+def runtime_sequence(i0, i1, i2, o0, o1, o2):
 
     def set_rtps(rtps):
         rtps[0][0] = 1
         rtps[1][0] = 2
         rtps[2][0] = 3
 
-    rt2.inline_ops(set_rtps, [rtps])
+    set_rtps(rtps)
     of_ins[0].prod().fill(i0)
     of_ins[1].prod().fill(i1)
     of_ins[2].prod().fill(i2)
@@ -123,9 +122,12 @@ def sequence(i0, i1, i2, o0, o1, o2):
     of_outs[2].cons().drain(o2, wait=True)
 
 
-rt2.sequence(sequence, [data_ty, data_ty, data_ty, data_ty, data_ty, data_ty])
-
-module2 = Program(NPU2(), rt2, workers=list(workers)).resolve_program()
+module2 = Program(
+    NPU2(),
+    runtime_sequence,
+    arg_types=[data_ty, data_ty, data_ty, data_ty, data_ty, data_ty],
+    workers=list(workers),
+).resolve_program()
 print(module2)
 
 
@@ -156,24 +158,25 @@ def core_fn3(of_in, of_out, rtp):
 
 worker3 = Worker(core_fn3, [of_in3.cons(), of_out3.prod(), placed_rtp])
 
-rt3 = Runtime()
 
-
-def sequence(inp3, out3):
+def runtime_sequence(inp3, out3):
 
     def write_both(placed, orphan):
         placed[0] = 1
         orphan[0] = 1  # orphan has no tile → should raise ValueError
 
-    rt3.inline_ops(write_both, [placed_rtp, orphan_rtp])
+    write_both(placed_rtp, orphan_rtp)
     of_in3.prod().fill(inp3)
     of_out3.cons().drain(out3, wait=True)
 
 
-rt3.sequence(sequence, [data_ty, data_ty])
-
 try:
-    Program(NPU1Col1(), rt3, workers=[worker3]).resolve_program()
+    Program(
+        NPU1Col1(),
+        runtime_sequence,
+        arg_types=[data_ty, data_ty],
+        workers=[worker3],
+    ).resolve_program()
     print("FAILED: expected ValueError but no exception was raised")
 except ValueError as e:
     assert "placed" in str(e).lower(), f"unexpected message: {e}"

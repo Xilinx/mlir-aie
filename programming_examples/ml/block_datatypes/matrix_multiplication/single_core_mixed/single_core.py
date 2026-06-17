@@ -30,7 +30,6 @@ from aie.iron import (
     ObjectFifo,
     Out,
     Program,
-    Runtime,
     Worker,
 )
 from aie.iron.controlflow import range_
@@ -127,9 +126,7 @@ def single_core_mixed(
     C_tiles = TensorTiler2D.group_tiler((M, N), (m, n), (rows_per_block // 2, N_div_n))
     c_index = 0
 
-    rt = Runtime()
-
-    def sequence(a, b, c):
+    def runtime_sequence(a, b, c):
         tgs = []
         for tile_row_block in range(iron.ceildiv(M_div_m, rows_per_block)):
             for pingpong in [0, 1]:
@@ -152,9 +149,12 @@ def single_core_mixed(
         tgs[-1].resolve()
         del tgs[-1]
 
-    rt.sequence(sequence, [A_ty, B_ty, C_ty])
-
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    return Program(
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[A_ty, B_ty, C_ty],
+        workers=[worker],
+    ).resolve_program()
 
 
 def _make_argparser():

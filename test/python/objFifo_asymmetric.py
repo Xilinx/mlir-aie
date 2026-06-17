@@ -8,7 +8,7 @@
 
 import numpy as np
 
-from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron import ObjectFifo, Program, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2, AnyMemTile
 from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
@@ -47,15 +47,14 @@ def test_objectfifo_asymmetric():
 
     cons = Worker(consumer_body, fn_args=[wts.cons(), of_out.prod()])
 
-    rt = Runtime()
     tensor_ty = np.ndarray[(40,), np.dtype[np.int32]]
 
-    def sequence(a):
+    def runtime_sequence(a):
         of_out.cons().drain(a, wait=True)
 
-    rt.sequence(sequence, [tensor_ty])
-
-    module = Program(dev, rt, workers=[cons]).resolve_program()
+    module = Program(
+        dev, runtime_sequence, arg_types=[tensor_ty], workers=[cons]
+    ).resolve_program()
     print(module)
 
 

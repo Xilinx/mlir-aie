@@ -7,7 +7,7 @@
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc.
 
 import numpy as np
-from typing import Callable, Sequence, Union
+from typing import Sequence
 
 from ...extras.dialects.memref import MemRefValue  # type: ignore
 from ...helpers.util import (
@@ -15,7 +15,6 @@ from ...helpers.util import (
     np_ndarray_type_get_shape,
 )
 from ...helpers.taplib import TensorAccessPattern, TensorTiler2D
-from ...ir import Type as MlirType
 
 
 class RuntimeData:
@@ -60,45 +59,6 @@ class RuntimeData:
     def op(self, op: MemRefValue):
         if self._op:
             raise ValueError("Cannot set operation for RuntimeData more than once.")
-        self._op = op
-
-    def reset_op(self) -> None:
-        """Clear the bound SSA value so the handle can be rebound on a fresh build."""
-        self._op = None
-
-
-class RuntimeScalar:
-    """A handle to a scalar runtime parameter (e.g. T.i32()) in the Runtime sequence."""
-
-    def __init__(self, mlir_type: Union[MlirType, Callable[[], MlirType]]):
-        """Construct a handle to a scalar Runtime parameter.
-
-        Args:
-            mlir_type: The MLIR type of the scalar, or a zero-arg callable
-                that produces one within an active MLIR context (deferred so
-                the type can be built lazily inside a runtime sequence).
-        """
-        self._mlir_type = mlir_type
-        self._op = None
-
-    @property
-    def mlir_type(self) -> MlirType:
-        """The MLIR type of this scalar."""
-        if callable(self._mlir_type):
-            return self._mlir_type()
-        return self._mlir_type
-
-    @property
-    def op(self):
-        """The MLIR SSA value for this scalar, set during resolve."""
-        if self._op is None:
-            raise ValueError("Cannot get operation for RuntimeScalar before it is set.")
-        return self._op
-
-    @op.setter
-    def op(self, op):
-        if self._op is not None:
-            raise ValueError("Cannot set operation for RuntimeScalar more than once.")
         self._op = op
 
     def reset_op(self) -> None:

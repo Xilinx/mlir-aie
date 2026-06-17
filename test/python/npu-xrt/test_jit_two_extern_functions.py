@@ -23,7 +23,7 @@ import pytest
 
 import aie.iron as iron
 from aie.iron import CompileTime, ExternalFunction, In, Out, jit
-from aie.iron import ObjectFifo, Worker, Runtime, Program
+from aie.iron import ObjectFifo, Worker, Program
 
 from aie.iron.controlflow import range_
 
@@ -64,15 +64,16 @@ def add_then_scale(
         fn_args=[of_in.cons(), of_out.prod(), add_func, scale_func],
     )
 
-    rt = Runtime()
-
-    def sequence(A, B):
+    def runtime_sequence(A, B):
         of_in.prod().fill(A)
         of_out.cons().drain(B, wait=True)
 
-    rt.sequence(sequence, [tensor_ty, tensor_ty])
-
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    return Program(
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[tensor_ty, tensor_ty],
+        workers=[worker],
+    ).resolve_program()
 
 
 def test_two_external_functions_different_objects():

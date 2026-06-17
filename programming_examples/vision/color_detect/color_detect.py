@@ -16,7 +16,7 @@ import argparse
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Worker, kernels
 from aie.utils.hostruntime.argparse import (
     device_from_args,
     add_compile_args,
@@ -187,16 +187,15 @@ def color_detect(
         ],
     )
 
-    rt = Runtime()
-
-    def sequence(i_in, _b, o_out):
+    def runtime_sequence(i_in, _b, o_out):
         in_of_l3l2.prod().fill(i_in)
         out_of_l2l3.cons().drain(o_out, wait=True)
 
-    rt.sequence(sequence, [tensor_ty, tensor_16x16_ty, tensor_ty])
-
     return Program(
-        iron.get_current_device(), rt, workers=[worker2, worker3, worker4, worker5]
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[tensor_ty, tensor_16x16_ty, tensor_ty],
+        workers=[worker2, worker3, worker4, worker5],
     ).resolve_program()
 
 

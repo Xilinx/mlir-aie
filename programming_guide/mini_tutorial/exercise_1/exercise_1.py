@@ -9,7 +9,7 @@
 import sys
 import numpy as np
 
-from aie.iron import Out, In, CompileTime, Program, Runtime, Worker, ObjectFifo, Buffer
+from aie.iron import Out, In, CompileTime, Program, Worker, ObjectFifo, Buffer
 from aie.iron.controlflow import range_
 
 import aie.iron as iron
@@ -43,16 +43,16 @@ def exercise_1(
     # Create a worker to perform the task
     my_worker = Worker(core_fn, [of_out.prod(), buffer])
 
-    # To/from AIE-array runtime data movement
-    rt = Runtime()
-
-    def sequence(c_out):
+    def runtime_sequence(c_out):
         of_out.cons().drain(c_out, wait=True)
 
-    rt.sequence(sequence, [data_ty])
-
     # Create the program from the device type and runtime
-    my_program = Program(iron.get_current_device(), rt, workers=[my_worker])
+    my_program = Program(
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[data_ty],
+        workers=[my_worker],
+    )
 
     # Place components (assign them resources on the device) and generate an MLIR module
     return my_program.resolve_program()

@@ -28,7 +28,7 @@ class ScratchpadParameter(Resolvable):
     Example::
 
         import numpy as np
-        from aie.iron import ScratchpadParameter, Worker, Runtime, Program
+        from aie.iron import ScratchpadParameter, Worker, Program
 
         seq_len = ScratchpadParameter("seq_len", np.int32)
 
@@ -38,11 +38,13 @@ class ScratchpadParameter(Resolvable):
 
         worker = Worker(core_body, [seq_len])
 
-        rt = Runtime()
-        def sequence(out):
+        def runtime_sequence(out):
             # The compiler automatically inserts the parameter-sync preamble.
             ...
-        rt.sequence(sequence, [output_type])
+
+        Program(
+            device, runtime_sequence, arg_types=[output_type], workers=[worker]
+        ).resolve_program()
     """
 
     def __init__(self, name: str, dtype: NpuDType):

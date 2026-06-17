@@ -35,7 +35,6 @@ from aie.iron import (
     ObjectFifo,
     Out,
     Program,
-    Runtime,
     Worker,
 )
 from aie.iron.controlflow import range_
@@ -81,16 +80,17 @@ def vector_scalar_mul(a_in: In, f_in: In, c_out: Out):
         core_fn, [of_in.cons(), of_factor.cons(), of_out.prod(), scale_fn]
     )
 
-    rt = Runtime()
-
-    def sequence(a, f, c):
+    def runtime_sequence(a, f, c):
         of_in.prod().fill(a)
         of_factor.prod().fill(f)
         of_out.cons().drain(c, wait=True)
 
-    rt.sequence(sequence, [tensor_ty, scalar_ty, tensor_ty])
-
-    return Program(iron.get_current_device(), rt, workers=[my_worker]).resolve_program()
+    return Program(
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[tensor_ty, scalar_ty, tensor_ty],
+        workers=[my_worker],
+    ).resolve_program()
 
 
 def _run_and_verify(opts):

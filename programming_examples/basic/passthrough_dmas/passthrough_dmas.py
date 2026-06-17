@@ -32,7 +32,7 @@ import sys
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program
 from aie.iron.device import AnyShimTile, Tile
 from aie.utils.hostruntime.argparse import device_from_args
 from aie.dialects._aie_enum_gen import AIETileType
@@ -89,15 +89,15 @@ def passthrough_dmas(
         fill_tile = AnyShimTile
         drain_tile = AnyShimTile
 
-    rt = Runtime()
-
-    def sequence(a, _unused0, c):
+    def runtime_sequence(a, _unused0, c):
         of_in.prod().fill(a, tile=fill_tile)
         of_out.cons().drain(c, tile=drain_tile, wait=True)
 
-    rt.sequence(sequence, [vector_ty, vector_ty, vector_ty])
-
-    return Program(iron.get_current_device(), rt).resolve_program()
+    return Program(
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[vector_ty, vector_ty, vector_ty],
+    ).resolve_program()
 
 
 def _make_argparser():

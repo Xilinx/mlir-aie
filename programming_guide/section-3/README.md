@@ -57,17 +57,16 @@ def vector_scalar_mul(a_in: In, f_in: In, c_out: Out):
         core_fn, [of_in.cons(), of_factor.cons(), of_out.prod(), scale_fn]
     )
 
-    rt = Runtime()
-
-    def sequence(a, f, c):
+    def runtime_sequence(a, f, c):
         of_in.prod().fill(a)
         of_factor.prod().fill(f)
         of_out.cons().drain(c, wait=True)
 
-    rt.sequence(sequence, [tensor_ty, scalar_ty, tensor_ty])
-
     return Program(
-        iron.get_current_device(), rt, workers=[my_worker]
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[tensor_ty, scalar_ty, tensor_ty],
+        workers=[my_worker],
     ).resolve_program()
 ```
 
@@ -143,17 +142,18 @@ Note that for transfers into the AIE-array that we want to explicitly wait on, w
 
 ```python
 # Runtime operations to move data to/from the AIE-array
-rt = Runtime()
-
-def sequence(a_in, f_in, c_out):
+def runtime_sequence(a_in, f_in, c_out):
     of_in.prod().fill(a_in)
     of_factor.prod().fill(f_in)
     of_out.cons().drain(c_out, wait=True)
 
-rt.sequence(sequence, [tensor_ty, scalar_ty, tensor_ty])
-
 # The worker is passed to the Program rather than started in the sequence.
-Program(device, rt, workers=[my_worker]).resolve_program()
+Program(
+    device,
+    runtime_sequence,
+    arg_types=[tensor_ty, scalar_ty, tensor_ty],
+    workers=[my_worker],
+).resolve_program()
 ```
 
 Finally, we need to configure how the compute core accesses the data moved to its L1 memory, in Object FIFO terminology: we need to program the acquire and release patterns of `of_in`, `of_factor` and `of_out`. Only a single factor is needed for the complete 4096 vector, while for every processing iteration on a sub-vector, we need to acquire an object of 1024 integers to read from `of_in` and one similar sized object from `of_out`. Then we call our previously declared external function with the acquired objects as operands. After the vector scalar operation, we need to release both objects to their respective `of_in` and `of_out` Object FIFOs. Finally, after the 4 sub-vector iterations, we release the `of_factor` Object FIFO.

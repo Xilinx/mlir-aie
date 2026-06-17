@@ -18,7 +18,7 @@ import sys
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import In, ObjectFifo, Out, Program, Worker
 from aie.helpers.dialects.scf import _for as range_, if_
 from aie.dialects.arith import cmpi, CmpIPredicate, constant
 from aie.extras import types as T
@@ -87,17 +87,18 @@ def cyclostatic_normal(
         ],
     )
 
-    rt = Runtime()
-
-    def sequence(a_in, trip, c_out, done):
+    def runtime_sequence(a_in, trip, c_out, done):
         of_in_l3l2.prod().fill(a_in)
         of_trip.prod().fill(trip)
         of_out_l2l3.cons().drain(c_out)
         of_done_l2l3.cons().drain(done, wait=True)
 
-    rt.sequence(sequence, [in_ty, trip_ty, out_ty, done_ty])
-
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    return Program(
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[in_ty, trip_ty, out_ty, done_ty],
+        workers=[worker],
+    ).resolve_program()
 
 
 # The zero-trip path reuses the same @iron.jit'd cyclostatic_normal: it sends

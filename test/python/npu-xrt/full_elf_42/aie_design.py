@@ -19,7 +19,7 @@
 
 import numpy as np
 
-from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron import ObjectFifo, Program, Worker
 from aie.iron.device import NPU2Col1
 from aie.dialects.aiex import npu_load_pdi
 
@@ -38,17 +38,16 @@ def design():
 
     worker = Worker(core_fn, [of_out.prod()], while_true=False)
 
-    rt = Runtime()
-
-    def sequence(out_tensor):
-        rt.inline_ops(lambda: npu_load_pdi(device_ref=device_name), [])
+    def runtime_sequence(out_tensor):
+        npu_load_pdi(device_ref=device_name)
         of_out.cons().drain(out_tensor, wait=True)
 
-    rt.sequence(sequence, [out_ty])
-
-    mlir = Program(NPU2Col1(), rt, workers=[worker]).resolve_program(
-        device_name=device_name
-    )
+    mlir = Program(
+        NPU2Col1(),
+        runtime_sequence,
+        arg_types=[out_ty],
+        workers=[worker],
+    ).resolve_program(device_name=device_name)
     return str(mlir)
 
 

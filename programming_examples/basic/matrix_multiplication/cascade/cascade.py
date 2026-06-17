@@ -26,7 +26,6 @@ from aie.iron import (
     ObjectFifo,
     Out,
     Program,
-    Runtime,
     Worker,
     kernels,
     str_to_dtype,
@@ -304,9 +303,7 @@ def cascade(
         prune_step=False,
     )
 
-    rt = Runtime()
-
-    def sequence(A, B, C):
+    def runtime_sequence(A, B, C):
 
         c_index = 0
         for tb in range(iron.ceildiv(M // m, tb_max_n_rows)):
@@ -327,10 +324,11 @@ def cascade(
                     )
             tg.resolve()
 
-    rt.sequence(sequence, [A_ty, B_ty, C_ty])
-
     return Program(
-        iron.get_current_device(), rt, workers=list(flat_workers)
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[A_ty, B_ty, C_ty],
+        workers=list(flat_workers),
     ).resolve_program()
 
 

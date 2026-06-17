@@ -18,7 +18,7 @@ import aie.iron as iron
 from aie.utils import tensor
 from aie.utils.trace import parse_trace
 from aie.iron import TileTrace, TraceBuffer
-from aie.iron import CompileTime, Kernel, ObjectFifo, Program, Runtime, Worker
+from aie.iron import CompileTime, Kernel, ObjectFifo, Program, Worker
 from aie.iron.controlflow import range_
 
 
@@ -55,17 +55,15 @@ def design(
         trace=TileTrace() if trace_config else None,
     )
 
-    rt = Runtime()
-
-    def sequence(a, c):
+    def runtime_sequence(a, c):
         # In runtime sequence:
         of_in.prod().fill(a)
         of_out.cons().drain(c, wait=True)
 
-    rt.sequence(sequence, [a_type, c_type])
     return Program(
         iron.get_current_device(),
-        rt,
+        runtime_sequence,
+        arg_types=[a_type, c_type],
         workers=[worker],
         trace=trace_config,
     ).resolve_program()

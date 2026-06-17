@@ -31,7 +31,7 @@ import json
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import TaskGroup, ObjectFifo, Program, Runtime
+from aie.iron import TaskGroup, ObjectFifo, Program
 from aie.iron.device import Tile
 from aie.utils.hostruntime.argparse import device_from_args
 from aie.utils.hostruntime import set_current_device
@@ -156,7 +156,6 @@ def _chain_iron(mode, data_dir, scales_json):
             data_dir=data_dir,
         )
 
-    rt = Runtime()
     if wts_fifos:
         # Cascade: input + ONE concatenated cascade weight buffer + output.
         # All 4 weight chunks live in a single host tensor; TensorAccessPatterns
@@ -177,7 +176,7 @@ def _chain_iron(mode, data_dir, scales_json):
                 strides=[0, 0, 0, 1],
             )
 
-        def sequence(inp, all_wts, out):
+        def runtime_sequence(inp, all_wts, out):
             tg = TaskGroup()
             act_in.prod(depth=1).fill(inp, tile=CHAIN_PLACEMENT["shim_input"], group=tg)
             for fifo, off, shim in zip(
@@ -189,10 +188,10 @@ def _chain_iron(mode, data_dir, scales_json):
             )
             tg.resolve()
 
-        rt.sequence(sequence, [in_ty, wts_ty, out_ty])
+        arg_types_list = [in_ty, wts_ty, out_ty]
     else:
 
-        def sequence(inp, out):
+        def runtime_sequence(inp, out):
             tg = TaskGroup()
             act_in.prod(depth=1).fill(inp, tile=CHAIN_PLACEMENT["shim_input"], group=tg)
             act_out.cons().drain(
@@ -200,10 +199,13 @@ def _chain_iron(mode, data_dir, scales_json):
             )
             tg.resolve()
 
-        rt.sequence(sequence, [in_ty, out_ty])
+        arg_types_list = [in_ty, out_ty]
 
     return Program(
-        iron.get_current_device(), rt, workers=list(workers)
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=arg_types_list,
+        workers=list(workers),
     ).resolve_program()
 
 

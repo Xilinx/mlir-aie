@@ -10,7 +10,7 @@
 import pytest
 import numpy as np
 
-from aie.iron import CascadeFlow, ObjectFifo, Program, Runtime, Worker
+from aie.iron import CascadeFlow, ObjectFifo, Program, Worker
 from aie.iron.device import NPU1Col2, Tile
 from aie.iron.dataflow.cascadeflow import CascadeFlow as _CascadeFlow
 from aie.iron.controlflow import range_
@@ -50,13 +50,9 @@ def test_runtime_cascade_flow_registration():
 
     cf = CascadeFlow(worker_a, worker_b)
 
-    rt = Runtime()
-
-    def sequence(A, B):
+    def runtime_sequence(A, B):
         of_in.prod().fill(A)
         of_out.cons().drain(B, wait=True)
-
-    rt.sequence(sequence, [n_ty, n_ty])
 
     assert worker_a._outgoing_cascades == [cf]
     assert isinstance(cf, _CascadeFlow)
@@ -78,15 +74,16 @@ def test_cascade_flow_mlir_resolve():
 
     CascadeFlow(worker_a, worker_b)
 
-    rt = Runtime()
-
-    def sequence(A, B):
+    def runtime_sequence(A, B):
         of_in.prod().fill(A)
         of_out.cons().drain(B, wait=True)
 
-    rt.sequence(sequence, [n_ty, n_ty])
-
-    module = Program(NPU1Col2(), rt, workers=[worker_a, worker_b]).resolve_program()
+    module = Program(
+        NPU1Col2(),
+        runtime_sequence,
+        arg_types=[n_ty, n_ty],
+        workers=[worker_a, worker_b],
+    ).resolve_program()
     mlir_str = str(module)
     assert "cascade_flow" in mlir_str
 

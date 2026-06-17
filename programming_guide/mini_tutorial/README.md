@@ -71,15 +71,16 @@ for _ in range(n_workers):
         Worker(core_fn, [...])
     )
 
-rt = Runtime()
-
-def sequence(a, b, c):
+def runtime_sequence(a, b, c):
     pass
 
-rt.sequence(sequence, [data_ty, data_ty, data_ty])
-
 # Workers run during the sequence by being passed to the Program.
-Program(device, rt, workers=workers).resolve_program()
+Program(
+    device,
+    runtime_sequence,
+    arg_types=[data_ty, data_ty, data_ty],
+    workers=workers,
+).resolve_program()
 ```
 More on programming for multiple workers in [Section 2e](../section-2/section-2e/README.md) of the programming guide.
 
@@ -189,16 +190,17 @@ data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
 of_in = ObjectFifo(data_ty, name="in")
 of_out = ObjectFifo(data_ty, name="out")
 
-rt = Runtime()
-
-def sequence(a_in, c_out):
+def runtime_sequence(a_in, c_out):
     of_in.prod().fill(a_in)
     of_out.cons().drain(c_out, wait=True)
 
-rt.sequence(sequence, [tile_ty, tile_ty])
-
 # The worker is passed to the Program rather than started in the sequence.
-Program(device, rt, workers=[my_worker]).resolve_program()
+Program(
+    device,
+    runtime_sequence,
+    arg_types=[tile_ty, tile_ty],
+    workers=[my_worker],
+).resolve_program()
 ```
 
 Up to five buffers are supported in the runtime sequence, where the fifth is typically used for trace support. This is further described in [Section 4b](../section-4/section-4b/README.md) of the programming guide.
@@ -246,9 +248,7 @@ for worker in range(n_workers):
         Worker(core_fn, [rtps[worker]])
     )
 
-rt = Runtime()
-
-def sequence(a, b, c):
+def runtime_sequence(a, b, c):
 
     # Set runtime parameters
     def set_rtps(*args):
@@ -257,12 +257,15 @@ def sequence(a, b, c):
             rtp[1] = 255
             rtp[2] = 0
 
-    rt.inline_ops(set_rtps, rtps)
-
-rt.sequence(sequence, [data_ty, data_ty, data_ty])
+    set_rtps(*rtps)
 
 # Workers run during the sequence by being passed to the Program.
-Program(device, rt, workers=workers).resolve_program()
+Program(
+    device,
+    runtime_sequence,
+    arg_types=[data_ty, data_ty, data_ty],
+    workers=workers,
+).resolve_program()
 ```
 To ensure that RTPs are not read prematurely, `WorkerRuntimeBarriers` can be used to synchronize a Worker with the runtime sequence:
 ```python
@@ -291,20 +294,21 @@ for worker in range(n_workers):
         Worker(core_fn, [rtps[worker], workerBarriers[worker]])
     )
 
-rt = Runtime()
-
-def sequence(a, b, c):
+def runtime_sequence(a, b, c):
     # Set runtime parameters
     # ...
-    rt.inline_ops(set_rtps, rtps)
+    set_rtps(*rtps)
 
     for worker in range(n_workers):
-        rt.set_barrier(workerBarriers[worker], 1)
-
-rt.sequence(sequence, [data_ty, data_ty, data_ty])
+        workerBarriers[worker]._set_barrier_value(1)
 
 # Workers run during the sequence by being passed to the Program.
-Program(device, rt, workers=workers).resolve_program()
+Program(
+    device,
+    runtime_sequence,
+    arg_types=[data_ty, data_ty, data_ty],
+    workers=workers,
+).resolve_program()
 ```
 More on the runtime parameters and barriers in [Section 2d](../section-2/section-2d/RuntimeTasks.md) of the programming guide and in the [worker.py](../../python/iron/worker.py).
 
@@ -344,16 +348,17 @@ tap = TensorAccessPattern(
 
 A `TensorAccessPattern` can be applied to the `fill()` and `drain()` runtime operations:
 ```python
-rt = Runtime()
-
-def sequence(a_in, c_out):
+def runtime_sequence(a_in, c_out):
     of_in.prod().fill(a_in, tap)
     of_out.cons().drain(c_out, tap, wait=True)
 
-rt.sequence(sequence, [data_ty, data_ty])
-
 # The worker is passed to the Program rather than started in the sequence.
-Program(device, rt, workers=[my_worker]).resolve_program()
+Program(
+    device,
+    runtime_sequence,
+    arg_types=[data_ty, data_ty],
+    workers=[my_worker],
+).resolve_program()
 ```
 
 The `TensorAccessPattern` can be visualized in two ways:

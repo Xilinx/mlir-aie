@@ -26,7 +26,7 @@ import argparse
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Worker
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import device_from_args
 from aie.helpers.taplib import TensorTiler2D
@@ -67,15 +67,16 @@ def matrix_scalar_add(
 
     tap = TensorTiler2D.simple_tiler(matrix_shape, tile_shape)[0]
 
-    rt = Runtime()
-
-    def sequence(in_tensor, out_tensor):
+    def runtime_sequence(in_tensor, out_tensor):
         of_in.prod().fill(in_tensor, tap)
         of_out.cons().drain(out_tensor, tap, wait=True)
 
-    rt.sequence(sequence, [matrix_ty, matrix_ty])
-
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    return Program(
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[matrix_ty, matrix_ty],
+        workers=[worker],
+    ).resolve_program()
 
 
 def _make_argparser():

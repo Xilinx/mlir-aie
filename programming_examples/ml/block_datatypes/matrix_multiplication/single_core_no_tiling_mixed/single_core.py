@@ -27,7 +27,6 @@ from aie.iron import (
     ObjectFifo,
     Out,
     Program,
-    Runtime,
     Worker,
 )
 from aie.utils.hostruntime.argparse import (
@@ -106,16 +105,17 @@ def single_core_no_tiling_mixed(
     B_ty = np.ndarray[(K * N // 8,), np.dtype[v8bfp16ebs8]]
     C_ty = np.ndarray[(M * N,), np.dtype[bfloat16]]
 
-    rt = Runtime()
-
-    def sequence(a, b, c):
+    def runtime_sequence(a, b, c):
         inA.prod().fill(a)
         inB.prod().fill(b)
         outC.cons().drain(c, wait=True)
 
-    rt.sequence(sequence, [A_ty, B_ty, C_ty])
-
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    return Program(
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[A_ty, B_ty, C_ty],
+        workers=[worker],
+    ).resolve_program()
 
 
 def _make_argparser():

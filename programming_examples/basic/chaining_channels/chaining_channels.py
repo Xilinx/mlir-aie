@@ -10,7 +10,7 @@
 The teaching point is the runtime sequence's manual
 ``npu_writebd`` / ``npu_address_patch`` / ``npu_push_queue`` /
 ``npu_sync`` -- which IRON's host-side ``rt.fill`` / ``rt.drain``
-abstractions hide.  Those calls live in an ``rt.inline_ops`` block.
+abstractions hide.  Those calls are emitted directly in the runtime_sequence body.
 
 The structural side -- per-tile DMA programs with explicit BD chains,
 explicit locks, explicit ``Flow`` routes -- is expressed via IRON's
@@ -40,7 +40,6 @@ from aie.iron import (
     Out,
     Program,
     Release,
-    Runtime,
     TileDma,
     Worker,
 )
@@ -179,7 +178,9 @@ def chaining_channels(
     )
 
     # ---- runtime sequence: manual BD writes (THE lesson) ---------------
-    def manual_bd_writes(a, b):
+    # The body runs inside the runtime-sequence builder, so these lower-level
+    # ops emit in place — no wrapper / inline_ops indirection needed.
+    def runtime_sequence(a, b):
         # Release the MemTile lock to trigger the memtile MM2S BD.
         npu_write32(column=col, row=1, address=0xC0000, value=1)
 
@@ -280,13 +281,9 @@ def chaining_channels(
         npu_sync(column=col, row=0, direction=1, channel=0, column_num=1, row_num=1)
 
     # ---- assemble + return the Program --------------------------------
-    rt = Runtime()
-    rt.add_flow(mem_to_shim_flow)
-    rt.add_flow(shim_to_compute_flow)
-    for lk in (memtile_lock, compute_prod_lock, compute_cons_lock):
-        rt.add_lock(lk)
-    rt.add_tile_dma(memtile_dma)
-    rt.add_tile_dma(compute_dma)
+    # Explicit routing: flows + tile_dmas are passed as Program roots. Their
+    # locks (memtile_lock / compute_prod_lock / compute_cons_lock) are inferred
+    # from the tile_dmas' BD acquire/release ops, so they are not listed.
 
     # Mem-tile and shim-tile event sources (non-worker tiles), captured into
     # the shared trace buffer.  Each TileTrace targets one explicit tile; the
@@ -332,15 +329,13 @@ def chaining_channels(
         else []
     )
 
-    def sequence(a, b):
-        rt.inline_ops(manual_bd_writes, [a, b])
-
-    rt.sequence(sequence, [vector_ty, vector_ty_read])
-
     return Program(
         iron.get_current_device(),
-        rt,
+        runtime_sequence,
+        arg_types=[vector_ty, vector_ty_read],
         workers=[worker],
+        flows=[mem_to_shim_flow, shim_to_compute_flow],
+        tile_dmas=[memtile_dma, compute_dma],
         trace_tiles=trace_tiles,
         trace=TraceBuffer(trace_size=trace_size) if trace_size > 0 else None,
     ).resolve_program()

@@ -9,7 +9,7 @@ import numpy as np
 
 import aie.iron as iron
 from aie.iron import CompileTime, In, Out
-from aie.iron import ObjectFifo, Program, Runtime, Worker, Buffer, kernels
+from aie.iron import ObjectFifo, Program, Worker, Buffer, kernels
 from aie.iron.controlflow import range_
 from aie.helpers.util import np_ndarray_type_get_shape
 from aie.helpers.dialects.scf import if_, else_
@@ -161,19 +161,20 @@ def vector_reduce_max(
     # DRAM-NPU data movement and work dispatch
     # --------------------------------------------------------------------------
 
-    rt = Runtime()
-
-    def sequence(a_in, c_out):
+    def runtime_sequence(a_in, c_out):
         of_in.prod().fill(a_in)
         out_fifos[0].cons().drain(c_out, wait=True)
-
-    rt.sequence(sequence, [in_ty, out_ty])
 
     # --------------------------------------------------------------------------
     # Place and generate MLIR program
     # --------------------------------------------------------------------------
 
-    my_program = Program(iron.get_current_device(), rt, workers=list(workers))
+    my_program = Program(
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[in_ty, out_ty],
+        workers=list(workers),
+    )
     return my_program.resolve_program()
 
 

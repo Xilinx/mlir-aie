@@ -25,7 +25,7 @@ import numpy as np
 import aie.iron as iron
 from aie.extras.dialects import arith
 from aie.helpers.util import np_dtype_to_mlir_type
-from aie.iron import Buffer, CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import Buffer, CompileTime, In, ObjectFifo, Out, Program, Worker
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import device_from_args
 from aie.iron.kernel import ExternalFunction
@@ -144,17 +144,14 @@ def group0(
     )
 
     # ----- Runtime ----------------------------------------------------------
-    rt = Runtime()
-
-    def sequence(A, C, _unused0):
+    def runtime_sequence(A, C, _unused0):
         of_din_L3L2.prod().fill(A)
         of_dout_L2L3.cons().drain(C, wait=True)
 
-    rt.sequence(sequence, [transfer_in_ty, transfer_out_ty, scalar_ty])
-
     return Program(
         iron.get_current_device(),
-        rt,
+        runtime_sequence,
+        arg_types=[transfer_in_ty, transfer_out_ty, scalar_ty],
         workers=[group0a_worker, group0b_worker],
         trace=TraceBuffer(trace_size=trace_size) if trace_size > 0 else None,
     ).resolve_program()

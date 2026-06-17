@@ -18,7 +18,7 @@ import pytest
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import ExternalFunction, ObjectFifo, Worker, Runtime, Program
+from aie.iron import ExternalFunction, ObjectFifo, Worker, Program
 from aie.iron import CompileTime, In, Out
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2, NPU2Col1
@@ -270,14 +270,17 @@ def _transform(input_tensor: In, output_tensor: Out, *, kernel_fn: CompileTime[o
             of_out.release(1)
 
     worker = Worker(core_body, fn_args=[of_in.cons(), of_out.prod()])
-    rt = Runtime()
 
-    def sequence(A, B):
+    def runtime_sequence(A, B):
         of_in.prod().fill(A)
         of_out.cons().drain(B, wait=True)
 
-    rt.sequence(sequence, [_tensor_ty, _tensor_ty])
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    return Program(
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[_tensor_ty, _tensor_ty],
+        workers=[worker],
+    ).resolve_program()
 
 
 @pytest.mark.parametrize("add_value", [1, 2, 3])

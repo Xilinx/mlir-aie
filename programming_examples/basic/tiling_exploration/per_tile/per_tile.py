@@ -26,7 +26,7 @@ import argparse
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Buffer, CompileTime, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import Buffer, CompileTime, ObjectFifo, Out, Program, Worker
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorTiler2D
 from aie.utils.hostruntime.argparse import add_compile_args
@@ -65,15 +65,16 @@ def per_tile(
 
     worker = Worker(access_order, [of_out.prod(), access_counter])
 
-    rt = Runtime()
-
-    def sequence(tensor_out):
+    def runtime_sequence(tensor_out):
         for t in tiler:
             of_out.cons().drain(tensor_out, t, wait=True)
 
-    rt.sequence(sequence, [flattened_tensor])
-
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    return Program(
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[flattened_tensor],
+        workers=[worker],
+    ).resolve_program()
 
 
 def _make_argparser():

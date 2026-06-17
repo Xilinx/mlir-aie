@@ -11,7 +11,7 @@ from ml_dtypes import bfloat16
 
 import aie.iron as iron
 from aie.iron import CompileTime, ExternalFunction, In, Out
-from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron import ObjectFifo, Program, Worker
 from aie.utils.config import cxx_header_path
 from aie.utils.verify import assert_pass
 
@@ -72,20 +72,21 @@ def saxpy(
     # DRAM-NPU data movement and work dispatch
     # --------------------------------------------------------------------------
 
-    rt = Runtime()
-
-    def sequence(a_x, a_y, c_z):
+    def runtime_sequence(a_x, a_y, c_z):
         of_x.prod().fill(a_x)
         of_y.prod().fill(a_y)
         of_z.cons().drain(c_z, wait=True)
-
-    rt.sequence(sequence, [in_ty, in_ty, out_ty])
 
     # --------------------------------------------------------------------------
     # Place and generate MLIR program
     # --------------------------------------------------------------------------
 
-    my_program = Program(iron.get_current_device(), rt, workers=[worker])
+    my_program = Program(
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[in_ty, in_ty, out_ty],
+        workers=[worker],
+    )
     return my_program.resolve_program()
 
 

@@ -48,7 +48,7 @@ The `@iron.jit`-decorated `vector_scalar_mul(A, F, C, ...)` function expresses t
 
 1. **Core Body:** Loops through sub-vectors of the input, calls the external kernel, and emits to `of_out`. Wrapped in a `Worker` (with `trace=...` enabled when `trace_size > 0`).
 
-1. **Runtime Sequence:** `rt.sequence(sequence, [...])` registers a host-side callable whose `fifo.prod().fill()` / `fifo.cons().drain()` calls move data; tracing is activated when requested via `Worker(trace=TileTrace())` plus a `TraceBuffer` passed to `Program(trace=...)`.
+1. **Runtime Sequence:** `Program(..., runtime_sequence, arg_types=[...])` registers the host-side callable `runtime_sequence(A, F, C)` whose `fifo.prod().fill()` / `fifo.cons().drain()` calls move data; tracing is activated when requested via `Worker(trace=TileTrace())` plus a `TraceBuffer` passed to `Program(trace=...)`.
 
 ### AIE Core Kernel Code
 

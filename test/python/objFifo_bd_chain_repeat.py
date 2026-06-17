@@ -7,7 +7,7 @@
 
 import sys
 import numpy as np
-from aie.iron import ObjectFifo, Program, Runtime
+from aie.iron import ObjectFifo, Program
 
 from aie.iron.device import NPU1Col1
 
@@ -27,16 +27,15 @@ def test_objectfifo_bd_chain_scenarios():
     of_mem_to_compute = of_shim_to_mem.cons().forward(obj_type=line_ty)
     of_mem_to_compute.set_iter_count(3)
 
-    rt = Runtime()
     vector_ty = np.ndarray[(4096,), np.dtype[np.int32]]
 
-    def sequence(a_in, _unused0, c_out):
+    def runtime_sequence(a_in, _unused0, c_out):
         of_shim_to_mem.prod().fill(a_in)
         of_mem_to_compute.cons().drain(c_out, wait=True)
 
-    rt.sequence(sequence, [vector_ty, vector_ty, vector_ty])
-
-    my_program = Program(dev, rt)
+    my_program = Program(
+        dev, runtime_sequence, arg_types=[vector_ty, vector_ty, vector_ty]
+    )
     module = my_program.resolve_program()
 
     print(module)

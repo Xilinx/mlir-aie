@@ -107,28 +107,30 @@ for worker in range(n_workers):
 Finally, in our simple design we write a runtime sequence to bring data to/from external memory; our Worker is passed to the `Program`:
 ```python
 # Runtime operations to move data to/from the AIE-array
-rt = Runtime()
-
-def sequence(a_in, b_out, c):
+def runtime_sequence(a_in, b_out, c):
     of_in.prod().fill(a_in)
     of_out.cons().drain(b_out, wait=True)
 
-rt.sequence(sequence, [data_ty, data_ty, data_ty])
-
-Program(device, rt, workers=[my_worker]).resolve_program()
+Program(
+    device,
+    runtime_sequence,
+    arg_types=[data_ty, data_ty, data_ty],
+    workers=[my_worker],
+).resolve_program()
 ```
 The runtime sequence remains largely unchanged for the larger design except that all three Workers are passed to the `Program`:
 ```python
 # Runtime operations to move data to/from the AIE-array
-rt = Runtime()
-
-def sequence(a_in, b_out, c):
+def runtime_sequence(a_in, b_out, c):
     of_in.prod().fill(a_in)
     of_out.cons().drain(b_out, wait=True)
 
-rt.sequence(sequence, [data_ty, data_ty, data_ty])
-
-Program(device, rt, workers=workers).resolve_program()
+Program(
+    device,
+    runtime_sequence,
+    arg_types=[data_ty, data_ty, data_ty],
+    workers=workers,
+).resolve_program()
 ```
 
 To build and run the designs:

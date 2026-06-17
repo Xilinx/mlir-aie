@@ -14,7 +14,6 @@ from aie.iron import (
     In,
     Out,
     Program,
-    Runtime,
     Worker,
     ObjectFifo,
     Buffer,
@@ -61,23 +60,24 @@ def exercise_4(
     my_worker = Worker(core_fn, [rtps[0], of_out.prod(), workerBarrier])
 
     # To/from AIE-array runtime data movement
-    rt = Runtime()
-
-    def sequence(c_out):
+    def runtime_sequence(c_out):
         # Set runtime parameters
         def set_rtps(*args):
             for rtp in args:
                 for i in range(data_size):  # note difference with range_ in the Worker
                     rtp[i] = i
 
-        rt.inline_ops(set_rtps, rtps)
-        rt.set_barrier(workerBarrier, 1)
+        set_rtps(*rtps)
+        workerBarrier.set(1)
         of_out.cons().drain(c_out, wait=True)
 
-    rt.sequence(sequence, [data_ty])
-
     # Create the program from the device type and runtime
-    my_program = Program(iron.get_current_device(), rt, workers=[my_worker])
+    my_program = Program(
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[data_ty],
+        workers=[my_worker],
+    )
 
     # Place components (assign them resources on the device) and generate an MLIR module
     return my_program.resolve_program()

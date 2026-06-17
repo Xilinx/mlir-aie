@@ -37,7 +37,6 @@ from aie.iron import (
     ObjectFifo,
     Out,
     Program,
-    Runtime,
     TaskGroup,
     Worker,
     kernels,
@@ -155,9 +154,7 @@ def single_core_dynamic(
 
     rows_per_block = 4
 
-    rt = Runtime()
-
-    def sequence(A, B, C, M, K, N):
+    def runtime_sequence(A, B, C, M, K, N):
         M_div_m = M // m
         K_div_k = K // k
         N_div_n = N // n
@@ -224,9 +221,12 @@ def single_core_dynamic(
         if prev is not None:
             prev.resolve()
 
-    rt.sequence(sequence, [A_ty, B_ty, C_ty, T.i32, T.i32, T.i32])
-
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    return Program(
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[A_ty, B_ty, C_ty, T.i32, T.i32, T.i32],
+        workers=[worker],
+    ).resolve_program()
 
 
 def _make_argparser():

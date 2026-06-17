@@ -10,7 +10,7 @@ import numpy as np
 import argparse
 import sys
 
-from aie.iron import TaskGroup, ObjectFifo, Program, Runtime, Worker
+from aie.iron import TaskGroup, ObjectFifo, Program, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2, AnyComputeTile, AnyMemTile
 from aie.iron.resolvable import Resolvable
@@ -231,17 +231,18 @@ def custom_dma_design(dev):
     def rt_start_memtile_dma(scatter_obj):
         set_lock_value(scatter_obj._mem_cons_lock, 3)
 
-    rt = Runtime()
-
-    def sequence(_unused0, b_out, _unused1):
+    def runtime_sequence(_unused0, b_out, _unused1):
         tg = TaskGroup()
         of_out.cons().drain(b_out, wait=True, group=tg)
-        rt.inline_ops(rt_start_memtile_dma, [scatter])
+        rt_start_memtile_dma(scatter)
         tg.resolve()
 
-    rt.sequence(sequence, [out_type, out_type, out_type])
-
-    return Program(dev, rt, workers=[worker]).resolve_program()
+    return Program(
+        dev,
+        runtime_sequence,
+        arg_types=[out_type, out_type, out_type],
+        workers=[worker],
+    ).resolve_program()
 
 
 p = argparse.ArgumentParser()

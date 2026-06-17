@@ -27,7 +27,6 @@ from aie.iron import (
     ObjectFifo,
     Out,
     Program,
-    Runtime,
     Worker,
     WorkerRuntimeBarrier,
     kernels,
@@ -122,9 +121,7 @@ def color_threshold(
         for i in range(4)
     ]
 
-    rt = Runtime()
-
-    def sequence(i_in, _b, o_out):
+    def runtime_sequence(i_in, _b, o_out):
 
         def set_rtps(*args):
             for rtp in args:
@@ -132,18 +129,19 @@ def color_threshold(
                 rtp[1] = 255
                 rtp[2] = 0
 
-        rt.inline_ops(set_rtps, rtps)
+        set_rtps(*rtps)
 
         for i in range(4):
-            rt.set_barrier(worker_barriers[i], 1)
+            worker_barriers[i].set(1)
 
         in_oob_l3l2.prod().fill(i_in)
         out_oob_l2l3.cons().drain(o_out, wait=True)
 
-    rt.sequence(sequence, [tensor_ty, unused_ty, tensor_ty])
-
     return Program(
-        iron.get_current_device(), rt, workers=list(workers)
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[tensor_ty, unused_ty, tensor_ty],
+        workers=list(workers),
     ).resolve_program()
 
 

@@ -37,7 +37,6 @@ from aie.iron import (
     ObjectFifo,
     Out,
     Program,
-    Runtime,
     Worker,
 )
 from aie.iron.controlflow import range_
@@ -94,18 +93,15 @@ def vector_scalar_mul(
         trace=TileTrace() if trace_size > 0 else None,
     )
 
-    rt = Runtime()
-
-    def sequence(a, f, c):
+    def runtime_sequence(a, f, c):
         of_in.prod().fill(a)
         of_factor.prod().fill(f)
         of_out.cons().drain(c, wait=True)
 
-    rt.sequence(sequence, [tensor_ty, scalar_ty, tensor_ty])
-
     return Program(
         iron.get_current_device(),
-        rt,
+        runtime_sequence,
+        arg_types=[tensor_ty, scalar_ty, tensor_ty],
         workers=[my_worker],
         trace=TraceBuffer(trace_size=trace_size) if trace_size > 0 else None,
     ).resolve_program()

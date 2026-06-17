@@ -33,7 +33,6 @@ from aie.iron import (
     Out,
     ObjectFifo,
     Program,
-    Runtime,
     Worker,
     WorkerRuntimeBarrier,
 )
@@ -156,14 +155,12 @@ def scale_shift(
 
         return _impl
 
-    rt = Runtime()
-
-    def sequence(A, B, C, D):
+    def runtime_sequence(A, B, C, D):
 
         # Phase 1: multiply (rtp=1).
-        rt.inline_ops(_set_rtps_to(1), rtps)
+        _set_rtps_to(1)(*rtps)
         for i in range(n_cores):
-            rt.set_barrier(barriers[i], 1)
+            barriers[i].set(1)
         tg1 = TaskGroup()
         inA.prod().fill(A, group=tg1)
         inB.prod().fill(B, group=tg1)
@@ -171,18 +168,21 @@ def scale_shift(
         tg1.resolve()
 
         # Phase 2: add (rtp=0).  D = (A*B) feeds back as the lhs.
-        rt.inline_ops(_set_rtps_to(0), rtps)
+        _set_rtps_to(0)(*rtps)
         for i in range(n_cores):
-            rt.set_barrier(barriers[i], 1)
+            barriers[i].set(1)
         tg2 = TaskGroup()
         inA.prod().fill(D, group=tg2)
         inB.prod().fill(C, group=tg2)
         outC.cons().drain(D, wait=True, group=tg2)
         tg2.resolve()
 
-    rt.sequence(sequence, [tensor_ty, tensor_ty, tensor_ty, tensor_ty])
-
-    return Program(device, rt, workers=list(workers)).resolve_program()
+    return Program(
+        device,
+        runtime_sequence,
+        arg_types=[tensor_ty, tensor_ty, tensor_ty, tensor_ty],
+        workers=list(workers),
+    ).resolve_program()
 
 
 def _make_argparser():

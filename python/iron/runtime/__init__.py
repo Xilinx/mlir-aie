@@ -5,6 +5,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
-"""Runtime: host-side data movement and worker execution orchestration."""
+"""Runtime data-movement internals.
 
-from .runtime import Runtime
+The runtime sequence is supplied directly to :class:`aie.iron.Program` as a
+callable and resolved by it; there is no user-facing ``Runtime`` object. The
+modules here (``_sequence``, ``_context``, ``taskgroup``, ``dmatask``, ``data``)
+are internal machinery reached during ``Program.resolve_program``.
+"""

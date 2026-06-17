@@ -61,7 +61,7 @@ In this exercise, you'll use the `memcpy` design to measure memory bandwidth acr
 
 4. **Ensure Optimal Task Sequencing in the Runtime**
 
-	To achieve full parallelism when draining data from all columns and channels, the `memcpy` design can use **task groups** in the IRON `Runtime().sequence` to group operations and start them together before waiting for completion.
+	To achieve full parallelism when draining data from all columns and channels, the `memcpy` design can use **task groups** in the IRON `runtime_sequence` to group operations and start them together before waiting for completion.
 
 	Modify your IRON runtime sequences to optimize performance using **task groups**:
 
@@ -72,9 +72,7 @@ In this exercise, you'll use the `memcpy` design to measure memory bandwidth acr
 	*Key Code Snippet:*
 
 	```python
-	rt = Runtime()
-
-	def sequence(a_in, b_out):
+	def runtime_sequence(a_in, b_out):
 	    tg_out = TaskGroup()  # Initialize a group for parallel drain tasks
 
 	    # Fill the input FIFOs (these will start immediately)
@@ -97,11 +95,14 @@ In this exercise, you'll use the `memcpy` design to measure memory bandwidth acr
 
 	    tg_out.resolve()  # Wait for all drain tasks together
 
-	rt.sequence(sequence, [transfer_type, transfer_type])
-
 	# Workers (when not bypassing) are passed to the Program, not started in
 	# the sequence.
-	Program(device, rt, workers=list(my_workers)).resolve_program()
+	Program(
+	    device,
+	    runtime_sequence,
+	    arg_types=[transfer_type, transfer_type],
+	    workers=list(my_workers),
+	).resolve_program()
 	```
 
  	*Why This Matters:*

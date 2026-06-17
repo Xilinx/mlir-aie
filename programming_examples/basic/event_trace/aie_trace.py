@@ -32,7 +32,6 @@ from aie.iron import (
     ObjectFifo,
     Out,
     Program,
-    Runtime,
     Worker,
     kernels,
 )
@@ -124,16 +123,12 @@ def aie_trace(
         ),
     )
 
-    rt = Runtime()
-
-    def sequence(a_in, f_in, c_out):
+    def runtime_sequence(a_in, f_in, c_out):
         # Bind the data transfers to the explicit shim tile so it is the tile we
         # trace below (and the one the trace data egresses through).
         of_in.prod().fill(a_in, tile=shim_tile)
         of_factor.prod().fill(f_in, tile=shim_tile)
         of_out.cons().drain(c_out, wait=True, tile=shim_tile)
-
-    rt.sequence(sequence, [tensor_ty, scalar_ty, tensor_ty])
 
     # Non-worker trace sources: the mem tile (its DMA ports) and the shim tile.
     # The worker's compute tile is traced via Worker(trace=...) above.
@@ -158,7 +153,8 @@ def aie_trace(
 
     return Program(
         iron.get_current_device(),
-        rt,
+        runtime_sequence,
+        arg_types=[tensor_ty, scalar_ty, tensor_ty],
         workers=[worker],
         trace_tiles=trace_tiles,
         trace=TraceBuffer(trace_size=trace_size),

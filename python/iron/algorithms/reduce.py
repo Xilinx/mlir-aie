@@ -21,7 +21,7 @@ Reductions differ from :mod:`~aie.iron.algorithms.transform` in two ways:
 
 import numpy as np
 
-from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron import ObjectFifo, Program, Worker, TileTrace, TraceBuffer
 import aie.iron as iron
 
 from .transform import make_param_descriptor
@@ -68,18 +68,12 @@ def _reduce_gen(func, input_desc, output_desc, *, trace_size=0):
     worker = Worker(
         core_body,
         fn_args=[of_in.cons(), of_out.prod(), func],
-        trace=(1 if trace_size > 0 else 0),
+        trace=TileTrace() if trace_size > 0 else None,
     )
 
-    rt = Runtime()
-
     def sequence(a_in, c_out):
-        if trace_size > 0:
-            rt.enable_trace(trace_size)
         of_in.prod().fill(a_in)
         of_out.cons().drain(c_out, wait=True)
-
-    rt.sequence(sequence, [in_ty, out_ty])
 
     device = iron.get_current_device()
     if device is None:
@@ -88,7 +82,13 @@ def _reduce_gen(func, input_desc, output_desc, *, trace_size=0):
             "Call iron.set_current_device() or ensure DefaultNPURuntime is "
             "initialized before calling reduce functions."
         )
-    return Program(device, rt, workers=[worker]).resolve_program()
+    return Program(
+        device,
+        sequence,
+        sequence_arg_types=[in_ty, out_ty],
+        workers=[worker],
+        trace=TraceBuffer(trace_size=trace_size) if trace_size > 0 else None,
+    ).resolve_program()
 
 
 def reduce_typed(func, input_ty, output_ty, *, trace_size=0):

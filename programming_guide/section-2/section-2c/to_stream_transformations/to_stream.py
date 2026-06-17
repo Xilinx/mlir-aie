@@ -19,7 +19,7 @@ import argparse
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import In, ObjectFifo, Out, Program, Worker
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import (
     device_from_args,
@@ -49,15 +49,16 @@ def to_stream(a_in: In, c_out: Out):
 
     my_worker = Worker(core_fn, [of_in1.cons(), of_out1.prod()])
 
-    rt = Runtime()
-
-    def sequence(a, c):
+    def runtime_sequence(a, c):
         of_in0.prod().fill(a)
         of_out0.cons().drain(c, wait=True)
 
-    rt.sequence(sequence, [data_ty, data_ty])
-
-    return Program(iron.get_current_device(), rt, workers=[my_worker]).resolve_program()
+    return Program(
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[data_ty, data_ty],
+        workers=[my_worker],
+    ).resolve_program()
 
 
 def _expected_output():

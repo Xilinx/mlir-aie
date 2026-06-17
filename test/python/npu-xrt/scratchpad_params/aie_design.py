@@ -11,10 +11,10 @@
 import numpy as np
 from ml_dtypes import bfloat16
 
-from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron import ObjectFifo, Program, Worker
 from aie.iron.device import NPU2Col1
 from aie.iron.scratchpad_parameter import ScratchpadParameter
-from aie.dialects.aiex import npu_load_pdi
+from aie.dialects.aiex import npu_load_pdi, sync_scratchpad_parameters_from_host
 from aie.dialects.arith import ConstantOp, mulf
 from aie.dialects.memref import store
 from aie.ir import IndexType, IntegerAttr
@@ -50,20 +50,22 @@ def design():
         while_true=False,
     )
 
-    # Runtime sequence: load empty device first to force PDI reconfiguration
-    rt = Runtime()
-
-    def sequence(out_tensor):
-        rt.inline_ops(lambda: npu_load_pdi(device_ref="empty"), [])
-        rt.inline_ops(lambda: npu_load_pdi(device_ref=device_name), [])
-        rt.sync_parameters()
+    # Runtime sequence: load empty device first to force PDI reconfiguration.
+    # The body runs inside the runtime-sequence builder, so the lower-level ops
+    # emit in place (no inline_ops indirection); sync_scratchpad_parameters_from_host
+    # is the op that rt.sync_parameters() used to wrap.
+    def runtime_sequence(out_tensor):
+        npu_load_pdi(device_ref="empty")
+        npu_load_pdi(device_ref=device_name)
+        sync_scratchpad_parameters_from_host()
         of_out.cons().drain(out_tensor, wait=True)
 
-    rt.sequence(sequence, [out_ty])
-
-    module = Program(NPU2Col1(), rt, workers=[worker]).resolve_program(
-        device_name=device_name
-    )
+    module = Program(
+        NPU2Col1(),
+        runtime_sequence,
+        arg_types=[out_ty],
+        workers=[worker],
+    ).resolve_program(device_name=device_name)
 
     # Insert empty device at the beginning of the module to force PDI reload.
     # The firmware skips reloading a PDI if it's the same as the last one loaded,

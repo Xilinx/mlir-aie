@@ -39,7 +39,6 @@ from .lock import Lock
 from .scratchpad_parameter import ScratchpadParameter
 from .program import Program
 from .worker import Worker, WorkerRuntimeBarrier
-from .runtime import Runtime
 from .runtime.taskgroup import TaskGroup
 from aie.utils.trace import TileTrace, TraceBuffer
 from .dataflow import (
@@ -93,7 +92,6 @@ __all__ = [
     "Program",
     "Worker",
     "WorkerRuntimeBarrier",
-    "Runtime",
     "TaskGroup",
     "ObjectFifo",
     "TileTrace",

@@ -12,7 +12,7 @@ import sys
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import In, ObjectFifo, Out, Program, Worker
 from aie.helpers.dialects.scf import _for as range_
 
 N_OUTER = 4
@@ -70,16 +70,17 @@ def cyclostatic_both_outer_inner(w_tensor: In, x_tensor: In, out_tensor: Out):
         fn_args=[of_w_l2l1.cons(), of_x_l2l1.cons(), of_out_l1l2.prod()],
     )
 
-    rt = Runtime()
-
-    def sequence(w_in, x_in, c_out):
+    def runtime_sequence(w_in, x_in, c_out):
         of_w_l3l2.prod().fill(w_in)
         of_x_l3l2.prod().fill(x_in)
         of_out_l2l3.cons().drain(c_out, wait=True)
 
-    rt.sequence(sequence, [w_in_ty, x_in_ty, out_ty])
-
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    return Program(
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[w_in_ty, x_in_ty, out_ty],
+        workers=[worker],
+    ).resolve_program()
 
 
 def main():

@@ -17,7 +17,7 @@
 
 import numpy as np
 
-from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron import ObjectFifo, Program, Worker
 from aie.iron.device import NPU2Col1
 from aie.iron.scratchpad_parameter import ScratchpadParameter
 from aie.dialects.aiex import npu_load_pdi
@@ -55,11 +55,9 @@ def design():
     )
 
     # Runtime sequence
-    rt = Runtime()
-
-    def sequence(in_tensor, out_tensor):
-        rt.inline_ops(lambda: npu_load_pdi(device_ref="empty"), [])
-        rt.inline_ops(lambda: npu_load_pdi(device_ref=device_name), [])
+    def runtime_sequence(in_tensor, out_tensor):
+        npu_load_pdi(device_ref="empty")
+        npu_load_pdi(device_ref=device_name)
 
         # Input DMA — offset_parameter patches the BD address at runtime
         in_tap = TensorAccessPattern(
@@ -70,11 +68,12 @@ def design():
         # Output DMA
         of_out.cons().drain(out_tensor, wait=True)
 
-    rt.sequence(sequence, [in_ty, out_ty])
-
-    module = Program(NPU2Col1(), rt, workers=[worker]).resolve_program(
-        device_name=device_name
-    )
+    module = Program(
+        NPU2Col1(),
+        runtime_sequence,
+        arg_types=[in_ty, out_ty],
+        workers=[worker],
+    ).resolve_program(device_name=device_name)
 
     # Insert empty device to force PDI reload
     mlir_text = str(module)

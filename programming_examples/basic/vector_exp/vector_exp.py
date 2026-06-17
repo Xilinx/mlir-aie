@@ -18,7 +18,7 @@ import numpy as np
 from ml_dtypes import bfloat16
 
 import aie.iron as iron
-from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.utils.verify import count_mismatches
 
@@ -65,16 +65,15 @@ def vector_exp(
         for i in range(n_cores)
     ]
 
-    rt = Runtime()
-
-    def sequence(a_in, c_out):
+    def runtime_sequence(a_in, c_out):
         A_fifo.prod().fill(a_in)
         C_fifo.cons().drain(c_out, wait=True)
 
-    rt.sequence(sequence, [tensor_ty, tensor_ty])
-
     return Program(
-        iron.get_current_device(), rt, workers=list(workers)
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[tensor_ty, tensor_ty],
+        workers=list(workers),
     ).resolve_program()
 
 

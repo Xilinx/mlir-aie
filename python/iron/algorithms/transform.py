@@ -9,7 +9,7 @@
 
 import numpy as np
 
-from aie.iron import TaskGroup, ObjectFifo, Program, Runtime, Worker
+from aie.iron import TaskGroup, ObjectFifo, Program, Worker, TileTrace, TraceBuffer
 from aie.helpers.taplib.tap import TensorAccessPattern
 from aie.iron.controlflow import range_
 import aie.iron as iron
@@ -164,10 +164,12 @@ def _transform_gen(func, inputs: list, output, *params, tile_size=16, trace_size
         + [of_out.prod()]
         + [func]
     )
-    worker = Worker(core_body, fn_args=worker_args, trace=(1 if trace_size > 0 else 0))
+    worker = Worker(
+        core_body,
+        fn_args=worker_args,
+        trace=TileTrace() if trace_size > 0 else None,
+    )
 
-    # Runtime operations to move data to/from the AIE-array
-    rt = Runtime()
     # Sequence order: [inputs, output, params]
     all_types = [tensor_ty] * num_inputs + [tensor_ty] + param_tensor_types
 
@@ -175,9 +177,6 @@ def _transform_gen(func, inputs: list, output, *params, tile_size=16, trace_size
         input_seq_args = seq_args[:num_inputs]
         output_seq_arg = seq_args[num_inputs]
         param_seq_args = seq_args[num_inputs + 1 :]
-
-        if trace_size > 0:
-            rt.enable_trace(trace_size)
 
         # Fill all input ObjectFifos
         for of_in, input_arg in zip(of_inputs, input_seq_args):
@@ -190,8 +189,6 @@ def _transform_gen(func, inputs: list, output, *params, tile_size=16, trace_size
         # Drain output ObjectFifo
         of_out.cons().drain(output_seq_arg, wait=True)
 
-    rt.sequence(sequence, [*all_types])
-
     # Place program components and generate an MLIR module
     device = iron.get_current_device()
     if device is None:
@@ -200,7 +197,13 @@ def _transform_gen(func, inputs: list, output, *params, tile_size=16, trace_size
             "Call iron.set_current_device() or ensure DefaultNPURuntime is initialized "
             "before calling transform functions."
         )
-    return Program(device, rt, workers=[worker]).resolve_program()
+    return Program(
+        device,
+        sequence,
+        sequence_arg_types=[*all_types],
+        workers=[worker],
+        trace=TraceBuffer(trace_size=trace_size) if trace_size > 0 else None,
+    ).resolve_program()
 
 
 def _transform_parallel_gen(
@@ -412,7 +415,7 @@ def _transform_parallel_gen(
             + [of.cons() for of in param_of_list]
             + [of_outs[col][chan].prod()]
             + [func],
-            trace=(1 if trace_size > 0 else 0),
+            trace=TileTrace() if trace_size > 0 else None,
         )
         for col in range(num_columns)
         for chan in range(num_channels)
@@ -433,17 +436,12 @@ def _transform_parallel_gen(
         for chan in range(num_channels)
     ]
 
-    # Runtime operations to move data to/from the AIE-array
-    rt = Runtime()
     all_types = [tensor_ty] * num_inputs + [tensor_ty] + param_tensor_types
 
     def sequence(*seq_args):
         input_seq_args = seq_args[:num_inputs]
         output_seq_arg = seq_args[num_inputs]
         param_seq_args = seq_args[num_inputs + 1 :]
-
-        if trace_size > 0:
-            rt.enable_trace(trace_size)
 
         # Fill input ObjectFifos with data
         tg_in = TaskGroup()
@@ -472,10 +470,14 @@ def _transform_parallel_gen(
                 )
         tg_out.resolve()
 
-    rt.sequence(sequence, [*all_types])
-
     # Place program components and generate an MLIR module
-    return Program(device, rt, workers=list(my_workers)).resolve_program()
+    return Program(
+        device,
+        sequence,
+        sequence_arg_types=[*all_types],
+        workers=list(my_workers),
+        trace=TraceBuffer(trace_size=trace_size) if trace_size > 0 else None,
+    ).resolve_program()
 
 
 def make_param_descriptor(tensor_ty):

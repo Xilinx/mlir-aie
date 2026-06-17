@@ -20,7 +20,7 @@ import argparse
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import In, ObjectFifo, Program, Runtime, Worker
+from aie.iron import In, ObjectFifo, Program, Worker
 from aie.utils.hostruntime.argparse import (
     device_from_args,
     add_compile_args,
@@ -51,15 +51,14 @@ def distribute_L2(a_in: In):
 
     workers = [Worker(core_fn, [of_ins[w].cons()]) for w in range(n_workers)]
 
-    rt = Runtime()
-
-    def sequence(a):
+    def runtime_sequence(a):
         of_in.prod().fill(a)
 
-    rt.sequence(sequence, [data_ty])
-
     return Program(
-        iron.get_current_device(), rt, workers=list(workers)
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[data_ty],
+        workers=list(workers),
     ).resolve_program()
 
 

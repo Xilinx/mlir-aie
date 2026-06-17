@@ -21,7 +21,6 @@ from aie.iron import (
     ObjectFifo,
     Out,
     Program,
-    Runtime,
     Worker,
     kernels,
 )
@@ -113,18 +112,17 @@ def matrix_vector(
         (1, K), pattern_repeat=M_div_m_div_n_cores, prune_step=False
     )[0]
 
-    rt = Runtime()
-
-    def sequence(a_in, b_in, c_out):
+    def runtime_sequence(a_in, b_in, c_out):
         B_fifo.prod().fill(b_in, b_tap)
         for i, (a_tap, c_tap) in enumerate(zip(A_taps, C_taps)):
             memA_fifos[i].prod().fill(a_in, a_tap)
             outC_fifos[i].cons().drain(c_out, c_tap, wait=True)
 
-    rt.sequence(sequence, [A_ty, B_ty, C_ty])
-
     return Program(
-        iron.get_current_device(), rt, workers=list(workers)
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[A_ty, B_ty, C_ty],
+        workers=list(workers),
     ).resolve_program()
 
 

@@ -32,7 +32,6 @@ from aie.iron import (
     ObjectFifo,
     Out,
     Program,
-    Runtime,
     Worker,
     kernels,
     str_to_dtype,
@@ -302,9 +301,7 @@ def _build_design(
         )
     c_index = 0
 
-    rt = Runtime()
-
-    def sequence(A, B, C):
+    def runtime_sequence(A, B, C):
 
         tg = TaskGroup()
         for tb in range(iron.ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
@@ -341,8 +338,6 @@ def _build_design(
                     tg = TaskGroup()
         tg.resolve()
 
-    rt.sequence(sequence, [A_ty, B_ty, C_ty])
-
     if generate_taps:
         return (
             TensorAccessSequence.from_taps(A_taps),
@@ -351,7 +346,10 @@ def _build_design(
         )
 
     return Program(
-        dev, rt, workers=[w for row in workers for w in row]
+        dev,
+        runtime_sequence,
+        arg_types=[A_ty, B_ty, C_ty],
+        workers=[w for row in workers for w in row],
     ).resolve_program()
 
 

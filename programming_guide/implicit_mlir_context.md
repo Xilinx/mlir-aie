@@ -42,16 +42,15 @@ def passthrough(a_in: In, b_out: Out):
 
     worker = Worker(core_fn, [of.cons(), of_out.prod(), kernel])
 
-    rt = Runtime()
-
-    def sequence(a, b):
+    def runtime_sequence(a, b):
         of.prod().fill(a)
         of_out.cons().drain(b, wait=True)
 
-    rt.sequence(sequence, [line_ty, line_ty])
-
     return Program(
-        iron.get_current_device(), rt, workers=[worker]
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[line_ty, line_ty],
+        workers=[worker],
     ).resolve_program()
 ```
 
@@ -167,8 +166,7 @@ touch the implicit context.  They are registered with it later, when
 `Program.resolve_program()` walks the design.
 
 * `Worker(core_fn, fn_args, tile=...)`
-* `Runtime()`
-* `Program(device, rt)`
+* `Program(device, runtime_sequence, arg_types=[...])`
 * `ObjectFifo(obj_type, depth, name=...)`
 
 You can create, store, and pass these around freely outside any

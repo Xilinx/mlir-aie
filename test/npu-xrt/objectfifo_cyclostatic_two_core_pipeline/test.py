@@ -19,7 +19,7 @@ import sys
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import In, ObjectFifo, Out, Program, Worker
 from aie.helpers.dialects.scf import _for as range_
 
 N_LINES = 12
@@ -77,16 +77,15 @@ def cyclostatic_two_core_pipeline(in_tensor: In, out_tensor: Out):
     worker_a = Worker(core_a_body, fn_args=[of_in_l2a.cons(), of_a_to_b.prod()])
     worker_b = Worker(core_b_body, fn_args=[of_a_to_b.cons(), of_out_bl2.prod()])
 
-    rt = Runtime()
-
-    def sequence(a_in, c_out):
+    def runtime_sequence(a_in, c_out):
         of_in_l3l2.prod().fill(a_in)
         of_out_l2l3.cons().drain(c_out, wait=True)
 
-    rt.sequence(sequence, [in_ty, out_ty])
-
     return Program(
-        iron.get_current_device(), rt, workers=[worker_a, worker_b]
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[in_ty, out_ty],
+        workers=[worker_a, worker_b],
     ).resolve_program()
 
 

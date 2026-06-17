@@ -22,6 +22,7 @@ from .buffer import Buffer
 from .scratchpad_parameter import ScratchpadParameter
 from .resolvable import Resolvable
 from ..utils.trace import TileTrace
+from .runtime._context import active_sequence
 
 
 class Worker(ObjectFifoEndpoint):
@@ -192,7 +193,7 @@ class Worker(ObjectFifoEndpoint):
         """Create the worker's barrier locks at device scope.
 
         Split out of :meth:`resolve` so the Program can create these before the
-        runtime sequence resolves — ``rt.set_barrier`` in the sequence body emits
+        runtime sequence resolves — ``barrier.set(...)`` in the sequence body emits
         ``set_lock`` against these locks, and the sequence now resolves ahead of
         the core bodies. Idempotent: only creates locks once per worker.
         """
@@ -261,6 +262,20 @@ class WorkerRuntimeBarrier:
                 "No workers have been registered for this barrier. Need to pass the barrier as an argument to the worker."
             )
         use_lock(self.worker_locks[-1], LockAction.Acquire, value=value)
+
+    def set(self, value: int):
+        """Set this barrier's value from within the runtime sequence.
+
+        The counterpart of :meth:`wait_for_value` (called inside a core): a
+        runtime-sequence body calls ``barrier.set(v)`` to release cores waiting
+        on ``v``. Emits in call order relative to surrounding data movement.
+
+        Args:
+            value (int): The value to set the barrier to.
+        """
+        # Enforce in-sequence use, consistent with fill/drain/TaskGroup.
+        active_sequence()
+        self._set_barrier_value(value)
 
     def _add_worker_lock(self, lock):
         """Register an additional lock in the barrier."""

@@ -26,7 +26,7 @@ import numpy as np
 from ml_dtypes import bfloat16
 
 import aie.iron as iron
-from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Worker, kernels
 from aie.iron.controlflow import range_
 
 # ---------------------------------------------------------------------------
@@ -59,16 +59,15 @@ def test_passthrough_int32_e2e():
 
         worker = Worker(core, [of_in.cons(), of_out.prod(), passthrough_fn])
 
-        rt = Runtime()
-
-        def sequence(a, b):
+        def runtime_sequence(a, b):
             of_in.prod().fill(a)
             of_out.cons().drain(b, wait=True)
 
-        rt.sequence(sequence, [vec_ty, vec_ty])
-
         return Program(
-            iron.get_current_device(), rt, workers=[worker]
+            iron.get_current_device(),
+            runtime_sequence,
+            arg_types=[vec_ty, vec_ty],
+            workers=[worker],
         ).resolve_program()
 
     x = iron.arange(N, dtype=np.int32, device="npu")
@@ -116,16 +115,15 @@ def test_reduce_max_bfloat16_output_alignment_e2e():
 
         worker = Worker(core, [of_in.cons(), of_out.prod(), reduce_fn])
 
-        rt = Runtime()
-
-        def sequence(a, b):
+        def runtime_sequence(a, b):
             of_in.prod().fill(a)
             of_out.cons().drain(b, wait=True)
 
-        rt.sequence(sequence, [in_ty, out_ty])
-
         return Program(
-            iron.get_current_device(), rt, workers=[worker]
+            iron.get_current_device(),
+            runtime_sequence,
+            arg_types=[in_ty, out_ty],
+            workers=[worker],
         ).resolve_program()
 
     x = iron.arange(TILE, dtype=bfloat16, device="npu")

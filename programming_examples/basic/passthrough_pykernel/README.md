@@ -50,7 +50,7 @@ It is important to note that the Shim Tile and Compute Tile DMAs move data concu
 
 1. **Trace (optional):** when `--trace-size` is set, a `TraceBuffer` is wired up at runtime.
 
-1. **`Program(device, rt).resolve_program()`** returns the MLIR module; `@iron.jit`'s `compile()` then drives `compile_mlir_module` to produce xclbin/insts.
+1. **`Program(device, runtime_sequence, arg_types=[...], workers=[...]).resolve_program()`** returns the MLIR module; `@iron.jit`'s `compile()` then drives `compile_mlir_module` to produce xclbin/insts.
 
 ## Usage
 

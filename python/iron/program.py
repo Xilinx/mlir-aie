@@ -10,16 +10,43 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+import numpy as np
+
 from ..extras.context import mlir_mod_ctx  # type: ignore
 from ..helpers.dialects.func import FuncBase
 from ..dialects.aie import device
 
+from .. import ir  # type: ignore
 from .device import Device
-from .runtime import Runtime
 from .dataflow import ObjectFifoHandle
 from .scratchpad_parameter import ScratchpadParameter
 from .resolvable import Resolvable
+from .runtime.data import RuntimeData
+from .runtime._sequence import discover_fifos, resolve_sequence
 from ..utils import trace as trace_utils
+
+
+def _classify_sequence_args(arg_types: list) -> list:
+    """Turn the sequence arg-type list into per-arg items for resolution.
+
+    A tensor type (an ``np.ndarray`` parameterization) becomes a
+    :class:`RuntimeData` handle — it carries shape/tap and is passed into the
+    body so verbs like ``of.prod().fill(A)`` can read it. A scalar type (an
+    ``ir.Type`` or a zero-arg callable producing one) is kept as-is: the body
+    receives the raw SSA ``Value`` for it, so no wrapper object is needed.
+    """
+    items = []
+    for t in arg_types:
+        if getattr(t, "__origin__", None) is np.ndarray:
+            items.append(RuntimeData(t))
+        elif isinstance(t, ir.Type) or callable(t):
+            items.append(t)  # scalar: a bare MLIR type (or callable producing one)
+        else:
+            raise TypeError(
+                f"Unsupported sequence argument type: {type(t).__name__}. "
+                f"Expected np.ndarray type, ir.Type, or callable."
+            )
+    return items
 
 
 def _fifo_endpoints_ready(handle, _seen=None) -> bool:
@@ -67,44 +94,71 @@ class Program:
     def __init__(
         self,
         device: Device,
-        rt: Runtime,
+        sequence,
+        arg_types: list | None = None,
         workers: list | None = None,
+        flows: list | None = None,
+        tile_dmas: list | None = None,
         trace_tiles: list | None = None,
         trace: "TraceBuffer | None" = None,
     ):
-        """A Program represents all design information needed to run the design on a device.
+        """All design information needed to run a design on a device.
 
-        Note: MLIR verification (``ctx.module.operation.verify()``) is performed inside
-        :meth:`resolve_program`, not during construction.
+        The host-side control program is supplied directly as ``sequence`` — a
+        plain callable, like a :class:`Worker`'s ``core_fn``. It runs once,
+        inside the ``aie.runtime_sequence`` builder, during
+        :meth:`resolve_program`; ordinary Python control flow (``range_`` /
+        ``if_``) and arithmetic on its scalar arguments lower to ``scf`` /
+        ``arith`` ops in place. Inside it, drive data movement on the objects
+        themselves — ``of.prod().fill(...)``, ``of.cons().drain(...)`` — and
+        group completions with :class:`TaskGroup`.
 
-        Tracing has two parts: the *sources* (what to capture, where) and the
-        *sink* (where bytes land). Sources are declared per Worker via
-        ``Worker(trace=TileTrace(...))`` and, for non-worker tiles, via
-        ``trace_tiles``. The sink is the ``trace`` :class:`TraceBuffer`.
+        Device-scope structure is mostly *inferred*, not listed: locks, buffers,
+        and scratchpad parameters are discovered from the ``workers`` (their
+        ``fn_args``) and ``tile_dmas`` (their BD acquire/release + buffers). Only
+        the two routing *roots* that nothing else references — explicit
+        ``flows`` and ``tile_dmas`` — are passed, and only the handful of
+        lower-level explicit-routing designs need them; high-level ObjectFifo
+        designs pass neither.
+
+        Tracing has two parts: *sources* (what to capture) and the *sink* (where
+        bytes land). Per-Worker tracing is declared via
+        ``Worker(trace=TileTrace(...))``; non-worker tiles via ``trace_tiles``;
+        the sink is the ``trace`` :class:`TraceBuffer`.
+
+        Note: MLIR verification is performed inside :meth:`resolve_program`.
 
         Args:
-            device (Device): The device used to generate the final MLIR for the design.
-            rt (Runtime): The runtime object for the design.
-            workers (list[Worker] | None, optional): The Workers to place and run.
-                The runtime sequence references their fifos; the Program resolves
-                their tiles, cores, and fifos. Defaults to None (no Workers — a
-                pure host-driven data-movement design).
-            trace_tiles (list[TileTrace] | None, optional): Trace sources for
-                tiles not owned by a Worker (mem tiles, shim tiles, or a
-                worker-less core). Each TileTrace must carry an explicit ``tile``.
+            device (Device): The device used to generate the final MLIR.
+            sequence (Callable): The runtime-sequence body. Called once with one
+                argument per entry in ``arg_types``, in order.
+            arg_types (list | None): One type per sequence argument — an
+                ``np.ndarray`` type for a buffer, or an MLIR scalar type (e.g.
+                ``T.i32``) / zero-arg callable producing one for a runtime scalar.
+                Defaults to None (a sequence taking no arguments).
+            workers (list[Worker] | None): The Workers to place and run.
+            flows (list[Flow] | None): Explicit AXI-stream routes (lower-level
+                designs only). Defaults to None.
+            tile_dmas (list[TileDma] | None): Explicit per-tile DMA programs
+                (lower-level designs only). Their locks/buffers are inferred.
                 Defaults to None.
-            trace (TraceBuffer | None, optional): The trace output buffer (sink):
-                size, ddr_id, file, egress column. Required for any tracing to
-                take effect. Defaults to None (no tracing).
+            trace_tiles (list[TileTrace] | None): Trace sources for tiles not
+                owned by a Worker. Each must carry an explicit ``tile``.
+            trace (TraceBuffer | None): The trace output buffer (sink).
         """
         self._device = device
-        self._rt = rt
+        self._sequence_fn = sequence
+        self._sequence_items = _classify_sequence_args(arg_types or [])
         self._workers = list(workers) if workers is not None else []
+        self._flows = list(flows) if flows is not None else []
+        self._tile_dmas = list(tile_dmas) if tile_dmas is not None else []
         self._trace_tiles = list(trace_tiles) if trace_tiles is not None else []
         self._trace = trace
-        # Let the runtime discover the fifos it touches (by walking the fifo
-        # link graph from the Workers) so they resolve in a deterministic order.
-        self._rt.discover_fifos(self._workers)
+        # Fifos the sequence will touch, discovered by walking the link graph
+        # from the Workers, so they resolve in a deterministic order.
+        self._fifos = discover_fifos(self._workers)
+        # Locks / buffers / scratchpad params are inferred during resolution
+        # from workers + tile_dmas (see _collect_inferred_*).
 
     def resolve_program(self, device_name="main"):
         """This method resolves the program components in order to generate MLIR.
@@ -122,21 +176,17 @@ class Program:
             # For dynamically created device classes, the constructor takes no arguments
             self._device = device_type()
 
-            # Resolve parameters at module scope (before the aie.device).
-            # aiex.scratchpad_parameter ops are global across all devices because the
+            # Resolve scratchpad parameters at module scope (before the
+            # aie.device): they are global across all devices because the
             # scratchpad is a single hardware resource shared by all PDIs.
-            for w in self._workers:
-                for arg in w.fn_args:
-                    if isinstance(arg, ScratchpadParameter):
-                        arg.resolve()
-            for p in self._rt._scratchpad_parameters:
+            # Inferred from the workers' fn_args — no separate registration.
+            for p in self._inferred_scratchpad_parameters():
                 p.resolve()
 
             @device(self._device.resolve(), sym_name=device_name)
             def device_body():
                 # Collect all fifos
-                all_fifos = set()
-                all_fifos.update(self._rt.fifos)
+                all_fifos = set(self._fifos)
                 for w in self._workers:
                     all_fifos.update(w.fifos)
 
@@ -174,13 +224,14 @@ class Program:
                     # explicitly so resolve_tile() runs on it before fifo resolution.
                     if f._object_fifo._delegate_tile is not None:
                         all_tiles.append(f._object_fifo._delegate_tile)
-                # Lower-level: explicit Flow / TileDma / Lock primitives
-                # contribute tiles too.
-                for fl in self._rt.flows:
+                # Lower-level: explicit Flow / TileDma primitives contribute
+                # tiles too. Locks are inferred (from tile_dmas), and their
+                # tiles are already covered by the tile_dma tiles below.
+                for fl in self._flows:
                     all_tiles.extend(fl.all_tiles())
-                for td in self._rt.tile_dmas:
+                for td in self._tile_dmas:
                     all_tiles.extend(td.all_tiles())
-                for lk in self._rt.locks:
+                for lk in self._inferred_locks():
                     all_tiles.append(lk.tile)
                 # Non-worker tiles named for tracing must be placed too.
                 for tt in self._trace_tiles:
@@ -201,18 +252,18 @@ class Program:
                     f.resolve()
 
                 # Generate explicit Flows (peers of ObjectFifo)
-                for fl in self._rt.flows:
+                for fl in self._flows:
                     fl.resolve()
 
-                # Generate explicit Locks (must come before TileDma + Worker
-                # bodies that reference them; Buffers attached to worker
-                # fn_args are still resolved in the worker loop below).
-                for lk in self._rt.locks:
+                # Generate explicit Locks (inferred from tile_dmas). Must come
+                # before TileDma + Worker bodies that reference them; Buffers
+                # attached to worker fn_args are resolved in the worker loop below.
+                for lk in self._inferred_locks():
                     lk.resolve()
 
                 # Resolve any Buffers referenced by explicit TileDma programs
                 # (those aren't reached via worker.fn_args).
-                for td in self._rt.tile_dmas:
+                for td in self._tile_dmas:
                     bufs, _ = td.all_buffers_and_locks()
                     for b in bufs:
                         if b.tile is None:
@@ -251,7 +302,7 @@ class Program:
                     trace_utils.configure_trace_specs(specs)
 
                 # Create worker barrier locks before the runtime sequence so
-                # rt.set_barrier(...) in the sequence body can emit set_lock
+                # barrier.set(...) in the sequence body can emit set_lock
                 # against them (the sequence now resolves ahead of the cores).
                 for w in self._workers:
                     w.resolve_barrier_locks()
@@ -262,7 +313,12 @@ class Program:
                 # so those fifo ops exist by the time the cores reference them.
                 # The trace config (if any) is passed so the sequence emits the
                 # trace egress-DMA setup for the single shared buffer.
-                self._rt.resolve(device=self._device, trace=self._trace)
+                resolve_sequence(
+                    self._sequence_fn,
+                    self._sequence_items,
+                    self._device,
+                    trace=self._trace,
+                )
 
                 # Resolve any remaining worker-side fifos (idempotent) before the
                 # cores reference them.
@@ -282,11 +338,41 @@ class Program:
 
                 # Generate explicit per-tile DMA programs (lower-level peers
                 # of ObjectFifo, paired with Flow + Lock).
-                for td in self._rt.tile_dmas:
+                for td in self._tile_dmas:
                     td.resolve()
 
             self._print_verify(ctx)
             return ctx.module
+
+    # -- inferred device-scope structure --------------------------------------
+
+    def _inferred_scratchpad_parameters(self) -> list:
+        """ScratchpadParameters reachable from the workers' fn_args.
+
+        Order-preserving and de-duplicated by identity, so a parameter shared by
+        several workers is resolved once.
+        """
+        seen: list = []
+        for w in self._workers:
+            for arg in w.fn_args:
+                if isinstance(arg, ScratchpadParameter) and arg not in seen:
+                    seen.append(arg)
+        return seen
+
+    def _inferred_locks(self) -> list:
+        """Locks reachable from the explicit tile_dmas' BD acquire/release ops.
+
+        Worker-barrier locks are created separately by ``resolve_barrier_locks``;
+        these are the explicit-routing locks a TileDma references. De-duplicated
+        by identity.
+        """
+        seen: list = []
+        for td in self._tile_dmas:
+            _, locks = td.all_buffers_and_locks()
+            for lk in locks:
+                if lk not in seen:
+                    seen.append(lk)
+        return seen
 
     def _print_verify(self, ctx):
         verify = ctx.module.operation.verify()

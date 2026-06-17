@@ -3,7 +3,7 @@
 
 # RUN: %python %s | FileCheck %s
 
-from aie.iron import Program, Runtime, Worker
+from aie.iron import Program, Worker
 
 from aie.iron.device import NPU1, Tile
 
@@ -12,16 +12,12 @@ from aie.iron.device import NPU1, Tile
 
 my_worker = Worker(None, tile=Tile(1, 2, allocation_scheme="bank-aware"))
 
-rt = Runtime()
 
-
-def sequence():
+def runtime_sequence():
     pass
 
 
-rt.sequence(sequence, [])
-
-my_program = Program(NPU1(), rt, workers=[my_worker])
+my_program = Program(NPU1(), runtime_sequence, arg_types=[], workers=[my_worker])
 
 module = my_program.resolve_program()
 
@@ -32,16 +28,12 @@ print(module)
 
 my_worker = Worker(None)
 
-rt = Runtime()
 
-
-def sequence():
+def runtime_sequence():
     pass
 
 
-rt.sequence(sequence, [])
-
-my_program = Program(NPU1(), rt, workers=[my_worker])
+my_program = Program(NPU1(), runtime_sequence, arg_types=[], workers=[my_worker])
 
 module = my_program.resolve_program()
 
@@ -56,16 +48,12 @@ my_worker = Worker(
     allocation_scheme="basic-sequential",
 )
 
-rt = Runtime()
 
-
-def sequence():
+def runtime_sequence():
     pass
 
 
-rt.sequence(sequence, [])
-
-my_program = Program(NPU1(), rt, workers=[my_worker])
+my_program = Program(NPU1(), runtime_sequence, arg_types=[], workers=[my_worker])
 
 module = my_program.resolve_program()
 
@@ -76,16 +64,12 @@ print(module)
 
 my_worker = Worker(None, tile=Tile(1, 2), allocation_scheme="bank-aware")
 
-rt = Runtime()
 
-
-def sequence():
+def runtime_sequence():
     pass
 
 
-rt.sequence(sequence, [])
-
-my_program = Program(NPU1(), rt, workers=[my_worker])
+my_program = Program(NPU1(), runtime_sequence, arg_types=[], workers=[my_worker])
 
 module = my_program.resolve_program()
 
@@ -96,16 +80,12 @@ print(module)
 
 my_worker = Worker(None, allocation_scheme="basic-sequential")
 
-rt = Runtime()
 
-
-def sequence():
+def runtime_sequence():
     pass
 
 
-rt.sequence(sequence, [])
-
-my_program = Program(NPU1(), rt, workers=[my_worker])
+my_program = Program(NPU1(), runtime_sequence, arg_types=[], workers=[my_worker])
 
 module = my_program.resolve_program()
 

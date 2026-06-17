@@ -20,7 +20,7 @@ from pathlib import Path
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Buffer, CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import Buffer, CompileTime, In, ObjectFifo, Out, Program, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile
 from aie.utils.hostruntime.argparse import device_from_args
@@ -139,17 +139,14 @@ def group2(
         trace=TileTrace() if trace_size > 0 else None,
     )
 
-    rt = Runtime()
-
-    def sequence(a, _b, c):
+    def runtime_sequence(a, _b, c):
         of_din_L3L2.prod().fill(a, tile=shim_tile)
         of_dout_L1L3.cons().drain(c, tile=shim_tile, wait=True)
 
-    rt.sequence(sequence, [din_ty, scalar_ty, dout_ty])
-
     return Program(
         iron.get_current_device(),
-        rt,
+        runtime_sequence,
+        arg_types=[din_ty, scalar_ty, dout_ty],
         workers=[worker],
         trace=TraceBuffer(trace_size=trace_size) if trace_size > 0 else None,
     ).resolve_program()

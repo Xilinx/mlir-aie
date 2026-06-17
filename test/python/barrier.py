@@ -7,7 +7,6 @@ import numpy as np
 from aie.iron import (
     Worker,
     WorkerRuntimeBarrier,
-    Runtime,
     Program,
 )
 from aie.iron.device import (
@@ -46,15 +45,19 @@ def my_barrier():
 
     # Runtime operations to move data to/from the AIE-array
     external_type = np.ndarray[(16,), np.dtype[np.int32]]
-    rt = Runtime()
 
-    def sequence(x):
-        rt.set_barrier(workerBarrier, 1)
-
-    rt.sequence(sequence, [external_type])
+    def runtime_sequence(x):
+        workerBarrier.set(1)
 
     # Place components (assign them resources on the device) and generate an MLIR module
-    return print(Program(NPU2Col1(), rt, workers=[worker]).resolve_program())
+    return print(
+        Program(
+            NPU2Col1(),
+            runtime_sequence,
+            arg_types=[external_type],
+            workers=[worker],
+        ).resolve_program()
+    )
 
 
 my_barrier()

@@ -3,7 +3,7 @@
 
 # RUN: %python %s | FileCheck %s
 import numpy as np
-from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker, Buffer
+from aie.iron import Kernel, ObjectFifo, Program, Worker, Buffer
 
 from aie.iron.device import NPU2Col1
 
@@ -59,16 +59,18 @@ def passthrough_local_buff():
     )
 
     # Runtime operations to move data to/from the AIE-array
-    rt = Runtime()
 
-    def sequence(a_in, b_out, _unused0):
+    def runtime_sequence(a_in, b_out, _unused0):
         of_in.prod().fill(a_in)
         of_out.cons().drain(b_out, wait=True)
 
-    rt.sequence(sequence, [vector_type, vector_type, vector_type])
-
     # Place components (assign them resources on the device) and generate an MLIR module
-    return Program(NPU2Col1(), rt, workers=[my_worker]).resolve_program()
+    return Program(
+        NPU2Col1(),
+        runtime_sequence,
+        arg_types=[vector_type, vector_type, vector_type],
+        workers=[my_worker],
+    ).resolve_program()
 
 
 print(passthrough_local_buff())

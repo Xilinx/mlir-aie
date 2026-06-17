@@ -23,7 +23,6 @@ from aie.iron import (
     ObjectFifo,
     Out,
     Program,
-    Runtime,
     Worker,
 )
 from aie.iron.controlflow import range_
@@ -287,9 +286,7 @@ def _build_regdump():
 
     worker = Worker(regdump_core, [of_out.prod(), dump_fn], tile=compute_tile)
 
-    rt = Runtime()
-
-    def sequence(a_in, c_out):
+    def runtime_sequence(a_in, c_out):
 
         def enable_processor_bus():
             npu_maskwrite32(
@@ -300,11 +297,15 @@ def _build_regdump():
                 mask=0x1,
             )
 
-        rt.inline_ops(enable_processor_bus, [])
+        enable_processor_bus()
         of_out.cons().drain(c_out, wait=True)
 
-    rt.sequence(sequence, [vec_ty, vec_ty])
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    return Program(
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[vec_ty, vec_ty],
+        workers=[worker],
+    ).resolve_program()
 
 
 @iron.jit
@@ -376,9 +377,7 @@ def dma_compression(
             tile=compute_tile,
         )
 
-        rt = Runtime()
-
-        def sequence(a_in, c_out):
+        def runtime_sequence(a_in, c_out):
 
             def configure_compression_roundtrip():
                 if engage_compress:
@@ -393,13 +392,15 @@ def dma_compression(
                     )
 
             if engage_compress or engage_decompress:
-                rt.inline_ops(configure_compression_roundtrip, [])
+                configure_compression_roundtrip()
             of_a.prod().fill(a_in)
             of_c.cons().drain(c_out, tap=out_tap_rt, wait=True)
 
-        rt.sequence(sequence, [vec_ty, vec_ty])
         return Program(
-            iron.get_current_device(), rt, workers=[ct_worker]
+            iron.get_current_device(),
+            runtime_sequence,
+            arg_types=[vec_ty, vec_ty],
+            workers=[ct_worker],
         ).resolve_program()
 
     is_memtile = config in MEMTILE_CONFIGS
@@ -481,9 +482,7 @@ def dma_compression(
     is_host_compression = config in HOST_CONFIGS or config in MEMTILE_CONFIGS
     base_config = config in ("base", "memtile_base")
 
-    rt = Runtime()
-
-    def sequence(a_in, c_out):
+    def runtime_sequence(a_in, c_out):
         if is_host_compression and not base_config:
 
             def configure_compression_host():
@@ -492,7 +491,7 @@ def dma_compression(
                 if has_s2mm_dcmp:
                     _maskwrite_compress(link_row, link_bd_base, BD_S2MM, link_s2mm_ctrl)
 
-            rt.inline_ops(configure_compression_host, [])
+            configure_compression_host()
         elif config in CORE_CONFIGS:
             # Enable the processor bus on the compute tile so st.tm from
             # inside the core can reach the DMA registers (otherwise the
@@ -506,14 +505,15 @@ def dma_compression(
                     mask=0x1,
                 )
 
-            rt.inline_ops(enable_processor_bus, [])
+            enable_processor_bus()
             pass
 
         of_in.prod().fill(a_in, tap=in_tap)
         of_out.cons().drain(c_out, tap=out_tap, wait=True)
 
-    rt.sequence(sequence, [vec_ty, vec_ty])
-
     return Program(
-        iron.get_current_device(), rt, workers=[core_worker]
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[vec_ty, vec_ty],
+        workers=[core_worker],
     ).resolve_program()

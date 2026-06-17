@@ -9,7 +9,7 @@
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile
 from aie.helpers.taplib import TensorAccessPattern
@@ -447,9 +447,7 @@ def resnet_conv2_x(
         )
 
     # Runtime: stream activations + weights in, drain output.
-    rt = Runtime()
-
-    def sequence(inputFromL3, weightsFromL3, outputToL3):
+    def runtime_sequence(inputFromL3, weightsFromL3, outputToL3):
         act1_fifos[0].prod().fill(inputFromL3, tile=Tile(0, 0))
 
         tap = TensorAccessPattern(
@@ -477,9 +475,9 @@ def resnet_conv2_x(
         wts_fifos[2].prod().fill(weightsFromL3, tap, tile=Tile(2, 0))
         outOFL2L3.cons().drain(outputToL3, tile=Tile(1, 0), wait=True)
 
-    rt.sequence(
-        sequence,
-        [activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_ty],
-    )
-
-    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
+    return Program(
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_ty],
+        workers=workers,
+    ).resolve_program()

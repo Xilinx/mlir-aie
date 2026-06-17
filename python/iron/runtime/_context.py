@@ -13,8 +13,8 @@ act on (``ObjectFifoHandle.fill/drain``, ``Buffer.write``) and ``TaskGroup``
 is constructed free-standing. All of them need to reach the in-flight sequence
 to emit ops, allocate BD ids, and register themselves for end-of-sequence
 finalization. They find it here rather than by holding a reference to the
-``Runtime``, which keeps the call sites free of plumbing and avoids importing
-``Runtime`` into the dataflow / buffer modules (circular).
+build state, which keeps the call sites free of plumbing and avoids importing
+the sequence machinery into the dataflow / buffer modules (circular).
 """
 
 from contextlib import contextmanager
@@ -29,7 +29,7 @@ def active_sequence():
     if seq is None:
         raise RuntimeError(
             "Runtime data-movement (fill/drain/write/TaskGroup) may only be used "
-            "inside the function passed to Runtime.sequence(...)."
+            "inside the sequence function passed to Program(...)."
         )
     return seq
 

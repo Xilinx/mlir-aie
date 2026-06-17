@@ -32,7 +32,7 @@ import sys
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import In, ObjectFifo, Out, Program, Worker
 from aie.helpers.dialects.scf import _for as range_
 from aie.helpers.taplib import TensorAccessPattern
 
@@ -126,18 +126,17 @@ def cyclostatic_two_core_mutual(seed_a: In, seed_b: In, out_tensor: Out):
         strides=[0, 0, 0, 1],
     )
 
-    rt = Runtime()
-
-    def sequence(s_a, s_b, c_out):
+    def runtime_sequence(s_a, s_b, c_out):
         of_seed_a_l3l2.prod().fill(s_a)
         of_seed_b_l3l2.prod().fill(s_b)
         of_a_out_l2l3.cons().drain(c_out, tap=a_tap)
         of_b_out_l2l3.cons().drain(c_out, tap=b_tap, wait=True)
 
-    rt.sequence(sequence, [seed_ty, seed_ty, out_ty])
-
     return Program(
-        iron.get_current_device(), rt, workers=[worker_a, worker_b]
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[seed_ty, seed_ty, out_ty],
+        workers=[worker_a, worker_b],
     ).resolve_program()
 
 

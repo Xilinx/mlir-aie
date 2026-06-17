@@ -35,7 +35,6 @@ from aie.iron import (
     CompilableDesign,
     ObjectFifo,
     Program,
-    Runtime,
     Worker,
     compileconfig,
 )
@@ -78,14 +77,17 @@ def _add_const_design(
             of_out.release(1)
 
     worker = Worker(core_body, fn_args=[of_in.cons(), of_out.prod()])
-    rt = Runtime()
 
-    def sequence(a, b):
+    def runtime_sequence(a, b):
         of_in.prod().fill(a)
         of_out.cons().drain(b, wait=True)
 
-    rt.sequence(sequence, [tensor_ty, tensor_ty])
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    return Program(
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[tensor_ty, tensor_ty],
+        workers=[worker],
+    ).resolve_program()
 
 
 # ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 import numpy as np
 
-from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron import ObjectFifo, Program, Worker
 
 from aie.iron.device import NPU2
 from aie.iron.controlflow import range_
@@ -43,16 +43,18 @@ def custom_loop_type(loop_dtype):
     my_worker = Worker(core_fn, [of_in.cons(), of_out.prod(), passthrough_fn])
 
     # Runtime operations to move data to/from the AIE-array
-    rt = Runtime()
 
-    def sequence(a_in, b_out, _unused0):
+    def runtime_sequence(a_in, b_out, _unused0):
         of_in.prod().fill(a_in)
         of_out.cons().drain(b_out, wait=True)
 
-    rt.sequence(sequence, [vector_type, vector_type, vector_type])
-
     # Create the program from the device type and runtime
-    my_program = Program(NPU2(), rt, workers=[my_worker])
+    my_program = Program(
+        NPU2(),
+        runtime_sequence,
+        arg_types=[vector_type, vector_type, vector_type],
+        workers=[my_worker],
+    )
 
     # Place components (assign them resources on the device) and generate an MLIR module
     module = my_program.resolve_program()

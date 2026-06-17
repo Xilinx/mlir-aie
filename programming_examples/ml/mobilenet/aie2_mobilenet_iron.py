@@ -32,7 +32,7 @@ import sys
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import TaskGroup, In, ObjectFifo, Out, Program, Runtime
+from aie.iron import TaskGroup, In, ObjectFifo, Out, Program
 from aie.utils.hostruntime.argparse import device_from_args
 from aie.helpers.taplib import TensorAccessPattern
 from aie.utils.hostruntime import set_current_device
@@ -82,7 +82,7 @@ def mobilenet_iron(inp: In, cascade_wts: In, out: Out):
 
     Runtime args (declared via In/Out so @iron.jit knows the design takes
     three host tensors): activations + scratch, cascade weights, final FC2
-    output.  The body's ``rt.sequence(...)`` matches.
+    output.  The ``runtime_sequence`` signature matches.
 
     aiecc_flags=["--dynamic-objFifos=false"]: the init core's constant-trip
     loops fully unroll under the global dynamic-objfifo lowering to ~3360
@@ -162,9 +162,7 @@ def mobilenet_iron(inp: In, cascade_wts: In, out: Out):
     # so `dma_free_task` is not emitted for tasks that were never awaited
     # (act_in, weights, FC fills) — otherwise their BD IDs would be
     # deallocated while their DMAs were potentially still in flight.
-    rt = Runtime()
-
-    def sequence(inp, cascade_wts, out):
+    def runtime_sequence(inp, cascade_wts, out):
 
         # ---- Group 1: input + weights + avgpool drain ----
         # All upstream fills + the first sync drain in the same group. By the
@@ -235,13 +233,14 @@ def mobilenet_iron(inp: In, cascade_wts: In, out: Out):
         )
         tg3.resolve()
 
-    rt.sequence(sequence, [in_ty, cascade_wts_ty, out_ty])
-
     # ------------------------------------------------------------------
     # Generate MLIR
     # ------------------------------------------------------------------
     return Program(
-        iron.get_current_device(), rt, workers=list(all_workers)
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[in_ty, cascade_wts_ty, out_ty],
+        workers=list(all_workers),
     ).resolve_program()
 
 

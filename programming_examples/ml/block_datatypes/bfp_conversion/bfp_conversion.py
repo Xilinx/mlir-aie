@@ -22,7 +22,7 @@ from ml_dtypes import bfloat16
 from aie.dialects.aiex import v8bfp16ebs8
 
 import aie.iron as iron
-from aie.iron import ExternalFunction, In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import ExternalFunction, In, ObjectFifo, Out, Program, Worker
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import (
     device_from_args,
@@ -104,9 +104,7 @@ def bfp_conversion(a_in: In, b_in: In, c_out: Out):
         ),
     ]
 
-    rt = Runtime()
-
-    def sequence(A, B, C):
+    def runtime_sequence(A, B, C):
         of_in1.prod().fill(A)
         # Aligning dot products with bfp blocks requires transposing the second
         # matrix before conversion to bfp; bf16's element size (2B) precludes a
@@ -115,10 +113,11 @@ def bfp_conversion(a_in: In, b_in: In, c_out: Out):
         of_in2.prod().fill(B)
         of_out.cons().drain(C, wait=True)
 
-    rt.sequence(sequence, [_TENSOR_BF16_TY, _TENSOR_BF16_TY, _TENSOR_BFP16_TY])
-
     return Program(
-        iron.get_current_device(), rt, workers=list(workers)
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[_TENSOR_BF16_TY, _TENSOR_BF16_TY, _TENSOR_BFP16_TY],
+        workers=list(workers),
     ).resolve_program()
 
 

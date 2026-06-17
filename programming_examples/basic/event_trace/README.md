@@ -29,7 +29,7 @@ The whole design lives in [`aie_trace.py`](./aie_trace.py).  Custom event lists 
 
 ```python
 import aie.iron as iron
-from aie.iron import CompileTime, In, Out, ObjectFifo, Program, Runtime, Worker
+from aie.iron import CompileTime, In, Out, ObjectFifo, Program, Worker
 from aie.iron import TileTrace, TraceBuffer
 from aie.utils.trace.events import (
     CoreEvent, MemEvent, MemTileEvent, ShimTileEvent, PortEvent, WireBundle,
@@ -56,18 +56,17 @@ def aie_trace(A: In, F: In, C: Out, *, tensor_size: CompileTime[int] = 4096, ...
         ),
     )
 
-    rt = Runtime()
-    def sequence(a_in, f_in, c_out):
+    def runtime_sequence(a_in, f_in, c_out):
         of_in.prod().fill(a_in)
         ...
-    rt.sequence(sequence, [tensor_ty, scalar_ty, tensor_ty])
 
     # Non-worker trace sources (mem tile / shim tile) go through trace_tiles, and
     # the trace sink is the TraceBuffer (trace_size / ddr_id / trace_file live on
     # it). The worker's compute tile is traced via Worker(trace=...) above.
     return Program(
         iron.get_current_device(),
-        rt,
+        runtime_sequence,
+        arg_types=[tensor_ty, scalar_ty, tensor_ty],
         workers=[worker],
         trace_tiles=[
             TileTrace(tile=mem_tile, events=[MemTileEvent...]),

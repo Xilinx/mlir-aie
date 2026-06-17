@@ -45,7 +45,8 @@ worker = Worker(
 ...
 return Program(
     iron.get_current_device(),
-    rt,
+    runtime_sequence,
+    arg_types=[...],
     workers=[worker],
     trace=TraceBuffer(trace_size=trace_size),
 ).resolve_program()
@@ -71,7 +72,7 @@ A common idiom is to gate tracing on a config so the same generator produces bot
 ```python
 worker = Worker(core_body, fn_args=[...], trace=TileTrace() if trace_config else None)
 ...
-return Program(device, rt, workers=[worker], trace=trace_config).resolve_program()
+return Program(device, runtime_sequence, arg_types=[...], workers=[worker], trace=trace_config).resolve_program()
 ```
 where `trace_config` is a `TraceBuffer` (or `None`). Configuring the trace unit in each traced tile and routing the trace packets to a valid shim tile is then done automatically.
 
@@ -79,7 +80,8 @@ To trace **mem tiles** or **shim tiles** (which are not owned by a Worker), pass
 ```python
 Program(
     device,
-    rt,
+    runtime_sequence,
+    arg_types=[...],
     workers=[worker],
     trace_tiles=[
         TileTrace(tile=mem_tile, events=[MemTilePortEvent(MemTileEvent.PORT_RUNNING_0, WireBundle.DMA, 0, True)]),
@@ -144,7 +146,8 @@ from aie.iron import TraceBuffer
 
 Program(
     device,
-    rt,
+    runtime_sequence,
+    arg_types=[...],
     workers=[worker],
     trace=TraceBuffer(trace_size=trace_size, ddr_id=4),
 ).resolve_program()
@@ -390,20 +393,18 @@ def passthrough_with_trace(
         trace=TileTrace() if trace_config else None,
     )
 
-    rt = Runtime()
     tensor_ty = np.ndarray[(N,), np.dtype[np.uint8]]
 
-    def sequence(a_in, b_out):
+    def runtime_sequence(a_in, b_out):
         of_in.prod().fill(a_in)
         of_out.cons().drain(b_out, wait=True)
-
-    rt.sequence(sequence, [tensor_ty, tensor_ty])
 
     # The TraceBuffer sink is passed to Program(trace=...). When trace_config
     # is None, the trace plumbing is omitted from the lowered MLIR entirely.
     return Program(
         iron.get_current_device(),
-        rt,
+        runtime_sequence,
+        arg_types=[tensor_ty, tensor_ty],
         workers=[worker],
         trace=trace_config,
     ).resolve_program()

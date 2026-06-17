@@ -28,7 +28,6 @@ from aie.iron import (
     ObjectFifo,
     Out,
     Program,
-    Runtime,
     TaskGroup,
     Worker,
     kernels,
@@ -162,9 +161,7 @@ def single_core(
         (M, N), (m, n), (rows_per_block // 2, N_div_n), prune_step=False
     )
 
-    rt = Runtime()
-
-    def sequence(A, B, C):
+    def runtime_sequence(A, B, C):
         c_index = 0
         tgs = []
         for tile_row_block in range(iron.ceildiv(M_div_m, rows_per_block)):
@@ -188,11 +185,10 @@ def single_core(
         tgs[-1].resolve()
         del tgs[-1]
 
-    rt.sequence(sequence, [A_ty, B_ty, C_ty])
-
     return Program(
         iron.get_current_device(),
-        rt,
+        runtime_sequence,
+        arg_types=[A_ty, B_ty, C_ty],
         workers=[worker],
         trace=trace_config,
     ).resolve_program()

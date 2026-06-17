@@ -98,24 +98,29 @@ These classes live under `aie.iron`:
 transfer this BD emits — pair it with a `PacketFlow` carrying the same
 `pkt_id` so the routing fabric dispatches correctly.
 
-### Wiring everything into the `Runtime`
+### Wiring everything into the `Program`
 
-Three registrations on the `Runtime` object pull the structural
-primitives into the resolved program.  All three accept one object per
-call:
+The structural primitives are pulled into the resolved program through
+`Program` keyword arguments. `Flow`s go in `flows=[...]` and `TileDma`
+programs in `tile_dmas=[...]`; `Lock`s are inferred from the tile DMAs,
+so they need no separate registration:
 
 ```python
-rt = Runtime()
-rt.add_flow(my_flow)        # one call per Flow / PacketFlow
-rt.add_lock(my_lock)        # one call per Lock
-rt.add_tile_dma(my_dma)     # one call per TileDma program
+Program(
+    device,
+    runtime_sequence,
+    arg_types=[in_ty, out_ty],
+    workers=[worker],
+    flows=[my_flow],          # one entry per Flow / PacketFlow
+    tile_dmas=[my_dma],       # one entry per TileDma program
+)
 ```
 
-Inside `rt.sequence(...)`, if even the BD-level abstraction is too
+Inside the `runtime_sequence`, if even the BD-level abstraction is too
 high — typically because you're driving BD writes from the host
 runtime sequence rather than from the tile DMA program — drop into
 raw `npu_*` ops (`npu_writebd`, `npu_address_patch`, `npu_push_queue`,
-`npu_sync`, `npu_write32`) via:
+`npu_sync`, `npu_write32`) directly:
 
 ```python
 def manual_bd_writes(a, b):
@@ -125,19 +130,22 @@ def manual_bd_writes(a, b):
     npu_push_queue(...)
     npu_sync(column=col, row=0, ...)
 
-def sequence(a, b):
-    rt.inline_ops(manual_bd_writes, [a, b])
-
-rt.sequence(sequence, [in_ty, out_ty])
+def runtime_sequence(a, b):
+    manual_bd_writes(a, b)
 
 # The worker is passed to the Program rather than started in the sequence.
-Program(device, rt, workers=[worker]).resolve_program()
+Program(
+    device,
+    runtime_sequence,
+    arg_types=[in_ty, out_ty],
+    workers=[worker],
+).resolve_program()
 ```
 
-`rt.inline_ops(fn, [args])` calls `fn(*args)` inside the runtime
-sequence's MLIR region with the host-side tensor handles already in
-scope — exactly what `fill` / `drain` are built on top of, but
-with no protocol assumptions baked in.
+Calling `fn(a, b)` directly from the `runtime_sequence` body emits its
+ops inside the runtime sequence's MLIR region with the host-side tensor
+handles already in scope — exactly what `fill` / `drain` are built on
+top of, but with no protocol assumptions baked in.
 
 ### Worked example: tile-to-tile copy
 
@@ -150,7 +158,7 @@ import numpy as np
 import aie.iron as iron
 from aie.iron import (
     Acquire, Bd, Buffer, DmaChannel, Flow, Lock, Release, TileDma,
-    Worker, Runtime, Program,
+    Worker, Program,
 )
 from aie.iron.device import Tile
 from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir, WireBundle
@@ -198,12 +206,17 @@ dma_b = TileDma(tile=tile_b, channels=[
     ),
 ])
 
-rt = Runtime()
-for lk in (prod_lock_a, cons_lock_a, prod_lock_b, cons_lock_b):
-    rt.add_lock(lk)
-rt.add_flow(a_to_b)
-rt.add_tile_dma(dma_a)
-rt.add_tile_dma(dma_b)
+def runtime_sequence():
+    pass
+
+# Locks are inferred from the tile DMAs, so they need no separate registration.
+Program(
+    iron.get_current_device(),
+    runtime_sequence,
+    arg_types=[],
+    flows=[a_to_b],
+    tile_dmas=[dma_a, dma_b],
+).resolve_program()
 ```
 
 The locks follow AIE-ML semantics: each `Lock` starts at `init`, an
@@ -263,10 +276,10 @@ tile S2MM with:
 * a `Worker` running a tiny lock-flipping spinner on the compute
   tile;
 * a runtime sequence that opens the data flow with `npu_writebd` /
-  `npu_address_patch` / `npu_push_queue` / `npu_sync` inside an
-  `rt.inline_ops(...)` block — the *teaching point* of the example,
-  because the manual BD writes are exactly what `fill` / `drain`
-  normally hide.
+  `npu_address_patch` / `npu_push_queue` / `npu_sync` called directly
+  from the `runtime_sequence` body — the *teaching point* of the
+  example, because the manual BD writes are exactly what `fill` /
+  `drain` normally hide.
 
 That design is the right starting place when copying this pattern.
 

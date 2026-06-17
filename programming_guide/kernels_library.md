@@ -31,7 +31,7 @@ The simplest factory call wires straight into a `Worker`:
 ```python
 import numpy as np
 import aie.iron as iron
-from aie.iron import ObjectFifo, Worker, Runtime, Program, In, Out, CompileTime
+from aie.iron import ObjectFifo, Worker, Program, In, Out, CompileTime
 import aie.iron.kernels as kernels
 
 @iron.jit
@@ -51,15 +51,16 @@ def passthrough_design(a: In, b: Out, *, N: CompileTime[int]):
         of_out.release(1)
 
     worker = Worker(core_fn, [of_in.cons(), of_out.prod(), pt])
-    rt = Runtime()
 
-    def sequence(a_in, b_out):
+    def runtime_sequence(a_in, b_out):
         of_in.prod().fill(a_in)
         of_out.cons().drain(b_out, wait=True)
 
-    rt.sequence(sequence, [line_ty, line_ty])
     return Program(
-        iron.get_current_device(), rt, workers=[worker]
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[line_ty, line_ty],
+        workers=[worker],
     ).resolve_program()
 ```
 

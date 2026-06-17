@@ -46,7 +46,7 @@ import torch.nn as nn
 
 import aie.iron as iron
 from aie.utils.ml import DataShaper
-from aie.iron import CompileTime, In, Out, ObjectFifo, Program, Runtime, Worker
+from aie.iron import CompileTime, In, Out, ObjectFifo, Program, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile
 from aie.utils.hostruntime.argparse import device_from_args
@@ -184,16 +184,17 @@ def conv2dk14(
         stack_size=0x600,
     )
 
-    rt = Runtime()
-
-    def sequence(I, W, O):
+    def runtime_sequence(I, W, O):
         of_act_l3l2.prod().fill(I)
         of_wts_l3l2.prod().fill(W)
         of_out_l3.cons().drain(O, wait=True)
 
-    rt.sequence(sequence, [tensor_in_ty, tensor_wts_ty, tensor_out_ty])
-
-    return Program(device, rt, workers=[worker]).resolve_program()
+    return Program(
+        device,
+        runtime_sequence,
+        arg_types=[tensor_in_ty, tensor_wts_ty, tensor_out_ty],
+        workers=[worker],
+    ).resolve_program()
 
 
 @iron.jit
@@ -349,9 +350,7 @@ def conv2dk14_multi(
         ),
     )
 
-    rt = Runtime()
-
-    def sequence(I, W, O):
+    def runtime_sequence(I, W, O):
         row_chunk = tensor_in_size // n_rows
         wts_chunk = tensor_wts_size // n_cols
         out_chunk = tensor_out_size // n_cols
@@ -379,10 +378,11 @@ def conv2dk14_multi(
             of_wts[i].prod().fill(W, wts_tap)
             of_out_l2l3[i].cons().drain(O, out_tap, wait=True)
 
-    rt.sequence(sequence, [tensor_in_ty, tensor_wts_ty, tensor_out_ty])
-
     return Program(
-        device, rt, workers=[w for row in workers for w in row]
+        device,
+        runtime_sequence,
+        arg_types=[tensor_in_ty, tensor_wts_ty, tensor_out_ty],
+        workers=[w for row in workers for w in row],
     ).resolve_program()
 
 

@@ -30,7 +30,6 @@ from aie.iron import (
     ObjectFifo,
     Out,
     Program,
-    Runtime,
     Worker,
 )
 from aie.iron.controlflow import range_
@@ -176,9 +175,7 @@ def n32_core_gemm(
     num_col_tile = N // n // n_aie_cols
     num_groups = num_row_tile * num_col_tile
 
-    rt = Runtime()
-
-    def sequence(a, b, c):
+    def runtime_sequence(a, b, c):
         slots = [None] * tb_max_n_rows
         for group_idx in range(num_groups):
             slot_idx = group_idx % tb_max_n_rows
@@ -211,10 +208,11 @@ def n32_core_gemm(
         slots[2].resolve()
         slots[3].resolve()
 
-    rt.sequence(sequence, [A_ty, B_ty, C_ty])
-
     return Program(
-        iron.get_current_device(), rt, workers=[w for row in workers for w in row]
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[A_ty, B_ty, C_ty],
+        workers=[w for row in workers for w in row],
     ).resolve_program()
 
 

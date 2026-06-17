@@ -18,7 +18,7 @@ Let's look at a minimal IRON design in [aie2.py](./aie2.py). The whole design is
 
 ```python
 import aie.iron as iron
-from aie.iron import Buffer, Out, Program, Runtime, Worker
+from aie.iron import Buffer, Out, Program, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile
 ```
@@ -54,24 +54,23 @@ my_worker = Worker(core_fn, [buf], tile=Tile(0, 2), while_true=False)
 
 > **NOTE 2:** The Worker above is instantiated with `while_true=False`. By default this is `True`, which wraps the kernel body in a `while True`-style loop simulated by a `for _ in range(sys.maxsize):`. Depending on the body (e.g., creating a local buffer with a unique name) the infinite-loop wrapper can cause compiler issues.
 
-Data movement between Workers will get its own [section](../section-2/section-2d/); host-to/from-NPU data movement is configured inside the `Runtime` sequence. The sequence body is a callable registered via `rt.sequence(...)`. In this minimal example the runtime sequence has one host-facing tensor argument and an empty body (the Worker is passed to the `Program` below):
+Data movement between Workers will get its own [section](../section-2/section-2d/); host-to/from-NPU data movement is configured inside the runtime sequence. The sequence body is a callable passed to `Program(...)` along with its `arg_types`. In this minimal example the runtime sequence has one host-facing tensor argument and an empty body (the Worker is passed to the `Program` below):
 
 ```python
-rt = Runtime()
-
-def sequence(a):
+def runtime_sequence(a):
     pass
-
-rt.sequence(sequence, [data_ty])
 ```
-Finally we wrap everything in a `Program`, passing the Worker via `workers=[...]`. The program emits `aie.logical_tile` ops for any unplaced tiles (none here, since we pinned the Worker) and the `--aie-place-tiles` compiler pass assigns physical tile coordinates during compilation. Wrapping the design in `@iron.jit` (at the top of the function) means a call site like `section_one(out)` triggers compile + run end-to-end.
+Finally we wrap everything in a `Program`, passing the runtime sequence and its `arg_types`, plus the Worker via `workers=[...]`. The program emits `aie.logical_tile` ops for any unplaced tiles (none here, since we pinned the Worker) and the `--aie-place-tiles` compiler pass assigns physical tile coordinates during compilation. Wrapping the design in `@iron.jit` (at the top of the function) means a call site like `section_one(out)` triggers compile + run end-to-end.
 
 ```python
 @iron.jit
 def section_one(b_out: Out):
     ...
     return Program(
-        iron.get_current_device(), rt, workers=[my_worker]
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[data_ty],
+        workers=[my_worker],
     ).resolve_program()
 ```
 

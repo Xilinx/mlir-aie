@@ -22,7 +22,7 @@ The whole topology is expressed in iron-level primitives:
 :class:`Worker` for the compute body, plus iron :class:`Buffer` and
 :class:`Lock` for shared state.  The runtime sequence still needs the
 dialect-level ``shim_dma_bd(packet=...)`` primitive to stamp the input
-packet ID, so use ``rt.inline_ops`` as the escape hatch there.
+packet ID, so the runtime sequence body emits those ops directly.
 
 Two invocation modes:
 
@@ -50,7 +50,6 @@ from aie.iron import (
     PacketFlow,
     Program,
     Release,
-    Runtime,
     TileDma,
     Worker,
 )
@@ -381,9 +380,9 @@ def packet_switch(
     # ----- Runtime sequence -----
     # The shim DMA stamps each input task with input_packet_id (chosen by
     # --op).  This per-task packet stamping needs the dialect-level
-    # shim_dma_bd(packet=...) primitive, so use rt.inline_ops as the
-    # escape hatch.
-    def emit_seq(A_data, B_data):
+    # shim_dma_bd(packet=...) primitive, so the body emits those ops
+    # directly.
+    def runtime_sequence(A_data, B_data):
         in_task = dma_configure_task(shim.op, DMAChannelDir.MM2S, 0)
         with bds(in_task) as bd:
             with bd[0]:
@@ -408,41 +407,22 @@ def packet_switch(
         dma_start_task(in_task, out_task)
         dma_await_task(out_task)
 
-    rt = Runtime()
-    for f in (
-        flow_shim_to_mem_pkt0,
-        flow_shim_to_mem_pkt1,
-        flow_mem_to_shim,
-        flow_mem_to_c02,
-        flow_c02_to_mem,
-        flow_mem_to_c03,
-        flow_c03_to_mem,
-    ):
-        rt.add_flow(f)
-    for lk in (
-        c02_prod_lock_in,
-        c02_cons_lock_in,
-        c02_prod_lock_out,
-        c02_cons_lock_out,
-        c03_prod_lock_in,
-        c03_cons_lock_in,
-        c03_prod_lock_out,
-        c03_cons_lock_out,
-        mem_prod_lock_in,
-        mem_cons_lock_in,
-        mem_prod_lock_out,
-        mem_cons_lock_out,
-    ):
-        rt.add_lock(lk)
-    for td in (c02_dma, c03_dma, mem_dma):
-        rt.add_tile_dma(td)
-
-    def sequence(A, B):
-        rt.inline_ops(emit_seq, [A, B])
-
-    rt.sequence(sequence, [vector_ty, vector_ty])
-
-    return Program(dev, rt, workers=[c02_worker, c03_worker]).resolve_program()
+    return Program(
+        dev,
+        runtime_sequence,
+        arg_types=[vector_ty, vector_ty],
+        workers=[c02_worker, c03_worker],
+        flows=[
+            flow_shim_to_mem_pkt0,
+            flow_shim_to_mem_pkt1,
+            flow_mem_to_shim,
+            flow_mem_to_c02,
+            flow_c02_to_mem,
+            flow_mem_to_c03,
+            flow_c03_to_mem,
+        ],
+        tile_dmas=[c02_dma, c03_dma, mem_dma],
+    ).resolve_program()
 
 
 def _make_argparser():

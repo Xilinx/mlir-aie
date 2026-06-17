@@ -9,7 +9,7 @@
 
 import numpy as np
 
-from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron import ObjectFifo, Program, Worker
 from aie.iron.controlflow import range_
 import aie.iron as iron
 
@@ -187,8 +187,6 @@ def _for_each_real(func, tensor, *params, tile_size=16):
     ]
     worker = Worker(core_body, fn_args=worker_args)
 
-    # Runtime operations
-    rt = Runtime()
     all_types = [tensor_ty] + param_tensor_types
 
     def sequence(*seq_args):
@@ -205,8 +203,6 @@ def _for_each_real(func, tensor, *params, tile_size=16):
         # Drain output ObjectFifo back to same tensor
         of_out.cons().drain(tensor_arg, wait=True)
 
-    rt.sequence(sequence, [*all_types])
-
     # Place program components and generate an MLIR module
     device = iron.get_current_device()
     if device is None:
@@ -215,4 +211,6 @@ def _for_each_real(func, tensor, *params, tile_size=16):
             "Call iron.set_current_device() or ensure DefaultNPURuntime is initialized "
             "before calling for_each."
         )
-    return Program(device, rt, workers=[worker]).resolve_program()
+    return Program(
+        device, sequence, sequence_arg_types=[*all_types], workers=[worker]
+    ).resolve_program()

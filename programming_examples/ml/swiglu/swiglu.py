@@ -25,7 +25,6 @@ from aie.iron import (
     Out,
     ObjectFifo,
     Program,
-    Runtime,
     Worker,
     kernels,
 )
@@ -95,9 +94,7 @@ def swiglu(
     taps = TensorTiler2D.simple_tiler((1, size), (1, chunk))
     taps_wts = TensorTiler2D.simple_tiler((1, 2 * size), (1, 2 * chunk))
 
-    rt = Runtime()
-
-    def sequence(a, w, b):
+    def runtime_sequence(a, w, b):
         tg = TaskGroup()
         for i in range(num_columns):
             of_ins[i].prod().fill(a, taps[i], group=tg)
@@ -106,9 +103,12 @@ def swiglu(
             of_outs[i].cons().drain(b, taps[i], wait=True, group=tg)
         tg.resolve()
 
-    rt.sequence(sequence, [transfer_type, transfer_type_wts, transfer_type])
-
-    return Program(device, rt, workers=list(workers)).resolve_program()
+    return Program(
+        device,
+        runtime_sequence,
+        arg_types=[transfer_type, transfer_type_wts, transfer_type],
+        workers=list(workers),
+    ).resolve_program()
 
 
 def _make_argparser():

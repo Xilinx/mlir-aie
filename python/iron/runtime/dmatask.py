@@ -14,7 +14,7 @@ from ...dialects.aiex import dma_free_task, dma_start_task, dma_wait, npu_dma_me
 from ...dialects.aiex import shim_dma_single_bd_task
 from ...dialects.aiex import _cast_to_i64
 from ..dataflow import ObjectFifoHandle
-from .data import RuntimeData, RuntimeScalar
+from .data import RuntimeData
 from ...helpers.taplib import TensorAccessPattern
 from .task import RuntimeTask
 
@@ -119,7 +119,7 @@ class DMATask(RuntimeTask):
 
     @staticmethod
     def _contains_runtime_values(value) -> bool:
-        if isinstance(value, (RuntimeScalar, Value)):
+        if isinstance(value, Value):
             return True
         if isinstance(value, (list, tuple)):
             return any(DMATask._contains_runtime_values(v) for v in value)
@@ -127,8 +127,6 @@ class DMATask(RuntimeTask):
 
     @staticmethod
     def _resolve_runtime_values(value):
-        if isinstance(value, RuntimeScalar):
-            return DMATask._to_i64_value(value.op)
         if isinstance(value, Value):
             return DMATask._to_i64_value(value)
         if isinstance(value, list):

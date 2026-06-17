@@ -29,7 +29,7 @@ import argparse
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import CompileTime, In, Out, ObjectFifo, Program, Runtime, Worker, kernels
+from aie.iron import CompileTime, In, Out, ObjectFifo, Program, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import (
     device_from_args,
@@ -117,16 +117,17 @@ def conv2d(
         stack_size=stack_size,
     )
 
-    rt = Runtime()
-
-    def sequence(I, W, O):
+    def runtime_sequence(I, W, O):
         of_act_l3l2.prod().fill(I)
         of_wts_l3l2.prod().fill(W)
         of_out_l3.cons().drain(O, wait=True)
 
-    rt.sequence(sequence, [tensor_in_ty, weights_ty, tensor_out_ty])
-
-    return Program(device, rt, workers=[worker]).resolve_program()
+    return Program(
+        device,
+        runtime_sequence,
+        arg_types=[tensor_in_ty, weights_ty, tensor_out_ty],
+        workers=[worker],
+    ).resolve_program()
 
 
 def _make_argparser():

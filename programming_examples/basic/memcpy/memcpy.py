@@ -22,7 +22,7 @@ import sys
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Worker, kernels
 from aie.utils.hostruntime.argparse import device_from_args
 from aie.helpers.taplib.tensortiler2d import TensorTiler2D
 from aie.utils.hostruntime.argparse import add_compile_args
@@ -94,9 +94,7 @@ def memcpy(
     # `(1, chunk)` tiles row-major across the `(1, size)` tensor.
     taps = TensorTiler2D.simple_tiler((1, size), (1, chunk))
 
-    rt = Runtime()
-
-    def sequence(a, b):
+    def runtime_sequence(a, b):
         if my_workers:
             pass
         for i in range(num_columns):
@@ -108,10 +106,11 @@ def memcpy(
                     b, taps[i * num_channels + j], wait=True
                 )
 
-    rt.sequence(sequence, [transfer_type, transfer_type])
-
     return Program(
-        iron.get_current_device(), rt, workers=list(my_workers)
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[transfer_type, transfer_type],
+        workers=list(my_workers),
     ).resolve_program()
 
 

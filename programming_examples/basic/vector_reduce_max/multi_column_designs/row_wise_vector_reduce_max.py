@@ -34,7 +34,6 @@ from aie.iron import (
     ObjectFifo,
     Out,
     Program,
-    Runtime,
     Worker,
     kernels,
     str_to_dtype,
@@ -177,20 +176,17 @@ def vector_reduce_max(
             )
         )
 
-    rt = Runtime()
-
-    def sequence(a, c):
+    def runtime_sequence(a, c):
         for i in range(n_channels):
             in_fifos[i].prod().fill(a, taps[i])
         out_fifos[
             0 if n_cores == 1 else 1 if n_cores < 5 else 4 if n_cores == 5 else 5
         ].cons().drain(c, wait=True)
 
-    rt.sequence(sequence, [in_ty, out_ty])
-
     return Program(
         iron.get_current_device(),
-        rt,
+        runtime_sequence,
+        arg_types=[in_ty, out_ty],
         workers=list(workers),
         trace=TraceBuffer(trace_size=trace_size) if trace_enabled else None,
     ).resolve_program()

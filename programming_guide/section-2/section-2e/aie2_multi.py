@@ -19,7 +19,7 @@ import argparse
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import In, ObjectFifo, Out, Program, Worker
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import (
     device_from_args,
@@ -66,16 +66,15 @@ def section_2e_multi(a_in: In, b_out: Out):
         Worker(core_fn, [of_ins[w].cons(), of_outs[w].prod()]) for w in range(n_workers)
     ]
 
-    rt = Runtime()
-
-    def sequence(a, b):
+    def runtime_sequence(a, b):
         of_in.prod().fill(a)
         of_out.cons().drain(b, wait=True)
 
-    rt.sequence(sequence, [data_ty, data_ty])
-
     return Program(
-        iron.get_current_device(), rt, workers=list(workers)
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[data_ty, data_ty],
+        workers=list(workers),
     ).resolve_program()
 
 

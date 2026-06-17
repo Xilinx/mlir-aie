@@ -30,7 +30,7 @@ import os
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import TaskGroup, ObjectFifo, Program, Runtime
+from aie.iron import TaskGroup, ObjectFifo, Program
 from aie.iron.device import Tile
 from aie.utils.hostruntime.argparse import device_from_args
 from aie.utils.hostruntime import set_current_device
@@ -225,13 +225,12 @@ def per_block_iron(block_name, data_dir=None, scales_json=None):
 
     out_fifo, workers, wts_fifos = _build_one(block_name, act_in)
 
-    rt = Runtime()
     if wts_fifos:
         # Cascade: input + 2 weight buffers + output.
         BN_WTS_SZ = 80 * 960  # 76800 bytes per L1/L3 weight chunk for bn13/bn14
         wts_ty = np.ndarray[(BN_WTS_SZ // 4,), np.dtype[np.int32]]
 
-        def sequence(inp, wl1, wl3, out):
+        def runtime_sequence(inp, wl1, wl3, out):
             tg = TaskGroup()
             act_in.prod().fill(inp, tile=TEST_PLACEMENT["shim_input"], group=tg)
             wts_fifos[0].prod().fill(wl1, tile=TEST_PLACEMENT["shim_wts_l1"], group=tg)
@@ -241,10 +240,10 @@ def per_block_iron(block_name, data_dir=None, scales_json=None):
             )
             tg.resolve()
 
-        rt.sequence(sequence, [in_ty, wts_ty, wts_ty, out_ty])
+        arg_types_list = [in_ty, wts_ty, wts_ty, out_ty]
     else:
 
-        def sequence(inp, out):
+        def runtime_sequence(inp, out):
             tg = TaskGroup()
             act_in.prod().fill(inp, tile=TEST_PLACEMENT["shim_input"], group=tg)
             out_fifo.cons().drain(
@@ -252,10 +251,13 @@ def per_block_iron(block_name, data_dir=None, scales_json=None):
             )
             tg.resolve()
 
-        rt.sequence(sequence, [in_ty, out_ty])
+        arg_types_list = [in_ty, out_ty]
 
     return Program(
-        iron.get_current_device(), rt, workers=list(workers)
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=arg_types_list,
+        workers=list(workers),
     ).resolve_program()
 
 

@@ -27,7 +27,7 @@ import numpy as np
 import pytest
 
 import aie.iron as iron
-from aie.iron import ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import ObjectFifo, Out, Program, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import AnyMemTile
 from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
@@ -67,15 +67,14 @@ def init_values_design(out: Out):
 
     worker = Worker(copy_body, fn_args=[of_init.cons(), of_out.prod()])
 
-    rt = Runtime()
     out_ty = np.ndarray[(N * R,), np.dtype[np.int32]]
 
-    def sequence(a):
+    def runtime_sequence(a):
         of_out.cons().drain(a, wait=True)
 
-    rt.sequence(sequence, [out_ty])
-
-    return Program(dev, rt, workers=[worker]).resolve_program()
+    return Program(
+        dev, runtime_sequence, arg_types=[out_ty], workers=[worker]
+    ).resolve_program()
 
 
 def test_iron_object_fifo_init_values_e2e():

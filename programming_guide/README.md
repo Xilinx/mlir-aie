@@ -30,7 +30,7 @@ This is the programming guide for **IRON** — the Python API for programming AM
 
 ```python
 import aie.iron as iron
-from aie.iron import In, Out, ObjectFifo, Program, Runtime, Worker
+from aie.iron import In, Out, ObjectFifo, Program, Worker
 from aie.iron.controlflow import range_
 import numpy as np
 
@@ -48,16 +48,15 @@ def my_design(a_in: In, b_out: Out):
 
     w = Worker(core_fn, [of_in.cons(), of_out.prod()])
 
-    rt = Runtime()
-
-    def sequence(a, b):
+    def runtime_sequence(a, b):
         of_in.prod().fill(a)
         of_out.cons().drain(b, wait=True)
 
-    rt.sequence(sequence, [np.ndarray[(1024,), np.dtype[np.int32]]] * 2)
-
     return Program(
-        iron.get_current_device(), rt, workers=[w]
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[np.ndarray[(1024,), np.dtype[np.int32]]] * 2,
+        workers=[w],
     ).resolve_program()
 
 a = iron.arange(1024, dtype=np.int32, device="npu")
@@ -85,7 +84,7 @@ my_design(a, b)              # compile + run + sync back
 ## Sections
 
 * [Section 0 — Getting set up for IRON](./section-0/)
-* [Section 1 — Basic AI Engine building blocks](./section-1/) (Worker, Buffer, Runtime, Program, `@iron.jit`)
+* [Section 1 — Basic AI Engine building blocks](./section-1/) (Worker, Buffer, runtime sequence, Program, `@iron.jit`)
 * [Section 2 — Data movement (Object FIFOs)](./section-2/) (deep dive; 2a–2h)
 * [Section 3 — My First Program](./section-3/) (end-to-end vector × scalar, JIT + decomposed XRT)
 * [Section 4 — Performance measurement & vector programming](./section-4/) (timers → trace → kernel vectorization)
@@ -113,7 +112,7 @@ The guide tries to stick to one term per concept:
 | **Mem tile** | The L2 scratchpad tile (typically row 1) for staging data between shim and compute. | "Memory tile" — same thing; prefer "mem tile" for consistency with the IRON API. |
 | **Shim tile** | The row-0 tile that bridges the AIE-array to main memory via shim DMA. | |
 | **ObjectFifo** | The synchronized streaming-data primitive between two endpoints. Acquire / release. | "Channel" — generic; reserve for AXI stream channels. |
-| **Runtime sequence** | The host-side description of `fill` / `drain` operations and worker `start`s, declared with `rt.sequence(...)`. | "Host code" — that's the C++ / Python testbench that calls the design. |
+| **Runtime sequence** | The host-side description of `fill` / `drain` operations, declared as the `runtime_sequence` callable passed to `Program(...)`. | "Host code" — that's the C++ / Python testbench that calls the design. |
 | **`@iron.jit`** | The single recommended entry point. Decorates a Python function that returns a `Program`; the first call JIT-compiles and runs on the NPU. | The dialect-direct form (`from aie.dialects.aie import *`) is what the JIT compiles *to*; you rarely write it. |
 
 -----

@@ -26,7 +26,7 @@ from pathlib import Path
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Worker
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import device_from_args
 from aie.iron.kernel import ExternalFunction
@@ -89,16 +89,17 @@ def row_wise_bias_add(
     )[0]
     bias_tap = TensorTiler2D.group_tiler((1, N), (1, n), (1, N // n))[0]
 
-    rt = Runtime()
-
-    def sequence(a, b, c):
+    def runtime_sequence(a, b, c):
         in_fifo.prod().fill(a, tap)
         bias_fifo.prod().fill(b, bias_tap)
         out_fifo.cons().drain(c, tap, wait=True)
 
-    rt.sequence(sequence, [in_ty, bias_full_ty, in_ty])
-
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    return Program(
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[in_ty, bias_full_ty, in_ty],
+        workers=[worker],
+    ).resolve_program()
 
 
 def _make_argparser():

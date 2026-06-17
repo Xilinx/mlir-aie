@@ -29,7 +29,6 @@ from aie.iron import (
     Out,
     ObjectFifo,
     Program,
-    Runtime,
     Worker,
     kernels,
 )
@@ -138,9 +137,7 @@ def matrix_multiplication_single_core(
     )[0]
     c_taps = TensorTiler2D.group_tiler((M, N), (m, n), (1, N // n))
 
-    rt = Runtime()
-
-    def sequence(A, B, C):
+    def runtime_sequence(A, B, C):
         for tile_row in range(M // m):
             task_group = TaskGroup()
             fifo_A_L3L2.prod().fill(A, tap=a_taps[tile_row], group=task_group)
@@ -150,9 +147,12 @@ def matrix_multiplication_single_core(
             )
             task_group.resolve()
 
-    rt.sequence(sequence, [A_ty, B_ty, C_ty])
-
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    return Program(
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[A_ty, B_ty, C_ty],
+        workers=[worker],
+    ).resolve_program()
 
 
 def aot_compile(M: int, K: int, N: int, element_type) -> None:

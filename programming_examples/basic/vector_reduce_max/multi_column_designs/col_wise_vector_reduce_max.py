@@ -36,7 +36,6 @@ from aie.iron import (
     ObjectFifo,
     Out,
     Program,
-    Runtime,
     Worker,
     kernels,
     str_to_dtype,
@@ -171,18 +170,15 @@ def vector_reduce_max(
     # across the ``(1, in_num_elements)`` tensor.
     taps = TensorTiler2D.simple_tiler((1, in_num_elements), (1, chunk))
 
-    rt = Runtime()
-
-    def sequence(a, c):
+    def runtime_sequence(a, c):
         for i in range(num_cores):
             of_in1s[i].prod().fill(a, taps[i])
         of_outs[num_cores - 1].cons().drain(c, wait=True)
 
-    rt.sequence(sequence, [in_tensor_ty, out_tensor_ty])
-
     return Program(
         iron.get_current_device(),
-        rt,
+        runtime_sequence,
+        arg_types=[in_tensor_ty, out_tensor_ty],
         workers=list(my_workers),
         trace=TraceBuffer(trace_size=trace_size) if trace_enabled else None,
     ).resolve_program()

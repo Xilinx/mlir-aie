@@ -21,7 +21,7 @@ import argparse
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import Buffer, Out, Program, Runtime, Worker
+from aie.iron import Buffer, Out, Program, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile
 from aie.utils.hostruntime.argparse import (
@@ -44,14 +44,15 @@ def section_one(b_out: Out):
 
     my_worker = Worker(core_fn, [buf], tile=Tile(0, 2), while_true=False)
 
-    rt = Runtime()
-
-    def sequence():
+    def runtime_sequence():
         pass
 
-    rt.sequence(sequence, [data_ty])
-
-    return Program(iron.get_current_device(), rt, workers=[my_worker]).resolve_program()
+    return Program(
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[data_ty],
+        workers=[my_worker],
+    ).resolve_program()
 
 
 def _run_and_verify(opts):

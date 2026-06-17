@@ -46,7 +46,6 @@ from aie.iron import (
     Out,
     Program,
     Release,
-    Runtime,
     TileDma,
     Worker,
 )
@@ -203,7 +202,7 @@ def vector_vector_add(
         tile=compute_tile,
     )
 
-    def emit_seq(A_data, C_data):
+    def runtime_sequence(A_data, C_data):
         in1_task = shim_dma_single_bd_task("of_in1", A_data.op, sizes=[1, 1, 1, N])
         out_task = shim_dma_single_bd_task(
             "of_out", C_data.op, sizes=[1, 1, 1, N], issue_token=True
@@ -212,26 +211,14 @@ def vector_vector_add(
         dma_await_task(out_task)
         dma_free_task(in1_task)
 
-    rt = Runtime()
-    rt.add_flow(in_flow)
-    rt.add_flow(out_flow)
-    for lk in (
-        in1_prod_lock,
-        in1_cons_lock,
-        in2_prod_lock,
-        in2_cons_lock,
-        out_prod_lock,
-        out_cons_lock,
-    ):
-        rt.add_lock(lk)
-    rt.add_tile_dma(compute_dma)
-
-    def sequence(A, C):
-        rt.inline_ops(emit_seq, [A, C])
-
-    rt.sequence(sequence, [tensor_ty, tensor_ty])
-
-    return Program(dev, rt, workers=[worker]).resolve_program()
+    return Program(
+        dev,
+        runtime_sequence,
+        arg_types=[tensor_ty, tensor_ty],
+        workers=[worker],
+        flows=[in_flow, out_flow],
+        tile_dmas=[compute_dma],
+    ).resolve_program()
 
 
 def _make_argparser():

@@ -24,7 +24,7 @@
 
 import numpy as np
 
-from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron import ObjectFifo, Program, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU1Col1, Tile
 
@@ -54,14 +54,12 @@ def test_symmetric_depths_collapse_to_int():
     w_cons_a = Worker(cons_body, fn_args=[of_sym.cons()], tile=Tile(0, 3))
     w_cons_b = Worker(cons_body, fn_args=[of_sym.cons()], tile=Tile(0, 4))
 
-    rt = Runtime()
-
-    def sequence():
+    def runtime_sequence():
         pass
 
-    rt.sequence(sequence, [])
-
-    module = Program(dev, rt, workers=[w_prod, w_cons_a, w_cons_b]).resolve_program()
+    module = Program(
+        dev, runtime_sequence, arg_types=[], workers=[w_prod, w_cons_a, w_cons_b]
+    ).resolve_program()
     print(module)
 
 
@@ -112,14 +110,12 @@ def test_skip_connection_emits_array():
         tile=Tile(0, 4),
     )
 
-    rt = Runtime()
-
-    def sequence():
+    def runtime_sequence():
         pass
 
-    rt.sequence(sequence, [])
-
-    module = Program(dev, rt, workers=[w_a, w_b, w_c]).resolve_program()
+    module = Program(
+        dev, runtime_sequence, arg_types=[], workers=[w_a, w_b, w_c]
+    ).resolve_program()
     print(module)
 
 

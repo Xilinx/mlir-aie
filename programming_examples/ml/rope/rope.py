@@ -26,7 +26,7 @@ import numpy as np
 from ml_dtypes import bfloat16
 
 import aie.iron as iron
-from aie.iron import CompileTime, In, Out, ObjectFifo, Program, Runtime, Worker
+from aie.iron import CompileTime, In, Out, ObjectFifo, Program, Worker
 from aie.utils.hostruntime.argparse import device_from_args
 from aie.iron.controlflow import range_
 from aie.iron.kernel import ExternalFunction
@@ -100,18 +100,19 @@ def rope(
         (sequence_length, embedding_dim), (rows_per_core, embedding_dim)
     )
 
-    rt = Runtime()
-
-    def sequence(a, lut, c):
+    def runtime_sequence(a, lut, c):
         for i in range(n_cores):
             of_ins[i].prod().fill(a, taps[i])
             of_luts[i].prod().fill(lut, taps[i])
         for i in range(n_cores):
             of_outs[i].cons().drain(c, taps[i], wait=True)
 
-    rt.sequence(sequence, [tensor_ty, tensor_ty, tensor_ty])
-
-    return Program(device, rt, workers=list(workers)).resolve_program()
+    return Program(
+        device,
+        runtime_sequence,
+        arg_types=[tensor_ty, tensor_ty, tensor_ty],
+        workers=list(workers),
+    ).resolve_program()
 
 
 def _make_argparser():

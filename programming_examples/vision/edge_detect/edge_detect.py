@@ -28,7 +28,6 @@ from aie.iron import (
     ObjectFifo,
     Out,
     Program,
-    Runtime,
     Worker,
     kernels,
 )
@@ -235,16 +234,15 @@ def edge_detect(
     tensor_ty = np.ndarray[(tensor_size,), np.dtype[np.int8]]
     tensor_16x16_ty = np.ndarray[(16, 16), np.dtype[np.int32]]
 
-    rt = Runtime()
-
-    def sequence(i_in, _b, o_out):
+    def runtime_sequence(i_in, _b, o_out):
         in_of_l3l2.prod().fill(i_in)
         out_of_l2l3.cons().drain(o_out, wait=True)
 
-    rt.sequence(sequence, [tensor_ty, tensor_16x16_ty, tensor_ty])
-
     return Program(
-        iron.get_current_device(), rt, workers=list(workers)
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[tensor_ty, tensor_16x16_ty, tensor_ty],
+        workers=list(workers),
     ).resolve_program()
 
 

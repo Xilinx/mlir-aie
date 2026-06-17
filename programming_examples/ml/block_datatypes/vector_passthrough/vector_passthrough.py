@@ -21,7 +21,7 @@ import numpy as np
 from aie.dialects.aiex import v8bfp16ebs8
 
 import aie.iron as iron
-from aie.iron import ExternalFunction, In, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron import ExternalFunction, In, ObjectFifo, Out, Program, Worker
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import (
     device_from_args,
@@ -59,15 +59,16 @@ def vector_passthrough(a_in: In, b_out: Out):
 
     worker = Worker(core_fn, [of_in.cons(), of_out.prod(), passthrough_func])
 
-    rt = Runtime()
-
-    def sequence(A, B):
+    def runtime_sequence(A, B):
         of_in.prod().fill(A)
         of_out.cons().drain(B, wait=True)
 
-    rt.sequence(sequence, [_TENSOR_TY, _TENSOR_TY])
-
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    return Program(
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[_TENSOR_TY, _TENSOR_TY],
+        workers=[worker],
+    ).resolve_program()
 
 
 def _make_argparser():

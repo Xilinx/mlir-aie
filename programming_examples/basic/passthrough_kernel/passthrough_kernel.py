@@ -19,7 +19,6 @@ from aie.iron import (
     ObjectFifo,
     Out,
     Program,
-    Runtime,
     Worker,
     kernels,
 )
@@ -64,30 +63,29 @@ def my_passthrough_kernel(
         trace=TileTrace() if trace_config else None,
     )
 
-    rt = Runtime()
-
     if dynamic_txn:
         # Runtime-parameterized transfer length: `buffer_length` is an SSA
         # value of the runtime sequence (not baked in at compile time), so a
         # single compiled design serves any size up to `n`.  Consumed by the
         # aiecc TXN-C++ flow (see passthrough_kernel_dynamic.py); this path
         # emits MLIR for that flow rather than executing on the NPU.
-        def sequence(a_in, b_out, buffer_length):
+        def runtime_sequence(a_in, b_out, buffer_length):
             of_in.prod().fill(a_in, sizes=[1, 1, 1, buffer_length])
             of_out.cons().drain(b_out, sizes=[1, 1, 1, buffer_length], wait=True)
 
-        rt.sequence(sequence, [vector_type, vector_type, T.i32])
+        arg_types_list = [vector_type, vector_type, T.i32]
     else:
 
-        def sequence(a_in, b_out):
+        def runtime_sequence(a_in, b_out):
             of_in.prod().fill(a_in)
             of_out.cons().drain(b_out, wait=True)
 
-        rt.sequence(sequence, [vector_type, vector_type])
+        arg_types_list = [vector_type, vector_type]
 
     return Program(
         iron.get_current_device(),
-        rt,
+        runtime_sequence,
+        arg_types=arg_types_list,
         workers=[worker],
         trace=trace_config,
     ).resolve_program()

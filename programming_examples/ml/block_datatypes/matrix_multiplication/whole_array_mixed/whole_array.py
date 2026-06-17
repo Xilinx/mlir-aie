@@ -29,7 +29,6 @@ from aie.iron import (
     ObjectFifo,
     Out,
     Program,
-    Runtime,
     Worker,
 )
 from aie.iron.controlflow import range_
@@ -205,9 +204,7 @@ def whole_array_mixed(
     )
     c_index = 0
 
-    rt = Runtime()
-
-    def sequence(a, b, c):
+    def runtime_sequence(a, b, c):
         tg = TaskGroup()
         for tb in range(iron.ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
             for pingpong in [0, 1]:
@@ -236,10 +233,11 @@ def whole_array_mixed(
                     tg = TaskGroup()
         tg.resolve()
 
-    rt.sequence(sequence, [A_ty, B_ty, C_ty])
-
     return Program(
-        iron.get_current_device(), rt, workers=[w for row in workers for w in row]
+        iron.get_current_device(),
+        runtime_sequence,
+        arg_types=[A_ty, B_ty, C_ty],
+        workers=[w for row in workers for w in row],
     ).resolve_program()
 
 

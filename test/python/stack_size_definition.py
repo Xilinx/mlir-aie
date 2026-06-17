@@ -3,7 +3,7 @@
 
 # RUN: %python %s | FileCheck %s
 
-from aie.iron import Program, Runtime, Worker
+from aie.iron import Program, Worker
 
 from aie.iron.device import NPU1
 
@@ -11,16 +11,12 @@ from aie.iron.device import NPU1
 
 my_worker = Worker(None, stack_size=2048, while_true=False)
 
-rt = Runtime()
 
-
-def sequence():
+def runtime_sequence():
     pass
 
 
-rt.sequence(sequence, [])
-
-my_program = Program(NPU1(), rt, workers=[my_worker])
+my_program = Program(NPU1(), runtime_sequence, arg_types=[], workers=[my_worker])
 
 module = my_program.resolve_program()
 

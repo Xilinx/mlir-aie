@@ -26,7 +26,7 @@ import argparse
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import CompileTime, In, Out, ObjectFifo, Program, Runtime, Worker, kernels
+from aie.iron import CompileTime, In, Out, ObjectFifo, Program, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.iron.device import AnyMemTile, Tile
 from aie.utils.hostruntime.argparse import (
@@ -271,16 +271,17 @@ def bottleneck(
         )
     )
 
-    rt = Runtime()
-
-    def sequence(I, W, O):
+    def runtime_sequence(I, W, O):
         of_act_l3l2.prod().fill(I)
         of_wts_l3l2.prod().fill(W)
         of_out_l2l3.cons().drain(O, wait=True)
 
-    rt.sequence(sequence, [act_in_l3_ty, wts_in_l3_ty, act_in_l3_ty])
-
-    return Program(device, rt, workers=list(workers)).resolve_program()
+    return Program(
+        device,
+        runtime_sequence,
+        arg_types=[act_in_l3_ty, wts_in_l3_ty, act_in_l3_ty],
+        workers=list(workers),
+    ).resolve_program()
 
 
 def _make_argparser():
