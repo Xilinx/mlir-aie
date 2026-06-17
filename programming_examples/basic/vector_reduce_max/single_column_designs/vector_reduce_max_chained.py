@@ -44,7 +44,7 @@ from aie.iron.controlflow import range_
 from aie.helpers.util import np_ndarray_type_get_shape
 from aie.utils.hostruntime.argparse import add_compile_args, add_trace_arg
 from aie.utils.hostruntime.cli import run_design_cli
-from aie.utils.trace import TraceBuffer, TileTrace
+from aie.iron import TileTrace, TraceBuffer
 from aie.utils.verify import assert_pass
 
 

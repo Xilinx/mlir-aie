@@ -25,7 +25,7 @@ from aie.iron import (
 )
 from aie.extras import types as T
 from aie.utils.benchmark import print_benchmark, run_iters
-from aie.utils.trace import TraceBuffer, TileTrace
+from aie.iron import TileTrace, TraceBuffer
 from aie.utils.trace.utils import print_cycles_summary
 from aie.utils.verify import assert_pass
 

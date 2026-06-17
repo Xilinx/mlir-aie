@@ -41,6 +41,7 @@ from .program import Program
 from .worker import Worker, WorkerRuntimeBarrier
 from .runtime import Runtime
 from .runtime.taskgroup import TaskGroup
+from aie.utils.trace import TileTrace, TraceBuffer
 from .dataflow import (
     Acquire,
     Bd,
@@ -95,6 +96,8 @@ __all__ = [
     "Runtime",
     "TaskGroup",
     "ObjectFifo",
+    "TileTrace",
+    "TraceBuffer",
     "PadDims",
     "StreamDims",
     # Lower-level explicit-routing primitives

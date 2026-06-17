@@ -42,7 +42,7 @@ from aie.dialects._aie_enum_gen import AIETileType
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
-from aie.utils.trace import TraceBuffer, TileTrace
+from aie.iron import TileTrace, TraceBuffer
 from aie.utils.trace.events import (
     CoreEvent,
     MemEvent,

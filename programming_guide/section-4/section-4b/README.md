@@ -90,7 +90,7 @@ Program(
 ```
 Use `MemTileEvent.*` events for a mem tile and `ShimTileEvent.*` events for a shim tile. Full event vocabularies are listed in the [Customizing Trace Behavior](#customizing-trace-behavior) subsection below. The events are imported from `aie.utils.trace.events`, and `TileTrace` / `TraceBuffer` from `aie.utils.trace`:
 ```python
-from aie.utils.trace import TileTrace, TraceBuffer
+from aie.iron import TileTrace, TraceBuffer
 from aie.utils.trace.events import (
     CoreEvent, MemEvent, MemTileEvent, ShimTileEvent, PortEvent, WireBundle,
 )
@@ -110,7 +110,7 @@ Event vocabularies, by trace unit:
 For a worker's compute tile, mix the `CoreEvent.*` (core unit) and `MemEvent.*` (core-memory unit) events you care about into a single list — `TileTrace` infers each event's unit from its type and splits them automatically. Each hardware unit provides 8 event slots:
 
 ```python
-from aie.utils.trace import TileTrace
+from aie.iron import TileTrace
 from aie.utils.trace.events import CoreEvent, MemEvent
 
 worker = Worker(
@@ -140,7 +140,7 @@ The sink is customized through `TraceBuffer` constructor arguments:
 * `egress_shim_col` - shim column used to egress trace data to DDR.
 
 ```python
-from aie.utils.trace import TraceBuffer
+from aie.iron import TraceBuffer
 
 Program(
     device,
@@ -335,7 +335,7 @@ The relevant CLI arguments (added by `aie.utils.hostruntime.argparse.add_runtime
 For custom host code, you can create a [`TraceBuffer`](../../../python/utils/trace/config.py) directly and pass it to [`NPUKernel`](../../../python/utils/npukernel.py):
 
 ```python
-from aie.utils.trace import TraceBuffer
+from aie.iron import TraceBuffer
 from aie.utils.npukernel import NPUKernel
 
 trace_config = TraceBuffer(
@@ -360,7 +360,7 @@ so the trace-vs-no-trace decision lives in the design itself instead
 of the host:
 
 ```python
-from aie.utils.trace import TileTrace, TraceBuffer
+from aie.iron import TileTrace, TraceBuffer
 
 @iron.jit
 def passthrough_with_trace(

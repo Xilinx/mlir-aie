@@ -32,7 +32,7 @@ from aie.iron.kernel import ExternalFunction
 from aie.utils.config import cxx_header_path
 from aie.utils.hostruntime.argparse import add_compile_args, add_trace_arg
 from aie.utils.hostruntime.cli import run_design_cli
-from aie.utils.trace import TraceBuffer, TileTrace
+from aie.iron import TileTrace, TraceBuffer
 
 _THIS_DIR = Path(__file__).parent
 _KERNEL_SRC = _THIS_DIR / "kernels" / "group0.cc"

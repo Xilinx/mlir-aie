@@ -16,7 +16,8 @@ import os
 import aie.iron as iron
 
 from aie.utils import tensor
-from aie.utils.trace import TraceBuffer, TileTrace, parse_trace
+from aie.utils.trace import parse_trace
+from aie.iron import TileTrace, TraceBuffer
 from aie.iron import CompileTime, Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 

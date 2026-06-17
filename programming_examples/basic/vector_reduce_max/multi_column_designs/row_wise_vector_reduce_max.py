@@ -44,7 +44,7 @@ from aie.utils.hostruntime.argparse import device_from_args
 from aie.helpers.taplib.tensortiler2d import TensorTiler2D
 from aie.utils.hostruntime.argparse import add_compile_args, add_trace_arg
 from aie.utils.hostruntime.cli import run_design_cli
-from aie.utils.trace import TraceBuffer, TileTrace
+from aie.iron import TileTrace, TraceBuffer
 from aie.utils.verify import assert_pass
 
 
