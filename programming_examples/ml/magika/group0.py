@@ -32,6 +32,7 @@ from aie.iron.kernel import ExternalFunction
 from aie.utils.config import cxx_header_path
 from aie.utils.hostruntime.argparse import add_compile_args, add_trace_arg
 from aie.utils.hostruntime.cli import run_design_cli
+from aie.utils.trace import TraceBuffer, TileTrace
 
 _THIS_DIR = Path(__file__).parent
 _KERNEL_SRC = _THIS_DIR / "kernels" / "group0.cc"
@@ -120,6 +121,7 @@ def group0(
         group0a_body,
         fn_args=[of_din_L2L1.cons(), of_int.prod(), lut0a_buf, group0a_kernel],
         stack_size=4096,
+        trace=TileTrace() if trace_size > 0 else None,
     )
 
     def group0b_body(of_di, of_do, lut_a, lut_b, kernel):
@@ -145,15 +147,16 @@ def group0(
     rt = Runtime()
 
     def sequence(A, C, _unused0):
-        if trace_size > 0:
-            rt.enable_trace(trace_size)
         of_din_L3L2.prod().fill(A)
         of_dout_L2L3.cons().drain(C, wait=True)
 
     rt.sequence(sequence, [transfer_in_ty, transfer_out_ty, scalar_ty])
 
     return Program(
-        iron.get_current_device(), rt, workers=[group0a_worker, group0b_worker]
+        iron.get_current_device(),
+        rt,
+        workers=[group0a_worker, group0b_worker],
+        trace=TraceBuffer(trace_size=trace_size) if trace_size > 0 else None,
     ).resolve_program()
 
 

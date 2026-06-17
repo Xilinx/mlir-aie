@@ -46,6 +46,7 @@ from aie.utils.hostruntime.argparse import device_from_args
 from aie.helpers.taplib.tensortiler2d import TensorTiler2D
 from aie.utils.hostruntime.argparse import add_compile_args, add_trace_arg
 from aie.utils.hostruntime.cli import run_design_cli
+from aie.utils.trace import TraceBuffer, TileTrace
 from aie.utils.verify import assert_pass
 
 
@@ -66,7 +67,7 @@ def vector_reduce_max(
     if out_size != 4:
         raise ValueError("Output buffer must be size 4 (4 bytes = 1 integer).")
 
-    enable_trace = 1 if trace_size > 0 else None
+    trace_enabled = trace_size > 0
     cores_per_col = 2
 
     dtype = str_to_dtype(dtype_str)
@@ -157,7 +158,13 @@ def vector_reduce_max(
         fifo_args.extend(
             [nextC_buffers[i], tmp_buffers[i], reduce_max_vector, compute_max]
         )
-        my_workers.append(Worker(core_body, fn_args=fifo_args, trace=enable_trace))
+        my_workers.append(
+            Worker(
+                core_body,
+                fn_args=fifo_args,
+                trace=TileTrace() if trace_enabled else None,
+            )
+        )
 
     # One TAP per core — each reads a contiguous ``chunk`` of the input
     # tensor.  Equivalent to row-major iteration of ``(1, chunk)`` tiles
@@ -167,8 +174,6 @@ def vector_reduce_max(
     rt = Runtime()
 
     def sequence(a, c):
-        if enable_trace:
-            rt.enable_trace(trace_size)
         for i in range(num_cores):
             of_in1s[i].prod().fill(a, taps[i])
         of_outs[num_cores - 1].cons().drain(c, wait=True)
@@ -176,7 +181,10 @@ def vector_reduce_max(
     rt.sequence(sequence, [in_tensor_ty, out_tensor_ty])
 
     return Program(
-        iron.get_current_device(), rt, workers=list(my_workers)
+        iron.get_current_device(),
+        rt,
+        workers=list(my_workers),
+        trace=TraceBuffer(trace_size=trace_size) if trace_enabled else None,
     ).resolve_program()
 
 

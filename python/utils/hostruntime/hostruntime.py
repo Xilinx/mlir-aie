@@ -15,7 +15,7 @@ from .. import tensor
 if TYPE_CHECKING:
     from aie.iron.device import Device
 from .tensor_class import Tensor
-from ..trace import TraceConfig
+from ..trace import TraceBuffer
 from ..trace.utils import create_ctrl_pkt, extract_tile
 from ..npukernel import NPUKernel
 from . import bfloat16_safe_allclose
@@ -43,14 +43,14 @@ class KernelResult(ABC):
     def __init__(
         self,
         npu_time: int,
-        trace_config: TraceConfig | None = None,
+        trace_config: TraceBuffer | None = None,
     ):
         """
         Initialize the KernelResult.
 
         Args:
             npu_time (int): The execution time on the NPU in nanoseconds.
-            trace_config (TraceConfig | None, optional): Configuration for tracing. Defaults to None.
+            trace_config (TraceBuffer | None, optional): Configuration for tracing. Defaults to None.
         """
         self._npu_time = npu_time
         self._trace_config = trace_config
@@ -66,12 +66,12 @@ class KernelResult(ABC):
         return self._npu_time
 
     @property
-    def trace_config(self) -> TraceConfig | None:
+    def trace_config(self) -> TraceBuffer | None:
         """
         Get the trace configuration.
 
         Returns:
-            TraceConfig | None: The trace configuration if available, else None.
+            TraceBuffer | None: The trace configuration if available, else None.
         """
         return self._trace_config
 
@@ -142,7 +142,7 @@ class HostRuntime(ABC):
         self,
         kernel_handle: KernelHandle,
         *args,
-        trace_config: TraceConfig | None = None,
+        trace_config: TraceBuffer | None = None,
         only_if_loaded=False,
     ) -> KernelResult:
         """
@@ -151,7 +151,7 @@ class HostRuntime(ABC):
         Args:
             kernel_handle (KernelHandle): The handle to the loaded kernel.
             *args: Arguments to pass to the kernel.
-            trace_config (TraceConfig | None, optional): Configuration for tracing. Defaults to None.
+            trace_config (TraceBuffer | None, optional): Configuration for tracing. Defaults to None.
             only_if_loaded (bool, optional): If True, only run if already loaded. Defaults to False.
 
         Returns:
@@ -249,14 +249,14 @@ class HostRuntime(ABC):
 
     @classmethod
     def prepare_args_for_trace(
-        cls, args: list[Tensor], trace_config: TraceConfig
+        cls, args: list[Tensor], trace_config: TraceBuffer
     ) -> list[Tensor]:
         """
         Prepare arguments for tracing by appending necessary buffers.
 
         Args:
             args (list[Tensor]): List of input/output tensors.
-            trace_config (TraceConfig): Trace configuration.
+            trace_config (TraceBuffer): Trace configuration.
 
         Returns:
             list[Tensor]: The updated list of tensors with trace buffers appended.
@@ -303,14 +303,14 @@ class HostRuntime(ABC):
 
     @classmethod
     def extract_trace_from_args(
-        cls, args: list[Tensor], trace_config: TraceConfig
+        cls, args: list[Tensor], trace_config: TraceBuffer
     ) -> tuple[Tensor, Tensor | None]:
         """
         Extract trace and control buffers from the arguments.
 
         Args:
             args (list[Tensor]): List of tensors used in execution.
-            trace_config (TraceConfig): Trace configuration.
+            trace_config (TraceBuffer): Trace configuration.
 
         Returns:
             tuple[Tensor, Tensor | None]: A tuple containing the trace buffer and optionally the control buffer.
@@ -367,7 +367,7 @@ class HostRuntime(ABC):
         Args:
             trace_buffer (np.ndarray): The trace data buffer.
             ctrl_buffer (np.ndarray): The control packet buffer.
-            trace_config (TraceConfig): Trace configuration.
+            trace_config (TraceBuffer): Trace configuration.
             verbosity (int, optional): Verbosity level. Defaults to 0.
         """
         logger.debug("trace_buffer shape: %s", trace_buffer.shape)

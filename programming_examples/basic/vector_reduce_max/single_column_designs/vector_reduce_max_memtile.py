@@ -47,6 +47,7 @@ from aie.utils.hostruntime.argparse import device_from_args
 from aie.helpers.util import np_ndarray_type_get_shape
 from aie.utils.hostruntime.argparse import add_compile_args, add_trace_arg
 from aie.utils.hostruntime.cli import run_design_cli
+from aie.utils.trace import TraceBuffer, TileTrace
 from aie.utils.verify import assert_pass
 
 
@@ -181,7 +182,7 @@ def vector_reduce_max(
                         nextC_buffers[i],
                         tmp_buffers[i],
                     ],
-                    trace=True if i == 1 else None,
+                    trace=TileTrace() if (i == 1 and trace_size > 0) else None,
                 )
             )
         else:
@@ -206,15 +207,16 @@ def vector_reduce_max(
     rt = Runtime()
 
     def sequence(a, c):
-        if trace_size > 0:
-            rt.enable_trace(trace_size)
         of_in.prod().fill(a)
         of_out.cons().drain(c, wait=True)
 
     rt.sequence(sequence, [in_ty, out_ty])
 
     return Program(
-        iron.get_current_device(), rt, workers=list(workers)
+        iron.get_current_device(),
+        rt,
+        workers=list(workers),
+        trace=TraceBuffer(trace_size=trace_size) if trace_size > 0 else None,
     ).resolve_program()
 
 

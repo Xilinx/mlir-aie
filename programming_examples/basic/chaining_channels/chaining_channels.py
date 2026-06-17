@@ -57,6 +57,7 @@ from aie.dialects.aiex import (
 )
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
+from aie.utils.trace import TraceBuffer, TileTrace
 from aie.utils.trace.events import (
     MemTileEvent,
     ShimTileEvent,
@@ -287,12 +288,14 @@ def chaining_channels(
     rt.add_tile_dma(memtile_dma)
     rt.add_tile_dma(compute_dma)
 
-    def sequence(a, b):
-        if trace_size > 0:
-            rt.enable_trace(
-                trace_size,
-                workers=[worker],
-                memtile_events=[
+    # Mem-tile and shim-tile event sources (non-worker tiles), captured into
+    # the shared trace buffer.  Each TileTrace targets one explicit tile; the
+    # event type selects the hardware unit it programs.
+    trace_tiles = (
+        [
+            TileTrace(
+                tile=mem_tile,
+                events=[
                     MemTileEvent.LOCK_SEL0_ACQ_GE,
                     MemTilePortEvent(
                         MemTileEvent.PORT_RUNNING_0, WireBundle.South, 3, True
@@ -306,7 +309,10 @@ def chaining_channels(
                     MemTileEvent.DMA_MM2S_SEL0_FINISHED_TASK,
                     MemTileEvent.DMA_MM2S_SEL0_FINISHED_BD,
                 ],
-                shimtile_events=[
+            ),
+            TileTrace(
+                tile=shim_tile,
+                events=[
                     ShimTileEvent.DMA_S2MM_0_START_TASK,
                     ShimTileEvent.DMA_S2MM_0_FINISHED_TASK,
                     ShimTileEvent.DMA_MM2S_0_START_TASK,
@@ -320,12 +326,24 @@ def chaining_channels(
                         ShimTileEvent.PORT_RUNNING_1, WireBundle.South, 3, False
                     ),
                 ],
-            )
+            ),
+        ]
+        if trace_size > 0
+        else []
+    )
+
+    def sequence(a, b):
         rt.inline_ops(manual_bd_writes, [a, b])
 
     rt.sequence(sequence, [vector_ty, vector_ty_read])
 
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    return Program(
+        iron.get_current_device(),
+        rt,
+        workers=[worker],
+        trace_tiles=trace_tiles,
+        trace=TraceBuffer(trace_size=trace_size) if trace_size > 0 else None,
+    ).resolve_program()
 
 
 def _compile_kwargs(opts):

@@ -6,7 +6,7 @@
 #
 # (c) Copyright 2025-2026 Advanced Micro Devices, Inc.
 from pathlib import Path
-from .trace import TraceConfig
+from .trace import TraceBuffer
 
 
 class NPUKernel:
@@ -20,7 +20,7 @@ class NPUKernel:
         insts_path,
         device_index=0,
         kernel_name="MLIR_AIE",
-        trace_config: TraceConfig | None = None,
+        trace_config: TraceBuffer | None = None,
     ):
         """
         Initialize the NPUKernel.
@@ -30,7 +30,7 @@ class NPUKernel:
             insts_path (str | Path): Path to the instructions file.
             device_index (int, optional): Device index. Defaults to 0.
             kernel_name (str, optional): Name of the kernel. Defaults to "MLIR_AIE".
-            trace_config (TraceConfig | None, optional): Trace configuration. Defaults to None.
+            trace_config (TraceBuffer | None, optional): Trace configuration. Defaults to None.
         """
         self._xclbin_path = xclbin_path
         self._insts_path = insts_path
@@ -39,12 +39,12 @@ class NPUKernel:
         self._device_index = device_index
 
     @property
-    def trace_config(self) -> TraceConfig | None:
+    def trace_config(self) -> TraceBuffer | None:
         """
         Get the trace configuration.
 
         Returns:
-            TraceConfig | None: The trace configuration.
+            TraceBuffer | None: The trace configuration.
         """
         return self._trace_config
 

@@ -48,7 +48,7 @@ It is important to note that the Shim Tile and Compute Tile DMAs move data concu
 
 1. **Runtime sequence:** `rt.fill(of_in.prod(), A)` / `rt.drain(of_out.cons(), C)` express the host-side data movement.
 
-1. **Trace (optional):** when `--trace-size` is set, a `TraceConfig` is wired up at runtime.
+1. **Trace (optional):** when `--trace-size` is set, a `TraceBuffer` is wired up at runtime.
 
 1. **`Program(device, rt).resolve_program()`** returns the MLIR module; `@iron.jit`'s `compile()` then drives `compile_mlir_module` to produce xclbin/insts.
 

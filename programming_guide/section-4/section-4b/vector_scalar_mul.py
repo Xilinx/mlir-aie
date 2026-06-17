@@ -8,12 +8,11 @@
 """Section-4b trace example — ``@iron.jit`` (vector * scalar).
 
 Same vector*scalar design as section-3/4a; this version exposes a
-``trace_size`` parameter and calls ``rt.enable_trace(trace_size,
-workers=[my_worker])`` to capture core-tile trace events into a DDR
-buffer.  See README.md for a walk-through of the customizable
-``coretile_events`` / ``coremem_events`` / ``memtile_events`` /
-``shimtile_events`` keyword arguments and the ``PortEvent`` /
-``MemTilePortEvent`` / ``ShimTilePortEvent`` classes.
+``trace_size`` parameter, attaches ``Worker(trace=TileTrace())`` to
+capture core-tile trace events, and passes a ``TraceBuffer`` to
+``Program(trace=...)`` as the DDR sink.  See README.md for a walk-through
+of the customizable ``TileTrace(events=[...])`` list and the
+``PortEvent`` / ``MemTilePortEvent`` / ``ShimTilePortEvent`` classes.
 
 Three modes (same as section-3/4a):
 
@@ -48,6 +47,7 @@ from aie.utils.hostruntime.argparse import (
     add_trace_arg,
 )
 from aie.utils.hostruntime.cli import run_design_cli
+from aie.utils.trace import TraceBuffer, TileTrace
 from aie.utils.verify import assert_pass
 
 tensor_size = 4096
@@ -89,21 +89,26 @@ def vector_scalar_mul(
         of_factor.release(1)
 
     my_worker = Worker(
-        core_fn, [of_in.cons(), of_factor.cons(), of_out.prod(), scale_fn]
+        core_fn,
+        [of_in.cons(), of_factor.cons(), of_out.prod(), scale_fn],
+        trace=TileTrace() if trace_size > 0 else None,
     )
 
     rt = Runtime()
 
     def sequence(a, f, c):
-        if trace_size > 0:
-            rt.enable_trace(trace_size, workers=[my_worker])
         of_in.prod().fill(a)
         of_factor.prod().fill(f)
         of_out.cons().drain(c, wait=True)
 
     rt.sequence(sequence, [tensor_ty, scalar_ty, tensor_ty])
 
-    return Program(iron.get_current_device(), rt, workers=[my_worker]).resolve_program()
+    return Program(
+        iron.get_current_device(),
+        rt,
+        workers=[my_worker],
+        trace=TraceBuffer(trace_size=trace_size) if trace_size > 0 else None,
+    ).resolve_program()
 
 
 def _make_inputs():

@@ -12,7 +12,7 @@ specifically :func:`add_runtime_args`.  This module only exposes the
 NPU-kernel construction helper.
 """
 
-from aie.utils import NPUKernel, TraceConfig
+from aie.utils import NPUKernel, TraceBuffer
 
 
 def create_npu_kernel(opts):
@@ -29,7 +29,7 @@ def create_npu_kernel(opts):
     trace_config = None
     trace_size = getattr(opts, "trace_size", 0)
     if trace_size > 0:
-        trace_config = TraceConfig(
+        trace_config = TraceBuffer(
             trace_size=trace_size,
             trace_file=getattr(opts, "trace_file", "trace.txt"),
             ddr_id=getattr(opts, "ddr_id", 4),

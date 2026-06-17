@@ -105,11 +105,11 @@ class CallableDesign:
         compile_flags: Extra Peano compiler flags. Forwarded to ``CompilableDesign``.
         include_paths: Extra ``-I`` paths. Forwarded to ``CompilableDesign``.
         object_files: Pre-compiled ``.o`` files. Forwarded to ``CompilableDesign``.
-        trace_config: Optional ``TraceConfig`` for hardware trace collection.
+        trace_config: Optional ``TraceBuffer`` for hardware trace collection.
             When set, ``trace_config.trace_size`` is injected as a
             ``trace_size`` compile kwarg so generators can use
             ``trace_size: CompileTime[int] = 0`` instead of receiving the full
-            ``TraceConfig`` object.
+            ``TraceBuffer`` object.
     """
 
     def __init__(

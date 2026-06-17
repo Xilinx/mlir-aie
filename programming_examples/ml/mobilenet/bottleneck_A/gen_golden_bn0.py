@@ -16,7 +16,7 @@ from pathlib import Path
 import numpy as np
 import aie.iron as iron
 from aie.utils import DefaultNPURuntime
-from aie.utils import TraceConfig, HostRuntime, NPUKernel, DefaultNPURuntime
+from aie.utils import TraceBuffer, HostRuntime, NPUKernel, DefaultNPURuntime
 import aie.utils.test as test_utils
 from brevitas.nn import QuantConv2d, QuantIdentity, QuantReLU
 from brevitas.quant.fixed_point import (

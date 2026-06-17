@@ -29,6 +29,7 @@ from aie.dialects._aie_enum_gen import AIETileType
 from aie.utils.config import cxx_header_path
 from aie.utils.hostruntime.argparse import add_compile_args, add_trace_arg
 from aie.utils.hostruntime.cli import run_design_cli
+from aie.utils.trace import TraceBuffer, TileTrace
 
 _THIS_DIR = Path(__file__).parent
 _KERNEL_SRC = _THIS_DIR / "kernels" / "group2.cc"
@@ -135,19 +136,23 @@ def group2(
         ],
         tile=compute_tile,
         while_true=False,
+        trace=TileTrace() if trace_size > 0 else None,
     )
 
     rt = Runtime()
 
     def sequence(a, _b, c):
-        if trace_size > 0:
-            rt.enable_trace(trace_size)
         of_din_L3L2.prod().fill(a, tile=shim_tile)
         of_dout_L1L3.cons().drain(c, tile=shim_tile, wait=True)
 
     rt.sequence(sequence, [din_ty, scalar_ty, dout_ty])
 
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    return Program(
+        iron.get_current_device(),
+        rt,
+        workers=[worker],
+        trace=TraceBuffer(trace_size=trace_size) if trace_size > 0 else None,
+    ).resolve_program()
 
 
 def _make_argparser():

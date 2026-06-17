@@ -30,63 +30,125 @@ Enabling trace support can be done with the following steps:
 
 ## <u>1. Enable and configure AIE trace</u>
 
-Enabling tracing means configuring the trace units for a given tile and then routing the generated event packets through the stream switches to the shim DMA where we can write them to a buffer in DDR for post-runtime processing. For IRON, we abstract these steps into a single runtime function `enable_trace` within the larger runtime sequence as shown below:
-```python
-rt = Runtime()
-with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (a_in, f_in, c_out):
-    rt.enable_trace(trace_size, workers=[my_worker])
-    ...
-```
+Enabling tracing means configuring the trace units for a given tile and then routing the generated event packets through the stream switches to the shim DMA where we can write them to a buffer in DDR for post-runtime processing. For IRON, tracing separates two concerns:
 
-An alternative is to add a `trace` parameter to the worker declaration:
+* **Sources** — *what* to capture, declared per tile with a `TileTrace`.
+* **The sink** — *one* shared output buffer, a `TraceBuffer` passed to `Program(trace=...)`. There is a single buffer; all traced tiles multiplex into it (the hardware distinguishes them by packet id, and `parse_trace` demuxes them host-side).
 
+To trace a compute tile, attach a `TileTrace` to its `Worker`:
 ```python
 worker = Worker(
     core_body,
     fn_args=[of_in.cons(), of_factor.cons(), of_out.prod(), scale],
-    trace=1,
+    trace=TileTrace(),
 )
 ...
-rt = Runtime()
-with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (a_in, f_in, c_out):
-    rt.enable_trace(trace_size)
-    ...
+return Program(
+    iron.get_current_device(),
+    rt,
+    workers=[worker],
+    trace=TraceBuffer(trace_size=trace_size),
+).resolve_program()
 ```
-Here, we add `trace=1` to indicate that worker should be traced. And we can omit the `workers` argument from the `enable_trace` call in the runtime sequence.
+`TileTrace()` with no arguments traces both hardware trace units on the compute tile with sensible defaults (see below). The `TraceBuffer` is the sink that owns the shared DDR buffer.
 
->**NOTE**: The `workers` argument in the runtime sequence `enable_trace` always takes precedence over the `trace=1` argument of the worker. So if you define both, we will go with the definition of the `enable_trace` argument.
+A compute tile has **two** hardware trace units: the **core** unit (events of type `CoreEvent.*`) and the **core-memory** unit (events of type `MemEvent.*`). When you supply a custom event list, you put BOTH kinds in ONE list — `TileTrace` infers each event's unit from its type and splits them across the two units automatically:
+```python
+worker = Worker(
+    core_body,
+    fn_args=[...],
+    trace=TileTrace(
+        events=[
+            CoreEvent.INSTR_EVENT_0,   # core unit
+            CoreEvent.INSTR_EVENT_1,   # core unit
+            MemEvent.DMA_S2MM_0_START_TASK,  # core-memory unit
+        ]
+    ),
+)
+```
 
-Configuring the trace unit in each core tile and routing the trace packets to a valid shim tile is then done automatically.
+A common idiom is to gate tracing on a config so the same generator produces both a traced and an untraced build:
+```python
+worker = Worker(core_body, fn_args=[...], trace=TileTrace() if trace_config else None)
+...
+return Program(device, rt, workers=[worker], trace=trace_config).resolve_program()
+```
+where `trace_config` is a `TraceBuffer` (or `None`). Configuring the trace unit in each traced tile and routing the trace packets to a valid shim tile is then done automatically.
 
-The `workers=[...]` argument picks the core tiles to trace.  To trace **mem tiles** or **shim tiles**, pass `memtile_events=[...]` / `shimtile_events=[...]` — those event lists apply to the matching tiles in the design without needing to enumerate Workers (the design's mem/shim tiles are implicit in the data movement).  Full event vocabularies are listed in the [Customizing Trace Behavior](#customizing-trace-behavior) subsection below.
+To trace **mem tiles** or **shim tiles** (which are not owned by a Worker), pass `trace_tiles=[...]` to `Program`, each entry a `TileTrace` with an explicit `tile=`:
+```python
+Program(
+    device,
+    rt,
+    workers=[worker],
+    trace_tiles=[
+        TileTrace(tile=mem_tile, events=[MemTilePortEvent(MemTileEvent.PORT_RUNNING_0, WireBundle.DMA, 0, True)]),
+        TileTrace(tile=shim_tile, events=[ShimTileEvent.DMA_S2MM_0_START_TASK]),
+    ],
+    trace=TraceBuffer(trace_size=trace_size),
+).resolve_program()
+```
+Use `MemTileEvent.*` events for a mem tile and `ShimTileEvent.*` events for a shim tile. Full event vocabularies are listed in the [Customizing Trace Behavior](#customizing-trace-behavior) subsection below. The events are imported from `aie.utils.trace.events`, and `TileTrace` / `TraceBuffer` from `aie.utils.trace`:
+```python
+from aie.utils.trace import TileTrace, TraceBuffer
+from aie.utils.trace.events import (
+    CoreEvent, MemEvent, MemTileEvent, ShimTileEvent, PortEvent, WireBundle,
+)
+```
+The worked example this section is based on, [aie_trace.py](../../../programming_examples/basic/event_trace/aie_trace.py), uses exactly this pattern: a worker `TileTrace(events=[...])` mixing `CoreEvent` and `MemEvent`, plus `trace_tiles` for a mem tile and a shim tile, with `Program(trace=TraceBuffer(...))`.
 
 ### <u>Customizing Trace Behavior</u>
 
-The trace configuration chooses helpful default settings so you can trace your design with little additional customization. However, if you want more control over some of these configuration, additional arguments are available in `enable_trace`:
-* `ddr_id` - XRT buffer index (0-4) to write trace data to, mapping to group_id (3-7). Defaults to 4 (group_id 7). Set to -1 to append trace data after the last runtime_sequence tensor argument. See [below](#2-configure-host-code-to-read-trace-data-and-write-it-to-a-text-file) for more details on XRT buffers.
-* `coretile_events` - which 8 events do we use for all coretiles in array. Search under https://xilinx.github.io/mlir-aie/AIEXDialect.html for CoreEvent for the target device [[aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie)][[aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2)][[aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2p)].
-* `coremem_events` - which 8 events do we use for all core mem in array. Search under https://xilinx.github.io/mlir-aie/AIEXDialect.html for MemEvent for the target device [[aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie)][[aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2)][[aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2p)].
-* `memtile_events` - which 8 events do we use for all memtiles in array. Search under https://xilinx.github.io/mlir-aie/AIEXDialect.html for MemTileEvent for the target device [[aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memevent)][[aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memevent2)][[aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memevent2p)]
-* `shimtile_events` - which 8 events do we use for all shimtiles in array. Search under https://xilinx.github.io/mlir-aie/AIEXDialect.html for ShimTileEvent for the target device [[aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#shimtileevent)][[aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#shimtileevent2)][[aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#shimtileevent2p)]
+The trace configuration chooses helpful default settings so you can trace your design with little additional customization (just `TileTrace()` and a `TraceBuffer(trace_size=...)`). However, if you want more control, you customize the **sources** by building event lists and passing them to the relevant `TileTrace(events=[...])`, and you customize the **sink** through `TraceBuffer` constructor arguments.
 
-    ```python
-    ...
-    rt = Runtime()
-    with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (a_in, f_in, c_out):
-        rt.enable_trace(
-            trace_size = trace_size,
-            ddr_id = 4,
-            coretile_events = [
-                    trace_utils.CoreEvent.INSTR_EVENT_0,
-                    trace_utils.CoreEvent.INSTR_EVENT_1,
-                    trace_utils.CoreEvent.INSTR_VECTOR,
-                    trace_utils.CoreEvent.MEMORY_STALL,
-                    trace_utils.CoreEvent.STREAM_STALL,
-                    trace_utils.CoreEvent.LOCK_STALL,
-                    trace_utils.CoreEvent.ACTIVE,
-                    trace_utils.CoreEvent.DISABLED]
-        )
-    ```
+Event vocabularies, by trace unit:
+* **core** unit — `CoreEvent.*`. Search under https://xilinx.github.io/mlir-aie/AIEXDialect.html for CoreEvent for the target device [[aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie)][[aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2)][[aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2p)].
+* **core-memory** unit — `MemEvent.*`. Search under https://xilinx.github.io/mlir-aie/AIEXDialect.html for MemEvent for the target device [[aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie)][[aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2)][[aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2p)].
+* **mem tile** unit — `MemTileEvent.*`. Search under https://xilinx.github.io/mlir-aie/AIEXDialect.html for MemTileEvent for the target device [[aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memevent)][[aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memevent2)][[aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memevent2p)]
+* **shim tile** unit — `ShimTileEvent.*`. Search under https://xilinx.github.io/mlir-aie/AIEXDialect.html for ShimTileEvent for the target device [[aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#shimtileevent)][[aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#shimtileevent2)][[aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#shimtileevent2p)]
+
+For a worker's compute tile, mix the `CoreEvent.*` (core unit) and `MemEvent.*` (core-memory unit) events you care about into a single list — `TileTrace` infers each event's unit from its type and splits them automatically. Each hardware unit provides 8 event slots:
+
+```python
+from aie.utils.trace import TileTrace
+from aie.utils.trace.events import CoreEvent, MemEvent
+
+worker = Worker(
+    core_body,
+    fn_args=[...],
+    trace=TileTrace(
+        events=[
+            CoreEvent.INSTR_EVENT_0,
+            CoreEvent.INSTR_EVENT_1,
+            CoreEvent.INSTR_VECTOR,
+            CoreEvent.MEMORY_STALL,
+            CoreEvent.STREAM_STALL,
+            CoreEvent.LOCK_STALL,
+            MemEvent.DMA_S2MM_0_START_TASK,
+            MemEvent.DMA_MM2S_0_FINISHED_TASK,
+        ]
+    ),
+)
+```
+
+For a mem tile or shim tile, build a `TileTrace(tile=..., events=[...])` (with `MemTileEvent.*` or `ShimTileEvent.*` respectively) and pass it in `Program(trace_tiles=[...])`, as shown in [section 1](#1-enable-and-configure-aie-trace) above.
+
+The sink is customized through `TraceBuffer` constructor arguments:
+* `trace_size` - size of the shared trace buffer in bytes.
+* `ddr_id` - XRT buffer index (0-4) to write trace data to, mapping to group_id (3-7). Defaults to 4 (group_id 7). Set to -1 to append trace data after the last runtime_sequence tensor argument. See [below](#2-configure-host-code-to-read-trace-data-and-write-it-to-a-text-file) for more details on XRT buffers.
+* `trace_file` - host file the trace buffer is written to (default `trace.txt`).
+* `egress_shim_col` - shim column used to egress trace data to DDR.
+
+```python
+from aie.utils.trace import TraceBuffer
+
+Program(
+    device,
+    rt,
+    workers=[worker],
+    trace=TraceBuffer(trace_size=trace_size, ddr_id=4),
+).resolve_program()
+```
 
 ### <u>PortEvent API</u>
 
@@ -121,7 +183,7 @@ ShimTilePortEvent(ShimTileEvent.PORT_RUNNING_0, WireBundle.South, channel=2, mas
 Once the trace units are configured and routed, we want the host code to read the trace data from DDR and write it out to a text file for post-run processing. To give a better sense of how this comes together, this section provides an example design that is again a simplifed version of the [Vector Scalar Multiply example](../../../programming_examples/basic/vector_scalar_mul/).
 
 ### <u>AIE structural design code ([vector_scalar_mul.py](./vector_scalar_mul.py))</u>
-In order to write the DDR data to a text file, we need to know where in DDR the trace data is stored and then read from that location. This starts inside the [vector_scalar_mul.py](./vector_scalar_mul.py) file where the `enable_trace` function under the hood expands to calls to configure the trace units and program the shimDMA to write to one of XRT inout buffers. It is helpful to have a more in-depth understanding about the *XRT buffer objects* described in [section 3](../../section-3). There we had described that our XRT supports up to 5 inout buffer objects. Common usage patterns include 1 input/ 1 output and 2 input/ 1 output. These patterns then map in the following way where the *group_id* is listed next to each XRT buffer object, `inoutN (group_id)`.
+In order to write the DDR data to a text file, we need to know where in DDR the trace data is stored and then read from that location. This starts inside the [vector_scalar_mul.py](./vector_scalar_mul.py) file where the `TraceBuffer` sink (together with the per-tile `TileTrace` sources) under the hood expands to calls to configure the trace units and program the shimDMA to write to one of XRT inout buffers. It is helpful to have a more in-depth understanding about the *XRT buffer objects* described in [section 3](../../section-3). There we had described that our XRT supports up to 5 inout buffer objects. Common usage patterns include 1 input/ 1 output and 2 input/ 1 output. These patterns then map in the following way where the *group_id* is listed next to each XRT buffer object, `inoutN (group_id)`.
 
 | inout0 (3) | inout1 (4) |
 |--------|--------|
@@ -147,7 +209,7 @@ In some designs, we have also used a pattern where we share an XRT buffer object
 |--------|--------|--------|
 | input A  | input B | (output C + trace) |
 
-By specifying `inout4 (7)` as the default case, we can leave the parameters for `enable_trace()` / `start_trace()` to their default values other than `trace_size`. However, if we do decide to customize the XRT buffer object used, we can do so through `ddr_id` (to specify the buffer to use). Setting `ddr_id=-1` appends trace data after the last output tensor, using the last argument's buffer index and a byte offset equal to the tensor size.
+By specifying `inout4 (7)` as the default case, we can leave the parameters for `TraceBuffer` to their default values other than `trace_size`. However, if we do decide to customize the XRT buffer object used, we can do so through `TraceBuffer(ddr_id=...)` (to specify the buffer to use). Setting `ddr_id=-1` appends trace data after the last output tensor, using the last argument's buffer index and a byte offset equal to the tensor size.
 
 Once the design is configured to a XRT buffer object, we turn our attention to the host code to read the DDR data and write it to a file.
 
@@ -252,7 +314,7 @@ In the [Makefile](./Makefile), we also have a `trace_py` target which calls the 
 
 #### test_utils (recommended)
 
-The recommended approach is to use `test_utils.create_npu_kernel`, which creates both a [`TraceConfig`](../../../python/utils/trace/config.py) and an [`NPUKernel`](../../../python/utils/npukernel.py) from command-line arguments:
+The recommended approach is to use `test_utils.create_npu_kernel`, which creates both a [`TraceBuffer`](../../../python/utils/trace/config.py) and an [`NPUKernel`](../../../python/utils/npukernel.py) from command-line arguments:
 
 ```python
 import aie.utils.test as test_utils
@@ -266,17 +328,17 @@ The relevant CLI arguments (added by `aie.utils.hostruntime.argparse.add_runtime
 - `--trace-file`: Path to write raw trace data (default: `trace.txt`).
 - `--ddr-id`: DDR buffer index for trace (0-4, or -1 to append after last tensor). Default is 4.
 
-> **IMPORTANT**: The `ddr_id` value (set via `--ddr-id`) **must match** the `ddr_id` parameter in your IRON `enable_trace()` / `start_trace()` call, or buffer allocation will be incorrect.
+> **IMPORTANT**: The `ddr_id` value (set via `--ddr-id`) **must match** the `ddr_id` parameter of the `TraceBuffer` in your IRON design (`TraceBuffer(ddr_id=...)`), or buffer allocation will be incorrect.
 
-#### TraceConfig (manual setup)
+#### TraceBuffer (manual setup)
 
-For custom host code, you can create a [`TraceConfig`](../../../python/utils/trace/config.py) directly and pass it to [`NPUKernel`](../../../python/utils/npukernel.py):
+For custom host code, you can create a [`TraceBuffer`](../../../python/utils/trace/config.py) directly and pass it to [`NPUKernel`](../../../python/utils/npukernel.py):
 
 ```python
-from aie.utils.trace import TraceConfig
+from aie.utils.trace import TraceBuffer
 from aie.utils.npukernel import NPUKernel
 
-trace_config = TraceConfig(
+trace_config = TraceBuffer(
     trace_size=8192,                # Buffer size in bytes
     trace_file="trace.txt",         # Output file for raw trace data (default)
 )
@@ -288,17 +350,17 @@ npu_kernel = NPUKernel(
 )
 ```
 
-Under the hood, the [DefaultNPURuntime](../../../python/utils/hostruntime/hostruntime.py) uses `TraceConfig` to allocate the trace XRT buffer, synchronize it after execution, and write the trace data to the output file -- similar to the C++ `write_out_trace` function and `setup_and_run_aie` wrapper in [xrt_test_wrapper.h](../../../runtime_lib/test_lib/xrt_test_wrapper.h).
+Under the hood, the [DefaultNPURuntime](../../../python/utils/hostruntime/hostruntime.py) uses `TraceBuffer` to allocate the trace XRT buffer, synchronize it after execution, and write the trace data to the output file -- similar to the C++ `write_out_trace` function and `setup_and_run_aie` wrapper in [xrt_test_wrapper.h](../../../runtime_lib/test_lib/xrt_test_wrapper.h).
 
 #### `@iron.jit` integration
 
-For designs using `@iron.jit`, `TraceConfig` can travel as a
+For designs using `@iron.jit`, `TraceBuffer` can travel as a
 `CompileTime[T]`-style argument and be evaluated **inside** the generator,
 so the trace-vs-no-trace decision lives in the design itself instead
 of the host:
 
 ```python
-from aie.utils.trace import TraceConfig
+from aie.utils.trace import TileTrace, TraceBuffer
 
 @iron.jit
 def passthrough_with_trace(
@@ -306,7 +368,7 @@ def passthrough_with_trace(
     y: Out,
     *,
     N: CompileTime[int],
-    trace_config: CompileTime[TraceConfig | None] = None,
+    trace_config: CompileTime[TraceBuffer | None] = None,
 ):
     line_size = N // 4
     line_ty = np.ndarray[(line_size,), np.dtype[np.uint8]]
@@ -325,18 +387,26 @@ def passthrough_with_trace(
     # Enable per-worker trace instrumentation only when a config is bound.
     worker = Worker(
         core_fn, [of_in.cons(), of_out.prod(), pt],
-        trace=1 if trace_config else 0,
+        trace=TileTrace() if trace_config else None,
     )
 
     rt = Runtime()
     tensor_ty = np.ndarray[(N,), np.dtype[np.uint8]]
-    with rt.sequence(tensor_ty, tensor_ty) as (a_in, b_out):
-        if trace_config:
-            rt.enable_trace(trace_config.trace_size, workers=[worker])
-        rt.start(worker)
-        rt.fill(of_in.prod(), a_in)
-        rt.drain(of_out.cons(), b_out, wait=True)
-    return Program(iron.get_current_device(), rt).resolve_program()
+
+    def sequence(a_in, b_out):
+        of_in.prod().fill(a_in)
+        of_out.cons().drain(b_out, wait=True)
+
+    rt.sequence(sequence, [tensor_ty, tensor_ty])
+
+    # The TraceBuffer sink is passed to Program(trace=...). When trace_config
+    # is None, the trace plumbing is omitted from the lowered MLIR entirely.
+    return Program(
+        iron.get_current_device(),
+        rt,
+        workers=[worker],
+        trace=trace_config,
+    ).resolve_program()
 ```
 
 Two equivalent ways to drive it from the caller:
@@ -346,8 +416,8 @@ Two equivalent ways to drive it from the caller:
 # from the lowered MLIR entirely (clean cache hit on the same recipe).
 passthrough_with_trace(in_t, out_t, N=4096)
 
-# With trace — pass a TraceConfig, then read parsed output back out.
-trace_cfg = TraceConfig(trace_size=8192)
+# With trace — pass a TraceBuffer, then read parsed output back out.
+trace_cfg = TraceBuffer(trace_size=8192)
 passthrough_with_trace(in_t, out_t, N=4096, trace_config=trace_cfg)
 trace_cfg.trace_to_json(trace_cfg.physical_mlir_path, "trace.json")
 ```
@@ -387,7 +457,7 @@ Open https://ui.perfetto.dev in your browser and then open up the waveform json 
 ## <u>Additional Debug Hints</u>
 * If you are not getting valid trace data out (e.g. empty `trace.txt` or just 0's), then trace packets were not written to a file successfully. There could be a number of reasons for this but some things to check are:
     * Did you write to the correct XRT buffer object that your host code is reading from? The default is `ddr_id=4` (`group_id=7`), which means trace data is written to a dedicated XRT buffer. If using `ddr_id=-1`, trace data is appended after the last tensor argument.
-        * If using the **Python host** (`DefaultNPURuntime` / `TraceConfig`), buffer management is handled automatically. However, `ddr_id` in `TraceConfig` must match the corresponding parameter in your IRON `enable_trace()` / `start_trace()` call.
+        * If using the **Python host** (`DefaultNPURuntime` / `TraceBuffer`), buffer management is handled automatically. However, the `ddr_id` in the host `TraceBuffer` must match the `ddr_id` of the `TraceBuffer` passed to `Program(trace=...)` in your IRON design.
         * If using a **C/C++ host** with `ddr_id=-1`, trace data is appended to the last `runtime_sequence` argument's buffer at an offset equal to the output size. Allocate that buffer large enough for both output and trace data, and do **not** create a separate `bo_trace` at `group_id(7)`.
     * It's possible that a simple core may have too few events to create a valid trace packet. For dialect-level designs, you can work around this by adding a ShimTile to the `tiles_to_trace` array in `configure_trace()` to generate additional trace data.
     * Check that the correct tile is being routed to the correct shim DMA. Using the declarative trace API handles this automatically.

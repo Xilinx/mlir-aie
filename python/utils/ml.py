@@ -414,7 +414,7 @@ def run_conv_torch_test(
             Default ``None`` (no dumps).
     """
     import aie.iron as iron
-    from aie.utils import HostRuntime, NPUKernel, DefaultNPURuntime, TraceConfig
+    from aie.utils import HostRuntime, NPUKernel, DefaultNPURuntime, TraceBuffer
 
     dtype_in = np.dtype(dtype_in)
     dtype_wts = np.dtype(dtype_wts)
@@ -453,7 +453,7 @@ def run_conv_torch_test(
     if trace_size > 0:
         if trace_file is None:
             raise ValueError("trace_file is required when trace_size > 0")
-        trace_config = TraceConfig(
+        trace_config = TraceBuffer(
             trace_size=trace_size,
             trace_file=trace_file,
             ddr_id=-1,

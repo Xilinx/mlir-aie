@@ -19,7 +19,7 @@ import numpy as np
 import torch.nn.functional as F
 
 import aie.iron as iron
-from aie.utils import TraceConfig, HostRuntime, NPUKernel, DefaultNPURuntime
+from aie.utils import TraceBuffer, HostRuntime, NPUKernel, DefaultNPURuntime
 from aie.utils.hostruntime.argparse import add_runtime_args
 
 
@@ -504,7 +504,7 @@ def main(opts):
 
     trace_config = None
     if enable_trace:
-        trace_config = TraceConfig(
+        trace_config = TraceBuffer(
             trace_size=trace_size,
             trace_file=trace_file,
             enable_ctrl_pkts=False,

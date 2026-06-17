@@ -43,7 +43,7 @@ from aie.utils.hostruntime.argparse import (
     add_trace_arg,
 )
 from aie.utils.hostruntime.cli import run_design_cli
-from aie.utils.trace import TraceConfig
+from aie.utils.trace import TraceBuffer, TileTrace
 from aie.utils.verify import assert_close_with_benchmark
 
 
@@ -64,7 +64,7 @@ def single_core(
     b_col_maj: CompileTime[int] = 0,
     emulate_bf16_mmul_with_bfp16: CompileTime[bool] = False,
     use_chess: CompileTime[bool] = False,
-    trace_config: CompileTime[TraceConfig | None] = None,
+    trace_config: CompileTime[TraceBuffer | None] = None,
 ):
     dtype_in = str_to_dtype(dtype_in_str)
     dtype_out = str_to_dtype(dtype_out_str)
@@ -138,7 +138,7 @@ def single_core(
         core_fn,
         [memA.cons(), memB.cons(), memC.prod(), zero_kernel, matmul_kernel],
         stack_size=0xD00,
-        trace=1 if trace_config else 0,
+        trace=TileTrace() if trace_config else None,
     )
 
     rows_per_block = 4
@@ -163,8 +163,6 @@ def single_core(
     )
 
     rt = Runtime()
-    if trace_config:
-        rt.enable_trace(trace_config.trace_size, workers=[worker])
 
     def sequence(A, B, C):
         c_index = 0
@@ -192,7 +190,12 @@ def single_core(
 
     rt.sequence(sequence, [A_ty, B_ty, C_ty])
 
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    return Program(
+        iron.get_current_device(),
+        rt,
+        workers=[worker],
+        trace=trace_config,
+    ).resolve_program()
 
 
 def _make_argparser():
@@ -229,7 +232,7 @@ def _numpy_reference(A_np, B_np, b_col_maj, dtype_out):
 
 
 def _trace_config(opts):
-    return TraceConfig(trace_size=opts.trace_size) if opts.trace_size > 0 else None
+    return TraceBuffer(trace_size=opts.trace_size) if opts.trace_size > 0 else None
 
 
 def _run_and_verify(opts):

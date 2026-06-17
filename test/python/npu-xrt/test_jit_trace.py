@@ -16,7 +16,7 @@ import os
 import aie.iron as iron
 
 from aie.utils import tensor
-from aie.utils.trace import TraceConfig, parse_trace
+from aie.utils.trace import TraceBuffer, TileTrace, parse_trace
 from aie.iron import CompileTime, Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 
@@ -36,7 +36,7 @@ def design(
     a_in: iron.In,
     c_out: iron.Out,
     *,
-    trace_config: CompileTime[TraceConfig | None] = None
+    trace_config: CompileTime[TraceBuffer | None] = None
 ):
     N = 1024
     # Construct types for sequence
@@ -47,21 +47,27 @@ def design(
     of_in = ObjectFifo(a_type, depth=2)
     of_out = ObjectFifo(c_type, depth=2)
 
-    # Define Worker
-    worker = Worker(scale_scalar, fn_args=[of_in.cons(), of_out.prod(), 2, N])
+    # Define Worker (trace its compute tile when tracing is enabled)
+    worker = Worker(
+        scale_scalar,
+        fn_args=[of_in.cons(), of_out.prod(), 2, N],
+        trace=TileTrace() if trace_config else None,
+    )
 
     rt = Runtime()
 
     def sequence(a, c):
-        if trace_config:
-            rt.enable_trace(trace_config.trace_size, workers=[worker])
-
         # In runtime sequence:
         of_in.prod().fill(a)
         of_out.cons().drain(c, wait=True)
 
     rt.sequence(sequence, [a_type, c_type])
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    return Program(
+        iron.get_current_device(),
+        rt,
+        workers=[worker],
+        trace=trace_config,
+    ).resolve_program()
 
 
 @pytest.mark.parametrize("trace_size", [8192])
@@ -71,7 +77,7 @@ def test_jit_trace(trace_size):
     a = tensor(ref, dtype=np.int32)
     c = tensor(np.zeros(N, dtype=np.int32), dtype=np.int32)
 
-    trace_config = TraceConfig(trace_size=trace_size)
+    trace_config = TraceBuffer(trace_size=trace_size)
 
     # Run JIT kernel with tracing
     design(a, c, trace_config=trace_config)

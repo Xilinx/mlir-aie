@@ -276,9 +276,9 @@ def test_use_cache_false_recompiles_but_output_correct(input_array, N):
 def test_trace_config_forwarded_to_kernel(input_array, N):
     """A trace_config passed at call time must reach NPUKernel.__init__ and
     be stripped from runtime kwargs (i.e. the design must still run)."""
-    from aie.utils.trace.config import TraceConfig
+    from aie.utils.trace.config import TraceBuffer
 
-    trace_cfg = TraceConfig(trace_size=65536)
+    trace_cfg = TraceBuffer(trace_size=65536)
 
     @iron.jit
     def add_traced(
@@ -287,7 +287,7 @@ def test_trace_config_forwarded_to_kernel(input_array, N):
         *,
         N: CompileTime[int],
         add_value: CompileTime[int],
-        trace_config: CompileTime[TraceConfig | None] = None,
+        trace_config: CompileTime[TraceBuffer | None] = None,
     ):
         return _add_const_design(input_buf, output_buf, N=N, add_value=add_value)
 

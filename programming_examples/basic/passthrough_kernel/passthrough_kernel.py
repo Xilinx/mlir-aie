@@ -25,7 +25,7 @@ from aie.iron import (
 )
 from aie.extras import types as T
 from aie.utils.benchmark import print_benchmark, run_iters
-from aie.utils.trace import TraceConfig
+from aie.utils.trace import TraceBuffer, TileTrace
 from aie.utils.trace.utils import print_cycles_summary
 from aie.utils.verify import assert_pass
 
@@ -36,7 +36,7 @@ def my_passthrough_kernel(
     out_tensor: Out,
     *,
     n: CompileTime[int],
-    trace_config: CompileTime[TraceConfig | None] = None,
+    trace_config: CompileTime[TraceBuffer | None] = None,
     dynamic_txn: CompileTime[bool] = False,
 ):
     in1_dtype = np.uint8
@@ -61,12 +61,10 @@ def my_passthrough_kernel(
     worker = Worker(
         core_fn,
         [of_in.cons(), of_out.prod(), pass_through_line],
-        trace=1 if trace_config else 0,
+        trace=TileTrace() if trace_config else None,
     )
 
     rt = Runtime()
-    if trace_config:
-        rt.enable_trace(trace_config.trace_size, workers=[worker])
 
     if dynamic_txn:
         # Runtime-parameterized transfer length: `buffer_length` is an SSA
@@ -87,7 +85,12 @@ def my_passthrough_kernel(
 
         rt.sequence(sequence, [vector_type, vector_type])
 
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    return Program(
+        iron.get_current_device(),
+        rt,
+        workers=[worker],
+        trace=trace_config,
+    ).resolve_program()
 
 
 def main():
@@ -126,7 +129,7 @@ def main():
     out_tensor = iron.zeros_like(in_tensor)
 
     trace_config = (
-        TraceConfig(trace_size=opts.trace_size) if opts.trace_size > 0 else None
+        TraceBuffer(trace_size=opts.trace_size) if opts.trace_size > 0 else None
     )
 
     if trace_config is not None:

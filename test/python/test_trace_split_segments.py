@@ -21,7 +21,7 @@ import os
 import tempfile
 
 from aie.utils.trace.utils import split_trace_segments
-from aie.utils.trace.config import TraceConfig
+from aie.utils.trace.config import TraceBuffer
 
 # -- split_trace_segments tests ------------------------------------------------
 
@@ -140,7 +140,7 @@ class TestWriteTrace:
         with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False) as f:
             path = f.name
         try:
-            tc = TraceConfig(trace_size=len(trace_array) * 4, trace_file=path)
+            tc = TraceBuffer(trace_size=len(trace_array) * 4, trace_file=path)
             tc.write_trace(trace_array)
             with open(path, "r") as f:
                 lines = [line.strip() for line in f if line.strip()]

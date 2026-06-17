@@ -9,10 +9,11 @@
 
 Same compute as ``basic/vector_scalar_mul`` (a single AIE core scales an
 ``int32`` vector by a runtime scalar) but with an explicit event list
-plumbed through ``rt.enable_trace()``.  The pedagogical point is
-showing that the high-level IRON Runtime API also accepts the same
-``coretile_events`` / ``coremem_events`` / ``memtile_events`` /
-``shimtile_events`` parameters as the lower-level ``configure_trace``.
+attached to the worker via ``Worker(trace=TileTrace(events=[...]))``.
+The pedagogical point is showing that a single mixed event list is fine:
+``TileTrace`` infers each event's hardware unit from its type
+(``CoreEvent.*`` -> core unit, ``MemEvent.*`` -> core-memory unit).  The
+trace sink is the ``TraceBuffer`` passed to ``Program(trace=...)``.
 
 Two invocation modes:
 
@@ -36,16 +37,19 @@ from aie.iron import (
     kernels,
 )
 from aie.iron.controlflow import range_
+from aie.iron.device import Tile
+from aie.dialects._aie_enum_gen import AIETileType
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
+from aie.utils.trace import TraceBuffer, TileTrace
 from aie.utils.trace.events import (
     CoreEvent,
     MemEvent,
     MemTileEvent,
     MemTilePortEvent,
-    PortEvent,
     ShimTileEvent,
+    PortEvent,
     WireBundle,
 )
 
@@ -68,9 +72,19 @@ def aie_trace(
 
     scale = kernels.scale(tile_size=tile_size, dtype=np.int32, vectorized=False)
 
+    # Explicit mem tile and shim tile so the design has a mem-tile hop to trace
+    # (L3 -> L2/mem -> L1/core -> L2/mem -> L3) and a known shim tile to trace.
+    # The compute tile is left to the placer (AnyComputeTile).
+    mem_tile = Tile(tile_type=AIETileType.MemTile)
+    shim_tile = Tile(tile_type=AIETileType.ShimNOCTile)
+
+    # Route the input and output through the mem tile via forward(): of_in is the
+    # shim->mem fifo, of_in_l1 the mem->core fifo (and likewise for the output).
     of_in = ObjectFifo(tile_ty, name="in")
+    of_in_l1 = of_in.cons().forward(tile=mem_tile, name="in_l1")
     of_factor = ObjectFifo(scalar_ty, name="infactor")
-    of_out = ObjectFifo(tile_ty, name="out")
+    of_out_l1 = ObjectFifo(tile_ty, name="out_l1")
+    of_out = of_out_l1.cons().forward(tile=mem_tile, name="out")
 
     def core_fn(of_in, of_factor, of_out, scale):
         elem_factor = of_factor.acquire(1)
@@ -82,21 +96,14 @@ def aie_trace(
             of_out.release(1)
         of_factor.release(1)
 
+    # Custom per-unit event lists for the worker's compute tile. The core
+    # unit (CoreEvent.*) and core-memory unit (MemEvent.*) events are combined
+    # into one list; TileTrace infers each event's hardware unit from its type.
     worker = Worker(
         core_fn,
-        fn_args=[of_in.cons(), of_factor.cons(), of_out.prod(), scale],
-        trace=1,
-    )
-
-    rt = Runtime()
-
-    def sequence(a_in, f_in, c_out):
-        # Custom per-tile-class event lists, forwarded by IRON's Runtime
-        # to the same configure_trace() the dialect-level example used.
-        rt.enable_trace(
-            trace_size=trace_size,
-            workers=[worker],
-            coretile_events=[
+        fn_args=[of_in_l1.cons(), of_factor.cons(), of_out_l1.prod(), scale],
+        trace=TileTrace(
+            events=[
                 CoreEvent.INSTR_EVENT_0,
                 CoreEvent.INSTR_EVENT_1,
                 CoreEvent.INSTR_VECTOR,
@@ -105,8 +112,6 @@ def aie_trace(
                 CoreEvent.LOCK_STALL,
                 PortEvent(CoreEvent.PORT_RUNNING_0, WireBundle.DMA, 0, True),
                 PortEvent(CoreEvent.PORT_RUNNING_1, WireBundle.DMA, 0, False),
-            ],
-            coremem_events=[
                 MemEvent.DMA_S2MM_0_START_TASK,
                 MemEvent.DMA_S2MM_1_START_TASK,
                 MemEvent.DMA_MM2S_0_START_TASK,
@@ -115,35 +120,49 @@ def aie_trace(
                 MemEvent.DMA_MM2S_0_FINISHED_TASK,
                 MemEvent.DMA_S2MM_0_STREAM_STARVATION,
                 MemEvent.DMA_S2MM_1_STREAM_STARVATION,
-            ],
-            memtile_events=[
-                MemTilePortEvent(MemTileEvent.PORT_RUNNING_0, WireBundle.DMA, 0, False),
-                MemTilePortEvent(MemTileEvent.PORT_RUNNING_1, WireBundle.DMA, 1, False),
-                MemTilePortEvent(MemTileEvent.PORT_RUNNING_2, WireBundle.DMA, 0, True),
-                MemTilePortEvent(MemTileEvent.PORT_RUNNING_3, WireBundle.DMA, 1, True),
-                MemTilePortEvent(MemTileEvent.PORT_RUNNING_4, WireBundle.DMA, 2, True),
-                MemTilePortEvent(MemTileEvent.PORT_RUNNING_5, WireBundle.DMA, 3, True),
-                MemTilePortEvent(MemTileEvent.PORT_RUNNING_6, WireBundle.DMA, 4, True),
-                MemTilePortEvent(MemTileEvent.PORT_RUNNING_7, WireBundle.DMA, 5, True),
-            ],
-            shimtile_events=[
-                ShimTileEvent.DMA_S2MM_0_START_TASK,
-                ShimTileEvent.DMA_S2MM_1_START_TASK,
-                ShimTileEvent.DMA_MM2S_0_START_TASK,
-                ShimTileEvent.DMA_S2MM_0_FINISHED_TASK,
-                ShimTileEvent.DMA_S2MM_1_FINISHED_TASK,
-                ShimTileEvent.DMA_MM2S_0_FINISHED_TASK,
-                ShimTileEvent.DMA_S2MM_0_STREAM_STARVATION,
-                ShimTileEvent.DMA_S2MM_1_STREAM_STARVATION,
-            ],
-        )
-        of_in.prod().fill(a_in)
-        of_factor.prod().fill(f_in)
-        of_out.cons().drain(c_out, wait=True)
+            ]
+        ),
+    )
+
+    rt = Runtime()
+
+    def sequence(a_in, f_in, c_out):
+        # Bind the data transfers to the explicit shim tile so it is the tile we
+        # trace below (and the one the trace data egresses through).
+        of_in.prod().fill(a_in, tile=shim_tile)
+        of_factor.prod().fill(f_in, tile=shim_tile)
+        of_out.cons().drain(c_out, wait=True, tile=shim_tile)
 
     rt.sequence(sequence, [tensor_ty, scalar_ty, tensor_ty])
 
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    # Non-worker trace sources: the mem tile (its DMA ports) and the shim tile.
+    # The worker's compute tile is traced via Worker(trace=...) above.
+    trace_tiles = [
+        TileTrace(
+            tile=mem_tile,
+            events=[
+                MemTilePortEvent(MemTileEvent.PORT_RUNNING_0, WireBundle.DMA, 0, True),
+                MemTilePortEvent(MemTileEvent.PORT_RUNNING_1, WireBundle.DMA, 0, False),
+            ],
+        ),
+        TileTrace(
+            tile=shim_tile,
+            events=[
+                ShimTileEvent.DMA_S2MM_0_START_TASK,
+                ShimTileEvent.DMA_MM2S_0_START_TASK,
+                ShimTileEvent.DMA_S2MM_0_FINISHED_TASK,
+                ShimTileEvent.DMA_MM2S_0_FINISHED_TASK,
+            ],
+        ),
+    ]
+
+    return Program(
+        iron.get_current_device(),
+        rt,
+        workers=[worker],
+        trace_tiles=trace_tiles,
+        trace=TraceBuffer(trace_size=trace_size),
+    ).resolve_program()
 
 
 def _make_argparser():

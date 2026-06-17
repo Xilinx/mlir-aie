@@ -44,6 +44,7 @@ from aie.utils.hostruntime.argparse import device_from_args
 from aie.helpers.taplib.tensortiler2d import TensorTiler2D
 from aie.utils.hostruntime.argparse import add_compile_args, add_trace_arg
 from aie.utils.hostruntime.cli import run_design_cli
+from aie.utils.trace import TraceBuffer, TileTrace
 from aie.utils.verify import assert_pass
 
 
@@ -72,7 +73,7 @@ def vector_reduce_max(
     N_per_channel = in_tensor_size // n_channels
     num_iter = in_tensor_size // (elems_per_core * n_channels)
 
-    enable_trace = 1 if trace_size > 0 else 0
+    trace_enabled = trace_size > 0
 
     in_ty = np.ndarray[(in_tensor_size,), np.dtype[dtype]]
     op_ty = np.ndarray[(elems_per_core,), np.dtype[dtype]]
@@ -168,13 +169,17 @@ def vector_reduce_max(
             [tmp_buffers[i], nextC_buffers[i], reduce_max_vector, compute_max]
         )
 
-        workers.append(Worker(core_body, fn_args=fifo_args, trace=enable_trace))
+        workers.append(
+            Worker(
+                core_body,
+                fn_args=fifo_args,
+                trace=TileTrace() if trace_enabled else None,
+            )
+        )
 
     rt = Runtime()
 
     def sequence(a, c):
-        if trace_size > 0:
-            rt.enable_trace(trace_size)
         for i in range(n_channels):
             in_fifos[i].prod().fill(a, taps[i])
         out_fifos[
@@ -184,7 +189,10 @@ def vector_reduce_max(
     rt.sequence(sequence, [in_ty, out_ty])
 
     return Program(
-        iron.get_current_device(), rt, workers=list(workers)
+        iron.get_current_device(),
+        rt,
+        workers=list(workers),
+        trace=TraceBuffer(trace_size=trace_size) if trace_enabled else None,
     ).resolve_program()
 
 

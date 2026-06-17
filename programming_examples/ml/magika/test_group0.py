@@ -16,7 +16,7 @@ import ml_dtypes
 import numpy as np
 
 import aie.iron as iron
-from aie.utils import DefaultNPURuntime, HostRuntime, NPUKernel, TraceConfig
+from aie.utils import DefaultNPURuntime, HostRuntime, NPUKernel, TraceBuffer
 from aie.utils.hostruntime.argparse import add_runtime_args
 from aie.utils.ml import DataShaper
 
@@ -93,7 +93,7 @@ def main(opts):
 
     trace_config = None
     if enable_trace:
-        trace_config = TraceConfig(
+        trace_config = TraceBuffer(
             trace_size=trace_size,
             trace_file=trace_file,
             ddr_id=-1 if trace_after_output else 4,
