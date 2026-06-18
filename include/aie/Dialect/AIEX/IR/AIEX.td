@@ -111,18 +111,6 @@ class AIEX_Op<string mnemonic, list<Trait> traits = []> :
     Op<AIEX_Dialect, mnemonic, traits>;
 
 
-def AIE_GetTileOp: AIEX_Op<"getTile", []>, Results<(outs Index:$result)> {
-  let arguments = (
-    ins Index:$col,
-        Index:$row
-  );
-
-  let summary = "Get a reference to an AIE tile";
-  let description = [{
-    Return a reference to an AIE tile, given the column and the row of the tile.
-  }];
-  let assemblyFormat = [{ `(` $col `,` $row `)` attr-dict }];
-}
 
 
 def AIE_MulticastOp: AIEX_Op<"multicast", [SingleBlockImplicitTerminator<"AIE::EndOp">]> {
