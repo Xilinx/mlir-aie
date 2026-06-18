@@ -1153,40 +1153,6 @@ LogicalResult ObjectFifoSubviewAccessOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// ObjectFifoRegisterProcessOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult ObjectFifoRegisterProcessOp::verify() {
-  if (getProcessLength() < 1)
-    return emitOpError("process length must be >= 1");
-
-  if (getAcquirePattern().size() != getReleasePattern().size()) {
-    // acquire pattern size = process length (i.e., release pattern will be
-    // duplicated by process length times) OR the other way around
-    if (getAcquirePattern().size() != getProcessLength() &&
-        getProcessLength() != getReleasePattern().size())
-      return emitOpError(
-          "Acquire and Release patterns must be of equal length, or "
-          "longest length of one must be equal to process "
-          "length of the other");
-  }
-
-  return success();
-}
-
-ObjectFifoCreateOp ObjectFifoRegisterProcessOp::getObjectFifo() {
-  Operation *parent = getOperation();
-  while ((parent = parent->getParentOp())) {
-    if (parent->hasTrait<OpTrait::SymbolTable>()) {
-      if (auto *st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
-          isa_and_nonnull<ObjectFifoCreateOp>(st))
-        return dyn_cast<ObjectFifoCreateOp>(st);
-    }
-  }
-  return {};
-}
-
-//===----------------------------------------------------------------------===//
 // CascadeFlowOp
 //===----------------------------------------------------------------------===//
 
