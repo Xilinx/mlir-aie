@@ -45,27 +45,47 @@ from ..helpers.taplib import TensorAccessPattern
 # Comes from _aie
 register_dialect(get_dialect_registry())
 
-# The generated npu_sync builder takes its six parameters as SSA i32 operands.
-# This wrapper accepts plain Python ints (materialized as arith.constant) or
-# existing SSA Values, so call sites can pass compile-time-known values
-# directly. column_num/row_num default to 1.
-_npu_sync_gen = npu_sync
 
+def _to_ssa(v, width: int) -> Value:
+    """Return an SSA signless-integer value of the given width from `v`.
 
-def _as_i32(v):
-    if isinstance(v, Value):
+    The single int-or-SSA coercion path for AIE op operands that take SSA
+    values (e.g. npu.write32's value, npu.dma_memcpy_nd's sizes/strides). A
+    plain Python int is materialized as an arith.constant; an SSA value of a
+    different integer/index width is converted via index_cast/trunci/extui;
+    a value already of the target width passes through. New ops with SSA
+    operands fed by compile-time-or-runtime values should use this rather
+    than hand-rolling per-op coercion.
+    """
+    ity = IntegerType.get_signless(width)
+    if not isinstance(v, Value):
+        return _arith.constant(ity, int(v))
+    vt = v.type
+    if vt == ity:
         return v
-    return _arith.constant(IntegerType.get_signless(32), int(v))
+    if isinstance(vt, IndexType):
+        return _arith.index_cast(ity, v)
+    if isinstance(vt, IntegerType):
+        if vt.width > width:
+            return _arith.trunci(ity, v)
+        return _arith.extui(ity, v)
+    raise TypeError(f"expected index or signless integer, got {vt}")
+
+
+# The generated npu_sync builder takes its six parameters as SSA i32 operands.
+# This wrapper lets call sites pass plain Python ints (or SSA values) and
+# defaults column_num/row_num to 1.
+_npu_sync_gen = npu_sync
 
 
 def npu_sync(column, row, direction, channel, column_num=1, row_num=1):
     return _npu_sync_gen(
-        _as_i32(column),
-        _as_i32(row),
-        _as_i32(direction),
-        _as_i32(channel),
-        _as_i32(column_num),
-        _as_i32(row_num),
+        _to_ssa(column, 32),
+        _to_ssa(row, 32),
+        _to_ssa(direction, 32),
+        _to_ssa(channel, 32),
+        _to_ssa(column_num, 32),
+        _to_ssa(row_num, 32),
     )
 
 
@@ -79,40 +99,6 @@ def dma_wait(*args: ObjectFifoCreateOp | str):
         if isinstance(dma_meta, ObjectFifoCreateOp):
             str_name = dma_meta.sym_name.value
         npu_dma_wait(str_name)
-
-
-def _cast_to_i64(v):
-    """Coerce an SSA Value to i64 for NPU DMA descriptor operands.
-
-    The npu.dma_memcpy_nd op currently declares offsets/sizes/strides as
-    Variadic<I64>. Front-end arithmetic, however, may naturally produce
-    `index` (from scf.for induction vars), `i32` (from runtime_sequence
-    args), or any other signless-integer width. This helper inserts the
-    canonical conversion at the call site so callers can pass in whatever
-    SSA value falls out of their computation without manual casts.
-
-    TODO(future PR): once AIEX.td tightens the operand type to
-    Variadic<I32> (matching the NPU descriptor register width), switch
-    this to cast to i32 instead. AIEDmaToNpu's getAsValue already does
-    width coercion in either direction, so the lowering does not care
-    which width the IR carries.
-    """
-    if not isinstance(v, Value):
-        return v
-    i64 = IntegerType.get_signless(64)
-    vt = v.type
-    if vt == i64:
-        return v
-    if isinstance(vt, IndexType):
-        return _arith.index_cast(i64, v)
-    if isinstance(vt, IntegerType):
-        if vt.width > 64:
-            return _arith.trunci(i64, v)
-        return _arith.extui(i64, v)
-    raise TypeError(
-        f"npu_dma_memcpy_nd offsets/sizes/strides must be index or signless "
-        f"integer, got {vt}"
-    )
 
 
 class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
@@ -189,9 +175,9 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
         # runtime_sequence arg, iN from a custom path), normalise it to i64
         # here so callers do not have to insert arith.index_cast / trunci /
         # extui themselves.
-        dynamic_offsets = [_cast_to_i64(v) for v in dynamic_offsets]
-        dynamic_sizes = [_cast_to_i64(v) for v in dynamic_sizes]
-        dynamic_strides = [_cast_to_i64(v) for v in dynamic_strides]
+        dynamic_offsets = [_to_ssa(v, 64) for v in dynamic_offsets]
+        dynamic_sizes = [_to_ssa(v, 64) for v in dynamic_sizes]
+        dynamic_strides = [_to_ssa(v, 64) for v in dynamic_strides]
         if isinstance(metadata, ObjectFifoCreateOp):
             metadata = metadata.sym_name.value
         super().__init__(
@@ -228,8 +214,8 @@ def npu_write32(
     address, value, *, buffer=None, column=None, row=None, loc=None, ip=None
 ):
     return _npu_write32_gen(
-        _as_i32(address),
-        _as_i32(value),
+        _to_ssa(address, 32),
+        _to_ssa(value, 32),
         buffer=buffer,
         column=column,
         row=row,
@@ -242,9 +228,9 @@ def npu_maskwrite32(
     address, value, mask, *, buffer=None, column=None, row=None, loc=None, ip=None
 ):
     return _npu_maskwrite32_gen(
-        _as_i32(address),
-        _as_i32(value),
-        _as_i32(mask),
+        _to_ssa(address, 32),
+        _to_ssa(value, 32),
+        _to_ssa(mask, 32),
         buffer=buffer,
         column=column,
         row=row,
@@ -255,7 +241,7 @@ def npu_maskwrite32(
 
 def npu_address_patch(addr, arg_idx, arg_plus, *, loc=None, ip=None):
     return _npu_address_patch_gen(
-        addr=addr, arg_idx=arg_idx, arg_plus=_as_i32(arg_plus), loc=loc, ip=ip
+        addr=addr, arg_idx=arg_idx, arg_plus=_to_ssa(arg_plus, 32), loc=loc, ip=ip
     )
 
 
@@ -311,11 +297,9 @@ def dma_bd(
     dimensions=None,
     **kwargs,
 ):
-    i64 = IntegerType.get_signless(64)
-
     # offset routing
     if isinstance(offset, Value):
-        dyn_offset = _cast_to_i64(offset)
+        dyn_offset = _to_ssa(offset, 64)
         static_offset = 0
     else:
         dyn_offset = None
@@ -323,7 +307,7 @@ def dma_bd(
 
     # len routing
     if isinstance(len, Value):
-        dyn_len = _cast_to_i64(len)
+        dyn_len = _to_ssa(len, 64)
         static_len = None
     else:
         dyn_len = None
@@ -394,9 +378,11 @@ def dma_bd(
 
     def _coerce(v):
         if isinstance(v, Value):
-            return _cast_to_i64(v)
+            return _to_ssa(v, 64)
+        # Hoist the materialized constant out of the BD block (the lowering
+        # pass rejects arith.constant there).
         with hoist_ip:
-            return _arith.constant(i64, int(v))
+            return _to_ssa(v, 64)
 
     dyn_sizes = [_coerce(s) for s, _ in pairs]
     dyn_strides = [_coerce(t) for _, t in pairs]

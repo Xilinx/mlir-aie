@@ -34,14 +34,15 @@ def dma_bd(
     loc=None,
     ip=None,
 ):
-    """Backward-compatible wrapper for the auto-generated `aie.dma_bd` op.
+    """Builder for the `aie.dma_bd` op that defaults its variadic SSA operands.
 
-    The TableGen op gained `Variadic<I64>` `dyn_sizes` / `dyn_strides`
-    operands, which the auto-generated builder exposes as required positional
-    arguments. To keep existing call-sites working (e.g. `dma_bd(buf,
-    offset=0, len=N, dimensions=[...])`) we default them to empty lists
-    here. SSA-driven dynamism is normally requested through the higher-level
-    wrapper in `aie.dialects.aiex`.
+    The op's `dyn_sizes` / `dyn_strides` are `Variadic<I64>`, which the
+    generated builder exposes as required positional arguments (MLIR's Python
+    op-binding generator emits no default for variadic operands). Defaulting
+    them to empty lists here keeps the common static call form usable —
+    `dma_bd(buf)` / `dma_bd(buf, offset=0, len=N, dimensions=[...])` — without
+    every static call site passing `[], []` positionally. SSA-driven dynamism
+    is requested through the higher-level builder in `aie.dialects.aiex`.
     """
     return _dma_bd_raw(
         buffer,
