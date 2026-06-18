@@ -139,6 +139,11 @@ foreach(target ${AIE_RUNTIME_TARGETS})
     # programming examples rely on (cxxopts.hpp, test_utils.h,
     # xrt_test_wrapper.h) must still be installed so host-side test
     # executables can compile against the install tree.
+    #
+    # Skip only the non-x86_64 Windows targets (e.g. aarch64): those are
+    # cross-compile targets that build no host-side test executables on
+    # Windows, so the host test headers would go unused. Every other
+    # combination (any Linux target, or Windows/x86_64) installs them.
     if (NOT WIN32 OR ${target} STREQUAL "x86_64")
       install(FILES
           test_lib/cxxopts.hpp

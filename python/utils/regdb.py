@@ -545,53 +545,29 @@ class MLIRModuleAnnotator:
             - value: The value being written (if applicable)
             - mask: The mask value (if applicable, for maskwrite32)
         """
-        address = None
-        row = None
-        col = None
-        value = None
-        mask = None
 
-        # npu.write32 / npu.maskwrite32 take address/value/mask as SSA operands
-        # (an arith.constant for compile-time-known values); other ops keep them
-        # as attributes. Read whichever form is present.
-        def const_of(ssa_value):
-            defining = ssa_value.owner
-            owner_op = getattr(defining, "opview", defining)
-            if hasattr(owner_op, "value"):
-                attr = owner_op.value
-                if hasattr(attr, "value"):
-                    return int(attr.value)
-            return None
+        # A field may be an IntegerAttr (an attribute operand) or an SSA Value
+        # (npu.write32 / npu.maskwrite32 take address/value/mask as operands,
+        # an arith.constant for compile-time-known values). An IntegerAttr has
+        # `.value`; an SSA Value does not, so resolve it via its defining
+        # constant. Returns None for a non-constant SSA value.
+        def read_int(field):
+            if field is None:
+                return None
+            if hasattr(field, "value"):
+                return int(field.value)
+            defining = getattr(field.owner, "opview", field.owner)
+            attr = getattr(defining, "value", None)
+            return int(attr.value) if hasattr(attr, "value") else None
 
-        # Get address - SSA operand on write32/maskwrite32, else 'address'/'addr'
-        # attribute on the other ops.
-        if hasattr(op, "address") and op.address is not None:
-            if hasattr(op.address, "value"):
-                address = int(op.address.value)
-            else:
-                address = const_of(op.address)
-        elif hasattr(op, "addr") and op.addr is not None:
-            address = int(op.addr.value)
-
-        # Get row and column if present (always attributes)
-        if hasattr(op, "row") and op.row is not None:
-            row = int(op.row.value)
-        if hasattr(op, "column") and op.column is not None:
-            col = int(op.column.value)
-
-        # Get value if present (SSA operand on write32/maskwrite32)
-        if hasattr(op, "value") and op.value is not None:
-            if hasattr(op.value, "value"):
-                value = int(op.value.value)
-            else:
-                value = const_of(op.value)
-
-        # Get mask if present (SSA operand on maskwrite32)
-        if hasattr(op, "mask") and op.mask is not None:
-            if hasattr(op.mask, "value"):
-                mask = int(op.mask.value)
-            else:
-                mask = const_of(op.mask)
+        addr_field = getattr(op, "address", None)
+        if addr_field is None:
+            addr_field = getattr(op, "addr", None)
+        address = read_int(addr_field)
+        row = read_int(getattr(op, "row", None))
+        col = read_int(getattr(op, "column", None))
+        value = read_int(getattr(op, "value", None))
+        mask = read_int(getattr(op, "mask", None))
 
         # If row/col not present, extract from address
         if address is not None and row is None and col is None:
