@@ -23,7 +23,6 @@ namespace xilinx::AIEX {
 
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIECreateCoresPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIECreateLocksPass();
-std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIEHerdRoutingPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIELowerMemcpyPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIELowerMulticastPass();

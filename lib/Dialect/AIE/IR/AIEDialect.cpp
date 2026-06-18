@@ -1720,34 +1720,6 @@ TileOp TileOp::getOrCreate(mlir::OpBuilder builder, DeviceOp device, int col,
 }
 
 //===----------------------------------------------------------------------===//
-// ShimSwitchboxOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult ShimSwitchboxOp::verify() {
-  Region &body = getConnections();
-  DenseSet<Port> destset;
-  if (body.empty())
-    return emitOpError("should have non-empty body");
-
-  for (auto &ops : body.front()) {
-    if (auto connectOp = dyn_cast<ConnectOp>(ops)) {
-      Port dest = {connectOp.getDestBundle(), connectOp.destIndex()};
-      if (destset.count(dest))
-        return connectOp.emitOpError("targets same destination ")
-               << stringifyWireBundle(dest.bundle) << ": " << dest.channel
-               << " as another connect operation";
-      destset.insert(dest);
-    } else if (isa<EndOp>(ops)) {
-      // continue;
-    } else {
-      return ops.emitOpError("cannot be contained in a Switchbox op");
-    }
-  }
-
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // ShimMuxOp
 //===----------------------------------------------------------------------===//
 
