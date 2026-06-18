@@ -18,9 +18,7 @@ user-visible object. Nothing here is part of the public API.
 
 from __future__ import annotations
 
-import bisect
 import itertools
-from collections import defaultdict, deque
 
 from ... import ir  # type: ignore
 from ...dialects.aiex import runtime_sequence
@@ -31,32 +29,6 @@ from .data import RuntimeData
 
 class IronRuntimeError(Exception):
     """Raised while emitting a runtime sequence on an unrecoverable state."""
-
-
-class _RuntimeBdIdAllocator:
-    """Simple runtime-sequence BD allocator for direct npu.dma_memcpy_nd emission."""
-
-    def __init__(self, max_bd_ids_per_key: int = 16):
-        self._max_bd_ids_per_key = max_bd_ids_per_key
-        self._next_id = defaultdict(int)
-        self._free_ids = defaultdict(deque)
-
-    def allocate(self, key) -> int:
-        if self._free_ids[key]:
-            return self._free_ids[key].popleft()
-        bd_id = self._next_id[key]
-        if bd_id >= self._max_bd_ids_per_key:
-            raise ValueError(
-                f"Runtime BD allocator exhausted available IDs for key {key}."
-            )
-        self._next_id[key] += 1
-        return bd_id
-
-    def free(self, key, bd_id: int) -> None:
-        free_ids = self._free_ids[key]
-        if bd_id in free_ids:
-            return
-        bisect.insort(free_ids, bd_id)
 
 
 def discover_fifos(workers) -> set:
@@ -103,14 +75,13 @@ class ActiveSequence:
     After the body, :meth:`resolve_touched_fifos` creates the ``aie.objectfifo``
     ops for fifos the runtime touched, once all their endpoints are known.
 
-    Responsibilities: BD-id allocation, the implicit default :class:`TaskGroup`,
+    Responsibilities: the implicit default :class:`TaskGroup`,
     tracking runtime-touched fifos, and end-of-body finalization.
     """
 
     def __init__(self, device, device_ip: ir.InsertionPoint):
         self._device = device
         self._device_ip = device_ip
-        self._bd_id_allocator = _RuntimeBdIdAllocator()
         self._task_group_index = itertools.count()
         self._task_groups = []
         self._default_group = None  # created lazily on first ungrouped transfer
@@ -197,10 +168,6 @@ class ActiveSequence:
     def register_task_group(self, tg) -> None:
         self._task_groups.append(tg)
 
-    def reclaim_bd(self, task) -> None:
-        if task.uses_direct_npu_dma():
-            self._bd_id_allocator.free(task.bd_allocation_key, task.bd_id)
-
     # -- transfer emission (called by ObjectFifoHandle.fill/drain) -------------
 
     def record_touched_fifo(self, handle: ObjectFifoHandle) -> None:
@@ -223,10 +190,7 @@ class ActiveSequence:
 
                 self._default_group = TaskGroup()
             group = self._default_group
-        if task.uses_direct_npu_dma():
-            task.resolve(bd_id=self._bd_id_allocator.allocate(task.bd_allocation_key))
-        else:
-            task.resolve()
+        task.resolve()
         group._add(task)
 
     # -- finalization ---------------------------------------------------------

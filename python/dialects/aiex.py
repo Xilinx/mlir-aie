@@ -465,15 +465,17 @@ def shim_dma_bd(
     if strides is None:
         strides = [0] * 3 + [1]
 
-    # If any of sizes contains SSA Values, we cannot statically compute the
-    # transfer length via np.prod; the caller must supply transfer_len in
-    # that case (it may itself be an SSA Value).
+    # Transfer length is the product of the inner three size dims. When all are
+    # static we fold to a Python int; when any is an SSA Value we build the
+    # product as an i64 arith.muli chain so the runtime value flows through.
     if transfer_len is None:
-        if any(isinstance(s, Value) for s in sizes):
-            raise ValueError(
-                "shim_dma_bd: transfer_len must be supplied when sizes contains SSA Values"
-            )
-        transfer_len = np.prod(sizes[-3:])
+        inner = sizes[-3:]
+        if any(isinstance(s, Value) for s in inner):
+            transfer_len = _to_ssa(inner[0], 64)
+            for s in inner[1:]:
+                transfer_len = _arith.muli(transfer_len, _to_ssa(s, 64))
+        else:
+            transfer_len = np.prod(inner)
 
     # Pass sizes/strides through as parallel lists so the dma_bd wrapper can
     # detect SSA Values and route them to dyn_sizes/dyn_strides as needed.

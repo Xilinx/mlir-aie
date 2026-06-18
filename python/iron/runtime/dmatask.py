@@ -8,11 +8,9 @@
 """DMATask: a RuntimeTask that generates a shim DMA transfer operation."""
 
 from ... import ir  # type: ignore
-from ...ir import Value  # type: ignore
 
-from ...dialects.aiex import dma_free_task, dma_start_task, dma_wait, npu_dma_memcpy_nd
+from ...dialects.aiex import dma_free_task, dma_start_task
 from ...dialects.aiex import shim_dma_single_bd_task
-from ...dialects.aiex import _to_ssa
 from ..dataflow import ObjectFifoHandle
 from .data import RuntimeData
 from ...helpers.taplib import TensorAccessPattern
@@ -59,7 +57,6 @@ class DMATask(RuntimeTask):
         self._offset = offset
         self._sizes = sizes
         self._strides = strides
-        self._bd_id = None
         if tap and not (offset is None and sizes is None and strides is None):
             raise ValueError(
                 "DMATask can take either a TensorAccessPattern OR "
@@ -83,107 +80,22 @@ class DMATask(RuntimeTask):
             raise ValueError("Cannot get task before it is created (during resolve())")
         return self._task
 
-    @property
-    def bd_id(self) -> int:
-        if self._bd_id is None:
-            raise ValueError("Cannot get bd_id before it is assigned.")
-        return self._bd_id
-
-    @property
-    def bd_allocation_key(self):
-        tile = self._object_fifo.endpoint.tile
-        if tile.col is not None and tile.row is not None:
-            return (tile.col, tile.row, tile.tile_type)
-        return ("unplaced", tile.tile_type)
-
-    def uses_direct_npu_dma(self) -> bool:
-        return any(
-            self._contains_runtime_values(v)
-            for v in (self._offset, self._sizes, self._strides)
-        )
-
     def emit_wait(self) -> None:
-        if self.uses_direct_npu_dma():
-            dma_wait(self._object_fifo.name)
-            return
         from ...dialects.aiex import dma_await_task
 
         dma_await_task(self._task)
 
     def emit_free(self) -> None:
-        if self.uses_direct_npu_dma():
-            # Direct NPU DMA tasks do not use dma_free_task; synchronization
-            # is handled by dma_wait in emit_wait().
-            return
         dma_free_task(self._task)
-
-    @staticmethod
-    def _contains_runtime_values(value) -> bool:
-        if isinstance(value, Value):
-            return True
-        if isinstance(value, (list, tuple)):
-            return any(DMATask._contains_runtime_values(v) for v in value)
-        return False
-
-    @staticmethod
-    def _resolve_runtime_values(value):
-        if isinstance(value, Value):
-            return DMATask._to_i64_value(value)
-        if isinstance(value, list):
-            return [DMATask._resolve_runtime_values(v) for v in value]
-        if isinstance(value, tuple):
-            return tuple(DMATask._resolve_runtime_values(v) for v in value)
-        return value
-
-    @staticmethod
-    def _to_i64_value(value: Value) -> Value:
-        # Delegate to the shared coercion in dialects.aiex so index / i32 /
-        # wider-than-64 inputs are all handled consistently (a plain extui
-        # here would reject index and mis-handle >64-bit values).
-        return _to_ssa(value, 64)
 
     def resolve(
         self,
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
-        bd_id: int | None = None,
     ) -> None:
-        if self.uses_direct_npu_dma():
-            if bd_id is None:
-                raise ValueError("Direct NPU DMA lowering requires an assigned bd_id.")
-            self._bd_id = bd_id
-
-            if self._tap is not None:
-                self._task = npu_dma_memcpy_nd(
-                    self._object_fifo.name,
-                    bd_id,
-                    self._rt_data.op,
-                    tap=self._tap,
-                    issue_token=self._wait,
-                )
-                return
-
-            sizes = self._resolve_runtime_values(self._sizes)
-            if sizes is None:
-                raise ValueError(
-                    "Direct NPU DMA lowering requires explicit sizes or a tap."
-                )
-            strides = self._resolve_runtime_values(self._strides)
-            offset = self._resolve_runtime_values(self._offset)
-            if offset is None:
-                offset = 0
-            offsets = [0, 0, 0, offset]
-            self._task = npu_dma_memcpy_nd(
-                self._object_fifo.name,
-                bd_id,
-                self._rt_data.op,
-                offsets=offsets,
-                sizes=sizes,
-                strides=strides,
-                issue_token=self._wait,
-            )
-            return
-
+        # One lowering for both static and runtime-valued transfers:
+        # shim_dma_single_bd_task accepts MixedValues sizes/strides/offset and
+        # routes any SSA value to the BD's dyn_* operands.
         self._task = shim_dma_single_bd_task(
             self._object_fifo.name,
             self._rt_data.op,

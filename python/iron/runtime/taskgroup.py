@@ -87,17 +87,14 @@ class TaskGroup:
         if self._finished:
             return
         self._finished = True
-        seq = active_sequence()
         # Await first, then free — matching the completion ordering the runtime
         # has always emitted (waited tasks produce the tokens that gate reuse).
         wait_tasks = [t for t in self._tasks if t.will_wait()]
         free_tasks = [t for t in self._tasks if not t.will_wait()]
         for task in wait_tasks:
             task.emit_wait()
-            seq.reclaim_bd(task)
         for task in free_tasks:
             task.emit_free()
-            seq.reclaim_bd(task)
 
     def __str__(self):
         return f"TaskGroup({self._group_id})"
