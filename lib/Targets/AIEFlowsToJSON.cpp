@@ -14,6 +14,7 @@
  */
 
 #include "aie/Targets/AIETargets.h"
+#include "aie/Targets/AIEVisualShared.h"
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 
@@ -29,22 +30,6 @@ using namespace xilinx;
 using namespace xilinx::AIE;
 
 namespace xilinx::AIE {
-
-// returns coordinates in the direction indicated by bundle
-TileID getNextCoords(int col, int row, WireBundle bundle) {
-  switch (bundle) {
-  case WireBundle::North:
-    return {col, row + 1};
-  case WireBundle::South:
-    return {col, row - 1};
-  case WireBundle::East:
-    return {col + 1, row};
-  case WireBundle::West:
-    return {col - 1, row};
-  default:
-    return {col, row};
-  }
-}
 
 void translateSwitchboxes(DeviceOp targetOp, raw_ostream &output) {
   // count flow sources and destinations
