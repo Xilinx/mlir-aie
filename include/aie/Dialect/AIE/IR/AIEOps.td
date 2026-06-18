@@ -287,30 +287,6 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [
   }];
 }
 
-def AIE_ShimSwitchboxOp: AIE_Op<"shim_switchbox", [
-    SingleBlockImplicitTerminator<"EndOp">,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>
-  ]>, Results<(outs Index)> {
-  let arguments = (ins AIEI32Attr:$col);
-  let summary = "Declare a switch in the PL shim";
-  let description = [{
-
-    A switch in the Shim.
-    AXI-Stream Master Ports AXI-Stream Slave Ports
-    6 Ports to North (Core Tile) 4 Ports from North (Core Tile)
-    4 Ports to West 4 Ports from West
-    4 Ports to East 4 Ports from East
-    6 Ports to South (DMA, NoC I/F, PL I/F) 8 Ports from South (DMA, NoC I/F, PL I/F)
-    2 Ports to FIFOs 2 Ports from FIFOs
-    1 Port for control packet for Shim register access
-    1 Port for response to access for Shim registers
-    1 Port for trace packet from Shim
-
-  }];
-  let regions = (region AnyRegion:$connections);
-  let assemblyFormat = [{ `(` $col `)` regions attr-dict }];
-  let hasVerifier = 1;
-}
 
 def AIE_ShimMuxOp: AIE_Op<"shim_mux", [
     Interconnect, IsShimTile,
