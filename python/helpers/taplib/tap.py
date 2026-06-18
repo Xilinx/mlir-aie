@@ -6,6 +6,8 @@ import itertools
 from typing import Sequence, Generator
 
 from .utils import (
+    as_static_int,
+    is_dynamic,
     validate_and_clean_sizes_strides,
     validate_offset,
     validate_tensor_dims,
@@ -70,8 +72,9 @@ class TensorAccessPattern:
         Returns:
             Sequence[int]: Transformation sizes
         """
-        # Copy to prevent callers from mutating self
-        return deepcopy(self._sizes)
+        # Shallow copy to prevent callers from mutating self; entries may be
+        # opaque SSA values (runtime dims), which are not deep-copyable.
+        return list(self._sizes)
 
     @property
     def strides(self) -> Sequence[int]:
@@ -81,8 +84,9 @@ class TensorAccessPattern:
         Returns:
             Sequence[int]: Trsnformation strides
         """
-        # Copy to prevent callers from mutating self
-        return deepcopy(self._strides)
+        # Shallow copy to prevent callers from mutating self; entries may be
+        # opaque SSA values (runtime dims), which are not deep-copyable.
+        return list(self._strides)
 
     @property
     def transformation_dims(self) -> Sequence[tuple[int, int]]:
@@ -93,6 +97,28 @@ class TensorAccessPattern:
             Sequence[tuple[int, int]]: Transformation dimensions
         """
         return list(zip(self._sizes, self._strides))
+
+    @property
+    def is_dynamic(self) -> bool:
+        """Whether any offset/size/stride is a runtime (non-static) value.
+
+        A dynamic pattern describes a transfer whose geometry is only known at
+        runtime; the numpy-based access-enumeration / visualization methods
+        cannot be computed for it.
+        """
+        return (
+            is_dynamic(self._offset)
+            or any(is_dynamic(s) for s in self._sizes)
+            or any(is_dynamic(s) for s in self._strides)
+        )
+
+    def _require_static(self, what: str) -> None:
+        if self.is_dynamic:
+            raise ValueError(
+                f"Cannot {what}: this TensorAccessPattern has runtime-valued "
+                "dims (offset/sizes/strides). Access enumeration and "
+                "visualization are only available for statically-sized patterns."
+            )
 
     def accesses(self) -> tuple[np.ndarray, np.ndarray]:
         """
@@ -147,6 +173,8 @@ class TensorAccessPattern:
         if not calc_order and not calc_count:
             raise ValueError("Must select calc_order, calc_count, or both")
 
+        self._require_static("enumerate accesses")
+
         # Initialize access order and count maps; we create them as flat arrays
         total_elems = np.prod(self._tensor_dims)
         access_order_tensor = None
@@ -184,6 +212,7 @@ class TensorAccessPattern:
         Yields:
             int: The next access index
         """
+        self._require_static("enumerate accesses")
         total_elems = np.prod(self._tensor_dims)
 
         # Use itertools.product to collapse len(sizes) nested forloop into one forloop

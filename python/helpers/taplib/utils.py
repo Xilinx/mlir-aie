@@ -3,6 +3,39 @@ import numpy as np
 from typing import Sequence
 
 
+def as_static_int(value):
+    """Resolve a size/stride/offset to a Python int when it is statically known.
+
+    A TensorAccessPattern field may be a Python int, a compile-time-constant SSA
+    value (an ``arith.constant``, e.g. from folded runtime arithmetic), or a
+    genuinely runtime SSA value (e.g. a runtime-sequence scalar argument). The
+    first two are statically known and returned as an ``int`` so they can be
+    validated and folded; the last cannot be known at trace-construction time
+    and returns ``None`` (a valid *dynamic* dim, like memref's dynamic sizes).
+
+    Mirrors MLIR's own static-or-dynamic handling (see mlir.dialects.memref's
+    ``_is_constant_int_like`` / subview lowering).
+    """
+    if isinstance(value, (int, np.integer)):
+        return int(value)
+    if isinstance(value, bool):
+        return int(value)
+    # Lazy import: taplib is importable without MLIR loaded; only reach for the
+    # dialect helpers when an SSA value actually shows up in a pattern.
+    try:
+        from aie.dialects.memref import _is_constant_int_like
+    except Exception:
+        return None
+    if _is_constant_int_like(value):
+        return int(value.owner.opview.literal_value)
+    return None
+
+
+def is_dynamic(value) -> bool:
+    """Whether a size/stride/offset is a runtime value (not statically known)."""
+    return as_static_int(value) is None
+
+
 def validate_and_clean_sizes_strides(
     sizes: Sequence[int] | None,
     strides: Sequence[int] | None,
@@ -65,26 +98,33 @@ def validate_and_clean_sizes_strides(
     else:
         num_dims = len(sizes)
 
-    # Validate sizes/strides values
+    # Validate sizes/strides values. Statically-known entries (Python ints or
+    # constant SSA values) are checked fully; genuinely runtime values are valid
+    # dynamic dims and cannot be range-checked at trace-construction time (the
+    # op verifier defers those checks to runtime). Shallow-copy: elements are
+    # immutable ints or opaque SSA handles, so no deepcopy (Values are not
+    # deep-copyable).
     if sizes:
-        sizes = deepcopy(sizes)
+        sizes = list(sizes)
         for s in sizes:
-            if s < 1:
+            lit = as_static_int(s)
+            if lit is not None and lit < 1:
                 raise ValueError(f"All sizes must be >= 1, but got {sizes}")
     if strides:
-        strides = deepcopy(strides)
+        strides = list(strides)
         for s in strides:
-            if s < 0:
+            lit = as_static_int(s)
+            if lit is not None and lit < 0:
                 raise ValueError(f"All strides must be >= 0, but got {strides}")
 
-    # Clean (set size=1, stride=0 for as many dims as possible)
+    # Clean (set size=1, stride=0 for as many dims as possible). Only fold a
+    # dimension whose size is statically known to be exactly 1; a dynamic size
+    # might be >1 at runtime, so its stride must be preserved.
     if sizes and strides:
+        strides = list(strides)
         # Leave last dimension strides as whatever it happens to be
         for i in range(num_dims - 1):
-            if sizes[i] == 1:
-                if isinstance(strides, tuple):
-                    # Tuple is immutable, so convert if necessary
-                    strides = list(strides)
+            if as_static_int(sizes[i]) == 1:
                 strides[i] = 0
             else:
                 break
@@ -151,10 +191,14 @@ def validate_offset(offset: int, tensor_dims: Sequence[int] | None) -> int:
     Returns:
         int: The validated offset.
     """
-    if offset < 0:
-        raise ValueError(f"Offset must be >= 0 (offset={offset})")
-    if tensor_dims:
-        if offset >= np.prod(tensor_dims):
+    # A runtime offset (e.g. a row base derived from a runtime-sequence arg)
+    # cannot be range-checked at trace-construction time; validate only when the
+    # offset is statically known.
+    lit = as_static_int(offset)
+    if lit is not None:
+        if lit < 0:
+            raise ValueError(f"Offset must be >= 0 (offset={offset})")
+        if tensor_dims and lit >= np.prod(tensor_dims):
             raise ValueError(
                 f"Offset too large: {offset}. Max value allowed for tensor: {np.prod(tensor_dims)}"
             )
