@@ -19,7 +19,7 @@ from enum import IntEnum
 from types import SimpleNamespace
 import typing
 
-from aie.dialects._aie_enum_gen import (
+from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     CoreEventAIE,
     MemEventAIE,
     ShimTileEventAIE,
@@ -95,12 +95,14 @@ PortEventCodes = _get_port_events(CoreEvent)
 MemTilePortEventCodes = _get_port_events(MemTileEvent)
 ShimTilePortEventCodes = _get_port_events(ShimTileEvent)
 
+_AnyEvent = typing.Union[
+    CoreEvent, MemEvent, ShimTileEvent, MemTileEvent
+]  # pyright: ignore[reportInvalidTypeForm]
+
 
 class GenericEvent:
-    def __init__(
-        self, code: typing.Union[CoreEvent, MemEvent, ShimTileEvent, MemTileEvent]
-    ):
-        self.code: typing.Union[CoreEvent, MemEvent, ShimTileEvent, MemTileEvent] = code
+    def __init__(self, code: _AnyEvent):  # pyright: ignore[reportInvalidTypeForm]
+        self.code: _AnyEvent = code  # pyright: ignore[reportInvalidTypeForm]
 
     def get_register_writes(self):
         """

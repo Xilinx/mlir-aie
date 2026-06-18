@@ -2,7 +2,7 @@
 from collections import defaultdict
 import numpy as np
 from typing import Any, Sequence, get_args, get_origin
-from aie._mlir_libs import (
+from aie._mlir_libs import (  # pyright: ignore[reportAttributeAccessIssue]
     _aie as CustomTypes,
 )
 

@@ -8,11 +8,11 @@ import re
 
 logger = logging.getLogger(__name__)
 
-from aie.extras.util import find_ops
+from aie.extras.util import find_ops  # pyright: ignore[reportMissingImports]
 from aie.ir import (
-    Context,
-    Module,
-    Location,
+    Context,  # pyright: ignore[reportAttributeAccessIssue]
+    Module,  # pyright: ignore[reportAttributeAccessIssue]
+    Location,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from aie.utils.trace.utils import (
     parity,

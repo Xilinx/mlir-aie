@@ -17,7 +17,9 @@ import aie.compiler.aiecc.main as aiecc
 import aie.utils.config as config
 
 if TYPE_CHECKING:
-    from aie.ir import Module  # pyright: ignore[reportMissingImports]
+    from aie.ir import (
+        Module,  # pyright: ignore[reportAttributeAccessIssue]
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +28,9 @@ def resolve_target_arch(device=None) -> str:
     """Return ``'aie2'`` or ``'aie2p'`` for the given device, or ``'aie2'`` if device is None."""
     if device is None:
         return "aie2"
-    from aie.dialects._aie_enum_gen import AIEArch
+    from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
+        AIEArch,
+    )
     from aie.dialects.aie import (
         get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
     )
