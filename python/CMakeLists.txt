@@ -163,12 +163,6 @@ if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
   )
 endif()
 
-declare_mlir_python_sources(AIEPythonSources.AIERT
-  ADD_TO_PARENT AIEPythonSources
-  SOURCES
-    aiert.py
-)
-
 ################################################################################
 # Extensions
 ################################################################################
