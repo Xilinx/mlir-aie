@@ -1,0 +1,199 @@
+//===- test_runlist.cpp ----------------------------------------*- C++ -*-===//
+//
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2023-2026, Advanced Micro Devices, Inc.
+//
+//===----------------------------------------------------------------------===//
+
+#include "cxxopts.hpp"
+#include <cstdint>
+#include <fstream>
+#include <iostream>
+#include <sstream>
+#include <string>
+#include <vector>
+
+#include "xrt/experimental/xrt_elf.h"
+#include "xrt/experimental/xrt_ext.h"
+#include "xrt/experimental/xrt_kernel.h" // for xrt::runlist
+#include "xrt/experimental/xrt_module.h"
+
+#include "xrt/xrt_aie.h"
+#include "xrt/xrt_bo.h"
+#include "xrt/xrt_device.h"
+#include "xrt/xrt_kernel.h"
+
+#include "test_utils.h"
+
+int main(int argc, const char *argv[]) {
+  // ------------------------------------------------------
+  // Parse program arguments
+  // ------------------------------------------------------
+  cxxopts::Options options("Vector Scalar Add Runlist Test");
+  cxxopts::ParseResult vm;
+  test_utils::add_default_options(options);
+
+  test_utils::parse_options(argc, argv, options, vm);
+  int verbosity = vm["verbosity"].as<int>();
+  int do_verify = vm["verify"].as<bool>();
+  int n_iterations = vm["iters"].as<int>();
+  int n_warmup_iterations = vm["warmup"].as<int>();
+  int trace_size = vm["trace_sz"].as<int>();
+
+  constexpr int IN_SIZE = 1024;
+  constexpr int OUT_SIZE = 1024;
+
+  // ------------------------------------------------------
+  // Get device, load the xclbin & kernel and register them
+  // ------------------------------------------------------
+  // Get a device handle
+  unsigned int device_index = 0;
+  auto device = xrt::device(device_index);
+
+  // Load the xclbin
+  if (verbosity >= 1)
+    std::cout << "Loading xclbin: " << vm["xclbin"].as<std::string>() << "\n";
+  auto xclbin = xrt::xclbin(vm["xclbin"].as<std::string>());
+
+  // Load the kernel
+  if (verbosity >= 1)
+    std::cout << "Kernel opcode: " << vm["kernel"].as<std::string>() << "\n";
+  std::string Node = vm["kernel"].as<std::string>();
+
+  // Get the kernel from the xclbin
+  auto xkernels = xclbin.get_kernels();
+  auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
+                               [Node, verbosity](xrt::xclbin::kernel &k) {
+                                 auto name = k.get_name();
+                                 if (verbosity >= 1) {
+                                   std::cout << "Name: " << name << std::endl;
+                                 }
+                                 return name.rfind(Node, 0) == 0;
+                               });
+  auto kernelName = xkernel.get_name();
+
+  // Register xclbin
+  if (verbosity >= 1)
+    std::cout << "Registering xclbin: " << vm["xclbin"].as<std::string>()
+              << "\n";
+  device.register_xclbin(xclbin);
+
+  xrt::elf elf(vm["instr"].as<std::string>());
+  xrt::module mod{elf};
+
+  // Get a hardware context
+  if (verbosity >= 1)
+    std::cout << "Getting hardware context.\n";
+  xrt::hw_context context(device, xclbin.get_uuid());
+
+  // Get a kernel handle
+  if (verbosity >= 1)
+    std::cout << "Getting handle to kernel:" << kernelName << "\n";
+  auto kernel = xrt::ext::kernel(context, mod, kernelName);
+
+  // ------------------------------------------------------
+  // Initialize input/ output buffer sizes and sync them
+  // ------------------------------------------------------
+
+  xrt::bo bo_inA_0 = xrt::ext::bo{device, IN_SIZE * sizeof(int32_t)};
+  xrt::bo bo_out_0 = xrt::ext::bo{device, OUT_SIZE * sizeof(int32_t)};
+  xrt::bo bo_out_1 = xrt::ext::bo{device, OUT_SIZE * sizeof(int32_t)};
+
+  if (verbosity >= 1)
+    std::cout << "Writing data into buffer objects.\n";
+
+  // Initializing the input vectors
+  std::vector<uint32_t> srcVecA;
+  for (int i = 0; i < IN_SIZE; i++)
+    srcVecA.push_back(i + 1);
+
+  // Getting handles to the input data BOs and copying input data to them
+  uint32_t *bufInA_0 = bo_inA_0.map<uint32_t *>();
+  memcpy(bufInA_0, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
+
+  // Synchronizing BOs
+  bo_inA_0.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+
+  unsigned int opcode = 3;
+
+  // Creating a runlist to contain two separate runs
+  xrt::runlist runlist = xrt::runlist(context);
+
+  // Creating the first run
+  xrt::run run0 = xrt::run(kernel);
+  run0.set_arg(0, opcode);
+  run0.set_arg(1, 0);
+  run0.set_arg(2, 0);
+  run0.set_arg(3, bo_inA_0);
+  run0.set_arg(4, bo_out_0);
+
+  // Creating the second run
+  xrt::run run1 = xrt::run(kernel);
+  run1.set_arg(0, opcode);
+  run1.set_arg(1, 0);
+  run1.set_arg(2, 0);
+  run1.set_arg(3, bo_out_0);
+  run1.set_arg(4, bo_out_1);
+
+  // Executing and waiting on the runlist
+  runlist.add(run0);
+  runlist.add(run1);
+  runlist.execute();
+  runlist.wait();
+
+  // Synchronizing the output BOs
+  bo_out_0.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+  bo_out_1.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+
+  uint32_t *bufOut_0 = bo_out_0.map<uint32_t *>();
+  uint32_t *bufOut_1 = bo_out_1.map<uint32_t *>();
+
+  int errors = 0;
+
+  std::cout << "Checking run 0" << std::endl;
+  for (uint32_t i = 0; i < OUT_SIZE; i++) {
+    uint32_t ref = i + 2;
+    if (*(bufOut_0 + i) != ref) {
+      if (errors < 100) {
+        std::cout << "Error in output " << *(bufOut_0 + i) << " != " << ref
+                  << std::endl;
+      } else if (errors == 100) {
+        std::cout << "..." << std::endl;
+        std::cout << "[Errors truncated]" << std::endl;
+      }
+      errors++;
+    } else {
+      std::cout << "Correct output " << *(bufOut_0 + i) << " == " << ref
+                << std::endl;
+    }
+  }
+
+  std::cout << "Checking run 1" << std::endl;
+  for (uint32_t i = 0; i < OUT_SIZE; i++) {
+    uint32_t ref = i + 3;
+    if (*(bufOut_1 + i) != ref) {
+      if (errors < 100) {
+        std::cout << "Error in output " << *(bufOut_1 + i) << " != " << ref
+                  << std::endl;
+      } else if (errors == 100) {
+        std::cout << "..." << std::endl;
+        std::cout << "[Errors truncated]" << std::endl;
+      }
+      errors++;
+    } else {
+      std::cout << "Correct output " << *(bufOut_1 + i) << " == " << ref
+                << std::endl;
+    }
+  }
+
+  if (!errors) {
+    std::cout << "\nPASS!\n\n";
+    return 0;
+  } else {
+    std::cout << "\nfailed.\n\n";
+    return 1;
+  }
+}

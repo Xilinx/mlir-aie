@@ -30,7 +30,6 @@ import sys
 from pathlib import Path
 from typing import Iterable, Optional
 
-
 DEFAULT_PIP_FIND_LINKS = (
     "https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro"
 )

@@ -5,63 +5,66 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2026 Advanced Micro Devices, Inc.
-import argparse
-import sys
-import numpy as np
-import aie.iron as iron
+"""Tutorial: tile-by-tile elementwise transform on the NPU.
 
-from aie.iron.algorithms import transform
+Applies ``lambda a: a + 1`` to each ``tile_size``-element tile of a 1-D
+int32 tensor.  The design body delegates to
+:func:`aie.iron.algorithms.transform_typed`, which handles the
+ObjectFifo / Worker / Runtime plumbing for any single-input element-wise
+lambda.
+"""
+
+import argparse
+
+import numpy as np
+
+import aie.iron as iron
+from aie.iron import CompileTime, In, Out
+from aie.iron.algorithms import transform_typed
+from aie.utils.verify import assert_pass
+
+
+@iron.jit
+def transform(
+    input: In,
+    output: Out,
+    *,
+    num_elements: CompileTime[int],
+    dtype: CompileTime[type],
+    tile_size: CompileTime[int] = 16,
+):
+    tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
+    return transform_typed(lambda a: a + 1, tensor_ty, tile_size=tile_size)
 
 
 def main():
-
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "-v", "--verbose", action="store_true", help="Enable verbose output"
+        "-v", "--verbose", action="store_true", help="print every output element"
     )
     parser.add_argument(
         "-n",
         "--num-elements",
         type=int,
         default=1024,
-        help="Number of elements (default: 1024)",
+        help="number of int32 elements per input tensor (default: %(default)s)",
     )
     args = parser.parse_args()
 
     dtype = np.int32
-
-    # Construct two input random tensors and an output zeroed tensor
-    # The three tensor are in memory accessible to the NPU
     input = iron.randint(0, 100, (args.num_elements,), dtype=dtype, device="npu")
     output = iron.zeros_like(input)
 
-    # JIT compile the algorithm
-    iron.jit(transform)(lambda a: a + 1, input, output, tile_size=16)
+    transform(input, output, num_elements=int(input.shape[0]), dtype=dtype)
 
-    # Check the correctness of the result
-    e = np.equal(input.numpy() + 1, output.numpy())
-    errors = np.size(e) - np.count_nonzero(e)
-
-    # Optionally, print the results
     if args.verbose:
-        print(f"Input shape: {input.shape}")
-        print(f"Input dtype: {input.dtype}")
-
         print(f"{'input':>6} + 1 = {'output':>6}")
         print("-" * 24)
-        # print the first 10 elements
-        for idx, (a, b) in enumerate(zip(input[:10], output[:10])):
+        n = args.num_elements
+        for idx, (a, b) in enumerate(zip(input[:n], output[:n])):
             print(f"{idx:2}: {a:6} + 1 = {b:6}")
 
-    # If the result is correct, exit with a success code.
-    # Otherwise, exit with a failure code
-    if not errors:
-        print("\nPASS!\n")
-        sys.exit(0)
-    else:
-        print("\nError count: ", errors)
-        print("\nFailed.\n")
-        sys.exit(-1)
+    assert_pass(input.numpy() + 1, output.numpy(), fail_msg="transform output mismatch")
 
 
 if __name__ == "__main__":

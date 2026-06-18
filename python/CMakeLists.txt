@@ -36,13 +36,16 @@ declare_mlir_python_sources(AIEPythonSources.Utils
   ADD_TO_PARENT AIEPythonSources
   SOURCES
     utils/__init__.py
+    utils/benchmark.py
     utils/config.py
     utils/test.py
-    utils/jit.py
     utils/ml.py
     utils/npukernel.py
     utils/regdb.py
+    utils/verify.py
     utils/hostruntime/__init__.py
+    utils/hostruntime/argparse.py
+    utils/hostruntime/cli.py
     utils/hostruntime/hostruntime.py
     utils/hostruntime/tensor_class.py
     utils/hostruntime/xrtruntime/__init__.py
@@ -51,8 +54,18 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/hostruntime/xrtruntime/tensor.py
     utils/compile/__init__.py
     utils/compile/utils.py
-    utils/compile/cache/circular_cache.py
     utils/compile/cache/utils.py
+    utils/compile/jit/__init__.py
+    utils/compile/jit/compilabledesign.py
+    utils/compile/jit/_dma_size_parser.py
+    utils/compile/jit/_hash.py
+    utils/compile/jit/_introspect.py
+    utils/compile/jit/_serialization.py
+    utils/compile/jit/markers.py
+    utils/compile/jit/context.py
+    utils/compile/jit/compileconfig.py
+    utils/callabledesign.py
+    utils/jit.py
     utils/trace/__init__.py
     utils/trace/config.py
     utils/trace/events/__init__.py
@@ -76,6 +89,13 @@ declare_mlir_python_sources(AIEPythonSources.Iron
   ADD_TO_PARENT AIEPythonSources
   SOURCES_GLOB
     iron/*.py
+    iron/compile/*.py
+    iron/hostruntime/*.py
+    iron/algorithms/*.py
+    iron/kernels/*.py
+    iron/dataflow/*.py
+    iron/device/*.py
+    iron/runtime/*.py
 )
 
 declare_mlir_dialect_python_bindings(

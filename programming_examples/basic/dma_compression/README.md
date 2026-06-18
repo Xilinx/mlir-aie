@@ -236,15 +236,19 @@ python3 test_dma_compression.py both -v
 
 ```bash
 python3 -c "
-import numpy as np
 from aie.iron.device import NPU1Col1
-from aie.extras.context import mlir_mod_ctx
+from aie.utils.hostruntime import set_current_device
 from dma_compression import dma_compression
-a = np.arange(4096, dtype=np.int32); c = np.zeros(4096, dtype=np.int32)
-with mlir_mod_ctx() as ctx:
-    print(dma_compression(a, c, config='both', dev=NPU1Col1()))
+set_current_device(NPU1Col1())
+print(dma_compression.as_mlir(config='both'))
 "
 ```
+
+`dma_compression` is a ``@iron.jit``-decorated ``CallableDesign``;
+its ``.as_mlir(**compile_kwargs)`` runs the generator and returns the
+serialised MLIR without any aiecc work.  See
+[`compilation_stages.md`](../../../programming_guide/compilation_stages.md)
+§Inspecting an intermediate stage for the other introspection options.
 
 ## Strix npu2 (AIE2P) support
 

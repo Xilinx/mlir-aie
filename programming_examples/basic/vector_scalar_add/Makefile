@@ -1,52 +1,52 @@
 ##===- Makefile -----------------------------------------------------------===##
-# 
+#
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024, Advanced Micro Devices, Inc.
-# 
+# Copyright (C) 2024-2026, Advanced Micro Devices, Inc.
+#
 ##===----------------------------------------------------------------------===##
+#
+# NPU paths use @iron.jit's compile() directly via --xclbin-path /
+# --insts-path / --elf-path.  insts.elf is the ELF-wrapped form the C++
+# testbench (xrt::elf + xrt::module flow) loads.
+# The same xclbin/insts pair is exercised by two testbenches:
+#   * test.cpp          — single run (`make run`)
+#   * test_runlist.cpp  — chained runs via xrt::runlist (`make run_runlist`,
+#                          NPU2 only — runlist isn't implemented on Phoenix)
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-all: build/final.xclbin
+SHELL := /bin/bash
 
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 targetname = vector_scalar_add
+runlist_targetname = vector_scalar_add_runlist
 
-aie_py_src=${targetname}.py
-use_placed?=0
+aie_py_src = ${targetname}.py
+aieargs = -d ${devicename}
 
-ifeq (${use_placed}, 1)
-aie_py_src=${targetname}_placed.py
-endif
+xclbin_target = build/final.xclbin
+insts_target = build/insts.bin
+elf_target = build/insts.elf
 
-build/aie.mlir: ${srcdir}/${aie_py_src}
-	mkdir -p ${@D}
-	python3 $< ${devicename} > $@
+.PHONY: all
+all: ${xclbin_target} ${insts_target} ${elf_target}
 
-build/final.xclbin: build/aie.mlir
-	mkdir -p ${@D}
-	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-elf --no-compile-host \
-		--no-xchesscc --no-xbridge \
-		--xclbin-name=${@F} --elf-name=insts.elf ${<F}
-		
-${targetname}.exe: ${srcdir}/test.cpp
-	rm -rf _build
-	mkdir -p _build
-	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}` -DTARGET_NAME=${targetname}
-	cd _build && ${powershell} cmake --build . --config Release
-ifeq "${powershell}" "powershell.exe"
-	cp _build/${targetname}.exe $@
-else
-	cp _build/${targetname} $@ 
-endif
+$(eval $(call jit_xclbin_elf,${xclbin_target},${insts_target},${elf_target},${aie_py_src},${aieargs}))
+$(eval $(call build_host_exe,${targetname},_build,test.cpp))
+$(eval $(call build_host_exe,${runlist_targetname},_build_runlist,test_runlist.cpp,-DTEST_SRC=test_runlist.cpp))
 
-run: ${targetname}.exe build/final.xclbin
-	${powershell} ./$< -x build/final.xclbin -i build/insts.elf -k MLIR_AIE
+.PHONY: run
+run: ${targetname}.exe ${xclbin_target} ${elf_target}
+	${powershell} ./$< -x ${xclbin_target} -i ${elf_target} -k MLIR_AIE
 
+.PHONY: run_runlist
+run_runlist: ${runlist_targetname}.exe ${xclbin_target} ${elf_target}
+	${powershell} ./$< -x ${xclbin_target} -i ${elf_target} -k MLIR_AIE
+
+.PHONY: clean
 clean:
-	rm -rf build _build ${targetname}.exe
+	rm -rf build _build _build_runlist ${targetname}.exe ${runlist_targetname}.exe

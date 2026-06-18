@@ -7,7 +7,6 @@ from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
 
-
 with mlir_mod_ctx() as ctx:
 
     @device(AIEDevice.npu1_1col)

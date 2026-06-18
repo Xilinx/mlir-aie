@@ -8,7 +8,7 @@
 //
 // REQUIRES: peano
 //
-// RUN: cd %S && python3 test_numpy_per_bn.py | tee %t.log
+// RUN: cd %S/.. && python3 -m mobilenet.test_numpy_per_bn | tee %t.log
 // RUN: FileCheck --check-prefix=NUMPY %s < %t.log
 //
 // NUMPY: bn1 (per-bn){{.*}}BIT-EXACT

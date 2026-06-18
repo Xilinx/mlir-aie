@@ -14,7 +14,7 @@ import sys
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron import In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.helpers.dialects.scf import _for as range_
 
 N_LINES = 14
@@ -39,7 +39,7 @@ def core_body(of_in, of_out):
 
 
 @iron.jit
-def cyclostatic_acquire_in_loop(in_tensor, out_tensor):
+def cyclostatic_acquire_in_loop(in_tensor: In, out_tensor: Out):
     in_ty = np.ndarray[(IN_LEN,), np.dtype[np.int8]]
     out_ty = np.ndarray[(OUT_LEN,), np.dtype[np.int8]]
 

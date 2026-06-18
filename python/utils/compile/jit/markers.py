@@ -1,0 +1,74 @@
+# markers.py -*- Python -*-
+#
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# (c) Copyright 2026 Advanced Micro Devices, Inc.
+"""Type-annotation markers for compile-time vs. runtime parameter classification.
+
+Three annotation categories are defined here (all exported from ``aie.iron``):
+
+``CompileTime[T]``
+    Marks a generator function parameter as compile-time.  Changing its value
+    causes a recompile and a new cache entry.  Inspired by ``tl.constexpr`` in
+    Triton.  Standard ``Generic[T]``, fully compatible with mypy/pyright.
+
+``In``
+    Marks a generator function parameter as a runtime *input* tensor.  Data is
+    DMA-transferred from the host to the NPU on every kernel call.
+
+``Out``
+    Marks a generator function parameter as a runtime *output* tensor.  Data is
+    DMA-transferred from the NPU to the host on every kernel call.
+
+``InOut``
+    Marks a generator function parameter as a runtime bidirectional tensor.
+    Data is DMA-transferred in both directions on every kernel call.
+
+Any parameter without one of these four annotations is currently rejected at
+``@iron.jit`` decoration time when the parameter has a default value — there
+is no runtime-scalar plumbing yet (tracked separately as future work), so the
+default would be baked into the compiled kernel and per-call overrides
+silently ignored.  Annotate as ``CompileTime[T]`` (recompiles on change) or
+``In``/``Out``/``InOut`` (DMA tensor) instead.
+"""
+
+from __future__ import annotations
+
+from typing import Generic, TypeVar
+
+T = TypeVar("T")
+
+
+class CompileTime(Generic[T]):
+    """Compile-time parameter annotation.
+
+    Use as a type annotation on generator function parameters that affect the
+    generated MLIR.  The value must be supplied at ``CompilableDesign``
+    construction time (or bound by ``@iron.jit(...)``).
+
+    Changing a ``CompileTime[T]``-annotated value → new cache key → recompile.
+    Required unless a default is given.
+
+    Example::
+
+        from ml_dtypes import bfloat16
+
+        def gemm(a: In, b: In, c: Out,
+                 M: CompileTime[int], K: CompileTime[int], N: CompileTime[int],
+                 dtype: CompileTime[type] = bfloat16):
+            ...
+    """
+
+
+class In:
+    """Runtime input tensor annotation (host → NPU, DMA each call)."""
+
+
+class Out:
+    """Runtime output tensor annotation (NPU → host, DMA each call)."""
+
+
+class InOut:
+    """Runtime bidirectional tensor annotation (DMA in both directions each call)."""

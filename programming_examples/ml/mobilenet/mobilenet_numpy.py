@@ -54,7 +54,7 @@ import json
 
 import numpy as np
 
-from network_spec import NETWORK, block as nsblock
+from .network_spec import NETWORK, block as nsblock
 
 
 # ---------------------------------------------------------------------------

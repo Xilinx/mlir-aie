@@ -5,7 +5,7 @@ import numpy as np
 import os
 import warnings
 
-from .utils import ceildiv
+from aie.utils import ceildiv
 
 
 def animate_from_accesses(

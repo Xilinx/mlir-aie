@@ -12,7 +12,7 @@
 ## Introduction
 This implements parts of the magika AI-powered file type detection network described under https://github.com/google/magika. 
 
-NOTE: Currently, the design supports standalone group0 and group2 blocks with an placeholder for the group1 component.
+NOTE: Currently, the design supports standalone group0 and group2 blocks. The group1 component is not yet implemented.
 
 
 ## Source Files Overview
@@ -23,10 +23,9 @@ NOTE: Currently, the design supports standalone group0 and group2 blocks with an
 +-- inc                         # Include files, such as LUT headers and sub kernel functions
 +-- kernels                     # group kernel functions
 +-- py                          # python utilities for extrapolating stimulus from onnx file
-+-- group0_placed.py            # Placed group 0 design
-+-- group1_placed.py            # Placed group 1 design (placeholder)
-+-- group2_placed.py            # Placed group 2 design
-+-- Makefile                    # 
++-- group0.py                   # Group 0 design (IRON / @iron.jit)
++-- group2.py                   # Group 2 design (IRON / @iron.jit)
++-- Makefile                    #
 +-- README.md                   # This file.
 +-- run.lit                     # For LLVM Integrated Tester (LIT) of the design.
 +-- test_group0.py              # Python code testbench for the group 0 design example
@@ -39,7 +38,7 @@ To compile the design for group 0 and run it.
 make run_py
 ```
 
-To compile the placed design for group 2:
+To compile the design for group 2:
 ```shell
 make targetname=group2 run_py
 ```

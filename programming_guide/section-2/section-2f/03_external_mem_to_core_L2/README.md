@@ -27,19 +27,13 @@ of_out0 = of_out1.cons().forward(name="out0", obj_type=tile24_ty)
 
 The processes on the Worker are the same as in the previous design. The producer process acquires one object from `of_in1` to consume and one object from `of_out1` to produce into. It then reads the value of the input object and adds `1` to all its entries before releasing both objects.
 
-It is possible to compile, run and test this design with the following commands:
+The design is wrapped in `@iron.jit`, so a single command JIT-compiles and runs it on the attached NPU:
 ```bash
-make
-make run
+make run                              # builds + runs on the NPU (devicename={npu,npu2})
+make emit-mlir                        # writes the lowered MLIR to build/aie.mlir without touching the NPU
 ```
 
-The explicitly placed level of IRON programming for this design is available in [ext_to_core_L2_placed.py](./ext_to_core_L2_placed.py). It can be compiled, run and tested with the following commands:
-```bash
-env use_placed=1 make
-make run
-```
-
-The [test.cpp](./test.cpp) as well as the `# To/from AIE-array data movement` section of the design code will be described in detail in [Section 2d](../../section-2d/).
+The `# To/from AIE-array data movement` section of the design code is described in detail in [Section 2d](../../section-2d/).
 
 Other examples containing this data movement pattern are available in the [programming_examples/matrix_multiplication/](../../../../programming_examples/basic/matrix_multiplication/).
 

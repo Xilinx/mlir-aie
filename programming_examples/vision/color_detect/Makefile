@@ -1,22 +1,19 @@
 ##===- Makefile -----------------------------------------------------------===##
-# 
+#
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-# 
+#
+# Copyright (C) 2024-2026, Advanced Micro Devices, Inc.
+#
 ##===----------------------------------------------------------------------===##
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-VPATH := ${srcdir}/../../../aie_kernels/aie2
-
-device ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 COLORDETECT_WIDTH = 1920
 COLORDETECT_HEIGHT = 1080
-
-targetname = color_detect
 
 #COLORDETECT_WIDTH = 64
 #COLORDETECT_HEIGHT = 36
@@ -24,66 +21,30 @@ targetname = color_detect
 #COLORDETECT_WIDTH = 640
 #COLORDETECT_HEIGHT = 480
 
-aie_py_src=${targetname}.py
-use_placed?=0
-use_sa_placer?=0
+targetname = color_detect
+use_sa_placer ?= 0
 
-ifeq (${use_placed}, 1)
-aie_py_src=${targetname}_placed.py
-endif
+aie_py_src = ${targetname}.py
+aieargs = -d ${devicename} -W ${COLORDETECT_WIDTH} -H ${COLORDETECT_HEIGHT}
 
-PLACER_ARGS=
 ifeq (${use_sa_placer}, 1)
-PLACER_ARGS=--placer=sa_placer --sa-seed=1
+aieargs += --placer=sa_placer --sa-seed=1
 endif
 
-all: build/final_${COLORDETECT_WIDTH}.xclbin
+xclbin_target = build/final_${COLORDETECT_WIDTH}.xclbin
+insts_target = build/insts.bin
 
-mlir: build/aie2_lineBased_8b_${COLORDETECT_WIDTH}.mlir
+.PHONY: all
+all: ${xclbin_target} ${insts_target}
 
-build/%.cc.o: %.cc
-	mkdir -p ${@D}
-ifeq ($(device),npu)
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
-else ifeq ($(device),npu2)
-	cd ${@D} && xchesscc_wrapper ${CHESSCCWRAP2P_FLAGS} -DBIT_WIDTH=8 -c $< -o ${@F}
-else
-	echo "Device type not supported"
-endif
+$(eval $(call jit_xclbin,${xclbin_target},${insts_target},${aie_py_src},${aieargs}))
+$(eval $(call build_host_exe,${targetname},_build,test.cpp,-DCOLORDETECT_WIDTH=${COLORDETECT_WIDTH} -DCOLORDETECT_HEIGHT=${COLORDETECT_HEIGHT} -D CMAKE_C_COMPILER=${CC} -D CMAKE_CXX_COMPILER=${CXX}))
 
-build/aie2_lineBased_8b_${COLORDETECT_WIDTH}.mlir: ${srcdir}/${aie_py_src}
-	mkdir -p ${@D}
-	python3 $< ${device} ${COLORDETECT_WIDTH} ${COLORDETECT_HEIGHT} > $@
+run: ${targetname}.exe ${xclbin_target} ${insts_target}
+	${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE
 
-build/final_${COLORDETECT_WIDTH}.xclbin: build/aie2_lineBased_8b_${COLORDETECT_WIDTH}.mlir build/rgba2hue.cc.o build/threshold.cc.o build/bitwiseOR.cc.o build/gray2rgba.cc.o build/bitwiseAND.cc.o
-	mkdir -p ${@D}
-ifeq ($(device),npu)
-	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --alloc-scheme=basic-sequential \
-		--no-xchesscc --no-xbridge \
-		--xclbin-name=${@F} --npu-insts-name=insts.bin $(<:%=../%)
-else ifeq ($(device),npu2)
-	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --alloc-scheme=basic-sequential \
-		${PLACER_ARGS} \
-		--xclbin-name=${@F} --npu-insts-name=insts.bin $(<:%=../%)
-endif
-
-${targetname}.exe: ${srcdir}/test.cpp
-	mkdir -p ${@D}
-	rm -rf _build
-	mkdir -p _build
-	cd _build && ${powershell} cmake `${getwslpath} ${srcdir}` -DTARGET_NAME=${targetname} -DCOLORDETECT_WIDTH=${COLORDETECT_WIDTH} -DCOLORDETECT_HEIGHT=${COLORDETECT_HEIGHT} -D CMAKE_C_COMPILER=${CC} -D CMAKE_CXX_COMPILER=${CXX}
-	cd _build && ${powershell} cmake --build . --config Release
-ifeq "${powershell}" "powershell.exe"
-	cp _build/${targetname}.exe $@
-else
-	cp _build/${targetname} $@ 
-endif
-
-run: ${targetname}.exe build/final_${COLORDETECT_WIDTH}.xclbin
-	${powershell} ./$< -x build/final_${COLORDETECT_WIDTH}.xclbin -i build/insts.bin -k MLIR_AIE
-
-run_live: ${targetname}.exe build/final_${COLORDETECT_WIDTH}.xclbin
-	${powershell} ./$< -l -x build/final_${COLORDETECT_WIDTH}.xclbin -i build/insts.bin -k MLIR_AIE
+run_live: ${targetname}.exe ${xclbin_target} ${insts_target}
+	${powershell} ./$< -l -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE
 
 clean:
 	rm -rf build _build ${targetname}.exe colorDetectOut_test.jpg

@@ -18,6 +18,28 @@ import aie.utils.config as config
 logger = logging.getLogger(__name__)
 
 
+def resolve_target_arch(device=None) -> str:
+    """Return ``'aie2'`` or ``'aie2p'`` for the given device, or ``'aie2'`` if device is None."""
+    if device is None:
+        return "aie2"
+    from aie.dialects._aie_enum_gen import AIEArch
+    from aie.dialects.aie import get_target_model
+    from aie.iron.device import Device
+
+    if isinstance(device, Device):
+        arch = device.arch
+    else:
+        arch = AIEArch(get_target_model(device).get_target_arch())
+
+    if arch == AIEArch.AIE2p:
+        return "aie2p"
+    if arch == AIEArch.AIE2:
+        return "aie2"
+    raise RuntimeError(
+        f"Unsupported device arch: {arch} (device type: {type(device)})."
+    )
+
+
 def compile_cxx_core_function(
     source_path: str,
     target_arch: str,
@@ -25,34 +47,63 @@ def compile_cxx_core_function(
     include_dirs: list[str] | None = None,
     compile_args: list[str] | None = None,
     cwd: str | None = None,
+    use_chess: bool = False,
 ):
     """
-    Compile a C++ core function.
-    This function supports only the Peano compiler.
+    Compile a C++ core function via either Peano (default) or the Chess
+    compiler (``use_chess=True``).
+
     Parameters:
         source_path (str): Path to C++ source.
         target_arch (str): Target architecture, e.g., aie2.
         output_path (str): Output object file path.
         include_dirs (list[str], optional): List of include directories to add with -I.
-        compile_args (list[str], optional): Additional compile arguments to peano.
+        compile_args (list[str], optional): Additional compile arguments
+            forwarded verbatim to the chosen compiler.
         cwd (str, optional): Overrides the current working directory.
+        use_chess (bool): When True, invoke ``xchesscc_wrapper`` instead of
+            ``clang++`` (Peano).  Equivalent to the makefile-common
+            ``KERNEL_CC=xchesscc_wrapper`` path used by the matmul examples'
+            ``use_chess=1`` configurations.  ``xchesscc_wrapper`` reads
+            ``AIETOOLS_DIR`` (or auto-detects from the path of ``xchesscc``)
+            for the AIE-tools include directory; the standard mlir-aie
+            include path is added explicitly here so it doesn't depend on
+            the Chess wrapper's include search.
     """
-    cmd = [
-        config.peano_cxx_path(),
-        source_path,
-        "-c",
-        "-o",
-        f"{output_path}",
-        f"-I{config.cxx_header_path()}",
-        "-std=c++20",
-        "-Wno-parentheses",
-        "-Wno-attributes",
-        "-Wno-macro-redefined",
-        "-Wno-empty-body",
-        "-O2",
-        "-DNDEBUG",
-        f"--target={target_arch}-none-unknown-elf",
-    ]
+    if use_chess:
+        wrapper = shutil.which("xchesscc_wrapper")
+        if not wrapper:
+            raise RuntimeError(
+                "Could not find 'xchesscc_wrapper' on PATH.  Ensure the "
+                "AIE tools and mlir-aie's bin/ directory are sourced "
+                "(env_setup.sh) before requesting use_chess=True."
+            )
+        cmd = [
+            wrapper,
+            target_arch,  # "aie2" or "aie2p"
+            "-c",
+            source_path,
+            "-o",
+            f"{output_path}",
+            f"-I{config.cxx_header_path()}",
+        ]
+    else:
+        cmd = [
+            config.peano_cxx_path(),
+            source_path,
+            "-c",
+            "-o",
+            f"{output_path}",
+            f"-I{config.cxx_header_path()}",
+            "-std=c++20",
+            "-Wno-parentheses",
+            "-Wno-attributes",
+            "-Wno-macro-redefined",
+            "-Wno-empty-body",
+            "-O2",
+            "-DNDEBUG",
+            f"--target={target_arch}-none-unknown-elf",
+        ]
 
     # Add include directories
     if include_dirs:
@@ -73,9 +124,10 @@ def compile_cxx_core_function(
     if ret.stdout:
         logger.debug("%s", ret.stdout.decode())
     if ret.returncode != 0:
+        tool = "Chess" if use_chess else "Peano"
         if ret.stderr:
-            raise RuntimeError(f"[Peano] compilation failed:\n{ret.stderr.decode()}")
-        raise RuntimeError("[Peano] compilation failed")
+            raise RuntimeError(f"[{tool}] compilation failed:\n{ret.stderr.decode()}")
+        raise RuntimeError(f"[{tool}] compilation failed")
 
 
 def compile_mlir_module(
@@ -83,41 +135,89 @@ def compile_mlir_module(
     insts_path: str | Path | None = None,
     pdi_path: str | Path | None = None,
     xclbin_path: str | Path | None = None,
+    elf_path: str | Path | None = None,
     verbose=False,
     work_dir: str | Path | None = None,
     options=None,
+    use_chess: bool = False,
+    device=None,
 ):
     """
-    Compile an MLIR module to instruction, PDI, and/or xclbin files using the aiecc module.
-    This function supports only the Peano compiler.
+    Compile an MLIR module to instruction, PDI, ELF, and/or xclbin files using the aiecc module.
+
     Parameters:
         mlir_module (str): MLIR module to compile.
         insts_path (str): Path to the instructions binary file.
         pdi_path (str): Path to the PDI file.
         xclbin_path (str): Path to the xclbin file.
+        elf_path (str): Path to an ELF-wrapped version of the NPU instructions
+            (produced via ``aiebu-asm``).  Required by C++ testbenches that
+            load instructions through ``xrt::elf`` + ``xrt::module``;
+            independent of ``insts_path`` (the Python runtime consumes the
+            raw ``.bin``).
         verbose (bool): If True, enable verbose output.
         work_dir (str): Compilation working directory.
         options (list[str]): List of additional options.
+        use_chess (bool): When True, drive aiecc with the Chess front-end
+            (``--unified``) instead of the Peano front-end.  Must agree
+            with the per-ExternalFunction ``_use_chess`` settings — the
+            JIT compile orchestration in ``compilabledesign.py`` enforces
+            agreement and raises on a mixed peano/chess design.
+        device: Optional IRON device (or ``AIEDevice`` enum) used to pick
+            the target architecture (aie2 vs aie2p) for any
+            :class:`aie.iron.kernel.ExternalFunction` instances that have
+            a ``source_file=`` and haven't been compiled yet.  When set
+            and ``work_dir`` is provided, those externals are auto-built
+            into ``work_dir`` before aiecc runs (matching the @iron.jit
+            behavior).  Without this, low-level designs going through
+            ``compile_mlir_module`` directly (e.g. ``basic/packet_switch``)
+            still need a Makefile-side ``.o`` rule.
     """
 
-    args = [
-        "--no-compile-host",
-        "--no-xchesscc",
-        "--no-xbridge",
-        f"--peano={config.peano_install_dir()}",
-    ]
+    if use_chess:
+        # Chess-driven aiecc.  --unified runs all cores' xchesscc invocations
+        # in a single Chess process to amortise startup cost; matches the
+        # makefile-common ``aiecc_chess_flags=--unified`` recipe.
+        args = [
+            "--no-compile-host",
+            "--unified",
+        ]
+    else:
+        args = [
+            "--no-compile-host",
+            "--no-xchesscc",
+            "--no-xbridge",
+            f"--peano={config.peano_install_dir()}",
+        ]
     if insts_path:
         args.extend(["--aie-generate-npu-insts", f"--npu-insts-name={insts_path}"])
     if pdi_path:
         args.extend(["--aie-generate-pdi", f"--pdi-name={pdi_path}"])
     if xclbin_path:
         args.extend(["--aie-generate-xclbin", f"--xclbin-name={xclbin_path}"])
+    if elf_path:
+        args.extend(["--aie-generate-elf", f"--elf-name={elf_path}"])
     if work_dir:
         args.append(f"--tmpdir={work_dir}")
     if verbose:
         args.append("--verbose")
     if options:
         args.extend(options)
+    # Auto-build any source-bearing ExternalFunction kernels into work_dir
+    # so aiecc's linker can find the .o referenced by link_with.  Mirrors
+    # the loop in compilabledesign.py but for callers (e.g. low-level
+    # designs using rt.inline_ops) that didn't go through @iron.jit.
+    if work_dir and device is not None:
+        try:
+            from aie.iron.kernel import ExternalFunction
+        except ImportError:
+            ExternalFunction = None  # type: ignore
+        if ExternalFunction is not None:
+            target_arch = resolve_target_arch(device)
+            for func in list(ExternalFunction._instances):
+                if not func._compiled and getattr(func, "_source_file", None):
+                    compile_external_kernel(func, str(work_dir), target_arch)
+
     # When work_dir is provided, invoke the aiecc binary as a subprocess so
     # that it resolves relative link_with paths (e.g. "add_one.o") against the
     # same directory where compile_external_kernel placed the compiled objects.
@@ -130,9 +230,11 @@ def compile_mlir_module(
         mlir_file = os.path.join(work_dir, "aie.mlir")
         with open(mlir_file, "w") as f:
             f.write(str(mlir_module))
-        result = subprocess.run(
-            [aiecc_bin, mlir_file] + args, capture_output=True, text=True
-        )
+        cmd = [aiecc_bin, mlir_file] + args
+        # Mirror compile_external_kernel's "Compiling with: <cmd>" line so
+        # users at DEBUG see the full aiecc invocation, not just its output.
+        logger.debug("Running: %s", " ".join(cmd))
+        result = subprocess.run(cmd, capture_output=True, text=True)
         if result.stdout:
             logger.debug("%s", result.stdout)
         if result.stderr:
@@ -148,6 +250,25 @@ def compile_mlir_module(
             aiecc.run(mlir_module, args)
         except Exception as e:
             raise RuntimeError("[aiecc] Compilation failed") from e
+
+
+def _rename_symbol_in_object(object_path: str, old_name: str, new_name: str) -> None:
+    """Rename a symbol in a compiled object file using llvm-objcopy."""
+    objcopy = shutil.which("llvm-objcopy")
+    if not objcopy:
+        objcopy = shutil.which("objcopy")
+    if not objcopy:
+        raise RuntimeError(
+            "Cannot rename symbol: neither 'llvm-objcopy' nor 'objcopy' found in PATH. "
+            "Install the LLVM toolchain or GNU binutils."
+        )
+    result = subprocess.run(
+        [objcopy, f"--redefine-sym={old_name}={new_name}", str(object_path)],
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(f"Symbol rename failed: {result.stderr.decode()}")
 
 
 def compile_external_kernel(func, kernel_dir, target_arch):
@@ -172,32 +293,60 @@ def compile_external_kernel(func, kernel_dir, target_arch):
     # Skip if the object file already exists (cache hit).
     output_file = os.path.join(kernel_dir, func.object_file_name)
     if os.path.exists(output_file):
+        if getattr(func, "_symbol_prefix", None):
+            # Ensure rename is applied even on cache hit — idempotent with llvm-objcopy
+            _rename_symbol_in_object(output_file, func._original_name, func._name)
         return
 
-    source_file = os.path.join(kernel_dir, f"{func._name}.cc")
+    original_name = getattr(func, "_original_name", func._name)
 
     if func._source_string is not None:
+        source_file = os.path.join(kernel_dir, f"{original_name}.cc")
         with open(source_file, "w") as f:
             f.write(func._source_string)
+        compile_cxx_core_function(
+            source_path=source_file,
+            target_arch=target_arch,
+            output_path=output_file,
+            include_dirs=func._include_dirs,
+            compile_args=func._compile_flags,
+            cwd=str(kernel_dir),
+            use_chess=getattr(func, "_use_chess", False),
+        )
+
     elif func._source_file is not None:
-        # Use source_file (copy existing file)
+        source_file = os.path.join(kernel_dir, f"{original_name}.cc")
         # Check if source file exists before copying
         if not os.path.exists(func._source_file):
             raise FileNotFoundError(
                 f"ExternalFunction '{func._name}': source file not found: {func._source_file}"
             )
         shutil.copy2(func._source_file, source_file)
+        # Include the original source file's directory so relative includes
+        # (e.g. "../aie_kernel_utils.h") still resolve after the file is
+        # copied into kernel_dir.
+        src_dir = os.path.dirname(os.path.abspath(func._source_file))
+        include_dirs = list(func._include_dirs)
+        if src_dir not in include_dirs:
+            include_dirs.append(src_dir)
+        compile_cxx_core_function(
+            source_path=source_file,
+            target_arch=target_arch,
+            output_path=output_file,
+            include_dirs=include_dirs,
+            compile_args=func._compile_flags,
+            cwd=kernel_dir,
+            use_chess=getattr(func, "_use_chess", False),
+        )
     else:
         raise ValueError("Neither source_string nor source_file is provided")
 
-    compile_cxx_core_function(
-        source_path=source_file,
-        target_arch=target_arch,
-        output_path=output_file,
-        include_dirs=func._include_dirs,
-        compile_args=func._compile_flags,
-        cwd=kernel_dir,
-    )
+    # Rename symbol if a prefix is set.
+    if getattr(func, "_symbol_prefix", None):
+        original = func._original_name
+        prefixed = func._name  # already prefixed
+        _rename_symbol_in_object(output_file, original, prefixed)
+
     func._compiled = True
 
 

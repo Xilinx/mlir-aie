@@ -16,10 +16,7 @@ In the [design](./passthrough_dmas.py) data is brought from external memory to a
 
 The implicit copy is performed using the ObjectFifo `forward()` function that specifies how input data arriving via `of_in` should be sent further via `of_out` by leveraging the fowarding tile's DMA. 
 
-There are two versions of this design:
-* [passthrough_dmas.py](./passthrough_dmas.py)
-* [passthrough_dmas_placed.py](./passthrough_dmas_placed.py): This version of the design supports VCK500 and is written in a lower-level version of IRON. Instead of `forward()`, this version explicitly uses an `object_fifo_link` operation which is described in more depth in [Section-2b](../../../programming_guide/section-2/section-2b/03_Link_Distribute_Join/README.md#object-fifo-link) of the programming guide.
-
+The single [passthrough_dmas.py](./passthrough_dmas.py) design uses `@iron.jit` and runs on both NPU and VCK5000 (the latter via the print-MLIR + `aiecc` flow).
 
 To compile and run the design for NPU:
 ```shell
@@ -27,8 +24,37 @@ make
 make run
 ```
 
-To compile and run the placed design for NPU:
+To run the standalone Python JIT + verify directly (no Makefile, no C++ testbench):
 ```shell
-env use_placed=1 make
-make run
+python3 passthrough_dmas.py
+```
+
+To target VCK5000:
+```shell
+make vck5000
+make run_vck5000
+```
+
+## PLIO variants (VCK5000 only)
+
+The same design supports two PLIO topologies via `--plio input` /
+`--plio output`, selecting which side of the `shim → compute → shim`
+forward goes over a PLIO-wired shim column instead of the regular
+NoC-wired one.  The compute tile in the middle is hardcoded at column
+30 to match the VCK5000 PLIO floorplan; the non-PLIO shim sits at
+column 26.
+
+To compile a PLIO design + its host testbench:
+
+```shell
+make vck5000_plio_input    # → ./input.elf
+make vck5000_plio_output   # → ./output.elf
+```
+
+The MLIR for either mode (for inspection) is also reachable as a
+standalone Python invocation:
+
+```shell
+python3 passthrough_dmas.py -d xcvc1902 --plio input  --emit-mlir
+python3 passthrough_dmas.py -d xcvc1902 --plio output --emit-mlir
 ```

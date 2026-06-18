@@ -10,6 +10,8 @@
 import logging
 import os
 
+import numpy as np
+
 # Prevent "No handlers could be found" warnings when aie is used as a library.
 logging.getLogger("aie").addHandler(logging.NullHandler())
 
@@ -45,17 +47,37 @@ else:
     DEFAULT_TENSOR_CLASS = CPUOnlyTensor
 
 
+def ceildiv(a, b):
+    """Ceiling division: smallest integer >= a/b."""
+    return -(a // -b)
+
+
 def tensor(*args, **kwargs):
     """
     Create a tensor using the default tensor class.
 
+    Passing a typed ``ndarray`` together with a mismatched ``dtype=``
+    kwarg raises :class:`TypeError`.  Matching kwargs are passed through
+    unchanged (the underlying tensor backend uses ``dtype`` for buffer
+    allocation, so silently stripping it would surprise callers).
+
     Args:
-        *args: Arguments passed to the tensor constructor.
+        *args: Arguments passed to the tensor constructor.  ``args[0]`` is
+            either a shape ``tuple`` or an array-like.
         **kwargs: Keyword arguments passed to the tensor constructor.
 
     Returns:
         Tensor: The created tensor.
     """
+    if args and isinstance(args[0], np.ndarray) and "dtype" in kwargs:
+        arr_dt = args[0].dtype
+        kw_dt = np.dtype(kwargs["dtype"])
+        if arr_dt != kw_dt:
+            raise TypeError(
+                f"iron.tensor: ndarray dtype {arr_dt!r} does not match "
+                f"dtype= kwarg {kw_dt!r}.  Cast the array beforehand "
+                f"(e.g. arr.astype({kw_dt!r})) or drop the dtype= kwarg."
+            )
     return DEFAULT_TENSOR_CLASS(*args, **kwargs)
 
 
@@ -85,6 +107,20 @@ def zeros(*args, **kwargs):
         Tensor: The created tensor.
     """
     return DEFAULT_TENSOR_CLASS.zeros(*args, **kwargs)
+
+
+def full(*args, **kwargs):
+    """
+    Create a tensor filled with a scalar value using the default tensor class.
+
+    Args:
+        *args: Arguments passed to the full method (size, fill_value).
+        **kwargs: Keyword arguments passed to the full method.
+
+    Returns:
+        Tensor: The created tensor.
+    """
+    return DEFAULT_TENSOR_CLASS.full(*args, **kwargs)
 
 
 def randint(*args, **kwargs):

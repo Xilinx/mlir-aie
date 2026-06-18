@@ -18,7 +18,7 @@ import sys
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron import In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.helpers.dialects.scf import _for as range_, if_
 from aie.dialects.arith import cmpi, CmpIPredicate, constant
 from aie.extras import types as T
@@ -61,7 +61,9 @@ def core_body(of_in, of_out, of_trip, of_done):
 
 
 @iron.jit
-def cyclostatic_normal(in_tensor, trip_tensor, out_tensor, done_tensor):
+def cyclostatic_normal(
+    in_tensor: In, trip_tensor: In, out_tensor: Out, done_tensor: Out
+):
     in_ty = np.ndarray[(IN_LEN,), np.dtype[np.int8]]
     out_ty = np.ndarray[(OUT_LEN,), np.dtype[np.int8]]
     trip_ty = TRIP_TY

@@ -3,20 +3,6 @@ import numpy as np
 from typing import Sequence
 
 
-def ceildiv(a, b):
-    """
-    A helper function to calculate ceiling division without
-
-    Args:
-        a (_type_): The dividend
-        b (_type_): The devisor
-
-    Returns:
-        _type_: The result
-    """
-    return -(a // -b)
-
-
 def validate_and_clean_sizes_strides(
     sizes: Sequence[int] | None,
     strides: Sequence[int] | None,

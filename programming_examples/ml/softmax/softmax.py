@@ -1,139 +1,92 @@
+# softmax/softmax.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 AMD Inc.
-from ml_dtypes import bfloat16
-import numpy as np
-import sys
+# (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
+"""Tile-wise bf16 softmax — IRON API design with ``@iron.jit`` compilation.
+
+Softmax is computed independently per 1024-element tile (no cross-tile
+reduction), so the design scales the same way as ml/eltwise_unary: body
+delegates to ``iron.algorithms.transform_parallel_typed`` with
+``num_channels=2`` and ``pass_size_to_kernel=True`` (the softmax kernel
+signature is ``(in, out, line_size)``).
+"""
+
 import argparse
 
-from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
-from aie.iron.device import NPU1Col1, NPU2Col1
-from aie.iron.controlflow import range_
+import numpy as np
+from ml_dtypes import bfloat16
+
+import aie.iron as iron
+from aie.iron import CompileTime, In, Out, kernels
+from aie.iron.algorithms import transform_parallel_typed
+from aie.utils.hostruntime.argparse import (
+    device_from_args,
+    add_compile_args,
+)
+from aie.utils.hostruntime.cli import run_design_cli
+from aie.utils.verify import assert_pass
 
 
-def vector_softmax(dev, trace_size, N):
-
-    # Tile sizes
-    n = 1024
-    N_div_n = N // n
-
-    n_cores = 2
-    tiles = N_div_n // n_cores
-
-    tensor_ty = np.ndarray[(N,), np.dtype[bfloat16]]
-    tile_ty = np.ndarray[(n,), np.dtype[bfloat16]]
-
-    # Type used in the memory tile which aggregates across the 4 cores
-    A_memTile_ty = np.ndarray[(n * n_cores,), np.dtype[bfloat16]]
-    C_memTile_ty = np.ndarray[(n * n_cores,), np.dtype[bfloat16]]
-
-    # AIE Core Function declarations
-    softmax_bf16_vector = Kernel(
-        "softmax_bf16", "kernels.a", [tile_ty, tile_ty, np.int32]
+@iron.jit
+def softmax(
+    a_in: In,
+    b_out: Out,
+    *,
+    size: CompileTime[int] = 262144,
+    num_channels: CompileTime[int] = 2,
+):
+    return transform_parallel_typed(
+        kernels.softmax(tile_size=1024),
+        np.ndarray[(size,), np.dtype[bfloat16]],
+        tile_size=1024,
+        num_channels=num_channels,
+        pass_size_to_kernel=True,
     )
 
-    # AIE-array data movement with object fifos
-    # Input A and Output C
-    inA = ObjectFifo(A_memTile_ty, name="inA")
-    outC = ObjectFifo(C_memTile_ty, name="outC")
 
-    of_a_offsets = []
-    of_c_offsets = []
-    if n_cores > 1:
-        of_a_offsets = [n * i for i in range(n_cores)]
-        of_c_offsets = [n * i for i in range(n_cores)]
-    inA_fifos = inA.cons().split(
-        of_a_offsets,
-        obj_types=[tile_ty] * n_cores,
-        names=[f"memA{i}" for i in range(n_cores)],
+def _make_argparser():
+    p = argparse.ArgumentParser(prog="AIE Softmax")
+    add_compile_args(p, with_elf=True)
+    p.add_argument("-l", "--length", type=int, default=262144, help="elements")
+    p.add_argument(
+        "-ch", "--channels", type=int, default=2, help="channels per column (1 or 2)"
     )
-    outC_fifos = outC.prod().join(
-        of_c_offsets,
-        obj_types=[tile_ty] * n_cores,
-        names=[f"memC{i}" for i in range(n_cores)],
+    return p
+
+
+def _compile_kwargs(opts):
+    return dict(size=opts.length, num_channels=opts.channels)
+
+
+def _run_and_verify(opts):
+    rng = np.random.default_rng(0)
+    in_np = rng.uniform(-4.0, 8.0, size=(opts.length,)).astype(bfloat16)
+    a_t = iron.tensor(in_np, dtype=bfloat16, device="npu")
+    b_t = iron.zeros_like(a_t)
+
+    softmax(a_t, b_t, **_compile_kwargs(opts))
+
+    expected = kernels.softmax_ref(in_np, tile_size=1024)
+    assert_pass(
+        b_t.numpy(),
+        expected,
+        rtol=0.128,
+        fail_msg="softmax output does not match reference",
     )
-
-    # Task for the cores to perform
-    def core_fn(of_in, of_out, softmax_kernel):
-        for _ in range_(tiles):
-            elem_out = of_out.acquire(1)
-            elem_in_a = of_in.acquire(1)
-            softmax_kernel(elem_in_a, elem_out, n)
-            of_in.release(1)
-            of_out.release(1)
-
-    # Set up workers to perform the task
-    workers = []
-    for i in range(n_cores):
-        workers.append(
-            Worker(
-                core_fn,
-                fn_args=[
-                    inA_fifos[i].cons(),
-                    outC_fifos[i].prod(),
-                    softmax_bf16_vector,
-                ],
-            )
-        )
-
-    # Runtime operations to move data to/from the AIE-array
-    rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty) as (A, C):
-        rt.start(*workers)
-        rt.fill(inA.prod(), A)
-        rt.drain(outC.cons(), C, wait=True)
-
-    # Place components (assign them resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program()
 
 
 def main():
-    parser = argparse.ArgumentParser(prog="softmax")
-    parser.add_argument(
-        "device_name",
-        choices=["npu", "npu2"],
-        default="npu",
-        help="Device name (npu or npu2)",
+    opts = _make_argparser().parse_args()
+    run_design_cli(
+        softmax,
+        opts,
+        compile_kwargs=_compile_kwargs,
+        run_and_verify=_run_and_verify,
+        device=lambda o: device_from_args(o, n_cols=None),
     )
-    parser.add_argument(
-        "trace_size_pos",
-        nargs="?",
-        type=int,
-        default=0,
-        help="Trace size (optional positional, default: 0)",
-    )
-    parser.add_argument(
-        "--trace_size",
-        dest="trace_size_flag",
-        type=int,
-        default=0,
-        help="Trace size (optional flag, default: 0)",
-    )
-    parser.add_argument(
-        "--size",
-        type=int,
-        default=262144,
-        help="Size of the input vector (default: 262144)",
-    )
-
-    args = parser.parse_args()
-
-    trace_size = (
-        args.trace_size_flag if args.trace_size_flag != 0 else args.trace_size_pos
-    )
-
-    if args.device_name == "npu":
-        dev = NPU1Col1()
-    elif args.device_name == "npu2":
-        dev = NPU2Col1()
-    else:
-        raise ValueError(f"[ERROR] Device name {args.device_name} is unknown")
-
-    module = vector_softmax(dev, trace_size, args.size)
-    print(module)
 
 
 if __name__ == "__main__":

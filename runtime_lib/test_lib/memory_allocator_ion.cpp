@@ -99,7 +99,7 @@ int *mlir_aie_mem_alloc(struct aie_libxaie_ctx_t *ctx, ext_mem_model_t &handle,
 
   Ret = ioctl(Fd, ION_IOC_ALLOC, &AllocArgs);
   if (Ret != 0) {
-    XAIE_ERROR("Failed to allocate memory of %lu bytes\n");
+    XAIE_ERROR("Failed to allocate memory of %d bytes\n", size);
     goto error_ion;
   }
 

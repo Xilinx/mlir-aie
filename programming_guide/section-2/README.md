@@ -62,6 +62,12 @@ This guide is split into five sections, where each section builds on top of the 
 
 * Walkthrough of the process of programming DMA regions
 </details>
+<details><summary><a href="./section-2h">Section 2h - Advanced ObjectFifo + Cross-Tile Buffer</a></summary>
+
+* Asymmetric producer/consumer transfer granularity (`consumer_obj_type=`)
+* Direct AIE-stream connections (`aie_stream=(end, port)`)
+* Cross-tile Buffer placement in `Worker.fn_args` for neighbor-L1 access
+</details>
 
 
 -----

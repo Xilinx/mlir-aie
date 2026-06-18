@@ -1,79 +1,46 @@
 ##===- Makefile -----------------------------------------------------------===##
-# 
+#
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2025, Advanced Micro Devices, Inc.
-# 
+# Copyright (C) 2025-2026, Advanced Micro Devices, Inc.
+#
 ##===----------------------------------------------------------------------===##
+#
+# @iron.jit drives aiecc directly via --xclbin-path / --insts-path /
+# --elf-path; ExternalFunction(source_file=passThrough.cc) lets iron
+# build the .o into the same dir, no separate Makefile rule needed.
 
-# ----------------------------------------------------------------------------
-# Configuration
-# ----------------------------------------------------------------------------
-
-# Set SRC_DIR to the directory in which this Makefile sits.
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
-VPATH := ${srcdir}/../../../aie_kernels/generic
 
-# Configuration of this example.
-devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
+SHELL := /bin/bash
+
 targetname = memcpy
 length ?= 16384
 cols ?= 1
 chans ?= 1
 bypass ?= True
 
-aie_py_src=memcpy.py
+aie_py_src = ${targetname}.py
+aieargs = -d ${devicename} -l ${length} -co ${cols} -ch ${chans} -b ${bypass}
 
-# ----------------------------------------------------------------------------
-# Build Targets
-# ----------------------------------------------------------------------------
+xclbin_target = build/final.xclbin
+insts_target  = build/insts.bin
+elf_target    = build/insts.elf
 
-.PHONY all: build/${targetname}.mlir build/final.xclbin
+.PHONY: all
+all: ${xclbin_target} ${insts_target} ${elf_target}
 
-# External single compute core kernel code defined in C source
-build/%.cc.o: %.cc
-	mkdir -p ${@D}
-ifeq ($(devicename),npu)
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2_FLAGS} -c $< -o ${@F}
-else ifeq ($(devicename),npu2)
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -c $< -o ${@F}
-else
-	echo "Device type not supported"
-endif
+$(eval $(call jit_xclbin_elf,${xclbin_target},${insts_target},${elf_target},${aie_py_src},${aieargs}))
+$(eval $(call build_host_exe,${targetname},_build,test.cpp))
 
-# Lower-level MLIR design built from higher-level Python IRON design
-build/${targetname}.mlir: ${srcdir}/${aie_py_src}
-	mkdir -p ${@D}
-	python3 $< -d ${devicename} -l ${length} -co ${cols} -ch ${chans} -b ${bypass} > $@
+.PHONY: run
+run: ${targetname}.exe ${xclbin_target} ${elf_target}
+	${powershell} ./$< -x ${xclbin_target} -i ${elf_target} -k MLIR_AIE -l ${length}
 
-# The final.xclbin contains static configuration for the NPU (including data 
-# movement configuration, compute core program memories). 
-build/final.xclbin: build/${targetname}.mlir build/passThrough.cc.o
-	mkdir -p ${@D}
-	cd ${@D} && aiecc --aie-generate-xclbin --no-compile-host \
-	            --xclbin-name=${@F} \
-				--no-xchesscc --no-xbridge \
-				--aie-generate-elf --elf-name=insts.elf $(<:%=../%)
-
-# Host code: Program executed on the CPU that will invoke our NPU design
-# and verify its outputs.
-${targetname}.exe: ${srcdir}/test.cpp
-	rm -rf _build
-	mkdir -p _build
-	cd _build && ${powershell} cmake ${srcdir} -DTARGET_NAME=${targetname}
-	cd _build && ${powershell} cmake --build . --config Release
-ifeq "${powershell}" "powershell.exe"
-	cp _build/${targetname}.exe $@
-else
-	cp _build/${targetname} $@ 
-endif
-
-run: ${targetname}.exe build/final.xclbin
-	${powershell} ./$< -x build/final.xclbin -i build/insts.elf -k MLIR_AIE -l ${length}
-
+.PHONY: clean
 clean:
 	rm -rf build _build inst aie.mlir.prj core_* test.elf ${targetname}.exe

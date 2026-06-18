@@ -2,8 +2,8 @@
 
 This repo supports a number of devices, at some level of completeness.
 In the below diagrams:
-```C``` represents a 'core tile' including a CPU core, stream switch, local memories and DMAs
-```M``` represents a 'memory tile' including a stream switch, larger local memories and DMAs
+```C``` represents a 'compute tile' including a CPU core, stream switch, local memories and DMAs
+```M``` represents a 'mem tile' including a stream switch, larger local memories and DMAs
 ```P``` represents a 'Shim PL tile' including a stream connection to programmable logic.
 ```D``` represents a 'Shim DMA tile' including a Shim DMA, stream switch, and (in some devices), a stream connection to programmable logic.
 ```.``` represents an unusable tile.

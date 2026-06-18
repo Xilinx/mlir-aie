@@ -4,81 +4,121 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2022, Advanced Micro Devices, Inc.
-// 
+// Copyright (C) 2024-2026, Advanced Micro Devices, Inc.
+//
 //===----------------------------------------------------------------------===//-->
 
-# <ins>IRON AIE Programming Guide</ins>
+# <ins>IRON AIE Application Programming Guide</ins>
 
-<img align="right" width="300" height="300" src="./assets/AIEarray.svg"> 
+This is the programming guide for **IRON** — the Python API for programming AMD Ryzen™ AI NPUs (and Versal™ AI Engines). It teaches how to design, run, and optimize code on the AIE-array.
 
-The AI Engine (AIE) array is a spatial compute architecture: a modular and scalable system with spatially distributed compute and memories. Its compute-dense vector processing runs independently and concurrently to explicitly scheduled data movement. Since the vector compute core (green) of each AIE can only operate on data in its L1 scratchpad memory (light blue), Direct Memory Access channels (purple) bi-directionally transport this data over a switched (dark blue) interconnect network from any level in the memory hierarchy.
+> **First time here?** If you haven't installed the toolchain yet, start at the [repo root README](../README.md) (driver, XRT, IRON install). Then come back here.
+>
+> **Want the shortest possible on-ramp?** See the [Mini Tutorial](./mini_tutorial/) — five tiny exercises that get a working design on the NPU in minutes.
 
-Programming the AIE-array configures all its spatial building blocks: the compute cores' program memory, the data movers' buffer descriptors, interconnect with switches, etc. This guide introduces our Interface Representation for hands-ON (IRON) close-to-metal programming of the AIE-array. IRON is an open-access toolkit enabling performance engineers to build fast and efficient, often specialized designs through a set of Python language bindings around mlir-aie, our MLIR-based representation of the AIE-array. mlir-aie provides the foundation from which complex and performant AI Engine designs can be defined and is supported by simulation and hardware implementation infrastructure.
+-----
 
-IRON offers multiple entry points into programming the AIE-array tailored around the user's experience. At its highest level of abstraction, IRON enables users to create a program where dedicated tasks are given to workers without requiring in-depth knowledge of the underlying hardware architecture. For users that desire more fine grained control over the AIE-array configuration, IRON supports a closer-to-metal explicitly placed API. This guide is structured such that both levels of programming are described in every section.
+## The mental model in 60 seconds
 
-> **NOTE:**  For those interested in a quick understanding of how the NPU can be programmed with IRON check out the [mini tutorial](./mini_tutorial/)!
+* The NPU is a 2D grid of **AIE tiles**. The interesting ones are **compute tiles** (run code) and **mem tiles** (shared L2 scratchpad). At the edge of the array, **shim tiles** move data to/from main memory.
+* Tiles are connected by **stream switches**. The path from main memory to a compute tile is always shim → (mem) → compute, scheduled by per-tile **DMA engines**.
+* You describe an NPU program in Python:
+  * A **Worker** is the code that runs on one compute tile.
+  * An **ObjectFifo** is a streaming channel between two endpoints (host↔tile, tile↔tile). Acquire / release.
+  * A **Runtime** sequence is the host-side dance — what tensors get filled into the array, what gets drained back.
+* You wrap the whole thing in `@iron.jit`. Calling the decorated function the first time JIT-compiles to an `xclbin` + instruction stream and runs it on the attached NPU. Subsequent calls hit a cache.
 
-This IRON AIE programming guide first introduces the language bindings for AIE-array's structural elements ([section 1](./section-1/README.md)). After explaining how to set up explicit data movement ([section 2](./section-2/README.md)) to transport the necessary data, you can run your first program on the AIE compute core ([section 3](./section-3/README.md)). [Section 4](./section-4/README.md) adds tracing for performance analysis and explains how to exploit the compute dense vector operations. More vector design examples, basic and larger (ML or computer vision), are given in sections [5](./section-5/README.md) and [6](./section-6/README.md). Finally, the [quick reference](./quick_reference.md) summarizes the most important API elements.
+```python
+import aie.iron as iron
+from aie.iron import In, Out, ObjectFifo, Program, Runtime, Worker
+from aie.iron.controlflow import range_
+import numpy as np
 
-## Outline
-<details><summary><a href="./section-0">Section 0 - Getting Set Up for IRON</a></summary>
+@iron.jit
+def my_design(a_in: In, b_out: Out):
+    of_in  = ObjectFifo(np.ndarray[(1024,), np.dtype[np.int32]], name="in")
+    of_out = ObjectFifo(np.ndarray[(1024,), np.dtype[np.int32]], name="out")
 
-* Introduce recommended hardware to target with IRON
-* Simple instructions to set up your hardware, tools, and environment
-</details>
-<details><summary><a href="./section-1">Section 1 - Basic AI Engine building blocks</a></summary>
+    def core_fn(of_in, of_out):
+        ai = of_in.acquire(1)
+        bo = of_out.acquire(1)
+        for i in range_(1024):
+            bo[i] = ai[i] + 1
+        of_in.release(1); of_out.release(1)
 
-* Introduce the AI Engine building blocks for expressing an application design
-* Give an example of Python bindings for MLIR source that define AIE tiles
-</details>
-<details><summary><a href="./section-2">Section 2 - Data Movement (Object FIFOs)</a></summary>
+    w = Worker(core_fn, [of_in.cons(), of_out.prod()])
 
-* Introduce the topic of objectfifos and how they abstract connections between tiles and data in the AIE array memories
-* Explain key objectfifo data movement patterns
-* Introduce more complex objectfifo connection patterns (broadcast, implicit copy, join, distribute)
-* Demonstrate objectfifos with practical examples
-* Explain runtime data movement between the host and AIE array
-</details>
-<details><summary><a href="./section-3">Section 3 - My First Program</a></summary>
+    rt = Runtime()
+    with rt.sequence(*[np.ndarray[(1024,), np.dtype[np.int32]]] * 2) as (a, b):
+        rt.start(w)
+        rt.fill(of_in.prod(),  a)
+        rt.drain(of_out.cons(), b, wait=True)
 
-* Introduce an example of the first simple program (Vector Scalar Multiplication)
-* Illustrate how to run designs on Ryzen™ AI-enabled hardware
-</details>
-<details><summary><a href="./section-4">Section 4 - Performance Measurement & Vector Programming</a></summary>
+    return Program(iron.get_current_device(), rt).resolve_program()
 
-* Introduce performance measurement (timers, trace)
-* Discuss topic of vector programming at the kernel level
-</details>
-<details><summary><a href="./section-5">Section 5 - Example Vector Designs</a></summary>
+a = iron.arange(1024, dtype=np.int32, device="npu")
+b = iron.zeros(1024,  dtype=np.int32, device="npu")
+my_design(a, b)              # compile + run + sync back
+```
 
-* Introduce additional vector design examples with exercises to measure their performance:
-    * Passthrough
-    * Vector $e^x$
-    * Vector Scalar Addition
-    * GEMM
-    * CONV2D
-    * ...
-</details>
-<details><summary><a href="./section-6">Section 6 - Larger Example Designs</a></summary>
+`my_design.as_mlir(a, b)` or `python3 my_design.py --emit-mlir` prints the lowered MLIR without touching the NPU.
 
-* Introduce larger design examples with performance measured over multiple cores
-    * Edge Detect
-    * Resnet
-    * ...
-</details>
+## Where to go next
 
-### [Quick Reference](./quick_reference.md)
+| You want… | Read |
+|---|---|
+| Quickest possible on-ramp (5 small kernels) | [Mini Tutorial](./mini_tutorial/) |
+| Install + driver setup | [Repo root README](../README.md) |
+| The full guide, top to bottom | [Section 0](./section-0/) onward |
+| The shortest end-to-end working program | [Section 3 — My First Program](./section-3/) |
+| Optimizing — measure, then tune | [Section 4](./section-4/) (timers, trace, vectorization) |
+| Catalog of worked example designs | [Section 5](./section-5/) (basic) and [Section 6](./section-6/) (vision + ML) |
+| The implicit-MLIR-context error you just hit | [`implicit_mlir_context.md`](./implicit_mlir_context.md) |
+| Setting-by-setting configuration (cache dir, tensor backend, log level) | [`iron_configuration.md`](./iron_configuration.md) |
+| What happens between `@iron.jit` and the NPU running | [`compilation_stages.md`](./compilation_stages.md) |
+| Ready-made compute kernels (matmul, conv, eltwise, vision) | [`kernels_library.md`](./kernels_library.md) |
 
-## AI Engine architecture documentation
-* [AIE1 Architecture Manual - AM009](https://docs.amd.com/r/en-US/am009-versal-ai-engine/Overview)
-* [AIE2 Architecture Manual - AM020](https://docs.amd.com/r/en-US/am020-versal-aie-ml/Overview)
+## Sections
 
-## AMD XDNA™ references
-* [AMD XDNA™ NPU in Ryzen™ AI Processors](https://ieeexplore.ieee.org/document/10592049)
+* [Section 0 — Getting set up for IRON](./section-0/)
+* [Section 1 — Basic AI Engine building blocks](./section-1/) (Worker, Buffer, Runtime, Program, `@iron.jit`)
+* [Section 2 — Data movement (Object FIFOs)](./section-2/) (deep dive; 2a–2h)
+* [Section 3 — My First Program](./section-3/) (end-to-end vector × scalar, JIT + decomposed XRT)
+* [Section 4 — Performance measurement & vector programming](./section-4/) (timers → trace → kernel vectorization)
+* [Section 5 — Example vector designs](./section-5/) (catalog)
+* [Section 6 — Larger example designs](./section-6/) (vision, ML)
 
-## IRON Configuration
-* [Configuration Options for IRON Python Bindings](./iron_configuration.md)
+## JIT compile + cache
 
+`@iron.jit` caches compiled artifacts by `(MLIR bytecode + compile-time kwargs)`. The first call to a design compiles; subsequent calls with the same kwargs reuse the cache.
 
+* Cache directory: `${NPU_CACHE_HOME:-~/.npu/cache}`. Set `NPU_CACHE_HOME=/tmp/iron_cache` (or anywhere) to override.
+* To force a clean build, `rm -rf "$NPU_CACHE_HOME"` (or the per-design `build/` directory the Makefile writes to).
+* First-call compile time depends on design complexity. A simple vector_scalar_mul-style design compiles in single-digit seconds; multi-core matmul or convolution can take 30s+. Subsequent calls with a warm cache are essentially instant.
+
+More configuration options (tensor backend, XRT context cache, log level) are in [`iron_configuration.md`](./iron_configuration.md).
+
+## Terminology — the words this guide uses
+
+The guide tries to stick to one term per concept:
+
+| Term | Means | NOT |
+|---|---|---|
+| **Compute tile** | The physical AIE tile that runs your kernel code (e.g., `Tile(0, 2)`). | "Core" — avoid; same hardware concept but inconsistent across docs. |
+| **Worker** | The IRON object describing the code that runs on one compute tile. | "Process", "task" — both have been used historically; prefer Worker. |
+| **Mem tile** | The L2 scratchpad tile (typically row 1) for staging data between shim and compute. | "Memory tile" — same thing; prefer "mem tile" for consistency with the IRON API. |
+| **Shim tile** | The row-0 tile that bridges the AIE-array to main memory via shim DMA. | |
+| **ObjectFifo** | The synchronized streaming-data primitive between two endpoints. Acquire / release. | "Channel" — generic; reserve for AXI stream channels. |
+| **Runtime sequence** | The host-side description of `fill` / `drain` operations and worker `start`s, declared with `rt.sequence(...)`. | "Host code" — that's the C++ / Python testbench that calls the design. |
+| **`@iron.jit`** | The single recommended entry point. Decorates a Python function that returns a `Program`; the first call JIT-compiles and runs on the NPU. | The dialect-direct form (`from aie.dialects.aie import *`) is what the JIT compiles *to*; you rarely write it. |
+
+-----
+
+## Further reading
+
+* [Quick reference](./quick_reference.md) — IRON API cheat sheet.
+* AIE architecture manuals: [AIE1 (AM009)](https://docs.amd.com/r/en-US/am009-versal-ai-engine/Overview), [AIE2 (AM020)](https://docs.amd.com/r/en-US/am020-versal-aie-ml/Overview).
+* [AMD XDNA™ NPU in Ryzen™ AI Processors](https://ieeexplore.ieee.org/document/10592049) — IEEE Hot Chips paper.
+
+-----
+[Section 0 — Getting set up for IRON →](./section-0/)

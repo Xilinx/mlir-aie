@@ -546,6 +546,7 @@ from .utils import (
     extract_buffers,
     get_cycles,
     get_cycles_summary,
+    print_cycles_summary,
     get_vector_time,
     split_trace_segments,
 )

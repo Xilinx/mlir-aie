@@ -4,68 +4,105 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
+# (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
+"""Vector-vector multiply — IRON API design with ``@iron.jit`` compilation.
+
+Two int32 vectors are multiplied element-wise on a single AIE compute tile,
+in tile-of-16 sub-vectors fed via three depth-2 ObjectFifos (two in, one out).
+
+Driven via the standard 3-mode CLI:
+
+* default          — JIT-compile + run on the attached NPU + verify.
+* ``--xclbin-path`` / ``--insts-path`` — compile-only, used by the
+  Makefile so a C++ testbench can drive the design.
+* ``--emit-mlir``  — print MLIR to stdout for the selected ``--dev``
+  (e.g. ``-d xcvc1902 --emit-mlir`` for the VCK5000 toolchain).
+"""
+
+import argparse
+
 import numpy as np
-import sys
 
-from aie.iron import ObjectFifo, Program, Runtime, Worker
-from aie.iron.device import NPU1Col1, NPU2Col1, XCVC1902
-from aie.iron.controlflow import range_
-
-
-def my_vector_mul():
-    N = 256
-    n = 16
-    N_div_n = N // n
-
-    if len(sys.argv) != 3:
-        raise ValueError("[ERROR] Need 2 command line arguments (Device name, Col)")
-
-    if sys.argv[1] == "npu":
-        dev = NPU1Col1()
-    elif sys.argv[1] == "npu2":
-        dev = NPU2Col1()
-    elif sys.argv[1] == "xcvc1902":
-        dev = XCVC1902()
-    else:
-        raise ValueError("[ERROR] Device name {} is unknown".format(sys.argv[1]))
-
-    # Define tensor types
-    tensor_ty = np.ndarray[(N,), np.dtype[np.int32]]
-    tile_ty = np.ndarray[(n,), np.dtype[np.int32]]
-
-    # AIE-array data movement with object fifos
-    of_in1 = ObjectFifo(tile_ty, name="in1")
-    of_in2 = ObjectFifo(tile_ty, name="in2")
-    of_out = ObjectFifo(tile_ty, name="out")
-
-    # Create a task that can run on a compute tile
-    def core_body(of_in1, of_in2, of_out):
-        # Number of sub-vector "tile" iterations
-        for _ in range_(N_div_n):
-            elem_in1 = of_in1.acquire(1)
-            elem_in2 = of_in2.acquire(1)
-            elem_out = of_out.acquire(1)
-            for i in range_(n):
-                elem_out[i] = elem_in1[i] * elem_in2[i]
-            of_in1.release(1)
-            of_in2.release(1)
-            of_out.release(1)
-
-    # Create a worker to run the task on a compute tile
-    worker = Worker(core_body, fn_args=[of_in1.cons(), of_in2.cons(), of_out.prod()])
-
-    # Runtime operations to move data to/from the AIE-array
-    rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty, tensor_ty) as (A, B, C):
-        rt.start(worker)
-        rt.fill(of_in1.prod(), A)
-        rt.fill(of_in2.prod(), B)
-        rt.drain(of_out.cons(), C, wait=True)
-
-    # Place program components (assign them resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program()
+import aie.iron as iron
+from aie.iron import CompileTime, In, Out
+from aie.iron.algorithms import transform_binary_typed
+from aie.utils.hostruntime.argparse import device_from_args
+from aie.utils.benchmark import print_benchmark, run_iters
+from aie.utils.hostruntime.argparse import (
+    add_benchmark_args,
+    add_compile_args,
+)
+from aie.utils.hostruntime.cli import run_design_cli
+from aie.utils.verify import assert_pass
 
 
-module = my_vector_mul()
-print(module)
+@iron.jit
+def vector_vector_mul(
+    input0: In,
+    input1: In,
+    output: Out,
+    *,
+    num_elements: CompileTime[int],
+    dtype: CompileTime[type] = np.int32,
+    tile_size: CompileTime[int] = 16,
+):
+    tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
+    return transform_binary_typed(lambda a, b: a * b, tensor_ty, tile_size=tile_size)
+
+
+def _compile_kwargs(opts):
+    return dict(num_elements=opts.num_elements, dtype=np.int32)
+
+
+def _run_and_verify(opts):
+    input0 = iron.randint(0, 100, (opts.num_elements,), dtype=np.int32, device="npu")
+    input1 = iron.randint(0, 100, (opts.num_elements,), dtype=np.int32, device="npu")
+    output = iron.zeros_like(input0)
+
+    bench = run_iters(
+        vector_vector_mul,
+        input0,
+        input1,
+        output,
+        num_elements=opts.num_elements,
+        dtype=input0.dtype,
+        warmup=opts.warmup,
+        iters=opts.iters,
+    )
+
+    expected = input0.numpy() * input1.numpy()
+    assert_pass(
+        expected,
+        output.numpy(),
+        fail_msg="output does not match a * b",
+        print_pass=False,
+    )
+
+    print()
+    print_benchmark(bench)
+    print("PASS!")
+
+
+def main():
+    p = argparse.ArgumentParser(prog="AIE Vector-Vector Multiply")
+    add_compile_args(p, dev_choices=("npu", "npu2", "xcvc1902"), with_emit_mlir=True)
+    add_benchmark_args(p)
+    p.add_argument(
+        "-n",
+        "--num-elements",
+        type=int,
+        default=256,
+        help="Total elements per input vector (must be a multiple of 16).",
+    )
+    opts = p.parse_args()
+    run_design_cli(
+        vector_vector_mul,
+        opts,
+        compile_kwargs=_compile_kwargs,
+        run_and_verify=_run_and_verify,
+        device=lambda o: device_from_args(o, n_cols=1),
+    )
+
+
+if __name__ == "__main__":
+    main()

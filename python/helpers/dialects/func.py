@@ -9,6 +9,7 @@ from ..util import get_arg_types, NpuDType, try_convert_np_type_to_mlir_type
 from ...dialects._ods_common import get_op_result_or_op_results
 from ...dialects.func import *
 from ...ir import (
+    Context,
     FlatSymbolRefAttr,
     FunctionType,
     InsertionPoint,
@@ -185,7 +186,12 @@ class FuncBase:
         self.res_attrs = res_attrs
         self.loc = loc
         self.ip = ip
-        self._func_op = None
+        # FuncOp cache keyed by id(Context). A single @func decorated at
+        # module scope can be reused across multiple @iron.jit designs;
+        # each design builds in its own MLIR Context, so caching one
+        # FuncOp globally would hand back a symbol bound to a stale
+        # Context. Keying by current Context invalidates automatically.
+        self._func_op_by_ctx: dict = {}
         # in case this function lives inside a class
         self.qualname = qualname
 
@@ -213,6 +219,17 @@ class FuncBase:
 
     def __str__(self):
         return str(f"{self.__class__} {self.__dict__}")
+
+    @property
+    def _func_op(self):
+        return self._func_op_by_ctx.get(id(Context.current))
+
+    @_func_op.setter
+    def _func_op(self, value):
+        if value is None:
+            self._func_op_by_ctx.pop(id(Context.current), None)
+        else:
+            self._func_op_by_ctx[id(Context.current)] = value
 
     def emit(self, *call_args, force=False) -> FuncOp:
         if self._func_op is None or force:

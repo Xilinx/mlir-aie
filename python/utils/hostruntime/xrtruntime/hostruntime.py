@@ -373,6 +373,12 @@ class CachedXRTRuntime(XRTHostRuntime):
         # We use OrderedDict so that we can use Fifo behavior for LRU eviction policies
         self._context_cache = OrderedDict()
         self._insts_cache = OrderedDict()
+        # Memoised read_insts() output keyed by (insts_path, insts_mtime).
+        # Skips the file open+read on every load() call when content is
+        # unchanged.  Cheap (insts files are ~hundreds of bytes); the win
+        # shows up when NPU_CACHE_HOME lives on a slow/networked filesystem
+        # — open+read can be ~290us there vs ~10us on local FS.
+        self._insts_content_cache = OrderedDict()
 
         # Set default from dict if present
         self._cache_size = None
@@ -397,6 +403,7 @@ class CachedXRTRuntime(XRTHostRuntime):
             self._evict()
         while self._insts_cache:
             self._evict_insts()
+        self._insts_content_cache.clear()
         gc.collect()  # Make sure contexts are garbage collected.
 
     def _cleanup_entry(self, entry):
@@ -430,6 +437,24 @@ class CachedXRTRuntime(XRTHostRuntime):
     def _evict_insts(self):
         key, entry = self._insts_cache.popitem(last=False)
         self._cleanup_insts_entry(entry)
+
+    def _read_insts_cached(self, insts_path, insts_mtime):
+        """``read_insts(insts_path)`` memoised by ``(path, mtime)``.
+
+        See ``__init__`` comment: shaves ~280us per load() when insts.bin
+        lives on a networked filesystem (e.g. ``$HOME`` on NFS).  Stale
+        files are detected via mtime so the cache is correct across rebuilds.
+        """
+        key = (str(insts_path), insts_mtime)
+        cached = self._insts_content_cache.get(key)
+        if cached is not None:
+            self._insts_content_cache.move_to_end(key)
+            return cached
+        insts = self.read_insts(insts_path)
+        if len(self._insts_content_cache) >= self._cache_size:
+            self._insts_content_cache.popitem(last=False)
+        self._insts_content_cache[key] = insts
+        return insts
 
     def run(
         self,
@@ -465,6 +490,48 @@ class CachedXRTRuntime(XRTHostRuntime):
                 raise HostRuntimeError("Kernel not loaded (evicted from cache)")
 
         return super().run(kernel_handle, args, trace_config, fail_on_error, **kwargs)
+
+    def load_and_run(self, npu_kernel, run_args, **kwargs):
+        """Wrapper around the base implementation that papers over a Phoenix
+        firmware-state quirk: a trace-on run leaves the amdxdna firmware in
+        a state where the next submit on a *different* cached context fails
+        with ``DRM_IOCTL_AMDXDNA_EXEC_CMD IOCTL failed (err=2): No such file
+        or directory`` (EXEC_CMD ENOENT) — even if we evict the failing
+        context and re-create a fresh hw_context for the same xclbin.  This
+        is the same failure mode the partial-eviction workaround at the top
+        of ``load()`` already drains the whole cache to dodge (see comment
+        on ``NPU_CONTEXT_CACHE_SIZE``).
+
+        Workaround: after a trace-on run completes (and the base
+        ``load_and_run`` has already extracted the trace BOs via
+        ``process_trace``), drain the entire context cache on Phoenix so
+        the next call rebuilds from scratch.  Strix (npu2) handles
+        single-entry eviction correctly and isn't affected, so we leave it
+        alone.
+
+        Same-kernel re-runs after their own trace work fine; the bug only
+        bites when switching to a different kernel after a trace, but
+        draining unconditionally on Phoenix is simpler than tracking which
+        contexts are about to be touched next.
+        """
+        handle, ret = super().load_and_run(npu_kernel, run_args, **kwargs)
+        if (
+            npu_kernel.trace_config is not None
+            and getattr(self, "npu_str", None) == "npu1"
+        ):
+            self._drain_for_phoenix_trace_quirk()
+        return handle, ret
+
+    def _drain_for_phoenix_trace_quirk(self):
+        """Drain the full context + insts caches.  Mirrors the
+        partial-eviction workaround at the top of ``load()`` — see comment
+        on ``NPU_CONTEXT_CACHE_SIZE`` for why a single-entry evict isn't
+        enough on Phoenix."""
+        while self._context_cache:
+            self._evict()
+        while self._insts_cache:
+            self._evict_insts()
+        gc.collect()
 
     def load(
         self,
@@ -521,7 +588,17 @@ class CachedXRTRuntime(XRTHostRuntime):
                 xclbin_uuid = xclbin.get_uuid()
 
                 if len(self._context_cache) >= self._cache_size:
-                    self._evict()
+                    if self.npu_str == "npu1":
+                        # Phoenix-only workaround: single-entry LRU eviction
+                        # leaves the firmware in a state where the next submit
+                        # on a freshly-created context fails with EXEC_CMD
+                        # ENOENT. Even retaining one old entry reproduces it;
+                        # only a full drain works. Strix (npu2) handles
+                        # single-entry eviction correctly.
+                        while self._context_cache:
+                            self._evict()
+                    else:
+                        self._evict()
 
                 self._device.register_xclbin(xclbin)
 
@@ -568,7 +645,7 @@ class CachedXRTRuntime(XRTHostRuntime):
                         f"Kernel {kernel_name} not found in xclbin (kernels found: {available_kernels})"
                     )
 
-            insts = self.read_insts(insts_path)
+            insts = self._read_insts_cached(insts_path, insts_mtime)
             insts_bo = None
             if hasattr(pyxrt, "module") and isinstance(insts, pyxrt.module):
                 ext_kernel_key = (kernel_name, str(insts_path), insts_mtime)

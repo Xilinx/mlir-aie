@@ -4,15 +4,16 @@
 #
 # (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
 
-from ml_dtypes import bfloat16
+from pathlib import Path
+
 import numpy as np
-import sys
-import os
+from ml_dtypes import bfloat16
 
 import aie.iron as iron
-from aie.iron import ExternalFunction
+from aie.iron import CompileTime, ExternalFunction, In, Out
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.utils.config import cxx_header_path
+from aie.utils.verify import assert_pass
 
 
 # JIT decorator for IRON
@@ -20,9 +21,14 @@ from aie.utils.config import cxx_header_path
 # Parameters:
 #     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
 @iron.jit
-def saxpy(input0, input1, output):
-    N = input0.shape[0]  # Tensor size
-    element_type = output.dtype
+def saxpy(
+    input0: In,
+    input1: In,
+    output: Out,
+    *,
+    N: CompileTime[int],
+    element_type: CompileTime[type]
+):
 
     # --------------------------------------------------------------------------
     # In-Array Data Movement
@@ -44,7 +50,7 @@ def saxpy(input0, input1, output):
 
     saxpy_kernel = ExternalFunction(
         "saxpy",
-        source_file=os.path.join(os.path.dirname(__file__), "saxpy.cc"),
+        source_file=str(Path(__file__).parent / "saxpy.cc"),
         arg_types=[in_ty, in_ty, out_ty],
         include_dirs=[cxx_header_path()],
     )
@@ -96,26 +102,11 @@ def main():
 
     # JIT-compile the kernel then launches the kernel with the given arguments. Future calls
     # to the kernel will use the same compiled kernel and loaded code objects
-    saxpy(input0, input1, output)
+    saxpy(input0, input1, output, N=data_size, element_type=element_type)
 
-    # Check the correctness of the result and print any mismatches
-    ref_vec = [3 * input0[i] + input1[i] for i in range(data_size)]
-
-    errors = 0
-    for index, (actual, ref) in enumerate(zip(output, ref_vec)):
-        if actual != ref:
-            print(f"Error at {index}: {actual} != {ref}")
-            errors += 1
-
-    # If the result is correct, exit with a success code
-    # Otherwise, exit with a failure code
-    if not errors:
-        print("\nPASS!\n")
-        sys.exit(0)
-    else:
-        print("\nError count: ", errors)
-        print("\nfailed.\n")
-        sys.exit(1)
+    # Numpy reference of `3*x + y` and a one-line tolerance check.
+    ref = 3 * input0.numpy() + input1.numpy()
+    assert_pass(output.numpy(), ref, fail_msg="saxpy output does not match 3*x + y")
 
 
 if __name__ == "__main__":
