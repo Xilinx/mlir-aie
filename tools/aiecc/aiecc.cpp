@@ -1517,7 +1517,6 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
   // Note: Trace lowering runs in a separate guarded pipeline
   // (runTraceLoweringPipeline) before this function is called.
   devicePm.addPass(xilinx::AIE::createAIEAssignLockIDsPass());
-  devicePm.addPass(xilinx::AIE::createAIEObjectFifoRegisterProcessPass());
   {
     std::string objFifoPipelineStr =
         "aie-objectFifo-stateful-transform{dynamic-objFifos=" +

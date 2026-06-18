@@ -235,15 +235,6 @@ def AIEFindFlows : Pass<"aie-find-flows", "DeviceOp"> {
   ];
 }
 
-def AIEVectorOpt : Pass<"aie-vector-opt", "mlir::func::FuncOp"> {
-  let summary = "optimize vector instructions for AIE";
-  let description = [{
-    After super-vectorization, some additional optimizations are important
-    for improving QOR and enabling lowering to LLVM.
-  }];
-
-  let constructor = "xilinx::AIE::createAIEVectorOptPass()";
-}
 
 def AIEVectorTransferLowering : Pass<"aie-vector-transfer-lowering", "DeviceOp"> {
   let summary = "Lower vector.transfer_read/write to vector.load/store for AIE";
@@ -349,22 +340,6 @@ def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "
   ];
 }
 
-def AIEObjectFifoRegisterProcess : Pass<"aie-register-objectFifos", "DeviceOp"> {
-  let summary = "Generate acquire/release patterns for producer/consumer processes registered to an objectFifo";
-  let description = [{
-    Generate acquire/release patterns in the CoreOps of associated cores for each 
-    aie.objectfifo.register_process operation. Patterns are generated as for loops
-    of different sizes depending on input patterns.
-  }];
-
-  let constructor = "xilinx::AIE::createAIEObjectFifoRegisterProcessPass()";
-  let dependentDialects = [
-    "mlir::scf::SCFDialect",
-    "mlir::func::FuncDialect",
-    "mlir::arith::ArithDialect",
-    "xilinx::AIE::AIEDialect",
-  ];
-}
 
 def AIELowerCascadeFlows : Pass<"aie-lower-cascade-flows", "DeviceOp"> {
   let summary = "Lower aie.cascade_flow operations through `aie.configure_cascade` operations";
