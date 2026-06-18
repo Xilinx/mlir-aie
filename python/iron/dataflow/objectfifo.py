@@ -532,9 +532,6 @@ class ObjectFifoHandle(Resolvable):
         self,
         source,
         tap=None,
-        offset=None,
-        sizes=None,
-        strides=None,
         group=None,
         wait: bool = False,
         tile=None,
@@ -549,10 +546,9 @@ class ObjectFifoHandle(Resolvable):
         Args:
             source (RuntimeData): The runtime input buffer (a sequence argument).
             tap (TensorAccessPattern | None): Access pattern over ``source``.
-                Mutually exclusive with offset/sizes/strides. Defaults to a
-                linear transfer of the whole buffer.
-            offset / sizes / strides: Explicit transfer geometry; ``sizes`` and
-                ``strides`` may include runtime SSA values for dynamic shapes.
+                Built directly or via the tiler (e.g. ``TensorTiler2D``); its
+                offset/sizes/strides may be runtime values for dynamic shapes.
+                Defaults to a linear transfer of the whole buffer.
             group (TaskGroup | None): Completion group. Defaults to the
                 sequence's implicit default group (finished at end-of-sequence).
             wait (bool): Whether completion is awaited (vs. freed).
@@ -564,26 +560,12 @@ class ObjectFifoHandle(Resolvable):
         """
         if not self._is_prod:
             raise ValueError("fill() requires a producer ObjectFifoHandle")
-        self._emit_transfer(
-            source,
-            tap,
-            offset,
-            sizes,
-            strides,
-            group,
-            wait,
-            tile,
-            packet,
-            offset_parameter,
-        )
+        self._emit_transfer(source, tap, group, wait, tile, packet, offset_parameter)
 
     def drain(
         self,
         dest,
         tap=None,
-        offset=None,
-        sizes=None,
-        strides=None,
         group=None,
         wait: bool = False,
         tile=None,
@@ -596,26 +578,12 @@ class ObjectFifoHandle(Resolvable):
         """
         if self._is_prod:
             raise ValueError("drain() requires a consumer ObjectFifoHandle")
-        self._emit_transfer(
-            dest,
-            tap,
-            offset,
-            sizes,
-            strides,
-            group,
-            wait,
-            tile,
-            packet,
-            offset_parameter,
-        )
+        self._emit_transfer(dest, tap, group, wait, tile, packet, offset_parameter)
 
     def _emit_transfer(
         self,
         rt_data,
         tap,
-        offset,
-        sizes,
-        strides,
         group,
         wait,
         tile,
@@ -648,7 +616,7 @@ class ObjectFifoHandle(Resolvable):
             else:
                 offset_param_name = offset_parameter
 
-        if tap is None and offset is None and sizes is None and strides is None:
+        if tap is None:
             tap = rt_data.default_tap()
 
         task = DMATask(
@@ -656,9 +624,6 @@ class ObjectFifoHandle(Resolvable):
             rt_data,
             tap=tap,
             wait=wait,
-            offset=offset,
-            sizes=sizes,
-            strides=strides,
             offset_parameter=offset_param_name,
             packet=packet,
         )

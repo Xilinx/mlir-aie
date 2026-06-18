@@ -23,6 +23,7 @@ from aie.iron import (
     kernels,
 )
 from aie.extras import types as T
+from aie.helpers.taplib import TensorAccessPattern
 from aie.utils.benchmark import print_benchmark, run_iters
 from aie.iron import TileTrace, TraceBuffer
 from aie.utils.trace.utils import print_cycles_summary
@@ -70,8 +71,11 @@ def my_passthrough_kernel(
         # aiecc TXN-C++ flow (see passthrough_kernel_dynamic.py); this path
         # emits MLIR for that flow rather than executing on the NPU.
         def runtime_sequence(a_in, b_out, buffer_length):
-            of_in.prod().fill(a_in, sizes=[1, 1, 1, buffer_length])
-            of_out.cons().drain(b_out, sizes=[1, 1, 1, buffer_length], wait=True)
+            tap = TensorAccessPattern(
+                (1, n), 0, sizes=[1, 1, 1, buffer_length], strides=[0, 0, 0, 1]
+            )
+            of_in.prod().fill(a_in, tap=tap)
+            of_out.cons().drain(b_out, tap=tap, wait=True)
 
         arg_types_list = [vector_type, vector_type, T.i32]
     else:

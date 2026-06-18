@@ -452,11 +452,11 @@ def shim_dma_bd(
         )
 
     if tap:
-        sizes = tap.sizes.copy()
-        strides = tap.strides.copy()
-        # For some reason, the type checking of offsets does not mesh well with offset being a property
-        # so here we make sure it is evaluated and properly is seen as an integer.
-        offset = int(tap.offset)
+        # offset/sizes/strides may carry runtime SSA values (dynamic taps); the
+        # downstream BD builder coerces them, so pass through without int().
+        sizes = list(tap.sizes)
+        strides = list(tap.strides)
+        offset = tap.offset
 
     if offset is None:
         offset = 0
@@ -532,11 +532,11 @@ def shim_dma_single_bd_task(
         )
 
     if tap:
-        sizes = tap.sizes.copy()
-        strides = tap.strides.copy()
-        # For some reason, the type checking of offsets does not mesh well with offset being a property
-        # so here we make sure it is evaluated and properly is seen as an integer.
-        offset = int(tap.offset)
+        # offset/sizes/strides may carry runtime SSA values (dynamic taps); the
+        # downstream BD builder coerces them, so pass through without int().
+        sizes = list(tap.sizes)
+        strides = list(tap.strides)
+        offset = tap.offset
 
     repeat_count = 0
     if sizes:

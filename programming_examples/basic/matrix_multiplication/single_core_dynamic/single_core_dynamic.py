@@ -47,7 +47,7 @@ from aie.dialects import arith
 from aie.extras.dialects.arith import constant
 from aie.extras import types as T
 from aie.helpers.dialects.scf import if_
-from aie.helpers.taplib import TensorTiler2D
+from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
 from aie.utils.hostruntime.argparse import add_compile_args
 
 
@@ -179,9 +179,12 @@ def single_core_dynamic(
                     tg = TaskGroup()
                     outC.cons().drain(
                         C,
-                        offset=C_row_offset,
-                        sizes=[num_tile_rows, N_div_n, m, n],
-                        strides=[m * N, n, N, 1],
+                        tap=TensorAccessPattern(
+                            (1, max_m * max_n),
+                            C_row_offset,
+                            sizes=[num_tile_rows, N_div_n, m, n],
+                            strides=[m * N, n, N, 1],
+                        ),
                         group=tg,
                         wait=True,
                     )
@@ -191,9 +194,12 @@ def single_core_dynamic(
                         def emit_ab():
                             inA.prod().fill(
                                 A,
-                                offset=A_row_offset,
-                                sizes=[N_div_n, K_div_k, m, k],
-                                strides=[0, k, K, 1],
+                                tap=TensorAccessPattern(
+                                    (1, max_m * max_k),
+                                    A_row_offset,
+                                    sizes=[N_div_n, K_div_k, m, k],
+                                    strides=[0, k, K, 1],
+                                ),
                                 group=tg,
                             )
                             if not b_col_maj:
@@ -204,8 +210,12 @@ def single_core_dynamic(
                                 b_strides = [n * K, k, K, 1]
                             inB.prod().fill(
                                 B,
-                                sizes=b_sizes,
-                                strides=b_strides,
+                                tap=TensorAccessPattern(
+                                    (1, max_k * max_n),
+                                    0,
+                                    sizes=b_sizes,
+                                    strides=b_strides,
+                                ),
                                 group=tg,
                             )
 

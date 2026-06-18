@@ -22,11 +22,8 @@ class DMATask(RuntimeTask):
         self,
         object_fifo: ObjectFifoHandle,
         rt_data: RuntimeData,
-        tap: TensorAccessPattern | None = None,
+        tap: TensorAccessPattern,
         wait: bool = False,
-        offset=None,
-        sizes=None,
-        strides=None,
         offset_parameter: str | None = None,
         packet: tuple[int, int] | None = None,
     ):
@@ -35,11 +32,9 @@ class DMATask(RuntimeTask):
         Args:
             object_fifo (ObjectFifoHandle): The ObjectFifoHandle associated with the operation
             rt_data (RuntimeData): The Runtime buffer associated with the operation.
-            tap (TensorAccessPattern): The access pattern associated with the operation.
+            tap (TensorAccessPattern): The access pattern (offset/sizes/strides)
+                of the transfer. May carry runtime values for dynamic shapes.
             wait (bool, optional): Whether this task should conclude with a call to await or a call to free. Defaults to False.
-            offset (int | None, optional): Byte offset into the runtime buffer for the start of the transfer. Mutually exclusive with ``tap``. Defaults to None.
-            sizes (list[int] | None, optional): Multi-dimensional transfer sizes (up to 4D) describing the shape of each DMA tile. Mutually exclusive with ``tap``. Defaults to None.
-            strides (list[int] | None, optional): Multi-dimensional strides (in element granularity) corresponding to ``sizes``. Mutually exclusive with ``tap``. Defaults to None.
             offset_parameter (str | None, optional): Name of a ScratchpadParameter whose value is used as the element offset for this DMA transfer. Defaults to None.
             packet (tuple[int, int] | None, optional): Stamp the shim DMA's
                 BD with a packet header ``(pkt_type, pkt_id)``.  Pairs with
@@ -54,14 +49,6 @@ class DMATask(RuntimeTask):
         self._offset_parameter = offset_parameter
         self._packet = packet
         self._task = None
-        self._offset = offset
-        self._sizes = sizes
-        self._strides = strides
-        if tap and not (offset is None and sizes is None and strides is None):
-            raise ValueError(
-                "DMATask can take either a TensorAccessPattern OR "
-                "(offset and/or sizes and/or strides), but not both."
-            )
 
     def will_wait(self) -> bool:
         """Whether this task should conclude with an await operation."""
@@ -93,16 +80,13 @@ class DMATask(RuntimeTask):
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ) -> None:
-        # One lowering for both static and runtime-valued transfers:
-        # shim_dma_single_bd_task accepts MixedValues sizes/strides/offset and
-        # routes any SSA value to the BD's dyn_* operands.
+        # One lowering for both static and runtime-valued transfers: the tap's
+        # offset/sizes/strides may be runtime SSA values, which
+        # shim_dma_single_bd_task routes to the BD's dyn_* operands.
         self._task = shim_dma_single_bd_task(
             self._object_fifo.name,
             self._rt_data.op,
             tap=self._tap,
-            offset=self._offset,
-            sizes=self._sizes,
-            strides=self._strides,
             issue_token=self._wait,
             offset_parameter=self._offset_parameter,
             packet=self._packet,
