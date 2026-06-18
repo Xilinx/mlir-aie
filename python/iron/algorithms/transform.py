@@ -200,7 +200,7 @@ def _transform_gen(func, inputs: list, output, *params, tile_size=16, trace_size
     return Program(
         device,
         sequence,
-        sequence_arg_types=[*all_types],
+        arg_types=[*all_types],
         workers=[worker],
         trace=TraceBuffer(trace_size=trace_size) if trace_size > 0 else None,
     ).resolve_program()
@@ -474,7 +474,7 @@ def _transform_parallel_gen(
     return Program(
         device,
         sequence,
-        sequence_arg_types=[*all_types],
+        arg_types=[*all_types],
         workers=list(my_workers),
         trace=TraceBuffer(trace_size=trace_size) if trace_size > 0 else None,
     ).resolve_program()

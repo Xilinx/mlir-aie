@@ -99,18 +99,22 @@ class Buffer(Resolvable):
 
     def __getitem__(self, idx):
         if self._op is None:
-            raise AttributeError(
-                "Cannot index into Buffer before it has been resolved."
-            )
+            self._raise_unresolved()
         return self._op[idx]
 
     def __setitem__(self, idx, source):
         if self._op is None:
-            raise AttributeError(
-                "Cannot index into Buffer before it has been resolved."
+            self._raise_unresolved()
+        self._op[idx] = source
+
+    def _raise_unresolved(self):
+        if self._tile is None:
+            raise ValueError(
+                f"Buffer '{self._name}' was never placed on a tile (not given "
+                "to any Worker), so it cannot be indexed in the runtime "
+                "sequence. Pass it to a Worker to place it."
             )
-        else:
-            self._op[idx] = source
+        raise AttributeError("Cannot index into Buffer before it has been resolved.")
 
     def resolve(
         self,

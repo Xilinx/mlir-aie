@@ -212,5 +212,5 @@ def _for_each_real(func, tensor, *params, tile_size=16):
             "before calling for_each."
         )
     return Program(
-        device, sequence, sequence_arg_types=[*all_types], workers=[worker]
+        device, sequence, arg_types=[*all_types], workers=[worker]
     ).resolve_program()

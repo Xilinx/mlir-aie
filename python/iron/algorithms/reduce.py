@@ -85,7 +85,7 @@ def _reduce_gen(func, input_desc, output_desc, *, trace_size=0):
     return Program(
         device,
         sequence,
-        sequence_arg_types=[in_ty, out_ty],
+        arg_types=[in_ty, out_ty],
         workers=[worker],
         trace=TraceBuffer(trace_size=trace_size) if trace_size > 0 else None,
     ).resolve_program()
