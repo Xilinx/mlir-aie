@@ -97,6 +97,12 @@ class Bd:
     # ``(pkt_type, pkt_id)``.  Pairs with a :class:`PacketFlow` that uses
     # the same ``pkt_id`` so the routing fabric dispatches correctly.
     packet: tuple[int, int] | None = None
+    # Multi-dimensional (strided) access pattern, as a list of
+    # ``(size, stride)`` tuples, innermost dimension last — the same form
+    # the ``aie.dma_bd`` dialect op's ``dimensions`` attribute accepts (lowered
+    # via the registered ``BDDimLayoutArrayAttr`` builder).  ``None`` (default)
+    # emits a plain contiguous transfer.
+    dimensions: list[tuple[int, int]] | None = None
 
 
 @dataclass
@@ -248,6 +254,8 @@ class TileDma(Resolvable):
                             bd_kwargs["len"] = bd.length
                         if bd.packet is not None:
                             bd_kwargs["packet"] = bd.packet
+                        if bd.dimensions is not None:
+                            bd_kwargs["dimensions"] = bd.dimensions
                         dma_bd(bd.buffer.op, **bd_kwargs)
                         for rel in bd.releases:
                             rel.emit()
