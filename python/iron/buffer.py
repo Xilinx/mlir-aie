@@ -62,6 +62,12 @@ class Buffer(Resolvable):
             self._name = f"buf_{next(Buffer._gbuf_index)}"
         self._use_write_rtp = use_write_rtp
         self._tile = tile
+        # Whether the user pinned this Buffer to an explicit tile at
+        # construction.  A Worker may auto-pin ``_tile`` later as a
+        # convenience, so ``_tile is not None`` is not a reliable signal of
+        # user intent; this flag is.  Only explicitly-placed Buffers may be
+        # shared (read) across Workers — see :class:`Worker`.
+        self._explicit_tile = tile is not None
         self._owner_worker = None
 
     @property
