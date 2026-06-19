@@ -500,10 +500,10 @@ class CompilableDesign:
                 k: _encode_kwarg(v) for k, v in self.compile_kwargs.items()
             },
             "compile_flags": self.compile_flags,
-            "source_files": [str(sf) for sf in self.source_files],
-            "include_paths": [str(p) for p in self.include_paths],
+            "source_files": [sf.as_posix() for sf in self.source_files],
+            "include_paths": [p.as_posix() for p in self.include_paths],
             "aiecc_flags": self.aiecc_flags,
-            "object_files": [str(of) for of in self.object_files],
+            "object_files": [of.as_posix() for of in self.object_files],
             "cache_hash": self._compute_cache_hash(),
         }
         return json.dumps(data)
