@@ -898,7 +898,6 @@ def test_kernels_mm_mac_dims_per_arch():
     ), f"AIE2P i16/i16 mac_dims expected (4, 4, 8), got {mm_aie2p.mac_dims}"
 
 
-
 def test_generated_cache_tracks_active_device(monkeypatch):
     """MLIR generation cache entries are keyed by the active IRON device."""
 
@@ -944,6 +943,7 @@ def test_compute_hash_changes_when_active_device_width_changes():
     set_current_device(None)
 
     assert h_one_col != h_two_col
+
 
 def test_transform_returns_module():
     import numpy as np
