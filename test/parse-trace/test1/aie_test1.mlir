@@ -3,15 +3,15 @@
 //
 // RUN: %python %S/../../../python/utils/trace/parse.py --input %S/trace_test1.txt --mlir %s --output %t.json
 // RUN: %python %S/../../../python/utils/trace/get_trace_summary.py --input %t.json
-// RUN: %python %S/../check_golden.py --actual %t.json --expected %S/golden_json.txt
+// RUN: %python %S/../Inputs/check_golden.py --actual %t.json --expected %S/golden_json.txt
 
 module {
   aie.device(npu1_1col) {
     %tile_0_2 = aie.tile(0, 2)
     %shim_noc_tile_0_0 = aie.tile(0, 0)
-    aie.objectfifo @infactor(%shim_noc_tile_0_0, {%tile_0_2}, 2 : i32) : !aie.objectfifo<memref<1xi32>>
-    aie.objectfifo @in(%shim_noc_tile_0_0, {%tile_0_2}, 2 : i32) : !aie.objectfifo<memref<1024xi16>>
-    aie.objectfifo @out(%tile_0_2, {%shim_noc_tile_0_0}, 2 : i32) : !aie.objectfifo<memref<1024xi16>>
+    aie.objectfifo @infactor(%shim_noc_tile_0_0, {%tile_0_2}, 2 : i32) : !aie.objectfifo<memref<1xi32>> 
+    aie.objectfifo @in(%shim_noc_tile_0_0, {%tile_0_2}, 2 : i32) : !aie.objectfifo<memref<1024xi16>> 
+    aie.objectfifo @out(%tile_0_2, {%shim_noc_tile_0_0}, 2 : i32) : !aie.objectfifo<memref<1024xi16>> 
     func.func private @vector_scalar_mul_vector(memref<1024xi16>, memref<1024xi16>, memref<1xi32>, i32) attributes {link_with = "scale.o"}
     %core_0_2 = aie.core(%tile_0_2) {
       %c0 = arith.constant 0 : index
@@ -78,3 +78,4 @@ module {
     }
   }
 }
+
