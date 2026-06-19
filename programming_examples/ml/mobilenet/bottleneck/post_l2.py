@@ -74,12 +74,14 @@ def post_l2(act_in, sf, *, tiles=None, data_dir):
     # `co` = channels per ObjectFifo element (one WeightIndex iteration's output slice).
     co = post_L2_OutC // (PostOutputSplitL2 * n_fc_tiles)  # = 8
 
+    t = tiles.get if tiles else lambda k: None
+
     # Split the output fifo into 4 channel-segments, one per FC tile.
     act_post_l2_tiles = act_out_of.prod().join(
         offsets=[i * fc_out_per_tile for i in range(n_fc_tiles)],
         depths=[2] * n_fc_tiles,
         obj_types=[np.ndarray[(co,), np.dtype[np.uint16]]] * n_fc_tiles,
-        tile=tiles["join_memtile"] if tiles else None,
+        tile=t("join_memtile"),
     )
 
     def _u16(shape):
@@ -112,7 +114,7 @@ def post_l2(act_in, sf, *, tiles=None, data_dir):
         )
         # Pin the producer to a MemTile. Normally a Worker sets its fifo
         # endpoint implicitly, but this fifo has no producing Worker.
-        wts_mt = tiles["wts_memtiles"][i] if tiles is not None else AnyMemTile.copy()
+        wts_mt = tiles["wts_memtiles"][i] if tiles else AnyMemTile.copy()
         fc_wts_of.prod().endpoint = ObjectFifoEndpoint(wts_mt)
 
         def post_l2_fn(
@@ -155,7 +157,7 @@ def post_l2(act_in, sf, *, tiles=None, data_dir):
                 post_fc1_sf,
                 post_fc2_sf,
             ],
-            **({"tile": tiles["compute"][i]} if tiles is not None else {}),
+            tile=tiles["compute"][i] if tiles else None,
         )
         post_l2_workers.append(w)
 

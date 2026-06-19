@@ -35,16 +35,19 @@ build/${MLIR_FILE}.mlir: ${srcdir}/${MLIR_FILE}.py
 	mkdir -p ${@D}
 	python3 -m mobilenet.${MLIR_FILE} --emit-mlir -d ${devicename} > $@
 
-# Unplaced MLIR: every builder receives no placement (MOBILENET_NO_PLACEMENT=1),
+# Unplaced MLIR: --no-placement passes use_placement=False to make_mobilenet_iron,
 # emitting logical tiles for the SA placer to assign at compile time.
 build/${MLIR_FILE}_unplaced.mlir: ${srcdir}/${MLIR_FILE}.py
 	mkdir -p ${@D}
-	MOBILENET_NO_PLACEMENT=1 python3 -m mobilenet.${MLIR_FILE} \
+	python3 -m mobilenet.${MLIR_FILE} \
 		--no-placement --emit-mlir -d ${devicename} > $@
 
 # SA-placer xclbin: compile the unplaced design with the simulated-annealing
 # placer.  SA_SEED selects the placement seed; not all seeds yield a legal
 # placement (try a few if compilation fails). Seed 3 is known-good on npu2.
+# --dynamic-objFifos=false: init core's constant-trip loops overflow tile PM
+# if globally unrolled; per-tile dynamic_objfifo_lowering=True on post_l1
+# preserves that tile's loop while the global flag keeps the rest static.
 SA_SEED ?= 3
 build/sa_mobilenet.xclbin: build/${MLIR_FILE}_unplaced.mlir
 	mkdir -p ${@D}

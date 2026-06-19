@@ -21,8 +21,9 @@ Weight delivery:
   L1 and L3 split weights are streamed via ObjectFifos (Shim → MemTile → tiles).
   L2 DW weights are static Buffers (baked into the tile at compile time).
 
-Tile placement is either passed explicitly via the placement dict or
-handled automatically by the --aie-place-tiles compiler pass.
+Tile placement is either passed explicitly via the placement dict
+(see PLACEMENT["cascade"] in aie2_mobilenet_iron.py) or omitted
+(placement=None) to let the SA placer assign tiles at compile time.
 """
 
 import numpy as np
