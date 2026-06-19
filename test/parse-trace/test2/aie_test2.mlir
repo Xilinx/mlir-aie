@@ -3,7 +3,7 @@
 //
 // RUN: %python %S/../../../python/utils/trace/parse.py --input %S/trace_test2.txt --mlir %s --output %t.json
 // RUN: %python %S/../../../python/utils/trace/get_trace_summary.py --input %t.json
-// RUN: %python -c "import difflib,pathlib,sys; actual=pathlib.Path(r'%t.json').read_text(encoding='utf-8').splitlines(); expected_path=pathlib.Path(r'%S/golden_json.txt'); expected=expected_path.read_text(encoding='utf-8').splitlines(); ok=(actual==expected); sys.stdout.write('\n'.join(difflib.unified_diff(expected, actual, fromfile=str(expected_path), tofile=r'%t.json', lineterm='')) + ('\n' if not ok else '')); raise SystemExit(0 if ok else 1)"
+// RUN: %python %S/../check_golden.py --actual %t.json --expected %S/golden_json.txt
 
 module {
   aie.device(npu1_1col) {
