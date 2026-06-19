@@ -9,7 +9,7 @@
 
 Applies ``lambda a: a + 1`` to each ``tile_size``-element tile of a 1-D
 int32 tensor.  The design body delegates to
-:func:`aie.iron.algorithms.transform_typed`, which handles the
+:func:`aie.iron.algorithms.transform`, which handles the
 ObjectFifo / Worker / Runtime plumbing for any single-input element-wise
 lambda.
 """
@@ -20,7 +20,6 @@ import numpy as np
 
 import aie.iron as iron
 from aie.iron import CompileTime, In, Out
-from aie.iron.algorithms import transform_typed
 from aie.utils.verify import assert_pass
 
 
@@ -34,7 +33,7 @@ def transform(
     tile_size: CompileTime[int] = 16,
 ):
     tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
-    return transform_typed(lambda a: a + 1, tensor_ty, tile_size=tile_size)
+    return iron.algorithms.transform(lambda a: a + 1, tensor_ty, tile_size=tile_size)
 
 
 def main():

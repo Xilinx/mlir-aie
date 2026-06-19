@@ -24,21 +24,21 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Iterable
 
-from ... import ir  # type: ignore
-from ...dialects._aie_enum_gen import (  # type: ignore
+from ... import ir  # pyright: ignore[reportMissingImports]
+from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     AIETileType,
     DMAChannelDir,
     LockAction,
 )
 from ...dialects.aie import (
-    EndOp,
-    dma_bd,
+    EndOp,  # pyright: ignore[reportAttributeAccessIssue]
+    dma_bd,  # pyright: ignore[reportAttributeAccessIssue]
     dma_start,
     mem,
     memtile_dma,
     next_bd,
     shim_mem,
-    use_lock,
+    use_lock,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from ..buffer import Buffer
 from ..lock import Lock

@@ -28,7 +28,7 @@ _logger = logging.getLogger(__name__)
 from .hostruntime.tensor_class import Tensor
 
 try:
-    import pyxrt
+    import pyxrt  # pyright: ignore[reportMissingImports]
 
     has_xrt = True
 except ImportError as e:
@@ -205,6 +205,8 @@ from .npukernel import NPUKernel
 
 if has_xrt:
     from .hostruntime.xrtruntime.hostruntime import CachedXRTRuntime
+else:
+    CachedXRTRuntime = None
 
 
 _DefaultNPURuntime = None
@@ -213,6 +215,7 @@ _DefaultNPURuntime = None
 def _get_default_npu_runtime():
     global _DefaultNPURuntime
     if _DefaultNPURuntime is None and has_xrt:
+        assert CachedXRTRuntime is not None
         _DefaultNPURuntime = CachedXRTRuntime()
     return _DefaultNPURuntime
 
