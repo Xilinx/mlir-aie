@@ -155,7 +155,7 @@ void yolo_m9_ffn_0_silu_row_i8_i8(
 
     // Vec SRS+saturate per x_tile (bias baked in), scalar SiLU LUT gather
     // into a contiguous 8B/pixel buffer, then one uint64 strided store per
-    // pixel (vs 8 byte stores). Same pattern as m8 B::cv2 emit (+63% fps).
+    // pixel (vs 8 byte stores). Same pattern as m8 B::cv2 emit.
     AIE_LOOP_UNROLL_FULL
     for (int xt = 0; xt < kXTiles; ++xt) {
       aie::vector<int8, 32> srs_v =

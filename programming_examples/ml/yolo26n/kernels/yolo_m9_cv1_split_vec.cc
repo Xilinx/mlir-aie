@@ -115,7 +115,7 @@ void yolo_m9_cv1_split_silu_bias_i8_i8(
       int8_t *__restrict d = scratch + ic_t * kInW * 8 + x * 8;
       // Explicit 64-bit word copy — peano sometimes lowers the scalar
       // byte loop but not always; uint64 is unambiguous and one
-      // load/store pair (m8 F::cv1 pattern, verified +0.05ms there).
+      // load/store pair (m8 F::cv1 pattern).
       *reinterpret_cast<uint64_t *>(d) =
           *reinterpret_cast<const uint64_t *>(src);
     }
@@ -168,7 +168,7 @@ void yolo_m9_cv1_split_silu_bias_i8_i8(
     // Vec SRS+saturate per x_tile (bias already baked in via bias_acc seed),
     // scalar SiLU LUT gather into a contiguous 8B/pixel buffer, then one
     // uint64 strided store per pixel (vs 8 byte stores). Same pattern as
-    // m8 B::cv2 emit (+63% fps).
+    // m8 B::cv2 emit.
     AIE_LOOP_UNROLL_FULL
     for (int xt = 0; xt < kXTiles; ++xt) {
       aie::vector<int8, 32> srs_v =

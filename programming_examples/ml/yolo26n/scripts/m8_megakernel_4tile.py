@@ -9,8 +9,8 @@
 """m8 megakernel — 4-tile split.
 
 Splits m8's 8 sub-ops across 4 compute tiles, one per stacked-conv stage.
-Target: reduce per-tile work from ~13 ms (2-tile) toward ~5 ms (4-tile)
-by giving each pair kernel its own worker.
+Reduces per-tile work vs the 2-tile variant by giving each pair kernel
+its own worker.
 
   Tile A = (5,3): m8_front (cv1 + m_0_split)
   Tile B = (5,4): pair0_cv1 + pair0_cv2

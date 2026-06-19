@@ -1075,9 +1075,9 @@ def _build_head(block_name, act_in, manifest):
     softmax_in_log2 = meta_softmax["in_log2_scale"]  # = -3 per extractor
 
     # ----- 2-tile output-channel split -----
-    # Per-block ablation (2026-06-01) showed m10 = 1.66 ms / 19% of chain;
-    # nooping conv_pool alone saves 2.1 ms, so conv compute (not memtile DMA)
-    # is the bottleneck. Split output channels across two tiles:
+    # Per-block ablation (nooping conv_pool alone) showed conv compute
+    # (not memtile DMA) is the bottleneck. Split output channels across
+    # two tiles:
     #   tile_x = (2,2): handles channels 0..639 (8 of 16 chunks)
     #   tile_y = (6,3): handles channels 640..1279 + Gemm + softmax + drain
     # Each tile sees a "local" 640-channel view (own bias slice + own accum
@@ -2886,8 +2886,8 @@ _BUILDERS = {
     # m7 out_depth=1 (vs default 2): m8 4-tile in chain context overflows
     # tile A=(5,3)'s 64KB L1 if the m7→m8 cons buffer is 8KB (depth=2 × 4KB
     # element). depth=1 → 4KB cons buffer, matches m8 standalone act_in
-    # sizing. Per-block ablation says m7 contributes 0.41ms to chain so the
-    # depth-1 lack of slack is no risk of pipeline starvation.
+    # sizing. Per-block ablation shows m7's chain contribution is small, so
+    # the depth-1 lack of slack is no risk of pipeline starvation.
     "m7": lambda act_in, m: _build_conv_stride_block_streamed(
         "m7", act_in, m, out_depth=1
     ),
@@ -2935,9 +2935,9 @@ def per_block_iron(block_name: str) -> str:
         return mod.build(stage=stage, return_program=True)
 
     # m8: megakernel. Default 4-tile (scripts/m8_megakernel_4tile.py),
-    # which targets ~5 ms standalone by giving each pair kernel its own
-    # dedicated worker tile. Set M8_TILES=2 for the smaller 2-tile variant
-    # (scripts/m8_megakernel_2tile.py, ~16 ms standalone).
+    # which gives each pair kernel its own dedicated worker tile. Set
+    # M8_TILES=2 for the smaller (slower) 2-tile variant
+    # (scripts/m8_megakernel_2tile.py).
     if block_name == "m8":
         import importlib.util, pathlib, os
 

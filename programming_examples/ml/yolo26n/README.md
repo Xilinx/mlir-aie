@@ -49,100 +49,75 @@ per-layer bins (gitignored).
 
 ## Performance (Strix HW, bit-exact vs ORT)
 
-All measurements taken with the NPU in turbo mode
-(`sudo xrt-smi configure --pmode turbo`).
+Measured 2026-06-19 on AMD Strix (NPU2), NPU in turbo mode
+(`sudo xrt-smi configure --pmode turbo`). Full chain m0..m10 is bit-exact
+vs ORT (`mismatches=0/30, max|diff|=0`, all 15 samples). Chain default is
+`M8_TILES=4`; m9 standalone uses `M9_STAGE=10`.
 
-**Chain — full sweep, post-audit.** Every prefix m0..mN measured at
-N=1/4/15 via `CHAIN_BLOCKS=… make time_chain`. ms columns are per-sample
+Environment: built from source via `utils/build-mlir-aie-from-wheels.sh`
+against the branch-pinned MLIR base wheel + Peano (llvm-aie) nightly, with
+nanobind from the CI-matched `python/requirements_dev.lock`. NPU firmware
+255.0.5.35, XRT 2.20.0. The binding ABI must match the build — see
+"Reproducing these numbers" below.
+
+**Chain — full prefix sweep.** Every prefix m0..mN measured at N=1/4/15
+via `CHAIN_BLOCKS=… make time_chain`. ms columns are per-sample median
 (N=1 == single-dispatch wall, N>1 == per-sample throughput); fps =
-1000 / per-sample-ms. Full chain m0..m10 N=15 is bit-exact vs ORT.
+1000 / per-sample-ms.
 
 | Chain | N=1 ms | N=1 fps | N=4 ms | N=4 fps | N=15 ms | N=15 fps |
 |---|---:|---:|---:|---:|---:|---:|
-| m0                     | 11.13 | 89.81 | 11.06 | 90.45 | 11.01 | 90.81 |
-| m0..m1                 | 11.20 | 89.29 | 11.07 | 90.33 | 11.02 | 90.78 |
-| m0..m2                 | 13.19 | 75.81 | 12.82 | 78.01 | 12.66 | 78.99 |
-| m0..m3                 | 13.27 | 75.34 | 12.78 | 78.23 | 12.66 | 78.96 |
-| m0..m4                 | 13.95 | 71.70 | 12.96 | 77.17 | 12.71 | 78.68 |
-| m0..m5                 | 14.10 | 70.91 | 12.99 | 77.01 | 12.72 | 78.59 |
-| m0..m6                 | 16.02 | 62.44 | 13.48 | 74.18 | 12.85 | 77.83 |
-| m0..m7                 | 16.27 | 61.45 | 13.53 | 73.92 | 12.87 | 77.72 |
-| m0..m8                 | 22.94 | 43.59 | 16.90 | 59.17 | 15.43 | 64.80 |
-| m0..m9                 | 26.80 | 37.32 | 17.87 | 55.95 | 15.69 | 63.73 |
-| **m0..m10 (FULL)**     | **32.17** | **31.08** | **19.22** | **52.03** | **16.05** | **62.32** |
+| m0                 | 2.89 | 346.14 | 2.80 | 356.85 | 2.78 | 360.17 |
+| m0..m1             | 2.86 | 350.07 | 2.79 | 358.02 | 2.78 | 359.69 |
+| m0..m2             | 2.98 | 335.91 | 2.81 | 356.05 | 2.78 | 359.21 |
+| m0..m3             | 3.00 | 333.22 | 2.83 | 353.20 | 2.78 | 359.14 |
+| m0..m4             | 3.07 | 325.55 | 2.85 | 351.08 | 2.79 | 358.11 |
+| m0..m5             | 3.11 | 321.89 | 2.87 | 348.66 | 2.79 | 357.84 |
+| m0..m6             | 3.26 | 306.42 | 2.90 | 344.92 | 2.80 | 356.77 |
+| m0..m7             | 3.48 | 287.31 | 2.96 | 338.04 | 2.82 | 354.15 |
+| m0..m8             | 3.91 | 255.83 | 3.05 | 327.48 | 2.85 | 351.02 |
+| m0..m9             | 6.21 | 160.95 | 3.80 | 263.48 | 3.19 | 313.29 |
+| **m0..m10 (FULL)** | **6.70** | **149.15** | **3.96** | **252.74** | **3.28** | **304.90** |
 
-Every chain prefix through m0..m7 sits above 70 fps at N=15. The full
-m0..m10 chain crosses 60 fps at N=15 (62.32 fps). m6 was hanging at
-runtime before the upstream IRON ObjectFifo depth-collapse fix
-(PR #3096) was cherry-picked into this branch — multi-consumer fanout
-fifos were silently being sized to ping-pong (2 buffers) instead of
-the declared depth, deadlocking c3k2_heavy's bot_fifo broadcast.
-
-**After m8 4-tile + m9-cv2 relocation** (chain default, see "Sprint 3"
-below): full m0..m10 chain N=15 = **15.17 ms / 65.94 fps**, N=1 = 36.91
-ms. m8 4-tile reduces standalone m8 from 16.32 ms → 14.97 ms; the bulk
-of m8's 16-row pipeline is still spent on the two inner-pair tiles
-(B + C carry ~9.82 ms of the 14.97 ms wall per per-tile ablation), so
-a real per-pair-conv split into 6 tiles is the next lever.
-
-**After m8 cv1→cv2 mmul-layout pre-pack** (Sprint 4, see below):
-full m0..m10 chain N=15 = **13.63 ms / 73.35 fps**, m8 standalone
-4-tile = **11.44 ms / 87.4 fps**. The pair_cv1 → pair_cv2 inter-kernel
-buffer (`p0_mid`/`p1_mid`) now uses mmul-ready `(ic_t, x_block, p*8+chan)`
-layout: producer cv1 writes its mmul output via one `aie::store_v<64>`;
-consumer cv2 reads via one `aie::load_v<64>` for kx=1 and 2 vlda +
-`aie::shuffle_down` for kx=0/2. No more scalar `a_buf` pack between
-the vec input gather and the mmul call. Bit-exact preserved on all 15
-chain samples.
-
-**After Sprint 4 extended across all m8 internal buffers**
-(Stages 1a-1d, see below): full m0..m10 chain N=15 = **13.48 ms /
-74.18 fps**, **m8 standalone 4-tile = 4.91 ms / 203.8 fps** (−67%
-vs README, +205% fps). Every internal m8 producer-consumer buffer
-(front → back, m_0_split → back, pair_cv1 ↔ pair_cv2 internal,
-cv2_skip → pair_cv1 cross-pair, back cv3 ↔ cv2 internal scratch)
-now uses the same mmul-packed `(ic_t, x_block, p*8+chan)` layout.
-At N=15 chain is now at 99.9% of the m8-noop'd ceiling — m8 is
-no longer the chain gate.
-
-**After Sprint 5 (m6 c3k2_heavy non-streamed kernels)**:
-m6 standalone = **4.61 ms / 216.9 fps** (was 9.23 ms fresh measure,
-12.04 README baseline). Heavy-specific kernels (m_0_split,
-inner_pair_cv1, inner_pair_cv2_skip, cv3_concat2) all switched to
-the same mmul-packed layout. cv1_split + cv2_concat3 deferred to
-Sprint 6 (shared with m2/m4). Chain N=15 barely moved (13.45 ms /
-74.32 fps) because m2/m4 became the next gate.
-
-**After Sprint 6 (c3k2_small family + m6 boundaries)**:
-chain N=15 = **11.79 ms / 84.82 fps**. Standalone wins: m2 = 7.27 /
-137.6 fps (−44%); m4 = 3.84 / 260.1 fps (−70%); m6 = 2.39 / 419.1 fps
-(−80% from original 12.04 ms / 33.1 ms wall). Four c3k2_small files
-(cv1_split, m0_cv1, m0_cv2_skip, cv2_concat3) switched to 4-pixel-
-block packed layout (32-byte blocks). m6's heavy boundaries
-(m_0_split input read, cv3_concat2 output write) updated to match.
-Chain co-gate moves to m0 (11.12 ms standalone) — next sprint
-target.
+m9 (attention) is the dominant per-stage cost — the N=1 jump from m0..m8
+(3.91 ms) to m0..m9 (6.21 ms) is the attention block; batching (N≥4)
+pipelines most of it away (full chain reaches 304.90 fps at N=15).
 
 **Per-block standalone wall time on NPU**, median of n=20 (turbo).
-All rows reflect the post-audit state; "was X" values in the rightmost
-column are the README snapshot from prior to the kernel-by-kernel audit.
+m8 uses `M8_TILES=4`; m9 uses `M9_STAGE=10`.
 
-| Block | Topology | Median (ms) | fps | |
-|---:|---|---:|---:|:--|
-| m0  | conv_stride stem               | **11.12** | **89.9**  | ✓ (was 76.4; Sprint 7 candidate) |
-| m1  | conv_stride                    | **4.82**  | **207.5** | ✓ (was 116.1) |
-| m2  | c3k2_small                     | **7.27**  | **137.6** | ✓ (was 12.98 before Sprint 6 mmul pre-pack) |
-| m3  | conv_stride (chunked)          | **5.09**  | **196.5** | ✓ (was 124.9) |
-| m4  | c3k2_small                     | **3.84**  | **260.1** | ✓ (was 12.58 before Sprint 6) |
-| m5  | conv_stride (chunked)          | **5.40**  | **185.2** | ✓ (was 139.5) |
-| m6  | c3k2_heavy                     | **2.39**  | **419.1** | ✓ (was 12.04 before Sprints 5+6; -80% / +400% fps) |
-| m7  | conv_stride (chunked)          | **3.88**  | **257.7** | ✓ (was 206.8) |
-| m8  | c3k2_heavy (2-tile megakernel) | **16.32** | **61.3**  | ✓ (M8_TILES=2; default for per-block standalone) |
-| m8  | c3k2_heavy (4-tile megakernel) | **4.39**  | **227.6** | ✓ (M8_TILES=4; default in chain) — was 14.97 / 66.8 fps before Sprint 4. Sprint 4 + stages 1a-1e converted every internal m8 buffer (front↔back, m_0_split, pair_cv1↔pair_cv2, back internal scratch, cv1↔m_0_split) to mmul-packed layout. Final sweep clean of `__divsi3` and per-iter branches in mac bodies. |
-| m9 stage 1 (cv1 only)            | PSA cv1 |  1.78 | 561.8 | |
-| m9 stage 10 (full PSA block)     | PSA full | **4.95** | **202.2** | ✓ (was 195.9 → qkv SHAPES_ARE_CONST) |
-| m10 (classifier head)            | conv2dk1+GAP+linear+softmax | **7.69** | **130.1** | ✓ |
+| Block | Topology | Median (ms) | fps |
+|---|---|---:|---:|
+| m0  | conv2dk3 stem (3x3 s2)          | 2.89 | 345.91 |
+| m1  | conv_stride2                    | 2.52 | 396.45 |
+| m2  | c3k2_small                     | 2.38 | 420.89 |
+| m3  | conv_stride2 (chunked)          | 1.63 | 612.40 |
+| m4  | c3k2_small                     | 1.74 | 574.51 |
+| m5  | conv_stride2 (chunked)          | 1.82 | 550.83 |
+| m6  | c3k2_heavy                     | 0.98 | 1024.24 |
+| m7  | conv_stride2 (chunked)          | 1.62 | 616.03 |
+| m8  | c3k2_heavy (4-tile megakernel)  | 2.12 | 471.06 |
+| m9  | PSA (attention + FFN)           | 2.72 | 367.01 |
+| m10 | head conv2dk1 + pool + gemm     | 1.76 | 567.17 |
 
+### Reproducing these numbers
+
+```bash
+source /opt/xilinx/xrt/setup.sh
+source ../../../ironenv/bin/activate
+source ../../../utils/env_setup.sh ../../../install
+make data
+CHAIN_N_SAMPLES=15 make run_chain            # bit-exact gate vs ORT
+CHAIN_BLOCKS="m0,…,m10" CHAIN_N_SAMPLES=15 make time_chain   # chain timing
+make BLOCK=mN time                           # per-block timing
+```
+
+The `install/` + `ironenv/` must be built coherently from this branch.
+A loose `requirements_dev.txt` install can pull a newer nanobind than the
+bindings were compiled against, producing a `ScalarValue`/`Value` type
+error at MLIR-generation time; install `python/requirements_dev.lock`
+(`pip install --require-hashes -r python/requirements_dev.lock`, the
+CI-matched set) and rebuild if you hit it.
 
 m9 is supported standalone via `M9_STAGE=N make BLOCK=m9 run_ort` —
 stage 1 compares against `/model.9/cv1/act` post-SiLU; stage 10 (default)
@@ -197,122 +172,15 @@ widen the acc to 64 via concat-with-zeros. Affects m9 attn_score,
 proj_skip_row, ffn_1_skip_row, pe_add_row (all use scalar tail for
 the second SRS).
 
-### Biggest per-block wins from the audit
+### mmul A-layout pre-pack on inter-kernel buffers
 
-| Block | Pre-audit fps | Post-audit fps | Driver |
-|---|---:|---:|---|
-| m9 stage 10 |  91.6 | 202.2 | `pe_add_row` vec dw3x3; then qkv SHAPES_ARE_CONST |
-| m1          | 116.1 | 206.6 | `conv2dk3_stride2` bias-init + vec SRS |
-| m3          | 124.9 | 195.1 | `conv2dk3_stride2_chunked` bias-init + vec SRS |
-| m5          | 139.5 | 185.1 | same |
-| m7          | 206.8 | 253.7 | same |
-| m6          |  66.9 |  83.1 | c3k2_heavy bias-init + vec SRS; then SHAPES_ARE_CONST on all 6 m6 kernels |
-| m0          |  76.4 |  88.3 | stem bias-init + vec SRS |
-| m4          |  75.2 |  79.5 | c3k2_small (4 shared kernels) bias-init |
-| m2          |  69.7 |  77.0 | same |
-
-m8 (61.3 fps) and m10 (130.1 fps) were already deep-opt'd in an earlier
-m8/m9/m10 sweep that preceded the kernel-by-kernel audit.
-
-### Sprint 3: chain-context per-block ablation
-
-Re-ran the per-block NOOP ablation at N=15 with a full `make clean` between
-iters (the first attempt accidentally chained NOOP flags across iters
-because Make tracks mtime not flag changes — the true per-block
-contributions are what's recorded here). Each row = noop one block,
-re-time the chain:
-
-| Block | Δ vs baseline (16.03 ms) | Standalone | In-chain contribution |
-|---|---:|---:|---|
-| m0  | −0.01 | 11.32 | hidden behind m8 wall |
-| m1  |  0.00 | 4.84  | hidden |
-| m2  | −0.03 | 12.98 | hidden, but **co-gates** at 13 ms once m8 drops |
-| m3  |  0.00 | 5.13  | hidden |
-| m4  | small | 12.58 | co-gates with m2/m6 |
-| m5  | −0.04 | 5.40  | hidden |
-| m6  | small | 12.04 | co-gates |
-| m7  | −0.01 | 3.94  | hidden |
-| m8  | **−2.57** | 16.32 | **primary gate** |
-| m9  | −0.10 | 4.95  | pipelines well — almost free in-chain |
-| m10 | −0.35 | 7.69  | also pipelines well |
-
-The combo "isolate m8" run (noop m9+m10): chain throughput = 15.03 ms,
-matching m8 standalone's 16.32 ms within noise. So m8 is the dominant
-gate. After m8 drops, the cluster max(m2, m4, m6) ≈ 13 ms becomes the
-next wall.
-
-### m8 4-tile per-tile ablation
-
-`M8_TILES=4` baseline standalone = 14.98 ms. NOOP each tile's kernels
-in turn (compute swap; locks + DMA still run, so the cross-tile pipeline
-shape is unchanged):
-
-| NOOP | ms | Exposes |
-|---|---:|---|
-| baseline 4t          | 14.98 | full pipeline |
-| noop A (front)       | 12.66 | B + C + D path |
-| noop D (back)        | 12.15 | A + B + C path |
-| noop A + D           | 9.82  | B + C alone |
-| **noop B + C (inner pairs)** | **6.91** | **A + D alone — gives the headroom number** |
-| noop all 4           | 0.46  | pure DMA / pipeline floor |
-
-Reading: the inner pairs on B (pair0_cv1 + pair0_cv2) and C (pair1_cv1
-+ pair1_cv2) carry the bulk of m8's wall. The 4-tile design grouped
-2 ops per tile on B and C; halving each into its own tile (real 6-tile
-design) should drop B+C from 9.82 → ~5 ms and the m8 wall from 15 → ~7
-ms, lifting the chain past 100 fps.
-
-### Real 6-tile m8 — built standalone bit-exact, but no perf win
-
-`scripts/m8_megakernel_6tile.py` implements the per-pair-conv split
-described above (one inner conv per tile, snake-shaped A→B1→B2→C1→C2→D
-pipeline). Standalone bit-exact via `M8_TILES=6 make BLOCK=m8 run_ort`
-at **14.67 ms** (vs 4-tile's 15.08 ms — basically identical). **Chain
-context: M8_TILES=6 currently can't be used** — its memtile placements
-(2,1) and (7,1) conflict with m9 which holds (2,1) for ffn weights and
-(7,1) for cv1 weights. So the chain default is `M8_TILES=4`.
-
-Sprint 3 deep-dive on 6-tile cv1↔cv2 serialization (extensive):
-
-- **Pipeline plumbing is fine** — `noop_all` (every compute kernel
-  returns early) drains the 16-row × 6-stage pipeline in 0.45 ms.
-- **cv1 stages alone or cv2 stages alone pipeline correctly** —
-  `noop_cv2` = 10.75 ms = A+D (6.92) + max-stage cv1 (3.83). Same for
-  cv2 alone.
-- **With both active, cv1 + cv2 SUM rather than max per-pair** —
-  baseline 14.66 ≈ 6.92 + 3.83 + 3.88. The pair stages on the same
-  pair (B1↔B2 or C1↔C2) do not overlap, only pair0↔pair1 pipelines.
-
-Hypotheses tested and FALSIFIED:
-
-| Hypothesis | Test | Result |
-|---|---|---|
-| OF depth too shallow on `pair_mid_xt` | bumped depth 4 → 6 → 10 → 12 | no change |
-| scalar `sa_mid → sk_r` memcpy is the bottleneck | removed the memcpy | only 0.16 ms savings |
-| memtile DMA serializes cv1+cv2 weight streams | moved cv2 to a different memtile | no help |
-| L1 bank contention between B1 producer writes + B2 consumer reads | `via_DMA=True` on `pair_mid_xt` (separate buffer pools) | no help |
-| Producer/consumer different banks via depth modulo | varied depth 4..12 | flat scan, no signal |
-| Peano software-pipelining differs across modes | static asm inspection — no `loop` / `.zol` markers in either | not the cause |
-| `dynamic_objfifo_lowering=True` overhead in inner loop | local 3-row scratch cache → peek-1 on cross-tile OF (bit-exact) | same perf as peek-3 (14.87 ms vs 14.66) |
-
-A `peek-1` mode test (acquire 1 per iter, pass `pm, pm, pm` to kernel
-— breaks bit-exact) gave 6.60 ms; this initially looked like proof of
-peek-3 lockstep, but was actually a compiler artifact: with the same
-SSA pointer used 3× as kernel arg, Peano dead-load-eliminated 2/3 of
-the input loads.
-
-The actual cause of per-pair B1+B2 serialization is **not identified**.
-The 6-tile scaffold is kept in `scripts/m8_megakernel_6tile.py` for
-future revival; the m9 placement reshuffle from this sprint (m9-cv2 →
-(4,5)) is retained because it's also needed for any future m8 widening.
-
-### Sprint 4: mmul A-layout pre-pack on cv1↔cv2 inter-kernel buffer
-
-Objdump-driven diagnosis on the m8 inner-pair kernels found a hidden
-per-mmul cost the playbook's "hoisted vec pixel gather" (item #7) had
-not eliminated. After loading 8 pixels × 64 channels as 8 `vector<int8,
-64>` registers, the code still had to scalar-extract the 8-byte slice
-for each (ic_t, p) into a stack `a_buf[64]` to feed the mmul A vec:
+The single highest-leverage structural optimization in this design,
+applied across every internal m8 buffer and the m6 / m2 / m4 c3k2
+kernel families. Objdump diagnosis of the inner-pair kernels found a
+hidden per-mmul cost the playbook's "hoisted vec pixel gather"
+(item #7) didn't eliminate: after loading 8 pixels × 64 channels into
+vector registers, the code still scalar-extracted each 8-byte slice
+into a stack `a_buf[64]` to feed the mmul A vec —
 
 ```cpp
 // pix[p] already in vec registers (good)
@@ -326,133 +194,77 @@ for (int ic_t = 0; ic_t < ic_tiles; ++ic_t) {
 }
 ```
 
-Inner loop body of the cv2 SHAPES_ARE_CONST mac loop was ~32 cycles
-per mmul vs ~6-8 cycles ideal (4-5× off peak). Root cause: aie-api
-forbids `aie::concat` of sub-128-bit vectors, so a 64-byte mmul A vec
-can't be built from 8-byte `aie::load_v<8>` chunks at strided pointers
-— the scalar fallback is the only way when input layout is (W, C)
-raster. (Same shape of bug on the 1×1 kernels at ~12% peak.)
+Root cause: aie-api forbids `aie::concat` of sub-128-bit vectors, so a
+64-byte mmul A vec can't be built from 8-byte `aie::load_v<8>` chunks
+at strided pointers — the scalar fallback is the only way when the
+input layout is `(W, C)` raster.
 
-**Fix:** change the inter-kernel buffer layout. Producer cv1's mmul
-output is *already* in `(p*8+chan)` byte order from
-`acc.to_vector<int8>(rs)`, so writing it as ONE `aie::store_v<64>` at
-offset `(chunk_oc_t_full, x_tile)` in the `p0_mid`/`p1_mid` row is
-free. Consumer cv2 then reads the A vec with:
+**Fix:** change the inter-kernel buffer *layout* so no pack is needed.
+Producer cv1's mmul output is *already* in `(p*8+chan)` byte order from
+`acc.to_vector<int8>(rs)`, so it writes via one `aie::store_v<64>`;
+consumer cv2 reads the A vec with a single `aie::load_v<64>` for kx=1,
+and for kx=0/2 (pixels straddle blocks) loads 2 adjacent blocks,
+`aie::concat` to vec<int8, 128>, `aie::shuffle_down`, `.extract<64>(0)`,
+with out-of-bounds blocks zero-filled. Buffer size is unchanged; only
+the byte-level interpretation changes, and bit-exactness is preserved.
+The reference implementation lives in
+`kernels/yolo_c3k2_heavy_inner_pair_cv1_streamed_vec.cc` (output write)
+and `kernels/yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_vec.cc`
+(`load_a_mmul_kx` helper + input read); the shared symbols mean both
+inner pairs get it in lockstep.
 
-- **kx=1**: single `aie::load_v<64>(base + ic_t*stride + x_tile*64)` — direct.
-- **kx=0/2**: pixels straddle blocks. Load 2 adjacent blocks (vec<int8, 64>
-  each), `aie::concat` to vec<int8, 128>, `aie::shuffle_down(combined, 56 or 8)`,
-  `.extract<64>(0)`. Out-of-bounds blocks zero-filled.
+**No branch inside the mac body.** Mixed-source consumers (e.g. back's
+cv2 reads packed `in_top`/`in_bot` plus raster `in_m0`) use *split
+per-source loops* in the inner IC dimension, never a per-iter `if` —
+that branch defeats Peano's VLIW pipelining of `vlda + vldb + vmac`.
 
-Buffer size unchanged (1024 B/row); only byte-level interpretation
-changed. Bit-exact preserved on all 15 chain samples.
+### 6-tile m8 (parked)
 
-| Metric                       | Before  | After   | Δ              |
-|------------------------------|--------:|--------:|---------------:|
-| m8 standalone (M8_TILES=4)   | 14.97 ms / 66.8 fps  | **11.44 / 87.4** | **−23.6%** |
-| Chain m0..m10 N=15           | 15.17 ms / 65.91 fps | **13.63 / 73.35** | **+7.4 fps** |
-| Chain N=15, m8 noop'd ceiling| 13.47 ms / 74.26 fps | (unchanged)       | within 1.2% |
-
-The standalone delta (3.5 ms) exceeded the byte-count projection
-(~1 ms) — removing the scalar pack also lets Peano schedule the
-surrounding loop more tightly than a pure instruction count predicts.
-
-The kernel files touched are `kernels/yolo_c3k2_heavy_inner_pair_cv1_streamed_vec.cc`
-(output write loop) and `kernels/yolo_c3k2_heavy_inner_pair_cv2_skip_streamed_vec.cc`
-(`load_a_mmul_kx` helper + input read). The shared symbol means both
-pair0 (tile B) and pair1 (tile C) get the optimization in lockstep.
-
-### Sprint 4 follow-on: extend the mmul pre-pack across all m8 buffers
-
-Cascading the same producer-vec-store / consumer-vec-load pattern to
-every remaining internal m8 buffer, in four ship-as-you-go stages:
-
-| Stage | Touched | m8 standalone | Δ |
-|-------|---------|---:|---:|
-| (Sprint 4 above) | pair_cv1 → pair_cv2 (p0_mid, p1_mid) | 11.44 ms | (−23.6% from 14.97) |
-| **1a** | front cv1 (top, bot_to_cv2) → back cv2 | **10.48 ms** | −0.96 ms |
-| **1b** | m_0_split's split_b → back cv3 | **9.77 ms** | −0.71 ms |
-| **1c** | back internal cv3 → cv2 scratch handoff | **8.88 ms** | −0.89 ms |
-| **1d** | pair_cv2_skip output / pair_cv1 input / m_0_split's split_a / back cv3 inner1 / cv2_skip's skip-add path (coordinated) | **4.91 ms** | **−3.97 ms** |
-| **1e** | cv1's s_bot → m_0_split's in_bot (last internal buffer) | **4.39 ms** | −0.52 ms |
-
-Why 1d was so much larger: it eliminated the scalar pack on **both
-3×3 inner_pair kernels** (the dominant cost in the B+C tiles, ~9.8
-ms of the original wall), and crucially also caught the **skip-add**
-path inside cv2_skip — `skip_v = aie::load_v<64>(skip_row + ...)`
-instead of 64 scalar gathers per acc. The first attempt at 1d had
-NPU != ORT because the orchestration's byte-wise `sk_r[x,0,kk] =
-sa_mid[x,0,kk]` copy preserves whatever format the producer wrote,
-so the consumer-side read must match. (Pattern saved as
-`feedback_mmul_layout_prepack` + `feedback_no_branch_in_mac_loop`
-in memory.)
-
-Mixed-source kernels (back's cv2 reads in_top + in_bot packed,
-in_m0 raster initially) use **split per-source loops** in the inner
-IC dimension, never a per-iter `if` inside the mac body — that
-branch defeats Peano's VLIW pipelining of `vlda + vldb + vmac` and
-cost ~7% of the standalone gain on Stage 1b until refactored.
-
-| Chain | After Sprint 3 | Sprint 4 | After Stage 1e | After Sprints 5+6 (current) | Δ vs Sprint 3 |
-|------:|---:|---:|---:|---:|---:|
-| N=1   | 36.91 ms / 27.1 fps | 31.05 / 32.21 | 25.47 / 39.27 | **22.66 / 44.13** | **−38.6% / +62.8%** |
-| N=4   | 19.22 ms / 52.03    | (not measured)| 15.83 / 63.18 | **13.91 / 71.88** | **−27.6% / +38.2%** |
-| N=15  | 15.17 ms / 65.94    | 13.63 / 73.35 | 13.48 / 74.20 | **11.79 / 84.82** | **−22.3% / +28.6%** |
-
-At N=15 we're at **99.9% of the m8-noop'd ceiling** (74.26 fps) —
-further m8 work helps N=1/N=4 single-dispatch latency but not
-steady-state throughput. The next chain-level lever moves to
-m2/m4/m6 (now the co-gate at ~13.5 ms).
+`scripts/m8_megakernel_6tile.py` splits each inner pair-conv onto its
+own tile (snake A→B1→B2→C1→C2→D). It builds bit-exact standalone
+(`M8_TILES=6 make BLOCK=m8 run_ort`) but gives no throughput win over
+the 4-tile default: the two stages of a single pair (B1↔B2, C1↔C2) do
+not overlap — only pair0↔pair1 pipeline. The root cause of the
+per-pair serialization was never identified (OF depth, memtile DMA,
+L1 bank contention, and dynamic-objfifo overhead were all tested and
+falsified). It also can't be used in-chain — its memtile placements
+(2,1)/(7,1) collide with m9. The scaffold is kept for future revival;
+the chain default is `M8_TILES=4`.
 
 ### Next remaining levers
-1. **Extend mmul A-layout pre-pack** (Sprint 4 pattern) to the remaining
-   m8 producer-consumer pairs and then across the network. In m8: front
-   cv1 (1×1, ~12% peak) reading from tile A's m_0_split; back cv3+cv2
-   (1×1, ~12% peak) reading from tile A's top/bot/m0 + tile C's
-   inner_1_out; cv2_skip's output → next pair's cv1 input. After m8 is
-   exhausted, the same pattern applies to m6 inner_pair_* (same kernel
-   family) and the m2/m4 c3k2_small kernels.
-2. **m2 / m4 OC-split to 5 tiles each** — only meaningful AFTER m8
-   drops, since today both are hidden behind m8. After step 1, they
-   become the co-gate at ~13 ms and a 5-tile OC-split should drop each
-   to ~7-8 ms.
-3. **Winograd F(2,3) on 3×3 stride-1** - potential 2.25× MAC reduction
+
+1. **Extend mmul A-layout pre-pack** to the remaining 1×1 m8 producer-
+   consumer pairs (front cv1, back cv3+cv2), then across the network to
+   the m2/m4 c3k2_small kernels.
+2. **m2 / m4 OC-split** to more tiles each, once they surface as a
+   co-gate behind m8.
+3. **Winograd F(2,3) on 3×3 stride-1** — potential 2.25× MAC reduction
    on the dominant kernel family (m6 inner_pair_*, m8 pair_cv1). INT8
-   bit-exactness against the Quark ONNX reference needs an empirical
-   numerical-drift study first; if it diverges, bfp16 Winograd via
-   the ATB-style framework is the fallback.
+   bit-exactness vs the Quark ONNX reference needs a numerical-drift
+   study first; bfp16 Winograd is the fallback.
 4. **ATB-style L1 asymmetry on m9 GEMMs** (paper:
    [arXiv:2511.16041](https://arxiv.org/abs/2511.16041), reference
    example at `programming_examples/ml/block_datatypes/gemm_asymmetric_tile_buffering/`).
-   Demonstrated 31.3 TFLOPS on the same Strix HX 370 silicon — large
-   headroom on m9 qkv/proj/ffn0/ffn1. Chess-only today; porting the
-   pattern to peano is research-grade work.
-5. **Bank-aware memory** - playbook item #10. Cross-cutting; needs an
+   Chess-only today; porting the pattern to peano is research-grade work.
+5. **Bank-aware memory** — playbook item #10. Cross-cutting; needs an
    IRON-side `Buffer(..., placement=bank_N)` API hook + kernel-side
    address-space-qualified pointer types modeled after `example.h`'s
    `IFM_DM_BANK` / `WT_DM_BANK` / `OFM_DM_BANK` aliases.
-6. **Softmax exp2** - replace the scalar fp32 LUT in
+6. **Softmax exp2** — replace the scalar fp32 LUT in
    `yolo_m9_attn_score_fused_vec.cc` with hardware
    `aie::exp2<bfloat16>` (see `aie_kernels/aie2p/softmax.cc`).
-   Bit-exactness risk; would be tested separately.
+   Bit-exactness risk; tested separately.
 7. **Push the peano backend bug fix upstream** for the
    `getCombinedOpcodeUNPACKLoad` crash on
    `accum<acc32, {16,32}>::to_vector<int8>(shift)` following
    `aie::mul/aie::mac`. Unblocks 4 m9 kernels' vec skip-add tails.
 
-The previous "next remaining levers #1" was `mmul<8,8,8>` on m6
-inner_pair_cv1/cv2_skip — that's already in place under the
-SHAPES_ARE_CONST=1 path triggered by `M6_PAIR_SHAPE` (and similarly
-under `M8_PAIR_SHAPE` for the streamed m8 variants). Both pair kernels
-on both blocks already select `MMUL_T = MMUL8x8x8` at compile time.
-
 **`aie::parallel_lookup` investigation** (deferred). PL on AIE2P peano
-compiles + runs correctly, but `lut<4>` is
-fundamentally a linear-approximation API (offset + slope * frac), not
-a plain-byte lookup. For yolo's INT8 SiLU LUT use case, effective
-throughput is ~equal to or slower than scalar `silu_lut[srs+128]`.
-PL becomes interesting again only if SiLU is re-derived as a
-piecewise linear approximation.
+compiles + runs correctly, but `lut<4>` is fundamentally a linear-
+approximation API (offset + slope * frac), not a plain-byte lookup. For
+yolo's INT8 SiLU LUT use case it's no faster than scalar
+`silu_lut[srs+128]`. PL becomes interesting only if SiLU is re-derived
+as a piecewise linear approximation.
 
 ## Make targets
 
@@ -486,9 +298,8 @@ Run `make help` for the canonical list. Highlights:
 - `M8_TILES={2,4}` — selects m8 megakernel layout. Chain default is 4
   (set by the Makefile, scoped to the chain MLIR build; stamp-tracked
   so toggling rebuilds). Per-block standalone (`make BLOCK=m8`) default
-  is 2 — pass `M8_TILES=4 make BLOCK=m8` to switch. 2-tile = 16.32 ms
-  standalone, 4-tile = 14.97 ms standalone. A real 6-tile is in
-  development (see "Sprint 3").
+  is 2 — pass `M8_TILES=4 make BLOCK=m8` to switch. A standalone-only
+  6-tile variant also exists (see "6-tile m8 (parked)").
 - `TIME_ARGS="--n-warmup 5 --n-iters 100"` — passed through to the timing
   harnesses.
 - `TRACE_SIZE_PER_WORKER=N`, `TRACE_EVENTS=A,B,C` — bake AIE2P packet
@@ -558,8 +369,7 @@ applies to both chain and per-block standalone):
 
 - **4-tile (default)** — [`scripts/m8_megakernel_4tile.py`](scripts/m8_megakernel_4tile.py).
   Four compute workers (`worker_a/b/c/d` on tiles (5,3), (5,4), and two
-  delegates). Each pair kernel gets its own dedicated worker, targeting
-  ~5 ms standalone.
+  delegates). Each pair kernel gets its own dedicated worker.
 - **2-tile** (`M8_TILES=2`) — [`scripts/m8_megakernel_2tile.py`](scripts/m8_megakernel_2tile.py).
   Two compute tiles, each running a single Worker that fuses three
   c3k2_heavy sub-operations into one C kernel call per chunk:
@@ -820,8 +630,7 @@ bit-exactness fails by design; the signal is chain wall-clock.
 # Ablation: how much does m9 contribute to the chain?
 rm -f build/yolo_m9_*.o && make clean_chain
 CHAIN_N_SAMPLES=15 NOOP_BLOCK=m9 make time_chain
-# Historical (pre-m9-1x1-vec arc): 317 ms baseline → 57 ms noop'd ⇒ m9 = 260 ms / 82%
-# Today (post-cv2 vec):              75 ms baseline → ? ms noop'd  ⇒ rerun to attribute the new remainder
+# Compare against the un-noop'd chain wall-clock; the delta is m9's contribution.
 
 # Combine: noop multiple blocks (space-separated, quoted)
 rm -f build/yolo_m9_*.o build/yolo_m10_*.o && make clean_chain
@@ -850,7 +659,7 @@ without rebuilding the whole block:
 # Standalone ablation: which tile in m2 dominates?
 rm -f build/yolo_c3k2_small_*_m2.o build/final_m2.xclbin build/insts_m2.bin
 NOOP_KERNEL_FILES="yolo_c3k2_small_cv2_concat3_m2" make BLOCK=m2 time
-# m2 baseline 27.75 ms → noop'd 18.70 ms ⇒ cv2_concat3 = 9.05 ms
+# baseline minus noop'd m2 wall-clock ⇒ cv2_concat3's standalone contribution
 
 # Multiple kernels (space-separated, quoted)
 rm -f build/yolo_c3k2_small_*_m2.o build/final_m2.xclbin build/insts_m2.bin
@@ -858,18 +667,19 @@ NOOP_KERNEL_FILES="yolo_c3k2_small_m0_cv1_m2 yolo_c3k2_small_m0_cv2_skip_m2" \
   make BLOCK=m2 time
 ```
 
-This is how the m2 deep-opt arc found cv2_concat3 as the first bottleneck
-(9 ms), then m0_cv2_skip after the cv2 vec epilogue (7 ms surfaced post-cv2),
-then cv1_split (4.5 ms surfaced post-m0_cv2_skip). Per-kernel attribution
-between c3k2 sub-kernels is wired into the eval rules for
+This is how the m2 deep-opt arc found cv2_concat3 as the first
+bottleneck, then m0_cv2_skip after the cv2 vec epilogue, then cv1_split
+— each surfacing as the next gate once the prior one was optimized.
+Per-kernel attribution between c3k2 sub-kernels is wired into the eval
+rules for
 `yolo_c3k2_small_{cv1_split,m0_cv1,m0_cv2_skip,cv2_concat3}_{m2,m4,m6}.o`.
 
-This is how the m9-is-the-bottleneck finding was discovered: the
-optimization arc that took m3/m5/m7 from 186 ms → 19 ms standalone moved
-the chain by only ~14 ms, and ablating each block individually (m0
-alone, m1 alone, the 6 conv_stride blocks together) showed each
-contributed <1 ms. Only m9 ablation moved the chain meaningfully. The
-same harness then surfaced cv2 as the m9 critical-path kernel during
+This is how the m9-is-the-bottleneck finding was discovered: a large
+standalone speedup on m3/m5/m7 barely moved the chain, and ablating
+each block individually (m0 alone, m1 alone, the 6 conv_stride blocks
+together) showed each contributed negligibly. Only m9 ablation moved
+the chain meaningfully. The same harness then surfaced cv2 as the m9
+critical-path kernel during
 the m9 1×1 vec arc.
 
 ### Common debugging patterns

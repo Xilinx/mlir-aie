@@ -259,9 +259,8 @@ PLACEMENT: dict = {
         "proj": Tile(4, 2),  # far from sv/cv1; attn_pre_proj + b via DMA
     },
     # ---- Head (2 tiles: conv-lo + conv-hi-gemm-softmax) ----
-    # Per-block ablation (2026-06-01) showed m10 = 1.66 ms / 19% of chain
-    # with compute (not memtile DMA) as the bottleneck. Split m10 conv
-    # across two tiles by output-channel halves:
+    # Per-block ablation showed m10 compute (not memtile DMA) as the
+    # bottleneck. Split m10 conv across two tiles by output-channel halves:
     #   conv_lo         at (2,2): output channels 0..639 (8 of 16 chunks),
     #                              ships its pool half to conv_hi_gemm via
     #                              shared L1 (east neighbor).
