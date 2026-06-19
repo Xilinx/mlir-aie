@@ -5,7 +5,7 @@ var indexSectionsWithContent =
   2: "itu",
   3: "_abcdefhjklmnoprstuvw",
   4: "_abcdefghijklmnoprstvwxz",
-  5: "_abcdfghiklmnoprstuvwx"
+  5: "_abcdfghiklmnoprstuvwxz"
 };
 
 var indexSectionNames =

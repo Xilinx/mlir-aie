@@ -21,7 +21,7 @@ var searchData=
   ['all_5fbuffers_5fand_5flocks_18',['all_buffers_and_locks',['../classiron_1_1dataflow_1_1tile__dma_1_1TileDma.html#a453aa3756b0e31167961cf11d5cfeabe',1,'iron::dataflow::tile_dma::TileDma']]],
   ['all_5fof_5fendpoints_19',['all_of_endpoints',['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html#a9b8e261cf23b5949ce41d446c4dca3ac',1,'iron::dataflow::objectfifo::ObjectFifoHandle']]],
   ['all_5ftiles_20',['all_tiles',['../classiron_1_1dataflow_1_1flow_1_1PacketFlow.html#a1c34b553fcf6911df435a0afbfb631ca',1,'iron.dataflow.flow.PacketFlow.all_tiles()'],['../classiron_1_1dataflow_1_1flow_1_1Flow.html#a33e987ffcd20559c614174de31f8118b',1,'iron.dataflow.flow.Flow.all_tiles()'],['../classiron_1_1dataflow_1_1tile__dma_1_1TileDma.html#a1172f4693c19a09bdb9252a44352531a',1,'iron.dataflow.tile_dma.TileDma.all_tiles()']]],
-  ['allocation_5fscheme_21',['allocation_scheme',['../classiron_1_1worker_1_1Worker.html#a1c8282d3e34e9b94c10ff60901e7031a',1,'iron::worker::Worker']]],
+  ['allocation_5fscheme_21',['allocation_scheme',['../namespaceiron_1_1worker.html#ad9059f8a87cc28636b82940b3a7e2fb9',1,'iron::worker']]],
   ['animate_22',['animate',['../classtaplib_1_1tas_1_1TensorAccessSequence.html#ac37dd395dca38ec04823b8c7310a0e37',1,'taplib::tas::TensorAccessSequence']]],
   ['animate_5ffrom_5faccesses_23',['animate_from_accesses',['../namespacetaplib_1_1visualization2d.html#affeb22effce76577f9435c2cab032a03',1,'taplib::visualization2d']]],
   ['anycomputetile_24',['AnyComputeTile',['../namespaceiron_1_1device_1_1tile.html#afabe1408657c97a6f47a2ac88b9389fe',1,'iron::device::tile']]],

@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;7b81da82bc3afcbb3ac49fa098e945c79e01f7cc</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;8da13e91d8a7b273c096fe87fad50fc2304f6105</span>
    </div>
   </td>
  </tr>
@@ -747,7 +747,7 @@ Compares each tensor's element count against the per-host-arg
 addressable footprint extracted from the compiled
 ``aiex.runtime_sequence``.  ``parse_dma_sizes`` returns
 ``max(offset + len)`` so multi-column fan-outs, repeated transfers
-(matmul B reloaded each tile_row), and InOut buffers (for_each_typed
+(matmul B reloaded each tile_row), and InOut buffers (for_each
 fill+drain on the same arg) all give the host-tensor size directly.
 
 Args with no associated DMA (entry == 0) are skipped — those are

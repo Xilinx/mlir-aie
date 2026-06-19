@@ -20,8 +20,8 @@ var searchData=
   ['bn_5fconv2dk3_5fdw_17',['bn_conv2dk3_dw',['../namespaceiron_1_1kernels_1_1conv.html#a5591346b7c7d491a25b34f1884159dca',1,'iron::kernels::conv']]],
   ['bn_5fconv2dk3_5fdw_5fout_5fsplit_18',['bn_conv2dk3_dw_out_split',['../namespaceiron_1_1kernels_1_1conv.html#a81780d25560cf4056d580ceb6ad10dc0',1,'iron::kernels::conv']]],
   ['bn_5ffc_5frelu_5fui16_5fpad_19',['bn_fc_relu_ui16_pad',['../namespaceiron_1_1kernels_1_1conv.html#aa70c58f9fb16218dd5fdbb5f1b22918b',1,'iron::kernels::conv']]],
-  ['buffer_20',['buffer',['../classiron_1_1buffer_1_1Buffer.html',1,'iron.buffer.Buffer'],['../classiron_1_1dataflow_1_1tile__dma_1_1Bd.html#a9ebe72ffcbbaff8a3ec0553bbbdea2d8',1,'iron.dataflow.tile_dma.Bd.buffer']]],
+  ['buffer_20',['buffer',['../classiron_1_1dataflow_1_1tile__dma_1_1Bd.html#a9ebe72ffcbbaff8a3ec0553bbbdea2d8',1,'iron.dataflow.tile_dma.Bd.buffer'],['../classiron_1_1buffer_1_1Buffer.html',1,'iron.buffer.Buffer']]],
   ['buffer_2epy_21',['buffer.py',['../buffer_8py.html',1,'']]],
   ['buffer_5fobject_22',['buffer_object',['../classutils_1_1hostruntime_1_1xrtruntime_1_1tensor_1_1XRTTensor.html#afca1e6e1446fe1edd955c5194cee8665',1,'utils::hostruntime::xrtruntime::tensor::XRTTensor']]],
-  ['buffers_23',['buffers',['../classiron_1_1worker_1_1Worker.html#ac4538a627bae0ec105071751e472898e',1,'iron::worker::Worker']]]
+  ['buffers_23',['buffers',['../namespaceiron_1_1worker.html#a72c1f2a2d7725de321b7bc2da0458bd0',1,'iron::worker']]]
 ];

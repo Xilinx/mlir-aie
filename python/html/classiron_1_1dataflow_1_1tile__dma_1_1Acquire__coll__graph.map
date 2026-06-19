@@ -1,9 +1,7 @@
 <map id="iron.dataflow.tile_dma.Acquire" name="iron.dataflow.tile_dma.Acquire">
-<area shape="rect" id="Node000001" title=" " alt="" coords="37,243,168,283"/>
-<area shape="rect" id="Node000002" href="$classiron_1_1lock_1_1Lock.html" title=" " alt="" coords="47,155,159,180"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="105,194,105,242,100,242,100,194"/>
-<area shape="rect" id="Node000003" href="$classiron_1_1resolvable_1_1Resolvable.html" title=" " alt="" coords="5,80,200,105"/>
-<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="105,120,105,154,100,154,100,120"/>
-<area shape="rect" id="Node000004" title=" " alt="" coords="65,5,140,31"/>
-<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="105,45,105,80,100,80,100,45"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,168,136,208"/>
+<area shape="rect" id="Node000002" href="$classiron_1_1lock_1_1Lock.html" title=" " alt="" coords="15,80,127,105"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="73,119,73,168,68,168,68,119"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="23,5,118,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="73,45,73,80,68,80,68,45"/>
 </map>

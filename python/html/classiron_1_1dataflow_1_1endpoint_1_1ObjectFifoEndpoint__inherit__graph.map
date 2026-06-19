@@ -1,9 +1,7 @@
 <map id="iron.dataflow.endpoint.ObjectFifoEndpoint" name="iron.dataflow.endpoint.ObjectFifoEndpoint">
-<area shape="rect" id="Node000001" title=" " alt="" coords="5,69,219,109"/>
-<area shape="rect" id="Node000002" href="$classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoLink.html" title=" " alt="" coords="291,5,465,45"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="208,63,294,43,295,48,210,69"/>
-<area shape="rect" id="Node000003" href="$classiron_1_1runtime_1_1endpoint_1_1RuntimeEndpoint.html" title=" " alt="" coords="267,69,489,109"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="233,87,266,87,266,92,233,92"/>
-<area shape="rect" id="Node000004" href="$classiron_1_1worker_1_1Worker.html" title=" " alt="" coords="307,134,449,159"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="219,110,319,131,318,137,218,115"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="97,5,310,45"/>
+<area shape="rect" id="Node000002" href="$classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoLink.html" title=" " alt="" coords="5,93,180,133"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="169,56,119,95,116,91,166,52"/>
+<area shape="rect" id="Node000003" href="$classiron_1_1runtime_1_1endpoint_1_1RuntimeEndpoint.html" title=" " alt="" coords="204,93,427,133"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="241,52,292,91,289,95,238,56"/>
 </map>

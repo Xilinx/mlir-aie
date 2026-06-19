@@ -1,7 +1,7 @@
 var searchData=
 [
   ['fifo_0',['fifo',['../classiron_1_1runtime_1_1dmatask_1_1DMATask.html#aa26a974ccc1f1be7f064923f1804e158',1,'iron::runtime::dmatask::DMATask']]],
-  ['fifos_1',['fifos',['../classiron_1_1runtime_1_1runtime_1_1Runtime.html#a449b06586ba0966ad2e869a8ba0f7105',1,'iron.runtime.runtime.Runtime.fifos()'],['../classiron_1_1worker_1_1Worker.html#ae9e00ef2d147ca99e95ceb9fa33a7200',1,'iron.worker.Worker.fifos()']]],
+  ['fifos_1',['fifos',['../namespaceiron_1_1worker.html#aba2f74b59a2345360e14ef0ad83c98a4',1,'iron.worker.fifos()'],['../classiron_1_1runtime_1_1runtime_1_1Runtime.html#a449b06586ba0966ad2e869a8ba0f7105',1,'iron.runtime.runtime.Runtime.fifos()']]],
   ['file_5flock_2',['file_lock',['../namespaceutils.html#a1820c78e07ddd420c7ced11bacdb829a',1,'utils']]],
   ['fill_3',['fill',['../classiron_1_1runtime_1_1runtime_1_1Runtime.html#ac2165f83f913676f2ab1c2f67c56b388',1,'iron::runtime::runtime::Runtime']]],
   ['fill_5f_4',['fill_',['../classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#a868f7f052cb6b91a9dc4c9b2fb41d52c',1,'utils::hostruntime::tensor_class::Tensor']]],
@@ -11,9 +11,9 @@ var searchData=
   ['flow_8',['Flow',['../classiron_1_1dataflow_1_1flow_1_1Flow.html',1,'iron::dataflow::flow']]],
   ['flow_2epy_9',['flow.py',['../flow_8py.html',1,'']]],
   ['flows_10',['flows',['../classiron_1_1runtime_1_1runtime_1_1Runtime.html#a6c23481dd5b0283e691a451241e63512',1,'iron::runtime::runtime::Runtime']]],
-  ['fn_5fargs_11',['fn_args',['../classiron_1_1worker_1_1Worker.html#ae62c026d16faacefe8d6945eaec9be4c',1,'iron::worker::Worker']]],
-  ['for_5feach_2epy_12',['for_each.py',['../for__each_8py.html',1,'']]],
-  ['for_5feach_5ftyped_13',['for_each_typed',['../namespaceiron_1_1algorithms_1_1for__each.html#a78afbaedd26410de1b754e56435fd3ee',1,'iron::algorithms::for_each']]],
+  ['fn_5fargs_11',['fn_args',['../namespaceiron_1_1worker.html#a89b4bc1d19465e156ebcf611cdb1acc9',1,'iron::worker']]],
+  ['for_5feach_12',['for_each',['../namespaceiron_1_1algorithms_1_1for__each.html#afbf2ea7767854787c14022106731e325',1,'iron::algorithms::for_each']]],
+  ['for_5feach_2epy_13',['for_each.py',['../for__each_8py.html',1,'']]],
   ['forward_14',['forward',['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html#a22596a797dfe14b05e2d1dba5a7ebc34',1,'iron::dataflow::objectfifo::ObjectFifoHandle']]],
   ['from_5fjson_15',['from_json',['../classutils_1_1compile_1_1jit_1_1compilabledesign_1_1CompilableDesign.html#adb2988b1fd5483ac61784abc3e242cf1',1,'utils::compile::jit::compilabledesign::CompilableDesign']]],
   ['from_5fname_16',['from_name',['../namespaceiron_1_1device.html#af2e4d577da73c58d24998d0d542e3db3',1,'iron::device']]],

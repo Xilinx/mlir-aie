@@ -14,5 +14,7 @@ var searchData=
   ['process_5ftrace_11',['process_trace',['../classutils_1_1hostruntime_1_1hostruntime_1_1HostRuntime.html#aca2c52ada82c8ad9fcb8011990d9eac7',1,'utils::hostruntime::hostruntime::HostRuntime']]],
   ['prod_12',['prod',['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html#a99b554ace7626a3b65076e54123aced2',1,'iron::dataflow::objectfifo::ObjectFifo']]],
   ['program_13',['Program',['../classiron_1_1program_1_1Program.html',1,'iron::program']]],
-  ['program_2epy_14',['program.py',['../program_8py.html',1,'']]]
+  ['program_2epy_14',['program.py',['../program_8py.html',1,'']]],
+  ['put_5fget_15',['put_get',['../classiron_1_1kernel_1_1ExternalFunction.html#aa75414be46a4518175afc67a03c88905',1,'iron::kernel::ExternalFunction']]],
+  ['put_5fonly_16',['put_only',['../classiron_1_1kernel_1_1ExternalFunction.html#a5c66529b536b3d67b839e7e1905735f7',1,'iron::kernel::ExternalFunction']]]
 ];

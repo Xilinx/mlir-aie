@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;7b81da82bc3afcbb3ac49fa098e945c79e01f7cc</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;8da13e91d8a7b273c096fe87fad50fc2304f6105</span>
    </div>
   </td>
  </tr>
@@ -81,8 +81,8 @@ $(function() {
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="func-members" name="func-members"></a>
 Functions</h2></td></tr>
-<tr class="memitem:a78afbaedd26410de1b754e56435fd3ee" id="r_a78afbaedd26410de1b754e56435fd3ee"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1algorithms_1_1for__each.html#a78afbaedd26410de1b754e56435fd3ee">for_each_typed</a> (func, tensor_ty, tile_size=16)</td></tr>
-<tr class="separator:a78afbaedd26410de1b754e56435fd3ee"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:afbf2ea7767854787c14022106731e325" id="r_afbf2ea7767854787c14022106731e325"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1algorithms_1_1for__each.html#afbf2ea7767854787c14022106731e325">for_each</a> (func, tensor_ty, tile_size=16)</td></tr>
+<tr class="separator:afbf2ea7767854787c14022106731e325"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a33d6c505de0b87347e6b71a5a2b5538c" id="r_a33d6c505de0b87347e6b71a5a2b5538c"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceiron_1_1algorithms_1_1for__each.html#a33d6c505de0b87347e6b71a5a2b5538c">_for_each_real</a> (func, tensor, *params, tile_size=16)</td></tr>
 <tr class="separator:a33d6c505de0b87347e6b71a5a2b5538c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
@@ -156,14 +156,14 @@ Returns:
 </pre> 
 </div>
 </div>
-<a id="a78afbaedd26410de1b754e56435fd3ee" name="a78afbaedd26410de1b754e56435fd3ee"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a78afbaedd26410de1b754e56435fd3ee">&#9670;&#160;</a></span>for_each_typed()</h2>
+<a id="afbf2ea7767854787c14022106731e325" name="afbf2ea7767854787c14022106731e325"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#afbf2ea7767854787c14022106731e325">&#9670;&#160;</a></span>for_each()</h2>
 
 <div class="memitem">
 <div class="memproto">
       <table class="memname">
         <tr>
-          <td class="memname">iron.algorithms.for_each.for_each_typed </td>
+          <td class="memname">iron.algorithms.for_each.for_each </td>
           <td>(</td>
           <td class="paramtype">&#160;</td>
           <td class="paramname"><em>func</em>, </td>
@@ -189,16 +189,15 @@ Returns:
 </div><div class="memdoc">
 <pre class="fragment">In-place transform using a tensor type descriptor.
 
-Like :func:`for_each` but accepts a numpy ``ndarray`` type descriptor
-instead of a real tensor.  Intended for use inside ``@iron.jit``
-generator bodies where shape and dtype are expressed as ``CompileTime[T]``
-parameters::
+Accepts a numpy ``ndarray`` type descriptor instead of a real tensor.
+Intended for use inside ``@iron.jit`` generator bodies where shape and
+dtype are expressed as ``CompileTime[T]`` parameters::
 
     @iron.jit
     def my_design(data: InOut,
                   N: CompileTime[int], dtype: CompileTime[type] = np.int32):
         tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
-        return iron.algorithms.for_each_typed(lambda x: x + 1, tensor_ty)
+        return iron.algorithms.for_each(lambda x: x + 1, tensor_ty)
 
 Args:
     func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
