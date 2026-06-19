@@ -149,14 +149,17 @@ def test_workers_cannot_share_tile_by_coordinates():
 
 
 def test_buffer_cannot_be_shared_across_workers():
-    """A Buffer passed to two Workers must error on the second assignment."""
+    """An auto-placed Buffer (no explicit tile) passed to two Workers must
+    error on the second assignment, since its placement would be ambiguous.
+    (A Buffer pinned to an explicit tile may be shared — see
+    test/python/worker_buffer_sharing.py.)"""
     n_ty = np.ndarray[(1024,), np.dtype[np.int32]]
     buf_ty = np.ndarray[(16,), np.dtype[np.int32]]
     buf = Buffer(type=buf_ty, name="shared_buf")
     of1 = ObjectFifo(n_ty, name="buf_of1")
     _ = Worker(None, [of1.cons(), buf])
     of2 = ObjectFifo(n_ty, name="buf_of2")
-    with pytest.raises(ValueError, match="already placed on"):
+    with pytest.raises(ValueError, match="no explicit tile"):
         Worker(None, [of2.cons(), buf])
 
 
