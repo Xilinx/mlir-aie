@@ -223,15 +223,24 @@ def __getattr__(name):
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-def get_current_device():
+def get_current_device(*, probe_runtime: bool = True):
     """
     Get the current NPU device.
+
+    Args:
+        probe_runtime: When True, fall back to the default NPU runtime if no
+            device was explicitly set with ``set_current_device``. When False,
+            return only the explicitly selected device and never initialize or
+            query the default runtime.
 
     Returns:
         Device | None: The current device if available, else None.
     """
-    if hostruntime._CURRENT_DEVICE:
+    if hostruntime._CURRENT_DEVICE is not None:
         return hostruntime._CURRENT_DEVICE
+
+    if not probe_runtime:
+        return None
 
     runtime = _get_default_npu_runtime()
     if runtime:

@@ -27,14 +27,14 @@ def _detect_arch() -> str:
         import aie.iron as _iron
         from aie.utils.compile.utils import resolve_target_arch
 
-        device = _iron.get_current_device()
+        device = _iron.get_current_device(probe_runtime=False)
         return resolve_target_arch(device)
     except (ImportError, RuntimeError, AttributeError, ValueError):
-        # ImportError: iron not built; RuntimeError: no active device set;
+        # ImportError: iron not built; RuntimeError: no explicit device set;
         # AttributeError/ValueError: unrecognised device.  Anything else (e.g.
         # OSError from a misconfigured install) bubbles up so the user sees it.
         _log.warning(
-            "_detect_arch: no active device or unrecognised device; "
+            "_detect_arch: no explicit device or unrecognised device; "
             "falling back to 'aie2'",
             exc_info=True,
         )
