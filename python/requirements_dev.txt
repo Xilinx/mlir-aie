@@ -13,7 +13,10 @@ cibuildwheel
 patchelf; platform_system == "Linux"
 pre-commit>=4.6.0,<5.0
 black[jupyter]
-nanobind>=2.12.0
+# nanobind ABI-couples to the prebuilt mlir distro wheel (built against this
+# same version); a mismatch breaks Value-subclass recognition at runtime. Pin
+# exact and bump only alongside a distro rebuild.
+nanobind==2.12.0
 lit
 matplotlib
 psutil
