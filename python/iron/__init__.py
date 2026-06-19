@@ -81,6 +81,7 @@ from aie.utils import (
     ceildiv,
     set_tensor_class,
     get_current_device,
+    ensure_current_device,
 )
 
 __all__ = [
@@ -130,6 +131,7 @@ __all__ = [
     "ceildiv",
     "set_tensor_class",
     "get_current_device",
+    "ensure_current_device",
     # dtype helpers
     "str_to_dtype",
     "dtype_to_str",

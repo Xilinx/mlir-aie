@@ -20,7 +20,7 @@ from pathlib import Path
 import pytest
 
 from aie.extras.context import mlir_mod_ctx
-from aie.iron.device import NPU1Col1, NPU2Col1
+from aie.iron.device import NPU1Col1, NPU2Col1, NPU2Col2
 from aie.iron.kernel import ExternalFunction, Kernel
 from aie.utils.compile.jit._dma_size_parser import parse_dma_sizes
 from aie.utils.compile.jit.compilabledesign import CompilableDesign, _compute_hash
@@ -897,6 +897,53 @@ def test_kernels_mm_mac_dims_per_arch():
         8,
     ), f"AIE2P i16/i16 mac_dims expected (4, 4, 8), got {mm_aie2p.mac_dims}"
 
+
+
+def test_generated_cache_tracks_active_device(monkeypatch):
+    """MLIR generation cache entries are keyed by the active IRON device."""
+
+    def gen():
+        pass
+
+    cd = CompilableDesign(gen)
+    calls = []
+
+    def fake_generate_uncached(self):
+        calls.append(self._generation_cache_key())
+        return (f"mlir-{len(calls)}", [])
+
+    monkeypatch.setattr(CompilableDesign, "_generate_uncached", fake_generate_uncached)
+
+    set_current_device(NPU1Col1())
+    first_aie2 = cd._generated
+    second_aie2 = cd._generated
+
+    set_current_device(NPU2Col1())
+    first_aie2p = cd._generated
+    second_aie2p = cd._generated
+
+    set_current_device(None)
+
+    assert first_aie2 == second_aie2
+    assert first_aie2p == second_aie2p
+    assert first_aie2 != first_aie2p
+    assert len(calls) == 2
+
+
+def test_compute_hash_changes_when_active_device_width_changes():
+    """The filesystem cache key includes the active device identity, not just arch."""
+    gen = _gemm_gen()
+    cd = CompilableDesign(gen, compile_kwargs={"M": 64, "K": 64, "N": 64})
+
+    set_current_device(NPU2Col1())
+    h_one_col = cd._compute_cache_hash()
+
+    set_current_device(NPU2Col2())
+    h_two_col = cd._compute_cache_hash()
+
+    set_current_device(None)
+
+    assert h_one_col != h_two_col
 
 def test_transform_returns_module():
     import numpy as np

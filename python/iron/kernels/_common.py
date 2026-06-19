@@ -27,7 +27,7 @@ def _detect_arch() -> str:
         import aie.iron as _iron
         from aie.utils.compile.utils import resolve_target_arch
 
-        device = _iron.get_current_device()
+        device = _iron.get_current_device(probe_runtime=False)
         return resolve_target_arch(device)
     except (ImportError, RuntimeError, AttributeError, ValueError):
         # ImportError: iron not built; RuntimeError: no active device set;

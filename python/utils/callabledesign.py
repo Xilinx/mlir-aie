@@ -313,10 +313,16 @@ class CallableDesign:
             k: v for k, v in effective_compile_kwargs.items() if k != "trace_config"
         }
 
-        compilable = self._build_compilable(call_compile_kwargs)
+        from aie.utils import ensure_current_device
 
-        # In-process key includes runtime_args (tensor shapes); on-disk key in
-        # _compute_cache_hash does not. Divergence is intentional: if a generator
+        ensure_current_device()
+
+        compilable = self._build_compilable(call_compile_kwargs)
+        cache_compile_kwargs["__iron_device__"] = compilable._generation_cache_key()
+
+        # In-process key includes runtime_args (tensor shapes) and the active
+        # device; on-disk key in _compute_cache_hash does not include tensor
+        # shapes. Divergence is intentional: if a generator
         # omits CompileTime[T] for shape, the disk artifact reuses but the in-process
         # slot changes, so validate_tensor_args() surfaces the mismatch.
         generator = compilable.mlir_generator

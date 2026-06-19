@@ -20,8 +20,8 @@ Almost every basic/ design's ``main()`` is the same skeleton:
         _run_and_verify(opts)
 
 …where ``_compile_only`` always does the same ``--insts-path`` check +
-``set_current_device(from_name(opts.dev))`` + ``design.specialize(**kw)
-.compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path
+device binding + ``design.specialize(**kw).compile(
+xclbin_path=opts.xclbin_path, inst_path=opts.insts_path
 [, elf_path=opts.elf_path])``.
 
 This module wraps that skeleton so each design just declares the two
@@ -56,8 +56,9 @@ def run_design_cli(
 
     The standard branch tree (in order):
 
-      1. If ``validate`` is given, call ``validate(opts)`` first.
-      2. If ``opts.emit_mlir`` is True, set the current device, then:
+      1. Resolve and bind the current device.
+      2. If ``validate`` is given, call ``validate(opts)``.
+      3. If ``opts.emit_mlir`` is True, then:
 
          * If an ``emit_mlir`` callback was supplied, call ``emit_mlir(opts)``.
          * Otherwise print ``design.specialize(**compile_kwargs).as_mlir()``
@@ -66,16 +67,15 @@ def run_design_cli(
 
          Then return.
 
-      3. If ``opts.xclbin_path`` is set:
+      4. If ``opts.xclbin_path`` is set:
 
          * Refuse if ``opts.insts_path`` is unset (``sys.exit`` with the
            standard message).
-         * Set the current device.
          * Call ``design.specialize(**compile_kwargs).compile(
            xclbin_path=opts.xclbin_path, inst_path=opts.insts_path,
            [elf_path=opts.elf_path])``.
 
-      4. Otherwise, call ``run_and_verify(opts)``.
+      5. Otherwise, call ``run_and_verify(opts)``.
 
     Args:
         design: The ``@iron.jit``-decorated design (a ``CallableDesign``).
@@ -118,9 +118,6 @@ def run_design_cli(
     from aie.iron.device import from_name
     from aie.utils.hostruntime import set_current_device
 
-    if validate is not None:
-        validate(opts)
-
     if device is None:
         # Default: read opts.dev and pass through from_name.
         if not hasattr(opts, "dev"):
@@ -135,8 +132,13 @@ def run_design_cli(
 
         device = _default_device
 
+    resolved_device = _resolve(device, opts)
+    set_current_device(resolved_device)
+
+    if validate is not None:
+        validate(opts)
+
     if getattr(opts, "emit_mlir", False):
-        set_current_device(_resolve(device, opts))
         if emit_mlir is not None:
             emit_mlir(opts)
         else:
@@ -147,7 +149,6 @@ def run_design_cli(
     if getattr(opts, "xclbin_path", None):
         if not getattr(opts, "insts_path", None):
             sys.exit("--xclbin-path requires --insts-path (must be set together)")
-        set_current_device(_resolve(device, opts))
         kwargs = _resolve(compile_kwargs, opts)
         spec = design.specialize(**kwargs)
         compile_opts = dict(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)

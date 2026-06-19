@@ -428,3 +428,59 @@ def test_as_mlir_no_warning_when_no_conflict():
     assert (
         not conflict_warnings
     ), "as_mlir() must not warn when call-time and pre-bound values match"
+
+
+def test_call_binds_runtime_device_before_in_process_cache(monkeypatch):
+    """Direct @iron.jit calls bind the runtime device before cache lookup."""
+    import aie.utils as utils
+    from aie.iron.device import NPU2
+    from aie.utils.hostruntime import set_current_device
+
+    class FakeRuntime:
+        def device(self):
+            return NPU2()
+
+    def gen():
+        pass
+
+    set_current_device(None)
+    monkeypatch.setattr(utils, "_get_default_npu_runtime", lambda: FakeRuntime())
+
+    cd = CallableDesign(gen)
+    seen_keys = []
+
+    def fake_compile_and_build(self, compilable, cache_key, trace_config):
+        seen_keys.append(cache_key)
+        assert type(utils.get_current_device(probe_runtime=False)).__name__ == "NPU2"
+        return lambda *args, **kwargs: "ran"
+
+    monkeypatch.setattr(
+        CallableDesign, "_compile_and_build_kernel", fake_compile_and_build
+    )
+
+    try:
+        assert cd() == "ran"
+    finally:
+        set_current_device(None)
+
+    assert seen_keys
+    assert "__iron_device__" in seen_keys[0][1]
+
+
+def test_call_argument_errors_do_not_probe_runtime(monkeypatch):
+    """Cheap call-shape errors are reported before runtime device probing."""
+    import aie.utils as utils
+    from aie.utils.hostruntime import set_current_device
+
+    def gen(a: In):
+        pass
+
+    def fail_runtime_probe():
+        raise AssertionError("runtime should not be probed before argument validation")
+
+    set_current_device(None)
+    monkeypatch.setattr(utils, "_get_default_npu_runtime", fail_runtime_probe)
+
+    cd = CallableDesign(gen)
+    with pytest.raises(TypeError, match="at most 1 positional"):
+        cd(object(), object())
