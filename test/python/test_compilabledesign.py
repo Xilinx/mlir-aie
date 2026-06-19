@@ -28,7 +28,6 @@ from aie.utils.compile.jit.context import get_compile_arg
 from aie.utils.compile.jit.markers import CompileTime, In, InOut, Out
 from aie.utils.hostruntime import set_current_device
 
-
 # ---------------------------------------------------------------------------
 # Shared generator factories
 # ---------------------------------------------------------------------------

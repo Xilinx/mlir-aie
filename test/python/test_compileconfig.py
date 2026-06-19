@@ -20,7 +20,6 @@ from aie.utils.compile.jit.compilabledesign import CompilableDesign
 from aie.utils.compile.jit.compileconfig import compileconfig
 from aie.utils.compile.jit.markers import CompileTime, In, Out
 
-
 # ---------------------------------------------------------------------------
 # Bare decorator: @compileconfig (no parentheses)
 # ---------------------------------------------------------------------------

@@ -23,7 +23,6 @@ from aie.utils.callabledesign import CallableDesign
 from aie.utils.jit import _JIT_CONFIG_KEYS, jit
 from aie.iron.kernel import ExternalFunction, Kernel
 
-
 # ---------------------------------------------------------------------------
 # CallableDesign construction
 # ---------------------------------------------------------------------------
