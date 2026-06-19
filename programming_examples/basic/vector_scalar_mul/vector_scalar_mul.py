@@ -10,7 +10,7 @@
 A single AIE compute core scales ``a`` by a runtime scalar ``factor`` to produce
 ``c = a * factor``.  Default config: 4096-element ``int16`` vector tiled into
 four 1024-element sub-vectors.  The design body delegates to
-``aie.iron.algorithms.transform_typed``, which handles the
+``aie.iron.algorithms.transform``, which handles the
 ObjectFifo / Worker / Runtime plumbing (including trace) for any
 ``(input_tile, output_tile, *param_tensors, tile_size)``-shaped
 ExternalFunction.
@@ -27,7 +27,7 @@ import numpy as np
 
 import aie.iron as iron
 from aie.iron import CompileTime, In, Out, kernels
-from aie.iron.algorithms import transform_typed
+from aie.iron.algorithms import transform
 from aie.utils.hostruntime.argparse import device_from_args
 from aie.utils.benchmark import run_iters
 from aie.utils.hostruntime.argparse import (
@@ -69,7 +69,7 @@ def vector_scalar_mul(
         use_chess=use_chess,
     )
 
-    return transform_typed(
+    return transform(
         scale, tensor_ty, scalar_ty, tile_size=tile_size, trace_size=trace_size
     )
 

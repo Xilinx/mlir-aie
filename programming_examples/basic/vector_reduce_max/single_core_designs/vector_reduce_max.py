@@ -12,7 +12,7 @@ A single AIE core finds the maximum of an N-element input vector, producing a
 the corresponding ``reduce_max_vector`` / ``reduce_max_vector_bfloat16``
 kernel symbol from ``reduce_max.cc``).
 
-The design body delegates to ``aie.iron.algorithms.reduce_typed``; trace is
+The design body delegates to ``aie.iron.algorithms.reduce``; trace is
 threaded through via the library's ``trace_size`` kwarg.
 
 Two invocation modes:
@@ -28,7 +28,7 @@ import numpy as np
 
 import aie.iron as iron
 from aie.iron import CompileTime, In, Out, kernels, str_to_dtype
-from aie.iron.algorithms import reduce_typed
+from aie.iron.algorithms import reduce
 from aie.utils.hostruntime.argparse import add_compile_args, add_trace_arg
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
@@ -50,7 +50,7 @@ def vector_reduce_max(
     in_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
     out_ty = np.ndarray[(out_num_elements,), np.dtype[dtype]]
 
-    return reduce_typed(
+    return reduce(
         kernels.reduce_max(tile_size=num_elements, dtype=dtype),
         in_ty,
         out_ty,

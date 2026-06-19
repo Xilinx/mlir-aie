@@ -9,16 +9,20 @@
 
 import itertools
 import numpy as np
-from typing import Sequence
+from typing import Sequence, TYPE_CHECKING
 
-from .. import ir  # type: ignore
+from .. import ir  # pyright: ignore[reportMissingImports]
 from ..dialects.aie import buffer
 from ..helpers.util import (
+    NpuDType,
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
 )
 from .device import Tile
 from .resolvable import Resolvable, NotResolvedError
+
+if TYPE_CHECKING:
+    from .worker import Worker
 
 
 class Buffer(Resolvable):
@@ -53,7 +57,8 @@ class Buffer(Resolvable):
         if type is None and initial_value is None:
             raise ValueError("Must provide either type, initial value, or both.")
         if type is None:
-            type = np.ndarray[initial_value.shape, np.dtype[initial_value.dtype]]
+            assert initial_value is not None
+            type = np.ndarray[initial_value.shape, np.dtype[initial_value.dtype.type]]
         self._initial_value = initial_value
         self._name = name
         self._op = None
@@ -68,7 +73,7 @@ class Buffer(Resolvable):
         # user intent; this flag is.  Only explicitly-placed Buffers may be
         # shared (read) across Workers — see :class:`Worker`.
         self._explicit_tile = tile is not None
-        self._owner_worker = None
+        self._owner_worker: "Worker | None" = None
 
     @property
     def tile(self) -> Tile | None:
@@ -93,7 +98,7 @@ class Buffer(Resolvable):
         return np_ndarray_type_get_shape(self._arr_type)
 
     @property
-    def dtype(self) -> np.dtype:
+    def dtype(self) -> NpuDType:
         """The per-element datatype of the buffer."""
         return np_ndarray_type_get_dtype(self._arr_type)
 

@@ -8,7 +8,9 @@
 
 from __future__ import annotations
 
-from ...dialects._aie_enum_gen import AIETileType
+from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
+    AIETileType,
+)
 from ...dialects.aie import LogicalTileOp, TileOp
 
 

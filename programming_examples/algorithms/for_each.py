@@ -9,7 +9,7 @@
 
 Applies ``lambda a: a + 1`` to each ``tile_size``-element tile of a
 single 1-D int32 tensor in place.  The design body delegates to
-:func:`aie.iron.algorithms.for_each_typed`.
+:func:`aie.iron.algorithms.for_each`.
 """
 
 import argparse
@@ -18,7 +18,6 @@ import numpy as np
 
 import aie.iron as iron
 from aie.iron import CompileTime, InOut
-from aie.iron.algorithms import for_each_typed
 from aie.utils.verify import assert_pass
 
 
@@ -31,7 +30,7 @@ def for_each(
     tile_size: CompileTime[int] = 16,
 ):
     tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
-    return for_each_typed(lambda a: a + 1, tensor_ty, tile_size=tile_size)
+    return iron.algorithms.for_each(lambda a: a + 1, tensor_ty, tile_size=tile_size)
 
 
 def main():

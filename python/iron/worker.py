@@ -10,12 +10,21 @@
 import sys
 from typing import Callable
 
-from .. import ir  # type: ignore
-from ..dialects.aie import core, lock, use_lock
-from ..dialects.aiex import set_lock_value, LockAction
+from .. import ir  # pyright: ignore[reportMissingImports]
+from ..dialects.aie import (
+    core,
+    lock,
+    use_lock,  # pyright: ignore[reportAttributeAccessIssue]
+)
+from ..dialects.aiex import (
+    set_lock_value,
+    LockAction,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from ..helpers.dialects.scf import _for as range_
 from .device import Tile, AnyComputeTile
-from ..dialects._aie_enum_gen import AIETileType  # type: ignore
+from ..dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
+    AIETileType,
+)
 from .dataflow.objectfifo import ObjectFifoHandle, ObjectFifo
 from .dataflow.endpoint import ObjectFifoEndpoint
 from .buffer import Buffer
@@ -37,10 +46,10 @@ class Worker(ObjectFifoEndpoint):
         fn_args: list | None = None,
         tile: Tile = AnyComputeTile,
         while_true: bool = True,
-        stack_size: int = None,
-        allocation_scheme: str = None,
-        trace: int = None,
-        trace_events: list = None,
+        stack_size: int | None = None,
+        allocation_scheme: str | None = None,
+        trace: int | None = None,
+        trace_events: list | None = None,
         dynamic_objfifo_lowering: bool | None = None,
     ):
         """Construct a Worker
@@ -180,6 +189,12 @@ class Worker(ObjectFifoEndpoint):
             ``rows``-by-``cols`` nested list of Worker instances.
         """
         return [[factory(r, c) for c in range(cols)] for r in range(rows)]
+
+    @property
+    def tile(self) -> Tile:
+        """The compute tile this Worker is placed on."""
+        assert self._tile is not None
+        return self._tile
 
     @property
     def fifos(self) -> list[ObjectFifoHandle]:
