@@ -9,8 +9,8 @@
 
 Two halves so callers can distinguish "recipe changed" from "rebuild needed":
 
-* :func:`_compute_recipe_hash`   — generator bytecode + compile_kwargs +
-  aiecc/compile flags.  Pure function of the design specification.
+* :func:`_compute_recipe_hash`   — generator identity + compile_kwargs +
+  aiecc/compile flags. Target-independent design identity.
 * :func:`_compute_artifact_hash` — source / object mtimes + tool mtimes +
   target device.  Captures things that change the *output* of compilation
   without changing the *recipe*.
@@ -53,9 +53,9 @@ def _compute_recipe_hash(
 ) -> str:
     """Hash of the "recipe": generator bytecode + CompileTime[T] kwargs + flags.
 
-    Pure function of the design specification; does not touch the filesystem
-    or environment.  Two CompilableDesigns with the same recipe_hash will
-    produce identical MLIR (modulo nondeterminism in the generator body).
+    Captures the target-independent generator and compile configuration. It
+    omits device identity, so equal recipe hashes can produce different
+    target-specialized MLIR.
     """
     h = hashlib.sha256()
 
@@ -137,18 +137,10 @@ def _compute_artifact_hash(
     # cache collisions surface instead of silently aliasing.
     if not isinstance(generator, Path):
         try:
-            import aie.iron as _iron
-            from aie.utils import DefaultNPURuntime
+            from aie.utils import get_current_device
             from aie.utils.compile.utils import resolve_target_arch
 
-            try:
-                device = _iron.get_current_device()
-            except (RuntimeError, AttributeError):
-                device = (
-                    DefaultNPURuntime.device()
-                    if DefaultNPURuntime is not None
-                    else None
-                )
+            device = get_current_device(probe_runtime=False)
             target_arch = resolve_target_arch(device)
             target_device = _device_identity_key(device)
         except (ImportError, AttributeError, RuntimeError, ValueError) as exc:

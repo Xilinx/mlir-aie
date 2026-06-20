@@ -14,7 +14,7 @@ pair via ``compile()``.
 Hashing is split into two halves so callers can distinguish "recipe changed"
 from "rebuild needed":
 
-* ``recipe_hash``   — generator bytecode + compile_kwargs + aiecc/compile flags
+* ``recipe_hash``   — generator identity + compile_kwargs + aiecc/compile flags
 * ``artifact_hash`` — source / object mtimes + tool mtimes + target device
 
 ``hash(design)`` composes both into a 24-hex cache key; no MLIR generation
@@ -195,7 +195,6 @@ class CompilableDesign:
         too — the cache path doesn't track ELF artifacts.
         """
         from aie.iron.kernel import ExternalFunction
-        from aie.utils import DefaultNPURuntime
 
         if (xclbin_path is None) != (inst_path is None):
             raise ValueError(
@@ -213,9 +212,8 @@ class CompilableDesign:
                 "(the JIT cache does not track ELF artifacts)."
             )
 
-        from aie.utils import ensure_current_device
-
-        ensure_current_device()
+        if not isinstance(self.mlir_generator, Path):
+            self._bind_generation_device()
 
         if explicit_paths:
             assert xclbin_path is not None and inst_path is not None
@@ -250,10 +248,9 @@ class CompilableDesign:
                 self._xclbin_path = xclbin_path
                 self._inst_path = inst_path
                 self._kernel_dir = kernel_dir
-                # Populate on cache hit too, else validate_tensor_args no-ops
-                # and callers see kernel garbage instead of a shape error.
-                if self._expected_tensor_sizes is None:
-                    self._expected_tensor_sizes = parse_dma_sizes(kernel_dir)
+                # The active artifact may have changed since the previous
+                # compile(), so refresh its validation metadata on every hit.
+                self._expected_tensor_sizes = parse_dma_sizes(kernel_dir)
                 return xclbin_path, inst_path
 
             if explicit_paths:
@@ -270,29 +267,12 @@ class CompilableDesign:
                 )
 
             try:
-                # _EXTERN_CACHE ops bind to a prior MLIR Context; reuse across
-                # contexts segfaults in func.function_type. Clear per compile.
-                from aie.iron.kernels._common import _EXTERN_CACHE
-
-                _EXTERN_CACHE.clear()
                 mlir_module = self._generate_mlir(ExternalFunction)
 
+                from aie.utils import get_current_device
                 from aie.utils.compile import resolve_target_arch
-                import aie.iron as _iron
 
-                # Prefer iron's current device (matches `iron.get_current_device()`
-                # inside the generator); fall back to XRT-detected only when unset.
-                # Without this, a Strix-targeted design (iron set to NPU2) running
-                # in an env without pyxrt silently builds .o files for aie2 instead
-                # of aie2p — link succeeds, runtime times out (ERT_CMD_STATE_TIMEOUT).
-                try:
-                    device = _iron.get_current_device(probe_runtime=False)
-                except (RuntimeError, AttributeError):
-                    device = (
-                        DefaultNPURuntime.device()
-                        if DefaultNPURuntime is not None
-                        else None
-                    )
+                device = get_current_device(probe_runtime=False)
                 target_arch = resolve_target_arch(device)
 
                 external_kernels = list(ExternalFunction._instances)
@@ -434,7 +414,8 @@ class CompilableDesign:
         """Generate and return the MLIR module without compiling to xclbin.
 
         Useful for inspecting generated MLIR, debugging, or offline analysis.
-        Does not require an NPU or XRT to be present.
+        Binds an available runtime-detected device before generation so
+        target-sensitive builders and the generation cache see the same device.
 
         Returns:
             The generated ``mlir.ir.Module``.
@@ -564,8 +545,8 @@ class CompilableDesign:
     def recipe_hash(self) -> str:
         """Hash of the design recipe: generator + CompileTime[T] kwargs + flags.
 
-        Stable across rebuilds; identifies the *what* of compilation. Two
-        designs with equal ``recipe_hash`` produce identical MLIR.
+        Identifies the target-independent design recipe. Device-specialized
+        MLIR also depends on the bound device.
         """
         return _compute_recipe_hash(
             self.mlir_generator,
@@ -597,6 +578,18 @@ class CompilableDesign:
             self.compile_flags,
         )
 
+    def _bind_generation_device(self):
+        """Bind an available runtime device before target-sensitive work."""
+        if isinstance(self.mlir_generator, Path):
+            return None
+
+        try:
+            from aie.utils import ensure_current_device
+
+            return ensure_current_device()
+        except (ImportError, RuntimeError, AttributeError, ValueError, TypeError):
+            return None
+
     def _generation_cache_key(self) -> tuple:
         """Return the identity that affects cached MLIR generation.
 
@@ -607,9 +600,9 @@ class CompilableDesign:
             return ("path", str(self.mlir_generator))
 
         try:
-            import aie.iron as _iron
+            from aie.utils import get_current_device
 
-            device = _iron.get_current_device(probe_runtime=False)
+            device = get_current_device(probe_runtime=False)
         except (ImportError, RuntimeError, AttributeError, ValueError, TypeError):
             device = None
 
@@ -618,6 +611,7 @@ class CompilableDesign:
     @property
     def _generated(self) -> tuple[str, list]:
         """Return cached ``(mlir_text, external_kernels)`` for the active device."""
+        self._bind_generation_device()
         key = self._generation_cache_key()
         generated = self._generated_cache.get(key)
         if generated is None:
@@ -678,7 +672,13 @@ class CompilableDesign:
                 f"compile_kwargs do not match CompileTime[T] parameters — {exc}"
             ) from exc
 
+        # Kernel factories cache ExternalFunction instances. Those instances
+        # retain MLIR operations after resolution, so every fresh generation
+        # must begin with a context-local factory cache.
+        from aie.iron.kernels._common import _EXTERN_CACHE
+
         ExternalFunction._instances.clear()
+        _EXTERN_CACHE.clear()
 
         _tensor_placeholders = {
             name: _TensorPlaceholder(name) for name in self.tensor_params

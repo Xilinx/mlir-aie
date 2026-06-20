@@ -18,7 +18,8 @@ Three modes (same as section-3):
 
 * ``python3 vector_scalar_mul.py [--iters N --warmup K]`` — JIT-compile
   + run + verify + benchmark on the attached NPU.
-* ``python3 vector_scalar_mul.py --emit-mlir`` — print the lowered MLIR.
+* ``python3 vector_scalar_mul.py --dev npu --emit-mlir`` — print the
+  lowered MLIR.
 * ``python3 vector_scalar_mul.py --xclbin-path X --insts-path Y`` —
   compile-only.
 """

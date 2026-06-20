@@ -24,10 +24,10 @@ def _detect_arch() -> str:
     Falls back to ``'aie2'`` if no device is currently set.
     """
     try:
-        import aie.iron as _iron
+        from aie.utils import get_current_device
         from aie.utils.compile.utils import resolve_target_arch
 
-        device = _iron.get_current_device(probe_runtime=False)
+        device = get_current_device(probe_runtime=False)
         return resolve_target_arch(device)
     except (ImportError, RuntimeError, AttributeError, ValueError):
         # ImportError: iron not built; RuntimeError: no active device set;

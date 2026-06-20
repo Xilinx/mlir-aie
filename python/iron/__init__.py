@@ -80,6 +80,7 @@ from aie.utils import (
     zeros_like,
     ceildiv,
     set_tensor_class,
+    set_current_device,
     get_current_device,
     ensure_current_device,
 )
@@ -130,6 +131,7 @@ __all__ = [
     "zeros_like",
     "ceildiv",
     "set_tensor_class",
+    "set_current_device",
     "get_current_device",
     "ensure_current_device",
     # dtype helpers
