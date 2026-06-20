@@ -51,9 +51,7 @@ def _mock_runtime_target(monkeypatch):
     monkeypatch.setattr(
         utils,
         "ensure_current_device",
-        lambda: pytest.fail(
-            "automatic CLI selection must not bind the runtime device"
-        ),
+        lambda: pytest.fail("automatic CLI selection must not bind the runtime device"),
     )
     monkeypatch.setattr(hostruntime, "set_current_device", set_calls.append)
     monkeypatch.setattr(cli, "_runtime_device_name", lambda device: "npu2")

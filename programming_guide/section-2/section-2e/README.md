@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // Copyright (C) 2024, Advanced Micro Devices, Inc.
-// 
+//
 //===----------------------------------------------------------------------===//-->
 
 # <ins>Section 2e - Programming for multiple cores</ins>

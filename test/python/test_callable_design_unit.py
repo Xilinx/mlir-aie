@@ -133,8 +133,7 @@ class TestJitDecorator:
             pass
 
         assert any(
-            "opt/inc" in str(p).replace("\\", "/")
-            for p in gen.compilable.include_paths
+            "opt/inc" in str(p).replace("\\", "/") for p in gen.compilable.include_paths
         )
 
     def test_object_files_forwarded(self):
@@ -528,8 +527,7 @@ def test_as_mlir_binds_runtime_device_before_generation(monkeypatch):
 
     def fake_generate_uncached(self):
         assert (
-            type(utils.get_current_device(probe_runtime=False)).__name__
-            == "NPU2Col1"
+            type(utils.get_current_device(probe_runtime=False)).__name__ == "NPU2Col1"
         )
         return ("module {}", [])
 

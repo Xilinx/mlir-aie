@@ -898,8 +898,6 @@ def test_kernels_mm_mac_dims_per_arch():
     ), f"AIE2P i16/i16 mac_dims expected (4, 4, 8), got {mm_aie2p.mac_dims}"
 
 
-
-
 def test_compile_mixed_explicit_paths_raises():
     """Passing only one of (xclbin_path, inst_path) is rejected up front."""
     import pytest

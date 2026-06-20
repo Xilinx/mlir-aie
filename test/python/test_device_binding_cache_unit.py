@@ -96,8 +96,7 @@ def test_generated_root_binds_runtime_device_before_cache_key(monkeypatch):
 
     def fake_generate_uncached(self):
         assert (
-            type(utils.get_current_device(probe_runtime=False)).__name__
-            == "NPU2Col1"
+            type(utils.get_current_device(probe_runtime=False)).__name__ == "NPU2Col1"
         )
         return ("mlir", [])
 
@@ -113,7 +112,9 @@ def test_generated_root_binds_runtime_device_before_cache_key(monkeypatch):
     assert "NPU2Col1" in keys[0][1]
 
 
-def test_cache_hit_refreshes_tensor_metadata_for_the_selected_artifact(monkeypatch, tmp_path):
+def test_cache_hit_refreshes_tensor_metadata_for_the_selected_artifact(
+    monkeypatch, tmp_path
+):
     """Returning to a cached target restores that artifact's validation metadata."""
     import aie.utils as utils
     import aie.utils.compile.jit.compilabledesign as compilabledesign_module
