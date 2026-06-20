@@ -7,7 +7,7 @@
 # (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
 """Element-wise bf16 unary op (ReLU | SiLU | GELU) — IRON API + ``@iron.jit``.
 
-Body delegates to ``iron.algorithms.transform_parallel_typed`` with
+Body delegates to ``iron.algorithms.transform_parallel`` with
 ``num_channels=2`` so both shim DMA channels per column are driven; the
 per-tile kernel is selected by the ``op`` CompileTime parameter and pulled from
 ``aie.iron.kernels``.
@@ -20,7 +20,7 @@ from ml_dtypes import bfloat16
 
 import aie.iron as iron
 from aie.iron import CompileTime, In, Out, kernels
-from aie.iron.algorithms import transform_parallel_typed
+from aie.iron.algorithms import transform_parallel
 from aie.utils.hostruntime.argparse import (
     device_from_args,
     add_compile_args,
@@ -58,7 +58,7 @@ def eltwise_unary(
     num_channels: CompileTime[int] = 2,
     op: CompileTime[str] = "relu",
 ):
-    return transform_parallel_typed(
+    return transform_parallel(
         _KERNEL_FACTORIES[op](tile_size=1024),
         np.ndarray[(size,), np.dtype[bfloat16]],
         tile_size=1024,

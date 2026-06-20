@@ -7,7 +7,7 @@
 # (c) Copyright 2025-2026 Advanced Micro Devices, Inc.
 
 import numpy as np
-import pyxrt as xrt
+import pyxrt as xrt  # pyright: ignore[reportMissingImports]
 
 from ..tensor_class import Tensor
 from aie.helpers.util import np_ndarray_type_get_shape
@@ -46,6 +46,7 @@ class XRTTensor(Tensor):
         device_index = 0
         self.xrt_device = xrt.device(device_index)
 
+        np_data = None
         # Extract the shape
         if isinstance(shape_or_data, tuple):
             # If this is a shape, check for it "ShapeLike"-ness using numpy ndarray types.
@@ -79,6 +80,7 @@ class XRTTensor(Tensor):
         self._data = np.frombuffer(ptr, dtype=self.dtype).reshape(self._shape)
 
         if not isinstance(shape_or_data, tuple):
+            assert np_data is not None
             np.copyto(self._data, np_data)
         else:
             self._data.fill(0)
@@ -110,12 +112,14 @@ class XRTTensor(Tensor):
         """
         Syncs the tensor data from the host to the device memory.
         """
+        assert self._bo is not None
         return self._bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
 
     def _sync_from_device(self):
         """
         Syncs the tensor data from the device to the host memory.
         """
+        assert self._bo is not None
         return self._bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
 
     def __del__(self):

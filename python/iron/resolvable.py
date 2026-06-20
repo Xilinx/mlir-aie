@@ -9,7 +9,7 @@
 
 from typing import Protocol, runtime_checkable
 
-from .. import ir  # type: ignore
+from .. import ir  # pyright: ignore[reportMissingImports]
 
 
 # Structural typing via @runtime_checkable Protocol: any class with both

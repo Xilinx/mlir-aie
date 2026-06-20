@@ -659,7 +659,7 @@ def test_split_runtime_args_path_generator_filters_kernel_objects():
 
 
 # ---------------------------------------------------------------------------
-# transform_typed
+# transform
 # ---------------------------------------------------------------------------
 
 
@@ -898,15 +898,15 @@ def test_kernels_mm_mac_dims_per_arch():
     ), f"AIE2P i16/i16 mac_dims expected (4, 4, 8), got {mm_aie2p.mac_dims}"
 
 
-def test_transform_typed_returns_module():
+def test_transform_returns_module():
     import numpy as np
-    from aie.iron.algorithms import transform_typed
+    from aie.iron.algorithms import transform
 
     set_current_device(NPU1Col1())
     try:
         tensor_ty = np.ndarray[(1024,), np.dtype[np.int32]]
         # This should not raise and should return an MLIR module
-        module = transform_typed(lambda x: x + 1, tensor_ty, tile_size=16)
+        module = transform(lambda x: x + 1, tensor_ty, tile_size=16)
         assert module is not None
         assert hasattr(module, "operation")
     finally:

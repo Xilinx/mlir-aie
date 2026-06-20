@@ -10,7 +10,9 @@ from __future__ import annotations
 
 from ..dataflow.endpoint import ObjectFifoEndpoint
 from ..device import Tile, AnyShimTile
-from ...dialects._aie_enum_gen import AIETileType  # type: ignore
+from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
+    AIETileType,
+)
 
 
 class RuntimeEndpoint(ObjectFifoEndpoint):
@@ -36,6 +38,7 @@ class RuntimeEndpoint(ObjectFifoEndpoint):
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, RuntimeEndpoint):
             return NotImplemented
+        assert self.tile is not None and other.tile is not None
         return (self.tile.col, self.tile.row) == (other.tile.col, other.tile.row)
 
     def __str__(self) -> str:

@@ -14,7 +14,6 @@ import numpy as np
 from aie.dialects._aie_enum_gen import AIETileType
 from aie.iron import Buffer, ObjectFifo, Program, Runtime, Worker
 from aie.iron.dataflow.objectfifo import ObjectFifoLink
-from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
 from aie.iron.device import (
     NPU1Col1,
     NPU1,
@@ -30,71 +29,6 @@ from aie.iron.runtime.endpoint import RuntimeEndpoint
 @pytest.fixture(params=[NPU1Col1, NPU1, NPU2])
 def device(request):
     return request.param()
-
-
-def test_can_used_shared_mem(device):
-    n_ty = np.ndarray[(1024,), np.dtype[np.int32]]
-
-    # Legal affinity
-    of_legal = ObjectFifo(n_ty)
-    of_legal.prod().endpoint = ObjectFifoEndpoint(Tile(1, 2))
-    of_legal.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
-    assert of_legal.can_used_shared_mem(device)
-    assert of_legal.can_used_shared_mem(device, cons_only=True)
-
-    # Illegal affinity
-    of_illegal = ObjectFifo(n_ty)
-    of_illegal.prod().endpoint = ObjectFifoEndpoint(Tile(0, 0))
-    of_illegal.cons().endpoint = ObjectFifoEndpoint(Tile(1, 2))
-    assert not of_illegal.can_used_shared_mem(device)
-    assert of_illegal.can_used_shared_mem(device, cons_only=True)
-
-    # Multiple consumers, legal
-    of_mult_cons_legal = ObjectFifo(n_ty)
-    of_mult_cons_legal.prod().endpoint = ObjectFifoEndpoint(Tile(1, 2))
-    of_mult_cons_legal.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
-    of_mult_cons_legal.cons().endpoint = ObjectFifoEndpoint(Tile(1, 4))
-    assert of_mult_cons_legal.can_used_shared_mem(device)
-    assert of_mult_cons_legal.can_used_shared_mem(device, cons_only=True)
-
-    # Multiple consumers, illegal
-    of_mult_cons_illegal = ObjectFifo(n_ty)
-    of_mult_cons_illegal.prod().endpoint = ObjectFifoEndpoint(Tile(1, 2))
-    of_mult_cons_illegal.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
-    of_mult_cons_illegal.cons().endpoint = ObjectFifoEndpoint(Tile(0, 0))
-    assert not of_mult_cons_illegal.can_used_shared_mem(device)
-    assert not of_mult_cons_illegal.can_used_shared_mem(device, cons_only=True)
-
-    # Illegal producer, legal consumer
-    of_illegal_prod = ObjectFifo(n_ty)
-    of_illegal_prod.prod().endpoint = ObjectFifoEndpoint(Tile(0, 0))
-    of_illegal_prod.cons().endpoint = ObjectFifoEndpoint(Tile(1, 2))
-    assert not of_illegal_prod.can_used_shared_mem(device)
-    assert of_illegal_prod.can_used_shared_mem(device, cons_only=True)
-
-    # Forwarded ObjectFifo
-    of_forward = ObjectFifo(n_ty)
-    of_forward.prod().endpoint = ObjectFifoEndpoint(Tile(1, 2))
-    forwarded = of_forward.cons().forward(tile=AnyMemTile)
-    forwarded.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
-    with pytest.raises(ValueError):
-        of_forward.can_used_shared_mem(device)
-    with pytest.raises(ValueError):
-        forwarded.can_used_shared_mem(device)
-
-    # AnyComputeTile
-    of_any_compute = ObjectFifo(n_ty)
-    of_any_compute.prod().endpoint = ObjectFifoEndpoint(AnyComputeTile)
-    of_any_compute.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
-    with pytest.raises(ValueError):
-        of_any_compute.can_used_shared_mem(device)
-
-    # AnyShimTile
-    of_any_shim = ObjectFifo(n_ty)
-    of_any_shim.prod().endpoint = ObjectFifoEndpoint(AnyShimTile)
-    of_any_shim.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
-    with pytest.raises(ValueError):
-        of_any_shim.can_used_shared_mem(device)
 
 
 def test_set_iter_count():

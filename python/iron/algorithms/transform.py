@@ -171,6 +171,7 @@ def _transform_gen(func, inputs: list, output, *params, tile_size=16, trace_size
     # Sequence order: [inputs, output, params]
     all_types = [tensor_ty] * num_inputs + [tensor_ty] + param_tensor_types
     with rt.sequence(*all_types) as seq_args:
+        assert isinstance(seq_args, tuple)
         input_seq_args = seq_args[:num_inputs]
         output_seq_arg = seq_args[num_inputs]
         param_seq_args = seq_args[num_inputs + 1 :]
@@ -435,6 +436,7 @@ def _transform_parallel_gen(
     rt = Runtime()
     all_types = [tensor_ty] * num_inputs + [tensor_ty] + param_tensor_types
     with rt.sequence(*all_types) as seq_args:
+        assert isinstance(seq_args, tuple)
         input_seq_args = seq_args[:num_inputs]
         output_seq_arg = seq_args[num_inputs]
         param_seq_args = seq_args[num_inputs + 1 :]
@@ -480,7 +482,7 @@ def _transform_parallel_gen(
 
 def make_param_descriptor(tensor_ty):
     """Build a fake-tensor descriptor (``.shape``, ``.size``, ``.dtype``) for
-    use as an extra param to :func:`transform_typed` and friends.
+    use as an extra param to :func:`transform` and friends.
 
     Mirrors :func:`_make_fake_tensor` but skips the tile-divisibility check
     because params (e.g. a 1-element ``factor`` tensor) are passed through
@@ -565,7 +567,7 @@ def _make_fake_tensor(tensor_ty, tile_size, fn_name):
     return _TypeDescriptor()
 
 
-def transform_typed(func, tensor_ty, *params, tile_size=16, trace_size=0):
+def transform(func, tensor_ty, *params, tile_size=16, trace_size=0):
     """Apply ``func`` element-wise over a tensor described by *tensor_ty*.
 
     Like :func:`transform` but accepts a numpy ``ndarray`` type descriptor
@@ -577,7 +579,7 @@ def transform_typed(func, tensor_ty, *params, tile_size=16, trace_size=0):
         def my_design(inp: In, out: Out,
                       N: CompileTime[int], dtype: CompileTime[type] = np.int32):
             tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
-            return iron.algorithms.transform_typed(lambda x: x + 1, tensor_ty)
+            return iron.algorithms.transform(lambda x: x + 1, tensor_ty)
 
     Args:
         func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
@@ -594,7 +596,7 @@ def transform_typed(func, tensor_ty, *params, tile_size=16, trace_size=0):
     Returns:
         mlir.ir.Module: The compiled MLIR module.
     """
-    fake_tensor = _make_fake_tensor(tensor_ty, tile_size, "transform_typed")
+    fake_tensor = _make_fake_tensor(tensor_ty, tile_size, "transform")
     expanded_params = tuple(_expand_param(p) for p in params)
     return _transform_gen(
         func,
@@ -606,7 +608,7 @@ def transform_typed(func, tensor_ty, *params, tile_size=16, trace_size=0):
     )
 
 
-def transform_binary_typed(func, tensor_ty, tile_size=16, trace_size=0):
+def transform_binary(func, tensor_ty, tile_size=16, trace_size=0):
     """Apply ``func`` element-wise over two tensors described by *tensor_ty*.
 
     Like :func:`transform_binary` but accepts a numpy ``ndarray`` type
@@ -624,7 +626,7 @@ def transform_binary_typed(func, tensor_ty, tile_size=16, trace_size=0):
     Returns:
         mlir.ir.Module: The compiled MLIR module.
     """
-    fake_tensor = _make_fake_tensor(tensor_ty, tile_size, "transform_binary_typed")
+    fake_tensor = _make_fake_tensor(tensor_ty, tile_size, "transform_binary")
     return _transform_gen(
         func,
         [fake_tensor, fake_tensor],
@@ -634,7 +636,7 @@ def transform_binary_typed(func, tensor_ty, tile_size=16, trace_size=0):
     )
 
 
-def transform_parallel_typed(
+def transform_parallel(
     func,
     tensor_ty,
     *params,
@@ -671,7 +673,7 @@ def transform_parallel_typed(
     Returns:
         mlir.ir.Module: The compiled MLIR module.
     """
-    fake_tensor = _make_fake_tensor(tensor_ty, tile_size, "transform_parallel_typed")
+    fake_tensor = _make_fake_tensor(tensor_ty, tile_size, "transform_parallel")
     expanded_params = tuple(_expand_param(p) for p in params)
     return _transform_parallel_gen(
         func,
@@ -685,7 +687,7 @@ def transform_parallel_typed(
     )
 
 
-def transform_parallel_binary_typed(
+def transform_parallel_binary(
     func,
     tensor_ty,
     tile_size=16,
@@ -709,16 +711,14 @@ def transform_parallel_binary_typed(
             trace and a ``trace_size``-byte runtime trace buffer.
             Defaults to 0 (off).
         num_channels (int, optional): Shim DMA channels per column to drive,
-            1 or 2.  Defaults to 1.  See :func:`transform_parallel_typed`.
+            1 or 2.  Defaults to 1.  See :func:`transform_parallel`.
         pass_size_to_kernel (bool, optional): Append ``tile_size`` as a
             trailing ``int`` argument on every kernel call.  Defaults to True.
 
     Returns:
         mlir.ir.Module: The compiled MLIR module.
     """
-    fake_tensor = _make_fake_tensor(
-        tensor_ty, tile_size, "transform_parallel_binary_typed"
-    )
+    fake_tensor = _make_fake_tensor(tensor_ty, tile_size, "transform_parallel_binary")
     return _transform_parallel_gen(
         func,
         [fake_tensor, fake_tensor],
