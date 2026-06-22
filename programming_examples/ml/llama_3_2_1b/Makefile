@@ -25,7 +25,7 @@ N ?= 64
 PEANO_FLAGS := ${PEANOWRAP2P_FLAGS} \
     -DLLAMA_GEMM_PT_M=${M} -DLLAMA_GEMM_PT_K=${K} -DLLAMA_GEMM_PT_N=${N}
 
-.PHONY: all clean gemm_pt run_gemm_pt gemm_pt_col run_gemm_pt_col gemm_pt_proj run_gemm_pt_proj flowkv_pair run_flowkv_pair glue run_glue layer_pt run_layer_pt rmsnorm run_rmsnorm rmsnorm_int8 run_rmsnorm_int8 rmsnorm_int8_dyn run_rmsnorm_int8_dyn gemm_srs run_gemm_srs silu_mul run_silu_mul rope run_rope flowkv run_flowkv sample run_sample layer_real run_layer_real chain_real run_chain_real chain_sample run_chain_sample tiled_gemm run_tiled_gemm ffn_half run_ffn_half attn_half run_attn_half layer_d2048 run_layer_d2048 chain_dynscale run_chain_dynscale layer_mh run_layer_mh lmhead_sample run_lmhead_sample
+.PHONY: all clean gemm_pt run_gemm_pt gemm_pt_col run_gemm_pt_col gemm_pt_proj run_gemm_pt_proj flowkv_pair run_flowkv_pair glue run_glue layer_pt run_layer_pt rmsnorm run_rmsnorm rmsnorm_int8 run_rmsnorm_int8 rmsnorm_int8_dyn run_rmsnorm_int8_dyn gemm_srs run_gemm_srs silu_mul run_silu_mul rope run_rope flowkv run_flowkv sample run_sample layer_real run_layer_real chain_real run_chain_real chain_sample run_chain_sample tiled_gemm run_tiled_gemm ffn_half run_ffn_half attn_half run_attn_half layer_d2048 run_layer_d2048 chain_dynscale run_chain_dynscale layer_mh run_layer_mh lmhead_sample run_lmhead_sample sample_streamed run_sample_streamed
 
 all: gemm_pt
 
@@ -1033,6 +1033,38 @@ run_lmhead_sample: lmhead_sample
 	cd ${srcdir} && python3 test_lmhead_sample.py \
 		-x ${BUILD}/final_lmhead_sample.xclbin \
 		-i ${BUILD}/insts_lmhead_sample.bin \
+		-k MLIR_AIE
+
+# ---------- standalone streamed full sampler (sample tile M2) ----------
+SAMPLE_STREAM_V ?= 128256
+SAMPLE_STREAM_CHUNK ?= 2004
+${BUILD}/llama_sample_streamed.cc.o: ${KDIR}/llama_sample_streamed.cc ${BUILD}/exp_lut.h
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} \
+		-ffp-contract=off -DLLAMA_SAMPLE_EXP_QUANT_SCALE=0.05f \
+		-DLLAMA_SAMPLE_VOCAB=${SAMPLE_STREAM_V} \
+		-DLLAMA_SAMPLE_CHUNK_N=${SAMPLE_STREAM_CHUNK} \
+		-I${srcdir} -c $< -o ${@F}
+
+${BUILD}/aie_sample_streamed.mlir: ${srcdir}/aie2_sample_streamed.py
+	mkdir -p ${@D}
+	LLAMA_SAMPLE_V=${SAMPLE_STREAM_V} LLAMA_SAMPLE_CHUNK=${SAMPLE_STREAM_CHUNK} python3 $< > $@
+
+${BUILD}/final_sample_streamed.xclbin: ${BUILD}/aie_sample_streamed.mlir ${BUILD}/llama_sample_streamed.cc.o
+	mkdir -p ${@D}
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-xchesscc --no-xbridge \
+		--xclbin-name=${@F} \
+		--npu-insts-name=insts_sample_streamed.bin \
+		$(notdir $<)
+
+sample_streamed: ${BUILD}/final_sample_streamed.xclbin
+
+run_sample_streamed: sample_streamed
+	cd ${srcdir} && LLAMA_SAMPLE_V=${SAMPLE_STREAM_V} LLAMA_SAMPLE_CHUNK=${SAMPLE_STREAM_CHUNK} \
+		python3 test_sample_streamed.py \
+		-x ${BUILD}/final_sample_streamed.xclbin \
+		-i ${BUILD}/insts_sample_streamed.bin \
 		-k MLIR_AIE
 
 # ---------- clean ----------
