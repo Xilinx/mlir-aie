@@ -592,6 +592,19 @@ void llama_gemm_tiled_layer_K2048_N4_perchan_v2_up_fp32out_acttail(
 // is state[0]. Global index = tile_idx*4 + n, first-occurrence tie-break
 // (> only) to match np.argmax. act_scale from the normed-activation tail
 // act[kK..kK+4].
+// lm_head fp32-out GEMM (for the full sampler path): K=D=2048, N_TILE=4 fp32
+// logits per call written to out + tile_idx*4. act_scale from the normed-act
+// tail; per-row w_scale from the slot. Same impl as up_fp32out_acttail, named
+// for lm_head. tile_idx is the LOCAL tile index within the current chunk.
+void llama_gemm_tiled_layer_K2048_N4_lmhead_fp32out(
+    int8_t *restrict act, int8_t *restrict w_tile, float *restrict out_chunk,
+    int32_t tile_idx) {
+  event0();
+  gemm_tile_perchan_v2_fp32out_acttail_impl<2048, 4, 64>(
+      act, w_tile, out_chunk + tile_idx * 4);
+  event1();
+}
+
 void llama_gemm_tiled_layer_K2048_N4_lmhead_argmax(
     int8_t *restrict act, int8_t *restrict w_tile, int8_t *restrict state,
     int32_t tile_idx) {
