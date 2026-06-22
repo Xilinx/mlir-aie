@@ -210,7 +210,6 @@ class CMakeBuild(build_ext):
             f"-DLLVM_ENABLE_RTTI={os.getenv('ENABLE_RTTI', 'ON')}",
             f"-DAIE_VITIS_COMPONENTS={os.getenv('AIE_VITIS_COMPONENTS', 'AIE2')}",
             "-DAIE_ENABLE_BINDINGS_PYTHON=ON",
-            "-DAIE_ENABLE_PYTHON_PASSES=OFF",
             "-DAIE_BUILD_LSP_SERVER=OFF",
             "-DAIE_BUILD_VISUALIZE=OFF",
             "-DMLIR_DETECT_PYTHON_ENV_PRIME_SEARCH=ON",
