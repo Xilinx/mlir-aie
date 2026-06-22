@@ -3938,6 +3938,107 @@ static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
   return success();
 }
 
+/// Generate NPU instructions for all devices from a single whole-module NPU
+/// lowering. The runtime-sequence materialize pass and patchPdiIds operate on
+/// the whole module independently of which device is later extracted, so the
+/// module is lowered once and each device's runtime sequence is translated from
+/// that single lowered module. Used on the full-ELF / no-expand-load-pdis path.
+static LogicalResult generateAllNpuInstructionsOnce(ModuleOp moduleOp,
+                                                    StringRef tmpDirName) {
+  if (!generateNpuInsts && !generateFullElf) {
+    return success();
+  }
+  if (dryRun) {
+    return success();
+  }
+
+  // Clone the whole module; NPU lowering is destructive.
+  OwningOpRef<ModuleOp> clonedModule = moduleOp.clone();
+
+  // Single whole-module NPU lowering (materialize + device passes + optional
+  // PDI-id patch). patchPdiIds matches the per-device path (generateFullElf).
+  if (failed(runNpuLoweringPipeline(*clonedModule, tmpDirName,
+                                    /*patchPdiIds=*/generateFullElf))) {
+    return failure();
+  }
+
+  // Dump intermediate once if requested.
+  SmallString<128> npuLoweredPath(tmpDirName);
+  sys::path::append(npuLoweredPath, "all_npu_lowered.mlir");
+  dumpModuleToFile(*clonedModule, npuLoweredPath, "NPU lowered module (once)");
+
+  // Translate every device's runtime sequence to its NPU binary; this is the
+  // only device-specific step.
+  LogicalResult result = success();
+  for (auto devOp : clonedModule->getOps<xilinx::AIE::DeviceOp>()) {
+    StringRef devName = devOp.getSymName();
+    if (!deviceName.empty() && devName != deviceName) {
+      continue;
+    }
+    devOp.walk([&](xilinx::AIE::RuntimeSequenceOp seq) {
+      if (failed(result)) {
+        return;
+      }
+      if (!sequenceName.empty() && seq.getSymName() != sequenceName) {
+        return;
+      }
+      StringRef seqName = seq.getSymName();
+      std::string outputFileName =
+          formatString(instsName, devName.str(), seqName);
+      SmallString<128> outputPath;
+      if (generateNpuInsts) {
+        outputPath = outputFileName;
+      } else {
+        outputPath = tmpDirName;
+        sys::path::append(outputPath, outputFileName);
+      }
+      if (verbose) {
+        llvm::outs() << "Generating NPU instructions for sequence: " << seqName
+                     << " -> " << outputPath << "\n";
+      }
+      std::vector<uint32_t> instructions;
+      std::vector<xilinx::AIE::TxnLocEntry> locmap;
+      if (failed(xilinx::AIE::AIETranslateNpuToBinary(
+              *clonedModule, instructions, devName, seqName,
+              keepLoc ? &locmap : nullptr))) {
+        llvm::errs() << "Error generating NPU instructions for sequence: "
+                     << seqName << "\n";
+        result = failure();
+        return;
+      }
+      std::error_code ec;
+      raw_fd_ostream binFile(outputPath, ec, sys::fs::OpenFlags::OF_None);
+      if (ec) {
+        llvm::errs() << "Error opening NPU instructions file: " << ec.message()
+                     << "\n";
+        result = failure();
+        return;
+      }
+      binFile.write(reinterpret_cast<const char *>(instructions.data()),
+                    instructions.size() * sizeof(uint32_t));
+      if (verbose) {
+        llvm::outs() << "Wrote " << instructions.size()
+                     << " instructions to: " << outputPath << "\n";
+      }
+      if (keepLoc) {
+        SmallString<128> locmapPath(outputPath);
+        locmapPath.append(".locmap.json");
+        std::error_code locEc;
+        raw_fd_ostream locFile(locmapPath, locEc, sys::fs::OpenFlags::OF_Text);
+        if (locEc) {
+          llvm::errs() << "Error opening locmap sidecar: " << locEc.message()
+                       << "\n";
+          result = failure();
+          return;
+        }
+        StringRef binBaseName = sys::path::filename(outputPath);
+        xilinx::AIE::emitNpuLocmapJSON(locFile, devName, binBaseName, locmap);
+      }
+    });
+  }
+  return result;
+}
+
 //===----------------------------------------------------------------------===//
 // Transaction Generation
 //===----------------------------------------------------------------------===//
@@ -5470,9 +5571,19 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
     }
 
     // Generate NPU instructions from in-memory module.
-    if (!generateCtrlPkt &&
-        failed(generateNpuInstructions(moduleOp, tmpDirName, devName))) {
-      return failure();
+    // (this runs runNpuLoweringPipeline = the runtime-sequence MATERIALIZE
+    // pass)
+    //
+    // On the full-ELF / no-expand-load-pdis path, NPU instructions for all
+    // devices are generated together after this loop by
+    // generateAllNpuInstructionsOnce; skip the per-device call here.
+    bool deferNpuInstsToOncePass =
+        generateFullElf && !expandLoadPdis && !generateCtrlPkt;
+    if (!deferNpuInstsToOncePass) {
+      if (!generateCtrlPkt &&
+          failed(generateNpuInstructions(moduleOp, tmpDirName, devName))) {
+        return failure();
+      }
     }
 
     // Generate transaction MLIR output if requested.
@@ -5676,6 +5787,14 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
       });
 
       deviceElfInfos.push_back(std::move(info));
+    }
+  }
+
+  // Full-ELF / no-expand path: generate all devices' NPU instructions from a
+  // single whole-module lowering.
+  if (generateFullElf && !expandLoadPdis && !generateCtrlPkt) {
+    if (failed(generateAllNpuInstructionsOnce(moduleOp, tmpDirName))) {
+      return failure();
     }
   }
 
