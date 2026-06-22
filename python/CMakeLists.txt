@@ -82,8 +82,6 @@ declare_mlir_python_sources(AIEPythonSources.Helpers
   ADD_TO_PARENT AIEPythonSources
   SOURCES_GLOB
     helpers/*.py
-    helpers/dialects/ext/*.py
-    helpers/runtime/*.py
     helpers/taplib/*.py
 )
 
@@ -231,8 +229,6 @@ if (AIE_ENABLE_PYTHON_PASSES)
       list(APPEND _py_libs uuid)
     endif()
   endif()
-  list(APPEND _py_srcs ${CMAKE_CURRENT_SOURCE_DIR}/AIERTModule.cpp)
-
   declare_mlir_python_extension(AIEPythonExtensions.MLIR
     MODULE_NAME _aie
     ADD_TO_PARENT AIEPythonExtensions
