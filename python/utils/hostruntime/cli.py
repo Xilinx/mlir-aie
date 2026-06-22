@@ -34,12 +34,25 @@ real ``iron.tensor`` instances at MLIR-gen time.
 from __future__ import annotations
 
 import sys
-from typing import Any, Callable, Mapping
+from typing import TYPE_CHECKING, Any, Callable, Mapping, TypeAlias
+
+if TYPE_CHECKING:
+    from aie.iron.device import Device
+
+_DeviceArg: TypeAlias = "Device | Callable[[Any], Device | None]"
 
 
 def _resolve(value: Any, opts) -> Any:
     """Resolve ``value`` to a concrete value: call it if callable, else pass through."""
     return value(opts) if callable(value) else value
+
+
+def _resolve_device(value: _DeviceArg, opts) -> "Device":
+    """Resolve a CLI device selector to a concrete Device."""
+    resolved = value(opts) if callable(value) else value
+    if resolved is None:
+        raise ValueError("run_design_cli: device selector returned None")
+    return resolved
 
 
 def _runtime_device_name(device: Any) -> str:
@@ -81,7 +94,7 @@ def run_design_cli(
     *,
     compile_kwargs: Mapping[str, Any] | Callable[[Any], Mapping[str, Any]],
     run_and_verify: Callable[[Any], None] | None = None,
-    device: Any | Callable[[Any], Any] | None = None,
+    device: _DeviceArg | None = None,
     emit_mlir: Callable[[Any], None] | None = None,
     validate: Callable[[Any], None] | None = None,
 ) -> None:
@@ -175,7 +188,7 @@ def run_design_cli(
                 "Pass device=<Device or callable> explicitly otherwise."
             )
 
-        if has_concrete_device:
+        if device is not None and not callable(device):
             resolved_device = device
         else:
             mode = "compile" if compile_only_requested else "run"
@@ -185,7 +198,7 @@ def run_design_cli(
 
                 resolved_device = from_name(opts.dev)
             else:
-                resolved_device = _resolve(device, opts)
+                resolved_device = _resolve_device(device, opts)
         set_current_device(resolved_device)
     else:
         if device is None:
@@ -193,7 +206,7 @@ def run_design_cli(
 
             resolved_device = from_name(requested_dev)
         else:
-            resolved_device = _resolve(device, opts)
+            resolved_device = _resolve_device(device, opts)
         set_current_device(resolved_device)
 
     if validate is not None:
