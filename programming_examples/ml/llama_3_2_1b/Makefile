@@ -1069,10 +1069,11 @@ run_sample_streamed: sample_streamed
 
 # ---------- memtile write-once/read-Rx probe (M3a primitive validation) ----------
 PROBE_CHUNK ?= 64
+PROBE_SUBCHUNK ?= 64
 ${BUILD}/llama_passthrough_f32.cc.o: ${KDIR}/llama_passthrough_f32.cc
 	mkdir -p ${@D}
 	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -ffp-contract=off \
-		-DLLAMA_PROBE_CHUNK=${PROBE_CHUNK} -c $< -o ${@F}
+		-DLLAMA_PROBE_CHUNK=${PROBE_CHUNK} -DLLAMA_PROBE_SUBCHUNK=${PROBE_SUBCHUNK} -c $< -o ${@F}
 
 ${BUILD}/aie_memrepeat_probe.mlir: ${srcdir}/aie2_memrepeat_probe.py
 	mkdir -p ${@D}

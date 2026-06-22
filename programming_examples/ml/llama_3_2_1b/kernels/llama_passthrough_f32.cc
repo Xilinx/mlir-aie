@@ -22,6 +22,14 @@ void passthrough_f32(float *restrict in, float *restrict out) {
     out[i] = in[i];
 }
 
+#ifndef LLAMA_PROBE_SUBCHUNK
+#define LLAMA_PROBE_SUBCHUNK 64
+#endif
+void passthrough_f32_chunk(float *restrict in, float *restrict out) {
+  for (int i = 0; i < LLAMA_PROBE_SUBCHUNK; i++)
+    out[i] = in[i];
+}
+
 // Witness copy: read the WHOLE half-buffer (forces the relay DMA of all
 // LLAMA_PROBE_HALF elements) but write only a small WITNESS to L1 (first +
 // last element of the half), so the consumer's output buffer stays tiny and
