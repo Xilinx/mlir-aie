@@ -26,10 +26,10 @@
 
 #include <parameter_scratchpad.h>
 
-constexpr std::uint16_t FOO_1 = 0x4040; // bf16 3.0
-constexpr std::uint16_t BAR_1 = 0x4080; // bf16 4.0
-constexpr std::uint16_t FOO_2 = 0x4000; // bf16 2.0
-constexpr std::uint16_t BAR_2 = 0x40a0; // bf16 5.0
+constexpr std::uint16_t FOO_1 = 0x4040;      // bf16 3.0
+constexpr std::uint16_t BAR_1 = 0x4080;      // bf16 4.0
+constexpr std::uint16_t FOO_2 = 0x4000;      // bf16 2.0
+constexpr std::uint16_t BAR_2 = 0x40a0;      // bf16 5.0
 constexpr std::uint16_t EXPECTED_1 = 0x4140; // bf16 12.0
 constexpr std::uint16_t EXPECTED_2 = 0x4120; // bf16 10.0
 
