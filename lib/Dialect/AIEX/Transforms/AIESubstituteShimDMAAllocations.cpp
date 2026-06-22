@@ -50,8 +50,8 @@ struct DMAConfigureTaskForOpPattern
 
   DMAConfigureTaskForOpPattern(mlir::MLIRContext *ctx,
                                const mlir::SymbolTable &symbolTable)
-      : OpRewritePattern<DMAConfigureTaskForOp>(ctx),
-        symbolTable(symbolTable) {}
+      : OpRewritePattern<DMAConfigureTaskForOp>(ctx), symbolTable(symbolTable) {
+  }
 
   LogicalResult matchAndRewrite(DMAConfigureTaskForOp op,
                                 PatternRewriter &rewriter) const override {
@@ -89,7 +89,8 @@ struct AIESubstituteShimDMAAllocationsPass
     AIE::DeviceOp device = getOperation();
 
     // Build the device symbol table ONCE (O(1) per-task allocation lookup
-    // instead of getForSymbol's per-task linear scan -> O(n^2)). Byte-identical.
+    // instead of getForSymbol's per-task linear scan -> O(n^2)).
+    // Byte-identical.
     mlir::SymbolTable symbolTable(device);
 
     // Convert DMAConfigureTaskForOps that reference shim DMA allocations

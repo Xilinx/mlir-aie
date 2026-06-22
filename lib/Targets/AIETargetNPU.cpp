@@ -20,8 +20,8 @@
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 
-#include "llvm/ADT/DenseMap.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
+#include "llvm/ADT/DenseMap.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -179,18 +179,20 @@ void appendAddressPatch(std::vector<uint32_t> &instructions,
   words[10] = op.getArgPlus();
 }
 
-// Cached resolution of NpuBlockWriteOp's data words. NpuBlockWriteOp::getDataWords()
-// resolves the data memref.global via device.lookupSymbol (a LINEAR symbol scan over
-// the device's symbols) + global.getInitialValue() on EVERY call — perf shows this
+// Cached resolution of NpuBlockWriteOp's data words.
+// NpuBlockWriteOp::getDataWords() resolves the data memref.global via
+// device.lookupSymbol (a LINEAR symbol scan over the device's symbols) +
+// global.getInitialValue() on EVERY call — perf shows this
 // (SymbolTable::lookupSymbolIn + memref::GlobalOp::getInherentAttr) is ~47% of
-// AIETranslateNpuToBinary on a B=128 runtime sequence (~10^5 block-writes), i.e.
-// O(block-writes x globals). Resolve via a prebuilt per-device SymbolTable (O(1)) and
-// memoize per global symbol (the B-unroll's streams reuse the same data globals), so
-// the returned attribute is byte-identical but the work collapses. Falls back to the
-// canonical method on any non-global memref / lookup miss (identical behavior).
-static DenseIntElementsAttr
-cachedBlockWriteData(NpuBlockWriteOp op, mlir::SymbolTable &symTab,
-                     llvm::DenseMap<mlir::StringAttr, DenseIntElementsAttr> &cache) {
+// AIETranslateNpuToBinary on a B=128 runtime sequence (~10^5 block-writes),
+// i.e. O(block-writes x globals). Resolve via a prebuilt per-device SymbolTable
+// (O(1)) and memoize per global symbol (the B-unroll's streams reuse the same
+// data globals), so the returned attribute is byte-identical but the work
+// collapses. Falls back to the canonical method on any non-global memref /
+// lookup miss (identical behavior).
+static DenseIntElementsAttr cachedBlockWriteData(
+    NpuBlockWriteOp op, mlir::SymbolTable &symTab,
+    llvm::DenseMap<mlir::StringAttr, DenseIntElementsAttr> &cache) {
   auto getGlobal = op.getData().getDefiningOp<mlir::memref::GetGlobalOp>();
   if (!getGlobal)
     return op.getDataWords();
@@ -217,10 +219,10 @@ cachedBlockWriteData(NpuBlockWriteOp op, mlir::SymbolTable &symTab,
   return data;
 }
 
-void appendBlockWrite(std::vector<uint32_t> &instructions, NpuBlockWriteOp op,
-                      mlir::SymbolTable &symTab,
-                      llvm::DenseMap<mlir::StringAttr, DenseIntElementsAttr>
-                          &dataCache) {
+void appendBlockWrite(
+    std::vector<uint32_t> &instructions, NpuBlockWriteOp op,
+    mlir::SymbolTable &symTab,
+    llvm::DenseMap<mlir::StringAttr, DenseIntElementsAttr> &dataCache) {
   unsigned payload_start = 4;
 
   std::optional<uint32_t> address = op.getAbsoluteAddress();
@@ -413,9 +415,10 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
     return static_cast<uint32_t>(instructions.size() * sizeof(uint32_t));
   };
 
-  // Build the device symbol table ONCE + a per-global data cache, so block-write
-  // data resolution is O(1)+memoized instead of a per-op linear symbol scan
-  // (cachedBlockWriteData). ~47% of this function on a B=128 sequence.
+  // Build the device symbol table ONCE + a per-global data cache, so
+  // block-write data resolution is O(1)+memoized instead of a per-op linear
+  // symbol scan (cachedBlockWriteData). ~47% of this function on a B=128
+  // sequence.
   mlir::SymbolTable symTab(deviceOp.getOperation());
   llvm::DenseMap<mlir::StringAttr, DenseIntElementsAttr> blockWriteDataCache;
 
