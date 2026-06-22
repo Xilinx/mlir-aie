@@ -87,7 +87,9 @@ jobs:
       - name: Run commands
         run: |
           sudo prlimit -lunlimited --pid $$
-          source /opt/xilinx/xrt/setup.sh
+          # Newer XRT/amdxdna packages no longer ship setup.sh; source it
+          # only when present so the job works on both old and new XRT.
+          [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
           python -m venv aie-venv
           source aie-venv/bin/activate
           pip install --upgrade pip
@@ -185,7 +187,9 @@ jobs:
       - name: Run commands
         run: |
           sudo prlimit -lunlimited --pid $$
-          source /opt/xilinx/xrt/setup.sh
+          # Newer XRT/amdxdna packages no longer ship setup.sh; source it
+          # only when present so the job works on both old and new XRT.
+          [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
           export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
           source utils/quick_setup.sh
           # quick_setup changes directory to programming_examples, so we need to return to mlir-aie
