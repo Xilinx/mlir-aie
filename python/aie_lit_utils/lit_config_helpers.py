@@ -719,10 +719,7 @@ class LitConfigHelper:
             else:
                 probe_env[key] = value
 
-        probe = (
-            "import importlib; "
-            f"importlib.import_module({module_name!r})"
-        )
+        probe = "import importlib; " f"importlib.import_module({module_name!r})"
         try:
             result = subprocess.run(
                 [python_executable, "-c", probe],
