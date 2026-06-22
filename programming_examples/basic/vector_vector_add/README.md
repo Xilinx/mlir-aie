@@ -10,13 +10,13 @@
 
 # <ins>Vector Vector Add</ins>
 
-A simple binary operator: a single AIE core adds two vectors element-wise.  The input vectors are processed by the core in sub-tiles of size `16`; the vector length is configurable via the command line and must be a multiple of `16`.  This example shows how compact a binary element-wise design can be when expressed through the `aie.iron.algorithms` library — a single `transform_binary_typed(lambda a, b: a + b, ...)` call handles the ObjectFifo / Worker / Runtime plumbing.
+A simple binary operator: a single AIE core adds two vectors element-wise.  The input vectors are processed by the core in sub-tiles of size `16`; the vector length is configurable via the command line and must be a multiple of `16`.  This example shows how compact a binary element-wise design can be when expressed through the `aie.iron.algorithms` library — a single `transform_binary(lambda a, b: a + b, ...)` call handles the ObjectFifo / Worker / Runtime plumbing.
 
 Both input vectors are brought into a Compute tile from a Shim tile, the AIE tile performs the summation, and the Shim tile drains the result back to external memory.
 
 ## Source Files Overview
 
-`vector_vector_add.py`: An `@iron.jit`-decorated design that delegates its dataflow body to `aie.iron.algorithms.transform_binary_typed`.  Standalone-runnable: JIT-compiles, executes, and verifies in one shot.
+`vector_vector_add.py`: An `@iron.jit`-decorated design that delegates its dataflow body to `aie.iron.algorithms.transform_binary`.  Standalone-runnable: JIT-compiles, executes, and verifies in one shot.
 
 ## Ryzen™ AI Usage
 

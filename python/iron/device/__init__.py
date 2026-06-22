@@ -8,23 +8,17 @@
 """Device representations for supported AMD Ryzen AI NPU targets."""
 
 from . import device as _device_module
-from .device import (
-    Device,
-    NPU1,
-    NPU1Col1,
-    NPU1Col2,
-    NPU1Col3,
-    NPU2,
-    NPU2Col1,
-    NPU2Col2,
-    NPU2Col3,
-    NPU2Col4,
-    NPU2Col5,
-    NPU2Col6,
-    NPU2Col7,
-    XCVC1902,
-)
+from .device import Device
 from .tile import AnyShimTile, AnyMemTile, AnyComputeTile, Tile
+
+
+def __getattr__(name: str) -> type[Device]:
+    # Re-export the per-device subclasses (NPU1, NPU2Col4, XCVC1902, ...) that
+    # device.py generates from the AIEDevice enum, so callers can still do
+    # ``from aie.iron.device import NPU2`` without this package carrying a
+    # hand-maintained name list that would drift as devices are added.
+    return getattr(_device_module, name)
+
 
 # Map from CLI device name → base class name (max-column variant).
 _NAME_TO_BASE: dict[str, str] = {

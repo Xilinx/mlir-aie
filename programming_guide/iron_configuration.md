@@ -141,7 +141,7 @@ has a docstring; `help(obj)` or `print(obj.__doc__)` shows it.
 | `iron.{set_current_device, get_current_device}` | Read/write the active `Device` (see [§Default IRON Device](#default-iron-device)). |
 | `iron.kernels.*` | Pre-packaged kernel factories — `mm`, `conv2dk1`, `conv2dk3`, `passthrough`, eltwise, etc.  Each returns an `ExternalFunction` ready to bind in a `Worker`. |
 | `iron.{Buffer, Lock, Flow, TileDma, DmaChannel, Bd, Acquire, Release}` | IRON-Python peers of `ObjectFifo` for designs that want to hand-wire DMA + sync (canonical example: `programming_examples/basic/chaining_channels/`). |
-| `iron.algorithms.{transform_typed, transform_binary_typed, transform_parallel, for_each_typed}` | Element-wise dataflow templates — handle `Worker` / `ObjectFifo` / `Runtime` plumbing for one-arg / two-arg / multi-column / fill-and-drain patterns. |
+| `iron.algorithms.{transform, transform_binary, transform_parallel, for_each}` | Element-wise dataflow templates — handle `Worker` / `ObjectFifo` / `Runtime` plumbing for one-arg / two-arg / multi-column / fill-and-drain patterns. |
 | `iron.{compile_context, get_compile_arg}` | Dynamic compile-time arg injection.  See [§compile_context](#compile_context-for-nested-generator-helpers) below. |
 
 ### Argparse + runtime glue (`aie.iron.device`, `aie.utils`)

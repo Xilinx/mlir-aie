@@ -34,10 +34,13 @@ from __future__ import annotations
 import inspect as _inspect
 import logging
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, TYPE_CHECKING
 
 from aie.utils.compile.cache.utils import _create_function_cache_key
 from aie.utils.compile.jit.compilabledesign import CompilableDesign
+
+if TYPE_CHECKING:
+    from aie.utils.npukernel import NPUKernel
 
 # NPUKernel and DefaultNPURuntime pull in the XRT runtime stack on import.
 # Defer to first call so importing CallableDesign on machines without an NPU

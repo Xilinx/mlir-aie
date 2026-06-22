@@ -10,12 +10,21 @@
 import sys
 from typing import Callable
 
-from .. import ir  # type: ignore
-from ..dialects.aie import core, lock, use_lock
-from ..dialects.aiex import set_lock_value, LockAction
+from .. import ir  # pyright: ignore[reportMissingImports]
+from ..dialects.aie import (
+    core,
+    lock,
+    use_lock,  # pyright: ignore[reportAttributeAccessIssue]
+)
+from ..dialects.aiex import (
+    set_lock_value,
+    LockAction,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from ..helpers.dialects.scf import _for as range_
 from .device import Tile, AnyComputeTile
-from ..dialects._aie_enum_gen import AIETileType  # type: ignore
+from ..dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
+    AIETileType,
+)
 from .dataflow.objectfifo import ObjectFifoHandle, ObjectFifo
 from .dataflow.endpoint import ObjectFifoEndpoint
 from .buffer import Buffer
@@ -37,10 +46,10 @@ class Worker(ObjectFifoEndpoint):
         fn_args: list | None = None,
         tile: Tile = AnyComputeTile,
         while_true: bool = True,
-        stack_size: int = None,
-        allocation_scheme: str = None,
-        trace: int = None,
-        trace_events: list = None,
+        stack_size: int | None = None,
+        allocation_scheme: str | None = None,
+        trace: int | None = None,
+        trace_events: list | None = None,
         dynamic_objfifo_lowering: bool | None = None,
     ):
         """Construct a Worker
@@ -108,20 +117,35 @@ class Worker(ObjectFifoEndpoint):
                 arg.endpoint = self
                 self._fifos.append(arg)
             elif isinstance(arg, Buffer):
+                # A Buffer pinned to an EXPLICIT tile may legitimately be shared
+                # across Workers: AIE compute tiles can read a neighbor tile's L1
+                # directly, so a producer core's output buffer can be an input to a
+                # consumer core on an adjacent tile. In that case the FIRST worker that
+                # references it "owns"/places it and later workers are non-owning
+                # readers. We only forbid sharing for AUTO-PLACED buffers (no explicit
+                # tile), where two owners would race to pin it to different tiles.
+                # Note: ``_tile`` alone is not a reliable signal — the owning Worker
+                # auto-pins ``_tile`` to its own tile below — so we key off
+                # ``_explicit_tile``, which records the user's construction-time intent.
                 if arg._owner_worker is not None and arg._owner_worker is not self:
-                    raise ValueError(
-                        f"Buffer '{arg._name}' is already placed on another "
-                        f"Worker; a Buffer cannot be shared across Workers."
-                    )
-                arg._owner_worker = self
-                self._buffers.append(arg)
-                # If the Buffer has no tile, pin it to the Worker's tile as a
-                # convenience.  If the user pinned it explicitly to a neighbor
-                # tile (AIE compute tiles can read N/S/E/W neighbors' L1
-                # directly), honor that placement — Program.resolve discovers
-                # the neighbor tile via Buffer.tiles().
-                if arg._tile is None:
-                    arg._tile = self._tile
+                    if not arg._explicit_tile:
+                        raise ValueError(
+                            f"Buffer '{arg._name}' has no explicit tile and is shared "
+                            f"across Workers; pin it to a tile (Buffer(tile=...)) so "
+                            f"placement is unambiguous."
+                        )
+                    # shared reader: keep original owner, just record the reference.
+                    self._buffers.append(arg)
+                else:
+                    arg._owner_worker = self
+                    self._buffers.append(arg)
+                    # If the Buffer has no tile, pin it to the Worker's tile as a
+                    # convenience.  If the user pinned it explicitly to a neighbor
+                    # tile (AIE compute tiles can read N/S/E/W neighbors' L1
+                    # directly), honor that placement — Program.resolve discovers
+                    # the neighbor tile via Buffer.tiles().
+                    if arg._tile is None:
+                        arg._tile = self._tile
             elif isinstance(arg, ScratchpadParameter):
                 pass  # ScratchpadParameters are device-level symbols; no tile placement needed
             elif isinstance(arg, ObjectFifo):
@@ -165,6 +189,12 @@ class Worker(ObjectFifoEndpoint):
             ``rows``-by-``cols`` nested list of Worker instances.
         """
         return [[factory(r, c) for c in range(cols)] for r in range(rows)]
+
+    @property
+    def tile(self) -> Tile:
+        """The compute tile this Worker is placed on."""
+        assert self._tile is not None
+        return self._tile
 
     @property
     def fifos(self) -> list[ObjectFifoHandle]:

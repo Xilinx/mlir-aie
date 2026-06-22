@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 from aie.dialects.aie import (
     packetflow,
-    WireBundle,
+    WireBundle,  # pyright: ignore[reportAttributeAccessIssue]
     trace,
     trace_mode,
     trace_event,
@@ -17,16 +17,16 @@ from aie.dialects.aie import (
     trace_stop,
     trace_start_config,
     trace_host_config,
-    TraceMode,
-    TracePacketType,
-    DMAChannelDir,
-    get_target_model,
+    TraceMode,  # pyright: ignore[reportAttributeAccessIssue]
+    TracePacketType,  # pyright: ignore[reportAttributeAccessIssue]
+    DMAChannelDir,  # pyright: ignore[reportAttributeAccessIssue]
+    get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from aie.dialects.aiex import (
-    npu_write32,
-    npu_writebd,
-    npu_maskwrite32,
-    npu_address_patch,
+    npu_write32,  # pyright: ignore[reportAttributeAccessIssue]
+    npu_writebd,  # pyright: ignore[reportAttributeAccessIssue]
+    npu_maskwrite32,  # pyright: ignore[reportAttributeAccessIssue]
+    npu_address_patch,  # pyright: ignore[reportAttributeAccessIssue]
     npu_sync,
 )
 from .events import (
@@ -83,7 +83,7 @@ def configure_shimtile_dma_aie2(
     enable_token=0,
     enable_packet=1,  # valid for mm2s xfer only
     packet_id=0,  # for mm2s xfer
-    packet_type=PacketType.CORE,  # for mm2s xfer
+    packet_type: PacketType | int = PacketType.CORE,  # for mm2s xfer
     shim_burst_length=64,
 ):
 

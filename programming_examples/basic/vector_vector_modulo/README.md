@@ -10,11 +10,11 @@
 
 # <ins>Vector Vector Modulo</ins>
 
-A simple binary operator: a single AIE core computes `c = a % b` element-wise on two vectors of length `256`, processed in sub-tiles of `16`. The design body is a single `transform_binary_typed(lambda a, b: a % b, ...)` call through `aie.iron.algorithms`; the kernel runs on AIE tile (`col`, 2) with both inputs streamed in from a Shim tile and the result streamed back out. This reference design can be run on either a Ryzen™ AI NPU or a VCK5000.
+A simple binary operator: a single AIE core computes `c = a % b` element-wise on two vectors of length `256`, processed in sub-tiles of `16`. The design body is a single `transform_binary(lambda a, b: a % b, ...)` call through `aie.iron.algorithms`; the kernel runs on AIE tile (`col`, 2) with both inputs streamed in from a Shim tile and the result streamed back out. This reference design can be run on either a Ryzen™ AI NPU or a VCK5000.
 
 ## Source Files Overview
 
-1. `vector_vector_modulo.py`: An `@iron.jit`-decorated design that delegates its dataflow body to `aie.iron.algorithms.transform_binary_typed`. Supports three invocation modes — standalone (jit + run + verify), compile-only (`--xclbin-path` / `--insts-path`, used by the NPU `Makefile`), and emit-MLIR (`--emit-mlir`, used by the aiecc-based vck5000 path).
+1. `vector_vector_modulo.py`: An `@iron.jit`-decorated design that delegates its dataflow body to `aie.iron.algorithms.transform_binary`. Supports three invocation modes — standalone (jit + run + verify), compile-only (`--xclbin-path` / `--insts-path`, used by the NPU `Makefile`), and emit-MLIR (`--emit-mlir`, used by the aiecc-based vck5000 path).
 
 1. `test.cpp`: C++ testbench targeting Ryzen™ AI. Loads the compiled XCLBIN, configures the AIE module, supplies input data, executes on the NPU, and verifies the results.
 
