@@ -194,9 +194,6 @@ lit_config.parallelism_groups["npu-xrt"] = 1
 if shutil.which("aie-lsp-server", path=config.llvm_tools_dir) is not None:
     config.available_features.add("aie-lsp-server")
 
-if config.python_passes:
-    config.available_features.add("python_passes")
-
 if config.xrt_python_bindings and LitConfigHelper.can_import_python_module(
     config, config.python_executable, "pyxrt"
 ):

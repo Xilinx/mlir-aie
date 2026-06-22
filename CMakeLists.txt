@@ -179,9 +179,6 @@ include_directories(${PROJECT_BINARY_DIR}/include)
 cmake_dependent_option(AIE_ENABLE_BINDINGS_PYTHON
   "Enables building of Python bindings." ON "MLIR_ENABLE_BINDINGS_PYTHON" OFF)
 
-cmake_dependent_option(AIE_ENABLE_PYTHON_PASSES
-  "Enables building of passes that connect to python." OFF "AIE_ENABLE_BINDINGS_PYTHON;LLVM_ENABLE_RTTI" OFF)
-
 find_library(XRT_COREUTIL xrt_coreutil HINTS ${XRT_LIB_DIR})
 
 # On Windows, the UUID library is linked implicitly. 
