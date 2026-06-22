@@ -6,8 +6,6 @@
 # (c) Copyright 2022 Xilinx Inc.
 
 add_mlir_dialect_library(MLIRAIEVecTransforms
-  IntervalReuse.cpp
-  AIEVectorize.cpp
   ConvertVectorToAIEVec.cpp
   VectorToVectorConversions.cpp
   VectorToAIEVecConversions.cpp
