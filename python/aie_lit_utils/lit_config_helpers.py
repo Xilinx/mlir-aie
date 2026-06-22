@@ -759,6 +759,44 @@ class LitConfigHelper:
         return False
 
     @staticmethod
+    def python_module_has_attribute(
+        config_obj,
+        python_executable: str,
+        module_name: str,
+        attribute_path: Tuple[str, ...],
+    ) -> bool:
+        """Return whether lit's test Python exposes a module attribute path."""
+        probe_env = os.environ.copy()
+        for key, value in config_obj.environment.items():
+            if key in LitConfigHelper.PATH_ENV_VARS:
+                probe_env[key] = LitConfigHelper._prepend_env_paths(
+                    probe_env.get(key, ""), value
+                )
+            else:
+                probe_env[key] = value
+
+        probe = (
+            "import functools, importlib; "
+            f"module = importlib.import_module({module_name!r}); "
+            f"functools.reduce(getattr, {attribute_path!r}, module); "
+            "print('ok')"
+        )
+        try:
+            result = subprocess.run(
+                [python_executable, "-c", probe],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=probe_env,
+                timeout=10,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return False
+        except Exception:
+            return False
+
+        return result.returncode == 0
+
+    @staticmethod
     def apply_config_to_lit(config_obj, hardware_configs: Dict[str, HardwareConfig]):
         """
         Apply detected hardware configurations to lit config.

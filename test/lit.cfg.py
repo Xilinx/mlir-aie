@@ -200,6 +200,13 @@ if config.xrt_python_bindings and LitConfigHelper.can_import_python_module(
     config, config.python_executable, "pyxrt"
 ):
     config.available_features.add("xrt_python_bindings")
+    if LitConfigHelper.python_module_has_attribute(
+        config,
+        config.python_executable,
+        "pyxrt",
+        ("run", "get_ctrl_scratchpad_bo"),
+    ):
+        config.available_features.add("xrt_python_ctrl_scratchpad_bo")
 
 if config.has_mlir_runtime_libraries:
     config.available_features.add("has_mlir_runtime_libraries")
