@@ -584,4 +584,65 @@ void llama_gemm_tiled_layer_K2048_N4_perchan_v2_up_fp32out_acttail(
   event1();
 }
 
+// lm_head fused GEMM + running argmax (greedy). K=D=2048, N_TILE=4 logits
+// per call, V/4=32064 tiles streamed from DDR. Instead of materializing the
+// fp32[V] logits, each call computes 4 fp32 logits and folds them into a
+// running max held in L1: state = [best_idx i32, best_val_bits f32]. The
+// kernel self-seeds when tile_idx==0 (no host seed needed); the output token
+// is state[0]. Global index = tile_idx*4 + n, first-occurrence tie-break
+// (> only) to match np.argmax. act_scale from the normed-activation tail
+// act[kK..kK+4].
+void llama_gemm_tiled_layer_K2048_N4_lmhead_argmax(
+    int8_t *restrict act, int8_t *restrict w_tile, int8_t *restrict state,
+    int32_t tile_idx) {
+  event0();
+  constexpr int kK = 2048, kNTile = 4, kPrefix = 64, kVec = 64;
+  constexpr int kGroups = kK / kVec;
+
+  float act_scale;
+  memcpy(&act_scale, act + kK, 4);
+
+  int8_t *body = w_tile + kPrefix;
+  const int8_t *weights = body;
+  const int32_t *bias = reinterpret_cast<const int32_t *>(body + kNTile * kK);
+  const float *w_scales =
+      reinterpret_cast<const float *>(body + kNTile * kK + kNTile * 4);
+
+  int32_t best_idx;
+  float best_val;
+  if (tile_idx == 0) {
+    best_idx = -1; // sentinel: first comparison initializes the max
+    best_val = 0.0f;
+  } else {
+    memcpy(&best_idx, state, 4);
+    memcpy(&best_val, state + 4, 4);
+  }
+
+  ::aie::set_saturation(aie::saturation_mode::saturate);
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
+
+  for (int n = 0; n < kNTile; n++) {
+    aie::accum<acc32, kVec> acc;
+    acc.from_vector(aie::zeros<int32, kVec>());
+    const int8_t *__restrict w_row = weights + n * kK;
+    for (int g = 0; g < kGroups; g++) {
+      aie::vector<int8, kVec> w_v = aie::load_v<kVec>(w_row + g * kVec);
+      aie::vector<int8, kVec> x_v = aie::load_v<kVec>(act + g * kVec);
+      acc = aie::mac(acc, w_v, x_v);
+    }
+    int32_t sum_i32 =
+        aie::reduce_add(acc.template to_vector<int32>()) + bias[n];
+    float logit = (float)sum_i32 * act_scale * w_scales[n];
+    int32_t gidx = tile_idx * kNTile + n;
+    if (best_idx < 0 || logit > best_val) {
+      best_val = logit;
+      best_idx = gidx;
+    }
+  }
+
+  memcpy(state, &best_idx, 4);
+  memcpy(state + 4, &best_val, 4);
+  event1();
+}
+
 } // extern "C"

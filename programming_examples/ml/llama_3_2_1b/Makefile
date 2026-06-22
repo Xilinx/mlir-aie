@@ -25,7 +25,7 @@ N ?= 64
 PEANO_FLAGS := ${PEANOWRAP2P_FLAGS} \
     -DLLAMA_GEMM_PT_M=${M} -DLLAMA_GEMM_PT_K=${K} -DLLAMA_GEMM_PT_N=${N}
 
-.PHONY: all clean gemm_pt run_gemm_pt gemm_pt_col run_gemm_pt_col gemm_pt_proj run_gemm_pt_proj flowkv_pair run_flowkv_pair glue run_glue layer_pt run_layer_pt rmsnorm run_rmsnorm rmsnorm_int8 run_rmsnorm_int8 rmsnorm_int8_dyn run_rmsnorm_int8_dyn gemm_srs run_gemm_srs silu_mul run_silu_mul rope run_rope flowkv run_flowkv sample run_sample layer_real run_layer_real chain_real run_chain_real chain_sample run_chain_sample tiled_gemm run_tiled_gemm ffn_half run_ffn_half attn_half run_attn_half layer_d2048 run_layer_d2048 chain_dynscale run_chain_dynscale layer_mh run_layer_mh
+.PHONY: all clean gemm_pt run_gemm_pt gemm_pt_col run_gemm_pt_col gemm_pt_proj run_gemm_pt_proj flowkv_pair run_flowkv_pair glue run_glue layer_pt run_layer_pt rmsnorm run_rmsnorm rmsnorm_int8 run_rmsnorm_int8 rmsnorm_int8_dyn run_rmsnorm_int8_dyn gemm_srs run_gemm_srs silu_mul run_silu_mul rope run_rope flowkv run_flowkv sample run_sample layer_real run_layer_real chain_real run_chain_real chain_sample run_chain_sample tiled_gemm run_tiled_gemm ffn_half run_ffn_half attn_half run_attn_half layer_d2048 run_layer_d2048 chain_dynscale run_chain_dynscale layer_mh run_layer_mh lmhead_sample run_lmhead_sample
 
 all: gemm_pt
 
@@ -1008,6 +1008,31 @@ run_chain_mh: chain_mh
 	cd ${srcdir} && LLAMA_CHAIN_N=${CHAIN_MH_N} LLAMA_CHAIN_T=${CHAIN_MH_T} python3 test_chain_mh.py \
 		-x ${BUILD}/final_chain_mh_N${CHAIN_MH_N}_T${CHAIN_MH_T}.xclbin \
 		-i ${BUILD}/insts_chain_mh_N${CHAIN_MH_N}_T${CHAIN_MH_T}.bin \
+		-k MLIR_AIE
+
+# ---------- standalone tiled lm_head + greedy argmax (sample tile M1) ----------
+LMHEAD_DEPS = ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o \
+              ${BUILD}/llama_rmsnorm_int8_2048.cc.o
+
+${BUILD}/aie_lmhead_sample.mlir: ${srcdir}/aie2_lmhead_sample.py
+	mkdir -p ${@D}
+	python3 $< > $@
+
+${BUILD}/final_lmhead_sample.xclbin: ${BUILD}/aie_lmhead_sample.mlir ${LMHEAD_DEPS}
+	mkdir -p ${@D}
+	cp ${BUILD}/llama_rmsnorm_int8_2048.cc.o ${BUILD}/llama_rmsnorm_int8.cc.o
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-xchesscc --no-xbridge \
+		--xclbin-name=${@F} \
+		--npu-insts-name=insts_lmhead_sample.bin \
+		$(notdir $<)
+
+lmhead_sample: ${BUILD}/final_lmhead_sample.xclbin
+
+run_lmhead_sample: lmhead_sample
+	cd ${srcdir} && python3 test_lmhead_sample.py \
+		-x ${BUILD}/final_lmhead_sample.xclbin \
+		-i ${BUILD}/insts_lmhead_sample.bin \
 		-k MLIR_AIE
 
 # ---------- clean ----------
