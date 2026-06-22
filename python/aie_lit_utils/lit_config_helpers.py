@@ -721,8 +721,7 @@ class LitConfigHelper:
 
         probe = (
             "import importlib; "
-            f"importlib.import_module({module_name!r}); "
-            "print('ok')"
+            f"importlib.import_module({module_name!r})"
         )
         try:
             result = subprocess.run(
