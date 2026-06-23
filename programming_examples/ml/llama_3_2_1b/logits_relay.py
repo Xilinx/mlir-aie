@@ -248,15 +248,24 @@ class LogitsRelay(Resolvable):
                     dest=block[REP0],
                     chain=block[END],
                 )
-            # R replay BDs: each sends the whole resident half. Each acquires +
-            # releases fill_lock net-zero (so the chain re-fires and every BD has
-            # both acq+rel). First waits for the fill (fill_lock >= 1).
+            # R replay BDs: each sends the whole resident half. Per-dispatch the
+            # lock cycle must RESET (free=1, fill=0) so multi-dispatch repeats:
+            #   fill BD:        acq free(1), rel fill(1)
+            #   replay 0..R-2:  acq fill(1), rel fill(1)   (net-zero, GE wait)
+            #   replay R-1:     acq fill(1), rel free(1)   (consume fill, restore
+            #                                               free for next dispatch)
+            # Net per dispatch: free 0, fill 0. Every BD has both acq+rel
+            # (AIERT.cpp:339).
             for _i in range(self._R):
+                last = _i == self._R - 1
                 with block[REP0 + _i]:
                     use_lock(fill_lock, LockAction.AcquireGreaterEqual, value=1)
                     dma_bd(half_buf)
-                    use_lock(fill_lock, LockAction.Release, value=1)
-                    next_bd(block[REP0 + (_i + 1)] if _i < self._R - 1 else block[REP0])
+                    if last:
+                        use_lock(free_lock, LockAction.Release, value=1)
+                    else:
+                        use_lock(fill_lock, LockAction.Release, value=1)
+                    next_bd(block[REP0 + (_i + 1)] if not last else block[REP0])
             with block[END]:
                 EndOp()
 

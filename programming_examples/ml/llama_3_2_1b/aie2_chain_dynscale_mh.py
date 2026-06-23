@@ -19,16 +19,33 @@ import sys
 
 import numpy as np
 
-from aie.iron import Kernel, ObjectFifo, Program, Runtime, Worker
+from aie.iron import Buffer, Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.device import NPU2, Tile
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorAccessPattern
-from aie.dialects.arith import index_cast
+from aie.dialects.arith import index_cast, constant
 from aie.ir import IntegerType
+
+# M3b: fuse final_norm + lm_head GEMM + memtile logits relay + streamed sampler
+# onto the chain's final output, producing an int32 token (host-free decode).
+# Guarded so the default chain stays byte-identical.
+SAMPLE = _os.environ.get("LLAMA_CHAIN_SAMPLE", "0") == "1"
+if SAMPLE:
+    from logits_relay import LogitsRelay
+
+
+def _sample_params_init():
+    tb = np.frombuffer(np.float32(SAMPLE_TEMP).tobytes(), dtype=np.uint32)[0]
+    kb = np.frombuffer(np.int32(SAMPLE_TOPK).tobytes(), dtype=np.uint32)[0]
+    return np.asarray([tb, kb, np.uint32(SAMPLE_SEED & 0xFFFFFFFF)], dtype=np.uint32)
 
 
 def _i32(idx):
     return index_cast(IntegerType.get_signless(32), idx)
+
+
+def _const_i32(v):
+    return constant(IntegerType.get_signless(32), v)
 
 
 # --- Production multi-head shapes ---
@@ -43,6 +60,22 @@ KV_DIM = N_HEADS_KV * HEAD_D  # 512 (k_proj / v_proj output dim)
 T = int(_os.environ.get("LLAMA_CHAIN_T", "128"))
 N_TILE = 4
 N_LAYERS = int(_os.environ.get("LLAMA_CHAIN_N", "2"))
+
+# --- M3b sample-tile constants (only used when SAMPLE) ---
+VOCAB = 128256
+LM_N_TILES = VOCAB // N_TILE  # 32064
+WLM_PREFIX = 64
+WLM_SLOT = WLM_PREFIX + N_TILE * D + N_TILE * 4 + N_TILE * 4  # 8256
+WLM_TOTAL = LM_N_TILES * WLM_SLOT  # 262 MB
+SAMPLE_CHUNK = 2004  # V = 64 * 2004
+SAMPLE_N_CHUNKS = VOCAB // SAMPLE_CHUNK  # 64
+SAMPLE_TILES_PER_CHUNK = SAMPLE_CHUNK // N_TILE  # 501
+SAMPLE_PASSES = 3
+SAMPLE_STATE_BYTES = 1088
+# Baked sampler params (worker-local Buffer; 0 DMA). Greedy by default.
+SAMPLE_TEMP = float(_os.environ.get("LLAMA_SAMPLE_TEMP", "0.0"))
+SAMPLE_TOPK = int(_os.environ.get("LLAMA_SAMPLE_TOPK", "0"))
+SAMPLE_SEED = int(_os.environ.get("LLAMA_SAMPLE_SEED", "0"))
 
 # Per-Q-head tail: 32 * [q_out_scale fp32, sv_inv_out_scale fp32] = 256 B.
 QF_TAIL = N_HEADS_Q * 8
@@ -174,6 +207,14 @@ def _f32(n):
     return np.ndarray[(int(n),), np.dtype[np.float32]]
 
 
+def _u32(n):
+    return np.ndarray[(int(n),), np.dtype[np.uint32]]
+
+
+def _i32a(n):
+    return np.ndarray[(int(n),), np.dtype[np.int32]]
+
+
 def factor(nb):
     if nb <= 1023:
         return (1, nb)
@@ -200,6 +241,12 @@ def build():
     rt_w_ty = _i8(WEIGHTS_BYTES)
     rt_kv_ty = _i8(KV_BYTES)
     rt_out_ty = _i8(D + 8)
+
+    # M3b: lmw blob = [final_norm gamma bf16(D) = 2*D bytes | lm_head weight
+    # slots]. token output replaces the host hidden drain.
+    LMW_GAMMA_BYTES = 2 * D  # bf16[D]
+    rt_lmw_ty = _i8(LMW_GAMMA_BYTES + WLM_TOTAL)
+    rt_token_ty = _i32a(1)
 
     t_D_i8 = _i8(D)
     t_D8_i8 = _i8(D + 8)  # residual / rmsnorm-dyn: D int8 + 4 B scale + 4 B pad
@@ -237,6 +284,31 @@ def build():
     of_back = ObjectFifo(t_D8_i8, depth=1, name="back")
     of_routed = ObjectFifo(t_D8_i8, depth=1, name="routed")  # rmsnorm1 + add1
     of_out = ObjectFifo(t_D8_i8, depth=1, name="layer_out")
+
+    # M3b sample block: final hidden (of_out) -> final_norm rms -> lm_head GEMM
+    # -> memtile logits relay -> streamed sampler -> token.
+    if SAMPLE:
+        t_lm_chunk_f32 = _f32(SAMPLE_CHUNK)
+        t_wlm_slot = _i8(WLM_SLOT)
+        t_state_i8 = _i8(SAMPLE_STATE_BYTES)
+        t_params_u32 = _u32(3)
+        of_fnorm = ObjectFifo(t_D8_i8, depth=1, name="fnorm")  # final_norm out
+        of_fgam = ObjectFifo(t_D_bf16, depth=1, name="fgam")  # final_norm gamma
+        of_wlm = ObjectFifo(t_wlm_slot, depth=2, name="wlm")
+        of_token = ObjectFifo(_i32a(1), name="token")
+        lm_relay = LogitsRelay(
+            total_elems=VOCAB,
+            chunk_elems=SAMPLE_CHUNK,
+            repeat_count=SAMPLE_PASSES,
+            memtile_placement=Tile(4, 1),
+            gemm_placement=Tile(5, 4),
+            sampler_placement=Tile(5, 5),
+            name="lmlogits",
+        )
+        b_sample_state = Buffer(t_state_i8, name="sample_state")
+        b_sample_params = Buffer(
+            t_params_u32, initial_value=_sample_params_init(), name="sample_params"
+        )
 
     of_gam_in = ObjectFifo(t_D_bf16, depth=1, name="gam_in")
     of_h1 = ObjectFifo(t_D8_i8, depth=1, name="h1")
@@ -346,11 +418,31 @@ def build():
     KO_FKV = "llama_flowkv_mh.cc.o"
     KO_GLUE = "llama_gqa_glue.cc.o"
     KO_PT = "llama_layer_pt.cc.o"
+    KO_SAMP = "llama_sample_streamed.cc.o"
 
     # rmsnorm acttail: per-token input scale read from the residual tail.
     k_rms = Kernel(
         "llama_rmsnorm_int8_dyn_acttail", KO_RMS, [t_D8_i8, t_D_bf16, t_D8_i8]
     )
+
+    if SAMPLE:
+        # M3b: final_norm reuses the dyn_acttail rmsnorm (k_rms). lm_head fp32-out
+        # GEMM + streamed sampler.
+        k_lmhead = Kernel(
+            "llama_gemm_tiled_layer_K2048_N4_lmhead_fp32out",
+            KO_GEMM,
+            [t_D8_i8, t_wlm_slot, t_lm_chunk_f32, np.int32],
+        )
+        k_sample = Kernel(
+            "llama_sample_streamed",
+            KO_SAMP,
+            [t_lm_chunk_f32, t_state_i8, t_params_u32, np.int32, np.int32, np.int32],
+        )
+        k_sample_final = Kernel(
+            "llama_sample_streamed_finalize",
+            KO_SAMP,
+            [t_state_i8, _i32a(1), t_params_u32],
+        )
     # q_proj-mh fp32 out (2a): act_scale from h1 tail; q_out_scales downstream.
     k_q = Kernel(
         "llama_gemm_tiled_layer_K2048_N4_perchan_q_mh_fp32out_acttail",
@@ -614,6 +706,42 @@ def build():
         c_proj.release(1)
         c_out.release(1)
 
+    # --- M3b sample-block worker bodies (fire once, after the last layer) ---
+    if SAMPLE:
+        # final_norm: rms over the chain's final hidden (of_out int8[D+8]).
+        def w_fnorm(c_in, c_gam, c_out, k):
+            x = c_in.acquire(1)
+            g = c_gam.acquire(1)
+            o = c_out.acquire(1)
+            k(x, g, o)
+            c_in.release(1)
+            c_gam.release(1)
+            c_out.release(1)
+
+        # lm_head GEMM: normed hidden x V int8 weights -> fp32 logit chunks into
+        # the relay (which assembles the resident memtile buffer).
+        def w_lmhead(c_act, c_w, rel, k):
+            a = c_act.acquire(1)
+            for _ch in range_(SAMPLE_N_CHUNKS):
+                o = rel.gemm_acquire()
+                for t in range_(SAMPLE_TILES_PER_CHUNK):
+                    w = c_w.acquire(1)
+                    k(a, w, o, _i32(t))
+                    c_w.release(1)
+                rel.gemm_release()
+            c_act.release(1)
+
+        # streamed sampler: SAMPLE_PASSES passes over the replayed logits.
+        def w_sample(rel, st, p, c_tok, ks, kf):
+            tok = c_tok.acquire(1)
+            for pass_i in range_(1, SAMPLE_PASSES + 1):
+                for ch in range_(SAMPLE_N_CHUNKS):
+                    rb = rel.acquire(1)
+                    ks(rb, st, p, _i32(pass_i), _i32(ch), _const_i32(0))
+                    rel.release(1)
+            kf(st, tok, p)
+            c_tok.release(1)
+
     PSK = 8192
     ATSK = 16384
     # FFN-side stack: of_sf grows to HD+8 (silu self-cal) -> Bug-12 stack/fifo
@@ -753,13 +881,48 @@ def build():
         ),
     ]
 
+    if SAMPLE:
+        workers += [
+            # final_norm (free tile 4,4)
+            Worker(
+                w_fnorm,
+                [of_out.cons(), of_fgam.cons(), of_fnorm.prod(), k_rms],
+                tile=Tile(4, 4),
+            ),
+            # lm_head GEMM (5,4 = relay gemm tile) + streamed sampler (5,5 =
+            # relay sampler tile). The relay owns the memtile (4,1) DMA.
+            Worker(
+                w_lmhead,
+                [of_fnorm.cons(), of_wlm.cons(), lm_relay, k_lmhead],
+                tile=Tile(5, 4),
+                stack_size=PSK,
+            ),
+            Worker(
+                w_sample,
+                [
+                    lm_relay,
+                    b_sample_state,
+                    b_sample_params,
+                    of_token.prod(),
+                    k_sample,
+                    k_sample_final,
+                ],
+                tile=Tile(5, 5),
+                stack_size=8192,
+            ),
+        ]
+
     rt = Runtime()
-    with rt.sequence(rt_xin_ty, rt_w_ty, rt_kv_ty, rt_out_ty) as (
-        xin,
-        wblob,
-        kvblob,
-        out,
-    ):
+    if SAMPLE:
+        seq_ctx = rt.sequence(rt_xin_ty, rt_w_ty, rt_kv_ty, rt_lmw_ty, rt_token_ty)
+    else:
+        seq_ctx = rt.sequence(rt_xin_ty, rt_w_ty, rt_kv_ty, rt_out_ty)
+    with seq_ctx as _seq_args:
+        if SAMPLE:
+            xin, wblob, kvblob, lmw, token = _seq_args
+            out = None
+        else:
+            xin, wblob, kvblob, out = _seq_args
         rt.start(*workers)
 
         tgs = []
@@ -892,7 +1055,19 @@ def build():
         # Drains BEFORE fills to avoid the depth=1 drain-blocked deadlock.
         out_tg = rt.task_group()
         tgs.append(out_tg)
-        rt.drain(of_out.cons(), out, wait=True, task_group=out_tg)
+        if SAMPLE:
+            # M3b: of_out feeds the on-chip sample block; drain the int32 token.
+            # final_norm gamma from the lmw prefix. The 32064 lm_head weight
+            # fills are issued AFTER the chain's per-layer fills (below), so the
+            # shim queue serves the chain layers first (the lm_head GEMM can't
+            # run until the chain produces of_out -- queuing its weights first
+            # deadlocks).
+            rt.fill(of_fgam.prod(), lmw, tap=strided_tap(
+                LMW_GAMMA_BYTES + WLM_TOTAL, 0, LMW_GAMMA_BYTES, LMW_GAMMA_BYTES, 1),
+                task_group=out_tg)
+            rt.drain(of_token.cons(), token, wait=True, task_group=out_tg)
+        else:
+            rt.drain(of_out.cons(), out, wait=True, task_group=out_tg)
 
         # Device-owned cache: drain each layer's updated cache back over kvblob
         # (per-layer, lo/hi halves). Mirrors the kv_specs fills as drains.
@@ -948,6 +1123,23 @@ def build():
                 rt.finish_task_group(layer_tgs[L - PINGPONG_DEPTH])
         for L in range(max(0, N_LAYERS - PINGPONG_DEPTH), N_LAYERS):
             rt.finish_task_group(layer_tgs[L])
+
+        if SAMPLE:
+            # lm_head weight stream (262 MB, 32064 tiles), issued AFTER the chain
+            # layer fills so the chain runs first and produces of_out.
+            lm_tgs = [rt.task_group() for _ in range(LM_N_TILES)]
+            for t in range(LM_N_TILES):
+                rt.fill(
+                    of_wlm.prod(), lmw,
+                    tap=strided_tap(
+                        LMW_GAMMA_BYTES + WLM_TOTAL,
+                        LMW_GAMMA_BYTES + t * WLM_SLOT, WLM_SLOT, WLM_SLOT, 1),
+                    task_group=lm_tgs[t], wait=True,
+                )
+                if t >= 2:
+                    rt.finish_task_group(lm_tgs[t - 2])
+            for t in range(max(0, LM_N_TILES - 2), LM_N_TILES):
+                rt.finish_task_group(lm_tgs[t])
 
         for tg in tgs:
             rt.finish_task_group(tg)
