@@ -26,7 +26,7 @@ void passthrough_f32(float *restrict in, float *restrict out) {
 #define LLAMA_PROBE_SUBCHUNK 64
 #endif
 void passthrough_f32_chunk(float *restrict in, float *restrict out) {
-  for (int i = 0; i < LLAMA_PROBE_SUBCHUNK; i++)
+  for (int i = 0; i < LLAMA_PROBE_CHUNK; i++)
     out[i] = in[i];
 }
 

@@ -154,9 +154,10 @@ class LogitsHalfRelay(Resolvable):
         # fill_done: 0 until the GEMM has written the whole half; the replay
         # MM2S waits on it. The GEMM-side fill S2MM releases it n_gemm_chunks
         # times (once per chunk); replay acquires n_gemm_chunks to confirm full.
+        # fill_lock counts filled chunks: each of the ng fill BDs releases 1;
+        # the replay's first BD acquires GE ng (waits for the whole half).
         fill_lock = lock(mem_op, lock_id=self._mem_lock_id, init=0)
-        # replay_done: lets the fill S2MM know the memtile is free again (single
-        # dispatch -> not strictly needed; init high so fill never blocks).
+        # free_lock: 1 slot -> the single fill BD fires once per dispatch.
         free_lock = lock(mem_op, lock_id=self._mem_lock_id + 1, init=1)
 
         # --- GEMM compute tile: small send buffer (one chunk) ---
@@ -203,39 +204,41 @@ class LogitsHalfRelay(Resolvable):
                 EndOp()
 
         # --- Memtile DMA: two channels in one region (flat chained blocks).
-        # ch A = S2MM fill (GEMM stream -> half_buf, once); ch B = MM2S replay
-        # (half_buf -> sampler, HW repeat R). block chain:
-        #   start(S2MM, chain=block[2]); block[1]=fill BD;
-        #   block[2]=start(MM2S, chain=block[4]); block[3]=replay BD;
-        #   block[4]=EndOp.
+        # Block layout:
+        #   block[1] = single S2MM fill BD (gathers the whole GEMM stream)
+        #   block[2] = MM2S dma_start
+        #   block[3 .. 2+R] = R replay BDs
+        #   block[3+R] = EndOp
+        # A single whole-half fill BD gathers all ng GEMM chunk-sends (a DMA
+        # stream is byte-continuous; one S2MM BD of len=half collects them).
+        # Per-chunk fill BDs would be ng=32 > 24 BD/channel limit.
+        REP0 = 3
+        END = 3 + self._R
+
         @memtile_dma(mem_op)
         def _mtdma(block):
             dma_start(DMAChannelDir.S2MM, self._fill_s2mm_ch,
                       dest=block[1], chain=block[2])
             with block[1]:
-                # S2MM fill: acquire free_lock (init=1 -> fires once per
-                # dispatch), receive the full half from the GEMM stream, release
-                # fill_lock so the replay can start. Every locked BD must carry
-                # BOTH an acquire and a release (AIERT.cpp:339).
+                # acquire free + release fill (both required per BD,
+                # AIERT.cpp:339). free_lock init=ng so this fires once/dispatch.
                 use_lock(free_lock, LockAction.AcquireGreaterEqual, value=1)
                 dma_bd(half_buf)
                 use_lock(fill_lock, LockAction.Release, value=1)
                 next_bd(block[1])
             with block[2]:
-                # MM2S replay chain: R explicit sends of the resident half. Each
-                # BD acquires fill_lock (GE 1, non-consuming) and releases it
-                # back (net zero) so it stays available for the next replay BD
-                # and the next dispatch -- and so every BD has BOTH acq+rel as
-                # the CDO generator requires.
                 dma_start(DMAChannelDir.MM2S, self._replay_mm2s_ch,
-                          dest=block[3], chain=block[3 + self._R])
+                          dest=block[REP0], chain=block[END])
+            # R replay BDs: each sends the whole resident half. Each acquires +
+            # releases fill_lock net-zero (so the chain re-fires and every BD has
+            # both acq+rel). First waits for the fill (fill_lock >= 1).
             for _i in range(self._R):
-                with block[3 + _i]:
+                with block[REP0 + _i]:
                     use_lock(fill_lock, LockAction.AcquireGreaterEqual, value=1)
                     dma_bd(half_buf)
                     use_lock(fill_lock, LockAction.Release, value=1)
-                    next_bd(block[3 + (_i + 1)] if _i < self._R - 1 else block[3])
-            with block[3 + self._R]:
+                    next_bd(block[REP0 + (_i + 1)] if _i < self._R - 1 else block[REP0])
+            with block[END]:
                 EndOp()
 
         # --- Sampler compute tile DMA: S2MM pull each CHUNK window ---
