@@ -144,7 +144,8 @@ memref::GlobalOp AIEX::getOrCreateDataMemref(
     // globals and kept in sync below as we create new ones.
     auto it = dedupCache->find(initVal);
     if (it != dedupCache->end()) {
-      // initVal encodes element data + shape, but not memref layout/memory space.
+      // initVal encodes element data + shape, but not memref layout/memory
+      // space.
       if (it->second && it->second.getType() == memrefType)
         return it->second;
       dedupCache->erase(it);
