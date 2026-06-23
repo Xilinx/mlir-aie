@@ -1317,6 +1317,39 @@ LogicalResult GetCascadeOp::verify() {
 // DeviceOp
 //===----------------------------------------------------------------------===//
 
+LogicalResult DeviceOp::verify() {
+  // A compute tile has exactly one core in hardware, so at most one aie.core
+  // may resolve to any given (col, row). Cores whose tile is a logical_tile
+  // with unspecified coordinates are skipped here — they cannot collide until
+  // --aie-place-tiles assigns them a position, at which point this same check
+  // runs again on the resulting aie.tile coordinates.
+  DenseMap<TileID, CoreOp> coreAtTile;
+  WalkResult result = walk([&](CoreOp core) {
+    auto tile =
+        llvm::dyn_cast_or_null<TileLike>(core.getTile().getDefiningOp());
+    if (!tile)
+      return WalkResult::advance();
+    std::optional<int> col = tile.tryGetCol();
+    std::optional<int> row = tile.tryGetRow();
+    if (!col || !row)
+      return WalkResult::advance();
+    TileID id{*col, *row};
+    auto [it, inserted] = coreAtTile.try_emplace(id, core);
+    if (!inserted) {
+      InFlightDiagnostic diag =
+          core.emitOpError()
+          << "tile (" << *col << ", " << *row
+          << ") already has a core; each compute tile can host only one core";
+      diag.attachNote(it->second.getLoc()) << "the other core is here";
+      return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
+  });
+  if (result.wasInterrupted())
+    return failure();
+  return success();
+}
+
 const AIETargetModel &DeviceOp::getTargetModel() {
   return xilinx::AIE::getTargetModel(getDevice());
 }

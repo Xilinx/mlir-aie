@@ -80,6 +80,7 @@ def AIE_DeviceOp: AIE_Op<"device", [
     static xilinx::AIE::DeviceOp getForSymbolInModuleOrError(mlir::ModuleOp module, llvm::StringRef symbol);
     static llvm::StringRef getDefaultDeviceName() { return "main"; }
   }];
+  let hasVerifier = 1;
 }
 
 def AIE_LogicalTileOp: AIE_Op<"logical_tile", [
