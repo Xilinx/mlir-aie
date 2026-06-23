@@ -1,4 +1,5 @@
 //=== Passes.td - AIE vector analysis pass definition file -*- tablegen -*-===//
+// Copyright (C) 2024 Advanced Micro Devices, Inc. All rights reserved.
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.

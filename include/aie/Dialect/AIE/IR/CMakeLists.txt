@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2021 Xilinx Inc.
+# Copyright (C) 2026 Advanced Micro Devices, Inc. All rights reserved.
 
 # Use a simplified version AIEDocs.td to generate the AIEDialect.md ending up as
 # https://xilinx.github.io/mlir-aie/AIEDialect.html

@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2023 Xilinx Inc.
+# Copyright (C) 2026 Advanced Micro Devices, Inc. All rights reserved.
 
 # parameters
 # -DOpenCV_DIR: Path to OpenCV install

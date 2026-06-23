@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2022 Xilinx Inc.
+# Copyright (C) 2026 Advanced Micro Devices, Inc. All rights reserved.
 
 add_mlir_dialect(AIEX aiex)
 add_mlir_doc(AIEX AIEXDialect ./ -gen-dialect-doc -dialect=aiex)

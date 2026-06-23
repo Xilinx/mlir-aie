@@ -3,6 +3,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2025 Xilinx Inc.
+# Copyright (C) 2026 Advanced Micro Devices, Inc. All rights reserved.
 
 # parameters
 # -DXRT_INC_DIR: Full path to src/runtime_src/core/include in XRT cloned repo

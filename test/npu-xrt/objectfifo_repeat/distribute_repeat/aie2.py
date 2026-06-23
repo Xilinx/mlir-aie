@@ -1,4 +1,5 @@
 # test/npu-xrt/objectfifo_repeat/distribute_repeat/aie2.py
+# Copyright (C) 2025 Advanced Micro Devices, Inc. All rights reserved.
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.

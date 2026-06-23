@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2021 Xilinx Inc.
+# Copyright (C) 2025 Advanced Micro Devices, Inc. All rights reserved.
 
 add_mlir_dialect(ADF ADF)
 add_mlir_doc(ADF ADFDialect ./ -gen-dialect-doc -dialect=ADF)

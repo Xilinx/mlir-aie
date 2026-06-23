@@ -4,6 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2023 Xilinx Inc.
+# Copyright (C) 2024 Advanced Micro Devices, Inc. All rights reserved.
 
 
 set(INSTALLS
