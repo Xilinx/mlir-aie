@@ -121,8 +121,6 @@ Classes</h2></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1aievec_1_1FoldAIECastOpsAIE2p.html">FoldAIECastOpsAIE2p</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1aievec_1_1IntervalReuse.html">IntervalReuse</a></td></tr>
-<tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1aievec_1_1InvOpAIE2pConversion.html">InvOpAIE2pConversion</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">struct &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structxilinx_1_1aievec_1_1LowerVectorToAIEVecOptions.html">LowerVectorToAIEVecOptions</a></td></tr>
@@ -275,8 +273,6 @@ Functions</h2></td></tr>
 <tr class="separator:a6af02e3ed52bd3bc6bb9250e42ef4537"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a446ef00c9ac71548699485e7011febfc" id="r_a446ef00c9ac71548699485e7011febfc"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1aievec.html#a446ef00c9ac71548699485e7011febfc">registerTransformDialectExtension</a> (mlir::DialectRegistry &amp;registry)</td></tr>
 <tr class="separator:a446ef00c9ac71548699485e7011febfc"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a3b8f2de029c2edc6f11c638e9bb6d450" id="r_a3b8f2de029c2edc6f11c638e9bb6d450"><td class="memItemLeft" align="right" valign="top">std::unique_ptr&lt; mlir::Pass &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1aievec.html#a3b8f2de029c2edc6f11c638e9bb6d450">createAIEVectorizePass</a> ()</td></tr>
-<tr class="separator:a3b8f2de029c2edc6f11c638e9bb6d450"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a0e692a149f961ca40847f466b29d249b" id="r_a0e692a149f961ca40847f466b29d249b"><td class="memTemplParams" colspan="2">template&lt;typename TransferReadLikeOp , typename  = std::enable_if_t&lt;        std::is_same_v&lt;TransferReadLikeOp, mlir::vector::TransferReadOp&gt; ||        std::is_same_v&lt;TransferReadLikeOp,                       mlir::vector::TransferReadOp::Adaptor&gt;&gt;&gt; </td></tr>
 <tr class="memitem:a0e692a149f961ca40847f466b29d249b"><td class="memTemplItemLeft" align="right" valign="top">std::optional&lt; int64_t &gt;&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1aievec.html#a0e692a149f961ca40847f466b29d249b">getTransferReadAlignmentOffset</a> (TransferReadLikeOp readOp, mlir::VectorType vType, int64_t alignment)</td></tr>
 <tr class="separator:a0e692a149f961ca40847f466b29d249b"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -716,25 +712,6 @@ Functions</h2></td></tr>
 
 </div>
 </div>
-<a id="a3b8f2de029c2edc6f11c638e9bb6d450" name="a3b8f2de029c2edc6f11c638e9bb6d450"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a3b8f2de029c2edc6f11c638e9bb6d450">&#9670;&#160;</a></span>createAIEVectorizePass()</h2>
-
-<div class="memitem">
-<div class="memproto">
-      <table class="memname">
-        <tr>
-          <td class="memname">std::unique_ptr&lt; Pass &gt; xilinx::aievec::createAIEVectorizePass </td>
-          <td>(</td>
-          <td class="paramname"></td><td>)</td>
-          <td></td>
-        </tr>
-      </table>
-</div><div class="memdoc">
-
-<p class="definition">Definition at line <a class="el" href="AIEVectorize_8cpp_source.html#l03069">3069</a> of file <a class="el" href="AIEVectorize_8cpp_source.html">AIEVectorize.cpp</a>.</p>
-
-</div>
-</div>
 <a id="a6af02e3ed52bd3bc6bb9250e42ef4537" name="a6af02e3ed52bd3bc6bb9250e42ef4537"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a6af02e3ed52bd3bc6bb9250e42ef4537">&#9670;&#160;</a></span>createBF16EmulationPass()</h2>
 
@@ -1071,7 +1048,7 @@ Functions</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="AIEVecUtils_8h_source.html#l00049">49</a> of file <a class="el" href="AIEVecUtils_8h_source.html">AIEVecUtils.h</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEVectorize_8cpp_source.html#l01161">computeStartInAIEVec()</a>, <a class="el" href="FoldMulAddChainToConvOp_8cpp_source.html#l00227">LongestConvMACChainAnalysis::getConvMacFromMulOp()</a>, <a class="el" href="AIEVecUtils_8h_source.html#l00066">getVectorSizeInBits()</a>, <a class="el" href="FoldMulAddChainToConvOp_8cpp_source.html#l00410">FoldMulAddChainToConvOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02779">LowerVectorExtractStridedSliceOpAIEv1Pattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02818">LowerVectorExtractStridedSliceOpAIE2Pattern::matchAndRewrite()</a>, and <a class="el" href="VectorToVectorConversions_8cpp_source.html#l00135">SplitUnalignedTransferReadPattern::matchAndRewrite()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="FoldMulAddChainToConvOp_8cpp_source.html#l00227">LongestConvMACChainAnalysis::getConvMacFromMulOp()</a>, <a class="el" href="AIEVecUtils_8h_source.html#l00066">getVectorSizeInBits()</a>, <a class="el" href="FoldMulAddChainToConvOp_8cpp_source.html#l00410">FoldMulAddChainToConvOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02779">LowerVectorExtractStridedSliceOpAIEv1Pattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02818">LowerVectorExtractStridedSliceOpAIE2Pattern::matchAndRewrite()</a>, and <a class="el" href="VectorToVectorConversions_8cpp_source.html#l00135">SplitUnalignedTransferReadPattern::matchAndRewrite()</a>.</p>
 
 </div>
 </div>
@@ -1982,7 +1959,7 @@ template&lt;typename TransferReadLikeOp , typename &gt; </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Tue Jun 23 2026 01:13:53 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Tue Jun 23 2026 10:08:38 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

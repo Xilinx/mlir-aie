@@ -1,40 +1,31 @@
 <map id="include/aie/Dialect/AIEVec/IR/AIEVecOps.h" name="include/aie/Dialect/AIEVec/IR/AIEVecOps.h">
-<area shape="rect" id="Node000001" title=" " alt="" coords="1430,5,1602,45"/>
-<area shape="rect" id="Node000002" href="$AIEVecUtils_8h.html" title=" " alt="" coords="1224,101,1384,141"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="1461,53,1347,103,1345,98,1459,48"/>
-<area shape="rect" id="Node000004" href="$AIEVectorize_8cpp.html" title=" " alt="" coords="334,299,545,339"/>
-<area shape="poly" id="edge19_Node000001_Node000004" title=" " alt="" coords="1416,29,1231,32,985,42,707,62,566,77,428,96,361,103,301,103,196,102,149,109,105,124,62,152,19,198,11,211,8,224,11,236,19,249,39,264,68,277,149,297,243,308,334,313,334,318,243,313,148,302,67,283,36,269,15,252,6,238,3,224,6,209,15,194,58,148,103,119,148,103,196,97,301,98,361,97,427,91,565,72,707,57,985,37,1231,27,1416,24"/>
-<area shape="rect" id="Node000006" href="$AIEVecToLLVM_8cpp.html" title=" " alt="" coords="29,203,240,243"/>
-<area shape="poly" id="edge16_Node000001_Node000006" title=" " alt="" coords="1416,33,1095,52,895,70,696,96,557,121,421,151,202,206,201,201,419,146,556,116,695,91,895,65,1094,47,1416,27"/>
-<area shape="rect" id="Node000008" href="$AIEVecOps_8cpp.html" title=" " alt="" coords="264,203,402,243"/>
-<area shape="poly" id="edge17_Node000001_Node000008" title=" " alt="" coords="1417,42,989,102,713,146,435,199,403,206,402,201,434,193,712,141,988,96,1416,36"/>
-<area shape="rect" id="Node000009" href="$AIEVecOptimizations_8cpp.html" title=" " alt="" coords="1478,203,1742,243"/>
-<area shape="poly" id="edge18_Node000001_Node000009" title=" " alt="" coords="1523,58,1533,102,1550,147,1570,176,1592,201,1588,205,1566,180,1545,149,1527,103,1517,60"/>
-<area shape="rect" id="Node000011" href="$FoldMulAddChainToConvOp_8cpp.html" title=" " alt="" coords="1767,196,1982,251"/>
-<area shape="poly" id="edge20_Node000001_Node000011" title=" " alt="" coords="1531,56,1559,103,1578,126,1600,146,1662,167,1767,194,1766,200,1660,172,1597,150,1574,130,1554,106,1527,59"/>
-<area shape="rect" id="Node000012" href="$VectorToAIEVecConversions_8cpp.html" title=" " alt="" coords="2006,196,2207,251"/>
-<area shape="poly" id="edge22_Node000001_Node000012" title=" " alt="" coords="1551,52,1596,91,1622,122,1633,134,1650,146,1698,166,1741,178,1779,183,1816,185,1896,184,1942,186,1995,193,2005,195,2004,201,1994,199,1941,191,1895,189,1816,190,1779,189,1739,183,1696,171,1648,150,1629,138,1618,125,1592,95,1547,56"/>
-<area shape="rect" id="Node000014" href="$TranslateAIEVecToCpp_8cpp.html" title=" " alt="" coords="2232,203,2426,243"/>
-<area shape="poly" id="edge23_Node000001_Node000014" title=" " alt="" coords="1572,49,1607,68,1641,91,1657,107,1667,121,1677,134,1694,146,1742,161,1804,171,1953,181,2103,185,2220,193,2257,201,2256,206,2219,199,2103,190,1952,186,1803,177,1741,166,1692,150,1674,138,1663,124,1653,110,1638,95,1604,73,1569,54"/>
-<area shape="rect" id="Node000015" href="$SplitVectorLoadUpsChains_8cpp.html" title=" " alt="" coords="1705,93,1908,148"/>
-<area shape="poly" id="edge21_Node000001_Node000015" title=" " alt="" coords="1588,47,1725,91,1724,96,1587,52"/>
-<area shape="rect" id="Node000003" href="$IntervalReuse_8h.html" title=" " alt="" coords="1204,196,1404,251"/>
-<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="1306,154,1306,196,1301,196,1301,154"/>
-<area shape="poly" id="edge9_Node000002_Node000004" title=" " alt="" coords="1210,130,768,160,563,179,497,189,466,198,450,220,442,247,439,275,440,298,435,298,434,274,437,246,446,218,463,194,495,184,563,174,767,154,1210,125"/>
-<area shape="rect" id="Node000005" href="$IntervalReuse_8cpp.html" title=" " alt="" coords="1262,299,1481,339"/>
-<area shape="poly" id="edge12_Node000002_Node000005" title=" " alt="" coords="1365,145,1395,166,1418,195,1424,223,1418,252,1405,278,1390,300,1386,297,1401,276,1413,250,1419,223,1413,197,1391,170,1362,149"/>
-<area shape="poly" id="edge5_Node000002_Node000006" title=" " alt="" coords="1210,127,1032,133,794,145,524,167,252,199,211,206,210,201,251,193,523,161,793,140,1032,127,1210,121"/>
-<area shape="rect" id="Node000007" href="$AIEVecAIE1Ops_8cpp.html" title=" " alt="" coords="478,203,679,243"/>
-<area shape="poly" id="edge6_Node000002_Node000007" title=" " alt="" coords="1210,133,974,158,832,176,691,199,654,206,653,201,690,193,831,171,973,153,1209,127"/>
-<area shape="poly" id="edge7_Node000002_Node000008" title=" " alt="" coords="1209,126,1058,132,861,144,641,165,421,199,391,206,390,201,420,193,641,160,861,139,1057,127,1209,121"/>
-<area shape="poly" id="edge8_Node000002_Node000009" title=" " alt="" coords="1375,142,1554,201,1552,206,1373,147"/>
-<area shape="rect" id="Node000010" href="$DynamicSizeNoImplicitBroadcast_8cpp.html" title=" " alt="" coords="703,196,958,251"/>
-<area shape="poly" id="edge10_Node000002_Node000010" title=" " alt="" coords="1210,144,954,199,953,193,1209,139"/>
-<area shape="poly" id="edge11_Node000002_Node000011" title=" " alt="" coords="1398,133,1565,160,1755,193,1767,196,1766,201,1754,199,1564,165,1397,139"/>
-<area shape="poly" id="edge13_Node000002_Node000012" title=" " alt="" coords="1398,128,1715,159,1995,193,2005,195,2005,201,1994,199,1714,165,1397,133"/>
-<area shape="rect" id="Node000013" href="$VectorToVectorConversions_8cpp.html" title=" " alt="" coords="982,196,1180,251"/>
-<area shape="poly" id="edge14_Node000002_Node000013" title=" " alt="" coords="1250,149,1140,198,1138,193,1248,144"/>
-<area shape="poly" id="edge15_Node000002_Node000014" title=" " alt="" coords="1397,127,1878,164,2220,193,2257,201,2256,206,2219,199,1878,169,1397,132"/>
-<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="1190,253,1010,278,833,295,546,315,545,310,832,290,1009,272,1190,248"/>
-<area shape="poly" id="edge4_Node000003_Node000005" title=" " alt="" coords="1333,260,1360,297,1356,300,1329,263"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="1017,5,1189,45"/>
+<area shape="rect" id="Node000002" href="$AIEVecUtils_8h.html" title=" " alt="" coords="964,101,1124,141"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="1086,58,1058,102,1054,99,1081,55"/>
+<area shape="rect" id="Node000003" href="$AIEVecToLLVM_8cpp.html" title=" " alt="" coords="5,203,216,243"/>
+<area shape="poly" id="edge11_Node000001_Node000003" title=" " alt="" coords="1003,36,792,57,668,74,546,96,439,121,333,151,164,206,163,201,331,146,437,116,545,91,668,69,791,52,1003,31"/>
+<area shape="rect" id="Node000005" href="$AIEVecOps_8cpp.html" title=" " alt="" coords="240,203,379,243"/>
+<area shape="poly" id="edge12_Node000001_Node000005" title=" " alt="" coords="1004,45,881,68,747,96,568,144,391,199,368,206,366,201,390,193,567,138,746,91,880,62,1003,40"/>
+<area shape="rect" id="Node000006" href="$AIEVecOptimizations_8cpp.html" title=" " alt="" coords="403,203,667,243"/>
+<area shape="poly" id="edge13_Node000001_Node000006" title=" " alt="" coords="1036,52,590,206,588,201,1035,47"/>
+<area shape="rect" id="Node000008" href="$FoldMulAddChainToConvOp_8cpp.html" title=" " alt="" coords="1418,196,1633,251"/>
+<area shape="poly" id="edge14_Node000001_Node000008" title=" " alt="" coords="1120,56,1150,103,1171,126,1194,146,1418,196,1417,201,1192,150,1167,130,1146,106,1115,59"/>
+<area shape="rect" id="Node000009" href="$VectorToAIEVecConversions_8cpp.html" title=" " alt="" coords="1657,196,1858,251"/>
+<area shape="poly" id="edge16_Node000001_Node000009" title=" " alt="" coords="1140,51,1189,91,1215,122,1227,134,1245,146,1301,168,1351,181,1396,186,1439,186,1531,184,1584,186,1646,193,1657,195,1656,201,1645,199,1584,191,1531,189,1439,192,1396,191,1350,186,1300,173,1243,150,1224,138,1211,126,1185,95,1136,56"/>
+<area shape="rect" id="Node000011" href="$TranslateAIEVecToCpp_8cpp.html" title=" " alt="" coords="1883,203,2077,243"/>
+<area shape="poly" id="edge17_Node000001_Node000011" title=" " alt="" coords="1162,49,1199,68,1235,91,1251,107,1262,121,1272,134,1289,146,1342,162,1411,173,1490,179,1575,182,1742,185,1814,188,1871,193,1908,201,1907,206,1870,199,1813,193,1742,190,1575,187,1490,184,1410,178,1341,167,1287,150,1268,138,1257,124,1247,110,1232,95,1196,73,1159,54"/>
+<area shape="rect" id="Node000012" href="$SplitVectorLoadUpsChains_8cpp.html" title=" " alt="" coords="1300,93,1503,148"/>
+<area shape="poly" id="edge15_Node000001_Node000012" title=" " alt="" coords="1177,47,1318,91,1316,96,1175,52"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="951,129,630,152,429,172,228,199,189,206,188,201,228,193,429,167,629,147,950,124"/>
+<area shape="rect" id="Node000004" href="$AIEVecAIE1Ops_8cpp.html" title=" " alt="" coords="691,203,893,243"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="985,148,840,206,838,201,983,143"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="950,129,697,151,543,171,391,199,363,206,362,201,390,193,543,166,696,146,950,124"/>
+<area shape="poly" id="edge5_Node000002_Node000006" title=" " alt="" coords="951,143,630,206,629,201,950,138"/>
+<area shape="rect" id="Node000007" href="$DynamicSizeNoImplicitBroadcast_8cpp.html" title=" " alt="" coords="917,196,1171,251"/>
+<area shape="poly" id="edge6_Node000002_Node000007" title=" " alt="" coords="1047,154,1047,196,1041,196,1041,154"/>
+<area shape="poly" id="edge7_Node000002_Node000008" title=" " alt="" coords="1126,141,1143,145,1275,170,1407,193,1419,196,1417,201,1406,199,1274,176,1142,151,1125,147"/>
+<area shape="poly" id="edge8_Node000002_Node000009" title=" " alt="" coords="1138,137,1194,145,1321,160,1420,167,1519,176,1646,193,1657,195,1656,201,1645,199,1519,181,1419,173,1320,165,1193,151,1137,142"/>
+<area shape="rect" id="Node000010" href="$VectorToVectorConversions_8cpp.html" title=" " alt="" coords="1195,196,1394,251"/>
+<area shape="poly" id="edge9_Node000002_Node000010" title=" " alt="" coords="1105,143,1230,193,1228,198,1103,148"/>
+<area shape="poly" id="edge10_Node000002_Node000011" title=" " alt="" coords="1138,133,1244,145,1420,159,1558,164,1696,172,1871,193,1909,201,1908,206,1870,199,1695,177,1558,169,1420,164,1244,151,1137,138"/>
 </map>
