@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // Copyright (C) 2024, Advanced Micro Devices, Inc.
-// 
+//
 //===----------------------------------------------------------------------===//-->
 
 # <ins>Section 2e - Programming for multiple cores</ins>
@@ -23,7 +23,7 @@
 
 This section walks through scaling a single-Worker IRON design out to multiple Workers. We will start with the code in [aie2.py](./aie2.py) which contains a simple design running on a single Worker, and progressively turn it into the code in [aie2_multi.py](./aie2_multi.py) which contains the same design distributed across three Workers.
 
-Both files are wrapped in `@iron.jit`, so calling each design from `_run_and_verify` JIT-compiles and runs end-to-end on the attached NPU; `--emit-mlir` prints the lowered MLIR for inspection.
+Both files are wrapped in `@iron.jit`, so calling each design from `_run_and_verify` JIT-compiles and runs end-to-end on the attached NPU; `--dev <target> --emit-mlir` prints the lowered MLIR for inspection.
 
 In the first part of our design we set up the data movement using Object FIFOs. The simple design has a total of four Object FIFOs, two of which are created by forwarding data for an implicit copy. The Object FIFOs move objects of datatype `<48xi32>`. `of_in` brings data from external memory and is linked, through a Mem tile, to `of_in0` which brings data from the Mem tile to the Worker. For the output side, `of_out0` brings data from the Worker to the Mem tile where it is linked to `of_out` to bring the data out to external memory. The corresponding code is shown below:
 ```python

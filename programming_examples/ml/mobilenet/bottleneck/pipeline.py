@@ -35,7 +35,7 @@ from ..network_spec import block as nsblock
 # build_3tile_pipeline — 1x1-relu -> DW-3x3 -> 1x1[-skip], one tile per layer
 # Used for bn10 (no skip) and bn11 (with element-wise skip add fused into L3).
 # ---------------------------------------------------------------------------
-def build_3tile_pipeline(blk, act_in, sf, *, data_dir, tiles, skip_in=None):
+def build_3tile_pipeline(blk, act_in, sf, *, data_dir, tiles=None, skip_in=None):
     """3-tile pipelined bottleneck: 1x1-relu -> DW-3x3-stride1 -> 1x1[-skip].
 
     bn10-style (skip_in=None): plain L3 1x1.
@@ -130,10 +130,11 @@ def build_3tile_pipeline(blk, act_in, sf, *, data_dir, tiles, skip_in=None):
     if has_skip:
         l3_args.append(skip_in.cons())
     l3_args += [out_fifo.prod(), l3_wts, k_l3]
+    t = tiles.get if tiles else lambda k: None
     workers = [
-        Worker(l1_fn, [l1_in_h, of_12.prod(), l1_wts, k_l1], tile=tiles["l1"]),
-        Worker(l2_fn, [of_12.cons(), of_23.prod(), l2_wts, k_l2], tile=tiles["l2"]),
-        Worker(l3_fn, l3_args, tile=tiles["l3"]),
+        Worker(l1_fn, [l1_in_h, of_12.prod(), l1_wts, k_l1], tile=t("l1")),
+        Worker(l2_fn, [of_12.cons(), of_23.prod(), l2_wts, k_l2], tile=t("l2")),
+        Worker(l3_fn, l3_args, tile=t("l3")),
     ]
     return out_fifo, workers
 
@@ -144,7 +145,7 @@ def build_3tile_pipeline(blk, act_in, sf, *, data_dir, tiles, skip_in=None):
 # DW + PW kernels are interleaved per output row via a depth-1 self-loop fifo.
 # Weights for L2+L3 are stored in one combined buffer, sliced by memref_view.
 # ---------------------------------------------------------------------------
-def build_bn12_2tile(blk, act_in, sf, *, data_dir, tiles):
+def build_bn12_2tile(blk, act_in, sf, *, data_dir, tiles=None):
     """bn12: 2-tile design with fused DW-stride2 + 1x1 on the second tile.
 
     Returns (out_fifo, [workers]).
@@ -283,11 +284,12 @@ def build_bn12_2tile(blk, act_in, sf, *, data_dir, tiles):
         dw_tmp_prod.release(1)
         _pw()
 
+    t = tiles.get if tiles else lambda k: None
     workers = [
         Worker(
             bn12_l1_fn,
             [act_in.cons(), bn12_of_12.prod(), bn12_l1_wts, k_bn12_l1],
-            tile=tiles["l1"],
+            tile=t("l1"),
         ),
         Worker(
             bn12_l23_fn,
@@ -300,7 +302,7 @@ def build_bn12_2tile(blk, act_in, sf, *, data_dir, tiles):
                 k_bn12_dw,
                 k_bn12_pw,
             ],
-            tile=tiles["l23"],
+            tile=t("l23"),
         ),
     ]
     return act_bn12_out, workers
@@ -313,14 +315,14 @@ def pipeline_bottlenecks(
     act_in: ObjectFifo,
     sf: dict,
     *,
-    placement: dict,
+    placement: dict | None = None,
     data_dir: str,
 ) -> tuple:
     """Build bn10..bn12 from network_spec.NETWORK + scale-factor JSON.
 
-    `placement` keys: bn10/bn11 (each with .l1/.l2/.l3, bn11 also .mem_skip),
-    bn12 (with .l1/.l23). Returns (workers, act_bn12_out).
+    Returns (workers, act_bn12_out).
     """
+    p = placement or {}
     # bn10 / bn11 share the 3-tile builder; bn11 adds a MemTile-forwarded skip.
     # depth=6 on the bn10 cons handle lets the skip path buffer enough rows to
     # outlive bn11's L1→L2→L3 lag (1 + 1 + ping-pong slack).
@@ -329,11 +331,15 @@ def pipeline_bottlenecks(
     workers = []
     act = act_in
     for name, has_skip in P3:
-        tiles = placement[name]
+        tiles = p.get(name)
         skip_in = None
         if has_skip:
-            skip_in = act.cons(depth=6).forward(depth=2, tile=tiles["mem_skip"])
-            tiles = {k: tiles[k] for k in ("l1", "l2", "l3")}
+            skip_in = act.cons(depth=6).forward(
+                depth=2, tile=tiles.get("mem_skip") if tiles else None
+            )
+            # Strip mem_skip so only l1/l2/l3 are passed to the builder.
+            if tiles is not None:
+                tiles = {k: tiles[k] for k in ("l1", "l2", "l3")}
         act, ws = build_3tile_pipeline(
             nsblock(name), act, sf, data_dir=data_dir, tiles=tiles, skip_in=skip_in
         )
@@ -341,7 +347,7 @@ def pipeline_bottlenecks(
 
     # bn12 (2-tile): L1 on one tile, fused DW-stride2 + 1x1 on a second tile.
     act, ws = build_bn12_2tile(
-        nsblock("bn12"), act, sf, data_dir=data_dir, tiles=placement["bn12"]
+        nsblock("bn12"), act, sf, data_dir=data_dir, tiles=p.get("bn12")
     )
     workers += ws
 
