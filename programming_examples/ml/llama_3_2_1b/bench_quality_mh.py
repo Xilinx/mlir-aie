@@ -251,14 +251,29 @@ def device_chain_next_token(
         x_t = iron.tensor(xin, dtype=_np.int8)
         w_t = iron.tensor(wblob, dtype=_np.int8)
         kv_t = iron.tensor(kv_state, dtype=_np.int8)
-        o_t = iron.zeros([D + 8], dtype=_np.int8)
-        rc = run_test(npu, [x_t, w_t, kv_t, o_t], {}, verify=False, verbosity=0)
-        if rc != 0:
-            raise RuntimeError(f"device dispatch returned {rc}")
-        kv_t.to("cpu")
-        kv_state = kv_t.numpy().copy()  # device-owned cache for the next token
-        o_t.to("cpu")
-        last_out = o_t.numpy()
+        if dev.get("device_sample"):
+            # Fused xclbin: 5 args (xin, wblob, kvblob, lmw, token). The device
+            # does final_norm+lm_head+sampler -> int32 token on-chip.
+            lmw_t = iron.tensor(dev["lmw"], dtype=_np.int8)
+            tok_t = iron.zeros([1], dtype=_np.int32)
+            rc = run_test(
+                npu, [x_t, w_t, kv_t, lmw_t, tok_t], {}, verify=False, verbosity=0
+            )
+            if rc != 0:
+                raise RuntimeError(f"device dispatch returned {rc}")
+            kv_t.to("cpu")
+            kv_state = kv_t.numpy().copy()
+            tok_t.to("cpu")
+            last_out = ("token", int(tok_t.numpy()[0]))
+        else:
+            o_t = iron.zeros([D + 8], dtype=_np.int8)
+            rc = run_test(npu, [x_t, w_t, kv_t, o_t], {}, verify=False, verbosity=0)
+            if rc != 0:
+                raise RuntimeError(f"device dispatch returned {rc}")
+            kv_t.to("cpu")
+            kv_state = kv_t.numpy().copy()  # device-owned cache for the next token
+            o_t.to("cpu")
+            last_out = o_t.numpy()
 
     if not self_prefill:
         # host-prefill: dispatch ONCE for the last token.
@@ -276,6 +291,11 @@ def device_chain_next_token(
             raise RuntimeError(f"device dispatch returned {rc}")
         o_t.to("cpu")
         last_out = o_t.numpy()
+
+    if isinstance(last_out, tuple) and last_out[0] == "token":
+        # Fused device-sample path: the device already returned the token id
+        # (on-chip final_norm + lm_head + sampler).
+        return last_out[1]
 
     dev_scale = struct.unpack("<f", last_out[D : D + 4].tobytes())[0]
     hidden_fp = last_out[:D].astype(np.float32) * np.float32(dev_scale)
@@ -346,6 +366,14 @@ def main():
         "once per prompt token, carrying the device-drained cache forward (no "
         "numpy K/V math). Requires --device + an on-chip-append xclbin.",
     )
+    parser.add_argument(
+        "--device-sample",
+        action="store_true",
+        help="use the FUSED chain+lm_head+sampler xclbin (LLAMA_CHAIN_SAMPLE=1): "
+        "the device returns the next-token id directly (on-chip final_norm + "
+        "lm_head + sampler), no host lm_head. Requires --device --self-prefill "
+        "+ the chain_sample xclbin.",
+    )
     # NPU kernel args (-x/-i/-k) only needed with --device.
     parser.add_argument("-x", "--xclbin", type=str, default=None, dest="xclbin")
     parser.add_argument("-i", "--instr", type=str, default=None, dest="instr")
@@ -381,6 +409,10 @@ def main():
         assert (
             opts.xclbin and opts.instr and opts.kernel
         ), "--device requires -x <xclbin> -i <instr> -k <kernel>"
+        assert not (opts.device_sample and not opts.self_prefill), (
+            "--device-sample requires --self-prefill (the fused token output "
+            "path is only wired in the self-prefill dispatch loop)"
+        )
         from test_chain_mh import pack_blobs as chain_pack_blobs
 
         npu_kernel = test_utils.create_npu_kernel(opts).npu_kernel
@@ -390,7 +422,22 @@ def main():
             "iron": iron,
             "DefaultNPURuntime": DefaultNPURuntime,
         }
-        print(f"device mode: N={N_LAYERS} chain xclbin {opts.xclbin}\n", flush=True)
+        if opts.device_sample:
+            # Fused chain+lm_head+sampler xclbin: pack the lmw blob
+            # [final_norm gamma | lm_head weight slots] once, reused per token.
+            from test_chain_sample_mh import pack_lmw
+
+            dev["lmw"] = pack_lmw(model.embed_i8, model.embed_sc, model.final_norm)
+            dev["device_sample"] = True
+            print(
+                f"device-sample mode: fused N={N_LAYERS} chain+lm_head+sampler "
+                f"xclbin {opts.xclbin}\n",
+                flush=True,
+            )
+        else:
+            print(
+                f"device mode: N={N_LAYERS} chain xclbin {opts.xclbin}\n", flush=True
+            )
 
     indices = (
         range(len(PROMPTS))
