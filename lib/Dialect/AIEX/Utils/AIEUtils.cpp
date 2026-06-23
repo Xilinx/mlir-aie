@@ -143,8 +143,12 @@ memref::GlobalOp AIEX::getOrCreateDataMemref(
     // O(1): the cache is seeded by the caller from the device's existing
     // globals and kept in sync below as we create new ones.
     auto it = dedupCache->find(initVal);
-    if (it != dedupCache->end())
-      return it->second;
+    if (it != dedupCache->end()) {
+      // initVal encodes element data + shape, but not memref layout/memory space.
+      if (it->second && it->second.getType() == memrefType)
+        return it->second;
+      dedupCache->erase(it);
+    }
   } else {
     // No cache supplied: scan existing globals for a match. Callers that create
     // many globals should pass a cache (see header).
