@@ -1,4 +1,4 @@
-<!-- Copyright (C) 2026 Advanced Micro Devices, Inc. All rights reserved. -->
+<!-- Copyright (C) 2026 Advanced Micro Devices, Inc. -->
 # Device support
 
 This repo supports a number of devices, at some level of completeness.

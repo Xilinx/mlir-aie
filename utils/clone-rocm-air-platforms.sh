@@ -2,7 +2,7 @@
 
 ##===- utils/clone-rocm-air-platforms.sh ---------------------*- Script -*-===##
 #
-# Copyright (C) 2024, Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2024 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ##===----------------------------------------------------------------------===##

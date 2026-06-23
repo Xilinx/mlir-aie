@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // Copyright (C) 2021 Xilinx, Inc.
-// Copyright (C) 2021-2023 Advanced Micro Devices, Inc.
+// Copyright (C) 2022-2023 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 #include "aie/Targets/AIETargetShared.h"

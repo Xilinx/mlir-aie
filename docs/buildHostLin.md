@@ -1,4 +1,4 @@
-<!-- Copyright (C) 2025 Advanced Micro Devices, Inc. All rights reserved. -->
+<!-- Copyright (C) 2025 Advanced Micro Devices, Inc. -->
 # Linux Setup and Build Instructions
 
 These instructions will guide you through everything required for building and executing a program on the Ryzen™ AI NPU, starting from a fresh bare-bones **Ubuntu 22.04 LTS** install. Ubuntu 22.04 LTS, Ubuntu 24.04 LTS and Ubuntu 24.10 are supported by this toolchain.

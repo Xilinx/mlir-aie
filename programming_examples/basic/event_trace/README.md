@@ -101,4 +101,4 @@ Generate visualization from existing parsed output:
 python3 visualize_trace.py -i trace.json -o trace_timeline.png -t "Trace Timeline"
 ```
 
-Copyright (C) 2026, Advanced Micro Devices, Inc. All rights reserved.
+Copyright (C) 2026 Advanced Micro Devices, Inc.

@@ -1,4 +1,4 @@
-<!-- Copyright (C) 2025 Advanced Micro Devices, Inc. All rights reserved. -->
+<!-- Copyright (C) 2025 Advanced Micro Devices, Inc. -->
 # Building the code
 
 ## Prerequisites

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright (C) 2022-2026, Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 ##===- utils/env_setup.sh - Setup mlir-aie env to compile IRON designs --*- Script -*-===##
 #
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
