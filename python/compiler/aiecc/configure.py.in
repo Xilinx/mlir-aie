@@ -6,10 +6,25 @@
 # Copyright (C) 2021 Xilinx, Inc.
 # Copyright (C) 2022-2025 Advanced Micro Devices, Inc.
 
+import numbers
 import os
 import sysconfig
 
-from aie.util import pythonize_bool
+
+def pythonize_bool(value):
+    if value is None:
+        return False
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, numbers.Number):
+        return value != 0
+    if isinstance(value, str):
+        if value.lower() in ("1", "true", "on", "yes"):
+            return True
+        if value.lower() in ("", "0", "false", "off", "no"):
+            return False
+    raise ValueError(f"Cannot convert {value!r} to bool")
+
 
 git_commit = "@AIE_GIT_COMMIT@"
 
