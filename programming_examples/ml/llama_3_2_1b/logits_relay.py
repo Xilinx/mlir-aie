@@ -31,22 +31,23 @@ import numpy as np
 from aie.iron.resolvable import Resolvable
 
 
-class LogitsHalfRelay(Resolvable):
-    """One half of the logits memtile relay (GEMM-written, replayed R times).
+class LogitsRelay(Resolvable):
+    """GEMM-written, memtile-resident logits buffer replayed R times to the
+    sampler in chunks. The whole V=128256 fp32 (513 KB) fits one 512 KB+ memtile.
 
     Args:
-      half_elems: fp32 elements in the half (e.g. V//2 = 64128).
+      total_elems: fp32 elements resident on the memtile (e.g. V = 128256).
       chunk_elems: consumer read granularity (e.g. CHUNK_N = 2004).
-      repeat_count: how many times the sampler re-reads the whole half (3).
+      repeat_count: how many times the sampler re-reads the whole buffer (3).
       memtile_placement / gemm_placement / sampler_placement: Tile objects.
-      gemm_chunk_elems: producer write granularity (the GEMM writes the half in
+      gemm_chunk_elems: producer write granularity (the GEMM writes the buffer in
         these pieces; defaults to chunk_elems).
       *_channel / *_lock_id: explicit DMA channel + lock IDs (avoid collisions).
     """
 
     def __init__(
         self,
-        half_elems: int,
+        total_elems: int,
         chunk_elems: int,
         repeat_count: int,
         memtile_placement,
@@ -62,7 +63,7 @@ class LogitsHalfRelay(Resolvable):
         gemm_lock_id: int = 0,
         sampler_lock_id: int = 0,
     ):
-        self._half = half_elems
+        self._half = total_elems
         self._chunk = chunk_elems
         self._gemm_chunk = gemm_chunk_elems or chunk_elems
         self._R = repeat_count

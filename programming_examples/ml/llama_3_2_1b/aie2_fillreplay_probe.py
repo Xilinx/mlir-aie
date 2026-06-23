@@ -20,7 +20,7 @@ from aie.iron.device import NPU2, Tile
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorAccessPattern
 
-from logits_relay import LogitsHalfRelay
+from logits_relay import LogitsRelay
 
 HALF = int(_os.environ.get("LLAMA_FR_HALF", "256"))
 CHUNK = int(_os.environ.get("LLAMA_FR_CHUNK", "64"))
@@ -57,8 +57,8 @@ def build():
     of_src = ObjectFifo(t_chunk, depth=2, name="fr_src")
     of_out = ObjectFifo(t_chunk, depth=2, name="fr_out")
 
-    relay = LogitsHalfRelay(
-        half_elems=HALF,
+    relay = LogitsRelay(
+        total_elems=HALF,
         chunk_elems=CHUNK,
         repeat_count=R,
         memtile_placement=Tile(1, 1),

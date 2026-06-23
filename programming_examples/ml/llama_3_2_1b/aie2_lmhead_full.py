@@ -38,8 +38,10 @@ from aie.iron import Buffer, Kernel, ObjectFifo, Program, Runtime, Worker
 from aie.iron.device import NPU2, Tile
 from aie.iron.controlflow import range_
 from aie.helpers.taplib import TensorAccessPattern
-from aie.dialects.arith import index_cast
+from aie.dialects.arith import index_cast, constant
 from aie.ir import IntegerType
+
+from logits_relay import LogitsRelay
 
 D = 2048
 VOCAB = int(_os.environ.get("LLAMA_SAMPLE_V", "128256"))
@@ -101,6 +103,10 @@ def _idx(i):
     return index_cast(IntegerType.get_signless(32), i)
 
 
+def _const_i32(v):
+    return constant(IntegerType.get_signless(32), v)
+
+
 def factor(nb):
     if nb <= 1023:
         return (1, nb)
@@ -143,16 +149,18 @@ def build():
     of_wlm = ObjectFifo(t_wlm_slot, depth=2, name="wlm")
     of_token = ObjectFifo(t_token, name="token")
 
-    # GEMM produces CHUNK_N-sized logit chunks into two half-streams; each is
-    # forwarded through a memtile relay (obj_type=HALF) that assembles the
-    # CHUNKS_PER_HALF chunks into a full half and replays it N_PASSES times.
-    of_log0 = ObjectFifo(t_chunk_f32, depth=2, name="log0")
-    of_log1 = ObjectFifo(t_chunk_f32, depth=2, name="log1")
-    of_relay0 = of_log0.cons().forward(
-        tile=MT0, obj_type=t_half_f32, depth=1, repeat_count=N_PASSES, name="relay0"
-    )
-    of_relay1 = of_log1.cons().forward(
-        tile=MT1, obj_type=t_half_f32, depth=1, repeat_count=N_PASSES, name="relay1"
+    # The WHOLE V=128256 logits (513 KB) fit ONE memtile (524288 B). The GEMM
+    # streams N_CHUNKS chunks into the hand-written relay, which holds the whole
+    # buffer resident and replays it N_PASSES times to the sampler in chunks.
+    # (No 2-memtile split needed; see logits_relay.py.)
+    relay = LogitsRelay(
+        total_elems=VOCAB,
+        chunk_elems=CHUNK_N,
+        repeat_count=N_PASSES,
+        memtile_placement=MT0,
+        gemm_placement=Tile(0, 3),
+        sampler_placement=Tile(0, 4),
+        name="logits",
     )
 
     b_state = Buffer(t_state, name="sample_state")
@@ -170,11 +178,11 @@ def build():
         KO_GEMM,
         [t_norm_i8, t_wlm_slot, t_chunk_f32, np.int32],
     )
-    # Sampler reads the WHOLE half buffer (memtile relay) + a local chunk index.
+    # Sampler reads a CHUNK-sized recv buffer from the relay + local_chunk=0.
     k_sample = Kernel(
         "llama_sample_streamed",
         KO_SAMP,
-        [t_half_f32, t_state, t_params, np.int32, np.int32, np.int32],
+        [t_chunk_f32, t_state, t_params, np.int32, np.int32, np.int32],
     )
     k_final = Kernel(
         "llama_sample_streamed_finalize", KO_SAMP, [t_state, t_token, t_params]
@@ -189,41 +197,31 @@ def build():
         c_gamma.release(1)
         c_out.release(1)
 
-    # GEMM: acquire normed act once; produce all V logits as CHUNK_N chunks,
-    # first half0's chunks then half1's. Each chunk = TILES_PER_CHUNK gemm tiles
-    # of N_TILE logits (kernel writes out + local_tile*4).
-    def w_lmhead(c_act, c_w, c_l0, c_l1, k):
+    # GEMM: acquire normed act once; produce all V logits as N_CHUNKS chunks of
+    # CHUNK_N into the relay's send buffer. Each chunk = TILES_PER_CHUNK gemm
+    # tiles of N_TILE logits (kernel writes out + local_tile*4). The relay
+    # streams each chunk into the resident memtile buffer.
+    def w_lmhead(c_act, c_w, rel, k):
         a = c_act.acquire(1)
-        for _ch in range_(CHUNKS_PER_HALF):
-            o = c_l0.acquire(1)
+        for _ch in range_(N_CHUNKS):
+            o = rel.gemm_acquire()
             for t in range_(TILES_PER_CHUNK):
                 w = c_w.acquire(1)
                 k(a, w, o, _idx(t))
                 c_w.release(1)
-            c_l0.release(1)
-        for _ch in range_(CHUNKS_PER_HALF):
-            o = c_l1.acquire(1)
-            for t in range_(TILES_PER_CHUNK):
-                w = c_w.acquire(1)
-                k(a, w, o, _idx(t))
-                c_w.release(1)
-            c_l1.release(1)
+            rel.gemm_release()
         c_act.release(1)
 
-    # Sampler: 3 passes; each pass reads the whole V = half0 (32 chunks via
-    # relay0) then half1 (32 chunks via relay1). global chunk index = the
-    # sampler's running chunk count within the pass (0..63).
-    def w_sample(c0, c1, st, p, c_tok, ks, kf):
+    # Sampler: N_PASSES passes; each reads the whole V in N_CHUNKS chunk windows
+    # from the relay (which replays the resident buffer). The relay hands back a
+    # CHUNK-sized recv buffer per acquire, so local_chunk=0.
+    def w_sample(rel, st, p, c_tok, ks, kf):
         tok = c_tok.acquire(1)
         for pass_i in range_(1, N_PASSES + 1):
-            h0 = c0.acquire(1)
-            for ch in range_(CHUNKS_PER_HALF):
-                ks(h0, st, p, _idx(pass_i), _idx(ch), _idx(ch))
-            c0.release(1)
-            h1 = c1.acquire(1)
-            for ch in range_(CHUNKS_PER_HALF):
-                ks(h1, st, p, _idx(pass_i), _idx(CHUNKS_PER_HALF + ch), _idx(ch))
-            c1.release(1)
+            for ch in range_(N_CHUNKS):
+                rb = rel.acquire(1)
+                ks(rb, st, p, _idx(pass_i), _idx(ch), _const_i32(0))
+                rel.release(1)
         kf(st, tok, p)
         c_tok.release(1)
 
@@ -232,21 +230,13 @@ def build():
     )
     w_lm_worker = Worker(
         w_lmhead,
-        [of_norm.cons(), of_wlm.cons(), of_log0.prod(), of_log1.prod(), k_lmhead],
+        [of_norm.cons(), of_wlm.cons(), relay, k_lmhead],
         tile=Tile(0, 3),
         stack_size=4096,
     )
     w_sample_worker = Worker(
         w_sample,
-        [
-            of_relay0.cons(),
-            of_relay1.cons(),
-            b_state,
-            b_params,
-            of_token.prod(),
-            k_sample,
-            k_final,
-        ],
+        [relay, b_state, b_params, of_token.prod(), k_sample, k_final],
         tile=Tile(0, 4),
         stack_size=8192,
     )
