@@ -4033,6 +4033,9 @@ static LogicalResult generateAllNpuInstructionsOnce(ModuleOp moduleOp,
         }
         StringRef binBaseName = sys::path::filename(outputPath);
         xilinx::AIE::emitNpuLocmapJSON(locFile, devName, binBaseName, locmap);
+        if (verbose)
+          llvm::outs() << "Wrote " << locmap.size()
+                       << " locmap entries to: " << locmapPath << "\n";
       }
     });
   }
