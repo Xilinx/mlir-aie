@@ -8,7 +8,7 @@ var searchData=
   ['acquire_5fexact_5',['acquire_exact',['../classiron_1_1lock_1_1Lock.html#a5ea15f9ae715edefd119fe304530fdff',1,'iron::lock::Lock']]],
   ['add_6',['add',['../namespaceiron_1_1kernels_1_1eltwise.html#af90219fd608bcd72f2d2cf7448e60866',1,'iron::kernels::eltwise']]],
   ['add_5fbenchmark_5fargs_7',['add_benchmark_args',['../namespaceutils_1_1hostruntime_1_1argparse.html#a6dbe47fa0ef53bd9f534ffe785622e2f',1,'utils::hostruntime::argparse']]],
-  ['add_5fcompile_5fargs_8',['add_compile_args',['../namespaceutils_1_1hostruntime_1_1argparse.html#a517dcc38ebc866445852e5e2f661f4d7',1,'utils::hostruntime::argparse']]],
+  ['add_5fcompile_5fargs_8',['add_compile_args',['../namespaceutils_1_1hostruntime_1_1argparse.html#a1699a6fedb3c1ca74103d7b35cb1887c',1,'utils::hostruntime::argparse']]],
   ['add_5fflow_9',['add_flow',['../classiron_1_1runtime_1_1runtime_1_1Runtime.html#afbf592515df61035f73d70434cd33790',1,'iron::runtime::runtime::Runtime']]],
   ['add_5flock_10',['add_lock',['../classiron_1_1runtime_1_1runtime_1_1Runtime.html#a29779b88bdb49223b84899ac87f316e1',1,'iron::runtime::runtime::Runtime']]],
   ['add_5fruntime_5fargs_11',['add_runtime_args',['../namespaceutils_1_1hostruntime_1_1argparse.html#a90f0639e84c9d3b2d163f9f3d89f6fcb',1,'utils::hostruntime::argparse']]],

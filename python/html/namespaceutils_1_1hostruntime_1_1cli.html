@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;819ac4474aa4a0d634681a7d59f35a4cfbcc5680</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;c73e8fddbd9c977fe0a4510131966c9d8cc4cffd</span>
    </div>
   </td>
  </tr>
@@ -74,7 +74,8 @@ $(function() {
 </div><!-- top -->
 <div class="header">
   <div class="summary">
-<a href="#func-members">Functions</a>  </div>
+<a href="#func-members">Functions</a> &#124;
+<a href="#var-members">Variables</a>  </div>
   <div class="headertitle"><div class="title">utils.hostruntime.cli Namespace Reference</div></div>
 </div><!--header-->
 <div class="contents">
@@ -83,8 +84,19 @@ $(function() {
 Functions</h2></td></tr>
 <tr class="memitem:a72ba95d82876429f2e3e599121f5887c" id="r_a72ba95d82876429f2e3e599121f5887c"><td class="memItemLeft" align="right" valign="top">Any&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1hostruntime_1_1cli.html#a72ba95d82876429f2e3e599121f5887c">_resolve</a> (Any value, opts)</td></tr>
 <tr class="separator:a72ba95d82876429f2e3e599121f5887c"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a7de5aa6d43c359a00237a37e371acbb9" id="r_a7de5aa6d43c359a00237a37e371acbb9"><td class="memItemLeft" align="right" valign="top">None&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1hostruntime_1_1cli.html#a7de5aa6d43c359a00237a37e371acbb9">run_design_cli</a> (design, opts, *Mapping[str, Any]|Callable[[Any], Mapping[str, Any]] compile_kwargs, Callable[[Any], None]|None run_and_verify=None, Any|Callable[[Any], Any]|None device=None, Callable[[Any], None]|None emit_mlir=None, Callable[[Any], None]|None validate=None)</td></tr>
-<tr class="separator:a7de5aa6d43c359a00237a37e371acbb9"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ae54c7ef81dd7d8d3ab1aa2e252127c66" id="r_ae54c7ef81dd7d8d3ab1aa2e252127c66"><td class="memItemLeft" align="right" valign="top">&quot;Device&quot;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1hostruntime_1_1cli.html#ae54c7ef81dd7d8d3ab1aa2e252127c66">_resolve_device</a> (<a class="el" href="namespaceutils_1_1hostruntime_1_1cli.html#a2150f231a83a0ac19129df18a0e22bed">_DeviceArg</a> value, opts)</td></tr>
+<tr class="separator:ae54c7ef81dd7d8d3ab1aa2e252127c66"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a477f0edf220b869379970a652793cfb8" id="r_a477f0edf220b869379970a652793cfb8"><td class="memItemLeft" align="right" valign="top">str&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1hostruntime_1_1cli.html#a477f0edf220b869379970a652793cfb8">_runtime_device_name</a> (Any device)</td></tr>
+<tr class="separator:a477f0edf220b869379970a652793cfb8"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a68fada7f9335c5722567a0e50e8128c9" id="r_a68fada7f9335c5722567a0e50e8128c9"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1hostruntime_1_1cli.html#a68fada7f9335c5722567a0e50e8128c9">_detect_runtime_target</a> (opts, *str mode)</td></tr>
+<tr class="separator:a68fada7f9335c5722567a0e50e8128c9"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:abf100f403d36b44220d10e9709031ff4" id="r_abf100f403d36b44220d10e9709031ff4"><td class="memItemLeft" align="right" valign="top">None&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1hostruntime_1_1cli.html#abf100f403d36b44220d10e9709031ff4">run_design_cli</a> (design, opts, *Mapping[str, Any]|Callable[[Any], Mapping[str, Any]] compile_kwargs, Callable[[Any], None]|None run_and_verify=None, <a class="el" href="namespaceutils_1_1hostruntime_1_1cli.html#a2150f231a83a0ac19129df18a0e22bed">_DeviceArg</a>|None device=None, Callable[[Any], None]|None emit_mlir=None, Callable[[Any], None]|None validate=None)</td></tr>
+<tr class="separator:abf100f403d36b44220d10e9709031ff4"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="var-members" name="var-members"></a>
+Variables</h2></td></tr>
+<tr class="memitem:a2150f231a83a0ac19129df18a0e22bed" id="r_a2150f231a83a0ac19129df18a0e22bed"><td class="memItemLeft" align="right" valign="top">TypeAlias&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1hostruntime_1_1cli.html#a2150f231a83a0ac19129df18a0e22bed">_DeviceArg</a> = &quot;Device | Callable[[Any], Device | None]&quot;</td></tr>
+<tr class="separator:a2150f231a83a0ac19129df18a0e22bed"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock"><pre class="fragment">``run_design_cli`` — standard 3-mode dispatcher for IRON design CLIs.
@@ -102,8 +114,8 @@ Almost every basic/ design's ``main()`` is the same skeleton:
         _run_and_verify(opts)
 
 …where ``_compile_only`` always does the same ``--insts-path`` check +
-``set_current_device(from_name(opts.dev))`` + ``design.specialize(**kw)
-.compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path
+device binding + ``design.specialize(**kw).compile(
+xclbin_path=opts.xclbin_path, inst_path=opts.insts_path
 [, elf_path=opts.elf_path])``.
 
 This module wraps that skeleton so each design just declares the two
@@ -112,6 +124,42 @@ dispatcher do the branching + the boilerplate around it.  An optional
 ``emit_mlir=`` callback covers the rare design whose generator needs
 real ``iron.tensor`` instances at MLIR-gen time.
 </pre> </div><h2 class="groupheader">Function Documentation</h2>
+<a id="a68fada7f9335c5722567a0e50e8128c9" name="a68fada7f9335c5722567a0e50e8128c9"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a68fada7f9335c5722567a0e50e8128c9">&#9670;&#160;</a></span>_detect_runtime_target()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">utils.hostruntime.cli._detect_runtime_target </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>opts</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">*str&#160;</td>
+          <td class="paramname"><em>mode</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+<pre class="fragment">Resolve the active NPU family for an automatic CLI target.</pre> 
+</div>
+</div>
 <a id="a72ba95d82876429f2e3e599121f5887c" name="a72ba95d82876429f2e3e599121f5887c"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a72ba95d82876429f2e3e599121f5887c">&#9670;&#160;</a></span>_resolve()</h2>
 
@@ -148,8 +196,70 @@ real ``iron.tensor`` instances at MLIR-gen time.
 <pre class="fragment">Resolve ``value`` to a concrete value: call it if callable, else pass through.</pre> 
 </div>
 </div>
-<a id="a7de5aa6d43c359a00237a37e371acbb9" name="a7de5aa6d43c359a00237a37e371acbb9"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a7de5aa6d43c359a00237a37e371acbb9">&#9670;&#160;</a></span>run_design_cli()</h2>
+<a id="ae54c7ef81dd7d8d3ab1aa2e252127c66" name="ae54c7ef81dd7d8d3ab1aa2e252127c66"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ae54c7ef81dd7d8d3ab1aa2e252127c66">&#9670;&#160;</a></span>_resolve_device()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname"> &quot;Device&quot; utils.hostruntime.cli._resolve_device </td>
+          <td>(</td>
+          <td class="paramtype"><a class="el" href="namespaceutils_1_1hostruntime_1_1cli.html#a2150f231a83a0ac19129df18a0e22bed">_DeviceArg</a>&#160;</td>
+          <td class="paramname"><em>value</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>opts</em>&#160;</td>
+        </tr>
+        <tr>
+          <td></td>
+          <td>)</td>
+          <td></td><td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+<pre class="fragment">Resolve a CLI device selector to a concrete Device.</pre> 
+</div>
+</div>
+<a id="a477f0edf220b869379970a652793cfb8" name="a477f0edf220b869379970a652793cfb8"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a477f0edf220b869379970a652793cfb8">&#9670;&#160;</a></span>_runtime_device_name()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname"> str utils.hostruntime.cli._runtime_device_name </td>
+          <td>(</td>
+          <td class="paramtype">Any&#160;</td>
+          <td class="paramname"><em>device</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+<pre class="fragment">Return the standard CLI name for a detected NPU device.</pre> 
+</div>
+</div>
+<a id="abf100f403d36b44220d10e9709031ff4" name="abf100f403d36b44220d10e9709031ff4"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#abf100f403d36b44220d10e9709031ff4">&#9670;&#160;</a></span>run_design_cli()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -181,7 +291,7 @@ real ``iron.tensor`` instances at MLIR-gen time.
         <tr>
           <td class="paramkey"></td>
           <td></td>
-          <td class="paramtype">Any | Callable[[Any], Any] | None &#160;</td>
+          <td class="paramtype"><a class="el" href="namespaceutils_1_1hostruntime_1_1cli.html#a2150f231a83a0ac19129df18a0e22bed">_DeviceArg</a> | None &#160;</td>
           <td class="paramname"><em>device</em> = <code>None</code>, </td>
         </tr>
         <tr>
@@ -207,8 +317,11 @@ real ``iron.tensor`` instances at MLIR-gen time.
 
 The standard branch tree (in order):
 
-  1. If ``validate`` is given, call ``validate(opts)`` first.
-  2. If ``opts.emit_mlir`` is True, set the current device, then:
+  1. Bind an explicit ``--dev`` target or concrete ``device`` argument,
+     or detect the attached runtime device for run and local compile-only
+     modes.
+  2. If ``validate`` is given, call ``validate(opts)``.
+  3. If ``opts.emit_mlir`` is True, then:
 
      * If an ``emit_mlir`` callback was supplied, call ``emit_mlir(opts)``.
      * Otherwise print ``design.specialize(**compile_kwargs).as_mlir()``
@@ -217,23 +330,23 @@ The standard branch tree (in order):
 
      Then return.
 
-  3. If ``opts.xclbin_path`` is set:
+  4. If ``opts.xclbin_path`` is set:
 
      * Refuse if ``opts.insts_path`` is unset (``sys.exit`` with the
        standard message).
-     * Set the current device.
      * Call ``design.specialize(**compile_kwargs).compile(
        xclbin_path=opts.xclbin_path, inst_path=opts.insts_path,
        [elf_path=opts.elf_path])``.
 
-  4. Otherwise, call ``run_and_verify(opts)``.
+  5. Otherwise, call ``run_and_verify(opts)``.
 
 Args:
     design: The ``@iron.jit``-decorated design (a ``CallableDesign``).
     opts: Parsed ``argparse.Namespace`` — must expose at minimum
         ``xclbin_path`` / ``insts_path`` (the standard
-        ``add_compile_args`` flags).  ``emit_mlir`` and ``elf_path``
-        are read if present.
+        ``add_compile_args`` flags). ``dev`` may be ``None`` to request
+        automatic runtime selection. ``emit_mlir`` and ``elf_path`` are
+        read if present.
     compile_kwargs: Either a dict OR a callable that takes ``opts``
         and returns the kwargs dict to pass to
         ``design.specialize()``.  Callable form is convenient for
@@ -246,11 +359,12 @@ Args:
         harness omit this; reaching the run branch without it exits
         with a clear "no python run path" message.
     device: Optional iron ``Device`` instance OR callable
-        ``opts -&gt; Device``.  If omitted, defaults to
-        ``from_name(opts.dev)`` (using whatever device choices the
-        argparse setup allowed).  Pass a callable when the device
-        depends on more than just ``opts.dev`` — e.g. matmul's
-        ``(opts.dev, opts.n_aie_cols)`` mapping.
+        ``opts -&gt; Device``. An explicit ``opts.dev`` is resolved through
+        this value, or through ``from_name(opts.dev)`` when omitted. When
+        ``opts.dev`` is ``None``, the dispatcher detects the attached NPU
+        family, updates ``opts.dev``, and then invokes a callable selector
+        so it can retain its declared column profile. Pass a ``Device``
+        instance to pin a target independently of the CLI.
     emit_mlir: Optional callable for the ``--emit-mlir`` branch.
         If ``opts.emit_mlir`` is True but this is None, the dispatcher
         falls back to printing
@@ -260,9 +374,32 @@ Args:
         passed-in tensor).  Pass an explicit callable when the
         generator needs real ``iron.tensor`` instances at MLIR-gen
         time.
-    validate: Optional callable invoked before any branch — e.g. for
-        shape / arg consistency checks that should fire in all modes.
+    validate: Optional callable invoked after target selection — e.g.
+        for shape / arg consistency checks that should fire in all modes.
 </pre> 
+</div>
+</div>
+<h2 class="groupheader">Variable Documentation</h2>
+<a id="a2150f231a83a0ac19129df18a0e22bed" name="a2150f231a83a0ac19129df18a0e22bed"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a2150f231a83a0ac19129df18a0e22bed">&#9670;&#160;</a></span>_DeviceArg</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">TypeAlias utils.hostruntime.cli._DeviceArg = &quot;Device | Callable[[Any], Device | None]&quot;</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
 </div>
 </div>
 </div><!-- contents -->

@@ -6,6 +6,7 @@ var searchData=
   ['enable_5ftrace_3',['enable_trace',['../classiron_1_1runtime_1_1runtime_1_1Runtime.html#af9b67bac123fa8c67f2408591c13e3dc',1,'iron::runtime::runtime::Runtime']]],
   ['endpoint_4',['endpoint',['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html#ac0286d069367c6b5204813592b98d266',1,'iron.dataflow.objectfifo.ObjectFifoHandle.endpoint(self)'],['../classiron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html#a687f048423cc0ad22dc8a3b09e3e1e40',1,'iron.dataflow.objectfifo.ObjectFifoHandle.endpoint(self, ObjectFifoEndpoint endpoint)']]],
   ['endpoint_2epy_5',['endpoint.py',['../dataflow_2endpoint_8py.html',1,'(Global Namespace)'],['../runtime_2endpoint_8py.html',1,'(Global Namespace)']]],
-  ['externalfunction_6',['ExternalFunction',['../classiron_1_1kernel_1_1ExternalFunction.html',1,'iron::kernel']]],
-  ['extract_5ftrace_5ffrom_5fargs_7',['extract_trace_from_args',['../classutils_1_1hostruntime_1_1hostruntime_1_1HostRuntime.html#ac20963a3398804850e6a1d764df8a1bc',1,'utils::hostruntime::hostruntime::HostRuntime']]]
+  ['ensure_5fcurrent_5fdevice_6',['ensure_current_device',['../namespaceutils.html#a1154c74c172258526f0b9512c26dd582',1,'utils']]],
+  ['externalfunction_7',['ExternalFunction',['../classiron_1_1kernel_1_1ExternalFunction.html',1,'iron::kernel']]],
+  ['extract_5ftrace_5ffrom_5fargs_8',['extract_trace_from_args',['../classutils_1_1hostruntime_1_1hostruntime_1_1HostRuntime.html#ac20963a3398804850e6a1d764df8a1bc',1,'utils::hostruntime::hostruntime::HostRuntime']]]
 ];

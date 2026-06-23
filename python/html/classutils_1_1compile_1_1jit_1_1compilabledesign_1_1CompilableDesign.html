@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;819ac4474aa4a0d634681a7d59f35a4cfbcc5680</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;c73e8fddbd9c977fe0a4510131966c9d8cc4cffd</span>
    </div>
   </td>
  </tr>
@@ -143,8 +143,14 @@ Public Attributes</h2></td></tr>
 Protected Member Functions</h2></td></tr>
 <tr class="memitem:a416293b6ab8df589758763c3e3d31fd9" id="r_a416293b6ab8df589758763c3e3d31fd9"><td class="memItemLeft" align="right" valign="top">str&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classutils_1_1compile_1_1jit_1_1compilabledesign_1_1CompilableDesign.html#a416293b6ab8df589758763c3e3d31fd9">_compute_cache_hash</a> (self)</td></tr>
 <tr class="separator:a416293b6ab8df589758763c3e3d31fd9"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a9bacc8a848a9aa0b7b4a10e551fe0991" id="r_a9bacc8a848a9aa0b7b4a10e551fe0991"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classutils_1_1compile_1_1jit_1_1compilabledesign_1_1CompilableDesign.html#a9bacc8a848a9aa0b7b4a10e551fe0991">_bind_generation_device</a> (self)</td></tr>
+<tr class="separator:a9bacc8a848a9aa0b7b4a10e551fe0991"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a85ea94edd3913068fbfe143311156655" id="r_a85ea94edd3913068fbfe143311156655"><td class="memItemLeft" align="right" valign="top">tuple&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classutils_1_1compile_1_1jit_1_1compilabledesign_1_1CompilableDesign.html#a85ea94edd3913068fbfe143311156655">_generation_cache_key</a> (self)</td></tr>
+<tr class="separator:a85ea94edd3913068fbfe143311156655"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ab295fd684d9d19da64402dc232966c5c" id="r_ab295fd684d9d19da64402dc232966c5c"><td class="memItemLeft" align="right" valign="top">tuple[str, list]&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classutils_1_1compile_1_1jit_1_1compilabledesign_1_1CompilableDesign.html#ab295fd684d9d19da64402dc232966c5c">_generated</a> (self)</td></tr>
 <tr class="separator:ab295fd684d9d19da64402dc232966c5c"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a4273ae5c3e2d43ff279f428df5270c11" id="r_a4273ae5c3e2d43ff279f428df5270c11"><td class="memItemLeft" align="right" valign="top">tuple[str, list]&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classutils_1_1compile_1_1jit_1_1compilabledesign_1_1CompilableDesign.html#a4273ae5c3e2d43ff279f428df5270c11">_generate_uncached</a> (self)</td></tr>
+<tr class="separator:a4273ae5c3e2d43ff279f428df5270c11"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aa606b8aac7915cd25064d3e115c49866" id="r_aa606b8aac7915cd25064d3e115c49866"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classutils_1_1compile_1_1jit_1_1compilabledesign_1_1CompilableDesign.html#aa606b8aac7915cd25064d3e115c49866">_generate_mlir</a> (self, ExternalFunction)</td></tr>
 <tr class="separator:aa606b8aac7915cd25064d3e115c49866"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
@@ -291,6 +297,32 @@ Args:
 
 </div>
 </div>
+<a id="a9bacc8a848a9aa0b7b4a10e551fe0991" name="a9bacc8a848a9aa0b7b4a10e551fe0991"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a9bacc8a848a9aa0b7b4a10e551fe0991">&#9670;&#160;</a></span>_bind_generation_device()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">utils.compile.jit.compilabledesign.CompilableDesign._bind_generation_device </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>self</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+<pre class="fragment">Bind an available runtime device before target-sensitive work.</pre> 
+</div>
+</div>
 <a id="a416293b6ab8df589758763c3e3d31fd9" name="a416293b6ab8df589758763c3e3d31fd9"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a416293b6ab8df589758763c3e3d31fd9">&#9670;&#160;</a></span>_compute_cache_hash()</h2>
 
@@ -358,6 +390,32 @@ instances so ``compile()`` can collect them.
 </pre> 
 </div>
 </div>
+<a id="a4273ae5c3e2d43ff279f428df5270c11" name="a4273ae5c3e2d43ff279f428df5270c11"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a4273ae5c3e2d43ff279f428df5270c11">&#9670;&#160;</a></span>_generate_uncached()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname"> tuple[str, list] utils.compile.jit.compilabledesign.CompilableDesign._generate_uncached </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>self</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+<pre class="fragment">Run the generator and collect generated MLIR text and external kernels.</pre> 
+</div>
+</div>
 <a id="ab295fd684d9d19da64402dc232966c5c" name="ab295fd684d9d19da64402dc232966c5c"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#ab295fd684d9d19da64402dc232966c5c">&#9670;&#160;</a></span>_generated()</h2>
 
@@ -381,22 +439,36 @@ instances so ``compile()`` can collect them.
   </tr>
 </table>
 </div><div class="memdoc">
-<pre class="fragment">Run the generator once and cache ``(mlir_text, external_kernels)``.
+<pre class="fragment">Return cached ``(mlir_text, external_kernels)`` for the active device.</pre> 
+</div>
+</div>
+<a id="a85ea94edd3913068fbfe143311156655" name="a85ea94edd3913068fbfe143311156655"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a85ea94edd3913068fbfe143311156655">&#9670;&#160;</a></span>_generation_cache_key()</h2>
 
-Generation (executing the user's MLIR builder) is the dominant
-in-process cost on a cold-disk cache path. Caching the *text* — not
-the Module — is safe across MLIR Contexts: the Module is bound to the
-Context that built it, but the text is not, so each ``_generate_mlir``
-call can re-parse into the live Context and return a fresh Module.
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname"> tuple utils.compile.jit.compilabledesign.CompilableDesign._generation_cache_key </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>self</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+<pre class="fragment">Return the identity that affects cached MLIR generation.
 
-ExternalFunction instances are Python objects with no Context
-affinity; cached directly. Their ``_compiled`` flag survives reuse,
-so a second ``compile()`` correctly skips already-built kernels.
-
-Safe to memoize because :class:`CompilableDesign` inputs are frozen
-at ``__init__`` (``compile_kwargs`` is a ``MappingProxyType``; the
-list fields are tuples), so the generated MLIR is a pure function
-of ``self``.
+Static ``.mlir`` files key on their path. Python generators key on the
+explicitly bound device, without probing the runtime.
 </pre> 
 </div>
 </div>
@@ -415,10 +487,10 @@ of ``self``.
         </tr>
       </table>
 </div><div class="memdoc">
-<pre class="fragment">Hash of the build environment: source/object mtimes + tool mtimes + arch.
+<pre class="fragment">Hash of the build environment: source/object mtimes + tool mtimes + device.
 
 Changes whenever a kernel ``.cc``, an ``.o``, Peano, aiecc, or the
-target arch changes; identifies the *with what* of compilation.
+target device changes; identifies the *with what* of compilation.
 </pre> 
 </div>
 </div>
@@ -544,7 +616,8 @@ Note:
 <pre class="fragment">Generate and return the MLIR module without compiling to xclbin.
 
 Useful for inspecting generated MLIR, debugging, or offline analysis.
-Does not require an NPU or XRT to be present.
+Binds an available runtime-detected device before generation so
+target-sensitive builders and the generation cache see the same device.
 
 Returns:
     The generated ``mlir.ir.Module``.
@@ -604,8 +677,8 @@ Returns:
 </div><div class="memdoc">
 <pre class="fragment">Hash of the design recipe: generator + CompileTime[T] kwargs + flags.
 
-Stable across rebuilds; identifies the *what* of compilation. Two
-designs with equal ``recipe_hash`` produce identical MLIR.
+Identifies the target-independent design recipe. Device-specialized
+MLIR also depends on the bound device.
 </pre> 
 </div>
 </div>

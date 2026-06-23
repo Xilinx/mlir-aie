@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;819ac4474aa4a0d634681a7d59f35a4cfbcc5680</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;c73e8fddbd9c977fe0a4510131966c9d8cc4cffd</span>
    </div>
   </td>
  </tr>
@@ -82,6 +82,8 @@ $(function() {
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="func-members" name="func-members"></a>
 Functions</h2></td></tr>
+<tr class="memitem:ae68c77468fbdbd0c2ea47aaef301723c" id="r_ae68c77468fbdbd0c2ea47aaef301723c"><td class="memItemLeft" align="right" valign="top">tuple[str, str, str, str]&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1compile_1_1jit_1_1__hash.html#ae68c77468fbdbd0c2ea47aaef301723c">_device_identity_key</a> (device)</td></tr>
+<tr class="separator:ae68c77468fbdbd0c2ea47aaef301723c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a31cd1a322246dd585ca3ff15f2f9310d" id="r_a31cd1a322246dd585ca3ff15f2f9310d"><td class="memItemLeft" align="right" valign="top">str&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1compile_1_1jit_1_1__hash.html#a31cd1a322246dd585ca3ff15f2f9310d">_compute_recipe_hash</a> (Callable|Path generator, Mapping[str, Any] compile_kwargs, list[str]|tuple[str,...] aiecc_flags, list[str]|tuple[str,...] compile_flags)</td></tr>
 <tr class="separator:a31cd1a322246dd585ca3ff15f2f9310d"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a8cc829a2a288e1a2a66baf0679c3928f" id="r_a8cc829a2a288e1a2a66baf0679c3928f"><td class="memItemLeft" align="right" valign="top">str&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespaceutils_1_1compile_1_1jit_1_1__hash.html#a8cc829a2a288e1a2a66baf0679c3928f">_compute_artifact_hash</a> (Callable|Path generator, list[Path]|tuple[Path,...] source_files, list[Path]|tuple[Path,...] object_files)</td></tr>
@@ -99,10 +101,10 @@ Variables</h2></td></tr>
 
 Two halves so callers can distinguish "recipe changed" from "rebuild needed":
 
-* :func:`_compute_recipe_hash`   — generator bytecode + compile_kwargs +
-  aiecc/compile flags.  Pure function of the design specification.
+* :func:`_compute_recipe_hash`   — generator identity + compile_kwargs +
+  aiecc/compile flags. Target-independent design identity.
 * :func:`_compute_artifact_hash` — source / object mtimes + tool mtimes +
-  target arch.  Captures things that change the *output* of compilation
+  target device.  Captures things that change the *output* of compilation
   without changing the *recipe*.
 
 :func:`_compute_hash` composes both into the 24-hex cache-key
@@ -150,7 +152,7 @@ Carved out of ``compilabledesign.py`` to keep the main file focused on the
   </tr>
 </table>
 </div><div class="memdoc">
-<pre class="fragment">Hash of the "artifacts": source/object mtimes + tool mtimes + target arch.
+<pre class="fragment">Hash of the "artifacts": source/object mtimes + tool mtimes + target device.
 
 Captures everything that can change the *output* of compilation without
 changing the *recipe*: edited C++ kernels, swapped object files, upgraded
@@ -265,10 +267,36 @@ Peano / aiecc, retargeted device.
 </div><div class="memdoc">
 <pre class="fragment">Hash of the "recipe": generator bytecode + CompileTime[T] kwargs + flags.
 
-Pure function of the design specification; does not touch the filesystem
-or environment.  Two CompilableDesigns with the same recipe_hash will
-produce identical MLIR (modulo nondeterminism in the generator body).
+Captures the target-independent generator and compile configuration. It
+omits device identity, so equal recipe hashes can produce different
+target-specialized MLIR.
 </pre> 
+</div>
+</div>
+<a id="ae68c77468fbdbd0c2ea47aaef301723c" name="ae68c77468fbdbd0c2ea47aaef301723c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ae68c77468fbdbd0c2ea47aaef301723c">&#9670;&#160;</a></span>_device_identity_key()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname"> tuple[str, str, str, str] utils.compile.jit._hash._device_identity_key </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>device</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+<pre class="fragment">Return the cache-relevant identity of an IRON device.</pre> 
 </div>
 </div>
 <h2 class="groupheader">Variable Documentation</h2>

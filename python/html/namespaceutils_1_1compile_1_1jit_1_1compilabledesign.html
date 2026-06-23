@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;819ac4474aa4a0d634681a7d59f35a4cfbcc5680</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;c73e8fddbd9c977fe0a4510131966c9d8cc4cffd</span>
    </div>
   </td>
  </tr>
@@ -100,19 +100,18 @@ pair via ``compile()``.
 Hashing is split into two halves so callers can distinguish "recipe changed"
 from "rebuild needed":
 
-* ``recipe_hash``   — generator bytecode + compile_kwargs + aiecc/compile flags
-* ``artifact_hash`` — source / object mtimes + tool mtimes + target arch
+* ``recipe_hash``   — generator identity + compile_kwargs + aiecc/compile flags
+* ``artifact_hash`` — source / object mtimes + tool mtimes + target device
 
 ``hash(design)`` composes both into a 24-hex cache key; no MLIR generation
 needed for a cache lookup.
 
-Generation is memoized at the instance level via :attr:`CompilableDesign._generated`
-(a ``functools.cached_property`` returning the MLIR text + collected
-``ExternalFunction`` instances). Caching the *text* — not the Module — is what
-makes this safe across MLIR Contexts: every consumer call re-parses into a
-fresh ``mlir_mod_ctx()`` and gets a Module bound to its own Context. Safe
-because all constructor inputs are frozen, so the generated MLIR is a pure
-function of the instance.
+Generation is memoized per active IRON device via :attr:`CompilableDesign._generated`.
+Caching the *text* — not the Module — is what makes this safe across MLIR
+Contexts: every consumer call re-parses into a fresh ``mlir_mod_ctx()`` and gets
+a Module bound to its own Context. The active device is part of the generation
+key because kernel factories and ``Program(...)`` creation can specialize on the
+current target.
 </pre> </div><h2 class="groupheader">Variable Documentation</h2>
 <a id="a09511048e567c5e6b7c2ca9c6c76d6e7" name="a09511048e567c5e6b7c2ca9c6c76d6e7"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a09511048e567c5e6b7c2ca9c6c76d6e7">&#9670;&#160;</a></span>logger</h2>
