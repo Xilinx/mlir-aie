@@ -25,7 +25,7 @@ N ?= 64
 PEANO_FLAGS := ${PEANOWRAP2P_FLAGS} \
     -DLLAMA_GEMM_PT_M=${M} -DLLAMA_GEMM_PT_K=${K} -DLLAMA_GEMM_PT_N=${N}
 
-.PHONY: all clean gemm_pt run_gemm_pt gemm_pt_col run_gemm_pt_col gemm_pt_proj run_gemm_pt_proj flowkv_pair run_flowkv_pair glue run_glue layer_pt run_layer_pt rmsnorm run_rmsnorm rmsnorm_int8 run_rmsnorm_int8 rmsnorm_int8_dyn run_rmsnorm_int8_dyn gemm_srs run_gemm_srs silu_mul run_silu_mul rope run_rope flowkv run_flowkv sample run_sample layer_real run_layer_real chain_real run_chain_real chain_sample run_chain_sample tiled_gemm run_tiled_gemm ffn_half run_ffn_half attn_half run_attn_half layer_d2048 run_layer_d2048 chain_dynscale run_chain_dynscale layer_mh run_layer_mh lmhead_sample run_lmhead_sample sample_streamed run_sample_streamed memrepeat_probe run_memrepeat_probe lmhead_full run_lmhead_full
+.PHONY: all clean gemm_pt run_gemm_pt gemm_pt_col run_gemm_pt_col gemm_pt_proj run_gemm_pt_proj flowkv_pair run_flowkv_pair glue run_glue layer_pt run_layer_pt rmsnorm run_rmsnorm rmsnorm_int8 run_rmsnorm_int8 rmsnorm_int8_dyn run_rmsnorm_int8_dyn gemm_srs run_gemm_srs silu_mul run_silu_mul rope run_rope flowkv run_flowkv sample run_sample layer_real run_layer_real chain_real run_chain_real chain_sample run_chain_sample tiled_gemm run_tiled_gemm ffn_half run_ffn_half attn_half run_attn_half layer_d2048 run_layer_d2048 chain_dynscale run_chain_dynscale layer_mh run_layer_mh lmhead_sample run_lmhead_sample sample_streamed run_sample_streamed memrepeat_probe run_memrepeat_probe lmhead_full run_lmhead_full replay_probe run_replay_probe
 
 all: gemm_pt
 
@@ -1123,6 +1123,31 @@ run_memrepeat_probe: memrepeat_probe
 	cd ${srcdir} && python3 test_memrepeat_probe.py \
 		-x ${BUILD}/final_memrepeat_probe.xclbin \
 		-i ${BUILD}/insts_memrepeat_probe.bin \
+		-k MLIR_AIE
+
+# ---------- replay+chunk probe (M3a relay consumer-side validation) ----------
+RP_HALF ?= 256
+RP_CHUNK ?= 64
+RP_R ?= 3
+${BUILD}/aie_replay_probe.mlir: ${srcdir}/aie2_replay_probe.py ${srcdir}/lowlevel_dma.py
+	mkdir -p ${@D}
+	LLAMA_RP_HALF=${RP_HALF} LLAMA_RP_CHUNK=${RP_CHUNK} LLAMA_RP_R=${RP_R} python3 $< > $@
+
+${BUILD}/final_replay_probe.xclbin: ${BUILD}/aie_replay_probe.mlir ${BUILD}/llama_passthrough_f32.cc.o
+	mkdir -p ${@D}
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-xchesscc --no-xbridge \
+		--xclbin-name=${@F} \
+		--npu-insts-name=insts_replay_probe.bin \
+		$(notdir $<)
+
+replay_probe: ${BUILD}/final_replay_probe.xclbin
+
+run_replay_probe: replay_probe
+	cd ${srcdir} && LLAMA_RP_HALF=${RP_HALF} LLAMA_RP_CHUNK=${RP_CHUNK} LLAMA_RP_R=${RP_R} \
+		python3 test_replay_probe.py \
+		-x ${BUILD}/final_replay_probe.xclbin \
+		-i ${BUILD}/insts_replay_probe.bin \
 		-k MLIR_AIE
 
 # ---------- clean ----------

@@ -38,6 +38,12 @@ void passthrough_f32_at(float *restrict in, float *restrict out, int32_t idx) {
     dst[i] = in[i];
 }
 
+// int8 chunk copy for the replay probe (byte-movement validation).
+void passthrough_i8_chunk(int8_t *restrict in, int8_t *restrict out) {
+  for (int i = 0; i < LLAMA_PROBE_CHUNK; i++)
+    out[i] = in[i];
+}
+
 // Witness copy: read the WHOLE half-buffer (forces the relay DMA of all
 // LLAMA_PROBE_HALF elements) but write only a small WITNESS to L1 (first +
 // last element of the half), so the consumer's output buffer stays tiny and
