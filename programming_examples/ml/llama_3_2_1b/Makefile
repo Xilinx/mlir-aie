@@ -1293,6 +1293,36 @@ run_persist_probe: persist_probe
 		-i ${BUILD}/insts_persist_probe.bin \
 		-k MLIR_AIE
 
+# ---------- persistent on-device DECODE loop probe (tiny tied LM) ----------
+PD_V ?= 64
+PD_D ?= 64
+PD_T ?= 8
+${BUILD}/llama_persist_decode.cc.o: ${KDIR}/llama_persist_decode.cc
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -ffp-contract=off \
+		-DLLAMA_PD_V=${PD_V} -DLLAMA_PD_D=${PD_D} -c $< -o ${@F}
+
+${BUILD}/aie_persist_decode_probe.mlir: ${srcdir}/aie2_persist_decode_probe.py
+	mkdir -p ${@D}
+	LLAMA_PD_V=${PD_V} LLAMA_PD_D=${PD_D} LLAMA_PD_T=${PD_T} python3 $< > $@
+
+${BUILD}/final_persist_decode_probe.xclbin: ${BUILD}/aie_persist_decode_probe.mlir ${BUILD}/llama_persist_decode.cc.o
+	mkdir -p ${@D}
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-xchesscc --no-xbridge \
+		--xclbin-name=${@F} \
+		--npu-insts-name=insts_persist_decode_probe.bin \
+		$(notdir $<)
+
+persist_decode_probe: ${BUILD}/final_persist_decode_probe.xclbin
+
+run_persist_decode_probe: persist_decode_probe
+	cd ${srcdir} && LLAMA_PD_V=${PD_V} LLAMA_PD_D=${PD_D} LLAMA_PD_T=${PD_T} \
+		python3 test_persist_decode_probe.py \
+		-x ${BUILD}/final_persist_decode_probe.xclbin \
+		-i ${BUILD}/insts_persist_decode_probe.bin \
+		-k MLIR_AIE
+
 # ---------- clean ----------
 clean:
 	rm -rf ${BUILD}
