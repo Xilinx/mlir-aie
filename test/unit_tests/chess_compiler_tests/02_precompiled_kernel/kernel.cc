@@ -11,7 +11,6 @@
 #include <stdio.h>
 // #include <stdint.h>
 
-
 //void func(int32_t *buf);
 
 extern int32_t a[256];
