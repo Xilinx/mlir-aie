@@ -36,7 +36,6 @@ class Device(Resolvable):
         self._device = device
         self._tm = get_target_model(device)
         self._resolved_tiles: dict[int, LogicalTileOp] = {}
-        self._resolved_coords: dict[tuple[int, int], LogicalTileOp] = {}
 
     @property
     def cols(self) -> int:
@@ -174,32 +173,28 @@ class Device(Resolvable):
             tile.op = self._resolved_tiles[tile_id]
             return
 
-        # Merge tiles at the same coordinates into one logical_tile op
-        if tile.col is not None and tile.row is not None:
-            coord = (tile.col, tile.row)
-            if coord in self._resolved_coords:
-                op = self._resolved_coords[coord]
-                self._resolved_tiles[tile_id] = op
-                tile.op = op
-                return
-
-        if tile.tile_type is None:
+        # Emit one aie.logical_tile per distinct Tile object — no merging by
+        # coordinate. The compiler owns coordinate resolution: --aie-place-tiles
+        # merges non-core logical tiles that share a coordinate onto one
+        # physical tile, and the aie.device verifier rejects two cores landing
+        # on the same coordinate. (Dedup above is by object identity only: the
+        # SAME Tile referenced from multiple endpoints resolves once.)
+        #
+        # The logical_tile op requires a tile_type, so infer it from coordinates
+        # when unset. Computed locally — the Tile object is never mutated. Bounds
+        # and tile_type/coordinate-agreement are verified by LogicalTileOp::verify,
+        # so no Python-side check is needed here.
+        tile_type = tile.tile_type
+        if tile_type is None:
             if tile.col is not None and tile.row is not None:
-                tile.tile_type = self.get_tile_type(tile.col, tile.row)
+                tile_type = self.get_tile_type(tile.col, tile.row)
             else:
                 raise ValueError(
                     f"Cannot resolve {tile}: tile_type must be set or inferred from coordinates."
                 )
-        elif tile.col is not None and tile.row is not None:
-            inferred = self.get_tile_type(tile.col, tile.row)
-            if tile.tile_type != inferred:
-                raise ValueError(
-                    f"Tile at ({tile.col}, {tile.row}) has tile_type={tile.tile_type}, "
-                    f"but coordinates indicate {inferred}"
-                )
 
         op = logical_tile(
-            tile.tile_type,
+            tile_type,
             col=tile.col,
             row=tile.row,
             allocation_scheme=tile.allocation_scheme,
@@ -207,8 +202,6 @@ class Device(Resolvable):
             ip=ip,
         )
         self._resolved_tiles[tile_id] = op
-        if tile.col is not None and tile.row is not None:
-            self._resolved_coords[(tile.col, tile.row)] = op
         tile.op = op
 
 
