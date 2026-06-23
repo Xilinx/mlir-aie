@@ -1263,6 +1263,36 @@ run_embedsel_probe: embedsel_probe
 		-i ${BUILD}/insts_embedsel_probe.bin \
 		-k MLIR_AIE
 
+# ---------- persistent on-device feedback loop probe (capstone primitive) ----------
+PP_N ?= 8
+PP_LEN ?= 64
+# persist_step needs LLAMA_PERSIST_LEN baked; reuse the passthrough .o build but
+# with the persist len. Separate .o to avoid clobbering the probe builds.
+${BUILD}/llama_persist.cc.o: ${KDIR}/llama_passthrough_f32.cc
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -ffp-contract=off \
+		-DLLAMA_PERSIST_LEN=${PP_LEN} -c $< -o llama_passthrough_f32.cc.o
+
+${BUILD}/aie_persist_probe.mlir: ${srcdir}/aie2_persist_probe.py
+	mkdir -p ${@D}
+	LLAMA_PP_N=${PP_N} LLAMA_PP_LEN=${PP_LEN} python3 $< > $@
+
+${BUILD}/final_persist_probe.xclbin: ${BUILD}/aie_persist_probe.mlir ${BUILD}/llama_persist.cc.o
+	mkdir -p ${@D}
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-xchesscc --no-xbridge \
+		--xclbin-name=${@F} \
+		--npu-insts-name=insts_persist_probe.bin \
+		$(notdir $<)
+
+persist_probe: ${BUILD}/final_persist_probe.xclbin
+
+run_persist_probe: persist_probe
+	cd ${srcdir} && LLAMA_PP_N=${PP_N} LLAMA_PP_LEN=${PP_LEN} python3 test_persist_probe.py \
+		-x ${BUILD}/final_persist_probe.xclbin \
+		-i ${BUILD}/insts_persist_probe.bin \
+		-k MLIR_AIE
+
 # ---------- clean ----------
 clean:
 	rm -rf ${BUILD}

@@ -15,7 +15,23 @@
 #define LLAMA_PROBE_CHUNK 64
 #endif
 
+#ifndef LLAMA_PERSIST_LEN
+#define LLAMA_PERSIST_LEN 64
+#endif
+
 extern "C" {
+
+// persist_step: out = fb = in + 1. Used by the persistent-loop feedback probe
+// (aie2_persist_probe.py) -- fb feeds the next iteration on-chip, out is
+// drained.
+void persist_step(int32_t *restrict in, int32_t *restrict fb,
+                  int32_t *restrict out) {
+  for (int i = 0; i < LLAMA_PERSIST_LEN; i++) {
+    int32_t v = in[i] + 1;
+    fb[i] = v;
+    out[i] = v;
+  }
+}
 
 void passthrough_f32(float *restrict in, float *restrict out) {
   for (int i = 0; i < LLAMA_PROBE_CHUNK; i++)
