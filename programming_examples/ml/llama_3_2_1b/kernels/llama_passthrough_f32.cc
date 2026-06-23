@@ -30,6 +30,14 @@ void passthrough_f32_chunk(float *restrict in, float *restrict out) {
     out[i] = in[i];
 }
 
+// Copy a SUBCHUNK into out at slot idx (out + idx*SUBCHUNK), mirroring the
+// lm_head GEMM's `out + tile_idx*N_TILE` write into a larger acquired buffer.
+void passthrough_f32_at(float *restrict in, float *restrict out, int32_t idx) {
+  float *restrict dst = out + idx * LLAMA_PROBE_SUBCHUNK;
+  for (int i = 0; i < LLAMA_PROBE_SUBCHUNK; i++)
+    dst[i] = in[i];
+}
+
 // Witness copy: read the WHOLE half-buffer (forces the relay DMA of all
 // LLAMA_PROBE_HALF elements) but write only a small WITNESS to L1 (first +
 // last element of the half), so the consumer's output buffer stays tiny and

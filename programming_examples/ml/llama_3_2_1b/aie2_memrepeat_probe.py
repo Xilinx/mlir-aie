@@ -66,8 +66,7 @@ def build():
     t_chunk = _f32(CHUNK)
 
     KO = "llama_passthrough_f32.cc.o"
-    k_copy = Kernel("passthrough_f32", KO, [t_half, t_half])
-    k_chunk = Kernel("passthrough_f32_chunk", KO, [t_chunk, t_chunk])
+    k_copy = Kernel("passthrough_f32_chunk", KO, [t_chunk, t_chunk])
 
     # GEMM-side geometry test: a COMPUTE-tile producer emits CHUNK-sized buffers
     # (like the lm_head GEMM's per-tile output); a memtile relay ASSEMBLES the
@@ -76,46 +75,56 @@ def build():
     # replay), which the earlier host-fill probe did not exercise.
     of_src0 = ObjectFifo(t_chunk, depth=2, name="src0")  # host -> producer tile
     of_src1 = ObjectFifo(t_chunk, depth=2, name="src1")
-    of_prod0 = ObjectFifo(t_chunk, depth=2, name="prod0")  # producer -> memtile
+    # Producer (compute tile) emits CHUNK buffers into of_prod; .forward() to a
+    # memtile relay whose CONSUMER side has depth=CHUNK_PER_HALF -> the memtile
+    # holds the WHOLE half (all chunks) resident; repeat_count=R replays the
+    # full multi-buffer set R times (the lowering's multi-buffer-repeat path,
+    # NOT delegate_tile which conflicts with repeat_count). Both endpoints are
+    # CHUNK-typed so neither compute tile holds a 256KB buffer.
+    of_prod0 = ObjectFifo(t_chunk, depth=2, name="prod0")
     of_prod1 = ObjectFifo(t_chunk, depth=2, name="prod1")
-    # Relay: chunk-typed producer side, HALF-typed consumer side -> the memtile
-    # gathers CHUNK_PER_HALF chunks into one HALF buffer, replayed R times.
     of_relay0 = of_prod0.cons().forward(
-        tile=Tile(0, 1), obj_type=t_half, depth=1, repeat_count=R, name="relay0"
+        tile=Tile(0, 1), obj_type=t_chunk, depth=CHUNK_PER_HALF,
+        repeat_count=R, name="relay0",
     )
     of_relay1 = of_prod1.cons().forward(
-        tile=Tile(1, 1), obj_type=t_half, depth=1, repeat_count=R, name="relay1"
+        tile=Tile(1, 1), obj_type=t_chunk, depth=CHUNK_PER_HALF,
+        repeat_count=R, name="relay1",
     )
-    of_out = ObjectFifo(t_half, depth=2, name="probe_out")
 
-    # Producer: copy each chunk from host src into the memtile relay.
+    of_out = ObjectFifo(t_chunk, depth=2, name="probe_out")
+
+    # Producer: copy each host chunk into the memtile relay (chunk-typed).
     def w_produce(c_in, c_out, k):
-        for _ in range_(CHUNK_PER_HALF):
+        for _ch in range_(CHUNK_PER_HALF):
             i = c_in.acquire(1)
             o = c_out.acquire(1)
             k(i, o)
             c_in.release(1)
             c_out.release(1)
 
+    # Consumer: read CHUNK pieces, R replays x CHUNK_PER_HALF chunks per half.
     def w_consume(c0, c1, c_out, k):
         for _ in range_(R):
-            h0 = c0.acquire(1)
-            o = c_out.acquire(1)
-            k(h0, o)
-            c_out.release(1)
-            c0.release(1)
-            h1 = c1.acquire(1)
-            o = c_out.acquire(1)
-            k(h1, o)
-            c_out.release(1)
-            c1.release(1)
+            for _ch in range_(CHUNK_PER_HALF):
+                h = c0.acquire(1)
+                o = c_out.acquire(1)
+                k(h, o)
+                c_out.release(1)
+                c0.release(1)
+            for _ch in range_(CHUNK_PER_HALF):
+                h = c1.acquire(1)
+                o = c_out.acquire(1)
+                k(h, o)
+                c_out.release(1)
+                c1.release(1)
 
     w_prod0 = Worker(
-        w_produce, [of_src0.cons(), of_prod0.prod(), k_chunk], tile=Tile(0, 3),
+        w_produce, [of_src0.cons(), of_prod0.prod(), k_copy], tile=Tile(0, 3),
         stack_size=2048,
     )
     w_prod1 = Worker(
-        w_produce, [of_src1.cons(), of_prod1.prod(), k_chunk], tile=Tile(1, 3),
+        w_produce, [of_src1.cons(), of_prod1.prod(), k_copy], tile=Tile(1, 3),
         stack_size=2048,
     )
     w_cons = Worker(
