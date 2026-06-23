@@ -1008,11 +1008,17 @@ def build():
             gw_tgs = [rt.task_group() for _ in range(LM_N_TILES)]
             for t in range(LM_N_TILES):
                 rt.fill(
-                    of_gwlm.prod(), lmw,
+                    of_gwlm.prod(),
+                    lmw,
                     tap=strided_tap(
                         LMW_GAMMA_BYTES + WLM_TOTAL,
-                        LMW_GAMMA_BYTES + t * WLM_SLOT, WLM_SLOT, WLM_SLOT, 1),
-                    task_group=gw_tgs[t], wait=True,
+                        LMW_GAMMA_BYTES + t * WLM_SLOT,
+                        WLM_SLOT,
+                        WLM_SLOT,
+                        1,
+                    ),
+                    task_group=gw_tgs[t],
+                    wait=True,
                 )
                 if t >= 2:
                     rt.finish_task_group(gw_tgs[t - 2])
@@ -1134,9 +1140,14 @@ def build():
             # shim queue serves the chain layers first (the lm_head GEMM can't
             # run until the chain produces of_out -- queuing its weights first
             # deadlocks).
-            rt.fill(of_fgam.prod(), lmw, tap=strided_tap(
-                LMW_GAMMA_BYTES + WLM_TOTAL, 0, LMW_GAMMA_BYTES, LMW_GAMMA_BYTES, 1),
-                task_group=out_tg)
+            rt.fill(
+                of_fgam.prod(),
+                lmw,
+                tap=strided_tap(
+                    LMW_GAMMA_BYTES + WLM_TOTAL, 0, LMW_GAMMA_BYTES, LMW_GAMMA_BYTES, 1
+                ),
+                task_group=out_tg,
+            )
             rt.drain(of_token.cons(), token, wait=True, task_group=out_tg)
         else:
             rt.drain(of_out.cons(), out, wait=True, task_group=out_tg)
@@ -1202,11 +1213,17 @@ def build():
             lm_tgs = [rt.task_group() for _ in range(LM_N_TILES)]
             for t in range(LM_N_TILES):
                 rt.fill(
-                    of_wlm.prod(), lmw,
+                    of_wlm.prod(),
+                    lmw,
                     tap=strided_tap(
                         LMW_GAMMA_BYTES + WLM_TOTAL,
-                        LMW_GAMMA_BYTES + t * WLM_SLOT, WLM_SLOT, WLM_SLOT, 1),
-                    task_group=lm_tgs[t], wait=True,
+                        LMW_GAMMA_BYTES + t * WLM_SLOT,
+                        WLM_SLOT,
+                        WLM_SLOT,
+                        1,
+                    ),
+                    task_group=lm_tgs[t],
+                    wait=True,
                 )
                 if t >= 2:
                     rt.finish_task_group(lm_tgs[t - 2])

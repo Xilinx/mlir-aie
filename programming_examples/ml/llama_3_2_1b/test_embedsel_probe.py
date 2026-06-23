@@ -47,7 +47,9 @@ def main():
     npu = test_utils.create_npu_kernel(opts).npu_kernel
     t_t = iron.tensor(blob, dtype=np.int8)
     o_t = iron.zeros([D + 8], dtype=np.int8)
-    rc = DefaultNPURuntime.run_test(npu, [t_t, o_t], {}, verify=False, verbosity=opts.verbosity)
+    rc = DefaultNPURuntime.run_test(
+        npu, [t_t, o_t], {}, verify=False, verbosity=opts.verbosity
+    )
     if rc != 0:
         print(f"dispatch returned {rc}", file=sys.stderr)
         return rc
@@ -60,8 +62,10 @@ def main():
     body_ok = np.array_equal(dev_xin, ref_xin)
     scale_ok = struct.pack("<f", dev_scale) == struct.pack("<f", np.float32(ref_scale))
     nbad = int((dev_xin != ref_xin).sum())
-    print(f"embedsel token={TOKEN}: body {'OK' if body_ok else f'{nbad}/{D} bad'}  "
-          f"scale dev={dev_scale:.8g} ref={ref_scale:.8g} {'OK' if scale_ok else 'DIFF'}")
+    print(
+        f"embedsel token={TOKEN}: body {'OK' if body_ok else f'{nbad}/{D} bad'}  "
+        f"scale dev={dev_scale:.8g} ref={ref_scale:.8g} {'OK' if scale_ok else 'DIFF'}"
+    )
     ok = body_ok and scale_ok
     print(f"embedsel_probe: {'PASS' if ok else 'FAIL'}")
     return 0 if ok else 1

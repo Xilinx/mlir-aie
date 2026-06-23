@@ -435,9 +435,7 @@ def main():
                 flush=True,
             )
         else:
-            print(
-                f"device mode: N={N_LAYERS} chain xclbin {opts.xclbin}\n", flush=True
-            )
+            print(f"device mode: N={N_LAYERS} chain xclbin {opts.xclbin}\n", flush=True)
 
     indices = (
         range(len(PROMPTS))

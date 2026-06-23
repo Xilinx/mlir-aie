@@ -73,13 +73,15 @@ def pack_lmw(embed_i8, embed_sc, gamma):
 def oracle_token(hidden_i8, hidden_scale, gamma, embed_i8, embed_sc, lut):
     normed_i8, norm_scale = numpy_rmsnorm_int8_dyn(hidden_i8, gamma, hidden_scale)
     acc = embed_i8.astype(np.int64) @ normed_i8.astype(np.int64)
-    logits = acc.astype(np.float32) * np.float32(norm_scale) * embed_sc.astype(
-        np.float32
+    logits = (
+        acc.astype(np.float32) * np.float32(norm_scale) * embed_sc.astype(np.float32)
     )
     return sample_streamed_reference(logits, SAMPLE_TEMP, SAMPLE_TOPK, SAMPLE_SEED, lut)
 
 
-def run_one_seed(seed, opts, lut_exp, lut_silu, npu, embed_i8, embed_sc, gamma, lmw, lut):
+def run_one_seed(
+    seed, opts, lut_exp, lut_silu, npu, embed_i8, embed_sc, gamma, lmw, lut
+):
     rng = np.random.default_rng(seed)
     x_fp = rng.uniform(-1.6, 1.6, size=D).astype(np.float32)
     res_scale = np.float32(np.maximum(np.abs(x_fp).max(), 1e-12) / 127.0)
@@ -111,8 +113,12 @@ def run_one_seed(seed, opts, lut_exp, lut_silu, npu, embed_i8, embed_sc, gamma, 
     x_cur = (x_i8.copy(), float(res_scale))
     for L in range(N_LAYERS):
         x_cur, scales = numpy_layer_mh_forward(
-            x_cur, layers[L], position=P, residual_dyn=True,
-            attn_perslot=True, attn_lut=True,
+            x_cur,
+            layers[L],
+            position=P,
+            residual_dyn=True,
+            attn_perslot=True,
+            attn_lut=True,
         )
         layers[L]["scales"] = scales
     xo_i8, xo_scale = x_cur
@@ -144,7 +150,9 @@ def run_one_seed(seed, opts, lut_exp, lut_silu, npu, embed_i8, embed_sc, gamma, 
     tok_t.to("cpu")
     dev_tok = int(tok_t.numpy()[0])
     ok = dev_tok == ref_tok
-    print(f"seed {seed}: {'PASS' if ok else 'FAIL'}  dev_tok={dev_tok} ref_tok={ref_tok}")
+    print(
+        f"seed {seed}: {'PASS' if ok else 'FAIL'}  dev_tok={dev_tok} ref_tok={ref_tok}"
+    )
     return 0 if ok else 1
 
 
@@ -173,9 +181,12 @@ def main():
     )
     fails = 0
     for s in seeds:
-        fails += run_one_seed(
-            s, opts, lut_exp, lut_silu, npu, embed_i8, embed_sc, gamma, lmw, lut
-        ) != 0
+        fails += (
+            run_one_seed(
+                s, opts, lut_exp, lut_silu, npu, embed_i8, embed_sc, gamma, lmw, lut
+            )
+            != 0
+        )
     print(f"\nchain_sample_mh: {len(seeds) - fails}/{len(seeds)} seeds PASS")
     return 0 if fails == 0 else 1
 

@@ -70,8 +70,10 @@ def factor(nb):
 def strided_tap(total, base, slot, n):
     outer, inner = factor(slot)
     return TensorAccessPattern(
-        tensor_dims=[total], offset=base,
-        sizes=[1, n, outer, inner], strides=[0, slot, inner, 1],
+        tensor_dims=[total],
+        offset=base,
+        sizes=[1, n, outer, inner],
+        strides=[0, slot, inner, 1],
     )
 
 
@@ -93,7 +95,8 @@ def build():
     # whole slot and let the kernel index: rows at +TILE_PREFIX, scales at
     # +TILE_PREFIX + N_TILE*D + N_TILE*4.
     k_sel = Kernel(
-        "llama_embed_select_slot", KO,
+        "llama_embed_select_slot",
+        KO,
         [t_slot, t_out, _i32a(1), np.int32],
     )
 
@@ -106,8 +109,10 @@ def build():
         c_out.release(1)
 
     w = Worker(
-        w_select, [of_tbl.cons(), of_out.prod(), b_token, k_sel],
-        tile=Tile(0, 2), stack_size=4096,
+        w_select,
+        [of_tbl.cons(), of_out.prod(), b_token, k_sel],
+        tile=Tile(0, 2),
+        stack_size=4096,
     )
 
     rt = Runtime()
@@ -117,8 +122,13 @@ def build():
         rt.drain(of_out.cons(), out, wait=True, task_group=out_tg)
         tbl_tgs = [rt.task_group() for _ in range(N_TILES)]
         for t in range(N_TILES):
-            rt.fill(of_tbl.prod(), tbl, tap=strided_tap(TOTAL, t * SLOT, SLOT, 1),
-                    task_group=tbl_tgs[t], wait=True)
+            rt.fill(
+                of_tbl.prod(),
+                tbl,
+                tap=strided_tap(TOTAL, t * SLOT, SLOT, 1),
+                task_group=tbl_tgs[t],
+                wait=True,
+            )
             if t >= 2:
                 rt.finish_task_group(tbl_tgs[t - 2])
         for t in range(max(0, N_TILES - 2), N_TILES):
@@ -130,6 +140,7 @@ def build():
 
 def main():
     import argparse
+
     argparse.ArgumentParser().parse_args(sys.argv[1:])
     print(build())
 

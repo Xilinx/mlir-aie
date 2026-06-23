@@ -63,10 +63,12 @@ static inline float sw_recip(float a) {
 extern "C" {
 
 // Process one streamed tile of kNTile embed rows.
-//   tile     : int8[kNTile * kD]   -- kNTile consecutive embed rows (the lm_head
+//   tile     : int8[kNTile * kD]   -- kNTile consecutive embed rows (the
+//   lm_head
 //              GEMM weight bytes for this tile)
 //   scales   : fp32[kNTile]        -- embed_sc for these kNTile rows
-//   state    : carry buffer. state[0..kD-1] reserved? No -- we write directly to
+//   state    : carry buffer. state[0..kD-1] reserved? No -- we write directly
+//   to
 //              `out`. state holds [found i32 | sel_embed_sc f32] across tiles.
 //   out      : int8[kD + 8]        -- selected row int8[D] + fp32 scale + pad
 //   token    : the sampled token id (int32)
