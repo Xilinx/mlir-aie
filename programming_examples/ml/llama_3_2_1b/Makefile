@@ -1039,6 +1039,35 @@ run_chain_sample_mh: chain_sample_mh
 		-i ${BUILD}/insts_chain_sample_N${CHAIN_MH_N}_T${CHAIN_MH_T}.bin \
 		-k MLIR_AIE
 
+# ---------- M3c: chain + lm_head + sampler + on-chip embed gather (token->token) ----------
+# embed_select compiled at the real chain D=2048 (the probe uses ES_D=256).
+${BUILD}/llama_embed_select_2048.cc.o: ${KDIR}/llama_embed_select.cc
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -ffp-contract=off \
+		-DLLAMA_EMBED_D=2048 -DLLAMA_EMBED_NTILE=4 -DLLAMA_EMBED_PREFIX=64 -c $< -o ${@F}
+
+CHAIN_GATHER_DEPS = ${CHAIN_SAMPLE_DEPS} ${BUILD}/llama_embed_select_2048.cc.o
+
+${BUILD}/aie_chain_gather_N${CHAIN_MH_N}_T${CHAIN_MH_T}.mlir: ${srcdir}/aie2_chain_dynscale_mh.py ${srcdir}/logits_relay.py
+	mkdir -p ${@D}
+	LLAMA_CHAIN_SAMPLE=1 LLAMA_CHAIN_GATHER=1 LLAMA_SAMPLE_TEMP=${LMFULL_TEMP} LLAMA_SAMPLE_TOPK=${LMFULL_TOPK} LLAMA_SAMPLE_SEED=${LMFULL_SEED} \
+		LLAMA_CHAIN_N=${CHAIN_MH_N} LLAMA_CHAIN_T=${CHAIN_MH_T} python3 $< > $@
+
+${BUILD}/final_chain_gather_N${CHAIN_MH_N}_T${CHAIN_MH_T}.xclbin: ${BUILD}/aie_chain_gather_N${CHAIN_MH_N}_T${CHAIN_MH_T}.mlir ${CHAIN_GATHER_DEPS}
+	mkdir -p ${@D}
+	cp ${BUILD}/llama_rmsnorm_int8_2048.cc.o ${BUILD}/llama_rmsnorm_int8.cc.o
+	cp ${BUILD}/llama_silu_mul_int8_8192.cc.o ${BUILD}/llama_silu_mul_int8.cc.o
+	cp ${BUILD}/llama_rope_int8_mh_T${CHAIN_MH_T}.cc.o ${BUILD}/llama_rope_int8_mh.cc.o
+	cp ${BUILD}/llama_flowkv_mh_T${CHAIN_MH_T}.cc.o ${BUILD}/llama_flowkv_mh.cc.o
+	cp ${BUILD}/llama_embed_select_2048.cc.o ${BUILD}/llama_embed_select.cc.o
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-xchesscc --no-xbridge \
+		--xclbin-name=${@F} \
+		--npu-insts-name=insts_chain_gather_N${CHAIN_MH_N}_T${CHAIN_MH_T}.bin \
+		$(notdir $<)
+
+chain_gather_mh: ${BUILD}/final_chain_gather_N${CHAIN_MH_N}_T${CHAIN_MH_T}.xclbin
+
 # ---------- standalone tiled lm_head + greedy argmax (sample tile M1) ----------
 LMHEAD_DEPS = ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o \
               ${BUILD}/llama_rmsnorm_int8_2048.cc.o

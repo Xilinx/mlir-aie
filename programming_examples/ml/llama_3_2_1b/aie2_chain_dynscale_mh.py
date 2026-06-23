@@ -30,6 +30,11 @@ from aie.ir import IntegerType
 # onto the chain's final output, producing an int32 token (host-free decode).
 # Guarded so the default chain stays byte-identical.
 SAMPLE = _os.environ.get("LLAMA_CHAIN_SAMPLE", "0") == "1"
+# M3c: on-chip embed gather at the FRONT -- the dispatch input becomes a token
+# id (int32); a gather worker selects embed[token] from the lm_head weight
+# stream and produces the layer-0 seed. Makes the dispatch a token->token
+# function (the shape the persistent loop needs). Requires SAMPLE.
+GATHER = _os.environ.get("LLAMA_CHAIN_GATHER", "0") == "1" and SAMPLE
 if SAMPLE:
     from logits_relay import LogitsRelay
 
@@ -310,6 +315,14 @@ def build():
             t_params_u32, initial_value=_sample_params_init(), name="sample_params"
         )
 
+    if GATHER:
+        # Front gather: a second pass over the lm_head weight slots; the gather
+        # worker selects embed[token_in] -> the layer-0 seed (of_seed).
+        of_gwlm = ObjectFifo(t_wlm_slot, depth=2, name="gwlm")
+        # token_in: the input token id, host-supplied (this step) -> on-chip
+        # (capstone). Worker-local Buffer, host-filled via a tiny runtime arg.
+        of_token_in = ObjectFifo(_i32a(1), depth=1, name="token_in")
+
     of_gam_in = ObjectFifo(t_D_bf16, depth=1, name="gam_in")
     of_h1 = ObjectFifo(t_D8_i8, depth=1, name="h1")
     of_wq = ObjectFifo(t_WQ_slot, depth=2, name="wq")
@@ -443,6 +456,13 @@ def build():
             KO_SAMP,
             [t_state_i8, _i32a(1), t_params_u32],
         )
+    if GATHER:
+        # embed select over a lm_head weight slot: pick embed[token] -> seed.
+        k_embsel = Kernel(
+            "llama_embed_select_slot",
+            "llama_embed_select.cc.o",
+            [t_wlm_slot, t_D8_i8, _i32a(1), np.int32],
+        )
     # q_proj-mh fp32 out (2a): act_scale from h1 tail; q_out_scales downstream.
     k_q = Kernel(
         "llama_gemm_tiled_layer_K2048_N4_perchan_q_mh_fp32out_acttail",
@@ -509,6 +529,20 @@ def build():
     k_add = Kernel("llama_rescale_add_D", KO_RADD, [t_D8_i8, t_D_f32, t_D8_i8])
 
     # --- Worker bodies (each loops N_LAYERS times) ---
+    if GATHER:
+        # Front embed gather: stream the lm_head weight slots; select
+        # embed[token_in] -> seed (int8[D]+scale = layer-0 input). One acquire of
+        # the seed output + token; loop the LM_N_TILES weight slots.
+        def w_gather(c_wlm, c_tok, c_seed, k):
+            tok = c_tok.acquire(1)
+            o = c_seed.acquire(1)
+            for t in range_(LM_N_TILES):
+                w = c_wlm.acquire(1)
+                k(w, o, tok, _i32(t))
+                c_wlm.release(1)
+            c_seed.release(1)
+            c_tok.release(1)
+
     def w_router(c_seed, c_back, p_routed):
         # Copy D+8: body + per-token residual scale tail (4 B scale + 4 B pad).
         x = c_seed.acquire(1)
@@ -911,14 +945,32 @@ def build():
                 stack_size=8192,
             ),
         ]
+    if GATHER:
+        # Front gather produces of_seed (replaces the host xin fill). Free tile.
+        workers += [
+            Worker(
+                w_gather,
+                [of_gwlm.cons(), of_token_in.cons(), of_seed.prod(), k_embsel],
+                tile=Tile(6, 3),
+                stack_size=PSK,
+            ),
+        ]
 
     rt = Runtime()
-    if SAMPLE:
+    if GATHER:
+        # input is a token id (int32[1]); the device gathers embed[token] as the
+        # layer-0 seed -> token->token dispatch.
+        seq_ctx = rt.sequence(_i32a(1), rt_w_ty, rt_kv_ty, rt_lmw_ty, rt_token_ty)
+    elif SAMPLE:
         seq_ctx = rt.sequence(rt_xin_ty, rt_w_ty, rt_kv_ty, rt_lmw_ty, rt_token_ty)
     else:
         seq_ctx = rt.sequence(rt_xin_ty, rt_w_ty, rt_kv_ty, rt_out_ty)
     with seq_ctx as _seq_args:
-        if SAMPLE:
+        if GATHER:
+            token_in, wblob, kvblob, lmw, token = _seq_args
+            xin = None
+            out = None
+        elif SAMPLE:
             xin, wblob, kvblob, lmw, token = _seq_args
             out = None
         else:
@@ -947,7 +999,27 @@ def build():
         # Seed input (layer 0).
         seed_tg = rt.task_group()
         tgs.append(seed_tg)
-        rt.fill(of_seed.prod(), xin, task_group=seed_tg)
+        if GATHER:
+            # The gather worker produces of_seed by selecting embed[token_in]
+            # from a front pass over the lm_head weight slots. Fill the token id
+            # + stream the embed weights (front, before the layer weights so the
+            # gather completes before layer 0 consumes the seed).
+            rt.fill(of_token_in.prod(), token_in, task_group=seed_tg)
+            gw_tgs = [rt.task_group() for _ in range(LM_N_TILES)]
+            for t in range(LM_N_TILES):
+                rt.fill(
+                    of_gwlm.prod(), lmw,
+                    tap=strided_tap(
+                        LMW_GAMMA_BYTES + WLM_TOTAL,
+                        LMW_GAMMA_BYTES + t * WLM_SLOT, WLM_SLOT, WLM_SLOT, 1),
+                    task_group=gw_tgs[t], wait=True,
+                )
+                if t >= 2:
+                    rt.finish_task_group(gw_tgs[t - 2])
+            for t in range(max(0, LM_N_TILES - 2), LM_N_TILES):
+                rt.finish_task_group(gw_tgs[t])
+        else:
+            rt.fill(of_seed.prod(), xin, task_group=seed_tg)
 
         # Weights (all from wblob).
         add_per_layer(
