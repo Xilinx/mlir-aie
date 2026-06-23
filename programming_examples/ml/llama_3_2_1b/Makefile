@@ -1323,6 +1323,36 @@ run_persist_decode_probe: persist_decode_probe
 		-i ${BUILD}/insts_persist_decode_probe.bin \
 		-k MLIR_AIE
 
+# ---------- broadcast one streamed table to two consumers (shim-saving) ----------
+BC_NTILES ?= 8
+BC_TILE ?= 64
+BC_SELECT ?= 3
+${BUILD}/llama_bcast.cc.o: ${KDIR}/llama_bcast.cc
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -ffp-contract=off \
+		-DLLAMA_BC_TILE=${BC_TILE} -DLLAMA_BC_SELECT=${BC_SELECT} -c $< -o ${@F}
+
+${BUILD}/aie_bcast_probe.mlir: ${srcdir}/aie2_bcast_probe.py
+	mkdir -p ${@D}
+	LLAMA_BC_NTILES=${BC_NTILES} LLAMA_BC_TILE=${BC_TILE} LLAMA_BC_SELECT=${BC_SELECT} python3 $< > $@
+
+${BUILD}/final_bcast_probe.xclbin: ${BUILD}/aie_bcast_probe.mlir ${BUILD}/llama_bcast.cc.o
+	mkdir -p ${@D}
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-xchesscc --no-xbridge \
+		--xclbin-name=${@F} \
+		--npu-insts-name=insts_bcast_probe.bin \
+		$(notdir $<)
+
+bcast_probe: ${BUILD}/final_bcast_probe.xclbin
+
+run_bcast_probe: bcast_probe
+	cd ${srcdir} && LLAMA_BC_NTILES=${BC_NTILES} LLAMA_BC_TILE=${BC_TILE} LLAMA_BC_SELECT=${BC_SELECT} \
+		python3 test_bcast_probe.py \
+		-x ${BUILD}/final_bcast_probe.xclbin \
+		-i ${BUILD}/insts_bcast_probe.bin \
+		-k MLIR_AIE
+
 # ---------- clean ----------
 clean:
 	rm -rf ${BUILD}
