@@ -27,7 +27,7 @@ packet ID, so use ``rt.inline_ops`` as the escape hatch there.
 Two invocation modes:
 
   * compile-only: ``... --op add --xclbin-path=PATH --insts-path=PATH``
-  * emit-MLIR:    ``... --op add --emit-mlir``
+  * emit-MLIR:    ``... --op add --dev npu --emit-mlir``
 """
 
 import argparse

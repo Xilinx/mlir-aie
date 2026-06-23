@@ -226,9 +226,13 @@ def __getattr__(name):
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-def get_current_device():
-    """
-    Get the current NPU device.
+def get_current_device(*, probe_runtime: bool = True):
+    """Get the current NPU device.
+
+    Args:
+        probe_runtime: When True, infer the device from the default runtime if
+            no explicit device has been bound.  Use False for offline inspection
+            paths that must not initialize the runtime.
 
     Returns:
         Device | None: The current device if available, else None.
@@ -236,8 +240,33 @@ def get_current_device():
     if hostruntime._CURRENT_DEVICE:
         return hostruntime._CURRENT_DEVICE
 
+    if not probe_runtime:
+        return None
+
     runtime = _get_default_npu_runtime()
     if runtime:
         return runtime.device()
     else:
         return None
+
+
+def ensure_current_device(*, probe_runtime: bool = True):
+    """Bind and return the device observed by IRON.
+
+    ``get_current_device()`` can infer a device from the runtime without making
+    that device explicit. Architecture-sensitive generators need a single
+    process-wide device selection so kernel factories, cache hashing, MLIR
+    generation, and external-kernel compilation all see the same target.
+
+    Args:
+        probe_runtime: Forwarded to ``get_current_device``. Use False for
+            offline inspection paths that must not initialize the runtime.
+
+    Returns:
+        Device | None: The device that was bound, or ``None`` if no device
+        was available and nothing was bound.
+    """
+    device = get_current_device(probe_runtime=probe_runtime)
+    if device is not None:
+        set_current_device(device)
+    return device

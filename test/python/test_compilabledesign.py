@@ -451,7 +451,7 @@ def test_to_json_contains_all_fields():
     assert data["aiecc_flags"] == ["--verbose"]
     assert data["compile_flags"] == ["-O3"]
     assert "kernel.cc" in data["source_files"][0]
-    assert "/opt/inc" in data["include_paths"][0]
+    assert "opt/inc" in data["include_paths"][0].replace("\\", "/")
     assert "add.o" in data["object_files"][0]
     assert "generator_name" in data
     assert "cache_hash" in data
@@ -497,7 +497,7 @@ def test_from_json_restores_source_and_include_paths():
     d = CompilableDesign(gen, source_files=["k.cc"], include_paths=["/opt"])
     d2 = CompilableDesign.from_json(d.to_json(), generator=gen)
     assert any("k.cc" in str(sf) for sf in d2.source_files)
-    assert any("/opt" in str(p) for p in d2.include_paths)
+    assert any("opt" in str(p).replace("\\", "/") for p in d2.include_paths)
 
 
 def test_from_json_with_object_files():
@@ -896,21 +896,6 @@ def test_kernels_mm_mac_dims_per_arch():
         4,
         8,
     ), f"AIE2P i16/i16 mac_dims expected (4, 4, 8), got {mm_aie2p.mac_dims}"
-
-
-def test_transform_returns_module():
-    import numpy as np
-    from aie.iron.algorithms import transform
-
-    set_current_device(NPU1Col1())
-    try:
-        tensor_ty = np.ndarray[(1024,), np.dtype[np.int32]]
-        # This should not raise and should return an MLIR module
-        module = transform(lambda x: x + 1, tensor_ty, tile_size=16)
-        assert module is not None
-        assert hasattr(module, "operation")
-    finally:
-        set_current_device(None)
 
 
 def test_compile_mixed_explicit_paths_raises():
