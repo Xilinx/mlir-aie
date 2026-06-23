@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2025-2026 Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 """Scalar in-core shuffle for bfp16ebs8 tiles — ``@iron.jit`` IRON design.
 
 One AIE2P core runs the per-tile scalarShuffle helper on an A-tile

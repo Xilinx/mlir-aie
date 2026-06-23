@@ -1,6 +1,6 @@
 //===- test_combo_event_parse.mlir -----------------------------*- MLIR -*-===//
 //
-// Copyright (C) 2025 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (C) 2025 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//

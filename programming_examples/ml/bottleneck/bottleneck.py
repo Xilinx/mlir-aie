@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024-2026 Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 """ResNet-style bottleneck block (1x1 → 3x3 → 1x1+skip) — @iron.jit port.
 
 Per-layer kernels come from the library:

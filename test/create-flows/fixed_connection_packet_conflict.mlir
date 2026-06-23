@@ -1,6 +1,6 @@
 //===- fixed_connection_packet_conflict.mlir --------------------*- MLIR -*-===//
 //
-// Copyright (C) 2026 Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: MIT
 //
 //===----------------------------------------------------------------------===//

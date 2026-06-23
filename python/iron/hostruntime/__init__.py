@@ -1,4 +1,4 @@
-# Copyright (C) 2026 Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """Backwards-compatible re-export from aie.utils."""
 

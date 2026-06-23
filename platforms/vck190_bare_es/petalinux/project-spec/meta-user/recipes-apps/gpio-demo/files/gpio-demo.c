@@ -2,7 +2,7 @@
  *
  * gpio-demo app
  *
- * Copyright (C) 2013-2016 Xilinx, Inc. All rights reserved.
+ * Copyright (C) 2013-2016 Xilinx, Inc.
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation

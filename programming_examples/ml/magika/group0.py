@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024-2026 Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 """Magika group0 — IRON API design with ``@iron.jit`` compilation.
 
 Two-core pipeline (group0a → group0b) on one column.  Each core has its

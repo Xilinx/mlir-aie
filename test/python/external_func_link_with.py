@@ -1,4 +1,4 @@
-# Copyright (C) 2026 Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # Verify that the link_with keyword argument on external_func produces the

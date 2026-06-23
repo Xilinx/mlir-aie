@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2025-2026 Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 """bf16 → bfp16ebs8 conversion + bfp16 matmul — ``@iron.jit`` IRON design.
 
 Two AIE2P cores form a pipeline: the first converts two bf16 input tiles
