@@ -5,7 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // Copyright (C) 2022, Xilinx, Inc. All rights reserved.
-// Copyright (C) 2023-2024, Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (C) 2022-2024, Advanced Micro Devices, Inc. All rights reserved.
 
 #ifndef FOLDMULADDCHAINTOCONVOP_H
 #define FOLDMULADDCHAINTOCONVOP_H

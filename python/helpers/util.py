@@ -1,4 +1,4 @@
-# Copyright (C) 2024-2026, Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2026, Advanced Micro Devices, Inc. All rights reserved.
 from collections import defaultdict
 import numpy as np
 from typing import Any, Sequence, get_args, get_origin
