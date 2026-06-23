@@ -4,21 +4,35 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2024, Advanced Micro Devices, Inc.
-// 
+// Copyright (C) 2024-2026, Advanced Micro Devices, Inc.
+//
 //===----------------------------------------------------------------------===//-->
 
 # Matrix Multiplication - Cascade Design
 
-This matrix multiplication design uses the `4`&times;`4` NPU array with broadcast in each row and cascade in each column.
+A 4xN_cols AIE array computes `C = A @ B` using AIE hardware **cascade streams** to accumulate partial products vertically within each column.  Each column's bottom row puts onto its column's cascade stream; mid rows read+put; the top row reads, accumulates into a local C tile, and writes it out.
 
-As an example, the dimensions are set by default to `M`&times;`K`&times;`N` = `512`&times;`512`&times;`512`, and each core operates on the chunk of `64`&times;`64`&times;`64` (`m`&times;`k`&times;`n`). 
+Default config: `int16` inputs / `int32` outputs, `M`=`K`=`N` = `512`, kernel tile `m`=`k`=`n` = `64`, scalar cascade kernel.
 
-Different from the `whole_array` implementation, in this design, the accumulation on `K` is distributed to the four cores belonging to the same column. 
+> The cascade design distributes the K accumulation across the four cores in a column (each row does `K // n_aie_rows` iterations), reducing per-core work but adding cascade-stream coordination.
 
-The current design only works for scalar `int16`.
+The cascade kernel is currently scalar-only and the design is single-buffered (`fifo_depth=1` to avoid CDO program-memory blowup), giving a structurally lower performance ceiling than vectorized whole-array designs.
 
-The performance sweep results against `whole_array` can be found at [here](https://gist.github.com/Yu-Zhewen/da3fed9feb278b973f35fb78c2d3a484), no gain observed. 
+## Building and Running the Design
 
-The orignal implementation of the design is found at [cascade.py](./cascade.py). An alternative version of the design, featuring different runtime operations,
-is found at [cascade_placed.py](./cascade_placed.py).
+You need C++23 for `bfloat16_t` support — `g++-13` works: [https://lindevs.com/install-g-on-ubuntu](https://lindevs.com/install-g-on-ubuntu).
+
+`cascade.py` is `@iron.jit`-decorated.  The Makefile drives the JIT pipeline via `--xclbin-path` so artifacts land in `build/` for `test.cpp` to consume:
+
+```shell
+make
+make run
+```
+
+For direct Python run + numpy verify:
+
+```shell
+python3 cascade.py                     # default i16/i32 4-col 512x512x512
+python3 cascade.py --n-aie-cols 1      # single-column variant
+python3 cascade.py --help              # full flag list
+```

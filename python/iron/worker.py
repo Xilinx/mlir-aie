@@ -10,12 +10,21 @@
 import sys
 from typing import Callable
 
-from .. import ir  # type: ignore
-from ..dialects.aie import core, lock, use_lock
-from ..dialects.aiex import set_lock_value, LockAction
+from .. import ir  # pyright: ignore[reportMissingImports]
+from ..dialects.aie import (
+    core,
+    lock,
+    use_lock,  # pyright: ignore[reportAttributeAccessIssue]
+)
+from ..dialects.aiex import (
+    set_lock_value,
+    LockAction,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from ..helpers.dialects.scf import _for as range_
 from .device import Tile, AnyComputeTile
-from ..dialects._aie_enum_gen import AIETileType  # type: ignore
+from ..dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
+    AIETileType,
+)
 from .dataflow.objectfifo import ObjectFifoHandle, ObjectFifo
 from .dataflow.endpoint import ObjectFifoEndpoint
 from .buffer import Buffer
@@ -34,21 +43,21 @@ class Worker(ObjectFifoEndpoint):
     def __init__(
         self,
         core_fn: Callable | None,
-        fn_args: list = [],
+        fn_args: list | None = None,
         tile: Tile = AnyComputeTile,
         while_true: bool = True,
-        stack_size: int = None,
-        allocation_scheme: str = None,
-        trace: int = None,
-        trace_events: list = None,
+        stack_size: int | None = None,
+        allocation_scheme: str | None = None,
+        trace: int | None = None,
+        trace_events: list | None = None,
         dynamic_objfifo_lowering: bool | None = None,
     ):
         """Construct a Worker
 
         Args:
             core_fn (Callable | None): The task to run on a core. If None, a busy-loop (`while(true): pass`) core will be generated.
-            fn_args (list, optional): Pointers to arguments, which should include all context the core_fn needs to run. Defaults to [].
-            tile (Tile, optional): The compute tile for the Worker. Defaults to AnyComputeTile.
+            fn_args (list | None, optional): Pointers to arguments, which should include all context the core_fn needs to run. Defaults to None (empty list).
+            tile (Tile, optional): The compute tile for the Worker. Also accepts None (treated as AnyComputeTile). Defaults to AnyComputeTile.
             while_true (bool, optional): If true, will wrap the core_fn in a while(true) loop to ensure it runs until reconfiguration. Defaults to True.
             stack_size (int, optional): The stack_size in bytes to be allocated for the worker. Defaults to 1024 bytes.
             allocation_scheme (str, optional): The memory allocation scheme to use for the Worker, either 'basic-sequential' or 'bank-aware'. If None, defaults to bank-aware.
@@ -66,8 +75,8 @@ class Worker(ObjectFifoEndpoint):
         Raises:
             ValueError: Parameters are validated.
         """
-        if tile is AnyComputeTile:
-            tile = tile.copy()
+        if tile is None or tile is AnyComputeTile:
+            tile = AnyComputeTile.copy()
         if tile.tile_type is not None and tile.tile_type != AIETileType.CoreTile:
             raise ValueError(
                 f"Worker requires a compute tile, but got tile_type={tile.tile_type}"
@@ -93,7 +102,7 @@ class Worker(ObjectFifoEndpoint):
             self.core_fn = do_nothing_core_fun
         else:
             self.core_fn = core_fn
-        self.fn_args = fn_args
+        self.fn_args = fn_args if fn_args is not None else []
         self._fifos = []
         self._buffers = []
         self._barriers = []
@@ -108,14 +117,35 @@ class Worker(ObjectFifoEndpoint):
                 arg.endpoint = self
                 self._fifos.append(arg)
             elif isinstance(arg, Buffer):
-                self._buffers.append(arg)
-                # Buffers are placed on the same tile as the Worker
-                if arg._tile is not None and arg._tile is not self._tile:
-                    raise ValueError(
-                        f"Buffer '{arg._name}' is already placed on {arg._tile}; "
-                        f"cannot reassign to {self._tile}"
-                    )
-                arg._tile = self._tile
+                # A Buffer pinned to an EXPLICIT tile may legitimately be shared
+                # across Workers: AIE compute tiles can read a neighbor tile's L1
+                # directly, so a producer core's output buffer can be an input to a
+                # consumer core on an adjacent tile. In that case the FIRST worker that
+                # references it "owns"/places it and later workers are non-owning
+                # readers. We only forbid sharing for AUTO-PLACED buffers (no explicit
+                # tile), where two owners would race to pin it to different tiles.
+                # Note: ``_tile`` alone is not a reliable signal — the owning Worker
+                # auto-pins ``_tile`` to its own tile below — so we key off
+                # ``_explicit_tile``, which records the user's construction-time intent.
+                if arg._owner_worker is not None and arg._owner_worker is not self:
+                    if not arg._explicit_tile:
+                        raise ValueError(
+                            f"Buffer '{arg._name}' has no explicit tile and is shared "
+                            f"across Workers; pin it to a tile (Buffer(tile=...)) so "
+                            f"placement is unambiguous."
+                        )
+                    # shared reader: keep original owner, just record the reference.
+                    self._buffers.append(arg)
+                else:
+                    arg._owner_worker = self
+                    self._buffers.append(arg)
+                    # If the Buffer has no tile, pin it to the Worker's tile as a
+                    # convenience.  If the user pinned it explicitly to a neighbor
+                    # tile (AIE compute tiles can read N/S/E/W neighbors' L1
+                    # directly), honor that placement — Program.resolve discovers
+                    # the neighbor tile via Buffer.tiles().
+                    if arg._tile is None:
+                        arg._tile = self._tile
             elif isinstance(arg, ScratchpadParameter):
                 pass  # ScratchpadParameters are device-level symbols; no tile placement needed
             elif isinstance(arg, ObjectFifo):
@@ -131,6 +161,40 @@ class Worker(ObjectFifoEndpoint):
             # func.call ops when invoked inside core_fn and carry link_with on their
             # func.func declaration. Other unrecognized args are assumed to be
             # metaprogramming values (Python scalars, etc.).
+
+    @staticmethod
+    def grid(
+        rows: int,
+        cols: int,
+        factory: Callable[[int, int], "Worker"],
+    ) -> list[list["Worker"]]:
+        """Build a 2D grid of Workers; ``factory(r, c)`` returns one Worker.
+
+        Replaces the common pattern::
+
+            ws = [Worker(...) for i in range(R) for j in range(C)]
+            ws[i * C + j]  # 1-D index arithmetic
+
+        with::
+
+            ws = Worker.grid(R, C, lambda r, c: Worker(...))
+            ws[i][j]       # natural 2-D access
+
+        Args:
+            rows: Outer-dimension count (e.g. column index).
+            cols: Inner-dimension count (e.g. channel index).
+            factory: Called once per cell with ``(r, c)``; must return a Worker.
+
+        Returns:
+            ``rows``-by-``cols`` nested list of Worker instances.
+        """
+        return [[factory(r, c) for c in range(cols)] for r in range(rows)]
+
+    @property
+    def tile(self) -> Tile:
+        """The compute tile this Worker is placed on."""
+        assert self._tile is not None
+        return self._tile
 
     @property
     def fifos(self) -> list[ObjectFifoHandle]:
@@ -172,10 +236,10 @@ class Worker(ObjectFifoEndpoint):
         )
         def core_body():
             # Always wrap in an scf.for so the lowered MLIR matches expectations
-            # downstream (placed-API uses the same pattern with bound=1 for
-            # single-shot workers). Using Python range(1) here would emit the
-            # body inline with no scf.for wrapper, which the dataflow lowerer
-            # treats differently and can cause runtime hangs.
+            # downstream (the lower-level aie dialect uses the same pattern with
+            # bound=1 for single-shot workers). Using Python range(1) here would
+            # emit the body inline with no scf.for wrapper, which the dataflow
+            # lowerer treats differently and can cause runtime hangs.
             for _ in range_(sys.maxsize if self._while_true else 1):
                 self.core_fn(*self.fn_args)
 

@@ -12,6 +12,7 @@ import math
 from aie.utils.ml import DataShaper
 import time
 import os
+from pathlib import Path
 import numpy as np
 import aie.iron as iron
 from aie.utils import DefaultNPURuntime
@@ -24,14 +25,14 @@ from brevitas.quant.fixed_point import (
     Uint8ActPerTensorFixedPoint,
 )
 
-sys.path.append("..")
-import mb_utils
+
+from .. import mb_utils
 
 torch.use_deterministic_algorithms(True)
 import json
 
-log_dir = "log/"
-data_dir = "data/"
+log_dir = str(Path(__file__).parent / "log") + "/"
+data_dir = str(Path(__file__).parent / "data") + "/"
 
 # Read the existing scale factors
 scale_factor_file = "scale_factors_fused_bn8+bn9.json"

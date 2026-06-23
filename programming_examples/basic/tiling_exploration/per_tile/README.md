@@ -14,9 +14,7 @@ This IRON design flow example, called "Tiling Exploration: Per Tile", demonstrat
 
 ## Source Files Overview
 
-1. `per_tile.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations and the `TensorTiler2D` to specify `TensorAccessPatterns` (*taps*) of data to be transferred out of the design. The file generates MLIR that is then compiled using `aiecc` to produce design binaries (ie. XCLBIN and inst.bin for the NPU in Ryzen™ AI). 
-
-1. `test.py`: This Python code is responsible for loading the compiled XCLBIN file, configuring the AIE module, providing input data, and executing the AIE design on the NPU. After executing, the script verifies the results against expected output.
+1. `per_tile.py`: An `@iron.jit`-decorated design that uses `TensorTiler2D` to specify `TensorAccessPatterns` (*taps*) of data to be transferred out of the design.  When invoked standalone, `@iron.jit` JIT-compiles to an xclbin/insts pair, runs on the NPU, and verifies the output against the expected tiled pattern.
 
 ## Design Overview
 

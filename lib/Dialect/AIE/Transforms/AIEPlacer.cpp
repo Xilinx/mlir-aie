@@ -24,49 +24,7 @@ using namespace xilinx::AIE;
 static std::optional<TileID> resolvePeerPosition(TileLike peer,
                                                  const PlacementResult &placed);
 
-namespace {
-// Invoke `fn(peer, thisIsFirst)` for each edge in `adjacency` that
-// mentions `op`. `peer` is the OTHER endpoint of the edge; `thisIsFirst`
-// is true when `op` is `edge.first` (the producer in compute-peer
-// adjacency, the consumer in buffer adjacency, the source in cascade
-// adjacency -- callers interpret per their own adjacency convention).
-template <typename F>
-void forEachPeer(mlir::Operation *op,
-                 const SequentialPlacer::Adjacency &adjacency, F &&fn) {
-  auto it = adjacency.tileToEdges.find(op);
-  if (it == adjacency.tileToEdges.end())
-    return;
-  for (unsigned idx : it->second) {
-    auto [first, second] = adjacency.edges[idx];
-    bool thisIsFirst = first.getOperation() == op;
-    TileLike peer = thisIsFirst ? second : first;
-    fn(peer, thisIsFirst);
-  }
-}
-
-// Invoke `fn(TileID)` on every CoreTile neighbor of `at` that is a legal
-// shared-L1 mem-affinity neighbor per the target model.
-template <typename F>
-void forEachMemAffinityNeighbor(const AIETargetModel &targetModel, TileID at,
-                                F &&fn) {
-  for (auto [dc, dr] :
-       {std::pair{0, -1}, std::pair{0, 1}, std::pair{-1, 0}, std::pair{1, 0}}) {
-    int nc = at.col + dc;
-    int nr = at.row + dr;
-    if (nc < 0 || nc >= targetModel.columns())
-      continue;
-    if (nr < 0 || nr >= targetModel.rows())
-      continue;
-    if (targetModel.getTileType(nc, nr) != AIETileType::CoreTile)
-      continue;
-    if (!targetModel.isLegalMemAffinity(at.col, at.row, nc, nr))
-      continue;
-    fn(TileID{nc, nr});
-  }
-}
-} // namespace
-
-void SequentialPlacer::Adjacency::addEdge(TileLike first, TileLike second) {
+void Placer::Adjacency::addEdge(TileLike first, TileLike second) {
   if (!first || !second)
     return;
   unsigned idx = edges.size();
@@ -77,7 +35,7 @@ void SequentialPlacer::Adjacency::addEdge(TileLike first, TileLike second) {
     tileToEdges[second.getOperation()].push_back(idx);
 }
 
-void SequentialPlacer::Adjacency::addEdgeFromValues(Value a, Value b) {
+void Placer::Adjacency::addEdgeFromValues(Value a, Value b) {
   if (!a || !b)
     return;
   auto aT = dyn_cast_or_null<TileLike>(a.getDefiningOp());
@@ -86,16 +44,14 @@ void SequentialPlacer::Adjacency::addEdgeFromValues(Value a, Value b) {
     addEdge(aT, bT);
 }
 
-void SequentialPlacer::initialize(const AIETargetModel &targetModel) {
-  this->targetModel = &targetModel;
-  assignedNonCoreTiles.clear();
-
-  for (int col = 0; col < targetModel.columns(); col++) {
-    for (int row = 0; row < targetModel.rows(); row++) {
+void Placer::initialize(const AIETargetModel &tm) {
+  targetModel = &tm;
+  availability.compTiles.clear();
+  availability.nonCompTiles.clear();
+  for (int col = 0; col < tm.columns(); col++) {
+    for (int row = 0; row < tm.rows(); row++) {
       TileID id = {col, row};
-      AIETileType type = targetModel.getTileType(col, row);
-
-      switch (type) {
+      switch (tm.getTileType(col, row)) {
       case AIETileType::CoreTile:
         availability.compTiles.push_back(id);
         break;
@@ -108,6 +64,36 @@ void SequentialPlacer::initialize(const AIETargetModel &targetModel) {
       }
     }
   }
+}
+
+Placer::CollectedOps Placer::collectOperations(DeviceOp device) {
+  CollectedOps ops;
+  device.walk([&](Operation *op) {
+    llvm::TypeSwitch<Operation *>(op)
+        .Case<LogicalTileOp>([&](auto lt) { ops.logicalTiles.push_back(lt); })
+        .Case<ObjectFifoCreateOp>(
+            [&](auto of) { ops.objectFifos.push_back(of); })
+        .Case<ObjectFifoLinkOp>(
+            [&](auto link) { ops.objectFifoLinks.push_back(link); })
+        .Case<CascadeFlowOp>([&](auto cf) { ops.cascadeFlows.push_back(cf); })
+        .Case<FlowOp>([&](auto f) { ops.flows.push_back(f); })
+        .Case<PacketFlowOp>([&](auto pf) { ops.pktFlows.push_back(pf); });
+  });
+  return ops;
+}
+
+bool Placer::satisfiesConstraints(Operation *tile, TileID pos) {
+  if (auto lt = dyn_cast<LogicalTileOp>(tile)) {
+    if (auto c = lt.tryGetCol(); c && *c != pos.col)
+      return false;
+    if (auto r = lt.tryGetRow(); r && *r != pos.row)
+      return false;
+  }
+  return true;
+}
+
+void SequentialPlacer::initialize(const AIETargetModel &targetModel) {
+  Placer::initialize(targetModel);
 
   // Compute tiles iterate column-major (fill a column top-to-bottom before
   // moving right); non-compute tiles iterate row-major.
@@ -178,23 +164,13 @@ LogicalResult SequentialPlacer::place(DeviceOp device) {
   }
 
   // Phase 1: Collect operations needed for placement
-  SmallVector<LogicalTileOp> logicalTiles;
-  SmallVector<ObjectFifoCreateOp> objectFifos;
-  SmallVector<ObjectFifoLinkOp> objectFifoLinks;
-  SmallVector<CascadeFlowOp> cascadeFlows;
-  SmallVector<FlowOp> flows;
-  SmallVector<PacketFlowOp> pktFlows;
-
-  device.walk([&](Operation *op) {
-    llvm::TypeSwitch<Operation *>(op)
-        .Case<LogicalTileOp>([&](auto lt) { logicalTiles.push_back(lt); })
-        .Case<ObjectFifoCreateOp>([&](auto of) { objectFifos.push_back(of); })
-        .Case<ObjectFifoLinkOp>(
-            [&](auto link) { objectFifoLinks.push_back(link); })
-        .Case<CascadeFlowOp>([&](auto cf) { cascadeFlows.push_back(cf); })
-        .Case<FlowOp>([&](auto f) { flows.push_back(f); })
-        .Case<PacketFlowOp>([&](auto pf) { pktFlows.push_back(pf); });
-  });
+  auto collected = collectOperations(device);
+  auto &logicalTiles = collected.logicalTiles;
+  auto &objectFifos = collected.objectFifos;
+  auto &objectFifoLinks = collected.objectFifoLinks;
+  auto &cascadeFlows = collected.cascadeFlows;
+  auto &flows = collected.flows;
+  auto &pktFlows = collected.pktFlows;
 
   // Phase 2a: Build placement constraints
   auto bufferAdjacency = buildBufferAdjacency(logicalTiles);
@@ -748,7 +724,7 @@ resolvePeerPosition(TileLike peer, const PlacementResult &placed) {
   return std::nullopt;
 }
 
-SequentialPlacer::Adjacency
+Placer::Adjacency
 SequentialPlacer::buildBufferAdjacency(ArrayRef<LogicalTileOp> logicalTiles) {
   Adjacency adjacency;
   for (auto consumer : logicalTiles) {
@@ -783,8 +759,8 @@ SequentialPlacer::buildBufferAdjacency(ArrayRef<LogicalTileOp> logicalTiles) {
   return adjacency;
 }
 
-SequentialPlacer::Adjacency
-SequentialPlacer::buildCascadeAdjacency(ArrayRef<CascadeFlowOp> cascadeFlows) {
+Placer::Adjacency
+Placer::buildCascadeAdjacency(ArrayRef<CascadeFlowOp> cascadeFlows) {
   Adjacency adjacency;
   for (auto cf : cascadeFlows) {
     TileLike src = cf.getSourceTileLike();
@@ -796,8 +772,8 @@ SequentialPlacer::buildCascadeAdjacency(ArrayRef<CascadeFlowOp> cascadeFlows) {
   return adjacency;
 }
 
-SequentialPlacer::Adjacency SequentialPlacer::buildComputePeerAdjacency(
-    ArrayRef<ObjectFifoCreateOp> objectFifos) {
+Placer::Adjacency
+Placer::buildComputePeerAdjacency(ArrayRef<ObjectFifoCreateOp> objectFifos) {
   Adjacency adjacency;
   for (auto ofOp : objectFifos) {
     auto producer =
@@ -1031,8 +1007,8 @@ void SequentialPlacer::attachPeerNotes(
                          "subsequently constrain or unblock this placement)";
 }
 
-SequentialPlacer::Adjacency SequentialPlacer::buildObjectFifoAdjacency(
-    ArrayRef<ObjectFifoCreateOp> objectFifos) {
+Placer::Adjacency
+Placer::buildObjectFifoAdjacency(ArrayRef<ObjectFifoCreateOp> objectFifos) {
   Adjacency adjacency;
   for (auto ofOp : objectFifos)
     for (Value consumer : ofOp.getConsumerTiles())
@@ -1040,9 +1016,8 @@ SequentialPlacer::Adjacency SequentialPlacer::buildObjectFifoAdjacency(
   return adjacency;
 }
 
-SequentialPlacer::Adjacency
-SequentialPlacer::buildFlowAdjacency(ArrayRef<FlowOp> flows,
-                                     ArrayRef<PacketFlowOp> pktFlows) {
+Placer::Adjacency Placer::buildFlowAdjacency(ArrayRef<FlowOp> flows,
+                                             ArrayRef<PacketFlowOp> pktFlows) {
   Adjacency adjacency;
   for (auto flow : flows)
     adjacency.addEdgeFromValues(flow.getSource(), flow.getDest());
@@ -1363,21 +1338,7 @@ void SequentialPlacer::updateChannelUsage(TileID tile, DmaDir direction,
 
 bool SequentialPlacer::hasAvailableChannels(TileID tile, int inputChannels,
                                             int outputChannels) {
-  // Get max channels based on tile type and row
-  int maxIn, maxOut;
-  if (tile.row == 0) {
-    // Shim tiles use ShimMux connections
-    maxIn = targetModel->getNumDestShimMuxConnections(tile.col, tile.row,
-                                                      WireBundle::DMA);
-    maxOut = targetModel->getNumSourceShimMuxConnections(tile.col, tile.row,
-                                                         WireBundle::DMA);
-  } else {
-    // Other tiles use Switchbox connections
-    maxIn = targetModel->getNumDestSwitchboxConnections(tile.col, tile.row,
-                                                        WireBundle::DMA);
-    maxOut = targetModel->getNumSourceSwitchboxConnections(tile.col, tile.row,
-                                                           WireBundle::DMA);
-  }
+  auto [maxIn, maxOut] = getDMACapacity(*targetModel, tile);
 
   int currentIn = availability.inputChannelsUsed[tile];
   int currentOut = availability.outputChannelsUsed[tile];

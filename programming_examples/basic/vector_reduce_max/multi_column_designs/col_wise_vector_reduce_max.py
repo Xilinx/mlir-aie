@@ -1,32 +1,71 @@
-# multi_column_designs/vector_reduce_max_shared.py -*- Python -*-
+# multi_column_designs/col_wise_vector_reduce_max.py -*- Python -*-
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
+# (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
+"""Multi-column vector reduce-max (col-wise) — IRON + ``@iron.jit``.
 
-import numpy as np
+Spread the reduction across multiple columns (default 8 on NPU1, up to
+16 on NPU2): each core computes a partial max over its chunk, then the
+last core in each column collects partials from neighboring cores via
+ObjectFifos and emits the final per-column reduction; the last core
+overall produces the final output.
+
+Library kernels: ``reduce_max(vectorized=True)`` + ``compute_max``; both
+share one ``reduce_max.cc.o`` via the iron kernel library.
+
+Two invocation modes:
+
+  * standalone:   ``python3 col_wise_vector_reduce_max.py``
+  * compile-only: ``... --xclbin-path=PATH --insts-path=PATH``  (Makefile)
+"""
+
 import argparse
 import sys
 
+import numpy as np
+from ml_dtypes import bfloat16
+
+import aie.iron as iron
 from aie.iron import (
-    Kernel,
+    Buffer,
+    CompileTime,
+    In,
     ObjectFifo,
+    Out,
     Program,
     Runtime,
     Worker,
-    Buffer,
+    kernels,
     str_to_dtype,
 )
-from aie.iron.device import NPU1, NPU2
-from ml_dtypes import bfloat16
 from aie.iron.controlflow import range_
-from aie.helpers.taplib.tap import TensorAccessPattern
+from aie.utils.hostruntime.argparse import device_from_args
+from aie.helpers.taplib.tensortiler2d import TensorTiler2D
+from aie.utils.hostruntime.argparse import add_compile_args, add_trace_arg
+from aie.utils.hostruntime.cli import run_design_cli
+from aie.utils.verify import assert_pass
 
 
-def my_reduce_max(dev, in1_size, out_size, num_cores, dtype_str, trace_size):
-    assert out_size == 4, "Output buffer must be size 4 (4 bytes = 1 integer)."
+# cores_per_col=2 is baked into the neighbor-FIFO wiring below; pass the
+# matching aiecc flag so the placer respects the 2-cores-per-column layout
+# on any column count (NPU1: 4 cols × 2 = 8, NPU2: 8 cols × 2 = 16).
+@iron.jit(aiecc_flags=["--cores-per-col", "2"])
+def vector_reduce_max(
+    a_in: In,
+    c_out: Out,
+    *,
+    in1_size: CompileTime[int] = 524288,
+    out_size: CompileTime[int] = 4,
+    num_cores: CompileTime[int] = 8,
+    dtype_str: CompileTime[str] = "i32",
+    trace_size: CompileTime[int] = 0,
+):
+    if out_size != 4:
+        raise ValueError("Output buffer must be size 4 (4 bytes = 1 integer).")
+
     enable_trace = 1 if trace_size > 0 else None
     cores_per_col = 2
 
@@ -34,17 +73,15 @@ def my_reduce_max(dev, in1_size, out_size, num_cores, dtype_str, trace_size):
     in_num_elements = in1_size // dtype(0).nbytes
     out_num_elements = out_size // dtype(0).nbytes
 
-    chunk = in_num_elements // num_cores  # For offset calculation
+    chunk = in_num_elements // num_cores
     tile_size = chunk if chunk < 4096 else 4096
     N_div_n = in_num_elements // (tile_size * num_cores)
 
-    # Define tensor types
     in_tensor_ty = np.ndarray[(in_num_elements,), np.dtype[dtype]]
     out_tensor_ty = np.ndarray[(out_num_elements,), np.dtype[dtype]]
     tile_ty = np.ndarray[(tile_size,), np.dtype[dtype]]
     fifodepth = 2
 
-    # AIE-array data movement with object fifos
     of_in1s = [
         ObjectFifo(tile_ty, name=f"in1_{i}", depth=fifodepth) for i in range(num_cores)
     ]
@@ -53,24 +90,14 @@ def my_reduce_max(dev, in1_size, out_size, num_cores, dtype_str, trace_size):
         for i in range(num_cores)
     ]
 
-    # AIE Core Function declarations
-    suffix = "_bfloat16" if dtype_str == "bf16" else ""
-    reduce_max_vector = Kernel(
-        f"reduce_max_vector{suffix}",
-        "reduce_max.cc.o",
-        [tile_ty, out_tensor_ty, np.int32],
-    )
-    compute_max = Kernel(
-        f"compute_max{suffix}",
-        "reduce_max.cc.o",
-        [out_tensor_ty, out_tensor_ty, out_tensor_ty],
-    )
+    reduce_max_vector = kernels.reduce_max(tile_size=tile_size, dtype=dtype)
+    compute_max = kernels.compute_max(dtype=dtype)
+
     min_val = (
         np.array([bfloat16(float("-inf"))], dtype=dtype)
         if dtype_str == "bf16"
         else np.array([np.iinfo(dtype).min], dtype=dtype)
     )
-
     nextC_buffers = []
     tmp_buffers = []
     for i in range(num_cores):
@@ -88,18 +115,14 @@ def my_reduce_max(dev, in1_size, out_size, num_cores, dtype_str, trace_size):
         )
 
     def core_body(*args):
-        # Extract fixed arguments from end of args list
         compute_max = args[-1]
         reduce_max_vector = args[-2]
         tmp_buffer = args[-3]
         c_buffer = args[-4]
 
-        # Extract object fifos from start of args list
         of_in1 = args[0]
         of_out = args[1]
-        neighbor_of_in1s = args[
-            2:-4
-        ]  # Variable number of input fifos based on num_cores
+        neighbor_of_in1s = args[2:-4]
 
         for _ in range_(N_div_n):
             elem_in1 = of_in1.acquire(1)
@@ -108,25 +131,21 @@ def my_reduce_max(dev, in1_size, out_size, num_cores, dtype_str, trace_size):
             of_in1.release(1)
 
         elem_out = of_out.acquire(1)
-        # Acquire inputs from other cores
         if neighbor_of_in1s:
             elem_in1s = []
             for neighbor_of in neighbor_of_in1s:
                 elem_in1s.append(neighbor_of.acquire(1))
 
-            # Compute max across all inputs
             for elem in elem_in1s[:-1]:
                 compute_max(elem, c_buffer, c_buffer)
             compute_max(elem_in1s[-1], c_buffer, elem_out)
 
-            # Release all inputs
             for neighbor_of in neighbor_of_in1s:
                 neighbor_of.release(1)
         else:
             elem_out[0] = c_buffer[0]
         of_out.release(1)
 
-    # Define a worker to run the task on a core
     my_workers = []
     for i in range(num_cores):
         fifo_args = [of_in1s[i].cons(), of_outs[i].prod()]
@@ -138,100 +157,94 @@ def my_reduce_max(dev, in1_size, out_size, num_cores, dtype_str, trace_size):
         fifo_args.extend(
             [nextC_buffers[i], tmp_buffers[i], reduce_max_vector, compute_max]
         )
-        my_workers.append(
-            Worker(
-                core_body,
-                fn_args=fifo_args,
-                trace=enable_trace,
-            )
-        )
+        my_workers.append(Worker(core_body, fn_args=fifo_args, trace=enable_trace))
 
-    # Create a TensorAccessPattern for each column
-    # to describe the data movement
-    # The pattern chops the data in equal chunks
-    # and moves them in parallel across the columns
-    taps = [
-        TensorAccessPattern(
-            (1, in_num_elements),
-            chunk * i,
-            [1, 1, 1, chunk],
-            [0, 0, 0, 1],
-        )
-        for i in range(num_cores)
-    ]
+    # One TAP per core — each reads a contiguous ``chunk`` of the input
+    # tensor.  Equivalent to row-major iteration of ``(1, chunk)`` tiles
+    # across the ``(1, in_num_elements)`` tensor.
+    taps = TensorTiler2D.simple_tiler((1, in_num_elements), (1, chunk))
 
-    # Runtime operations to move data to/from the AIE-array
     rt = Runtime()
-    with rt.sequence(in_tensor_ty, out_tensor_ty) as (A, C):
+    with rt.sequence(in_tensor_ty, out_tensor_ty) as (a, c):
         if enable_trace:
             rt.enable_trace(trace_size)
         rt.start(*my_workers)
-        # Fill the input objectFIFOs with data
         for i in range(num_cores):
-            rt.fill(
-                of_in1s[i].prod(),
-                A,
-                taps[i],
-            )
-        # Drain the output objectFIFOs corresponding to the last column of the first row with data
-        rt.drain(
-            of_outs[num_cores - 1].cons(),
-            C,
-            wait=True,
+            rt.fill(of_in1s[i].prod(), a, taps[i])
+        rt.drain(of_outs[num_cores - 1].cons(), c, wait=True)
+
+    return Program(iron.get_current_device(), rt).resolve_program()
+
+
+def _make_argparser():
+    p = argparse.ArgumentParser(prog="AIE Multi-Column Vector Reduce Max (col-wise)")
+    add_compile_args(p)
+    p.add_argument("-i1s", "--in1_size", type=int, default=524288, help="bytes")
+    p.add_argument("-os", "--out_size", type=int, default=4, help="bytes (always 4)")
+    p.add_argument("-nc", "--num_cores", type=int, default=8)
+    p.add_argument("-dt", "--dtype", type=str, default="i32", choices=["i32", "bf16"])
+    add_trace_arg(p)
+    return p
+
+
+def _validate(opts):
+    max_cores = 8 if opts.dev == "npu" else 16
+    if opts.num_cores > max_cores:
+        sys.exit(f"--num_cores ({opts.num_cores}) exceeds {opts.dev} max ({max_cores})")
+    if (
+        opts.in1_size % 64 != 0
+        or opts.in1_size < 64 * opts.num_cores
+        or opts.in1_size % opts.num_cores != 0
+    ):
+        sys.exit(
+            f"in1_size ({opts.in1_size}) must be a multiple of 64 and {opts.num_cores}, "
+            f"and >= {64 * opts.num_cores}"
         )
 
-    # Place program components (assign them resources on the device) and generate an MLIR module
-    return Program(dev, rt).resolve_program()
 
-
-p = argparse.ArgumentParser()
-p.add_argument("-d", "--dev", required=True, dest="device", help="AIE Device")
-p.add_argument(
-    "-i1s", "--in1_size", required=True, dest="in1_size", help="Input 1 size"
-)
-p.add_argument("-os", "--out_size", required=True, dest="out_size", help="Output size")
-p.add_argument("-dt", "--dtype", required=True, dest="dtype", help="Datatype")
-p.add_argument(
-    "-nc",
-    "--num_cores",
-    required=False,
-    dest="num_cores",
-    default=8,
-    help="Number of cores to use",
-)
-p.add_argument(
-    "-t",
-    "--trace_size",
-    required=False,
-    dest="trace_size",
-    default=0,
-    help="Trace buffer size",
-)
-opts = p.parse_args(sys.argv[1:])
-
-num_cores = int(opts.num_cores)
-if opts.device == "npu":
-    dev = NPU1()
-    if num_cores > 8:
-        raise ValueError(
-            f"This design can use at most 8 cores for device {opts.device}"
-        )
-elif opts.device == "npu2":
-    dev = NPU2()
-    if num_cores > 16:
-        raise ValueError(
-            f"This design can use at most 16 cores for device {opts.device}"
-        )
-else:
-    raise ValueError("[ERROR] Device name {} is unknown".format(opts.device))
-
-in1_size = int(opts.in1_size)
-if in1_size % 64 != 0 or in1_size < 64 * num_cores or in1_size % num_cores != 0:
-    raise ValueError(
-        f"In1 buffer size ({in1_size}) must be a multiple of 64 and {num_cores}, and greater than or equal to {64 * num_cores}"
+def _compile_kwargs(opts):
+    return dict(
+        in1_size=opts.in1_size,
+        out_size=opts.out_size,
+        num_cores=opts.num_cores,
+        dtype_str=opts.dtype,
+        trace_size=opts.trace_size,
     )
-out_size = int(opts.out_size)
-dtype = str(opts.dtype)
-trace_size = int(opts.trace_size)
 
-print(my_reduce_max(dev, in1_size, out_size, num_cores, dtype, trace_size))
+
+def _run_and_verify(opts):
+    dtype = str_to_dtype(opts.dtype)
+    num_elements = opts.in1_size // dtype(0).nbytes
+    out_num_elements = opts.out_size // dtype(0).nbytes
+
+    rng = np.random.default_rng(0)
+    if opts.dtype == "i32":
+        in_np = rng.integers(-1000, 1000, size=(num_elements,), dtype=np.int32)
+    else:
+        in_np = rng.uniform(-1000.0, 1000.0, size=(num_elements,)).astype(dtype)
+    in_t = iron.tensor(in_np, dtype=dtype, device="npu")
+    out_t = iron.zeros(out_num_elements, dtype=dtype, device="npu")
+
+    vector_reduce_max(in_t, out_t, **_compile_kwargs(opts))
+
+    expected_max = in_np.max()
+    actual_max = out_t.numpy()[0]
+    assert_pass(
+        actual_max, expected_max, fail_msg=f"expected {expected_max}, got {actual_max}"
+    )
+
+
+def main():
+    opts = _make_argparser().parse_args()
+    run_design_cli(
+        vector_reduce_max,
+        opts,
+        compile_kwargs=_compile_kwargs,
+        run_and_verify=_run_and_verify,
+        device=lambda o: device_from_args(o, n_cols=None),
+        validate=_validate,
+    )
+
+
+if __name__ == "__main__":
+    main()

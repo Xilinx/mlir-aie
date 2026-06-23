@@ -1,8 +1,11 @@
 // (c) Copyright 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
+// Two sibling cyclostatic loops on the same fifo (#2463): each loop's
+// trailing release drains its hoisted carry before the next loop runs. The
+// IRON design in test.py declares both loops; the peel rewrite keeps the
+// producer-side lock draining instead of deadlocking.
+//
 // REQUIRES: ryzen_ai_npu2, peano, xrt_python_bindings
 //
-// RUN: %python %S/aie2.py npu2 > aie.mlir
-// RUN: %python aiecc.py --no-aiesim --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --xclbin-name=aie.xclbin --npu-insts-name=insts.bin ./aie.mlir
-// RUN: %run_on_npu2% %python %S/test.py -x aie.xclbin -k MLIR_AIE -i insts.bin
+// RUN: %run_on_npu2% %python %S/test.py

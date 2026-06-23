@@ -30,9 +30,10 @@
 # RUN: %python aiecc.py --no-xchesscc --no-xbridge --no-aiesim --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.bin trace_lowered.mlir
 #
 # Run on NPU1 hardware:
-# RUN: %run_on_npu1% %python %S/test.py --xclbin final.xclbin --instr insts.bin --kernel MLIR_AIE --trace-sz 16384 --mlir trace_lowered.mlir.prj/input_with_addresses.mlir | FileCheck %s
+# RUN: %run_on_npu1% %python %S/test.py --xclbin final.xclbin --instr insts.bin --kernel MLIR_AIE --trace_size 16384 --mlir trace_lowered.mlir.prj/input_with_addresses.mlir | FileCheck %s
 # CHECK: PASS!
 
+import argparse
 import numpy as np
 import subprocess
 import sys
@@ -42,6 +43,7 @@ import aie.utils.trace as trace_mod
 import aie.utils.test as test_utils
 import aie.iron as iron
 from aie.utils import DefaultNPURuntime
+from aie.utils.hostruntime.argparse import add_runtime_args
 
 IN_OUT_SIZE = 4096
 IN_OUT_DTYPE = np.int32
@@ -86,7 +88,7 @@ def main(opts):
     rng = np.random.default_rng(seed=42)
     input_data = rng.integers(1, 100, size=IN_OUT_SIZE, dtype=IN_OUT_DTYPE)
     in1 = iron.tensor(input_data, dtype=IN_OUT_DTYPE)
-    in2 = iron.tensor(np.array([SCALAR_FACTOR], dtype=IN_OUT_DTYPE), dtype=IN_OUT_DTYPE)
+    in2 = iron.tensor([SCALAR_FACTOR], dtype=IN_OUT_DTYPE)
     out = iron.zeros(IN_OUT_SIZE, dtype=IN_OUT_DTYPE)
     ref_data = input_data * SCALAR_FACTOR
 
@@ -252,7 +254,8 @@ def main(opts):
 
 
 if __name__ == "__main__":
-    p = test_utils.create_default_argparser()
+    p = argparse.ArgumentParser()
+    add_runtime_args(p)
     p.add_argument("--mlir", dest="mlir", help="MLIR file for trace parsing")
     opts = p.parse_args(sys.argv[1:])
     sys.exit(main(opts))

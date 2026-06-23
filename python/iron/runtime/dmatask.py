@@ -7,9 +7,11 @@
 # (c) Copyright 2024 Advanced Micro Devices, Inc.
 """DMATask: a RuntimeTask that generates a shim DMA transfer operation."""
 
-from ... import ir  # type: ignore
+from ... import ir  # pyright: ignore[reportMissingImports]
 
-from ...dialects._aiex_ops_gen import dma_start_task  # type: ignore
+from ...dialects._aiex_ops_gen import (  # pyright: ignore[reportMissingImports]
+    dma_start_task,
+)
 from ...dialects.aiex import shim_dma_single_bd_task
 from ..dataflow import ObjectFifoHandle
 from .data import RuntimeData
@@ -27,6 +29,7 @@ class DMATask(RuntimeTask):
         task_group: RuntimeTaskGroup | None = None,
         wait: bool = False,
         offset_parameter: str | None = None,
+        packet: tuple[int, int] | None = None,
     ):
         """A RuntimeTask that will resolve to a DMA Operation.
 
@@ -37,12 +40,18 @@ class DMATask(RuntimeTask):
             task_group (RuntimeTaskGroup | None, optional): The task group associated with the operation. Defaults to None.
             wait (bool, optional): Whether this task should conclude with a call to await or a call to free. Defaults to False.
             offset_parameter (str | None, optional): Name of a ScratchpadParameter whose value is used as the element offset for this DMA transfer. Defaults to None.
+            packet (tuple[int, int] | None, optional): Stamp the shim DMA's
+                BD with a packet header ``(pkt_type, pkt_id)``.  Pairs with
+                downstream packet-switched routing (e.g. ObjectFifos
+                lowered with ``--packet-sw-objFifos`` or an explicit
+                :class:`PacketFlow`).  Defaults to None.
         """
         self._object_fifo = object_fifo
         self._rt_data = rt_data
         self._tap = tap
         self._wait = wait
         self._offset_parameter = offset_parameter
+        self._packet = packet
         self._task = None
         RuntimeTask.__init__(self, task_group)
 
@@ -74,5 +83,6 @@ class DMATask(RuntimeTask):
             tap=self._tap,
             issue_token=self._wait,
             offset_parameter=self._offset_parameter,
+            packet=self._packet,  # pyright: ignore[reportArgumentType]
         )
         dma_start_task(self._task)

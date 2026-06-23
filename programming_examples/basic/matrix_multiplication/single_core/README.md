@@ -4,60 +4,49 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2022, Advanced Micro Devices, Inc.
-// 
+// Copyright (C) 2022-2026, Advanced Micro Devices, Inc.
+//
 //===----------------------------------------------------------------------===//-->
 
 # Matrix Multiplication - Single Core Design
 
-In this design, a single AI Engine compute core performs a matrix-matrix-multiplication. By default, the matrices are `int16` data type for the input and `int32` data type for the output, and the dimensions are set (by default) to `M`&times;`K`&times;`N` = `256`&times;`256`&times;`256`. The kernel operates on chunks of `64`&times;`32`&times;`64` (`m`&times;`k`&times;`n`), so it is invoked multiple times to complete the full result.
+A single AI Engine compute core performs `C = A @ B`.  Default config: `int16` inputs / `int32` outputs, `M`&times;`K`&times;`N` = `512`&times;`512`&times;`512`, kernel tile `m`&times;`k`&times;`n` = `32`&times;`32`&times;`32`.  The host streams (m, k) x (k, n) tile pairs through one ObjectFifo per direction; the core multiply-accumulates into an (m, n) output tile and the runtime drains rows-of-tiles back to L3.
 
-> This design is a simplification of the [whole-array design](../whole_array/README.md). Instead of utilizing all available AI Engine compute cores in parallel, this design performs all computation on a single core. To understand this design better, please refer to the discussion of the whole-array design and the differences outlined below.
-
-## Differences from the [Whole-Array Design](../whole_array/README.md)
-
-* This design supports tracing; See [below](#tracing).
-* Only a single core performs computations. As such, we only need a single ObjectFIFO for each of the transfers between the levels (shim &rightarrow; memory, memory &rightarrow; compute, and back). These ObjectFIFOs are named `inA`, `inB`, `outC` and `memA`, `memB` and `memC`, respectively. 
-
-## Notes on the `single_core_placed.py` Implementation
-
-As in the whole-array design, the [`single_core.py`](./single_core.py) file describes the data movement of the design. This single core example also comes with an alternative implementation, which can be found in [`single_core_placed.py`](./single_core_placed.py). If you specify `use_placed=1` as an environment variable at compile time, this placed implementation will be used in place of `single_core.py`.
-
-Functionally, `single_core.py` and `single_core_placed.py` are intended to be identical. However, `single_core_placed.py` is implemented using a new syntax for runtime buffer descriptor configuration on the shim. Specifically, `single_core_placed.py` uses the `aiex.dma_configure_task_for`, `aiex.dma_start_task` and `aiex.dma_await_task` operations instead of `aiex.dma_memcpy_nd`.
-
-## Notes on the `single_core_iron.py` Implementation
-
-There is an implementation of this design found in [`single_core_iron.py`](./single_core_iron.py) using a higher-level version of IRON. If you specify `use_iron=1` as an environment variable at compile time, this placed implementation will be used in place of `single_core.py`.
-
-Functionally, this design is intended to be identical to the other two. However, `single_core_iron.py` currently does not support tracing.
+> This is a simplification of the [whole-array design](../whole_array/README.md): one compute core instead of the full 4xN_cols grid.  See that README for the broader IRON walkthrough.
 
 ## Building and Running the Design
 
-You need C++23 for bfloat16_t support. It can be found in g++-13: https://lindevs.com/install-g-on-ubuntu
+You need C++23 for `bfloat16_t` support — `g++-13` works: [https://lindevs.com/install-g-on-ubuntu](https://lindevs.com/install-g-on-ubuntu).
 
-To compile and run design:
+`single_core.py` is `@iron.jit`-decorated.  The Makefile drives the JIT pipeline via `--xclbin-path` so artifacts land in `build/` for `test.cpp` to consume:
+
 ```shell
 make
-make single_core.exe
 make run
 ```
-To compile and run the placed design:
+
+For direct Python run + numpy verify (skips `test.cpp` entirely):
+
 ```shell
-env use_placed=1 make
-env use_placed=1 make single_core.exe
-env use_placed=1 make run
+python3 single_core.py                            # default i16/i32 512x512x512
+python3 single_core.py --b-col-maj 1              # column-major B input
+python3 single_core.py --use-chess 1              # chess kernel build
+python3 single_core.py --dtype_in bf16 --dtype_out bf16
+python3 single_core.py --help                     # full flag list
 ```
 
-To compile and run the higher-level IRON design:
-```shell
-env use_iron=1 make
-env use_iron=1 make single_core.exe
-env use_iron=1 make run
-```
-
+Both paths share one design body; the makefile path is for the existing lit/sweep/test.cpp infrastructure.
 
 ## Tracing
 
-To get tracing output, set `enable_tracing=True` in `single_core.py` and `ENABLE_TRACING=true` in `test.cpp`. Tracing is also supported in `single_core_placed.py`.
+```shell
+make trace
+```
 
-By default, traces will be written out to `trace.txt`; another output file can be specified using the `--trace` (or `-t`) flag to the host code.
+Builds a trace-enabled xclbin (`build/trace_*.xclbin`) and runs `test.cpp` with `-t ${trace_size}`.  Trace events are captured to `trace.txt` and parsed into `trace_mm.json` for visualization.
+
+`trace_size` defaults to `65536` and can be overridden:
+
+```shell
+make trace trace_size=32768
+```

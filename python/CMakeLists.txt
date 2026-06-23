@@ -18,6 +18,8 @@ declare_mlir_python_sources(AIEPythonExtensions)
 
 declare_mlir_python_sources(AIEPythonSources.Dialects
   ADD_TO_PARENT AIEPythonSources
+  SOURCES
+    dialects/__init__.py
 )
 
 declare_mlir_python_sources(AIEPythonSources.Util
@@ -36,13 +38,16 @@ declare_mlir_python_sources(AIEPythonSources.Utils
   ADD_TO_PARENT AIEPythonSources
   SOURCES
     utils/__init__.py
+    utils/benchmark.py
     utils/config.py
     utils/test.py
-    utils/jit.py
     utils/ml.py
     utils/npukernel.py
     utils/regdb.py
+    utils/verify.py
     utils/hostruntime/__init__.py
+    utils/hostruntime/argparse.py
+    utils/hostruntime/cli.py
     utils/hostruntime/hostruntime.py
     utils/hostruntime/tensor_class.py
     utils/hostruntime/xrtruntime/__init__.py
@@ -51,8 +56,18 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/hostruntime/xrtruntime/tensor.py
     utils/compile/__init__.py
     utils/compile/utils.py
-    utils/compile/cache/circular_cache.py
     utils/compile/cache/utils.py
+    utils/compile/jit/__init__.py
+    utils/compile/jit/compilabledesign.py
+    utils/compile/jit/_dma_size_parser.py
+    utils/compile/jit/_hash.py
+    utils/compile/jit/_introspect.py
+    utils/compile/jit/_serialization.py
+    utils/compile/jit/markers.py
+    utils/compile/jit/context.py
+    utils/compile/jit/compileconfig.py
+    utils/callabledesign.py
+    utils/jit.py
     utils/trace/__init__.py
     utils/trace/config.py
     utils/trace/events/__init__.py
@@ -76,6 +91,13 @@ declare_mlir_python_sources(AIEPythonSources.Iron
   ADD_TO_PARENT AIEPythonSources
   SOURCES_GLOB
     iron/*.py
+    iron/compile/*.py
+    iron/hostruntime/*.py
+    iron/algorithms/*.py
+    iron/kernels/*.py
+    iron/dataflow/*.py
+    iron/device/*.py
+    iron/runtime/*.py
 )
 
 declare_mlir_dialect_python_bindings(
@@ -395,6 +417,22 @@ else ()
 
 
 endif ()
+
+# Stage the MLIR core type stubs (Context, Location, Module, ...) next to the
+# compiled extension. aie/ir.py re-exports those symbols via
+# `from ._mlir_libs._mlir.ir import *`; the .py sources we assemble don't carry
+# their types, so a static type checker can only resolve them from these stubs.
+# They ship with the MLIR distro but aren't copied by add_mlir_python_modules.
+add_custom_command(
+  TARGET AIEPythonModules POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${MLIR_INSTALL_PREFIX}/src/python/MLIRPythonExtension.Core.type_stub_gen/_mlir_libs/_mlir/__init__.pyi"
+    "${MLIR_INSTALL_PREFIX}/src/python/MLIRPythonExtension.Core.type_stub_gen/_mlir_libs/_mlir/ir.pyi"
+    "${MLIR_INSTALL_PREFIX}/src/python/MLIRPythonExtension.Core.type_stub_gen/_mlir_libs/_mlir/passmanager.pyi"
+    "${MLIR_INSTALL_PREFIX}/src/python/MLIRPythonExtension.Core.type_stub_gen/_mlir_libs/_mlir/rewrite.pyi"
+    "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs/_mlir/"
+  COMMENT "Staging MLIR core type stubs for pyright"
+)
 
 ################################################################################
 # ParameterScratchpad pybind11 module (no MLIR/XRT deps — uses buffer pointer)

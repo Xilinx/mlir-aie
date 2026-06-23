@@ -4,7 +4,7 @@
 // npu1 variant of objectfifo_cyclostatic_acquire_in_loop. Same #2463
 // regression but targeted at Phoenix (npu1) so the fix is exercised on
 // both architectures in CI. Reuses the sibling directory's IRON test.py;
-// %run_on_npu1% drives DefaultNPURuntime to the npu1 device.
+// %run_on_npu1% drives @iron.jit to the npu1 device.
 //
 // REQUIRES: ryzen_ai_npu1, peano, xrt_python_bindings
 //

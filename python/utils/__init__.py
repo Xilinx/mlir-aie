@@ -10,6 +10,8 @@
 import logging
 import os
 
+import numpy as np
+
 # Prevent "No handlers could be found" warnings when aie is used as a library.
 logging.getLogger("aie").addHandler(logging.NullHandler())
 
@@ -26,7 +28,7 @@ _logger = logging.getLogger(__name__)
 from .hostruntime.tensor_class import Tensor
 
 try:
-    import pyxrt
+    import pyxrt  # pyright: ignore[reportMissingImports]
 
     has_xrt = True
 except ImportError as e:
@@ -45,17 +47,37 @@ else:
     DEFAULT_TENSOR_CLASS = CPUOnlyTensor
 
 
+def ceildiv(a, b):
+    """Ceiling division: smallest integer >= a/b."""
+    return -(a // -b)
+
+
 def tensor(*args, **kwargs):
     """
     Create a tensor using the default tensor class.
 
+    Passing a typed ``ndarray`` together with a mismatched ``dtype=``
+    kwarg raises :class:`TypeError`.  Matching kwargs are passed through
+    unchanged (the underlying tensor backend uses ``dtype`` for buffer
+    allocation, so silently stripping it would surprise callers).
+
     Args:
-        *args: Arguments passed to the tensor constructor.
+        *args: Arguments passed to the tensor constructor.  ``args[0]`` is
+            either a shape ``tuple`` or an array-like.
         **kwargs: Keyword arguments passed to the tensor constructor.
 
     Returns:
         Tensor: The created tensor.
     """
+    if args and isinstance(args[0], np.ndarray) and "dtype" in kwargs:
+        arr_dt = args[0].dtype
+        kw_dt = np.dtype(kwargs["dtype"])
+        if arr_dt != kw_dt:
+            raise TypeError(
+                f"iron.tensor: ndarray dtype {arr_dt!r} does not match "
+                f"dtype= kwarg {kw_dt!r}.  Cast the array beforehand "
+                f"(e.g. arr.astype({kw_dt!r})) or drop the dtype= kwarg."
+            )
     return DEFAULT_TENSOR_CLASS(*args, **kwargs)
 
 
@@ -85,6 +107,20 @@ def zeros(*args, **kwargs):
         Tensor: The created tensor.
     """
     return DEFAULT_TENSOR_CLASS.zeros(*args, **kwargs)
+
+
+def full(*args, **kwargs):
+    """
+    Create a tensor filled with a scalar value using the default tensor class.
+
+    Args:
+        *args: Arguments passed to the full method (size, fill_value).
+        **kwargs: Keyword arguments passed to the full method.
+
+    Returns:
+        Tensor: The created tensor.
+    """
+    return DEFAULT_TENSOR_CLASS.full(*args, **kwargs)
 
 
 def randint(*args, **kwargs):
@@ -169,6 +205,8 @@ from .npukernel import NPUKernel
 
 if has_xrt:
     from .hostruntime.xrtruntime.hostruntime import CachedXRTRuntime
+else:
+    CachedXRTRuntime = None
 
 
 _DefaultNPURuntime = None
@@ -177,6 +215,7 @@ _DefaultNPURuntime = None
 def _get_default_npu_runtime():
     global _DefaultNPURuntime
     if _DefaultNPURuntime is None and has_xrt:
+        assert CachedXRTRuntime is not None
         _DefaultNPURuntime = CachedXRTRuntime()
     return _DefaultNPURuntime
 
@@ -187,9 +226,13 @@ def __getattr__(name):
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
-def get_current_device():
-    """
-    Get the current NPU device.
+def get_current_device(*, probe_runtime: bool = True):
+    """Get the current NPU device.
+
+    Args:
+        probe_runtime: When True, infer the device from the default runtime if
+            no explicit device has been bound.  Use False for offline inspection
+            paths that must not initialize the runtime.
 
     Returns:
         Device | None: The current device if available, else None.
@@ -197,8 +240,33 @@ def get_current_device():
     if hostruntime._CURRENT_DEVICE:
         return hostruntime._CURRENT_DEVICE
 
+    if not probe_runtime:
+        return None
+
     runtime = _get_default_npu_runtime()
     if runtime:
         return runtime.device()
     else:
         return None
+
+
+def ensure_current_device(*, probe_runtime: bool = True):
+    """Bind and return the device observed by IRON.
+
+    ``get_current_device()`` can infer a device from the runtime without making
+    that device explicit. Architecture-sensitive generators need a single
+    process-wide device selection so kernel factories, cache hashing, MLIR
+    generation, and external-kernel compilation all see the same target.
+
+    Args:
+        probe_runtime: Forwarded to ``get_current_device``. Use False for
+            offline inspection paths that must not initialize the runtime.
+
+    Returns:
+        Device | None: The device that was bound, or ``None`` if no device
+        was available and nothing was bound.
+    """
+    device = get_current_device(probe_runtime=probe_runtime)
+    if device is not None:
+        set_current_device(device)
+    return device

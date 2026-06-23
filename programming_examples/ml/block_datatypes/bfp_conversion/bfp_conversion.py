@@ -4,88 +4,84 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
-import numpy as np
+# (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
+"""bf16 → bfp16ebs8 conversion + bfp16 matmul — ``@iron.jit`` IRON design.
+
+Two AIE2P cores form a pipeline: the first converts two bf16 input tiles
+to bfp16ebs8, the second multiplies the converted tiles.  Strix-only
+(uses ``v8bfp16ebs8``).
+"""
+
+import argparse
 import sys
+from pathlib import Path
+
+import numpy as np
 
 from ml_dtypes import bfloat16
 from aie.dialects.aiex import v8bfp16ebs8
 
-from aie.iron import ObjectFifo, Program, Runtime, Worker
-from aie.iron.kernel import Kernel
-from aie.iron.device import NPU2
+import aie.iron as iron
+from aie.iron import ExternalFunction, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
+from aie.utils.hostruntime.argparse import (
+    device_from_args,
+    add_compile_args,
+)
+from aie.utils.hostruntime.cli import run_design_cli
+
+N_IN = 64
+N_OUT = 8
+
+_TENSOR_BF16_TY = np.ndarray[(N_IN,), np.dtype[bfloat16]]
+_TILE_BF16_TY = np.ndarray[(N_IN,), np.dtype[bfloat16]]
+_TENSOR_BFP16_TY = np.ndarray[(N_OUT,), np.dtype[v8bfp16ebs8]]
+_TILE_BFP16_TY = np.ndarray[(N_OUT,), np.dtype[v8bfp16ebs8]]
+
+_KERNEL_SRC = Path(__file__).resolve().parent / "kernel.cc"
 
 
-def bfp_conversion():
-    # We are just doing one operation in total => tensor and tile sizes are equal
-    N_in = 64
-    N_out = 8
-    n_in = 64
-    n_out = 8
-
-    if len(sys.argv) != 2:
-        raise ValueError("[ERROR] Need 1 command line arguments (Col)")
-
-    # Define tensor types
-    tensor_bf16_ty = np.ndarray[(N_in,), np.dtype[bfloat16]]
-    tile_bf16_ty = np.ndarray[(n_in,), np.dtype[bfloat16]]
-
-    tensor_bfp16_ty = np.ndarray[(N_out,), np.dtype[v8bfp16ebs8]]
-    tile_bfp16_ty = np.ndarray[(n_out,), np.dtype[v8bfp16ebs8]]
-
-    # AIE-array data movement with object fifos
-    of_in1 = ObjectFifo(tile_bf16_ty, name="in1")
-    of_in2 = ObjectFifo(tile_bf16_ty, name="in2")
-    of_intermediate1 = ObjectFifo(tile_bfp16_ty, name="intermediate1")
-    of_intermediate2 = ObjectFifo(tile_bfp16_ty, name="intermediate2")
-    of_out = ObjectFifo(tile_bfp16_ty, name="out")
-
-    # Define kernels
-    conversion_kernel = Kernel(
+@iron.jit
+def bfp_conversion(a_in: In, b_in: In, c_out: Out):
+    conversion_kernel = ExternalFunction(
         "bf16_to_bfp_conversion",
-        "kernel.o",
-        [tile_bf16_ty, tile_bf16_ty, tile_bfp16_ty, tile_bfp16_ty],
+        source_file=str(_KERNEL_SRC),
+        arg_types=[_TILE_BF16_TY, _TILE_BF16_TY, _TILE_BFP16_TY, _TILE_BFP16_TY],
     )
-
-    multiplication_kernel = Kernel(
+    multiplication_kernel = ExternalFunction(
         "bfp16_matrix_multiplication",
-        "kernel.o",
-        [tile_bfp16_ty, tile_bfp16_ty, tile_bfp16_ty],
+        source_file=str(_KERNEL_SRC),
+        arg_types=[_TILE_BFP16_TY, _TILE_BFP16_TY, _TILE_BFP16_TY],
     )
 
-    # Define worker functions
-    def conversion_core(
-        of_in1, of_in2, of_intermediate1, of_intermediate2, conversion_kernel
-    ):
+    of_in1 = ObjectFifo(_TILE_BF16_TY, name="in1")
+    of_in2 = ObjectFifo(_TILE_BF16_TY, name="in2")
+    of_intermediate1 = ObjectFifo(_TILE_BFP16_TY, name="intermediate1")
+    of_intermediate2 = ObjectFifo(_TILE_BFP16_TY, name="intermediate2")
+    of_out = ObjectFifo(_TILE_BFP16_TY, name="out")
+
+    def conversion_core(of_in1, of_in2, of_inter1, of_inter2, kernel):
         for _ in range_(sys.maxsize):
             elem_in1 = of_in1.acquire(1)
             elem_in2 = of_in2.acquire(1)
-            elem_out1 = of_intermediate1.acquire(1)
-            elem_out2 = of_intermediate2.acquire(1)
-
-            conversion_kernel(elem_in1, elem_in2, elem_out1, elem_out2)
-
+            elem_out1 = of_inter1.acquire(1)
+            elem_out2 = of_inter2.acquire(1)
+            kernel(elem_in1, elem_in2, elem_out1, elem_out2)
             of_in1.release(1)
             of_in2.release(1)
-            of_intermediate1.release(1)
-            of_intermediate2.release(1)
+            of_inter1.release(1)
+            of_inter2.release(1)
 
-    def multiplication_core(
-        of_intermediate1, of_intermediate2, of_out, multiplication_kernel
-    ):
+    def multiplication_core(of_inter1, of_inter2, of_out, kernel):
         for _ in range_(sys.maxsize):
-            elem_in1 = of_intermediate1.acquire(1)
-            elem_in2 = of_intermediate2.acquire(1)
+            elem_in1 = of_inter1.acquire(1)
+            elem_in2 = of_inter2.acquire(1)
             elem_out = of_out.acquire(1)
-
-            multiplication_kernel(elem_in1, elem_in2, elem_out)
-
-            of_intermediate1.release(1)
-            of_intermediate2.release(1)
+            kernel(elem_in1, elem_in2, elem_out)
+            of_inter1.release(1)
+            of_inter2.release(1)
             of_out.release(1)
 
-    # Define workers
     workers = [
         Worker(
             conversion_core,
@@ -109,19 +105,34 @@ def bfp_conversion():
     ]
 
     rt = Runtime()
-    with rt.sequence(tensor_bf16_ty, tensor_bf16_ty, tensor_bfp16_ty) as (A, B, C):
+    with rt.sequence(_TENSOR_BF16_TY, _TENSOR_BF16_TY, _TENSOR_BFP16_TY) as (A, B, C):
         rt.start(*workers)
         rt.fill(of_in1.prod(), A)
-        # Note that properly aligning dot products and bfps implies transposing before converting to bfp!
-        # Otherwise, the dot products inside the matrix multiplication will not properly group the blocks
-        # The second matrix must be transposed for the multiplication, before the conversion to bfp
-        # To perform the transposition at this level, we would need a granularity aligned with 4 bytes.
-        # Unfortunately, this is not possible with bf16. Can be done instead inside the core for this simple example.
+        # Aligning dot products with bfp blocks requires transposing the second
+        # matrix before conversion to bfp; bf16's element size (2B) precludes a
+        # 4B-aligned transpose at this level, so transposition happens inside
+        # the multiplication kernel.
         rt.fill(of_in2.prod(), B)
         rt.drain(of_out.cons(), C, wait=True)
 
-    return Program(NPU2(), rt).resolve_program()
+    return Program(iron.get_current_device(), rt).resolve_program()
 
 
-module = bfp_conversion()
-print(module)
+def _make_argparser():
+    p = argparse.ArgumentParser(prog="AIE bf16 -> bfp16 Conversion + GEMM")
+    add_compile_args(p, default_dev="npu2")
+    return p
+
+
+def main():
+    opts = _make_argparser().parse_args()
+    run_design_cli(
+        bfp_conversion,
+        opts,
+        compile_kwargs={},
+        device=device_from_args,
+    )
+
+
+if __name__ == "__main__":
+    main()

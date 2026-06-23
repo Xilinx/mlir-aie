@@ -12,11 +12,15 @@ import math
 from aie.utils.ml import DataShaper
 import time
 import os
+import argparse
+import json
+
 import numpy as np
+import torch.nn.functional as F
+
 import aie.iron as iron
-from aie.utils import DefaultNPURuntime
 from aie.utils import TraceConfig, HostRuntime, NPUKernel, DefaultNPURuntime
-import aie.utils.test as test_utils
+from aie.utils.hostruntime.argparse import add_runtime_args
 
 
 def convert_to_numpy(array):
@@ -26,10 +30,6 @@ def convert_to_numpy(array):
         return array.cpu().numpy()
     else:
         raise TypeError("Unsupported array type")
-
-
-import json
-import torch.nn.functional as F
 
 
 def pad_tensor(tensor, target_shape):
@@ -497,8 +497,8 @@ def main(opts):
     # ------------------------------------------------------
     # Setup buffers run loop
     # ------------------------------------------------------
-    in1 = iron.tensor(ifm_mem_fmt, dtype=dtype_in)
-    in2 = iron.tensor(total_wts, dtype=dtype_wts)
+    in1 = iron.tensor(ifm_mem_fmt.astype(dtype_in), dtype=dtype_in)
+    in2 = iron.tensor(total_wts.astype(dtype_wts), dtype=dtype_wts)
     out = iron.zeros(shape_out, dtype=dtype_out_aie)
     buffers = [in1, in2, out]
 
@@ -591,6 +591,7 @@ def main(opts):
 
 
 if __name__ == "__main__":
-    p = test_utils.create_default_argparser()
+    p = argparse.ArgumentParser()
+    add_runtime_args(p, with_io_sizes=True)
     opts = p.parse_args(sys.argv[1:])
     main(opts)

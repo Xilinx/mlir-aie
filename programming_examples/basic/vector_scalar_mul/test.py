@@ -5,11 +5,15 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
-import numpy as np
+import argparse
 import sys
-import aie.utils.test as test_utils
+
+import numpy as np
+
 import aie.iron as iron
 from aie.utils import DefaultNPURuntime
+from aie.utils.hostruntime.argparse import add_runtime_args
+from aie.utils.test import create_npu_kernel
 
 
 def main(opts):
@@ -42,24 +46,22 @@ def main(opts):
     scale_factor = 3
 
     # Initialize data
-    ref = np.arange(1, in1_volume + 1, dtype=in1_dtype)
-    in1 = iron.tensor(ref, dtype=in1_dtype)
-    in2_data = np.array([scale_factor], dtype=in2_dtype)
-    in2 = iron.tensor(in2_data, dtype=in2_dtype)
+    in1 = iron.arange(1, in1_volume + 1, dtype=in1_dtype)
+    in2 = iron.full((1,), scale_factor, dtype=in2_dtype)
     out = iron.zeros([out_volume], dtype=out_dtype)
-    ref = ref * scale_factor
+    ref = in1.numpy() * scale_factor
 
     # --------------------------------------------------------------------------
 
-    npu_opts = test_utils.create_npu_kernel(opts)
+    npu_opts = create_npu_kernel(opts)
     if npu_opts.npu_kernel.trace_config:
         npu_opts.npu_kernel.trace_config.enable_ctrl_pkts = True
 
     print("Running...\n")
     res = DefaultNPURuntime.run_test(
         npu_opts.npu_kernel,
-        [in1, in2, out],
-        {2: ref},
+        [in1, out, in2],
+        {1: ref},
         verify=npu_opts.verify,
         verbosity=npu_opts.verbosity,
     )
@@ -69,6 +71,7 @@ def main(opts):
 
 
 if __name__ == "__main__":
-    p = test_utils.create_default_argparser()
+    p = argparse.ArgumentParser()
+    add_runtime_args(p, with_io_sizes=True)
     opts = p.parse_args(sys.argv[1:])
     main(opts)

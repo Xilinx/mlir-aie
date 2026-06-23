@@ -9,8 +9,11 @@
 import numpy as np
 from typing import Sequence
 
-from ...extras.dialects.memref import MemRefValue  # type: ignore
+from ...extras.dialects.memref import (  # pyright: ignore[reportMissingImports]
+    MemRefValue,
+)
 from ...helpers.util import (
+    NpuDType,
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
 )
@@ -35,7 +38,7 @@ class RuntimeData:
         return np_ndarray_type_get_shape(self._arr_type)
 
     @property
-    def dtype(self) -> np.dtype:
+    def dtype(self) -> NpuDType:
         """The per-element datatype of the buffer"""
         return np_ndarray_type_get_dtype(self._arr_type)
 

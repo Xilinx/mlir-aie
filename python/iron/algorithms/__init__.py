@@ -14,6 +14,7 @@ from .conv_pipeline import (
     sliding_3row,
 )
 from .for_each import for_each
+from .reduce import reduce
 from .transform import (
     transform,
     transform_binary,

@@ -18,7 +18,6 @@ from aie.dialects.aie import *
 from aie.dialects.aiex import *
 from aie.iron.controlflow import range_
 
-
 dtype = T.i32
 output_sz = 16
 

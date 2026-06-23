@@ -348,7 +348,7 @@
          id="tspan3-1-1-9-3"
          style="font-size:3.88056px;fill:#666666;stroke-width:0.264583"
          x="7.6688719"
-         y="58.162884">s = 2</tspan></text>
+         y="58.162884">s</tspan></text>
     <text
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.88056px;font-family:Arial;-inkscape-font-specification:Arial;text-align:center;writing-mode:lr-tb;direction:ltr;text-anchor:middle;fill:#666666;stroke-width:0.264583"
@@ -358,7 +358,7 @@
          id="tspan3-1-1-9-3-2"
          style="font-size:3.88056px;fill:#666666;stroke-width:0.264583"
          x="8.9761124"
-         y="54.633209">r = 8</tspan></text>
+         y="54.633209">r</tspan></text>
     <text
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.88056px;font-family:Arial;-inkscape-font-specification:Arial;text-align:center;writing-mode:lr-tb;direction:ltr;text-anchor:middle;fill:#666666;stroke-width:0.264583"
@@ -438,7 +438,7 @@
          id="tspan3-1-1-9-3-21"
          style="font-size:3.88056px;fill:#666666;stroke-width:0.264583"
          x="47.858391"
-         y="55.515156">t = 8</tspan></text>
+         y="55.515156">t</tspan></text>
     <text
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.88056px;font-family:Arial;-inkscape-font-specification:Arial;text-align:center;writing-mode:lr-tb;direction:ltr;text-anchor:middle;fill:#666666;stroke-width:0.264583"
@@ -448,7 +448,7 @@
          id="tspan3-1-1-9-3-21-3"
          style="font-size:3.88056px;fill:#666666;stroke-width:0.264583"
          x="89.309761"
-         y="58.351677">t = 8</tspan></text>
+         y="58.351677">t</tspan></text>
     <text
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.88056px;font-family:Arial;-inkscape-font-specification:Arial;text-align:center;writing-mode:lr-tb;direction:ltr;text-anchor:middle;fill:#666666;stroke-width:0.264583"
@@ -458,7 +458,7 @@
          id="tspan3-1-1-9-3-2-6"
          style="font-size:3.88056px;fill:#666666;stroke-width:0.264583"
          x="52.648018"
-         y="51.989269">s = 2</tspan></text>
+         y="51.989269">s</tspan></text>
     <text
        xml:space="preserve"
        style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:3.88056px;font-family:Arial;-inkscape-font-specification:Arial;text-align:center;writing-mode:lr-tb;direction:ltr;text-anchor:middle;fill:#666666;stroke-width:0.264583"
@@ -468,6 +468,6 @@
          id="tspan3-1-1-9-3-2-3"
          style="font-size:3.88056px;fill:#666666;stroke-width:0.264583"
          x="92.760796"
-         y="54.633209">r = 8</tspan></text>
+         y="54.633209">r</tspan></text>
   </g>
 </svg>
