@@ -227,8 +227,12 @@ def __getattr__(name):
 
 
 def get_current_device(*, probe_runtime: bool = True):
-    """
-    Get the current NPU device.
+    """Get the current NPU device.
+
+    Args:
+        probe_runtime: When True, infer the device from the default runtime if
+            no explicit device has been bound.  Use False for offline inspection
+            paths that must not initialize the runtime.
 
     Args:
         probe_runtime: When True, fall back to the default NPU runtime if no
@@ -250,3 +254,25 @@ def get_current_device(*, probe_runtime: bool = True):
         return runtime.device()
     else:
         return None
+
+
+def ensure_current_device(*, probe_runtime: bool = True):
+    """Bind and return the device observed by IRON.
+
+    ``get_current_device()`` can infer a device from the runtime without making
+    that device explicit. Architecture-sensitive generators need a single
+    process-wide device selection so kernel factories, cache hashing, MLIR
+    generation, and external-kernel compilation all see the same target.
+
+    Args:
+        probe_runtime: Forwarded to ``get_current_device``. Use False for
+            offline inspection paths that must not initialize the runtime.
+
+    Returns:
+        Device | None: The device that was bound, or ``None`` if no device
+        was available and nothing was bound.
+    """
+    device = get_current_device(probe_runtime=probe_runtime)
+    if device is not None:
+        set_current_device(device)
+    return device

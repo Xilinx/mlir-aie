@@ -16,8 +16,8 @@ Three modes:
 
 * ``python3 vector_scalar_mul.py`` — JIT-compile + run + verify on the
   attached NPU.
-* ``python3 vector_scalar_mul.py --emit-mlir`` — print the lowered MLIR
-  (no NPU access).
+* ``python3 vector_scalar_mul.py --dev npu --emit-mlir`` — print the
+  lowered MLIR (no NPU access).
 * ``python3 vector_scalar_mul.py --xclbin-path X --insts-path Y`` —
   compile-only, drop the xclbin/insts pair for the explicit-XRT
   walkthrough (used by ``test.cpp`` and ``test.py``).
