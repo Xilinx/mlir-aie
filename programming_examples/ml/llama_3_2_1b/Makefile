@@ -1150,6 +1150,31 @@ run_replay_probe: replay_probe
 		-i ${BUILD}/insts_replay_probe.bin \
 		-k MLIR_AIE
 
+# ---------- fill+replay probe (M3a full relay validation) ----------
+FR_HALF ?= 256
+FR_CHUNK ?= 64
+FR_R ?= 3
+${BUILD}/aie_fillreplay_probe.mlir: ${srcdir}/aie2_fillreplay_probe.py ${srcdir}/logits_relay.py
+	mkdir -p ${@D}
+	LLAMA_FR_HALF=${FR_HALF} LLAMA_FR_CHUNK=${FR_CHUNK} LLAMA_FR_R=${FR_R} python3 $< > $@
+
+${BUILD}/final_fillreplay_probe.xclbin: ${BUILD}/aie_fillreplay_probe.mlir ${BUILD}/llama_passthrough_f32.cc.o
+	mkdir -p ${@D}
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-xchesscc --no-xbridge \
+		--xclbin-name=${@F} \
+		--npu-insts-name=insts_fillreplay_probe.bin \
+		$(notdir $<)
+
+fillreplay_probe: ${BUILD}/final_fillreplay_probe.xclbin
+
+run_fillreplay_probe: fillreplay_probe
+	cd ${srcdir} && LLAMA_FR_HALF=${FR_HALF} LLAMA_FR_CHUNK=${FR_CHUNK} LLAMA_FR_R=${FR_R} \
+		python3 test_fillreplay_probe.py \
+		-x ${BUILD}/final_fillreplay_probe.xclbin \
+		-i ${BUILD}/insts_fillreplay_probe.bin \
+		-k MLIR_AIE
+
 # ---------- clean ----------
 clean:
 	rm -rf ${BUILD}

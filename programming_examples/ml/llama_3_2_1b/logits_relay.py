@@ -79,6 +79,7 @@ class LogitsHalfRelay(Resolvable):
         self._sampler_lock_id = sampler_lock_id
 
         # Set by resolve().
+        self._resolved = False
         self._gemm_send_buf = None
         self._gemm_prod_lock = None
         self._gemm_cons_lock = None
@@ -114,6 +115,10 @@ class LogitsHalfRelay(Resolvable):
         use_lock(self._samp_prod_lock, LockAction.Release)
 
     def resolve(self, loc=None, ip=None) -> None:
+        # Appears in two workers' fn_args (gemm + sampler) -> resolve once.
+        if self._resolved:
+            return
+        self._resolved = True
         from aie.dialects.aie import (
             buffer,
             lock,
@@ -188,29 +193,41 @@ class LogitsHalfRelay(Resolvable):
             with block[2]:
                 EndOp()
 
-        # --- Memtile DMA: fill S2MM (gather chunks into half_buf) +
-        #     replay MM2S (stream the resident half, HW repeat R, chunked) ---
+        # --- Memtile DMA: two channels in one region (flat chained blocks).
+        # ch A = S2MM fill (GEMM stream -> half_buf, once); ch B = MM2S replay
+        # (half_buf -> sampler, HW repeat R). block chain:
+        #   start(S2MM, chain=block[2]); block[1]=fill BD;
+        #   block[2]=start(MM2S, chain=block[4]); block[3]=replay BD;
+        #   block[4]=EndOp.
         @memtile_dma(mem_op)
         def _mtdma(block):
-            # S2MM fill: write incoming GEMM chunks into half_buf at successive
-            # offsets; release fill_lock once per chunk.
-            s2 = dma_start(DMAChannelDir.S2MM, self._fill_s2mm_ch,
-                           dest=block[1], chain=block[2])
+            dma_start(DMAChannelDir.S2MM, self._fill_s2mm_ch,
+                      dest=block[1], chain=block[2])
             with block[1]:
-                use_lock(free_lock, LockAction.AcquireGreaterEqual)
-                dma_bd(half_buf)  # whole-half S2MM; GEMM streams n_gemm_chunks
-                use_lock(fill_lock, LockAction.Release)
+                # S2MM fill: acquire free_lock (init=1 -> fires once per
+                # dispatch), receive the full half from the GEMM stream, release
+                # fill_lock so the replay can start. Every locked BD must carry
+                # BOTH an acquire and a release (AIERT.cpp:339).
+                use_lock(free_lock, LockAction.AcquireGreaterEqual, value=1)
+                dma_bd(half_buf)
+                use_lock(fill_lock, LockAction.Release, value=1)
                 next_bd(block[1])
             with block[2]:
-                # MM2S replay: send the whole resident half, HW repeat R-1 extra.
+                # MM2S replay chain: R explicit sends of the resident half. Each
+                # BD acquires fill_lock (GE 1, non-consuming) and releases it
+                # back (net zero) so it stays available for the next replay BD
+                # and the next dispatch -- and so every BD has BOTH acq+rel as
+                # the CDO generator requires.
                 dma_start(DMAChannelDir.MM2S, self._replay_mm2s_ch,
-                          dest=block[3], chain=block[4], repeat_count=self._R - 1)
-                with block[3]:
-                    use_lock(fill_lock, LockAction.AcquireGreaterEqual)
+                          dest=block[3], chain=block[3 + self._R])
+            for _i in range(self._R):
+                with block[3 + _i]:
+                    use_lock(fill_lock, LockAction.AcquireGreaterEqual, value=1)
                     dma_bd(half_buf)
-                    next_bd(block[3])
-                with block[4]:
-                    EndOp()
+                    use_lock(fill_lock, LockAction.Release, value=1)
+                    next_bd(block[3 + (_i + 1)] if _i < self._R - 1 else block[3])
+            with block[3 + self._R]:
+                EndOp()
 
         # --- Sampler compute tile DMA: S2MM pull each CHUNK window ---
         @mem(samp_op)
