@@ -64,8 +64,6 @@ namespace aievec {
 #define GEN_PASS_DECL
 #include "aie/Dialect/AIEVec/Transforms/Passes.h.inc"
 
-std::unique_ptr<mlir::Pass> createAIEVectorizePass();
-
 std::unique_ptr<mlir::Pass> createSplitVectorLoadUpsChainsPass();
 
 /// Generate the code for registering passes.
