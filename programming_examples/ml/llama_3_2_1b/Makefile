@@ -1353,6 +1353,57 @@ run_bcast_probe: bcast_probe
 		-i ${BUILD}/insts_bcast_probe.bin \
 		-k MLIR_AIE
 
+# ---------- one-stream top-k sampler + embed gather probe ----------
+TK_V ?= 64
+TK_D ?= 256
+TK_KSET ?= 8
+TK_TEMP ?= 0.0
+TK_TOPK ?= 8
+TK_SEED ?= 0
+# The sampler params (temp/top_k/seed) are BAKED into the buffer at codegen, so
+# the MLIR + xclbin are config-specific. Encode the config in the artifact names
+# so a different temp/top_k/seed never silently reuses a stale build.
+TK_CFG := V${TK_V}_D${TK_D}_K${TK_KSET}_t${TK_TEMP}_k${TK_TOPK}_s${TK_SEED}
+# The object is named llama_topk_sample.cc.o (the name the probe's Kernel() op
+# references, which aiecc copies into the .prj by basename). It is rebuilt
+# whenever TK_D/TK_KSET change because the .cc.o target is order-only-rebuilt
+# via the config stamp below.
+${BUILD}/llama_topk_sample.cc.o: ${KDIR}/llama_topk_sample.cc ${BUILD}/exp_lut.h ${BUILD}/.topk_cfg_${TK_D}_${TK_KSET}
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -ffp-contract=off \
+		-I${srcdir} -DLLAMA_TOPK_D=${TK_D} -DLLAMA_TOPK_NTILE=4 \
+		-DLLAMA_TOPK_KSET=${TK_KSET} -c $< -o ${@F}
+
+# Config stamp: changing TK_D/TK_KSET creates a new empty stamp and removes the
+# stale .cc.o so the object is recompiled for the new shape.
+${BUILD}/.topk_cfg_${TK_D}_${TK_KSET}:
+	mkdir -p ${@D}
+	rm -f ${BUILD}/.topk_cfg_* ${BUILD}/llama_topk_sample.cc.o
+	touch $@
+
+${BUILD}/aie_topk_sample_probe_${TK_CFG}.mlir: ${srcdir}/aie2_topk_sample_probe.py
+	mkdir -p ${@D}
+	LLAMA_TK_V=${TK_V} LLAMA_TK_D=${TK_D} LLAMA_TK_KSET=${TK_KSET} \
+		LLAMA_TK_TEMP=${TK_TEMP} LLAMA_TK_TOPK=${TK_TOPK} LLAMA_TK_SEED=${TK_SEED} python3 $< > $@
+
+${BUILD}/final_topk_sample_probe_${TK_CFG}.xclbin: ${BUILD}/aie_topk_sample_probe_${TK_CFG}.mlir ${BUILD}/llama_topk_sample.cc.o
+	mkdir -p ${@D}
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-xchesscc --no-xbridge \
+		--xclbin-name=${@F} \
+		--npu-insts-name=insts_topk_sample_probe_${TK_CFG}.bin \
+		$(notdir $<)
+
+topk_sample_probe: ${BUILD}/final_topk_sample_probe_${TK_CFG}.xclbin
+
+run_topk_sample_probe: topk_sample_probe
+	cd ${srcdir} && LLAMA_TK_V=${TK_V} LLAMA_TK_D=${TK_D} LLAMA_TK_KSET=${TK_KSET} \
+		LLAMA_TK_TEMP=${TK_TEMP} LLAMA_TK_TOPK=${TK_TOPK} LLAMA_TK_SEED=${TK_SEED} \
+		python3 test_topk_sample_probe.py \
+		-x ${BUILD}/final_topk_sample_probe_${TK_CFG}.xclbin \
+		-i ${BUILD}/insts_topk_sample_probe_${TK_CFG}.bin \
+		-k MLIR_AIE
+
 # ---------- clean ----------
 clean:
 	rm -rf ${BUILD}

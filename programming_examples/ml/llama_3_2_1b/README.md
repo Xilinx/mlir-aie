@@ -66,6 +66,44 @@ Key bit-exactness techniques (yolo m9/m10 patterns):
   for throughput; v0 prefers correctness).
 - **Exact `1.0f / sum`** instead of `aie::inv` (HW reciprocal).
 
+### On-chip sampler + embed gather in one table stream
+
+`run_topk_sample_probe` (`kernels/llama_topk_sample.cc`) is the primitive that
+lets decode close the token→next-embedding feedback fully on-device in a **single
+pass** over the 262 MB tied embed table. The lm_head must stream that whole table
+every token to produce logits; rather than stream it a *second* time to fetch the
+sampled token's embedding row (two redundant 262 MB shim streams saturate the
+shim DMA and waste ~25 % of the per-token bandwidth — the decode bottleneck), the
+sampler keeps a **resident top-k set** of `{logit, global index, embed_sc, embed
+row}` as the table flows by once. After the stream it samples over that set →
+emits the token id **and** the next token's requantised embedding seed
+(`int8[D] + fp32 scale`), with no second pass and one shim channel. Validated
+bit-exact (token + full embed seed) for greedy and multinomial-top-k across
+vocab/k/seed sweeps.
+
+**Sampling semantics — clean top-k renormalisation.** The softmax + inverse-CDF
+draw run over **exactly the k surviving tokens**. This is standard top-k
+sampling and is the only semantics expressible in a single resident-set pass.
+(The earlier resident/streamed samplers, `llama_sample.cc` /
+`llama_sample_streamed.cc`, instead masked filtered logits in place over all V;
+at the real vocab V=128256 that masked tail carries the large majority of the
+softmax mass and biases the draw — clean renormalisation is the correct fix.)
+
+**Limitations (by design):**
+- **`top_k = 0` (full-vocab multinomial) is not supported** in the one-stream
+  path. Any token could be drawn, so no bounded resident set is guaranteed to
+  hold the winner's embedding row, and the gather would need a second selective
+  pass over the table. Greedy (`temperature ≤ 0`) and top-k / top-p sampling
+  cover the functional bar; production sampling effectively always uses a
+  top-k/top-p cutoff. Full-vocab multinomial would require either streaming the
+  table twice or routing the sampled logits back to the host.
+- **Resident-row capacity.** The selected rows live on the compute tile, so
+  `k × D` bytes must fit alongside the streamed-table fifo in the 64 KB tile
+  data memory. At the production `D = 2048` this fits up to `k ≈ 8` on the
+  compute tile; larger `k` requires holding the top-k rows in a memtile
+  (512 KB) — a placement detail handled when the primitive is fused into the
+  chain, not an algorithmic limit.
+
 ## Dataflow stubs (Phase 1)
 
 Every placement pattern the real design needs has been validated
