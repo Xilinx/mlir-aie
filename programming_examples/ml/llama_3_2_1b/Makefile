@@ -782,9 +782,22 @@ run_attn_half: attn_half
 # per-shape rmsnorm/rope/flowkv .o files built by the FFN/attn rules.
 LAYER_D2048_T ?= 128
 
-${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o: ${KDIR}/llama_gemm_int8_srs_tiled_layer.cc
+# LMHEAD_KSET sizes the fused lm_head+top-k insert's resident set capacity. It
+# only affects llama_lmhead_topk_insert (unused by the layer/chain GEMM targets,
+# so default 16 leaves their behavior unchanged). The .topk_cfg stamp forces a
+# rebuild when it changes; the object MUST keep its exact basename (the MLIR
+# Kernel() op references it by name -- see the object-rename footgun in
+# onestream-topk-sampler memory).
+LMHEAD_KSET ?= 16
+${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o: ${KDIR}/llama_gemm_int8_srs_tiled_layer.cc ${BUILD}/.lmhead_kset_${LMHEAD_KSET}
 	mkdir -p ${@D}
-	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -ffp-contract=off -c $< -o ${@F}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -ffp-contract=off \
+		-DLLAMA_LMHEAD_KSET=${LMHEAD_KSET} -c $< -o ${@F}
+
+${BUILD}/.lmhead_kset_${LMHEAD_KSET}:
+	mkdir -p ${@D}
+	rm -f ${BUILD}/.lmhead_kset_* ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o
+	touch $@
 
 LAYER_D2048_DEPS = ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o \
                    ${BUILD}/llama_rmsnorm_int8_2048.cc.o \
@@ -1402,6 +1415,46 @@ run_topk_sample_probe: topk_sample_probe
 		python3 test_topk_sample_probe.py \
 		-x ${BUILD}/final_topk_sample_probe_${TK_CFG}.xclbin \
 		-i ${BUILD}/insts_topk_sample_probe_${TK_CFG}.bin \
+		-k MLIR_AIE
+
+# ---------- fused lm_head GEMM + top-k insert probe (real slot layout) ----------
+LT_V ?= 64
+LT_KSET ?= 8
+LT_TEMP ?= 0.0
+LT_TOPK ?= 8
+LT_SEED ?= 0
+LT_CFG := V${LT_V}_K${LT_KSET}_t${LT_TEMP}_k${LT_TOPK}_s${LT_SEED}
+
+${BUILD}/aie_lmhead_topk_probe_${LT_CFG}.mlir: ${srcdir}/aie2_lmhead_topk_probe.py
+	mkdir -p ${@D}
+	LLAMA_LT_V=${LT_V} LLAMA_LT_KSET=${LT_KSET} \
+		LLAMA_LT_TEMP=${LT_TEMP} LLAMA_LT_TOPK=${LT_TOPK} LLAMA_LT_SEED=${LT_SEED} python3 $< > $@
+
+# The fused probe links TWO config-sensitive objects that share fixed basenames:
+# llama_gemm_int8_srs_tiled_layer.cc.o (the insert; needs LMHEAD_KSET==LT_KSET)
+# and llama_topk_sample.cc.o (the finalize; needs TK_D==2048 and TK_KSET==LT_KSET
+# so set_row indexing matches D=2048). Build both with the right defines via
+# sub-make so a stale object from another probe (e.g. the topk probe's default
+# TK_D=256) can never link silently. (See the object-name footgun documented in
+# the onestream-topk-sampler memory.)
+${BUILD}/final_lmhead_topk_probe_${LT_CFG}.xclbin: ${BUILD}/aie_lmhead_topk_probe_${LT_CFG}.mlir
+	mkdir -p ${@D}
+	${MAKE} -f ${srcdir}/Makefile ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o LMHEAD_KSET=${LT_KSET}
+	${MAKE} -f ${srcdir}/Makefile ${BUILD}/llama_topk_sample.cc.o TK_D=2048 TK_KSET=${LT_KSET}
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-xchesscc --no-xbridge \
+		--xclbin-name=${@F} \
+		--npu-insts-name=insts_lmhead_topk_probe_${LT_CFG}.bin \
+		$(notdir $<)
+
+lmhead_topk_probe: ${BUILD}/final_lmhead_topk_probe_${LT_CFG}.xclbin
+
+run_lmhead_topk_probe: lmhead_topk_probe
+	cd ${srcdir} && LLAMA_LT_V=${LT_V} LLAMA_LT_KSET=${LT_KSET} \
+		LLAMA_LT_TEMP=${LT_TEMP} LLAMA_LT_TOPK=${LT_TOPK} LLAMA_LT_SEED=${LT_SEED} \
+		python3 test_lmhead_topk_probe.py \
+		-x ${BUILD}/final_lmhead_topk_probe_${LT_CFG}.xclbin \
+		-i ${BUILD}/insts_lmhead_topk_probe_${LT_CFG}.bin \
 		-k MLIR_AIE
 
 # ---------- clean ----------

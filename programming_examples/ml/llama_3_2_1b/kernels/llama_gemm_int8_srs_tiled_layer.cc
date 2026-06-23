@@ -432,6 +432,90 @@ static inline void gemm_tile_perchan_v2_up_acttail_impl(
   }
 }
 
+// Fused lm_head GEMM + top-k insert (the one-stream sampler+gather front).
+// Computes the kNTile logits for this weight slot (same GEMM as
+// _lmhead_fp32out) and, instead of writing them to a DDR logits buffer, inserts
+// {logit, global index, embed_sc, embed row} into a resident top-k set. After
+// the whole table streams, llama_topk_finalize (kernels/llama_topk_sample.cc)
+// samples over the set -> token id + next-token embed seed. One table pass, no
+// DDR logits scratch, no second gather stream. The slot is the REAL lm_head
+// weight slot [kPrefix | kNTile*kK rows | kNTile i32 bias | kNTile f32 scale];
+// the embed row for the gather IS the GEMM weight row, and embed_sc IS w_scale
+// (the lm_head is tied to the embedding). set_* buffers + the kKset capacity
+// match llama_topk_sample.cc exactly so finalize reads them unchanged.
+//
+// Min-eviction unsorted set (capacity kKset): append until full, then replace
+// the current-min logit slot when a strictly-larger logit arrives. For distinct
+// fp32 logits this keeps exactly the kKset largest (ties keep the incumbent =
+// first-seen, matching numpy_topk_sample.py).
+template <int kKset>
+static inline void
+lmhead_topk_insert_impl(int8_t *restrict act, int8_t *restrict w_tile,
+                        float *restrict set_logit, int32_t *restrict set_gidx,
+                        float *restrict set_scale, int8_t *restrict set_row,
+                        int32_t *restrict set_len, int32_t tile_idx) {
+  constexpr int kK = 2048, kNTile = 4, kPrefix = 64, kVec = 64;
+  constexpr int kGroups = kK / kVec;
+
+  float act_scale;
+  memcpy(&act_scale, act + kK, 4);
+
+  int8_t *body = w_tile + kPrefix;
+  const int8_t *weights = body;
+  const int32_t *bias = reinterpret_cast<const int32_t *>(body + kNTile * kK);
+  const float *w_scales =
+      reinterpret_cast<const float *>(body + kNTile * kK + kNTile * 4);
+
+  ::aie::set_saturation(aie::saturation_mode::saturate);
+  ::aie::set_rounding(aie::rounding_mode::conv_even);
+
+  for (int n = 0; n < kNTile; n++) {
+    aie::accum<acc32, kVec> acc;
+    acc.from_vector(aie::zeros<int32, kVec>());
+    const int8_t *__restrict w_row = weights + n * kK;
+    for (int g = 0; g < kGroups; g++) {
+      aie::vector<int8, kVec> w_v = aie::load_v<kVec>(w_row + g * kVec);
+      aie::vector<int8, kVec> x_v = aie::load_v<kVec>(act + g * kVec);
+      acc = aie::mac(acc, w_v, x_v);
+    }
+    int32_t sum_i32 =
+        aie::reduce_add(acc.template to_vector<int32>()) + bias[n];
+    float logit = (float)sum_i32 * act_scale * w_scales[n];
+    int32_t gidx = tile_idx * kNTile + n;
+    float sc = w_scales[n];
+
+    int len = *set_len;
+    if (len < kKset) {
+      set_logit[len] = logit;
+      set_gidx[len] = gidx;
+      set_scale[len] = sc;
+      for (int d = 0; d < kK; d++)
+        set_row[len * kK + d] = w_row[d];
+      *set_len = len + 1;
+      continue;
+    }
+    int mi = 0;
+    float mv = set_logit[0];
+    for (int i = 1; i < kKset; i++) {
+      if (set_logit[i] < mv) {
+        mv = set_logit[i];
+        mi = i;
+      }
+    }
+    if (logit > mv) {
+      set_logit[mi] = logit;
+      set_gidx[mi] = gidx;
+      set_scale[mi] = sc;
+      for (int d = 0; d < kK; d++)
+        set_row[mi * kK + d] = w_row[d];
+    }
+  }
+}
+
+#ifndef LLAMA_LMHEAD_KSET
+#define LLAMA_LMHEAD_KSET 16
+#endif
+
 extern "C" {
 
 // ---------- Legacy SRS-shift entries (kept for 6c.3b.3 design) ----------
@@ -657,6 +741,18 @@ void llama_gemm_tiled_layer_K2048_N4_lmhead_argmax(int8_t *restrict act,
 
   memcpy(state, &best_idx, 4);
   memcpy(state + 4, &best_val, 4);
+  event1();
+}
+
+void llama_lmhead_topk_insert(int8_t *restrict act, int8_t *restrict w_tile,
+                              float *restrict set_logit,
+                              int32_t *restrict set_gidx,
+                              float *restrict set_scale,
+                              int8_t *restrict set_row,
+                              int32_t *restrict set_len, int32_t tile_idx) {
+  event0();
+  lmhead_topk_insert_impl<LLAMA_LMHEAD_KSET>(
+      act, w_tile, set_logit, set_gidx, set_scale, set_row, set_len, tile_idx);
   event1();
 }
 
