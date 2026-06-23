@@ -4,8 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2022 Xilinx Inc.
-// (c) Copyright 2023 Advanced Micro Devices, Inc.
+// Copyright (C) 2022 Xilinx, Inc.
+// Copyright (C) 2023 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 // Register all the AIE vectorization passes

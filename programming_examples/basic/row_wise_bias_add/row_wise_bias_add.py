@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 """Row-wise bias add — IRON API design with ``@iron.jit`` compilation.
 
 The C++ kernel (``kernel.cc``) adds a per-column bias vector (``1 x N``)

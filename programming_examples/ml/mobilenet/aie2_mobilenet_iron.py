@@ -3,7 +3,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2026, Advanced Micro Devices, Inc.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 """MobileNet V3 — IRON API rewrite.
 
 Replaces the placed-dialect implementation in aie2_mobilenet.py with the

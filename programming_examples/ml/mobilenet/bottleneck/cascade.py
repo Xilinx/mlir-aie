@@ -3,7 +3,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2026, Advanced Micro Devices, Inc.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 """Cascade bottleneck blocks (bn13-bn14) for MobileNet V3 IRON API rewrite.
 
 bn13 and bn14 each use 5 compute tiles, 2 of which use cascade streams (put/get

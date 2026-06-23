@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2026 Advanced Micro Devices, Inc.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 """JSON-friendly encoding for :class:`CompilableDesign.to_json` / ``from_json``,
 plus the runtime-tensor placeholder used during MLIR generation.
 

@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 """Vector reduction (sum) -- ``@iron.jit`` design via the algorithms library.
 
 A single AIE core sums an N-element int32 input vector into a 1-element int32
