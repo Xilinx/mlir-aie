@@ -22,31 +22,31 @@ class RuntimeEndpoint(ObjectFifoEndpoint):
     runtime DMA is wired to the PL side of the shim).
     """
 
+    _SHIM_TILE_TYPES = (AIETileType.ShimNOCTile, AIETileType.ShimPLTile)
+
     def __init__(self, tile: Tile = AnyShimTile) -> None:
         if tile is None:
             tile = AnyShimTile
-        # A ShimPLTile endpoint is preserved as-is; otherwise default/validate to
-        # ShimNOCTile. with_type returns a fresh Tile, never mutating the input.
-        if tile.tile_type == AIETileType.ShimPLTile:
-            tile = tile.with_type(AIETileType.ShimPLTile)
-        else:
-            tile = tile.with_type(
-                AIETileType.ShimNOCTile,
-                mismatch_msg=(
-                    "RuntimeEndpoint requires a shim tile (ShimNOCTile or "
-                    f"ShimPLTile), but got tile_type={tile.tile_type}"
-                ),
+        if tile.tile_type is not None and tile.tile_type not in self._SHIM_TILE_TYPES:
+            raise ValueError(
+                f"RuntimeEndpoint requires a shim tile (ShimNOCTile or "
+                f"ShimPLTile), but got tile_type={tile.tile_type}"
             )
-        super().__init__(tile)
+        # Always produce a fresh Tile: shim tiles are never shared between
+        # endpoints, and the singletons (AnyShimTile) must stay unbound.
+        default_type = (
+            tile.tile_type if tile.tile_type is not None else AIETileType.ShimNOCTile
+        )
+        super().__init__(tile.with_type(default_type))
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, RuntimeEndpoint):
             return NotImplemented
-        # Compare by coordinates, not Tile identity: two RuntimeEndpoints that
-        # name the same shim location (or are both unplaced) are equivalent, so
-        # the tiling-loop pattern of calling fill()/drain() repeatedly on one
-        # handle doesn't trip the "endpoint already set" guard. Unplaced tiles
-        # compare equal via (None, None) == (None, None).
+        # Two shim endpoints at the same (col, row) are the same endpoint.
+        # Unplaced endpoints compare equal via (None, None) == (None, None),
+        # which is intentional: fill()/drain() on the same unplaced handle
+        # called repeatedly should not trip the "endpoint already set" guard.
+        assert self.tile is not None and other.tile is not None
         return (self.tile.col, self.tile.row) == (other.tile.col, other.tile.row)
 
     def __str__(self) -> str:

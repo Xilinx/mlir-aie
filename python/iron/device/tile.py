@@ -62,15 +62,10 @@ class Tile:
         allocation_scheme: str | None = None,
         mismatch_msg: str | None = None,
     ) -> Tile:
-        """Return a new Tile of ``tile_type``, preserving col/row.
+        """Return a fresh Tile with ``tile_type`` stamped, preserving col/row.
 
-        Used by the components that own a tile (Worker, RuntimeEndpoint,
-        ObjectFifoLink) to stamp their required tile type onto a user-supplied
-        or default Tile without mutating the original. If the Tile already has a
-        ``tile_type``, it must match ``tile_type`` or a ValueError is raised
-        (with ``mismatch_msg`` if given, for a component-specific message).
-
-        ``allocation_scheme`` overrides the original's when provided.
+        Always returns a new object — never mutates self. Raises ValueError if
+        the existing tile_type conflicts with tile_type.
         """
         if self.tile_type is not None and self.tile_type != tile_type:
             raise ValueError(
