@@ -1204,6 +1204,36 @@ run_fillreplay_probe: fillreplay_probe
 		-i ${BUILD}/insts_fillreplay_probe.bin \
 		-k MLIR_AIE
 
+# ---------- on-chip embed gather (stream+select) probe ----------
+ES_V ?= 64
+ES_D ?= 256
+ES_TOKEN ?= 37
+${BUILD}/llama_embed_select.cc.o: ${KDIR}/llama_embed_select.cc
+	mkdir -p ${@D}
+	cd ${@D} && ${PEANO_INSTALL_DIR}/bin/clang++ ${PEANOWRAP2P_FLAGS} -ffp-contract=off \
+		-DLLAMA_EMBED_D=${ES_D} -DLLAMA_EMBED_NTILE=4 -DLLAMA_EMBED_PREFIX=64 -c $< -o ${@F}
+
+${BUILD}/aie_embedsel_probe.mlir: ${srcdir}/aie2_embedsel_probe.py
+	mkdir -p ${@D}
+	LLAMA_ES_V=${ES_V} LLAMA_ES_D=${ES_D} LLAMA_ES_TOKEN=${ES_TOKEN} python3 $< > $@
+
+${BUILD}/final_embedsel_probe.xclbin: ${BUILD}/aie_embedsel_probe.mlir ${BUILD}/llama_embed_select.cc.o
+	mkdir -p ${@D}
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-xchesscc --no-xbridge \
+		--xclbin-name=${@F} \
+		--npu-insts-name=insts_embedsel_probe.bin \
+		$(notdir $<)
+
+embedsel_probe: ${BUILD}/final_embedsel_probe.xclbin
+
+run_embedsel_probe: embedsel_probe
+	cd ${srcdir} && LLAMA_ES_V=${ES_V} LLAMA_ES_D=${ES_D} LLAMA_ES_TOKEN=${ES_TOKEN} \
+		python3 test_embedsel_probe.py \
+		-x ${BUILD}/final_embedsel_probe.xclbin \
+		-i ${BUILD}/insts_embedsel_probe.bin \
+		-k MLIR_AIE
+
 # ---------- clean ----------
 clean:
 	rm -rf ${BUILD}
