@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2026, Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2026 Advanced Micro Devices, Inc. All rights reserved.
 """``@iron.jit`` decorator — Triton-style JIT compilation for the NPU.
 
 ``@iron.jit`` is a thin wrapper that creates a ``CallableDesign``.  Extra

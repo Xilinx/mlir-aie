@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2026, Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2026 Advanced Micro Devices, Inc. All rights reserved.
 """CallableDesign: JIT-compiles on first call and runs on the NPU.
 
 ``CallableDesign`` wraps a ``CompilableDesign`` (or creates one implicitly)

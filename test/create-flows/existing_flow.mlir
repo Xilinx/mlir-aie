@@ -1,6 +1,6 @@
 //===- unit_existing_flow.mlir ----------------------------------*- MLIR -*-===//
 //
-// Copyright (C) 2024, Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (C) 2024 Advanced Micro Devices, Inc. All rights reserved.
 // SPDX-License-Identifier: MIT
 //
 //===----------------------------------------------------------------------===//

@@ -2,7 +2,7 @@
  * poke utility - for those who remember the good old days!
  *
 
- * Copyright (C) 2013-2016, Xilinx, Inc. All rights reserved.
+ * Copyright (C) 2013-2016 Xilinx, Inc. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person
  * obtaining a copy of this software and associated documentation

@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024-2026, Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc. All rights reserved.
 """14x14 Conv2D — IRON API designs (single-core + 32-core) with @iron.jit.
 
 KNOWN: ``make run_py`` on Strix (npu2 / AIE2P) produces output whose

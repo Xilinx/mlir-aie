@@ -1,4 +1,5 @@
-# Copyright (C) 2026, Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2026 Advanced Micro Devices, Inc. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 from collections import defaultdict
 import numpy as np
 from typing import Any, Sequence, get_args, get_origin

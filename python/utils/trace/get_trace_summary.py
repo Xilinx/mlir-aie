@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-# Copyright (C) 2026, Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2026 Advanced Micro Devices, Inc. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 import argparse
 import logging
 import sys

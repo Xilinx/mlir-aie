@@ -1,4 +1,5 @@
-# Copyright (C) 2026, Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2026 Advanced Micro Devices, Inc. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """IRON: High-level Python API for programming AMD Ryzen AI NPUs.
 
 Provides the primary abstractions for describing NPU designs:

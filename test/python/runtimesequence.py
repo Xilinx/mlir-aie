@@ -1,4 +1,4 @@
-# Copyright (C) 2025, Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2025 Advanced Micro Devices, Inc. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 import numpy as np
 from aie.iron import ObjectFifo, Program, Runtime, Worker
