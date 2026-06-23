@@ -32,8 +32,8 @@ from ...helpers.util import (
     np_ndarray_type_to_memref_type,
     np_ndarray_type_get_dtype,
     np_ndarray_type_get_shape,
+    single_elem_or_list_to_list,
 )
-from ...util import single_elem_or_list_to_list
 
 from ..resolvable import Resolvable, NotResolvedError
 from .endpoint import ObjectFifoEndpoint

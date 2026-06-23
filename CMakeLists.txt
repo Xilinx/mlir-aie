@@ -181,7 +181,7 @@ cmake_dependent_option(AIE_ENABLE_BINDINGS_PYTHON
 
 find_library(XRT_COREUTIL xrt_coreutil HINTS ${XRT_LIB_DIR})
 
-# On Windows, the UUID library is linked implicitly. 
+# On Windows, the UUID library is linked implicitly.
 # Just tell CMake that it's available.
 if(WIN32)
   set(UUID TRUE)
