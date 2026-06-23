@@ -171,15 +171,19 @@ static inline float topk_min(const float *heap, int len) {
 
 extern "C" {
 
-// One streamed-sampler chunk call. logits is fp32[kChunkN] (a slice of the
-// DDR logits buffer brought into L1). state is the resident carry buffer.
-// params = [temperature bits, top_k, seed]. pass in {1,2,3}; chunk_idx is the
-// 0-based chunk within the pass. chunk_n / v_total are compile-time constants
-// (kChunkN / kVocab); chunk_base = chunk_idx * kChunkN.
-void llama_sample_streamed(float *restrict logits, int8_t *restrict state,
+// One streamed-sampler chunk call. `base` points at a resident buffer (a DDR
+// chunk in M2, or a whole memtile HALF in M3a); the kernel reads kChunkN
+// elements starting at local_chunk*kChunkN within it. state is the resident
+// carry buffer. params = [temperature bits, top_k, seed]. pass in {1,2,3};
+// chunk_idx is the 0-based GLOBAL chunk within the pass (for global token
+// indexing). chunk_n / v_total are compile-time constants (kChunkN / kVocab);
+// chunk_base = chunk_idx * kChunkN. M2 passes local_chunk=0 (chunk-typed
+// fifo); M3a passes local_chunk = the chunk's index within its half.
+void llama_sample_streamed(float *restrict base, int8_t *restrict state,
                            uint32_t *restrict params, int32_t pass,
-                           int32_t chunk_idx) {
+                           int32_t chunk_idx, int32_t local_chunk) {
   event0();
+  float *restrict logits = base + local_chunk * kChunkN;
   const int32_t chunk_base = chunk_idx * kChunkN;
   const int32_t chunk_n = kChunkN;
   const int32_t v_total = kVocab;

@@ -58,6 +58,12 @@ def _idx(i):
     return index_cast(IntegerType.get_signless(32), i)
 
 
+def _const_i32(v):
+    from aie.dialects.arith import constant
+
+    return constant(IntegerType.get_signless(32), v)
+
+
 def factor(nb):
     if nb <= 1023:
         return (1, nb)
@@ -101,7 +107,7 @@ def build():
     k_sample = Kernel(
         "llama_sample_streamed",
         KO,
-        [t_chunk, t_state, t_params, np.int32, np.int32],
+        [t_chunk, t_state, t_params, np.int32, np.int32, np.int32],
     )
     k_final = Kernel(
         "llama_sample_streamed_finalize", KO, [t_state, t_token, t_params]
@@ -109,13 +115,14 @@ def build():
 
     # Hold params for the whole dispatch; stream logit chunks 3x. State is the
     # worker-local Buffer (st), self-seeded by the kernel at chunk 0 of pass 1.
+    # local_chunk=0: the fifo IS chunk-typed, so each acquire is one chunk.
     def w_sample(c_log, st, c_params, c_tok, ks, kf):
         p = c_params.acquire(1)
         tok = c_tok.acquire(1)
         for pass_i in range_(1, N_PASSES + 1):
             for ch in range_(N_CHUNKS):
                 lg = c_log.acquire(1)
-                ks(lg, st, p, _idx(pass_i), _idx(ch))
+                ks(lg, st, p, _idx(pass_i), _idx(ch), _const_i32(0))
                 c_log.release(1)
         kf(st, tok, p)
         c_params.release(1)
