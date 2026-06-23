@@ -841,10 +841,9 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
             d.endpoint = self
         if tile is None:
             tile = AnyMemTile
-        tile = tile.copy()
-        if tile.tile_type is None:
-            tile.tile_type = AIETileType.MemTile
-        ObjectFifoEndpoint.__init__(self, tile)
+        # with_type returns a fresh Tile (no mutation of the input/default) and
+        # validates against any user-specified non-MemTile type.
+        ObjectFifoEndpoint.__init__(self, tile.with_type(AIETileType.MemTile))
 
     def resolve(
         self,

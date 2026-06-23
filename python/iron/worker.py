@@ -75,20 +75,22 @@ class Worker(ObjectFifoEndpoint):
         Raises:
             ValueError: Parameters are validated.
         """
-        if tile is None or tile is AnyComputeTile:
-            tile = AnyComputeTile.copy()
-        if tile.tile_type is not None and tile.tile_type != AIETileType.CoreTile:
-            raise ValueError(
-                f"Worker requires a compute tile, but got tile_type={tile.tile_type}"
-            )
-        tile.tile_type = AIETileType.CoreTile
-        self._tile = tile
+        if tile is None:
+            tile = AnyComputeTile
+        # with_type returns a fresh Tile, so a user-supplied Tile (or the shared
+        # AnyComputeTile singleton) is never mutated. Raises if tile is typed
+        # non-CoreTile.
+        self._tile = tile.with_type(
+            AIETileType.CoreTile,
+            allocation_scheme=allocation_scheme,
+            mismatch_msg=(
+                "Worker requires a compute tile, but got " f"tile_type={tile.tile_type}"
+            ),
+        )
         self._while_true = while_true
         self.stack_size = stack_size
         self.allocation_scheme = allocation_scheme
         self._dynamic_objfifo_lowering = dynamic_objfifo_lowering
-        if allocation_scheme:
-            self._tile.allocation_scheme = allocation_scheme
         self.trace = trace
         self.trace_events = trace_events
 

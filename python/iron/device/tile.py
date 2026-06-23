@@ -11,7 +11,7 @@ from __future__ import annotations
 from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     AIETileType,
 )
-from ...dialects.aie import LogicalTileOp, TileOp
+from ...dialects.aie import LogicalTileOp
 
 
 class Tile:
@@ -44,7 +44,7 @@ class Tile:
         self.row: int | None = row
         self.tile_type: AIETileType | None = tile_type
         self.allocation_scheme: str | None = allocation_scheme
-        self._op: LogicalTileOp | TileOp | None = None
+        self._op: LogicalTileOp | None = None
 
     def copy(self) -> Tile:
         """Return a Tile instance with the same col, row, tile_type, and allocation_scheme."""
@@ -55,14 +55,47 @@ class Tile:
             allocation_scheme=self.allocation_scheme,
         )
 
+    def with_type(
+        self,
+        tile_type: AIETileType,
+        *,
+        allocation_scheme: str | None = None,
+        mismatch_msg: str | None = None,
+    ) -> Tile:
+        """Return a new Tile of ``tile_type``, preserving col/row.
+
+        Used by the components that own a tile (Worker, RuntimeEndpoint,
+        ObjectFifoLink) to stamp their required tile type onto a user-supplied
+        or default Tile without mutating the original. If the Tile already has a
+        ``tile_type``, it must match ``tile_type`` or a ValueError is raised
+        (with ``mismatch_msg`` if given, for a component-specific message).
+
+        ``allocation_scheme`` overrides the original's when provided.
+        """
+        if self.tile_type is not None and self.tile_type != tile_type:
+            raise ValueError(
+                mismatch_msg
+                or f"Expected a {tile_type} tile, but got tile_type={self.tile_type}"
+            )
+        return Tile(
+            self.col,
+            self.row,
+            tile_type=tile_type,
+            allocation_scheme=(
+                allocation_scheme
+                if allocation_scheme is not None
+                else self.allocation_scheme
+            ),
+        )
+
     @property
-    def op(self) -> LogicalTileOp | TileOp:
+    def op(self) -> LogicalTileOp:
         if not self._op:
             raise ValueError("Cannot get op before it is set.")
         return self._op
 
     @op.setter
-    def op(self, op: LogicalTileOp | TileOp):
+    def op(self, op: LogicalTileOp):
         if self._op and self._op != op:
             raise ValueError("Cannot change operation once it is set.")
         self._op = op
