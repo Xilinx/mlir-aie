@@ -805,7 +805,7 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
         Args:
             srcs (list[ObjectFifoHandle] | ObjectFifoHandle): A list of consumer ObjectFifoHandles to link.
             dsts (list[ObjectFifoHandle] | ObjectFifoHandle): A list of producer ObjectFifoHandles to link.
-            tile (Tile, optional): The tile where the link occurs. Defaults to AnyMemTile.
+            tile (Tile, optional): The tile where the link occurs. Also accepts None (treated as AnyMemTile). Defaults to AnyMemTile.
             src_offsets (list[int] | None, optional): If many sources, one offset per source is required to split the destination. Defaults to None (empty list).
             dst_offsets (list[int] | None, optional): If many destinations, one offset per destination is required to split the source. Defaults to None (empty list).
 
@@ -839,6 +839,8 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
             s.endpoint = self
         for d in self._dsts:
             d.endpoint = self
+        if tile is None:
+            tile = AnyMemTile
         tile = tile.copy()
         if tile.tile_type is None:
             tile.tile_type = AIETileType.MemTile
