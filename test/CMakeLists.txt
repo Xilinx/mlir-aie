@@ -2,8 +2,8 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2021, Xilinx, Inc. All rights reserved.
-# Copyright (C) 2022-2026, Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2021 Xilinx, Inc.
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 
 cmake_minimum_required(VERSION 3.30)
 if(POLICY CMP0074)

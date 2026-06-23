@@ -1,5 +1,5 @@
-# Copyright (C) 2022, Xilinx, Inc. All rights reserved.
-# Copyright (C) 2022-2026, Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2022 Xilinx, Inc.
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: MIT
 
 set(CMAKE_CXX_STANDARD 17)
