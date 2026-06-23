@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-translate --aie-generate-cdo %s --cdo-debug=true |& FileCheck %s
+// RUN: aie-translate --aie-generate-cdo %s --cdo-debug=true 2>&1 | FileCheck %s
 
 // CHECK: (BlockWrite-DMAWriteCmd): Start Address: 0x0000000000100000  Size: 2
 // CHECK:     Address: 0x0000000000100000  Data@ {{0x[0-9a-z]+}} is: 0xFD020100 

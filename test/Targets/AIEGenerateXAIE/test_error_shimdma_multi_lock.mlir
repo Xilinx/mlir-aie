@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: (aie-translate --aie-generate-xaie %s 2>&1 || true) | FileCheck %s
+// RUN: not aie-translate --aie-generate-xaie %s 2>&1 | FileCheck %s
 // CHECK: used in a DMA block that have multiple locks.
 
 module @test_error_shimdma_multi_lock {

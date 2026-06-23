@@ -16,7 +16,6 @@
 #include <iomanip>
 #include <iostream>
 #include <string>
-#include <unistd.h>
 #include <vector>
 
 #include <xrt/experimental/xrt_elf.h>

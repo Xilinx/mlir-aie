@@ -13,8 +13,6 @@ Tests that exercise compile() or actual NPU kernel execution live in
 test/python/npu-xrt/test_iron_jit_e2e.py (requires xrt_python_bindings).
 """
 
-from pathlib import Path
-
 import pytest
 
 from unittest.mock import MagicMock, patch

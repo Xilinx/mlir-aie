@@ -11,7 +11,7 @@ import sys
 import time
 
 # Retry configuration
-TRANSIENT_FAILURE_TEXT = "No such device with index"
+TRANSIENT_FAILURE_TEXT = "No such device"
 MAX_ATTEMPTS = 3
 TAIL_LINES = 200
 

@@ -234,10 +234,16 @@ def get_current_device(*, probe_runtime: bool = True):
             no explicit device has been bound.  Use False for offline inspection
             paths that must not initialize the runtime.
 
+    Args:
+        probe_runtime: When True, fall back to the default NPU runtime if no
+            device was explicitly set with ``set_current_device``. When False,
+            return only the explicitly selected device and never initialize or
+            query the default runtime.
+
     Returns:
         Device | None: The current device if available, else None.
     """
-    if hostruntime._CURRENT_DEVICE:
+    if hostruntime._CURRENT_DEVICE is not None:
         return hostruntime._CURRENT_DEVICE
 
     if not probe_runtime:

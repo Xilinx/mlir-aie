@@ -125,7 +125,7 @@ def test_kwargs_decorator_propagates_include_paths():
     def gen(a: In):
         pass
 
-    path_strs = [str(p) for p in gen.include_paths]
+    path_strs = [p.as_posix() for p in gen.include_paths]
     assert any("/opt/aie/include" in s for s in path_strs)
 
 
@@ -155,7 +155,7 @@ def test_kwargs_decorator_all_options_together():
     assert gen.source_files[0].name == "k.cc"
     assert "--verbose" in gen.aiecc_flags
     assert "-O2" in gen.compile_flags
-    assert any("/inc" in str(p) for p in gen.include_paths)
+    assert any("/inc" in p.as_posix() for p in gen.include_paths)
     assert gen.object_files[0].name == "a.o"
 
 
