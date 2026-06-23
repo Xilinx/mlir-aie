@@ -87,7 +87,9 @@ jobs:
       - name: Run commands
         run: |
           sudo prlimit -lunlimited --pid $$
-          source /opt/xilinx/xrt/setup.sh
+          # Newer XRT/amdxdna packages no longer ship setup.sh; source it
+          # only when present so the job works on both old and new XRT.
+          [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
           python -m venv aie-venv
           source aie-venv/bin/activate
           pip install --upgrade pip
@@ -101,7 +103,7 @@ jobs:
           # Install llvm-aie (Peano) which is needed for unittests requiring compiling NPU code
           pip install -I llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
           export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep ^Location: | awk '{print $2}')/llvm-aie"
-          
+
           sed -i.bak 's/OUTPUT_TIMEOUT = 10/OUTPUT_TIMEOUT = 100/g' \
             $(python -c 'import site; print(site.getsitepackages()[0])')/jupyter_client/runapp.py
 
@@ -118,15 +120,18 @@ jobs:
           pushd build
 
           # -j here to reduce the number of parallel chess jobs.
-          # -j4 for 32GB RAM, -j12 for 64GB RAM
-          if [ x"${{ matrix.runner_type }}" == x"amdhx370" ]; then
+          # Pick parallelism from the runner's actual RAM rather than its
+          # label, so backup runners that share a label but have less memory
+          # don't OOM: -j4 for <48GB RAM, -j12 otherwise.
+          TOTAL_MEM_GB=$(free -g | awk '/^Mem:/ {print $2}')
+          if [ "$TOTAL_MEM_GB" -lt 48 ]; then
             LIT_OPTS="-j4 $LIT_OPTS"
           else
             LIT_OPTS="-j12 $LIT_OPTS"
           fi
 
           export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
-          
+
           cmake .. -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DPython3_EXECUTABLE=$(which python) \
@@ -182,7 +187,9 @@ jobs:
       - name: Run commands
         run: |
           sudo prlimit -lunlimited --pid $$
-          source /opt/xilinx/xrt/setup.sh
+          # Newer XRT/amdxdna packages no longer ship setup.sh; source it
+          # only when present so the job works on both old and new XRT.
+          [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
           export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
           source utils/quick_setup.sh
           # quick_setup changes directory to programming_examples, so we need to return to mlir-aie
@@ -203,8 +210,11 @@ jobs:
           pushd build
 
           # -j here to reduce the number of parallel chess jobs.
-          # -j4 for 32GB RAM, -j12 for 64GB RAM
-          if [ x"${{ matrix.runner_type }}" == x"amdhx370" ]; then
+          # Pick parallelism from the runner's actual RAM rather than its
+          # label, so backup runners that share a label but have less memory
+          # don't OOM: -j4 for <48GB RAM, -j12 otherwise.
+          TOTAL_MEM_GB=$(free -g | awk '/^Mem:/ {print $2}')
+          if [ "$TOTAL_MEM_GB" -lt 48 ]; then
             LIT_OPTS="-j4 $LIT_OPTS"
           else
             LIT_OPTS="-j12 $LIT_OPTS"
