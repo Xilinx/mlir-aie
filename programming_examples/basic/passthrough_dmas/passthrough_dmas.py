@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
+# Copyright (C) 2024-2026, Advanced Micro Devices, Inc. All rights reserved.
 """Passthrough DMAs — IRON API design with ``@iron.jit`` compilation.
 
 No compute tile (in the default mode): data flows shim → memtile → shim

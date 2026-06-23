@@ -1,4 +1,4 @@
-# (c) Copyright 2026 Advanced Micro Devices, Inc.
+# Copyright (C) 2026, Advanced Micro Devices, Inc. All rights reserved.
 """Backwards-compatible re-export from aie.utils."""
 
 from aie.utils.callabledesign import CallableDesign

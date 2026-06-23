@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
+# Copyright (C) 2025-2026, Advanced Micro Devices, Inc. All rights reserved.
 """Whole-array mixed bf16/bfp16 matmul — ``@iron.jit`` IRON design.
 
 n_aie_rows x n_aie_cols cores running mixed (bf16, bfp16) -> bf16 mac

@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2022 Xilinx Inc.
+// Copyright (C) 2022, Xilinx, Inc. All rights reserved.
 //
 //===----------------------------------------------------------------------===//
 // This file implements convenience types for AIE vectorization.

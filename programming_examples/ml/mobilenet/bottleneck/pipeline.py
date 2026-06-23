@@ -3,7 +3,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024, Advanced Micro Devices, Inc.
+# Copyright (C) 2026, Advanced Micro Devices, Inc. All rights reserved.
 """Pipeline bottleneck blocks (bn10-bn12) for MobileNet V3 IRON API rewrite.
 
 Two module-level builders, dispatched by network_spec.NETWORK:

@@ -1,5 +1,5 @@
-/*  (c) Copyright 2019-2022 Xilinx, Inc. All rights reserved.
-    (c) Copyright 2022-2025 Advanced Micro Devices, Inc. All rights reserved.
+/* Copyright (C) 2019-2022, Xilinx, Inc. All rights reserved.
+Copyright (C) 2022-2026, Advanced Micro Devices, Inc. All rights reserved.
 
     This file contains confidential and proprietary information
     of Xilinx, Inc. and is protected under U.S. and

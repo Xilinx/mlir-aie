@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
+# Copyright (C) 2025-2026, Advanced Micro Devices, Inc. All rights reserved.
 """Multi-column vector reduce-max (col-wise) — IRON + ``@iron.jit``.
 
 Spread the reduction across multiple columns (default 8 on NPU1, up to

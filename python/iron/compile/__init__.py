@@ -1,4 +1,4 @@
-# (c) Copyright 2026 Advanced Micro Devices, Inc.
+# Copyright (C) 2025-2026, Advanced Micro Devices, Inc. All rights reserved.
 """Backwards-compatible re-export from aie.utils.compile.jit."""
 
 from aie.utils.compile.jit.context import compile_context, get_compile_arg

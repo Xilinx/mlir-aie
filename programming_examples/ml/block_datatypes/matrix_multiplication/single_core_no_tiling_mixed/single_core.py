@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
+# Copyright (C) 2025-2026, Advanced Micro Devices, Inc. All rights reserved.
 """Single-core mixed bf16/bfp16 matmul, NO tiling — ``@iron.jit`` IRON design.
 
 One AIE2P core, one 64x64x64 mixed (bf16, bfp16) -> bf16 mac, no host

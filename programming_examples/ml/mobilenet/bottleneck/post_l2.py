@@ -3,7 +3,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2026, Advanced Micro Devices, Inc.
+# Copyright (C) 2026, Advanced Micro Devices, Inc. All rights reserved.
 """Post-processing L2: 4-tile FC1 + FC2 (split output channels).
 
 Mirror of the sibling bottleneck builders. The 4 FC tiles each consume

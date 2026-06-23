@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
+# Copyright (C) 2026, Advanced Micro Devices, Inc. All rights reserved.
 """Element-wise bf16 binary op (add or mul) — IRON API + ``@iron.jit``.
 
 Body delegates to ``iron.algorithms.transform_parallel_binary``; the

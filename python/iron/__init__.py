@@ -1,4 +1,4 @@
-# (c) Copyright 2026 Advanced Micro Devices, Inc.
+# Copyright (C) 2024-2026, Advanced Micro Devices, Inc. All rights reserved.
 """IRON: High-level Python API for programming AMD Ryzen AI NPUs.
 
 Provides the primary abstractions for describing NPU designs:

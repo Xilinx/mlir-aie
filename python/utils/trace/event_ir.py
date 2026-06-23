@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# (c) Copyright 2026 Advanced Micro Devices, Inc.
+# Copyright (C) 2024-2026, Advanced Micro Devices, Inc. All rights reserved.
 import json
 import argparse
 import sys
