@@ -19,7 +19,8 @@ Three modes (same as section-3/4a):
 
 * ``python3 vector_scalar_mul.py [-t N]`` — JIT-compile + run on the
   attached NPU; with ``-t N`` (bytes) trace is enabled.
-* ``python3 vector_scalar_mul.py --emit-mlir`` — print the lowered MLIR.
+* ``python3 vector_scalar_mul.py --dev npu --emit-mlir`` — print the
+  lowered MLIR.
 * ``python3 vector_scalar_mul.py --xclbin-path X --insts-path Y`` —
   compile-only, drop the xclbin/insts pair for the explicit-XRT
   walkthrough.

@@ -25,6 +25,8 @@ class RuntimeEndpoint(ObjectFifoEndpoint):
     _SHIM_TILE_TYPES = (AIETileType.ShimNOCTile, AIETileType.ShimPLTile)
 
     def __init__(self, tile: Tile = AnyShimTile) -> None:
+        if tile is None:
+            tile = AnyShimTile
         tile = tile.copy()
         if tile.tile_type is not None and tile.tile_type not in self._SHIM_TILE_TYPES:
             raise ValueError(
