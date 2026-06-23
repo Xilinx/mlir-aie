@@ -94,13 +94,15 @@ class LogitsHalfRelay(Resolvable):
     def gemm_acquire(self):
         from aie.dialects.aie import use_lock, LockAction
 
-        use_lock(self._gemm_cons_lock, LockAction.AcquireGreaterEqual)
+        # wait for the buffer to be free (DMA done with the previous chunk)
+        use_lock(self._gemm_free_lock, LockAction.AcquireGreaterEqual)
         return self._gemm_send_buf
 
     def gemm_release(self):
         from aie.dialects.aie import use_lock, LockAction
 
-        use_lock(self._gemm_prod_lock, LockAction.Release)
+        # signal the chunk is ready for the DMA to send
+        use_lock(self._gemm_ready_lock, LockAction.Release)
 
     # ---- sampler consumer side: pull one CHUNK window ----
     def acquire(self, n: int = 1):
@@ -158,12 +160,18 @@ class LogitsHalfRelay(Resolvable):
         free_lock = lock(mem_op, lock_id=self._mem_lock_id + 1, init=1)
 
         # --- GEMM compute tile: small send buffer (one chunk) ---
-        gemm_prod_lock = lock(gemm_op, lock_id=self._gemm_lock_id, init=1)
-        gemm_cons_lock = lock(gemm_op, lock_id=self._gemm_lock_id + 1, init=1)
+        # Producer/consumer pair for gemm_send_buf: the WORKER is the producer
+        # (writes the chunk), the GEMM-side MM2S DMA is the consumer (sends it).
+        #   gemm_free  (init=1): buffer free for the worker to write into.
+        #   gemm_ready (init=0): chunk written, ready for the DMA to send.
+        # The DMA must NOT fire before the worker writes -> its wait-lock
+        # (gemm_ready) inits to 0.
+        gemm_free_lock = lock(gemm_op, lock_id=self._gemm_lock_id, init=1)
+        gemm_ready_lock = lock(gemm_op, lock_id=self._gemm_lock_id + 1, init=0)
         gemm_send_buf = buffer(gemm_op, gchunk_ty, f"{self._name}_gsend")
         self._gemm_send_buf = gemm_send_buf
-        self._gemm_prod_lock = gemm_prod_lock
-        self._gemm_cons_lock = gemm_cons_lock
+        self._gemm_free_lock = gemm_free_lock
+        self._gemm_ready_lock = gemm_ready_lock
 
         # --- Sampler compute tile: small recv buffer (one chunk) ---
         samp_prod_lock = lock(samp_op, lock_id=self._sampler_lock_id, init=1)
@@ -186,9 +194,10 @@ class LogitsHalfRelay(Resolvable):
             dma_start(DMAChannelDir.MM2S, self._gemm_mm2s_ch,
                       dest=block[1], chain=block[2])
             with block[1]:
-                use_lock(gemm_prod_lock, LockAction.AcquireGreaterEqual)
+                # DMA consumer: wait for a ready chunk, send it, free the buffer.
+                use_lock(gemm_ready_lock, LockAction.AcquireGreaterEqual)
                 dma_bd(gemm_send_buf)
-                use_lock(gemm_cons_lock, LockAction.Release)
+                use_lock(gemm_free_lock, LockAction.Release)
                 next_bd(block[1])
             with block[2]:
                 EndOp()
