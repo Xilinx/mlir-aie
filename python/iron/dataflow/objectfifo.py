@@ -46,7 +46,7 @@ class ObjectFifo(Resolvable):
 
     Internally, it is a circular buffer with a given depth and type of buffer. The
     users of an ObjectFifo are explicitly either a Producer or a Consumer, and each
-    user has a Placeable endpoint.
+    user has an ObjectFifoEndpoint carrying its (possibly unplaced) tile.
     """
 
     # Used to generate unique ObjectFifo names when none is provided.
