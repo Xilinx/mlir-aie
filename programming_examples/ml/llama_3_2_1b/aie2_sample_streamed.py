@@ -109,9 +109,7 @@ def build():
         KO,
         [t_chunk, t_state, t_params, np.int32, np.int32, np.int32],
     )
-    k_final = Kernel(
-        "llama_sample_streamed_finalize", KO, [t_state, t_token, t_params]
-    )
+    k_final = Kernel("llama_sample_streamed_finalize", KO, [t_state, t_token, t_params])
 
     # Hold params for the whole dispatch; stream logit chunks 3x. State is the
     # worker-local Buffer (st), self-seeded by the kernel at chunk 0 of pass 1.
@@ -173,7 +171,7 @@ def build():
                 chunk_tgs.append(tg)
                 if len(chunk_tgs) > PINGPONG:
                     rt.finish_task_group(chunk_tgs[-1 - PINGPONG])
-        for tg in chunk_tgs[max(0, len(chunk_tgs) - PINGPONG):]:
+        for tg in chunk_tgs[max(0, len(chunk_tgs) - PINGPONG) :]:
             rt.finish_task_group(tg)
         rt.finish_task_group(tok_tg)
 

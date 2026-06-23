@@ -596,18 +596,20 @@ void llama_gemm_tiled_layer_K2048_N4_perchan_v2_up_fp32out_acttail(
 // logits per call written to out + tile_idx*4. act_scale from the normed-act
 // tail; per-row w_scale from the slot. Same impl as up_fp32out_acttail, named
 // for lm_head. tile_idx is the LOCAL tile index within the current chunk.
-void llama_gemm_tiled_layer_K2048_N4_lmhead_fp32out(
-    int8_t *restrict act, int8_t *restrict w_tile, float *restrict out_chunk,
-    int32_t tile_idx) {
+void llama_gemm_tiled_layer_K2048_N4_lmhead_fp32out(int8_t *restrict act,
+                                                    int8_t *restrict w_tile,
+                                                    float *restrict out_chunk,
+                                                    int32_t tile_idx) {
   event0();
   gemm_tile_perchan_v2_fp32out_acttail_impl<2048, 4, 64>(
       act, w_tile, out_chunk + tile_idx * 4);
   event1();
 }
 
-void llama_gemm_tiled_layer_K2048_N4_lmhead_argmax(
-    int8_t *restrict act, int8_t *restrict w_tile, int8_t *restrict state,
-    int32_t tile_idx) {
+void llama_gemm_tiled_layer_K2048_N4_lmhead_argmax(int8_t *restrict act,
+                                                   int8_t *restrict w_tile,
+                                                   int8_t *restrict state,
+                                                   int32_t tile_idx) {
   event0();
   constexpr int kK = 2048, kNTile = 4, kPrefix = 64, kVec = 64;
   constexpr int kGroups = kK / kVec;

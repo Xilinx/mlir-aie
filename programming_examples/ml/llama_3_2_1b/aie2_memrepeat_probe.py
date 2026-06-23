@@ -84,12 +84,18 @@ def build():
     of_prod0 = ObjectFifo(t_chunk, depth=2, name="prod0")
     of_prod1 = ObjectFifo(t_chunk, depth=2, name="prod1")
     of_relay0 = of_prod0.cons().forward(
-        tile=Tile(0, 1), obj_type=t_chunk, depth=CHUNK_PER_HALF,
-        repeat_count=R, name="relay0",
+        tile=Tile(0, 1),
+        obj_type=t_chunk,
+        depth=CHUNK_PER_HALF,
+        repeat_count=R,
+        name="relay0",
     )
     of_relay1 = of_prod1.cons().forward(
-        tile=Tile(1, 1), obj_type=t_chunk, depth=CHUNK_PER_HALF,
-        repeat_count=R, name="relay1",
+        tile=Tile(1, 1),
+        obj_type=t_chunk,
+        depth=CHUNK_PER_HALF,
+        repeat_count=R,
+        name="relay1",
     )
 
     of_out = ObjectFifo(t_chunk, depth=2, name="probe_out")
@@ -120,11 +126,15 @@ def build():
                 c1.release(1)
 
     w_prod0 = Worker(
-        w_produce, [of_src0.cons(), of_prod0.prod(), k_copy], tile=Tile(0, 3),
+        w_produce,
+        [of_src0.cons(), of_prod0.prod(), k_copy],
+        tile=Tile(0, 3),
         stack_size=2048,
     )
     w_prod1 = Worker(
-        w_produce, [of_src1.cons(), of_prod1.prod(), k_copy], tile=Tile(1, 3),
+        w_produce,
+        [of_src1.cons(), of_prod1.prod(), k_copy],
+        tile=Tile(1, 3),
         stack_size=2048,
     )
     w_cons = Worker(

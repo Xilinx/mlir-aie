@@ -17,7 +17,9 @@ def main():
     opts = test_utils.create_default_argparser().parse_args()
     out_t = iron.zeros([N_CHUNKS * R * CHUNK], dtype=np.int8)
     npu = test_utils.create_npu_kernel(opts).npu_kernel
-    rc = DefaultNPURuntime.run_test(npu, [out_t], {}, verify=False, verbosity=opts.verbosity)
+    rc = DefaultNPURuntime.run_test(
+        npu, [out_t], {}, verify=False, verbosity=opts.verbosity
+    )
     if rc != 0:
         print(f"dispatch returned {rc}", file=sys.stderr)
         return rc
@@ -32,7 +34,9 @@ def main():
         fails += not ok
         bad = int((seg != HALF_DATA).sum())
         print(f"pass {p}: {'OK' if ok else f'MISMATCH ({bad}/{HALF})'}")
-    print(f"\nreplay_probe: {'PASS' if fails == 0 else f'{fails} FAIL'}  (HALF={HALF} CHUNK={CHUNK} R={R})")
+    print(
+        f"\nreplay_probe: {'PASS' if fails == 0 else f'{fails} FAIL'}  (HALF={HALF} CHUNK={CHUNK} R={R})"
+    )
     return 0 if fails == 0 else 1
 
 

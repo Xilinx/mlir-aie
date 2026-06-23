@@ -74,14 +74,18 @@ def main():
         e = sample_streamed_reference(logits, 0.7, 0, s, lut)
         ok = a == e
         fails += not ok
-        print(f"[full   ]  seed={s:3d}  dev={a:6d}  ref={e:6d}  {'OK' if ok else 'MISMATCH'}")
+        print(
+            f"[full   ]  seed={s:3d}  dev={a:6d}  ref={e:6d}  {'OK' if ok else 'MISMATCH'}"
+        )
 
     for s in seeds:
         a = run_npu(npu_kernel, logits, 0.7, 40, s, opts)
         e = sample_streamed_reference(logits, 0.7, 40, s, lut)
         ok = a == e
         fails += not ok
-        print(f"[topk 40]  seed={s:3d}  dev={a:6d}  ref={e:6d}  {'OK' if ok else 'MISMATCH'}")
+        print(
+            f"[topk 40]  seed={s:3d}  dev={a:6d}  ref={e:6d}  {'OK' if ok else 'MISMATCH'}"
+        )
 
     print(f"\nsample_streamed: {'BIT-EXACT PASS' if fails == 0 else f'{fails} FAIL'}")
     return 0 if fails == 0 else 1

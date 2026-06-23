@@ -210,26 +210,25 @@ extern "C" void llama_flowkv_mh(int8_t *restrict q_chunk,
 // tail (q_proj's per-head scale; that's a Phase-2 tiled scale).
 // Two-pass over the sv accumulation (Bug 2: no fp32 stack array across loops;
 // recompute acc in pass B). The doubled sv cost is acceptable (correctness).
-extern "C" void llama_flowkv_mh_selfcal(int8_t *restrict q_chunk,
-                                        float *restrict k_slot,
-                                        int8_t *restrict k_body,
-                                        float *restrict v_slot,
-                                        int8_t *restrict v_body,
-                                        int8_t *restrict out_chunk, int T_used) {
+extern "C" void
+llama_flowkv_mh_selfcal(int8_t *restrict q_chunk, float *restrict k_slot,
+                        int8_t *restrict k_body, float *restrict v_slot,
+                        int8_t *restrict v_body, int8_t *restrict out_chunk,
+                        int T_used) {
   event0();
   ::aie::set_rounding(aie::rounding_mode::conv_even);
   static_assert(kHD == 64, "qk_scale hardcoded for head_dim=64");
   constexpr float kInvSqrtHD = 0.125f;
 
-  int8_t *tail = q_chunk + kREP * kHD;        // per-head [q_scale, sv_inv_out]
-  int8_t *out_tail = out_chunk + kREP * kHD;  // per-head sv_out_scale (REP*4)
+  int8_t *tail = q_chunk + kREP * kHD;       // per-head [q_scale, sv_inv_out]
+  int8_t *out_tail = out_chunk + kREP * kHD; // per-head sv_out_scale (REP*4)
 
   float scores[kT];
   int32_t qvals[kT];
 
   for (int h = 0; h < kREP; h++) {
     float q_scale;
-    memcpy(&q_scale, tail + h * 8 + 0, 4);  // sv_inv_out (tail+4) now ignored
+    memcpy(&q_scale, tail + h * 8 + 0, 4); // sv_inv_out (tail+4) now ignored
 
     int8_t *restrict q_h = q_chunk + h * kHD;
     int8_t *restrict out_h = out_chunk + h * kHD;

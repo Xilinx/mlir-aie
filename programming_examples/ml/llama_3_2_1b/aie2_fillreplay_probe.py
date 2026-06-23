@@ -44,7 +44,9 @@ def factor(nb):
 def chunk_tap(total, base, n):
     outer, inner = factor(n)
     return TensorAccessPattern(
-        tensor_dims=[total], offset=base, sizes=[1, 1, outer, inner],
+        tensor_dims=[total],
+        offset=base,
+        sizes=[1, 1, outer, inner],
         strides=[0, 0, inner, 1],
     )
 
@@ -90,8 +92,12 @@ def build():
                 c_out.release(1)
                 rel.release(1)
 
-    w_g = Worker(w_gemm, [of_src.cons(), relay, k_copy], tile=Tile(0, 3), stack_size=2048)
-    w_s = Worker(w_samp, [relay, of_out.prod(), k_copy], tile=Tile(0, 2), stack_size=2048)
+    w_g = Worker(
+        w_gemm, [of_src.cons(), relay, k_copy], tile=Tile(0, 3), stack_size=2048
+    )
+    w_s = Worker(
+        w_samp, [relay, of_out.prod(), k_copy], tile=Tile(0, 2), stack_size=2048
+    )
 
     rt = Runtime()
     with rt.sequence(rt_in_ty, rt_out_ty) as (src, dst):

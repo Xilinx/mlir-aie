@@ -128,11 +128,11 @@ extern "C" void llama_q_requant(float *restrict q_fp, int8_t *restrict out) {
 // so the downstream af_concat reads both bodies and sv_out_scales from this
 // single buffer (no host af_scales fifo). Q-head order is preserved:
 // KV group g holds Q heads [g*REP .. g*REP+REP).
-static constexpr int kSvBody = kREP * kHD;        // 256 (one KV group's body)
-static constexpr int kSvTail = kREP * 4;          // 16  (one KV group's scales)
+static constexpr int kSvBody = kREP * kHD; // 256 (one KV group's body)
+static constexpr int kSvTail = kREP * 4;   // 16  (one KV group's scales)
 static constexpr int kSvChunk = kSvBody + kSvTail; // 272
-static constexpr int kSvScalesOff = kQD;          // scales region start in out
-static constexpr int kSvHalfKV = kNHeadsKV / 2;   // 4
+static constexpr int kSvScalesOff = kQD;           // scales region start in out
+static constexpr int kSvHalfKV = kNHeadsKV / 2;    // 4
 
 extern "C" void llama_sv_merge_selfcal(int8_t *restrict in_lo,
                                        int8_t *restrict in_hi,
@@ -143,8 +143,8 @@ extern "C" void llama_sv_merge_selfcal(int8_t *restrict in_lo,
     int8_t *src = (g < kSvHalfKV) ? in_lo : in_hi;
     int local = (g < kSvHalfKV) ? g : (g - kSvHalfKV);
     int8_t *chunk = src + local * kSvChunk;
-    memcpy(out + g * kSvBody, chunk, kSvBody);            // body -> contiguous
-    memcpy(scales_out + g * kSvTail, chunk + kSvBody, kSvTail);  // scales
+    memcpy(out + g * kSvBody, chunk, kSvBody); // body -> contiguous
+    memcpy(scales_out + g * kSvTail, chunk + kSvBody, kSvTail); // scales
   }
   event1();
 }

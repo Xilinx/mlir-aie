@@ -34,8 +34,12 @@ def main():
         seg = out[p * V : (p + 1) * V]
         ok = np.array_equal(seg, src)
         fails += not ok
-        print(f"pass {p}: {'OK' if ok else 'MISMATCH'} (first={seg[0]:.3f} ref={src[0]:.3f})")
-    print(f"\nmemrepeat_probe: {'PASS' if fails == 0 else f'{fails} FAIL'}  (V={V} R={R})")
+        print(
+            f"pass {p}: {'OK' if ok else 'MISMATCH'} (first={seg[0]:.3f} ref={src[0]:.3f})"
+        )
+    print(
+        f"\nmemrepeat_probe: {'PASS' if fails == 0 else f'{fails} FAIL'}  (V={V} R={R})"
+    )
     return 0 if fails == 0 else 1
 
 

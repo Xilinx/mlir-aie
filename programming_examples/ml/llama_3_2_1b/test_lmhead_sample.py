@@ -42,8 +42,8 @@ def oracle_token(hidden_i8, hidden_scale, gamma, embed_i8, embed_sc):
     normed_i8, norm_scale = numpy_rmsnorm_int8_dyn(hidden_i8, gamma, hidden_scale)
     # int32 accumulate (exact via int64), dequant per row.
     acc = embed_i8.astype(np.int64) @ normed_i8.astype(np.int64)  # (V,)
-    logits = acc.astype(np.float32) * np.float32(norm_scale) * embed_sc.astype(
-        np.float32
+    logits = (
+        acc.astype(np.float32) * np.float32(norm_scale) * embed_sc.astype(np.float32)
     )
     return int(np.argmax(logits)), normed_i8, norm_scale
 

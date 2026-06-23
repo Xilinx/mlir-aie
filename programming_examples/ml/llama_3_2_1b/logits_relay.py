@@ -185,16 +185,29 @@ class LogitsRelay(Resolvable):
 
         # --- Flows: GEMM MM2S -> memtile S2MM (fill); memtile MM2S -> sampler
         #     S2MM (replay) ---
-        flow(gemm_op, WireBundle.DMA, self._gemm_mm2s_ch,
-             mem_op, WireBundle.DMA, self._fill_s2mm_ch)
-        flow(mem_op, WireBundle.DMA, self._replay_mm2s_ch,
-             samp_op, WireBundle.DMA, self._sampler_s2mm_ch)
+        flow(
+            gemm_op,
+            WireBundle.DMA,
+            self._gemm_mm2s_ch,
+            mem_op,
+            WireBundle.DMA,
+            self._fill_s2mm_ch,
+        )
+        flow(
+            mem_op,
+            WireBundle.DMA,
+            self._replay_mm2s_ch,
+            samp_op,
+            WireBundle.DMA,
+            self._sampler_s2mm_ch,
+        )
 
         # --- GEMM compute tile DMA: MM2S send each chunk ---
         @mem(gemm_op)
         def _gdma(block):
-            dma_start(DMAChannelDir.MM2S, self._gemm_mm2s_ch,
-                      dest=block[1], chain=block[2])
+            dma_start(
+                DMAChannelDir.MM2S, self._gemm_mm2s_ch, dest=block[1], chain=block[2]
+            )
             with block[1]:
                 # DMA consumer: wait for a ready chunk, send it, free the buffer.
                 use_lock(gemm_ready_lock, LockAction.AcquireGreaterEqual)
@@ -218,8 +231,9 @@ class LogitsRelay(Resolvable):
 
         @memtile_dma(mem_op)
         def _mtdma(block):
-            dma_start(DMAChannelDir.S2MM, self._fill_s2mm_ch,
-                      dest=block[1], chain=block[2])
+            dma_start(
+                DMAChannelDir.S2MM, self._fill_s2mm_ch, dest=block[1], chain=block[2]
+            )
             with block[1]:
                 # acquire free + release fill (both required per BD,
                 # AIERT.cpp:339). free_lock init=ng so this fires once/dispatch.
@@ -228,8 +242,12 @@ class LogitsRelay(Resolvable):
                 use_lock(fill_lock, LockAction.Release, value=1)
                 next_bd(block[1])
             with block[2]:
-                dma_start(DMAChannelDir.MM2S, self._replay_mm2s_ch,
-                          dest=block[REP0], chain=block[END])
+                dma_start(
+                    DMAChannelDir.MM2S,
+                    self._replay_mm2s_ch,
+                    dest=block[REP0],
+                    chain=block[END],
+                )
             # R replay BDs: each sends the whole resident half. Each acquires +
             # releases fill_lock net-zero (so the chain re-fires and every BD has
             # both acq+rel). First waits for the fill (fill_lock >= 1).
@@ -245,8 +263,9 @@ class LogitsRelay(Resolvable):
         # --- Sampler compute tile DMA: S2MM pull each CHUNK window ---
         @mem(samp_op)
         def _sdma(block):
-            dma_start(DMAChannelDir.S2MM, self._sampler_s2mm_ch,
-                      dest=block[1], chain=block[2])
+            dma_start(
+                DMAChannelDir.S2MM, self._sampler_s2mm_ch, dest=block[1], chain=block[2]
+            )
             with block[1]:
                 use_lock(samp_prod_lock, LockAction.AcquireGreaterEqual)
                 dma_bd(recv_buf)
