@@ -1,12 +1,25 @@
 import numpy as np
 from typing import Sequence
 
-from ...ir import IndexType, InsertionPoint, Value
-from ...dialects.scf import IfOp, ForOp, yield_
-from ...extras.dialects.arith import constant, index_cast
-from ...extras.util import get_user_code_loc
+from ...ir import (  # pyright: ignore[reportMissingImports]
+    IndexType,
+    InsertionPoint,
+    Value,
+)
+from ...dialects.scf import (  # pyright: ignore[reportMissingImports]
+    IfOp,
+    ForOp,
+    yield_,
+)
+from ...extras.dialects.arith import (  # pyright: ignore[reportMissingImports]
+    constant,
+    index_cast,
+)
+from ...extras.util import (  # pyright: ignore[reportMissingImports]
+    get_user_code_loc,
+)
 from contextlib import contextmanager
-from ...extras import types as T
+from ...extras import types as T  # pyright: ignore[reportMissingImports]
 
 
 def _for(

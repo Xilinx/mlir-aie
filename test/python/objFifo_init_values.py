@@ -1,4 +1,4 @@
-# Copyright (C) 2023, Advanced Micro Devices, Inc.
+# Copyright (C) 2023 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # RUN: %python %s | FileCheck %s
@@ -15,7 +15,6 @@ from aie.dialects.aie import (
 from aie.ir import InsertionPoint, Block
 
 from util import construct_and_print_module
-
 
 # CHECK:  module {
 # CHECK:    aie.device(xcve2302) {

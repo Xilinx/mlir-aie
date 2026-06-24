@@ -1,4 +1,5 @@
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
@@ -27,7 +28,7 @@ import numpy as np
 import pytest
 
 import aie.iron as iron
-from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron import ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import AnyMemTile
 from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
@@ -37,7 +38,7 @@ R = 1  # single transfer; cycling via set_iter_count is a separate concern
 
 
 @iron.jit
-def init_values_design(out):
+def init_values_design(out: Out):
     """Build an IRON program whose only data source is a MemTile buffer
     pre-populated with `arange(1, N+1)` via init_values. Cycle the buffer
     R times via set_iter_count, copy through a compute-tile worker, drain

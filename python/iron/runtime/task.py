@@ -4,10 +4,10 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc.
+# Copyright (C) 2024 Advanced Micro Devices, Inc.
 from typing import Callable
 
-from ... import ir  # type: ignore
+from ... import ir  # pyright: ignore[reportMissingImports]
 
 from ..buffer import Buffer
 from ..resolvable import Resolvable

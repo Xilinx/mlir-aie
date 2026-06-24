@@ -1,4 +1,5 @@
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
@@ -25,14 +26,18 @@ from aie.dialects.aiex import (
     runtime_sequence,
     shim_dma_single_bd_task,
 )
+from aie.iron import CompileTime, In, Out
 from aie.iron.controlflow import range_
 
 
 @iron.jit
-def passthrough(input, output):
-    num_elements = np.size(input)
-    dtype = input.dtype
-
+def passthrough(
+    input: In,
+    output: Out,
+    *,
+    num_elements: CompileTime[int],
+    dtype: CompileTime[object] = np.int32,
+):
     tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
 
     @device(iron.get_current_device().resolve())
@@ -70,6 +75,6 @@ def test_jit_placed_style_passthrough(num_elements, dtype):
     input = iron.randint(0, 100, (num_elements,), dtype=dtype, device="npu")
     output = iron.zeros_like(input)
 
-    passthrough(input, output)
+    passthrough(input, output, num_elements=num_elements)
 
     assert np.array_equal(input.numpy(), output.numpy())

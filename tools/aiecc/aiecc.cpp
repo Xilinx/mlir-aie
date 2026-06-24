@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2026 Advanced Micro Devices, Inc.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -104,6 +104,7 @@
 #endif
 
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -216,6 +217,21 @@ static cl::opt<int> coresPerCol(
     "cores-per-col",
     cl::desc("Limit cores per column for tile placement (-1 = no limit)"),
     cl::init(-1), cl::cat(aieCompilerOptions));
+
+static cl::opt<xilinx::AIE::PlacerType> placerType(
+    "placer", cl::desc("Placement algorithm to use"),
+    cl::values(clEnumValN(xilinx::AIE::PlacerType::SequentialPlacer,
+                          "sequential_placer",
+                          "Sequential column-major placement"),
+               clEnumValN(xilinx::AIE::PlacerType::SAPlacer, "sa_placer",
+                          "Simulated annealing placement")),
+    cl::init(xilinx::AIE::PlacerType::SequentialPlacer),
+    cl::cat(aieCompilerOptions));
+
+static cl::opt<int>
+    saSeed("sa-seed",
+           cl::desc("Random seed for SA placer (0 = non-deterministic)"),
+           cl::init(1), cl::cat(aieCompilerOptions));
 
 static cl::opt<bool>
     generateNpuInsts("aie-generate-npu-insts",
@@ -1360,7 +1376,9 @@ static LogicalResult runPlacementPipeline(ModuleOp moduleOp,
 
   OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
   xilinx::AIE::AIEPlaceTilesOptions placeTilesOpts;
+  placeTilesOpts.clPlacerType = placerType;
   placeTilesOpts.clCoresPerCol = coresPerCol;
+  placeTilesOpts.clSASeed = saSeed;
   devicePm.addPass(xilinx::AIE::createAIEPlaceTilesPass(placeTilesOpts));
 
   if (verbose) {
@@ -1998,61 +2016,88 @@ struct CoreCompilationResult {
 
 /// Downgrade LLVM IR for Peano compatibility.
 /// Strips LLVM 23+ features that Peano 19's opt/llc can't parse:
-/// - 'nuw' flag on getelementptr (LLVM 23 feature)
+/// - 'nuw' flag on getelementptr (inferred by ConstantFolding/InstCombine)
 /// - 'nocreateundeforpoison' attribute (with any trailing whitespace)
+/// - 'inf'/'-inf'/'nan' float-literal keywords (rewritten to hex form)
 static std::string downgradeIRForPeano(StringRef ir) {
   std::string result = ir.str();
-  // Strip 'nuw' from 'getelementptr inbounds nuw' -> 'getelementptr inbounds'
-  const std::string nuwFrom = "getelementptr inbounds nuw";
-  const std::string nuwTo = "getelementptr inbounds";
-  size_t pos = 0;
-  while ((pos = result.find(nuwFrom, pos)) != std::string::npos) {
-    result.erase(pos + nuwTo.size(), nuwFrom.size() - nuwTo.size());
-    pos += nuwTo.size();
-  }
-  // Strip 'nocreateundeforpoison' and any trailing whitespace
+  auto replaceAll = [&](StringRef from, StringRef to) {
+    size_t pos = 0;
+    while ((pos = result.find(from.data(), pos, from.size())) !=
+           std::string::npos) {
+      result.replace(pos, from.size(), to.data(), to.size());
+      pos += to.size();
+    }
+  };
+  // Strip 'nuw' from 'getelementptr inbounds nuw' -> 'getelementptr inbounds':
+  // recent main LLVM infers nuw on geps, which Peano's opt cannot parse.
+  replaceAll("getelementptr inbounds nuw", "getelementptr inbounds");
+  // Recent main LLVM prints special float values as 'inf'/'-inf'/'nan'
+  // keywords; Peano's opt only accepts the hex form. The literals appear
+  // prefixed by their type in initializers (the position we emit), so anchor
+  // the rewrite on the type keyword to pick the correct hex width. Require a
+  // non-identifier char before the keyword so 'float' does not match inside
+  // 'bfloat' (which would corrupt the wider type's already-correct text).
+  auto isIdentChar = [](char c) {
+    return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
+  };
+  auto replaceTypedLiteral = [&](StringRef from, StringRef to) {
+    size_t pos = 0;
+    while ((pos = result.find(from.data(), pos, from.size())) !=
+           std::string::npos) {
+      if (pos == 0 || !isIdentChar(result[pos - 1])) {
+        result.replace(pos, from.size(), to.data(), to.size());
+        pos += to.size();
+      } else {
+        pos += from.size();
+      }
+    }
+  };
+  replaceTypedLiteral("half -inf", "half 0xHFC00");
+  replaceTypedLiteral("half inf", "half 0xH7C00");
+  replaceTypedLiteral("half nan", "half 0xH7E00");
+  replaceTypedLiteral("bfloat -inf", "bfloat 0xRFF80");
+  replaceTypedLiteral("bfloat inf", "bfloat 0xR7F80");
+  replaceTypedLiteral("bfloat nan", "bfloat 0xR7FC0");
+  replaceTypedLiteral("float -inf", "float 0xFFF0000000000000");
+  replaceTypedLiteral("float inf", "float 0x7FF0000000000000");
+  replaceTypedLiteral("float nan", "float 0x7FF8000000000000");
+  replaceTypedLiteral("double -inf", "double 0xFFF0000000000000");
+  replaceTypedLiteral("double inf", "double 0x7FF0000000000000");
+  replaceTypedLiteral("double nan", "double 0x7FF8000000000000");
+  // Strip 'nocreateundeforpoison' and any trailing whitespace: current Peano
+  // LLVM cannot parse this attribute.
   const std::string nocreate = "nocreateundeforpoison";
-  pos = 0;
+  size_t pos = 0;
   while ((pos = result.find(nocreate, pos)) != std::string::npos) {
     size_t end = pos + nocreate.size();
     while (end < result.size() && (result[end] == ' ' || result[end] == '\t'))
       ++end;
     result.erase(pos, end - pos);
   }
-  // Strip ', align <N>' attributes (matches old Python
-  // drop_alignment_for_peano)
-  const std::string alignPat = ", align ";
-  pos = 0;
-  while ((pos = result.find(alignPat, pos)) != std::string::npos) {
-    size_t end = pos + alignPat.size();
-    while (end < result.size() && result[end] >= '0' && result[end] <= '9')
-      ++end;
-    if (end > pos + alignPat.size())
-      result.erase(pos, end - pos);
-    else
-      pos = end;
-  }
   return result;
 }
 
-/// Apply peanohack: read LLVM IR, downgrade for Peano, write to output path.
-static LogicalResult applyPeanoHack(StringRef inputPath, StringRef outputPath) {
+/// Read LLVM IR, downgrade it for Peano compatibility, write to output path.
+static LogicalResult applyPeanoCompat(StringRef inputPath,
+                                      StringRef outputPath) {
   auto bufOrErr = llvm::MemoryBuffer::getFile(inputPath);
   if (!bufOrErr) {
     std::lock_guard<std::mutex> lock(outputMutex);
-    llvm::errs() << "Error reading LLVM IR for peanohack: "
+    llvm::errs() << "Error reading LLVM IR for Peano compatibility: "
                  << bufOrErr.getError().message() << "\n";
     return failure();
   }
-  std::string hacked = downgradeIRForPeano((*bufOrErr)->getBuffer());
+  std::string downgraded = downgradeIRForPeano((*bufOrErr)->getBuffer());
   std::error_code ec;
   llvm::raw_fd_ostream out(outputPath, ec);
   if (ec) {
     std::lock_guard<std::mutex> lock(outputMutex);
-    llvm::errs() << "Error writing peanohack file: " << ec.message() << "\n";
+    llvm::errs() << "Error writing Peano-compatible IR: " << ec.message()
+                 << "\n";
     return failure();
   }
-  out << hacked;
+  out << downgraded;
   return success();
 }
 
@@ -2303,15 +2348,15 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
       return failure();
     }
 
-    // Apply peanohack to downgrade IR for Peano compatibility
-    SmallString<128> peanohackPath(tmpDirName);
-    sys::path::append(peanohackPath,
+    // Downgrade IR for Peano compatibility
+    SmallString<128> peanoCompatPath(tmpDirName);
+    sys::path::append(peanoCompatPath,
                       deviceName.str() + "_core_" + std::to_string(core.col) +
-                          "_" + std::to_string(core.row) + ".peanohack.ll");
-    if (failed(applyPeanoHack(llvmIRPath, peanohackPath)))
+                          "_" + std::to_string(core.row) + ".peano-compat.ll");
+    if (failed(applyPeanoCompat(llvmIRPath, peanoCompatPath)))
       return failure();
 
-    // Run opt on peanohacked IR.
+    // Run opt on Peano-compatible IR.
     // Cap opt level at O1 for Peano to match old Python aiecc behavior.
     // Higher levels cause SLP vectorizer to create types that crash GlobalISel.
     SmallString<128> optPath(tmpDirName);
@@ -2326,7 +2371,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
         "--passes=default<O" + std::to_string(safeOptLevel) + ">",
         "-inline-threshold=10",
         "-S",
-        std::string(peanohackPath),
+        std::string(peanoCompatPath),
         "-o",
         std::string(optPath)};
 
@@ -3002,11 +3047,11 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
       return failure();
     }
 
-    // Apply peanohack to downgrade IR for Peano compatibility
-    SmallString<128> peanohackPath(tmpDirName);
-    sys::path::append(peanohackPath,
-                      deviceName.str() + "_input.llpeanohack.ll");
-    if (failed(applyPeanoHack(llvmIRPath, peanohackPath)))
+    // Downgrade IR for Peano compatibility
+    SmallString<128> peanoCompatPath(tmpDirName);
+    sys::path::append(peanoCompatPath,
+                      deviceName.str() + "_input.peano-compat.ll");
+    if (failed(applyPeanoCompat(llvmIRPath, peanoCompatPath)))
       return failure();
 
     // Run opt (cap at O1 to match old Python aiecc, prevent SLP vectorizer
@@ -3021,7 +3066,7 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
         "--passes=default<O" + std::to_string(safeOptLevel) + ">",
         "-inline-threshold=10",
         "-S",
-        std::string(peanohackPath),
+        std::string(peanoCompatPath),
         "-o",
         std::string(optPath)};
 

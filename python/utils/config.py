@@ -4,11 +4,11 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025 Advanced Micro Devices, Inc.
+# Copyright (C) 2025 Advanced Micro Devices, Inc.
 
 import os
 import shutil
-import aie.compiler.aiecc.configure as config
+import aie.compiler.aiecc.configure as config  # pyright: ignore[reportMissingImports]
 
 
 def _executable_name(name):

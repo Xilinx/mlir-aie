@@ -3,7 +3,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2026, Advanced Micro Devices, Inc.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 """Pure-numpy reference for MobileNet V3 (algorithm onramp).
 
 Drives the network from network_spec.NETWORK; mirrors the AIE bottleneck-kernel
@@ -54,7 +54,7 @@ import json
 
 import numpy as np
 
-from network_spec import NETWORK, block as nsblock
+from .network_spec import NETWORK, block as nsblock
 
 
 # ---------------------------------------------------------------------------

@@ -3,7 +3,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2026, Advanced Micro Devices, Inc.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 """Regular bottleneck blocks (bn0-bn9) for MobileNet V3 IRON API rewrite.
 
 Three module-level builders, one per shape family:
@@ -21,25 +21,25 @@ NETWORK and dispatches to the right builder per block.
 
 import numpy as np
 
-from aie.iron import Kernel, ObjectFifo, Worker
+from aie.iron import ObjectFifo, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.extras.dialects.memref import view as memref_view
 
-from bottleneck._common import (
+from ._common import (
     i8 as _i8,
     u8 as _u8,
     layer_sf as _layer_sf,
     skip_sf as _skip_sf,
     wts_buffer as _wts_buffer,
 )
-from network_spec import block as nsblock
+from ..network_spec import block as nsblock
 
 
 # ---------------------------------------------------------------------------
 # build_3layer — 1x1-relu -> DW-3x3 -> (1x1 or 1x1-skip)
 # Used for bn1, bn2, bn3, bn6, bn7.
 # ---------------------------------------------------------------------------
-def build_3layer(blk, act_in, sf, *, data_dir, tile):
+def build_3layer(blk, act_in, sf, *, data_dir, tile=None):
     """Build a 3-layer bottleneck on a single compute tile.
 
     Returns (out_fifo, worker).
@@ -66,36 +66,29 @@ def build_3layer(blk, act_in, sf, *, data_dir, tile):
     l2_out_ty = _u8((out_w, 1, dw_ch))
     l3_out_ty = _i8((out_w, 1, out_c))
 
-    k_1x1_relu = Kernel(
-        f"{name}_conv2dk1_relu_i8_ui8",
-        f"{name}_conv2dk1_fused_relu.o",
-        [
-            l1_in_ty,
-            _i8((l1_sz,)),
-            l1_out_ty,
-            np.int32,
-            np.int32,
-            np.int32,
-            np.int32,
-        ],
+    k_1x1_relu = kernels.bn_conv2dk1_relu(
+        input_width=in_w,
+        input_channels=in_c,
+        output_channels=dw_ch,
     )
-    k_dw = Kernel(
-        f"{name}_conv2dk3_{dw_obj}_relu_ui8_ui8",
-        f"{name}_conv2dk3_{dw_obj}.o",
-        [l1_out_ty, l1_out_ty, l1_out_ty, _i8((l2_sz,)), l2_out_ty] + [np.int32] * 8,
+    k_dw = kernels.bn_conv2dk3_dw(
+        input_width=in_w,
+        input_channels=dw_ch,
+        output_channels=dw_ch,
+        stride=stride,
     )
     if has_skip:
-        k_l3 = Kernel(
-            f"{name}_conv2dk1_skip_ui8_i8_i8",
-            f"{name}_conv2dk1_skip.o",
-            [l2_out_ty, _i8((l3_sz,)), l3_out_ty, l3_out_ty] + [np.int32] * 5,
+        k_l3 = kernels.bn_conv2dk1_skip(
+            input_width=out_w,
+            input_channels=dw_ch,
+            output_channels=out_c,
+            skip_dtype=np.int8,
         )
     else:
-        k_l3 = Kernel(
-            f"{name}_conv2dk1_ui8_i8",
-            f"{name}_conv2dk1_i8.o",
-            [l2_out_ty, _i8((l3_sz,)), l3_out_ty]
-            + [np.int32, np.int32, np.int32, np.int32],
+        k_l3 = kernels.bn_conv2dk1_i8(
+            input_width=out_w,
+            input_channels=dw_ch,
+            output_channels=out_c,
         )
 
     out_fifo = ObjectFifo(l3_out_ty, depth=2)
@@ -268,8 +261,8 @@ def build_3layer(blk, act_in, sf, *, data_dir, tile):
             k_dw,
             k_l3,
         ],
-        tile=tile,
         while_true=False,
+        tile=tile,
     )
     return out_fifo, worker
 
@@ -278,7 +271,7 @@ def build_3layer(blk, act_in, sf, *, data_dir, tile):
 # build_2layer_skip — DW-3x3-stride1 -> 1x1-skip (the bn0 shape)
 # Input is uint8 (init-conv output); output is int8.
 # ---------------------------------------------------------------------------
-def build_2layer_skip(blk, act_in, sf, *, data_dir, tile):
+def build_2layer_skip(blk, act_in, sf, *, data_dir, tile=None):
     """Build the bn0-shaped 2-layer block on a single compute tile.
 
     Returns (out_fifo, worker).
@@ -301,15 +294,17 @@ def build_2layer_skip(blk, act_in, sf, *, data_dir, tile):
     dw_out_ty = _u8((in_w, 1, dw_ch))
     out_ty = _i8((in_w, 1, out_c))
 
-    k_dw = Kernel(
-        f"{name}_conv2dk3_dw_stride1_relu_ui8_ui8",
-        f"{name}_conv2dk3_dw_stride1.o",
-        [in_ty, in_ty, in_ty, _i8((dw_wts_sz,)), dw_out_ty] + [np.int32] * 8,
+    k_dw = kernels.bn_conv2dk3_dw(
+        input_width=in_w,
+        input_channels=dw_ch,
+        output_channels=dw_ch,
+        stride=1,
     )
-    k_skip = Kernel(
-        f"{name}_conv2dk1_skip_ui8_ui8_i8",
-        f"{name}_conv2dk1_skipui8.o",
-        [dw_out_ty, _i8((skip_wts_sz,)), out_ty, in_ty] + [np.int32] * 5,
+    k_skip = kernels.bn_conv2dk1_skip(
+        input_width=in_w,
+        input_channels=dw_ch,
+        output_channels=out_c,
+        skip_dtype=np.uint8,
     )
 
     out_fifo = ObjectFifo(out_ty, depth=2)
@@ -384,8 +379,8 @@ def build_2layer_skip(blk, act_in, sf, *, data_dir, tile):
             k_dw,
             k_skip,
         ],
-        tile=tile,
         while_true=False,
+        tile=tile,
     )
     return out_fifo, worker
 
@@ -402,8 +397,8 @@ def build_fused_pair(
     sf,
     *,
     data_dir,
-    compute_tile,
-    alloc_tile,
+    compute_tile=None,
+    alloc_tile=None,
     out_depth=2,
     out_prod_depth=None,
 ):
@@ -441,26 +436,23 @@ def build_fused_pair(
     wts_buf = _wts_buffer(data_dir, chain_filename, wts_sz)
 
     def _kernels(name, dw_ch, in_c_local, out_c_local, l1_sz, l2_sz, l3_sz):
-        l1_in_ty = _i8((in_w, 1, in_c_local))
-        l1_out_ty = _u8((in_w, 1, dw_ch))
-        l2_out_ty = _u8((in_w, 1, dw_ch))  # stride-1 keeps width
-        l3_out_ty = _i8((in_w, 1, out_c_local))
         return (
-            Kernel(
-                f"{name}_conv2dk1_relu_i8_ui8",
-                f"{name}_conv2dk1_fused_relu.o",
-                [l1_in_ty, _i8((l1_sz,)), l1_out_ty] + [np.int32] * 4,
+            kernels.bn_conv2dk1_relu(
+                input_width=in_w,
+                input_channels=in_c_local,
+                output_channels=dw_ch,
             ),
-            Kernel(
-                f"{name}_conv2dk3_dw_stride1_relu_ui8_ui8",
-                f"{name}_conv2dk3_dw_stride1.o",
-                [l1_out_ty, l1_out_ty, l1_out_ty, _i8((l2_sz,)), l2_out_ty]
-                + [np.int32] * 8,
+            kernels.bn_conv2dk3_dw(
+                input_width=in_w,
+                input_channels=dw_ch,
+                output_channels=dw_ch,
+                stride=1,
             ),
-            Kernel(
-                f"{name}_conv2dk1_skip_ui8_i8_i8",
-                f"{name}_conv2dk1_skip.o",
-                [l2_out_ty, _i8((l3_sz,)), l3_out_ty, l3_out_ty] + [np.int32] * 5,
+            kernels.bn_conv2dk1_skip(
+                input_width=in_w,
+                input_channels=dw_ch,
+                output_channels=out_c_local,
+                skip_dtype=np.int8,
             ),
         )
 
@@ -471,7 +463,7 @@ def build_fused_pair(
 
     out_fifo = ObjectFifo(_i8((in_w, 1, b_out_c)), depth=out_depth)
 
-    # Self-loop fifos colocated on alloc_tile (no synchronization — single core).
+    # Self-loop fifos (no synchronization — single core).
     def _of(ch, depth):
         return ObjectFifo(
             _u8((in_w, 1, ch)),
@@ -662,8 +654,8 @@ def build_fused_pair(
             kb_dw,
             kb_skip,
         ],
-        tile=compute_tile,
         while_true=False,
+        tile=compute_tile,
     )
     return out_fifo, worker
 
@@ -675,42 +667,36 @@ def regular_bottlenecks(
     act_in: ObjectFifo,
     sf: dict,
     *,
-    placement: dict,
+    placement: dict | None = None,
     data_dir: str,
 ) -> tuple:
     """Build bn0..bn9 from network_spec.NETWORK + scale-factor JSON.
 
-    `placement` keys: bn0, bn1, bn2, bn3, bn4_5 (with .compute/.alloc),
-    bn6, bn7, bn8_9 (with .compute/.alloc).
     Returns (workers, act_bn9_out).
     """
+    p = placement or {}
     workers = []
 
     # bn0: stride-1 DW-3x3 + 1x1-skip (2-layer, unique to first stage)
     act, w = build_2layer_skip(
-        nsblock("bn0"), act_in, sf, data_dir=data_dir, tile=placement["bn0"]
+        nsblock("bn0"), act_in, sf, data_dir=data_dir, tile=p.get("bn0")
     )
     workers.append(w)
 
     # bn1: 1x1-relu -> DW-stride2 3x3 -> 1x1 (no skip)
-    act, w = build_3layer(
-        nsblock("bn1"), act, sf, data_dir=data_dir, tile=placement["bn1"]
-    )
+    act, w = build_3layer(nsblock("bn1"), act, sf, data_dir=data_dir, tile=p.get("bn1"))
     workers.append(w)
 
     # bn2: 1x1-relu -> DW-stride1 3x3 -> 1x1-skip
-    act, w = build_3layer(
-        nsblock("bn2"), act, sf, data_dir=data_dir, tile=placement["bn2"]
-    )
+    act, w = build_3layer(nsblock("bn2"), act, sf, data_dir=data_dir, tile=p.get("bn2"))
     workers.append(w)
 
     # bn3: 1x1-relu -> DW-stride2 3x3 -> 1x1 (no skip)
-    act, w = build_3layer(
-        nsblock("bn3"), act, sf, data_dir=data_dir, tile=placement["bn3"]
-    )
+    act, w = build_3layer(nsblock("bn3"), act, sf, data_dir=data_dir, tile=p.get("bn3"))
     workers.append(w)
 
     # bn4+bn5: fused pair on one tile (stride-1 with skip on both)
+    fp45 = p.get("bn4_5", {})
     act, w = build_fused_pair(
         nsblock("bn4"),
         nsblock("bn5"),
@@ -718,25 +704,22 @@ def regular_bottlenecks(
         act,
         sf,
         data_dir=data_dir,
-        compute_tile=placement["bn4_5"]["compute"],
-        alloc_tile=placement["bn4_5"]["alloc"],
+        compute_tile=fp45.get("compute"),
+        alloc_tile=fp45.get("alloc"),
     )
     workers.append(w)
 
     # bn6: 1x1-relu -> DW-stride2 3x3 -> 1x1 (no skip)
-    act, w = build_3layer(
-        nsblock("bn6"), act, sf, data_dir=data_dir, tile=placement["bn6"]
-    )
+    act, w = build_3layer(nsblock("bn6"), act, sf, data_dir=data_dir, tile=p.get("bn6"))
     workers.append(w)
 
     # bn7: 1x1-relu -> DW-stride1 3x3 -> 1x1-skip
-    act, w = build_3layer(
-        nsblock("bn7"), act, sf, data_dir=data_dir, tile=placement["bn7"]
-    )
+    act, w = build_3layer(nsblock("bn7"), act, sf, data_dir=data_dir, tile=p.get("bn7"))
     workers.append(w)
 
     # bn8+bn9: fused pair on one tile (stride-1 with skip on both); final output.
     # out_prod_depth=1 — bn89 boundary: prod side depth=1 (cons inherits 2).
+    fp89 = p.get("bn8_9", {})
     act, w = build_fused_pair(
         nsblock("bn8"),
         nsblock("bn9"),
@@ -744,8 +727,8 @@ def regular_bottlenecks(
         act,
         sf,
         data_dir=data_dir,
-        compute_tile=placement["bn8_9"]["compute"],
-        alloc_tile=placement["bn8_9"]["alloc"],
+        compute_tile=fp89.get("compute"),
+        alloc_tile=fp89.get("alloc"),
         out_prod_depth=1,
     )
     workers.append(w)

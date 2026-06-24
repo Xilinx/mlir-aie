@@ -1,4 +1,4 @@
-// (c) Copyright 2025 Advanced Micro Devices, Inc.
+// (c) Copyright 2025-2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // REQUIRES: ryzen_ai_npu2, chess
@@ -6,4 +6,5 @@
 // RUN: mkdir -p test_stx_chess
 // RUN: cd test_stx_chess
 // RUN: make -f %S/Makefile clean
-// RUN: %run_on_npu2% env use_chess=1 devicename=npu2 make -f %S/Makefile run
+// RUN: make -f %S/Makefile devicename=npu2
+// RUN: %run_on_npu2% make -f %S/Makefile devicename=npu2 run

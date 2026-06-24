@@ -105,7 +105,7 @@ But if you must:
 * There are [build_local.sh](..%2Futils%2Fmlir_wheels%2Fscripts%2Fbuild_local.sh) scripts for both wheels; they are a very poor approximation of the GitHub environment but they're moderately useful for flushing out major issues.
 * Uncomment `pull_request:` at the tops of the yaml to get the actions to run on a PR for the actions themselves (there's probably a better to handle this...).
   * In this mode, the wheels will deposited under the [dev-wheels release page](https://github.com/Xilinx/mlir-aie/releases/tag/dev-wheels).
-* The actions themselves have knobs that are accessible through the **Run workflow** UI (that's what those fields are in the dropdown):
+* The actions themselves have options that are accessible through the **Run workflow** UI (that's what those fields are in the dropdown):
   * `commit to build`: should be obvious.
   * `Run the build with tmate debugging enabled`: this is your last resort; this enables you to ssh directly into the runner using your GitHub ssh key.
     By default, the way it works is when the job finishes (either crashes or whatever) but before it exits, the log UI will start spamming something like

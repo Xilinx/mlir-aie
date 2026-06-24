@@ -1,4 +1,4 @@
-// (c) Copyright 2025 Advanced Micro Devices, Inc.
+// Copyright (C) 2025 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // Test host application for scratchpad register-write use case.
@@ -16,7 +16,6 @@
 #include <iomanip>
 #include <iostream>
 #include <string>
-#include <unistd.h>
 #include <vector>
 
 #include <xrt/experimental/xrt_elf.h>

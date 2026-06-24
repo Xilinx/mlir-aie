@@ -4,20 +4,22 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2024, Advanced Micro Devices, Inc.
+// Copyright (C) 2024 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
-#include <bits/stdc++.h>
+#include <algorithm>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
+#include <cstring>
 #include <ctime>
 #include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <sstream>
-#include <stdfloat>
+#include <string>
+#include <vector>
 
 #include "cxxopts.hpp"
 #include "test_utils.h"

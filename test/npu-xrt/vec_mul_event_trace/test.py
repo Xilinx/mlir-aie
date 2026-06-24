@@ -5,20 +5,21 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2025-2026, Advanced Micro Devices, Inc.
+# Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 #
 # ===-----------------------------------------------------------------------===#
 #
-# REQUIRES: ryzen_ai_npu2, xrt_python_bindings
+# REQUIRES: ryzen_ai_npu2, xrt_python_bindings, chess
 #
 
 # Build the test
 # RUN: xchesscc_wrapper aie2p -I %aietools/include -c %S/vector_scalar_mul.cc -o vector_scalar_mul.o
-# RUN: %python aiecc.py --no-aiesim --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.bin %S/aie.mlir
+# RUN: %aiecc %backend_flags --no-aiesim --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.bin %S/aie.mlir
 
 # Run the test (input_with_addresses.mlir contains the lowered npu_write ops)
-# RUN: %run_on_npu2% %python %S/test.py --xclbin final.xclbin --instr insts.bin --kernel MLIR_AIE --trace-sz 8192 --mlir aie.mlir.prj/input_with_addresses.mlir | FileCheck %s
+# RUN: %run_on_npu2% %python %S/test.py --xclbin final.xclbin --instr insts.bin --kernel MLIR_AIE --trace_size 8192 --mlir aie.mlir.prj/input_with_addresses.mlir | FileCheck %s
 # CHECK: PASS!
+import argparse
 import numpy as np
 import subprocess
 import sys
@@ -28,6 +29,7 @@ import aie.utils.trace as trace_mod
 import aie.utils.test as test_utils
 import aie.iron as iron
 from aie.utils import DefaultNPURuntime
+from aie.utils.hostruntime.argparse import add_runtime_args
 
 IN_OUT_SIZE = 4096
 IN_OUT_DTYPE = np.int32
@@ -242,7 +244,8 @@ def main(opts):
 
 
 if __name__ == "__main__":
-    p = test_utils.create_default_argparser()
+    p = argparse.ArgumentParser()
+    add_runtime_args(p)
     p.add_argument("--mlir", dest="mlir", help="MLIR file for trace parsing")
     opts = p.parse_args(sys.argv[1:])
     sys.exit(main(opts))

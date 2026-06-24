@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2026, Advanced Micro Devices, Inc.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 #
 ##===----------------------------------------------------------------------===##
 
@@ -30,7 +30,7 @@ build/final.xclbin: build/aie.mlir
 		--xclbin-name=${@F} --npu-insts-name=insts.bin $(<:%=../%)
 
 run_py: build/final.xclbin
-	${powershell} python3 ${srcdir}/test.py -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
+	${powershell} python3 ${srcdir}/test.py --xclbin build/final.xclbin --instr build/insts.bin -k MLIR_AIE
 
 clean:
 	rm -rf build _build

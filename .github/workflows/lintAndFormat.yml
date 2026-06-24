@@ -30,7 +30,7 @@ jobs:
       pull-requests: write
 
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
         with:
           fetch-depth: 2
           submodules: "true"
@@ -92,7 +92,37 @@ jobs:
 
           ninja aie-headers mlir-headers
 
+          # Assemble the Python package sources (hand-written + tablegen'd op/enum
+          # wrappers) into build/python/aie. This needs only tablegen, not a full
+          # C++ build, so it stays cheap enough for the lint job. pyright resolves
+          # generated bindings from here; aie._mlir_libs (compiled) is not required
+          # because the few core-IR symbols it would provide are already handled by
+          # targeted per-line ignores in the sources.
+          #
+          # The MLIRPythonSources.Core.Python[.Extras] targets stage aie.ir,
+          # aie.passmanager, and the aie.extras package root; the _aie_enum_gen.py
+          # copy stages the trace/event enum bindings. Without these, those package
+          # roots don't exist in build/python and the imports fail with
+          # reportMissingImports (which the per-line reportAttributeAccessIssue
+          # ignores do not cover).
+          ninja \
+            python/AIEPythonSources.Dialects.aie.ops_gen \
+            python/AIEPythonSources.Dialects.aiex.ops_gen \
+            python/AIEPythonSources.Dialects.aievec.ops_gen \
+            python/AIEPythonModules.sources.AIEPythonSources \
+            python/AIEPythonModules.sources.MLIRPythonSources.Core.Python \
+            python/AIEPythonModules.sources.MLIRPythonSources.Core.Python.Extras \
+            python/aie/dialects/_aie_enum_gen.py
+
           popd
+
+      - name: Type check Python (pyright)
+        run: |
+          # pyrightconfig.json expects the built aie tree at install/python (see
+          # utils/pyright_stubs/README.md). Point it at the lint build output.
+          rm -rf install && mkdir install
+          ln -sfn "$PWD/build/python" install/python
+          pyright
 
       - name: Analyze
         id: clang-tidy-fixes
@@ -123,7 +153,7 @@ jobs:
 
     steps:
       - name: Get the project repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
         with:
           fetch-depth: 2
           submodules: "true"
@@ -222,7 +252,7 @@ jobs:
           swap-storage: false
 
       - name: Get the project repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
         with:
           fetch-depth: 2
           submodules: "true"
@@ -263,7 +293,7 @@ jobs:
 
       - name: Ccache for C++ compilation
         if: steps.changed-files.outputs.changed-files != ''
-        uses: hendrikmuhs/ccache-action@5ebbd400eff9e74630f759d94ddd7b6c26299639  # v1.2
+        uses: hendrikmuhs/ccache-action@d62db5f07c26379fc4b4e0916f098a92573c3b03  # v1.2.23
         with:
           key: ${{ runner.os }}-${{ matrix.ubuntu_version }}-${{ steps.get-llvm-commit-hash.outputs.hash }}-code-cov
           max-size: 1G

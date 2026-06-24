@@ -4,12 +4,12 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2026 Advanced Micro Devices, Inc.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 """ScratchpadParameter: a named runtime value set from the host and read by Workers."""
 
 import numpy as np
 
-from .. import ir  # type: ignore
+from .. import ir  # pyright: ignore[reportMissingImports]
 from ..dialects import aiex
 from ..helpers.util import np_dtype_to_mlir_type, NpuDType
 from .resolvable import Resolvable
@@ -89,5 +89,7 @@ class ScratchpadParameter(Resolvable):
         """Emit ``aiex.scratchpad_parameter @name : type`` at module scope."""
         if not self._resolved:
             mlir_type = np_dtype_to_mlir_type(self._dtype)
-            aiex.scratchpad_parameter(self._name, mlir_type, loc=loc, ip=ip)
+            aiex.scratchpad_parameter(  # pyright: ignore[reportAttributeAccessIssue]
+                self._name, mlir_type, loc=loc, ip=ip
+            )
             self._resolved = True

@@ -4,12 +4,12 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
+# Copyright (C) 2025 Advanced Micro Devices, Inc.
 
 import numpy as np
 import sys
 
-from aie.iron import Program, Runtime, Worker, ObjectFifo
+from aie.iron import Out, In, CompileTime, Program, Runtime, Worker, ObjectFifo
 from aie.iron.controlflow import range_
 
 import aie.iron as iron
@@ -27,7 +27,7 @@ tile_ty = np.ndarray[(num_elements,), np.dtype[data_type]]
 # Parameters:
 #     - use_cache (bool): Use cached MLIR module if available. Defaults to True.
 @iron.jit
-def aie2p(input0, output):
+def aie2p(input0: In, output: Out):
     # Dataflow with ObjectFifos
     # ObjectFifos represent a dataflow connection between endpoints in the AIE array.
     # The IRON placement step relies on ObjectFifoHandles to infer the endpoints of ObjectFifos.

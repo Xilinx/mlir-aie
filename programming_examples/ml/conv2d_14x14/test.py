@@ -3,7 +3,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024-2026, Advanced Micro Devices, Inc.
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 
 import torch
 import torch.nn as nn
@@ -13,7 +13,8 @@ from aie.utils.ml import DataShaper
 import time
 import os
 import numpy as np
-import aie.utils.test as test_utils
+import argparse
+from aie.utils.hostruntime.argparse import add_runtime_args
 import aie.iron as iron
 from aie.utils import TraceConfig, HostRuntime, NPUKernel, DefaultNPURuntime
 from pathlib import Path
@@ -355,7 +356,8 @@ def main(opts):
 
 
 if __name__ == "__main__":
-    p = test_utils.create_default_argparser()
+    p = argparse.ArgumentParser()
+    add_runtime_args(p, with_io_sizes=True)
     p.add_argument(
         "-wd",
         "--width",

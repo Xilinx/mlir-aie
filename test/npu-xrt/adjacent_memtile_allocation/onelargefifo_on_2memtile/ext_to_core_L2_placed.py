@@ -1,5 +1,6 @@
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# Copyright (C) 2022-2025 Advanced Micro Devices, Inc.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
@@ -7,8 +8,8 @@
 
 # REQUIRES: ryzen_ai_npu1, valid_xchess_license
 # RUN: %python %S/ext_to_core_L2_placed.py npu > ./aie.mlir
-# RUN: clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags -lrt -lstdc++ %test_utils_flags
-# RUN: %python aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --aie-generate-npu-insts --npu-insts-name=insts.bin ./aie.mlir
+# RUN: %host_clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
+# RUN: %aiecc %backend_flags --aie-generate-xclbin --no-compile-host --xclbin-name=final.xclbin --aie-generate-npu-insts --npu-insts-name=insts.bin ./aie.mlir
 # RUN: %run_on_npu1% ./test.exe -x final.xclbin -k MLIR_AIE -i insts.bin | FileCheck %s
 # CHECK: PASS!
 

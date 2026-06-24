@@ -1,4 +1,4 @@
-// (c) Copyright 2026 Advanced Micro Devices, Inc.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // Test host application for scratchpad register-write use case.
@@ -11,11 +11,10 @@
 //
 
 #include <chrono>
+#include <cstdint>
 #include <cstring>
 #include <iostream>
-#include <stdfloat>
 #include <string>
-#include <unistd.h>
 #include <vector>
 
 #include <xrt/experimental/xrt_elf.h>
@@ -27,10 +26,12 @@
 
 #include <parameter_scratchpad.h>
 
-constexpr std::bfloat16_t FOO_1 = (std::bfloat16_t)3.0;
-constexpr std::bfloat16_t BAR_1 = (std::bfloat16_t)4.0;
-constexpr std::bfloat16_t FOO_2 = (std::bfloat16_t)2.0;
-constexpr std::bfloat16_t BAR_2 = (std::bfloat16_t)5.0;
+constexpr std::uint16_t FOO_1 = 0x4040;      // bf16 3.0
+constexpr std::uint16_t BAR_1 = 0x4080;      // bf16 4.0
+constexpr std::uint16_t FOO_2 = 0x4000;      // bf16 2.0
+constexpr std::uint16_t BAR_2 = 0x40a0;      // bf16 5.0
+constexpr std::uint16_t EXPECTED_1 = 0x4140; // bf16 12.0
+constexpr std::uint16_t EXPECTED_2 = 0x4120; // bf16 10.0
 
 int main(int argc, const char *argv[]) {
   auto device = xrt::device(0);
@@ -40,9 +41,9 @@ int main(int argc, const char *argv[]) {
   xrt::hw_context context = xrt::hw_context(device, ctx_elf);
   auto kernel = xrt::ext::kernel(context, kernelName);
 
-  xrt::bo bo_out = xrt::ext::bo{device, 2 * sizeof(std::bfloat16_t)};
-  auto *buf_out = bo_out.map<std::bfloat16_t *>();
-  memset(buf_out, 0, 2 * sizeof(std::bfloat16_t));
+  xrt::bo bo_out = xrt::ext::bo{device, 2 * sizeof(std::uint16_t)};
+  auto *buf_out = bo_out.map<std::uint16_t *>();
+  memset(buf_out, 0, 2 * sizeof(std::uint16_t));
   bo_out.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   auto run = xrt::run(kernel);
@@ -57,29 +58,27 @@ int main(int argc, const char *argv[]) {
   run.start();
   run.wait2();
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-  std::bfloat16_t result1 = buf_out[0];
-  std::bfloat16_t expected1 = FOO_1 * BAR_1;
+  std::uint16_t result1 = buf_out[0];
 
-  std::cout << "Run 1 — Expected: " << expected1 << ", Got: " << result1
-            << std::endl;
+  std::cout << "Run 1 - Expected bits: 0x" << std::hex << EXPECTED_1
+            << ", Got: 0x" << result1 << std::dec << std::endl;
 
   // Run 2: 2.0 * 5.0 = 10.0
   params.write("foo", FOO_2);
   params.write("bar", BAR_2);
   params.sync();
-  memset(buf_out, 0, 2 * sizeof(std::bfloat16_t));
+  memset(buf_out, 0, 2 * sizeof(std::uint16_t));
   bo_out.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   run.start();
   run.wait2();
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
-  std::bfloat16_t result2 = buf_out[0];
-  std::bfloat16_t expected2 = FOO_2 * BAR_2;
+  std::uint16_t result2 = buf_out[0];
 
-  std::cout << "Run 2 — Expected: " << expected2 << ", Got: " << result2
-            << std::endl;
+  std::cout << "Run 2 - Expected bits: 0x" << std::hex << EXPECTED_2
+            << ", Got: 0x" << result2 << std::dec << std::endl;
 
-  if (result1 == expected1 && result2 == expected2) {
+  if (result1 == EXPECTED_1 && result2 == EXPECTED_2) {
     std::cout << "PASS!" << std::endl;
     return 0;
   } else {
