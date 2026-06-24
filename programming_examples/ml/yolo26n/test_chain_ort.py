@@ -6,12 +6,14 @@
 #
 # Copyright (C) 2026, Advanced Micro Devices, Inc.
 #
-"""End-to-end chain NPU-vs-ORT bit-exact check for the full m0..m10 chain.
+"""End-to-end chain NPU-vs-ORT check for the full m0..m10 chain.
 
 Feeds the same (4, 3, 512, 512) RGB int8 input that test_block_ort.py uses,
-runs ORT to get the chain's final tensor (post-SiLU int8 for non-head tails,
-fp32 softmax for the m10 head), then runs the chain xclbin on the NPU and
-bit-exact compares.
+runs ORT to get the chain's final tensor, then runs the chain xclbin on the
+NPU and compares. The comparison is true bit-exact for spatial tails (the NPU
+int8 output vs ORT's already-quantized int8 tensor), and int8-exact after
+requantization for the m10 head (ORT's fp32 softmax requantized to int8 @
+2^-7, since the NPU emits int8 probs).
 
 For an N>1 chain (built with CHAIN_N_SAMPLES=N at MLIR-generation time), set
 the same CHAIN_N_SAMPLES env var here and the script feeds N identical copies
@@ -27,6 +29,7 @@ Run:
 
 from __future__ import annotations
 
+import argparse
 import os
 import sys
 from pathlib import Path
@@ -34,8 +37,6 @@ from pathlib import Path
 import numpy as np
 import onnx
 import onnxruntime as ort
-
-import argparse
 
 import aie.iron as iron
 import aie.utils.test as test_utils
@@ -205,10 +206,20 @@ def main():
         f"{n_samples * expected.size}, max|diff|={max_abs}"
     )
     if total_diff == 0:
-        print(
-            f"BIT-EXACT NPU chain == ORT for {out_tensor_name} "
-            f"(all {n_samples} sample{'s' if n_samples != 1 else ''})"
-        )
+        samples_str = f"all {n_samples} sample{'s' if n_samples != 1 else ''}"
+        if last_topo == "head":
+            # m10's ONNX tail is an fp32 softmax; the NPU emits int8 probs.
+            # We requantize ORT's fp32 output to int8 @ 2^-7 before comparing,
+            # so this is an exact match in the int8 domain, NOT a bit-exact
+            # match of the raw fp32 softmax. Name it honestly.
+            print(
+                f"NPU chain == ORT (int8-exact after requant) for "
+                f"{out_tensor_name} ({samples_str})"
+            )
+        else:
+            # Spatial tails compare the NPU's int8 output directly against
+            # ORT's already-quantized int8 tensor — a true bit-exact match.
+            print(f"BIT-EXACT NPU chain == ORT for {out_tensor_name} ({samples_str})")
         return 0
     i, actual, diff = first_bad_sample
     print(f"First diff is in sample {i}:")

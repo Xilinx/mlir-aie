@@ -166,4 +166,3 @@ if __name__ == "__main__":
     test_symmetric_depths_still_emit_array()
     test_skip_connection_emits_array()
     test_exact_depth_pins_single_consumer()
-    test_skip_connection_emits_array()
