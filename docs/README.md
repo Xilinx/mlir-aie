@@ -267,6 +267,8 @@ Be sure you have the latest BIOS for your laptop or mini PC, this will ensure th
 
 [Building mlir-aie tools from source](Building.md)
 
+[Building on a non-Ubuntu distro or with the in-tree amdxdna driver](buildHostLinNonUbuntu.md)
+
 [MLIR Dialect and Compiler Documentation](https://xilinx.github.io/mlir-aie/)
 
 Interested in contributing MLIR-AIE? [Information for developers](../CONTRIBUTING.md)
