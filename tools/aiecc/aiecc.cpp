@@ -2075,6 +2075,21 @@ static std::string downgradeIRForPeano(StringRef ir) {
       ++end;
     result.erase(pos, end - pos);
   }
+  // Strip ', align <N>' attributes (matches old Python
+  // drop_alignment_for_peano). Retaining align attributes causes Peano's
+  // capped-O1 opt to skip vectorizing the matmul K-loop, scalarizing it into
+  // ~10x more program memory and overflowing AIE core memory.
+  const std::string alignPat = ", align ";
+  pos = 0;
+  while ((pos = result.find(alignPat, pos)) != std::string::npos) {
+    size_t end = pos + alignPat.size();
+    while (end < result.size() && result[end] >= '0' && result[end] <= '9')
+      ++end;
+    if (end > pos + alignPat.size())
+      result.erase(pos, end - pos);
+    else
+      pos = end;
+  }
   return result;
 }
 
