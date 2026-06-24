@@ -457,6 +457,12 @@ lmhead_topk_insert_impl(int8_t *restrict act, int8_t *restrict w_tile,
   constexpr int kK = 2048, kNTile = 4, kPrefix = 64, kVec = 64;
   constexpr int kGroups = kK / kVec;
 
+  // Reset the resident set at the start of each table pass. The set buffers
+  // persist across dispatches (and across iterations of the persistent loop),
+  // so tile_idx==0 must clear the occupancy or stale entries leak in.
+  if (tile_idx == 0)
+    *set_len = 0;
+
   float act_scale;
   memcpy(&act_scale, act + kK, 4);
 
