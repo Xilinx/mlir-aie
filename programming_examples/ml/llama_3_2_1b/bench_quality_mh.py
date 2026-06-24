@@ -155,8 +155,30 @@ def int8_chain_next_token(
 
 
 def fp16_ref_next_token(model, token_ids):
-    """Ground-truth next token via numpy_llama_ref.forward_full."""
+    """Next token via numpy_llama_ref.forward_full. NOTE: despite the name this is
+    the INT8 recipe forward (forward_full uses int8 weights) -- so scoring against
+    it measures device-vs-int8-recipe agreement, NOT vs the true model. Use
+    --bf16-ref for the true HF bf16 reference."""
     logits = forward_full(model, np.array(token_ids))  # (M, V)
+    return int(np.argmax(logits[-1]))
+
+
+_BF16_REF = None
+
+
+def bf16_ref_next_token(token_ids):
+    """Ground-truth next token via the TRUE HF Llama 3.2 1B bf16 weights (loaded
+    from the safetensors, full-precision forward). This is the real reference for
+    'does the NPU match the actual model'. Lazily loads the 2.5 GB checkpoint."""
+    global _BF16_REF
+    if _BF16_REF is None:
+        from accuracy_vs_hf import RefModel, ref_forward_logits, HF_WEIGHTS
+        from gen_llama_data import SafetensorsReader
+
+        print(f"loading bf16 HF reference from {HF_WEIGHTS} ...", flush=True)
+        _BF16_REF = (RefModel(SafetensorsReader(HF_WEIGHTS)), ref_forward_logits)
+    ref_model, fwd = _BF16_REF
+    logits = fwd(ref_model, np.array(token_ids))  # (M, V)
     return int(np.argmax(logits[-1]))
 
 
@@ -353,6 +375,14 @@ def main():
         "whether the LUT ULP noise affects top-1",
     )
     parser.add_argument(
+        "--bf16-ref",
+        action="store_true",
+        help="score against the TRUE HF Llama 3.2 1B bf16 weights (full-precision "
+        "forward from the safetensors) instead of the int8 forward_full. This is "
+        "the real 'NPU vs the actual model' agreement; without it the reference is "
+        "the int8 recipe (device-vs-recipe).",
+    )
+    parser.add_argument(
         "--device",
         action="store_true",
         help="run the INT8 decode of the last token on HARDWARE via the N=16 "
@@ -450,7 +480,10 @@ def main():
         prompt = PROMPTS[idx]
         ids = [128000] + enc.encode(prompt)
         t0 = time.time()
-        ref_tok = fp16_ref_next_token(model, ids)
+        if opts.bf16_ref:
+            ref_tok = bf16_ref_next_token(ids)
+        else:
+            ref_tok = fp16_ref_next_token(model, ids)
         t_fp16 = time.time() - t0
         t0 = time.time()
         if opts.device:
@@ -480,15 +513,19 @@ def main():
         n_match += int(match)
         results.append((prompt, ref_tok, our_tok, match))
         mark = "OK" if match else "FAIL"
+        reflbl = "bf16" if opts.bf16_ref else "ref"
+        devlbl = "npu" if opts.device else "int8"
         print(
-            f"  [{mark}] {prompt!r:50} -> fp16={enc.decode([ref_tok])!r} "
-            f"int8={enc.decode([our_tok])!r}  "
-            f"(t_fp16={t_fp16:.1f}s t_int8={t_int8:.1f}s)",
+            f"  [{mark}] {prompt!r:50} -> {reflbl}={enc.decode([ref_tok])!r} "
+            f"{devlbl}={enc.decode([our_tok])!r}  "
+            f"(t_ref={t_fp16:.1f}s t_dev={t_int8:.1f}s)",
             flush=True,
         )
 
+    refname = "true HF bf16" if opts.bf16_ref else "int8 recipe"
+    devname = "NPU" if opts.device else "numpy int8"
     print(
-        f"\ntop-1 agreement: {n_match}/{n_total} = "
+        f"\n{devname} vs {refname} top-1 agreement: {n_match}/{n_total} = "
         f"{100.0 * n_match / max(1, n_total):.1f}%"
     )
     return 0 if n_match == n_total else 1

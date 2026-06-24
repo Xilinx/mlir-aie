@@ -184,9 +184,74 @@ def pack_kv_prefix(kvblob, t_used):
     return out
 
 
+DDR_BW_GBPS = 120.0  # NPU2 LPDDR5 ~120 GB/s (reference; the DMA floor denominator)
+LMW_GAMMA_BYTES = 2 * D  # final_norm gamma bf16[D], prefix of the lm_head blob
+
+
+def time_decode(npu, buffers, opts):
+    """Measure per-token device time and compare to the per-token DMA floor.
+
+    The persistent dispatch generates PT tokens, streaming the model from DDR each
+    token: WEIGHTS_BYTES (N-layer blob) + lm_head (LMW_GAMMA_BYTES + WLM_TOTAL,
+    262 MB) every token; the KV seed (KV_BYTES) is streamed ONCE (token 0) in
+    resident mode, so it amortizes to KV_BYTES/PT. per_token = npu_time/PT.
+    ratio = per_token / dma_floor: ~1 => DMA-bound (weight stream is the wall,
+    prefetch working); >>1 => compute-bound (kernels starve the stream)."""
+    print(
+        f"timing: warmup x{opts.n_warmup}, time x{opts.n_iters}  (PT={PT} tokens/dispatch)",
+        flush=True,
+    )
+    for _ in range(opts.n_warmup):
+        DefaultNPURuntime.load_and_run(npu, buffers)
+    times_ms = []
+    for _ in range(opts.n_iters):
+        _h, result = DefaultNPURuntime.load_and_run(npu, buffers)
+        times_ms.append(result.npu_time / 1e6)  # ns -> ms
+    arr = np.array(times_ms)
+    disp_med = float(np.median(arr))
+    per_token_ms = disp_med / PT
+
+    bytes_per_token = (
+        WEIGHTS_BYTES  # N-layer weight blob, streamed every token
+        + LMW_GAMMA_BYTES
+        + WLM_TOTAL  # 262 MB tied lm_head / embed table, every token
+        + KV_BYTES / PT  # resident KV seed: streamed once, amortized over PT
+    )
+    dma_floor_ms = bytes_per_token / (DDR_BW_GBPS * 1e9) * 1e3
+    ratio = per_token_ms / dma_floor_ms
+    verdict = (
+        "DMA-bound (weight stream is the wall; prefetch working)"
+        if ratio < 1.5
+        else "COMPUTE-bound (kernels starve the DMA; vectorization is the lever)"
+    )
+    print(
+        f"per-dispatch: n={opts.n_iters} median={disp_med:.2f} ms "
+        f"min={arr.min():.2f} max={arr.max():.2f} std={arr.std():.2f}"
+    )
+    print(f"per-token:    {per_token_ms:.2f} ms  ({1000.0/per_token_ms:.1f} tok/s)")
+    print(
+        f"bytes/token:  {bytes_per_token/1e6:.1f} MB  "
+        f"(weights {WEIGHTS_BYTES/1e6:.1f} + lm_head {(LMW_GAMMA_BYTES+WLM_TOTAL)/1e6:.1f} "
+        f"+ KV/PT {KV_BYTES/PT/1e6:.2f})"
+    )
+    print(f"DMA floor:    {dma_floor_ms:.2f} ms/token @ {DDR_BW_GBPS:.0f} GB/s")
+    print(f"ratio:        {ratio:.2f}x  -> {verdict}")
+    return 0
+
+
 def main():
     p = test_utils.create_default_argparser()
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument(
+        "--time",
+        action="store_true",
+        help="measure per-token device time (DMA-bound vs compute-bound verdict)",
+    )
+    # Each persistent dispatch is ~400 ms (compute-bound); back-to-back dispatches
+    # can exceed XRT's wait() timeout, so default to a single timed dispatch.
+    # result.npu_time is the device clock, so one clean dispatch is enough.
+    p.add_argument("--n-iters", type=int, default=1)
+    p.add_argument("--n-warmup", type=int, default=0)
     opts = p.parse_args()
     fseed = opts.seed
 
@@ -265,6 +330,9 @@ def main():
         f"  temp={SAMPLE_TEMP} topk={SAMPLE_TOPK} seed={SAMPLE_SEED}  fixture_seed={fseed}",
         flush=True,
     )
+    if opts.time:
+        return time_decode(npu, [x_t, w_t, kv_t, lmw_t, out_t], opts)
+
     rc = DefaultNPURuntime.run_test(
         npu, [x_t, w_t, kv_t, lmw_t, out_t], {}, verify=False, verbosity=opts.verbosity
     )
