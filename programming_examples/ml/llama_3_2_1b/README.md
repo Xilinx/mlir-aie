@@ -147,13 +147,25 @@ and advancing rotary phase, all driven on-device.
 > decoding on random fixtures, not a compute error; the authoritative quality gate
 > is the 20-prompt bench.
 
-**Remaining limitation — KV is still host-ferried.** The cache lives in a host
-(DDR) buffer that the device fills/drains each token (ping-pong). The final step
-toward fully host-free decode is making it **resident in memtiles** so the host
-streams only weights per token (16-layer KV ≈ 2 MB ≈ 4 memtiles). The earlier
-**fixed-position** mode (`LLAMA_CHAIN_PERSIST=1` without `_GROW`) remains as the
-minimal proof of the on-chip control loop (host re-streams pristine KV each token;
-the `PT` tokens share one cache state).
+**Resident KV (`LLAMA_CHAIN_PERSIST_RESIDENT=1`, `run_chain_persist_resident_mh`).**
+The KV cache **body** lives in worker-local buffers on the attn compute tiles
+(`N_LAYERS` caches per head), seeded once from the host on token 0 then
+read-modify-written **in place** for the rest of the dispatch. After the seed
+there is **zero per-token KV DMA** — the host streams **only weights**. Both the
+decode compute *and* the KV cache are fully on-chip across the dispatch. Validated
+PT=4, N=2: the generated tokens are **bit-identical** to the host-ferried growing
+run, confirming the cache simply never leaves the tile. (L1 budget: the resident
+cache is `N_LAYERS × 16400 B`/head — 32 KB at N=2, which fits the 64 KB tile with a
+reduced attn stack.)
+
+**Remaining limitation — N=2 scope (compute-tile resident).** The resident cache
+fits a compute tile only for small `N_LAYERS`. The full 16-layer model needs
+256 KB/head, which must live in a **memtile** (≈ 2 MB across 8 heads ≈ 4 memtiles),
+streamed memtile↔compute per layer. That memtile-resident variant is the final
+step to a full-scale 16-layer fully-on-chip decode. The host-ferried **growing**
+mode (`LLAMA_CHAIN_PERSIST_GROW=1`) already scales to any `N_LAYERS` (KV in DDR),
+and the **fixed-position** mode (`LLAMA_CHAIN_PERSIST=1`) remains the minimal proof
+of the on-chip control loop.
 
 ## Dataflow stubs (Phase 1)
 
