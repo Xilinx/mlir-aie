@@ -19,6 +19,7 @@ Run:
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 from pathlib import Path
 
@@ -43,7 +44,14 @@ from gen_llama_data import SafetensorsReader
 from generate import load_tokenizer
 
 DATA_DIR = Path(__file__).parent / "data"
-HF_WEIGHTS = Path("/scratch/roesti/models/llama_3.2_1b/model.safetensors")
+# Reference bf16 checkpoint. Override with --hf-weights or $LLAMA_3_2_1B_SAFETENSORS
+# (the default is the dev machine's copy and will not exist for other users).
+HF_WEIGHTS = Path(
+    os.environ.get(
+        "LLAMA_3_2_1B_SAFETENSORS",
+        "/scratch/roesti/models/llama_3.2_1b/model.safetensors",
+    )
+)
 TOKENIZER = DATA_DIR / "tokenizer.model"
 
 DEFAULT_TEXT = (
@@ -134,6 +142,13 @@ def main():
     p.add_argument("--prompt", type=str, default=None)
     p.add_argument("--text-file", type=Path, default=None)
     p.add_argument("--max-tokens", type=int, default=128)
+    p.add_argument(
+        "--hf-weights",
+        type=Path,
+        default=HF_WEIGHTS,
+        help="path to the bf16 HF Llama 3.2 1B model.safetensors (reference). "
+        "Overrides $LLAMA_3_2_1B_SAFETENSORS.",
+    )
     opts = p.parse_args()
 
     if opts.text_file:
@@ -151,8 +166,16 @@ def main():
 
     print(f"loading INT8 model from {DATA_DIR} ...", flush=True)
     int8_model = load_model(DATA_DIR)
-    print(f"loading bf16 HF reference from {HF_WEIGHTS} ...", flush=True)
-    ref_model = RefModel(SafetensorsReader(HF_WEIGHTS))
+    if not opts.hf_weights.exists():
+        print(
+            f"ERROR: HF reference weights not found at {opts.hf_weights}\n"
+            f"  pass --hf-weights /path/to/model.safetensors or set "
+            f"$LLAMA_3_2_1B_SAFETENSORS",
+            file=sys.stderr,
+        )
+        return 1
+    print(f"loading bf16 HF reference from {opts.hf_weights} ...", flush=True)
+    ref_model = RefModel(SafetensorsReader(opts.hf_weights))
 
     print("running int8 forward ...", flush=True)
     int8_logits = forward_full(int8_model, ids)  # (M, V)

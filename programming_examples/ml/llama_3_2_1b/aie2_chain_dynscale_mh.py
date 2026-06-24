@@ -222,9 +222,12 @@ WEIGHTS_BYTES = OFF_WV + WV_TOTAL
 # (append rope_k) fills read it at the (tok,L) offset. CS_BYTES=256 so the whole
 # block is tiny (PT*N_LAYERS*256). Keeps the runtime at 5 args (folded into the
 # existing wblob). Laid out [token0: L0..L_{N-1} | token1: ... | ...].
+# Always define these at module scope (importable regardless of the env flag);
+# only EXTEND WEIGHTS_BYTES with the per-position block when PERSIST_GROW, so the
+# non-grow wblob size is unchanged.
+OFF_CS_PERPOS = WEIGHTS_BYTES
+CS_PERPOS_TOTAL = PT * N_LAYERS * CS_BYTES
 if PERSIST_GROW:
-    OFF_CS_PERPOS = WEIGHTS_BYTES
-    CS_PERPOS_TOTAL = PT * N_LAYERS * CS_BYTES
     WEIGHTS_BYTES = OFF_CS_PERPOS + CS_PERPOS_TOTAL
 
 # kvblob: per-layer block, each containing 8 KV heads' (T_used | k_header |
