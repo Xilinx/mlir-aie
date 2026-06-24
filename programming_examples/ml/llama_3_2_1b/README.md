@@ -121,15 +121,29 @@ one dispatch with **zero host involvement between tokens** — the host only str
 weights and drains the `PT` token/seed records. Validated greedy bit-exact against
 a numpy autoregressive oracle (PT=2, PT=4) at the real `V=128256`.
 
-**Limitation — KV cache (increment 1).** The persistent loop currently holds the
-KV cache at a **fixed position**: the host re-streams the same (pristine) KV to
-the device for each of the `PT` tokens, so every step attends over identical KV.
-This proves the device-originated control loop (token + seed never leave the chip
-across a token boundary) but is **not yet a growing cache** — a true decode must
-append each generated token's K/V and advance the position. Making the KV cache
-resident in memtiles and growing across the `PT` tokens (with position and cos/sin
-auto-advancing on-chip) is the next increment; until then `PT` tokens share one
-cache state rather than accumulating context.
+**Growing KV cache (`LLAMA_CHAIN_PERSIST_GROW=1`, `run_chain_persist_grow_mh`).**
+The KV cache **accumulates** across the `PT` tokens — real autoregressive decode.
+Each token appends its K/V on-chip at an advancing position (the growing append
+writes slot `T_used` and bumps `T_used→T_used+1`, so the **position advances
+on-device** via the carried cache — the host never computes a position), and
+attention widens to include the new slot. The host ping-pongs two KV regions so
+token *t*'s grown cache becomes token *t+1*'s input. Validated greedy bit-exact
+against a numpy autoregressive oracle with an accumulating cache (PT=4, positions
+64–67); the generated tokens differ from the fixed-position run, confirming the
+cache genuinely grows.
+
+**Remaining limitations (steps toward fully host-free decode):**
+- **KV is still host-ferried.** The cache lives in a host (DDR) buffer that the
+  device fills/drains each token (ping-pong). The next step is making it
+  **resident in memtiles** so the host streams only weights per token (16-layer
+  KV ≈ 2 MB ≈ 4 memtiles). That is the true 100 %-NPU decode.
+- **Rope `cos`/`sin` held fixed.** This increment advances the append slot and the
+  attention window but reuses one `cos`/`sin` pair for all `PT` tokens; a real
+  decode advances the rotary phase with the position. Wiring per-position
+  `cos`/`sin` is a small follow-up.
+- The earlier **fixed-position** mode (`LLAMA_CHAIN_PERSIST=1` without `_GROW`)
+  remains as the minimal proof of the on-chip control loop (host re-streams
+  pristine KV each token; the `PT` tokens share one cache state).
 
 ## Dataflow stubs (Phase 1)
 
