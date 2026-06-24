@@ -105,7 +105,8 @@ void llama_kv_append_combined_grow(int8_t *restrict combined,
 //          appends + advances T_used (grow contract). One DMA/head/layer.
 //   (no _seed): tokens 1..PT-1, in-place (kv_in == kv_out == resident slot);
 //          the self-copy is a harmless no-op, then append + advance.
-// kResPerHead = per-head resident cache size (== PER_KV_HEAD_BYTES on the host).
+// kResPerHead = per-head resident cache size (== PER_KV_HEAD_BYTES on the
+// host).
 static constexpr int kResPerHead = kPrefix + 2 * (kScaleBytes + kBodyBytes);
 void llama_kv_append_combined_resident_seed(int8_t *restrict combined,
                                             int8_t *restrict kv_in_host,
