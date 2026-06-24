@@ -85,7 +85,7 @@ sudo reboot
 >
 > You may need to logout and log back in after modifying user groups.
 
-> If you are on a different Linux distribution or kernel not supported by the upstream packages, see [Build from source](#alternative-build-xdna-driver-and-xrt-from-source) below.
+> If you are on a different Linux distribution or kernel not supported by the upstream packages, see [Build from source](#alternative-build-xdna-driver-and-xrt-from-source) below. For non-Ubuntu distros (Arch, Void, Fedora-from-source, …) or kernels that already ship the in-tree `amdxdna` driver (Linux ≥ 6.14), see the [non-Ubuntu build guide](docs/buildHostLinNonUbuntu.md).
 
 Verify the NPU device is present:
 
