@@ -1469,8 +1469,7 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
   }
 
   // Step 1: Convert vector to aievec (this is a pipeline, not a single pass)
-  // Only add for AIE2 and later targets - AIE1 doesn't support
-  // target-backend=llvmir
+  // Only add for AIE2 and later targets
   // NOTE: Use parsePassPipeline instead of buildConvertVectorToAIEVec because
   // ConvertVectorToAIEVecOptions only propagates aie-target to its sub-pipeline
   // options (canonicalize, lower, optimize) through parseFromString, not
@@ -1481,7 +1480,6 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
       lowerTarget == "aie2p") {
     std::string vecPipeline =
         "convert-vector-to-aievec{aie-target=" + lowerTarget +
-        " target-backend=llvmir" +
         (bf16Emulation ? " bf16-emulation=true" : "") + "}";
     if (failed(parsePassPipeline(vecPipeline, pm))) {
       llvm::errs() << "Error: Failed to parse convert-vector-to-aievec "

@@ -507,8 +507,7 @@ struct FoldMulAddChainToConvOpPattern
 namespace xilinx::aievec {
 
 void configureAIEVecConvOpTransformationLegalizations(ConversionTarget &target,
-                                                      AnalysisManager &am,
-                                                      TargetBackend backend) {
+                                                      AnalysisManager &am) {
   LongestConvMACChainAnalysis::am = &am;
   target.addLegalDialect<AIEVecDialect>();
   target.addLegalDialect<arith::ArithDialect>();
@@ -521,8 +520,7 @@ void configureAIEVecConvOpTransformationLegalizations(ConversionTarget &target,
 
 void populateAIEVecConvOpTransformationPatterns(RewritePatternSet &patterns,
                                                 AnalysisManager &am,
-                                                unsigned shiftParam,
-                                                TargetBackend backend) {
+                                                unsigned shiftParam) {
   patterns.add<FoldMulAddChainToConvOpPattern>(patterns.getContext(), am,
                                                shiftParam);
 }

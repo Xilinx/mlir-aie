@@ -6,8 +6,6 @@
 # Copyright (C) 2021-2022 Xilinx, Inc.
 # Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 
-add_subdirectory(AIEVecToCpp)
-
 # for #include <elf.h>
 set(BOOTGEN_SOURCE_DIR ${PROJECT_SOURCE_DIR}/third_party/bootgen)
 
