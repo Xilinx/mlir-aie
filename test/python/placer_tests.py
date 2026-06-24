@@ -137,8 +137,8 @@ def compute_three_in(module):
 
 # CHECK-LABEL: TEST: compute_one_in_two_links
 # CHECK: aie.logical_tile<CoreTile>
-# CHECK: aie.logical_tile<CoreTile>
-# CHECK: aie.logical_tile<CoreTile>
+# CHECK: aie.logical_tile<MemTile>
+# CHECK: aie.logical_tile<MemTile>
 @construct_and_print_module
 def compute_one_in_two_links(module):
     n = 1024
@@ -171,8 +171,8 @@ def compute_one_in_two_links(module):
 
 # CHECK-LABEL: TEST: compute_partial_placement
 # CHECK: aie.logical_tile<CoreTile>(0, 4)
-# CHECK: aie.logical_tile<CoreTile>(?, ?)
-# CHECK: aie.logical_tile<CoreTile>(?, ?)
+# CHECK: aie.logical_tile<MemTile>
+# CHECK: aie.logical_tile<MemTile>
 @construct_and_print_module
 def compute_partial_placement(module):
     n = 1024
