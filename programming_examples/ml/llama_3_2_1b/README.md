@@ -132,18 +132,28 @@ against a numpy autoregressive oracle with an accumulating cache (PT=4, position
 64–67); the generated tokens differ from the fixed-position run, confirming the
 cache genuinely grows.
 
-**Remaining limitations (steps toward fully host-free decode):**
-- **KV is still host-ferried.** The cache lives in a host (DDR) buffer that the
-  device fills/drains each token (ping-pong). The next step is making it
-  **resident in memtiles** so the host streams only weights per token (16-layer
-  KV ≈ 2 MB ≈ 4 memtiles). That is the true 100 %-NPU decode.
-- **Rope `cos`/`sin` held fixed.** This increment advances the append slot and the
-  attention window but reuses one `cos`/`sin` pair for all `PT` tokens; a real
-  decode advances the rotary phase with the position. Wiring per-position
-  `cos`/`sin` is a small follow-up.
-- The earlier **fixed-position** mode (`LLAMA_CHAIN_PERSIST=1` without `_GROW`)
-  remains as the minimal proof of the on-chip control loop (host re-streams
-  pristine KV each token; the `PT` tokens share one cache state).
+Rope advances with position too: each of the `PT` tokens generates at position
+`P0+t` with its own `cos`/`sin` (a small per-position block folded into the weight
+buffer; both q-rope and the cache-append rope_k read it per token). So the growing
+loop is a faithful autoregressive decoder — advancing slot, widening attention,
+and advancing rotary phase, all driven on-device.
+
+> **Note on the greedy check.** The verifier replays the oracle *following the
+> device's on-chip token trajectory* and accepts a token if it is the oracle
+> argmax **or** within a small logit tolerance of the true max. The FlowKV
+> attention kernel is intentionally ~1 ULP off numpy (it flips an exp-LUT bucket
+> on a few positions — documented and quality-neutral), which can flip a *greedy*
+> argmax only when the top two logits are near-tied. This is a property of greedy
+> decoding on random fixtures, not a compute error; the authoritative quality gate
+> is the 20-prompt bench.
+
+**Remaining limitation — KV is still host-ferried.** The cache lives in a host
+(DDR) buffer that the device fills/drains each token (ping-pong). The final step
+toward fully host-free decode is making it **resident in memtiles** so the host
+streams only weights per token (16-layer KV ≈ 2 MB ≈ 4 memtiles). The earlier
+**fixed-position** mode (`LLAMA_CHAIN_PERSIST=1` without `_GROW`) remains as the
+minimal proof of the on-chip control loop (host re-streams pristine KV each token;
+the `PT` tokens share one cache state).
 
 ## Dataflow stubs (Phase 1)
 
