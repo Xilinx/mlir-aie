@@ -35,7 +35,6 @@ class Buffer(Resolvable):
         name: str | None = None,
         tile: Tile | None = None,
         use_write_rtp: bool = False,
-        mem_bank=None,
     ):
         """A Buffer is a memory region declared at the top-level of the design, allowing it to
         be accessed by both Workers and the Runtime.
@@ -62,7 +61,6 @@ class Buffer(Resolvable):
             self._name = f"buf_{self.__get_index()}"
         self._use_write_rtp = use_write_rtp
         self._tile = tile
-        self._mem_bank = mem_bank
 
     @property
     def tile(self) -> Tile | None:
@@ -118,7 +116,6 @@ class Buffer(Resolvable):
                 tile=self._tile.op,
                 datatype=self._arr_type,
                 name=self._name,
-                mem_bank=self._mem_bank,
                 initial_value=self._initial_value,
                 use_write_rtp=self._use_write_rtp,
             )
