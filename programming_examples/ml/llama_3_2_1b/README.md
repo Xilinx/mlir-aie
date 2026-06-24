@@ -104,6 +104,33 @@ softmax mass and biases the draw — clean renormalisation is the correct fix.)
   (512 KB) — a placement detail handled when the primitive is fused into the
   chain, not an algorithmic limit.
 
+### Persistent on-device autoregressive loop (capstone)
+
+`LLAMA_CHAIN_ONESTREAM=1` fuses the one-stream sampler+gather into the full
+N-layer chain (`run_chain_onestream_mh`): one dispatch maps an input embedding to
+`(token, next-token embed seed)` entirely on-device — final_norm → fused lm_head
+GEMM + top-k insert + finalize over a **single** 262 MB table pass, emitting both
+the sampled token and the requantised next embedding with no DDR logits scratch
+and no second gather stream.
+
+`LLAMA_CHAIN_PERSIST=1` (`run_chain_persist_mh`, `PT=` tokens per dispatch) closes
+the loop: the sampled token's embed seed feeds back to the chain **on-chip** (via
+a depth-2 self-feedback fifo + a seed-mux that picks the host seed for token 0 and
+the on-chip feedback for tokens 1..PT-1), so the device generates `PT` tokens in
+one dispatch with **zero host involvement between tokens** — the host only streams
+weights and drains the `PT` token/seed records. Validated greedy bit-exact against
+a numpy autoregressive oracle (PT=2, PT=4) at the real `V=128256`.
+
+**Limitation — KV cache (increment 1).** The persistent loop currently holds the
+KV cache at a **fixed position**: the host re-streams the same (pristine) KV to
+the device for each of the `PT` tokens, so every step attends over identical KV.
+This proves the device-originated control loop (token + seed never leave the chip
+across a token boundary) but is **not yet a growing cache** — a true decode must
+append each generated token's K/V and advance the position. Making the KV cache
+resident in memtiles and growing across the `PT` tokens (with position and cos/sin
+auto-advancing on-chip) is the next increment; until then `PT` tokens share one
+cache state rather than accumulating context.
+
 ## Dataflow stubs (Phase 1)
 
 Every placement pattern the real design needs has been validated
