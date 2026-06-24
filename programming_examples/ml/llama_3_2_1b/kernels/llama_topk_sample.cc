@@ -329,4 +329,27 @@ void llama_topk_finalize(float *restrict set_logit, int32_t *restrict set_gidx,
   memcpy(seed + kD + 4, &zero, 4);
 }
 
+// Packed-output finalize: identical sampling, but writes BOTH the next-token
+// embed seed AND the token id into ONE buffer out[kD + 12]:
+//   [0..kD)        int8 embed row (requant'd)
+//   [kD..kD+4)     fp32 per-token scale
+//   [kD+4..kD+8)   int32 token id
+//   [kD+8..kD+12)  pad
+// This keeps the chain's runtime arg count at 5 (DefaultNPURuntime.run_test
+// segfaults at ~6 tensor args -- the IRON-constraints memo). It is also the
+// natural persistent-loop shape: the seed feeds back as the next layer-0 input
+// and the token rides along for the host to read (or to drive embed-gather).
+void llama_topk_finalize_packed(float *restrict set_logit,
+                                int32_t *restrict set_gidx,
+                                float *restrict set_scale,
+                                int8_t *restrict set_row,
+                                int32_t *restrict set_len,
+                                uint32_t *restrict params,
+                                int8_t *restrict out) {
+  int32_t token;
+  llama_topk_finalize(set_logit, set_gidx, set_scale, set_row, set_len, params,
+                      &token, out);
+  memcpy(out + kD + 4, &token, 4);
+}
+
 } // extern "C"

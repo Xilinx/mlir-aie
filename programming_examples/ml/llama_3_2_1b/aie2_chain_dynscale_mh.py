@@ -35,7 +35,14 @@ SAMPLE = _os.environ.get("LLAMA_CHAIN_SAMPLE", "0") == "1"
 # stream and produces the layer-0 seed. Makes the dispatch a token->token
 # function (the shape the persistent loop needs). Requires SAMPLE.
 GATHER = _os.environ.get("LLAMA_CHAIN_GATHER", "0") == "1" and SAMPLE
-if SAMPLE:
+# One-stream sampler + embed gather: the fused lm_head GEMM + top-k insert runs
+# over a SINGLE 262 MB table pass and emits BOTH the token and the next-token
+# embed seed (no relay, no 3-pass replay, no second gather stream). Replaces the
+# SAMPLE relay path; mutually exclusive with it. The shape the persistent loop
+# needs (token in -> token + seed out). When LLAMA_CHAIN_ONESTREAM=1.
+ONESTREAM = _os.environ.get("LLAMA_CHAIN_ONESTREAM", "0") == "1" and SAMPLE
+ONESTREAM_KSET = int(_os.environ.get("LLAMA_CHAIN_ONESTREAM_KSET", "16"))
+if SAMPLE and not ONESTREAM:
     from logits_relay import LogitsRelay
 
 
@@ -43,6 +50,15 @@ def _sample_params_init():
     tb = np.frombuffer(np.float32(SAMPLE_TEMP).tobytes(), dtype=np.uint32)[0]
     kb = np.frombuffer(np.int32(SAMPLE_TOPK).tobytes(), dtype=np.uint32)[0]
     return np.asarray([tb, kb, np.uint32(SAMPLE_SEED & 0xFFFFFFFF)], dtype=np.uint32)
+
+
+def _onestream_params_init():
+    # int32-packed [temperature bits | top_k | seed] -- NOT uint32 (the IRON
+    # ui32 Buffer initial_value silently zeros large words; the finalize kernel
+    # memcpy's the bytes so signedness is irrelevant). Reuses the SAMPLE_* env.
+    tb = np.frombuffer(np.float32(SAMPLE_TEMP).tobytes(), dtype=np.int32)[0]
+    sb = np.frombuffer(np.uint32(SAMPLE_SEED & 0xFFFFFFFF).tobytes(), dtype=np.int32)[0]
+    return np.asarray([tb, np.int32(SAMPLE_TOPK), sb], dtype=np.int32)
 
 
 def _i32(idx):
@@ -301,19 +317,42 @@ def build():
         of_fgam = ObjectFifo(t_D_bf16, depth=1, name="fgam")  # final_norm gamma
         of_wlm = ObjectFifo(t_wlm_slot, depth=2, name="wlm")
         of_token = ObjectFifo(_i32a(1), name="token")
-        lm_relay = LogitsRelay(
-            total_elems=VOCAB,
-            chunk_elems=SAMPLE_CHUNK,
-            repeat_count=SAMPLE_PASSES,
-            memtile_placement=Tile(4, 1),
-            gemm_placement=Tile(5, 4),
-            sampler_placement=Tile(5, 5),
-            name="lmlogits",
-        )
-        b_sample_state = Buffer(t_state_i8, name="sample_state")
-        b_sample_params = Buffer(
-            t_params_u32, initial_value=_sample_params_init(), name="sample_params"
-        )
+        if ONESTREAM:
+            # One-stream: fused GEMM+insert over of_wlm -> finalize emits token +
+            # next-token embed seed. Resident top-k set held in worker-local
+            # Buffers (capacity ONESTREAM_KSET). params packed int32 (the ui32
+            # Buffer-init bug zeros large words -- see iron-ui32-buffer-init-bug).
+            # Packed output [seed int8[D] | scale f32 | token i32 | pad]; one
+            # fifo keeps the runtime at 5 args (run_test segfaults at ~6).
+            t_opacked = _i8(D + 12)
+            of_opacked = ObjectFifo(t_opacked, name="opacked")
+            KS = ONESTREAM_KSET
+            b_set_logit = Buffer(_f32(KS), name="os_set_logit")
+            b_set_gidx = Buffer(_i32a(KS), name="os_set_gidx")
+            b_set_scale = Buffer(_f32(KS), name="os_set_scale")
+            b_set_row = Buffer(_i8(KS * D), name="os_set_row")
+            b_set_len = Buffer(
+                _i32a(1), initial_value=np.zeros(1, np.int32), name="os_set_len"
+            )
+            b_os_params = Buffer(
+                _i32a(3),
+                initial_value=_onestream_params_init(),
+                name="os_params",
+            )
+        else:
+            lm_relay = LogitsRelay(
+                total_elems=VOCAB,
+                chunk_elems=SAMPLE_CHUNK,
+                repeat_count=SAMPLE_PASSES,
+                memtile_placement=Tile(4, 1),
+                gemm_placement=Tile(5, 4),
+                sampler_placement=Tile(5, 5),
+                name="lmlogits",
+            )
+            b_sample_state = Buffer(t_state_i8, name="sample_state")
+            b_sample_params = Buffer(
+                t_params_u32, initial_value=_sample_params_init(), name="sample_params"
+            )
 
     if GATHER:
         # Front gather: a second pass over the lm_head weight slots; the gather
@@ -438,7 +477,38 @@ def build():
         "llama_rmsnorm_int8_dyn_acttail", KO_RMS, [t_D8_i8, t_D_bf16, t_D8_i8]
     )
 
-    if SAMPLE:
+    if SAMPLE and ONESTREAM:
+        # One-stream: fused lm_head GEMM + top-k insert, then finalize -> token +
+        # next-token embed seed. final_norm reuses k_rms (below).
+        KS = ONESTREAM_KSET
+        k_os_insert = Kernel(
+            "llama_lmhead_topk_insert",
+            KO_GEMM,
+            [
+                t_D8_i8,
+                t_wlm_slot,
+                _f32(KS),
+                _i32a(KS),
+                _f32(KS),
+                _i8(KS * D),
+                _i32a(1),
+                np.int32,
+            ],
+        )
+        k_os_final = Kernel(
+            "llama_topk_finalize_packed",
+            "llama_topk_sample.cc.o",
+            [
+                _f32(KS),
+                _i32a(KS),
+                _f32(KS),
+                _i8(KS * D),
+                _i32a(1),
+                _i32a(3),
+                _i8(D + 12),
+            ],
+        )
+    elif SAMPLE:
         # M3b: final_norm reuses the dyn_acttail rmsnorm (k_rms). lm_head fp32-out
         # GEMM + streamed sampler.
         k_lmhead = Kernel(
@@ -776,6 +846,20 @@ def build():
             kf(st, tok, p)
             c_tok.release(1)
 
+        # One-stream: fused lm_head GEMM + top-k insert over the SINGLE 262 MB
+        # table pass, then finalize -> token + next-token embed seed. No relay,
+        # no replay, no second gather stream.
+        def w_onestream(c_act, c_w, c_out, sl, sg, ss, sr, slen, pr, ki, kf):
+            a = c_act.acquire(1)
+            for t in range_(LM_N_TILES):
+                w = c_w.acquire(1)
+                ki(a, w, sl, sg, ss, sr, slen, _i32(t))
+                c_w.release(1)
+            c_act.release(1)
+            o = c_out.acquire(1)
+            kf(sl, sg, ss, sr, slen, pr, o)
+            c_out.release(1)
+
     PSK = 8192
     ATSK = 16384
     # FFN-side stack: of_sf grows to HD+8 (silu self-cal) -> Bug-12 stack/fifo
@@ -915,7 +999,38 @@ def build():
         ),
     ]
 
-    if SAMPLE:
+    if SAMPLE and ONESTREAM:
+        workers += [
+            # final_norm (free tile 4,4)
+            Worker(
+                w_fnorm,
+                [of_out.cons(), of_fgam.cons(), of_fnorm.prod(), k_rms],
+                tile=Tile(4, 4),
+            ),
+            # Fused lm_head GEMM + top-k insert + finalize on one tile: ONE table
+            # pass -> token + next-token embed seed. The resident top-k rows live
+            # on this tile (KS*D bytes); KS<=8 fits the 64 KB tile alongside the
+            # depth-2 wlm fifo at D=2048 (see onestream-topk-sampler memory).
+            Worker(
+                w_onestream,
+                [
+                    of_fnorm.cons(),
+                    of_wlm.cons(),
+                    of_opacked.prod(),
+                    b_set_logit,
+                    b_set_gidx,
+                    b_set_scale,
+                    b_set_row,
+                    b_set_len,
+                    b_os_params,
+                    k_os_insert,
+                    k_os_final,
+                ],
+                tile=Tile(5, 4),
+                stack_size=ATSK,
+            ),
+        ]
+    elif SAMPLE:
         workers += [
             # final_norm (free tile 4,4)
             Worker(
@@ -957,7 +1072,13 @@ def build():
         ]
 
     rt = Runtime()
-    if GATHER:
+    if ONESTREAM:
+        # xin in, ONE packed output [seed int8[D] | scale f32 | token i32 | pad]
+        # out -- 5 args (run_test segfaults at ~6). The persistent-loop shape:
+        # seed feeds back as next layer-0 input, token rides along for the host.
+        rt_opacked_ty = _i8(D + 12)
+        seq_ctx = rt.sequence(rt_xin_ty, rt_w_ty, rt_kv_ty, rt_lmw_ty, rt_opacked_ty)
+    elif GATHER:
         # input is a token id (int32[1]); the device gathers embed[token] as the
         # layer-0 seed -> token->token dispatch.
         seq_ctx = rt.sequence(_i32a(1), rt_w_ty, rt_kv_ty, rt_lmw_ty, rt_token_ty)
@@ -966,7 +1087,12 @@ def build():
     else:
         seq_ctx = rt.sequence(rt_xin_ty, rt_w_ty, rt_kv_ty, rt_out_ty)
     with seq_ctx as _seq_args:
-        if GATHER:
+        opacked = None
+        if ONESTREAM:
+            xin, wblob, kvblob, lmw, opacked = _seq_args
+            token = None
+            out = None
+        elif GATHER:
             token_in, wblob, kvblob, lmw, token = _seq_args
             xin = None
             out = None
@@ -1148,7 +1274,11 @@ def build():
                 ),
                 task_group=out_tg,
             )
-            rt.drain(of_token.cons(), token, wait=True, task_group=out_tg)
+            if ONESTREAM:
+                # one packed output [seed | scale | token | pad].
+                rt.drain(of_opacked.cons(), opacked, wait=True, task_group=out_tg)
+            else:
+                rt.drain(of_token.cons(), token, wait=True, task_group=out_tg)
         else:
             rt.drain(of_out.cons(), out, wait=True, task_group=out_tg)
 
