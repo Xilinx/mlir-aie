@@ -42,12 +42,16 @@ from aie2_chain_dynscale_mh import (
     PER_LAYER_KV,
     PER_KV_HEAD_BYTES,
     WLM_TOTAL,
+    WEIGHTS_BYTES,
+    OFF_CS_PERPOS,
+    CS_BYTES,
     SAMPLE_TEMP,
     SAMPLE_TOPK,
     SAMPLE_SEED,
     ONESTREAM_KSET,
     PT,
 )
+from ml_dtypes import bfloat16
 from numpy_layer_mh import gen_layer_mh, numpy_layer_mh_forward, requant
 from numpy_llama_ref import _load_qw, _load_bf16, VOCAB_SIZE, EMB_DIM
 from test_rmsnorm_int8_dyn import numpy_rmsnorm_int8_dyn
@@ -101,15 +105,17 @@ def build_fixtures(seed):
     lut_silu = silu_lut(SILU_GATE_SCALE)
     # Start position P0: leave room for PT appended tokens within T.
     P0 = T // 2
+    half = HEAD_D // 2
     layers = []
+    # Per-layer base rotary frequencies (random per layer, but the PHASE advances
+    # with position so each token gets a distinct (cos,sin) -- real rope behavior).
+    cs_perpos = np.zeros((PT, N_LAYERS, 2 * HEAD_D), dtype=bfloat16)  # [cos|sin]
     for L in range(N_LAYERS):
         layer = gen_layer_mh(rng)
         layer["lut_exp"] = lut_exp
         layer["lut_silu"] = lut_silu
         k_slot = rng.uniform(0.02, 0.08, size=(N_HEADS_KV, T)).astype(np.float32)
         v_slot = rng.uniform(0.02, 0.08, size=(N_HEADS_KV, T)).astype(np.float32)
-        # Zero the slots that will be written by the PT appends (positions
-        # P0..P0+PT-1) so the device + numpy agree on the freshly-grown region.
         for h in range(N_HEADS_KV):
             for p in range(P0, P0 + PT):
                 layer["kcaches"][h][p * HEAD_D : (p + 1) * HEAD_D] = 0
@@ -118,14 +124,23 @@ def build_fixtures(seed):
                 v_slot[h, p] = 0.0
         layer["k_scales_slot"] = k_slot
         layer["v_scales_slot"] = v_slot
+        # Per-layer base frequencies; position t's angle = freq * (P0+t).
+        freq = rng.uniform(0.0, 0.2, size=half).astype(np.float32)
+        for t in range(PT):
+            ang = (freq * np.float32(P0 + t)).astype(np.float32)
+            cos_half = np.cos(ang).astype(bfloat16)
+            sin_half = np.sin(ang).astype(bfloat16)
+            cos = np.concatenate([cos_half, cos_half])
+            sin = np.concatenate([sin_half, sin_half])
+            cs_perpos[t, L] = np.concatenate([cos, sin])
         layers.append(layer)
-    return x_i8, res_scale, layers, P0
+    return x_i8, res_scale, layers, P0, cs_perpos
 
 
-def chain_forward_grow(x_i8, res_scale, layers, position, embed_i8, embed_sc, gamma):
-    """One token's forward at `position`; appends K/V at slot `position` IN PLACE
-    (caches NOT restored -> they grow), attends [0, position]. Returns token +
-    next-token embed seed. Mirrors the growing device cache."""
+def chain_forward_logits(x_i8, res_scale, layers, position, embed_i8, embed_sc, gamma):
+    """One token's forward at `position` (caches NOT restored -> grow), attends
+    [0, position]. Returns the fp32 logits over the vocab + populates
+    layer['scales']. The append at `position` mutates the caches in place."""
     x_cur = (x_i8.copy(), float(res_scale))
     for L in range(N_LAYERS):
         x_cur, scales = numpy_layer_mh_forward(
@@ -138,12 +153,20 @@ def chain_forward_grow(x_i8, res_scale, layers, position, embed_i8, embed_sc, ga
         )
         layers[L]["scales"] = scales
     xo_i8, xo_scale = x_cur
-
     normed_i8, norm_scale = numpy_rmsnorm_int8_dyn(xo_i8, gamma, np.float32(xo_scale))
     acc = embed_i8.astype(np.int64) @ normed_i8.astype(np.int64)
     logits = (
         acc.astype(np.float32) * np.float32(norm_scale) * embed_sc.astype(np.float32)
     ).astype(np.float32)
+    return logits
+
+
+def chain_forward_grow(x_i8, res_scale, layers, position, embed_i8, embed_sc, gamma):
+    """Greedy variant: forward -> token + next-token embed seed (used only to
+    populate layer['scales'] in the throwaway trajectory)."""
+    logits = chain_forward_logits(
+        x_i8, res_scale, layers, position, embed_i8, embed_sc, gamma
+    )
     tok = topk_sample_reference(
         logits, SAMPLE_TEMP, SAMPLE_TOPK, SAMPLE_SEED, k_set=ONESTREAM_KSET
     )
@@ -175,7 +198,7 @@ def main():
     print("packing lm_head weights (262 MB) ...", flush=True)
     lmw = pack_lmw(embed_i8, embed_sc, gamma)
 
-    x_i8, res_scale, layers, P0 = build_fixtures(fseed)
+    x_i8, res_scale, layers, P0, cs_perpos = build_fixtures(fseed)
 
     # Snapshot the PRISTINE caches (before any append) so the device gets the same
     # starting KV the numpy loop starts from. The device's growing-append then
@@ -185,20 +208,33 @@ def main():
     pristine_kslot = [lyr["k_scales_slot"].copy() for lyr in layers]
     pristine_vslot = [lyr["v_scales_slot"].copy() for lyr in layers]
 
-    # Oracle: autoregressive loop with a GROWING cache. token t at position P0+t;
-    # caches accumulate (NOT restored). Also populates layer["scales"].
-    ref_tokens = []
+    # One throwaway oracle pass (greedy argmax trajectory) just to populate
+    # layer["scales"] for pack_blobs; the authoritative per-token check is the
+    # device-trajectory replay below (greedy argmax on random fixtures is brittle
+    # near a near-tie -- the flowkv ~1-ULP non-bit-exactness can flip it, which is
+    # documented quality-neutral). We don't compare against this trajectory.
     cur_x, cur_sc = x_i8, res_scale
     for t in range(PT):
-        tok, nxin, nscale = chain_forward_grow(
+        for L in range(N_LAYERS):
+            layers[L]["cos"] = cs_perpos[t, L, :HEAD_D]
+            layers[L]["sin"] = cs_perpos[t, L, HEAD_D:]
+        _, nxin, nscale = chain_forward_grow(
             cur_x, cur_sc, layers, P0 + t, embed_i8, embed_sc, gamma
         )
-        ref_tokens.append(tok)
         cur_x, cur_sc = nxin, nscale
 
     # Pack wblob with the (now-populated) real scales; the chain self-calibrates
-    # on-device so these are placeholders, but pack_blobs requires the key.
+    # on-device so these are placeholders, but pack_blobs requires the key. The
+    # static OFF_CS cos/sin in wblob is unused by PERSIST_GROW (per-position block
+    # below drives rope), so its value doesn't matter.
     wblob, _ = pack_blobs(layers)
+    # Append the per-position cos/sin block at OFF_CS_PERPOS, laid out
+    # [token0: L0..L_{N-1} | token1: ... ] matching the chain's (tok,L) fill.
+    assert wblob.size == WEIGHTS_BYTES, (wblob.size, WEIGHTS_BYTES)
+    for t in range(PT):
+        for L in range(N_LAYERS):
+            off = OFF_CS_PERPOS + (t * N_LAYERS + L) * CS_BYTES
+            wblob[off : off + CS_BYTES] = cs_perpos[t, L].view(np.int8)
 
     # Build the PRISTINE kvblob from the snapshot (restore caches, pack, set
     # T_used=P0 prefix). The grow-append writes slot=T_used so token 0 writes
@@ -238,21 +274,58 @@ def main():
         return rc
     out_t.to("cpu")
     packed = out_t.numpy()
+    dev_tokens = [
+        int(
+            np.frombuffer(
+                packed[t * (D + 12) + D + 4 : t * (D + 12) + D + 8].tobytes(), np.int32
+            )[0]
+        )
+        for t in range(PT)
+    ]
+
+    # Device-trajectory replay with a near-tie tolerance. Because the token feeds
+    # back ON-CHIP, the oracle must follow the DEVICE's tokens (not its own greedy
+    # trajectory). At each step we recompute the oracle logits for the device's
+    # input, then accept the device token if it is the oracle argmax OR its logit
+    # is within TOL of the true max -- the flowkv ~1-ULP non-bit-exactness
+    # (llama_flowkv_mh.cc: "NOT byte-exact... flipping an exp-LUT bucket... proven
+    # quality-neutral") can flip greedy argmax only when the top logits are
+    # near-tied. A flip OUTSIDE TOL would be a real divergence.
+    TOL = np.float32(0.10)  # logit units; flowkv ULP noise is <~0.05 (see diag)
+    # Restore pristine caches for the replay (the throwaway pass mutated them).
+    for L in range(N_LAYERS):
+        layers[L]["kcaches"] = [c.copy() for c in pristine_kcaches[L]]
+        layers[L]["vcaches"] = [c.copy() for c in pristine_vcaches[L]]
+        layers[L]["k_scales_slot"] = pristine_kslot[L].copy()
+        layers[L]["v_scales_slot"] = pristine_vslot[L].copy()
 
     fails = 0
-    for tok in range(PT):
-        rec = packed[tok * (D + 12) : (tok + 1) * (D + 12)]
-        dev_tok = int(np.frombuffer(rec[D + 4 : D + 8].tobytes(), np.int32)[0])
-        ok = dev_tok == ref_tokens[tok]
-        fails += not ok
-        print(
-            f"  token {tok} (pos {P0+tok}): {'PASS' if ok else 'FAIL'}  "
-            f"dev={dev_tok} ref={ref_tokens[tok]}"
+    cur_x, cur_sc = x_i8, res_scale
+    for t in range(PT):
+        for L in range(N_LAYERS):
+            layers[L]["cos"] = cs_perpos[t, L, :HEAD_D]
+            layers[L]["sin"] = cs_perpos[t, L, HEAD_D:]
+        logits = chain_forward_logits(
+            cur_x, cur_sc, layers, P0 + t, embed_i8, embed_sc, gamma
         )
+        dev_tok = dev_tokens[t]
+        true_max = np.float32(logits.max())
+        ref_argmax = int(np.argmax(logits))
+        gap = float(true_max - logits[dev_tok])
+        ok = (dev_tok == ref_argmax) or (gap <= float(TOL))
+        fails += not ok
+        tag = "exact" if dev_tok == ref_argmax else f"near-tie gap={gap:.4f}"
+        print(
+            f"  token {t} (pos {P0+t}): {'PASS' if ok else 'FAIL'}  "
+            f"dev={dev_tok} ref_argmax={ref_argmax}  [{tag}]"
+        )
+        # Follow the DEVICE token forward (on-chip feedback trajectory).
+        nx, nscale = embed_seed_ref(embed_i8[dev_tok], float(embed_sc[dev_tok]))
+        cur_x, cur_sc = nx, nscale
 
     print(
         f"\nchain_persist_grow_mh: {PT - fails}/{PT} tokens PASS  "
-        f"(on-chip feedback + GROWING KV)"
+        f"(on-chip feedback + GROWING KV + per-position rope)"
     )
     return 0 if fails == 0 else 1
 

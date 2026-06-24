@@ -208,6 +208,17 @@ OFF_WK = OFF_WD + WD_TOTAL
 OFF_WV = OFF_WK + WK_TOTAL
 WEIGHTS_BYTES = OFF_WV + WV_TOTAL
 
+# PERSIST_GROW per-position rope: each of the PT tokens generates at position
+# P0+t, which needs ITS OWN cos/sin (the rotary phase advances with position).
+# Append a PT*N_LAYERS*CS_BYTES block to wblob; the of_cs (q-rope) + kvcs_eps[2]
+# (append rope_k) fills read it at the (tok,L) offset. CS_BYTES=256 so the whole
+# block is tiny (PT*N_LAYERS*256). Keeps the runtime at 5 args (folded into the
+# existing wblob). Laid out [token0: L0..L_{N-1} | token1: ... | ...].
+if PERSIST_GROW:
+    OFF_CS_PERPOS = WEIGHTS_BYTES
+    CS_PERPOS_TOTAL = PT * N_LAYERS * CS_BYTES
+    WEIGHTS_BYTES = OFF_CS_PERPOS + CS_PERPOS_TOTAL
+
 # kvblob: per-layer block, each containing 8 KV heads' (T_used | k_header |
 # kcache | v_header | vcache) combined slots. Phase 8c adds the 4-byte
 # T_used prefix per KV head -> per-head slot grows from 16392 to 16396 B.
@@ -1306,7 +1317,13 @@ def build():
             N_TILES_Q,
             WEIGHTS_BYTES,
         )
-        add_per_layer(of_cs.prod(), wblob, OFF_CS, CS_BYTES, CS_BYTES, 1, WEIGHTS_BYTES)
+        # cos/sin for q-rope. Non-grow: one pair per layer (OFF_CS, same every
+        # token). PERSIST_GROW issues these per-token in issue_token() from the
+        # per-position block, so skip the static fill here.
+        if not PERSIST_GROW:
+            add_per_layer(
+                of_cs.prod(), wblob, OFF_CS, CS_BYTES, CS_BYTES, 1, WEIGHTS_BYTES
+            )
         add_per_layer(
             of_wo.prod(),
             wblob,
@@ -1372,9 +1389,17 @@ def build():
             WEIGHTS_BYTES,
         )
         # cos/sin for append's rope_k (same host cos/sin as rope, OFF_CS).
-        add_per_layer(
-            kvcs_eps[2].prod(), wblob, OFF_CS, CS_BYTES, CS_PACK_BYTES, 1, WEIGHTS_BYTES
-        )
+        # PERSIST_GROW issues this per-token from the per-position block.
+        if not PERSIST_GROW:
+            add_per_layer(
+                kvcs_eps[2].prod(),
+                wblob,
+                OFF_CS,
+                CS_BYTES,
+                CS_PACK_BYTES,
+                1,
+                WEIGHTS_BYTES,
+            )
 
         # 2 KV fills per layer (lo / hi halves; each fans out to 4 attn workers).
         kv_specs = [
@@ -1527,6 +1552,28 @@ def build():
                             slot_bytes,
                             slot_bytes,
                             slots_per_layer,
+                        ),
+                        task_group=layer_tgs[L],
+                        wait=True,
+                    )
+                if PERSIST_GROW:
+                    # Per-position cos/sin: token `tok` at position P0+tok uses
+                    # its own (cos,sin) for both q-rope (of_cs) and append rope_k
+                    # (kvcs_eps[2]). Read from the per-position block at
+                    # OFF_CS_PERPOS + (tok*N_LAYERS + L)*CS_BYTES.
+                    cs_off = OFF_CS_PERPOS + (tok * N_LAYERS + L) * CS_BYTES
+                    rt.fill(
+                        of_cs.prod(),
+                        wblob,
+                        tap=strided_tap(WEIGHTS_BYTES, cs_off, CS_BYTES, CS_BYTES, 1),
+                        task_group=layer_tgs[L],
+                        wait=True,
+                    )
+                    rt.fill(
+                        kvcs_eps[2].prod(),
+                        wblob,
+                        tap=strided_tap(
+                            WEIGHTS_BYTES, cs_off, CS_PACK_BYTES, CS_PACK_BYTES, 1
                         ),
                         task_group=layer_tgs[L],
                         wait=True,
