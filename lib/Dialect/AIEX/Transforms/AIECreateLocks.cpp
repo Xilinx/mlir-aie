@@ -4,7 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2019 Xilinx Inc.
+// Copyright (C) 2019-2022 Xilinx, Inc.
+// Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -200,8 +201,7 @@ struct AIECreateLocksPass
       LLVM_DEBUG(llvm::dbgs() << "Shared tile \n"; tileOp->print(llvm::dbgs()));
       LLVM_DEBUG(llvm::dbgs() << " LockID: " << lockID << '\n');
       builder.setInsertionPointAfter(tileOp);
-      LockOp lock =
-          LockOp::create(builder, builder.getUnknownLoc(), tile, lockID, 0);
+      LockOp lock = LockOp::create(builder, tile.getLoc(), tile, lockID, 0);
 
       lockChains[std::make_pair(release, acquire)] = std::make_pair(lock, 1);
 

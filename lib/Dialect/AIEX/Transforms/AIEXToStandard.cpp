@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2023, Advanced Micro Devices, Inc.
+// Copyright (C) 2023 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -65,6 +65,9 @@ struct AIEXToStandardPass
     removepatterns.add<AIEXOpRemoval<NpuCreateScratchpadOp>>(m.getContext(), m);
     removepatterns.add<AIEXOpRemoval<NpuUpdateFromScratchpadOp>>(m.getContext(),
                                                                  m);
+    removepatterns.add<AIEXOpRemoval<ScratchpadParameterOp>>(m.getContext(), m);
+    removepatterns.add<AIEXOpRemoval<SyncScratchpadParametersFromHostOp>>(
+        m.getContext(), m);
 
     if (failed(applyPartialConversion(m, target, std::move(removepatterns))))
       signalPassFailure();

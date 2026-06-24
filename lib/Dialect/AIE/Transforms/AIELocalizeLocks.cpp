@@ -5,7 +5,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2019 Xilinx Inc.
+// Copyright (C) 2019-2022 Xilinx, Inc.
+// Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -80,7 +81,7 @@ struct AIELocalizeLocksPass
                 OpBuilder::atBlockBegin(&coreOp.getBody().front());
 
             Value coreLockIDValue = arith::ConstantIndexOp::create(
-                builder, builder.getUnknownLoc(), localLockIndex);
+                builder, lock.getLoc(), localLockIndex);
             lock.getResult().replaceUsesWithIf(
                 coreLockIDValue, [&](OpOperand &opOperand) {
                   return opOperand.getOwner()->getParentOp() == coreOp;

@@ -4,7 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2019 Xilinx Inc.
+// Copyright (C) 2019-2022 Xilinx, Inc.
+// Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -404,7 +405,13 @@ def AIE_CoreOp: AIE_Op<"core", [
     // and the aiecc driver.  Specifying both link_with and link_files is an error.
     OptionalAttr<StrArrayAttr>:$link_files,
     OptionalAttr<StrAttr>:$elf_file,
-    OptionalAttr<BoolAttr>:$dynamic_objfifo_lowering
+    OptionalAttr<BoolAttr>:$dynamic_objfifo_lowering,
+    // If set to false, suppresses automatic insertion of the parameter-sync
+    // preamble (use_lock acquire) by `--aie-lower-scratchpad-parameters`.  Defaults to
+    // true when any `aiex.read_scratchpad_parameter` op is present in the
+    // core body.
+    // Set to false automatically after the preamble has been emitted.
+    OptionalAttr<BoolAttr>:$emit_parameter_sync_preamble
   );
   let summary = "Declare a core module";
   let description = [{
@@ -1011,6 +1018,12 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
         OptionalAttr<AIEI32Attr>:$bd_id,
         OptionalAttr<PacketInfoAttr>:$packet,
         DefaultValuedOptionalAttr<AIEI32Attr, "0">:$burst_length,
+        // if set, the aiex.scratchpad_parameter value added to the BD's address as an offset
+        OptionalAttr<FlatSymbolRefAttr>:$offset_parameter,
+        // Set by --aie-lower-scratchpad-parameters from $offset_parameter: the scratchpad
+        // state-table index whose value is used as the BD address offset.
+        // After lowering, $offset_parameter is removed in favor of this attribute.
+        OptionalAttr<UI8Attr>:$offset_state_table_idx,
         // should never be assigned by user...
         OptionalAttr<AIEI32Attr>:$next_bd_id
   );
@@ -1834,6 +1847,11 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         Variadic<Index>:$consumerTiles,
         AIE_ObjectFifo_Depth:$elemNumber,
         TypeAttrOf<AIE_ObjectFifoType>:$elemType,
+        // Optional consumer element type for asymmetric transfer granularity.
+        // Producer sends elemType-sized transfers, consumer receives
+        // consumerElemType-sized transfers. Producer element size must be
+        // an integer multiple of consumer element size.
+        OptionalAttr<TypeAttrOf<AIE_ObjectFifoType>>:$consumerElemType,
         BDDimLayoutArrayAttr:$dimensionsToStream,
         BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer,
         DefaultValuedAttr<BoolAttr, "false">:$via_DMA,
@@ -1863,6 +1881,7 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         `,`
         $elemNumber
     `)` attr-dict `:` $elemType
+    custom<ObjectFifoConsumerElemType>($consumerElemType)
     custom<ObjectFifoInitValues>(ref($elemNumber), ref($elemType), $initValues)
   }];
 
@@ -1886,6 +1905,13 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
     }
 
     AIE::BDDimLayoutArrayAttr getDimensionsFromStream(mlir::Value consumerTile);
+
+    /// Returns the consumer element type if set, otherwise the producer type.
+    mlir::Type getConsumerElemTypeOrDefault() {
+      if (auto ct = getConsumerElemType())
+        return ct.value();
+      return getElemType();
+    }
   }];
 
   let builders = [
@@ -2122,6 +2148,11 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectfifo.subview.access", []> {
     In this example, `%elem` is the first object of the subview. Note that this may not correspond to the first element of
     the `objectFifo` if other acquire operations took place beforehand.
 
+    The `$subview` operand must be the direct SSA result of an
+    `aie.objectfifo.acquire`; flowing the subview through region results
+    (e.g. `scf.yield` / `iter_args`) drops the link to the originating
+    acquire that downstream lowering requires, and is rejected by the
+    verifier.
   }];
 
   let arguments = (
@@ -2246,7 +2277,15 @@ def AIE_RuntimeSequenceOp : AIE_Op<"runtime_sequence", [
     The input arguments are arguments passed in from the host at kernel invocation time. This may include buffers on the host.
   }];
   let arguments = (
-    ins DefaultValuedAttr<SymbolNameAttr, "getDefaultRuntimeSequenceName()">:$sym_name
+    ins DefaultValuedAttr<SymbolNameAttr, "getDefaultRuntimeSequenceName()">:$sym_name,
+    // If set to false, suppresses automatic insertion of the parameter-sync
+    // preamble (create_scratchpad + update_from_scratchpad + set_lock) by
+    // `--aie-lower-scratchpad-parameters`.
+    // Defaults to true when any `aiex.read_scratchpad_parameter` is present
+    // in a core in the parent device, or any `offset_parameter` attribute on
+    // a DMA BD.
+    // Set to false automatically after the preamble has been emitted.
+    OptionalAttr<BoolAttr>:$emit_parameter_sync_preamble
   );
   let regions = (region
     AnyRegion:$body

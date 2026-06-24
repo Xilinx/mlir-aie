@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (C) 2025-2026 Advanced Micro Devices, Inc. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
 from abc import ABC, abstractmethod
@@ -100,18 +100,29 @@ class HostRuntime(ABC):
 
     def check_device_consistency(self):
         """
-        Check if the overridden device matches the runtime device.
+        Check if the overridden device is loadable on the runtime device.
+
+        A 1- or N-column variant of a generation (e.g. NPU1Col1) is loadable
+        on a wider device of the same generation (e.g. a 4-column NPU1), so we
+        accept any override whose arch matches and whose column count is <=
+        the runtime device's column count.
         """
+        assert __package__ is not None
         mod = sys.modules[__package__]
         override = getattr(mod, "_CURRENT_DEVICE", None)
-        if override:
-            runtime_device = self.device()
-            if getattr(override, "_device", None) != getattr(
-                runtime_device, "_device", None
-            ):
-                raise RuntimeError(
-                    f"Overridden device {override} does not match runtime device {runtime_device}"
-                )
+        if override is None:
+            return
+        runtime_device = self.device()
+        try:
+            same_arch = override.arch == runtime_device.arch
+            fits = override.cols <= runtime_device.cols
+        except AttributeError:
+            same_arch = fits = False
+        if not (same_arch and fits):
+            raise RuntimeError(
+                f"Overridden device {override} is not loadable on runtime "
+                f"device {runtime_device}"
+            )
 
     @abstractmethod
     def load(self, npu_kernel: NPUKernel, **kwargs) -> KernelHandle:
@@ -131,18 +142,22 @@ class HostRuntime(ABC):
     def run(
         self,
         kernel_handle: KernelHandle,
-        *args,
+        args,
         trace_config: TraceConfig | None = None,
+        fail_on_error: bool = True,
         only_if_loaded=False,
+        **kwargs,
     ) -> KernelResult:
         """
         Run a loaded kernel.
 
         Args:
             kernel_handle (KernelHandle): The handle to the loaded kernel.
-            *args: Arguments to pass to the kernel.
+            args: Arguments to pass to the kernel.
             trace_config (TraceConfig | None, optional): Configuration for tracing. Defaults to None.
+            fail_on_error (bool, optional): Whether to raise an exception on kernel failure. Defaults to True.
             only_if_loaded (bool, optional): If True, only run if already loaded. Defaults to False.
+            **kwargs: Additional arguments.
 
         Returns:
             KernelResult: The result of the kernel execution.
@@ -294,7 +309,7 @@ class HostRuntime(ABC):
     @classmethod
     def extract_trace_from_args(
         cls, args: list[Tensor], trace_config: TraceConfig
-    ) -> tuple[Tensor, Tensor | None]:
+    ) -> tuple[np.ndarray, np.ndarray | None]:
         """
         Extract trace and control buffers from the arguments.
 
@@ -303,15 +318,16 @@ class HostRuntime(ABC):
             trace_config (TraceConfig): Trace configuration.
 
         Returns:
-            tuple[Tensor, Tensor | None]: A tuple containing the trace buffer and optionally the control buffer.
+            tuple[np.ndarray, np.ndarray | None]: A tuple containing the trace buffer and optionally the control buffer.
         """
         trace_buff = None
         ctrl_buff = None
 
         if trace_config.ddr_id == -1:
-            args[-1], trace_buff = cls._extract_prefix(
+            prefix, trace_buff = cls._extract_prefix(
                 args[-1], trace_config.last_tensor_shape, trace_config.last_tensor_dtype
             )
+            args[-1] = prefix  # pyright: ignore[reportCallIssue, reportArgumentType]
         else:
             # The trace position is always last.
             trace_buff = args[-1].numpy()
@@ -379,13 +395,13 @@ class HostRuntime(ABC):
                     )
 
     @classmethod
-    def verify_results(cls, io_args, refs={}, verbosity=0):
+    def verify_results(cls, io_args, refs=None, verbosity=0):
         """
         Verify the results of the kernel execution against reference data.
 
         Args:
             io_args (list[Tensor]): List of input/output tensors.
-            refs (dict, optional): Dictionary mapping index to reference numpy array. Defaults to {}.
+            refs (dict | None, optional): Dictionary mapping index to reference numpy array. Defaults to None (empty dict).
             verbosity (int, optional): Verbosity level. Defaults to 0.
 
         Returns:
@@ -394,6 +410,8 @@ class HostRuntime(ABC):
         Raises:
             HostRuntimeError: If a reference index is out of bounds.
         """
+        if refs is None:
+            refs = {}
         errors = 0
         if verbosity >= 1:
             logger.info("Verifying results ...")

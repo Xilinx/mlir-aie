@@ -4,7 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2020 Xilinx Inc.
+// Copyright (C) 2020-2022 Xilinx, Inc.
+// Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -67,7 +68,7 @@ struct AIELowerMulticastPass
           TileOp destTile =
               dyn_cast<TileOp>(multiDest.getTile().getDefiningOp());
           Port destPort = multiDest.port();
-          FlowOp::create(builder, builder.getUnknownLoc(), srcTile,
+          FlowOp::create(builder, multiDest.getLoc(), srcTile,
                          sourcePort.bundle, sourcePort.channel, destTile,
                          destPort.bundle, destPort.channel);
         }

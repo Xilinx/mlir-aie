@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2024 Advanced Micro Devices, Inc.
+// Copyright (C) 2024 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -54,6 +54,11 @@ MLIR_CAPI_EXPORTED int aieTargetModelRows(AieTargetModel targetModel);
 
 /// Returns true if this is an NPU target model.
 MLIR_CAPI_EXPORTED bool aieTargetModelIsNPU(AieTargetModel targetModel);
+
+/// Returns the AIE architecture (as the underlying value of
+/// xilinx::AIE::AIEArch: AIE1=1, AIE2=2, AIE2p=3).
+MLIR_CAPI_EXPORTED uint32_t
+aieTargetModelGetTargetArch(AieTargetModel targetModel);
 
 /// Returns the tile type for the given coordinates.
 MLIR_CAPI_EXPORTED uint32_t

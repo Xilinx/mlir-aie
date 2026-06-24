@@ -1,5 +1,6 @@
 #
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
@@ -7,7 +8,7 @@
 import random
 
 from aie.helpers.taplib import TensorAccessPattern, TensorAccessSequence, TensorTiler2D
-from aie.helpers.taplib.utils import ceildiv
+from aie.utils import ceildiv
 from util import construct_test
 
 # RUN: %python %s | FileCheck %s

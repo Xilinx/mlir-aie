@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2025, Advanced Micro Devices, Inc.
+// Copyright (C) 2025 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -14,19 +14,11 @@
 #include <cstdlib>
 #include <ctime>
 #include <iostream>
-#include <stdfloat>
 #include <vector>
 
 #include "xrt/xrt_bo.h"
 #include "xrt/xrt_device.h"
 #include "xrt/xrt_kernel.h"
-
-// Clangd fix, remove
-#ifdef _CLANGD
-namespace std {
-using bfloat16_t = double;
-} // namespace std
-#endif
 
 #include "../../helper.h"
 #include "common.h"
@@ -40,8 +32,8 @@ constexpr int verify_stochastic_n_samples = 1000;
 // Verification tolerance
 // See "Note on Numerical Tolerances" in README.md
 // TODO: This might have to be adjusted for bfp
-float abs_tol = matmul_common::get_abs_tol<std::bfloat16_t>();
-float rel_tol = matmul_common::get_rel_tol<std::bfloat16_t>();
+float abs_tol = matmul_common::get_abs_tol<test_utils::bfloat16_t>();
+float rel_tol = matmul_common::get_rel_tol<test_utils::bfloat16_t>();
 
 int main(int argc, const char *argv[]) {
 

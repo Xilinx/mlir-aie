@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2026 Advanced Micro Devices, Inc.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -20,6 +20,19 @@ def StateTableFuncDecr : I32EnumAttrCase<"Decr", 2, "decr">;
 def StateTableFunc : I32EnumAttr<"StateTableFunc",
     "Function to apply between scratchpad value and register pair",
     [StateTableFuncMul, StateTableFuncIncr, StateTableFuncDecr]> {
+  let cppNamespace = "::xilinx::AIEX";
+}
+
+def ScratchpadParameterKindCore : I32EnumAttrCase<"Core", 0, "core">;
+def ScratchpadParameterKindAddr : I32EnumAttrCase<"Addr", 1, "addr">;
+
+def ScratchpadParameterKind : I32EnumAttr<"ScratchpadParameterKind",
+    "Usage kind of a scratchpad runtime parameter: "
+    "`core` parameters are read by AIE cores via "
+    "`aiex.read_scratchpad_parameter` (values are shift-2 encoded); "
+    "`addr` parameters are used as BD address offsets via the "
+    "`offset_parameter` attribute on DMA ops (values written raw)",
+    [ScratchpadParameterKindCore, ScratchpadParameterKindAddr]> {
   let cppNamespace = "::xilinx::AIEX";
 }
 

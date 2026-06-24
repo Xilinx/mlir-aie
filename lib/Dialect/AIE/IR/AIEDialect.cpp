@@ -4,13 +4,13 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2019 Xilinx Inc.
+// Copyright (C) 2019-2022 Xilinx, Inc.
+// Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 
-#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/IR/DialectImplementation.h"
@@ -125,6 +125,15 @@ uint32_t xilinx::AIE::getShimBurstLengthEncoding(const AIE::AIETargetModel &tm,
                                                  uint32_t burstLength) {
 
   return getShimBurstLength(tm, burstLength).first;
+}
+
+std::string xilinx::AIE::generateUniqueSymbolName(
+    mlir::Operation *symbolTableOp, llvm::StringRef prefix, unsigned &counter) {
+  std::string name;
+  do {
+    name = (prefix + llvm::Twine(counter++)).str();
+  } while (mlir::SymbolTable::lookupSymbolIn(symbolTableOp, name));
+  return name;
 }
 
 LogicalResult
@@ -536,6 +545,30 @@ LogicalResult ObjectFifoCreateOp::verify() {
       return emitError("`iter_count` is currently only supported on MemTiles");
   }
 
+  if (getConsumerElemType().has_value()) {
+    auto consType =
+        llvm::dyn_cast<AIEObjectFifoType>(getConsumerElemType().value());
+    if (!consType)
+      return emitError("consumer element type must be an "
+                       "!aie.objectfifo<memref<...>> type");
+    auto prodType = llvm::cast<AIEObjectFifoType>(getElemType());
+    auto prodMemref = prodType.getElementType();
+    auto consMemref = consType.getElementType();
+    if (prodMemref.getElementType() != consMemref.getElementType())
+      return emitError("producer and consumer must have the same scalar "
+                       "element type, but got ")
+             << prodMemref.getElementType() << " vs "
+             << consMemref.getElementType();
+    int64_t prodSize = prodMemref.getNumElements();
+    int64_t consSize = consMemref.getNumElements();
+    if (consSize <= 0)
+      return emitError("consumer element count must be positive");
+    if (prodSize % consSize != 0)
+      return emitError("producer element size (")
+             << prodSize << ") must be an integer multiple of consumer "
+             << "element size (" << consSize << ")";
+  }
+
   return success();
 }
 
@@ -635,6 +668,24 @@ void xilinx::AIE::printObjectFifoConsumerTiles(
     }
     tileIdx++;
   }
+}
+
+static void printObjectFifoConsumerElemType(OpAsmPrinter &p,
+                                            ObjectFifoCreateOp op,
+                                            TypeAttr consumerElemType) {
+  if (consumerElemType)
+    p << " -> " << consumerElemType;
+}
+
+static ParseResult parseObjectFifoConsumerElemType(OpAsmParser &parser,
+                                                   TypeAttr &consumerElemType) {
+  if (failed(parser.parseOptionalArrow()))
+    return success(); // no consumer type
+  Type type;
+  if (parser.parseType(type))
+    return failure();
+  consumerElemType = TypeAttr::get(type);
+  return success();
 }
 
 static void printObjectFifoInitValues(OpAsmPrinter &p, ObjectFifoCreateOp op,
@@ -999,7 +1050,15 @@ LogicalResult ObjectFifoAcquireOp::verify() {
   auto objFifoSubviewElem =
       llvm::cast<AIEObjectFifoSubviewType>(getResult().getType())
           .getElementType();
-  if (objFifoElem != objFifoSubviewElem)
+  // Also accept the consumer element type for asymmetric ObjectFifos
+  auto objFifoConsType = llvm::dyn_cast<AIEObjectFifoType>(
+      getObjectFifo().getConsumerElemTypeOrDefault());
+  if (!objFifoConsType)
+    return emitOpError("ObjectFifo consumer element type must be an "
+                       "!aie.objectfifo<memref<...>> type");
+  auto objFifoConsElem = objFifoConsType.getElementType();
+  if (objFifoElem != objFifoSubviewElem &&
+      objFifoConsElem != objFifoSubviewElem)
     return emitOpError(
         "ObjectFifo element and ObjectFifoSubview element must match.\n");
 
@@ -1074,8 +1133,19 @@ LogicalResult ObjectFifoSubviewAccessOp::verify() {
       parent == nullptr)
     return emitOpError("must be called from inside a CoreOp");
 
-  if (auto acqOp = getSubview().getDefiningOp<ObjectFifoAcquireOp>();
-      getIndex() >= acqOp.acqNumber())
+  // The subview operand must be the direct SSA result of an
+  // aie.objectfifo.acquire. Flowing it through scf.yield / iter_args / any
+  // other region boundary loses the link to the originating acquire that
+  // every downstream pass needs (the acquire's size for the bounds check
+  // here, and the (fifo, port) identity for lock lowering). Reject here
+  // rather than crashing on a null defining op later.
+  auto acqOp = getSubview().getDefiningOp<ObjectFifoAcquireOp>();
+  if (!acqOp)
+    return emitOpError("subview operand must be the direct result of an "
+                       "aie.objectfifo.acquire; flowing the subview through "
+                       "scf.yield / iter_args / region results is not "
+                       "supported");
+  if (getIndex() >= acqOp.acqNumber())
     return emitOpError("accessed farther than number of acquired elements "
                        "(index out of bounds).");
 
@@ -1610,8 +1680,8 @@ TileOp TileOp::getOrCreate(mlir::OpBuilder builder, DeviceOp device, int col,
     OpBuilder::InsertionGuard guard(builder);
     mlir::Block &device_start_block = *device.getBodyRegion().begin();
     builder.setInsertionPointToStart(&device_start_block);
-    tile = TileOp::create(builder, builder.getUnknownLoc(),
-                          builder.getIndexType(), col, row);
+    tile = TileOp::create(builder, device.getLoc(), builder.getIndexType(), col,
+                          row);
   }
   return tile;
 }
@@ -1725,9 +1795,8 @@ LogicalResult PacketFlowOp::verify() {
       ++numDests;
   }
 
-  if (numSources != 1)
-    return emitOpError("must have exactly one aie.packet_source (got ")
-           << numSources << ")";
+  if (numSources < 1)
+    return emitOpError("must have at least one aie.packet_source");
   if (numDests < 1)
     return emitOpError("must have at least one aie.packet_dest");
 
@@ -2944,6 +3013,11 @@ ParseResult RuntimeSequenceOp::parse(OpAsmParser &parser,
     return argParseResult;
   }
 
+  // Optional `attributes { ... }` clause (before the body so it does not
+  // conflict with the `{` that opens the region).
+  if (parser.parseOptionalAttrDictWithKeyword(result.attributes))
+    return failure();
+
   // Body
   auto *body = result.addRegion();
   ParseResult bodyParseResult = parser.parseRegion(*body, entryArgs, false);
@@ -2974,6 +3048,10 @@ void RuntimeSequenceOp::print(OpAsmPrinter &printer) {
     printer.printRegionArgument(body.getArgument(i));
   }
   printer << ')';
+
+  printer.printOptionalAttrDictWithKeyword(
+      (*this)->getAttrs(),
+      /*elidedAttrs=*/{mlir::SymbolTable::getSymbolAttrName()});
 
   printer << ' ';
   printer.printRegion(body, false, true);
@@ -3041,7 +3119,8 @@ LogicalResult RuntimeSequenceOp::verifyBeforeMaterialization() {
                 << "references symbol '"
                 << symbolRef.getRootReference().getValue()
                 << "' which must be either a ShimDMAAllocationOp, DeviceOp, "
-                   "RuntimeSequenceOp, BufferOp or GlobalOp, but got: "
+                   "RuntimeSequenceOp, BufferOp, or GlobalOp, "
+                   "but got: "
                 << symbolDefOp->getName().getStringRef();
             return WalkResult::interrupt();
           }

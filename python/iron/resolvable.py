@@ -4,16 +4,20 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc.
-"""Abstract base class for objects that lower to MLIR operations."""
+# Copyright (C) 2024 Advanced Micro Devices, Inc.
+"""Structural protocol for objects that lower to MLIR operations."""
 
-from abc import ABC, abstractmethod
+from typing import Protocol, runtime_checkable
 
-from .. import ir  # type: ignore
+from .. import ir  # pyright: ignore[reportMissingImports]
 
 
-class Resolvable(ABC):
-    @abstractmethod
+# Structural typing via @runtime_checkable Protocol: any class with both
+# .resolve() and .tiles() passes isinstance(x, Resolvable).  The two-method
+# requirement is the safeguard against false positives from classes that
+# happen to define an unrelated .resolve() (e.g. pathlib.Path).
+@runtime_checkable
+class Resolvable(Protocol):
     def resolve(
         self,
         loc: ir.Location | None = None,
@@ -27,6 +31,16 @@ class Resolvable(ABC):
             ip (ir.InsertionPoint | None, optional): InsertionPoint is used by MLIR object during construction in some cases. Defaults to None.
         """
         ...
+
+    def tiles(self) -> list:
+        """Tiles this Resolvable depends on for code generation.
+
+        Override this in user-side Resolvable subclasses that reference tiles
+        which aren't already discoverable via Workers or ObjectFifos. The
+        Program will resolve these tiles before calling :meth:`resolve`, so
+        ``tile.op`` is valid by then. Default: empty list.
+        """
+        return []
 
 
 class NotResolvedError(Exception):

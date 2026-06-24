@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2025 Advanced Micro Devices, Inc.
+// Copyright (C) 2025 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -36,5 +36,14 @@ struct SubviewTraceResult {
 //
 // This function checks that all subviews remain static and contiguous.
 std::optional<SubviewTraceResult> traceSubviewToBlockArgument(Value value);
+
+// Emit an `aiex.npu.update_from_scratchpad` op that adds the runtime offset
+// (held in the scratchpad slot referenced by `bdOp`'s
+// `offset_state_table_idx` attribute, multiplied by the element size of
+// `bufType`) into the BD address register at `registerAddr`.
+LogicalResult emitUpdateBdAddressFromOffsetParameter(OpBuilder &builder,
+                                                     Operation *bdOp,
+                                                     BaseMemRefType bufType,
+                                                     uint64_t registerAddr);
 }
 } // namespace xilinx

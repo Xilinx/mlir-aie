@@ -1,0 +1,16 @@
+// (c) Copyright 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai_npu2, peano
+//
+// RUN: mkdir -p test_stx
+// RUN: cd test_stx
+// RUN: make -f %S/Makefile clean clean_trace
+// RUN: make -f %S/Makefile devicename=npu2
+// RUN: %run_on_npu2% make -f %S/Makefile devicename=npu2 run
+// RUN: make -f %S/Makefile clean
+// RUN: make -f %S/Makefile devicename=npu2 TRACE=8192
+// RUN: %run_on_npu2% make -f %S/Makefile devicename=npu2 run TRACE=8192
+// parse_trace depends on `run`; pass TRACE=8192 so the dependent re-invocation
+// produces actual trace data rather than overwriting with TRACE=0 (default).
+// RUN: %run_on_npu2% make -f %S/Makefile devicename=npu2 TRACE=8192 parse_trace

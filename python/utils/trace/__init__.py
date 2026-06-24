@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (C) 2024-2026 Advanced Micro Devices, Inc. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 """
@@ -546,6 +546,7 @@ from .utils import (
     extract_buffers,
     get_cycles,
     get_cycles_summary,
+    print_cycles_summary,
     get_vector_time,
     split_trace_segments,
 )

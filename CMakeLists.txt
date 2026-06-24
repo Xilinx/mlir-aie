@@ -3,7 +3,8 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2021 Xilinx Inc.
+# Copyright (C) 2021-2022 Xilinx, Inc.
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 
 # optional parameters
 #  -DTOOLCHAINFILES_PATH: path to cross compilation toolchain files, default: <mlir-aie-root-dir>/cmake/toolchainFiles
@@ -110,6 +111,8 @@ else()
   set(_AIE_BUILD_CHESS_CLANG_DEFAULT ON)
 endif()
 option(AIE_BUILD_CHESS_CLANG "Build chess-clang (requires Vitis chess toolchain)" ${_AIE_BUILD_CHESS_CLANG_DEFAULT})
+option(AIE_BUILD_LSP_SERVER "Build aie-lsp-server (MLIR language server for IDE/editor integration)" ON)
+option(AIE_BUILD_VISUALIZE "Build aie-visualize (AIE design visualization tool)" ON)
 
 find_package(Vitis 2023.2 COMPONENTS ${AIE_VITIS_COMPONENTS})
 configure_file(./utils/vitisVariables.config.in

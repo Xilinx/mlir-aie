@@ -4,7 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2019 Xilinx Inc.
+// Copyright (C) 2019-2022 Xilinx, Inc.
+// Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -72,11 +73,11 @@ struct AIEBroadcastPacketPass
           int flowID = bpid.IDInt();
           builder.setInsertionPointAfter(broadcastpacket);
           PacketFlowOp pkFlow = PacketFlowOp::create(
-              builder, builder.getUnknownLoc(), flowID, nullptr, nullptr);
+              builder, broadcastpacket.getLoc(), flowID, nullptr, nullptr);
           Region &r_pkFlow = pkFlow.getPorts();
           Block *b_pkFlow = builder.createBlock(&r_pkFlow);
           builder.setInsertionPointToStart(b_pkFlow);
-          PacketSourceOp::create(builder, builder.getUnknownLoc(), srcTile,
+          PacketSourceOp::create(builder, broadcastpacket.getLoc(), srcTile,
                                  sourcePort.bundle, sourcePort.channel);
           for (Operation &op : b_bpid.getOperations()) {
             if (BPDestOp bpdest = dyn_cast<BPDestOp>(op)) {
@@ -84,12 +85,12 @@ struct AIEBroadcastPacketPass
                   dyn_cast<TileOp>(bpdest.getTile().getDefiningOp());
               Port destPort = bpdest.port();
               builder.setInsertionPointToEnd(b_pkFlow);
-              PacketDestOp::create(builder, builder.getUnknownLoc(), destTile,
+              PacketDestOp::create(builder, bpdest.getLoc(), destTile,
                                    destPort.bundle, destPort.channel);
             }
           }
           builder.setInsertionPointToEnd(b_pkFlow);
-          EndOp::create(builder, builder.getUnknownLoc());
+          EndOp::create(builder, broadcastpacket.getLoc());
         }
       }
     }

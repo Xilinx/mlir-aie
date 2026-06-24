@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2025, Advanced Micro Devices, Inc.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 // 
 //===----------------------------------------------------------------------===//-->
 
@@ -37,10 +37,10 @@ for i in range(8):
 ```
 If we imagine the 24-element wide tensor as 3 rows of 8 elements, the transformation above describes a column-major access pattern.
 
-It is possible to compile, run and test this design with the following commands:
+The design is wrapped in `@iron.jit`, so a single command JIT-compiles and runs it on the attached NPU:
 ```bash
-make
-make run
+make run                              # builds + runs on the NPU (devicename={npu,npu2})
+make emit-mlir                        # writes the lowered MLIR to build/aie.mlir without touching the NPU
 ```
 
-The [test.cpp](./test.cpp) as well as the `# To/from AIE-array data movement` section of the design code will be described in detail in [Section 2d](../../section-2d/).
+The `# To/from AIE-array data movement` section of the design code is described in detail in [Section 2d](../../section-2d/).

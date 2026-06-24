@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2026 Advanced Micro Devices, Inc.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -28,6 +28,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Diagnostics.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/OperationSupport.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllExtensions.h"
 #include "mlir/InitAllPasses.h"
@@ -103,6 +104,7 @@
 #endif
 
 #include <atomic>
+#include <cctype>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -215,6 +217,21 @@ static cl::opt<int> coresPerCol(
     "cores-per-col",
     cl::desc("Limit cores per column for tile placement (-1 = no limit)"),
     cl::init(-1), cl::cat(aieCompilerOptions));
+
+static cl::opt<xilinx::AIE::PlacerType> placerType(
+    "placer", cl::desc("Placement algorithm to use"),
+    cl::values(clEnumValN(xilinx::AIE::PlacerType::SequentialPlacer,
+                          "sequential_placer",
+                          "Sequential column-major placement"),
+               clEnumValN(xilinx::AIE::PlacerType::SAPlacer, "sa_placer",
+                          "Simulated annealing placement")),
+    cl::init(xilinx::AIE::PlacerType::SequentialPlacer),
+    cl::cat(aieCompilerOptions));
+
+static cl::opt<int>
+    saSeed("sa-seed",
+           cl::desc("Random seed for SA placer (0 = non-deterministic)"),
+           cl::init(1), cl::cat(aieCompilerOptions));
 
 static cl::opt<bool>
     generateNpuInsts("aie-generate-npu-insts",
@@ -374,6 +391,15 @@ static cl::opt<bool> dumpIntermediates(
     cl::desc("Dump intermediate MLIR files for debugging (default: off)"),
     cl::init(false), cl::cat(aieCompilerOptions));
 
+static cl::opt<bool> keepLoc(
+    "keep-loc",
+    cl::desc("Emit a <bin>.locmap.json sidecar next to each NPU instruction "
+             "binary, mapping each transaction word back to the MLIR Location "
+             "of the op that produced it (and its regdb register name where "
+             "applicable). Also keeps debug-info on intermediate MLIR dumps. "
+             "Off by default."),
+    cl::init(false), cl::cat(aieCompilerOptions));
+
 static cl::opt<unsigned> numThreads(
     "j", cl::Prefix,
     cl::desc("Number of parallel threads for core compilation (0 = auto-detect "
@@ -457,8 +483,11 @@ static cl::opt<std::string>
     outputFilename("o", cl::desc("Output filename for host compilation"),
                    cl::init(""), cl::cat(aieCompilerOptions));
 
-// Sink for unrecognized host compilation flags (e.g. -Wl,... -lstdc++)
-static cl::list<std::string> sinkArgs(cl::Sink, cl::desc("Additional flags"));
+// Host-compiler passthrough captured after the `--` separator on the command
+// line, preserved in user-specified order. Anything before `--` must be a
+// recognized aiecc option (or a positional input file); unknown flags there
+// are rejected by ParseCommandLineOptions.
+static std::vector<std::string> hostExtraArgs;
 
 //===----------------------------------------------------------------------===//
 // Thread-safe output
@@ -516,16 +545,26 @@ static std::string getInputFilename() {
   return "";
 }
 
-// Get host source files from positional arguments.
+// Get host source files: positional args (before `--`) plus any host source
+// files appearing among the post-`--` passthrough args.
 static std::vector<std::string> getHostSourceFiles() {
   std::string mlirFile = getInputFilename();
   std::vector<std::string> hostFiles;
-  hostFiles.reserve(positionalArgs.size());
   for (const auto &arg : positionalArgs) {
     if (arg != mlirFile && isHostSourceFile(arg))
       hostFiles.push_back(arg);
   }
+  for (const auto &arg : hostExtraArgs) {
+    if (isHostSourceFile(arg))
+      hostFiles.push_back(arg);
+  }
   return hostFiles;
+}
+
+static void printModuleWithDebugInfo(ModuleOp moduleOp, raw_ostream &os) {
+  OpPrintingFlags flags;
+  flags.enableDebugInfo(/*enable=*/true);
+  moduleOp->print(os, flags);
 }
 
 /// Dump an MLIR module to a file if --dump-intermediates is enabled.
@@ -542,7 +581,7 @@ static bool dumpModuleToFile(ModuleOp moduleOp, StringRef filePath,
                  << filePath << ": " << ec.message() << "\n";
     return false;
   }
-  moduleOp->print(file);
+  printModuleWithDebugInfo(moduleOp, file);
   file.close();
 
   if (verbose) {
@@ -1337,7 +1376,9 @@ static LogicalResult runPlacementPipeline(ModuleOp moduleOp,
 
   OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
   xilinx::AIE::AIEPlaceTilesOptions placeTilesOpts;
+  placeTilesOpts.clPlacerType = placerType;
   placeTilesOpts.clCoresPerCol = coresPerCol;
+  placeTilesOpts.clSASeed = saSeed;
   devicePm.addPass(xilinx::AIE::createAIEPlaceTilesPass(placeTilesOpts));
 
   if (verbose) {
@@ -1455,6 +1496,22 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
   // Step 3: Canonicalize device (module-level pass)
   pm.addPass(xilinx::AIE::createAIECanonicalizeDevicePass());
 
+  // Lower parameter ops to scratchpad operations, create core buffers, and
+  // emit the parameter-sync preamble (lock + use_lock in each core that reads
+  // parameters; create_scratchpad + set_lock in each runtime sequence).
+  // This must run before AIEAssignLockIDs so the newly created locks receive
+  // IDs, and before address assignment so new buffers get addresses.
+  {
+    xilinx::AIEX::AIELowerScratchpadParametersOptions paramOpts;
+    if (!tmpDirName.empty()) {
+      SmallString<128> paramsPath(tmpDirName);
+      sys::path::append(paramsPath, "params.txt");
+      paramOpts.outputParamsFile = paramsPath.str().str();
+    }
+    pm.addPass(xilinx::AIEX::createAIELowerScratchpadParametersPass(
+        std::move(paramOpts)));
+  }
+
   // Step 4: Device-level passes - use nest<DeviceOp>()
   OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
   // Note: Trace lowering runs in a separate guarded pipeline
@@ -1487,15 +1544,20 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
     }
   }
 
+  // Resume device-level passes after the module-level parameter lowering
+  // (which already ran before the first devicePm, see above).
+  OpPassManager &devicePm2 = pm.nest<xilinx::AIE::DeviceOp>();
+
   // Create buffer address assignment pass with alloc-scheme option
   xilinx::AIE::AIEAssignBufferAddressesOptions bufferOpts;
   bufferOpts.clAllocScheme = allocScheme.getValue();
-  devicePm.addPass(xilinx::AIE::createAIEAssignBufferAddressesPass(bufferOpts));
+  devicePm2.addPass(
+      xilinx::AIE::createAIEAssignBufferAddressesPass(bufferOpts));
 
   // Infer per-core link_files from func-level link_with attributes
-  devicePm.addPass(xilinx::AIE::createAIEAssignCoreLinkFilesPass());
+  devicePm2.addPass(xilinx::AIE::createAIEAssignCoreLinkFilesPass());
 
-  devicePm.addPass(xilinx::AIE::createAIEVectorTransferLoweringPass());
+  devicePm2.addPass(xilinx::AIE::createAIEVectorTransferLoweringPass());
 
   // Step 5: Convert SCF to CF (module-level pass)
   pm.addPass(createSCFToControlFlowPass());
@@ -1954,61 +2016,88 @@ struct CoreCompilationResult {
 
 /// Downgrade LLVM IR for Peano compatibility.
 /// Strips LLVM 23+ features that Peano 19's opt/llc can't parse:
-/// - 'nuw' flag on getelementptr (LLVM 23 feature)
+/// - 'nuw' flag on getelementptr (inferred by ConstantFolding/InstCombine)
 /// - 'nocreateundeforpoison' attribute (with any trailing whitespace)
+/// - 'inf'/'-inf'/'nan' float-literal keywords (rewritten to hex form)
 static std::string downgradeIRForPeano(StringRef ir) {
   std::string result = ir.str();
-  // Strip 'nuw' from 'getelementptr inbounds nuw' -> 'getelementptr inbounds'
-  const std::string nuwFrom = "getelementptr inbounds nuw";
-  const std::string nuwTo = "getelementptr inbounds";
-  size_t pos = 0;
-  while ((pos = result.find(nuwFrom, pos)) != std::string::npos) {
-    result.erase(pos + nuwTo.size(), nuwFrom.size() - nuwTo.size());
-    pos += nuwTo.size();
-  }
-  // Strip 'nocreateundeforpoison' and any trailing whitespace
+  auto replaceAll = [&](StringRef from, StringRef to) {
+    size_t pos = 0;
+    while ((pos = result.find(from.data(), pos, from.size())) !=
+           std::string::npos) {
+      result.replace(pos, from.size(), to.data(), to.size());
+      pos += to.size();
+    }
+  };
+  // Strip 'nuw' from 'getelementptr inbounds nuw' -> 'getelementptr inbounds':
+  // recent main LLVM infers nuw on geps, which Peano's opt cannot parse.
+  replaceAll("getelementptr inbounds nuw", "getelementptr inbounds");
+  // Recent main LLVM prints special float values as 'inf'/'-inf'/'nan'
+  // keywords; Peano's opt only accepts the hex form. The literals appear
+  // prefixed by their type in initializers (the position we emit), so anchor
+  // the rewrite on the type keyword to pick the correct hex width. Require a
+  // non-identifier char before the keyword so 'float' does not match inside
+  // 'bfloat' (which would corrupt the wider type's already-correct text).
+  auto isIdentChar = [](char c) {
+    return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
+  };
+  auto replaceTypedLiteral = [&](StringRef from, StringRef to) {
+    size_t pos = 0;
+    while ((pos = result.find(from.data(), pos, from.size())) !=
+           std::string::npos) {
+      if (pos == 0 || !isIdentChar(result[pos - 1])) {
+        result.replace(pos, from.size(), to.data(), to.size());
+        pos += to.size();
+      } else {
+        pos += from.size();
+      }
+    }
+  };
+  replaceTypedLiteral("half -inf", "half 0xHFC00");
+  replaceTypedLiteral("half inf", "half 0xH7C00");
+  replaceTypedLiteral("half nan", "half 0xH7E00");
+  replaceTypedLiteral("bfloat -inf", "bfloat 0xRFF80");
+  replaceTypedLiteral("bfloat inf", "bfloat 0xR7F80");
+  replaceTypedLiteral("bfloat nan", "bfloat 0xR7FC0");
+  replaceTypedLiteral("float -inf", "float 0xFFF0000000000000");
+  replaceTypedLiteral("float inf", "float 0x7FF0000000000000");
+  replaceTypedLiteral("float nan", "float 0x7FF8000000000000");
+  replaceTypedLiteral("double -inf", "double 0xFFF0000000000000");
+  replaceTypedLiteral("double inf", "double 0x7FF0000000000000");
+  replaceTypedLiteral("double nan", "double 0x7FF8000000000000");
+  // Strip 'nocreateundeforpoison' and any trailing whitespace: current Peano
+  // LLVM cannot parse this attribute.
   const std::string nocreate = "nocreateundeforpoison";
-  pos = 0;
+  size_t pos = 0;
   while ((pos = result.find(nocreate, pos)) != std::string::npos) {
     size_t end = pos + nocreate.size();
     while (end < result.size() && (result[end] == ' ' || result[end] == '\t'))
       ++end;
     result.erase(pos, end - pos);
   }
-  // Strip ', align <N>' attributes (matches old Python
-  // drop_alignment_for_peano)
-  const std::string alignPat = ", align ";
-  pos = 0;
-  while ((pos = result.find(alignPat, pos)) != std::string::npos) {
-    size_t end = pos + alignPat.size();
-    while (end < result.size() && result[end] >= '0' && result[end] <= '9')
-      ++end;
-    if (end > pos + alignPat.size())
-      result.erase(pos, end - pos);
-    else
-      pos = end;
-  }
   return result;
 }
 
-/// Apply peanohack: read LLVM IR, downgrade for Peano, write to output path.
-static LogicalResult applyPeanoHack(StringRef inputPath, StringRef outputPath) {
+/// Read LLVM IR, downgrade it for Peano compatibility, write to output path.
+static LogicalResult applyPeanoCompat(StringRef inputPath,
+                                      StringRef outputPath) {
   auto bufOrErr = llvm::MemoryBuffer::getFile(inputPath);
   if (!bufOrErr) {
     std::lock_guard<std::mutex> lock(outputMutex);
-    llvm::errs() << "Error reading LLVM IR for peanohack: "
+    llvm::errs() << "Error reading LLVM IR for Peano compatibility: "
                  << bufOrErr.getError().message() << "\n";
     return failure();
   }
-  std::string hacked = downgradeIRForPeano((*bufOrErr)->getBuffer());
+  std::string downgraded = downgradeIRForPeano((*bufOrErr)->getBuffer());
   std::error_code ec;
   llvm::raw_fd_ostream out(outputPath, ec);
   if (ec) {
     std::lock_guard<std::mutex> lock(outputMutex);
-    llvm::errs() << "Error writing peanohack file: " << ec.message() << "\n";
+    llvm::errs() << "Error writing Peano-compatible IR: " << ec.message()
+                 << "\n";
     return failure();
   }
-  out << hacked;
+  out << downgraded;
   return success();
 }
 
@@ -2259,15 +2348,15 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
       return failure();
     }
 
-    // Apply peanohack to downgrade IR for Peano compatibility
-    SmallString<128> peanohackPath(tmpDirName);
-    sys::path::append(peanohackPath,
+    // Downgrade IR for Peano compatibility
+    SmallString<128> peanoCompatPath(tmpDirName);
+    sys::path::append(peanoCompatPath,
                       deviceName.str() + "_core_" + std::to_string(core.col) +
-                          "_" + std::to_string(core.row) + ".peanohack.ll");
-    if (failed(applyPeanoHack(llvmIRPath, peanohackPath)))
+                          "_" + std::to_string(core.row) + ".peano-compat.ll");
+    if (failed(applyPeanoCompat(llvmIRPath, peanoCompatPath)))
       return failure();
 
-    // Run opt on peanohacked IR.
+    // Run opt on Peano-compatible IR.
     // Cap opt level at O1 for Peano to match old Python aiecc behavior.
     // Higher levels cause SLP vectorizer to create types that crash GlobalISel.
     SmallString<128> optPath(tmpDirName);
@@ -2282,7 +2371,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
         "--passes=default<O" + std::to_string(safeOptLevel) + ">",
         "-inline-threshold=10",
         "-S",
-        std::string(peanohackPath),
+        std::string(peanoCompatPath),
         "-o",
         std::string(optPath)};
 
@@ -2958,11 +3047,11 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
       return failure();
     }
 
-    // Apply peanohack to downgrade IR for Peano compatibility
-    SmallString<128> peanohackPath(tmpDirName);
-    sys::path::append(peanohackPath,
-                      deviceName.str() + "_input.llpeanohack.ll");
-    if (failed(applyPeanoHack(llvmIRPath, peanohackPath)))
+    // Downgrade IR for Peano compatibility
+    SmallString<128> peanoCompatPath(tmpDirName);
+    sys::path::append(peanoCompatPath,
+                      deviceName.str() + "_input.peano-compat.ll");
+    if (failed(applyPeanoCompat(llvmIRPath, peanoCompatPath)))
       return failure();
 
     // Run opt (cap at O1 to match old Python aiecc, prevent SLP vectorizer
@@ -2977,7 +3066,7 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
         "--passes=default<O" + std::to_string(safeOptLevel) + ">",
         "-inline-threshold=10",
         "-S",
-        std::string(peanohackPath),
+        std::string(peanoCompatPath),
         "-o",
         std::string(optPath)};
 
@@ -3791,8 +3880,10 @@ static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
       // Generate NPU instructions using direct C++ API call.
       // This replaces the subprocess call to aie-translate --aie-npu-to-binary.
       std::vector<uint32_t> instructions;
+      std::vector<xilinx::AIE::TxnLocEntry> locmap;
       if (failed(xilinx::AIE::AIETranslateNpuToBinary(
-              *clonedModule, instructions, devName, seqName))) {
+              *clonedModule, instructions, devName, seqName,
+              keepLoc ? &locmap : nullptr))) {
         llvm::errs() << "Error generating NPU instructions for sequence: "
                      << seqName << "\n";
         result = failure();
@@ -3815,6 +3906,27 @@ static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
       if (verbose) {
         llvm::outs() << "Wrote " << instructions.size()
                      << " instructions to: " << outputPath << "\n";
+      }
+
+      // Emit the JSON sidecar when --keep-loc is on. Sidecar path is the
+      // .bin path with ".locmap.json" appended, so the .bin itself is
+      // unchanged for downstream XRT consumers.
+      if (keepLoc) {
+        SmallString<128> locmapPath(outputPath);
+        locmapPath.append(".locmap.json");
+        std::error_code locEc;
+        raw_fd_ostream locFile(locmapPath, locEc, sys::fs::OpenFlags::OF_Text);
+        if (locEc) {
+          llvm::errs() << "Error opening locmap sidecar: " << locEc.message()
+                       << "\n";
+          result = failure();
+          return;
+        }
+        StringRef binBaseName = sys::path::filename(outputPath);
+        xilinx::AIE::emitNpuLocmapJSON(locFile, devName, binBaseName, locmap);
+        if (verbose)
+          llvm::outs() << "Wrote " << locmap.size()
+                       << " locmap entries to: " << locmapPath << "\n";
       }
     });
   }
@@ -3949,8 +4061,10 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
   }
 
   std::vector<uint32_t> ctrlPktInstructions;
+  std::vector<xilinx::AIE::TxnLocEntry> ctrlPktLocmap;
   if (failed(xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
-          *clonedModule, ctrlPktInstructions, devName, ""))) {
+          *clonedModule, ctrlPktInstructions, devName, "",
+          keepLoc ? &ctrlPktLocmap : nullptr))) {
     llvm::errs() << "Error generating control packet binary for device: "
                  << devName << "\n";
     return failure();
@@ -3973,6 +4087,24 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
     llvm::outs() << "Wrote " << ctrlPktInstructions.size()
                  << " control packet instructions to: " << ctrlPktBinPath
                  << "\n";
+  }
+
+  if (keepLoc) {
+    SmallString<128> locmapPath(ctrlPktBinPath);
+    locmapPath.append(".locmap.json");
+    std::error_code locEc;
+    raw_fd_ostream locFile(locmapPath, locEc, sys::fs::OpenFlags::OF_Text);
+    if (locEc) {
+      llvm::errs() << "Error opening locmap sidecar: " << locEc.message()
+                   << "\n";
+      return failure();
+    }
+    StringRef binBaseName = sys::path::filename(ctrlPktBinPath);
+    xilinx::AIE::emitNpuLocmapJSON(locFile, devName, binBaseName,
+                                   ctrlPktLocmap);
+    if (verbose)
+      llvm::outs() << "Wrote " << ctrlPktLocmap.size()
+                   << " locmap entries to: " << locmapPath << "\n";
   }
 
   // Step 2: Run control packet DMA lowering pipeline in-memory.
@@ -4010,9 +4142,10 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
   }
 
   std::vector<uint32_t> dmaSeqInstructions;
-  if (failed(xilinx::AIE::AIETranslateNpuToBinary(*clonedModule,
-                                                  dmaSeqInstructions, devName,
-                                                  "" /* all sequences */))) {
+  std::vector<xilinx::AIE::TxnLocEntry> dmaSeqLocmap;
+  if (failed(xilinx::AIE::AIETranslateNpuToBinary(
+          *clonedModule, dmaSeqInstructions, devName, "" /* all sequences */,
+          keepLoc ? &dmaSeqLocmap : nullptr))) {
     llvm::errs() << "Error generating control packet DMA sequence for device: "
                  << devName << "\n";
     return failure();
@@ -4034,6 +4167,25 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
   if (verbose) {
     llvm::outs() << "Wrote " << dmaSeqInstructions.size()
                  << " DMA sequence instructions to: " << dmaSeqBinPath << "\n";
+  }
+
+  if (keepLoc) {
+    SmallString<128> locmapPath(dmaSeqBinPath);
+    locmapPath.append(".locmap.json");
+    std::error_code locEc;
+    raw_fd_ostream locFile(locmapPath, locEc, sys::fs::OpenFlags::OF_Text);
+    if (!locEc) {
+      StringRef binBaseName = sys::path::filename(dmaSeqBinPath);
+      xilinx::AIE::emitNpuLocmapJSON(locFile, devName, binBaseName,
+                                     dmaSeqLocmap);
+      if (verbose)
+        llvm::outs() << "Wrote " << dmaSeqLocmap.size()
+                     << " locmap entries to: " << locmapPath << "\n";
+    } else {
+      llvm::errs() << "Error opening locmap sidecar: " << locEc.message()
+                   << "\n";
+      return failure();
+    }
   }
 
   // Step 3: Generate combined ELF using aiebu-asm (if available)
@@ -5079,14 +5231,17 @@ static LogicalResult compileHostProgram(StringRef tmpDirName,
     cmd.push_back("-l" + lib);
   }
 
-  // Any additional unrecognized flags (e.g. -Wl,... -lstdc++)
-  for (const auto &arg : sinkArgs) {
+  // Post-`--` passthrough, in user-specified order. Host source files mixed
+  // in here are already included.
+  for (const auto &arg : hostExtraArgs) {
     cmd.push_back(arg);
   }
 
-  // Host source files
-  for (const auto &src : hostSourceFiles) {
-    cmd.push_back(src);
+  // Positional host source files (pre-`--` legacy form)
+  std::string mlirFile = getInputFilename();
+  for (const auto &arg : positionalArgs) {
+    if (arg != mlirFile && isHostSourceFile(arg))
+      cmd.push_back(arg);
   }
 
   // Output filename
@@ -5231,7 +5386,11 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
                    << "\n";
       return failure();
     }
-    moduleOp->print(file);
+    if (dumpIntermediates) {
+      printModuleWithDebugInfo(moduleOp, file);
+    } else {
+      moduleOp->print(file);
+    }
 
     if (verbose) {
       llvm::outs() << "Wrote module with addresses to: " << withAddressesPath
@@ -5621,8 +5780,28 @@ static int processInputFile(StringRef inputFile, StringRef tmpDirName) {
 int main(int argc, char **argv) {
   InitLLVM y(argc, argv);
 
+  // Split argv on the first standalone `--`. Everything after is forwarded
+  // verbatim to the host compiler (host-source files are routed separately
+  // via getHostSourceFiles()). Everything before must be a recognized aiecc
+  // option or input file; unknown flags there are rejected by LLVM.
+  std::vector<char *> frontArgv;
+  frontArgv.reserve(argc);
+  bool sawSeparator = false;
+  for (int i = 0; i < argc; ++i) {
+    if (i > 0 && !sawSeparator && std::strcmp(argv[i], "--") == 0) {
+      sawSeparator = true;
+      continue;
+    }
+    if (sawSeparator) {
+      hostExtraArgs.emplace_back(argv[i]);
+    } else {
+      frontArgv.push_back(argv[i]);
+    }
+  }
+
   cl::AddExtraVersionPrinter(printVersion);
-  cl::ParseCommandLineOptions(argc, argv, "AIE Compiler Driver\n");
+  cl::ParseCommandLineOptions(static_cast<int>(frontArgv.size()),
+                              frontArgv.data(), "AIE Compiler Driver\n");
 
   if (showVersion) {
     printVersion(llvm::outs());

@@ -4,8 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2020 Xilinx Inc.
-// (c) Copyright 2023 Advanced Micro Devices, Inc.
+// Copyright (C) 2020-2022 Xilinx, Inc.
+// Copyright (C) 2023 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -99,7 +99,7 @@ int *mlir_aie_mem_alloc(struct aie_libxaie_ctx_t *ctx, ext_mem_model_t &handle,
 
   Ret = ioctl(Fd, ION_IOC_ALLOC, &AllocArgs);
   if (Ret != 0) {
-    XAIE_ERROR("Failed to allocate memory of %lu bytes\n");
+    XAIE_ERROR("Failed to allocate memory of %d bytes\n", size);
     goto error_ion;
   }
 

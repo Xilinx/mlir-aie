@@ -2,6 +2,7 @@ from datetime import datetime
 import os
 import platform
 import re
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -254,14 +255,38 @@ version = f"{llvm_version[0]}.{llvm_version[1]}.{llvm_version[2]}.{llvm_datetime
 version += commit_hash
 
 llvm_url = f"https://github.com/llvm/llvm-project/commit/{commit_hash}"
+
+_llvm_license_src = Path("llvm-project") / "LICENSE.TXT"
+if _llvm_license_src.exists():
+    shutil.copy(_llvm_license_src, Path(__file__).parent / "LICENSE")
+
 setup(
     name="mlir" if check_env("ENABLE_RTTI", 1) else "mlir-no-rtti",
     version=version,
     author="Maksim Levental",
     author_email="maksim.levental@gmail.com",
+    maintainer="AMD Inc.",
+    maintainer_email="joseph.melber@amd.com",
     description=f"MLIR distribution as wheel. Created at {now} build of {llvm_url}",
     long_description=f"MLIR distribution as wheel. Created at {now} build of [llvm/llvm-project/{commit_hash}]({llvm_url})",
     long_description_content_type="text/markdown",
+    url="https://github.com/Xilinx/mlir-aie",
+    license="Apache-2.0 WITH LLVM-exception",
+    license_files=["LICENSE"],
+    project_urls={
+        "Source": "https://github.com/Xilinx/mlir-aie",
+        "Upstream LLVM": "https://github.com/llvm/llvm-project",
+        "Issues": "https://github.com/Xilinx/mlir-aie/issues",
+    },
+    classifiers=[
+        "Development Status :: 4 - Beta",
+        "License :: OSI Approved :: Apache Software License",
+        "Topic :: Software Development :: Compilers",
+        "Programming Language :: Python :: 3",
+        "Operating System :: POSIX :: Linux",
+        "Operating System :: Microsoft :: Windows",
+        "Operating System :: MacOS",
+    ],
     ext_modules=[CMakeExtension("mlir", sourcedir="llvm-project/llvm")],
     cmdclass={
         "build_ext": CMakeBuild,

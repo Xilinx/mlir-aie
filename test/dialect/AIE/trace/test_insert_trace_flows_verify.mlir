@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2026 Advanced Micro Devices, Inc.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -103,6 +103,35 @@ module @no_runtime_seq {
 
 // -----
 
+// Test: Two traces pinning the same explicit packet id -- error
+module @explicit_packet_id_collision {
+  aie.device(npu1_1col) {
+    %tile02 = aie.tile(0, 2)
+    %tile03 = aie.tile(0, 3)
+    aie.trace @trace1(%tile02) {
+      // expected-note@+1 {{previous use of packet id 5}}
+      aie.trace.packet id=5 type=core
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+    aie.trace @trace2(%tile03) {
+      // expected-error@+1 {{trace packet id 5 is already used by another trace}}
+      aie.trace.packet id=5 type=core
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+    aie.runtime_sequence(%arg0: memref<16xi32>) {
+      aie.trace.host_config buffer_size = 65536
+      aie.trace.start_config @trace1
+      aie.trace.start_config @trace2
+    }
+  }
+}
+
+// -----
+
 // Test: Both S2MM channels used, no lateral routing -- error
 module @shim_full_no_lateral {
   // expected-error@+1 {{no S2MM channels available on shim tile at column 0}}
@@ -123,6 +152,26 @@ module @shim_full_no_lateral {
     aie.runtime_sequence(%arg0: memref<16xi32>) {
       aie.trace.host_config buffer_size = 8192
       aie.trace.start_config @trace
+    }
+  }
+}
+
+// -----
+
+// Test: egress_shim_col past device width is rejected by the lowering pass.
+module @invalid_egress_col_oob {
+  // expected-error@+1 {{egress_shim_col 5 is not a valid shim NOC tile (device has 1 columns)}}
+  aie.device(npu1_1col) {
+    %tile02 = aie.tile(0, 2)
+    aie.trace @trace0(%tile02) {
+      aie.trace.packet id=1 type=core
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+    aie.runtime_sequence(%arg0: memref<16xi32>) {
+      aie.trace.host_config buffer_size = 8192 egress_shim_col = 5
+      aie.trace.start_config @trace0
     }
   }
 }

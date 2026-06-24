@@ -39,7 +39,12 @@ class TensorAccessPattern:
         """
         self._tensor_dims = validate_tensor_dims(tensor_dims)
         self._offset = validate_offset(offset, tensor_dims)
-        self._sizes, self._strides = validate_and_clean_sizes_strides(sizes, strides)
+        cleaned_sizes, cleaned_strides = validate_and_clean_sizes_strides(
+            sizes, strides
+        )
+        assert cleaned_sizes is not None and cleaned_strides is not None
+        self._sizes: Sequence[int] = cleaned_sizes
+        self._strides: Sequence[int] = cleaned_strides
 
     @property
     def tensor_dims(self) -> Sequence[int]:
@@ -149,13 +154,9 @@ class TensorAccessPattern:
 
         # Initialize access order and count maps; we create them as flat arrays
         total_elems = np.prod(self._tensor_dims)
-        access_order_tensor = None
-        if calc_order:
-            access_order_tensor = np.full(total_elems, -1, dtype=self._DTYPE)
-            access_count = 0
-        access_count_tensor = None
-        if calc_count:
-            access_count_tensor = np.full(total_elems, 0, dtype=self._DTYPE)
+        access_order_tensor = np.full(total_elems, -1, dtype=self._DTYPE)
+        access_count_tensor = np.full(total_elems, 0, dtype=self._DTYPE)
+        access_count = 0
 
         # Get an iterator for the access indices
         access_idx_generator = self.access_generator()
@@ -170,10 +171,8 @@ class TensorAccessPattern:
                 access_count += 1
 
         # Reshape to match tensor type since we created them initially as flat arrays
-        if calc_order:
-            access_order_tensor = access_order_tensor.reshape(self._tensor_dims)
-        if calc_count:
-            access_count_tensor = access_count_tensor.reshape(self._tensor_dims)
+        access_order_tensor = access_order_tensor.reshape(self._tensor_dims)
+        access_count_tensor = access_count_tensor.reshape(self._tensor_dims)
         return access_order_tensor, access_count_tensor
 
     def access_generator(self) -> Generator[int, None, None]:

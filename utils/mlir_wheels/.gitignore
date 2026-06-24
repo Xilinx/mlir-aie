@@ -6,3 +6,5 @@ _generate/
 *.py[cod]
 *.egg-info
 *env*
+# Materialized at build time from llvm-project/LICENSE.TXT.
+LICENSE

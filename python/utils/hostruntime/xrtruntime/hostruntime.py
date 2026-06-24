@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (C) 2025-2026 Advanced Micro Devices, Inc. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
 """
@@ -17,12 +17,13 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 import numpy as np
-import pyxrt
+import pyxrt  # pyright: ignore[reportMissingImports]
 
 from ..hostruntime import HostRuntime, HostRuntimeError, KernelHandle, KernelResult
 
 if TYPE_CHECKING:
     from aie.iron.device import Device
+    from ...trace import TraceConfig
 from .tensor import XRTTensor
 
 logger = logging.getLogger(__name__)
@@ -59,9 +60,9 @@ class XRTKernelResult(KernelResult):
         self,
         ret: pyxrt.ert_cmd_state,
         npu_time: int,
-        trace_data: XRTTensor | None = None,
+        trace_config: "TraceConfig | None" = None,
     ):
-        super().__init__(npu_time, trace_data)
+        super().__init__(npu_time, trace_config)
         self.ret = ret
 
     def is_success(self) -> bool:
@@ -134,7 +135,7 @@ class XRTHostRuntime(HostRuntime):
 
         self._device_type_str = self._device.get_info(pyxrt.xrt_info_device.name)
 
-        self.npu_str = None
+        self.npu_str: str | None = None
         for key, value in self.NPU_MODELS.items():
             if any([model in self._device_type_str for model in self.NPU_MODELS[key]]):
                 self.npu_str = key
@@ -221,10 +222,11 @@ class XRTHostRuntime(HostRuntime):
 
     def run(
         self,
-        kernel_handle: XRTKernelHandle,
+        kernel_handle: KernelHandle,
         args,
         trace_config=None,
         fail_on_error: bool = True,
+        only_if_loaded: bool = False,
         **kwargs,
     ) -> XRTKernelResult:
         """
@@ -235,6 +237,7 @@ class XRTHostRuntime(HostRuntime):
             args: Arguments to pass to the kernel.
             trace_config (optional): Configuration for tracing. Defaults to None.
             fail_on_error (bool, optional): Whether to raise an exception on kernel failure. Defaults to True.
+            only_if_loaded (bool, optional): Accepted for API compatibility with the runtime base class.
             **kwargs: Additional arguments.
 
         Returns:
@@ -243,6 +246,7 @@ class XRTHostRuntime(HostRuntime):
         Raises:
             HostRuntimeError: If arguments are invalid or kernel execution fails (and fail_on_error is True).
         """
+        assert isinstance(kernel_handle, XRTKernelHandle)
         self.check_device_consistency()
         # Filter out callable functions and check arg types
         args = [a for a in args if not callable(a)]
@@ -295,11 +299,11 @@ class XRTHostRuntime(HostRuntime):
         Raises:
             HostRuntimeError: If the device string is unknown.
         """
-        from aie.iron.device import NPU1, NPU2
+        from aie.iron.device import from_name
 
         devices = {
-            "npu1": NPU1(),
-            "npu2": NPU2(),
+            "npu1": from_name("npu1", n_cols=None),
+            "npu2": from_name("npu2", n_cols=None),
         }
 
         if self.npu_str in devices:
@@ -376,19 +380,28 @@ class CachedXRTRuntime(XRTHostRuntime):
         # We use OrderedDict so that we can use Fifo behavior for LRU eviction policies
         self._context_cache = OrderedDict()
         self._insts_cache = OrderedDict()
+        # Memoised read_insts() output keyed by (insts_path, insts_mtime).
+        # Skips the file open+read on every load() call when content is
+        # unchanged.  Cheap (insts files are ~hundreds of bytes); the win
+        # shows up when NPU_CACHE_HOME lives on a slow/networked filesystem
+        # — open+read can be ~290us there vs ~10us on local FS.
+        self._insts_content_cache = OrderedDict()
 
         # Set default from dict if present
-        self._cache_size = None
-        if self.npu_str in self.NPU_CONTEXT_CACHE_SIZE.keys():
-            self._cache_size = self.NPU_CONTEXT_CACHE_SIZE[self.npu_str]
+        cache_size: int | None = None
+        if self.npu_str is not None and self.npu_str in self.NPU_CONTEXT_CACHE_SIZE:
+            cache_size = self.NPU_CONTEXT_CACHE_SIZE[self.npu_str]
 
         # Environment variable always override default values
         # TODO: should probably emit warning if exceeds recorded max size.
-        self._cache_size = os.environ.get("XRT_CONTEXT_CACHE_SIZE", self._cache_size)
+        _env_cache_size = os.environ.get("XRT_CONTEXT_CACHE_SIZE")
+        if _env_cache_size is not None:
+            cache_size = int(_env_cache_size)
 
         # Error if no default and no env var
-        if self._cache_size is None:
+        if cache_size is None:
             raise HostRuntimeError(f"No known cache size for {self.npu_str}")
+        self._cache_size: int = cache_size
 
         atexit.register(self.cleanup)
 
@@ -400,6 +413,7 @@ class CachedXRTRuntime(XRTHostRuntime):
             self._evict_insts()
         while self._context_cache:
             self._evict()
+        self._insts_content_cache.clear()
         gc.collect()  # Make sure contexts are garbage collected.
 
     def _cleanup_entry_insts(self, entry):
@@ -447,9 +461,27 @@ class CachedXRTRuntime(XRTHostRuntime):
         key, entry = self._insts_cache.popitem(last=False)
         self._cleanup_insts_entry(key, entry)
 
+    def _read_insts_cached(self, insts_path, insts_mtime):
+        """``read_insts(insts_path)`` memoised by ``(path, mtime)``.
+
+        See ``__init__`` comment: shaves ~280us per load() when insts.bin
+        lives on a networked filesystem (e.g. ``$HOME`` on NFS).  Stale
+        files are detected via mtime so the cache is correct across rebuilds.
+        """
+        key = (str(insts_path), insts_mtime)
+        cached = self._insts_content_cache.get(key)
+        if cached is not None:
+            self._insts_content_cache.move_to_end(key)
+            return cached
+        insts = self.read_insts(insts_path)
+        if len(self._insts_content_cache) >= self._cache_size:
+            self._insts_content_cache.popitem(last=False)
+        self._insts_content_cache[key] = insts
+        return insts
+
     def run(
         self,
-        kernel_handle: XRTKernelHandle,
+        kernel_handle: KernelHandle,
         args,
         trace_config=None,
         fail_on_error: bool = True,
@@ -481,6 +513,48 @@ class CachedXRTRuntime(XRTHostRuntime):
                 raise HostRuntimeError("Kernel not loaded (evicted from cache)")
 
         return super().run(kernel_handle, args, trace_config, fail_on_error, **kwargs)
+
+    def load_and_run(self, npu_kernel, run_args, **kwargs):
+        """Wrapper around the base implementation that papers over a Phoenix
+        firmware-state quirk: a trace-on run leaves the amdxdna firmware in
+        a state where the next submit on a *different* cached context fails
+        with ``DRM_IOCTL_AMDXDNA_EXEC_CMD IOCTL failed (err=2): No such file
+        or directory`` (EXEC_CMD ENOENT) — even if we evict the failing
+        context and re-create a fresh hw_context for the same xclbin.  This
+        is the same failure mode the partial-eviction workaround at the top
+        of ``load()`` already drains the whole cache to dodge (see comment
+        on ``NPU_CONTEXT_CACHE_SIZE``).
+
+        Workaround: after a trace-on run completes (and the base
+        ``load_and_run`` has already extracted the trace BOs via
+        ``process_trace``), drain the entire context cache on Phoenix so
+        the next call rebuilds from scratch.  Strix (npu2) handles
+        single-entry eviction correctly and isn't affected, so we leave it
+        alone.
+
+        Same-kernel re-runs after their own trace work fine; the bug only
+        bites when switching to a different kernel after a trace, but
+        draining unconditionally on Phoenix is simpler than tracking which
+        contexts are about to be touched next.
+        """
+        handle, ret = super().load_and_run(npu_kernel, run_args, **kwargs)
+        if (
+            npu_kernel.trace_config is not None
+            and getattr(self, "npu_str", None) == "npu1"
+        ):
+            self._drain_for_phoenix_trace_quirk()
+        return handle, ret
+
+    def _drain_for_phoenix_trace_quirk(self):
+        """Drain the full context + insts caches.  Mirrors the
+        partial-eviction workaround at the top of ``load()`` — see comment
+        on ``NPU_CONTEXT_CACHE_SIZE`` for why a single-entry evict isn't
+        enough on Phoenix."""
+        while self._context_cache:
+            self._evict()
+        while self._insts_cache:
+            self._evict_insts()
+        gc.collect()
 
     def load(
         self,
@@ -537,7 +611,17 @@ class CachedXRTRuntime(XRTHostRuntime):
                 xclbin_uuid = xclbin.get_uuid()
 
                 if len(self._context_cache) >= self._cache_size:
-                    self._evict()
+                    if self.npu_str == "npu1":
+                        # Phoenix-only workaround: single-entry LRU eviction
+                        # leaves the firmware in a state where the next submit
+                        # on a freshly-created context fails with EXEC_CMD
+                        # ENOENT. Even retaining one old entry reproduces it;
+                        # only a full drain works. Strix (npu2) handles
+                        # single-entry eviction correctly.
+                        while self._context_cache:
+                            self._evict()
+                    else:
+                        self._evict()
 
                 self._device.register_xclbin(xclbin)
 
@@ -580,7 +664,7 @@ class CachedXRTRuntime(XRTHostRuntime):
                         f"Kernel {kernel_name} not found in xclbin (kernels found: {available_kernels})"
                     )
 
-            insts = self.read_insts(insts_path)
+            insts = self._read_insts_cached(insts_path, insts_mtime)
             insts_bo = None
             if hasattr(pyxrt, "module") and isinstance(insts, pyxrt.module):
                 ext_kernel_key = (kernel_name, str(insts_path), insts_mtime)

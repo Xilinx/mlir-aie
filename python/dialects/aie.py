@@ -1,4 +1,4 @@
-# Copyright (C) 2022, Advanced Micro Devices, Inc.
+# Copyright (C) 2022 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 from dataclasses import dataclass
 import inspect
@@ -466,8 +466,14 @@ class object_fifo(ObjectFifoCreateOp):
         padDimensions=None,
         disable_synchronization=None,
         iter_count=None,
+        consumer_datatype=None,
     ):
         self.datatype = try_convert_np_type_to_mlir_type(datatype)
+        self.consumer_datatype = (
+            try_convert_np_type_to_mlir_type(consumer_datatype)
+            if consumer_datatype is not None
+            else None
+        )
         if not isinstance(consumerTiles, List):
             consumerTiles = [consumerTiles]
         if dimensionsFromStreamPerConsumer is None:
@@ -475,6 +481,9 @@ class object_fifo(ObjectFifoCreateOp):
         if dimensionsToStream is None:
             dimensionsToStream = []
         of_Ty = TypeAttr.get(ObjectFifoType.get(self.datatype))
+        consumerElemType = None
+        if self.consumer_datatype is not None:
+            consumerElemType = TypeAttr.get(ObjectFifoType.get(self.consumer_datatype))
         if initValues is not None:
             values = []
             for e in initValues:
@@ -498,20 +507,22 @@ class object_fifo(ObjectFifoCreateOp):
             initValues=initValues,
             iter_count=iter_count,
         )
+        if consumerElemType is not None:
+            self.attributes["consumerElemType"] = consumerElemType
 
     def acquire(self, port, num_elem):
-        subview_t = ObjectFifoSubviewType.get(self.datatype)
+        # Use consumer_datatype for consumer-side acquire if available
+        dt = self.datatype
+        if self.consumer_datatype is not None and port == ObjectFifoPort.Consume:
+            dt = self.consumer_datatype
+        subview_t = ObjectFifoSubviewType.get(dt)
         acq = ObjectFifoAcquireOp(subview_t, port, self.sym_name.value, num_elem)
 
         objects = []
         if acq.size.value == 1:
-            return ObjectFifoSubviewAccessOp(
-                self.datatype, acq.subview, acq.size.value - 1
-            ).result
+            return ObjectFifoSubviewAccessOp(dt, acq.subview, acq.size.value - 1).result
         for i in range(acq.size.value):
-            objects.append(
-                ObjectFifoSubviewAccessOp(self.datatype, acq.subview, i).result
-            )
+            objects.append(ObjectFifoSubviewAccessOp(dt, acq.subview, i).result)
         return objects
 
     def release(self, port, num_elem):
@@ -600,7 +611,7 @@ def trace_event(event, *, label=None, loc=None, ip=None):
     return TraceEventOp(event=event, label=label, loc=loc, ip=ip)
 
 
-def trace_packet(id, type, *, loc=None, ip=None):
+def trace_packet(id=None, type=None, *, loc=None, ip=None):
     return TracePacketOp(id=id, type_=type, loc=loc, ip=ip)
 
 
@@ -637,6 +648,7 @@ def trace_host_config(
     *,
     arg_idx=4,
     routing=TraceShimRouting.Single,
+    egress_shim_col=0,
     loc=None,
     ip=None,
 ):
@@ -649,6 +661,7 @@ def trace_host_config(
         buffer_size=buffer_size,
         arg_idx=arg_idx,
         routing=routing,
+        egress_shim_col=egress_shim_col,
         loc=loc,
         ip=ip,
     )

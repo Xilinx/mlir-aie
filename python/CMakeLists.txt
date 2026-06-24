@@ -1,4 +1,4 @@
-# Copyright (C) 2022-2026, Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 include(AddMLIRPython)
@@ -18,6 +18,8 @@ declare_mlir_python_sources(AIEPythonExtensions)
 
 declare_mlir_python_sources(AIEPythonSources.Dialects
   ADD_TO_PARENT AIEPythonSources
+  SOURCES
+    dialects/__init__.py
 )
 
 declare_mlir_python_sources(AIEPythonSources.Util
@@ -36,22 +38,36 @@ declare_mlir_python_sources(AIEPythonSources.Utils
   ADD_TO_PARENT AIEPythonSources
   SOURCES
     utils/__init__.py
+    utils/benchmark.py
     utils/config.py
     utils/test.py
-    utils/jit.py
     utils/ml.py
     utils/npukernel.py
     utils/regdb.py
+    utils/verify.py
     utils/hostruntime/__init__.py
+    utils/hostruntime/argparse.py
+    utils/hostruntime/cli.py
     utils/hostruntime/hostruntime.py
     utils/hostruntime/tensor_class.py
     utils/hostruntime/xrtruntime/__init__.py
     utils/hostruntime/xrtruntime/hostruntime.py
+    utils/hostruntime/xrtruntime/parameter_scratchpad.py
     utils/hostruntime/xrtruntime/tensor.py
     utils/compile/__init__.py
     utils/compile/utils.py
-    utils/compile/cache/circular_cache.py
     utils/compile/cache/utils.py
+    utils/compile/jit/__init__.py
+    utils/compile/jit/compilabledesign.py
+    utils/compile/jit/_dma_size_parser.py
+    utils/compile/jit/_hash.py
+    utils/compile/jit/_introspect.py
+    utils/compile/jit/_serialization.py
+    utils/compile/jit/markers.py
+    utils/compile/jit/context.py
+    utils/compile/jit/compileconfig.py
+    utils/callabledesign.py
+    utils/jit.py
     utils/trace/__init__.py
     utils/trace/config.py
     utils/trace/events/__init__.py
@@ -75,6 +91,13 @@ declare_mlir_python_sources(AIEPythonSources.Iron
   ADD_TO_PARENT AIEPythonSources
   SOURCES_GLOB
     iron/*.py
+    iron/compile/*.py
+    iron/hostruntime/*.py
+    iron/algorithms/*.py
+    iron/kernels/*.py
+    iron/dataflow/*.py
+    iron/device/*.py
+    iron/runtime/*.py
 )
 
 declare_mlir_dialect_python_bindings(
@@ -394,6 +417,65 @@ else ()
 
 
 endif ()
+
+# Stage the MLIR core type stubs (Context, Location, Module, ...) next to the
+# compiled extension. aie/ir.py re-exports those symbols via
+# `from ._mlir_libs._mlir.ir import *`; the .py sources we assemble don't carry
+# their types, so a static type checker can only resolve them from these stubs.
+# They ship with the MLIR distro but aren't copied by add_mlir_python_modules.
+add_custom_command(
+  TARGET AIEPythonModules POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${MLIR_INSTALL_PREFIX}/src/python/MLIRPythonExtension.Core.type_stub_gen/_mlir_libs/_mlir/__init__.pyi"
+    "${MLIR_INSTALL_PREFIX}/src/python/MLIRPythonExtension.Core.type_stub_gen/_mlir_libs/_mlir/ir.pyi"
+    "${MLIR_INSTALL_PREFIX}/src/python/MLIRPythonExtension.Core.type_stub_gen/_mlir_libs/_mlir/passmanager.pyi"
+    "${MLIR_INSTALL_PREFIX}/src/python/MLIRPythonExtension.Core.type_stub_gen/_mlir_libs/_mlir/rewrite.pyi"
+    "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs/_mlir/"
+  COMMENT "Staging MLIR core type stubs for pyright"
+)
+
+################################################################################
+# ParameterScratchpad pybind11 module (uses a raw buffer)
+################################################################################
+if(AIE_ENABLE_XRT_PYTHON_BINDINGS)
+  find_package(pybind11 CONFIG QUIET)
+  if(NOT pybind11_FOUND)
+    execute_process(
+      COMMAND "${Python3_EXECUTABLE}" -m pybind11 --cmakedir
+      RESULT_VARIABLE _pybind11_cmakedir_result
+      OUTPUT_VARIABLE _pybind11_cmakedir
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+      ERROR_QUIET
+    )
+    if(NOT _pybind11_cmakedir_result EQUAL 0)
+      message(FATAL_ERROR
+        "AIE_ENABLE_XRT_PYTHON_BINDINGS requires pybind11 in ${Python3_EXECUTABLE}."
+      )
+    endif()
+    find_package(pybind11 CONFIG REQUIRED
+      PATHS "${_pybind11_cmakedir}"
+      NO_DEFAULT_PATH
+    )
+  endif()
+
+  pybind11_add_module(_parameter_scratchpad
+    ${CMAKE_CURRENT_SOURCE_DIR}/ParameterScratchpadModule.cpp
+  )
+  target_compile_definitions(_parameter_scratchpad PRIVATE TEST_UTILS_USE_XRT=0)
+  target_include_directories(_parameter_scratchpad PRIVATE
+    ${AIE_SOURCE_DIR}/runtime_lib/test_lib
+  )
+  set_target_properties(_parameter_scratchpad PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs"
+    RUNTIME_OUTPUT_DIRECTORY "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs"
+  )
+  add_dependencies(AIEPythonModules _parameter_scratchpad)
+  install(TARGETS _parameter_scratchpad
+    LIBRARY DESTINATION "${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs"
+    RUNTIME DESTINATION "${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs"
+    COMPONENT aie-python
+  )
+endif()
 
 target_include_directories(AIEPythonModules.extension._aie.dso PUBLIC ${VITIS_AIETOOLS_DIR}/include)
 

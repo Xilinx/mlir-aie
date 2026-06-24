@@ -4,7 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2021 Xilinx Inc.
+// Copyright (C) 2021-2022 Xilinx, Inc.
+// Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -46,8 +47,8 @@ struct ConvertFlowsToInterconnect : OpConversionPattern<FlowOp> {
     auto point = rewriter.saveInsertionPoint();
     rewriter.setInsertionPoint(b.getTerminator());
 
-    ConnectOp::create(rewriter, rewriter.getUnknownLoc(), inBundle, inIndex,
-                      outBundle, outIndex);
+    ConnectOp::create(rewriter, flowOp.getLoc(), inBundle, inIndex, outBundle,
+                      outIndex);
 
     rewriter.restoreInsertionPoint(point);
 
@@ -297,60 +298,60 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     Region &r = pktFlowOp.getPorts();
     Block &b = r.front();
     int flowID = pktFlowOp.IDInt();
-    Port srcPort, destPort;
-    TileOp srcTile, destTile;
-    TileID srcCoords, destCoords;
+    SmallVector<std::pair<TileID, Port>, 4> sources;
 
-    // Pass 1: extract source (order-independent: dest may appear before source)
+    // Pass 1: collect all sources (order-independent; supports fan-in).
     for (Operation &Op : b.getOperations()) {
       if (auto pktSource = dyn_cast<PacketSourceOp>(Op)) {
-        srcTile = dyn_cast<TileOp>(pktSource.getTile().getDefiningOp());
-        srcPort = pktSource.port();
-        srcCoords = {srcTile.colIndex(), srcTile.rowIndex()};
+        auto srcTile = dyn_cast<TileOp>(pktSource.getTile().getDefiningOp());
+        sources.push_back(
+            {{srcTile.colIndex(), srcTile.rowIndex()}, pktSource.port()});
       }
     }
-    if (!srcTile)
+    if (sources.empty())
       return pktFlowOp.emitOpError("packet_flow has no packet_source");
-    // Pass 2: process each destination using the source extracted above
+    // Pass 2: lower each (source, destination) pair so fan-in flows lay
+    // down switchbox connections for every source, not just the last one.
     for (Operation &Op : b.getOperations()) {
-      if (auto pktDest = dyn_cast<PacketDestOp>(Op)) {
-        destTile = dyn_cast<TileOp>(pktDest.getTile().getDefiningOp());
-        destPort = pktDest.port();
-        destCoords = {destTile.colIndex(), destTile.rowIndex()};
-        // Assign "keep_pkt_header flag"
-        auto keep = pktFlowOp.getKeepPktHeader();
-        keepPktHeaderAttr[{destTile.getTileID(), destPort}] =
-            keep ? BoolAttr::get(Op.getContext(), *keep) : nullptr;
+      auto pktDest = dyn_cast<PacketDestOp>(Op);
+      if (!pktDest)
+        continue;
+      auto destTile = dyn_cast<TileOp>(pktDest.getTile().getDefiningOp());
+      Port destPort = pktDest.port();
+      TileID destCoords = {destTile.colIndex(), destTile.rowIndex()};
+      // Assign "keep_pkt_header flag"
+      auto keep = pktFlowOp.getKeepPktHeader();
+      keepPktHeaderAttr[{destTile.getTileID(), destPort}] =
+          keep ? BoolAttr::get(Op.getContext(), *keep) : nullptr;
 
+      for (auto &[srcCoords, srcPort] : sources) {
         TileID srcSB = {srcCoords.col, srcCoords.row};
-        if (PathEndPoint srcPoint = {srcSB, srcPort};
-            !analyzer.processedFlows[srcPoint]) {
-          SwitchSettings settings = analyzer.flowSolutions[srcPoint];
-          // add connections for all the Switchboxes in SwitchSettings
-          for (const auto &[curr, setting] : settings) {
-            assert(setting.srcs.size() == setting.dsts.size());
-            TileID currTile = {curr.col, curr.row};
-            for (size_t i = 0; i < setting.srcs.size(); i++) {
-              Port src = setting.srcs[i];
-              Port dest = setting.dsts[i];
-              // reject false broadcast
-              if (!findPathToDest(settings, currTile, dest.bundle, dest.channel,
-                                  destCoords, destPort.bundle,
-                                  destPort.channel))
-                continue;
-              Connect connect = {{src.bundle, src.channel},
-                                 {dest.bundle, dest.channel}};
-              if (std::find(switchboxes[currTile].begin(),
-                            switchboxes[currTile].end(),
-                            std::pair{connect, flowID}) ==
-                  switchboxes[currTile].end())
-                switchboxes[currTile].push_back({connect, flowID});
-              // Assign "control packet flows" flag per switchbox, based on
-              // packet flow op attribute
-              auto ctrlPkt = pktFlowOp.getPriorityRoute();
-              ctrlPktFlows[{{currTile, dest}, flowID}] =
-                  ctrlPkt ? *ctrlPkt : false;
-            }
+        PathEndPoint srcPoint = {srcSB, srcPort};
+        if (analyzer.processedFlows[srcPoint])
+          continue;
+        SwitchSettings settings = analyzer.flowSolutions[srcPoint];
+        // add connections for all the Switchboxes in SwitchSettings
+        for (const auto &[curr, setting] : settings) {
+          assert(setting.srcs.size() == setting.dsts.size());
+          TileID currTile = {curr.col, curr.row};
+          for (size_t i = 0; i < setting.srcs.size(); i++) {
+            Port src = setting.srcs[i];
+            Port dest = setting.dsts[i];
+            // reject false broadcast
+            if (!findPathToDest(settings, currTile, dest.bundle, dest.channel,
+                                destCoords, destPort.bundle, destPort.channel))
+              continue;
+            Connect connect = {{src.bundle, src.channel},
+                               {dest.bundle, dest.channel}};
+            if (std::find(
+                    switchboxes[currTile].begin(), switchboxes[currTile].end(),
+                    std::pair{connect, flowID}) == switchboxes[currTile].end())
+              switchboxes[currTile].push_back({connect, flowID});
+            // Assign "control packet flows" flag per switchbox, based on
+            // packet flow op attribute
+            auto ctrlPkt = pktFlowOp.getPriorityRoute();
+            ctrlPktFlows[{{currTile, dest}, flowID}] =
+                ctrlPkt ? *ctrlPkt : false;
           }
         }
       }
@@ -832,13 +833,13 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     Operation *tileOp = map.second;
     TileOp tile = cast<TileOp>(map.second);
     TileID tileId = tile.getTileID();
+    Location tileLoc = tile.getLoc();
 
     // Create a switchbox for the routes and insert inside it.
     builder.setInsertionPointAfter(tileOp);
     SwitchboxOp swbox =
         analyzer.getSwitchbox(builder, tile.colIndex(), tile.rowIndex());
-    SwitchboxOp::ensureTerminator(swbox.getConnections(), builder,
-                                  builder.getUnknownLoc());
+    SwitchboxOp::ensureTerminator(swbox.getConnections(), builder, tileLoc);
     Block &b = swbox.getConnections().front();
     builder.setInsertionPoint(b.getTerminator());
 
@@ -859,8 +860,7 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
         if (amselOpNeededVector[amselValue]) {
           int arbiterID = a;
           int msel = i;
-          auto amsel = AMSelOp::create(builder, builder.getUnknownLoc(),
-                                       arbiterID, msel);
+          auto amsel = AMSelOp::create(builder, tileLoc, arbiterID, msel);
           amselOps[amselValue] = amsel;
         }
       }
@@ -885,8 +885,8 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
         amsels.push_back(amselOps[msel]);
       }
 
-      MasterSetOp::create(builder, builder.getUnknownLoc(),
-                          builder.getIndexType(), bundle, channel, amsels,
+      MasterSetOp::create(builder, tileLoc, builder.getIndexType(), bundle,
+                          channel, amsels,
                           keepPktHeaderAttr[{tileId, tileMaster}]);
     }
 
@@ -915,10 +915,9 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
 
       PacketRulesOp packetrules;
       if (slaveRules.count(slave) == 0) {
-        packetrules = PacketRulesOp::create(builder, builder.getUnknownLoc(),
-                                            bundle, channel);
+        packetrules = PacketRulesOp::create(builder, tileLoc, bundle, channel);
         PacketRulesOp::ensureTerminator(packetrules.getRules(), builder,
-                                        builder.getUnknownLoc());
+                                        tileLoc);
         slaveRules[slave] = packetrules;
       } else
         packetrules = slaveRules[slave];
@@ -939,7 +938,7 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
       }
 
       builder.setInsertionPoint(rules.getTerminator());
-      PacketRuleOp::create(builder, builder.getUnknownLoc(), mask, ID, amsel);
+      PacketRuleOp::create(builder, tileLoc, mask, ID, amsel);
     }
   }
 
@@ -996,13 +995,13 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
           pktrules.setSourceBundle(WireBundle::South);
           if (pktrules.getSourceChannel() == 0) {
             pktrules.setSourceChannel(3);
-            ConnectOp::create(builder, builder.getUnknownLoc(), WireBundle::DMA,
-                              0, WireBundle::North, 3);
+            ConnectOp::create(builder, tileOp.getLoc(), WireBundle::DMA, 0,
+                              WireBundle::North, 3);
           }
           if (pktrules.getSourceChannel() == 1) {
             pktrules.setSourceChannel(7);
-            ConnectOp::create(builder, builder.getUnknownLoc(), WireBundle::DMA,
-                              1, WireBundle::North, 7);
+            ConnectOp::create(builder, tileOp.getLoc(), WireBundle::DMA, 1,
+                              WireBundle::North, 7);
           }
         }
       }
@@ -1027,13 +1026,13 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
           mtset.setDestBundle(WireBundle::South);
           if (mtset.getDestChannel() == 0) {
             mtset.setDestChannel(2);
-            ConnectOp::create(builder, builder.getUnknownLoc(),
-                              WireBundle::North, 2, WireBundle::DMA, 0);
+            ConnectOp::create(builder, tileOp.getLoc(), WireBundle::North, 2,
+                              WireBundle::DMA, 0);
           }
           if (mtset.getDestChannel() == 1) {
             mtset.setDestChannel(3);
-            ConnectOp::create(builder, builder.getUnknownLoc(),
-                              WireBundle::North, 3, WireBundle::DMA, 1);
+            ConnectOp::create(builder, tileOp.getLoc(), WireBundle::North, 3,
+                              WireBundle::DMA, 1);
           }
         }
       }
@@ -1084,54 +1083,55 @@ void AIEPathfinderPass::runOnOperation() {
         sw = analyzer.coordToSwitchbox[{col, row}];
       else
         continue;
+      Location loc = tile.getLoc();
       if (col > 0) {
         // connections east-west between stream switches
         if (analyzer.coordToSwitchbox.count({col - 1, row})) {
           auto westsw = analyzer.coordToSwitchbox[{col - 1, row}];
-          WireOp::create(builder, builder.getUnknownLoc(), westsw,
-                         WireBundle::East, sw, WireBundle::West);
+          WireOp::create(builder, loc, westsw, WireBundle::East, sw,
+                         WireBundle::West);
         }
       }
       if (row > 0) {
         // connections between abstract 'core' of tile
-        WireOp::create(builder, builder.getUnknownLoc(), tile, WireBundle::Core,
-                       sw, WireBundle::Core);
+        WireOp::create(builder, loc, tile, WireBundle::Core, sw,
+                       WireBundle::Core);
         // connections between abstract 'dma' of tile
-        WireOp::create(builder, builder.getUnknownLoc(), tile, WireBundle::DMA,
-                       sw, WireBundle::DMA);
+        WireOp::create(builder, loc, tile, WireBundle::DMA, sw,
+                       WireBundle::DMA);
         // connections north-south inside array ( including connection to shim
         // row)
         if (analyzer.coordToSwitchbox.count({col, row - 1})) {
           auto southsw = analyzer.coordToSwitchbox[{col, row - 1}];
-          WireOp::create(builder, builder.getUnknownLoc(), southsw,
-                         WireBundle::North, sw, WireBundle::South);
+          WireOp::create(builder, loc, southsw, WireBundle::North, sw,
+                         WireBundle::South);
         }
       } else if (row == 0) {
         if (tile.isShimNOCTile()) {
           if (analyzer.coordToShimMux.count({col, 0})) {
             auto shimsw = analyzer.coordToShimMux[{col, 0}];
             WireOp::create(
-                builder, builder.getUnknownLoc(), shimsw,
+                builder, loc, shimsw,
                 WireBundle::North, // Changed to connect into the north
                 sw, WireBundle::South);
             // PLIO is attached to shim mux
             if (analyzer.coordToPLIO.count(col)) {
               auto plio = analyzer.coordToPLIO[col];
-              WireOp::create(builder, builder.getUnknownLoc(), plio,
-                             WireBundle::North, shimsw, WireBundle::South);
+              WireOp::create(builder, loc, plio, WireBundle::North, shimsw,
+                             WireBundle::South);
             }
 
             // abstract 'DMA' connection on tile is attached to shim mux ( in
             // row 0 )
-            WireOp::create(builder, builder.getUnknownLoc(), tile,
-                           WireBundle::DMA, shimsw, WireBundle::DMA);
+            WireOp::create(builder, loc, tile, WireBundle::DMA, shimsw,
+                           WireBundle::DMA);
           }
         } else if (tile.isShimPLTile()) {
           // PLIO is attached directly to switch
           if (analyzer.coordToPLIO.count(col)) {
             auto plio = analyzer.coordToPLIO[col];
-            WireOp::create(builder, builder.getUnknownLoc(), plio,
-                           WireBundle::North, sw, WireBundle::South);
+            WireOp::create(builder, loc, plio, WireBundle::North, sw,
+                           WireBundle::South);
           }
         }
       }

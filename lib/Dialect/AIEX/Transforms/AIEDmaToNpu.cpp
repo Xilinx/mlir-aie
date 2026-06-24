@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2023 Advanced Micro Devices, Inc.
+// Copyright (C) 2023 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -460,6 +460,16 @@ public:
     uint64_t addr = targetModel.getDmaBdAddress(tileCol, tileRow, op.getId()) +
                     targetModel.getDmaBdAddressOffset(tileCol, tileRow);
     NpuAddressPatchOp::create(rewriter, op->getLoc(), addr, arg_idx, offset);
+
+    // If this DMA op has an offset_state_table_idx, emit an
+    // update_from_scratchpad to add the runtime offset to the BD address
+    // register.
+    if (op.getOffsetStateTableIdxAttr()) {
+      auto bufType = cast<BaseMemRefType>(op.getMemref().getType());
+      if (failed(emitUpdateBdAddressFromOffsetParameter(rewriter, op, bufType,
+                                                        addr)))
+        return failure();
+    }
 
     // push the patched bd onto the dma task queue
     NpuPushQueueOp::create(

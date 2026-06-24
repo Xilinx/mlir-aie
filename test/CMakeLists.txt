@@ -2,7 +2,8 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2021 Xilinx Inc.
+# Copyright (C) 2021-2022 Xilinx, Inc.
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 
 cmake_minimum_required(VERSION 3.30)
 if(POLICY CMP0074)
@@ -74,7 +75,7 @@ cmake_dependent_option(ENABLE_PYTHON_TESTS "Enable python tests" ON "AIE_ENABLE_
 set(LibXAIE_FOUND FALSE)
 if (DEFINED LibXAIE_${AIE_RUNTIME_TEST_TARGET}_DIR)
     message("Test using xaiengine from LibXAIE_${AIE_RUNTIME_TEST_TARGET}_DIR=${LibXAIE_${AIE_RUNTIME_TEST_TARGET}_DIR}")
-    set(LibXAIE_ROOT ${LibXAIE_${target}_DIR})
+    set(LibXAIE_ROOT ${LibXAIE_${AIE_RUNTIME_TEST_TARGET}_DIR})
     find_package(LibXAIE)
 else()
   if(DEFINED VITIS_ROOT)
@@ -109,10 +110,13 @@ configure_lit_site_cfg(
 set(TEST_DEPENDS
   FileCheck count not
   AIEPythonModules
-  aie-lsp-server
+  aiecc
   aie-opt
   aie-translate
 )
+if(AIE_BUILD_LSP_SERVER)
+  list(APPEND TEST_DEPENDS aie-lsp-server)
+endif()
 
 add_lit_testsuite(check-aie "Running the aie regression tests"
   ${CMAKE_CURRENT_BINARY_DIR}

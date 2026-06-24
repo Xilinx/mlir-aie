@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2024 Advanced Micro Devices, Inc.
+// Copyright (C) 2024 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -283,6 +283,20 @@ struct AIEDMATasksToNPUPass
           "input argument, or a (chain of) subview(s) or cast(s) of a block "
           "argument with constant offsets and strides equal to one.");
     }
+
+    // If this BD has an offset_state_table_idx, emit update_from_scratchpad to
+    // add the runtime offset to the BD address register. This is applied after
+    // the base address is set (by either NpuAddressPatchOp for DDR buffers or
+    // NpuMaskWrite32Op/NpuWrite32Op for on-chip buffers), since the hardware
+    // update_from_scratchpad instruction is additive -- it reads the existing
+    // register value and adds a computed delta to it.
+    if (bd_op.getOffsetStateTableIdxAttr()) {
+      auto bufType = llvm::cast<BaseMemRefType>(bd_op.getBuffer().getType());
+      if (failed(emitUpdateBdAddressFromOffsetParameter(builder, bd_op, bufType,
+                                                        register_addr)))
+        return failure();
+    }
+
     return success();
   }
 

@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2024, Advanced Micro Devices, Inc.
+// Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 // 
 //===----------------------------------------------------------------------===//-->
 
@@ -61,6 +61,12 @@ This guide is split into five sections, where each section builds on top of the 
 <details><summary><a href="./section-2g">Section 2g - Data Movement Without Object FIFOs</a></summary>
 
 * Walkthrough of the process of programming DMA regions
+</details>
+<details><summary><a href="./section-2h">Section 2h - Advanced ObjectFifo + Cross-Tile Buffer</a></summary>
+
+* Asymmetric producer/consumer transfer granularity (`consumer_obj_type=`)
+* Direct AIE-stream connections (`aie_stream=(end, port)`)
+* Cross-tile Buffer placement in `Worker.fn_args` for neighbor-L1 access
 </details>
 
 

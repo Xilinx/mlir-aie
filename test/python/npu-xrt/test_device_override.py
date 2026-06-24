@@ -1,4 +1,5 @@
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
@@ -8,7 +9,7 @@
 # RUN: %run_on_npu2% %pytest %s
 
 import pytest
-from aie.iron.device import NPU1, NPU2
+from aie.iron.device import NPU1, NPU1Col1, NPU2, NPU2Col1
 import aie.utils as utils
 
 
@@ -57,9 +58,18 @@ def test_device_consistency():
     # Should not raise
     runtime.check_device_consistency()
 
-    # Set incompatible override
+    # A 1-column variant of the same generation is loadable on the full device.
+    utils.set_current_device(NPU1Col1())
+    runtime.check_device_consistency()
+
+    # Set incompatible override (wrong generation)
     utils.set_current_device(NPU2())
-    with pytest.raises(RuntimeError, match="does not match runtime device"):
+    with pytest.raises(RuntimeError, match="not loadable on runtime device"):
+        runtime.check_device_consistency()
+
+    # Wrong generation, narrower variant — still incompatible.
+    utils.set_current_device(NPU2Col1())
+    with pytest.raises(RuntimeError, match="not loadable on runtime device"):
         runtime.check_device_consistency()
 
     # Reset

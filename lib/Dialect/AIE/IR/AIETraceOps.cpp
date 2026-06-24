@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2025, Advanced Micro Devices, Inc.
+// Copyright (C) 2025 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 // Implementation of AIE trace operations
@@ -377,13 +377,13 @@ LogicalResult TraceEventOp::verify() {
 //===----------------------------------------------------------------------===//
 
 LogicalResult TracePacketOp::verify() {
-  // Packet ID range is already enforced by Confined constraint in TableGen
-  // Just verify it's within valid range
-  int32_t id = getId();
-  if (id < 1 || id > 31) {
-    return emitOpError("packet ID must be in range [1, 31], got ") << id;
+  // Range is enforced by the Confined constraint in TableGen when id is
+  // present; when absent, -aie-insert-trace-flows assigns one in valid
+  // range from the (col, row) order over active trace tiles.
+  if (auto id = getId()) {
+    if (*id < 1 || *id > 31)
+      return emitOpError("packet ID must be in range [1, 31], got ") << *id;
   }
-
   return success();
 }
 
@@ -753,9 +753,12 @@ void TraceHostConfigOp::print(OpAsmPrinter &p) {
   if (getRouting() != TraceShimRouting::Single)
     p << " routing = " << stringifyTraceShimRouting(getRouting());
 
+  if (getEgressShimCol() != 0)
+    p << " egress_shim_col = " << getEgressShimCol();
+
   p.printOptionalAttrDict(
       (*this)->getAttrs(),
-      /*elidedAttrs=*/{"buffer_size", "arg_idx", "routing"});
+      /*elidedAttrs=*/{"buffer_size", "arg_idx", "routing", "egress_shim_col"});
 }
 
 ParseResult TraceHostConfigOp::parse(OpAsmParser &parser,
@@ -798,6 +801,20 @@ ParseResult TraceHostConfigOp::parse(OpAsmParser &parser,
   result.attributes.set(
       "routing", TraceShimRoutingAttr::get(parser.getContext(), routingVal));
 
+  // Parse egress_shim_col (default: 0 = column 0)
+  int32_t egressShimColVal = 0;
+  if (succeeded(parser.parseOptionalKeyword("egress_shim_col"))) {
+    IntegerAttr egressShimCol;
+    if (parser.parseEqual() ||
+        parser.parseAttribute(egressShimCol, parser.getBuilder().getI32Type(),
+                              "egress_shim_col", result.attributes))
+      return failure();
+  } else {
+    result.attributes.set(
+        "egress_shim_col",
+        parser.getBuilder().getI32IntegerAttr(egressShimColVal));
+  }
+
   if (parser.parseOptionalAttrDict(result.attributes))
     return failure();
 
@@ -817,6 +834,11 @@ LogicalResult TraceHostConfigOp::verify() {
   // Validate buffer_size is positive
   if (getBufferSize() <= 0) {
     return emitOpError("buffer_size must be positive");
+  }
+
+  // Validate Shim col id
+  if (getEgressShimCol() < 0) {
+    return emitOpError("egress_shim_col must be >= 0");
   }
 
   return success();

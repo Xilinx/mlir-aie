@@ -1,0 +1,11 @@
+// (c) Copyright 2025-2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai_npu2, peano
+//
+// RUN: make -f %S/Makefile clean
+// RUN: make -f %S/Makefile devicename=npu2 op=rms
+// RUN: %run_on_npu2% make -f %S/Makefile devicename=npu2 op=rms run
+// RUN: make -f %S/Makefile clean
+// RUN: make -f %S/Makefile devicename=npu2 op=layer
+// RUN: %run_on_npu2% make -f %S/Makefile devicename=npu2 op=layer run

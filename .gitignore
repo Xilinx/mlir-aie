@@ -14,6 +14,7 @@ __pycache__
 **.cmake
 include/**/Makefile
 lib/**/Makefile
+**/*.prj/**
 
 CLAUDE.md
 /platforms/vck190_bare/petalinux/build
@@ -29,3 +30,9 @@ utils/vitisVariables.config
 runtime_lib/xaiengine/src
 /ironenv
 /.cache
+
+# Local run/test artifacts under programming_examples/ and programming_guide/
+**/log/
+**/test_stx/
+**/trace.txt
+**/trace_*.json

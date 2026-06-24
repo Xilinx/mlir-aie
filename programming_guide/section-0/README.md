@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2024, Advanced Micro Devices, Inc.
+// Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 // 
 //===----------------------------------------------------------------------===//-->
 
@@ -29,6 +29,12 @@ This programming guide focuses on application programming for the NPU found in R
 ### [Getting Started on AMD Ryzen™ AI with Linux](../../README.md) **(Recommended)**
 
 ### [Building IRON and MLIR-AIE from source on Linux](../../docs/Building.md)
+
+## <ins>Once you have a working NPU</ins>
+
+* **Fastest on-ramp:** the [Mini Tutorial](../mini_tutorial/) — five tiny `@iron.jit` exercises that get a design running on the NPU in minutes.
+* **Full guide top-to-bottom:** continue with [Section 1 — Basic AI Engine building blocks](../section-1/).
+* **Just want to see an end-to-end working program?** Jump to [Section 3 — My First Program](../section-3/).
 
 -----
 [[Top](..)] [[Next - Section 1](../section-1/)]

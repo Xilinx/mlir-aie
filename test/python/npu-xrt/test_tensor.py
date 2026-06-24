@@ -1,4 +1,5 @@
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
@@ -131,6 +132,57 @@ def test_fill(dtype, tensorclass):
         t.fill_(new_fill_value)
         expected = np.full((2, 3), new_fill_value, dtype=dtype)
         assert bfloat16_safe_allclose(dtype, t.numpy(), expected)
+
+
+@pytest.mark.parametrize("dtype", TEST_DTYPES)
+@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
+def test_full(dtype, tensorclass):
+    iron.set_tensor_class(tensorclass)
+    fill_value = 7 if np.issubdtype(dtype, np.integer) else 2.5
+    t = iron.full((2, 3), fill_value, dtype=dtype)
+    assert isinstance(t, tensorclass)
+    assert t.shape == (2, 3)
+    assert bfloat16_safe_allclose(dtype, t, np.full((2, 3), fill_value, dtype=dtype))
+    # int size shorthand
+    t2 = iron.full(4, fill_value, dtype=dtype)
+    assert t2.shape == (4,)
+
+
+@pytest.mark.parametrize(
+    "dtype", [d for d in TEST_DTYPES if np.issubdtype(d, np.integer)]
+)
+@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
+def test_randint_generator_reproducible(dtype, tensorclass):
+    iron.set_tensor_class(tensorclass)
+    rng1 = np.random.default_rng(123)
+    rng2 = np.random.default_rng(123)
+    a = iron.randint(0, 100, (8,), dtype=dtype, generator=rng1)
+    b = iron.randint(0, 100, (8,), dtype=dtype, generator=rng2)
+    assert np.array_equal(a.numpy(), b.numpy())
+
+
+@pytest.mark.parametrize("dtype", TEST_DTYPES)
+@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
+def test_rand_generator_reproducible(dtype, tensorclass):
+    iron.set_tensor_class(tensorclass)
+    rng1 = np.random.default_rng(456)
+    rng2 = np.random.default_rng(456)
+    a = iron.rand(8, dtype=dtype, generator=rng1)
+    b = iron.rand(8, dtype=dtype, generator=rng2)
+    assert bfloat16_safe_allclose(dtype, a, b)
+
+
+@pytest.mark.parametrize(
+    "dtype", [d for d in TEST_DTYPES if np.issubdtype(d, np.integer)]
+)
+@pytest.mark.parametrize("tensorclass", TENSOR_CLASSES)
+def test_arange_shape(dtype, tensorclass):
+    iron.set_tensor_class(tensorclass)
+    t = iron.arange(0, 12, shape=(3, 4), dtype=dtype)
+    assert t.shape == (3, 4)
+    assert np.array_equal(t.numpy(), np.arange(0, 12, dtype=dtype).reshape(3, 4))
+    with pytest.raises(ValueError):
+        iron.arange(0, 12, shape=(5, 4), dtype=dtype)
 
 
 @pytest.mark.parametrize("dtype", TEST_DTYPES)

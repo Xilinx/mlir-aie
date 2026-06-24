@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2024, Advanced Micro Devices, Inc.
+// Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 // 
 //===----------------------------------------------------------------------===//-->
 
@@ -29,16 +29,10 @@ This change effectively increases the number of available resources of the Objec
 
 All examples available in the [programming_examples](../../../../programming_examples/) contain this data movement pattern.
 
-It is possible to compile, run and test this design with the following commands:
+The design is wrapped in `@iron.jit`, so a single command JIT-compiles and runs it on the attached NPU:
 ```bash
-make
-make run
-```
-
-The explicitly placed level of IRON programming for this design is available in [single_buffer_placed.py](./single_buffer_placed.py). It can be compiled, run and tested with the following commands:
-```bash
-env use_placed=1 make
-make run
+make run                              # builds + runs on the NPU (devicename={npu,npu2})
+make emit-mlir                        # writes the lowered MLIR to build/aie.mlir without touching the NPU
 ```
 
 -----

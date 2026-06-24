@@ -4,18 +4,21 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc.
+# Copyright (C) 2024 Advanced Micro Devices, Inc.
 
 from typing import Generator
 
-from ... import ir  # type: ignore
-from ...dialects._aie_enum_gen import AIETileType, WireBundle  # type: ignore
+from ... import ir  # pyright: ignore[reportMissingImports]
+from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
+    AIEArch,
+    AIETileType,
+)
 from ...dialects.aie import (
-    AIEDevice,
+    AIEDevice,  # pyright: ignore[reportAttributeAccessIssue]
     logical_tile,
     LogicalTileOp,
-    get_target_model,
-)  # type: ignore
+    get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from ..resolvable import Resolvable
 from .tile import Tile
 
@@ -44,6 +47,11 @@ class Device(Resolvable):
     def rows(self) -> int:
         """Number of rows in the device tile array."""
         return self._tm.rows()
+
+    @property
+    def arch(self) -> AIEArch:
+        """AIE architecture of the device (AIE1, AIE2, or AIE2p)."""
+        return AIEArch(self._tm.get_target_arch())
 
     def _validate_coordinates(self, col, row):
         """Raise ValueError if coordinates are outside the device grid."""
@@ -102,87 +110,6 @@ class Device(Resolvable):
             for t in self.tile_iterator()
             if self._tm.is_core_tile(t.col, t.row)
         ]
-
-    def get_num_source_switchbox_connections(self, t: Tile) -> int:
-        """Returns number of DMA source ports in the switchbox for the given tile on the device.
-
-        Args:
-            t (Tile): The tile to query.
-
-        Returns:
-            int: Number of DMA source ports.
-        """
-        if t.col is None or t.row is None:
-            raise ValueError(f"Cannot query connections for unplaced tile: {t}")
-        col = t.col
-        row = t.row
-        bundle = WireBundle.DMA
-        return self._tm.get_num_source_switchbox_connections(col, row, bundle)
-
-    def get_num_dest_switchbox_connections(self, t: Tile) -> int:
-        """Returns number of DMA dest ports in the switchbox for the given tile on the device.
-
-        Args:
-            t (Tile): The tile to query.
-
-        Returns:
-            int: Number of DMA dest ports.
-        """
-        if t.col is None or t.row is None:
-            raise ValueError(f"Cannot query connections for unplaced tile: {t}")
-        col = t.col
-        row = t.row
-        bundle = WireBundle.DMA
-        return self._tm.get_num_dest_switchbox_connections(col, row, bundle)
-
-    def get_num_source_shim_mux_connections(self, t: Tile) -> int:
-        """Returns number of DMA source ports in the shim mux for the given tile on the device.
-
-        Args:
-            t (Tile): The tile to query.
-
-        Returns:
-            int: Number of DMA source ports.
-        """
-        if t.col is None or t.row is None:
-            raise ValueError(f"Cannot query connections for unplaced tile: {t}")
-        col = t.col
-        row = t.row
-        bundle = WireBundle.DMA
-        return self._tm.get_num_source_shim_mux_connections(col, row, bundle)
-
-    def get_num_dest_shim_mux_connections(self, t: Tile) -> int:
-        """Returns number of DMA dest ports in the shim mux for the given tile on the device.
-
-        Args:
-            t (Tile): The tile to query.
-
-        Returns:
-            int: Number of DMA dest ports.
-        """
-        if t.col is None or t.row is None:
-            raise ValueError(f"Cannot query connections for unplaced tile: {t}")
-        col = t.col
-        row = t.row
-        bundle = WireBundle.DMA
-        return self._tm.get_num_dest_shim_mux_connections(col, row, bundle)
-
-    def get_num_connections(self, tile: Tile, output: bool) -> int:
-        """Returns number of DMA input or output "channels" available on the tile.
-        Returns:
-            int: Number of connections (channels) available on the tile.
-        """
-        if tile.col is None or tile.row is None:
-            raise ValueError(f"Cannot query connections for unplaced tile: {tile}")
-        if tile.row == 0:
-            if output:
-                return self.get_num_source_shim_mux_connections(tile)
-            else:
-                return self.get_num_dest_shim_mux_connections(tile)
-        if output:
-            return self.get_num_source_switchbox_connections(tile)
-        else:
-            return self.get_num_dest_switchbox_connections(tile)
 
     def is_mem_accessible(self, source_tile: Tile, tiles: list[Tile]) -> bool:
         """Returns whether there exists a memory region on source_tile which all destination tiles can access.
@@ -311,3 +238,13 @@ def create_class(class_name, device):
 for device in AIEDevice:
     class_name = re.sub(r"NPU(\d+)_(\d+)COL", r"NPU\1Col\2", device.name.upper())
     create_class(class_name, device)
+
+
+def __getattr__(name: str) -> type[Device]:
+    # The per-device subclasses (NPU1, NPU2Col4, XCVC1902, ...) are generated
+    # from the AIEDevice enum by the loop above and live in module globals, so
+    # this fallback only fires for names that were never generated. Raising
+    # keeps real typos failing at import time; the annotation lets a static
+    # type checker resolve the generated names as Device subclasses without a
+    # hand-maintained list that would drift as devices are added.
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

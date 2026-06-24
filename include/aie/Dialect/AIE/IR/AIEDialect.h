@@ -4,7 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2019 Xilinx Inc.
+// Copyright (C) 2019-2022 Xilinx, Inc.
+// Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -58,6 +59,16 @@ uint32_t getShimBurstLengthBytes(const AIE::AIETargetModel &tm,
                                  uint32_t burstLength);
 uint32_t getShimBurstLengthEncoding(const AIE::AIETargetModel &tm,
                                     uint32_t burstLength);
+
+// Generate a symbol name guaranteed to be unique within the symbol table of
+// `symbolTableOp`. Names are formed as "<prefix><n>" for increasing n; the
+// counter is advanced past the chosen value so repeated calls with the same
+// counter remain efficient and produce distinct names. The returned name is
+// not inserted into the symbol table; the caller is responsible for creating
+// a symbol with that name before the next call (otherwise the same name will
+// be returned again).
+std::string generateUniqueSymbolName(mlir::Operation *symbolTableOp,
+                                     llvm::StringRef prefix, unsigned &counter);
 
 mlir::LogicalResult
 verifyOffsetSizeAndStrideOp(mlir::OffsetSizeAndStrideOpInterface op);

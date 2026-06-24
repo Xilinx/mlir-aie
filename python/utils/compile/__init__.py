@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025-2026 Advanced Micro Devices, Inc.
+# Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 """Compilation utilities: MLIR module compilation, kernel linking, and cache management."""
 
 import os
@@ -14,6 +14,7 @@ from .utils import (
     compile_cxx_core_function,
     compile_mlir_module,
     compile_external_kernel,
+    resolve_target_arch,
 )
 
 # Compiled kernels are cached inside the `NPU_CACHE_HOME` directory.

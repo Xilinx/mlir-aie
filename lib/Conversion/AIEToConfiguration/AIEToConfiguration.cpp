@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2024, Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (C) 2024 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -17,6 +17,7 @@
 
 #include "llvm/Support/Debug.h"
 #include <llvm/ADT/APInt.h>
+#include <llvm/ADT/DenseSet.h>
 
 extern "C" {
 #include "xaiengine/xaiegbl_defs.h"
@@ -74,6 +75,7 @@ struct TransactionBinaryOperation {
   std::optional<SyncPayload> sync;
   std::optional<LoadPdiPayload> loadPdi;
   std::optional<AddressPatchPayload> addressPatch;
+  std::optional<mlir::Location> sourceLoc;
 
   TransactionBinaryOperation() = default;
 
@@ -448,16 +450,17 @@ static LogicalResult generateTransactions(AIERTControl &ctl,
 }
 
 // Translate vector of TransactionBinaryOperation to a sequence of transaction
-// ops (npu.write32, npu.maskwrite32, npu.blockwrite).
+// ops (npu.write32, npu.maskwrite32, npu.blockwrite). Each emitted op gets the
+// per-op `sourceLoc` from AIERT's instruction-range bracketing if available;
+// otherwise it falls back to `fallbackLoc` (typically the device location).
 static LogicalResult
-emitTransactionOps(OpBuilder &builder,
+emitTransactionOps(OpBuilder &builder, Location fallbackLoc,
                    std::vector<TransactionBinaryOperation> &operations,
                    std::vector<memref::GlobalOp> &global_data) {
 
-  auto loc = builder.getUnknownLoc();
-
   // create the txn ops
   for (auto [op, payload] : llvm::zip(operations, global_data)) {
+    Location loc = op.sourceLoc.value_or(fallbackLoc);
 
     if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_WRITE) {
       AIEX::NpuWrite32Op::create(builder, loc, op.cmd.RegOff, op.cmd.Value,
@@ -529,17 +532,19 @@ emitTransactionOps(OpBuilder &builder,
 }
 
 // Translate vector of TransactionBinaryOperation to a sequence of control
-// packet ops.
+// packet ops. Each emitted op gets the per-op `sourceLoc` from AIERT's
+// instruction-range bracketing if available; otherwise it falls back to
+// `fallbackLoc`.
 static LogicalResult
-emitControlPacketOps(OpBuilder &builder,
+emitControlPacketOps(OpBuilder &builder, Location fallbackLoc,
                      std::vector<TransactionBinaryOperation> &operations,
                      std::vector<memref::GlobalOp> &global_data) {
 
-  auto loc = builder.getUnknownLoc();
   auto ctx = builder.getContext();
 
   // create the control packet ops
   for (auto [op, payload] : llvm::zip(operations, global_data)) {
+    Location loc = op.sourceLoc.value_or(fallbackLoc);
 
     if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_WRITE) {
       AIEX::NpuControlPacketOp::create(
@@ -636,20 +641,40 @@ static LogicalResult convertTransactionOpsToMLIR(
     std::vector<TransactionBinaryOperation> &operations,
     std::string blockwrite_prefix = "config_blockwrite_data_") {
 
-  auto loc = builder.getUnknownLoc();
-
   // for each blockwrite in the binary, create a GlobalOp with the data at the
   // device level
   std::vector<memref::GlobalOp> global_data;
+  Operation *parentOp = builder.getBlock()->getParentOp();
+  DeviceOp device = llvm::dyn_cast<DeviceOp>(parentOp);
+  if (!device) {
+    device = parentOp->getParentOfType<DeviceOp>();
+  }
+  if (!device) {
+    parentOp->emitError(
+        "expected insertion point to be nested under an aie.device op");
+    return failure();
+  }
+  Location loc = device.getLoc();
   {
-    DeviceOp device =
-        llvm::dyn_cast<DeviceOp>(builder.getBlock()->getParentOp());
-    if (!device) {
-      device = builder.getBlock()->getParentOp()->getParentOfType<DeviceOp>();
-    }
     OpBuilder::InsertionGuard guard(builder);
     builder.setInsertionPointToStart(device.getBody());
-    int id = 0;
+    // O(n^2)->O(n): collect the existing <blockwrite_prefix><n> indices once,
+    // then below pick names by advancing a monotonic counter past any taken
+    // index. This reproduces generateUniqueSymbolName's exact selection (a
+    // persistent counter from 0 that skips occupied slots and uses the first
+    // free one) without its per-blockwrite O(n) SymbolTable probe, which made
+    // this loop O(n^2) (AIEExpandLoadPdiPass calls it once per blockwrite — the
+    // dominant cost of large multi-column with-PDI builds).
+    llvm::DenseSet<unsigned> takenIds;
+    for (auto g : device.getOps<memref::GlobalOp>()) {
+      StringRef suffix = g.getSymName();
+      if (suffix.consume_front(blockwrite_prefix)) {
+        unsigned idx;
+        if (!suffix.getAsInteger(10, idx))
+          takenIds.insert(idx);
+      }
+    }
+    unsigned id = 0;
     for (auto &op : operations) {
       if (op.cmd.Opcode != XAIE_IO_BLOCKWRITE) {
         global_data.push_back(nullptr);
@@ -659,10 +684,11 @@ static LogicalResult convertTransactionOpsToMLIR(
       const uint32_t *d = reinterpret_cast<const uint32_t *>(op.cmd.DataPtr);
       std::vector<uint32_t> data32(d, d + size);
 
-      std::string name = blockwrite_prefix;
-      do {
-        name = blockwrite_prefix + std::to_string(id++);
-      } while (device.lookupSymbol(name));
+      // First free slot at/above the running counter (matches the old
+      // generateUniqueSymbolName probe); amortized O(1) across the loop.
+      while (takenIds.contains(id))
+        ++id;
+      std::string name = (blockwrite_prefix + llvm::Twine(id++)).str();
 
       MemRefType memrefType = MemRefType::get({size}, builder.getI32Type());
       TensorType tensorType =
@@ -676,10 +702,10 @@ static LogicalResult convertTransactionOpsToMLIR(
 
   // create the txn ops
   if (outputType == AIE::AIEToConfigurationOutputType::Transaction) {
-    if (failed(emitTransactionOps(builder, operations, global_data)))
+    if (failed(emitTransactionOps(builder, loc, operations, global_data)))
       return failure();
   } else if (outputType == AIE::AIEToConfigurationOutputType::ControlPacket) {
-    if (failed(emitControlPacketOps(builder, operations, global_data)))
+    if (failed(emitControlPacketOps(builder, loc, operations, global_data)))
       return failure();
     // resolve mask writes; control packet doesn't natively support mask write.
     if (failed(orConsecutiveWritesOnSameAddr(builder.getBlock())))
@@ -767,6 +793,25 @@ LogicalResult xilinx::AIE::generateAndInsertConfigOps(
     return failure();
   }
 
+  // Attach per-op source locations from AIERT's instruction-range bracketing.
+  // The aie-rt TxnList records one XAie_TxnCmd per serialized binary
+  // operation, so the indices align. Operations beyond the recorded range
+  // (or where no bracket fired) keep std::nullopt and inherit the device
+  // fallback location at emit time.
+  const std::vector<mlir::Location> &instrLocs = ctl.getTxnInstrLocs();
+  // Sharp edge: index alignment relies on the recorder's XAie_TxnCmd count
+  // (instrLocs) and the parser's op count (operations) covering the same set
+  // of opcodes. instrLocs may be shorter (trailing cmds with no bracket), but
+  // if it is *longer* the recorder saw a command the parser dropped and every
+  // index past that point is mislabeled -- fail loudly instead of silently.
+  assert(instrLocs.size() <= operations.size() &&
+         "txn loc/op count mismatch: aie-rt recorded more commands than the "
+         "transaction parser reproduced; opcode coverage has drifted");
+  for (size_t i = 0, e = operations.size(); i < e; ++i) {
+    if (i < instrLocs.size())
+      operations[i].sourceLoc = instrLocs[i];
+  }
+
   if (failed(convertTransactionOpsToMLIR(builder, outputType, operations,
                                          blockwrite_prefix))) {
     return failure();
@@ -784,7 +829,7 @@ convertAIEToConfiguration(AIE::DeviceOp device, StringRef clElfDir,
   // and collect them in a vector. If there are none, create a new runtime
   // sequence. Otherwise assume the insertion point is the first
   // aiex.configure op.
-  auto loc = builder.getUnknownLoc();
+  auto loc = device.getLoc();
   SmallVector<AIEX::ConfigureOp> configureOps;
   device.walk([&](AIEX::ConfigureOp op) { configureOps.push_back(op); });
 
@@ -795,7 +840,8 @@ convertAIEToConfiguration(AIE::DeviceOp device, StringRef clElfDir,
     while (device.lookupSymbol(seq_name))
       seq_name = "configure" + std::to_string(id++);
     StringAttr seq_sym_name = builder.getStringAttr(seq_name);
-    auto seq = AIE::RuntimeSequenceOp::create(builder, loc, seq_sym_name);
+    auto seq =
+        AIE::RuntimeSequenceOp::create(builder, loc, seq_sym_name, BoolAttr{});
     seq.getBody().push_back(new Block);
     builder.setInsertionPointToStart(&seq.getBody().front());
   } else {

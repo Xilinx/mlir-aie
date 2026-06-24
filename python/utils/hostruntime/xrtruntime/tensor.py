@@ -4,10 +4,10 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025-2026 Advanced Micro Devices, Inc.
+# Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 
 import numpy as np
-import pyxrt as xrt
+import pyxrt as xrt  # pyright: ignore[reportMissingImports]
 
 from ..tensor_class import Tensor
 from aie.helpers.util import np_ndarray_type_get_shape
@@ -48,6 +48,7 @@ class XRTTensor(Tensor):
         super().__init__(shape_or_data, dtype=dtype, device=device)
         self.xrt_device = xrt_device if xrt_device is not None else xrt.device(0)
 
+        np_data = None
         # Extract the shape
         if isinstance(shape_or_data, tuple):
             # If this is a shape, check for it "ShapeLike"-ness using numpy ndarray types.
@@ -60,6 +61,9 @@ class XRTTensor(Tensor):
         else:
             # TODO(efficiency): Extra data copy here (when necessary)
             # so we can borrow verification of array-like things from numpy.
+            # `np.asarray` is the NumPy-2.x-safe form of the old
+            # `np.array(..., copy=False)`: avoid copy when possible, copy
+            # when necessary, identical semantics on both 1.x and 2.x.
             np_data = np.asarray(shape_or_data, dtype=dtype)
             self._shape = np_data.shape
 
@@ -78,6 +82,7 @@ class XRTTensor(Tensor):
         self._data = np.frombuffer(ptr, dtype=self.dtype).reshape(self._shape)
 
         if not isinstance(shape_or_data, tuple):
+            assert np_data is not None
             np.copyto(self._data, np_data)
         else:
             self._data.fill(0)
@@ -109,12 +114,14 @@ class XRTTensor(Tensor):
         """
         Syncs the tensor data from the host to the device memory.
         """
+        assert self._bo is not None
         return self._bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
 
     def _sync_from_device(self):
         """
         Syncs the tensor data from the device to the host memory.
         """
+        assert self._bo is not None
         return self._bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
 
     def __del__(self):

@@ -4,7 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2021 Xilinx Inc.
+// Copyright (C) 2021-2022 Xilinx, Inc.
+// Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -58,6 +59,11 @@ std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
 createAIEExpandLoadPdiPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEXInlineTraceConfigPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIELowerScratchpadParametersPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIELowerScratchpadParametersPass(
+    AIELowerScratchpadParametersOptions options);
 
 /// Generate the code for registering passes.
 #define GEN_PASS_REGISTRATION

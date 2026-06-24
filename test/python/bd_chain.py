@@ -1,4 +1,4 @@
-# Copyright (C) 2024, Advanced Micro Devices, Inc.
+# Copyright (C) 2024 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # RUN: %python %s | FileCheck %s
@@ -6,7 +6,6 @@ import numpy as np
 from aie.extras.context import mlir_mod_ctx
 from aie.dialects.aie import *
 from aie.dialects.aiex import *
-
 
 with mlir_mod_ctx() as ctx:
 

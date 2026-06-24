@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2025, Advanced Micro Devices, Inc.
+// Copyright (C) 2025 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 // Pass to lower aie.trace to aie.trace.config
@@ -317,12 +317,17 @@ struct AIETraceToConfigPass
               /*mask=*/nullptr, builder.getStringAttr("trace mode"));
         }
 
-        // Emit packet config if present
+        // Emit packet config if present. -aie-insert-trace-flows runs
+        // before this pass and materializes the id, so getId() is set
+        // here.
         if (auto packetOp = dyn_cast<TracePacketOp>(op)) {
+          assert(packetOp.getId().has_value() &&
+                 "TracePacketOp id should be assigned by "
+                 "-aie-insert-trace-flows");
           configBuilder.create<TraceRegOp>(
               trace.getLoc(), builder.getStringAttr("Trace_Control1"),
               builder.getStringAttr("ID"),
-              builder.getI32IntegerAttr(packetOp.getId()),
+              builder.getI32IntegerAttr(*packetOp.getId()),
               /*mask=*/nullptr, builder.getStringAttr("packet ID"));
 
           configBuilder.create<TraceRegOp>(

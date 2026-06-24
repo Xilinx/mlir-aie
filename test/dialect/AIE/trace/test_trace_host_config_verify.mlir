@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2026 Advanced Micro Devices, Inc.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -48,6 +48,18 @@ module @invalid_buffer_size_negative {
     aie.runtime_sequence(%arg0: memref<16xi32>) {
       // expected-error@+1 {{'aie.trace.host_config' op buffer_size must be positive}}
       aie.trace.host_config buffer_size = -1 arg_idx = -1
+    }
+  }
+}
+
+// -----
+
+// Test: egress_shim_col cannot be negative.
+module @invalid_egress_shim_col_negative {
+  aie.device(npu1_1col) {
+    aie.runtime_sequence(%arg0: memref<16xi32>) {
+      // expected-error@+1 {{'aie.trace.host_config' op egress_shim_col must be >= 0}}
+      aie.trace.host_config buffer_size = 8192 egress_shim_col = -1
     }
   }
 }

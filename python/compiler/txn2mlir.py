@@ -4,9 +4,9 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024-2025, Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2024-2025 Advanced Micro Devices, Inc.
 
-from aie.compiler.txn2mlir.main import main
+from aie.compiler.txn2mlir.main import main  # pyright: ignore[reportMissingImports]
 
 if __name__ == "__main__":
     main()

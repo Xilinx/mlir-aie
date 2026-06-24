@@ -4,18 +4,19 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc.
+# Copyright (C) 2024 Advanced Micro Devices, Inc.
 
 import logging
 
 logger = logging.getLogger(__name__)
 
-from ..extras.context import mlir_mod_ctx  # type: ignore
+from ..extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
 from ..helpers.dialects.func import FuncBase
 from ..dialects.aie import device
 
 from .device import Device
 from .runtime import Runtime
+from .scratchpad_parameter import ScratchpadParameter
 from .resolvable import Resolvable
 from ..utils import trace as trace_utils
 
@@ -52,7 +53,17 @@ class Program:
             # This preserves the device configuration while ensuring clean state
             device_type = type(self._device)
             # For dynamically created device classes, the constructor takes no arguments
-            self._device = device_type()
+            self._device = device_type()  # pyright: ignore[reportCallIssue]
+
+            # Resolve parameters at module scope (before the aie.device).
+            # aiex.scratchpad_parameter ops are global across all devices because the
+            # scratchpad is a single hardware resource shared by all PDIs.
+            for w in self._rt.workers:
+                for arg in w.fn_args:
+                    if isinstance(arg, ScratchpadParameter):
+                        arg.resolve()
+            for p in self._rt._scratchpad_parameters:
+                p.resolve()
 
             @device(self._device.resolve(), sym_name=device_name)
             def device_body():
@@ -77,8 +88,26 @@ class Program:
                             )
                         worker_tile_coords.add(coord)
                     all_tiles.append(w.tile)
+                    # Generic: any user-side Resolvable in fn_args may declare
+                    # additional tile dependencies via tiles(). Default is [].
+                    for arg in w.fn_args:
+                        if isinstance(arg, Resolvable):
+                            all_tiles.extend(arg.tiles())
                 for f in all_fifos:
                     all_tiles.extend([e.tile for e in f.all_of_endpoints()])
+                    # Shared-memory delegate tile (ObjectFifo.delegate_tile kwarg)
+                    # may not appear in any prod/cons endpoint, so pick it up
+                    # explicitly so resolve_tile() runs on it before fifo resolution.
+                    if f._object_fifo._delegate_tile is not None:
+                        all_tiles.append(f._object_fifo._delegate_tile)
+                # Lower-level: explicit Flow / TileDma / Lock primitives
+                # contribute tiles too.
+                for fl in self._rt.flows:
+                    all_tiles.extend(fl.all_tiles())
+                for td in self._rt.tile_dmas:
+                    all_tiles.extend(td.all_tiles())
+                for lk in self._rt.locks:
+                    all_tiles.append(lk.tile)
 
                 # Resolve tiles
                 for t in all_tiles:
@@ -87,6 +116,25 @@ class Program:
                 # Generate fifos
                 for f in all_fifos:
                     f.resolve()
+
+                # Generate explicit Flows (peers of ObjectFifo)
+                for fl in self._rt.flows:
+                    fl.resolve()
+
+                # Generate explicit Locks (must come before TileDma + Worker
+                # bodies that reference them; Buffers attached to worker
+                # fn_args are still resolved in the worker loop below).
+                for lk in self._rt.locks:
+                    lk.resolve()
+
+                # Resolve any Buffers referenced by explicit TileDma programs
+                # (those aren't reached via worker.fn_args).
+                for td in self._rt.tile_dmas:
+                    bufs, _ = td.all_buffers_and_locks()
+                    for b in bufs:
+                        if b.tile is None:
+                            b._tile = td.tile
+                        b.resolve()
 
                 # generate functions - this may call resolve() more than once on the same fifo, but that's ok
                 for w in self._rt.workers:
@@ -99,6 +147,17 @@ class Program:
                 # Generate core programs
                 for w in self._rt.workers:
                     w.resolve()
+
+                # Emit aie.cascade_flow ops for each Worker's outgoing edges.
+                # Must run after worker.resolve() so both tiles are placed.
+                for w in self._rt.workers:
+                    for cf in w._outgoing_cascades:
+                        cf.resolve()
+
+                # Generate explicit per-tile DMA programs (lower-level peers
+                # of ObjectFifo, paired with Flow + Lock).
+                for td in self._rt.tile_dmas:
+                    td.resolve()
 
                 # Generate trace routes
                 # TODO Need to iterate over all tiles or workers & fifos to make list of tiles to trace
@@ -132,4 +191,4 @@ class Program:
     def _print_verify(self, ctx):
         verify = ctx.module.operation.verify()
         if verify != True:
-            logger.error(str(verify))
+            raise RuntimeError(f"MLIR module failed verification: {verify}")

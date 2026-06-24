@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2025, Advanced Micro Devices, Inc.
+// Copyright (C) 2025 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 // Defines operations for AIE trace configuration
@@ -140,19 +140,27 @@ def AIE_TracePacketOp : AIE_Op<"trace.packet", [
     Enables packet routing for trace data. Assigns packet ID (1-31) and
     packet type to differentiate tile sources during parsing.
 
+    The id may be omitted to request auto-assignment by
+    -aie-insert-trace-flows, which assigns ids in (col, row) order over
+    the active trace tile set. Omitting id keeps the trace overlay's
+    routing-rule layout independent of the order trace ops were emitted
+    in the IR (e.g. by the IRON placer's worker-to-tile mapping).
+
     Example:
     ```mlir
     aie.trace.packet id=1 type=core
+    aie.trace.packet type=core         // id auto-assigned
     ```
   }];
 
   let arguments = (ins
-    ConfinedAttr<AIEI32Attr, [IntMinValue<1>, IntMaxValue<31>]>:$id,
+    OptionalAttr<ConfinedAttr<AIEI32Attr,
+                              [IntMinValue<1>, IntMaxValue<31>]>>:$id,
     TracePacketTypeAttr:$type
   );
 
   let assemblyFormat = [{
-    `id` `=` $id `type` `=` $type attr-dict
+    (`id` `=` $id^)? `type` `=` $type attr-dict
   }];
 
   let hasVerifier = 1;
@@ -479,12 +487,14 @@ def AIE_TraceHostConfigOp : AIE_Op<"trace.host_config", [
     - arg_idx (default=4): XRT argument index for trace buffer. Set to -1 to
       append trace data after the last tensor argument in the runtime_sequence.
     - routing (default=single): Shim routing strategy. Currently only 'single'
-      is supported, which routes all traces to column 0's shim.
+      is supported, which routes all traces to a single shim tile.
+    - egress_shim_col (default=0): Column index of the shim tile that receives
+      the trace packet flows.
 
     Example:
     ```mlir
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size=65536
+      aie.trace.host_config buffer_size=65536 egress_shim_col=4
       aie.trace.start_config @trace1
     }
     ```
@@ -493,7 +503,8 @@ def AIE_TraceHostConfigOp : AIE_Op<"trace.host_config", [
   let arguments = (ins
     AIEI32Attr:$buffer_size,
     DefaultValuedAttr<AIEI32Attr, "4">:$arg_idx,
-    DefaultValuedAttr<TraceShimRoutingAttr, "TraceShimRouting::Single">:$routing
+    DefaultValuedAttr<TraceShimRoutingAttr, "TraceShimRouting::Single">:$routing,
+    DefaultValuedAttr<AIEI32Attr, "0">:$egress_shim_col
   );
 
   let hasCustomAssemblyFormat = 1;

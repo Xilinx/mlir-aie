@@ -1,0 +1,11 @@
+// (c) Copyright 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Regression: NPU2=1 must propagate from lit into test subprocesses on Strix
+// so Makefile-driven examples whose devicename defaults to
+// `$(if $(filter 1,$(NPU2)),npu2,npu)` pick the AIE2P target.
+//
+// REQUIRES: ryzen_ai_npu2
+//
+// RUN: %python -c "import os; print('NPU2=' + os.environ.get('NPU2','<unset>'))" | FileCheck %s
+// CHECK: NPU2=1

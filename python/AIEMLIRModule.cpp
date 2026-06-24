@@ -1,6 +1,6 @@
 //===- AIEMLIRModule.cpp ----------------------------------------*- C++ -*-===//
 //
-// Copyright (C) 2022, Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (C) 2022 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
@@ -357,6 +357,10 @@ NB_MODULE(_aie, m) {
       .def("is_npu",
            [](PyAieTargetModel &self) {
              return aieTargetModelIsNPU(self.get());
+           })
+      .def("get_target_arch",
+           [](PyAieTargetModel &self) {
+             return aieTargetModelGetTargetArch(self.get());
            })
       .def("get_column_shift",
            [](PyAieTargetModel &self) {

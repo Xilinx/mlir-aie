@@ -1,3 +1,5 @@
+<!-- Copyright (C) 2019-2024 Advanced Micro Devices, Inc. -->
+<!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 # IRON API and MLIR-based AI Engine Toolchain
 
 This project emphasizes fast, open-source toolchains for NPU devices including LLVM-based code generation. IRON contains a close-to-metal toolkit that empowers performance engineers to create fast and efficient designs for Ryzen™ AI NPUs powered by AI Engines. It provides Python APIs that enable developers to harness the unique architectural capabilities of AMD’s NPUs. However, this project is not intended to represent an end-to-end compilation flow for all application designs---it is designed to complement, not replace, mainstream NPU tooling for inference like the [AMD Ryzen™ AI Software Platform](https://github.com/amd/RyzenAI-SW/). Targeting researchers and enthusiasts, IRON is designed to unlock the full potential of NPUs for a wide range of workloads, from machine learning to digital signal processing and beyond. This repository includes programming guides and examples demonstrating the APIs. Additionally, the [Peano](https://github.com/Xilinx/llvm-aie) component extends the LLVM framework by adding support for the AI Engine processor as a target architecture, enabling integration with popular compiler frontends such as `clang`. Developers can leverage the [AIE API header library](https://xilinx.github.io/aie_api/topics.html) to implement efficient vectorized AIE core code in C++ that can be compiled by Peano.
@@ -71,9 +73,9 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 1. Install the following packages needed for MLIR-AIE:
 
     ```bash
-    # Python versions 3.10, 3.12 and 3.13 are currently supported by our wheels
+    # Python versions 3.11, 3.12, 3.13, and 3.14 are currently supported by our wheels
     sudo apt install \
-    build-essential clang clang-14 lld lld-14 cmake ninja-build python3-venv python3-pip
+    build-essential clang clang-14 lld lld-14 cmake ninja-build python3-venv python3-pip uuid-dev
     ```
 
     > **Note:** CMake **3.30 or newer** is required. If your distribution provides an older
@@ -108,14 +110,14 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 1. Install IRON library by installing the `mlir-aie` wheels:
 
    For installing the `mlir-aie` wheels, there are 3 options. Note that for whichever path you take,
-   it is important to sync the `mlir-aie` wheels version, the github repo commit, and the requirements versions. 
-   If you install from something other than the latest wheels, make sure 
+   it is important to sync the `mlir-aie` wheels version, the github repo commit, and the requirements versions.
+   If you install from something other than the latest wheels, make sure
    you use the repo commit -- and installation instructions -- from that point in time.
 
    1. **Latest:** For the latest wheels (not necessarily a release):
       ```bash
       # Install IRON library and mlir-aie from the latest wheel
-      python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-3
+      python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-4
       ```
 
    1. **Latest Release:** Alternatively, you can install the latest released version of `mlir-aie`.
@@ -150,7 +152,8 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    # Install Python requirements for development and testing
    python3 -m pip install -r python/requirements_dev.txt
 
-   # This installs the pre-commit hooks defined in .pre-commit-config.yaml
+   # Install the pre-commit and pre-push hooks defined in .pre-commit-config.yaml
+   # (pre-push runs clang-format/black to catch formatting issues before CI)
    pre-commit install
    ```
 
@@ -202,7 +205,7 @@ For your design of interest, for instance from [programming_examples](../program
 
 ## Learn more about NPU programming with IRON
 
-1. Continue to the [IRON AIE Application Programming Guide](programming_guide)
+1. Continue to the [IRON AIE Application Programming Guide](../programming_guide)
 
 1. Additional MLIR-AIE documentation is available on the [website](https://xilinx.github.io/mlir-aie/)
 
@@ -268,7 +271,7 @@ Be sure you have the latest BIOS for your laptop or mini PC, this will ensure th
 
 [MLIR Dialect and Compiler Documentation](https://xilinx.github.io/mlir-aie/)
 
-Interested in contributing MLIR-AIE? [Information for developers](./CONTRIBUTING.md)
+Interested in contributing MLIR-AIE? [Information for developers](../CONTRIBUTING.md)
 
 -----
 
@@ -276,17 +279,17 @@ Interested in contributing MLIR-AIE? [Information for developers](./CONTRIBUTING
 
 ![](dialects.png)
 
-Generated Code Documentation
-- [AIE Dialect](AIEDialect.md) - [AIE Passes](AIEPasses.md)
-- [AIEX Experimental Dialect](AIEXDialect.md) - [AIEX Experimental Passes](AIEXPasses.md)
-- [AIEVec Dialect](AIEVecDialect.md) - [AIEVec Passes](AIEVecPasses.md)
-- [ADF Dialect](ADFDialect.md) - [ADF Passes](ADFPasses.md)
+Generated Code Documentation (rendered on the website):
+- [AIE Dialect](https://xilinx.github.io/mlir-aie/AIEDialect.html) - [AIE Passes](https://xilinx.github.io/mlir-aie/AIEPasses.html)
+- [AIEX Experimental Dialect](https://xilinx.github.io/mlir-aie/AIEXDialect.html) - [AIEX Experimental Passes](https://xilinx.github.io/mlir-aie/AIEXPasses.html)
+- [AIEVec Dialect](https://xilinx.github.io/mlir-aie/AIEVecDialect.html) - [AIEVec Passes](https://xilinx.github.io/mlir-aie/AIEVecPasses.html)
+- [ADF Dialect](https://xilinx.github.io/mlir-aie/ADFDialect.html) - [ADF Passes](https://xilinx.github.io/mlir-aie/ADFPasses.html)
 
 MLIR Tutorials
 - [Step-by-step Tutorial](../mlir_exercises/README.md)
-- [AIE Design Patterns](AIEDesignPatterns)
-- [AIE Routing](AIERouting)
-- [AIE Vectorization of Scalar Code](AIEVectorization)
+- [AIE Design Patterns](AIEDesignPatterns.md)
+- [AIE Routing](AIERouting.md)
+- [AIE Vectorization of Scalar Code](AIEVectorization.md)
 
 -----
 

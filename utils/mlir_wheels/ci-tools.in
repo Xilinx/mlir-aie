@@ -1,0 +1,12 @@
+# Auxiliary CI-only tools used by mlirDistro.yml.
+# delvewheel: Windows wheel repair. Pure-Python universal wheel — installs
+# harmlessly on Linux too.
+# pkginfo: read wheel metadata when computing version tags.
+#
+# Source for utils/mlir_wheels/ci-tools.lock. After editing this file,
+# regenerate the .lock with:
+#   utils/regenerate_lockfiles.sh
+delvewheel
+pkginfo
+twine
+wheel
