@@ -65,7 +65,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner_type: [ amd7940hs, amdhx370 ]
+        runner_type: [ amdryzenai5pro340 ]
     env:
       NPU_CACHE_HOME: ${{ github.workspace }}/iron-cache-${{ matrix.runner_type }}-${{ github.run_id }}
       PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-${{ matrix.runner_type }}-${{ github.run_id }}
