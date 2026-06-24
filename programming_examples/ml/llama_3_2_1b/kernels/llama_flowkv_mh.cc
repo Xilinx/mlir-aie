@@ -127,6 +127,8 @@ extern "C" void llama_flowkv_mh_kvc(int8_t *restrict q_chunk,
                   v_region + kSlotBytes, out_chunk, T_used);
 }
 
+constexpr int kFlowkvPerHead = kTUsedPrefix + 2 * (kT * 4 + kT * kHD);
+
 extern "C" void llama_flowkv_mh(int8_t *restrict q_chunk,
                                 float *restrict k_slot, int8_t *restrict k_body,
                                 float *restrict v_slot, int8_t *restrict v_body,
@@ -307,4 +309,16 @@ extern "C" void llama_flowkv_mh_kvc_selfcal(int8_t *restrict q_chunk,
                           k_region + kSlotBytes,
                           reinterpret_cast<float *>(v_region),
                           v_region + kSlotBytes, out_chunk, T_used);
+}
+
+// Resident selfcal variant: attend over the layer-th per-head cache in a
+// worker-local buffer holding N_LAYERS caches (kv_base + layer*kFlowkvPerHead).
+// Same attention as llama_flowkv_mh_kvc_selfcal; only the cache pointer is
+// offset by layer (the KV body is resident on the attn tile, never DMA'd).
+extern "C" void llama_flowkv_mh_kvc_selfcal_resident(int8_t *restrict q_chunk,
+                                                     int8_t *restrict kv_base,
+                                                     int8_t *restrict out_chunk,
+                                                     int32_t layer) {
+  llama_flowkv_mh_kvc_selfcal(q_chunk, kv_base + layer * kFlowkvPerHead,
+                              out_chunk);
 }

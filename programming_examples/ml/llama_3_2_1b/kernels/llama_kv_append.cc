@@ -97,6 +97,34 @@ void llama_kv_append_combined_grow(int8_t *restrict combined,
   llama_kv_append_head_grow(combined + kQChunkBytes, kv_in, kv_out);
 }
 
+// Resident growing-cache variants: the KV cache lives in a worker-local buffer
+// holding N_LAYERS per-head caches (kv_base + layer*kPerHead), read-modify-
+// written IN PLACE across the persistent loop -- NO per-token KV DMA. kPerHead
+// is the per-head cache size (matches PER_KV_HEAD_BYTES on the host).
+//   _seed: token 0, copies the host pristine cache -> resident slot, then
+//          appends + advances T_used (grow contract). One DMA/head/layer.
+//   (no _seed): tokens 1..PT-1, in-place (kv_in == kv_out == resident slot);
+//          the self-copy is a harmless no-op, then append + advance.
+// kResPerHead = per-head resident cache size (== PER_KV_HEAD_BYTES on the host).
+static constexpr int kResPerHead = kPrefix + 2 * (kScaleBytes + kBodyBytes);
+void llama_kv_append_combined_resident_seed(int8_t *restrict combined,
+                                            int8_t *restrict kv_in_host,
+                                            int8_t *restrict kv_base,
+                                            int32_t layer) {
+  constexpr int kREP = 4;
+  constexpr int kQChunkBytes = kREP * kHD + kREP * 8; // 288
+  llama_kv_append_head_grow(combined + kQChunkBytes, kv_in_host,
+                            kv_base + layer * kResPerHead);
+}
+void llama_kv_append_combined_resident(int8_t *restrict combined,
+                                       int8_t *restrict kv_base,
+                                       int32_t layer) {
+  constexpr int kREP = 4;
+  constexpr int kQChunkBytes = kREP * kHD + kREP * 8; // 288
+  int8_t *slot = kv_base + layer * kResPerHead;
+  llama_kv_append_head_grow(combined + kQChunkBytes, slot, slot);
+}
+
 // One KV head. kvfp_packed is ONE input fifo packing [k_fp fp32[HEAD_DIM] |
 // v_fp fp32[HEAD_DIM] | cs bf16[2*HEAD_DIM]] -- packed to stay within the
 // 2-in/2-out compute-tile DMA budget (k_fp + v_fp + cs as 3 separate inputs

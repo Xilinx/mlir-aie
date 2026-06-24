@@ -53,6 +53,14 @@ PERSIST = _os.environ.get("LLAMA_CHAIN_PERSIST", "0") == "1" and ONESTREAM
 # When off (increment 1), KV is held at a fixed position (host re-streams pristine
 # KV each token). Requires PERSIST.
 PERSIST_GROW = _os.environ.get("LLAMA_CHAIN_PERSIST_GROW", "0") == "1" and PERSIST
+# Resident KV (increment toward 100% NPU): the KV cache BODY lives in worker-local
+# buffers on each attn tile (N_LAYERS caches per head), seeded once from the host
+# on token 0 then read-modify-written IN PLACE -- zero KV DMA after the seed (host
+# streams ONLY weights). Requires PERSIST_GROW. Scoped to small N_LAYERS that fit
+# the compute tile (N=2 -> 32KB/head); N=16 (256KB/head) is a memtile follow-up.
+PERSIST_RESIDENT = (
+    _os.environ.get("LLAMA_CHAIN_PERSIST_RESIDENT", "0") == "1" and PERSIST_GROW
+)
 # Tokens per dispatch. PT==1 (default off) makes every PERSIST-aware loop a no-op,
 # so the non-persist paths stay byte-identical.
 PT = int(_os.environ.get("LLAMA_CHAIN_PT", "4")) if PERSIST else 1
@@ -285,10 +293,10 @@ def build():
     # (Phase B residual_dyn): xin seed + layer out are both int8[D+8].
     rt_xin_ty = _i8(D + 8)
     rt_w_ty = _i8(WEIGHTS_BYTES)
-    # PERSIST holds KV at a fixed position: the host buffer is [pristine | scratch]
-    # (2x); fills always read the pristine half, drains write the scratch half, so
-    # every token sees identical starting KV (increment 1). Non-persist: 1x.
-    rt_kv_ty = _i8(2 * KV_BYTES if PERSIST else KV_BYTES)
+    # PERSIST_RESIDENT: KV lives on-chip (b_kv); the host supplies only the 1x
+    # pristine seed (filled once on token 0). PERSIST (host-ferried) uses a 2x
+    # [pristine | scratch] (fixed-pos) or ping-pong (grow) buffer. Non-persist: 1x.
+    rt_kv_ty = _i8(2 * KV_BYTES if (PERSIST and not PERSIST_RESIDENT) else KV_BYTES)
     rt_out_ty = _i8(D + 8)
 
     # M3b: lmw blob = [final_norm gamma bf16(D) = 2*D bytes | lm_head weight
@@ -446,19 +454,33 @@ def build():
     of_kvs = list(kv_lo_eps) + list(kv_hi_eps)
 
     # Device-owned cache drain: 8 updated head caches join into 2 halves.
-    of_kvout_lo = ObjectFifo(t_KV_HALF_i8, depth=1, name="kvout_lo")
-    of_kvout_hi = ObjectFifo(t_KV_HALF_i8, depth=1, name="kvout_hi")
-    kvout_lo_eps = of_kvout_lo.prod().join(
-        offsets=[i * PER_KV_HEAD_BYTES for i in range(N_HEADS_KV // 2)],
-        obj_types=[t_KV_i8] * (N_HEADS_KV // 2),
-        names=[f"kvout_{i}" for i in range(N_HEADS_KV // 2)],
-    )
-    kvout_hi_eps = of_kvout_hi.prod().join(
-        offsets=[i * PER_KV_HEAD_BYTES for i in range(N_HEADS_KV // 2)],
-        obj_types=[t_KV_i8] * (N_HEADS_KV // 2),
-        names=[f"kvout_{N_HEADS_KV // 2 + i}" for i in range(N_HEADS_KV // 2)],
-    )
-    kvout_eps = list(kvout_lo_eps) + list(kvout_hi_eps)
+    # PERSIST_RESIDENT keeps the cache on-chip (worker-local b_kv) -> no drain.
+    if not PERSIST_RESIDENT:
+        of_kvout_lo = ObjectFifo(t_KV_HALF_i8, depth=1, name="kvout_lo")
+        of_kvout_hi = ObjectFifo(t_KV_HALF_i8, depth=1, name="kvout_hi")
+        kvout_lo_eps = of_kvout_lo.prod().join(
+            offsets=[i * PER_KV_HEAD_BYTES for i in range(N_HEADS_KV // 2)],
+            obj_types=[t_KV_i8] * (N_HEADS_KV // 2),
+            names=[f"kvout_{i}" for i in range(N_HEADS_KV // 2)],
+        )
+        kvout_hi_eps = of_kvout_hi.prod().join(
+            offsets=[i * PER_KV_HEAD_BYTES for i in range(N_HEADS_KV // 2)],
+            obj_types=[t_KV_i8] * (N_HEADS_KV // 2),
+            names=[f"kvout_{N_HEADS_KV // 2 + i}" for i in range(N_HEADS_KV // 2)],
+        )
+        kvout_eps = list(kvout_lo_eps) + list(kvout_hi_eps)
+
+    if PERSIST_RESIDENT:
+        # Per-attn-head resident KV: N_LAYERS caches each, held on the attn tile
+        # across the whole dispatch (read-modify-write in place). 0-DMA Buffers.
+        b_kv = [
+            Buffer(
+                _i8(N_LAYERS * PER_KV_HEAD_BYTES),
+                initial_value=np.zeros(N_LAYERS * PER_KV_HEAD_BYTES, np.int8),
+                name=f"kv_resident_{i}",
+            )
+            for i in range(N_HEADS_KV)
+        ]
 
     of_svconcat_lo = ObjectFifo(t_SVCONCAT_HALF_i8, depth=1, name="sv_concat_lo")
     of_svconcat_hi = ObjectFifo(t_SVCONCAT_HALF_i8, depth=1, name="sv_concat_hi")
@@ -619,6 +641,22 @@ def build():
         "llama_kv_append_combined_grow" if PERSIST_GROW else "llama_kv_append_combined"
     )
     k_append = Kernel(_append_sym, KO_KVA, [t_COMB_i8, t_KV_i8, t_KV_i8])
+    if PERSIST_RESIDENT:
+        # Resident KV: per-head cache buffer holds N_LAYERS caches; the layer
+        # index selects the slot. seed (token 0): host cache -> resident slot +
+        # append. resident (tokens 1..): in-place append. flowkv: attend the
+        # layer's resident slot.
+        t_KVRES_i8 = _i8(N_LAYERS * PER_KV_HEAD_BYTES)
+        k_append_seed = Kernel(
+            "llama_kv_append_combined_resident_seed",
+            KO_KVA,
+            [t_COMB_i8, t_KV_i8, t_KVRES_i8, np.int32],
+        )
+        k_append_res = Kernel(
+            "llama_kv_append_combined_resident",
+            KO_KVA,
+            [t_COMB_i8, t_KVRES_i8, np.int32],
+        )
     # sv_merge_selfcal: de-interleave [body|sv_out_scale] chunks (1c).
     k_svmerge = Kernel(
         "llama_sv_merge_selfcal",
@@ -633,6 +671,12 @@ def build():
     k_fkv = Kernel(
         "llama_flowkv_mh_kvc_selfcal", KO_FKV, [t_COMB_i8, t_KV_i8, t_SVCHUNK_i8]
     )
+    if PERSIST_RESIDENT:
+        k_fkv_res = Kernel(
+            "llama_flowkv_mh_kvc_selfcal_resident",
+            KO_FKV,
+            [t_COMB_i8, t_KVRES_i8, t_SVCHUNK_i8, np.int32],
+        )
     # silu self-cal (1a): writes silu_out_scale to sf tail.
     k_silu = Kernel("llama_silu_mul_int8_selfcal", KO_SILU, [t_HD_i8, t_UF_i8, t_UF_i8])
     # rescale-add: (residual int8[D+8], proj fp32[D]) -> residual int8[D+8].
@@ -825,6 +869,31 @@ def build():
             c_kvout.release(1)
             c_sv.release(1)
 
+    # Resident-KV attn: this head's N_LAYERS caches live in b_kv (worker-local,
+    # never DMA'd). token 0 seeds each layer's cache from the host (c_kvin, one
+    # fill/layer) + appends; tokens 1..PT-1 append IN PLACE (no c_kvin). flowkv
+    # attends the layer's resident slot. No kvout (cache never leaves the tile).
+    def w_attn_resident(c_comb, c_kvin, c_sv, b_kv, k_seed, k_app_r, k_fk_r):
+        # token 0: seed + attend, per layer.
+        for L in range_(N_LAYERS):
+            comb = c_comb.acquire(1)
+            kvin = c_kvin.acquire(1)
+            sv = c_sv.acquire(1)
+            k_seed(comb, kvin, b_kv, _i32(L))
+            k_fk_r(comb, b_kv, sv, _i32(L))
+            c_comb.release(1)
+            c_kvin.release(1)
+            c_sv.release(1)
+        # tokens 1..PT-1: in-place append + attend, per layer (no host KV).
+        for _ in range_(PT - 1):
+            for L in range_(N_LAYERS):
+                comb = c_comb.acquire(1)
+                sv = c_sv.acquire(1)
+                k_app_r(comb, b_kv, _i32(L))
+                k_fk_r(comb, b_kv, sv, _i32(L))
+                c_comb.release(1)
+                c_sv.release(1)
+
     def w_silu(c_g, c_u, c_out, k):
         for _ in range_(CHAIN_ITERS):
             g = c_g.acquire(1)
@@ -968,6 +1037,9 @@ def build():
 
     PSK = 8192
     ATSK = 16384
+    # Resident-KV attn tiles hold the 2x17416 b_kv + 17416 seed-fill buffer, so
+    # the stack must be small (flowkv ~1KB scratch). Tunable if placement fails.
+    RESIDENT_ATSK = int(_os.environ.get("LLAMA_RESIDENT_ATSK", "8192"))
     # FFN-side stack: of_sf grows to HD+8 (silu self-cal) -> Bug-12 stack/fifo
     # alias at 8192 on the FFN tiles; 4096 clears it (see single-layer 1a).
     FFNSK = int(_os.environ.get("LLAMA_FFNSK", "4096"))
@@ -1021,23 +1093,49 @@ def build():
             ],
             tile=Tile(0, 5),
         ),
-        # 8 co-located append+flowkv workers (cols 1, 2 -- rows 2-5)
-        *[
-            Worker(
-                w_attn,
-                [
-                    comb_eps[i].cons(),
-                    of_kvs[i].cons(),
-                    kvout_eps[i].prod(),
-                    svchunk_eps[i].prod(),
-                    k_append,
-                    k_fkv,
-                ],
-                tile=Tile(1 + i // 4, 2 + i % 4),
-                stack_size=ATSK,
-            )
-            for i in range(N_HEADS_KV)
-        ],
+        # 8 co-located append+flowkv workers (cols 1, 2 -- rows 2-5).
+        # PERSIST_RESIDENT: KV cache resident in b_kv[i] (no kvout); host fills
+        # of_kvs only on token 0 (seed). Otherwise: host-ferried kvin/kvout.
+        *(
+            [
+                Worker(
+                    w_attn_resident,
+                    [
+                        comb_eps[i].cons(),
+                        of_kvs[i].cons(),
+                        svchunk_eps[i].prod(),
+                        b_kv[i],
+                        k_append_seed,
+                        k_append_res,
+                        k_fkv_res,
+                    ],
+                    tile=Tile(1 + i // 4, 2 + i % 4),
+                    # Resident KV: the 2x17416 b_kv buffer + the 17416 seed-fill
+                    # cons buffer dominate the 64 KB tile, so the stack must be
+                    # small (flowkv needs ~1 KB: scores[T]+qvals[T]; append
+                    # k_rope[HD]). 8192 keeps total ~62 KB; ATSK (16384) overflows.
+                    stack_size=RESIDENT_ATSK,
+                )
+                for i in range(N_HEADS_KV)
+            ]
+            if PERSIST_RESIDENT
+            else [
+                Worker(
+                    w_attn,
+                    [
+                        comb_eps[i].cons(),
+                        of_kvs[i].cons(),
+                        kvout_eps[i].prod(),
+                        svchunk_eps[i].prod(),
+                        k_append,
+                        k_fkv,
+                    ],
+                    tile=Tile(1 + i // 4, 2 + i % 4),
+                    stack_size=ATSK,
+                )
+                for i in range(N_HEADS_KV)
+            ]
+        ),
         # Attention back
         Worker(
             w_svmerge,
@@ -1425,11 +1523,17 @@ def build():
         # t%2, drains region (t+1)%2; token 0 fills region 0 (host pristine, with
         # T_used=P). The growing-append advances T_used on-chip each token, so the
         # carried cache accumulates context. kv_*_base computed per token below.
-        kv_total = (2 * KV_BYTES) if PERSIST else KV_BYTES
-        kvout_specs = [
-            (of_kvout_lo.cons(), 0),
-            (of_kvout_hi.cons(), KV_HALF_BYTES),
-        ]
+        # PERSIST_RESIDENT: 1x KV buffer, host fills only the token-0 seed, no
+        # drain (cache resident in b_kv).
+        kv_total = (2 * KV_BYTES) if (PERSIST and not PERSIST_RESIDENT) else KV_BYTES
+        kvout_specs = (
+            []
+            if PERSIST_RESIDENT
+            else [
+                (of_kvout_lo.cons(), 0),
+                (of_kvout_hi.cons(), KV_HALF_BYTES),
+            ]
+        )
 
         PINGPONG_DEPTH = int(_os.environ.get("LLAMA_CHAIN_PINGPONG", "2"))
 
@@ -1533,29 +1637,33 @@ def build():
                         task_group=layer_tgs[L],
                         wait=True,
                     )
-                # KV fills use the parity-selected region + the 2x total.
-                for (
-                    prod,
-                    src,
-                    base_off,
-                    per_layer_stride,
-                    slot_bytes,
-                    slots_per_layer,
-                    total,
-                ) in kv_specs:
-                    rt.fill(
+                # KV fills. PERSIST_RESIDENT: only token 0 seeds the resident
+                # cache (the attn worker consumes of_kvs only on token 0); later
+                # tokens read/write b_kv in place -> no KV DMA. Otherwise: every
+                # token fills (parity-selected region + 2x total).
+                if (not PERSIST_RESIDENT) or tok == 0:
+                    for (
                         prod,
                         src,
-                        tap=strided_tap(
-                            kv_total if PERSIST else total,
-                            kv_fill_base + base_off + L * per_layer_stride,
-                            slot_bytes,
-                            slot_bytes,
-                            slots_per_layer,
-                        ),
-                        task_group=layer_tgs[L],
-                        wait=True,
-                    )
+                        base_off,
+                        per_layer_stride,
+                        slot_bytes,
+                        slots_per_layer,
+                        total,
+                    ) in kv_specs:
+                        rt.fill(
+                            prod,
+                            src,
+                            tap=strided_tap(
+                                kv_total if PERSIST else total,
+                                kv_fill_base + base_off + L * per_layer_stride,
+                                slot_bytes,
+                                slot_bytes,
+                                slots_per_layer,
+                            ),
+                            task_group=layer_tgs[L],
+                            wait=True,
+                        )
                 if PERSIST_GROW:
                     # Per-position cos/sin: token `tok` at position P0+tok uses
                     # its own (cos,sin) for both q-rope (of_cs) and append rope_k
