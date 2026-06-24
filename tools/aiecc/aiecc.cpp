@@ -2019,6 +2019,11 @@ struct CoreCompilationResult {
 /// - 'nuw' flag on getelementptr (inferred by ConstantFolding/InstCombine)
 /// - 'nocreateundeforpoison' attribute (with any trailing whitespace)
 /// - 'inf'/'-inf'/'nan' float-literal keywords (rewritten to hex form)
+/// Also strips, for codegen quality rather than parsing:
+/// - ', align <N>' attributes. Retaining them makes Peano's capped-O1 opt skip
+///   vectorizing the matmul reduction loop, scalarizing it into ~10x more
+///   program memory and overflowing AIE core memory. Do not remove without
+///   confirming the i8 matmul still fits program memory.
 static std::string downgradeIRForPeano(StringRef ir) {
   std::string result = ir.str();
   auto replaceAll = [&](StringRef from, StringRef to) {
