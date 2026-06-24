@@ -198,11 +198,13 @@ struct FoldAIEShiftAndBroadcast
 //===----------------------------------------------------------------------===//
 // Pattern collection
 //===----------------------------------------------------------------------===//
-static void populateAIEVecV1TransformationPatterns(RewritePatternSet &patterns) {
+static void
+populateAIEVecV1TransformationPatterns(RewritePatternSet &patterns) {
   patterns.add<MergeSingleColumnI16FMAOpPattern>(patterns.getContext());
 }
 
-static void populateAIEVecV2TransformationPatterns(RewritePatternSet &patterns) {
+static void
+populateAIEVecV2TransformationPatterns(RewritePatternSet &patterns) {
   patterns.add<FoldAIEShiftAndBroadcast>(patterns.getContext());
 }
 

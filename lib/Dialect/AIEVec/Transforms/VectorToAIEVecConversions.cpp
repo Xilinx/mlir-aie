@@ -4798,7 +4798,8 @@ struct LowerVectorTransposeOpToAIEVecShuffleOpPattern
 // Pattern collection
 //===----------------------------------------------------------------------===//
 
-static void populateAIEVecCommonConversionPatterns(RewritePatternSet &patterns) {
+static void
+populateAIEVecCommonConversionPatterns(RewritePatternSet &patterns) {
   // clang-format off
   patterns.add<LowerExtFOpPattern,
                LowerExtSIOpPattern,
@@ -4964,8 +4965,9 @@ static void populateAIEVecV2PConversionPatterns(RewritePatternSet &patterns) {
   patterns.add<LowerVectorReductionAddBfloat16OpAIE2P>(patterns.getContext());
   // For AIE2P with LLVMIR backend, use aievec.exp and aievec.inv
   // math.rsqrt is kept legal and will be lowered in AIEVecToLLVM pass
-  patterns.add<ConvertMathExpToAIEVecExpOpPattern,
-               ConvertDivFToAIEVecInvOpPattern>(patterns.getContext());
+  patterns
+      .add<ConvertMathExpToAIEVecExpOpPattern, ConvertDivFToAIEVecInvOpPattern>(
+          patterns.getContext());
   // Higher benefit to take priority over the AIE2 LUT-based tanh pattern
   // registered in the common patterns.
   patterns.add<ConvertMathTanhToAIEVecTanhOpPattern>(patterns.getContext(),
