@@ -42,6 +42,15 @@ GATHER = _os.environ.get("LLAMA_CHAIN_GATHER", "0") == "1" and SAMPLE
 # needs (token in -> token + seed out). When LLAMA_CHAIN_ONESTREAM=1.
 ONESTREAM = _os.environ.get("LLAMA_CHAIN_ONESTREAM", "0") == "1" and SAMPLE
 ONESTREAM_KSET = int(_os.environ.get("LLAMA_CHAIN_ONESTREAM_KSET", "16"))
+# Persistent on-device autoregressive loop (capstone): PT tokens generated in ONE
+# dispatch, the sampled token's embed seed feeding back to the chain ON-CHIP (no
+# host between tokens). Requires ONESTREAM. Increment 1: KV held at a fixed
+# position (host re-supplies the same KV per token); proves the device-originated
+# control loop bit-exact. When LLAMA_CHAIN_PERSIST=1.
+PERSIST = _os.environ.get("LLAMA_CHAIN_PERSIST", "0") == "1" and ONESTREAM
+# Tokens per dispatch. PT==1 (default off) makes every PERSIST-aware loop a no-op,
+# so the non-persist paths stay byte-identical.
+PT = int(_os.environ.get("LLAMA_CHAIN_PT", "4")) if PERSIST else 1
 if SAMPLE and not ONESTREAM:
     from logits_relay import LogitsRelay
 
@@ -260,7 +269,10 @@ def build():
     # (Phase B residual_dyn): xin seed + layer out are both int8[D+8].
     rt_xin_ty = _i8(D + 8)
     rt_w_ty = _i8(WEIGHTS_BYTES)
-    rt_kv_ty = _i8(KV_BYTES)
+    # PERSIST holds KV at a fixed position: the host buffer is [pristine | scratch]
+    # (2x); fills always read the pristine half, drains write the scratch half, so
+    # every token sees identical starting KV (increment 1). Non-persist: 1x.
+    rt_kv_ty = _i8(2 * KV_BYTES if PERSIST else KV_BYTES)
     rt_out_ty = _i8(D + 8)
 
     # M3b: lmw blob = [final_norm gamma bf16(D) = 2*D bytes | lm_head weight
@@ -305,6 +317,13 @@ def build():
     of_back = ObjectFifo(t_D8_i8, depth=1, name="back")
     of_routed = ObjectFifo(t_D8_i8, depth=1, name="routed")  # rmsnorm1 + add1
     of_out = ObjectFifo(t_D8_i8, depth=1, name="layer_out")
+    if PERSIST:
+        # Persistent loop: token 0's layer-0 input from the host (of_hostseed),
+        # tokens 1..PT-1 from the on-chip feedback (of_feedback, depth>=2 self-
+        # feedback across the onestream->seedmux tile boundary). seedmux selects
+        # between them and drives of_seed (the router's input).
+        of_hostseed = ObjectFifo(t_D8_i8, depth=1, name="hostseed")
+        of_feedback = ObjectFifo(t_D8_i8, depth=2, name="feedback")
 
     # M3b sample block: final hidden (of_out) -> final_norm rms -> lm_head GEMM
     # -> memtile logits relay -> streamed sampler -> token.
@@ -599,6 +618,13 @@ def build():
     k_add = Kernel("llama_rescale_add_D", KO_RADD, [t_D8_i8, t_D_f32, t_D8_i8])
 
     # --- Worker bodies (each loops N_LAYERS times) ---
+    # Persistent loop: the 1:1 per-layer workers (rms/q/kv/attn/ffn/...) just see
+    # PT*N_LAYERS activations stream by -- they're position-agnostic, so looping
+    # CHAIN_ITERS handles all PT tokens. The token boundary lives only in the
+    # router (seed source), add2 (residual reset), fnorm + onestream (per-token
+    # sample), and the seedmux/feedback wiring. PT==1 => CHAIN_ITERS==N_LAYERS,
+    # byte-identical to the non-persist chain.
+    CHAIN_ITERS = PT * N_LAYERS
     if GATHER:
         # Front embed gather: stream the lm_head weight slots; select
         # embed[token_in] -> seed (int8[D]+scale = layer-0 input). One acquire of
@@ -615,22 +641,28 @@ def build():
 
     def w_router(c_seed, c_back, p_routed):
         # Copy D+8: body + per-token residual scale tail (4 B scale + 4 B pad).
-        x = c_seed.acquire(1)
-        o = p_routed.acquire(1)
-        for i in range_(D + 8):
-            o[i] = x[i]
-        p_routed.release(1)
-        c_seed.release(1)
-        for _ in range_(N_LAYERS - 1):
-            x = c_back.acquire(1)
+        # Persistent loop: repeat the (seed once, back N_LAYERS-1 times) pattern
+        # for each of PT tokens. c_seed delivers the per-token layer-0 input
+        # (token 0 = host xin, tokens 1..PT-1 = on-chip feedback via seedmux);
+        # c_back is the same intra-token residual loop-back as before. PT==1 =>
+        # identical to the non-persist router.
+        for _ in range_(PT):
+            x = c_seed.acquire(1)
             o = p_routed.acquire(1)
             for i in range_(D + 8):
                 o[i] = x[i]
             p_routed.release(1)
-            c_back.release(1)
+            c_seed.release(1)
+            for _l in range_(N_LAYERS - 1):
+                x = c_back.acquire(1)
+                o = p_routed.acquire(1)
+                for i in range_(D + 8):
+                    o[i] = x[i]
+                p_routed.release(1)
+                c_back.release(1)
 
     def w_rms(c_in, c_gamma, c_out, k):
-        for _ in range_(N_LAYERS):
+        for _ in range_(CHAIN_ITERS):
             x = c_in.acquire(1)
             g = c_gamma.acquire(1)
             o = c_out.acquire(1)
@@ -640,7 +672,7 @@ def build():
             c_out.release(1)
 
     def w_q(c_act, c_w, c_out, k):
-        for _ in range_(N_LAYERS):
+        for _ in range_(CHAIN_ITERS):
             a = c_act.acquire(1)
             o = c_out.acquire(1)
             for t in range_(N_TILES_Q):
@@ -652,7 +684,7 @@ def build():
 
     # 1-in/1-out requant reduce stages (2a q, 2b up), per layer.
     def w_requant(c_in, c_out, k):
-        for _ in range_(N_LAYERS):
+        for _ in range_(CHAIN_ITERS):
             x = c_in.acquire(1)
             o = c_out.acquire(1)
             k(x, o)
@@ -660,7 +692,7 @@ def build():
             c_out.release(1)
 
     def w_o(c_act, c_w, c_out, k):
-        for _ in range_(N_LAYERS):
+        for _ in range_(CHAIN_ITERS):
             a = c_act.acquire(1)
             o = c_out.acquire(1)
             for t in range_(N_TILES_O):
@@ -671,7 +703,7 @@ def build():
             c_out.release(1)
 
     def w_gate(c_act, c_w, c_out, k):
-        for _ in range_(N_LAYERS):
+        for _ in range_(CHAIN_ITERS):
             a = c_act.acquire(1)
             o = c_out.acquire(1)
             for t in range_(N_TILES_G):
@@ -682,7 +714,7 @@ def build():
             c_out.release(1)
 
     def w_up(c_act, c_w, c_out, k):
-        for _ in range_(N_LAYERS):
+        for _ in range_(CHAIN_ITERS):
             a = c_act.acquire(1)
             o = c_out.acquire(1)
             for t in range_(N_TILES_U):
@@ -693,7 +725,7 @@ def build():
             c_out.release(1)
 
     def w_down(c_act, c_w, c_out, k):
-        for _ in range_(N_LAYERS):
+        for _ in range_(CHAIN_ITERS):
             a = c_act.acquire(1)
             o = c_out.acquire(1)
             for t in range_(N_TILES_D):
@@ -704,7 +736,7 @@ def build():
             c_out.release(1)
 
     def w_rope(c_x, c_cs, c_out, k):
-        for _ in range_(N_LAYERS):
+        for _ in range_(CHAIN_ITERS):
             x = c_x.acquire(1)
             cs = c_cs.acquire(1)
             o = c_out.acquire(1)
@@ -715,7 +747,7 @@ def build():
 
     # k_proj / v_proj: N_TILES_K iters -> fp32 KV_DIM.
     def w_kv(c_act, c_w, c_out, k):
-        for _ in range_(N_LAYERS):
+        for _ in range_(CHAIN_ITERS):
             a = c_act.acquire(1)
             o = c_out.acquire(1)
             for t in range_(N_TILES_K):
@@ -726,7 +758,7 @@ def build():
             c_out.release(1)
 
     def w_qkvcomb(c_qr, c_kvcs, c_lo, c_hi, k):
-        for _ in range_(N_LAYERS):
+        for _ in range_(CHAIN_ITERS):
             qr = c_qr.acquire(1)
             kvcs = c_kvcs.acquire(1)
             lo = c_lo.acquire(1)
@@ -738,7 +770,7 @@ def build():
             c_hi.release(1)
 
     def w_svmerge(c_lo, c_hi, c_out, k):
-        for _ in range_(N_LAYERS):
+        for _ in range_(CHAIN_ITERS):
             lo = c_lo.acquire(1)
             hi = c_hi.acquire(1)
             o = c_out.acquire(1)
@@ -749,7 +781,7 @@ def build():
 
     # af_concat (self-cal): 1 input (merged sv with bodies+sv_out_scales).
     def w_afconcat(c_in, c_out, k):
-        for _ in range_(N_LAYERS):
+        for _ in range_(CHAIN_ITERS):
             x = c_in.acquire(1)
             o = c_out.acquire(1)
             k(x, o)
@@ -759,7 +791,7 @@ def build():
     # Co-located KV append + flowkv (per layer): append writes slot[pos] then
     # flowkv attends over the updated cache; cache_out drained device-owned.
     def w_attn(c_comb, c_kvin, c_kvout, c_sv, k_app, k_fk):
-        for _ in range_(N_LAYERS):
+        for _ in range_(CHAIN_ITERS):
             comb = c_comb.acquire(1)
             kvin = c_kvin.acquire(1)
             kvout = c_kvout.acquire(1)
@@ -772,7 +804,7 @@ def build():
             c_sv.release(1)
 
     def w_silu(c_g, c_u, c_out, k):
-        for _ in range_(N_LAYERS):
+        for _ in range_(CHAIN_ITERS):
             g = c_g.acquire(1)
             u = c_u.acquire(1)
             o = c_out.acquire(1)
@@ -783,7 +815,7 @@ def build():
 
     # rescale-add: c_resid = residual int8[D+8], c_proj = projection fp32[D].
     def w_add1(c_resid, c_proj, c_out, k):
-        for _ in range_(N_LAYERS):
+        for _ in range_(CHAIN_ITERS):
             r = c_resid.acquire(1)
             p = c_proj.acquire(1)
             o = c_out.acquire(1)
@@ -793,34 +825,40 @@ def build():
             c_out.release(1)
 
     # add2 with peeled final iter: writes to `back` for L=0..N-2, `out` for L=N-1.
+    # Persistent loop: per token, the same peeled pattern -- back for the first
+    # N_LAYERS-1 layers, out (-> fnorm -> onestream sample) for the last. PT==1 =>
+    # identical to the non-persist add2.
     def w_add2(c_resid, c_proj, c_back, c_out, k):
-        for _ in range_(N_LAYERS - 1):
+        for _ in range_(PT):
+            for _l in range_(N_LAYERS - 1):
+                r = c_resid.acquire(1)
+                p = c_proj.acquire(1)
+                o = c_back.acquire(1)
+                k(r, p, o)
+                c_resid.release(1)
+                c_proj.release(1)
+                c_back.release(1)
             r = c_resid.acquire(1)
             p = c_proj.acquire(1)
-            o = c_back.acquire(1)
+            o = c_out.acquire(1)
             k(r, p, o)
             c_resid.release(1)
             c_proj.release(1)
-            c_back.release(1)
-        r = c_resid.acquire(1)
-        p = c_proj.acquire(1)
-        o = c_out.acquire(1)
-        k(r, p, o)
-        c_resid.release(1)
-        c_proj.release(1)
-        c_out.release(1)
+            c_out.release(1)
 
     # --- M3b sample-block worker bodies (fire once, after the last layer) ---
     if SAMPLE:
         # final_norm: rms over the chain's final hidden (of_out int8[D+8]).
+        # Persistent loop: fires once per token (PT times).
         def w_fnorm(c_in, c_gam, c_out, k):
-            x = c_in.acquire(1)
-            g = c_gam.acquire(1)
-            o = c_out.acquire(1)
-            k(x, g, o)
-            c_in.release(1)
-            c_gam.release(1)
-            c_out.release(1)
+            for _ in range_(PT):
+                x = c_in.acquire(1)
+                g = c_gam.acquire(1)
+                o = c_out.acquire(1)
+                k(x, g, o)
+                c_in.release(1)
+                c_gam.release(1)
+                c_out.release(1)
 
         # lm_head GEMM: normed hidden x V int8 weights -> fp32 logit chunks into
         # the relay (which assembles the resident memtile buffer).
@@ -859,6 +897,52 @@ def build():
             o = c_out.acquire(1)
             kf(sl, sg, ss, sr, slen, pr, o)
             c_out.release(1)
+
+        # Persistent loop variant: PT tokens, each emitting the packed output AND
+        # feeding the next-token embed seed back ON-CHIP (-> seedmux -> router).
+        # The packed buffer is [seed int8[D] | scale f32 | token i32 | pad]; the
+        # feedback seed is the layer-0 input format [seed int8[D] | scale f32 |
+        # pad], so copy o[:D+4] (body+scale) and zero the 4 B pad (the token bytes
+        # in the packed buffer must NOT leak into the feedback's pad). Produces
+        # feedback PT times; seedmux consumes PT-1 (the last token's seed is
+        # produced but unused) -- the proven persist_decode imbalance, safe with
+        # a depth>=2 feedback fifo.
+        def w_onestream_persist(
+            c_act, c_w, c_out, c_fb, sl, sg, ss, sr, slen, pr, ki, kf
+        ):
+            for _ in range_(PT):
+                a = c_act.acquire(1)
+                for t in range_(LM_N_TILES):
+                    w = c_w.acquire(1)
+                    ki(a, w, sl, sg, ss, sr, slen, _i32(t))
+                    c_w.release(1)
+                c_act.release(1)
+                o = c_out.acquire(1)
+                kf(sl, sg, ss, sr, slen, pr, o)
+                fb = c_fb.acquire(1)
+                for i in range_(D + 4):
+                    fb[i] = o[i]
+                for i in range_(4):
+                    fb[D + 4 + i] = 0
+                c_fb.release(1)
+                c_out.release(1)
+
+        # seedmux: token 0's layer-0 input from the host (of_hostseed); tokens
+        # 1..PT-1 from the on-chip feedback. Keeps the router at 2 inputs.
+        def w_seedmux(c_host, c_fb, p_seed):
+            h = c_host.acquire(1)
+            o = p_seed.acquire(1)
+            for i in range_(D + 8):
+                o[i] = h[i]
+            p_seed.release(1)
+            c_host.release(1)
+            for _ in range_(PT - 1):
+                f = c_fb.acquire(1)
+                o = p_seed.acquire(1)
+                for i in range_(D + 8):
+                    o[i] = f[i]
+                p_seed.release(1)
+                c_fb.release(1)
 
     PSK = 8192
     ATSK = 16384
@@ -1011,25 +1095,58 @@ def build():
             # pass -> token + next-token embed seed. The resident top-k rows live
             # on this tile (KS*D bytes); KS<=8 fits the 64 KB tile alongside the
             # depth-2 wlm fifo at D=2048 (see onestream-topk-sampler memory).
-            Worker(
-                w_onestream,
-                [
-                    of_fnorm.cons(),
-                    of_wlm.cons(),
-                    of_opacked.prod(),
-                    b_set_logit,
-                    b_set_gidx,
-                    b_set_scale,
-                    b_set_row,
-                    b_set_len,
-                    b_os_params,
-                    k_os_insert,
-                    k_os_final,
-                ],
-                tile=Tile(5, 4),
-                stack_size=ATSK,
+            (
+                Worker(
+                    w_onestream_persist,
+                    [
+                        of_fnorm.cons(),
+                        of_wlm.cons(),
+                        of_opacked.prod(),
+                        of_feedback.prod(),
+                        b_set_logit,
+                        b_set_gidx,
+                        b_set_scale,
+                        b_set_row,
+                        b_set_len,
+                        b_os_params,
+                        k_os_insert,
+                        k_os_final,
+                    ],
+                    tile=Tile(5, 4),
+                    stack_size=ATSK,
+                )
+                if PERSIST
+                else Worker(
+                    w_onestream,
+                    [
+                        of_fnorm.cons(),
+                        of_wlm.cons(),
+                        of_opacked.prod(),
+                        b_set_logit,
+                        b_set_gidx,
+                        b_set_scale,
+                        b_set_row,
+                        b_set_len,
+                        b_os_params,
+                        k_os_insert,
+                        k_os_final,
+                    ],
+                    tile=Tile(5, 4),
+                    stack_size=ATSK,
+                )
             ),
         ]
+        if PERSIST:
+            # seedmux: host seed (token 0) vs on-chip feedback (tokens 1..PT-1)
+            # -> of_seed (router input). Free tile (7,4).
+            workers += [
+                Worker(
+                    w_seedmux,
+                    [of_hostseed.cons(), of_feedback.cons(), of_seed.prod()],
+                    tile=Tile(7, 4),
+                    stack_size=PSK,
+                ),
+            ]
     elif SAMPLE:
         workers += [
             # final_norm (free tile 4,4)
@@ -1076,7 +1193,9 @@ def build():
         # xin in, ONE packed output [seed int8[D] | scale f32 | token i32 | pad]
         # out -- 5 args (run_test segfaults at ~6). The persistent-loop shape:
         # seed feeds back as next layer-0 input, token rides along for the host.
-        rt_opacked_ty = _i8(D + 12)
+        # PERSIST: the output holds PT packed records (one per generated token);
+        # only token 0's xin comes from the host (rest feed back on-chip).
+        rt_opacked_ty = _i8(PT * (D + 12))
         seq_ctx = rt.sequence(rt_xin_ty, rt_w_ty, rt_kv_ty, rt_lmw_ty, rt_opacked_ty)
     elif GATHER:
         # input is a token id (int32[1]); the device gathers embed[token] as the
@@ -1150,6 +1269,10 @@ def build():
                     rt.finish_task_group(gw_tgs[t - 2])
             for t in range(max(0, LM_N_TILES - 2), LM_N_TILES):
                 rt.finish_task_group(gw_tgs[t])
+        elif PERSIST:
+            # Persistent loop: only token 0's layer-0 input comes from the host
+            # (-> of_hostseed -> seedmux); tokens 1..PT-1 feed back on-chip.
+            rt.fill(of_hostseed.prod(), xin, task_group=seed_tg)
         else:
             rt.fill(of_seed.prod(), xin, task_group=seed_tg)
 
@@ -1256,109 +1379,135 @@ def build():
             ),
         ]
 
-        # Drains BEFORE fills to avoid the depth=1 drain-blocked deadlock.
-        out_tg = rt.task_group()
-        tgs.append(out_tg)
-        if SAMPLE:
-            # M3b: of_out feeds the on-chip sample block; drain the int32 token.
-            # final_norm gamma from the lmw prefix. The 32064 lm_head weight
-            # fills are issued AFTER the chain's per-layer fills (below), so the
-            # shim queue serves the chain layers first (the lm_head GEMM can't
-            # run until the chain produces of_out -- queuing its weights first
-            # deadlocks).
-            rt.fill(
-                of_fgam.prod(),
-                lmw,
-                tap=strided_tap(
-                    LMW_GAMMA_BYTES + WLM_TOTAL, 0, LMW_GAMMA_BYTES, LMW_GAMMA_BYTES, 1
-                ),
-                task_group=out_tg,
-            )
-            if ONESTREAM:
-                # one packed output [seed | scale | token | pad].
-                rt.drain(of_opacked.cons(), opacked, wait=True, task_group=out_tg)
-            else:
-                rt.drain(of_token.cons(), token, wait=True, task_group=out_tg)
-        else:
-            rt.drain(of_out.cons(), out, wait=True, task_group=out_tg)
-
         # Device-owned cache: drain each layer's updated cache back over kvblob
         # (per-layer, lo/hi halves). Mirrors the kv_specs fills as drains.
+        # PERSIST increment 1 holds KV at a fixed position: fills come from the
+        # pristine region (offset 0) every token, drains go to a SCRATCH region
+        # (offset KV_BYTES, ignored) so each token sees identical starting KV.
+        kv_drain_base = KV_BYTES if PERSIST else 0
+        kv_drain_total = (2 * KV_BYTES) if PERSIST else KV_BYTES
         kvout_specs = [
             (of_kvout_lo.cons(), 0),
             (of_kvout_hi.cons(), KV_HALF_BYTES),
         ]
 
-        # Ping-pong per-layer fill issue with BD reuse.
         PINGPONG_DEPTH = int(_os.environ.get("LLAMA_CHAIN_PINGPONG", "2"))
-        layer_tgs = [rt.task_group() for _ in range(N_LAYERS)]
-        for L in range(N_LAYERS):
-            # Per-layer cache drains (issued in the same task group as fills).
-            for cons, half_off in kvout_specs:
-                rt.drain(
-                    cons,
-                    kvblob,
-                    tap=strided_tap(
-                        KV_BYTES,
-                        half_off + L * PER_LAYER_KV,
-                        KV_HALF_BYTES,
-                        KV_HALF_BYTES,
-                        1,
-                    ),
-                    task_group=layer_tgs[L],
-                    wait=True,
-                )
-            for (
-                prod,
-                src,
-                base_off,
-                per_layer_stride,
-                slot_bytes,
-                slots_per_layer,
-                total,
-            ) in (
-                fill_specs + kv_specs
-            ):
-                rt.fill(
-                    prod,
-                    src,
-                    tap=strided_tap(
-                        total,
-                        base_off + L * per_layer_stride,
-                        slot_bytes,
-                        slot_bytes,
-                        slots_per_layer,
-                    ),
-                    task_group=layer_tgs[L],
-                    wait=True,
-                )
-            if L >= PINGPONG_DEPTH:
-                rt.finish_task_group(layer_tgs[L - PINGPONG_DEPTH])
-        for L in range(max(0, N_LAYERS - PINGPONG_DEPTH), N_LAYERS):
-            rt.finish_task_group(layer_tgs[L])
 
-        if SAMPLE:
-            # lm_head weight stream (262 MB, 32064 tiles), issued AFTER the chain
-            # layer fills so the chain runs first and produces of_out.
-            lm_tgs = [rt.task_group() for _ in range(LM_N_TILES)]
-            for t in range(LM_N_TILES):
+        # One token's fills + drains. tok indexes the packed-output record. For
+        # PT==1 (non-persist) this runs once and is byte-identical to before.
+        def issue_token(tok):
+            # Drains BEFORE fills to avoid the depth=1 drain-blocked deadlock.
+            out_tg = rt.task_group()
+            tgs.append(out_tg)
+            if SAMPLE:
+                # final_norm gamma from the lmw prefix (per token). The 32064
+                # lm_head weight fills are issued AFTER the chain per-layer fills
+                # so the chain runs first and produces of_out.
                 rt.fill(
-                    of_wlm.prod(),
+                    of_fgam.prod(),
                     lmw,
                     tap=strided_tap(
                         LMW_GAMMA_BYTES + WLM_TOTAL,
-                        LMW_GAMMA_BYTES + t * WLM_SLOT,
-                        WLM_SLOT,
-                        WLM_SLOT,
+                        0,
+                        LMW_GAMMA_BYTES,
+                        LMW_GAMMA_BYTES,
                         1,
                     ),
-                    task_group=lm_tgs[t],
-                    wait=True,
+                    task_group=out_tg,
                 )
-                if t >= 2:
-                    rt.finish_task_group(lm_tgs[t - 2])
-            for t in range(max(0, LM_N_TILES - 2), LM_N_TILES):
-                rt.finish_task_group(lm_tgs[t])
+                if ONESTREAM:
+                    # packed output [seed | scale | token | pad]; PERSIST writes
+                    # PT records, one per token at offset tok*(D+12).
+                    if PERSIST:
+                        rt.drain(
+                            of_opacked.cons(),
+                            opacked,
+                            tap=strided_tap(
+                                PT * (D + 12), tok * (D + 12), D + 12, D + 12, 1
+                            ),
+                            wait=True,
+                            task_group=out_tg,
+                        )
+                    else:
+                        rt.drain(
+                            of_opacked.cons(), opacked, wait=True, task_group=out_tg
+                        )
+                else:
+                    rt.drain(of_token.cons(), token, wait=True, task_group=out_tg)
+            else:
+                rt.drain(of_out.cons(), out, wait=True, task_group=out_tg)
+
+            # Ping-pong per-layer fill issue with BD reuse.
+            layer_tgs = [rt.task_group() for _ in range(N_LAYERS)]
+            for L in range(N_LAYERS):
+                for cons, half_off in kvout_specs:
+                    rt.drain(
+                        cons,
+                        kvblob,
+                        tap=strided_tap(
+                            kv_drain_total,
+                            kv_drain_base + half_off + L * PER_LAYER_KV,
+                            KV_HALF_BYTES,
+                            KV_HALF_BYTES,
+                            1,
+                        ),
+                        task_group=layer_tgs[L],
+                        wait=True,
+                    )
+                for (
+                    prod,
+                    src,
+                    base_off,
+                    per_layer_stride,
+                    slot_bytes,
+                    slots_per_layer,
+                    total,
+                ) in (
+                    fill_specs + kv_specs
+                ):
+                    rt.fill(
+                        prod,
+                        src,
+                        tap=strided_tap(
+                            total,
+                            base_off + L * per_layer_stride,
+                            slot_bytes,
+                            slot_bytes,
+                            slots_per_layer,
+                        ),
+                        task_group=layer_tgs[L],
+                        wait=True,
+                    )
+                if L >= PINGPONG_DEPTH:
+                    rt.finish_task_group(layer_tgs[L - PINGPONG_DEPTH])
+            for L in range(max(0, N_LAYERS - PINGPONG_DEPTH), N_LAYERS):
+                rt.finish_task_group(layer_tgs[L])
+
+            if SAMPLE:
+                # lm_head weight stream (262 MB), issued AFTER the chain layer
+                # fills so the chain runs first and produces of_out.
+                lm_tgs = [rt.task_group() for _ in range(LM_N_TILES)]
+                for t in range(LM_N_TILES):
+                    rt.fill(
+                        of_wlm.prod(),
+                        lmw,
+                        tap=strided_tap(
+                            LMW_GAMMA_BYTES + WLM_TOTAL,
+                            LMW_GAMMA_BYTES + t * WLM_SLOT,
+                            WLM_SLOT,
+                            WLM_SLOT,
+                            1,
+                        ),
+                        task_group=lm_tgs[t],
+                        wait=True,
+                    )
+                    if t >= 2:
+                        rt.finish_task_group(lm_tgs[t - 2])
+                for t in range(max(0, LM_N_TILES - 2), LM_N_TILES):
+                    rt.finish_task_group(lm_tgs[t])
+
+        for tok in range(PT):
+            issue_token(tok)
 
         for tg in tgs:
             rt.finish_task_group(tg)

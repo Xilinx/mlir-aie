@@ -1119,6 +1119,45 @@ run_chain_onestream_mh: chain_onestream_mh
 		-i ${BUILD}/insts_chain_onestream_N${CHAIN_MH_N}_T${CHAIN_MH_T}.bin \
 		-k MLIR_AIE
 
+# ---------- persistent on-device autoregressive loop (LLAMA_CHAIN_PERSIST=1) ----------
+# PT tokens in ONE dispatch, the sampled token's embed seed feeding back ON-CHIP
+# (no host between tokens). Increment 1: KV at fixed position (host re-streams the
+# pristine KV each token). Reuses the onestream deps + kernel objects.
+PT ?= 4
+CHAIN_PERSIST_DEPS = ${CHAIN_MH_DEPS} ${BUILD}/llama_sample_streamed.cc.o
+
+${BUILD}/aie_chain_persist_N${CHAIN_MH_N}_PT${PT}.mlir: ${srcdir}/aie2_chain_dynscale_mh.py
+	mkdir -p ${@D}
+	LLAMA_CHAIN_SAMPLE=1 LLAMA_CHAIN_ONESTREAM=1 LLAMA_CHAIN_PERSIST=1 LLAMA_CHAIN_PT=${PT} \
+		LLAMA_CHAIN_ONESTREAM_KSET=${ONESTREAM_KSET} \
+		LLAMA_SAMPLE_TEMP=${LMFULL_TEMP} LLAMA_SAMPLE_TOPK=${LMFULL_TOPK} LLAMA_SAMPLE_SEED=${LMFULL_SEED} \
+		LLAMA_CHAIN_N=${CHAIN_MH_N} LLAMA_CHAIN_T=${CHAIN_MH_T} python3 $< > $@
+
+${BUILD}/final_chain_persist_N${CHAIN_MH_N}_PT${PT}.xclbin: ${BUILD}/aie_chain_persist_N${CHAIN_MH_N}_PT${PT}.mlir ${CHAIN_PERSIST_DEPS} ${BUILD}/llama_topk_sample.cc.o
+	mkdir -p ${@D}
+	${MAKE} -f ${srcdir}/Makefile ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o LMHEAD_KSET=${ONESTREAM_KSET}
+	${MAKE} -f ${srcdir}/Makefile ${BUILD}/llama_topk_sample.cc.o TK_D=2048 TK_KSET=${ONESTREAM_KSET}
+	cp ${BUILD}/llama_rmsnorm_int8_2048.cc.o ${BUILD}/llama_rmsnorm_int8.cc.o
+	cp ${BUILD}/llama_silu_mul_int8_8192.cc.o ${BUILD}/llama_silu_mul_int8.cc.o
+	cp ${BUILD}/llama_rope_int8_mh_T${CHAIN_MH_T}.cc.o ${BUILD}/llama_rope_int8_mh.cc.o
+	cp ${BUILD}/llama_flowkv_mh_T${CHAIN_MH_T}.cc.o ${BUILD}/llama_flowkv_mh.cc.o
+	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts \
+		--no-xchesscc --no-xbridge \
+		--xclbin-name=${@F} \
+		--npu-insts-name=insts_chain_persist_N${CHAIN_MH_N}_PT${PT}.bin \
+		$(notdir $<)
+
+chain_persist_mh: ${BUILD}/final_chain_persist_N${CHAIN_MH_N}_PT${PT}.xclbin
+
+run_chain_persist_mh: chain_persist_mh
+	cd ${srcdir} && LLAMA_CHAIN_SAMPLE=1 LLAMA_CHAIN_ONESTREAM=1 LLAMA_CHAIN_PERSIST=1 LLAMA_CHAIN_PT=${PT} \
+		LLAMA_CHAIN_ONESTREAM_KSET=${ONESTREAM_KSET} \
+		LLAMA_SAMPLE_TEMP=${LMFULL_TEMP} LLAMA_SAMPLE_TOPK=${LMFULL_TOPK} LLAMA_SAMPLE_SEED=${LMFULL_SEED} \
+		LLAMA_CHAIN_N=${CHAIN_MH_N} LLAMA_CHAIN_T=${CHAIN_MH_T} python3 test_chain_persist_mh.py \
+		-x ${BUILD}/final_chain_persist_N${CHAIN_MH_N}_PT${PT}.xclbin \
+		-i ${BUILD}/insts_chain_persist_N${CHAIN_MH_N}_PT${PT}.bin \
+		-k MLIR_AIE
+
 # ---------- standalone tiled lm_head + greedy argmax (sample tile M1) ----------
 LMHEAD_DEPS = ${BUILD}/llama_gemm_int8_srs_tiled_layer.cc.o \
               ${BUILD}/llama_rmsnorm_int8_2048.cc.o
