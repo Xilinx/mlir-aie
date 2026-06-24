@@ -38,7 +38,7 @@ in-tree driver loads `npu_7.sbin` (firmware protocol 7) cleanly.
 The accel node defaults to `root:root 0600`; XRT needs access and locked memory:
 
 ```bash
-sudo groupadd -r render 2>/dev/null   # may already exist
+getent group render || sudo groupadd render   # only create if missing; use your distro's existing group name if different
 sudo usermod -aG render "$USER"       # effective next login; meanwhile use `sg render -c '...'`
 echo 'SUBSYSTEM=="accel", KERNEL=="accel*", GROUP="render", MODE="0660"' \
   | sudo tee /etc/udev/rules.d/99-amdxdna.rules
@@ -87,8 +87,8 @@ Build and install the SHIM plugin (userspace only):
 source /opt/xilinx/xrt/setup.sh
 cd xdna-driver/build
 ./build.sh -release -nokmod -j "$(nproc)"             # -nokmod: do NOT touch the in-tree kernel module
-# install the produced plugin tree into /opt/xilinx/xrt (TGZ on source distros):
-sudo tar xzf Release/xrt_plugin.*-amdxdna.tar.gz -C / --strip-components=0
+# The TGZ contains an opt/xilinx/xrt/... prefix; extract at / to install into /opt/xilinx/xrt:
+sudo tar xzf Release/xrt_plugin.*-amdxdna.tar.gz -C /
 ```
 
 > On a distro `xdna-driver` doesn't yet recognize, `build.sh -release` aborts at
@@ -130,8 +130,7 @@ the installed `aie` package.
 ```bash
 source ironenv/bin/activate
 source /opt/xilinx/xrt/setup.sh                 # puts pyxrt on PYTHONPATH + xrt libs on LD_LIBRARY_PATH
-source utils/env_setup.sh "$(...)" "$(...)"      # or set MLIR_AIE_INSTALL_DIR / PEANO_INSTALL_DIR manually
-export NPU2=0                                    # Phoenix/Hawk = npu1 (set 1 for Strix/npu2)
+source utils/env_setup.sh <mlir-aie-install-dir> <peano-install-dir>   # paths to your wheel/build outputs
 ```
 
 `utils/env_setup.sh` works once `xrt-smi` is on `PATH` (it queries it to pick
