@@ -192,23 +192,65 @@ def test_runtime_cache_fill(runtime):
         limit = runtime._cache_size
         first_key = None
 
-        for i in range(limit + 1):
-            transform(input_tensor, input_tensor, lambda x, val=i: x + val)
+        for i in range(runtime._cache_size + 1):
+            transform(
+                input_tensor,
+                input_tensor,
+                func=lambda x, val=i: x + val,
+                num_elements=32,
+            )
 
             if i == 0:
-                first_key = list(runtime._context_cache.keys())[0]
+                first_key = next(iter(runtime._context_cache))
 
-        # On Phoenix (npu1) the runtime drains the cache entirely at cap+1
-        # (firmware workaround for EXEC_CMD ENOENT after partial eviction);
-        # other NPUs use single-entry LRU eviction, so the cap is held.
-        if runtime.npu_str == "npu1":
-            expected_size = (i + 1) if i < limit else 1
-        else:
-            expected_size = min(i + 1, limit)
-        assert len(runtime._context_cache) == expected_size
+            if runtime.npu_str == "npu1":
+                expected_size = (i + 1) if i < runtime._cache_size else 1
+            else:
+                expected_size = min(i + 1, runtime._cache_size)
+            assert len(runtime._context_cache) == expected_size
 
-    # The first entry is gone either way (Phoenix drained, others LRU-evicted).
-    assert first_key not in runtime._context_cache
+        assert first_key not in runtime._context_cache
+    finally:
+        runtime.cleanup()
+        runtime._cache_size = original_size
+
+
+def test_context_creation_retry_after_capacity_error(runtime, monkeypatch):
+    """Test context creation after evicting a cached context."""
+
+    import aie.utils.hostruntime.xrtruntime.hostruntime as hostruntime_module
+
+    original_size = runtime._cache_size
+    runtime._cache_size = 2
+
+    try:
+        transform._kernel_cache.clear()
+        runtime.cleanup()
+
+        input_tensor = iron.arange(32, dtype=np.int32)
+        transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
+
+        real_hw_context = hostruntime_module.pyxrt.hw_context
+        attempts = 0
+
+        def fail_once(*args):
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise RuntimeError(
+                    "Failed to create context virtual (0xc01e0009): "
+                    "There was an error while creating context"
+                )
+            return real_hw_context(*args)
+
+        monkeypatch.setattr(hostruntime_module.pyxrt, "hw_context", fail_once)
+        transform(input_tensor, input_tensor, func=lambda x: x * 2, num_elements=32)
+
+        assert attempts == 2
+        assert len(runtime._context_cache) == 1
+    finally:
+        runtime.cleanup()
+        runtime._cache_size = original_size
 
 
 def test_runtime_mtime_sensitivity(runtime):
