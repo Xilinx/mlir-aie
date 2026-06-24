@@ -62,8 +62,8 @@ static inline int wts_tile_off(int oc_tile, int ic_tile, int ky, int kx,
 extern "C" {
 
 void KERNEL_NAME(yolo_c3k2_heavy_inner_pair_cv1_conv2dk3_silu_bias_i8_i8)(
-    int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts,
-    int32_t *bias, int8_t *silu_lut, int8_t *output, const int32_t input_width,
+    int8_t *line0, int8_t *line1, int8_t *line2, int8_t *wts, int32_t *bias,
+    int8_t *silu_lut, int8_t *output, const int32_t input_width,
     const int32_t input_channels, const int32_t output_channels,
     const int32_t kernel_width, const int32_t kernel_height,
     const int32_t border, const int32_t right_shift,

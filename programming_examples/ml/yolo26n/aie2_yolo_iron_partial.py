@@ -33,6 +33,7 @@ import numpy as np
 from aie.iron import ObjectFifo, Program, Runtime
 from aie.iron.device import NPU2
 from aie.helpers.taplib import TensorAccessPattern
+from aie.utils.trace.events import CoreEventAIE2P
 
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 
@@ -59,8 +60,6 @@ CHAIN_BLOCKS = tuple(_chain_env.split(",")) if _chain_env else _DEFAULT_BLOCKS
 # scf.for loop consumes whatever upstream produces, so the pipeline
 # naturally streams N samples back-to-back, and we can measure steady-
 # state throughput (fps = N / total_dispatch_time).
-import os
-
 N_SAMPLES = int(os.environ.get("CHAIN_N_SAMPLES", "1"))
 
 
@@ -133,8 +132,6 @@ def yolo_iron_partial() -> str:
                 # remaining slots with the first event so the unused slots
                 # don't fire spurious packets.
                 evs = list(TRACE_EVENTS)
-                from aie.utils.trace.events import CoreEventAIE2P
-
                 while len(evs) < 8:
                     evs.append(CoreEventAIE2P.NONE)
                 _events_kwargs["coretile_events"] = evs[:8]

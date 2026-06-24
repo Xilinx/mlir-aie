@@ -29,8 +29,10 @@ The kernels under kernels/ are forks of mlir-aie's mobilenet kernels with:
 """
 
 import argparse
+import importlib.util
 import json
 import os
+import pathlib
 import sys
 
 import numpy as np
@@ -40,6 +42,8 @@ from aie.iron import Worker as _IronWorker
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2, Tile
 from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
+from aie.helpers.taplib import TensorAccessPattern
+from aie.utils.trace.events import CoreEventAIE2P
 
 import yolo_spec
 import placement
@@ -69,8 +73,6 @@ def _resolve_trace_events():
     ]
     if not names:
         return None
-    from aie.utils.trace.events import CoreEventAIE2P
-
     out = []
     for n in names:
         if not hasattr(CoreEventAIE2P, n):
@@ -2806,10 +2808,6 @@ def _build_psa(block_name, act_in, manifest):
 
 def _build_m8_chain(act_in, manifest):
     """Chain builder for m8 — megakernel; default 4-tile, M8_TILES=2 for 2-tile."""
-    import importlib.util
-    import pathlib
-    import os
-
     n_tiles = int(os.environ.get("M8_TILES", "4"))
     script_name = f"m8_megakernel_{n_tiles}tile"
     spec = importlib.util.spec_from_file_location(
@@ -2827,10 +2825,6 @@ def _build_m9_chain(act_in, manifest):
     Stage defaults to 10 (full PSA block: cv1 → qkv → attn_core → proj →
     ffn → cv2). Override via M9_CHAIN_STAGE env var to bisect.
     """
-    import os
-    import importlib.util
-    import pathlib
-
     stage = int(os.environ.get("M9_CHAIN_STAGE", "10"))
     spec = importlib.util.spec_from_file_location(
         "m9_stage",
@@ -2896,8 +2890,6 @@ def per_block_iron(block_name: str) -> str:
     # the full Runtime build to the staged builder which knows its own
     # per-stage output size.
     if block_name == "m9":
-        import importlib.util, pathlib, os
-
         # M9_STAGE is the canonical env var for selecting which staged build
         # of m9 to produce. Defaults to 10 (full PSA block) so a bare
         # `make BLOCK=m9` matches what `run_ort BLOCK=m9` compares against
@@ -2918,8 +2910,6 @@ def per_block_iron(block_name: str) -> str:
     # M8_TILES=2 for the smaller (slower) 2-tile variant
     # (scripts/m8_megakernel_2tile.py).
     if block_name == "m8":
-        import importlib.util, pathlib, os
-
         n_tiles = int(os.environ.get("M8_TILES", "4"))
         script_name = f"m8_megakernel_{n_tiles}tile"
         spec = importlib.util.spec_from_file_location(
@@ -2939,9 +2929,7 @@ def per_block_iron(block_name: str) -> str:
 
     # Per-block N_SAMPLES knob (for multi-sample standalone bisects of
     # the chain hang). Default 1.
-    import os as _os
-
-    _n_samples = int(_os.environ.get("BLOCK_N_SAMPLES", "1"))
+    _n_samples = int(os.environ.get("BLOCK_N_SAMPLES", "1"))
 
     # Output byte count depends on last layer shape. Spatial conv blocks use
     # (W, H, C); m10's final Gemm layer uses (out_c,) — flat vector.
@@ -2967,11 +2955,9 @@ def per_block_iron(block_name: str) -> str:
             # of CoreEventAIE2P names, e.g. ACTIVE,DISABLED,INSTR_EVENT_0,...)
             # overrides the default 8 events. See aie2_yolo_iron_partial for
             # the same idiom.
-            _ddr_id = int(_os.environ.get("TRACE_DDR_ID", "-1"))
+            _ddr_id = int(os.environ.get("TRACE_DDR_ID", "-1"))
             _events_kwargs = {}
             if TRACE_EVENTS is not None:
-                from aie.utils.trace.events import CoreEventAIE2P
-
                 evs = list(TRACE_EVENTS)
                 while len(evs) < 8:
                     evs.append(CoreEventAIE2P.NONE)
@@ -3003,8 +2989,6 @@ def per_block_iron(block_name: str) -> str:
             # (dim 3 size → shim BD repeat_count). Avoids the shim per-
             # channel task queue depth limit (~6) that hangs N>=7 with
             # per-sample tasks. See feedback_shim_task_queue_depth.md.
-            from aie.helpers.taplib import TensorAccessPattern
-
             in_total = _n_samples * in_i32_per
             out_total = _n_samples * out_i32_per
             assert (

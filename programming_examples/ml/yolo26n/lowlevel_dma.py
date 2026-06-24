@@ -17,6 +17,21 @@ this helper is required.
 import numpy as np
 
 from aie.iron.resolvable import Resolvable
+from aie.dialects.aie import (
+    buffer,
+    lock,
+    flow,
+    memtile_dma,
+    mem,
+    dma_start,
+    dma_bd,
+    next_bd,
+    use_lock,
+    DMAChannelDir,
+    LockAction,
+    WireBundle,
+    EndOp,
+)
 
 
 class StaticWeightStream(Resolvable):
@@ -95,15 +110,11 @@ class StaticWeightStream(Resolvable):
 
     def acquire(self, n: int = 1):
         """Wait for the next chunk to arrive. Returns the recv buffer."""
-        from aie.dialects.aie import use_lock, LockAction
-
         use_lock(self._comp_cons_lock, LockAction.AcquireGreaterEqual)
         return self._recv_buf
 
     def release(self, n: int = 1):
         """Signal the MemTile DMA to send the next chunk."""
-        from aie.dialects.aie import use_lock, LockAction
-
         use_lock(self._comp_prod_lock, LockAction.Release)
 
     def resolve(self, loc=None, ip=None) -> None:
@@ -112,22 +123,6 @@ class StaticWeightStream(Resolvable):
         Called by Program.resolve() via the generic Resolvable branch when this
         instance appears in a Worker's fn_args list.
         """
-        from aie.dialects.aie import (
-            buffer,
-            lock,
-            flow,
-            memtile_dma,
-            mem,
-            dma_start,
-            dma_bd,
-            next_bd,
-            use_lock,
-            DMAChannelDir,
-            LockAction,
-            WireBundle,
-            EndOp,
-        )
-
         memtile_op = self._memtile.op
         compute_op = self._compute.op
 
@@ -251,14 +246,10 @@ class _PairedSide(Resolvable):
         self._parent._resolve_once(loc=loc, ip=ip)
 
     def acquire(self, n: int = 1):
-        from aie.dialects.aie import use_lock, LockAction
-
         use_lock(self._cons_lock, LockAction.AcquireGreaterEqual)
         return self._recv_buf
 
     def release(self, n: int = 1):
-        from aie.dialects.aie import use_lock, LockAction
-
         use_lock(self._prod_lock, LockAction.Release)
 
 
@@ -329,22 +320,6 @@ class PairedStaticWeightStream(Resolvable):
         self._resolve_once(loc=loc, ip=ip)
 
     def _do_resolve(self, loc=None, ip=None) -> None:
-        from aie.dialects.aie import (
-            buffer,
-            lock,
-            flow,
-            memtile_dma,
-            mem,
-            dma_start,
-            dma_bd,
-            next_bd,
-            use_lock,
-            DMAChannelDir,
-            LockAction,
-            WireBundle,
-            EndOp,
-        )
-
         memtile_op = self._memtile.op
         comp_lo_op = self._compute_lo.op
         comp_hi_op = self._compute_hi.op
