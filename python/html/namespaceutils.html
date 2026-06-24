@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;a0b5ff47372826720eebbae68c5c67f45695fdd0</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;79416effc08785e9cfa6fbcb6e869dd392455e95</span>
    </div>
   </td>
  </tr>
@@ -545,6 +545,12 @@ Args:
     probe_runtime: When True, infer the device from the default runtime if
         no explicit device has been bound.  Use False for offline inspection
         paths that must not initialize the runtime.
+
+Args:
+    probe_runtime: When True, fall back to the default NPU runtime if no
+        device was explicitly set with ``set_current_device``. When False,
+        return only the explicitly selected device and never initialize or
+        query the default runtime.
 
 Returns:
     Device | None: The current device if available, else None.
