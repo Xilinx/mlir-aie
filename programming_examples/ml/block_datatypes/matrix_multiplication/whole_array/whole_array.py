@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
+# Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 """Whole-array bfp16ebs8 matmul — ``@iron.jit`` IRON design.
 
 n_aie_rows x n_aie_cols compute cores tile a (M,K,N) GEMM with per-core

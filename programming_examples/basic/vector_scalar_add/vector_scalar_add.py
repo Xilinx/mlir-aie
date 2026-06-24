@@ -4,11 +4,11 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 """Vector scalar add — IRON API design with ``@iron.jit`` compilation.
 
 A single AIE compute core adds 1 to each element of an ``int32`` vector.
-The body delegates to ``aie.iron.algorithms.transform_typed`` with an
+The body delegates to ``aie.iron.algorithms.transform`` with an
 inline lambda — the algorithm handles the ObjectFifo / Worker / Runtime
 plumbing including the memtile staging tile.
 
@@ -24,7 +24,7 @@ import numpy as np
 
 import aie.iron as iron
 from aie.iron import CompileTime, In, Out
-from aie.iron.algorithms import transform_typed
+from aie.iron.algorithms import transform
 from aie.utils.hostruntime.argparse import (
     device_from_args,
     add_compile_args,
@@ -42,7 +42,7 @@ def vector_scalar_add(
     aie_tile_width: CompileTime[int] = 32,
 ):
     tensor_ty = np.ndarray[(problem_size,), np.dtype[np.int32]]
-    return transform_typed(lambda x: x + 1, tensor_ty, tile_size=aie_tile_width)
+    return transform(lambda x: x + 1, tensor_ty, tile_size=aie_tile_width)
 
 
 def _make_argparser():
@@ -58,7 +58,7 @@ def _make_argparser():
         "--aie-tile-width",
         type=int,
         default=32,
-        help="elements per compute-tile sub-tile (transform_typed tile_size)",
+        help="elements per compute-tile sub-tile (transform tile_size)",
     )
     return p
 

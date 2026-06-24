@@ -4,11 +4,11 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
+// Copyright (C) 2024 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-translate --aie-generate-cdo %s --cdo-debug=true |& FileCheck %s
+// RUN: aie-translate --aie-generate-cdo %s --cdo-debug=true 2>&1 | FileCheck %s
 
 // CHECK: (BlockWrite-DMAWriteCmd): Start Address: 0x000000000001D000  Size: 8
 // CHECK:     Address: 0x000000000001D000  Data@ {{0x[0-9a-z]+}} is: 0x00000004 

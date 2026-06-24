@@ -4,12 +4,12 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 """Vector reduction (sum) -- ``@iron.jit`` design via the algorithms library.
 
 A single AIE core sums an N-element int32 input vector into a 1-element int32
 output.  The design body delegates to
-``aie.iron.algorithms.reduce_typed``, which handles the
+``aie.iron.algorithms.reduce``, which handles the
 ObjectFifo / Worker / Runtime plumbing for the reduce shape (whole-input
 single-kernel-call).
 
@@ -25,7 +25,7 @@ import numpy as np
 
 import aie.iron as iron
 from aie.iron import CompileTime, In, Out, kernels
-from aie.iron.algorithms import reduce_typed
+from aie.iron.algorithms import reduce
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
@@ -41,7 +41,7 @@ def vector_reduce_add(
     in_ty = np.ndarray[(num_elements,), np.dtype[np.int32]]
     out_ty = np.ndarray[(1,), np.dtype[np.int32]]
 
-    return reduce_typed(
+    return reduce(
         kernels.reduce_add(tile_size=num_elements, dtype=np.int32),
         in_ty,
         out_ty,

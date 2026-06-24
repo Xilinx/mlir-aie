@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2026 Advanced Micro Devices, Inc.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 """Iron-level circuit- and packet-switched route primitives.
 
 Two classes live here: :class:`Flow` (circuit-switched) and
@@ -26,8 +26,8 @@ shared state) for designs that need direct control.
 from dataclasses import dataclass
 from typing import Sequence
 
-from ... import ir  # type: ignore
-from ...dialects._aie_enum_gen import (  # type: ignore
+from ... import ir  # pyright: ignore[reportMissingImports]
+from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     AIETileType,
     DMAChannelDir,
     WireBundle,
@@ -35,7 +35,7 @@ from ...dialects._aie_enum_gen import (  # type: ignore
 from ...dialects.aie import (
     flow as _flow_op,
     packetflow as _packetflow_op,
-    shim_dma_allocation,
+    shim_dma_allocation,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from ..device import Tile  # noqa: F401  (re-exported via package)
 from ..resolvable import NotResolvedError, Resolvable
@@ -151,7 +151,7 @@ class PacketDest:
     it).
     """
 
-    tile: object  # Tile (avoid forward-ref import)
+    tile: Tile
     port: WireBundle = WireBundle.DMA
     channel: int = 0
 

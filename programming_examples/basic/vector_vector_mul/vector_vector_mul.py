@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 """Vector-vector multiply — IRON API design with ``@iron.jit`` compilation.
 
 Two int32 vectors are multiplied element-wise on a single AIE compute tile,
@@ -25,7 +25,7 @@ import numpy as np
 
 import aie.iron as iron
 from aie.iron import CompileTime, In, Out
-from aie.iron.algorithms import transform_binary_typed
+from aie.iron.algorithms import transform_binary
 from aie.utils.hostruntime.argparse import device_from_args
 from aie.utils.benchmark import print_benchmark, run_iters
 from aie.utils.hostruntime.argparse import (
@@ -47,7 +47,7 @@ def vector_vector_mul(
     tile_size: CompileTime[int] = 16,
 ):
     tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
-    return transform_binary_typed(lambda a, b: a * b, tensor_ty, tile_size=tile_size)
+    return transform_binary(lambda a, b: a * b, tensor_ty, tile_size=tile_size)
 
 
 def _compile_kwargs(opts):

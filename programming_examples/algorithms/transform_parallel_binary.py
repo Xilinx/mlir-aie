@@ -4,12 +4,12 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2026 Advanced Micro Devices, Inc.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 """Tutorial: parallel two-input tile-by-tile transform on the NPU.
 
 Same shape as ``transform_binary.py`` but distributes the work across
 all available NPU columns.  The design body delegates to
-:func:`aie.iron.algorithms.transform_parallel_binary_typed`.
+:func:`aie.iron.algorithms.transform_parallel_binary`.
 """
 
 import argparse
@@ -18,7 +18,6 @@ import numpy as np
 
 import aie.iron as iron
 from aie.iron import CompileTime, In, Out
-from aie.iron.algorithms import transform_parallel_binary_typed
 from aie.utils.verify import assert_pass
 
 
@@ -33,7 +32,7 @@ def transform_parallel_binary(
     tile_size: CompileTime[int] = 16,
 ):
     tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
-    return transform_parallel_binary_typed(
+    return iron.algorithms.transform_parallel_binary(
         lambda a, b: a + b, tensor_ty, tile_size=tile_size
     )
 

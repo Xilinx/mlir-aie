@@ -4,13 +4,15 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc.
+# Copyright (C) 2024 Advanced Micro Devices, Inc.
 
 from __future__ import annotations
 
 from ..dataflow.endpoint import ObjectFifoEndpoint
 from ..device import Tile, AnyShimTile
-from ...dialects._aie_enum_gen import AIETileType  # type: ignore
+from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
+    AIETileType,
+)
 
 
 class RuntimeEndpoint(ObjectFifoEndpoint):
@@ -23,6 +25,8 @@ class RuntimeEndpoint(ObjectFifoEndpoint):
     _SHIM_TILE_TYPES = (AIETileType.ShimNOCTile, AIETileType.ShimPLTile)
 
     def __init__(self, tile: Tile = AnyShimTile) -> None:
+        if tile is None:
+            tile = AnyShimTile
         tile = tile.copy()
         if tile.tile_type is not None and tile.tile_type not in self._SHIM_TILE_TYPES:
             raise ValueError(
@@ -36,6 +40,7 @@ class RuntimeEndpoint(ObjectFifoEndpoint):
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, RuntimeEndpoint):
             return NotImplemented
+        assert self.tile is not None and other.tile is not None
         return (self.tile.col, self.tile.row) == (other.tile.col, other.tile.row)
 
     def __str__(self) -> str:

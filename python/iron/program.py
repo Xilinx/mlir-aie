@@ -4,13 +4,13 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc.
+# Copyright (C) 2024 Advanced Micro Devices, Inc.
 
 import logging
 
 logger = logging.getLogger(__name__)
 
-from ..extras.context import mlir_mod_ctx  # type: ignore
+from ..extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
 from ..helpers.dialects.func import FuncBase
 from ..dialects.aie import device
 
@@ -53,7 +53,7 @@ class Program:
             # This preserves the device configuration while ensuring clean state
             device_type = type(self._device)
             # For dynamically created device classes, the constructor takes no arguments
-            self._device = device_type()
+            self._device = device_type()  # pyright: ignore[reportCallIssue]
 
             # Resolve parameters at module scope (before the aie.device).
             # aiex.scratchpad_parameter ops are global across all devices because the

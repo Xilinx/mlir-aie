@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# (c) Copyright 2023-2024 Advanced Micro Devices, Inc.
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 XRT_DIR=${XILINX_XRT:-/opt/xilinx/xrt}

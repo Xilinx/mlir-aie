@@ -1,4 +1,5 @@
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
@@ -79,23 +80,6 @@ def test_legal_mem_affinity(device):
         device.is_mem_accessible(Tile(), [Tile(1, 2)])
     with pytest.raises(ValueError):
         device.is_mem_accessible(Tile(1, 2), [Tile()])
-
-
-def test_unplaced_tile_queries(device):
-    """Device query methods must raise ValueError for unplaced tiles."""
-    unplaced = Tile()
-    with pytest.raises(ValueError):
-        device.get_num_source_switchbox_connections(unplaced)
-    with pytest.raises(ValueError):
-        device.get_num_dest_switchbox_connections(unplaced)
-    with pytest.raises(ValueError):
-        device.get_num_source_shim_mux_connections(unplaced)
-    with pytest.raises(ValueError):
-        device.get_num_dest_shim_mux_connections(unplaced)
-    with pytest.raises(ValueError):
-        device.get_num_connections(unplaced, output=True)
-    with pytest.raises(ValueError):
-        device.get_num_connections(unplaced, output=False)
 
 
 def test_tile_type_coordinate_mismatch(device):

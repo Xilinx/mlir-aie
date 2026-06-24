@@ -4,12 +4,14 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc.
+# Copyright (C) 2024 Advanced Micro Devices, Inc.
 """DMATask: a RuntimeTask that generates a shim DMA transfer operation."""
 
-from ... import ir  # type: ignore
+from ... import ir  # pyright: ignore[reportMissingImports]
 
-from ...dialects._aiex_ops_gen import dma_start_task  # type: ignore
+from ...dialects._aiex_ops_gen import (  # pyright: ignore[reportMissingImports]
+    dma_start_task,
+)
 from ...dialects.aiex import shim_dma_single_bd_task
 from ..dataflow import ObjectFifoHandle
 from .data import RuntimeData
@@ -81,6 +83,6 @@ class DMATask(RuntimeTask):
             tap=self._tap,
             issue_token=self._wait,
             offset_parameter=self._offset_parameter,
-            packet=self._packet,
+            packet=self._packet,  # pyright: ignore[reportArgumentType]
         )
         dma_start_task(self._task)

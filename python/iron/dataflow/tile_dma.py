@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2026 Advanced Micro Devices, Inc.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 """Iron-level explicit per-tile DMA program.
 
 Peer of :class:`Worker` (which describes the compute body of a tile).
@@ -24,21 +24,21 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Iterable
 
-from ... import ir  # type: ignore
-from ...dialects._aie_enum_gen import (  # type: ignore
+from ... import ir  # pyright: ignore[reportMissingImports]
+from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     AIETileType,
     DMAChannelDir,
     LockAction,
 )
 from ...dialects.aie import (
-    EndOp,
-    dma_bd,
+    EndOp,  # pyright: ignore[reportAttributeAccessIssue]
+    dma_bd,  # pyright: ignore[reportAttributeAccessIssue]
     dma_start,
     mem,
     memtile_dma,
     next_bd,
     shim_mem,
-    use_lock,
+    use_lock,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from ..buffer import Buffer
 from ..lock import Lock
@@ -97,6 +97,12 @@ class Bd:
     # ``(pkt_type, pkt_id)``.  Pairs with a :class:`PacketFlow` that uses
     # the same ``pkt_id`` so the routing fabric dispatches correctly.
     packet: tuple[int, int] | None = None
+    # Multi-dimensional (strided) access pattern, as a list of
+    # ``(size, stride)`` tuples, innermost dimension last — the same form
+    # the ``aie.dma_bd`` dialect op's ``dimensions`` attribute accepts (lowered
+    # via the registered ``BDDimLayoutArrayAttr`` builder).  ``None`` (default)
+    # emits a plain contiguous transfer.
+    dimensions: list[tuple[int, int]] | None = None
 
 
 @dataclass
@@ -248,6 +254,8 @@ class TileDma(Resolvable):
                             bd_kwargs["len"] = bd.length
                         if bd.packet is not None:
                             bd_kwargs["packet"] = bd.packet
+                        if bd.dimensions is not None:
+                            bd_kwargs["dimensions"] = bd.dimensions
                         dma_bd(bd.buffer.op, **bd_kwargs)
                         for rel in bd.releases:
                             rel.emit()

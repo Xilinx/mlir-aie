@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2024-2026, Advanced Micro Devices, Inc.
+// Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//-->
 
@@ -12,11 +12,11 @@
 
 A single AIE compute tile performs a simple reduction: it finds the minimum of an `N`-element `int32` input vector and writes a `1`-element `int32` result.  Default `N = 1024`; configurable via `-n` on the CLI.
 
-The design body is a single `aie.iron.algorithms.reduce_typed(reduce_min_vector, in_ty, out_ty)` call; the algorithms library handles the ObjectFifo / Worker / Runtime plumbing for the reduce shape (whole-input single-kernel-call).
+The design body is a single `aie.iron.algorithms.reduce(reduce_min_vector, in_ty, out_ty)` call; the algorithms library handles the ObjectFifo / Worker / Runtime plumbing for the reduce shape (whole-input single-kernel-call).
 
 ## Source Files Overview
 
-1. `vector_reduce_min.py`: An `@iron.jit`-decorated design that delegates its dataflow body to `aie.iron.algorithms.reduce_typed`. Two invocation modes:
+1. `vector_reduce_min.py`: An `@iron.jit`-decorated design that delegates its dataflow body to `aie.iron.algorithms.reduce`. Two invocation modes:
 
    * standalone — `python3 vector_reduce_min.py`
    * compile-only — drops the compiled artifacts the C++ testbench loads.  Two flavours, depending on which XRT load path the testbench uses:

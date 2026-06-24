@@ -1,4 +1,4 @@
-# Copyright (C) 2022-2026, Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 include(AddMLIRPython)
@@ -18,6 +18,8 @@ declare_mlir_python_sources(AIEPythonExtensions)
 
 declare_mlir_python_sources(AIEPythonSources.Dialects
   ADD_TO_PARENT AIEPythonSources
+  SOURCES
+    dialects/__init__.py
 )
 
 declare_mlir_python_sources(AIEPythonSources.Util
@@ -416,23 +418,61 @@ else ()
 
 endif ()
 
+# Stage the MLIR core type stubs (Context, Location, Module, ...) next to the
+# compiled extension. aie/ir.py re-exports those symbols via
+# `from ._mlir_libs._mlir.ir import *`; the .py sources we assemble don't carry
+# their types, so a static type checker can only resolve them from these stubs.
+# They ship with the MLIR distro but aren't copied by add_mlir_python_modules.
+add_custom_command(
+  TARGET AIEPythonModules POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${MLIR_INSTALL_PREFIX}/src/python/MLIRPythonExtension.Core.type_stub_gen/_mlir_libs/_mlir/__init__.pyi"
+    "${MLIR_INSTALL_PREFIX}/src/python/MLIRPythonExtension.Core.type_stub_gen/_mlir_libs/_mlir/ir.pyi"
+    "${MLIR_INSTALL_PREFIX}/src/python/MLIRPythonExtension.Core.type_stub_gen/_mlir_libs/_mlir/passmanager.pyi"
+    "${MLIR_INSTALL_PREFIX}/src/python/MLIRPythonExtension.Core.type_stub_gen/_mlir_libs/_mlir/rewrite.pyi"
+    "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs/_mlir/"
+  COMMENT "Staging MLIR core type stubs for pyright"
+)
+
 ################################################################################
-# ParameterScratchpad pybind11 module (no MLIR/XRT deps — uses buffer pointer)
+# ParameterScratchpad pybind11 module (uses a raw buffer)
 ################################################################################
-find_package(pybind11 CONFIG QUIET)
-if(pybind11_FOUND)
+if(AIE_ENABLE_XRT_PYTHON_BINDINGS)
+  find_package(pybind11 CONFIG QUIET)
+  if(NOT pybind11_FOUND)
+    execute_process(
+      COMMAND "${Python3_EXECUTABLE}" -m pybind11 --cmakedir
+      RESULT_VARIABLE _pybind11_cmakedir_result
+      OUTPUT_VARIABLE _pybind11_cmakedir
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+      ERROR_QUIET
+    )
+    if(NOT _pybind11_cmakedir_result EQUAL 0)
+      message(FATAL_ERROR
+        "AIE_ENABLE_XRT_PYTHON_BINDINGS requires pybind11 in ${Python3_EXECUTABLE}."
+      )
+    endif()
+    find_package(pybind11 CONFIG REQUIRED
+      PATHS "${_pybind11_cmakedir}"
+      NO_DEFAULT_PATH
+    )
+  endif()
+
   pybind11_add_module(_parameter_scratchpad
     ${CMAKE_CURRENT_SOURCE_DIR}/ParameterScratchpadModule.cpp
   )
+  target_compile_definitions(_parameter_scratchpad PRIVATE TEST_UTILS_USE_XRT=0)
   target_include_directories(_parameter_scratchpad PRIVATE
     ${AIE_SOURCE_DIR}/runtime_lib/test_lib
   )
   set_target_properties(_parameter_scratchpad PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs"
+    RUNTIME_OUTPUT_DIRECTORY "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs"
   )
   add_dependencies(AIEPythonModules _parameter_scratchpad)
   install(TARGETS _parameter_scratchpad
     LIBRARY DESTINATION "${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs"
+    RUNTIME DESTINATION "${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs"
     COMPONENT aie-python
   )
 endif()
