@@ -80,11 +80,21 @@ extern "C" {
 // in the IRON worker body. kQChunkBytes = REP*HEAD_DIM (256) + REP*8 (32).
 void llama_kv_append_head(int8_t *restrict kvfp_packed, int8_t *restrict kv_in,
                           int8_t *restrict kv_out);
+void llama_kv_append_head_grow(int8_t *restrict kvfp_packed,
+                               int8_t *restrict kv_in, int8_t *restrict kv_out);
 void llama_kv_append_combined(int8_t *restrict combined, int8_t *restrict kv_in,
                               int8_t *restrict kv_out) {
   constexpr int kREP = 4; // N_HEADS_Q / N_HEADS_KV for Llama 3.2 1B
   constexpr int kQChunkBytes = kREP * kHD + kREP * 8; // 288
   llama_kv_append_head(combined + kQChunkBytes, kv_in, kv_out);
+}
+// Persistent growing-cache variant (see llama_kv_append_head_grow).
+void llama_kv_append_combined_grow(int8_t *restrict combined,
+                                   int8_t *restrict kv_in,
+                                   int8_t *restrict kv_out) {
+  constexpr int kREP = 4;
+  constexpr int kQChunkBytes = kREP * kHD + kREP * 8; // 288
+  llama_kv_append_head_grow(combined + kQChunkBytes, kv_in, kv_out);
 }
 
 // One KV head. kvfp_packed is ONE input fifo packing [k_fp fp32[HEAD_DIM] |
@@ -96,20 +106,20 @@ void llama_kv_append_combined(int8_t *restrict combined, int8_t *restrict kv_in,
 // flowkv_mh AND the host drain (device-owned cache). Separate in/out because
 // IRON object-fifos give distinct input/output buffer instances (Stage 0
 // proved this copy-in->out pattern).
-void llama_kv_append_head(int8_t *restrict kvfp_packed, int8_t *restrict kv_in,
-                          int8_t *restrict kv_out) {
+// Core append at an explicit slot `pos`; if advance!=0, writes kv_out.T_used =
+// pos+1 (the persistent growing-cache contract -- position advances ON-CHIP via
+// the carried cache). advance==0 copies the prefix through unchanged (the
+// original single-token contract).
+static inline void append_head_impl(int8_t *restrict kvfp_packed,
+                                    int8_t *restrict kv_in,
+                                    int8_t *restrict kv_out, int32_t pos,
+                                    int advance) {
   constexpr int kPerHead = kPrefix + 2 * (kScaleBytes + kBodyBytes);
   const float *k_fp = reinterpret_cast<const float *>(kvfp_packed);
   const float *v_fp = reinterpret_cast<const float *>(kvfp_packed + kHD * 4);
   const bfloat16 *cs_packed =
       reinterpret_cast<const bfloat16 *>(kvfp_packed + kHD * 8);
 
-  // The cache prefix [0..4] holds T_used (the flowkv_mh_kvc contract: number
-  // of valid cached slots including the one we're about to write). The append
-  // slot index is therefore position = T_used - 1.
-  int32_t t_used;
-  memcpy(&t_used, kv_in, 4);
-  int32_t pos = t_used - 1;
   if (pos < 0)
     pos = 0;
   if (pos >= kT)
@@ -117,6 +127,11 @@ void llama_kv_append_head(int8_t *restrict kvfp_packed, int8_t *restrict kv_in,
 
   for (int i = 0; i < kPerHead; i++)
     kv_out[i] = kv_in[i];
+
+  if (advance) {
+    int32_t t_used_out = pos + 1;
+    memcpy(kv_out, &t_used_out, 4);
+  }
 
   const bfloat16 *cos = cs_packed;
   const bfloat16 *sin = cs_packed + kHD;
@@ -171,6 +186,28 @@ void llama_kv_append_head(int8_t *restrict kvfp_packed, int8_t *restrict kv_in,
   }
   memcpy(k_slot_scales + pos * 4, &ks, 4);
   memcpy(v_slot_scales + pos * 4, &vs, 4);
+}
+
+// Original single-token contract: slot = T_used-1, prefix copied unchanged.
+void llama_kv_append_head(int8_t *restrict kvfp_packed, int8_t *restrict kv_in,
+                          int8_t *restrict kv_out) {
+  int32_t t_used;
+  memcpy(&t_used, kv_in, 4);
+  append_head_impl(kvfp_packed, kv_in, kv_out, t_used - 1, /*advance=*/0);
+}
+
+// Persistent growing-cache contract: slot = T_used (NOT -1), and kv_out.T_used
+// = T_used+1 so the next token (carrying this cache) appends at the next slot
+// and flowkv attends one more position -- the cache GROWS, position advances
+// ON-CHIP. host token-0 prefix = P (slots already valid before this token);
+// flowkv is UNCHANGED (reads kv_out.T_used = P+1 -> attends [0, P+1) incl the
+// new slot).
+void llama_kv_append_head_grow(int8_t *restrict kvfp_packed,
+                               int8_t *restrict kv_in,
+                               int8_t *restrict kv_out) {
+  int32_t t_used;
+  memcpy(&t_used, kv_in, 4);
+  append_head_impl(kvfp_packed, kv_in, kv_out, t_used, /*advance=*/1);
 }
 
 } // extern "C"

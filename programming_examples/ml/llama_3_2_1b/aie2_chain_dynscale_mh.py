@@ -48,6 +48,11 @@ ONESTREAM_KSET = int(_os.environ.get("LLAMA_CHAIN_ONESTREAM_KSET", "16"))
 # position (host re-supplies the same KV per token); proves the device-originated
 # control loop bit-exact. When LLAMA_CHAIN_PERSIST=1.
 PERSIST = _os.environ.get("LLAMA_CHAIN_PERSIST", "0") == "1" and ONESTREAM
+# Growing KV (increment 2): the KV cache accumulates across the PT tokens (real
+# autoregressive decode) via the on-chip advancing append + host KV ping-pong.
+# When off (increment 1), KV is held at a fixed position (host re-streams pristine
+# KV each token). Requires PERSIST.
+PERSIST_GROW = _os.environ.get("LLAMA_CHAIN_PERSIST_GROW", "0") == "1" and PERSIST
 # Tokens per dispatch. PT==1 (default off) makes every PERSIST-aware loop a no-op,
 # so the non-persist paths stay byte-identical.
 PT = int(_os.environ.get("LLAMA_CHAIN_PT", "4")) if PERSIST else 1
@@ -596,7 +601,13 @@ def build():
         [t_QR_i8, t_KVCS_i8, t_COMB_HALF_i8, t_COMB_HALF_i8],
     )
     KO_KVA = "llama_kv_append.cc.o"
-    k_append = Kernel("llama_kv_append_combined", KO_KVA, [t_COMB_i8, t_KV_i8, t_KV_i8])
+    # PERSIST uses the growing-cache append (slot = T_used, advances T_used ->
+    # T_used+1 so position advances on-chip via the carried cache). Non-persist
+    # keeps the original single-token append (slot = T_used-1, prefix unchanged).
+    _append_sym = (
+        "llama_kv_append_combined_grow" if PERSIST_GROW else "llama_kv_append_combined"
+    )
+    k_append = Kernel(_append_sym, KO_KVA, [t_COMB_i8, t_KV_i8, t_KV_i8])
     # sv_merge_selfcal: de-interleave [body|sv_out_scale] chunks (1c).
     k_svmerge = Kernel(
         "llama_sv_merge_selfcal",
@@ -1384,8 +1395,12 @@ def build():
         # PERSIST increment 1 holds KV at a fixed position: fills come from the
         # pristine region (offset 0) every token, drains go to a SCRATCH region
         # (offset KV_BYTES, ignored) so each token sees identical starting KV.
-        kv_drain_base = KV_BYTES if PERSIST else 0
-        kv_drain_total = (2 * KV_BYTES) if PERSIST else KV_BYTES
+        # PERSIST increment 2 (GROWING KV): ping-pong two KV regions so token t's
+        # drained (grown) cache becomes token t+1's fill. token t fills region
+        # t%2, drains region (t+1)%2; token 0 fills region 0 (host pristine, with
+        # T_used=P). The growing-append advances T_used on-chip each token, so the
+        # carried cache accumulates context. kv_*_base computed per token below.
+        kv_total = (2 * KV_BYTES) if PERSIST else KV_BYTES
         kvout_specs = [
             (of_kvout_lo.cons(), 0),
             (of_kvout_hi.cons(), KV_HALF_BYTES),
@@ -1437,6 +1452,23 @@ def build():
             else:
                 rt.drain(of_out.cons(), out, wait=True, task_group=out_tg)
 
+            # KV region selection:
+            #  - PERSIST_GROW: ping-pong. token t fills region t%2, drains region
+            #    (t+1)%2 -> the grown cache carries forward (real autoregressive).
+            #  - PERSIST (fixed-pos, increment 1): always fill region 0
+            #    (pristine), drain region 1 (scratch) -> every token sees the same
+            #    KV.
+            #  - non-persist: single region.
+            if PERSIST_GROW:
+                kv_fill_base = (tok % 2) * KV_BYTES
+                kv_drain_base = ((tok + 1) % 2) * KV_BYTES
+            elif PERSIST:
+                kv_fill_base = 0
+                kv_drain_base = KV_BYTES
+            else:
+                kv_fill_base = 0
+                kv_drain_base = 0
+
             # Ping-pong per-layer fill issue with BD reuse.
             layer_tgs = [rt.task_group() for _ in range(N_LAYERS)]
             for L in range(N_LAYERS):
@@ -1445,7 +1477,7 @@ def build():
                         cons,
                         kvblob,
                         tap=strided_tap(
-                            kv_drain_total,
+                            kv_total,
                             kv_drain_base + half_off + L * PER_LAYER_KV,
                             KV_HALF_BYTES,
                             KV_HALF_BYTES,
@@ -1462,15 +1494,36 @@ def build():
                     slot_bytes,
                     slots_per_layer,
                     total,
-                ) in (
-                    fill_specs + kv_specs
-                ):
+                ) in fill_specs:
                     rt.fill(
                         prod,
                         src,
                         tap=strided_tap(
                             total,
                             base_off + L * per_layer_stride,
+                            slot_bytes,
+                            slot_bytes,
+                            slots_per_layer,
+                        ),
+                        task_group=layer_tgs[L],
+                        wait=True,
+                    )
+                # KV fills use the parity-selected region + the 2x total.
+                for (
+                    prod,
+                    src,
+                    base_off,
+                    per_layer_stride,
+                    slot_bytes,
+                    slots_per_layer,
+                    total,
+                ) in kv_specs:
+                    rt.fill(
+                        prod,
+                        src,
+                        tap=strided_tap(
+                            kv_total if PERSIST else total,
+                            kv_fill_base + base_off + L * per_layer_stride,
                             slot_bytes,
                             slot_bytes,
                             slots_per_layer,
