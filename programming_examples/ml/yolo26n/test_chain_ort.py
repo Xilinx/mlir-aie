@@ -35,6 +35,8 @@ import numpy as np
 import onnx
 import onnxruntime as ort
 
+import argparse
+
 import aie.iron as iron
 import aie.utils.test as test_utils
 from aie.utils import DefaultNPURuntime
@@ -81,7 +83,10 @@ def get_input_qparams(graph):
 
 
 def main():
-    p = test_utils.create_default_argparser()
+    p = argparse.ArgumentParser()
+    p.add_argument("-x", "--xclbin", required=True)
+    p.add_argument("-i", "--instr", default="instr.txt")
+    p.add_argument("-k", "--kernel", default="MLIR_AIE")
     opts = p.parse_args(sys.argv[1:])
 
     m0 = yolo_spec.block("m0")

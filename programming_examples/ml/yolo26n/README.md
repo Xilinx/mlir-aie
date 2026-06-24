@@ -51,8 +51,7 @@ per-layer bins (gitignored).
 
 Measured 2026-06-19 on AMD Strix (NPU2), NPU in turbo mode
 (`sudo xrt-smi configure --pmode turbo`). Full chain m0..m10 is bit-exact
-vs ORT (`mismatches=0/30, max|diff|=0`, all 15 samples). Chain default is
-`M8_TILES=4`; m9 standalone uses `M9_STAGE=10`.
+vs ORT (`mismatches=0/30, max|diff|=0`, all 15 samples). m9 standalone uses `M9_STAGE=10`.
 
 Environment: built from source via `utils/build-mlir-aie-from-wheels.sh`
 against the branch-pinned MLIR base wheel + Peano (llvm-aie) nightly, with
@@ -84,7 +83,7 @@ m9 (attention) is the dominant per-stage cost — the N=1 jump from m0..m8
 pipelines most of it away (full chain reaches 304.90 fps at N=15).
 
 **Per-block standalone wall time on NPU**, median of n=20 (turbo).
-m8 uses `M8_TILES=4`; m9 uses `M9_STAGE=10`.
+m9 uses `M9_STAGE=10`.
 
 | Block | Topology | Median (ms) | fps |
 |---|---|---:|---:|
@@ -218,19 +217,6 @@ cv2 reads packed `in_top`/`in_bot` plus raster `in_m0`) use *split
 per-source loops* in the inner IC dimension, never a per-iter `if` —
 that branch defeats Peano's VLIW pipelining of `vlda + vldb + vmac`.
 
-### 6-tile m8 (parked)
-
-`scripts/m8_megakernel_6tile.py` splits each inner pair-conv onto its
-own tile (snake A→B1→B2→C1→C2→D). It builds bit-exact standalone
-(`M8_TILES=6 make BLOCK=m8 run_ort`) but gives no throughput win over
-the 4-tile default: the two stages of a single pair (B1↔B2, C1↔C2) do
-not overlap — only pair0↔pair1 pipeline. The root cause of the
-per-pair serialization was never identified (OF depth, memtile DMA,
-L1 bank contention, and dynamic-objfifo overhead were all tested and
-falsified). It also can't be used in-chain — its memtile placements
-(2,1)/(7,1) collide with m9. The scaffold is kept for future revival;
-the chain default is `M8_TILES=4`.
-
 ### Next remaining levers
 
 1. **Extend mmul A-layout pre-pack** to the remaining 1×1 m8 producer-
@@ -295,11 +281,6 @@ Run `make help` for the canonical list. Highlights:
   file rebuild trigger as `CHAIN_N_SAMPLES`. `M9_CHAIN_STAGE` is
   accepted as a legacy alias. Only stages 1 and 10 are wired through
   `test_block_ort.py` (others lack a clean single-tensor ORT analog).
-- `M8_TILES={2,4}` — selects m8 megakernel layout. Chain default is 4
-  (set by the Makefile, scoped to the chain MLIR build; stamp-tracked
-  so toggling rebuilds). Per-block standalone (`make BLOCK=m8`) default
-  is 2 — pass `M8_TILES=4 make BLOCK=m8` to switch. A standalone-only
-  6-tile variant also exists (see "6-tile m8 (parked)").
 - `TIME_ARGS="--n-warmup 5 --n-iters 100"` — passed through to the timing
   harnesses.
 - `TRACE_SIZE_PER_WORKER=N`, `TRACE_EVENTS=A,B,C` — bake AIE2P packet
@@ -356,35 +337,23 @@ The 11 blocks map to these kernel families:
 | m3, m5, m7 | conv_stride | `yolo_conv2dk3_stride2_silu_bias_oiyxi8o8_chunked` (per-block, weight-streamed) | 1 each |
 | m2, m4 | c3k2_small | `yolo_c3k2_small_{cv1_split, m0_cv1, m0_cv2_skip, cv2_concat3}` | 3 each |
 | m6 | c3k2_heavy | `yolo_c3k2_heavy_{m_0_split, inner_pair_cv1, inner_pair_cv2_skip, cv3_concat2}` + `c3k2_small_{cv1_split, cv2_concat3}` | 5 |
-| **m8** | **c3k2_heavy 4-tile megakernel** (set `M8_TILES=2` for the smaller 2-tile variant) | `yolo_m8_front_cv1_split_fused` + `yolo_m8_back_cv3_cv2_fused` + `yolo_c3k2_heavy_inner_pair_{cv1,cv2_skip}_streamed` | **4** |
+| **m8** | **c3k2_heavy 4-tile megakernel** | `yolo_m8_front_cv1_split_fused` + `yolo_m8_back_cv3_cv2_fused` + `yolo_c3k2_heavy_inner_pair_{cv1,cv2_skip}_streamed` | **4** |
 | m9 | PSA (attention + FFN) | 11 kernels: `yolo_m9_{cv1_split, qkv, qk_pack, attn_score_fused, v_pack, sv_row, pe_add_row, proj_skip_row, ffn_0_silu_row, ffn_1_skip_row, cv2_concat2_streamed}` (qk_row + attn_scale + softmax_row collapsed into `attn_score_fused_vec.cc`; sv_row + sv_row_acc share the same `.o` with two extern C entries) | 7 |
 | m10 | head | `yolo_m10_{conv2dk1_silu_xy_pool, linear_gemm, softmax}` (fused onto 1 tile) | 1 |
 
 Total: **28 of 32** compute tiles used.
 
-### m8 — megakernel (4-tile default; 2-tile variant available)
+### m8 — 4-tile megakernel
 
-The most compute-dense block. `M8_TILES` selects the variant (default 4,
-applies to both chain and per-block standalone):
-
-- **4-tile (default)** — [`scripts/m8_megakernel_4tile.py`](scripts/m8_megakernel_4tile.py).
-  Four compute workers (`worker_a/b/c/d` on tiles (5,3), (5,4), and two
-  delegates). Each pair kernel gets its own dedicated worker.
-- **2-tile** (`M8_TILES=2`) — [`scripts/m8_megakernel_2tile.py`](scripts/m8_megakernel_2tile.py).
-  Two compute tiles, each running a single Worker that fuses three
-  c3k2_heavy sub-operations into one C kernel call per chunk:
-  - **Tile A (5,3)** — `k_m8_front` (cv1 + m_0_split) + `k_pair_cv1` +
-    `k_pair_cv2` for pair0
-  - **Tile B (5,4)** — `k_pair_cv1` + `k_pair_cv2` for pair1 +
-    `k_m8_back` (cv3 + cv2)
-- **6-tile** (`M8_TILES=6`) — compiles standalone but blocked in chain by
-  memtile conflicts with m9 ((2,1) + (7,1) overlap). Standalone-only
-  until placement is reworked.
+The most compute-dense block. [`scripts/m8_megakernel_4tile.py`](scripts/m8_megakernel_4tile.py)
+splits the 8 c3k2_heavy sub-ops across four workers (`worker_a/b/c/d`
+on tiles (5,3), (5,4), (6,4), (6,3)) so each pair kernel gets its own
+dedicated worker.
 
 Cross-tile data lives in shared L1 ObjectFifos (no DMA hop). Weights for
 the big convs (cv1, cv2, pair0, pair1) are streamed from memtiles via
-`StaticWeightStream`; the small m_0_split and cv3 weights are static on
-the compute tiles.
+`ObjectFifo(init_values=...)`; the small m_0_split and cv3 weights are
+static on the compute tiles.
 
 ### m9 — staged PSA
 

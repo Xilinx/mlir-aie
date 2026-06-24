@@ -60,12 +60,12 @@ sys.path.insert(0, str(HERE.parent))
 
 from aie.iron import Buffer, Kernel, ObjectFifo, Program, Runtime
 from aie.iron.controlflow import range_
+from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
 from aie.iron.device import NPU2, Tile
 
 import placement  # noqa: E402
 import yolo_spec  # noqa: E402
 import aie2_yolo_per_block as B  # noqa: E402
-from lowlevel_dma import StaticWeightStream  # noqa: E402
 from aie2_yolo_per_block import (
     Worker,
     TRACE_SIZE_PER_WORKER,
@@ -168,19 +168,14 @@ def build(act_in_external=None, return_program: bool = True):
     bias_cv1 = _bias_buf(m_cv1, twoc, name="m8_2t_cv1_bias")
     lut_cv1 = _lut_buf("cv1", name="m8_2t_cv1_lut")
     rs_cv1 = m_cv1["right_shift"]
-    ws_cv1 = StaticWeightStream(
-        obj_type=B._i8((sz_cv1,)),
-        initial_value=data_cv1,
-        name="m8_2t_cv1_stream",
-        recv_type=B._i8((chunk_sz_cv1,)),
-        repeat_count=in_h,
-        memtile_placement=Tile(5, 1),
-        compute_placement=t_a,
-        mem_lock_id=0,
-        comp_lock_id=0,
-        mm2s_channel=0,
-        s2mm_channel=1,
+    ws_cv1 = ObjectFifo(
+        B._i8((sz_cv1,)),
+        depth=1,
+        name="m8_4t_cv1_stream",
+        consumer_obj_type=B._i8((chunk_sz_cv1,)),
+        init_values=[data_cv1.reshape(sz_cv1)],
     )
+    ws_cv1.prod().endpoint = ObjectFifoEndpoint(Tile(5, 1))
 
     m_p0c1 = B._op_meta(manifest, L_p0c1.manifest_name)
     m_p0c2 = B._op_meta(manifest, L_p0c2.manifest_name)
@@ -194,22 +189,22 @@ def build(act_in_external=None, return_program: bool = True):
     lut_p0c2 = _lut_buf("m.0/m/m.0/cv2", name="m8_2t_p0c2_lut")
     rs_p0c1 = m_p0c1["right_shift"]
     rs_p0c2 = m_p0c2["right_shift"]
-    ws_pair0 = StaticWeightStream(
-        obj_type=B._i8((sz_p0c1,)),
-        initial_value=data_p0c1,
-        name="m8_4t_pair0_stream",
-        recv_type=B._i8((chunk_sz_pair,)),
-        repeat_count=in_h,
-        memtile_placement=Tile(4, 1),
-        compute_placement=t_p0_recv,  # (4,4); B at (5,4) reads via shared L1
-        mem_lock_id=0,
-        comp_lock_id=0,
-        mm2s_channel=0,
-        s2mm_channel=0,
-        ping_pong_buf=(B._i8((sz_p0c2,)), data_p0c2, "m8_4t_p0c2_pp"),
-        ping_pong_memtile=Tile(4, 1),
-        pp_lock_id=2,
+    ws_pair0_cv1 = ObjectFifo(
+        B._i8((sz_p0c1,)),
+        depth=1,
+        name="m8_4t_pair0_cv1_stream",
+        consumer_obj_type=B._i8((chunk_sz_pair,)),
+        init_values=[data_p0c1.reshape(sz_p0c1)],
     )
+    ws_pair0_cv1.prod().endpoint = ObjectFifoEndpoint(Tile(4, 1))
+    ws_pair0_cv2 = ObjectFifo(
+        B._i8((sz_p0c2,)),
+        depth=1,
+        name="m8_4t_pair0_cv2_stream",
+        consumer_obj_type=B._i8((chunk_sz_pair,)),
+        init_values=[data_p0c2.reshape(sz_p0c2)],
+    )
+    ws_pair0_cv2.prod().endpoint = ObjectFifoEndpoint(Tile(4, 1))
 
     m_p1c1 = B._op_meta(manifest, L_p1c1.manifest_name)
     m_p1c2 = B._op_meta(manifest, L_p1c2.manifest_name)
@@ -224,22 +219,22 @@ def build(act_in_external=None, return_program: bool = True):
     # ws_pair1 recv buffer placed on (6,5), the NORTH neighbor of C=(6,4).
     # Vertical L1 is bidirectional, so C reads (6,5)'s memory fine.
     # (Old 2-tile design put this at (4,4) — that slot is now ws_pair0.)
-    ws_pair1 = StaticWeightStream(
-        obj_type=B._i8((sz_p0c1,)),
-        initial_value=data_p1c1,
-        name="m8_4t_pair1_stream",
-        recv_type=B._i8((chunk_sz_pair,)),
-        repeat_count=in_h,
-        memtile_placement=Tile(6, 1),
-        compute_placement=t_p1_recv,  # (6,5)
-        mem_lock_id=0,
-        comp_lock_id=0,
-        mm2s_channel=0,
-        s2mm_channel=0,
-        ping_pong_buf=(B._i8((sz_p0c1,)), data_p1c2, "m8_4t_p1c2_pp"),
-        ping_pong_memtile=Tile(6, 1),
-        pp_lock_id=2,
+    ws_pair1_cv1 = ObjectFifo(
+        B._i8((sz_p0c1,)),
+        depth=1,
+        name="m8_4t_pair1_cv1_stream",
+        consumer_obj_type=B._i8((chunk_sz_pair,)),
+        init_values=[data_p1c1.reshape(sz_p0c1)],
     )
+    ws_pair1_cv1.prod().endpoint = ObjectFifoEndpoint(Tile(6, 1))
+    ws_pair1_cv2 = ObjectFifo(
+        B._i8((sz_p0c1,)),
+        depth=1,
+        name="m8_4t_pair1_cv2_stream",
+        consumer_obj_type=B._i8((chunk_sz_pair,)),
+        init_values=[data_p1c2.reshape(sz_p0c1)],
+    )
+    ws_pair1_cv2.prod().endpoint = ObjectFifoEndpoint(Tile(6, 1))
 
     m_cv2 = B._op_meta(manifest, L_cv2.manifest_name)
     sz_cv2 = out_c * (3 * c)
@@ -248,19 +243,14 @@ def build(act_in_external=None, return_program: bool = True):
     bias_cv2 = _bias_buf(m_cv2, out_c, name="m8_2t_cv2_bias")
     lut_cv2 = _lut_buf("cv2", name="m8_2t_cv2_lut")
     rs_cv2 = m_cv2["right_shift"]
-    ws_cv2 = StaticWeightStream(
-        obj_type=B._i8((sz_cv2,)),
-        initial_value=data_cv2,
+    ws_cv2 = ObjectFifo(
+        B._i8((sz_cv2,)),
+        depth=1,
         name="m8_4t_cv2_stream",
-        recv_type=B._i8((chunk_sz_cv2,)),
-        repeat_count=in_h,
-        memtile_placement=Tile(3, 1),
-        compute_placement=t_d,  # back tile (6,3)
-        mem_lock_id=0,
-        comp_lock_id=4,
-        mm2s_channel=0,
-        s2mm_channel=1,
+        consumer_obj_type=B._i8((chunk_sz_cv2,)),
+        init_values=[data_cv2.reshape(sz_cv2)],
     )
+    ws_cv2.prod().endpoint = ObjectFifoEndpoint(Tile(3, 1))
 
     # ----- Input + output -----
     # act_in depth=1: per-row payload is only 4 KB, so the shim<->compute
@@ -429,7 +419,7 @@ def build(act_in_external=None, return_program: bool = True):
         worker_a_fn,
         fn_args=[
             act_in.cons(),
-            ws_cv1,
+            ws_cv1.cons(),
             wts_m0c1_buf,
             wts_m0c2_buf,
             bias_cv1,
@@ -454,7 +444,8 @@ def build(act_in_external=None, return_program: bool = True):
     # ==================================================================
     def worker_b_fn(
         split_a_c,
-        ws_pair0,
+        ws_pair0_cv1,
+        ws_pair0_cv2,
         bias_p0c1,
         lut_p0c1,
         bias_p0c2,
@@ -479,7 +470,7 @@ def build(act_in_external=None, return_program: bool = True):
             mid_r = p0_mid_p.acquire(1)
             sk_r = p0_skip_p.acquire(1)
             for wi in range_(N_PAIR_CHUNKS):
-                ck = ws_pair0.acquire(1)
+                ck = ws_pair0_cv1.acquire(1)
                 k_pair_cv1(
                     sa_top,
                     sa_mid,
@@ -498,7 +489,7 @@ def build(act_in_external=None, return_program: bool = True):
                     N_PAIR_CHUNKS,
                     wi,
                 )
-                ws_pair0.release(1)
+                ws_pair0_cv1.release(1)
             # Forward middle row of split_a as the skip path for cv2.
             for x in range_(in_w):
                 for kk in range_(cp):
@@ -509,7 +500,7 @@ def build(act_in_external=None, return_program: bool = True):
         def _do_p0c2(border, mid_top, mid_mid, mid_bot, skip):
             out_r = inner_0_xt_p.acquire(1)
             for wi in range_(N_PAIR_CHUNKS):
-                ck = ws_pair0.acquire(1)
+                ck = ws_pair0_cv2.acquire(1)
                 k_pair_cv2(
                     mid_top,
                     mid_mid,
@@ -532,7 +523,7 @@ def build(act_in_external=None, return_program: bool = True):
                     SKIP_CV2_MULT,
                     SKIP_RSH,
                 )
-                ws_pair0.release(1)
+                ws_pair0_cv2.release(1)
             inner_0_xt_p.release(1)
 
         # Outer iters: in_h + 2 (LAG=2 for cv1 then cv2_skip stacked 3x3).
@@ -542,10 +533,10 @@ def build(act_in_external=None, return_program: bool = True):
             with if_(it == c1, hasElse=False):
                 sa = split_a_c.acquire(2)
                 _do_p0c1(0, sa[0], sa[0], sa[1])
-                # ws_pair0 ping_pong drain (pair0_cv2 doesn't run at iter 1).
+                # pair0_cv2 doesn't run at iter 1; drain its chunks.
                 for wi in range_(N_PAIR_CHUNKS):
-                    ws_pair0.acquire(1)
-                    ws_pair0.release(1)
+                    ws_pair0_cv2.acquire(1)
+                    ws_pair0_cv2.release(1)
             with if_(it >= c2, hasElse=False):
                 with if_(it < c_in_h, hasElse=False):
                     sa = split_a_c.acquire(3)
@@ -570,11 +561,10 @@ def build(act_in_external=None, return_program: bool = True):
                     p0_mid_c.release(1)
                     p0_skip_c.release(1)
             with if_(it == c_in_h_p1, hasElse=False):
-                # pair0_cv1 doesn't run at iter in_h+1; drain cv1 chunks
-                # FIRST to keep ping_pong aligned.
+                # pair0_cv1 doesn't run at iter in_h+1; drain its cv1 chunks.
                 for wi in range_(N_PAIR_CHUNKS):
-                    ws_pair0.acquire(1)
-                    ws_pair0.release(1)
+                    ws_pair0_cv1.acquire(1)
+                    ws_pair0_cv1.release(1)
                 pm = p0_mid_c.acquire(2)
                 ps = p0_skip_c.acquire(1)
                 _do_p0c2(2, pm[0], pm[1], pm[1], ps)
@@ -585,7 +575,8 @@ def build(act_in_external=None, return_program: bool = True):
         worker_b_fn,
         fn_args=[
             split_a_xt.cons(),
-            ws_pair0,
+            ws_pair0_cv1.cons(),
+            ws_pair0_cv2.cons(),
             bias_p0c1,
             lut_p0c1,
             bias_p0c2,
@@ -607,7 +598,8 @@ def build(act_in_external=None, return_program: bool = True):
     # ==================================================================
     def worker_c_fn(
         inner_0_xt_c,
-        ws_pair1,
+        ws_pair1_cv1,
+        ws_pair1_cv2,
         bias_p1c1,
         lut_p1c1,
         bias_p1c2,
@@ -633,7 +625,7 @@ def build(act_in_external=None, return_program: bool = True):
             mid_r = p1_mid_p.acquire(1)
             sk_r = p1_skip_p.acquire(1)
             for wi in range_(N_PAIR_CHUNKS):
-                ck = ws_pair1.acquire(1)
+                ck = ws_pair1_cv1.acquire(1)
                 k_pair_cv1(
                     po_top,
                     po_mid,
@@ -652,7 +644,7 @@ def build(act_in_external=None, return_program: bool = True):
                     N_PAIR_CHUNKS,
                     wi,
                 )
-                ws_pair1.release(1)
+                ws_pair1_cv1.release(1)
             for x in range_(in_w):
                 for kk in range_(cp):
                     sk_r[x, 0, kk] = po_mid[x, 0, kk]
@@ -662,7 +654,7 @@ def build(act_in_external=None, return_program: bool = True):
         def _do_p1c2(border, p1m_top, p1m_mid, p1m_bot, skip):
             out_r = inner_1_xt_p.acquire(1)
             for wi in range_(N_PAIR_CHUNKS):
-                ck = ws_pair1.acquire(1)
+                ck = ws_pair1_cv2.acquire(1)
                 k_pair_cv2(
                     p1m_top,
                     p1m_mid,
@@ -685,7 +677,7 @@ def build(act_in_external=None, return_program: bool = True):
                     SKIP_CV2_MULT,
                     SKIP_RSH,
                 )
-                ws_pair1.release(1)
+                ws_pair1_cv2.release(1)
             inner_1_xt_p.release(1)
 
         # Outer iters: in_h + 2 (LAG=2 for cv1 then cv2_skip stacked 3x3).
@@ -696,9 +688,10 @@ def build(act_in_external=None, return_program: bool = True):
             with if_(it == c0, hasElse=False):
                 po = inner_0_xt_c.acquire(2)
                 _do_p1c1(0, po[0], po[0], po[1])
+                # pair1_cv2 doesn't run at iter 0; drain its chunks.
                 for wi in range_(N_PAIR_CHUNKS):
-                    ws_pair1.acquire(1)
-                    ws_pair1.release(1)
+                    ws_pair1_cv2.acquire(1)
+                    ws_pair1_cv2.release(1)
             with if_(it >= c1, hasElse=False):
                 with if_(it < c_in_h_m1, hasElse=False):
                     po = inner_0_xt_c.acquire(3)
@@ -723,9 +716,10 @@ def build(act_in_external=None, return_program: bool = True):
                     p1_mid_c.release(1)
                     p1_skip_c.release(1)
             with if_(it == c_in_h, hasElse=False):
+                # pair1_cv1 doesn't run at iter in_h; drain its cv1 chunks.
                 for wi in range_(N_PAIR_CHUNKS):
-                    ws_pair1.acquire(1)
-                    ws_pair1.release(1)
+                    ws_pair1_cv1.acquire(1)
+                    ws_pair1_cv1.release(1)
                 p1m = p1_mid_c.acquire(2)
                 p1s = p1_skip_c.acquire(1)
                 _do_p1c2(2, p1m[0], p1m[1], p1m[1], p1s)
@@ -736,7 +730,8 @@ def build(act_in_external=None, return_program: bool = True):
         worker_c_fn,
         fn_args=[
             inner_0_xt.cons(),
-            ws_pair1,
+            ws_pair1_cv1.cons(),
+            ws_pair1_cv2.cons(),
             bias_p1c1,
             lut_p1c1,
             bias_p1c2,
@@ -816,7 +811,7 @@ def build(act_in_external=None, return_program: bool = True):
             split_b_xt.cons(),
             inner_1_xt.cons(),
             block_out.prod(),
-            ws_cv2,
+            ws_cv2.cons(),
             wts_m0c3_buf,
             bias_m0c3,
             lut_m0c3,

@@ -49,12 +49,12 @@ sys.path.insert(0, str(HERE.parent))
 
 from aie.iron import Buffer, Kernel, ObjectFifo, Program, Runtime
 from aie.iron.controlflow import range_
+from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
 from aie.iron.device import NPU2, Tile
 
 import placement  # noqa: E402
 import yolo_spec  # noqa: E402
 import aie2_yolo_per_block as B  # noqa: E402
-from lowlevel_dma import StaticWeightStream  # noqa: E402
 
 # Trace-aware Worker subclass; honors TRACE_SIZE_PER_WORKER env var.
 from aie2_yolo_per_block import Worker, TRACE_SIZE_PER_WORKER  # noqa: E402
@@ -138,17 +138,14 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
     rs_cv1 = m_cv1["right_shift"]
     silu_cv1 = _lut("cv1")
 
-    ws_cv1 = StaticWeightStream(
-        obj_type=B._i8((sz_cv1,)),
-        initial_value=data_cv1,
+    ws_cv1 = ObjectFifo(
+        B._i8((sz_cv1,)),
+        depth=1,
         name=f"{BLOCK}_cv1_wts",
-        recv_type=B._i8((chunk_sz_cv1,)),
-        repeat_count=in_h,
-        memtile_placement=Tile(t_cv1.col, 1),
-        compute_placement=t_cv1,
-        mem_lock_id=0,
-        comp_lock_id=0,
+        consumer_obj_type=B._i8((chunk_sz_cv1,)),
+        init_values=[data_cv1.reshape(sz_cv1)],
     )
+    ws_cv1.prod().endpoint = ObjectFifoEndpoint(Tile(t_cv1.col, 1))
 
     k_cv1 = Kernel(
         "yolo_m9_cv1_split_silu_bias_i8_i8",
@@ -200,7 +197,7 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
             cv1_fn,
             fn_args=[
                 act_in.cons(),
-                ws_cv1,
+                ws_cv1.cons(),
                 bias_cv1,
                 silu_cv1,
                 top_fifo.prod(),
@@ -986,19 +983,16 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
         bias_ffn1 = _bias(m_ffn1, ffn_out_c)
         rs_ffn1 = m_ffn1["right_shift"]
 
-        ws_ffn0 = StaticWeightStream(
-            obj_type=B._i8((sz_ffn0,)),
-            initial_value=data_ffn0,
+        ws_ffn0 = ObjectFifo(
+            B._i8((sz_ffn0,)),
+            depth=1,
             name="m9_ffn0_wts",
-            recv_type=B._i8((chunk_sz_ffn0,)),
-            repeat_count=in_h,
+            consumer_obj_type=B._i8((chunk_sz_ffn0,)),
             # m8 pair0_cv1 already uses memtile (5,1) — ffn at (5,5)'s
             # natural column. Use (2,1) instead (fully free).
-            memtile_placement=Tile(2, 1),
-            compute_placement=plc["ffn"],
-            mem_lock_id=0,
-            comp_lock_id=0,
+            init_values=[data_ffn0.reshape(sz_ffn0)],
         )
+        ws_ffn0.prod().endpoint = ObjectFifoEndpoint(Tile(2, 1))
 
         k_ffn0 = Kernel(
             "yolo_m9_ffn_0_silu_row_i8_i8",
@@ -1083,7 +1077,7 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
                 ffn_fn,
                 fn_args=[
                     attn_block_out_fifo.cons(),
-                    ws_ffn0,
+                    ws_ffn0.cons(),
                     bias_ffn0,
                     silu_ffn0,
                     mid_buf,
@@ -1126,20 +1120,16 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
         rs_cv2 = m_cv2["right_shift"]
         silu_cv2 = _lut("cv2")
 
-        ws_cv2 = StaticWeightStream(
-            obj_type=B._i8((sz_cv2,)),
-            initial_value=data_cv2,
+        ws_cv2 = ObjectFifo(
+            B._i8((sz_cv2,)),
+            depth=1,
             name="m9_cv2_wts",
-            recv_type=B._i8((chunk_sz_cv2,)),
-            repeat_count=in_h,
-            # m8 already claims memtiles (3,1)-(6,1) for its streams
-            # (cv2 at (3,1), cv1 at (4,1), pair0_cv1 at (5,1), pair0_cv2
-            # at (6,1)). Use (1,1) — fully free in chain context.
-            memtile_placement=Tile(1, 1),
-            compute_placement=plc["cv2"],
-            mem_lock_id=0,
-            comp_lock_id=0,
+            consumer_obj_type=B._i8((chunk_sz_cv2,)),
+            # m8 already claims memtiles (3,1)-(6,1) for its streams.
+            # Use (1,1) — fully free in chain context.
+            init_values=[data_cv2.reshape(sz_cv2)],
         )
+        ws_cv2.prod().endpoint = ObjectFifoEndpoint(Tile(1, 1))
 
         k_cv2 = Kernel(
             "yolo_m9_cv2_concat2_streamed_silu_bias_i8_i8",
@@ -1217,7 +1207,7 @@ def build(stage: int, act_in_external=None, return_program: bool = True):
                     ffn_block_out_fifo.cons(),
                     top_fifo.cons(),
                     top_cache_buf,
-                    ws_cv2,
+                    ws_cv2.cons(),
                     bias_cv2,
                     silu_cv2,
                     cv2_out_fifo.prod(),

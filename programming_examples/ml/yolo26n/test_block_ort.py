@@ -136,7 +136,10 @@ def find_block_io_tensors(
 
 
 def main():
-    p = test_utils.create_default_argparser()
+    p = argparse.ArgumentParser()
+    p.add_argument("-x", "--xclbin", required=True)
+    p.add_argument("-i", "--instr", default="instr.txt")
+    p.add_argument("-k", "--kernel", default="MLIR_AIE")
     p.add_argument(
         "--block",
         required=True,

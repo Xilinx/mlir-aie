@@ -19,6 +19,8 @@ import numpy as np
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
+import argparse
+
 import aie.iron as iron
 import aie.utils.test as test_utils
 from aie.utils import DefaultNPURuntime
@@ -27,7 +29,10 @@ import yolo_spec  # noqa: E402
 
 
 def main():
-    p = test_utils.create_default_argparser()
+    p = argparse.ArgumentParser()
+    p.add_argument("-x", "--xclbin", required=True)
+    p.add_argument("-i", "--instr", default="instr.txt")
+    p.add_argument("-k", "--kernel", default="MLIR_AIE")
     p.add_argument("--block", required=True)
     p.add_argument("--n-warmup", type=int, default=3)
     p.add_argument("--n-iters", type=int, default=20)

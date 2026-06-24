@@ -23,11 +23,9 @@ Compute tile budget: 26 of 32 used (6 spares). Per-block:
   m2/m4 (c3k2_small)               : 3 tiles each
   m3/m5/m7 (conv_stride chunked)   : 1 tile each
   m6    (c3k2_heavy)               : 5 tiles
-  m8    (c3k2_heavy megakernel — chain + standalone default is 4-tile via
-         scripts/m8_megakernel_4tile.py; M8_TILES=2 selects the 2-tile
-         scripts/m8_megakernel_2tile.py variant. Both scripts hardcode
-         their own tile coords; the PLACEMENT["m8"] dict below is
-         documentary, not load-bearing for m8): 4 tiles (default)
+  m8    (c3k2_heavy megakernel — 4-tile via scripts/m8_megakernel_4tile.py;
+         script hardcodes its own tile coords; the PLACEMENT["m8"] dict below
+         is documentary, not load-bearing for m8): 4 tiles
   m9    (PSA staged build)         : 7 tiles
   m10   (head, fused)              : 1 tile
 
@@ -225,12 +223,9 @@ PLACEMENT: dict = {
         "cv3_cv2": Tile(3, 4),  # m6-E
     },
     # m8 placement (chain default = 4-tile via scripts/m8_megakernel_4tile.py).
-    # Scripts hardcode their own tile coords; dict here is for collision
-    # validation only. 4-tile uses compute (5,3),(5,4) + delegates (4,4)
-    # (ws_pair0) and (6,5) (ws_pair1). 6-tile variant exists in
-    # scripts/m8_megakernel_6tile.py but its placement (cols 5+6, rows
-    # 3-5) currently conflicts with m9 memtiles (2,1)+(7,1) in chain
-    # context — standalone-only until placement is reworked.
+    # Script hardcodes its own tile coords; dict here is for collision
+    # validation only. Compute (5,3),(5,4) + delegates (4,4) (ws_pair0)
+    # and (6,5) (ws_pair1).
     "m8": {
         "tile_a": Tile(5, 3),
         "tile_b": Tile(5, 4),

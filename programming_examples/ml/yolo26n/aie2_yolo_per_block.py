@@ -47,7 +47,6 @@ from aie.utils.trace.events import CoreEventAIE2P
 
 import yolo_spec
 import placement
-from lowlevel_dma import StaticWeightStream, PairedStaticWeightStream
 
 # ---------------------------------------------------------------------------
 # Trace gating. When env var TRACE_SIZE_PER_WORKER > 0 at MLIR-generation
@@ -317,7 +316,7 @@ def _build_m0(act_in, manifest):
 #     args; weights fit in tile L1 alongside activations.
 #   - m3/m5/m7 (_build_conv_stride_block_streamed): weights exceed the 64KB
 #     tile budget so a per-block kernel .o streams weight chunks from a
-#     MemTile via StaticWeightStream.
+#     MemTile via ObjectFifo(init_values=[chunk0,...,chunkN]).
 # ---------------------------------------------------------------------------
 def _build_conv_stride_block(block_name: str, act_in, manifest):
     blk = yolo_spec.block(block_name)
@@ -447,7 +446,7 @@ def _build_conv_stride_block(block_name: str, act_in, manifest):
 # ---------------------------------------------------------------------------
 # Streamed variant for m3/m5/m7 — weights exceed the AIE2P 64KB tile budget,
 # so we stage them on a MemTile (one per col, row 1) and stream chunks via
-# lowlevel_dma.StaticWeightStream. Same OIYXI8O8 algorithm as
+# ObjectFifo(init_values=[chunk0,...,chunkN]). Same OIYXI8O8 algorithm as
 # _build_conv_stride_block but the kernel takes oc_offset/oc_count and the
 # worker calls it n_splits times per output row.
 # ---------------------------------------------------------------------------
@@ -1046,7 +1045,7 @@ def _build_c3k2_small(block_name: str, act_in, manifest):
 #
 # Heavyweight design point: m10/conv weights are 327,680 B — way over the
 # per-tile L1 budget — so they're staged on a memtile and chunked via
-# StaticWeightStream, mirroring mobilenet post_l1's `post_l1_pb`. We split
+# ObjectFifo(init_values), mirroring mobilenet post_l1's `post_l1_pb`. We split
 # output channels into 16 chunks of 80 channels each (20,480 B/chunk; vs
 # mobilenet's 8 chunks at 9,600 B — both are well under the per-tile budget).
 # The chunk count is tunable when we measure tile mem usage on Linux.
@@ -1113,29 +1112,29 @@ def _build_head(block_name, act_in, manifest):
     tile_y = placement.PLACEMENT["m10"]["conv_hi_gemm"]
 
     # Both halves share memtile (0,1) — chain layout has no other free
-    # memtile (cols 1..7 are owned by m8/m9). Two plain StaticWeightStream
-    # on one tile silently collapse at lowering (only one source buffer
-    # routes), so use the paired helper that emits ONE memtile_dma region
-    # with two MM2S channels feeding distinct compute tiles.
-    conv_wts_pair = PairedStaticWeightStream(
-        obj_type=_i8((conv_wts_per_tile,)),
-        initial_value_lo=wts_lo_data,
-        initial_value_hi=wts_hi_data,
-        name_lo="m10_conv_wts_lo",
-        name_hi="m10_conv_wts_hi",
-        recv_type=_i8((conv_wts_chunk,)),
-        memtile_placement=Tile(0, 1),
-        compute_placement_lo=tile_x,
-        compute_placement_hi=tile_y,
-        mm2s_channel_lo=0,
-        mm2s_channel_hi=1,
-        s2mm_channel_lo=0,
-        s2mm_channel_hi=0,
-        comp_lock_id_lo=0,
-        comp_lock_id_hi=0,
+    # memtile (cols 1..7 are owned by m8/m9). ObjectFifo handles multiple
+    # static-init fifos on the same MemTile natively (each gets its own MM2S
+    # channel) — no need for a paired helper.
+    # depth=1: one large buffer on the MemTile; consumer_obj_type slices it
+    # into chunk-sized pieces so the compute tile only holds one chunk at a time.
+    conv_wts_lo = ObjectFifo(
+        _i8((conv_wts_per_tile,)),
+        depth=1,
+        name="m10_conv_wts_lo",
+        consumer_obj_type=_i8((conv_wts_chunk,)),
+        init_values=[wts_lo_data.reshape(conv_wts_per_tile)],
     )
-    conv_wts_lo_pb = conv_wts_pair.lo
-    conv_wts_hi_pb = conv_wts_pair.hi
+    conv_wts_lo.prod().endpoint = ObjectFifoEndpoint(Tile(0, 1))
+    conv_wts_hi = ObjectFifo(
+        _i8((conv_wts_per_tile,)),
+        depth=1,
+        name="m10_conv_wts_hi",
+        consumer_obj_type=_i8((conv_wts_chunk,)),
+        init_values=[wts_hi_data.reshape(conv_wts_per_tile)],
+    )
+    conv_wts_hi.prod().endpoint = ObjectFifoEndpoint(Tile(0, 1))
+    conv_wts_lo_pb = conv_wts_lo.cons()
+    conv_wts_hi_pb = conv_wts_hi.cons()
 
     # Per-tile bias + SiLU LUT + accumulator + pool half (all in L1).
     conv_bias_lo_buf = Buffer(
@@ -1558,8 +1557,8 @@ def _build_c3k2_heavy(block_name: str, act_in, manifest):
 
     # Streaming decision already set above (needed before fifo decls). m8
     # has cv1 (~65 KB) and cv2 (~98 KB) over the per-tile L1 budget; chunk
-    # them via StaticWeightStream from same-column memtiles. m6 fits both
-    # in static Buffers (cv1 ~16 KB, cv2 ~24 KB).
+    # them via ObjectFifo(init_values) from same-column memtiles. m6 fits
+    # both in static Buffers (cv1 ~16 KB, cv2 ~24 KB).
 
     # ----- Kernels -----
     # cv1 + channel split.
@@ -1569,17 +1568,14 @@ def _build_c3k2_heavy(block_name: str, act_in, manifest):
     if _stream_outer:
         chunk_sz_cv1 = sz_cv1 // n_cv1_chunks
         cv1_tile = placement.PLACEMENT[block_name]["cv1"]
-        wts_cv1 = StaticWeightStream(
-            obj_type=_i8((sz_cv1,)),
-            initial_value=data_cv1,
+        wts_cv1 = ObjectFifo(
+            _i8((sz_cv1,)),
+            depth=1,
             name=f"{block_name}_cv1_wts",
-            recv_type=_i8((chunk_sz_cv1,)),
-            repeat_count=in_h,
-            memtile_placement=Tile(cv1_tile.col, 1),
-            compute_placement=cv1_tile,
-            mem_lock_id=0,
-            comp_lock_id=0,
+            consumer_obj_type=_i8((chunk_sz_cv1,)),
+            init_values=[data_cv1.reshape(sz_cv1)],
         )
+        wts_cv1.prod().endpoint = ObjectFifoEndpoint(Tile(cv1_tile.col, 1))
         k_cv1_split = Kernel(
             f"yolo_c3k2_small_cv1_split_streamed_silu_bias_i8_i8_{block_name}",
             f"yolo_c3k2_small_cv1_split_streamed_{block_name}.o",
@@ -1718,35 +1714,25 @@ def _build_c3k2_heavy(block_name: str, act_in, manifest):
 
         if _stream_outer:
             # Stream per-pair cv1 + cv2 weights from a same-column memtile.
-            # Each pair gets its own pair of streams; n_pair_chunks chunks
-            # per output row delivered via StaticWeightStream.
+            # Each pair gets its own pair of ObjectFifos; depth=n_pair_chunks
             data_a = _load_bin(meta_a["weights_file"], np.int8, sz_p_cv1)
             data_b = _load_bin(meta_b["weights_file"], np.int8, sz_p_cv2)
-            ws_a = StaticWeightStream(
-                obj_type=_i8((sz_p_cv1,)),
-                initial_value=data_a,
+            ws_a = ObjectFifo(
+                _i8((sz_p_cv1,)),
+                depth=1,
                 name=f"{block_name}_{tile_key}_cv1_wts",
-                recv_type=_i8((chunk_sz_p_cv1,)),
-                repeat_count=in_h,
-                memtile_placement=Tile(tile.col, 1),
-                compute_placement=tile,
-                # Each StaticWeightStream uses 2 consecutive locks per
-                # endpoint (ping-pong). Space by 2 across the 4 streams in
-                # this memtile (2 pairs × 2 convs).
-                mem_lock_id=0 if tile_key == "inner_pair_0" else 4,
-                comp_lock_id=0 if tile_key == "inner_pair_0" else 0,
+                consumer_obj_type=_i8((chunk_sz_p_cv1,)),
+                init_values=[data_a.reshape(sz_p_cv1)],
             )
-            ws_b = StaticWeightStream(
-                obj_type=_i8((sz_p_cv2,)),
-                initial_value=data_b,
+            ws_a.prod().endpoint = ObjectFifoEndpoint(Tile(tile.col, 1))
+            ws_b = ObjectFifo(
+                _i8((sz_p_cv2,)),
+                depth=1,
                 name=f"{block_name}_{tile_key}_cv2_wts",
-                recv_type=_i8((chunk_sz_p_cv2,)),
-                repeat_count=in_h,
-                memtile_placement=Tile(tile.col, 1),
-                compute_placement=tile,
-                mem_lock_id=2 if tile_key == "inner_pair_0" else 6,
-                comp_lock_id=2 if tile_key == "inner_pair_0" else 2,
+                consumer_obj_type=_i8((chunk_sz_p_cv2,)),
+                init_values=[data_b.reshape(sz_p_cv2)],
             )
+            ws_b.prod().endpoint = ObjectFifoEndpoint(Tile(tile.col, 1))
         else:
             sz_a = int(np.prod(meta_a["weights_shape"]))
             wts_a = Buffer(
@@ -1897,10 +1883,10 @@ def _build_c3k2_heavy(block_name: str, act_in, manifest):
         worker_kwargs = dict(
             fn_args=[
                 prev_fifo.cons(),
-                ws_a,
+                ws_a.cons() if _stream_outer else ws_a,
                 bias_a,
                 lut_a,
-                ws_b,
+                ws_b.cons() if _stream_outer else ws_b,
                 bias_b,
                 lut_b,
                 out_fifo_local.prod(),
@@ -1933,17 +1919,14 @@ def _build_c3k2_heavy(block_name: str, act_in, manifest):
         # cv2 lives on its own tile in the streamed (m8) path — stream
         # weights directly to it from a same-column memtile.
         cv2_compute_tile = placement.PLACEMENT[block_name]["cv2"]
-        wts_cv2 = StaticWeightStream(
-            obj_type=_i8((sz_cv2,)),
-            initial_value=data_cv2,
+        wts_cv2 = ObjectFifo(
+            _i8((sz_cv2,)),
+            depth=1,
             name=f"{block_name}_cv2_wts",
-            recv_type=_i8((chunk_sz_cv2,)),
-            repeat_count=in_h,
-            memtile_placement=Tile(cv2_compute_tile.col, 1),
-            compute_placement=cv2_compute_tile,
-            mem_lock_id=2,  # cv3 lives on the same tile; offset locks
-            comp_lock_id=2,
+            consumer_obj_type=_i8((chunk_sz_cv2,)),
+            init_values=[data_cv2.reshape(sz_cv2)],
         )
+        wts_cv2.prod().endpoint = ObjectFifoEndpoint(Tile(cv2_compute_tile.col, 1))
     else:
         wts_cv2 = Buffer(_i8((sz_cv2,)), initial_value=data_cv2)
 
@@ -2062,7 +2045,7 @@ def _build_c3k2_heavy(block_name: str, act_in, manifest):
     if _stream_outer:
         cv1_fn_args = [
             act_in.cons(),
-            wts_cv1,
+            wts_cv1.cons(),
             bias_cv1,
             silu_cv1,
             top_fifo.prod(),
@@ -2222,7 +2205,7 @@ def _build_c3k2_heavy(block_name: str, act_in, manifest):
                 top_fifo.cons(),
                 bot_to_cv2_fifo.cons(),
                 cv3_to_cv2.cons(),
-                wts_cv2,
+                wts_cv2.cons(),
                 bias_cv2,
                 silu_cv2,
                 out_fifo.prod(),
@@ -2357,7 +2340,7 @@ def _build_c3k2_heavy(block_name: str, act_in, manifest):
 #     rather than one monolithic attn_core kernel — keeps each .cc small
 #     and lets us place them across multiple tiles.
 #   - ffn 1x1 weights: 32K + 32K = 64K on the ffn tile. Right at the L1
-#     budget; may need StaticWeightStream chunking (cf. m10's conv).
+#     budget; may need ObjectFifo chunking (cf. m10's conv).
 #
 # Kernel objects used (kernels/yolo_m9_*.cc):
 #   cv1_split           1x1 + chunk(2)
@@ -2807,12 +2790,10 @@ def _build_psa(block_name, act_in, manifest):
 
 
 def _build_m8_chain(act_in, manifest):
-    """Chain builder for m8 — megakernel; default 4-tile, M8_TILES=2 for 2-tile."""
-    n_tiles = int(os.environ.get("M8_TILES", "4"))
-    script_name = f"m8_megakernel_{n_tiles}tile"
+    """Chain builder for m8 — 4-tile megakernel."""
     spec = importlib.util.spec_from_file_location(
-        script_name,
-        pathlib.Path(__file__).parent / "scripts" / f"{script_name}.py",
+        "m8_megakernel_4tile",
+        pathlib.Path(__file__).parent / "scripts" / "m8_megakernel_4tile.py",
     )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -2838,18 +2819,9 @@ def _build_m9_chain(act_in, manifest):
 _BUILDERS = {
     "m0": _build_m0,
     "m1": lambda act_in, m: _build_conv_stride_block("m1", act_in, m),
-    # m3/m5/m7: weights exceed 64KB AIE2P tile budget. _build_conv_stride_block_streamed
-    # below contains the IRON wiring (StaticWeightStream + chunked-kernel) BUT
-    # lowlevel_dma.StaticWeightStream emits a single source BD per repeat —
-    # it doesn't actually decompose the source buffer into chunks, so the
-    # MemTile sends a full 36864/147456/294912 B buffer while the recv tile
-    # expects 9216 B chunks → DMA size mismatch → runtime timeout. Fixing
-    # this needs chunked source BDs (aie.dma_bd with offset+length) in
-    # lowlevel_dma.py; that's a change to the IRON-side helper (upstream too).
-    # Until then m3/m5/m7 stay on the non-streamed path and fail to compile.
-    # m3/m5/m7: weights exceed AIE2P tile budget — stream chunked from MemTile
-    # via chunked_dma.ChunkedWeightStream (fork of StaticWeightStream that
-    # actually emits N source BDs, one per chunk).
+    # m3/m5/m7: weights exceed 64KB AIE2P tile budget — stream chunked from
+    # MemTile via ObjectFifo(init_values=[chunk0,...,chunkN]) so the BD chain
+    # cycles through N pre-split buffers infinitely without host weight transfer.
     "m3": lambda act_in, m: _build_conv_stride_block_streamed(
         "m3", act_in, m, out_depth=1
     ),
@@ -2867,7 +2839,6 @@ _BUILDERS = {
     "m2": lambda act_in, m: _build_c3k2_small("m2", act_in, m),
     "m4": lambda act_in, m: _build_c3k2_small("m4", act_in, m),
     "m6": lambda act_in, m: _build_c3k2_heavy("m6", act_in, m),
-    # m8 uses the 2-tile fused megakernel (scripts/m8_megakernel_2tile.py).
     "m8": lambda act_in, m: _build_m8_chain(act_in, m),
     # m9 uses the staged split-attn_core design from scripts/m9_stage.py.
     # The legacy _build_psa monolithic sketch above is kept for sim reference
@@ -2905,16 +2876,10 @@ def per_block_iron(block_name: str) -> str:
         spec.loader.exec_module(mod)
         return mod.build(stage=stage, return_program=True)
 
-    # m8: megakernel. Default 4-tile (scripts/m8_megakernel_4tile.py),
-    # which gives each pair kernel its own dedicated worker tile. Set
-    # M8_TILES=2 for the smaller (slower) 2-tile variant
-    # (scripts/m8_megakernel_2tile.py).
     if block_name == "m8":
-        n_tiles = int(os.environ.get("M8_TILES", "4"))
-        script_name = f"m8_megakernel_{n_tiles}tile"
         spec = importlib.util.spec_from_file_location(
-            script_name,
-            pathlib.Path(__file__).parent / "scripts" / f"{script_name}.py",
+            "m8_megakernel_4tile",
+            pathlib.Path(__file__).parent / "scripts" / "m8_megakernel_4tile.py",
         )
         mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(mod)
