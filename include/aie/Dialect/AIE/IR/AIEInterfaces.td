@@ -195,4 +195,12 @@ def SkipAccessibilityCheckTrait : NativeOpTrait<"SkipAccessibilityCheckTrait"> {
   string cppNamespace = "::xilinx::AIE";
 }
 
+// Op must be nested within an aie.runtime_sequence, allowing intervening
+// structured control flow (scf.for / scf.if) in the sequence body. Use instead
+// of HasParent<"AIE::RuntimeSequenceOp"> for runtime-sequence ops that may
+// legally appear inside control flow.
+def NestedInRuntimeSequence : NativeOpTrait<"NestedInRuntimeSequence"> {
+  string cppNamespace = "::xilinx::AIE";
+}
+
 #endif // AIE_INTERFACES

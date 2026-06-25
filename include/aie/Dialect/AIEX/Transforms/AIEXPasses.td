@@ -241,6 +241,24 @@ def AIEAssignRuntimeSequenceBDIDs : Pass<"aie-assign-runtime-sequence-bd-ids", "
   ];
 }
 
+def AIETestRuntimeBdLiveness : Pass<"aie-test-runtime-bd-liveness", "AIE::DeviceOp"> {
+  let summary = "Test pass: print resolved hold-range and rotation depth per dma_configure_task";
+  let description = [{
+    Diagnostic-only pass that runs the control-flow-aware runtime-sequence DMA
+    task liveness analysis and emits a remark on each `aiex.dma_configure_task`
+    reporting its resolved kill point and rotation depth. Used to unit-test the
+    analysis (`resolveTaskLiveRange`) in isolation via FileCheck, independent of
+    BD-ID coloring and the (not-yet-settled) dynamic bd_id write-back form.
+  }];
+
+  let constructor = "xilinx::AIEX::createAIETestRuntimeBdLivenessPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+    "mlir::scf::SCFDialect",
+  ];
+}
+
 def AIEDMATasksToNPU : Pass<"aie-dma-tasks-to-npu", "AIE::DeviceOp"> {
   let summary = "Lower configured DMA tasks to NPU instructions";
 
