@@ -21,6 +21,7 @@
 #ifndef AIE_RUNTIME_TXNENCODING_H
 #define AIE_RUNTIME_TXNENCODING_H
 
+#include <cstddef>
 #include <cstdint>
 #include <vector>
 
