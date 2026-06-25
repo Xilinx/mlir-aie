@@ -242,13 +242,16 @@ def AIEAssignRuntimeSequenceBDIDs : Pass<"aie-assign-runtime-sequence-bd-ids", "
 }
 
 def AIETestRuntimeBdLiveness : Pass<"aie-test-runtime-bd-liveness", "AIE::DeviceOp"> {
-  let summary = "Test pass: print resolved hold-range and rotation depth per dma_configure_task";
+  let summary = "Test/analysis pass: print runtime-sequence BD liveness results";
   let description = [{
-    Diagnostic-only pass that runs the control-flow-aware runtime-sequence DMA
-    task liveness analysis and emits a remark on each `aiex.dma_configure_task`
-    reporting its resolved kill point and rotation depth. Used to unit-test the
-    analysis (`resolveTaskLiveRange`) in isolation via FileCheck, independent of
-    BD-ID coloring and the (not-yet-settled) dynamic bd_id write-back form.
+    Diagnostic-only pass exposing the control-flow-aware runtime-sequence DMA
+    task liveness analysis (AIERuntimeBdLiveness.h) to FileCheck. Emits, per
+    `aiex.dma_configure_task`, its resolved completion sync, back-edges crossed,
+    and leak status; and per `aie.runtime_sequence`, the per-tile peak
+    simultaneous BD liveness (`computePeakBdLiveness`). The peak query is the
+    window-sizing input for runtime-rotated BD ids (not yet consumed by the
+    allocator, which currently rejects those forms); this pass guards its
+    correctness until that consumer lands.
   }];
 
   let constructor = "xilinx::AIEX::createAIETestRuntimeBdLivenessPass()";
