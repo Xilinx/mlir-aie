@@ -741,6 +741,11 @@ xilinx::AIE::convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
   }
   int columns = *c;
 
+  // write32/maskwrite32/sync/address_patch now carry their integer fields as
+  // SSA operands materialized via arith.constant, so ensure the dialect is
+  // loaded before emitting them.
+  ctx->getOrLoadDialect<mlir::arith::ArithDialect>();
+
   auto loc = mlir::UnknownLoc::get(ctx);
 
   // create a new ModuleOp and set the insertion point
@@ -883,7 +888,8 @@ struct ConvertAIEToConfigurationPass : BaseClass {
       : ref_clElfDir(clElfDir), ref_clDeviceName(clDeviceName) {}
 
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<memref::MemRefDialect, AIEX::AIEXDialect>();
+    registry.insert<memref::MemRefDialect, AIEX::AIEXDialect,
+                    arith::ArithDialect>();
   }
 
   void runOnOperation() override {

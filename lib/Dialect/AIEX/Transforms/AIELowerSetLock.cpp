@@ -76,6 +76,7 @@ struct AIELowerSetLockPass
 
     ConversionTarget target(getContext());
     target.addLegalOp<NpuWrite32Op>();
+    target.addLegalDialect<arith::ArithDialect>();
     target.addIllegalOp<SetLockOp>();
 
     RewritePatternSet patterns(&getContext());

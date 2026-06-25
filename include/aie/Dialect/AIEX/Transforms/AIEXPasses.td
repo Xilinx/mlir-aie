@@ -142,7 +142,9 @@ def AIEDmaToNpu : Pass<"aie-dma-to-npu", "AIE::DeviceOp"> {
 
   let constructor = "xilinx::AIEX::createAIEDmaToNpuPass()";
   let dependentDialects = [
+    "mlir::arith::ArithDialect",
     "mlir::func::FuncDialect",
+    "mlir::memref::MemRefDialect",
     "xilinx::AIE::AIEDialect",
     "xilinx::AIEX::AIEXDialect",
   ];
@@ -226,6 +228,7 @@ def AIEDMATasksToNPU : Pass<"aie-dma-tasks-to-npu", "AIE::DeviceOp"> {
 
   let constructor = "xilinx::AIEX::createAIEDMATasksToNPUPass()";
   let dependentDialects = [
+    "mlir::arith::ArithDialect",
     "xilinx::AIE::AIEDialect",
     "xilinx::AIEX::AIEXDialect",
   ];
@@ -246,6 +249,7 @@ def AIECtrlPacketToDma : Pass<"aie-ctrl-packet-to-dma", "AIE::DeviceOp"> {
 
   let constructor = "xilinx::AIEX::createAIECtrlPacketToDmaPass()";
   let dependentDialects = [
+    "mlir::arith::ArithDialect",
     "xilinx::AIE::AIEDialect",
     "xilinx::AIEX::AIEXDialect",
   ];
@@ -266,6 +270,7 @@ def AIELowerSetLock : Pass<"aie-lower-set-lock", "AIE::DeviceOp"> {
 
   let constructor = "xilinx::AIEX::createAIELowerSetLockPass()";
   let dependentDialects = [
+    "mlir::arith::ArithDialect",
     "xilinx::AIE::AIEDialect",
     "xilinx::AIEX::AIEXDialect",
   ];
@@ -379,6 +384,7 @@ def AIEXInlineTraceConfig : Pass<"aie-inline-trace-config", "AIE::DeviceOp"> {
 
   let constructor = "xilinx::AIEX::createAIEXInlineTraceConfigPass()";
   let dependentDialects = [
+    "mlir::arith::ArithDialect",
     "xilinx::AIE::AIEDialect",
     "xilinx::AIEX::AIEXDialect",
   ];
