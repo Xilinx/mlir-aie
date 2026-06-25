@@ -1,0 +1,111 @@
+name: Update Peano Version
+
+on:
+  workflow_dispatch:
+    inputs:
+      peano_version:
+        description: 'Specific llvm-aie nightly version to pin (default: newest)'
+        required: false
+        type: string
+  schedule:
+    # Twice weekly: Monday and Thursday at 06:07 UTC. Small, frequent bumps keep
+    # each diff to a few nightlies so a bad one is easy to bisect.
+    - cron: '7 6 * * 1,4'
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  update-peano:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+
+      - name: Set up Python
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: python3 -m pip install packaging
+
+      - name: Apply update
+        id: update
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -n "${{ inputs.peano_version }}" ]; then
+            python3 utils/update_peano_version.py --peano-version "${{ inputs.peano_version }}"
+          else
+            python3 utils/update_peano_version.py
+          fi
+
+      - name: Check for changes
+        id: check_changes
+        run: |
+          if git diff --quiet; then
+            echo "changes=false" >> $GITHUB_OUTPUT
+            echo "No changes detected."
+          else
+            echo "changes=true" >> $GITHUB_OUTPUT
+            echo "Changes detected."
+          fi
+
+      - name: Select Assignee
+        if: steps.check_changes.outputs.changes == 'true'
+        id: assignee
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -f utils/peano-update-rotation.txt ]; then
+            users=($(cat utils/peano-update-rotation.txt))
+            count=${#users[@]}
+            if [ $count -gt 0 ]; then
+              last_assignee=$(gh pr list --state all --search "Update Peano version in:title" --limit 1 --json assignees --jq '.[0].assignees[0].login')
+              echo "Last assignee: $last_assignee"
+
+              next_index=0
+              if [ -n "$last_assignee" ]; then
+                for i in "${!users[@]}"; do
+                  if [[ "${users[$i]}" == "$last_assignee" ]]; then
+                    next_index=$(( (i + 1) % count ))
+                    break
+                  fi
+                done
+              fi
+
+              assignee=${users[$next_index]}
+              echo "Selected assignee: $assignee"
+              echo "assignee=$assignee" >> $GITHUB_OUTPUT
+            else
+              echo "No users found in rotation file."
+              echo "assignee=" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "Rotation file not found."
+            echo "assignee=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Pull Request
+        if: steps.check_changes.outputs.changes == 'true'
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1  # v8
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "Update Peano version"
+          title: "Update Peano version"
+          body: |
+            Bumps the pinned llvm-aie (Peano) nightly in `utils/peano-version.txt`.
+
+            Reason: ${{ steps.update.outputs.bump_reason }}
+
+            The on-device NPU test workflows run on this PR; do not merge unless they
+            are green. A red run here means the new nightly miscompiles and is
+            correctly quarantined out of `main`.
+
+            Triggered by: ${{ github.event_name }}
+          branch: update-peano-version
+          base: main
+          assignees: ${{ steps.assignee.outputs.assignee }}
+          delete-branch: true

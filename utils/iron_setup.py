@@ -548,8 +548,16 @@ def install_plan(
         else llvm_choice
     )
 
-    print(f"[setup] Installing llvm-aie from {llvm_find_links}")
-    pip_pkg("llvm-aie", find_links=llvm_find_links)
+    # Default "nightly" resolves to the pin in utils/peano-version.txt (bumped by the
+    # update-peano workflow) so a bad nightly is caught in a PR instead of breaking CI.
+    # An explicit --llvm-aie <url> overrides and stays unpinned.
+    llvm_pkg = "llvm-aie"
+    if llvm_choice == "nightly":
+        peano_version = (repo_root / "utils" / "peano-version.txt").read_text().strip()
+        llvm_pkg = f"llvm-aie=={peano_version}"
+
+    print(f"[setup] Installing {llvm_pkg} from {llvm_find_links}")
+    pip_pkg(llvm_pkg, find_links=llvm_find_links)
 
     if IS_WINDOWS:
         peano_prefix = pip_install_prefix(
