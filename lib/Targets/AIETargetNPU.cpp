@@ -41,6 +41,13 @@ using namespace xilinx::AIEX;
 
 namespace {
 
+// Device generation ID written into the TXN header. Centralized here so adding
+// a new device family is a single edit instead of an inline ternary at the call
+// site.
+uint8_t txnDeviceGen(const AIETargetModel &tm) {
+  return llvm::isa<AIE::BaseNPU2TargetModel>(tm) ? 4 : 3;
+}
+
 // Example:
 // - instructions = {3,4,5}
 // - tailSize = 2
@@ -308,7 +315,7 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
   aie_runtime::txn_init(instructions);
 
   aie_runtime::TxnDeviceInfo devInfo;
-  devInfo.devGen = llvm::isa<AIE::BaseNPU2TargetModel>(tm) ? 4 : 3;
+  devInfo.devGen = txnDeviceGen(tm);
   devInfo.numRows = tm.rows();
   devInfo.numCols = tm.columns();
   devInfo.numMemTileRows = tm.getNumMemTileRows();

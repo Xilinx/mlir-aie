@@ -1,9 +1,12 @@
-// Build the standalone host program against the dependency-free TxnEncoding.h
-// header (cstdint only, no MLIR/LLVM/aie-rt) and byte-check its output. This
-// pins the TXN wire format independently of the aie-translate path, mirroring
-// how generated host C++ consumes the header.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 //
-// RUN: %host_clang -std=c++17 -I%S/../../../include %S/txn_encoding_host.cpp -lstdc++ -o %t.exe
+// Build the standalone host program against the dependency-free TxnEncoding.h
+// header (C++ standard library only, no MLIR/LLVM/aie-rt) and byte-check its
+// output. This pins the TXN wire format independently of the aie-translate
+// path, mirroring how generated host C++ consumes the header.
+//
+// RUN: %host_clang -std=c++17 -I%S/../../../include %S/txn_encoding_host.cpp %host_link_flags -o %t.exe
 // RUN: %t.exe | FileCheck %s
 
 // Header: word0 = numRows<<24 | devGen<<16 | minor<<8 | major (NPU2 devGen=4).

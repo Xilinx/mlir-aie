@@ -4,17 +4,15 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2026 Advanced Micro Devices, Inc.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 //
 // Header-only library for encoding AI Engine TXN (transaction) instructions.
 // This has ZERO dependencies on MLIR or LLVM and can be used standalone in
-// host applications to generate TXN binaries at runtime.
-//
-// The encoding logic is extracted from AIETargetNPU.cpp and is the single
-// source of truth for instruction format, used by both the compiler and
-// generated host code.
+// host applications to generate TXN binaries at runtime. It is the single
+// in-tree source of truth for the instruction format, used by both the
+// compiler (AIETargetNPU.cpp) and generated host code.
 //
 //===----------------------------------------------------------------------===//
 
@@ -28,8 +26,7 @@
 namespace aie_runtime {
 
 // Transaction opcodes for the firmware TXN format the compiler currently
-// targets. Defined here to keep this header free of any aie-rt/MLIR/LLVM
-// dependency, making it the single in-tree source of truth for these values.
+// targets.
 //
 // These DO NOT match the third_party/aie-rt xaie_txn.h enum, which is an older
 // layout (CONFIG_SHIMDMA_BD=5, no NOOP/PREEMPT/LOADPDI block). They match the
@@ -147,7 +144,7 @@ inline void txn_append_address_patch(std::vector<uint32_t> &txn, uint32_t addr,
   size_t pos = txn.size();
   txn.resize(pos + 12, 0);
   txn[pos + 0] = TXN_OPC_DDR_PATCH;     // opcode
-  txn[pos + 1] = 12 * sizeof(uint32_t); // payload size in bytes
+  txn[pos + 1] = 12 * sizeof(uint32_t); // operation size
   // pos+2..4 are reserved (zero)
   txn[pos + 5] = 0;    // action (0 = patch)
   txn[pos + 6] = addr; // register address to patch
@@ -183,6 +180,8 @@ inline void txn_init(std::vector<uint32_t> &txn) { txn.resize(4, 0); }
 // `op_count` is the number of operations appended.
 inline void txn_prepend_header(std::vector<uint32_t> &txn, uint32_t op_count,
                                TxnDeviceInfo info = {}) {
+  if (txn.size() < 4)
+    txn.resize(4, 0);
   txn[0] = (static_cast<uint32_t>(info.numRows) << 24) |
            (static_cast<uint32_t>(info.devGen) << 16) |
            (static_cast<uint32_t>(info.minor) << 8) |
