@@ -15,9 +15,9 @@ var searchData=
   ['to_5ftorch_12',['to_torch',['../classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#a8ab2ca4ad7ccba19a936bbab041d252c',1,'utils::hostruntime::tensor_class::Tensor']]],
   ['torch_5fview_13',['torch_view',['../classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#ad395f306030f8c6adbacb34cff44b524',1,'utils::hostruntime::tensor_class::Tensor']]],
   ['trace_5fconfig_14',['trace_config',['../classutils_1_1hostruntime_1_1hostruntime_1_1KernelResult.html#a355956f6aaebd0b3a7b1677d398315ca',1,'utils.hostruntime.hostruntime.KernelResult.trace_config()'],['../classutils_1_1npukernel_1_1NPUKernel.html#ab9545bca26568ea4a54b350ea3da7913',1,'utils.npukernel.NPUKernel.trace_config()']]],
-  ['transform_15',['transform',['../namespaceiron_1_1algorithms_1_1transform.html#a555f026fc34cb3f4c2262b4eb967c217',1,'iron::algorithms::transform']]],
-  ['transform_5fbinary_16',['transform_binary',['../namespaceiron_1_1algorithms_1_1transform.html#ab56a61427878a3262f24cc9c47c4d01e',1,'iron::algorithms::transform']]],
-  ['transform_5fparallel_17',['transform_parallel',['../namespaceiron_1_1algorithms_1_1transform.html#abfa5130826f78df721d3af5497e16cdb',1,'iron::algorithms::transform']]],
-  ['transform_5fparallel_5fbinary_18',['transform_parallel_binary',['../namespaceiron_1_1algorithms_1_1transform.html#a1d788b76f2bcaf01c1f22779f8ba8cdd',1,'iron::algorithms::transform']]],
+  ['transform_15',['transform',['../namespaceiron_1_1algorithms_1_1__transform.html#a810b3fa4e383d10b1473799bc4a7d4f6',1,'iron::algorithms::_transform']]],
+  ['transform_5fbinary_16',['transform_binary',['../namespaceiron_1_1algorithms_1_1__transform.html#a609c29713d004d9506d94bba84e7fbfb',1,'iron::algorithms::_transform']]],
+  ['transform_5fparallel_17',['transform_parallel',['../namespaceiron_1_1algorithms_1_1__transform.html#a0c3e367129a85fb240fd64849c88c3aa',1,'iron::algorithms::_transform']]],
+  ['transform_5fparallel_5fbinary_18',['transform_parallel_binary',['../namespaceiron_1_1algorithms_1_1__transform.html#ab1aeb22992def1607b714c2acbd03295',1,'iron::algorithms::_transform']]],
   ['transformation_5fdims_19',['transformation_dims',['../classtaplib_1_1tap_1_1TensorAccessPattern.html#a03111d13caa805af17a246b208e6e892',1,'taplib::tap::TensorAccessPattern']]]
 ];

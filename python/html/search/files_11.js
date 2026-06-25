@@ -8,6 +8,5 @@ var searchData=
   ['tensor_5fclass_2epy_5',['tensor_class.py',['../tensor__class_8py.html',1,'']]],
   ['tensortiler2d_2epy_6',['tensortiler2d.py',['../tensortiler2d_8py.html',1,'']]],
   ['tile_2epy_7',['tile.py',['../tile_8py.html',1,'']]],
-  ['tile_5fdma_2epy_8',['tile_dma.py',['../tile__dma_8py.html',1,'']]],
-  ['transform_2epy_9',['transform.py',['../transform_8py.html',1,'']]]
+  ['tile_5fdma_2epy_8',['tile_dma.py',['../tile__dma_8py.html',1,'']]]
 ];
