@@ -27,7 +27,9 @@ module @ctrl_id_auto_assign {
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
       // controller_id=15: value = 15 << 8 = 3840, mask = 0xFF00 = 65280
-      // CHECK: aiex.npu.maskwrite32 {{{.*}}mask = 65280{{.*}}value = 3840{{.*}}}
+      // CHECK: %[[MASK:.*]] = arith.constant 65280 : i32
+      // CHECK: %[[VAL:.*]] = arith.constant 3840 : i32
+      // CHECK: aiex.npu.maskwrite32(%{{.*}}, %[[VAL]], %[[MASK]]) {{.*}} : i32, i32, i32
       aie.trace.host_config buffer_size = 65536
       aie.trace.start_config @core_trace
     }
@@ -51,7 +53,9 @@ module @ctrl_id_user_specified {
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
       // controller_id=5: value = 5 << 8 = 1280, mask = 0xFF00 = 65280
-      // CHECK: aiex.npu.maskwrite32 {{{.*}}mask = 65280{{.*}}value = 1280{{.*}}}
+      // CHECK: %[[MASK:.*]] = arith.constant 65280 : i32
+      // CHECK: %[[VAL:.*]] = arith.constant 1280 : i32
+      // CHECK: aiex.npu.maskwrite32(%{{.*}}, %[[VAL]], %[[MASK]]) {{.*}} : i32, i32, i32
       aie.trace.host_config buffer_size = 65536
       aie.trace.start_config @core_trace
     }
@@ -73,7 +77,9 @@ module @ctrl_id_created_shim {
       aie.trace.stop broadcast=14
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      // CHECK: aiex.npu.maskwrite32 {{{.*}}mask = 65280{{.*}}value = 3840{{.*}}}
+      // CHECK: %[[MASK:.*]] = arith.constant 65280 : i32
+      // CHECK: %[[VAL:.*]] = arith.constant 3840 : i32
+      // CHECK: aiex.npu.maskwrite32(%{{.*}}, %[[VAL]], %[[MASK]]) {{.*}} : i32, i32, i32
       aie.trace.host_config buffer_size = 65536
       aie.trace.start_config @core_trace
     }
@@ -97,7 +103,9 @@ module @ctrl_id_npu2 {
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
       // controller_id=10: value = 10 << 8 = 2560, mask = 0xFF00 = 65280
-      // CHECK: aiex.npu.maskwrite32 {{{.*}}mask = 65280{{.*}}value = 2560{{.*}}}
+      // CHECK: %[[MASK:.*]] = arith.constant 65280 : i32
+      // CHECK: %[[VAL:.*]] = arith.constant 2560 : i32
+      // CHECK: aiex.npu.maskwrite32(%{{.*}}, %[[VAL]], %[[MASK]]) {{.*}} : i32, i32, i32
       aie.trace.host_config buffer_size = 65536
       aie.trace.start_config @core_trace
     }

@@ -32,8 +32,12 @@ module {
         // CHECK: aie.runtime_sequence(%arg0: memref<1xi32>) {
         aie.runtime_sequence (%arg0: memref<1xi32>) {
             // CHECK: aiex.npu.load_pdi {device_ref = @empty_0}
-            // CHECK: aiex.npu.write32 {address = 2355200 : ui32, value = 2147483653 : ui32}
-            // CHECK: aiex.npu.write32 {address = 2355476 : ui32, value = 2147483648 : ui32}
+            // CHECK-DAG: %[[V0:.*]] = arith.constant -2147483643 : i32
+            // CHECK-DAG: %[[A0:.*]] = arith.constant 2355200 : i32
+            // CHECK: aiex.npu.write32(%[[A0]], %[[V0]]) : i32, i32
+            // CHECK-DAG: %[[V1:.*]] = arith.constant -2147483648 : i32
+            // CHECK-DAG: %[[A1:.*]] = arith.constant 2355476 : i32
+            // CHECK: aiex.npu.write32(%[[A1]], %[[V1]]) : i32, i32
             aiex.npu.load_pdi { device_ref = @my_switchbox_device }
         }
         // CHECK: }

@@ -22,22 +22,25 @@
 module {
   // The outer/caller device - anonymous (no symbol name)
   // CHECK: aie.device(npu2) {
+  // CHECK-DAG: %[[A100:.*]] = arith.constant 100 : i32
+  // CHECK-DAG: %[[A200:.*]] = arith.constant 200 : i32
+  // CHECK-DAG: %[[A300:.*]] = arith.constant 300 : i32
   aie.device(npu2) {
     %tile00 = aie.tile(0, 0)
-    
+
     // CHECK: aie.runtime_sequence @caller_seq
     aie.runtime_sequence @caller_seq(%arg0: memref<16xi32>) {
       // After inlining, we should have:
       // 1. A load_pdi added by InsertLoadPdiForConfigurePattern (since the first inlined op is write32, not load_pdi)
       // 2. All operations from the callee sequence inlined
       // 3. The inlined load_pdi operations preserved with their original device_ref
-      
+
       // CHECK: aiex.npu.load_pdi {device_ref = @callee_device}
-      // CHECK-NEXT: aiex.npu.write32 {address = 100 : ui32
+      // CHECK-NEXT: aiex.npu.write32(%[[A100]], %{{.*}})
       // CHECK: aiex.npu.load_pdi {device_ref = @callee_device}
-      // CHECK-NEXT: aiex.npu.write32 {address = 200 : ui32
+      // CHECK-NEXT: aiex.npu.write32(%[[A200]], %{{.*}})
       // CHECK: aiex.npu.load_pdi {device_ref = @callee_device}
-      // CHECK-NEXT: aiex.npu.write32 {address = 300 : ui32
+      // CHECK-NEXT: aiex.npu.write32(%[[A300]], %{{.*}})
       aiex.configure @callee_device {
         aiex.run @callee_seq(%arg0) : (memref<16xi32>)
       }
@@ -80,21 +83,24 @@ module {
 
 module {
   // CHECK: aie.device(npu2) {
+  // CHECK-DAG: %[[B100:.*]] = arith.constant 100 : i32
+  // CHECK-DAG: %[[B200:.*]] = arith.constant 200 : i32
+  // CHECK-DAG: %[[B300:.*]] = arith.constant 300 : i32
   aie.device(npu2) {
     %tile00 = aie.tile(0, 0)
-    
+
     // CHECK: aie.runtime_sequence @caller_seq2
     aie.runtime_sequence @caller_seq2(%arg0: memref<16xi32>) {
       // After inlining, the callee's load_pdi is at the start of the configure block.
       // InsertLoadPdiForConfigurePattern should detect this and NOT add another one.
       // We should see exactly 3 load_pdi operations (from the callee), not 4.
-      
+
       // CHECK: aiex.npu.load_pdi {device_ref = @callee_device2}
-      // CHECK-NEXT: aiex.npu.write32 {address = 100 : ui32
+      // CHECK-NEXT: aiex.npu.write32(%[[B100]], %{{.*}})
       // CHECK: aiex.npu.load_pdi {device_ref = @callee_device2}
-      // CHECK-NEXT: aiex.npu.write32 {address = 200 : ui32
+      // CHECK-NEXT: aiex.npu.write32(%[[B200]], %{{.*}})
       // CHECK: aiex.npu.load_pdi {device_ref = @callee_device2}
-      // CHECK-NEXT: aiex.npu.write32 {address = 300 : ui32
+      // CHECK-NEXT: aiex.npu.write32(%[[B300]], %{{.*}})
       aiex.configure @callee_device2 {
         aiex.run @callee_seq2(%arg0) : (memref<16xi32>)
       }

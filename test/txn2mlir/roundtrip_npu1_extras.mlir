@@ -13,11 +13,14 @@
 
 // CHECK: aie.device(npu1_1col)
 // CHECK: memref.global "private" constant @config_blockwrite_data
-// CHECK: aiex.npu.sync {channel = 2 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
+// CHECK: aiex.npu.sync(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) : i32, i32, i32, i32, i32, i32
 // CHECK: aiex.npu.load_pdi {address = 305419896 : ui64, id = 7 : i32, size = 4096 : i32}
-// CHECK: aiex.npu.address_patch {addr = 123456 : ui32, arg_idx = 3 : i32, arg_plus = 4 : i32}
+// CHECK: %[[AP:.*]] = arith.constant 4 : i32
+// CHECK: aiex.npu.address_patch(%[[AP]] : i32) {addr = 123456 : ui32, arg_idx = 3 : i32}
 // CHECK: aiex.npu.preempt {level = 2 : ui8}
-// CHECK: aiex.npu.write32 {address = 2224128 : ui32, value = 2 : ui32}
+// CHECK-DAG: %[[W_VAL:.*]] = arith.constant 2 : i32
+// CHECK-DAG: %[[W_ADDR:.*]] = arith.constant 2224128 : i32
+// CHECK: aiex.npu.write32(%[[W_ADDR]], %[[W_VAL]]) : i32, i32
 // CHECK: aiex.npu.blockwrite
 module {
   aie.device(npu1_1col) {

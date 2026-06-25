@@ -13,8 +13,13 @@
 
 // CHECK: aie.device(npu1_1col)
 // CHECK: memref.global "private" constant @config_blockwrite_data_0 : memref<2xi32> = dense<[4195328, 0]>
-// CHECK: aiex.npu.maskwrite32 {address = 2301952 : ui32, mask = 2 : ui32, value = 2 : ui32}
-// CHECK: aiex.npu.write32 {address = 2224128 : ui32, value = 2 : ui32}
+// CHECK-DAG: %[[MW_MASK:.*]] = arith.constant 2 : i32
+// CHECK-DAG: %[[MW_VAL:.*]] = arith.constant 2 : i32
+// CHECK-DAG: %[[MW_ADDR:.*]] = arith.constant 2301952 : i32
+// CHECK: aiex.npu.maskwrite32(%[[MW_ADDR]], %[[MW_VAL]], %[[MW_MASK]]) : i32, i32, i32
+// CHECK-DAG: %[[W_VAL:.*]] = arith.constant 2 : i32
+// CHECK-DAG: %[[W_ADDR:.*]] = arith.constant 2224128 : i32
+// CHECK: aiex.npu.write32(%[[W_ADDR]], %[[W_VAL]]) : i32, i32
 // CHECK: aiex.npu.blockwrite(%0) {address = 2215936 : ui32} : memref<2xi32>
 module {
   aie.device(npu1_1col) {

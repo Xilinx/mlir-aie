@@ -17,7 +17,8 @@ module {
     aie.runtime_sequence(%arg0: memref<1024xi16>) {
       // Create a subview at offset 64 elements (128 bytes for i16)
       // CHECK: aiex.npu.writebd
-      // CHECK: aiex.npu.address_patch {addr = {{.*}}, arg_idx = 0 : i32, arg_plus = 128 : i32}
+      // CHECK: %[[AP128:.*]] = arith.constant 128 : i32
+      // CHECK: aiex.npu.address_patch(%[[AP128]] : i32) {addr = {{.*}}, arg_idx = 0 : i32}
       %subview = memref.subview %arg0[64] [128] [1] : memref<1024xi16> to memref<128xi16, strided<[1], offset: 64>>
       %reinterpret = memref.reinterpret_cast %subview to offset: [0], sizes: [128], strides: [1] : memref<128xi16, strided<[1], offset: 64>> to memref<128xi16>
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
@@ -27,7 +28,14 @@ module {
       
       // CHECK: aiex.npu.push_queue(0, 0, MM2S : 0) {bd_id = 7 : i32, issue_token = true, repeat_count = 0 : i32}
       aiex.dma_start_task(%t1)
-      // CHECK: aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
+      // sync operands: column=0, row=0, direction=1, channel=0, column_num=1, row_num=1
+      // CHECK: %[[SRN:.*]] = arith.constant 1 : i32
+      // CHECK: %[[SCN:.*]] = arith.constant 1 : i32
+      // CHECK: %[[SCH:.*]] = arith.constant 0 : i32
+      // CHECK: %[[SDIR:.*]] = arith.constant 1 : i32
+      // CHECK: %[[SROW:.*]] = arith.constant 0 : i32
+      // CHECK: %[[SCOL:.*]] = arith.constant 0 : i32
+      // CHECK: aiex.npu.sync(%[[SCOL]], %[[SROW]], %[[SDIR]], %[[SCH]], %[[SCN]], %[[SRN]]) : i32, i32, i32, i32, i32, i32
       aiex.dma_await_task(%t1)
     }
   }

@@ -7,8 +7,12 @@
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-dma-to-npu %s | FileCheck %s
-// CHECK: aiex.npu.write32 {address = 1536 : ui32, column = 2 : i32, row = 3 : i32, value = 50 : ui32}
-// CHECK: aiex.npu.write32 {address = 3216 : ui32, column = 0 : i32, row = 2 : i32, value = 99 : ui32}
+// CHECK-DAG: %[[V0:.*]] = arith.constant 50 : i32
+// CHECK-DAG: %[[A0:.*]] = arith.constant 1536 : i32
+// CHECK: aiex.npu.write32(%[[A0]], %[[V0]]) {column = 2 : i32, row = 3 : i32} : i32, i32
+// CHECK-DAG: %[[V1:.*]] = arith.constant 99 : i32
+// CHECK-DAG: %[[A1:.*]] = arith.constant 3216 : i32
+// CHECK: aiex.npu.write32(%[[A1]], %[[V1]]) {column = 0 : i32, row = 2 : i32} : i32, i32
 
 module {
   aie.device(npu1) {
