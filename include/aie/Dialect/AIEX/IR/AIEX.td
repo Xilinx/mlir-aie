@@ -777,13 +777,16 @@ def AIE_NpuWriteRTPOp: AIEX_Op<"npu.rtp_write", []> {
   let arguments = (
     ins FlatSymbolRefAttr:$buffer,
         UI32Attr:$index,
-        I32Attr:$value
+        I32:$value
   );
   let results = (outs );
-  let assemblyFormat = [{ `(` $buffer `,` $index `,` $value `)` attr-dict
+  let assemblyFormat = [{
+    `(` $buffer `,` $index `,` $value `)` attr-dict `:` type($value)
   }];
   let description = [{
-    rtp write operator
+    rtp write operator. `value` is an SSA operand; use arith.constant for a
+    compile-time-known value or pass a runtime sequence value to supply the RTP
+    value at runtime.
   }];
 }
 
@@ -813,18 +816,23 @@ def AIE_NpuPushQueueOp: AIEX_Op<"npu.push_queue", []> {
 def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", []> {
   let summary = "write32 operator";
   let arguments = (
-    ins UI32Attr:$address,
-        UI32Attr:$value,
+    ins I32:$address,
+        I32:$value,
         OptionalAttr<FlatSymbolRefAttr>:$buffer,
         OptionalAttr<I32Attr>:$column,
         OptionalAttr<I32Attr>:$row
   );
   let results = (outs );
   let assemblyFormat = [{
-    attr-dict
+    `(` $address `,` $value `)` attr-dict `:` type($address) `,` type($value)
   }];
   let description = [{
     NPU write32 operator writes a 32bit value to the AIE array.
+
+    'address' and 'value' are SSA operands; use arith.constant for
+    compile-time-known values or pass runtime sequence values for
+    runtime-parameterized sequences.
+
     If 'buffer' is present then 'address' is interpreted as an offset into the
     aie.buffer with symbol name 'buffer'.
     If 'column' and 'row' are present then 'address' is interpreted as an offset
@@ -833,6 +841,7 @@ def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", []> {
     'address' is interpreted as a full 32-bit address in the AIE array.
   }];
   let extraClassDeclaration = [{
+    // Compile-time absolute address, or nullopt if 'address' is not constant.
     std::optional<uint32_t> getAbsoluteAddress();
   }];
 }
@@ -841,19 +850,24 @@ def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", []> {
 def AIE_NpuMaskWrite32Op: AIEX_Op<"npu.maskwrite32", []> {
   let summary = "Write a masked 32-bit value to the AIE array";
   let arguments = (
-    ins UI32Attr:$address,
-        UI32Attr:$value,
-        UI32Attr:$mask,
+    ins I32:$address,
+        I32:$value,
+        I32:$mask,
         OptionalAttr<FlatSymbolRefAttr>:$buffer,
         OptionalAttr<I32Attr>:$column,
         OptionalAttr<I32Attr>:$row
   );
   let results = (outs );
   let assemblyFormat = [{
-    attr-dict
+    `(` $address `,` $value `,` $mask `)` attr-dict `:` type($address) `,` type($value) `,` type($mask)
   }];
   let description = [{
     NPU mask write32 operator writes a masked 32bit value to the AIE array.
+
+    'address', 'value', and 'mask' are SSA operands; use arith.constant for
+    compile-time-known values or pass runtime sequence values for
+    runtime-parameterized sequences.
+
     If 'buffer' is present then 'address' is interpreted as an offset into the
     aie.buffer with symbol name 'buffer'.
     If 'column' and 'row' are present then 'address' is interpreted as an offset
@@ -862,6 +876,7 @@ def AIE_NpuMaskWrite32Op: AIEX_Op<"npu.maskwrite32", []> {
     'address' is interpreted as a full 32-bit address in the AIE array.
   }];
   let extraClassDeclaration = [{
+    // Compile-time absolute address, or nullopt if 'address' is not constant.
     std::optional<uint32_t> getAbsoluteAddress();
   }];
 }
@@ -899,19 +914,23 @@ def AIE_NpuBlockWriteOp: AIEX_Op<"npu.blockwrite", []> {
 def AIE_NpuSyncOp: AIEX_Op<"npu.sync", []> {
   let summary = "sync operator";
   let arguments = (
-    ins I32Attr:$column,
-        I32Attr:$row,
-        I32Attr:$direction,
-        I32Attr:$channel,
-        I32Attr:$column_num,
-        I32Attr:$row_num
+    ins I32:$column,
+        I32:$row,
+        I32:$direction,
+        I32:$channel,
+        I32:$column_num,
+        I32:$row_num
   );
   let results = (outs );
   let assemblyFormat = [{
-    attr-dict
+    `(` $column `,` $row `,` $direction `,` $channel `,` $column_num `,` $row_num `)` attr-dict `:` type(operands)
   }];
   let description = [{
     The sync operation blocks execution of the instruction stream until a task-complete token (TCT) is received on `column`, `row`, channel `channel`, direction `direction` (where `0` is `S2MM` and `1` is `MM2S`).
+
+    All parameters are SSA values. Use `arith.constant` for compile-time-known
+    values; pass runtime sequence arguments (or values derived from them)
+    directly for runtime-parameterized sequences.
 
     #### Troubleshooting
 
@@ -926,14 +945,16 @@ def AIE_NpuAddressPatchOp: AIEX_Op<"npu.address_patch", []> {
   let arguments = (
     ins UI32Attr:$addr,
         I32Attr:$arg_idx,
-        I32Attr:$arg_plus
+        I32:$arg_plus
   );
   let results = (outs );
   let assemblyFormat = [{
-    attr-dict
+    `(` $arg_plus `:` type($arg_plus) `)` attr-dict
   }];
   let description = [{
-    address patch operator
+    address patch operator. `arg_plus` is an SSA value; use arith.constant for
+    a compile-time-known offset or pass a runtime sequence value for a
+    runtime-parameterized buffer offset.
   }];
 }
 

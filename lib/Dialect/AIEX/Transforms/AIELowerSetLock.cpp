@@ -13,6 +13,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 
@@ -55,9 +56,13 @@ public:
     auto localLockAddress =
         tm.getLocalLockAddress(lockID, lockOp.getTileID()).value();
 
+    Location loc = op.getLoc();
     rewriter.replaceOpWithNewOp<NpuWrite32Op>(
-        op, localLockAddress, op.getValue(), nullptr,
-        rewriter.getI32IntegerAttr(col), rewriter.getI32IntegerAttr(row));
+        op, AIEX::createConstantI32(rewriter, loc, localLockAddress),
+        AIEX::createConstantI32(rewriter, loc,
+                                static_cast<uint32_t>(op.getValue())),
+        nullptr, rewriter.getI32IntegerAttr(col),
+        rewriter.getI32IntegerAttr(row));
 
     return success();
   };
