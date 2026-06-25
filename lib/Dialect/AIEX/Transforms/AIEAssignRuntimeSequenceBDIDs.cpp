@@ -179,7 +179,10 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     result = op.walk<WalkOrder::PreOrder>([&](AIE::DMABDOp bd_op) {
       if (bd_op.getBdId().has_value())
         return WalkResult::advance();
-      // FIXME: use correct channelIndex here
+      // channelIndex only affects allocation on MemTiles, where the AIE2 model
+      // partitions BDs by channel parity (isBdChannelAccessible). Runtime
+      // sequences configure BDs on shim (and compute) tiles only, which are
+      // channel-agnostic (always accessible), so passing 0 is correct here.
       std::optional<int32_t> next_id = gen.nextBdId(/*channelIndex=*/0);
       if (!next_id) {
         op.emitOpError() << "Allocator exhausted available buffer descriptor "
