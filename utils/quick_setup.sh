@@ -59,7 +59,8 @@ python3 -m pip install --upgrade pip
 python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-3/ 
 export MLIR_AIE_INSTALL_DIR="$(pip show mlir_aie | grep ^Location: | awk '{print $2}')/mlir_aie"
 
-python3 -m pip install llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly/
+# Temp pin: latest llvm-aie nightly miscompiles int->float->int at -O2 (Xilinx/llvm-aie#1053). Revert once fixed upstream.
+python3 -m pip install "llvm-aie==21.0.0.2026062301+cb664e8c" -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly/
 export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep ^Location: | awk '{print $2}')/llvm-aie"
 
 pip install pre-commit
