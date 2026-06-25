@@ -17,8 +17,8 @@
 // CHECK:       %0 = memref.get_global @blockwrite_data_0 : memref<8xi32>
 // CHECK:       aiex.npu.blockwrite(%0) {address = 67227648 : ui32} : memref<8xi32>
 // CHECK:       aiex.npu.address_patch(%{{.*}} : i32) {addr = 67227652 : ui32, arg_idx = 0 : i32}
-// CHECK:       %[[V:.*]] = arith.constant -2147287040 : i32
-// CHECK:       %[[A:.*]] = arith.constant 67228164 : i32
+// CHECK-DAG:       %[[V:.*]] = arith.constant -2147287040 : i32
+// CHECK-DAG:       %[[A:.*]] = arith.constant 67228164 : i32
 // CHECK:       aiex.npu.write32(%[[A]], %[[V]]) : i32, i32
 // CHECK:       aiex.npu.sync(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) : i32, i32, i32, i32, i32, i32
 // CHECK:     }
