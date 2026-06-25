@@ -15,7 +15,7 @@ from .conv_pipeline import (
 )
 from .for_each import for_each
 from .reduce import reduce
-from .transform import (
+from ._transform import (
     transform,
     transform_binary,
     transform_parallel,
