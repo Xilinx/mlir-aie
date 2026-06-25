@@ -95,8 +95,9 @@ struct NpuMaskWrite32ToCertMaskWrite32
     std::optional<uint32_t> mask = AIEX::getConstantIntOperand(op.getMask());
     std::optional<uint32_t> value = AIEX::getConstantIntOperand(op.getValue());
     if (!address || !mask || !value)
-      return op.emitOpError("cannot lower to cert.maskwrite32 with non-constant "
-                            "address, mask, or value");
+      return op.emitOpError(
+          "cannot lower to cert.maskwrite32 with non-constant "
+          "address, mask, or value");
     rewriter.replaceOpWithNewOp<AIEX::CertMaskWrite32Op>(op, *address, *mask,
                                                          *value);
     return success();
@@ -150,7 +151,8 @@ struct NpuSyncToCertWaitTCTS : OpConversionPattern<AIEX::NpuSyncOp> {
   matchAndRewrite(AIEX::NpuSyncOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     std::optional<uint32_t> rowOpt = AIEX::getConstantIntOperand(op.getRow());
-    std::optional<uint32_t> colOpt = AIEX::getConstantIntOperand(op.getColumn());
+    std::optional<uint32_t> colOpt =
+        AIEX::getConstantIntOperand(op.getColumn());
     std::optional<uint32_t> channelOpt =
         AIEX::getConstantIntOperand(op.getChannel());
     std::optional<uint32_t> directionOpt =

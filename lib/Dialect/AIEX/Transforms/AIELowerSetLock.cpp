@@ -58,9 +58,8 @@ public:
 
     Location loc = op.getLoc();
     rewriter.replaceOpWithNewOp<NpuWrite32Op>(
-        op, AIEX::createConstantI32(rewriter, loc, localLockAddress),
-        AIEX::createConstantI32(rewriter, loc,
-                                static_cast<uint32_t>(op.getValue())),
+        op, createConstantI32(rewriter, loc, localLockAddress),
+        createConstantI32(rewriter, loc, static_cast<uint32_t>(op.getValue())),
         nullptr, rewriter.getI32IntegerAttr(col),
         rewriter.getI32IntegerAttr(row));
 

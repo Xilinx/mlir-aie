@@ -80,13 +80,12 @@ struct DMAAwaitTaskOpPattern : OpConversionPattern<DMAAwaitTaskOp> {
     AIE::TileOp tile = task_op.getTileOp();
     Location loc = op.getLoc();
     rewriter.replaceOpWithNewOp<NpuSyncOp>(
-        op, AIEX::createConstantI32(rewriter, loc, tile.getCol()),
-        AIEX::createConstantI32(rewriter, loc, tile.getRow()),
-        AIEX::createConstantI32(rewriter, loc,
-                                (uint32_t)task_op.getDirection()),
-        AIEX::createConstantI32(rewriter, loc, task_op.getChannel()),
-        AIEX::createConstantI32(rewriter, loc, 1),
-        AIEX::createConstantI32(rewriter, loc, 1));
+        op, createConstantI32(rewriter, loc, tile.getCol()),
+        createConstantI32(rewriter, loc, tile.getRow()),
+        createConstantI32(rewriter, loc, (uint32_t)task_op.getDirection()),
+        createConstantI32(rewriter, loc, task_op.getChannel()),
+        createConstantI32(rewriter, loc, 1),
+        createConstantI32(rewriter, loc, 1));
     return success();
   }
 };
@@ -250,8 +249,8 @@ struct AIEDMATasksToNPUPass
           /*addr*/ register_addr,
           /*arg_idx*/ arg_idx,
           /*arg_plus*/
-          AIEX::createConstantI32(builder, bd_op.getLoc(),
-                                  static_cast<uint32_t>(offset)));
+          createConstantI32(builder, bd_op.getLoc(),
+                            static_cast<uint32_t>(offset)));
     } else if (AIE::BufferOp buffer =
                    llvm::dyn_cast<AIE::BufferOp>(buf.getDefiningOp())) {
       uint64_t buf_addr;
@@ -266,12 +265,12 @@ struct AIEDMATasksToNPUPass
       if (target_model.isCoreTile(col, row)) {
         NpuMaskWrite32Op::create(
             builder, bd_op.getLoc(),
-            AIEX::createConstantI32(builder, bd_op.getLoc(),
-                                    static_cast<uint32_t>(register_addr)),
-            AIEX::createConstantI32(builder, bd_op.getLoc(),
-                                    static_cast<uint32_t>((buf_addr / 4) << 14)),
-            AIEX::createConstantI32(builder, bd_op.getLoc(), 0x0fffc000),
-            nullptr, nullptr, nullptr);
+            createConstantI32(builder, bd_op.getLoc(),
+                              static_cast<uint32_t>(register_addr)),
+            createConstantI32(builder, bd_op.getLoc(),
+                              static_cast<uint32_t>((buf_addr / 4) << 14)),
+            createConstantI32(builder, bd_op.getLoc(), 0x0fffc000), nullptr,
+            nullptr, nullptr);
       } else if (target_model.isMemTile(col, row)) {
         // On AIE2p (NPU2), memtile DMAs use an offset-based address
         // space where the base depends on the relative position of the
@@ -287,19 +286,19 @@ struct AIEDMATasksToNPUPass
         }
         NpuMaskWrite32Op::create(
             builder, bd_op.getLoc(),
-            AIEX::createConstantI32(builder, bd_op.getLoc(),
-                                    static_cast<uint32_t>(register_addr)),
-            AIEX::createConstantI32(builder, bd_op.getLoc(),
-                                    static_cast<uint32_t>(buf_addr / 4)),
-            AIEX::createConstantI32(builder, bd_op.getLoc(), 0x0007FFFF),
-            nullptr, nullptr, nullptr);
+            createConstantI32(builder, bd_op.getLoc(),
+                              static_cast<uint32_t>(register_addr)),
+            createConstantI32(builder, bd_op.getLoc(),
+                              static_cast<uint32_t>(buf_addr / 4)),
+            createConstantI32(builder, bd_op.getLoc(), 0x0007FFFF), nullptr,
+            nullptr, nullptr);
       } else {
         NpuWrite32Op::create(
             builder, bd_op.getLoc(),
-            AIEX::createConstantI32(builder, bd_op.getLoc(),
-                                    static_cast<uint32_t>(register_addr)),
-            AIEX::createConstantI32(builder, bd_op.getLoc(),
-                                    static_cast<uint32_t>(buf_addr)),
+            createConstantI32(builder, bd_op.getLoc(),
+                              static_cast<uint32_t>(register_addr)),
+            createConstantI32(builder, bd_op.getLoc(),
+                              static_cast<uint32_t>(buf_addr)),
             nullptr, nullptr, nullptr);
       }
     } else {

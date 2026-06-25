@@ -51,8 +51,8 @@ struct Write32SymToAddr : OpConversionPattern<NpuWrite32Op> {
     }
 
     Value addressVal = createConstantI32(rewriter, op->getLoc(), *address);
-    rewriter.replaceOpWithNewOp<NpuWrite32Op>(op, addressVal, adaptor.getValue(),
-                                              nullptr, nullptr, nullptr);
+    rewriter.replaceOpWithNewOp<NpuWrite32Op>(
+        op, addressVal, adaptor.getValue(), nullptr, nullptr, nullptr);
     return success();
   }
 };
@@ -194,10 +194,11 @@ public:
     if (op.getIssueToken())
       cmd |= 0x80000000;
 
-    NpuWrite32Op::create(rewriter, op->getLoc(),
-                         createConstantI32(rewriter, op->getLoc(), queue_offset),
-                         createConstantI32(rewriter, op->getLoc(), cmd), nullptr,
-                         nullptr, nullptr);
+    NpuWrite32Op::create(
+        rewriter, op->getLoc(),
+        createConstantI32(rewriter, op->getLoc(), queue_offset),
+        createConstantI32(rewriter, op->getLoc(), cmd), nullptr, nullptr,
+        nullptr);
     rewriter.eraseOp(op);
     return success();
   }
@@ -471,9 +472,9 @@ public:
     // instruction to perform the patch.
     uint64_t addr = targetModel.getDmaBdAddress(tileCol, tileRow, op.getId()) +
                     targetModel.getDmaBdAddressOffset(tileCol, tileRow);
-    NpuAddressPatchOp::create(
-        rewriter, op->getLoc(), addr, arg_idx,
-        createConstantI32(rewriter, op->getLoc(), static_cast<uint32_t>(offset)));
+    NpuAddressPatchOp::create(rewriter, op->getLoc(), addr, arg_idx,
+                              createConstantI32(rewriter, op->getLoc(),
+                                                static_cast<uint32_t>(offset)));
 
     // If this DMA op has an offset_state_table_idx, emit an
     // update_from_scratchpad to add the runtime offset to the BD address
@@ -531,10 +532,12 @@ public:
     (void)rewriter.replaceOpWithNewOp<NpuSyncOp>(
         op, createConstantI32(rewriter, loc, shimTile.getCol()),
         createConstantI32(rewriter, loc, shimTile.getRow()),
-        createConstantI32(rewriter, loc,
-                          static_cast<uint32_t>(shimDmaAllocOp.getChannelDir())),
+        createConstantI32(
+            rewriter, loc,
+            static_cast<uint32_t>(shimDmaAllocOp.getChannelDir())),
         createConstantI32(rewriter, loc, shimDmaAllocOp.getChannelIndex()),
-        createConstantI32(rewriter, loc, 1), createConstantI32(rewriter, loc, 1));
+        createConstantI32(rewriter, loc, 1),
+        createConstantI32(rewriter, loc, 1));
 
     return success();
   }

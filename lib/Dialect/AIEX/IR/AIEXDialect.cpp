@@ -11,8 +11,8 @@
 
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
-#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
+#include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/Operation.h"
@@ -705,8 +705,8 @@ std::optional<uint32_t> AIEX::getConstantIntOperand(mlir::Value v) {
   return static_cast<uint32_t>(cst.getZExtValue());
 }
 
-mlir::Value AIEX::createConstantI32(mlir::OpBuilder &builder, mlir::Location loc,
-                                    uint32_t value) {
+mlir::Value AIEX::createConstantI32(mlir::OpBuilder &builder,
+                                    mlir::Location loc, uint32_t value) {
   return arith::ConstantOp::create(
       builder, loc, builder.getI32IntegerAttr(static_cast<int32_t>(value)));
 }

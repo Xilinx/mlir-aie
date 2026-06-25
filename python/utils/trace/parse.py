@@ -402,19 +402,31 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None):
         target_model = aiedialect.get_target_model(device)
         events_module = get_events_for_device(str(device))
 
+    # write32 carries address/value as SSA i32 operands (materialized via
+    # arith.constant); row/column remain optional attributes. Fold the operand
+    # back to its constant integer.
+    def fold_constant_operand(operand):
+        defining = operand.owner
+        if defining is None or not hasattr(defining, "value"):
+            return None
+        const_attr = defining.value
+        if not hasattr(const_attr, "value"):
+            return None
+        return int(const_attr.value)
+
     for write32 in write32s:
         address = None
         row = None
         col = None
         value = None
         if write32.address:
-            address = write32.address.value
+            address = fold_constant_operand(write32.address)
         if write32.row:
             row = write32.row.value
         if write32.column:
             col = write32.column.value
         if write32.value:
-            value = write32.value.value
+            value = fold_constant_operand(write32.value)
 
         if row is None and col is None:
             if address is None:

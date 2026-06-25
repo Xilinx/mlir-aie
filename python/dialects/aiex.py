@@ -1,7 +1,6 @@
 # Copyright (C) 2022 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 from contextlib import contextmanager
-from functools import partial
 import itertools
 from operator import itemgetter
 
@@ -47,6 +46,7 @@ from ..helpers.taplib import TensorAccessPattern
 # Comes from _aie
 register_dialect(get_dialect_registry())
 
+
 def _as_i32(v):
     """Materialize an arith.constant i32 from a Python int, or pass a Value
     through unchanged. The npu scalar ops (write32/maskwrite32/sync/
@@ -69,9 +69,7 @@ def npu_write32(address, value, buffer=None, column=None, row=None, **kwargs):
     )
 
 
-def npu_maskwrite32(
-    address, value, mask, buffer=None, column=None, row=None, **kwargs
-):
+def npu_maskwrite32(address, value, mask, buffer=None, column=None, row=None, **kwargs):
     return _npu_maskwrite32(
         _as_i32(address),
         _as_i32(value),

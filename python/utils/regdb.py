@@ -553,25 +553,39 @@ class MLIRModuleAnnotator:
         value = None
         mask = None
 
-        # Get address - could be 'address' or 'addr' attribute
+        # write32/maskwrite32 carry address/value/mask as SSA i32 operands
+        # (materialized via arith.constant); address_patch's 'addr' and the
+        # 'row'/'column' placement fields remain attributes. Fold the operand
+        # back to its constant integer where applicable.
+        def fold_constant_operand(operand):
+            defining = operand.owner
+            if defining is None or not hasattr(defining, "value"):
+                return None
+            const_attr = defining.value
+            if not hasattr(const_attr, "value"):
+                return None
+            return int(const_attr.value)
+
+        # Get address - an SSA operand on write32/maskwrite32, or the 'addr'
+        # attribute on address_patch.
         if hasattr(op, "address") and op.address is not None:
-            address = int(op.address.value)
+            address = fold_constant_operand(op.address)
         elif hasattr(op, "addr") and op.addr is not None:
             address = int(op.addr.value)
 
-        # Get row and column if present
+        # Get row and column if present (these remain attributes)
         if hasattr(op, "row") and op.row is not None:
             row = int(op.row.value)
         if hasattr(op, "column") and op.column is not None:
             col = int(op.column.value)
 
-        # Get value if present
+        # Get value if present (SSA operand)
         if hasattr(op, "value") and op.value is not None:
-            value = int(op.value.value)
+            value = fold_constant_operand(op.value)
 
-        # Get mask if present (for maskwrite32)
+        # Get mask if present (SSA operand, for maskwrite32)
         if hasattr(op, "mask") and op.mask is not None:
-            mask = int(op.mask.value)
+            mask = fold_constant_operand(op.mask)
 
         # If row/col not present, extract from address
         if address is not None and row is None and col is None:

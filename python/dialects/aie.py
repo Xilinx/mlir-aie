@@ -89,6 +89,10 @@ class npu_write_rtp(NpuWriteRTPOp):
         buff_name = buffer
         if isinstance(buffer, BufferOp):
             buff_name = buffer.sym_name.value
+        # `value` is an SSA i32 operand; materialize a constant from a plain int
+        # while still accepting a Value for runtime-parameterized sequences.
+        if isinstance(value, int):
+            value = constant(value, T.i32())
         super().__init__(buffer=buff_name, index=index, value=value, loc=loc, ip=ip)
 
 

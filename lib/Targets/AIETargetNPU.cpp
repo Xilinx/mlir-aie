@@ -70,7 +70,8 @@ void appendSync(std::vector<uint32_t> &instructions, NpuSyncOp op) {
   std::optional<uint32_t> row = AIEX::getConstantIntOperand(op.getRow());
   std::optional<uint32_t> direction =
       AIEX::getConstantIntOperand(op.getDirection());
-  std::optional<uint32_t> channel = AIEX::getConstantIntOperand(op.getChannel());
+  std::optional<uint32_t> channel =
+      AIEX::getConstantIntOperand(op.getChannel());
   std::optional<uint32_t> columnNum =
       AIEX::getConstantIntOperand(op.getColumnNum());
   std::optional<uint32_t> rowNum = AIEX::getConstantIntOperand(op.getRowNum());
@@ -79,8 +80,8 @@ void appendSync(std::vector<uint32_t> &instructions, NpuSyncOp op) {
                    "static TXN binary");
     return;
   }
-  aie_runtime::txn_append_sync(instructions, *column, *row, *direction, *channel,
-                               *columnNum, *rowNum);
+  aie_runtime::txn_append_sync(instructions, *column, *row, *direction,
+                               *channel, *columnNum, *rowNum);
 }
 
 void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op) {
@@ -91,8 +92,9 @@ void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op) {
   std::optional<uint32_t> address = op.getAbsoluteAddress();
   std::optional<uint32_t> value = AIEX::getConstantIntOperand(op.getValue());
   if (!address || !value) {
-    op.emitOpError("Cannot translate write32 with non-constant address or value "
-                   "to a static TXN binary");
+    op.emitOpError(
+        "Cannot translate write32 with non-constant address or value "
+        "to a static TXN binary");
     return;
   }
   aie_runtime::txn_append_write32(instructions, *address, *value);
