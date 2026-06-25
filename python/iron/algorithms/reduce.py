@@ -24,7 +24,7 @@ import numpy as np
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 import aie.iron as iron
 
-from .transform import make_param_descriptor
+from ._transform import make_param_descriptor
 
 
 def _reduce_gen(func, input_desc, output_desc, *, trace_size=0):
