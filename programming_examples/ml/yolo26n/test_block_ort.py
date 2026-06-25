@@ -140,6 +140,7 @@ def main():
     p.add_argument("-x", "--xclbin", required=True)
     p.add_argument("-i", "--instr", default="instr.txt")
     p.add_argument("-k", "--kernel", default="MLIR_AIE")
+    p.add_argument("-v", "--verbosity", type=int, default=0)
     p.add_argument(
         "--block",
         required=True,
