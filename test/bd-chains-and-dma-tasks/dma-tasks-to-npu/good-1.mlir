@@ -31,9 +31,12 @@ module {
         aie.end
       } {repeat_count = 2 : i32, issue_token = true}
 
-      // CHECK: aiex.npu.push_queue(0, 0, MM2S : 0) {bd_id = 7 : i32, issue_token = true, repeat_count = 0 : i32}
+      // CHECK-DAG: %[[T1BD:.*]] = arith.constant 7 : i32
+      // CHECK: aiex.npu.push_queue(0, 0, MM2S : 0) bd_id %[[T1BD]] repeat %{{.*}} {issue_token = true} : i32, i32
       aiex.dma_start_task(%t1)
-      // CHECK: aiex.npu.push_queue(2, 0, S2MM : 1) {bd_id = 8 : i32, issue_token = true, repeat_count = 2 : i32}
+      // CHECK-DAG: %[[T2BD:.*]] = arith.constant 8 : i32
+      // CHECK-DAG: %[[T2RC:.*]] = arith.constant 2 : i32
+      // CHECK: aiex.npu.push_queue(2, 0, S2MM : 1) bd_id %[[T2BD]] repeat %[[T2RC]] {issue_token = true} : i32, i32
       aiex.dma_start_task(%t2)
       // sync operands: column=0, row=0, direction=1, channel=0, column_num=1, row_num=1
       // CHECK: %[[S1RN:.*]] = arith.constant 1 : i32

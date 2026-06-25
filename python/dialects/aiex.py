@@ -13,6 +13,7 @@ from ._aiex_ops_gen import (
     npu_sync as _npu_sync,
     npu_address_patch as _npu_address_patch,
     npu_rtp_write as _npu_rtp_write,
+    npu_push_queue as _npu_push_queue,
 )
 from ._aie_ops_gen import ObjectFifoCreateOp, dma_bd, EndOp, RuntimeSequenceOp
 from . import aie
@@ -99,6 +100,21 @@ def npu_address_patch(addr, arg_idx, arg_plus, **kwargs):
 
 def npu_rtp_write(buffer, index, value, **kwargs):
     return _npu_rtp_write(buffer, index, _as_i32(value), **kwargs)
+
+
+def npu_push_queue(
+    column, row, direction, channel, issue_token, repeat_count, bd_id, **kwargs
+):
+    return _npu_push_queue(
+        column,
+        row,
+        direction,
+        channel,
+        issue_token,
+        _as_i32(repeat_count),
+        _as_i32(bd_id),
+        **kwargs,
+    )
 
 
 def dma_wait(*args: ObjectFifoCreateOp | str):

@@ -799,16 +799,22 @@ def AIE_NpuPushQueueOp: AIEX_Op<"npu.push_queue", []> {
         DMAChannelDir:$direction,
         I32Attr:$channel,
         BoolAttr:$issue_token,
-        I32Attr:$repeat_count,
-        I32Attr:$bd_id
+        I32:$repeat_count,
+        I32:$bd_id
   );
   let results = (outs );
   let assemblyFormat = [{
-    `(` $column `,` $row `,` $direction `:` $channel `)` attr-dict
+    `(` $column `,` $row `,` $direction `:` $channel `)`
+    `bd_id` $bd_id `repeat` $repeat_count attr-dict `:` type($bd_id) `,` type($repeat_count)
   }];
   let hasVerifier = 1;
   let description = [{
-    bd queue push operator
+    bd queue push operator.
+
+    'bd_id' (which physical buffer descriptor slot to launch) and 'repeat_count'
+    (outer-dimension repeat for the launch) are SSA operands; use arith.constant
+    for compile-time-known values or pass runtime sequence values to select the
+    BD / repeat count at runtime.
   }];
 }
 

@@ -185,12 +185,20 @@ public:
     // the offset of the task queue register in the tile
     uint32_t queue_offset = ctrl_offset + 0x4;
 
-    // the value to write
-    uint32_t bd_id = op.getBdId();
-    uint32_t repeat_cnt = op.getRepeatCount();
+    // the value to write. bd_id and repeat_count are SSA operands; this static
+    // lowering needs them as compile-time constants to fold into the command
+    // word. Runtime-valued pushes are handled by the dynamic C++ path, not
+    // here.
+    std::optional<uint32_t> bd_id = getConstantIntOperand(op.getBdId());
+    std::optional<uint32_t> repeat_cnt =
+        getConstantIntOperand(op.getRepeatCount());
+    if (!bd_id || !repeat_cnt)
+      return op.emitOpError(
+          "cannot lower push_queue with non-constant bd_id or "
+          "repeat_count to a static write32");
     uint32_t cmd = 0;
-    cmd |= bd_id & 0xF;
-    cmd |= (repeat_cnt & 0xFF) << 16;
+    cmd |= *bd_id & 0xF;
+    cmd |= (*repeat_cnt & 0xFF) << 16;
     if (op.getIssueToken())
       cmd |= 0x80000000;
 
@@ -486,10 +494,15 @@ public:
         return failure();
     }
 
-    // push the patched bd onto the dma task queue
+    // push the patched bd onto the dma task queue. bd_id and repeat_count are
+    // SSA operands; materialize them as constants here (the static path).
     NpuPushQueueOp::create(
         rewriter, op->getLoc(), column, row, infoOp.getChannelDirAttr(),
-        infoOp.getChannelIndexAttr(), issue_token, repeat_count, bd_id);
+        infoOp.getChannelIndexAttr(), issue_token,
+        createConstantI32(rewriter, op->getLoc(),
+                          static_cast<uint32_t>(repeat_count.getInt())),
+        createConstantI32(rewriter, op->getLoc(),
+                          static_cast<uint32_t>(bd_id.getInt())));
 
     rewriter.eraseOp(op);
     return success();

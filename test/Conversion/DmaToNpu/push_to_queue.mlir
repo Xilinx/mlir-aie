@@ -17,8 +17,12 @@
 module {
   aie.device(npu1) {
     aie.runtime_sequence() {
-      aiex.npu.push_queue (0, 0, S2MM:1) {issue_token = true, repeat_count = 0 : i32, bd_id = 3 : i32 }
-      aiex.npu.push_queue (2, 0, MM2S:0) {issue_token = false, repeat_count = 3 : i32, bd_id = 2 : i32 }
+      %rc0 = arith.constant 0 : i32
+      %bd0 = arith.constant 3 : i32
+      aiex.npu.push_queue (0, 0, S2MM:1) bd_id %bd0 repeat %rc0 {issue_token = true} : i32, i32
+      %rc1 = arith.constant 3 : i32
+      %bd1 = arith.constant 2 : i32
+      aiex.npu.push_queue (2, 0, MM2S:0) bd_id %bd1 repeat %rc1 {issue_token = false} : i32, i32
     }
   }
 }

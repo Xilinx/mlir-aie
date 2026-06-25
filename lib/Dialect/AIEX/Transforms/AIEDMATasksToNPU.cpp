@@ -52,10 +52,15 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
                           "pass first or manually assign an ID.";
       return failure();
     }
+    // bd_id and repeat_count are SSA operands; materialize them as constants
+    // here (the static path).
+    Location loc = op.getLoc();
     rewriter.replaceOpWithNewOp<NpuPushQueueOp>(
         op, tile.getCol(), tile.getRow(), task_op.getDirection(),
-        task_op.getChannel(), task_op.getIssueToken(), task_op.getRepeatCount(),
-        *first_bd_id);
+        task_op.getChannel(), task_op.getIssueToken(),
+        createConstantI32(rewriter, loc,
+                          static_cast<uint32_t>(task_op.getRepeatCount())),
+        createConstantI32(rewriter, loc, *first_bd_id));
     return success();
   }
 };

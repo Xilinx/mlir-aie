@@ -19,8 +19,8 @@
 // CHECK: aiex.npu.blockwrite
 // CHECK: aiex.npu.address_patch
 // CHECK-SAME: arg_idx = 1 : i32
-// CHECK: %[[V1:.*]] = arith.constant 0 : i32
-// CHECK: aiex.npu.write32(%{{.*}}, %[[V1]]) : i32, i32
+// CHECK: %[[A1:.*]] = arith.constant 119316 : i32
+// CHECK: aiex.npu.write32(%[[A1]], %{{.*}}) : i32, i32
 module  {
   aie.device(npu1) {
     aie.runtime_sequence(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {

@@ -644,9 +644,15 @@ LogicalResult AIEX::NpuDmaWaitOp::verify() {
 LogicalResult AIEX::NpuPushQueueOp::verify() {
   const auto &targetModel = AIE::getTargetModel(*this);
   auto numBds = targetModel.getNumBDs(getColumn(), getRow());
-  if (getBdId() > numBds)
+  // bd_id and repeat_count are SSA operands; range-check them only when they
+  // are compile-time constants. Runtime values are validated by the lowering's
+  // bounds guard, not here.
+  if (std::optional<uint32_t> bdId = getConstantIntOperand(getBdId());
+      bdId && *bdId > numBds)
     return emitOpError("BD ID exceeds the maximum ID.");
-  if (getRepeatCount() > 255)
+  if (std::optional<uint32_t> repeatCount =
+          getConstantIntOperand(getRepeatCount());
+      repeatCount && *repeatCount > 255)
     return emitOpError("Repeat count exceeds the [0:255] range.");
   return success();
 }

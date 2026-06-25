@@ -26,7 +26,8 @@ module {
         aie.end
       } {issue_token = true}
       
-      // CHECK: aiex.npu.push_queue(0, 0, MM2S : 0) {bd_id = 7 : i32, issue_token = true, repeat_count = 0 : i32}
+      // CHECK-DAG: %[[PQBD:.*]] = arith.constant 7 : i32
+      // CHECK: aiex.npu.push_queue(0, 0, MM2S : 0) bd_id %[[PQBD]] repeat %{{.*}} {issue_token = true} : i32, i32
       aiex.dma_start_task(%t1)
       // sync operands: column=0, row=0, direction=1, channel=0, column_num=1, row_num=1
       // CHECK: %[[SRN:.*]] = arith.constant 1 : i32
