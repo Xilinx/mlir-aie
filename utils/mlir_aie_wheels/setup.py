@@ -335,12 +335,18 @@ class CMakeBuild(build_ext):
                 elif p.exists():
                     p.unlink()
 
-            # CMake leaks staging directories, intermediate .o files, and
-            # __pycache__ caches into the install prefix; none belong in a
-            # shipped wheel.
+            # CMake leaks staging directories and __pycache__ caches into the
+            # install prefix; none belong in a shipped wheel.
+            #
+            # NOTE: lib/objects-Release is intentionally kept. It holds the
+            # per-object object files (.o on Linux/macOS, .obj on Windows) for
+            # AIE's ENABLE_AGGREGATION libraries (obj.AIERT/obj.AIETargets/
+            # obj.AIECAPI, ~2 MB) which the exported
+            # lib/cmake/aie/MLIRTargets-release.cmake references via
+            # IMPORTED_OBJECTS. Pruning it leaves dangling references and makes
+            # downstream find_package(AIE) fail its import check.
             for leaked in [
                 Path(install_dir) / "src",
-                Path(install_dir) / "lib" / "objects-Release",
             ]:
                 if leaked.exists():
                     shutil.rmtree(leaked)
