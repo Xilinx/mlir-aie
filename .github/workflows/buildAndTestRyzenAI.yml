@@ -101,7 +101,8 @@ jobs:
           python -m pip install --require-hashes -r python/requirements_dev.lock
 
           # Install llvm-aie (Peano) which is needed for unittests requiring compiling NPU code
-          pip install -I llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
+          # Temp pin: latest llvm-aie nightly miscompiles int->float->int at -O2 (Xilinx/llvm-aie#1053). Revert once fixed upstream.
+          pip install -I "llvm-aie==21.0.0.2026062301+cb664e8c" -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
           export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep ^Location: | awk '{print $2}')/llvm-aie"
 
           sed -i.bak 's/OUTPUT_TIMEOUT = 10/OUTPUT_TIMEOUT = 100/g' \
