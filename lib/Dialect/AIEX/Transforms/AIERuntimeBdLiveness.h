@@ -83,6 +83,18 @@ struct TaskLiveRange {
   /// or null if the configure is at sequence top level. Used to classify leaks
   /// and loop-carried windows.
   mlir::Operation *enclosingLoop = nullptr;
+
+  /// True when the handle cannot be traced to a single completion sync: it has
+  /// more than one carry (e.g. yielded two ways), a carry coexisting with a
+  /// sync, a def-use cycle (carried unchanged across a loop back-edge), or a
+  /// use the analysis does not understand. Such a task cannot be statically
+  /// allocated and must be rejected.
+  bool ambiguous = false;
+
+  /// True when tracing the handle followed an `scf.if` yield to the if-result
+  /// (the handle escapes its arm via a value join). Static BD-ID allocation
+  /// across such a join is not supported.
+  bool crossedIfJoin = false;
 };
 
 /// Resolve the hold-range of a single configure op by forward-tracing its

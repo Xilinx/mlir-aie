@@ -16,6 +16,7 @@
 #include "mlir/IR/Value.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/MapVector.h"
+#include "llvm/ADT/SmallPtrSet.h"
 
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIETESTRUNTIMEBDLIVENESS
@@ -28,82 +29,71 @@ using namespace xilinx::AIEX;
 
 namespace {
 
-/// Follow a task handle SSA value forward to its completion-sync
-/// (`dma_await_task`/`dma_free_task`), counting `scf.for` back-edges crossed.
-///
-/// The handle starts as the result of an `aiex.dma_configure_task` (or, in the
-/// ping-pong case, as the iter_arg init operand carried into an `scf.for`). At
-/// each step we inspect its uses:
-///   - `dma_await_task` / `dma_free_task`  -> sync found; stop.
-///   - `dma_start_task`                    -> submission, not a sync; ignore.
-///   - `scf.yield` of an `scf.for`         -> carried to the matching iter_arg
-///        of the next iteration (one back-edge crossing); continue from there.
-///   - `scf.for` iter_arg init operand     -> carried into the loop body's
-///        iter_arg; continue from there (NOT a back-edge crossing -- this is
-///        entry into iteration 0).
-///
-/// A handle yielded to a loop *result* (escaping the loop) rather than re-fed
-/// as an iter_arg is NOT followed: the in-loop incarnations are already dropped
-/// at that point, so any later free of the result frees only the final
-/// straggler. Such a configure is therefore reported as leaked (held to region
-/// end), which is the correct basis for the per-iteration coexistence
-/// accounting upstream.
-///
-/// Returns true and fills `outKill`/`outBackEdges` when a sync is found;
-/// returns false (handle leaked to region end) otherwise.
-static bool traceHandleToKill(Value handle, Operation *&outKill,
-                              unsigned &outBackEdges) {
-  unsigned backEdges = 0;
-  while (handle) {
-    Operation *kill = nullptr;
-    Value next = nullptr;
-    bool nextIsBackEdge = false;
-    for (OpOperand &use : handle.getUses()) {
-      Operation *user = use.getOwner();
-      if (isa<DMAAwaitTaskOp, DMAFreeTaskOp>(user)) {
-        kill = user;
-        break;
-      }
-      if (isa<DMAStartTaskOp>(user))
-        continue;
-      if (auto yield = dyn_cast<scf::YieldOp>(user)) {
-        Operation *parent = yield->getParentOp();
-        // scf.for: yielded operand i maps to iter_arg i (region arg i+1; arg 0
-        // is the IV) of the *next* iteration: a back-edge crossing.
-        if (auto forOp = dyn_cast<scf::ForOp>(parent)) {
-          next = forOp.getRegionIterArgs()[use.getOperandNumber()];
-          nextIsBackEdge = true;
-        } else if (auto ifOp = dyn_cast<scf::IfOp>(parent)) {
-          // scf.if: yielded operand i maps to if-result i (a value join, not a
-          // loop iteration). Continue from the result.
-          next = ifOp.getResult(use.getOperandNumber());
-          nextIsBackEdge = false;
-        }
-        continue;
-      }
-      if (auto forOp = dyn_cast<scf::ForOp>(user)) {
-        // Handle passed as an iter_arg init operand: entry into iteration 0.
-        unsigned operandIdx = use.getOperandNumber();
-        if (operandIdx >= forOp.getNumControlOperands()) {
-          unsigned iterIdx = operandIdx - forOp.getNumControlOperands();
-          next = forOp.getRegionIterArgs()[iterIdx];
-          nextIsBackEdge = false;
-        }
-        continue;
-      }
+// One step of the trace: classify all uses of `handle` into at most one
+// completion sync and at most one carry (the value the handle becomes further
+// along control flow). Order-independent: the result does not depend on
+// `getUses()` iteration order. Sets `ambiguous` if the handle has more than one
+// sync/carry, or a use the analysis cannot reduce to a single continuation.
+struct TraceStep {
+  Operation *sync = nullptr;    // dma_await/free reached here, if any
+  Value carry = nullptr;        // value to continue tracing from, if any
+  bool carryIsBackEdge = false; // carry crosses a loop back-edge
+  bool carryIsIfJoin = false;   // carry is an scf.if result (value join)
+  bool ambiguous = false;       // multiple syncs/carries, or an unknown use
+};
+
+static TraceStep classifyUses(Value handle) {
+  TraceStep step;
+  auto markCarry = [&](Value v, bool backEdge, bool ifJoin) {
+    if (step.carry) { // more than one continuation: cannot linearize
+      step.ambiguous = true;
+      return;
     }
-    if (kill) {
-      outKill = kill;
-      outBackEdges = backEdges;
-      return true;
+    step.carry = v;
+    step.carryIsBackEdge = backEdge;
+    step.carryIsIfJoin = ifJoin;
+  };
+  for (OpOperand &use : handle.getUses()) {
+    Operation *user = use.getOwner();
+    if (isa<DMAStartTaskOp>(user))
+      continue; // submission, not a sync or carry
+    if (isa<DMAAwaitTaskOp, DMAFreeTaskOp>(user)) {
+      if (step.sync)
+        step.ambiguous = true; // freed/awaited more than once
+      step.sync = user;
+      continue;
     }
-    if (!next)
-      return false;
-    if (nextIsBackEdge)
-      ++backEdges;
-    handle = next;
+    if (auto yield = dyn_cast<scf::YieldOp>(user)) {
+      Operation *parent = yield->getParentOp();
+      if (auto forOp = dyn_cast<scf::ForOp>(parent))
+        // Yielded operand i maps to iter_arg i (region arg i+1; arg 0 is the
+        // IV) of the *next* iteration: a back-edge crossing.
+        markCarry(forOp.getRegionIterArgs()[use.getOperandNumber()],
+                  /*backEdge=*/true, /*ifJoin=*/false);
+      else if (auto ifOp = dyn_cast<scf::IfOp>(parent))
+        // Yielded operand i maps to if-result i (a value join).
+        markCarry(ifOp.getResult(use.getOperandNumber()), /*backEdge=*/false,
+                  /*ifJoin=*/true);
+      else
+        step.ambiguous = true; // yield of some other region op
+      continue;
+    }
+    if (auto forOp = dyn_cast<scf::ForOp>(user)) {
+      // Handle passed as an iter_arg init operand: entry into iteration 0.
+      unsigned operandIdx = use.getOperandNumber();
+      if (operandIdx >= forOp.getNumControlOperands())
+        markCarry(forOp.getRegionIterArgs()[operandIdx -
+                                            forOp.getNumControlOperands()],
+                  /*backEdge=*/false, /*ifJoin=*/false);
+      else
+        step.ambiguous = true; // handle used as a loop bound/step (nonsensical)
+      continue;
+    }
+    // Any other user (e.g. used as an operand to an unknown op) is not
+    // understood: refuse to guess.
+    step.ambiguous = true;
   }
-  return false;
+  return step;
 }
 
 } // namespace
@@ -117,16 +107,47 @@ TaskLiveRange resolveTaskLiveRange(DMAConfigureTaskOp configure) {
       configure->getParentOfType<scf::ForOp>()
           ? configure->getParentOfType<scf::ForOp>().getOperation()
           : nullptr;
-  Operation *kill = nullptr;
+
+  // Forward-trace the handle to its completion sync. A visited set makes a
+  // def-use cycle (a handle carried unchanged across a loop back-edge) a
+  // terminating "ambiguous" result rather than an infinite loop.
+  llvm::SmallPtrSet<Value, 8> visited;
+  Value handle = configure.getResult();
   unsigned backEdges = 0;
-  if (traceHandleToKill(configure.getResult(), kill, backEdges)) {
-    range.kill = kill;
-    range.backEdgesCrossed = backEdges;
-    range.leaked = false;
-  } else {
-    range.kill = nullptr;
-    range.leaked = true;
+  while (handle) {
+    if (!visited.insert(handle).second) {
+      range.ambiguous = true; // cycle
+      break;
+    }
+    TraceStep step = classifyUses(handle);
+    if (step.ambiguous) {
+      range.ambiguous = true;
+      break;
+    }
+    if (step.sync) {
+      // A sync and a carry on the same value cannot both be honored statically.
+      if (step.carry) {
+        range.ambiguous = true;
+        break;
+      }
+      range.kill = step.sync;
+      range.backEdgesCrossed = backEdges;
+      range.leaked = false;
+      return range;
+    }
+    if (!step.carry) {
+      range.leaked = true; // no sync reachable
+      return range;
+    }
+    if (step.carryIsBackEdge)
+      ++backEdges;
+    if (step.carryIsIfJoin)
+      range.crossedIfJoin = true;
+    handle = step.carry;
   }
+
+  // Fell out via ambiguity: report as leaked-with-ambiguous so callers reject.
+  range.leaked = true;
   return range;
 }
 
@@ -272,12 +293,17 @@ struct AIETestRuntimeBdLivenessPass
         return;
       }
       std::string info;
-      if (range.leaked) {
+      if (range.ambiguous) {
+        info =
+            "ambiguous"; // handle not reducible to one sync (cycle/multi-use)
+      } else if (range.leaked) {
         info = "leaked"; // held to region end (no await/free reachable)
       } else {
         info = "backedges=" + std::to_string(range.backEdgesCrossed) +
                " kill=" + range.kill->getName().getStringRef().str();
       }
+      if (range.crossedIfJoin)
+        info += " if-join";
       configure.emitRemark("bd-liveness: ")
           << info << (range.enclosingLoop ? " in-loop" : "");
     });

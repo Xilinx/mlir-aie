@@ -68,9 +68,23 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // supported yet (they need a runtime-selected BD id).
   //===--------------------------------------------------------------------===//
 
+  // Reject every form the static allocator cannot handle, BEFORE any IDs are
+  // assigned, so allocation only ever runs on supported IR. This is the
+  // complete gatekeeper: anything not rejected here must allocate without
+  // crashing.
   LogicalResult validate(AIE::RuntimeSequenceOp seq) {
+    // 1. Per-configure liveness classification.
     WalkResult wr = seq.walk([&](DMAConfigureTaskOp configure) -> WalkResult {
       TaskLiveRange range = resolveTaskLiveRange(configure);
+      if (range.ambiguous) {
+        configure.emitOpError(
+            "task handle cannot be statically resolved to a single completion "
+            "(it has multiple carries/syncs, or is carried unchanged across a "
+            "loop back-edge); static BD-ID allocation is not supported for "
+            "this "
+            "form");
+        return WalkResult::interrupt();
+      }
       if (range.leaked && range.enclosingLoop) {
         configure.emitOpError(
             "buffer descriptor configured in a loop is never completed (no "
@@ -86,17 +100,51 @@ struct AIEAssignRuntimeSequenceBDIDsPass
             "loop, or free the task within the same iteration");
         return WalkResult::interrupt();
       }
-      // A handle that escapes its region via scf.yield (e.g. yielded out of an
-      // scf.if arm and freed afterwards) would need its BD id resolved across a
-      // value join; not supported by static allocation yet.
-      for (Operation *user : configure.getResult().getUsers())
-        if (isa<scf::YieldOp>(user)) {
-          configure.emitOpError(
-              "task handle escapes its control-flow region via scf.yield; "
-              "static BD-ID allocation across a value join is not yet "
-              "supported");
+      if (range.crossedIfJoin) {
+        configure.emitOpError(
+            "task handle escapes its control-flow region via an scf.if result; "
+            "static BD-ID allocation across a value join is not yet supported");
+        return WalkResult::interrupt();
+      }
+      return WalkResult::advance();
+    });
+    if (wr.wasInterrupted())
+      return failure();
+
+    // 2. Every free/await must resolve to a configure op. A free/await of an
+    // scf.for/if result or block argument (not a dma_configure_task) would
+    // crash the recycle path; reject it cleanly here instead.
+    wr = seq.walk([&](Operation *op) -> WalkResult {
+      Value task;
+      if (auto f = dyn_cast<DMAFreeTaskOp>(op))
+        task = f.getTask();
+      else if (auto a = dyn_cast<DMAAwaitTaskOp>(op))
+        task = a.getTask();
+      else
+        return WalkResult::advance();
+      if (!isa_and_nonnull<DMAConfigureTaskOp>(task.getDefiningOp())) {
+        // Preserve the helpful "lower this first" notes for unlowered task ops.
+        (void)emitUnresolvedTask(op, task);
+        return WalkResult::interrupt();
+      }
+      return WalkResult::advance();
+    });
+    if (wr.wasInterrupted())
+      return failure();
+
+    // 3. A configure must not be buried inside a region op the allocator does
+    // not sweep (e.g. scf.while); its BDs would be silently left unassigned.
+    wr = seq.walk([&](DMAConfigureTaskOp configure) -> WalkResult {
+      Operation *p = configure->getParentOp();
+      while (p && p != seq.getOperation()) {
+        if (!isa<scf::ForOp, scf::IfOp>(p)) {
+          configure.emitOpError("is nested in an unsupported control-flow op '")
+              << p->getName()
+              << "'; BD-ID allocation only handles scf.for and scf.if";
           return WalkResult::interrupt();
         }
+        p = p->getParentOp();
+      }
       return WalkResult::advance();
     });
     return failure(wr.wasInterrupted());

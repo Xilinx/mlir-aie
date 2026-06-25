@@ -64,7 +64,7 @@ aie.device(npu2) {
 aie.device(npu2) {
   %tile_0_0 = aie.tile(0, 0)
   aie.runtime_sequence(%arg0: memref<8xi16>, %c: i1) {
-    // expected-error@+1 {{escapes its control-flow region via scf.yield}}
+    // expected-error@+1 {{escapes its control-flow region via an scf.if result}}
     %x = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
       aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
       aie.end
@@ -79,6 +79,71 @@ aie.device(npu2) {
       aiex.dma_start_task(%z)
       scf.yield %z : index
     }
+    aiex.dma_free_task(%r)
+  }
+}
+
+// -----
+
+// Handle carried UNCHANGED across a loop back-edge (yield the iter_arg itself).
+// This is a def-use cycle; the analysis must terminate and reject, not hang.
+aie.device(npu2) {
+  %tile_0_0 = aie.tile(0, 0)
+  aie.runtime_sequence(%arg0: memref<8xi16>) {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c4 = arith.constant 4 : index
+    // expected-error@+1 {{cannot be statically resolved to a single completion}}
+    %init = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
+      aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+      aie.end
+    }
+    aiex.dma_start_task(%init)
+    %r = scf.for %i = %c0 to %c4 step %c1 iter_args(%p = %init) -> (index) {
+      scf.yield %p : index
+    }
+    aiex.dma_free_task(%r)
+  }
+}
+
+// -----
+
+// Handle both freed and re-yielded across the back-edge in the same iteration:
+// two continuations, cannot be linearized => reject (must not crash).
+aie.device(npu2) {
+  %tile_0_0 = aie.tile(0, 0)
+  aie.runtime_sequence(%arg0: memref<8xi16>) {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c4 = arith.constant 4 : index
+    // expected-error@+1 {{cannot be statically resolved to a single completion}}
+    %init = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
+      aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+      aie.end
+    }
+    aiex.dma_start_task(%init)
+    %r = scf.for %i = %c0 to %c4 step %c1 iter_args(%p = %init) -> (index) {
+      aiex.dma_free_task(%p)
+      scf.yield %p : index
+    }
+    aiex.dma_free_task(%r)
+  }
+}
+
+// -----
+
+// Free of a value that is not a dma_configure_task result (here, an scf.for
+// result). Must be rejected cleanly, not crash the recycle path.
+aie.device(npu2) {
+  %tile_0_0 = aie.tile(0, 0)
+  aie.runtime_sequence(%arg0: memref<8xi16>) {
+    %c0 = arith.constant 0 : index
+    %c1 = arith.constant 1 : index
+    %c4 = arith.constant 4 : index
+    %r = scf.for %i = %c0 to %c4 step %c1 iter_args(%p = %c0) -> (index) {
+      scf.yield %p : index
+    }
+    // expected-error@+1 {{does not reference a valid configure_task operation}}
     aiex.dma_free_task(%r)
   }
 }
