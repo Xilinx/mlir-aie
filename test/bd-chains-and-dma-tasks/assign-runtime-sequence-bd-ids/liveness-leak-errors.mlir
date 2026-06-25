@@ -16,6 +16,7 @@
 // Constant trip count, no sync inside the loop, handle escapes via loop result.
 aie.device(npu2) {
   %tile_0_0 = aie.tile(0, 0)
+  // expected-remark@+1 {{bd-peak: tile(0,0) peak=2}}
   aie.runtime_sequence(%arg0: memref<8xi16>) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
@@ -45,6 +46,7 @@ aie.device(npu2) {
 // Simplest loop leak: configure + start in the loop body, no sync at all.
 aie.device(npu2) {
   %tile_0_0 = aie.tile(0, 0)
+  // expected-remark@+1 {{bd-peak: tile(0,0) peak=1}}
   aie.runtime_sequence(%arg0: memref<8xi16>) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index

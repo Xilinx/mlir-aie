@@ -7,11 +7,12 @@
 
 // RUN: aie-opt --aie-test-runtime-bd-liveness --verify-diagnostics --split-input-file %s
 
-// Unit test for the control-flow-aware runtime-sequence BD liveness analysis
-// (resolveTaskLiveRange). Verifies, per dma_configure_task, the completion-sync
-// kind, the number of scf.for back-edges the live handle crosses, and whether
-// the handle leaks (no sync reachable). Independent of BD-ID coloring and the
-// dynamic bd_id write-back form.
+// Unit test for the control-flow-aware runtime-sequence BD liveness analysis.
+// Per dma_configure_task it verifies the completion-sync kind, the number of
+// scf.for back-edges the live handle crosses, and whether the handle leaks. Per
+// runtime_sequence it verifies the per-tile peak simultaneous BD liveness (the
+// window size the allocator must fit in the tile pool). Independent of BD-ID
+// coloring and the dynamic bd_id write-back form.
 
 //===----------------------------------------------------------------------===//
 // Straight-line forms
@@ -20,6 +21,7 @@
 // Explicit free => backedges=0, kill is dma_free_task.
 aie.device(npu2) {
   %tile_0_0 = aie.tile(0, 0)
+  // expected-remark@+1 {{bd-peak: tile(0,0) peak=1}}
   aie.runtime_sequence(%arg0: memref<8xi16>) {
     // expected-remark@+1 {{bd-liveness: backedges=0 kill=aiex.dma_free_task}}
     %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
@@ -36,6 +38,7 @@ aie.device(npu2) {
 // Await => backedges=0, kill is dma_await_task.
 aie.device(npu2) {
   %tile_0_0 = aie.tile(0, 0)
+  // expected-remark@+1 {{bd-peak: tile(0,0) peak=1}}
   aie.runtime_sequence(%arg0: memref<8xi16>) {
     // expected-remark@+1 {{bd-liveness: backedges=0 kill=aiex.dma_await_task}}
     %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
@@ -53,6 +56,7 @@ aie.device(npu2) {
 // designs that allocate all BDs without freeing). Not in a loop, so no error.
 aie.device(npu2) {
   %tile_0_0 = aie.tile(0, 0)
+  // expected-remark@+1 {{bd-peak: tile(0,0) peak=1}}
   aie.runtime_sequence(%arg0: memref<8xi16>) {
     // expected-remark@+1 {{bd-liveness: leaked}}
     %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
@@ -72,6 +76,7 @@ aie.device(npu2) {
 // scf.for, freed within the same iteration => backedges=0, in-loop.
 aie.device(npu2) {
   %tile_0_0 = aie.tile(0, 0)
+  // expected-remark@+1 {{bd-peak: tile(0,0) peak=1}}
   aie.runtime_sequence(%arg0: memref<8xi16>) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
@@ -91,10 +96,10 @@ aie.device(npu2) {
 // -----
 
 // Ping-pong: free the previous iteration's task via iter_args => backedges=1.
-// Prologue task is carried in as the iter_arg init (depth-2 working set: the
-// prologue and the first in-body task coexist).
+// Working set is 2 (prologue/previous coexists with current).
 aie.device(npu2) {
   %tile_0_0 = aie.tile(0, 0)
+  // expected-remark@+1 {{bd-peak: tile(0,0) peak=2}}
   aie.runtime_sequence(%arg0: memref<8xi16>) {
     %c1 = arith.constant 1 : index
     %c4 = arith.constant 4 : index
@@ -126,6 +131,7 @@ aie.device(npu2) {
 // prologue tasks, 2 for the in-body task).
 aie.device(npu2) {
   %tile_0_0 = aie.tile(0, 0)
+  // expected-remark@+1 {{bd-peak: tile(0,0) peak=3}}
   aie.runtime_sequence(%arg0: memref<8xi16>) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
@@ -158,9 +164,10 @@ aie.device(npu2) {
 // -----
 
 // Nested loops, inner ping-pong fully closed within each outer iteration =>
-// inner tasks backedges 0/1 (the outer loop does not extend their ranges).
+// inner tasks backedges 0/1, peak 2 (outer loop does not extend their ranges).
 aie.device(npu2) {
   %tile_0_0 = aie.tile(0, 0)
+  // expected-remark@+1 {{bd-peak: tile(0,0) peak=2}}
   aie.runtime_sequence(%arg0: memref<8xi16>) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index

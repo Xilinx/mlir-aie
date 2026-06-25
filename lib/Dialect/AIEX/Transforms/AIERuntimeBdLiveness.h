@@ -17,8 +17,8 @@
 // `aiex.dma_free_task`. This hold-range is NOT the same as SSA-value liveness
 // of the configure result: a configure followed only by `dma_start_task` has
 // its last *use* at the start, yet the BD is still physically in flight. So the
-// kill point is resolved explicitly (free / synthesized-after-await /
-// region-end), not read off `mlir::Liveness`.
+// kill point is resolved explicitly (the reachable await/free, else region
+// end), not read off `mlir::Liveness`.
 //
 // Because `scf.for`/`scf.if` are still structured region ops at this stage (no
 // scf->cf lowering has run), this analysis uses disciplined structural
@@ -29,9 +29,10 @@
 // Loop-carried tasks: a handle freed in a *later* loop iteration than it was
 // configured (the ping-pong "free the previous iteration" pattern, expressible
 // via `scf.for` iter_args) needs more than one physical BD ID — a rotating
-// window. The analysis records how many loop back-edges the live handle crosses;
-// the window size (peak simultaneous liveness) is computed by the BD-ID
-// allocator from the interfering set of ranges, not here.
+// window. `resolveTaskLiveRange` records how many loop back-edges each live
+// handle crosses; `computePeakBdLiveness` sweeps the sequence to find the per-
+// tile peak simultaneous liveness (the window size the allocator must fit in
+// the tile's BD pool), treating scf.if arms as mutually exclusive.
 //
 //===----------------------------------------------------------------------===//
 
@@ -42,6 +43,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
 
 namespace xilinx::AIEX {
@@ -86,6 +88,14 @@ struct TaskLiveRange {
 /// Resolve the hold-range of a single configure op by forward-tracing its
 /// handle (including across scf.for iter_arg hops) to its completion-sync.
 TaskLiveRange resolveTaskLiveRange(DMAConfigureTaskOp configure);
+
+/// Compute peak simultaneous BD liveness per tile across a runtime sequence.
+/// Keyed by (col, row); the value is the maximum number of BD IDs held at once
+/// on that tile, i.e. the window size the allocator must fit in the tile pool.
+/// scf.if arms are treated as mutually exclusive; scf.for bodies are swept with
+/// loop-carried tasks live (so ping-pong coexistence is counted).
+llvm::MapVector<std::pair<int, int>, unsigned>
+computePeakBdLiveness(AIE::RuntimeSequenceOp seq);
 
 } // namespace xilinx::AIEX
 
