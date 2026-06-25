@@ -76,13 +76,21 @@ module {
       // CHECK: 00000000
       // CHECK: 00000042
       // CHECK: 00000018
-      aiex.npu.write32 { column = 3 : i32, row = 4 : i32, address = 0xabc00def : ui32, value = 0x42 : ui32 }
+      %cst_npu_0 = arith.constant 0xabc00def : i32
+      %cst_npu_1 = arith.constant 0x42 : i32
+      aiex.npu.write32(%cst_npu_0, %cst_npu_1) {column = 3 : i32, row = 4 : i32} : i32, i32
 
       // CHECK: 00000080
       // CHECK: 00000010
       // CHECK: 00030401
       // CHECK: 05010200
-      aiex.npu.sync { column = 3 : i32, row = 4 : i32, direction = 1 : i32, channel = 5 : i32, column_num = 1 : i32, row_num = 2 : i32 }
+      %cst_npu_2 = arith.constant 3 : i32
+      %cst_npu_3 = arith.constant 4 : i32
+      %cst_npu_4 = arith.constant 1 : i32
+      %cst_npu_5 = arith.constant 5 : i32
+      %cst_npu_6 = arith.constant 1 : i32
+      %cst_npu_7 = arith.constant 2 : i32
+      aiex.npu.sync(%cst_npu_2, %cst_npu_3, %cst_npu_4, %cst_npu_5, %cst_npu_6, %cst_npu_7) : i32, i32, i32, i32, i32, i32
     }
   }
 }

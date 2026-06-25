@@ -11,7 +11,9 @@
 // CHECK: aiex.cert.write32(12345, 65244)
 aie.device(npu2) {
   aie.runtime_sequence @configure() {
-    aiex.npu.write32 {address = 12345 : ui32, value = 0xfedc : ui32}
+    %cst_npu_0 = arith.constant 12345 : i32
+    %cst_npu_1 = arith.constant 0xfedc : i32
+    aiex.npu.write32(%cst_npu_0, %cst_npu_1) : i32, i32
   }
 }
 
@@ -35,7 +37,13 @@ aie.device(npu2) {
 
 aie.device(npu2) {
   aie.runtime_sequence @sync() {
-    aiex.npu.sync {channel = 1 : i32, column = 2 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
+    %cst_npu_2 = arith.constant 2 : i32
+    %cst_npu_3 = arith.constant 0 : i32
+    %cst_npu_4 = arith.constant 1 : i32
+    %cst_npu_5 = arith.constant 1 : i32
+    %cst_npu_6 = arith.constant 1 : i32
+    %cst_npu_7 = arith.constant 1 : i32
+    aiex.npu.sync(%cst_npu_2, %cst_npu_3, %cst_npu_4, %cst_npu_5, %cst_npu_6, %cst_npu_7) : i32, i32, i32, i32, i32, i32
   }
 }
 
@@ -48,7 +56,8 @@ aie.device(npu2) {
   aie.runtime_sequence @sequence(%arg0: memref<9216xi32>, %arg1: memref<9216xi32>, %arg2: memref<9216xi32>) {
       %21 = memref.get_global @blockwrite_data_21 : memref<9xi32>
       aiex.npu.blockwrite(%21) {address = 6 : ui32} : memref<9xi32>
-      aiex.npu.address_patch {addr = 10 : ui32, arg_idx = 2 : i32, arg_plus = 0 : i32}
+      %cst_npu_8 = arith.constant 0 : i32
+      aiex.npu.address_patch(%cst_npu_8 : i32) {addr = 10 : ui32, arg_idx = 2 : i32}
   }
 }
 

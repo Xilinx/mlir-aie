@@ -90,7 +90,9 @@ module {
     %tile02 = aie.tile(0,2)
     %data = aie.buffer(%tile02) {address = 1024 : i32, sym_name = "data"} : memref<128xi32>
     aie.runtime_sequence() {
-      aiex.npu.write32 {buffer = @data, address = 100 : ui32, value = 1234 : ui32}
+      %cst_npu_0 = arith.constant 100 : i32
+      %cst_npu_1 = arith.constant 1234 : i32
+      aiex.npu.write32(%cst_npu_0, %cst_npu_1) {buffer = @data} : i32, i32
     }
   }
 }
@@ -120,7 +122,10 @@ module {
     %tile03 = aie.tile(0,3)
     %s = aie.buffer(%tile03) {address = 1024 : i32, sym_name = "stuff"} : memref<128xi32>
     aie.runtime_sequence() {
-      aiex.npu.maskwrite32 {buffer = @stuff, address = 200 : ui32, value = 321 : ui32, mask = 0xffff : ui32}
+      %cst_npu_2 = arith.constant 200 : i32
+      %cst_npu_3 = arith.constant 321 : i32
+      %cst_npu_4 = arith.constant 0xffff : i32
+      aiex.npu.maskwrite32(%cst_npu_2, %cst_npu_3, %cst_npu_4) {buffer = @stuff} : i32, i32, i32
     }
   }
 }

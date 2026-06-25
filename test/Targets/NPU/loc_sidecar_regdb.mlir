@@ -19,11 +19,17 @@ module {
   aie.device(npu1) {
     aie.runtime_sequence(%arg0: memref<16xf32>) {
       // col 0, row 2 (core tile), tile-relative offset 0x32000 -> Core_Control.
-      aiex.npu.write32 { address = 0x232000 : ui32, value = 0x1 : ui32 }
+      %cst_npu_0 = arith.constant 0x232000 : i32
+      %cst_npu_1 = arith.constant 0x1 : i32
+      aiex.npu.write32(%cst_npu_0, %cst_npu_1) : i32, i32
       // col 0, row 0 (shim tile), tile-relative offset 0x14000 -> Lock0_value.
-      aiex.npu.write32 { address = 0x14000 : ui32, value = 0x2 : ui32 }
+      %cst_npu_2 = arith.constant 0x14000 : i32
+      %cst_npu_3 = arith.constant 0x2 : i32
+      aiex.npu.write32(%cst_npu_2, %cst_npu_3) : i32, i32
       // col 0, row 1 (mem tile), tile-relative offset 0x91000 -> Performance_Control0.
-      aiex.npu.write32 { address = 0x191000 : ui32, value = 0x3 : ui32 }
+      %cst_npu_4 = arith.constant 0x191000 : i32
+      %cst_npu_5 = arith.constant 0x3 : i32
+      aiex.npu.write32(%cst_npu_4, %cst_npu_5) : i32, i32
     }
   }
 }

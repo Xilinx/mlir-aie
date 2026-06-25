@@ -53,15 +53,21 @@ module {
     // between iterations. When inlined, these should be preserved.
     aie.runtime_sequence @callee_seq(%arg0: memref<16xi32>) {
       // First iteration
-      aiex.npu.write32 {address = 100 : ui32, column = 0 : i32, row = 0 : i32, value = 1 : ui32}
+      %cst_npu_0 = arith.constant 100 : i32
+      %cst_npu_1 = arith.constant 1 : i32
+      aiex.npu.write32(%cst_npu_0, %cst_npu_1) {column = 0 : i32, row = 0 : i32} : i32, i32
       
       // Reconfigure for second iteration
       aiex.npu.load_pdi {device_ref = @callee_device}
-      aiex.npu.write32 {address = 200 : ui32, column = 0 : i32, row = 0 : i32, value = 2 : ui32}
+      %cst_npu_2 = arith.constant 200 : i32
+      %cst_npu_3 = arith.constant 2 : i32
+      aiex.npu.write32(%cst_npu_2, %cst_npu_3) {column = 0 : i32, row = 0 : i32} : i32, i32
       
       // Reconfigure for third iteration
       aiex.npu.load_pdi {device_ref = @callee_device}
-      aiex.npu.write32 {address = 300 : ui32, column = 0 : i32, row = 0 : i32, value = 3 : ui32}
+      %cst_npu_4 = arith.constant 300 : i32
+      %cst_npu_5 = arith.constant 3 : i32
+      aiex.npu.write32(%cst_npu_4, %cst_npu_5) {column = 0 : i32, row = 0 : i32} : i32, i32
     }
   }
 }
@@ -106,15 +112,21 @@ module {
     aie.runtime_sequence @callee_seq2(%arg0: memref<16xi32>) {
       // First load_pdi at the very start
       aiex.npu.load_pdi {device_ref = @callee_device2}
-      aiex.npu.write32 {address = 100 : ui32, column = 0 : i32, row = 0 : i32, value = 1 : ui32}
+      %cst_npu_6 = arith.constant 100 : i32
+      %cst_npu_7 = arith.constant 1 : i32
+      aiex.npu.write32(%cst_npu_6, %cst_npu_7) {column = 0 : i32, row = 0 : i32} : i32, i32
       
       // Second iteration
       aiex.npu.load_pdi {device_ref = @callee_device2}
-      aiex.npu.write32 {address = 200 : ui32, column = 0 : i32, row = 0 : i32, value = 2 : ui32}
+      %cst_npu_8 = arith.constant 200 : i32
+      %cst_npu_9 = arith.constant 2 : i32
+      aiex.npu.write32(%cst_npu_8, %cst_npu_9) {column = 0 : i32, row = 0 : i32} : i32, i32
       
       // Third iteration
       aiex.npu.load_pdi {device_ref = @callee_device2}
-      aiex.npu.write32 {address = 300 : ui32, column = 0 : i32, row = 0 : i32, value = 3 : ui32}
+      %cst_npu_10 = arith.constant 300 : i32
+      %cst_npu_11 = arith.constant 3 : i32
+      aiex.npu.write32(%cst_npu_10, %cst_npu_11) {column = 0 : i32, row = 0 : i32} : i32, i32
     }
   }
 }

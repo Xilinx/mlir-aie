@@ -20,7 +20,13 @@ module {
   aie.device(npu2) {
     %12 = aie.tile(1, 2)
     aie.runtime_sequence @seq(%buf : memref<1xi32>) {
-        aiex.npu.sync { channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32 }
+        %cst_npu_0 = arith.constant 0 : i32
+        %cst_npu_1 = arith.constant 0 : i32
+        %cst_npu_2 = arith.constant 1 : i32
+        %cst_npu_3 = arith.constant 0 : i32
+        %cst_npu_4 = arith.constant 1 : i32
+        %cst_npu_5 = arith.constant 1 : i32
+        aiex.npu.sync(%cst_npu_0, %cst_npu_1, %cst_npu_2, %cst_npu_3, %cst_npu_4, %cst_npu_5) : i32, i32, i32, i32, i32, i32
     }
   }
 }
