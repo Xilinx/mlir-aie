@@ -645,8 +645,9 @@ LogicalResult AIEX::NpuPushQueueOp::verify() {
   const auto &targetModel = AIE::getTargetModel(*this);
   auto numBds = targetModel.getNumBDs(getColumn(), getRow());
   // bd_id and repeat_count are SSA operands; range-check them only when they
-  // are compile-time constants. Runtime values are validated by the lowering's
-  // bounds guard, not here.
+  // are compile-time constants. A runtime (non-constant) value is left
+  // unchecked here: bounds checking of runtime operands is not yet implemented
+  // (it belongs to the dynamic lowering path added in a later patch).
   if (std::optional<uint32_t> bdId = getConstantIntOperand(getBdId());
       bdId && *bdId > numBds)
     return emitOpError("BD ID exceeds the maximum ID.");
