@@ -750,9 +750,10 @@ struct AIECoreToStandardPass
     // A core may use a constant defined in the parent device body (the folder
     // hoists constants out of non-IsolatedFromAbove ops like
     // aie.runtime_sequence, then CSE merges them with a core's own constants).
-    // The core is outlined into a func below while the device is erased, so such
-    // a device-level constant would be erased while still used by the core's
-    // body. Clone it into the core first so the outlined func is self-contained.
+    // The core is outlined into a func below while the device is erased, so
+    // such a device-level constant would be erased while still used by the
+    // core's body. Clone it into the core first so the outlined func is
+    // self-contained.
     {
       IRRewriter constSinkRewriter(&getContext());
       for (CoreOp coreOp : deviceOp.getOps<CoreOp>()) {
