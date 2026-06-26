@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;ad0ca0d83b87fe35eedf9f420020152ffbd89198</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;a3fb901fd700daef16a1bd1f84404d080caabd1f</span>
    </div>
   </td>
  </tr>
@@ -109,8 +109,8 @@ Collaboration diagram for utils.hostruntime.xrtruntime.tensor.XRTTensor:</div>
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:a05664c7d417551e125c49369213cd5d2" id="r_a05664c7d417551e125c49369213cd5d2"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1tensor_1_1XRTTensor.html#a05664c7d417551e125c49369213cd5d2">__init__</a> (self, shape_or_data, <a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1tensor_1_1XRTTensor.html#a5ebab8526e3a7d94baad1e57f6848051">dtype</a>=np.uint32, <a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1tensor_1_1XRTTensor.html#af7a30b53dcba17ef617d14119f83213a">device</a>=&quot;npu&quot;, flags=xrt.bo.host_only, group_id=0)</td></tr>
-<tr class="separator:a05664c7d417551e125c49369213cd5d2"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a64ff0939fe8b35bbc2d0527cdbf0940c" id="r_a64ff0939fe8b35bbc2d0527cdbf0940c"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1tensor_1_1XRTTensor.html#a64ff0939fe8b35bbc2d0527cdbf0940c">__init__</a> (self, shape_or_data, <a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1tensor_1_1XRTTensor.html#a5ebab8526e3a7d94baad1e57f6848051">dtype</a>=np.uint32, <a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1tensor_1_1XRTTensor.html#af7a30b53dcba17ef617d14119f83213a">device</a>=&quot;npu&quot;, flags=xrt.bo.host_only, group_id=0, <a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1tensor_1_1XRTTensor.html#a1029819820fee381b0998a170dcc433d">xrt_device</a>=None)</td></tr>
+<tr class="separator:a64ff0939fe8b35bbc2d0527cdbf0940c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a95e4149e861a7b33cbe2ada813a2db60" id="r_a95e4149e861a7b33cbe2ada813a2db60"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1tensor_1_1XRTTensor.html#a95e4149e861a7b33cbe2ada813a2db60">data</a> (self)</td></tr>
 <tr class="separator:a95e4149e861a7b33cbe2ada813a2db60"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a540c274663f50c3ec86442b705aeefb4" id="r_a540c274663f50c3ec86442b705aeefb4"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classutils_1_1hostruntime_1_1xrtruntime_1_1tensor_1_1XRTTensor.html#a540c274663f50c3ec86442b705aeefb4">shape</a> (self)</td></tr>
@@ -210,8 +210,8 @@ Additional Inherited Members</h2></td></tr>
 
 The class provides common tensor operations such as creation,
 filling with values, and accessing data.</pre> </div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
-<a id="a05664c7d417551e125c49369213cd5d2" name="a05664c7d417551e125c49369213cd5d2"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a05664c7d417551e125c49369213cd5d2">&#9670;&#160;</a></span>__init__()</h2>
+<a id="a64ff0939fe8b35bbc2d0527cdbf0940c" name="a64ff0939fe8b35bbc2d0527cdbf0940c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a64ff0939fe8b35bbc2d0527cdbf0940c">&#9670;&#160;</a></span>__init__()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -250,7 +250,13 @@ filling with values, and accessing data.</pre> </div><h2 class="groupheader">Con
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">&#160;</td>
-          <td class="paramname"><em>group_id</em> = <code>0</code>&#160;</td>
+          <td class="paramname"><em>group_id</em> = <code>0</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>xrt_device</em> = <code>None</code>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -269,6 +275,8 @@ Args:
     device (str, optional): Device string identifier. Defaults to 'npu'.
     flags (optional): XRT buffer object flags. Defaults to xrt.bo.host_only.
     group_id (int, optional): XRT buffer object group ID. Defaults to 0.
+    xrt_device (optional): Existing PyXRT device handle to use for BO allocation.
+        When omitted, a new handle for device index 0 is opened for this tensor.
 </pre> 
 <p>Reimplemented from <a class="el" href="classutils_1_1hostruntime_1_1tensor__class_1_1Tensor.html#a400b401c474f49355e9e1986b4470503">utils.hostruntime.tensor_class.Tensor</a>.</p>
 
