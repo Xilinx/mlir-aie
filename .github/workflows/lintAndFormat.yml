@@ -1,3 +1,7 @@
+# Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 name: Lint and Format
 
 permissions:
@@ -368,3 +372,30 @@ jobs:
           comment-author: 'github-actions[bot]'
           body-path: /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
           edit-mode: replace
+  
+  license-compliance:
+    name: License Compliance Check
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Setup Python env
+        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install reuse==6.2.0
+
+      - name: Check Licenses
+        shell: bash
+        run: |
+          reuse download --all
+          reuse lint
+
+      - name: Check copyright notice format
+        run: python utils/check_copyright_format.py
+  
