@@ -7,6 +7,7 @@ from aie._mlir_libs import (
     _aie as CustomTypes,  # pyright: ignore[reportAttributeAccessIssue]
 )
 
+from ..dialects.arith import ConstantOp  # pyright: ignore[reportMissingImports]
 from ..extras import types as T  # pyright: ignore[reportMissingImports]
 from ..ir import (  # pyright: ignore[reportMissingImports]
     F32Type,
@@ -248,14 +249,16 @@ def fold_constant_operand(operand):
     npu scalar ops (write32/maskwrite32/sync/address_patch/rtp_write) carry their
     integer fields as SSA operands materialized from arith.constant; consumers
     such as trace parsing and register annotation need the underlying value.
-    Returns the int, or None if the operand is not a compile-time constant (e.g.
-    a runtime-sequence value); callers decide whether that is an error in their
-    context. This is the Python analog of the AIEX dialect's
+    Returns the int, or None if the operand is not an arith.constant (e.g. a
+    block argument or a runtime-sequence value); callers decide whether that is
+    an error in their context. This is the Python analog of the AIEX dialect's
     getConstantIntOperand."""
     defining = operand.owner
-    if defining is None or not hasattr(defining, "value"):
+    if defining is None:
         return None
-    const_attr = defining.value
-    if not hasattr(const_attr, "value"):
+    # Value.owner is an Operation; the generated attribute accessors live on the
+    # opview. (Some binding versions return the opview directly, so normalize.)
+    opview = getattr(defining, "opview", defining)
+    if not isinstance(opview, ConstantOp):
         return None
-    return int(const_attr.value)
+    return int(opview.value.value)
