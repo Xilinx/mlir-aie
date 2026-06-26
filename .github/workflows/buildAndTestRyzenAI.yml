@@ -65,7 +65,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner_type: [ amd7940hs, amdhx370 ]
+        runner_type: [ aie2-4col, aie2p-8col ]
     env:
       NPU_CACHE_HOME: ${{ github.workspace }}/iron-cache-${{ matrix.runner_type }}-${{ github.run_id }}
       PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-${{ matrix.runner_type }}-${{ github.run_id }}
@@ -83,6 +83,9 @@ jobs:
         # click on "launch_tmate_terminal_for_debug"
         if: github.event_name == 'workflow_dispatch'
                 && inputs.launch_tmate_terminal_for_debug
+
+      - name: Print hostname
+        run: hostname
 
       - name: Run commands
         run: |
@@ -168,7 +171,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner_type: [ amd7940hs, amdhx370 ]
+        runner_type: [ aie2-4col, aie2p-8col ]
     env:
       NPU_CACHE_HOME: ${{ github.workspace }}/iron-cache-${{ matrix.runner_type }}-${{ github.run_id }}
       PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-${{ matrix.runner_type }}-${{ github.run_id }}
@@ -186,6 +189,9 @@ jobs:
         # click on "launch_tmate_terminal_for_debug"
         if: github.event_name == 'workflow_dispatch'
                 && inputs.launch_tmate_terminal_for_debug
+      
+      - name: Print hostname
+        run: hostname
 
       - name: Run commands
         run: |
@@ -231,7 +237,7 @@ jobs:
           mkdir $NPU_CACHE_HOME
 
           # TEMP(#3059): dump NPU stack versions to diagnose mobilenet/run_e2e.lit
-          # bn1 NPU timeout that reproduces on amdhx370 CI but not on the same
+          # bn1 NPU timeout that reproduces on aie2p-8col CI but not on the same
           # HX 370 chip locally. Revert once the divergence is understood.
           echo "===== NPU STACK VERSIONS (${{ matrix.runner_type }}) ====="
           uname -a || true
