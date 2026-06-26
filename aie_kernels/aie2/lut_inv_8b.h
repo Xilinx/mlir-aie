@@ -1,3 +1,10 @@
+/*
+ * Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+ *
+ * SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+ */
+
+
 #ifndef X_LUT_INV_8B
 #define X_LUT_INV_8B
 

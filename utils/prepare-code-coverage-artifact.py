@@ -1,5 +1,9 @@
 #!/usr/bin/env python
 
+# Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 from __future__ import print_function
 
 """Prepare a code coverage artifact.

@@ -1,3 +1,7 @@
+# Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 name: MLIR Distro
 
 # When dispatched with DISPATCH_NONCE set, embed the nonce in the run title so

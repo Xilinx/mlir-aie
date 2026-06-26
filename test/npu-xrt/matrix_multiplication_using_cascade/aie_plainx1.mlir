@@ -1,3 +1,7 @@
+// Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+//
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 module {
   aie.device(npu1) {
     func.func private @matmul_scalar_4x2x4_4x8x4_i32_i32(memref<2x4x4x8xi32, 2 : i32>, memref<4x2x8x4xi32, 2 : i32>, memref<4x4x4x4xi32, 2 : i32>) attributes {link_with = "mm.o"}

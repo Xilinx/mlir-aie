@@ -1,14 +1,6 @@
-##===- Makefile -----------------------------------------------------------===##
+# Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
 #
-# This file licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-#
-##===----------------------------------------------------------------------===##
-#
-# @iron.jit handles compile + run end-to-end (`make run`).
-# `make emit-mlir` prints the lowered MLIR without touching the NPU
-# (writes to build/aie.mlir).
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 

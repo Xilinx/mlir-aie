@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 
+# Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 """Runner of the 'pull request comments from Clang-Tidy reports' action"""
 
 import argparse

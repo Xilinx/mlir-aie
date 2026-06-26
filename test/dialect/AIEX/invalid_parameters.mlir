@@ -1,3 +1,7 @@
+// Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+//
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 // RUN: aie-opt %s -split-input-file -verify-diagnostics
 
 // Verify that read_scratchpad_parameter must be inside aie.core.

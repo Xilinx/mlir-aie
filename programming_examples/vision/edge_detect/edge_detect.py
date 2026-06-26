@@ -5,7 +5,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024-2026 AMD Inc.
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 """Vision edge-detect pipeline -- ``@iron.jit`` design.
 
   shim --> rgba2gray --> filter2d (3x3 Laplacian) --> threshold -->

@@ -3,7 +3,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 AMD Inc.
+# Copyright (C) 2024 Advanced Micro Devices, Inc.
 
 get_property(dialect_libs GLOBAL PROPERTY MLIR_DIALECT_LIBS)
 

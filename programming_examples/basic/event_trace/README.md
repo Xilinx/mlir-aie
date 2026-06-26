@@ -1,3 +1,9 @@
+<!--
+Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-->
+
 # MLIR Trace Example
 
 Vector × scalar AIE design with custom hardware-event tracing on AMD NPU devices.

@@ -1,3 +1,9 @@
+<!--
+Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-->
+
 # MICRO 2024 Tutorial: Leveraging the IRON AI Engine API to program the Ryzen™ AI NPU
 
 ## Introduction

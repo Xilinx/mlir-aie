@@ -1,3 +1,9 @@
+<!--
+Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-->
+
 # MobileNet V3 on AI Engine (IRON)
 
 End-to-end MobileNet V3 inference on the Strix NPU2 (4×8 compute tiles + a row

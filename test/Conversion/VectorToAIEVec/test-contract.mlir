@@ -1,3 +1,7 @@
+// Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+//
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 // RUN: aie-opt %s -convert-vector-to-aievec="aie-target=aie2" | FileCheck %s --check-prefix=CHECK-LLVM
 
 #map1 = affine_map<(d0, d1, d2) -> (d0, d2)>

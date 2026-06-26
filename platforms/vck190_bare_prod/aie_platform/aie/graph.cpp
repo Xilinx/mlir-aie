@@ -1,3 +1,7 @@
+// Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+//
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 #include "graph.h"
 
 #if !defined(__AIESIM__) && !defined(__ADF_FRONTEND__)

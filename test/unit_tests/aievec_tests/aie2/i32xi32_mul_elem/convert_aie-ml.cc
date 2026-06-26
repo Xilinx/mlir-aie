@@ -1,3 +1,7 @@
+// Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+//
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 void mul_elem(int32_t *restrict v1, int32_t *restrict v2,
               int32_t *restrict v3) {
   size_t v4 = 0;

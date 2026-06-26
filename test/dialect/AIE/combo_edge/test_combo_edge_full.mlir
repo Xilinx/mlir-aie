@@ -1,3 +1,7 @@
+// Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+//
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 // RUN: aie-opt %s -aie-trace-to-config | FileCheck %s
 
 aie.device(npu1_1col) {

@@ -1,3 +1,9 @@
+<!--
+Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-->
+
 # Benchmarks
 This section provides example benchmark tests for measuring various aspects of the AIE, including data transfer, fill rate, and calibration measurements.
 # Measurement Tools

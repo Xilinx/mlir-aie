@@ -1,3 +1,7 @@
+// Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+//
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 // RUN: aie-opt --aie-lower-broadcast-packet %s | FileCheck %s
 // CHECK-LABEL:   aie.device(xcvc1902) {
 // CHECK:           %[[VAL_0:.*]] = aie.tile(6, 3)

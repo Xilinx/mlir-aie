@@ -1,3 +1,7 @@
+// Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+//
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 // RUN: aie-opt %s -split-input-file -convert-aievec-to-llvm | FileCheck %s
 // RUN: aie-opt %s -split-input-file -convert-aievec-to-llvm="aie2-fp32-emulation-strategy=accuracy-fast" | FileCheck --check-prefix=FP32FAST %s
 // RUN: aie-opt %s -split-input-file -convert-aievec-to-llvm="aie2-fp32-emulation-strategy=accuracy-low" | FileCheck --check-prefix=FP32LOW %s

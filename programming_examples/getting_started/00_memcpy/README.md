@@ -1,3 +1,9 @@
+<!--
+Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-->
+
 # Getting Started: Measure and Analyze Peak NPU Memory Bandwidth with `memcpy`
 
 This example is a highly parallel design that uses shim DMAs in every NPU column. It measures memory bandwidth across the full NPU, not just a single AI Engine tile with the goal to evaluate how well a design utilizes available memory bandwidth across multiple columns and channels.

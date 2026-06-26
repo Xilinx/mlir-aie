@@ -1,3 +1,7 @@
+// Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+//
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 // RUN: aie-opt %s -split-input-file -convert-aievec-to-llvm | FileCheck %s
 
 func.func @matmul(%A : vector<4x8xbf16>, %B : vector<8x4xbf16>,

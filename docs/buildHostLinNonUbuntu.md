@@ -1,3 +1,9 @@
+<!--
+Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-->
+
 # Building on a non-Ubuntu distro (and/or with the in-tree `amdxdna` driver)
 
 [`buildHostLin.md`](buildHostLin.md) targets **Ubuntu 22.04+** and walks the

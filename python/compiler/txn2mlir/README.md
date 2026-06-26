@@ -1,3 +1,9 @@
+<!--
+Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+-->
+
 # txn2mlir - Transaction Binary to MLIR Disassembler
 
 `txn2mlir.py` is a tool that converts AIE NPU transaction binaries into human-readable MLIR format. This is useful for debugging, inspecting compiled configurations, and understanding the runtime sequence of operations sent to the NPU.

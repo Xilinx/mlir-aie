@@ -5,7 +5,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024-2026 AMD Inc.
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 """Color detect -- ``@iron.jit`` HSV-hue-mask + bitwise-blend pipeline.
 
 shim --> rgba2hue --> (threshold-upper, threshold-lower in parallel) -->

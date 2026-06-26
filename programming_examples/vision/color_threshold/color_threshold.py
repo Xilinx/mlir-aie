@@ -5,7 +5,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024-2026 AMD Inc.
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 """Color threshold -- ``@iron.jit`` parallel-channel threshold pipeline.
 
 A line-based RGBA image is split into its four channels (R, G, B, A); each

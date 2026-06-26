@@ -1,3 +1,7 @@
+# Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 from aie.helpers.taplib import TensorAccessPattern, TensorAccessSequence, TensorTiler2D
 from util import construct_test
 

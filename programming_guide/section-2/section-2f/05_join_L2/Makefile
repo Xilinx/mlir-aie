@@ -1,14 +1,6 @@
-##===- Makefile -----------------------------------------------------------===##
+# Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
 #
-# This file licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-#
-##===----------------------------------------------------------------------===##
-#
-# distribute_and_join_L2.py runs end-to-end on the NPU (`make run` /
-# `make emit-mlir`).  join_L2.py is structural-only and is built via
-# `make emit-mlir-join` (no NPU run path; no compute to verify).
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 

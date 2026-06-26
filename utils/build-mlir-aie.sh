@@ -1,23 +1,8 @@
 #!/usr/bin/env bash
-##===- utils/build-mlir-aie.sh - Build mlir-aie --*- Script -*-===##
-# 
-# This file licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+
+# Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+#
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-##===----------------------------------------------------------------------===##
-#
-# This script builds mlir-aie given <llvm dir>.
-# Assuming they are all in the same subfolder, it would look like:
-#
-# build-mlir-aie.sh <llvm build dir> <build dir> <install dir>
-#
-# e.g. build-mlir-aie.sh /scratch/llvm/build
-#
-# <build dir>    - optional, mlir-aie/build dir name, default is 'build'
-# <install dir>  - optional, mlir-aie/install dir name, default is 'install'
-# <target>       - optional, target to build for, default is 'x86_64'
-#
-##===----------------------------------------------------------------------===##
 
 if [ "$#" -lt 1 ]; then
     echo "ERROR: Needs at least 1 arguments for <llvm build dir>."

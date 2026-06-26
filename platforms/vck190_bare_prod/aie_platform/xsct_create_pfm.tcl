@@ -1,3 +1,7 @@
+# Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 # Copyright (C) 2020 Xilinx, Inc.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");

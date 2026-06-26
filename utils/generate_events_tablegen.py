@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 
+# Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 """
 Takes the xaie_events_*.h header files from aie-rt and generates:
 1. TableGen (.td) files containing enum definitions for MLIR AIE dialect
@@ -14,7 +18,6 @@ td_template = """//===- AIEEvents{suffix}.td.inc - AIE Event Enums -----------*-
 //
 // This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // Automatically generated from utils/generate_events_tablegen.py
 // DO NOT EDIT

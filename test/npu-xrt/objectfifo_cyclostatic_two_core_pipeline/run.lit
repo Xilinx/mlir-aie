@@ -1,4 +1,4 @@
-// (c) Copyright 2026 Advanced Micro Devices, Inc.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // Two-core pipeline: shim -> A -> B -> shim. Core A is a 1:1 producer (no

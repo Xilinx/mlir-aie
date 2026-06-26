@@ -1,3 +1,7 @@
+# Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+#
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 # generated with PYTHONPATH=python pybind11-stubgen --print-invalid-expressions-as-is aie._mlir_libs._aie
 
 from __future__ import annotations

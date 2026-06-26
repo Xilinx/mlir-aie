@@ -1,3 +1,7 @@
+// Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+//
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 // RUN: aie-opt %s -canonicalize-vector-for-aievec=aie-target=aie2 -canonicalize -cse -split-input-file | FileCheck %s
 
 // CHECK-LABEL: func.func @multidim_vector_transfer(

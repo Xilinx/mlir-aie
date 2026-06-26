@@ -1,3 +1,7 @@
+// Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+//
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 // RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aie2" | FileCheck %s
 
 func.func @fold_aievec_shift_and_broadcast(%a: memref<48xi8>) -> (vector<32xi8>, vector<32xi8>) {
