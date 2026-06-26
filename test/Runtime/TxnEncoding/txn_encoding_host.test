@@ -1,0 +1,71 @@
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+//
+// Build the standalone host program against the dependency-free TxnEncoding.h
+// header (C++ standard library only, no MLIR/LLVM/aie-rt) and byte-check its
+// output. This pins the TXN wire format independently of the aie-translate
+// path, mirroring how generated host C++ consumes the header.
+//
+// RUN: %host_clang -std=c++17 -I%S/../../../include %S/txn_encoding_host.cpp %host_link_flags -o %t.exe
+// RUN: %t.exe | FileCheck %s
+
+// Header: word0 = numRows<<24 | devGen<<16 | minor<<8 | major (NPU2 devGen=4).
+// CHECK: 06040100
+// CHECK-NEXT: 00000105
+// CHECK-NEXT: 00000007
+// CHECK-NEXT: 000000B4
+
+// write32(addr=0x06400DEF, val=0x42)
+// CHECK-NEXT: 00000000
+// CHECK-NEXT: 00000000
+// CHECK-NEXT: 06400DEF
+// CHECK-NEXT: 00000000
+// CHECK-NEXT: 00000042
+// CHECK-NEXT: 00000018
+
+// maskwrite32(addr=0x00012340, val=0xAB, mask=0xFF)
+// CHECK-NEXT: 00000003
+// CHECK-NEXT: 00000000
+// CHECK-NEXT: 00012340
+// CHECK-NEXT: 00000000
+// CHECK-NEXT: 000000AB
+// CHECK-NEXT: 000000FF
+// CHECK-NEXT: 0000001C
+
+// sync(col=1,row=2,dir=0,chan=3,ncol=4,nrow=5)
+// CHECK-NEXT: 00000080
+// CHECK-NEXT: 00000010
+// CHECK-NEXT: 00010200
+// CHECK-NEXT: 03040500
+
+// blockwrite(addr=0x00021000, col=6, row=7, data=[DEADBEEF,12345678,9ABCDEF0])
+// CHECK-NEXT: 00000001
+// CHECK-NEXT: 00000706
+// CHECK-NEXT: 00021000
+// CHECK-NEXT: 0000001C
+// CHECK-NEXT: DEADBEEF
+// CHECK-NEXT: 12345678
+// CHECK-NEXT: 9ABCDEF0
+
+// address_patch(addr=0x00033000, arg_idx=2, arg_plus=0x80)
+// CHECK-NEXT: 00000081
+// CHECK-NEXT: 00000030
+// CHECK-NEXT: 00000000
+// CHECK-NEXT: 00000000
+// CHECK-NEXT: 00000000
+// CHECK-NEXT: 00000000
+// CHECK-NEXT: 00033000
+// CHECK-NEXT: 00000000
+// CHECK-NEXT: 00000002
+// CHECK-NEXT: 00000000
+// CHECK-NEXT: 00000080
+// CHECK-NEXT: 00000000
+
+// loadpdi(id=9, size=0x100, addr=0x00000001DEADC0DE)
+// CHECK-NEXT: 00090008
+// CHECK-NEXT: 00000100
+// CHECK-NEXT: DEADC0DE
+// CHECK-NEXT: 00000001
+
+// preempt(level=3)
+// CHECK-NEXT: 00000306
