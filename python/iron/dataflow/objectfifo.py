@@ -841,7 +841,13 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
             d.endpoint = self
         if tile is None:
             tile = AnyMemTile
-        ObjectFifoEndpoint.__init__(self, tile.with_type(AIETileType.MemTile))
+        # A link normally lives on a mem tile, but forward() documents
+        # forwarding through a compute tile as a valid override, so preserve
+        # an explicitly-set tile_type and only default when unset.
+        default_type = (
+            tile.tile_type if tile.tile_type is not None else AIETileType.MemTile
+        )
+        ObjectFifoEndpoint.__init__(self, tile.with_type(default_type))
 
     def resolve(
         self,
