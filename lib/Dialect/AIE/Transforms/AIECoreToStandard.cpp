@@ -30,7 +30,6 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Tools/mlir-translate/MlirTranslateMain.h"
 #include "mlir/Transforms/DialectConversion.h"
-#include "mlir/Transforms/RegionUtils.h"
 
 namespace xilinx::AIE {
 #define GEN_PASS_DEF_AIECORETOSTANDARD
@@ -746,32 +745,6 @@ struct AIECoreToStandardPass
     // at the tests: peano/llvm-project/llvm/test/CodeGen/AIE
     builder.setInsertionPointToStart(m.getBody());
     declareAIEIntrinsics(targetModel.getTargetArch(), builder);
-
-    // A core may use a constant defined in the parent device body (the folder
-    // hoists constants out of non-IsolatedFromAbove ops like
-    // aie.runtime_sequence, then CSE merges them with a core's own constants).
-    // The core is outlined into a func below while the device is erased, so
-    // such a device-level constant would be erased while still used by the
-    // core's body. Clone it into the core first so the outlined func is
-    // self-contained.
-    {
-      IRRewriter constSinkRewriter(&getContext());
-      for (CoreOp coreOp : deviceOp.getOps<CoreOp>()) {
-        llvm::SetVector<Value> capturedValues;
-        getUsedValuesDefinedAbove(coreOp.getBody(), capturedValues);
-        for (Value captured : capturedValues) {
-          Operation *def = captured.getDefiningOp();
-          if (!def || !def->hasTrait<OpTrait::ConstantLike>())
-            continue;
-          constSinkRewriter.setInsertionPointToStart(&coreOp.getBody().front());
-          Operation *clonedDef = constSinkRewriter.clone(*def);
-          constSinkRewriter.replaceUsesWithIf(
-              captured, clonedDef->getResult(0), [&](OpOperand &use) {
-                return coreOp->isProperAncestor(use.getOwner());
-              });
-        }
-      }
-    }
 
     IRMapping mapper;
     ConversionTarget target(getContext());

@@ -15,15 +15,18 @@
 
 module {
   // CHECK-LABEL: aie.device(npu2) {
-  // CHECK-DAG: %[[V0:.*]] = arith.constant 42 : i32
-  // CHECK-DAG: %[[A0:.*]] = arith.constant 100 : i32
-  // CHECK-DAG: %[[V1:.*]] = arith.constant 99 : i32
-  // CHECK-DAG: %[[A1:.*]] = arith.constant 200 : i32
   aie.device(npu2) @main {
     %tile00 = aie.tile(0, 0)
 
+    // The npu.write32 operand constants stay inside the runtime_sequence (the
+    // AIEDialectFoldInterface materializes them here rather than hoisting them
+    // to the IsolatedFromAbove device body).
     // CHECK-LABEL: aie.runtime_sequence @main_seq
     // CHECK-SAME: (%[[ARG0:.*]]: memref<16xi32>)
+    // CHECK-DAG: %[[V0:.*]] = arith.constant 42 : i32
+    // CHECK-DAG: %[[A0:.*]] = arith.constant 100 : i32
+    // CHECK-DAG: %[[V1:.*]] = arith.constant 99 : i32
+    // CHECK-DAG: %[[A1:.*]] = arith.constant 200 : i32
     aie.runtime_sequence @main_seq(%arg0: memref<16xi32>) {
       // CHECK: aiex.npu.load_pdi {device_ref = @config_a}
       // CHECK-NOT: aiex.configure

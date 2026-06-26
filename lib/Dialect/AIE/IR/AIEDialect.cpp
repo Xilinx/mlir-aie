@@ -67,8 +67,16 @@ struct AIEDialectFoldInterface : DialectFoldInterface {
   /// operation that is *not* isolated from above, should be used when
   /// materializing constants.
   bool shouldMaterializeInto(Region *region) const final override {
-    // If this is an AIE::CoreOp region, then insert into it.
-    return isa<CoreOp>(region->getParentOp());
+    // Materialize constants into the op that "owns" them rather than letting
+    // them hoist up to the enclosing IsolatedFromAbove aie.device:
+    //  - aie.core bodies are outlined into standalone funcs, so their
+    //    constants must stay local for the func to be self-contained.
+    //  - aie.runtime_sequence bodies carry constant operands (e.g. the scalar
+    //    fields of npu.* ops). Hoisting them to the device body lets CSE merge
+    //    them with a core's identical constants, which would leave the core
+    //    referencing a device-level value that is erased when the core is
+    //    outlined.
+    return isa<CoreOp, RuntimeSequenceOp>(region->getParentOp());
   }
 };
 

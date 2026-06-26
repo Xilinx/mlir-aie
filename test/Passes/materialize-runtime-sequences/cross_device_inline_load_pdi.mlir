@@ -22,13 +22,13 @@
 module {
   // The outer/caller device - anonymous (no symbol name)
   // CHECK: aie.device(npu2) {
-  // CHECK-DAG: %[[A100:.*]] = arith.constant 100 : i32
-  // CHECK-DAG: %[[A200:.*]] = arith.constant 200 : i32
-  // CHECK-DAG: %[[A300:.*]] = arith.constant 300 : i32
   aie.device(npu2) {
     %tile00 = aie.tile(0, 0)
 
     // CHECK: aie.runtime_sequence @caller_seq
+    // CHECK-DAG: %[[A100:.*]] = arith.constant 100 : i32
+    // CHECK-DAG: %[[A200:.*]] = arith.constant 200 : i32
+    // CHECK-DAG: %[[A300:.*]] = arith.constant 300 : i32
     aie.runtime_sequence @caller_seq(%arg0: memref<16xi32>) {
       // After inlining, we should have:
       // 1. A load_pdi added by InsertLoadPdiForConfigurePattern (since the first inlined op is write32, not load_pdi)
@@ -83,13 +83,13 @@ module {
 
 module {
   // CHECK: aie.device(npu2) {
-  // CHECK-DAG: %[[B100:.*]] = arith.constant 100 : i32
-  // CHECK-DAG: %[[B200:.*]] = arith.constant 200 : i32
-  // CHECK-DAG: %[[B300:.*]] = arith.constant 300 : i32
   aie.device(npu2) {
     %tile00 = aie.tile(0, 0)
 
     // CHECK: aie.runtime_sequence @caller_seq2
+    // CHECK-DAG: %[[B100:.*]] = arith.constant 100 : i32
+    // CHECK-DAG: %[[B200:.*]] = arith.constant 200 : i32
+    // CHECK-DAG: %[[B300:.*]] = arith.constant 300 : i32
     aie.runtime_sequence @caller_seq2(%arg0: memref<16xi32>) {
       // After inlining, the callee's load_pdi is at the start of the configure block.
       // InsertLoadPdiForConfigurePattern should detect this and NOT add another one.
