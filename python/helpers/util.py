@@ -240,3 +240,22 @@ def get_arg_types(objs: Sequence[int | float | Value | OpView]):
         else:
             return None
     return my_types
+
+
+def fold_constant_operand(operand):
+    """Fold an npu scalar op's SSA i32 operand back to its compile-time integer.
+
+    npu scalar ops (write32/maskwrite32/sync/address_patch/rtp_write) carry their
+    integer fields as SSA operands materialized from arith.constant; consumers
+    such as trace parsing and register annotation need the underlying value.
+    Returns the int, or None if the operand is not a compile-time constant (e.g.
+    a runtime-sequence value); callers decide whether that is an error in their
+    context. This is the Python analog of the AIEX dialect's
+    getConstantIntOperand."""
+    defining = operand.owner
+    if defining is None or not hasattr(defining, "value"):
+        return None
+    const_attr = defining.value
+    if not hasattr(const_attr, "value"):
+        return None
+    return int(const_attr.value)

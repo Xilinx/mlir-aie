@@ -555,16 +555,13 @@ class MLIRModuleAnnotator:
 
         # write32/maskwrite32 carry address/value/mask as SSA i32 operands
         # (materialized via arith.constant); address_patch's 'addr' and the
-        # 'row'/'column' placement fields remain attributes. Fold the operand
-        # back to its constant integer where applicable.
-        def fold_constant_operand(operand):
-            defining = operand.owner
-            if defining is None or not hasattr(defining, "value"):
-                return None
-            const_attr = defining.value
-            if not hasattr(const_attr, "value"):
-                return None
-            return int(const_attr.value)
+        # 'row'/'column' placement fields remain attributes. fold_constant_operand
+        # folds the operand back to its constant integer (None if non-constant).
+        # Imported here (not at module top) to preserve regdb's load-without-MLIR
+        # property; aie.helpers.util pulls in the MLIR bindings.
+        from aie.helpers.util import (  # pyright: ignore[reportMissingImports]
+            fold_constant_operand,
+        )
 
         # Get address - an SSA operand on write32/maskwrite32, or the 'addr'
         # attribute on address_patch.
@@ -808,22 +805,22 @@ def main():
 Examples:
   # Decode an address
   %(prog)s 0x32000
-  
+
   # Decode an address and show bit field definitions
   %(prog)s 0x32000 --show-bit-fields
-  
+
   # Reverse lookup: find address for a register
   %(prog)s --col 0 --row 2 --register Core_Control
-  
+
   # Reverse lookup with bit fields
   %(prog)s --col 0 --row 2 --register Core_Control -b
 
   # Annotate MLIR file and write to output
   %(prog)s -a input.mlir -o output.mlir
-  
+
   # Annotate MLIR file in place
   %(prog)s -a input.mlir --in-place
-  
+
   # Annotate MLIR file and write to stdout
   %(prog)s -a input.mlir
         """,
