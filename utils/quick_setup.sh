@@ -59,9 +59,8 @@ python3 -m pip install --upgrade pip
 python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-3/ 
 export MLIR_AIE_INSTALL_DIR="$(pip show mlir_aie | grep ^Location: | awk '{print $2}')/mlir_aie"
 
-# Pinned via utils/peano-version.txt (bumped by the update-peano workflow).
-PEANO_VERSION="$(cat "$(dirname "${BASH_SOURCE[0]}")/peano-version.txt")"
-python3 -m pip install "llvm-aie==${PEANO_VERSION}" -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly/
+# Pinned via utils/peano-requirements.txt (bumped by the update-peano workflow).
+python3 -m pip install -r "$(dirname "${BASH_SOURCE[0]}")/peano-requirements.txt"
 export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep ^Location: | awk '{print $2}')/llvm-aie"
 
 pip install pre-commit

@@ -97,7 +97,7 @@ jobs:
           commit-message: "Update Peano version"
           title: "Update Peano version"
           body: |
-            Bumps the pinned llvm-aie (Peano) nightly in `utils/peano-version.txt`.
+            Bumps the pinned llvm-aie (Peano) nightly in `utils/peano-requirements.txt`.
 
             Reason: ${{ steps.update.outputs.bump_reason }}
 

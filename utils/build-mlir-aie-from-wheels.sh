@@ -49,9 +49,8 @@ if [ "$#" -ge 4 ]; then
   echo "PEANO_INSTALL_DIR DIR: $PEANO_INSTALL_DIR"
   export PEANO_INSTALL_DIR=${PEANO_INSTALL_DIR}
 else
-  # Pinned via utils/peano-version.txt (bumped by the update-peano workflow).
-  PEANO_VERSION="$(cat ${BASE_DIR}/utils/peano-version.txt)"
-  python3 -m pip install "llvm-aie==${PEANO_VERSION}" -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
+  # Pinned via utils/peano-requirements.txt (bumped by the update-peano workflow).
+  python3 -m pip install -r ${BASE_DIR}/utils/peano-requirements.txt
   export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep ^Location: | awk '{print $2}')/llvm-aie"
   echo "PEANO_INSTALL_DIR DIR: $PEANO_INSTALL_DIR"
   export PEANO_INSTALL_DIR=${PEANO_INSTALL_DIR}
