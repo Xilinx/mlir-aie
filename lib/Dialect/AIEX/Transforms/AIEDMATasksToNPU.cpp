@@ -136,6 +136,19 @@ struct AIEDMATasksToNPUPass
           << "Error encountered while lowering this BD configuration.";
       return failure();
     }
+    // A rotating bd_id_window (width > 1) selects a different physical BD each
+    // loop iteration. Emitting that runtime-selected push_queue bd_id is a
+    // later increment; until then, reject a windowed BD rather than
+    // miscompiling it (which would reuse the window base every iteration).
+    if (auto window = bd_op.getBdIdWindow(); window && window->size() > 1) {
+      auto error = bd_op.emitOpError("has a rotating bd_id_window of length ")
+                   << window->size()
+                   << "; emitting a runtime-selected push_queue bd_id for a "
+                      "rolled ping-pong is not yet implemented.";
+      error.attachNote(block.getParentOp()->getLoc())
+          << "Error encountered while lowering this BD configuration.";
+      return failure();
+    }
     return success();
   }
 

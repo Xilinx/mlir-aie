@@ -151,6 +151,69 @@ TaskLiveRange resolveTaskLiveRange(DMAConfigureTaskOp configure) {
   return range;
 }
 
+static unsigned chainLengthOf(DMAConfigureTaskOp op) {
+  unsigned n = 0;
+  op.walk([&](AIE::DMABDOp) { ++n; });
+  return n ? n : 1;
+}
+
+LoopRotationGroup resolveLoopRotationGroup(DMAConfigureTaskOp body) {
+  LoopRotationGroup group;
+
+  // A rotation body is a configure inside a loop whose handle is freed a
+  // positive number of back-edges later. Anything else is not a rotation body
+  // (straight-line, same-iteration free, leak, or ambiguous handle).
+  TaskLiveRange range = resolveTaskLiveRange(body);
+  if (range.ambiguous || range.leaked || range.backEdgesCrossed == 0 ||
+      !range.enclosingLoop)
+    return group; // NotARotation
+
+  auto loop = dyn_cast<scf::ForOp>(range.enclosingLoop);
+  if (!loop)
+    return group; // NotARotation
+
+  group.windowWidth = range.backEdgesCrossed + 1; // W = D + 1
+  group.loop = loop;
+  group.chainLength = chainLengthOf(body);
+
+  // The prologue tasks seed the loop's iter_args: a depth-D ping-pong threads
+  // its handles through a D-deep shift register of iter_args, each initialized
+  // (before iteration 0) by a prologue configure. Collect every iter_arg whose
+  // init operand is a configure; those configures plus the body share the
+  // window. (An init operand that is not a configure -- e.g. an outer iter_arg
+  // or a non-task value -- means the handle cannot be traced to a prologue, so
+  // the rotation is unresolvable.)
+  llvm::SmallVector<DMAConfigureTaskOp, 4> prologues;
+  for (Value init : loop.getInitArgs()) {
+    auto cfg = dyn_cast_or_null<DMAConfigureTaskOp>(init.getDefiningOp());
+    if (!cfg) {
+      group.status = LoopRotationGroup::Unresolvable;
+      return group;
+    }
+    prologues.push_back(cfg);
+  }
+
+  // A depth-D rotation needs exactly D prologues (one per back-edge crossed).
+  if (prologues.size() != range.backEdgesCrossed) {
+    group.status = LoopRotationGroup::Unresolvable;
+    return group;
+  }
+
+  // Every member's chain must have the same length to rotate position-by-
+  // position through a shared per-descriptor window.
+  for (DMAConfigureTaskOp p : prologues) {
+    if (chainLengthOf(p) != group.chainLength) {
+      group.status = LoopRotationGroup::ChainLengthMismatch;
+      return group;
+    }
+  }
+
+  group.members.assign(prologues.begin(), prologues.end());
+  group.members.push_back(body);
+  group.status = LoopRotationGroup::Ok;
+  return group;
+}
+
 } // namespace xilinx::AIEX
 
 namespace {
@@ -306,6 +369,14 @@ struct AIETestRuntimeBdLivenessPass
         info += " if-join";
       configure.emitRemark("bd-liveness: ")
           << info << (range.enclosingLoop ? " in-loop" : "");
+
+      // For a rotation body, also report the resolved window: its width W and
+      // chain length C (the allocator reserves C*W ids for the group).
+      LoopRotationGroup group = resolveLoopRotationGroup(configure);
+      if (group.status == LoopRotationGroup::Ok)
+        configure.emitRemark("bd-rotation: width=")
+            << group.windowWidth << " chain=" << group.chainLength
+            << " members=" << group.members.size();
     });
 
     // Peak simultaneous liveness per tile (the window size the allocator must

@@ -990,6 +990,12 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
         OptionalAttr<BDPadLayoutArrayAttr>:$pad_dimensions,
         DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value,
         OptionalAttr<AIEI32Attr>:$bd_id,
+        // For a buffer descriptor whose physical BD id must rotate across loop
+        // iterations (a rolled ping-pong that frees a previous iteration's
+        // task), the ordered set of physical BD ids it cycles through. `bd_id`
+        // holds the window base (window[0]) so readers that only consult
+        // `bd_id` stay valid; absent on every non-rotating BD.
+        OptionalAttr<DenseI32ArrayAttr>:$bd_id_window,
         OptionalAttr<PacketInfoAttr>:$packet,
         DefaultValuedOptionalAttr<AIEI32Attr, "0">:$burst_length,
         // if set, the aiex.scratchpad_parameter value added to the BD's address as an offset

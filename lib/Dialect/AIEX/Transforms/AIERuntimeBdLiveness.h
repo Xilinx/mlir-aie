@@ -42,6 +42,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallVector.h"
@@ -100,6 +101,35 @@ struct TaskLiveRange {
 /// Resolve the hold-range of a single configure op by forward-tracing its
 /// handle (including across scf.for iter_arg hops) to its completion-sync.
 TaskLiveRange resolveTaskLiveRange(DMAConfigureTaskOp configure);
+
+/// A set of configures that rotate one logical buffer-descriptor slot through a
+/// window of `windowWidth` physical BD ids across loop iterations (a rolled
+/// ping-pong: the loop body frees a task configured `D = windowWidth - 1`
+/// iterations earlier, carried via `scf.for` iter_args). `members` are all the
+/// configures sharing the window -- the in-loop body configure plus the `D`
+/// prologue configures that seed the iter_args -- each a `chainLength`-long BD
+/// chain that rotates as a unit.
+struct LoopRotationGroup {
+  enum Status {
+    NotARotation,        // the queried configure is not a rotating loop body
+    Ok,                  // a well-formed rotation; `members`/`windowWidth` set
+    ChainLengthMismatch, // members have differing BD-chain lengths
+    Unresolvable         // a prologue iter_arg does not trace to a configure
+  };
+  Status status = NotARotation;
+  llvm::SmallVector<DMAConfigureTaskOp, 4> members;
+  unsigned windowWidth = 0; // W = D + 1
+  unsigned chainLength = 0; // C, the BD count of each member's chain
+  mlir::scf::ForOp loop;    // the loop whose end releases the window
+};
+
+/// If `body` is the in-loop body of a rolled ping-pong (its handle crosses one
+/// or more loop back-edges), resolve the full rotation group it anchors: the
+/// body plus the prologue configures seeding the iter_args it rotates through.
+/// Returns status `NotARotation` for any configure that is not such a body, so
+/// callers can query every configure and act only on `Ok` (or surface the
+/// `ChainLengthMismatch` / `Unresolvable` rejections).
+LoopRotationGroup resolveLoopRotationGroup(DMAConfigureTaskOp body);
 
 /// Compute peak simultaneous BD liveness per tile across a runtime sequence.
 /// Keyed by (col, row); the value is the maximum number of BD IDs held at once

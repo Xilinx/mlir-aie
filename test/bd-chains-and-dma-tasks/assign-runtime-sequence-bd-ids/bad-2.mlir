@@ -6,13 +6,15 @@
 // RUN: aie-opt --verify-diagnostics --aie-assign-runtime-sequence-bd-ids %s
 
 // This test ensures that the proper error is emitted if a user tries to use more buffer descriptors than
-// are availalbe in the current device.
+// are availalbe in the current device. The control-flow-aware allocator catches
+// this up front as a peak-liveness overflow (before mutating the BD pool).
 
 module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
 
+    // expected-error@+1 {{peak simultaneous buffer-descriptor liveness}}
     aie.runtime_sequence(%arg0: memref<8xi16>) {
       // Allocate more than there are available BD IDs
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
@@ -79,7 +81,6 @@ module {
         aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
         aie.end
       }
-      // expected-error@+1 {{Allocator exhausted available }}
       %t17 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
         aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
         aie.end

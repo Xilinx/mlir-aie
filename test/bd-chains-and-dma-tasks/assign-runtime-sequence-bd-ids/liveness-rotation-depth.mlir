@@ -111,7 +111,8 @@ aie.device(npu2) {
     }
     aiex.dma_start_task(%init)
     %last = scf.for %i = %c1 to %c4 step %c1 iter_args(%prev = %init) -> (index) {
-      // expected-remark@+1 {{bd-liveness: backedges=1 kill=aiex.dma_free_task in-loop}}
+      // expected-remark@+2 {{bd-liveness: backedges=1 kill=aiex.dma_free_task in-loop}}
+      // expected-remark@+1 {{bd-rotation: width=2 chain=1 members=2}}
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
         aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
         aie.end
@@ -147,7 +148,8 @@ aie.device(npu2) {
       aie.end
     }
     %r:2 = scf.for %i = %c0 to %c4 step %c1 iter_args(%p2 = %i0, %p1 = %i1) -> (index, index) {
-      // expected-remark@+1 {{bd-liveness: backedges=2 kill=aiex.dma_free_task in-loop}}
+      // expected-remark@+2 {{bd-liveness: backedges=2 kill=aiex.dma_free_task in-loop}}
+      // expected-remark@+1 {{bd-rotation: width=3 chain=1 members=3}}
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
         aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
         aie.end
@@ -181,7 +183,8 @@ aie.device(npu2) {
       }
       aiex.dma_start_task(%init)
       %last = scf.for %i = %c1 to %c4 step %c1 iter_args(%prev = %init) -> (index) {
-        // expected-remark@+1 {{bd-liveness: backedges=1 kill=aiex.dma_free_task in-loop}}
+        // expected-remark@+2 {{bd-liveness: backedges=1 kill=aiex.dma_free_task in-loop}}
+        // expected-remark@+1 {{bd-rotation: width=2 chain=1 members=2}}
         %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
           aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
           aie.end
