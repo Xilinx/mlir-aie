@@ -214,8 +214,7 @@ var menudata={children:[
 {text:"Enumerations",url:"globals_enum.html"},
 {text:"Enumerator",url:"globals_eval.html",children:[
 {text:"a",url:"globals_eval.html#index_a"},
-{text:"i",url:"globals_eval.html#index_i"},
-{text:"x",url:"globals_eval.html#index_x"}]},
+{text:"i",url:"globals_eval.html#index_i"}]},
 {text:"Macros",url:"globals_defs.html",children:[
 {text:"a",url:"globals_defs.html#index_a"},
 {text:"c",url:"globals_defs_c.html#index_c"},
