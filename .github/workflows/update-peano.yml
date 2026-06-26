@@ -8,9 +8,10 @@ on:
         required: false
         type: string
   schedule:
-    # Twice weekly: Monday and Thursday at 06:07 UTC. Small, frequent bumps keep
-    # each diff to a few nightlies so a bad one is easy to bisect.
-    - cron: '7 6 * * 1,4'
+    # Weekly on Sunday night US Mountain (Monday 05:53 UTC ≈ Sun 22:53/23:53 MT).
+    # A bad nightly is quarantined in the un-merged bump PR rather than landing
+    # on main; weekly keeps each diff small enough to bisect.
+    - cron: '53 5 * * 1'
 
 permissions:
   contents: write
