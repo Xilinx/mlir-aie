@@ -27,6 +27,10 @@
 // CHECK: "name": "bo2"
 // CHECK: "name": "bo3"
 // CHECK: "name": "bo4"
+// The runtime_sequence below has 6 host buffer arguments; bo5 must be emitted.
+// A previously hardcoded 5-arg loop dropped it, under-declaring the kernel ABI.
+// CHECK: "name": "bo5"
+// CHECK: "offset": "0x3c"
 // CHECK: "dpu_kernel_id": "0x901"
 // CHECK: "name": "MLIRAIE"
 // CHECK: "name": "MLIR_AIE"

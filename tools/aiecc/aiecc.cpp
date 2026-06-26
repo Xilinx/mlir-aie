@@ -3510,8 +3510,8 @@ static LogicalResult generateMemTopologyJson(StringRef jsonPath) {
   return writeJsonToFile(jsonPath, llvm::json::Value(std::move(memData)));
 }
 
-static LogicalResult generateKernelsJson(StringRef jsonPath,
-                                         StringRef devName) {
+static LogicalResult generateKernelsJson(StringRef jsonPath, StringRef devName,
+                                         int numHostBOs) {
   llvm::json::Array arguments;
   arguments.push_back(llvm::json::Object{{"name", "opcode"},
                                          {"address-qualifier", "SCALAR"},
@@ -3528,7 +3528,7 @@ static LogicalResult generateKernelsJson(StringRef jsonPath,
                                          {"offset", "0x10"}});
 
   int offset = 0x14;
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < numHostBOs; i++) {
     std::string offsetHex = llvm::formatv("0x{0}", llvm::utohexstr(offset));
     arguments.push_back(llvm::json::Object{{"name", ("bo" + Twine(i)).str()},
                                            {"memory-connection", "HOST"},
@@ -4845,7 +4845,26 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
 
     SmallString<128> kernelsPath(tmpDirName);
     sys::path::append(kernelsPath, devName.str() + "_kernels.json");
-    if (failed(generateKernelsJson(kernelsPath, devName)))
+    // The host buffer (boN) count in kernels.json must match the kernel: a
+    // kernel with more than 5 host BOs otherwise gets an under-declared ABI.
+    // Raise the count to the real runtime-sequence argument count (as the
+    // full-ELF paths below do), keeping 5 as a floor so kernels with <=5 host
+    // BOs produce byte-identical kernels.json.
+    constexpr int kMinHostBOs = 5;
+    int numHostBOs = kMinHostBOs;
+    for (auto devOp : moduleOp.getOps<xilinx::AIE::DeviceOp>()) {
+      if (devOp.getSymName() != devName)
+        continue;
+      for (auto seqOp : devOp.getOps<xilinx::AIE::RuntimeSequenceOp>()) {
+        if (!seqOp.getBody().empty()) {
+          int n = seqOp.getBody().front().getNumArguments();
+          if (n > numHostBOs)
+            numHostBOs = n;
+        }
+      }
+      break;
+    }
+    if (failed(generateKernelsJson(kernelsPath, devName, numHostBOs)))
       return failure();
 
     // Generate partition JSON (with placeholder PDI path in dry-run)
