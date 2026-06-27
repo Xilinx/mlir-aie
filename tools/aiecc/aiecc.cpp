@@ -50,7 +50,6 @@
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include <cstring>
 #include <random>
 
 #include "aie/Conversion/Passes.h"
@@ -2102,16 +2101,31 @@ static std::string downgradeIRForPeano(StringRef ir) {
   // prefix encodes the type and the 8 hex digits encode the IEEE-754 bits
   // directly). Older LLVM (including Peano's LLVM 21) only accepts float
   // constants as their value widened to double, written as 0x<16 hex digits>.
+  // Only match at token boundaries: the character before 'f' must not be an
+  // identifier character (to avoid matching inside %f0xDEAD or similar), and
+  // the character after the 8 hex digits must not be a hex digit (to avoid
+  // partial matches against longer hex strings).
   {
     const std::string f0xPfx = "f0x";
     pos = 0;
     while ((pos = result.find(f0xPfx, pos)) != std::string::npos) {
+      // Require a non-identifier, non-sigil character before 'f' to avoid
+      // matching inside LLVM IR value names like '%f0xDEAD' or '@f0xBEEF'.
+      if (pos > 0 &&
+          (isIdentChar(result[pos - 1]) || result[pos - 1] == '%' ||
+           result[pos - 1] == '@')) {
+        pos += f0xPfx.size();
+        continue;
+      }
       size_t hexStart = pos + f0xPfx.size();
       size_t hexEnd = hexStart;
       while (hexEnd < result.size() && hexEnd < hexStart + 8 &&
              std::isxdigit(static_cast<unsigned char>(result[hexEnd])))
         ++hexEnd;
-      if (hexEnd - hexStart == 8) {
+      // Require exactly 8 hex digits followed by a non-hex-digit boundary.
+      bool trailingOk = hexEnd >= result.size() ||
+                        !std::isxdigit(static_cast<unsigned char>(result[hexEnd]));
+      if (hexEnd - hexStart == 8 && trailingOk) {
         // Decode the 32-bit float bit pattern and re-encode as a double so
         // that Peano's LLVM 21 opt can parse the resulting hex literal.
         uint32_t fbits = static_cast<uint32_t>(
