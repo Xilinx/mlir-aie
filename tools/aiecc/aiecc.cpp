@@ -2111,9 +2111,8 @@ static std::string downgradeIRForPeano(StringRef ir) {
     while ((pos = result.find(f0xPfx, pos)) != std::string::npos) {
       // Require a non-identifier, non-sigil character before 'f' to avoid
       // matching inside LLVM IR value names like '%f0xDEAD' or '@f0xBEEF'.
-      if (pos > 0 &&
-          (isIdentChar(result[pos - 1]) || result[pos - 1] == '%' ||
-           result[pos - 1] == '@')) {
+      if (pos > 0 && (isIdentChar(result[pos - 1]) || result[pos - 1] == '%' ||
+                      result[pos - 1] == '@')) {
         pos += f0xPfx.size();
         continue;
       }
@@ -2123,8 +2122,9 @@ static std::string downgradeIRForPeano(StringRef ir) {
              std::isxdigit(static_cast<unsigned char>(result[hexEnd])))
         ++hexEnd;
       // Require exactly 8 hex digits followed by a non-hex-digit boundary.
-      bool trailingOk = hexEnd >= result.size() ||
-                        !std::isxdigit(static_cast<unsigned char>(result[hexEnd]));
+      bool trailingOk =
+          hexEnd >= result.size() ||
+          !std::isxdigit(static_cast<unsigned char>(result[hexEnd]));
       if (hexEnd - hexStart == 8 && trailingOk) {
         // Decode the 32-bit float bit pattern and re-encode as a double so
         // that Peano's LLVM 21 opt can parse the resulting hex literal.
