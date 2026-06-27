@@ -50,6 +50,7 @@
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
 
+#include <cstring>
 #include <random>
 
 #include "aie/Conversion/Passes.h"
@@ -2094,6 +2095,42 @@ static std::string downgradeIRForPeano(StringRef ir) {
       result.erase(pos, end - pos);
     else
       pos = end;
+  }
+  // Rewrite LLVM 23+ 'f0x<8hex>' typed float literals to the double-widened
+  // '0x<16hex>' form that Peano's LLVM 21 opt can parse.
+  // LLVM 23 introduced a compact syntax for 32-bit float constants (the 'f'
+  // prefix encodes the type and the 8 hex digits encode the IEEE-754 bits
+  // directly). Older LLVM (including Peano's LLVM 21) only accepts float
+  // constants as their value widened to double, written as 0x<16 hex digits>.
+  {
+    const std::string f0xPfx = "f0x";
+    pos = 0;
+    while ((pos = result.find(f0xPfx, pos)) != std::string::npos) {
+      size_t hexStart = pos + f0xPfx.size();
+      size_t hexEnd = hexStart;
+      while (hexEnd < result.size() && hexEnd < hexStart + 8 &&
+             std::isxdigit(static_cast<unsigned char>(result[hexEnd])))
+        ++hexEnd;
+      if (hexEnd - hexStart == 8) {
+        // Decode the 32-bit float bit pattern and re-encode as a double so
+        // that Peano's LLVM 21 opt can parse the resulting hex literal.
+        uint32_t fbits = static_cast<uint32_t>(
+            std::stoul(result.substr(hexStart, 8), nullptr, 16));
+        float fval;
+        std::memcpy(&fval, &fbits, sizeof(fval));
+        double dval = static_cast<double>(fval);
+        uint64_t dbits;
+        std::memcpy(&dbits, &dval, sizeof(dval));
+        // Format as "0x" followed by 16 uppercase hex digits.
+        std::string replacement = "0x";
+        for (int shift = 60; shift >= 0; shift -= 4)
+          replacement += "0123456789ABCDEF"[(dbits >> shift) & 0xFu];
+        result.replace(pos, hexEnd - pos, replacement);
+        pos += replacement.size();
+      } else {
+        pos = hexEnd;
+      }
+    }
   }
   return result;
 }
