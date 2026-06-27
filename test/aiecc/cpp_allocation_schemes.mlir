@@ -49,7 +49,7 @@ module {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
       %c128 = arith.constant 128 : i64
-      aiex.npu.dma_memcpy_nd(%buf[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c128][%c0,%c0,%c0,%c1]) {metadata = @fifo, id = 0 : i64, issue_token = true} : memref<128xi32>
+      aiex.npu.dma_memcpy_nd(%buf[%c0,%c0,%c0][%c1,%c1,%c128][%c0,%c0,%c1]) {metadata = @fifo, id = 0 : i64, issue_token = true} : memref<128xi32>
       aiex.npu.dma_wait {symbol = @fifo}
     }
   }

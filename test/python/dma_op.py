@@ -36,7 +36,7 @@ from util import construct_and_print_module
 #    %memtile_dma_0_1 = aie.memtile_dma(%tile_0_1) {
 #      %0 = aie.dma(MM2S, 0) [{
 #        aie.use_lock(%lock_0_1_0, AcquireGreaterEqual)
-#        aie.dma_bd(%mem_A : memref<2x1xi16>, 0, 2, [<size = 1, stride = 1>, <size = 1, stride = 1>, <size = 1, stride = 1>, <size = 1, stride = 1>])
+#        aie.dma_bd(%mem_A : memref<2x1xi16>, 0, 2, [<size = 2, stride = 1>])
 #        aie.use_lock(%lock_0_1, Release)
 #      }]
 #      aie.end
@@ -71,10 +71,7 @@ def objFifo_example():
                     buff_mem_A,
                     len=2,
                     dimensions=[
-                        (1, 1),
-                        (1, 1),
-                        (1, 1),
-                        (1, 1),
+                        (2, 1),
                     ],
                 )
                 use_lock(prod_lock_mem_A, LockAction.Release)

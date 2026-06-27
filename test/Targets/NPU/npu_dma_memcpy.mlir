@@ -24,7 +24,7 @@ module {
   %tile_0_0 = aie.tile(0, 0)
   aie.shim_dma_allocation @airMemcpyId12 (%tile_0_0, MM2S, 0)
   aie.runtime_sequence (%arg0: memref<2x64x64xi32>, %arg1: memref<2x64x64xi32>, %arg2: memref<2x64x64xi32>) {
-    aiex.npu.dma_memcpy_nd(%arg0[1, 0, 0, 0][1, 2, 32, 32][4096, 2048, 64, 1]) {id = 0 : i64, metadata = @airMemcpyId12} : memref<2x64x64xi32>
+    aiex.npu.dma_memcpy_nd(%arg0[2, 0, 0][2, 32, 32][2048, 64, 1]) {id = 0 : i64, metadata = @airMemcpyId12} : memref<2x64x64xi32>
   }
  }
 }

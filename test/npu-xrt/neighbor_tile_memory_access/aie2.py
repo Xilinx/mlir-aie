@@ -67,11 +67,11 @@ def my_vector_bias_add():
                 metadata=of_in0,
                 bd_id=1,
                 mem=inTensor,
-                sizes=[1, 1, 1, PROBLEM_SIZE],
+                sizes=[1, 1, PROBLEM_SIZE],
                 issue_token=True,
             )
             npu_dma_memcpy_nd(
-                metadata=of_out0, bd_id=0, mem=outTensor, sizes=[1, 1, 1, PROBLEM_SIZE]
+                metadata=of_out0, bd_id=0, mem=outTensor, sizes=[1, 1, PROBLEM_SIZE]
             )
             dma_wait(of_in0, of_out0)
 

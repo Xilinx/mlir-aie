@@ -358,9 +358,14 @@ struct AIEDMATasksToNPUPass
           llvm::SmallVector<int64_t, 4>(4, 1);
       llvm::SmallVector<int64_t, 4> input_strides =
           llvm::SmallVector<int64_t, 4>(4, 0);
-      if (dims->size() > 4) {
-        return bd_op->emitOpError("At most four data layout transformation "
-                                  "dimensions may be provided.");
+      // The runtime-sequence BD register file encodes 3 data dims + 1 iteration
+      // dim. (Static BDs lowered via AIERT can use a 4th data dim, but that path
+      // does not reach here.) Iteration is carried by the dma_bd's explicit
+      // iter_* attributes, not by a data dim.
+      if (dims->size() > 3) {
+        return bd_op->emitOpError("At most three data layout transformation "
+                                  "dimensions may be provided for a "
+                                  "runtime-sequence DMA task.");
       }
 
       for (size_t i = 0; i < dims->size(); i++) {
@@ -371,6 +376,9 @@ struct AIEDMATasksToNPUPass
         input_sizes[i] = (*dims)[j].getSize();
         input_strides[i] = (*dims)[j].getStride();
       }
+      // Iteration goes in the index-3 slot expected by getHardwareStridesWraps.
+      input_sizes[3] = bd_op.getIterSize() > 0 ? bd_op.getIterSize() : 1;
+      input_strides[3] = bd_op.getIterStride();
 
       // d3 (repeat) is excluded; a repeated linear transfer is still linear.
       // A contiguous row-major ND access on a shim NOC tile is also lowered
@@ -412,14 +420,19 @@ struct AIEDMATasksToNPUPass
       getHardwareStridesWraps(target_model, bd_op, buffer_type, input_sizes,
                               input_strides, sizes, strides);
 
-      if (failed(verifyStridesWraps(bd_op, buffer_type, tile.getCol(),
-                                    tile.getRow(), input_sizes, input_strides,
-                                    sizes, strides, treatAsLinear))) {
-        return failure();
+      {
+        llvm::ArrayRef<int64_t> verifySizes(input_sizes.data(), 3);
+        llvm::ArrayRef<int64_t> verifyStrides(input_strides.data(), 3);
+        DataLayout dataLayout = DataLayout::closest(bd_op);
+        unsigned elemWidthBits =
+            dataLayout.getTypeSizeInBits(buffer_type.getElementType());
+        if (failed(AIE::verifyBDDataLayoutAndIteration(
+                bd_op, target_model, tile.getTileType(), elemWidthBits,
+                verifySizes, verifyStrides, bd_op.getIterSize(),
+                bd_op.getIterStride(), treatAsLinear))) {
+          return failure();
+        }
       }
-
-      iteration_size = sizes[3];
-      iteration_stride = strides[3];
 
       if (!treatAsLinear) {
         // d0_size, d0_stride
@@ -433,14 +446,6 @@ struct AIEDMATasksToNPUPass
         // d2_stride
         d2stride = strides[2];
         // d2_size set elsewhere
-      }
-      if (input_sizes[3] > 1 && input_strides[3] == 0) {
-        // We allow users to encode the repeat_count as a dimension 3 stride
-        // of 0. This must lower to a iteration wrap of 0, so no stride is
-        // ever added. We then repeat the BD using the repeat_count in
-        // NpuPushQueueOp.
-        iteration_size = 0;
-        iteration_stride = 0;
       }
 
       // Ensure the total transfer length and the length expressed in the lowest
@@ -476,6 +481,21 @@ struct AIEDMATasksToNPUPass
         return bd_op->emitOpError() << "Padding is supported only on MemTiles.";
       }
     }
+
+    // Strided BD iteration from the dma_bd's explicit iter_* attributes. This is
+    // independent of the data-layout dims (a linearized BD has no dims but may
+    // still iterate), so it is computed here rather than inside the dims block.
+    if (bd_op.getIterSize() > 0) {
+      DataLayout dataLayout = DataLayout::closest(bd_op);
+      unsigned elemWidthBits =
+          dataLayout.getTypeSizeInBits(buffer_type.getElementType());
+      // Hardware encoding: wrap is (size - 1); stepsize is in granularity words
+      // and encoded as (words - 1), matching getHardwareStridesWraps' index 3.
+      iteration_size = bd_op.getIterSize() - 1;
+      iteration_stride =
+          bd_op.getIterStride() * elemWidthBits / addr_granularity - 1;
+    }
+
     // find next BD ID, if any
     uint32_t use_next_bd = 0;
     uint32_t next_bd_id = 0;
@@ -546,7 +566,8 @@ struct AIEDMATasksToNPUPass
         /*d0_size=*/d0size, /*d0_stride=*/d0stride,
         /*d1_size=*/d1size, /*d1_stride=*/d1stride,
         /*d2_size=*/d2size, /*d2_stride=*/d2stride,
-        /*iteration_current=*/0, /*iteration_size=*/iteration_size,
+        /*iteration_current=*/(int)bd_op.getIterCurrent(),
+        /*iteration_size=*/iteration_size,
         /*iteration_stride=*/iteration_stride,
         /*next_bd=*/next_bd_id,
         /*row=*/tile.getRow(),

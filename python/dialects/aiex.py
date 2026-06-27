@@ -54,6 +54,45 @@ def dma_wait(*args: ObjectFifoCreateOp | str):
         npu_dma_wait(str_name)
 
 
+def _split_tap_iteration(sizes, strides):
+    """Split a TensorAccessPattern's leading dimension into explicit buffer-descriptor
+    iteration/repeat, returning pure data-layout dims.
+
+    A TensorAccessPattern carries up to three data-layout dimensions plus a single
+    leading iteration dimension (this matches the hardware: three data dims, one
+    iteration). This helper translates that leading dimension into the explicit
+    iter_size/iter_stride/repeat_count fields that the op surface now expects, so
+    every op-gen boundary performs the split identically:
+
+    * leading size == 1 (stride irrelevant): no iteration.
+    * leading size > 1 with stride == 0: a pure repeat of the whole descriptor;
+      repeat_count = size - 1 (extra replays).
+    * leading size > 1 with stride > 0: a strided iteration; iter_size = size,
+      iter_stride = stride.
+
+    Returns (data_sizes, data_strides, iter_size, iter_stride, repeat_count).
+    """
+    sizes = list(sizes)
+    strides = list(strides)
+    if len(sizes) != 4 or len(strides) != 4:
+        raise ValueError(
+            "Expected a 4-element TensorAccessPattern (3 data dims + 1 leading "
+            f"iteration dim), but got sizes={sizes}, strides={strides}."
+        )
+    lead_size = sizes[0]
+    lead_stride = strides[0]
+    iter_size = 0
+    iter_stride = 0
+    repeat_count = 0
+    if lead_size > 1:
+        if lead_stride == 0:
+            repeat_count = lead_size - 1
+        else:
+            iter_size = lead_size
+            iter_stride = lead_stride
+    return sizes[1:], strides[1:], iter_size, iter_stride, repeat_count
+
+
 class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
     """
     Enables data transfers between the AIE Engine array and external memory.
@@ -63,26 +102,31 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
         bd_id: Identifier integer for the particular Buffer Descriptor control registers used for this memcpy. A buffer descriptor contains all information needed for a DMA transfer described in the parameters below.
         mem: Reference to a host buffer, given as an argument to the sequence function, that this transfer will read from or write to.
         tap (optional): A TensorAccessPattern is an alternative method of specifying offset/sizes/strides for determining an access pattern over the mem buffer.
-        offsets (optional): Start points for data transfer in each dimension. There is a maximum of four offset dimensions.
-        sizes: The extent of data to be transferred across each dimension. There is a maximum of four size dimensions.
+        offsets (optional): Start points for data transfer in each dimension. There are three data-layout offset dimensions.
+        sizes: The extent of data to be transferred across each dimension. There are three data-layout size dimensions.
         strides (optional): Interval steps between data points in each dimension, useful for striding-across and reshaping data.
+        iter_size (optional): Logical (>1) length of a strided replay of the whole buffer descriptor. 0 (default) means no iteration.
+        iter_stride (optional): Address increment (in element units) applied per iteration replay.
+        iter_current (optional): Starting iteration index for the strided replay.
+        repeat_count (optional): Number of EXTRA times to replay the whole buffer descriptor with no address increment (a pure repeat). 0 (default) means a single pass (no repeat).
         burst_length (optional): The configuration of the burst length for the DMA task. If 0, defaults to the highest available value.
 
     Note:
         Contiguous row-major access patterns are automatically folded to canonical linear form
         by the compiler's canonicalization pass. For example, a 2D image access
-        ``sizes=[1, 1, height, width], strides=[0, 0, width, 1]`` is equivalent to
-        ``sizes=[1, 1, 1, height*width], strides=[0, 0, 0, 1]`` and will be canonicalized
+        ``sizes=[1, height, width], strides=[0, width, 1]`` is equivalent to
+        ``sizes=[1, 1, height*width], strides=[0, 0, 1]`` and will be canonicalized
         to the latter. This means the natural multidimensional form can always be used
         without concern for the hardware d0 dimension size limit.
 
     Example:
 
-        npu_dma_memcpy_nd(of_in, 0, input_buffer, sizes=[1, 1, 1, 30])
+        npu_dma_memcpy_nd(of_in, 0, input_buffer, sizes=[1, 1, 30])
 
         The example above describes a linear transfer of 30 data elements, or 120 Bytes, from the input_buffer in host memory into an object FIFO with matching
         metadata labeled "of_in".
-        The size dimensions are expressed right to left where the right is dimension 0 and the left dimension 3. Higher dimensions not used should be set to 1.
+        The size dimensions are expressed right to left where the right is dimension 0 and the left dimension 2. Higher dimensions not used should be set to 1.
+        Buffer-descriptor iteration/repeat are no longer encoded as a leading size dimension; use the iter_*/repeat_count arguments instead.
     """
 
     def __init__(
@@ -98,24 +142,39 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
         burst_length: int = 0,
         packet: tuple[int] | None = None,
         offset_parameter: str | None = None,
+        iter_size: int = 0,
+        iter_stride: int = 0,
+        iter_current: int = 0,
+        repeat_count: int = 0,
     ):
         if tap and not (offsets is None and sizes is None and strides is None):
             raise ValueError(
                 "NpuDmaMemcpyNd can take either a TileAccessPattern OR (sizes and/or strides and/or offsets), but not both."
             )
+        if tap and not (
+            iter_size == 0
+            and iter_stride == 0
+            and iter_current == 0
+            and repeat_count == 0
+        ):
+            raise ValueError(
+                "NpuDmaMemcpyNd derives iter_size/iter_stride/repeat_count from the "
+                "TensorAccessPattern; do not also pass them explicitly when using tap."
+            )
         if tap:
-            sizes = tap.sizes.copy()
-            strides = tap.strides.copy()
+            sizes, strides, iter_size, iter_stride, repeat_count = _split_tap_iteration(
+                tap.sizes, tap.strides
+            )
             # For some reason, the type checking of offsets does not mesh well with offset being a property
             # so here we make sure it is evaluated and properly is seen as an integer.
-            offsets = [0] * 3 + [int(tap.offset)]
+            offsets = [0] * 2 + [int(tap.offset)]
         else:
             if offsets is None:
-                offsets = [0] * 4
+                offsets = [0] * 3
             if sizes is None:
-                sizes = [0] * 4
+                sizes = [0] * 3
             if strides is None:
-                strides = [0] * 3 + [1]
+                strides = [0] * 2 + [1]
         dynamic_offsets, _packed_offsets, static_offsets = _dispatch_mixed_values(
             offsets
         )
@@ -139,6 +198,10 @@ class NpuDmaMemcpyNd(NpuDmaMemcpyNdOp):
             burst_length=burst_length,
             packet=packet,
             offset_parameter=offset_parameter,
+            iter_size=iter_size,
+            iter_stride=iter_stride,
+            iter_current=iter_current,
+            repeat_count=repeat_count,
         )
 
 
@@ -209,6 +272,9 @@ def shim_dma_bd(
     burst_length: int = 0,
     packet: tuple[int] | None = None,
     offset_parameter: str | None = None,
+    iter_size: int = 0,
+    iter_stride: int = 0,
+    iter_current: int = 0,
 ):
     if tap and not (offset is None and sizes is None and strides is None):
         raise ValueError(
@@ -216,8 +282,18 @@ def shim_dma_bd(
         )
 
     if tap:
-        sizes = tap.sizes.copy()
-        strides = tap.strides.copy()
+        # A TensorAccessPattern carries 3 data dims + a leading iteration dim;
+        # the buffer descriptor only carries strided iteration (iter_*). A pure
+        # repeat (repeat_count) belongs on the enclosing task, not the BD.
+        sizes, strides, iter_size, iter_stride, repeat_count = _split_tap_iteration(
+            tap.sizes, tap.strides
+        )
+        if repeat_count != 0:
+            raise ValueError(
+                "shim_dma_bd received a TensorAccessPattern encoding a pure repeat "
+                "(leading size>1, stride==0); a bare buffer descriptor cannot carry a "
+                "repeat. Use shim_dma_single_bd_task, which places repeat_count on the task."
+            )
         # For some reason, the type checking of offsets does not mesh well with offset being a property
         # so here we make sure it is evaluated and properly is seen as an integer.
         offset = int(tap.offset)
@@ -225,9 +301,9 @@ def shim_dma_bd(
     if offset is None:
         offset = 0
     if sizes is None:
-        sizes = [0] * 4
+        sizes = [0] * 3
     if strides is None:
-        strides = [0] * 3 + [1]
+        strides = [0] * 2 + [1]
 
     if transfer_len is None:
         transfer_len = np.prod(sizes[-3:])
@@ -241,6 +317,9 @@ def shim_dma_bd(
         burst_length=burst_length,
         packet=packet,
         offset_parameter=offset_parameter,
+        iter_size=iter_size,
+        iter_stride=iter_stride,
+        iter_current=iter_current,
     )
 
 
@@ -256,6 +335,10 @@ def shim_dma_single_bd_task(
     burst_length: int = 0,
     packet: tuple[int] | None = None,
     offset_parameter: str | None = None,
+    iter_size: int = 0,
+    iter_stride: int = 0,
+    iter_current: int = 0,
+    repeat_count: int = 0,
 ):
     """_summary_
     Enables data transfers between the AIE Engine array and external memory.
@@ -266,34 +349,46 @@ def shim_dma_single_bd_task(
         mem: Reference to a host buffer, given as an argument to the sequence function, that this transfer will read from or write to.
         tap (optional): A TensorAccessPattern is an alternative method of specifying offset/sizes/strides for determining an access pattern over the mem buffer.
         offset (optional): Starting point for the data transfer. Default values is 0.
-        sizes: The extent of data to be transferred across each dimension. There is a maximum of four size dimensions.
+        sizes: The extent of data to be transferred across each dimension. There are three data-layout size dimensions.
         strides (optional): Interval steps between data points in each dimension, useful for striding-across and reshaping data.
         issue_token (optional): If a token is issued, one may call dma_await_task on the returned task. Default is False.
         burst_length (optional): The configuration of the burst length for the DMA task. If 0, defaults to the highest available value.
         packet (optional): The packet header information represented as a (packet_type, packet_id) tuple.
+        iter_size (optional): Logical (>1) length of a strided replay of the whole buffer descriptor. 0 (default) means no iteration.
+        iter_stride (optional): Address increment (in element units) applied per iteration replay.
+        iter_current (optional): Starting iteration index for the strided replay.
+        repeat_count (optional): Number of EXTRA times to replay the whole buffer descriptor with no address increment. 0 (default) means a single pass.
 
     Example:
-        out_task = shim_dma_single_bd_task(of_out, C, sizes=[1, 1, 1, N], issue_token=True)
+        out_task = shim_dma_single_bd_task(of_out, C, sizes=[1, 1, N], issue_token=True)
 
         The example above describes a linear transfer of N data elements from the C buffer in host memory into an object FIFO with matching metadata labeled "of_out".
-        The sizes dimensions are expressed right to left where the right is dimension 0 and the left dimension 3.
+        The sizes dimensions are expressed right to left where the right is dimension 0 and the left dimension 2.
         Higher dimensions not used should be set to 1.
     """
     if tap and not (offset is None and sizes is None and strides is None):
         raise ValueError(
             "shim_dma_single_bd_task can take either a TensorAccessPattern OR (sizes and/or strides and/or offsets), but not both."
         )
+    if tap and not (
+        iter_size == 0 and iter_stride == 0 and iter_current == 0 and repeat_count == 0
+    ):
+        raise ValueError(
+            "shim_dma_single_bd_task derives iter_size/iter_stride/repeat_count from the "
+            "TensorAccessPattern; do not also pass them explicitly when using tap."
+        )
 
     if tap:
-        sizes = tap.sizes.copy()
-        strides = tap.strides.copy()
+        # A TensorAccessPattern carries 3 data dims + a leading iteration dim.
+        # A pure repeat (repeat_count) lives on the task; a strided iteration
+        # (iter_*) lives on the buffer descriptor.
+        sizes, strides, iter_size, iter_stride, repeat_count = _split_tap_iteration(
+            tap.sizes, tap.strides
+        )
         # For some reason, the type checking of offsets does not mesh well with offset being a property
         # so here we make sure it is evaluated and properly is seen as an integer.
         offset = int(tap.offset)
 
-    repeat_count = 0
-    if sizes and sizes[0] > 1:
-        repeat_count = sizes[0] - 1
     task = dma_configure_task_for(
         alloc, repeat_count=repeat_count, issue_token=issue_token
     )
@@ -308,6 +403,9 @@ def shim_dma_single_bd_task(
                 burst_length=burst_length,
                 packet=packet,
                 offset_parameter=offset_parameter,
+                iter_size=iter_size,
+                iter_stride=iter_stride,
+                iter_current=iter_current,
             )
             EndOp()
     return task

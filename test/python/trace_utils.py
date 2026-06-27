@@ -132,13 +132,13 @@ def passthroughKernel():
                     metadata=of_in,
                     bd_id=0,
                     mem=inTensor,
-                    sizes=[1, 1, 1, tensorSizeInInt32s],
+                    sizes=[1, 1, tensorSizeInInt32s],
                 )
                 npu_dma_memcpy_nd(
                     metadata=of_out,
                     bd_id=1,
                     mem=outTensor,
-                    sizes=[1, 1, 1, tensorSizeInInt32s],
+                    sizes=[1, 1, tensorSizeInInt32s],
                 )
                 dma_wait(of_out)
 

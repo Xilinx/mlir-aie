@@ -56,8 +56,8 @@ module {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
       %c32 = arith.constant 32 : i64
-      aiex.npu.dma_memcpy_nd(%arg_out[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c32][%c0,%c0,%c0,%c1]) {metadata = @out, id = 1 : i64} : memref<32xi32>
-      aiex.npu.dma_memcpy_nd(%arg_in[%c0,%c0,%c0,%c0][%c1,%c1,%c1,%c32][%c0,%c0,%c0,%c1]) {metadata = @in, id = 0 : i64, issue_token = true} : memref<32xi32>
+      aiex.npu.dma_memcpy_nd(%arg_out[%c0,%c0,%c0][%c1,%c1,%c32][%c0,%c0,%c1]) {metadata = @out, id = 1 : i64} : memref<32xi32>
+      aiex.npu.dma_memcpy_nd(%arg_in[%c0,%c0,%c0][%c1,%c1,%c32][%c0,%c0,%c1]) {metadata = @in, id = 0 : i64, issue_token = true} : memref<32xi32>
       aiex.npu.dma_wait {symbol = @out}
     }
   }

@@ -20,7 +20,7 @@ module {
     // CHECK-LABEL: aie.runtime_sequence @main_seq
     aie.runtime_sequence @main_seq(%arg0: memref<64xi32>) {
       // CHECK: aiex.npu.load_pdi {device_ref = @config_with_symbols}
-      // CHECK: aiex.npu.dma_memcpy_nd(%[[ARG0:.*]][0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1])
+      // CHECK: aiex.npu.dma_memcpy_nd(%[[ARG0:.*]][0, 0, 0][1, 1, 64][0, 0, 1])
       // CHECK-SAME: metadata = @buffer_in
       aiex.configure @config_with_symbols {
         aiex.run @seq_with_dma(%arg0) : (memref<64xi32>)
@@ -35,7 +35,7 @@ module {
     aie.shim_dma_allocation @buffer_in(%tile20, S2MM, 0)
     
     aie.runtime_sequence @seq_with_dma(%arg0: memref<64xi32>) {
-      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 64][0, 0, 0, 1]) { metadata = @buffer_in, id = 0 : i64 } : memref<64xi32>
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0][1, 1, 64][0, 0, 1]) { metadata = @buffer_in, id = 0 : i64 } : memref<64xi32>
     }
   }
 }

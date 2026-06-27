@@ -33,11 +33,11 @@
 // CHECK-LABEL: aie.device(npu1)
 // CHECK:         aie.runtime_sequence @fold_2d
 // CHECK:           aiex.npu.dma_memcpy_nd
-// CHECK-SAME:        [0, 0, 0, 0][1, 1, 1, 1024][0, 0, 0, 1]
+// CHECK-SAME:        [0, 0, 0][1, 1, 1024][0, 0, 1]
 module {
   aie.device(npu1) {
     aie.runtime_sequence @fold_2d(%arg0 : memref<2x512xi32>) {
-      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 2, 512][0, 0, 512, 1])
+      aiex.npu.dma_memcpy_nd (%arg0[0,0,0][1,2,512][0,512,1])
         { metadata = @of_fromMem, id = 0 : i64 } : memref<2x512xi32>
     }
     %tile = aie.tile(0, 0)
@@ -53,11 +53,11 @@ module {
 // CHECK-LABEL: aie.device(npu1)
 // CHECK:         aie.runtime_sequence @fold_3d
 // CHECK:           aiex.npu.dma_memcpy_nd
-// CHECK-SAME:        [0, 0, 0, 0][1, 1, 1, 60][0, 0, 0, 1]
+// CHECK-SAME:        [0, 0, 0][1, 1, 60][0, 0, 1]
 module {
   aie.device(npu1) {
     aie.runtime_sequence @fold_3d(%arg0 : memref<3x4x5xi32>) {
-      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 3, 4, 5][0, 20, 5, 1])
+      aiex.npu.dma_memcpy_nd (%arg0[0,0,0][3,4,5][20,5,1])
         { metadata = @of_fromMem, id = 0 : i64 } : memref<3x4x5xi32>
     }
     %tile = aie.tile(0, 0)
@@ -72,11 +72,11 @@ module {
 // CHECK-LABEL: aie.device(npu1)
 // CHECK:         aie.runtime_sequence @already_linear
 // CHECK:           aiex.npu.dma_memcpy_nd
-// CHECK-SAME:        [0, 0, 0, 0][1, 1, 1, 4096][0, 0, 0, 1]
+// CHECK-SAME:        [0, 0, 0][1, 1, 4096][0, 0, 1]
 module {
   aie.device(npu1) {
     aie.runtime_sequence @already_linear(%arg0 : memref<4096xi32>) {
-      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 1, 4096][0, 0, 0, 1])
+      aiex.npu.dma_memcpy_nd (%arg0[0,0,0][1,1,4096][0,0,1])
         { metadata = @of_fromMem, id = 0 : i64 } : memref<4096xi32>
     }
     %tile = aie.tile(0, 0)
@@ -91,12 +91,12 @@ module {
 // CHECK-LABEL: aie.device(npu1)
 // CHECK:         aie.runtime_sequence @no_fold_strided
 // CHECK:           aiex.npu.dma_memcpy_nd
-// CHECK-SAME:        [0, 0, 0, 0][1, 1, 2, 4][0, 0, 3, 1]
+// CHECK-SAME:        [0, 0, 0][1, 2, 4][0, 3, 1]
 module {
   aie.device(npu1) {
     aie.runtime_sequence @no_fold_strided(%arg0 : memref<32xi32>) {
       // stride1=3 != size0=4: genuinely strided rows, cannot fold.
-      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 2, 4][0, 0, 3, 1])
+      aiex.npu.dma_memcpy_nd (%arg0[0,0,0][1,2,4][0,3,1])
         { metadata = @of_fromMem, id = 0 : i64 } : memref<32xi32>
     }
     %tile = aie.tile(0, 0)
@@ -106,18 +106,20 @@ module {
 
 // -----
 
-// Repeat dimension (s3 > 1) is preserved through the fold.
-// sizes=[2,1,2,4] strides=[4096,0,4,1]  ->  sizes=[2,1,1,8] strides=[4096,0,0,1]
+// Strided iteration (iter_size/iter_stride) is preserved through the fold.
+// data sizes=[1,2,4] strides=[0,4,1] (+ iter_size=2, iter_stride=4096)
+//   ->  sizes=[1,1,8] strides=[0,0,1] (iter_* unchanged)
 
 // CHECK-LABEL: aie.device(npu1)
 // CHECK:         aie.runtime_sequence @fold_with_repeat
 // CHECK:           aiex.npu.dma_memcpy_nd
-// CHECK-SAME:        [0, 0, 0, 0][2, 1, 1, 8][4096, 0, 0, 1]
+// CHECK-SAME:        [0, 0, 0][1, 1, 8][0, 0, 1]
+// CHECK-SAME:        iter_size = 2 : i64, iter_stride = 4096 : i64
 module {
   aie.device(npu1) {
     aie.runtime_sequence @fold_with_repeat(%arg0 : memref<8192xi32>) {
-      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][2, 1, 2, 4][4096, 0, 4, 1])
-        { metadata = @of_fromMem, id = 0 : i64 } : memref<8192xi32>
+      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0][1, 2, 4][0, 4, 1])
+        { metadata = @of_fromMem, id = 0 : i64, iter_size = 2 : i64, iter_stride = 4096 : i64 } : memref<8192xi32>
     }
     %tile = aie.tile(0, 0)
     aie.shim_dma_allocation @of_fromMem (%tile, MM2S, 0)
@@ -134,11 +136,11 @@ module {
 // CHECK-LABEL: aie.device(npu1)
 // CHECK:         aie.runtime_sequence @fold_bf16
 // CHECK:           aiex.npu.dma_memcpy_nd
-// CHECK-SAME:        [0, 0, 0, 0][1, 1, 1, 1024][0, 0, 0, 1]
+// CHECK-SAME:        [0, 0, 0][1, 1, 1024][0, 0, 1]
 module {
   aie.device(npu1) {
     aie.runtime_sequence @fold_bf16(%arg0 : memref<2x512xbf16>) {
-      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 2, 512][0, 0, 512, 1])
+      aiex.npu.dma_memcpy_nd (%arg0[0,0,0][1,2,512][0,512,1])
         { metadata = @of_fromMem, id = 0 : i64 } : memref<2x512xbf16>
     }
     %tile = aie.tile(0, 0)
@@ -154,12 +156,12 @@ module {
 // CHECK-LABEL: aie.device(npu1)
 // CHECK:         aie.runtime_sequence @no_fold_inner_stride
 // CHECK:           aiex.npu.dma_memcpy_nd
-// CHECK-SAME:        [0, 0, 0, 0][1, 1, 2, 4][0, 0, 4, 2]
+// CHECK-SAME:        [0, 0, 0][1, 2, 4][0, 4, 2]
 module {
   aie.device(npu1) {
     aie.runtime_sequence @no_fold_inner_stride(%arg0 : memref<32xi32>) {
       // stride0=2: skips every other element, not a linear scan.
-      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 2, 4][0, 0, 4, 2])
+      aiex.npu.dma_memcpy_nd (%arg0[0,0,0][1,2,4][0,4,2])
         { metadata = @of_fromMem, id = 0 : i64 } : memref<32xi32>
     }
     %tile = aie.tile(0, 0)
@@ -175,12 +177,12 @@ module {
 // CHECK-LABEL: aie.device(npu1)
 // CHECK:         aie.runtime_sequence @no_fold_stride2
 // CHECK:           aiex.npu.dma_memcpy_nd
-// CHECK-SAME:        [0, 0, 0, 0][1, 2, 3, 4][0, 7, 4, 1]
+// CHECK-SAME:        [0, 0, 0][2, 3, 4][7, 4, 1]
 module {
   aie.device(npu1) {
     aie.runtime_sequence @no_fold_stride2(%arg0 : memref<64xi32>) {
       // stride2=7 != size0*size1=4*3=12: non-contiguous outer loop, cannot fold.
-      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 2, 3, 4][0, 7, 4, 1])
+      aiex.npu.dma_memcpy_nd (%arg0[0,0,0][2,3,4][7,4,1])
         { metadata = @of_fromMem, id = 0 : i64 } : memref<64xi32>
     }
     %tile = aie.tile(0, 0)
@@ -197,12 +199,12 @@ module {
 // CHECK-LABEL: aie.device(npu1)
 // CHECK:         aie.runtime_sequence @fold_with_offset
 // CHECK:           aiex.npu.dma_memcpy_nd
-// CHECK-SAME:        [0, 0, 0, 4][1, 1, 1, 1024][0, 0, 0, 1]
+// CHECK-SAME:        [0, 0, 4][1, 1, 1024][0, 0, 1]
 module {
   aie.device(npu1) {
     aie.runtime_sequence @fold_with_offset(%arg0 : memref<2048xi32>) {
       // Offset of 4 elements in d0; sizes/strides fold as normal.
-      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 4][1, 1, 2, 512][0, 0, 512, 1])
+      aiex.npu.dma_memcpy_nd (%arg0[0,0,4][1,2,512][0,512,1])
         { metadata = @of_fromMem, id = 0 : i64 } : memref<2048xi32>
     }
     %tile = aie.tile(0, 0)
@@ -228,12 +230,12 @@ module {
 // CHECK-LABEL: aie.device(npu1)
 // CHECK:         aie.runtime_sequence @fold_d1_offset
 // CHECK:           aiex.npu.dma_memcpy_nd
-// CHECK-SAME:        [0, 0, 0, 4096][1, 1, 1, 4096][0, 0, 0, 1]
+// CHECK-SAME:        [0, 0, 4096][1, 1, 4096][0, 0, 1]
 module {
   aie.device(npu1) {
     aie.runtime_sequence @fold_d1_offset(%arg0 : memref<128x64xi32>) {
       // Second 64x64 slice: outermost-first offset [0,0,64,0] selects row 64.
-      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 64, 0][1, 1, 64, 64][0, 0, 64, 1])
+      aiex.npu.dma_memcpy_nd (%arg0[0,64,0][1,64,64][0,64,1])
         { metadata = @of_fromMem, id = 0 : i64 } : memref<128x64xi32>
     }
     %tile = aie.tile(0, 0)
@@ -257,12 +259,12 @@ module {
 // CHECK-LABEL: aie.device(npu1)
 // CHECK:         aie.runtime_sequence @fold_d2_offset
 // CHECK:           aiex.npu.dma_memcpy_nd
-// CHECK-SAME:        [0, 0, 0, 4096][1, 1, 1, 4096][0, 0, 0, 1]
+// CHECK-SAME:        [0, 0, 4096][1, 1, 4096][0, 0, 1]
 module {
   aie.device(npu1) {
     aie.runtime_sequence @fold_d2_offset(%arg0 : memref<4x64x64xi8>) {
       // Second 64x64 tile (index 1 along the batch axis).
-      aiex.npu.dma_memcpy_nd (%arg0[0, 1, 0, 0][1, 1, 64, 64][0, 4096, 64, 1])
+      aiex.npu.dma_memcpy_nd (%arg0[1,0,0][1,64,64][4096,64,1])
         { metadata = @of_fromMem, id = 0 : i64 } : memref<4x64x64xi8>
     }
     %tile = aie.tile(0, 0)
@@ -277,12 +279,12 @@ module {
 // CHECK-LABEL: aie.device(npu1)
 // CHECK:         aie.runtime_sequence @fold_packet
 // CHECK:           aiex.npu.dma_memcpy_nd
-// CHECK-SAME:        [0, 0, 0, 0][1, 1, 1, 1024][0, 0, 0, 1]
+// CHECK-SAME:        [0, 0, 0][1, 1, 1024][0, 0, 1]
 // CHECK-SAME:        packet = <pkt_type = 0, pkt_id = 5>
 module {
   aie.device(npu1) {
     aie.runtime_sequence @fold_packet(%arg0 : memref<2x512xi32>) {
-      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 2, 512][0, 0, 512, 1],
+      aiex.npu.dma_memcpy_nd (%arg0[0,0,0][1,2,512][0,512,1],
                                packet = <pkt_id = 5, pkt_type = 0>)
         { metadata = @of_fromMem, id = 0 : i64 } : memref<2x512xi32>
     }
@@ -298,12 +300,12 @@ module {
 // CHECK-LABEL: aie.device(npu1)
 // CHECK:         aie.runtime_sequence @fold_issue_token
 // CHECK:           aiex.npu.dma_memcpy_nd
-// CHECK-SAME:        [0, 0, 0, 0][1, 1, 1, 1024][0, 0, 0, 1]
+// CHECK-SAME:        [0, 0, 0][1, 1, 1024][0, 0, 1]
 // CHECK-SAME:        issue_token = true
 module {
   aie.device(npu1) {
     aie.runtime_sequence @fold_issue_token(%arg0 : memref<2x512xi32>) {
-      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 2, 512][0, 0, 512, 1])
+      aiex.npu.dma_memcpy_nd (%arg0[0,0,0][1,2,512][0,512,1])
         { metadata = @of_fromMem, id = 0 : i64, issue_token = true } : memref<2x512xi32>
     }
     %tile = aie.tile(0, 0)
@@ -323,13 +325,13 @@ module {
 // CHECK-LABEL: aie.device(npu1)
 // CHECK:         aie.runtime_sequence @fold_size1_nonzero_stride1
 // CHECK:           aiex.npu.dma_memcpy_nd
-// CHECK-SAME:        [0, 0, 0, 0][1, 1, 1, 8][0, 0, 0, 1]
+// CHECK-SAME:        [0, 0, 0][1, 1, 8][0, 0, 1]
 module {
   aie.device(npu1) {
     aie.runtime_sequence @fold_size1_nonzero_stride1(%arg0 : memref<32xi32>) {
       // st1=99 (middle stride) with s1=1: the stride is never applied.
       // st2=4==s0=4 is the correct contiguous stride for s2=2.
-      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 2, 1, 4][0, 4, 99, 1])
+      aiex.npu.dma_memcpy_nd (%arg0[0,0,0][2,1,4][4,99,1])
         { metadata = @of_fromMem, id = 0 : i64 } : memref<32xi32>
     }
     %tile = aie.tile(0, 0)
@@ -348,13 +350,13 @@ module {
 // CHECK-LABEL: aie.device(npu1)
 // CHECK:         aie.runtime_sequence @fold_size2_nonzero_stride2
 // CHECK:           aiex.npu.dma_memcpy_nd
-// CHECK-SAME:        [0, 0, 0, 0][1, 1, 1, 8][0, 0, 0, 1]
+// CHECK-SAME:        [0, 0, 0][1, 1, 8][0, 0, 1]
 module {
   aie.device(npu1) {
     aie.runtime_sequence @fold_size2_nonzero_stride2(%arg0 : memref<32xi32>) {
       // st2=99 (outermost non-repeat stride) with s2=1: the stride is never
       // applied.  st1=4==s0=4 is a valid contiguous stride for s1=2.
-      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 2, 4][0, 99, 4, 1])
+      aiex.npu.dma_memcpy_nd (%arg0[0,0,0][1,2,4][99,4,1])
         { metadata = @of_fromMem, id = 0 : i64 } : memref<32xi32>
     }
     %tile = aie.tile(0, 0)
@@ -371,13 +373,13 @@ module {
 // CHECK-LABEL: aie.device(npu1)
 // CHECK:         aie.runtime_sequence @fold_both_size1_size2_nonzero_strides
 // CHECK:           aiex.npu.dma_memcpy_nd
-// CHECK-SAME:        [0, 0, 0, 0][1, 1, 1, 4][0, 0, 0, 1]
+// CHECK-SAME:        [0, 0, 0][1, 1, 4][0, 0, 1]
 module {
   aie.device(npu1) {
     aie.runtime_sequence @fold_both_size1_size2_nonzero_strides(%arg0 : memref<4xi32>) {
       // st1=99 (middle stride) with s1=1 and st2=7 with s2=1: both strides
       // are never applied; the transfer is a single contiguous run of 4 elems.
-      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 1, 4][0, 7, 99, 1])
+      aiex.npu.dma_memcpy_nd (%arg0[0,0,0][1,1,4][7,99,1])
         { metadata = @of_fromMem, id = 0 : i64 } : memref<4xi32>
     }
     %tile = aie.tile(0, 0)
@@ -387,25 +389,24 @@ module {
 
 // -----
 
-// Non-zero offset in the repeat (d3/outermost) dimension is passed through
-// unchanged to the new op's outermost offset slot.
+// A non-zero iteration position (iter_current) is preserved through the fold,
+// and the data-dim offsets still collapse to d0 as usual.
 //
-// offsets=[5, 0, 0, 0] sizes=[2, 1, 2, 4] strides=[4096, 0, 4, 1]
-// (outermost-first)
-// In innermost-first: offsets=[0,0,0,5], strides=[1,4,0,4096]
-// linearOffset = 0*1 + 0*4 + 0*0 = 0  ->  new offsets [5, 0, 0, 0]
-// sizes -> [2, 1, 1, 8], strides -> [4096, 0, 0, 1]
+// data offsets=[0,0,0] sizes=[1,2,4] strides=[0,4,1]
+//   (+ iter_size=2, iter_stride=4096, iter_current=5)
+// linearOffset = 0  ->  sizes -> [1,1,8], strides -> [0,0,1], iter_* unchanged
 
 // CHECK-LABEL: aie.device(npu1)
 // CHECK:         aie.runtime_sequence @fold_repeat_offset
 // CHECK:           aiex.npu.dma_memcpy_nd
-// CHECK-SAME:        [5, 0, 0, 0][2, 1, 1, 8][4096, 0, 0, 1]
+// CHECK-SAME:        [0, 0, 0][1, 1, 8][0, 0, 1]
+// CHECK-SAME:        iter_current = 5 : i64, iter_size = 2 : i64, iter_stride = 4096 : i64
 module {
   aie.device(npu1) {
     aie.runtime_sequence @fold_repeat_offset(%arg0 : memref<8192xi32>) {
-      // Outermost offset of 5 repeat-strides; inner dims fold as normal.
-      aiex.npu.dma_memcpy_nd (%arg0[5, 0, 0, 0][2, 1, 2, 4][4096, 0, 4, 1])
-        { metadata = @of_fromMem, id = 0 : i64 } : memref<8192xi32>
+      // Iteration position 5; inner dims fold as normal.
+      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0][1, 2, 4][0, 4, 1])
+        { metadata = @of_fromMem, id = 0 : i64, iter_current = 5 : i64, iter_size = 2 : i64, iter_stride = 4096 : i64 } : memref<8192xi32>
     }
     %tile = aie.tile(0, 0)
     aie.shim_dma_allocation @of_fromMem (%tile, MM2S, 0)
@@ -427,14 +428,14 @@ module {
 // CHECK-LABEL: aie.device(npu1)
 // CHECK:         aie.runtime_sequence @fold_size1_nonzero_offset1
 // CHECK:           aiex.npu.dma_memcpy_nd
-// CHECK-SAME:        [0, 0, 0, 297][1, 1, 1, 8][0, 0, 0, 1]
+// CHECK-SAME:        [0, 0, 297][1, 1, 8][0, 0, 1]
 module {
   aie.device(npu1) {
     aie.runtime_sequence @fold_size1_nonzero_offset1(%arg0 : memref<512xi32>) {
       // s1=1, so strides[1]=99 is never applied during the transfer, but
       // getOffsetInBytes() uses it to compute the start address.  The fold
       // must preserve offsets[1]*strides[1] = 3*99 = 297 in the d0 slot.
-      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 3, 0][1, 2, 1, 4][0, 4, 99, 1])
+      aiex.npu.dma_memcpy_nd (%arg0[0,3,0][2,1,4][4,99,1])
         { metadata = @of_fromMem, id = 0 : i64 } : memref<512xi32>
     }
     %tile = aie.tile(0, 0)
@@ -450,12 +451,12 @@ module {
 // CHECK-LABEL: aie.device(npu1)
 // CHECK:         aie.runtime_sequence @fold_preserves_metadata
 // CHECK:           aiex.npu.dma_memcpy_nd
-// CHECK-SAME:        [0, 0, 0, 0][1, 1, 1, 1024][0, 0, 0, 1]
+// CHECK-SAME:        [0, 0, 0][1, 1, 1024][0, 0, 1]
 // CHECK-SAME:        {id = 7 : i64, metadata = @my_alloc}
 module {
   aie.device(npu1) {
     aie.runtime_sequence @fold_preserves_metadata(%arg0 : memref<2x512xi32>) {
-      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 2, 512][0, 0, 512, 1])
+      aiex.npu.dma_memcpy_nd (%arg0[0,0,0][1,2,512][0,512,1])
         { metadata = @my_alloc, id = 7 : i64 } : memref<2x512xi32>
     }
     %tile = aie.tile(0, 0)
@@ -474,12 +475,12 @@ module {
 // CHECK-LABEL: aie.device(npu1)
 // CHECK:         aie.runtime_sequence @fold_preserves_burst_length
 // CHECK:           aiex.npu.dma_memcpy_nd
-// CHECK-SAME:        [0, 0, 0, 0][1, 1, 1, 1024][0, 0, 0, 1]
+// CHECK-SAME:        [0, 0, 0][1, 1, 1024][0, 0, 1]
 // CHECK-SAME:        burst_length = 64
 module {
   aie.device(npu1) {
     aie.runtime_sequence @fold_preserves_burst_length(%arg0 : memref<2x512xi32>) {
-      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 2, 512][0, 0, 512, 1])
+      aiex.npu.dma_memcpy_nd (%arg0[0,0,0][1,2,512][0,512,1])
         { metadata = @of_fromMem, id = 0 : i64,
           burst_length = 64 : i64 } : memref<2x512xi32>
     }
@@ -498,11 +499,11 @@ module {
 // CHECK-LABEL: aie.device(npu1)
 // CHECK:         aie.runtime_sequence @fold_large_2d_image
 // CHECK:           aiex.npu.dma_memcpy_nd
-// CHECK-SAME:        [0, 0, 0, 0][1, 1, 1, 8294400][0, 0, 0, 1]
+// CHECK-SAME:        [0, 0, 0][1, 1, 8294400][0, 0, 1]
 module {
   aie.device(npu1) {
     aie.runtime_sequence @fold_large_2d_image(%arg0 : memref<8294400xi8>) {
-      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 1080, 7680][0, 0, 7680, 1])
+      aiex.npu.dma_memcpy_nd (%arg0[0,0,0][1,1080,7680][0,7680,1])
         { metadata = @of_fromMem, id = 0 : i64 } : memref<8294400xi8>
     }
     %tile = aie.tile(0, 0)

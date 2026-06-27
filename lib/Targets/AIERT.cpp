@@ -494,6 +494,23 @@ LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetPadding, &dmaTileBd,
                             &dmaPadTensor);
   }
+
+  // Explicit buffer-descriptor iteration (a strided replay of the whole BD).
+  // XAie_DmaSetBdIteration takes LOGICAL (1-based) Wrap and StepSize -- the
+  // driver subtracts 1 when packing the registers -- so pass iter_size/stride
+  // raw. StepSize is in 32b words; iter_stride is in element units.
+  if (uint32_t iterSize = bdOp.getIterSize(); iterSize > 0) {
+    double elementWidthIn32bWords =
+        static_cast<double>(bdOp.getBufferElementTypeWidthInBytes()) / 4.0;
+    uint32_t iterStepSize = static_cast<uint32_t>(
+        static_cast<double>(bdOp.getIterStride()) * elementWidthIn32bWords);
+    // A zero step (no address increment) is encoded as 1 word, matching the
+    // other dimensions' "stride > 0 ? stride : 1" handling above.
+    iterStepSize = iterStepSize > 0 ? iterStepSize : 1;
+    TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetBdIteration, &dmaTileBd,
+                            iterStepSize, static_cast<uint8_t>(iterSize),
+                            static_cast<uint8_t>(bdOp.getIterCurrent()));
+  }
   if (nextBdId) {
     auto enableNextBd = 1;
     TRY_XAIE_API_EMIT_ERROR(bdOp, XAie_DmaSetNextBd, &dmaTileBd,

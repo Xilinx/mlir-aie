@@ -188,8 +188,8 @@ def my_vector_add():
         # To/from AIE-array data movement
         @runtime_sequence(tensor_ty_c, tensor_ty_c, tensor_ty_c)
         def sequence(A, B, C):
-            npu_dma_memcpy_nd(metadata="in1", bd_id=1, mem=A, sizes=[1, 1, 1, N])
-            npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, 1, N])
+            npu_dma_memcpy_nd(metadata="in1", bd_id=1, mem=A, sizes=[1, 1, N])
+            npu_dma_memcpy_nd(metadata="out", bd_id=0, mem=C, sizes=[1, 1, N])
             npu_dma_wait("out")
 
 

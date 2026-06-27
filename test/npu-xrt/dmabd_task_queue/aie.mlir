@@ -181,10 +181,10 @@ module {
     aie.shim_dma_allocation @airMemcpyId4 (%tile_0_0, MM2S, 0)
     aie.shim_dma_allocation @airMemcpyId5 (%tile_1_0, MM2S, 0)
     aie.runtime_sequence @six(%arg0: memref<5xi32>, %arg1: memref<96xi32>, %arg2: memref<96xi32>, %arg3: memref<9xi32>) {
-      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 5][0, 0, 0, 1]) {id = 0 : i64, metadata = @airMemcpyId4} : memref<5xi32>
-      aiex.npu.dma_memcpy_nd(%arg1[0, 0, 0, 0][1, 1, 1, 96][0, 0, 0, 1]) {id = 0 : i64, metadata = @airMemcpyId4} : memref<96xi32>
-      aiex.npu.dma_memcpy_nd(%arg2[0, 0, 0, 0][1, 1, 1, 96][0, 0, 0, 1]) {id = 0 : i64, metadata = @airMemcpyId5} : memref<96xi32>
-      aiex.npu.dma_memcpy_nd(%arg3[0, 0, 0, 0][1, 1, 1, 9][0, 0, 0, 1]) {id = 0 : i64, metadata = @airMemcpyId12} : memref<9xi32>
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0][1, 1, 5][0, 0, 1]) {id = 0 : i64, metadata = @airMemcpyId4} : memref<5xi32>
+      aiex.npu.dma_memcpy_nd(%arg1[0, 0, 0][1, 1, 96][0, 0, 1]) {id = 0 : i64, metadata = @airMemcpyId4} : memref<96xi32>
+      aiex.npu.dma_memcpy_nd(%arg2[0, 0, 0][1, 1, 96][0, 0, 1]) {id = 0 : i64, metadata = @airMemcpyId5} : memref<96xi32>
+      aiex.npu.dma_memcpy_nd(%arg3[0, 0, 0][1, 1, 9][0, 0, 1]) {id = 0 : i64, metadata = @airMemcpyId12} : memref<9xi32>
       aiex.npu.sync {channel = 0 : i32, column = 2 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
     }
   }

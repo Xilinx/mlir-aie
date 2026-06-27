@@ -26,13 +26,13 @@
 // CANON-LABEL: aie.device(npu1)
 // CANON:         aie.runtime_sequence @large_d0_contiguous
 // CANON:           aiex.npu.dma_memcpy_nd
-// CANON-SAME:        [0, 0, 0, 0][1, 1, 1, 2073600][0, 0, 0, 1]
+// CANON-SAME:        [0, 0, 0][1, 1, 2073600][0, 0, 1]
 module {
   aie.device(npu1) {
     // 1080 rows x 1920 i32 words/row = 2073600 elements.
     // d0 = 1920, d1 = 1080: both exceed 1023 but the access is contiguous.
     aie.runtime_sequence @large_d0_contiguous(%arg0 : memref<2073600xi32>) {
-      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 1080, 1920][0, 0, 1920, 1])
+      aiex.npu.dma_memcpy_nd (%arg0[0,0,0][1,1080,1920][0,1920,1])
         { metadata = @of_fromMem, id = 0 : i64 } : memref<2073600xi32>
     }
     %tile = aie.tile(0, 0)
@@ -48,11 +48,11 @@ module {
 // CANON-LABEL: aie.device(npu1)
 // CANON:         aie.runtime_sequence @large_i8_image
 // CANON:           aiex.npu.dma_memcpy_nd
-// CANON-SAME:        [0, 0, 0, 0][1, 1, 1, 8294400][0, 0, 0, 1]
+// CANON-SAME:        [0, 0, 0][1, 1, 8294400][0, 0, 1]
 module {
   aie.device(npu1) {
     aie.runtime_sequence @large_i8_image(%arg0 : memref<8294400xi8>) {
-      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 1080, 7680][0, 0, 7680, 1])
+      aiex.npu.dma_memcpy_nd (%arg0[0,0,0][1,1080,7680][0,7680,1])
         { metadata = @of_fromMem, id = 0 : i64 } : memref<8294400xi8>
     }
     %tile = aie.tile(0, 0)
@@ -124,7 +124,7 @@ module {
     // aie-dma-to-npu must lower to linear mode: buffer_length=2073600, all
     // wrap/stride fields zero (d0_size=d1_size=0).
     aie.runtime_sequence @dma_to_npu_large(%arg0 : memref<2073600xi32>) {
-      aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 1080, 1920][0, 0, 1920, 1])
+      aiex.npu.dma_memcpy_nd (%arg0[0,0,0][1,1080,1920][0,1920,1])
         { metadata = @of_fromMem, id = 0 : i64 } : memref<2073600xi32>
     }
     %tile = aie.tile(0, 0)
