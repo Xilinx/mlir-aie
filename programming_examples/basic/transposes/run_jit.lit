@@ -7,8 +7,8 @@
 // each one JITs, runs on the NPU, and verifies in Python.  No C++
 // testbench involved.
 //
-// RUN: %run_on_npu2% python3 %S/transposes.py -d npu2 -s dma | FileCheck %s
-// RUN: %run_on_npu2% python3 %S/transposes.py -d npu2 -s dma_packet | FileCheck %s
-// RUN: %run_on_npu2% python3 %S/transposes.py -d npu2 -s shuffle | FileCheck %s
-// RUN: %run_on_npu2% python3 %S/transposes.py -d npu2 -s combined | FileCheck %s
+// RUN: %run_on_npu2% %python %S/transposes.py -d npu2 -s dma | FileCheck %s
+// RUN: %run_on_npu2% %python %S/transposes.py -d npu2 -s dma_packet | FileCheck %s
+// RUN: %run_on_npu2% %python %S/transposes.py -d npu2 -s shuffle | FileCheck %s
+// RUN: %run_on_npu2% %python %S/transposes.py -d npu2 -s combined | FileCheck %s
 // CHECK: PASS!
