@@ -1,3 +1,8 @@
 --extra-index-url https://download.pytorch.org/whl/cpu
 # Exact pin: PEP 440 forbids the +cpu local label with range operators (>=).
 torch==2.12.0+cpu
+# onnx + onnxruntime drive the bit-exact NPU-vs-ORT host comparisons for
+# the yolo26n example (programming_examples/ml/yolo26n/test_{block,chain}_ort.py
+# and gen_yolo_{data,silu_luts}.py).
+onnx
+onnxruntime

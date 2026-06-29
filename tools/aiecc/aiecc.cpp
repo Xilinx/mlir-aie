@@ -38,6 +38,7 @@
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/Support/ToolUtilities.h"
 
+#include "llvm/ADT/APFloat.h"
 #include "llvm/Support/CommandLine.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/InitLLVM.h"
@@ -107,6 +108,7 @@
 #include <cctype>
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
@@ -2070,6 +2072,83 @@ static std::string downgradeIRForPeano(StringRef ir) {
   replaceTypedLiteral("double -inf", "double 0xFFF0000000000000");
   replaceTypedLiteral("double inf", "double 0x7FF0000000000000");
   replaceTypedLiteral("double nan", "double 0x7FF8000000000000");
+  // Normalize 'float <literal>' constants to the legacy hex form Peano accepts.
+  // Recent main LLVM prints single-precision constants in two ways Peano's opt
+  // parser rejects:
+  //   - the compact 8-hex-digit form 'float f0x########' (raw f32 bits), and
+  //   - a decimal that is not exactly representable as f32, e.g.
+  //     'float 3.642500e-02' ("floating point constant invalid for type").
+  // Peano only accepts a float written as the 16-hex-digit pattern of the value
+  // promoted to double (the classic LLVM-IR float-hex encoding) or an exact
+  // decimal. Rewrite both forms to that hex encoding. Only 'float' is affected;
+  // half/bfloat/double print in forms Peano already parses. Anchor on a
+  // non-identifier char before the 'float ' keyword so we never match inside a
+  // wider type name (e.g. 'bfloat').
+  auto toPeanoFloatHex = [](const llvm::APFloat &single) {
+    llvm::APFloat asDouble = single;
+    bool losesInfo = false;
+    asDouble.convert(llvm::APFloat::IEEEdouble(),
+                     llvm::APFloat::rmNearestTiesToEven, &losesInfo);
+    uint64_t dbits = asDouble.bitcastToAPInt().getZExtValue();
+    char buf[19];
+    std::snprintf(buf, sizeof(buf), "0x%016llX",
+                  static_cast<unsigned long long>(dbits));
+    return std::string(buf);
+  };
+  {
+    const std::string fkw = "float ";
+    size_t pos = 0;
+    while ((pos = result.find(fkw, pos)) != std::string::npos) {
+      if (pos != 0 && isIdentChar(result[pos - 1])) {
+        pos += fkw.size();
+        continue;
+      }
+      size_t litStart = pos + fkw.size();
+      // Capture the literal token up to the next delimiter.
+      size_t end = litStart;
+      while (end < result.size() && result[end] != ',' && result[end] != ']' &&
+             result[end] != ')' && result[end] != '\n' && result[end] != ' ')
+        ++end;
+      StringRef tok(result.data() + litStart, end - litStart);
+      // Skip non-numeric operands (e.g. 'float %0', 'float undef', already-hex
+      // 'float 0x...'): only rewrite f0x-compact or plain decimal literals.
+      bool isFhex = tok.starts_with("f0x");
+      bool isPlainHex = tok.starts_with("0x");
+      bool startsNumeric =
+          !tok.empty() &&
+          (tok.front() == '-' || tok.front() == '+' || tok.front() == '.' ||
+           (tok.front() >= '0' && tok.front() <= '9'));
+      if (isPlainHex || (!isFhex && !startsNumeric)) {
+        pos = end;
+        continue;
+      }
+      llvm::APFloat single(llvm::APFloat::IEEEsingle());
+      bool ok = false;
+      if (isFhex) {
+        StringRef hex = tok.drop_front(3); // after 'f0x'
+        unsigned long long bits = 0;
+        if (hex.size() == 8 && !hex.getAsInteger(16, bits)) {
+          single =
+              llvm::APFloat(llvm::APFloat::IEEEsingle(), llvm::APInt(32, bits));
+          ok = true;
+        }
+      } else {
+        auto status =
+            single.convertFromString(tok, llvm::APFloat::rmNearestTiesToEven);
+        if (status)
+          ok = true;
+        else
+          llvm::consumeError(status.takeError());
+      }
+      if (!ok) {
+        pos = end;
+        continue;
+      }
+      std::string hexForm = toPeanoFloatHex(single);
+      result.replace(litStart, end - litStart, hexForm);
+      pos = litStart + hexForm.size();
+    }
+  }
   // Strip 'nocreateundeforpoison' and any trailing whitespace: current Peano
   // LLVM cannot parse this attribute.
   const std::string nocreate = "nocreateundeforpoison";

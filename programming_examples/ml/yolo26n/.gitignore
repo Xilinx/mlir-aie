@@ -1,0 +1,6 @@
+build/
+data/
+# FP32 source checkpoint is regenerable via the Quark quantization notebook
+# (notebooks/quark_quantization.ipynb). Only the XINT8 ONNX is required for
+# CI / make data / lit and is tracked.
+models/*.pt

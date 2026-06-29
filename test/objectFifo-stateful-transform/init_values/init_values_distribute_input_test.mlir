@@ -32,22 +32,20 @@
 // CHECK:     %[[VAL_13:.*]] = aie.lock(%{{.*}}tile_1_1, 3) {init = 0 : i32, sym_name = "of0_cons_cons_lock_1"}
 // CHECK:     %[[VAL_14:.*]] = aie.buffer(%{{.*}}tile_1_3) {sym_name = "of0_buff_0"} : memref<4xi32> = dense<[0, 1, 2, 3]>
 // CHECK:     %[[VAL_15:.*]] = aie.buffer(%{{.*}}tile_1_3) {sym_name = "of0_buff_1"} : memref<4xi32> = dense<[4, 5, 6, 7]>
-// CHECK:     %[[VAL_16:.*]] = aie.lock(%{{.*}}tile_1_3, 0) {init = 0 : i32, sym_name = "of0_prod_lock_0"}
-// CHECK:     %[[VAL_17:.*]] = aie.lock(%{{.*}}tile_1_3, 1) {init = 2 : i32, sym_name = "of0_cons_lock_0"}
+// Source-side locks skipped for static-init cycling chain (see
+// init_values_no_link_skips_source_locks.mlir for rationale).
+// CHECK-NOT: sym_name = "of0_prod_lock_0"
+// CHECK-NOT: sym_name = "of0_cons_lock_0"
 // CHECK:     aie.flow(%{{.*}}tile_1_3, DMA : 0, %{{.*}}tile_1_1, DMA : 0)
 // CHECK:     aie.flow(%{{.*}}tile_1_1, DMA : 0, %{{.*}}tile_1_2, DMA : 0)
 // CHECK:     aie.flow(%{{.*}}tile_1_1, DMA : 1, %{{.*}}tile_2_3, DMA : 0)
 // CHECK:     %mem_1_3 = aie.mem(%{{.*}}tile_1_3) {
 // CHECK:       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
-// CHECK:       aie.use_lock(%[[VAL_17]], AcquireGreaterEqual, 1)
 // CHECK:       aie.dma_bd(%[[VAL_14]] : memref<4xi32>, 0, 4)
-// CHECK:       aie.use_lock(%[[VAL_16]], Release, 1)
 // CHECK:       aie.next_bd ^bb2
 // CHECK:     ^bb2:  // pred: ^bb1
-// CHECK:       aie.use_lock(%[[VAL_17]], AcquireGreaterEqual, 1)
 // CHECK:       aie.dma_bd(%[[VAL_15]] : memref<4xi32>, 0, 4)
-// CHECK:       aie.use_lock(%[[VAL_16]], Release, 1)
 // CHECK:       aie.next_bd ^bb1
 // CHECK:     ^bb3:  // pred: ^bb0
 // CHECK:       aie.end
