@@ -269,3 +269,38 @@ def test_iron_reexports_set_current_device():
     import aie.iron as iron
 
     assert iron.set_current_device is set_current_device
+
+
+def test_cleanup_npu_runtime_releases_cached_default_runtime(monkeypatch):
+    """Runtime cleanup releases resources from an existing cached default runtime."""
+    import aie.utils as utils
+
+    class FakeRuntime:
+        def __init__(self):
+            self.cleanup_calls = 0
+
+        def cleanup(self):
+            self.cleanup_calls += 1
+
+    runtime = FakeRuntime()
+    monkeypatch.setattr(utils, "_DefaultNPURuntime", runtime)
+    monkeypatch.delitem(utils.__dict__, "DefaultNPURuntime", raising=False)
+
+    utils.cleanup_npu_runtime()
+
+    assert runtime.cleanup_calls == 1
+
+
+def test_cleanup_npu_runtime_does_not_initialize_default_runtime(monkeypatch):
+    """Runtime cleanup is a no-op until a default runtime already exists."""
+    import aie.utils as utils
+
+    monkeypatch.setattr(utils, "_DefaultNPURuntime", None)
+    monkeypatch.delitem(utils.__dict__, "DefaultNPURuntime", raising=False)
+    monkeypatch.setattr(
+        utils,
+        "_get_default_npu_runtime",
+        lambda: pytest.fail("runtime cleanup must not initialize XRT"),
+    )
+
+    utils.cleanup_npu_runtime()

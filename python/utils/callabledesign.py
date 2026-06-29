@@ -337,9 +337,14 @@ class CallableDesign:
             extra_key=compilable._generation_cache_key(),
         )
 
-        if compilable.use_cache and cache_key in self._kernel_cache:
-            kernel = self._kernel_cache[cache_key]
-        else:
+        kernel = self._kernel_cache.get(cache_key) if compilable.use_cache else None
+        if kernel is not None and (
+            not Path(kernel.xclbin_path).is_file()
+            or not Path(kernel.insts_path).is_file()
+        ):
+            self._kernel_cache.pop(cache_key, None)
+            kernel = None
+        if kernel is None:
             kernel = self._compile_and_build_kernel(compilable, cache_key, trace_config)
 
         tensor_args, remaining_scalars = compilable.split_runtime_args(

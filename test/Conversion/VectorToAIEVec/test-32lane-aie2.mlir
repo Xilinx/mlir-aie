@@ -7,7 +7,7 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
-// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aie2 target-backend=llvmir" | FileCheck %s
+// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aie2" | FileCheck %s
 
 // Tests for 32-lane vector operations on AIE2
 // These operations are split into two 16-lane operations and concatenated back together
