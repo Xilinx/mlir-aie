@@ -180,7 +180,7 @@ jobs:
     uses: ./.github/workflows/buildRyzenWheels.yml
     with:
       python_version: "3.12"
-      enable_rtti: ON
+      enable_rtti: "ON"
       reusable_call: true
     permissions:
       id-token: write
