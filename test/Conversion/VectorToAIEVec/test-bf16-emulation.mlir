@@ -10,7 +10,7 @@
 
 // Test the bf16-emulation option which demotes f32 vector arithmetic to bf16.
 
-// RUN: aie-opt %s -split-input-file --canonicalize-vector-for-aievec="aie-target=aie2 target-backend=llvmir bf16-emulation=true" | FileCheck %s
+// RUN: aie-opt %s -split-input-file --canonicalize-vector-for-aievec="aie-target=aie2 bf16-emulation" | FileCheck %s
 
 // Test: basic addf demotion
 // CHECK-LABEL: func @test_addf

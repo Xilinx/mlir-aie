@@ -1,4 +1,4 @@
-// RUN: aie-opt %s -canonicalize-vector-for-aievec="aie-target=aie2 target-backend=llvmir" -split-input-file | FileCheck %s
+// RUN: aie-opt %s -canonicalize-vector-for-aievec="aie-target=aie2" -split-input-file | FileCheck %s
 
 // CHECK-LABEL: @scalar_extsi_to_broadcast_swap(
 // CHECK-SAME: %[[SIN:.*]]: i8

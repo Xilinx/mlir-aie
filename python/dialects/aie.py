@@ -36,7 +36,6 @@ from .._mlir_libs._aie import (
     generate_control_packets,
     translate_npu_to_binary,
     register_dialect,
-    translate_aie_vec_to_cpp,
     translate_mlir_to_llvmir,
     transaction_binary_to_mlir,
     tile_like_is_core_tile,

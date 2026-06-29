@@ -90,13 +90,6 @@ NB_MODULE(_aie, m) {
   };
 
   m.def(
-      "translate_aie_vec_to_cpp",
-      [&stealCStr](MlirOperation op, bool aie2) {
-        return stealCStr(aieTranslateAIEVecToCpp(op, aie2));
-      },
-      "module"_a, "aie2"_a = false);
-
-  m.def(
       "translate_mlir_to_llvmir",
       [&stealCStr](MlirOperation op) {
         return stealCStr(aieTranslateModuleToLLVMIR(op));

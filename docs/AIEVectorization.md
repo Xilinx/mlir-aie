@@ -1,4 +1,6 @@
-﻿# AIE Automatic Vectorization
+﻿<span style="color:red;font-weight:bold;font-size:48px">WARNING: This is documentation for legacy functionality. The last version where these passes are present is [tagged as "last-legacy-vectorize"](https://github.com/Xilinx/mlir-aie/tree/last-legacy-vectorize)</span>.
+
+# AIE Automatic Vectorization
 
 Achieving high performance with the AIEngine architecture typically requires executing vector multiply-accumulate instructions.  Ideally, an algorithm would start a new pipelined vector multiple-accumulate instruction on every clock cycle, although in practice achieving this outside of high-performance inner loops is very difficult.  Explicitly coding vector operations in C++ can take significant expertise, taking into account memory layout, register pressure, and different data types. [Ref:Vyasa](https://github.com/stephenneuendorffer/vyasa)  Fortunately, by leveraging the MLIR infrastructure, it is possible to generate reasonably high-performance code in many circumstances.
 
