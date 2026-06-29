@@ -2144,6 +2144,65 @@ static std::string downgradeIRForPeano(StringRef ir) {
       }
     }
   }
+  // Rewrite LLVM 23+ decimal bfloat16 literals ('bfloat N.NNe+NN') to the
+  // hexadecimal form ('bfloat 0xR<4hex>') that Peano's LLVM 21 opt can parse.
+  // LLVM 23 started printing bfloat constants as decimal strings (e.g.
+  // 'bfloat 1.445310e+00'); older LLVM requires the 0xR-prefixed bit-exact
+  // hex form. The conversion uses round-to-nearest-even (matching the C
+  // floating-point default) so that the encoded bits match the original
+  // bfloat16 constant exactly.
+  {
+    // Match "bfloat" followed by a decimal number (not already 0x-prefixed).
+    const std::string bfPfx = "bfloat ";
+    pos = 0;
+    while ((pos = result.find(bfPfx, pos)) != std::string::npos) {
+      size_t numStart = pos + bfPfx.size();
+      // Skip if this is already a hex constant (0x / 0xR / 0xH …).
+      if (numStart + 1 < result.size() && result[numStart] == '0' &&
+          result[numStart + 1] == 'x') {
+        pos = numStart;
+        continue;
+      }
+      // Collect an optional leading '-' and then digits/dot/exponent chars.
+      size_t numEnd = numStart;
+      if (numEnd < result.size() && result[numEnd] == '-')
+        ++numEnd;
+      // Must start with a digit.
+      if (numEnd >= result.size() ||
+          !std::isdigit(static_cast<unsigned char>(result[numEnd]))) {
+        pos = numStart;
+        continue;
+      }
+      while (numEnd < result.size() &&
+             (std::isdigit(static_cast<unsigned char>(result[numEnd])) ||
+              result[numEnd] == '.' || result[numEnd] == 'e' ||
+              result[numEnd] == 'E' || result[numEnd] == '+' ||
+              result[numEnd] == '-'))
+        ++numEnd;
+      std::string numStr = result.substr(numStart, numEnd - numStart);
+      // Parse as float32 and convert to bfloat16 via round-to-nearest-even.
+      // bfloat16 shares the float32 exponent; its 16 bits are the top 16 bits
+      // of float32 (after RNE rounding).
+      char *endp = nullptr;
+      float fval = std::strtof(numStr.c_str(), &endp);
+      if (!endp || endp == numStr.c_str()) {
+        pos = numEnd;
+        continue;
+      }
+      uint32_t f32bits;
+      std::memcpy(&f32bits, &fval, sizeof(f32bits));
+      // Round-to-nearest-even: add 0x7FFF + the LSB of the bfloat16 position.
+      uint32_t lsb = (f32bits >> 16) & 1u;
+      uint16_t bf16bits =
+          static_cast<uint16_t>((f32bits + 0x7FFFu + lsb) >> 16);
+      // Format as "bfloat 0xR" followed by 4 uppercase hex digits.
+      std::string replacement = "bfloat 0xR";
+      for (int shift = 12; shift >= 0; shift -= 4)
+        replacement += "0123456789ABCDEF"[(bf16bits >> shift) & 0xFu];
+      result.replace(pos, numEnd - pos, replacement);
+      pos += replacement.size();
+    }
+  }
   return result;
 }
 
