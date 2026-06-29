@@ -81,6 +81,7 @@ def test_aievec():
     # CHECK:         }
     mul_elem.emit()
 
+
 # CHECK-LABEL: TEST: test_tiled_nonsquare_tile_matrix_mult_vectorized
 @construct_and_print_module
 def test_tiled_nonsquare_tile_matrix_mult_vectorized(module):
