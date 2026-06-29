@@ -328,10 +328,10 @@ static cl::opt<bool> dryRun("n",
                             cl::desc("Dry run mode (don't execute commands)"),
                             cl::init(false), cl::cat(aieCompilerOptions));
 
-// Default true (enabled by #2549). This intentionally differs from the
-// aie-objectFifo-stateful-transform pass-level default (false in AIEPasses.td):
-// the driver default is what every real compile sees, while the pass default
-// only governs standalone `aie-opt` runs.
+// Default true (enabled by #2549). Kept in sync with the
+// aie-objectFifo-stateful-transform pass-level default (AIEPasses.td) so the
+// lowering a design gets is the same whether it goes through aiecc or a
+// standalone `aie-opt` run.
 static cl::opt<bool> dynamicObjFifos("dynamic-objFifos",
                                      cl::desc("Use dynamic object FIFOs"),
                                      cl::init(true),

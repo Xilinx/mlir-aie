@@ -343,13 +343,13 @@ def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "
   ];
 
   let options = [
-    // NOTE: this pass-level default (false) differs from the aiecc driver
-    // default (true, see tools/aiecc/aiecc.cpp). Every real compile goes through
-    // aiecc and therefore gets dynamic lowering; this false default only applies
-    // to standalone `aie-opt` invocations (e.g. lit tests), which pass the flag
-    // explicitly to pin the path they intend to exercise.
-    Option<"clDynamicObjectFifos", "dynamic-objFifos", "bool", /*default=*/"false",
-           "Flag to enable dynamic object fifo lowering in cores instead of loop unrolling.">,
+    // Default true: dynamic (loop-preserving) lowering. This matches the aiecc
+    // driver default (tools/aiecc/aiecc.cpp) so standalone `aie-opt` and a full
+    // compile agree on the lowering a design gets. Pass dynamic-objFifos=false to
+    // select static LCM-based loop unrolling instead.
+    Option<"clDynamicObjectFifos", "dynamic-objFifos", "bool", /*default=*/"true",
+           "Use dynamic (loop-preserving) object fifo lowering in cores. When "
+           "false, use static loop unrolling instead.">,
     Option<"clPacketSwObjectFifos", "packet-sw-objFifos", "bool", /*default=*/"false",
            "Flag to enable aie.packetflow lowering from objectfifos.">,
   ];
