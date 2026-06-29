@@ -2190,7 +2190,10 @@ static std::string downgradeIRForPeano(StringRef ir) {
       // of float32 (after RNE rounding).
       char *endp = nullptr;
       float fval = std::strtof(numStr.c_str(), &endp);
-      if (!endp || endp == numStr.c_str()) {
+      // Require that strtof consumed the *entire* numStr; if it stopped early
+      // (e.g. on an unexpected character) we must not rewrite the token using
+      // a partially-parsed value.
+      if (!endp || endp != numStr.c_str() + numStr.size()) {
         pos = numEnd;
         continue;
       }
@@ -2207,6 +2210,103 @@ static std::string downgradeIRForPeano(StringRef ir) {
       result.replace(pos, numEnd - pos, replacement);
       pos += replacement.size();
     }
+  }
+  // Second pass: rewrite bare decimal bfloat constants that appear without an
+  // explicit type prefix (e.g. 'fmul bfloat %x, 1.445310e+00'). In such
+  // instructions LLVM 23 omits the type keyword before the constant operand;
+  // Peano's LLVM 21 cannot parse the decimal form in this context either.
+  // Strategy: scan line-by-line; for any line whose instruction type is
+  // 'bfloat', convert every bare decimal float operand on that line.
+  {
+    auto convertDecimalBf = [&](uint32_t f32bits) -> std::string {
+      uint32_t lsb = (f32bits >> 16) & 1u;
+      uint16_t bf16bits =
+          static_cast<uint16_t>((f32bits + 0x7FFFu + lsb) >> 16);
+      std::string r = "0xR";
+      for (int sh = 12; sh >= 0; sh -= 4)
+        r += "0123456789ABCDEF"[(bf16bits >> sh) & 0xFu];
+      return r;
+    };
+    // We need to process line-by-line, so work on a copy split into lines.
+    std::string out;
+    out.reserve(result.size());
+    size_t lineStart = 0;
+    while (lineStart <= result.size()) {
+      size_t lineEnd = result.find('\n', lineStart);
+      bool hasNewline = (lineEnd != std::string::npos);
+      if (!hasNewline)
+        lineEnd = result.size();
+      std::string line = result.substr(lineStart, lineEnd - lineStart);
+      // Only process lines where 'bfloat' appears as a type (i.e., the word
+      // 'bfloat' is in the instruction line, not as part of an identifier).
+      // Simple heuristic: look for " bfloat " or " bfloat," or "= bfloat ".
+      bool hasBfloatType = line.find(" bfloat ") != std::string::npos ||
+                           line.find(" bfloat,") != std::string::npos ||
+                           line.find("= bfloat\n") != std::string::npos;
+      if (hasBfloatType) {
+        // Scan for bare decimal float literals: must be preceded by ", " (or
+        // "( ") and start with an optional '-' then a digit.
+        std::string newLine;
+        newLine.reserve(line.size());
+        size_t lp = 0;
+        while (lp < line.size()) {
+          // Look for ", " or "( " before a potential decimal.
+          size_t sep = line.find(", ", lp);
+          size_t paren = line.find("( ", lp);
+          size_t next =
+              (sep < paren ? sep : paren); // take whichever comes first
+          if (next == std::string::npos) {
+            newLine += line.substr(lp);
+            break;
+          }
+          size_t afterSep = next + 2; // skip ", " or "( "
+          newLine += line.substr(lp, afterSep - lp);
+          lp = afterSep;
+          // Try to parse a decimal float starting here.
+          size_t numStart = lp;
+          size_t numEnd = numStart;
+          if (numEnd < line.size() && line[numEnd] == '-')
+            ++numEnd;
+          if (numEnd >= line.size() ||
+              !std::isdigit(static_cast<unsigned char>(line[numEnd]))) {
+            continue; // not a decimal, keep scanning
+          }
+          while (numEnd < line.size() &&
+                 (std::isdigit(static_cast<unsigned char>(line[numEnd])) ||
+                  line[numEnd] == '.' || line[numEnd] == 'e' ||
+                  line[numEnd] == 'E' || line[numEnd] == '+' ||
+                  line[numEnd] == '-'))
+            ++numEnd;
+          std::string numStr = line.substr(numStart, numEnd - numStart);
+          // Skip if it already looks like an integer (no '.', 'e', or 'E').
+          bool isFloat = numStr.find('.') != std::string::npos ||
+                         numStr.find('e') != std::string::npos ||
+                         numStr.find('E') != std::string::npos;
+          if (!isFloat) {
+            newLine += numStr;
+            lp = numEnd;
+            continue;
+          }
+          char *ep = nullptr;
+          float fv = std::strtof(numStr.c_str(), &ep);
+          if (!ep || ep != numStr.c_str() + numStr.size()) {
+            newLine += numStr;
+            lp = numEnd;
+            continue;
+          }
+          uint32_t f32bits;
+          std::memcpy(&f32bits, &fv, sizeof(f32bits));
+          newLine += convertDecimalBf(f32bits);
+          lp = numEnd;
+        }
+        line = std::move(newLine);
+      }
+      out += line;
+      if (hasNewline)
+        out += '\n';
+      lineStart = lineEnd + (hasNewline ? 1 : result.size() + 1);
+    }
+    result = std::move(out);
   }
   return result;
 }
