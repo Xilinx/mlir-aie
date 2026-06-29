@@ -12,6 +12,9 @@ on:
       - main
       - test-ryzen-ai
   pull_request:
+    # Default activity types plus labeled/unlabeled so toggling the
+    # "test-wheels" label re-evaluates the gated wheel-example jobs.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   merge_group:
   schedule:
     # Runs at midnight (00:00) every day
@@ -167,8 +170,27 @@ jobs:
           rm -rf $NPU_CACHE_HOME
           rm -rf $PIP_CACHE_DIR
 
+  # Build the single wheel the examples run against, FROM THIS RUN's commit, so
+  # the example test never installs a stale published wheel. Expensive
+  # (~19 min), so gated: runs in the merge queue (authoritative, on the
+  # post-merge commit) or on demand when a PR carries the "test-wheels" label.
+  build-examples-wheel:
+    name: Build examples wheel (py3.12, RTTI ON)
+    if: ${{ github.event_name == 'merge_group' || contains(github.event.pull_request.labels.*.name, 'test-wheels') }}
+    uses: ./.github/workflows/buildRyzenWheels.yml
+    with:
+      python_version: "3.12"
+      enable_rtti: ON
+      reusable_call: true
+    permissions:
+      id-token: write
+      contents: read
+      attestations: write
+
   build-quick-setup:
     name: Run Examples on Ryzen AI
+    needs: build-examples-wheel
+    if: ${{ github.event_name == 'merge_group' || contains(github.event.pull_request.labels.*.name, 'test-wheels') }}
     runs-on: ${{ matrix.runner_type }}
     strategy:
       fail-fast: false
@@ -182,6 +204,14 @@ jobs:
         with:
           submodules: "true"
 
+      # Pull the wheel built from this same run (build-examples-wheel) so the
+      # examples test exactly this commit's mlir_aie, not a published tag.
+      - name: Download same-commit mlir_aie wheel
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
+        with:
+          name: mlir_aie_rtti_ON-3.12
+          path: ${{ github.workspace }}/examples-wheel
+
       # Launch an ssh session via a proxy server if there is a need
       # for debug. This seems to live for 35 min max
       # https://github.com/mxschmitt/action-tmate
@@ -191,7 +221,7 @@ jobs:
         # click on "launch_tmate_terminal_for_debug"
         if: github.event_name == 'workflow_dispatch'
                 && inputs.launch_tmate_terminal_for_debug
-      
+
       - name: Print hostname
         run: hostname
 
@@ -202,6 +232,9 @@ jobs:
           # only when present so the job works on both old and new XRT.
           [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
           export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
+          # Install the same-commit wheel downloaded above instead of the
+          # published rolling tag.
+          export MLIR_AIE_WHEEL_DIR="${{ github.workspace }}/examples-wheel"
           source utils/quick_setup.sh
           # quick_setup changes directory to programming_examples, so we need to return to mlir-aie
           cd ..
@@ -259,6 +292,23 @@ jobs:
             LIT_FILTER="gemm_asymmetric_tile_buffering" \
             ninja check-reference-designs
           popd
+
+      - name: Explain failure
+        if: failure()
+        run: |
+          cat >&2 <<'EOF'
+          ::error::Wheel example validation failed.
+          This job installs the mlir_aie wheel built from THIS commit (job
+          build-examples-wheel) and runs the examples against it. A failure here
+          usually means either:
+            * the wheel build failed, or
+            * an example imports an mlir_aie symbol the built wheel does not
+              expose (source/wheel skew) — e.g. a new symbol added in this PR.
+
+          To reproduce on your PR without waiting for the merge queue, add the
+          "test-wheels" label to the PR (remove and re-add it to re-run). That
+          runs this exact build + example test on your branch.
+          EOF
 
       - name: Cleanup NPU_CACHE_HOME
         if: always()
