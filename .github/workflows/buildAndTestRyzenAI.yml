@@ -178,9 +178,13 @@ jobs:
       python_version: "3.12"
       enable_rtti: "ON"
       reusable_call: true
+    # Must grant at least what the called workflow's build-repo job declares
+    # (contents: write + packages: read for attestation and the ghcr base
+    # image), or reusable-workflow validation fails at startup.
     permissions:
       id-token: write
-      contents: read
+      contents: write
+      packages: read
       attestations: write
 
   build-quick-setup:
