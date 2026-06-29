@@ -70,11 +70,15 @@ APPROVED: list[tuple[str, str]] = [
     # Vendored third-party — kept verbatim to preserve upstream attribution.
     # These are declared in REUSE.toml override blocks (where upstream uses a
     # lowercase "(c)"), so accept either case for the (C) marker.
-    ("SAFARI (horizontal_diffusion)",
-     rf"{_CR} \([Cc]\) 2023 SAFARI Research Group at ETH Zurich and Carnegie Mellon University"),
+    (
+        "SAFARI (horizontal_diffusion)",
+        rf"{_CR} \([Cc]\) 2023 SAFARI Research Group at ETH Zurich and Carnegie Mellon University",
+    ),
     ("Jarryd Beck (cxxopts)", rf"{_CR} \([Cc]\) 2014-2022 Jarryd Beck"),
-    ("Trustees of Indiana University (d_ary_heap)",
-     rf"{_CR} 2009 Trustees of Indiana University"),
+    (
+        "Trustees of Indiana University (d_ary_heap)",
+        rf"{_CR} 2009 Trustees of Indiana University",
+    ),
     ("Google (vendored)", rf"{_CR} \([Cc]\) 2011 Google, Inc\."),
 ]
 
