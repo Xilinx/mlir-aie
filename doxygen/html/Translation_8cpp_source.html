@@ -99,222 +99,208 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span><span class="keyword">using namespace </span><a class="code hl_namespace" href="namespacexilinx_1_1AIE.html">xilinx::AIE</a>;</div>
 <div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span> </div>
 <div class="foldopen" id="foldopen00041" data-start="{" data-end="}">
-<div class="line"><a id="l00041" name="l00041"></a><span class="lineno"><a class="line" href="Translation_8h.html#a9821f28adac21342929644e457c9bd36">   41</a></span>MlirStringRef <a class="code hl_function" href="Translation_8cpp.html#a630e7f4dad7103578930f732cf8ebe6c">aieTranslateAIEVecToCpp</a>(MlirOperation moduleOp, <span class="keywordtype">bool</span> aie2) {</div>
-<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span>  std::string cpp;</div>
-<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span>  llvm::raw_string_ostream <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#af6973de2c7d07d18ca25f11401849238">os</a>(cpp);</div>
+<div class="line"><a id="l00041" name="l00041"></a><span class="lineno"><a class="line" href="Translation_8h.html#a8121e3ebc5ad2408b69645a5695f5144">   41</a></span>MlirStringRef <a class="code hl_function" href="Translation_8cpp.html#a21b6b5d3f5f623a423cec80419c841ee">aieTranslateModuleToLLVMIR</a>(MlirOperation moduleOp) {</div>
+<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span>  std::string llvmir;</div>
+<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span>  llvm::raw_string_ostream <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#af6973de2c7d07d18ca25f11401849238">os</a>(llvmir);</div>
 <div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>  ModuleOp mod = llvm::cast&lt;ModuleOp&gt;(unwrap(moduleOp));</div>
-<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span>  <span class="keywordflow">if</span> (failed(<a class="code hl_function" href="namespacexilinx_1_1aievec.html#a00e8f83c1c8e075872c09d6af694c9bf">xilinx::aievec::translateAIEVecToCpp</a>(mod, aie2, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#af6973de2c7d07d18ca25f11401849238">os</a>)))</div>
-<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>    <span class="keywordflow">return</span> mlirStringRefCreate(<span class="keyword">nullptr</span>, 0);</div>
-<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>  <span class="keywordtype">char</span> *cStr = <span class="keyword">static_cast&lt;</span><span class="keywordtype">char</span> *<span class="keyword">&gt;</span>(malloc(cpp.size()));</div>
-<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>  cpp.copy(cStr, cpp.size());</div>
-<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>  <span class="keywordflow">return</span> mlirStringRefCreate(cStr, cpp.size());</div>
-<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>};</div>
+<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span>  llvm::LLVMContext llvmContext;</div>
+<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span>  <span class="keyword">auto</span> llvmModule = translateModuleToLLVMIR(mod, llvmContext);</div>
+<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>  <span class="keywordflow">if</span> (!llvmModule)</div>
+<div class="line"><a id="l00048" name="l00048"></a><span class="lineno">   48</span>    <span class="keywordflow">return</span> mlirStringRefCreate(<span class="keyword">nullptr</span>, 0);</div>
+<div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span>  llvmModule-&gt;print(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#af6973de2c7d07d18ca25f11401849238">os</a>, <span class="keyword">nullptr</span>);</div>
+<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>  <span class="keywordtype">char</span> *cStr = <span class="keyword">static_cast&lt;</span><span class="keywordtype">char</span> *<span class="keyword">&gt;</span>(malloc(llvmir.size()));</div>
+<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>  llvmir.copy(cStr, llvmir.size());</div>
+<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>  <span class="keywordflow">return</span> mlirStringRefCreate(cStr, llvmir.size());</div>
+<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>}</div>
 </div>
-<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span> </div>
-<div class="foldopen" id="foldopen00052" data-start="{" data-end="}">
-<div class="line"><a id="l00052" name="l00052"></a><span class="lineno"><a class="line" href="Translation_8h.html#a8121e3ebc5ad2408b69645a5695f5144">   52</a></span>MlirStringRef <a class="code hl_function" href="Translation_8cpp.html#a21b6b5d3f5f623a423cec80419c841ee">aieTranslateModuleToLLVMIR</a>(MlirOperation moduleOp) {</div>
-<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>  std::string llvmir;</div>
-<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>  llvm::raw_string_ostream <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#af6973de2c7d07d18ca25f11401849238">os</a>(llvmir);</div>
-<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>  ModuleOp mod = llvm::cast&lt;ModuleOp&gt;(unwrap(moduleOp));</div>
-<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span>  llvm::LLVMContext llvmContext;</div>
-<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>  <span class="keyword">auto</span> llvmModule = translateModuleToLLVMIR(mod, llvmContext);</div>
-<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span>  <span class="keywordflow">if</span> (!llvmModule)</div>
-<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span>    <span class="keywordflow">return</span> mlirStringRefCreate(<span class="keyword">nullptr</span>, 0);</div>
-<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span>  llvmModule-&gt;print(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#af6973de2c7d07d18ca25f11401849238">os</a>, <span class="keyword">nullptr</span>);</div>
-<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span>  <span class="keywordtype">char</span> *cStr = <span class="keyword">static_cast&lt;</span><span class="keywordtype">char</span> *<span class="keyword">&gt;</span>(malloc(llvmir.size()));</div>
-<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>  llvmir.copy(cStr, llvmir.size());</div>
-<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span>  <span class="keywordflow">return</span> mlirStringRefCreate(cStr, llvmir.size());</div>
-<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>}</div>
+<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span> </div>
+<div class="foldopen" id="foldopen00055" data-start="{" data-end="}">
+<div class="line"><a id="l00055" name="l00055"></a><span class="lineno"><a class="line" href="Translation_8h.html#aba8102ccee440e8202a1893a398aa04e">   55</a></span>MlirLogicalResult <a class="code hl_function" href="Translation_8cpp.html#af268f1370b880806ba04e647abe32515">aieTranslateToCDODirect</a>(MlirOperation moduleOp,</div>
+<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span>                                          MlirStringRef workDirPath,</div>
+<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>                                          MlirStringRef deviceName,</div>
+<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span>                                          <span class="keywordtype">bool</span> bigEndian, <span class="keywordtype">bool</span> emitUnified,</div>
+<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span>                                          <span class="keywordtype">bool</span> cdoDebug, <span class="keywordtype">bool</span> aieSim,</div>
+<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span>                                          <span class="keywordtype">bool</span> xaieDebug, <span class="keywordtype">bool</span> enableCores) {</div>
+<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span>  ModuleOp mod = llvm::cast&lt;ModuleOp&gt;(unwrap(moduleOp));</div>
+<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>  <span class="keyword">auto</span> status = <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a2cfe2629350d0872208508d8b825c37c">AIETranslateToCDODirect</a>(</div>
+<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span>      mod, llvm::StringRef(workDirPath.data, workDirPath.length),</div>
+<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>      llvm::StringRef(deviceName.data, deviceName.length), bigEndian,</div>
+<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span>      emitUnified, cdoDebug, aieSim, xaieDebug, enableCores);</div>
+<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>  std::vector&lt;std::string&gt; diagnostics;</div>
+<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>  ScopedDiagnosticHandler handler(mod.getContext(), [&amp;](Diagnostic &amp;d) {</div>
+<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>    llvm::raw_string_ostream(diagnostics.emplace_back())</div>
+<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>        &lt;&lt; d.getLocation() &lt;&lt; <span class="stringliteral">&quot;: &quot;</span> &lt;&lt; d;</div>
+<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span>  });</div>
+<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>  <span class="keywordflow">if</span> (failed(status))</div>
+<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span>    <span class="keywordflow">for</span> (<span class="keyword">const</span> <span class="keyword">auto</span> &amp;diagnostic : diagnostics)</div>
+<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>      std::cerr &lt;&lt; diagnostic &lt;&lt; <span class="stringliteral">&quot;\n&quot;</span>;</div>
+<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span> </div>
+<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span>  <span class="keywordflow">return</span> wrap(status);</div>
+<div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span>}</div>
 </div>
-<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span> </div>
-<div class="foldopen" id="foldopen00066" data-start="{" data-end="}">
-<div class="line"><a id="l00066" name="l00066"></a><span class="lineno"><a class="line" href="Translation_8h.html#aba8102ccee440e8202a1893a398aa04e">   66</a></span>MlirLogicalResult <a class="code hl_function" href="Translation_8cpp.html#af268f1370b880806ba04e647abe32515">aieTranslateToCDODirect</a>(MlirOperation moduleOp,</div>
-<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>                                          MlirStringRef workDirPath,</div>
-<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>                                          MlirStringRef deviceName,</div>
-<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>                                          <span class="keywordtype">bool</span> bigEndian, <span class="keywordtype">bool</span> emitUnified,</div>
-<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span>                                          <span class="keywordtype">bool</span> cdoDebug, <span class="keywordtype">bool</span> aieSim,</div>
-<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>                                          <span class="keywordtype">bool</span> xaieDebug, <span class="keywordtype">bool</span> enableCores) {</div>
-<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span>  ModuleOp mod = llvm::cast&lt;ModuleOp&gt;(unwrap(moduleOp));</div>
-<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>  <span class="keyword">auto</span> status = <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a2cfe2629350d0872208508d8b825c37c">AIETranslateToCDODirect</a>(</div>
-<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span>      mod, llvm::StringRef(workDirPath.data, workDirPath.length),</div>
-<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span>      llvm::StringRef(deviceName.data, deviceName.length), bigEndian,</div>
-<div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span>      emitUnified, cdoDebug, aieSim, xaieDebug, enableCores);</div>
-<div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span>  std::vector&lt;std::string&gt; diagnostics;</div>
-<div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span>  ScopedDiagnosticHandler handler(mod.getContext(), [&amp;](Diagnostic &amp;d) {</div>
-<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>    llvm::raw_string_ostream(diagnostics.emplace_back())</div>
-<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>        &lt;&lt; d.getLocation() &lt;&lt; <span class="stringliteral">&quot;: &quot;</span> &lt;&lt; d;</div>
-<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>  });</div>
-<div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>  <span class="keywordflow">if</span> (failed(status))</div>
-<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>    <span class="keywordflow">for</span> (<span class="keyword">const</span> <span class="keyword">auto</span> &amp;diagnostic : diagnostics)</div>
-<div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span>      std::cerr &lt;&lt; diagnostic &lt;&lt; <span class="stringliteral">&quot;\n&quot;</span>;</div>
+<div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span> </div>
+<div class="foldopen" id="foldopen00078" data-start="{" data-end="}">
+<div class="line"><a id="l00078" name="l00078"></a><span class="lineno"><a class="line" href="Translation_8h.html#a2d8f5507565a5b3cfbd3816de9c516ca">   78</a></span>MlirOperation <a class="code hl_function" href="Translation_8cpp.html#a879d6a444ab0e86e8426f9dc8d81c215">aieTranslateBinaryToTxn</a>(MlirContext ctx, MlirStringRef binary) {</div>
+<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>  std::vector&lt;uint8_t&gt; binaryData(binary.data, binary.data + binary.length);</div>
+<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>  <span class="keyword">auto</span> mod = <a class="code hl_function" href="namespacexilinx_1_1AIE.html#ac985a8aecd5dfdfb4647526eba308b53">convertTransactionBinaryToMLIR</a>(unwrap(ctx), binaryData);</div>
+<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>  <span class="keywordflow">if</span> (!mod)</div>
+<div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>    <span class="keywordflow">return</span> wrap(ModuleOp().getOperation());</div>
+<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>  <span class="keywordflow">return</span> wrap(mod-&gt;getOperation());</div>
+<div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span>}</div>
+</div>
 <div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span> </div>
-<div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span>  <span class="keywordflow">return</span> wrap(status);</div>
-<div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span>}</div>
+<div class="foldopen" id="foldopen00086" data-start="{" data-end="}">
+<div class="line"><a id="l00086" name="l00086"></a><span class="lineno"><a class="line" href="Translation_8h.html#a4d17a8400b631839cc90eefe50e8dfc2">   86</a></span>MlirStringRef <a class="code hl_function" href="Translation_8cpp.html#aca474c55cc66ed2de4fc4cc73ee667d6">aieTranslateNpuToBinary</a>(MlirOperation moduleOp,</div>
+<div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span>                                      MlirStringRef deviceNameMlir,</div>
+<div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span>                                      MlirStringRef sequenceNameMlir) {</div>
+<div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span>  std::vector&lt;uint32_t&gt; insts;</div>
+<div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span>  ModuleOp mod = llvm::cast&lt;ModuleOp&gt;(unwrap(moduleOp));</div>
+<div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span>  llvm::StringRef deviceName(deviceNameMlir.data, deviceNameMlir.length);</div>
+<div class="line"><a id="l00092" name="l00092"></a><span class="lineno">   92</span>  llvm::StringRef sequenceName(sequenceNameMlir.data, sequenceNameMlir.length);</div>
+<div class="line"><a id="l00093" name="l00093"></a><span class="lineno">   93</span>  <span class="keywordflow">if</span> (failed(<a class="code hl_function" href="namespacexilinx_1_1AIE.html#af96f7af9fef0f2858dd9b71972758055">AIETranslateNpuToBinary</a>(mod, insts, deviceName, sequenceName)))</div>
+<div class="line"><a id="l00094" name="l00094"></a><span class="lineno">   94</span>    <span class="keywordflow">return</span> mlirStringRefCreate(<span class="keyword">nullptr</span>, 0);</div>
+<div class="line"><a id="l00095" name="l00095"></a><span class="lineno">   95</span>  <span class="keywordtype">size_t</span> insts_size = insts.size() * <span class="keyword">sizeof</span>(uint32_t);</div>
+<div class="line"><a id="l00096" name="l00096"></a><span class="lineno">   96</span>  <span class="keywordtype">char</span> *cStr = <span class="keyword">static_cast&lt;</span><span class="keywordtype">char</span> *<span class="keyword">&gt;</span>(malloc(insts_size));</div>
+<div class="line"><a id="l00097" name="l00097"></a><span class="lineno">   97</span>  memcpy(cStr, insts.data(), insts_size);</div>
+<div class="line"><a id="l00098" name="l00098"></a><span class="lineno">   98</span>  <span class="keywordflow">return</span> mlirStringRefCreate(cStr, insts_size);</div>
+<div class="line"><a id="l00099" name="l00099"></a><span class="lineno">   99</span>}</div>
 </div>
-<div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span> </div>
-<div class="foldopen" id="foldopen00089" data-start="{" data-end="}">
-<div class="line"><a id="l00089" name="l00089"></a><span class="lineno"><a class="line" href="Translation_8h.html#a2d8f5507565a5b3cfbd3816de9c516ca">   89</a></span>MlirOperation <a class="code hl_function" href="Translation_8cpp.html#a879d6a444ab0e86e8426f9dc8d81c215">aieTranslateBinaryToTxn</a>(MlirContext ctx, MlirStringRef binary) {</div>
-<div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span>  std::vector&lt;uint8_t&gt; binaryData(binary.data, binary.data + binary.length);</div>
-<div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span>  <span class="keyword">auto</span> mod = <a class="code hl_function" href="namespacexilinx_1_1AIE.html#ac985a8aecd5dfdfb4647526eba308b53">convertTransactionBinaryToMLIR</a>(unwrap(ctx), binaryData);</div>
-<div class="line"><a id="l00092" name="l00092"></a><span class="lineno">   92</span>  <span class="keywordflow">if</span> (!mod)</div>
-<div class="line"><a id="l00093" name="l00093"></a><span class="lineno">   93</span>    <span class="keywordflow">return</span> wrap(ModuleOp().getOperation());</div>
-<div class="line"><a id="l00094" name="l00094"></a><span class="lineno">   94</span>  <span class="keywordflow">return</span> wrap(mod-&gt;getOperation());</div>
-<div class="line"><a id="l00095" name="l00095"></a><span class="lineno">   95</span>}</div>
+<div class="line"><a id="l00100" name="l00100"></a><span class="lineno">  100</span> </div>
+<div class="foldopen" id="foldopen00101" data-start="{" data-end="}">
+<div class="line"><a id="l00101" name="l00101"></a><span class="lineno"><a class="line" href="Translation_8h.html#a6e3d230d6a651d2574ff92a489c9d97b">  101</a></span>MlirStringRef <a class="code hl_function" href="Translation_8cpp.html#a0ff6dce5a602b98452784e2d8982c420">aieTranslateControlPacketsToUI32Vec</a>(MlirOperation moduleOp,</div>
+<div class="line"><a id="l00102" name="l00102"></a><span class="lineno">  102</span>                                                  MlirStringRef deviceName) {</div>
+<div class="line"><a id="l00103" name="l00103"></a><span class="lineno">  103</span>  std::vector&lt;uint32_t&gt; insts;</div>
+<div class="line"><a id="l00104" name="l00104"></a><span class="lineno">  104</span>  ModuleOp mod = llvm::cast&lt;ModuleOp&gt;(unwrap(moduleOp));</div>
+<div class="line"><a id="l00105" name="l00105"></a><span class="lineno">  105</span>  <span class="keywordflow">if</span> (failed(<a class="code hl_function" href="namespacexilinx_1_1AIE.html#a30723cb0c47949d94740b17154dc5f28">AIETranslateControlPacketsToUI32Vec</a>(</div>
+<div class="line"><a id="l00106" name="l00106"></a><span class="lineno">  106</span>          mod, insts, llvm::StringRef(deviceName.data, deviceName.length))))</div>
+<div class="line"><a id="l00107" name="l00107"></a><span class="lineno">  107</span>    <span class="keywordflow">return</span> mlirStringRefCreate(<span class="keyword">nullptr</span>, 0);</div>
+<div class="line"><a id="l00108" name="l00108"></a><span class="lineno">  108</span>  <span class="keywordtype">size_t</span> insts_size = insts.size() * <span class="keyword">sizeof</span>(uint32_t);</div>
+<div class="line"><a id="l00109" name="l00109"></a><span class="lineno">  109</span>  <span class="keywordtype">char</span> *cStr = <span class="keyword">static_cast&lt;</span><span class="keywordtype">char</span> *<span class="keyword">&gt;</span>(malloc(insts_size));</div>
+<div class="line"><a id="l00110" name="l00110"></a><span class="lineno">  110</span>  memcpy(cStr, insts.data(), insts_size);</div>
+<div class="line"><a id="l00111" name="l00111"></a><span class="lineno">  111</span>  <span class="keywordflow">return</span> mlirStringRefCreate(cStr, insts_size);</div>
+<div class="line"><a id="l00112" name="l00112"></a><span class="lineno">  112</span>}</div>
 </div>
-<div class="line"><a id="l00096" name="l00096"></a><span class="lineno">   96</span> </div>
-<div class="foldopen" id="foldopen00097" data-start="{" data-end="}">
-<div class="line"><a id="l00097" name="l00097"></a><span class="lineno"><a class="line" href="Translation_8h.html#a4d17a8400b631839cc90eefe50e8dfc2">   97</a></span>MlirStringRef <a class="code hl_function" href="Translation_8cpp.html#aca474c55cc66ed2de4fc4cc73ee667d6">aieTranslateNpuToBinary</a>(MlirOperation moduleOp,</div>
-<div class="line"><a id="l00098" name="l00098"></a><span class="lineno">   98</span>                                      MlirStringRef deviceNameMlir,</div>
-<div class="line"><a id="l00099" name="l00099"></a><span class="lineno">   99</span>                                      MlirStringRef sequenceNameMlir) {</div>
-<div class="line"><a id="l00100" name="l00100"></a><span class="lineno">  100</span>  std::vector&lt;uint32_t&gt; insts;</div>
-<div class="line"><a id="l00101" name="l00101"></a><span class="lineno">  101</span>  ModuleOp mod = llvm::cast&lt;ModuleOp&gt;(unwrap(moduleOp));</div>
-<div class="line"><a id="l00102" name="l00102"></a><span class="lineno">  102</span>  llvm::StringRef deviceName(deviceNameMlir.data, deviceNameMlir.length);</div>
-<div class="line"><a id="l00103" name="l00103"></a><span class="lineno">  103</span>  llvm::StringRef sequenceName(sequenceNameMlir.data, sequenceNameMlir.length);</div>
-<div class="line"><a id="l00104" name="l00104"></a><span class="lineno">  104</span>  <span class="keywordflow">if</span> (failed(<a class="code hl_function" href="namespacexilinx_1_1AIE.html#af96f7af9fef0f2858dd9b71972758055">AIETranslateNpuToBinary</a>(mod, insts, deviceName, sequenceName)))</div>
-<div class="line"><a id="l00105" name="l00105"></a><span class="lineno">  105</span>    <span class="keywordflow">return</span> mlirStringRefCreate(<span class="keyword">nullptr</span>, 0);</div>
-<div class="line"><a id="l00106" name="l00106"></a><span class="lineno">  106</span>  <span class="keywordtype">size_t</span> insts_size = insts.size() * <span class="keyword">sizeof</span>(uint32_t);</div>
-<div class="line"><a id="l00107" name="l00107"></a><span class="lineno">  107</span>  <span class="keywordtype">char</span> *cStr = <span class="keyword">static_cast&lt;</span><span class="keywordtype">char</span> *<span class="keyword">&gt;</span>(malloc(insts_size));</div>
-<div class="line"><a id="l00108" name="l00108"></a><span class="lineno">  108</span>  memcpy(cStr, insts.data(), insts_size);</div>
-<div class="line"><a id="l00109" name="l00109"></a><span class="lineno">  109</span>  <span class="keywordflow">return</span> mlirStringRefCreate(cStr, insts_size);</div>
-<div class="line"><a id="l00110" name="l00110"></a><span class="lineno">  110</span>}</div>
+<div class="line"><a id="l00113" name="l00113"></a><span class="lineno">  113</span> </div>
+<div class="foldopen" id="foldopen00114" data-start="{" data-end="}">
+<div class="line"><a id="l00114" name="l00114"></a><span class="lineno"><a class="line" href="Translation_8h.html#a4d1445de83eac9b9b70c21297b407cae">  114</a></span>MlirStringRef <a class="code hl_function" href="Translation_8cpp.html#ac9cc6c256342a6733f022915906417a1">aieTranslateToXAIEV2</a>(MlirOperation moduleOp,</div>
+<div class="line"><a id="l00115" name="l00115"></a><span class="lineno">  115</span>                                   MlirStringRef deviceName) {</div>
+<div class="line"><a id="l00116" name="l00116"></a><span class="lineno">  116</span>  std::string xaie;</div>
+<div class="line"><a id="l00117" name="l00117"></a><span class="lineno">  117</span>  llvm::raw_string_ostream <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#af6973de2c7d07d18ca25f11401849238">os</a>(xaie);</div>
+<div class="line"><a id="l00118" name="l00118"></a><span class="lineno">  118</span>  ModuleOp mod = llvm::cast&lt;ModuleOp&gt;(unwrap(moduleOp));</div>
+<div class="line"><a id="l00119" name="l00119"></a><span class="lineno">  119</span>  <span class="keywordflow">if</span> (failed(<a class="code hl_function" href="namespacexilinx_1_1AIE.html#add8baa22fb72a945f2a0c42166bd4670">AIETranslateToXAIEV2</a>(</div>
+<div class="line"><a id="l00120" name="l00120"></a><span class="lineno">  120</span>          mod, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#af6973de2c7d07d18ca25f11401849238">os</a>, llvm::StringRef(deviceName.data, deviceName.length))))</div>
+<div class="line"><a id="l00121" name="l00121"></a><span class="lineno">  121</span>    <span class="keywordflow">return</span> mlirStringRefCreate(<span class="keyword">nullptr</span>, 0);</div>
+<div class="line"><a id="l00122" name="l00122"></a><span class="lineno">  122</span>  <span class="keywordtype">char</span> *cStr = <span class="keyword">static_cast&lt;</span><span class="keywordtype">char</span> *<span class="keyword">&gt;</span>(malloc(xaie.size()));</div>
+<div class="line"><a id="l00123" name="l00123"></a><span class="lineno">  123</span>  xaie.copy(cStr, xaie.size());</div>
+<div class="line"><a id="l00124" name="l00124"></a><span class="lineno">  124</span>  <span class="keywordflow">return</span> mlirStringRefCreate(cStr, xaie.size());</div>
+<div class="line"><a id="l00125" name="l00125"></a><span class="lineno">  125</span>}</div>
 </div>
-<div class="line"><a id="l00111" name="l00111"></a><span class="lineno">  111</span> </div>
-<div class="foldopen" id="foldopen00112" data-start="{" data-end="}">
-<div class="line"><a id="l00112" name="l00112"></a><span class="lineno"><a class="line" href="Translation_8h.html#a6e3d230d6a651d2574ff92a489c9d97b">  112</a></span>MlirStringRef <a class="code hl_function" href="Translation_8cpp.html#a0ff6dce5a602b98452784e2d8982c420">aieTranslateControlPacketsToUI32Vec</a>(MlirOperation moduleOp,</div>
-<div class="line"><a id="l00113" name="l00113"></a><span class="lineno">  113</span>                                                  MlirStringRef deviceName) {</div>
-<div class="line"><a id="l00114" name="l00114"></a><span class="lineno">  114</span>  std::vector&lt;uint32_t&gt; insts;</div>
-<div class="line"><a id="l00115" name="l00115"></a><span class="lineno">  115</span>  ModuleOp mod = llvm::cast&lt;ModuleOp&gt;(unwrap(moduleOp));</div>
-<div class="line"><a id="l00116" name="l00116"></a><span class="lineno">  116</span>  <span class="keywordflow">if</span> (failed(<a class="code hl_function" href="namespacexilinx_1_1AIE.html#a30723cb0c47949d94740b17154dc5f28">AIETranslateControlPacketsToUI32Vec</a>(</div>
-<div class="line"><a id="l00117" name="l00117"></a><span class="lineno">  117</span>          mod, insts, llvm::StringRef(deviceName.data, deviceName.length))))</div>
-<div class="line"><a id="l00118" name="l00118"></a><span class="lineno">  118</span>    <span class="keywordflow">return</span> mlirStringRefCreate(<span class="keyword">nullptr</span>, 0);</div>
-<div class="line"><a id="l00119" name="l00119"></a><span class="lineno">  119</span>  <span class="keywordtype">size_t</span> insts_size = insts.size() * <span class="keyword">sizeof</span>(uint32_t);</div>
-<div class="line"><a id="l00120" name="l00120"></a><span class="lineno">  120</span>  <span class="keywordtype">char</span> *cStr = <span class="keyword">static_cast&lt;</span><span class="keywordtype">char</span> *<span class="keyword">&gt;</span>(malloc(insts_size));</div>
-<div class="line"><a id="l00121" name="l00121"></a><span class="lineno">  121</span>  memcpy(cStr, insts.data(), insts_size);</div>
-<div class="line"><a id="l00122" name="l00122"></a><span class="lineno">  122</span>  <span class="keywordflow">return</span> mlirStringRefCreate(cStr, insts_size);</div>
-<div class="line"><a id="l00123" name="l00123"></a><span class="lineno">  123</span>}</div>
+<div class="line"><a id="l00126" name="l00126"></a><span class="lineno">  126</span> </div>
+<div class="foldopen" id="foldopen00127" data-start="{" data-end="}">
+<div class="line"><a id="l00127" name="l00127"></a><span class="lineno"><a class="line" href="Translation_8h.html#a05506c2494d0097e474e6a708f211024">  127</a></span>MlirStringRef <a class="code hl_function" href="Translation_8cpp.html#a73c99de8cbe055882ea6c9ec6307bc72">aieTranslateToHSA</a>(MlirOperation moduleOp,</div>
+<div class="line"><a id="l00128" name="l00128"></a><span class="lineno">  128</span>                                MlirStringRef deviceName) {</div>
+<div class="line"><a id="l00129" name="l00129"></a><span class="lineno">  129</span>  std::string xaie;</div>
+<div class="line"><a id="l00130" name="l00130"></a><span class="lineno">  130</span>  llvm::raw_string_ostream <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#af6973de2c7d07d18ca25f11401849238">os</a>(xaie);</div>
+<div class="line"><a id="l00131" name="l00131"></a><span class="lineno">  131</span>  ModuleOp mod = llvm::cast&lt;ModuleOp&gt;(unwrap(moduleOp));</div>
+<div class="line"><a id="l00132" name="l00132"></a><span class="lineno">  132</span>  <span class="keywordflow">if</span> (failed(<a class="code hl_function" href="namespacexilinx_1_1AIE.html#ad56dfd32b584e548f1971501d3440a5f">AIETranslateToHSA</a>(</div>
+<div class="line"><a id="l00133" name="l00133"></a><span class="lineno">  133</span>          mod, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#af6973de2c7d07d18ca25f11401849238">os</a>, llvm::StringRef(deviceName.data, deviceName.length))))</div>
+<div class="line"><a id="l00134" name="l00134"></a><span class="lineno">  134</span>    <span class="keywordflow">return</span> mlirStringRefCreate(<span class="keyword">nullptr</span>, 0);</div>
+<div class="line"><a id="l00135" name="l00135"></a><span class="lineno">  135</span>  <span class="keywordtype">char</span> *cStr = <span class="keyword">static_cast&lt;</span><span class="keywordtype">char</span> *<span class="keyword">&gt;</span>(malloc(xaie.size()));</div>
+<div class="line"><a id="l00136" name="l00136"></a><span class="lineno">  136</span>  xaie.copy(cStr, xaie.size());</div>
+<div class="line"><a id="l00137" name="l00137"></a><span class="lineno">  137</span>  <span class="keywordflow">return</span> mlirStringRefCreate(cStr, xaie.size());</div>
+<div class="line"><a id="l00138" name="l00138"></a><span class="lineno">  138</span>}</div>
 </div>
-<div class="line"><a id="l00124" name="l00124"></a><span class="lineno">  124</span> </div>
-<div class="foldopen" id="foldopen00125" data-start="{" data-end="}">
-<div class="line"><a id="l00125" name="l00125"></a><span class="lineno"><a class="line" href="Translation_8h.html#a4d1445de83eac9b9b70c21297b407cae">  125</a></span>MlirStringRef <a class="code hl_function" href="Translation_8cpp.html#ac9cc6c256342a6733f022915906417a1">aieTranslateToXAIEV2</a>(MlirOperation moduleOp,</div>
-<div class="line"><a id="l00126" name="l00126"></a><span class="lineno">  126</span>                                   MlirStringRef deviceName) {</div>
-<div class="line"><a id="l00127" name="l00127"></a><span class="lineno">  127</span>  std::string xaie;</div>
-<div class="line"><a id="l00128" name="l00128"></a><span class="lineno">  128</span>  llvm::raw_string_ostream <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#af6973de2c7d07d18ca25f11401849238">os</a>(xaie);</div>
-<div class="line"><a id="l00129" name="l00129"></a><span class="lineno">  129</span>  ModuleOp mod = llvm::cast&lt;ModuleOp&gt;(unwrap(moduleOp));</div>
-<div class="line"><a id="l00130" name="l00130"></a><span class="lineno">  130</span>  <span class="keywordflow">if</span> (failed(<a class="code hl_function" href="namespacexilinx_1_1AIE.html#add8baa22fb72a945f2a0c42166bd4670">AIETranslateToXAIEV2</a>(</div>
-<div class="line"><a id="l00131" name="l00131"></a><span class="lineno">  131</span>          mod, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#af6973de2c7d07d18ca25f11401849238">os</a>, llvm::StringRef(deviceName.data, deviceName.length))))</div>
-<div class="line"><a id="l00132" name="l00132"></a><span class="lineno">  132</span>    <span class="keywordflow">return</span> mlirStringRefCreate(<span class="keyword">nullptr</span>, 0);</div>
-<div class="line"><a id="l00133" name="l00133"></a><span class="lineno">  133</span>  <span class="keywordtype">char</span> *cStr = <span class="keyword">static_cast&lt;</span><span class="keywordtype">char</span> *<span class="keyword">&gt;</span>(malloc(xaie.size()));</div>
-<div class="line"><a id="l00134" name="l00134"></a><span class="lineno">  134</span>  xaie.copy(cStr, xaie.size());</div>
-<div class="line"><a id="l00135" name="l00135"></a><span class="lineno">  135</span>  <span class="keywordflow">return</span> mlirStringRefCreate(cStr, xaie.size());</div>
-<div class="line"><a id="l00136" name="l00136"></a><span class="lineno">  136</span>}</div>
+<div class="line"><a id="l00139" name="l00139"></a><span class="lineno">  139</span> </div>
+<div class="foldopen" id="foldopen00140" data-start="{" data-end="}">
+<div class="line"><a id="l00140" name="l00140"></a><span class="lineno"><a class="line" href="Translation_8h.html#abba360892f8d58823959e37f59b2915f">  140</a></span>MlirStringRef <a class="code hl_function" href="Translation_8cpp.html#a19ab9057efbf19dab68c15d91dbb5a50">aieTranslateToBCF</a>(MlirOperation moduleOp, <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>,</div>
+<div class="line"><a id="l00141" name="l00141"></a><span class="lineno">  141</span>                                MlirStringRef deviceName) {</div>
+<div class="line"><a id="l00142" name="l00142"></a><span class="lineno">  142</span>  std::string bcf;</div>
+<div class="line"><a id="l00143" name="l00143"></a><span class="lineno">  143</span>  llvm::raw_string_ostream <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#af6973de2c7d07d18ca25f11401849238">os</a>(bcf);</div>
+<div class="line"><a id="l00144" name="l00144"></a><span class="lineno">  144</span>  ModuleOp mod = llvm::cast&lt;ModuleOp&gt;(unwrap(moduleOp));</div>
+<div class="line"><a id="l00145" name="l00145"></a><span class="lineno">  145</span>  <span class="keywordflow">if</span> (failed(<a class="code hl_function" href="namespacexilinx_1_1AIE.html#a9167fd0d1f2a1742f6c9300f4b852d84">AIETranslateToBCF</a>(</div>
+<div class="line"><a id="l00146" name="l00146"></a><span class="lineno">  146</span>          mod, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#af6973de2c7d07d18ca25f11401849238">os</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>,</div>
+<div class="line"><a id="l00147" name="l00147"></a><span class="lineno">  147</span>          llvm::StringRef(deviceName.data, deviceName.length))))</div>
+<div class="line"><a id="l00148" name="l00148"></a><span class="lineno">  148</span>    <span class="keywordflow">return</span> mlirStringRefCreate(<span class="keyword">nullptr</span>, 0);</div>
+<div class="line"><a id="l00149" name="l00149"></a><span class="lineno">  149</span>  <span class="keywordtype">char</span> *cStr = <span class="keyword">static_cast&lt;</span><span class="keywordtype">char</span> *<span class="keyword">&gt;</span>(malloc(bcf.size()));</div>
+<div class="line"><a id="l00150" name="l00150"></a><span class="lineno">  150</span>  bcf.copy(cStr, bcf.size());</div>
+<div class="line"><a id="l00151" name="l00151"></a><span class="lineno">  151</span>  <span class="keywordflow">return</span> mlirStringRefCreate(cStr, bcf.size());</div>
+<div class="line"><a id="l00152" name="l00152"></a><span class="lineno">  152</span>}</div>
 </div>
-<div class="line"><a id="l00137" name="l00137"></a><span class="lineno">  137</span> </div>
-<div class="foldopen" id="foldopen00138" data-start="{" data-end="}">
-<div class="line"><a id="l00138" name="l00138"></a><span class="lineno"><a class="line" href="Translation_8h.html#a05506c2494d0097e474e6a708f211024">  138</a></span>MlirStringRef <a class="code hl_function" href="Translation_8cpp.html#a73c99de8cbe055882ea6c9ec6307bc72">aieTranslateToHSA</a>(MlirOperation moduleOp,</div>
-<div class="line"><a id="l00139" name="l00139"></a><span class="lineno">  139</span>                                MlirStringRef deviceName) {</div>
-<div class="line"><a id="l00140" name="l00140"></a><span class="lineno">  140</span>  std::string xaie;</div>
-<div class="line"><a id="l00141" name="l00141"></a><span class="lineno">  141</span>  llvm::raw_string_ostream <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#af6973de2c7d07d18ca25f11401849238">os</a>(xaie);</div>
-<div class="line"><a id="l00142" name="l00142"></a><span class="lineno">  142</span>  ModuleOp mod = llvm::cast&lt;ModuleOp&gt;(unwrap(moduleOp));</div>
-<div class="line"><a id="l00143" name="l00143"></a><span class="lineno">  143</span>  <span class="keywordflow">if</span> (failed(<a class="code hl_function" href="namespacexilinx_1_1AIE.html#ad56dfd32b584e548f1971501d3440a5f">AIETranslateToHSA</a>(</div>
-<div class="line"><a id="l00144" name="l00144"></a><span class="lineno">  144</span>          mod, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#af6973de2c7d07d18ca25f11401849238">os</a>, llvm::StringRef(deviceName.data, deviceName.length))))</div>
-<div class="line"><a id="l00145" name="l00145"></a><span class="lineno">  145</span>    <span class="keywordflow">return</span> mlirStringRefCreate(<span class="keyword">nullptr</span>, 0);</div>
-<div class="line"><a id="l00146" name="l00146"></a><span class="lineno">  146</span>  <span class="keywordtype">char</span> *cStr = <span class="keyword">static_cast&lt;</span><span class="keywordtype">char</span> *<span class="keyword">&gt;</span>(malloc(xaie.size()));</div>
-<div class="line"><a id="l00147" name="l00147"></a><span class="lineno">  147</span>  xaie.copy(cStr, xaie.size());</div>
-<div class="line"><a id="l00148" name="l00148"></a><span class="lineno">  148</span>  <span class="keywordflow">return</span> mlirStringRefCreate(cStr, xaie.size());</div>
-<div class="line"><a id="l00149" name="l00149"></a><span class="lineno">  149</span>}</div>
+<div class="line"><a id="l00153" name="l00153"></a><span class="lineno">  153</span> </div>
+<div class="foldopen" id="foldopen00154" data-start="{" data-end="}">
+<div class="line"><a id="l00154" name="l00154"></a><span class="lineno"><a class="line" href="Translation_8h.html#ad99f186fac8480e5ccf4636df45762e5">  154</a></span>MlirStringRef <a class="code hl_function" href="Translation_8cpp.html#a73ac8920869b08e3f3af191c3e7edf05">aieLLVMLink</a>(MlirStringRef *modules, <span class="keywordtype">int</span> nModules) {</div>
+<div class="line"><a id="l00155" name="l00155"></a><span class="lineno">  155</span>  std::string ll;</div>
+<div class="line"><a id="l00156" name="l00156"></a><span class="lineno">  156</span>  llvm::raw_string_ostream <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#af6973de2c7d07d18ca25f11401849238">os</a>(ll);</div>
+<div class="line"><a id="l00157" name="l00157"></a><span class="lineno">  157</span>  std::vector&lt;std::string&gt; files;</div>
+<div class="line"><a id="l00158" name="l00158"></a><span class="lineno">  158</span>  files.reserve(nModules);</div>
+<div class="line"><a id="l00159" name="l00159"></a><span class="lineno">  159</span>  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; nModules; ++i)</div>
+<div class="line"><a id="l00160" name="l00160"></a><span class="lineno">  160</span>    files.emplace_back(modules[i].data, modules[i].length);</div>
+<div class="line"><a id="l00161" name="l00161"></a><span class="lineno">  161</span>  <span class="keywordflow">if</span> (failed(<a class="code hl_function" href="namespacexilinx_1_1AIE.html#a30e8589826e233942459ef918300110c">AIELLVMLink</a>(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#af6973de2c7d07d18ca25f11401849238">os</a>, files)))</div>
+<div class="line"><a id="l00162" name="l00162"></a><span class="lineno">  162</span>    <span class="keywordflow">return</span> mlirStringRefCreate(<span class="keyword">nullptr</span>, 0);</div>
+<div class="line"><a id="l00163" name="l00163"></a><span class="lineno">  163</span>  <span class="keywordtype">char</span> *cStr = <span class="keyword">static_cast&lt;</span><span class="keywordtype">char</span> *<span class="keyword">&gt;</span>(malloc(ll.size()));</div>
+<div class="line"><a id="l00164" name="l00164"></a><span class="lineno">  164</span>  ll.copy(cStr, ll.size());</div>
+<div class="line"><a id="l00165" name="l00165"></a><span class="lineno">  165</span>  <span class="keywordflow">return</span> mlirStringRefCreate(cStr, ll.size());</div>
+<div class="line"><a id="l00166" name="l00166"></a><span class="lineno">  166</span>}</div>
 </div>
-<div class="line"><a id="l00150" name="l00150"></a><span class="lineno">  150</span> </div>
-<div class="foldopen" id="foldopen00151" data-start="{" data-end="}">
-<div class="line"><a id="l00151" name="l00151"></a><span class="lineno"><a class="line" href="Translation_8h.html#abba360892f8d58823959e37f59b2915f">  151</a></span>MlirStringRef <a class="code hl_function" href="Translation_8cpp.html#a19ab9057efbf19dab68c15d91dbb5a50">aieTranslateToBCF</a>(MlirOperation moduleOp, <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>,</div>
-<div class="line"><a id="l00152" name="l00152"></a><span class="lineno">  152</span>                                MlirStringRef deviceName) {</div>
-<div class="line"><a id="l00153" name="l00153"></a><span class="lineno">  153</span>  std::string bcf;</div>
-<div class="line"><a id="l00154" name="l00154"></a><span class="lineno">  154</span>  llvm::raw_string_ostream <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#af6973de2c7d07d18ca25f11401849238">os</a>(bcf);</div>
-<div class="line"><a id="l00155" name="l00155"></a><span class="lineno">  155</span>  ModuleOp mod = llvm::cast&lt;ModuleOp&gt;(unwrap(moduleOp));</div>
-<div class="line"><a id="l00156" name="l00156"></a><span class="lineno">  156</span>  <span class="keywordflow">if</span> (failed(<a class="code hl_function" href="namespacexilinx_1_1AIE.html#a9167fd0d1f2a1742f6c9300f4b852d84">AIETranslateToBCF</a>(</div>
-<div class="line"><a id="l00157" name="l00157"></a><span class="lineno">  157</span>          mod, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#af6973de2c7d07d18ca25f11401849238">os</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>,</div>
-<div class="line"><a id="l00158" name="l00158"></a><span class="lineno">  158</span>          llvm::StringRef(deviceName.data, deviceName.length))))</div>
-<div class="line"><a id="l00159" name="l00159"></a><span class="lineno">  159</span>    <span class="keywordflow">return</span> mlirStringRefCreate(<span class="keyword">nullptr</span>, 0);</div>
-<div class="line"><a id="l00160" name="l00160"></a><span class="lineno">  160</span>  <span class="keywordtype">char</span> *cStr = <span class="keyword">static_cast&lt;</span><span class="keywordtype">char</span> *<span class="keyword">&gt;</span>(malloc(bcf.size()));</div>
-<div class="line"><a id="l00161" name="l00161"></a><span class="lineno">  161</span>  bcf.copy(cStr, bcf.size());</div>
-<div class="line"><a id="l00162" name="l00162"></a><span class="lineno">  162</span>  <span class="keywordflow">return</span> mlirStringRefCreate(cStr, bcf.size());</div>
-<div class="line"><a id="l00163" name="l00163"></a><span class="lineno">  163</span>}</div>
+<div class="line"><a id="l00167" name="l00167"></a><span class="lineno">  167</span> </div>
+<div class="line"><a id="l00168" name="l00168"></a><span class="lineno">  168</span>DEFINE_C_API_PTR_METHODS(<a class="code hl_struct" href="structAieRtControl.html">AieRtControl</a>, <a class="code hl_struct" href="structxilinx_1_1AIE_1_1AIERTControl.html">xilinx::AIE::AIERTControl</a>)</div>
+<div class="line"><a id="l00169" name="l00169"></a><span class="lineno">  169</span> </div>
+<div class="foldopen" id="foldopen00170" data-start="{" data-end="}">
+<div class="line"><a id="l00170" name="l00170"></a><span class="lineno"><a class="line" href="Translation_8h.html#aadac11aed3da77686d3cc5bee1ae8750">  170</a></span><a class="code hl_struct" href="structAieRtControl.html">AieRtControl</a> <a class="code hl_function" href="Translation_8cpp.html#a2c993a0afec5b4f8c42a7e964483dc9d">getAieRtControl</a>(AieTargetModel tm) {</div>
+<div class="line"><a id="l00171" name="l00171"></a><span class="lineno">  171</span>  <span class="comment">// unwrap the target model</span></div>
+<div class="line"><a id="l00172" name="l00172"></a><span class="lineno">  172</span>  <span class="keyword">const</span> <a class="code hl_class" href="classxilinx_1_1AIE_1_1AIETargetModel.html">AIETargetModel</a> &amp;targetModel =</div>
+<div class="line"><a id="l00173" name="l00173"></a><span class="lineno">  173</span>      *<span class="keyword">reinterpret_cast&lt;</span><span class="keyword">const </span><a class="code hl_class" href="classxilinx_1_1AIE_1_1AIETargetModel.html">AIETargetModel</a> *<span class="keyword">&gt;</span>(tm.d);</div>
+<div class="line"><a id="l00174" name="l00174"></a><span class="lineno">  174</span>  <a class="code hl_struct" href="structxilinx_1_1AIE_1_1AIERTControl.html">AIERTControl</a> *ctl = <span class="keyword">new</span> <a class="code hl_struct" href="structxilinx_1_1AIE_1_1AIERTControl.html">AIERTControl</a>(targetModel);</div>
+<div class="line"><a id="l00175" name="l00175"></a><span class="lineno">  175</span>  <span class="keywordflow">return</span> wrap(ctl);</div>
+<div class="line"><a id="l00176" name="l00176"></a><span class="lineno">  176</span>}</div>
 </div>
-<div class="line"><a id="l00164" name="l00164"></a><span class="lineno">  164</span> </div>
-<div class="foldopen" id="foldopen00165" data-start="{" data-end="}">
-<div class="line"><a id="l00165" name="l00165"></a><span class="lineno"><a class="line" href="Translation_8h.html#ad99f186fac8480e5ccf4636df45762e5">  165</a></span>MlirStringRef <a class="code hl_function" href="Translation_8cpp.html#a73ac8920869b08e3f3af191c3e7edf05">aieLLVMLink</a>(MlirStringRef *modules, <span class="keywordtype">int</span> nModules) {</div>
-<div class="line"><a id="l00166" name="l00166"></a><span class="lineno">  166</span>  std::string ll;</div>
-<div class="line"><a id="l00167" name="l00167"></a><span class="lineno">  167</span>  llvm::raw_string_ostream <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#af6973de2c7d07d18ca25f11401849238">os</a>(ll);</div>
-<div class="line"><a id="l00168" name="l00168"></a><span class="lineno">  168</span>  std::vector&lt;std::string&gt; files;</div>
-<div class="line"><a id="l00169" name="l00169"></a><span class="lineno">  169</span>  files.reserve(nModules);</div>
-<div class="line"><a id="l00170" name="l00170"></a><span class="lineno">  170</span>  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; nModules; ++i)</div>
-<div class="line"><a id="l00171" name="l00171"></a><span class="lineno">  171</span>    files.emplace_back(modules[i].data, modules[i].length);</div>
-<div class="line"><a id="l00172" name="l00172"></a><span class="lineno">  172</span>  <span class="keywordflow">if</span> (failed(<a class="code hl_function" href="namespacexilinx_1_1AIE.html#a30e8589826e233942459ef918300110c">AIELLVMLink</a>(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#af6973de2c7d07d18ca25f11401849238">os</a>, files)))</div>
-<div class="line"><a id="l00173" name="l00173"></a><span class="lineno">  173</span>    <span class="keywordflow">return</span> mlirStringRefCreate(<span class="keyword">nullptr</span>, 0);</div>
-<div class="line"><a id="l00174" name="l00174"></a><span class="lineno">  174</span>  <span class="keywordtype">char</span> *cStr = <span class="keyword">static_cast&lt;</span><span class="keywordtype">char</span> *<span class="keyword">&gt;</span>(malloc(ll.size()));</div>
-<div class="line"><a id="l00175" name="l00175"></a><span class="lineno">  175</span>  ll.copy(cStr, ll.size());</div>
-<div class="line"><a id="l00176" name="l00176"></a><span class="lineno">  176</span>  <span class="keywordflow">return</span> mlirStringRefCreate(cStr, ll.size());</div>
-<div class="line"><a id="l00177" name="l00177"></a><span class="lineno">  177</span>}</div>
+<div class="line"><a id="l00177" name="l00177"></a><span class="lineno">  177</span> </div>
+<div class="foldopen" id="foldopen00178" data-start="{" data-end="}">
+<div class="line"><a id="l00178" name="l00178"></a><span class="lineno"><a class="line" href="Translation_8h.html#ad41d34c3c54cd1176067774cb039399e">  178</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="Translation_8cpp.html#a6bf3d8681806a1fad8e48c0684e1235a">freeAieRtControl</a>(<a class="code hl_struct" href="structAieRtControl.html">AieRtControl</a> aieCtl) {</div>
+<div class="line"><a id="l00179" name="l00179"></a><span class="lineno">  179</span>  <a class="code hl_struct" href="structxilinx_1_1AIE_1_1AIERTControl.html">AIERTControl</a> *ctl = unwrap(aieCtl);</div>
+<div class="line"><a id="l00180" name="l00180"></a><span class="lineno">  180</span>  <span class="keyword">delete</span> ctl;</div>
+<div class="line"><a id="l00181" name="l00181"></a><span class="lineno">  181</span>}</div>
 </div>
-<div class="line"><a id="l00178" name="l00178"></a><span class="lineno">  178</span> </div>
-<div class="line"><a id="l00179" name="l00179"></a><span class="lineno">  179</span>DEFINE_C_API_PTR_METHODS(<a class="code hl_struct" href="structAieRtControl.html">AieRtControl</a>, <a class="code hl_struct" href="structxilinx_1_1AIE_1_1AIERTControl.html">xilinx::AIE::AIERTControl</a>)</div>
-<div class="line"><a id="l00180" name="l00180"></a><span class="lineno">  180</span> </div>
-<div class="foldopen" id="foldopen00181" data-start="{" data-end="}">
-<div class="line"><a id="l00181" name="l00181"></a><span class="lineno"><a class="line" href="Translation_8h.html#aadac11aed3da77686d3cc5bee1ae8750">  181</a></span><a class="code hl_struct" href="structAieRtControl.html">AieRtControl</a> <a class="code hl_function" href="Translation_8cpp.html#a2c993a0afec5b4f8c42a7e964483dc9d">getAieRtControl</a>(AieTargetModel tm) {</div>
-<div class="line"><a id="l00182" name="l00182"></a><span class="lineno">  182</span>  <span class="comment">// unwrap the target model</span></div>
-<div class="line"><a id="l00183" name="l00183"></a><span class="lineno">  183</span>  <span class="keyword">const</span> <a class="code hl_class" href="classxilinx_1_1AIE_1_1AIETargetModel.html">AIETargetModel</a> &amp;targetModel =</div>
-<div class="line"><a id="l00184" name="l00184"></a><span class="lineno">  184</span>      *<span class="keyword">reinterpret_cast&lt;</span><span class="keyword">const </span><a class="code hl_class" href="classxilinx_1_1AIE_1_1AIETargetModel.html">AIETargetModel</a> *<span class="keyword">&gt;</span>(tm.d);</div>
-<div class="line"><a id="l00185" name="l00185"></a><span class="lineno">  185</span>  <a class="code hl_struct" href="structxilinx_1_1AIE_1_1AIERTControl.html">AIERTControl</a> *ctl = <span class="keyword">new</span> <a class="code hl_struct" href="structxilinx_1_1AIE_1_1AIERTControl.html">AIERTControl</a>(targetModel);</div>
-<div class="line"><a id="l00186" name="l00186"></a><span class="lineno">  186</span>  <span class="keywordflow">return</span> wrap(ctl);</div>
+<div class="line"><a id="l00182" name="l00182"></a><span class="lineno">  182</span> </div>
+<div class="foldopen" id="foldopen00183" data-start="{" data-end="}">
+<div class="line"><a id="l00183" name="l00183"></a><span class="lineno"><a class="line" href="Translation_8h.html#a7231ae16f75897aea491a83e5a5cfe6b">  183</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="Translation_8cpp.html#a57c4f58c4ac8b5c41724fdfa09c898e9">aieRtDmaUpdateBdAddr</a>(<a class="code hl_struct" href="structAieRtControl.html">AieRtControl</a> aieCtl, <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, <span class="keywordtype">size_t</span> addr,</div>
+<div class="line"><a id="l00184" name="l00184"></a><span class="lineno">  184</span>                          <span class="keywordtype">size_t</span> bdId) {</div>
+<div class="line"><a id="l00185" name="l00185"></a><span class="lineno">  185</span>  <a class="code hl_struct" href="structxilinx_1_1AIE_1_1AIERTControl.html">AIERTControl</a> *ctl = unwrap(aieCtl);</div>
+<div class="line"><a id="l00186" name="l00186"></a><span class="lineno">  186</span>  ctl-&gt;<a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a28aa7b5b96dcb15f9a349eb0a5b677ab">dmaUpdateBdAddr</a>(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, addr, bdId);</div>
 <div class="line"><a id="l00187" name="l00187"></a><span class="lineno">  187</span>}</div>
 </div>
 <div class="line"><a id="l00188" name="l00188"></a><span class="lineno">  188</span> </div>
 <div class="foldopen" id="foldopen00189" data-start="{" data-end="}">
-<div class="line"><a id="l00189" name="l00189"></a><span class="lineno"><a class="line" href="Translation_8h.html#ad41d34c3c54cd1176067774cb039399e">  189</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="Translation_8cpp.html#a6bf3d8681806a1fad8e48c0684e1235a">freeAieRtControl</a>(<a class="code hl_struct" href="structAieRtControl.html">AieRtControl</a> aieCtl) {</div>
+<div class="line"><a id="l00189" name="l00189"></a><span class="lineno"><a class="line" href="Translation_8h.html#a2d2a219217341a928b5828e04efeb7ea">  189</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="Translation_8cpp.html#adea2fce724f33248ce1850a14286057b">aieRtStartTransaction</a>(<a class="code hl_struct" href="structAieRtControl.html">AieRtControl</a> aieCtl) {</div>
 <div class="line"><a id="l00190" name="l00190"></a><span class="lineno">  190</span>  <a class="code hl_struct" href="structxilinx_1_1AIE_1_1AIERTControl.html">AIERTControl</a> *ctl = unwrap(aieCtl);</div>
-<div class="line"><a id="l00191" name="l00191"></a><span class="lineno">  191</span>  <span class="keyword">delete</span> ctl;</div>
+<div class="line"><a id="l00191" name="l00191"></a><span class="lineno">  191</span>  ctl-&gt;<a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a581d9d8ce56f1ac2e336a65f1aeddc63">startTransaction</a>();</div>
 <div class="line"><a id="l00192" name="l00192"></a><span class="lineno">  192</span>}</div>
 </div>
 <div class="line"><a id="l00193" name="l00193"></a><span class="lineno">  193</span> </div>
 <div class="foldopen" id="foldopen00194" data-start="{" data-end="}">
-<div class="line"><a id="l00194" name="l00194"></a><span class="lineno"><a class="line" href="Translation_8h.html#a7231ae16f75897aea491a83e5a5cfe6b">  194</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="Translation_8cpp.html#a57c4f58c4ac8b5c41724fdfa09c898e9">aieRtDmaUpdateBdAddr</a>(<a class="code hl_struct" href="structAieRtControl.html">AieRtControl</a> aieCtl, <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, <span class="keywordtype">size_t</span> addr,</div>
-<div class="line"><a id="l00195" name="l00195"></a><span class="lineno">  195</span>                          <span class="keywordtype">size_t</span> bdId) {</div>
-<div class="line"><a id="l00196" name="l00196"></a><span class="lineno">  196</span>  <a class="code hl_struct" href="structxilinx_1_1AIE_1_1AIERTControl.html">AIERTControl</a> *ctl = unwrap(aieCtl);</div>
-<div class="line"><a id="l00197" name="l00197"></a><span class="lineno">  197</span>  ctl-&gt;<a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a28aa7b5b96dcb15f9a349eb0a5b677ab">dmaUpdateBdAddr</a>(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, addr, bdId);</div>
-<div class="line"><a id="l00198" name="l00198"></a><span class="lineno">  198</span>}</div>
-</div>
-<div class="line"><a id="l00199" name="l00199"></a><span class="lineno">  199</span> </div>
-<div class="foldopen" id="foldopen00200" data-start="{" data-end="}">
-<div class="line"><a id="l00200" name="l00200"></a><span class="lineno"><a class="line" href="Translation_8h.html#a2d2a219217341a928b5828e04efeb7ea">  200</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="Translation_8cpp.html#adea2fce724f33248ce1850a14286057b">aieRtStartTransaction</a>(<a class="code hl_struct" href="structAieRtControl.html">AieRtControl</a> aieCtl) {</div>
-<div class="line"><a id="l00201" name="l00201"></a><span class="lineno">  201</span>  <a class="code hl_struct" href="structxilinx_1_1AIE_1_1AIERTControl.html">AIERTControl</a> *ctl = unwrap(aieCtl);</div>
-<div class="line"><a id="l00202" name="l00202"></a><span class="lineno">  202</span>  ctl-&gt;<a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a581d9d8ce56f1ac2e336a65f1aeddc63">startTransaction</a>();</div>
-<div class="line"><a id="l00203" name="l00203"></a><span class="lineno">  203</span>}</div>
-</div>
-<div class="line"><a id="l00204" name="l00204"></a><span class="lineno">  204</span> </div>
-<div class="foldopen" id="foldopen00205" data-start="{" data-end="}">
-<div class="line"><a id="l00205" name="l00205"></a><span class="lineno"><a class="line" href="Translation_8h.html#a091b93534160738409d1a0a9cb31ad78">  205</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="Translation_8cpp.html#aad667d482559e33eea1c41f302cf1d99">aieRtExportSerializedTransaction</a>(<a class="code hl_struct" href="structAieRtControl.html">AieRtControl</a> aieCtl) {</div>
-<div class="line"><a id="l00206" name="l00206"></a><span class="lineno">  206</span>  <a class="code hl_struct" href="structxilinx_1_1AIE_1_1AIERTControl.html">AIERTControl</a> *ctl = unwrap(aieCtl);</div>
-<div class="line"><a id="l00207" name="l00207"></a><span class="lineno">  207</span>  ctl-&gt;<a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a62b08315999e529536a4a099783baeee">exportSerializedTransaction</a>();</div>
-<div class="line"><a id="l00208" name="l00208"></a><span class="lineno">  208</span>}</div>
+<div class="line"><a id="l00194" name="l00194"></a><span class="lineno"><a class="line" href="Translation_8h.html#a091b93534160738409d1a0a9cb31ad78">  194</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="Translation_8cpp.html#aad667d482559e33eea1c41f302cf1d99">aieRtExportSerializedTransaction</a>(<a class="code hl_struct" href="structAieRtControl.html">AieRtControl</a> aieCtl) {</div>
+<div class="line"><a id="l00195" name="l00195"></a><span class="lineno">  195</span>  <a class="code hl_struct" href="structxilinx_1_1AIE_1_1AIERTControl.html">AIERTControl</a> *ctl = unwrap(aieCtl);</div>
+<div class="line"><a id="l00196" name="l00196"></a><span class="lineno">  196</span>  ctl-&gt;<a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a62b08315999e529536a4a099783baeee">exportSerializedTransaction</a>();</div>
+<div class="line"><a id="l00197" name="l00197"></a><span class="lineno">  197</span>}</div>
 </div>
 <div class="ttc" id="aAIERT_8h_html"><div class="ttname"><a href="AIERT_8h.html">AIERT.h</a></div></div>
 <div class="ttc" id="aAIETargetModel_8h_html"><div class="ttname"><a href="AIETargetModel_8h.html">AIETargetModel.h</a></div></div>
 <div class="ttc" id="aAIETargets_8h_html"><div class="ttname"><a href="AIETargets_8h.html">AIETargets.h</a></div></div>
 <div class="ttc" id="aAIEToConfiguration_8h_html"><div class="ttname"><a href="AIEToConfiguration_8h.html">AIEToConfiguration.h</a></div></div>
-<div class="ttc" id="aTranslation_8cpp_html_a0ff6dce5a602b98452784e2d8982c420"><div class="ttname"><a href="Translation_8cpp.html#a0ff6dce5a602b98452784e2d8982c420">aieTranslateControlPacketsToUI32Vec</a></div><div class="ttdeci">MlirStringRef aieTranslateControlPacketsToUI32Vec(MlirOperation moduleOp, MlirStringRef deviceName)</div><div class="ttdef"><b>Definition</b> <a href="Translation_8cpp_source.html#l00112">Translation.cpp:112</a></div></div>
-<div class="ttc" id="aTranslation_8cpp_html_a19ab9057efbf19dab68c15d91dbb5a50"><div class="ttname"><a href="Translation_8cpp.html#a19ab9057efbf19dab68c15d91dbb5a50">aieTranslateToBCF</a></div><div class="ttdeci">MlirStringRef aieTranslateToBCF(MlirOperation moduleOp, int col, int row, MlirStringRef deviceName)</div><div class="ttdef"><b>Definition</b> <a href="Translation_8cpp_source.html#l00151">Translation.cpp:151</a></div></div>
-<div class="ttc" id="aTranslation_8cpp_html_a21b6b5d3f5f623a423cec80419c841ee"><div class="ttname"><a href="Translation_8cpp.html#a21b6b5d3f5f623a423cec80419c841ee">aieTranslateModuleToLLVMIR</a></div><div class="ttdeci">MlirStringRef aieTranslateModuleToLLVMIR(MlirOperation moduleOp)</div><div class="ttdef"><b>Definition</b> <a href="Translation_8cpp_source.html#l00052">Translation.cpp:52</a></div></div>
-<div class="ttc" id="aTranslation_8cpp_html_a2c993a0afec5b4f8c42a7e964483dc9d"><div class="ttname"><a href="Translation_8cpp.html#a2c993a0afec5b4f8c42a7e964483dc9d">getAieRtControl</a></div><div class="ttdeci">AieRtControl getAieRtControl(AieTargetModel tm)</div><div class="ttdef"><b>Definition</b> <a href="Translation_8cpp_source.html#l00181">Translation.cpp:181</a></div></div>
-<div class="ttc" id="aTranslation_8cpp_html_a57c4f58c4ac8b5c41724fdfa09c898e9"><div class="ttname"><a href="Translation_8cpp.html#a57c4f58c4ac8b5c41724fdfa09c898e9">aieRtDmaUpdateBdAddr</a></div><div class="ttdeci">void aieRtDmaUpdateBdAddr(AieRtControl aieCtl, int col, int row, size_t addr, size_t bdId)</div><div class="ttdef"><b>Definition</b> <a href="Translation_8cpp_source.html#l00194">Translation.cpp:194</a></div></div>
-<div class="ttc" id="aTranslation_8cpp_html_a630e7f4dad7103578930f732cf8ebe6c"><div class="ttname"><a href="Translation_8cpp.html#a630e7f4dad7103578930f732cf8ebe6c">aieTranslateAIEVecToCpp</a></div><div class="ttdeci">MlirStringRef aieTranslateAIEVecToCpp(MlirOperation moduleOp, bool aie2)</div><div class="ttdef"><b>Definition</b> <a href="Translation_8cpp_source.html#l00041">Translation.cpp:41</a></div></div>
-<div class="ttc" id="aTranslation_8cpp_html_a6bf3d8681806a1fad8e48c0684e1235a"><div class="ttname"><a href="Translation_8cpp.html#a6bf3d8681806a1fad8e48c0684e1235a">freeAieRtControl</a></div><div class="ttdeci">void freeAieRtControl(AieRtControl aieCtl)</div><div class="ttdef"><b>Definition</b> <a href="Translation_8cpp_source.html#l00189">Translation.cpp:189</a></div></div>
-<div class="ttc" id="aTranslation_8cpp_html_a73ac8920869b08e3f3af191c3e7edf05"><div class="ttname"><a href="Translation_8cpp.html#a73ac8920869b08e3f3af191c3e7edf05">aieLLVMLink</a></div><div class="ttdeci">MlirStringRef aieLLVMLink(MlirStringRef *modules, int nModules)</div><div class="ttdef"><b>Definition</b> <a href="Translation_8cpp_source.html#l00165">Translation.cpp:165</a></div></div>
-<div class="ttc" id="aTranslation_8cpp_html_a73c99de8cbe055882ea6c9ec6307bc72"><div class="ttname"><a href="Translation_8cpp.html#a73c99de8cbe055882ea6c9ec6307bc72">aieTranslateToHSA</a></div><div class="ttdeci">MlirStringRef aieTranslateToHSA(MlirOperation moduleOp, MlirStringRef deviceName)</div><div class="ttdef"><b>Definition</b> <a href="Translation_8cpp_source.html#l00138">Translation.cpp:138</a></div></div>
-<div class="ttc" id="aTranslation_8cpp_html_a879d6a444ab0e86e8426f9dc8d81c215"><div class="ttname"><a href="Translation_8cpp.html#a879d6a444ab0e86e8426f9dc8d81c215">aieTranslateBinaryToTxn</a></div><div class="ttdeci">MlirOperation aieTranslateBinaryToTxn(MlirContext ctx, MlirStringRef binary)</div><div class="ttdef"><b>Definition</b> <a href="Translation_8cpp_source.html#l00089">Translation.cpp:89</a></div></div>
-<div class="ttc" id="aTranslation_8cpp_html_aad667d482559e33eea1c41f302cf1d99"><div class="ttname"><a href="Translation_8cpp.html#aad667d482559e33eea1c41f302cf1d99">aieRtExportSerializedTransaction</a></div><div class="ttdeci">void aieRtExportSerializedTransaction(AieRtControl aieCtl)</div><div class="ttdef"><b>Definition</b> <a href="Translation_8cpp_source.html#l00205">Translation.cpp:205</a></div></div>
-<div class="ttc" id="aTranslation_8cpp_html_ac9cc6c256342a6733f022915906417a1"><div class="ttname"><a href="Translation_8cpp.html#ac9cc6c256342a6733f022915906417a1">aieTranslateToXAIEV2</a></div><div class="ttdeci">MlirStringRef aieTranslateToXAIEV2(MlirOperation moduleOp, MlirStringRef deviceName)</div><div class="ttdef"><b>Definition</b> <a href="Translation_8cpp_source.html#l00125">Translation.cpp:125</a></div></div>
-<div class="ttc" id="aTranslation_8cpp_html_aca474c55cc66ed2de4fc4cc73ee667d6"><div class="ttname"><a href="Translation_8cpp.html#aca474c55cc66ed2de4fc4cc73ee667d6">aieTranslateNpuToBinary</a></div><div class="ttdeci">MlirStringRef aieTranslateNpuToBinary(MlirOperation moduleOp, MlirStringRef deviceNameMlir, MlirStringRef sequenceNameMlir)</div><div class="ttdef"><b>Definition</b> <a href="Translation_8cpp_source.html#l00097">Translation.cpp:97</a></div></div>
-<div class="ttc" id="aTranslation_8cpp_html_adea2fce724f33248ce1850a14286057b"><div class="ttname"><a href="Translation_8cpp.html#adea2fce724f33248ce1850a14286057b">aieRtStartTransaction</a></div><div class="ttdeci">void aieRtStartTransaction(AieRtControl aieCtl)</div><div class="ttdef"><b>Definition</b> <a href="Translation_8cpp_source.html#l00200">Translation.cpp:200</a></div></div>
-<div class="ttc" id="aTranslation_8cpp_html_af268f1370b880806ba04e647abe32515"><div class="ttname"><a href="Translation_8cpp.html#af268f1370b880806ba04e647abe32515">aieTranslateToCDODirect</a></div><div class="ttdeci">MlirLogicalResult aieTranslateToCDODirect(MlirOperation moduleOp, MlirStringRef workDirPath, MlirStringRef deviceName, bool bigEndian, bool emitUnified, bool cdoDebug, bool aieSim, bool xaieDebug, bool enableCores)</div><div class="ttdef"><b>Definition</b> <a href="Translation_8cpp_source.html#l00066">Translation.cpp:66</a></div></div>
+<div class="ttc" id="aTranslation_8cpp_html_a0ff6dce5a602b98452784e2d8982c420"><div class="ttname"><a href="Translation_8cpp.html#a0ff6dce5a602b98452784e2d8982c420">aieTranslateControlPacketsToUI32Vec</a></div><div class="ttdeci">MlirStringRef aieTranslateControlPacketsToUI32Vec(MlirOperation moduleOp, MlirStringRef deviceName)</div><div class="ttdef"><b>Definition</b> <a href="Translation_8cpp_source.html#l00101">Translation.cpp:101</a></div></div>
+<div class="ttc" id="aTranslation_8cpp_html_a19ab9057efbf19dab68c15d91dbb5a50"><div class="ttname"><a href="Translation_8cpp.html#a19ab9057efbf19dab68c15d91dbb5a50">aieTranslateToBCF</a></div><div class="ttdeci">MlirStringRef aieTranslateToBCF(MlirOperation moduleOp, int col, int row, MlirStringRef deviceName)</div><div class="ttdef"><b>Definition</b> <a href="Translation_8cpp_source.html#l00140">Translation.cpp:140</a></div></div>
+<div class="ttc" id="aTranslation_8cpp_html_a21b6b5d3f5f623a423cec80419c841ee"><div class="ttname"><a href="Translation_8cpp.html#a21b6b5d3f5f623a423cec80419c841ee">aieTranslateModuleToLLVMIR</a></div><div class="ttdeci">MlirStringRef aieTranslateModuleToLLVMIR(MlirOperation moduleOp)</div><div class="ttdef"><b>Definition</b> <a href="Translation_8cpp_source.html#l00041">Translation.cpp:41</a></div></div>
+<div class="ttc" id="aTranslation_8cpp_html_a2c993a0afec5b4f8c42a7e964483dc9d"><div class="ttname"><a href="Translation_8cpp.html#a2c993a0afec5b4f8c42a7e964483dc9d">getAieRtControl</a></div><div class="ttdeci">AieRtControl getAieRtControl(AieTargetModel tm)</div><div class="ttdef"><b>Definition</b> <a href="Translation_8cpp_source.html#l00170">Translation.cpp:170</a></div></div>
+<div class="ttc" id="aTranslation_8cpp_html_a57c4f58c4ac8b5c41724fdfa09c898e9"><div class="ttname"><a href="Translation_8cpp.html#a57c4f58c4ac8b5c41724fdfa09c898e9">aieRtDmaUpdateBdAddr</a></div><div class="ttdeci">void aieRtDmaUpdateBdAddr(AieRtControl aieCtl, int col, int row, size_t addr, size_t bdId)</div><div class="ttdef"><b>Definition</b> <a href="Translation_8cpp_source.html#l00183">Translation.cpp:183</a></div></div>
+<div class="ttc" id="aTranslation_8cpp_html_a6bf3d8681806a1fad8e48c0684e1235a"><div class="ttname"><a href="Translation_8cpp.html#a6bf3d8681806a1fad8e48c0684e1235a">freeAieRtControl</a></div><div class="ttdeci">void freeAieRtControl(AieRtControl aieCtl)</div><div class="ttdef"><b>Definition</b> <a href="Translation_8cpp_source.html#l00178">Translation.cpp:178</a></div></div>
+<div class="ttc" id="aTranslation_8cpp_html_a73ac8920869b08e3f3af191c3e7edf05"><div class="ttname"><a href="Translation_8cpp.html#a73ac8920869b08e3f3af191c3e7edf05">aieLLVMLink</a></div><div class="ttdeci">MlirStringRef aieLLVMLink(MlirStringRef *modules, int nModules)</div><div class="ttdef"><b>Definition</b> <a href="Translation_8cpp_source.html#l00154">Translation.cpp:154</a></div></div>
+<div class="ttc" id="aTranslation_8cpp_html_a73c99de8cbe055882ea6c9ec6307bc72"><div class="ttname"><a href="Translation_8cpp.html#a73c99de8cbe055882ea6c9ec6307bc72">aieTranslateToHSA</a></div><div class="ttdeci">MlirStringRef aieTranslateToHSA(MlirOperation moduleOp, MlirStringRef deviceName)</div><div class="ttdef"><b>Definition</b> <a href="Translation_8cpp_source.html#l00127">Translation.cpp:127</a></div></div>
+<div class="ttc" id="aTranslation_8cpp_html_a879d6a444ab0e86e8426f9dc8d81c215"><div class="ttname"><a href="Translation_8cpp.html#a879d6a444ab0e86e8426f9dc8d81c215">aieTranslateBinaryToTxn</a></div><div class="ttdeci">MlirOperation aieTranslateBinaryToTxn(MlirContext ctx, MlirStringRef binary)</div><div class="ttdef"><b>Definition</b> <a href="Translation_8cpp_source.html#l00078">Translation.cpp:78</a></div></div>
+<div class="ttc" id="aTranslation_8cpp_html_aad667d482559e33eea1c41f302cf1d99"><div class="ttname"><a href="Translation_8cpp.html#aad667d482559e33eea1c41f302cf1d99">aieRtExportSerializedTransaction</a></div><div class="ttdeci">void aieRtExportSerializedTransaction(AieRtControl aieCtl)</div><div class="ttdef"><b>Definition</b> <a href="Translation_8cpp_source.html#l00194">Translation.cpp:194</a></div></div>
+<div class="ttc" id="aTranslation_8cpp_html_ac9cc6c256342a6733f022915906417a1"><div class="ttname"><a href="Translation_8cpp.html#ac9cc6c256342a6733f022915906417a1">aieTranslateToXAIEV2</a></div><div class="ttdeci">MlirStringRef aieTranslateToXAIEV2(MlirOperation moduleOp, MlirStringRef deviceName)</div><div class="ttdef"><b>Definition</b> <a href="Translation_8cpp_source.html#l00114">Translation.cpp:114</a></div></div>
+<div class="ttc" id="aTranslation_8cpp_html_aca474c55cc66ed2de4fc4cc73ee667d6"><div class="ttname"><a href="Translation_8cpp.html#aca474c55cc66ed2de4fc4cc73ee667d6">aieTranslateNpuToBinary</a></div><div class="ttdeci">MlirStringRef aieTranslateNpuToBinary(MlirOperation moduleOp, MlirStringRef deviceNameMlir, MlirStringRef sequenceNameMlir)</div><div class="ttdef"><b>Definition</b> <a href="Translation_8cpp_source.html#l00086">Translation.cpp:86</a></div></div>
+<div class="ttc" id="aTranslation_8cpp_html_adea2fce724f33248ce1850a14286057b"><div class="ttname"><a href="Translation_8cpp.html#adea2fce724f33248ce1850a14286057b">aieRtStartTransaction</a></div><div class="ttdeci">void aieRtStartTransaction(AieRtControl aieCtl)</div><div class="ttdef"><b>Definition</b> <a href="Translation_8cpp_source.html#l00189">Translation.cpp:189</a></div></div>
+<div class="ttc" id="aTranslation_8cpp_html_af268f1370b880806ba04e647abe32515"><div class="ttname"><a href="Translation_8cpp.html#af268f1370b880806ba04e647abe32515">aieTranslateToCDODirect</a></div><div class="ttdeci">MlirLogicalResult aieTranslateToCDODirect(MlirOperation moduleOp, MlirStringRef workDirPath, MlirStringRef deviceName, bool bigEndian, bool emitUnified, bool cdoDebug, bool aieSim, bool xaieDebug, bool enableCores)</div><div class="ttdef"><b>Definition</b> <a href="Translation_8cpp_source.html#l00055">Translation.cpp:55</a></div></div>
 <div class="ttc" id="aTranslation_8h_html"><div class="ttname"><a href="Translation_8h.html">Translation.h</a></div></div>
 <div class="ttc" id="aclassxilinx_1_1AIE_1_1AIETargetModel_html"><div class="ttname"><a href="classxilinx_1_1AIE_1_1AIETargetModel.html">xilinx::AIE::AIETargetModel</a></div><div class="ttdef"><b>Definition</b> <a href="AIETargetModel_8h_source.html#l00058">AIETargetModel.h:58</a></div></div>
 <div class="ttc" id="anamespacellvm_html"><div class="ttname"><a href="namespacellvm.html">llvm</a></div><div class="ttdef"><b>Definition</b> <a href="AIEDialect_8h_source.html#l00244">AIEDialect.h:244</a></div></div>
@@ -331,8 +317,7 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_add8baa22fb72a945f2a0c42166bd4670"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#add8baa22fb72a945f2a0c42166bd4670">xilinx::AIE::AIETranslateToXAIEV2</a></div><div class="ttdeci">mlir::LogicalResult AIETranslateToXAIEV2(mlir::ModuleOp module, llvm::raw_ostream &amp;output, llvm::StringRef deviceName=&quot;&quot;)</div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_af6973de2c7d07d18ca25f11401849238"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#af6973de2c7d07d18ca25f11401849238">xilinx::AIE::os</a></div><div class="ttdeci">return os</div><div class="ttdef"><b>Definition</b> <a href="AIETargetModel_8h_source.html#l00030">AIETargetModel.h:30</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_af96f7af9fef0f2858dd9b71972758055"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#af96f7af9fef0f2858dd9b71972758055">xilinx::AIE::AIETranslateNpuToBinary</a></div><div class="ttdeci">mlir::LogicalResult AIETranslateNpuToBinary(mlir::ModuleOp, std::vector&lt; uint32_t &gt; &amp;, llvm::StringRef deviceName=&quot;&quot;, llvm::StringRef sequenceName=&quot;&quot;, std::vector&lt; TxnLocEntry &gt; *locmap=nullptr)</div></div>
-<div class="ttc" id="anamespacexilinx_1_1aievec_html_a00e8f83c1c8e075872c09d6af694c9bf"><div class="ttname"><a href="namespacexilinx_1_1aievec.html#a00e8f83c1c8e075872c09d6af694c9bf">xilinx::aievec::translateAIEVecToCpp</a></div><div class="ttdeci">mlir::LogicalResult translateAIEVecToCpp(mlir::Operation *op, bool aie2, mlir::raw_ostream &amp;os)</div><div class="ttdoc">Translates the AIE vector dialect MLIR to C++ code.</div></div>
-<div class="ttc" id="astructAieRtControl_html"><div class="ttname"><a href="structAieRtControl.html">AieRtControl</a></div><div class="ttdef"><b>Definition</b> <a href="Translation_8h_source.html#l00044">Translation.h:44</a></div></div>
+<div class="ttc" id="astructAieRtControl_html"><div class="ttname"><a href="structAieRtControl.html">AieRtControl</a></div><div class="ttdef"><b>Definition</b> <a href="Translation_8h_source.html#l00042">Translation.h:42</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html">xilinx::AIE::AIERTControl</a></div><div class="ttdef"><b>Definition</b> <a href="AIERT_8h_source.html#l00048">AIERT.h:48</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a28aa7b5b96dcb15f9a349eb0a5b677ab"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a28aa7b5b96dcb15f9a349eb0a5b677ab">xilinx::AIE::AIERTControl::dmaUpdateBdAddr</a></div><div class="ttdeci">void dmaUpdateBdAddr(int col, int row, size_t addr, size_t bdId)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l01062">AIERT.cpp:1062</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a581d9d8ce56f1ac2e336a65f1aeddc63"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a581d9d8ce56f1ac2e336a65f1aeddc63">xilinx::AIE::AIERTControl::startTransaction</a></div><div class="ttdeci">void startTransaction()</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l01069">AIERT.cpp:1069</a></div></div>
@@ -340,7 +325,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Mon Jun 29 2026 14:34:11 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Mon Jun 29 2026 14:49:48 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

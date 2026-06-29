@@ -230,7 +230,7 @@ Functions</h2></td></tr>
 <tr class="separator:a0c13850a29b0c31c74c42d32a3c50c4b"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:abc6ea4c2dbf72acf93eff7b3f0c1e801" id="r_abc6ea4c2dbf72acf93eff7b3f0c1e801"><td class="memItemLeft" align="right" valign="top"><a class="el" href="classbool.html">bool</a>&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1aievec.html#abc6ea4c2dbf72acf93eff7b3f0c1e801">isAIEOp</a> (mlir::Operation *op)</td></tr>
 <tr class="separator:abc6ea4c2dbf72acf93eff7b3f0c1e801"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:aab1753e8b33c346de4762c45d3cf765e" id="r_aab1753e8b33c346de4762c45d3cf765e"><td class="memItemLeft" align="right" valign="top">mlir::VectorType&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1aievec.html#aab1753e8b33c346de4762c45d3cf765e">getVectorOpDestType</a> (mlir::VectorType type, <a class="el" href="classbool.html">bool</a> AIE2)</td></tr>
+<tr class="memitem:aab1753e8b33c346de4762c45d3cf765e" id="r_aab1753e8b33c346de4762c45d3cf765e"><td class="memItemLeft" align="right" valign="top">mlir::VectorType&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1aievec.html#aab1753e8b33c346de4762c45d3cf765e">getVectorOpDestType</a> (mlir::VectorType type, <a class="el" href="classbool.html">bool</a> <a class="el" href="namespacexilinx_1_1aievec.html#a99d3cb72f0764f395feb55a379e792c9a40bccc3bdca296053c771114097848e5">AIE2</a>)</td></tr>
 <tr class="separator:aab1753e8b33c346de4762c45d3cf765e"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:abcc9a5b31a5c97773afc7c36df4a3f68" id="r_abcc9a5b31a5c97773afc7c36df4a3f68"><td class="memItemLeft" align="right" valign="top">mlir::AffineExpr&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1aievec.html#abcc9a5b31a5c97773afc7c36df4a3f68">flattenedStridedExpr</a> (llvm::ArrayRef&lt; int64_t &gt; sizes, llvm::ArrayRef&lt; mlir::AffineExpr &gt; exprs, mlir::MLIRContext *context)</td></tr>
 <tr class="separator:abcc9a5b31a5c97773afc7c36df4a3f68"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -244,8 +244,6 @@ Functions</h2></td></tr>
 <tr class="separator:a81aca4335b1b809608cc52fc19524af8"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a2e629d21a63c571641ec5fff25d2b566" id="r_a2e629d21a63c571641ec5fff25d2b566"><td class="memItemLeft" align="right" valign="top">std::unique_ptr&lt; mlir::Pass &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1aievec.html#a2e629d21a63c571641ec5fff25d2b566">createAIEVecConvolutionAnalysisPass</a> ()</td></tr>
 <tr class="separator:a2e629d21a63c571641ec5fff25d2b566"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a83d82824fad8b84de684246e887dd572" id="r_a83d82824fad8b84de684246e887dd572"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1aievec.html#a83d82824fad8b84de684246e887dd572">registerAIEVecToCppTranslation</a> ()</td></tr>
-<tr class="separator:a83d82824fad8b84de684246e887dd572"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ac8f8f3bf6bc4854497beab34ac788bb2" id="r_ac8f8f3bf6bc4854497beab34ac788bb2"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1aievec.html#ac8f8f3bf6bc4854497beab34ac788bb2">buildConvertVectorToAIEVec</a> (mlir::OpPassManager &amp;pm, const <a class="el" href="structxilinx_1_1aievec_1_1ConvertVectorToAIEVecOptions.html">ConvertVectorToAIEVecOptions</a> &amp;options)</td></tr>
 <tr class="memdesc:ac8f8f3bf6bc4854497beab34ac788bb2"><td class="mdescLeft">&#160;</td><td class="mdescRight">Adds the "convert-vector-to-aievec" pipeline to the <code>OpPassManager</code>.  <br /></td></tr>
 <tr class="separator:ac8f8f3bf6bc4854497beab34ac788bb2"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -295,14 +293,14 @@ Functions</h2></td></tr>
 <tr class="separator:a6ccaf1484220db800ea433e4dd5f4f94"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a0dbb1674e50e306494f2cff67cb26db8" id="r_a0dbb1674e50e306494f2cff67cb26db8"><td class="memItemLeft" align="right" valign="top">SmallVector&lt; NamedAttribute &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1aievec.html#a0dbb1674e50e306494f2cff67cb26db8">buildFMAOpSplatAttrForElemTy</a> (aievec::aie1::FMAOp fmaOp, int64_t bcastPos, int64_t step=1)</td></tr>
 <tr class="separator:a0dbb1674e50e306494f2cff67cb26db8"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a777e37492ab4cdf5bcadef92575ca9e2" id="r_a777e37492ab4cdf5bcadef92575ca9e2"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1aievec.html#a777e37492ab4cdf5bcadef92575ca9e2">configureAIEVecConvOpTransformationLegalizations</a> (ConversionTarget &amp;target, AnalysisManager &amp;am, <a class="el" href="namespacexilinx.html#a9a8ae05083c78f38dbbdcda3b7540275">TargetBackend</a> backend)</td></tr>
-<tr class="separator:a777e37492ab4cdf5bcadef92575ca9e2"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a32fca04381544c972d4d29d5f3cd7b51" id="r_a32fca04381544c972d4d29d5f3cd7b51"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1aievec.html#a32fca04381544c972d4d29d5f3cd7b51">populateAIEVecConvOpTransformationPatterns</a> (RewritePatternSet &amp;patterns, AnalysisManager &amp;am, unsigned shiftParam, <a class="el" href="namespacexilinx.html#a9a8ae05083c78f38dbbdcda3b7540275">TargetBackend</a> backend)</td></tr>
-<tr class="separator:a32fca04381544c972d4d29d5f3cd7b51"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:aaa6a6c8de6ea3e1538dc0d5ca24a5357" id="r_aaa6a6c8de6ea3e1538dc0d5ca24a5357"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1aievec.html#aaa6a6c8de6ea3e1538dc0d5ca24a5357">configureAIEVecConvOpTransformationLegalizations</a> (mlir::ConversionTarget &amp;target, mlir::AnalysisManager &amp;am, <a class="el" href="namespacexilinx.html#a9a8ae05083c78f38dbbdcda3b7540275">TargetBackend</a> backend)</td></tr>
-<tr class="separator:aaa6a6c8de6ea3e1538dc0d5ca24a5357"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a7a632c603efd6cc1020a48e1a8d5959f" id="r_a7a632c603efd6cc1020a48e1a8d5959f"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1aievec.html#a7a632c603efd6cc1020a48e1a8d5959f">populateAIEVecConvOpTransformationPatterns</a> (mlir::RewritePatternSet &amp;patterns, mlir::AnalysisManager &amp;am, unsigned shiftParam, <a class="el" href="namespacexilinx.html#a9a8ae05083c78f38dbbdcda3b7540275">TargetBackend</a> backend)</td></tr>
-<tr class="separator:a7a632c603efd6cc1020a48e1a8d5959f"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a5eba9aa5bd7e67df3ab3ae965570aa44" id="r_a5eba9aa5bd7e67df3ab3ae965570aa44"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1aievec.html#a5eba9aa5bd7e67df3ab3ae965570aa44">configureAIEVecConvOpTransformationLegalizations</a> (ConversionTarget &amp;target, AnalysisManager &amp;am)</td></tr>
+<tr class="separator:a5eba9aa5bd7e67df3ab3ae965570aa44"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a6139567a5d7bc976d0889dfa43afc9ba" id="r_a6139567a5d7bc976d0889dfa43afc9ba"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1aievec.html#a6139567a5d7bc976d0889dfa43afc9ba">populateAIEVecConvOpTransformationPatterns</a> (RewritePatternSet &amp;patterns, AnalysisManager &amp;am, unsigned shiftParam)</td></tr>
+<tr class="separator:a6139567a5d7bc976d0889dfa43afc9ba"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:aab84feeadd3bc219e4eec641381dffee" id="r_aab84feeadd3bc219e4eec641381dffee"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1aievec.html#aab84feeadd3bc219e4eec641381dffee">configureAIEVecConvOpTransformationLegalizations</a> (mlir::ConversionTarget &amp;target, mlir::AnalysisManager &amp;am)</td></tr>
+<tr class="separator:aab84feeadd3bc219e4eec641381dffee"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a89691de4983f18c73622ae1aa1d759bc" id="r_a89691de4983f18c73622ae1aa1d759bc"><td class="memItemLeft" align="right" valign="top">void&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1aievec.html#a89691de4983f18c73622ae1aa1d759bc">populateAIEVecConvOpTransformationPatterns</a> (mlir::RewritePatternSet &amp;patterns, mlir::AnalysisManager &amp;am, unsigned shiftParam)</td></tr>
+<tr class="separator:a89691de4983f18c73622ae1aa1d759bc"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a6302266f93d9499d592ac401617d885a" id="r_a6302266f93d9499d592ac401617d885a"><td class="memTemplParams" colspan="2">template&lt;typename TransferReadLikeOp , typename &gt; </td></tr>
 <tr class="memitem:a6302266f93d9499d592ac401617d885a"><td class="memTemplItemLeft" align="right" valign="top">std::optional&lt; int64_t &gt;&#160;</td><td class="memTemplItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1aievec.html#a6302266f93d9499d592ac401617d885a">getTransferReadAlignmentOffset</a> (TransferReadLikeOp readOp, VectorType vType, int64_t alignment)</td></tr>
 <tr class="separator:a6302266f93d9499d592ac401617d885a"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -523,9 +521,9 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l00503">503</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l00491">491</a> of file <a class="el" href="VectorToAIEVecConversions_8cpp_source.html">VectorToAIEVecConversions.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEVecOptimizations_8cpp_source.html#l00136">MergeSingleColumnI16FMAOpPattern::matchAndRewrite()</a>, and <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01490">FoldSplatToFMAOp::matchAndRewrite()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEVecOptimizations_8cpp_source.html#l00136">MergeSingleColumnI16FMAOpPattern::matchAndRewrite()</a>, and <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01478">FoldSplatToFMAOp::matchAndRewrite()</a>.</p>
 
 </div>
 </div>
@@ -589,8 +587,8 @@ Functions</h2></td></tr>
 
 </div>
 </div>
-<a id="a777e37492ab4cdf5bcadef92575ca9e2" name="a777e37492ab4cdf5bcadef92575ca9e2"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a777e37492ab4cdf5bcadef92575ca9e2">&#9670;&#160;</a></span>configureAIEVecConvOpTransformationLegalizations() <span class="overload">[1/2]</span></h2>
+<a id="a5eba9aa5bd7e67df3ab3ae965570aa44" name="a5eba9aa5bd7e67df3ab3ae965570aa44"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a5eba9aa5bd7e67df3ab3ae965570aa44">&#9670;&#160;</a></span>configureAIEVecConvOpTransformationLegalizations() <span class="overload">[1/2]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -605,13 +603,7 @@ Functions</h2></td></tr>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">AnalysisManager &amp;&#160;</td>
-          <td class="paramname"><em>am</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype"><a class="el" href="namespacexilinx.html#a9a8ae05083c78f38dbbdcda3b7540275">TargetBackend</a>&#160;</td>
-          <td class="paramname"><em>backend</em>&#160;</td>
+          <td class="paramname"><em>am</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -625,12 +617,12 @@ Functions</h2></td></tr>
 
 <p class="reference">References <a class="el" href="FoldMulAddChainToConvOp_8cpp_source.html#l00047">LongestConvMACChainAnalysis::am</a>, and <a class="el" href="FoldMulAddChainToConvOp_8cpp_source.html#l00217">LongestConvMACChainAnalysis::canChainBeReplacedWithConvOps()</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEVecOptimizations_8cpp_source.html#l00385">AIEVecConvOpTransformationPass::runOnOperation()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEVecOptimizations_8cpp_source.html#l00350">AIEVecConvOpTransformationPass::runOnOperation()</a>.</p>
 
 </div>
 </div>
-<a id="aaa6a6c8de6ea3e1538dc0d5ca24a5357" name="aaa6a6c8de6ea3e1538dc0d5ca24a5357"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#aaa6a6c8de6ea3e1538dc0d5ca24a5357">&#9670;&#160;</a></span>configureAIEVecConvOpTransformationLegalizations() <span class="overload">[2/2]</span></h2>
+<a id="aab84feeadd3bc219e4eec641381dffee" name="aab84feeadd3bc219e4eec641381dffee"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#aab84feeadd3bc219e4eec641381dffee">&#9670;&#160;</a></span>configureAIEVecConvOpTransformationLegalizations() <span class="overload">[2/2]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -645,13 +637,7 @@ Functions</h2></td></tr>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">mlir::AnalysisManager &amp;&#160;</td>
-          <td class="paramname"><em>am</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype"><a class="el" href="namespacexilinx.html#a9a8ae05083c78f38dbbdcda3b7540275">TargetBackend</a>&#160;</td>
-          <td class="paramname"><em>backend</em>&#160;</td>
+          <td class="paramname"><em>am</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -708,7 +694,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="FoldMulAddChainToConvOp_8cpp_source.html#l00604">604</a> of file <a class="el" href="FoldMulAddChainToConvOp_8cpp_source.html">FoldMulAddChainToConvOp.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="FoldMulAddChainToConvOp_8cpp_source.html#l00602">602</a> of file <a class="el" href="FoldMulAddChainToConvOp_8cpp_source.html">FoldMulAddChainToConvOp.cpp</a>.</p>
 
 </div>
 </div>
@@ -730,7 +716,7 @@ Functions</h2></td></tr>
 <p>Create a pass that emulates f32 vector arithmetic using bf16 operations. </p>
 <p>Inserts arith.truncf/arith.extf around f32 vector ops to compute in bf16. </p>
 
-<p class="definition">Definition at line <a class="el" href="VectorToVectorConversions_8cpp_source.html#l01090">1090</a> of file <a class="el" href="VectorToVectorConversions_8cpp_source.html">VectorToVectorConversions.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="VectorToVectorConversions_8cpp_source.html#l01002">1002</a> of file <a class="el" href="VectorToVectorConversions_8cpp_source.html">VectorToVectorConversions.cpp</a>.</p>
 
 </div>
 </div>
@@ -876,7 +862,7 @@ Functions</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="AIEVecUtils_8h_source.html#l00043">43</a> of file <a class="el" href="AIEVecUtils_8h_source.html">AIEVecUtils.h</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01181">ConvertMulAddFToAIEVecFMAElemOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01257">ConvertMulFToAIEVecMulElemOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01391">ConvertMulIToAIEVecMulElemOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02253">LowerVectorSelectOpToAIEVecSelOp::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l04203">ComputeSignedIntRightShiftOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l04666">LowerScalarShRSIToAIEVecUPSSRS::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l04324">ShiftClampTruncToSRSPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l04507">LowerScalarShiftClampTruncToSRS::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01721">LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp&lt; SrcOpTy, DstOpTy &gt;::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02079">LowerVectorMinMaxOpToAIEVecMinMaxOp&lt; SrcOpTy, DstOpTy &gt;::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02132">LowerScalarMinMaxToAIEVecMinMaxOp&lt; SrcOpTy, DstOpTy &gt;::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l00884">FoldVectorExtractAndSplatToAIEBroadcast::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l00953">ConvertSplatToAIEBroadcast::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l05016">ConvertSplatToAIEBroadcastAIE2p::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01095">ConvertVectorFMAOpToAIEVecFMAElemOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02462">LowerVectorReductionAddIntOp::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02582">LowerVectorReductionAddBfloat16OpAIE2::matchAndRewrite()</a>, and <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02683">LowerVectorReductionAddBfloat16OpAIE2P::matchAndRewrite()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01169">ConvertMulAddFToAIEVecFMAElemOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01245">ConvertMulFToAIEVecMulElemOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01379">ConvertMulIToAIEVecMulElemOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02241">LowerVectorSelectOpToAIEVecSelOp::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l04137">ComputeSignedIntRightShiftOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l04600">LowerScalarShRSIToAIEVecUPSSRS::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l04258">ShiftClampTruncToSRSPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l04441">LowerScalarShiftClampTruncToSRS::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01709">LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp&lt; SrcOpTy, DstOpTy &gt;::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02067">LowerVectorMinMaxOpToAIEVecMinMaxOp&lt; SrcOpTy, DstOpTy &gt;::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02120">LowerScalarMinMaxToAIEVecMinMaxOp&lt; SrcOpTy, DstOpTy &gt;::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l00872">FoldVectorExtractAndSplatToAIEBroadcast::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l00941">ConvertSplatToAIEBroadcast::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l04917">ConvertSplatToAIEBroadcastAIE2p::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01083">ConvertVectorFMAOpToAIEVecFMAElemOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02450">LowerVectorReductionAddIntOp::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02570">LowerVectorReductionAddBfloat16OpAIE2::matchAndRewrite()</a>, and <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02671">LowerVectorReductionAddBfloat16OpAIE2P::matchAndRewrite()</a>.</p>
 
 </div>
 </div>
@@ -1048,7 +1034,7 @@ Functions</h2></td></tr>
 
 <p class="definition">Definition at line <a class="el" href="AIEVecUtils_8h_source.html#l00050">50</a> of file <a class="el" href="AIEVecUtils_8h_source.html">AIEVecUtils.h</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="FoldMulAddChainToConvOp_8cpp_source.html#l00228">LongestConvMACChainAnalysis::getConvMacFromMulOp()</a>, <a class="el" href="AIEVecUtils_8h_source.html#l00067">getVectorSizeInBits()</a>, <a class="el" href="FoldMulAddChainToConvOp_8cpp_source.html#l00411">FoldMulAddChainToConvOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02779">LowerVectorExtractStridedSliceOpAIEv1Pattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02818">LowerVectorExtractStridedSliceOpAIE2Pattern::matchAndRewrite()</a>, and <a class="el" href="VectorToVectorConversions_8cpp_source.html#l00135">SplitUnalignedTransferReadPattern::matchAndRewrite()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="FoldMulAddChainToConvOp_8cpp_source.html#l00228">LongestConvMACChainAnalysis::getConvMacFromMulOp()</a>, <a class="el" href="AIEVecUtils_8h_source.html#l00067">getVectorSizeInBits()</a>, <a class="el" href="FoldMulAddChainToConvOp_8cpp_source.html#l00411">FoldMulAddChainToConvOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02767">LowerVectorExtractStridedSliceOpAIEv1Pattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02806">LowerVectorExtractStridedSliceOpAIE2Pattern::matchAndRewrite()</a>, and <a class="el" href="VectorToVectorConversions_8cpp_source.html#l00125">SplitUnalignedTransferReadPattern::matchAndRewrite()</a>.</p>
 
 </div>
 </div>
@@ -1068,7 +1054,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="reference">Referenced by <a class="el" href="AIEVecToLLVM_8cpp_source.html#l01509">xilinx::aievec::FMAElemOpAIE2pConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l04165">xilinx::aievec::FMAElemOpConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l01603">xilinx::aievec::UPSOpAIE2Conversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l01769">xilinx::aievec::UPSOpAIE2pConversion::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l00953">ConvertSplatToAIEBroadcast::matchAndRewrite()</a>, and <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l05016">ConvertSplatToAIEBroadcastAIE2p::matchAndRewrite()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEVecToLLVM_8cpp_source.html#l01509">xilinx::aievec::FMAElemOpAIE2pConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l04165">xilinx::aievec::FMAElemOpConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l01603">xilinx::aievec::UPSOpAIE2Conversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l01769">xilinx::aievec::UPSOpAIE2pConversion::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l00941">ConvertSplatToAIEBroadcast::matchAndRewrite()</a>, and <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l04917">ConvertSplatToAIEBroadcastAIE2p::matchAndRewrite()</a>.</p>
 
 </div>
 </div>
@@ -1178,7 +1164,7 @@ template&lt;typename TransferReadLikeOp , typename  = std::enable_if_t&lt;      
       </table>
 </div><div class="memdoc">
 
-<p class="reference">Referenced by <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01588">LowerVectorTransferReadToAIEUPD::matchAndRewrite()</a>, and <a class="el" href="VectorToVectorConversions_8cpp_source.html#l00135">SplitUnalignedTransferReadPattern::matchAndRewrite()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01576">LowerVectorTransferReadToAIEUPD::matchAndRewrite()</a>, and <a class="el" href="VectorToVectorConversions_8cpp_source.html#l00125">SplitUnalignedTransferReadPattern::matchAndRewrite()</a>.</p>
 
 </div>
 </div>
@@ -1314,7 +1300,7 @@ template&lt;typename TransferReadLikeOp , typename &gt; </div>
 
 <p class="definition">Definition at line <a class="el" href="AIEVecUtils_8h_source.html#l00056">56</a> of file <a class="el" href="AIEVecUtils_8h_source.html">AIEVecUtils.h</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEVecToLLVM_8cpp_source.html#l00466">xilinx::aievec::AddElemOpAIE2pConversion::decodeAddElemOp()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l01391">xilinx::aievec::MulElemOpAIE2pConversion::decodeMulElemOp()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l00611">xilinx::aievec::SubElemOpAIE2pConversion::decodeSubElemOp()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l00249">getMulOrFMAIntrinsicName()</a>, <a class="el" href="AIEVecUtils_8h_source.html#l00067">getVectorSizeInBits()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l00236">getVectorTypeString()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l03812">xilinx::aievec::BroadcastScalarOpConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l03897">xilinx::aievec::BroadcastScalarOpAIE2pConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l03462">xilinx::aievec::CmpOpConversionBase&lt; MaxLtBf16IntrOp, MinGeBf16IntrOp, MaxLt32IntrOp, MinGe32IntrOp, MaxLt16IntrOp, MinGe16IntrOp &gt;::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l02600">xilinx::aievec::ConcatOpConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l05634">xilinx::aievec::ConcatOpAIE2pConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l05277">xilinx::aievec::ExpOpAIE2pConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l04075">xilinx::aievec::ExtractElemOpConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l02671">xilinx::aievec::ExtOpConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l02772">xilinx::aievec::ExtOpAIE2pConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l05225">xilinx::aievec::InvOpAIE2pConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l03034">xilinx::aievec::MaxOpConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l03248">xilinx::aievec::MaxOpAIE2pConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l03140">xilinx::aievec::MinOpConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l03353">xilinx::aievec::MinOpAIE2pConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l03717">xilinx::aievec::SelOpConversionBase&lt; Sel16IntrOp, Sel32IntrOp &gt;::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l03954">xilinx::aievec::ShiftOpConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l04015">xilinx::aievec::ShiftOpAIE2pConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l02054">xilinx::aievec::SRSOpAIE2Conversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l02197">xilinx::aievec::SRSOpAIE2pConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l05369">xilinx::aievec::TanhOpAIE2pConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l02956">xilinx::aievec::UnpackI4OpAIE2pConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l02483">xilinx::aievec::UPDOpConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l01603">xilinx::aievec::UPSOpAIE2Conversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l01769">xilinx::aievec::UPSOpAIE2pConversion::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01181">ConvertMulAddFToAIEVecFMAElemOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01019">ConvertMulAddToAIEVecFMAElemOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03913">ComputeSigmoidOpPattern::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l05497">xilinx::aievec::FdivOpConversion::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03133">ConvertDivFToAIEVecInvOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01257">ConvertMulFToAIEVecMulElemOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01391">ConvertMulIToAIEVecMulElemOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l04065">ComputeNegOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02253">LowerVectorSelectOpToAIEVecSelOp::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l04203">ComputeSignedIntRightShiftOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l04324">ShiftClampTruncToSRSPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l04129">ComputeBxorAndBnegOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03966">ComputeCeilOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03380">ComputeErfOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02965">ComputeExpOpByLUTLLVMPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l04015">ComputeFloorOpPattern::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l05441">xilinx::aievec::RsqrtOpAIE2pConversion::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03286">ComputeRsqrtOpLLVMAIE2Pattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03330">ComputeRsqrtOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03238">ComputeSqrtOpAIE2Pattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02941">ConvertMathTanhToAIEVecTanhOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03193">ComputeTanhOpByLUTPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03432">ComputeAbsOpPattern&lt; SrcOpTy &gt;::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01721">LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp&lt; SrcOpTy, DstOpTy &gt;::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02079">LowerVectorMinMaxOpToAIEVecMinMaxOp&lt; SrcOpTy, DstOpTy &gt;::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02188">LowerVectorCmpOpToAIEVecCmpOp&lt; SrcOpTy, CmpTy &gt;::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l04168">ComputeBandAndBorOpPattern&lt; SrcOpTy, DstOpTy &gt;::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l00884">FoldVectorExtractAndSplatToAIEBroadcast::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l00953">ConvertSplatToAIEBroadcast::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l05016">ConvertSplatToAIEBroadcastAIE2p::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01095">ConvertVectorFMAOpToAIEVecFMAElemOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02325">LowerVectorReductionMinOp::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02393">LowerVectorReductionMaxOp::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02462">LowerVectorReductionAddIntOp::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02520">LowerVectorReductionAddFloatOp::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02582">LowerVectorReductionAddBfloat16OpAIE2::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02683">LowerVectorReductionAddBfloat16OpAIE2P::matchAndRewrite()</a>, <a class="el" href="AIEVecOps_8cpp_source.html#l01466">verifyMulFMAConvOp()</a>, <a class="el" href="AIEVecOps_8cpp_source.html#l00679">verifyMulFMAElemOp()</a>, <a class="el" href="AIEVecAIE1Ops_8cpp_source.html#l00212">xilinx::aievec::aie1::verifyMulFMAOp()</a>, and <a class="el" href="AIEVecOps_8cpp_source.html#l01021">verifyPackUnpackOp()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEVecToLLVM_8cpp_source.html#l00466">xilinx::aievec::AddElemOpAIE2pConversion::decodeAddElemOp()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l01391">xilinx::aievec::MulElemOpAIE2pConversion::decodeMulElemOp()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l00611">xilinx::aievec::SubElemOpAIE2pConversion::decodeSubElemOp()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l00249">getMulOrFMAIntrinsicName()</a>, <a class="el" href="AIEVecUtils_8h_source.html#l00067">getVectorSizeInBits()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l00236">getVectorTypeString()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l03812">xilinx::aievec::BroadcastScalarOpConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l03897">xilinx::aievec::BroadcastScalarOpAIE2pConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l03462">xilinx::aievec::CmpOpConversionBase&lt; MaxLtBf16IntrOp, MinGeBf16IntrOp, MaxLt32IntrOp, MinGe32IntrOp, MaxLt16IntrOp, MinGe16IntrOp &gt;::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l02600">xilinx::aievec::ConcatOpConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l05634">xilinx::aievec::ConcatOpAIE2pConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l05277">xilinx::aievec::ExpOpAIE2pConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l04075">xilinx::aievec::ExtractElemOpConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l02671">xilinx::aievec::ExtOpConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l02772">xilinx::aievec::ExtOpAIE2pConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l05225">xilinx::aievec::InvOpAIE2pConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l03034">xilinx::aievec::MaxOpConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l03248">xilinx::aievec::MaxOpAIE2pConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l03140">xilinx::aievec::MinOpConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l03353">xilinx::aievec::MinOpAIE2pConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l03717">xilinx::aievec::SelOpConversionBase&lt; Sel16IntrOp, Sel32IntrOp &gt;::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l03954">xilinx::aievec::ShiftOpConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l04015">xilinx::aievec::ShiftOpAIE2pConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l02054">xilinx::aievec::SRSOpAIE2Conversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l02197">xilinx::aievec::SRSOpAIE2pConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l05369">xilinx::aievec::TanhOpAIE2pConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l02956">xilinx::aievec::UnpackI4OpAIE2pConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l02483">xilinx::aievec::UPDOpConversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l01603">xilinx::aievec::UPSOpAIE2Conversion::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l01769">xilinx::aievec::UPSOpAIE2pConversion::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01169">ConvertMulAddFToAIEVecFMAElemOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01007">ConvertMulAddToAIEVecFMAElemOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03847">ComputeSigmoidOpPattern::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l05497">xilinx::aievec::FdivOpConversion::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03067">ConvertDivFToAIEVecInvOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01245">ConvertMulFToAIEVecMulElemOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01379">ConvertMulIToAIEVecMulElemOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03999">ComputeNegOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02241">LowerVectorSelectOpToAIEVecSelOp::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l04137">ComputeSignedIntRightShiftOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l04258">ShiftClampTruncToSRSPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l04063">ComputeBxorAndBnegOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03900">ComputeCeilOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03314">ComputeErfOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02953">ComputeExpOpByLUTLLVMPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03949">ComputeFloorOpPattern::matchAndRewrite()</a>, <a class="el" href="AIEVecToLLVM_8cpp_source.html#l05441">xilinx::aievec::RsqrtOpAIE2pConversion::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03220">ComputeRsqrtOpLLVMAIE2Pattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03264">ComputeRsqrtOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03172">ComputeSqrtOpAIE2Pattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02929">ConvertMathTanhToAIEVecTanhOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03127">ComputeTanhOpByLUTPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03366">ComputeAbsOpPattern&lt; SrcOpTy &gt;::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01709">LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp&lt; SrcOpTy, DstOpTy &gt;::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02067">LowerVectorMinMaxOpToAIEVecMinMaxOp&lt; SrcOpTy, DstOpTy &gt;::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02176">LowerVectorCmpOpToAIEVecCmpOp&lt; SrcOpTy, CmpTy &gt;::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l04102">ComputeBandAndBorOpPattern&lt; SrcOpTy, DstOpTy &gt;::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l00872">FoldVectorExtractAndSplatToAIEBroadcast::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l00941">ConvertSplatToAIEBroadcast::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l04917">ConvertSplatToAIEBroadcastAIE2p::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01083">ConvertVectorFMAOpToAIEVecFMAElemOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02313">LowerVectorReductionMinOp::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02381">LowerVectorReductionMaxOp::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02450">LowerVectorReductionAddIntOp::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02508">LowerVectorReductionAddFloatOp::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02570">LowerVectorReductionAddBfloat16OpAIE2::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02671">LowerVectorReductionAddBfloat16OpAIE2P::matchAndRewrite()</a>, <a class="el" href="AIEVecOps_8cpp_source.html#l01466">verifyMulFMAConvOp()</a>, <a class="el" href="AIEVecOps_8cpp_source.html#l00679">verifyMulFMAElemOp()</a>, <a class="el" href="AIEVecAIE1Ops_8cpp_source.html#l00212">xilinx::aievec::aie1::verifyMulFMAOp()</a>, and <a class="el" href="AIEVecOps_8cpp_source.html#l01021">verifyPackUnpackOp()</a>.</p>
 
 </div>
 </div>
@@ -1356,7 +1342,7 @@ template&lt;typename TransferReadLikeOp , typename &gt; </div>
 
 <p class="reference">References <a class="el" href="namespacexilinx_1_1aievec.html#a99d3cb72f0764f395feb55a379e792c9a40bccc3bdca296053c771114097848e5">AIE2</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01538">ConvertMulAddToAIEVecFMAOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01019">ConvertMulAddToAIEVecFMAElemOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01257">ConvertMulFToAIEVecMulElemOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01391">ConvertMulIToAIEVecMulElemOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01698">LowerVectorMulIOpToAIEVecMulOp::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l04065">ComputeNegOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l04203">ComputeSignedIntRightShiftOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l04666">LowerScalarShRSIToAIEVecUPSSRS::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l04324">ShiftClampTruncToSRSPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02965">ComputeExpOpByLUTLLVMPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03025">ComputeExpOpByLUTPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03286">ComputeRsqrtOpLLVMAIE2Pattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03485">LowerExtOpPattern&lt; SrcOpTy &gt;::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01721">LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp&lt; SrcOpTy, DstOpTy &gt;::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03723">LowerTruncOpPattern&lt; SrcOpTy &gt;::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02582">LowerVectorReductionAddBfloat16OpAIE2::matchAndRewrite()</a>, and <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02683">LowerVectorReductionAddBfloat16OpAIE2P::matchAndRewrite()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01526">ConvertMulAddToAIEVecFMAOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01007">ConvertMulAddToAIEVecFMAElemOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01245">ConvertMulFToAIEVecMulElemOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01379">ConvertMulIToAIEVecMulElemOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01686">LowerVectorMulIOpToAIEVecMulOp::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03999">ComputeNegOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l04137">ComputeSignedIntRightShiftOpPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l04600">LowerScalarShRSIToAIEVecUPSSRS::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l04258">ShiftClampTruncToSRSPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02953">ComputeExpOpByLUTLLVMPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03013">ComputeExpOpByLUTPattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03220">ComputeRsqrtOpLLVMAIE2Pattern::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03419">LowerExtOpPattern&lt; SrcOpTy &gt;::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l01709">LowerVectorAddOrSubOpToAIEVecAddElemOrSubElemOp&lt; SrcOpTy, DstOpTy &gt;::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l03657">LowerTruncOpPattern&lt; SrcOpTy &gt;::matchAndRewrite()</a>, <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02570">LowerVectorReductionAddBfloat16OpAIE2::matchAndRewrite()</a>, and <a class="el" href="VectorToAIEVecConversions_8cpp_source.html#l02671">LowerVectorReductionAddBfloat16OpAIE2P::matchAndRewrite()</a>.</p>
 
 </div>
 </div>
@@ -1548,8 +1534,8 @@ template&lt;typename TransferReadLikeOp , typename &gt; </div>
 
 </div>
 </div>
-<a id="a7a632c603efd6cc1020a48e1a8d5959f" name="a7a632c603efd6cc1020a48e1a8d5959f"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a7a632c603efd6cc1020a48e1a8d5959f">&#9670;&#160;</a></span>populateAIEVecConvOpTransformationPatterns() <span class="overload">[1/2]</span></h2>
+<a id="a89691de4983f18c73622ae1aa1d759bc" name="a89691de4983f18c73622ae1aa1d759bc"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a89691de4983f18c73622ae1aa1d759bc">&#9670;&#160;</a></span>populateAIEVecConvOpTransformationPatterns() <span class="overload">[1/2]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -1570,13 +1556,7 @@ template&lt;typename TransferReadLikeOp , typename &gt; </div>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">unsigned&#160;</td>
-          <td class="paramname"><em>shiftParam</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype"><a class="el" href="namespacexilinx.html#a9a8ae05083c78f38dbbdcda3b7540275">TargetBackend</a>&#160;</td>
-          <td class="paramname"><em>backend</em>&#160;</td>
+          <td class="paramname"><em>shiftParam</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -1588,8 +1568,8 @@ template&lt;typename TransferReadLikeOp , typename &gt; </div>
 
 </div>
 </div>
-<a id="a32fca04381544c972d4d29d5f3cd7b51" name="a32fca04381544c972d4d29d5f3cd7b51"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a32fca04381544c972d4d29d5f3cd7b51">&#9670;&#160;</a></span>populateAIEVecConvOpTransformationPatterns() <span class="overload">[2/2]</span></h2>
+<a id="a6139567a5d7bc976d0889dfa43afc9ba" name="a6139567a5d7bc976d0889dfa43afc9ba"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a6139567a5d7bc976d0889dfa43afc9ba">&#9670;&#160;</a></span>populateAIEVecConvOpTransformationPatterns() <span class="overload">[2/2]</span></h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -1610,13 +1590,7 @@ template&lt;typename TransferReadLikeOp , typename &gt; </div>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">unsigned&#160;</td>
-          <td class="paramname"><em>shiftParam</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype"><a class="el" href="namespacexilinx.html#a9a8ae05083c78f38dbbdcda3b7540275">TargetBackend</a>&#160;</td>
-          <td class="paramname"><em>backend</em>&#160;</td>
+          <td class="paramname"><em>shiftParam</em>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -1626,9 +1600,9 @@ template&lt;typename TransferReadLikeOp , typename &gt; </div>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="FoldMulAddChainToConvOp_8cpp_source.html#l00522">522</a> of file <a class="el" href="FoldMulAddChainToConvOp_8cpp_source.html">FoldMulAddChainToConvOp.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="FoldMulAddChainToConvOp_8cpp_source.html#l00521">521</a> of file <a class="el" href="FoldMulAddChainToConvOp_8cpp_source.html">FoldMulAddChainToConvOp.cpp</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="AIEVecOptimizations_8cpp_source.html#l00385">AIEVecConvOpTransformationPass::runOnOperation()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="AIEVecOptimizations_8cpp_source.html#l00350">AIEVecConvOpTransformationPass::runOnOperation()</a>.</p>
 
 </div>
 </div>
@@ -1879,27 +1853,6 @@ template&lt;typename TransferReadLikeOp , typename &gt; </div>
 
 </div>
 </div>
-<a id="a83d82824fad8b84de684246e887dd572" name="a83d82824fad8b84de684246e887dd572"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a83d82824fad8b84de684246e887dd572">&#9670;&#160;</a></span>registerAIEVecToCppTranslation()</h2>
-
-<div class="memitem">
-<div class="memproto">
-      <table class="memname">
-        <tr>
-          <td class="memname">void xilinx::aievec::registerAIEVecToCppTranslation </td>
-          <td>(</td>
-          <td class="paramname"></td><td>)</td>
-          <td></td>
-        </tr>
-      </table>
-</div><div class="memdoc">
-
-<p class="definition">Definition at line <a class="el" href="TranslateRegistration_8cpp_source.html#l00044">44</a> of file <a class="el" href="TranslateRegistration_8cpp_source.html">TranslateRegistration.cpp</a>.</p>
-
-<p class="reference">References <a class="el" href="namespacexilinx_1_1aievec.html#a99d3cb72f0764f395feb55a379e792c9a40bccc3bdca296053c771114097848e5">AIE2</a>, and <a class="el" href="namespacexilinx_1_1aievec.html#a00e8f83c1c8e075872c09d6af694c9bf">translateAIEVecToCpp()</a>.</p>
-
-</div>
-</div>
 <a id="a446ef00c9ac71548699485e7011febfc" name="a446ef00c9ac71548699485e7011febfc"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a446ef00c9ac71548699485e7011febfc">&#9670;&#160;</a></span>registerTransformDialectExtension()</h2>
 
@@ -1952,14 +1905,12 @@ template&lt;typename TransferReadLikeOp , typename &gt; </div>
 
 <p>Translates the <a class="el" href="namespacexilinx_1_1AIE.html" title="Include the generated interface declarations.">AIE</a> vector dialect MLIR to C++ code. </p>
 
-<p class="reference">Referenced by <a class="el" href="Translation_8cpp_source.html#l00041">aieTranslateAIEVecToCpp()</a>, and <a class="el" href="TranslateRegistration_8cpp_source.html#l00044">registerAIEVecToCppTranslation()</a>.</p>
-
 </div>
 </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Mon Jun 29 2026 14:34:12 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Mon Jun 29 2026 14:49:48 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

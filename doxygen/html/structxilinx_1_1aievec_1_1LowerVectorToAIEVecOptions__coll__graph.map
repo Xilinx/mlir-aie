@@ -1,7 +1,7 @@
 <map id="xilinx::aievec::LowerVectorToAIEVecOptions" name="xilinx::aievec::LowerVectorToAIEVecOptions">
-<area shape="rect" id="Node000001" title="Options for the &quot;lower&#45;vector&#45;to&#45;aievec&quot; pipeline." alt="" coords="139,123,336,163"/>
+<area shape="rect" id="Node000001" title="Options for the &quot;lower&#45;vector&#45;to&#45;aievec&quot; pipeline." alt="" coords="139,108,336,148"/>
 <area shape="rect" id="Node000002" title=" " alt="" coords="5,5,245,45"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="155,53,221,121,217,124,151,57"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="158,52,218,106,215,110,155,56"/>
 <area shape="rect" id="Node000003" title=" " alt="" coords="269,13,429,38"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="330,50,258,124,254,121,326,46"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="328,49,260,110,257,106,325,45"/>
 </map>
