@@ -21,7 +21,6 @@ add_mlir_public_c_api_library(AIECAPI
   MLIRAIEVecToLLVM
   MLIRAIEVecTransforms
   MLIRAIEVecUtils
-  MLIRTargetAIEVecCpp
   MLIRXLLVMToLLVMIRTranslation
 )
 

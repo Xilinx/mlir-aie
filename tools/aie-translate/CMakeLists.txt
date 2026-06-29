@@ -29,7 +29,6 @@ set(LIBS
   MLIRIR
   MLIRParser
   MLIRPass
-  MLIRTargetAIEVecCpp
   MLIRTargetLLVMIRExport
   MLIRTargetLLVMIRImport
 )

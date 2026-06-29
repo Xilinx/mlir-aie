@@ -19,8 +19,6 @@ namespace xilinx {
 namespace aievec {
 
 class AIEVecDialect;
-// Translation from AIE vector code to C++
-void registerAIEVecToCppTranslation();
 
 } // end namespace aievec
 } // end namespace xilinx
