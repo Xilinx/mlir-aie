@@ -1,11 +1,8 @@
 # vision/color_threshold/color_threshold.py -*- Python -*-
 # Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
-#
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 """Color threshold -- ``@iron.jit`` parallel-channel threshold pipeline.
 
 A line-based RGBA image is split into its four channels (R, G, B, A); each

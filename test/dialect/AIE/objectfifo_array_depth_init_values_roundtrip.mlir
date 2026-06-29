@@ -3,9 +3,6 @@
 
 //===- objectfifo_array_depth_init_values_roundtrip.mlir -------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-//
 //===----------------------------------------------------------------------===//
 
 // Round-trip an aie.objectfifo with array-valued $elemNumber (per-endpoint

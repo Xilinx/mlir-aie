@@ -15,9 +15,6 @@ from pathlib import Path
 
 td_template = """//===- AIEEvents{suffix}.td.inc - AIE Event Enums -----------*- tablegen -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-//
 // Automatically generated from utils/generate_events_tablegen.py
 // DO NOT EDIT
 //

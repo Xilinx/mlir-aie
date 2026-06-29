@@ -5,9 +5,6 @@
 
 ##===- utils/setup_python_packages.sh - Setup python packages for mlir-aie build --*- Script -*-===##
 #
-# This file licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
-#
 ##===----------------------------------------------------------------------===##
 #
 # This script sets up and installs the required python packages to build mlir-aie.

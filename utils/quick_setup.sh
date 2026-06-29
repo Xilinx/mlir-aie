@@ -5,9 +5,6 @@
 
 ##===- quick_setup.sh - Setup IRON for Ryzen AI dev ----------*- Script -*-===##
 #
-# This file licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
-#
 ##===----------------------------------------------------------------------===##
 #
 # This script is the quickest path to running the Ryzen AI reference designs.

@@ -5,9 +5,6 @@
 
 ##===------ run_example.py - Runs IRON examples (Linux/WSL/Windows). -----===##
 #
-# This file licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
-#
 ##===------------------------------------------------------------------------------===##
 #
 # Build + run Makefile-based programming examples (cross platform).

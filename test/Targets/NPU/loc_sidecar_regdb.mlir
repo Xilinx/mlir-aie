@@ -3,9 +3,6 @@
 
 //===- loc_sidecar_regdb.mlir -----------------------------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-//
 //===----------------------------------------------------------------------===//
 
 // Verifies that the locmap sidecar decorates each transaction word with its

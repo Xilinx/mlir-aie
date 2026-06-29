@@ -1,11 +1,7 @@
 //===- aie-lsp-server -------------------------------------------*- C++ -*-===//
 // Copyright (C) 2022-2024 Advanced Micro Devices, Inc.
-//
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
 // Copyright (C) 2024 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // A server exposing AIE dialects to be used by IDE & editors supporting LSP
 // https://microsoft.github.io/language-server-protocol like Emacs, VScode, etc.

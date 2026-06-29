@@ -5,9 +5,6 @@
 
 ##===------ iron_setup.py - One-stop mlir-aie/Iron setup (Linux/WSL/Windows). -----===##
 #
-# This file licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
-#
 ##===------------------------------------------------------------------------------===##
 #
 # This user-friendly script sets up the environment and installs packages for IRON.

@@ -3,9 +3,6 @@
 
 //===- init_values_no_link_skips_source_locks.mlir -------------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-//
 //===----------------------------------------------------------------------===//
 
 // An aie.objectfifo with init_values on a MemTile producer and no upstream

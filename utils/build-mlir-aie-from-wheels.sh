@@ -5,8 +5,6 @@
 
 ##===- utils/build-mlir-aie-from-wheels.sh - Build mlir-aie --*- Script -*-===##
 # 
-# This file licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
 ##===----------------------------------------------------------------------===##
 #
 # This script builds mlir-aie given wheels installed <llvm mlir dir>.

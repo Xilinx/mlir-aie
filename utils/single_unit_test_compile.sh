@@ -5,9 +5,6 @@
 
 ##===- utils/single_unit_test_compile.sh - Wrapper to compile single unit test --*- Script -*-===##
 # 
-# This file licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
-# 
 ##===----------------------------------------------------------------------===##
 #
 # This script simplifies the aiecc.py compile command for compiling the unit

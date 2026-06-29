@@ -5,9 +5,6 @@
 
 ##===------ build_local.py - Local wheel build orchestration (cross-platform)------===##
 #
-# This file licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
-#
 ##===------------------------------------------------------------------------------===##
 # Python shim for scripts/build_local.sh (cross-platform, Windows-friendly).
 #

@@ -5,9 +5,6 @@
 
 ##===- utils/build-llvm-local.sh - Build LLVM on local machine --*- Script -*-===##
 #
-# This file licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
-#
 ##===----------------------------------------------------------------------===##
 #
 # This script build LLVM with custom options intended to be called on your

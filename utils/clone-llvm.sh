@@ -5,9 +5,6 @@
 
 ##===- utils/clone-llvm.sh - Build LLVM for github workflow --*- Script -*-===##
 #
-# This file licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
-#
 ##===----------------------------------------------------------------------===##
 #
 # This script checks out LLVM.  We use this instead of a git submodule to avoid
