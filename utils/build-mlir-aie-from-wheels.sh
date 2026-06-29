@@ -49,8 +49,8 @@ if [ "$#" -ge 4 ]; then
   echo "PEANO_INSTALL_DIR DIR: $PEANO_INSTALL_DIR"
   export PEANO_INSTALL_DIR=${PEANO_INSTALL_DIR}
 else
-  # Temp pin: latest llvm-aie nightly miscompiles int->float->int at -O2 (Xilinx/llvm-aie#1053). Revert once fixed upstream.
-  python3 -m pip install "llvm-aie==21.0.0.2026062301+cb664e8c" -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
+  # Pinned via utils/peano-requirements.txt (bumped by the update-peano workflow).
+  python3 -m pip install -r ${BASE_DIR}/utils/peano-requirements.txt
   export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep ^Location: | awk '{print $2}')/llvm-aie"
   echo "PEANO_INSTALL_DIR DIR: $PEANO_INSTALL_DIR"
   export PEANO_INSTALL_DIR=${PEANO_INSTALL_DIR}
