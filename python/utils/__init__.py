@@ -220,6 +220,13 @@ def _get_default_npu_runtime():
     return _DefaultNPURuntime
 
 
+def cleanup_npu_runtime() -> None:
+    """Release cached XRT resources without initializing the default runtime."""
+    runtime = globals().get("DefaultNPURuntime", _DefaultNPURuntime)
+    if runtime is not None:
+        runtime.cleanup()
+
+
 def __getattr__(name):
     if name == "DefaultNPURuntime":
         return _get_default_npu_runtime()
