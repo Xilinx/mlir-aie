@@ -142,8 +142,11 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
 1. Install the Peano compiler (the `llvm-aie` wheels) and dependencies:
    ```bash
-   # Install Peano from llvm-aie wheel
-   python3 -m pip install llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
+   # Install Peano from the llvm-aie wheel, pinned to the tested nightly in
+   # utils/peano-requirements.txt (the same pin CI uses; bumped by the update-peano
+   # workflow). To grab the latest nightly instead, install `llvm-aie` directly
+   # with `-f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly`.
+   python3 -m pip install -r utils/peano-requirements.txt
 
    ```
 
