@@ -1,5 +1,4 @@
 # Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
-#
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #  Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.

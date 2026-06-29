@@ -1,8 +1,5 @@
-<!--
-Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
-
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
--->
+<!-- Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 
 # Building on a non-Ubuntu distro (and/or with the in-tree `amdxdna` driver)
 

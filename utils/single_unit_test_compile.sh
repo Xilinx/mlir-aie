@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
-#
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ##===- utils/single_unit_test_compile.sh - Wrapper to compile single unit test --*- Script -*-===##

@@ -1,7 +1,6 @@
 # Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
 # Copyright (C) 2019-2022 Xilinx, Inc.
 # Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
-#
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 all: test_groups.x run_groups

@@ -1,6 +1,5 @@
 # Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
 # Copyright (C) 2021 Xilinx, Inc.
-#
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 ROOT_DIR=$(realpath $(dir $(lastword $(MAKEFILE_LIST))))
