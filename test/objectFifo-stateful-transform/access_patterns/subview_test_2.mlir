@@ -11,7 +11,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcvc1902) {
 // CHECK:           %[[VAL_0:.*]] = aie.tile(1, 2)
@@ -112,7 +112,7 @@ module @multiFifo {
             func.call @some_work(%elem11) : (memref<16xi32>) -> ()
             func.call @some_work(%elem12) : (memref<16xi32>) -> ()
             aie.objectfifo.release @of (Produce, 3)
-            
+
             aie.objectfifo.release @of2 (Produce, 1)
             %subview12 = aie.objectfifo.acquire @of2 (Produce, 2) : !aie.objectfifosubview<memref<16xi32>>
             %elem102 = aie.objectfifo.subview.access %subview12[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
@@ -120,7 +120,7 @@ module @multiFifo {
             func.call @some_work(%elem102) : (memref<16xi32>) -> ()
             func.call @some_work(%elem112) : (memref<16xi32>) -> ()
             aie.objectfifo.release @of2 (Produce, 1)
-            
+
             aie.end
         }
 

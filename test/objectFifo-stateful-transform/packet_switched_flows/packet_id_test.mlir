@@ -5,10 +5,10 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // Copyright (C) 2025 Advanced Micro Devices, Inc.
-// 
+//
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="packet-sw-objFifos" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="packet-sw-objFifos dynamic-objFifos=false" %s | FileCheck %s
 
 // CHECK: module @packet_id {
 // CHECK:   aie.device(xcve2302) {

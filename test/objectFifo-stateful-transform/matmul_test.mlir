@@ -7,7 +7,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
 
 // CHECK:           %[[VAL_0:.*]] = aie.tile(0, 0)
 // CHECK:           %[[VAL_1:.*]] = aie.tile(0, 2)
