@@ -8,6 +8,7 @@
 
 add_mlir_dialect_library(AIEXTransforms
   AIEXToStandard.cpp
+  AIESCFToControlFlow.cpp
   AIECreateCores.cpp
   AIECreateLocks.cpp
   AIEHerdRouting.cpp
@@ -43,6 +44,7 @@ add_mlir_dialect_library(AIEXTransforms
   AIEXUtils
   MLIRIR
   MLIRPass
+  MLIRSCFToControlFlow
   MLIRSupport
   MLIRTransformUtils
   )
