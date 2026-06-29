@@ -2093,12 +2093,15 @@ static std::string downgradeIRForPeano(StringRef ir) {
     else
       pos = end;
   }
-  // Rewrite LLVM 23+ 'f0x<8hex>' typed float literals to the double-widened
-  // '0x<16hex>' form that Peano's LLVM 21 opt can parse.
-  // LLVM 23 introduced a compact syntax for 32-bit float constants (the 'f'
-  // prefix encodes the type and the 8 hex digits encode the IEEE-754 bits
-  // directly). Older LLVM (including Peano's LLVM 21) only accepts float
-  // constants as their value widened to double, written as 0x<16 hex digits>.
+  // Rewrite 'f0x<8hex>' typed float literals to the double-widened '0x<16hex>'
+  // form that Peano's LLVM 21 opt can parse.
+  // Introduced by llvm/llvm-project@41c214f0b115 (2026-05-07,
+  // "[AsmWriter] Change the output syntax of floating-point literals.",
+  // https://github.com/llvm/llvm-project/pull/190649): "the hexadecimal
+  // output generally changes to f0x... notation, and is used when 6 decimal
+  // digits are insufficient to accurately represent the number."
+  // Older LLVM (including Peano's LLVM 21) only accepts float constants
+  // widened to double, written as 0x<16 hex digits>.
   // Only match at token boundaries: the character before 'f' must not be an
   // identifier character (to avoid matching inside %f0xDEAD or similar), and
   // the character after the 8 hex digits must not be a hex digit (to avoid
@@ -2144,13 +2147,15 @@ static std::string downgradeIRForPeano(StringRef ir) {
       }
     }
   }
-  // Rewrite LLVM 23+ decimal bfloat16 literals ('bfloat N.NNe+NN') to the
-  // hexadecimal form ('bfloat 0xR<4hex>') that Peano's LLVM 21 opt can parse.
-  // LLVM 23 started printing bfloat constants as decimal strings (e.g.
-  // 'bfloat 1.445310e+00'); older LLVM requires the 0xR-prefixed bit-exact
-  // hex form. The conversion uses round-to-nearest-even (matching the C
-  // floating-point default) so that the encoded bits match the original
-  // bfloat16 constant exactly.
+  // Rewrite decimal bfloat16 literals ('bfloat N.NNe+NN') to the hexadecimal
+  // form ('bfloat 0xR<4hex>') that Peano's LLVM 21 opt can parse.
+  // Also introduced by llvm/llvm-project@41c214f0b115 (2026-05-07,
+  // "[AsmWriter] Change the output syntax of floating-point literals.",
+  // https://github.com/llvm/llvm-project/pull/190649): "extends the base
+  // decimal output literal to support non-double types." Peano's LLVM 21 can
+  // only parse bfloat constants in the 0xR-prefixed bit-exact hex form. The
+  // conversion uses round-to-nearest-even so that the encoded bits match the
+  // original bfloat16 constant exactly.
   {
     // Match "bfloat" followed by a decimal number (not already 0x-prefixed).
     const std::string bfPfx = "bfloat ";
