@@ -1,4 +1,4 @@
-# Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+# Copyright (C) 2023-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 cmake_minimum_required(VERSION 3.30)

@@ -1,9 +1,7 @@
-// Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-
 /*
  * Copyright (C) 2019-2022 Xilinx, Inc.
  * Copyright (C) 2022-2025 Advanced Micro Devices, Inc.
+ * SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
  *
  */
 

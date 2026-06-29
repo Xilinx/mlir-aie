@@ -1,4 +1,4 @@
-# Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 """IRON DMA compression probes for AIE-ML (npu1) and AIE2P (npu2).

@@ -1,4 +1,4 @@
-<!-- Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+<!-- Copyright (C) 2022 Advanced Micro Devices, Inc.
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 
 # VCK190 (production silicon) Bare Platform (2021.2)

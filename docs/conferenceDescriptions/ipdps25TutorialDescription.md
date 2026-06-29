@@ -1,4 +1,4 @@
-<!-- Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+<!-- Copyright (C) 2024-2025 Advanced Micro Devices, Inc.
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 
 # IPDPS 2025 (Double) Tutorial: Leveraging the IRON AI Engine API to program the Ryzen™ AI NPU
