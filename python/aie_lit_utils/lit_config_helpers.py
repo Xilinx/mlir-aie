@@ -106,6 +106,12 @@ class LitConfigHelper:
         )
 
     @staticmethod
+    def add_makefile_examples_feature(config_obj) -> None:
+        """Enable Make-based example tests on POSIX hosts."""
+        if os.name != "nt" and shutil.which("make"):
+            config_obj.available_features.add("makefile_examples")
+
+    @staticmethod
     def _find_xrt_smi(xrt_bin_dir: str) -> Optional[str]:
         """Find xrt-smi without assuming it exists under XRT_ROOT."""
         candidates = []
