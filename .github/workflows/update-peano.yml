@@ -60,8 +60,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ -f utils/peano-update-rotation.txt ]; then
-            users=($(cat utils/peano-update-rotation.txt))
+          if [ -f utils/dependency-update-rotation.txt ]; then
+            users=($(cat utils/dependency-update-rotation.txt))
             count=${#users[@]}
             if [ $count -gt 0 ]; then
               last_assignee=$(gh pr list --state all --search "Update Peano version in:title" --limit 1 --json assignees --jq '.[0].assignees[0].login')
