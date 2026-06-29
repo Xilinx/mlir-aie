@@ -8,7 +8,7 @@
 ##===----------------------------------------------------------------------===##
 #
 # This script is the quickest path to running the Ryzen AI reference designs.
-# Please have the Vitis tools and XRT environment setup before sourcing the 
+# Please have the Vitis tools and XRT environment setup before sourcing the
 # script.
 #
 # Usage: source ./utils/quick_setup.sh
@@ -18,7 +18,7 @@
 echo "Setting up RyzenAI developement tools..."
 if [ -z "${WSL_DISTRO_NAME-}" ]; then
   XRTSMI=`which xrt-smi`
-  if ! test -f "$XRTSMI"; then 
+  if ! test -f "$XRTSMI"; then
     echo "xrt-smi not found. Is XRT installed?"
     return 1
   fi
@@ -56,7 +56,7 @@ $my_python -m venv ironenv
 source ironenv/bin/activate
 python3 -m pip install --upgrade pip
 
-python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-3/ 
+python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-4/
 export MLIR_AIE_INSTALL_DIR="$(pip show mlir_aie | grep ^Location: | awk '{print $2}')/mlir_aie"
 
 # Temp pin: latest llvm-aie nightly miscompiles int->float->int at -O2 (Xilinx/llvm-aie#1053). Revert once fixed upstream.

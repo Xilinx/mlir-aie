@@ -63,7 +63,6 @@ int main(int argc, char **argv) {
   registerToSPIRVTranslation();
 
   xilinx::AIE::registerAIETranslations();
-  xilinx::aievec::registerAIEVecToCppTranslation();
 
   llvm::cl::AddExtraVersionPrinter(version_printer);
 
