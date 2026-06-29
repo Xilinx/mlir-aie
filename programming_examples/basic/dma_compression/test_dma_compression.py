@@ -8,14 +8,13 @@ python3 test_dma_compression.py --skip both,core_both
 
 import argparse
 import hashlib
-import shutil
 import sys
 import time
-from pathlib import Path
 
 import numpy as np
 
 import aie.iron as iron
+from aie.utils import cleanup_npu_runtime
 
 from dma_compression import dma_compression, CONFIGS, RATIOED_N
 
@@ -29,27 +28,9 @@ def _detect_arch() -> str:
     return rt.npu_str
 
 
-def _isolate_for_next_config():
-    # Drop stale xclbin + hw_context so the next dispatch's registration
-    # doesn't fail with ENODEV from DRM_IOCTL_AMDXDNA_CREATE_HWCTX.
-    cache = Path.home() / ".npu" / "cache"
-    if cache.exists():
-        for entry in cache.iterdir():
-            shutil.rmtree(entry, ignore_errors=True)
-    try:
-        from aie.utils.jit import _compiled_kernels
-
-        _compiled_kernels.clear()
-    except Exception:
-        pass
-    try:
-        from aie.utils import _get_default_npu_runtime
-
-        rt = _get_default_npu_runtime()
-        if rt is not None:
-            rt.cleanup()
-    except Exception:
-        pass
+def _reset_runtime_for_next_config():
+    """Release cached XRT contexts before the next DMA configuration."""
+    cleanup_npu_runtime()
 
 
 N = 4096
@@ -293,7 +274,7 @@ def main() -> int:
     needs_compressed_input = any(c.endswith("both") and c not in skip for c in configs)
     compressed_input_np = None
     if needs_compressed_input:
-        _isolate_for_next_config()
+        _reset_runtime_for_next_config()
         print("[ pre-compute cmp_only ] capturing compressed-arange for *both configs")
         in_t = iron.arange(N, dtype=np.uint32, device="npu")
         out_t = iron.full(N, SENTINEL, dtype=np.uint32, device="npu")
@@ -306,12 +287,12 @@ def main() -> int:
         if cfg in skip:
             print(f"[{cfg:>23}] SKIP")
             continue
-        _isolate_for_next_config()
+        _reset_runtime_for_next_config()
         cfg_input = compressed_input_np if cfg.endswith("both") else None
         all_ok &= run_one(cfg, verbose=args.verbose, input_np=cfg_input)
 
     if not args.config and "roundtrip" not in skip:
-        _isolate_for_next_config()
+        _reset_runtime_for_next_config()
         all_ok &= run_roundtrip(verbose=args.verbose)
 
     print()

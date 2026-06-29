@@ -541,15 +541,17 @@ def install_plan(
             ensure_mlir_aie_pth(venv, mlir_prefix)
 
     # llvm-aie wheels (Peano)
+    # Default "nightly" installs the pin in utils/peano-requirements.txt (bumped by the
+    # update-peano workflow) so a bad nightly is caught in a PR instead of breaking CI.
+    # An explicit --llvm-aie <url> overrides and stays unpinned.
     llvm_choice = str(getattr(args, "llvm_aie", "nightly") or "nightly").strip()
-    llvm_find_links = (
-        "https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly"
-        if llvm_choice == "nightly"
-        else llvm_choice
-    )
-
-    print(f"[setup] Installing llvm-aie from {llvm_find_links}")
-    pip_pkg("llvm-aie", find_links=llvm_find_links)
+    if llvm_choice == "nightly":
+        peano_reqs = repo_root / "utils" / "peano-requirements.txt"
+        print(f"[setup] Installing llvm-aie from {peano_reqs}")
+        pip_reqs(peano_reqs)
+    else:
+        print(f"[setup] Installing llvm-aie from {llvm_choice}")
+        pip_pkg("llvm-aie", find_links=llvm_choice)
 
     if IS_WINDOWS:
         peano_prefix = pip_install_prefix(

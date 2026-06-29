@@ -49,8 +49,8 @@ fi
 
 # If force install or an install dir isn't passed
 if [[ $FORCE_INSTALL -eq 1 || ( "$#" -lt 2 && -z "$(pip show llvm-aie | grep '^Location:')" ) ]]; then
-  # Temp pin: latest llvm-aie nightly miscompiles int->float->int at -O2 (Xilinx/llvm-aie#1053). Revert once fixed upstream.
-  python3 -m pip install -I "llvm-aie==21.0.0.2026062301+cb664e8c" -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
+  # Pinned via utils/peano-requirements.txt (bumped by the update-peano workflow).
+  python3 -m pip install -I -r "$(dirname "${BASH_SOURCE[0]}")/peano-requirements.txt"
   export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep '^Location:' | awk '{print $2}')/llvm-aie"
 fi
 
