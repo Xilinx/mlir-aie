@@ -38,6 +38,8 @@ createAIEMaterializeRuntimeSequencesPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEAssignRuntimeSequenceBDIDsPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
+createAIEUnrollRuntimeSequenceLoopsPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIETestRuntimeBdLivenessPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEDMATasksToNPUPass();

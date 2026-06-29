@@ -18,6 +18,7 @@ add_mlir_dialect_library(AIEXTransforms
   AIEMaterializeRuntimeSequences.cpp
   AIEAssignRuntimeSequenceBDIDs.cpp
   AIERuntimeBdLiveness.cpp
+  AIEUnrollRuntimeSequenceLoops.cpp
   AIEDMATasksToNPU.cpp
   AIESubstituteShimDMAAllocations.cpp
   AIECtrlPacketToDma.cpp
@@ -45,4 +46,5 @@ add_mlir_dialect_library(AIEXTransforms
   MLIRSCFToControlFlow
   MLIRSupport
   MLIRTransformUtils
+  MLIRSCFUtils
   )
