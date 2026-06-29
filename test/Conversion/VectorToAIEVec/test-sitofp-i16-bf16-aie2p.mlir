@@ -20,7 +20,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s --convert-vector-to-aievec='aie-target=aie2p target-backend=llvmir' -cse | FileCheck %s
+// RUN: aie-opt %s --convert-vector-to-aievec='aie-target=aie2p' -cse | FileCheck %s
 
 // CHECK-LABEL: @sitofp_v32_i16_bf16(
 // CHECK-SAME:  %[[A:.*]]: vector<32xi16>

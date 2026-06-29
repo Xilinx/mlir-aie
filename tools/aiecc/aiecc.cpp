@@ -1469,8 +1469,7 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
   }
 
   // Step 1: Convert vector to aievec (this is a pipeline, not a single pass)
-  // Only add for AIE2 and later targets - AIE1 doesn't support
-  // target-backend=llvmir
+  // Only add for AIE2 and later targets
   // NOTE: Use parsePassPipeline instead of buildConvertVectorToAIEVec because
   // ConvertVectorToAIEVecOptions only propagates aie-target to its sub-pipeline
   // options (canonicalize, lower, optimize) through parseFromString, not
@@ -1481,7 +1480,6 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
       lowerTarget == "aie2p") {
     std::string vecPipeline =
         "convert-vector-to-aievec{aie-target=" + lowerTarget +
-        " target-backend=llvmir" +
         (bf16Emulation ? " bf16-emulation=true" : "") + "}";
     if (failed(parsePassPipeline(vecPipeline, pm))) {
       llvm::errs() << "Error: Failed to parse convert-vector-to-aievec "
@@ -2094,6 +2092,57 @@ static std::string downgradeIRForPeano(StringRef ir) {
       result.erase(pos, end - pos);
     else
       pos = end;
+  }
+  // Rewrite LLVM 23+ 'f0x<8hex>' typed float literals to the double-widened
+  // '0x<16hex>' form that Peano's LLVM 21 opt can parse.
+  // LLVM 23 introduced a compact syntax for 32-bit float constants (the 'f'
+  // prefix encodes the type and the 8 hex digits encode the IEEE-754 bits
+  // directly). Older LLVM (including Peano's LLVM 21) only accepts float
+  // constants as their value widened to double, written as 0x<16 hex digits>.
+  // Only match at token boundaries: the character before 'f' must not be an
+  // identifier character (to avoid matching inside %f0xDEAD or similar), and
+  // the character after the 8 hex digits must not be a hex digit (to avoid
+  // partial matches against longer hex strings).
+  {
+    const std::string f0xPfx = "f0x";
+    pos = 0;
+    while ((pos = result.find(f0xPfx, pos)) != std::string::npos) {
+      // Require a non-identifier, non-sigil character before 'f' to avoid
+      // matching inside LLVM IR value names like '%f0xDEAD' or '@f0xBEEF'.
+      if (pos > 0 && (isIdentChar(result[pos - 1]) || result[pos - 1] == '%' ||
+                      result[pos - 1] == '@')) {
+        pos += f0xPfx.size();
+        continue;
+      }
+      size_t hexStart = pos + f0xPfx.size();
+      size_t hexEnd = hexStart;
+      while (hexEnd < result.size() && hexEnd < hexStart + 8 &&
+             std::isxdigit(static_cast<unsigned char>(result[hexEnd])))
+        ++hexEnd;
+      // Require exactly 8 hex digits followed by a non-hex-digit boundary.
+      bool trailingOk =
+          hexEnd >= result.size() ||
+          !std::isxdigit(static_cast<unsigned char>(result[hexEnd]));
+      if (hexEnd - hexStart == 8 && trailingOk) {
+        // Decode the 32-bit float bit pattern and re-encode as a double so
+        // that Peano's LLVM 21 opt can parse the resulting hex literal.
+        uint32_t fbits = static_cast<uint32_t>(
+            std::stoul(result.substr(hexStart, 8), nullptr, 16));
+        float fval;
+        std::memcpy(&fval, &fbits, sizeof(fval));
+        double dval = static_cast<double>(fval);
+        uint64_t dbits;
+        std::memcpy(&dbits, &dval, sizeof(dval));
+        // Format as "0x" followed by 16 uppercase hex digits.
+        std::string replacement = "0x";
+        for (int shift = 60; shift >= 0; shift -= 4)
+          replacement += "0123456789ABCDEF"[(dbits >> shift) & 0xFu];
+        result.replace(pos, hexEnd - pos, replacement);
+        pos += replacement.size();
+      } else {
+        pos = hexEnd;
+      }
+    }
   }
   return result;
 }
@@ -2804,11 +2853,63 @@ compileCores(MLIRContext &context, ModuleOp moduleOp, Operation *deviceOp,
   // We need to serialize the module to string and deserialize in each thread
   // because MLIRContext is not thread-safe for multi-threaded mutation.
 
-  // First, serialize the module to string for parallel workers
-  std::string moduleStr;
+  // Each parallel worker re-parses the module in its own MLIRContext and the
+  // per-core lowering then keeps only its own core, discarding everything else.
+  // Serializing the whole multi-core, multi-device module once and handing that
+  // same string to every worker is O(N) memory per worker for an N-core device,
+  // and the string also carries the runtime sequences, which the per-core
+  // lowering never touches but which dominate the module text once the host DMA
+  // program is unrolled (tens of thousands of dma_bd ops). For large designs
+  // the peak memory and the repeated full-module clones become the dominant
+  // cost.
+  //
+  // Instead, build a stripped base module once, then derive a small per-core
+  // slice from it. The stripped base drops (a) the runtime sequences (host-side
+  // DMA orchestration, unused by per-core lowering) and (b) every other device
+  // (a core only references its own device's tiles/buffers/locks/objectfifos).
+  // Each per-core slice clones that small base and erases the other cores.
+  // Cloning the stripped base instead of the full module makes the per-core
+  // clones cheap, and the resulting slice strings are byte-identical to the old
+  // path, so the emitted object/ELF is unchanged. Slicing runs here (serial,
+  // one clone live at a time, so peak memory stays bounded) before the parallel
+  // fan-out.
+  OwningOpRef<ModuleOp> strippedBase = moduleOp.clone();
   {
-    llvm::raw_string_ostream os(moduleStr);
-    moduleOp->print(os);
+    // Strip the runtime sequences (host-side, unused by per-core lowering)...
+    SmallVector<xilinx::AIE::RuntimeSequenceOp> seqs;
+    strippedBase->walk(
+        [&](xilinx::AIE::RuntimeSequenceOp s) { seqs.push_back(s); });
+    for (auto s : seqs)
+      s.erase();
+    // ...and every other device. compileCores is per-device and a per-core
+    // object only references its own device's tiles/buffers/locks/objectfifos,
+    // never a sibling device, so dropping the other device shells shrinks each
+    // per-core slice further without changing the emitted object/ELF.
+    SmallVector<xilinx::AIE::DeviceOp> otherDevices;
+    strippedBase->walk([&](xilinx::AIE::DeviceOp d) {
+      if (d.getSymName() != deviceName)
+        otherDevices.push_back(d);
+    });
+    for (auto d : otherDevices)
+      d.erase();
+  }
+  std::map<std::pair<int, int>, std::string> coreModuleStrs;
+  for (const auto &core : cores) {
+    OwningOpRef<ModuleOp> slice = strippedBase->clone();
+    SmallVector<xilinx::AIE::CoreOp> otherCores;
+    slice->walk([&](xilinx::AIE::CoreOp c) {
+      auto t = dyn_cast<xilinx::AIE::TileOp>(c.getTile().getDefiningOp());
+      if (!t || t.getCol() != core.col || t.getRow() != core.row)
+        otherCores.push_back(c);
+    });
+    for (auto c : otherCores)
+      c.erase();
+    std::string s;
+    {
+      llvm::raw_string_ostream os(s);
+      slice->print(os);
+    }
+    coreModuleStrs[{core.col, core.row}] = std::move(s);
   }
 
   // Get the dialect registry to use for parallel contexts
@@ -2844,7 +2945,7 @@ compileCores(MLIRContext &context, ModuleOp moduleOp, Operation *deviceOp,
     // Create task for this core
     futures.push_back(std::async(
         std::launch::async,
-        [&registry, &moduleStr, deviceName = deviceName.str(),
+        [&registry, &coreModuleStrs, deviceName = deviceName.str(),
          tmpDirName = tmpDirName.str(), aieTarget = aieTarget.str(), core,
          &resultsMutex, &elfPaths, &hasFailure, &activeThreads]() {
           // Each thread creates its own MLIRContext
@@ -2859,8 +2960,8 @@ compileCores(MLIRContext &context, ModuleOp moduleOp, Operation *deviceOp,
 
           // Parse the module in this thread's context
           ParserConfig parseConfig(&threadContext);
-          OwningOpRef<ModuleOp> threadModule =
-              parseSourceString<ModuleOp>(moduleStr, parseConfig);
+          OwningOpRef<ModuleOp> threadModule = parseSourceString<ModuleOp>(
+              coreModuleStrs.at({core.col, core.row}), parseConfig);
 
           if (!threadModule) {
             {
