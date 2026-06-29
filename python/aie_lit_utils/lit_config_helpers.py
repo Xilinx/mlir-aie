@@ -511,9 +511,9 @@ class LitConfigHelper:
                     tool_path = os.path.join(
                         peano_tools_dir, f"{tool_name}{peano_executable_suffix}"
                     )
-                    config.substitutions[f"%PEANO_INSTALL_DIR/bin/{tool_name}"] = (
-                        LitConfigHelper._quote_lit_arg(tool_path)
-                    )
+                    config.substitutions[
+                        re.escape(f"%PEANO_INSTALL_DIR/bin/{tool_name}")
+                    ] = LitConfigHelper._quote_lit_arg(tool_path)
 
                 config.substitutions["%PEANO_INSTALL_DIR"] = peano_install_dir
                 # Also set environment variable for tests that need it
