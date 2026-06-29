@@ -56,7 +56,14 @@ $my_python -m venv ironenv
 source ironenv/bin/activate
 python3 -m pip install --upgrade pip
 
-python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-4/
+# Prefer a locally-provided wheel (e.g. a CI artifact built from this same
+# commit) when MLIR_AIE_WHEEL_DIR is set; otherwise fall back to the published
+# rolling tag for local-dev convenience.
+if [ -n "${MLIR_AIE_WHEEL_DIR:-}" ]; then
+  python3 -m pip install mlir_aie -f "$MLIR_AIE_WHEEL_DIR"
+else
+  python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-4/
+fi
 export MLIR_AIE_INSTALL_DIR="$(pip show mlir_aie | grep ^Location: | awk '{print $2}')/mlir_aie"
 
 # Temp pin: latest llvm-aie nightly miscompiles int->float->int at -O2 (Xilinx/llvm-aie#1053). Revert once fixed upstream.
