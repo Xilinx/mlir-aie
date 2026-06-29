@@ -182,14 +182,15 @@ jobs:
       python_version: "3.12"
       enable_rtti: "ON"
       reusable_call: true
-    # Must grant at least what the called workflow's build-repo job declares
-    # (contents: write + packages: read for attestation and the ghcr base
-    # image), or reusable-workflow validation fails at startup.
+    # Must grant the union of what ALL of the called workflow's jobs declare
+    # (build-repo, build-windows, publish) — GitHub validates every nested
+    # job's permissions at startup even when gated off via if:.
     permissions:
       id-token: write
       contents: write
       packages: read
       attestations: write
+      actions: read
 
   build-quick-setup:
     name: Run Examples on Ryzen AI
