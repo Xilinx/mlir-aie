@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aie2p target-backend=llvmir" | FileCheck %s
+// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aie2p" | FileCheck %s
 
 // CHECK-LABEL: func @test_tanh_aie2p
 // CHECK-SAME: %[[A:[A-Za-z0-9]+]]: vector<16xbf16>
