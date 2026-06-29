@@ -66,8 +66,8 @@ Classes</h2></td></tr>
 </table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="func-members" name="func-members"></a>
 Functions</h2></td></tr>
-<tr class="memitem:afa4b7d3cc349d42315b2c37bfd175cb8" id="r_afa4b7d3cc349d42315b2c37bfd175cb8"><td class="memItemLeft" align="right" valign="top">memref::GlobalOp&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIEX.html#afa4b7d3cc349d42315b2c37bfd175cb8">getOrCreateDataMemref</a> (OpBuilder &amp;builder, AIE::DeviceOp dev, mlir::Location loc, ArrayRef&lt; uint32_t &gt; words)</td></tr>
-<tr class="separator:afa4b7d3cc349d42315b2c37bfd175cb8"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:a830a416987e113b8d4601d67cd24f405" id="r_a830a416987e113b8d4601d67cd24f405"><td class="memItemLeft" align="right" valign="top">memref::GlobalOp&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIEX.html#a830a416987e113b8d4601d67cd24f405">getOrCreateDataMemref</a> (OpBuilder &amp;builder, AIE::DeviceOp dev, mlir::Location loc, ArrayRef&lt; uint32_t &gt; words, llvm::DenseMap&lt; mlir::Attribute, memref::GlobalOp &gt; *dedupCache=nullptr, unsigned *nextId=nullptr)</td></tr>
+<tr class="separator:a830a416987e113b8d4601d67cd24f405"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a3b2e98a3f17d246b71b572b061a36d66" id="r_a3b2e98a3f17d246b71b572b061a36d66"><td class="memItemLeft" align="right" valign="top">std::optional&lt; <a class="el" href="structxilinx_1_1AIEX_1_1SubviewTraceResult.html">SubviewTraceResult</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIEX.html#a3b2e98a3f17d246b71b572b061a36d66">traceSubviewToBlockArgument</a> (Value value)</td></tr>
 <tr class="separator:a3b2e98a3f17d246b71b572b061a36d66"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:af0913805167cbc69610907cb0ca57f86" id="r_af0913805167cbc69610907cb0ca57f86"><td class="memItemLeft" align="right" valign="top">LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1AIEX.html#af0913805167cbc69610907cb0ca57f86">emitUpdateBdAddressFromOffsetParameter</a> (OpBuilder &amp;builder, Operation *bdOp, BaseMemRefType bufType, uint64_t registerAddr)</td></tr>
@@ -299,7 +299,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEDmaToNpu_8cpp_source.html#l00766">766</a> of file <a class="el" href="AIEDmaToNpu_8cpp_source.html">AIEDmaToNpu.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEDmaToNpu_8cpp_source.html#l00796">796</a> of file <a class="el" href="AIEDmaToNpu_8cpp_source.html">AIEDmaToNpu.cpp</a>.</p>
 
 </div>
 </div>
@@ -646,7 +646,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEUtils_8cpp_source.html#l00162">162</a> of file <a class="el" href="AIEUtils_8cpp_source.html">AIEUtils.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEUtils_8cpp_source.html#l00188">188</a> of file <a class="el" href="AIEUtils_8cpp_source.html">AIEUtils.cpp</a>.</p>
 
 <p class="reference">Referenced by <a class="el" href="AIEDMATasksToNPU_8cpp_source.html#l00208">AIEDMATasksToNPUPass::setAddressForSingleBD()</a>.</p>
 
@@ -716,8 +716,8 @@ Functions</h2></td></tr>
 
 </div>
 </div>
-<a id="afa4b7d3cc349d42315b2c37bfd175cb8" name="afa4b7d3cc349d42315b2c37bfd175cb8"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#afa4b7d3cc349d42315b2c37bfd175cb8">&#9670;&#160;</a></span>getOrCreateDataMemref()</h2>
+<a id="a830a416987e113b8d4601d67cd24f405" name="a830a416987e113b8d4601d67cd24f405"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#a830a416987e113b8d4601d67cd24f405">&#9670;&#160;</a></span>getOrCreateDataMemref()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -744,7 +744,19 @@ Functions</h2></td></tr>
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">ArrayRef&lt; uint32_t &gt;&#160;</td>
-          <td class="paramname"><em>words</em>&#160;</td>
+          <td class="paramname"><em>words</em>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">llvm::DenseMap&lt; mlir::Attribute, memref::GlobalOp &gt; *&#160;</td>
+          <td class="paramname"><em>dedupCache</em> = <code>nullptr</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">unsigned *&#160;</td>
+          <td class="paramname"><em>nextId</em> = <code>nullptr</code>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -923,7 +935,7 @@ Functions</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Sat Jun 27 2026 03:56:25 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Mon Jun 29 2026 14:28:35 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
