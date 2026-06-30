@@ -12,7 +12,7 @@
 
 // Test multi-core compilation
 
-// RUN: aiecc --no-xchesscc --no-xbridge --verbose -j 1 %s | FileCheck %s
+// RUN: aiecc --no-xchesscc --no-xbridge --verbose %s | FileCheck %s
 
 // CHECK: Successfully parsed input file
 // CHECK: Device 'main' with 2 core(s)

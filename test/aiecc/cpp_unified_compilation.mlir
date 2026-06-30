@@ -12,7 +12,7 @@
 
 // Test unified compilation mode (--unified)
 
-// RUN: aiecc --no-xchesscc --no-xbridge --verbose --unified -j 1 %s | FileCheck %s
+// RUN: aiecc --no-xchesscc --no-xbridge --verbose --unified %s | FileCheck %s
 
 // CHECK: Successfully parsed input file
 // CHECK: Device 'main' with 2 core(s)
@@ -21,9 +21,9 @@
 // CHECK: Unified LLVM lowering pipeline completed successfully
 // CHECK: Generated unified LLVM IR
 // CHECK: Compiled unified object with Peano
-// CHECK-DAG: Linking core (0, 2) from unified object
-// CHECK-DAG: Linking core (1, 2) from unified object
+// CHECK: Linking core (0, 2) from unified object
 // CHECK: Generated ELF
+// CHECK: Linking core (1, 2) from unified object
 // CHECK: Generated ELF
 // CHECK: Compilation completed successfully
 

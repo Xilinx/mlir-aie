@@ -3418,11 +3418,6 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
   linkJobs.reserve(cores.size());
 
   for (const auto &core : cores) {
-    if (verbose) {
-      llvm::outs() << "Linking core (" << core.col << ", " << core.row
-                   << ") from unified object\n";
-    }
-
     // When elf_file is already set in the MLIR, use that path as the output
     // ELF. This matches the Python driver's behavior. See compileCore() for
     // the same fix and rationale.
@@ -3714,6 +3709,9 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
   // Sequential link (default, nThreads <= 1)
   if (nThreads <= 1) {
     for (const auto &job : linkJobs) {
+      if (verbose)
+        llvm::outs() << "Linking core (" << job.col << ", " << job.row
+                     << ") from unified object\n";
       if (!executeCommand(job.linkCmd)) {
         llvm::errs() << "Error linking core (" << job.col << ", " << job.row
                      << ")\n";
@@ -3738,6 +3736,11 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
     pool.async([jobPtr, &resultsMutex, &hasFailure, &recordElf]() {
       if (hasFailure.load())
         return;
+      if (verbose) {
+        std::lock_guard<std::mutex> lock(resultsMutex);
+        llvm::outs() << "Linking core (" << jobPtr->col << ", " << jobPtr->row
+                     << ") from unified object\n";
+      }
       if (!executeCommand(jobPtr->linkCmd)) {
         {
           std::lock_guard<std::mutex> lock(resultsMutex);
