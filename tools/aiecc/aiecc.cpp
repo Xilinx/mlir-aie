@@ -4845,22 +4845,13 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
 
     SmallString<128> kernelsPath(tmpDirName);
     sys::path::append(kernelsPath, devName.str() + "_kernels.json");
-    // The host buffer (boN) count in kernels.json must match the kernel: a
-    // kernel with more than 5 host BOs otherwise gets an under-declared ABI.
-    // Raise the count to the real runtime-sequence argument count (as the
-    // full-ELF paths below do), keeping 5 as a floor so kernels with <=5 host
-    // BOs produce byte-identical kernels.json.
-    constexpr int kMinHostBOs = 5;
-    int numHostBOs = kMinHostBOs;
+    int numHostBOs = 0;
     for (auto devOp : moduleOp.getOps<xilinx::AIE::DeviceOp>()) {
       if (devOp.getSymName() != devName)
         continue;
       for (auto seqOp : devOp.getOps<xilinx::AIE::RuntimeSequenceOp>()) {
-        if (!seqOp.getBody().empty()) {
-          int n = seqOp.getBody().front().getNumArguments();
-          if (n > numHostBOs)
-            numHostBOs = n;
-        }
+        if (!seqOp.getBody().empty())
+          numHostBOs = seqOp.getBody().front().getNumArguments();
       }
       break;
     }
