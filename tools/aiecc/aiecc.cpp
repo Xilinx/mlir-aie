@@ -3731,7 +3731,7 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
 
   for (const LinkJob &job : linkJobs) {
     const LinkJob *jobPtr = &job;
-    pool.async([jobPtr, &elfPaths, &resultsMutex, &hasFailure, &recordElf]() {
+    pool.async([jobPtr, &resultsMutex, &hasFailure, &recordElf]() {
       if (hasFailure.load())
         return;
       if (!executeCommand(jobPtr->linkCmd)) {
