@@ -11,7 +11,7 @@
 // In this test, data is exchanged the same as in AIE2_cyclostatic_l1, but
 // tiles are farther apart and have to use the network/DMAs to communicate.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
 // CHECK: module @aie2_cyclostatic_dma {
 // CHECK:   aie.device(xcve2302) {
 // CHECK:     %[[t0:.*]] = aie.tile(2, 2)
@@ -101,7 +101,7 @@ module @aie2_cyclostatic_dma {
             %c66 = arith.constant 66 : i32
             %c77 = arith.constant 77 : i32
             %c88 = arith.constant 88 : i32
-            
+
             // Push 55
             %subview0 = aie.objectfifo.acquire @fifo (Produce, 1) : !aie.objectfifosubview<memref<i32>>
             %subview0_obj = aie.objectfifo.subview.access %subview0[0] : !aie.objectfifosubview<memref<i32>> -> memref<i32>

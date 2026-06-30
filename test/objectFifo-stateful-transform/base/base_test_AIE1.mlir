@@ -8,10 +8,10 @@
 // Copyright (C) 2022 Advanced Micro Devices, Inc.
 //
 // Date: July 26th 2022
-// 
+//
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
 
 // CHECK: module @elementGenerationAIE1 {
 // CHECK:   aie.device(xcvc1902) {

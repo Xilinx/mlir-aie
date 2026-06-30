@@ -328,6 +328,10 @@ static cl::opt<bool> dryRun("n",
                             cl::desc("Dry run mode (don't execute commands)"),
                             cl::init(false), cl::cat(aieCompilerOptions));
 
+// Default true (enabled by #2549). Kept in sync with the
+// aie-objectFifo-stateful-transform pass-level default (AIEPasses.td) so the
+// lowering a design gets is the same whether it goes through aiecc or a
+// standalone `aie-opt` run.
 static cl::opt<bool> dynamicObjFifos("dynamic-objFifos",
                                      cl::desc("Use dynamic object FIFOs"),
                                      cl::init(true),
@@ -2072,6 +2076,43 @@ static std::string downgradeIRForPeano(StringRef ir) {
   replaceTypedLiteral("double -inf", "double 0xFFF0000000000000");
   replaceTypedLiteral("double inf", "double 0x7FF0000000000000");
   replaceTypedLiteral("double nan", "double 0x7FF8000000000000");
+  // Bare inf/nan literals in phi instructions: LLVM 23
+  // (llvm/llvm-project@41c214f0b115, 2026-05-07,
+  // https://github.com/llvm/llvm-project/pull/190649) omits the type prefix for
+  // infinity/NaN constants that appear as phi operands, e.g.
+  //   phi float [ %a, %bb ], [ -inf, %entry ]
+  //   phi float [ %x, %bb1 ], [ %y, %bb2 ], [ -inf, %entry ]
+  // Peano's LLVM 21 does not recognise the bare 'inf'/'nan' keywords and
+  // requires the double-widened hex form.
+  // replaceTypedLiteral() is intentionally not used here: it checks that the
+  // character *before* the match is not an identifier char, which would skip
+  // the ", -inf" pattern when the preceding operand ends with an identifier
+  // character (e.g. "%x, -inf"). Instead, check token boundaries around the
+  // bare literal itself: require a non-identifier char before '-'/'i'/'n' and
+  // a non-identifier char after 'f'/'n'.
+  {
+    auto rewriteBareLiteral = [&](StringRef from, StringRef to) {
+      size_t pos = 0;
+      while ((pos = result.find(from.data(), pos, from.size())) !=
+             std::string::npos) {
+        bool okBefore =
+            pos == 0 ||
+            !isIdentChar(static_cast<unsigned char>(result[pos - 1]));
+        size_t after = pos + from.size();
+        bool okAfter = after >= result.size() ||
+                       !isIdentChar(static_cast<unsigned char>(result[after]));
+        if (okBefore && okAfter) {
+          result.replace(pos, from.size(), to.data(), to.size());
+          pos += to.size();
+        } else {
+          pos += from.size();
+        }
+      }
+    };
+    rewriteBareLiteral("-inf", "0xFFF0000000000000");
+    rewriteBareLiteral("inf", "0x7FF0000000000000");
+    rewriteBareLiteral("nan", "0x7FF8000000000000");
+  }
   // Strip 'nocreateundeforpoison' and any trailing whitespace: current Peano
   // LLVM cannot parse this attribute.
   const std::string nocreate = "nocreateundeforpoison";

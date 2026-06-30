@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
 
 // CHECK:     %memtile_dma_0_1 = aie.memtile_dma(%mem_tile_0_1) {
 // CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb5)
@@ -174,13 +174,13 @@ module {
     %tile_0_3 = aie.tile(0, 3)
     %shim_noc_tile_0_0 = aie.tile(0, 0)
     %mem_tile_0_1 = aie.tile(0, 1)
-    aie.objectfifo @in(%shim_noc_tile_0_0, {%mem_tile_0_1}, 2 : i32) : !aie.objectfifo<memref<1024xui8>> 
-    aie.objectfifo @split_0(%mem_tile_0_1, {%tile_0_2}, 2 : i32) {iter_count = 8 : i32} : !aie.objectfifo<memref<512xui8>> 
-    aie.objectfifo @split_1(%mem_tile_0_1, {%tile_0_3}, 2 : i32) {iter_count = 8 : i32} : !aie.objectfifo<memref<512xui8>> 
+    aie.objectfifo @in(%shim_noc_tile_0_0, {%mem_tile_0_1}, 2 : i32) : !aie.objectfifo<memref<1024xui8>>
+    aie.objectfifo @split_0(%mem_tile_0_1, {%tile_0_2}, 2 : i32) {iter_count = 8 : i32} : !aie.objectfifo<memref<512xui8>>
+    aie.objectfifo @split_1(%mem_tile_0_1, {%tile_0_3}, 2 : i32) {iter_count = 8 : i32} : !aie.objectfifo<memref<512xui8>>
     aie.objectfifo.link [@in] -> [@split_0, @split_1]([] [0, 512])
-    aie.objectfifo @join_0(%tile_0_2, {%mem_tile_0_1}, 2 : i32) {iter_count = 8 : i32} : !aie.objectfifo<memref<512xui8>> 
-    aie.objectfifo @join_1(%tile_0_3, {%mem_tile_0_1}, 2 : i32) {iter_count = 8 : i32} : !aie.objectfifo<memref<512xui8>> 
-    aie.objectfifo @out(%mem_tile_0_1, {%shim_noc_tile_0_0}, 2 : i32) : !aie.objectfifo<memref<1024xui8>> 
+    aie.objectfifo @join_0(%tile_0_2, {%mem_tile_0_1}, 2 : i32) {iter_count = 8 : i32} : !aie.objectfifo<memref<512xui8>>
+    aie.objectfifo @join_1(%tile_0_3, {%mem_tile_0_1}, 2 : i32) {iter_count = 8 : i32} : !aie.objectfifo<memref<512xui8>>
+    aie.objectfifo @out(%mem_tile_0_1, {%shim_noc_tile_0_0}, 2 : i32) : !aie.objectfifo<memref<1024xui8>>
     aie.objectfifo.link [@join_0, @join_1] -> [@out]([0, 512] [])
   }
 }

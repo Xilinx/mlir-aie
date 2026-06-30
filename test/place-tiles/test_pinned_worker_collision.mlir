@@ -18,7 +18,7 @@
 // stripping the residual `tile=AnyMemTile` and three `tile=Tile(0,N)`
 // arguments left on the IRON Worker/ObjectFifo constructors.
 
-// RUN: aie-opt --aie-place-tiles --aie-objectFifo-stateful-transform %s 2>&1 | FileCheck %s
+// RUN: aie-opt --aie-place-tiles --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s 2>&1 | FileCheck %s
 
 // CHECK-NOT: error
 // CHECK-NOT: DMA channel exceeded
