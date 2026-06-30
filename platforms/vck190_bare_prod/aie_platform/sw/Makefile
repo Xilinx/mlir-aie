@@ -1,6 +1,8 @@
+#
 # Copyright (C) 2020 Xilinx, Inc.
-# Copyright (C) 2022-2023 Advanced Micro Devices, Inc.
-# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# Modifications Copyright (C) 2022-2023 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0
+#
 CXX = aarch64-linux-gnu-g++
 LIBCXX_VERSION ?= 10.2.0
 SDKTARGETSYSROOT ?= ../../petalinux/build/petalinux/images/linux/sdk/sysroots/cortexa72-cortexa53-xilinx-linux

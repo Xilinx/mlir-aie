@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-
-# Copyright (C) 2021 Xilinx, Inc.
-# Copyright (C) 2022-2023 Advanced Micro Devices, Inc.
-# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-
 ##===- utils/build-llvm.sh - Build LLVM for github workflow --*- Script -*-===##
+# 
+# Copyright (C) 2021 Xilinx, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # 
 ##===----------------------------------------------------------------------===##
 #

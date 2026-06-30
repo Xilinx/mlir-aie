@@ -1,6 +1,8 @@
 # /scratch/gagandee/mlir-air/utils/mlir-aie/reference_designs/horizontal_diffusion/HDIFF_tri_AIE_objectFIFO_ping_pong_scaled/gen_hdiff_cpp.py -*- Python -*-
 #
 # (c) 2023 SAFARI Research Group at ETH Zurich, Gagandeep Singh, D-ITET
+#
+# This file is licensed under the MIT License.
 # SPDX-License-Identifier: MIT
 #
 
@@ -48,6 +50,8 @@ def main():
         """//===- hdiff.cc -------------------------------------------------*- C++ -*-===//  
 //  
 // (c) 2023 SAFARI Research Group at ETH Zurich, Gagandeep Singh, D-ITET
+//
+// This file is licensed under the MIT License.
 // SPDX-License-Identifier: MIT
 // 
 //

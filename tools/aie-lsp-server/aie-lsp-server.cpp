@@ -1,6 +1,5 @@
 //===- aie-lsp-server -------------------------------------------*- C++ -*-===//
 // Copyright (C) 2022-2024 Advanced Micro Devices, Inc.
-// Copyright (C) 2024 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // A server exposing AIE dialects to be used by IDE & editors supporting LSP

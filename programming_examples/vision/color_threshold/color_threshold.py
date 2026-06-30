@@ -1,6 +1,5 @@
 # vision/color_threshold/color_threshold.py -*- Python -*-
 # Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
-# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 """Color threshold -- ``@iron.jit`` parallel-channel threshold pipeline.

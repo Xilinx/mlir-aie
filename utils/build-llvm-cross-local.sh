@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-
+##===- utils/build-llvm-local.sh - Build LLVM on local machine --*- Script -*-===##
+# 
 # Copyright (C) 2022-2023 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-
-##===- utils/build-llvm-local.sh - Build LLVM on local machine --*- Script -*-===##
 # 
 ##===----------------------------------------------------------------------===##
 #

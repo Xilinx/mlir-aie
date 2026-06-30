@@ -1,5 +1,21 @@
+##===- Makefile -----------------------------------------------------------===##
+#
 # Copyright (C) 2023-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+##===----------------------------------------------------------------------===##
+#
+# @iron.jit path:
+#   make run        — JIT-compile + run + benchmark on the attached NPU.
+#   make emit-mlir  — print the lowered MLIR (build/aie.mlir).
+#
+# Decomposed-XRT walkthrough (same vector_scalar_mul.py source via
+# --xclbin-path/--insts-path):
+#   make all                — drop build/final.xclbin + build/insts.bin
+#                             + myFirstProgram.exe.
+#   make run_cpp [N]        — run the C++ test harness; iters/warmup via
+#                             extra args (see run-10 / run-10-warmup).
+#   make run_py             — run the Python test harness.
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 

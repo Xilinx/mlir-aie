@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-
-# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
-# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-
 ##===- utils/build-mlir-aie-from-wheels.sh - Build mlir-aie --*- Script -*-===##
 # 
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 ##===----------------------------------------------------------------------===##
 #
 # This script builds mlir-aie given wheels installed <llvm mlir dir>.

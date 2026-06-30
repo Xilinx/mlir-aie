@@ -1,5 +1,14 @@
+##===- Makefile -----------------------------------------------------------===##
+#
 # Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+##===----------------------------------------------------------------------===##
+#
+# `make run` / `make run-multi` JIT-compile + run the single-core /
+# multi-core variants on the attached NPU.
+# `make emit-mlir` / `make emit-mlir-multi` print the lowered MLIR
+# without touching the NPU.
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 

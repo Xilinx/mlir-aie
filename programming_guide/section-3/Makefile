@@ -1,5 +1,19 @@
+##===- Makefile -----------------------------------------------------------===##
+#
 # Copyright (C) 2023-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+##===----------------------------------------------------------------------===##
+#
+# @iron.jit path (default): `make run` JIT-compiles + runs the
+# design on the attached NPU. `make emit-mlir` prints the
+# lowered MLIR without touching the NPU.
+#
+# Decomposed-XRT walkthrough: `make all` drops the xclbin + insts pair
+# + the C++ host exe into build/ (kernel auto-built into the JIT
+# cache). `make run_cpp` runs the C++ host harness in test.cpp against
+# those artifacts; `make run_py` runs the explicit-NPUKernel /
+# DefaultNPURuntime Python harness in test.py.
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 

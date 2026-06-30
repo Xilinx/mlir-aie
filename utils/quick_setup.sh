@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-
+##===- quick_setup.sh - Setup IRON for Ryzen AI dev ----------*- Script -*-===##
+#
 # Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-
-##===- quick_setup.sh - Setup IRON for Ryzen AI dev ----------*- Script -*-===##
 #
 ##===----------------------------------------------------------------------===##
 #

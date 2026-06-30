@@ -1,7 +1,10 @@
 //===- include.h ------------------------------------------------*- C++ -*-===//
 //
 // (c) 2023 SAFARI Research Group at ETH Zurich, Gagandeep Singh, D-ITET
+//
+// This file is licensed under the MIT License.
 // SPDX-License-Identifier: MIT
+//
 //
 //===----------------------------------------------------------------------===//
 

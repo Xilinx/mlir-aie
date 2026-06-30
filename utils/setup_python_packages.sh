@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-
+##===- utils/setup_python_packages.sh - Setup python packages for mlir-aie build --*- Script -*-===##
+#
 # Copyright (C) 2023-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-
-##===- utils/setup_python_packages.sh - Setup python packages for mlir-aie build --*- Script -*-===##
 #
 ##===----------------------------------------------------------------------===##
 #

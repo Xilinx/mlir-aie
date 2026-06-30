@@ -1,6 +1,5 @@
 # test/npu-xrt/objectfifo_repeat/init_values_repeat/aie2.py
 # Copyright (C) 2022-2025 Advanced Micro Devices, Inc.
-# Copyright (C) 2024 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 

@@ -1,31 +1,22 @@
-# Copyright (C) 2018-2026 Advanced Micro Devices, Inc.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 #
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-"""Enforce a canonical format for every copyright notice in the project.
+"""Enforce a canonical format for first-party (AMD / Xilinx) copyright notices.
 
 ``reuse lint`` only checks that *some* notice is present; it never validates the
-wording, holder name, or year format -- worse, it *normalizes* notices before
-reporting them (it strips a trailing comma after the year, rewrites ``(c)`` to
-``(C)``, reorders ``(c) Copyright`` etc.), so a checker built on
-``reuse lint --json`` cannot see those formatting defects at all.
+wording, holder name, or year format.
 
-This script therefore scans the **raw** text of every REUSE-tracked file and
-requires each copyright notice line to match one of the approved patterns in
-``APPROVED`` below, otherwise the check fails. First-party notices must use the
-plain ``Copyright (C) <years> <holder>`` form; the ``SPDX-FileCopyrightText:``
-prefix is recognised by REUSE but deliberately disallowed here. Files whose
-licensing is declared with ``precedence = "override"`` in REUSE.toml (vendored
-third-party and the magika proprietary sources) are skipped for inline scanning
--- their notices are upstream/legacy text we deliberately keep verbatim -- but
-the notice strings declared for them *inside* REUSE.toml are still validated.
+This script scans the **raw** text of every REUSE-tracked file. A notice that
+names a first-party holder (AMD or Xilinx) must match one of the canonical
+patterns in ``APPROVED`` below, otherwise the check fails. Third-party notices
+(any other holder) are left untouched, so vendored upstream attribution is
+preserved verbatim.
 
-Usage::
+Usage:
 
     python utils/check_copyright_format.py            # check the whole repo
     python utils/check_copyright_format.py --list     # also print every notice
-
-Edit ``APPROVED`` to (dis)allow formats. Anything not matching fails CI.
 
 Note: the trigger tokens below are assembled from fragments on purpose, so that
 this file's own pattern strings are not themselves picked up as notices.
@@ -57,32 +48,22 @@ _TAG = "SPDX-FileCopy" + "rightText:"
 # A year is a single year or an inclusive range, e.g. 2024 or 2022-2026.
 _YEARS = r"\d{4}(?:-\d{4})?"
 
-# Approved formats. A notice is valid if it fully matches at least one of these
-# (anchored) patterns. Keep first-party patterns strict; list vendored
-# third-party holders verbatim.
+# Canonical first-party formats. A first-party notice is valid only if it fully
+# matches at least one of these (anchored) patterns. The SPDX-FileCopyrightText:
+# prefix is intentionally NOT accepted; neither is a trailing comma after the
+# year, "All rights reserved", or the "AMD Inc." shorthand.
 APPROVED: list[tuple[str, str]] = [
-    # First-party — strict canonical form: "Copyright (C) <years> <holder>".
-    # The SPDX-FileCopyrightText: prefix is intentionally NOT accepted; neither
-    # is a trailing comma after the year, "All rights reserved", or the
-    # "AMD Inc." shorthand.
     ("AMD", rf"{_CR} \(C\) {_YEARS} Advanced Micro Devices, Inc\."),
     ("Xilinx", rf"{_CR} \(C\) {_YEARS} Xilinx, Inc\."),
-    # Vendored third-party — kept verbatim to preserve upstream attribution.
-    # These are declared in REUSE.toml override blocks (where upstream uses a
-    # lowercase "(c)"), so accept either case for the (C) marker.
-    (
-        "SAFARI (horizontal_diffusion)",
-        rf"{_CR} \([Cc]\) 2023 SAFARI Research Group at ETH Zurich and Carnegie Mellon University",
-    ),
-    ("Jarryd Beck (cxxopts)", rf"{_CR} \([Cc]\) 2014-2022 Jarryd Beck"),
-    (
-        "Trustees of Indiana University (d_ary_heap)",
-        rf"{_CR} 2009 Trustees of Indiana University",
-    ),
-    ("Google (vendored)", rf"{_CR} \([Cc]\) 2011 Google, Inc\."),
 ]
 
 _COMPILED = [(label, re.compile(rf"^{pattern}$")) for label, pattern in APPROVED]
+
+# A notice is "first-party" (and therefore format-enforced) if it names AMD or
+# Xilinx. Every other holder is third-party: its notice is left as-is so vendored
+# upstream attribution is preserved verbatim. The bare "AMD" shorthand is matched
+# too, so non-canonical forms like "AMD Inc." are still caught.
+_FIRST_PARTY = re.compile(r"Advanced Micro Devices|\bAMD\b|Xilinx", re.IGNORECASE)
 
 # A line is treated as a copyright notice if (after stripping comment syntax) it
 # starts with one of these tokens. Assembled from fragments, case-insensitive.
@@ -92,6 +73,10 @@ _NOTICE_START = re.compile(rf"^(?:{_TAG}|©|\(c\)\s*{_CR}|{_CR})", re.IGNORECASE
 # "<!-- ", ";; ", "%". Trailing comment closers ("-->", "*/") are stripped too.
 _LEAD = re.compile(r"^\s*(?:#+|//+|/\*+|\*+|<!--+|;+|%+|--+|!)\s?")
 _TRAIL = re.compile(r"\s*(?:-->|\*/)\s*$")
+
+
+def is_first_party(notice: str) -> bool:
+    return bool(_FIRST_PARTY.search(notice))
 
 
 def is_approved(notice: str) -> bool:
@@ -192,19 +177,29 @@ def main(argv: list[str]) -> int:
     show_all = "--list" in argv
     notices = collect_notices()
 
-    violations = {n: files for n, files in notices.items() if not is_approved(n)}
+    first_party = {n: f for n, f in notices.items() if is_first_party(n)}
+    violations = {n: f for n, f in first_party.items() if not is_approved(n)}
 
     if show_all:
         for notice in sorted(notices):
-            mark = "ok " if is_approved(notice) else "BAD"
+            if not is_first_party(notice):
+                mark = "3p "  # third-party: allowed, not format-checked
+            elif is_approved(notice):
+                mark = "ok "
+            else:
+                mark = "BAD"
             print(f"[{mark}] ({len(notices[notice]):4d}) {notice}")
         print()
 
     if not violations:
-        print(f"OK: all {len(notices)} distinct notices match an approved format.")
+        n_third = len(notices) - len(first_party)
+        print(
+            f"OK: all {len(first_party)} first-party (AMD/Xilinx) notices match "
+            f"the canonical format ({n_third} third-party notice(s) allowed)."
+        )
         return 0
 
-    print("Non-conforming copyright notices found:\n")
+    print("Non-conforming first-party copyright notices found:\n")
     for notice in sorted(violations):
         files = violations[notice]
         print(f"  {notice!r}  ({len(files)} source(s))")
@@ -213,9 +208,9 @@ def main(argv: list[str]) -> int:
         if len(files) > 3:
             print(f"      ... and {len(files) - 3} more")
     print(
-        f"\n{len(violations)} distinct non-conforming notice(s). "
-        "Fix the notice text or, for an intentional new holder, add a pattern to "
-        "APPROVED in utils/check_copyright_format.py."
+        f"\n{len(violations)} distinct non-conforming first-party notice(s). "
+        f"Fix each to the canonical '{_CR} (C) <year> Advanced Micro Devices, "
+        "Inc.' / Xilinx form."
     )
     return 1
 

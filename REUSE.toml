@@ -97,46 +97,6 @@ SPDX-FileCopyrightText = [
 ]
 SPDX-License-Identifier = "BSL-1.0"
 
-# magika example sources: legacy Xilinx "confidential and proprietary" files that
-# retain their original disclaimer (LICENSES/LicenseRef-AMD-Proprietary.txt) and
-# are NOT covered by the project's Apache-2.0 default. Exemption pending legal
-# review; do not relicense these without sign-off.
-[[annotations]]
-path = [
-    "programming_examples/ml/magika/c/get_sqnr.cpp",
-    "programming_examples/ml/magika/c/magika_v3p3.c",
-    "programming_examples/ml/magika/c/magika_v3p3_weights.h",
-    "programming_examples/ml/magika/c/test_groups.c",
-    "programming_examples/ml/magika/c/test_magika_v3p3.c",
-    "programming_examples/ml/magika/kernels/group0.cc",
-    "programming_examples/ml/magika/kernels/group1.cc",
-    "programming_examples/ml/magika/kernels/group2.cc",
-    "programming_examples/ml/magika/inc/funcs_gelu.h",
-    "programming_examples/ml/magika/inc/funcs_layernorm.h",
-    "programming_examples/ml/magika/inc/lut_group0.h",
-    "programming_examples/ml/magika/inc/lut_group1.h",
-    "programming_examples/ml/magika/inc/lut_group2.h",
-    "programming_examples/ml/magika/py/get_test_vectors.py",
-    "programming_examples/ml/magika/py/requirements.txt",
-]
-precedence = "override"
-SPDX-FileCopyrightText = [
-    "Copyright (C) 2019-2022 Xilinx, Inc.",
-    "Copyright (C) 2022-2025 Advanced Micro Devices, Inc.",
-]
-SPDX-License-Identifier = "LicenseRef-AMD-Proprietary"
-
-# funcs_mmul.h is the same proprietary magika family but its disclaimer carries a
-# 2022-2024 (not -2025) AMD copyright range.
-[[annotations]]
-path = ["programming_examples/ml/magika/inc/funcs_mmul.h"]
-precedence = "override"
-SPDX-FileCopyrightText = [
-    "Copyright (C) 2019-2022 Xilinx, Inc.",
-    "Copyright (C) 2022-2024 Advanced Micro Devices, Inc.",
-]
-SPDX-License-Identifier = "LicenseRef-AMD-Proprietary"
-
 # petalinux demo apps vendored from Xilinx: MIT-licensed, with the full MIT
 # permission text retained inline. Declared here for REUSE; these are NOT under
 # the project's Apache-2.0 default.

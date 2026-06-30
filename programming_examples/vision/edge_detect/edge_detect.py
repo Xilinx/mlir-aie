@@ -1,6 +1,5 @@
 # vision/edge_detect/edge_detect.py -*- Python -*-
 # Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
-# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 """Vision edge-detect pipeline -- ``@iron.jit`` design.

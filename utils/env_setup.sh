@@ -1,7 +1,8 @@
 #!/bin/bash
 # Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
-# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 ##===- utils/env_setup.sh - Setup mlir-aie env to compile IRON designs --*- Script -*-===##
+#
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 ##===----------------------------------------------------------------------===##
 #

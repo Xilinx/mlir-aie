@@ -1,5 +1,12 @@
+##===- Makefile -----------------------------------------------------------===##
+#
 # Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+##===----------------------------------------------------------------------===##
+#
+# Structural-only example: emit-MLIR is the intended use (no NPU run path
+# because there's no compute to verify).
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 

@@ -1,5 +1,5 @@
-<!-- Copyright (C) 2022 Advanced Micro Devices, Inc.
-SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
+<!-- Copyright (C) 2022 Advanced Micro Devices, Inc. -->
+<!-- SPDX-License-Identifier: Apache-2.0 -->
 
 # VCK190 (production silicon) Bare Platform (2021.2)
 This bare platform is designed to provide basic linux (petalinux) embedded environment to test mlir generated physical design on the vck190 board (production silicon). It is built with 2021.2 vitis/ vivado/ petalinux tools and consists of a relatively empty Versal deign (CIPS, AI Engines, clock/ reset, NoC, BRAM). The build process consist of 3 steps: vivado, petalinux, aie_platform.
