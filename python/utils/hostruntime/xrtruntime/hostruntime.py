@@ -260,15 +260,18 @@ class XRTHostRuntime(HostRuntime):
         # Validate BO count against xclbin metadata before calling into XRT.
         # XRT's validate_bo_at_index segfaults if the index exceeds the count
         # declared in kernels.json. The fixed args (opcode, instr, ninstr) are
-        # the first 3; the rest are host BOs.
+        # the first 3; the rest are host BOs. Passing fewer BOs than declared is
+        # fine (the kernel may declare a minimum ABI width); passing more is the
+        # fatal case.
         xclbin_kernels = kernel_handle.xclbin.get_kernels()
         if xclbin_kernels:
             declared_bo_count = xclbin_kernels[0].get_num_args() - 3
-            if len(buffers) != declared_bo_count:
+            if len(buffers) > declared_bo_count:
                 raise HostRuntimeError(
-                    f"Expected {declared_bo_count} host buffer argument(s) but got "
-                    f"{len(buffers)}. The xclbin was compiled for a runtime_sequence "
-                    f"with {declared_bo_count} host buffer(s)."
+                    f"The xclbin declares {declared_bo_count} host buffer "
+                    f"argument(s) but {len(buffers)} were passed. Passing more "
+                    f"host buffers than the kernel ABI declares would segfault "
+                    f"in XRT argument setup."
                 )
 
         insts_bo = None

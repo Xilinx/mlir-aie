@@ -747,8 +747,8 @@ void TraceHostConfigOp::print(OpAsmPrinter &p) {
   p << " buffer_size = " << getBufferSize();
 
   // Only print non-default values
-  if (getArgIdx() != 4)
-    p << " arg_idx = " << getArgIdx();
+  if (getReuseOutputBuffer())
+    p << " reuse_output_buffer";
 
   if (getRouting() != TraceShimRouting::Single)
     p << " routing = " << stringifyTraceShimRouting(getRouting());
@@ -756,9 +756,9 @@ void TraceHostConfigOp::print(OpAsmPrinter &p) {
   if (getEgressShimCol() != 0)
     p << " egress_shim_col = " << getEgressShimCol();
 
-  p.printOptionalAttrDict(
-      (*this)->getAttrs(),
-      /*elidedAttrs=*/{"buffer_size", "arg_idx", "routing", "egress_shim_col"});
+  p.printOptionalAttrDict((*this)->getAttrs(),
+                          /*elidedAttrs=*/{"buffer_size", "reuse_output_buffer",
+                                           "routing", "egress_shim_col"});
 }
 
 ParseResult TraceHostConfigOp::parse(OpAsmParser &parser,
@@ -770,18 +770,12 @@ ParseResult TraceHostConfigOp::parse(OpAsmParser &parser,
                             "buffer_size", result.attributes))
     return failure();
 
-  // Parse arg_idx (default: 4)
-  int32_t argIdxVal = 4;
-  if (succeeded(parser.parseOptionalKeyword("arg_idx"))) {
-    IntegerAttr argIdx;
-    if (parser.parseEqual() ||
-        parser.parseAttribute(argIdx, parser.getBuilder().getI32Type(),
-                              "arg_idx", result.attributes))
-      return failure();
-  } else {
-    result.attributes.set("arg_idx",
-                          parser.getBuilder().getI32IntegerAttr(argIdxVal));
-  }
+  // Parse reuse_output_buffer (default: false)
+  bool reuseOutputBuffer =
+      succeeded(parser.parseOptionalKeyword("reuse_output_buffer"));
+  result.attributes.set(
+      "reuse_output_buffer",
+      parser.getBuilder().getBoolAttr(reuseOutputBuffer));
 
   // Parse routing (default: single)
   TraceShimRouting routingVal = TraceShimRouting::Single;
@@ -822,10 +816,11 @@ ParseResult TraceHostConfigOp::parse(OpAsmParser &parser,
 }
 
 LogicalResult TraceHostConfigOp::verify() {
-  // arg_idx=-1 means "append after last tensor", only valid with single shim
-  if (getArgIdx() == -1) {
+  // Reusing the last output buffer for trace data only works with a single
+  // shim destination (the trace bytes are appended to one buffer).
+  if (getReuseOutputBuffer()) {
     if (getRouting() != TraceShimRouting::Single) {
-      return emitOpError("arg_idx=-1 (append trace after last tensor) "
+      return emitOpError("reuse_output_buffer (append trace after last tensor) "
                          "only works with single shim destination strategy "
                          "(routing=single)");
     }

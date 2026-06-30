@@ -126,7 +126,7 @@ def passthroughKernel():
             # CHECK:   aie.trace.start_config @trace_shim_2
             @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
             def sequence(inTensor, outTensor, notUsed):
-                trace_utils.start_trace(trace_size=8192, ddr_id=4)
+                trace_utils.start_trace(trace_size=8192)
 
                 npu_dma_memcpy_nd(
                     metadata=of_in,

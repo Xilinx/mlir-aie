@@ -19,8 +19,8 @@ def create_npu_kernel(opts):
     """Build an :class:`NPUKernel` (with optional trace config) from parsed CLI opts.
 
     Reads ``opts.xclbin``, ``opts.instr``, ``opts.kernel``, and the
-    optional trace fields (``trace_size``, ``trace_file``, ``ddr_id``,
-    ``enable_ctrl_pkts``) — all produced by
+    optional trace fields (``trace_size``, ``trace_file``,
+    ``reuse_output_buffer``, ``enable_ctrl_pkts``) — all produced by
     :func:`aie.utils.hostruntime.argparse.add_runtime_args`.
 
     Stashes the resulting kernel on ``opts.npu_kernel`` and returns
@@ -32,7 +32,7 @@ def create_npu_kernel(opts):
         trace_config = TraceConfig(
             trace_size=trace_size,
             trace_file=getattr(opts, "trace_file", "trace.txt"),
-            ddr_id=getattr(opts, "ddr_id", 4),
+            reuse_output_buffer=getattr(opts, "reuse_output_buffer", False),
             enable_ctrl_pkts=getattr(opts, "enable_ctrl_pkts", False),
         )
     opts.npu_kernel = NPUKernel(

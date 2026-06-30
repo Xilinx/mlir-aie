@@ -160,7 +160,9 @@ module {
       // TRACE INITIALIZATION
       // ========================================================================
 
-      // Configure trace output buffer (8192 bytes, default arg_idx=4)
+      // Configure trace output buffer (8192 bytes). Trace lowering appends a
+      // dedicated trace-buffer argument to the runtime_sequence (here at the
+      // tail, after the 3 data args).
       aie.trace.host_config buffer_size = 8192
 
       aie.trace.start_config @core_trace

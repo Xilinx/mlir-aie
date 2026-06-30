@@ -84,7 +84,7 @@ class Runtime(Resolvable):
         self._trace_workers = None
         self._strict_task_groups = strict_task_groups
         self._task_group_index = itertools.count()
-        self._ddr_id = 4
+        self._reuse_output_buffer = False
         self._egress_shim_col = 0
 
     def add_flow(self, flow) -> None:
@@ -340,7 +340,7 @@ class Runtime(Resolvable):
         self,
         trace_size: int | None = None,
         workers: list | None = None,
-        ddr_id: int = 4,
+        reuse_output_buffer: bool = False,
         coretile_events: list | None = None,
         coremem_events: list | None = None,
         memtile_events: list | None = None,
@@ -356,10 +356,12 @@ class Runtime(Resolvable):
             trace_size (int): Size of the trace buffer in bytes.
             workers (list[Worker] | None, optional): Specific workers to trace. If None,
                 all workers with ``trace`` set will be traced. Defaults to None.
-            ddr_id (int, optional): XRT inout buffer index (0-4) to write trace data
-                into, mapping to group_id (3-7). Defaults to 4 (group_id 7).
-                Set to -1 to append trace data after the last runtime_sequence
-                tensor argument.
+            reuse_output_buffer (bool, optional): When False (default), trace
+                lowering appends a dedicated trace-buffer argument to the
+                runtime_sequence; it lands at the tail so enabling trace never
+                perturbs the data arguments' indices. When True, trace data is
+                written into the tail of the last output buffer, saving a host
+                buffer. Defaults to False.
             coretile_events (list | None, optional): List of up to 8 core tile trace events.
                 See ``https://xilinx.github.io/mlir-aie/AIEXDialect.html`` for available
                 events under (type)EventAIE such as CoreEventAIE.
@@ -375,7 +377,7 @@ class Runtime(Resolvable):
         """
         self._trace_size = trace_size
         self._trace_workers = workers
-        self._ddr_id = ddr_id
+        self._reuse_output_buffer = reuse_output_buffer
         self._coretile_events = coretile_events
         self._coremem_events = coremem_events
         self._memtile_events = memtile_events
@@ -426,7 +428,7 @@ class Runtime(Resolvable):
             if self._trace_size is not None and self._trace_size > 0:
                 trace_utils.start_trace(
                     trace_size=self._trace_size,
-                    ddr_id=self._ddr_id,
+                    reuse_output_buffer=self._reuse_output_buffer,
                     routing="single",
                     egress_shim_col=self._egress_shim_col,
                 )

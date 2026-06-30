@@ -521,7 +521,7 @@ def configure_trace(
 
 def start_trace(
     trace_size=8192,
-    ddr_id=4,
+    reuse_output_buffer=False,
     routing="single",
     egress_shim_col=0,
 ):
@@ -532,16 +532,17 @@ def start_trace(
 
     Args:
         trace_size: Trace buffer size in bytes. Default is 8192.
-        ddr_id: DDR buffer index (0-4) mapping to XRT group_id (3-7).
-                Default is 4 (group_id 7). Set to -1 to append trace data
-                after the last runtime_sequence tensor argument.
+        reuse_output_buffer: When False (default), trace lowering appends a
+                dedicated trace-buffer argument to the runtime_sequence. When
+                True, trace data is written into the tail of the last existing
+                argument (an output buffer), saving a host buffer.
         routing: Shim routing strategy. Currently only "single" is supported,
                  which routes all traces to column 0's shim.
     """
     # Emit host_config op (handles string-to-enum conversion for routing)
     trace_host_config(
         buffer_size=trace_size,
-        arg_idx=ddr_id,
+        reuse_output_buffer=reuse_output_buffer,
         routing=routing,
         egress_shim_col=egress_shim_col,
     )

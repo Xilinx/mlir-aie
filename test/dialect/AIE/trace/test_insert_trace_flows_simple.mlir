@@ -33,8 +33,8 @@ module {
       // CHECK: aiex.npu.write32 {{{.*}}row = 2{{.*}}}
       // Shim BD setup (1048576 bytes = 262144 words)
       // CHECK: aiex.npu.writebd {{{.*}}buffer_length = 262144{{.*}}}
-      // Address patch for trace buffer
-      // CHECK: aiex.npu.address_patch {{{.*}}arg_idx = 4{{.*}}}
+      // Address patch for trace buffer: appended after the 1 data arg, so idx 1
+      // CHECK: aiex.npu.address_patch {{{.*}}arg_idx = 1{{.*}}}
       // Shim DMA channel setup
       // CHECK: aiex.npu.maskwrite32
       // CHECK: aiex.npu.write32
