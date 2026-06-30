@@ -12,7 +12,7 @@
 // objectfifo.create op's Location onto the synthesized buffer / lock ops.
 // See docs/SourceLocations.md for the broader plan.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --mlir-print-debuginfo %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" --mlir-print-debuginfo %s | FileCheck %s
 
 #user_loc = loc("user_design.py":42:4)
 

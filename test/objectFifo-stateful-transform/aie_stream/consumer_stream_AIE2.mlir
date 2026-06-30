@@ -5,18 +5,18 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // Copyright (C) 2025 Advanced Micro Devices, Inc.
-// 
+//
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
 
 // CHECK: module @consumer_stream_AIE2 {
 // CHECK:   aie.device(xcve2302) {
 // CHECK:     %[[VAL_0:.*]] = aie.tile(1, 2)
 // CHECK:     %[[VAL_1:.*]] = aie.tile(1, 3)
 // CHECK:     %[[VAL_2:.*]] = aie.tile(3, 3)
-// CHECK:     %of_consumer_stream_buff_0 = aie.buffer(%tile_1_2) {sym_name = "of_consumer_stream_buff_0"} : memref<16xi32> 
-// CHECK:     %of_consumer_stream_buff_1 = aie.buffer(%tile_1_2) {sym_name = "of_consumer_stream_buff_1"} : memref<16xi32> 
+// CHECK:     %of_consumer_stream_buff_0 = aie.buffer(%tile_1_2) {sym_name = "of_consumer_stream_buff_0"} : memref<16xi32>
+// CHECK:     %of_consumer_stream_buff_1 = aie.buffer(%tile_1_2) {sym_name = "of_consumer_stream_buff_1"} : memref<16xi32>
 // CHECK:     %of_consumer_stream_prod_lock_0 = aie.lock(%tile_1_2, 0) {init = 2 : i32, sym_name = "of_consumer_stream_prod_lock_0"}
 // CHECK:     %of_consumer_stream_cons_lock_0 = aie.lock(%tile_1_2, 1) {init = 0 : i32, sym_name = "of_consumer_stream_cons_lock_0"}
 // CHECK:     aie.flow(%tile_1_2, DMA : 0, %tile_3_3, Core : 0)
