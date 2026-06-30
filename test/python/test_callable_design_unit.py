@@ -468,6 +468,49 @@ def test_call_binds_runtime_device_before_in_process_cache(monkeypatch):
     assert "__iron_device__" not in seen_keys[0][1]
 
 
+@pytest.mark.parametrize("artifact_name", ["xclbin_path", "insts_path"])
+def test_call_rebuilds_removed_cached_artifacts(
+    monkeypatch, tmp_path, npu2_device, artifact_name
+):
+    """A memory-cache entry is invalid after either artifact is removed."""
+
+    def gen():
+        pass
+
+    class FakeKernel:
+        def __init__(self, xclbin_path, insts_path, result):
+            self.xclbin_path = xclbin_path
+            self.insts_path = insts_path
+            self.result = result
+
+        def __call__(self, *args, **kwargs):
+            return self.result
+
+    cd = CallableDesign(gen)
+    builds = []
+
+    def fake_compile_and_build(self, compilable, cache_key, trace_config):
+        index = len(builds)
+        xclbin_path = tmp_path / f"{index}.xclbin"
+        insts_path = tmp_path / f"{index}.bin"
+        xclbin_path.touch()
+        insts_path.touch()
+        kernel = FakeKernel(xclbin_path, insts_path, index)
+        self._kernel_cache[cache_key] = kernel
+        builds.append(kernel)
+        return kernel
+
+    monkeypatch.setattr(
+        CallableDesign, "_compile_and_build_kernel", fake_compile_and_build
+    )
+
+    assert cd() == 0
+    getattr(builds[0], artifact_name).unlink()
+
+    assert cd() == 1
+    assert len(builds) == 2
+
+
 def test_function_cache_key_keeps_internal_identity_out_of_compile_kwargs():
     """User compile keys cannot collide with internal cache dimensions."""
     from aie.utils.compile.cache.utils import _create_function_cache_key

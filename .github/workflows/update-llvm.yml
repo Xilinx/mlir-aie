@@ -122,8 +122,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ -f utils/llvm-update-rotation.txt ]; then
-            users=($(cat utils/llvm-update-rotation.txt))
+          if [ -f utils/dependency-update-rotation.txt ]; then
+            users=($(cat utils/dependency-update-rotation.txt))
             count=${#users[@]}
             if [ $count -gt 0 ]; then
               # Find the last assignee

@@ -9,6 +9,8 @@
 //
 //===----------------------------------------------------------------------===//
 
+// REQUIRES: valid_xchess_license
+
 // RUN: %PYTHON aiecc.py --no-unified %s
 // RUN: %PYTHON aiecc.py --unified    %s
 

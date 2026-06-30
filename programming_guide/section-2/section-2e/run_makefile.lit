@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // REQUIRES: ryzen_ai, peano
+// REQUIRES: makefile_examples
 //
 // RUN: mkdir -p test_run_makefile
 // RUN: cd test_run_makefile
