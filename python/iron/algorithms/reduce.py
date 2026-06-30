@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2026 Advanced Micro Devices, Inc.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 """Reduction algorithms built on IRON.
 
 Reductions differ from :mod:`~aie.iron.algorithms.transform` in two ways:
@@ -24,7 +24,7 @@ import numpy as np
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 import aie.iron as iron
 
-from .transform import make_param_descriptor
+from ._transform import make_param_descriptor
 
 
 def _reduce_gen(func, input_desc, output_desc, *, trace_size=0):

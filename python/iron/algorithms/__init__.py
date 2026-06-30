@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2026 Advanced Micro Devices, Inc.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 """High-level algorithm templates built on IRON (transform, for_each, etc.)."""
 
 from .conv_pipeline import (
@@ -15,7 +15,7 @@ from .conv_pipeline import (
 )
 from .for_each import for_each
 from .reduce import reduce
-from .transform import (
+from ._transform import (
     transform,
     transform_binary,
     transform_parallel,

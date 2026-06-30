@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // REQUIRES: ryzen_ai, peano
+// REQUIRES: makefile_examples
 //
 // Default tile-wise softmax (size=262144, chans=2) on both NPU families.
 // RUN: make -f %S/Makefile clean

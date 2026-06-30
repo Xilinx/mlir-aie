@@ -1,6 +1,10 @@
+<!-- Copyright (C) 2025 Advanced Micro Devices, Inc. -->
+<!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 # Linux Setup and Build Instructions
 
 These instructions will guide you through everything required for building and executing a program on the Ryzen™ AI NPU, starting from a fresh bare-bones **Ubuntu 22.04 LTS** install. Ubuntu 22.04 LTS, Ubuntu 24.04 LTS and Ubuntu 24.10 are supported by this toolchain.
+
+> On a **non-Ubuntu distro** (Arch, Void, Fedora-from-source, …) or a kernel that already ships the **in-tree `amdxdna` driver** (Linux ≥ 6.14), see [Building on a non-Ubuntu distro](buildHostLinNonUbuntu.md), which covers building only the XRT userspace SHIM and installing dependencies without `apt`.
 
 ## Initial Setup
 

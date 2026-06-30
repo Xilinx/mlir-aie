@@ -1,4 +1,4 @@
-# Copyright (C) 2024-2026 Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: MIT
 
 # from CppHeaderParser import CppHeader

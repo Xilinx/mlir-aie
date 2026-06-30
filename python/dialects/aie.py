@@ -1,4 +1,4 @@
-# Copyright (C) 2022, Advanced Micro Devices, Inc.
+# Copyright (C) 2022 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 from dataclasses import dataclass
 import inspect
@@ -36,7 +36,6 @@ from .._mlir_libs._aie import (
     generate_control_packets,
     translate_npu_to_binary,
     register_dialect,
-    translate_aie_vec_to_cpp,
     translate_mlir_to_llvmir,
     transaction_binary_to_mlir,
     tile_like_is_core_tile,

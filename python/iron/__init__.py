@@ -1,4 +1,5 @@
-# (c) Copyright 2026 Advanced Micro Devices, Inc.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """IRON: High-level Python API for programming AMD Ryzen AI NPUs.
 
 Provides the primary abstractions for describing NPU designs:
@@ -80,7 +81,9 @@ from aie.utils import (
     zeros_like,
     ceildiv,
     set_tensor_class,
+    set_current_device,
     get_current_device,
+    ensure_current_device,
 )
 
 __all__ = [
@@ -129,7 +132,9 @@ __all__ = [
     "zeros_like",
     "ceildiv",
     "set_tensor_class",
+    "set_current_device",
     "get_current_device",
+    "ensure_current_device",
     # dtype helpers
     "str_to_dtype",
     "dtype_to_str",

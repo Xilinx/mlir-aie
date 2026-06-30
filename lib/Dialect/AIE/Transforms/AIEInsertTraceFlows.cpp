@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2026, Advanced Micro Devices, Inc.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -225,6 +225,12 @@ struct AIEInsertTraceFlowsPass
       }
     }
 
+    // Each (tile, trace unit) pair may be configured at most once: a hardware
+    // trace unit emits a single packet stream, so two aie.trace ops targeting
+    // the same unit would race on one packet id and corrupt routing. The
+    // packet type identifies the unit (Core/Mem/MemTile/ShimTile).
+    std::set<std::tuple<int, int, int>> seenTraceUnits; // (col, row, pktType)
+
     for (auto trace : traces) {
       auto tile = cast<TileOp>(trace.getTile().getDefiningOp());
 
@@ -252,6 +258,17 @@ struct AIEInsertTraceFlowsPass
           // Core tile defaults to core type
           packetType = TracePacketType::Core;
         }
+      }
+
+      // Reject a second trace op on the same hardware unit of the same tile.
+      auto unitKey = std::make_tuple(tile.getCol(), tile.getRow(),
+                                     static_cast<int>(*packetType));
+      if (!seenTraceUnits.insert(unitKey).second) {
+        trace.emitError() << "tile (" << tile.getCol() << ", " << tile.getRow()
+                          << ") is traced more than once on the same trace "
+                             "unit; each unit can have only one trace "
+                             "configuration";
+        return signalPassFailure();
       }
 
       // Allocate packet ID if not specified (precomputed in (col, row)

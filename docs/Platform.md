@@ -1,3 +1,5 @@
+<!-- Copyright (C) 2023 Advanced Micro Devices, Inc. -->
+<!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 # Building a platform for further exploration in hardware
 
 In order to facilitate additional exploration of the MLIR AIE tools in hardware, a basic platform can be built to run the generated programs on an AI Engine-enabled device + board (vck190). Such a platform also provides the necessary `sysroot` required to cross-compile MLIR AIE code for simulation, such as for the tutorials.

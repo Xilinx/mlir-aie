@@ -1,4 +1,5 @@
 // clang-format off
+// Copyright (C) 2022-2023 Advanced Micro Devices, Inc.
 //
 //=======================================================================
 // Copyright 2009 Trustees of Indiana University

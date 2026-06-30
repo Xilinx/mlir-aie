@@ -3,7 +3,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2023-2024 Advanced Micro Devices, Inc. or its affiliates
+# Copyright (C) 2023-2026 Advanced Micro Devices, Inc.
 
 set(LLVM_TARGET_DEFINITIONS AIEVecTransformOps.td)
 mlir_tablegen(AIEVecTransformOps.h.inc -gen-op-decls)

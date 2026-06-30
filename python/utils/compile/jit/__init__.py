@@ -1,4 +1,5 @@
-# (c) Copyright 2026 Advanced Micro Devices, Inc.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 """JIT compilation layer: CompilableDesign, compileconfig, markers, and context."""
 
 from .context import compile_context, get_compile_arg

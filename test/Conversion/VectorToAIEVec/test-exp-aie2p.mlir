@@ -4,11 +4,11 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2025, Advanced Micro Devices, Inc.
+// Copyright (C) 2025 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aie2p target-backend=llvmir" | FileCheck %s
+// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aie2p" | FileCheck %s
 
 // CHECK-LABEL: func @test_exp_aie2p
 // CHECK-SAME: %[[A:[A-Za-z0-9]+]]: vector<16xbf16>

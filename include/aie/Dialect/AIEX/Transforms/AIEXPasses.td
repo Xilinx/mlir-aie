@@ -4,7 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2019 Xilinx Inc.
+// Copyright (C) 2019-2022 Xilinx, Inc.
+// Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -25,6 +26,36 @@ def AIEXToStandard : Pass<"aiex-standard-lowering", "mlir::ModuleOp"> {
   let dependentDialects = [
     "mlir::func::FuncDialect",
     "mlir::memref::MemRefDialect",
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
+def AIESCFToControlFlow : Pass<"aie-scf-to-control-flow", "mlir::ModuleOp"> {
+  let summary = "Lower scf to cf everywhere except inside runtime sequences";
+  let description = [{
+    Converts structured control flow (`scf`) to unstructured control flow
+    (`cf`) throughout the module, with one exception: `scf` operations nested
+    inside an `aie.runtime_sequence` are left untouched.
+
+    A runtime sequence is `NoTerminator` and is lowered to a flat NPU
+    instruction stream that has no notion of branches; its loops are instead
+    resolved by the dedicated runtime-sequence lowering path (loop unrolling
+    for compile-time-constant trip counts, or the dynamic EmitC path
+    otherwise). Running the generic `convert-scf-to-cf` over a runtime
+    sequence would both violate its `NoTerminator` block invariant (the ops
+    following a lowered loop end up in a terminator-less block) and feed the
+    flat NPU emitter control-flow ops it silently drops -- a miscompile.
+
+    This pass is therefore a drop-in replacement for `convert-scf-to-cf` in
+    pipelines that contain runtime sequences: core/host `scf` is lowered to
+    `cf` as usual (e.g. before `aie-standard-lowering`), while runtime-sequence
+    control flow is preserved for its own lowering.
+  }];
+
+  let constructor = "xilinx::AIEX::createAIESCFToControlFlowPass()";
+  let dependentDialects = [
+    "mlir::cf::ControlFlowDialect",
     "xilinx::AIE::AIEDialect",
     "xilinx::AIEX::AIEXDialect",
   ];

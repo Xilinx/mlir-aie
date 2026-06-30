@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2026, Advanced Micro Devices, Inc.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -22,6 +22,14 @@
 // CHECK: Generated ELF
 // CHECK: Generated ELF
 // CHECK: Compilation completed successfully
+
+// Parallel per-core slicing must emit the same object as serial compilation.
+// Compile the same design both ways into separate tmpdirs and diff the per-core
+// objects: byte-identical objects pin the slicing equivalence claim.
+// RUN: aiecc --no-xchesscc --no-xbridge --tmpdir=%t.ser %s
+// RUN: aiecc --no-xchesscc --no-xbridge -j 2 --tmpdir=%t.par %s
+// RUN: diff %t.ser/main_core_0_2.o %t.par/main_core_0_2.o
+// RUN: diff %t.ser/main_core_1_2.o %t.par/main_core_1_2.o
 
 module {
   aie.device(npu2_4col) {

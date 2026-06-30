@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2026 Advanced Micro Devices, Inc.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -1469,8 +1469,7 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
   }
 
   // Step 1: Convert vector to aievec (this is a pipeline, not a single pass)
-  // Only add for AIE2 and later targets - AIE1 doesn't support
-  // target-backend=llvmir
+  // Only add for AIE2 and later targets
   // NOTE: Use parsePassPipeline instead of buildConvertVectorToAIEVec because
   // ConvertVectorToAIEVecOptions only propagates aie-target to its sub-pipeline
   // options (canonicalize, lower, optimize) through parseFromString, not
@@ -1481,7 +1480,6 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
       lowerTarget == "aie2p") {
     std::string vecPipeline =
         "convert-vector-to-aievec{aie-target=" + lowerTarget +
-        " target-backend=llvmir" +
         (bf16Emulation ? " bf16-emulation=true" : "") + "}";
     if (failed(parsePassPipeline(vecPipeline, pm))) {
       llvm::errs() << "Error: Failed to parse convert-vector-to-aievec "
@@ -1559,8 +1557,12 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
 
   devicePm2.addPass(xilinx::AIE::createAIEVectorTransferLoweringPass());
 
-  // Step 5: Convert SCF to CF (module-level pass)
-  pm.addPass(createSCFToControlFlowPass());
+  // Step 5: Convert SCF to CF (module-level pass).
+  // Uses the runtime-sequence-aware lowering rather than the generic
+  // convert-scf-to-cf: scf inside an aie.runtime_sequence is left intact (it
+  // is NoTerminator and lowered to a flat NPU instruction stream by its own
+  // path), while core/host scf is lowered to cf as usual.
+  pm.addPass(xilinx::AIEX::createAIESCFToControlFlowPass());
 
   if (verbose) {
     llvm::outs() << "Running resource allocation pipeline in-memory "
@@ -2019,6 +2021,11 @@ struct CoreCompilationResult {
 /// - 'nuw' flag on getelementptr (inferred by ConstantFolding/InstCombine)
 /// - 'nocreateundeforpoison' attribute (with any trailing whitespace)
 /// - 'inf'/'-inf'/'nan' float-literal keywords (rewritten to hex form)
+/// Also strips, for codegen quality rather than parsing:
+/// - ', align <N>' attributes. Retaining them makes Peano's capped-O1 opt skip
+///   vectorizing the matmul reduction loop, scalarizing it into ~10x more
+///   program memory and overflowing AIE core memory. Do not remove without
+///   confirming the i8 matmul still fits program memory.
 static std::string downgradeIRForPeano(StringRef ir) {
   std::string result = ir.str();
   auto replaceAll = [&](StringRef from, StringRef to) {
@@ -2074,6 +2081,236 @@ static std::string downgradeIRForPeano(StringRef ir) {
     while (end < result.size() && (result[end] == ' ' || result[end] == '\t'))
       ++end;
     result.erase(pos, end - pos);
+  }
+  // Strip ', align <N>' attributes (matches old Python
+  // drop_alignment_for_peano). Retaining align attributes causes Peano's
+  // capped-O1 opt to skip vectorizing the matmul K-loop, scalarizing it into
+  // ~10x more program memory and overflowing AIE core memory.
+  const std::string alignPat = ", align ";
+  pos = 0;
+  while ((pos = result.find(alignPat, pos)) != std::string::npos) {
+    size_t end = pos + alignPat.size();
+    while (end < result.size() && result[end] >= '0' && result[end] <= '9')
+      ++end;
+    if (end > pos + alignPat.size())
+      result.erase(pos, end - pos);
+    else
+      pos = end;
+  }
+  // Rewrite 'f0x<8hex>' typed float literals to the double-widened '0x<16hex>'
+  // form that Peano's LLVM 21 opt can parse.
+  // Introduced by llvm/llvm-project@41c214f0b115 (2026-05-07,
+  // "[AsmWriter] Change the output syntax of floating-point literals.",
+  // https://github.com/llvm/llvm-project/pull/190649): "the hexadecimal
+  // output generally changes to f0x... notation, and is used when 6 decimal
+  // digits are insufficient to accurately represent the number."
+  // Older LLVM (including Peano's LLVM 21) only accepts float constants
+  // widened to double, written as 0x<16 hex digits>.
+  // Only match at token boundaries: the character before 'f' must not be an
+  // identifier character (to avoid matching inside %f0xDEAD or similar), and
+  // the character after the 8 hex digits must not be a hex digit (to avoid
+  // partial matches against longer hex strings).
+  {
+    const std::string f0xPfx = "f0x";
+    pos = 0;
+    while ((pos = result.find(f0xPfx, pos)) != std::string::npos) {
+      // Require a non-identifier, non-sigil character before 'f' to avoid
+      // matching inside LLVM IR value names like '%f0xDEAD' or '@f0xBEEF'.
+      if (pos > 0 && (isIdentChar(result[pos - 1]) || result[pos - 1] == '%' ||
+                      result[pos - 1] == '@')) {
+        pos += f0xPfx.size();
+        continue;
+      }
+      size_t hexStart = pos + f0xPfx.size();
+      size_t hexEnd = hexStart;
+      while (hexEnd < result.size() && hexEnd < hexStart + 8 &&
+             std::isxdigit(static_cast<unsigned char>(result[hexEnd])))
+        ++hexEnd;
+      // Require exactly 8 hex digits followed by a non-hex-digit boundary.
+      bool trailingOk =
+          hexEnd >= result.size() ||
+          !std::isxdigit(static_cast<unsigned char>(result[hexEnd]));
+      if (hexEnd - hexStart == 8 && trailingOk) {
+        // Decode the 32-bit float bit pattern and re-encode as a double so
+        // that Peano's LLVM 21 opt can parse the resulting hex literal.
+        uint32_t fbits = static_cast<uint32_t>(
+            std::stoul(result.substr(hexStart, 8), nullptr, 16));
+        float fval;
+        std::memcpy(&fval, &fbits, sizeof(fval));
+        double dval = static_cast<double>(fval);
+        uint64_t dbits;
+        std::memcpy(&dbits, &dval, sizeof(dval));
+        // Format as "0x" followed by 16 uppercase hex digits.
+        std::string replacement = "0x";
+        for (int shift = 60; shift >= 0; shift -= 4)
+          replacement += "0123456789ABCDEF"[(dbits >> shift) & 0xFu];
+        result.replace(pos, hexEnd - pos, replacement);
+        pos += replacement.size();
+      } else {
+        pos = hexEnd;
+      }
+    }
+  }
+  // Rewrite decimal bfloat16 literals ('bfloat N.NNe+NN') to the hexadecimal
+  // form ('bfloat 0xR<4hex>') that Peano's LLVM 21 opt can parse.
+  // Also introduced by llvm/llvm-project@41c214f0b115 (2026-05-07,
+  // "[AsmWriter] Change the output syntax of floating-point literals.",
+  // https://github.com/llvm/llvm-project/pull/190649): "extends the base
+  // decimal output literal to support non-double types." Peano's LLVM 21 can
+  // only parse bfloat constants in the 0xR-prefixed bit-exact hex form. The
+  // conversion uses round-to-nearest-even so that the encoded bits match the
+  // original bfloat16 constant exactly.
+  {
+    // Match "bfloat" followed by a decimal number (not already 0x-prefixed).
+    const std::string bfPfx = "bfloat ";
+    pos = 0;
+    while ((pos = result.find(bfPfx, pos)) != std::string::npos) {
+      size_t numStart = pos + bfPfx.size();
+      // Skip if this is already a hex constant (0x / 0xR / 0xH …).
+      if (numStart + 1 < result.size() && result[numStart] == '0' &&
+          result[numStart + 1] == 'x') {
+        pos = numStart;
+        continue;
+      }
+      // Collect an optional leading '-' and then digits/dot/exponent chars.
+      size_t numEnd = numStart;
+      if (numEnd < result.size() && result[numEnd] == '-')
+        ++numEnd;
+      // Must start with a digit.
+      if (numEnd >= result.size() ||
+          !std::isdigit(static_cast<unsigned char>(result[numEnd]))) {
+        pos = numStart;
+        continue;
+      }
+      while (numEnd < result.size() &&
+             (std::isdigit(static_cast<unsigned char>(result[numEnd])) ||
+              result[numEnd] == '.' || result[numEnd] == 'e' ||
+              result[numEnd] == 'E' || result[numEnd] == '+' ||
+              result[numEnd] == '-'))
+        ++numEnd;
+      std::string numStr = result.substr(numStart, numEnd - numStart);
+      // Parse as float32 and convert to bfloat16 via round-to-nearest-even.
+      // bfloat16 shares the float32 exponent; its 16 bits are the top 16 bits
+      // of float32 (after RNE rounding).
+      char *endp = nullptr;
+      float fval = std::strtof(numStr.c_str(), &endp);
+      // Require that strtof consumed the *entire* numStr; if it stopped early
+      // (e.g. on an unexpected character) we must not rewrite the token using
+      // a partially-parsed value.
+      if (!endp || endp != numStr.c_str() + numStr.size()) {
+        pos = numEnd;
+        continue;
+      }
+      uint32_t f32bits;
+      std::memcpy(&f32bits, &fval, sizeof(f32bits));
+      // Round-to-nearest-even: add 0x7FFF + the LSB of the bfloat16 position.
+      uint32_t lsb = (f32bits >> 16) & 1u;
+      uint16_t bf16bits =
+          static_cast<uint16_t>((f32bits + 0x7FFFu + lsb) >> 16);
+      // Format as "bfloat 0xR" followed by 4 uppercase hex digits.
+      std::string replacement = "bfloat 0xR";
+      for (int shift = 12; shift >= 0; shift -= 4)
+        replacement += "0123456789ABCDEF"[(bf16bits >> shift) & 0xFu];
+      result.replace(pos, numEnd - pos, replacement);
+      pos += replacement.size();
+    }
+  }
+  // Second pass: rewrite bare decimal bfloat constants that appear without an
+  // explicit type prefix (e.g. 'fmul bfloat %x, 1.445310e+00'). In such
+  // instructions LLVM 23 omits the type keyword before the constant operand;
+  // Peano's LLVM 21 cannot parse the decimal form in this context either.
+  // Strategy: scan line-by-line; for any line whose instruction type is
+  // 'bfloat', convert every bare decimal float operand on that line.
+  {
+    auto convertDecimalBf = [&](uint32_t f32bits) -> std::string {
+      uint32_t lsb = (f32bits >> 16) & 1u;
+      uint16_t bf16bits =
+          static_cast<uint16_t>((f32bits + 0x7FFFu + lsb) >> 16);
+      std::string r = "0xR";
+      for (int sh = 12; sh >= 0; sh -= 4)
+        r += "0123456789ABCDEF"[(bf16bits >> sh) & 0xFu];
+      return r;
+    };
+    // We need to process line-by-line, so work on a copy split into lines.
+    std::string out;
+    out.reserve(result.size());
+    size_t lineStart = 0;
+    while (lineStart <= result.size()) {
+      size_t lineEnd = result.find('\n', lineStart);
+      bool hasNewline = (lineEnd != std::string::npos);
+      if (!hasNewline)
+        lineEnd = result.size();
+      std::string line = result.substr(lineStart, lineEnd - lineStart);
+      // Only process lines where 'bfloat' appears as a type (i.e., the word
+      // 'bfloat' is in the instruction line, not as part of an identifier).
+      // Simple heuristic: look for " bfloat " or " bfloat," or "= bfloat ".
+      bool hasBfloatType = line.find(" bfloat ") != std::string::npos ||
+                           line.find(" bfloat,") != std::string::npos ||
+                           line.find("= bfloat\n") != std::string::npos;
+      if (hasBfloatType) {
+        // Scan for bare decimal float literals: must be preceded by ", " (or
+        // "( ") and start with an optional '-' then a digit.
+        std::string newLine;
+        newLine.reserve(line.size());
+        size_t lp = 0;
+        while (lp < line.size()) {
+          // Look for ", " or "( " before a potential decimal.
+          size_t sep = line.find(", ", lp);
+          size_t paren = line.find("( ", lp);
+          size_t next =
+              (sep < paren ? sep : paren); // take whichever comes first
+          if (next == std::string::npos) {
+            newLine += line.substr(lp);
+            break;
+          }
+          size_t afterSep = next + 2; // skip ", " or "( "
+          newLine += line.substr(lp, afterSep - lp);
+          lp = afterSep;
+          // Try to parse a decimal float starting here.
+          size_t numStart = lp;
+          size_t numEnd = numStart;
+          if (numEnd < line.size() && line[numEnd] == '-')
+            ++numEnd;
+          if (numEnd >= line.size() ||
+              !std::isdigit(static_cast<unsigned char>(line[numEnd]))) {
+            continue; // not a decimal, keep scanning
+          }
+          while (numEnd < line.size() &&
+                 (std::isdigit(static_cast<unsigned char>(line[numEnd])) ||
+                  line[numEnd] == '.' || line[numEnd] == 'e' ||
+                  line[numEnd] == 'E' || line[numEnd] == '+' ||
+                  line[numEnd] == '-'))
+            ++numEnd;
+          std::string numStr = line.substr(numStart, numEnd - numStart);
+          // Skip if it already looks like an integer (no '.', 'e', or 'E').
+          bool isFloat = numStr.find('.') != std::string::npos ||
+                         numStr.find('e') != std::string::npos ||
+                         numStr.find('E') != std::string::npos;
+          if (!isFloat) {
+            newLine += numStr;
+            lp = numEnd;
+            continue;
+          }
+          char *ep = nullptr;
+          float fv = std::strtof(numStr.c_str(), &ep);
+          if (!ep || ep != numStr.c_str() + numStr.size()) {
+            newLine += numStr;
+            lp = numEnd;
+            continue;
+          }
+          uint32_t f32bits;
+          std::memcpy(&f32bits, &fv, sizeof(f32bits));
+          newLine += convertDecimalBf(f32bits);
+          lp = numEnd;
+        }
+        line = std::move(newLine);
+      }
+      out += line;
+      if (hasNewline)
+        out += '\n';
+      lineStart = lineEnd + (hasNewline ? 1 : result.size() + 1);
+    }
+    result = std::move(out);
   }
   return result;
 }
@@ -2784,11 +3021,63 @@ compileCores(MLIRContext &context, ModuleOp moduleOp, Operation *deviceOp,
   // We need to serialize the module to string and deserialize in each thread
   // because MLIRContext is not thread-safe for multi-threaded mutation.
 
-  // First, serialize the module to string for parallel workers
-  std::string moduleStr;
+  // Each parallel worker re-parses the module in its own MLIRContext and the
+  // per-core lowering then keeps only its own core, discarding everything else.
+  // Serializing the whole multi-core, multi-device module once and handing that
+  // same string to every worker is O(N) memory per worker for an N-core device,
+  // and the string also carries the runtime sequences, which the per-core
+  // lowering never touches but which dominate the module text once the host DMA
+  // program is unrolled (tens of thousands of dma_bd ops). For large designs
+  // the peak memory and the repeated full-module clones become the dominant
+  // cost.
+  //
+  // Instead, build a stripped base module once, then derive a small per-core
+  // slice from it. The stripped base drops (a) the runtime sequences (host-side
+  // DMA orchestration, unused by per-core lowering) and (b) every other device
+  // (a core only references its own device's tiles/buffers/locks/objectfifos).
+  // Each per-core slice clones that small base and erases the other cores.
+  // Cloning the stripped base instead of the full module makes the per-core
+  // clones cheap, and the resulting slice strings are byte-identical to the old
+  // path, so the emitted object/ELF is unchanged. Slicing runs here (serial,
+  // one clone live at a time, so peak memory stays bounded) before the parallel
+  // fan-out.
+  OwningOpRef<ModuleOp> strippedBase = moduleOp.clone();
   {
-    llvm::raw_string_ostream os(moduleStr);
-    moduleOp->print(os);
+    // Strip the runtime sequences (host-side, unused by per-core lowering)...
+    SmallVector<xilinx::AIE::RuntimeSequenceOp> seqs;
+    strippedBase->walk(
+        [&](xilinx::AIE::RuntimeSequenceOp s) { seqs.push_back(s); });
+    for (auto s : seqs)
+      s.erase();
+    // ...and every other device. compileCores is per-device and a per-core
+    // object only references its own device's tiles/buffers/locks/objectfifos,
+    // never a sibling device, so dropping the other device shells shrinks each
+    // per-core slice further without changing the emitted object/ELF.
+    SmallVector<xilinx::AIE::DeviceOp> otherDevices;
+    strippedBase->walk([&](xilinx::AIE::DeviceOp d) {
+      if (d.getSymName() != deviceName)
+        otherDevices.push_back(d);
+    });
+    for (auto d : otherDevices)
+      d.erase();
+  }
+  std::map<std::pair<int, int>, std::string> coreModuleStrs;
+  for (const auto &core : cores) {
+    OwningOpRef<ModuleOp> slice = strippedBase->clone();
+    SmallVector<xilinx::AIE::CoreOp> otherCores;
+    slice->walk([&](xilinx::AIE::CoreOp c) {
+      auto t = dyn_cast<xilinx::AIE::TileOp>(c.getTile().getDefiningOp());
+      if (!t || t.getCol() != core.col || t.getRow() != core.row)
+        otherCores.push_back(c);
+    });
+    for (auto c : otherCores)
+      c.erase();
+    std::string s;
+    {
+      llvm::raw_string_ostream os(s);
+      slice->print(os);
+    }
+    coreModuleStrs[{core.col, core.row}] = std::move(s);
   }
 
   // Get the dialect registry to use for parallel contexts
@@ -2824,7 +3113,7 @@ compileCores(MLIRContext &context, ModuleOp moduleOp, Operation *deviceOp,
     // Create task for this core
     futures.push_back(std::async(
         std::launch::async,
-        [&registry, &moduleStr, deviceName = deviceName.str(),
+        [&registry, &coreModuleStrs, deviceName = deviceName.str(),
          tmpDirName = tmpDirName.str(), aieTarget = aieTarget.str(), core,
          &resultsMutex, &elfPaths, &hasFailure, &activeThreads]() {
           // Each thread creates its own MLIRContext
@@ -2839,8 +3128,8 @@ compileCores(MLIRContext &context, ModuleOp moduleOp, Operation *deviceOp,
 
           // Parse the module in this thread's context
           ParserConfig parseConfig(&threadContext);
-          OwningOpRef<ModuleOp> threadModule =
-              parseSourceString<ModuleOp>(moduleStr, parseConfig);
+          OwningOpRef<ModuleOp> threadModule = parseSourceString<ModuleOp>(
+              coreModuleStrs.at({core.col, core.row}), parseConfig);
 
           if (!threadModule) {
             {
@@ -3796,26 +4085,40 @@ static void assignPdiIds(ModuleOp moduleOp,
 // NPU Instruction Generation
 //===----------------------------------------------------------------------===//
 
-/// Generate NPU instructions from an in-memory module.
-/// This clones the module since NPU lowering is destructive.
+/// Generate NPU instructions from an in-memory module (clones it, since NPU
+/// lowering is destructive). When devName is empty, generate for ALL devices
+/// from a SINGLE whole-module lowering (the O(devices) path used on the
+/// full-ELF / no-expand-load-pdis path): the runtime-sequence materialize pass
+/// and patchPdiIds operate on the whole module independently of which device is
+/// later extracted, so lowering once and translating every device's runtime
+/// sequence is byte-identical to lowering per device. When devName is set, only
+/// that device is emitted.
 static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
                                              StringRef tmpDirName,
-                                             StringRef devName) {
+                                             StringRef devName = "") {
   // Full ELF requires NPU instructions
   if (!generateNpuInsts && !generateFullElf) {
     return success();
   }
 
+  bool allDevices = devName.empty();
+
   if (verbose) {
-    llvm::outs() << "Generating NPU instructions for device: " << devName
-                 << "\n";
+    if (allDevices)
+      llvm::outs() << "Generating NPU instructions for all devices\n";
+    else
+      llvm::outs() << "Generating NPU instructions for device: " << devName
+                   << "\n";
   }
 
   // In dry-run mode, just show what would be done and return
   if (dryRun) {
     if (verbose) {
-      llvm::outs() << "Would generate NPU instructions for device: " << devName
-                   << "\n";
+      if (allDevices)
+        llvm::outs() << "Would generate NPU instructions for all devices\n";
+      else
+        llvm::outs() << "Would generate NPU instructions for device: "
+                     << devName << "\n";
     }
     return success();
   }
@@ -3834,14 +4137,23 @@ static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
 
   // Dump intermediate if requested
   SmallString<128> npuLoweredPath(tmpDirName);
-  sys::path::append(npuLoweredPath, devName.str() + "_npu_lowered.mlir");
+  sys::path::append(npuLoweredPath, allDevices
+                                        ? std::string("all_npu_lowered.mlir")
+                                        : devName.str() + "_npu_lowered.mlir");
   dumpModuleToFile(*clonedModule, npuLoweredPath, "NPU lowered module");
 
   // Step 2: Translate to NPU binary
-  // Find device and generate instructions for each runtime sequence
+  // Generate instructions for each device's runtime sequences. In single-device
+  // mode only the requested device is emitted; in all-devices mode the optional
+  // --device-name filter is honored, otherwise every device.
   LogicalResult result = success();
   for (auto devOp : clonedModule->getOps<xilinx::AIE::DeviceOp>()) {
-    if (devOp.getSymName() != devName) {
+    StringRef curDevName = devOp.getSymName();
+    if (allDevices) {
+      if (!deviceName.empty() && curDevName != deviceName) {
+        continue;
+      }
+    } else if (curDevName != devName) {
       continue;
     }
 
@@ -3856,7 +4168,7 @@ static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
 
       StringRef seqName = seq.getSymName();
       std::string outputFileName =
-          formatString(instsName, devName.str(), seqName);
+          formatString(instsName, curDevName.str(), seqName);
 
       // Determine output path:
       // - If generateNpuInsts is set, use the filename as-is (relative to cwd)
@@ -3882,7 +4194,7 @@ static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
       std::vector<uint32_t> instructions;
       std::vector<xilinx::AIE::TxnLocEntry> locmap;
       if (failed(xilinx::AIE::AIETranslateNpuToBinary(
-              *clonedModule, instructions, devName, seqName,
+              *clonedModule, instructions, curDevName, seqName,
               keepLoc ? &locmap : nullptr))) {
         llvm::errs() << "Error generating NPU instructions for sequence: "
                      << seqName << "\n";
@@ -3923,7 +4235,8 @@ static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
           return;
         }
         StringRef binBaseName = sys::path::filename(outputPath);
-        xilinx::AIE::emitNpuLocmapJSON(locFile, devName, binBaseName, locmap);
+        xilinx::AIE::emitNpuLocmapJSON(locFile, curDevName, binBaseName,
+                                       locmap);
         if (verbose)
           llvm::outs() << "Wrote " << locmap.size()
                        << " locmap entries to: " << locmapPath << "\n";
@@ -5470,9 +5783,19 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
     }
 
     // Generate NPU instructions from in-memory module.
-    if (!generateCtrlPkt &&
-        failed(generateNpuInstructions(moduleOp, tmpDirName, devName))) {
-      return failure();
+    // (this runs runNpuLoweringPipeline = the runtime-sequence MATERIALIZE
+    // pass)
+    //
+    // On the full-ELF / no-expand-load-pdis path, NPU instructions for all
+    // devices are generated together after this loop by a single call to
+    // generateNpuInstructions (no devName); skip the per-device call here.
+    bool deferNpuInstsToOncePass =
+        generateFullElf && !expandLoadPdis && !generateCtrlPkt;
+    if (!deferNpuInstsToOncePass) {
+      if (!generateCtrlPkt &&
+          failed(generateNpuInstructions(moduleOp, tmpDirName, devName))) {
+        return failure();
+      }
     }
 
     // Generate transaction MLIR output if requested.
@@ -5676,6 +5999,14 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
       });
 
       deviceElfInfos.push_back(std::move(info));
+    }
+  }
+
+  // Full-ELF / no-expand path: generate all devices' NPU instructions from a
+  // single whole-module lowering (devName omitted = all devices).
+  if (generateFullElf && !expandLoadPdis && !generateCtrlPkt) {
+    if (failed(generateNpuInstructions(moduleOp, tmpDirName))) {
+      return failure();
     }
   }
 

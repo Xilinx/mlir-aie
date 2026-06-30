@@ -4,11 +4,11 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
+// Copyright (C) 2024 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-translate --aie-ctrlpkt-to-bin -aie-output-binary=false %s |& FileCheck %s
+// RUN: aie-translate --aie-ctrlpkt-to-bin -aie-output-binary=false %s 2>&1 | FileCheck %s
 
 // CHECK: 8000001B
 // CHECK: 0001F000

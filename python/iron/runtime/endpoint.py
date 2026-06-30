@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc.
+# Copyright (C) 2024 Advanced Micro Devices, Inc.
 
 from __future__ import annotations
 
@@ -25,6 +25,8 @@ class RuntimeEndpoint(ObjectFifoEndpoint):
     _SHIM_TILE_TYPES = (AIETileType.ShimNOCTile, AIETileType.ShimPLTile)
 
     def __init__(self, tile: Tile = AnyShimTile) -> None:
+        if tile is None:
+            tile = AnyShimTile
         tile = tile.copy()
         if tile.tile_type is not None and tile.tile_type not in self._SHIM_TILE_TYPES:
             raise ValueError(
