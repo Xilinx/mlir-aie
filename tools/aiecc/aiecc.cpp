@@ -403,8 +403,8 @@ static cl::opt<bool> keepLoc(
 
 static cl::opt<unsigned> numThreads(
     "j", cl::Prefix,
-    cl::desc("Number of parallel threads for core compilation (0 = auto-detect "
-             "based on CPU count, default: 4)"),
+    cl::desc("Number of parallel threads for core compilation and linking "
+             "(0 = auto-detect based on CPU count, default: 4)"),
     cl::init(4), cl::cat(aieCompilerOptions));
 
 static cl::alias numThreadsLong("nthreads", cl::desc("Alias for -j"),
