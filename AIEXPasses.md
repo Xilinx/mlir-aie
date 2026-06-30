@@ -174,6 +174,28 @@ aie.runtime_sequence operations into aiex.cert operations enclosed in
 aiex.cert.job operations. The write32, maskwrite32, blockwrite and sync
 operations are supported.
 
+### `-aie-scf-to-control-flow`
+
+_Lower scf to cf everywhere except inside runtime sequences_
+
+Converts structured control flow (`scf`) to unstructured control flow
+(`cf`) throughout the module, with one exception: `scf` operations nested
+inside an `aie.runtime_sequence` are left untouched.
+
+A runtime sequence is `NoTerminator` and is lowered to a flat NPU
+instruction stream that has no notion of branches; its loops are instead
+resolved by the dedicated runtime-sequence lowering path (loop unrolling
+for compile-time-constant trip counts, or the dynamic EmitC path
+otherwise). Running the generic `convert-scf-to-cf` over a runtime
+sequence would both violate its `NoTerminator` block invariant (the ops
+following a lowered loop end up in a terminator-less block) and feed the
+flat NPU emitter control-flow ops it silently drops -- a miscompile.
+
+This pass is therefore a drop-in replacement for `convert-scf-to-cf` in
+pipelines that contain runtime sequences: core/host `scf` is lowered to
+`cf` as usual (e.g. before `aie-standard-lowering`), while runtime-sequence
+control flow is preserved for its own lowering.
+
 ### `-aie-substitute-shim-dma-allocations`
 
 _Replace symbolic references to `aie.shim_dma_allocation` ops with their `(tile, direction, channel)` triple_
