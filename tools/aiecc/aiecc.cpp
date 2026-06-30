@@ -1558,8 +1558,12 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
 
   devicePm2.addPass(xilinx::AIE::createAIEVectorTransferLoweringPass());
 
-  // Step 5: Convert SCF to CF (module-level pass)
-  pm.addPass(createSCFToControlFlowPass());
+  // Step 5: Convert SCF to CF (module-level pass).
+  // Uses the runtime-sequence-aware lowering rather than the generic
+  // convert-scf-to-cf: scf inside an aie.runtime_sequence is left intact (it
+  // is NoTerminator and lowered to a flat NPU instruction stream by its own
+  // path), while core/host scf is lowered to cf as usual.
+  pm.addPass(xilinx::AIEX::createAIESCFToControlFlowPass());
 
   if (verbose) {
     llvm::outs() << "Running resource allocation pipeline in-memory "
