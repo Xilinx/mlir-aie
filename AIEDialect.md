@@ -266,7 +266,7 @@ for each core.  The name of this file can be be specified using the `elf_file`
 attribute.
 
 If the `elf_file` attribute is present, no MLIR besides a terminator may be
-present in the core; in that case, the binary file linked dictates what 
+present in the core; in that case, the binary file linked dictates what
 will run in the core. The path specified should is relative to the MLIR
 file.
 
@@ -898,17 +898,17 @@ Interfaces: `InferTypeOpInterface`, `OpAsmOpInterface`, `TileElement`
 
 _Declare a logical AIE tile to be placed_
 
-This operation creates a logical AIE tile that represents a tile to be 
-mapped to a `aie.tile` during placement. Unlike `aie.tile`, 
+This operation creates a logical AIE tile that represents a tile to be
+mapped to a `aie.tile` during placement. Unlike `aie.tile`,
 this operation does not require absolute coordinates and instead uses
 a tile type to specify the kind of tile needed.
 
 The tile types are:
-- `CoreTile`: Maps to core tiles (tiles with a core, TileDMA, memory, 
+- `CoreTile`: Maps to core tiles (tiles with a core, TileDMA, memory,
   and stream connections)
 - `ShimNOCTile`: Maps to shim NOC tiles
 - `ShimPLTile`: Maps to shim PL tiles
-- `MemTile`: Maps to memory tiles (AIE2+ tiles with TileDMA and memory, 
+- `MemTile`: Maps to memory tiles (AIE2+ tiles with TileDMA and memory,
   but no core)
 
 Optional `col` and `row` can be provided as placement hints or constraints.
@@ -1242,12 +1242,12 @@ all even indices from the stream, followed by all odd indices:
 ```
 
 The behavior of the objectFifo is further controlled by optional parameters.
-The `repeat_count` parameter specifies the number of times each individual 
-object is repeated during transfer. When `repeat_count == 1`, each object 
+The `repeat_count` parameter specifies the number of times each individual
+object is repeated during transfer. When `repeat_count == 1`, each object
 is transferred once.
 
-The `iter_count` parameter specifies the number of iterations of 
-the buffer descriptor chain generated at the lower level. The total number 
+The `iter_count` parameter specifies the number of iterations of
+the buffer descriptor chain generated at the lower level. The total number
 of objects transferred is calculated as `iter_count * elemNumber * repeat_count`.
 When `repeat_count == 1`, this simplifies to `iter_count * elemNumber`.
 
@@ -2124,7 +2124,7 @@ Syntax:
 operation ::= `aie.tile` `(` $col `,` $row `)` attr-dict
 ```
 
-This operation creates an AIE tile in the AIE array. We specify the column and the row of the tile. 
+This operation creates an AIE tile in the AIE array. We specify the column and the row of the tile.
 Optionally, we can specify the memory allocation scheme for the tile (basic-sequential or bank-aware).
 
 A tile encompasses core module (CoreOp), memory module (MemOp), stream switch (SwitchboxOp),
