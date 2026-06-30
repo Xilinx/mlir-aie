@@ -33,6 +33,10 @@ on:
         type: boolean
         required: false
         default: false
+    outputs:
+      wheel_artifact_name:
+        description: 'Name of the uploaded mlir_aie wheel artifact (for same-run download by the caller)'
+        value: ${{ jobs.build-repo.outputs.wheel_artifact_name }}
   push:
     tags:
       - 'v*.*.*'
@@ -83,6 +87,9 @@ jobs:
   build-repo:
     name: Build and upload mlir_aie wheels
     needs: setup
+
+    outputs:
+      wheel_artifact_name: ${{ steps.artifact_name.outputs.name }}
 
     runs-on: ubuntu-latest
 
@@ -135,6 +142,13 @@ jobs:
           fi
           echo "Computed AIE_WHEEL_VERSION=${VERSION}"
           echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+
+      - name: Generate wheel artifact name
+        id: artifact_name
+        env:
+          ENABLE_RTTI: ${{ matrix.ENABLE_RTTI }}
+          PYTHON_VERSION: ${{ matrix.python_version }}
+        run: echo "name=mlir_aie_rtti_${ENABLE_RTTI}-${PYTHON_VERSION}" >> "${GITHUB_OUTPUT}"
 
       - uses: uraimo/run-on-arch-action@fd7aa8593480287702b446a273a68f788a9bad3a  # v3
         name: Build mlir-aie
@@ -263,7 +277,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
         with:
           path: wheelhouse/repaired_wheel/mlir_aie*whl
-          name: mlir_aie_rtti_${{ matrix.ENABLE_RTTI }}-${{ matrix.python_version }}
+          name: ${{ steps.artifact_name.outputs.name }}
           # Reusable-call wheels are only needed for same-run handoff to the
           # examples job; keep them a week so they don't accumulate. Other
           # triggers keep the repo-default retention (0 = use default).
