@@ -2097,12 +2097,15 @@ static std::string downgradeIRForPeano(StringRef ir) {
     else
       pos = end;
   }
-  // Rewrite LLVM 23+ 'f0x<8hex>' typed float literals to the double-widened
-  // '0x<16hex>' form that Peano's LLVM 21 opt can parse.
-  // LLVM 23 introduced a compact syntax for 32-bit float constants (the 'f'
-  // prefix encodes the type and the 8 hex digits encode the IEEE-754 bits
-  // directly). Older LLVM (including Peano's LLVM 21) only accepts float
-  // constants as their value widened to double, written as 0x<16 hex digits>.
+  // Rewrite 'f0x<8hex>' typed float literals to the double-widened '0x<16hex>'
+  // form that Peano's LLVM 21 opt can parse.
+  // Introduced by llvm/llvm-project@41c214f0b115 (2026-05-07,
+  // "[AsmWriter] Change the output syntax of floating-point literals.",
+  // https://github.com/llvm/llvm-project/pull/190649): "the hexadecimal
+  // output generally changes to f0x... notation, and is used when 6 decimal
+  // digits are insufficient to accurately represent the number."
+  // Older LLVM (including Peano's LLVM 21) only accepts float constants
+  // widened to double, written as 0x<16 hex digits>.
   // Only match at token boundaries: the character before 'f' must not be an
   // identifier character (to avoid matching inside %f0xDEAD or similar), and
   // the character after the 8 hex digits must not be a hex digit (to avoid
@@ -2147,6 +2150,167 @@ static std::string downgradeIRForPeano(StringRef ir) {
         pos = hexEnd;
       }
     }
+  }
+  // Rewrite decimal bfloat16 literals ('bfloat N.NNe+NN') to the hexadecimal
+  // form ('bfloat 0xR<4hex>') that Peano's LLVM 21 opt can parse.
+  // Also introduced by llvm/llvm-project@41c214f0b115 (2026-05-07,
+  // "[AsmWriter] Change the output syntax of floating-point literals.",
+  // https://github.com/llvm/llvm-project/pull/190649): "extends the base
+  // decimal output literal to support non-double types." Peano's LLVM 21 can
+  // only parse bfloat constants in the 0xR-prefixed bit-exact hex form. The
+  // conversion uses round-to-nearest-even so that the encoded bits match the
+  // original bfloat16 constant exactly.
+  {
+    // Match "bfloat" followed by a decimal number (not already 0x-prefixed).
+    const std::string bfPfx = "bfloat ";
+    pos = 0;
+    while ((pos = result.find(bfPfx, pos)) != std::string::npos) {
+      size_t numStart = pos + bfPfx.size();
+      // Skip if this is already a hex constant (0x / 0xR / 0xH …).
+      if (numStart + 1 < result.size() && result[numStart] == '0' &&
+          result[numStart + 1] == 'x') {
+        pos = numStart;
+        continue;
+      }
+      // Collect an optional leading '-' and then digits/dot/exponent chars.
+      size_t numEnd = numStart;
+      if (numEnd < result.size() && result[numEnd] == '-')
+        ++numEnd;
+      // Must start with a digit.
+      if (numEnd >= result.size() ||
+          !std::isdigit(static_cast<unsigned char>(result[numEnd]))) {
+        pos = numStart;
+        continue;
+      }
+      while (numEnd < result.size() &&
+             (std::isdigit(static_cast<unsigned char>(result[numEnd])) ||
+              result[numEnd] == '.' || result[numEnd] == 'e' ||
+              result[numEnd] == 'E' || result[numEnd] == '+' ||
+              result[numEnd] == '-'))
+        ++numEnd;
+      std::string numStr = result.substr(numStart, numEnd - numStart);
+      // Parse as float32 and convert to bfloat16 via round-to-nearest-even.
+      // bfloat16 shares the float32 exponent; its 16 bits are the top 16 bits
+      // of float32 (after RNE rounding).
+      char *endp = nullptr;
+      float fval = std::strtof(numStr.c_str(), &endp);
+      // Require that strtof consumed the *entire* numStr; if it stopped early
+      // (e.g. on an unexpected character) we must not rewrite the token using
+      // a partially-parsed value.
+      if (!endp || endp != numStr.c_str() + numStr.size()) {
+        pos = numEnd;
+        continue;
+      }
+      uint32_t f32bits;
+      std::memcpy(&f32bits, &fval, sizeof(f32bits));
+      // Round-to-nearest-even: add 0x7FFF + the LSB of the bfloat16 position.
+      uint32_t lsb = (f32bits >> 16) & 1u;
+      uint16_t bf16bits =
+          static_cast<uint16_t>((f32bits + 0x7FFFu + lsb) >> 16);
+      // Format as "bfloat 0xR" followed by 4 uppercase hex digits.
+      std::string replacement = "bfloat 0xR";
+      for (int shift = 12; shift >= 0; shift -= 4)
+        replacement += "0123456789ABCDEF"[(bf16bits >> shift) & 0xFu];
+      result.replace(pos, numEnd - pos, replacement);
+      pos += replacement.size();
+    }
+  }
+  // Second pass: rewrite bare decimal bfloat constants that appear without an
+  // explicit type prefix (e.g. 'fmul bfloat %x, 1.445310e+00'). In such
+  // instructions LLVM 23 omits the type keyword before the constant operand;
+  // Peano's LLVM 21 cannot parse the decimal form in this context either.
+  // Strategy: scan line-by-line; for any line whose instruction type is
+  // 'bfloat', convert every bare decimal float operand on that line.
+  {
+    auto convertDecimalBf = [&](uint32_t f32bits) -> std::string {
+      uint32_t lsb = (f32bits >> 16) & 1u;
+      uint16_t bf16bits =
+          static_cast<uint16_t>((f32bits + 0x7FFFu + lsb) >> 16);
+      std::string r = "0xR";
+      for (int sh = 12; sh >= 0; sh -= 4)
+        r += "0123456789ABCDEF"[(bf16bits >> sh) & 0xFu];
+      return r;
+    };
+    // We need to process line-by-line, so work on a copy split into lines.
+    std::string out;
+    out.reserve(result.size());
+    size_t lineStart = 0;
+    while (lineStart <= result.size()) {
+      size_t lineEnd = result.find('\n', lineStart);
+      bool hasNewline = (lineEnd != std::string::npos);
+      if (!hasNewline)
+        lineEnd = result.size();
+      std::string line = result.substr(lineStart, lineEnd - lineStart);
+      // Only process lines where 'bfloat' appears as a type (i.e., the word
+      // 'bfloat' is in the instruction line, not as part of an identifier).
+      // Simple heuristic: look for " bfloat " or " bfloat," or "= bfloat ".
+      bool hasBfloatType = line.find(" bfloat ") != std::string::npos ||
+                           line.find(" bfloat,") != std::string::npos ||
+                           line.find("= bfloat\n") != std::string::npos;
+      if (hasBfloatType) {
+        // Scan for bare decimal float literals: must be preceded by ", " (or
+        // "( ") and start with an optional '-' then a digit.
+        std::string newLine;
+        newLine.reserve(line.size());
+        size_t lp = 0;
+        while (lp < line.size()) {
+          // Look for ", " or "( " before a potential decimal.
+          size_t sep = line.find(", ", lp);
+          size_t paren = line.find("( ", lp);
+          size_t next =
+              (sep < paren ? sep : paren); // take whichever comes first
+          if (next == std::string::npos) {
+            newLine += line.substr(lp);
+            break;
+          }
+          size_t afterSep = next + 2; // skip ", " or "( "
+          newLine += line.substr(lp, afterSep - lp);
+          lp = afterSep;
+          // Try to parse a decimal float starting here.
+          size_t numStart = lp;
+          size_t numEnd = numStart;
+          if (numEnd < line.size() && line[numEnd] == '-')
+            ++numEnd;
+          if (numEnd >= line.size() ||
+              !std::isdigit(static_cast<unsigned char>(line[numEnd]))) {
+            continue; // not a decimal, keep scanning
+          }
+          while (numEnd < line.size() &&
+                 (std::isdigit(static_cast<unsigned char>(line[numEnd])) ||
+                  line[numEnd] == '.' || line[numEnd] == 'e' ||
+                  line[numEnd] == 'E' || line[numEnd] == '+' ||
+                  line[numEnd] == '-'))
+            ++numEnd;
+          std::string numStr = line.substr(numStart, numEnd - numStart);
+          // Skip if it already looks like an integer (no '.', 'e', or 'E').
+          bool isFloat = numStr.find('.') != std::string::npos ||
+                         numStr.find('e') != std::string::npos ||
+                         numStr.find('E') != std::string::npos;
+          if (!isFloat) {
+            newLine += numStr;
+            lp = numEnd;
+            continue;
+          }
+          char *ep = nullptr;
+          float fv = std::strtof(numStr.c_str(), &ep);
+          if (!ep || ep != numStr.c_str() + numStr.size()) {
+            newLine += numStr;
+            lp = numEnd;
+            continue;
+          }
+          uint32_t f32bits;
+          std::memcpy(&f32bits, &fv, sizeof(f32bits));
+          newLine += convertDecimalBf(f32bits);
+          lp = numEnd;
+        }
+        line = std::move(newLine);
+      }
+      out += line;
+      if (hasNewline)
+        out += '\n';
+      lineStart = lineEnd + (hasNewline ? 1 : result.size() + 1);
+    }
+    result = std::move(out);
   }
   return result;
 }

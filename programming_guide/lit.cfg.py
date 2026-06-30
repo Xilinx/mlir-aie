@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2022 Advanced Micro Devices, Inc.
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 
 import os
 import sys
@@ -34,6 +34,8 @@ config.test_source_root = os.path.dirname(__file__)
 LitConfigHelper.setup_standard_environment(
     llvm_config, config, config.aie_obj_root, config.vitis_aietools_dir
 )
+
+LitConfigHelper.add_makefile_examples_feature(config)
 
 # Basic substitutions
 config.substitutions.append(("%extraAieCcFlags%", config.extraAieCcFlags))
