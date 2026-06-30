@@ -33,10 +33,10 @@ include "aie/Dialect/AIE/IR/AIETraceOps.td"
 
 def AIE_DeviceOp: AIE_Op<"device", [
     Symbol,
-    AIETarget, 
+    AIETarget,
     HasParent<"mlir::ModuleOp">,
-    SymbolTable, 
-    SingleBlockImplicitTerminator<"EndOp">, 
+    SymbolTable,
+    SingleBlockImplicitTerminator<"EndOp">,
     IsolatedFromAbove,
     DataLayoutOpInterface,
     HasDefaultDLTIDataLayout
@@ -80,6 +80,7 @@ def AIE_DeviceOp: AIE_Op<"device", [
     static xilinx::AIE::DeviceOp getForSymbolInModuleOrError(mlir::ModuleOp module, llvm::StringRef symbol);
     static llvm::StringRef getDefaultDeviceName() { return "main"; }
   }];
+  let hasVerifier = 1;
 }
 
 def AIE_LogicalTileOp: AIE_Op<"logical_tile", [
@@ -97,17 +98,17 @@ def AIE_LogicalTileOp: AIE_Op<"logical_tile", [
 
   let summary = "Declare a logical AIE tile to be placed";
   let description = [{
-    This operation creates a logical AIE tile that represents a tile to be 
-    mapped to a `aie.tile` during placement. Unlike `aie.tile`, 
+    This operation creates a logical AIE tile that represents a tile to be
+    mapped to a `aie.tile` during placement. Unlike `aie.tile`,
     this operation does not require absolute coordinates and instead uses
     a tile type to specify the kind of tile needed.
 
     The tile types are:
-    - `CoreTile`: Maps to core tiles (tiles with a core, TileDMA, memory, 
+    - `CoreTile`: Maps to core tiles (tiles with a core, TileDMA, memory,
       and stream connections)
     - `ShimNOCTile`: Maps to shim NOC tiles
     - `ShimPLTile`: Maps to shim PL tiles
-    - `MemTile`: Maps to memory tiles (AIE2+ tiles with TileDMA and memory, 
+    - `MemTile`: Maps to memory tiles (AIE2+ tiles with TileDMA and memory,
       but no core)
 
     Optional `col` and `row` can be provided as placement hints or constraints.
@@ -117,10 +118,10 @@ def AIE_LogicalTileOp: AIE_Op<"logical_tile", [
     ```
     // Logical core tile without placement constraints
     %core_tile = aie.logical_tile<CoreTile>(?, ?)
-    
+
     // Logical shim tile with column hint but unspecified row
     %shim_tile = aie.logical_tile<ShimNOCTile>(0, ?)
-    
+
     // Logical tile with full placement constraint (effectively fixed)
     %fixed = aie.logical_tile<CoreTile>(2, 3)
     ```
@@ -172,7 +173,7 @@ def AIE_TileOp: AIE_Op<"tile", [
 
   let summary = "Declare an AIE tile";
   let description = [{
-    This operation creates an AIE tile in the AIE array. We specify the column and the row of the tile. 
+    This operation creates an AIE tile in the AIE array. We specify the column and the row of the tile.
     Optionally, we can specify the memory allocation scheme for the tile (basic-sequential or bank-aware).
 
     A tile encompasses core module (CoreOp), memory module (MemOp), stream switch (SwitchboxOp),
@@ -422,7 +423,7 @@ def AIE_CoreOp: AIE_Op<"core", [
     attribute.
 
     If the `elf_file` attribute is present, no MLIR besides a terminator may be
-    present in the core; in that case, the binary file linked dictates what 
+    present in the core; in that case, the binary file linked dictates what
     will run in the core. The path specified should is relative to the MLIR
     file.
 
@@ -1744,7 +1745,7 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp
   let assemblyFormat = [{
     $sym_name `(` $tile `,` $channel_dir `,` $channel_index (`,` $packet^)? `)` attr-dict
   }];
-  
+
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
@@ -1829,14 +1830,14 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
                            }, 2 : i32
                           ) : !aie.objectfifo<memref<256xi32>>
     ```
-    
+
     The behavior of the objectFifo is further controlled by optional parameters.
-    The `repeat_count` parameter specifies the number of times each individual 
-    object is repeated during transfer. When `repeat_count == 1`, each object 
+    The `repeat_count` parameter specifies the number of times each individual
+    object is repeated during transfer. When `repeat_count == 1`, each object
     is transferred once.
 
-    The `iter_count` parameter specifies the number of iterations of 
-    the buffer descriptor chain generated at the lower level. The total number 
+    The `iter_count` parameter specifies the number of iterations of
+    the buffer descriptor chain generated at the lower level. The total number
     of objects transferred is calculated as `iter_count * elemNumber * repeat_count`.
     When `repeat_count == 1`, this simplifies to `iter_count * elemNumber`.
   }];
@@ -2265,8 +2266,8 @@ def AIE_BDChainOp: AIE_Op<"bd_chain", [Symbol, SkipAccessibilityCheckTrait]> {
 
 def AIE_RuntimeSequenceOp : AIE_Op<"runtime_sequence", [
   Symbol,
-  NoTerminator, 
-  HasParent<"DeviceOp">, 
+  NoTerminator,
+  HasParent<"DeviceOp">,
 ]> {
   let summary = "Program the configuration co-processor of the AI Engine array";
   let description = [{

@@ -76,17 +76,11 @@ class Program:
                 # Sort fifos for deterministic resolve
                 all_fifos = sorted(all_fifos, key=lambda obj: obj.name)
 
-                # Collect all tiles, validating no two workers share the same coordinates
+                # Collect all tiles. Two workers landing on the same compute
+                # tile (pinned or after placement) is caught by the aie.device
+                # verifier's one-core-per-tile check, so no Python-side guard.
                 all_tiles = []
-                worker_tile_coords = set()
                 for w in self._rt.workers:
-                    if w.tile.col is not None and w.tile.row is not None:
-                        coord = (w.tile.col, w.tile.row)
-                        if coord in worker_tile_coords:
-                            raise ValueError(
-                                f"Multiple workers cannot share the same tile: {w.tile}"
-                            )
-                        worker_tile_coords.add(coord)
                     all_tiles.append(w.tile)
                     # Generic: any user-side Resolvable in fn_args may declare
                     # additional tile dependencies via tiles(). Default is [].
