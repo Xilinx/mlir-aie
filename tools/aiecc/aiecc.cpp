@@ -47,6 +47,7 @@
 #include "llvm/Support/Process.h"
 #include "llvm/Support/Program.h"
 #include "llvm/Support/SourceMgr.h"
+#include "llvm/Support/ThreadPool.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -110,7 +111,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
-#include <future>
 #include <iomanip>
 #include <map>
 #include <memory>
@@ -2956,7 +2956,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 }
 
 /// Compile all cores in a device, optionally in parallel.
-/// When numThreads > 1, cores are compiled in parallel using std::async.
+/// When numThreads > 1, cores are compiled in parallel using DefaultThreadPool.
 /// Each parallel task gets its own MLIRContext to avoid threading issues.
 static LogicalResult
 compileCores(MLIRContext &context, ModuleOp moduleOp, Operation *deviceOp,
@@ -3013,7 +3013,7 @@ compileCores(MLIRContext &context, ModuleOp moduleOp, Operation *deviceOp,
     return success();
   }
 
-  // Parallel compilation using std::async
+  // Parallel compilation using DefaultThreadPool
   // We need to serialize the module to string and deserialize in each thread
   // because MLIRContext is not thread-safe for multi-threaded mutation.
 
@@ -3082,92 +3082,55 @@ compileCores(MLIRContext &context, ModuleOp moduleOp, Operation *deviceOp,
   xilinx::registerAllDialects(registry);
   mlir::registerAllExtensions(registry);
 
-  // Thread-safe results storage
   std::mutex resultsMutex;
   std::atomic<bool> hasFailure{false};
 
-  // Create futures for parallel tasks
-  std::vector<std::future<void>> futures;
-  futures.reserve(cores.size());
-
-  // Use a semaphore-like pattern with atomic counter for thread limiting
-  std::atomic<unsigned> activeThreads{0};
+  llvm::DefaultThreadPool pool(llvm::hardware_concurrency(nThreads));
 
   for (const auto &core : cores) {
-    // Wait if we've reached the thread limit
-    while (activeThreads.load() >= nThreads) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
+    pool.async([&registry, &coreModuleStrs, deviceName = deviceName.str(),
+                tmpDirName = tmpDirName.str(), aieTarget = aieTarget.str(),
+                core, &resultsMutex, &elfPaths, &hasFailure]() {
+      if (hasFailure.load())
+        return;
 
-    // Check if any thread has failed
-    if (hasFailure.load()) {
-      break;
-    }
+      MLIRContext threadContext;
+      threadContext.appendDialectRegistry(registry);
+      threadContext.loadAllAvailableDialects();
+      mlir::registerBuiltinDialectTranslation(threadContext);
+      mlir::registerLLVMDialectTranslation(threadContext);
+      xilinx::xllvm::registerXLLVMDialectTranslation(threadContext);
 
-    activeThreads++;
+      ParserConfig parseConfig(&threadContext);
+      OwningOpRef<ModuleOp> threadModule = parseSourceString<ModuleOp>(
+          coreModuleStrs.at({core.col, core.row}), parseConfig);
 
-    // Create task for this core
-    futures.push_back(std::async(
-        std::launch::async,
-        [&registry, &coreModuleStrs, deviceName = deviceName.str(),
-         tmpDirName = tmpDirName.str(), aieTarget = aieTarget.str(), core,
-         &resultsMutex, &elfPaths, &hasFailure, &activeThreads]() {
-          // Each thread creates its own MLIRContext
-          MLIRContext threadContext;
-          threadContext.appendDialectRegistry(registry);
-          threadContext.loadAllAvailableDialects();
+      if (!threadModule) {
+        std::lock_guard<std::mutex> lock(resultsMutex);
+        llvm::errs() << "Error: Failed to parse module for core (" << core.col
+                     << ", " << core.row << ")\n";
+        hasFailure.store(true);
+        return;
+      }
 
-          // Register LLVM IR translation dialects
-          mlir::registerBuiltinDialectTranslation(threadContext);
-          mlir::registerLLVMDialectTranslation(threadContext);
-          xilinx::xllvm::registerXLLVMDialectTranslation(threadContext);
+      std::string elfPath;
+      if (failed(compileCore(threadContext, *threadModule, deviceName, core,
+                             tmpDirName, aieTarget, elfPath))) {
+        hasFailure.store(true);
+        return;
+      }
 
-          // Parse the module in this thread's context
-          ParserConfig parseConfig(&threadContext);
-          OwningOpRef<ModuleOp> threadModule = parseSourceString<ModuleOp>(
-              coreModuleStrs.at({core.col, core.row}), parseConfig);
-
-          if (!threadModule) {
-            {
-              std::lock_guard<std::mutex> lock(resultsMutex);
-              llvm::errs() << "Error: Failed to parse module for core ("
-                           << core.col << ", " << core.row << ")\n";
-            }
-            hasFailure.store(true);
-            activeThreads--;
-            return;
-          }
-
-          // Compile the core (note: compileCore may emit its own
-          // diagnostics to stderr which can interleave with other threads)
-          std::string elfPath;
-          if (failed(compileCore(threadContext, *threadModule, deviceName, core,
-                                 tmpDirName, aieTarget, elfPath))) {
-            hasFailure.store(true);
-            activeThreads--;
-            return;
-          }
-
-          // Store result
-          if (!elfPath.empty()) {
-            std::lock_guard<std::mutex> lock(resultsMutex);
-            elfPaths[{core.col, core.row}] = elfPath;
-          }
-
-          activeThreads--;
-        }));
+      if (!elfPath.empty()) {
+        std::lock_guard<std::mutex> lock(resultsMutex);
+        elfPaths[{core.col, core.row}] = elfPath;
+      }
+    });
   }
 
-  // Wait for all tasks to complete
-  for (auto &future : futures) {
-    future.wait();
-  }
+  pool.wait();
 
-  // hasFailure is atomic — multiple threads may set it concurrently without
-  // a race. We report failure if any core compilation failed.
-  if (hasFailure.load()) {
+  if (hasFailure.load())
     return failure();
-  }
 
   return success();
 }
