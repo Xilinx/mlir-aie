@@ -70,33 +70,6 @@ SPDX-FileCopyrightText = [
 ]
 SPDX-License-Identifier = "MIT"
 
-# cxxopts: MIT, Jarryd Beck
-[[annotations]]
-path = "runtime_lib/test_lib/cxxopts.hpp"
-precedence = "override"
-SPDX-FileCopyrightText = [
-    "Copyright (c) 2014-2022 Jarryd Beck",
-    "Copyright (C) 2025 Advanced Micro Devices, Inc.",
-]
-SPDX-License-Identifier = "MIT"
-
-# hsa_ext_air.h: University of Illinois/NCSA Open Source License
-[[annotations]]
-path = "runtime_lib/test_lib/hsa_ext_air.h"
-precedence = "override"
-SPDX-FileCopyrightText = "Copyright (C) 2023 Advanced Micro Devices, Inc."
-SPDX-License-Identifier = "NCSA"
-
-# d_ary_heap.h: Boost Software License 1.0, from Boost (Trustees of Indiana University)
-[[annotations]]
-path = "lib/Dialect/AIE/Transforms/d_ary_heap.h"
-precedence = "override"
-SPDX-FileCopyrightText = [
-    "Copyright 2009 Trustees of Indiana University",
-    "Copyright (C) 2022-2023 Advanced Micro Devices, Inc.",
-]
-SPDX-License-Identifier = "BSL-1.0"
-
 # petalinux demo apps vendored from Xilinx: MIT-licensed, with the full MIT
 # permission text retained inline. Declared here for REUSE; these are NOT under
 # the project's Apache-2.0 default.
