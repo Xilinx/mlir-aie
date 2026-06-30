@@ -66,15 +66,15 @@ _Canonicalize Designs to include a toplevel device_
 
 This pass inserts a toplevel device operation in designs that do not have one.
 This allows us to support backwards compatability for older models targetting the VC1902
-device without explicit device operations. 
+device without explicit device operations.
 
 ### `-aie-create-pathfinder-flows`
 
 _Route aie.flow and aie.packetflow operations through switchboxes_
 
-Uses Pathfinder congestion-aware algorithm. 
+Uses Pathfinder congestion-aware algorithm.
 Each aie.flow is replaced with aie.connect operation.
-Each aie.packetflow is replace with the set of aie.amsel, aie.masterset 
+Each aie.packetflow is replace with the set of aie.amsel, aie.masterset
 and aie.packet_rules operations.
 
 #### Options
@@ -193,8 +193,8 @@ AIE.core(%tile) {
 
 _Lower aie.cascade_flow operations through `aie.configure_cascade` operations_
 
-Replace each aie.cascade_flow operation with an equivalent set of `aie.configure_cascade` 
-operations. 
+Replace each aie.cascade_flow operation with an equivalent set of `aie.configure_cascade`
+operations.
 
 ### `-aie-normalize-address-spaces`
 
@@ -210,22 +210,22 @@ space.
 
 _Instantiate the buffers and locks of aie.objectFifo.createObjectFifo operations_
 
-Replace each aie.objectFifo.createObjectFifo operation with aie.buffer and aie.lock operations in the 
+Replace each aie.objectFifo.createObjectFifo operation with aie.buffer and aie.lock operations in the
 producer tile. Convert aie.objectFifo.acquire, aie.objectFifo.release and aie.objectFifo.subviewAccess
 operations into useLock operations by keeping track of acquire/release operations on each objectFifo by
 each process.
 
-If the producer and consumer tiles of an aie.objectFifo.createObjectFifo operation are not adjacent, the 
+If the producer and consumer tiles of an aie.objectFifo.createObjectFifo operation are not adjacent, the
 pass also establised aie.flow and aie.dma operations to enable communication between the tiles.
 Extend the body of each loop that contains operations on objectFifos such that it is unrolled
-based on the number of elements in the objectFifos. If the number of iterations of the loop 
-cannot be divided pefectly by the unrolling factor, the pass duplicates the loop body after 
+based on the number of elements in the objectFifos. If the number of iterations of the loop
+cannot be divided pefectly by the unrolling factor, the pass duplicates the loop body after
 the original loop.
 
 #### Options
 
 ```
--dynamic-objFifos   : Flag to enable dynamic object fifo lowering in cores instead of loop unrolling.
+-dynamic-objFifos   : Use dynamic (loop-preserving) object fifo lowering in cores. When false, use static loop unrolling instead.
 -packet-sw-objFifos : Flag to enable aie.packetflow lowering from objectfifos.
 ```
 
@@ -251,7 +251,7 @@ to one aie.tile.
 
 _Generate acquire/release patterns for producer/consumer processes registered to an objectFifo_
 
-Generate acquire/release patterns in the CoreOps of associated cores for each 
+Generate acquire/release patterns in the CoreOps of associated cores for each
 aie.objectfifo.register_process operation. Patterns are generated as for loops
 of different sizes depending on input patterns.
 
@@ -355,7 +355,7 @@ _Lower vector.transfer_read/write to vector.load/store for AIE_
 This pass lowers vector.transfer_read operations to vector.load + vector.broadcast
 and vector.transfer_write operations to vector.store, when applicable.
 It's a wrapper for the upstream `populateVectorTransferLoweringPatterns`.
-TODO: Deprecate this pass once `populateVectorTransferLoweringPatterns` is included in 
+TODO: Deprecate this pass once `populateVectorTransferLoweringPatterns` is included in
 `convert-to-llvm`.
 
 #### Options
