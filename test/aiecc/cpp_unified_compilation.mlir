@@ -12,7 +12,7 @@
 
 // Test unified compilation mode (--unified)
 
-// RUN: aiecc --no-xchesscc --no-xbridge --verbose --unified %s | FileCheck %s
+// RUN: aiecc --no-xchesscc --no-xbridge --verbose --unified -j 1 %s | FileCheck %s
 
 // CHECK: Successfully parsed input file
 // CHECK: Device 'main' with 2 core(s)
