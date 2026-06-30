@@ -4821,6 +4821,47 @@ generateFullElfArtifact(ArrayRef<DeviceElfInfo> deviceInfos,
 // CDO/PDI/xclbin Generation
 //===----------------------------------------------------------------------===//
 
+/// Fallback host-buffer (boN) count for a device that has no runtime_sequence.
+/// Such a device has no operand list to read, yet may still be launched by the
+/// host with host buffers (e.g. the ctrl-packet reconfig "base" xclbin, whose
+/// ABI is defined by a separate "main" compile that is not present when base is
+/// built). XRT tolerates a kernel declaring more host BOs than the host passes;
+/// under-declaring segfaults (#3248). Declaring this many slots keeps that case
+/// working until base can be made self-describing (tracked follow-up).
+static constexpr int kNoSequenceHostBOs = 5;
+
+/// Compute the number of host buffer (boN) arguments XRT must declare in
+/// kernels.json for `devName`.
+///
+/// The runtime_sequence's block-argument list is the host-call ABI: argument i
+/// maps to host BO i (after the fixed opcode/instr/ninstr scalars). Every host
+/// buffer -- data, trace, and control-packet -- is a block argument by the time
+/// the sequence is lowered (trace lowering and ctrl-packet-to-dma each append
+/// their buffer as an argument), so the count is simply the lowered sequence's
+/// argument count. A device with no runtime_sequence has no operand list to
+/// read; fall back to kNoSequenceHostBOs for it.
+static FailureOr<int> computeNumHostBOs(ModuleOp moduleOp, StringRef devName,
+                                        StringRef tmpDirName) {
+  // Lower a private clone so the source module is untouched, then read the
+  // argument count off the lowered runtime_sequence.
+  OwningOpRef<ModuleOp> clonedModule = moduleOp.clone();
+  if (failed(runNpuLoweringPipeline(*clonedModule, tmpDirName)))
+    return failure();
+
+  for (auto devOp : clonedModule->getOps<xilinx::AIE::DeviceOp>()) {
+    if (devOp.getSymName() != devName)
+      continue;
+    for (auto seqOp : devOp.getOps<xilinx::AIE::RuntimeSequenceOp>()) {
+      if (!seqOp.getBody().empty())
+        return static_cast<int>(seqOp.getBody().front().getNumArguments());
+    }
+    // Device exists but has no runtime_sequence.
+    return kNoSequenceHostBOs;
+  }
+
+  return kNoSequenceHostBOs;
+}
+
 /// Generate CDO/PDI/xclbin artifacts from an in-memory module.
 static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
                                           StringRef tmpDirName,
@@ -4845,17 +4886,11 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
 
     SmallString<128> kernelsPath(tmpDirName);
     sys::path::append(kernelsPath, devName.str() + "_kernels.json");
-    int numHostBOs = 0;
-    for (auto devOp : moduleOp.getOps<xilinx::AIE::DeviceOp>()) {
-      if (devOp.getSymName() != devName)
-        continue;
-      for (auto seqOp : devOp.getOps<xilinx::AIE::RuntimeSequenceOp>()) {
-        if (!seqOp.getBody().empty())
-          numHostBOs = seqOp.getBody().front().getNumArguments();
-      }
-      break;
-    }
-    if (failed(generateKernelsJson(kernelsPath, devName, numHostBOs)))
+    FailureOr<int> numHostBOs =
+        computeNumHostBOs(moduleOp, devName, tmpDirName);
+    if (failed(numHostBOs))
+      return failure();
+    if (failed(generateKernelsJson(kernelsPath, devName, *numHostBOs)))
       return failure();
 
     // Generate partition JSON (with placeholder PDI path in dry-run)

@@ -63,7 +63,7 @@ The `workers=[...]` argument picks the core tiles to trace.  To trace **mem tile
 ### <u>Customizing Trace Behavior</u>
 
 The trace configuration chooses helpful default settings so you can trace your design with little additional customization. However, if you want more control over some of these configuration, additional arguments are available in `enable_trace`:
-* `ddr_id` - XRT buffer index (0-4) to write trace data to, mapping to group_id (3-7). Defaults to 4 (group_id 7). Set to -1 to append trace data after the last runtime_sequence tensor argument. See [below](#2-configure-host-code-to-read-trace-data-and-write-it-to-a-text-file) for more details on XRT buffers.
+* `reuse_output_buffer` - by default (`False`), the trace buffer is a dedicated host buffer appended as the last runtime_sequence argument, so enabling trace does not shift your data arguments' indices. Set to `True` to instead write trace data into the tail of the last output buffer, saving a host buffer. See [below](#2-configure-host-code-to-read-trace-data-and-write-it-to-a-text-file) for more details on XRT buffers.
 * `coretile_events` - which 8 events do we use for all coretiles in array. Search under https://xilinx.github.io/mlir-aie/AIEXDialect.html for CoreEvent for the target device [[aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie)][[aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2)][[aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2p)].
 * `coremem_events` - which 8 events do we use for all core mem in array. Search under https://xilinx.github.io/mlir-aie/AIEXDialect.html for MemEvent for the target device [[aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie)][[aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2)][[aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2p)].
 * `memtile_events` - which 8 events do we use for all memtiles in array. Search under https://xilinx.github.io/mlir-aie/AIEXDialect.html for MemTileEvent for the target device [[aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memevent)][[aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memevent2)][[aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memevent2p)]
@@ -75,7 +75,6 @@ The trace configuration chooses helpful default settings so you can trace your d
     with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (a_in, f_in, c_out):
         rt.enable_trace(
             trace_size = trace_size,
-            ddr_id = 4,
             coretile_events = [
                     trace_utils.CoreEvent.INSTR_EVENT_0,
                     trace_utils.CoreEvent.INSTR_EVENT_1,
@@ -131,23 +130,23 @@ In order to write the DDR data to a text file, we need to know where in DDR the 
 |--------|--------|--------|
 | input A  | input B | output C  |
 
-To support trace, we will configure a shim tile to move the trace packet data to DDR through one of these XRT buffer objects. For simplicity, we choose `inout4 (7)` as the default case such that the new trace enabled mapping is:
+To support trace, we will configure a shim tile to move the trace packet data to DDR through an XRT buffer object. By default, trace lowering *appends* a dedicated trace buffer as the next inout buffer after your design's data buffers, so it lands right after the last data argument and your existing buffer indices are unchanged:
 
-| inout0 (3)| inout1 (4) | inout2 (5) | inout3 (6)| inout4 (7)|
-|--------|--------|--------|--------|--------|
-| input A  | output C | unused | unused | trace  |
+| inout0 (3)| inout1 (4) | inout2 (5)|
+|--------|--------|--------|
+| input A  | output C | trace  |
 
-| inout0 (3)| inout1 (4)| inout2 (5)| inout3 (6)| inout4 (7)|
-|--------|--------|--------|--------|--------|
-| input A  | input B | output C | unused | trace  |
+| inout0 (3)| inout1 (4)| inout2 (5)| inout3 (6)|
+|--------|--------|--------|--------|
+| input A  | input B | output C | trace  |
 
-In some designs, we have also used a pattern where we share an XRT buffer object where the trace data is written to same buffer object as the output by setting `ddr_id=-1`. This is helpful if we do not have a spare buffer object dedicated to trace, but requires precise declaration of offset size. See [Conv2d example](../../../programming_examples/ml/conv2d/).
+In some designs, we have also used a pattern where the trace data is written to the same buffer object as the output by setting `reuse_output_buffer=True`. This is helpful if we do not have a spare buffer object dedicated to trace, but requires precise declaration of offset size. See [Conv2d example](../../../programming_examples/ml/conv2d/).
 
 | inout0 (3)| inout1 (4)| inout2 (5)|
 |--------|--------|--------|
 | input A  | input B | (output C + trace) |
 
-By specifying `inout4 (7)` as the default case, we can leave the parameters for `enable_trace()` / `start_trace()` to their default values other than `trace_size`. However, if we do decide to customize the XRT buffer object used, we can do so through `ddr_id` (to specify the buffer to use). Setting `ddr_id=-1` appends trace data after the last output tensor, using the last argument's buffer index and a byte offset equal to the tensor size.
+With the default (dedicated) mode, we can leave the parameters for `enable_trace()` / `start_trace()` to their defaults other than `trace_size`. Setting `reuse_output_buffer=True` instead writes trace data after the last output tensor, reusing that argument's buffer with a byte offset equal to the tensor size.
 
 Once the design is configured to a XRT buffer object, we turn our attention to the host code to read the DDR data and write it to a file.
 

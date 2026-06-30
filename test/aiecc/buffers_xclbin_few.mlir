@@ -12,9 +12,8 @@
 // RUN: %python aiecc.py -n --no-compile --no-link --aie-generate-xclbin %s
 // RUN: FileCheck %s --input-file=buffers_xclbin_few.mlir.prj/main_kernels.json
 
-// A runtime_sequence with 2 host buffer arguments should emit exactly bo0 and
-// bo1 — no more. Verify the exact count is derived from the sequence, not a
-// hardcoded minimum.
+// The host BO count is the runtime_sequence argument count, so a 2-argument
+// sequence emits exactly bo0 and bo1 -- no more.
 
 // CHECK: "name": "bo0"
 // CHECK: "offset": "0x14"
