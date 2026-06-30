@@ -12,13 +12,13 @@
 
 // Test multi-core compilation
 
-// RUN: aiecc --no-xchesscc --no-xbridge --verbose %s | FileCheck %s
+// RUN: aiecc --no-xchesscc --no-xbridge --verbose -j 1 %s | FileCheck %s
 
 // CHECK: Successfully parsed input file
 // CHECK: Device 'main' with 2 core(s)
 // CHECK: Compiling 2 core(s)
-// CHECK: Compiling core (0, 2)
-// CHECK: Compiling core (1, 2)
+// CHECK-DAG: Compiling core (0, 2)
+// CHECK-DAG: Compiling core (1, 2)
 // CHECK: Compilation completed successfully
 
 module {

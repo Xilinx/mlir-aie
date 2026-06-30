@@ -21,9 +21,9 @@
 // CHECK: Unified LLVM lowering pipeline completed successfully
 // CHECK: Generated unified LLVM IR
 // CHECK: Compiled unified object with Peano
-// CHECK: Linking core (0, 2) from unified object
+// CHECK-DAG: Linking core (0, 2) from unified object
+// CHECK-DAG: Linking core (1, 2) from unified object
 // CHECK: Generated ELF
-// CHECK: Linking core (1, 2) from unified object
 // CHECK: Generated ELF
 // CHECK: Compilation completed successfully
 
