@@ -2068,6 +2068,22 @@ static std::string downgradeIRForPeano(StringRef ir) {
   replaceTypedLiteral("double -inf", "double 0xFFF0000000000000");
   replaceTypedLiteral("double inf", "double 0x7FF0000000000000");
   replaceTypedLiteral("double nan", "double 0x7FF8000000000000");
+  // Bare inf/nan literals in phi instructions: LLVM 23
+  // (llvm/llvm-project@41c214f0b115, 2026-05-07,
+  // https://github.com/llvm/llvm-project/pull/190649) omits the type prefix for
+  // infinity/NaN constants that appear as phi operands, e.g.
+  //   phi float [ %a, %bb ], [ -inf, %entry ]
+  // Peano's LLVM 21 does not recognise the bare 'inf'/'nan' keywords and
+  // requires the double-widened hex form. These replaceTypedLiteral calls
+  // cover phi value lists ('[' prefix) and subsequent operands (',' prefix).
+  // float/double share the same hex encoding for infinity/NaN; for half and
+  // bfloat the typed-literal forms above already handle the type-prefixed case.
+  replaceTypedLiteral("[ -inf", "[ 0xFFF0000000000000");
+  replaceTypedLiteral(", -inf", ", 0xFFF0000000000000");
+  replaceTypedLiteral("[ inf", "[ 0x7FF0000000000000");
+  replaceTypedLiteral(", inf", ", 0x7FF0000000000000");
+  replaceTypedLiteral("[ nan", "[ 0x7FF8000000000000");
+  replaceTypedLiteral(", nan", ", 0x7FF8000000000000");
   // Strip 'nocreateundeforpoison' and any trailing whitespace: current Peano
   // LLVM cannot parse this attribute.
   const std::string nocreate = "nocreateundeforpoison";
