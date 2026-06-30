@@ -403,8 +403,8 @@ static cl::opt<bool> keepLoc(
 static cl::opt<unsigned> numThreads(
     "j", cl::Prefix,
     cl::desc("Number of parallel threads for core compilation (0 = auto-detect "
-             "based on CPU count, default: 1 for sequential)"),
-    cl::init(1), cl::cat(aieCompilerOptions));
+             "based on CPU count, default: 4)"),
+    cl::init(4), cl::cat(aieCompilerOptions));
 
 static cl::alias numThreadsLong("nthreads", cl::desc("Alias for -j"),
                                 cl::aliasopt(numThreads),
@@ -412,8 +412,8 @@ static cl::alias numThreadsLong("nthreads", cl::desc("Alias for -j"),
 
 static cl::opt<bool> unified(
     "unified",
-    cl::desc("Compile all cores together in a single process (default: off)"),
-    cl::init(false), cl::cat(aieCompilerOptions));
+    cl::desc("Compile all cores together in a single process (default: on)"),
+    cl::init(true), cl::cat(aieCompilerOptions));
 
 static cl::opt<bool> noUnified(
     "no-unified",
