@@ -21,7 +21,6 @@ from ...utils import trace as trace_utils
 
 from ... import ir  # pyright: ignore[reportMissingImports]
 
-from ...dialects.aie import tile
 from ...dialects.aiex import (
     runtime_sequence,
     sync_scratchpad_parameters_from_host,  # pyright: ignore[reportAttributeAccessIssue]
