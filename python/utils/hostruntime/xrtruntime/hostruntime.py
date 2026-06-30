@@ -257,6 +257,20 @@ class XRTHostRuntime(HostRuntime):
         [a.to("npu") for a in args]
         buffers = [a.buffer_object() for a in args]
 
+        # Validate BO count against xclbin metadata before calling into XRT.
+        # XRT's validate_bo_at_index segfaults if the index exceeds the count
+        # declared in kernels.json. The fixed args (opcode, instr, ninstr) are
+        # the first 3; the rest are host BOs.
+        xclbin_kernels = kernel_handle.xclbin.get_kernels()
+        if xclbin_kernels:
+            declared_bo_count = xclbin_kernels[0].get_num_args() - 3
+            if len(buffers) != declared_bo_count:
+                raise HostRuntimeError(
+                    f"Expected {declared_bo_count} host buffer argument(s) but got "
+                    f"{len(buffers)}. The xclbin was compiled for a runtime_sequence "
+                    f"with {declared_bo_count} host buffer(s)."
+                )
+
         insts_bo = None
         insts_bytes = 0
         try:
