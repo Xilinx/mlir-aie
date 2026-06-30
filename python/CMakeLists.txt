@@ -82,8 +82,6 @@ declare_mlir_python_sources(AIEPythonSources.Helpers
   ADD_TO_PARENT AIEPythonSources
   SOURCES_GLOB
     helpers/*.py
-    helpers/dialects/ext/*.py
-    helpers/runtime/*.py
     helpers/taplib/*.py
 )
 
@@ -156,21 +154,6 @@ declare_mlir_python_sources(AIEPythonSources.Compiler
     compiler/txn2mlir/*.py
 )
 
-if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
-  declare_mlir_python_sources(AIEPythonSources.XRT
-    ADD_TO_PARENT AIEPythonSources
-    SOURCES
-      xrt.py
-      _mlir_libs/_xrt.pyi
-  )
-endif()
-
-declare_mlir_python_sources(AIEPythonSources.AIERT
-  ADD_TO_PARENT AIEPythonSources
-  SOURCES
-    aiert.py
-)
-
 ################################################################################
 # Extensions
 ################################################################################
@@ -231,15 +214,6 @@ if (AIE_ENABLE_PYTHON_PASSES)
     ${MLIR_UPSTREAM_CAPI_LIBS}
   )
 
-  if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
-    list(APPEND _py_srcs ${CMAKE_CURRENT_SOURCE_DIR}/XRTModule.cpp)
-    list(APPEND _py_libs xrt_coreutil)
-    if(NOT WIN32)
-      list(APPEND _py_libs uuid)
-    endif()
-  endif()
-  list(APPEND _py_srcs ${CMAKE_CURRENT_SOURCE_DIR}/AIERTModule.cpp)
-
   declare_mlir_python_extension(AIEPythonExtensions.MLIR
     MODULE_NAME _aie
     ADD_TO_PARENT AIEPythonExtensions
@@ -255,10 +229,6 @@ if (AIE_ENABLE_PYTHON_PASSES)
     AIEPythonExtensions.MLIR
     INTERFACE $<BUILD_INTERFACE:${PYBINDINGS_SRC}>
   )
-  if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
-    target_include_directories(AIEPythonExtensions.MLIR INTERFACE ${XRT_INCLUDE_DIR})
-    target_link_directories(AIEPythonExtensions.MLIR INTERFACE ${XRT_LIB_DIR})
-  endif()
 
   # Kill all of the dependencies (mlir_python_DEPENDS) on cpp sources in the dialect build targets
   # so the C extension modules don't get built but the Python sources do get installed.
@@ -299,9 +269,6 @@ if (AIE_ENABLE_PYTHON_PASSES)
     _mlirRegisterEverything
     _mlirSparseTensorPasses
   )
-  if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
-    list(APPEND _other_extensions _xrt)
-  endif()
 
   file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs")
 
@@ -345,27 +312,6 @@ else ()
     PRIVATE_LINK_LIBS
       LLVMSupport
   )
-
-  if(AIE_ENABLE_XRT_PYTHON_BINDINGS)
-    declare_mlir_python_extension(AIEPythonExtensions.XRT
-      MODULE_NAME _xrt
-      ADD_TO_PARENT AIEPythonExtensions
-      ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}
-
-      PARTIAL_SOURCES_INTENDED
-      SOURCES
-        XRTModule.cpp
-
-      PRIVATE_LINK_LIBS
-        LLVMSupport
-        xrt_coreutil
-    )
-    if(NOT WIN32)
-      target_link_libraries(AIEPythonExtensions.XRT INTERFACE uuid)
-    endif()
-    target_include_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_INCLUDE_DIR})
-    target_link_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_LIB_DIR})
-  endif()
 
   add_mlir_python_common_capi_library(AIEAggregateCAPI
     INSTALL_COMPONENT AIEPythonModules
@@ -519,26 +465,6 @@ foreach(r ${_runtime_deps})
     DESTINATION "${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs"
   )
 endforeach()
-
-# libxrt_coreutil has to be handled differentled because it's versioned...
-if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
-  # for build dir
-  add_custom_command(
-    TARGET AIEPythonModules.extension._xrt.dso PRE_BUILD
-    COMMENT "Copying libxrt_coreutil into _mlir_libs during build"
-    DEPENDS "${XRT_COREUTIL}"
-    COMMAND "${CMAKE_COMMAND}" -E copy
-    "${XRT_COREUTIL}" "${CMAKE_CURRENT_BINARY_DIR}/aie/_mlir_libs/libxrt_coreutil.so"
-  )
-  # for install
-  install(FILES
-    "${XRT_COREUTIL}"
-    COMPONENT xrt_coreutil
-    DESTINATION "${CMAKE_INSTALL_PREFIX}/${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs"
-    # hack
-    RENAME libxrt_coreutil.so.2
-  )
-endif()
 
 # during build
 add_custom_command(
