@@ -69,6 +69,10 @@ inline void put(T& pa, K k, const V& val) { pa[k] = val;  }
 template <class K, class V>
 inline const V& get(const std::map<K, V>& pa, K k) { return pa.at(k); }
 
+// Overload for a flat vector-backed property map (dense integer keys).
+template <class V>
+inline const V& get(const std::vector<V>& pa, std::size_t k) { return pa[k]; }
+
 // D-ary heap using an indirect compare operator (use identity_property_map
 // as DistanceMap to get a direct compare operator).  This heap appears to be
 // commonly used for Dijkstra's algorithm for its good practical performance
@@ -204,7 +208,11 @@ private:
     // distance map
     // typedef typename boost::property_traits< DistanceMap >::value_type
     //     distance_type;
-    typedef typename std::remove_reference<DistanceMap>::type::mapped_type distance_type;
+    // Derive the distance value type from whatever get(distance, Value) yields,
+    // so this works for both std::map and flat std::vector distance maps.
+    typedef typename std::remove_cv<typename std::remove_reference<decltype(get(
+        std::declval<typename std::remove_reference<DistanceMap>::type &>(),
+        std::declval<Value>()))>::type>::type distance_type;
 
     // Get the parent of a given node in the heap
     static size_type parent(size_type index) { return (index - 1) / Arity; }
