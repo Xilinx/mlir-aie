@@ -47,6 +47,7 @@
 #include "llvm/Support/Process.h"
 #include "llvm/Support/Program.h"
 #include "llvm/Support/SourceMgr.h"
+#include "llvm/Support/ThreadPool.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -403,8 +404,8 @@ static cl::opt<bool> keepLoc(
 static cl::opt<unsigned> numThreads(
     "j", cl::Prefix,
     cl::desc("Number of parallel threads for core compilation (0 = auto-detect "
-             "based on CPU count, default: 1 for sequential)"),
-    cl::init(1), cl::cat(aieCompilerOptions));
+             "based on CPU count, default: 4)"),
+    cl::init(4), cl::cat(aieCompilerOptions));
 
 static cl::alias numThreadsLong("nthreads", cl::desc("Alias for -j"),
                                 cl::aliasopt(numThreads),
@@ -2494,8 +2495,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     SmallString<128> chessHackPath(tmpDirName);
     sys::path::append(chessHackPath,
                       deviceName.str() + "_core_" + std::to_string(core.col) +
-                          "_" + std::to_string(core.col) + "_" +
-                          std::to_string(core.row) + ".chesshack.ll");
+                          "_" + std::to_string(core.row) + ".chesshack.ll");
     {
       std::error_code ec;
       raw_fd_ostream chessHackFile(chessHackPath, ec);
@@ -3393,6 +3393,26 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
     return success();
   }
 
+  // The per-core link splits into two phases. Phase 1 (serial, below) does all
+  // the work that touches the shared MLIR module / context — BCF or linker
+  // script generation via AIETranslate*, plus link_with file copies — and
+  // builds each core's final link command. The MLIRContext is not safe for
+  // concurrent access, so this must stay on one thread. Phase 2 (parallel,
+  // further below) runs only the link subprocess (xchesscc_wrapper or clang),
+  // which is the expensive, genuinely per-core-independent step. Previously the
+  // whole loop was serial, so unified mode removed the 32x per-core *compile*
+  // but reintroduced a 32x serial per-core *link*, leaving it near -j4 instead
+  // of far faster. Parallelizing just the link subprocess closes that gap while
+  // keeping all module access single-threaded.
+  struct LinkJob {
+    int col;
+    int row;
+    std::string elfPath;
+    SmallVector<std::string, 20> linkCmd;
+  };
+  std::vector<LinkJob> linkJobs;
+  linkJobs.reserve(cores.size());
+
   for (const auto &core : cores) {
     if (verbose) {
       llvm::outs() << "Linking core (" << core.col << ", " << core.row
@@ -3425,6 +3445,11 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
       }
     }
     elfPath = absElfPath;
+
+    LinkJob job;
+    job.col = core.col;
+    job.row = core.row;
+    job.elfPath = std::string(elfPath);
 
     if (xbridge) {
       // xbridge linking with BCF
@@ -3519,11 +3544,7 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
       linkCmd.push_back("-o");
       linkCmd.push_back(std::string(elfPath));
 
-      if (!executeCommand(linkCmd)) {
-        llvm::errs() << "Error linking core (" << core.col << ", " << core.row
-                     << ") with xbridge\n";
-        return failure();
-      }
+      job.linkCmd = std::move(linkCmd);
     } else {
       // Peano linking with linker script
       SmallString<128> ldScriptPath(tmpDirName);
@@ -3658,18 +3679,79 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
       linkCmd.push_back("-o");
       linkCmd.push_back(std::string(elfPath));
 
-      if (!executeCommand(linkCmd)) {
-        llvm::errs() << "Error linking core (" << core.col << ", " << core.row
+      job.linkCmd = std::move(linkCmd);
+    }
+
+    linkJobs.push_back(std::move(job));
+  }
+
+  // Phase 2: run the per-core link subprocesses. Each LinkJob is fully
+  // self-contained (an argv plus its output ELF path), touches no shared MLIR
+  // state, and writes a distinct output file, so they are safe to run
+  // concurrently. Reuse the same bounded thread pool and concurrency cap as
+  // compileCores; the cap matters for chess (xchesscc), which oversubscribes
+  // past ~4 concurrent processes.
+  unsigned nThreads = numThreads;
+  if (nThreads == 0) {
+    nThreads = std::thread::hardware_concurrency();
+    if (nThreads == 0)
+      nThreads = 4; // Reasonable default if hardware_concurrency() fails
+  }
+  nThreads = std::min(nThreads, static_cast<unsigned>(linkJobs.size()));
+
+  auto recordElf = [&](const LinkJob &job) {
+    elfPaths[{job.col, job.row}] = job.elfPath;
+    if (verbose) {
+      std::lock_guard<std::mutex> lock(outputMutex);
+      llvm::outs() << "Generated ELF: " << job.elfPath << "\n";
+    }
+  };
+
+  // Sequential link (default, nThreads <= 1)
+  if (nThreads <= 1) {
+    for (const auto &job : linkJobs) {
+      if (!executeCommand(job.linkCmd)) {
+        llvm::errs() << "Error linking core (" << job.col << ", " << job.row
                      << ")\n";
         return failure();
       }
+      recordElf(job);
     }
-
-    elfPaths[{core.col, core.row}] = std::string(elfPath);
-    if (verbose) {
-      llvm::outs() << "Generated ELF: " << elfPath << "\n";
-    }
+    return success();
   }
+
+  if (verbose) {
+    llvm::outs() << "Linking " << linkJobs.size() << " core(s) in parallel ("
+                 << nThreads << " threads)\n";
+  }
+
+  llvm::DefaultThreadPool pool(llvm::hardware_concurrency(nThreads));
+  std::mutex resultsMutex;
+  std::atomic<bool> hasFailure{false};
+
+  for (const LinkJob &job : linkJobs) {
+    const LinkJob *jobPtr = &job;
+    pool.async([jobPtr, &elfPaths, &resultsMutex, &hasFailure, &recordElf]() {
+      if (hasFailure.load())
+        return;
+      if (!executeCommand(jobPtr->linkCmd)) {
+        {
+          std::lock_guard<std::mutex> lock(resultsMutex);
+          llvm::errs() << "Error linking core (" << jobPtr->col << ", "
+                       << jobPtr->row << ")\n";
+        }
+        hasFailure.store(true);
+        return;
+      }
+      std::lock_guard<std::mutex> lock(resultsMutex);
+      recordElf(*jobPtr);
+    });
+  }
+
+  pool.wait();
+
+  if (hasFailure.load())
+    return failure();
 
   return success();
 }
