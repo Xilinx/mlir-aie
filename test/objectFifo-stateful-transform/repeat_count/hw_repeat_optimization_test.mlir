@@ -1,14 +1,11 @@
 //===- hw_repeat_optimization_test.mlir --------------------------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --split-input-file %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" --split-input-file %s | FileCheck %s
 
 // Test: Hardware repeat optimization for repeat_count with single buffer (depth=1).
 // When numBlocks == 1 and repeat_count > 1, the stateful transform generates

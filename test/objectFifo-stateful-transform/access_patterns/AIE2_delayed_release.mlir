@@ -1,17 +1,14 @@
 //===- AIE2_delayed_release.mlir -------------------------------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
 // Copyright (C) 2023 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
 // The expected semantics of objectFIFO aquire/releases are such that the most
 // recent acquire will always name the _total_ number of elements available
 // to the core. For example, an acquire(2) followed by an acquire(1) means that
-// after the second acquire, the core can only read one object (not three!), 
+// after the second acquire, the core can only read one object (not three!),
 // even though none of the previously acquired elements haven't been freed.
 // Essentially, the smaller-numbered acquire will reduce the set of legally
 // accessible objects. (The remaining accessible element will be the same as
@@ -28,7 +25,7 @@
 // This tests ensures that locks are acquired correctly to preserve these
 // semantics.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
 
 // CHECK: module @AIE2_delayed_release {
 // CHECK:   aie.device(xcve2302) {

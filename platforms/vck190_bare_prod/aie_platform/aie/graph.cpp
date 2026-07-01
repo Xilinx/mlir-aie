@@ -1,9 +1,12 @@
+// Copyright (C) 2022 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 #include "graph.h"
 
 #if !defined(__AIESIM__) && !defined(__ADF_FRONTEND__)
-//#include "cardano/cardano_api/XRTConfig.h"
+// #include "cardano/cardano_api/XRTConfig.h"
 #include "adf/adf_api/XRTConfig.h"
-//#include "experimental/xrt_kernel.h"
+// #include "experimental/xrt_kernel.h"
 #include <fstream>
 #endif
 

@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2025 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2025 Advanced Micro Devices, Inc.
 """
 Takes the xaie_events_*.h header files from aie-rt and generates a JSON
 database containing all events for all architectures.

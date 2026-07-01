@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 # Auxiliary tools used by the wheel-build CI workflows.
 # Linux-only: auditwheel + patchelf (neither has a Windows wheel).
 # delvewheel is only USED on Windows but ships as a pure-Python universal

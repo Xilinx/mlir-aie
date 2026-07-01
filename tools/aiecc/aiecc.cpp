@@ -1,10 +1,7 @@
 //===- aiecc.cpp ------------------------------------------------*- C++ -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -47,6 +44,7 @@
 #include "llvm/Support/Process.h"
 #include "llvm/Support/Program.h"
 #include "llvm/Support/SourceMgr.h"
+#include "llvm/Support/ThreadPool.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -110,7 +108,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
-#include <future>
 #include <iomanip>
 #include <map>
 #include <memory>
@@ -328,6 +325,10 @@ static cl::opt<bool> dryRun("n",
                             cl::desc("Dry run mode (don't execute commands)"),
                             cl::init(false), cl::cat(aieCompilerOptions));
 
+// Default true (enabled by #2549). Kept in sync with the
+// aie-objectFifo-stateful-transform pass-level default (AIEPasses.td) so the
+// lowering a design gets is the same whether it goes through aiecc or a
+// standalone `aie-opt` run.
 static cl::opt<bool> dynamicObjFifos("dynamic-objFifos",
                                      cl::desc("Use dynamic object FIFOs"),
                                      cl::init(true),
@@ -1515,7 +1516,6 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
   // Note: Trace lowering runs in a separate guarded pipeline
   // (runTraceLoweringPipeline) before this function is called.
   devicePm.addPass(xilinx::AIE::createAIEAssignLockIDsPass());
-  devicePm.addPass(xilinx::AIE::createAIEObjectFifoRegisterProcessPass());
   {
     std::string objFifoPipelineStr =
         "aie-objectFifo-stateful-transform{dynamic-objFifos=" +
@@ -2072,6 +2072,43 @@ static std::string downgradeIRForPeano(StringRef ir) {
   replaceTypedLiteral("double -inf", "double 0xFFF0000000000000");
   replaceTypedLiteral("double inf", "double 0x7FF0000000000000");
   replaceTypedLiteral("double nan", "double 0x7FF8000000000000");
+  // Bare inf/nan literals in phi instructions: LLVM 23
+  // (llvm/llvm-project@41c214f0b115, 2026-05-07,
+  // https://github.com/llvm/llvm-project/pull/190649) omits the type prefix for
+  // infinity/NaN constants that appear as phi operands, e.g.
+  //   phi float [ %a, %bb ], [ -inf, %entry ]
+  //   phi float [ %x, %bb1 ], [ %y, %bb2 ], [ -inf, %entry ]
+  // Peano's LLVM 21 does not recognise the bare 'inf'/'nan' keywords and
+  // requires the double-widened hex form.
+  // replaceTypedLiteral() is intentionally not used here: it checks that the
+  // character *before* the match is not an identifier char, which would skip
+  // the ", -inf" pattern when the preceding operand ends with an identifier
+  // character (e.g. "%x, -inf"). Instead, check token boundaries around the
+  // bare literal itself: require a non-identifier char before '-'/'i'/'n' and
+  // a non-identifier char after 'f'/'n'.
+  {
+    auto rewriteBareLiteral = [&](StringRef from, StringRef to) {
+      size_t pos = 0;
+      while ((pos = result.find(from.data(), pos, from.size())) !=
+             std::string::npos) {
+        bool okBefore =
+            pos == 0 ||
+            !isIdentChar(static_cast<unsigned char>(result[pos - 1]));
+        size_t after = pos + from.size();
+        bool okAfter = after >= result.size() ||
+                       !isIdentChar(static_cast<unsigned char>(result[after]));
+        if (okBefore && okAfter) {
+          result.replace(pos, from.size(), to.data(), to.size());
+          pos += to.size();
+        } else {
+          pos += from.size();
+        }
+      }
+    };
+    rewriteBareLiteral("-inf", "0xFFF0000000000000");
+    rewriteBareLiteral("inf", "0x7FF0000000000000");
+    rewriteBareLiteral("nan", "0x7FF8000000000000");
+  }
   // Strip 'nocreateundeforpoison' and any trailing whitespace: current Peano
   // LLVM cannot parse this attribute.
   const std::string nocreate = "nocreateundeforpoison";
@@ -2960,7 +2997,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 }
 
 /// Compile all cores in a device, optionally in parallel.
-/// When numThreads > 1, cores are compiled in parallel using std::async.
+/// When numThreads > 1, cores are compiled in parallel using DefaultThreadPool.
 /// Each parallel task gets its own MLIRContext to avoid threading issues.
 static LogicalResult
 compileCores(MLIRContext &context, ModuleOp moduleOp, Operation *deviceOp,
@@ -3017,7 +3054,7 @@ compileCores(MLIRContext &context, ModuleOp moduleOp, Operation *deviceOp,
     return success();
   }
 
-  // Parallel compilation using std::async
+  // Parallel compilation using DefaultThreadPool
   // We need to serialize the module to string and deserialize in each thread
   // because MLIRContext is not thread-safe for multi-threaded mutation.
 
@@ -3086,92 +3123,55 @@ compileCores(MLIRContext &context, ModuleOp moduleOp, Operation *deviceOp,
   xilinx::registerAllDialects(registry);
   mlir::registerAllExtensions(registry);
 
-  // Thread-safe results storage
   std::mutex resultsMutex;
   std::atomic<bool> hasFailure{false};
 
-  // Create futures for parallel tasks
-  std::vector<std::future<void>> futures;
-  futures.reserve(cores.size());
-
-  // Use a semaphore-like pattern with atomic counter for thread limiting
-  std::atomic<unsigned> activeThreads{0};
+  llvm::DefaultThreadPool pool(llvm::hardware_concurrency(nThreads));
 
   for (const auto &core : cores) {
-    // Wait if we've reached the thread limit
-    while (activeThreads.load() >= nThreads) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
+    pool.async([&registry, &coreModuleStrs, deviceName = deviceName.str(),
+                tmpDirName = tmpDirName.str(), aieTarget = aieTarget.str(),
+                core, &resultsMutex, &elfPaths, &hasFailure]() {
+      if (hasFailure.load())
+        return;
 
-    // Check if any thread has failed
-    if (hasFailure.load()) {
-      break;
-    }
+      MLIRContext threadContext;
+      threadContext.appendDialectRegistry(registry);
+      threadContext.loadAllAvailableDialects();
+      mlir::registerBuiltinDialectTranslation(threadContext);
+      mlir::registerLLVMDialectTranslation(threadContext);
+      xilinx::xllvm::registerXLLVMDialectTranslation(threadContext);
 
-    activeThreads++;
+      ParserConfig parseConfig(&threadContext);
+      OwningOpRef<ModuleOp> threadModule = parseSourceString<ModuleOp>(
+          coreModuleStrs.at({core.col, core.row}), parseConfig);
 
-    // Create task for this core
-    futures.push_back(std::async(
-        std::launch::async,
-        [&registry, &coreModuleStrs, deviceName = deviceName.str(),
-         tmpDirName = tmpDirName.str(), aieTarget = aieTarget.str(), core,
-         &resultsMutex, &elfPaths, &hasFailure, &activeThreads]() {
-          // Each thread creates its own MLIRContext
-          MLIRContext threadContext;
-          threadContext.appendDialectRegistry(registry);
-          threadContext.loadAllAvailableDialects();
+      if (!threadModule) {
+        std::lock_guard<std::mutex> lock(resultsMutex);
+        llvm::errs() << "Error: Failed to parse module for core (" << core.col
+                     << ", " << core.row << ")\n";
+        hasFailure.store(true);
+        return;
+      }
 
-          // Register LLVM IR translation dialects
-          mlir::registerBuiltinDialectTranslation(threadContext);
-          mlir::registerLLVMDialectTranslation(threadContext);
-          xilinx::xllvm::registerXLLVMDialectTranslation(threadContext);
+      std::string elfPath;
+      if (failed(compileCore(threadContext, *threadModule, deviceName, core,
+                             tmpDirName, aieTarget, elfPath))) {
+        hasFailure.store(true);
+        return;
+      }
 
-          // Parse the module in this thread's context
-          ParserConfig parseConfig(&threadContext);
-          OwningOpRef<ModuleOp> threadModule = parseSourceString<ModuleOp>(
-              coreModuleStrs.at({core.col, core.row}), parseConfig);
-
-          if (!threadModule) {
-            {
-              std::lock_guard<std::mutex> lock(resultsMutex);
-              llvm::errs() << "Error: Failed to parse module for core ("
-                           << core.col << ", " << core.row << ")\n";
-            }
-            hasFailure.store(true);
-            activeThreads--;
-            return;
-          }
-
-          // Compile the core (note: compileCore may emit its own
-          // diagnostics to stderr which can interleave with other threads)
-          std::string elfPath;
-          if (failed(compileCore(threadContext, *threadModule, deviceName, core,
-                                 tmpDirName, aieTarget, elfPath))) {
-            hasFailure.store(true);
-            activeThreads--;
-            return;
-          }
-
-          // Store result
-          if (!elfPath.empty()) {
-            std::lock_guard<std::mutex> lock(resultsMutex);
-            elfPaths[{core.col, core.row}] = elfPath;
-          }
-
-          activeThreads--;
-        }));
+      if (!elfPath.empty()) {
+        std::lock_guard<std::mutex> lock(resultsMutex);
+        elfPaths[{core.col, core.row}] = elfPath;
+      }
+    });
   }
 
-  // Wait for all tasks to complete
-  for (auto &future : futures) {
-    future.wait();
-  }
+  pool.wait();
 
-  // hasFailure is atomic — multiple threads may set it concurrently without
-  // a race. We report failure if any core compilation failed.
-  if (hasFailure.load()) {
+  if (hasFailure.load())
     return failure();
-  }
 
   return success();
 }

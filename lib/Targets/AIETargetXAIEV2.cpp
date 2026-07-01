@@ -1,11 +1,8 @@
 //===- AIETargetXAIEV2.cpp --------------------------------------*- C++ -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
 // Copyright (C) 2021-2022 Xilinx, Inc.
 // Copyright (C) 2021-2023 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 #include "aie/Targets/AIETargetShared.h"
@@ -618,33 +615,6 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
         output << "x = " << col << ";\n";
         output << "y = " << row << ";\n";
       }
-    } else if (auto sel =
-                   dyn_cast<SelectOp>(switchboxOp.getTile().getDefiningOp())) {
-      // parameterize streamswitch's configuration
-      isParam = true;
-      HerdOp sourceHerd = cast<HerdOp>(sel.getStartHerd().getDefiningOp());
-      std::string sourceHerdName(sourceHerd.name().getValue());
-
-      IterOp iterX = cast<IterOp>(sel.getIterX().getDefiningOp());
-      IterOp iterY = cast<IterOp>(sel.getIterY().getDefiningOp());
-      int startXValue = iterX.getStartValue();
-      int endXValue = iterX.getEndValue();
-      int strideXValue = iterX.getStrideValue();
-      int startYValue = iterY.getStartValue();
-      int endYValue = iterY.getEndValue();
-      int strideYValue = iterY.getStrideValue();
-
-      std::string startX(sourceHerdName + "_X + " +
-                         std::to_string(startXValue));
-      std::string endX(sourceHerdName + "_X + " + std::to_string(endXValue));
-      std::string startY(sourceHerdName + "_Y + " +
-                         std::to_string(startYValue));
-      std::string endY(sourceHerdName + "_Y + " + std::to_string(endYValue));
-
-      output << "for (x = " << startX << "; x < " << endX
-             << "; x += " << strideXValue << ") {\n";
-      output << "for (y = " << startY << "; y < " << endY
-             << "; y += " << strideYValue << ") {\n";
     }
 
     for (auto connectOp : b.getOps<ConnectOp>())
@@ -762,22 +732,6 @@ xilinx::AIE::AIETranslateToXAIEV2(ModuleOp module, raw_ostream &output,
       }
     }
   }
-  for (auto switchboxOp : targetOp.getOps<ShimSwitchboxOp>()) {
-    Region &r = switchboxOp.getConnections();
-    Block &b = r.front();
-    bool isEmpty = b.getOps<ConnectOp>().empty();
-    int col = switchboxOp.getCol();
-    if (!isEmpty)
-      output << "// Shim Switch column " << col << "\n";
-    for (auto connectOp : b.getOps<ConnectOp>())
-      output << "__mlir_aie_try(XAie_StrmConnCctEnable(" << deviceInstRef
-             << ", " << tileLocStr(col, 0) << ", "
-             << wireBundleToPortType(connectOp.getSourceBundle()) << ", "
-             << connectOp.sourceIndex() << ", "
-             << wireBundleToPortType(connectOp.getDestBundle()) << ", "
-             << connectOp.destIndex() << "));\n";
-  }
-
   output << "return XAIE_OK;\n";
   output << "} // mlir_aie_configure_switchboxes\n\n";
 

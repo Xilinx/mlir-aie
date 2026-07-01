@@ -1,3 +1,6 @@
+# Copyright (C) 2025 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 # AIE Lit Test Utilities
 """
 Shared utilities for AIE/AIR lit test configurations.

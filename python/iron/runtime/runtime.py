@@ -1,10 +1,8 @@
 # runtime.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 """Runtime: orchestrates host-side data movement and worker execution for an IRON program."""
 
 from __future__ import annotations
@@ -19,7 +17,7 @@ logger = logging.getLogger(__name__)
 
 from ...utils import trace as trace_utils
 
-from ... import ir  # pyright: ignore[reportMissingImports]
+from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 
 from ...dialects.aiex import (
     runtime_sequence,

@@ -1,10 +1,8 @@
 # multi_column_designs/row_wise_vector_reduce_max.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 """Multi-column vector reduce-max (row-wise) — IRON + ``@iron.jit``.
 
 8 cores spread across columns each compute a partial max from their

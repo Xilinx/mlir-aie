@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 
-# This file licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 """Bump the pinned llvm-aie (Peano) nightly in utils/peano-requirements.txt.

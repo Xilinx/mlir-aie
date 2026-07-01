@@ -1,14 +1,11 @@
 //===- bd_chain_on_memtile/join_with_iterations.mlir ----------------------------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
 // Copyright (C) 2025 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
 
 // CHECK:     %mem_0_2 = aie.mem(%tile_0_2) {
 // CHECK:       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
@@ -140,13 +137,13 @@ module {
     %tile_0_4 = aie.tile(0, 4)
     %shim_noc_tile_0_0 = aie.tile(0, 0)
     %mem_tile_0_1 = aie.tile(0, 1)
-    
-    aie.objectfifo @input_small(%tile_0_2, {%mem_tile_0_1}, 2 : i32) {iter_count = 4 : i32} : !aie.objectfifo<memref<256xui8>> 
-    aie.objectfifo @input_medium(%tile_0_3, {%mem_tile_0_1}, 2 : i32) {iter_count = 6 : i32} : !aie.objectfifo<memref<384xui8>> 
-    aie.objectfifo @input_large(%tile_0_4, {%mem_tile_0_1}, 2 : i32) {iter_count = 8 : i32} : !aie.objectfifo<memref<384xui8>> 
-    
-    aie.objectfifo @combined_output(%mem_tile_0_1, {%shim_noc_tile_0_0}, 2 : i32) : !aie.objectfifo<memref<1024xui8>> 
-    
+
+    aie.objectfifo @input_small(%tile_0_2, {%mem_tile_0_1}, 2 : i32) {iter_count = 4 : i32} : !aie.objectfifo<memref<256xui8>>
+    aie.objectfifo @input_medium(%tile_0_3, {%mem_tile_0_1}, 2 : i32) {iter_count = 6 : i32} : !aie.objectfifo<memref<384xui8>>
+    aie.objectfifo @input_large(%tile_0_4, {%mem_tile_0_1}, 2 : i32) {iter_count = 8 : i32} : !aie.objectfifo<memref<384xui8>>
+
+    aie.objectfifo @combined_output(%mem_tile_0_1, {%shim_noc_tile_0_0}, 2 : i32) : !aie.objectfifo<memref<1024xui8>>
+
     aie.objectfifo.link [@input_small, @input_medium, @input_large] -> [@combined_output]([0, 256, 640] [])
   }
 }

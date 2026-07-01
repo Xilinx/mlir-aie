@@ -1,10 +1,8 @@
 # swiglu/swiglu.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 """Element-wise bf16 SwiGLU — IRON API design with ``@iron.jit`` compilation.
 
 SwiGLU(x, w1, w2) = (x * w1) * silu(x * w2), computed per 1024-element line.

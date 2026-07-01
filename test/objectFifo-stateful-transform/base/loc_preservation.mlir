@@ -1,10 +1,7 @@
 //===- loc_preservation.mlir ------------------------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2026 AMD Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -12,7 +9,7 @@
 // objectfifo.create op's Location onto the synthesized buffer / lock ops.
 // See docs/SourceLocations.md for the broader plan.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform --mlir-print-debuginfo %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" --mlir-print-debuginfo %s | FileCheck %s
 
 #user_loc = loc("user_design.py":42:4)
 

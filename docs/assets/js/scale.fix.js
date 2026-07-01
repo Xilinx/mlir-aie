@@ -1,3 +1,6 @@
+// Copyright (C) 2021 Xilinx, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 fixScale = function(doc) {
 
 	var addEvent = 'addEventListener',

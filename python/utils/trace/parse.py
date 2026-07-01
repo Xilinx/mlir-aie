@@ -13,7 +13,7 @@ from aie.extras.util import find_ops  # pyright: ignore[reportMissingImports]
 from aie.helpers.util import (  # pyright: ignore[reportMissingImports]
     fold_constant_operand,
 )
-from aie.ir import (
+from aie.ir import (  # pyright: ignore[reportMissingImports]
     Context,  # pyright: ignore[reportAttributeAccessIssue]
     Module,  # pyright: ignore[reportAttributeAccessIssue]
     Location,  # pyright: ignore[reportAttributeAccessIssue]

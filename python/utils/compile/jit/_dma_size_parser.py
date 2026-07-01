@@ -1,10 +1,8 @@
 # _dma_size_parser.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2026 Advanced Micro Devices, Inc.
 """Extract per-host-arg element counts from aiecc's lowered MLIR.
 
 aiecc writes ``input_with_addresses.mlir`` into the kernel directory as part
@@ -71,8 +69,12 @@ def parse_dma_sizes(kernel_dir: Path) -> list[int] | None:
         # Trigger AIE/aiex dialect registration before constructing the context.
         from aie.dialects import aie as _aie  # noqa: F401
         from aie.dialects import aiex as _aiex  # noqa: F401
-        from aie import ir
-        from aie._mlir_libs import get_dialect_registry
+        from aie import (  # pyright: ignore[reportMissingImports]
+            ir,  # pyright: ignore[reportAttributeAccessIssue]
+        )
+        from aie._mlir_libs import (  # pyright: ignore[reportMissingImports]
+            get_dialect_registry,  # pyright: ignore[reportAttributeAccessIssue]
+        )
 
         ir_context = ir.Context  # pyright: ignore[reportAttributeAccessIssue]
         ir_location = ir.Location  # pyright: ignore[reportAttributeAccessIssue]
