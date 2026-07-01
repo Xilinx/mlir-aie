@@ -754,20 +754,6 @@ LogicalResult xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp) {
     }
   }
 
-  for (auto switchboxOp : targetOp.getOps<ShimSwitchboxOp>()) {
-    Block &b = switchboxOp.getConnections().front();
-    auto tileLoc = XAie_TileLoc(switchboxOp.getCol(), 0);
-    for (auto connectOp : b.getOps<ConnectOp>()) {
-      TxnLocBracket bracket(*this, connectOp.getLoc());
-      TRY_XAIE_API_EMIT_ERROR(
-          switchboxOp, XAie_StrmConnCctEnable, &aiert->devInst, tileLoc,
-          WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getSourceBundle()),
-          connectOp.sourceIndex(),
-          WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getDestBundle()),
-          connectOp.destIndex());
-    }
-  }
-
   // Cascade configuration
   if (isa<AIE2TargetModel>(targetModel)) {
     for (auto configOp : targetOp.getOps<ConfigureCascadeOp>()) {

@@ -11,7 +11,6 @@ add_mlir_dialect_library(AIEXTransforms
   AIESCFToControlFlow.cpp
   AIECreateCores.cpp
   AIECreateLocks.cpp
-  AIEHerdRouting.cpp
   AIECreateBroadcastPacket.cpp
   AIELowerMulticast.cpp
   AIELowerMemcpy.cpp

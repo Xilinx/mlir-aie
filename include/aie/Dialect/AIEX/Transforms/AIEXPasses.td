@@ -110,15 +110,6 @@ def AIECreateLocks : Pass<"aie-create-locks", "AIE::DeviceOp"> {
   let constructor = "xilinx::AIEX::createAIECreateLocksPass()";
 }
 
-def AIEHerdRouting : Pass<"aie-herd-routing", "AIE::DeviceOp"> {
-  let summary =       "Lowering herds with place and route ops to AIE cores, mems, and switchboxes";
-  let description = [{
-    An experimental pass which elaborates herd operations (e.g. aie.herd, aie.iter, aie.select)
-    into an explicit representation (e.g. aie.core, aie.mem, etc.).
-  }];
-
-  let constructor = "xilinx::AIEX::createAIEHerdRoutingPass()";
-}
 
 def AIEBroadcastPacket : Pass<"aie-lower-broadcast-packet", "AIE::DeviceOp"> {
   let summary = "Replace combination of broadcast and packet-switch by packet-flow";
