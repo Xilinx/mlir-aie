@@ -7,7 +7,7 @@
 setuptools>=82.0.1
 wheel
 ninja!=1.13.0
-cmake==4.3.2
+cmake==4.3.4
 pybind11[global]>=3.0.4
 numpy>=2.4.6
 # mlir-native-tools is intentionally NOT hash-pinned here: it lives on an
