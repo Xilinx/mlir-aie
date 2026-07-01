@@ -108,13 +108,6 @@ mlir::LogicalResult AIETranslateToTargetArch(mlir::ModuleOp module,
 
 } // namespace AIE
 
-namespace aievec {
-
-/// Translates the AIE vector dialect MLIR to C++ code.
-mlir::LogicalResult translateAIEVecToCpp(mlir::Operation *op, bool aie2,
-                                         mlir::raw_ostream &os);
-
-} // namespace aievec
 } // namespace xilinx
 
 #endif
