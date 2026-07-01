@@ -1,7 +1,0 @@
-<map id="iron.dataflow.tile_dma.Release" name="iron.dataflow.tile_dma.Release">
-<area shape="rect" id="Node000001" title=" " alt="" coords="5,168,136,208"/>
-<area shape="rect" id="Node000002" href="$classiron_1_1lock_1_1Lock.html" title=" " alt="" coords="15,80,127,105"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="73,119,73,168,68,168,68,119"/>
-<area shape="rect" id="Node000003" title=" " alt="" coords="23,5,118,31"/>
-<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="73,45,73,80,68,80,68,45"/>
-</map>

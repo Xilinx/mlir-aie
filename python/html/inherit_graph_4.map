@@ -1,3 +1,19 @@
 <map id="Graphical Class Hierarchy" name="Graphical Class Hierarchy">
-<area shape="rect" id="Node000000" href="$classiron_1_1dataflow_1_1flow_1_1PacketDest.html" title=" " alt="" coords="5,5,217,31"/>
+<area shape="rect" id="Node000000" href="$classpython_1_1iron_1_1dataflow_1_1endpoint_1_1ObjectFifoEndpoint.html" title=" " alt="" coords="5,37,225,77"/>
+<area shape="rect" id="Node000001" href="$classpython_1_1iron_1_1dataflow_1_1objectfifo_1_1ObjectFifoLink.html" title=" " alt="" coords="273,69,497,109"/>
+<area shape="poly" id="edge33_Node000000_Node000001" title=" " alt="" coords="239,69,274,73,273,79,238,75"/>
+<area shape="rect" id="Node000008" href="$classpython_1_1iron_1_1runtime_1_1endpoint_1_1RuntimeEndpoint.html" title=" " alt="" coords="277,5,493,45"/>
+<area shape="poly" id="edge34_Node000000_Node000008" title=" " alt="" coords="238,40,277,35,277,41,239,45"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="68,233,163,258"/>
+<area shape="poly" id="edge37_Node000002_Node000001" title=" " alt="" coords="137,221,195,170,233,143,272,119,300,107,302,112,275,124,235,147,199,174,141,225"/>
+<area shape="rect" id="Node000003" href="$classpython_1_1iron_1_1dataflow_1_1objectfifo_1_1ObjectFifo.html" title=" " alt="" coords="273,133,497,173"/>
+<area shape="poly" id="edge35_Node000002_Node000003" title=" " alt="" coords="159,225,272,183,310,171,312,176,274,188,161,230"/>
+<area shape="rect" id="Node000004" href="$classpython_1_1iron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html" title=" " alt="" coords="273,197,497,237"/>
+<area shape="poly" id="edge36_Node000002_Node000004" title=" " alt="" coords="176,236,273,226,273,232,177,242"/>
+<area shape="rect" id="Node000005" href="$classpython_1_1iron_1_1lock_1_1Lock.html" title=" " alt="" coords="305,262,466,287"/>
+<area shape="poly" id="edge38_Node000002_Node000005" title=" " alt="" coords="177,249,305,263,304,269,176,255"/>
+<area shape="rect" id="Node000006" href="$classpython_1_1iron_1_1runtime_1_1runtime_1_1Runtime.html" title=" " alt="" coords="280,312,491,352"/>
+<area shape="poly" id="edge39_Node000002_Node000006" title=" " alt="" coords="167,260,274,296,317,309,315,314,273,301,165,265"/>
+<area shape="rect" id="Node000007" href="$classpython_1_1iron_1_1runtime_1_1runtime_1_1__SyncParametersTask.html" title=" " alt="" coords="280,376,491,416"/>
+<area shape="poly" id="edge40_Node000002_Node000007" title=" " alt="" coords="142,266,200,314,236,339,275,362,303,373,301,378,272,366,233,344,197,318,138,270"/>
 </map>

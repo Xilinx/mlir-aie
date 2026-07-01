@@ -1,0 +1,9 @@
+<map id="python.utils.hostruntime.tensor_class.Tensor" name="python.utils.hostruntime.tensor_class.Tensor">
+<area shape="rect" id="Node000001" title=" " alt="" coords="103,37,329,77"/>
+<area shape="rect" id="Node000003" href="$classpython_1_1utils_1_1hostruntime_1_1tensor__class_1_1CPUOnlyTensor.html" title=" " alt="" coords="415,5,642,45"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="343,42,415,34,415,40,344,47"/>
+<area shape="rect" id="Node000004" href="$classpython_1_1utils_1_1hostruntime_1_1xrtruntime_1_1tensor_1_1XRTTensor.html" title=" " alt="" coords="377,69,680,109"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="343,68,377,71,377,76,343,73"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,45,55,70"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="68,55,102,55,102,60,68,60"/>
+</map>

@@ -1,9 +1,9 @@
 <map id="Graphical Class Hierarchy" name="Graphical Class Hierarchy">
 <area shape="rect" id="Node000000" title=" " alt="" coords="5,77,92,102"/>
-<area shape="rect" id="Node000001" href="$classiron_1_1resolvable_1_1NotResolvedError.html" title=" " alt="" coords="147,5,353,45"/>
-<area shape="poly" id="edge14_Node000000_Node000001" title=" " alt="" coords="96,69,139,55,178,43,179,48,141,60,98,75"/>
-<area shape="rect" id="Node000002" href="$classiron_1_1runtime_1_1runtime_1_1IronRuntimeError.html" title=" " alt="" coords="157,69,343,109"/>
-<area shape="poly" id="edge15_Node000000_Node000002" title=" " alt="" coords="105,87,156,87,156,92,105,92"/>
-<area shape="rect" id="Node000003" href="$classutils_1_1hostruntime_1_1hostruntime_1_1HostRuntimeError.html" title=" " alt="" coords="140,133,360,173"/>
-<area shape="poly" id="edge16_Node000000_Node000003" title=" " alt="" coords="98,104,141,119,179,131,178,136,139,124,96,109"/>
+<area shape="rect" id="Node000001" href="$classpython_1_1iron_1_1resolvable_1_1NotResolvedError.html" title=" " alt="" coords="177,5,372,45"/>
+<area shape="poly" id="edge14_Node000000_Node000001" title=" " alt="" coords="95,69,139,55,183,43,185,48,141,60,97,74"/>
+<area shape="rect" id="Node000002" href="$classpython_1_1iron_1_1runtime_1_1runtime_1_1IronRuntimeError.html" title=" " alt="" coords="169,69,380,109"/>
+<area shape="poly" id="edge15_Node000000_Node000002" title=" " alt="" coords="105,87,169,87,169,92,105,92"/>
+<area shape="rect" id="Node000003" href="$classpython_1_1utils_1_1hostruntime_1_1hostruntime_1_1HostRuntimeError.html" title=" " alt="" coords="140,133,409,173"/>
+<area shape="poly" id="edge16_Node000000_Node000003" title=" " alt="" coords="97,104,141,119,185,131,183,136,139,124,95,109"/>
 </map>

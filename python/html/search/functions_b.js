@@ -1,4 +1,4 @@
 var searchData=
 [
-  ['kernel_5fname_0',['kernel_name',['../classutils_1_1npukernel_1_1NPUKernel.html#a9dc7b76abb1deef11d66a27aaadf9d62',1,'utils::npukernel::NPUKernel']]]
+  ['kernel_5fname_0',['kernel_name',['../classpython_1_1utils_1_1npukernel_1_1NPUKernel.html#ace5dcb7ba696c42c07cbed71d52f7916',1,'python::utils::npukernel::NPUKernel']]]
 ];
