@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-from aie.ir import *
+from aie.ir import *  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from aie.dialects.aie import *  # pyright: ignore[reportMissingImports]
 
 import argparse

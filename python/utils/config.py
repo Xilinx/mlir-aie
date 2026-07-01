@@ -64,6 +64,29 @@ def aiecc_path():
     )
 
 
+def objcopy_path():
+    """Returns the llvm-objcopy used to rename symbols in compiled objects.
+
+    AIE objects use the AIEngine ELF e_machine, which GNU binutils objcopy
+    cannot parse; llvm-objcopy renames symbols structurally regardless of
+    target. The wheel bundles llvm-objcopy under the MLIR-AIE bin directory;
+    fall back to one on PATH for source/dev installs.
+    """
+    bundled_objcopy = os.path.join(root_path(), "bin", _executable_name("llvm-objcopy"))
+    if os.path.isfile(bundled_objcopy):
+        return bundled_objcopy
+
+    path_objcopy = shutil.which(_executable_name("llvm-objcopy"))
+    if path_objcopy:
+        return path_objcopy
+
+    raise RuntimeError(
+        "Could not find llvm-objcopy. Expected it under the MLIR-AIE bin "
+        "directory or on PATH. GNU binutils objcopy cannot process AIE "
+        "objects, so an LLVM objcopy is required."
+    )
+
+
 def cxx_header_path():
     """Returns the path to the MLIR-AIE C++ headers."""
     include_dir = os.path.join(root_path(), "include")
