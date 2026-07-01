@@ -167,27 +167,6 @@ declare_mlir_python_extension(AIEPythonExtensions.MLIR
     LLVMSupport
 )
 
-if(AIE_ENABLE_XRT_PYTHON_BINDINGS)
-  declare_mlir_python_extension(AIEPythonExtensions.XRT
-    MODULE_NAME _xrt
-    ADD_TO_PARENT AIEPythonExtensions
-    ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}
-
-    PARTIAL_SOURCES_INTENDED
-    SOURCES
-      XRTModule.cpp
-
-    PRIVATE_LINK_LIBS
-      LLVMSupport
-      xrt_coreutil
-  )
-  if(NOT WIN32)
-    target_link_libraries(AIEPythonExtensions.XRT INTERFACE uuid)
-  endif()
-  target_include_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_INCLUDE_DIR})
-  target_link_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_LIB_DIR})
-endif()
-
 add_mlir_python_common_capi_library(AIEAggregateCAPI
   INSTALL_COMPONENT AIEPythonModules
   INSTALL_DESTINATION ${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs
