@@ -408,6 +408,13 @@ void registerAIETranslations() {
         return success();
       },
       registerDialects);
+  TranslateFromMLIRRegistration registrationNpuToCpp(
+      "aie-npu-to-cpp",
+      "Translate npu instructions to a C++ TXN-builder function",
+      [](ModuleOp module, raw_ostream &output) {
+        return AIETranslateNpuToCpp(module, output);
+      },
+      registerDialects);
   TranslateFromMLIRRegistration registrationCtrlPkt(
       "aie-ctrlpkt-to-bin", "Translate aiex.control_packet ops to binary",
       [](ModuleOp module, raw_ostream &output) {
