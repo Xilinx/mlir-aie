@@ -407,8 +407,8 @@ static cl::opt<bool> keepLoc(
 static cl::opt<unsigned> numThreads(
     "j", cl::Prefix,
     cl::desc("Number of parallel threads for core compilation (0 = auto-detect "
-             "based on CPU count, default: 1 for sequential)"),
-    cl::init(1), cl::cat(aieCompilerOptions));
+             "based on CPU count, default: 4)"),
+    cl::init(4), cl::cat(aieCompilerOptions));
 
 static cl::alias numThreadsLong("nthreads", cl::desc("Alias for -j"),
                                 cl::aliasopt(numThreads),
@@ -2538,8 +2538,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     SmallString<128> chessHackPath(tmpDirName);
     sys::path::append(chessHackPath,
                       deviceName.str() + "_core_" + std::to_string(core.col) +
-                          "_" + std::to_string(core.col) + "_" +
-                          std::to_string(core.row) + ".chesshack.ll");
+                          "_" + std::to_string(core.row) + ".chesshack.ll");
     {
       std::error_code ec;
       raw_fd_ostream chessHackFile(chessHackPath, ec);
