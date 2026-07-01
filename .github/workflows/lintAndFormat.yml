@@ -23,6 +23,48 @@ env:
 
 jobs:
 
+  lockfiles:
+
+    name: Lockfiles match inputs
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: '3.12'
+
+      # Regenerate the hash-pinned lockfiles from their source manifests, then
+      # fail (and post the fix as a PR suggestion) if anything changed. Catches
+      # drift from source bumps (e.g. Dependabot editing requirements.txt/.in)
+      # that never regenerated the committed .lock files. The uv version must
+      # match the one pinned in regenerate_lockfiles.sh, otherwise
+      # resolution/header differences show up as spurious diffs, so read it
+      # straight from the script.
+      - name: Install pinned uv
+        run: |
+          UV_VERSION=$(sed -n 's/^UV_VERSION="\(.*\)"$/\1/p' utils/regenerate_lockfiles.sh)
+          echo "installing uv==${UV_VERSION}"
+          python -m pip install "uv==${UV_VERSION}"
+
+      - name: Regenerate lockfiles
+        run: utils/regenerate_lockfiles.sh
+
+      # Leaves any drift in the working tree so the suggester below can turn it
+      # into review suggestions. fail_level: any makes the job red on drift.
+      - name: Suggest lockfile updates
+        uses: reviewdog/action-suggester@2558ba17e65a9039e73764a73009fc05fef28a46  # v1.24
+        with:
+          tool_name: regenerate-lockfiles
+          level: error
+          fail_level: any
+
   clang-tidy-pylint:
 
     name: Python and C/C++ Lint
