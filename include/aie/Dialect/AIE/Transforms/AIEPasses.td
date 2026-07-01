@@ -180,8 +180,8 @@ def AIEAssignBufferDescriptorIDs : Pass<"aie-assign-bd-ids", "DeviceOp"> {
 }
 
 def AIEObjectFifoLiveness : Pass<"aie-objectfifo-liveness", "DeviceOp"> {
-  let summary = "Flag under-buffered cyclic objectFIFO dependencies (deadlock "
-                "checker).";
+  let summary = "Flag a specific under-buffered coupled-multicast objectFIFO "
+                "class that hangs at runtime (not a general deadlock detector).";
   let description = [{
     A coupled multicast (broadcast) objectFIFO whose consumers back-pressure the
     producer forms a dependency cycle. When the producer must re-acquire a slot
@@ -193,17 +193,21 @@ def AIEObjectFifoLiveness : Pass<"aie-objectfifo-liveness", "DeviceOp"> {
 
     This pass builds the objectFIFO data + back-pressure dependency graph, finds
     cyclic strongly-connected components (Tarjan), and applies the validated SDF
-    model:
+    model PER coupled-multicast group (grouped by name base). Each group is
+    scoped independently so an unrelated cycle elsewhere in the device cannot
+    inflate its demand:
 
-      demand   = array_fan * T          (array_fan = name-base-summed multicast
-                                          fan-out in a cycle; T = max
-                                          objectFIFO repeat_count)
-      slack    = 2 * depth
+      demand   = array_fan * T          (array_fan = the group's multicast
+                                          fan-out, summed across the SCCs it
+                                          spans; T = max repeat_count among the
+                                          fifos in those SCCs)
+      slack    = 2 * depth              (depth = min depth in the group)
       DEADLOCK iff  T >= 2  AND  depth > 0  AND  demand > slack
 
     The T >= 2 replay guard avoids false positives on single-trip broadcasts.
     The analysis is sound for this static SDF class and conservative elsewhere
-    (it never errors outside a proven cyclic under-buffered multicast).
+    (it never errors outside a proven cyclic under-buffered multicast); it does
+    not claim to catch other deadlock classes.
   }];
 
   let constructor = "xilinx::AIE::createAIEObjectFifoLivenessPass()";
