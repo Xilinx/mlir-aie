@@ -20,18 +20,20 @@
 //
 // This pass builds the objectFIFO data + back-pressure dependency graph, finds
 // cyclic strongly-connected components (Tarjan), and applies the validated SDF
-// model:
+// model PER coupled-multicast group (grouped by name base) so an unrelated
+// cycle elsewhere in the device cannot inflate a group's demand:
 //
-//   demand   = array_fan * T          (array_fan = name-base-summed multicast
-//                                        fan-out in a cycle == n_cols;
-//                                        T = max objectFIFO repeat_count)
-//   slack    = 2 * depth
+//   demand   = array_fan * T          (array_fan = the group's multicast
+//                                        fan-out, summed across the SCCs it
+//                                        spans; T = max repeat_count among the
+//                                        fifos in those SCCs)
+//   slack    = 2 * depth              (depth = min depth in the group)
 //   DEADLOCK iff  T >= 2  AND  depth > 0  AND  demand > slack
 //
 // The T >= 2 replay guard avoids false positives on single-trip broadcasts
 // (which fan out once and drain monotonically). The analysis is sound for this
 // static SDF class and conservative elsewhere (it never errors outside a proven
-// cyclic under-buffered multicast).
+// cyclic under-buffered multicast); it is not a general deadlock detector.
 //
 //===----------------------------------------------------------------------===//
 
@@ -143,12 +145,14 @@ struct AIEObjectFifoLivenessPass
         }
     }
 
-    // find_cycles: Tarjan SCC; keep components of size > 1.
+    // find_cycles: Tarjan SCC; assign an SCC id to every node in a cycle
+    // (component of size > 1). Nodes not in any cycle keep sccId = -1.
     SmallVector<int> idx(n, -1), low(n, 0);
     SmallVector<char> onStack(n, 0);
     SmallVector<unsigned> stk;
     int counter = 0;
-    SmallVector<char> inCycle(n, 0);
+    SmallVector<int> sccId(n, -1);
+    int sccCount = 0;
     std::function<void(unsigned)> dfs = [&](unsigned v) {
       idx[v] = low[v] = counter++;
       stk.push_back(v);
@@ -171,47 +175,47 @@ struct AIEObjectFifoLivenessPass
           if (w == v)
             break;
         }
-        if (comp.size() > 1)
+        if (comp.size() > 1) {
           for (unsigned w : comp)
-            inCycle[w] = 1;
+            sccId[w] = sccCount;
+          ++sccCount;
+        }
       }
     };
     for (unsigned v = 0; v < n; ++v)
       if (idx[v] == -1)
         dfs(v);
 
-    // T = max repeat_count over all objectFIFOs (default 1).
-    long T = 1;
-    for (auto &f : fifos)
-      T = std::max(T, f.repeat);
-
-    // array_fan / depth: group cyclic multicasts (cons.size() > 1) by name
-    // base, SUM their consumer-counts; array_fan = max group sum, depth = min
-    // depth among those cyclic multicasts.
-    std::map<std::string, long> groups;
-    long depth = 0;
-    bool haveDepth = false;
+    // SDF check, scoped PER coupled-multicast group -- NOT globally. A coupled
+    // broadcast is a name-base group of cyclic multicast objectFIFOs (e.g.
+    // memW1_0 + memW1_1 = one weight broadcast, split across MemTiles); the
+    // halves can land in different SCCs, so the group -- not the SCC -- is the
+    // unit of coupling, and array_fan SUMS the group's fan-out across the SCCs
+    // it spans. The trip-count T is taken ONLY from the SCC(s) this group lives
+    // in, so an unrelated high-repeat_count (or a wide broadcast) elsewhere in
+    // the device cannot inflate this group's demand and false-positive.
+    struct Group {
+      long fan = 0, depth = 0;
+      bool haveDepth = false, haveRep = false;
+      unsigned rep = 0;
+      std::set<int> sccs;
+    };
+    std::map<std::string, Group> groups;
     for (unsigned i = 0; i < n; ++i) {
-      if (!inCycle[i])
-        continue;
-      long Fan = fifos[i].cons.size();
-      if (Fan <= 1)
-        continue;
-      std::string base = nameBase(fifos[i].name).str();
-      groups[base] += Fan;
-      if (!haveDepth) {
-        depth = fifos[i].depth;
-        haveDepth = true;
-      } else {
-        depth = std::min(depth, fifos[i].depth);
+      if (sccId[i] < 0 || fifos[i].cons.size() <= 1)
+        continue; // only a cyclic multicast couples a broadcast
+      Group &g = groups[nameBase(fifos[i].name).str()];
+      g.fan += (long)fifos[i].cons.size();
+      g.depth =
+          g.haveDepth ? std::min(g.depth, fifos[i].depth) : fifos[i].depth;
+      g.haveDepth = true;
+      g.sccs.insert(sccId[i]);
+      if (!g.haveRep) {
+        g.rep = i;
+        g.haveRep = true;
       }
     }
-    long array_fan = 0;
-    for (auto &kv : groups)
-      array_fan = std::max(array_fan, kv.second);
 
-    long demand = array_fan * T;
-    long slack = 2 * depth;
     // Replay guard (mirrors sdf_checker.py): the multicast back-pressure cycle
     // only forms when the broadcast producer must RE-acquire a slot (trip t+1)
     // while the prior trip's tokens are still outstanding -- i.e. T >= 2. A
@@ -219,29 +223,27 @@ struct AIEObjectFifoLivenessPass
     // it never deadlocks regardless of fan-out (confirmed: bundled whole_array
     // matmul examples broadcast to the whole array at depth 2, T == 1, and RUN
     // on device).
-    bool deadlock = depth > 0 && T >= 2 && demand > slack;
-
-    if (deadlock) {
+    for (auto &kv : groups) {
+      Group &g = kv.second;
+      long T = 1; // trip-count from the SCC(s) coupled to THIS broadcast only
+      for (unsigned i = 0; i < n; ++i)
+        if (sccId[i] >= 0 && g.sccs.count(sccId[i]))
+          T = std::max(T, fifos[i].repeat);
+      long demand = g.fan * T;
+      long slack = 2 * g.depth;
+      if (!(g.depth > 0 && T >= 2 && demand > slack))
+        continue;
       long reqDepth = (demand + 1) / 2; // ceil(demand / 2)
-      // Representative: first fifo in walk order whose base is a widest group
-      // (fan == array_fan) and which is itself a multicast.
-      for (unsigned i = 0; i < n; ++i) {
-        if (!inCycle[i] || fifos[i].cons.size() <= 1)
-          continue;
-        std::string base = nameBase(fifos[i].name).str();
-        if (groups[base] != array_fan)
-          continue;
-        fifos[i].op->emitError()
-            << "objectFIFO @" << base
-            << " in a cyclic dependency requires depth >= " << reqDepth
-            << " for deadlock-free execution; allocated depth = "
-            << fifos[i].depth << ". (Coupled broadcast fan-out " << array_fan
-            << " x trip-count " << T << " = " << demand
-            << " outstanding tokens exceeds round-trip slack 2*depth = " << slack
-            << "; raise depth or reduce coupled consumers / output tiles.)";
-        signalPassFailure();
-        return;
-      }
+      fifos[g.rep].op->emitError()
+          << "objectFIFO @" << kv.first
+          << " in a cyclic dependency requires depth >= " << reqDepth
+          << " for deadlock-free execution; allocated depth = " << g.depth
+          << ". (Coupled broadcast fan-out " << g.fan << " x trip-count " << T
+          << " = " << demand
+          << " outstanding tokens exceeds round-trip slack 2*depth = " << slack
+          << "; raise depth or reduce coupled consumers / output tiles.)";
+      signalPassFailure();
+      return;
     }
   }
 };
