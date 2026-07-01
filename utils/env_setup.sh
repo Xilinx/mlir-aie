@@ -1,5 +1,5 @@
 #!/bin/bash
-# (c) Copyright 2026 Advanced Micro Devices, Inc.
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 ##===- utils/env_setup.sh - Setup mlir-aie env to compile IRON designs --*- Script -*-===##
 #
 # This file licensed under the Apache License v2.0 with LLVM Exceptions.
@@ -43,13 +43,14 @@ fi
 
 # If force install or an install dir isn't passed
 if [[ $FORCE_INSTALL -eq 1 || ( "$#" -lt 1 && -z "$(pip show mlir_aie | grep '^Location:')" ) ]]; then
-  python3 -m pip install -I mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-3
+  python3 -m pip install -I mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-4
   export MLIR_AIE_INSTALL_DIR="$(pip show mlir_aie | grep '^Location:' | awk '{print $2}')/mlir_aie"
 fi
 
 # If force install or an install dir isn't passed
 if [[ $FORCE_INSTALL -eq 1 || ( "$#" -lt 2 && -z "$(pip show llvm-aie | grep '^Location:')" ) ]]; then
-  python3 -m pip install -I llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
+  # Pinned via utils/peano-requirements.txt (bumped by the update-peano workflow).
+  python3 -m pip install -I -r "$(dirname "${BASH_SOURCE[0]}")/peano-requirements.txt"
   export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep '^Location:' | awk '{print $2}')/llvm-aie"
 fi
 

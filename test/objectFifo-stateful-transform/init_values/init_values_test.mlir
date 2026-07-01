@@ -4,19 +4,19 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2024, Advanced Micro Devices, Inc.
-// 
+// Copyright (C) 2024 Advanced Micro Devices, Inc.
+//
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
 
 // CHECK: module @init {
 // CHECK:   aie.device(xcve2302) {
 // CHECK:     %{{.*}}tile_1_2 = aie.tile(1, 2)
 // CHECK:     %{{.*}}tile_2_3 = aie.tile(2, 3)
-// CHECK:     %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_2_3) {sym_name = "of0_cons_buff_0"} : memref<2x2xi32> 
-// CHECK:     %[[VAL_1:.*]] = aie.buffer(%{{.*}}tile_2_3) {sym_name = "of0_cons_buff_1"} : memref<2x2xi32> 
-// CHECK:     %[[VAL_2:.*]] = aie.buffer(%{{.*}}tile_2_3) {sym_name = "of0_cons_buff_2"} : memref<2x2xi32> 
+// CHECK:     %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_2_3) {sym_name = "of0_cons_buff_0"} : memref<2x2xi32>
+// CHECK:     %[[VAL_1:.*]] = aie.buffer(%{{.*}}tile_2_3) {sym_name = "of0_cons_buff_1"} : memref<2x2xi32>
+// CHECK:     %[[VAL_2:.*]] = aie.buffer(%{{.*}}tile_2_3) {sym_name = "of0_cons_buff_2"} : memref<2x2xi32>
 // CHECK:     %[[VAL_3:.*]] = aie.lock(%{{.*}}tile_2_3, 0) {init = 3 : i32, sym_name = "of0_cons_prod_lock_0"}
 // CHECK:     %[[VAL_4:.*]] = aie.lock(%{{.*}}tile_2_3, 1) {init = 0 : i32, sym_name = "of0_cons_cons_lock_0"}
 // CHECK:     %[[VAL_5:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of0_buff_0"} : memref<2x2xi32> = dense<{{\[}}[0, 1], [2, 3]]>
@@ -73,7 +73,7 @@ module @init {
     %tile12 = aie.tile(1, 2)
     %tile23 = aie.tile(2, 3)
 
-    aie.objectfifo @of0 (%tile12, {%tile23}, 3 : i32) : !aie.objectfifo<memref<2x2xi32>> = [dense<[[0, 1], [2, 3]]> : memref<2x2xi32>, 
+    aie.objectfifo @of0 (%tile12, {%tile23}, 3 : i32) : !aie.objectfifo<memref<2x2xi32>> = [dense<[[0, 1], [2, 3]]> : memref<2x2xi32>,
                                                                                             dense<[[4, 5], [6, 7]]> : memref<2x2xi32>,
                                                                                             dense<[[8, 9], [10, 11]]> : memref<2x2xi32>]
  }

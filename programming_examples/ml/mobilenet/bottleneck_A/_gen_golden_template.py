@@ -3,7 +3,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 """Shared brevitas-reference generator for bottleneck_A per-block fixtures.
 
 Five sibling ``gen_golden_bn{1,2,3,6,7}.py`` scripts shared an identical

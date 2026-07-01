@@ -321,22 +321,13 @@ class CMakeBuild(build_ext):
                 check=True,
             )
 
-            # C++-developer-only content: anyone pip installing this wheel
-            # reaches the toolchain through Python, never through native
-            # linking. aie_api/ and aie_kernels/ headers stay — user AIE
-            # kernels #include those at compile time. *.lib on Windows is
-            # the MSVC equivalent of Linux *.a — static linker artifacts
-            # produced by the LLVM/MLIR install rules that nothing in the
-            # runtime path links against (verified: aiecc.exe / aie-opt.exe
-            # / AIEAggregateCAPI.dll are self-contained).
+            # C API headers and CDO static driver headers are not needed by
+            # downstream C++ consumers (e.g. mlir-air) that build against the
+            # AIE dialect directly.
             dev_paths = [
-                Path(install_dir) / "include" / "aie",
                 Path(install_dir) / "include" / "aie-c",
                 Path(install_dir) / "include" / "bootgen_c_api.h",
                 Path(install_dir) / "include" / "xaienginecdo_static",
-                Path(install_dir) / "lib" / "cmake",
-                *(Path(install_dir) / "lib").glob("*.a"),
-                *(Path(install_dir) / "lib").glob("*.lib"),
             ]
             for p in dev_paths:
                 if p.is_dir():
@@ -344,12 +335,18 @@ class CMakeBuild(build_ext):
                 elif p.exists():
                     p.unlink()
 
-            # CMake leaks staging directories, intermediate .o files, and
-            # __pycache__ caches into the install prefix; none belong in a
-            # shipped wheel.
+            # CMake leaks staging directories and __pycache__ caches into the
+            # install prefix; none belong in a shipped wheel.
+            #
+            # NOTE: lib/objects-Release is intentionally kept. It holds the
+            # per-object object files (.o on Linux/macOS, .obj on Windows) for
+            # AIE's ENABLE_AGGREGATION libraries (obj.AIERT/obj.AIETargets/
+            # obj.AIECAPI, ~2 MB) which the exported
+            # lib/cmake/aie/MLIRTargets-release.cmake references via
+            # IMPORTED_OBJECTS. Pruning it leaves dangling references and makes
+            # downstream find_package(AIE) fail its import check.
             for leaked in [
                 Path(install_dir) / "src",
-                Path(install_dir) / "lib" / "objects-Release",
             ]:
                 if leaked.exists():
                     shutil.rmtree(leaked)

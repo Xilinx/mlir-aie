@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // REQUIRES: hsa
+// REQUIRES: makefile_examples
 //
 // RUN: make -f %S/Makefile clean
 // RUN: make -f %S/Makefile vck5000_plio_input

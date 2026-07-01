@@ -1,3 +1,5 @@
+<!-- Copyright (C) 2019-2024 Advanced Micro Devices, Inc. -->
+<!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 # IRON API and MLIR-based AI Engine Toolchain
 
 This project emphasizes fast, open-source toolchains for NPU devices including LLVM-based code generation. IRON contains a close-to-metal toolkit that empowers performance engineers to create fast and efficient designs for Ryzen™ AI NPUs powered by AI Engines. It provides Python APIs that enable developers to harness the unique architectural capabilities of AMD’s NPUs. However, this project is not intended to represent an end-to-end compilation flow for all application designs---it is designed to complement, not replace, mainstream NPU tooling for inference like the [AMD Ryzen™ AI Software Platform](https://github.com/amd/RyzenAI-SW/). Targeting researchers and enthusiasts, IRON is designed to unlock the full potential of NPUs for a wide range of workloads, from machine learning to digital signal processing and beyond. This repository includes programming guides and examples demonstrating the APIs. Additionally, the [Peano](https://github.com/Xilinx/llvm-aie) component extends the LLVM framework by adding support for the AI Engine processor as a target architecture, enabling integration with popular compiler frontends such as `clang`. Developers can leverage the [AIE API header library](https://xilinx.github.io/aie_api/topics.html) to implement efficient vectorized AIE core code in C++ that can be compiled by Peano.
@@ -140,8 +142,11 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
 1. Install the Peano compiler (the `llvm-aie` wheels) and dependencies:
    ```bash
-   # Install Peano from llvm-aie wheel
-   python3 -m pip install llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
+   # Install Peano from the llvm-aie wheel, pinned to the tested nightly in
+   # utils/peano-requirements.txt (the same pin CI uses; bumped by the update-peano
+   # workflow). To grab the latest nightly instead, install `llvm-aie` directly
+   # with `-f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly`.
+   python3 -m pip install -r utils/peano-requirements.txt
 
    ```
 
@@ -266,6 +271,8 @@ Be sure you have the latest BIOS for your laptop or mini PC, this will ensure th
 [Device Descriptions](Devices.md)
 
 [Building mlir-aie tools from source](Building.md)
+
+[Building on a non-Ubuntu distro or with the in-tree amdxdna driver](buildHostLinNonUbuntu.md)
 
 [MLIR Dialect and Compiler Documentation](https://xilinx.github.io/mlir-aie/)
 

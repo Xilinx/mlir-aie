@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
+# Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 """Section-1 minimal IRON design — ``@iron.jit`` entry point.
 
 A single ``Worker`` placed on tile (0, 2) writes zeros into a local
@@ -12,8 +12,8 @@ A single ``Worker`` placed on tile (0, 2) writes zeros into a local
 facing output) and starts the worker.
 
 The whole design is just a function decorated with ``@iron.jit``: the
-first call JIT-compiles + runs on the attached NPU; ``--emit-mlir``
-prints the lowered MLIR without touching the hardware.
+first call JIT-compiles + runs on the attached NPU; ``--dev npu
+--emit-mlir`` prints the lowered MLIR without touching the hardware.
 """
 
 import argparse

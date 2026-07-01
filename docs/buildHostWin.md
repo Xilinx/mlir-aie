@@ -1,3 +1,5 @@
+<!-- Copyright (C) 2019-2024 Advanced Micro Devices, Inc. -->
+<!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 # Windows Setup and Build Instructions
 
 These instructions will guide you through everything required for building and executing a program on the Ryzen™ AI NPU on Windows. The instructions were tested on a ASUS Vivobook Pro 15 among other Phoenix and Strix equipped machines.

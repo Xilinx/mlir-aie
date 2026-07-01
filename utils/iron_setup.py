@@ -504,11 +504,11 @@ def install_plan(
                 print(f"[setup] WARNING: post-step for {flag} failed (continuing)")
 
     # mlir_aie wheels (IRON)
-    # Modes: auto | skip | latest-wheels-3 | wheelhouse[:<path>]
+    # Modes: auto | skip | latest-wheels-4 | wheelhouse[:<path>]
     # Auto mode exists until wheels are available for Windows.
     mlir_raw = str(getattr(args, "mlir_aie", "auto") or "auto").strip().lower()
     mlir_mode, allow_missing_mlir_aie = (
-        ("latest-wheels-3", IS_WINDOWS) if mlir_raw == "auto" else (mlir_raw, False)
+        ("latest-wheels-4", IS_WINDOWS) if mlir_raw == "auto" else (mlir_raw, False)
     )
     if mlir_mode != "skip":
         try:
@@ -527,7 +527,7 @@ def install_plan(
                 for pkg in ("mlir_aie", "aie_python_bindings"):
                     pip_pkg(pkg, wheelhouse=wheelhouse_dir, no_deps=True, no_index=True)
             else:
-                mlir_find_links = "https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-3/"
+                mlir_find_links = "https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-4/"
                 print(f"[setup] Installing mlir_aie from {mlir_find_links}")
                 pip_pkg("mlir_aie", find_links=mlir_find_links)
         except CommandError:
@@ -541,15 +541,17 @@ def install_plan(
             ensure_mlir_aie_pth(venv, mlir_prefix)
 
     # llvm-aie wheels (Peano)
+    # Default "nightly" installs the pin in utils/peano-requirements.txt (bumped by the
+    # update-peano workflow) so a bad nightly is caught in a PR instead of breaking CI.
+    # An explicit --llvm-aie <url> overrides and stays unpinned.
     llvm_choice = str(getattr(args, "llvm_aie", "nightly") or "nightly").strip()
-    llvm_find_links = (
-        "https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly"
-        if llvm_choice == "nightly"
-        else llvm_choice
-    )
-
-    print(f"[setup] Installing llvm-aie from {llvm_find_links}")
-    pip_pkg("llvm-aie", find_links=llvm_find_links)
+    if llvm_choice == "nightly":
+        peano_reqs = repo_root / "utils" / "peano-requirements.txt"
+        print(f"[setup] Installing llvm-aie from {peano_reqs}")
+        pip_reqs(peano_reqs)
+    else:
+        print(f"[setup] Installing llvm-aie from {llvm_choice}")
+        pip_pkg("llvm-aie", find_links=llvm_choice)
 
     if IS_WINDOWS:
         peano_prefix = pip_install_prefix(
@@ -824,7 +826,7 @@ def _add_install_args(p: argparse.ArgumentParser) -> None:
     p.add_argument(
         "--mlir-aie",
         default="auto",
-        help="mlir_aie wheel source: auto | skip | latest-wheels-3 | wheelhouse[:<path>]",
+        help="mlir_aie wheel source: auto | skip | latest-wheels-4 | wheelhouse[:<path>]",
     )
     p.add_argument(
         "--llvm-aie",

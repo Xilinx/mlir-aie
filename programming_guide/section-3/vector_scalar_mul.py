@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
+# Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 """Section-3 first end-to-end program — ``@iron.jit`` (vector * scalar).
 
 Streams a 4096-element int32 vector through a single compute tile in
@@ -16,8 +16,8 @@ Three modes:
 
 * ``python3 vector_scalar_mul.py`` — JIT-compile + run + verify on the
   attached NPU.
-* ``python3 vector_scalar_mul.py --emit-mlir`` — print the lowered MLIR
-  (no NPU access).
+* ``python3 vector_scalar_mul.py --dev npu --emit-mlir`` — print the
+  lowered MLIR (no NPU access).
 * ``python3 vector_scalar_mul.py --xclbin-path X --insts-path Y`` —
   compile-only, drop the xclbin/insts pair for the explicit-XRT
   walkthrough (used by ``test.cpp`` and ``test.py``).

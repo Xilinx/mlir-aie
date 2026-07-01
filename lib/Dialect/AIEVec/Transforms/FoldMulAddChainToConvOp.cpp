@@ -4,7 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2023 Xilinx Inc.
+// Copyright (C) 2022 Xilinx, Inc.
+// Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 // This is the implementation of the folding pass from mul add chain
@@ -506,8 +507,7 @@ struct FoldMulAddChainToConvOpPattern
 namespace xilinx::aievec {
 
 void configureAIEVecConvOpTransformationLegalizations(ConversionTarget &target,
-                                                      AnalysisManager &am,
-                                                      TargetBackend backend) {
+                                                      AnalysisManager &am) {
   LongestConvMACChainAnalysis::am = &am;
   target.addLegalDialect<AIEVecDialect>();
   target.addLegalDialect<arith::ArithDialect>();
@@ -520,8 +520,7 @@ void configureAIEVecConvOpTransformationLegalizations(ConversionTarget &target,
 
 void populateAIEVecConvOpTransformationPatterns(RewritePatternSet &patterns,
                                                 AnalysisManager &am,
-                                                unsigned shiftParam,
-                                                TargetBackend backend) {
+                                                unsigned shiftParam) {
   patterns.add<FoldMulAddChainToConvOpPattern>(patterns.getContext(), am,
                                                shiftParam);
 }

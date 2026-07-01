@@ -4,9 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc.
-
-from typing import Generator
+# Copyright (C) 2024 Advanced Micro Devices, Inc.
 
 from ... import ir  # pyright: ignore[reportMissingImports]
 from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
@@ -36,7 +34,6 @@ class Device(Resolvable):
         self._device = device
         self._tm = get_target_model(device)
         self._resolved_tiles: dict[int, LogicalTileOp] = {}
-        self._resolved_coords: dict[tuple[int, int], LogicalTileOp] = {}
 
     @property
     def cols(self) -> int:
@@ -66,103 +63,6 @@ class Device(Resolvable):
         self._validate_coordinates(col, row)
         return AIETileType(self._tm.get_tile_type(col, row))
 
-    def tile_iterator(self) -> Generator[Tile, None, None]:
-        """
-        Iterates over the device tiles deterministically
-        """
-        for c in range(self._tm.columns()):
-            for r in range(self._tm.rows()):
-                yield Tile(c, r, tile_type=self.get_tile_type(c, r))
-        return None
-
-    def get_shim_tiles(self) -> list[Tile]:
-        """Returns a list of all shim tiles on the device.
-
-        Returns:
-            list[Tile]: A list of shim tiles.
-        """
-        return [
-            Tile(t.col, t.row)
-            for t in self.tile_iterator()
-            if self._tm.is_shim_noc_or_pl_tile(t.col, t.row)
-        ]
-
-    def get_mem_tiles(self) -> list[Tile]:
-        """Returns a list of all mem tiles on the device.
-
-        Returns:
-            list[Tile]: A list of mem tiles.
-        """
-        return [
-            Tile(t.col, t.row)
-            for t in self.tile_iterator()
-            if self._tm.is_mem_tile(t.col, t.row)
-        ]
-
-    def get_compute_tiles(self) -> list[Tile]:
-        """Returns a list of all compute tiles on the device.
-
-        Returns:
-            list[Tile]: A list of compute tiles.
-        """
-        return [
-            Tile(t.col, t.row)
-            for t in self.tile_iterator()
-            if self._tm.is_core_tile(t.col, t.row)
-        ]
-
-    def is_mem_accessible(self, source_tile: Tile, tiles: list[Tile]) -> bool:
-        """Returns whether there exists a memory region on source_tile which all destination tiles can access.
-        Returns:
-            bool: True if the given source tile has a memory region accessible by all destination tiles.
-        """
-        if not isinstance(source_tile, Tile):
-            raise ValueError(f"Expected a source Tile, but got {source_tile}")
-        for t in tiles:
-            if not isinstance(t, Tile):
-                raise ValueError(f"Expected a Tile, but got {t}")
-        if source_tile.col is None or source_tile.row is None:
-            raise ValueError(
-                f"Cannot check memory accessibility for unplaced tile: {source_tile}"
-            )
-        for t in tiles:
-            if t.col is None or t.row is None:
-                raise ValueError(
-                    f"Cannot check memory accessibility for unplaced tile: {t}"
-                )
-        if not tiles:
-            return True
-
-        source_is_compute = self._tm.is_core_tile(source_tile.col, source_tile.row)
-        source_is_mem = self._tm.is_mem_tile(source_tile.col, source_tile.row)
-        source_is_shim = self._tm.is_shim_noc_or_pl_tile(
-            source_tile.col, source_tile.row
-        )
-
-        if source_is_compute and not all(
-            [self._tm.is_core_tile(dst_tile.col, dst_tile.row) for dst_tile in tiles]
-        ):
-            return False
-        if source_is_mem and not all(
-            [self._tm.is_mem_tile(dst_tile.col, dst_tile.row) for dst_tile in tiles]
-        ):
-            return False
-        if source_is_shim or any(
-            [
-                self._tm.is_shim_noc_or_pl_tile(dst_tile.col, dst_tile.row)
-                for dst_tile in tiles
-            ]
-        ):
-            # No neighbor sharing from shim tiles.
-            return False
-
-        for t in tiles:
-            if not self._tm.is_legal_mem_affinity(
-                source_tile.col, source_tile.row, t.col, t.row
-            ):
-                return False
-        return True
-
     def resolve_tile(
         self,
         tile: Tile,
@@ -174,32 +74,28 @@ class Device(Resolvable):
             tile.op = self._resolved_tiles[tile_id]
             return
 
-        # Merge tiles at the same coordinates into one logical_tile op
-        if tile.col is not None and tile.row is not None:
-            coord = (tile.col, tile.row)
-            if coord in self._resolved_coords:
-                op = self._resolved_coords[coord]
-                self._resolved_tiles[tile_id] = op
-                tile.op = op
-                return
-
-        if tile.tile_type is None:
+        # Emit one aie.logical_tile per distinct Tile object — no merging by
+        # coordinate. The compiler owns coordinate resolution: --aie-place-tiles
+        # merges non-core logical tiles that share a coordinate onto one
+        # physical tile, and the aie.device verifier rejects two cores landing
+        # on the same coordinate. (Dedup above is by object identity only: the
+        # SAME Tile referenced from multiple endpoints resolves once.)
+        #
+        # The logical_tile op requires a tile_type, so infer it from coordinates
+        # when unset. Computed locally — the Tile object is never mutated. Bounds
+        # and tile_type/coordinate-agreement are verified by LogicalTileOp::verify,
+        # so no Python-side check is needed here.
+        tile_type = tile.tile_type
+        if tile_type is None:
             if tile.col is not None and tile.row is not None:
-                tile.tile_type = self.get_tile_type(tile.col, tile.row)
+                tile_type = self.get_tile_type(tile.col, tile.row)
             else:
                 raise ValueError(
                     f"Cannot resolve {tile}: tile_type must be set or inferred from coordinates."
                 )
-        elif tile.col is not None and tile.row is not None:
-            inferred = self.get_tile_type(tile.col, tile.row)
-            if tile.tile_type != inferred:
-                raise ValueError(
-                    f"Tile at ({tile.col}, {tile.row}) has tile_type={tile.tile_type}, "
-                    f"but coordinates indicate {inferred}"
-                )
 
         op = logical_tile(
-            tile.tile_type,
+            tile_type,
             col=tile.col,
             row=tile.row,
             allocation_scheme=tile.allocation_scheme,
@@ -207,8 +103,6 @@ class Device(Resolvable):
             ip=ip,
         )
         self._resolved_tiles[tile_id] = op
-        if tile.col is not None and tile.row is not None:
-            self._resolved_coords[(tile.col, tile.row)] = op
         tile.op = op
 
 
