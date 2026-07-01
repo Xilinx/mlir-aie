@@ -51,7 +51,7 @@ vck190 board + usb-c to usb cable + ethernet cable
 ## Board setup steps
 After the build is complete, format an SD card (16 GB+) in fat32 format and copy the files from the linux subdirectory onto the SD card.
 ```sh
-cp -r platforms/vck190_bare/petalinux/images/linux/* <SD card directory>
+cp -r platforms/vck190_bare_prod/petalinux/images/linux/* <SD card directory>
 ```
 Put the sd card into the micro sd slot to boot up the Versal device (top of the board), connect the board usb-c connector to your host machine and turn on the board. You should run a program like TeraTerm and configure it as a serial port (115200 baud, 8b data, no parity, 1b stop, no flow control). The serial port for Versal is usually the first port but may vary in your setup.
 
