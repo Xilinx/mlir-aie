@@ -1,10 +1,7 @@
 //===- AIE2_delayed_release_inside_funcs.mlir ------------------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
 // Copyright (C) 2023 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -14,10 +11,10 @@
 
 // What this boils down to is simply verifying that an error is generated
 // when acquire/release is called from within a function. If this behavior
-// is ever to be changed, this test can easily be adapted to make sure 
+// is ever to be changed, this test can easily be adapted to make sure
 // semantics are preserved.
 
-// RUN: aie-opt --verify-diagnostics --aie-objectFifo-stateful-transform %s 
+// RUN: aie-opt --verify-diagnostics --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s
 
 module @AIE2_delayed_release {
     aie.device(xcve2302) {

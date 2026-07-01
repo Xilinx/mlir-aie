@@ -1,14 +1,11 @@
 //===- shim_dma_alloc_test.mlir ---------------------------------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2025 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2025 Advanced Micro Devices, Inc.
-// 
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="packet-sw-objFifos" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="packet-sw-objFifos dynamic-objFifos=false" %s | FileCheck %s
 
 // CHECK: module @shim_dma_alloc {
 // CHECK:   aie.device(xcve2302) {

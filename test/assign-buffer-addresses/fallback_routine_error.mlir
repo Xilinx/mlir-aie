@@ -1,13 +1,10 @@
 //===- fallback_routine_error.mlir ---------------------------------------------*- MLIR -*-===//
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
 // Copyright (C) 2024 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --aie-objectFifo-stateful-transform --aie-assign-buffer-addresses %s 2>&1 | FileCheck %s
+// RUN: not aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" --aie-assign-buffer-addresses %s 2>&1 | FileCheck %s
 // CHECK:   warning: Failed to allocate buffer: "act_3_4_buff_2" with size: 2048 bytes.
 // CHECK: note: see current operation: %act_3_4_buff_2 = aie.buffer(%tile_1_2) {sym_name = "act_3_4_buff_2"} : memref<512xi32>
 // CHECK: warning:  Not all requested buffers fit in the available memory.
@@ -16,12 +13,12 @@
 // CHECK: error: 'aie.tile' op allocated buffers exceeded available memory
 // CHECK: (no stack allocated)
 // CHECK:   %tile12 = aie.tile(1, 2)
-// CHECK: note: see current operation: %0 = "aie.tile"() <{col = 1 : i32, row = 2 : i32}> : () -> index 
-// CHECK: MemoryMap: 
-// CHECK:   b : 0x0-0x1FFF (8192 bytes) 
-// CHECK:   c : 0x2000-0x3FFF (8192 bytes) 
-// CHECK:   a : 0x4000-0x4FFF (4096 bytes) 
-// CHECK:   d : 0x5000-0x5FFF (4096 bytes) 
+// CHECK: note: see current operation: %0 = "aie.tile"() <{col = 1 : i32, row = 2 : i32}> : () -> index
+// CHECK: MemoryMap:
+// CHECK:   b : 0x0-0x1FFF (8192 bytes)
+// CHECK:   c : 0x2000-0x3FFF (8192 bytes)
+// CHECK:   a : 0x4000-0x4FFF (4096 bytes)
+// CHECK:   d : 0x5000-0x5FFF (4096 bytes)
 // CHECK: error: 'aie.tile' op Basic sequential allocation also failed.
 
 module @test {

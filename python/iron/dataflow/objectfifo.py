@@ -1,10 +1,8 @@
 # objectfifo.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2024 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024 Advanced Micro Devices, Inc.
 from __future__ import annotations
 import itertools
 import numpy as np
@@ -46,7 +44,7 @@ class ObjectFifo(Resolvable):
 
     Internally, it is a circular buffer with a given depth and type of buffer. The
     users of an ObjectFifo are explicitly either a Producer or a Consumer, and each
-    user has a Placeable endpoint.
+    user has an ObjectFifoEndpoint carrying its (possibly unplaced) tile.
     """
 
     # Used to generate unique ObjectFifo names when none is provided.
@@ -841,10 +839,13 @@ class ObjectFifoLink(ObjectFifoEndpoint, Resolvable):
             d.endpoint = self
         if tile is None:
             tile = AnyMemTile
-        tile = tile.copy()
-        if tile.tile_type is None:
-            tile.tile_type = AIETileType.MemTile
-        ObjectFifoEndpoint.__init__(self, tile)
+        # A link normally lives on a mem tile, but forward() documents
+        # forwarding through a compute tile as a valid override, so preserve
+        # an explicitly-set tile_type and only default when unset.
+        default_type = (
+            tile.tile_type if tile.tile_type is not None else AIETileType.MemTile
+        )
+        ObjectFifoEndpoint.__init__(self, tile.with_type(default_type))
 
     def resolve(
         self,

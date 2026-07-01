@@ -1,3 +1,6 @@
+// Copyright (C) 2023-2025 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 // RUN: aie-opt %s -transform-interpreter -split-input-file -verify-diagnostics | FileCheck %s
 
 #map = affine_map<(d0, d1, d2) -> (d0, d2)>

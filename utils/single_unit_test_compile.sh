@@ -1,8 +1,7 @@
 #!/bin/bash
 ##===- utils/single_unit_test_compile.sh - Wrapper to compile single unit test --*- Script -*-===##
 # 
-# This file licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2022-2024 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # 
 ##===----------------------------------------------------------------------===##

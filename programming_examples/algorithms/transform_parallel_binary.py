@@ -1,10 +1,8 @@
 # transform_parallel_binary.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2026 Advanced Micro Devices, Inc.
 """Tutorial: parallel two-input tile-by-tile transform on the NPU.
 
 Same shape as ``transform_binary.py`` but distributes the work across

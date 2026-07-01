@@ -1,3 +1,6 @@
+// Copyright (C) 2023-2024 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 // RUN: aie-opt %s -split-input-file -verify-diagnostics
 
 func.func @invalidElementType(%A : vector<4x8xf16>, %B : vector<8x4xf16>,

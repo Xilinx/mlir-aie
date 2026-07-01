@@ -1,3 +1,6 @@
+// Copyright (C) 2023 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 // RUN: aie-opt %s --dynamic-size-no-implicit-broadcast -split-input-file | FileCheck %s
 
 // CHECK-LABEL: func.func @test_dyn_dim_rewrite_to_const_false(

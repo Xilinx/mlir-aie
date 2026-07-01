@@ -1,8 +1,6 @@
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 """Single-core matmul, optionally AOT-compiled at known shapes.
 
 The design is decorated with the usual ``@iron.jit`` so callers can use

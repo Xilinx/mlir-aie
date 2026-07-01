@@ -1,10 +1,8 @@
 # neighbor_tile_memory_access/aie2.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2024 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024 Advanced Micro Devices, Inc.
 
 # Adapted from vector_scalar_add/aie2.py but with link between ComputeTiles
 # REQUIRES: ryzen_ai_npu1, chess

@@ -1,10 +1,8 @@
 # worker.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2024 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024 Advanced Micro Devices, Inc.
 """Worker and WorkerRuntimeBarrier: compute-core tasks and runtime synchronization primitives."""
 
 import sys
@@ -75,20 +73,32 @@ class Worker(ObjectFifoEndpoint):
         Raises:
             ValueError: Parameters are validated.
         """
-        if tile is None or tile is AnyComputeTile:
-            tile = AnyComputeTile.copy()
+        if tile is None:
+            tile = AnyComputeTile
         if tile.tile_type is not None and tile.tile_type != AIETileType.CoreTile:
             raise ValueError(
                 f"Worker requires a compute tile, but got tile_type={tile.tile_type}"
             )
-        tile.tile_type = AIETileType.CoreTile
-        self._tile = tile
+        # Store the user's Tile directly when it is already typed as CoreTile
+        # and no allocation_scheme override is needed. This preserves Python
+        # object identity so a Buffer and a Worker that share the same Tile
+        # object resolve to a single LogicalTileOp. When we need a fresh copy
+        # (untyped tile, singleton default, or allocation_scheme override) use
+        # with_type() — it always returns a new object.
+        if (
+            tile.tile_type == AIETileType.CoreTile
+            and allocation_scheme is None
+            and tile is not AnyComputeTile
+        ):
+            self._tile = tile
+        else:
+            self._tile = tile.with_type(
+                AIETileType.CoreTile, allocation_scheme=allocation_scheme
+            )
         self._while_true = while_true
         self.stack_size = stack_size
         self.allocation_scheme = allocation_scheme
         self._dynamic_objfifo_lowering = dynamic_objfifo_lowering
-        if allocation_scheme:
-            self._tile.allocation_scheme = allocation_scheme
         self.trace = trace
         self.trace_events = trace_events
 

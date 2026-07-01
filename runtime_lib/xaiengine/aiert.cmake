@@ -1,3 +1,5 @@
+# Copyright (C) 2023-2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 function(add_aiert_headers TARGET SRCPATH BUILDPATH INSTALLPATH)
   message("Installing aie-rt includes for ${TARGET} from ${SRCPATH} in ${BUILDPATH}")

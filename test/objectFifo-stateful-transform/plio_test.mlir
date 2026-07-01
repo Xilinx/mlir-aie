@@ -1,14 +1,11 @@
 //===- plio_test.mlir -------------------------------------------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
 // Copyright (C) 2024 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
 
 // CHECK:  aie.flow(%{{.*}}tile_2_0, PLIO : 0, %{{.*}}tile_2_2, DMA : 0)
 // CHECK:  aie.flow(%{{.*}}tile_2_2, DMA : 0, %{{.*}}tile_2_0, PLIO : 0)
