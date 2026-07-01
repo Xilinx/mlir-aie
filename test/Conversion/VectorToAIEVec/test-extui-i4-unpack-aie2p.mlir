@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s --convert-vector-to-aievec='aie-target=aie2p target-backend=llvmir' -cse | FileCheck %s
+// RUN: aie-opt %s --convert-vector-to-aievec='aie-target=aie2p' -cse | FileCheck %s
 
 // Canonical standard-MLIR for AWQ int4 unpack on AIE2P:
 //   1. byte load (vector<N/2 x i8>)

@@ -111,7 +111,7 @@ Same as `buildHostLin.md`, but pick a Python that matches your `pyxrt` (above).
 ```bash
 uv venv --python 3.12 ironenv && source ironenv/bin/activate
 pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-4
-pip install llvm-aie  -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
+pip install -r utils/peano-requirements.txt  # Peano, pinned to the tested nightly CI uses
 ```
 
 Keep this `mlir-aie` checkout at the commit the wheel was built from (the wheel
