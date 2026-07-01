@@ -773,9 +773,8 @@ ParseResult TraceHostConfigOp::parse(OpAsmParser &parser,
   // Parse reuse_output_buffer (default: false)
   bool reuseOutputBuffer =
       succeeded(parser.parseOptionalKeyword("reuse_output_buffer"));
-  result.attributes.set(
-      "reuse_output_buffer",
-      parser.getBuilder().getBoolAttr(reuseOutputBuffer));
+  result.attributes.set("reuse_output_buffer",
+                        parser.getBuilder().getBoolAttr(reuseOutputBuffer));
 
   // Parse routing (default: single)
   TraceShimRouting routingVal = TraceShimRouting::Single;

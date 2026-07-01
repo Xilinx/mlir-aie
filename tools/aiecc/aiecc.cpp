@@ -4821,6 +4821,19 @@ generateFullElfArtifact(ArrayRef<DeviceElfInfo> deviceInfos,
 // CDO/PDI/xclbin Generation
 //===----------------------------------------------------------------------===//
 
+/// Maximum number of host buffer (boN) arguments a kernel may take.
+///
+/// The NPU firmware only pre-translates the first 5 host buffer addresses from
+/// the host address space into the AIE address space. Buffers beyond that would
+/// be DMA'd from the wrong address -- except AIETargetNPU folds the translation
+/// offset into the DDR address patch for those args (see kDDRAIEAddrOffset), so
+/// designs with more than 5 host buffers work correctly. This cap is therefore
+/// a conservative, verified ceiling rather than a hard hardware limit: host BO
+/// counts up to this value are validated on hardware (see the many_buffers
+/// test). Raise it (and extend the hardware tests) if larger counts are needed
+/// and verified.
+static constexpr int kMaxHostBOs = 16;
+
 /// Fallback host-buffer (boN) count for a device that has no runtime_sequence.
 /// Such a device has no operand list to read, yet may still be launched by the
 /// host with host buffers (e.g. the ctrl-packet reconfig "base" xclbin, whose
@@ -4890,6 +4903,14 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
         computeNumHostBOs(moduleOp, devName, tmpDirName);
     if (failed(numHostBOs))
       return failure();
+    if (*numHostBOs > kMaxHostBOs) {
+      llvm::errs() << "error: device '" << devName << "' has " << *numHostBOs
+                   << " host buffer arguments, which exceeds the maximum "
+                      "supported and verified count of "
+                   << kMaxHostBOs
+                   << ". Reduce the number of host buffer arguments.\n";
+      return failure();
+    }
     if (failed(generateKernelsJson(kernelsPath, devName, *numHostBOs)))
       return failure();
 

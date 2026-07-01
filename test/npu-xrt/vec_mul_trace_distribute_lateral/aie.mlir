@@ -21,8 +21,8 @@
 // With -aie-insert-trace-flows="distribute-channels=true lateral-routing=true":
 //   - Lateral routing redirects traces from column 0 shim to column 1 shim
 //   - Channel distribution splits the two traces across S2MM channels 0 and 1
-//   - Both channels share arg_idx=4, split by offset within a 2x trace buffer
-//     (channel 0 at offset 0, channel 1 at offset buffer_size)
+//   - Both channels share the appended trace buffer argument, split by offset
+//     within a 2x trace buffer (channel 0 at offset 0, channel 1 at buffer_size)
 //
 //===----------------------------------------------------------------------===//
 
@@ -127,7 +127,8 @@ module {
     aie.runtime_sequence(%arg0: memref<4096xi32>, %arg1: memref<1xi32>,
                          %arg2: memref<4096xi32>) {
 
-      // Trace: 8192 bytes per channel, 2 channels = 16384 total at arg_idx=4.
+      // Trace: 8192 bytes per channel, 2 channels = 16384 total, written to the
+      // trace buffer appended as the last runtime_sequence argument.
       // The distribute pass splits this into two 8192-byte regions by offset.
       aie.trace.host_config buffer_size = 8192
 

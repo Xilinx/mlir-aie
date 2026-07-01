@@ -61,9 +61,10 @@ int main(int argc, const char *argv[]) {
 
   args myargs = parse_args(argc, argv);
 
-  int res = setup_and_run_aie<DATATYPE_IN1, DATATYPE_IN2, DATATYPE_OUT,
-                              initialize_bufIn1, initialize_bufIn2,
-                              initialize_bufOut, verify_vector_scalar_mul>(
-      IN1_VOLUME, IN2_VOLUME, OUT_VOLUME, myargs);
+  int res = setup_and_run_aie(
+      verify_vector_scalar_mul,
+      std::make_tuple(make_in<DATATYPE_IN1>(IN1_VOLUME, initialize_bufIn1),
+                      make_in<DATATYPE_IN2>(IN2_VOLUME, initialize_bufIn2)),
+      make_out<DATATYPE_OUT>(OUT_VOLUME, initialize_bufOut), myargs);
   return res;
 }

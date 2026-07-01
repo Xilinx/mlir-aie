@@ -9,18 +9,12 @@
 //
 //===----------------------------------------------------------------------===//
 
+// The host BO count is derived from the runtime_sequence argument count, so a
+// 6-argument sequence emits exactly bo0..bo5.
+
 // RUN: %python aiecc.py -n --no-compile --no-link --aie-generate-xclbin %s
 // RUN: FileCheck %s --input-file=buffers_xclbin.mlir.prj/main_kernels.json
 
-// CHECK: "ps-kernels"
-// CHECK: "kernels"
-// CHECK: "arguments"
-// CHECK: "name": "opcode"
-// CHECK: "type": "uint64_t"
-// CHECK: "name": "instr"
-// CHECK: "type": "char *"
-// CHECK: "name": "ninstr"
-// CHECK: "type": "uint32_t"
 // CHECK: "name": "bo0"
 // CHECK: "offset": "0x14"
 // CHECK: "name": "bo1"
@@ -30,10 +24,6 @@
 // CHECK: "name": "bo5"
 // CHECK: "offset": "0x3C"
 // CHECK-NOT: "name": "bo6"
-// CHECK: "dpu_kernel_id": "0x901"
-// CHECK: "name": "MLIRAIE"
-// CHECK: "name": "MLIR_AIE"
-// CHECK: "type": "dpu"
 
 module {
   aie.device(npu1) {

@@ -12,7 +12,7 @@
 # End-to-end test for distribute-channels + lateral-routing trace features.
 #
 # With distribute-channels, the 8192-byte host trace buffer is split into
-# two 8192-byte regions (total 16384 bytes at arg_idx=4):
+# two 8192-byte regions (total 16384 bytes in the appended trace buffer):
 #   - Channel 0 (offset 0):     core trace events
 #   - Channel 1 (offset 8192):  memory DMA trace events
 #

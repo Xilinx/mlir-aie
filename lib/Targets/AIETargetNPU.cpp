@@ -96,10 +96,25 @@ void appendLoadPdi(std::vector<uint32_t> &instructions, NpuLoadPdiOp op) {
                                   op.getAddress());
 }
 
+// The NPU firmware pre-translates host buffer addresses from the host address
+// space into the AIE address space by adding this offset, but only for the
+// first `kNumFirmwareTranslatedArgs` host arguments. For host arguments beyond
+// that, the firmware leaves the raw host address in place, so the DDR patch
+// must fold the same translation offset into its arg_plus to land at the
+// correct AIE address. See NpuAddressPatchOp handling below.
+static constexpr uint32_t kDDRAIEAddrOffset = 0x80000000;
+static constexpr uint32_t kNumFirmwareTranslatedArgs = 5;
+
 void appendAddressPatch(std::vector<uint32_t> &instructions,
                         NpuAddressPatchOp op) {
-  aie_runtime::txn_append_address_patch(instructions, op.getAddr(),
-                                        op.getArgIdx(), op.getArgPlus());
+  uint32_t argIdx = op.getArgIdx();
+  uint32_t argPlus = op.getArgPlus();
+  // Host arguments beyond the firmware-translated set get the AIE address-space
+  // offset applied here instead of by firmware.
+  if (argIdx >= kNumFirmwareTranslatedArgs)
+    argPlus += kDDRAIEAddrOffset;
+  aie_runtime::txn_append_address_patch(instructions, op.getAddr(), argIdx,
+                                        argPlus);
 }
 
 // Cached resolution of NpuBlockWriteOp's data words.

@@ -153,13 +153,11 @@ struct AIEInsertTraceFlowsPass
       // Append a trace-buffer argument. Its element type/size is not part of
       // the host ABI (the host sizes the buffer itself); use an i8 memref so
       // the byte size is self-describing.
-      auto traceBufType = MemRefType::get({bufferSizeBytes},
-                                          IntegerType::get(device.getContext(),
-                                                           8));
+      auto traceBufType = MemRefType::get(
+          {bufferSizeBytes}, IntegerType::get(device.getContext(), 8));
       Block &entryBB = runtimeSeq.getBody().front();
-      auto newArg = entryBB.addArgument(traceBufType, runtimeSeq.getLoc());
+      entryBB.addArgument(traceBufType, runtimeSeq.getLoc());
       traceArgIdx = entryBB.getNumArguments() - 1;
-      (void)newArg;
     }
 
     // Remove host_config op
