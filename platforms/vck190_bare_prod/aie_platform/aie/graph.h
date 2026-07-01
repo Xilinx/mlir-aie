@@ -1,3 +1,6 @@
+// Copyright (C) 2022 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 #include "adf.h"
 #include "aie/add.h"
 

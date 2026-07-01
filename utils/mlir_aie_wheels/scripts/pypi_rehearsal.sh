@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 # PyPI publish rehearsal: strip a copy of each wheel, run the same metadata
 # and size checks the real upload would, but never push to PyPI. Lets every
 # build report what a stripped PyPI-bound wheel would look like without

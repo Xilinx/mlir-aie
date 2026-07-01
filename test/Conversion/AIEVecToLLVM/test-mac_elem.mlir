@@ -1,3 +1,6 @@
+// Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 // RUN: aie-opt %s -convert-aievec-to-llvm -split-input-file | FileCheck %s
 
 // CHECK-LABEL: mac_flat_vec

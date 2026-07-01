@@ -1,3 +1,6 @@
+// Copyright (C) 2023-2024 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 // RUN: aie-opt %s -split-input-file -verify-diagnostics | FileCheck %s
 
 // CHECK-LABEL: @matmul_i8i4

@@ -1,9 +1,6 @@
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
 # Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
-# See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025 AMD Inc.
 
 # RUN: %run_on_npu1% %pytest %s
 # RUN: %run_on_npu2% %pytest %s

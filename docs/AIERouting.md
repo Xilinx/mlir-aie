@@ -1,4 +1,8 @@
-﻿# AIE Flows and Routing
+﻿<!-- Copyright (C) 2021 Xilinx, Inc.
+Copyright (C) 2022-2024 Advanced Micro Devices, Inc.
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
+
+# AIE Flows and Routing
 
 Introduction on how to connect tiles in the AIE physical dialect
 

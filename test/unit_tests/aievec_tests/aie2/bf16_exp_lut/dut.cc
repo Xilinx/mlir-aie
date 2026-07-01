@@ -1,3 +1,6 @@
+// Copyright (C) 2023-2024 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 #include "lut_based_ops.h"
 void dut(bfloat16 *restrict v1, bfloat16 *restrict v2) {
   size_t v3 = 0;

@@ -1,3 +1,7 @@
+# Copyright (C) 2021 Xilinx, Inc.
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 [submodule "platforms/boards"]
 	path = platforms/boards
 	url = https://github.com/Xilinx/XilinxBoardStore.git
@@ -14,4 +18,4 @@
 	branch = c-api-support
 [submodule "third_party/aie_api"]
 	path = third_party/aie_api
-	url = https://github.com/jgmelber/aie_api
+	url = https://github.com/Xilinx/aie_api

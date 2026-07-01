@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 """Compute the mlir-aie wheel version from git history.
 
 Standalone helper: stdlib-only imports so CI can invoke it directly

@@ -1,10 +1,8 @@
 # vector_scalar_mul/vector_scalar_mul.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 """Vector scalar multiply — IRON API design with ``@iron.jit`` compilation.
 
 A single AIE compute core scales ``a`` by a runtime scalar ``factor`` to produce

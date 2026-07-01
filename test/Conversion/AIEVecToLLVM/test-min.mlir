@@ -1,3 +1,6 @@
+// Copyright (C) 2024 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 // RUN: aie-opt %s -split-input-file -convert-aievec-to-llvm -verify-diagnostics | FileCheck %s
 
 func.func @i8_min(%arg0 : vector<64xi8>) -> vector<64xi8> {

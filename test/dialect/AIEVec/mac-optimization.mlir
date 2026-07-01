@@ -1,3 +1,6 @@
+// Copyright (C) 2023-2024 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 // RUN: aie-opt %s -optimize-aievec -canonicalize -split-input-file | FileCheck %s
 
 // CHECK-LABEL: func.func @merge_single_column_mac(
