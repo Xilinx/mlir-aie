@@ -6,7 +6,7 @@
 #
 # Copyright (C) 2024 Advanced Micro Devices, Inc.
 
-from ... import ir  # pyright: ignore[reportMissingImports]
+from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     AIEArch,
     AIETileType,

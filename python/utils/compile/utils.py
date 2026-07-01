@@ -17,7 +17,7 @@ import aie.compiler.aiecc.main as aiecc
 import aie.utils.config as config
 
 if TYPE_CHECKING:
-    from aie.ir import (
+    from aie.ir import (  # pyright: ignore[reportMissingImports]
         Module,  # pyright: ignore[reportAttributeAccessIssue]
     )
 

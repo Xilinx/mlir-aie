@@ -26,7 +26,7 @@ shared state) for designs that need direct control.
 from dataclasses import dataclass
 from typing import Sequence
 
-from ... import ir  # pyright: ignore[reportMissingImports]
+from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     AIETileType,
     DMAChannelDir,

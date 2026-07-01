@@ -18,7 +18,7 @@ from typing import Sequence, TypeAlias
 StreamDims: TypeAlias = list[Sequence[int]]
 PadDims: TypeAlias = list[Sequence[int]]
 
-from ... import ir  # pyright: ignore[reportMissingImports]
+from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     AIETileType,
     ObjectFifoPort,

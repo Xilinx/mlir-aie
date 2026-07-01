@@ -6,7 +6,7 @@
 #
 # Copyright (C) 2024-2025 Advanced Micro Devices, Inc.
 
-from aie.ir import *
+from aie.ir import *  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from aie.dialects.aie import *  # pyright: ignore[reportMissingImports]
 
 import argparse

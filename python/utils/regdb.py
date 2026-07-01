@@ -593,7 +593,9 @@ class MLIRModuleAnnotator:
             True if annotation was added, False otherwise
         """
         # Import here to avoid circular imports and allow module to load without MLIR
-        from aie.ir import StringAttr  # pyright: ignore[reportAttributeAccessIssue]
+        from aie.ir import (  # pyright: ignore[reportMissingImports]
+            StringAttr,  # pyright: ignore[reportAttributeAccessIssue]
+        )
 
         address, row, col, value, mask = self.get_address_from_op(op, target_model)
 
@@ -737,12 +739,14 @@ class MLIRModuleAnnotator:
             Number of operations annotated
         """
         # Import here to avoid circular imports and allow module to load without MLIR
-        from aie.ir import (
+        from aie.ir import (  # pyright: ignore[reportMissingImports]
             Context,  # pyright: ignore[reportAttributeAccessIssue]
             Module,  # pyright: ignore[reportAttributeAccessIssue]
             Location,  # pyright: ignore[reportAttributeAccessIssue]
         )
-        from aie._mlir_libs import get_dialect_registry
+        from aie._mlir_libs import (  # pyright: ignore[reportMissingImports]
+            get_dialect_registry,  # pyright: ignore[reportAttributeAccessIssue]
+        )
 
         # Read input file
         with open(input_path, "r") as f:

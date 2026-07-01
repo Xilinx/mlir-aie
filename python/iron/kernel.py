@@ -13,7 +13,7 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-from .. import ir  # pyright: ignore[reportMissingImports]
+from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ..dialects import memref  # pyright: ignore[reportAttributeAccessIssue]
 from ..extras.dialects.func import FuncOp  # pyright: ignore[reportMissingImports]
 from ..helpers.dialects.func import call

@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 from ...utils import trace as trace_utils
 
-from ... import ir  # pyright: ignore[reportMissingImports]
+from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 
 from ...dialects.aiex import (
     runtime_sequence,

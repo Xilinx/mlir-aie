@@ -11,7 +11,7 @@ import itertools
 import numpy as np
 from typing import Sequence, TYPE_CHECKING
 
-from .. import ir  # pyright: ignore[reportMissingImports]
+from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ..dialects.aie import buffer
 from ..helpers.util import (
     NpuDType,
