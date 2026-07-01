@@ -1,3 +1,6 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 // RUN: aie-opt %s -aie-trace-to-config -aie-trace-pack-reg-writes -aie-inline-trace-config | FileCheck %s
 
 module {

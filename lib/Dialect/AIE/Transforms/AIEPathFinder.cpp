@@ -1,11 +1,8 @@
 //===- AIEPathfinder.cpp ----------------------------------------*- C++ -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
 // Copyright (C) 2021-2022 Xilinx, Inc.
 // Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -186,6 +183,21 @@ ShimMuxOp DynamicTileAnalysis::getShimMux(OpBuilder &builder, int col) {
 
 void Pathfinder::initialize(int maxCol, int maxRow,
                             const AIETargetModel &targetModel) {
+  // Reset all state so a Pathfinder instance can be safely reused across
+  // analyses/devices. In particular the dense-graph cache below must be
+  // rebuilt for the new topology; leaving graphBuilt set would reuse stale
+  // node IDs and adjacency.
+  graph.clear();
+  flows.clear();
+  graphBuilt = false;
+  nodeIds.clear();
+  nodes.clear();
+  adjacency.clear();
+  distance.clear();
+  indexInHeap.clear();
+  colors.clear();
+  preds.clear();
+  predEdge.clear();
 
   std::map<WireBundle, int> maxChannels;
   auto intraconnect = [&](int col, int row) {
@@ -400,94 +412,154 @@ bool Pathfinder::addFixedConnection(SwitchboxOp switchboxOp) {
 
 static constexpr double INF = std::numeric_limits<double>::max();
 
-std::map<PathEndPoint, PathEndPoint>
-Pathfinder::dijkstraShortestPaths(PathEndPoint src) {
-  // Use std::map instead of DenseMap because DenseMap doesn't let you
-  // overwrite tombstones.
-  std::map<PathEndPoint, double> distance;
-  std::map<PathEndPoint, PathEndPoint> preds;
-  std::map<PathEndPoint, uint64_t> indexInHeap;
-  enum Color { WHITE, GRAY, BLACK };
-  std::map<PathEndPoint, Color> colors;
+namespace {
+enum Color : int8_t { WHITE = 0, GRAY = 1, BLACK = 2 };
+} // namespace
+
+int Pathfinder::getOrAddNodeId(const PathEndPoint &pep) {
+  auto it = nodeIds.find(pep);
+  if (it != nodeIds.end())
+    return it->second;
+  int id = static_cast<int>(nodes.size());
+  nodeIds[pep] = id;
+  nodes.push_back(pep);
+  return id;
+}
+
+// Build the dense integer node numbering and per-node adjacency once. The graph
+// topology is fixed across congestion iterations (only the demand weights
+// change), so this is computed a single time and the edges carry live pointers
+// into `graph` for demand lookups. Edge order per node matches the legacy
+// PathEndPoint-sorted channel order to preserve identical routing output.
+void Pathfinder::buildRoutingGraph() {
+  // Seed the dense node set with all flow endpoints (the only nodes Dijkstra is
+  // ever started from or traced back to). Remaining nodes are discovered lazily
+  // as edge destinations below, exactly mirroring the legacy on-demand channel
+  // expansion in dijkstraShortestPaths.
+  for (auto &f : flows) {
+    getOrAddNodeId(f.src);
+    for (auto &d : f.dsts)
+      getOrAddNodeId(d);
+  }
+
+  // Process nodes by growing index; getOrAddNodeId() may append new nodes as
+  // edge destinations are discovered, so re-read nodes.size() each iteration.
+  for (size_t id = 0; id < nodes.size(); id++) {
+    PathEndPoint src = nodes[id];
+    // Collect destination PathEndPoints exactly as the legacy lazy channel
+    // discovery did, then sort by PathEndPoint for deterministic edge order.
+    std::vector<PathEndPoint> dests;
+    auto intraIt = graph.find(std::make_pair(src.coords, src.coords));
+    if (intraIt != graph.end()) {
+      auto &sb = intraIt->second;
+      for (size_t i = 0; i < sb.srcPorts.size(); i++)
+        for (size_t j = 0; j < sb.dstPorts.size(); j++)
+          if (sb.srcPorts[i] == src.port &&
+              sb.connectivity[i][j] == Connectivity::AVAILABLE)
+            dests.push_back(PathEndPoint{src.coords, sb.dstPorts[j]});
+    }
+    std::vector<std::pair<TileID, Port>> neighbors = {
+        {{src.coords.col, src.coords.row - 1},
+         {WireBundle::North, src.port.channel}},
+        {{src.coords.col - 1, src.coords.row},
+         {WireBundle::East, src.port.channel}},
+        {{src.coords.col, src.coords.row + 1},
+         {WireBundle::South, src.port.channel}},
+        {{src.coords.col + 1, src.coords.row},
+         {WireBundle::West, src.port.channel}}};
+    for (const auto &[neighborCoords, neighborPort] : neighbors) {
+      auto nIt = graph.find(std::make_pair(src.coords, neighborCoords));
+      if (nIt != graph.end() &&
+          src.port.bundle == getConnectingBundle(neighborPort.bundle)) {
+        auto &sb = nIt->second;
+        if (std::find(sb.dstPorts.begin(), sb.dstPorts.end(), neighborPort) !=
+            sb.dstPorts.end())
+          dests.push_back({neighborCoords, neighborPort});
+      }
+    }
+    std::sort(dests.begin(), dests.end());
+
+    std::vector<Edge> edges;
+    edges.reserve(dests.size());
+    for (auto &dest : dests) {
+      auto &sb = graph[std::make_pair(src.coords, dest.coords)];
+      int i = static_cast<int>(std::distance(
+          sb.srcPorts.begin(),
+          std::find(sb.srcPorts.begin(), sb.srcPorts.end(), src.port)));
+      int j = static_cast<int>(std::distance(
+          sb.dstPorts.begin(),
+          std::find(sb.dstPorts.begin(), sb.dstPorts.end(), dest.port)));
+      assert(i < static_cast<int>(sb.srcPorts.size()));
+      assert(j < static_cast<int>(sb.dstPorts.size()));
+      int destId = getOrAddNodeId(dest);
+      edges.push_back(Edge{destId, &sb, i, j});
+    }
+    // getOrAddNodeId above may have reallocated `adjacency` via index growth in
+    // later iterations, but we only assign this node's edges now.
+    if (adjacency.size() < nodes.size())
+      adjacency.resize(nodes.size());
+    adjacency[id] = std::move(edges);
+  }
+  size_t n = nodes.size();
+  if (adjacency.size() < n)
+    adjacency.resize(n);
+
+  // Size the reusable Dijkstra scratch buffers.
+  distance.assign(n, INF);
+  indexInHeap.assign(n, 0);
+  colors.assign(n, WHITE);
+  preds.assign(n, -1);
+  predEdge.assign(n, Edge{-1, nullptr, 0, 0});
+  graphBuilt = true;
+}
+
+// Dijkstra over the dense graph from dense node `srcId`. Fills the `preds` and
+// `predEdge` scratch buffers. This is a 1:1 port of the legacy
+// PathEndPoint-keyed version with all per-node std::map lookups replaced by
+// flat vector indexing; the push/relax control flow (including the WHITE-node
+// always-push behavior and the absence of a heap decrease-key) is preserved to
+// keep output identical.
+void Pathfinder::dijkstraShortestPaths(int srcId) {
+  size_t n = nodes.size();
+  std::fill(distance.begin(), distance.end(), INF);
+  std::fill(colors.begin(), colors.end(), static_cast<int8_t>(WHITE));
+  std::fill(preds.begin(), preds.end(), -1);
+  std::fill(indexInHeap.begin(), indexInHeap.end(), uint64_t{0});
+  (void)n;
+
   typedef d_ary_heap_indirect<
-      /*Value=*/PathEndPoint, /*Arity=*/4,
-      /*IndexInHeapPropertyMap=*/std::map<PathEndPoint, uint64_t>,
-      /*DistanceMap=*/std::map<PathEndPoint, double> &,
+      /*Value=*/int, /*Arity=*/4,
+      /*IndexInHeapPropertyMap=*/std::vector<uint64_t> &,
+      /*DistanceMap=*/std::vector<double> &,
       /*Compare=*/std::less<>>
       MutableQueue;
   MutableQueue Q(distance, indexInHeap);
 
-  distance[src] = 0.0;
-  Q.push(src);
+  distance[srcId] = 0.0;
+  Q.push(srcId);
   while (!Q.empty()) {
-    src = Q.top();
+    int s = Q.top();
     Q.pop();
-
-    // get all channels src connects to
-    if (channels.count(src) == 0) {
-      auto &sb = graph[std::make_pair(src.coords, src.coords)];
-      for (size_t i = 0; i < sb.srcPorts.size(); i++) {
-        for (size_t j = 0; j < sb.dstPorts.size(); j++) {
-          if (sb.srcPorts[i] == src.port &&
-              sb.connectivity[i][j] == Connectivity::AVAILABLE) {
-            // connections within the same switchbox
-            channels[src].push_back(PathEndPoint{src.coords, sb.dstPorts[j]});
-          }
-        }
-      }
-      // connections to neighboring switchboxes
-      std::vector<std::pair<TileID, Port>> neighbors = {
-          {{src.coords.col, src.coords.row - 1},
-           {WireBundle::North, src.port.channel}},
-          {{src.coords.col - 1, src.coords.row},
-           {WireBundle::East, src.port.channel}},
-          {{src.coords.col, src.coords.row + 1},
-           {WireBundle::South, src.port.channel}},
-          {{src.coords.col + 1, src.coords.row},
-           {WireBundle::West, src.port.channel}}};
-
-      for (const auto &[neighborCoords, neighborPort] : neighbors) {
-        if (graph.count(std::make_pair(src.coords, neighborCoords)) > 0 &&
-            src.port.bundle == getConnectingBundle(neighborPort.bundle)) {
-          auto &sb = graph[std::make_pair(src.coords, neighborCoords)];
-          if (std::find(sb.dstPorts.begin(), sb.dstPorts.end(), neighborPort) !=
-              sb.dstPorts.end())
-            channels[src].push_back({neighborCoords, neighborPort});
-        }
-      }
-      std::sort(channels[src].begin(), channels[src].end());
-    }
-
-    for (auto &dest : channels[src]) {
-      if (distance.count(dest) == 0)
-        distance[dest] = INF;
-      auto &sb = graph[std::make_pair(src.coords, dest.coords)];
-      size_t i = std::distance(
-          sb.srcPorts.begin(),
-          std::find(sb.srcPorts.begin(), sb.srcPorts.end(), src.port));
-      size_t j = std::distance(
-          sb.dstPorts.begin(),
-          std::find(sb.dstPorts.begin(), sb.dstPorts.end(), dest.port));
-      assert(i < sb.srcPorts.size());
-      assert(j < sb.dstPorts.size());
-      bool relax = distance[src] + sb.demand[i][j] < distance[dest];
-      if (colors.count(dest) == 0) {
-        // was WHITE
+    for (Edge &e : adjacency[s]) {
+      int dst = e.dst;
+      double w = e.sb->demand[e.i][e.j];
+      bool relax = distance[s] + w < distance[dst];
+      if (colors[dst] == WHITE) {
         if (relax) {
-          distance[dest] = distance[src] + sb.demand[i][j];
-          preds[dest] = src;
-          colors[dest] = GRAY;
+          distance[dst] = distance[s] + w;
+          preds[dst] = s;
+          predEdge[dst] = e;
+          colors[dst] = GRAY;
         }
-        Q.push(dest);
-      } else if (colors[dest] == GRAY && relax) {
-        distance[dest] = distance[src] + sb.demand[i][j];
-        preds[dest] = src;
+        Q.push(dst);
+      } else if (colors[dst] == GRAY && relax) {
+        distance[dst] = distance[s] + w;
+        preds[dst] = s;
+        predEdge[dst] = e;
       }
     }
-    colors[src] = BLACK;
+    colors[s] = BLACK;
   }
-
-  return preds;
 }
 
 // Perform congestion-aware routing for all flows which have been added.
@@ -500,6 +572,13 @@ std::optional<std::map<PathEndPoint, SwitchSettings>>
 Pathfinder::findPaths(const int maxIterations) {
   LLVM_DEBUG(llvm::dbgs() << "\t---Begin Pathfinder::findPaths---\n");
   std::map<PathEndPoint, SwitchSettings> routingSolution;
+  // Build the dense routing graph once; topology is invariant across
+  // iterations.
+  if (!graphBuilt)
+    buildRoutingGraph();
+  // Stamp-based "processed" set (avoids O(n) clears per flow).
+  std::vector<uint32_t> processedStamp(nodes.size(), 0);
+  uint32_t curStamp = 0;
   // initialize all Channel histories to 0
   for (auto &[_, sb] : graph) {
     for (size_t i = 0; i < sb.srcPorts.size(); i++) {
@@ -565,41 +644,45 @@ Pathfinder::findPaths(const int maxIterations) {
       for (const auto &[packetGroupId, isPriority, src, dsts] : flows) {
         // Use dijkstra to find path given current demand from the start
         // switchbox; find the shortest paths to each other switchbox. Output is
-        // in the predecessor map, which must then be processed to get
+        // in the predecessor arrays, which must then be processed to get
         // individual switchbox settings
-        std::set<PathEndPoint> processed;
-        std::map<PathEndPoint, PathEndPoint> preds = dijkstraShortestPaths(src);
+        int srcId = nodeIds.at(src);
+        dijkstraShortestPaths(srcId);
 
         // trace the path of the flow backwards via predecessors
         // increment used_capacity for the associated channels
         SwitchSettings switchSettings;
-        processed.insert(src);
+        ++curStamp;
+        processedStamp[srcId] = curStamp;
         for (auto endPoint : dsts) {
           if (endPoint == src) {
             // route to self
             switchSettings[src.coords].srcs.push_back(src.port);
             switchSettings[src.coords].dsts.push_back(src.port);
           }
-          auto curr = endPoint;
+          int currId = nodeIds.at(endPoint);
           // trace backwards until a vertex already processed is reached
-          while (!processed.count(curr)) {
-            auto &sb = graph[std::make_pair(preds[curr].coords, curr.coords)];
-            size_t i =
-                std::distance(sb.srcPorts.begin(),
-                              std::find(sb.srcPorts.begin(), sb.srcPorts.end(),
-                                        preds[curr].port));
-            size_t j = std::distance(
-                sb.dstPorts.begin(),
-                std::find(sb.dstPorts.begin(), sb.dstPorts.end(), curr.port));
-            assert(i < sb.srcPorts.size());
-            assert(j < sb.dstPorts.size());
+          while (processedStamp[currId] != curStamp) {
+            // If Dijkstra never reached this node it has no predecessor; the
+            // destination is unroutable under the current demand. Bail out of
+            // this iteration rather than indexing with a -1 predecessor.
+            if (preds[currId] < 0)
+              return std::nullopt;
+            const PathEndPoint &curr = nodes[currId];
+            const Edge &e = predEdge[currId];
+            int predId = preds[currId];
+            const PathEndPoint &pred = nodes[predId];
+            SwitchboxConnect &sb = *e.sb;
+            int i = e.i;
+            int j = e.j;
             sb.isPriority[i][j] = isPriority;
             if (packetGroupId >= 0 &&
                 (sb.packetGroupId[i][j] == -1 ||
                  sb.packetGroupId[i][j] == packetGroupId)) {
               for (size_t k = 0; k < sb.srcPorts.size(); k++) {
                 for (size_t l = 0; l < sb.dstPorts.size(); l++) {
-                  if (k == i || l == j) {
+                  if (k == static_cast<size_t>(i) ||
+                      l == static_cast<size_t>(j)) {
                     sb.packetGroupId[k][l] = packetGroupId;
                   }
                 }
@@ -616,13 +699,12 @@ Pathfinder::findPaths(const int maxIterations) {
             // if at capacity, bump demand to discourage using this Channel
             // this means the order matters!
             sb.bumpDemand(i, j);
-            if (preds[curr].coords == curr.coords) {
-              switchSettings[preds[curr].coords].srcs.push_back(
-                  preds[curr].port);
+            if (pred.coords == curr.coords) {
+              switchSettings[pred.coords].srcs.push_back(pred.port);
               switchSettings[curr.coords].dsts.push_back(curr.port);
             }
-            processed.insert(curr);
-            curr = preds[curr];
+            processedStamp[currId] = curStamp;
+            currId = predId;
           }
         }
         // add this flow to the proposed solution

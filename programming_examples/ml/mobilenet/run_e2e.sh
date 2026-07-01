@@ -1,4 +1,8 @@
 #!/bin/bash
+
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 #
 # Build + run a per-block or per-chain IRON design on the NPU2 and bit-exact
 # compare against brevitas fixtures.

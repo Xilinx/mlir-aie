@@ -1,10 +1,7 @@
 //===- AIE2_dynamic_locks.mlir ---------------------------------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
 // Copyright (C) 2023 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -14,17 +11,17 @@
 // Note that an objectFifo.acquire and objectFifo.release always denotes
 // the _absolute_ number of objects we wish to be able to access after the
 // operation completes. To enable this, however, we need to acquire or release
-// a number of locks relative to the number of objects already held. For 
+// a number of locks relative to the number of objects already held. For
 // example, if we already hold a producer lock to create 2 objects, and we
-// call objectFifo.acquire<Produce>(..., 2), ZERO more locks need to be 
-// acquired. 
+// call objectFifo.acquire<Produce>(..., 2), ZERO more locks need to be
+// acquired.
 //
 // Therefore, we must do bookkeeping to know for each acquire/release how much
 // to increment/decrement locks by. This is not always statically possible
 // (e.g. inside functions that can be called from anywhere, with any number
 // of locks held).
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
 
 // The following is an idea of how a dynamically managed objectFifo could look
 // like, where lock acquire/release numbers are not known statically. The
@@ -73,7 +70,7 @@
 // CHECK:       %[[uselock0_diff:.*]] = arith.subi %[[lock0_num0]], %[[uselock0_target:.*]] : i32
 //   If the difference is greater than zero, this means we want more objects
 //   than we already hold. Therefore we need to acquire a lock. If it is smaller
-//   (the below SSA evaluates to false), no additional locks need to be 
+//   (the below SSA evaluates to false), no additional locks need to be
 //   acquired.
 // CHECK:       %[[uselock0_need_acq:.*]] = arith.cmpi "sgt" %[[uselock0_diff]], 1 : i32
 //   If we enter the if condition, we acquire more objects, thus must update our
@@ -92,7 +89,7 @@
 // CHECK:         scf.yield %[[lock0_num0]]
 //              }
 
-// No release in input code here, so there's nothing for lowering it here 
+// No release in input code here, so there's nothing for lowering it here
 // either. Let's go into the loop.
 
 // CHECK:       %c1_0 = arith.constant 1 : index
@@ -121,7 +118,7 @@
 // CHECK:         memref.store %c1_i64, %[[fifo_buff_0]][] : memref<i64>
 
 // Release inside loop:
-//   The release will always release, but additionally to 
+//   The release will always release, but additionally to
 // CHECK:         aie.use_lock(%[[fifo_cons_lock]], Release, 1)
 // CHECK:         %[[lock0_num4:.*]] = arith.subi %[[lock0_num3]], 1 : i32
 
@@ -181,10 +178,10 @@ module @aie2_dynamic_locks {
 
             scf.for %idx = %i_c0 to %i_c3 step %i_c1 {
                 // Acquire one element (again). In the first iteration of the
-                // loop, this does not require taking any additional locks, 
+                // loop, this does not require taking any additional locks,
                 // since we already hold an element from the acquire<Produce>
                 // just above the loop. In the second iteration, that object
-                // has been released, and now a lock acquire 1 would be 
+                // has been released, and now a lock acquire 1 would be
                 // required.
                 %subview = aie.objectfifo.acquire @fifo (Produce, 1) : !aie.objectfifosubview<memref<i64>>
                 %elem = aie.objectfifo.subview.access %subview[0] : !aie.objectfifosubview<memref<i64>> -> memref<i64>

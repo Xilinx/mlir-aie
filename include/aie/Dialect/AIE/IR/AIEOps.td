@@ -1,11 +1,8 @@
 //===- AIE.td ----------------------------------------------*- tablegen -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
 // Copyright (C) 2019-2022 Xilinx, Inc.
 // Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -33,10 +30,10 @@ include "aie/Dialect/AIE/IR/AIETraceOps.td"
 
 def AIE_DeviceOp: AIE_Op<"device", [
     Symbol,
-    AIETarget, 
+    AIETarget,
     HasParent<"mlir::ModuleOp">,
-    SymbolTable, 
-    SingleBlockImplicitTerminator<"EndOp">, 
+    SymbolTable,
+    SingleBlockImplicitTerminator<"EndOp">,
     IsolatedFromAbove,
     DataLayoutOpInterface,
     HasDefaultDLTIDataLayout
@@ -80,6 +77,7 @@ def AIE_DeviceOp: AIE_Op<"device", [
     static xilinx::AIE::DeviceOp getForSymbolInModuleOrError(mlir::ModuleOp module, llvm::StringRef symbol);
     static llvm::StringRef getDefaultDeviceName() { return "main"; }
   }];
+  let hasVerifier = 1;
 }
 
 def AIE_LogicalTileOp: AIE_Op<"logical_tile", [
@@ -97,17 +95,17 @@ def AIE_LogicalTileOp: AIE_Op<"logical_tile", [
 
   let summary = "Declare a logical AIE tile to be placed";
   let description = [{
-    This operation creates a logical AIE tile that represents a tile to be 
-    mapped to a `aie.tile` during placement. Unlike `aie.tile`, 
+    This operation creates a logical AIE tile that represents a tile to be
+    mapped to a `aie.tile` during placement. Unlike `aie.tile`,
     this operation does not require absolute coordinates and instead uses
     a tile type to specify the kind of tile needed.
 
     The tile types are:
-    - `CoreTile`: Maps to core tiles (tiles with a core, TileDMA, memory, 
+    - `CoreTile`: Maps to core tiles (tiles with a core, TileDMA, memory,
       and stream connections)
     - `ShimNOCTile`: Maps to shim NOC tiles
     - `ShimPLTile`: Maps to shim PL tiles
-    - `MemTile`: Maps to memory tiles (AIE2+ tiles with TileDMA and memory, 
+    - `MemTile`: Maps to memory tiles (AIE2+ tiles with TileDMA and memory,
       but no core)
 
     Optional `col` and `row` can be provided as placement hints or constraints.
@@ -117,10 +115,10 @@ def AIE_LogicalTileOp: AIE_Op<"logical_tile", [
     ```
     // Logical core tile without placement constraints
     %core_tile = aie.logical_tile<CoreTile>(?, ?)
-    
+
     // Logical shim tile with column hint but unspecified row
     %shim_tile = aie.logical_tile<ShimNOCTile>(0, ?)
-    
+
     // Logical tile with full placement constraint (effectively fixed)
     %fixed = aie.logical_tile<CoreTile>(2, 3)
     ```
@@ -172,7 +170,7 @@ def AIE_TileOp: AIE_Op<"tile", [
 
   let summary = "Declare an AIE tile";
   let description = [{
-    This operation creates an AIE tile in the AIE array. We specify the column and the row of the tile. 
+    This operation creates an AIE tile in the AIE array. We specify the column and the row of the tile.
     Optionally, we can specify the memory allocation scheme for the tile (basic-sequential or bank-aware).
 
     A tile encompasses core module (CoreOp), memory module (MemOp), stream switch (SwitchboxOp),
@@ -288,30 +286,6 @@ def AIE_SwitchboxOp: AIE_Op<"switchbox", [
   }];
 }
 
-def AIE_ShimSwitchboxOp: AIE_Op<"shim_switchbox", [
-    SingleBlockImplicitTerminator<"EndOp">,
-    DeclareOpInterfaceMethods<InferTypeOpInterface>
-  ]>, Results<(outs Index)> {
-  let arguments = (ins AIEI32Attr:$col);
-  let summary = "Declare a switch in the PL shim";
-  let description = [{
-
-    A switch in the Shim.
-    AXI-Stream Master Ports AXI-Stream Slave Ports
-    6 Ports to North (Core Tile) 4 Ports from North (Core Tile)
-    4 Ports to West 4 Ports from West
-    4 Ports to East 4 Ports from East
-    6 Ports to South (DMA, NoC I/F, PL I/F) 8 Ports from South (DMA, NoC I/F, PL I/F)
-    2 Ports to FIFOs 2 Ports from FIFOs
-    1 Port for control packet for Shim register access
-    1 Port for response to access for Shim registers
-    1 Port for trace packet from Shim
-
-  }];
-  let regions = (region AnyRegion:$connections);
-  let assemblyFormat = [{ `(` $col `)` regions attr-dict }];
-  let hasVerifier = 1;
-}
 
 def AIE_ShimMuxOp: AIE_Op<"shim_mux", [
     Interconnect, IsShimTile,
@@ -422,7 +396,7 @@ def AIE_CoreOp: AIE_Op<"core", [
     attribute.
 
     If the `elf_file` attribute is present, no MLIR besides a terminator may be
-    present in the core; in that case, the binary file linked dictates what 
+    present in the core; in that case, the binary file linked dictates what
     will run in the core. The path specified should is relative to the MLIR
     file.
 
@@ -1744,7 +1718,7 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp
   let assemblyFormat = [{
     $sym_name `(` $tile `,` $channel_dir `,` $channel_index (`,` $packet^)? `)` attr-dict
   }];
-  
+
   let hasVerifier = 1;
 
   let extraClassDeclaration = [{
@@ -1829,14 +1803,14 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
                            }, 2 : i32
                           ) : !aie.objectfifo<memref<256xi32>>
     ```
-    
+
     The behavior of the objectFifo is further controlled by optional parameters.
-    The `repeat_count` parameter specifies the number of times each individual 
-    object is repeated during transfer. When `repeat_count == 1`, each object 
+    The `repeat_count` parameter specifies the number of times each individual
+    object is repeated during transfer. When `repeat_count == 1`, each object
     is transferred once.
 
-    The `iter_count` parameter specifies the number of iterations of 
-    the buffer descriptor chain generated at the lower level. The total number 
+    The `iter_count` parameter specifies the number of iterations of
+    the buffer descriptor chain generated at the lower level. The total number
     of objects transferred is calculated as `iter_count * elemNumber * repeat_count`.
     When `repeat_count == 1`, this simplifies to `iter_count * elemNumber`.
   }];
@@ -2169,76 +2143,6 @@ def AIE_ObjectFifoSubviewAccessOp : AIE_Op<"objectfifo.subview.access", []> {
   }];
 }
 
-def AIE_ObjectFifoRegisterProcessOp: AIE_Op<"objectfifo.register_process", []> {
-  let summary = "Operation that produces the acquire/release patterns for a process registered to an objectFifo";
-  let description = [{
-    The `aie.registerProcess` operation allows the user to register a function to an `objectFifo` along with its
-    acquire and release patterns. These patterns will be used to generate a sequence of acquires and releases
-    on the `objectFifo` elements. This generated sequence is often in the form of a for loop, however, in the case
-    of cyclo-static patterns only the repetition of same number accesses and releases will generate a for loop.
-    This may result in multiple for loops of different sizes being generated. If there is no repetition, then no
-    loops will be generated.
-
-    Example:
-    ```
-      aie.objectfifo @of1 (%t72, %t73, 2) : !aie.objectfifo<memref<16xi32>>
-      %length = arith.constant 10 : index
-      %acquirePatternProducer = arith.constant dense<[1, 2, 2, 0]> : tensor<4xi32>
-      %releasePatternProducer = arith.constant dense<[0, 1, 1, 2]> : tensor<4xi32>
-      func @producer_work(%input : !aie.objectfifosubview<memref<16xi32>>) -> () { ... }
-
-      aie.objectfifo.register_process @of1 (Produce, %acquirePatternProducer : tensor<4xi32>, %releasePatternProducer : tensor<4xi32>, @producer_work, %length)
-    ```
-    This operation registers function @producer_work and associated patterns to the produce end of @of1.
-    @producer_work will be called with the subviews produced when acquiring elements from @of1 following the acquire pattern.
-
-    If the input patterns are static (only one element) then the length of the produced for loop will be that of the input `%length`.
-    If the input patterns are cyclo-static then they must be of the same size.
-  }];
-
-  let arguments = (
-    ins ObjectFifoPort:$port,
-        FlatSymbolRefAttr:$objFifo_name,
-        I32Tensor:$acquirePatternTensor,
-        I32Tensor:$releasePatternTensor,
-        FlatSymbolRefAttr:$callee,
-        Index:$length
-  );
-
-  let assemblyFormat = [{
-    attr-dict $objFifo_name `(`
-        $port `,`
-        $acquirePatternTensor `:` type($acquirePatternTensor) `,`
-        $releasePatternTensor `:` type($releasePatternTensor) `,`
-        $callee `,` $length
-    `)`
-  }];
-
-  let hasVerifier = 1;
-
-  let extraClassDeclaration = [{
-    ObjectFifoCreateOp getObjectFifo();
-
-    mlir::DenseIntElementsAttr getAcquirePattern() {
-      return llvm::cast<mlir::DenseIntElementsAttr>(getAcquirePatternTensor()
-          .getDefiningOp<mlir::arith::ConstantOp>()
-          .getValue());
-    }
-
-    mlir::DenseIntElementsAttr getReleasePattern() {
-      return llvm::cast<mlir::DenseIntElementsAttr>(getReleasePatternTensor()
-          .getDefiningOp<mlir::arith::ConstantOp>()
-          .getValue());
-    }
-
-    int getProcessLength() {
-      return llvm::cast<mlir::IntegerAttr>(getLength()
-          .getDefiningOp<mlir::arith::ConstantOp>()
-          .getValue())
-          .getInt();
-    }
-  }];
-}
 
 def AIE_BDChainOp: AIE_Op<"bd_chain", [Symbol, SkipAccessibilityCheckTrait]> {
   let summary = "Definition of a Parametrizable Chain of Buffer Descriptors";
@@ -2265,8 +2169,8 @@ def AIE_BDChainOp: AIE_Op<"bd_chain", [Symbol, SkipAccessibilityCheckTrait]> {
 
 def AIE_RuntimeSequenceOp : AIE_Op<"runtime_sequence", [
   Symbol,
-  NoTerminator, 
-  HasParent<"DeviceOp">, 
+  NoTerminator,
+  HasParent<"DeviceOp">,
 ]> {
   let summary = "Program the configuration co-processor of the AI Engine array";
   let description = [{

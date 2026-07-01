@@ -1,3 +1,6 @@
+<!-- Copyright (C) 2026 Advanced Micro Devices, Inc.
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
+
 # Native Windows Setup and Build Instructions
 
 This guide covers the **native Windows** (not WSL) setup for **IRON/mlir-aie**.
@@ -363,10 +366,10 @@ python utils/iron_setup.py env --shell cmd > "%TEMP%\iron_env.bat" && call "%TEM
 ### 4.4 Validate the mlir-aie install
 
 ```bat
-python -c "import aie; import importlib.util as u; print('aie.xrt:', bool(u.find_spec('aie.xrt')))"
+python -c "import aie; import importlib.util as u; print('parameter_scratchpad:', bool(u.find_spec('aie._mlir_libs._parameter_scratchpad')))"
 ```
 
-If this prints `aie.xrt: True`, you're good to go.
+If this prints `parameter_scratchpad: True`, you're good to go.
 
 ## 5) Build and run an example
 

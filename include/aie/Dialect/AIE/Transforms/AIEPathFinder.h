@@ -1,11 +1,8 @@
 //===- AIEPathfinder.h ------------------------------------------*- C++ -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
 // Copyright (C) 2021-2022 Xilinx, Inc.
 // Copyright (C) 2022-2025 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -208,9 +205,30 @@ public:
   bool addFixedConnection(SwitchboxOp switchboxOp) override;
   std::optional<std::map<PathEndPoint, SwitchSettings>>
   findPaths(int maxIterations) override;
-  std::map<PathEndPoint, PathEndPoint> dijkstraShortestPaths(PathEndPoint src);
 
 private:
+  // A directed edge in the dense routing graph: from some node to node `dst`,
+  // realized by switchbox-connect `sb` at matrix position (i, j). `sb`, `i` and
+  // `j` index live into `graph` so demand reads always see the current
+  // iteration's weights.
+  struct Edge {
+    int dst;
+    SwitchboxConnect *sb;
+    int i;
+    int j;
+  };
+
+  // Build the dense integer node numbering and per-node adjacency from `graph`
+  // and `flows`. Topology is fixed across congestion iterations, so this runs
+  // once. Edge order per node matches the legacy PathEndPoint-sorted order to
+  // preserve identical routing output.
+  void buildRoutingGraph();
+
+  // Dijkstra over the dense graph from dense node `srcId`. Fills `preds` (dense
+  // predecessor id per node, or -1) and `predEdge` (the edge taken to reach
+  // each node). Reuses the scratch buffers below.
+  void dijkstraShortestPaths(int srcId);
+
   // Flows to be routed
   std::vector<Flow> flows;
   // Represent all routable paths as a graph
@@ -219,11 +237,21 @@ private:
   // switchbox otherwise, it represents connections (South, North, West, East)
   // accross two switchboxes
   std::map<std::pair<TileID, TileID>, SwitchboxConnect> graph;
-  // Channels available in the network
-  // The key is a PathEndPoint representing the start of a path
-  // The value is a vector of PathEndPoints representing the possible ends of
-  // the path
-  std::map<PathEndPoint, std::vector<PathEndPoint>> channels;
+
+  // Dense routing graph (built once by buildRoutingGraph()).
+  bool graphBuilt = false;
+  std::map<PathEndPoint, int> nodeIds;      // PathEndPoint -> dense id
+  std::vector<PathEndPoint> nodes;          // dense id -> PathEndPoint
+  std::vector<std::vector<Edge>> adjacency; // dense id -> out-edges
+
+  // Dijkstra scratch, sized to nodes.size() and reused across calls.
+  std::vector<double> distance;
+  std::vector<uint64_t> indexInHeap;
+  std::vector<int8_t> colors;
+  std::vector<int> preds;
+  std::vector<Edge> predEdge;
+
+  int getOrAddNodeId(const PathEndPoint &pep);
 };
 
 // DynamicTileAnalysis integrates the Pathfinder class into the MLIR

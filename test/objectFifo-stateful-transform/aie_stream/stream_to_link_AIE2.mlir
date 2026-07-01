@@ -1,14 +1,11 @@
 //===- stream_to_link_AIE2.mlir --------------------------------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2025 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2025 Advanced Micro Devices, Inc.
-// 
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
 
 // CHECK: module @stream_to_link_AIE2 {
 // CHECK:   aie.device(xcve2302) {
@@ -17,8 +14,8 @@
 // CHECK:     %tile_3_3 = aie.tile(3, 3)
 // CHECK:     %of_out_cons_prod_lock_0 = aie.lock(%shim_pl_tile_1_0, 0) {init = 0 : i32, sym_name = "of_out_cons_prod_lock_0"}
 // CHECK:     %of_out_cons_cons_lock_0 = aie.lock(%shim_pl_tile_1_0, 1) {init = 0 : i32, sym_name = "of_out_cons_cons_lock_0"}
-// CHECK:     %of_stream_cons_buff_0 = aie.buffer(%mem_tile_1_1) {sym_name = "of_stream_cons_buff_0"} : memref<16xi32> 
-// CHECK:     %of_stream_cons_buff_1 = aie.buffer(%mem_tile_1_1) {sym_name = "of_stream_cons_buff_1"} : memref<16xi32> 
+// CHECK:     %of_stream_cons_buff_0 = aie.buffer(%mem_tile_1_1) {sym_name = "of_stream_cons_buff_0"} : memref<16xi32>
+// CHECK:     %of_stream_cons_buff_1 = aie.buffer(%mem_tile_1_1) {sym_name = "of_stream_cons_buff_1"} : memref<16xi32>
 // CHECK:     %of_stream_cons_prod_lock_0 = aie.lock(%mem_tile_1_1, 0) {init = 2 : i32, sym_name = "of_stream_cons_prod_lock_0"}
 // CHECK:     %of_stream_cons_cons_lock_0 = aie.lock(%mem_tile_1_1, 1) {init = 0 : i32, sym_name = "of_stream_cons_cons_lock_0"}
 // CHECK:     aie.flow(%tile_3_3, Core : 0, %mem_tile_1_1, DMA : 0)
@@ -57,7 +54,7 @@
 module @stream_to_link_AIE2 {
  aie.device(xcve2302) {
     %tile10 = aie.tile(1, 0)
-    %tile11 = aie.tile(1, 1) 
+    %tile11 = aie.tile(1, 1)
     %tile33 = aie.tile(3, 3)
 
     aie.objectfifo @of_stream (%tile33, {%tile11}, 2 : i32) {aie_stream = 0 : i32, aie_stream_port = 0 : i32} : !aie.objectfifo<memref<16xi32>>

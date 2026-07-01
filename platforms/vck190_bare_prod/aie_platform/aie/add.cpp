@@ -1,3 +1,6 @@
+// Copyright (C) 2022 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0
+
 #include "adf.h"
 
 void add(input_window_int32* in, output_window_int32* out, int param)

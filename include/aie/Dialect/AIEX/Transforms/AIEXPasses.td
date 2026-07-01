@@ -1,11 +1,8 @@
 //===- AIEPasses.td ----------------------------------------*- tablegen -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
 // Copyright (C) 2019-2022 Xilinx, Inc.
 // Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -110,15 +107,6 @@ def AIECreateLocks : Pass<"aie-create-locks", "AIE::DeviceOp"> {
   let constructor = "xilinx::AIEX::createAIECreateLocksPass()";
 }
 
-def AIEHerdRouting : Pass<"aie-herd-routing", "AIE::DeviceOp"> {
-  let summary =       "Lowering herds with place and route ops to AIE cores, mems, and switchboxes";
-  let description = [{
-    An experimental pass which elaborates herd operations (e.g. aie.herd, aie.iter, aie.select)
-    into an explicit representation (e.g. aie.core, aie.mem, etc.).
-  }];
-
-  let constructor = "xilinx::AIEX::createAIEHerdRoutingPass()";
-}
 
 def AIEBroadcastPacket : Pass<"aie-lower-broadcast-packet", "AIE::DeviceOp"> {
   let summary = "Replace combination of broadcast and packet-switch by packet-flow";

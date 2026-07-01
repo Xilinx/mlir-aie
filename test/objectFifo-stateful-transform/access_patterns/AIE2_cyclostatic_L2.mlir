@@ -1,25 +1,22 @@
 //===- AIE2_cyclostatic_L2.mlir --------------------------------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
 // Copyright (C) 2023 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
 // In this example, an AIE core pushes data into a memtile, in a one-by-one
-// fashion. The memtile forwards this one-by-one to a consumer tile. The 
+// fashion. The memtile forwards this one-by-one to a consumer tile. The
 // consumer tile cyclostatically consumes {1, 2, 1} elements at a time.
 
 // The way this gets lowered is as follows:
 //
 // - On the producer tile, two buffers get allocated. Each time the producer
 //   wishes to push onto the objectFifo, the implementation alternates between
-//   the two buffers (ping-pong). This way, the previous buffer remains 
+//   the two buffers (ping-pong). This way, the previous buffer remains
 //   untouched while it is being pushed onto the stream. The other one can
 //   meanwhile be filled with the next object.
-// 
+//
 // - On the memory tile, objects are read in from the stream one-by-one. Since
 //   the objectFifo is allocated to hold _up to_ 4 elements, four buffers are
 //   provisioned on the memory tile, into which data from the stream is
@@ -30,12 +27,12 @@
 //   Therefore, this boils down to forwarding objects one-by-one through the
 //   memory tile (irrespective of what chunk size the consumer consumes).
 //
-// - On the receiving consumer end, four buffers are also preallocated, into 
-//   which the DMA copies objects arriving from the stream. This again is done 
-//   object-by-object. If the consumer needs more than one object at once, it 
+// - On the receiving consumer end, four buffers are also preallocated, into
+//   which the DMA copies objects arriving from the stream. This again is done
+//   object-by-object. If the consumer needs more than one object at once, it
 //   acquires the consumer locks multiple times.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
 
 // CHECK: module @aie2_cyclostatic_L2 {
 // CHECK:   aie.device(xcve2302) {
@@ -125,7 +122,7 @@
 // CHECK:       aie.use_lock(%[[fifo1_cons_prod_lock]], Release, 1)
 
 // We released the lock above, meaning we are done with the one object we
-// received. Now we want 2 _new_ objects, so the cons_cons lock is acquired 
+// received. Now we want 2 _new_ objects, so the cons_cons lock is acquired
 // twice, meaning it has to be released twice before both acquires succeed;
 // this, again, meaning that the DMA has received two objects on the stream
 // and put them in the respective buffers.
@@ -177,7 +174,7 @@
 // CHECK:     %[[memtile:.*]] = aie.memtile_dma(%[[t1]]) {
 // CHECK:       %[[VAL_25:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb5)
 
-// Fill our four buffers, fifo0_cons_buff_0 through fif0_cons_buff_3, 
+// Fill our four buffers, fifo0_cons_buff_0 through fif0_cons_buff_3,
 // allocated inside the memory tile, one by one (round robin) as we receive
 // things through the stream:
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb4
@@ -233,7 +230,7 @@
 // Consumer tile's DMA:
 // ////////////////////////////////////////////////////////////////////////// //
 
-// Things are read from the stream into memory object-by-object, 
+// Things are read from the stream into memory object-by-object,
 // irrespective of the number of objects that the consumer wants to consume
 // at a time. This uses the separate _cons locks, which increase/decrease
 // by one.
@@ -292,7 +289,7 @@ module @aie2_cyclostatic_L2 {
             %c66 = arith.constant 66 : i32
             %c77 = arith.constant 77 : i32
             %c88 = arith.constant 88 : i32
-            
+
             // Push 55
             %subview0 = aie.objectfifo.acquire @fifo0 (Produce, 1) : !aie.objectfifosubview<memref<1xi32>>
             %subview0_obj = aie.objectfifo.subview.access %subview0[0] : !aie.objectfifosubview<memref<1xi32>> -> memref<1xi32>

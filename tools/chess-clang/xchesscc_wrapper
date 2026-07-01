@@ -1,11 +1,9 @@
 #!/bin/bash
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2021 Xilinx, Inc.
+# Copyright (C) 2022-2024 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2021 Xilinx Inc.
-# (c) Copyright 2022-2024 Advanced Micro Devices, Inc.
 
 TARGET=${1^^}
 shift
@@ -28,17 +26,14 @@ if [ $TARGET != "AIE" -a $TARGET != "AIE2" -a $TARGET != "AIE2P" ]
 fi
 if [ $TARGET == "AIE" ]
   then
-    EXTRA_DEFS="-D__AIE_ARCH__=10 -D__AIEARCH__=10"
     AIEARCH=versal_prod
     AIETARGET=versal_prod
 elif [ $TARGET == "AIE2" ]
   then
-    EXTRA_DEFS="-D__AIE_ARCH__=20 -D__AIEARCH__=20"
     AIEARCH=aie2
     AIETARGET=aie_ml
 elif [ $TARGET == "AIE2P" ]
   then
-    EXTRA_DEFS="-D__AIE_ARCH__=21 -D__AIEARCH__=21"
     AIEARCH=aie2p
     AIETARGET=aie2p
 else
@@ -50,4 +45,11 @@ LIBDIR=${AIETOOLS}/data/${AIETARGET}/lib
 INCDIR=${AIETOOLS}/include
 
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-xchesscc --aiearch ${AIEARCH} -p me -C Release_LLVM -D__AIENGINE__ $EXTRA_DEFS -I $INCDIR -P $LIBDIR -d -f $@
+# __AIENGINE__ selects the real (non-graph) aie_api implementation and is
+# required by upstream aie.hpp.  __AIE_ARCH__ (the arch selector aie_api reads)
+# is set intrinsically by `--aiearch`; the legacy explicit __AIEARCH__/__AIE_ARCH__
+# defines are unused and dropped.
+# -D__AIE_API_AIE_ADF_HPP__ pre-trips aie_api's aie_adf.hpp include guard so
+# stock upstream aie_api never pulls in <adf.h> (no mlir-aie kernel uses adf::
+# symbols); this lets us track unforked Xilinx/aie_api.
+xchesscc --aiearch "${AIEARCH}" -p me -C Release_LLVM -D__AIENGINE__ -D__AIE_API_AIE_ADF_HPP__ -I "${INCDIR}" -P "${LIBDIR}" -d -f "$@"

@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 """Driver for the dma_compression IRON design.
 
 python3 test_dma_compression.py                  # full sweep + roundtrip

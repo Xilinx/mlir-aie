@@ -1,14 +1,11 @@
 //===- init_values_join_output_test.mlir ------------------------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2025 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2025 Advanced Micro Devices, Inc.
-// 
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
 
 // CHECK: module @init_join_output {
 // CHECK:   aie.device(xcve2302) {
@@ -123,9 +120,9 @@ module @init_join_output {
     %tile12 = aie.tile(1, 2)
     %tile23 = aie.tile(2, 3)
 
-    aie.objectfifo @of0 (%tile12, {%tile11}, 2 : i32) : !aie.objectfifo<memref<2xi32>> 
+    aie.objectfifo @of0 (%tile12, {%tile11}, 2 : i32) : !aie.objectfifo<memref<2xi32>>
     aie.objectfifo @of1 (%tile23, {%tile11}, 2 : i32) : !aie.objectfifo<memref<2xi32>>
-    aie.objectfifo @of2 (%tile11, {%tile10}, 2 : i32) : !aie.objectfifo<memref<4xi32>> = [dense<[0, 1, 2, 3]> : memref<4xi32>, 
+    aie.objectfifo @of2 (%tile11, {%tile10}, 2 : i32) : !aie.objectfifo<memref<4xi32>> = [dense<[0, 1, 2, 3]> : memref<4xi32>,
                                                                                           dense<[4, 5, 6, 7]> : memref<4xi32>]
 
     aie.objectfifo.link [@of0, @of1] -> [@of2] ([0, 2] [])
