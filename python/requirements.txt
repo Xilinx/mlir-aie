@@ -1,6 +1,7 @@
 aiofiles
 numpy>=1.26,<2.3; python_version < "3.11"
-numpy>=2.5.0,<3.0; python_version >= "3.11"
+numpy>=2.4.6,<2.5; python_version == "3.11"
+numpy>=2.5.0,<3.0; python_version >= "3.12"
 rich
 ml_dtypes>=0.5.4
 cloudpickle # required by eudsl when it is vendored instead of installed
