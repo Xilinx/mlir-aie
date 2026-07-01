@@ -12,7 +12,7 @@ instead of letting :class:`ObjectFifo` manage it.
 
 import itertools
 
-from .. import ir  # pyright: ignore[reportMissingImports]
+from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ..dialects._aie_enum_gen import LockAction  # pyright: ignore[reportMissingImports]
 from ..dialects.aie import (
     lock as _lock_op,

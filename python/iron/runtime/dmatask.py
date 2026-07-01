@@ -5,7 +5,7 @@
 #
 """DMATask: a RuntimeTask that generates a shim DMA transfer operation."""
 
-from ... import ir  # pyright: ignore[reportMissingImports]
+from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 
 from ...dialects._aiex_ops_gen import (  # pyright: ignore[reportMissingImports]
     dma_start_task,
