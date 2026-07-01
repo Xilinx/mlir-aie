@@ -568,9 +568,9 @@ mypy-extensions==1.1.0 \
     --hash=sha256:1be4cccdb0f2482337c4743e60421de3a356cd97508abadd57d47403e94f5505 \
     --hash=sha256:52e68efc3284861e772bbcd66823fde5ae21fd2fdb51c62a211403730b916558
     # via black
-nanobind==2.12.0 \
-    --hash=sha256:0ae77c1a88f27153fa57045ee00f7b0a7b06b1cd3df942e95a34b38c5d0a5bee \
-    --hash=sha256:a10d3d88e691dcdf22696f9acd893fda3c5a05635763aea238829d274fcad480
+nanobind==2.13.0 \
+    --hash=sha256:9268d7201eaf5519ae61b7a83175f2af77088cb4b99dd3ce5b00550f697da7b7 \
+    --hash=sha256:c7b04d6a6a4cd57985571e605539399b51331ae455d7fce576a5e2fcb89b1dcf
     # via -r requirements_dev.txt
 ninja==1.11.1.4 \
     --hash=sha256:055f386fb550c2c9d6157e45e20a84d29c47968876b9c5794ae2aec46f952306 \

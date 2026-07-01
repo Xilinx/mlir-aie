@@ -1,7 +1,7 @@
 # Source for utils/mlir_aie_wheels/requirements.lock (hash-pinned, installed by
 # cibuildwheel before-build). After editing this file, regenerate the .lock with:
 #   utils/regenerate_lockfiles.sh
-cmake>=4.3.4
+cmake>=4.3.4, <5.0
 importlib-metadata
 ninja!=1.13.0; platform_system=="Windows"
 numpy>=2.4.6
