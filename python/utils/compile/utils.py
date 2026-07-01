@@ -112,6 +112,12 @@ def compile_cxx_core_function(
             "-Wno-empty-body",
             "-O2",
             "-DNDEBUG",
+            # Pre-trip aie_api's aie_adf.hpp include guard so stock upstream
+            # aie_api never pulls in <adf.h> (Vitis-only, absent from Peano).
+            # No mlir-aie kernel uses adf:: symbols, so this only elides dead
+            # code.  (The chess path gets the same define centrally in
+            # tools/chess-clang/xchesscc_wrapper.)
+            "-D__AIE_API_AIE_ADF_HPP__",
             f"--target={target_arch}-none-unknown-elf",
         ]
 
