@@ -8,7 +8,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
 
 // ObjectFifoLink where output has padDimensions and a larger element type
 // than the input. MemTile buffers should use the input (smaller) size since

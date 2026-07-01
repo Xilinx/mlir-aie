@@ -8,14 +8,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
 
 // CHECK:  module {
 // CHECK:    aie.device(xcvc1902) {
 // CHECK:      %{{.*}}tile_1_2 = aie.tile(1, 2)
 // CHECK:      %{{.*}}tile_1_3 = aie.tile(1, 3)
-// CHECK:      %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "loop_of_buff_0"} : memref<16xi32> 
-// CHECK:      %[[VAL_1:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "loop_of_buff_1"} : memref<16xi32> 
+// CHECK:      %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "loop_of_buff_0"} : memref<16xi32>
+// CHECK:      %[[VAL_1:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "loop_of_buff_1"} : memref<16xi32>
 // CHECK:      %[[VAL_2:.*]] = aie.lock(%{{.*}}tile_1_2, 0) {init = 0 : i32, sym_name = "loop_of_lock_0"}
 // CHECK:      %[[VAL_3:.*]] = aie.lock(%{{.*}}tile_1_2, 1) {init = 0 : i32, sym_name = "loop_of_lock_1"}
 // CHECK:      func.func @some_work(%arg0: memref<16xi32>, %arg1: index) {
