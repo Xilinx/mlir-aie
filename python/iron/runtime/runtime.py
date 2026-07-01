@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024-2026 Advanced Micro Devices, Inc.
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 """Runtime: orchestrates host-side data movement and worker execution for an IRON program."""
 
 from __future__ import annotations
@@ -21,7 +21,6 @@ from ...utils import trace as trace_utils
 
 from ... import ir  # pyright: ignore[reportMissingImports]
 
-from ...dialects.aie import tile
 from ...dialects.aiex import (
     runtime_sequence,
     sync_scratchpad_parameters_from_host,  # pyright: ignore[reportAttributeAccessIssue]

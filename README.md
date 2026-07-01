@@ -1,3 +1,5 @@
+<!-- Copyright (C) 2019-2024 Advanced Micro Devices, Inc. -->
+<!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 [![Build and Test across Python versions](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestPythons.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestPythons.yml) [![Build and Test with AIE tools on Ryzen™ AI](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestRyzenAI.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestRyzenAI.yml) [![Compile across platforms](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestMulti.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestMulti.yml)
 
 # IRON API and MLIR-based AI Engine Toolchain
@@ -83,7 +85,7 @@ sudo reboot
 >
 > You may need to logout and log back in after modifying user groups.
 
-> If you are on a different Linux distribution or kernel not supported by the upstream packages, see [Build from source](#alternative-build-xdna-driver-and-xrt-from-source) below.
+> If you are on a different Linux distribution or kernel not supported by the upstream packages, see [Build from source](#alternative-build-xdna-driver-and-xrt-from-source) below. For non-Ubuntu distros (Arch, Void, Fedora-from-source, …) or kernels that already ship the in-tree `amdxdna` driver (Linux ≥ 6.14), see the [non-Ubuntu build guide](docs/buildHostLinNonUbuntu.md).
 
 Verify the NPU device is present:
 
@@ -173,8 +175,11 @@ xrt-smi examine
 
 1. Install the Peano compiler (the `llvm-aie` wheels) and dependencies:
    ```bash
-   # Install Peano from llvm-aie wheel
-   python3 -m pip install llvm-aie -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
+   # Install Peano from the llvm-aie wheel, pinned to the tested nightly in
+   # utils/peano-requirements.txt (the same pin CI uses; bumped by the update-peano
+   # workflow). To grab the latest nightly instead, install `llvm-aie` directly
+   # with `-f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly`.
+   python3 -m pip install -r utils/peano-requirements.txt
 
    ```
 

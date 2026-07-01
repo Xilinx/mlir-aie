@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2022-2026, Advanced Micro Devices, Inc.
+// Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//-->
 
@@ -14,7 +14,7 @@ When we program the AIE-array, we need to declare and configure its structural b
 
 ## <ins>Walkthrough of Python source file (aie2.py)</ins>
 
-Let's look at a minimal IRON design in [aie2.py](./aie2.py). The whole design is one function decorated with `@iron.jit`: the first time you call it, IRON JIT-compiles the design and runs it on the attached NPU; `--emit-mlir` prints the lowered MLIR instead.
+Let's look at a minimal IRON design in [aie2.py](./aie2.py). The whole design is one function decorated with `@iron.jit`: the first time you call it, IRON JIT-compiles the design and runs it on the attached NPU; `--dev <target> --emit-mlir` prints the lowered MLIR instead.
 
 ```python
 import aie.iron as iron
@@ -97,10 +97,10 @@ ComputeTile4 = Tile(0, 5)
 
 ## <ins>Inspecting the generated MLIR</ins>
 
-`@iron.jit` lowers your design through the AIE dialect on its way to a binary. To see the MLIR without running anything, pass `--emit-mlir`:
+`@iron.jit` lowers your design through the AIE dialect on its way to a binary. To see the MLIR without running anything, pass `--dev <target> --emit-mlir`:
 
 ```shell
-python3 aie2.py --emit-mlir
+python3 aie2.py --dev npu --emit-mlir
 ```
 
 The Makefile also exposes `make emit-mlir` which redirects the output to `build/aie.mlir`.

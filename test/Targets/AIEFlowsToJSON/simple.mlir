@@ -1,6 +1,6 @@
 //===- simple.mlir ----------------------------------*- MLIR -*-===//
 //
-// Copyright (C) 2024, Advanced Micro Devices, Inc.
+// Copyright (C) 2024 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: MIT
 //
 //===----------------------------------------------------------------------===//

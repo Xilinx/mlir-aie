@@ -4,13 +4,12 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2021 Xilinx Inc.
+// Copyright (C) 2021 Xilinx, Inc.
 //
 //===----------------------------------------------------------------------===//
 
 #include <stdio.h>
 // #include <stdint.h>
-
 
 //void func(int32_t *buf);
 

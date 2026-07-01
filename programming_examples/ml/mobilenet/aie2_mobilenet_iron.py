@@ -3,7 +3,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2026, Advanced Micro Devices, Inc.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 """MobileNet V3 — IRON API rewrite.
 
 Replaces the placed-dialect implementation in aie2_mobilenet.py with the
@@ -76,192 +76,222 @@ from .placement import PLACEMENT
 # ---------------------------------------------------------------------------
 # Design top-level function
 # ---------------------------------------------------------------------------
-@iron.jit(aiecc_flags=["--dynamic-objFifos=false"])
-def mobilenet_iron(inp: In, cascade_wts: In, out: Out):
-    """Build the full mobilenet IRON design and return the resolved Program.
+def make_mobilenet_iron(use_placement: bool = True):
+    """Return the @iron.jit-decorated mobilenet design function.
 
-    Runtime args (declared via In/Out so @iron.jit knows the design takes
-    three host tensors): activations + scratch, cascade weights, final FC2
-    output.  The body's ``rt.sequence(...)`` matches.
-
-    aiecc_flags=["--dynamic-objFifos=false"]: the init core's constant-trip
-    loops fully unroll under the global dynamic-objfifo lowering to ~3360
-    kernel calls, producing an ELF that overflows the 64KB AIE tile
-    program memory.  Per-core dynamic_objfifo_lowering attribute is only
-    honoured when the global flag is false.
+    use_placement=True  — builders receive tile hints from placement.py.
+    use_placement=False — builders receive None; the SA placer assigns tiles.
     """
-    # Runtime arg types: i32 element view over the underlying byte buffers.
-    #   arg0 (act_in / scratch):  100352 i32 = 401408 bytes
-    #   arg2 (final FC2 output):    640 i32 =   2560 bytes
-    in_ty = np.ndarray[(tensorInW * tensorInH * tensorInC // 4,), np.dtype[np.int32]]
-    out_ty = np.ndarray[
-        (post_L1_OutW * post_L1_OutH * post_L2_OutC * 2 // 4,),
-        np.dtype[np.int32],
-    ]
+    P = PLACEMENT if use_placement else {}
 
-    # ------------------------------------------------------------------
-    # Block chain — each builder owns its fifos / kernels / workers and
-    # returns the activation handoff for the next stage.
-    # ------------------------------------------------------------------
-    init_workers, act_in, act_init_out = init_conv(
-        sf, tile=PLACEMENT["init"], data_dir=data_dir
-    )
-    a_workers, act_bn9_out = regular_bottlenecks(
-        act_init_out, sf, placement=PLACEMENT["regular"], data_dir=data_dir
-    )
-    b_workers, act_bn12_out = pipeline_bottlenecks(
-        act_bn9_out, sf, placement=PLACEMENT["pipeline"], data_dir=data_dir
-    )
-    c_workers, act_bn14_out, wts_fifos = cascade_bottlenecks(
-        act_bn12_out, sf, placement=PLACEMENT["cascade"], data_dir=data_dir
-    )
-    l1_workers, act_out_post_avgpool_shim = post_l1(
-        act_bn14_out, sf, tiles=PLACEMENT["post_l1"], data_dir=data_dir
-    )
+    @iron.jit(aiecc_flags=["--dynamic-objFifos=false"])
+    def mobilenet_iron(inp: In, cascade_wts: In, out: Out):
+        """Build the full mobilenet IRON design and return the resolved Program.
 
-    # post_l1 drains to host scratch and post_l2 fills from host scratch; this
-    # bridge fifo is the runtime-sequence-side handle to that round-trip.
-    # Neither builder is the natural owner — the top file glues them together.
-    act_out_post_shim_FC = ObjectFifo(
-        np.ndarray[(post_L2_InC,), np.dtype[np.uint16]],
-        depth=2,
-    )
+        Runtime args (declared via In/Out so @iron.jit knows the design takes
+        three host tensors): activations + scratch, cascade weights, final FC2
+        output.  The body's ``rt.sequence(...)`` matches.
 
-    l2_workers, act_out_of = post_l2(
-        act_out_post_shim_FC, sf, tiles=PLACEMENT["post_l2"], data_dir=data_dir
-    )
+        aiecc_flags=["--dynamic-objFifos=false"]: the init core's constant-trip
+        loops fully unroll under the global dynamic-objfifo lowering to ~3360
+        kernel calls, producing an ELF that overflows the 64KB AIE tile
+        program memory.  Per-core dynamic_objfifo_lowering attribute is only
+        honoured when the global flag is false.
+        """
 
-    # ------------------------------------------------------------------
-    # Collect all workers
-    # ------------------------------------------------------------------
-    all_workers = (
-        init_workers + a_workers + b_workers + c_workers + l1_workers + l2_workers
-    )
+        # Runtime arg types: i32 element view over the underlying byte buffers.
+        #   arg0 (act_in / scratch):  100352 i32 = 401408 bytes
+        #   arg2 (final FC2 output):    640 i32 =   2560 bytes
+        in_ty = np.ndarray[
+            (tensorInW * tensorInH * tensorInC // 4,), np.dtype[np.int32]
+        ]
+        out_ty = np.ndarray[
+            (post_L1_OutW * post_L1_OutH * post_L2_OutC * 2 // 4,),
+            np.dtype[np.int32],
+        ]
 
-    # Combined cascade weight tensor — test_mobilenet.py concatenates 4 chunks
-    # into a single buffer in this exact order:
-    #   bn13_L1(76800) | bn13_L3(76800) | bn14_L1(76800) | bn14_L3(76800)
-    _BN_L1_SZ = 80 * 960  # 76800 bytes per L1 weight chunk
-    _BN_L3_SZ = 480 * 80 * 2  # 76800 bytes per L3 weight chunk (put+get)
-    _CASCADE_OFFSETS = [0, _BN_L1_SZ, 2 * _BN_L1_SZ, 3 * _BN_L1_SZ]
-    _CASCADE_SIZES = [_BN_L1_SZ, _BN_L3_SZ, _BN_L1_SZ, _BN_L3_SZ]
-    _cascade_wts_sz_i32 = sum(_CASCADE_SIZES) // 4  # 76800 i32 = 307200 bytes
-    cascade_wts_ty = np.ndarray[(_cascade_wts_sz_i32,), np.dtype[np.int32]]
-
-    def _wts_tap(byte_offset, byte_size):
-        return TensorAccessPattern(
-            (_cascade_wts_sz_i32,),
-            offset=byte_offset // 4,
-            sizes=[1, 1, 1, byte_size // 4],
-            strides=[0, 0, 0, 1],
+        # ------------------------------------------------------------------
+        # Block chain — each builder owns its fifos / kernels / workers and
+        # returns the activation handoff for the next stage.
+        # ------------------------------------------------------------------
+        init_workers, act_in, act_init_out = init_conv(
+            sf, tile=P.get("init"), data_dir=data_dir
+        )
+        a_workers, act_bn9_out = regular_bottlenecks(
+            act_init_out, sf, placement=P.get("regular"), data_dir=data_dir
+        )
+        b_workers, act_bn12_out = pipeline_bottlenecks(
+            act_bn9_out, sf, placement=P.get("pipeline"), data_dir=data_dir
+        )
+        c_workers, act_bn14_out, wts_fifos = cascade_bottlenecks(
+            act_bn12_out, sf, placement=P.get("cascade"), data_dir=data_dir
+        )
+        l1_workers, act_out_post_avgpool_shim = post_l1(
+            act_bn14_out, sf, tiles=P.get("post_l1"), data_dir=data_dir
         )
 
-    # Use the gemm-style "one task_group at a time" pattern. Each task_group
-    # holds a batch of fills + a wait=True drain, and finish_task_group()
-    # awaits the drain AND frees every task in the group atomically. Required
-    # so `dma_free_task` is not emitted for tasks that were never awaited
-    # (act_in, weights, FC fills) — otherwise their BD IDs would be
-    # deallocated while their DMAs were potentially still in flight.
-    rt = Runtime()
-    with rt.sequence(in_ty, cascade_wts_ty, out_ty) as (inp, cascade_wts, out):
-        rt.start(*all_workers)
-
-        # ---- Group 1: input + weights + avgpool drain ----
-        # All upstream fills + the first sync drain in the same group. By the
-        # time the avgpool drain completes, init_conv has consumed all of
-        # act_in and bn13/14 have consumed their weights, so freeing all of
-        # those at finish_task_group() is safe (causal closure).
-        tg1 = rt.task_group()
-        rt.fill(
-            act_in.prod(depth=1), inp, tile=PLACEMENT["shim"]["input"], task_group=tg1
+        # post_l1 drains to host scratch and post_l2 fills from host scratch; this
+        # bridge fifo is the runtime-sequence-side handle to that round-trip.
+        # Neither builder is the natural owner — the top file glues them together.
+        act_out_post_shim_FC = ObjectFifo(
+            np.ndarray[(post_L2_InC,), np.dtype[np.uint16]],
+            depth=2,
         )
-        # bn13/14 L1+L3 weight chunks from the combined cascade buffer
-        for fifo, off, sz, shim in zip(
-            wts_fifos, _CASCADE_OFFSETS, _CASCADE_SIZES, PLACEMENT["shim"]["wts"]
-        ):
-            rt.fill(
-                fifo.prod(), cascade_wts, _wts_tap(off, sz), tile=shim, task_group=tg1
+
+        l2_workers, act_out_of = post_l2(
+            act_out_post_shim_FC, sf, tiles=P.get("post_l2"), data_dir=data_dir
+        )
+
+        # ------------------------------------------------------------------
+        # Collect all workers
+        # ------------------------------------------------------------------
+        all_workers = (
+            init_workers + a_workers + b_workers + c_workers + l1_workers + l2_workers
+        )
+
+        # Combined cascade weight tensor — test_mobilenet.py concatenates 4 chunks
+        # into a single buffer in this exact order:
+        #   bn13_L1(76800) | bn13_L3(76800) | bn14_L1(76800) | bn14_L3(76800)
+        _BN_L1_SZ = 80 * 960  # 76800 bytes per L1 weight chunk
+        _BN_L3_SZ = 480 * 80 * 2  # 76800 bytes per L3 weight chunk (put+get)
+        _CASCADE_OFFSETS = [0, _BN_L1_SZ, 2 * _BN_L1_SZ, 3 * _BN_L1_SZ]
+        _CASCADE_SIZES = [_BN_L1_SZ, _BN_L3_SZ, _BN_L1_SZ, _BN_L3_SZ]
+        _cascade_wts_sz_i32 = sum(_CASCADE_SIZES) // 4  # 76800 i32 = 307200 bytes
+        cascade_wts_ty = np.ndarray[(_cascade_wts_sz_i32,), np.dtype[np.int32]]
+
+        def _wts_tap(byte_offset, byte_size):
+            return TensorAccessPattern(
+                (_cascade_wts_sz_i32,),
+                offset=byte_offset // 4,
+                sizes=[1, 1, 1, byte_size // 4],
+                strides=[0, 0, 0, 1],
             )
-        # Round-trip avgpool output through L3 (shim 30/40 hop). Reuse `inp`
-        # as scratch — input is fully consumed by the time PostL1 emits output.
-        # Offsets/sizes are i32 elements (4 bytes each):
-        #   avgpool / FC1-input scratch: i32 offset 640  (byte 2560)
-        #   FC1-output / FC2-input scratch: i32 offset 1280 (byte 5120)
-        #   transfer length: 640 i32 = 2560 B = 1280 ui16
-        _post_l1_out_sz_i32 = post_L1_OutW * post_L1_OutH * post_L2_InC * 2 // 4  # 640
-        _inp_sz_i32 = tensorInW * tensorInH * tensorInC // 4  # 100352
-        _post_l1_scratch_tap = TensorAccessPattern(
-            (_inp_sz_i32,),
-            offset=_post_l1_out_sz_i32,
-            sizes=[1, 1, 1, _post_l1_out_sz_i32],
-            strides=[0, 0, 0, 1],
-        )
-        rt.drain(
-            act_out_post_avgpool_shim.cons(),
-            inp,
-            tap=_post_l1_scratch_tap,
-            wait=True,
-            task_group=tg1,
-            tile=PLACEMENT["shim"]["scratch_drain"],
-        )
-        rt.finish_task_group(tg1)
 
-        # ---- Group 2: FC1 fill + FC1 drain ----
-        # FC1 fill reads the avgpool scratch (drained above). FC1 drain
-        # waits for FC compute to consume the fill, then drains FC1 output
-        # to L3. By finish_task_group, both FC1 fill and FC1 drain have
-        # completed.
-        tg2 = rt.task_group()
-        rt.fill(
-            act_out_post_shim_FC.prod(),
-            inp,
-            tap=_post_l1_scratch_tap,
-            tile=PLACEMENT["shim"]["fc_fill"],
-            task_group=tg2,
-        )
-        _post_fc_out_tap = TensorAccessPattern(
-            (_inp_sz_i32,),
-            offset=_post_l1_out_sz_i32 * 2,  # i32 offset 1280
-            sizes=[1, 1, 1, _post_l1_out_sz_i32],
-            strides=[0, 0, 0, 1],
-        )
-        rt.drain(
-            act_out_of.cons(),
-            inp,
-            tap=_post_fc_out_tap,
-            wait=True,
-            task_group=tg2,
-            tile=PLACEMENT["shim"]["fc_drain"],
-        )
-        rt.finish_task_group(tg2)
+        # Use the gemm-style "one task_group at a time" pattern. Each task_group
+        # holds a batch of fills + a wait=True drain, and finish_task_group()
+        # awaits the drain AND frees every task in the group atomically. Required
+        # so `dma_free_task` is not emitted for tasks that were never awaited
+        # (act_in, weights, FC fills) — otherwise their BD IDs would be
+        # deallocated while their DMAs were potentially still in flight.
+        rt = Runtime()
+        with rt.sequence(in_ty, cascade_wts_ty, out_ty) as (inp, cascade_wts, out):
+            rt.start(*all_workers)
 
-        # ---- Group 3: FC2 fill + FC2 final drain to host ----
-        tg3 = rt.task_group()
-        rt.fill(
-            act_out_post_shim_FC.prod(),
-            inp,
-            tap=_post_fc_out_tap,
-            tile=PLACEMENT["shim"]["fc_fill"],
-            task_group=tg3,
-        )
-        rt.drain(
-            act_out_of.cons(),
-            out,
-            wait=True,
-            tile=PLACEMENT["shim"]["fc_drain"],
-            task_group=tg3,
-        )
-        rt.finish_task_group(tg3)
+            # ---- Group 1: input + weights + avgpool drain ----
+            # All upstream fills + the first sync drain in the same group. By the
+            # time the avgpool drain completes, init_conv has consumed all of
+            # act_in and bn13/14 have consumed their weights, so freeing all of
+            # those at finish_task_group() is safe (causal closure).
+            shim = P.get("shim", {})
+            tg1 = rt.task_group()
+            rt.fill(
+                act_in.prod(depth=1),
+                inp,
+                tile=shim.get("input"),
+                task_group=tg1,
+            )
+            # bn13/14 L1+L3 weight chunks from the combined cascade buffer
+            wts_shims = shim.get("wts", [None] * 4)
+            for fifo, off, sz, s in zip(
+                wts_fifos, _CASCADE_OFFSETS, _CASCADE_SIZES, wts_shims
+            ):
+                rt.fill(
+                    fifo.prod(),
+                    cascade_wts,
+                    _wts_tap(off, sz),
+                    tile=s,
+                    task_group=tg1,
+                )
+            # Round-trip avgpool output through L3 (shim 30/40 hop). Reuse `inp`
+            # as scratch — input is fully consumed by the time PostL1 emits output.
+            # Offsets/sizes are i32 elements (4 bytes each):
+            #   avgpool / FC1-input scratch: i32 offset 640  (byte 2560)
+            #   FC1-output / FC2-input scratch: i32 offset 1280 (byte 5120)
+            #   transfer length: 640 i32 = 2560 B = 1280 ui16
+            _post_l1_out_sz_i32 = (
+                post_L1_OutW * post_L1_OutH * post_L2_InC * 2 // 4
+            )  # 640
+            _inp_sz_i32 = tensorInW * tensorInH * tensorInC // 4  # 100352
+            _post_l1_scratch_tap = TensorAccessPattern(
+                (_inp_sz_i32,),
+                offset=_post_l1_out_sz_i32,
+                sizes=[1, 1, 1, _post_l1_out_sz_i32],
+                strides=[0, 0, 0, 1],
+            )
+            rt.drain(
+                act_out_post_avgpool_shim.cons(),
+                inp,
+                tap=_post_l1_scratch_tap,
+                wait=True,
+                task_group=tg1,
+                tile=shim.get("scratch_drain"),
+            )
+            rt.finish_task_group(tg1)
 
-    # ------------------------------------------------------------------
-    # Generate MLIR
-    # ------------------------------------------------------------------
-    return Program(iron.get_current_device(), rt).resolve_program()
+            # ---- Group 2: FC1 fill + FC1 drain ----
+            # FC1 fill reads the avgpool scratch (drained above). FC1 drain
+            # waits for FC compute to consume the fill, then drains FC1 output
+            # to L3. By finish_task_group, both FC1 fill and FC1 drain have
+            # completed.
+            tg2 = rt.task_group()
+            rt.fill(
+                act_out_post_shim_FC.prod(),
+                inp,
+                tap=_post_l1_scratch_tap,
+                task_group=tg2,
+                tile=shim.get("fc_fill"),
+            )
+            _post_fc_out_tap = TensorAccessPattern(
+                (_inp_sz_i32,),
+                offset=_post_l1_out_sz_i32 * 2,  # i32 offset 1280
+                sizes=[1, 1, 1, _post_l1_out_sz_i32],
+                strides=[0, 0, 0, 1],
+            )
+            rt.drain(
+                act_out_of.cons(),
+                inp,
+                tap=_post_fc_out_tap,
+                wait=True,
+                task_group=tg2,
+                tile=shim.get("fc_drain"),
+            )
+            rt.finish_task_group(tg2)
+
+            # ---- Group 3: FC2 fill + FC2 final drain to host ----
+            tg3 = rt.task_group()
+            rt.fill(
+                act_out_post_shim_FC.prod(),
+                inp,
+                tap=_post_fc_out_tap,
+                task_group=tg3,
+                tile=shim.get("fc_fill"),
+            )
+            rt.drain(
+                act_out_of.cons(),
+                out,
+                wait=True,
+                task_group=tg3,
+                tile=shim.get("fc_drain"),
+            )
+            rt.finish_task_group(tg3)
+
+        # ------------------------------------------------------------------
+        # Generate MLIR
+        # ------------------------------------------------------------------
+        return Program(iron.get_current_device(), rt).resolve_program()
+
+    return mobilenet_iron
 
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="MobileNet V3 — IRON API design")
     add_compile_args(p, default_dev="npu2", with_emit_mlir=True)
+    p.add_argument(
+        "--no-placement",
+        action="store_true",
+        help="emit unplaced logical tiles (for the SA placer) instead of the "
+        "placement.py hints",
+    )
     return p
 
 
@@ -276,8 +306,9 @@ def _run_and_verify(opts):
 
 def main():
     opts = _make_argparser().parse_args()
+    design = make_mobilenet_iron(use_placement=not opts.no_placement)
     run_design_cli(
-        mobilenet_iron,
+        design,
         opts,
         compile_kwargs={},
         device=lambda o: device_from_args(o, n_cols=None),

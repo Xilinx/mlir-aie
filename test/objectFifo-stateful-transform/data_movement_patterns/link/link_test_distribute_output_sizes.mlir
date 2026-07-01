@@ -4,13 +4,13 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2023, Advanced Micro Devices, Inc.
+// Copyright (C) 2023 Advanced Micro Devices, Inc.
 //
 // Date: June 28th 2023
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
 
 // CHECK: module @link_distribute_output_sizes {
 // CHECK:   aie.device(xcve2302) {
@@ -18,15 +18,15 @@
 // CHECK:     %{{.*}}tile_2_1 = aie.tile(2, 1)
 // CHECK:     %{{.*}}tile_2_2 = aie.tile(2, 2)
 // CHECK:     %{{.*}}tile_2_3 = aie.tile(2, 3)
-// CHECK:     %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_2_3) {sym_name = "link3_cons_buff_0"} : memref<16xi32> 
-// CHECK:     %[[VAL_1:.*]] = aie.buffer(%{{.*}}tile_2_3) {sym_name = "link3_cons_buff_1"} : memref<16xi32> 
+// CHECK:     %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_2_3) {sym_name = "link3_cons_buff_0"} : memref<16xi32>
+// CHECK:     %[[VAL_1:.*]] = aie.buffer(%{{.*}}tile_2_3) {sym_name = "link3_cons_buff_1"} : memref<16xi32>
 // CHECK:     %[[VAL_2:.*]] = aie.lock(%{{.*}}tile_2_3, 0) {init = 2 : i32, sym_name = "link3_cons_prod_lock_0"}
 // CHECK:     %[[VAL_3:.*]] = aie.lock(%{{.*}}tile_2_3, 1) {init = 0 : i32, sym_name = "link3_cons_cons_lock_0"}
-// CHECK:     %[[VAL_4:.*]] = aie.buffer(%{{.*}}tile_2_2) {sym_name = "link2_cons_buff_0"} : memref<16xi32> 
-// CHECK:     %[[VAL_5:.*]] = aie.buffer(%{{.*}}tile_2_2) {sym_name = "link2_cons_buff_1"} : memref<16xi32> 
+// CHECK:     %[[VAL_4:.*]] = aie.buffer(%{{.*}}tile_2_2) {sym_name = "link2_cons_buff_0"} : memref<16xi32>
+// CHECK:     %[[VAL_5:.*]] = aie.buffer(%{{.*}}tile_2_2) {sym_name = "link2_cons_buff_1"} : memref<16xi32>
 // CHECK:     %[[VAL_6:.*]] = aie.lock(%{{.*}}tile_2_2, 0) {init = 2 : i32, sym_name = "link2_cons_prod_lock_0"}
 // CHECK:     %[[VAL_7:.*]] = aie.lock(%{{.*}}tile_2_2, 1) {init = 0 : i32, sym_name = "link2_cons_cons_lock_0"}
-// CHECK:     %[[VAL_8:.*]] = aie.buffer(%{{.*}}tile_2_1) {sym_name = "link1_cons_buff_0"} : memref<64xi32> 
+// CHECK:     %[[VAL_8:.*]] = aie.buffer(%{{.*}}tile_2_1) {sym_name = "link1_cons_buff_0"} : memref<64xi32>
 // CHECK:     %[[VAL_9:.*]] = aie.lock(%{{.*}}tile_2_1, 0) {init = 1 : i32, sym_name = "link1_cons_prod_lock_0"}
 // CHECK:     %[[VAL_10:.*]] = aie.lock(%{{.*}}tile_2_1, 1) {init = 0 : i32, sym_name = "link1_cons_cons_lock_0"}
 // CHECK:     %[[VAL_11:.*]] = aie.lock(%{{.*}}tile_2_1, 2) {init = 1 : i32, sym_name = "link1_cons_prod_lock_1"}

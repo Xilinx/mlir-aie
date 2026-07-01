@@ -3,7 +3,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 """Whole-array matrix multiply — IRON API design with ``@iron.jit`` compilation.
 
 A 4xN_cols AIE array computes ``C = A @ B`` (optionally with ``B`` column-major

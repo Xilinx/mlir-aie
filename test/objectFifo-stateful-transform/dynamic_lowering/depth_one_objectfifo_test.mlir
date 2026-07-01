@@ -4,11 +4,11 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2025, Advanced Micro Devices, Inc.
+// Copyright (C) 2025 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
 
 // CHECK:  module {
 // CHECK:    aie.device(npu1_1col) {
@@ -18,11 +18,11 @@
 // CHECK:      %{{.*}}tile_0_0 = aie.tile(0, 0)
 // CHECK:      %{{.*}}tile_0_2 = aie.tile(0, 2)
 // CHECK:      %{{.*}}tile_0_4 = aie.tile(0, 4)
-// CHECK:      %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_0_2) {sym_name = "input_fifo_cons_buff_0"} : memref<10xi32> 
+// CHECK:      %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_0_2) {sym_name = "input_fifo_cons_buff_0"} : memref<10xi32>
 // CHECK:      %[[VAL_1:.*]] = aie.lock(%{{.*}}tile_0_2, 0) {init = 1 : i32, sym_name = "input_fifo_cons_prod_lock_0"}
 // CHECK:      %[[VAL_2:.*]] = aie.lock(%{{.*}}tile_0_2, 1) {init = 0 : i32, sym_name = "input_fifo_cons_cons_lock_0"}
 // CHECK:      aie.flow(%{{.*}}tile_0_0, DMA : 0, %{{.*}}tile_0_2, DMA : 0)
-// CHECK:      %buffer_0_2 = aie.buffer(%{{.*}}tile_0_2) : memref<1xi32> 
+// CHECK:      %buffer_0_2 = aie.buffer(%{{.*}}tile_0_2) : memref<1xi32>
 // CHECK:      %core_0_2 = aie.core(%{{.*}}tile_0_2) {
 // CHECK:        %c0_i32 = arith.constant 0 : i32
 // CHECK:        %c0 = arith.constant 0 : index

@@ -3,7 +3,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024-2026, Advanced Micro Devices, Inc.
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 """ResNet-style int8 bottleneck (3 convs + skip add) host test.
 
 KNOWN: This test fails on Strix Halo (npu2). The design needs ``conv2dk1``,

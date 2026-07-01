@@ -4,14 +4,14 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2022, Xilinx Inc.
-// Copyright (C) 2022, Advanced Micro Devices, Inc.
+// Copyright (C) 2022 Xilinx, Inc.
+// Copyright (C) 2022 Advanced Micro Devices, Inc.
 //
 // Date: September 5th 2022
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcvc1902) {
 // CHECK:           %[[VAL_0:.*]] = aie.tile(1, 2)
@@ -286,7 +286,7 @@ module @broadcast {
             func.call @some_work(%elem0) : (memref<16xi32>) -> ()
             aie.objectfifo.release @broadcast_of (Produce, 1)
         }
-        
+
         aie.end
     }
 
@@ -301,7 +301,7 @@ module @broadcast {
             func.call @some_work(%elem0) : (memref<16xi32>) -> ()
             aie.objectfifo.release @broadcast_of (Consume, 1)
         }
-        
+
         aie.end
     }
 
@@ -318,7 +318,7 @@ module @broadcast {
             func.call @some_work(%elem1) : (memref<16xi32>) -> ()
             aie.objectfifo.release @broadcast_of (Consume, 2)
         }
-        
+
         aie.end
     }
 
@@ -337,7 +337,7 @@ module @broadcast {
             func.call @some_work(%elem2) : (memref<16xi32>) -> ()
             aie.objectfifo.release @broadcast_of (Consume, 1)
         }
-        
+
         aie.end
     }
 
@@ -354,7 +354,7 @@ module @broadcast {
             func.call @some_work(%elem1) : (memref<16xi32>) -> ()
             aie.objectfifo.release @broadcast_of (Consume, 1)
         }
-        
+
         aie.end
     }
  }

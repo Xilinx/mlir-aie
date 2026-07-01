@@ -4,11 +4,11 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2025, Advanced Micro Devices, Inc.
+// Copyright (C) 2025 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
 
 // CHECK-LABEL: module {
 // CHECK:   aie.device(npu1_1col) {
@@ -54,9 +54,8 @@ module {
   aie.device(npu1_1col) {
     %shim_noc_tile_0_0 = aie.tile(0, 0)
     %mem_tile_0_1 = aie.tile(0, 1)
-    aie.objectfifo @in(%shim_noc_tile_0_0, {%mem_tile_0_1}, 2 : i32) {iter_count = 1 : i32} : !aie.objectfifo<memref<1024xi32>> 
-    aie.objectfifo @in_fwd(%mem_tile_0_1, {%shim_noc_tile_0_0}, 2 : i32) : !aie.objectfifo<memref<1024xi32>> 
+    aie.objectfifo @in(%shim_noc_tile_0_0, {%mem_tile_0_1}, 2 : i32) {iter_count = 1 : i32} : !aie.objectfifo<memref<1024xi32>>
+    aie.objectfifo @in_fwd(%mem_tile_0_1, {%shim_noc_tile_0_0}, 2 : i32) : !aie.objectfifo<memref<1024xi32>>
     aie.objectfifo.link [@in] -> [@in_fwd]([] [0])
   }
 }
-

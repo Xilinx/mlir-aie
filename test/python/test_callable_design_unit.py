@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2026 Advanced Micro Devices, Inc.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 
 # RUN: %pytest %s
 """Unit tests for CallableDesign and @jit pure-logic surfaces — no NPU required.
@@ -12,8 +12,6 @@
 Tests that exercise compile() or actual NPU kernel execution live in
 test/python/npu-xrt/test_iron_jit_e2e.py (requires xrt_python_bindings).
 """
-
-from pathlib import Path
 
 import pytest
 
@@ -132,7 +130,9 @@ class TestJitDecorator:
         def gen(a: In):
             pass
 
-        assert any("/opt/inc" in str(p) for p in gen.compilable.include_paths)
+        assert any(
+            "opt/inc" in str(p).replace("\\", "/") for p in gen.compilable.include_paths
+        )
 
     def test_object_files_forwarded(self):
         @jit(object_files=["add.o"])
@@ -428,3 +428,161 @@ def test_as_mlir_no_warning_when_no_conflict():
     assert (
         not conflict_warnings
     ), "as_mlir() must not warn when call-time and pre-bound values match"
+
+
+def test_call_binds_runtime_device_before_in_process_cache(monkeypatch):
+    """Direct @iron.jit calls bind the runtime device before cache lookup."""
+    import aie.utils as utils
+    from aie.iron.device import NPU2
+    from aie.utils.hostruntime import set_current_device
+
+    class FakeRuntime:
+        def device(self):
+            return NPU2()
+
+    def gen():
+        pass
+
+    set_current_device(None)
+    monkeypatch.setattr(utils, "_get_default_npu_runtime", lambda: FakeRuntime())
+
+    cd = CallableDesign(gen)
+    seen_keys = []
+
+    def fake_compile_and_build(self, compilable, cache_key, trace_config):
+        seen_keys.append(cache_key)
+        assert type(utils.get_current_device(probe_runtime=False)).__name__ == "NPU2"
+        return lambda *args, **kwargs: "ran"
+
+    monkeypatch.setattr(
+        CallableDesign, "_compile_and_build_kernel", fake_compile_and_build
+    )
+
+    try:
+        assert cd() == "ran"
+    finally:
+        set_current_device(None)
+
+    assert seen_keys
+    assert seen_keys[0][-1][0] == "device"
+    assert "__iron_device__" not in seen_keys[0][1]
+
+
+@pytest.mark.parametrize("artifact_name", ["xclbin_path", "insts_path"])
+def test_call_rebuilds_removed_cached_artifacts(
+    monkeypatch, tmp_path, npu2_device, artifact_name
+):
+    """A memory-cache entry is invalid after either artifact is removed."""
+
+    def gen():
+        pass
+
+    class FakeKernel:
+        def __init__(self, xclbin_path, insts_path, result):
+            self.xclbin_path = xclbin_path
+            self.insts_path = insts_path
+            self.result = result
+
+        def __call__(self, *args, **kwargs):
+            return self.result
+
+    cd = CallableDesign(gen)
+    builds = []
+
+    def fake_compile_and_build(self, compilable, cache_key, trace_config):
+        index = len(builds)
+        xclbin_path = tmp_path / f"{index}.xclbin"
+        insts_path = tmp_path / f"{index}.bin"
+        xclbin_path.touch()
+        insts_path.touch()
+        kernel = FakeKernel(xclbin_path, insts_path, index)
+        self._kernel_cache[cache_key] = kernel
+        builds.append(kernel)
+        return kernel
+
+    monkeypatch.setattr(
+        CallableDesign, "_compile_and_build_kernel", fake_compile_and_build
+    )
+
+    assert cd() == 0
+    getattr(builds[0], artifact_name).unlink()
+
+    assert cd() == 1
+    assert len(builds) == 2
+
+
+def test_function_cache_key_keeps_internal_identity_out_of_compile_kwargs():
+    """User compile keys cannot collide with internal cache dimensions."""
+    from aie.utils.compile.cache.utils import _create_function_cache_key
+
+    def gen():
+        pass
+
+    key = _create_function_cache_key(
+        gen,
+        (),
+        {"__iron_device__": "user-value"},
+        extra_key=("device", "NPU2Col1"),
+    )
+
+    assert "__iron_device__" in key[1]
+    assert key[2] == ("device", "NPU2Col1")
+
+
+def test_call_argument_errors_do_not_probe_runtime(monkeypatch):
+    """Cheap call-shape errors are reported before runtime device probing."""
+    import aie.utils as utils
+    from aie.utils.hostruntime import set_current_device
+
+    def gen(a: In):
+        pass
+
+    def fail_runtime_probe():
+        raise AssertionError("runtime should not be probed before argument validation")
+
+    set_current_device(None)
+    monkeypatch.setattr(utils, "_get_default_npu_runtime", fail_runtime_probe)
+
+    cd = CallableDesign(gen)
+    with pytest.raises(TypeError, match="at most 1 positional"):
+        cd(object(), object())
+
+
+def test_as_mlir_binds_runtime_device_before_generation(monkeypatch):
+    """Inspection follows the same device binding invariant as __call__."""
+    import aie.utils as utils
+    from aie.iron.device import NPU2Col1
+    from aie.utils.hostruntime import set_current_device
+
+    class FakeRuntime:
+        def device(self):
+            return NPU2Col1()
+
+    def gen():
+        pass
+
+    set_current_device(None)
+    monkeypatch.setattr(utils, "_get_default_npu_runtime", lambda: FakeRuntime())
+
+    cd = CallableDesign(gen)
+
+    def fake_generate_uncached(self):
+        assert (
+            type(utils.get_current_device(probe_runtime=False)).__name__ == "NPU2Col1"
+        )
+        return ("module {}", [])
+
+    def fake_generate_mlir(self, _ExternalFunction):
+        return self._generated[0]
+
+    monkeypatch.setattr(CompilableDesign, "_generate_uncached", fake_generate_uncached)
+    monkeypatch.setattr(CompilableDesign, "_generate_mlir", fake_generate_mlir)
+
+    try:
+        assert cd.as_mlir() == "module {}"
+    finally:
+        set_current_device(None)
+
+    keys = list(cd.compilable._generated_cache)
+    assert len(keys) == 1
+    assert "NPU2Col1" in keys[0][1]

@@ -4,11 +4,11 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2026, Advanced Micro Devices, Inc.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aie2p target-backend=llvmir" | FileCheck %s
+// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aie2p" | FileCheck %s
 
 // Test: arith.divf 1.0/x → aievec.inv for scalar f32 input (AIE2P LLVMIR backend)
 

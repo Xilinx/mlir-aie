@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2026 Advanced Micro Devices, Inc. or its affiliates
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 """32-core (8 cols x 4 rows) asymmetric-tile-buffered bfp16ebs8 GEMM —
 ``@iron.jit`` IRON design.
 

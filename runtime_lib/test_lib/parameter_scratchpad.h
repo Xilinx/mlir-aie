@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2026 Advanced Micro Devices, Inc.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -31,13 +31,16 @@
 #include <unordered_set>
 #include <vector>
 
-#if !defined(TEST_UTILS_USE_XRT) && defined(__has_include)
-#if __has_include(<xrt/xrt_bo.h>) && __has_include(<xrt/xrt_kernel.h>)
+#if !defined(TEST_UTILS_USE_XRT)
+#if defined(__has_include) && __has_include(<xrt/xrt_bo.h>) && \
+    __has_include(<xrt/xrt_kernel.h>)
 #define TEST_UTILS_USE_XRT 1
+#else
+#define TEST_UTILS_USE_XRT 0
 #endif
 #endif
 
-#ifdef TEST_UTILS_USE_XRT
+#if TEST_UTILS_USE_XRT
 #include <xrt/xrt_bo.h>
 #include <xrt/xrt_kernel.h>
 #endif
@@ -46,7 +49,7 @@ namespace test_utils {
 
 class ParameterScratchpad {
 public:
-#ifdef TEST_UTILS_USE_XRT
+#if TEST_UTILS_USE_XRT
   /// Construct from an XRT run handle (C++ usage).
   ParameterScratchpad(xrt::run &run, const std::string &paramsPath) {
     parseParams(paramsPath);
@@ -113,7 +116,7 @@ public:
     writeBits(name, bits);
   }
 
-#ifdef TEST_UTILS_USE_XRT
+#if TEST_UTILS_USE_XRT
   /// Sync the scratchpad buffer to device. Call after all writes for this run.
   void sync() { scratchpadBo.sync(XCL_BO_SYNC_BO_TO_DEVICE); }
 #endif
@@ -129,7 +132,7 @@ public:
   }
 
 private:
-#ifdef TEST_UTILS_USE_XRT
+#if TEST_UTILS_USE_XRT
   xrt::bo scratchpadBo;
 #endif
   uint32_t *boMap = nullptr;

@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2023, Advanced Micro Devices, Inc.
+// Copyright (C) 2023 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 // This file contains conversions and rewrite that replace common AIEVec ops
@@ -198,13 +198,13 @@ struct FoldAIEShiftAndBroadcast
 //===----------------------------------------------------------------------===//
 // Pattern collection
 //===----------------------------------------------------------------------===//
-static void populateAIEVecV1TransformationPatterns(RewritePatternSet &patterns,
-                                                   TargetBackend backend) {
+static void
+populateAIEVecV1TransformationPatterns(RewritePatternSet &patterns) {
   patterns.add<MergeSingleColumnI16FMAOpPattern>(patterns.getContext());
 }
 
-static void populateAIEVecV2TransformationPatterns(RewritePatternSet &patterns,
-                                                   TargetBackend backend) {
+static void
+populateAIEVecV2TransformationPatterns(RewritePatternSet &patterns) {
   patterns.add<FoldAIEShiftAndBroadcast>(patterns.getContext());
 }
 
@@ -213,8 +213,7 @@ static void populateAIEVecV2TransformationPatterns(RewritePatternSet &patterns,
 //===----------------------------------------------------------------------===//
 
 static void
-configureAIEVecV1TransformationLegalizations(ConversionTarget &target,
-                                             TargetBackend backend) {
+configureAIEVecV1TransformationLegalizations(ConversionTarget &target) {
   target.addLegalDialect<aievec::AIEVecDialect,
                          aievec::aie1::AIEVecAIE1Dialect>();
   target.addDynamicallyLegalOp<aievec::aie1::FMAOp>(
@@ -226,8 +225,7 @@ configureAIEVecV1TransformationLegalizations(ConversionTarget &target,
 }
 
 static void
-configureAIEVecV2TransformationLegalizations(ConversionTarget &target,
-                                             TargetBackend backend) {
+configureAIEVecV2TransformationLegalizations(ConversionTarget &target) {
   target.addDynamicallyLegalOp<xilinx::aievec::BroadcastOp>(
       [](xilinx::aievec::BroadcastOp op) {
         aievec::ShiftOp shiftOp = nullptr;
@@ -250,7 +248,6 @@ struct AIEVecTransformationPass
   AIEVecTransformationPass(const OptimizeAIEVecOptions &options)
       : AIEVecTransformationPass() {
     aieTarget = options.aieTarget;
-    targetBackend = options.targetBackend;
   }
 
   // In case we want to register this pass as a standalone pass for test
@@ -273,13 +270,6 @@ struct AIEVecTransformationPass
                      "determine the vector size and available operations."),
       llvm::cl::init("aie")};
 
-  Option<std::string> targetBackend{
-      *this, "target-backend",
-      llvm::cl::desc("Select translation backend: \"cpp\" or \"llvmir\". This "
-                     "will determine the aievec operations used to convert "
-                     "from vector dialect."),
-      llvm::cl::init("cpp")};
-
   void runOnOperation() override {
     auto op = getOperation();
     MLIRContext *context = &getContext();
@@ -297,29 +287,12 @@ struct AIEVecTransformationPass
       }
     }
 
-    TargetBackend backend = TargetBackend::CPP;
-    if (!targetBackend.empty()) {
-      std::string backendStr = targetBackend;
-      if (backendStr == "llvmir") {
-        backend = TargetBackend::LLVMIR;
-        if (aieVersion == AIEArch::AIE) {
-          op->emitError() << "targetting LLVM IR is not supported for AIEv1";
-          signalPassFailure();
-          return;
-        }
-      } else if (backendStr != "cpp") {
-        op->emitError() << "unknown target backend'" << targetBackend << "'";
-        signalPassFailure();
-        return;
-      }
-    }
-
     if (aieVersion == AIEArch::AIE) {
-      populateAIEVecV1TransformationPatterns(patterns, backend);
-      configureAIEVecV1TransformationLegalizations(target, backend);
+      populateAIEVecV1TransformationPatterns(patterns);
+      configureAIEVecV1TransformationLegalizations(target);
     } else {
-      populateAIEVecV2TransformationPatterns(patterns, backend);
-      configureAIEVecV2TransformationLegalizations(target, backend);
+      populateAIEVecV2TransformationPatterns(patterns);
+      configureAIEVecV2TransformationLegalizations(target);
     }
 
     if (failed(applyPartialConversion(op, target, std::move(patterns)))) {
@@ -344,7 +317,6 @@ struct AIEVecConvOpTransformationPass
   AIEVecConvOpTransformationPass(const OptimizeAIEVecOptions &options)
       : AIEVecConvOpTransformationPass() {
     aieTarget = options.aieTarget;
-    targetBackend = options.targetBackend;
     shiftParam = options.shiftParam;
   }
 
@@ -370,13 +342,6 @@ struct AIEVecConvOpTransformationPass
                      "determine the vector size and available operations."),
       llvm::cl::init("aie")};
 
-  Option<std::string> targetBackend{
-      *this, "target-backend",
-      llvm::cl::desc("Select translation backend: \"cpp\" or \"llvmir\". This "
-                     "will determine the aievec operations used to convert "
-                     "from vector dialect."),
-      llvm::cl::init("cpp")};
-
   Option<unsigned> shiftParam{
       *this, "shift",
       llvm::cl::desc("Shift parameter for rounding and saturation."),
@@ -399,28 +364,10 @@ struct AIEVecConvOpTransformationPass
       }
     }
 
-    TargetBackend backend = TargetBackend::CPP;
-    if (!targetBackend.empty()) {
-      std::string backendStr = targetBackend;
-      if (backendStr == "llvmir") {
-        backend = TargetBackend::LLVMIR;
-        if (aieVersion == AIEArch::AIE) {
-          op->emitError() << "targetting LLVM IR is not supported for AIEv1";
-          signalPassFailure();
-          return;
-        }
-      } else if (backendStr != "cpp") {
-        op->emitError() << "unknown target backend'" << targetBackend << "'";
-        signalPassFailure();
-        return;
-      }
-    }
-
     AnalysisManager am = getAnalysisManager();
     if (aieVersion == AIEArch::AIE2) {
-      populateAIEVecConvOpTransformationPatterns(patterns, am, shiftParam,
-                                                 backend);
-      configureAIEVecConvOpTransformationLegalizations(target, am, backend);
+      populateAIEVecConvOpTransformationPatterns(patterns, am, shiftParam);
+      configureAIEVecConvOpTransformationLegalizations(target, am);
     }
 
     if (failed(applyPartialConversion(op, target, std::move(patterns)))) {

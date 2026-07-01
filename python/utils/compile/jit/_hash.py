@@ -4,15 +4,15 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2026 Advanced Micro Devices, Inc.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 """Content-addressed hashing for the JIT cache.
 
 Two halves so callers can distinguish "recipe changed" from "rebuild needed":
 
-* :func:`_compute_recipe_hash`   — generator bytecode + compile_kwargs +
-  aiecc/compile flags.  Pure function of the design specification.
+* :func:`_compute_recipe_hash`   — generator identity + compile_kwargs +
+  aiecc/compile flags. Target-independent design identity.
 * :func:`_compute_artifact_hash` — source / object mtimes + tool mtimes +
-  target arch.  Captures things that change the *output* of compilation
+  target device.  Captures things that change the *output* of compilation
   without changing the *recipe*.
 
 :func:`_compute_hash` composes both into the 24-hex cache-key
@@ -33,6 +33,18 @@ from typing import Any, Callable, Mapping
 logger = logging.getLogger(__name__)
 
 
+def _device_identity_key(device) -> tuple[str, str, str, str]:
+    """Return the cache-relevant identity of an IRON device."""
+    if device is None:
+        return ("none", "", "", "")
+    return (
+        f"{type(device).__module__}.{type(device).__qualname__}",
+        str(getattr(device, "arch", "")),
+        str(getattr(device, "cols", "")),
+        str(getattr(device, "rows", "")),
+    )
+
+
 def _compute_recipe_hash(
     generator: Callable | Path,
     compile_kwargs: Mapping[str, Any],
@@ -41,9 +53,9 @@ def _compute_recipe_hash(
 ) -> str:
     """Hash of the "recipe": generator bytecode + CompileTime[T] kwargs + flags.
 
-    Pure function of the design specification; does not touch the filesystem
-    or environment.  Two CompilableDesigns with the same recipe_hash will
-    produce identical MLIR (modulo nondeterminism in the generator body).
+    Captures the target-independent generator and compile configuration. It
+    omits device identity, so equal recipe hashes can produce different
+    target-specialized MLIR.
     """
     h = hashlib.sha256()
 
@@ -98,7 +110,7 @@ def _compute_artifact_hash(
     source_files: list[Path] | tuple[Path, ...],
     object_files: list[Path] | tuple[Path, ...],
 ) -> str:
-    """Hash of the "artifacts": source/object mtimes + tool mtimes + target arch.
+    """Hash of the "artifacts": source/object mtimes + tool mtimes + target device.
 
     Captures everything that can change the *output* of compilation without
     changing the *recipe*: edited C++ kernels, swapped object files, upgraded
@@ -120,30 +132,24 @@ def _compute_artifact_hash(
         except (FileNotFoundError, OSError):
             pass
 
-    # Static .mlir is arch-agnostic; compiled kernels need a target identifier.
-    # Missing components collapse to a constant + WARNING log so cross-arch cache
-    # collisions surface instead of silently aliasing.
+    # Static .mlir is target-agnostic; compiled kernels need a device identifier.
+    # Missing components collapse to a constant + WARNING log so cross-target
+    # cache collisions surface instead of silently aliasing.
     if not isinstance(generator, Path):
         try:
-            import aie.iron as _iron
-            from aie.utils import DefaultNPURuntime
+            from aie.utils import get_current_device
             from aie.utils.compile.utils import resolve_target_arch
 
-            try:
-                device = _iron.get_current_device()
-            except (RuntimeError, AttributeError):
-                device = (
-                    DefaultNPURuntime.device()
-                    if DefaultNPURuntime is not None
-                    else None
-                )
+            device = get_current_device(probe_runtime=False)
             target_arch = resolve_target_arch(device)
+            target_device = _device_identity_key(device)
         except (ImportError, AttributeError, RuntimeError, ValueError) as exc:
             logger.warning(
                 "_compute_artifact_hash: target_arch unresolved (%s); using 'unknown'",
                 exc,
             )
             target_arch = "unknown"
+            target_device = ("unknown", "", "", "")
 
         try:
             from aie.utils import config as _config
@@ -182,7 +188,8 @@ def _compute_artifact_hash(
             aiecc_mtime = "absent"
 
         h.update(
-            f"target_arch={target_arch}|peano_mtime={peano_mtime}|aiecc_mtime={aiecc_mtime}".encode()
+            f"target_arch={target_arch}|target_device={target_device!r}|"
+            f"peano_mtime={peano_mtime}|aiecc_mtime={aiecc_mtime}".encode()
         )
 
     return h.hexdigest()

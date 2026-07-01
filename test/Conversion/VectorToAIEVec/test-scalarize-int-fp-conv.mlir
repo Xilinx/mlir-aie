@@ -4,20 +4,18 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2026, Advanced Micro Devices, Inc.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 //
 // Verify that vector forms of arith.{sitofp,uitofp,fptosi,fptoui} are
 // scalarized into per-lane {vector.extract -> scalar conv -> reassemble}
-// for the LLVMIR backend (AIE2 and AIE2P), and left untouched for the
-// CPP backend or for scalar inputs.
+// for the LLVMIR backend (AIE2 and AIE2P).
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aie2p target-backend=llvmir" | FileCheck %s --check-prefixes=CHECK,LLVMIR
-// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aie2 target-backend=llvmir"  | FileCheck %s --check-prefixes=CHECK,LLVMIR
-// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aie2 target-backend=cpp"     | FileCheck %s --check-prefixes=CHECK,CPP
+// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aie2p" | FileCheck %s --check-prefixes=CHECK,LLVMIR
+// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aie2"  | FileCheck %s --check-prefixes=CHECK,LLVMIR
 
 // -----------------------------------------------------------------------------
 // fptosi: vector<16xbf16> -> vector<16xi32>  (the motivating mask use case)
@@ -31,8 +29,6 @@ func.func @vec_fptosi_bf16_i32(%a: vector<16xbf16>) -> vector<16xi32> {
   // LLVMIR: %[[C15:.*]] = arith.fptosi %[[E15]] : bf16 to i32
   // LLVMIR: %[[R:.*]] = vector.from_elements {{.*}} : vector<16xi32>
   // LLVMIR: return %[[R]] : vector<16xi32>
-  // CPP: %[[R:.*]] = arith.fptosi %[[A]] : vector<16xbf16> to vector<16xi32>
-  // CPP: return %[[R]] : vector<16xi32>
   %0 = arith.fptosi %a : vector<16xbf16> to vector<16xi32>
   return %0 : vector<16xi32>
 }
@@ -45,7 +41,6 @@ func.func @vec_fptosi_bf16_i32(%a: vector<16xbf16>) -> vector<16xi32> {
 func.func @vec_fptoui_f32_i32(%a: vector<8xf32>) -> vector<8xi32> {
   // LLVMIR-COUNT-8: arith.fptoui %{{.*}} : f32 to i32
   // LLVMIR: vector.from_elements {{.*}} : vector<8xi32>
-  // CPP: arith.fptoui %[[A]] : vector<8xf32> to vector<8xi32>
   %0 = arith.fptoui %a : vector<8xf32> to vector<8xi32>
   return %0 : vector<8xi32>
 }
@@ -58,7 +53,6 @@ func.func @vec_fptoui_f32_i32(%a: vector<8xf32>) -> vector<8xi32> {
 func.func @vec_sitofp_i32_f32(%a: vector<8xi32>) -> vector<8xf32> {
   // LLVMIR-COUNT-8: arith.sitofp %{{.*}} : i32 to f32
   // LLVMIR: vector.from_elements {{.*}} : vector<8xf32>
-  // CPP: arith.sitofp %[[A]] : vector<8xi32> to vector<8xf32>
   %0 = arith.sitofp %a : vector<8xi32> to vector<8xf32>
   return %0 : vector<8xf32>
 }
@@ -71,7 +65,6 @@ func.func @vec_sitofp_i32_f32(%a: vector<8xi32>) -> vector<8xf32> {
 func.func @vec_uitofp_i32_f32(%a: vector<8xi32>) -> vector<8xf32> {
   // LLVMIR-COUNT-8: arith.uitofp %{{.*}} : i32 to f32
   // LLVMIR: vector.from_elements {{.*}} : vector<8xf32>
-  // CPP: arith.uitofp %[[A]] : vector<8xi32> to vector<8xf32>
   %0 = arith.uitofp %a : vector<8xi32> to vector<8xf32>
   return %0 : vector<8xf32>
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-# (c) Copyright 2023-2026 Advanced Micro Devices, Inc.
+# Copyright (C) 2023-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 from collections import deque
@@ -11,7 +11,7 @@ import sys
 import time
 
 # Retry configuration
-TRANSIENT_FAILURE_TEXT = "No such device with index"
+TRANSIENT_FAILURE_TEXT = "No such device"
 MAX_ATTEMPTS = 3
 TAIL_LINES = 200
 

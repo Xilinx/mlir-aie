@@ -1,4 +1,5 @@
 # This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
@@ -12,6 +13,7 @@ import pytest
 import numpy as np
 
 from aie.dialects._aie_enum_gen import AIETileType
+from aie.ir import MLIRError
 from aie.iron import Buffer, ObjectFifo, Program, Runtime, Worker
 from aie.iron.dataflow.objectfifo import ObjectFifoLink
 from aie.iron.device import (
@@ -114,7 +116,12 @@ def test_runtime_endpoint_tile_type_validation():
 
 
 def test_workers_cannot_share_tile():
-    """Two workers placed on the same coordinates must error."""
+    """Two workers placed on the same coordinates must error.
+
+    The one-core-per-tile rule is enforced by the aie.device verifier, so the
+    collision surfaces as an MLIRError during module construction rather than a
+    Python-side check.
+    """
     n_ty = np.ndarray[(1024,), np.dtype[np.int32]]
     shared_tile = Tile(0, 2)
     of1 = ObjectFifo(n_ty, name="shared_of1")
@@ -126,12 +133,16 @@ def test_workers_cannot_share_tile():
         rt.start(w1, w2)
         rt.fill(of1.prod(), A)
         rt.fill(of2.prod(), B)
-    with pytest.raises(ValueError, match="Multiple workers cannot share the same tile"):
+    with pytest.raises(MLIRError, match="already has a core"):
         Program(NPU2(), rt).resolve_program()
 
 
 def test_workers_cannot_share_tile_by_coordinates():
-    """Two workers with different Tile objects but same coordinates must error."""
+    """Two workers with different Tile objects but same coordinates must error.
+
+    Distinct Tile objects now emit distinct aie.logical_tile ops (no Python-side
+    coordinate merging); the aie.device verifier rejects the shared coordinate.
+    """
     n_ty = np.ndarray[(1024,), np.dtype[np.int32]]
     tile_1 = Tile(0, 2)
     tile_2 = Tile(0, 2)
@@ -144,7 +155,7 @@ def test_workers_cannot_share_tile_by_coordinates():
         rt.start(w1, w2)
         rt.fill(of1.prod(), A)
         rt.fill(of2.prod(), B)
-    with pytest.raises(ValueError, match="Multiple workers cannot share the same tile"):
+    with pytest.raises(MLIRError, match="already has a core"):
         Program(NPU2(), rt).resolve_program()
 
 

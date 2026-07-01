@@ -40,7 +40,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang-tidy ninja-build clang libelf-dev
 
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
           python-version: '3.12'
 
@@ -159,12 +159,12 @@ jobs:
           submodules: "true"
 
       - name: Install clang-format
-        uses: aminya/setup-cpp@1f17f92d6a52bfcb1a25348e2c526c2e5cbb1134  # v1.8.0
+        uses: aminya/setup-cpp@8170d66c458f4a045220b7b0966c10940bb2a15d  # v1.8.1
         with:
           clangformat: 17.0.1
 
       - name: Setup Python env
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
           python-version: '3.12'
 
@@ -198,7 +198,7 @@ jobs:
           name: clang_format_diffs
 
       - name: Check C/C++ format
-        uses: reviewdog/action-suggester@aa38384ceb608d00f84b4690cacc83a5aba307ff  # v1.24
+        uses: reviewdog/action-suggester@2558ba17e65a9039e73764a73009fc05fef28a46  # v1.24
         with:
           tool_name: clang-format
           level: error
@@ -221,7 +221,7 @@ jobs:
 
       - name: Check Python format
         if: success() || failure()
-        uses: reviewdog/action-suggester@aa38384ceb608d00f84b4690cacc83a5aba307ff  # v1.24
+        uses: reviewdog/action-suggester@2558ba17e65a9039e73764a73009fc05fef28a46  # v1.24
         with:
           tool_name: black
           level: error
@@ -257,7 +257,7 @@ jobs:
           fetch-depth: 2
           submodules: "true"
 
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
           python-version: '3.12'
 

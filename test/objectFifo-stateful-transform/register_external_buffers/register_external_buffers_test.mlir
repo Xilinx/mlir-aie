@@ -4,14 +4,14 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2022, Xilinx Inc.
-// Copyright (C) 2022, Advanced Micro Devices, Inc.
+// Copyright (C) 2022 Xilinx, Inc.
+// Copyright (C) 2022 Advanced Micro Devices, Inc.
 //
 // Date: January 27th 2023
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcvc1902) {
 // CHECK:           %[[VAL_0:.*]] = aie.tile(7, 1)
@@ -95,7 +95,7 @@ module @register_external_buffers {
         %elem1 = aie.objectfifo.subview.access %subview[1] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
         func.call @some_work(%elem0, %elem1) : (memref<16xi32>, memref<16xi32>) -> ()
         aie.objectfifo.release @ext_of (Consume, 1)
-        
+
         aie.end
     }
  }
