@@ -8,7 +8,7 @@
 import sys
 from typing import Callable
 
-from .. import ir  # pyright: ignore[reportMissingImports]
+from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ..dialects.aie import (
     core,
     lock,
