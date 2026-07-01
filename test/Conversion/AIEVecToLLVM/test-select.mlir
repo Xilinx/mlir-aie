@@ -1,3 +1,6 @@
+// Copyright (C) 2022-2024 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 // RUN: aie-opt %s --convert-aievec-to-llvm | FileCheck %s
 module {
   func.func @test(%arg0: vector<32xi16>) {

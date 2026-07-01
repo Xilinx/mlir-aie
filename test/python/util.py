@@ -1,3 +1,6 @@
+# Copyright (C) 2023 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 import inspect
 from aie.ir import Context, Location, Module, InsertionPoint
 

@@ -1,9 +1,7 @@
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2026 Advanced Micro Devices, Inc.
 """Post-processing L1: avg pool + expand 1x1 conv.
 
 Mirror of the sibling bottleneck builders: takes the upstream activation

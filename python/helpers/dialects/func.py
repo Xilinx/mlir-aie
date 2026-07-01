@@ -1,3 +1,6 @@
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 import inspect
 import numpy as np
 from functools import lru_cache, update_wrapper

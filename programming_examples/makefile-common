@@ -1,3 +1,6 @@
+# Copyright (C) 2023-2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 # VITIS related variables
 AIETOOLS_DIR ?= $(shell realpath $(dir $(shell which xchesscc))/../)
 AIE_INCLUDE_DIR ?= ${AIETOOLS_DIR}/data/versal_prod/lib

@@ -1,3 +1,6 @@
+# Copyright (C) 2024 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 from aie.helpers.taplib.utils import validate_and_clean_sizes_strides
 from util import construct_test
 

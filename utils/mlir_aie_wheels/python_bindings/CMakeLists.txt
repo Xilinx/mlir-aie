@@ -1,3 +1,6 @@
+# Copyright (C) 2023-2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 cmake_minimum_required(VERSION 3.30)
 if(POLICY CMP0068)
   cmake_policy(SET CMP0068 NEW)

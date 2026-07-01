@@ -1,5 +1,4 @@
 // clang-format off
-// Copyright (C) 2022-2023 Advanced Micro Devices, Inc.
 //
 //=======================================================================
 // Copyright 2009 Trustees of Indiana University
@@ -8,6 +7,7 @@
 // Distributed under the Boost Software License, Version 1.0. (See
 // accompanying file LICENSE_1_0.txt or copy at
 // http://www.boost.org/LICENSE_1_0.txt)
+// SPDX-License-Identifier: BSL-1.0
 //=======================================================================
 //
 // Pulled from libboost-system-dev 1.74.0.3 (ubuntu 22.04)
