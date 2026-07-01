@@ -53,4 +53,4 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 # Pre-trip aie_api's aie_adf.hpp include guard so stock upstream aie_api never
 # pulls in <adf.h>.  No mlir-aie kernel uses adf:: symbols, so this only elides
 # dead code and lets us track unforked Xilinx/aie_api.
-xchesscc --aiearch ${AIEARCH} -p me -C Release_LLVM -D__AIENGINE__ -D__AIE_API_AIE_ADF_HPP__ $EXTRA_DEFS -I $INCDIR -P $LIBDIR -d -f $@
+xchesscc --aiearch "${AIEARCH}" -p me -C Release_LLVM -D__AIENGINE__ -D__AIE_API_AIE_ADF_HPP__ $EXTRA_DEFS -I "${INCDIR}" -P "${LIBDIR}" -d -f "$@"
