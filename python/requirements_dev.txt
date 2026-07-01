@@ -19,8 +19,10 @@ pyright
 # this constraint identical to utils/mlir_wheels/requirements.in and
 # utils/mlir_aie_wheels/requirements.txt — the abi-deps CI guard
 # (utils/check_shared_dep_versions.py) fails the build if the resolved versions
-# diverge across those locks.
-nanobind>=2.13.0
+# diverge across those locks. Pinned at 2.12.0: 2.13.0 rejects passing an
+# OpResult where a Value is declared, breaking eudsl-python-extras' ArithValue
+# path. Bump only alongside a compatible eudsl/distro rebuild.
+nanobind==2.12.0
 lit
 matplotlib
 psutil

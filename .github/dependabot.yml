@@ -31,6 +31,12 @@ updates:
     schedule:
       interval: "cron"
       cronjob: "0 6 8,22 * *"
+    # nanobind is held at 2.12.0: 2.13.0 rejects passing an OpResult where a
+    # Value is declared, breaking eudsl-python-extras' ArithValue path. Bumping
+    # requires a compatible eudsl/mlir-distro rebuild, so let dependabot skip it
+    # until that lands (revisit alongside the eudsl/llvm bump).
+    ignore:
+      - dependency-name: "nanobind"
     groups:
       pip-minor-patch:
         patterns: ["*"]

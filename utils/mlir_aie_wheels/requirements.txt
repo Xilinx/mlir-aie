@@ -10,4 +10,4 @@ pybind11[global]>=3.0.4
 rich
 setuptools>=82.0.1
 wheel
-nanobind>=2.13.0
+nanobind==2.12.0
