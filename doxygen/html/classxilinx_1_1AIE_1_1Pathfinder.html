@@ -51,6 +51,7 @@ $(function() {
 </div><!-- top -->
 <div class="header">
   <div class="summary">
+<a href="#nested-classes">Classes</a> &#124;
 <a href="#pub-methods">Public Member Functions</a> &#124;
 <a href="classxilinx_1_1AIE_1_1Pathfinder-members.html">List of all members</a>  </div>
   <div class="headertitle"><div class="title">xilinx::AIE::Pathfinder Class Reference</div></div>
@@ -97,8 +98,6 @@ Public Member Functions</h2></td></tr>
 <tr class="separator:a5b474788f39120679f167b10d472cdff"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ae12501d1a391c87ad77129fec3f16679" id="r_ae12501d1a391c87ad77129fec3f16679"><td class="memItemLeft" align="right" valign="top">std::optional&lt; std::map&lt; <a class="el" href="namespacexilinx_1_1AIE.html#adb50ec93377e031b4e15ca75547fbd96">PathEndPoint</a>, <a class="el" href="namespacexilinx_1_1AIE.html#a5d804ed206d18cfc175e64c9c20295fb">SwitchSettings</a> &gt; &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1Pathfinder.html#ae12501d1a391c87ad77129fec3f16679">findPaths</a> (int maxIterations) override</td></tr>
 <tr class="separator:ae12501d1a391c87ad77129fec3f16679"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a48cf4504b19daf76cf645dadb48467f2" id="r_a48cf4504b19daf76cf645dadb48467f2"><td class="memItemLeft" align="right" valign="top">std::map&lt; <a class="el" href="namespacexilinx_1_1AIE.html#adb50ec93377e031b4e15ca75547fbd96">PathEndPoint</a>, <a class="el" href="namespacexilinx_1_1AIE.html#adb50ec93377e031b4e15ca75547fbd96">PathEndPoint</a> &gt;&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1Pathfinder.html#a48cf4504b19daf76cf645dadb48467f2">dijkstraShortestPaths</a> (<a class="el" href="namespacexilinx_1_1AIE.html#adb50ec93377e031b4e15ca75547fbd96">PathEndPoint</a> <a class="el" href="namespacexilinx_1_1AIE.html#a99b99b2f5e14ab0ccf4cd9c2ca6180da">src</a>)</td></tr>
-<tr class="separator:a48cf4504b19daf76cf645dadb48467f2"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="inherit_header pub_methods_classxilinx_1_1AIE_1_1Router"><td colspan="2" onclick="javascript:toggleInherit('pub_methods_classxilinx_1_1AIE_1_1Router')"><img src="closed.png" alt="-"/>&#160;Public Member Functions inherited from <a class="el" href="classxilinx_1_1AIE_1_1Router.html">xilinx::AIE::Router</a></td></tr>
 <tr class="memitem:a6cc4fca6cd291a8f4b9136dc2fede744 inherit pub_methods_classxilinx_1_1AIE_1_1Router" id="r_a6cc4fca6cd291a8f4b9136dc2fede744"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classxilinx_1_1AIE_1_1Router.html#a6cc4fca6cd291a8f4b9136dc2fede744">Router</a> ()=default</td></tr>
 <tr class="separator:a6cc4fca6cd291a8f4b9136dc2fede744 inherit pub_methods_classxilinx_1_1AIE_1_1Router"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -132,6 +131,8 @@ Public Member Functions</h2></td></tr>
 </table>
 </div><div class="memdoc">
 
+<p class="reference">References <a class="el" href="AIEDialect_8h_source.html#l00170">xilinx::AIE::dst</a>.</p>
+
 </div>
 </div>
 <h2 class="groupheader">Member Function Documentation</h2>
@@ -161,7 +162,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1Router.html#a430385822787ab4ead819ced33a6c18f">xilinx::AIE::Router</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIEPathFinder_8cpp_source.html#l00372">372</a> of file <a class="el" href="AIEPathFinder_8cpp_source.html">AIEPathFinder.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEPathFinder_8cpp_source.html#l00387">387</a> of file <a class="el" href="AIEPathFinder_8cpp_source.html">AIEPathFinder.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="namespacexilinx_1_1AIE.html#a53d664e017259298412c51b0334325a3a1588118736b5ecdb1ac20c16428d8ea7">xilinx::AIE::AVAILABLE</a>, <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::col</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00100">xilinx::AIE::coords</a>, <a class="el" href="namespacexilinx_1_1AIE.html#a53d664e017259298412c51b0334325a3accc0377a8afbf50e7094f5c23a8af223">xilinx::AIE::INVALID</a>, and <a class="el" href="AIETargetModel_8h_source.html#l00055">xilinx::AIE::row</a>.</p>
 
@@ -227,33 +228,9 @@ Public Member Functions</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1Router.html#ae3ccb43a8caef3f35004980a214f2a9e">xilinx::AIE::Router</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIEPathFinder_8cpp_source.html#l00295">295</a> of file <a class="el" href="AIEPathFinder_8cpp_source.html">AIEPathFinder.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEPathFinder_8cpp_source.html#l00310">310</a> of file <a class="el" href="AIEPathFinder_8cpp_source.html">AIEPathFinder.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIEDialect_8h_source.html#l00170">xilinx::AIE::dst</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00040">xilinx::AIE::dstCoords</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00130">xilinx::AIE::dsts</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00128">xilinx::AIE::isPriorityFlow</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00054">xilinx::AIE::packetGroupId</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00129">xilinx::AIE::src</a>, and <a class="el" href="AIEPathFinder_8h_source.html#l00040">xilinx::AIE::srcCoords</a>.</p>
-
-</div>
-</div>
-<a id="a48cf4504b19daf76cf645dadb48467f2" name="a48cf4504b19daf76cf645dadb48467f2"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a48cf4504b19daf76cf645dadb48467f2">&#9670;&#160;</a></span>dijkstraShortestPaths()</h2>
-
-<div class="memitem">
-<div class="memproto">
-      <table class="memname">
-        <tr>
-          <td class="memname">std::map&lt; <a class="el" href="namespacexilinx_1_1AIE.html#adb50ec93377e031b4e15ca75547fbd96">PathEndPoint</a>, <a class="el" href="namespacexilinx_1_1AIE.html#adb50ec93377e031b4e15ca75547fbd96">PathEndPoint</a> &gt; Pathfinder::dijkstraShortestPaths </td>
-          <td>(</td>
-          <td class="paramtype"><a class="el" href="namespacexilinx_1_1AIE.html#adb50ec93377e031b4e15ca75547fbd96">PathEndPoint</a>&#160;</td>
-          <td class="paramname"><em>src</em></td><td>)</td>
-          <td></td>
-        </tr>
-      </table>
-</div><div class="memdoc">
-
-<p class="definition">Definition at line <a class="el" href="AIEPathFinder_8cpp_source.html#l00404">404</a> of file <a class="el" href="AIEPathFinder_8cpp_source.html">AIEPathFinder.cpp</a>.</p>
-
-<p class="reference">References <a class="el" href="namespacexilinx_1_1AIE.html#a53d664e017259298412c51b0334325a3a1588118736b5ecdb1ac20c16428d8ea7">xilinx::AIE::AVAILABLE</a>, <a class="el" href="AIEDialect_8cpp_source.html#l02906">xilinx::AIE::getConnectingBundle()</a>, and <a class="el" href="AIEPathFinder_8h_source.html#l00129">xilinx::AIE::src</a>.</p>
-
-<p class="reference">Referenced by <a class="el" href="AIEPathFinder_8cpp_source.html#l00500">findPaths()</a>.</p>
 
 </div>
 </div>
@@ -283,9 +260,9 @@ Public Member Functions</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1Router.html#a90bb47c74102d50734a27266690aa2b1">xilinx::AIE::Router</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIEPathFinder_8cpp_source.html#l00500">500</a> of file <a class="el" href="AIEPathFinder_8cpp_source.html">AIEPathFinder.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEPathFinder_8cpp_source.html#l00575">575</a> of file <a class="el" href="AIEPathFinder_8cpp_source.html">AIEPathFinder.cpp</a>.</p>
 
-<p class="reference">References <a class="el" href="AIEPathFinder_8h_source.html#l00100">xilinx::AIE::coords</a>, <a class="el" href="AIEPathFinder_8cpp_source.html#l00404">dijkstraShortestPaths()</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00130">xilinx::AIE::dsts</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00056">xilinx::AIE::isPriority</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00029">MAX_CIRCUIT_STREAM_CAPACITY</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00030">MAX_PACKET_STREAM_CAPACITY</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00054">xilinx::AIE::packetGroupId</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00101">xilinx::AIE::port</a>, and <a class="el" href="AIEPathFinder_8h_source.html#l00129">xilinx::AIE::src</a>.</p>
+<p class="reference">References <a class="el" href="AIEPathFinder_8h_source.html#l00130">xilinx::AIE::dsts</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00056">xilinx::AIE::isPriority</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00029">MAX_CIRCUIT_STREAM_CAPACITY</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00030">MAX_PACKET_STREAM_CAPACITY</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00054">xilinx::AIE::packetGroupId</a>, and <a class="el" href="AIEPathFinder_8h_source.html#l00129">xilinx::AIE::src</a>.</p>
 
 </div>
 </div>
@@ -373,7 +350,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Implements <a class="el" href="classxilinx_1_1AIE_1_1Router.html#a8f046587ea6c1d3c291d1373bc49566b">xilinx::AIE::Router</a>.</p>
 
-<p class="definition">Definition at line <a class="el" href="AIEPathFinder_8cpp_source.html#l00343">343</a> of file <a class="el" href="AIEPathFinder_8cpp_source.html">AIEPathFinder.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEPathFinder_8cpp_source.html#l00358">358</a> of file <a class="el" href="AIEPathFinder_8cpp_source.html">AIEPathFinder.cpp</a>.</p>
 
 </div>
 </div>
@@ -384,7 +361,7 @@ Public Member Functions</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Wed Jul 1 2026 01:05:57 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Wed Jul 1 2026 01:38:59 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
