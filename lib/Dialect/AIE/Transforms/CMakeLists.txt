@@ -12,6 +12,7 @@ add_mlir_dialect_library(
   AIEPlaceTiles.cpp
   AIESAPlacer.cpp
   AIEAssignBufferDescriptorIDs.cpp
+  AIEObjectFifoLiveness.cpp
   AIEAssignBuffers.cpp
   AIEAssignCoreLinkFiles.cpp
   AIEAssignLockIDs.cpp

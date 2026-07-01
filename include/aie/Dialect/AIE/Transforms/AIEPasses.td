@@ -179,6 +179,37 @@ def AIEAssignBufferDescriptorIDs : Pass<"aie-assign-bd-ids", "DeviceOp"> {
   let constructor = "xilinx::AIE::createAIEAssignBufferDescriptorIDsPass()";
 }
 
+def AIEObjectFifoLiveness : Pass<"aie-objectfifo-liveness", "DeviceOp"> {
+  let summary = "Flag under-buffered cyclic objectFIFO dependencies (deadlock "
+                "checker).";
+  let description = [{
+    A coupled multicast (broadcast) objectFIFO whose consumers back-pressure the
+    producer forms a dependency cycle. When the producer must re-acquire a slot
+    on a later trip (replay, repeat_count >= 2) while the prior trip's tokens are
+    still outstanding, the round-trip slack (2 * depth) can be smaller than the
+    number of outstanding tokens demanded by the coupled fan-out
+    (array_fan * trip_count). That is a static, structural deadlock: the IR
+    compiles clean and then hangs the array at runtime.
+
+    This pass builds the objectFIFO data + back-pressure dependency graph, finds
+    cyclic strongly-connected components (Tarjan), and applies the validated SDF
+    model:
+
+      demand   = array_fan * T          (array_fan = name-base-summed multicast
+                                          fan-out in a cycle; T = max
+                                          objectFIFO repeat_count)
+      slack    = 2 * depth
+      DEADLOCK iff  T >= 2  AND  depth > 0  AND  demand > slack
+
+    The T >= 2 replay guard avoids false positives on single-trip broadcasts.
+    The analysis is sound for this static SDF class and conservative elsewhere
+    (it never errors outside a proven cyclic under-buffered multicast).
+  }];
+
+  let constructor = "xilinx::AIE::createAIEObjectFifoLivenessPass()";
+  let dependentDialects = ["xilinx::AIE::AIEDialect"];
+}
+
 def AIENormalizeAddressSpaces : Pass<"aie-normalize-address-spaces", "DeviceOp"> {
   let summary = "Remove non-default address spaces";
   let description = [{
