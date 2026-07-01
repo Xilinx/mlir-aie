@@ -4,13 +4,14 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2021 Xilinx Inc.
+// Copyright (C) 2021-2022 Xilinx, Inc.
+// Copyright (C) 2022-2023 Advanced Micro Devices, Inc.
 //
 // Date: November 19th 2021
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(xcvc1902) {
 // CHECK:           %[[VAL_0:.*]] = aie.tile(1, 2)
@@ -111,7 +112,7 @@ module @multiCoreMixedFifo {
             func.call @some_work(%elem11) : (memref<16xi32>) -> ()
             func.call @some_work(%elem12) : (memref<16xi32>) -> ()
             aie.objectfifo.release @of (Produce, 3)
-            
+
             aie.objectfifo.release @of2 (Consume, 1)
             %subview12 = aie.objectfifo.acquire @of2 (Consume, 2) : !aie.objectfifosubview<memref<16xi32>>
             %elem102 = aie.objectfifo.subview.access %subview12[0] : !aie.objectfifosubview<memref<16xi32>> -> memref<16xi32>
@@ -119,7 +120,7 @@ module @multiCoreMixedFifo {
             func.call @some_work(%elem102) : (memref<16xi32>) -> ()
             func.call @some_work(%elem112) : (memref<16xi32>) -> ()
             aie.objectfifo.release @of2 (Consume, 1)
-            
+
             aie.end
         }
 

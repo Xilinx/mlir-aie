@@ -5,7 +5,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2026, Advanced Micro Devices, Inc.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 #
 # ===-----------------------------------------------------------------------===#
 #
@@ -19,7 +19,7 @@
 # With lateral-routing, both channels are routed to column 1's shim
 # (the spare column), keeping trace traffic off the active data path.
 #
-# REQUIRES: ryzen_ai_npu1, xrt_python_bindings
+# REQUIRES: ryzen_ai_npu1, xrt_python_bindings, peano
 #
 # Compile kernel with Peano (aie2 target for Phoenix/NPU1):
 # RUN: %PEANO_INSTALL_DIR/bin/clang --target=aie2-none-unknown-elf -O2 -c %S/vector_scalar_mul.cc -o vector_scalar_mul.o
@@ -27,7 +27,7 @@
 # Pre-lower trace ops with distribute + lateral options, then compile.
 # The trace pipeline in aiecc is a no-op since trace ops are already consumed.
 # RUN: aie-opt %S/aie.mlir -aie-insert-trace-flows="distribute-channels=true lateral-routing=true" -aie-trace-to-config -aie-trace-pack-reg-writes -aie-inline-trace-config -o trace_lowered.mlir
-# RUN: %python aiecc.py --no-xchesscc --no-xbridge --no-aiesim --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.bin trace_lowered.mlir
+# RUN: %aiecc --no-xchesscc --no-xbridge --no-aiesim --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.bin trace_lowered.mlir
 #
 # Run on NPU1 hardware:
 # RUN: %run_on_npu1% %python %S/test.py --xclbin final.xclbin --instr insts.bin --kernel MLIR_AIE --trace_size 16384 --mlir trace_lowered.mlir.prj/input_with_addresses.mlir | FileCheck %s

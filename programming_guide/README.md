@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2024-2026, Advanced Micro Devices, Inc.
+// Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//-->
 
@@ -61,7 +61,7 @@ b = iron.zeros(1024,  dtype=np.int32, device="npu")
 my_design(a, b)              # compile + run + sync back
 ```
 
-`my_design.as_mlir(a, b)` or `python3 my_design.py --emit-mlir` prints the lowered MLIR without touching the NPU.
+`my_design.as_mlir(a, b)` prints MLIR for the active target, binding an attached runtime target when one is available. `python3 my_design.py --dev npu --emit-mlir` emits an offline target without touching the NPU.
 
 ## Where to go next
 

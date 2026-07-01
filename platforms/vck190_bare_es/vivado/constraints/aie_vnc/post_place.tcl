@@ -3,7 +3,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 # 
-# (c) Copyright 2021 Xilinx Inc.
+# Copyright (C) 2021 Xilinx, Inc.
 # 
 
 ##source [pwd]/myproj/project_1.srcs/utils_1/imports/aie_vnc/waive_BLI_AIE_timing_violations_postplace.tcl

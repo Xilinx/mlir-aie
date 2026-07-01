@@ -4,7 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2021 Xilinx Inc.
+// Copyright (C) 2021-2022 Xilinx, Inc.
+// Copyright (C) 2022-2025 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -62,7 +63,6 @@ int main(int argc, char **argv) {
   registerToSPIRVTranslation();
 
   xilinx::AIE::registerAIETranslations();
-  xilinx::aievec::registerAIEVecToCppTranslation();
 
   llvm::cl::AddExtraVersionPrinter(version_printer);
 

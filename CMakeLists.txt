@@ -3,7 +3,8 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2021 Xilinx Inc.
+# Copyright (C) 2021-2022 Xilinx, Inc.
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 
 # optional parameters
 #  -DTOOLCHAINFILES_PATH: path to cross compilation toolchain files, default: <mlir-aie-root-dir>/cmake/toolchainFiles
@@ -193,19 +194,6 @@ endif()
 
 cmake_dependent_option(AIE_ENABLE_XRT_PYTHON_BINDINGS
   "Enables building of python bindings to XRT runtime." ON "XRT_COREUTIL;UUID" OFF)
-
-if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
-  add_library(xrt_coreutil SHARED IMPORTED)
-  if (WIN32)
-    # FindXRT.cmake returns only an import lib. We also need the runtime dll.
-    set_target_properties(xrt_coreutil PROPERTIES
-      IMPORTED_IMPLIB   "${XRT_COREUTIL}"
-      IMPORTED_LOCATION "${XRT_BIN_DIR}/xrt_coreutil.dll"
-    )
-  else()
-    set_property(TARGET xrt_coreutil PROPERTY IMPORTED_LOCATION "${XRT_COREUTIL}")
-  endif()
-endif()
 
 # Detect whether PyTorch is importable by the configured Python interpreter.
 # Used to enable/skip lit tests that require torch (# REQUIRES: pytorch).

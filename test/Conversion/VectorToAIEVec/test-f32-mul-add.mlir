@@ -4,11 +4,11 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2026, Advanced Micro Devices, Inc.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s -split-input-file --convert-vector-to-aievec="aie-target=aie2p target-backend=llvmir" | FileCheck %s
+// RUN: aie-opt %s -split-input-file --convert-vector-to-aievec="aie-target=aie2p" | FileCheck %s
 
 // Test: f32 mulf→addf should NOT be deferred to FMA (FMA only handles bf16).
 // The addf should be independently converted to aievec.add_elem instead of

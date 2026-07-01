@@ -2,7 +2,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2023 Advanced Micro Devices, Inc.
+# Copyright (C) 2023-2026 Advanced Micro Devices, Inc.
 
 cmake_minimum_required(VERSION 3.30)
 project("test lib for ${AIE_RUNTIME_TARGET}")

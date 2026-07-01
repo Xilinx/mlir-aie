@@ -1,13 +1,13 @@
 //===- nested_loop_only_unroll_outer.mlir -----------------------*- MLIR -*-===//
 //
-// Copyright (C) 2024, Advanced Micro Devices, Inc.
+// Copyright (C) 2024 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // Date: April 3rd 2024
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
 
 // CHECK-LABEL: aie.device(npu1)
 //       CHECK:   scf.for

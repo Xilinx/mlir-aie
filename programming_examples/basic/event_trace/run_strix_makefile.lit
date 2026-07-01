@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // REQUIRES: ryzen_ai_npu2
+// REQUIRES: makefile_examples
 //
 // RUN: mkdir -p test_npu2
 // RUN: cd test_npu2

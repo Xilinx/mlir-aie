@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2026 Advanced Micro Devices, Inc.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 """Reusable ``argparse`` flag groups shared by the programming examples.
 
 Almost every basic/ design repeats the same handful of CLI flags:
@@ -29,7 +29,7 @@ def add_compile_args(
     *,
     with_dev: bool = True,
     dev_choices: tuple[str, ...] = DEFAULT_DEV_CHOICES,
-    default_dev: str = "npu",
+    default_dev: str | None = None,
     short_dev: str | None = "-d",
     with_elf: bool = False,
     with_emit_mlir: bool = False,
@@ -43,7 +43,10 @@ def add_compile_args(
         dev_choices: Allowed device-name strings (default
             ``("npu", "npu2")``).  Pass e.g. ``("npu", "npu2", "xcvc1902")``
             for designs that also accept the VCK5000 target.
-        default_dev: Default value for ``--dev``.
+        default_dev: Fixed target used when ``--dev`` is omitted. ``None``
+            (the default) selects the attached runtime device for run and
+            local compile-only modes. ``--emit-mlir`` requires an explicit
+            target.
         short_dev: Short-option for ``--dev``.  ``None`` to skip the short
             opt (matmul designs use ``--dev`` only because ``-d`` is
             already taken by something else).
@@ -56,18 +59,25 @@ def add_compile_args(
     """
     if with_dev:
         names = ("--dev",) if short_dev is None else (short_dev, "--dev")
+        if default_dev is None:
+            dev_help = (
+                "target device family (auto-detected for run and local "
+                "compilation; required for --emit-mlir)"
+            )
+        else:
+            dev_help = "target device family (default: %(default)s)"
         parser.add_argument(
             *names,
             type=str,
             choices=list(dev_choices),
             default=default_dev,
-            help="target device family (default: %(default)s)",
+            help=dev_help,
         )
     if with_emit_mlir:
         parser.add_argument(
             "--emit-mlir",
             action="store_true",
-            help="print the resolved MLIR module to stdout (aiecc / vck5000 path)",
+            help="print the resolved MLIR module to stdout (requires --dev)",
         )
     parser.add_argument(
         "--xclbin-path",
@@ -271,13 +281,17 @@ def device_from_args(
             ``n_cols="auto"``.
 
     Returns:
-        Device instance.
+        Device | None: The selected device, or ``None`` when the CLI leaves
+        device selection to the runtime.
     """
+    dev = getattr(args, dev_attr)
+    if dev is None:
+        return None
+
     # Lazy import: argparse.py is otherwise pure-stdlib and avoids the
     # aie.iron import edge until a caller actually needs to resolve a Device.
     from aie.iron.device import from_name
 
-    dev = getattr(args, dev_attr)
     resolved_cols: int | None
     if n_cols == "auto":
         resolved_cols = getattr(args, "n_cols", None)

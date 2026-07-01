@@ -4,7 +4,8 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2021 Xilinx Inc.
+// Copyright (C) 2021-2022 Xilinx, Inc.
+// Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -32,6 +33,8 @@ std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIEDmaToNpuPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIENpuToCertPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIECertPagesPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>> createAIEXToStandardPass();
+std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>
+createAIESCFToControlFlowPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEMaterializeBDChainsPass();
 std::unique_ptr<mlir::OperationPass<mlir::ModuleOp>>

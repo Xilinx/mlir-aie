@@ -1,4 +1,4 @@
-// (c) Copyright 2025 Advanced Micro Devices, Inc.
+// Copyright (C) 2025 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // Test: Use XAIE_IO_UPDATE_REG to write a runtime parameter into a core's

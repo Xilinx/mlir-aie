@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2022-2026, Advanced Micro Devices, Inc.
+// Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//-->
 
@@ -14,7 +14,7 @@ A simple binary operator: a single AIE core computes `c = a % b` element-wise on
 
 ## Source Files Overview
 
-1. `vector_vector_modulo.py`: An `@iron.jit`-decorated design that delegates its dataflow body to `aie.iron.algorithms.transform_binary`. Supports three invocation modes — standalone (jit + run + verify), compile-only (`--xclbin-path` / `--insts-path`, used by the NPU `Makefile`), and emit-MLIR (`--emit-mlir`, used by the aiecc-based vck5000 path).
+1. `vector_vector_modulo.py`: An `@iron.jit`-decorated design that delegates its dataflow body to `aie.iron.algorithms.transform_binary`. Supports three invocation modes — standalone (jit + run + verify), compile-only (`--xclbin-path` / `--insts-path`, used by the NPU `Makefile`), and emit-MLIR (`-d xcvc1902 --emit-mlir`, used by the aiecc-based vck5000 path).
 
 1. `test.cpp`: C++ testbench targeting Ryzen™ AI. Loads the compiled XCLBIN, configures the AIE module, supplies input data, executes on the NPU, and verifies the results.
 

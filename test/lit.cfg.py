@@ -4,7 +4,8 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2021-2026 Xilinx Inc.
+# Copyright (C) 2021-2022 Xilinx, Inc.
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 
 import os
 import shutil
@@ -39,6 +40,10 @@ LitConfigHelper.setup_standard_environment(
     llvm_config, config, config.aie_obj_root, config.vitis_aietools_dir
 )
 
+# Forward the install prefix when tests are run against wheel-installed tools.
+if "MLIR_AIE_INSTALL_DIR" in os.environ:
+    llvm_config.with_system_environment("MLIR_AIE_INSTALL_DIR")
+
 # Basic substitutions
 config.substitutions.append(("%PYTHON", config.python_executable))
 config.substitutions.append(("%extraAieCcFlags%", config.extraAieCcFlags))
@@ -64,15 +69,12 @@ rocm_config = LitConfigHelper.detect_rocm(
 
 # Add Vitis components as features
 LitConfigHelper.add_vitis_components_features(config, config.vitis_components)
+LitConfigHelper.setup_host_compiler_substitutions(config)
 
-# Detect XRT and Ryzen AI NPU devices
-xrt_config = LitConfigHelper.detect_xrt(
-    config.xrt_lib_dir,
-    config.xrt_include_dir,
-    config.xrt_bin_dir,
-    config.aie_src_root,
-    llvm_config,
-    config.vitis_components,
+# Detect Peano before XRT feature gating for systems without Chess/AIETOOLS.
+early_peano_tools_dir = os.path.join(config.peano_install_dir, "bin")
+early_peano_config = LitConfigHelper.detect_peano(
+    early_peano_tools_dir, config.peano_install_dir, llvm_config
 )
 
 # Setup host target triplet and sysroot
@@ -90,9 +92,11 @@ llvm_config.use_default_substitutions()
 # directories.
 config.excludes = [
     "lit.cfg.py",
+    "Inputs",
 ]
 
 config.aie_tools_dir = os.path.join(config.aie_obj_root, "bin")
+LitConfigHelper.setup_aiecc_substitution(config)
 
 # Setup the PATH with all necessary tool directories
 if config.vitis_root:
@@ -104,21 +108,39 @@ if config.vitis_root:
 LitConfigHelper.prepend_path(llvm_config, config.xrt_bin_dir)
 
 peano_tools_dir = os.path.join(config.peano_install_dir, "bin")
+# Keep generic tool substitutions working by making both Peano tools and host
+# LLVM tools discoverable. Host-side tests use %host_clang instead of relying on
+# PATH order to choose the host compiler.
 LitConfigHelper.prepend_path(llvm_config, config.llvm_tools_dir)
 LitConfigHelper.prepend_path(llvm_config, peano_tools_dir)
 LitConfigHelper.prepend_path(llvm_config, config.aie_tools_dir)
 config.substitutions.append(("%LLVM_TOOLS_DIR", config.llvm_tools_dir))
 
-tool_dirs = [config.aie_tools_dir, config.llvm_tools_dir]
+tool_dirs = [config.aie_tools_dir]
+if early_peano_config.found:
+    tool_dirs.append(peano_tools_dir)
+tool_dirs.append(config.llvm_tools_dir)
 
-# Detect Peano backend
-peano_config = LitConfigHelper.detect_peano(
-    peano_tools_dir, config.peano_install_dir, llvm_config
-)
+# Reuse the earlier Peano probe after path setup.
+peano_config = early_peano_config
 
 # Detect Chess compiler
 chess_config = LitConfigHelper.detect_chess(
     config.vitis_root, config.enable_chess_tests, llvm_config
+)
+
+# Peano may gate Ryzen AI features only when it is the active fallback backend.
+can_use_peano_feature_gate = early_peano_config.found and not chess_config.found
+
+# Detect XRT and Ryzen AI NPU devices
+xrt_config = LitConfigHelper.detect_xrt(
+    config.xrt_lib_dir,
+    config.xrt_include_dir,
+    config.xrt_bin_dir,
+    config.aie_src_root,
+    llvm_config,
+    config.vitis_components,
+    can_use_peano_feature_gate=can_use_peano_feature_gate,
 )
 
 # Detect aiesimulator
@@ -136,6 +158,9 @@ LitConfigHelper.apply_config_to_lit(
     },
 )
 
+LitConfigHelper.setup_backend_flags_substitution(config)
+LitConfigHelper.setup_host_link_substitution(config)
+
 tools = [
     "aie-opt",
     "aie-translate",
@@ -152,24 +177,7 @@ if os.name != "nt":
 llvm_config.add_tool_substitutions(tools, tool_dirs)
 
 if os.name == "nt":
-    # Lit on Windows struggles with substituting tools with a .py extension.
-    # Add these manually and quote them so paths with spaces survive.
-    config.substitutions.append(
-        (
-            "aiecc.py",
-            LitConfigHelper._quote_lit_arg(
-                os.path.join(config.aie_tools_dir, "aiecc.py")
-            ),
-        )
-    )
-    config.substitutions.append(
-        (
-            "txn2mlir.py",
-            LitConfigHelper._quote_lit_arg(
-                os.path.join(config.aie_tools_dir, "txn2mlir.py")
-            ),
-        )
-    )
+    LitConfigHelper.add_python_tool_substitutions(config, ["aiecc.py", "txn2mlir.py"])
 
 if config.enable_board_tests:
     lit_config.parallelism_groups["board"] = 1
@@ -189,8 +197,17 @@ if shutil.which("aie-lsp-server", path=config.llvm_tools_dir) is not None:
 if config.python_passes:
     config.available_features.add("python_passes")
 
-if config.xrt_python_bindings:
+if config.xrt_python_bindings and LitConfigHelper.can_import_python_module(
+    config, config.python_executable, "pyxrt"
+):
     config.available_features.add("xrt_python_bindings")
+    if LitConfigHelper.python_module_has_attribute(
+        config,
+        config.python_executable,
+        "pyxrt",
+        ("run", "get_ctrl_scratchpad_bo"),
+    ):
+        config.available_features.add("xrt_python_ctrl_scratchpad_bo")
 
 if config.has_mlir_runtime_libraries:
     config.available_features.add("has_mlir_runtime_libraries")

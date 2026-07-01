@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc.
+# Copyright (C) 2024 Advanced Micro Devices, Inc.
 
 from __future__ import annotations
 
@@ -25,19 +25,27 @@ class RuntimeEndpoint(ObjectFifoEndpoint):
     _SHIM_TILE_TYPES = (AIETileType.ShimNOCTile, AIETileType.ShimPLTile)
 
     def __init__(self, tile: Tile = AnyShimTile) -> None:
-        tile = tile.copy()
+        if tile is None:
+            tile = AnyShimTile
         if tile.tile_type is not None and tile.tile_type not in self._SHIM_TILE_TYPES:
             raise ValueError(
                 f"RuntimeEndpoint requires a shim tile (ShimNOCTile or "
                 f"ShimPLTile), but got tile_type={tile.tile_type}"
             )
-        if tile.tile_type is None:
-            tile.tile_type = AIETileType.ShimNOCTile
-        super().__init__(tile)
+        # Always produce a fresh Tile: shim tiles are never shared between
+        # endpoints, and the singletons (AnyShimTile) must stay unbound.
+        default_type = (
+            tile.tile_type if tile.tile_type is not None else AIETileType.ShimNOCTile
+        )
+        super().__init__(tile.with_type(default_type))
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, RuntimeEndpoint):
             return NotImplemented
+        # Two shim endpoints at the same (col, row) are the same endpoint.
+        # Unplaced endpoints compare equal via (None, None) == (None, None),
+        # which is intentional: fill()/drain() on the same unplaced handle
+        # called repeatedly should not trip the "endpoint already set" guard.
         assert self.tile is not None and other.tile is not None
         return (self.tile.col, self.tile.row) == (other.tile.col, other.tile.row)
 

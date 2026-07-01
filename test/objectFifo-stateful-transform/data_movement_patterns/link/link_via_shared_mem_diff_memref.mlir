@@ -4,13 +4,13 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2024, Advanced Micro Devices, Inc.
+// Copyright (C) 2024 Advanced Micro Devices, Inc.
 //
 // Date: October 1st 2024
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
 
 // CHECK:  aie.device(xcve2302) {
 // CHECK:    %{{.*}}tile_2_0 = aie.tile(2, 0)

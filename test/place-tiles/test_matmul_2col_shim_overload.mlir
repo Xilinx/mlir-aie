@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2026 Advanced Micro Devices, Inc.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -17,7 +17,7 @@
 // whole_array_iron.py --n-aie-cols 2 --dev npu2 after stripping every
 // `tile=Tile(...)` argument from the IRON Python source.
 
-// RUN: aie-opt --aie-place-tiles --aie-objectFifo-stateful-transform %s 2>&1 | FileCheck %s
+// RUN: aie-opt --aie-place-tiles --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s 2>&1 | FileCheck %s
 
 // CHECK-NOT: error
 // CHECK-NOT: DMA channel exceeded

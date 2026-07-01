@@ -2,7 +2,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025 Advanced Micro Devices, Inc.
+# Copyright (C) 2025 Advanced Micro Devices, Inc.
 
 # Common CMake configuration for programming guide examples
 # This file provides common setup for test_utils library linking
