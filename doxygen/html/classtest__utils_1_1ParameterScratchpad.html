@@ -80,7 +80,7 @@ Public Member Functions</h2></td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
 <div class="textblock">
-<p class="definition">Definition at line <a class="el" href="parameter__scratchpad_8h_source.html#l00050">50</a> of file <a class="el" href="parameter__scratchpad_8h_source.html">parameter_scratchpad.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="parameter__scratchpad_8h_source.html#l00047">47</a> of file <a class="el" href="parameter__scratchpad_8h_source.html">parameter_scratchpad.h</a>.</p>
 </div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
 <a id="a1694870654e701d4ba0d18c1ad4ad0cb" name="a1694870654e701d4ba0d18c1ad4ad0cb"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a1694870654e701d4ba0d18c1ad4ad0cb">&#9670;&#160;</a></span>ParameterScratchpad()</h2>
@@ -118,7 +118,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Construct from a raw buffer pointer (Python bindings / testing). </p>
 
-<p class="definition">Definition at line <a class="el" href="parameter__scratchpad_8h_source.html#l00068">68</a> of file <a class="el" href="parameter__scratchpad_8h_source.html">parameter_scratchpad.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="parameter__scratchpad_8h_source.html#l00065">65</a> of file <a class="el" href="parameter__scratchpad_8h_source.html">parameter_scratchpad.h</a>.</p>
 
 </div>
 </div>
@@ -149,7 +149,7 @@ Public Member Functions</h2></td></tr>
 
 <p>Read back a parameter's current encoded value (for debugging). </p>
 
-<p class="definition">Definition at line <a class="el" href="parameter__scratchpad_8h_source.html#l00125">125</a> of file <a class="el" href="parameter__scratchpad_8h_source.html">parameter_scratchpad.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="parameter__scratchpad_8h_source.html#l00122">122</a> of file <a class="el" href="parameter__scratchpad_8h_source.html">parameter_scratchpad.h</a>.</p>
 
 </div>
 </div>
@@ -192,9 +192,9 @@ template&lt;typename T &gt; </div>
 <p>Write a typed parameter value. </p>
 <p>For core-kind parameters, the raw bits are left-shifted by 2 as required by the firmware's UPDATE_REG Incr mode, and the core right-shifts (unsigned) by 2 after reading. The round trip therefore zeroes the top 2 bits of the value (the bottom 2 bits are preserved). Types that fit in 30 bits (e.g. uint16_t, int16_t, std::bfloat16_t, and uint32_t values &lt; 2^30) round-trip losslessly. <code>float</code> is not supported as a core-kind parameter (the verifier in <code>--aie-lower-scratchpad-parameters</code> rejects it). </p>
 
-<p class="definition">Definition at line <a class="el" href="parameter__scratchpad_8h_source.html#l00112">112</a> of file <a class="el" href="parameter__scratchpad_8h_source.html">parameter_scratchpad.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="parameter__scratchpad_8h_source.html#l00109">109</a> of file <a class="el" href="parameter__scratchpad_8h_source.html">parameter_scratchpad.h</a>.</p>
 
-<p class="reference">References <a class="el" href="parameter__scratchpad_8h_source.html#l00087">writeBits()</a>.</p>
+<p class="reference">References <a class="el" href="parameter__scratchpad_8h_source.html#l00084">writeBits()</a>.</p>
 
 </div>
 </div>
@@ -235,9 +235,9 @@ template&lt;typename T &gt; </div>
 <p>Write a raw 32-bit value by name. </p>
 <p>For core-kind parameters, the bits are left-shifted by 2 (firmware requirement). For addr-kind parameters, the value is written directly (no shift). </p>
 
-<p class="definition">Definition at line <a class="el" href="parameter__scratchpad_8h_source.html#l00087">87</a> of file <a class="el" href="parameter__scratchpad_8h_source.html">parameter_scratchpad.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="parameter__scratchpad_8h_source.html#l00084">84</a> of file <a class="el" href="parameter__scratchpad_8h_source.html">parameter_scratchpad.h</a>.</p>
 
-<p class="reference">Referenced by <a class="el" href="parameter__scratchpad_8h_source.html#l00112">write()</a>, and <a class="el" href="parameter__scratchpad_8h_source.html#l00078">writeBytes()</a>.</p>
+<p class="reference">Referenced by <a class="el" href="parameter__scratchpad_8h_source.html#l00109">write()</a>, and <a class="el" href="parameter__scratchpad_8h_source.html#l00075">writeBytes()</a>.</p>
 
 </div>
 </div>
@@ -284,9 +284,9 @@ template&lt;typename T &gt; </div>
 <p>Write raw bytes (up to 4) by name, interpreted as a little-endian uint32. </p>
 <p>For core-kind parameters, the bits are left-shifted by 2 (firmware requirement). For addr-kind parameters, the value is written raw (no shift). </p>
 
-<p class="definition">Definition at line <a class="el" href="parameter__scratchpad_8h_source.html#l00078">78</a> of file <a class="el" href="parameter__scratchpad_8h_source.html">parameter_scratchpad.h</a>.</p>
+<p class="definition">Definition at line <a class="el" href="parameter__scratchpad_8h_source.html#l00075">75</a> of file <a class="el" href="parameter__scratchpad_8h_source.html">parameter_scratchpad.h</a>.</p>
 
-<p class="reference">References <a class="el" href="parameter__scratchpad_8h_source.html#l00087">writeBits()</a>.</p>
+<p class="reference">References <a class="el" href="parameter__scratchpad_8h_source.html#l00084">writeBits()</a>.</p>
 
 </div>
 </div>
@@ -296,7 +296,7 @@ template&lt;typename T &gt; </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Wed Jul 1 2026 15:42:30 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Wed Jul 1 2026 17:31:39 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

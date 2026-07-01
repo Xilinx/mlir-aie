@@ -1,3 +1,6 @@
+<!-- Copyright (C) 2026 Advanced Micro Devices, Inc.
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
+
 # Native Windows Setup and Build Instructions
 
 This guide covers the **native Windows** (not WSL) setup for **IRON/mlir-aie**.

@@ -60,325 +60,322 @@ $(document).ready(function() { init_codefold(0); });
 <div class="contents">
 <a href="ADFGenerateCppGraph_8cpp.html">Go to the documentation of this file.</a><div class="fragment"><div class="line"><a id="l00001" name="l00001"></a><span class="lineno">    1</span><span class="comment">//===- ADFGenerateCppGraph.cpp ----------------------------------*- C++ -*-===//</span></div>
 <div class="line"><a id="l00002" name="l00002"></a><span class="lineno">    2</span><span class="comment">//</span></div>
-<div class="line"><a id="l00003" name="l00003"></a><span class="lineno">    3</span><span class="comment">// This file is licensed under the Apache License v2.0 with LLVM Exceptions.</span></div>
-<div class="line"><a id="l00004" name="l00004"></a><span class="lineno">    4</span><span class="comment">// See https://llvm.org/LICENSE.txt for license information.</span></div>
+<div class="line"><a id="l00003" name="l00003"></a><span class="lineno">    3</span><span class="comment">// Copyright (C) 2021-2022 Xilinx, Inc.</span></div>
+<div class="line"><a id="l00004" name="l00004"></a><span class="lineno">    4</span><span class="comment">// Copyright (C) 2022-2023 Advanced Micro Devices, Inc.</span></div>
 <div class="line"><a id="l00005" name="l00005"></a><span class="lineno">    5</span><span class="comment">// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception</span></div>
 <div class="line"><a id="l00006" name="l00006"></a><span class="lineno">    6</span><span class="comment">//</span></div>
-<div class="line"><a id="l00007" name="l00007"></a><span class="lineno">    7</span><span class="comment">// Copyright (C) 2021-2022 Xilinx, Inc.</span></div>
-<div class="line"><a id="l00008" name="l00008"></a><span class="lineno">    8</span><span class="comment">// Copyright (C) 2022-2023 Advanced Micro Devices, Inc.</span></div>
-<div class="line"><a id="l00009" name="l00009"></a><span class="lineno">    9</span><span class="comment">//</span></div>
-<div class="line"><a id="l00010" name="l00010"></a><span class="lineno">   10</span><span class="comment">//===----------------------------------------------------------------------===//</span></div>
-<div class="line"><a id="l00011" name="l00011"></a><span class="lineno">   11</span> </div>
-<div class="line"><a id="l00012" name="l00012"></a><span class="lineno">   12</span><span class="preprocessor">#include &quot;<a class="code" href="AIETargets_8h.html">aie/Targets/AIETargets.h</a>&quot;</span></div>
+<div class="line"><a id="l00007" name="l00007"></a><span class="lineno">    7</span><span class="comment">//===----------------------------------------------------------------------===//</span></div>
+<div class="line"><a id="l00008" name="l00008"></a><span class="lineno">    8</span> </div>
+<div class="line"><a id="l00009" name="l00009"></a><span class="lineno">    9</span><span class="preprocessor">#include &quot;<a class="code" href="AIETargets_8h.html">aie/Targets/AIETargets.h</a>&quot;</span></div>
+<div class="line"><a id="l00010" name="l00010"></a><span class="lineno">   10</span> </div>
+<div class="line"><a id="l00011" name="l00011"></a><span class="lineno">   11</span><span class="preprocessor">#include &quot;<a class="code" href="ADFDialect_8h.html">aie/Dialect/ADF/ADFDialect.h</a>&quot;</span></div>
+<div class="line"><a id="l00012" name="l00012"></a><span class="lineno">   12</span><span class="preprocessor">#include &quot;<a class="code" href="ADFOps_8h.html">aie/Dialect/ADF/ADFOps.h</a>&quot;</span></div>
 <div class="line"><a id="l00013" name="l00013"></a><span class="lineno">   13</span> </div>
-<div class="line"><a id="l00014" name="l00014"></a><span class="lineno">   14</span><span class="preprocessor">#include &quot;<a class="code" href="ADFDialect_8h.html">aie/Dialect/ADF/ADFDialect.h</a>&quot;</span></div>
-<div class="line"><a id="l00015" name="l00015"></a><span class="lineno">   15</span><span class="preprocessor">#include &quot;<a class="code" href="ADFOps_8h.html">aie/Dialect/ADF/ADFOps.h</a>&quot;</span></div>
-<div class="line"><a id="l00016" name="l00016"></a><span class="lineno">   16</span> </div>
-<div class="line"><a id="l00017" name="l00017"></a><span class="lineno">   17</span><span class="preprocessor">#include &quot;mlir/Dialect/Func/IR/FuncOps.h&quot;</span></div>
-<div class="line"><a id="l00018" name="l00018"></a><span class="lineno">   18</span><span class="preprocessor">#include &quot;mlir/IR/BuiltinOps.h&quot;</span></div>
-<div class="line"><a id="l00019" name="l00019"></a><span class="lineno">   19</span><span class="preprocessor">#include &quot;mlir/IR/SymbolTable.h&quot;</span></div>
-<div class="line"><a id="l00020" name="l00020"></a><span class="lineno">   20</span><span class="preprocessor">#include &quot;mlir/Pass/Pass.h&quot;</span></div>
-<div class="line"><a id="l00021" name="l00021"></a><span class="lineno">   21</span> </div>
-<div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span><span class="preprocessor">#include &quot;llvm/Support/FileSystem.h&quot;</span></div>
+<div class="line"><a id="l00014" name="l00014"></a><span class="lineno">   14</span><span class="preprocessor">#include &quot;mlir/Dialect/Func/IR/FuncOps.h&quot;</span></div>
+<div class="line"><a id="l00015" name="l00015"></a><span class="lineno">   15</span><span class="preprocessor">#include &quot;mlir/IR/BuiltinOps.h&quot;</span></div>
+<div class="line"><a id="l00016" name="l00016"></a><span class="lineno">   16</span><span class="preprocessor">#include &quot;mlir/IR/SymbolTable.h&quot;</span></div>
+<div class="line"><a id="l00017" name="l00017"></a><span class="lineno">   17</span><span class="preprocessor">#include &quot;mlir/Pass/Pass.h&quot;</span></div>
+<div class="line"><a id="l00018" name="l00018"></a><span class="lineno">   18</span> </div>
+<div class="line"><a id="l00019" name="l00019"></a><span class="lineno">   19</span><span class="preprocessor">#include &quot;llvm/Support/FileSystem.h&quot;</span></div>
+<div class="line"><a id="l00020" name="l00020"></a><span class="lineno">   20</span> </div>
+<div class="line"><a id="l00021" name="l00021"></a><span class="lineno">   21</span><span class="preprocessor">#include &lt;unordered_map&gt;</span></div>
+<div class="line"><a id="l00022" name="l00022"></a><span class="lineno">   22</span><span class="preprocessor">#include &lt;vector&gt;</span></div>
 <div class="line"><a id="l00023" name="l00023"></a><span class="lineno">   23</span> </div>
-<div class="line"><a id="l00024" name="l00024"></a><span class="lineno">   24</span><span class="preprocessor">#include &lt;unordered_map&gt;</span></div>
-<div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span><span class="preprocessor">#include &lt;vector&gt;</span></div>
-<div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span> </div>
-<div class="line"><a id="l00027" name="l00027"></a><span class="lineno">   27</span><span class="keyword">using namespace </span><a class="code hl_namespace" href="namespacemlir.html">mlir</a>;</div>
-<div class="line"><a id="l00028" name="l00028"></a><span class="lineno">   28</span><span class="keyword">using namespace </span><a class="code hl_namespace" href="namespacexilinx.html">xilinx</a>;</div>
-<div class="line"><a id="l00029" name="l00029"></a><span class="lineno">   29</span><span class="keyword">using namespace </span>xilinx::ADF;</div>
-<div class="line"><a id="l00030" name="l00030"></a><span class="lineno">   30</span><span class="comment"></span> </div>
-<div class="line"><a id="l00031" name="l00031"></a><span class="lineno">   31</span><span class="comment">/// Manages the indentation as we traverse the IR nesting.</span></div>
-<div class="line"><a id="l00032" name="l00032"></a><span class="lineno">   32</span><span class="comment"></span><span class="keyword">static</span> <span class="keywordtype">int</span> currentindent = 0;</div>
-<div class="foldopen" id="foldopen00033" data-start="{" data-end="};">
-<div class="line"><a id="l00033" name="l00033"></a><span class="lineno"><a class="line" href="structIndent.html">   33</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structIndent.html">Indent</a> {</div>
-<div class="line"><a id="l00034" name="l00034"></a><span class="lineno"><a class="line" href="structIndent.html#ae4f877cac71c58c478164f4959362545">   34</a></span>  <span class="keywordtype">int</span> <a class="code hl_variable" href="structIndent.html#ae4f877cac71c58c478164f4959362545">indent</a>;</div>
-<div class="line"><a id="l00035" name="l00035"></a><span class="lineno"><a class="line" href="structIndent.html#aad49231fc9549b104dfc0facdaf21c04">   35</a></span>  <a class="code hl_function" href="structIndent.html#aad49231fc9549b104dfc0facdaf21c04">Indent</a>() : <a class="code hl_variable" href="structIndent.html#ae4f877cac71c58c478164f4959362545">indent</a>(1) { currentindent += <a class="code hl_variable" href="structIndent.html#ae4f877cac71c58c478164f4959362545">indent</a>; }</div>
-<div class="line"><a id="l00036" name="l00036"></a><span class="lineno"><a class="line" href="structIndent.html#a0043bb6416df348aac9d94601571c74c">   36</a></span>  <a class="code hl_function" href="structIndent.html#a0043bb6416df348aac9d94601571c74c">~Indent</a>() { currentindent -= <a class="code hl_variable" href="structIndent.html#ae4f877cac71c58c478164f4959362545">indent</a>; }</div>
-<div class="line"><a id="l00037" name="l00037"></a><span class="lineno">   37</span>};</div>
+<div class="line"><a id="l00024" name="l00024"></a><span class="lineno">   24</span><span class="keyword">using namespace </span><a class="code hl_namespace" href="namespacemlir.html">mlir</a>;</div>
+<div class="line"><a id="l00025" name="l00025"></a><span class="lineno">   25</span><span class="keyword">using namespace </span><a class="code hl_namespace" href="namespacexilinx.html">xilinx</a>;</div>
+<div class="line"><a id="l00026" name="l00026"></a><span class="lineno">   26</span><span class="keyword">using namespace </span>xilinx::ADF;</div>
+<div class="line"><a id="l00027" name="l00027"></a><span class="lineno">   27</span><span class="comment"></span> </div>
+<div class="line"><a id="l00028" name="l00028"></a><span class="lineno">   28</span><span class="comment">/// Manages the indentation as we traverse the IR nesting.</span></div>
+<div class="line"><a id="l00029" name="l00029"></a><span class="lineno">   29</span><span class="comment"></span><span class="keyword">static</span> <span class="keywordtype">int</span> currentindent = 0;</div>
+<div class="foldopen" id="foldopen00030" data-start="{" data-end="};">
+<div class="line"><a id="l00030" name="l00030"></a><span class="lineno"><a class="line" href="structIndent.html">   30</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structIndent.html">Indent</a> {</div>
+<div class="line"><a id="l00031" name="l00031"></a><span class="lineno"><a class="line" href="structIndent.html#ae4f877cac71c58c478164f4959362545">   31</a></span>  <span class="keywordtype">int</span> <a class="code hl_variable" href="structIndent.html#ae4f877cac71c58c478164f4959362545">indent</a>;</div>
+<div class="line"><a id="l00032" name="l00032"></a><span class="lineno"><a class="line" href="structIndent.html#aad49231fc9549b104dfc0facdaf21c04">   32</a></span>  <a class="code hl_function" href="structIndent.html#aad49231fc9549b104dfc0facdaf21c04">Indent</a>() : <a class="code hl_variable" href="structIndent.html#ae4f877cac71c58c478164f4959362545">indent</a>(1) { currentindent += <a class="code hl_variable" href="structIndent.html#ae4f877cac71c58c478164f4959362545">indent</a>; }</div>
+<div class="line"><a id="l00033" name="l00033"></a><span class="lineno"><a class="line" href="structIndent.html#a0043bb6416df348aac9d94601571c74c">   33</a></span>  <a class="code hl_function" href="structIndent.html#a0043bb6416df348aac9d94601571c74c">~Indent</a>() { currentindent -= <a class="code hl_variable" href="structIndent.html#ae4f877cac71c58c478164f4959362545">indent</a>; }</div>
+<div class="line"><a id="l00034" name="l00034"></a><span class="lineno">   34</span>};</div>
 </div>
-<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span><span class="keyword">static</span> <span class="keywordtype">void</span> resetIndent() { currentindent = 0; }</div>
-<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span> </div>
-<div class="foldopen" id="foldopen00040" data-start="{" data-end="}">
-<div class="line"><a id="l00040" name="l00040"></a><span class="lineno"><a class="line" href="ADFGenerateCppGraph_8cpp.html#a58c345c98644e852e6c899b6d09ba613">   40</a></span>raw_ostream &amp;<a class="code hl_function" href="ADFGenerateCppGraph_8cpp.html#a58c345c98644e852e6c899b6d09ba613">operator&lt;&lt;</a>(raw_ostream &amp;os, <span class="keyword">const</span> <a class="code hl_struct" href="structIndent.html">Indent</a> &amp;indent) {</div>
-<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span>  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; currentindent; ++i)</div>
-<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span>    os &lt;&lt; <span class="stringliteral">&quot;  &quot;</span>;</div>
-<div class="line"><a id="l00043" name="l00043"></a><span class="lineno">   43</span>  <span class="keywordflow">return</span> os;</div>
-<div class="line"><a id="l00044" name="l00044"></a><span class="lineno">   44</span>}</div>
+<div class="line"><a id="l00035" name="l00035"></a><span class="lineno">   35</span><span class="keyword">static</span> <span class="keywordtype">void</span> resetIndent() { currentindent = 0; }</div>
+<div class="line"><a id="l00036" name="l00036"></a><span class="lineno">   36</span> </div>
+<div class="foldopen" id="foldopen00037" data-start="{" data-end="}">
+<div class="line"><a id="l00037" name="l00037"></a><span class="lineno"><a class="line" href="ADFGenerateCppGraph_8cpp.html#a58c345c98644e852e6c899b6d09ba613">   37</a></span>raw_ostream &amp;<a class="code hl_function" href="ADFGenerateCppGraph_8cpp.html#a58c345c98644e852e6c899b6d09ba613">operator&lt;&lt;</a>(raw_ostream &amp;os, <span class="keyword">const</span> <a class="code hl_struct" href="structIndent.html">Indent</a> &amp;indent) {</div>
+<div class="line"><a id="l00038" name="l00038"></a><span class="lineno">   38</span>  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> i = 0; i &lt; currentindent; ++i)</div>
+<div class="line"><a id="l00039" name="l00039"></a><span class="lineno">   39</span>    os &lt;&lt; <span class="stringliteral">&quot;  &quot;</span>;</div>
+<div class="line"><a id="l00040" name="l00040"></a><span class="lineno">   40</span>  <span class="keywordflow">return</span> os;</div>
+<div class="line"><a id="l00041" name="l00041"></a><span class="lineno">   41</span>}</div>
 </div>
-<div class="line"><a id="l00045" name="l00045"></a><span class="lineno">   45</span> </div>
-<div class="foldopen" id="foldopen00046" data-start="{" data-end="};">
-<div class="line"><a id="l00046" name="l00046"></a><span class="lineno"><a class="line" href="structGraphWriter.html">   46</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structGraphWriter.html">GraphWriter</a> {</div>
-<div class="line"><a id="l00047" name="l00047"></a><span class="lineno"><a class="line" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">   47</a></span>  raw_ostream &amp;<a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a>;</div>
-<div class="line"><a id="l00048" name="l00048"></a><span class="lineno"><a class="line" href="structGraphWriter.html#a4f58522687135a3d1e760992dfc054f6">   48</a></span>  <a class="code hl_function" href="structGraphWriter.html#a4f58522687135a3d1e760992dfc054f6">GraphWriter</a>(raw_ostream &amp;<a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a>) : <a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a>(<a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a>) {}</div>
+<div class="line"><a id="l00042" name="l00042"></a><span class="lineno">   42</span> </div>
+<div class="foldopen" id="foldopen00043" data-start="{" data-end="};">
+<div class="line"><a id="l00043" name="l00043"></a><span class="lineno"><a class="line" href="structGraphWriter.html">   43</a></span><span class="keyword">struct </span><a class="code hl_struct" href="structGraphWriter.html">GraphWriter</a> {</div>
+<div class="line"><a id="l00044" name="l00044"></a><span class="lineno"><a class="line" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">   44</a></span>  raw_ostream &amp;<a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a>;</div>
+<div class="line"><a id="l00045" name="l00045"></a><span class="lineno"><a class="line" href="structGraphWriter.html#a4f58522687135a3d1e760992dfc054f6">   45</a></span>  <a class="code hl_function" href="structGraphWriter.html#a4f58522687135a3d1e760992dfc054f6">GraphWriter</a>(raw_ostream &amp;<a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a>) : <a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a>(<a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a>) {}</div>
+<div class="line"><a id="l00046" name="l00046"></a><span class="lineno">   46</span> </div>
+<div class="line"><a id="l00047" name="l00047"></a><span class="lineno">   47</span>  <span class="comment">// maps KernelOp to the generated c++ variable name.</span></div>
+<div class="line"><a id="l00048" name="l00048"></a><span class="lineno"><a class="line" href="structGraphWriter.html#aecf089ccafc59fe0682cd58362ad0525">   48</a></span>  std::unordered_map&lt;Operation *, std::string&gt; <a class="code hl_variable" href="structGraphWriter.html#aecf089ccafc59fe0682cd58362ad0525">kernelOp2VarName</a>;</div>
 <div class="line"><a id="l00049" name="l00049"></a><span class="lineno">   49</span> </div>
-<div class="line"><a id="l00050" name="l00050"></a><span class="lineno">   50</span>  <span class="comment">// maps KernelOp to the generated c++ variable name.</span></div>
-<div class="line"><a id="l00051" name="l00051"></a><span class="lineno"><a class="line" href="structGraphWriter.html#aecf089ccafc59fe0682cd58362ad0525">   51</a></span>  std::unordered_map&lt;Operation *, std::string&gt; <a class="code hl_variable" href="structGraphWriter.html#aecf089ccafc59fe0682cd58362ad0525">kernelOp2VarName</a>;</div>
-<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span> </div>
-<div class="foldopen" id="foldopen00053" data-start="{" data-end="}">
-<div class="line"><a id="l00053" name="l00053"></a><span class="lineno"><a class="line" href="structGraphWriter.html#a624c5505f3035676a651079a5b22e79b">   53</a></span>  StringRef <a class="code hl_function" href="structGraphWriter.html#a624c5505f3035676a651079a5b22e79b">getCTypeString</a>(<span class="keyword">const</span> Type &amp;type) {</div>
-<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>    <span class="keywordflow">if</span> (llvm::dyn_cast&lt;int8Type&gt;(type))</div>
-<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>      <span class="keywordflow">return</span> int8Type::getMnemonic();</div>
-<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span>    <span class="keywordflow">if</span> (llvm::dyn_cast&lt;int16Type&gt;(type))</div>
-<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>      <span class="keywordflow">return</span> int16Type::getMnemonic();</div>
-<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span>    <span class="keywordflow">if</span> (llvm::dyn_cast&lt;int32Type&gt;(type))</div>
-<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span>      <span class="keywordflow">return</span> int32Type::getMnemonic();</div>
-<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span>    <span class="keywordflow">if</span> (llvm::dyn_cast&lt;int64Type&gt;(type))</div>
-<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span>      <span class="keywordflow">return</span> int64Type::getMnemonic();</div>
-<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>    <span class="keywordflow">if</span> (llvm::dyn_cast&lt;uint8Type&gt;(type))</div>
-<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span>      <span class="keywordflow">return</span> uint8Type::getMnemonic();</div>
-<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>    <span class="keywordflow">if</span> (llvm::dyn_cast&lt;uint16Type&gt;(type))</div>
-<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span>      <span class="keywordflow">return</span> uint16Type::getMnemonic();</div>
-<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>    <span class="keywordflow">if</span> (llvm::dyn_cast&lt;uint32Type&gt;(type))</div>
-<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>      <span class="keywordflow">return</span> uint32Type::getMnemonic();</div>
-<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>    <span class="keywordflow">if</span> (llvm::dyn_cast&lt;uint64Type&gt;(type))</div>
-<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>      <span class="keywordflow">return</span> uint64Type::getMnemonic();</div>
-<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span>    <span class="keywordflow">if</span> (llvm::dyn_cast&lt;floatType&gt;(type))</div>
-<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span>      <span class="keywordflow">return</span> floatType::getMnemonic();</div>
-<div class="line"><a id="l00072" name="l00072"></a><span class="lineno">   72</span>    llvm::report_fatal_error(<span class="stringliteral">&quot;unknown type&quot;</span>);</div>
-<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>  }</div>
+<div class="foldopen" id="foldopen00050" data-start="{" data-end="}">
+<div class="line"><a id="l00050" name="l00050"></a><span class="lineno"><a class="line" href="structGraphWriter.html#a624c5505f3035676a651079a5b22e79b">   50</a></span>  StringRef <a class="code hl_function" href="structGraphWriter.html#a624c5505f3035676a651079a5b22e79b">getCTypeString</a>(<span class="keyword">const</span> Type &amp;type) {</div>
+<div class="line"><a id="l00051" name="l00051"></a><span class="lineno">   51</span>    <span class="keywordflow">if</span> (llvm::dyn_cast&lt;int8Type&gt;(type))</div>
+<div class="line"><a id="l00052" name="l00052"></a><span class="lineno">   52</span>      <span class="keywordflow">return</span> int8Type::getMnemonic();</div>
+<div class="line"><a id="l00053" name="l00053"></a><span class="lineno">   53</span>    <span class="keywordflow">if</span> (llvm::dyn_cast&lt;int16Type&gt;(type))</div>
+<div class="line"><a id="l00054" name="l00054"></a><span class="lineno">   54</span>      <span class="keywordflow">return</span> int16Type::getMnemonic();</div>
+<div class="line"><a id="l00055" name="l00055"></a><span class="lineno">   55</span>    <span class="keywordflow">if</span> (llvm::dyn_cast&lt;int32Type&gt;(type))</div>
+<div class="line"><a id="l00056" name="l00056"></a><span class="lineno">   56</span>      <span class="keywordflow">return</span> int32Type::getMnemonic();</div>
+<div class="line"><a id="l00057" name="l00057"></a><span class="lineno">   57</span>    <span class="keywordflow">if</span> (llvm::dyn_cast&lt;int64Type&gt;(type))</div>
+<div class="line"><a id="l00058" name="l00058"></a><span class="lineno">   58</span>      <span class="keywordflow">return</span> int64Type::getMnemonic();</div>
+<div class="line"><a id="l00059" name="l00059"></a><span class="lineno">   59</span>    <span class="keywordflow">if</span> (llvm::dyn_cast&lt;uint8Type&gt;(type))</div>
+<div class="line"><a id="l00060" name="l00060"></a><span class="lineno">   60</span>      <span class="keywordflow">return</span> uint8Type::getMnemonic();</div>
+<div class="line"><a id="l00061" name="l00061"></a><span class="lineno">   61</span>    <span class="keywordflow">if</span> (llvm::dyn_cast&lt;uint16Type&gt;(type))</div>
+<div class="line"><a id="l00062" name="l00062"></a><span class="lineno">   62</span>      <span class="keywordflow">return</span> uint16Type::getMnemonic();</div>
+<div class="line"><a id="l00063" name="l00063"></a><span class="lineno">   63</span>    <span class="keywordflow">if</span> (llvm::dyn_cast&lt;uint32Type&gt;(type))</div>
+<div class="line"><a id="l00064" name="l00064"></a><span class="lineno">   64</span>      <span class="keywordflow">return</span> uint32Type::getMnemonic();</div>
+<div class="line"><a id="l00065" name="l00065"></a><span class="lineno">   65</span>    <span class="keywordflow">if</span> (llvm::dyn_cast&lt;uint64Type&gt;(type))</div>
+<div class="line"><a id="l00066" name="l00066"></a><span class="lineno">   66</span>      <span class="keywordflow">return</span> uint64Type::getMnemonic();</div>
+<div class="line"><a id="l00067" name="l00067"></a><span class="lineno">   67</span>    <span class="keywordflow">if</span> (llvm::dyn_cast&lt;floatType&gt;(type))</div>
+<div class="line"><a id="l00068" name="l00068"></a><span class="lineno">   68</span>      <span class="keywordflow">return</span> floatType::getMnemonic();</div>
+<div class="line"><a id="l00069" name="l00069"></a><span class="lineno">   69</span>    llvm::report_fatal_error(<span class="stringliteral">&quot;unknown type&quot;</span>);</div>
+<div class="line"><a id="l00070" name="l00070"></a><span class="lineno">   70</span>  }</div>
 </div>
-<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span> </div>
-<div class="foldopen" id="foldopen00075" data-start="{" data-end="}">
-<div class="line"><a id="l00075" name="l00075"></a><span class="lineno"><a class="line" href="structGraphWriter.html#aa1ae47dc9e3d7f8c09260db252629a08">   75</a></span>  std::string <a class="code hl_function" href="structGraphWriter.html#aa1ae47dc9e3d7f8c09260db252629a08">getKernelTypeString</a>(<span class="keyword">const</span> std::string &amp;direction, Type type) {</div>
-<div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span>    <span class="keywordflow">if</span> (<span class="keyword">auto</span> window = llvm::dyn_cast&lt;WindowType&gt;(type))</div>
-<div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span>      <span class="keywordflow">return</span> (direction + <span class="stringliteral">&quot;_window_&quot;</span> + <a class="code hl_function" href="structGraphWriter.html#a624c5505f3035676a651079a5b22e79b">getCTypeString</a>(window.getType()) + <span class="stringliteral">&quot; *&quot;</span>)</div>
+<div class="line"><a id="l00071" name="l00071"></a><span class="lineno">   71</span> </div>
+<div class="foldopen" id="foldopen00072" data-start="{" data-end="}">
+<div class="line"><a id="l00072" name="l00072"></a><span class="lineno"><a class="line" href="structGraphWriter.html#aa1ae47dc9e3d7f8c09260db252629a08">   72</a></span>  std::string <a class="code hl_function" href="structGraphWriter.html#aa1ae47dc9e3d7f8c09260db252629a08">getKernelTypeString</a>(<span class="keyword">const</span> std::string &amp;direction, Type type) {</div>
+<div class="line"><a id="l00073" name="l00073"></a><span class="lineno">   73</span>    <span class="keywordflow">if</span> (<span class="keyword">auto</span> window = llvm::dyn_cast&lt;WindowType&gt;(type))</div>
+<div class="line"><a id="l00074" name="l00074"></a><span class="lineno">   74</span>      <span class="keywordflow">return</span> (direction + <span class="stringliteral">&quot;_window_&quot;</span> + <a class="code hl_function" href="structGraphWriter.html#a624c5505f3035676a651079a5b22e79b">getCTypeString</a>(window.getType()) + <span class="stringliteral">&quot; *&quot;</span>)</div>
+<div class="line"><a id="l00075" name="l00075"></a><span class="lineno">   75</span>          .str();</div>
+<div class="line"><a id="l00076" name="l00076"></a><span class="lineno">   76</span>    <span class="keywordflow">if</span> (<span class="keyword">auto</span> stream = llvm::dyn_cast&lt;StreamType&gt;(type))</div>
+<div class="line"><a id="l00077" name="l00077"></a><span class="lineno">   77</span>      <span class="keywordflow">return</span> (direction + <span class="stringliteral">&quot;_stream_&quot;</span> + <a class="code hl_function" href="structGraphWriter.html#a624c5505f3035676a651079a5b22e79b">getCTypeString</a>(stream.getType()) + <span class="stringliteral">&quot; *&quot;</span>)</div>
 <div class="line"><a id="l00078" name="l00078"></a><span class="lineno">   78</span>          .str();</div>
-<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>    <span class="keywordflow">if</span> (<span class="keyword">auto</span> stream = llvm::dyn_cast&lt;StreamType&gt;(type))</div>
-<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>      <span class="keywordflow">return</span> (direction + <span class="stringliteral">&quot;_stream_&quot;</span> + <a class="code hl_function" href="structGraphWriter.html#a624c5505f3035676a651079a5b22e79b">getCTypeString</a>(stream.getType()) + <span class="stringliteral">&quot; *&quot;</span>)</div>
-<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span>          .str();</div>
-<div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>    <span class="keywordflow">if</span> (<span class="keyword">auto</span> stream = llvm::dyn_cast&lt;ParameterType&gt;(type))</div>
-<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>      <span class="keywordflow">return</span> std::string(<a class="code hl_function" href="structGraphWriter.html#a624c5505f3035676a651079a5b22e79b">getCTypeString</a>(stream.getType()));</div>
+<div class="line"><a id="l00079" name="l00079"></a><span class="lineno">   79</span>    <span class="keywordflow">if</span> (<span class="keyword">auto</span> stream = llvm::dyn_cast&lt;ParameterType&gt;(type))</div>
+<div class="line"><a id="l00080" name="l00080"></a><span class="lineno">   80</span>      <span class="keywordflow">return</span> std::string(<a class="code hl_function" href="structGraphWriter.html#a624c5505f3035676a651079a5b22e79b">getCTypeString</a>(stream.getType()));</div>
+<div class="line"><a id="l00081" name="l00081"></a><span class="lineno">   81</span> </div>
+<div class="line"><a id="l00082" name="l00082"></a><span class="lineno">   82</span>    llvm::report_fatal_error(<span class="stringliteral">&quot;unknown kernel type&quot;</span>);</div>
+<div class="line"><a id="l00083" name="l00083"></a><span class="lineno">   83</span>  }</div>
+</div>
 <div class="line"><a id="l00084" name="l00084"></a><span class="lineno">   84</span> </div>
-<div class="line"><a id="l00085" name="l00085"></a><span class="lineno">   85</span>    llvm::report_fatal_error(<span class="stringliteral">&quot;unknown kernel type&quot;</span>);</div>
-<div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span>  }</div>
+<div class="foldopen" id="foldopen00085" data-start="{" data-end="}">
+<div class="line"><a id="l00085" name="l00085"></a><span class="lineno"><a class="line" href="structGraphWriter.html#a50f5b4e8a7529d18ad93dd1de2a5c1f2">   85</a></span>  std::string <a class="code hl_function" href="structGraphWriter.html#a50f5b4e8a7529d18ad93dd1de2a5c1f2">getConnectionTypeString</a>(Type type) {</div>
+<div class="line"><a id="l00086" name="l00086"></a><span class="lineno">   86</span>    <span class="keywordflow">if</span> (<span class="keyword">auto</span> windowType = llvm::dyn_cast&lt;WindowType&gt;(type))</div>
+<div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span>      <span class="keywordflow">return</span> std::string(<span class="stringliteral">&quot;window&lt;&quot;</span>) + std::to_string(windowType.getSize()) +</div>
+<div class="line"><a id="l00088" name="l00088"></a><span class="lineno">   88</span>             <span class="stringliteral">&quot;&gt; &quot;</span>;</div>
+<div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span>    <span class="keywordflow">if</span> (llvm::dyn_cast&lt;StreamType&gt;(type))</div>
+<div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span>      <span class="keywordflow">return</span> <span class="stringliteral">&quot;stream&quot;</span>;</div>
+<div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span>    <span class="keywordflow">if</span> (llvm::dyn_cast&lt;ParameterType&gt;(type))</div>
+<div class="line"><a id="l00092" name="l00092"></a><span class="lineno">   92</span>      <span class="keywordflow">return</span> <span class="stringliteral">&quot;parameter&quot;</span>;</div>
+<div class="line"><a id="l00093" name="l00093"></a><span class="lineno">   93</span>    llvm::report_fatal_error(<span class="stringliteral">&quot;unknown connection type&quot;</span>);</div>
+<div class="line"><a id="l00094" name="l00094"></a><span class="lineno">   94</span>  }</div>
 </div>
-<div class="line"><a id="l00087" name="l00087"></a><span class="lineno">   87</span> </div>
-<div class="foldopen" id="foldopen00088" data-start="{" data-end="}">
-<div class="line"><a id="l00088" name="l00088"></a><span class="lineno"><a class="line" href="structGraphWriter.html#a50f5b4e8a7529d18ad93dd1de2a5c1f2">   88</a></span>  std::string <a class="code hl_function" href="structGraphWriter.html#a50f5b4e8a7529d18ad93dd1de2a5c1f2">getConnectionTypeString</a>(Type type) {</div>
-<div class="line"><a id="l00089" name="l00089"></a><span class="lineno">   89</span>    <span class="keywordflow">if</span> (<span class="keyword">auto</span> windowType = llvm::dyn_cast&lt;WindowType&gt;(type))</div>
-<div class="line"><a id="l00090" name="l00090"></a><span class="lineno">   90</span>      <span class="keywordflow">return</span> std::string(<span class="stringliteral">&quot;window&lt;&quot;</span>) + std::to_string(windowType.getSize()) +</div>
-<div class="line"><a id="l00091" name="l00091"></a><span class="lineno">   91</span>             <span class="stringliteral">&quot;&gt; &quot;</span>;</div>
-<div class="line"><a id="l00092" name="l00092"></a><span class="lineno">   92</span>    <span class="keywordflow">if</span> (llvm::dyn_cast&lt;StreamType&gt;(type))</div>
-<div class="line"><a id="l00093" name="l00093"></a><span class="lineno">   93</span>      <span class="keywordflow">return</span> <span class="stringliteral">&quot;stream&quot;</span>;</div>
-<div class="line"><a id="l00094" name="l00094"></a><span class="lineno">   94</span>    <span class="keywordflow">if</span> (llvm::dyn_cast&lt;ParameterType&gt;(type))</div>
-<div class="line"><a id="l00095" name="l00095"></a><span class="lineno">   95</span>      <span class="keywordflow">return</span> <span class="stringliteral">&quot;parameter&quot;</span>;</div>
-<div class="line"><a id="l00096" name="l00096"></a><span class="lineno">   96</span>    llvm::report_fatal_error(<span class="stringliteral">&quot;unknown connection type&quot;</span>);</div>
-<div class="line"><a id="l00097" name="l00097"></a><span class="lineno">   97</span>  }</div>
+<div class="line"><a id="l00095" name="l00095"></a><span class="lineno">   95</span> </div>
+<div class="foldopen" id="foldopen00096" data-start="{" data-end="}">
+<div class="line"><a id="l00096" name="l00096"></a><span class="lineno"><a class="line" href="structGraphWriter.html#a8d80d3996a93839f595cf5934ffa0f00">   96</a></span>  std::string <a class="code hl_function" href="structGraphWriter.html#a8d80d3996a93839f595cf5934ffa0f00">getTempNetName</a>() {</div>
+<div class="line"><a id="l00097" name="l00097"></a><span class="lineno">   97</span>    <span class="keyword">static</span> uint32_t netCnt = 0;</div>
+<div class="line"><a id="l00098" name="l00098"></a><span class="lineno">   98</span>    <span class="keywordflow">return</span> std::string(<span class="stringliteral">&quot;n&quot;</span>) + std::to_string(netCnt++);</div>
+<div class="line"><a id="l00099" name="l00099"></a><span class="lineno">   99</span>  }</div>
 </div>
-<div class="line"><a id="l00098" name="l00098"></a><span class="lineno">   98</span> </div>
-<div class="foldopen" id="foldopen00099" data-start="{" data-end="}">
-<div class="line"><a id="l00099" name="l00099"></a><span class="lineno"><a class="line" href="structGraphWriter.html#a8d80d3996a93839f595cf5934ffa0f00">   99</a></span>  std::string <a class="code hl_function" href="structGraphWriter.html#a8d80d3996a93839f595cf5934ffa0f00">getTempNetName</a>() {</div>
-<div class="line"><a id="l00100" name="l00100"></a><span class="lineno">  100</span>    <span class="keyword">static</span> uint32_t netCnt = 0;</div>
-<div class="line"><a id="l00101" name="l00101"></a><span class="lineno">  101</span>    <span class="keywordflow">return</span> std::string(<span class="stringliteral">&quot;n&quot;</span>) + std::to_string(netCnt++);</div>
-<div class="line"><a id="l00102" name="l00102"></a><span class="lineno">  102</span>  }</div>
+<div class="line"><a id="l00100" name="l00100"></a><span class="lineno">  100</span> </div>
+<div class="foldopen" id="foldopen00101" data-start="{" data-end="}">
+<div class="line"><a id="l00101" name="l00101"></a><span class="lineno"><a class="line" href="structGraphWriter.html#a1d86dd658eb97d3b0734a3bce726a926">  101</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structGraphWriter.html#a1d86dd658eb97d3b0734a3bce726a926">visitOpResultUsers</a>(GraphInputOp driverOp) {</div>
+<div class="line"><a id="l00102" name="l00102"></a><span class="lineno">  102</span>    <a class="code hl_struct" href="structIndent.html">Indent</a> indent;</div>
+<div class="line"><a id="l00103" name="l00103"></a><span class="lineno">  103</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> indexedResult : llvm::enumerate(driverOp-&gt;getResults())) {</div>
+<div class="line"><a id="l00104" name="l00104"></a><span class="lineno">  104</span>      Value result = indexedResult.value();</div>
+<div class="line"><a id="l00105" name="l00105"></a><span class="lineno">  105</span>      <span class="keywordflow">for</span> (OpOperand &amp;userOperand : result.getUses()) {</div>
+<div class="line"><a id="l00106" name="l00106"></a><span class="lineno">  106</span>        Operation *userOp = userOperand.getOwner();</div>
+<div class="line"><a id="l00107" name="l00107"></a><span class="lineno">  107</span>        <span class="keywordtype">int</span> targetIndex = userOperand.getOperandNumber();</div>
+<div class="line"><a id="l00108" name="l00108"></a><span class="lineno">  108</span>        <span class="keywordflow">if</span> (<span class="keyword">auto</span> kernel = dyn_cast&lt;KernelOp&gt;(userOp)) {</div>
+<div class="line"><a id="l00109" name="l00109"></a><span class="lineno">  109</span>          <span class="keyword">auto</span> funcOp = SymbolTable::lookupNearestSymbolFrom&lt;func::FuncOp&gt;(</div>
+<div class="line"><a id="l00110" name="l00110"></a><span class="lineno">  110</span>              driverOp, kernel.getCalleeAttr());</div>
+<div class="line"><a id="l00111" name="l00111"></a><span class="lineno">  111</span>          Type opType = funcOp.getFunctionType().getInput(targetIndex);</div>
+<div class="line"><a id="l00112" name="l00112"></a><span class="lineno">  112</span>          std::string targetKernelName = <a class="code hl_variable" href="structGraphWriter.html#aecf089ccafc59fe0682cd58362ad0525">kernelOp2VarName</a>[kernel];</div>
+<div class="line"><a id="l00113" name="l00113"></a><span class="lineno">  113</span>          <a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a> &lt;&lt; indent &lt;&lt; <span class="stringliteral">&quot;connect&lt;&quot;</span> &lt;&lt; <a class="code hl_function" href="structGraphWriter.html#a50f5b4e8a7529d18ad93dd1de2a5c1f2">getConnectionTypeString</a>(opType)</div>
+<div class="line"><a id="l00114" name="l00114"></a><span class="lineno">  114</span>                 &lt;&lt; <span class="stringliteral">&quot;&gt; &quot;</span>;</div>
+<div class="line"><a id="l00115" name="l00115"></a><span class="lineno">  115</span>          <a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a> &lt;&lt; <a class="code hl_function" href="structGraphWriter.html#a8d80d3996a93839f595cf5934ffa0f00">getTempNetName</a>() &lt;&lt; <span class="stringliteral">&quot; (&quot;</span> &lt;&lt; driverOp.getName() &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
+<div class="line"><a id="l00116" name="l00116"></a><span class="lineno">  116</span>                 &lt;&lt; targetKernelName &lt;&lt; <span class="stringliteral">&quot;.in[&quot;</span> &lt;&lt; targetIndex &lt;&lt; <span class="stringliteral">&quot;]);\n&quot;</span>;</div>
+<div class="line"><a id="l00117" name="l00117"></a><span class="lineno">  117</span>        }</div>
+<div class="line"><a id="l00118" name="l00118"></a><span class="lineno">  118</span>        <span class="comment">// todo: kernel should not drive graph input, add an mlir verifier</span></div>
+<div class="line"><a id="l00119" name="l00119"></a><span class="lineno">  119</span>        <span class="comment">// condition</span></div>
+<div class="line"><a id="l00120" name="l00120"></a><span class="lineno">  120</span>      }</div>
+<div class="line"><a id="l00121" name="l00121"></a><span class="lineno">  121</span>    }</div>
+<div class="line"><a id="l00122" name="l00122"></a><span class="lineno">  122</span>  }</div>
 </div>
-<div class="line"><a id="l00103" name="l00103"></a><span class="lineno">  103</span> </div>
-<div class="foldopen" id="foldopen00104" data-start="{" data-end="}">
-<div class="line"><a id="l00104" name="l00104"></a><span class="lineno"><a class="line" href="structGraphWriter.html#a1d86dd658eb97d3b0734a3bce726a926">  104</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structGraphWriter.html#a1d86dd658eb97d3b0734a3bce726a926">visitOpResultUsers</a>(GraphInputOp driverOp) {</div>
-<div class="line"><a id="l00105" name="l00105"></a><span class="lineno">  105</span>    <a class="code hl_struct" href="structIndent.html">Indent</a> indent;</div>
-<div class="line"><a id="l00106" name="l00106"></a><span class="lineno">  106</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> indexedResult : llvm::enumerate(driverOp-&gt;getResults())) {</div>
-<div class="line"><a id="l00107" name="l00107"></a><span class="lineno">  107</span>      Value result = indexedResult.value();</div>
-<div class="line"><a id="l00108" name="l00108"></a><span class="lineno">  108</span>      <span class="keywordflow">for</span> (OpOperand &amp;userOperand : result.getUses()) {</div>
-<div class="line"><a id="l00109" name="l00109"></a><span class="lineno">  109</span>        Operation *userOp = userOperand.getOwner();</div>
-<div class="line"><a id="l00110" name="l00110"></a><span class="lineno">  110</span>        <span class="keywordtype">int</span> targetIndex = userOperand.getOperandNumber();</div>
-<div class="line"><a id="l00111" name="l00111"></a><span class="lineno">  111</span>        <span class="keywordflow">if</span> (<span class="keyword">auto</span> kernel = dyn_cast&lt;KernelOp&gt;(userOp)) {</div>
-<div class="line"><a id="l00112" name="l00112"></a><span class="lineno">  112</span>          <span class="keyword">auto</span> funcOp = SymbolTable::lookupNearestSymbolFrom&lt;func::FuncOp&gt;(</div>
-<div class="line"><a id="l00113" name="l00113"></a><span class="lineno">  113</span>              driverOp, kernel.getCalleeAttr());</div>
-<div class="line"><a id="l00114" name="l00114"></a><span class="lineno">  114</span>          Type opType = funcOp.getFunctionType().getInput(targetIndex);</div>
-<div class="line"><a id="l00115" name="l00115"></a><span class="lineno">  115</span>          std::string targetKernelName = <a class="code hl_variable" href="structGraphWriter.html#aecf089ccafc59fe0682cd58362ad0525">kernelOp2VarName</a>[kernel];</div>
-<div class="line"><a id="l00116" name="l00116"></a><span class="lineno">  116</span>          <a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a> &lt;&lt; indent &lt;&lt; <span class="stringliteral">&quot;connect&lt;&quot;</span> &lt;&lt; <a class="code hl_function" href="structGraphWriter.html#a50f5b4e8a7529d18ad93dd1de2a5c1f2">getConnectionTypeString</a>(opType)</div>
-<div class="line"><a id="l00117" name="l00117"></a><span class="lineno">  117</span>                 &lt;&lt; <span class="stringliteral">&quot;&gt; &quot;</span>;</div>
-<div class="line"><a id="l00118" name="l00118"></a><span class="lineno">  118</span>          <a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a> &lt;&lt; <a class="code hl_function" href="structGraphWriter.html#a8d80d3996a93839f595cf5934ffa0f00">getTempNetName</a>() &lt;&lt; <span class="stringliteral">&quot; (&quot;</span> &lt;&lt; driverOp.getName() &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
-<div class="line"><a id="l00119" name="l00119"></a><span class="lineno">  119</span>                 &lt;&lt; targetKernelName &lt;&lt; <span class="stringliteral">&quot;.in[&quot;</span> &lt;&lt; targetIndex &lt;&lt; <span class="stringliteral">&quot;]);\n&quot;</span>;</div>
-<div class="line"><a id="l00120" name="l00120"></a><span class="lineno">  120</span>        }</div>
-<div class="line"><a id="l00121" name="l00121"></a><span class="lineno">  121</span>        <span class="comment">// todo: kernel should not drive graph input, add an mlir verifier</span></div>
-<div class="line"><a id="l00122" name="l00122"></a><span class="lineno">  122</span>        <span class="comment">// condition</span></div>
-<div class="line"><a id="l00123" name="l00123"></a><span class="lineno">  123</span>      }</div>
-<div class="line"><a id="l00124" name="l00124"></a><span class="lineno">  124</span>    }</div>
-<div class="line"><a id="l00125" name="l00125"></a><span class="lineno">  125</span>  }</div>
+<div class="line"><a id="l00123" name="l00123"></a><span class="lineno">  123</span> </div>
+<div class="foldopen" id="foldopen00124" data-start="{" data-end="}">
+<div class="line"><a id="l00124" name="l00124"></a><span class="lineno"><a class="line" href="structGraphWriter.html#a9e6f5a6ecf85acce2888774a6d77629a">  124</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structGraphWriter.html#a9e6f5a6ecf85acce2888774a6d77629a">visitOpResultUsers</a>(KernelOp source) {</div>
+<div class="line"><a id="l00125" name="l00125"></a><span class="lineno">  125</span>    <a class="code hl_struct" href="structIndent.html">Indent</a> indent;</div>
+<div class="line"><a id="l00126" name="l00126"></a><span class="lineno">  126</span>    std::string sourceKernelName = <a class="code hl_variable" href="structGraphWriter.html#aecf089ccafc59fe0682cd58362ad0525">kernelOp2VarName</a>[source];</div>
+<div class="line"><a id="l00127" name="l00127"></a><span class="lineno">  127</span> </div>
+<div class="line"><a id="l00128" name="l00128"></a><span class="lineno">  128</span>    <span class="keywordtype">unsigned</span> sourceIndex = 0;</div>
+<div class="line"><a id="l00129" name="l00129"></a><span class="lineno">  129</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> indexedResult : llvm::enumerate(source-&gt;getResults())) {</div>
+<div class="line"><a id="l00130" name="l00130"></a><span class="lineno">  130</span>      Value result = indexedResult.value();</div>
+<div class="line"><a id="l00131" name="l00131"></a><span class="lineno">  131</span>      <span class="keywordflow">for</span> (OpOperand &amp;userOperand : result.getUses()) {</div>
+<div class="line"><a id="l00132" name="l00132"></a><span class="lineno">  132</span>        Operation *userOp = userOperand.getOwner();</div>
+<div class="line"><a id="l00133" name="l00133"></a><span class="lineno">  133</span>        <span class="keywordtype">int</span> targetIndex = userOperand.getOperandNumber();</div>
+<div class="line"><a id="l00134" name="l00134"></a><span class="lineno">  134</span>        <span class="keywordflow">if</span> (<span class="keyword">auto</span> kernel = dyn_cast&lt;KernelOp&gt;(userOp)) {</div>
+<div class="line"><a id="l00135" name="l00135"></a><span class="lineno">  135</span>          <span class="keyword">auto</span> funcOp = SymbolTable::lookupNearestSymbolFrom&lt;func::FuncOp&gt;(</div>
+<div class="line"><a id="l00136" name="l00136"></a><span class="lineno">  136</span>              kernel, kernel.getCalleeAttr());</div>
+<div class="line"><a id="l00137" name="l00137"></a><span class="lineno">  137</span>          Type opType = funcOp.getFunctionType().getInput(targetIndex);</div>
+<div class="line"><a id="l00138" name="l00138"></a><span class="lineno">  138</span>          <span class="keyword">auto</span> targetKernelName = <a class="code hl_variable" href="structGraphWriter.html#aecf089ccafc59fe0682cd58362ad0525">kernelOp2VarName</a>[kernel];</div>
+<div class="line"><a id="l00139" name="l00139"></a><span class="lineno">  139</span>          <a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a> &lt;&lt; indent &lt;&lt; <span class="stringliteral">&quot;connect&lt;&quot;</span> &lt;&lt; <a class="code hl_function" href="structGraphWriter.html#a50f5b4e8a7529d18ad93dd1de2a5c1f2">getConnectionTypeString</a>(opType)</div>
+<div class="line"><a id="l00140" name="l00140"></a><span class="lineno">  140</span>                 &lt;&lt; <span class="stringliteral">&quot;&gt; &quot;</span>;</div>
+<div class="line"><a id="l00141" name="l00141"></a><span class="lineno">  141</span>          <a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a> &lt;&lt; <a class="code hl_function" href="structGraphWriter.html#a8d80d3996a93839f595cf5934ffa0f00">getTempNetName</a>() &lt;&lt; <span class="stringliteral">&quot; (&quot;</span> &lt;&lt; sourceKernelName &lt;&lt; <span class="stringliteral">&quot;.out[&quot;</span></div>
+<div class="line"><a id="l00142" name="l00142"></a><span class="lineno">  142</span>                 &lt;&lt; sourceIndex &lt;&lt; <span class="stringliteral">&quot;], &quot;</span> &lt;&lt; targetKernelName &lt;&lt; <span class="stringliteral">&quot;.in[&quot;</span></div>
+<div class="line"><a id="l00143" name="l00143"></a><span class="lineno">  143</span>                 &lt;&lt; targetIndex &lt;&lt; <span class="stringliteral">&quot;]);\n&quot;</span>;</div>
+<div class="line"><a id="l00144" name="l00144"></a><span class="lineno">  144</span>        } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (<span class="keyword">auto</span> outputOp = dyn_cast&lt;GraphOutputOp&gt;(userOp)) {</div>
+<div class="line"><a id="l00145" name="l00145"></a><span class="lineno">  145</span>          <span class="keyword">auto</span> funcOp = SymbolTable::lookupNearestSymbolFrom&lt;func::FuncOp&gt;(</div>
+<div class="line"><a id="l00146" name="l00146"></a><span class="lineno">  146</span>              source, source.getCalleeAttr());</div>
+<div class="line"><a id="l00147" name="l00147"></a><span class="lineno">  147</span>          Type opType = funcOp.getFunctionType().getInput(sourceIndex);</div>
+<div class="line"><a id="l00148" name="l00148"></a><span class="lineno">  148</span>          <a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a> &lt;&lt; indent &lt;&lt; <span class="stringliteral">&quot;connect&lt;&quot;</span> &lt;&lt; <a class="code hl_function" href="structGraphWriter.html#a50f5b4e8a7529d18ad93dd1de2a5c1f2">getConnectionTypeString</a>(opType)</div>
+<div class="line"><a id="l00149" name="l00149"></a><span class="lineno">  149</span>                 &lt;&lt; <span class="stringliteral">&quot;&gt; &quot;</span>;</div>
+<div class="line"><a id="l00150" name="l00150"></a><span class="lineno">  150</span>          <a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a> &lt;&lt; <a class="code hl_function" href="structGraphWriter.html#a8d80d3996a93839f595cf5934ffa0f00">getTempNetName</a>() &lt;&lt; <span class="stringliteral">&quot; (&quot;</span> &lt;&lt; sourceKernelName &lt;&lt; <span class="stringliteral">&quot;.out[&quot;</span></div>
+<div class="line"><a id="l00151" name="l00151"></a><span class="lineno">  151</span>                 &lt;&lt; sourceIndex &lt;&lt; <span class="stringliteral">&quot;], &quot;</span> &lt;&lt; outputOp.getName() &lt;&lt; <span class="stringliteral">&quot;);\n&quot;</span>;</div>
+<div class="line"><a id="l00152" name="l00152"></a><span class="lineno">  152</span>        }</div>
+<div class="line"><a id="l00153" name="l00153"></a><span class="lineno">  153</span>        <span class="comment">// todo: kernel should not drive graph input, add an mlir verifier</span></div>
+<div class="line"><a id="l00154" name="l00154"></a><span class="lineno">  154</span>        <span class="comment">// condition</span></div>
+<div class="line"><a id="l00155" name="l00155"></a><span class="lineno">  155</span>      }</div>
+<div class="line"><a id="l00156" name="l00156"></a><span class="lineno">  156</span>      sourceIndex++;</div>
+<div class="line"><a id="l00157" name="l00157"></a><span class="lineno">  157</span>    }</div>
+<div class="line"><a id="l00158" name="l00158"></a><span class="lineno">  158</span>  }</div>
 </div>
-<div class="line"><a id="l00126" name="l00126"></a><span class="lineno">  126</span> </div>
-<div class="foldopen" id="foldopen00127" data-start="{" data-end="}">
-<div class="line"><a id="l00127" name="l00127"></a><span class="lineno"><a class="line" href="structGraphWriter.html#a9e6f5a6ecf85acce2888774a6d77629a">  127</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structGraphWriter.html#a9e6f5a6ecf85acce2888774a6d77629a">visitOpResultUsers</a>(KernelOp source) {</div>
-<div class="line"><a id="l00128" name="l00128"></a><span class="lineno">  128</span>    <a class="code hl_struct" href="structIndent.html">Indent</a> indent;</div>
-<div class="line"><a id="l00129" name="l00129"></a><span class="lineno">  129</span>    std::string sourceKernelName = <a class="code hl_variable" href="structGraphWriter.html#aecf089ccafc59fe0682cd58362ad0525">kernelOp2VarName</a>[source];</div>
-<div class="line"><a id="l00130" name="l00130"></a><span class="lineno">  130</span> </div>
-<div class="line"><a id="l00131" name="l00131"></a><span class="lineno">  131</span>    <span class="keywordtype">unsigned</span> sourceIndex = 0;</div>
-<div class="line"><a id="l00132" name="l00132"></a><span class="lineno">  132</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> indexedResult : llvm::enumerate(source-&gt;getResults())) {</div>
-<div class="line"><a id="l00133" name="l00133"></a><span class="lineno">  133</span>      Value result = indexedResult.value();</div>
-<div class="line"><a id="l00134" name="l00134"></a><span class="lineno">  134</span>      <span class="keywordflow">for</span> (OpOperand &amp;userOperand : result.getUses()) {</div>
-<div class="line"><a id="l00135" name="l00135"></a><span class="lineno">  135</span>        Operation *userOp = userOperand.getOwner();</div>
-<div class="line"><a id="l00136" name="l00136"></a><span class="lineno">  136</span>        <span class="keywordtype">int</span> targetIndex = userOperand.getOperandNumber();</div>
-<div class="line"><a id="l00137" name="l00137"></a><span class="lineno">  137</span>        <span class="keywordflow">if</span> (<span class="keyword">auto</span> kernel = dyn_cast&lt;KernelOp&gt;(userOp)) {</div>
-<div class="line"><a id="l00138" name="l00138"></a><span class="lineno">  138</span>          <span class="keyword">auto</span> funcOp = SymbolTable::lookupNearestSymbolFrom&lt;func::FuncOp&gt;(</div>
-<div class="line"><a id="l00139" name="l00139"></a><span class="lineno">  139</span>              kernel, kernel.getCalleeAttr());</div>
-<div class="line"><a id="l00140" name="l00140"></a><span class="lineno">  140</span>          Type opType = funcOp.getFunctionType().getInput(targetIndex);</div>
-<div class="line"><a id="l00141" name="l00141"></a><span class="lineno">  141</span>          <span class="keyword">auto</span> targetKernelName = <a class="code hl_variable" href="structGraphWriter.html#aecf089ccafc59fe0682cd58362ad0525">kernelOp2VarName</a>[kernel];</div>
-<div class="line"><a id="l00142" name="l00142"></a><span class="lineno">  142</span>          <a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a> &lt;&lt; indent &lt;&lt; <span class="stringliteral">&quot;connect&lt;&quot;</span> &lt;&lt; <a class="code hl_function" href="structGraphWriter.html#a50f5b4e8a7529d18ad93dd1de2a5c1f2">getConnectionTypeString</a>(opType)</div>
-<div class="line"><a id="l00143" name="l00143"></a><span class="lineno">  143</span>                 &lt;&lt; <span class="stringliteral">&quot;&gt; &quot;</span>;</div>
-<div class="line"><a id="l00144" name="l00144"></a><span class="lineno">  144</span>          <a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a> &lt;&lt; <a class="code hl_function" href="structGraphWriter.html#a8d80d3996a93839f595cf5934ffa0f00">getTempNetName</a>() &lt;&lt; <span class="stringliteral">&quot; (&quot;</span> &lt;&lt; sourceKernelName &lt;&lt; <span class="stringliteral">&quot;.out[&quot;</span></div>
-<div class="line"><a id="l00145" name="l00145"></a><span class="lineno">  145</span>                 &lt;&lt; sourceIndex &lt;&lt; <span class="stringliteral">&quot;], &quot;</span> &lt;&lt; targetKernelName &lt;&lt; <span class="stringliteral">&quot;.in[&quot;</span></div>
-<div class="line"><a id="l00146" name="l00146"></a><span class="lineno">  146</span>                 &lt;&lt; targetIndex &lt;&lt; <span class="stringliteral">&quot;]);\n&quot;</span>;</div>
-<div class="line"><a id="l00147" name="l00147"></a><span class="lineno">  147</span>        } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (<span class="keyword">auto</span> outputOp = dyn_cast&lt;GraphOutputOp&gt;(userOp)) {</div>
-<div class="line"><a id="l00148" name="l00148"></a><span class="lineno">  148</span>          <span class="keyword">auto</span> funcOp = SymbolTable::lookupNearestSymbolFrom&lt;func::FuncOp&gt;(</div>
-<div class="line"><a id="l00149" name="l00149"></a><span class="lineno">  149</span>              source, source.getCalleeAttr());</div>
-<div class="line"><a id="l00150" name="l00150"></a><span class="lineno">  150</span>          Type opType = funcOp.getFunctionType().getInput(sourceIndex);</div>
-<div class="line"><a id="l00151" name="l00151"></a><span class="lineno">  151</span>          <a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a> &lt;&lt; indent &lt;&lt; <span class="stringliteral">&quot;connect&lt;&quot;</span> &lt;&lt; <a class="code hl_function" href="structGraphWriter.html#a50f5b4e8a7529d18ad93dd1de2a5c1f2">getConnectionTypeString</a>(opType)</div>
-<div class="line"><a id="l00152" name="l00152"></a><span class="lineno">  152</span>                 &lt;&lt; <span class="stringliteral">&quot;&gt; &quot;</span>;</div>
-<div class="line"><a id="l00153" name="l00153"></a><span class="lineno">  153</span>          <a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a> &lt;&lt; <a class="code hl_function" href="structGraphWriter.html#a8d80d3996a93839f595cf5934ffa0f00">getTempNetName</a>() &lt;&lt; <span class="stringliteral">&quot; (&quot;</span> &lt;&lt; sourceKernelName &lt;&lt; <span class="stringliteral">&quot;.out[&quot;</span></div>
-<div class="line"><a id="l00154" name="l00154"></a><span class="lineno">  154</span>                 &lt;&lt; sourceIndex &lt;&lt; <span class="stringliteral">&quot;], &quot;</span> &lt;&lt; outputOp.getName() &lt;&lt; <span class="stringliteral">&quot;);\n&quot;</span>;</div>
-<div class="line"><a id="l00155" name="l00155"></a><span class="lineno">  155</span>        }</div>
-<div class="line"><a id="l00156" name="l00156"></a><span class="lineno">  156</span>        <span class="comment">// todo: kernel should not drive graph input, add an mlir verifier</span></div>
-<div class="line"><a id="l00157" name="l00157"></a><span class="lineno">  157</span>        <span class="comment">// condition</span></div>
-<div class="line"><a id="l00158" name="l00158"></a><span class="lineno">  158</span>      }</div>
-<div class="line"><a id="l00159" name="l00159"></a><span class="lineno">  159</span>      sourceIndex++;</div>
-<div class="line"><a id="l00160" name="l00160"></a><span class="lineno">  160</span>    }</div>
-<div class="line"><a id="l00161" name="l00161"></a><span class="lineno">  161</span>  }</div>
+<div class="line"><a id="l00159" name="l00159"></a><span class="lineno">  159</span> </div>
+<div class="foldopen" id="foldopen00160" data-start="{" data-end="}">
+<div class="line"><a id="l00160" name="l00160"></a><span class="lineno"><a class="line" href="structGraphWriter.html#ac2284f07b6ae23cf72f6df53a034fc50">  160</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structGraphWriter.html#ac2284f07b6ae23cf72f6df53a034fc50">writeKernelFunctions</a>(ModuleOp module) {</div>
+<div class="line"><a id="l00161" name="l00161"></a><span class="lineno">  161</span>    <a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a> &lt;&lt; <span class="stringliteral">&quot;#include &lt;adf.h&gt;\n&quot;</span>;</div>
+<div class="line"><a id="l00162" name="l00162"></a><span class="lineno">  162</span>    <a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a> &lt;&lt; <span class="stringliteral">&quot;#ifndef FUNCTION_KERNELS_H\n&quot;</span>;</div>
+<div class="line"><a id="l00163" name="l00163"></a><span class="lineno">  163</span>    <a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a> &lt;&lt; <span class="stringliteral">&quot;#define FUNCTION_KERNELS_H\n\n&quot;</span>;</div>
+<div class="line"><a id="l00164" name="l00164"></a><span class="lineno">  164</span> </div>
+<div class="line"><a id="l00165" name="l00165"></a><span class="lineno">  165</span>    <span class="keywordflow">for</span> (Block &amp;block : <span class="keyword">module</span>.getBodyRegion())</div>
+<div class="line"><a id="l00166" name="l00166"></a><span class="lineno">  166</span>      for (auto funcOp : block.getOps&lt;func::FuncOp&gt;()) {</div>
+<div class="line"><a id="l00167" name="l00167"></a><span class="lineno">  167</span>        output &lt;&lt; &quot;void &quot; &lt;&lt; funcOp.getSymName() &lt;&lt; &quot;(&quot;;</div>
+<div class="line"><a id="l00168" name="l00168"></a><span class="lineno">  168</span>        FunctionType type = funcOp.getFunctionType();</div>
+<div class="line"><a id="l00169" name="l00169"></a><span class="lineno">  169</span>        <span class="keywordflow">for</span> (<span class="keywordtype">unsigned</span> i = 0; i &lt; type.getNumInputs(); i++)</div>
+<div class="line"><a id="l00170" name="l00170"></a><span class="lineno">  170</span>          <a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a> &lt;&lt; <a class="code hl_function" href="structGraphWriter.html#aa1ae47dc9e3d7f8c09260db252629a08">getKernelTypeString</a>(<span class="stringliteral">&quot;input&quot;</span>, type.getInput(i)) &lt;&lt; <span class="stringliteral">&quot; in&quot;</span> &lt;&lt; i</div>
+<div class="line"><a id="l00171" name="l00171"></a><span class="lineno">  171</span>                 &lt;&lt; <span class="stringliteral">&quot;, &quot;</span>;</div>
+<div class="line"><a id="l00172" name="l00172"></a><span class="lineno">  172</span> </div>
+<div class="line"><a id="l00173" name="l00173"></a><span class="lineno">  173</span>        <span class="keywordflow">for</span> (<span class="keywordtype">unsigned</span> i = 0; i &lt; type.getNumResults(); i++) {</div>
+<div class="line"><a id="l00174" name="l00174"></a><span class="lineno">  174</span>          <a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a> &lt;&lt; <a class="code hl_function" href="structGraphWriter.html#aa1ae47dc9e3d7f8c09260db252629a08">getKernelTypeString</a>(<span class="stringliteral">&quot;output&quot;</span>, type.getResult(i)) &lt;&lt; <span class="stringliteral">&quot; out&quot;</span></div>
+<div class="line"><a id="l00175" name="l00175"></a><span class="lineno">  175</span>                 &lt;&lt; i;</div>
+<div class="line"><a id="l00176" name="l00176"></a><span class="lineno">  176</span>          <span class="keywordflow">if</span> (i &lt; type.getNumResults() - 1)</div>
+<div class="line"><a id="l00177" name="l00177"></a><span class="lineno">  177</span>            <a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a> &lt;&lt; <span class="stringliteral">&quot;, &quot;</span>;</div>
+<div class="line"><a id="l00178" name="l00178"></a><span class="lineno">  178</span>          <span class="keywordflow">else</span></div>
+<div class="line"><a id="l00179" name="l00179"></a><span class="lineno">  179</span>            <a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a> &lt;&lt; <span class="stringliteral">&quot;);\n&quot;</span>;</div>
+<div class="line"><a id="l00180" name="l00180"></a><span class="lineno">  180</span>        }</div>
+<div class="line"><a id="l00181" name="l00181"></a><span class="lineno">  181</span>      }</div>
+<div class="line"><a id="l00182" name="l00182"></a><span class="lineno">  182</span>    <a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a> &lt;&lt; <span class="stringliteral">&quot;#endif\n\n&quot;</span>;</div>
+<div class="line"><a id="l00183" name="l00183"></a><span class="lineno">  183</span>  }</div>
 </div>
-<div class="line"><a id="l00162" name="l00162"></a><span class="lineno">  162</span> </div>
-<div class="foldopen" id="foldopen00163" data-start="{" data-end="}">
-<div class="line"><a id="l00163" name="l00163"></a><span class="lineno"><a class="line" href="structGraphWriter.html#ac2284f07b6ae23cf72f6df53a034fc50">  163</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structGraphWriter.html#ac2284f07b6ae23cf72f6df53a034fc50">writeKernelFunctions</a>(ModuleOp module) {</div>
-<div class="line"><a id="l00164" name="l00164"></a><span class="lineno">  164</span>    <a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a> &lt;&lt; <span class="stringliteral">&quot;#include &lt;adf.h&gt;\n&quot;</span>;</div>
-<div class="line"><a id="l00165" name="l00165"></a><span class="lineno">  165</span>    <a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a> &lt;&lt; <span class="stringliteral">&quot;#ifndef FUNCTION_KERNELS_H\n&quot;</span>;</div>
-<div class="line"><a id="l00166" name="l00166"></a><span class="lineno">  166</span>    <a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a> &lt;&lt; <span class="stringliteral">&quot;#define FUNCTION_KERNELS_H\n\n&quot;</span>;</div>
-<div class="line"><a id="l00167" name="l00167"></a><span class="lineno">  167</span> </div>
-<div class="line"><a id="l00168" name="l00168"></a><span class="lineno">  168</span>    <span class="keywordflow">for</span> (Block &amp;block : <span class="keyword">module</span>.getBodyRegion())</div>
-<div class="line"><a id="l00169" name="l00169"></a><span class="lineno">  169</span>      for (auto funcOp : block.getOps&lt;func::FuncOp&gt;()) {</div>
-<div class="line"><a id="l00170" name="l00170"></a><span class="lineno">  170</span>        output &lt;&lt; &quot;void &quot; &lt;&lt; funcOp.getSymName() &lt;&lt; &quot;(&quot;;</div>
-<div class="line"><a id="l00171" name="l00171"></a><span class="lineno">  171</span>        FunctionType type = funcOp.getFunctionType();</div>
-<div class="line"><a id="l00172" name="l00172"></a><span class="lineno">  172</span>        <span class="keywordflow">for</span> (<span class="keywordtype">unsigned</span> i = 0; i &lt; type.getNumInputs(); i++)</div>
-<div class="line"><a id="l00173" name="l00173"></a><span class="lineno">  173</span>          <a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a> &lt;&lt; <a class="code hl_function" href="structGraphWriter.html#aa1ae47dc9e3d7f8c09260db252629a08">getKernelTypeString</a>(<span class="stringliteral">&quot;input&quot;</span>, type.getInput(i)) &lt;&lt; <span class="stringliteral">&quot; in&quot;</span> &lt;&lt; i</div>
-<div class="line"><a id="l00174" name="l00174"></a><span class="lineno">  174</span>                 &lt;&lt; <span class="stringliteral">&quot;, &quot;</span>;</div>
-<div class="line"><a id="l00175" name="l00175"></a><span class="lineno">  175</span> </div>
-<div class="line"><a id="l00176" name="l00176"></a><span class="lineno">  176</span>        <span class="keywordflow">for</span> (<span class="keywordtype">unsigned</span> i = 0; i &lt; type.getNumResults(); i++) {</div>
-<div class="line"><a id="l00177" name="l00177"></a><span class="lineno">  177</span>          <a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a> &lt;&lt; <a class="code hl_function" href="structGraphWriter.html#aa1ae47dc9e3d7f8c09260db252629a08">getKernelTypeString</a>(<span class="stringliteral">&quot;output&quot;</span>, type.getResult(i)) &lt;&lt; <span class="stringliteral">&quot; out&quot;</span></div>
-<div class="line"><a id="l00178" name="l00178"></a><span class="lineno">  178</span>                 &lt;&lt; i;</div>
-<div class="line"><a id="l00179" name="l00179"></a><span class="lineno">  179</span>          <span class="keywordflow">if</span> (i &lt; type.getNumResults() - 1)</div>
-<div class="line"><a id="l00180" name="l00180"></a><span class="lineno">  180</span>            <a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a> &lt;&lt; <span class="stringliteral">&quot;, &quot;</span>;</div>
-<div class="line"><a id="l00181" name="l00181"></a><span class="lineno">  181</span>          <span class="keywordflow">else</span></div>
-<div class="line"><a id="l00182" name="l00182"></a><span class="lineno">  182</span>            <a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a> &lt;&lt; <span class="stringliteral">&quot;);\n&quot;</span>;</div>
-<div class="line"><a id="l00183" name="l00183"></a><span class="lineno">  183</span>        }</div>
-<div class="line"><a id="l00184" name="l00184"></a><span class="lineno">  184</span>      }</div>
-<div class="line"><a id="l00185" name="l00185"></a><span class="lineno">  185</span>    <a class="code hl_variable" href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">output</a> &lt;&lt; <span class="stringliteral">&quot;#endif\n\n&quot;</span>;</div>
-<div class="line"><a id="l00186" name="l00186"></a><span class="lineno">  186</span>  }</div>
+<div class="line"><a id="l00184" name="l00184"></a><span class="lineno">  184</span> </div>
+<div class="foldopen" id="foldopen00185" data-start="{" data-end="}">
+<div class="line"><a id="l00185" name="l00185"></a><span class="lineno"><a class="line" href="structGraphWriter.html#af5df60b7e15e64ee97aca2b3040e43eb">  185</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structGraphWriter.html#af5df60b7e15e64ee97aca2b3040e43eb">writeClass</a>(GraphOp graph) {</div>
+<div class="line"><a id="l00186" name="l00186"></a><span class="lineno">  186</span>    output &lt;&lt; <span class="stringliteral">&quot;#include &lt;adf.h&gt;\n&quot;</span>;</div>
+<div class="line"><a id="l00187" name="l00187"></a><span class="lineno">  187</span>    output &lt;&lt; <span class="stringliteral">&quot;using namespace adf;\n&quot;</span>;</div>
+<div class="line"><a id="l00188" name="l00188"></a><span class="lineno">  188</span>    output &lt;&lt; <span class="stringliteral">&quot;class &quot;</span> &lt;&lt; graph.getName() &lt;&lt; <span class="stringliteral">&quot; : public graph {\n&quot;</span>;</div>
+<div class="line"><a id="l00189" name="l00189"></a><span class="lineno">  189</span>    output &lt;&lt; <span class="stringliteral">&quot;private:\n&quot;</span>;</div>
+<div class="line"><a id="l00190" name="l00190"></a><span class="lineno">  190</span>    <span class="keywordtype">int</span> kCnt = 1;</div>
+<div class="line"><a id="l00191" name="l00191"></a><span class="lineno">  191</span>    {</div>
+<div class="line"><a id="l00192" name="l00192"></a><span class="lineno">  192</span>      <a class="code hl_struct" href="structIndent.html">Indent</a> indent;</div>
+<div class="line"><a id="l00193" name="l00193"></a><span class="lineno">  193</span>      <span class="keywordflow">for</span> (Region &amp;region : graph-&gt;getRegions())</div>
+<div class="line"><a id="l00194" name="l00194"></a><span class="lineno">  194</span>        <span class="keywordflow">for</span> (Block &amp;block : region.getBlocks())</div>
+<div class="line"><a id="l00195" name="l00195"></a><span class="lineno">  195</span>          <span class="keywordflow">for</span> (<span class="keyword">const</span> <span class="keyword">auto</span> kernel : block.getOps&lt;KernelOp&gt;()) {</div>
+<div class="line"><a id="l00196" name="l00196"></a><span class="lineno">  196</span>            <span class="comment">// collect and initialize some kernel info</span></div>
+<div class="line"><a id="l00197" name="l00197"></a><span class="lineno">  197</span>            std::string varName = <span class="stringliteral">&quot;k&quot;</span> + std::to_string(kCnt);</div>
+<div class="line"><a id="l00198" name="l00198"></a><span class="lineno">  198</span>            output &lt;&lt; indent &lt;&lt; <span class="stringliteral">&quot;kernel &quot;</span> &lt;&lt; varName &lt;&lt; <span class="stringliteral">&quot;;\n&quot;</span>;</div>
+<div class="line"><a id="l00199" name="l00199"></a><span class="lineno">  199</span>            kernelOp2VarName[kernel] = varName;</div>
+<div class="line"><a id="l00200" name="l00200"></a><span class="lineno">  200</span>            kCnt++;</div>
+<div class="line"><a id="l00201" name="l00201"></a><span class="lineno">  201</span>          }</div>
+<div class="line"><a id="l00202" name="l00202"></a><span class="lineno">  202</span>    }</div>
+<div class="line"><a id="l00203" name="l00203"></a><span class="lineno">  203</span> </div>
+<div class="line"><a id="l00204" name="l00204"></a><span class="lineno">  204</span>    output &lt;&lt; <span class="stringliteral">&quot;\npublic:\n&quot;</span>;</div>
+<div class="line"><a id="l00205" name="l00205"></a><span class="lineno">  205</span>    <a class="code hl_struct" href="structIndent.html">Indent</a> indent;</div>
+<div class="line"><a id="l00206" name="l00206"></a><span class="lineno">  206</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> op : graph.getBody()-&gt;getOps&lt;GraphInputOp&gt;())</div>
+<div class="line"><a id="l00207" name="l00207"></a><span class="lineno">  207</span>      output &lt;&lt; indent &lt;&lt; <span class="stringliteral">&quot;input_port &quot;</span> &lt;&lt; op.getName() &lt;&lt; <span class="stringliteral">&quot;;\n&quot;</span>;</div>
+<div class="line"><a id="l00208" name="l00208"></a><span class="lineno">  208</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> op : graph.getBody()-&gt;getOps&lt;GraphOutputOp&gt;())</div>
+<div class="line"><a id="l00209" name="l00209"></a><span class="lineno">  209</span>      output &lt;&lt; indent &lt;&lt; <span class="stringliteral">&quot;output_port &quot;</span> &lt;&lt; op.getName() &lt;&lt; <span class="stringliteral">&quot;;\n&quot;</span>;</div>
+<div class="line"><a id="l00210" name="l00210"></a><span class="lineno">  210</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> op : graph.getBody()-&gt;getOps&lt;GraphInOutOp&gt;())</div>
+<div class="line"><a id="l00211" name="l00211"></a><span class="lineno">  211</span>      output &lt;&lt; indent &lt;&lt; <span class="stringliteral">&quot;inout_port &quot;</span> &lt;&lt; op.getName() &lt;&lt; <span class="stringliteral">&quot;;\n&quot;</span>;</div>
+<div class="line"><a id="l00212" name="l00212"></a><span class="lineno">  212</span> </div>
+<div class="line"><a id="l00213" name="l00213"></a><span class="lineno">  213</span>    output &lt;&lt; <span class="stringliteral">&quot;\n&quot;</span> &lt;&lt; indent &lt;&lt; graph.getName() &lt;&lt; <span class="stringliteral">&quot;() {\n&quot;</span>;</div>
+<div class="line"><a id="l00214" name="l00214"></a><span class="lineno">  214</span>    <span class="comment">// initialize the kernel instances in the adf c++ graph</span></div>
+<div class="line"><a id="l00215" name="l00215"></a><span class="lineno">  215</span>    {</div>
+<div class="line"><a id="l00216" name="l00216"></a><span class="lineno">  216</span>      <a class="code hl_struct" href="structIndent.html">Indent</a> indent;</div>
+<div class="line"><a id="l00217" name="l00217"></a><span class="lineno">  217</span>      <span class="keywordflow">for</span> (Region &amp;region : graph-&gt;getRegions())</div>
+<div class="line"><a id="l00218" name="l00218"></a><span class="lineno">  218</span>        <span class="keywordflow">for</span> (Block &amp;block : region.getBlocks())</div>
+<div class="line"><a id="l00219" name="l00219"></a><span class="lineno">  219</span>          <span class="keywordflow">for</span> (<span class="keyword">auto</span> kernel : block.getOps&lt;KernelOp&gt;()) {</div>
+<div class="line"><a id="l00220" name="l00220"></a><span class="lineno">  220</span>            output &lt;&lt; indent &lt;&lt; kernelOp2VarName[kernel] &lt;&lt; <span class="stringliteral">&quot; = kernel::create(&quot;</span></div>
+<div class="line"><a id="l00221" name="l00221"></a><span class="lineno">  221</span>                   &lt;&lt; kernel.getCallee().str() &lt;&lt; <span class="stringliteral">&quot;);\n&quot;</span>;</div>
+<div class="line"><a id="l00222" name="l00222"></a><span class="lineno">  222</span>          }</div>
+<div class="line"><a id="l00223" name="l00223"></a><span class="lineno">  223</span>    }</div>
+<div class="line"><a id="l00224" name="l00224"></a><span class="lineno">  224</span> </div>
+<div class="line"><a id="l00225" name="l00225"></a><span class="lineno">  225</span>    output &lt;&lt; <span class="stringliteral">&quot;\n&quot;</span>;</div>
+<div class="line"><a id="l00226" name="l00226"></a><span class="lineno">  226</span> </div>
+<div class="line"><a id="l00227" name="l00227"></a><span class="lineno">  227</span>    <span class="keywordflow">for</span> (Region &amp;region : graph-&gt;getRegions()) {</div>
+<div class="line"><a id="l00228" name="l00228"></a><span class="lineno">  228</span>      <span class="keywordflow">for</span> (Block &amp;block : region.getBlocks()) {</div>
+<div class="line"><a id="l00229" name="l00229"></a><span class="lineno">  229</span>        <span class="keywordflow">for</span> (Operation &amp;op : block.getOperations()) {</div>
+<div class="line"><a id="l00230" name="l00230"></a><span class="lineno">  230</span>          <span class="keywordflow">if</span> (<span class="keyword">auto</span> port = dyn_cast&lt;GraphInputOp&gt;(op)) {</div>
+<div class="line"><a id="l00231" name="l00231"></a><span class="lineno">  231</span>            visitOpResultUsers(port);</div>
+<div class="line"><a id="l00232" name="l00232"></a><span class="lineno">  232</span>          } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (<span class="keyword">auto</span> graph = dyn_cast&lt;KernelOp&gt;(op)) {</div>
+<div class="line"><a id="l00233" name="l00233"></a><span class="lineno">  233</span>            visitOpResultUsers(graph);</div>
+<div class="line"><a id="l00234" name="l00234"></a><span class="lineno">  234</span>          } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (<span class="keyword">auto</span> graph = dyn_cast&lt;GraphOutputOp&gt;(op)) {</div>
+<div class="line"><a id="l00235" name="l00235"></a><span class="lineno">  235</span>            <span class="comment">// the graph output should have no users in adf, do nothing here</span></div>
+<div class="line"><a id="l00236" name="l00236"></a><span class="lineno">  236</span>          }</div>
+<div class="line"><a id="l00237" name="l00237"></a><span class="lineno">  237</span>        } <span class="comment">// all op visited</span></div>
+<div class="line"><a id="l00238" name="l00238"></a><span class="lineno">  238</span>      }</div>
+<div class="line"><a id="l00239" name="l00239"></a><span class="lineno">  239</span>    }</div>
+<div class="line"><a id="l00240" name="l00240"></a><span class="lineno">  240</span> </div>
+<div class="line"><a id="l00241" name="l00241"></a><span class="lineno">  241</span>    {</div>
+<div class="line"><a id="l00242" name="l00242"></a><span class="lineno">  242</span>      <a class="code hl_struct" href="structIndent.html">Indent</a> indent;</div>
+<div class="line"><a id="l00243" name="l00243"></a><span class="lineno">  243</span>      <span class="keywordflow">for</span> (Region &amp;region : graph-&gt;getRegions())</div>
+<div class="line"><a id="l00244" name="l00244"></a><span class="lineno">  244</span>        <span class="keywordflow">for</span> (Block &amp;block : region.getBlocks())</div>
+<div class="line"><a id="l00245" name="l00245"></a><span class="lineno">  245</span>          <span class="keywordflow">for</span> (<span class="keyword">auto</span> kernel : block.getOps&lt;KernelOp&gt;()) {</div>
+<div class="line"><a id="l00246" name="l00246"></a><span class="lineno">  246</span>            output &lt;&lt; indent &lt;&lt; <span class="stringliteral">&quot;source(&quot;</span> &lt;&lt; kernelOp2VarName[kernel] &lt;&lt; <span class="stringliteral">&quot;) = &quot;</span></div>
+<div class="line"><a id="l00247" name="l00247"></a><span class="lineno">  247</span>                   &lt;&lt; <span class="stringliteral">&quot;\&quot;kernels.cc\&quot;;\n&quot;</span>;</div>
+<div class="line"><a id="l00248" name="l00248"></a><span class="lineno">  248</span>            output &lt;&lt; indent &lt;&lt; <span class="stringliteral">&quot;runtime&lt;ratio&gt;(&quot;</span> &lt;&lt; kernelOp2VarName[kernel]</div>
+<div class="line"><a id="l00249" name="l00249"></a><span class="lineno">  249</span>                   &lt;&lt; <span class="stringliteral">&quot;) = &quot;</span></div>
+<div class="line"><a id="l00250" name="l00250"></a><span class="lineno">  250</span>                   &lt;&lt; <span class="stringliteral">&quot;0.1;\n&quot;</span>;</div>
+<div class="line"><a id="l00251" name="l00251"></a><span class="lineno">  251</span>          }</div>
+<div class="line"><a id="l00252" name="l00252"></a><span class="lineno">  252</span>    }</div>
+<div class="line"><a id="l00253" name="l00253"></a><span class="lineno">  253</span> </div>
+<div class="line"><a id="l00254" name="l00254"></a><span class="lineno">  254</span>    output &lt;&lt; indent &lt;&lt; <span class="stringliteral">&quot;}\n&quot;</span>;</div>
+<div class="line"><a id="l00255" name="l00255"></a><span class="lineno">  255</span>    output &lt;&lt; <span class="stringliteral">&quot;};\n\n&quot;</span>;</div>
+<div class="line"><a id="l00256" name="l00256"></a><span class="lineno">  256</span>  }</div>
 </div>
-<div class="line"><a id="l00187" name="l00187"></a><span class="lineno">  187</span> </div>
-<div class="foldopen" id="foldopen00188" data-start="{" data-end="}">
-<div class="line"><a id="l00188" name="l00188"></a><span class="lineno"><a class="line" href="structGraphWriter.html#af5df60b7e15e64ee97aca2b3040e43eb">  188</a></span>  <span class="keywordtype">void</span> <a class="code hl_function" href="structGraphWriter.html#af5df60b7e15e64ee97aca2b3040e43eb">writeClass</a>(GraphOp graph) {</div>
-<div class="line"><a id="l00189" name="l00189"></a><span class="lineno">  189</span>    output &lt;&lt; <span class="stringliteral">&quot;#include &lt;adf.h&gt;\n&quot;</span>;</div>
-<div class="line"><a id="l00190" name="l00190"></a><span class="lineno">  190</span>    output &lt;&lt; <span class="stringliteral">&quot;using namespace adf;\n&quot;</span>;</div>
-<div class="line"><a id="l00191" name="l00191"></a><span class="lineno">  191</span>    output &lt;&lt; <span class="stringliteral">&quot;class &quot;</span> &lt;&lt; graph.getName() &lt;&lt; <span class="stringliteral">&quot; : public graph {\n&quot;</span>;</div>
-<div class="line"><a id="l00192" name="l00192"></a><span class="lineno">  192</span>    output &lt;&lt; <span class="stringliteral">&quot;private:\n&quot;</span>;</div>
-<div class="line"><a id="l00193" name="l00193"></a><span class="lineno">  193</span>    <span class="keywordtype">int</span> kCnt = 1;</div>
-<div class="line"><a id="l00194" name="l00194"></a><span class="lineno">  194</span>    {</div>
-<div class="line"><a id="l00195" name="l00195"></a><span class="lineno">  195</span>      <a class="code hl_struct" href="structIndent.html">Indent</a> indent;</div>
-<div class="line"><a id="l00196" name="l00196"></a><span class="lineno">  196</span>      <span class="keywordflow">for</span> (Region &amp;region : graph-&gt;getRegions())</div>
-<div class="line"><a id="l00197" name="l00197"></a><span class="lineno">  197</span>        <span class="keywordflow">for</span> (Block &amp;block : region.getBlocks())</div>
-<div class="line"><a id="l00198" name="l00198"></a><span class="lineno">  198</span>          <span class="keywordflow">for</span> (<span class="keyword">const</span> <span class="keyword">auto</span> kernel : block.getOps&lt;KernelOp&gt;()) {</div>
-<div class="line"><a id="l00199" name="l00199"></a><span class="lineno">  199</span>            <span class="comment">// collect and initialize some kernel info</span></div>
-<div class="line"><a id="l00200" name="l00200"></a><span class="lineno">  200</span>            std::string varName = <span class="stringliteral">&quot;k&quot;</span> + std::to_string(kCnt);</div>
-<div class="line"><a id="l00201" name="l00201"></a><span class="lineno">  201</span>            output &lt;&lt; indent &lt;&lt; <span class="stringliteral">&quot;kernel &quot;</span> &lt;&lt; varName &lt;&lt; <span class="stringliteral">&quot;;\n&quot;</span>;</div>
-<div class="line"><a id="l00202" name="l00202"></a><span class="lineno">  202</span>            kernelOp2VarName[kernel] = varName;</div>
-<div class="line"><a id="l00203" name="l00203"></a><span class="lineno">  203</span>            kCnt++;</div>
-<div class="line"><a id="l00204" name="l00204"></a><span class="lineno">  204</span>          }</div>
-<div class="line"><a id="l00205" name="l00205"></a><span class="lineno">  205</span>    }</div>
-<div class="line"><a id="l00206" name="l00206"></a><span class="lineno">  206</span> </div>
-<div class="line"><a id="l00207" name="l00207"></a><span class="lineno">  207</span>    output &lt;&lt; <span class="stringliteral">&quot;\npublic:\n&quot;</span>;</div>
-<div class="line"><a id="l00208" name="l00208"></a><span class="lineno">  208</span>    <a class="code hl_struct" href="structIndent.html">Indent</a> indent;</div>
-<div class="line"><a id="l00209" name="l00209"></a><span class="lineno">  209</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> op : graph.getBody()-&gt;getOps&lt;GraphInputOp&gt;())</div>
-<div class="line"><a id="l00210" name="l00210"></a><span class="lineno">  210</span>      output &lt;&lt; indent &lt;&lt; <span class="stringliteral">&quot;input_port &quot;</span> &lt;&lt; op.getName() &lt;&lt; <span class="stringliteral">&quot;;\n&quot;</span>;</div>
-<div class="line"><a id="l00211" name="l00211"></a><span class="lineno">  211</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> op : graph.getBody()-&gt;getOps&lt;GraphOutputOp&gt;())</div>
-<div class="line"><a id="l00212" name="l00212"></a><span class="lineno">  212</span>      output &lt;&lt; indent &lt;&lt; <span class="stringliteral">&quot;output_port &quot;</span> &lt;&lt; op.getName() &lt;&lt; <span class="stringliteral">&quot;;\n&quot;</span>;</div>
-<div class="line"><a id="l00213" name="l00213"></a><span class="lineno">  213</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> op : graph.getBody()-&gt;getOps&lt;GraphInOutOp&gt;())</div>
-<div class="line"><a id="l00214" name="l00214"></a><span class="lineno">  214</span>      output &lt;&lt; indent &lt;&lt; <span class="stringliteral">&quot;inout_port &quot;</span> &lt;&lt; op.getName() &lt;&lt; <span class="stringliteral">&quot;;\n&quot;</span>;</div>
-<div class="line"><a id="l00215" name="l00215"></a><span class="lineno">  215</span> </div>
-<div class="line"><a id="l00216" name="l00216"></a><span class="lineno">  216</span>    output &lt;&lt; <span class="stringliteral">&quot;\n&quot;</span> &lt;&lt; indent &lt;&lt; graph.getName() &lt;&lt; <span class="stringliteral">&quot;() {\n&quot;</span>;</div>
-<div class="line"><a id="l00217" name="l00217"></a><span class="lineno">  217</span>    <span class="comment">// initialize the kernel instances in the adf c++ graph</span></div>
-<div class="line"><a id="l00218" name="l00218"></a><span class="lineno">  218</span>    {</div>
-<div class="line"><a id="l00219" name="l00219"></a><span class="lineno">  219</span>      <a class="code hl_struct" href="structIndent.html">Indent</a> indent;</div>
-<div class="line"><a id="l00220" name="l00220"></a><span class="lineno">  220</span>      <span class="keywordflow">for</span> (Region &amp;region : graph-&gt;getRegions())</div>
-<div class="line"><a id="l00221" name="l00221"></a><span class="lineno">  221</span>        <span class="keywordflow">for</span> (Block &amp;block : region.getBlocks())</div>
-<div class="line"><a id="l00222" name="l00222"></a><span class="lineno">  222</span>          <span class="keywordflow">for</span> (<span class="keyword">auto</span> kernel : block.getOps&lt;KernelOp&gt;()) {</div>
-<div class="line"><a id="l00223" name="l00223"></a><span class="lineno">  223</span>            output &lt;&lt; indent &lt;&lt; kernelOp2VarName[kernel] &lt;&lt; <span class="stringliteral">&quot; = kernel::create(&quot;</span></div>
-<div class="line"><a id="l00224" name="l00224"></a><span class="lineno">  224</span>                   &lt;&lt; kernel.getCallee().str() &lt;&lt; <span class="stringliteral">&quot;);\n&quot;</span>;</div>
-<div class="line"><a id="l00225" name="l00225"></a><span class="lineno">  225</span>          }</div>
-<div class="line"><a id="l00226" name="l00226"></a><span class="lineno">  226</span>    }</div>
-<div class="line"><a id="l00227" name="l00227"></a><span class="lineno">  227</span> </div>
-<div class="line"><a id="l00228" name="l00228"></a><span class="lineno">  228</span>    output &lt;&lt; <span class="stringliteral">&quot;\n&quot;</span>;</div>
-<div class="line"><a id="l00229" name="l00229"></a><span class="lineno">  229</span> </div>
-<div class="line"><a id="l00230" name="l00230"></a><span class="lineno">  230</span>    <span class="keywordflow">for</span> (Region &amp;region : graph-&gt;getRegions()) {</div>
-<div class="line"><a id="l00231" name="l00231"></a><span class="lineno">  231</span>      <span class="keywordflow">for</span> (Block &amp;block : region.getBlocks()) {</div>
-<div class="line"><a id="l00232" name="l00232"></a><span class="lineno">  232</span>        <span class="keywordflow">for</span> (Operation &amp;op : block.getOperations()) {</div>
-<div class="line"><a id="l00233" name="l00233"></a><span class="lineno">  233</span>          <span class="keywordflow">if</span> (<span class="keyword">auto</span> port = dyn_cast&lt;GraphInputOp&gt;(op)) {</div>
-<div class="line"><a id="l00234" name="l00234"></a><span class="lineno">  234</span>            visitOpResultUsers(port);</div>
-<div class="line"><a id="l00235" name="l00235"></a><span class="lineno">  235</span>          } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (<span class="keyword">auto</span> graph = dyn_cast&lt;KernelOp&gt;(op)) {</div>
-<div class="line"><a id="l00236" name="l00236"></a><span class="lineno">  236</span>            visitOpResultUsers(graph);</div>
-<div class="line"><a id="l00237" name="l00237"></a><span class="lineno">  237</span>          } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (<span class="keyword">auto</span> graph = dyn_cast&lt;GraphOutputOp&gt;(op)) {</div>
-<div class="line"><a id="l00238" name="l00238"></a><span class="lineno">  238</span>            <span class="comment">// the graph output should have no users in adf, do nothing here</span></div>
-<div class="line"><a id="l00239" name="l00239"></a><span class="lineno">  239</span>          }</div>
-<div class="line"><a id="l00240" name="l00240"></a><span class="lineno">  240</span>        } <span class="comment">// all op visited</span></div>
-<div class="line"><a id="l00241" name="l00241"></a><span class="lineno">  241</span>      }</div>
-<div class="line"><a id="l00242" name="l00242"></a><span class="lineno">  242</span>    }</div>
-<div class="line"><a id="l00243" name="l00243"></a><span class="lineno">  243</span> </div>
-<div class="line"><a id="l00244" name="l00244"></a><span class="lineno">  244</span>    {</div>
-<div class="line"><a id="l00245" name="l00245"></a><span class="lineno">  245</span>      <a class="code hl_struct" href="structIndent.html">Indent</a> indent;</div>
-<div class="line"><a id="l00246" name="l00246"></a><span class="lineno">  246</span>      <span class="keywordflow">for</span> (Region &amp;region : graph-&gt;getRegions())</div>
-<div class="line"><a id="l00247" name="l00247"></a><span class="lineno">  247</span>        <span class="keywordflow">for</span> (Block &amp;block : region.getBlocks())</div>
-<div class="line"><a id="l00248" name="l00248"></a><span class="lineno">  248</span>          <span class="keywordflow">for</span> (<span class="keyword">auto</span> kernel : block.getOps&lt;KernelOp&gt;()) {</div>
-<div class="line"><a id="l00249" name="l00249"></a><span class="lineno">  249</span>            output &lt;&lt; indent &lt;&lt; <span class="stringliteral">&quot;source(&quot;</span> &lt;&lt; kernelOp2VarName[kernel] &lt;&lt; <span class="stringliteral">&quot;) = &quot;</span></div>
-<div class="line"><a id="l00250" name="l00250"></a><span class="lineno">  250</span>                   &lt;&lt; <span class="stringliteral">&quot;\&quot;kernels.cc\&quot;;\n&quot;</span>;</div>
-<div class="line"><a id="l00251" name="l00251"></a><span class="lineno">  251</span>            output &lt;&lt; indent &lt;&lt; <span class="stringliteral">&quot;runtime&lt;ratio&gt;(&quot;</span> &lt;&lt; kernelOp2VarName[kernel]</div>
-<div class="line"><a id="l00252" name="l00252"></a><span class="lineno">  252</span>                   &lt;&lt; <span class="stringliteral">&quot;) = &quot;</span></div>
-<div class="line"><a id="l00253" name="l00253"></a><span class="lineno">  253</span>                   &lt;&lt; <span class="stringliteral">&quot;0.1;\n&quot;</span>;</div>
-<div class="line"><a id="l00254" name="l00254"></a><span class="lineno">  254</span>          }</div>
-<div class="line"><a id="l00255" name="l00255"></a><span class="lineno">  255</span>    }</div>
-<div class="line"><a id="l00256" name="l00256"></a><span class="lineno">  256</span> </div>
-<div class="line"><a id="l00257" name="l00257"></a><span class="lineno">  257</span>    output &lt;&lt; indent &lt;&lt; <span class="stringliteral">&quot;}\n&quot;</span>;</div>
-<div class="line"><a id="l00258" name="l00258"></a><span class="lineno">  258</span>    output &lt;&lt; <span class="stringliteral">&quot;};\n\n&quot;</span>;</div>
-<div class="line"><a id="l00259" name="l00259"></a><span class="lineno">  259</span>  }</div>
+<div class="line"><a id="l00257" name="l00257"></a><span class="lineno">  257</span>};</div>
 </div>
-<div class="line"><a id="l00260" name="l00260"></a><span class="lineno">  260</span>};</div>
-</div>
-<div class="line"><a id="l00261" name="l00261"></a><span class="lineno">  261</span> </div>
-<div class="line"><a id="l00262" name="l00262"></a><span class="lineno">  262</span>LogicalResult <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a32125f09d0883cc6499d1f3e781aa543">AIE::ADFGenerateCPPGraph</a>(ModuleOp module, raw_ostream &amp;output) {</div>
-<div class="line"><a id="l00263" name="l00263"></a><span class="lineno">  263</span>  <a class="code hl_struct" href="structGraphWriter.html">GraphWriter</a> writer(output);</div>
-<div class="line"><a id="l00264" name="l00264"></a><span class="lineno">  264</span>  resetIndent();</div>
-<div class="line"><a id="l00265" name="l00265"></a><span class="lineno">  265</span> </div>
-<div class="line"><a id="l00266" name="l00266"></a><span class="lineno">  266</span>  writer.writeKernelFunctions(module);</div>
-<div class="line"><a id="l00267" name="l00267"></a><span class="lineno">  267</span> </div>
-<div class="line"><a id="l00268" name="l00268"></a><span class="lineno">  268</span>  <span class="keywordflow">for</span> (Block &amp;block : module.getBodyRegion())</div>
-<div class="line"><a id="l00269" name="l00269"></a><span class="lineno">  269</span>    for (auto graphOp : block.getOps&lt;GraphOp&gt;())</div>
-<div class="line"><a id="l00270" name="l00270"></a><span class="lineno">  270</span>      writer.writeClass(graphOp);</div>
-<div class="line"><a id="l00271" name="l00271"></a><span class="lineno">  271</span>  <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l00272" name="l00272"></a><span class="lineno">  272</span>}</div>
+<div class="line"><a id="l00258" name="l00258"></a><span class="lineno">  258</span> </div>
+<div class="line"><a id="l00259" name="l00259"></a><span class="lineno">  259</span>LogicalResult <a class="code hl_function" href="namespacexilinx_1_1AIE.html#a32125f09d0883cc6499d1f3e781aa543">AIE::ADFGenerateCPPGraph</a>(ModuleOp module, raw_ostream &amp;output) {</div>
+<div class="line"><a id="l00260" name="l00260"></a><span class="lineno">  260</span>  <a class="code hl_struct" href="structGraphWriter.html">GraphWriter</a> writer(output);</div>
+<div class="line"><a id="l00261" name="l00261"></a><span class="lineno">  261</span>  resetIndent();</div>
+<div class="line"><a id="l00262" name="l00262"></a><span class="lineno">  262</span> </div>
+<div class="line"><a id="l00263" name="l00263"></a><span class="lineno">  263</span>  writer.writeKernelFunctions(module);</div>
+<div class="line"><a id="l00264" name="l00264"></a><span class="lineno">  264</span> </div>
+<div class="line"><a id="l00265" name="l00265"></a><span class="lineno">  265</span>  <span class="keywordflow">for</span> (Block &amp;block : module.getBodyRegion())</div>
+<div class="line"><a id="l00266" name="l00266"></a><span class="lineno">  266</span>    for (auto graphOp : block.getOps&lt;GraphOp&gt;())</div>
+<div class="line"><a id="l00267" name="l00267"></a><span class="lineno">  267</span>      writer.writeClass(graphOp);</div>
+<div class="line"><a id="l00268" name="l00268"></a><span class="lineno">  268</span>  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00269" name="l00269"></a><span class="lineno">  269</span>}</div>
 <div class="ttc" id="aADFDialect_8h_html"><div class="ttname"><a href="ADFDialect_8h.html">ADFDialect.h</a></div></div>
-<div class="ttc" id="aADFGenerateCppGraph_8cpp_html_a58c345c98644e852e6c899b6d09ba613"><div class="ttname"><a href="ADFGenerateCppGraph_8cpp.html#a58c345c98644e852e6c899b6d09ba613">operator&lt;&lt;</a></div><div class="ttdeci">raw_ostream &amp; operator&lt;&lt;(raw_ostream &amp;os, const Indent &amp;indent)</div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00040">ADFGenerateCppGraph.cpp:40</a></div></div>
+<div class="ttc" id="aADFGenerateCppGraph_8cpp_html_a58c345c98644e852e6c899b6d09ba613"><div class="ttname"><a href="ADFGenerateCppGraph_8cpp.html#a58c345c98644e852e6c899b6d09ba613">operator&lt;&lt;</a></div><div class="ttdeci">raw_ostream &amp; operator&lt;&lt;(raw_ostream &amp;os, const Indent &amp;indent)</div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00037">ADFGenerateCppGraph.cpp:37</a></div></div>
 <div class="ttc" id="aADFOps_8h_html"><div class="ttname"><a href="ADFOps_8h.html">ADFOps.h</a></div></div>
 <div class="ttc" id="aAIETargets_8h_html"><div class="ttname"><a href="AIETargets_8h.html">AIETargets.h</a></div></div>
-<div class="ttc" id="anamespacemlir_html"><div class="ttname"><a href="namespacemlir.html">mlir</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8h_source.html#l00019">AIEVecToLLVM.h:19</a></div></div>
+<div class="ttc" id="anamespacemlir_html"><div class="ttname"><a href="namespacemlir.html">mlir</a></div><div class="ttdef"><b>Definition</b> <a href="AIEVecToLLVM_8h_source.html#l00016">AIEVecToLLVM.h:16</a></div></div>
 <div class="ttc" id="anamespacexilinx_1_1AIE_html_a32125f09d0883cc6499d1f3e781aa543"><div class="ttname"><a href="namespacexilinx_1_1AIE.html#a32125f09d0883cc6499d1f3e781aa543">xilinx::AIE::ADFGenerateCPPGraph</a></div><div class="ttdeci">mlir::LogicalResult ADFGenerateCPPGraph(mlir::ModuleOp module, llvm::raw_ostream &amp;output)</div></div>
-<div class="ttc" id="anamespacexilinx_html"><div class="ttname"><a href="namespacexilinx.html">xilinx</a></div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00018">AIEToConfiguration.h:18</a></div></div>
-<div class="ttc" id="astructGraphWriter_html"><div class="ttname"><a href="structGraphWriter.html">GraphWriter</a></div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00046">ADFGenerateCppGraph.cpp:46</a></div></div>
-<div class="ttc" id="astructGraphWriter_html_a16b2fdbd5df332675e57881c6d3f71b6"><div class="ttname"><a href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">GraphWriter::output</a></div><div class="ttdeci">raw_ostream &amp; output</div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00047">ADFGenerateCppGraph.cpp:47</a></div></div>
-<div class="ttc" id="astructGraphWriter_html_a1d86dd658eb97d3b0734a3bce726a926"><div class="ttname"><a href="structGraphWriter.html#a1d86dd658eb97d3b0734a3bce726a926">GraphWriter::visitOpResultUsers</a></div><div class="ttdeci">void visitOpResultUsers(GraphInputOp driverOp)</div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00104">ADFGenerateCppGraph.cpp:104</a></div></div>
-<div class="ttc" id="astructGraphWriter_html_a4f58522687135a3d1e760992dfc054f6"><div class="ttname"><a href="structGraphWriter.html#a4f58522687135a3d1e760992dfc054f6">GraphWriter::GraphWriter</a></div><div class="ttdeci">GraphWriter(raw_ostream &amp;output)</div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00048">ADFGenerateCppGraph.cpp:48</a></div></div>
-<div class="ttc" id="astructGraphWriter_html_a50f5b4e8a7529d18ad93dd1de2a5c1f2"><div class="ttname"><a href="structGraphWriter.html#a50f5b4e8a7529d18ad93dd1de2a5c1f2">GraphWriter::getConnectionTypeString</a></div><div class="ttdeci">std::string getConnectionTypeString(Type type)</div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00088">ADFGenerateCppGraph.cpp:88</a></div></div>
-<div class="ttc" id="astructGraphWriter_html_a624c5505f3035676a651079a5b22e79b"><div class="ttname"><a href="structGraphWriter.html#a624c5505f3035676a651079a5b22e79b">GraphWriter::getCTypeString</a></div><div class="ttdeci">StringRef getCTypeString(const Type &amp;type)</div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00053">ADFGenerateCppGraph.cpp:53</a></div></div>
-<div class="ttc" id="astructGraphWriter_html_a8d80d3996a93839f595cf5934ffa0f00"><div class="ttname"><a href="structGraphWriter.html#a8d80d3996a93839f595cf5934ffa0f00">GraphWriter::getTempNetName</a></div><div class="ttdeci">std::string getTempNetName()</div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00099">ADFGenerateCppGraph.cpp:99</a></div></div>
-<div class="ttc" id="astructGraphWriter_html_a9e6f5a6ecf85acce2888774a6d77629a"><div class="ttname"><a href="structGraphWriter.html#a9e6f5a6ecf85acce2888774a6d77629a">GraphWriter::visitOpResultUsers</a></div><div class="ttdeci">void visitOpResultUsers(KernelOp source)</div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00127">ADFGenerateCppGraph.cpp:127</a></div></div>
-<div class="ttc" id="astructGraphWriter_html_aa1ae47dc9e3d7f8c09260db252629a08"><div class="ttname"><a href="structGraphWriter.html#aa1ae47dc9e3d7f8c09260db252629a08">GraphWriter::getKernelTypeString</a></div><div class="ttdeci">std::string getKernelTypeString(const std::string &amp;direction, Type type)</div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00075">ADFGenerateCppGraph.cpp:75</a></div></div>
-<div class="ttc" id="astructGraphWriter_html_ac2284f07b6ae23cf72f6df53a034fc50"><div class="ttname"><a href="structGraphWriter.html#ac2284f07b6ae23cf72f6df53a034fc50">GraphWriter::writeKernelFunctions</a></div><div class="ttdeci">void writeKernelFunctions(ModuleOp module)</div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00163">ADFGenerateCppGraph.cpp:163</a></div></div>
-<div class="ttc" id="astructGraphWriter_html_aecf089ccafc59fe0682cd58362ad0525"><div class="ttname"><a href="structGraphWriter.html#aecf089ccafc59fe0682cd58362ad0525">GraphWriter::kernelOp2VarName</a></div><div class="ttdeci">std::unordered_map&lt; Operation *, std::string &gt; kernelOp2VarName</div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00051">ADFGenerateCppGraph.cpp:51</a></div></div>
-<div class="ttc" id="astructGraphWriter_html_af5df60b7e15e64ee97aca2b3040e43eb"><div class="ttname"><a href="structGraphWriter.html#af5df60b7e15e64ee97aca2b3040e43eb">GraphWriter::writeClass</a></div><div class="ttdeci">void writeClass(GraphOp graph)</div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00188">ADFGenerateCppGraph.cpp:188</a></div></div>
-<div class="ttc" id="astructIndent_html"><div class="ttname"><a href="structIndent.html">Indent</a></div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00033">ADFGenerateCppGraph.cpp:33</a></div></div>
-<div class="ttc" id="astructIndent_html_a0043bb6416df348aac9d94601571c74c"><div class="ttname"><a href="structIndent.html#a0043bb6416df348aac9d94601571c74c">Indent::~Indent</a></div><div class="ttdeci">~Indent()</div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00036">ADFGenerateCppGraph.cpp:36</a></div></div>
-<div class="ttc" id="astructIndent_html_aad49231fc9549b104dfc0facdaf21c04"><div class="ttname"><a href="structIndent.html#aad49231fc9549b104dfc0facdaf21c04">Indent::Indent</a></div><div class="ttdeci">Indent()</div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00035">ADFGenerateCppGraph.cpp:35</a></div></div>
-<div class="ttc" id="astructIndent_html_ae4f877cac71c58c478164f4959362545"><div class="ttname"><a href="structIndent.html#ae4f877cac71c58c478164f4959362545">Indent::indent</a></div><div class="ttdeci">int indent</div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00034">ADFGenerateCppGraph.cpp:34</a></div></div>
+<div class="ttc" id="anamespacexilinx_html"><div class="ttname"><a href="namespacexilinx.html">xilinx</a></div><div class="ttdef"><b>Definition</b> <a href="AIEToConfiguration_8h_source.html#l00015">AIEToConfiguration.h:15</a></div></div>
+<div class="ttc" id="astructGraphWriter_html"><div class="ttname"><a href="structGraphWriter.html">GraphWriter</a></div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00043">ADFGenerateCppGraph.cpp:43</a></div></div>
+<div class="ttc" id="astructGraphWriter_html_a16b2fdbd5df332675e57881c6d3f71b6"><div class="ttname"><a href="structGraphWriter.html#a16b2fdbd5df332675e57881c6d3f71b6">GraphWriter::output</a></div><div class="ttdeci">raw_ostream &amp; output</div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00044">ADFGenerateCppGraph.cpp:44</a></div></div>
+<div class="ttc" id="astructGraphWriter_html_a1d86dd658eb97d3b0734a3bce726a926"><div class="ttname"><a href="structGraphWriter.html#a1d86dd658eb97d3b0734a3bce726a926">GraphWriter::visitOpResultUsers</a></div><div class="ttdeci">void visitOpResultUsers(GraphInputOp driverOp)</div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00101">ADFGenerateCppGraph.cpp:101</a></div></div>
+<div class="ttc" id="astructGraphWriter_html_a4f58522687135a3d1e760992dfc054f6"><div class="ttname"><a href="structGraphWriter.html#a4f58522687135a3d1e760992dfc054f6">GraphWriter::GraphWriter</a></div><div class="ttdeci">GraphWriter(raw_ostream &amp;output)</div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00045">ADFGenerateCppGraph.cpp:45</a></div></div>
+<div class="ttc" id="astructGraphWriter_html_a50f5b4e8a7529d18ad93dd1de2a5c1f2"><div class="ttname"><a href="structGraphWriter.html#a50f5b4e8a7529d18ad93dd1de2a5c1f2">GraphWriter::getConnectionTypeString</a></div><div class="ttdeci">std::string getConnectionTypeString(Type type)</div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00085">ADFGenerateCppGraph.cpp:85</a></div></div>
+<div class="ttc" id="astructGraphWriter_html_a624c5505f3035676a651079a5b22e79b"><div class="ttname"><a href="structGraphWriter.html#a624c5505f3035676a651079a5b22e79b">GraphWriter::getCTypeString</a></div><div class="ttdeci">StringRef getCTypeString(const Type &amp;type)</div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00050">ADFGenerateCppGraph.cpp:50</a></div></div>
+<div class="ttc" id="astructGraphWriter_html_a8d80d3996a93839f595cf5934ffa0f00"><div class="ttname"><a href="structGraphWriter.html#a8d80d3996a93839f595cf5934ffa0f00">GraphWriter::getTempNetName</a></div><div class="ttdeci">std::string getTempNetName()</div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00096">ADFGenerateCppGraph.cpp:96</a></div></div>
+<div class="ttc" id="astructGraphWriter_html_a9e6f5a6ecf85acce2888774a6d77629a"><div class="ttname"><a href="structGraphWriter.html#a9e6f5a6ecf85acce2888774a6d77629a">GraphWriter::visitOpResultUsers</a></div><div class="ttdeci">void visitOpResultUsers(KernelOp source)</div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00124">ADFGenerateCppGraph.cpp:124</a></div></div>
+<div class="ttc" id="astructGraphWriter_html_aa1ae47dc9e3d7f8c09260db252629a08"><div class="ttname"><a href="structGraphWriter.html#aa1ae47dc9e3d7f8c09260db252629a08">GraphWriter::getKernelTypeString</a></div><div class="ttdeci">std::string getKernelTypeString(const std::string &amp;direction, Type type)</div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00072">ADFGenerateCppGraph.cpp:72</a></div></div>
+<div class="ttc" id="astructGraphWriter_html_ac2284f07b6ae23cf72f6df53a034fc50"><div class="ttname"><a href="structGraphWriter.html#ac2284f07b6ae23cf72f6df53a034fc50">GraphWriter::writeKernelFunctions</a></div><div class="ttdeci">void writeKernelFunctions(ModuleOp module)</div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00160">ADFGenerateCppGraph.cpp:160</a></div></div>
+<div class="ttc" id="astructGraphWriter_html_aecf089ccafc59fe0682cd58362ad0525"><div class="ttname"><a href="structGraphWriter.html#aecf089ccafc59fe0682cd58362ad0525">GraphWriter::kernelOp2VarName</a></div><div class="ttdeci">std::unordered_map&lt; Operation *, std::string &gt; kernelOp2VarName</div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00048">ADFGenerateCppGraph.cpp:48</a></div></div>
+<div class="ttc" id="astructGraphWriter_html_af5df60b7e15e64ee97aca2b3040e43eb"><div class="ttname"><a href="structGraphWriter.html#af5df60b7e15e64ee97aca2b3040e43eb">GraphWriter::writeClass</a></div><div class="ttdeci">void writeClass(GraphOp graph)</div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00185">ADFGenerateCppGraph.cpp:185</a></div></div>
+<div class="ttc" id="astructIndent_html"><div class="ttname"><a href="structIndent.html">Indent</a></div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00030">ADFGenerateCppGraph.cpp:30</a></div></div>
+<div class="ttc" id="astructIndent_html_a0043bb6416df348aac9d94601571c74c"><div class="ttname"><a href="structIndent.html#a0043bb6416df348aac9d94601571c74c">Indent::~Indent</a></div><div class="ttdeci">~Indent()</div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00033">ADFGenerateCppGraph.cpp:33</a></div></div>
+<div class="ttc" id="astructIndent_html_aad49231fc9549b104dfc0facdaf21c04"><div class="ttname"><a href="structIndent.html#aad49231fc9549b104dfc0facdaf21c04">Indent::Indent</a></div><div class="ttdeci">Indent()</div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00032">ADFGenerateCppGraph.cpp:32</a></div></div>
+<div class="ttc" id="astructIndent_html_ae4f877cac71c58c478164f4959362545"><div class="ttname"><a href="structIndent.html#ae4f877cac71c58c478164f4959362545">Indent::indent</a></div><div class="ttdeci">int indent</div><div class="ttdef"><b>Definition</b> <a href="ADFGenerateCppGraph_8cpp_source.html#l00031">ADFGenerateCppGraph.cpp:31</a></div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Wed Jul 1 2026 15:42:30 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Wed Jul 1 2026 17:31:38 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
