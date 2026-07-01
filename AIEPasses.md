@@ -247,14 +247,6 @@ to one aie.tile.
 -sa-seed             : Random seed for SA placer (0 = non-deterministic).
 ```
 
-### `-aie-register-objectFifos`
-
-_Generate acquire/release patterns for producer/consumer processes registered to an objectFifo_
-
-Generate acquire/release patterns in the CoreOps of associated cores for each
-aie.objectfifo.register_process operation. Patterns are generated as for loops
-of different sizes depending on input patterns.
-
 ### `-aie-standard-lowering`
 
 _Lowering operations in AIE cores' regions to Standard_
@@ -312,13 +304,6 @@ specifications that can be further lowered to NPU register writes.
 
 Note: This pass only does semantic lowering. NPU write generation
 happens in aie-inline-trace-config (AIEX dialect).
-
-### `-aie-vector-opt`
-
-_Optimize vector instructions for AIE_
-
-After super-vectorization, some additional optimizations are important
-for improving QOR and enabling lowering to LLVM.
 
 ### `-aie-vector-to-pointer-loops`
 

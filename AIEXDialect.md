@@ -519,49 +519,6 @@ Traits: `HasParent<AIE::RuntimeSequenceOp>`, `NoTerminator`
 
 
 
-### `aiex.connection` (::xilinx::AIEX::ConnectionOp)
-
-_A logical circuit-switched connection between cores_
-
-Syntax:
-
-```
-operation ::= `aiex.connection` `(` $source `,` $sourceBundle `:` $sourceChannel `,` $dest `,` $destBundle `:` $destChannel `)` attr-dict
-```
-
-The "aie.connection" operation represents a circuit switched connection between two endpoints, usually
-"aie.core" operations.  During routing, this is replaced by "aie.connect" operations which represent
-the programmed connections inside a switchbox, along with "aie.wire" operations which represent
-physical connections between switchboxes and other components.  Note that while "aie.flow" operations
-can express partial routes between tiles, this is not possible with "aie.connection" operations.
-
-Example:
-  %22 = aie.tile(2, 2)
-  %c22 = aie.core(%22)
-  %11 = aie.tile(1, 1)
-  %c11 = aie.core(%11)
-  aie.flow(%c22, "Core" : 0, %c11, "Core" : 1)
-
-
-#### Attributes:
-
-<table>
-<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>sourceBundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td>Bundle of wires</td></tr>
-<tr><td><code>sourceChannel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>destBundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td>Bundle of wires</td></tr>
-<tr><td><code>destChannel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-</table>
-
-#### Operands:
-
-| Operand | Description |
-| :-----: | ----------- |
-| `source` | index |
-| `dest` | index |
-
-
-
 ### `aiex.control_packet` (::xilinx::AIEX::NpuControlPacketOp)
 
 _AIE control packet_
@@ -814,112 +771,6 @@ Traits: `HasParent<AIE::RuntimeSequenceOp>`
 | Operand | Description |
 | :-----: | ----------- |
 | `task` | index |
-
-
-
-### `aiex.getTile` (::xilinx::AIEX::GetTileOp)
-
-_Get a reference to an AIE tile_
-
-Syntax:
-
-```
-operation ::= `aiex.getTile` `(` $col `,` $row `)` attr-dict
-```
-
-Return a reference to an AIE tile, given the column and the row of the tile.
-
-#### Operands:
-
-| Operand | Description |
-| :-----: | ----------- |
-| `col` | index |
-| `row` | index |
-
-#### Results:
-
-| Result | Description |
-| :----: | ----------- |
-| `result` | index |
-
-
-
-### `aiex.herd` (::xilinx::AIEX::HerdOp)
-
-_Declare a herd which is a bundle of core organized in a rectangular shape_
-
-Syntax:
-
-```
-operation ::= `aiex.herd` `[` $width `]` `[` $height `]` attr-dict
-```
-
-This operation creates a group of AIE tiles in 2D shape.
-
-Example:
-  %herd0 = AIE.herd[1][1] // a single AIE tile. location unknown
-  %herd1 = AIE.herd[4][1] // a row of four-AIE tile
-
-The operation can be used in replacement of a TileOp -- in case we want to select a group of
-hardware entities (cores, mems, switchboxes) instead of individual entity, and we don't want to
-specify their locations just yet. This can be useful if we want to generate parameterizable
-code (the column and row values are parameterized).
-
-Example:
-
-  %herd = AIE.herd[2][2] // a herd of 2x2 AIE tiles
-
-  AIE.core(%herd) {
-    // all the cores belong to this herd runs the same code
-  }
-
-#### Attributes:
-
-<table>
-<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>width</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>height</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-</table>
-
-#### Results:
-
-| Result | Description |
-| :----: | ----------- |
-| &laquo;unnamed&raquo; | index |
-
-
-
-### `aiex.iter` (::xilinx::AIEX::IterOp)
-
-_An iter operation_
-
-Syntax:
-
-```
-operation ::= `aiex.iter` `(` $start `,` $end `,` $stride `)` attr-dict
-```
-
-This operation generates index values that can be used with the SelectOp to select a group of tiles
-from a herd.
-
-Example:
-  %iter0 = AIE.iter(0, 15, 1) // 0, 1, 2, ... , 15
-  %iter1 = AIE.iter(2, 8, 2)  // 2, 4, 6
-
-#### Attributes:
-
-<table>
-<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>start</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>end</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>stride</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-</table>
-
-#### Results:
-
-| Result | Description |
-| :----: | ----------- |
-| &laquo;unnamed&raquo; | index |
 
 
 
@@ -1662,35 +1513,6 @@ writebd operator
 
 
 
-### `aiex.place` (::xilinx::AIEX::PlaceOp)
-
-_A place operation that specifies the relative placement (XY) of one herd to another_
-
-Syntax:
-
-```
-operation ::= `aiex.place` `(` $sourceHerd `,` $destHerd `,` $distX `,` $distY `)` attr-dict
-```
-
-A place operation that specifies the relative placement (XY) of one herd to another.
-
-#### Attributes:
-
-<table>
-<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>distX</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>distY</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-</table>
-
-#### Operands:
-
-| Operand | Description |
-| :-----: | ----------- |
-| `sourceHerd` | index |
-| `destHerd` | index |
-
-
-
 ### `aiex.read_scratchpad_parameter` (::xilinx::AIEX::ReadScratchpadParameterOp)
 
 _Read a scratchpad runtime parameter value on an AIE core_
@@ -1725,38 +1547,6 @@ Example:
 | Result | Description |
 | :----: | ----------- |
 | `result` | any type |
-
-
-
-### `aiex.route` (::xilinx::AIEX::RouteOp)
-
-_A route operation that routes one herd to another_
-
-Syntax:
-
-```
-operation ::= `aiex.route` `(` `<` $sourceHerds `,` $sourceBundle `:` $sourceChannel `>` `,`
-              `<` $destHerds   `,` $destBundle   `:` $destChannel   `>` `)` attr-dict
-```
-
-A route operation that routes one herd to another.
-
-#### Attributes:
-
-<table>
-<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>sourceBundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td>Bundle of wires</td></tr>
-<tr><td><code>sourceChannel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>destBundle</code></td><td>xilinx::AIE::WireBundleAttr</td><td>Bundle of wires</td></tr>
-<tr><td><code>destChannel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-</table>
-
-#### Operands:
-
-| Operand | Description |
-| :-----: | ----------- |
-| `sourceHerds` | index |
-| `destHerds` | index |
 
 
 
@@ -1852,46 +1642,6 @@ Interfaces: `Symbol`
 <tr><td><code>state_table_idx</code></td><td>::mlir::IntegerAttr</td><td>8-bit unsigned integer attribute</td></tr>
 <tr><td><code>kind</code></td><td>::xilinx::AIEX::ScratchpadParameterKindAttr</td><td>Usage kind of a scratchpad runtime parameter: `core` parameters are read by AIE cores via `aiex.read_scratchpad_parameter` (values are shift-2 encoded); `addr` parameters are used as BD address offsets via the `offset_parameter` attribute on DMA ops (values written raw)</td></tr>
 </table>
-
-
-
-### `aiex.select` (::xilinx::AIEX::SelectOp)
-
-_A select operation_
-
-Syntax:
-
-```
-operation ::= `aiex.select` `(` $startHerd `,` $iterX `,` $iterY `)` attr-dict
-```
-
-This operation selects a group of tiles based on the selected indices.
-
-Example:
-
-  %herd = AIE.herd[4][4] // a herd of 4x4 tiles
-
-  %ix = AIE.iter(0, 4, 1) // 0, 1, 2, 3
-  %iy = AIE.iter(0, 1, 1) // 0
-
-  %sub_herd = AIE.select(%herd, %ix, %iy)
-
-The SelectOp in the above example will select the tiles %herd[0][0], %herd[1][0],
-%herd[2][0], %herd[3][0] (the first column of the herd).
-
-#### Operands:
-
-| Operand | Description |
-| :-----: | ----------- |
-| `startHerd` | index |
-| `iterX` | index |
-| `iterY` | index |
-
-#### Results:
-
-| Result | Description |
-| :----: | ----------- |
-| &laquo;unnamed&raquo; | index |
 
 
 

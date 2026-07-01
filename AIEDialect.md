@@ -1461,63 +1461,6 @@ Interfaces: `OpAsmOpInterface`, `TileElement`
 
 
 
-### `aie.objectfifo.register_process` (::xilinx::AIE::ObjectFifoRegisterProcessOp)
-
-_Operation that produces the acquire/release patterns for a process registered to an objectFifo_
-
-Syntax:
-
-```
-operation ::= `aie.objectfifo.register_process` attr-dict $objFifo_name `(`
-              $port `,`
-              $acquirePatternTensor `:` type($acquirePatternTensor) `,`
-              $releasePatternTensor `:` type($releasePatternTensor) `,`
-              $callee `,` $length
-              `)`
-```
-
-The `aie.registerProcess` operation allows the user to register a function to an `objectFifo` along with its
-acquire and release patterns. These patterns will be used to generate a sequence of acquires and releases
-on the `objectFifo` elements. This generated sequence is often in the form of a for loop, however, in the case
-of cyclo-static patterns only the repetition of same number accesses and releases will generate a for loop.
-This may result in multiple for loops of different sizes being generated. If there is no repetition, then no
-loops will be generated.
-
-Example:
-```
-  aie.objectfifo @of1 (%t72, %t73, 2) : !aie.objectfifo<memref<16xi32>>
-  %length = arith.constant 10 : index
-  %acquirePatternProducer = arith.constant dense<[1, 2, 2, 0]> : tensor<4xi32>
-  %releasePatternProducer = arith.constant dense<[0, 1, 1, 2]> : tensor<4xi32>
-  func @producer_work(%input : !aie.objectfifosubview<memref<16xi32>>) -> () { ... }
-
-  aie.objectfifo.register_process @of1 (Produce, %acquirePatternProducer : tensor<4xi32>, %releasePatternProducer : tensor<4xi32>, @producer_work, %length)
-```
-This operation registers function @producer_work and associated patterns to the produce end of @of1.
-@producer_work will be called with the subviews produced when acquiring elements from @of1 following the acquire pattern.
-
-If the input patterns are static (only one element) then the length of the produced for loop will be that of the input `%length`.
-If the input patterns are cyclo-static then they must be of the same size.
-
-#### Attributes:
-
-<table>
-<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>port</code></td><td>xilinx::AIE::ObjectFifoPortAttr</td><td>Ports of an object FIFO</td></tr>
-<tr><td><code>objFifo_name</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
-<tr><td><code>callee</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
-</table>
-
-#### Operands:
-
-| Operand | Description |
-| :-----: | ----------- |
-| `acquirePatternTensor` | tensor of 32-bit signless integer values |
-| `releasePatternTensor` | tensor of 32-bit signless integer values |
-| `length` | index |
-
-
-
 ### `aie.objectfifo.release` (::xilinx::AIE::ObjectFifoReleaseOp)
 
 _Release operation for object locks in an ObjectFifo_
@@ -2025,47 +1968,6 @@ Interfaces: `InferTypeOpInterface`, `Interconnect`, `OpAsmOpInterface`, `TileEle
 | Operand | Description |
 | :-----: | ----------- |
 | `tile` | index |
-
-#### Results:
-
-| Result | Description |
-| :----: | ----------- |
-| &laquo;unnamed&raquo; | index |
-
-
-
-### `aie.shim_switchbox` (::xilinx::AIE::ShimSwitchboxOp)
-
-_Declare a switch in the PL shim_
-
-Syntax:
-
-```
-operation ::= `aie.shim_switchbox` `(` $col `)` regions attr-dict
-```
-
-A switch in the Shim.
-AXI-Stream Master Ports AXI-Stream Slave Ports
-6 Ports to North (Core Tile) 4 Ports from North (Core Tile)
-4 Ports to West 4 Ports from West
-4 Ports to East 4 Ports from East
-6 Ports to South (DMA, NoC I/F, PL I/F) 8 Ports from South (DMA, NoC I/F, PL I/F)
-2 Ports to FIFOs 2 Ports from FIFOs
-1 Port for control packet for Shim register access
-1 Port for response to access for Shim registers
-1 Port for trace packet from Shim
-
-
-Traits: `SingleBlockImplicitTerminator<EndOp>`, `SingleBlock`
-
-Interfaces: `InferTypeOpInterface`
-
-#### Attributes:
-
-<table>
-<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>col</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-</table>
 
 #### Results:
 

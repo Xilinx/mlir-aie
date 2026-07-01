@@ -853,388 +853,374 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00754" name="l00754"></a><span class="lineno">  754</span>    }</div>
 <div class="line"><a id="l00755" name="l00755"></a><span class="lineno">  755</span>  }</div>
 <div class="line"><a id="l00756" name="l00756"></a><span class="lineno">  756</span> </div>
-<div class="line"><a id="l00757" name="l00757"></a><span class="lineno">  757</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> switchboxOp : targetOp.getOps&lt;ShimSwitchboxOp&gt;()) {</div>
-<div class="line"><a id="l00758" name="l00758"></a><span class="lineno">  758</span>    Block &amp;b = switchboxOp.getConnections().front();</div>
-<div class="line"><a id="l00759" name="l00759"></a><span class="lineno">  759</span>    <span class="keyword">auto</span> tileLoc = XAie_TileLoc(switchboxOp.getCol(), 0);</div>
-<div class="line"><a id="l00760" name="l00760"></a><span class="lineno">  760</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> connectOp : b.getOps&lt;ConnectOp&gt;()) {</div>
-<div class="line"><a id="l00761" name="l00761"></a><span class="lineno">  761</span>      <a class="code hl_class" href="classxilinx_1_1AIE_1_1TxnLocBracket.html">TxnLocBracket</a> bracket(*<span class="keyword">this</span>, connectOp.getLoc());</div>
-<div class="line"><a id="l00762" name="l00762"></a><span class="lineno">  762</span>      <a class="code hl_define" href="AIERT_8cpp.html#ac2240626f850953d0771e173d7327afc">TRY_XAIE_API_EMIT_ERROR</a>(</div>
-<div class="line"><a id="l00763" name="l00763"></a><span class="lineno">  763</span>          switchboxOp, XAie_StrmConnCctEnable, &amp;aiert-&gt;devInst, tileLoc,</div>
-<div class="line"><a id="l00764" name="l00764"></a><span class="lineno">  764</span>          WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getSourceBundle()),</div>
-<div class="line"><a id="l00765" name="l00765"></a><span class="lineno">  765</span>          connectOp.sourceIndex(),</div>
-<div class="line"><a id="l00766" name="l00766"></a><span class="lineno">  766</span>          WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(connectOp.getDestBundle()),</div>
-<div class="line"><a id="l00767" name="l00767"></a><span class="lineno">  767</span>          connectOp.destIndex());</div>
-<div class="line"><a id="l00768" name="l00768"></a><span class="lineno">  768</span>    }</div>
-<div class="line"><a id="l00769" name="l00769"></a><span class="lineno">  769</span>  }</div>
-<div class="line"><a id="l00770" name="l00770"></a><span class="lineno">  770</span> </div>
-<div class="line"><a id="l00771" name="l00771"></a><span class="lineno">  771</span>  <span class="comment">// Cascade configuration</span></div>
-<div class="line"><a id="l00772" name="l00772"></a><span class="lineno">  772</span>  <span class="keywordflow">if</span> (isa&lt;AIE2TargetModel&gt;(targetModel)) {</div>
-<div class="line"><a id="l00773" name="l00773"></a><span class="lineno">  773</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> configOp : targetOp.getOps&lt;ConfigureCascadeOp&gt;()) {</div>
-<div class="line"><a id="l00774" name="l00774"></a><span class="lineno">  774</span>      <a class="code hl_class" href="classxilinx_1_1AIE_1_1TxnLocBracket.html">TxnLocBracket</a> bracket(*<span class="keyword">this</span>, configOp.getLoc());</div>
-<div class="line"><a id="l00775" name="l00775"></a><span class="lineno">  775</span>      TileOp tile = cast&lt;TileOp&gt;(configOp.getTile().getDefiningOp());</div>
-<div class="line"><a id="l00776" name="l00776"></a><span class="lineno">  776</span>      <span class="keyword">auto</span> tileLoc = XAie_TileLoc(tile.getCol(), tile.getRow());</div>
-<div class="line"><a id="l00777" name="l00777"></a><span class="lineno">  777</span>      <a class="code hl_define" href="AIERT_8cpp.html#ac2240626f850953d0771e173d7327afc">TRY_XAIE_API_EMIT_ERROR</a>(</div>
-<div class="line"><a id="l00778" name="l00778"></a><span class="lineno">  778</span>          targetOp, XAie_CoreConfigAccumulatorControl, &amp;aiert-&gt;devInst, tileLoc,</div>
-<div class="line"><a id="l00779" name="l00779"></a><span class="lineno">  779</span>          WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(</div>
-<div class="line"><a id="l00780" name="l00780"></a><span class="lineno">  780</span>              <span class="keyword">static_cast&lt;</span>WireBundle<span class="keyword">&gt;</span>(configOp.getInputDir())),</div>
-<div class="line"><a id="l00781" name="l00781"></a><span class="lineno">  781</span>          WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(</div>
-<div class="line"><a id="l00782" name="l00782"></a><span class="lineno">  782</span>              <span class="keyword">static_cast&lt;</span>WireBundle<span class="keyword">&gt;</span>(configOp.getOutputDir())));</div>
-<div class="line"><a id="l00783" name="l00783"></a><span class="lineno">  783</span>    }</div>
-<div class="line"><a id="l00784" name="l00784"></a><span class="lineno">  784</span>  }</div>
-<div class="line"><a id="l00785" name="l00785"></a><span class="lineno">  785</span> </div>
-<div class="line"><a id="l00786" name="l00786"></a><span class="lineno">  786</span>  <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l00787" name="l00787"></a><span class="lineno">  787</span>}</div>
+<div class="line"><a id="l00757" name="l00757"></a><span class="lineno">  757</span>  <span class="comment">// Cascade configuration</span></div>
+<div class="line"><a id="l00758" name="l00758"></a><span class="lineno">  758</span>  <span class="keywordflow">if</span> (isa&lt;AIE2TargetModel&gt;(targetModel)) {</div>
+<div class="line"><a id="l00759" name="l00759"></a><span class="lineno">  759</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> configOp : targetOp.getOps&lt;ConfigureCascadeOp&gt;()) {</div>
+<div class="line"><a id="l00760" name="l00760"></a><span class="lineno">  760</span>      <a class="code hl_class" href="classxilinx_1_1AIE_1_1TxnLocBracket.html">TxnLocBracket</a> bracket(*<span class="keyword">this</span>, configOp.getLoc());</div>
+<div class="line"><a id="l00761" name="l00761"></a><span class="lineno">  761</span>      TileOp tile = cast&lt;TileOp&gt;(configOp.getTile().getDefiningOp());</div>
+<div class="line"><a id="l00762" name="l00762"></a><span class="lineno">  762</span>      <span class="keyword">auto</span> tileLoc = XAie_TileLoc(tile.getCol(), tile.getRow());</div>
+<div class="line"><a id="l00763" name="l00763"></a><span class="lineno">  763</span>      <a class="code hl_define" href="AIERT_8cpp.html#ac2240626f850953d0771e173d7327afc">TRY_XAIE_API_EMIT_ERROR</a>(</div>
+<div class="line"><a id="l00764" name="l00764"></a><span class="lineno">  764</span>          targetOp, XAie_CoreConfigAccumulatorControl, &amp;aiert-&gt;devInst, tileLoc,</div>
+<div class="line"><a id="l00765" name="l00765"></a><span class="lineno">  765</span>          WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(</div>
+<div class="line"><a id="l00766" name="l00766"></a><span class="lineno">  766</span>              <span class="keyword">static_cast&lt;</span>WireBundle<span class="keyword">&gt;</span>(configOp.getInputDir())),</div>
+<div class="line"><a id="l00767" name="l00767"></a><span class="lineno">  767</span>          WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE.at(</div>
+<div class="line"><a id="l00768" name="l00768"></a><span class="lineno">  768</span>              <span class="keyword">static_cast&lt;</span>WireBundle<span class="keyword">&gt;</span>(configOp.getOutputDir())));</div>
+<div class="line"><a id="l00769" name="l00769"></a><span class="lineno">  769</span>    }</div>
+<div class="line"><a id="l00770" name="l00770"></a><span class="lineno">  770</span>  }</div>
+<div class="line"><a id="l00771" name="l00771"></a><span class="lineno">  771</span> </div>
+<div class="line"><a id="l00772" name="l00772"></a><span class="lineno">  772</span>  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00773" name="l00773"></a><span class="lineno">  773</span>}</div>
 </div>
-<div class="line"><a id="l00788" name="l00788"></a><span class="lineno">  788</span> </div>
-<div class="foldopen" id="foldopen00789" data-start="{" data-end="}">
-<div class="line"><a id="l00789" name="l00789"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#ad5650b16d9c1d71f34a0f9af2b9a0675">  789</a></span>LogicalResult <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#ad5650b16d9c1d71f34a0f9af2b9a0675">xilinx::AIE::AIERTControl::addInitConfig</a>(DeviceOp &amp;targetOp) {</div>
-<div class="line"><a id="l00790" name="l00790"></a><span class="lineno">  790</span> </div>
-<div class="line"><a id="l00791" name="l00791"></a><span class="lineno">  791</span>  <span class="keywordflow">if</span> (failed(initLocks(targetOp))) {</div>
-<div class="line"><a id="l00792" name="l00792"></a><span class="lineno">  792</span>    <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a id="l00793" name="l00793"></a><span class="lineno">  793</span>  }</div>
-<div class="line"><a id="l00794" name="l00794"></a><span class="lineno">  794</span> </div>
-<div class="line"><a id="l00795" name="l00795"></a><span class="lineno">  795</span>  <span class="keywordflow">if</span> (failed(initBuffers(targetOp))) {</div>
-<div class="line"><a id="l00796" name="l00796"></a><span class="lineno">  796</span>    <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a id="l00797" name="l00797"></a><span class="lineno">  797</span>  }</div>
-<div class="line"><a id="l00798" name="l00798"></a><span class="lineno">  798</span> </div>
-<div class="line"><a id="l00799" name="l00799"></a><span class="lineno">  799</span>  <span class="keyword">auto</span> memOps = llvm::to_vector_of&lt;TileElement&gt;(targetOp.getOps&lt;MemOp&gt;());</div>
-<div class="line"><a id="l00800" name="l00800"></a><span class="lineno">  800</span>  llvm::append_range(memOps, targetOp.getOps&lt;MemTileDMAOp&gt;());</div>
-<div class="line"><a id="l00801" name="l00801"></a><span class="lineno">  801</span>  llvm::append_range(memOps, targetOp.getOps&lt;ShimDMAOp&gt;());</div>
-<div class="line"><a id="l00802" name="l00802"></a><span class="lineno">  802</span>  <span class="keywordflow">for</span> (TileElement memOp : memOps) {</div>
-<div class="line"><a id="l00803" name="l00803"></a><span class="lineno">  803</span>    <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = memOp.getTileID().col;</div>
-<div class="line"><a id="l00804" name="l00804"></a><span class="lineno">  804</span>    <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> = memOp.getTileID().row;</div>
-<div class="line"><a id="l00805" name="l00805"></a><span class="lineno">  805</span> </div>
-<div class="line"><a id="l00806" name="l00806"></a><span class="lineno">  806</span>    <span class="comment">// Get the region&#39;s entry block, then start traversing through the chain of</span></div>
-<div class="line"><a id="l00807" name="l00807"></a><span class="lineno">  807</span>    <span class="comment">// blocks.</span></div>
-<div class="line"><a id="l00808" name="l00808"></a><span class="lineno">  808</span>    llvm::SetVector&lt;Block *&gt; blockVector =</div>
-<div class="line"><a id="l00809" name="l00809"></a><span class="lineno">  809</span>        <a class="code hl_function" href="namespacexilinx_1_1AIE.html#adc0152d67a00ff81b174cea51ac928fb">getOrderedChainOfBlocks</a>(&amp;memOp.getOperation()-&gt;getRegion(0));</div>
-<div class="line"><a id="l00810" name="l00810"></a><span class="lineno">  810</span> </div>
-<div class="line"><a id="l00811" name="l00811"></a><span class="lineno">  811</span>    <span class="comment">// handle DMA ops separately</span></div>
-<div class="line"><a id="l00812" name="l00812"></a><span class="lineno">  812</span>    <span class="keyword">auto</span> dmaOps = llvm::to_vector_of&lt;DMAOp&gt;(</div>
-<div class="line"><a id="l00813" name="l00813"></a><span class="lineno">  813</span>        memOp.getOperation()-&gt;getRegion(0).getOps&lt;DMAOp&gt;());</div>
-<div class="line"><a id="l00814" name="l00814"></a><span class="lineno">  814</span>    <span class="keywordflow">if</span> (!dmaOps.empty()) {</div>
-<div class="line"><a id="l00815" name="l00815"></a><span class="lineno">  815</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> dmaOp : dmaOps)</div>
-<div class="line"><a id="l00816" name="l00816"></a><span class="lineno">  816</span>        <span class="keywordflow">for</span> (<span class="keyword">auto</span> &amp;bdRegion : dmaOp.getBds()) {</div>
-<div class="line"><a id="l00817" name="l00817"></a><span class="lineno">  817</span>          Block &amp;block = bdRegion.getBlocks().front();</div>
-<div class="line"><a id="l00818" name="l00818"></a><span class="lineno">  818</span>          <span class="keywordflow">if</span> (failed(configureLocksAndBd(block, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>)))</div>
-<div class="line"><a id="l00819" name="l00819"></a><span class="lineno">  819</span>            <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a id="l00820" name="l00820"></a><span class="lineno">  820</span>        }</div>
-<div class="line"><a id="l00821" name="l00821"></a><span class="lineno">  821</span>    } <span class="keywordflow">else</span> {</div>
-<div class="line"><a id="l00822" name="l00822"></a><span class="lineno">  822</span>      <span class="keywordflow">for</span> (Block *block : blockVector) {</div>
-<div class="line"><a id="l00823" name="l00823"></a><span class="lineno">  823</span>        <span class="keywordflow">if</span> (block-&gt;getOps&lt;DMABDOp&gt;().empty())</div>
-<div class="line"><a id="l00824" name="l00824"></a><span class="lineno">  824</span>          <span class="keywordflow">continue</span>;</div>
-<div class="line"><a id="l00825" name="l00825"></a><span class="lineno">  825</span>        <span class="keywordflow">if</span> (failed(configureLocksAndBd(*block, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>)))</div>
-<div class="line"><a id="l00826" name="l00826"></a><span class="lineno">  826</span>          <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a id="l00827" name="l00827"></a><span class="lineno">  827</span>      }</div>
-<div class="line"><a id="l00828" name="l00828"></a><span class="lineno">  828</span>    }</div>
-<div class="line"><a id="l00829" name="l00829"></a><span class="lineno">  829</span> </div>
-<div class="line"><a id="l00830" name="l00830"></a><span class="lineno">  830</span>    <span class="keywordflow">if</span> (!dmaOps.empty())</div>
-<div class="line"><a id="l00831" name="l00831"></a><span class="lineno">  831</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> dmaOp : dmaOps) {</div>
-<div class="line"><a id="l00832" name="l00832"></a><span class="lineno">  832</span>        <span class="keyword">auto</span> &amp;block = dmaOp.getBds().front().getBlocks().front();</div>
-<div class="line"><a id="l00833" name="l00833"></a><span class="lineno">  833</span>        DMABDOp bd = *block.getOps&lt;DMABDOp&gt;().begin();</div>
-<div class="line"><a id="l00834" name="l00834"></a><span class="lineno">  834</span>        <span class="keywordflow">if</span> (failed(pushToBdQueueAndEnable(</div>
-<div class="line"><a id="l00835" name="l00835"></a><span class="lineno">  835</span>                *dmaOp.getOperation(), <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, dmaOp.getChannelIndex(),</div>
-<div class="line"><a id="l00836" name="l00836"></a><span class="lineno">  836</span>                dmaOp.getChannelDir(), bd.getBdId().value(),</div>
-<div class="line"><a id="l00837" name="l00837"></a><span class="lineno">  837</span>                dmaOp.getRepeatCount())))</div>
-<div class="line"><a id="l00838" name="l00838"></a><span class="lineno">  838</span>          <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a id="l00839" name="l00839"></a><span class="lineno">  839</span>      }</div>
-<div class="line"><a id="l00840" name="l00840"></a><span class="lineno">  840</span>    <span class="keywordflow">else</span></div>
-<div class="line"><a id="l00841" name="l00841"></a><span class="lineno">  841</span>      <span class="keywordflow">for</span> (Block *block : blockVector) {</div>
-<div class="line"><a id="l00842" name="l00842"></a><span class="lineno">  842</span>        <span class="keywordflow">for</span> (<span class="keyword">auto</span> op : block-&gt;getOps&lt;DMAStartOp&gt;()) {</div>
-<div class="line"><a id="l00843" name="l00843"></a><span class="lineno">  843</span>          DMABDOp bd = *op.getDest()-&gt;getOps&lt;DMABDOp&gt;().begin();</div>
-<div class="line"><a id="l00844" name="l00844"></a><span class="lineno">  844</span>          <span class="keywordtype">int</span> chNum = op.getChannelIndex();</div>
-<div class="line"><a id="l00845" name="l00845"></a><span class="lineno">  845</span>          <span class="keyword">auto</span> channelDir = op.getChannelDir();</div>
-<div class="line"><a id="l00846" name="l00846"></a><span class="lineno">  846</span>          <span class="keywordflow">if</span> (failed(pushToBdQueueAndEnable(*bd.getOperation(), <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, chNum,</div>
-<div class="line"><a id="l00847" name="l00847"></a><span class="lineno">  847</span>                                            channelDir, bd.getBdId().value(),</div>
-<div class="line"><a id="l00848" name="l00848"></a><span class="lineno">  848</span>                                            op.getRepeatCount())))</div>
-<div class="line"><a id="l00849" name="l00849"></a><span class="lineno">  849</span>            <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a id="l00850" name="l00850"></a><span class="lineno">  850</span>        }</div>
-<div class="line"><a id="l00851" name="l00851"></a><span class="lineno">  851</span>      }</div>
-<div class="line"><a id="l00852" name="l00852"></a><span class="lineno">  852</span>  }</div>
-<div class="line"><a id="l00853" name="l00853"></a><span class="lineno">  853</span> </div>
-<div class="line"><a id="l00854" name="l00854"></a><span class="lineno">  854</span>  <span class="keywordflow">if</span> (failed(configureSwitches(targetOp))) {</div>
-<div class="line"><a id="l00855" name="l00855"></a><span class="lineno">  855</span>    <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l00774" name="l00774"></a><span class="lineno">  774</span> </div>
+<div class="foldopen" id="foldopen00775" data-start="{" data-end="}">
+<div class="line"><a id="l00775" name="l00775"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#ad5650b16d9c1d71f34a0f9af2b9a0675">  775</a></span>LogicalResult <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#ad5650b16d9c1d71f34a0f9af2b9a0675">xilinx::AIE::AIERTControl::addInitConfig</a>(DeviceOp &amp;targetOp) {</div>
+<div class="line"><a id="l00776" name="l00776"></a><span class="lineno">  776</span> </div>
+<div class="line"><a id="l00777" name="l00777"></a><span class="lineno">  777</span>  <span class="keywordflow">if</span> (failed(initLocks(targetOp))) {</div>
+<div class="line"><a id="l00778" name="l00778"></a><span class="lineno">  778</span>    <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l00779" name="l00779"></a><span class="lineno">  779</span>  }</div>
+<div class="line"><a id="l00780" name="l00780"></a><span class="lineno">  780</span> </div>
+<div class="line"><a id="l00781" name="l00781"></a><span class="lineno">  781</span>  <span class="keywordflow">if</span> (failed(initBuffers(targetOp))) {</div>
+<div class="line"><a id="l00782" name="l00782"></a><span class="lineno">  782</span>    <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l00783" name="l00783"></a><span class="lineno">  783</span>  }</div>
+<div class="line"><a id="l00784" name="l00784"></a><span class="lineno">  784</span> </div>
+<div class="line"><a id="l00785" name="l00785"></a><span class="lineno">  785</span>  <span class="keyword">auto</span> memOps = llvm::to_vector_of&lt;TileElement&gt;(targetOp.getOps&lt;MemOp&gt;());</div>
+<div class="line"><a id="l00786" name="l00786"></a><span class="lineno">  786</span>  llvm::append_range(memOps, targetOp.getOps&lt;MemTileDMAOp&gt;());</div>
+<div class="line"><a id="l00787" name="l00787"></a><span class="lineno">  787</span>  llvm::append_range(memOps, targetOp.getOps&lt;ShimDMAOp&gt;());</div>
+<div class="line"><a id="l00788" name="l00788"></a><span class="lineno">  788</span>  <span class="keywordflow">for</span> (TileElement memOp : memOps) {</div>
+<div class="line"><a id="l00789" name="l00789"></a><span class="lineno">  789</span>    <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = memOp.getTileID().col;</div>
+<div class="line"><a id="l00790" name="l00790"></a><span class="lineno">  790</span>    <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> = memOp.getTileID().row;</div>
+<div class="line"><a id="l00791" name="l00791"></a><span class="lineno">  791</span> </div>
+<div class="line"><a id="l00792" name="l00792"></a><span class="lineno">  792</span>    <span class="comment">// Get the region&#39;s entry block, then start traversing through the chain of</span></div>
+<div class="line"><a id="l00793" name="l00793"></a><span class="lineno">  793</span>    <span class="comment">// blocks.</span></div>
+<div class="line"><a id="l00794" name="l00794"></a><span class="lineno">  794</span>    llvm::SetVector&lt;Block *&gt; blockVector =</div>
+<div class="line"><a id="l00795" name="l00795"></a><span class="lineno">  795</span>        <a class="code hl_function" href="namespacexilinx_1_1AIE.html#adc0152d67a00ff81b174cea51ac928fb">getOrderedChainOfBlocks</a>(&amp;memOp.getOperation()-&gt;getRegion(0));</div>
+<div class="line"><a id="l00796" name="l00796"></a><span class="lineno">  796</span> </div>
+<div class="line"><a id="l00797" name="l00797"></a><span class="lineno">  797</span>    <span class="comment">// handle DMA ops separately</span></div>
+<div class="line"><a id="l00798" name="l00798"></a><span class="lineno">  798</span>    <span class="keyword">auto</span> dmaOps = llvm::to_vector_of&lt;DMAOp&gt;(</div>
+<div class="line"><a id="l00799" name="l00799"></a><span class="lineno">  799</span>        memOp.getOperation()-&gt;getRegion(0).getOps&lt;DMAOp&gt;());</div>
+<div class="line"><a id="l00800" name="l00800"></a><span class="lineno">  800</span>    <span class="keywordflow">if</span> (!dmaOps.empty()) {</div>
+<div class="line"><a id="l00801" name="l00801"></a><span class="lineno">  801</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> dmaOp : dmaOps)</div>
+<div class="line"><a id="l00802" name="l00802"></a><span class="lineno">  802</span>        <span class="keywordflow">for</span> (<span class="keyword">auto</span> &amp;bdRegion : dmaOp.getBds()) {</div>
+<div class="line"><a id="l00803" name="l00803"></a><span class="lineno">  803</span>          Block &amp;block = bdRegion.getBlocks().front();</div>
+<div class="line"><a id="l00804" name="l00804"></a><span class="lineno">  804</span>          <span class="keywordflow">if</span> (failed(configureLocksAndBd(block, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>)))</div>
+<div class="line"><a id="l00805" name="l00805"></a><span class="lineno">  805</span>            <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l00806" name="l00806"></a><span class="lineno">  806</span>        }</div>
+<div class="line"><a id="l00807" name="l00807"></a><span class="lineno">  807</span>    } <span class="keywordflow">else</span> {</div>
+<div class="line"><a id="l00808" name="l00808"></a><span class="lineno">  808</span>      <span class="keywordflow">for</span> (Block *block : blockVector) {</div>
+<div class="line"><a id="l00809" name="l00809"></a><span class="lineno">  809</span>        <span class="keywordflow">if</span> (block-&gt;getOps&lt;DMABDOp&gt;().empty())</div>
+<div class="line"><a id="l00810" name="l00810"></a><span class="lineno">  810</span>          <span class="keywordflow">continue</span>;</div>
+<div class="line"><a id="l00811" name="l00811"></a><span class="lineno">  811</span>        <span class="keywordflow">if</span> (failed(configureLocksAndBd(*block, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>)))</div>
+<div class="line"><a id="l00812" name="l00812"></a><span class="lineno">  812</span>          <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l00813" name="l00813"></a><span class="lineno">  813</span>      }</div>
+<div class="line"><a id="l00814" name="l00814"></a><span class="lineno">  814</span>    }</div>
+<div class="line"><a id="l00815" name="l00815"></a><span class="lineno">  815</span> </div>
+<div class="line"><a id="l00816" name="l00816"></a><span class="lineno">  816</span>    <span class="keywordflow">if</span> (!dmaOps.empty())</div>
+<div class="line"><a id="l00817" name="l00817"></a><span class="lineno">  817</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> dmaOp : dmaOps) {</div>
+<div class="line"><a id="l00818" name="l00818"></a><span class="lineno">  818</span>        <span class="keyword">auto</span> &amp;block = dmaOp.getBds().front().getBlocks().front();</div>
+<div class="line"><a id="l00819" name="l00819"></a><span class="lineno">  819</span>        DMABDOp bd = *block.getOps&lt;DMABDOp&gt;().begin();</div>
+<div class="line"><a id="l00820" name="l00820"></a><span class="lineno">  820</span>        <span class="keywordflow">if</span> (failed(pushToBdQueueAndEnable(</div>
+<div class="line"><a id="l00821" name="l00821"></a><span class="lineno">  821</span>                *dmaOp.getOperation(), <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, dmaOp.getChannelIndex(),</div>
+<div class="line"><a id="l00822" name="l00822"></a><span class="lineno">  822</span>                dmaOp.getChannelDir(), bd.getBdId().value(),</div>
+<div class="line"><a id="l00823" name="l00823"></a><span class="lineno">  823</span>                dmaOp.getRepeatCount())))</div>
+<div class="line"><a id="l00824" name="l00824"></a><span class="lineno">  824</span>          <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l00825" name="l00825"></a><span class="lineno">  825</span>      }</div>
+<div class="line"><a id="l00826" name="l00826"></a><span class="lineno">  826</span>    <span class="keywordflow">else</span></div>
+<div class="line"><a id="l00827" name="l00827"></a><span class="lineno">  827</span>      <span class="keywordflow">for</span> (Block *block : blockVector) {</div>
+<div class="line"><a id="l00828" name="l00828"></a><span class="lineno">  828</span>        <span class="keywordflow">for</span> (<span class="keyword">auto</span> op : block-&gt;getOps&lt;DMAStartOp&gt;()) {</div>
+<div class="line"><a id="l00829" name="l00829"></a><span class="lineno">  829</span>          DMABDOp bd = *op.getDest()-&gt;getOps&lt;DMABDOp&gt;().begin();</div>
+<div class="line"><a id="l00830" name="l00830"></a><span class="lineno">  830</span>          <span class="keywordtype">int</span> chNum = op.getChannelIndex();</div>
+<div class="line"><a id="l00831" name="l00831"></a><span class="lineno">  831</span>          <span class="keyword">auto</span> channelDir = op.getChannelDir();</div>
+<div class="line"><a id="l00832" name="l00832"></a><span class="lineno">  832</span>          <span class="keywordflow">if</span> (failed(pushToBdQueueAndEnable(*bd.getOperation(), <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, chNum,</div>
+<div class="line"><a id="l00833" name="l00833"></a><span class="lineno">  833</span>                                            channelDir, bd.getBdId().value(),</div>
+<div class="line"><a id="l00834" name="l00834"></a><span class="lineno">  834</span>                                            op.getRepeatCount())))</div>
+<div class="line"><a id="l00835" name="l00835"></a><span class="lineno">  835</span>            <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l00836" name="l00836"></a><span class="lineno">  836</span>        }</div>
+<div class="line"><a id="l00837" name="l00837"></a><span class="lineno">  837</span>      }</div>
+<div class="line"><a id="l00838" name="l00838"></a><span class="lineno">  838</span>  }</div>
+<div class="line"><a id="l00839" name="l00839"></a><span class="lineno">  839</span> </div>
+<div class="line"><a id="l00840" name="l00840"></a><span class="lineno">  840</span>  <span class="keywordflow">if</span> (failed(configureSwitches(targetOp))) {</div>
+<div class="line"><a id="l00841" name="l00841"></a><span class="lineno">  841</span>    <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l00842" name="l00842"></a><span class="lineno">  842</span>  }</div>
+<div class="line"><a id="l00843" name="l00843"></a><span class="lineno">  843</span> </div>
+<div class="line"><a id="l00844" name="l00844"></a><span class="lineno">  844</span>  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00845" name="l00845"></a><span class="lineno">  845</span>}</div>
+</div>
+<div class="line"><a id="l00846" name="l00846"></a><span class="lineno">  846</span> </div>
+<div class="foldopen" id="foldopen00847" data-start="{" data-end="}">
+<div class="line"><a id="l00847" name="l00847"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#a883ba9656452fd957af84b9d292e5f35">  847</a></span>LogicalResult <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a883ba9656452fd957af84b9d292e5f35">xilinx::AIE::AIERTControl::addCoreEnable</a>(DeviceOp &amp;targetOp) {</div>
+<div class="line"><a id="l00848" name="l00848"></a><span class="lineno">  848</span>  <span class="comment">// Start execution of all the cores.</span></div>
+<div class="line"><a id="l00849" name="l00849"></a><span class="lineno">  849</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> tileOp : targetOp.getOps&lt;TileOp&gt;()) {</div>
+<div class="line"><a id="l00850" name="l00850"></a><span class="lineno">  850</span>    <span class="keyword">auto</span> tileLoc = XAie_TileLoc(tileOp.colIndex(), tileOp.rowIndex());</div>
+<div class="line"><a id="l00851" name="l00851"></a><span class="lineno">  851</span>    <span class="keywordflow">if</span> (!tileOp.isShimTile() &amp;&amp; tileOp.getCoreOp()) {</div>
+<div class="line"><a id="l00852" name="l00852"></a><span class="lineno">  852</span>      <a class="code hl_class" href="classxilinx_1_1AIE_1_1TxnLocBracket.html">TxnLocBracket</a> bracket(*<span class="keyword">this</span>, tileOp.getCoreOp().getLoc());</div>
+<div class="line"><a id="l00853" name="l00853"></a><span class="lineno">  853</span>      <a class="code hl_define" href="AIERT_8cpp.html#ac2240626f850953d0771e173d7327afc">TRY_XAIE_API_EMIT_ERROR</a>(targetOp, XAie_CoreEnable, &amp;aiert-&gt;devInst,</div>
+<div class="line"><a id="l00854" name="l00854"></a><span class="lineno">  854</span>                              tileLoc);</div>
+<div class="line"><a id="l00855" name="l00855"></a><span class="lineno">  855</span>    }</div>
 <div class="line"><a id="l00856" name="l00856"></a><span class="lineno">  856</span>  }</div>
-<div class="line"><a id="l00857" name="l00857"></a><span class="lineno">  857</span> </div>
-<div class="line"><a id="l00858" name="l00858"></a><span class="lineno">  858</span>  <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l00859" name="l00859"></a><span class="lineno">  859</span>}</div>
+<div class="line"><a id="l00857" name="l00857"></a><span class="lineno">  857</span>  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00858" name="l00858"></a><span class="lineno">  858</span>}</div>
 </div>
-<div class="line"><a id="l00860" name="l00860"></a><span class="lineno">  860</span> </div>
-<div class="foldopen" id="foldopen00861" data-start="{" data-end="}">
-<div class="line"><a id="l00861" name="l00861"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#a883ba9656452fd957af84b9d292e5f35">  861</a></span>LogicalResult <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a883ba9656452fd957af84b9d292e5f35">xilinx::AIE::AIERTControl::addCoreEnable</a>(DeviceOp &amp;targetOp) {</div>
-<div class="line"><a id="l00862" name="l00862"></a><span class="lineno">  862</span>  <span class="comment">// Start execution of all the cores.</span></div>
-<div class="line"><a id="l00863" name="l00863"></a><span class="lineno">  863</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> tileOp : targetOp.getOps&lt;TileOp&gt;()) {</div>
-<div class="line"><a id="l00864" name="l00864"></a><span class="lineno">  864</span>    <span class="keyword">auto</span> tileLoc = XAie_TileLoc(tileOp.colIndex(), tileOp.rowIndex());</div>
-<div class="line"><a id="l00865" name="l00865"></a><span class="lineno">  865</span>    <span class="keywordflow">if</span> (!tileOp.isShimTile() &amp;&amp; tileOp.getCoreOp()) {</div>
-<div class="line"><a id="l00866" name="l00866"></a><span class="lineno">  866</span>      <a class="code hl_class" href="classxilinx_1_1AIE_1_1TxnLocBracket.html">TxnLocBracket</a> bracket(*<span class="keyword">this</span>, tileOp.getCoreOp().getLoc());</div>
-<div class="line"><a id="l00867" name="l00867"></a><span class="lineno">  867</span>      <a class="code hl_define" href="AIERT_8cpp.html#ac2240626f850953d0771e173d7327afc">TRY_XAIE_API_EMIT_ERROR</a>(targetOp, XAie_CoreEnable, &amp;aiert-&gt;devInst,</div>
-<div class="line"><a id="l00868" name="l00868"></a><span class="lineno">  868</span>                              tileLoc);</div>
-<div class="line"><a id="l00869" name="l00869"></a><span class="lineno">  869</span>    }</div>
-<div class="line"><a id="l00870" name="l00870"></a><span class="lineno">  870</span>  }</div>
-<div class="line"><a id="l00871" name="l00871"></a><span class="lineno">  871</span>  <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l00872" name="l00872"></a><span class="lineno">  872</span>}</div>
+<div class="line"><a id="l00859" name="l00859"></a><span class="lineno">  859</span> </div>
+<div class="foldopen" id="foldopen00860" data-start="{" data-end="}">
+<div class="line"><a id="l00860" name="l00860"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#aaab9ae93bd2d13122545fe3cc874b253">  860</a></span>LogicalResult <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#aaab9ae93bd2d13122545fe3cc874b253">xilinx::AIE::AIERTControl::addAieElf</a>(uint8_t <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, uint8_t <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>,</div>
+<div class="line"><a id="l00861" name="l00861"></a><span class="lineno">  861</span>                                                   <span class="keyword">const</span> StringRef elfPath,</div>
+<div class="line"><a id="l00862" name="l00862"></a><span class="lineno">  862</span>                                                   <span class="keywordtype">bool</span> aieSim) {</div>
+<div class="line"><a id="l00863" name="l00863"></a><span class="lineno">  863</span>  <a class="code hl_define" href="AIERT_8cpp.html#a7e7ebc77edca00f0849ef15aba502898">TRY_XAIE_API_LOGICAL_RESULT</a>(XAie_CoreDisable, &amp;aiert-&gt;devInst,</div>
+<div class="line"><a id="l00864" name="l00864"></a><span class="lineno">  864</span>                              XAie_TileLoc(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>));</div>
+<div class="line"><a id="l00865" name="l00865"></a><span class="lineno">  865</span>  <a class="code hl_define" href="AIERT_8cpp.html#a7e7ebc77edca00f0849ef15aba502898">TRY_XAIE_API_LOGICAL_RESULT</a>(XAie_DmaChannelResetAll, &amp;aiert-&gt;devInst,</div>
+<div class="line"><a id="l00866" name="l00866"></a><span class="lineno">  866</span>                              XAie_TileLoc(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>),</div>
+<div class="line"><a id="l00867" name="l00867"></a><span class="lineno">  867</span>                              XAie_DmaChReset::DMA_CHANNEL_RESET);</div>
+<div class="line"><a id="l00868" name="l00868"></a><span class="lineno">  868</span> </div>
+<div class="line"><a id="l00869" name="l00869"></a><span class="lineno">  869</span>  <span class="comment">// loadSym: Load symbols from .map file. This argument is not used when</span></div>
+<div class="line"><a id="l00870" name="l00870"></a><span class="lineno">  870</span>  <span class="comment">// __AIESIM__ is not defined.</span></div>
+<div class="line"><a id="l00871" name="l00871"></a><span class="lineno">  871</span>  <a class="code hl_define" href="AIERT_8cpp.html#a7e7ebc77edca00f0849ef15aba502898">TRY_XAIE_API_LOGICAL_RESULT</a>(XAie_LoadElf, &amp;aiert-&gt;devInst,</div>
+<div class="line"><a id="l00872" name="l00872"></a><span class="lineno">  872</span>                              XAie_TileLoc(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>), elfPath.str().c_str(),</div>
+<div class="line"><a id="l00873" name="l00873"></a><span class="lineno">  873</span>                              <span class="comment">/*loadSym*/</span> aieSim);</div>
+<div class="line"><a id="l00874" name="l00874"></a><span class="lineno">  874</span> </div>
+<div class="line"><a id="l00875" name="l00875"></a><span class="lineno">  875</span>  <a class="code hl_define" href="AIERT_8cpp.html#a7e7ebc77edca00f0849ef15aba502898">TRY_XAIE_API_LOGICAL_RESULT</a>(XAie_DmaChannelResetAll, &amp;aiert-&gt;devInst,</div>
+<div class="line"><a id="l00876" name="l00876"></a><span class="lineno">  876</span>                              XAie_TileLoc(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>),</div>
+<div class="line"><a id="l00877" name="l00877"></a><span class="lineno">  877</span>                              XAie_DmaChReset::DMA_CHANNEL_UNRESET);</div>
+<div class="line"><a id="l00878" name="l00878"></a><span class="lineno">  878</span> </div>
+<div class="line"><a id="l00879" name="l00879"></a><span class="lineno">  879</span>  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00880" name="l00880"></a><span class="lineno">  880</span>}</div>
 </div>
-<div class="line"><a id="l00873" name="l00873"></a><span class="lineno">  873</span> </div>
-<div class="foldopen" id="foldopen00874" data-start="{" data-end="}">
-<div class="line"><a id="l00874" name="l00874"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#aaab9ae93bd2d13122545fe3cc874b253">  874</a></span>LogicalResult <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#aaab9ae93bd2d13122545fe3cc874b253">xilinx::AIE::AIERTControl::addAieElf</a>(uint8_t <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, uint8_t <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>,</div>
-<div class="line"><a id="l00875" name="l00875"></a><span class="lineno">  875</span>                                                   <span class="keyword">const</span> StringRef elfPath,</div>
-<div class="line"><a id="l00876" name="l00876"></a><span class="lineno">  876</span>                                                   <span class="keywordtype">bool</span> aieSim) {</div>
-<div class="line"><a id="l00877" name="l00877"></a><span class="lineno">  877</span>  <a class="code hl_define" href="AIERT_8cpp.html#a7e7ebc77edca00f0849ef15aba502898">TRY_XAIE_API_LOGICAL_RESULT</a>(XAie_CoreDisable, &amp;aiert-&gt;devInst,</div>
-<div class="line"><a id="l00878" name="l00878"></a><span class="lineno">  878</span>                              XAie_TileLoc(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>));</div>
-<div class="line"><a id="l00879" name="l00879"></a><span class="lineno">  879</span>  <a class="code hl_define" href="AIERT_8cpp.html#a7e7ebc77edca00f0849ef15aba502898">TRY_XAIE_API_LOGICAL_RESULT</a>(XAie_DmaChannelResetAll, &amp;aiert-&gt;devInst,</div>
-<div class="line"><a id="l00880" name="l00880"></a><span class="lineno">  880</span>                              XAie_TileLoc(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>),</div>
-<div class="line"><a id="l00881" name="l00881"></a><span class="lineno">  881</span>                              XAie_DmaChReset::DMA_CHANNEL_RESET);</div>
-<div class="line"><a id="l00882" name="l00882"></a><span class="lineno">  882</span> </div>
-<div class="line"><a id="l00883" name="l00883"></a><span class="lineno">  883</span>  <span class="comment">// loadSym: Load symbols from .map file. This argument is not used when</span></div>
-<div class="line"><a id="l00884" name="l00884"></a><span class="lineno">  884</span>  <span class="comment">// __AIESIM__ is not defined.</span></div>
-<div class="line"><a id="l00885" name="l00885"></a><span class="lineno">  885</span>  <a class="code hl_define" href="AIERT_8cpp.html#a7e7ebc77edca00f0849ef15aba502898">TRY_XAIE_API_LOGICAL_RESULT</a>(XAie_LoadElf, &amp;aiert-&gt;devInst,</div>
-<div class="line"><a id="l00886" name="l00886"></a><span class="lineno">  886</span>                              XAie_TileLoc(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>), elfPath.str().c_str(),</div>
-<div class="line"><a id="l00887" name="l00887"></a><span class="lineno">  887</span>                              <span class="comment">/*loadSym*/</span> aieSim);</div>
-<div class="line"><a id="l00888" name="l00888"></a><span class="lineno">  888</span> </div>
-<div class="line"><a id="l00889" name="l00889"></a><span class="lineno">  889</span>  <a class="code hl_define" href="AIERT_8cpp.html#a7e7ebc77edca00f0849ef15aba502898">TRY_XAIE_API_LOGICAL_RESULT</a>(XAie_DmaChannelResetAll, &amp;aiert-&gt;devInst,</div>
-<div class="line"><a id="l00890" name="l00890"></a><span class="lineno">  890</span>                              XAie_TileLoc(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>),</div>
-<div class="line"><a id="l00891" name="l00891"></a><span class="lineno">  891</span>                              XAie_DmaChReset::DMA_CHANNEL_UNRESET);</div>
-<div class="line"><a id="l00892" name="l00892"></a><span class="lineno">  892</span> </div>
-<div class="line"><a id="l00893" name="l00893"></a><span class="lineno">  893</span>  <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l00894" name="l00894"></a><span class="lineno">  894</span>}</div>
+<div class="line"><a id="l00881" name="l00881"></a><span class="lineno">  881</span> </div>
+<div class="foldopen" id="foldopen00882" data-start="{" data-end="}">
+<div class="line"><a id="l00882" name="l00882"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#a3603ca98d6e48a9f5a3ba6084c9a75f0">  882</a></span>LogicalResult <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a3603ca98d6e48a9f5a3ba6084c9a75f0">xilinx::AIE::AIERTControl::resetPartition</a>() {</div>
+<div class="line"><a id="l00883" name="l00883"></a><span class="lineno">  883</span>  <a class="code hl_define" href="AIERT_8cpp.html#a7e7ebc77edca00f0849ef15aba502898">TRY_XAIE_API_LOGICAL_RESULT</a>(XAie_ResetPartition, &amp;aiert-&gt;devInst);</div>
+<div class="line"><a id="l00884" name="l00884"></a><span class="lineno">  884</span>  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00885" name="l00885"></a><span class="lineno">  885</span>}</div>
 </div>
-<div class="line"><a id="l00895" name="l00895"></a><span class="lineno">  895</span> </div>
-<div class="foldopen" id="foldopen00896" data-start="{" data-end="}">
-<div class="line"><a id="l00896" name="l00896"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#a3603ca98d6e48a9f5a3ba6084c9a75f0">  896</a></span>LogicalResult <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a3603ca98d6e48a9f5a3ba6084c9a75f0">xilinx::AIE::AIERTControl::resetPartition</a>() {</div>
-<div class="line"><a id="l00897" name="l00897"></a><span class="lineno">  897</span>  <a class="code hl_define" href="AIERT_8cpp.html#a7e7ebc77edca00f0849ef15aba502898">TRY_XAIE_API_LOGICAL_RESULT</a>(XAie_ResetPartition, &amp;aiert-&gt;devInst);</div>
-<div class="line"><a id="l00898" name="l00898"></a><span class="lineno">  898</span>  <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l00899" name="l00899"></a><span class="lineno">  899</span>}</div>
+<div class="line"><a id="l00886" name="l00886"></a><span class="lineno">  886</span> </div>
+<div class="foldopen" id="foldopen00887" data-start="{" data-end="}">
+<div class="line"><a id="l00887" name="l00887"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#a6f94d408ec9da78b3db58addac4c4a9f">  887</a></span>LogicalResult <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a6f94d408ec9da78b3db58addac4c4a9f">xilinx::AIE::AIERTControl::resetDMA</a>(<span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, <span class="keywordtype">bool</span> on) {</div>
+<div class="line"><a id="l00888" name="l00888"></a><span class="lineno">  888</span>  <span class="keyword">auto</span> tileLoc = XAie_TileLoc(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>);</div>
+<div class="line"><a id="l00889" name="l00889"></a><span class="lineno">  889</span>  XAie_DmaDesc dmaTileBd;</div>
+<div class="line"><a id="l00890" name="l00890"></a><span class="lineno">  890</span>  <a class="code hl_define" href="AIERT_8cpp.html#a7e7ebc77edca00f0849ef15aba502898">TRY_XAIE_API_LOGICAL_RESULT</a>(XAie_DmaDescInit, &amp;aiert-&gt;devInst, &amp;dmaTileBd,</div>
+<div class="line"><a id="l00891" name="l00891"></a><span class="lineno">  891</span>                              tileLoc);</div>
+<div class="line"><a id="l00892" name="l00892"></a><span class="lineno">  892</span>  <a class="code hl_define" href="AIERT_8cpp.html#a7e7ebc77edca00f0849ef15aba502898">TRY_XAIE_API_LOGICAL_RESULT</a>(XAie_DmaDisableBd, &amp;dmaTileBd);</div>
+<div class="line"><a id="l00893" name="l00893"></a><span class="lineno">  893</span>  <a class="code hl_define" href="AIERT_8cpp.html#a7e7ebc77edca00f0849ef15aba502898">TRY_XAIE_API_LOGICAL_RESULT</a>(XAie_DmaChannelResetAll, &amp;aiert-&gt;devInst, tileLoc,</div>
+<div class="line"><a id="l00894" name="l00894"></a><span class="lineno">  894</span>                              on ? XAie_DmaChReset::DMA_CHANNEL_UNRESET</div>
+<div class="line"><a id="l00895" name="l00895"></a><span class="lineno">  895</span>                                 : XAie_DmaChReset::DMA_CHANNEL_RESET);</div>
+<div class="line"><a id="l00896" name="l00896"></a><span class="lineno">  896</span>  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00897" name="l00897"></a><span class="lineno">  897</span>}</div>
 </div>
-<div class="line"><a id="l00900" name="l00900"></a><span class="lineno">  900</span> </div>
-<div class="foldopen" id="foldopen00901" data-start="{" data-end="}">
-<div class="line"><a id="l00901" name="l00901"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#a6f94d408ec9da78b3db58addac4c4a9f">  901</a></span>LogicalResult <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a6f94d408ec9da78b3db58addac4c4a9f">xilinx::AIE::AIERTControl::resetDMA</a>(<span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, <span class="keywordtype">bool</span> on) {</div>
-<div class="line"><a id="l00902" name="l00902"></a><span class="lineno">  902</span>  <span class="keyword">auto</span> tileLoc = XAie_TileLoc(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>);</div>
-<div class="line"><a id="l00903" name="l00903"></a><span class="lineno">  903</span>  XAie_DmaDesc dmaTileBd;</div>
-<div class="line"><a id="l00904" name="l00904"></a><span class="lineno">  904</span>  <a class="code hl_define" href="AIERT_8cpp.html#a7e7ebc77edca00f0849ef15aba502898">TRY_XAIE_API_LOGICAL_RESULT</a>(XAie_DmaDescInit, &amp;aiert-&gt;devInst, &amp;dmaTileBd,</div>
-<div class="line"><a id="l00905" name="l00905"></a><span class="lineno">  905</span>                              tileLoc);</div>
-<div class="line"><a id="l00906" name="l00906"></a><span class="lineno">  906</span>  <a class="code hl_define" href="AIERT_8cpp.html#a7e7ebc77edca00f0849ef15aba502898">TRY_XAIE_API_LOGICAL_RESULT</a>(XAie_DmaDisableBd, &amp;dmaTileBd);</div>
-<div class="line"><a id="l00907" name="l00907"></a><span class="lineno">  907</span>  <a class="code hl_define" href="AIERT_8cpp.html#a7e7ebc77edca00f0849ef15aba502898">TRY_XAIE_API_LOGICAL_RESULT</a>(XAie_DmaChannelResetAll, &amp;aiert-&gt;devInst, tileLoc,</div>
-<div class="line"><a id="l00908" name="l00908"></a><span class="lineno">  908</span>                              on ? XAie_DmaChReset::DMA_CHANNEL_UNRESET</div>
-<div class="line"><a id="l00909" name="l00909"></a><span class="lineno">  909</span>                                 : XAie_DmaChReset::DMA_CHANNEL_RESET);</div>
-<div class="line"><a id="l00910" name="l00910"></a><span class="lineno">  910</span>  <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l00911" name="l00911"></a><span class="lineno">  911</span>}</div>
+<div class="line"><a id="l00898" name="l00898"></a><span class="lineno">  898</span> </div>
+<div class="foldopen" id="foldopen00899" data-start="{" data-end="}">
+<div class="line"><a id="l00899" name="l00899"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#a1107b280178bc6922b82520de009cab1">  899</a></span>LogicalResult <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a1107b280178bc6922b82520de009cab1">xilinx::AIE::AIERTControl::resetCore</a>(<span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>) {</div>
+<div class="line"><a id="l00900" name="l00900"></a><span class="lineno">  900</span>  <span class="keyword">auto</span> tileLoc = XAie_TileLoc(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>);</div>
+<div class="line"><a id="l00901" name="l00901"></a><span class="lineno">  901</span>  <a class="code hl_define" href="AIERT_8cpp.html#a7e7ebc77edca00f0849ef15aba502898">TRY_XAIE_API_LOGICAL_RESULT</a>(XAie_CoreReset, &amp;aiert-&gt;devInst, tileLoc);</div>
+<div class="line"><a id="l00902" name="l00902"></a><span class="lineno">  902</span>  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00903" name="l00903"></a><span class="lineno">  903</span>}</div>
 </div>
-<div class="line"><a id="l00912" name="l00912"></a><span class="lineno">  912</span> </div>
-<div class="foldopen" id="foldopen00913" data-start="{" data-end="}">
-<div class="line"><a id="l00913" name="l00913"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#a1107b280178bc6922b82520de009cab1">  913</a></span>LogicalResult <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a1107b280178bc6922b82520de009cab1">xilinx::AIE::AIERTControl::resetCore</a>(<span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>) {</div>
-<div class="line"><a id="l00914" name="l00914"></a><span class="lineno">  914</span>  <span class="keyword">auto</span> tileLoc = XAie_TileLoc(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>);</div>
-<div class="line"><a id="l00915" name="l00915"></a><span class="lineno">  915</span>  <a class="code hl_define" href="AIERT_8cpp.html#a7e7ebc77edca00f0849ef15aba502898">TRY_XAIE_API_LOGICAL_RESULT</a>(XAie_CoreReset, &amp;aiert-&gt;devInst, tileLoc);</div>
-<div class="line"><a id="l00916" name="l00916"></a><span class="lineno">  916</span>  <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l00917" name="l00917"></a><span class="lineno">  917</span>}</div>
+<div class="line"><a id="l00904" name="l00904"></a><span class="lineno">  904</span> </div>
+<div class="foldopen" id="foldopen00905" data-start="{" data-end="}">
+<div class="line"><a id="l00905" name="l00905"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#a81d0f2f2fa5c80ae50c4209548c4bc09">  905</a></span>LogicalResult <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a81d0f2f2fa5c80ae50c4209548c4bc09">xilinx::AIE::AIERTControl::resetSwitch</a>(<span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>) {</div>
+<div class="line"><a id="l00906" name="l00906"></a><span class="lineno">  906</span>  XAie_LocType tileLoc = XAie_TileLoc(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>);</div>
+<div class="line"><a id="l00907" name="l00907"></a><span class="lineno">  907</span> </div>
+<div class="line"><a id="l00908" name="l00908"></a><span class="lineno">  908</span>  <span class="comment">// Reset all combinations of input/output routing in the switchbox</span></div>
+<div class="line"><a id="l00909" name="l00909"></a><span class="lineno">  909</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> endpoint_a : WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE) {</div>
+<div class="line"><a id="l00910" name="l00910"></a><span class="lineno">  910</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> endpoint_b : WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE) {</div>
+<div class="line"><a id="l00911" name="l00911"></a><span class="lineno">  911</span>      <span class="keywordtype">unsigned</span> n_a_connections = targetModel.getNumSourceSwitchboxConnections(</div>
+<div class="line"><a id="l00912" name="l00912"></a><span class="lineno">  912</span>          <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, endpoint_a.first);</div>
+<div class="line"><a id="l00913" name="l00913"></a><span class="lineno">  913</span>      <span class="keywordtype">unsigned</span> n_b_connections = targetModel.getNumDestSwitchboxConnections(</div>
+<div class="line"><a id="l00914" name="l00914"></a><span class="lineno">  914</span>          <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, endpoint_b.first);</div>
+<div class="line"><a id="l00915" name="l00915"></a><span class="lineno">  915</span>      <span class="keywordflow">for</span> (<span class="keywordtype">unsigned</span> a_index = 0; a_index &lt; n_a_connections; a_index++) {</div>
+<div class="line"><a id="l00916" name="l00916"></a><span class="lineno">  916</span>        <span class="keywordflow">for</span> (<span class="keywordtype">unsigned</span> b_index = 0; b_index &lt; n_b_connections; b_index++) {</div>
+<div class="line"><a id="l00917" name="l00917"></a><span class="lineno">  917</span>          <span class="keywordflow">if</span> (!targetModel.isLegalTileConnection(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, endpoint_a.first,</div>
+<div class="line"><a id="l00918" name="l00918"></a><span class="lineno">  918</span>                                                 a_index, endpoint_b.first,</div>
+<div class="line"><a id="l00919" name="l00919"></a><span class="lineno">  919</span>                                                 b_index)) {</div>
+<div class="line"><a id="l00920" name="l00920"></a><span class="lineno">  920</span>            <span class="keywordflow">continue</span>;</div>
+<div class="line"><a id="l00921" name="l00921"></a><span class="lineno">  921</span>          }</div>
+<div class="line"><a id="l00922" name="l00922"></a><span class="lineno">  922</span>          <a class="code hl_define" href="AIERT_8cpp.html#a96120e33cd9c4443c81879c609d0263c">TRY_XAIE_API_FATAL_ERROR</a>(XAie_StrmConnCctDisable, &amp;aiert-&gt;devInst,</div>
+<div class="line"><a id="l00923" name="l00923"></a><span class="lineno">  923</span>                                   tileLoc, endpoint_a.second, a_index,</div>
+<div class="line"><a id="l00924" name="l00924"></a><span class="lineno">  924</span>                                   endpoint_b.second, b_index);</div>
+<div class="line"><a id="l00925" name="l00925"></a><span class="lineno">  925</span>        }</div>
+<div class="line"><a id="l00926" name="l00926"></a><span class="lineno">  926</span>      }</div>
+<div class="line"><a id="l00927" name="l00927"></a><span class="lineno">  927</span>    }</div>
+<div class="line"><a id="l00928" name="l00928"></a><span class="lineno">  928</span>  }</div>
+<div class="line"><a id="l00929" name="l00929"></a><span class="lineno">  929</span> </div>
+<div class="line"><a id="l00930" name="l00930"></a><span class="lineno">  930</span>  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00931" name="l00931"></a><span class="lineno">  931</span>}</div>
 </div>
-<div class="line"><a id="l00918" name="l00918"></a><span class="lineno">  918</span> </div>
-<div class="foldopen" id="foldopen00919" data-start="{" data-end="}">
-<div class="line"><a id="l00919" name="l00919"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#a81d0f2f2fa5c80ae50c4209548c4bc09">  919</a></span>LogicalResult <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a81d0f2f2fa5c80ae50c4209548c4bc09">xilinx::AIE::AIERTControl::resetSwitch</a>(<span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>) {</div>
-<div class="line"><a id="l00920" name="l00920"></a><span class="lineno">  920</span>  XAie_LocType tileLoc = XAie_TileLoc(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>);</div>
-<div class="line"><a id="l00921" name="l00921"></a><span class="lineno">  921</span> </div>
-<div class="line"><a id="l00922" name="l00922"></a><span class="lineno">  922</span>  <span class="comment">// Reset all combinations of input/output routing in the switchbox</span></div>
-<div class="line"><a id="l00923" name="l00923"></a><span class="lineno">  923</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> endpoint_a : WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE) {</div>
-<div class="line"><a id="l00924" name="l00924"></a><span class="lineno">  924</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> endpoint_b : WIRE_BUNDLE_TO_STRM_SW_PORT_TYPE) {</div>
-<div class="line"><a id="l00925" name="l00925"></a><span class="lineno">  925</span>      <span class="keywordtype">unsigned</span> n_a_connections = targetModel.getNumSourceSwitchboxConnections(</div>
-<div class="line"><a id="l00926" name="l00926"></a><span class="lineno">  926</span>          <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, endpoint_a.first);</div>
-<div class="line"><a id="l00927" name="l00927"></a><span class="lineno">  927</span>      <span class="keywordtype">unsigned</span> n_b_connections = targetModel.getNumDestSwitchboxConnections(</div>
-<div class="line"><a id="l00928" name="l00928"></a><span class="lineno">  928</span>          <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, endpoint_b.first);</div>
-<div class="line"><a id="l00929" name="l00929"></a><span class="lineno">  929</span>      <span class="keywordflow">for</span> (<span class="keywordtype">unsigned</span> a_index = 0; a_index &lt; n_a_connections; a_index++) {</div>
-<div class="line"><a id="l00930" name="l00930"></a><span class="lineno">  930</span>        <span class="keywordflow">for</span> (<span class="keywordtype">unsigned</span> b_index = 0; b_index &lt; n_b_connections; b_index++) {</div>
-<div class="line"><a id="l00931" name="l00931"></a><span class="lineno">  931</span>          <span class="keywordflow">if</span> (!targetModel.isLegalTileConnection(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, endpoint_a.first,</div>
-<div class="line"><a id="l00932" name="l00932"></a><span class="lineno">  932</span>                                                 a_index, endpoint_b.first,</div>
-<div class="line"><a id="l00933" name="l00933"></a><span class="lineno">  933</span>                                                 b_index)) {</div>
-<div class="line"><a id="l00934" name="l00934"></a><span class="lineno">  934</span>            <span class="keywordflow">continue</span>;</div>
-<div class="line"><a id="l00935" name="l00935"></a><span class="lineno">  935</span>          }</div>
-<div class="line"><a id="l00936" name="l00936"></a><span class="lineno">  936</span>          <a class="code hl_define" href="AIERT_8cpp.html#a96120e33cd9c4443c81879c609d0263c">TRY_XAIE_API_FATAL_ERROR</a>(XAie_StrmConnCctDisable, &amp;aiert-&gt;devInst,</div>
-<div class="line"><a id="l00937" name="l00937"></a><span class="lineno">  937</span>                                   tileLoc, endpoint_a.second, a_index,</div>
-<div class="line"><a id="l00938" name="l00938"></a><span class="lineno">  938</span>                                   endpoint_b.second, b_index);</div>
-<div class="line"><a id="l00939" name="l00939"></a><span class="lineno">  939</span>        }</div>
-<div class="line"><a id="l00940" name="l00940"></a><span class="lineno">  940</span>      }</div>
-<div class="line"><a id="l00941" name="l00941"></a><span class="lineno">  941</span>    }</div>
-<div class="line"><a id="l00942" name="l00942"></a><span class="lineno">  942</span>  }</div>
-<div class="line"><a id="l00943" name="l00943"></a><span class="lineno">  943</span> </div>
-<div class="line"><a id="l00944" name="l00944"></a><span class="lineno">  944</span>  <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l00945" name="l00945"></a><span class="lineno">  945</span>}</div>
+<div class="line"><a id="l00932" name="l00932"></a><span class="lineno">  932</span> </div>
+<div class="foldopen" id="foldopen00933" data-start="{" data-end="}">
+<div class="line"><a id="l00933" name="l00933"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#a411541c395822c564b20efea0044fff6">  933</a></span>LogicalResult <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a411541c395822c564b20efea0044fff6">xilinx::AIE::AIERTControl::resetCoreUnreset</a>(<span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>) {</div>
+<div class="line"><a id="l00934" name="l00934"></a><span class="lineno">  934</span>  <span class="keyword">auto</span> tileLoc = XAie_TileLoc(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>);</div>
+<div class="line"><a id="l00935" name="l00935"></a><span class="lineno">  935</span>  <a class="code hl_define" href="AIERT_8cpp.html#a7e7ebc77edca00f0849ef15aba502898">TRY_XAIE_API_LOGICAL_RESULT</a>(XAie_CoreUnreset, &amp;aiert-&gt;devInst, tileLoc);</div>
+<div class="line"><a id="l00936" name="l00936"></a><span class="lineno">  936</span>  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00937" name="l00937"></a><span class="lineno">  937</span>}</div>
 </div>
-<div class="line"><a id="l00946" name="l00946"></a><span class="lineno">  946</span> </div>
-<div class="foldopen" id="foldopen00947" data-start="{" data-end="}">
-<div class="line"><a id="l00947" name="l00947"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#a411541c395822c564b20efea0044fff6">  947</a></span>LogicalResult <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a411541c395822c564b20efea0044fff6">xilinx::AIE::AIERTControl::resetCoreUnreset</a>(<span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>) {</div>
-<div class="line"><a id="l00948" name="l00948"></a><span class="lineno">  948</span>  <span class="keyword">auto</span> tileLoc = XAie_TileLoc(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>);</div>
-<div class="line"><a id="l00949" name="l00949"></a><span class="lineno">  949</span>  <a class="code hl_define" href="AIERT_8cpp.html#a7e7ebc77edca00f0849ef15aba502898">TRY_XAIE_API_LOGICAL_RESULT</a>(XAie_CoreUnreset, &amp;aiert-&gt;devInst, tileLoc);</div>
-<div class="line"><a id="l00950" name="l00950"></a><span class="lineno">  950</span>  <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l00951" name="l00951"></a><span class="lineno">  951</span>}</div>
+<div class="line"><a id="l00938" name="l00938"></a><span class="lineno">  938</span> </div>
+<div class="foldopen" id="foldopen00939" data-start="{" data-end="}">
+<div class="line"><a id="l00939" name="l00939"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#ae9b6adc3957465a4cbbb4f947e13fbcc">  939</a></span>LogicalResult <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#ae9b6adc3957465a4cbbb4f947e13fbcc">xilinx::AIE::AIERTControl::resetLock</a>(<span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>,</div>
+<div class="line"><a id="l00940" name="l00940"></a><span class="lineno">  940</span>                                                   <span class="keywordtype">int</span> lockId) {</div>
+<div class="line"><a id="l00941" name="l00941"></a><span class="lineno">  941</span>  <span class="keyword">auto</span> tileLoc = XAie_TileLoc(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>);</div>
+<div class="line"><a id="l00942" name="l00942"></a><span class="lineno">  942</span>  <span class="comment">// Reset a single lock to value 0</span></div>
+<div class="line"><a id="l00943" name="l00943"></a><span class="lineno">  943</span>  XAie_Lock lock;</div>
+<div class="line"><a id="l00944" name="l00944"></a><span class="lineno">  944</span>  lock.LockId = lockId;</div>
+<div class="line"><a id="l00945" name="l00945"></a><span class="lineno">  945</span>  lock.LockVal = 0;</div>
+<div class="line"><a id="l00946" name="l00946"></a><span class="lineno">  946</span>  <a class="code hl_define" href="AIERT_8cpp.html#a7e7ebc77edca00f0849ef15aba502898">TRY_XAIE_API_LOGICAL_RESULT</a>(XAie_LockSetValue, &amp;aiert-&gt;devInst, tileLoc,</div>
+<div class="line"><a id="l00947" name="l00947"></a><span class="lineno">  947</span>                              lock);</div>
+<div class="line"><a id="l00948" name="l00948"></a><span class="lineno">  948</span>  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00949" name="l00949"></a><span class="lineno">  949</span>}</div>
 </div>
-<div class="line"><a id="l00952" name="l00952"></a><span class="lineno">  952</span> </div>
-<div class="foldopen" id="foldopen00953" data-start="{" data-end="}">
-<div class="line"><a id="l00953" name="l00953"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#ae9b6adc3957465a4cbbb4f947e13fbcc">  953</a></span>LogicalResult <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#ae9b6adc3957465a4cbbb4f947e13fbcc">xilinx::AIE::AIERTControl::resetLock</a>(<span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>,</div>
-<div class="line"><a id="l00954" name="l00954"></a><span class="lineno">  954</span>                                                   <span class="keywordtype">int</span> lockId) {</div>
-<div class="line"><a id="l00955" name="l00955"></a><span class="lineno">  955</span>  <span class="keyword">auto</span> tileLoc = XAie_TileLoc(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>);</div>
-<div class="line"><a id="l00956" name="l00956"></a><span class="lineno">  956</span>  <span class="comment">// Reset a single lock to value 0</span></div>
-<div class="line"><a id="l00957" name="l00957"></a><span class="lineno">  957</span>  XAie_Lock lock;</div>
-<div class="line"><a id="l00958" name="l00958"></a><span class="lineno">  958</span>  lock.LockId = lockId;</div>
-<div class="line"><a id="l00959" name="l00959"></a><span class="lineno">  959</span>  lock.LockVal = 0;</div>
-<div class="line"><a id="l00960" name="l00960"></a><span class="lineno">  960</span>  <a class="code hl_define" href="AIERT_8cpp.html#a7e7ebc77edca00f0849ef15aba502898">TRY_XAIE_API_LOGICAL_RESULT</a>(XAie_LockSetValue, &amp;aiert-&gt;devInst, tileLoc,</div>
-<div class="line"><a id="l00961" name="l00961"></a><span class="lineno">  961</span>                              lock);</div>
-<div class="line"><a id="l00962" name="l00962"></a><span class="lineno">  962</span>  <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l00963" name="l00963"></a><span class="lineno">  963</span>}</div>
+<div class="line"><a id="l00950" name="l00950"></a><span class="lineno">  950</span> </div>
+<div class="foldopen" id="foldopen00951" data-start="{" data-end="}">
+<div class="line"><a id="l00951" name="l00951"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#a89952dfd7513794e5238bdd29fa2d9e5">  951</a></span>LogicalResult <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a89952dfd7513794e5238bdd29fa2d9e5">xilinx::AIE::AIERTControl::resetSwitchConnection</a>(</div>
+<div class="line"><a id="l00952" name="l00952"></a><span class="lineno">  952</span>    <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, WireBundle sourceBundle, <span class="keywordtype">int</span> sourceChannel,</div>
+<div class="line"><a id="l00953" name="l00953"></a><span class="lineno">  953</span>    WireBundle destBundle, <span class="keywordtype">int</span> destChannel) {</div>
+<div class="line"><a id="l00954" name="l00954"></a><span class="lineno">  954</span>  <span class="keyword">auto</span> tileLoc = XAie_TileLoc(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>);</div>
+<div class="line"><a id="l00955" name="l00955"></a><span class="lineno">  955</span> </div>
+<div class="line"><a id="l00956" name="l00956"></a><span class="lineno">  956</span>  <span class="comment">// Helper lambda to map WireBundle to StrmSwPortType</span></div>
+<div class="line"><a id="l00957" name="l00957"></a><span class="lineno">  957</span>  <span class="keyword">auto</span> mapBundle = [](WireBundle bundle) -&gt; StrmSwPortType {</div>
+<div class="line"><a id="l00958" name="l00958"></a><span class="lineno">  958</span>    <span class="keywordflow">switch</span> (bundle) {</div>
+<div class="line"><a id="l00959" name="l00959"></a><span class="lineno">  959</span>    <span class="keywordflow">case</span> WireBundle::Core:</div>
+<div class="line"><a id="l00960" name="l00960"></a><span class="lineno">  960</span>      <span class="keywordflow">return</span> CORE;</div>
+<div class="line"><a id="l00961" name="l00961"></a><span class="lineno">  961</span>    <span class="keywordflow">case</span> WireBundle::DMA:</div>
+<div class="line"><a id="l00962" name="l00962"></a><span class="lineno">  962</span>      <span class="keywordflow">return</span> DMA;</div>
+<div class="line"><a id="l00963" name="l00963"></a><span class="lineno">  963</span>    <span class="keywordflow">case</span> WireBundle::FIFO:</div>
+<div class="line"><a id="l00964" name="l00964"></a><span class="lineno">  964</span>      <span class="keywordflow">return</span> FIFO;</div>
+<div class="line"><a id="l00965" name="l00965"></a><span class="lineno">  965</span>    <span class="keywordflow">case</span> WireBundle::South:</div>
+<div class="line"><a id="l00966" name="l00966"></a><span class="lineno">  966</span>      <span class="keywordflow">return</span> SOUTH;</div>
+<div class="line"><a id="l00967" name="l00967"></a><span class="lineno">  967</span>    <span class="keywordflow">case</span> WireBundle::West:</div>
+<div class="line"><a id="l00968" name="l00968"></a><span class="lineno">  968</span>      <span class="keywordflow">return</span> WEST;</div>
+<div class="line"><a id="l00969" name="l00969"></a><span class="lineno">  969</span>    <span class="keywordflow">case</span> WireBundle::North:</div>
+<div class="line"><a id="l00970" name="l00970"></a><span class="lineno">  970</span>      <span class="keywordflow">return</span> NORTH;</div>
+<div class="line"><a id="l00971" name="l00971"></a><span class="lineno">  971</span>    <span class="keywordflow">case</span> WireBundle::East:</div>
+<div class="line"><a id="l00972" name="l00972"></a><span class="lineno">  972</span>      <span class="keywordflow">return</span> EAST;</div>
+<div class="line"><a id="l00973" name="l00973"></a><span class="lineno">  973</span>    <span class="keywordflow">case</span> WireBundle::Trace:</div>
+<div class="line"><a id="l00974" name="l00974"></a><span class="lineno">  974</span>      <span class="keywordflow">return</span> TRACE;</div>
+<div class="line"><a id="l00975" name="l00975"></a><span class="lineno">  975</span>    <span class="keywordflow">default</span>:</div>
+<div class="line"><a id="l00976" name="l00976"></a><span class="lineno">  976</span>      <span class="keywordflow">return</span> SOUTH;</div>
+<div class="line"><a id="l00977" name="l00977"></a><span class="lineno">  977</span>    }</div>
+<div class="line"><a id="l00978" name="l00978"></a><span class="lineno">  978</span>  };</div>
+<div class="line"><a id="l00979" name="l00979"></a><span class="lineno">  979</span> </div>
+<div class="line"><a id="l00980" name="l00980"></a><span class="lineno">  980</span>  StrmSwPortType sourcePortType = mapBundle(sourceBundle);</div>
+<div class="line"><a id="l00981" name="l00981"></a><span class="lineno">  981</span>  StrmSwPortType destPortType = mapBundle(destBundle);</div>
+<div class="line"><a id="l00982" name="l00982"></a><span class="lineno">  982</span> </div>
+<div class="line"><a id="l00983" name="l00983"></a><span class="lineno">  983</span>  <span class="comment">// Disconnect the specific connection from source to destination</span></div>
+<div class="line"><a id="l00984" name="l00984"></a><span class="lineno">  984</span>  <a class="code hl_define" href="AIERT_8cpp.html#a7e7ebc77edca00f0849ef15aba502898">TRY_XAIE_API_LOGICAL_RESULT</a>(XAie_StrmConnCctDisable, &amp;aiert-&gt;devInst, tileLoc,</div>
+<div class="line"><a id="l00985" name="l00985"></a><span class="lineno">  985</span>                              sourcePortType, sourceChannel, destPortType,</div>
+<div class="line"><a id="l00986" name="l00986"></a><span class="lineno">  986</span>                              destChannel);</div>
+<div class="line"><a id="l00987" name="l00987"></a><span class="lineno">  987</span> </div>
+<div class="line"><a id="l00988" name="l00988"></a><span class="lineno">  988</span>  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00989" name="l00989"></a><span class="lineno">  989</span>}</div>
 </div>
-<div class="line"><a id="l00964" name="l00964"></a><span class="lineno">  964</span> </div>
-<div class="foldopen" id="foldopen00965" data-start="{" data-end="}">
-<div class="line"><a id="l00965" name="l00965"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#a89952dfd7513794e5238bdd29fa2d9e5">  965</a></span>LogicalResult <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a89952dfd7513794e5238bdd29fa2d9e5">xilinx::AIE::AIERTControl::resetSwitchConnection</a>(</div>
-<div class="line"><a id="l00966" name="l00966"></a><span class="lineno">  966</span>    <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, WireBundle sourceBundle, <span class="keywordtype">int</span> sourceChannel,</div>
-<div class="line"><a id="l00967" name="l00967"></a><span class="lineno">  967</span>    WireBundle destBundle, <span class="keywordtype">int</span> destChannel) {</div>
-<div class="line"><a id="l00968" name="l00968"></a><span class="lineno">  968</span>  <span class="keyword">auto</span> tileLoc = XAie_TileLoc(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>);</div>
-<div class="line"><a id="l00969" name="l00969"></a><span class="lineno">  969</span> </div>
-<div class="line"><a id="l00970" name="l00970"></a><span class="lineno">  970</span>  <span class="comment">// Helper lambda to map WireBundle to StrmSwPortType</span></div>
-<div class="line"><a id="l00971" name="l00971"></a><span class="lineno">  971</span>  <span class="keyword">auto</span> mapBundle = [](WireBundle bundle) -&gt; StrmSwPortType {</div>
-<div class="line"><a id="l00972" name="l00972"></a><span class="lineno">  972</span>    <span class="keywordflow">switch</span> (bundle) {</div>
-<div class="line"><a id="l00973" name="l00973"></a><span class="lineno">  973</span>    <span class="keywordflow">case</span> WireBundle::Core:</div>
-<div class="line"><a id="l00974" name="l00974"></a><span class="lineno">  974</span>      <span class="keywordflow">return</span> CORE;</div>
-<div class="line"><a id="l00975" name="l00975"></a><span class="lineno">  975</span>    <span class="keywordflow">case</span> WireBundle::DMA:</div>
-<div class="line"><a id="l00976" name="l00976"></a><span class="lineno">  976</span>      <span class="keywordflow">return</span> DMA;</div>
-<div class="line"><a id="l00977" name="l00977"></a><span class="lineno">  977</span>    <span class="keywordflow">case</span> WireBundle::FIFO:</div>
-<div class="line"><a id="l00978" name="l00978"></a><span class="lineno">  978</span>      <span class="keywordflow">return</span> FIFO;</div>
-<div class="line"><a id="l00979" name="l00979"></a><span class="lineno">  979</span>    <span class="keywordflow">case</span> WireBundle::South:</div>
-<div class="line"><a id="l00980" name="l00980"></a><span class="lineno">  980</span>      <span class="keywordflow">return</span> SOUTH;</div>
-<div class="line"><a id="l00981" name="l00981"></a><span class="lineno">  981</span>    <span class="keywordflow">case</span> WireBundle::West:</div>
-<div class="line"><a id="l00982" name="l00982"></a><span class="lineno">  982</span>      <span class="keywordflow">return</span> WEST;</div>
-<div class="line"><a id="l00983" name="l00983"></a><span class="lineno">  983</span>    <span class="keywordflow">case</span> WireBundle::North:</div>
-<div class="line"><a id="l00984" name="l00984"></a><span class="lineno">  984</span>      <span class="keywordflow">return</span> NORTH;</div>
-<div class="line"><a id="l00985" name="l00985"></a><span class="lineno">  985</span>    <span class="keywordflow">case</span> WireBundle::East:</div>
-<div class="line"><a id="l00986" name="l00986"></a><span class="lineno">  986</span>      <span class="keywordflow">return</span> EAST;</div>
-<div class="line"><a id="l00987" name="l00987"></a><span class="lineno">  987</span>    <span class="keywordflow">case</span> WireBundle::Trace:</div>
-<div class="line"><a id="l00988" name="l00988"></a><span class="lineno">  988</span>      <span class="keywordflow">return</span> TRACE;</div>
-<div class="line"><a id="l00989" name="l00989"></a><span class="lineno">  989</span>    <span class="keywordflow">default</span>:</div>
-<div class="line"><a id="l00990" name="l00990"></a><span class="lineno">  990</span>      <span class="keywordflow">return</span> SOUTH;</div>
-<div class="line"><a id="l00991" name="l00991"></a><span class="lineno">  991</span>    }</div>
-<div class="line"><a id="l00992" name="l00992"></a><span class="lineno">  992</span>  };</div>
-<div class="line"><a id="l00993" name="l00993"></a><span class="lineno">  993</span> </div>
-<div class="line"><a id="l00994" name="l00994"></a><span class="lineno">  994</span>  StrmSwPortType sourcePortType = mapBundle(sourceBundle);</div>
-<div class="line"><a id="l00995" name="l00995"></a><span class="lineno">  995</span>  StrmSwPortType destPortType = mapBundle(destBundle);</div>
-<div class="line"><a id="l00996" name="l00996"></a><span class="lineno">  996</span> </div>
-<div class="line"><a id="l00997" name="l00997"></a><span class="lineno">  997</span>  <span class="comment">// Disconnect the specific connection from source to destination</span></div>
-<div class="line"><a id="l00998" name="l00998"></a><span class="lineno">  998</span>  <a class="code hl_define" href="AIERT_8cpp.html#a7e7ebc77edca00f0849ef15aba502898">TRY_XAIE_API_LOGICAL_RESULT</a>(XAie_StrmConnCctDisable, &amp;aiert-&gt;devInst, tileLoc,</div>
-<div class="line"><a id="l00999" name="l00999"></a><span class="lineno">  999</span>                              sourcePortType, sourceChannel, destPortType,</div>
-<div class="line"><a id="l01000" name="l01000"></a><span class="lineno"> 1000</span>                              destChannel);</div>
-<div class="line"><a id="l01001" name="l01001"></a><span class="lineno"> 1001</span> </div>
-<div class="line"><a id="l01002" name="l01002"></a><span class="lineno"> 1002</span>  <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l01003" name="l01003"></a><span class="lineno"> 1003</span>}</div>
+<div class="line"><a id="l00990" name="l00990"></a><span class="lineno">  990</span> </div>
+<div class="foldopen" id="foldopen00991" data-start="{" data-end="}">
+<div class="line"><a id="l00991" name="l00991"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#a0584434e37276fa5225ae8e950a9f40d">  991</a></span>LogicalResult <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a0584434e37276fa5225ae8e950a9f40d">xilinx::AIE::AIERTControl::resetPerfCounters</a>(<span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>) {</div>
+<div class="line"><a id="l00992" name="l00992"></a><span class="lineno">  992</span>  <span class="keyword">auto</span> tileLoc = XAie_TileLoc(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>);</div>
+<div class="line"><a id="l00993" name="l00993"></a><span class="lineno">  993</span>  <span class="comment">// Reset performance counters in all modules</span></div>
+<div class="line"><a id="l00994" name="l00994"></a><span class="lineno">  994</span>  <span class="comment">// Try core module counters (if applicable)</span></div>
+<div class="line"><a id="l00995" name="l00995"></a><span class="lineno">  995</span>  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> counterId = 0; counterId &lt; 4; counterId++) {</div>
+<div class="line"><a id="l00996" name="l00996"></a><span class="lineno">  996</span>    <span class="comment">// Ignore errors as not all tiles have all counter types</span></div>
+<div class="line"><a id="l00997" name="l00997"></a><span class="lineno">  997</span>    (void)XAie_PerfCounterReset(&amp;aiert-&gt;devInst, tileLoc, XAIE_CORE_MOD,</div>
+<div class="line"><a id="l00998" name="l00998"></a><span class="lineno">  998</span>                                counterId);</div>
+<div class="line"><a id="l00999" name="l00999"></a><span class="lineno">  999</span>  }</div>
+<div class="line"><a id="l01000" name="l01000"></a><span class="lineno"> 1000</span>  <span class="comment">// Try mem module counters</span></div>
+<div class="line"><a id="l01001" name="l01001"></a><span class="lineno"> 1001</span>  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> counterId = 0; counterId &lt; 4; counterId++) {</div>
+<div class="line"><a id="l01002" name="l01002"></a><span class="lineno"> 1002</span>    (void)XAie_PerfCounterReset(&amp;aiert-&gt;devInst, tileLoc, XAIE_MEM_MOD,</div>
+<div class="line"><a id="l01003" name="l01003"></a><span class="lineno"> 1003</span>                                counterId);</div>
+<div class="line"><a id="l01004" name="l01004"></a><span class="lineno"> 1004</span>  }</div>
+<div class="line"><a id="l01005" name="l01005"></a><span class="lineno"> 1005</span>  <span class="comment">// Try PL module counters (for shim tiles)</span></div>
+<div class="line"><a id="l01006" name="l01006"></a><span class="lineno"> 1006</span>  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> counterId = 0; counterId &lt; 4; counterId++) {</div>
+<div class="line"><a id="l01007" name="l01007"></a><span class="lineno"> 1007</span>    (void)XAie_PerfCounterReset(&amp;aiert-&gt;devInst, tileLoc, XAIE_PL_MOD,</div>
+<div class="line"><a id="l01008" name="l01008"></a><span class="lineno"> 1008</span>                                counterId);</div>
+<div class="line"><a id="l01009" name="l01009"></a><span class="lineno"> 1009</span>  }</div>
+<div class="line"><a id="l01010" name="l01010"></a><span class="lineno"> 1010</span>  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l01011" name="l01011"></a><span class="lineno"> 1011</span>}</div>
 </div>
-<div class="line"><a id="l01004" name="l01004"></a><span class="lineno"> 1004</span> </div>
-<div class="foldopen" id="foldopen01005" data-start="{" data-end="}">
-<div class="line"><a id="l01005" name="l01005"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#a0584434e37276fa5225ae8e950a9f40d"> 1005</a></span>LogicalResult <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a0584434e37276fa5225ae8e950a9f40d">xilinx::AIE::AIERTControl::resetPerfCounters</a>(<span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>) {</div>
-<div class="line"><a id="l01006" name="l01006"></a><span class="lineno"> 1006</span>  <span class="keyword">auto</span> tileLoc = XAie_TileLoc(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>);</div>
-<div class="line"><a id="l01007" name="l01007"></a><span class="lineno"> 1007</span>  <span class="comment">// Reset performance counters in all modules</span></div>
-<div class="line"><a id="l01008" name="l01008"></a><span class="lineno"> 1008</span>  <span class="comment">// Try core module counters (if applicable)</span></div>
-<div class="line"><a id="l01009" name="l01009"></a><span class="lineno"> 1009</span>  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> counterId = 0; counterId &lt; 4; counterId++) {</div>
-<div class="line"><a id="l01010" name="l01010"></a><span class="lineno"> 1010</span>    <span class="comment">// Ignore errors as not all tiles have all counter types</span></div>
-<div class="line"><a id="l01011" name="l01011"></a><span class="lineno"> 1011</span>    (void)XAie_PerfCounterReset(&amp;aiert-&gt;devInst, tileLoc, XAIE_CORE_MOD,</div>
-<div class="line"><a id="l01012" name="l01012"></a><span class="lineno"> 1012</span>                                counterId);</div>
-<div class="line"><a id="l01013" name="l01013"></a><span class="lineno"> 1013</span>  }</div>
-<div class="line"><a id="l01014" name="l01014"></a><span class="lineno"> 1014</span>  <span class="comment">// Try mem module counters</span></div>
-<div class="line"><a id="l01015" name="l01015"></a><span class="lineno"> 1015</span>  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> counterId = 0; counterId &lt; 4; counterId++) {</div>
-<div class="line"><a id="l01016" name="l01016"></a><span class="lineno"> 1016</span>    (void)XAie_PerfCounterReset(&amp;aiert-&gt;devInst, tileLoc, XAIE_MEM_MOD,</div>
-<div class="line"><a id="l01017" name="l01017"></a><span class="lineno"> 1017</span>                                counterId);</div>
-<div class="line"><a id="l01018" name="l01018"></a><span class="lineno"> 1018</span>  }</div>
-<div class="line"><a id="l01019" name="l01019"></a><span class="lineno"> 1019</span>  <span class="comment">// Try PL module counters (for shim tiles)</span></div>
-<div class="line"><a id="l01020" name="l01020"></a><span class="lineno"> 1020</span>  <span class="keywordflow">for</span> (<span class="keywordtype">int</span> counterId = 0; counterId &lt; 4; counterId++) {</div>
-<div class="line"><a id="l01021" name="l01021"></a><span class="lineno"> 1021</span>    (void)XAie_PerfCounterReset(&amp;aiert-&gt;devInst, tileLoc, XAIE_PL_MOD,</div>
-<div class="line"><a id="l01022" name="l01022"></a><span class="lineno"> 1022</span>                                counterId);</div>
-<div class="line"><a id="l01023" name="l01023"></a><span class="lineno"> 1023</span>  }</div>
-<div class="line"><a id="l01024" name="l01024"></a><span class="lineno"> 1024</span>  <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l01025" name="l01025"></a><span class="lineno"> 1025</span>}</div>
+<div class="line"><a id="l01012" name="l01012"></a><span class="lineno"> 1012</span> </div>
+<div class="foldopen" id="foldopen01013" data-start="{" data-end="}">
+<div class="line"><a id="l01013" name="l01013"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#a369018049bee63ea0b08c1635f427829"> 1013</a></span>LogicalResult <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a369018049bee63ea0b08c1635f427829">xilinx::AIE::AIERTControl::addAieElfs</a>(DeviceOp &amp;targetOp,</div>
+<div class="line"><a id="l01014" name="l01014"></a><span class="lineno"> 1014</span>                                                    <span class="keyword">const</span> StringRef elfPath,</div>
+<div class="line"><a id="l01015" name="l01015"></a><span class="lineno"> 1015</span>                                                    <span class="keywordtype">bool</span> aieSim) {</div>
+<div class="line"><a id="l01016" name="l01016"></a><span class="lineno"> 1016</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> tileOp : targetOp.getOps&lt;TileOp&gt;())</div>
+<div class="line"><a id="l01017" name="l01017"></a><span class="lineno"> 1017</span>    <span class="keywordflow">if</span> (tileOp.isShimNOCorPLTile()) {</div>
+<div class="line"><a id="l01018" name="l01018"></a><span class="lineno"> 1018</span>      <span class="comment">// Resets no needed with V2 kernel driver</span></div>
+<div class="line"><a id="l01019" name="l01019"></a><span class="lineno"> 1019</span>    } <span class="keywordflow">else</span> {</div>
+<div class="line"><a id="l01020" name="l01020"></a><span class="lineno"> 1020</span>      <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = tileOp.colIndex();</div>
+<div class="line"><a id="l01021" name="l01021"></a><span class="lineno"> 1021</span>      <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> = tileOp.rowIndex();</div>
+<div class="line"><a id="l01022" name="l01022"></a><span class="lineno"> 1022</span>      <span class="keywordflow">if</span> (<span class="keyword">auto</span> coreOp = tileOp.getCoreOp()) {</div>
+<div class="line"><a id="l01023" name="l01023"></a><span class="lineno"> 1023</span>        std::string fileName;</div>
+<div class="line"><a id="l01024" name="l01024"></a><span class="lineno"> 1024</span>        <span class="keywordflow">if</span> (<span class="keyword">auto</span> fileAttr = coreOp.getElfFile()) {</div>
+<div class="line"><a id="l01025" name="l01025"></a><span class="lineno"> 1025</span>          fileName = fileAttr-&gt;str();</div>
+<div class="line"><a id="l01026" name="l01026"></a><span class="lineno"> 1026</span>        } <span class="keywordflow">else</span> {</div>
+<div class="line"><a id="l01027" name="l01027"></a><span class="lineno"> 1027</span>          <span class="comment">// Skip cores without elf_file (e.g., lightweight reset</span></div>
+<div class="line"><a id="l01028" name="l01028"></a><span class="lineno"> 1028</span>          <span class="comment">// devices that only need DMA/lock reconfiguration).</span></div>
+<div class="line"><a id="l01029" name="l01029"></a><span class="lineno"> 1029</span>          <span class="keywordflow">continue</span>;</div>
+<div class="line"><a id="l01030" name="l01030"></a><span class="lineno"> 1030</span>        }</div>
+<div class="line"><a id="l01031" name="l01031"></a><span class="lineno"> 1031</span>        <span class="comment">// Check if fileName is already an absolute path.</span></div>
+<div class="line"><a id="l01032" name="l01032"></a><span class="lineno"> 1032</span>        <span class="comment">// If so, use it directly. Otherwise, concatenate with elfPath.</span></div>
+<div class="line"><a id="l01033" name="l01033"></a><span class="lineno"> 1033</span>        std::string fullPath;</div>
+<div class="line"><a id="l01034" name="l01034"></a><span class="lineno"> 1034</span>        <span class="keywordflow">if</span> (std::filesystem::path(fileName).is_absolute()) {</div>
+<div class="line"><a id="l01035" name="l01035"></a><span class="lineno"> 1035</span>          fullPath = fileName;</div>
+<div class="line"><a id="l01036" name="l01036"></a><span class="lineno"> 1036</span>        } <span class="keywordflow">else</span> {</div>
+<div class="line"><a id="l01037" name="l01037"></a><span class="lineno"> 1037</span>          <span class="keyword">auto</span> ps = std::filesystem::path::preferred_separator;</div>
+<div class="line"><a id="l01038" name="l01038"></a><span class="lineno"> 1038</span>          fullPath =</div>
+<div class="line"><a id="l01039" name="l01039"></a><span class="lineno"> 1039</span>              (llvm::Twine(elfPath) + std::string(1, ps) + fileName).str();</div>
+<div class="line"><a id="l01040" name="l01040"></a><span class="lineno"> 1040</span>        }</div>
+<div class="line"><a id="l01041" name="l01041"></a><span class="lineno"> 1041</span>        <span class="keywordflow">if</span> (failed(addAieElf(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, fullPath, aieSim)))</div>
+<div class="line"><a id="l01042" name="l01042"></a><span class="lineno"> 1042</span>          <span class="keywordflow">return</span> failure();</div>
+<div class="line"><a id="l01043" name="l01043"></a><span class="lineno"> 1043</span>      }</div>
+<div class="line"><a id="l01044" name="l01044"></a><span class="lineno"> 1044</span>    }</div>
+<div class="line"><a id="l01045" name="l01045"></a><span class="lineno"> 1045</span>  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l01046" name="l01046"></a><span class="lineno"> 1046</span>}</div>
 </div>
-<div class="line"><a id="l01026" name="l01026"></a><span class="lineno"> 1026</span> </div>
-<div class="foldopen" id="foldopen01027" data-start="{" data-end="}">
-<div class="line"><a id="l01027" name="l01027"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#a369018049bee63ea0b08c1635f427829"> 1027</a></span>LogicalResult <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a369018049bee63ea0b08c1635f427829">xilinx::AIE::AIERTControl::addAieElfs</a>(DeviceOp &amp;targetOp,</div>
-<div class="line"><a id="l01028" name="l01028"></a><span class="lineno"> 1028</span>                                                    <span class="keyword">const</span> StringRef elfPath,</div>
-<div class="line"><a id="l01029" name="l01029"></a><span class="lineno"> 1029</span>                                                    <span class="keywordtype">bool</span> aieSim) {</div>
-<div class="line"><a id="l01030" name="l01030"></a><span class="lineno"> 1030</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> tileOp : targetOp.getOps&lt;TileOp&gt;())</div>
-<div class="line"><a id="l01031" name="l01031"></a><span class="lineno"> 1031</span>    <span class="keywordflow">if</span> (tileOp.isShimNOCorPLTile()) {</div>
-<div class="line"><a id="l01032" name="l01032"></a><span class="lineno"> 1032</span>      <span class="comment">// Resets no needed with V2 kernel driver</span></div>
-<div class="line"><a id="l01033" name="l01033"></a><span class="lineno"> 1033</span>    } <span class="keywordflow">else</span> {</div>
-<div class="line"><a id="l01034" name="l01034"></a><span class="lineno"> 1034</span>      <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = tileOp.colIndex();</div>
-<div class="line"><a id="l01035" name="l01035"></a><span class="lineno"> 1035</span>      <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> = tileOp.rowIndex();</div>
-<div class="line"><a id="l01036" name="l01036"></a><span class="lineno"> 1036</span>      <span class="keywordflow">if</span> (<span class="keyword">auto</span> coreOp = tileOp.getCoreOp()) {</div>
-<div class="line"><a id="l01037" name="l01037"></a><span class="lineno"> 1037</span>        std::string fileName;</div>
-<div class="line"><a id="l01038" name="l01038"></a><span class="lineno"> 1038</span>        <span class="keywordflow">if</span> (<span class="keyword">auto</span> fileAttr = coreOp.getElfFile()) {</div>
-<div class="line"><a id="l01039" name="l01039"></a><span class="lineno"> 1039</span>          fileName = fileAttr-&gt;str();</div>
-<div class="line"><a id="l01040" name="l01040"></a><span class="lineno"> 1040</span>        } <span class="keywordflow">else</span> {</div>
-<div class="line"><a id="l01041" name="l01041"></a><span class="lineno"> 1041</span>          <span class="comment">// Skip cores without elf_file (e.g., lightweight reset</span></div>
-<div class="line"><a id="l01042" name="l01042"></a><span class="lineno"> 1042</span>          <span class="comment">// devices that only need DMA/lock reconfiguration).</span></div>
-<div class="line"><a id="l01043" name="l01043"></a><span class="lineno"> 1043</span>          <span class="keywordflow">continue</span>;</div>
-<div class="line"><a id="l01044" name="l01044"></a><span class="lineno"> 1044</span>        }</div>
-<div class="line"><a id="l01045" name="l01045"></a><span class="lineno"> 1045</span>        <span class="comment">// Check if fileName is already an absolute path.</span></div>
-<div class="line"><a id="l01046" name="l01046"></a><span class="lineno"> 1046</span>        <span class="comment">// If so, use it directly. Otherwise, concatenate with elfPath.</span></div>
-<div class="line"><a id="l01047" name="l01047"></a><span class="lineno"> 1047</span>        std::string fullPath;</div>
-<div class="line"><a id="l01048" name="l01048"></a><span class="lineno"> 1048</span>        <span class="keywordflow">if</span> (std::filesystem::path(fileName).is_absolute()) {</div>
-<div class="line"><a id="l01049" name="l01049"></a><span class="lineno"> 1049</span>          fullPath = fileName;</div>
-<div class="line"><a id="l01050" name="l01050"></a><span class="lineno"> 1050</span>        } <span class="keywordflow">else</span> {</div>
-<div class="line"><a id="l01051" name="l01051"></a><span class="lineno"> 1051</span>          <span class="keyword">auto</span> ps = std::filesystem::path::preferred_separator;</div>
-<div class="line"><a id="l01052" name="l01052"></a><span class="lineno"> 1052</span>          fullPath =</div>
-<div class="line"><a id="l01053" name="l01053"></a><span class="lineno"> 1053</span>              (llvm::Twine(elfPath) + std::string(1, ps) + fileName).str();</div>
-<div class="line"><a id="l01054" name="l01054"></a><span class="lineno"> 1054</span>        }</div>
-<div class="line"><a id="l01055" name="l01055"></a><span class="lineno"> 1055</span>        <span class="keywordflow">if</span> (failed(addAieElf(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, fullPath, aieSim)))</div>
-<div class="line"><a id="l01056" name="l01056"></a><span class="lineno"> 1056</span>          <span class="keywordflow">return</span> failure();</div>
-<div class="line"><a id="l01057" name="l01057"></a><span class="lineno"> 1057</span>      }</div>
-<div class="line"><a id="l01058" name="l01058"></a><span class="lineno"> 1058</span>    }</div>
-<div class="line"><a id="l01059" name="l01059"></a><span class="lineno"> 1059</span>  <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l01060" name="l01060"></a><span class="lineno"> 1060</span>}</div>
+<div class="line"><a id="l01047" name="l01047"></a><span class="lineno"> 1047</span> </div>
+<div class="foldopen" id="foldopen01048" data-start="{" data-end="}">
+<div class="line"><a id="l01048" name="l01048"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#a28aa7b5b96dcb15f9a349eb0a5b677ab"> 1048</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a28aa7b5b96dcb15f9a349eb0a5b677ab">xilinx::AIE::AIERTControl::dmaUpdateBdAddr</a>(<span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, <span class="keywordtype">size_t</span> addr,</div>
+<div class="line"><a id="l01049" name="l01049"></a><span class="lineno"> 1049</span>                                                <span class="keywordtype">size_t</span> bdId) {</div>
+<div class="line"><a id="l01050" name="l01050"></a><span class="lineno"> 1050</span>  <span class="keyword">auto</span> tileLoc = XAie_TileLoc(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>);</div>
+<div class="line"><a id="l01051" name="l01051"></a><span class="lineno"> 1051</span>  <a class="code hl_define" href="AIERT_8cpp.html#a96120e33cd9c4443c81879c609d0263c">TRY_XAIE_API_FATAL_ERROR</a>(XAie_DmaUpdateBdAddr, &amp;aiert-&gt;devInst, tileLoc, addr,</div>
+<div class="line"><a id="l01052" name="l01052"></a><span class="lineno"> 1052</span>                           bdId);</div>
+<div class="line"><a id="l01053" name="l01053"></a><span class="lineno"> 1053</span>}</div>
 </div>
-<div class="line"><a id="l01061" name="l01061"></a><span class="lineno"> 1061</span> </div>
-<div class="foldopen" id="foldopen01062" data-start="{" data-end="}">
-<div class="line"><a id="l01062" name="l01062"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#a28aa7b5b96dcb15f9a349eb0a5b677ab"> 1062</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a28aa7b5b96dcb15f9a349eb0a5b677ab">xilinx::AIE::AIERTControl::dmaUpdateBdAddr</a>(<span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>, <span class="keywordtype">size_t</span> addr,</div>
-<div class="line"><a id="l01063" name="l01063"></a><span class="lineno"> 1063</span>                                                <span class="keywordtype">size_t</span> bdId) {</div>
-<div class="line"><a id="l01064" name="l01064"></a><span class="lineno"> 1064</span>  <span class="keyword">auto</span> tileLoc = XAie_TileLoc(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>);</div>
-<div class="line"><a id="l01065" name="l01065"></a><span class="lineno"> 1065</span>  <a class="code hl_define" href="AIERT_8cpp.html#a96120e33cd9c4443c81879c609d0263c">TRY_XAIE_API_FATAL_ERROR</a>(XAie_DmaUpdateBdAddr, &amp;aiert-&gt;devInst, tileLoc, addr,</div>
-<div class="line"><a id="l01066" name="l01066"></a><span class="lineno"> 1066</span>                           bdId);</div>
+<div class="line"><a id="l01054" name="l01054"></a><span class="lineno"> 1054</span> </div>
+<div class="foldopen" id="foldopen01055" data-start="{" data-end="}">
+<div class="line"><a id="l01055" name="l01055"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#a581d9d8ce56f1ac2e336a65f1aeddc63"> 1055</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a581d9d8ce56f1ac2e336a65f1aeddc63">xilinx::AIE::AIERTControl::startTransaction</a>() {</div>
+<div class="line"><a id="l01056" name="l01056"></a><span class="lineno"> 1056</span>  aiert-&gt;txnInstrLocs.clear();</div>
+<div class="line"><a id="l01057" name="l01057"></a><span class="lineno"> 1057</span>  <a class="code hl_define" href="AIERT_8cpp.html#a96120e33cd9c4443c81879c609d0263c">TRY_XAIE_API_FATAL_ERROR</a>(XAie_StartTransaction, &amp;aiert-&gt;devInst,</div>
+<div class="line"><a id="l01058" name="l01058"></a><span class="lineno"> 1058</span>                           XAIE_TRANSACTION_DISABLE_AUTO_FLUSH);</div>
+<div class="line"><a id="l01059" name="l01059"></a><span class="lineno"> 1059</span>}</div>
+</div>
+<div class="line"><a id="l01060" name="l01060"></a><span class="lineno"> 1060</span> </div>
+<div class="foldopen" id="foldopen01061" data-start="{" data-end="}">
+<div class="line"><a id="l01061" name="l01061"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#a62b08315999e529536a4a099783baeee"> 1061</a></span>std::vector&lt;uint8_t&gt; <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a62b08315999e529536a4a099783baeee">xilinx::AIE::AIERTControl::exportSerializedTransaction</a>() {</div>
+<div class="line"><a id="l01062" name="l01062"></a><span class="lineno"> 1062</span>  <span class="comment">// Export the transactions to a binary buffer</span></div>
+<div class="line"><a id="l01063" name="l01063"></a><span class="lineno"> 1063</span>  uint8_t *txn_ptr = XAie_ExportSerializedTransaction(&amp;aiert-&gt;devInst, 0, 0);</div>
+<div class="line"><a id="l01064" name="l01064"></a><span class="lineno"> 1064</span>  XAie_TxnHeader *hdr = (XAie_TxnHeader *)txn_ptr;</div>
+<div class="line"><a id="l01065" name="l01065"></a><span class="lineno"> 1065</span>  std::vector&lt;uint8_t&gt; txn_data(txn_ptr, txn_ptr + hdr-&gt;TxnSize);</div>
+<div class="line"><a id="l01066" name="l01066"></a><span class="lineno"> 1066</span>  <span class="keywordflow">return</span> txn_data;</div>
 <div class="line"><a id="l01067" name="l01067"></a><span class="lineno"> 1067</span>}</div>
 </div>
 <div class="line"><a id="l01068" name="l01068"></a><span class="lineno"> 1068</span> </div>
-<div class="foldopen" id="foldopen01069" data-start="{" data-end="}">
-<div class="line"><a id="l01069" name="l01069"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#a581d9d8ce56f1ac2e336a65f1aeddc63"> 1069</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a581d9d8ce56f1ac2e336a65f1aeddc63">xilinx::AIE::AIERTControl::startTransaction</a>() {</div>
-<div class="line"><a id="l01070" name="l01070"></a><span class="lineno"> 1070</span>  aiert-&gt;txnInstrLocs.clear();</div>
-<div class="line"><a id="l01071" name="l01071"></a><span class="lineno"> 1071</span>  <a class="code hl_define" href="AIERT_8cpp.html#a96120e33cd9c4443c81879c609d0263c">TRY_XAIE_API_FATAL_ERROR</a>(XAie_StartTransaction, &amp;aiert-&gt;devInst,</div>
-<div class="line"><a id="l01072" name="l01072"></a><span class="lineno"> 1072</span>                           XAIE_TRANSACTION_DISABLE_AUTO_FLUSH);</div>
-<div class="line"><a id="l01073" name="l01073"></a><span class="lineno"> 1073</span>}</div>
+<div class="line"><a id="l01069" name="l01069"></a><span class="lineno"> 1069</span><span class="keyword">const</span> std::vector&lt;mlir::Location&gt; &amp;</div>
+<div class="foldopen" id="foldopen01070" data-start="{" data-end="}">
+<div class="line"><a id="l01070" name="l01070"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#ac18f68c5215d2c81ccc5c5e7e67545f6"> 1070</a></span><a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#ac18f68c5215d2c81ccc5c5e7e67545f6">xilinx::AIE::AIERTControl::getTxnInstrLocs</a>()<span class="keyword"> const </span>{</div>
+<div class="line"><a id="l01071" name="l01071"></a><span class="lineno"> 1071</span>  <span class="keywordflow">return</span> aiert-&gt;txnInstrLocs;</div>
+<div class="line"><a id="l01072" name="l01072"></a><span class="lineno"> 1072</span>}</div>
 </div>
-<div class="line"><a id="l01074" name="l01074"></a><span class="lineno"> 1074</span> </div>
-<div class="foldopen" id="foldopen01075" data-start="{" data-end="}">
-<div class="line"><a id="l01075" name="l01075"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#a62b08315999e529536a4a099783baeee"> 1075</a></span>std::vector&lt;uint8_t&gt; <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a62b08315999e529536a4a099783baeee">xilinx::AIE::AIERTControl::exportSerializedTransaction</a>() {</div>
-<div class="line"><a id="l01076" name="l01076"></a><span class="lineno"> 1076</span>  <span class="comment">// Export the transactions to a binary buffer</span></div>
-<div class="line"><a id="l01077" name="l01077"></a><span class="lineno"> 1077</span>  uint8_t *txn_ptr = XAie_ExportSerializedTransaction(&amp;aiert-&gt;devInst, 0, 0);</div>
-<div class="line"><a id="l01078" name="l01078"></a><span class="lineno"> 1078</span>  XAie_TxnHeader *hdr = (XAie_TxnHeader *)txn_ptr;</div>
-<div class="line"><a id="l01079" name="l01079"></a><span class="lineno"> 1079</span>  std::vector&lt;uint8_t&gt; txn_data(txn_ptr, txn_ptr + hdr-&gt;TxnSize);</div>
-<div class="line"><a id="l01080" name="l01080"></a><span class="lineno"> 1080</span>  <span class="keywordflow">return</span> txn_data;</div>
-<div class="line"><a id="l01081" name="l01081"></a><span class="lineno"> 1081</span>}</div>
+<div class="line"><a id="l01073" name="l01073"></a><span class="lineno"> 1073</span> </div>
+<div class="foldopen" id="foldopen01074" data-start="{" data-end="}">
+<div class="line"><a id="l01074" name="l01074"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#a6271112520e8ed4c338820ce18e8aca2"> 1074</a></span>uint32_t <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a6271112520e8ed4c338820ce18e8aca2">xilinx::AIE::AIERTControl::getCurrentTxnNumCmds</a>()<span class="keyword"> const </span>{</div>
+<div class="line"><a id="l01075" name="l01075"></a><span class="lineno"> 1075</span>  <span class="keywordflow">return</span> getActiveTxnNumCmds(aiert-&gt;devInst);</div>
+<div class="line"><a id="l01076" name="l01076"></a><span class="lineno"> 1076</span>}</div>
 </div>
-<div class="line"><a id="l01082" name="l01082"></a><span class="lineno"> 1082</span> </div>
-<div class="line"><a id="l01083" name="l01083"></a><span class="lineno"> 1083</span><span class="keyword">const</span> std::vector&lt;mlir::Location&gt; &amp;</div>
-<div class="foldopen" id="foldopen01084" data-start="{" data-end="}">
-<div class="line"><a id="l01084" name="l01084"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#ac18f68c5215d2c81ccc5c5e7e67545f6"> 1084</a></span><a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#ac18f68c5215d2c81ccc5c5e7e67545f6">xilinx::AIE::AIERTControl::getTxnInstrLocs</a>()<span class="keyword"> const </span>{</div>
-<div class="line"><a id="l01085" name="l01085"></a><span class="lineno"> 1085</span>  <span class="keywordflow">return</span> aiert-&gt;txnInstrLocs;</div>
-<div class="line"><a id="l01086" name="l01086"></a><span class="lineno"> 1086</span>}</div>
-</div>
-<div class="line"><a id="l01087" name="l01087"></a><span class="lineno"> 1087</span> </div>
-<div class="foldopen" id="foldopen01088" data-start="{" data-end="}">
-<div class="line"><a id="l01088" name="l01088"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#a6271112520e8ed4c338820ce18e8aca2"> 1088</a></span>uint32_t <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#a6271112520e8ed4c338820ce18e8aca2">xilinx::AIE::AIERTControl::getCurrentTxnNumCmds</a>()<span class="keyword"> const </span>{</div>
-<div class="line"><a id="l01089" name="l01089"></a><span class="lineno"> 1089</span>  <span class="keywordflow">return</span> getActiveTxnNumCmds(aiert-&gt;devInst);</div>
-<div class="line"><a id="l01090" name="l01090"></a><span class="lineno"> 1090</span>}</div>
-</div>
-<div class="line"><a id="l01091" name="l01091"></a><span class="lineno"> 1091</span> </div>
-<div class="foldopen" id="foldopen01092" data-start="{" data-end="}">
-<div class="line"><a id="l01092" name="l01092"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#abb8f00f569770d3ed487624204a5d66f"> 1092</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#abb8f00f569770d3ed487624204a5d66f">xilinx::AIE::AIERTControl::recordTxnLocRange</a>(uint32_t startCmds,</div>
-<div class="line"><a id="l01093" name="l01093"></a><span class="lineno"> 1093</span>                                                  uint32_t endCmds,</div>
-<div class="line"><a id="l01094" name="l01094"></a><span class="lineno"> 1094</span>                                                  mlir::Location loc) {</div>
-<div class="line"><a id="l01095" name="l01095"></a><span class="lineno"> 1095</span>  <span class="keywordflow">if</span> (endCmds &lt;= startCmds)</div>
-<div class="line"><a id="l01096" name="l01096"></a><span class="lineno"> 1096</span>    <span class="keywordflow">return</span>;</div>
-<div class="line"><a id="l01097" name="l01097"></a><span class="lineno"> 1097</span>  <span class="keywordflow">if</span> (aiert-&gt;txnInstrLocs.size() &lt; endCmds)</div>
-<div class="line"><a id="l01098" name="l01098"></a><span class="lineno"> 1098</span>    aiert-&gt;txnInstrLocs.resize(endCmds,</div>
-<div class="line"><a id="l01099" name="l01099"></a><span class="lineno"> 1099</span>                               mlir::UnknownLoc::get(loc.getContext()));</div>
-<div class="line"><a id="l01100" name="l01100"></a><span class="lineno"> 1100</span>  <span class="keywordflow">for</span> (uint32_t i = startCmds; i &lt; endCmds; ++i)</div>
-<div class="line"><a id="l01101" name="l01101"></a><span class="lineno"> 1101</span>    aiert-&gt;txnInstrLocs[i] = loc;</div>
-<div class="line"><a id="l01102" name="l01102"></a><span class="lineno"> 1102</span>}</div>
+<div class="line"><a id="l01077" name="l01077"></a><span class="lineno"> 1077</span> </div>
+<div class="foldopen" id="foldopen01078" data-start="{" data-end="}">
+<div class="line"><a id="l01078" name="l01078"></a><span class="lineno"><a class="line" href="structxilinx_1_1AIE_1_1AIERTControl.html#abb8f00f569770d3ed487624204a5d66f"> 1078</a></span><span class="keywordtype">void</span> <a class="code hl_function" href="structxilinx_1_1AIE_1_1AIERTControl.html#abb8f00f569770d3ed487624204a5d66f">xilinx::AIE::AIERTControl::recordTxnLocRange</a>(uint32_t startCmds,</div>
+<div class="line"><a id="l01079" name="l01079"></a><span class="lineno"> 1079</span>                                                  uint32_t endCmds,</div>
+<div class="line"><a id="l01080" name="l01080"></a><span class="lineno"> 1080</span>                                                  mlir::Location loc) {</div>
+<div class="line"><a id="l01081" name="l01081"></a><span class="lineno"> 1081</span>  <span class="keywordflow">if</span> (endCmds &lt;= startCmds)</div>
+<div class="line"><a id="l01082" name="l01082"></a><span class="lineno"> 1082</span>    <span class="keywordflow">return</span>;</div>
+<div class="line"><a id="l01083" name="l01083"></a><span class="lineno"> 1083</span>  <span class="keywordflow">if</span> (aiert-&gt;txnInstrLocs.size() &lt; endCmds)</div>
+<div class="line"><a id="l01084" name="l01084"></a><span class="lineno"> 1084</span>    aiert-&gt;txnInstrLocs.resize(endCmds,</div>
+<div class="line"><a id="l01085" name="l01085"></a><span class="lineno"> 1085</span>                               mlir::UnknownLoc::get(loc.getContext()));</div>
+<div class="line"><a id="l01086" name="l01086"></a><span class="lineno"> 1086</span>  <span class="keywordflow">for</span> (uint32_t i = startCmds; i &lt; endCmds; ++i)</div>
+<div class="line"><a id="l01087" name="l01087"></a><span class="lineno"> 1087</span>    aiert-&gt;txnInstrLocs[i] = loc;</div>
+<div class="line"><a id="l01088" name="l01088"></a><span class="lineno"> 1088</span>}</div>
 </div>
 <div class="ttc" id="aAIERT_8cpp_html_a1df0c39011ffefdf1fc8778e92804358"><div class="ttname"><a href="AIERT_8cpp.html#a1df0c39011ffefdf1fc8778e92804358">XAIE_SHIM_ROW</a></div><div class="ttdeci">#define XAIE_SHIM_ROW</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00190">AIERT.cpp:190</a></div></div>
 <div class="ttc" id="aAIERT_8cpp_html_a4d13af53ed8983ed7656c51970271aff"><div class="ttname"><a href="AIERT_8cpp.html#a4d13af53ed8983ed7656c51970271aff">showAIEXRTArgs</a></div><div class="ttdeci">llvm::raw_ostream &amp; showAIEXRTArgs(llvm::raw_ostream &amp;out, const char *label, H1 &amp;&amp;value)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00084">AIERT.cpp:84</a></div></div>
@@ -1281,36 +1267,36 @@ $(document).ready(function() { init_codefold(0); });
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_1_1AIERtImpl_html_a678d94e00f5d6662f96d637401deb74b"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl_1_1AIERtImpl.html#a678d94e00f5d6662f96d637401deb74b">xilinx::AIE::AIERTControl::AIERtImpl::configPtr</a></div><div class="ttdeci">XAie_Config configPtr</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00200">AIERT.cpp:200</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_1_1AIERtImpl_html_af0740990177adfeb83098fa9d18f457f"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl_1_1AIERtImpl.html#af0740990177adfeb83098fa9d18f457f">xilinx::AIE::AIERTControl::AIERtImpl::devInst</a></div><div class="ttdeci">XAie_DevInst devInst</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00201">AIERT.cpp:201</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html">xilinx::AIE::AIERTControl</a></div><div class="ttdef"><b>Definition</b> <a href="AIERT_8h_source.html#l00048">AIERT.h:48</a></div></div>
-<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a0584434e37276fa5225ae8e950a9f40d"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a0584434e37276fa5225ae8e950a9f40d">xilinx::AIE::AIERTControl::resetPerfCounters</a></div><div class="ttdeci">mlir::LogicalResult resetPerfCounters(int col, int row)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l01005">AIERT.cpp:1005</a></div></div>
-<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a1107b280178bc6922b82520de009cab1"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a1107b280178bc6922b82520de009cab1">xilinx::AIE::AIERTControl::resetCore</a></div><div class="ttdeci">mlir::LogicalResult resetCore(int col, int row)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00913">AIERT.cpp:913</a></div></div>
+<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a0584434e37276fa5225ae8e950a9f40d"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a0584434e37276fa5225ae8e950a9f40d">xilinx::AIE::AIERTControl::resetPerfCounters</a></div><div class="ttdeci">mlir::LogicalResult resetPerfCounters(int col, int row)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00991">AIERT.cpp:991</a></div></div>
+<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a1107b280178bc6922b82520de009cab1"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a1107b280178bc6922b82520de009cab1">xilinx::AIE::AIERTControl::resetCore</a></div><div class="ttdeci">mlir::LogicalResult resetCore(int col, int row)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00899">AIERT.cpp:899</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a1b44dc952beccfe8021c11ab6ec0f7b9"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a1b44dc952beccfe8021c11ab6ec0f7b9">xilinx::AIE::AIERTControl::pushToBdQueueAndEnable</a></div><div class="ttdeci">mlir::LogicalResult pushToBdQueueAndEnable(mlir::Operation &amp;op, int col, int row, int chNum, const DMAChannelDir &amp;channelDir, int bdId, int repeatCount)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00527">AIERT.cpp:527</a></div></div>
-<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a28aa7b5b96dcb15f9a349eb0a5b677ab"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a28aa7b5b96dcb15f9a349eb0a5b677ab">xilinx::AIE::AIERTControl::dmaUpdateBdAddr</a></div><div class="ttdeci">void dmaUpdateBdAddr(int col, int row, size_t addr, size_t bdId)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l01062">AIERT.cpp:1062</a></div></div>
-<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a3603ca98d6e48a9f5a3ba6084c9a75f0"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a3603ca98d6e48a9f5a3ba6084c9a75f0">xilinx::AIE::AIERTControl::resetPartition</a></div><div class="ttdeci">mlir::LogicalResult resetPartition()</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00896">AIERT.cpp:896</a></div></div>
-<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a369018049bee63ea0b08c1635f427829"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a369018049bee63ea0b08c1635f427829">xilinx::AIE::AIERTControl::addAieElfs</a></div><div class="ttdeci">mlir::LogicalResult addAieElfs(DeviceOp &amp;targetOp, const mlir::StringRef workDirPath, bool aieSim)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l01027">AIERT.cpp:1027</a></div></div>
-<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a411541c395822c564b20efea0044fff6"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a411541c395822c564b20efea0044fff6">xilinx::AIE::AIERTControl::resetCoreUnreset</a></div><div class="ttdeci">mlir::LogicalResult resetCoreUnreset(int col, int row)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00947">AIERT.cpp:947</a></div></div>
+<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a28aa7b5b96dcb15f9a349eb0a5b677ab"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a28aa7b5b96dcb15f9a349eb0a5b677ab">xilinx::AIE::AIERTControl::dmaUpdateBdAddr</a></div><div class="ttdeci">void dmaUpdateBdAddr(int col, int row, size_t addr, size_t bdId)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l01048">AIERT.cpp:1048</a></div></div>
+<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a3603ca98d6e48a9f5a3ba6084c9a75f0"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a3603ca98d6e48a9f5a3ba6084c9a75f0">xilinx::AIE::AIERTControl::resetPartition</a></div><div class="ttdeci">mlir::LogicalResult resetPartition()</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00882">AIERT.cpp:882</a></div></div>
+<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a369018049bee63ea0b08c1635f427829"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a369018049bee63ea0b08c1635f427829">xilinx::AIE::AIERTControl::addAieElfs</a></div><div class="ttdeci">mlir::LogicalResult addAieElfs(DeviceOp &amp;targetOp, const mlir::StringRef workDirPath, bool aieSim)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l01013">AIERT.cpp:1013</a></div></div>
+<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a411541c395822c564b20efea0044fff6"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a411541c395822c564b20efea0044fff6">xilinx::AIE::AIERTControl::resetCoreUnreset</a></div><div class="ttdeci">mlir::LogicalResult resetCoreUnreset(int col, int row)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00933">AIERT.cpp:933</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a56cb4928f857fa784d32a5083bac8137"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a56cb4928f857fa784d32a5083bac8137">xilinx::AIE::AIERTControl::setIOBackend</a></div><div class="ttdeci">mlir::LogicalResult setIOBackend(bool aieSim, bool xaieDebug)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00290">AIERT.cpp:290</a></div></div>
-<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a581d9d8ce56f1ac2e336a65f1aeddc63"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a581d9d8ce56f1ac2e336a65f1aeddc63">xilinx::AIE::AIERTControl::startTransaction</a></div><div class="ttdeci">void startTransaction()</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l01069">AIERT.cpp:1069</a></div></div>
-<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a6271112520e8ed4c338820ce18e8aca2"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a6271112520e8ed4c338820ce18e8aca2">xilinx::AIE::AIERTControl::getCurrentTxnNumCmds</a></div><div class="ttdeci">uint32_t getCurrentTxnNumCmds() const</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l01088">AIERT.cpp:1088</a></div></div>
-<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a62b08315999e529536a4a099783baeee"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a62b08315999e529536a4a099783baeee">xilinx::AIE::AIERTControl::exportSerializedTransaction</a></div><div class="ttdeci">std::vector&lt; uint8_t &gt; exportSerializedTransaction()</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l01075">AIERT.cpp:1075</a></div></div>
+<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a581d9d8ce56f1ac2e336a65f1aeddc63"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a581d9d8ce56f1ac2e336a65f1aeddc63">xilinx::AIE::AIERTControl::startTransaction</a></div><div class="ttdeci">void startTransaction()</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l01055">AIERT.cpp:1055</a></div></div>
+<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a6271112520e8ed4c338820ce18e8aca2"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a6271112520e8ed4c338820ce18e8aca2">xilinx::AIE::AIERTControl::getCurrentTxnNumCmds</a></div><div class="ttdeci">uint32_t getCurrentTxnNumCmds() const</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l01074">AIERT.cpp:1074</a></div></div>
+<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a62b08315999e529536a4a099783baeee"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a62b08315999e529536a4a099783baeee">xilinx::AIE::AIERTControl::exportSerializedTransaction</a></div><div class="ttdeci">std::vector&lt; uint8_t &gt; exportSerializedTransaction()</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l01061">AIERT.cpp:1061</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a654d3cfc17cb49814d12737498099558"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a654d3cfc17cb49814d12737498099558">xilinx::AIE::AIERTControl::AIERTControl</a></div><div class="ttdeci">AIERTControl(const xilinx::AIE::AIETargetModel &amp;tm)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00239">AIERT.cpp:239</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a689a0e4c75523bb7e287a39226925de0"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a689a0e4c75523bb7e287a39226925de0">xilinx::AIE::AIERTControl::initLocks</a></div><div class="ttdeci">mlir::LogicalResult initLocks(DeviceOp &amp;targetOp)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00568">AIERT.cpp:568</a></div></div>
-<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a6f94d408ec9da78b3db58addac4c4a9f"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a6f94d408ec9da78b3db58addac4c4a9f">xilinx::AIE::AIERTControl::resetDMA</a></div><div class="ttdeci">mlir::LogicalResult resetDMA(int col, int row, bool on)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00901">AIERT.cpp:901</a></div></div>
+<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a6f94d408ec9da78b3db58addac4c4a9f"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a6f94d408ec9da78b3db58addac4c4a9f">xilinx::AIE::AIERTControl::resetDMA</a></div><div class="ttdeci">mlir::LogicalResult resetDMA(int col, int row, bool on)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00887">AIERT.cpp:887</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a7525a8007ae3f29ae0df9c360218d635"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a7525a8007ae3f29ae0df9c360218d635">xilinx::AIE::AIERTControl::configureSwitches</a></div><div class="ttdeci">mlir::LogicalResult configureSwitches(DeviceOp &amp;targetOp)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00654">AIERT.cpp:654</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a8168f88140eb6f0a13ac2543adb93a2c"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a8168f88140eb6f0a13ac2543adb93a2c">xilinx::AIE::AIERTControl::initBuffers</a></div><div class="ttdeci">mlir::LogicalResult initBuffers(DeviceOp &amp;targetOp)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00601">AIERT.cpp:601</a></div></div>
-<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a81d0f2f2fa5c80ae50c4209548c4bc09"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a81d0f2f2fa5c80ae50c4209548c4bc09">xilinx::AIE::AIERTControl::resetSwitch</a></div><div class="ttdeci">mlir::LogicalResult resetSwitch(int col, int row)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00919">AIERT.cpp:919</a></div></div>
-<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a883ba9656452fd957af84b9d292e5f35"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a883ba9656452fd957af84b9d292e5f35">xilinx::AIE::AIERTControl::addCoreEnable</a></div><div class="ttdeci">mlir::LogicalResult addCoreEnable(DeviceOp &amp;targetOp)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00861">AIERT.cpp:861</a></div></div>
-<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a89952dfd7513794e5238bdd29fa2d9e5"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a89952dfd7513794e5238bdd29fa2d9e5">xilinx::AIE::AIERTControl::resetSwitchConnection</a></div><div class="ttdeci">mlir::LogicalResult resetSwitchConnection(int col, int row, WireBundle sourceBundle, int sourceChannel, WireBundle destBundle, int destChannel)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00965">AIERT.cpp:965</a></div></div>
-<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_aaab9ae93bd2d13122545fe3cc874b253"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#aaab9ae93bd2d13122545fe3cc874b253">xilinx::AIE::AIERTControl::addAieElf</a></div><div class="ttdeci">mlir::LogicalResult addAieElf(uint8_t col, uint8_t row, const mlir::StringRef elfPath, bool aieSim)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00874">AIERT.cpp:874</a></div></div>
+<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a81d0f2f2fa5c80ae50c4209548c4bc09"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a81d0f2f2fa5c80ae50c4209548c4bc09">xilinx::AIE::AIERTControl::resetSwitch</a></div><div class="ttdeci">mlir::LogicalResult resetSwitch(int col, int row)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00905">AIERT.cpp:905</a></div></div>
+<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a883ba9656452fd957af84b9d292e5f35"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a883ba9656452fd957af84b9d292e5f35">xilinx::AIE::AIERTControl::addCoreEnable</a></div><div class="ttdeci">mlir::LogicalResult addCoreEnable(DeviceOp &amp;targetOp)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00847">AIERT.cpp:847</a></div></div>
+<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_a89952dfd7513794e5238bdd29fa2d9e5"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#a89952dfd7513794e5238bdd29fa2d9e5">xilinx::AIE::AIERTControl::resetSwitchConnection</a></div><div class="ttdeci">mlir::LogicalResult resetSwitchConnection(int col, int row, WireBundle sourceBundle, int sourceChannel, WireBundle destBundle, int destChannel)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00951">AIERT.cpp:951</a></div></div>
+<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_aaab9ae93bd2d13122545fe3cc874b253"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#aaab9ae93bd2d13122545fe3cc874b253">xilinx::AIE::AIERTControl::addAieElf</a></div><div class="ttdeci">mlir::LogicalResult addAieElf(uint8_t col, uint8_t row, const mlir::StringRef elfPath, bool aieSim)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00860">AIERT.cpp:860</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_ab9c69d104943b827f5fd82b83f14a4e9"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#ab9c69d104943b827f5fd82b83f14a4e9">xilinx::AIE::AIERTControl::~AIERTControl</a></div><div class="ttdeci">~AIERTControl()</div></div>
-<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_abb8f00f569770d3ed487624204a5d66f"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#abb8f00f569770d3ed487624204a5d66f">xilinx::AIE::AIERTControl::recordTxnLocRange</a></div><div class="ttdeci">void recordTxnLocRange(uint32_t startCmds, uint32_t endCmds, mlir::Location loc)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l01092">AIERT.cpp:1092</a></div></div>
-<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_ac18f68c5215d2c81ccc5c5e7e67545f6"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#ac18f68c5215d2c81ccc5c5e7e67545f6">xilinx::AIE::AIERTControl::getTxnInstrLocs</a></div><div class="ttdeci">const std::vector&lt; mlir::Location &gt; &amp; getTxnInstrLocs() const</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l01084">AIERT.cpp:1084</a></div></div>
+<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_abb8f00f569770d3ed487624204a5d66f"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#abb8f00f569770d3ed487624204a5d66f">xilinx::AIE::AIERTControl::recordTxnLocRange</a></div><div class="ttdeci">void recordTxnLocRange(uint32_t startCmds, uint32_t endCmds, mlir::Location loc)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l01078">AIERT.cpp:1078</a></div></div>
+<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_ac18f68c5215d2c81ccc5c5e7e67545f6"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#ac18f68c5215d2c81ccc5c5e7e67545f6">xilinx::AIE::AIERTControl::getTxnInstrLocs</a></div><div class="ttdeci">const std::vector&lt; mlir::Location &gt; &amp; getTxnInstrLocs() const</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l01070">AIERT.cpp:1070</a></div></div>
 <div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_acd6c1981a15d78b28981ec06ef3aef17"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#acd6c1981a15d78b28981ec06ef3aef17">xilinx::AIE::AIERTControl::configureLocksAndBd</a></div><div class="ttdeci">mlir::LogicalResult configureLocksAndBd(mlir::Block &amp;block, int col, int row)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00546">AIERT.cpp:546</a></div></div>
-<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_ad5650b16d9c1d71f34a0f9af2b9a0675"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#ad5650b16d9c1d71f34a0f9af2b9a0675">xilinx::AIE::AIERTControl::addInitConfig</a></div><div class="ttdeci">mlir::LogicalResult addInitConfig(DeviceOp &amp;targetOp)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00789">AIERT.cpp:789</a></div></div>
-<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_ae9b6adc3957465a4cbbb4f947e13fbcc"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#ae9b6adc3957465a4cbbb4f947e13fbcc">xilinx::AIE::AIERTControl::resetLock</a></div><div class="ttdeci">mlir::LogicalResult resetLock(int col, int row, int lockId)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00953">AIERT.cpp:953</a></div></div>
+<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_ad5650b16d9c1d71f34a0f9af2b9a0675"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#ad5650b16d9c1d71f34a0f9af2b9a0675">xilinx::AIE::AIERTControl::addInitConfig</a></div><div class="ttdeci">mlir::LogicalResult addInitConfig(DeviceOp &amp;targetOp)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00775">AIERT.cpp:775</a></div></div>
+<div class="ttc" id="astructxilinx_1_1AIE_1_1AIERTControl_html_ae9b6adc3957465a4cbbb4f947e13fbcc"><div class="ttname"><a href="structxilinx_1_1AIE_1_1AIERTControl.html#ae9b6adc3957465a4cbbb4f947e13fbcc">xilinx::AIE::AIERTControl::resetLock</a></div><div class="ttdeci">mlir::LogicalResult resetLock(int col, int row, int lockId)</div><div class="ttdef"><b>Definition</b> <a href="AIERT_8cpp_source.html#l00939">AIERT.cpp:939</a></div></div>
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Wed Jul 1 2026 14:14:33 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Wed Jul 1 2026 14:57:52 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

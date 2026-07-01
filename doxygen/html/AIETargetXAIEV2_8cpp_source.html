@@ -678,281 +678,238 @@ $(document).ready(function() { init_codefold(0); });
 <div class="line"><a id="l00618" name="l00618"></a><span class="lineno">  618</span>        output &lt;&lt; <span class="stringliteral">&quot;x = &quot;</span> &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> &lt;&lt; <span class="stringliteral">&quot;;\n&quot;</span>;</div>
 <div class="line"><a id="l00619" name="l00619"></a><span class="lineno">  619</span>        output &lt;&lt; <span class="stringliteral">&quot;y = &quot;</span> &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> &lt;&lt; <span class="stringliteral">&quot;;\n&quot;</span>;</div>
 <div class="line"><a id="l00620" name="l00620"></a><span class="lineno">  620</span>      }</div>
-<div class="line"><a id="l00621" name="l00621"></a><span class="lineno">  621</span>    } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (<span class="keyword">auto</span> sel =</div>
-<div class="line"><a id="l00622" name="l00622"></a><span class="lineno">  622</span>                   dyn_cast&lt;SelectOp&gt;(switchboxOp.getTile().getDefiningOp())) {</div>
-<div class="line"><a id="l00623" name="l00623"></a><span class="lineno">  623</span>      <span class="comment">// parameterize streamswitch&#39;s configuration</span></div>
-<div class="line"><a id="l00624" name="l00624"></a><span class="lineno">  624</span>      isParam = <span class="keyword">true</span>;</div>
-<div class="line"><a id="l00625" name="l00625"></a><span class="lineno">  625</span>      HerdOp sourceHerd = cast&lt;HerdOp&gt;(sel.getStartHerd().getDefiningOp());</div>
-<div class="line"><a id="l00626" name="l00626"></a><span class="lineno">  626</span>      std::string sourceHerdName(sourceHerd.name().getValue());</div>
-<div class="line"><a id="l00627" name="l00627"></a><span class="lineno">  627</span> </div>
-<div class="line"><a id="l00628" name="l00628"></a><span class="lineno">  628</span>      IterOp iterX = cast&lt;IterOp&gt;(sel.getIterX().getDefiningOp());</div>
-<div class="line"><a id="l00629" name="l00629"></a><span class="lineno">  629</span>      IterOp iterY = cast&lt;IterOp&gt;(sel.getIterY().getDefiningOp());</div>
-<div class="line"><a id="l00630" name="l00630"></a><span class="lineno">  630</span>      <span class="keywordtype">int</span> startXValue = iterX.getStartValue();</div>
-<div class="line"><a id="l00631" name="l00631"></a><span class="lineno">  631</span>      <span class="keywordtype">int</span> endXValue = iterX.getEndValue();</div>
-<div class="line"><a id="l00632" name="l00632"></a><span class="lineno">  632</span>      <span class="keywordtype">int</span> strideXValue = iterX.getStrideValue();</div>
-<div class="line"><a id="l00633" name="l00633"></a><span class="lineno">  633</span>      <span class="keywordtype">int</span> startYValue = iterY.getStartValue();</div>
-<div class="line"><a id="l00634" name="l00634"></a><span class="lineno">  634</span>      <span class="keywordtype">int</span> endYValue = iterY.getEndValue();</div>
-<div class="line"><a id="l00635" name="l00635"></a><span class="lineno">  635</span>      <span class="keywordtype">int</span> strideYValue = iterY.getStrideValue();</div>
-<div class="line"><a id="l00636" name="l00636"></a><span class="lineno">  636</span> </div>
-<div class="line"><a id="l00637" name="l00637"></a><span class="lineno">  637</span>      std::string startX(sourceHerdName + <span class="stringliteral">&quot;_X + &quot;</span> +</div>
-<div class="line"><a id="l00638" name="l00638"></a><span class="lineno">  638</span>                         std::to_string(startXValue));</div>
-<div class="line"><a id="l00639" name="l00639"></a><span class="lineno">  639</span>      std::string endX(sourceHerdName + <span class="stringliteral">&quot;_X + &quot;</span> + std::to_string(endXValue));</div>
-<div class="line"><a id="l00640" name="l00640"></a><span class="lineno">  640</span>      std::string startY(sourceHerdName + <span class="stringliteral">&quot;_Y + &quot;</span> +</div>
-<div class="line"><a id="l00641" name="l00641"></a><span class="lineno">  641</span>                         std::to_string(startYValue));</div>
-<div class="line"><a id="l00642" name="l00642"></a><span class="lineno">  642</span>      std::string endY(sourceHerdName + <span class="stringliteral">&quot;_Y + &quot;</span> + std::to_string(endYValue));</div>
-<div class="line"><a id="l00643" name="l00643"></a><span class="lineno">  643</span> </div>
-<div class="line"><a id="l00644" name="l00644"></a><span class="lineno">  644</span>      output &lt;&lt; <span class="stringliteral">&quot;for (x = &quot;</span> &lt;&lt; startX &lt;&lt; <span class="stringliteral">&quot;; x &lt; &quot;</span> &lt;&lt; endX</div>
-<div class="line"><a id="l00645" name="l00645"></a><span class="lineno">  645</span>             &lt;&lt; <span class="stringliteral">&quot;; x += &quot;</span> &lt;&lt; strideXValue &lt;&lt; <span class="stringliteral">&quot;) {\n&quot;</span>;</div>
-<div class="line"><a id="l00646" name="l00646"></a><span class="lineno">  646</span>      output &lt;&lt; <span class="stringliteral">&quot;for (y = &quot;</span> &lt;&lt; startY &lt;&lt; <span class="stringliteral">&quot;; y &lt; &quot;</span> &lt;&lt; endY</div>
-<div class="line"><a id="l00647" name="l00647"></a><span class="lineno">  647</span>             &lt;&lt; <span class="stringliteral">&quot;; y += &quot;</span> &lt;&lt; strideYValue &lt;&lt; <span class="stringliteral">&quot;) {\n&quot;</span>;</div>
-<div class="line"><a id="l00648" name="l00648"></a><span class="lineno">  648</span>    }</div>
-<div class="line"><a id="l00649" name="l00649"></a><span class="lineno">  649</span> </div>
-<div class="line"><a id="l00650" name="l00650"></a><span class="lineno">  650</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> connectOp : b.getOps&lt;ConnectOp&gt;())</div>
-<div class="line"><a id="l00651" name="l00651"></a><span class="lineno">  651</span>      output &lt;&lt; <span class="stringliteral">&quot;__mlir_aie_try(XAie_StrmConnCctEnable(&quot;</span> &lt;&lt; deviceInstRef</div>
-<div class="line"><a id="l00652" name="l00652"></a><span class="lineno">  652</span>             &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#ae14e8fe582d4030c4301417b2fefa59f">tileLocStr</a>(<span class="stringliteral">&quot;x&quot;</span>, <span class="stringliteral">&quot;y&quot;</span>) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
-<div class="line"><a id="l00653" name="l00653"></a><span class="lineno">  653</span>             &lt;&lt; wireBundleToPortType(connectOp.getSourceBundle()) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
-<div class="line"><a id="l00654" name="l00654"></a><span class="lineno">  654</span>             &lt;&lt; connectOp.sourceIndex() &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
-<div class="line"><a id="l00655" name="l00655"></a><span class="lineno">  655</span>             &lt;&lt; wireBundleToPortType(connectOp.getDestBundle()) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
-<div class="line"><a id="l00656" name="l00656"></a><span class="lineno">  656</span>             &lt;&lt; connectOp.destIndex() &lt;&lt; <span class="stringliteral">&quot;));\n&quot;</span>;</div>
-<div class="line"><a id="l00657" name="l00657"></a><span class="lineno">  657</span> </div>
-<div class="line"><a id="l00658" name="l00658"></a><span class="lineno">  658</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> connectOp : b.getOps&lt;MasterSetOp&gt;()) {</div>
-<div class="line"><a id="l00659" name="l00659"></a><span class="lineno">  659</span>      <span class="keywordtype">int</span> mask = 0;</div>
-<div class="line"><a id="l00660" name="l00660"></a><span class="lineno">  660</span>      <span class="keywordtype">int</span> arbiter = -1;</div>
-<div class="line"><a id="l00661" name="l00661"></a><span class="lineno">  661</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> val : connectOp.getAmsels()) {</div>
-<div class="line"><a id="l00662" name="l00662"></a><span class="lineno">  662</span>        AMSelOp amsel = cast&lt;AMSelOp&gt;(val.getDefiningOp());</div>
-<div class="line"><a id="l00663" name="l00663"></a><span class="lineno">  663</span>        arbiter = amsel.arbiterIndex();</div>
-<div class="line"><a id="l00664" name="l00664"></a><span class="lineno">  664</span>        <span class="keywordtype">int</span> msel = amsel.getMselValue();</div>
-<div class="line"><a id="l00665" name="l00665"></a><span class="lineno">  665</span>        mask |= (1 &lt;&lt; msel);</div>
-<div class="line"><a id="l00666" name="l00666"></a><span class="lineno">  666</span>      }</div>
-<div class="line"><a id="l00667" name="l00667"></a><span class="lineno">  667</span>      <span class="keywordtype">bool</span> isdma = (connectOp.getDestBundle() == WireBundle::DMA);</div>
-<div class="line"><a id="l00668" name="l00668"></a><span class="lineno">  668</span> </div>
-<div class="line"><a id="l00669" name="l00669"></a><span class="lineno">  669</span>      output &lt;&lt; <span class="stringliteral">&quot;__mlir_aie_try(XAie_StrmPktSwMstrPortEnable(&quot;</span> &lt;&lt; deviceInstRef</div>
-<div class="line"><a id="l00670" name="l00670"></a><span class="lineno">  670</span>             &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#ae14e8fe582d4030c4301417b2fefa59f">tileLocStr</a>(<span class="stringliteral">&quot;x&quot;</span>, <span class="stringliteral">&quot;y&quot;</span>) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
-<div class="line"><a id="l00671" name="l00671"></a><span class="lineno">  671</span>             &lt;&lt; wireBundleToPortType(connectOp.getDestBundle()) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
-<div class="line"><a id="l00672" name="l00672"></a><span class="lineno">  672</span>             &lt;&lt; connectOp.destIndex() &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
-<div class="line"><a id="l00673" name="l00673"></a><span class="lineno">  673</span>             &lt;&lt; <span class="stringliteral">&quot;/* drop_header */ &quot;</span></div>
-<div class="line"><a id="l00674" name="l00674"></a><span class="lineno">  674</span>             &lt;&lt; (isdma ? <span class="stringliteral">&quot;XAIE_SS_PKT_DROP_HEADER&quot;</span></div>
-<div class="line"><a id="l00675" name="l00675"></a><span class="lineno">  675</span>                       : <span class="stringliteral">&quot;XAIE_SS_PKT_DONOT_DROP_HEADER&quot;</span>)</div>
-<div class="line"><a id="l00676" name="l00676"></a><span class="lineno">  676</span>             &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
-<div class="line"><a id="l00677" name="l00677"></a><span class="lineno">  677</span>             &lt;&lt; <span class="stringliteral">&quot;/* arbiter */ &quot;</span> &lt;&lt; arbiter &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
-<div class="line"><a id="l00678" name="l00678"></a><span class="lineno">  678</span>             &lt;&lt; <span class="stringliteral">&quot;/* MSelEn */ &quot;</span></div>
-<div class="line"><a id="l00679" name="l00679"></a><span class="lineno">  679</span>             &lt;&lt; <span class="stringliteral">&quot;0x&quot;</span> &lt;&lt; llvm::utohexstr(mask) &lt;&lt; <span class="stringliteral">&quot;));\n&quot;</span>;</div>
-<div class="line"><a id="l00680" name="l00680"></a><span class="lineno">  680</span>    }</div>
-<div class="line"><a id="l00681" name="l00681"></a><span class="lineno">  681</span> </div>
-<div class="line"><a id="l00682" name="l00682"></a><span class="lineno">  682</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> connectOp : b.getOps&lt;PacketRulesOp&gt;()) {</div>
-<div class="line"><a id="l00683" name="l00683"></a><span class="lineno">  683</span>      <span class="keywordtype">int</span> slot = 0;</div>
-<div class="line"><a id="l00684" name="l00684"></a><span class="lineno">  684</span>      Block &amp;block = connectOp.getRules().front();</div>
-<div class="line"><a id="l00685" name="l00685"></a><span class="lineno">  685</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> slotOp : block.getOps&lt;PacketRuleOp&gt;()) {</div>
-<div class="line"><a id="l00686" name="l00686"></a><span class="lineno">  686</span>        AMSelOp amselOp = cast&lt;AMSelOp&gt;(slotOp.getAmsel().getDefiningOp());</div>
-<div class="line"><a id="l00687" name="l00687"></a><span class="lineno">  687</span>        <span class="keywordtype">int</span> arbiter = amselOp.arbiterIndex();</div>
-<div class="line"><a id="l00688" name="l00688"></a><span class="lineno">  688</span>        <span class="keywordtype">int</span> msel = amselOp.getMselValue();</div>
-<div class="line"><a id="l00689" name="l00689"></a><span class="lineno">  689</span>        output &lt;&lt; <span class="stringliteral">&quot;__mlir_aie_try(XAie_StrmPktSwSlavePortEnable(&quot;</span></div>
-<div class="line"><a id="l00690" name="l00690"></a><span class="lineno">  690</span>               &lt;&lt; deviceInstRef &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#ae14e8fe582d4030c4301417b2fefa59f">tileLocStr</a>(<span class="stringliteral">&quot;x&quot;</span>, <span class="stringliteral">&quot;y&quot;</span>) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
-<div class="line"><a id="l00691" name="l00691"></a><span class="lineno">  691</span>               &lt;&lt; wireBundleToPortType(connectOp.getSourceBundle()) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
-<div class="line"><a id="l00692" name="l00692"></a><span class="lineno">  692</span>               &lt;&lt; connectOp.sourceIndex() &lt;&lt; <span class="stringliteral">&quot;));\n&quot;</span>;</div>
-<div class="line"><a id="l00693" name="l00693"></a><span class="lineno">  693</span> </div>
-<div class="line"><a id="l00694" name="l00694"></a><span class="lineno">  694</span>        <span class="comment">// TODO Need to better define packet id,type used here</span></div>
-<div class="line"><a id="l00695" name="l00695"></a><span class="lineno">  695</span>        output &lt;&lt; <span class="stringliteral">&quot;__mlir_aie_try(XAie_StrmPktSwSlaveSlotEnable(&quot;</span></div>
-<div class="line"><a id="l00696" name="l00696"></a><span class="lineno">  696</span>               &lt;&lt; deviceInstRef &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#ae14e8fe582d4030c4301417b2fefa59f">tileLocStr</a>(<span class="stringliteral">&quot;x&quot;</span>, <span class="stringliteral">&quot;y&quot;</span>) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
-<div class="line"><a id="l00697" name="l00697"></a><span class="lineno">  697</span>               &lt;&lt; wireBundleToPortType(connectOp.getSourceBundle()) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
-<div class="line"><a id="l00698" name="l00698"></a><span class="lineno">  698</span>               &lt;&lt; connectOp.sourceIndex() &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
-<div class="line"><a id="l00699" name="l00699"></a><span class="lineno">  699</span>               &lt;&lt; <span class="stringliteral">&quot;/* slot */ &quot;</span> &lt;&lt; slot &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
-<div class="line"><a id="l00700" name="l00700"></a><span class="lineno">  700</span>               &lt;&lt; <span class="stringliteral">&quot;/* packet */ &quot;</span> &lt;&lt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#ae7117415c2852a94ffab918d367229c5">packetStr</a>(slotOp.valueInt(), <span class="comment">/*type*/</span> 0)</div>
-<div class="line"><a id="l00701" name="l00701"></a><span class="lineno">  701</span>               &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
-<div class="line"><a id="l00702" name="l00702"></a><span class="lineno">  702</span>               &lt;&lt; <span class="stringliteral">&quot;/* mask */ &quot;</span></div>
-<div class="line"><a id="l00703" name="l00703"></a><span class="lineno">  703</span>               &lt;&lt; <span class="stringliteral">&quot;0x&quot;</span> &lt;&lt; llvm::utohexstr(slotOp.maskInt()) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
-<div class="line"><a id="l00704" name="l00704"></a><span class="lineno">  704</span>               &lt;&lt; <span class="stringliteral">&quot;/* msel */ &quot;</span> &lt;&lt; msel &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
-<div class="line"><a id="l00705" name="l00705"></a><span class="lineno">  705</span>               &lt;&lt; <span class="stringliteral">&quot;/* arbiter */ &quot;</span> &lt;&lt; arbiter &lt;&lt; <span class="stringliteral">&quot;));\n&quot;</span>;</div>
-<div class="line"><a id="l00706" name="l00706"></a><span class="lineno">  706</span>        slot++;</div>
-<div class="line"><a id="l00707" name="l00707"></a><span class="lineno">  707</span>      }</div>
-<div class="line"><a id="l00708" name="l00708"></a><span class="lineno">  708</span>    }</div>
-<div class="line"><a id="l00709" name="l00709"></a><span class="lineno">  709</span> </div>
-<div class="line"><a id="l00710" name="l00710"></a><span class="lineno">  710</span>    <span class="keywordflow">if</span> (isParam) {</div>
-<div class="line"><a id="l00711" name="l00711"></a><span class="lineno">  711</span>      output &lt;&lt; <span class="stringliteral">&quot;}\n&quot;</span>;</div>
-<div class="line"><a id="l00712" name="l00712"></a><span class="lineno">  712</span>      output &lt;&lt; <span class="stringliteral">&quot;}\n&quot;</span>;</div>
-<div class="line"><a id="l00713" name="l00713"></a><span class="lineno">  713</span>    }</div>
-<div class="line"><a id="l00714" name="l00714"></a><span class="lineno">  714</span>  }</div>
-<div class="line"><a id="l00715" name="l00715"></a><span class="lineno">  715</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> op : targetOp.getOps&lt;ShimMuxOp&gt;()) {</div>
-<div class="line"><a id="l00716" name="l00716"></a><span class="lineno">  716</span>    Region &amp;r = op.getConnections();</div>
-<div class="line"><a id="l00717" name="l00717"></a><span class="lineno">  717</span>    Block &amp;b = r.front();</div>
-<div class="line"><a id="l00718" name="l00718"></a><span class="lineno">  718</span>    <span class="keywordtype">bool</span> isEmpty = b.getOps&lt;ConnectOp&gt;().<a class="code hl_function" href="namespacecxxopts.html#a3ffde9e4565bba175bd56c06c0f99162">empty</a>();</div>
-<div class="line"><a id="l00719" name="l00719"></a><span class="lineno">  719</span> </div>
-<div class="line"><a id="l00720" name="l00720"></a><span class="lineno">  720</span>    <span class="keywordflow">if</span> (isa&lt;TileOp&gt;(op.getTile().getDefiningOp())) {</div>
-<div class="line"><a id="l00721" name="l00721"></a><span class="lineno">  721</span>      <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = op.colIndex();</div>
-<div class="line"><a id="l00722" name="l00722"></a><span class="lineno">  722</span>      <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> = op.rowIndex();</div>
-<div class="line"><a id="l00723" name="l00723"></a><span class="lineno">  723</span>      <span class="keywordflow">if</span> (!isEmpty) {</div>
-<div class="line"><a id="l00724" name="l00724"></a><span class="lineno">  724</span>        output &lt;&lt; <span class="stringliteral">&quot;// ShimMux column &quot;</span> &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> &lt;&lt; <span class="stringliteral">&quot; row &quot;</span> &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> &lt;&lt; <span class="stringliteral">&quot;\n&quot;</span>;</div>
-<div class="line"><a id="l00725" name="l00725"></a><span class="lineno">  725</span>        output &lt;&lt; <span class="stringliteral">&quot;// NOTE ShimMux always connects from the south as &quot;</span></div>
-<div class="line"><a id="l00726" name="l00726"></a><span class="lineno">  726</span>               &lt;&lt; <span class="stringliteral">&quot;directions are defined relative to the tile stream &quot;</span></div>
-<div class="line"><a id="l00727" name="l00727"></a><span class="lineno">  727</span>               &lt;&lt; <span class="stringliteral">&quot;switch\n&quot;</span>;</div>
-<div class="line"><a id="l00728" name="l00728"></a><span class="lineno">  728</span>        output &lt;&lt; <span class="stringliteral">&quot;x = &quot;</span> &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> &lt;&lt; <span class="stringliteral">&quot;;\n&quot;</span>;</div>
-<div class="line"><a id="l00729" name="l00729"></a><span class="lineno">  729</span>        output &lt;&lt; <span class="stringliteral">&quot;y = &quot;</span> &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> &lt;&lt; <span class="stringliteral">&quot;;\n&quot;</span>;</div>
-<div class="line"><a id="l00730" name="l00730"></a><span class="lineno">  730</span>      }</div>
-<div class="line"><a id="l00731" name="l00731"></a><span class="lineno">  731</span>    }</div>
-<div class="line"><a id="l00732" name="l00732"></a><span class="lineno">  732</span> </div>
-<div class="line"><a id="l00733" name="l00733"></a><span class="lineno">  733</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> connectOp : b.getOps&lt;ConnectOp&gt;()) {</div>
-<div class="line"><a id="l00734" name="l00734"></a><span class="lineno">  734</span> </div>
-<div class="line"><a id="l00735" name="l00735"></a><span class="lineno">  735</span>      <span class="keywordflow">if</span> (connectOp.getSourceBundle() == WireBundle::DMA ||</div>
-<div class="line"><a id="l00736" name="l00736"></a><span class="lineno">  736</span>          connectOp.getDestBundle() == WireBundle::DMA) {</div>
-<div class="line"><a id="l00737" name="l00737"></a><span class="lineno">  737</span>        <span class="keywordflow">if</span> (connectOp.getSourceBundle() == WireBundle::North)</div>
-<div class="line"><a id="l00738" name="l00738"></a><span class="lineno">  738</span>          <span class="comment">// demux!</span></div>
-<div class="line"><a id="l00739" name="l00739"></a><span class="lineno">  739</span>          output &lt;&lt; <span class="stringliteral">&quot;__mlir_aie_try(XAie_EnableAieToShimDmaStrmPort(&quot;</span></div>
-<div class="line"><a id="l00740" name="l00740"></a><span class="lineno">  740</span>                 &lt;&lt; deviceInstRef &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#ae14e8fe582d4030c4301417b2fefa59f">tileLocStr</a>(<span class="stringliteral">&quot;x&quot;</span>, <span class="stringliteral">&quot;y&quot;</span>) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
-<div class="line"><a id="l00741" name="l00741"></a><span class="lineno">  741</span>                 &lt;&lt; connectOp.sourceIndex() &lt;&lt; <span class="stringliteral">&quot;));\n&quot;</span>;</div>
-<div class="line"><a id="l00742" name="l00742"></a><span class="lineno">  742</span>        <span class="keywordflow">else</span> <span class="keywordflow">if</span> (connectOp.getDestBundle() == WireBundle::North)</div>
-<div class="line"><a id="l00743" name="l00743"></a><span class="lineno">  743</span>          <span class="comment">// mux</span></div>
-<div class="line"><a id="l00744" name="l00744"></a><span class="lineno">  744</span>          output &lt;&lt; <span class="stringliteral">&quot;__mlir_aie_try(XAie_EnableShimDmaToAieStrmPort(&quot;</span></div>
-<div class="line"><a id="l00745" name="l00745"></a><span class="lineno">  745</span>                 &lt;&lt; deviceInstRef &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#ae14e8fe582d4030c4301417b2fefa59f">tileLocStr</a>(<span class="stringliteral">&quot;x&quot;</span>, <span class="stringliteral">&quot;y&quot;</span>) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
-<div class="line"><a id="l00746" name="l00746"></a><span class="lineno">  746</span>                 &lt;&lt; connectOp.destIndex() &lt;&lt; <span class="stringliteral">&quot;));\n&quot;</span>;</div>
-<div class="line"><a id="l00747" name="l00747"></a><span class="lineno">  747</span>      }</div>
-<div class="line"><a id="l00748" name="l00748"></a><span class="lineno">  748</span> </div>
-<div class="line"><a id="l00749" name="l00749"></a><span class="lineno">  749</span>      <span class="keywordflow">else</span> <span class="keywordflow">if</span> (connectOp.getSourceBundle() == WireBundle::PLIO ||</div>
-<div class="line"><a id="l00750" name="l00750"></a><span class="lineno">  750</span>               connectOp.getDestBundle() == WireBundle::PLIO) {</div>
-<div class="line"><a id="l00751" name="l00751"></a><span class="lineno">  751</span>        <span class="keywordflow">if</span> (connectOp.getSourceBundle() == WireBundle::North) {</div>
-<div class="line"><a id="l00752" name="l00752"></a><span class="lineno">  752</span>          <span class="comment">// mux</span></div>
-<div class="line"><a id="l00753" name="l00753"></a><span class="lineno">  753</span>          output &lt;&lt; <span class="stringliteral">&quot;__mlir_aie_try(XAie_AieToPlIntfEnable(&quot;</span> &lt;&lt; deviceInstRef</div>
-<div class="line"><a id="l00754" name="l00754"></a><span class="lineno">  754</span>                 &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#ae14e8fe582d4030c4301417b2fefa59f">tileLocStr</a>(<span class="stringliteral">&quot;x&quot;</span>, <span class="stringliteral">&quot;y&quot;</span>) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
-<div class="line"><a id="l00755" name="l00755"></a><span class="lineno">  755</span>                 &lt;&lt; connectOp.destIndex() &lt;&lt; <span class="stringliteral">&quot;, PLIF_WIDTH_64));\n&quot;</span>;</div>
-<div class="line"><a id="l00756" name="l00756"></a><span class="lineno">  756</span>        } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (connectOp.getDestBundle() == WireBundle::North) {</div>
-<div class="line"><a id="l00757" name="l00757"></a><span class="lineno">  757</span>          <span class="comment">// mux</span></div>
-<div class="line"><a id="l00758" name="l00758"></a><span class="lineno">  758</span>          output &lt;&lt; <span class="stringliteral">&quot;__mlir_aie_try(XAie_PlToAieIntfEnable(&quot;</span> &lt;&lt; deviceInstRef</div>
-<div class="line"><a id="l00759" name="l00759"></a><span class="lineno">  759</span>                 &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#ae14e8fe582d4030c4301417b2fefa59f">tileLocStr</a>(<span class="stringliteral">&quot;x&quot;</span>, <span class="stringliteral">&quot;y&quot;</span>) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
-<div class="line"><a id="l00760" name="l00760"></a><span class="lineno">  760</span>                 &lt;&lt; connectOp.destIndex() &lt;&lt; <span class="stringliteral">&quot;, PLIF_WIDTH_64));\n&quot;</span>;</div>
-<div class="line"><a id="l00761" name="l00761"></a><span class="lineno">  761</span>        }</div>
-<div class="line"><a id="l00762" name="l00762"></a><span class="lineno">  762</span>      }</div>
-<div class="line"><a id="l00763" name="l00763"></a><span class="lineno">  763</span>    }</div>
-<div class="line"><a id="l00764" name="l00764"></a><span class="lineno">  764</span>  }</div>
-<div class="line"><a id="l00765" name="l00765"></a><span class="lineno">  765</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> switchboxOp : targetOp.getOps&lt;ShimSwitchboxOp&gt;()) {</div>
-<div class="line"><a id="l00766" name="l00766"></a><span class="lineno">  766</span>    Region &amp;r = switchboxOp.getConnections();</div>
-<div class="line"><a id="l00767" name="l00767"></a><span class="lineno">  767</span>    Block &amp;b = r.front();</div>
-<div class="line"><a id="l00768" name="l00768"></a><span class="lineno">  768</span>    <span class="keywordtype">bool</span> isEmpty = b.getOps&lt;ConnectOp&gt;().<a class="code hl_function" href="namespacecxxopts.html#a3ffde9e4565bba175bd56c06c0f99162">empty</a>();</div>
-<div class="line"><a id="l00769" name="l00769"></a><span class="lineno">  769</span>    <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = switchboxOp.getCol();</div>
-<div class="line"><a id="l00770" name="l00770"></a><span class="lineno">  770</span>    <span class="keywordflow">if</span> (!isEmpty)</div>
-<div class="line"><a id="l00771" name="l00771"></a><span class="lineno">  771</span>      output &lt;&lt; <span class="stringliteral">&quot;// Shim Switch column &quot;</span> &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> &lt;&lt; <span class="stringliteral">&quot;\n&quot;</span>;</div>
-<div class="line"><a id="l00772" name="l00772"></a><span class="lineno">  772</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> connectOp : b.getOps&lt;ConnectOp&gt;())</div>
-<div class="line"><a id="l00773" name="l00773"></a><span class="lineno">  773</span>      output &lt;&lt; <span class="stringliteral">&quot;__mlir_aie_try(XAie_StrmConnCctEnable(&quot;</span> &lt;&lt; deviceInstRef</div>
-<div class="line"><a id="l00774" name="l00774"></a><span class="lineno">  774</span>             &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#ae14e8fe582d4030c4301417b2fefa59f">tileLocStr</a>(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, 0) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
-<div class="line"><a id="l00775" name="l00775"></a><span class="lineno">  775</span>             &lt;&lt; wireBundleToPortType(connectOp.getSourceBundle()) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
-<div class="line"><a id="l00776" name="l00776"></a><span class="lineno">  776</span>             &lt;&lt; connectOp.sourceIndex() &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
-<div class="line"><a id="l00777" name="l00777"></a><span class="lineno">  777</span>             &lt;&lt; wireBundleToPortType(connectOp.getDestBundle()) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
-<div class="line"><a id="l00778" name="l00778"></a><span class="lineno">  778</span>             &lt;&lt; connectOp.destIndex() &lt;&lt; <span class="stringliteral">&quot;));\n&quot;</span>;</div>
-<div class="line"><a id="l00779" name="l00779"></a><span class="lineno">  779</span>  }</div>
-<div class="line"><a id="l00780" name="l00780"></a><span class="lineno">  780</span> </div>
-<div class="line"><a id="l00781" name="l00781"></a><span class="lineno">  781</span>  output &lt;&lt; <span class="stringliteral">&quot;return XAIE_OK;\n&quot;</span>;</div>
-<div class="line"><a id="l00782" name="l00782"></a><span class="lineno">  782</span>  output &lt;&lt; <span class="stringliteral">&quot;} // mlir_aie_configure_switchboxes\n\n&quot;</span>;</div>
-<div class="line"><a id="l00783" name="l00783"></a><span class="lineno">  783</span> </div>
-<div class="line"><a id="l00784" name="l00784"></a><span class="lineno">  784</span>  <span class="comment">//---------------------------------------------------------------------------</span></div>
-<div class="line"><a id="l00785" name="l00785"></a><span class="lineno">  785</span>  <span class="comment">// mlir_aie_configure_cascade</span></div>
-<div class="line"><a id="l00786" name="l00786"></a><span class="lineno">  786</span>  <span class="comment">//---------------------------------------------------------------------------</span></div>
-<div class="line"><a id="l00787" name="l00787"></a><span class="lineno">  787</span>  output &lt;&lt; <span class="stringliteral">&quot;int mlir_aie_configure_cascade(&quot;</span> &lt;&lt; ctx_p &lt;&lt; <span class="stringliteral">&quot;) {\n&quot;</span>;</div>
-<div class="line"><a id="l00788" name="l00788"></a><span class="lineno">  788</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> configOp : targetOp.getOps&lt;ConfigureCascadeOp&gt;()) {</div>
-<div class="line"><a id="l00789" name="l00789"></a><span class="lineno">  789</span>    TileOp tile = cast&lt;TileOp&gt;(configOp.getTile().getDefiningOp());</div>
-<div class="line"><a id="l00790" name="l00790"></a><span class="lineno">  790</span>    <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = tile.colIndex();</div>
-<div class="line"><a id="l00791" name="l00791"></a><span class="lineno">  791</span>    <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> = tile.rowIndex();</div>
-<div class="line"><a id="l00792" name="l00792"></a><span class="lineno">  792</span>    output &lt;&lt; <span class="stringliteral">&quot;XAie_CoreConfigAccumulatorControl(&quot;</span> &lt;&lt; deviceInstRef &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
-<div class="line"><a id="l00793" name="l00793"></a><span class="lineno">  793</span>           &lt;&lt; <span class="stringliteral">&quot;XAie_TileLoc(&quot;</span> &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> &lt;&lt; <span class="stringliteral">&quot;), &quot;</span></div>
-<div class="line"><a id="l00794" name="l00794"></a><span class="lineno">  794</span>           &lt;&lt; stringifyCascadeDir(configOp.getInputDir()).upper() &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
-<div class="line"><a id="l00795" name="l00795"></a><span class="lineno">  795</span>           &lt;&lt; stringifyCascadeDir(configOp.getOutputDir()).upper() &lt;&lt; <span class="stringliteral">&quot;);\n&quot;</span>;</div>
-<div class="line"><a id="l00796" name="l00796"></a><span class="lineno">  796</span>  }</div>
-<div class="line"><a id="l00797" name="l00797"></a><span class="lineno">  797</span>  output &lt;&lt; <span class="stringliteral">&quot;return XAIE_OK;\n&quot;</span>;</div>
-<div class="line"><a id="l00798" name="l00798"></a><span class="lineno">  798</span>  output &lt;&lt; <span class="stringliteral">&quot;} // mlir_aie_configure_cascade\n\n&quot;</span>;</div>
-<div class="line"><a id="l00799" name="l00799"></a><span class="lineno">  799</span> </div>
-<div class="line"><a id="l00800" name="l00800"></a><span class="lineno">  800</span>  <span class="comment">//---------------------------------------------------------------------------</span></div>
-<div class="line"><a id="l00801" name="l00801"></a><span class="lineno">  801</span>  <span class="comment">// Output Buffer Accessors</span></div>
-<div class="line"><a id="l00802" name="l00802"></a><span class="lineno">  802</span>  <span class="comment">//---------------------------------------------------------------------------</span></div>
-<div class="line"><a id="l00803" name="l00803"></a><span class="lineno">  803</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> tile : tiles) {</div>
-<div class="line"><a id="l00804" name="l00804"></a><span class="lineno">  804</span>    Operation *tileOp = tile.second;</div>
-<div class="line"><a id="l00805" name="l00805"></a><span class="lineno">  805</span>    <a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> coord = cast&lt;TileOp&gt;(tileOp).getTileID();</div>
-<div class="line"><a id="l00806" name="l00806"></a><span class="lineno">  806</span>    <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = coord.col;</div>
-<div class="line"><a id="l00807" name="l00807"></a><span class="lineno">  807</span>    <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> = coord.row;</div>
-<div class="line"><a id="l00808" name="l00808"></a><span class="lineno">  808</span>    <span class="keyword">auto</span> loc = <a class="code hl_function" href="namespacexilinx_1_1AIE.html#ae14e8fe582d4030c4301417b2fefa59f">tileLocStr</a>(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>);</div>
-<div class="line"><a id="l00809" name="l00809"></a><span class="lineno">  809</span> </div>
-<div class="line"><a id="l00810" name="l00810"></a><span class="lineno">  810</span>    <span class="keyword">auto</span> bufferAccessor = [&amp;](BufferOp buf) {</div>
-<div class="line"><a id="l00811" name="l00811"></a><span class="lineno">  811</span>      <span class="comment">// int32_t mlir_aie_read_buffer_a13(int index) {</span></div>
-<div class="line"><a id="l00812" name="l00812"></a><span class="lineno">  812</span>      <span class="comment">// void mlir_aie_write_buffer_a13(int index, int32_t value) {</span></div>
-<div class="line"><a id="l00813" name="l00813"></a><span class="lineno">  813</span>      std::string bufName(buf.name().getValue());</div>
-<div class="line"><a id="l00814" name="l00814"></a><span class="lineno">  814</span>      Type t = buf.getType();</div>
-<div class="line"><a id="l00815" name="l00815"></a><span class="lineno">  815</span>      Type et;</div>
-<div class="line"><a id="l00816" name="l00816"></a><span class="lineno">  816</span>      std::string typestr;</div>
-<div class="line"><a id="l00817" name="l00817"></a><span class="lineno">  817</span>      <span class="keywordflow">if</span> (<span class="keyword">auto</span> memrefType = llvm::dyn_cast&lt;MemRefType&gt;(t)) {</div>
-<div class="line"><a id="l00818" name="l00818"></a><span class="lineno">  818</span>        et = memrefType.getElementType();</div>
-<div class="line"><a id="l00819" name="l00819"></a><span class="lineno">  819</span>        <span class="keywordflow">if</span> (et.isInteger(32))</div>
-<div class="line"><a id="l00820" name="l00820"></a><span class="lineno">  820</span>          typestr = <span class="stringliteral">&quot;int32_t&quot;</span>;</div>
-<div class="line"><a id="l00821" name="l00821"></a><span class="lineno">  821</span>        <span class="keywordflow">else</span> <span class="keywordflow">if</span> (et.isF32())</div>
-<div class="line"><a id="l00822" name="l00822"></a><span class="lineno">  822</span>          typestr = <span class="stringliteral">&quot;float&quot;</span>;</div>
-<div class="line"><a id="l00823" name="l00823"></a><span class="lineno">  823</span>        <span class="keywordflow">else</span> {</div>
-<div class="line"><a id="l00824" name="l00824"></a><span class="lineno">  824</span>          output &lt;&lt; <span class="stringliteral">&quot;// buffer &quot;</span> &lt;&lt; bufName &lt;&lt; <span class="stringliteral">&quot; with unsupported type &quot;</span> &lt;&lt; t</div>
-<div class="line"><a id="l00825" name="l00825"></a><span class="lineno">  825</span>                 &lt;&lt; <span class="stringliteral">&quot;;\n&quot;</span>;</div>
-<div class="line"><a id="l00826" name="l00826"></a><span class="lineno">  826</span>          <span class="keywordflow">return</span>; <span class="comment">// Unsupported type</span></div>
-<div class="line"><a id="l00827" name="l00827"></a><span class="lineno">  827</span>        }</div>
-<div class="line"><a id="l00828" name="l00828"></a><span class="lineno">  828</span> </div>
-<div class="line"><a id="l00829" name="l00829"></a><span class="lineno">  829</span>      } <span class="keywordflow">else</span> {</div>
-<div class="line"><a id="l00830" name="l00830"></a><span class="lineno">  830</span>        output &lt;&lt; <span class="stringliteral">&quot;// buffer &quot;</span> &lt;&lt; bufName &lt;&lt; <span class="stringliteral">&quot; with unsupported type &quot;</span> &lt;&lt; t</div>
-<div class="line"><a id="l00831" name="l00831"></a><span class="lineno">  831</span>               &lt;&lt; <span class="stringliteral">&quot;;\n&quot;</span>;</div>
-<div class="line"><a id="l00832" name="l00832"></a><span class="lineno">  832</span>        <span class="keywordflow">return</span>; <span class="comment">// Unsupported type</span></div>
-<div class="line"><a id="l00833" name="l00833"></a><span class="lineno">  833</span>      }</div>
-<div class="line"><a id="l00834" name="l00834"></a><span class="lineno">  834</span>      assert(buf.getAddress().has_value() &amp;&amp; <span class="stringliteral">&quot;buffer must have address&quot;</span>);</div>
-<div class="line"><a id="l00835" name="l00835"></a><span class="lineno">  835</span>      output &lt;&lt; <span class="stringliteral">&quot;const int &quot;</span> &lt;&lt; bufName</div>
-<div class="line"><a id="l00836" name="l00836"></a><span class="lineno">  836</span>             &lt;&lt; <span class="stringliteral">&quot;_offset = &quot;</span> &lt;&lt; buf.getAddress().value() &lt;&lt; <span class="stringliteral">&quot;;\n&quot;</span>;</div>
-<div class="line"><a id="l00837" name="l00837"></a><span class="lineno">  837</span>      output &lt;&lt; typestr &lt;&lt; <span class="stringliteral">&quot; mlir_aie_read_buffer_&quot;</span> &lt;&lt; bufName &lt;&lt; <span class="stringliteral">&quot;(&quot;</span> &lt;&lt; ctx_p</div>
-<div class="line"><a id="l00838" name="l00838"></a><span class="lineno">  838</span>             &lt;&lt; <span class="stringliteral">&quot;, int index) {\n&quot;</span>;</div>
-<div class="line"><a id="l00839" name="l00839"></a><span class="lineno">  839</span>      output &lt;&lt; <span class="stringliteral">&quot;u32 value; auto rc = XAie_DataMemRdWord(&quot;</span> &lt;&lt; deviceInstRef</div>
-<div class="line"><a id="l00840" name="l00840"></a><span class="lineno">  840</span>             &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; loc &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; bufName</div>
-<div class="line"><a id="l00841" name="l00841"></a><span class="lineno">  841</span>             &lt;&lt; <span class="stringliteral">&quot;_offset + (index*4), &amp;value);\n&quot;</span>;</div>
-<div class="line"><a id="l00842" name="l00842"></a><span class="lineno">  842</span>      <span class="keywordflow">if</span> (et.isInteger(32))</div>
-<div class="line"><a id="l00843" name="l00843"></a><span class="lineno">  843</span>        output &lt;&lt; <span class="stringliteral">&quot;  return value;\n&quot;</span>;</div>
-<div class="line"><a id="l00844" name="l00844"></a><span class="lineno">  844</span>      <span class="keywordflow">else</span> <span class="keywordflow">if</span> (et.isF32()) {</div>
-<div class="line"><a id="l00845" name="l00845"></a><span class="lineno">  845</span>        output &lt;&lt; <span class="stringliteral">&quot;  union caster { int32_t i; float f; };\n&quot;</span>;</div>
-<div class="line"><a id="l00846" name="l00846"></a><span class="lineno">  846</span>        output &lt;&lt; <span class="stringliteral">&quot;  caster c; c.i = value;\n&quot;</span>;</div>
-<div class="line"><a id="l00847" name="l00847"></a><span class="lineno">  847</span>        output &lt;&lt; <span class="stringliteral">&quot;  return c.f;\n&quot;</span>;</div>
-<div class="line"><a id="l00848" name="l00848"></a><span class="lineno">  848</span>      }</div>
-<div class="line"><a id="l00849" name="l00849"></a><span class="lineno">  849</span>      output &lt;&lt; <span class="stringliteral">&quot;}\n&quot;</span>;</div>
-<div class="line"><a id="l00850" name="l00850"></a><span class="lineno">  850</span>      output &lt;&lt; <span class="stringliteral">&quot;int mlir_aie_write_buffer_&quot;</span> &lt;&lt; bufName &lt;&lt; <span class="stringliteral">&quot;(&quot;</span> &lt;&lt; ctx_p</div>
-<div class="line"><a id="l00851" name="l00851"></a><span class="lineno">  851</span>             &lt;&lt; <span class="stringliteral">&quot;, int index, &quot;</span> &lt;&lt; typestr &lt;&lt; <span class="stringliteral">&quot; value) {\n&quot;</span>;</div>
-<div class="line"><a id="l00852" name="l00852"></a><span class="lineno">  852</span>      <span class="keywordflow">if</span> (et.isInteger(32))</div>
-<div class="line"><a id="l00853" name="l00853"></a><span class="lineno">  853</span>        output &lt;&lt; <span class="stringliteral">&quot;  int32_t int_value = value;\n&quot;</span>;</div>
-<div class="line"><a id="l00854" name="l00854"></a><span class="lineno">  854</span>      <span class="keywordflow">else</span> <span class="keywordflow">if</span> (et.isF32()) {</div>
-<div class="line"><a id="l00855" name="l00855"></a><span class="lineno">  855</span>        output &lt;&lt; <span class="stringliteral">&quot;  union caster { int32_t i; float f; };\n&quot;</span>;</div>
-<div class="line"><a id="l00856" name="l00856"></a><span class="lineno">  856</span>        output &lt;&lt; <span class="stringliteral">&quot;  caster c; c.f = value;\n&quot;</span>;</div>
-<div class="line"><a id="l00857" name="l00857"></a><span class="lineno">  857</span>        output &lt;&lt; <span class="stringliteral">&quot;  int32_t int_value = c.i;\n&quot;</span>;</div>
-<div class="line"><a id="l00858" name="l00858"></a><span class="lineno">  858</span>      }</div>
-<div class="line"><a id="l00859" name="l00859"></a><span class="lineno">  859</span>      output &lt;&lt; <span class="stringliteral">&quot;AieRC rc =    XAie_DataMemWrWord(&quot;</span> &lt;&lt; deviceInstRef &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
-<div class="line"><a id="l00860" name="l00860"></a><span class="lineno">  860</span>             &lt;&lt; loc &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; bufName &lt;&lt; <span class="stringliteral">&quot;_offset + (index*4), int_value);\n&quot;</span>;</div>
-<div class="line"><a id="l00861" name="l00861"></a><span class="lineno">  861</span>      output &lt;&lt; <span class="stringliteral">&quot;return rc;\n&quot;</span>;</div>
-<div class="line"><a id="l00862" name="l00862"></a><span class="lineno">  862</span>      output &lt;&lt; <span class="stringliteral">&quot;}\n&quot;</span>;</div>
-<div class="line"><a id="l00863" name="l00863"></a><span class="lineno">  863</span>    };</div>
-<div class="line"><a id="l00864" name="l00864"></a><span class="lineno">  864</span> </div>
-<div class="line"><a id="l00865" name="l00865"></a><span class="lineno">  865</span>    <span class="comment">// if(tiles.count(tile.getValue()))</span></div>
-<div class="line"><a id="l00866" name="l00866"></a><span class="lineno">  866</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> buf : buffers[tileOp])</div>
-<div class="line"><a id="l00867" name="l00867"></a><span class="lineno">  867</span>      bufferAccessor(buf);</div>
-<div class="line"><a id="l00868" name="l00868"></a><span class="lineno">  868</span>  }</div>
-<div class="line"><a id="l00869" name="l00869"></a><span class="lineno">  869</span> </div>
-<div class="line"><a id="l00870" name="l00870"></a><span class="lineno">  870</span>  <span class="keyword">auto</span> lockAccessor = [&amp;](LockOp lock) {</div>
-<div class="line"><a id="l00871" name="l00871"></a><span class="lineno">  871</span>    <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = lock.colIndex();</div>
-<div class="line"><a id="l00872" name="l00872"></a><span class="lineno">  872</span>    <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> = lock.rowIndex();</div>
-<div class="line"><a id="l00873" name="l00873"></a><span class="lineno">  873</span>    <span class="keywordflow">if</span> (!lock.hasName())</div>
-<div class="line"><a id="l00874" name="l00874"></a><span class="lineno">  874</span>      <span class="keywordflow">return</span>;</div>
-<div class="line"><a id="l00875" name="l00875"></a><span class="lineno">  875</span>    std::string lockName(lock.name().getValue());</div>
-<div class="line"><a id="l00876" name="l00876"></a><span class="lineno">  876</span>    output &lt;&lt; <span class="stringliteral">&quot;int mlir_aie_acquire_&quot;</span> &lt;&lt; lockName &lt;&lt; <span class="stringliteral">&quot;(&quot;</span> &lt;&lt; ctx_p</div>
-<div class="line"><a id="l00877" name="l00877"></a><span class="lineno">  877</span>           &lt;&lt; <span class="stringliteral">&quot;, int value, int timeout) {\n&quot;</span>;</div>
-<div class="line"><a id="l00878" name="l00878"></a><span class="lineno">  878</span>    output &lt;&lt; <span class="stringliteral">&quot;  const int id = &quot;</span> &lt;&lt; lock.getLockIDValue() &lt;&lt; <span class="stringliteral">&quot;;\n&quot;</span>;</div>
-<div class="line"><a id="l00879" name="l00879"></a><span class="lineno">  879</span>    output &lt;&lt; <span class="stringliteral">&quot;  return XAie_LockAcquire(&quot;</span> &lt;&lt; deviceInstRef &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
-<div class="line"><a id="l00880" name="l00880"></a><span class="lineno">  880</span>           &lt;&lt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#ae14e8fe582d4030c4301417b2fefa59f">tileLocStr</a>(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; tileLockStr(<span class="stringliteral">&quot;id&quot;</span>, <span class="stringliteral">&quot;value&quot;</span>)</div>
-<div class="line"><a id="l00881" name="l00881"></a><span class="lineno">  881</span>           &lt;&lt; <span class="stringliteral">&quot;, timeout);\n&quot;</span>;</div>
-<div class="line"><a id="l00882" name="l00882"></a><span class="lineno">  882</span>    output &lt;&lt; <span class="stringliteral">&quot;}\n&quot;</span>;</div>
-<div class="line"><a id="l00883" name="l00883"></a><span class="lineno">  883</span>    output &lt;&lt; <span class="stringliteral">&quot;int mlir_aie_release_&quot;</span> &lt;&lt; lockName &lt;&lt; <span class="stringliteral">&quot;(&quot;</span> &lt;&lt; ctx_p</div>
-<div class="line"><a id="l00884" name="l00884"></a><span class="lineno">  884</span>           &lt;&lt; <span class="stringliteral">&quot;, int value, int timeout) {\n&quot;</span>;</div>
-<div class="line"><a id="l00885" name="l00885"></a><span class="lineno">  885</span>    output &lt;&lt; <span class="stringliteral">&quot;  const int id = &quot;</span> &lt;&lt; lock.getLockIDValue() &lt;&lt; <span class="stringliteral">&quot;;\n&quot;</span>;</div>
-<div class="line"><a id="l00886" name="l00886"></a><span class="lineno">  886</span>    output &lt;&lt; <span class="stringliteral">&quot;  return XAie_LockRelease(&quot;</span> &lt;&lt; deviceInstRef &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
-<div class="line"><a id="l00887" name="l00887"></a><span class="lineno">  887</span>           &lt;&lt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#ae14e8fe582d4030c4301417b2fefa59f">tileLocStr</a>(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; tileLockStr(<span class="stringliteral">&quot;id&quot;</span>, <span class="stringliteral">&quot;value&quot;</span>)</div>
-<div class="line"><a id="l00888" name="l00888"></a><span class="lineno">  888</span>           &lt;&lt; <span class="stringliteral">&quot;, timeout);\n&quot;</span>;</div>
-<div class="line"><a id="l00889" name="l00889"></a><span class="lineno">  889</span>    output &lt;&lt; <span class="stringliteral">&quot;}\n&quot;</span>;</div>
-<div class="line"><a id="l00890" name="l00890"></a><span class="lineno">  890</span>  };</div>
-<div class="line"><a id="l00891" name="l00891"></a><span class="lineno">  891</span> </div>
-<div class="line"><a id="l00892" name="l00892"></a><span class="lineno">  892</span>  targetOp.walk&lt;WalkOrder::PreOrder&gt;([&amp;](LockOp lock) { lockAccessor(lock); });</div>
-<div class="line"><a id="l00893" name="l00893"></a><span class="lineno">  893</span> </div>
-<div class="line"><a id="l00894" name="l00894"></a><span class="lineno">  894</span>  <span class="keywordflow">return</span> success();</div>
-<div class="line"><a id="l00895" name="l00895"></a><span class="lineno">  895</span>}</div>
+<div class="line"><a id="l00621" name="l00621"></a><span class="lineno">  621</span>    }</div>
+<div class="line"><a id="l00622" name="l00622"></a><span class="lineno">  622</span> </div>
+<div class="line"><a id="l00623" name="l00623"></a><span class="lineno">  623</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> connectOp : b.getOps&lt;ConnectOp&gt;())</div>
+<div class="line"><a id="l00624" name="l00624"></a><span class="lineno">  624</span>      output &lt;&lt; <span class="stringliteral">&quot;__mlir_aie_try(XAie_StrmConnCctEnable(&quot;</span> &lt;&lt; deviceInstRef</div>
+<div class="line"><a id="l00625" name="l00625"></a><span class="lineno">  625</span>             &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#ae14e8fe582d4030c4301417b2fefa59f">tileLocStr</a>(<span class="stringliteral">&quot;x&quot;</span>, <span class="stringliteral">&quot;y&quot;</span>) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
+<div class="line"><a id="l00626" name="l00626"></a><span class="lineno">  626</span>             &lt;&lt; wireBundleToPortType(connectOp.getSourceBundle()) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
+<div class="line"><a id="l00627" name="l00627"></a><span class="lineno">  627</span>             &lt;&lt; connectOp.sourceIndex() &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
+<div class="line"><a id="l00628" name="l00628"></a><span class="lineno">  628</span>             &lt;&lt; wireBundleToPortType(connectOp.getDestBundle()) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
+<div class="line"><a id="l00629" name="l00629"></a><span class="lineno">  629</span>             &lt;&lt; connectOp.destIndex() &lt;&lt; <span class="stringliteral">&quot;));\n&quot;</span>;</div>
+<div class="line"><a id="l00630" name="l00630"></a><span class="lineno">  630</span> </div>
+<div class="line"><a id="l00631" name="l00631"></a><span class="lineno">  631</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> connectOp : b.getOps&lt;MasterSetOp&gt;()) {</div>
+<div class="line"><a id="l00632" name="l00632"></a><span class="lineno">  632</span>      <span class="keywordtype">int</span> mask = 0;</div>
+<div class="line"><a id="l00633" name="l00633"></a><span class="lineno">  633</span>      <span class="keywordtype">int</span> arbiter = -1;</div>
+<div class="line"><a id="l00634" name="l00634"></a><span class="lineno">  634</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> val : connectOp.getAmsels()) {</div>
+<div class="line"><a id="l00635" name="l00635"></a><span class="lineno">  635</span>        AMSelOp amsel = cast&lt;AMSelOp&gt;(val.getDefiningOp());</div>
+<div class="line"><a id="l00636" name="l00636"></a><span class="lineno">  636</span>        arbiter = amsel.arbiterIndex();</div>
+<div class="line"><a id="l00637" name="l00637"></a><span class="lineno">  637</span>        <span class="keywordtype">int</span> msel = amsel.getMselValue();</div>
+<div class="line"><a id="l00638" name="l00638"></a><span class="lineno">  638</span>        mask |= (1 &lt;&lt; msel);</div>
+<div class="line"><a id="l00639" name="l00639"></a><span class="lineno">  639</span>      }</div>
+<div class="line"><a id="l00640" name="l00640"></a><span class="lineno">  640</span>      <span class="keywordtype">bool</span> isdma = (connectOp.getDestBundle() == WireBundle::DMA);</div>
+<div class="line"><a id="l00641" name="l00641"></a><span class="lineno">  641</span> </div>
+<div class="line"><a id="l00642" name="l00642"></a><span class="lineno">  642</span>      output &lt;&lt; <span class="stringliteral">&quot;__mlir_aie_try(XAie_StrmPktSwMstrPortEnable(&quot;</span> &lt;&lt; deviceInstRef</div>
+<div class="line"><a id="l00643" name="l00643"></a><span class="lineno">  643</span>             &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#ae14e8fe582d4030c4301417b2fefa59f">tileLocStr</a>(<span class="stringliteral">&quot;x&quot;</span>, <span class="stringliteral">&quot;y&quot;</span>) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
+<div class="line"><a id="l00644" name="l00644"></a><span class="lineno">  644</span>             &lt;&lt; wireBundleToPortType(connectOp.getDestBundle()) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
+<div class="line"><a id="l00645" name="l00645"></a><span class="lineno">  645</span>             &lt;&lt; connectOp.destIndex() &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
+<div class="line"><a id="l00646" name="l00646"></a><span class="lineno">  646</span>             &lt;&lt; <span class="stringliteral">&quot;/* drop_header */ &quot;</span></div>
+<div class="line"><a id="l00647" name="l00647"></a><span class="lineno">  647</span>             &lt;&lt; (isdma ? <span class="stringliteral">&quot;XAIE_SS_PKT_DROP_HEADER&quot;</span></div>
+<div class="line"><a id="l00648" name="l00648"></a><span class="lineno">  648</span>                       : <span class="stringliteral">&quot;XAIE_SS_PKT_DONOT_DROP_HEADER&quot;</span>)</div>
+<div class="line"><a id="l00649" name="l00649"></a><span class="lineno">  649</span>             &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
+<div class="line"><a id="l00650" name="l00650"></a><span class="lineno">  650</span>             &lt;&lt; <span class="stringliteral">&quot;/* arbiter */ &quot;</span> &lt;&lt; arbiter &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
+<div class="line"><a id="l00651" name="l00651"></a><span class="lineno">  651</span>             &lt;&lt; <span class="stringliteral">&quot;/* MSelEn */ &quot;</span></div>
+<div class="line"><a id="l00652" name="l00652"></a><span class="lineno">  652</span>             &lt;&lt; <span class="stringliteral">&quot;0x&quot;</span> &lt;&lt; llvm::utohexstr(mask) &lt;&lt; <span class="stringliteral">&quot;));\n&quot;</span>;</div>
+<div class="line"><a id="l00653" name="l00653"></a><span class="lineno">  653</span>    }</div>
+<div class="line"><a id="l00654" name="l00654"></a><span class="lineno">  654</span> </div>
+<div class="line"><a id="l00655" name="l00655"></a><span class="lineno">  655</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> connectOp : b.getOps&lt;PacketRulesOp&gt;()) {</div>
+<div class="line"><a id="l00656" name="l00656"></a><span class="lineno">  656</span>      <span class="keywordtype">int</span> slot = 0;</div>
+<div class="line"><a id="l00657" name="l00657"></a><span class="lineno">  657</span>      Block &amp;block = connectOp.getRules().front();</div>
+<div class="line"><a id="l00658" name="l00658"></a><span class="lineno">  658</span>      <span class="keywordflow">for</span> (<span class="keyword">auto</span> slotOp : block.getOps&lt;PacketRuleOp&gt;()) {</div>
+<div class="line"><a id="l00659" name="l00659"></a><span class="lineno">  659</span>        AMSelOp amselOp = cast&lt;AMSelOp&gt;(slotOp.getAmsel().getDefiningOp());</div>
+<div class="line"><a id="l00660" name="l00660"></a><span class="lineno">  660</span>        <span class="keywordtype">int</span> arbiter = amselOp.arbiterIndex();</div>
+<div class="line"><a id="l00661" name="l00661"></a><span class="lineno">  661</span>        <span class="keywordtype">int</span> msel = amselOp.getMselValue();</div>
+<div class="line"><a id="l00662" name="l00662"></a><span class="lineno">  662</span>        output &lt;&lt; <span class="stringliteral">&quot;__mlir_aie_try(XAie_StrmPktSwSlavePortEnable(&quot;</span></div>
+<div class="line"><a id="l00663" name="l00663"></a><span class="lineno">  663</span>               &lt;&lt; deviceInstRef &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#ae14e8fe582d4030c4301417b2fefa59f">tileLocStr</a>(<span class="stringliteral">&quot;x&quot;</span>, <span class="stringliteral">&quot;y&quot;</span>) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
+<div class="line"><a id="l00664" name="l00664"></a><span class="lineno">  664</span>               &lt;&lt; wireBundleToPortType(connectOp.getSourceBundle()) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
+<div class="line"><a id="l00665" name="l00665"></a><span class="lineno">  665</span>               &lt;&lt; connectOp.sourceIndex() &lt;&lt; <span class="stringliteral">&quot;));\n&quot;</span>;</div>
+<div class="line"><a id="l00666" name="l00666"></a><span class="lineno">  666</span> </div>
+<div class="line"><a id="l00667" name="l00667"></a><span class="lineno">  667</span>        <span class="comment">// TODO Need to better define packet id,type used here</span></div>
+<div class="line"><a id="l00668" name="l00668"></a><span class="lineno">  668</span>        output &lt;&lt; <span class="stringliteral">&quot;__mlir_aie_try(XAie_StrmPktSwSlaveSlotEnable(&quot;</span></div>
+<div class="line"><a id="l00669" name="l00669"></a><span class="lineno">  669</span>               &lt;&lt; deviceInstRef &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#ae14e8fe582d4030c4301417b2fefa59f">tileLocStr</a>(<span class="stringliteral">&quot;x&quot;</span>, <span class="stringliteral">&quot;y&quot;</span>) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
+<div class="line"><a id="l00670" name="l00670"></a><span class="lineno">  670</span>               &lt;&lt; wireBundleToPortType(connectOp.getSourceBundle()) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
+<div class="line"><a id="l00671" name="l00671"></a><span class="lineno">  671</span>               &lt;&lt; connectOp.sourceIndex() &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
+<div class="line"><a id="l00672" name="l00672"></a><span class="lineno">  672</span>               &lt;&lt; <span class="stringliteral">&quot;/* slot */ &quot;</span> &lt;&lt; slot &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
+<div class="line"><a id="l00673" name="l00673"></a><span class="lineno">  673</span>               &lt;&lt; <span class="stringliteral">&quot;/* packet */ &quot;</span> &lt;&lt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#ae7117415c2852a94ffab918d367229c5">packetStr</a>(slotOp.valueInt(), <span class="comment">/*type*/</span> 0)</div>
+<div class="line"><a id="l00674" name="l00674"></a><span class="lineno">  674</span>               &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
+<div class="line"><a id="l00675" name="l00675"></a><span class="lineno">  675</span>               &lt;&lt; <span class="stringliteral">&quot;/* mask */ &quot;</span></div>
+<div class="line"><a id="l00676" name="l00676"></a><span class="lineno">  676</span>               &lt;&lt; <span class="stringliteral">&quot;0x&quot;</span> &lt;&lt; llvm::utohexstr(slotOp.maskInt()) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
+<div class="line"><a id="l00677" name="l00677"></a><span class="lineno">  677</span>               &lt;&lt; <span class="stringliteral">&quot;/* msel */ &quot;</span> &lt;&lt; msel &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
+<div class="line"><a id="l00678" name="l00678"></a><span class="lineno">  678</span>               &lt;&lt; <span class="stringliteral">&quot;/* arbiter */ &quot;</span> &lt;&lt; arbiter &lt;&lt; <span class="stringliteral">&quot;));\n&quot;</span>;</div>
+<div class="line"><a id="l00679" name="l00679"></a><span class="lineno">  679</span>        slot++;</div>
+<div class="line"><a id="l00680" name="l00680"></a><span class="lineno">  680</span>      }</div>
+<div class="line"><a id="l00681" name="l00681"></a><span class="lineno">  681</span>    }</div>
+<div class="line"><a id="l00682" name="l00682"></a><span class="lineno">  682</span> </div>
+<div class="line"><a id="l00683" name="l00683"></a><span class="lineno">  683</span>    <span class="keywordflow">if</span> (isParam) {</div>
+<div class="line"><a id="l00684" name="l00684"></a><span class="lineno">  684</span>      output &lt;&lt; <span class="stringliteral">&quot;}\n&quot;</span>;</div>
+<div class="line"><a id="l00685" name="l00685"></a><span class="lineno">  685</span>      output &lt;&lt; <span class="stringliteral">&quot;}\n&quot;</span>;</div>
+<div class="line"><a id="l00686" name="l00686"></a><span class="lineno">  686</span>    }</div>
+<div class="line"><a id="l00687" name="l00687"></a><span class="lineno">  687</span>  }</div>
+<div class="line"><a id="l00688" name="l00688"></a><span class="lineno">  688</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> op : targetOp.getOps&lt;ShimMuxOp&gt;()) {</div>
+<div class="line"><a id="l00689" name="l00689"></a><span class="lineno">  689</span>    Region &amp;r = op.getConnections();</div>
+<div class="line"><a id="l00690" name="l00690"></a><span class="lineno">  690</span>    Block &amp;b = r.front();</div>
+<div class="line"><a id="l00691" name="l00691"></a><span class="lineno">  691</span>    <span class="keywordtype">bool</span> isEmpty = b.getOps&lt;ConnectOp&gt;().<a class="code hl_function" href="namespacecxxopts.html#a3ffde9e4565bba175bd56c06c0f99162">empty</a>();</div>
+<div class="line"><a id="l00692" name="l00692"></a><span class="lineno">  692</span> </div>
+<div class="line"><a id="l00693" name="l00693"></a><span class="lineno">  693</span>    <span class="keywordflow">if</span> (isa&lt;TileOp&gt;(op.getTile().getDefiningOp())) {</div>
+<div class="line"><a id="l00694" name="l00694"></a><span class="lineno">  694</span>      <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = op.colIndex();</div>
+<div class="line"><a id="l00695" name="l00695"></a><span class="lineno">  695</span>      <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> = op.rowIndex();</div>
+<div class="line"><a id="l00696" name="l00696"></a><span class="lineno">  696</span>      <span class="keywordflow">if</span> (!isEmpty) {</div>
+<div class="line"><a id="l00697" name="l00697"></a><span class="lineno">  697</span>        output &lt;&lt; <span class="stringliteral">&quot;// ShimMux column &quot;</span> &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> &lt;&lt; <span class="stringliteral">&quot; row &quot;</span> &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> &lt;&lt; <span class="stringliteral">&quot;\n&quot;</span>;</div>
+<div class="line"><a id="l00698" name="l00698"></a><span class="lineno">  698</span>        output &lt;&lt; <span class="stringliteral">&quot;// NOTE ShimMux always connects from the south as &quot;</span></div>
+<div class="line"><a id="l00699" name="l00699"></a><span class="lineno">  699</span>               &lt;&lt; <span class="stringliteral">&quot;directions are defined relative to the tile stream &quot;</span></div>
+<div class="line"><a id="l00700" name="l00700"></a><span class="lineno">  700</span>               &lt;&lt; <span class="stringliteral">&quot;switch\n&quot;</span>;</div>
+<div class="line"><a id="l00701" name="l00701"></a><span class="lineno">  701</span>        output &lt;&lt; <span class="stringliteral">&quot;x = &quot;</span> &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> &lt;&lt; <span class="stringliteral">&quot;;\n&quot;</span>;</div>
+<div class="line"><a id="l00702" name="l00702"></a><span class="lineno">  702</span>        output &lt;&lt; <span class="stringliteral">&quot;y = &quot;</span> &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> &lt;&lt; <span class="stringliteral">&quot;;\n&quot;</span>;</div>
+<div class="line"><a id="l00703" name="l00703"></a><span class="lineno">  703</span>      }</div>
+<div class="line"><a id="l00704" name="l00704"></a><span class="lineno">  704</span>    }</div>
+<div class="line"><a id="l00705" name="l00705"></a><span class="lineno">  705</span> </div>
+<div class="line"><a id="l00706" name="l00706"></a><span class="lineno">  706</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> connectOp : b.getOps&lt;ConnectOp&gt;()) {</div>
+<div class="line"><a id="l00707" name="l00707"></a><span class="lineno">  707</span> </div>
+<div class="line"><a id="l00708" name="l00708"></a><span class="lineno">  708</span>      <span class="keywordflow">if</span> (connectOp.getSourceBundle() == WireBundle::DMA ||</div>
+<div class="line"><a id="l00709" name="l00709"></a><span class="lineno">  709</span>          connectOp.getDestBundle() == WireBundle::DMA) {</div>
+<div class="line"><a id="l00710" name="l00710"></a><span class="lineno">  710</span>        <span class="keywordflow">if</span> (connectOp.getSourceBundle() == WireBundle::North)</div>
+<div class="line"><a id="l00711" name="l00711"></a><span class="lineno">  711</span>          <span class="comment">// demux!</span></div>
+<div class="line"><a id="l00712" name="l00712"></a><span class="lineno">  712</span>          output &lt;&lt; <span class="stringliteral">&quot;__mlir_aie_try(XAie_EnableAieToShimDmaStrmPort(&quot;</span></div>
+<div class="line"><a id="l00713" name="l00713"></a><span class="lineno">  713</span>                 &lt;&lt; deviceInstRef &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#ae14e8fe582d4030c4301417b2fefa59f">tileLocStr</a>(<span class="stringliteral">&quot;x&quot;</span>, <span class="stringliteral">&quot;y&quot;</span>) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
+<div class="line"><a id="l00714" name="l00714"></a><span class="lineno">  714</span>                 &lt;&lt; connectOp.sourceIndex() &lt;&lt; <span class="stringliteral">&quot;));\n&quot;</span>;</div>
+<div class="line"><a id="l00715" name="l00715"></a><span class="lineno">  715</span>        <span class="keywordflow">else</span> <span class="keywordflow">if</span> (connectOp.getDestBundle() == WireBundle::North)</div>
+<div class="line"><a id="l00716" name="l00716"></a><span class="lineno">  716</span>          <span class="comment">// mux</span></div>
+<div class="line"><a id="l00717" name="l00717"></a><span class="lineno">  717</span>          output &lt;&lt; <span class="stringliteral">&quot;__mlir_aie_try(XAie_EnableShimDmaToAieStrmPort(&quot;</span></div>
+<div class="line"><a id="l00718" name="l00718"></a><span class="lineno">  718</span>                 &lt;&lt; deviceInstRef &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#ae14e8fe582d4030c4301417b2fefa59f">tileLocStr</a>(<span class="stringliteral">&quot;x&quot;</span>, <span class="stringliteral">&quot;y&quot;</span>) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
+<div class="line"><a id="l00719" name="l00719"></a><span class="lineno">  719</span>                 &lt;&lt; connectOp.destIndex() &lt;&lt; <span class="stringliteral">&quot;));\n&quot;</span>;</div>
+<div class="line"><a id="l00720" name="l00720"></a><span class="lineno">  720</span>      }</div>
+<div class="line"><a id="l00721" name="l00721"></a><span class="lineno">  721</span> </div>
+<div class="line"><a id="l00722" name="l00722"></a><span class="lineno">  722</span>      <span class="keywordflow">else</span> <span class="keywordflow">if</span> (connectOp.getSourceBundle() == WireBundle::PLIO ||</div>
+<div class="line"><a id="l00723" name="l00723"></a><span class="lineno">  723</span>               connectOp.getDestBundle() == WireBundle::PLIO) {</div>
+<div class="line"><a id="l00724" name="l00724"></a><span class="lineno">  724</span>        <span class="keywordflow">if</span> (connectOp.getSourceBundle() == WireBundle::North) {</div>
+<div class="line"><a id="l00725" name="l00725"></a><span class="lineno">  725</span>          <span class="comment">// mux</span></div>
+<div class="line"><a id="l00726" name="l00726"></a><span class="lineno">  726</span>          output &lt;&lt; <span class="stringliteral">&quot;__mlir_aie_try(XAie_AieToPlIntfEnable(&quot;</span> &lt;&lt; deviceInstRef</div>
+<div class="line"><a id="l00727" name="l00727"></a><span class="lineno">  727</span>                 &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#ae14e8fe582d4030c4301417b2fefa59f">tileLocStr</a>(<span class="stringliteral">&quot;x&quot;</span>, <span class="stringliteral">&quot;y&quot;</span>) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
+<div class="line"><a id="l00728" name="l00728"></a><span class="lineno">  728</span>                 &lt;&lt; connectOp.destIndex() &lt;&lt; <span class="stringliteral">&quot;, PLIF_WIDTH_64));\n&quot;</span>;</div>
+<div class="line"><a id="l00729" name="l00729"></a><span class="lineno">  729</span>        } <span class="keywordflow">else</span> <span class="keywordflow">if</span> (connectOp.getDestBundle() == WireBundle::North) {</div>
+<div class="line"><a id="l00730" name="l00730"></a><span class="lineno">  730</span>          <span class="comment">// mux</span></div>
+<div class="line"><a id="l00731" name="l00731"></a><span class="lineno">  731</span>          output &lt;&lt; <span class="stringliteral">&quot;__mlir_aie_try(XAie_PlToAieIntfEnable(&quot;</span> &lt;&lt; deviceInstRef</div>
+<div class="line"><a id="l00732" name="l00732"></a><span class="lineno">  732</span>                 &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#ae14e8fe582d4030c4301417b2fefa59f">tileLocStr</a>(<span class="stringliteral">&quot;x&quot;</span>, <span class="stringliteral">&quot;y&quot;</span>) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
+<div class="line"><a id="l00733" name="l00733"></a><span class="lineno">  733</span>                 &lt;&lt; connectOp.destIndex() &lt;&lt; <span class="stringliteral">&quot;, PLIF_WIDTH_64));\n&quot;</span>;</div>
+<div class="line"><a id="l00734" name="l00734"></a><span class="lineno">  734</span>        }</div>
+<div class="line"><a id="l00735" name="l00735"></a><span class="lineno">  735</span>      }</div>
+<div class="line"><a id="l00736" name="l00736"></a><span class="lineno">  736</span>    }</div>
+<div class="line"><a id="l00737" name="l00737"></a><span class="lineno">  737</span>  }</div>
+<div class="line"><a id="l00738" name="l00738"></a><span class="lineno">  738</span>  output &lt;&lt; <span class="stringliteral">&quot;return XAIE_OK;\n&quot;</span>;</div>
+<div class="line"><a id="l00739" name="l00739"></a><span class="lineno">  739</span>  output &lt;&lt; <span class="stringliteral">&quot;} // mlir_aie_configure_switchboxes\n\n&quot;</span>;</div>
+<div class="line"><a id="l00740" name="l00740"></a><span class="lineno">  740</span> </div>
+<div class="line"><a id="l00741" name="l00741"></a><span class="lineno">  741</span>  <span class="comment">//---------------------------------------------------------------------------</span></div>
+<div class="line"><a id="l00742" name="l00742"></a><span class="lineno">  742</span>  <span class="comment">// mlir_aie_configure_cascade</span></div>
+<div class="line"><a id="l00743" name="l00743"></a><span class="lineno">  743</span>  <span class="comment">//---------------------------------------------------------------------------</span></div>
+<div class="line"><a id="l00744" name="l00744"></a><span class="lineno">  744</span>  output &lt;&lt; <span class="stringliteral">&quot;int mlir_aie_configure_cascade(&quot;</span> &lt;&lt; ctx_p &lt;&lt; <span class="stringliteral">&quot;) {\n&quot;</span>;</div>
+<div class="line"><a id="l00745" name="l00745"></a><span class="lineno">  745</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> configOp : targetOp.getOps&lt;ConfigureCascadeOp&gt;()) {</div>
+<div class="line"><a id="l00746" name="l00746"></a><span class="lineno">  746</span>    TileOp tile = cast&lt;TileOp&gt;(configOp.getTile().getDefiningOp());</div>
+<div class="line"><a id="l00747" name="l00747"></a><span class="lineno">  747</span>    <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = tile.colIndex();</div>
+<div class="line"><a id="l00748" name="l00748"></a><span class="lineno">  748</span>    <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> = tile.rowIndex();</div>
+<div class="line"><a id="l00749" name="l00749"></a><span class="lineno">  749</span>    output &lt;&lt; <span class="stringliteral">&quot;XAie_CoreConfigAccumulatorControl(&quot;</span> &lt;&lt; deviceInstRef &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
+<div class="line"><a id="l00750" name="l00750"></a><span class="lineno">  750</span>           &lt;&lt; <span class="stringliteral">&quot;XAie_TileLoc(&quot;</span> &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> &lt;&lt; <span class="stringliteral">&quot;), &quot;</span></div>
+<div class="line"><a id="l00751" name="l00751"></a><span class="lineno">  751</span>           &lt;&lt; stringifyCascadeDir(configOp.getInputDir()).upper() &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
+<div class="line"><a id="l00752" name="l00752"></a><span class="lineno">  752</span>           &lt;&lt; stringifyCascadeDir(configOp.getOutputDir()).upper() &lt;&lt; <span class="stringliteral">&quot;);\n&quot;</span>;</div>
+<div class="line"><a id="l00753" name="l00753"></a><span class="lineno">  753</span>  }</div>
+<div class="line"><a id="l00754" name="l00754"></a><span class="lineno">  754</span>  output &lt;&lt; <span class="stringliteral">&quot;return XAIE_OK;\n&quot;</span>;</div>
+<div class="line"><a id="l00755" name="l00755"></a><span class="lineno">  755</span>  output &lt;&lt; <span class="stringliteral">&quot;} // mlir_aie_configure_cascade\n\n&quot;</span>;</div>
+<div class="line"><a id="l00756" name="l00756"></a><span class="lineno">  756</span> </div>
+<div class="line"><a id="l00757" name="l00757"></a><span class="lineno">  757</span>  <span class="comment">//---------------------------------------------------------------------------</span></div>
+<div class="line"><a id="l00758" name="l00758"></a><span class="lineno">  758</span>  <span class="comment">// Output Buffer Accessors</span></div>
+<div class="line"><a id="l00759" name="l00759"></a><span class="lineno">  759</span>  <span class="comment">//---------------------------------------------------------------------------</span></div>
+<div class="line"><a id="l00760" name="l00760"></a><span class="lineno">  760</span>  <span class="keywordflow">for</span> (<span class="keyword">auto</span> tile : tiles) {</div>
+<div class="line"><a id="l00761" name="l00761"></a><span class="lineno">  761</span>    Operation *tileOp = tile.second;</div>
+<div class="line"><a id="l00762" name="l00762"></a><span class="lineno">  762</span>    <a class="code hl_typedef" href="namespacexilinx_1_1AIE.html#a5254f10e13189e4a0b14256c79305ec6">TileID</a> coord = cast&lt;TileOp&gt;(tileOp).getTileID();</div>
+<div class="line"><a id="l00763" name="l00763"></a><span class="lineno">  763</span>    <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = coord.col;</div>
+<div class="line"><a id="l00764" name="l00764"></a><span class="lineno">  764</span>    <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> = coord.row;</div>
+<div class="line"><a id="l00765" name="l00765"></a><span class="lineno">  765</span>    <span class="keyword">auto</span> loc = <a class="code hl_function" href="namespacexilinx_1_1AIE.html#ae14e8fe582d4030c4301417b2fefa59f">tileLocStr</a>(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>);</div>
+<div class="line"><a id="l00766" name="l00766"></a><span class="lineno">  766</span> </div>
+<div class="line"><a id="l00767" name="l00767"></a><span class="lineno">  767</span>    <span class="keyword">auto</span> bufferAccessor = [&amp;](BufferOp buf) {</div>
+<div class="line"><a id="l00768" name="l00768"></a><span class="lineno">  768</span>      <span class="comment">// int32_t mlir_aie_read_buffer_a13(int index) {</span></div>
+<div class="line"><a id="l00769" name="l00769"></a><span class="lineno">  769</span>      <span class="comment">// void mlir_aie_write_buffer_a13(int index, int32_t value) {</span></div>
+<div class="line"><a id="l00770" name="l00770"></a><span class="lineno">  770</span>      std::string bufName(buf.name().getValue());</div>
+<div class="line"><a id="l00771" name="l00771"></a><span class="lineno">  771</span>      Type t = buf.getType();</div>
+<div class="line"><a id="l00772" name="l00772"></a><span class="lineno">  772</span>      Type et;</div>
+<div class="line"><a id="l00773" name="l00773"></a><span class="lineno">  773</span>      std::string typestr;</div>
+<div class="line"><a id="l00774" name="l00774"></a><span class="lineno">  774</span>      <span class="keywordflow">if</span> (<span class="keyword">auto</span> memrefType = llvm::dyn_cast&lt;MemRefType&gt;(t)) {</div>
+<div class="line"><a id="l00775" name="l00775"></a><span class="lineno">  775</span>        et = memrefType.getElementType();</div>
+<div class="line"><a id="l00776" name="l00776"></a><span class="lineno">  776</span>        <span class="keywordflow">if</span> (et.isInteger(32))</div>
+<div class="line"><a id="l00777" name="l00777"></a><span class="lineno">  777</span>          typestr = <span class="stringliteral">&quot;int32_t&quot;</span>;</div>
+<div class="line"><a id="l00778" name="l00778"></a><span class="lineno">  778</span>        <span class="keywordflow">else</span> <span class="keywordflow">if</span> (et.isF32())</div>
+<div class="line"><a id="l00779" name="l00779"></a><span class="lineno">  779</span>          typestr = <span class="stringliteral">&quot;float&quot;</span>;</div>
+<div class="line"><a id="l00780" name="l00780"></a><span class="lineno">  780</span>        <span class="keywordflow">else</span> {</div>
+<div class="line"><a id="l00781" name="l00781"></a><span class="lineno">  781</span>          output &lt;&lt; <span class="stringliteral">&quot;// buffer &quot;</span> &lt;&lt; bufName &lt;&lt; <span class="stringliteral">&quot; with unsupported type &quot;</span> &lt;&lt; t</div>
+<div class="line"><a id="l00782" name="l00782"></a><span class="lineno">  782</span>                 &lt;&lt; <span class="stringliteral">&quot;;\n&quot;</span>;</div>
+<div class="line"><a id="l00783" name="l00783"></a><span class="lineno">  783</span>          <span class="keywordflow">return</span>; <span class="comment">// Unsupported type</span></div>
+<div class="line"><a id="l00784" name="l00784"></a><span class="lineno">  784</span>        }</div>
+<div class="line"><a id="l00785" name="l00785"></a><span class="lineno">  785</span> </div>
+<div class="line"><a id="l00786" name="l00786"></a><span class="lineno">  786</span>      } <span class="keywordflow">else</span> {</div>
+<div class="line"><a id="l00787" name="l00787"></a><span class="lineno">  787</span>        output &lt;&lt; <span class="stringliteral">&quot;// buffer &quot;</span> &lt;&lt; bufName &lt;&lt; <span class="stringliteral">&quot; with unsupported type &quot;</span> &lt;&lt; t</div>
+<div class="line"><a id="l00788" name="l00788"></a><span class="lineno">  788</span>               &lt;&lt; <span class="stringliteral">&quot;;\n&quot;</span>;</div>
+<div class="line"><a id="l00789" name="l00789"></a><span class="lineno">  789</span>        <span class="keywordflow">return</span>; <span class="comment">// Unsupported type</span></div>
+<div class="line"><a id="l00790" name="l00790"></a><span class="lineno">  790</span>      }</div>
+<div class="line"><a id="l00791" name="l00791"></a><span class="lineno">  791</span>      assert(buf.getAddress().has_value() &amp;&amp; <span class="stringliteral">&quot;buffer must have address&quot;</span>);</div>
+<div class="line"><a id="l00792" name="l00792"></a><span class="lineno">  792</span>      output &lt;&lt; <span class="stringliteral">&quot;const int &quot;</span> &lt;&lt; bufName</div>
+<div class="line"><a id="l00793" name="l00793"></a><span class="lineno">  793</span>             &lt;&lt; <span class="stringliteral">&quot;_offset = &quot;</span> &lt;&lt; buf.getAddress().value() &lt;&lt; <span class="stringliteral">&quot;;\n&quot;</span>;</div>
+<div class="line"><a id="l00794" name="l00794"></a><span class="lineno">  794</span>      output &lt;&lt; typestr &lt;&lt; <span class="stringliteral">&quot; mlir_aie_read_buffer_&quot;</span> &lt;&lt; bufName &lt;&lt; <span class="stringliteral">&quot;(&quot;</span> &lt;&lt; ctx_p</div>
+<div class="line"><a id="l00795" name="l00795"></a><span class="lineno">  795</span>             &lt;&lt; <span class="stringliteral">&quot;, int index) {\n&quot;</span>;</div>
+<div class="line"><a id="l00796" name="l00796"></a><span class="lineno">  796</span>      output &lt;&lt; <span class="stringliteral">&quot;u32 value; auto rc = XAie_DataMemRdWord(&quot;</span> &lt;&lt; deviceInstRef</div>
+<div class="line"><a id="l00797" name="l00797"></a><span class="lineno">  797</span>             &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; loc &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; bufName</div>
+<div class="line"><a id="l00798" name="l00798"></a><span class="lineno">  798</span>             &lt;&lt; <span class="stringliteral">&quot;_offset + (index*4), &amp;value);\n&quot;</span>;</div>
+<div class="line"><a id="l00799" name="l00799"></a><span class="lineno">  799</span>      <span class="keywordflow">if</span> (et.isInteger(32))</div>
+<div class="line"><a id="l00800" name="l00800"></a><span class="lineno">  800</span>        output &lt;&lt; <span class="stringliteral">&quot;  return value;\n&quot;</span>;</div>
+<div class="line"><a id="l00801" name="l00801"></a><span class="lineno">  801</span>      <span class="keywordflow">else</span> <span class="keywordflow">if</span> (et.isF32()) {</div>
+<div class="line"><a id="l00802" name="l00802"></a><span class="lineno">  802</span>        output &lt;&lt; <span class="stringliteral">&quot;  union caster { int32_t i; float f; };\n&quot;</span>;</div>
+<div class="line"><a id="l00803" name="l00803"></a><span class="lineno">  803</span>        output &lt;&lt; <span class="stringliteral">&quot;  caster c; c.i = value;\n&quot;</span>;</div>
+<div class="line"><a id="l00804" name="l00804"></a><span class="lineno">  804</span>        output &lt;&lt; <span class="stringliteral">&quot;  return c.f;\n&quot;</span>;</div>
+<div class="line"><a id="l00805" name="l00805"></a><span class="lineno">  805</span>      }</div>
+<div class="line"><a id="l00806" name="l00806"></a><span class="lineno">  806</span>      output &lt;&lt; <span class="stringliteral">&quot;}\n&quot;</span>;</div>
+<div class="line"><a id="l00807" name="l00807"></a><span class="lineno">  807</span>      output &lt;&lt; <span class="stringliteral">&quot;int mlir_aie_write_buffer_&quot;</span> &lt;&lt; bufName &lt;&lt; <span class="stringliteral">&quot;(&quot;</span> &lt;&lt; ctx_p</div>
+<div class="line"><a id="l00808" name="l00808"></a><span class="lineno">  808</span>             &lt;&lt; <span class="stringliteral">&quot;, int index, &quot;</span> &lt;&lt; typestr &lt;&lt; <span class="stringliteral">&quot; value) {\n&quot;</span>;</div>
+<div class="line"><a id="l00809" name="l00809"></a><span class="lineno">  809</span>      <span class="keywordflow">if</span> (et.isInteger(32))</div>
+<div class="line"><a id="l00810" name="l00810"></a><span class="lineno">  810</span>        output &lt;&lt; <span class="stringliteral">&quot;  int32_t int_value = value;\n&quot;</span>;</div>
+<div class="line"><a id="l00811" name="l00811"></a><span class="lineno">  811</span>      <span class="keywordflow">else</span> <span class="keywordflow">if</span> (et.isF32()) {</div>
+<div class="line"><a id="l00812" name="l00812"></a><span class="lineno">  812</span>        output &lt;&lt; <span class="stringliteral">&quot;  union caster { int32_t i; float f; };\n&quot;</span>;</div>
+<div class="line"><a id="l00813" name="l00813"></a><span class="lineno">  813</span>        output &lt;&lt; <span class="stringliteral">&quot;  caster c; c.f = value;\n&quot;</span>;</div>
+<div class="line"><a id="l00814" name="l00814"></a><span class="lineno">  814</span>        output &lt;&lt; <span class="stringliteral">&quot;  int32_t int_value = c.i;\n&quot;</span>;</div>
+<div class="line"><a id="l00815" name="l00815"></a><span class="lineno">  815</span>      }</div>
+<div class="line"><a id="l00816" name="l00816"></a><span class="lineno">  816</span>      output &lt;&lt; <span class="stringliteral">&quot;AieRC rc =    XAie_DataMemWrWord(&quot;</span> &lt;&lt; deviceInstRef &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
+<div class="line"><a id="l00817" name="l00817"></a><span class="lineno">  817</span>             &lt;&lt; loc &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; bufName &lt;&lt; <span class="stringliteral">&quot;_offset + (index*4), int_value);\n&quot;</span>;</div>
+<div class="line"><a id="l00818" name="l00818"></a><span class="lineno">  818</span>      output &lt;&lt; <span class="stringliteral">&quot;return rc;\n&quot;</span>;</div>
+<div class="line"><a id="l00819" name="l00819"></a><span class="lineno">  819</span>      output &lt;&lt; <span class="stringliteral">&quot;}\n&quot;</span>;</div>
+<div class="line"><a id="l00820" name="l00820"></a><span class="lineno">  820</span>    };</div>
+<div class="line"><a id="l00821" name="l00821"></a><span class="lineno">  821</span> </div>
+<div class="line"><a id="l00822" name="l00822"></a><span class="lineno">  822</span>    <span class="comment">// if(tiles.count(tile.getValue()))</span></div>
+<div class="line"><a id="l00823" name="l00823"></a><span class="lineno">  823</span>    <span class="keywordflow">for</span> (<span class="keyword">auto</span> buf : buffers[tileOp])</div>
+<div class="line"><a id="l00824" name="l00824"></a><span class="lineno">  824</span>      bufferAccessor(buf);</div>
+<div class="line"><a id="l00825" name="l00825"></a><span class="lineno">  825</span>  }</div>
+<div class="line"><a id="l00826" name="l00826"></a><span class="lineno">  826</span> </div>
+<div class="line"><a id="l00827" name="l00827"></a><span class="lineno">  827</span>  <span class="keyword">auto</span> lockAccessor = [&amp;](LockOp lock) {</div>
+<div class="line"><a id="l00828" name="l00828"></a><span class="lineno">  828</span>    <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a> = lock.colIndex();</div>
+<div class="line"><a id="l00829" name="l00829"></a><span class="lineno">  829</span>    <span class="keywordtype">int</span> <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a> = lock.rowIndex();</div>
+<div class="line"><a id="l00830" name="l00830"></a><span class="lineno">  830</span>    <span class="keywordflow">if</span> (!lock.hasName())</div>
+<div class="line"><a id="l00831" name="l00831"></a><span class="lineno">  831</span>      <span class="keywordflow">return</span>;</div>
+<div class="line"><a id="l00832" name="l00832"></a><span class="lineno">  832</span>    std::string lockName(lock.name().getValue());</div>
+<div class="line"><a id="l00833" name="l00833"></a><span class="lineno">  833</span>    output &lt;&lt; <span class="stringliteral">&quot;int mlir_aie_acquire_&quot;</span> &lt;&lt; lockName &lt;&lt; <span class="stringliteral">&quot;(&quot;</span> &lt;&lt; ctx_p</div>
+<div class="line"><a id="l00834" name="l00834"></a><span class="lineno">  834</span>           &lt;&lt; <span class="stringliteral">&quot;, int value, int timeout) {\n&quot;</span>;</div>
+<div class="line"><a id="l00835" name="l00835"></a><span class="lineno">  835</span>    output &lt;&lt; <span class="stringliteral">&quot;  const int id = &quot;</span> &lt;&lt; lock.getLockIDValue() &lt;&lt; <span class="stringliteral">&quot;;\n&quot;</span>;</div>
+<div class="line"><a id="l00836" name="l00836"></a><span class="lineno">  836</span>    output &lt;&lt; <span class="stringliteral">&quot;  return XAie_LockAcquire(&quot;</span> &lt;&lt; deviceInstRef &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
+<div class="line"><a id="l00837" name="l00837"></a><span class="lineno">  837</span>           &lt;&lt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#ae14e8fe582d4030c4301417b2fefa59f">tileLocStr</a>(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; tileLockStr(<span class="stringliteral">&quot;id&quot;</span>, <span class="stringliteral">&quot;value&quot;</span>)</div>
+<div class="line"><a id="l00838" name="l00838"></a><span class="lineno">  838</span>           &lt;&lt; <span class="stringliteral">&quot;, timeout);\n&quot;</span>;</div>
+<div class="line"><a id="l00839" name="l00839"></a><span class="lineno">  839</span>    output &lt;&lt; <span class="stringliteral">&quot;}\n&quot;</span>;</div>
+<div class="line"><a id="l00840" name="l00840"></a><span class="lineno">  840</span>    output &lt;&lt; <span class="stringliteral">&quot;int mlir_aie_release_&quot;</span> &lt;&lt; lockName &lt;&lt; <span class="stringliteral">&quot;(&quot;</span> &lt;&lt; ctx_p</div>
+<div class="line"><a id="l00841" name="l00841"></a><span class="lineno">  841</span>           &lt;&lt; <span class="stringliteral">&quot;, int value, int timeout) {\n&quot;</span>;</div>
+<div class="line"><a id="l00842" name="l00842"></a><span class="lineno">  842</span>    output &lt;&lt; <span class="stringliteral">&quot;  const int id = &quot;</span> &lt;&lt; lock.getLockIDValue() &lt;&lt; <span class="stringliteral">&quot;;\n&quot;</span>;</div>
+<div class="line"><a id="l00843" name="l00843"></a><span class="lineno">  843</span>    output &lt;&lt; <span class="stringliteral">&quot;  return XAie_LockRelease(&quot;</span> &lt;&lt; deviceInstRef &lt;&lt; <span class="stringliteral">&quot;, &quot;</span></div>
+<div class="line"><a id="l00844" name="l00844"></a><span class="lineno">  844</span>           &lt;&lt; <a class="code hl_function" href="namespacexilinx_1_1AIE.html#ae14e8fe582d4030c4301417b2fefa59f">tileLocStr</a>(<a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a2e68be9ae4fa95fd84120dc8154599e6">col</a>, <a class="code hl_variable" href="namespacexilinx_1_1AIE.html#a1e6006c1b4fccd997eba880457892eec">row</a>) &lt;&lt; <span class="stringliteral">&quot;, &quot;</span> &lt;&lt; tileLockStr(<span class="stringliteral">&quot;id&quot;</span>, <span class="stringliteral">&quot;value&quot;</span>)</div>
+<div class="line"><a id="l00845" name="l00845"></a><span class="lineno">  845</span>           &lt;&lt; <span class="stringliteral">&quot;, timeout);\n&quot;</span>;</div>
+<div class="line"><a id="l00846" name="l00846"></a><span class="lineno">  846</span>    output &lt;&lt; <span class="stringliteral">&quot;}\n&quot;</span>;</div>
+<div class="line"><a id="l00847" name="l00847"></a><span class="lineno">  847</span>  };</div>
+<div class="line"><a id="l00848" name="l00848"></a><span class="lineno">  848</span> </div>
+<div class="line"><a id="l00849" name="l00849"></a><span class="lineno">  849</span>  targetOp.walk&lt;WalkOrder::PreOrder&gt;([&amp;](LockOp lock) { lockAccessor(lock); });</div>
+<div class="line"><a id="l00850" name="l00850"></a><span class="lineno">  850</span> </div>
+<div class="line"><a id="l00851" name="l00851"></a><span class="lineno">  851</span>  <span class="keywordflow">return</span> success();</div>
+<div class="line"><a id="l00852" name="l00852"></a><span class="lineno">  852</span>}</div>
 <div class="ttc" id="aAIEDialect_8h_html"><div class="ttname"><a href="AIEDialect_8h.html">AIEDialect.h</a></div></div>
 <div class="ttc" id="aAIETargetShared_8h_html"><div class="ttname"><a href="AIETargetShared_8h.html">AIETargetShared.h</a></div></div>
 <div class="ttc" id="aAIETargets_8h_html"><div class="ttname"><a href="AIETargets_8h.html">AIETargets.h</a></div></div>
@@ -992,7 +949,7 @@ $(document).ready(function() { init_codefold(0); });
 </div><!-- fragment --></div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Wed Jul 1 2026 14:14:33 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Wed Jul 1 2026 14:57:52 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
