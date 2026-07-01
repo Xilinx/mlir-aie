@@ -13,6 +13,13 @@ devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 
 WARNING_FLAGS = -Wno-parentheses -Wno-attributes -Wno-macro-redefined -Wno-empty-body -Wno-missing-template-arg-list-after-template-kw
 
+# Pre-trip aie_api's aie_adf.hpp include guard so stock upstream aie_api never
+# pulls in <adf.h> (a Vitis-only header absent from Peano).  No mlir-aie kernel
+# uses adf:: symbols, so this only suppresses dead code and lets us track
+# unforked Xilinx/aie_api.  (The chess path gets the same define centrally in
+# tools/chess-clang/xchesscc_wrapper.)
+NO_ADF_FLAGS = -D__AIE_API_AIE_ADF_HPP__
+
 CHESSCC1_FLAGS = -f -p me -P ${AIE_INCLUDE_DIR} -I ${AIETOOLS_DIR}/include
 CHESSCC2_FLAGS = -f -p me -P ${AIE2_INCLUDE_DIR} -I ${AIETOOLS_DIR}/include
 CHESS_FLAGS = -P ${AIE_INCLUDE_DIR}
@@ -20,8 +27,8 @@ CHESS_FLAGS = -P ${AIE_INCLUDE_DIR}
 CHESSCCWRAP1_FLAGS = aie -I ${AIETOOLS_DIR}/include
 CHESSCCWRAP2_FLAGS = aie2 -I ${AIETOOLS_DIR}/include
 CHESSCCWRAP2P_FLAGS = aie2p -I ${AIETOOLS_DIR}/include
-PEANOWRAP2_FLAGS = -O2 -std=c++20 --target=aie2-none-unknown-elf ${WARNING_FLAGS} -DNDEBUG -I ${MLIR_AIE_DIR}/include
-PEANOWRAP2P_FLAGS = -O2 -std=c++20 --target=aie2p-none-unknown-elf ${WARNING_FLAGS} -DNDEBUG -I ${MLIR_AIE_DIR}/include
+PEANOWRAP2_FLAGS = -O2 -std=c++20 --target=aie2-none-unknown-elf ${WARNING_FLAGS} -DNDEBUG -I ${MLIR_AIE_DIR}/include ${NO_ADF_FLAGS}
+PEANOWRAP2P_FLAGS = -O2 -std=c++20 --target=aie2p-none-unknown-elf ${WARNING_FLAGS} -DNDEBUG -I ${MLIR_AIE_DIR}/include ${NO_ADF_FLAGS}
 
 TEST_POWERSHELL := $(shell command -v powershell.exe >/dev/null 2>&1 && echo yes || echo no)
 ifeq ($(TEST_POWERSHELL),yes)
