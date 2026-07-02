@@ -1,7 +1,10 @@
 //===- test_vck5000.cpp -----------------------------------000---*- C++ -*-===//
 //
-// Copyright (C) 2024 Advanced Micro Devices, Inc.
+// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Copyright (C) 2024 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -33,6 +36,7 @@ constexpr int IMAGE_SIZE = (IMAGE_WIDTH * IMAGE_HEIGHT);
 constexpr int TILE_WIDTH = 16;
 constexpr int TILE_HEIGHT = 8;
 constexpr int TILE_SIZE = (TILE_WIDTH * TILE_HEIGHT);
+constexpr uint32_t OUTPUT_SENTINEL = 0x00deface;
 
 void hsa_check_status(const std::string func_name, hsa_status_t status) {
   if (status != HSA_STATUS_SUCCESS) {
@@ -103,7 +107,7 @@ int main(int argc, char *argv[]) {
   for (int i = 0; i < IMAGE_SIZE; i++) {
     in_a[i] = i + 1;
     in_b[i] = 1;
-    out[i] = 0xdeface;
+    out[i] = OUTPUT_SENTINEL;
   }
 
   // Pass arguments in the order of dma_memcpys in the mlir
@@ -117,18 +121,12 @@ int main(int argc, char *argv[]) {
     uint32_t s = in_a[i];
     uint32_t d = out[i];
 
-    if (row < TILE_HEIGHT && col < TILE_WIDTH) {
-      if (d != s + 1) {
-        errors++;
-        printf("[ERROR] row %d and col %d, %d != %d\n", row, col, s, d);
-      }
-    } else {
-      if (d == s + 1) {
-        errors++;
-        printf("[ERROR] row %d and col %d, %d == %d -- this was not supposed "
-               "to be changed\n",
-               row, col, s, d);
-      }
+    uint32_t expected =
+        row < TILE_HEIGHT && col < TILE_WIDTH ? s + 1 : OUTPUT_SENTINEL;
+    if (d != expected) {
+      errors++;
+      printf("[ERROR] row %d and col %d, expected %u but got %u\n", row, col,
+             expected, d);
     }
 
     printf("s[%d, %d] = 0x%x\n", row, col, s);

@@ -1,16 +1,18 @@
 # matrix_scalar_add/matrix_scalar_add.py -*- Python -*-
 #
-# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
+# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 """Matrix scalar add — IRON API design with ``@iron.jit`` compilation.
 
 A single AIE compute core reads one ``TILE_HEIGHT x TILE_WIDTH`` tile from
 the top-left corner of a ``MATRIX_HEIGHT x MATRIX_WIDTH`` matrix (via
 ``TensorTiler2D.simple_tiler``), adds 1 to each element of that tile, and
-writes it back, leaving the rest of the matrix unchanged — a
-subtile-region DMA access pattern.  Default config: 16x128 matrix,
-8x16 tile.
+writes it to the corresponding output tile. The remaining output positions
+retain their initial values — a subtile-region DMA access pattern. Default
+config: 16x128 matrix, 8x16 tile.
 
 Three invocation modes:
 
@@ -31,6 +33,8 @@ from aie.helpers.taplib import TensorTiler2D
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
+
+OUTPUT_SENTINEL = np.int32(0x00DEFACE)
 
 
 @iron.jit
@@ -99,17 +103,20 @@ def _run_and_verify(opts):
         -1000, 1000, size=(opts.matrix_height, opts.matrix_width), dtype=np.int32
     )
     in_t = iron.tensor(in_np, dtype=np.int32, device="npu")
-    out_t = iron.zeros_like(in_t)
+    initial_out = np.full_like(in_np, OUTPUT_SENTINEL)
+    out_t = iron.tensor(initial_out, dtype=np.int32, device="npu")
 
     matrix_scalar_add(in_t, out_t, **_compile_kwargs(opts))
 
-    expected = in_np.copy()
-    expected[: opts.tile_height, : opts.tile_width] += 1
+    expected = initial_out.copy()
+    expected[: opts.tile_height, : opts.tile_width] = (
+        in_np[: opts.tile_height, : opts.tile_width] + 1
+    )
     actual = out_t.numpy().reshape(opts.matrix_height, opts.matrix_width)
     assert_pass(
         actual,
         expected,
-        fail_msg="output does not match in + 1 on the top-left tile (subtile DMA)",
+        fail_msg="output does not match the subtile DMA contract",
     )
 
 
