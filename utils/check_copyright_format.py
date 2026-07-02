@@ -137,8 +137,20 @@ def tracked_files() -> list[str]:
             "error: 'reuse' is not on PATH "
             '(python -m pip install "reuse[charset-normalizer]==6.2.0")'
         )
-    out = subprocess.check_output([reuse, "lint", "--json"], text=True)
-    data = json.loads(out)
+    # `reuse lint --json` exits non-zero when the repo isn't fully REUSE
+    # compliant, but still emits the full JSON report on stdout. We only need
+    # the tracked-file list, so parse stdout regardless of the exit code and
+    # fail gracefully if the output isn't valid JSON.
+    proc = subprocess.run(
+        [reuse, "lint", "--json"],
+        text=True,
+        capture_output=True,
+    )
+    try:
+        data = json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        msg = proc.stderr.strip() or proc.stdout.strip() or "no output"
+        sys.exit(f"error: 'reuse lint --json' produced no parseable output:\n{msg}")
     return [rec.get("path", "").lstrip("./") for rec in data.get("files", [])]
 
 
