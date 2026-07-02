@@ -89,7 +89,7 @@ repos:
       name: Check copyright notice format
       language: python
       entry: python utils/check_copyright_format.py
-      additional_dependencies: ['reuse==6.2.0']
+      additional_dependencies: ['reuse[charset-normalizer]==6.2.0']
       pass_filenames: false
       always_run: true
       stages: [pre-push]

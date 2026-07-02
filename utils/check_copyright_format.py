@@ -133,7 +133,10 @@ def tracked_files() -> list[str]:
     """File paths REUSE tracks (respects .gitignore and skips submodules)."""
     reuse = shutil.which("reuse")
     if reuse is None:
-        sys.exit("error: 'reuse' is not on PATH (pip install reuse==6.2.0)")
+        sys.exit(
+            "error: 'reuse' is not on PATH "
+            '(python -m pip install "reuse[charset-normalizer]==6.2.0")'
+        )
     out = subprocess.check_output([reuse, "lint", "--json"], text=True)
     data = json.loads(out)
     return [rec.get("path", "").lstrip("./") for rec in data.get("files", [])]
