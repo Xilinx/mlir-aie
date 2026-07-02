@@ -335,8 +335,9 @@ You will...
    cd mlir-aie
    ````
 
-1. Source `utils/quick_setup.sh` to setup the prerequisites and
-   install the mlir-aie compiler tools from whls.
+1. Source `utils/env_install.sh` to create the `ironenv` virtual environment and
+   install the mlir-aie compiler tools from wheels, then source
+   `utils/env_setup.sh` to configure your shell.
 
 1. Jump ahead to [Build Device AIE Part](#build-device-aie-part) step 2 below.
 

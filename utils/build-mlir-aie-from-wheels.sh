@@ -6,8 +6,8 @@
 ##===----------------------------------------------------------------------===##
 #
 # This script builds mlir-aie given wheels installed <llvm mlir dir>.
-# which is usually ./my_install/mlir if installed from the 
-# ./utils/quick_setup.sh script.
+# which is usually ./my_install/mlir if installed from the
+# ./utils/env_install.sh script.
 # Assuming they are all in the same subfolder, it would look like:
 #
 # build-mlir-aie.sh <llvm mlir dir> <build dir> <install dir>

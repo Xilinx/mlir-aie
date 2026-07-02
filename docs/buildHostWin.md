@@ -53,9 +53,10 @@ All steps in WSL Ubuntu terminal.
      >  NOTE: Installing the mlir-aie tools from wheels via the quick setup path supports AMD XDNA™/AIE-ML (AIE2) and AMD XDNA™ 2 (AIE2P), it does NOT support Versal™ devices with AIE.
 
      ```
-     source utils/quick_setup.sh
-     # NOTE: this will install mlir-aie in my_install/mlir_aie
-     # Be sure to account for this using utils/env_setup.sh later on.
+     source utils/env_install.sh
+     # NOTE: this installs the mlir_aie wheel into the ironenv venv.
+     # Configure your shell against it with utils/env_setup.sh later on.
+     source utils/env_setup.sh
      ```
 
    * [Optional] Build from source following regular get started instructions [https://xilinx.github.io/mlir-aie/Building.html](https://xilinx.github.io/mlir-aie/Building.html)
