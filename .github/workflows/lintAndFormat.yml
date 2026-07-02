@@ -438,7 +438,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install reuse==6.2.0
+          python -m pip install "reuse[charset-normalizer]==6.2.0"
 
       - name: Check Licenses
         shell: bash
