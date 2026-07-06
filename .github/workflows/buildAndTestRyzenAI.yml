@@ -76,6 +76,15 @@ jobs:
 
       - name: Run commands
         run: |
+          # Transient NPU hardware faults (e.g. DRM_IOCTL_AMDXDNA_EXEC_CMD
+          # I/O errors on aie2-4col) occasionally fail this step. Re-run the
+          # whole step once; the job passes if the retry succeeds.
+          if [ -z "$STEP_RETRIED" ]; then
+            export STEP_RETRIED=1
+            bash -eo pipefail "$0" && exit 0
+            echo "::warning::First attempt failed; retrying the step once"
+            exec bash -eo pipefail "$0"
+          fi
           sudo prlimit -lunlimited --pid $$
           # Newer XRT/amdxdna packages no longer ship setup.sh; source it
           # only when present so the job works on both old and new XRT.
