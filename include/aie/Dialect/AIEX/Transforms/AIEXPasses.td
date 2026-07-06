@@ -273,10 +273,10 @@ def AIETestRuntimeBdLiveness : Pass<"aie-test-runtime-bd-liveness", "AIE::Device
     task liveness analysis (AIERuntimeBdLiveness.h) to FileCheck. Emits, per
     `aiex.dma_configure_task`, its resolved completion sync, back-edges crossed,
     and leak status; and per `aie.runtime_sequence`, the per-tile peak
-    simultaneous BD liveness (`computePeakBdLiveness`). The peak query is the
-    window-sizing input for runtime-rotated BD ids (not yet consumed by the
-    allocator, which currently rejects those forms); this pass guards its
-    correctness until that consumer lands.
+    simultaneous BD liveness (`computePeakBdLiveness`). The peak query is a key
+    window-sizing input for runtime-rotated BD ids and is also used by the
+    allocator to validate that peak liveness fits within each tile's BD pool;
+    this pass guards correctness of the analysis used by both.
   }];
 
   let constructor = "xilinx::AIEX::createAIETestRuntimeBdLivenessPass()";
