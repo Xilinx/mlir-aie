@@ -16,6 +16,7 @@ preserved verbatim.
 Usage:
 
     python utils/check_copyright_format.py            # check the whole repo
+    python utils/check_copyright_format.py FILE...     # check only the given files
     python utils/check_copyright_format.py --list     # also print every notice
 
 Note: the trigger tokens below are assembled from fragments on purpose, so that
@@ -154,18 +155,40 @@ def tracked_files() -> list[str]:
     return [rec.get("path", "").lstrip("./") for rec in data.get("files", [])]
 
 
-def collect_notices() -> dict[str, list[str]]:
-    """Return {raw notice line: [sources]} from inline headers + REUSE.toml."""
+def _to_repo_relative(paths: list[str]) -> list[str]:
+    """Normalize caller-supplied paths to repo-relative POSIX strings."""
+    rels = []
+    for p in paths:
+        try:
+            rels.append(str(Path(p).resolve().relative_to(REPO_ROOT)))
+        except ValueError:
+            # Outside the repo: keep as-is; the header read will simply skip it.
+            rels.append(p)
+    return rels
+
+
+def collect_notices(files: list[str] | None = None) -> dict[str, list[str]]:
+    """Return {raw notice line: [sources]} from inline headers + REUSE.toml.
+
+    When ``files`` is given, only those files are scanned (used by the file-scoped
+    pre-push hook). When it is empty/None, the whole repo is scanned via
+    ``tracked_files()`` (used by CI and ``--list``). REUSE.toml-declared notices
+    are only folded in for the whole-repo scan, since they are not attributable to
+    any single pushed file.
+    """
     overrides, declared = load_reuse_toml()
     notices: dict[str, list[str]] = defaultdict(list)
 
-    # Notices declared inside REUSE.toml (binary files, third-party, proprietary).
-    for value in declared:
-        notices[value].append("REUSE.toml")
+    scoped = bool(files)
+    if not scoped:
+        # Notices declared inside REUSE.toml (binary files, third-party, proprietary).
+        for value in declared:
+            notices[value].append("REUSE.toml")
 
     self_rel = str(Path(__file__).resolve().relative_to(REPO_ROOT))
     skip_exact = {"REUSE.toml", self_rel}
-    for rel in tracked_files():
+    candidates = _to_repo_relative(files) if scoped else tracked_files()
+    for rel in candidates:
         if rel in skip_exact or rel.startswith("LICENSES/"):
             continue
         if any(rx.match(rel) for rx in overrides):
@@ -190,7 +213,8 @@ def collect_notices() -> dict[str, list[str]]:
 
 def main(argv: list[str]) -> int:
     show_all = "--list" in argv
-    notices = collect_notices()
+    files = [a for a in argv if not a.startswith("-")]
+    notices = collect_notices(files)
 
     first_party = {n: f for n, f in notices.items() if is_first_party(n)}
     violations = {n: f for n, f in first_party.items() if not is_approved(n)}
