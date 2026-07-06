@@ -45,14 +45,12 @@ int main(int argc, const char *argv[]) {
 
   auto xclbin = xrt::xclbin(vm["xclbin"].as<std::string>());
   auto xkernels = xclbin.get_kernels();
-  auto xkernel0 = *std::find_if(xkernels.begin(), xkernels.end(),
-                                [](xrt::xclbin::kernel &k) {
-                                  return k.get_name() == "ADDONE";
-                                });
-  auto xkernel1 = *std::find_if(xkernels.begin(), xkernels.end(),
-                                [](xrt::xclbin::kernel &k) {
-                                  return k.get_name() == "ADDTWO";
-                                });
+  auto xkernel0 = *std::find_if(
+      xkernels.begin(), xkernels.end(),
+      [](xrt::xclbin::kernel &k) { return k.get_name() == "ADDONE"; });
+  auto xkernel1 = *std::find_if(
+      xkernels.begin(), xkernels.end(),
+      [](xrt::xclbin::kernel &k) { return k.get_name() == "ADDTWO"; });
 
   device.register_xclbin(xclbin);
   xrt::hw_context context(device, xclbin.get_uuid());
