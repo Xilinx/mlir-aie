@@ -243,7 +243,7 @@ make trace
 ```
 
 
-### <u>(2b) Python Host code ([test.py](./test.py), [../../../python/xrt.py](../../../python/xrt.py))</u>
+### <u>(2b) Python Host code ([test.py](./test.py), [../../../python/utils/hostruntime/hostruntime.py](../../../python/utils/hostruntime/hostruntime.py))</u>
 In the [Makefile](./Makefile), we also have a `trace_py` target which calls the python host code `test.py` instead of the C/C++ host code `test.cpp`.
 
 #### test_utils (recommended)
@@ -262,7 +262,7 @@ The relevant CLI arguments (added by `aie.utils.hostruntime.argparse.add_runtime
 - `--trace-file`: Path to write raw trace data (default: `trace.txt`).
 - `--ddr-id`: DDR buffer index for trace (0-4, or -1 to append after last tensor). Default is 4.
 
-> **IMPORTANT**: The `ddr_id` value (set via `--ddr-id`) **must match** the `ddr_id` parameter in your IRON `enable_trace()` / `start_trace()` call, or buffer allocation will be incorrect.
+> **IMPORTANT**: The `ddr_id` value (set via `--ddr-id`) **must match** the `ddr_id` parameter in your IRON `enable_trace()` call, or buffer allocation will be incorrect.
 
 #### TraceConfig (manual setup)
 
@@ -279,7 +279,7 @@ trace_config = TraceConfig(
 
 npu_kernel = NPUKernel(
     xclbin_path="build/final.xclbin",
-    insts_path="build/insts.txt",
+    insts_path="build/insts.bin",
     trace_config=trace_config,
 )
 ```
@@ -366,12 +366,12 @@ Two side effects of the call worth knowing about:
 ## <u>3. Parse text file to generate a waveform json file</u>
 Once the packet trace text file is generated (`trace.txt`), we use a python-based trace parser ([parse.py](../../../python/utils/trace/parse.py)) to interpret the trace values and generate a waveform json file for visualization (with Perfetto). This is a step in the [Makefile](./Makefile) but can be executed from the command line as well.
 
-The `--mlir` argument should point to `input_with_addresses.mlir` from the `.prj` work directory, not the original source MLIR. This file contains the lowered register writes produced by the trace passes, which the parser uses to map raw trace packets back to named events.
+The `--mlir` argument should point to `input_with_addresses.mlir` from the `build` work directory, not the original source MLIR. This file contains the lowered register writes produced by the trace passes, which the parser uses to map raw trace packets back to named events.
 
 ```bash
 python ../../../python/utils/trace/parse.py \
     --input trace.txt \
-    --mlir build/aie.mlir.prj/input_with_addresses.mlir \
+    --mlir build/input_with_addresses.mlir \
     --output trace.json
 ```
 
