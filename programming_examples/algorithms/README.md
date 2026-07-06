@@ -61,7 +61,7 @@ iron.jit(transform)(
 )
 ```
 
-For a complete example, see [vector_scalar_mul_jit.py](../basic/vector_scalar_mul/vector_scalar_mul_jit.py).
+For a complete example, see [vector_scalar_mul.py](../basic/vector_scalar_mul/vector_scalar_mul.py).
 
 ## Ryzen™ AI Usage
 

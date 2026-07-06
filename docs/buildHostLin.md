@@ -438,4 +438,4 @@ The `v++` compiler for the NPU device code requires a valid Vitis license. If yo
 
 -----
 
-<p align="center">Copyright&copy; 2019-2024 AMD</p>
+<p align="center">Copyright&copy; 2019-2021 Xilinx, Inc.<br>Copyright&copy; 2022-2026 Advanced Micro Devices, Inc.</p>

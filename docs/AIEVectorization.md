@@ -8,7 +8,7 @@ Achieving high performance with the AIEngine architecture typically requires exe
 
 ## Affine Loops
 
-A typical starting point for automatic vectorization is to consider Affine looped programs. [Example](https://github.com/Xilinx/mlir-aie/tree/main/test/aievec/pointwise_mult_f32.mlir)
+A typical starting point for automatic vectorization is to consider Affine looped programs.
 ```
 func.func @pointwise_mult (%A: memref<2048xf32>, %B: memref<2048xf32>, %C: memref<2048xf32>) {
     affine.for %arg0 = 0 to 2048 {
@@ -71,7 +71,7 @@ aie-opt -affine-super-vectorize="virtual-vector-size=8 vectorize-reductions" --a
 
 This code can be translated to C++ code that can be included in a Vitis design:
 ```
-aie-opt -affine-super-vectorize="virtual-vector-size=8" --aie-vectorize < ../../aie/test/aievec/pointwise_mult_f32.mlir | aie-translate --aievec-to-cpp
+aie-opt -affine-super-vectorize="virtual-vector-size=8" --aie-vectorize < pointwise_mult_f32.mlir | aie-translate --aievec-to-cpp
 ```
 ```
 void pointwise_mult(float * restrict v1, float * restrict v2, float * restrict v3) {

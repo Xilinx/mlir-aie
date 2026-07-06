@@ -9,7 +9,7 @@ This document is an introduction to using the AIE dialect in practice and provid
 
 ## Using AIE Cores
 
-[Core Example](https://github.com/Xilinx/mlir-aie/tree/main/test/unit_tests/03_sync_with_locks/aie.mlir)
+[Core Example](https://github.com/Xilinx/mlir-aie/tree/main/test/unit_tests/aie/03_sync_with_locks/aie.mlir)
 
 We can use the AIE Cores as below to perform some operations
 
@@ -34,7 +34,7 @@ Perform some operations on the buffer in the core
 ```
 
 ## Single-buffered Communication
-[Single-buffer DMA example](https://github.com/Xilinx/mlir-aie/tree/main/test/unit_tests/05_tiledma/aie.mlir)
+[Single-buffer DMA example](https://github.com/Xilinx/mlir-aie/tree/main/test/unit_tests/aie/05_tiledma/aie.mlir)
 
 Define the AIE tiles you want to communicate between. Here Tile (7,1) will be the source and (7,2) the destination.
 
@@ -106,7 +106,7 @@ At the end, we release the lock back in state 0. This allows for the memory to r
 
 ## Double-buffered Communication
 
-[Double-buffer DMA example](https://github.com/Xilinx/mlir-aie/tree/main/test/unit_tests/17_shim_dma_with_core/aie.mlir)
+[Double-buffer DMA example](https://github.com/Xilinx/mlir-aie/tree/main/test/unit_tests/aie/17_shim_dma_with_core/aie.mlir)
 
 This example uses the same setup as the previous. For Tile (7,2) we can define an additional lock and buffer and change the buffers to be half the size:
 ```
@@ -158,7 +158,7 @@ We can use the core in a similar fashion, using the two locks to perform operati
 
 ## Controlling from the ARM Processor
 
-[Controlling From ARM](https://github.com/Xilinx/mlir-aie/tree/main/test/unit_tests/17_shim_dma_with_core/aie.mlir)
+[Controlling From ARM](https://github.com/Xilinx/mlir-aie/tree/main/test/unit_tests/aie/17_shim_dma_with_core/aie.mlir)
 
 We can perform some operations from the ARM processor and configure the lock to start the transfer. Here is a simple example where we write to a buffer, and begin the data transfer all from the host code.
 
@@ -220,7 +220,7 @@ XAieTile_LockRelease(&(TileInst[7][1]), 0, 1, 0); // Release lock
 This allows the data transfer to begin
 
 ## Static DDR Configuration
-[Static DDR](https://github.com/Xilinx/mlir-aie/tree/main/test/unit_tests/17_shim_dma_with_core/aie.mlir)
+[Static DDR](https://github.com/Xilinx/mlir-aie/tree/main/test/unit_tests/aie/17_shim_dma_with_core/aie.mlir)
 
 To read/write from DDR, we declare an external buffer with a location and size
 ```
@@ -237,7 +237,7 @@ We can then use the shim_dma to read/write from that location:
 	^bd0:
 		AIE.use_lock(%lock70 , "Acquire", 0)
 		AIE.dma_bd(%ext_buffer : memref<512xi32>, 0, 512)
-		AIE.use_lock(%lolock70 k72, "Release", 1)
+		AIE.use_lock(%lock70, "Release", 1)
 		br ^end 
 	^end:
 	AIE.end
@@ -348,7 +348,7 @@ XAieTile_LockRelease(&(TileInst[7][2]), 1, 0x1, 0);
 
 ## Using AIE ObjectFIFOs
 
-[ObjectFIFO Example](https://github.com/Xilinx/mlir-aie/tree/main/test/objectFifo-stateful-transform/non_adjacency_test_1.aie.mlir)
+[ObjectFIFO Example](https://github.com/Xilinx/mlir-aie/tree/main/test/objectFifo-stateful-transform/base/non_adjacency_test_1.mlir)
 
 An objectFIFO can be established between two or more tiles. Broadcast is possible from one producer tile to multiple consumer tiles.
 Unlike a typical FIFO, elements are not pushed to nor popped from the objectFIFO. Instead, a pool of memory elements is allocated to the objectFIFO by the objectFIFO lowering pass, i.e., AIEObjectFifoStatefulTransform.mlir. 
@@ -491,28 +491,9 @@ module @objectFIFO  {
 }
 ```
 
-At a higher abstraction level, a process can be registered to an objectFIFO using access patterns and work functions:
-```
-module @objectFIFO  {
-    %tile12 = AIE.tile(1, 2)
-    %tile33 = AIE.tile(3, 3)
-
-    AIE.objectfifo @of1 (%tile12, {tile33}, 2 : i32) : !AIE.objectfifo<memref<16xi32>>
-
-    %prodAcqPattern = arith.constant dense<[1]> : tensor<1xi32>
-    %prodRelPattern = arith.constant dense<[1]> : tensor<1xi32>
-    %prodLength = arith.constant 12 : index
-    func @producer_work() -> () {
-        return
-    }
-
-    AIE.objectfifo.register_process @of1 (Produce, %prodAcqPattern : tensor<1xi32>, %prodRelPattern : tensor<1xi32>, @producer_work, %prodLength)
-}
-```
-
 ## Using AIE broadcast_packet
 
-[broadcast_packet Example](https://github.com/Xilinx/mlir-aie/tree/main/test/unit_tests/23_broadcast_packet/aie.mlir)
+[broadcast_packet Example](https://github.com/Xilinx/mlir-aie/tree/main/test/unit_tests/aie/23_broadcast_packet/aie.mlir)
 
 The broadcast_packet operation is a logical connection that combines broadcast and packet-switch data transferring mechanism.
 
