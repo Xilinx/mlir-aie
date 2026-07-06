@@ -62,30 +62,50 @@ reserveAndGetTail(std::vector<uint32_t> &instructions, uint64_t tailSize) {
 // Thin wrappers that extract MLIR attributes and delegate to TxnEncoding.h,
 // the single source of truth for the TXN word layout.
 
-void appendSync(std::vector<uint32_t> &instructions, NpuSyncOp op) {
-  aie_runtime::txn_append_sync(instructions, op.getColumn(), op.getRow(),
-                               static_cast<uint32_t>(op.getDirection()),
-                               op.getChannel(), op.getColumnNum(),
-                               op.getRowNum());
+LogicalResult appendSync(std::vector<uint32_t> &instructions, NpuSyncOp op) {
+  std::optional<uint32_t> column = AIEX::getConstantIntOperand(op.getColumn());
+  std::optional<uint32_t> row = AIEX::getConstantIntOperand(op.getRow());
+  std::optional<uint32_t> direction =
+      AIEX::getConstantIntOperand(op.getDirection());
+  std::optional<uint32_t> channel =
+      AIEX::getConstantIntOperand(op.getChannel());
+  std::optional<uint32_t> columnNum =
+      AIEX::getConstantIntOperand(op.getColumnNum());
+  std::optional<uint32_t> rowNum = AIEX::getConstantIntOperand(op.getRowNum());
+  if (!column || !row || !direction || !channel || !columnNum || !rowNum)
+    return op.emitOpError("Cannot translate sync with non-constant operands to "
+                          "a static TXN binary");
+  aie_runtime::txn_append_sync(instructions, *column, *row, *direction,
+                               *channel, *columnNum, *rowNum);
+  return success();
 }
 
-void appendWrite32(std::vector<uint32_t> &instructions, NpuWrite32Op op) {
-  if (op.getBuffer()) {
-    op.emitOpError("Cannot translate symbolic address");
-    return;
-  }
-  aie_runtime::txn_append_write32(instructions, *op.getAbsoluteAddress(),
-                                  op.getValue());
+LogicalResult appendWrite32(std::vector<uint32_t> &instructions,
+                            NpuWrite32Op op) {
+  if (op.getBuffer())
+    return op.emitOpError("Cannot translate symbolic address");
+  std::optional<uint32_t> address = op.getAbsoluteAddress();
+  std::optional<uint32_t> value = AIEX::getConstantIntOperand(op.getValue());
+  if (!address || !value)
+    return op.emitOpError(
+        "Cannot translate write32 with non-constant address or value "
+        "to a static TXN binary");
+  aie_runtime::txn_append_write32(instructions, *address, *value);
+  return success();
 }
 
-void appendMaskWrite32(std::vector<uint32_t> &instructions,
-                       NpuMaskWrite32Op op) {
-  if (op.getBuffer()) {
-    op.emitOpError("Cannot translate symbolic address");
-    return;
-  }
-  aie_runtime::txn_append_maskwrite32(instructions, *op.getAbsoluteAddress(),
-                                      op.getValue(), op.getMask());
+LogicalResult appendMaskWrite32(std::vector<uint32_t> &instructions,
+                                NpuMaskWrite32Op op) {
+  if (op.getBuffer())
+    return op.emitOpError("Cannot translate symbolic address");
+  std::optional<uint32_t> address = op.getAbsoluteAddress();
+  std::optional<uint32_t> value = AIEX::getConstantIntOperand(op.getValue());
+  std::optional<uint32_t> mask = AIEX::getConstantIntOperand(op.getMask());
+  if (!address || !value || !mask)
+    return op.emitOpError("Cannot translate maskwrite32 with non-constant "
+                          "address, value, or mask to a static TXN binary");
+  aie_runtime::txn_append_maskwrite32(instructions, *address, *value, *mask);
+  return success();
 }
 
 void appendLoadPdi(std::vector<uint32_t> &instructions, NpuLoadPdiOp op) {
@@ -102,16 +122,22 @@ void appendLoadPdi(std::vector<uint32_t> &instructions, NpuLoadPdiOp op) {
 static constexpr uint32_t kDDRAIEAddrOffset = 0x80000000;
 static constexpr uint32_t kNumFirmwareTranslatedArgs = 5;
 
-void appendAddressPatch(std::vector<uint32_t> &instructions,
-                        NpuAddressPatchOp op) {
+LogicalResult appendAddressPatch(std::vector<uint32_t> &instructions,
+                                 NpuAddressPatchOp op) {
+  std::optional<uint32_t> argPlus =
+      AIEX::getConstantIntOperand(op.getArgPlus());
+  if (!argPlus)
+    return op.emitOpError("Cannot translate address_patch with non-constant "
+                          "arg_plus to a static TXN binary");
   uint32_t argIdx = op.getArgIdx();
-  uint32_t argPlus = op.getArgPlus();
+  uint32_t patchedArgPlus = *argPlus;
   // Host arguments beyond the firmware-translated set get the AIE address-space
   // offset applied here instead of by firmware.
   if (argIdx >= kNumFirmwareTranslatedArgs)
-    argPlus += kDDRAIEAddrOffset;
+    patchedArgPlus += kDDRAIEAddrOffset;
   aie_runtime::txn_append_address_patch(instructions, op.getAddr(), argIdx,
-                                        argPlus);
+                                        patchedArgPlus);
+  return success();
 }
 
 // Cached resolution of NpuBlockWriteOp's data words.
@@ -351,13 +377,20 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
   mlir::SymbolTable symTab(deviceOp.getOperation());
   llvm::DenseMap<mlir::StringAttr, DenseIntElementsAttr> blockWriteDataCache;
 
+  // Accumulates failure from the per-op append helpers (e.g. a non-constant
+  // operand that cannot be encoded into a static TXN binary). We finish the
+  // walk so every offending op is diagnosed, then fail the translation rather
+  // than emit a silently incomplete binary.
+  LogicalResult result = success();
+
   for (Block &block : seq.getBody()) {
     for (Operation &o : block) {
       llvm::TypeSwitch<Operation *>(&o)
           .Case<NpuSyncOp>([&](auto op) {
             count++;
             uint32_t before = byteOffset();
-            appendSync(instructions, op);
+            if (failed(appendSync(instructions, op)))
+              result = failure();
             pushLocEntry(locmap, before, byteOffset(), "TCT",
                          op->getName().getStringRef(), std::nullopt, op, tm);
           })
@@ -365,7 +398,8 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
             count++;
             uint32_t before = byteOffset();
             uint64_t addr = op.getAbsoluteAddress().value_or(0);
-            appendWrite32(instructions, op);
+            if (failed(appendWrite32(instructions, op)))
+              result = failure();
             pushLocEntry(locmap, before, byteOffset(), "WRITE32",
                          op->getName().getStringRef(), addr, op, tm);
           })
@@ -381,7 +415,8 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
             count++;
             uint32_t before = byteOffset();
             uint64_t addr = op.getAbsoluteAddress().value_or(0);
-            appendMaskWrite32(instructions, op);
+            if (failed(appendMaskWrite32(instructions, op)))
+              result = failure();
             pushLocEntry(locmap, before, byteOffset(), "MASKWRITE",
                          op->getName().getStringRef(), addr, op, tm);
           })
@@ -395,7 +430,8 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
           .Case<NpuAddressPatchOp>([&](auto op) {
             count++;
             uint32_t before = byteOffset();
-            appendAddressPatch(instructions, op);
+            if (failed(appendAddressPatch(instructions, op)))
+              result = failure();
             pushLocEntry(locmap, before, byteOffset(), "ADDRESS_PATCH",
                          op->getName().getStringRef(), op.getAddr(), op, tm);
           })
@@ -422,6 +458,9 @@ LogicalResult xilinx::AIE::AIETranslateNpuToBinary(
           });
     }
   }
+
+  if (failed(result))
+    return failure();
 
   // Finalize the TXN header (overwrites the 4 reserved words).
   aie_runtime::txn_prepend_header(instructions, count, devInfo);

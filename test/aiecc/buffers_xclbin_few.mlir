@@ -29,7 +29,14 @@ module {
     aie.runtime_sequence(%arg0: memref<1024xi32>, %arg1: memref<1024xi32>) {
       aiex.npu.dma_memcpy_nd (%arg0[0, 0, 0, 0][1, 1, 1, 1024][0, 0, 0, 1]) {id = 0 : i64, metadata = @in0} : memref<1024xi32>
       aiex.npu.dma_memcpy_nd (%arg1[0, 0, 0, 0][1, 1, 1, 1024][0, 0, 0, 1]) {id = 1 : i64, metadata = @out0} : memref<1024xi32>
-      aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
+      // operands: column, row, direction, channel, column_num, row_num
+      %cst_npu_0 = arith.constant 0 : i32
+      %cst_npu_1 = arith.constant 0 : i32
+      %cst_npu_2 = arith.constant 0 : i32
+      %cst_npu_3 = arith.constant 0 : i32
+      %cst_npu_4 = arith.constant 1 : i32
+      %cst_npu_5 = arith.constant 1 : i32
+      aiex.npu.sync(%cst_npu_0, %cst_npu_1, %cst_npu_2, %cst_npu_3, %cst_npu_4, %cst_npu_5) : i32, i32, i32, i32, i32, i32
     }
   }
 }

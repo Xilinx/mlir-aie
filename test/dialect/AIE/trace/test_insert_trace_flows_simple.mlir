@@ -27,16 +27,16 @@ module {
 
     aie.runtime_sequence(%arg0: memref<16xi32>) {
       // Core trace control (row=2)
-      // CHECK: aiex.npu.write32 {{{.*}}row = 2{{.*}}}
+      // CHECK: aiex.npu.write32(%{{.*}}, %{{.*}}) {{{.*}}row = 2{{.*}}} : i32, i32
       // Shim BD setup (1048576 bytes = 262144 words)
       // CHECK: aiex.npu.writebd {{{.*}}buffer_length = 262144{{.*}}}
       // Address patch for trace buffer: appended after the 1 data arg, so idx 1
-      // CHECK: aiex.npu.address_patch {{{.*}}arg_idx = 1{{.*}}}
+      // CHECK: aiex.npu.address_patch(%{{.*}} : i32) {{{.*}}arg_idx = 1{{.*}}}
       // Shim DMA channel setup
-      // CHECK: aiex.npu.maskwrite32
-      // CHECK: aiex.npu.write32
+      // CHECK: aiex.npu.maskwrite32(%{{.*}}, %{{.*}}, %{{.*}}) {{.*}} : i32, i32, i32
+      // CHECK: aiex.npu.write32(%{{.*}}, %{{.*}})
       // Shim broadcast configuration (start/stop events)
-      // CHECK: aiex.npu.write32 {{{.*}}row = 0{{.*}}}
+      // CHECK: aiex.npu.write32(%{{.*}}, %{{.*}}) {{{.*}}row = 0{{.*}}} : i32, i32
       aie.trace.host_config {buffer_size = 1048576 : i32}
       aie.trace.start_config @core_trace
     }

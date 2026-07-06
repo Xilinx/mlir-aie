@@ -22,11 +22,19 @@ module {
 
     aie.runtime_sequence(%arg0: memref<32xi8>) {
       %t1 = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
-          // CHECK: {address = 1703940 : ui32, mask = 524287 : ui32, value = 1 : ui32}
+          // maskwrite32 operands: address=1703940, value=1, mask=524287
+          // CHECK-DAG: %[[MW1MASK:.*]] = arith.constant 524287 : i32
+          // CHECK-DAG: %[[MW1VAL:.*]] = arith.constant 1 : i32
+          // CHECK-DAG: %[[MW1ADDR:.*]] = arith.constant 1703940 : i32
+          // CHECK: aiex.npu.maskwrite32(%[[MW1ADDR]], %[[MW1VAL]], %[[MW1MASK]]) : i32, i32, i32
           aie.dma_bd(%buf0 : memref<32xi8>, 4, 16) {bd_id = 0 : i32}
           aie.next_bd ^bd2
         ^bd2:
-          // CHECK: aiex.npu.maskwrite32 {address = 1703972 : ui32, mask = 524287 : ui32, value = 16385 : ui32}
+          // maskwrite32 operands: address=1703972, value=16385, mask=524287
+          // CHECK-DAG: %[[MW2MASK:.*]] = arith.constant 524287 : i32
+          // CHECK-DAG: %[[MW2VAL:.*]] = arith.constant 16385 : i32
+          // CHECK-DAG: %[[MW2ADDR:.*]] = arith.constant 1703972 : i32
+          // CHECK: aiex.npu.maskwrite32(%[[MW2ADDR]], %[[MW2VAL]], %[[MW2MASK]]) : i32, i32, i32
           aie.dma_bd(%buf1 : memref<32xi8>, 4, 16) {bd_id = 1 : i32}
           aie.end
       }
