@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 ##===- utils/build-mlir-aie-from-wheels.sh - Build mlir-aie --*- Script -*-===##
-# 
+#
 # Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 ##===----------------------------------------------------------------------===##
@@ -12,7 +12,7 @@
 #
 # build-mlir-aie.sh <llvm mlir dir> <build dir> <install dir>
 #
-# e.g. build-mlir-aie-from-wheels.sh ./my_install/mlir 
+# e.g. build-mlir-aie-from-wheels.sh ./my_install/mlir
 #
 # <build dir>    - optional, mlir-aie/build dir name, default is 'build'
 # <install dir>  - optional, mlir-aie/install dir name, default is 'install'
@@ -35,7 +35,7 @@ if [ "$#" -lt 1 ] || [ -z "$1" ]; then
     popd
     WHL_MLIR_DIR=`realpath my_install/mlir`
     echo "WHL_MLIR DIR: $WHL_MLIR_DIR"
-else 
+else
     WHL_MLIR_DIR=`realpath $1`
     echo "WHL_MLIR DIR: $WHL_MLIR_DIR"
 fi
@@ -114,5 +114,5 @@ then
     rm -rf ${BUILD_DIR}/*
     popd; exit 4
 fi
- 
+
 exit 0

@@ -14,19 +14,19 @@
 #
 # venv-dir defaults to "ironenv". Any name may be given.
 #
-# This can be invoked in two ways: a "runtime" environment for users, or a 
+# This can be invoked in two ways: a "runtime" environment for users, or a
 # "from-source" developer environment (--dev flag).
 #
 # For the "runtime" environment, we download the mlir_aie wheel along with the
-# other prerequisites. The wheel is matched to this checkout: if HEAD is on a 
-# release tag (e.g. v1.3.4) the wheel for that release is installed; else if 
+# other prerequisites. The wheel is matched to this checkout: if HEAD is on a
+# release tag (e.g. v1.3.4) the wheel for that release is installed; else if
 # HEAD is exactly the commit a latest-wheels build was made from, those rolling
 # wheels are installed; otherwise the script errors (no published wheel matches
 # this commit).
 #
-# For the "from-source" build environment: it installs the hash-pinned dev 
-# tooling, vendors eudsl, sets up the pre-commit/pre-push hooks, and skips the 
-# mlir_aie wheel (you build mlir_aie yourself via 
+# For the "from-source" build environment: it installs the hash-pinned dev
+# tooling, vendors eudsl, sets up the pre-commit/pre-push hooks, and skips the
+# mlir_aie wheel (you build mlir_aie yourself via
 # utils/build-mlir-aie-from-wheels.sh).
 #
 # Re-running against an existing venv reuses it and upgrades the installed

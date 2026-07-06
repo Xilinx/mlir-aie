@@ -109,7 +109,7 @@ jobs:
           LIT_OPTS="-j12 $LIT_OPTS"
 
           export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
-          
+
           cmake .. -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DPython3_EXECUTABLE=$(which python) \
