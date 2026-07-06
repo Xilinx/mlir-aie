@@ -65,15 +65,3 @@ rename 's/cp[0-9]+-cp[0-9]+/py3-none/' "$HERE/../wheelhouse/"mlir*whl
 if [ -d "$HERE/../wheelhouse/.ccache" ]; then
   cp -R "$HERE/../wheelhouse/.ccache/"* "$HOST_CCACHE_DIR/"
 fi
-
-cp -R "$HERE/../requirements.txt" "$HERE/../python_bindings"
-cp -R "$HERE/../requirements_dev.txt" "$HERE/../python_bindings"
-cp -R "$HERE/../scripts" "$HERE/../python_bindings"
-cp -R "$HERE/../wheelhouse/"mlir_aie*.whl "$HERE/../python_bindings"
-
-pushd "$HERE/../python_bindings"
-# escape to prevent 'Filename not matched' when both the py3-none whl and a cpXYZ wheel exist
-unzip -o -q mlir_aie\*.whl
-rm -rf mlir_aie*.whl
-
-cibuildwheel --platform "$machine" --output-dir ../wheelhouse

@@ -11,10 +11,8 @@
 # Workflow:
 #   1) Detect platform (linux/macos/windows)
 #   2) Export the same env vars as build_local.sh
-#   3) Run cibuildwheel for the main wheel project
-#   4) Rename the main wheel's python tag (cpXYZ-cpXYZ -> py3-none)
-#   5) Stage inputs into python_bindings/, unzip the mlir_aie wheel into it
-#   6) Run cibuildwheel for python_bindings, outputting into ../wheelhouse
+#   3) Run cibuildwheel for the mlir_aie wheel project
+#   4) Rename the wheel's Python tag (cpXYZ-cpXYZ -> py3-none)
 ##===------------------------------------------------------------------------------===##
 
 
@@ -28,7 +26,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Optional
 
 DEFAULT_PIP_FIND_LINKS = (
     "https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro"
@@ -83,18 +81,6 @@ def _which(exe: str) -> Optional[str]:
 
 def _cibuildwheel_cmd() -> list[str]:
     return [sys.executable, "-m", "cibuildwheel"]
-
-
-def _copy_tree_merge(src: Path, dst: Path) -> None:
-    dst.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(src, dst, dirs_exist_ok=True)
-
-
-def _unzip_overwrite(zip_path: Path, dst_dir: Path) -> None:
-    import zipfile
-
-    with zipfile.ZipFile(zip_path, "r") as zf:
-        zf.extractall(dst_dir)
 
 
 # --------------------------------------------------------------------------------------
@@ -180,10 +166,8 @@ def main(argv: list[str] | None = None) -> int:
     here = Path(__file__).resolve().parent
     project_root = (here / "..").resolve()  # utils/mlir_aie_wheels
     wheelhouse = project_root / "wheelhouse"
-    python_bindings = project_root / "python_bindings"
 
-    # If a nested checkout doesn't exist and the user didn't set MLIR_AIE_SOURCE_DIR,
-    # point to the repo root so we can find python/requirements_dev.txt and CMake source.
+    # Use the nested checkout when present; otherwise build from this repository.
     src_env = os.environ.get("MLIR_AIE_SOURCE_DIR", "").strip()
     if src_env:
         repo_root = Path(src_env).resolve()
@@ -244,39 +228,6 @@ def main(argv: list[str] | None = None) -> int:
     # if [ -d wheelhouse/.ccache ], copy back to HOST_CCACHE_DIR
     if host_ccache_dir is not None:
         _copy_ccache_from_wheelhouse(wheelhouse, host_ccache_dir)
-
-    # Stage inputs into python_bindings
-    shutil.copy2(
-        project_root / "requirements.txt", python_bindings / "requirements.txt"
-    )
-
-    # Prefer a wheel-local requirements_dev.txt if present, fallback to repo_root/python/.
-    dev_req_dst = python_bindings / "requirements_dev.txt"
-    for src in [
-        project_root / "requirements_dev.txt",
-        repo_root / "python" / "requirements_dev.txt",
-    ]:
-        if src.is_file():
-            shutil.copy2(src, dev_req_dst)
-            break
-
-    _copy_tree_merge(project_root / "scripts", python_bindings / "scripts")
-
-    for whl in wheelhouse.glob("mlir_aie*.whl"):
-        shutil.copy2(whl, python_bindings / whl.name)
-
-    # unzip -o -q mlir_aie\*.whl ; rm -rf mlir_aie*.whl
-    for whl in python_bindings.glob("mlir_aie*.whl"):
-        _unzip_overwrite(whl, python_bindings)
-
-    for whl in python_bindings.glob("mlir_aie*.whl"):
-        whl.unlink()
-
-    # cibuildwheel --platform "$machine" --output-dir ../wheelhouse
-    _run(
-        _cibuildwheel_cmd() + ["--platform", machine, "--output-dir", "../wheelhouse"],
-        cwd=python_bindings,
-    )
 
     return 0
 
