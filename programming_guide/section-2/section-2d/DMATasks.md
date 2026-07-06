@@ -157,7 +157,7 @@ The dialect-direct lowering used by DMA task operations can be inspected for any
 def shim_dma_single_bd_task(
     alloc,
     mem,
-    tap: TensorAccessPatter | None = None,
+    tap: TensorAccessPattern | None = None,
     offset: int | None = None,
     sizes: MixedValues | None = None,
     strides: MixedValues | None = None,

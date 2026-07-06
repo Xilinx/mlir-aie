@@ -7,6 +7,18 @@ if (DOXYGEN_FOUND)
   set(abs_top_srcdir ${CMAKE_CURRENT_SOURCE_DIR})
   set(abs_top_builddir ${CMAKE_CURRENT_BINARY_DIR})
 
+  # Derive the project version from git tags (matches the wheel version) so the
+  # doxygen PROJECT_NUMBER stays accurate without hardcoding a release number.
+  execute_process(
+    COMMAND ${Python3_EXECUTABLE} ${AIE_SOURCE_DIR}/utils/mlir_aie_wheels/_version_helper.py
+    WORKING_DIRECTORY ${AIE_SOURCE_DIR}
+    OUTPUT_VARIABLE PACKAGE_VERSION
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET)
+  if (NOT PACKAGE_VERSION)
+    set(PACKAGE_VERSION "unknown")
+  endif()
+
   if (HAVE_DOT)
     set(DOT ${LLVM_PATH_DOT})
   endif()
@@ -22,6 +34,7 @@ if (DOXYGEN_FOUND)
 
   set(abs_top_srcdir)
   set(abs_top_builddir)
+  set(PACKAGE_VERSION)
   set(DOT)
   set(enable_searchengine)
   set(searchengine_url)

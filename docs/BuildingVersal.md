@@ -45,7 +45,7 @@ When targetting the VCK5000 Versal device, you must build and install our experi
 
 2. Source `utils/setup_python_packages.sh` to setup the prerequisite python
     packages. This script creates and installs the python packages
-    listed in `utils/requirements.txt` and `utils/requirements_dev.txt` in
+    listed in `python/requirements.txt` and `python/requirements_dev.txt` in
     a virtual python environment called 'sandbox', then it enters the sandbox:
     ```
     source utils/setup_python_packages.sh
