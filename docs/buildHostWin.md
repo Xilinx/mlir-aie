@@ -1,4 +1,5 @@
-<!-- Copyright (C) 2019-2024 Advanced Micro Devices, Inc. -->
+<!-- Copyright (C) 2019-2021 Xilinx, Inc. -->
+<!-- Copyright (C) 2022-2026 Advanced Micro Devices, Inc. -->
 <!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 # Windows Setup and Build Instructions
 
@@ -259,4 +260,4 @@ Be sure you have the latest BIOS for your laptop or mini PC, this will ensure th
 
 -----
 
-<p align="center">Copyright&copy; 2019-2024 Advanced Micro Devices, Inc</p>
+<p align="center">Copyright&copy; 2019-2021 Xilinx, Inc.<br>Copyright&copy; 2022-2026 Advanced Micro Devices, Inc.</p>
