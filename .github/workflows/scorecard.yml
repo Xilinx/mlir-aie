@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 name: Scorecard supply-chain security
 on:
   branch_protection_rule:

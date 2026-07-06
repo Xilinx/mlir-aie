@@ -1,15 +1,13 @@
 # scratchpad_parameter.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2026 Advanced Micro Devices, Inc.
 """ScratchpadParameter: a named runtime value set from the host and read by Workers."""
 
 import numpy as np
 
-from .. import ir  # pyright: ignore[reportMissingImports]
+from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ..dialects import aiex
 from ..helpers.util import np_dtype_to_mlir_type, NpuDType
 from .resolvable import Resolvable

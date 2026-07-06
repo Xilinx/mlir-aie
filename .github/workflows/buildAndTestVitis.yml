@@ -1,3 +1,6 @@
+# Copyright (C) 2023-2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 name: Build and Test with Vitis 2025.1
 
 permissions:
@@ -85,22 +88,8 @@ jobs:
           sudo prlimit -lunlimited --pid $$
           pip cache purge
           source /opt/xilinx/xrt/setup.sh
-          python -m venv aie-venv
-          source aie-venv/bin/activate
-          pip install --upgrade pip
-          python utils/mlir_aie_wheels/vendor_eudsl.py \
-              --requirements python/requirements.txt \
-              --install-non-eudsl
-          pip install -r python/requirements_notebook.txt
-          pip install -r python/requirements_ml.txt
-          python -m pip install --require-hashes -r python/requirements_dev.lock
+          source ./utils/env_install.sh aie-venv --dev
 
-          # Install llvm-aie (Peano) which is needed for unittests requiring compiling NPU code.
-          # Pinned via utils/peano-requirements.txt; bumped by the update-peano workflow so a bad
-          # nightly is caught in a PR instead of breaking main.
-          pip install -I -r utils/peano-requirements.txt
-          export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep ^Location: | awk '{print $2}')/llvm-aie"
-          
           sed -i.bak 's/OUTPUT_TIMEOUT = 10/OUTPUT_TIMEOUT = 100/g' \
             $(python -c 'import site; print(site.getsitepackages()[0])')/jupyter_client/runapp.py
 

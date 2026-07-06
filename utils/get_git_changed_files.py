@@ -1,4 +1,8 @@
 #!/usr/bin/env python3
+
+# Copyright (C) 2023 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 import os
 import re
 import shlex

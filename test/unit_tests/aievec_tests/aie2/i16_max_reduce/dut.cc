@@ -1,3 +1,6 @@
+// Copyright (C) 2023-2024 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 void dut(int16_t *restrict v1, int16_t *restrict v2) {
   int32_t v3 = 0;
   v32int16 v4 = broadcast_to_v32int16((int16_t)-32768);

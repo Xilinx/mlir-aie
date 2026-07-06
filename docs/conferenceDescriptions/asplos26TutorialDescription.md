@@ -1,3 +1,6 @@
+<!-- Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
+
 # ASPLOS 2026 Tutorial: Leveraging the IRON AI Engine API to program the Ryzen™ AI NPU
 
 ## Introduction

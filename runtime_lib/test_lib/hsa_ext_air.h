@@ -4,6 +4,7 @@
 // Open Source License (NCSA)
 //
 // Copyright (C) 2023 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: NCSA
 //
 // Developed by:
 //

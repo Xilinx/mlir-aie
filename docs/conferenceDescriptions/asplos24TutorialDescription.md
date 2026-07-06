@@ -1,3 +1,6 @@
+<!-- Copyright (C) 2024 Advanced Micro Devices, Inc.
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
+
 # ASPLOS'24 Tutorial: Levering MLIR to Design for AI Engines on Ryzen™ AI
 
 ## Introduction

@@ -1,3 +1,6 @@
+<!-- Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
+
 # <ins>IRON Mini Tutorial</ins>
 
 > **Prerequisites:** These exercises require a physical Ryzen AI NPU (Phoenix/npu1 or Strix/npu2) with XRT installed, and the mlir-aie environment set up (see [docs/Building.md](../../docs/Building.md)). The `@iron.jit` decorator automatically detects your hardware — no manual device selection is needed. Each exercise is run directly with `python3 <exercise>.py`.

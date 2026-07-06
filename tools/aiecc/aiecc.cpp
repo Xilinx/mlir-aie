@@ -1,10 +1,7 @@
 //===- aiecc.cpp ------------------------------------------------*- C++ -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -407,8 +404,8 @@ static cl::opt<bool> keepLoc(
 static cl::opt<unsigned> numThreads(
     "j", cl::Prefix,
     cl::desc("Number of parallel threads for core compilation (0 = auto-detect "
-             "based on CPU count, default: 1 for sequential)"),
-    cl::init(1), cl::cat(aieCompilerOptions));
+             "based on CPU count, default: 0)"),
+    cl::init(0), cl::cat(aieCompilerOptions));
 
 static cl::alias numThreadsLong("nthreads", cl::desc("Alias for -j"),
                                 cl::aliasopt(numThreads),
@@ -1519,7 +1516,6 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
   // Note: Trace lowering runs in a separate guarded pipeline
   // (runTraceLoweringPipeline) before this function is called.
   devicePm.addPass(xilinx::AIE::createAIEAssignLockIDsPass());
-  devicePm.addPass(xilinx::AIE::createAIEObjectFifoRegisterProcessPass());
   {
     std::string objFifoPipelineStr =
         "aie-objectFifo-stateful-transform{dynamic-objFifos=" +
@@ -2539,8 +2535,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     SmallString<128> chessHackPath(tmpDirName);
     sys::path::append(chessHackPath,
                       deviceName.str() + "_core_" + std::to_string(core.col) +
-                          "_" + std::to_string(core.col) + "_" +
-                          std::to_string(core.row) + ".chesshack.ll");
+                          "_" + std::to_string(core.row) + ".chesshack.ll");
     {
       std::error_code ec;
       raw_fd_ostream chessHackFile(chessHackPath, ec);

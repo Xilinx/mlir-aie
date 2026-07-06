@@ -1,10 +1,8 @@
 # flow.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2026 Advanced Micro Devices, Inc.
 """Iron-level circuit- and packet-switched route primitives.
 
 Two classes live here: :class:`Flow` (circuit-switched) and
@@ -26,7 +24,7 @@ shared state) for designs that need direct control.
 from dataclasses import dataclass
 from typing import Sequence
 
-from ... import ir  # pyright: ignore[reportMissingImports]
+from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     AIETileType,
     DMAChannelDir,

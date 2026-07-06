@@ -1,10 +1,8 @@
 # matrix_scalar_add/matrix_scalar_add.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 """Matrix scalar add — IRON API design with ``@iron.jit`` compilation.
 
 A single AIE compute core reads one ``TILE_HEIGHT x TILE_WIDTH`` tile from

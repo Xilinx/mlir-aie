@@ -1,3 +1,6 @@
+// Copyright (C) 2024 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 // clang-format off
 void dut(float * restrict v1, float * restrict v2, float * restrict v3) {
   size_t v4 = 0;

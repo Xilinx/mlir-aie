@@ -1,4 +1,6 @@
-﻿<span style="color:red;font-weight:bold;font-size:48px">WARNING: This is documentation for legacy functionality. The last version where these passes are present is [tagged as "last-legacy-vectorize"](https://github.com/Xilinx/mlir-aie/tree/last-legacy-vectorize)</span>.
+﻿<!-- Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
+<span style="color:red;font-weight:bold;font-size:48px">WARNING: This is documentation for legacy functionality. The last version where these passes are present is [tagged as "last-legacy-vectorize"](https://github.com/Xilinx/mlir-aie/tree/last-legacy-vectorize)</span>.
 
 # AIE Automatic Vectorization
 

@@ -1,10 +1,8 @@
 # utils.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 """Low-level helpers for compiling MLIR modules and external C++ kernels to NPU artifacts."""
 
 import logging
@@ -17,7 +15,7 @@ import aie.compiler.aiecc.main as aiecc
 import aie.utils.config as config
 
 if TYPE_CHECKING:
-    from aie.ir import (
+    from aie.ir import (  # pyright: ignore[reportMissingImports]
         Module,  # pyright: ignore[reportAttributeAccessIssue]
     )
 
@@ -112,6 +110,12 @@ def compile_cxx_core_function(
             "-Wno-empty-body",
             "-O2",
             "-DNDEBUG",
+            # Pre-trip aie_api's aie_adf.hpp include guard so stock upstream
+            # aie_api never pulls in <adf.h> (Vitis-only, absent from Peano).
+            # No mlir-aie kernel uses adf:: symbols, so this only elides dead
+            # code.  (The chess path gets the same define centrally in
+            # tools/chess-clang/xchesscc_wrapper.)
+            "-D__AIE_API_AIE_ADF_HPP__",
             f"--target={target_arch}-none-unknown-elf",
         ]
 
@@ -264,14 +268,7 @@ def compile_mlir_module(
 
 def _rename_symbol_in_object(object_path: str, old_name: str, new_name: str) -> None:
     """Rename a symbol in a compiled object file using llvm-objcopy."""
-    objcopy = shutil.which("llvm-objcopy")
-    if not objcopy:
-        objcopy = shutil.which("objcopy")
-    if not objcopy:
-        raise RuntimeError(
-            "Cannot rename symbol: neither 'llvm-objcopy' nor 'objcopy' found in PATH. "
-            "Install the LLVM toolchain or GNU binutils."
-        )
+    objcopy = config.objcopy_path()
     result = subprocess.run(
         [objcopy, f"--redefine-sym={old_name}={new_name}", str(object_path)],
         capture_output=True,

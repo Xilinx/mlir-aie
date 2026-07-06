@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 ##===- quick_setup.sh - Setup IRON for Ryzen AI dev ----------*- Script -*-===##
 #
-# This file licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 ##===----------------------------------------------------------------------===##
@@ -52,24 +51,23 @@ fi
 # If an install is already present, remove it and start from a clean slate
 rm -rf ironenv
 rm -rf my_install
-$my_python -m venv ironenv
-source ironenv/bin/activate
-python3 -m pip install --upgrade pip
+export PYTHON="$my_python"
+source utils/env_install.sh ironenv
 
-python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-4/
+# Prefer a locally-provided wheel (e.g. a CI artifact built from this same
+# commit) when MLIR_AIE_WHEEL_DIR is set; otherwise fall back to the published
+# rolling tag for local-dev convenience.
+if [ -n "${MLIR_AIE_WHEEL_DIR:-}" ]; then
+  python3 -m pip install mlir_aie -f "$MLIR_AIE_WHEEL_DIR"
+else
+  python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-4/
+fi
 export MLIR_AIE_INSTALL_DIR="$(pip show mlir_aie | grep ^Location: | awk '{print $2}')/mlir_aie"
-
-# Pinned via utils/peano-requirements.txt (bumped by the update-peano workflow).
-python3 -m pip install -r "$(dirname "${BASH_SOURCE[0]}")/peano-requirements.txt"
-export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep ^Location: | awk '{print $2}')/llvm-aie"
 
 pip install pre-commit
 
 # This installs the pre-commit hooks defined in .pre-commit-config.yaml
 pre-commit install --hook-type pre-commit --hook-type pre-push
-
-python3 -m pip install -r python/requirements_ml.txt
-python3 -m pip install -r python/requirements_notebook.txt
 
 # This creates an ipykernel (for use in notebooks) using the ironenv venv
 python3 -m ipykernel install --user --name ironenv

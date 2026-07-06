@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
 ##===- utils/build-mlir-aie-from-wheels.sh - Build mlir-aie --*- Script -*-===##
 # 
-# This file licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 ##===----------------------------------------------------------------------===##
 #
@@ -20,7 +19,7 @@
 #
 ##===----------------------------------------------------------------------===##
 
-if [ "$#" -lt 1 ]; then
+if [ "$#" -lt 1 ] || [ -z "$1" ]; then
     VERSION=$(utils/clone-llvm.sh --get-wheel-version)
 
     mkdir -p my_install
@@ -28,6 +27,11 @@ if [ "$#" -lt 1 ]; then
     python3 -m pip -q download mlir==$VERSION \
       -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
     unzip -q -u mlir-*.whl
+    # The system clock on GHA containers is sometimes ~12 hours ahead, so the
+    # freshly unzipped wheel ends up with files whose timestamps are in the
+    # future. That makes ninja loop forever when configuring. Stamp them to an
+    # arbitrary time in the past to be safe.
+    find mlir -exec touch -a -m -t 201108231405.14 {} \;
     popd
     WHL_MLIR_DIR=`realpath my_install/mlir`
     echo "WHL_MLIR DIR: $WHL_MLIR_DIR"
@@ -49,11 +53,15 @@ if [ "$#" -ge 4 ]; then
   echo "PEANO_INSTALL_DIR DIR: $PEANO_INSTALL_DIR"
   export PEANO_INSTALL_DIR=${PEANO_INSTALL_DIR}
 else
-  # Pinned via utils/peano-requirements.txt (bumped by the update-peano workflow).
-  python3 -m pip install -r ${BASE_DIR}/utils/peano-requirements.txt
-  export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep ^Location: | awk '{print $2}')/llvm-aie"
+  PEANO_LOCATION=$(pip show llvm-aie 2>/dev/null | awk '/^Location:/ {print $2}')
+  if [ -z "$PEANO_LOCATION" ]; then
+    echo "ERROR: llvm-aie (Peano) is not installed; the Python environment isn't set up." >&2
+    echo "       Install it first with: source utils/env_install.sh <venv-dir> [--dev]" >&2
+    echo "       Or pass an existing Peano install dir as the 4th argument to this script." >&2
+    exit 1
+  fi
+  export PEANO_INSTALL_DIR="${PEANO_LOCATION}/llvm-aie"
   echo "PEANO_INSTALL_DIR DIR: $PEANO_INSTALL_DIR"
-  export PEANO_INSTALL_DIR=${PEANO_INSTALL_DIR}
 fi
 
 BUILD_TYPE="${BUILD_TYPE:-Release}"
@@ -87,6 +95,12 @@ fi
 
 if [ -x "$(command -v ccache)" ]; then
   CMAKE_CONFIGS="${CMAKE_CONFIGS} -DLLVM_CCACHE_BUILD=ON"
+fi
+
+# Allow callers (e.g. CI) to inject additional -D options without editing this
+# script. Appended last so they can override the defaults set above.
+if [ -n "${EXTRA_CMAKE_ARGS}" ]; then
+  CMAKE_CONFIGS="${CMAKE_CONFIGS} ${EXTRA_CMAKE_ARGS}"
 fi
 
 cmake $CMAKE_CONFIGS .. 2>&1 | tee cmake.log
