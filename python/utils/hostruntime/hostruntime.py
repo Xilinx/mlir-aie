@@ -189,6 +189,24 @@ class HostRuntime(ABC):
                 trace_config.last_tensor_dtype = np.dtype(run_args[-1].dtype)
             self.prepare_args_for_trace(run_args, trace_config)
 
+            # Passing a trace_config to a design that never called enable_trace
+            # means the lowering appended no trace operand, yet the host just
+            # appended a trace buffer above. The extra buffer has no matching
+            # runtime_sequence operand and would run with an empty trace (or,
+            # before the firmware-ABI floor over-declared kernels.json, segfault
+            # in XRT argument setup). Compare against the design's true operand
+            # count -- floor-independent, unlike the kernels.json boN slot count.
+            num_host_bos = npu_kernel.num_host_bos
+            if num_host_bos is not None and len(run_args) > num_host_bos:
+                raise HostRuntimeError(
+                    f"A trace_config was supplied but the compiled design has "
+                    f"{num_host_bos} host buffer argument(s), while running with "
+                    f"a trace buffer requires {len(run_args)}. The design must "
+                    f"call enable_trace(...) so trace lowering appends a trace "
+                    f"buffer operand; otherwise the trace buffer has nowhere to "
+                    f"land."
+                )
+
         ret = self.run(handle, list(run_args), trace_config=trace_config)
 
         if trace_config:
