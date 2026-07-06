@@ -166,3 +166,13 @@ jobs:
             ninja check-reference-designs
             ninja check-programming-guide
           fi
+
+  notify-nightly-failure:
+    needs: [build-repo]
+    if: ${{ failure() && github.event_name == 'schedule' }}
+    permissions:
+      issues: write
+      actions: read
+    uses: ./.github/workflows/nightly-failure-notify.yml
+    with:
+      workflow_name: "Compile across platforms"

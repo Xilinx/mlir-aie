@@ -536,3 +536,13 @@ jobs:
           replacesArtifacts: false
           omitBodyDuringUpdate: true
           makeLatest: false
+
+  notify-nightly-failure:
+    needs: [get_llvm_project_commit, build, smoke_test_wheels, upload_distro_wheels]
+    if: ${{ failure() && github.event_name == 'schedule' }}
+    permissions:
+      issues: write
+      actions: read
+    uses: ./.github/workflows/nightly-failure-notify.yml
+    with:
+      workflow_name: "MLIR Distro"

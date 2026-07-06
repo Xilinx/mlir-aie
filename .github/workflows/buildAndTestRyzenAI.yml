@@ -74,7 +74,14 @@ jobs:
           sed -i.bak 's/OUTPUT_TIMEOUT = 10/OUTPUT_TIMEOUT = 100/g' \
             $(python -c 'import site; print(site.getsitepackages()[0])')/jupyter_client/runapp.py
 
-      - name: Run commands
+      # The steps below share this job's shell preamble: each GitHub Actions
+      # step runs in a fresh shell, so memlock, XRT, the venv, and the Vitis
+      # PATH must be re-established per step. Values computed in the build step
+      # (LIT_OPTS, XRT_CONTEXT_CACHE_SIZE) are persisted via $GITHUB_ENV so the
+      # test steps inherit them. Splitting the phases into named steps means a
+      # failure attributes to the specific phase (build / check-aie /
+      # reference-designs / ...) instead of one opaque "Run commands" exit code.
+      - name: Build MLIR-AIE from source
         run: |
           sudo prlimit -lunlimited --pid $$
           # Newer XRT/amdxdna packages no longer ship setup.sh; source it
@@ -92,6 +99,9 @@ jobs:
           else
             LIT_OPTS="-j12 $LIT_OPTS"
           fi
+          # Persist for the test steps (fresh shell each).
+          echo "LIT_OPTS=$LIT_OPTS" >> $GITHUB_ENV
+          echo "XRT_CONTEXT_CACHE_SIZE=2" >> $GITHUB_ENV
 
           export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
 
@@ -99,36 +109,56 @@ jobs:
           export EXTRA_CMAKE_ARGS="-DPython3_EXECUTABLE=$(which python) $CMAKE_ARGS"
           ./utils/build-mlir-aie-from-wheels.sh "" build mlir_aie
 
-          pushd build
-
           # Create runner-specific cache directory
           rm -rf $NPU_CACHE_HOME
           mkdir $NPU_CACHE_HOME
 
-          # Set number of contexts to maintain in cache per process
-          export XRT_CONTEXT_CACHE_SIZE=2
+      - name: Test - check-aie
+        run: |
+          sudo prlimit -lunlimited --pid $$
+          [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
+          source aie-venv/bin/activate
+          export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
+          ninja -C build check-aie
 
-          # Run tests
-          echo "===== Running tests ====="
-          ninja check-aie
+      - name: Test - check-aie-concurrency
+        run: |
+          sudo prlimit -lunlimited --pid $$
+          [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
+          source aie-venv/bin/activate
+          export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
+          ninja -C build check-aie-concurrency
 
-          echo "===== Running concurrency tests ====="
-          ninja check-aie-concurrency
-
-          # Run examples
-          echo "===== Running examples ====="
+      - name: Examples - reference designs
+        run: |
+          sudo prlimit -lunlimited --pid $$
+          [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
+          source aie-venv/bin/activate
+          export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
           # gemm_asymmetric_tile_buffering chess builds peak ~8 GB RSS and
           # ~9 min wall time alone on 32 GB. They run serialized via lit's
           # atb_chess parallelism group and need a longer timeout than the
-          # rest of the suite. Split into two invocations so the timeout
-          # extension applies only to those tests.
-          LIT_FILTER_OUT="gemm_asymmetric_tile_buffering" ninja check-reference-designs
-          ninja check-programming-guide
+          # rest of the suite. Run separately (below) so the timeout extension
+          # applies only to those tests.
+          LIT_FILTER_OUT="gemm_asymmetric_tile_buffering" ninja -C build check-reference-designs
+
+      - name: Examples - programming guide
+        run: |
+          sudo prlimit -lunlimited --pid $$
+          [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
+          source aie-venv/bin/activate
+          export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
+          ninja -C build check-programming-guide
+
+      - name: Examples - reference designs (gemm_asymmetric_tile_buffering)
+        run: |
+          sudo prlimit -lunlimited --pid $$
+          [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
+          source aie-venv/bin/activate
+          export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
           LIT_OPTS="-j4 -sv --time-tests --timeout 1200 --show-unsupported --show-excluded" \
             LIT_FILTER="gemm_asymmetric_tile_buffering" \
-            ninja check-reference-designs
-
-          popd
+            ninja -C build check-reference-designs
 
       - name: Cleanup NPU_CACHE_HOME
         if: always()
@@ -188,6 +218,10 @@ jobs:
       - name: Print hostname
         run: hostname
 
+      # Kept as a single step: quick_setup.sh activates the ironenv venv and
+      # exports PYTHONPATH / MLIR_AIE_INSTALL_DIR in this shell, and a separate
+      # GitHub Actions step runs in a fresh shell that would not inherit them.
+      # The per-example echo markers below identify which example failed.
       - name: Run commands
         run: |
           sudo prlimit -lunlimited --pid $$
@@ -228,3 +262,13 @@ jobs:
         run: |
           rm -rf $NPU_CACHE_HOME
           rm -rf $PIP_CACHE_DIR
+
+  notify-nightly-failure:
+    needs: [build-and-test-from-source, build-dev-wheel, test-from-wheels]
+    if: ${{ failure() && github.event_name == 'schedule' }}
+    permissions:
+      issues: write
+      actions: read
+    uses: ./.github/workflows/nightly-failure-notify.yml
+    with:
+      workflow_name: "Build and Test with AIE tools on Ryzen AI"

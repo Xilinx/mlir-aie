@@ -163,3 +163,13 @@ jobs:
           ninja check-tutorials
           ninja check-reference-designs
           ninja check-programming-guide
+
+  notify-nightly-failure:
+    needs: [build-repo]
+    if: ${{ failure() && github.event_name == 'schedule' }}
+    permissions:
+      issues: write
+      actions: read
+    uses: ./.github/workflows/nightly-failure-notify.yml
+    with:
+      workflow_name: "Build and Test across Python versions"

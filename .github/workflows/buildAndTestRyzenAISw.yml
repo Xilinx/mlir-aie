@@ -78,9 +78,14 @@ jobs:
             XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
           run: |
 
+            # This whole job runs inside run-on-arch's container, so the phases
+            # cannot be separate GitHub Actions steps. ::group:: markers fold and
+            # label each phase in the log; the shell is -eo pipefail, so on
+            # failure the last un-closed group marks the phase that died.
             MLIR_DIR=$PWD
             pushd /workspace
 
+            echo "::group::Install Ryzen AI SDK"
             tar xvf /workspace/ryzen_ai-1.3.0ea1.tgz
             pushd /workspace/ryzen_ai-1.3.0
             # The ryzen_ai-1.3 wheels are built for python3.10
@@ -94,11 +99,13 @@ jobs:
             export LD_LIBRARY_PATH=
             source /opt/xilinx/xrt/setup.sh
             popd
+            echo "::endgroup::"
 
             if [ x"${{ inputs.AIE_COMMIT }}" != x"" ]; then
               git reset --hard ${{ inputs.AIE_COMMIT }}
             fi
 
+            echo "::group::Install Python dependencies"
             pip install --upgrade pip
             pip install onnxruntime==1.17.0
             python utils/mlir_aie_wheels/vendor_eudsl.py \
@@ -109,7 +116,9 @@ jobs:
             # requirements_dev.lock targets py>=3.11 (drops cibuildwheel 3.x
             # transitively); fall back to the loose .txt here.
             pip install -r python/requirements_dev.txt
+            echo "::endgroup::"
 
+            echo "::group::Download MLIR distro wheel"
             VERSION=$(utils/clone-llvm.sh --get-wheel-version)
 
             cd /workspace
@@ -119,9 +128,11 @@ jobs:
 
             mkdir -p /workspace/install
             mkdir -p /workspace/build
+            echo "::endgroup::"
 
             pushd /workspace/build
 
+            echo "::group::CMake configure and build (ninja install)"
             cmake $MLIR_DIR -G Ninja \
                 -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
                 -DCMAKE_C_COMPILER_LAUNCHER=ccache \
@@ -140,8 +151,22 @@ jobs:
                 -DMLIR_DIR=/workspace/mlir/lib/cmake/mlir
 
             ninja install
+            echo "::endgroup::"
+
+            echo "::group::Run tests (ninja check-aie)"
             # filter out slow tests (e.g. create-flows/vecmul_4x4_slow_test.mlir) due to timeout.
             export LIT_OPTS="-j2 -sv --timeout 600 --filter-out slow_test"
             ninja check-aie
+            echo "::endgroup::"
 
             popd
+
+  notify-nightly-failure:
+    needs: [build-repo]
+    if: ${{ failure() && github.event_name == 'schedule' }}
+    permissions:
+      issues: write
+      actions: read
+    uses: ./.github/workflows/nightly-failure-notify.yml
+    with:
+      workflow_name: "Build and Test with Ryzen AI Sofware"

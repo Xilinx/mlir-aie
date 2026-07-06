@@ -642,3 +642,15 @@ jobs:
           replacesArtifacts: false
           omitBodyDuringUpdate: true
           makeLatest: false
+
+  notify-nightly-failure:
+    needs: [setup, build-repo, build-windows, publish]
+    # Skip when invoked as a reusable workflow (the parent handles its own
+    # notification); only notify for this workflow's own scheduled runs.
+    if: ${{ failure() && github.event_name == 'schedule' && !inputs.reusable_call }}
+    permissions:
+      issues: write
+      actions: read
+    uses: ./.github/workflows/nightly-failure-notify.yml
+    with:
+      workflow_name: "Build wheels for Ryzen AI"

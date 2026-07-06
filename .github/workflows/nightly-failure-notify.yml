@@ -1,0 +1,130 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# Reusable notifier for scheduled (nightly) workflow failures.
+#
+# Callers add a trailing job gated on `if: failure() && github.event_name ==
+# 'schedule'` that invokes this workflow. All callers share ONE tracking issue
+# (found by the `ci-nightly-failure` label): the first failure opens it, and
+# every subsequent failure appends a comment naming the workflow and linking
+# each failed job directly. A human closes the issue once the underlying flake
+# or breakage is triaged.
+#
+# A reusable workflow shares the caller's run, so context.runId here IS the
+# failing run — the notifier queries that run's jobs and links the failed ones
+# directly, so callers don't need to pass any run/job URL.
+
+name: Notify on nightly failure
+
+on:
+  workflow_call:
+    inputs:
+      workflow_name:
+        description: 'Human-readable name of the failing workflow'
+        type: string
+        required: true
+
+permissions:
+  issues: write
+  actions: read
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Open or update the shared nightly-failure issue
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9
+        with:
+          script: |
+            const label = 'ci-nightly-failure';
+            const title = '[nightly] Scheduled CI failing';
+            const workflowName = ${{ toJSON(inputs.workflow_name) }};
+            const runUrl = `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            const today = new Date().toISOString().slice(0, 10);
+
+            // The notifier shares the caller's run, so list this run's jobs and
+            // link the ones that actually failed. The notify job itself is still
+            // in_progress here, so it is naturally excluded by the status filter.
+            const jobs = await github.paginate(
+              github.rest.actions.listJobsForWorkflowRun,
+              {
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                run_id: context.runId,
+                per_page: 100,
+              }
+            );
+            const failed = jobs.filter(j =>
+              j.conclusion === 'failure' || j.conclusion === 'timed_out'
+            );
+
+            const jobLines = failed.length > 0
+              ? failed.map(j => `  - [${j.name}](${j.html_url})`).join('\n')
+              : `  - (no per-job failure recorded — see run)`;
+
+            const body = [
+              `**${workflowName}** failed on a scheduled run.`,
+              ``,
+              `- Date: ${today}`,
+              `- Run: ${runUrl}`,
+              `- Failed job(s):`,
+              jobLines,
+            ].join('\n');
+
+            // Ensure the dedup label exists (first-ever run creates it).
+            try {
+              await github.rest.issues.getLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                name: label,
+              });
+            } catch (e) {
+              if (e.status === 404) {
+                await github.rest.issues.createLabel({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  name: label,
+                  color: 'd73a4a',
+                  description: 'Tracks failures of scheduled (nightly) CI workflows',
+                });
+              } else {
+                throw e;
+              }
+            }
+
+            // Find an existing open tracking issue by label.
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: label,
+              per_page: 1,
+            });
+
+            if (existing.data.length > 0) {
+              const number = existing.data[0].number;
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: number,
+                body,
+              });
+              core.notice(`Commented on existing tracking issue #${number}`);
+            } else {
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title,
+                labels: [label],
+                body: [
+                  `Scheduled CI workflows are failing. This issue is updated in`,
+                  `place (one comment per failure) until a maintainer closes it`,
+                  `after triage.`,
+                  ``,
+                  `---`,
+                  ``,
+                  body,
+                ].join('\n'),
+              });
+              core.notice(`Opened tracking issue #${created.data.number}`);
+            }
