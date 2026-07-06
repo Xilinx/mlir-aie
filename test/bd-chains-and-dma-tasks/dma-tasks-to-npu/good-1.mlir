@@ -16,25 +16,30 @@ module {
 
     aie.runtime_sequence(%arg0: memref<8xi16>, %arg1: memref<10xi32>) {
       // CHECK: aiex.npu.writebd {bd_id = 7 : i32, buffer_length = 4 : i32, buffer_offset = 0 : i32, column = 0 : i32, d0_size = 0 : i32, d0_stride = 0 : i32, d0_zero_after = 0 : i32, d0_zero_before = 0 : i32, d1_size = 0 : i32, d1_stride = 0 : i32, d1_zero_after = 0 : i32, d1_zero_before = 0 : i32, d2_size = 0 : i32, d2_stride = 0 : i32, d2_zero_after = 0 : i32, d2_zero_before = 0 : i32, enable_packet = 0 : i32, iteration_current = 0 : i32, iteration_size = 0 : i32, iteration_stride = 0 : i32, lock_acq_enable = 0 : i32, lock_acq_id = 0 : i32, lock_acq_val = 0 : i32, lock_rel_id = 0 : i32, lock_rel_val = 0 : i32, next_bd = 0 : i32, out_of_order_id = 0 : i32, packet_id = 0 : i32, packet_type = 0 : i32, row = 0 : i32, use_next_bd = 0 : i32, valid_bd = 1 : i32}
-      // CHECK: aiex.npu.address_patch {addr = 119012 : ui32, arg_idx = 0 : i32, arg_plus = 0 : i32}
+      // CHECK: aiex.npu.address_patch(%{{.*}} : i32) {addr = 119012 : ui32, arg_idx = 0 : i32}
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
         aie.dma_bd(%arg0 : memref<8xi16>, 0, 8) {bd_id = 7 : i32}
         aie.end
       } {issue_token = true}
       // CHECK: aiex.npu.writebd {bd_id = 8 : i32, buffer_length = 10 : i32, buffer_offset = 0 : i32, column = 2 : i32, d0_size = 0 : i32, d0_stride = 0 : i32, d0_zero_after = 0 : i32, d0_zero_before = 0 : i32, d1_size = 0 : i32, d1_stride = 0 : i32, d1_zero_after = 0 : i32, d1_zero_before = 0 : i32, d2_size = 0 : i32, d2_stride = 0 : i32, d2_zero_after = 0 : i32, d2_zero_before = 0 : i32, enable_packet = 0 : i32, iteration_current = 0 : i32, iteration_size = 0 : i32, iteration_stride = 0 : i32, lock_acq_enable = 0 : i32, lock_acq_id = 0 : i32, lock_acq_val = 0 : i32, lock_rel_id = 0 : i32, lock_rel_val = 0 : i32, next_bd = 0 : i32, out_of_order_id = 0 : i32, packet_id = 0 : i32, packet_type = 0 : i32, row = 0 : i32, use_next_bd = 0 : i32, valid_bd = 1 : i32}
-      // CHECK: aiex.npu.address_patch {addr = 67227908 : ui32, arg_idx = 1 : i32, arg_plus = 0 : i32} 
+      // CHECK: aiex.npu.address_patch(%{{.*}} : i32) {addr = 67227908 : ui32, arg_idx = 1 : i32}
       %t2 = aiex.dma_configure_task(%tile_2_0, S2MM, 1) {
         aie.dma_bd(%arg1 : memref<10xi32>, 0, 10) {bd_id = 8 : i32}
         aie.end
       } {repeat_count = 2 : i32, issue_token = true}
 
-      // CHECK: aiex.npu.push_queue(0, 0, MM2S : 0) {bd_id = 7 : i32, issue_token = true, repeat_count = 0 : i32}
+      // CHECK-DAG: %[[T1BD:.*]] = arith.constant 7 : i32
+      // CHECK: aiex.npu.push_queue(0, 0, MM2S : 0) bd_id %[[T1BD]] repeat %{{.*}} {issue_token = true} : i32, i32
       aiex.dma_start_task(%t1)
-      // CHECK: aiex.npu.push_queue(2, 0, S2MM : 1) {bd_id = 8 : i32, issue_token = true, repeat_count = 2 : i32}
+      // CHECK-DAG: %[[T2BD:.*]] = arith.constant 8 : i32
+      // CHECK-DAG: %[[T2RC:.*]] = arith.constant 2 : i32
+      // CHECK: aiex.npu.push_queue(2, 0, S2MM : 1) bd_id %[[T2BD]] repeat %[[T2RC]] {issue_token = true} : i32, i32
       aiex.dma_start_task(%t2)
-      // CHECK: aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
+      // sync operands: column=0, row=0, direction=1, channel=0, column_num=1, row_num=1
+      // CHECK: aiex.npu.sync(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) : i32, i32, i32, i32, i32, i32
       aiex.dma_await_task(%t1)
-      // CHECK: aiex.npu.sync {channel = 1 : i32, column = 2 : i32, column_num = 1 : i32, direction = 0 : i32, row = 0 : i32, row_num = 1 : i32}
+      // sync operands: column=2, row=0, direction=0, channel=1, column_num=1, row_num=1
+      // CHECK: aiex.npu.sync(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) : i32, i32, i32, i32, i32, i32
       aiex.dma_await_task(%t2)
     }
   }

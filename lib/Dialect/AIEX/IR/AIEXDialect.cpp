@@ -8,8 +8,10 @@
 
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/IR/TypeUtilities.h"
@@ -639,9 +641,16 @@ LogicalResult AIEX::NpuDmaWaitOp::verify() {
 LogicalResult AIEX::NpuPushQueueOp::verify() {
   const auto &targetModel = AIE::getTargetModel(*this);
   auto numBds = targetModel.getNumBDs(getColumn(), getRow());
-  if (getBdId() > numBds)
+  // bd_id and repeat_count are SSA operands; range-check them only when they
+  // are compile-time constants. A runtime (non-constant) value is left
+  // unchecked here: bounds checking of runtime operands is not yet implemented
+  // (it belongs to the dynamic lowering path added in a later patch).
+  if (std::optional<uint32_t> bdId = getConstantIntOperand(getBdId());
+      bdId && *bdId > numBds)
     return emitOpError("BD ID exceeds the maximum ID.");
-  if (getRepeatCount() > 255)
+  if (std::optional<uint32_t> repeatCount =
+          getConstantIntOperand(getRepeatCount());
+      repeatCount && *repeatCount > 255)
     return emitOpError("Repeat count exceeds the [0:255] range.");
   return success();
 }
@@ -693,12 +702,26 @@ LogicalResult AIEX::NpuWriteBdOp::verify() {
   return success();
 }
 
+std::optional<uint32_t> AIEX::getConstantIntOperand(mlir::Value v) {
+  mlir::APInt cst;
+  if (!mlir::matchPattern(v, mlir::m_ConstantInt(&cst)))
+    return std::nullopt;
+  return static_cast<uint32_t>(cst.getZExtValue());
+}
+
+mlir::Value AIEX::createConstantI32(mlir::OpBuilder &builder,
+                                    mlir::Location loc, uint32_t value) {
+  return arith::ConstantOp::create(
+      builder, loc, builder.getI32IntegerAttr(static_cast<int32_t>(value)));
+}
+
 //===----------------------------------------------------------------------===//
 // NpuWrite32Op
 //===----------------------------------------------------------------------===//
 
 template <typename T>
-static std::optional<uint32_t> getAbsoluteAddress(T *op) {
+static std::optional<uint32_t> getAbsoluteAddress(T *op,
+                                                  uint32_t addressOffset) {
   AIE::DeviceOp device =
       op->getOperation()->template getParentOfType<AIE::DeviceOp>();
   if (!device) {
@@ -729,11 +752,11 @@ static std::optional<uint32_t> getAbsoluteAddress(T *op) {
     uint32_t col = buffer.getTileOp().getCol();
     uint32_t row = buffer.getTileOp().getRow();
     address = static_cast<uint32_t>(*buffer.getAddress()) +
-              op->getAddress() * sizeof(uint32_t);
+              addressOffset * sizeof(uint32_t);
     address = ((col & 0xff) << tm.getColumnShift()) |
               ((row & 0xff) << tm.getRowShift()) | (address & 0xfffff);
   } else { // otherwise, the given address is absolute
-    address = op->getAddress();
+    address = addressOffset;
     std::optional<uint32_t> col = op->getColumn();
     std::optional<uint32_t> row = op->getRow();
     if (col && row) {
@@ -748,7 +771,10 @@ static std::optional<uint32_t> getAbsoluteAddress(T *op) {
 }
 
 std::optional<uint32_t> AIEX::NpuWrite32Op::getAbsoluteAddress() {
-  return ::getAbsoluteAddress(this);
+  std::optional<uint32_t> addressOffset = getConstantIntOperand(getAddress());
+  if (!addressOffset)
+    return std::nullopt;
+  return ::getAbsoluteAddress(this, *addressOffset);
 }
 
 //===----------------------------------------------------------------------===//
@@ -756,7 +782,7 @@ std::optional<uint32_t> AIEX::NpuWrite32Op::getAbsoluteAddress() {
 //===----------------------------------------------------------------------===//
 
 std::optional<uint32_t> AIEX::NpuUpdateFromScratchpadOp::getAbsoluteAddress() {
-  return ::getAbsoluteAddress(this);
+  return ::getAbsoluteAddress(this, getAddress());
 }
 
 LogicalResult AIEX::NpuUpdateFromScratchpadOp::verify() {
@@ -847,7 +873,10 @@ LogicalResult AIEX::NpuCreateScratchpadOp::verify() {
 //===----------------------------------------------------------------------===//
 
 std::optional<uint32_t> AIEX::NpuMaskWrite32Op::getAbsoluteAddress() {
-  return ::getAbsoluteAddress(this);
+  std::optional<uint32_t> addressOffset = getConstantIntOperand(getAddress());
+  if (!addressOffset)
+    return std::nullopt;
+  return ::getAbsoluteAddress(this, *addressOffset);
 }
 
 //===----------------------------------------------------------------------===//
@@ -855,7 +884,7 @@ std::optional<uint32_t> AIEX::NpuMaskWrite32Op::getAbsoluteAddress() {
 //===----------------------------------------------------------------------===//
 
 std::optional<uint32_t> AIEX::NpuBlockWriteOp::getAbsoluteAddress() {
-  return ::getAbsoluteAddress(this);
+  return ::getAbsoluteAddress(this, getAddress());
 }
 
 DenseIntElementsAttr AIEX::NpuBlockWriteOp::getDataWords() {
