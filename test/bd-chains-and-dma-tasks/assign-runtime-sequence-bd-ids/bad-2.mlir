@@ -6,7 +6,7 @@
 // RUN: aie-opt --verify-diagnostics --aie-assign-runtime-sequence-bd-ids %s
 
 // This test ensures that the proper error is emitted if a user tries to use more buffer descriptors than
-// are availalbe in the current device. The control-flow-aware allocator catches
+// are available in the current device. The control-flow-aware allocator catches
 // this up front as a peak-liveness overflow (before mutating the BD pool).
 
 module {

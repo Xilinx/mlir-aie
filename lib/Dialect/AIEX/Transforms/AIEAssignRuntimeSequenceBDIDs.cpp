@@ -78,6 +78,12 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   llvm::DenseMap<Operation *, SmallVector<ReservedWindow>> windowsByLoop;
   llvm::DenseSet<Operation *> inertFrees;
 
+  // Monotonic id handed to each rotation group as it is reserved, stamped onto
+  // its BDs as bd_id_window_group so the unroll pass can key its round-robin
+  // counter per group. Distinct groups can share identical window contents, so
+  // the contents alone cannot distinguish them.
+  int32_t nextWindowGroupId = 0;
+
   BdIdGenerator &getGeneratorForTile(AIE::TileOp tile) {
     auto it = gens.find(tile);
     if (it == gens.end()) {
@@ -359,15 +365,22 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       }
       // Write per-descriptor windows onto every member's chain. Descriptor c of
       // the chain rotates through ids[c*W .. c*W+W); bd_id holds the base.
+      // Every BD in this group is stamped with the same group id so the unroll
+      // pass round-robins each group independently even when windows collide.
+      int32_t groupId = nextWindowGroupId++;
       for (DMAConfigureTaskOp member : group.members) {
         unsigned c = 0;
         member.walk([&](AIE::DMABDOp bd) {
           SmallVector<int32_t> window(rw.ids.begin() + c * W,
                                       rw.ids.begin() + c * W + W);
           bd.setBdId(window[0]);
-          if (W > 1)
+          if (W > 1) {
             bd->setAttr("bd_id_window",
                         DenseI32ArrayAttr::get(bd.getContext(), window));
+            bd->setAttr("bd_id_window_group",
+                        IntegerAttr::get(IntegerType::get(bd.getContext(), 32),
+                                         groupId));
+          }
           ++c;
         });
       }

@@ -996,6 +996,14 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
         // holds the window base (window[0]) so readers that only consult
         // `bd_id` stay valid; absent on every non-rotating BD.
         OptionalAttr<DenseI32ArrayAttr>:$bd_id_window,
+        // Internal handshake between --aie-assign-runtime-sequence-bd-ids (which
+        // stamps a unique id per rotation group) and
+        // --aie-unroll-runtime-sequence-loops (which round-robins the window per
+        // group and then removes both attributes). Distinct groups can share
+        // identical `bd_id_window` contents -- different tiles allocate ids
+        // independently, and sequential loops on one tile reuse the freed pool --
+        // so the window contents alone cannot key the round-robin counter.
+        OptionalAttr<AIEI32Attr>:$bd_id_window_group,
         OptionalAttr<PacketInfoAttr>:$packet,
         DefaultValuedOptionalAttr<AIEI32Attr, "0">:$burst_length,
         // if set, the aiex.scratchpad_parameter value added to the BD's address as an offset

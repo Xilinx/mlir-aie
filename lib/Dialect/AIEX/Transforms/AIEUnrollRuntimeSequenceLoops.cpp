@@ -67,22 +67,33 @@ static std::optional<uint64_t> getConstantTripCount(scf::ForOp forOp) {
 // based on its copy index within its window.
 //
 // loopUnrollFull clones the loop body `tripCount` times and inserts the copies
-// in program order. BDs in the same window (same ordered set of physical IDs)
-// are resolved round-robin, first-come-first-served in program order within
-// their enclosing configure-task chain.
+// in program order. BDs in the same window are resolved round-robin,
+// first-come-first-served in program order within their enclosing
+// configure-task chain.
+//
+// The round-robin counter is keyed by (bd_id_window_group, window contents),
+// not by contents alone: distinct rotation groups can carry identical windows
+// (different tiles allocate ids independently; sequential loops on one tile
+// reuse the freed pool), so the contents alone cannot tell them apart. The
+// group id (stamped by --aie-assign-runtime-sequence-bd-ids) separates
+// colliding groups, while the contents separate the per-descriptor windows
+// within one multi-BD chain (which share a group id but rotate through
+// disjoint id ranges).
 static void resolveWindows(RuntimeSequenceOp seq) {
-  // Track per-window how many BDs have been assigned so far.
-  // Key: the window contents (stable storage in windowStorage).
-  llvm::SmallVector<SmallVector<int32_t>> windowStorage;
-  llvm::SmallVector<unsigned> windowNextIdx;
+  struct Slot {
+    int32_t group;
+    SmallVector<int32_t> window;
+    unsigned nextIdx;
+  };
+  llvm::SmallVector<Slot> slots;
 
-  auto getWindowSlot = [&](ArrayRef<int32_t> window) -> unsigned & {
-    for (auto [i, w] : llvm::enumerate(windowStorage))
-      if (ArrayRef<int32_t>(w) == window)
-        return windowNextIdx[i];
-    windowStorage.push_back(SmallVector<int32_t>(window));
-    windowNextIdx.push_back(0);
-    return windowNextIdx.back();
+  auto getWindowSlot = [&](int32_t group,
+                           ArrayRef<int32_t> window) -> unsigned & {
+    for (Slot &s : slots)
+      if (s.group == group && ArrayRef<int32_t>(s.window) == window)
+        return s.nextIdx;
+    slots.push_back({group, SmallVector<int32_t>(window), 0});
+    return slots.back().nextIdx;
   };
 
   seq.walk([&](DMABDOp bd) {
@@ -90,10 +101,12 @@ static void resolveWindows(RuntimeSequenceOp seq) {
     if (!windowAttr || windowAttr->empty())
       return;
     ArrayRef<int32_t> window = *windowAttr;
-    unsigned &idx = getWindowSlot(window);
+    int32_t group = bd.getBdIdWindowGroup().value_or(0);
+    unsigned &idx = getWindowSlot(group, window);
     bd.setBdId(static_cast<uint32_t>(window[idx % window.size()]));
     ++idx;
     bd.removeBdIdWindowAttr();
+    bd.removeBdIdWindowGroupAttr();
   });
 }
 
