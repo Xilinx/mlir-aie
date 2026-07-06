@@ -127,7 +127,7 @@ module {
       // Trace: 8192 bytes per channel, 2 channels = 16384 total, written to the
       // trace buffer appended as the last runtime_sequence argument.
       // The distribute pass splits this into two 8192-byte regions by offset.
-      aie.trace.host_config buffer_size = 8192
+      aie.trace.host_config {buffer_size = 8192 : i32}
 
       aie.trace.start_config @core_trace
       aie.trace.start_config @mem_trace

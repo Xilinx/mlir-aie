@@ -33,7 +33,7 @@ module @distribute_two_traces {
     }
 
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 8192
+      aie.trace.host_config {buffer_size = 8192 : i32}
       aie.trace.start_config @trace_a
       aie.trace.start_config @trace_b
     }
@@ -71,7 +71,7 @@ module @distribute_single_trace {
     }
 
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 8192
+      aie.trace.host_config {buffer_size = 8192 : i32}
       aie.trace.start_config @trace
     }
 
@@ -113,7 +113,7 @@ module @distribute_auto_argidx {
     }
 
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 8192 reuse_output_buffer
+      aie.trace.host_config {buffer_size = 8192 : i32, reuse_output_buffer = true}
       aie.trace.start_config @trace_a
       aie.trace.start_config @trace_b
     }
@@ -172,7 +172,7 @@ module @distribute_four_traces_three_cols {
     }
 
     aie.runtime_sequence(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 8192
+      aie.trace.host_config {buffer_size = 8192 : i32}
       aie.trace.start_config @trace_0_2
       aie.trace.start_config @trace_0_3
       aie.trace.start_config @trace_1_2

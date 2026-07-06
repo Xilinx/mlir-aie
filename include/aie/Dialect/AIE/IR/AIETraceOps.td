@@ -494,7 +494,7 @@ def AIE_TraceHostConfigOp : AIE_Op<"trace.host_config", [
     Example:
     ```mlir
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size=65536 egress_shim_col=4
+      aie.trace.host_config {buffer_size = 65536 : i32, egress_shim_col = 4 : i32}
       aie.trace.start_config @trace1
     }
     ```
@@ -507,7 +507,7 @@ def AIE_TraceHostConfigOp : AIE_Op<"trace.host_config", [
     DefaultValuedAttr<AIEI32Attr, "0">:$egress_shim_col
   );
 
-  let hasCustomAssemblyFormat = 1;
+  let assemblyFormat = [{ attr-dict }];
   let hasVerifier = 1;
 }
 

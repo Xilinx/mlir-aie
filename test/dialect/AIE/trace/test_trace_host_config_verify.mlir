@@ -13,7 +13,7 @@ module @invalid_buffer_size {
     %tile02 = aie.tile(0, 2)
     aie.runtime_sequence(%arg0: memref<16xi32>) {
       // expected-error@+1 {{'aie.trace.host_config' op buffer_size must be positive}}
-      aie.trace.host_config buffer_size = 0
+      aie.trace.host_config {buffer_size = 0 : i32}
     }
   }
 }
@@ -24,8 +24,8 @@ module @invalid_buffer_size {
 module @invalid_routing {
   aie.device(npu1_1col) {
     aie.runtime_sequence() {
-      aie.trace.host_config buffer_size = 8192 routing = invalid_routing
-    // expected-error@+1 {{custom op 'aie.trace.host_config' unknown routing strategy: invalid_routing}}
+      // expected-error@+1 {{attribute 'routing' failed to satisfy constraint}}
+      aie.trace.host_config {buffer_size = 8192 : i32, routing = "invalid_routing"}
     }
   }
 }
@@ -45,7 +45,7 @@ module @invalid_buffer_size_negative {
     %tile02 = aie.tile(0, 2)
     aie.runtime_sequence(%arg0: memref<16xi32>) {
       // expected-error@+1 {{'aie.trace.host_config' op buffer_size must be positive}}
-      aie.trace.host_config buffer_size = -1 reuse_output_buffer
+      aie.trace.host_config {buffer_size = -1 : i32, reuse_output_buffer = true}
     }
   }
 }
@@ -57,7 +57,7 @@ module @invalid_egress_shim_col_negative {
   aie.device(npu1_1col) {
     aie.runtime_sequence(%arg0: memref<16xi32>) {
       // expected-error@+1 {{'aie.trace.host_config' op egress_shim_col must be >= 0}}
-      aie.trace.host_config buffer_size = 8192 egress_shim_col = -1
+      aie.trace.host_config {buffer_size = 8192 : i32, egress_shim_col = -1 : i32}
     }
   }
 }

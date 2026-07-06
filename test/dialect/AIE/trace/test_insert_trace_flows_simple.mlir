@@ -37,7 +37,7 @@ module {
       // CHECK: aiex.npu.write32
       // Shim broadcast configuration (start/stop events)
       // CHECK: aiex.npu.write32 {{{.*}}row = 0{{.*}}}
-      aie.trace.host_config buffer_size = 1048576
+      aie.trace.host_config {buffer_size = 1048576 : i32}
       aie.trace.start_config @core_trace
     }
 

@@ -39,16 +39,9 @@ int main(int argc, const char *argv[]) {
   auto xclbin = xrt::xclbin(vm["xclbin"].as<std::string>());
   std::string kernel_name = vm["kernel"].as<std::string>();
 
-  auto xkernels = xclbin.get_kernels();
-  auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
-                               [&](xrt::xclbin::kernel &k) {
-                                 return k.get_name().rfind(kernel_name, 0) == 0;
-                               });
-  auto kernelName = xkernel.get_name();
-
   device.register_xclbin(xclbin);
   xrt::hw_context context(device, xclbin.get_uuid());
-  auto kernel = xrt::kernel(context, kernelName);
+  auto kernel = xrt::kernel(context, kernel_name);
 
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));

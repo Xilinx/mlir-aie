@@ -19,6 +19,7 @@ Coverage:
 - Cache invalidation: different compile_kwargs produce different cached kernels
 - Correct output for each configuration
 - CompileTime[T] param missing → TypeError before any NPU interaction
+- TraceConfig passed to a design that never calls enable_trace → HostRuntimeError
 """
 
 import numpy as np
@@ -265,14 +266,17 @@ def test_use_cache_false_recompiles_but_output_correct(input_array, N):
 
 
 # ---------------------------------------------------------------------------
-# 8. trace_config flows to NPUKernel.__init__, not to kernel.__call__
+# 8. Passing trace_config to a design that never calls enable_trace is an error
 # ---------------------------------------------------------------------------
 
 
-def test_trace_config_forwarded_to_kernel(input_array, N):
-    """A trace_config passed at call time must reach NPUKernel.__init__ and
-    be stripped from runtime kwargs (i.e. the design must still run)."""
+def test_trace_config_without_enable_trace_raises(input_array, N):
+    """Passing a TraceConfig to a design that never calls enable_trace must
+    raise HostRuntimeError. The guard in the runtime catches the mismatch:
+    the xclbin declares only the data BOs but the host would append a trace
+    buffer, which would segfault in XRT argument setup."""
     from aie.utils.trace.config import TraceConfig
+    from aie.utils.hostruntime.hostruntime import HostRuntimeError
 
     trace_cfg = TraceConfig(trace_size=65536)
 
@@ -288,13 +292,5 @@ def test_trace_config_forwarded_to_kernel(input_array, N):
         return _add_const_design(input_buf, output_buf, N=N, add_value=add_value)
 
     out = iron.zeros(N, dtype=np.int32, device="npu")
-    add_traced(input_array, out, N=N, add_value=9, trace_config=trace_cfg)
-    out.to("cpu")
-    np.testing.assert_array_equal(out.numpy(), input_array.numpy() + 9)
-
-    # The kernel built during that call must hold the same trace_config.
-    cached_kernels = list(add_traced._kernel_cache.values())
-    assert cached_kernels, "expected at least one cached NPUKernel"
-    assert any(
-        k.trace_config is trace_cfg for k in cached_kernels
-    ), "trace_config was not forwarded to NPUKernel.__init__"
+    with pytest.raises(HostRuntimeError, match="host buffer argument"):
+        add_traced(input_array, out, N=N, add_value=9, trace_config=trace_cfg)

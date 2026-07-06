@@ -304,7 +304,7 @@ def traceFullExample():
 
 # CHECK-LABEL: traceHostConfig
 # CHECK: aie.runtime_sequence @seq() {
-# CHECK:   aie.trace.host_config buffer_size = 8192
+# CHECK:   aie.trace.host_config {buffer_size = 8192 : i32}
 # CHECK: }
 @construct_and_print_module
 def traceHostConfig():
@@ -317,7 +317,7 @@ def traceHostConfig():
 
 # CHECK-LABEL: traceHostConfigAfterTensor
 # CHECK: aie.runtime_sequence @seq() {
-# CHECK:   aie.trace.host_config buffer_size = 16384 reuse_output_buffer
+# CHECK:   aie.trace.host_config {buffer_size = 16384 : i32, reuse_output_buffer = true}
 # CHECK: }
 @construct_and_print_module
 def traceHostConfigAfterTensor():
