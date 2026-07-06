@@ -156,14 +156,19 @@ def tracked_files() -> list[str]:
 
 
 def _to_repo_relative(paths: list[str]) -> list[str]:
-    """Normalize caller-supplied paths to repo-relative POSIX strings."""
+    """Return the in-repo paths as repo-relative POSIX strings.
+
+    Paths outside the repository are dropped, so file-scoped scanning can never
+    open arbitrary files off disk (e.g. when invoked with an absolute path);
+    only files under REPO_ROOT are ever scanned. ``as_posix()`` keeps the
+    separators consistent with ``tracked_files()`` on every platform.
+    """
     rels = []
     for p in paths:
         try:
-            rels.append(str(Path(p).resolve().relative_to(REPO_ROOT)))
+            rels.append(Path(p).resolve().relative_to(REPO_ROOT).as_posix())
         except ValueError:
-            # Outside the repo: keep as-is; the header read will simply skip it.
-            rels.append(p)
+            continue  # outside the repo: never scan
     return rels
 
 
