@@ -15,7 +15,7 @@ import aie.compiler.aiecc.main as aiecc
 import aie.utils.config as config
 
 if TYPE_CHECKING:
-    from aie.ir import (
+    from aie.ir import (  # pyright: ignore[reportMissingImports]
         Module,  # pyright: ignore[reportAttributeAccessIssue]
     )
 
@@ -268,14 +268,7 @@ def compile_mlir_module(
 
 def _rename_symbol_in_object(object_path: str, old_name: str, new_name: str) -> None:
     """Rename a symbol in a compiled object file using llvm-objcopy."""
-    objcopy = shutil.which("llvm-objcopy")
-    if not objcopy:
-        objcopy = shutil.which("objcopy")
-    if not objcopy:
-        raise RuntimeError(
-            "Cannot rename symbol: neither 'llvm-objcopy' nor 'objcopy' found in PATH. "
-            "Install the LLVM toolchain or GNU binutils."
-        )
+    objcopy = config.objcopy_path()
     result = subprocess.run(
         [objcopy, f"--redefine-sym={old_name}={new_name}", str(object_path)],
         capture_output=True,

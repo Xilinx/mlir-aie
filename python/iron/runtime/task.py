@@ -5,7 +5,7 @@
 #
 from typing import Callable
 
-from ... import ir  # pyright: ignore[reportMissingImports]
+from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 
 from ..buffer import Buffer
 from ..resolvable import Resolvable
