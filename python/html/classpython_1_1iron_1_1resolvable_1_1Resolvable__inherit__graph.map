@@ -1,35 +1,39 @@
 <map id="python.iron.resolvable.Resolvable" name="python.iron.resolvable.Resolvable">
-<area shape="rect" id="Node000001" title=" " alt="" coords="128,240,372,265"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="128,304,372,329"/>
 <area shape="rect" id="Node000003" href="$classpython_1_1iron_1_1buffer_1_1Buffer.html" title=" " alt="" coords="449,5,629,31"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="262,226,285,184,320,134,365,82,391,59,419,40,448,27,450,31,421,44,394,64,369,86,324,137,290,187,266,229"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="257,290,277,236,310,168,357,98,386,67,419,40,448,25,450,30,421,44,390,71,361,102,315,171,282,239,262,292"/>
 <area shape="rect" id="Node000004" href="$classpython_1_1iron_1_1dataflow_1_1flow_1_1Flow.html" title=" " alt="" coords="429,55,649,80"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="267,227,329,159,371,121,419,90,451,78,453,83,421,95,374,126,332,162,271,231"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="261,290,284,246,318,191,363,136,390,112,419,90,445,78,448,82,421,95,393,116,367,140,323,195,288,249,265,292"/>
 <area shape="rect" id="Node000005" href="$classpython_1_1iron_1_1dataflow_1_1flow_1_1PacketFlow.html" title=" " alt="" coords="445,105,634,145"/>
-<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="280,230,343,192,419,154,452,142,454,147,421,159,345,197,283,234"/>
-<area shape="rect" id="Node000006" href="$classpython_1_1iron_1_1dataflow_1_1tile__dma_1_1TileDma.html" title=" " alt="" coords="449,169,629,209"/>
-<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="321,234,448,206,450,211,322,240"/>
-<area shape="rect" id="Node000007" href="$classpython_1_1iron_1_1device_1_1device_1_1Device.html" title=" " alt="" coords="442,233,637,273"/>
-<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="386,250,442,250,442,255,386,255"/>
-<area shape="rect" id="Node000008" href="$classpython_1_1iron_1_1kernel_1_1BaseKernel.html" title=" " alt="" coords="431,297,648,323"/>
-<area shape="poly" id="edge7_Node000001_Node000008" title=" " alt="" coords="329,265,475,295,474,300,328,271"/>
-<area shape="rect" id="Node000011" href="$classpython_1_1iron_1_1runtime_1_1task_1_1RuntimeTask.html" title=" " alt="" coords="446,347,633,387"/>
-<area shape="poly" id="edge10_Node000001_Node000011" title=" " alt="" coords="287,270,349,301,421,333,457,345,455,350,419,338,346,306,285,274"/>
-<area shape="rect" id="Node000016" href="$classpython_1_1iron_1_1scratchpad__parameter_1_1ScratchpadParameter.html" title=" " alt="" coords="420,411,659,451"/>
-<area shape="poly" id="edge15_Node000001_Node000016" title=" " alt="" coords="273,274,336,335,377,369,421,397,448,409,446,414,419,402,374,373,332,339,269,278"/>
-<area shape="rect" id="Node000017" href="$classpython_1_1iron_1_1worker_1_1__BarrierSetOp.html" title=" " alt="" coords="466,475,613,515"/>
-<area shape="poly" id="edge16_Node000001_Node000017" title=" " alt="" coords="267,276,291,317,325,367,369,418,421,461,443,473,467,481,465,486,441,477,419,466,366,422,321,370,286,320,262,279"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,240,80,265"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="94,250,128,250,128,255,94,255"/>
-<area shape="rect" id="Node000009" href="$classpython_1_1iron_1_1kernel_1_1Kernel.html" title=" " alt="" coords="722,233,907,259"/>
-<area shape="poly" id="edge8_Node000008_Node000009" title=" " alt="" coords="616,292,658,282,706,269,757,256,759,261,707,274,659,287,617,297"/>
-<area shape="rect" id="Node000010" href="$classpython_1_1iron_1_1kernel_1_1ExternalFunction.html" title=" " alt="" coords="971,226,1169,266"/>
-<area shape="poly" id="edge9_Node000009_Node000010" title=" " alt="" coords="921,243,971,243,971,249,921,249"/>
-<area shape="rect" id="Node000012" href="$classpython_1_1iron_1_1runtime_1_1dmatask_1_1DMATask.html" title=" " alt="" coords="707,283,923,323"/>
-<area shape="poly" id="edge11_Node000011_Node000012" title=" " alt="" coords="639,342,728,321,729,326,640,347"/>
-<area shape="rect" id="Node000013" href="$classpython_1_1iron_1_1runtime_1_1task_1_1FinishTaskGroupTask.html" title=" " alt="" coords="721,347,908,387"/>
-<area shape="poly" id="edge12_Node000011_Node000013" title=" " alt="" coords="646,365,721,365,721,370,646,370"/>
-<area shape="rect" id="Node000014" href="$classpython_1_1iron_1_1runtime_1_1task_1_1InlineOpRuntimeTask.html" title=" " alt="" coords="721,411,908,451"/>
-<area shape="poly" id="edge13_Node000011_Node000014" title=" " alt="" coords="640,388,729,409,728,414,639,393"/>
-<area shape="rect" id="Node000015" href="$classpython_1_1iron_1_1runtime_1_1task_1_1RuntimeStartTask.html" title=" " alt="" coords="721,475,908,515"/>
-<area shape="poly" id="edge14_Node000011_Node000015" title=" " alt="" coords="647,389,660,397,677,413,685,430,693,446,708,461,729,473,726,477,705,465,689,449,680,432,672,416,657,401,644,394"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="268,291,330,223,372,186,419,154,445,142,447,147,421,159,375,190,333,227,272,295"/>
+<area shape="rect" id="Node000006" href="$classpython_1_1iron_1_1dataflow_1_1objectfifo_1_1ObjectFifoHandle.html" title=" " alt="" coords="427,169,651,209"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="280,294,343,256,419,218,452,206,454,211,421,223,345,261,283,298"/>
+<area shape="rect" id="Node000007" href="$classpython_1_1iron_1_1dataflow_1_1objectfifo_1_1ObjectFifoLink.html" title=" " alt="" coords="427,233,651,273"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="321,298,448,270,449,275,322,304"/>
+<area shape="rect" id="Node000008" href="$classpython_1_1iron_1_1dataflow_1_1tile__dma_1_1TileDma.html" title=" " alt="" coords="449,297,629,337"/>
+<area shape="poly" id="edge7_Node000001_Node000008" title=" " alt="" coords="385,314,449,314,449,319,385,319"/>
+<area shape="rect" id="Node000009" href="$classpython_1_1iron_1_1device_1_1device_1_1Device.html" title=" " alt="" coords="442,361,637,401"/>
+<area shape="poly" id="edge8_Node000001_Node000009" title=" " alt="" coords="322,330,449,358,448,363,321,335"/>
+<area shape="rect" id="Node000010" href="$classpython_1_1iron_1_1kernel_1_1BaseKernel.html" title=" " alt="" coords="431,425,648,451"/>
+<area shape="poly" id="edge9_Node000001_Node000010" title=" " alt="" coords="282,335,345,373,421,410,463,423,461,428,419,415,342,378,280,340"/>
+<area shape="rect" id="Node000013" href="$classpython_1_1iron_1_1runtime_1_1task_1_1RuntimeTask.html" title=" " alt="" coords="446,475,633,515"/>
+<area shape="poly" id="edge12_Node000001_Node000013" title=" " alt="" coords="273,338,336,399,377,433,421,461,448,473,446,478,419,466,374,437,332,403,269,342"/>
+<area shape="rect" id="Node000018" href="$classpython_1_1iron_1_1scratchpad__parameter_1_1ScratchpadParameter.html" title=" " alt="" coords="420,539,659,579"/>
+<area shape="poly" id="edge17_Node000001_Node000018" title=" " alt="" coords="267,340,291,381,325,431,369,482,421,525,444,537,441,541,419,530,366,486,321,434,286,384,262,343"/>
+<area shape="rect" id="Node000019" href="$classpython_1_1iron_1_1worker_1_1__BarrierSetOp.html" title=" " alt="" coords="466,603,613,643"/>
+<area shape="poly" id="edge18_Node000001_Node000019" title=" " alt="" coords="262,341,283,394,316,461,362,530,390,562,422,589,443,602,466,610,464,615,441,606,418,593,387,566,358,534,311,464,278,396,257,343"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,304,80,329"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="94,314,128,314,128,319,94,319"/>
+<area shape="rect" id="Node000011" href="$classpython_1_1iron_1_1kernel_1_1Kernel.html" title=" " alt="" coords="722,361,907,387"/>
+<area shape="poly" id="edge10_Node000010_Node000011" title=" " alt="" coords="616,420,658,410,706,397,757,384,759,389,707,402,659,415,617,425"/>
+<area shape="rect" id="Node000012" href="$classpython_1_1iron_1_1kernel_1_1ExternalFunction.html" title=" " alt="" coords="971,354,1169,394"/>
+<area shape="poly" id="edge11_Node000011_Node000012" title=" " alt="" coords="921,371,971,371,971,377,921,377"/>
+<area shape="rect" id="Node000014" href="$classpython_1_1iron_1_1runtime_1_1dmatask_1_1DMATask.html" title=" " alt="" coords="707,411,923,451"/>
+<area shape="poly" id="edge13_Node000013_Node000014" title=" " alt="" coords="639,470,728,449,729,454,640,475"/>
+<area shape="rect" id="Node000015" href="$classpython_1_1iron_1_1runtime_1_1task_1_1FinishTaskGroupTask.html" title=" " alt="" coords="721,475,908,515"/>
+<area shape="poly" id="edge14_Node000013_Node000015" title=" " alt="" coords="646,493,721,493,721,498,646,498"/>
+<area shape="rect" id="Node000016" href="$classpython_1_1iron_1_1runtime_1_1task_1_1InlineOpRuntimeTask.html" title=" " alt="" coords="721,539,908,579"/>
+<area shape="poly" id="edge15_Node000013_Node000016" title=" " alt="" coords="640,516,729,537,728,542,639,521"/>
+<area shape="rect" id="Node000017" href="$classpython_1_1iron_1_1runtime_1_1task_1_1RuntimeStartTask.html" title=" " alt="" coords="721,603,908,643"/>
+<area shape="poly" id="edge16_Node000013_Node000017" title=" " alt="" coords="647,517,660,525,677,541,685,558,693,574,708,589,729,601,726,605,705,593,689,577,680,560,672,544,657,529,644,522"/>
 </map>
