@@ -65,6 +65,14 @@ jobs:
           level: error
           fail_level: any
 
+      # Cross-lock check: the regen above proves each lock matches its own
+      # source, but not that shared ABI-coupled deps (nanobind, pybind11, ...)
+      # resolve to the SAME version across locks. A per-directory Dependabot
+      # bump that moves one manifest and not another passes regen but breaks
+      # the wheel at import time; this guard turns that into a fast failure.
+      - name: Check shared dependency versions agree
+        run: python3 utils/check_shared_dep_versions.py
+
   clang-tidy-pylint:
 
     name: Python and C/C++ Lint
@@ -412,11 +420,11 @@ jobs:
           comment-author: 'github-actions[bot]'
           body-path: /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
           edit-mode: replace
-  
+
   license-compliance:
     name: License Compliance Check
     runs-on: ubuntu-latest
-    
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v3
@@ -428,7 +436,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install reuse==6.2.0
+          python -m pip install "reuse[charset-normalizer]==6.2.0"
 
       - name: Check Licenses
         shell: bash
@@ -438,4 +446,3 @@ jobs:
 
       - name: Check copyright notice format
         run: python utils/check_copyright_format.py
-  

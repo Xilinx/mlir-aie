@@ -80,6 +80,19 @@ repos:
       pass_filenames: false
       files: ^(python/requirements_dev\.txt|utils/mlir_(aie_)?wheels/(requirements|ci-tools)\.(in|txt))$
 
+    # REUSE compliance: every file must have a license/copyright notice (either
+    # inline or declared in REUSE.toml). Scans the whole repo, so it does not
+    # take filenames. Runs before check-copyright-format, which then validates
+    # the notice wording.
+    - id: reuse-lint
+      name: Check REUSE compliance
+      language: python
+      entry: reuse lint
+      additional_dependencies: ['reuse[charset-normalizer]==6.2.0']
+      pass_filenames: false
+      always_run: true
+      stages: [pre-push]
+
     # Format gate on top of REUSE: every copyright notice must match an approved
     # canonical form (see utils/check_copyright_format.py). REUSE only checks that
     # a notice exists, not how it is written, so this catches stray commas, the
@@ -89,7 +102,7 @@ repos:
       name: Check copyright notice format
       language: python
       entry: python utils/check_copyright_format.py
-      additional_dependencies: ['reuse==6.2.0']
+      additional_dependencies: ['reuse[charset-normalizer]==6.2.0']
       pass_filenames: false
       always_run: true
       stages: [pre-push]

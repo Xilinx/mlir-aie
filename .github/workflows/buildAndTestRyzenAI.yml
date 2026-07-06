@@ -12,26 +12,13 @@ on:
       - main
       - test-ryzen-ai
   pull_request:
+    # Default activity types plus labeled/unlabeled so toggling the
+    # "test-wheels" label re-evaluates the gated wheel-example jobs.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
   merge_group:
   schedule:
     # Runs at midnight (00:00) every day
     - cron: '0 0 * * *'
-
-  # Allows you to run this workflow manually from the Actions tab by
-  # selecting CI and then "Run workflow" menu on the right branch
-  # and clicking on "launch_tmate_terminal_for_debug".
-  # Unfortunately this works only for the default branch.
-  # So you can either
-  # - change the default branch of the PR on the GitHub repository owning the PR
-  #   and launching in Actions tab;
-  # - or edit directly the step below which runs tmate and push to the
-  #   PR, ignoring the manual workflow launch.
-  workflow_dispatch:
-      launch_tmate_terminal_for_debug:
-        type: boolean
-        description: 'Run the build with tmate debugging enabled (https://github.com/marketplace/actions/debugging-with-tmate)'
-        required: false
-        default: false
 
 defaults:
   run:
@@ -48,22 +35,22 @@ env:
   DEBIAN_FRONTEND: noninteractive
   XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
   VITIS: /opt/ryzen_ai-1.3.0.1/vitis_aie_essentials
+  # ccache and lld are auto-detected and enabled by
+  # utils/build-mlir-aie-from-wheels.sh (LLVM_CCACHE_BUILD / LLVM_USE_LINKER),
+  # so only the options the script does not set itself are listed here.
   CMAKE_ARGS: |
-            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
-            -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
-            -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
-            -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
             -DXRT_ROOT=/opt/xilinx/xrt \
-            -DAIE_VITIS_COMPONENTS=AIE2;AIE2P \
             -DAIE_ENABLE_PYTHON_PASSES=OFF \
             -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON \
             -DAIE_INCLUDE_INTEGRATION_TESTS=OFF
   LIT_OPTS: -sv --time-tests --timeout 600 --show-unsupported --show-excluded
 
 jobs:
-  build-tests:
-    name: Run Tests on Ryzen AI
+
+  build-and-test-from-source:
+    name: Run Tests and Examples on Ryzen AI (Built from Source)
+    # The goal for this job is to run the full test suite, including programming guide and examples, on a freshly built-from-source MLIR-AIE.
+    # This also exercises the build-mlir-aie-from-wheels.sh script, which is the most common developer-facing way to rebuild MLIR-AIE from source.
     runs-on: ${{ matrix.runner_type }}
     strategy:
       fail-fast: false
@@ -77,148 +64,23 @@ jobs:
         with:
           submodules: "true"
 
-      # Launch an ssh session via a proxy server if there is a need
-      # for debug. This seems to live for 35 min max
-      # https://github.com/mxschmitt/action-tmate
-      - name: Setup tmate session
-        uses: mxschmitt/action-tmate@35b54afac29c97fb54faba5b513f8fbd1882f113  # v3
-        # To run this, launch it manually on the default branch and
-        # click on "launch_tmate_terminal_for_debug"
-        if: github.event_name == 'workflow_dispatch'
-                && inputs.launch_tmate_terminal_for_debug
-
       - name: Print hostname
         run: hostname
-
-      - name: Run commands
+      
+      - name: Setup virtual environment / prerequisites
         run: |
-          sudo prlimit -lunlimited --pid $$
-          # Newer XRT/amdxdna packages no longer ship setup.sh; source it
-          # only when present so the job works on both old and new XRT.
-          [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
-          python -m venv aie-venv
-          source aie-venv/bin/activate
-          pip install --upgrade pip
-          python utils/mlir_aie_wheels/vendor_eudsl.py \
-              --requirements python/requirements.txt \
-              --install-non-eudsl
-          pip install -r python/requirements_notebook.txt
-          pip install -r python/requirements_ml.txt
-          python -m pip install --require-hashes -r python/requirements_dev.lock
-
-          # Install llvm-aie (Peano) which is needed for unittests requiring compiling NPU code.
-          # Pinned via utils/peano-requirements.txt; bumped by the update-peano workflow so a bad
-          # nightly is caught in a PR instead of breaking main.
-          pip install -I -r utils/peano-requirements.txt
-          export PEANO_INSTALL_DIR="$(pip show llvm-aie | grep ^Location: | awk '{print $2}')/llvm-aie"
+          source ./utils/env_install.sh aie-venv --dev
 
           sed -i.bak 's/OUTPUT_TIMEOUT = 10/OUTPUT_TIMEOUT = 100/g' \
             $(python -c 'import site; print(site.getsitepackages()[0])')/jupyter_client/runapp.py
 
-          VERSION=$(utils/clone-llvm.sh --get-wheel-version)
-          pip -q download mlir==$VERSION \
-            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
-          unzip -q mlir-*.whl
-          # I have no clue why but the system clock on GHA containers is like 12 hours ahead.
-          # That means wheels have file with time stamps in the future which makes ninja loop
-          # forever when configuring. Set the time to some arbitrary stamp in the past just to be safe.
-          find mlir -exec touch -a -m -t 201108231405.14 {} \;
-
-          mkdir build
-          pushd build
-
-          # -j here to reduce the number of parallel chess jobs.
-          # Pick parallelism from the runner's actual RAM rather than its
-          # label, so backup runners that share a label but have less memory
-          # don't OOM: -j4 for <48GB RAM, -j12 otherwise.
-          TOTAL_MEM_GB=$(free -g | awk '/^Mem:/ {print $2}')
-          if [ "$TOTAL_MEM_GB" -lt 48 ]; then
-            LIT_OPTS="-j4 $LIT_OPTS"
-          else
-            LIT_OPTS="-j12 $LIT_OPTS"
-          fi
-
-          export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
-
-          cmake .. -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DPython3_EXECUTABLE=$(which python) \
-            -DLLVM_EXTERNAL_LIT=$(which lit) \
-            -DCMAKE_INSTALL_PREFIX=$PWD/../mlir_aie \
-            -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
-            -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
-            $CMAKE_ARGS
-
-          # Create runner-specific cache directory
-          rm -rf $NPU_CACHE_HOME
-          mkdir $NPU_CACHE_HOME
-
-          # Set number of contexts to maintain in cache per process
-          export XRT_CONTEXT_CACHE_SIZE=2
-
-          ninja install
-          ninja check-aie
-          ninja check-aie-concurrency
-          popd
-
-      - name: Cleanup NPU_CACHE_HOME
-        if: always()
-        run: |
-          rm -rf $NPU_CACHE_HOME
-          rm -rf $PIP_CACHE_DIR
-
-  build-quick-setup:
-    name: Run Examples on Ryzen AI
-    runs-on: ${{ matrix.runner_type }}
-    strategy:
-      fail-fast: false
-      matrix:
-        runner_type: [ aie2-4col, aie2p-8col ]
-    env:
-      NPU_CACHE_HOME: ${{ github.workspace }}/iron-cache-${{ matrix.runner_type }}-${{ github.run_id }}
-      PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-${{ matrix.runner_type }}-${{ github.run_id }}
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-        with:
-          submodules: "true"
-
-      # Launch an ssh session via a proxy server if there is a need
-      # for debug. This seems to live for 35 min max
-      # https://github.com/mxschmitt/action-tmate
-      - name: Setup tmate session
-        uses: mxschmitt/action-tmate@35b54afac29c97fb54faba5b513f8fbd1882f113  # v3
-        # To run this, launch it manually on the default branch and
-        # click on "launch_tmate_terminal_for_debug"
-        if: github.event_name == 'workflow_dispatch'
-                && inputs.launch_tmate_terminal_for_debug
-      
-      - name: Print hostname
-        run: hostname
-
       - name: Run commands
         run: |
           sudo prlimit -lunlimited --pid $$
           # Newer XRT/amdxdna packages no longer ship setup.sh; source it
           # only when present so the job works on both old and new XRT.
           [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
-          export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
-          source utils/quick_setup.sh
-          # quick_setup changes directory to programming_examples, so we need to return to mlir-aie
-          cd ..
-          pip install --upgrade pip
-          python -m pip install --require-hashes -r python/requirements_dev.lock
-
-          ./utils/build-mlir-aie-from-wheels.sh
-
-          # I have no clue why but the system clock on GHA containers is like 12 hours ahead.
-          # That means wheels have file with time stamps in the future which makes ninja loop
-          # forever when configuring. Set the time to some arbitrary stamp in the past just to be safe.
-          pushd my_install
-          find mlir -exec touch -a -m -t 201108231405.14 {} \;
-          popd
-
-          # build is created by the build-mlir-aie-from-wheels.sh script
-          pushd build
+          source aie-venv/bin/activate
 
           # -j here to reduce the number of parallel chess jobs.
           # Pick parallelism from the runner's actual RAM rather than its
@@ -231,23 +93,30 @@ jobs:
             LIT_OPTS="-j12 $LIT_OPTS"
           fi
 
-          # Set number of contexts to maintain in cache per process
-          export XRT_CONTEXT_CACHE_SIZE=2
+          export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
+
+          # Build from source!
+          export EXTRA_CMAKE_ARGS="-DPython3_EXECUTABLE=$(which python) $CMAKE_ARGS"
+          ./utils/build-mlir-aie-from-wheels.sh "" build mlir_aie
+
+          pushd build
 
           # Create runner-specific cache directory
           rm -rf $NPU_CACHE_HOME
           mkdir $NPU_CACHE_HOME
 
-          # TEMP(#3059): dump NPU stack versions to diagnose mobilenet/run_e2e.lit
-          # bn1 NPU timeout that reproduces on aie2p-8col CI but not on the same
-          # HX 370 chip locally. Revert once the divergence is understood.
-          echo "===== NPU STACK VERSIONS (${{ matrix.runner_type }}) ====="
-          uname -a || true
-          xrt-smi examine 2>&1 | head -40 || true
-          echo "===== END NPU STACK VERSIONS ====="
+          # Set number of contexts to maintain in cache per process
+          export XRT_CONTEXT_CACHE_SIZE=2
 
-          ninja install
+          # Run tests
+          echo "===== Running tests ====="
+          ninja check-aie
 
+          echo "===== Running concurrency tests ====="
+          ninja check-aie-concurrency
+
+          # Run examples
+          echo "===== Running examples ====="
           # gemm_asymmetric_tile_buffering chess builds peak ~8 GB RSS and
           # ~9 min wall time alone on 32 GB. They run serialized via lit's
           # atb_chess parallelism group and need a longer timeout than the
@@ -258,7 +127,101 @@ jobs:
           LIT_OPTS="-j4 -sv --time-tests --timeout 1200 --show-unsupported --show-excluded" \
             LIT_FILTER="gemm_asymmetric_tile_buffering" \
             ninja check-reference-designs
+
           popd
+
+      - name: Cleanup NPU_CACHE_HOME
+        if: always()
+        run: |
+          rm -rf $NPU_CACHE_HOME
+          rm -rf $PIP_CACHE_DIR
+
+  # Build the single wheel the examples run against, FROM THIS RUN's commit, so
+  # the example test never installs a stale published wheel. Expensive
+  # (~19 min), so gated: runs in the merge queue (authoritative, on the
+  # post-merge commit) or on demand when a PR carries the "test-wheels" label.
+  build-dev-wheel:
+    name: Build Development Wheel (Python 3.12, RTTI ON)
+    if: ${{ github.event_name == 'merge_group' || contains(github.event.pull_request.labels.*.name, 'test-wheels') }}
+    uses: ./.github/workflows/buildRyzenWheels.yml
+    with:
+      python_version: "3.12"
+      enable_rtti: "ON"
+      reusable_call: true
+    # Must grant the union of what ALL of the called workflow's jobs declare
+    # (build-repo, build-windows, publish) — GitHub validates every nested
+    # job's permissions at startup even when gated off via if:.
+    permissions:
+      id-token: write
+      contents: write
+      packages: read
+      attestations: write
+      actions: read
+
+  test-from-wheels:
+    name: Smoke-Test Wheels on Ryzen AI
+    # The goal of this job is to verify that a wheel built from this run's commit can be installed using the quick_setup.sh script and can cmopile and run basic examples on NPU hardware.
+    # Since we've tested the entire test suite in the from-source job, running a couple spot-checks gives us some confidence that the wheel is functional.
+    needs: build-dev-wheel
+    if: ${{ github.event_name == 'merge_group' || contains(github.event.pull_request.labels.*.name, 'test-wheels') }}
+    runs-on: ${{ matrix.runner_type }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner_type: [ aie2-4col, aie2p-8col ]
+    env:
+      NPU_CACHE_HOME: ${{ github.workspace }}/iron-cache-${{ matrix.runner_type }}-${{ github.run_id }}
+      PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-${{ matrix.runner_type }}-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          submodules: "true"
+
+      # Pull the wheel built from this same run (build-dev-wheel) so the
+      # examples test exactly this commit's mlir_aie, not a published tag.
+      - name: Download same-commit mlir_aie wheel
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
+        with:
+          name: ${{ needs.build-dev-wheel.outputs.wheel_artifact_name }}
+          path: ${{ github.workspace }}/examples-wheel
+
+      - name: Print hostname
+        run: hostname
+
+      - name: Run commands
+        run: |
+          sudo prlimit -lunlimited --pid $$
+          # Newer XRT/amdxdna packages no longer ship setup.sh; source it
+          # only when present so the job works on both old and new XRT.
+          [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
+          export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
+          # Install the same-commit wheel downloaded above instead of the
+          # published rolling tag.
+          export MLIR_AIE_WHEEL_DIR="${{ github.workspace }}/examples-wheel"
+          source utils/quick_setup.sh
+          # quick_setup changes directory to programming_examples, so we need to return to mlir-aie
+          cd ..
+          # quick_setup installs the runtime prerequisites; add the build tooling
+          # (cmake, ninja, ...) the examples need to compile host code.
+          python -m pip install --require-hashes -r python/requirements_dev.lock
+
+          # Set number of contexts to maintain in cache per process
+          export XRT_CONTEXT_CACHE_SIZE=2
+
+          # Create runner-specific cache directory
+          rm -rf $NPU_CACHE_HOME
+          mkdir $NPU_CACHE_HOME
+
+          # Lightweight check that the mlir_aie wheel installed by quick_setup
+          # can actually compile and run designs on the NPU. quick_setup put the
+          # installed package (not a from-source build) on PATH/PYTHONPATH, so
+          # `make run` here exercises the wheel. The -eo pipefail shell fails the
+          # job if any example returns non-zero.
+          for ex in basic/passthrough_kernel basic/vector_scalar_add basic/passthrough_dmas; do
+            echo "===== $ex ====="
+            make -C "programming_examples/$ex" clean
+            make -C "programming_examples/$ex" run
+          done
 
       - name: Cleanup NPU_CACHE_HOME
         if: always()

@@ -288,6 +288,21 @@ add_subdirectory(aie_runtime_lib)
 add_subdirectory(tools)
 add_subdirectory(runtime_lib)
 
+# Bundle llvm-objcopy alongside the AIE bin/ tools.
+#
+# The IRON JIT external-kernel path renames symbols in Peano-compiled objects
+# via `objcopy --redefine-sym`. Those objects use the AIEngine ELF e_machine,
+# which GNU binutils objcopy can't parse; however, the llvm-objcopy
+# implementation is architecture-agnostic, so we ship it along our tools.
+set(_aie_llvm_objcopy "${LLVM_TOOLS_BINARY_DIR}/llvm-objcopy${CMAKE_EXECUTABLE_SUFFIX}")
+if(EXISTS "${_aie_llvm_objcopy}")
+  install(PROGRAMS "${_aie_llvm_objcopy}"
+          DESTINATION bin
+          COMPONENT aie-tools)
+else()
+  message(FATAL_ERROR "llvm-objcopy not found at ${_aie_llvm_objcopy}")
+endif()
+
 if(AIE_ENABLE_BINDINGS_PYTHON)
   add_subdirectory(python)
 endif()
