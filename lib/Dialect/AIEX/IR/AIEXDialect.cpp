@@ -87,6 +87,95 @@ void AIEXDialect::initialize() {
   Note: strides are expressed offset by one from user input strides, because the
   hardware does not support a 0 stride (repeat).
   */
+// Shared hardware size/stride encoder.
+//
+// The AIE DMA buffer descriptor encodes each dimension's wrap ("size") and step
+// ("stride") in hardware units: sizes count elements scaled to the address-gen
+// granularity, and strides are stored biased by -1 (so a stored 0 means a step
+// of one granule). The exact same arithmetic must produce the constant-folded
+// values used by the static lowering AND, in the dynamic path, an equivalent
+// chain of `arith` ops over runtime SSA operands. To keep those two domains
+// from drifting (a divergence would silently miscompile), the algorithm lives
+// here once and is instantiated over a Policy that supplies the primitive
+// operations for either domain.
+//
+// A Policy provides a value type `V` and: cst(int64), mul/div/sub over a V and
+// an int64 constant, and selectGT1(size, then, els) returning `then` when
+// `size > 1` else `els`. For the constant policy these are plain integer ops
+// and a C++ ternary; for the SSA policy (see BdLowering) they emit arith ops.
+template <typename Policy>
+static void encodeHardwareStridesWraps(Policy &p, uint64_t elemWidth,
+                                       uint32_t addressGranularity,
+                                       typename Policy::V inputSizes[4],
+                                       typename Policy::V inputStrides[4],
+                                       typename Policy::V sizes[4],
+                                       typename Policy::V strides[4]) {
+  using V = typename Policy::V;
+  // Scale an element-count stride into hardware granules and apply the -1 bias:
+  //   stride * elemWidth / addressGranularity - 1
+  auto biasedStride = [&](V inStride) -> V {
+    return p.sub(p.div(p.mul(inStride, elemWidth), addressGranularity), 1);
+  };
+
+  // d0_size, d0_stride
+  sizes[0] = p.div(p.mul(inputSizes[0], elemWidth), addressGranularity);
+  // The innermost stride is the sub-granularity / wide-element special case.
+  // The static path folds this from constants; the dynamic path requires
+  // inputStrides[0] == 1 (verified), so in both domains d0_stride resolves to a
+  // compile-time constant and the branch is decided by the policy on constants.
+  if (p.d0StrideIsZero(inputStrides[0], elemWidth, addressGranularity)) {
+    // First reason: the hardware cannot transfer less than addressGranularity
+    // bits at a time, but the user may express a contiguous transfer of
+    // multiple elements with a stride smaller than addressGranularity. Setting
+    // the stride to 1 (encoded in hardware as 0) allows such transfers.
+    //   verify: inStride0*elemWidth < gran  iff  inSize0*elemWidth > gran.
+    // Second reason: when elemWidth > gran, all bytes must be copied, so the
+    // stride must be 1 (encoded as 0).
+    //   verify: inStride0*elemWidth % gran == 0
+    //           && inStride0 == 1 if elemWidth > gran.
+    // This forbids a stride > 1 for elemWidths bigger than gran even when a
+    // multiple of it; such transfers must use an additional dimension.
+    strides[0] = p.cst(0);
+  } else {
+    strides[0] = biasedStride(inputStrides[0]);
+  }
+
+  // d1_size, d1_stride / d2_size, d2_stride: stride only matters when size > 1.
+  sizes[1] = inputSizes[1];
+  strides[1] =
+      p.selectGT1(inputSizes[1], biasedStride(inputStrides[1]), p.cst(0));
+  sizes[2] = inputSizes[2];
+  strides[2] =
+      p.selectGT1(inputSizes[2], biasedStride(inputStrides[2]), p.cst(0));
+
+  // iteration_size, iteration_stride. Size is stored biased by -1. The stride
+  // must be positive like the others, but a zero-stride "repeat" is encoded by
+  // leaving size at 1 (via a positive repeat_count on the queue push) so the BD
+  // wraps every iteration and never adds the stride. Hence stride is gated on
+  // BOTH size > 1 and inStride > 0.
+  sizes[3] = p.selectGT1(inputSizes[3], p.sub(inputSizes[3], 1), p.cst(0));
+  strides[3] = p.selectGT1(
+      inputSizes[3],
+      p.selectGT0(inputStrides[3], biasedStride(inputStrides[3]), p.cst(0)),
+      p.cst(0));
+}
+
+namespace {
+// Constant (compile-time int64) policy: the original static arithmetic.
+struct ConstStridePolicy {
+  using V = int64_t;
+  static V cst(int64_t c) { return c; }
+  static V mul(V v, int64_t c) { return v * c; }
+  static V div(V v, int64_t c) { return v / c; }
+  static V sub(V v, int64_t c) { return v - c; }
+  static V selectGT1(V cond, V t, V e) { return cond > 1 ? t : e; }
+  static V selectGT0(V cond, V t, V e) { return cond > 0 ? t : e; }
+  static bool d0StrideIsZero(V inStride0, uint64_t elemWidth, uint32_t gran) {
+    return inStride0 * (int64_t)elemWidth < (int64_t)gran || elemWidth > gran;
+  }
+};
+} // namespace
+
 void AIEX::getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
                                    mlir::Operation *op,
                                    mlir::BaseMemRefType referencedBufType,
@@ -113,60 +202,16 @@ void AIEX::getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
     return;
   }
 
-  // d0_size, d0_stride
-  sizes[0] = inputSizes[0] * elemWidth / addressGranularity;
-  if (inputStrides[0] * elemWidth < addressGranularity ||
-      (elemWidth > addressGranularity)) {
-    // First check:
-    // While the hardware cannot transfer less than addressGranularity bits at
-    // a time, the user may expresses a contiguous transfer of multiple
-    // elements with a stride smaller than addressGranularity. We can thus set
-    // the stride to 1 (encoded in hardware as 0) here to allow such transfers.
-    // The verification function should ensure that
-    //    inputStrides[0] * elemWidth < addressGranularity
-    //    iff. inputSize[0] * elemWidth > addressGranularity.
-    // Second check:
-    // If the element width is larger than addressGranularity, we need to make
-    // sure that all bytes are properly copied and therefore the stride must be
-    // set to 1 (encoded in hardware as 0).
-    // The verification function should ensure that
-    //     inputStrides[0] * elemWidth % addressGranularity == 0
-    //     && inputStrides[0] == 1 if elemWidth > addressGranularity
-    // This makes it impossible to have a stride greater than 1 for
-    // elemWidths bigger than addressGranularity, even if they are a multiple of
-    // it. Such operations should make use of an additional dimension instead.
-    strides[0] = 0;
-  } else {
-    strides[0] = inputStrides[0] * elemWidth / addressGranularity - 1;
-  }
-
-  // d1_size, d1_stride
-  sizes[1] = inputSizes[1];
-  if (inputSizes[1] > 1) {
-    // Stride only matters if we have more than one iteration.
-    strides[1] = inputStrides[1] * elemWidth / addressGranularity - 1;
-  }
-
-  // d2_size, d2_stride
-  sizes[2] = inputSizes[2];
-  if (inputSizes[2] > 1) {
-    // Stride only matters if we have more than one iteration.
-    strides[2] = inputStrides[2] * elemWidth / addressGranularity - 1;
-  }
-
-  // iteration_size, iteration_stride
-  if (inputSizes[3] > 1) {
-    // Stride only matters if we have more than one iteration.
-    sizes[3] = inputSizes[3] - 1;
-    // Note that the iteration_stride must be positive, just like the other
-    // dimensions. However, one can encode a zero-stride "repeat" of the same
-    // transfer by setting a positive repeat_count on the pushToQueue instr,
-    // and setting the size here to 1. This causes the BD to "wrap" at every
-    // single iteration, effectively never adding the specified stride, in turn
-    // equalling a repeat without stride.
-    if (inputStrides[3] > 0) {
-      strides[3] = inputStrides[3] * elemWidth / addressGranularity - 1;
-    }
+  ConstStridePolicy policy;
+  int64_t inS[4] = {inputSizes[0], inputSizes[1], inputSizes[2], inputSizes[3]};
+  int64_t inT[4] = {inputStrides[0], inputStrides[1], inputStrides[2],
+                    inputStrides[3]};
+  int64_t outS[4], outT[4];
+  encodeHardwareStridesWraps(policy, elemWidth, addressGranularity, inS, inT,
+                             outS, outT);
+  for (int i = 0; i < 4; i++) {
+    sizes[i] = outS[i];
+    strides[i] = outT[i];
   }
 }
 
