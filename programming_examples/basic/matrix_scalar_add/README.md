@@ -1,10 +1,7 @@
 <!---//===- README.md --------------------------*- Markdown -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
 // Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//-->
 
@@ -35,7 +32,8 @@ It demonstrates a number of features that scale to more realistic designs:
 python3 matrix_scalar_add.py
 ```
 
-For NPU2 (Strix): `python3 matrix_scalar_add.py -d npu2`.
+The standalone command detects the attached NPU family automatically. Pass
+`-d npu2` only when selecting the NPU2 target explicitly.
 
 A Makefile is available for the native C++ host and VCK5000 flows:
 

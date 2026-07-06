@@ -1,10 +1,7 @@
 //===- test_vck5000.cpp -----------------------------------000---*- C++ -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
 // Copyright (C) 2024 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -116,8 +113,8 @@ int main(int argc, char *argv[]) {
   int errors = 0;
 
   for (int i = 0; i < IMAGE_SIZE; i++) {
-    uint32_t row = i / IMAGE_WIDTH;
-    uint32_t col = i % IMAGE_WIDTH;
+    int row = i / IMAGE_WIDTH;
+    int col = i % IMAGE_WIDTH;
     uint32_t s = in_a[i];
     uint32_t d = out[i];
 
