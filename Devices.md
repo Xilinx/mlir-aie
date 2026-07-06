@@ -125,4 +125,4 @@ N Columns and 6 Rows
 
 -----
 
-<p align="center">Copyright&copy; 2024 AMD/Xilinx</p>
+<p align="center">Copyright&copy; 2024-2026 Advanced Micro Devices, Inc.</p>

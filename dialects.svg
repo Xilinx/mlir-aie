@@ -39,7 +39,7 @@
 <!-- ADF -->
 <g id="node4" class="node">
 <title>ADF</title>
-<g id="a_node4"><a xlink:href="https://circt.llvm.org/docs/Dialects/FSM/" xlink:title="ADF">
+<g id="a_node4"><a xlink:href="ADFDialect.html" xlink:title="ADF">
 <polygon fill="#f5edbc" stroke="black" points="189,-263 135,-263 135,-227 189,-227 189,-263"/>
 <text text-anchor="middle" x="162" y="-241.3" font-family="Times,serif" font-size="14.00">ADF</text>
 </a>
@@ -49,7 +49,7 @@
 <!-- AIE -->
 <g id="node5" class="node">
 <title>AIE</title>
-<g id="a_node5"><a xlink:href="https://circt.llvm.org/docs/Dialects/FSM/" xlink:title="AIE">
+<g id="a_node5"><a xlink:href="AIEDialect.html" xlink:title="AIE">
 <polygon fill="#f5edbc" stroke="black" points="108,-191 54,-191 54,-155 108,-155 108,-191"/>
 <text text-anchor="middle" x="81" y="-169.3" font-family="Times,serif" font-size="14.00">AIE</text>
 </a>
@@ -64,7 +64,7 @@
 <!-- AIEVec -->
 <g id="node6" class="node">
 <title>AIEVec</title>
-<g id="a_node6"><a xlink:href="https://circt.llvm.org/docs/Dialects/FSM/" xlink:title="AIEVec">
+<g id="a_node6"><a xlink:href="AIEVecDialect.html" xlink:title="AIEVec">
 <polygon fill="#f5edbc" stroke="black" points="189.5,-191 122.5,-191 122.5,-155 189.5,-155 189.5,-191"/>
 <text text-anchor="middle" x="156" y="-169.3" font-family="Times,serif" font-size="14.00">AIEVec</text>
 </a>

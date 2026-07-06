@@ -25,7 +25,7 @@ MathJax.Hub.Config({
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">MLIR-AIE
+   <div id="projectname">MLIR-AIE<span id="projectnumber">&#160;unknown</span>
    </div>
   </td>
  </tr>
@@ -276,9 +276,6 @@ Functions</h2></td></tr>
 <tr class="separator:a0e692a149f961ca40847f466b29d249b"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a0788e2181d0134ca9f307a47130f886b" id="r_a0788e2181d0134ca9f307a47130f886b"><td class="memItemLeft" align="right" valign="top">mlir::VectorType&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1aievec.html#a0788e2181d0134ca9f307a47130f886b">getFlattenedVectorType</a> (mlir::VectorType vecTy)</td></tr>
 <tr class="separator:a0788e2181d0134ca9f307a47130f886b"><td class="memSeparator" colspan="2">&#160;</td></tr>
-<tr class="memitem:a00e8f83c1c8e075872c09d6af694c9bf" id="r_a00e8f83c1c8e075872c09d6af694c9bf"><td class="memItemLeft" align="right" valign="top">mlir::LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1aievec.html#a00e8f83c1c8e075872c09d6af694c9bf">translateAIEVecToCpp</a> (mlir::Operation *op, <a class="el" href="classbool.html">bool</a> aie2, mlir::raw_ostream &amp;os)</td></tr>
-<tr class="memdesc:a00e8f83c1c8e075872c09d6af694c9bf"><td class="mdescLeft">&#160;</td><td class="mdescRight">Translates the <a class="el" href="namespacexilinx_1_1AIE.html" title="Include the generated interface declarations.">AIE</a> vector dialect MLIR to C++ code.  <br /></td></tr>
-<tr class="separator:a00e8f83c1c8e075872c09d6af694c9bf"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:ae9f6f26184cce2e2cb9cb76a3f610077" id="r_ae9f6f26184cce2e2cb9cb76a3f610077"><td class="memItemLeft" align="right" valign="top">std::string&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1aievec.html#ae9f6f26184cce2e2cb9cb76a3f610077">getVectorTypeString</a> (VectorType type, <a class="el" href="classbool.html">bool</a> abbrev=false, <a class="el" href="classbool.html">bool</a> acc=false)</td></tr>
 <tr class="separator:ae9f6f26184cce2e2cb9cb76a3f610077"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:abe2805124486ca450c313931605821ad" id="r_abe2805124486ca450c313931605821ad"><td class="memItemLeft" align="right" valign="top">std::string&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacexilinx_1_1aievec.html#abe2805124486ca450c313931605821ad">getMulOrFMAIntrinsicName</a> (Operation *op)</td></tr>
@@ -1871,46 +1868,10 @@ template&lt;typename TransferReadLikeOp , typename &gt; </div>
 
 </div>
 </div>
-<a id="a00e8f83c1c8e075872c09d6af694c9bf" name="a00e8f83c1c8e075872c09d6af694c9bf"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#a00e8f83c1c8e075872c09d6af694c9bf">&#9670;&#160;</a></span>translateAIEVecToCpp()</h2>
-
-<div class="memitem">
-<div class="memproto">
-      <table class="memname">
-        <tr>
-          <td class="memname">mlir::LogicalResult xilinx::aievec::translateAIEVecToCpp </td>
-          <td>(</td>
-          <td class="paramtype">mlir::Operation *&#160;</td>
-          <td class="paramname"><em>op</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype"><a class="el" href="classbool.html">bool</a>&#160;</td>
-          <td class="paramname"><em>aie2</em>, </td>
-        </tr>
-        <tr>
-          <td class="paramkey"></td>
-          <td></td>
-          <td class="paramtype">mlir::raw_ostream &amp;&#160;</td>
-          <td class="paramname"><em>os</em>&#160;</td>
-        </tr>
-        <tr>
-          <td></td>
-          <td>)</td>
-          <td></td><td></td>
-        </tr>
-      </table>
-</div><div class="memdoc">
-
-<p>Translates the <a class="el" href="namespacexilinx_1_1AIE.html" title="Include the generated interface declarations.">AIE</a> vector dialect MLIR to C++ code. </p>
-
-</div>
-</div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Mon Jul 6 2026 16:14:47 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Mon Jul 6 2026 17:24:28 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
