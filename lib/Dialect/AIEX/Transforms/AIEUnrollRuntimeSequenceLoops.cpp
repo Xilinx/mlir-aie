@@ -34,6 +34,7 @@
 #include "mlir/IR/BuiltinAttributes.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/SmallVector.h"
+#include <optional>
 
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIEUNROLLRUNTIMESEQUENCELOOPS
