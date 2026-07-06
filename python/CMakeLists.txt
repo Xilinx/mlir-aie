@@ -26,7 +26,6 @@ declare_mlir_python_sources(AIEPythonSources.Util
   ADD_TO_PARENT AIEPythonSources
   SOURCES
     __init__.py
-    util.py
 )
 
 declare_mlir_python_sources(AIEPythonSources.Tools
