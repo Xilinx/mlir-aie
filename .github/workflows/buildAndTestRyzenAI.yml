@@ -12,7 +12,7 @@ on:
       - main
       - test-ryzen-ai
   pull_request:
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+    types: [opened, synchronize, reopened]
   merge_group:
   schedule:
     # Runs at midnight (00:00) every day
@@ -155,7 +155,7 @@ jobs:
 
   test-from-wheels:
     name: Smoke-Test Wheels on Ryzen AI
-    # The goal of this job is to verify that a wheel built from this run's commit can be installed using the quick_setup.sh script and can cmopile and run basic examples on NPU hardware.
+    # The goal of this job is to verify that a wheel built from this run's commit can be installed using the quick_setup.sh script and can compile and run basic examples on NPU hardware.
     # Since we've tested the entire test suite in the from-source job, running a couple spot-checks gives us some confidence that the wheel is functional.
     needs: build-dev-wheel
     runs-on: ${{ matrix.runner_type }}
