@@ -10,6 +10,7 @@
 #include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
+#include "aie/Dialect/AIEX/Utils/BdLowering.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
@@ -219,6 +220,20 @@ public:
   LogicalResult
   matchAndRewrite(NpuDmaMemcpyNdOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+    // Runtime (SSA) sizes/strides take the dynamic path; a fully-constant
+    // descriptor takes the original static path below unchanged (so its output
+    // stays byte-identical). The op verifier has already enforced the supported
+    // scope for the dynamic case (shim NOC, innermost stride 1, all-or-nothing,
+    // no padding, in-range constants).
+    bool allSizesConstant =
+        llvm::all_of(op.getMixedSizes(),
+                     [](OpFoldResult s) { return getConstantIntValue(s); });
+    bool allStridesConstant =
+        llvm::all_of(op.getMixedStrides(),
+                     [](OpFoldResult s) { return getConstantIntValue(s); });
+    if (!allSizesConstant || !allStridesConstant)
+      return lowerDynamic(op, adaptor, rewriter);
+
     const auto &targetModel = AIE::getTargetModel(op);
     BaseMemRefType bufferType = op.getMemref().getType();
     auto *ctx = op->getContext();
@@ -500,6 +515,222 @@ public:
                           static_cast<uint32_t>(repeat_count.getInt())),
         createConstantI32(rewriter, op->getLoc(),
                           static_cast<uint32_t>(bd_id.getInt())));
+
+    rewriter.eraseOp(op);
+    return success();
+  }
+
+  // Lower a shim-NOC dma_memcpy_nd carrying runtime (SSA) sizes/strides.
+  //
+  // Strategy (see the milestone #3222 "dynamic BD-word encoder" step): emit the
+  // SAME NpuWriteBdOp as the static path but with zero placeholders in every
+  // size/stride-bearing field, so WriteBdToBlockWritePattern still folds it
+  // into a single static-template blockwrite. Then override each size/stride BD
+  // word with an npu.write32 whose value is computed from the runtime operands
+  // via the shared encoder (SsaStridePolicy) -- identical arithmetic to the
+  // static path, so a runtime value equal to a constant reproduces the same
+  // word. The write32s follow the blockwrite in program order, at fixed
+  // absolute register addresses, so ordering is guaranteed without any
+  // grouping.
+  LogicalResult lowerDynamic(NpuDmaMemcpyNdOp op, OpAdaptor adaptor,
+                             ConversionPatternRewriter &rewriter) const {
+    const auto &targetModel = AIE::getTargetModel(op);
+    auto *ctx = op->getContext();
+    auto i32ty = IntegerType::get(ctx, 32);
+    auto zero = IntegerAttr::get(i32ty, 0);
+    Location loc = op->getLoc();
+
+    auto dev = op->getParentOfType<AIE::DeviceOp>();
+    if (!dev)
+      return failure();
+    auto infoOp = AIE::ShimDMAAllocationOp::getForSymbol(
+        dev, op.getMetadata().getRootReference());
+    if (!infoOp)
+      return op->emitOpError("couldn't find shim_dma_allocation op.");
+    AIE::TileOp shimTile = infoOp.getTileOp();
+    if (!shimTile)
+      return op->emitOpError(
+          "shim_dma_allocation op must reference a valid TileOp.");
+    auto channelDir = infoOp.getChannelDir();
+    bool isMM2S = channelDir == AIE::DMAChannelDir::MM2S;
+    int tileCol = shimTile.getCol();
+    int tileRow = shimTile.getRow();
+
+    // arg_idx + static byte offset (offsets are compile-time on this path).
+    AIE::RuntimeSequenceOp seq_op =
+        op->getParentOfType<AIE::RuntimeSequenceOp>();
+    if (!seq_op)
+      return op->emitOpError("NpuDmaMemcpyNdOps must have RuntimeSequenceOp "
+                             "parent at time of lowering.");
+    auto traceResult = traceSubviewToBlockArgument(adaptor.getMemref());
+    if (!traceResult)
+      return op->emitOpError(
+          "memref must be a block argument or subview/cast/reinterpret_cast of "
+          "a block argument with static offsets, sizes, and strides");
+    int arg_idx = -1;
+    Block &entryBB = seq_op.getBody().front();
+    for (int i = 0, e = entryBB.getNumArguments(); i < e; i++)
+      if (entryBB.getArgument(i) == traceResult->rootArg) {
+        arg_idx = i;
+        break;
+      }
+    if (arg_idx < 0)
+      return failure();
+    int64_t offset = op.getOffsetInBytes() + traceResult->offsetInBytes;
+
+    // Packet / token setup (identical to the static path).
+    auto column = IntegerAttr::get(i32ty, tileCol);
+    auto row = IntegerAttr::get(i32ty, tileRow);
+    auto enable_packet = zero, packet_id = zero, packet_type = zero;
+    if (auto packetInfo = op.getPacket()) {
+      enable_packet = IntegerAttr::get(i32ty, 1);
+      packet_type = IntegerAttr::get(i32ty, packetInfo->getPktType());
+      packet_id = IntegerAttr::get(i32ty, packetInfo->getPktId());
+    }
+    auto issue_token = BoolAttr::get(ctx, op.getIssueToken());
+    if (!isMM2S)
+      issue_token = BoolAttr::get(ctx, true);
+
+    // Emit the BD template with zeros in every size/stride word; the write32
+    // overrides below supply the runtime values. valid_bd = 1.
+    NpuWriteBdOp::create(
+        rewriter, loc, column, /*bd_id=*/IntegerAttr::get(i32ty, op.getId()),
+        /*buffer_length=*/zero, /*buffer_offset=*/zero, enable_packet,
+        /*out_of_order_id=*/zero, packet_id, packet_type, /*d0_size=*/zero,
+        /*d0_stride=*/zero, /*d1_size=*/zero, /*d1_stride=*/zero,
+        /*d2_size=*/zero, /*d2_stride=*/zero, /*iteration_current=*/zero,
+        /*iteration_size=*/zero, /*iteration_stride=*/zero, /*next_bd=*/zero,
+        row, /*use_next_bd=*/zero, /*valid_bd=*/IntegerAttr::get(i32ty, 1),
+        /*lock_rel_val=*/zero, /*lock_rel_id=*/zero, /*lock_acq_enable=*/zero,
+        /*lock_acq_val=*/zero, /*lock_acq_id=*/zero, /*d0_zero_before=*/zero,
+        /*d1_zero_before=*/zero, /*d2_zero_before=*/zero,
+        /*d0_zero_after=*/zero,
+        /*d1_zero_after=*/zero, /*d2_zero_after=*/zero,
+        /*burst_length=*/IntegerAttr::get(i32ty, op.getBurstLength()));
+
+    // Compute the hardware sizes/strides as SSA values via the shared encoder.
+    uint64_t elemWidth = op.getElementTypeBitwidth();
+    uint32_t gran = targetModel.getAddressGenGranularity();
+    SmallVector<OpFoldResult, 4> mixedSizesRev(
+        llvm::reverse(op.getMixedSizes()));
+    SmallVector<OpFoldResult, 4> mixedStridesRev(
+        llvm::reverse(op.getMixedStrides()));
+    Value inS[4], inT[4], hwS[4], hwT[4];
+    for (int i = 0; i < 4; i++) {
+      inS[i] = getAsValue(rewriter, loc, mixedSizesRev[i], i32ty);
+      inT[i] = getAsValue(rewriter, loc, mixedStridesRev[i], i32ty);
+    }
+    int64_t innerStride0 = getConstantIntValue(mixedStridesRev[0]).value();
+    SsaStridePolicy policy(rewriter, loc, innerStride0);
+    encodeHardwareStridesWraps(policy, elemWidth, gran, inS, inT, hwS, hwT);
+
+    // buffer_length (word[0]) = d0 * d1 * d2 in hardware units. hwS[0] already
+    // carries the elemWidth/gran scaling; d1/d2 are element counts.
+    Value bufLen = arith::MulIOp::create(
+        rewriter, loc, arith::MulIOp::create(rewriter, loc, hwS[0], inS[1]),
+        inS[2]);
+
+    // Linear-mode decision, mirroring the static path: a contiguous shim-NOC
+    // transfer is lowered to linear mode (d0_size=d1_size=0, whole transfer in
+    // buffer_length), which avoids the 10-bit d0_size limit. The contiguity
+    // relation compares sizes against strides, so it must be decidable from
+    // compile-time constants; the verifier rejects a would-be-contiguous
+    // transfer whose relevant operands are runtime, so if we get here with a
+    // runtime size in d0/d1 the transfer is genuinely non-contiguous (ND).
+    // Contiguity compares each dimension's stride against the product of the
+    // *inner* sizes -- it never needs a dimension's own size. So a transfer
+    // with runtime *outer* sizes is still provably contiguous as long as the
+    // inner sizes and the compared strides are compile-time constants (the
+    // common case: only the block count is runtime, the block shape is fixed).
+    // When a needed operand is runtime, contiguity is undecidable and we fall
+    // back to ND mode; the verifier's constant-bound check + the fact that a
+    // runtime d0/d1 *size* that could exceed the 10-bit field is rejected there
+    // keeps that safe.
+    auto cst = [&](OpFoldResult v) { return getConstantIntValue(v); };
+    auto knownContiguous = [&]() -> bool {
+      // d0 (innermost) stride must be a constant 1.
+      auto s0 = cst(mixedStridesRev[0]);
+      if (!s0 || *s0 != 1)
+        return false;
+      // For each of d1, d2: if its size is >1 (or runtime, i.e. possibly >1),
+      // its stride must equal the product of the strictly-inner sizes, which
+      // must therefore be constant.
+      auto sz0 = cst(mixedSizesRev[0]);
+      auto d1sz = cst(mixedSizesRev[1]);
+      auto d1st = cst(mixedStridesRev[1]);
+      // d1 contributes a constraint unless its size is a constant 1.
+      if (!(d1sz && *d1sz == 1)) {
+        if (!sz0 || !d1st || *d1st != *sz0)
+          return false;
+      }
+      auto d2sz = cst(mixedSizesRev[2]);
+      auto d2st = cst(mixedStridesRev[2]);
+      if (!(d2sz && *d2sz == 1)) {
+        auto prod01 =
+            (sz0 && d1sz) ? std::optional<int64_t>(*sz0 * *d1sz) : std::nullopt;
+        if (!prod01 || !d2st || *d2st != *prod01)
+          return false;
+      }
+      return true;
+    };
+    bool isLinear = knownContiguous();
+
+    uint64_t bdAddr = targetModel.getDmaBdAddress(tileCol, tileRow, op.getId());
+    auto writeWord = [&](uint32_t wordIdx, Value val) {
+      NpuWrite32Op::create(
+          rewriter, loc,
+          createConstantI32(rewriter, loc,
+                            static_cast<uint32_t>(bdAddr + wordIdx * 4)),
+          val, nullptr, nullptr, nullptr);
+    };
+
+    // word[0] buffer_length is always overridden (it carries the runtime
+    // element count in both linear and ND modes).
+    writeWord(0, bufLen);
+
+    // In linear mode the d0/d1/d2 size/stride words stay at their zero template
+    // values (matching the static path); only buffer_length + iteration are
+    // meaningful. In ND mode, override the size/stride words.
+    if (!isLinear) {
+      // word[3]: d0_size [29:20], d0_stride [19:0].
+      writeWord(3, buildBdWord(rewriter, loc,
+                               {{hwS[0], 0x3FF, 20}, {hwT[0], 0xFFFFF, 0}}));
+      // word[4]: burst_length [31:30] (static), d1_size [29:20],
+      //          d1_stride [19:0].
+      Value burst = createConstantI32(
+          rewriter, loc,
+          (getShimBurstLengthEncoding(targetModel, op.getBurstLength()) & 0x3)
+              << 30);
+      writeWord(4, arith::OrIOp::create(rewriter, loc, burst,
+                                        buildBdWord(rewriter, loc,
+                                                    {{hwS[1], 0x3FF, 20},
+                                                     {hwT[1], 0xFFFFF, 0}})));
+      // word[5]: AXCache [27:24] (static), d2_stride [19:0]. Shim d2_size is
+      //          always 0 (the template already has it), carried by bufLen.
+      Value axcache = createConstantI32(rewriter, loc, (2u & 0xf) << 24);
+      writeWord(5, arith::OrIOp::create(
+                       rewriter, loc, axcache,
+                       buildBdWord(rewriter, loc, {{hwT[2], 0xFFFFF, 0}})));
+    }
+    // word[6]: iteration_size [25:20], iteration_stride [19:0]. Meaningful in
+    // both modes (the outer repeat dimension is independent of linearization).
+    writeWord(6, buildBdWord(rewriter, loc,
+                             {{hwS[3], 0x3F, 20}, {hwT[3], 0xFFFFF, 0}}));
+
+    // Address patch for the buffer pointer (offset is compile-time here).
+    uint64_t patchAddr =
+        bdAddr + targetModel.getDmaBdAddressOffset(tileCol, tileRow);
+    NpuAddressPatchOp::create(
+        rewriter, loc, patchAddr, arg_idx,
+        createConstantI32(rewriter, loc, static_cast<uint32_t>(offset)));
+
+    // Push the BD. repeat_count is the outer (d3) element count; it may be a
+    // runtime value, so it flows in as an SSA operand.
+    Value repeatCount = getAsValue(rewriter, loc, mixedSizesRev[3], i32ty);
+    NpuPushQueueOp::create(
+        rewriter, loc, column, row, infoOp.getChannelDirAttr(),
+        infoOp.getChannelIndexAttr(), issue_token, repeatCount,
+        createConstantI32(rewriter, loc, op.getId()));
 
     rewriter.eraseOp(op);
     return success();

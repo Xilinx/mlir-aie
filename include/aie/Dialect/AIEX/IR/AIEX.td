@@ -519,9 +519,15 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
 
     bool isLinearTransferWithoutTransformation();
 
-    /* Returns the bitwidth of the type inside the memref through a 
+    /* Returns the bitwidth of the type inside the memref through a
     call to DataLayout */
     uint64_t getElementTypeBitwidth();
+
+    /* Verifies the supported scope and bounds for a transfer carrying runtime
+       (SSA) sizes/strides. Called from verify() on the dynamic path. */
+    llvm::LogicalResult verifyDynamicSizesStrides(
+        const xilinx::AIE::AIETargetModel &targetModel,
+        mlir::BaseMemRefType buffer);
   }];
 
   let extraClassDefinition = [{

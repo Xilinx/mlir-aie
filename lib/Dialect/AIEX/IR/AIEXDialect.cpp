@@ -7,6 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
+#include "aie/Dialect/AIEX/Utils/BdLowering.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -87,95 +88,6 @@ void AIEXDialect::initialize() {
   Note: strides are expressed offset by one from user input strides, because the
   hardware does not support a 0 stride (repeat).
   */
-// Shared hardware size/stride encoder.
-//
-// The AIE DMA buffer descriptor encodes each dimension's wrap ("size") and step
-// ("stride") in hardware units: sizes count elements scaled to the address-gen
-// granularity, and strides are stored biased by -1 (so a stored 0 means a step
-// of one granule). The exact same arithmetic must produce the constant-folded
-// values used by the static lowering AND, in the dynamic path, an equivalent
-// chain of `arith` ops over runtime SSA operands. To keep those two domains
-// from drifting (a divergence would silently miscompile), the algorithm lives
-// here once and is instantiated over a Policy that supplies the primitive
-// operations for either domain.
-//
-// A Policy provides a value type `V` and: cst(int64), mul/div/sub over a V and
-// an int64 constant, and selectGT1(size, then, els) returning `then` when
-// `size > 1` else `els`. For the constant policy these are plain integer ops
-// and a C++ ternary; for the SSA policy (see BdLowering) they emit arith ops.
-template <typename Policy>
-static void encodeHardwareStridesWraps(Policy &p, uint64_t elemWidth,
-                                       uint32_t addressGranularity,
-                                       typename Policy::V inputSizes[4],
-                                       typename Policy::V inputStrides[4],
-                                       typename Policy::V sizes[4],
-                                       typename Policy::V strides[4]) {
-  using V = typename Policy::V;
-  // Scale an element-count stride into hardware granules and apply the -1 bias:
-  //   stride * elemWidth / addressGranularity - 1
-  auto biasedStride = [&](V inStride) -> V {
-    return p.sub(p.div(p.mul(inStride, elemWidth), addressGranularity), 1);
-  };
-
-  // d0_size, d0_stride
-  sizes[0] = p.div(p.mul(inputSizes[0], elemWidth), addressGranularity);
-  // The innermost stride is the sub-granularity / wide-element special case.
-  // The static path folds this from constants; the dynamic path requires
-  // inputStrides[0] == 1 (verified), so in both domains d0_stride resolves to a
-  // compile-time constant and the branch is decided by the policy on constants.
-  if (p.d0StrideIsZero(inputStrides[0], elemWidth, addressGranularity)) {
-    // First reason: the hardware cannot transfer less than addressGranularity
-    // bits at a time, but the user may express a contiguous transfer of
-    // multiple elements with a stride smaller than addressGranularity. Setting
-    // the stride to 1 (encoded in hardware as 0) allows such transfers.
-    //   verify: inStride0*elemWidth < gran  iff  inSize0*elemWidth > gran.
-    // Second reason: when elemWidth > gran, all bytes must be copied, so the
-    // stride must be 1 (encoded as 0).
-    //   verify: inStride0*elemWidth % gran == 0
-    //           && inStride0 == 1 if elemWidth > gran.
-    // This forbids a stride > 1 for elemWidths bigger than gran even when a
-    // multiple of it; such transfers must use an additional dimension.
-    strides[0] = p.cst(0);
-  } else {
-    strides[0] = biasedStride(inputStrides[0]);
-  }
-
-  // d1_size, d1_stride / d2_size, d2_stride: stride only matters when size > 1.
-  sizes[1] = inputSizes[1];
-  strides[1] =
-      p.selectGT1(inputSizes[1], biasedStride(inputStrides[1]), p.cst(0));
-  sizes[2] = inputSizes[2];
-  strides[2] =
-      p.selectGT1(inputSizes[2], biasedStride(inputStrides[2]), p.cst(0));
-
-  // iteration_size, iteration_stride. Size is stored biased by -1. The stride
-  // must be positive like the others, but a zero-stride "repeat" is encoded by
-  // leaving size at 1 (via a positive repeat_count on the queue push) so the BD
-  // wraps every iteration and never adds the stride. Hence stride is gated on
-  // BOTH size > 1 and inStride > 0.
-  sizes[3] = p.selectGT1(inputSizes[3], p.sub(inputSizes[3], 1), p.cst(0));
-  strides[3] = p.selectGT1(
-      inputSizes[3],
-      p.selectGT0(inputStrides[3], biasedStride(inputStrides[3]), p.cst(0)),
-      p.cst(0));
-}
-
-namespace {
-// Constant (compile-time int64) policy: the original static arithmetic.
-struct ConstStridePolicy {
-  using V = int64_t;
-  static V cst(int64_t c) { return c; }
-  static V mul(V v, int64_t c) { return v * c; }
-  static V div(V v, int64_t c) { return v / c; }
-  static V sub(V v, int64_t c) { return v - c; }
-  static V selectGT1(V cond, V t, V e) { return cond > 1 ? t : e; }
-  static V selectGT0(V cond, V t, V e) { return cond > 0 ? t : e; }
-  static bool d0StrideIsZero(V inStride0, uint64_t elemWidth, uint32_t gran) {
-    return inStride0 * (int64_t)elemWidth < (int64_t)gran || elemWidth > gran;
-  }
-};
-} // namespace
-
 void AIEX::getHardwareStridesWraps(const AIE::AIETargetModel &targetModel,
                                    mlir::Operation *op,
                                    mlir::BaseMemRefType referencedBufType,
@@ -570,6 +482,134 @@ checkBurstLength(const xilinx::AIE::AIETargetModel &targetModel,
   return std::nullopt;
 }
 
+// Verify the supported scope for a dma_memcpy_nd carrying runtime (SSA)
+// sizes/strides, and hard-error on any statically-provable violation. Runtime
+// values that cannot be checked here are rejected (never silently masked): the
+// scope below is exactly what the dynamic BD encoder (AIEDmaToNpu.cpp
+// lowerDynamicBd) can lower correctly. Bounded-but-runtime transfers (e.g. a
+// GEMM whose sizes are bounded by buffer capacity) are supported because their
+// bounds are enforced by the caller/buffer extent, not by masking here.
+LogicalResult AIEX::NpuDmaMemcpyNdOp::verifyDynamicSizesStrides(
+    const AIE::AIETargetModel &targetModel, mlir::BaseMemRefType buffer) {
+  // Shim NOC only.
+  AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
+  auto allocOp = AIE::ShimDMAAllocationOp::getForSymbol(
+      dev, getMetadata().getRootReference());
+  if (!allocOp)
+    return emitOpError(
+        "runtime sizes/strides require a shim_dma_allocation to resolve the "
+        "tile; none found.");
+  AIE::TileOp tile = allocOp.getTileOp();
+  if (!tile)
+    return emitOpError("shim DMA allocation must reference a valid TileOp");
+  if (!targetModel.isShimNOCTile(tile.getCol(), tile.getRow()))
+    return emitOpError(
+        "runtime sizes/strides are only supported for shim NOC tile DMAs.");
+
+  // No zero-padding with runtime sizes/strides.
+  if (getD0ZeroBefore() || getD1ZeroBefore() || getD2ZeroBefore() ||
+      getD0ZeroAfter() || getD1ZeroAfter() || getD2ZeroAfter())
+    return emitOpError(
+        "zero padding is not supported with runtime sizes/strides.");
+
+  // Per-field runtime values are allowed: any individual size/stride may be an
+  // SSA value while others stay constant. Only the runtime-dependent fields
+  // need runtime handling; the encoder produces the same word for a constant
+  // operand either way, so the static ≡ dynamic byte-identity holds field by
+  // field. (This matches the milestone's GEMM target, whose tiling dimensions
+  // are constant while the problem dimensions are runtime.)
+  auto sizes = getMixedSizes();
+  auto strides = getMixedStrides();
+
+  // Innermost stride must be a compile-time 1 (contiguous innermost scan). The
+  // encoder relies on this to resolve the d0 special case statically.
+  mlir::OpFoldResult innerStride = strides.back();
+  auto innerStrideConst = getConstantIntValue(innerStride);
+  if (!innerStrideConst || *innerStrideConst != 1)
+    return emitOpError(
+        "innermost stride must be a compile-time constant 1 with runtime "
+        "sizes/strides.");
+
+  // (The memref must also trace to a runtime-sequence block argument through
+  // static subview/cast offsets; that structural check, with the same clean
+  // diagnostic, is enforced by the lowering in AIEDmaToNpu.cpp, which already
+  // owns the trace utility. It is not duplicated here to keep the dialect
+  // verifier free of the analysis-layer dependency.)
+
+  // Compile-time guard: any size operand that IS a constant must fit its
+  // hardware wrap field. Runtime operands are bounded by the buffer extent at
+  // the caller; the encoder masks nothing, so an out-of-range constant is a
+  // hard error here rather than a silent truncation downstream. (Under the
+  // all-or-nothing rule this fires only for a fully-constant size vector paired
+  // with runtime strides, but is kept general.) Sizes are outermost-first;
+  // hardware d0/d1 wrap is 10-bit and the iteration (d3) wrap is 6-bit.
+  llvm::SmallVector<mlir::OpFoldResult, 4> sizesRev(llvm::reverse(sizes));
+  auto checkSize = [&](mlir::OpFoldResult ofr, int64_t hi,
+                       llvm::StringRef what) -> LogicalResult {
+    if (auto c = getConstantIntValue(ofr))
+      if (*c < 0 || *c > hi)
+        return emitOpError(what) << " constant value " << *c
+                                 << " exceeds hardware range [0:" << hi << "].";
+    return success();
+  };
+  if (failed(checkSize(sizesRev[0], (1 << 10) - 1, "d0 size")) ||
+      failed(checkSize(sizesRev[1], (1 << 10) - 1, "d1 size")) ||
+      failed(checkSize(sizesRev[3], (1 << 6), "iteration size")))
+    return failure();
+
+  // Runtime size landing in a narrow BD field (d0/d1 wrap 10-bit, iteration
+  // 6-bit) could exceed the field and silently truncate on hardware. The TXN
+  // stream has no on-device trap, so the correct guard is host-side in the
+  // generated builder -- added in the follow-up (the assert_bd_field op +
+  // optional return). Until that lands, reject such a transfer rather than risk
+  // a silent miscompile. A runtime size in a WIDE field (buffer_length via
+  // linear mode, or the repeat_count) is always safe and allowed.
+  //
+  // Linear mode (contiguous) routes d0/d1 sizes into buffer_length, so a
+  // runtime d0/d1 size is only narrow-field-bound when the transfer is NOT
+  // linearizable. Mirror the lowering's compile-time contiguity test (it only
+  // needs the inner sizes/strides, never a dim's own size).
+  {
+    llvm::SmallVector<mlir::OpFoldResult, 4> stridesRev(llvm::reverse(strides));
+    auto isConst1 = [](mlir::OpFoldResult v) {
+      auto c = getConstantIntValue(v);
+      return c && *c == 1;
+    };
+    auto cval = [](mlir::OpFoldResult v) { return getConstantIntValue(v); };
+    // Contiguous iff d0 stride==1, and for each of d1/d2 either its size is a
+    // constant 1 or its stride equals the product of the strictly-inner sizes
+    // (which must be constant to decide).
+    bool contiguous = isConst1(stridesRev[0]);
+    if (contiguous && !isConst1(sizesRev[1])) {
+      auto s0 = cval(sizesRev[0]), t1 = cval(stridesRev[1]);
+      contiguous = s0 && t1 && *t1 == *s0;
+    }
+    if (contiguous && !isConst1(sizesRev[2])) {
+      auto s0 = cval(sizesRev[0]), s1 = cval(sizesRev[1]),
+           t2 = cval(stridesRev[2]);
+      contiguous = s0 && s1 && t2 && *t2 == *s0 * *s1;
+    }
+    auto isRuntime = [](mlir::OpFoldResult v) {
+      return !getConstantIntValue(v);
+    };
+    if (!contiguous && (isRuntime(sizesRev[0]) || isRuntime(sizesRev[1])))
+      return emitOpError(
+          "runtime d0/d1 size in a non-contiguous transfer is not yet "
+          "supported (would need a host-side bounds guard for the 10-bit "
+          "field); express the transfer as contiguous or use constant sizes.");
+    if (isRuntime(sizesRev[3]))
+      return emitOpError(
+          "runtime iteration (outer) size is not yet supported (would need a "
+          "host-side bounds guard for the 6-bit field).");
+  }
+
+  auto errorMessage = checkBurstLength(targetModel, getBurstLength());
+  if (errorMessage.has_value())
+    return emitOpError(errorMessage.value());
+
+  return success();
+}
+
 LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   BaseMemRefType buffer = getMemref().getType();
   const auto &targetModel = AIE::getTargetModel(*this);
@@ -585,18 +625,24 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
     return emitOpError("Minimum data transfer size required is ")
            << addressGranularity << "bits. ";
   }
-  if (!llvm::all_of(getMixedStrides(), [](OpFoldResult s) {
-        return getConstantIntValue(s).has_value();
-      }))
-    return emitOpError("Only constant strides currently supported.");
-  if (!llvm::all_of(getMixedSizes(), [](OpFoldResult s) {
-        return getConstantIntValue(s).has_value();
-      }))
-    return emitOpError("Only constant sizes currently supported.");
+  // Offsets are always resolved at compile time (the buffer pointer is set by
+  // the address patch); only sizes/strides may be runtime SSA values.
   if (!llvm::all_of(getMixedOffsets(), [](OpFoldResult s) {
         return getConstantIntValue(s).has_value();
       }))
     return emitOpError("Only constant offsets currently supported.");
+
+  bool allStridesConstant = llvm::all_of(getMixedStrides(), [](OpFoldResult s) {
+    return getConstantIntValue(s).has_value();
+  });
+  bool allSizesConstant = llvm::all_of(getMixedSizes(), [](OpFoldResult s) {
+    return getConstantIntValue(s).has_value();
+  });
+
+  // Dynamic (runtime SSA size/stride) path: enforce the supported scope and
+  // guard bounds up front. See AIEDmaToNpu.cpp lowerDynamicBd for the encoding.
+  if (!allStridesConstant || !allSizesConstant)
+    return verifyDynamicSizesStrides(targetModel, buffer);
 
   llvm::SmallVector<int64_t, 4> inputSizes =
       llvm::map_to_vector(llvm::reverse(getMixedSizes()), [](OpFoldResult s) {
