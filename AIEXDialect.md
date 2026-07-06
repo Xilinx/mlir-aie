@@ -904,10 +904,12 @@ _Address patch operator_
 Syntax:
 
 ```
-operation ::= `aiex.npu.address_patch` attr-dict
+operation ::= `aiex.npu.address_patch` `(` $arg_plus `:` type($arg_plus) `)` attr-dict
 ```
 
-address patch operator
+address patch operator. `arg_plus` is an SSA value; use arith.constant for
+a compile-time-known offset or pass a runtime sequence value for a
+runtime-parameterized buffer offset.
 
 #### Attributes:
 
@@ -915,8 +917,13 @@ address patch operator
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
 <tr><td><code>addr</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
 <tr><td><code>arg_idx</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>arg_plus</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `arg_plus` | 32-bit signless integer |
 
 
 
@@ -1217,10 +1224,15 @@ _Write a masked 32-bit value to the AIE array_
 Syntax:
 
 ```
-operation ::= `aiex.npu.maskwrite32` attr-dict
+operation ::= `aiex.npu.maskwrite32` `(` $address `,` $value `,` $mask `)` attr-dict `:` type($address) `,` type($value) `,` type($mask)
 ```
 
 NPU mask write32 operator writes a masked 32bit value to the AIE array.
+
+'address', 'value', and 'mask' are SSA operands; use arith.constant for
+compile-time-known values or pass runtime sequence values for
+runtime-parameterized sequences.
+
 If 'buffer' is present then 'address' is interpreted as an offset into the
 aie.buffer with symbol name 'buffer'.
 If 'column' and 'row' are present then 'address' is interpreted as an offset
@@ -1232,13 +1244,18 @@ If 'buffer' is not present and 'column' and 'row' are not present then
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>address</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
-<tr><td><code>value</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
-<tr><td><code>mask</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
 <tr><td><code>buffer</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
 <tr><td><code>column</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>row</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `address` | 32-bit signless integer |
+| `value` | 32-bit signless integer |
+| `mask` | 32-bit signless integer |
 
 
 
@@ -1275,10 +1292,16 @@ _Bd queue push operator_
 Syntax:
 
 ```
-operation ::= `aiex.npu.push_queue` `(` $column `,` $row `,` $direction `:` $channel `)` attr-dict
+operation ::= `aiex.npu.push_queue` `(` $column `,` $row `,` $direction `:` $channel `)`
+              `bd_id` $bd_id `repeat` $repeat_count attr-dict `:` type($bd_id) `,` type($repeat_count)
 ```
 
-bd queue push operator
+bd queue push operator.
+
+'bd_id' (which physical buffer descriptor slot to launch) and 'repeat_count'
+(outer-dimension repeat for the launch) are SSA operands; use arith.constant
+for compile-time-known values or pass runtime sequence values to select the
+BD / repeat count at runtime.
 
 #### Attributes:
 
@@ -1289,9 +1312,14 @@ bd queue push operator
 <tr><td><code>direction</code></td><td>xilinx::AIE::DMAChannelDirAttr</td><td>DMA Channel direction</td></tr>
 <tr><td><code>channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>issue_token</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
-<tr><td><code>repeat_count</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>bd_id</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `repeat_count` | 32-bit signless integer |
+| `bd_id` | 32-bit signless integer |
 
 
 
@@ -1302,10 +1330,12 @@ _Rtp write operator_
 Syntax:
 
 ```
-operation ::= `aiex.npu.rtp_write` `(` $buffer `,` $index `,` $value `)` attr-dict
+operation ::= `aiex.npu.rtp_write` `(` $buffer `,` $index `,` $value `)` attr-dict `:` type($value)
 ```
 
-rtp write operator
+rtp write operator. `value` is an SSA operand; use arith.constant for a
+compile-time-known value or pass a runtime sequence value to supply the RTP
+value at runtime.
 
 #### Attributes:
 
@@ -1313,8 +1343,13 @@ rtp write operator
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
 <tr><td><code>buffer</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
 <tr><td><code>index</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
-<tr><td><code>value</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `value` | 32-bit signless integer |
 
 
 
@@ -1325,27 +1360,30 @@ _Sync operator_
 Syntax:
 
 ```
-operation ::= `aiex.npu.sync` attr-dict
+operation ::= `aiex.npu.sync` `(` $column `,` $row `,` $direction `,` $channel `,` $column_num `,` $row_num `)` attr-dict `:` type(operands)
 ```
 
 The sync operation blocks execution of the instruction stream until a task-complete token (TCT) is received on `column`, `row`, channel `channel`, direction `direction` (where `0` is `S2MM` and `1` is `MM2S`).
+
+All parameters are SSA values. Use `arith.constant` for compile-time-known
+values; pass runtime sequence arguments (or values derived from them)
+directly for runtime-parameterized sequences.
 
 #### Troubleshooting
 
 If this operation appears to deadlock, ensure that at least one buffer descriptor is configured to issue a TCT on the channel you expect.
 By default, `dma_memcpy_nd` operations only issue tokens for `S2MM` channels, and `issue_token` must be set to `true` to issue tokens for `MM2S` channels.
 
-#### Attributes:
+#### Operands:
 
-<table>
-<tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>column</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>row</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>direction</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>channel</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>column_num</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>row_num</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-</table>
+| Operand | Description |
+| :-----: | ----------- |
+| `column` | 32-bit signless integer |
+| `row` | 32-bit signless integer |
+| `direction` | 32-bit signless integer |
+| `channel` | 32-bit signless integer |
+| `column_num` | 32-bit signless integer |
+| `row_num` | 32-bit signless integer |
 
 
 
@@ -1436,10 +1474,15 @@ _Write32 operator_
 Syntax:
 
 ```
-operation ::= `aiex.npu.write32` attr-dict
+operation ::= `aiex.npu.write32` `(` $address `,` $value `)` attr-dict `:` type($address) `,` type($value)
 ```
 
 NPU write32 operator writes a 32bit value to the AIE array.
+
+'address' and 'value' are SSA operands; use arith.constant for
+compile-time-known values or pass runtime sequence values for
+runtime-parameterized sequences.
+
 If 'buffer' is present then 'address' is interpreted as an offset into the
 aie.buffer with symbol name 'buffer'.
 If 'column' and 'row' are present then 'address' is interpreted as an offset
@@ -1451,12 +1494,17 @@ If 'buffer' is not present and 'column' and 'row' are not present then
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
-<tr><td><code>address</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
-<tr><td><code>value</code></td><td>::mlir::IntegerAttr</td><td>32-bit unsigned integer attribute</td></tr>
 <tr><td><code>buffer</code></td><td>::mlir::FlatSymbolRefAttr</td><td>flat symbol reference attribute</td></tr>
 <tr><td><code>column</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>row</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 </table>
+
+#### Operands:
+
+| Operand | Description |
+| :-----: | ----------- |
+| `address` | 32-bit signless integer |
+| `value` | 32-bit signless integer |
 
 
 
