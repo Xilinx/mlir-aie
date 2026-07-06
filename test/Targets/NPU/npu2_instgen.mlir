@@ -23,7 +23,9 @@ module {
       // CHECK: 00000000
       // CHECK: 00000042
       // CHECK: 00000018
-      aiex.npu.write32 { column = 3 : i32, row = 4 : i32, address = 0xabc00def : ui32, value = 0x42 : ui32 }
+      %cst_npu_0 = arith.constant 0xabc00def : i32
+      %cst_npu_1 = arith.constant 0x42 : i32
+      aiex.npu.write32(%cst_npu_0, %cst_npu_1) {column = 3 : i32, row = 4 : i32} : i32, i32
 
       // CHECK: 00000000
       // CHECK: 00000000
@@ -31,7 +33,9 @@ module {
       // CHECK: 00000000
       // CHECK: 00000314
       // CHECK: 00000018
-      aiex.npu.write32 { address = 0xabc00def : ui32, value = 0x314 : ui32 }
+      %cst_npu_2 = arith.constant 0xabc00def : i32
+      %cst_npu_3 = arith.constant 0x314 : i32
+      aiex.npu.write32(%cst_npu_2, %cst_npu_3) : i32, i32
 
       // CHECK: 00000001
       // CHECK: 00000000
@@ -69,13 +73,22 @@ module {
       // CHECK: 00001001
       // CHECK: F00FF00F
       // CHECK: 0000001C
-      aiex.npu.maskwrite32 { column = 2 : i32, row = 3 : i32, address = 0x0000567A : ui32, value = 0x1001 : ui32, mask = 0xf00ff00f : ui32 }
+      %cst_npu_4 = arith.constant 0x0000567A : i32
+      %cst_npu_5 = arith.constant 0x1001 : i32
+      %cst_npu_6 = arith.constant 0xf00ff00f : i32
+      aiex.npu.maskwrite32(%cst_npu_4, %cst_npu_5, %cst_npu_6) {column = 2 : i32, row = 3 : i32} : i32, i32, i32
 
       // CHECK: 00000080
       // CHECK: 00000010
       // CHECK: 00030401
       // CHECK: 05010200
-      aiex.npu.sync { column = 3 : i32, row = 4 : i32, direction = 1 : i32, channel = 5 : i32, column_num = 1 : i32, row_num = 2 : i32 }
+      %cst_npu_7 = arith.constant 3 : i32
+      %cst_npu_8 = arith.constant 4 : i32
+      %cst_npu_9 = arith.constant 1 : i32
+      %cst_npu_10 = arith.constant 5 : i32
+      %cst_npu_11 = arith.constant 1 : i32
+      %cst_npu_12 = arith.constant 2 : i32
+      aiex.npu.sync(%cst_npu_7, %cst_npu_8, %cst_npu_9, %cst_npu_10, %cst_npu_11, %cst_npu_12) : i32, i32, i32, i32, i32, i32
 
       // CHECK: 00000306
       aiex.npu.preempt { level = 3 : ui8 }
