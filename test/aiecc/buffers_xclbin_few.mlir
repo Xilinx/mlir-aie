@@ -7,14 +7,19 @@
 // RUN: %python aiecc.py -n --no-compile --no-link --aie-generate-xclbin %s
 // RUN: FileCheck %s --input-file=buffers_xclbin_few.mlir.prj/main_kernels.json
 
-// The host BO count is the runtime_sequence argument count, so a 2-argument
-// sequence emits exactly bo0 and bo1 -- no more.
+// The host BO count is the runtime_sequence argument count, floored at 5 to
+// satisfy the NPU firmware command-chain (xrt::runlist) ABI. A 2-argument
+// sequence therefore emits bo0..bo4 -- the two real arguments plus padding up
+// to the floor -- and no more.
 
 // CHECK: "name": "bo0"
 // CHECK: "offset": "0x14"
 // CHECK: "name": "bo1"
 // CHECK: "offset": "0x1C"
-// CHECK-NOT: "name": "bo2"
+// CHECK: "name": "bo2"
+// CHECK: "name": "bo3"
+// CHECK: "name": "bo4"
+// CHECK-NOT: "name": "bo5"
 
 module {
   aie.device(npu1) {

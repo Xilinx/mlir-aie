@@ -5102,14 +5102,32 @@ generateFullElfArtifact(ArrayRef<DeviceElfInfo> deviceInfos,
 /// and verified.
 static constexpr int kMaxHostBOs = 16;
 
+/// Minimum number of host buffer (boN) slots every kernel must declare.
+///
+/// The NPU firmware's command-chain handler (xrt::runlist / ERT_CMD_CHAIN)
+/// walks consecutive per-command slots assuming a fixed minimum argument
+/// stride of 5 words. A kernel that declares fewer than 5 boN slots produces
+/// an undersized first slot, so the walker reads the second command from the
+/// wrong offset and the runlist aborts (ERT_CMD_STATE_ABORT). Single-command
+/// launches (the ergonomic kernel(...) call or a 1-element runlist) never walk
+/// to a second slot and so are unaffected -- which is why this only surfaces
+/// for multi-run runlists (e.g. the add_one_two_txn / add_one_two_runlist
+/// tests). Declaring extra slots is harmless: XRT tolerates a kernel declaring
+/// more host BOs than the host passes; under-declaring segfaults (#3248).
+///
+/// aiecc cannot know at compile time whether a kernel will be consumed by a
+/// multi-command runlist, so we always declare at least this many slots to
+/// conform to the firmware chain ABI. Verified on hardware: counts 2/3/4 abort
+/// the two-run runlist, 5 passes. This is a firmware constraint, not an XRT or
+/// mlir-aie bug; the historical hardcoded-5 encoded exactly this contract.
+static constexpr int kMinHostBOs = 5;
+
 /// Fallback host-buffer (boN) count for a device that has no runtime_sequence.
 /// Such a device has no operand list to read, yet may still be launched by the
 /// host with host buffers (e.g. the ctrl-packet reconfig "base" xclbin, whose
 /// ABI is defined by a separate "main" compile that is not present when base is
-/// built). XRT tolerates a kernel declaring more host BOs than the host passes;
-/// under-declaring segfaults (#3248). Declaring this many slots keeps that case
-/// working until base can be made self-describing (tracked follow-up).
-static constexpr int kNoSequenceHostBOs = 5;
+/// built). Equal to kMinHostBOs for the same firmware-ABI reason.
+static constexpr int kNoSequenceHostBOs = kMinHostBOs;
 
 /// Compute the number of host buffer (boN) arguments XRT must declare in
 /// kernels.json for `devName`.
@@ -5119,8 +5137,9 @@ static constexpr int kNoSequenceHostBOs = 5;
 /// buffer -- data, trace, and control-packet -- is a block argument by the time
 /// the sequence is lowered (trace lowering and ctrl-packet-to-dma each append
 /// their buffer as an argument), so the count is simply the lowered sequence's
-/// argument count. A device with no runtime_sequence has no operand list to
-/// read; fall back to kNoSequenceHostBOs for it.
+/// argument count, floored at kMinHostBOs to satisfy the firmware command-chain
+/// ABI (see kMinHostBOs). A device with no runtime_sequence has no operand list
+/// to read; fall back to kNoSequenceHostBOs for it.
 static FailureOr<int> computeNumHostBOs(ModuleOp moduleOp, StringRef devName,
                                         StringRef tmpDirName) {
   // Lower a private clone so the source module is untouched, then read the
@@ -5134,7 +5153,9 @@ static FailureOr<int> computeNumHostBOs(ModuleOp moduleOp, StringRef devName,
       continue;
     for (auto seqOp : devOp.getOps<xilinx::AIE::RuntimeSequenceOp>()) {
       if (!seqOp.getBody().empty())
-        return static_cast<int>(seqOp.getBody().front().getNumArguments());
+        return std::max(
+            kMinHostBOs,
+            static_cast<int>(seqOp.getBody().front().getNumArguments()));
     }
     // Device exists but has no runtime_sequence.
     return kNoSequenceHostBOs;
