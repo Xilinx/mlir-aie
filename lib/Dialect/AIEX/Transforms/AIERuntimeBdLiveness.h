@@ -93,8 +93,8 @@ struct TaskLiveRange {
   bool ambiguous = false;
 
   /// True when tracing the handle followed an `scf.if` yield to the if-result
-  /// (the handle escapes its arm via a value join). Static BD-ID allocation
-  /// across such a join is not supported.
+  /// (the handle escapes its arm via a value join). This case is supported by
+  /// the allocator by tracing scf.if yields/results when recycling IDs.
   bool crossedIfJoin = false;
 };
 
