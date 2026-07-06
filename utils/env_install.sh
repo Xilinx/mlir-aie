@@ -140,7 +140,7 @@ if [ "$DEV" = 0 ]; then
   #                specific commit.
   base_url="https://github.com/Xilinx/mlir-aie/releases/expanded_assets"
   wheel_spec="mlir_aie"
-  repo_tag="$(git -C "$ROOT" describe --exact-match --tags HEAD 2>/dev/null)"
+  repo_tag="$(git -C "$ROOT" describe --exact-match --tags HEAD 2>/dev/null || true)"
 
   if [ -n "${MLIR_AIE_WHEEL_DIR:-}" ]; then
     wheel_index="$MLIR_AIE_WHEEL_DIR"
@@ -152,7 +152,7 @@ if [ "$DEV" = 0 ]; then
     wheel_index="${base_url}/${repo_tag}/"          # checked-out release tag
   else
     # check if there is a wheel associated with this non-release checkout of the repo
-    head_sha="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null)"
+    head_sha="$(git -C "$ROOT" rev-parse HEAD 2>/dev/null || true)"
     if [ -z "$head_sha" ]; then
       echo "ERROR: '$ROOT' is not a git checkout, so the mlir_aie wheel cannot be" >&2
       echo "       matched to a commit. Check out a release tag, build from source" >&2
