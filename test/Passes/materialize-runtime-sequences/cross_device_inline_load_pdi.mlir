@@ -21,20 +21,23 @@ module {
   // CHECK: aie.device(npu2) {
   aie.device(npu2) {
     %tile00 = aie.tile(0, 0)
-    
+
     // CHECK: aie.runtime_sequence @caller_seq
+    // CHECK-DAG: %[[A100:.*]] = arith.constant 100 : i32
+    // CHECK-DAG: %[[A200:.*]] = arith.constant 200 : i32
+    // CHECK-DAG: %[[A300:.*]] = arith.constant 300 : i32
     aie.runtime_sequence @caller_seq(%arg0: memref<16xi32>) {
       // After inlining, we should have:
       // 1. A load_pdi added by InsertLoadPdiForConfigurePattern (since the first inlined op is write32, not load_pdi)
       // 2. All operations from the callee sequence inlined
       // 3. The inlined load_pdi operations preserved with their original device_ref
-      
+
       // CHECK: aiex.npu.load_pdi {device_ref = @callee_device}
-      // CHECK-NEXT: aiex.npu.write32 {address = 100 : ui32
+      // CHECK-NEXT: aiex.npu.write32(%[[A100]], %{{.*}})
       // CHECK: aiex.npu.load_pdi {device_ref = @callee_device}
-      // CHECK-NEXT: aiex.npu.write32 {address = 200 : ui32
+      // CHECK-NEXT: aiex.npu.write32(%[[A200]], %{{.*}})
       // CHECK: aiex.npu.load_pdi {device_ref = @callee_device}
-      // CHECK-NEXT: aiex.npu.write32 {address = 300 : ui32
+      // CHECK-NEXT: aiex.npu.write32(%[[A300]], %{{.*}})
       aiex.configure @callee_device {
         aiex.run @callee_seq(%arg0) : (memref<16xi32>)
       }
@@ -50,15 +53,21 @@ module {
     // between iterations. When inlined, these should be preserved.
     aie.runtime_sequence @callee_seq(%arg0: memref<16xi32>) {
       // First iteration
-      aiex.npu.write32 {address = 100 : ui32, column = 0 : i32, row = 0 : i32, value = 1 : ui32}
+      %cst_npu_0 = arith.constant 100 : i32
+      %cst_npu_1 = arith.constant 1 : i32
+      aiex.npu.write32(%cst_npu_0, %cst_npu_1) {column = 0 : i32, row = 0 : i32} : i32, i32
       
       // Reconfigure for second iteration
       aiex.npu.load_pdi {device_ref = @callee_device}
-      aiex.npu.write32 {address = 200 : ui32, column = 0 : i32, row = 0 : i32, value = 2 : ui32}
+      %cst_npu_2 = arith.constant 200 : i32
+      %cst_npu_3 = arith.constant 2 : i32
+      aiex.npu.write32(%cst_npu_2, %cst_npu_3) {column = 0 : i32, row = 0 : i32} : i32, i32
       
       // Reconfigure for third iteration
       aiex.npu.load_pdi {device_ref = @callee_device}
-      aiex.npu.write32 {address = 300 : ui32, column = 0 : i32, row = 0 : i32, value = 3 : ui32}
+      %cst_npu_4 = arith.constant 300 : i32
+      %cst_npu_5 = arith.constant 3 : i32
+      aiex.npu.write32(%cst_npu_4, %cst_npu_5) {column = 0 : i32, row = 0 : i32} : i32, i32
     }
   }
 }
@@ -73,19 +82,22 @@ module {
   // CHECK: aie.device(npu2) {
   aie.device(npu2) {
     %tile00 = aie.tile(0, 0)
-    
+
     // CHECK: aie.runtime_sequence @caller_seq2
+    // CHECK-DAG: %[[B100:.*]] = arith.constant 100 : i32
+    // CHECK-DAG: %[[B200:.*]] = arith.constant 200 : i32
+    // CHECK-DAG: %[[B300:.*]] = arith.constant 300 : i32
     aie.runtime_sequence @caller_seq2(%arg0: memref<16xi32>) {
       // After inlining, the callee's load_pdi is at the start of the configure block.
       // InsertLoadPdiForConfigurePattern should detect this and NOT add another one.
       // We should see exactly 3 load_pdi operations (from the callee), not 4.
-      
+
       // CHECK: aiex.npu.load_pdi {device_ref = @callee_device2}
-      // CHECK-NEXT: aiex.npu.write32 {address = 100 : ui32
+      // CHECK-NEXT: aiex.npu.write32(%[[B100]], %{{.*}})
       // CHECK: aiex.npu.load_pdi {device_ref = @callee_device2}
-      // CHECK-NEXT: aiex.npu.write32 {address = 200 : ui32
+      // CHECK-NEXT: aiex.npu.write32(%[[B200]], %{{.*}})
       // CHECK: aiex.npu.load_pdi {device_ref = @callee_device2}
-      // CHECK-NEXT: aiex.npu.write32 {address = 300 : ui32
+      // CHECK-NEXT: aiex.npu.write32(%[[B300]], %{{.*}})
       aiex.configure @callee_device2 {
         aiex.run @callee_seq2(%arg0) : (memref<16xi32>)
       }
@@ -103,15 +115,21 @@ module {
     aie.runtime_sequence @callee_seq2(%arg0: memref<16xi32>) {
       // First load_pdi at the very start
       aiex.npu.load_pdi {device_ref = @callee_device2}
-      aiex.npu.write32 {address = 100 : ui32, column = 0 : i32, row = 0 : i32, value = 1 : ui32}
+      %cst_npu_6 = arith.constant 100 : i32
+      %cst_npu_7 = arith.constant 1 : i32
+      aiex.npu.write32(%cst_npu_6, %cst_npu_7) {column = 0 : i32, row = 0 : i32} : i32, i32
       
       // Second iteration
       aiex.npu.load_pdi {device_ref = @callee_device2}
-      aiex.npu.write32 {address = 200 : ui32, column = 0 : i32, row = 0 : i32, value = 2 : ui32}
+      %cst_npu_8 = arith.constant 200 : i32
+      %cst_npu_9 = arith.constant 2 : i32
+      aiex.npu.write32(%cst_npu_8, %cst_npu_9) {column = 0 : i32, row = 0 : i32} : i32, i32
       
       // Third iteration
       aiex.npu.load_pdi {device_ref = @callee_device2}
-      aiex.npu.write32 {address = 300 : ui32, column = 0 : i32, row = 0 : i32, value = 3 : ui32}
+      %cst_npu_10 = arith.constant 300 : i32
+      %cst_npu_11 = arith.constant 3 : i32
+      aiex.npu.write32(%cst_npu_10, %cst_npu_11) {column = 0 : i32, row = 0 : i32} : i32, i32
     }
   }
 }

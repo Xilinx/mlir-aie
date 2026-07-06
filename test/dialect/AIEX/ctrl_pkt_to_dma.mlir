@@ -12,7 +12,7 @@
 // CHECK-LABEL: aie.device(npu1_1col) {
 // CHECK: aie.runtime_sequence(%[[ARG0:.*]]: memref<?xi32>) {
 // CHECK: aiex.npu.dma_memcpy_nd(%[[ARG0]][0, 0, 0, 0][1, 1, 1, 3][0, 0, 0, 1]) {id = 0 : i64, issue_token = true, metadata = @ctrlpkt_col0_mm2s_chan0} : memref<?xi32>
-// CHECK: aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
+// CHECK: aiex.npu.sync(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) : i32, i32, i32, i32, i32, i32
 
 aie.device(npu1_1col) {
   %tile_0_0 = aie.tile(0, 0) {controller_id = #aie.packet_info<pkt_type = 0, pkt_id = 15>}
@@ -27,7 +27,7 @@ aie.device(npu1_1col) {
 // CHECK-LABEL: aie.device(npu1_1col) {
 // CHECK: aie.runtime_sequence(%[[ARG0:.*]]: memref<?xi32>) {
 // CHECK: aiex.npu.dma_memcpy_nd(%[[ARG0]][0, 0, 0, 0][1, 1, 1, 3][0, 0, 0, 1]) {id = 0 : i64, issue_token = true, metadata = @ctrlpkt_col0_mm2s_chan0} : memref<?xi32>
-// CHECK: aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
+// CHECK: aiex.npu.sync(%{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}, %{{.*}}) : i32, i32, i32, i32, i32, i32
 
 aie.device(npu1_1col) {
   %tile_0_0 = aie.tile(0, 0)
@@ -88,7 +88,10 @@ aie.device(npu2) {
   aie.runtime_sequence() {
     aiex.control_packet {address = 0 : ui32, data = array<i32: 100>, opcode = 0 : i32, stream_id = 0 : i32}
     aiex.control_packet {address = 4 : ui32, data = array<i32: 200>, opcode = 0 : i32, stream_id = 0 : i32}
-    aiex.npu.maskwrite32 {address = 1024 : ui32, value = 42 : ui32, mask = 255 : ui32}
+    %cst_npu_0 = arith.constant 1024 : i32
+    %cst_npu_1 = arith.constant 42 : i32
+    %cst_npu_2 = arith.constant 255 : i32
+    aiex.npu.maskwrite32(%cst_npu_0, %cst_npu_1, %cst_npu_2) : i32, i32, i32
     aiex.control_packet {address = 8 : ui32, data = array<i32: 300>, opcode = 0 : i32, stream_id = 0 : i32}
     aiex.control_packet {address = 12 : ui32, data = array<i32: 400>, opcode = 0 : i32, stream_id = 0 : i32}
     aiex.control_packet {address = 16 : ui32, data = array<i32: 500>, opcode = 0 : i32, stream_id = 0 : i32}
