@@ -550,25 +550,36 @@ class MLIRModuleAnnotator:
         value = None
         mask = None
 
-        # Get address - could be 'address' or 'addr' attribute
+        # write32/maskwrite32 carry address/value/mask as SSA i32 operands
+        # (materialized via arith.constant); address_patch's 'addr' and the
+        # 'row'/'column' placement fields remain attributes. fold_constant_operand
+        # folds the operand back to its constant integer (None if non-constant).
+        # Imported here (not at module top) to preserve regdb's load-without-MLIR
+        # property; aie.helpers.util pulls in the MLIR bindings.
+        from aie.helpers.util import (  # pyright: ignore[reportMissingImports]
+            fold_constant_operand,
+        )
+
+        # Get address - an SSA operand on write32/maskwrite32, or the 'addr'
+        # attribute on address_patch.
         if hasattr(op, "address") and op.address is not None:
-            address = int(op.address.value)
+            address = fold_constant_operand(op.address)
         elif hasattr(op, "addr") and op.addr is not None:
             address = int(op.addr.value)
 
-        # Get row and column if present
+        # Get row and column if present (these remain attributes)
         if hasattr(op, "row") and op.row is not None:
             row = int(op.row.value)
         if hasattr(op, "column") and op.column is not None:
             col = int(op.column.value)
 
-        # Get value if present
+        # Get value if present (SSA operand)
         if hasattr(op, "value") and op.value is not None:
-            value = int(op.value.value)
+            value = fold_constant_operand(op.value)
 
-        # Get mask if present (for maskwrite32)
+        # Get mask if present (SSA operand, for maskwrite32)
         if hasattr(op, "mask") and op.mask is not None:
-            mask = int(op.mask.value)
+            mask = fold_constant_operand(op.mask)
 
         # If row/col not present, extract from address
         if address is not None and row is None and col is None:
@@ -795,22 +806,22 @@ def main():
 Examples:
   # Decode an address
   %(prog)s 0x32000
-  
+
   # Decode an address and show bit field definitions
   %(prog)s 0x32000 --show-bit-fields
-  
+
   # Reverse lookup: find address for a register
   %(prog)s --col 0 --row 2 --register Core_Control
-  
+
   # Reverse lookup with bit fields
   %(prog)s --col 0 --row 2 --register Core_Control -b
 
   # Annotate MLIR file and write to output
   %(prog)s -a input.mlir -o output.mlir
-  
+
   # Annotate MLIR file in place
   %(prog)s -a input.mlir --in-place
-  
+
   # Annotate MLIR file and write to stdout
   %(prog)s -a input.mlir
         """,

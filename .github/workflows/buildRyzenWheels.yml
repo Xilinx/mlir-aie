@@ -40,7 +40,6 @@ on:
   push:
     tags:
       - 'v*.*.*'
-  merge_group:
   schedule:
     # At 04:00. (see https://crontab.guru)
     - cron: '0 4 * * *'
@@ -50,9 +49,9 @@ defaults:
     shell: bash
 
 concurrency:
-  # A PR number if a pull request and otherwise the commit hash. This cancels
-  # queued and in-progress runs for the same PR (presubmit) or commit
-  # (postsubmit).
+  # A PR number if a pull request and otherwise the commit hash (tag pushes,
+  # schedule, manual dispatch). This cancels queued and in-progress runs for
+  # the same PR or ref.
   group: ci-build-test-ryzenai-experimental-${{ github.event.number || github.sha }}
   cancel-in-progress: true
 
@@ -614,11 +613,11 @@ jobs:
           makeLatest: ${{ !(contains(github.ref_name, 'rc') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'beta')) }}
 
       - name: Release latest wheels (RTTI ON)
-        # Only publish from events that represent main (merge queue) or an
-        # intentional refresh. Excludes pull_request so PRs no longer overwrite
-        # the shared rolling tag with unmerged branch content; excludes reusable
-        # calls so the test workflow never republishes.
-        if: ${{ !inputs.reusable_call && contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
+        # Only publish from the nightly schedule or an intentional manual
+        # refresh. Excludes pull_request so PRs no longer overwrite the shared
+        # rolling tag with unmerged branch content; excludes reusable calls so
+        # the test workflow never republishes.
+        if: ${{ !inputs.reusable_call && contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) }}
         uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd  # v1.21.0
         with:
           artifacts: wheels_on_flat/mlir_aie*whl
@@ -631,7 +630,7 @@ jobs:
           makeLatest: false
 
       - name: Release latest wheels (RTTI OFF)
-        if: ${{ !inputs.reusable_call && contains(fromJSON('["merge_group","schedule","workflow_dispatch"]'), github.event_name) }}
+        if: ${{ !inputs.reusable_call && contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) }}
         uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd  # v1.21.0
         with:
           artifacts: wheels_off_flat/mlir_aie*whl

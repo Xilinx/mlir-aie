@@ -10,6 +10,9 @@ import re
 logger = logging.getLogger(__name__)
 
 from aie.extras.util import find_ops  # pyright: ignore[reportMissingImports]
+from aie.helpers.util import (  # pyright: ignore[reportMissingImports]
+    fold_constant_operand,
+)
 from aie.ir import (  # pyright: ignore[reportMissingImports]
     Context,  # pyright: ignore[reportAttributeAccessIssue]
     Module,  # pyright: ignore[reportAttributeAccessIssue]
@@ -402,23 +405,31 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None):
         target_model = aiedialect.get_target_model(device)
         events_module = get_events_for_device(str(device))
 
+    # write32 carries address/value as SSA i32 operands (materialized via
+    # arith.constant); row/column remain optional attributes. fold_constant_operand
+    # folds the operand back to its constant integer (None if non-constant).
     for write32 in write32s:
         address = None
         row = None
         col = None
         value = None
         if write32.address:
-            address = write32.address.value
+            address = fold_constant_operand(write32.address)
         if write32.row:
             row = write32.row.value
         if write32.column:
             col = write32.column.value
         if write32.value:
-            value = write32.value.value
+            value = fold_constant_operand(write32.value)
 
         if row is None and col is None:
             if address is None:
-                logger.error("Could not decode write32 op '%s'", write32)
+                logger.error(
+                    "Could not decode write32 op '%s': address is not a "
+                    "compile-time constant (trace config requires constant "
+                    "operands)",
+                    write32,
+                )
                 sys.exit(1)
             row = (address >> target_model.get_row_shift()) & 0x1F
             col = (address >> target_model.get_column_shift()) & 0x1F
@@ -432,7 +443,11 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None):
             hex(value) if value is not None else None,
         )
         if row is None or col is None or address is None or value is None:
-            logger.error("Could not decode write32 op '%s'", write32)
+            logger.error(
+                "Could not decode write32 op '%s': address or value is not a "
+                "compile-time constant (trace config requires constant operands)",
+                write32,
+            )
             sys.exit(1)
 
         # Adjust column based on colshift
