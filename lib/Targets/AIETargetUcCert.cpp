@@ -69,7 +69,7 @@ void emitWaitTCTS(CertWaitTCTSOp op, std::string &text) {
   text += std::to_string(op.getTargetTcts()) + "\n";
 }
 
-// APPLY_OFFSET_57     @mem21_bd0, 1, 0xffff
+// APPLY_OFFSET_57     @mem21_bd0, 1, 65535
 void emitApplyOffset57(CertApplyOffset57Op op, std::string &text) {
   uint16_t num_entries = op.getNumEntries();
   uint16_t offset = op.getOffset();
@@ -195,7 +195,7 @@ LogicalResult emitPage(CertPageOp pageOp, std::string &text,
 //
 // The section content is emitted to a separate file
 LogicalResult emitSection(CertSectionOp sectionOp, std::string &text,
-                          std::string &data, llvm::StringRef outputPath) {
+                          llvm::StringRef outputPath) {
   LogicalResult result = success();
   std::string sectionName = sectionOp.getSymName().str();
   std::string sectionFileName = sectionName + ".asm";
@@ -276,7 +276,7 @@ LogicalResult emitAttachToGroupOp(CertAttachToGroupOp groupOp,
 
   // Process sections first (they may be referenced by main code)
   for (auto section : groupOp.getBody().getOps<CertSectionOp>()) {
-    if (failed(emitSection(section, text, data, outputPath)))
+    if (failed(emitSection(section, text, outputPath)))
       result = failure();
   }
 
@@ -390,7 +390,7 @@ LogicalResult xilinx::AIE::AIETranslateToUcDma(ModuleOp module,
 
   // Process sections after attach_to_group so they're in the column
   for (auto section : deviceOp.getBody()->getOps<CertSectionOp>()) {
-    if (failed(emitSection(section, text[0], data[0], outputPath)))
+    if (failed(emitSection(section, text[0], outputPath)))
       result = failure();
   }
 

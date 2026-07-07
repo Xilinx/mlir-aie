@@ -226,11 +226,12 @@ struct NpuBlockWriteToCertUcDma : OpConversionPattern<AIEX::NpuBlockWriteOp> {
     }
 
     // Insert after the last existing uc_dma_chain (before any pages/jobs),
-    // preserving the order of blockwrite ops.
+    // preserving the order of blockwrite ops. Globals are allowed to precede
+    // the chains, so skip over them too.
     Block *deviceBody = parentDevice.getBody();
     Operation *insertAfter = nullptr;
     for (Operation &bodyOp : *deviceBody) {
-      if (isa<AIEX::CertUcDmaChainOp>(bodyOp))
+      if (isa<AIEX::CertUcDmaChainOp>(bodyOp) || isa<memref::GlobalOp>(bodyOp))
         insertAfter = &bodyOp;
       else
         break;
@@ -368,6 +369,14 @@ struct RunOpInlining : OpRewritePattern<AIEX::RunOp> {
     // Create argument mapping from run op arguments to callee parameters
     IRMapping argMap;
     ValueRange values = op.getArgs();
+    if (values.size() != calleeBody.getNumArguments()) {
+      op.emitError("number of run op arguments (")
+          << values.size()
+          << ") does not match number of callee runtime sequence "
+             "arguments ("
+          << calleeBody.getNumArguments() << ")";
+      return failure();
+    }
     for (unsigned i = 0, n = calleeBody.getNumArguments(); i < n; i++) {
       BlockArgument arg = calleeBody.getArgument(i);
       Value val = values[i];
@@ -409,7 +418,9 @@ struct ConfigureOpToCertSection : OpRewritePattern<AIEX::ConfigureOp> {
       return failure();
 
     // Check if section already exists (avoid creating duplicates)
-    if (parentDevice.lookupSymbol(deviceSymName)) {
+    auto existingSection = dyn_cast_if_present<AIEX::CertSectionOp>(
+        parentDevice.lookupSymbol(deviceSymName));
+    if (existingSection) {
       // Section already exists, just create load_pdi at call site, reusing the
       // PDI ID already assigned to this section (or assigning a new one).
       uint32_t pdiId = getOrAssignPdiId(parentDevice, deviceSymName);
@@ -790,6 +801,13 @@ struct AIENpuToCertPass
         processDevice(dev);
         break;
       }
+    }
+
+    if (!mainDevice) {
+      moduleOp.emitError("no device found matching --device-name \"")
+          << deviceName << "\"";
+      signalPassFailure();
+      return;
     }
 
     // Then process other devices
@@ -1338,8 +1356,8 @@ struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
     bool found_split_point = false;
     uint32_t cost = estimateCost(op, cert_page_size / 2, split_job, split_iter,
                                  found_split_point);
-    LLVM_DEBUG(llvm::outs() << "Estimate cost for page: "
-                            << " is " << cost << "\n");
+    LLVM_DEBUG(llvm::outs()
+               << "Estimate cost for page: " << " is " << cost << "\n");
 
     if (cost < split_threshold || !found_split_point)
       return failure();
