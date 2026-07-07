@@ -2,11 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 from collections import defaultdict
 import numpy as np
-from typing import Any, Sequence, get_args, get_origin
+from typing import Any, Sequence, TypeVar, get_args, get_origin
 from aie._mlir_libs import (
     _aie as CustomTypes,  # pyright: ignore[reportAttributeAccessIssue]
 )
 
+from ..dialects.arith import ConstantOp  # pyright: ignore[reportMissingImports]
 from ..extras import types as T  # pyright: ignore[reportMissingImports]
 from ..ir import (  # pyright: ignore[reportMissingImports]
     F32Type,
@@ -221,6 +222,16 @@ def try_convert_np_type_to_mlir_type(input_type):
     return output_type
 
 
+_E = TypeVar("_E")
+
+
+def single_elem_or_list_to_list(val: "list[_E] | _E") -> "list[_E]":
+    """does not work for list of lists but still useful"""
+    if not isinstance(val, list):
+        return [val]
+    return val
+
+
 def get_arg_types(objs: Sequence[int | float | Value | OpView]):
     my_types = []
     for o in objs:
@@ -240,3 +251,24 @@ def get_arg_types(objs: Sequence[int | float | Value | OpView]):
         else:
             return None
     return my_types
+
+
+def fold_constant_operand(operand):
+    """Fold an npu scalar op's SSA i32 operand back to its compile-time integer.
+
+    npu scalar ops (write32/maskwrite32/sync/address_patch/rtp_write) carry their
+    integer fields as SSA operands materialized from arith.constant; consumers
+    such as trace parsing and register annotation need the underlying value.
+    Returns the int, or None if the operand is not an arith.constant (e.g. a
+    block argument or a runtime-sequence value); callers decide whether that is
+    an error in their context. This is the Python analog of the AIEX dialect's
+    getConstantIntOperand."""
+    defining = operand.owner
+    if defining is None:
+        return None
+    # Value.owner is an Operation; the generated attribute accessors live on the
+    # opview. (Some binding versions return the opview directly, so normalize.)
+    opview = getattr(defining, "opview", defining)
+    if not isinstance(opview, ConstantOp):
+        return None
+    return int(opview.value.value)

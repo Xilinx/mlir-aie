@@ -69,8 +69,13 @@ struct NpuWrite32ToCertWrite32 : OpConversionPattern<AIEX::NpuWrite32Op> {
   LogicalResult
   matchAndRewrite(AIEX::NpuWrite32Op op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<AIEX::CertWrite32Op>(op, op.getAddress(),
-                                                     op.getValue());
+    std::optional<uint32_t> address =
+        AIEX::getConstantIntOperand(op.getAddress());
+    std::optional<uint32_t> value = AIEX::getConstantIntOperand(op.getValue());
+    if (!address || !value)
+      return op.emitOpError(
+          "cannot lower to cert.write32 with non-constant address or value");
+    rewriter.replaceOpWithNewOp<AIEX::CertWrite32Op>(op, *address, *value);
     return success();
   }
 };
@@ -82,8 +87,16 @@ struct NpuMaskWrite32ToCertMaskWrite32
   LogicalResult
   matchAndRewrite(AIEX::NpuMaskWrite32Op op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    rewriter.replaceOpWithNewOp<AIEX::CertMaskWrite32Op>(
-        op, op.getAddress(), op.getMask(), op.getValue());
+    std::optional<uint32_t> address =
+        AIEX::getConstantIntOperand(op.getAddress());
+    std::optional<uint32_t> mask = AIEX::getConstantIntOperand(op.getMask());
+    std::optional<uint32_t> value = AIEX::getConstantIntOperand(op.getValue());
+    if (!address || !mask || !value)
+      return op.emitOpError(
+          "cannot lower to cert.maskwrite32 with non-constant "
+          "address, mask, or value");
+    rewriter.replaceOpWithNewOp<AIEX::CertMaskWrite32Op>(op, *address, *mask,
+                                                         *value);
     return success();
   }
 };
@@ -134,16 +147,26 @@ struct NpuSyncToCertWaitTCTS : OpConversionPattern<AIEX::NpuSyncOp> {
   LogicalResult
   matchAndRewrite(AIEX::NpuSyncOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    uint32_t row = op.getRow();
-    uint32_t col = op.getColumn();
+    std::optional<uint32_t> rowOpt = AIEX::getConstantIntOperand(op.getRow());
+    std::optional<uint32_t> colOpt =
+        AIEX::getConstantIntOperand(op.getColumn());
+    std::optional<uint32_t> channelOpt =
+        AIEX::getConstantIntOperand(op.getChannel());
+    std::optional<uint32_t> directionOpt =
+        AIEX::getConstantIntOperand(op.getDirection());
+    if (!rowOpt || !colOpt || !channelOpt || !directionOpt)
+      return op.emitOpError(
+          "cannot lower to cert.wait_tcts with non-constant sync parameters");
+    uint32_t row = *rowOpt;
+    uint32_t col = *colOpt;
 
     // These are the shift amounts from the tct packet format.
     // The firmware expects the row and column packed and shifted down to zero.
     const int row_id_shift = 16;
     const int col_id_shift = 21;
     uint16_t tile_id = col << (col_id_shift - row_id_shift) | row;
-    uint32_t channel = op.getChannel();
-    uint32_t direction = op.getDirection();
+    uint32_t channel = *channelOpt;
+    uint32_t direction = *directionOpt;
 
     const std::vector<int> chan2actor_shim_s2mm = {0, 2};
     const std::vector<int> chan2actor_shim_mm2s = {6, 7, 8, 9};

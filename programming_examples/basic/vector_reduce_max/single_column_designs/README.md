@@ -57,7 +57,7 @@ env VARIANT=memtile make run
 
 ### Trace
 
-To generate a [trace file](../../../programming_guide/section-4/section-4b/README.md):
+To generate a [trace file](../../../../programming_guide/section-4/section-4b/README.md):
 
 ```shell
 make trace                    # traces VARIANT=shared

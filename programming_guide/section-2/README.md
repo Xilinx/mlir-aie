@@ -33,6 +33,7 @@ This guide is split into five sections, where each section builds on top of the 
     * Broadcast
     * Distribute
     * Join
+    * Repeat
 </details>
 <details><summary><a href="./section-2c">Section 2c - Data Layout Transformations</a></summary>
 
