@@ -1645,9 +1645,14 @@ static LogicalResult runNpuLoweringPipeline(ModuleOp moduleOp,
     OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
     devicePm.addPass(xilinx::AIEX::createAIEMaterializeBDChainsPass());
     devicePm.addPass(xilinx::AIEX::createAIESubstituteShimDMAAllocationsPass());
-    devicePm.addPass(xilinx::AIEX::createAIEAssignRuntimeSequenceBDIDsPass());
-    devicePm.addPass(createCanonicalizerPass());
+    // Unroll constant-trip runtime-sequence loops first so BD-ID allocation
+    // runs on straight-line IR (no back-edges): a task freed a later iteration
+    // becomes N distinct configures, and ordinary liveness-based allocation
+    // recycles their ids. Runtime-bound loops are left rolled for the dynamic
+    // path. Canonicalize folds the constants unrolling exposes before alloc.
     devicePm.addPass(xilinx::AIEX::createAIEUnrollRuntimeSequenceLoopsPass());
+    devicePm.addPass(createCanonicalizerPass());
+    devicePm.addPass(xilinx::AIEX::createAIEAssignRuntimeSequenceBDIDsPass());
     devicePm.addPass(xilinx::AIEX::createAIEDMATasksToNPUPass());
     devicePm.addPass(xilinx::AIEX::createAIEDmaToNpuPass());
     devicePm.addPass(xilinx::AIEX::createAIELowerSetLockPass());

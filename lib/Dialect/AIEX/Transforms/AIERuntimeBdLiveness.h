@@ -1,10 +1,7 @@
 //===- AIERuntimeBdLiveness.h -----------------------------------*- C++ -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -20,19 +17,23 @@
 // kill point is resolved explicitly (the reachable await/free, else region
 // end), not read off `mlir::Liveness`.
 //
-// Because `scf.for`/`scf.if` are still structured region ops at this stage (no
-// scf->cf lowering has run), this analysis uses disciplined structural
-// recursion over the region tree rather than CFG-based `mlir::Liveness` (which
-// is region- tolerant but not region-aware: it folds nested-region uses into
-// the enclosing block and would falsely make scf.if arms interfere).
+// Why not `mlir::Liveness`? Two reasons. (1) BD-ID hold-range is not SSA
+// liveness (see above): the kill is the await/free, not the last use of the
+// configure result. (2) `scf.for`/`scf.if` are still structured region ops at
+// this stage (no scf->cf lowering has run in the runtime sequence).
+// `mlir::Liveness` is region-tolerant but not region-aware: it folds
+// nested-region uses into the enclosing block, which would make mutually
+// exclusive scf.if arms falsely interfere. This analysis instead uses
+// disciplined structural recursion over the region tree.
 //
-// Loop-carried tasks: a handle freed in a *later* loop iteration than it was
-// configured (the ping-pong "free the previous iteration" pattern, expressible
-// via `scf.for` iter_args) needs more than one physical BD ID — a rotating
-// window. `resolveTaskLiveRange` records how many loop back-edges each live
-// handle crosses; `computePeakBdLiveness` sweeps the sequence to find the per-
-// tile peak simultaneous liveness (the window size the allocator must fit in
-// the tile's BD pool), treating scf.if arms as mutually exclusive.
+// This runs AFTER --aie-unroll-runtime-sequence-loops, so every constant-trip
+// loop is already straight-line. A handle still crossing a loop back-edge
+// therefore belongs to a runtime-bound loop (a rolled ping-pong the static
+// path cannot lower). `resolveTaskLiveRange` records how many back-edges a live
+// handle crosses so the allocator can reject that form for the dynamic path;
+// `computePeakBdLiveness` sweeps the sequence for the per-tile peak
+// simultaneous liveness the allocator must fit in the tile's BD pool, treating
+// scf.if arms as mutually exclusive.
 //
 //===----------------------------------------------------------------------===//
 
@@ -76,8 +77,8 @@ struct TaskLiveRange {
   /// held to the end of the sequence. Harmless for straight-line tasks (the ID
   /// simply stays occupied, as for any never-awaited task). But a leaked task
   /// *inside a loop* (see `enclosingLoop`) accumulates one held BD per
-  /// iteration -- bounded (allocatable as a window) only if the loop trip count
-  /// is a compile-time constant; otherwise unbounded and unallocatable.
+  /// iteration and is never reusable across iterations, so the allocator
+  /// rejects it.
   bool leaked = false;
 
   /// Innermost `scf.for` enclosing the configure within the runtime sequence,
@@ -106,35 +107,6 @@ unsigned chainLength(DMAConfigureTaskOp configure);
 /// Resolve the hold-range of a single configure op by forward-tracing its
 /// handle (including across scf.for iter_arg hops) to its completion-sync.
 TaskLiveRange resolveTaskLiveRange(DMAConfigureTaskOp configure);
-
-/// A set of configures that rotate one logical buffer-descriptor slot through a
-/// window of `windowWidth` physical BD ids across loop iterations (a rolled
-/// ping-pong: the loop body frees a task configured `D = windowWidth - 1`
-/// iterations earlier, carried via `scf.for` iter_args). `members` are all the
-/// configures sharing the window -- the in-loop body configure plus the `D`
-/// prologue configures that seed the iter_args -- each a `chainLength`-long BD
-/// chain that rotates as a unit.
-struct LoopRotationGroup {
-  enum Status {
-    NotARotation,        // the queried configure is not a rotating loop body
-    Ok,                  // a well-formed rotation; `members`/`windowWidth` set
-    ChainLengthMismatch, // members have differing BD-chain lengths
-    Unresolvable         // a prologue iter_arg does not trace to a configure
-  };
-  Status status = NotARotation;
-  llvm::SmallVector<DMAConfigureTaskOp, 4> members;
-  unsigned windowWidth = 0; // W = D + 1
-  unsigned chainLength = 0; // C, the BD count of each member's chain
-  mlir::scf::ForOp loop;    // the loop whose end releases the window
-};
-
-/// If `body` is the in-loop body of a rolled ping-pong (its handle crosses one
-/// or more loop back-edges), resolve the full rotation group it anchors: the
-/// body plus the prologue configures seeding the iter_args it rotates through.
-/// Returns status `NotARotation` for any configure that is not such a body, so
-/// callers can query every configure and act only on `Ok` (or surface the
-/// `ChainLengthMismatch` / `Unresolvable` rejections).
-LoopRotationGroup resolveLoopRotationGroup(DMAConfigureTaskOp body);
 
 /// Compute peak simultaneous BD liveness per tile across a runtime sequence.
 /// Keyed by (col, row); the value is the maximum number of BD IDs held at once

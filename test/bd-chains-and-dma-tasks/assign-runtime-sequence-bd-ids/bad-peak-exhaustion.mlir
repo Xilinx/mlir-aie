@@ -14,7 +14,7 @@
 
 aie.device(npu2) {
   %tile_0_0 = aie.tile(0, 0)
-  // expected-error@+1 {{peak simultaneous buffer-descriptor liveness}}
+  // expected-error@+1 {{Too many simultaneously active buffer descriptors}}
   aie.runtime_sequence(%arg0: memref<8xi16>) {
     %t0  = aiex.dma_configure_task(%tile_0_0, MM2S, 0) { aie.dma_bd(%arg0 : memref<8xi16>, 0, 8) aie.end }
     %t1  = aiex.dma_configure_task(%tile_0_0, MM2S, 0) { aie.dma_bd(%arg0 : memref<8xi16>, 0, 8) aie.end }

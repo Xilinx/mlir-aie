@@ -16,15 +16,15 @@
 # RUN: %run_on_npu1% ./test.exe
 
 # Rolled ping-pong passthrough.  The runtime sequence issues N_TILES copies of
-# a single input tile using a depth-1 rotating BD window.  The scf.for carries
-# the in-flight task handle as iter_arg; each iteration starts the next BD
-# while the previous is in flight, then frees it.
+# a single input tile using a depth-1 ping-pong.  The scf.for carries the
+# in-flight task handle as iter_arg; each iteration starts the next BD while the
+# previous is in flight, then frees it.
 #
 # Golden: output[i] == input[i % TILE_LEN]  (same tile repeated N_TILES times).
 #
-# This validates the full rolled ping-pong stack:
-#   aie-assign-runtime-sequence-bd-ids  → bd_id_window = [0, 1]
-#   aie-unroll-runtime-sequence-loops   → unrolls 7 body copies, resolves ids
+# This validates the full constant-trip ping-pong stack:
+#   aie-unroll-runtime-sequence-loops   → unrolls the loop to straight-line BDs
+#   aie-assign-runtime-sequence-bd-ids  → colors them by liveness (ids alternate)
 #   aie-dma-tasks-to-npu                → push_queue with concrete bd_ids
 
 import sys

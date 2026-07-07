@@ -136,26 +136,6 @@ struct AIEDMATasksToNPUPass
           << "Error encountered while lowering this BD configuration.";
       return failure();
     }
-    // A rotating bd_id_window (width > 1) means this BD is inside a
-    // runtime-bound loop whose trip count was not known at compile time.
-    // Constant-bound loops are handled by aie-unroll-runtime-sequence-loops
-    // (which resolves windows to concrete bd_ids before this pass runs). A
-    // surviving window here requires runtime-selected push_queue bd_id, which
-    // belongs to the dynamic EmitC path (Phase 2); reject cleanly.
-    if (auto window = bd_op.getBdIdWindow(); window && window->size() > 1) {
-      auto error =
-          bd_op.emitOpError("has an unresolved rotating bd_id_window of "
-                            "length ")
-          << window->size()
-          << "; this BD is inside a runtime-bound loop whose trip count is "
-             "not a compile-time constant. Run "
-             "aie-unroll-runtime-sequence-loops before this pass for "
-             "constant-bound loops, or use the dynamic EmitC path for "
-             "runtime-bound loops.";
-      error.attachNote(block.getParentOp()->getLoc())
-          << "Error encountered while lowering this BD configuration.";
-      return failure();
-    }
     return success();
   }
 

@@ -243,18 +243,17 @@ def AIEAssignRuntimeSequenceBDIDs : Pass<"aie-assign-runtime-sequence-bd-ids", "
 
 def AIEUnrollRuntimeSequenceLoops
     : Pass<"aie-unroll-runtime-sequence-loops", "AIE::DeviceOp"> {
-  let summary = "Unroll constant-bound loops in runtime sequences and resolve "
-                "rotating BD-id windows";
+  let summary = "Unroll constant-bound loops in runtime sequences";
   let description = [{
     Fully unrolls `scf.for` loops with compile-time-constant trip counts that
-    appear inside `aie.runtime_sequence` bodies, then resolves each unrolled
-    `aie.dma_bd`'s `bd_id_window` to a concrete `bd_id` based on its copy
-    index within the window.
+    appear inside `aie.runtime_sequence` bodies.
 
-    Must run after `aie-assign-runtime-sequence-bd-ids` (which writes
-    `bd_id_window` onto rotating BDs) and before `aie-dma-tasks-to-npu`
-    (which rejects windowed BDs it cannot lower).  Runtime-bound loops are
-    left in place for the dynamic EmitC lowering path.
+    Runs before `aie-assign-runtime-sequence-bd-ids` so BD-ID allocation sees
+    straight-line IR: a rolled ping-pong (a task freed a later iteration than it
+    is configured) becomes several distinct configures whose ids ordinary
+    liveness-based allocation recycles, with no rolled-loop rotation analysis.
+    Runtime-bound loops (non-constant trip count) are left in place for the
+    dynamic EmitC lowering path.
   }];
 
   let constructor = "xilinx::AIEX::createAIEUnrollRuntimeSequenceLoopsPass()";
@@ -273,10 +272,9 @@ def AIETestRuntimeBdLiveness : Pass<"aie-test-runtime-bd-liveness", "AIE::Device
     task liveness analysis (AIERuntimeBdLiveness.h) to FileCheck. Emits, per
     `aiex.dma_configure_task`, its resolved completion sync, back-edges crossed,
     and leak status; and per `aie.runtime_sequence`, the per-tile peak
-    simultaneous BD liveness (`computePeakBdLiveness`). The peak query is a key
-    window-sizing input for runtime-rotated BD ids and is also used by the
-    allocator to validate that peak liveness fits within each tile's BD pool;
-    this pass guards correctness of the analysis used by both.
+    simultaneous BD liveness (`computePeakBdLiveness`). The allocator uses the
+    peak query to validate that peak liveness fits within each tile's BD pool;
+    this pass guards correctness of that analysis.
   }];
 
   let constructor = "xilinx::AIEX::createAIETestRuntimeBdLivenessPass()";

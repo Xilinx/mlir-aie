@@ -1,17 +1,16 @@
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2026 Advanced Micro Devices, Inc.
 
 // RUN: aie-opt --aie-assign-runtime-sequence-bd-ids --verify-diagnostics --split-input-file %s
 
 // Control-flow forms that genuinely cannot be statically allocated are rejected
 // with a clear diagnostic rather than miscompiled (or crashing, as the
-// program-order allocator did). Rolled ping-pong (any depth) and scf.if value
-// joins ARE now supported -- see good-rotation-*.mlir and good-if-join.mlir; the
-// cases below remain rejections because no correct allocation exists for them.
+// program-order allocator did). Constant-trip rolled ping-pong is handled by
+// unrolling before this pass (see unroll-runtime-sequence-loops/good-pingpong.mlir)
+// and scf.if value joins are supported (see good-if-join.mlir); the cases below
+// remain rejections because no correct static allocation exists for them.
 
 // Task configured in a loop with no reachable completion sync (leaks one BD per
 // iteration).

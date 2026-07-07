@@ -10,8 +10,8 @@
 // A task configured inside a loop whose handle is never synced (await/free)
 // accumulates one held BD per iteration. This is a bug for a constant trip
 // count and impossible (unbounded BDs) for a runtime one, so it is rejected.
-// Top-level leaks are NOT rejected (see liveness-rotation-depth.mlir): only
-// loop-carried leaks error.
+// Top-level leaks are NOT rejected (a never-awaited task simply holds its id to
+// the end of the sequence): only loop-carried leaks error.
 
 // Constant trip count, no sync inside the loop, handle escapes via loop result.
 aie.device(npu2) {

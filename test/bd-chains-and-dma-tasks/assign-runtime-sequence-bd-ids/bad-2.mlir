@@ -14,7 +14,7 @@ module {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
 
-    // expected-error@+1 {{peak simultaneous buffer-descriptor liveness}}
+    // expected-error@+1 {{Too many simultaneously active buffer descriptors}}
     aie.runtime_sequence(%arg0: memref<8xi16>) {
       // Allocate more than there are available BD IDs
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {

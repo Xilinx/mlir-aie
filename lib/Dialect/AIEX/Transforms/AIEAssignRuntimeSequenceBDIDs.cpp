@@ -10,15 +10,14 @@
 // against a real per-tile pool, with arm-exclusivity (scf.if arms are swept
 // independently and merged) and same-iteration reuse (scf.for bodies recurse).
 //
-// A task whose BD rotates through several physical IDs across loop iterations
-// (the rolled ping-pong "free the previous iteration" pattern, where the handle
-// crosses a loop back-edge via iter_args) is allocated a rotating *window* of
-// `D + 1` ids (D = back-edges crossed), recorded on each member chain's
-// `aie.dma_bd` as a `bd_id_window` (with `bd_id` the window base). The
-// downstream lowering selects the per-iteration id from that window. Genuinely
-// unallocatable forms (ambiguous handles, unbounded in-loop leaks, peak
-// liveness exceeding the tile pool) are rejected with a clear diagnostic. The
-// liveness analysis that classifies all of these lives in
+// This pass runs AFTER --aie-unroll-runtime-sequence-loops, so every
+// constant-trip loop has already been unrolled to straight-line IR. A rolled
+// ping-pong (a handle freed a later iteration than configured) therefore only
+// survives when its trip count is a runtime value; that form needs a
+// runtime-selected BD id and is rejected here for the dynamic EmitC path.
+// Genuinely unallocatable forms (ambiguous handles, unbounded in-loop leaks,
+// peak liveness exceeding the tile pool) are rejected with a clear diagnostic.
+// The liveness analysis that classifies all of these lives in
 // AIERuntimeBdLiveness.{h,cpp}.
 //
 //===----------------------------------------------------------------------===//
@@ -33,9 +32,7 @@
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/DenseMap.h"
-#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallPtrSet.h"
-#include "llvm/ADT/TypeSwitch.h"
 
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIEASSIGNRUNTIMESEQUENCEBDIDS
@@ -53,33 +50,6 @@ struct AIEAssignRuntimeSequenceBDIDsPass
           AIEAssignRuntimeSequenceBDIDsPass> {
 
   llvm::DenseMap<AIE::TileOp, BdIdGenerator> gens;
-
-  // A reserved rotating BD-id window: the C*W physical ids a depth-(W-1)
-  // ping-pong's chain cycles through, plus the tile that owns them. Reserved
-  // before the loop body is swept and released once after, so the window
-  // survives every iteration but does not leak past the loop.
-  struct ReservedWindow {
-    AIE::TileOp tile;
-    SmallVector<uint32_t>
-        ids; // C*W ids, grouped C-major: [bd0 window][bd1 ...]
-  };
-
-  // Rotation planning, computed once per sequence before the sweep:
-  //   rotationMembers: every configure that participates in a rotation window
-  //     (body + prologues) -> its group, so allocate/recycle take the window
-  //     path instead of the single-id path.
-  //   windowsByLoop: the windows to reserve before / release after each loop.
-  //   inertFrees: free/await ops whose ids are managed by a window release, so
-  //     they must not return ids to the pool when swept.
-  llvm::DenseMap<Operation *, AIEX::LoopRotationGroup> rotationMembers;
-  llvm::DenseMap<Operation *, SmallVector<ReservedWindow>> windowsByLoop;
-  llvm::DenseSet<Operation *> inertFrees;
-
-  // Monotonic id handed to each rotation group as it is reserved, stamped onto
-  // its BDs as bd_id_window_group so the unroll pass can key its round-robin
-  // counter per group. Distinct groups can share identical window contents, so
-  // the contents alone cannot distinguish them.
-  int32_t nextWindowGroupId = 0;
 
   BdIdGenerator &getGeneratorForTile(AIE::TileOp tile) {
     auto it = gens.find(tile);
@@ -158,10 +128,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // complete gatekeeper: anything not rejected here must allocate without
   // crashing.
   LogicalResult validate(AIE::RuntimeSequenceOp seq) {
-    // 1. Per-configure liveness classification. Rolled ping-pong (handle held
-    // across loop back-edges) and scf.if value-joins are supported via rotation
-    // windows / free-target resolution; only genuinely unallocatable forms are
-    // rejected here.
+    // 1. Per-configure liveness classification. Same-iteration tasks (freed in
+    // the iteration they are configured) and scf.if value-joins are allocated
+    // statically; only genuinely unallocatable forms are rejected here.
     WalkResult wr = seq.walk([&](DMAConfigureTaskOp configure) -> WalkResult {
       TaskLiveRange range = resolveTaskLiveRange(configure);
       if (range.ambiguous) {
@@ -180,28 +149,20 @@ struct AIEAssignRuntimeSequenceBDIDsPass
             "not be reusable across iterations");
         return WalkResult::interrupt();
       }
-      // A handle held across a loop back-edge anchors a rotation window when
-      // the configure is itself inside the loop (the body task). A prologue
-      // task is defined outside the loop and seeds an iter_arg, so it also
-      // reports backEdgesCrossed > 0 but is validated via its body, not here.
-      // Surface the rotation-specific rejections (mismatched chain lengths, a
-      // prologue that does not trace to a configure) on the body.
-      if (range.backEdgesCrossed > 0 && range.enclosingLoop) {
-        LoopRotationGroup group = resolveLoopRotationGroup(configure);
-        if (group.status == LoopRotationGroup::ChainLengthMismatch) {
-          configure.emitOpError(
-              "rotating buffer-descriptor chain length differs from the "
-              "prologue tasks it rotates with; a rolled ping-pong must rotate "
-              "chains of equal length");
-          return WalkResult::interrupt();
-        }
-        if (group.status != LoopRotationGroup::Ok) {
-          configure.emitOpError(
-              "buffer descriptor is held across a loop back-edge but its "
-              "rotation cannot be resolved (a carried task does not originate "
-              "from a dma_configure_task)");
-          return WalkResult::interrupt();
-        }
+      // A handle freed a later iteration than it was configured (a rolled
+      // ping-pong) needs a distinct physical BD per outstanding iteration. For
+      // a constant trip count that was already resolved by unrolling before
+      // this pass ran, so a surviving back-edge crossing means the loop is
+      // runtime-bound: its BD id must be selected at runtime, which is the
+      // dynamic EmitC path, not static allocation.
+      if (range.backEdgesCrossed > 0) {
+        configure.emitOpError(
+            "buffer descriptor is held across a runtime-bound loop back-edge "
+            "(a rolled ping-pong with a non-constant trip count); its BD id "
+            "must be selected at runtime. Use a compile-time-constant trip "
+            "count so the loop can be unrolled, or lower this sequence with "
+            "the dynamic EmitC path");
+        return WalkResult::interrupt();
       }
       return WalkResult::advance();
     });
@@ -209,10 +170,10 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       return failure();
 
     // 2. Every free/await must resolve to at least one configure op. A free of
-    // an scf.if/for result is valid when it traces back (through yields /
-    // iter_args) to the per-arm or rotation configures it completes; a free of
-    // a value that traces to no configure (e.g. an scf.for result seeded by a
-    // non-task constant) would crash the recycle path and is rejected here.
+    // an scf.if result is valid when it traces back (through the arm yields) to
+    // the per-arm configures it completes; a free of a value that traces to no
+    // configure (e.g. an scf.for result seeded by a non-task constant) would
+    // crash the recycle path and is rejected here.
     wr = seq.walk([&](Operation *op) -> WalkResult {
       Value task;
       if (auto f = dyn_cast<DMAFreeTaskOp>(op))
@@ -223,7 +184,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         return WalkResult::advance();
       SmallVector<DMAConfigureTaskOp> targets;
       if (!resolveFreeTargets(task, targets) || targets.empty()) {
-        // Preserve the helpful "lower this first" notes for unlowered task ops.
+        // Emit "lower this first" notes for unlowered task ops.
         (void)emitUnresolvedTask(op, task);
         return WalkResult::interrupt();
       }
@@ -241,9 +202,12 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         int col = kv.first.first, row = kv.first.second;
         uint32_t pool = tm.getNumBDs(col, row);
         if (kv.second > pool) {
-          seq.emitOpError("peak simultaneous buffer-descriptor liveness ")
-              << kv.second << " on tile(" << col << "," << row
-              << ") exceeds the tile's " << pool << " buffer descriptors";
+          seq.emitOpError(
+              "Too many simultaneously active buffer descriptors -- attempted "
+              "to use ")
+              << kv.second << " buffer descriptors on tile(" << col << ","
+              << row << "), which only supports up to " << pool
+              << " simultaneously active buffer descriptors";
           return failure();
         }
       }
@@ -268,142 +232,10 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   }
 
   //===--------------------------------------------------------------------===//
-  // Rotation planning
-  //===--------------------------------------------------------------------===//
-
-  // Identify every rolled-ping-pong rotation group in the sequence and record,
-  // for each, its member configures (rotationMembers), the window to reserve at
-  // its loop (windowsByLoop), and the free/await ops the window release will
-  // account for (inertFrees). Runs after validate(), so groups are well-formed.
-  void planRotations(AIE::RuntimeSequenceOp seq) {
-    rotationMembers.clear();
-    windowsByLoop.clear();
-    inertFrees.clear();
-    seq.walk([&](DMAConfigureTaskOp configure) {
-      LoopRotationGroup group = resolveLoopRotationGroup(configure);
-      if (group.status != LoopRotationGroup::Ok)
-        return; // not a rotation body (prologues / plain tasks resolve here
-                // too)
-      for (DMAConfigureTaskOp member : group.members)
-        rotationMembers[member.getOperation()] = group;
-      // Reserve a placeholder window for this loop; ids are filled in when the
-      // loop is reached during the sweep (so sequential loops reuse the pool).
-      windowsByLoop[group.loop.getOperation()].push_back(ReservedWindow{});
-
-      // The frees/awaits that complete this group's handles are managed by the
-      // window release: a free targeting a member configure, the loop's
-      // iter_args, or the loop's results.
-      auto markInert = [&](Operation *user) {
-        if (isa<DMAFreeTaskOp, DMAAwaitTaskOp>(user))
-          inertFrees.insert(user);
-      };
-      for (DMAConfigureTaskOp member : group.members)
-        for (Operation *user : member.getResult().getUsers())
-          markInert(user);
-      for (Value v : group.loop.getRegionIterArgs())
-        for (Operation *user : v.getUsers())
-          markInert(user);
-      for (Value v : group.loop.getResults())
-        for (Operation *user : v.getUsers())
-          markInert(user);
-    });
-  }
-
-  // Reserve C*W ids for each window registered on `loop`, write bd_id +
-  // bd_id_window onto every member chain, and return the reserved ids so the
-  // caller can release them after the loop body is swept.
-  LogicalResult reserveWindowsForLoop(scf::ForOp loop,
-                                      SmallVectorImpl<ReservedWindow> &out) {
-    // Collect the distinct groups whose loop is this one (windowsByLoop holds
-    // one placeholder per group; recover the groups from rotationMembers).
-    llvm::SmallPtrSet<Operation *, 4> doneAnchors;
-    for (auto &kv : rotationMembers) {
-      const LoopRotationGroup &group = kv.second;
-      if (group.loop != loop)
-        continue;
-      DMAConfigureTaskOp body = group.members.back();
-      if (!doneAnchors.insert(body.getOperation()).second)
-        continue; // already reserved this group
-
-      AIE::TileOp tile = body.getTileOp();
-      BdIdGenerator &gen = getGeneratorForTile(tile);
-      unsigned C = group.chainLength, W = group.windowWidth;
-
-      // A rotating chain cycles through several physical ids, so a single
-      // user-pinned bd_id cannot express it; reject rather than silently
-      // overwrite the user's choice.
-      for (DMAConfigureTaskOp member : group.members) {
-        WalkResult pinned = member.walk([&](AIE::DMABDOp bd) {
-          if (bd.getBdId().has_value()) {
-            member.emitOpError(
-                "participates in a rolled ping-pong rotation, so its buffer "
-                "descriptor id is allocated as a rotating window and cannot be "
-                "manually assigned");
-            return WalkResult::interrupt();
-          }
-          return WalkResult::advance();
-        });
-        if (pinned.wasInterrupted())
-          return failure();
-      }
-
-      ReservedWindow rw;
-      rw.tile = tile;
-      // Reserve C*W ids: C per-descriptor windows of W ids each.
-      for (unsigned i = 0; i < C * W; ++i) {
-        std::optional<int32_t> id = gen.nextBdId(/*channelIndex=*/0);
-        if (!id) {
-          body.emitOpError("Allocator exhausted available buffer descriptor "
-                           "IDs reserving a rotating window of ")
-              << (C * W) << " ids.";
-          return failure();
-        }
-        rw.ids.push_back(*id);
-      }
-      // Write per-descriptor windows onto every member's chain. Descriptor c of
-      // the chain rotates through ids[c*W .. c*W+W); bd_id holds the base.
-      // Every BD in this group is stamped with the same group id so the unroll
-      // pass round-robins each group independently even when windows collide.
-      int32_t groupId = nextWindowGroupId++;
-      for (DMAConfigureTaskOp member : group.members) {
-        unsigned c = 0;
-        member.walk([&](AIE::DMABDOp bd) {
-          SmallVector<int32_t> window(rw.ids.begin() + c * W,
-                                      rw.ids.begin() + c * W + W);
-          bd.setBdId(window[0]);
-          if (W > 1) {
-            bd->setAttr("bd_id_window",
-                        DenseI32ArrayAttr::get(bd.getContext(), window));
-            bd->setAttr("bd_id_window_group",
-                        IntegerAttr::get(IntegerType::get(bd.getContext(), 32),
-                                         groupId));
-          }
-          ++c;
-        });
-      }
-      out.push_back(std::move(rw));
-    }
-    return success();
-  }
-
-  void releaseWindows(ArrayRef<ReservedWindow> windows) {
-    for (const ReservedWindow &rw : windows) {
-      BdIdGenerator &gen = getGeneratorForTile(rw.tile);
-      for (uint32_t id : rw.ids)
-        if (gen.bdIdAlreadyAssigned(id))
-          gen.freeBdId(id);
-    }
-  }
-
-  //===--------------------------------------------------------------------===//
   // Allocation
   //===--------------------------------------------------------------------===//
 
   LogicalResult allocateConfigure(DMAConfigureTaskOp op) {
-    // Rotation members had their bd_id / bd_id_window written when their loop's
-    // window was reserved; nothing more to allocate here.
-    if (rotationMembers.count(op.getOperation()))
-      return success();
     AIE::TileOp tile = op.getTileOp();
     BdIdGenerator &gen = getGeneratorForTile(tile);
 
@@ -447,19 +279,48 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     return success();
   }
 
-  LogicalResult recycle(DMAConfigureTaskOp task_op) {
+  // Configures already completed by an aiex.dma_await_task. Awaiting a task
+  // returns its BD ids to the pool (like a free), but a subsequent
+  // aiex.dma_free_task of the same task is the common "wait, then release"
+  // idiom, not a double free -- so freeing an awaited task's already-returned
+  // ids is tolerated.
+  llvm::SmallPtrSet<Operation *, 8> awaitedConfigures;
+
+  // Return the ids of `task_op`'s chain to the pool.
+  //   isAwait          -- this sync is an await (records the configure so a
+  //                       later free of it is treated as a redundant release).
+  //   tolerateAlreadyFree -- set when this configure is one of several an
+  //                       scf.if-join free resolves to: only the arm that ran
+  //                       holds the ids, so the others legitimately appear
+  //                       already-freed.
+  // Otherwise an already-freed id is a real double free (or a free of a task
+  // that was never started) and is an error.
+  LogicalResult recycle(DMAConfigureTaskOp task_op, Operation *freeOp,
+                        bool isAwait, bool tolerateAlreadyFree) {
     BdIdGenerator &gen = getGeneratorForTile(task_op.getTileOp());
+    bool redundantAfterAwait = awaitedConfigures.contains(task_op);
     WalkResult result = task_op.walk<WalkOrder::PreOrder>([&](AIE::DMABDOp bd) {
       if (!bd.getBdId().has_value()) {
         bd.emitOpError("Free called on BD chain with unassigned IDs.");
         return WalkResult::interrupt();
       }
-      // Ignore double-frees.
-      if (gen.bdIdAlreadyAssigned(bd.getBdId().value()))
+      if (gen.bdIdAlreadyAssigned(bd.getBdId().value())) {
         gen.freeBdId(bd.getBdId().value());
+      } else if (!tolerateAlreadyFree && !redundantAfterAwait) {
+        freeOp->emitOpError("frees buffer descriptor ID ")
+            << bd.getBdId().value()
+            << ", which is not currently in use; it was already completed by "
+               "an "
+               "earlier aiex.dma_free_task or aiex.dma_await_task";
+        return WalkResult::interrupt();
+      }
       return WalkResult::advance();
     });
-    return failure(result.wasInterrupted());
+    if (result.wasInterrupted())
+      return failure();
+    if (isAwait)
+      awaitedConfigures.insert(task_op);
+    return success();
   }
 
   // Emit the "does not reference a valid configure_task" diagnostic, pointing
@@ -481,35 +342,31 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   }
 
   // Recycle every configure a free/await value resolves to (a single configure,
-  // or the per-arm/rotation configures behind an scf.if/for result).
-  LogicalResult recycleTargets(Value task, Operation *op) {
+  // or the per-arm configures behind an scf.if result). When it resolves to
+  // more than one configure, the free joins mutually-exclusive scf.if arms and
+  // only the arm that ran holds the ids, so an already-freed id on the others
+  // is expected rather than a double-free.
+  LogicalResult recycleTargets(Value task, Operation *op, bool isAwait) {
     SmallVector<DMAConfigureTaskOp> targets;
     if (!resolveFreeTargets(task, targets) || targets.empty())
       return emitUnresolvedTask(op, task);
+    bool tolerateAlreadyFree = targets.size() > 1;
     for (DMAConfigureTaskOp t : targets)
-      if (failed(recycle(t)))
+      if (failed(recycle(t, op, isAwait, tolerateAlreadyFree)))
         return failure();
     return success();
   }
 
   LogicalResult onFree(DMAFreeTaskOp op) {
-    // A free whose ids are owned by a rotation window is accounted for by the
-    // window release after the loop; just erase it (free lowers to nothing).
-    if (inertFrees.count(op.getOperation())) {
-      op.erase();
-      return success();
-    }
-    if (failed(recycleTargets(op.getTask(), op)))
+    if (failed(recycleTargets(op.getTask(), op, /*isAwait=*/false)))
       return failure();
     op.erase();
     return success();
   }
 
   LogicalResult onAwait(DMAAwaitTaskOp op) {
-    if (inertFrees.count(op.getOperation()))
-      return success();
     // Awaiting a task guarantees completion, so its BD IDs can be reused after.
-    return recycleTargets(op.getTask(), op);
+    return recycleTargets(op.getTask(), op, /*isAwait=*/true);
   }
 
   // Snapshot/restore of the per-tile allocation state, for sweeping scf.if arms
@@ -554,20 +411,13 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     if (auto await = dyn_cast<DMAAwaitTaskOp>(op))
       return onAwait(await);
     if (auto forOp = dyn_cast<scf::ForOp>(op)) {
-      // Reserve any rotating BD windows anchored at this loop (writing their
-      // bd_id / bd_id_window onto every member chain) so they are held across
-      // every iteration, then sweep the body. Same-iteration tasks allocate and
-      // free within one iteration; rotation members are skipped by
-      // allocateConfigure and their frees are inert. Releasing the windows
-      // after the body restores the pool to its pre-loop state.
-      SmallVector<ReservedWindow> reserved;
-      if (windowsByLoop.count(op))
-        if (failed(reserveWindowsForLoop(forOp, reserved)))
-          return failure();
-      if (failed(sweepRegion(forOp.getRegion())))
-        return failure();
-      releaseWindows(reserved);
-      return success();
+      // Constant-trip loops were unrolled before this pass, so any loop here is
+      // runtime-bound. Its tasks must be same-iteration (allocate and free
+      // within the body) -- validate() has already rejected handles carried
+      // across the back-edge. Sweep the body once: ids taken by a task are
+      // returned by its free within the same iteration, so the allocation is
+      // correct for every iteration.
+      return sweepRegion(forOp.getRegion());
     }
     if (auto ifOp = dyn_cast<scf::IfOp>(op)) {
       // Arms are mutually exclusive: sweep each from the same starting state
@@ -597,7 +447,6 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       if (failed(validate(seq)))
         return WalkResult::interrupt();
       gens.clear();
-      planRotations(seq);
       if (failed(sweepRegion(seq.getBody())))
         return WalkResult::interrupt();
       return WalkResult::advance();
