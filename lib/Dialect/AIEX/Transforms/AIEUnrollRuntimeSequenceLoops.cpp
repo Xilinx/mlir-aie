@@ -27,6 +27,7 @@
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Utils/Utils.h"
 #include "mlir/Pass/Pass.h"
+#include "llvm/ADT/SmallVector.h"
 
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIEUNROLLRUNTIMESEQUENCELOOPS
@@ -48,26 +49,20 @@ struct AIEUnrollRuntimeSequenceLoopsPass
     DeviceOp device = getOperation();
 
     device.walk([&](RuntimeSequenceOp seq) {
-      // Repeatedly unroll the innermost constant-trip loop until none remain.
-      // A post-order walk visits the innermost loop first; unrolling it in
-      // isolation keeps every other loop handle valid (unrolling a descendant
-      // never invalidates an ancestor). Loops anywhere in the region are
-      // reached, including those nested inside scf.if arms or other scf.for
-      // bodies -- not just immediate children of the sequence.
-      bool changed = true;
-      while (changed) {
-        changed = false;
-        scf::ForOp target;
-        seq.walk([&](scf::ForOp forOp) {
-          if (forOp.getStaticTripCount().has_value()) {
-            target = forOp;
-            return WalkResult::interrupt();
-          }
-          return WalkResult::advance();
-        });
-        if (target && succeeded(loopUnrollFull(target)))
-          changed = true;
-      }
+      // Collect constant-trip loops in post-order (innermost first), then unroll
+      // in that order. loopUnrollFull unrolls only the given loop, cloning any
+      // nested loops as-is -- so nested loops need their own calls. Post-order
+      // guarantees an inner loop is unrolled (and gone) before its enclosing
+      // loop, so every collected handle is still valid when reached and no
+      // re-walk is needed. Reaches loops anywhere in the sequence, including
+      // inside scf.if arms.
+      SmallVector<scf::ForOp> loops;
+      seq.walk([&](scf::ForOp forOp) {
+        if (forOp.getStaticTripCount().has_value())
+          loops.push_back(forOp);
+      });
+      for (scf::ForOp forOp : loops)
+        (void)loopUnrollFull(forOp);
     });
   }
 };
