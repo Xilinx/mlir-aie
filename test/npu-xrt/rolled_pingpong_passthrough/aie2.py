@@ -29,10 +29,16 @@
 # ObjectFifos by their MLIR symbol (of_in.op / of_out.op), so no separate shim
 # allocation is needed.
 #
+# The sequence is additionally wrapped in a constant-true scf.if to exercise the
+# full static-path control-flow story: the loop is unrolled (the unroll pass
+# descends into the scf.if arm), then the constant-predicate if is folded by
+# canonicalize, leaving straight-line IR for allocation.
+#
 # Golden: output[i] == input[i % TILE_LEN]  (same tile repeated N_TILES times).
 #
 # This validates the full constant-trip ping-pong stack:
 #   aie-unroll-runtime-sequence-loops   -> unrolls the loop to straight-line BDs
+#   canonicalize                        -> folds the constant-predicate scf.if
 #   aie-assign-runtime-sequence-bd-ids  -> colors them by liveness (ids alternate)
 #   aie-dma-tasks-to-npu                -> push_queue with concrete bd_ids
 
@@ -53,7 +59,9 @@ from aie.dialects.aiex import (
     shim_dma_bd,
 )
 from aie.dialects.aie import EndOp
+from aie.extras.dialects.arith import constant
 from aie.extras.dialects.scf import yield_
+from aie.helpers.dialects.scf import if_
 
 DTYPE = np.int32
 TILE_LEN = 256  # elements per tile
@@ -90,45 +98,56 @@ def design(dev):
         # A / B are the RuntimeData host buffers; .op is their runtime_sequence arg.
         A, B = A.op, B.op
         of_in_op, of_out_op = of_in_h.op, of_out_h.op
-        # Prologue: first input tile.
-        init_in = dma_configure_task_for(of_in_op, issue_token=True)
-        with bds(init_in) as bd:
-            with bd[0]:
-                shim_dma_bd(A, sizes=[1, 1, 1, TILE_LEN])
-                EndOp()
 
-        # Output task: collect N_TILES output tiles contiguously. The third dim
-        # walks the N_TILES tiles with stride TILE_LEN so tile i lands at offset
-        # i*TILE_LEN (a size-N stride-0 wrap dim would overwrite one tile).
-        out_task = dma_configure_task_for(of_out_op, issue_token=True)
-        with bds(out_task) as bd:
-            with bd[0]:
-                shim_dma_bd(
-                    B,
-                    sizes=[1, 1, N_TILES, TILE_LEN],
-                    strides=[0, 0, TILE_LEN, 1],
-                )
-                EndOp()
-
-        dma_start_task(init_in, out_task)
-
-        # Rolled ping-pong: issue N_TILES-1 more input BDs while the previous is
-        # in flight. The task handle flows as iter_arg. All input BDs read from
-        # the same tile (offset 0), so the output collects N_TILES copies.
-        for _iv, prev, result in range_(
-            1, N_TILES, iter_args=[init_in.result], insert_yield=False
-        ):
-            tile_in = dma_configure_task_for(of_in_op, issue_token=True)
-            with bds(tile_in) as bd:
+        # Wrap the whole sequence in a constant-true scf.if. This exercises the
+        # other half of the static-path invariant: the loop below is unrolled
+        # (the unroll pass descends into the scf.if arm, since it runs before the
+        # fold), then --canonicalize folds this constant-predicate if away,
+        # leaving straight-line IR for BD-ID allocation -- same result as if the
+        # if were not here.
+        cond = constant(True)
+        with if_(cond):
+            # Prologue: first input tile.
+            init_in = dma_configure_task_for(of_in_op, issue_token=True)
+            with bds(init_in) as bd:
                 with bd[0]:
                     shim_dma_bd(A, sizes=[1, 1, 1, TILE_LEN])
                     EndOp()
-            dma_start_task(tile_in)
-            dma_free_task(prev)
-            yield_([tile_in.result])
 
-        dma_await_task(result, out_task)
-        dma_free_task(result)
+            # Output task: collect N_TILES output tiles contiguously. The third
+            # dim walks the N_TILES tiles with stride TILE_LEN so tile i lands at
+            # offset i*TILE_LEN (a size-N stride-0 wrap dim would overwrite one
+            # tile).
+            out_task = dma_configure_task_for(of_out_op, issue_token=True)
+            with bds(out_task) as bd:
+                with bd[0]:
+                    shim_dma_bd(
+                        B,
+                        sizes=[1, 1, N_TILES, TILE_LEN],
+                        strides=[0, 0, TILE_LEN, 1],
+                    )
+                    EndOp()
+
+            dma_start_task(init_in, out_task)
+
+            # Rolled ping-pong: issue N_TILES-1 more input BDs while the previous
+            # is in flight. The task handle flows as iter_arg. All input BDs read
+            # from the same tile (offset 0), so the output collects N_TILES
+            # copies.
+            for _iv, prev, result in range_(
+                1, N_TILES, iter_args=[init_in.result], insert_yield=False
+            ):
+                tile_in = dma_configure_task_for(of_in_op, issue_token=True)
+                with bds(tile_in) as bd:
+                    with bd[0]:
+                        shim_dma_bd(A, sizes=[1, 1, 1, TILE_LEN])
+                        EndOp()
+                dma_start_task(tile_in)
+                dma_free_task(prev)
+                yield_([tile_in.result])
+
+            dma_await_task(result, out_task)
+            dma_free_task(result)
 
     rt = Runtime()
     with rt.sequence(in_ty, out_ty) as (A, B):
