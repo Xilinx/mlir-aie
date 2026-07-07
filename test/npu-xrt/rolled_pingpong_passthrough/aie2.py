@@ -15,26 +15,44 @@
 # RUN:        %xrt_flags %host_link_flags %test_utils_flags
 # RUN: %run_on_npu1% ./test.exe
 
-# Rolled ping-pong passthrough.  The runtime sequence issues N_TILES copies of
-# a single input tile using a depth-1 ping-pong.  The scf.for carries the
-# in-flight task handle as iter_arg; each iteration starts the next BD while the
-# previous is in flight, then frees it.
+# Rolled ping-pong passthrough, written in the high-level IRON API.
+#
+# The compute structure (ObjectFifos + a passthrough Worker) is expressed with
+# IRON's dataflow API.  The runtime sequence itself is a rolled ping-pong: it
+# issues N_TILES copies of a single input tile using a depth-1 ping-pong, where
+# an scf.for carries the in-flight input task handle as an iter_arg and frees the
+# previous iteration's task while the next is in flight.
+#
+# IRON's rt.fill/rt.drain emit a flat (unrolled) list of transfers, so the rolled
+# loop is emitted via rt.inline_ops -- the escape hatch for runtime-sequence
+# shapes the high-level ops do not yet cover.  The inline op references the
+# ObjectFifos by their MLIR symbol (of_in.op / of_out.op), so no separate shim
+# allocation is needed.
 #
 # Golden: output[i] == input[i % TILE_LEN]  (same tile repeated N_TILES times).
 #
 # This validates the full constant-trip ping-pong stack:
-#   aie-unroll-runtime-sequence-loops   → unrolls the loop to straight-line BDs
-#   aie-assign-runtime-sequence-bd-ids  → colors them by liveness (ids alternate)
-#   aie-dma-tasks-to-npu                → push_queue with concrete bd_ids
+#   aie-unroll-runtime-sequence-loops   -> unrolls the loop to straight-line BDs
+#   aie-assign-runtime-sequence-bd-ids  -> colors them by liveness (ids alternate)
+#   aie-dma-tasks-to-npu                -> push_queue with concrete bd_ids
 
 import sys
 
 import numpy as np
-from aie.extras.context import mlir_mod_ctx
 
-from aie.dialects.aie import *
-from aie.dialects.aiex import *
+from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.controlflow import range_
+from aie.iron.device import NPU1Col1, NPU2
+
+from aie.dialects.aiex import (
+    bds,
+    dma_configure_task_for,
+    dma_start_task,
+    dma_free_task,
+    dma_await_task,
+    shim_dma_bd,
+)
+from aie.dialects.aie import EndOp
 from aie.extras.dialects.scf import yield_
 
 DTYPE = np.int32
@@ -43,81 +61,89 @@ N_TILES = 8  # number of tiles streamed; must be >= 2 to exercise ping-pong
 TOTAL_OUT = TILE_LEN * N_TILES
 
 
-def design():
-    dev = AIEDevice.npu1
+def design(dev):
+    tile_ty = np.ndarray[(TILE_LEN,), np.dtype[DTYPE]]
+    in_ty = np.ndarray[(TILE_LEN,), np.dtype[DTYPE]]
+    out_ty = np.ndarray[(TOTAL_OUT,), np.dtype[DTYPE]]
+
+    # depth=2 for double-buffering on the input side
+    of_in = ObjectFifo(tile_ty, depth=2, name="of_in")
+    of_out = ObjectFifo(tile_ty, depth=2, name="of_out")
+
+    def core_fn(of_in, of_out):
+        # Worker wraps this in `while True` by default.
+        elem_out = of_out.acquire(1)
+        elem_in = of_in.acquire(1)
+        for i in range_(TILE_LEN):
+            elem_out[i] = elem_in[i]
+        of_in.release(1)
+        of_out.release(1)
+
+    worker = Worker(core_fn, [of_in.cons(), of_out.prod()])
+
+    # The rolled ping-pong runtime sequence. Emitted via inline_ops because the
+    # high-level fill/drain ops flatten transfers; here we need the scf.for that
+    # carries the in-flight task handle across iterations. The fifo handles are
+    # passed in: inline_ops registers them and binds them to a shim endpoint, and
+    # the body references them by symbol (handle.op).
+    def ping_pong(A, B, of_in_h, of_out_h):
+        # A / B are the RuntimeData host buffers; .op is their runtime_sequence arg.
+        A, B = A.op, B.op
+        of_in_op, of_out_op = of_in_h.op, of_out_h.op
+        # Prologue: first input tile.
+        init_in = dma_configure_task_for(of_in_op, issue_token=True)
+        with bds(init_in) as bd:
+            with bd[0]:
+                shim_dma_bd(A, sizes=[1, 1, 1, TILE_LEN])
+                EndOp()
+
+        # Output task: collect N_TILES output tiles contiguously. The third dim
+        # walks the N_TILES tiles with stride TILE_LEN so tile i lands at offset
+        # i*TILE_LEN (a size-N stride-0 wrap dim would overwrite one tile).
+        out_task = dma_configure_task_for(of_out_op, issue_token=True)
+        with bds(out_task) as bd:
+            with bd[0]:
+                shim_dma_bd(
+                    B,
+                    sizes=[1, 1, N_TILES, TILE_LEN],
+                    strides=[0, 0, TILE_LEN, 1],
+                )
+                EndOp()
+
+        dma_start_task(init_in, out_task)
+
+        # Rolled ping-pong: issue N_TILES-1 more input BDs while the previous is
+        # in flight. The task handle flows as iter_arg. All input BDs read from
+        # the same tile (offset 0), so the output collects N_TILES copies.
+        for _iv, prev, result in range_(
+            1, N_TILES, iter_args=[init_in.result], insert_yield=False
+        ):
+            tile_in = dma_configure_task_for(of_in_op, issue_token=True)
+            with bds(tile_in) as bd:
+                with bd[0]:
+                    shim_dma_bd(A, sizes=[1, 1, 1, TILE_LEN])
+                    EndOp()
+            dma_start_task(tile_in)
+            dma_free_task(prev)
+            yield_([tile_in.result])
+
+        dma_await_task(result, out_task)
+        dma_free_task(result)
+
+    rt = Runtime()
+    with rt.sequence(in_ty, out_ty) as (A, B):
+        rt.start(worker)
+        rt.inline_ops(ping_pong, [A, B, of_in.prod(), of_out.cons()])
+
+    return Program(dev, rt).resolve_program()
+
+
+def main():
+    dev = NPU1Col1()
     if len(sys.argv) > 1 and sys.argv[1] == "npu2":
-        dev = AIEDevice.npu2
-
-    with mlir_mod_ctx() as ctx:
-
-        @device(dev)
-        def device_body():
-            tile_ty = np.ndarray[(TILE_LEN,), np.dtype[DTYPE]]
-            in_ty = np.ndarray[(TILE_LEN,), np.dtype[DTYPE]]
-            out_ty = np.ndarray[(TOTAL_OUT,), np.dtype[DTYPE]]
-
-            shim = tile(0, 0)
-            compute = tile(0, 2)
-
-            # depth=2 for double-buffering on the input side
-            of_in = object_fifo("of_in", shim, compute, 2, tile_ty)
-            of_out = object_fifo("of_out", compute, shim, 2, tile_ty)
-
-            @core(compute)
-            def core_body():
-                for _ in range_(0xFFFFFFFF):
-                    elem_out = of_out.acquire(ObjectFifoPort.Produce, 1)
-                    elem_in = of_in.acquire(ObjectFifoPort.Consume, 1)
-                    for i in range_(TILE_LEN):
-                        elem_out[i] = elem_in[i]
-                    of_in.release(ObjectFifoPort.Consume, 1)
-                    of_out.release(ObjectFifoPort.Produce, 1)
-
-            @runtime_sequence(in_ty, out_ty)
-            def sequence(A, B):
-                # Prologue: first input tile.
-                init_in = dma_configure_task_for(of_in, issue_token=True)
-                with bds(init_in) as bd:
-                    with bd[0]:
-                        shim_dma_bd(A, sizes=[1, 1, 1, TILE_LEN])
-                        EndOp()
-
-                # Output task: collect N_TILES output tiles contiguously.
-                # The third dim walks the N_TILES tiles with stride TILE_LEN so
-                # tile i lands at offset i*TILE_LEN (a size-N stride-0 wrap dim
-                # would overwrite the same tile each time).
-                out_task = dma_configure_task_for(of_out, issue_token=True)
-                with bds(out_task) as bd:
-                    with bd[0]:
-                        shim_dma_bd(
-                            B,
-                            sizes=[1, 1, N_TILES, TILE_LEN],
-                            strides=[0, 0, TILE_LEN, 1],
-                        )
-                        EndOp()
-
-                dma_start_task(init_in, out_task)
-
-                # Rolled ping-pong: issue N_TILES-1 more input BDs while the
-                # previous is in flight.  The task handle flows as iter_arg.
-                # All input BDs read from the same tile (offset=0) — the output
-                # collects N_TILES copies of the input tile.
-                for _iv, prev, result in range_(
-                    1, N_TILES, iter_args=[init_in.result], insert_yield=False
-                ):
-                    tile_in = dma_configure_task_for(of_in, issue_token=True)
-                    with bds(tile_in) as bd:
-                        with bd[0]:
-                            shim_dma_bd(A, sizes=[1, 1, 1, TILE_LEN])
-                            EndOp()
-                    dma_start_task(tile_in)
-                    dma_free_task(prev)
-                    yield_([tile_in.result])
-
-                dma_await_task(result, out_task)
-                dma_free_task(result)
-
-    print(ctx.module)
+        dev = NPU2()
+    print(design(dev))
 
 
-design()
+if __name__ == "__main__":
+    main()
