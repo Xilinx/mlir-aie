@@ -1483,26 +1483,28 @@ struct AIEObjectFifoStatefulTransformPass
     return nullptr;
   }
 
-  // True if op is nested inside an scf.if anywhere strictly below loopOp.
+  // True if op is nested inside an scf.if / scf.index_switch anywhere
+  // strictly below loopOp.
   bool isInsideIfInsideLoop(Operation *op, Operation *loopOp) {
     Operation *cur = op->getParentOp();
     while (cur && cur != loopOp) {
-      if (isa<scf::IfOp>(cur))
+      if (isa<scf::IfOp, scf::IndexSwitchOp>(cur))
         return true;
       cur = cur->getParentOp();
     }
     return false;
   }
 
-  // Returns the child region of the innermost scf.if that encloses `op`
-  // strictly below `loopOp` (i.e. the specific then/else branch `op` lives
-  // in), or null if `op` is not inside any conditional below loopOp. Used to
-  // group conditional acq/rel by branch so per-branch balance can be checked.
+  // Returns the child region of the innermost scf.if / scf.index_switch that
+  // encloses `op` strictly below `loopOp` (i.e. the specific branch/case `op`
+  // lives in), or null if `op` is not inside any conditional below loopOp.
+  // Used to group conditional acq/rel by branch so the per-branch net can be
+  // compared across all branches of the conditional.
   Region *immediateCondRegion(Operation *op, Operation *loopOp) {
     Operation *cur = op->getParentOp();
     Region *childRegion = op->getParentRegion();
     while (cur && cur != loopOp) {
-      if (isa<scf::IfOp>(cur))
+      if (isa<scf::IfOp, scf::IndexSwitchOp>(cur))
         return childRegion;
       childRegion = cur->getParentRegion();
       cur = cur->getParentOp();
@@ -1608,26 +1610,31 @@ struct AIEObjectFifoStatefulTransformPass
   }
 
   // Decide whether loopOp's body has positive cyclostatic carry on at least
-  // one (fifo, port). Diagnostics:
-  //   - an in-body acq/rel inside an scf.if whose branch is *unbalanced* for
-  //     a (fifo, port) that also has unconditional acq/rel -> *condDiag is set
-  //     and we return false (caller emits the diagnostic).
+  // one (fifo, port). Conditionals (scf.if / scf.index_switch) whose branches
+  // all agree on the same per-fifo net are folded into the static carry (the
+  // delta is branch-independent, hence deterministic); only conditionals
+  // whose branches disagree are treated as unanalyzable. Diagnostics:
+  //   - an in-body acq/rel inside a conditional whose branches are *unbalanced*
+  //     (disagree on the net) for a (fifo, port) that also has an analyzable
+  //     contribution (unconditional acq/rel, or a foldable conditional net)
+  //     -> *condDiag is set and we return false (caller emits the diagnostic).
   // Sets `taintedDiag` if peel must be skipped because a fifo's pre-loop
-  // held count cannot be analyzed (sibling loop / scf.if touched the same
+  // held count cannot be analyzed (sibling loop / conditional touched the same
   // fifo) — this is silent, not an error, since the lowering still produces
   // correct (just unoptimized) code.
   bool bodyHasCyclostaticCarry(Region *bodyRegion, Operation *loopOp,
                                Operation *&condDiag) {
     llvm::MapVector<FifoPort, int> maxAcq;
     llvm::MapVector<FifoPort, int> sumRel;
-    // Net (acquire - release) per (fifo, port) within each conditional
-    // branch region. A branch that nets zero for a fifo (it acquires and
-    // releases the same amount, e.g. an if that both acquires and releases)
-    // does not perturb the loop's steady-state carry, so it is harmless even
-    // when the same fifo is also used unconditionally.
-    llvm::DenseMap<Region *, llvm::MapVector<FifoPort, int>> condNet;
-    // Conditional ops in walk order, for pointing the diagnostic at the
-    // first offending op.
+    // For every conditional op (scf.if / scf.index_switch) directly below
+    // loopOp, accumulate the net (acquire - release) per (fifo, port) within
+    // each of its branch regions:
+    //   condNet[condOp][branchRegion][fp] = net for that fifo on that path.
+    llvm::MapVector<Operation *,
+                    llvm::MapVector<Region *, llvm::MapVector<FifoPort, int>>>
+        condNet;
+    // Conditional acq/rel ops in walk order, for pointing the diagnostic at
+    // the first offending op of a fifo.
     SmallVector<std::pair<Operation *, FifoPort>> condOps;
     condDiag = nullptr;
 
@@ -1637,7 +1644,7 @@ struct AIEObjectFifoStatefulTransformPass
           return;
         FifoPort fp{a.getObjectFifo(), a.getPort()};
         if (Region *r = immediateCondRegion(a, loopOp)) {
-          condNet[r][fp] += a.acqNumber();
+          condNet[r->getParentOp()][r][fp] += a.acqNumber();
           condOps.push_back({a, fp});
         } else {
           maxAcq[fp] = std::max(maxAcq.lookup(fp), a.acqNumber());
@@ -1647,7 +1654,7 @@ struct AIEObjectFifoStatefulTransformPass
           return;
         FifoPort fp{r.getObjectFifo(), r.getPort()};
         if (Region *reg = immediateCondRegion(r, loopOp)) {
-          condNet[reg][fp] -= r.relNumber();
+          condNet[reg->getParentOp()][reg][fp] -= r.relNumber();
           condOps.push_back({r, fp});
         } else {
           sumRel[fp] = sumRel.lookup(fp) + r.relNumber();
@@ -1655,27 +1662,88 @@ struct AIEObjectFifoStatefulTransformPass
       }
     });
 
-    // A (fifo, port) is "unbalanced-conditional" if some conditional branch
-    // has a nonzero net for it. Only such fifos make the straight-line carry
-    // computation unsound, and only when they *also* have unconditional
-    // acq/rel — then we cannot tell whether the conditional acquire/release
-    // belongs to the steady state. Balanced conditional branches and
-    // pure-conditional fifos (no unconditional ops) are well-formed: the
-    // lock-lowering tracks each conditional path on its own without peeling.
-    llvm::SetVector<FifoPort> unbalancedCond;
-    for (auto &regionEntry : condNet)
-      for (auto &kv : regionEntry.second)
-        if (kv.second != 0)
-          unbalancedCond.insert(kv.first);
+    // Classify each conditional op's contribution per (fifo, port).
+    //
+    // A conditional whose branches all agree on the same net C for a fifo
+    // contributes a *deterministic* per-iteration delta of C, regardless of
+    // which branch runs. That is indistinguishable from an unconditional
+    // acquire/release of net C, so it can be folded into the static carry.
+    // C == 0 (a branch that acquires and releases the same amount) is just
+    // the special case that adds nothing.
+    //
+    // When the branches *disagree* the per-iteration delta is data
+    // dependent, so the fifo is "unbalanced-conditional": the straight-line
+    // carry computation cannot account for it. Every branch region of the
+    // conditional participates — a branch that never touches the fifo (or an
+    // empty/absent else branch) counts as net 0, so an asymmetric
+    // "acquire on one path only" is correctly flagged.
+    llvm::MapVector<FifoPort, int> condCarry; // folded deterministic net
+    llvm::SetVector<FifoPort> unbalancedCond; // branches disagree
+    for (auto &opEntry : condNet) {
+      Operation *condOp = opEntry.first;
+      auto &branchMap = opEntry.second;
+      llvm::SetVector<FifoPort> touched;
+      for (auto &regEntry : branchMap)
+        for (auto &kv : regEntry.second)
+          touched.insert(kv.first);
+      for (const FifoPort &fp : touched) {
+        bool first = true, allEqual = true;
+        int common = 0;
+        for (Region &reg : condOp->getRegions()) {
+          int net = 0;
+          auto it = branchMap.find(&reg);
+          if (it != branchMap.end())
+            net = it->second.lookup(fp);
+          if (first) {
+            common = net;
+            first = false;
+          } else if (net != common) {
+            allEqual = false;
+            break;
+          }
+        }
+        if (allEqual)
+          condCarry[fp] += common;
+        else
+          unbalancedCond.insert(fp);
+      }
+    }
 
+    // An unbalanced-conditional fifo is unanalyzable. We only *error* when it
+    // is mixed with an analyzable contribution for the same fifo — an
+    // unconditional acq/rel or a foldable conditional net — because then the
+    // peel would be based on an incomplete carry. A fifo that is *purely*
+    // unbalanced-conditional (no other use) is left alone: the lock-lowering
+    // tracks each path on its own and the loop still lowers correctly,
+    // just without the peel optimization.
     for (const auto &fp : unbalancedCond) {
-      if (maxAcq.count(fp) || sumRel.count(fp)) {
+      if (maxAcq.count(fp) || sumRel.count(fp) || condCarry.count(fp)) {
         for (const auto &co : condOps) {
           if (co.second != fp)
             continue;
           Region *reg = immediateCondRegion(co.first, loopOp);
-          auto it = reg ? condNet.find(reg) : condNet.end();
-          if (it != condNet.end() && it->second.lookup(fp) != 0) {
+          Operation *condOp = reg ? reg->getParentOp() : nullptr;
+          // Point at an op living in a branch that disagrees with the rest.
+          auto opIt = condOp ? condNet.find(condOp) : condNet.end();
+          if (opIt == condNet.end())
+            continue;
+          bool opUnbalanced = false;
+          int common = 0;
+          bool first = true;
+          for (Region &r : condOp->getRegions()) {
+            int net = 0;
+            auto bit = opIt->second.find(&r);
+            if (bit != opIt->second.end())
+              net = bit->second.lookup(fp);
+            if (first) {
+              common = net;
+              first = false;
+            } else if (net != common) {
+              opUnbalanced = true;
+              break;
+            }
+          }
+          if (opUnbalanced) {
             condDiag = co.first;
             break;
           }
@@ -1684,13 +1752,24 @@ struct AIEObjectFifoStatefulTransformPass
       }
     }
 
+    // Fold the deterministic conditional net into the static carry. For a
+    // pure-conditional fifo whose branches all agree, this is the whole
+    // carry (maxAcq/sumRel are zero); the peel still clones the entire
+    // iteration 0 including the conditional, so AcquireGreaterEqual clamping
+    // keeps it correct.
+    llvm::SetVector<FifoPort> fifos;
+    for (const auto &kv : maxAcq)
+      fifos.insert(kv.first);
+    for (const auto &kv : condCarry)
+      fifos.insert(kv.first);
+
     llvm::SetVector<FifoPort> tainted;
     auto held = heldBeforeLoop(loopOp, tainted);
-    for (const auto &kv : maxAcq) {
-      if (tainted.contains(kv.first))
+    for (const FifoPort &fp : fifos) {
+      if (tainted.contains(fp))
         continue;
-      int carry = kv.second - sumRel.lookup(kv.first);
-      int peelCarry = carry - held.lookup(kv.first);
+      int carry = maxAcq.lookup(fp) - sumRel.lookup(fp) + condCarry.lookup(fp);
+      int peelCarry = carry - held.lookup(fp);
       if (peelCarry > 0)
         return true;
     }
