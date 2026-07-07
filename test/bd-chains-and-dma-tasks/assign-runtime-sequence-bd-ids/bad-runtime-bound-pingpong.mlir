@@ -25,7 +25,7 @@ aie.device(npu1) {
       aie.end
     }
     aiex.dma_start_task(%init)
-    // expected-error@+1 {{runtime-valued control flow in a runtime sequence is not supported}}
+    // expected-error@+1 {{Runtime-valued control flow in a runtime sequence is not supported}}
     %last = scf.for %i = %c1 to %n step %c1 iter_args(%prev = %init) -> (index) {
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
         aie.dma_bd(%arg0 : memref<1024xi32>, 0, 256)

@@ -16,7 +16,7 @@
 aie.device(npu2) {
   %tile_0_0 = aie.tile(0, 0)
   aie.runtime_sequence(%arg0: memref<8xi16>, %c: i1) {
-    // expected-error@+1 {{runtime-valued control flow in a runtime sequence is not supported}}
+    // expected-error@+1 {{Runtime-valued control flow in a runtime sequence is not supported}}
     scf.if %c {
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
         aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
@@ -36,7 +36,7 @@ aie.device(npu2) {
   aie.runtime_sequence(%arg0: memref<8xi16>, %n: index) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
-    // expected-error@+1 {{runtime-valued control flow in a runtime sequence is not supported}}
+    // expected-error@+1 {{Runtime-valued control flow in a runtime sequence is not supported}}
     scf.for %i = %c0 to %n step %c1 {
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
         aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
@@ -54,7 +54,7 @@ aie.device(npu2) {
 aie.device(npu2) {
   %tile_0_0 = aie.tile(0, 0)
   aie.runtime_sequence(%arg0: memref<8xi16>, %c: i1) {
-    // expected-error@+1 {{runtime-valued control flow in a runtime sequence is not supported}}
+    // expected-error@+1 {{Runtime-valued control flow in a runtime sequence is not supported}}
     scf.while : () -> () {
       scf.condition(%c)
     } do {
