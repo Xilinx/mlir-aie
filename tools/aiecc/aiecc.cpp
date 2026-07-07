@@ -4319,6 +4319,35 @@ static LogicalResult generateTransactionOutput(ModuleOp moduleOp,
 }
 
 //===----------------------------------------------------------------------===//
+// Host-buffer count helpers (shared by ctrl-packet index + kernels.json count)
+//===----------------------------------------------------------------------===//
+
+/// Return the argument count of `dev`'s first non-empty runtime_sequence, or
+/// std::nullopt if the device has no runtime_sequence with a body. This is the
+/// host-buffer contract before any ctrl-packet buffer is appended (the ctrlpkt
+/// operand is added later by AIECtrlPacketToDma, outside this count).
+static std::optional<int>
+getRuntimeSequenceArgCount(xilinx::AIE::DeviceOp dev) {
+  for (auto seqOp : dev.getOps<xilinx::AIE::RuntimeSequenceOp>()) {
+    if (!seqOp.getBody().empty())
+      return static_cast<int>(seqOp.getBody().front().getNumArguments());
+  }
+  return std::nullopt;
+}
+
+/// A ctrl-packet reconfig "base" device carries a control-packet shim DMA
+/// allocation (emitted by -aie-generate-column-control-overlay) whose symbol is
+/// prefixed with "ctrlpkt". Its presence means the host passes one extra
+/// control-packet buffer beyond the data buffers.
+static bool deviceUsesControlPackets(xilinx::AIE::DeviceOp dev) {
+  for (auto allocOp : dev.getOps<xilinx::AIE::ShimDMAAllocationOp>()) {
+    if (allocOp.getSymName().starts_with("ctrlpkt"))
+      return true;
+  }
+  return false;
+}
+
+//===----------------------------------------------------------------------===//
 // Control Packet Generation
 //===----------------------------------------------------------------------===//
 
@@ -4526,12 +4555,7 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
     if (devOp.getSymName() != devName) {
       continue;
     }
-    for (auto seqOp : devOp.getOps<xilinx::AIE::RuntimeSequenceOp>()) {
-      if (!seqOp.getBody().empty()) {
-        ctrlIdx = seqOp.getBody().front().getNumArguments();
-        break;
-      }
-    }
+    ctrlIdx = getRuntimeSequenceArgCount(devOp).value_or(0);
     break;
   }
 
@@ -5122,11 +5146,14 @@ static constexpr int kMaxHostBOs = 16;
 /// mlir-aie bug; the historical hardcoded-5 encoded exactly this contract.
 static constexpr int kMinHostBOs = 5;
 
-/// Fallback host-buffer (boN) count for a device that has no runtime_sequence.
-/// Such a device has no operand list to read, yet may still be launched by the
-/// host with host buffers (e.g. the ctrl-packet reconfig "base" xclbin, whose
-/// ABI is defined by a separate "main" compile that is not present when base is
-/// built). Equal to kMinHostBOs for the same firmware-ABI reason.
+/// Last-resort host-buffer (boN) count for a device that has no
+/// runtime_sequence AND no sibling sequence to derive from. Normally a
+/// sequence-less device (e.g. the ctrl-packet reconfig "base" xclbin) gets its
+/// count derived from the sibling "main" device's sequence and threaded in via
+/// the hostBOCountOverride argument to computeNumHostBOs (see the capture at
+/// the device-filter loop in compileAIEModule). This constant only applies when
+/// even that is unavailable. Equal to kMinHostBOs for the same firmware-ABI
+/// reason.
 static constexpr int kNoSequenceHostBOs = kMinHostBOs;
 
 /// Compute the number of host buffer (boN) arguments XRT must declare in
@@ -5138,10 +5165,21 @@ static constexpr int kNoSequenceHostBOs = kMinHostBOs;
 /// the sequence is lowered (trace lowering and ctrl-packet-to-dma each append
 /// their buffer as an argument), so the count is simply the lowered sequence's
 /// argument count, floored at kMinHostBOs to satisfy the firmware command-chain
-/// ABI (see kMinHostBOs). A device with no runtime_sequence has no operand list
-/// to read; fall back to kNoSequenceHostBOs for it.
-static FailureOr<int> computeNumHostBOs(ModuleOp moduleOp, StringRef devName,
-                                        StringRef tmpDirName) {
+/// ABI (see kMinHostBOs).
+///
+/// A device with no runtime_sequence of its own (the ctrl-packet reconfig
+/// "base" xclbin) has no operand list to read here, because its sibling "main"
+/// device has already been erased from `moduleOp` by the time this runs. Its
+/// true count is captured before that erase and passed as
+/// `hostBOCountOverride`; when set, it is used directly (still floored). Only
+/// when no override is available does the count fall back to
+/// kNoSequenceHostBOs.
+static FailureOr<int>
+computeNumHostBOs(ModuleOp moduleOp, StringRef devName, StringRef tmpDirName,
+                  std::optional<int> hostBOCountOverride = std::nullopt) {
+  if (hostBOCountOverride)
+    return std::max(kMinHostBOs, *hostBOCountOverride);
+
   // Lower a private clone so the source module is untouched, then read the
   // argument count off the lowered runtime_sequence.
   OwningOpRef<ModuleOp> clonedModule = moduleOp.clone();
@@ -5151,12 +5189,8 @@ static FailureOr<int> computeNumHostBOs(ModuleOp moduleOp, StringRef devName,
   for (auto devOp : clonedModule->getOps<xilinx::AIE::DeviceOp>()) {
     if (devOp.getSymName() != devName)
       continue;
-    for (auto seqOp : devOp.getOps<xilinx::AIE::RuntimeSequenceOp>()) {
-      if (!seqOp.getBody().empty())
-        return std::max(
-            kMinHostBOs,
-            static_cast<int>(seqOp.getBody().front().getNumArguments()));
-    }
+    if (auto argCount = getRuntimeSequenceArgCount(devOp))
+      return std::max(kMinHostBOs, *argCount);
     // Device exists but has no runtime_sequence.
     return kNoSequenceHostBOs;
   }
@@ -5165,9 +5199,14 @@ static FailureOr<int> computeNumHostBOs(ModuleOp moduleOp, StringRef devName,
 }
 
 /// Generate CDO/PDI/xclbin artifacts from an in-memory module.
-static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
-                                          StringRef tmpDirName,
-                                          StringRef devName) {
+///
+/// `hostBOCountOverride`, when set, forces the kernels.json host-buffer count
+/// instead of deriving it from this module's runtime_sequence. Used for the
+/// ctrl-packet reconfig "base" device, whose sibling "main" sequence (the real
+/// source of its ABI) has been erased before this runs.
+static LogicalResult
+generateCdoArtifacts(ModuleOp moduleOp, StringRef tmpDirName, StringRef devName,
+                     std::optional<int> hostBOCountOverride = std::nullopt) {
   // Full ELF requires PDI generation
   bool needPdi = generatePdi || generateFullElf;
   if (!generateCdo && !needPdi && !generateXclbin) {
@@ -5189,7 +5228,7 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
     SmallString<128> kernelsPath(tmpDirName);
     sys::path::append(kernelsPath, devName.str() + "_kernels.json");
     FailureOr<int> numHostBOs =
-        computeNumHostBOs(moduleOp, devName, tmpDirName);
+        computeNumHostBOs(moduleOp, devName, tmpDirName, hostBOCountOverride);
     if (failed(numHostBOs))
       return failure();
     if (*numHostBOs > kMaxHostBOs) {
@@ -5731,6 +5770,12 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
   // passes run. This is correct because resource allocation passes operate
   // independently per DeviceOp and do not share state across devices.
   OwningOpRef<ModuleOp> unfilteredModule;
+  // The ctrl-packet reconfig "base" device has no runtime_sequence of its own;
+  // its host-buffer ABI is defined by the sibling "main" device's sequence. We
+  // capture that count here, BEFORE the sibling is erased below, and thread it
+  // into kernels.json generation (generateCdoArtifacts) so base declares the
+  // exact number of host buffers instead of falling back to kNoSequenceHostBOs.
+  std::optional<int> baseHostBOCountOverride;
   if (!deviceName.empty()) {
     if (generateCtrlPkt) {
       unfilteredModule = moduleOp.clone();
@@ -5742,9 +5787,34 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
       }
     }
     SmallVector<xilinx::AIE::DeviceOp> toErase;
+    xilinx::AIE::DeviceOp keptDevice;
     for (auto deviceOp : moduleOp.getOps<xilinx::AIE::DeviceOp>()) {
       if (deviceOp.getSymName() != deviceName) {
         toErase.push_back(deviceOp);
+      } else {
+        keptDevice = deviceOp;
+      }
+    }
+    // Derive the kept device's host-BO count from the unique sibling sequence
+    // only when the kept device has none of its own (e.g. the ctrl-packet base
+    // xclbin). The count is the sibling's data args plus one control-packet
+    // buffer when the kept device carries a ctrlpkt shim allocation, matching
+    // the ctrlIdx + 1 contract in generateControlPacketOutput.
+    if (keptDevice && !getRuntimeSequenceArgCount(keptDevice)) {
+      std::optional<int> siblingArgCount;
+      bool uniqueSibling = true;
+      for (auto deviceOp : toErase) {
+        if (auto argCount = getRuntimeSequenceArgCount(deviceOp)) {
+          if (siblingArgCount) {
+            uniqueSibling = false;
+            break;
+          }
+          siblingArgCount = argCount;
+        }
+      }
+      if (siblingArgCount && uniqueSibling) {
+        baseHostBOCountOverride =
+            *siblingArgCount + (deviceUsesControlPackets(keptDevice) ? 1 : 0);
       }
     }
     for (auto deviceOp : toErase) {
@@ -5895,7 +5965,8 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
     }
 
     // Generate CDO/PDI/xclbin from in-memory module
-    if (failed(generateCdoArtifacts(moduleOp, tmpDirName, devName))) {
+    if (failed(generateCdoArtifacts(moduleOp, tmpDirName, devName,
+                                    baseHostBOCountOverride))) {
       return failure();
     }
 
@@ -6014,8 +6085,12 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
                      << " (from expanded module)\n";
       }
 
-      // Generate CDO/PDI
-      if (failed(generateCdoArtifacts(*expandedModule, tmpDirName, devName))) {
+      // Generate CDO/PDI. The base host-BO override applies only to the device
+      // it was captured for.
+      std::optional<int> overrideForDevice =
+          (devName == deviceName) ? baseHostBOCountOverride : std::nullopt;
+      if (failed(generateCdoArtifacts(*expandedModule, tmpDirName, devName,
+                                      overrideForDevice))) {
         return failure();
       }
 
