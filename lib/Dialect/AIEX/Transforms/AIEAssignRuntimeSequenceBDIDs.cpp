@@ -204,6 +204,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
 
       // Straight-line walk. Collect frees to erase after (recycling reads the
       // configure the free points at, so erase only once the walk is done).
+      // This allocation strategy works only for straight-line IR without
+      // branching or conditionals; the verifier of this pass ensures this is
+      // the case on the input IR.
       SmallVector<DMAFreeTaskOp> frees;
       WalkResult r = seq.walk([&](Operation *op) -> WalkResult {
         if (auto cfg = dyn_cast<DMAConfigureTaskOp>(op)) {
