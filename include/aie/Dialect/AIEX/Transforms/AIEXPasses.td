@@ -265,26 +265,6 @@ def AIEUnrollRuntimeSequenceLoops
   ];
 }
 
-def AIETestRuntimeBdLiveness : Pass<"aie-test-runtime-bd-liveness", "AIE::DeviceOp"> {
-  let summary = "Test/analysis pass: print runtime-sequence BD liveness results";
-  let description = [{
-    Diagnostic-only pass exposing the control-flow-aware runtime-sequence DMA
-    task liveness analysis (AIERuntimeBdLiveness.h) to FileCheck. Emits, per
-    `aiex.dma_configure_task`, its resolved completion sync, back-edges crossed,
-    and leak status; and per `aie.runtime_sequence`, the per-tile peak
-    simultaneous BD liveness (`computePeakBdLiveness`). The allocator uses the
-    peak query to validate that peak liveness fits within each tile's BD pool;
-    this pass guards correctness of that analysis.
-  }];
-
-  let constructor = "xilinx::AIEX::createAIETestRuntimeBdLivenessPass()";
-  let dependentDialects = [
-    "xilinx::AIE::AIEDialect",
-    "xilinx::AIEX::AIEXDialect",
-    "mlir::scf::SCFDialect",
-  ];
-}
-
 def AIEDMATasksToNPU : Pass<"aie-dma-tasks-to-npu", "AIE::DeviceOp"> {
   let summary = "Lower configured DMA tasks to NPU instructions";
 

@@ -7,18 +7,10 @@
 
 #include "AIERuntimeBdLiveness.h"
 
-#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
-
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Value.h"
-#include "mlir/Pass/Pass.h"
 #include "llvm/ADT/MapVector.h"
 #include "llvm/ADT/SmallPtrSet.h"
-
-namespace xilinx::AIEX {
-#define GEN_PASS_DEF_AIETESTRUNTIMEBDLIVENESS
-#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
-} // namespace xilinx::AIEX
 
 using namespace mlir;
 using namespace xilinx;
@@ -274,54 +266,3 @@ computePeakBdLiveness(AIE::RuntimeSequenceOp seq) {
 }
 
 } // namespace xilinx::AIEX
-
-namespace {
-struct AIETestRuntimeBdLivenessPass
-    : xilinx::AIEX::impl::AIETestRuntimeBdLivenessBase<
-          AIETestRuntimeBdLivenessPass> {
-  void runOnOperation() override {
-    getOperation().walk([&](DMAConfigureTaskOp configure) {
-      TaskLiveRange range = resolveTaskLiveRange(configure);
-      // A task configured inside a loop whose handle is never synced
-      // (await/free) accumulates one held BD per iteration: a bug for a
-      // constant trip count and impossible (unbounded) for a runtime one.
-      if (range.leaked && range.enclosingLoop) {
-        configure.emitOpError(
-            "buffer descriptor configured in a loop is never completed "
-            "(no aiex.dma_await_task / aiex.dma_free_task reachable); its BD "
-            "would not be reusable across iterations");
-        return;
-      }
-      std::string info;
-      if (range.ambiguous) {
-        info =
-            "ambiguous"; // handle not reducible to one sync (cycle/multi-use)
-      } else if (range.leaked) {
-        info = "leaked"; // held to region end (no await/free reachable)
-      } else {
-        info = "backedges=" + std::to_string(range.backEdgesCrossed) +
-               " kill=" + range.kill->getName().getStringRef().str();
-      }
-      if (range.crossedIfJoin)
-        info += " if-join";
-      configure.emitRemark("bd-liveness: ")
-          << info << (range.enclosingLoop ? " in-loop" : "");
-    });
-
-    // Peak simultaneous liveness per tile (the window size the allocator must
-    // fit in the tile's BD pool).
-    getOperation().walk([&](AIE::RuntimeSequenceOp seq) {
-      auto peaks = computePeakBdLiveness(seq);
-      for (auto &kv : peaks)
-        seq.emitRemark("bd-peak: tile(")
-            << kv.first.first << "," << kv.first.second
-            << ") peak=" << kv.second;
-    });
-  }
-};
-} // namespace
-
-std::unique_ptr<OperationPass<AIE::DeviceOp>>
-AIEX::createAIETestRuntimeBdLivenessPass() {
-  return std::make_unique<AIETestRuntimeBdLivenessPass>();
-}

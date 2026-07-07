@@ -40,8 +40,6 @@ createAIEAssignRuntimeSequenceBDIDsPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEUnrollRuntimeSequenceLoopsPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
-createAIETestRuntimeBdLivenessPass();
-std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIEDMATasksToNPUPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIESubstituteShimDMAAllocationsPass();

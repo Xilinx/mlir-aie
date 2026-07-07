@@ -27,7 +27,6 @@
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Utils/Utils.h"
 #include "mlir/Pass/Pass.h"
-#include "llvm/ADT/SmallVector.h"
 
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIEUNROLLRUNTIMESEQUENCELOOPS
@@ -49,23 +48,25 @@ struct AIEUnrollRuntimeSequenceLoopsPass
     DeviceOp device = getOperation();
 
     device.walk([&](RuntimeSequenceOp seq) {
-      // Iterate to fixed point: after outer loops unroll, inner loops become
-      // direct children of the sequence body and need another sweep.
+      // Repeatedly unroll the innermost constant-trip loop until none remain.
+      // A post-order walk visits the innermost loop first; unrolling it in
+      // isolation keeps every other loop handle valid (unrolling a descendant
+      // never invalidates an ancestor). Loops anywhere in the region are
+      // reached, including those nested inside scf.if arms or other scf.for
+      // bodies -- not just immediate children of the sequence.
       bool changed = true;
       while (changed) {
         changed = false;
-        SmallVector<scf::ForOp> toUnroll;
-        // Only look at immediate children of the sequence body — loopUnrollFull
-        // handles inner nesting within each loop.
-        for (Operation &op : seq.getBody().front()) {
-          if (auto forOp = dyn_cast<scf::ForOp>(&op))
-            if (forOp.getStaticTripCount().has_value())
-              toUnroll.push_back(forOp);
-        }
-        for (scf::ForOp forOp : toUnroll) {
-          if (succeeded(loopUnrollFull(forOp)))
-            changed = true;
-        }
+        scf::ForOp target;
+        seq.walk([&](scf::ForOp forOp) {
+          if (forOp.getStaticTripCount().has_value()) {
+            target = forOp;
+            return WalkResult::interrupt();
+          }
+          return WalkResult::advance();
+        });
+        if (target && succeeded(loopUnrollFull(target)))
+          changed = true;
       }
     });
   }
