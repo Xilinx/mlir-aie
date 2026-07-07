@@ -1670,11 +1670,16 @@ struct AIEObjectFifoStatefulTransformPass
 
     for (const auto &fp : unbalancedCond) {
       if (maxAcq.count(fp) || sumRel.count(fp)) {
-        for (const auto &co : condOps)
-          if (co.second == fp) {
+        for (const auto &co : condOps) {
+          if (co.second != fp)
+            continue;
+          Region *reg = immediateCondRegion(co.first, loopOp);
+          auto it = reg ? condNet.find(reg) : condNet.end();
+          if (it != condNet.end() && it->second.lookup(fp) != 0) {
             condDiag = co.first;
             break;
           }
+        }
         return false; // condDiag now points at the offending conditional op
       }
     }
