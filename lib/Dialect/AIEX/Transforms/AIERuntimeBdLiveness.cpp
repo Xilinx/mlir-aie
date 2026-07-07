@@ -18,17 +18,19 @@ using namespace xilinx::AIEX;
 
 namespace {
 
-// One step of the trace: classify all uses of `handle` into at most one
-// completion sync and at most one carry (the value the handle becomes further
-// along control flow). Order-independent: the result does not depend on
-// `getUses()` iteration order. Sets `ambiguous` if the handle has more than one
-// sync/carry, or a use the analysis cannot reduce to a single continuation.
+// One step of the trace: classify all uses of `handle` into its completion
+// sync(s) and at most one carry (the value the handle becomes further along
+// control flow). Sets `ambiguous` if the handle has more than one carry, or a
+// use the analysis cannot reduce to a single continuation. The set of syncs and
+// the carry do not depend on `getUses()` iteration order (only the relative
+// order within `syncs` follows use order, which no consumer relies on).
 struct TraceStep {
-  Operation *sync = nullptr;    // dma_await/free reached here, if any
+  llvm::SmallVector<Operation *, 2> syncs; // dma_await/free reached here, in use
+                                           // order
   Value carry = nullptr;        // value to continue tracing from, if any
   bool carryIsBackEdge = false; // carry crosses a loop back-edge
   bool carryIsIfJoin = false;   // carry is an scf.if result (value join)
-  bool ambiguous = false;       // multiple syncs/carries, or an unknown use
+  bool ambiguous = false;       // multiple carries, or an unknown use
 };
 
 static TraceStep classifyUses(Value handle) {
@@ -47,12 +49,12 @@ static TraceStep classifyUses(Value handle) {
     if (isa<DMAStartTaskOp>(user))
       continue; // submission, not a sync or carry
     if (isa<DMAAwaitTaskOp, DMAFreeTaskOp>(user)) {
-      // Multiple syncs on one handle (e.g. the common await-then-free idiom, or
-      // an scf.if result freed on both paths) all complete the same task; the
-      // first is the kill point. A genuine double free is caught later by the
-      // allocator, not treated as an ambiguous live-range here.
-      if (!step.sync)
-        step.sync = user;
+      // Every sync on this handle completes the same task (the await-then-free
+      // idiom, or an scf.if result freed on both paths). Record them all; the
+      // first is the kill point and the rest are redundant releases. A genuine
+      // double free is caught later by the allocator, not treated as an
+      // ambiguous live-range here.
+      step.syncs.push_back(user);
       continue;
     }
     if (auto yield = dyn_cast<scf::YieldOp>(user)) {
@@ -116,13 +118,13 @@ TaskLiveRange resolveTaskLiveRange(DMAConfigureTaskOp configure) {
       range.ambiguous = true;
       break;
     }
-    if (step.sync) {
+    if (!step.syncs.empty()) {
       // A sync and a carry on the same value cannot both be honored statically.
       if (step.carry) {
         range.ambiguous = true;
         break;
       }
-      range.kill = step.sync;
+      range.syncs = std::move(step.syncs);
       range.backEdgesCrossed = backEdges;
       range.leaked = false;
       return range;
@@ -147,6 +149,24 @@ unsigned chainLength(DMAConfigureTaskOp op) {
   unsigned n = 0;
   op.walk([&](AIE::DMABDOp) { ++n; });
   return n ? n : 1;
+}
+
+llvm::DenseMap<Operation *, llvm::SmallVector<DMAConfigureTaskOp>>
+mapSyncsToConfigures(AIE::RuntimeSequenceOp seq) {
+  // Invert the forward handle-trace: for each configure, every sync op on the
+  // terminal handle completes it. Collecting all syncs (not just the first
+  // kill) captures the await-then-free idiom, and following scf.if joins makes
+  // one join free resolve to every arm's configure -- the two multi-op forms
+  // the allocator's recycle path must handle.
+  llvm::DenseMap<Operation *, llvm::SmallVector<DMAConfigureTaskOp>> syncs;
+  seq.walk([&](DMAConfigureTaskOp configure) {
+    TaskLiveRange range = resolveTaskLiveRange(configure);
+    if (range.ambiguous || range.leaked)
+      return; // rejected by the allocator up front; nothing to complete
+    for (Operation *sync : range.syncs)
+      syncs[sync].push_back(configure);
+  });
+  return syncs;
 }
 
 } // namespace xilinx::AIEX

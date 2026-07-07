@@ -63,60 +63,11 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     return it->second;
   }
 
-  // Trace a free/await task value back to the configure op(s) whose BDs it
-  // completes, following scf.if results (to each arm's yielded source) and
-  // scf.for results / iter_args (to the loop's init and yielded sources). A
-  // direct configure result resolves to itself. Returns false on a value the
-  // tracer does not understand; `targets` is the deduplicated set of
-  // configures.
-  bool resolveFreeTargets(Value task,
-                          SmallVectorImpl<DMAConfigureTaskOp> &targets) {
-    llvm::SmallPtrSet<Value, 8> visited;
-    SmallVector<Value> worklist{task};
-    llvm::SmallPtrSet<Operation *, 8> seen;
-    while (!worklist.empty()) {
-      Value v = worklist.pop_back_val();
-      if (!v || !visited.insert(v).second)
-        continue;
-      if (auto cfg = dyn_cast_or_null<DMAConfigureTaskOp>(v.getDefiningOp())) {
-        if (seen.insert(cfg).second)
-          targets.push_back(cfg);
-        continue;
-      }
-      if (auto res = dyn_cast<OpResult>(v)) {
-        Operation *def = res.getOwner();
-        if (auto ifOp = dyn_cast<scf::IfOp>(def)) {
-          unsigned i = res.getResultNumber();
-          worklist.push_back(ifOp.thenYield().getOperand(i));
-          if (!ifOp.getElseRegion().empty())
-            worklist.push_back(ifOp.elseYield().getOperand(i));
-          continue;
-        }
-        if (auto forOp = dyn_cast<scf::ForOp>(def)) {
-          unsigned i = res.getResultNumber();
-          worklist.push_back(forOp.getInitArgs()[i]);
-          worklist.push_back(forOp.getBody()->getTerminator()->getOperand(i));
-          continue;
-        }
-        return false; // result of an op we do not model
-      }
-      if (auto arg = dyn_cast<BlockArgument>(v)) {
-        if (auto forOp = dyn_cast<scf::ForOp>(arg.getOwner()->getParentOp())) {
-          // iter_arg k is region arg k+1 (arg 0 is the IV).
-          unsigned k = arg.getArgNumber();
-          if (k == 0)
-            return false; // the induction variable, not a task
-          worklist.push_back(forOp.getInitArgs()[k - 1]);
-          worklist.push_back(
-              forOp.getBody()->getTerminator()->getOperand(k - 1));
-          continue;
-        }
-        return false; // block arg of an op we do not model
-      }
-      return false;
-    }
-    return true;
-  }
+  // Maps each completion-sync op to the configure(s) it completes, built once
+  // per sequence from the shared forward handle-trace in AIERuntimeBdLiveness.
+  // Replaces a separate backward tracer: a free/await completes a configure iff
+  // the forward trace from that configure reaches this sync (the two are duals).
+  llvm::DenseMap<Operation *, SmallVector<DMAConfigureTaskOp>> syncToConfigures;
 
   //===--------------------------------------------------------------------===//
   // Validation: reject control-flow forms whose static BD-ID write-back is not
@@ -169,11 +120,10 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     if (wr.wasInterrupted())
       return failure();
 
-    // 2. Every free/await must resolve to at least one configure op. A free of
-    // an scf.if result is valid when it traces back (through the arm yields) to
-    // the per-arm configures it completes; a free of a value that traces to no
-    // configure (e.g. an scf.for result seeded by a non-task constant) would
-    // crash the recycle path and is rejected here.
+    // 2. Every free/await must complete at least one configure op. The shared
+    // forward trace maps each sync to the configures it completes; a sync absent
+    // from that map (e.g. a free of an scf.for result seeded by a non-task
+    // constant) would crash the recycle path and is rejected here.
     wr = seq.walk([&](Operation *op) -> WalkResult {
       Value task;
       if (auto f = dyn_cast<DMAFreeTaskOp>(op))
@@ -182,8 +132,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
         task = a.getTask();
       else
         return WalkResult::advance();
-      SmallVector<DMAConfigureTaskOp> targets;
-      if (!resolveFreeTargets(task, targets) || targets.empty()) {
+      if (!syncToConfigures.count(op)) {
         // Emit "lower this first" notes for unlowered task ops.
         (void)emitUnresolvedTask(op, task);
         return WalkResult::interrupt();
@@ -341,15 +290,17 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     return err;
   }
 
-  // Recycle every configure a free/await value resolves to (a single configure,
-  // or the per-arm configures behind an scf.if result). When it resolves to
-  // more than one configure, the free joins mutually-exclusive scf.if arms and
-  // only the arm that ran holds the ids, so an already-freed id on the others
-  // is expected rather than a double-free.
+  // Recycle every configure this sync op completes (a single configure, or the
+  // per-arm configures behind an scf.if result). When it completes more than one
+  // configure, the free joins mutually-exclusive scf.if arms and only the arm
+  // that ran holds the ids, so an already-freed id on the others is expected
+  // rather than a double-free. validate() has already checked the sync is in the
+  // map, so a miss here means an unlowered task op.
   LogicalResult recycleTargets(Value task, Operation *op, bool isAwait) {
-    SmallVector<DMAConfigureTaskOp> targets;
-    if (!resolveFreeTargets(task, targets) || targets.empty())
+    auto it = syncToConfigures.find(op);
+    if (it == syncToConfigures.end())
       return emitUnresolvedTask(op, task);
+    ArrayRef<DMAConfigureTaskOp> targets = it->second;
     bool tolerateAlreadyFree = targets.size() > 1;
     for (DMAConfigureTaskOp t : targets)
       if (failed(recycle(t, op, isAwait, tolerateAlreadyFree)))
@@ -444,6 +395,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     AIE::DeviceOp device = getOperation();
 
     WalkResult wr = device.walk([&](AIE::RuntimeSequenceOp seq) -> WalkResult {
+      // Build the sync->configures map once from the shared forward trace; both
+      // validation and the recycle path read it.
+      syncToConfigures = mapSyncsToConfigures(seq);
       if (failed(validate(seq)))
         return WalkResult::interrupt();
       gens.clear();
