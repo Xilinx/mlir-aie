@@ -66,13 +66,11 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     WalkResult wr = seq.walk([&](Operation *op) -> WalkResult {
       if (isa<scf::ForOp, scf::IfOp, scf::WhileOp>(op)) {
         op->emitOpError(
-            "runtime-valued control flow in a runtime sequence is not "
-            "supported "
-            "by static BD-ID allocation. A constant-trip scf.for is unrolled "
-            "and a constant-predicate scf.if is folded before this pass; a "
-            "surviving scf op has a runtime bound/predicate and must be "
-            "lowered "
-            "with the dynamic EmitC path");
+            "Runtime-valued control flow in a runtime sequence is not "
+            "supported by this static BD-ID allocation pass. Either pass "
+            "only constant-valued predicates to scf.for and scf.if so "
+            "`aie-unroll-runtime-sequence-loops` can unroll/fold them, or "
+            "use the dynamic EmitC path instead.");
         return WalkResult::interrupt();
       }
       return WalkResult::advance();
