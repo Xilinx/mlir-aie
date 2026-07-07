@@ -114,7 +114,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
             const AIETargetModel &tm =
                 tile->getParentOfType<AIE::DeviceOp>().getTargetModel();
             op.emitOpError()
-                << "Too many simultaneously active buffer descriptors on tile("
+                << "Too many simultaneously active buffer descriptors on tile ("
                 << tile.getCol() << "," << tile.getRow()
                 << "), which supports up to "
                 << tm.getNumBDs(tile.getCol(), tile.getRow())
