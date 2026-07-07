@@ -142,28 +142,10 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     if (wr.wasInterrupted())
       return failure();
 
-    // 3. Peak simultaneous BD liveness must fit the tile's BD pool.
-    {
-      auto peaks = computePeakBdLiveness(seq);
-      const AIETargetModel &tm =
-          seq->getParentOfType<AIE::DeviceOp>().getTargetModel();
-      for (auto &kv : peaks) {
-        int col = kv.first.first, row = kv.first.second;
-        uint32_t pool = tm.getNumBDs(col, row);
-        if (kv.second > pool) {
-          seq.emitOpError(
-              "Too many simultaneously active buffer descriptors -- attempted "
-              "to use ")
-              << kv.second << " buffer descriptors on tile(" << col << ","
-              << row << "), which only supports up to " << pool
-              << " simultaneously active buffer descriptors";
-          return failure();
-        }
-      }
-    }
-
-    // 4. A configure must not be buried inside a region op the allocator does
+    // 3. A configure must not be buried inside a region op the allocator does
     // not sweep (e.g. scf.while); its BDs would be silently left unassigned.
+    // (Pool-overflow is caught during allocation itself, when nextBdId runs
+    // dry.)
     wr = seq.walk([&](DMAConfigureTaskOp configure) -> WalkResult {
       Operation *p = configure->getParentOp();
       while (p && p != seq.getOperation()) {
@@ -215,8 +197,13 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       // channel-agnostic (always accessible), so passing 0 is correct here.
       std::optional<int32_t> next_id = gen.nextBdId(/*channelIndex=*/0);
       if (!next_id) {
-        op.emitOpError() << "Allocator exhausted available buffer descriptor "
-                            "IDs.";
+        const AIETargetModel &tm =
+            tile->getParentOfType<AIE::DeviceOp>().getTargetModel();
+        op.emitOpError()
+            << "Too many simultaneously active buffer descriptors on tile("
+            << tile.getCol() << "," << tile.getRow() << "), which supports up to "
+            << tm.getNumBDs(tile.getCol(), tile.getRow())
+            << ". Emit an aiex.dma_free_task / aiex.dma_await_task to reuse BDs.";
         return WalkResult::interrupt();
       }
       bd_op.setBdId(*next_id);
