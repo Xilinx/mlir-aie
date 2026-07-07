@@ -28,7 +28,6 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
-#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Utils/Utils.h"
 #include "mlir/IR/BuiltinAttributes.h"
@@ -47,20 +46,6 @@ using namespace xilinx::AIE;
 using namespace xilinx::AIEX;
 
 namespace {
-
-// Return the trip count of `forOp` as a compile-time constant, or nullopt if
-// the bounds or step are not constants.
-static std::optional<uint64_t> getConstantTripCount(scf::ForOp forOp) {
-  auto lb = forOp.getLowerBound().getDefiningOp<arith::ConstantIndexOp>();
-  auto ub = forOp.getUpperBound().getDefiningOp<arith::ConstantIndexOp>();
-  auto step = forOp.getStep().getDefiningOp<arith::ConstantIndexOp>();
-  if (!lb || !ub || !step)
-    return std::nullopt;
-  int64_t lbv = lb.value(), ubv = ub.value(), sv = step.value();
-  if (sv <= 0 || ubv <= lbv)
-    return 0;
-  return static_cast<uint64_t>((ubv - lbv + sv - 1) / sv);
-}
 
 // After loopUnrollFull, collect every aie.dma_bd inside `seq` that still
 // carries a bd_id_window attribute and resolve each one to a concrete bd_id
@@ -128,7 +113,7 @@ struct AIEUnrollRuntimeSequenceLoopsPass
         // handles inner nesting within each loop.
         for (Operation &op : seq.getBody().front()) {
           if (auto forOp = dyn_cast<scf::ForOp>(&op))
-            if (getConstantTripCount(forOp).has_value())
+            if (forOp.getStaticTripCount().has_value())
               toUnroll.push_back(forOp);
         }
         for (scf::ForOp forOp : toUnroll) {

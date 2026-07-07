@@ -151,7 +151,7 @@ TaskLiveRange resolveTaskLiveRange(DMAConfigureTaskOp configure) {
   return range;
 }
 
-static unsigned chainLengthOf(DMAConfigureTaskOp op) {
+unsigned chainLength(DMAConfigureTaskOp op) {
   unsigned n = 0;
   op.walk([&](AIE::DMABDOp) { ++n; });
   return n ? n : 1;
@@ -174,7 +174,7 @@ LoopRotationGroup resolveLoopRotationGroup(DMAConfigureTaskOp body) {
 
   group.windowWidth = range.backEdgesCrossed + 1; // W = D + 1
   group.loop = loop;
-  group.chainLength = chainLengthOf(body);
+  group.chainLength = chainLength(body);
 
   // The prologue tasks seed the loop's iter_args: a depth-D ping-pong threads
   // its handles through a D-deep shift register of iter_args, each initialized
@@ -202,7 +202,7 @@ LoopRotationGroup resolveLoopRotationGroup(DMAConfigureTaskOp body) {
   // Every member's chain must have the same length to rotate position-by-
   // position through a shared per-descriptor window.
   for (DMAConfigureTaskOp p : prologues) {
-    if (chainLengthOf(p) != group.chainLength) {
+    if (chainLength(p) != group.chainLength) {
       group.status = LoopRotationGroup::ChainLengthMismatch;
       return group;
     }
@@ -249,13 +249,6 @@ private:
     return {t.getCol(), t.getRow()};
   }
 
-  unsigned bdCount(DMAConfigureTaskOp op) {
-    // One BD per dma_bd in the task's chain.
-    unsigned n = 0;
-    op.walk([&](AIE::DMABDOp) { ++n; });
-    return n ? n : 1;
-  }
-
   void add(Live &live, std::pair<int, int> tile, unsigned n) {
     unsigned &cur = live[tile];
     cur += n;
@@ -278,19 +271,19 @@ private:
 
   void sweepOp(mlir::Operation *op, Live &live) {
     if (auto cfg = dyn_cast<DMAConfigureTaskOp>(op)) {
-      add(live, tileKey(cfg), bdCount(cfg));
+      add(live, tileKey(cfg), chainLength(cfg));
       return;
     }
     if (auto await = dyn_cast<DMAAwaitTaskOp>(op)) {
       if (auto cfg = dyn_cast_or_null<DMAConfigureTaskOp>(
               await.getTask().getDefiningOp()))
-        remove(live, tileKey(cfg), bdCount(cfg));
+        remove(live, tileKey(cfg), chainLength(cfg));
       return;
     }
     if (auto freeOp = dyn_cast<DMAFreeTaskOp>(op)) {
       if (auto cfg = dyn_cast_or_null<DMAConfigureTaskOp>(
               freeOp.getTask().getDefiningOp()))
-        remove(live, tileKey(cfg), bdCount(cfg));
+        remove(live, tileKey(cfg), chainLength(cfg));
       return;
     }
     if (auto forOp = dyn_cast<scf::ForOp>(op)) {

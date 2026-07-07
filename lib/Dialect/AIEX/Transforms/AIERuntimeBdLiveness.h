@@ -98,6 +98,11 @@ struct TaskLiveRange {
   bool crossedIfJoin = false;
 };
 
+/// Number of `aie.dma_bd` ops in a configure task's BD chain (its chain length
+/// C, and the count of BD ids it holds). Never zero: a chain with no dma_bd
+/// still occupies one id.
+unsigned chainLength(DMAConfigureTaskOp configure);
+
 /// Resolve the hold-range of a single configure op by forward-tracing its
 /// handle (including across scf.for iter_arg hops) to its completion-sync.
 TaskLiveRange resolveTaskLiveRange(DMAConfigureTaskOp configure);

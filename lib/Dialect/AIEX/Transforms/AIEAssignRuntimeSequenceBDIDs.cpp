@@ -37,9 +37,6 @@
 #include "llvm/ADT/SmallPtrSet.h"
 #include "llvm/ADT/TypeSwitch.h"
 
-#include <map>
-#include <set>
-
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIEASSIGNRUNTIMESEQUENCEBDIDS
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h.inc"
@@ -55,7 +52,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     : xilinx::AIEX::impl::AIEAssignRuntimeSequenceBDIDsBase<
           AIEAssignRuntimeSequenceBDIDsPass> {
 
-  std::map<AIE::TileOp, BdIdGenerator> gens;
+  llvm::DenseMap<AIE::TileOp, BdIdGenerator> gens;
 
   // A reserved rotating BD-id window: the C*W physical ids a depth-(W-1)
   // ping-pong's chain cycles through, plus the tile that owns them. Reserved
@@ -517,25 +514,23 @@ struct AIEAssignRuntimeSequenceBDIDsPass
 
   // Snapshot/restore of the per-tile allocation state, for sweeping scf.if arms
   // independently (mutually exclusive arms do not interfere).
-  using Snapshot = std::map<AIE::TileOp, std::set<uint32_t>>;
+  using Snapshot = llvm::DenseMap<AIE::TileOp, BdIdGenerator::AssignedState>;
   Snapshot snapshot() {
     Snapshot s;
     for (auto &kv : gens)
-      s[kv.first] = kv.second.alreadyAssigned;
+      s[kv.first] = kv.second.saveAssigned();
     return s;
   }
   void restore(const Snapshot &s) {
     for (auto &kv : gens) {
       auto it = s.find(kv.first);
-      kv.second.alreadyAssigned =
-          it == s.end() ? std::set<uint32_t>() : it->second;
+      kv.second.restoreAssigned(it == s.end() ? BdIdGenerator::AssignedState()
+                                              : it->second);
     }
   }
   void unionInto(const Snapshot &other) {
-    for (auto &kv : other) {
-      BdIdGenerator &gen = getGeneratorForTile(kv.first);
-      gen.alreadyAssigned.insert(kv.second.begin(), kv.second.end());
-    }
+    for (auto &kv : other)
+      getGeneratorForTile(kv.first).mergeAssigned(kv.second);
   }
 
   LogicalResult sweepRegion(Region &region) {
