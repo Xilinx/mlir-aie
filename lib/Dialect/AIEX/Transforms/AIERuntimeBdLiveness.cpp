@@ -24,8 +24,8 @@ namespace {
 // the carry do not depend on `getUses()` iteration order (only the relative
 // order within `syncs` follows use order, which no consumer relies on).
 struct TraceStep {
-  llvm::SmallVector<Operation *, 2> syncs; // dma_await/free reached here, in use
-                                           // order
+  llvm::SmallVector<Operation *, 2> syncs; // dma_await/free reached here, in
+                                           // use order
   Value carry = nullptr;        // value to continue tracing from, if any
   bool carryIsBackEdge = false; // carry crosses a loop back-edge
   bool ambiguous = false;       // multiple carries, or an unknown use

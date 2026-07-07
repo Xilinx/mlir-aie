@@ -5,8 +5,8 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Control-flow-aware hold-range analysis for runtime-sequence DMA tasks, used to
-// tell the BD-ID allocator which sync completes which configure.
+// Control-flow-aware hold-range analysis for runtime-sequence DMA tasks, used
+// to tell the BD-ID allocator which sync completes which configure.
 //
 // A BD ID models hardware state: it is held from the point a task is configured
 // (`aiex.dma_configure_task`, which defines an Index SSA value) until the DMA
@@ -57,9 +57,10 @@ namespace xilinx::AIEX {
 struct TaskLiveRange {
   /// The completion-sync ops on the terminal handle (`dma_free_task` /
   /// `dma_await_task`), in use order. Empty when no sync is reachable and the
-  /// range extends to the end of the sequence (see `leaked`). The first entry is
-  /// the kill point; a second entry is the await-then-free idiom (an await that
-  /// certifies completion followed by an explicit free of the same handle).
+  /// range extends to the end of the sequence (see `leaked`). The first entry
+  /// is the kill point; a second entry is the await-then-free idiom (an await
+  /// that certifies completion followed by an explicit free of the same
+  /// handle).
   llvm::SmallVector<mlir::Operation *, 2> syncs;
 
   /// Number of `scf.for` back-edges the live handle crosses before being freed
@@ -76,8 +77,8 @@ struct TaskLiveRange {
   /// rejects it.
   bool leaked = false;
 
-  /// Innermost `scf.for` enclosing the configure, or null if the configure is at
-  /// sequence top level. Used to reject in-loop leaks.
+  /// Innermost `scf.for` enclosing the configure, or null if the configure is
+  /// at sequence top level. Used to reject in-loop leaks.
   mlir::Operation *enclosingLoop = nullptr;
 
   /// True when the handle cannot be traced to a single completion sync: it has
@@ -92,19 +93,20 @@ struct TaskLiveRange {
 /// handle (including across scf.for iter_arg hops) to its completion-sync.
 TaskLiveRange resolveTaskLiveRange(DMAConfigureTaskOp configure);
 
-/// Map each completion-sync op (`aiex.dma_await_task` / `aiex.dma_free_task`) in
-/// the sequence to the configure op(s) it completes. Built from the same forward
-/// handle-trace as `resolveTaskLiveRange`, so the allocator and this analysis
-/// share one model of how a task handle flows through `scf.for` / `scf.if`.
+/// Map each completion-sync op (`aiex.dma_await_task` / `aiex.dma_free_task`)
+/// in the sequence to the configure op(s) it completes. Built from the same
+/// forward handle-trace as `resolveTaskLiveRange`, so the allocator and this
+/// analysis share one model of how a task handle flows through `scf.for` /
+/// `scf.if`.
 ///
 /// Most syncs map to exactly one configure. Two forms map to several ops:
 ///   - an `scf.if` value-join free maps to each arm's configure (the arms are
 ///     mutually exclusive, so only the taken arm actually holds the ids);
 ///   - the await-then-free idiom maps one configure to both its await and its
 ///     free op.
-/// Ambiguous/leaked configures (which the allocator rejects up front) contribute
-/// nothing. A sync op absent from the map completes no configure -- the caller
-/// treats that as an unresolved-task error.
+/// Ambiguous/leaked configures (which the allocator rejects up front)
+/// contribute nothing. A sync op absent from the map completes no configure --
+/// the caller treats that as an unresolved-task error.
 llvm::DenseMap<mlir::Operation *, llvm::SmallVector<DMAConfigureTaskOp>>
 mapSyncsToConfigures(AIE::RuntimeSequenceOp seq);
 

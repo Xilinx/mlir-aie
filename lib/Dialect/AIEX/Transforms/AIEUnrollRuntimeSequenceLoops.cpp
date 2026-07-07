@@ -49,13 +49,13 @@ struct AIEUnrollRuntimeSequenceLoopsPass
     DeviceOp device = getOperation();
 
     device.walk([&](RuntimeSequenceOp seq) {
-      // Collect constant-trip loops in post-order (innermost first), then unroll
-      // in that order. loopUnrollFull unrolls only the given loop, cloning any
-      // nested loops as-is -- so nested loops need their own calls. Post-order
-      // guarantees an inner loop is unrolled (and gone) before its enclosing
-      // loop, so every collected handle is still valid when reached and no
-      // re-walk is needed. Reaches loops anywhere in the sequence, including
-      // inside scf.if arms.
+      // Collect constant-trip loops in post-order (innermost first), then
+      // unroll in that order. loopUnrollFull unrolls only the given loop,
+      // cloning any nested loops as-is -- so nested loops need their own calls.
+      // Post-order guarantees an inner loop is unrolled (and gone) before its
+      // enclosing loop, so every collected handle is still valid when reached
+      // and no re-walk is needed. Reaches loops anywhere in the sequence,
+      // including inside scf.if arms.
       SmallVector<scf::ForOp> loops;
       seq.walk([&](scf::ForOp forOp) {
         if (forOp.getStaticTripCount().has_value())

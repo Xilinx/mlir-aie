@@ -66,7 +66,8 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // Maps each completion-sync op to the configure(s) it completes, built once
   // per sequence from the shared forward handle-trace in AIERuntimeBdLiveness.
   // Replaces a separate backward tracer: a free/await completes a configure iff
-  // the forward trace from that configure reaches this sync (the two are duals).
+  // the forward trace from that configure reaches this sync (the two are
+  // duals).
   llvm::DenseMap<Operation *, SmallVector<DMAConfigureTaskOp>> syncToConfigures;
 
   //===--------------------------------------------------------------------===//
@@ -121,9 +122,9 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       return failure();
 
     // 2. Every free/await must complete at least one configure op. The shared
-    // forward trace maps each sync to the configures it completes; a sync absent
-    // from that map (e.g. a free of an scf.for result seeded by a non-task
-    // constant) would crash the recycle path and is rejected here.
+    // forward trace maps each sync to the configures it completes; a sync
+    // absent from that map (e.g. a free of an scf.for result seeded by a
+    // non-task constant) would crash the recycle path and is rejected here.
     wr = seq.walk([&](Operation *op) -> WalkResult {
       Value task;
       if (auto f = dyn_cast<DMAFreeTaskOp>(op))
@@ -188,27 +189,31 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       return failure();
 
     // Now allocate BD IDs for all unspecified BDs.
-    result = op.walk<WalkOrder::PreOrder>([&](AIE::DMABDOp bd_op) {
-      if (bd_op.getBdId().has_value())
-        return WalkResult::advance();
-      // channelIndex only affects allocation on MemTiles, where the AIE2 model
-      // partitions BDs by channel parity (isBdChannelAccessible). Runtime
-      // sequences configure BDs on shim (and compute) tiles only, which are
-      // channel-agnostic (always accessible), so passing 0 is correct here.
-      std::optional<int32_t> next_id = gen.nextBdId(/*channelIndex=*/0);
-      if (!next_id) {
-        const AIETargetModel &tm =
-            tile->getParentOfType<AIE::DeviceOp>().getTargetModel();
-        op.emitOpError()
-            << "Too many simultaneously active buffer descriptors on tile("
-            << tile.getCol() << "," << tile.getRow() << "), which supports up to "
-            << tm.getNumBDs(tile.getCol(), tile.getRow())
-            << ". Emit an aiex.dma_free_task / aiex.dma_await_task to reuse BDs.";
-        return WalkResult::interrupt();
-      }
-      bd_op.setBdId(*next_id);
-      return WalkResult::advance();
-    });
+    result =
+        op.walk<WalkOrder::PreOrder>([&](AIE::DMABDOp bd_op) {
+          if (bd_op.getBdId().has_value())
+            return WalkResult::advance();
+          // channelIndex only affects allocation on MemTiles, where the AIE2
+          // model partitions BDs by channel parity (isBdChannelAccessible).
+          // Runtime sequences configure BDs on shim (and compute) tiles only,
+          // which are channel-agnostic (always accessible), so passing 0 is
+          // correct here.
+          std::optional<int32_t> next_id = gen.nextBdId(/*channelIndex=*/0);
+          if (!next_id) {
+            const AIETargetModel &tm =
+                tile->getParentOfType<AIE::DeviceOp>().getTargetModel();
+            op.emitOpError()
+                << "Too many simultaneously active buffer descriptors on tile("
+                << tile.getCol() << "," << tile.getRow()
+                << "), which supports up to "
+                << tm.getNumBDs(tile.getCol(), tile.getRow())
+                << ". Emit an aiex.dma_free_task / aiex.dma_await_task to "
+                   "reuse BDs.";
+            return WalkResult::interrupt();
+          }
+          bd_op.setBdId(*next_id);
+          return WalkResult::advance();
+        });
     if (result.wasInterrupted())
       return failure();
 
@@ -278,11 +283,11 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   }
 
   // Recycle every configure this sync op completes (a single configure, or the
-  // per-arm configures behind an scf.if result). When it completes more than one
-  // configure, the free joins mutually-exclusive scf.if arms and only the arm
-  // that ran holds the ids, so an already-freed id on the others is expected
-  // rather than a double-free. validate() has already checked the sync is in the
-  // map, so a miss here means an unlowered task op.
+  // per-arm configures behind an scf.if result). When it completes more than
+  // one configure, the free joins mutually-exclusive scf.if arms and only the
+  // arm that ran holds the ids, so an already-freed id on the others is
+  // expected rather than a double-free. validate() has already checked the sync
+  // is in the map, so a miss here means an unlowered task op.
   LogicalResult recycleTargets(Value task, Operation *op, bool isAwait) {
     auto it = syncToConfigures.find(op);
     if (it == syncToConfigures.end())
