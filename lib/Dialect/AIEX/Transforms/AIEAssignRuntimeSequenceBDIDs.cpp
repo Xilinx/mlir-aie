@@ -235,7 +235,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     if (wr.wasInterrupted())
       return failure();
 
-    // 4. Peak simultaneous BD liveness must fit the tile's BD pool.
+    // 3. Peak simultaneous BD liveness must fit the tile's BD pool.
     {
       auto peaks = computePeakBdLiveness(seq);
       const AIETargetModel &tm =
@@ -252,7 +252,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       }
     }
 
-    // 3. A configure must not be buried inside a region op the allocator does
+    // 4. A configure must not be buried inside a region op the allocator does
     // not sweep (e.g. scf.while); its BDs would be silently left unassigned.
     wr = seq.walk([&](DMAConfigureTaskOp configure) -> WalkResult {
       Operation *p = configure->getParentOp();

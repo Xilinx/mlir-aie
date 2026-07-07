@@ -328,14 +328,6 @@ struct HasSomeTerminator {
   }
 };
 
-LogicalResult xilinx::AIE::verifyNestedInRuntimeSequence(Operation *op) {
-  if (!op->getParentOfType<RuntimeSequenceOp>())
-    return op->emitOpError()
-           << "must appear within an aie.runtime_sequence (directly or inside "
-              "control flow in the sequence body)";
-  return success();
-}
-
 // Check that the given DMA-like op (e.g. MemOp, ShimDMAOp)
 // has valid BDs.
 template <typename ConcreteType>

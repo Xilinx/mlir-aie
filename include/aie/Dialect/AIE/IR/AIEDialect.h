@@ -44,24 +44,6 @@ template <typename ConcreteType>
 struct SkipAccessibilityCheckTrait
     : mlir::OpTrait::TraitBase<ConcreteType, SkipAccessibilityCheckTrait> {};
 
-// Verify that `op` has an aie.runtime_sequence ancestor (allowing intervening
-// structured control flow). Defined in AIEDialect.cpp where RuntimeSequenceOp
-// is visible; declared here so the trait below (instantiated in the AIEX TU)
-// can call it without a cross-dialect template-instantiation dependency.
-mlir::LogicalResult verifyNestedInRuntimeSequence(mlir::Operation *op);
-
-// Check that the op is nested somewhere within an aie.runtime_sequence (as a
-// direct child or anywhere inside structured control flow such as scf.for /
-// scf.if in the sequence body). Replaces HasParent<RuntimeSequenceOp> for ops
-// that may legally appear inside control flow within the sequence.
-template <typename ConcreteType>
-struct NestedInRuntimeSequence
-    : mlir::OpTrait::TraitBase<ConcreteType, NestedInRuntimeSequence> {
-  static mlir::LogicalResult verifyTrait(mlir::Operation *op) {
-    return verifyNestedInRuntimeSequence(op);
-  }
-};
-
 // Marker trait for operations that can be flow endpoints (e.g., TileOp, CoreOp,
 // MemOp)
 template <typename ConcreteType>
