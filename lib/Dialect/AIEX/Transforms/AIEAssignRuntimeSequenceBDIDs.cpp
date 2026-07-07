@@ -6,23 +6,19 @@
 //===----------------------------------------------------------------------===//
 //
 // Assigns buffer-descriptor (BD) IDs to the DMA tasks configured in a runtime
-// sequence. Control-flow-aware: tasks inside scf.for / scf.if are allocated
-// against a real per-tile pool, with arm-exclusivity (scf.if arms are swept
-// independently and merged) and same-iteration reuse (scf.for bodies recurse).
+// sequence.
 //
-// This pass runs AFTER --aie-unroll-runtime-sequence-loops, so every
-// constant-trip loop has already been unrolled to straight-line IR. A rolled
-// ping-pong (a handle freed a later iteration than configured) therefore only
-// survives when its trip count is a runtime value; that form needs a
-// runtime-selected BD id and is rejected here for the dynamic EmitC path.
-// Genuinely unallocatable forms (ambiguous handles, unbounded in-loop leaks,
-// peak liveness exceeding the tile pool) are rejected with a clear diagnostic.
-// The liveness analysis that classifies all of these lives in
-// AIERuntimeBdLiveness.{h,cpp}.
+// This pass runs on straight-line IR: --aie-unroll-runtime-sequence-loops has
+// unrolled every constant-trip scf.for, and canonicalization has folded every
+// constant-predicate scf.if, before this pass runs. So in the static path no
+// scf op survives to reach the allocator -- a rolled ping-pong over a constant
+// loop is just N straight-line configures whose ids ordinary liveness reuse
+// recycles. Any scf.for/scf.if still present is therefore runtime-valued, which
+// the static path cannot lower (the runtime sequence becomes a flat, branchless
+// NPU instruction stream); such forms are rejected here for the dynamic EmitC
+// path (Phase 2).
 //
 //===----------------------------------------------------------------------===//
-
-#include "AIERuntimeBdLiveness.h"
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIE/Transforms/AIEAssignBufferDescriptorIDs.h"
@@ -63,109 +59,26 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     return it->second;
   }
 
-  // Maps each completion-sync op to the configure(s) it completes, built once
-  // per sequence from the shared forward handle-trace in AIERuntimeBdLiveness.
-  // Replaces a separate backward tracer: a free/await completes a configure iff
-  // the forward trace from that configure reaches this sync (the two are
-  // duals).
-  llvm::DenseMap<Operation *, SmallVector<DMAConfigureTaskOp>> syncToConfigures;
-
-  //===--------------------------------------------------------------------===//
-  // Validation: reject control-flow forms whose static BD-ID write-back is not
-  // supported yet (they need a runtime-selected BD id).
-  //===--------------------------------------------------------------------===//
-
-  // Reject every form the static allocator cannot handle, BEFORE any IDs are
-  // assigned, so allocation only ever runs on supported IR. This is the
-  // complete gatekeeper: anything not rejected here must allocate without
-  // crashing.
+  // Reject control flow the static path cannot lower. Constant-trip scf.for is
+  // unrolled and constant-predicate scf.if is folded before this pass, so any
+  // scf op here is runtime-valued and belongs to the dynamic EmitC path.
   LogicalResult validate(AIE::RuntimeSequenceOp seq) {
-    // 1. Per-configure liveness classification. Same-iteration tasks (freed in
-    // the iteration they are configured) and scf.if value-joins are allocated
-    // statically; only genuinely unallocatable forms are rejected here.
-    WalkResult wr = seq.walk([&](DMAConfigureTaskOp configure) -> WalkResult {
-      TaskLiveRange range = resolveTaskLiveRange(configure);
-      if (range.ambiguous) {
-        configure.emitOpError(
-            "task handle cannot be statically resolved to a single completion "
-            "(it has multiple carries/syncs, or is carried unchanged across a "
-            "loop back-edge); static BD-ID allocation is not supported for "
-            "this "
-            "form");
+    WalkResult wr = seq.walk([&](Operation *op) -> WalkResult {
+      if (isa<scf::ForOp, scf::IfOp, scf::WhileOp>(op)) {
+        op->emitOpError(
+            "runtime-valued control flow in a runtime sequence is not "
+            "supported "
+            "by static BD-ID allocation. A constant-trip scf.for is unrolled "
+            "and a constant-predicate scf.if is folded before this pass; a "
+            "surviving scf op has a runtime bound/predicate and must be "
+            "lowered "
+            "with the dynamic EmitC path");
         return WalkResult::interrupt();
-      }
-      if (range.leaked && range.enclosingLoop) {
-        configure.emitOpError(
-            "buffer descriptor configured in a loop is never completed (no "
-            "aiex.dma_await_task / aiex.dma_free_task reachable); its BD would "
-            "not be reusable across iterations");
-        return WalkResult::interrupt();
-      }
-      // A handle freed a later iteration than it was configured (a rolled
-      // ping-pong) needs a distinct physical BD per outstanding iteration. For
-      // a constant trip count that was already resolved by unrolling before
-      // this pass ran, so a surviving back-edge crossing means the loop is
-      // runtime-bound: its BD id must be selected at runtime, which is the
-      // dynamic EmitC path, not static allocation.
-      if (range.backEdgesCrossed > 0) {
-        configure.emitOpError(
-            "buffer descriptor is held across a runtime-bound loop back-edge "
-            "(a rolled ping-pong with a non-constant trip count); its BD id "
-            "must be selected at runtime. Use a compile-time-constant trip "
-            "count so the loop can be unrolled, or lower this sequence with "
-            "the dynamic EmitC path");
-        return WalkResult::interrupt();
-      }
-      return WalkResult::advance();
-    });
-    if (wr.wasInterrupted())
-      return failure();
-
-    // 2. Every free/await must complete at least one configure op. The shared
-    // forward trace maps each sync to the configures it completes; a sync
-    // absent from that map (e.g. a free of an scf.for result seeded by a
-    // non-task constant) would crash the recycle path and is rejected here.
-    wr = seq.walk([&](Operation *op) -> WalkResult {
-      Value task;
-      if (auto f = dyn_cast<DMAFreeTaskOp>(op))
-        task = f.getTask();
-      else if (auto a = dyn_cast<DMAAwaitTaskOp>(op))
-        task = a.getTask();
-      else
-        return WalkResult::advance();
-      if (!syncToConfigures.count(op)) {
-        // Emit "lower this first" notes for unlowered task ops.
-        (void)emitUnresolvedTask(op, task);
-        return WalkResult::interrupt();
-      }
-      return WalkResult::advance();
-    });
-    if (wr.wasInterrupted())
-      return failure();
-
-    // 3. A configure must not be buried inside a region op the allocator does
-    // not sweep (e.g. scf.while); its BDs would be silently left unassigned.
-    // (Pool-overflow is caught during allocation itself, when nextBdId runs
-    // dry.)
-    wr = seq.walk([&](DMAConfigureTaskOp configure) -> WalkResult {
-      Operation *p = configure->getParentOp();
-      while (p && p != seq.getOperation()) {
-        if (!isa<scf::ForOp, scf::IfOp>(p)) {
-          configure.emitOpError("is nested in an unsupported control-flow op '")
-              << p->getName()
-              << "'; BD-ID allocation only handles scf.for and scf.if";
-          return WalkResult::interrupt();
-        }
-        p = p->getParentOp();
       }
       return WalkResult::advance();
     });
     return failure(wr.wasInterrupted());
   }
-
-  //===--------------------------------------------------------------------===//
-  // Allocation
-  //===--------------------------------------------------------------------===//
 
   LogicalResult allocateConfigure(DMAConfigureTaskOp op) {
     AIE::TileOp tile = op.getTileOp();
@@ -227,17 +140,12 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // ids is tolerated.
   llvm::SmallPtrSet<Operation *, 8> awaitedConfigures;
 
-  // Return the ids of `task_op`'s chain to the pool.
-  //   isAwait          -- this sync is an await (records the configure so a
-  //                       later free of it is treated as a redundant release).
-  //   tolerateAlreadyFree -- set when this configure is one of several an
-  //                       scf.if-join free resolves to: only the arm that ran
-  //                       holds the ids, so the others legitimately appear
-  //                       already-freed.
-  // Otherwise an already-freed id is a real double free (or a free of a task
-  // that was never started) and is an error.
+  // Return the ids of the configure's chain to the pool. `isAwait` records the
+  // configure so a later free of it is treated as a redundant release rather
+  // than a double free. Otherwise an already-freed id is a real double free (or
+  // a free of a task that was never started) and is an error.
   LogicalResult recycle(DMAConfigureTaskOp task_op, Operation *freeOp,
-                        bool isAwait, bool tolerateAlreadyFree) {
+                        bool isAwait) {
     BdIdGenerator &gen = getGeneratorForTile(task_op.getTileOp());
     bool redundantAfterAwait = awaitedConfigures.contains(task_op);
     WalkResult result = task_op.walk<WalkOrder::PreOrder>([&](AIE::DMABDOp bd) {
@@ -247,7 +155,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       }
       if (gen.bdIdAlreadyAssigned(bd.getBdId().value())) {
         gen.freeBdId(bd.getBdId().value());
-      } else if (!tolerateAlreadyFree && !redundantAfterAwait) {
+      } else if (!redundantAfterAwait) {
         freeOp->emitOpError("frees buffer descriptor ID ")
             << bd.getBdId().value()
             << ", which is not currently in use; it was already completed by "
@@ -264,137 +172,59 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     return success();
   }
 
-  // Emit the "does not reference a valid configure_task" diagnostic, pointing
-  // at an unlowered task op (bd_chain / configure_task_for) when that is the
-  // cause.
-  LogicalResult emitUnresolvedTask(Operation *op, Value task) {
-    auto err =
-        op->emitOpError("does not reference a valid configure_task operation.");
-    if (Operation *def = task.getDefiningOp()) {
-      if (isa<DMAStartBdChainOp>(def))
-        err.attachNote(def->getLoc()) << "Lower this operation first using the "
-                                         "--aie-materialize-bd-chains pass.";
-      if (isa<DMAConfigureTaskForOp>(def))
-        err.attachNote(def->getLoc())
-            << "Lower this operation first using the "
-               "--aie-substitute-shim-dma-allocations pass.";
-    }
-    return err;
-  }
-
-  // Recycle every configure this sync op completes (a single configure, or the
-  // per-arm configures behind an scf.if result). When it completes more than
-  // one configure, the free joins mutually-exclusive scf.if arms and only the
-  // arm that ran holds the ids, so an already-freed id on the others is
-  // expected rather than a double-free. validate() has already checked the sync
-  // is in the map, so a miss here means an unlowered task op.
-  LogicalResult recycleTargets(Value task, Operation *op, bool isAwait) {
-    auto it = syncToConfigures.find(op);
-    if (it == syncToConfigures.end())
-      return emitUnresolvedTask(op, task);
-    ArrayRef<DMAConfigureTaskOp> targets = it->second;
-    bool tolerateAlreadyFree = targets.size() > 1;
-    for (DMAConfigureTaskOp t : targets)
-      if (failed(recycle(t, op, isAwait, tolerateAlreadyFree)))
-        return failure();
-    return success();
-  }
-
-  LogicalResult onFree(DMAFreeTaskOp op) {
-    if (failed(recycleTargets(op.getTask(), op, /*isAwait=*/false)))
-      return failure();
-    op.erase();
-    return success();
-  }
-
-  LogicalResult onAwait(DMAAwaitTaskOp op) {
-    // Awaiting a task guarantees completion, so its BD IDs can be reused after.
-    return recycleTargets(op.getTask(), op, /*isAwait=*/true);
-  }
-
-  // Snapshot/restore of the per-tile allocation state, for sweeping scf.if arms
-  // independently (mutually exclusive arms do not interfere).
-  using Snapshot = llvm::DenseMap<AIE::TileOp, BdIdGenerator::AssignedState>;
-  Snapshot snapshot() {
-    Snapshot s;
-    for (auto &kv : gens)
-      s[kv.first] = kv.second.saveAssigned();
-    return s;
-  }
-  void restore(const Snapshot &s) {
-    for (auto &kv : gens) {
-      auto it = s.find(kv.first);
-      kv.second.restoreAssigned(it == s.end() ? BdIdGenerator::AssignedState()
-                                              : it->second);
-    }
-  }
-  void unionInto(const Snapshot &other) {
-    for (auto &kv : other)
-      getGeneratorForTile(kv.first).mergeAssigned(kv.second);
-  }
-
-  LogicalResult sweepRegion(Region &region) {
-    for (Block &block : region) {
-      // Collect frees to erase after iterating (onFree erases the op).
-      SmallVector<Operation *> ops;
-      for (Operation &op : block)
-        ops.push_back(&op);
-      for (Operation *op : ops)
-        if (failed(sweepOp(op)))
-          return failure();
-    }
-    return success();
-  }
-
-  LogicalResult sweepOp(Operation *op) {
-    if (auto cfg = dyn_cast<DMAConfigureTaskOp>(op))
-      return allocateConfigure(cfg);
-    if (auto freeOp = dyn_cast<DMAFreeTaskOp>(op))
-      return onFree(freeOp);
-    if (auto await = dyn_cast<DMAAwaitTaskOp>(op))
-      return onAwait(await);
-    if (auto forOp = dyn_cast<scf::ForOp>(op)) {
-      // Constant-trip loops were unrolled before this pass, so any loop here is
-      // runtime-bound. Its tasks must be same-iteration (allocate and free
-      // within the body) -- validate() has already rejected handles carried
-      // across the back-edge. Sweep the body once: ids taken by a task are
-      // returned by its free within the same iteration, so the allocation is
-      // correct for every iteration.
-      return sweepRegion(forOp.getRegion());
-    }
-    if (auto ifOp = dyn_cast<scf::IfOp>(op)) {
-      // Arms are mutually exclusive: sweep each from the same starting state
-      // and union the resulting allocations (a BD still held when an arm
-      // finishes stays reserved regardless of which arm runs).
-      Snapshot before = snapshot();
-      if (failed(sweepRegion(ifOp.getThenRegion())))
-        return failure();
-      Snapshot afterThen = snapshot();
-      restore(before);
-      if (!ifOp.getElseRegion().empty()) {
-        if (failed(sweepRegion(ifOp.getElseRegion())))
-          return failure();
+  // Resolve a free/await to its configure. In straight-line IR the task value
+  // is defined directly by the configure op; anything else is an unlowered task
+  // op.
+  LogicalResult recycleTask(Value task, Operation *op, bool isAwait) {
+    auto cfg = dyn_cast_or_null<DMAConfigureTaskOp>(task.getDefiningOp());
+    if (!cfg) {
+      auto err = op->emitOpError(
+          "does not reference a valid configure_task operation.");
+      if (Operation *def = task.getDefiningOp()) {
+        if (isa<DMAStartBdChainOp>(def))
+          err.attachNote(def->getLoc())
+              << "Lower this operation first using the "
+                 "--aie-materialize-bd-chains pass.";
+        if (isa<DMAConfigureTaskForOp>(def))
+          err.attachNote(def->getLoc())
+              << "Lower this operation first using the "
+                 "--aie-substitute-shim-dma-allocations pass.";
       }
-      unionInto(afterThen);
-      return success();
+      return err;
     }
-    // Other ops (incl. those with regions not expected here) are inert for BD
-    // allocation.
-    return success();
+    return recycle(cfg, op, isAwait);
   }
 
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();
 
     WalkResult wr = device.walk([&](AIE::RuntimeSequenceOp seq) -> WalkResult {
-      // Build the sync->configures map once from the shared forward trace; both
-      // validation and the recycle path read it.
-      syncToConfigures = mapSyncsToConfigures(seq);
       if (failed(validate(seq)))
         return WalkResult::interrupt();
       gens.clear();
-      if (failed(sweepRegion(seq.getBody())))
+      awaitedConfigures.clear();
+
+      // Straight-line walk. Collect frees to erase after (recycling reads the
+      // configure the free points at, so erase only once the walk is done).
+      SmallVector<DMAFreeTaskOp> frees;
+      WalkResult r = seq.walk([&](Operation *op) -> WalkResult {
+        if (auto cfg = dyn_cast<DMAConfigureTaskOp>(op)) {
+          if (failed(allocateConfigure(cfg)))
+            return WalkResult::interrupt();
+        } else if (auto await = dyn_cast<DMAAwaitTaskOp>(op)) {
+          if (failed(recycleTask(await.getTask(), await, /*isAwait=*/true)))
+            return WalkResult::interrupt();
+        } else if (auto freeOp = dyn_cast<DMAFreeTaskOp>(op)) {
+          if (failed(recycleTask(freeOp.getTask(), freeOp, /*isAwait=*/false)))
+            return WalkResult::interrupt();
+          frees.push_back(freeOp);
+        }
+        return WalkResult::advance();
+      });
+      if (r.wasInterrupted())
         return WalkResult::interrupt();
+      for (DMAFreeTaskOp freeOp : frees)
+        freeOp.erase();
       return WalkResult::advance();
     });
     if (wr.wasInterrupted())

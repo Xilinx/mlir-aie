@@ -53,18 +53,6 @@ bool BdIdGenerator::bdIdAlreadyAssigned(uint32_t bdId) {
 
 void BdIdGenerator::freeBdId(uint32_t bdId) { alreadyAssigned.erase(bdId); }
 
-BdIdGenerator::AssignedState BdIdGenerator::saveAssigned() const {
-  return alreadyAssigned;
-}
-
-void BdIdGenerator::restoreAssigned(AssignedState state) {
-  alreadyAssigned = std::move(state);
-}
-
-void BdIdGenerator::mergeAssigned(const AssignedState &state) {
-  alreadyAssigned.insert(state.begin(), state.end());
-}
-
 struct AIEAssignBufferDescriptorIDsPass
     : xilinx::AIE::impl::AIEAssignBufferDescriptorIDsBase<
           AIEAssignBufferDescriptorIDsPass> {

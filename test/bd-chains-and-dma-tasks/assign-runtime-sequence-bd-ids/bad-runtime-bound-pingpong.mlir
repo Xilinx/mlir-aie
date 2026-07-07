@@ -8,10 +8,11 @@
 // RUN:         --verify-diagnostics --split-input-file %s
 
 // A rolled ping-pong over a RUNTIME-bound loop (upper bound %n is a block
-// argument). Unrolling cannot expand it, so the handle still crosses the loop
-// back-edge when allocation runs. The static path cannot select a per-iteration
-// BD id, so this is rejected with a pointer to the dynamic path. (A
-// constant-trip version of this exact loop unrolls and allocates fine -- see
+// argument). Unrolling cannot expand it, so the scf.for survives to allocation.
+// The static path cannot lower runtime-valued control flow (the runtime
+// sequence becomes a flat, branchless NPU instruction stream), so it is
+// rejected with a pointer to the dynamic path. (A constant-trip version of this
+// exact loop unrolls and allocates fine -- see
 // unroll-runtime-sequence-loops/good-pingpong.mlir.)
 
 aie.device(npu1) {
@@ -24,8 +25,8 @@ aie.device(npu1) {
       aie.end
     }
     aiex.dma_start_task(%init)
+    // expected-error@+1 {{runtime-valued control flow in a runtime sequence is not supported}}
     %last = scf.for %i = %c1 to %n step %c1 iter_args(%prev = %init) -> (index) {
-      // expected-error@+1 {{held across a runtime-bound loop back-edge}}
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
         aie.dma_bd(%arg0 : memref<1024xi32>, 0, 256)
         aie.end
