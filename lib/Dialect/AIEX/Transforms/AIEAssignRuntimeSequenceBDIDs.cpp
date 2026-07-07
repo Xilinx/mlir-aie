@@ -18,6 +18,11 @@
 // NPU instruction stream); such forms are rejected here for the dynamic EmitC
 // path (Phase 2).
 //
+// Before allocating, the pass also rejects task-completion-token (TCT)
+// imbalances -- an await with no matching issue_token push on its channel would
+// deadlock the host. On the straight-line IR the allocator sees, this is a
+// simple per-channel token count (see verifyTokenBalance).
+//
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
@@ -29,6 +34,9 @@
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/SmallPtrSet.h"
+
+#include <array>
+#include <map>
 
 namespace xilinx::AIEX {
 #define GEN_PASS_DEF_AIEASSIGNRUNTIMESEQUENCEBDIDS
@@ -62,7 +70,7 @@ struct AIEAssignRuntimeSequenceBDIDsPass
   // Reject control flow the static path cannot lower. Constant-trip scf.for is
   // unrolled and constant-predicate scf.if is folded before this pass, so any
   // scf op here is runtime-valued and belongs to the dynamic EmitC path.
-  LogicalResult validate(AIE::RuntimeSequenceOp seq) {
+  LogicalResult rejectRuntimeControlFlow(AIE::RuntimeSequenceOp seq) {
     WalkResult wr = seq.walk([&](Operation *op) -> WalkResult {
       if (isa<scf::ForOp, scf::IfOp, scf::WhileOp>(op)) {
         op->emitOpError(
@@ -76,6 +84,68 @@ struct AIEAssignRuntimeSequenceBDIDsPass
       return WalkResult::advance();
     });
     return failure(wr.wasInterrupted());
+  }
+
+  // Reject task-completion-token (TCT) imbalances that deadlock the host.
+  //
+  // Each issue_token dma_start_task pushes one token onto a per-(tile,
+  // direction, channel) FIFO; each dma_await_task on that channel pops one. A
+  // sync that runs when the FIFO is empty blocks the runtime sequence forever.
+  // Over-production is always safe (leftover tokens are harmless) -- awaiting
+  // the last of N pushes on a channel and letting the FIFO cover the rest is a
+  // legal, common idiom -- so only under-production (an await with no matching
+  // push) is an error.
+  //
+  // rejectRuntimeControlFlow has already run, so this walks straight-line IR: a
+  // single program-order pass counting available tokens per channel is exact,
+  // with no control-flow reasoning. (Non-issue_token awaits are left to the
+  // per-op check in aie-dma-tasks-to-npu, which owns that diagnostic.)
+  LogicalResult verifyTokenBalance(AIE::RuntimeSequenceOp seq) {
+    using ChannelKey = std::array<int, 4>; // {col, row, direction, channel}
+    auto keyOf = [](DMAConfigureTaskOp cfg) -> ChannelKey {
+      AIE::TileOp tile = cfg.getTileOp();
+      return {tile.getCol(), tile.getRow(),
+              static_cast<int>(cfg.getDirection()),
+              static_cast<int>(cfg.getChannel())};
+    };
+
+    std::map<ChannelKey, int> avail;
+    WalkResult wr = seq.walk([&](Operation *op) -> WalkResult {
+      if (auto start = dyn_cast<DMAStartTaskOp>(op)) {
+        DMAConfigureTaskOp cfg = start.getTaskOp();
+        if (cfg && cfg.getIssueToken())
+          avail[keyOf(cfg)]++;
+      } else if (auto await = dyn_cast<DMAAwaitTaskOp>(op)) {
+        DMAConfigureTaskOp cfg = await.getTaskOp();
+        // A non-issue_token await is diagnosed later by aie-dma-tasks-to-npu;
+        // an unresolved task is diagnosed by the recycle path. Skip both here.
+        if (!cfg || !cfg.getIssueToken())
+          return WalkResult::advance();
+        int &tokens = avail[keyOf(cfg)];
+        if (tokens < 1) {
+          await.emitOpError(
+              "awaits a task-completion token on a channel where no "
+              "outstanding token is guaranteed to have been produced; the "
+              "runtime sequence would block here forever. Ensure a prior "
+              "issue_token dma_start_task on the same tile, direction and "
+              "channel reaches this await");
+          return WalkResult::interrupt();
+        }
+        tokens--;
+      }
+      return WalkResult::advance();
+    });
+    return failure(wr.wasInterrupted());
+  }
+
+  LogicalResult validate(AIE::RuntimeSequenceOp seq) {
+    // Reject runtime control flow first, so the token-balance pass below runs
+    // on straight-line IR and needs no control-flow reasoning.
+    if (failed(rejectRuntimeControlFlow(seq)))
+      return failure();
+    if (failed(verifyTokenBalance(seq)))
+      return failure();
+    return success();
   }
 
   LogicalResult allocateConfigure(DMAConfigureTaskOp op) {
