@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 from collections import defaultdict
 import numpy as np
-from typing import Any, Sequence, get_args, get_origin
+from typing import Any, Sequence, TypeVar, get_args, get_origin
 from aie._mlir_libs import (
     _aie as CustomTypes,  # pyright: ignore[reportAttributeAccessIssue]
 )
@@ -220,6 +220,16 @@ def try_convert_np_type_to_mlir_type(input_type):
     else:
         output_type = input_type
     return output_type
+
+
+_E = TypeVar("_E")
+
+
+def single_elem_or_list_to_list(val: "list[_E] | _E") -> "list[_E]":
+    """does not work for list of lists but still useful"""
+    if not isinstance(val, list):
+        return [val]
+    return val
 
 
 def get_arg_types(objs: Sequence[int | float | Value | OpView]):

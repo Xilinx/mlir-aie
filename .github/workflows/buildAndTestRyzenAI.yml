@@ -12,9 +12,7 @@ on:
       - main
       - test-ryzen-ai
   pull_request:
-    # Default activity types plus labeled/unlabeled so toggling the
-    # "test-wheels" label re-evaluates the gated wheel-example jobs.
-    types: [opened, synchronize, reopened, labeled, unlabeled]
+    types: [opened, synchronize, reopened]
   merge_group:
   schedule:
     # Runs at midnight (00:00) every day
@@ -137,12 +135,9 @@ jobs:
           rm -rf $PIP_CACHE_DIR
 
   # Build the single wheel the examples run against, FROM THIS RUN's commit, so
-  # the example test never installs a stale published wheel. Expensive
-  # (~19 min), so gated: runs in the merge queue (authoritative, on the
-  # post-merge commit) or on demand when a PR carries the "test-wheels" label.
+  # the example test never installs a stale published wheel.
   build-dev-wheel:
     name: Build Development Wheel (Python 3.12, RTTI ON)
-    if: ${{ github.event_name == 'merge_group' || contains(github.event.pull_request.labels.*.name, 'test-wheels') }}
     uses: ./.github/workflows/buildRyzenWheels.yml
     with:
       python_version: "3.12"
@@ -160,10 +155,9 @@ jobs:
 
   test-from-wheels:
     name: Smoke-Test Wheels on Ryzen AI
-    # The goal of this job is to verify that a wheel built from this run's commit can be installed using the quick_setup.sh script and can cmopile and run basic examples on NPU hardware.
+    # The goal of this job is to verify that a wheel built from this run's commit can be installed using the quick_setup.sh script and can compile and run basic examples on NPU hardware.
     # Since we've tested the entire test suite in the from-source job, running a couple spot-checks gives us some confidence that the wheel is functional.
     needs: build-dev-wheel
-    if: ${{ github.event_name == 'merge_group' || contains(github.event.pull_request.labels.*.name, 'test-wheels') }}
     runs-on: ${{ matrix.runner_type }}
     strategy:
       fail-fast: false
