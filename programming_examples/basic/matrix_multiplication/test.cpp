@@ -143,12 +143,13 @@ int main(int argc, const char *argv[]) {
   auto bo_out =
       xrt::bo(device, C_SIZE, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
 
-  auto bo_tmp1 = xrt::bo(device, 1, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(6));
-
-  // Workaround so we declare a really small trace buffer when one is not used
-  int tmp_trace_size = (trace_size > 0) ? trace_size : 1;
-  auto bo_trace = xrt::bo(device, tmp_trace_size * 4, XRT_BO_FLAGS_HOST_ONLY,
-                          kernel.group_id(7));
+  // Trace lowering appends the trace buffer as the runtime_sequence operand
+  // right after the data buffers, so it lands at group_id(6) -- no padding
+  // buffer in front of it. It is only part of the ABI when tracing is enabled.
+  xrt::bo bo_trace;
+  if (trace_size > 0)
+    bo_trace = xrt::bo(device, trace_size * 4, XRT_BO_FLAGS_HOST_ONLY,
+                       kernel.group_id(6));
 
   if (verbosity >= 1) {
     std::cout << "Writing data into buffer objects.\n";
@@ -178,9 +179,11 @@ int main(int argc, const char *argv[]) {
   std::vector<C_DATATYPE> CVec(C_VOLUME);
   memset(bufOut, 0, C_SIZE);
 
-  char *bufTrace = bo_trace.map<char *>();
-  if (trace_size > 0)
+  char *bufTrace = nullptr;
+  if (trace_size > 0) {
+    bufTrace = bo_trace.map<char *>();
     memset(bufTrace, 0, trace_size);
+  }
 
   if (verbosity >= 2) {
     std::cout << "DTYPE_IN  = " XSTR(DTYPE_IN) "\n";
@@ -219,8 +222,19 @@ int main(int argc, const char *argv[]) {
     }
     auto start = std::chrono::high_resolution_clock::now();
     unsigned int opcode = 3;
-    auto run = kernel(opcode, bo_instr, instr_v.size(), bo_a, bo_b, bo_out,
-                      bo_tmp1, bo_trace);
+    // Build the argument list explicitly so the trace buffer is only passed
+    // when tracing is enabled, matching the kernel's declared host-buffer ABI
+    // (opcode, instr, ninstr, A, B, C, [trace]).
+    auto run = xrt::run(kernel);
+    run.set_arg(0, opcode);
+    run.set_arg(1, bo_instr);
+    run.set_arg(2, instr_v.size());
+    run.set_arg(3, bo_a);
+    run.set_arg(4, bo_b);
+    run.set_arg(5, bo_out);
+    if (trace_size > 0)
+      run.set_arg(6, bo_trace);
+    run.start();
     ert_cmd_state r = run.wait();
     if (r != ERT_CMD_STATE_COMPLETED) {
       std::cout << "Kernel did not complete. Returned status: " << r << "\n";
