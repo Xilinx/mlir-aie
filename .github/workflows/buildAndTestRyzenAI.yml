@@ -76,14 +76,19 @@ jobs:
 
       - name: Run commands
         run: |
-          # Transient NPU hardware faults (e.g. DRM_IOCTL_AMDXDNA_EXEC_CMD
-          # I/O errors on aie2-4col) occasionally fail this step. Re-run the
-          # whole step once; the job passes if the retry succeeds.
+          # aie2-4col runners occasionally hit a transient NPU hardware fault
+          # (DRM_IOCTL_AMDXDNA_EXEC_CMD I/O error). Re-run the whole step once,
+          # ONLY on aie2-4col when that specific error appears in the output.
           if [ -z "$STEP_RETRIED" ]; then
             export STEP_RETRIED=1
-            bash -eo pipefail "$0" && exit 0
-            echo "::warning::First attempt failed; retrying the step once"
-            exec bash -eo pipefail "$0"
+            log=$(mktemp)
+            bash -eo pipefail "$0" 2>&1 | tee "$log" && exit 0
+            if [ "${{ matrix.runner_type }}" = "aie2-4col" ] && \
+               grep -qF "DRM_IOCTL_AMDXDNA_EXEC_CMD IOCTL failed (err=-5): Input/output error" "$log"; then
+              echo "::warning::Transient NPU fault detected; retrying the step once"
+              exec bash -eo pipefail "$0"
+            fi
+            exit 1
           fi
           sudo prlimit -lunlimited --pid $$
           # Newer XRT/amdxdna packages no longer ship setup.sh; source it
