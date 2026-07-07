@@ -19,7 +19,7 @@ module {
     aie.runtime_sequence(%arg0: memref<32xi8>) {
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
           // expected-note@+1 {{user}}
-          aie.dma_bd(%buf : memref<32xi8>, 4, 32) {bd_id = 0 : i32}
+          aie.dma_bd(%buf : memref<32xi8> offset = 4 len = 32 sizes = [] strides = []) {bd_id = 0 : i32}
           aie.end
       }
     }

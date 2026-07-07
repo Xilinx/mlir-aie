@@ -21,11 +21,11 @@
 
 // Producer DMA sends 40 elements per BD
 // CHECK: aie.memtile_dma
-// CHECK: aie.dma_bd(%{{.*}} : memref<40xi32>, 0, 40)
+// CHECK: aie.dma_bd(%{{.*}} : memref<40xi32> offset = 0 len = 40 sizes = [] strides = [])
 
 // Consumer DMA receives 10 elements per BD
 // CHECK: aie.mem
-// CHECK: aie.dma_bd(%{{.*}} : memref<10xi32>, 0, 10)
+// CHECK: aie.dma_bd(%{{.*}} : memref<10xi32> offset = 0 len = 10 sizes = [] strides = [])
 
 module {
   aie.device(npu2) {

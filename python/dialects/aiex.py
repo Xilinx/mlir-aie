@@ -307,12 +307,18 @@ def shim_dma_bd(
     if transfer_len is None:
         transfer_len = np.prod(sizes[-3:])
 
-    dimensions = list(zip(sizes, strides))
+    # sizes/strides are a mixed static/dynamic index list (DynamicIndexList):
+    # constants land in static_*, any runtime Value becomes a dynamic operand.
+    dynamic_sizes, _packed_sizes, static_sizes = _dispatch_mixed_values(sizes)
+    dynamic_strides, _packed_strides, static_strides = _dispatch_mixed_values(strides)
     dma_bd(
         mem,
+        dynamic_sizes,
+        dynamic_strides,
+        static_sizes,
+        static_strides,
         offset=offset,
         len=transfer_len,
-        dimensions=dimensions,
         burst_length=burst_length,
         packet=packet,
         offset_parameter=offset_parameter,

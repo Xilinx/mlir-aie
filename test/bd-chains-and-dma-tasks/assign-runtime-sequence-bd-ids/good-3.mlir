@@ -15,21 +15,21 @@ module {
 
     aie.runtime_sequence(%arg0: memref<8xi16>) {
       %t2 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      // CHECK:  aie.dma_bd(%arg0 : memref<8xi16>, 0, 8) {bd_id = 7 : i32}
-        aie.dma_bd(%arg0 : memref<8xi16>, 0, 8) {bd_id = 7 : i32}
+      // CHECK:  aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = []) {bd_id = 7 : i32}
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = []) {bd_id = 7 : i32}
         aie.next_bd ^bb1
       ^bb1:
-      // CHECK:  aie.dma_bd(%arg0 : memref<8xi16>, 0, 8) {bd_id = 0 : i32}
-        aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+      // CHECK:  aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = []) {bd_id = 0 : i32}
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
         aie.end
       }
       %t3 = aiex.dma_configure_task(%tile_0_0, S2MM, 1) {
-      // CHECK:  aie.dma_bd(%arg0 : memref<8xi16>, 0, 8) {bd_id = 1 : i32}
-        aie.dma_bd(%arg0 : memref<8xi16>, 0, 8) {bd_id = 1 : i32}
+      // CHECK:  aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = []) {bd_id = 1 : i32}
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = []) {bd_id = 1 : i32}
         aie.next_bd ^bb1
       ^bb1:
-      // CHECK:  aie.dma_bd(%arg0 : memref<8xi16>, 0, 8) {bd_id = 2 : i32}
-        aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+      // CHECK:  aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = []) {bd_id = 2 : i32}
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
         aie.end
       }
     }

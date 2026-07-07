@@ -20,9 +20,9 @@ aie.device(npu2) {
     %c1 = arith.constant 1 : index
     %c4 = arith.constant 4 : index
     scf.for %i = %c0 to %c4 step %c1 {
-      // CHECK: aie.dma_bd(%arg0 : memref<8xi16>, 0, 8) {bd_id = 0 : i32}
+      // CHECK: aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = []) {bd_id = 0 : i32}
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
         aie.end
       }
       aiex.dma_start_task(%t)
@@ -39,17 +39,17 @@ aie.device(npu2) {
   %tile_0_0 = aie.tile(0, 0)
   aie.runtime_sequence @if_arm_share(%arg0: memref<8xi16>, %c: i1) {
     scf.if %c {
-      // CHECK: aie.dma_bd(%arg0 : memref<8xi16>, 0, 8) {bd_id = 0 : i32}
+      // CHECK: aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = []) {bd_id = 0 : i32}
       %y = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
         aie.end
       }
       aiex.dma_start_task(%y)
       aiex.dma_free_task(%y)
     } else {
-      // CHECK: aie.dma_bd(%arg0 : memref<8xi16>, 0, 8) {bd_id = 0 : i32}
+      // CHECK: aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = []) {bd_id = 0 : i32}
       %z = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
         aie.end
       }
       aiex.dma_start_task(%z)
@@ -66,16 +66,16 @@ aie.device(npu2) {
 aie.device(npu2) {
   %tile_0_0 = aie.tile(0, 0)
   aie.runtime_sequence @if_live_across(%arg0: memref<8xi16>, %c: i1) {
-    // CHECK: aie.dma_bd(%arg0 : memref<8xi16>, 0, 8) {bd_id = 0 : i32}
+    // CHECK: aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = []) {bd_id = 0 : i32}
     %x = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+      aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
       aie.end
     }
     aiex.dma_start_task(%x)
     scf.if %c {
-      // CHECK: aie.dma_bd(%arg0 : memref<8xi16>, 0, 8) {bd_id = 1 : i32}
+      // CHECK: aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = []) {bd_id = 1 : i32}
       %y = aiex.dma_configure_task(%tile_0_0, MM2S, 1) {
-        aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
         aie.end
       }
       aiex.dma_start_task(%y)

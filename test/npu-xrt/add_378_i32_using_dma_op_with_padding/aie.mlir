@@ -79,38 +79,38 @@ module {
       %objFifo_out0_cons_lock = aie.lock(%tile_0_1, 3) {init = 0 : i32, sym_name = "objFifo_out0_cons_lock"}
       %0 = aie.dma(S2MM, 0) [{
         aie.use_lock(%objFifo_in0_cons_prod_lock, AcquireGreaterEqual, 1)
-        aie.dma_bd(%objFifo_in0_cons_buff_0 : memref<16xi32>, 0, 13)
+        aie.dma_bd(%objFifo_in0_cons_buff_0 : memref<16xi32> offset = 0 len = 13 sizes = [] strides = [])
         aie.use_lock(%objFifo_in0_cons_cons_lock, Release, 1)
       }, {
         aie.use_lock(%objFifo_in0_cons_prod_lock, AcquireGreaterEqual, 1)
-        aie.dma_bd(%objFifo_in0_cons_buff_1 : memref<16xi32>, 0, 13)
+        aie.dma_bd(%objFifo_in0_cons_buff_1 : memref<16xi32> offset = 0 len = 13 sizes = [] strides = [])
         aie.use_lock(%objFifo_in0_cons_cons_lock, Release, 1)
       }]
       %1 = aie.dma(MM2S, 0) [{
         aie.use_lock(%objFifo_in0_cons_cons_lock, AcquireGreaterEqual, 1)
-        aie.dma_bd(%objFifo_in0_cons_buff_0 : memref<16xi32>, 0, 16, [<size = 13, stride = 1>], [<const_pad_before = 2, const_pad_after = 1>])
+        aie.dma_bd(%objFifo_in0_cons_buff_0 : memref<16xi32> offset = 0 len = 16 sizes = [13] strides = [1] pad = [<const_pad_before = 2, const_pad_after = 1>])
         aie.use_lock(%objFifo_in0_cons_prod_lock, Release, 1)
       }, {
         aie.use_lock(%objFifo_in0_cons_cons_lock, AcquireGreaterEqual, 1)
-        aie.dma_bd(%objFifo_in0_cons_buff_1 : memref<16xi32>, 0, 16, [<size = 13, stride = 1>], [<const_pad_before = 2, const_pad_after = 1>])
+        aie.dma_bd(%objFifo_in0_cons_buff_1 : memref<16xi32> offset = 0 len = 16 sizes = [13] strides = [1] pad = [<const_pad_before = 2, const_pad_after = 1>])
         aie.use_lock(%objFifo_in0_cons_prod_lock, Release, 1)
       }]
       %2 = aie.dma(MM2S, 1) [{
         aie.use_lock(%objFifo_out0_cons_lock, AcquireGreaterEqual, 1)
-        aie.dma_bd(%objFifo_out0_buff_0 : memref<16xi32>)
+        aie.dma_bd(%objFifo_out0_buff_0 : memref<16xi32> offset = 0 sizes = [] strides = [])
         aie.use_lock(%objFifo_out0_prod_lock, Release, 1)
       }, {
         aie.use_lock(%objFifo_out0_cons_lock, AcquireGreaterEqual, 1)
-        aie.dma_bd(%objFifo_out0_buff_1 : memref<16xi32>)
+        aie.dma_bd(%objFifo_out0_buff_1 : memref<16xi32> offset = 0 sizes = [] strides = [])
         aie.use_lock(%objFifo_out0_prod_lock, Release, 1)
       }]
       %3 = aie.dma(S2MM, 1) [{
         aie.use_lock(%objFifo_out0_prod_lock, AcquireGreaterEqual, 1)
-        aie.dma_bd(%objFifo_out0_buff_0 : memref<16xi32>)
+        aie.dma_bd(%objFifo_out0_buff_0 : memref<16xi32> offset = 0 sizes = [] strides = [])
         aie.use_lock(%objFifo_out0_cons_lock, Release, 1)
       }, {
         aie.use_lock(%objFifo_out0_prod_lock, AcquireGreaterEqual, 1)
-        aie.dma_bd(%objFifo_out0_buff_1 : memref<16xi32>)
+        aie.dma_bd(%objFifo_out0_buff_1 : memref<16xi32> offset = 0 sizes = [] strides = [])
         aie.use_lock(%objFifo_out0_cons_lock, Release, 1)
       }]
       aie.end
@@ -121,20 +121,20 @@ module {
     %mem_0_2 = aie.mem(%tile_0_2) {
       %0 = aie.dma(S2MM, 0) [{
         aie.use_lock(%objFifo_in1_cons_prod_lock, AcquireGreaterEqual, 1)
-        aie.dma_bd(%objFifo_in1_cons_buff_0 : memref<8xi32>)
+        aie.dma_bd(%objFifo_in1_cons_buff_0 : memref<8xi32> offset = 0 sizes = [] strides = [])
         aie.use_lock(%objFifo_in1_cons_cons_lock, Release, 1)
       }, {
         aie.use_lock(%objFifo_in1_cons_prod_lock, AcquireGreaterEqual, 1)
-        aie.dma_bd(%objFifo_in1_cons_buff_1 : memref<8xi32>)
+        aie.dma_bd(%objFifo_in1_cons_buff_1 : memref<8xi32> offset = 0 sizes = [] strides = [])
         aie.use_lock(%objFifo_in1_cons_cons_lock, Release, 1)
       }]
       %1 = aie.dma(MM2S, 0) [{
         aie.use_lock(%objFifo_out1_cons_lock, AcquireGreaterEqual, 1)
-        aie.dma_bd(%objFifo_out1_buff_0 : memref<8xi32>)
+        aie.dma_bd(%objFifo_out1_buff_0 : memref<8xi32> offset = 0 sizes = [] strides = [])
         aie.use_lock(%objFifo_out1_prod_lock, Release, 1)
       }, {
         aie.use_lock(%objFifo_out1_cons_lock, AcquireGreaterEqual, 1)
-        aie.dma_bd(%objFifo_out1_buff_1 : memref<8xi32>)
+        aie.dma_bd(%objFifo_out1_buff_1 : memref<8xi32> offset = 0 sizes = [] strides = [])
         aie.use_lock(%objFifo_out1_prod_lock, Release, 1)
       }]
       aie.end

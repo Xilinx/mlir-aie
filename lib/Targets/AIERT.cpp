@@ -415,8 +415,17 @@ LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
       baseAddr += addrOffset.value();
   }
 
-  std::optional<llvm::ArrayRef<AIE::BDDimLayoutAttr>> dims =
-      bdOp.getDimensions();
+  // The static hardware-config path requires compile-time sizes/strides; a
+  // runtime (non-constant) operand is a hard error here rather than a silent
+  // miscompile.
+  bool dimsErr = false;
+  std::optional<llvm::SmallVector<AIE::BDDimLayoutAttr>> dims =
+      bdOp.getFoldedDimensions([&]() {
+        dimsErr = true;
+        return bdOp.emitOpError();
+      });
+  if (dimsErr)
+    return failure();
   uint64_t lenInBytes = bdOp.getLenInBytes();
   uint64_t basePlusOffsetInBytes = baseAddr + bdOp.getOffsetInBytes();
   if (!dims) {

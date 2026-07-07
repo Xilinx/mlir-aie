@@ -51,7 +51,7 @@ module {
 
     aie.runtime_sequence(%arg0: memref<8x!aiex.bfp<"v32bfp16ebz8">>, %arg1: memref<10x!aiex.bfp<"v8bfp16ebs8">>) {
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<8x!aiex.bfp<"v8bfp16ebs8">>, 0, 8) {bd_id = 7 : i32}
+        aie.dma_bd(%arg0 : memref<8x!aiex.bfp<"v8bfp16ebs8">> offset = 0 len = 8 sizes = [] strides = []) {bd_id = 7 : i32}
         aie.end
       } {issue_token = true}
     }
@@ -70,7 +70,7 @@ module {
       %buffer_0_1 = aie.buffer(%tile_0_1) {address = 0 : i32} : memref<7x!aiex.bfp<"v8bfp16ebs8">>
       %0 = aie.dma(S2MM, 0) [{
         aie.use_lock(%lock_0_1, AcquireGreaterEqual)
-        aie.dma_bd(%buffer_0_1 : memref<7x!aiex.bfp<"v8bfp16ebs8">>, 0)
+        aie.dma_bd(%buffer_0_1 : memref<7x!aiex.bfp<"v8bfp16ebs8">> offset = 0 sizes = [] strides = [])
         aie.use_lock(%lock_0_1_0, Release)
       }]
       aie.end

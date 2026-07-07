@@ -28,12 +28,12 @@ module {
   aie.shim_dma(%t00)  {
       aie.dma_start(S2MM, 0, ^bd0, ^bd1)
     ^bd0:
-      aie.dma_bd(%buffer : memref<16 x f32>, 0, 4)  {bd_id = 0 : i32}
+      aie.dma_bd(%buffer : memref<16 x f32> offset = 0 len = 4 sizes = [] strides = [])  {bd_id = 0 : i32}
       aie.next_bd ^end
     ^bd1:
       aie.dma_start(S2MM, 1, ^bd2, ^end)
     ^bd2:
-      aie.dma_bd(%buffer : memref<16 x f32>, 0, 4)  {bd_id = 1 : i32, burst_length = 128 : i32}
+      aie.dma_bd(%buffer : memref<16 x f32> offset = 0 len = 4 sizes = [] strides = [])  {bd_id = 1 : i32, burst_length = 128 : i32}
       aie.next_bd ^end
     ^end:
       aie.end

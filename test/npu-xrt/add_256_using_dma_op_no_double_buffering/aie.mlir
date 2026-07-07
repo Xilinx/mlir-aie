@@ -56,23 +56,23 @@ module {
       // forward
       %0 = aie.dma(S2MM, 0) [{
         aie.use_lock(%lock_0_1_0, AcquireGreaterEqual, 1)
-        aie.dma_bd(%buffer_0_1 : memref<16xi32>)
+        aie.dma_bd(%buffer_0_1 : memref<16xi32> offset = 0 sizes = [] strides = [])
         aie.use_lock(%lock_0_1_1, Release, 1)
       }]
       %1 = aie.dma(MM2S, 0) [{
         aie.use_lock(%lock_0_1_1, AcquireGreaterEqual, 1)
-        aie.dma_bd(%buffer_0_1 : memref<16xi32>)
+        aie.dma_bd(%buffer_0_1 : memref<16xi32> offset = 0 sizes = [] strides = [])
         aie.use_lock(%lock_0_1_0, Release, 1)
       }]
       // backward
       %2 = aie.dma(S2MM, 1) [{
         aie.use_lock(%lock_0_1_2, AcquireGreaterEqual, 1)
-        aie.dma_bd(%buffer_0_1_0 : memref<16xi32>)
+        aie.dma_bd(%buffer_0_1_0 : memref<16xi32> offset = 0 sizes = [] strides = [])
         aie.use_lock(%lock_0_1_3, Release, 1)
       }]
       %3 = aie.dma(MM2S, 1) [{
         aie.use_lock(%lock_0_1_3, AcquireGreaterEqual, 1)
-        aie.dma_bd(%buffer_0_1_0 : memref<16xi32>)
+        aie.dma_bd(%buffer_0_1_0 : memref<16xi32> offset = 0 sizes = [] strides = [])
         aie.use_lock(%lock_0_1_2, Release, 1)
       }]
       aie.end
@@ -82,13 +82,13 @@ module {
      // in
       %0 = aie.dma(S2MM, 0) [{
         aie.use_lock(%lock_0_2_0, AcquireGreaterEqual, 1)
-        aie.dma_bd(%buffer_0_2 : memref<16xi32>)
+        aie.dma_bd(%buffer_0_2 : memref<16xi32> offset = 0 sizes = [] strides = [])
         aie.use_lock(%lock_0_2_1, Release, 1)
       }]
       // out
       %1 = aie.dma(MM2S, 0) [{
         aie.use_lock(%lock_0_2_3, AcquireGreaterEqual, 1)
-        aie.dma_bd(%buffer_0_2_1 : memref<16xi32>)
+        aie.dma_bd(%buffer_0_2_1 : memref<16xi32> offset = 0 sizes = [] strides = [])
         aie.use_lock(%lock_0_2_2, Release, 1)
       }]
       aie.end

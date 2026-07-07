@@ -89,7 +89,7 @@ module {
   aie.shim_dma(%t00)  {
       aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
-      aie.dma_bd(%buffer : memref<16 x f32>, 0, 4)  {bd_id = 0 : i32}
+      aie.dma_bd(%buffer : memref<16 x f32> offset = 0 len = 4 sizes = [] strides = [])  {bd_id = 0 : i32}
       aie.next_bd ^end
     ^end:
       aie.end
@@ -100,7 +100,7 @@ module {
   aie.shim_dma(%t10)  {
       aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
-      aie.dma_bd(%buffer : memref<16 x f32>, 0, 4)  {bd_id = 0 : i32}
+      aie.dma_bd(%buffer : memref<16 x f32> offset = 0 len = 4 sizes = [] strides = [])  {bd_id = 0 : i32}
       aie.next_bd ^end
     ^end:
       aie.end
@@ -120,12 +120,12 @@ module {
       aie.dma_start(MM2S, 0, ^bd1, ^end)
     ^bd0:
       aie.use_lock(%lock0, Acquire, 0)
-      aie.dma_bd(%buffer : memref<16 x f32>, 0, 16) {bd_id = 0 : i32}
+      aie.dma_bd(%buffer : memref<16 x f32> offset = 0 len = 16 sizes = [] strides = []) {bd_id = 0 : i32}
       aie.use_lock(%lock0, Release, 1)
       aie.next_bd ^bd0
     ^bd1:
       // aie.use_lock(%lock1, Acquire, 1)
-      aie.dma_bd(%buffer : memref<16 x f32>, 0, 4) {bd_id = 1 : i32}
+      aie.dma_bd(%buffer : memref<16 x f32> offset = 0 len = 4 sizes = [] strides = []) {bd_id = 1 : i32}
       // aie.use_lock(%lock1, Release, 0)
       aie.next_bd ^bd1
     ^end:
@@ -137,7 +137,7 @@ module {
   aie.shim_dma(%t30)  {
       aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
-      aie.dma_bd(%buffer : memref<16 x f32>, 0, 4) {bd_id = 0 : i32}
+      aie.dma_bd(%buffer : memref<16 x f32> offset = 0 len = 4 sizes = [] strides = []) {bd_id = 0 : i32}
       aie.next_bd ^end
     ^end:
       aie.end

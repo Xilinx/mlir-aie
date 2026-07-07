@@ -107,6 +107,8 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     int BaseAddrA = 0;
     int elementWidthInBytes = 0;
     int ndims = 0;
+    // Storage for the folded data-layout dimensions; `dims` refers into it.
+    SmallVector<BDDimLayoutAttr> dimsStorage;
     ArrayRef<BDDimLayoutAttr> dims;
     //      StringRef FifoMode = disable; // FIXME: when to enable FIFO mode?
     for (auto op : block->getOps<DMABDOp>()) {
@@ -130,10 +132,20 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
       lenA = op.getLenInBytes();
       offsetA = op.getOffsetInBytes();
       elementWidthInBytes = op.getBufferElementTypeWidthInBytes();
-      if (op.getDimensions()) {
-        dims = *op.getDimensions();
+      // The static hardware-config path requires compile-time sizes/strides; a
+      // runtime (non-constant) operand is a hard error rather than a silent
+      // miscompile.
+      bool dimsErr = false;
+      if (auto folded = op.getFoldedDimensions([&]() {
+            dimsErr = true;
+            return op.emitOpError();
+          })) {
+        dimsStorage = std::move(*folded);
+        dims = dimsStorage;
         ndims = dims.size();
       }
+      if (dimsErr)
+        return failure();
     }
 
     if (0 != ndims)

@@ -94,7 +94,7 @@ module {
       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
     ^bb1:  // 2 preds: ^bb0, ^bb2
       aie.use_lock(%output_lock4, AcquireGreaterEqual, 1)
-      aie.dma_bd(%output_buffer : memref<8xi32>, 0, 8) {packet = #aie.packet_info<pkt_id = 3, pkt_type = 0>}
+      aie.dma_bd(%output_buffer : memref<8xi32> offset = 0 len = 8 sizes = [] strides = []) {packet = #aie.packet_info<pkt_id = 3, pkt_type = 0>}
       aie.use_lock(%output_lock5, Release, 1)
       aie.next_bd ^bb1
     ^bb2:

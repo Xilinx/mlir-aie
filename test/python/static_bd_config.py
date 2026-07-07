@@ -26,14 +26,14 @@ with mlir_mod_ctx() as ctx:
         # CHECK:    %0 = aie.dma_start(S2MM, 1, ^bb1, ^bb2)
         # CHECK:  ^bb1:  // pred: ^bb0
         # CHECK:    aie.use_lock(%[[lock0]], AcquireGreaterEqual, 1)
-        # CHECK:    aie.dma_bd(%[[buf0]] : memref<16xi32>)
+        # CHECK:    aie.dma_bd(%[[buf0]] : memref<16xi32> offset = 0 sizes = [] strides = [])
         # CHECK:    aie.use_lock(%[[lock1]], Release, 1)
         # CHECK:    aie.end
         # CHECK:  ^bb2:  // pred: ^bb0
         # CHECK:    %1 = aie.dma_start(MM2S, 0, ^bb3, ^bb4)
         # CHECK:  ^bb3:  // pred: ^bb2
         # CHECK:    aie.use_lock(%[[lock1]], AcquireGreaterEqual, 1)
-        # CHECK:    aie.dma_bd(%[[buf1]] : memref<16xi32>)
+        # CHECK:    aie.dma_bd(%[[buf1]] : memref<16xi32> offset = 0 sizes = [] strides = [])
         # CHECK:    aie.use_lock(%[[lock0]], Release, 1)
         # CHECK:    aie.end
         # CHECK:  ^bb4:  // pred: ^bb2

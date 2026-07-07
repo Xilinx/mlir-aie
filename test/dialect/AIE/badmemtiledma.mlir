@@ -33,7 +33,7 @@ module @test {
         // expected-note@+1 {{in this BD block}}
         aie.use_lock(%lock, Acquire, 1)
         aie.use_lock(%lock, Acquire, 1)
-        aie.dma_bd(%buff : memref<16xi32>, 0, 16)
+        aie.dma_bd(%buff : memref<16xi32> offset = 0 len = 16 sizes = [] strides = [])
         aie.use_lock(%lock, Release, 0)
         aie.next_bd ^bd0
       ^end:
@@ -58,7 +58,7 @@ module @test {
         // expected-note@+1 {{in this BD block}}
         aie.use_lock(%prod_lock, AcquireGreaterEqual, 1)
         aie.use_lock(%prod_lock_test, AcquireGreaterEqual, 1)
-        aie.dma_bd(%buff : memref<16xi32>, 0, 16)
+        aie.dma_bd(%buff : memref<16xi32> offset = 0 len = 16 sizes = [] strides = [])
         aie.use_lock(%cons_lock, Release, 1)
         aie.next_bd ^bd0
       ^end:
@@ -82,7 +82,7 @@ module @test {
       ^bd0:
         // expected-note@+1 {{in this BD block}}
         aie.use_lock(%prod_lock, AcquireGreaterEqual, 1)
-        aie.dma_bd(%buff : memref<16xi32>, 0, 16)
+        aie.dma_bd(%buff : memref<16xi32> offset = 0 len = 16 sizes = [] strides = [])
         aie.use_lock(%cons_lock, Release, 1)
         aie.use_lock(%cons_lock_test, Release, 1)
         aie.next_bd ^bd0
@@ -107,8 +107,8 @@ module @test {
       ^bd0:
         // expected-note@+1 {{in this BD block}}
         aie.use_lock(%prod_lock, AcquireGreaterEqual, 1)
-        aie.dma_bd(%buff : memref<16xi32>, 0, 16)
-        aie.dma_bd(%buff2 : memref<16xi32>, 0, 16)
+        aie.dma_bd(%buff : memref<16xi32> offset = 0 len = 16 sizes = [] strides = [])
+        aie.dma_bd(%buff2 : memref<16xi32> offset = 0 len = 16 sizes = [] strides = [])
         aie.use_lock(%cons_lock, Release, 1)
         aie.next_bd ^bd0
       ^end:

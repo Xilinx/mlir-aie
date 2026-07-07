@@ -38,6 +38,7 @@ from ...dialects.aie import (
     shim_mem,
     use_lock,  # pyright: ignore[reportAttributeAccessIssue]
 )
+from ...dialects.transform.structured import _dispatch_mixed_values
 from ..buffer import Buffer
 from ..lock import Lock
 from ..resolvable import Resolvable
@@ -243,8 +244,10 @@ class TileDma(Resolvable):
                     with block[bd_block_idx[bd_pos]]:
                         for acq in bd.acquires:
                             acq.emit()
-                        # dma_bd: pass buffer + optional offset/length.
-                        # The dialect helper's signature is dma_bd(buffer, offset=, len=).
+                        # dma_bd carries the data-layout as a mixed static/dynamic
+                        # index list: split bd.dimensions (a list of (size, stride)
+                        # pairs) into parallel size/stride lists, then dispatch to
+                        # static arrays plus any dynamic Value operands.
                         bd_kwargs = {}
                         if bd.offset:
                             bd_kwargs["offset"] = bd.offset
@@ -252,9 +255,20 @@ class TileDma(Resolvable):
                             bd_kwargs["len"] = bd.length
                         if bd.packet is not None:
                             bd_kwargs["packet"] = bd.packet
-                        if bd.dimensions is not None:
-                            bd_kwargs["dimensions"] = bd.dimensions
-                        dma_bd(bd.buffer.op, **bd_kwargs)
+                        sizes = [d[0] for d in bd.dimensions] if bd.dimensions else []
+                        strides = (
+                            [d[1] for d in bd.dimensions] if bd.dimensions else []
+                        )
+                        dyn_sizes, _, static_sizes = _dispatch_mixed_values(sizes)
+                        dyn_strides, _, static_strides = _dispatch_mixed_values(strides)
+                        dma_bd(
+                            bd.buffer.op,
+                            dyn_sizes,
+                            dyn_strides,
+                            static_sizes,
+                            static_strides,
+                            **bd_kwargs,
+                        )
                         for rel in bd.releases:
                             rel.emit()
                         # next_bd target

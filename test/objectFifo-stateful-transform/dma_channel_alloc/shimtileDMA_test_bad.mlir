@@ -27,19 +27,19 @@ module @shimtileDMA_channels {
             %dma1 = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
         ^bb1:
             aie.use_lock(%lock0, Acquire, 1)
-            aie.dma_bd(%buff0 : memref<16xi32>, 0, 16)
+            aie.dma_bd(%buff0 : memref<16xi32> offset = 0 len = 16 sizes = [] strides = [])
             aie.use_lock(%lock0, Release, 0)
             aie.next_bd ^bb2
         ^bb2:
             aie.use_lock(%lock1, Acquire, 1)
-            aie.dma_bd(%buff1 : memref<16xi32>, 0, 16)
+            aie.dma_bd(%buff1 : memref<16xi32> offset = 0 len = 16 sizes = [] strides = [])
             aie.use_lock(%lock1, Release, 0)
             aie.next_bd ^bb1
         ^bb3:
             %dma2 = aie.dma_start(MM2S, 1, ^bb4, ^bb5)
         ^bb4:
             aie.use_lock(%lock2, Acquire, 0)
-            aie.dma_bd(%buff2 : memref<16xi32>, 0, 16)
+            aie.dma_bd(%buff2 : memref<16xi32> offset = 0 len = 16 sizes = [] strides = [])
             aie.use_lock(%lock2, Release, 1)
             aie.next_bd ^bb4
         ^bb5:

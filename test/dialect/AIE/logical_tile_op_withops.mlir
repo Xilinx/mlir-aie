@@ -151,7 +151,7 @@ module @test_dma_configure_task {
 
     aie.runtime_sequence(%arg0: memref<1024xi32>) {
       %task = aiex.dma_configure_task(%shim_tile, MM2S, 0) {
-        aie.dma_bd(%buffer : memref<1024xi32>, 0, 1024) {bd_id = 0 : i32}
+        aie.dma_bd(%buffer : memref<1024xi32> offset = 0 len = 1024 sizes = [] strides = []) {bd_id = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%task)
@@ -170,7 +170,7 @@ module @test_dma_configure_task_memtile {
 
     aie.runtime_sequence(%arg0: memref<256xi32>) {
       %task = aiex.dma_configure_task(%mem_tile, S2MM, 0) {
-        aie.dma_bd(%buffer_in : memref<256xi32>, 0, 256) {bd_id = 0 : i32}
+        aie.dma_bd(%buffer_in : memref<256xi32> offset = 0 len = 256 sizes = [] strides = []) {bd_id = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%task)

@@ -34,13 +34,13 @@ with mlir_mod_ctx() as ctx:
                     pass
                 # CHECK: ^bb1:
                 with bd[1]:
-                    # CHECK:   aie.dma_bd(%[[buf0]] : memref<16xi16>)
+                    # CHECK:   aie.dma_bd(%[[buf0]] : memref<16xi16> offset = 0 sizes = [] strides = [])
                     dma_bd(buf0)
                     # CHECK:   aie.next_bd ^bb2
                     next_bd(bd[2])
                 # CHECK: ^bb2:
                 with bd[2]:
-                    # CHECK:   aie.dma_bd(%[[buf1]] : memref<32xi16>)
+                    # CHECK:   aie.dma_bd(%[[buf1]] : memref<32xi16> offset = 0 sizes = [] strides = [])
                     dma_bd(buf1)
                     # CHECK:   aie.next_bd ^bb1
                     next_bd(bd[1])

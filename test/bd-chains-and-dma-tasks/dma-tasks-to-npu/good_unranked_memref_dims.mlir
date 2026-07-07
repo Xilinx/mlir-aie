@@ -23,8 +23,7 @@ module {
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
         // 3 dimensions: outer size=8, middle size=4, inner size=4
         // Transfer size = 8 * 4 * 4 = 128 bf16 elements
-        aie.dma_bd(%arg0 : memref<*xbf16>, 0, 128,
-                   [<size=8, stride=64>, <size=4, stride=16>, <size=4, stride=1>]) {bd_id = 0 : i32}
+        aie.dma_bd(%arg0 : memref<*xbf16> offset = 0 len = 128 sizes = [8, 4, 4] strides = [64, 16, 1]) {bd_id = 0 : i32}
         aie.end
       } {issue_token = true}
 

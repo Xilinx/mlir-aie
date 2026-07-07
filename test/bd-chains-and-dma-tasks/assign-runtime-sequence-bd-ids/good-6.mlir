@@ -17,7 +17,7 @@ module {
     aie.runtime_sequence(%arg0: memref<8xi16>) {
       // CHECK: %[[task1:.+]] = aiex.dma_configure_task(%{{.*}}tile_0_0, MM2S, 0, <pkt_type = 0, pkt_id = 2>)
       %t1 = aiex.dma_configure_task_for @alloc0 {
-        aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
         aie.end
       }
       aiex.dma_start_task(%t1)

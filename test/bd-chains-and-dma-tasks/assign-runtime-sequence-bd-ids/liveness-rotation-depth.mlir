@@ -25,7 +25,7 @@ aie.device(npu2) {
   aie.runtime_sequence(%arg0: memref<8xi16>) {
     // expected-remark@+1 {{bd-liveness: backedges=0 kill=aiex.dma_free_task}}
     %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+      aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
       aie.end
     }
     aiex.dma_start_task(%t1)
@@ -42,7 +42,7 @@ aie.device(npu2) {
   aie.runtime_sequence(%arg0: memref<8xi16>) {
     // expected-remark@+1 {{bd-liveness: backedges=0 kill=aiex.dma_await_task}}
     %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+      aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
       aie.end
     }
     aiex.dma_start_task(%t1)
@@ -60,7 +60,7 @@ aie.device(npu2) {
   aie.runtime_sequence(%arg0: memref<8xi16>) {
     // expected-remark@+1 {{bd-liveness: leaked}}
     %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+      aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
       aie.end
     }
     aiex.dma_start_task(%t1)
@@ -84,7 +84,7 @@ aie.device(npu2) {
     scf.for %i = %c0 to %c4 step %c1 {
       // expected-remark@+1 {{bd-liveness: backedges=0 kill=aiex.dma_await_task in-loop}}
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
         aie.end
       }
       aiex.dma_start_task(%t)
@@ -106,7 +106,7 @@ aie.device(npu2) {
     // Prologue is freed as %prev in iteration 0 (before any back-edge).
     // expected-remark@+1 {{bd-liveness: backedges=0 kill=aiex.dma_free_task}}
     %init = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+      aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
       aie.end
     }
     aiex.dma_start_task(%init)
@@ -114,7 +114,7 @@ aie.device(npu2) {
       // expected-remark@+2 {{bd-liveness: backedges=1 kill=aiex.dma_free_task in-loop}}
       // expected-remark@+1 {{bd-rotation: width=2 chain=1 members=2}}
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
         aie.end
       }
       aiex.dma_start_task(%t)
@@ -139,19 +139,19 @@ aie.device(npu2) {
     %c4 = arith.constant 4 : index
     // expected-remark@+1 {{bd-liveness: backedges=0 kill=aiex.dma_free_task}}
     %i0 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+      aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
       aie.end
     }
     // expected-remark@+1 {{bd-liveness: backedges=1 kill=aiex.dma_free_task}}
     %i1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+      aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
       aie.end
     }
     %r:2 = scf.for %i = %c0 to %c4 step %c1 iter_args(%p2 = %i0, %p1 = %i1) -> (index, index) {
       // expected-remark@+2 {{bd-liveness: backedges=2 kill=aiex.dma_free_task in-loop}}
       // expected-remark@+1 {{bd-rotation: width=3 chain=1 members=3}}
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
         aie.end
       }
       aiex.dma_start_task(%t)
@@ -178,7 +178,7 @@ aie.device(npu2) {
       // Inner prologue freed as %prev in inner iteration 0 (no inner back-edge).
       // expected-remark@+1 {{bd-liveness: backedges=0 kill=aiex.dma_free_task in-loop}}
       %init = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
         aie.end
       }
       aiex.dma_start_task(%init)
@@ -186,7 +186,7 @@ aie.device(npu2) {
         // expected-remark@+2 {{bd-liveness: backedges=1 kill=aiex.dma_free_task in-loop}}
         // expected-remark@+1 {{bd-rotation: width=2 chain=1 members=2}}
         %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-          aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+          aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
           aie.end
         }
         aiex.dma_start_task(%t)

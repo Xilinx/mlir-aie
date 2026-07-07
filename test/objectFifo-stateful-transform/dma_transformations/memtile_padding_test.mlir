@@ -61,48 +61,48 @@
     // CHECK:         %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
     // CHECK:       ^bb1:
     // CHECK:         aie.use_lock(%[[IN1_PROD_LOCK]], AcquireGreaterEqual, 1)
-    // CHECK:         aie.dma_bd(%[[IN1_BUFF_0]] : memref<64x64xi8>, 0, 4096)
+    // CHECK:         aie.dma_bd(%[[IN1_BUFF_0]] : memref<64x64xi8> offset = 0 len = 4096 sizes = [] strides = [])
     // CHECK:         aie.use_lock(%[[IN1_CONS_LOCK]], Release, 1)
     // CHECK:         aie.next_bd ^bb2
     // CHECK:       ^bb2:
     // CHECK:         aie.use_lock(%[[IN1_PROD_LOCK]], AcquireGreaterEqual, 1)
-    // CHECK:         aie.dma_bd(%[[IN1_BUFF_1]] : memref<64x64xi8>, 0, 4096)
+    // CHECK:         aie.dma_bd(%[[IN1_BUFF_1]] : memref<64x64xi8> offset = 0 len = 4096 sizes = [] strides = [])
     // CHECK:         aie.use_lock(%[[IN1_CONS_LOCK]], Release, 1)
     // CHECK:         aie.next_bd ^bb1
     // CHECK:       ^bb3:
     // CHECK:         %1 = aie.dma_start(MM2S, 0, ^bb4, ^bb6)
     // CHECK:       ^bb4:
     // CHECK:         aie.use_lock(%[[IN1_CONS_LOCK]], AcquireGreaterEqual, 1)
-    // CHECK:         aie.dma_bd(%[[IN1_BUFF_0]] : memref<64x64xi8>, 0, 4096)
+    // CHECK:         aie.dma_bd(%[[IN1_BUFF_0]] : memref<64x64xi8> offset = 0 len = 4096 sizes = [] strides = [])
     // CHECK:         aie.use_lock(%[[IN1_PROD_LOCK]], Release, 1)
     // CHECK:         aie.next_bd ^bb5
     // CHECK:       ^bb5:
     // CHECK:         aie.use_lock(%[[IN1_CONS_LOCK]], AcquireGreaterEqual, 1)
-    // CHECK:         aie.dma_bd(%[[IN1_BUFF_1]] : memref<64x64xi8>, 0, 4096)
+    // CHECK:         aie.dma_bd(%[[IN1_BUFF_1]] : memref<64x64xi8> offset = 0 len = 4096 sizes = [] strides = [])
     // CHECK:         aie.use_lock(%[[IN1_PROD_LOCK]], Release, 1)
     // CHECK:         aie.next_bd ^bb4
     // CHECK:       ^bb6:
     // CHECK:         %2 = aie.dma_start(S2MM, 1, ^bb7, ^bb9)
     // CHECK:       ^bb7:
     // CHECK:         aie.use_lock(%[[OUT1_CONS_PROD_LOCK]], AcquireGreaterEqual, 1)
-    // CHECK:         aie.dma_bd(%[[OUT1_CONS_BUFF_0]] : memref<64x64xi8>, 0, 4096)
+    // CHECK:         aie.dma_bd(%[[OUT1_CONS_BUFF_0]] : memref<64x64xi8> offset = 0 len = 4096 sizes = [] strides = [])
     // CHECK:         aie.use_lock(%[[OUT1_CONS_CONS_LOCK]], Release, 1)
     // CHECK:         aie.next_bd ^bb8
     // CHECK:       ^bb8:
     // CHECK:         aie.use_lock(%[[OUT1_CONS_PROD_LOCK]], AcquireGreaterEqual, 1)
-    // CHECK:         aie.dma_bd(%[[OUT1_CONS_BUFF_1]] : memref<64x64xi8>, 0, 4096)
+    // CHECK:         aie.dma_bd(%[[OUT1_CONS_BUFF_1]] : memref<64x64xi8> offset = 0 len = 4096 sizes = [] strides = [])
     // CHECK:         aie.use_lock(%[[OUT1_CONS_CONS_LOCK]], Release, 1)
     // CHECK:         aie.next_bd ^bb7
     // CHECK:       ^bb9:
     // CHECK:         %3 = aie.dma_start(MM2S, 1, ^bb10, ^bb12)
     // CHECK:       ^bb10:
     // CHECK:         aie.use_lock(%[[OUT1_CONS_CONS_LOCK]], AcquireGreaterEqual, 1)
-    // CHECK:         aie.dma_bd(%[[OUT1_CONS_BUFF_0]] : memref<64x64xi8>, 0, 4096, [<size = 61, stride = 56>, <size = 56, stride = 1>], [<const_pad_before = 2, const_pad_after = 1>, <const_pad_before = 4, const_pad_after = 4>])
+    // CHECK:         aie.dma_bd(%[[OUT1_CONS_BUFF_0]] : memref<64x64xi8> offset = 0 len = 4096 sizes = [61, 56] strides = [56, 1] pad = [<const_pad_before = 2, const_pad_after = 1>, <const_pad_before = 4, const_pad_after = 4>])
     // CHECK:         aie.use_lock(%[[OUT1_CONS_PROD_LOCK]], Release, 1)
     // CHECK:         aie.next_bd ^bb11
     // CHECK:       ^bb11:
     // CHECK:         aie.use_lock(%[[OUT1_CONS_CONS_LOCK]], AcquireGreaterEqual, 1)
-    // CHECK:         aie.dma_bd(%[[OUT1_CONS_BUFF_1]] : memref<64x64xi8>, 0, 4096, [<size = 61, stride = 56>, <size = 56, stride = 1>], [<const_pad_before = 2, const_pad_after = 1>, <const_pad_before = 4, const_pad_after = 4>])
+    // CHECK:         aie.dma_bd(%[[OUT1_CONS_BUFF_1]] : memref<64x64xi8> offset = 0 len = 4096 sizes = [61, 56] strides = [56, 1] pad = [<const_pad_before = 2, const_pad_after = 1>, <const_pad_before = 4, const_pad_after = 4>])
     // CHECK:         aie.use_lock(%[[OUT1_CONS_PROD_LOCK]], Release, 1)
     // CHECK:         aie.next_bd ^bb10
     // CHECK:       ^bb12:
@@ -112,24 +112,24 @@
     // CHECK:         %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
     // CHECK:       ^bb1:
     // CHECK:         aie.use_lock(%[[IN1_CONS_PROD_LOCK]], AcquireGreaterEqual, 1)
-    // CHECK:         aie.dma_bd(%[[IN1_CONS_BUFF_0]] : memref<64x64xi8>, 0, 4096)
+    // CHECK:         aie.dma_bd(%[[IN1_CONS_BUFF_0]] : memref<64x64xi8> offset = 0 len = 4096 sizes = [] strides = [])
     // CHECK:         aie.use_lock(%[[IN1_CONS_CONS_LOCK]], Release, 1)
     // CHECK:         aie.next_bd ^bb2
     // CHECK:       ^bb2:
     // CHECK:         aie.use_lock(%[[IN1_CONS_PROD_LOCK]], AcquireGreaterEqual, 1)
-    // CHECK:         aie.dma_bd(%[[IN1_CONS_BUFF_1]] : memref<64x64xi8>, 0, 4096)
+    // CHECK:         aie.dma_bd(%[[IN1_CONS_BUFF_1]] : memref<64x64xi8> offset = 0 len = 4096 sizes = [] strides = [])
     // CHECK:         aie.use_lock(%[[IN1_CONS_CONS_LOCK]], Release, 1)
     // CHECK:         aie.next_bd ^bb1
     // CHECK:       ^bb3:
     // CHECK:         %1 = aie.dma_start(MM2S, 0, ^bb4, ^bb6)
     // CHECK:       ^bb4:
     // CHECK:         aie.use_lock(%[[OUT1_CONS_LOCK]], AcquireGreaterEqual, 1)
-    // CHECK:         aie.dma_bd(%[[OUT1_BUFF_0]] : memref<64x64xi8>, 0, 4096)
+    // CHECK:         aie.dma_bd(%[[OUT1_BUFF_0]] : memref<64x64xi8> offset = 0 len = 4096 sizes = [] strides = [])
     // CHECK:         aie.use_lock(%[[OUT1_PROD_LOCK]], Release, 1)
     // CHECK:         aie.next_bd ^bb5
     // CHECK:       ^bb5:
     // CHECK:         aie.use_lock(%[[OUT1_CONS_LOCK]], AcquireGreaterEqual, 1)
-    // CHECK:         aie.dma_bd(%[[OUT1_BUFF_1]] : memref<64x64xi8>, 0, 4096)
+    // CHECK:         aie.dma_bd(%[[OUT1_BUFF_1]] : memref<64x64xi8> offset = 0 len = 4096 sizes = [] strides = [])
     // CHECK:         aie.use_lock(%[[OUT1_PROD_LOCK]], Release, 1)
     // CHECK:         aie.next_bd ^bb4
     // CHECK:       ^bb6:

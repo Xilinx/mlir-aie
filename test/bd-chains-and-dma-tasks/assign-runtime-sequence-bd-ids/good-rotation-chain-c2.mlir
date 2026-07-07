@@ -19,24 +19,24 @@ aie.device(npu2) {
   aie.runtime_sequence @rotation_chain_c2(%arg0: memref<8xi16>) {
     %c1 = arith.constant 1 : index
     %c4 = arith.constant 4 : index
-    // CHECK: aie.dma_bd(%arg0 : memref<8xi16>, 0, 4) {bd_id = 0 : i32, bd_id_window = array<i32: 0, 1>
-    // CHECK: aie.dma_bd(%arg0 : memref<8xi16>, 4, 4) {bd_id = 2 : i32, bd_id_window = array<i32: 2, 3>
+    // CHECK: aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 4 sizes = [] strides = []) {bd_id = 0 : i32, bd_id_window = array<i32: 0, 1>
+    // CHECK: aie.dma_bd(%arg0 : memref<8xi16> offset = 4 len = 4 sizes = [] strides = []) {bd_id = 2 : i32, bd_id_window = array<i32: 2, 3>
     %init = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      aie.dma_bd(%arg0 : memref<8xi16>, 0, 4)
+      aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 4 sizes = [] strides = [])
       aie.next_bd ^bd1
     ^bd1:
-      aie.dma_bd(%arg0 : memref<8xi16>, 4, 4)
+      aie.dma_bd(%arg0 : memref<8xi16> offset = 4 len = 4 sizes = [] strides = [])
       aie.end
     }
     aiex.dma_start_task(%init)
     %last = scf.for %i = %c1 to %c4 step %c1 iter_args(%prev = %init) -> (index) {
-      // CHECK: aie.dma_bd(%arg0 : memref<8xi16>, 0, 4) {bd_id = 0 : i32, bd_id_window = array<i32: 0, 1>
-      // CHECK: aie.dma_bd(%arg0 : memref<8xi16>, 4, 4) {bd_id = 2 : i32, bd_id_window = array<i32: 2, 3>
+      // CHECK: aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 4 sizes = [] strides = []) {bd_id = 0 : i32, bd_id_window = array<i32: 0, 1>
+      // CHECK: aie.dma_bd(%arg0 : memref<8xi16> offset = 4 len = 4 sizes = [] strides = []) {bd_id = 2 : i32, bd_id_window = array<i32: 2, 3>
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<8xi16>, 0, 4)
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 4 sizes = [] strides = [])
         aie.next_bd ^bd1
       ^bd1:
-        aie.dma_bd(%arg0 : memref<8xi16>, 4, 4)
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 4 len = 4 sizes = [] strides = [])
         aie.end
       }
       aiex.dma_start_task(%t)

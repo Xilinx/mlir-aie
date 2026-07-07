@@ -24,7 +24,7 @@
 // CHECK:             %[[VAL_11:.*]] = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[VAL_6]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_7]] : memref<256xi32>, 0, 256)
+// CHECK:             aie.dma_bd(%[[VAL_7]] : memref<256xi32> offset = 0 len = 256 sizes = [] strides = [])
 // CHECK:             aie.use_lock(%[[VAL_6]], Release, 0)
 // CHECK:             aie.next_bd ^bb2
 // CHECK:           ^bb2:
@@ -36,12 +36,12 @@
 // CHECK:             %[[VAL_14:.*]] = aie.dma_start(MM2S, 0, ^bb3, ^bb4)
 // CHECK:           ^bb2:
 // CHECK:             aie.use_lock(%[[VAL_4]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_8]] : memref<256xi32>, 0, 256)
+// CHECK:             aie.dma_bd(%[[VAL_8]] : memref<256xi32> offset = 0 len = 256 sizes = [] strides = [])
 // CHECK:             aie.use_lock(%[[VAL_4]], Release, 1)
 // CHECK:             aie.next_bd ^bb4
 // CHECK:           ^bb3:
 // CHECK:             aie.use_lock(%[[VAL_3]], Acquire, 1)
-// CHECK:             aie.dma_bd(%[[VAL_8]] : memref<256xi32>, 0, 256)
+// CHECK:             aie.dma_bd(%[[VAL_8]] : memref<256xi32> offset = 0 len = 256 sizes = [] strides = [])
 // CHECK:             aie.use_lock(%[[VAL_3]], Release, 0)
 // CHECK:             aie.next_bd ^bb4
 // CHECK:           ^bb4:
@@ -51,7 +51,7 @@
 // CHECK:             %[[VAL_16:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[VAL_1]], Acquire, 0)
-// CHECK:             aie.dma_bd(%[[VAL_9]] : memref<256xi32>, 0, 256)
+// CHECK:             aie.dma_bd(%[[VAL_9]] : memref<256xi32> offset = 0 len = 256 sizes = [] strides = [])
 // CHECK:             aie.use_lock(%[[VAL_1]], Release, 1)
 // CHECK:             aie.next_bd ^bb2
 // CHECK:           ^bb2:
@@ -96,7 +96,7 @@ module @test_lock4 {
       %dmaSt = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
       aiex.useToken @token0(Acquire, 1)
-      aie.dma_bd(%buf33 : memref<256xi32>, 0, 256)
+      aie.dma_bd(%buf33 : memref<256xi32> offset = 0 len = 256 sizes = [] strides = [])
       aiex.useToken @token0(Release, 2)
       aie.next_bd ^end
     ^end:
@@ -109,12 +109,12 @@ module @test_lock4 {
       %dmaSt1 = aie.dma_start(MM2S, 0, ^bd1, ^end)
     ^bd0:
       aiex.useToken @token0(Acquire, 1)
-      aie.dma_bd(%buf44 : memref<256xi32>, 0, 256)
+      aie.dma_bd(%buf44 : memref<256xi32> offset = 0 len = 256 sizes = [] strides = [])
       aiex.useToken @token0(Release, 2)
       aie.next_bd ^end
     ^bd1:
       aiex.useToken @token0(Acquire, 3)
-      aie.dma_bd(%buf44 : memref<256xi32>, 0, 256)
+      aie.dma_bd(%buf44 : memref<256xi32> offset = 0 len = 256 sizes = [] strides = [])
       aiex.useToken @token0(Release, 4)
       aie.next_bd ^end
     ^end:
@@ -125,7 +125,7 @@ module @test_lock4 {
     %dmaSt = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
       aiex.useToken @token0(Acquire, 3)
-      aie.dma_bd(%buf55 : memref<256xi32>, 0, 256)
+      aie.dma_bd(%buf55 : memref<256xi32> offset = 0 len = 256 sizes = [] strides = [])
       aiex.useToken @token0(Release, 4)
       aie.next_bd ^end
     ^end:

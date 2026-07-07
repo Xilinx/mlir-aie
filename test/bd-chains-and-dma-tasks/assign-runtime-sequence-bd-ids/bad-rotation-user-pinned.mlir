@@ -17,14 +17,14 @@ aie.device(npu2) {
     %c1 = arith.constant 1 : index
     %c4 = arith.constant 4 : index
     %init = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+      aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
       aie.end
     }
     aiex.dma_start_task(%init)
     %last = scf.for %i = %c1 to %c4 step %c1 iter_args(%prev = %init) -> (index) {
       // expected-error@+1 {{participates in a rolled ping-pong rotation}}
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<8xi16>, 0, 8) {bd_id = 5 : i32}
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = []) {bd_id = 5 : i32}
         aie.end
       }
       aiex.dma_start_task(%t)

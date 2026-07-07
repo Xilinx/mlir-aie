@@ -15,13 +15,13 @@ module {
 
     aie.runtime_sequence(%arg0: memref<8xi16>) {
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<8xi16>, 0, 8) {bd_id = 7 : i32}
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = []) {bd_id = 7 : i32}
         aie.end
       }
       // Reuse BD ID without explicit free
       // expected-error@+1 {{Specified buffer descriptor ID 7 is already in use}}
       %t2 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<8xi16>, 0, 8) {bd_id = 7 : i32}
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = []) {bd_id = 7 : i32}
         aie.end
       }
     }

@@ -28,15 +28,15 @@ module @test {
       ^dma2:
         %dma3 = aie.dma_start("MM2S", 2, ^bd2, ^end)
       ^bd0:
-        aie.dma_bd(%buf_l : memref<256xi32>, 0, 256)
+        aie.dma_bd(%buf_l : memref<256xi32> offset = 0 len = 256 sizes = [] strides = [])
         aie.use_lock(%lock_e, Release, 1)
         aie.next_bd ^bd0
       ^bd1:
-        aie.dma_bd(%buf_l : memref<256xi32>, 0, 256)
+        aie.dma_bd(%buf_l : memref<256xi32> offset = 0 len = 256 sizes = [] strides = [])
         aie.use_lock(%lock_l, Release, 1)
         aie.next_bd ^bd1
       ^bd2:
-        aie.dma_bd(%buf_l : memref<256xi32>, 0, 256)
+        aie.dma_bd(%buf_l : memref<256xi32> offset = 0 len = 256 sizes = [] strides = [])
         aie.use_lock(%lock_n, Release, 1)
         aie.next_bd ^bd2
       ^end:

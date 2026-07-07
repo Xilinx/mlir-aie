@@ -25,13 +25,13 @@ aie.device(npu2) {
     // Top-level leak => legal (remark only), not an error.
     // expected-remark@+1 {{bd-liveness: leaked}}
     %zero = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+      aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
       aie.end
     }
     %last = scf.for %i = %c0 to %c4 step %c1 iter_args(%cur = %zero) -> (index) {
       // expected-error@+1 {{buffer descriptor configured in a loop is never completed}}
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
         aie.end
       }
       aiex.dma_start_task(%t)
@@ -54,7 +54,7 @@ aie.device(npu2) {
     scf.for %i = %c0 to %c4 step %c1 {
       // expected-error@+1 {{buffer descriptor configured in a loop is never completed}}
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
         aie.end
       }
       aiex.dma_start_task(%t)

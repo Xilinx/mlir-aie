@@ -370,9 +370,17 @@ struct AIEDMATasksToNPUPass
              << len << " bytes falls below minimum hardware transfer unit of "
              << (addr_granularity / 8) << " bytes.";
     }
-    // Process strides/wraps
-    std::optional<llvm::ArrayRef<AIE::BDDimLayoutAttr>> dims =
-        bd_op.getDimensions();
+    // Process strides/wraps. On this (op-surface) path the sizes/strides are
+    // still compile-time constants; a runtime operand is diagnosed rather than
+    // miscompiled (its dynamic lowering is handled in a separate follow-up).
+    bool dimsErr = false;
+    std::optional<llvm::SmallVector<AIE::BDDimLayoutAttr>> dims =
+        bd_op.getFoldedDimensions([&]() {
+          dimsErr = true;
+          return bd_op.emitOpError();
+        });
+    if (dimsErr)
+      return failure();
     llvm::SmallVector<int64_t, 4> sizes = llvm::SmallVector<int64_t, 4>(4, 0);
     llvm::SmallVector<int64_t, 4> strides = llvm::SmallVector<int64_t, 4>(4, 0);
 

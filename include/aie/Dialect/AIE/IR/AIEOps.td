@@ -868,7 +868,7 @@ def AIE_DMABDPACKETOp: AIE_Op<"dma_bd_packet", []> {
   }];
 }
 
-def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
+def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
   let summary = "Declare a dma buffer descriptor op";
   let description = [{
     This operation describes a buffer descriptor for DMA operations. In particular, it specifies
@@ -986,7 +986,16 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
         DefaultValuedAttr<AIEI32Attr, "0">:$offset,
         // in multiples of element width (not bytes)
         OptionalAttr<AIEI32Attr>:$len,
-        OptionalAttr<BDDimLayoutArrayAttr>:$dimensions,
+        // Data-layout transformation sizes/strides, expressed as a mixed
+        // static/dynamic index list (canonical MLIR DynamicIndexList idiom, as
+        // used by aiex.npu.dma_memcpy_nd): a compile-time value lives in the
+        // static_* attribute; a runtime value is an SSA operand marked by the
+        // ShapedType::kDynamic sentinel in the static_* array. The two lists are
+        // paired positionally (sizes[i] with strides[i]), outermost dim first.
+        Variadic<I64>:$sizes,
+        Variadic<I64>:$strides,
+        DenseI64ArrayAttr:$static_sizes,
+        DenseI64ArrayAttr:$static_strides,
         OptionalAttr<BDPadLayoutArrayAttr>:$pad_dimensions,
         DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value,
         OptionalAttr<AIEI32Attr>:$bd_id,
@@ -1009,10 +1018,43 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
   );
 
   let hasVerifier = 1;
-  let hasCustomAssemblyFormat = 1;
+
+  // sizes/strides use the mixed static/dynamic DynamicIndexList idiom (as in
+  // aiex.npu.dma_memcpy_nd) and are always printed (an empty transfer prints
+  // `[] []`). Every field is introduced by a keyword, so sections are
+  // self-identifying and any optional subset can be omitted unambiguously (the
+  // keyword is the parser's lookahead anchor -- no leading-comma ambiguity).
+  // `offset` is default-valued and always prints; `len`, `pad`, `pad_value` are
+  // optional.
+  let assemblyFormat = [{
+    `(` $buffer `:` type($buffer)
+        `offset` `=` $offset
+        (`len` `=` $len^)?
+        `sizes` `=` custom<DynamicIndexList>($sizes, $static_sizes)
+        `strides` `=` custom<DynamicIndexList>($strides, $static_strides)
+        (`pad` `=` $pad_dimensions^)?
+        (`pad_value` `=` $pad_value^)?
+    `)` attr-dict
+  }];
 
   let extraClassDeclaration = [{
     BufferOp getBufferOp();
+
+    // The data-layout sizes/strides as a mixed static/dynamic list (outermost
+    // dim first), one OpFoldResult per dimension. A static entry is an
+    // IntegerAttr; a runtime entry is the SSA Value operand.
+    llvm::SmallVector<mlir::OpFoldResult> getMixedSizes();
+    llvm::SmallVector<mlir::OpFoldResult> getMixedStrides();
+
+    // Fold sizes/strides to compile-time BDDimLayoutAttrs. Returns nullopt when
+    // there are no dimensions; the boolean-less failure (a non-constant operand)
+    // is reported via the emitError callback so a static-path consumer can emit
+    // a clean diagnostic rather than miscompile a runtime value.
+    std::optional<llvm::SmallVector<BDDimLayoutAttr>> getFoldedDimensions(
+        llvm::function_ref<mlir::InFlightDiagnostic()> emitError = nullptr);
+    // Convenience: nullopt on any non-constant operand (no diagnostic).
+    std::optional<llvm::SmallVector<BDDimLayoutAttr>> getConstantDimensions();
+
     int32_t getBufferElementTypeWidthInBytes() {
       mlir::DataLayout dataLayout = mlir::DataLayout::closest(*this);
       auto bufferType = llvm::cast<mlir::BaseMemRefType>(getBuffer().getType());
@@ -1037,57 +1079,63 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
   let hasVerifier = 1;
   let hasCanonicalizer = 1;
   let builders = [
-    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len), [{
+    // Base builder. All int-taking builders funnel their compile-time dims
+    // through this one: sizes/strides are emitted as all-static entries (no SSA
+    // operands), so constant-fed output is byte-identical to the pre-conversion
+    // attribute form. `dims` may be null (no data-layout transformation).
+    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len,
+                   "BDDimLayoutArrayAttr":$dims, "BDPadLayoutArrayAttr":$paddims,
+                   "PacketInfoAttr":$pkt), [{
       $_state.addOperands(buffer);
       $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
       $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
+      llvm::SmallVector<int64_t> staticSizes, staticStrides;
+      if (dims)
+        for (auto d : dims) {
+          staticSizes.push_back(static_cast<int64_t>(d.getSize()));
+          staticStrides.push_back(static_cast<int64_t>(d.getStride()));
+        }
+      $_state.addAttribute("static_sizes",
+                           $_builder.getDenseI64ArrayAttr(staticSizes));
+      $_state.addAttribute("static_strides",
+                           $_builder.getDenseI64ArrayAttr(staticStrides));
+      if (paddims)
+        $_state.addAttribute("pad_dimensions", paddims);
+      if (pkt)
+        $_state.addAttribute("packet", pkt);
+      // No dynamic operands in this constant builder; both size/stride operand
+      // groups are empty (buffer is the only operand).
+      $_state.addAttribute(
+          getOperandSegmentSizeAttr(),
+          $_builder.getDenseI32ArrayAttr({1, 0, 0}));
+    }]>,
+    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len), [{
+      build($_builder, $_state, buffer, offset, len,
+            BDDimLayoutArrayAttr(), BDPadLayoutArrayAttr(), PacketInfoAttr());
     }]>,
     OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDDimLayoutArrayAttr":$dims), [{
-      $_state.addOperands(buffer);
-      $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
-      $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
-      $_state.addAttribute("dimensions", dims);
+      build($_builder, $_state, buffer, offset, len,
+            dims, BDPadLayoutArrayAttr(), PacketInfoAttr());
     }]>,
     OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDPadLayoutArrayAttr":$paddims), [{
-      $_state.addOperands(buffer);
-      $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
-      $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
-      $_state.addAttribute("pad_dimensions", paddims);
+      build($_builder, $_state, buffer, offset, len,
+            BDDimLayoutArrayAttr(), paddims, PacketInfoAttr());
     }]>,
     OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDDimLayoutArrayAttr":$dims, "BDPadLayoutArrayAttr":$paddims), [{
-      $_state.addOperands(buffer);
-      $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
-      $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
-      $_state.addAttribute("dimensions", dims);
-      $_state.addAttribute("pad_dimensions", paddims);
+      build($_builder, $_state, buffer, offset, len,
+            dims, paddims, PacketInfoAttr());
     }]>,
     OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "PacketInfoAttr":$pkt), [{
-      $_state.addOperands(buffer);
-      $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
-      $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
-      $_state.addAttribute("packet", pkt);
+      build($_builder, $_state, buffer, offset, len,
+            BDDimLayoutArrayAttr(), BDPadLayoutArrayAttr(), pkt);
     }]>,
     OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDDimLayoutArrayAttr":$dims, "PacketInfoAttr":$pkt), [{
-      $_state.addOperands(buffer);
-      $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
-      $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
-      $_state.addAttribute("dimensions", dims);
-      $_state.addAttribute("packet", pkt);
+      build($_builder, $_state, buffer, offset, len,
+            dims, BDPadLayoutArrayAttr(), pkt);
     }]>,
     OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDPadLayoutArrayAttr":$paddims, "PacketInfoAttr":$pkt), [{
-      $_state.addOperands(buffer);
-      $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
-      $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
-      $_state.addAttribute("pad_dimensions", paddims);
-      $_state.addAttribute("packet", pkt);
-    }]>,
-    OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDDimLayoutArrayAttr":$dims, "BDPadLayoutArrayAttr":$paddims, "PacketInfoAttr":$pkt), [{
-      $_state.addOperands(buffer);
-      $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
-      $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
-      $_state.addAttribute("dimensions", dims);
-      $_state.addAttribute("pad_dimensions", paddims);
-      $_state.addAttribute("packet", pkt);
+      build($_builder, $_state, buffer, offset, len,
+            BDDimLayoutArrayAttr(), paddims, pkt);
     }]>
   ];
 }

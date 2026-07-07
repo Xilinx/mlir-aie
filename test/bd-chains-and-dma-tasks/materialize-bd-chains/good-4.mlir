@@ -15,10 +15,10 @@ module {
     %buf1 = aie.buffer(%tile_0_2) : memref<8xi16>
 
     aie.bd_chain @simple_chain(%arg0: memref<8xi16>, %arg1: memref<8xi16>) {
-            aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+            aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
             aie.next_bd ^bd1
         ^bd1:
-            aie.dma_bd(%arg1 : memref<8xi16>, 0, 8)
+            aie.dma_bd(%arg1 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
             aie.end
     }
 
@@ -26,10 +26,10 @@ module {
       %t1 = aiex.dma_start_bd_chain @simple_chain(%buf1, %buf0) : (memref<8xi16>, memref<8xi16>)
                                     on (%tile_0_2, MM2S, 0) 
       // CHECK: %[[task1:.+]] = aiex.dma_configure_task(%tile_0_2, MM2S, 0) {
-      // CHECK:   aie.dma_bd(%[[BUF1]] : memref<8xi16>, 0, 8)
+      // CHECK:   aie.dma_bd(%[[BUF1]] : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
       // CHECK:   aie.next_bd ^bb1
       // CHECK: ^bb1:
-      // CHECK:   aie.dma_bd(%[[BUF0]] : memref<8xi16>, 0, 8)
+      // CHECK:   aie.dma_bd(%[[BUF0]] : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
       // CHECK:   aie.end
       // CHECK: }
       // CHECK: aiex.dma_start_task(%[[task1]])

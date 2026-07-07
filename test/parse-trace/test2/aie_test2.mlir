@@ -98,15 +98,15 @@ module {
       %cst_npu_32 = arith.constant 127 : i32
       aiex.npu.write32(%cst_npu_31, %cst_npu_32) {column = 0 : i32, row = 0 : i32} : i32, i32
       %0 = aiex.dma_configure_task_for @in {
-        aie.dma_bd(%arg0 : memref<4096xi16>, 0, 4096, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1, stride = 0>, <size = 4096, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg0 : memref<4096xi16> offset = 0 len = 4096 sizes = [1, 1, 1, 4096] strides = [0, 0, 0, 1]) {burst_length = 0 : i32}
         aie.end
       } {issue_token = true}
       %1 = aiex.dma_configure_task_for @infactor {
-        aie.dma_bd(%arg1 : memref<1xi32>, 0, 1, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg1 : memref<1xi32> offset = 0 len = 1 sizes = [1, 1, 1, 1] strides = [0, 0, 0, 1]) {burst_length = 0 : i32}
         aie.end
       } {issue_token = true}
       %2 = aiex.dma_configure_task_for @out {
-        aie.dma_bd(%arg2 : memref<4096xi16>, 0, 4096, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1, stride = 0>, <size = 4096, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg2 : memref<4096xi16> offset = 0 len = 4096 sizes = [1, 1, 1, 4096] strides = [0, 0, 0, 1]) {burst_length = 0 : i32}
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%0)

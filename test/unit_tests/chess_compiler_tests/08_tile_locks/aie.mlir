@@ -41,22 +41,22 @@ aie.device(xcvc1902) {
         %dstDma = aie.dma_start("S2MM", 0, ^bd2, ^end)
       ^bd0:
         aie.use_lock(%lock_e, Acquire, 0)
-        aie.dma_bd(%buf_l : memref<256xi32>, 0, 2)
+        aie.dma_bd(%buf_l : memref<256xi32> offset = 0 len = 2 sizes = [] strides = [])
         aie.use_lock(%lock_e, Release, 1)
         aie.next_bd ^bd1
       ^bd1:
         aie.use_lock(%lock_l, Acquire, 0)
-        aie.dma_bd(%buf_l : memref<256xi32>, 4, 2)
+        aie.dma_bd(%buf_l : memref<256xi32> offset = 4 len = 2 sizes = [] strides = [])
         aie.use_lock(%lock_l, Release, 1)
         aie.next_bd ^end
       ^bd2:
         aie.use_lock(%lock_n, Acquire, 0)
-        aie.dma_bd(%buf_l : memref<256xi32>, 8, 2)
+        aie.dma_bd(%buf_l : memref<256xi32> offset = 8 len = 2 sizes = [] strides = [])
         aie.use_lock(%lock_n, Release, 1)
         aie.next_bd ^bd3
       ^bd3:
         aie.use_lock(%lock_s, Acquire, 0)
-        aie.dma_bd(%buf_l : memref<256xi32>, 12, 2)
+        aie.dma_bd(%buf_l : memref<256xi32> offset = 12 len = 2 sizes = [] strides = [])
         aie.use_lock(%lock_s, Release, 1)
         aie.next_bd ^end
       ^end:

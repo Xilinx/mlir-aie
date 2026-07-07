@@ -10,10 +10,12 @@
 
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/Interfaces/FoldInterfaces.h"
+#include "mlir/Interfaces/ViewLikeInterface.h"
 #include "mlir/Transforms/InliningUtils.h"
 
 #include "llvm/ADT/SmallSet.h"
@@ -2036,168 +2038,56 @@ BufferOp DMABDOp::getBufferOp() {
   return cast<BufferOp>(getBuffer().getDefiningOp());
 }
 
-// let assemblyFormat = [{
-//   `(` $buffer `:` type($buffer) (`,` $offset^)? (`,` $len^)? (`,`
-//   $dimensions^)? (`,` $pad_dimensions^)? (`,` `pad_value` `=` $pad_value^)?
-//   `)` attr-dict
-// }];
-ParseResult DMABDOp::parse(OpAsmParser &parser, OperationState &result) {
-  OpAsmParser::UnresolvedOperand bufferRawOperand{};
-  ::llvm::ArrayRef<OpAsmParser::UnresolvedOperand> bufferOperands(
-      &bufferRawOperand, 1);
-  ::llvm::SMLoc bufferOperandsLoc;
-  (void)bufferOperandsLoc;
-  Type bufferRawType{};
-  ::llvm::ArrayRef<Type> bufferTypes(&bufferRawType, 1);
-  IntegerAttr offsetAttr;
-  IntegerAttr lenAttr;
-  ::xilinx::AIE::BDDimLayoutArrayAttr dimensionsAttr;
-  ::xilinx::AIE::BDPadLayoutArrayAttr pad_dimensionsAttr;
-  IntegerAttr pad_valueAttr;
-  if (parser.parseLParen())
-    return failure();
+//===----------------------------------------------------------------------===//
+// DMABDOp size/stride accessors
+//===----------------------------------------------------------------------===//
 
-  bufferOperandsLoc = parser.getCurrentLocation();
-  if (parser.parseOperand(bufferRawOperand))
-    return failure();
-  if (parser.parseColon())
-    return failure();
-  if (parser.parseCustomTypeWithFallback(bufferRawType))
-    return failure();
-
-  // offset
-  if (succeeded(parser.parseOptionalComma())) {
-    if (parser.parseCustomAttributeWithFallback(
-            offsetAttr, parser.getBuilder().getIntegerType(32))) {
-      return failure();
-    }
-    if (!offsetAttr)
-      offsetAttr = parser.getBuilder().getIntegerAttr(
-          parser.getBuilder().getIntegerType(32), 0);
-    result.getOrAddProperties<DMABDOp::Properties>().offset = offsetAttr;
-  }
-
-  // len
-  if (succeeded(parser.parseOptionalComma())) {
-    if (parser.parseCustomAttributeWithFallback(
-            lenAttr, parser.getBuilder().getIntegerType(32))) {
-      return failure();
-    }
-    if (lenAttr)
-      result.getOrAddProperties<DMABDOp::Properties>().len = lenAttr;
-  }
-
-  // dimensions
-  if (succeeded(parser.parseOptionalComma())) {
-    if (parser.parseCustomAttributeWithFallback(dimensionsAttr, Type{})) {
-      return failure();
-    }
-    if (dimensionsAttr)
-      result.getOrAddProperties<DMABDOp::Properties>().dimensions =
-          dimensionsAttr;
-  }
-
-  // pad_dimensions
-  if (succeeded(parser.parseOptionalComma())) {
-    if (parser.parseCustomAttributeWithFallback(pad_dimensionsAttr, Type{})) {
-      return failure();
-    }
-    if (pad_dimensionsAttr)
-      result.getOrAddProperties<DMABDOp::Properties>().pad_dimensions =
-          pad_dimensionsAttr;
-  }
-
-  // pad_value
-  if (succeeded(parser.parseOptionalComma())) {
-    if (parser.parseKeyword("pad_value"))
-      return failure();
-    if (parser.parseEqual())
-      return failure();
-
-    if (parser.parseCustomAttributeWithFallback(
-            pad_valueAttr, parser.getBuilder().getIntegerType(32))) {
-      return failure();
-    }
-    if (pad_valueAttr)
-      result.getOrAddProperties<DMABDOp::Properties>().pad_value =
-          pad_valueAttr;
-  }
-  if (parser.parseRParen())
-    return failure();
-
-  auto loc = parser.getCurrentLocation();
-  if (parser.parseOptionalAttrDict(result.attributes))
-    return failure();
-  if (failed(verifyInherentAttrs(result.name, result.attributes, [&]() {
-        return parser.emitError(loc)
-               << "'" << result.name.getStringRef() << "' op ";
-      })))
-    return failure();
-
-  if (parser.resolveOperands(bufferOperands, bufferTypes, bufferOperandsLoc,
-                             result.operands))
-    return failure();
-
-  return success();
+// The data-layout sizes/strides are stored as a mixed static/dynamic index list
+// (DynamicIndexList idiom): static_sizes/static_strides hold compile-time
+// values, with ShapedType::kDynamic marking a position whose value is an SSA
+// operand.
+SmallVector<OpFoldResult> DMABDOp::getMixedSizes() {
+  Builder b(getContext());
+  return ::mlir::getMixedValues(getStaticSizes(), getSizes(), b);
 }
 
-void DMABDOp::print(::mlir::OpAsmPrinter &printer) {
-  printer << "(";
-  printer << getBuffer();
-  printer << ' ' << ":";
-  printer << ' ';
-  {
-    auto type = getBuffer().getType();
-    if (auto validType = ::llvm::dyn_cast<::mlir::MemRefType>(type))
-      printer.printStrippedAttrOrType(validType);
-    else
-      printer << type;
+SmallVector<OpFoldResult> DMABDOp::getMixedStrides() {
+  Builder b(getContext());
+  return ::mlir::getMixedValues(getStaticStrides(), getStrides(), b);
+}
+
+// Fold sizes/strides to compile-time BDDimLayoutAttrs (outermost-first).
+// Returns nullopt when there are no dimensions. A non-constant operand -- which
+// can only occur on the dynamic runtime-sequence path, never in a static core
+// DMA -- is reported through `emitError` (if provided) so the caller emits a
+// clean diagnostic rather than miscompiling; the returned optional is then
+// nullopt.
+std::optional<SmallVector<BDDimLayoutAttr>> DMABDOp::getFoldedDimensions(
+    llvm::function_ref<InFlightDiagnostic()> emitError) {
+  SmallVector<OpFoldResult> sizes = getMixedSizes();
+  SmallVector<OpFoldResult> strides = getMixedStrides();
+  if (sizes.empty())
+    return std::nullopt;
+  SmallVector<BDDimLayoutAttr> dims;
+  dims.reserve(sizes.size());
+  for (auto [sz, st] : llvm::zip_equal(sizes, strides)) {
+    std::optional<int64_t> szc = getConstantIntValue(sz);
+    std::optional<int64_t> stc = getConstantIntValue(st);
+    if (!szc || !stc) {
+      if (emitError)
+        emitError() << "buffer descriptor size/stride is a runtime value where "
+                       "a compile-time constant is required here";
+      return std::nullopt;
+    }
+    dims.push_back(BDDimLayoutAttr::get(getContext(),
+                                        static_cast<uint32_t>(*szc),
+                                        static_cast<uint32_t>(*stc)));
   }
-  if (getLenAttr() ||
-      getOffsetAttr() !=
-          ::mlir::OpBuilder((*this)->getContext())
-              .getIntegerAttr(
-                  ::mlir::OpBuilder((*this)->getContext()).getIntegerType(32),
-                  0)) {
-    printer << ",";
-    printer << ' ';
-    printer.printAttributeWithoutType(getOffsetAttr());
-  }
-  if (getLenAttr()) {
-    printer << ",";
-    printer << ' ';
-    printer.printAttributeWithoutType(getLenAttr());
-  }
-  if (getDimensionsAttr()) {
-    printer << ",";
-    printer << ' ';
-    printer.printStrippedAttrOrType(getDimensionsAttr());
-  }
-  if (getPadDimensionsAttr()) {
-    printer << ",";
-    printer << ' ';
-    printer.printStrippedAttrOrType(getPadDimensionsAttr());
-  }
-  if ((getPadValueAttr() &&
-       getPadValueAttr() !=
-           ::mlir::OpBuilder((*this)->getContext())
-               .getIntegerAttr(
-                   ::mlir::OpBuilder((*this)->getContext()).getIntegerType(32),
-                   0))) {
-    printer << ",";
-    printer << ' ' << "pad_value";
-    printer << ' ' << "=";
-    printer << ' ';
-    printer.printAttributeWithoutType(getPadValueAttr());
-  }
-  printer << ")";
-  ::llvm::SmallVector<::llvm::StringRef, 2> elidedAttrs;
-  elidedAttrs.push_back("offset");
-  elidedAttrs.push_back("len");
-  elidedAttrs.push_back("dimensions");
-  elidedAttrs.push_back("pad_dimensions");
-  elidedAttrs.push_back("pad_value");
-  printer.printOptionalAttrDict((*this)->getAttrs(), elidedAttrs);
+  return dims;
+}
+
+std::optional<SmallVector<BDDimLayoutAttr>> DMABDOp::getConstantDimensions() {
+  return getFoldedDimensions(nullptr);
 }
 
 // A BDDimLayoutAttr array (outermost-first) describes a contiguous row-major
@@ -2264,7 +2154,26 @@ LogicalResult DMABDOp::verify() {
   if (std::optional<int32_t> nextBdId = getNextBdId();
       nextBdId.has_value() && static_cast<uint32_t>(*nextBdId) >= maxBds)
     return emitOpError("nextBdId attribute exceeds max: ") << maxBds - 1;
-  if (auto dims = getDimensions(); dims.has_value()) {
+  // The sizes and strides lists must be the same length (paired per-dimension).
+  if (getMixedSizes().size() != getMixedStrides().size())
+    return emitOpError("must have the same number of sizes (")
+           << getMixedSizes().size() << ") and strides ("
+           << getMixedStrides().size() << ").";
+  // Fold the data-layout sizes/strides for the range checks below. A runtime
+  // (non-constant) operand cannot be validated at compile time; it is only
+  // legal on the dynamic runtime-sequence lowering path (which folds/guards
+  // it), never in a static core DMA -- so diagnose rather than miscompile.
+  // Distinguish "no dimensions" (nullopt with an empty size list) from "runtime
+  // operand" (nullopt with a non-empty size list): only the latter is an error
+  // here.
+  bool hasErr = false;
+  auto dims = getFoldedDimensions([&]() {
+    hasErr = true;
+    return emitOpError();
+  });
+  if (hasErr)
+    return failure();
+  if (dims.has_value()) {
     size_t maxNDims = 3;
     if (getOperation()->getParentOfType<MemTileDMAOp>())
       maxNDims = 4;
@@ -2325,7 +2234,7 @@ LogicalResult DMABDOp::verify() {
           "For >32b width datatypes, inner-most dim stride must be 1");
   }
   if (auto paddims = getPadDimensions(); paddims.has_value()) {
-    auto dims = getDimensions();
+    auto dims = getConstantDimensions();
     if (!dims.has_value())
       return emitOpError() << "Padding requires n-d data layouts expressed as"
                            << " wrap(s) and stride(s).";
@@ -2477,8 +2386,10 @@ struct LinearizeContiguousBDTransfer : public mlir::OpRewritePattern<DMABDOp> {
     if (!bufferIsExternal && !parentIsShim && !inShimDMA)
       return mlir::failure();
 
-    // Only when ND dimensions are present and contiguous.
-    auto dims = op.getDimensions();
+    // Only when ND dimensions are present, constant, and contiguous. A runtime
+    // (non-constant) size/stride is left untouched (its dynamic lowering
+    // handles the linear-mode decision).
+    auto dims = op.getConstantDimensions();
     if (!dims.has_value() || dims->empty())
       return mlir::failure();
     if (!xilinx::AIE::isContiguousBDTransfer(*dims))
@@ -2498,11 +2409,16 @@ struct LinearizeContiguousBDTransfer : public mlir::OpRewritePattern<DMABDOp> {
         return mlir::failure();
     int32_t len = static_cast<int32_t>(product);
 
-    // Drop the dimensions attribute in-place; all other attributes (offset,
-    // len, packet, burst_length, bd_id, etc.) are preserved automatically.
+    // Linear form carries the whole transfer in len with no data-layout
+    // dimensions: set len and clear both the size/stride operands and their
+    // static arrays. Other fields (offset, packet, burst_length, bd_id, ...)
+    // are untouched.
     rewriter.modifyOpInPlace(op, [&]() {
       op.setLen(len);
-      op->removeAttr("dimensions");
+      op.getSizesMutable().clear();
+      op.getStridesMutable().clear();
+      op.setStaticSizes({});
+      op.setStaticStrides({});
     });
     return mlir::success();
   }

@@ -19,16 +19,16 @@ aie.device(npu2) {
     %c1 = arith.constant 1 : index
     %c4 = arith.constant 4 : index
     scf.for %o = %c0 to %c4 step %c1 {
-      // CHECK: aie.dma_bd(%arg0 : memref<8xi16>, 0, 8) {bd_id = 0 : i32, bd_id_window = array<i32: 0, 1>}
+      // CHECK: aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = []) {bd_id = 0 : i32, bd_id_window = array<i32: 0, 1>}
       %init = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
         aie.end
       }
       aiex.dma_start_task(%init)
       %last = scf.for %i = %c1 to %c4 step %c1 iter_args(%prev = %init) -> (index) {
-        // CHECK: aie.dma_bd(%arg0 : memref<8xi16>, 0, 8) {bd_id = 0 : i32, bd_id_window = array<i32: 0, 1>}
+        // CHECK: aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = []) {bd_id = 0 : i32, bd_id_window = array<i32: 0, 1>}
         %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-          aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+          aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
           aie.end
         }
         aiex.dma_start_task(%t)

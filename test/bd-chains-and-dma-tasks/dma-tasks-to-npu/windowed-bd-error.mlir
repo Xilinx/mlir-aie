@@ -19,7 +19,7 @@ aie.device(npu2) {
     // expected-note@+1 {{Error encountered while lowering this BD configuration}}
     %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
       // expected-error@+1 {{rotating bd_id_window}}
-      aie.dma_bd(%arg0 : memref<8xi16>, 0, 8) {bd_id = 0 : i32, bd_id_window = array<i32: 0, 1>}
+      aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = []) {bd_id = 0 : i32, bd_id_window = array<i32: 0, 1>}
       aie.end
     }
     aiex.dma_start_task(%t)

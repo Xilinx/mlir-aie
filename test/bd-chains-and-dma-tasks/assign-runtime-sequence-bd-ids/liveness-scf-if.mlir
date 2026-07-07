@@ -18,14 +18,14 @@ aie.device(npu2) {
   aie.runtime_sequence(%arg0: memref<8xi16>, %c: i1) {
     // expected-remark@+1 {{bd-liveness: backedges=0 kill=aiex.dma_free_task}}
     %x = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+      aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
       aie.end
     }
     aiex.dma_start_task(%x)
     scf.if %c {
       // expected-remark@+1 {{bd-liveness: backedges=0 kill=aiex.dma_free_task}}
       %y = aiex.dma_configure_task(%tile_0_0, MM2S, 1) {
-        aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
         aie.end
       }
       aiex.dma_start_task(%y)
@@ -46,7 +46,7 @@ aie.device(npu2) {
     scf.if %c {
       // expected-remark@+1 {{bd-liveness: backedges=0 kill=aiex.dma_free_task}}
       %y = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
         aie.end
       }
       aiex.dma_start_task(%y)
@@ -54,7 +54,7 @@ aie.device(npu2) {
     } else {
       // expected-remark@+1 {{bd-liveness: backedges=0 kill=aiex.dma_free_task}}
       %z = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
         aie.end
       }
       aiex.dma_start_task(%z)
@@ -73,7 +73,7 @@ aie.device(npu2) {
   aie.runtime_sequence(%arg0: memref<8xi16>, %c: i1) {
     // expected-remark@+1 {{bd-liveness: backedges=0 kill=aiex.dma_free_task}}
     %x = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+      aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
       aie.end
     }
     %r = scf.if %c -> (index) {
@@ -81,7 +81,7 @@ aie.device(npu2) {
     } else {
       // expected-remark@+1 {{bd-liveness: backedges=0 kill=aiex.dma_free_task}}
       %z = aiex.dma_configure_task(%tile_0_0, MM2S, 1) {
-        aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
         aie.end
       }
       aiex.dma_start_task(%z)

@@ -25,8 +25,7 @@ module {
 
     aie.runtime_sequence(%arg0: memref<536870912xi64>) {
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-          aie.dma_bd(%arg0 : memref<536870912xi64>, 0, 536870912,
-                     [<size=1, stride=1>, <size=1, stride=1>, <size=536870912, stride=1>]) {bd_id = 0 : i32}
+          aie.dma_bd(%arg0 : memref<536870912xi64> offset = 0 len = 536870912 sizes = [1, 1, 536870912] strides = [1, 1, 1]) {bd_id = 0 : i32}
           aie.end
       }
     }

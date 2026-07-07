@@ -14,8 +14,7 @@ module {
     aie.runtime_sequence(%arg0: memref<32xi8>) {
       %t1 = aiex.dma_configure_task(%tile_0_2, MM2S, 0) {
       // expected-error@+1 {{Padding is supported only on MemTiles.}} 
-          aie.dma_bd(%buf : memref<32xi8>, 4, 16,
-                    [], [<const_pad_before=2, const_pad_after=1>]) {bd_id = 0 : i32}
+          aie.dma_bd(%buf : memref<32xi8> offset = 4 len = 16 sizes = [] strides = [] pad = [<const_pad_before=2, const_pad_after=1>]) {bd_id = 0 : i32}
           aie.end
       }
     }

@@ -19,7 +19,7 @@ aie.device(npu2) {
     %c4 = arith.constant 4 : index
     // prologue: single-bd chain (C=1)
     %init = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+      aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = [])
       aie.end
     }
     aiex.dma_start_task(%init)
@@ -27,10 +27,10 @@ aie.device(npu2) {
       // body: two-bd chain (C=2) -- mismatched against the prologue.
       // expected-error@+1 {{rotating buffer-descriptor chain length}}
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<8xi16>, 0, 4)
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 4 sizes = [] strides = [])
         aie.next_bd ^bd1
       ^bd1:
-        aie.dma_bd(%arg0 : memref<8xi16>, 4, 4)
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 4 len = 4 sizes = [] strides = [])
         aie.end
       }
       aiex.dma_start_task(%t)

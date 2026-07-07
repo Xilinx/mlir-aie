@@ -24,13 +24,13 @@ module {
       // CHECK: %[[AP4:.*]] = arith.constant 4 : i32
       // CHECK: aiex.npu.address_patch(%[[AP4]] : i32) {addr = 118852 : ui32, arg_idx = 0 : i32}
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-          aie.dma_bd(%arg0 : memref<8xi16>, 0, 8) {bd_id = 0 : i32}
+          aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [] strides = []) {bd_id = 0 : i32}
           aie.next_bd ^bd1
         ^bd1:
-          aie.dma_bd(%arg1 : memref<10xi32>, 2, 10) {bd_id = 1 : i32}
+          aie.dma_bd(%arg1 : memref<10xi32> offset = 2 len = 10 sizes = [] strides = []) {bd_id = 1 : i32}
           aie.next_bd ^bd2
         ^bd2:
-          aie.dma_bd(%arg0 : memref<8xi16>, 2, 10) {bd_id = 2 : i32}
+          aie.dma_bd(%arg0 : memref<8xi16> offset = 2 len = 10 sizes = [] strides = []) {bd_id = 2 : i32}
           aie.end
       }
     }

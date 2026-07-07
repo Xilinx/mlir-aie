@@ -671,12 +671,12 @@ module {
   aie.device(npu1) {
     aie.runtime_sequence(%arg0: memref<1024xi32>, %arg1: memref<1024xi32>) {
       %0 = aiex.dma_configure_task_for @of_in {
-        aie.dma_bd(%arg0 : memref<1024xi32>, 0, 1024, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1024, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg0 : memref<1024xi32> offset = 0 len = 1024 sizes = [1, 1, 1, 1024] strides = [0, 0, 0, 1]) {burst_length = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%0)
       %1 = aiex.dma_configure_task_for @of_out {
-        aie.dma_bd(%arg1 : memref<1024xi32>, 0, 1024, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1024, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg1 : memref<1024xi32> offset = 0 len = 1024 sizes = [1, 1, 1, 1024] strides = [0, 0, 0, 1]) {burst_length = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%1)
@@ -704,11 +704,11 @@ module {
   aie.device(npu1) {
     aie.runtime_sequence(%arg0: memref<1024xi32>) {
       %0 = aiex.dma_configure_task_for @of_in {
-        aie.dma_bd(%arg0 : memref<1024xi32>, 0, 1024, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1024, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg0 : memref<1024xi32> offset = 0 len = 1024 sizes = [1, 1, 1, 1024] strides = [0, 0, 0, 1]) {burst_length = 0 : i32}
         aie.end
       }
       %1 = aiex.dma_configure_task_for @of_in_again {
-        aie.dma_bd(%arg0 : memref<1024xi32>, 0, 1024, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1024, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg0 : memref<1024xi32> offset = 0 len = 1024 sizes = [1, 1, 1, 1024] strides = [0, 0, 0, 1]) {burst_length = 0 : i32}
         aie.end
       }
     }
@@ -731,11 +731,11 @@ module {
   aie.device(npu1) {
     aie.runtime_sequence(%arg0: memref<1024xi32>) {
       %0 = aiex.dma_configure_task_for @of_in_a {
-        aie.dma_bd(%arg0 : memref<1024xi32>, 0, 512, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1, stride = 0>, <size = 512, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg0 : memref<1024xi32> offset = 0 len = 512 sizes = [1, 1, 1, 512] strides = [0, 0, 0, 1]) {burst_length = 0 : i32}
         aie.end
       }
       %1 = aiex.dma_configure_task_for @of_in_b {
-        aie.dma_bd(%arg0 : memref<1024xi32>, 512, 512, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1, stride = 0>, <size = 512, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg0 : memref<1024xi32> offset = 512 len = 512 sizes = [1, 1, 1, 512] strides = [0, 0, 0, 1]) {burst_length = 0 : i32}
         aie.end
       }
     }
