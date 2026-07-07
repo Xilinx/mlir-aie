@@ -6,7 +6,8 @@
 // RUN: aie-opt --verify-diagnostics --aie-assign-runtime-sequence-bd-ids %s
 
 // This test ensures that the proper error is emitted if a user tries to use more buffer descriptors than
-// are availalbe in the current device.
+// are available in the current device. The error attaches to the configure whose
+// BD cannot be allocated once the tile's pool is exhausted.
 
 module {
   aie.device(npu1) {
@@ -79,7 +80,7 @@ module {
         aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
         aie.end
       }
-      // expected-error@+1 {{Allocator exhausted available }}
+      // expected-error@+1 {{Too many simultaneously active buffer descriptors}}
       %t17 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
         aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
         aie.end
