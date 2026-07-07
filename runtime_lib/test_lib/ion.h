@@ -1,5 +1,5 @@
-/* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
 // Copyright (C) 2022-2025 Advanced Micro Devices, Inc.
+/* SPDX-License-Identifier: GPL-2.0-only WITH Linux-syscall-note */
 /*
  * drivers/staging/android/uapi/ion.h
  *
