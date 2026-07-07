@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;a08e167ed40258c6d6ece7f65811ce53c86d102a</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;f26dba8d17eef23d2cf5fefe19ae4b5abacaa75a</span>
    </div>
   </td>
  </tr>
@@ -682,7 +682,12 @@ Args:
 
 Args:
     inline_func (Callable): The function to execute within an MLIR context.
-    inline_args (list): The state the function needs to execute.
+    inline_args (list): The state the function needs to execute. Any
+        ObjectFifoHandle passed here is registered with the Runtime (so
+        the Program resolves its shim allocation) and, if it has no
+        endpoint yet, is bound to a shim tile -- an inline op driving a
+        fifo from the runtime sequence is a host-side (shim) endpoint.
+        This mirrors how InlineOpRuntimeTask resolves Buffer args.
 </pre> 
 </div>
 </div>

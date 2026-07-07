@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;a08e167ed40258c6d6ece7f65811ce53c86d102a</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;f26dba8d17eef23d2cf5fefe19ae4b5abacaa75a</span>
    </div>
   </td>
  </tr>
@@ -75,6 +75,7 @@ $(function() {
 <div class="header">
   <div class="summary">
 <a href="#nested-classes">Classes</a> &#124;
+<a href="#func-members">Functions</a> &#124;
 <a href="#var-members">Variables</a>  </div>
   <div class="headertitle"><div class="title">python.iron.runtime.runtime Namespace Reference</div></div>
 </div><!--header-->
@@ -89,13 +90,49 @@ Classes</h2></td></tr>
 <tr class="memitem:"><td class="memItemLeft" align="right" valign="top">class &#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classpython_1_1iron_1_1runtime_1_1runtime_1_1Runtime.html">Runtime</a></td></tr>
 <tr class="separator:"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table><table class="memberdecls">
+<tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="func-members" name="func-members"></a>
+Functions</h2></td></tr>
+<tr class="memitem:abf3ad2bcc5bf2204262d396d5d661a7f" id="r_abf3ad2bcc5bf2204262d396d5d661a7f"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacepython_1_1iron_1_1runtime_1_1runtime.html#abf3ad2bcc5bf2204262d396d5d661a7f">_iter_flat</a> (obj)</td></tr>
+<tr class="separator:abf3ad2bcc5bf2204262d396d5d661a7f"><td class="memSeparator" colspan="2">&#160;</td></tr>
+</table><table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="var-members" name="var-members"></a>
 Variables</h2></td></tr>
 <tr class="memitem:a970792135ca11b49b7692441f07ede82" id="r_a970792135ca11b49b7692441f07ede82"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="namespacepython_1_1iron_1_1runtime_1_1runtime.html#a970792135ca11b49b7692441f07ede82">logger</a> = logging.getLogger(__name__)</td></tr>
 <tr class="separator:a970792135ca11b49b7692441f07ede82"><td class="memSeparator" colspan="2">&#160;</td></tr>
 </table>
 <a name="details" id="details"></a><h2 class="groupheader">Detailed Description</h2>
-<div class="textblock"><pre class="fragment">Runtime: orchestrates host-side data movement and worker execution for an IRON program.</pre> </div><h2 class="groupheader">Variable Documentation</h2>
+<div class="textblock"><pre class="fragment">Runtime: orchestrates host-side data movement and worker execution for an IRON program.</pre> </div><h2 class="groupheader">Function Documentation</h2>
+<a id="abf3ad2bcc5bf2204262d396d5d661a7f" name="abf3ad2bcc5bf2204262d396d5d661a7f"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#abf3ad2bcc5bf2204262d396d5d661a7f">&#9670;&#160;</a></span>_iter_flat()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">python.iron.runtime.runtime._iter_flat </td>
+          <td>(</td>
+          <td class="paramtype">&#160;</td>
+          <td class="paramname"><em>obj</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+<pre class="fragment">Yield obj and, recursively, the elements of any nested list/tuple.
+
+Matches the traversal InlineOpRuntimeTask uses to find Buffer args, so
+fifos nested in the inline_args structure are registered the same way.
+</pre> 
+</div>
+</div>
+<h2 class="groupheader">Variable Documentation</h2>
 <a id="a970792135ca11b49b7692441f07ede82" name="a970792135ca11b49b7692441f07ede82"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#a970792135ca11b49b7692441f07ede82">&#9670;&#160;</a></span>logger</h2>
 
