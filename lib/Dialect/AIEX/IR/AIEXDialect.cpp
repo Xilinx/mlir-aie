@@ -557,51 +557,13 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verifyDynamicSizesStrides(
       failed(checkSize(sizesRev[3], (1 << 6), "iteration size")))
     return failure();
 
-  // Runtime size landing in a narrow BD field (d0/d1 wrap 10-bit, iteration
+  // A runtime size landing in a narrow BD field (d0/d1 wrap 10-bit, iteration
   // 6-bit) could exceed the field and silently truncate on hardware. The TXN
-  // stream has no on-device trap, so the correct guard is host-side in the
-  // generated builder -- added in the follow-up (the assert_bd_field op +
-  // optional return). Until that lands, reject such a transfer rather than risk
-  // a silent miscompile. A runtime size in a WIDE field (buffer_length via
-  // linear mode, or the repeat_count) is always safe and allowed.
-  //
-  // Linear mode (contiguous) routes d0/d1 sizes into buffer_length, so a
-  // runtime d0/d1 size is only narrow-field-bound when the transfer is NOT
-  // linearizable. Mirror the lowering's compile-time contiguity test (it only
-  // needs the inner sizes/strides, never a dim's own size).
-  {
-    llvm::SmallVector<mlir::OpFoldResult, 4> stridesRev(llvm::reverse(strides));
-    auto isConst1 = [](mlir::OpFoldResult v) {
-      auto c = getConstantIntValue(v);
-      return c && *c == 1;
-    };
-    auto cval = [](mlir::OpFoldResult v) { return getConstantIntValue(v); };
-    // Contiguous iff d0 stride==1, and for each of d1/d2 either its size is a
-    // constant 1 or its stride equals the product of the strictly-inner sizes
-    // (which must be constant to decide).
-    bool contiguous = isConst1(stridesRev[0]);
-    if (contiguous && !isConst1(sizesRev[1])) {
-      auto s0 = cval(sizesRev[0]), t1 = cval(stridesRev[1]);
-      contiguous = s0 && t1 && *t1 == *s0;
-    }
-    if (contiguous && !isConst1(sizesRev[2])) {
-      auto s0 = cval(sizesRev[0]), s1 = cval(sizesRev[1]),
-           t2 = cval(stridesRev[2]);
-      contiguous = s0 && s1 && t2 && *t2 == *s0 * *s1;
-    }
-    auto isRuntime = [](mlir::OpFoldResult v) {
-      return !getConstantIntValue(v);
-    };
-    if (!contiguous && (isRuntime(sizesRev[0]) || isRuntime(sizesRev[1])))
-      return emitOpError(
-          "runtime d0/d1 size in a non-contiguous transfer is not yet "
-          "supported (would need a host-side bounds guard for the 10-bit "
-          "field); express the transfer as contiguous or use constant sizes.");
-    if (isRuntime(sizesRev[3]))
-      return emitOpError(
-          "runtime iteration (outer) size is not yet supported (would need a "
-          "host-side bounds guard for the 6-bit field).");
-  }
+  // stream has no on-device trap, so the dynamic lowering emits a host-side
+  // bounds guard (npu.assert_bd_field -> generated-C++ early return of nullopt)
+  // for exactly those fields. Nothing to reject here: wide fields
+  // (buffer_length via linear mode, repeat_count) need no guard, and narrow
+  // fields are guarded at lowering time.
 
   auto errorMessage = checkBurstLength(targetModel, getBurstLength());
   if (errorMessage.has_value())
@@ -866,6 +828,19 @@ std::optional<uint32_t> AIEX::NpuWrite32Op::getAbsoluteAddress() {
   if (!addressOffset)
     return std::nullopt;
   return ::getAbsoluteAddress(this, *addressOffset);
+}
+
+//===----------------------------------------------------------------------===//
+// NpuAssertBdFieldOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AIEX::NpuAssertBdFieldOp::verify() {
+  if (auto c = getConstantIntValue(getValue()))
+    if (*c < 0 || *c > (int64_t)getMax())
+      return emitOpError("constant value ")
+             << *c << " exceeds the guarded field range [0:" << getMax()
+             << "].";
+  return success();
 }
 
 //===----------------------------------------------------------------------===//

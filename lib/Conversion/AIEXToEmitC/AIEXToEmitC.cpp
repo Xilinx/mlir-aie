@@ -184,6 +184,17 @@ private:
           convertBlockWrite(b, loc, bw);
           ++count;
         })
+        .Case<AIEX::NpuAssertBdFieldOp>([&](auto g) {
+          // Host-side bounds guard: if the runtime value overflows its narrow
+          // BD field, the builder yields no stream (std::nullopt) rather than a
+          // truncated one. Emitted before any txn op it guards, so the early
+          // return happens before the vector is used. Not counted: it appends
+          // nothing to the txn stream.
+          emitc::VerbatimOp::create(b, loc,
+                                    "if ({} > " + std::to_string(g.getMax()) +
+                                        ") return std::nullopt;",
+                                    ValueRange{g.getValue()});
+        })
         // memref.get_global feeding a blockwrite is consumed by
         // convertBlockWrite (data inlined); the now-dead op is erased later.
         .Case<memref::GetGlobalOp>([&](auto) {})
@@ -312,6 +323,10 @@ struct ConvertAIEXToEmitCPass
                              /*is_standard=*/true);
     emitc::IncludeOp::create(builder, moduleOp.getLoc(), "vector",
                              /*is_standard=*/true);
+    // The builder returns std::optional: a runtime scalar that would overflow a
+    // narrow BD field yields std::nullopt instead of a truncated stream.
+    emitc::IncludeOp::create(builder, moduleOp.getLoc(), "optional",
+                             /*is_standard=*/true);
   }
 
   // Run the upstream arith-to-emitc conversion over the generated functions.
@@ -360,6 +375,12 @@ private:
     SmallVector<Type> paramTypes;
     auto txnVecType =
         emitc::OpaqueType::get(moduleOp.getContext(), kTxnVecType);
+    // The builder can fail at TXN-build time (a runtime scalar overflowing a
+    // narrow BD field), so it returns std::optional<std::vector<uint32_t>>:
+    // std::nullopt on a failed guard, the assembled vector otherwise.
+    auto txnRetType = emitc::OpaqueType::get(
+        moduleOp.getContext(),
+        (llvm::Twine("std::optional<") + kTxnVecType + ">").str());
     for (BlockArgument arg : entry.getArguments())
       if (!isa<BaseMemRefType>(arg.getType()))
         paramTypes.push_back(arg.getType());
@@ -370,7 +391,7 @@ private:
     auto funcOp = emitc::FuncOp::create(
         builder, loc, funcName,
         FunctionType::get(moduleOp.getContext(), paramTypes,
-                          TypeRange{txnVecType}));
+                          TypeRange{txnRetType}));
     funcOp.setSpecifiersAttr(builder.getStrArrayAttr({"inline"}));
     Block *funcBlock = funcOp.addEntryBlock();
     OpBuilder fb = OpBuilder::atBlockBegin(funcBlock);
@@ -414,7 +435,12 @@ private:
         std::to_string(tm.rows()) + ", " + std::to_string(tm.columns()) + ", " +
         std::to_string(tm.getNumMemTileRows()) + "});";
     emitc::VerbatimOp::create(eb, loc, header);
-    emitc::ReturnOp::create(eb, loc, txnVec);
+    // Return the vector as the optional result. The literal text differs from
+    // the "txn" accumulator literal (so the two are not deduplicated) and is
+    // typed as the optional return so emitc's return-type check passes; it
+    // relies on the implicit std::vector -> std::optional conversion in C++.
+    Value ret = emitc::LiteralOp::create(eb, loc, txnRetType, "std::move(txn)");
+    emitc::ReturnOp::create(eb, loc, ret);
     return success();
   }
 };

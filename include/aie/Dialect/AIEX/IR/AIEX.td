@@ -657,6 +657,34 @@ def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", []> {
   }];
 }
 
+// ASSERT_BD_FIELD
+def AIE_NpuAssertBdFieldOp: AIEX_Op<"npu.assert_bd_field", []> {
+  let summary = "Guard a runtime BD-field value against its hardware field width";
+  let arguments = (
+    ins I32:$value,
+        I32Attr:$max
+  );
+  let results = (outs );
+  let assemblyFormat = [{
+    `(` $value `)` attr-dict `:` type($value)
+  }];
+  let description = [{
+    Asserts, at TXN-build time, that a runtime value assigned to a buffer-
+    descriptor field fits its hardware field: `value <= max`. Emitted by the
+    dynamic DMA lowering for a runtime scalar landing in a narrow field (e.g. the
+    10-bit d0/d1 wrap or 6-bit iteration wrap), where masking would silently
+    truncate an out-of-range value.
+
+    The TXN instruction stream has no on-device trap, so the guard runs host-side
+    in the generated C++ TXN builder: --aie-npu-to-cpp lowers this op to an early
+    `if (value > max) return std::nullopt;` so the builder yields no stream for an
+    illegal value instead of a corrupt one. On the binary (--aie-npu-to-binary)
+    path the value is always a compile-time constant; the op verifies the bound
+    and is otherwise inert. `value` must not exceed `max` when constant.
+  }];
+  let hasVerifier = 1;
+}
+
 // MASKWRITE
 def AIE_NpuMaskWrite32Op: AIEX_Op<"npu.maskwrite32", []> {
   let summary = "Write a masked 32-bit value to the AIE array";

@@ -12,7 +12,7 @@
 // are statically known and emitted as literals.
 
 // CHECK: #include "aie/Runtime/TxnEncoding.h"
-// CHECK: inline std::vector<uint32_t> generate_txn_main_seq() {
+// CHECK: inline std::optional<std::vector<uint32_t>> generate_txn_main_seq() {
 // CHECK:   std::vector<uint32_t> txn;
 // CHECK:   aie_runtime::txn_init(txn);
 // CHECK:   aie_runtime::txn_append_write32(txn,
@@ -20,7 +20,7 @@
 // CHECK:   uint32_t [[ARR:v[0-9]+]][4] = {0x00000001u, 0x00000002u, 0x00000003u, 0x00000004u};
 // CHECK:   aie_runtime::txn_append_blockwrite(txn, {{.*}}, [[ARR]],
 // CHECK:   aie_runtime::txn_prepend_header(txn, 3u, {0, 1, 3, 6, 1, 1});
-// CHECK:   return txn;
+// CHECK:   return std::move(txn);
 module {
   aie.device(npu1_1col) {
     memref.global "private" constant @blockdata : memref<4xi32> = dense<[1, 2, 3, 4]>

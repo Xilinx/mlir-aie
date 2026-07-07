@@ -88,9 +88,23 @@ int main(int argc, char **argv) {
     return 2;
   }
 
+  // The generated builders return std::optional: std::nullopt if a runtime
+  // scalar would overflow a narrow BD field. For the equivalence check the
+  // values are in range, so a nullopt is a harness failure.
   std::vector<uint32_t> golden = readHex(argv[1]);
-  std::vector<uint32_t> stat = STATIC_FN();
-  std::vector<uint32_t> dyn = DYN_FN(ARGVAL);
+  auto statOpt = STATIC_FN();
+  auto dynOpt = DYN_FN(ARGVAL);
+  if (!statOpt) {
+    std::fprintf(stderr, "static builder returned nullopt (unexpected)\n");
+    return 1;
+  }
+  if (!dynOpt) {
+    std::fprintf(stderr, "dynamic builder returned nullopt for arg=%d\n",
+                 (int)(ARGVAL));
+    return 1;
+  }
+  const std::vector<uint32_t> &stat = *statOpt;
+  const std::vector<uint32_t> &dyn = *dynOpt;
 
   bool ok = equal("golden", golden, "static-C++", stat) &&
             equal("static-C++", stat, "dynamic-C++", dyn);

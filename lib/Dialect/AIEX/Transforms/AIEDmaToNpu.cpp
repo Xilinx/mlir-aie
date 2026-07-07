@@ -675,6 +675,23 @@ public:
     };
     bool isLinear = knownContiguous();
 
+    // Host-side bounds guard for a RUNTIME size that lands in a narrow BD field
+    // (masking would silently truncate an out-of-range value). Constant sizes
+    // are already range-checked by the verifier, so guard only runtime ones,
+    // and only for fields actually used: d0/d1 wrap (10-bit) exist in ND mode;
+    // the iteration wrap (6-bit) always. The guard is on the hardware value.
+    auto guardField = [&](OpFoldResult inSize, Value hwVal, int64_t fieldMax) {
+      if (getConstantIntValue(inSize))
+        return; // constant: verifier already enforced the bound.
+      NpuAssertBdFieldOp::create(rewriter, loc, hwVal,
+                                 rewriter.getI32IntegerAttr(fieldMax));
+    };
+    if (!isLinear) {
+      guardField(mixedSizesRev[0], hwS[0], (1 << 10) - 1);
+      guardField(mixedSizesRev[1], hwS[1], (1 << 10) - 1);
+    }
+    guardField(mixedSizesRev[3], hwS[3], (1 << 6) - 1);
+
     uint64_t bdAddr = targetModel.getDmaBdAddress(tileCol, tileRow, op.getId());
     auto writeWord = [&](uint32_t wordIdx, Value val) {
       NpuWrite32Op::create(
