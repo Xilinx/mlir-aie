@@ -54,10 +54,13 @@ def main():
     f = open("aie.mlir", "w+")
     # declare tile, column by row
 
+    # The generated file's copyright line is emitted via concatenation (not a
+    # literal source line) so this generator's own header has no copyright notice
+    # after its SPDX line; see the ordering rule in utils/check_copyright_format.py.
     f.write(
-        """//===- aie.mlir ------------------------------------------------*- MLIR -*-===//
-// Copyright (C) 2021-2022 Xilinx, Inc.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+        "//===- aie.mlir ------------------------------------------------*- MLIR -*-===//\n"
+        "// " + "Copyright (C) 2021-2022 Xilinx, Inc." + "\n"
+        """// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
