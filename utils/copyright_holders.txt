@@ -1,0 +1,23 @@
+# Whitelist of allowed copyright holders (one holder per line).
+#
+# utils/check_copyright_format.py rejects any copyright notice whose holder is
+# not listed here. This is what catches misspelled or otherwise unapproved
+# company names (e.g. "Advanced Micro Devices Inc" without the comma, or a bare
+# "AMD"): only the exact strings below are accepted.
+#
+# Rules:
+#   - One holder per line; the text must match exactly, including punctuation
+#     such as a trailing "Inc.".
+#   - Blank lines and lines starting with '#' are ignored.
+#   - When adding a genuinely new third-party holder, add it here. If a notice
+#     is just a misspelling of an established holder, fix the notice instead.
+
+# First-party
+Advanced Micro Devices, Inc.
+Xilinx, Inc.
+
+# Third-party / vendored
+Google, Inc.
+Jarryd Beck
+SAFARI Research Group at ETH Zurich and Carnegie Mellon University
+Trustees of Indiana University

@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Copyright (C) 2023 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 // REQUIRES: valid_xchess_license
 // REQUIRES: peano, peano_and_chess
