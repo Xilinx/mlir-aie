@@ -4329,7 +4329,8 @@ static LogicalResult generateTransactionOutput(ModuleOp moduleOp,
 //===----------------------------------------------------------------------===//
 
 /// Return the argument count of `dev`'s compiled non-empty runtime_sequence, or
-/// std::nullopt if the device has no matching runtime_sequence with a body. When
+/// std::nullopt if the device has no matching runtime_sequence with a body.
+/// When
 /// --sequence-name is set, only that sequence is considered (matching the
 /// filtering the instruction/control-packet generation paths apply), so the
 /// count reflects the sequence actually compiled. This is the host-buffer
