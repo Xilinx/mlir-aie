@@ -4328,13 +4328,18 @@ static LogicalResult generateTransactionOutput(ModuleOp moduleOp,
 // Host-buffer count helpers (shared by ctrl-packet index + kernels.json count)
 //===----------------------------------------------------------------------===//
 
-/// Return the argument count of `dev`'s first non-empty runtime_sequence, or
-/// std::nullopt if the device has no runtime_sequence with a body. This is the
-/// host-buffer contract before any ctrl-packet buffer is appended (the ctrlpkt
-/// operand is added later by AIECtrlPacketToDma, outside this count).
+/// Return the argument count of `dev`'s compiled non-empty runtime_sequence, or
+/// std::nullopt if the device has no matching runtime_sequence with a body. When
+/// --sequence-name is set, only that sequence is considered (matching the
+/// filtering the instruction/control-packet generation paths apply), so the
+/// count reflects the sequence actually compiled. This is the host-buffer
+/// contract before any ctrl-packet buffer is appended (the ctrlpkt operand is
+/// added later by AIECtrlPacketToDma, outside this count).
 static std::optional<int>
 getRuntimeSequenceArgCount(xilinx::AIE::DeviceOp dev) {
   for (auto seqOp : dev.getOps<xilinx::AIE::RuntimeSequenceOp>()) {
+    if (!sequenceName.empty() && seqOp.getSymName() != sequenceName)
+      continue;
     if (!seqOp.getBody().empty())
       return static_cast<int>(seqOp.getBody().front().getNumArguments());
   }
