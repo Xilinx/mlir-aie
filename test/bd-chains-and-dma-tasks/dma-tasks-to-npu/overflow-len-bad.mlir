@@ -20,11 +20,12 @@ module {
     %tile_0_0 = aie.tile(0, 0)
 
     aie.runtime_sequence(%arg0: memref<536870912xi64>) {
+      %c0_i32 = arith.constant 0 : i32
+      %c536870912_i32 = arith.constant 536870912 : i32
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
           // expected-error@+2 {{Buffer descriptor length does not match length of transfer expressed by lowest three dimensions of data layout transformation strides/wraps. BD length is 4294967296 bytes. Lowest three dimensions of data layout transformation would result in transfer of 16 bytes.}}
           // expected-note@+1 {{}}
-          aie.dma_bd(%arg0 : memref<536870912xi64>, 0, 536870912,
-                     [<size=1, stride=1>, <size=1, stride=1>, <size=2, stride=1>]) {bd_id = 0 : i32}
+          aie.dma_bd(%arg0 : memref<536870912xi64> offset = %c0_i32 len = %c536870912_i32 sizes = [1, 1, 2] strides = [1, 1, 1]) {bd_id = 0 : i32}
           aie.end
       }
     }

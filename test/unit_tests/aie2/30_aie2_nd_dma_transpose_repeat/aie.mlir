@@ -55,11 +55,13 @@ module @tutorial_2b {
         }
 
         %mem14 = aie.mem(%tile14) {
+          %c0_i32 = arith.constant 0 : i32
+          %c128_i32 = arith.constant 128 : i32
           %srcDma = aie.dma_start("MM2S", 0, ^bd0, ^end)
           ^bd0:
             aie.use_lock(%lock14_done, "AcquireGreaterEqual", 1)
                                                              ////////// new //////////
-            aie.dma_bd(%buf14 : memref<128xi32>, 0, 128, [<size = 2, stride = 1>, <size = 8, stride = 1>, <size = 8, stride = 8>])
+            aie.dma_bd(%buf14 : memref<128xi32> offset = %c0_i32 len = %c128_i32 sizes = [2, 8, 8] strides = [1, 1, 8])
                                                             // w, s    w, s    w,  s
                                                             // dim 2,  dim 1,  dim 0
             aie.use_lock(%lock14_sent, "Release", 1)
@@ -69,10 +71,12 @@ module @tutorial_2b {
         }
 
         %mem34 = aie.mem(%tile34) {
+          %c0_i32 = arith.constant 0 : i32
+          %c128_i32 = arith.constant 128 : i32
           %dstDma = aie.dma_start("S2MM", 0, ^bd0, ^end)
           ^bd0:
             aie.use_lock(%lock34_wait, "AcquireGreaterEqual", 1)
-            aie.dma_bd(%buf34 : memref<128xi32>, 0, 128)
+            aie.dma_bd(%buf34 : memref<128xi32> offset = %c0_i32 len = %c128_i32 sizes = [] strides = [])
             aie.use_lock(%lock34_recv, "Release", 1)
             aie.next_bd ^end
           ^end:

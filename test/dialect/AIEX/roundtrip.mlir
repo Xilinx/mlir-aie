@@ -16,6 +16,7 @@ aie.device(npu1) {
   }
 }
 
+
 // -----
 
 // CHECK: aie.device
@@ -26,6 +27,7 @@ aie.device(npu1) {
     aiex.npu.dma_wait {symbol = @out0}
   }
 }
+
 
 // -----
 
@@ -38,6 +40,7 @@ aie.device(npu1) {
     aiex.npu.address_patch(%cst_npu_0 : i32) {addr = 123 : ui32, arg_idx = 3 : i32}
   }
 }
+
 
 // -----
 
@@ -54,6 +57,7 @@ aie.device(npu1) {
   }
 }
 
+
 // -----
 
 // CHECK: aie.device
@@ -67,6 +71,7 @@ aie.device(npu1) {
     aiex.control_packet {address = 0xABCD : ui32, length = 3 : i32, opcode = 1 : i32, stream_id = 4 : i32}
   }
 }
+
 
 // -----
 

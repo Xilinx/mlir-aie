@@ -35,11 +35,10 @@ func.func @v32i16_srs_v32i32(%arg0 : vector<32xi32>) {
 // AIE2P: xllvm.intr.aie2p.I512.v32.acc32.srs
 // AIE2P: xllvm.intr.aie2p.I512.v32.acc32.srs
 
+
 // -----
 
 func.func @v16i32_srs_v16i64(%arg0 : vector<16xi64>) {
-  %c0 = arith.constant 0 : i32
-  %c5 = arith.constant 5 : i32
   %0 = aievec.srs %arg0, %c0 : vector<16xi64>, i32, vector<16xi32>
   %1 = aievec.srs %arg0, %c5 : vector<16xi64>, i32, vector<16xi32>
   return
@@ -62,11 +61,10 @@ func.func @v16i32_srs_v16i64(%arg0 : vector<16xi64>) {
 // AIE2P: xllvm.intr.aie2p.I512.v16.acc64.srs
 // AIE2P: xllvm.intr.aie2p.I512.v16.acc64.srs
 
+
 // -----
 
 func.func @v16i16_srs_v16i32(%arg0 : vector<16xi32>) {
-  %c0 = arith.constant 0 : i32
-  %c5 = arith.constant 5 : i32
   %0 = aievec.srs %arg0, %c0 : vector<16xi32>, i32, vector<16xi16>
   %1 = aievec.srs %arg0, %c5 : vector<16xi32>, i32, vector<16xi16>
   return
@@ -91,11 +89,10 @@ func.func @v16i16_srs_v16i32(%arg0 : vector<16xi32>) {
 // AIE2P: xllvm.intr.aie2p.I256.v16.acc32.srs
 // AIE2P: xllvm.intr.aie2p.I256.v16.acc32.srs
 
+
 // -----
 
 func.func @v32i8_srs_v32i32(%arg0 : vector<32xi32>) {
-  %c0 = arith.constant 0 : i32
-  %c5 = arith.constant 5 : i32
   %0 = aievec.srs %arg0, %c0 : vector<32xi32>, i32, vector<32xi8>
   %1 = aievec.srs %arg0, %c5 : vector<32xi32>, i32, vector<32xi8>
   return
@@ -120,11 +117,10 @@ func.func @v32i8_srs_v32i32(%arg0 : vector<32xi32>) {
 // AIE2P: xllvm.intr.aie2p.I256.v32.acc32.srs
 // AIE2P: xllvm.intr.aie2p.I256.v32.acc32.srs
 
+
 // -----
 
 func.func @v16i16_srs_v16i64(%arg0 : vector<16xi64>) {
-  %c0 = arith.constant 0 : i32
-  %c5 = arith.constant 5 : i32
   %0 = aievec.srs %arg0, %c0 : vector<16xi64>, i32, vector<16xi16>
   %1 = aievec.srs %arg0, %c5 : vector<16xi64>, i32, vector<16xi16>
   return
@@ -147,11 +143,10 @@ func.func @v16i16_srs_v16i64(%arg0 : vector<16xi64>) {
 // AIE2P: xllvm.intr.aie2p.I256.v16.acc64.srs
 // AIE2P: xllvm.intr.aie2p.I256.v16.acc64.srs
 
+
 // -----
 
 func.func @v8i32_srs_v8i64(%arg0 : vector<8xi64>) {
-  %c0 = arith.constant 0 : i32
-  %c5 = arith.constant 5 : i32
   %0 = aievec.srs %arg0, %c0 : vector<8xi64>, i32, vector<8xi32>
   %1 = aievec.srs %arg0, %c5 : vector<8xi64>, i32, vector<8xi32>
   return
@@ -174,11 +169,10 @@ func.func @v8i32_srs_v8i64(%arg0 : vector<8xi64>) {
 // AIE2P: xllvm.intr.aie2p.I256.v8.acc64.srs
 // AIE2P: xllvm.intr.aie2p.I256.v8.acc64.srs
 
+
 // -----
 
 func.func @v16bf16_srs_v16f32(%arg0 : vector<16xf32>) {
-  %c0 = arith.constant 0 : i32
-  %c5 = arith.constant 5 : i32
   %0 = aievec.srs %arg0, %c0 : vector<16xf32>, i32, vector<16xbf16>
   %1 = aievec.srs %arg0, %c5 : vector<16xf32>, i32, vector<16xbf16>
   return
@@ -201,10 +195,10 @@ func.func @v16bf16_srs_v16f32(%arg0 : vector<16xf32>) {
 // AIE2P: xllvm.intr.aie2p.v16accfloat.to.v16bf16
 // AIE2P: xllvm.intr.aie2p.v16accfloat.to.v16bf16
 
+
 // -----
 
 func.func @v32bf16_srs_v32f32(%arg0 : vector<32xf32>) {
-  %c0 = arith.constant 0 : i32
   %0 = aievec.srs %arg0, %c0 : vector<32xf32>, i32, vector<32xbf16>
   return
 }
@@ -244,10 +238,10 @@ func.func @v32bf16_srs_v32f32(%arg0 : vector<32xf32>) {
 // AIE2P-SAME: %[[ARG0]]) :
 // AIE2P-SAME: (vector<32xf32>) -> vector<32xbf16>
 
+
 // -----
 
 func.func @v4x4bf16_srs_v4x4f32(%arg0 : vector<4x4xf32>) {
-  %c0 = arith.constant 0 : i32
   %0 = aievec.srs %arg0, %c0 : vector<4x4xf32>, i32, vector<4x4xbf16>
   return
 }
@@ -266,10 +260,10 @@ func.func @v4x4bf16_srs_v4x4f32(%arg0 : vector<4x4xf32>) {
 // AIE2P-LABEL: @v4x4bf16_srs_v4x4f32
 // AIE2P: xllvm.intr.aie2p.v16accfloat.to.v16bf16
 
+
 // -----
 
 func.func @v1x1x4x4bf16_srs_v1x1x4x4f32(%arg0 : vector<1x1x4x4xf32>) {
-  %c0 = arith.constant 0 : i32
   %0 = aievec.srs %arg0, %c0 : vector<1x1x4x4xf32>, i32, vector<1x1x4x4xbf16>
   return
 }
@@ -288,10 +282,10 @@ func.func @v1x1x4x4bf16_srs_v1x1x4x4f32(%arg0 : vector<1x1x4x4xf32>) {
 // AIE2P-LABEL: @v1x1x4x4bf16_srs_v1x1x4x4f32
 // AIE2P: xllvm.intr.aie2p.v16accfloat.to.v16bf16
 
+
 // -----
 
 func.func @v2x8i16_srs_v2x8i32(%arg0 : vector<2x8xi32>) {
-  %c0 = arith.constant 0 : i32
   %0 = aievec.srs %arg0, %c0 : vector<2x8xi32>, i32, vector<2x8xi16>
   return
 }

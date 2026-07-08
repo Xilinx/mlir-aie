@@ -28,26 +28,26 @@
 // CHECK:             %3 = aie.dma_start(MM2S, 1, ^bb1, ^bb3)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb2
 // CHECK:             aie.use_lock(%lock_2_0, Acquire, 1)
-// CHECK:             aie.dma_bd(%0 : memref<16xi32>, 0, 16)
+// CHECK:             aie.dma_bd(%0 : memref<16xi32> offset = {{.*}} len = {{.*}} sizes = {{.*}} strides = {{.*}})
 // CHECK:             aie.use_lock(%lock_2_0, Release, 0)
 // CHECK:             aie.next_bd ^bb2
 // CHECK:           ^bb2:  // pred: ^bb1
 // CHECK:             aie.use_lock(%lock_2_0_0, Acquire, 1)
-// CHECK:             aie.dma_bd(%1 : memref<16xi32>, 0, 16)
+// CHECK:             aie.dma_bd(%1 : memref<16xi32> offset = {{.*}} len = {{.*}} sizes = {{.*}} strides = {{.*}})
 // CHECK:             aie.use_lock(%lock_2_0_0, Release, 0)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb3:  // pred: ^bb0
 // CHECK:             %4 = aie.dma_start(S2MM, 0, ^bb4, ^bb5)
 // CHECK:           ^bb4:  // 2 preds: ^bb3, ^bb4
 // CHECK:             aie.use_lock(%lock_2_0_1, Acquire, 0)
-// CHECK:             aie.dma_bd(%2 : memref<16xi32>, 0, 16)
+// CHECK:             aie.dma_bd(%2 : memref<16xi32> offset = {{.*}} len = {{.*}} sizes = {{.*}} strides = {{.*}})
 // CHECK:             aie.use_lock(%lock_2_0_1, Release, 1)
 // CHECK:             aie.next_bd ^bb4
 // CHECK:           ^bb5:  // pred: ^bb3
 // CHECK:             %5 = aie.dma_start(MM2S, 0, ^bb6, ^bb7)
 // CHECK:           ^bb6:  // 2 preds: ^bb5, ^bb6
 // CHECK:             aie.use_lock(%[[VAL_5]], AcquireGreaterEqual, 1)
-// CHECK:             aie.dma_bd(%ext_buffer_in : memref<16xi32>, 0, 16)
+// CHECK:             aie.dma_bd(%ext_buffer_in : memref<16xi32> offset = {{.*}} len = {{.*}} sizes = {{.*}} strides = {{.*}})
 // CHECK:             aie.use_lock(%[[VAL_4]], Release, 1)
 // CHECK:             aie.next_bd ^bb6
 // CHECK:           ^bb7:  // pred: ^bb5
@@ -58,12 +58,12 @@
 // CHECK:             %3 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb2
 // CHECK:             aie.use_lock(%[[VAL_2]], AcquireGreaterEqual, 1)
-// CHECK:             aie.dma_bd(%[[VAL_0]] : memref<16xi32>, 0, 16)
+// CHECK:             aie.dma_bd(%[[VAL_0]] : memref<16xi32> offset = {{.*}} len = {{.*}} sizes = {{.*}} strides = {{.*}})
 // CHECK:             aie.use_lock(%[[VAL_3]], Release, 1)
 // CHECK:             aie.next_bd ^bb2
 // CHECK:           ^bb2:  // pred: ^bb1
 // CHECK:             aie.use_lock(%[[VAL_2]], AcquireGreaterEqual, 1)
-// CHECK:             aie.dma_bd(%[[VAL_1]] : memref<16xi32>, 0, 16)
+// CHECK:             aie.dma_bd(%[[VAL_1]] : memref<16xi32> offset = {{.*}} len = {{.*}} sizes = {{.*}} strides = {{.*}})
 // CHECK:             aie.use_lock(%[[VAL_3]], Release, 1)
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb3:  // pred: ^bb0
@@ -89,22 +89,24 @@ module @shimtileDMA_channels {
         aie.objectfifo.register_external_buffers @objfifo (%tile20, {%ext_buffer_in}) : (memref<16xi32>)
 
         %mem12 = aie.shim_dma(%tile20) {
+          %c0_i32 = arith.constant 0 : i32
+          %c16_i32 = arith.constant 16 : i32
             %dma1 = aie.dma_start(MM2S, 1, ^bb1, ^bb3)
         ^bb1:
             aie.use_lock(%lock0, Acquire, 1)
-            aie.dma_bd(%buff0 : memref<16xi32>, 0, 16)
+            aie.dma_bd(%buff0 : memref<16xi32> offset = %c0_i32 len = %c16_i32 sizes = [] strides = [])
             aie.use_lock(%lock0, Release, 0)
             aie.next_bd ^bb2
         ^bb2:
             aie.use_lock(%lock1, Acquire, 1)
-            aie.dma_bd(%buff1 : memref<16xi32>, 0, 16)
+            aie.dma_bd(%buff1 : memref<16xi32> offset = %c0_i32 len = %c16_i32 sizes = [] strides = [])
             aie.use_lock(%lock1, Release, 0)
             aie.next_bd ^bb1
         ^bb3:
             %dma2 = aie.dma_start(S2MM, 0, ^bb4, ^bb5)
         ^bb4:
             aie.use_lock(%lock2, Acquire, 0)
-            aie.dma_bd(%buff2 : memref<16xi32>, 0, 16)
+            aie.dma_bd(%buff2 : memref<16xi32> offset = %c0_i32 len = %c16_i32 sizes = [] strides = [])
             aie.use_lock(%lock2, Release, 1)
             aie.next_bd ^bb4
         ^bb5:

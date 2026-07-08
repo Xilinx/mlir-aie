@@ -123,10 +123,12 @@ module {
     }
 
     %mem_0_2 = aie.mem(%tile_0_2) {
+      %c0_i32 = arith.constant 0 : i32
+      %c8_i32 = arith.constant 8 : i32
       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
     ^bb1:  // 2 preds: ^bb0, ^bb2
       aie.use_lock(%output_0_2_lock4, AcquireGreaterEqual, 1)
-      aie.dma_bd(%output_0_2_buffer : memref<8xi32>, 0, 8)
+      aie.dma_bd(%output_0_2_buffer : memref<8xi32> offset = %c0_i32 len = %c8_i32 sizes = [] strides = [])
       aie.use_lock(%output_0_2_lock5, Release, 1)
       aie.next_bd ^bb1
     ^bb2:
@@ -135,8 +137,6 @@ module {
 
     %core_0_3 = aie.core(%tile_0_3) {
       %c0 = arith.constant 0 : index
-      %c1_i32 = arith.constant 1 : i32
-      %c3_i32 = arith.constant 3 : i32
       %c1 = arith.constant 1 : index
       %c8 = arith.constant 8 : index
       // initialize to i + 3
@@ -190,7 +190,7 @@ module {
       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
     ^bb1:  // 2 preds: ^bb0, ^bb2
       aie.use_lock(%output_0_3_lock4, AcquireGreaterEqual, 1)
-      aie.dma_bd(%output_0_3_buffer : memref<8xi32>, 0, 8)
+      aie.dma_bd(%output_0_3_buffer : memref<8xi32> offset = %c0_i32 len = %c8_i32 sizes = [] strides = [])
       aie.use_lock(%output_0_3_lock5, Release, 1)
       aie.next_bd ^bb1
     ^bb2:
@@ -199,8 +199,6 @@ module {
 
     %core_0_4 = aie.core(%tile_0_4) {
       %c0 = arith.constant 0 : index
-      %c1_i32 = arith.constant 1 : i32
-      %c3_i32 = arith.constant 3 : i32
       %c1 = arith.constant 1 : index
       %c8 = arith.constant 8 : index
       // initialize to i + 3
@@ -254,7 +252,7 @@ module {
       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
     ^bb1:  // 2 preds: ^bb0, ^bb2
       aie.use_lock(%output_0_4_lock4, AcquireGreaterEqual, 1)
-      aie.dma_bd(%output_0_4_buffer : memref<8xi32>, 0, 8)
+      aie.dma_bd(%output_0_4_buffer : memref<8xi32> offset = %c0_i32 len = %c8_i32 sizes = [] strides = [])
       aie.use_lock(%output_0_4_lock5, Release, 1)
       aie.next_bd ^bb1
     ^bb2:
@@ -263,8 +261,6 @@ module {
 
     %core_0_5 = aie.core(%tile_0_5) {
       %c0 = arith.constant 0 : index
-      %c1_i32 = arith.constant 1 : i32
-      %c3_i32 = arith.constant 3 : i32
       %c1 = arith.constant 1 : index
       %c8 = arith.constant 8 : index
       // initialize to i + 3
@@ -318,7 +314,7 @@ module {
       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
     ^bb1:  // 2 preds: ^bb0, ^bb2
       aie.use_lock(%output_0_5_lock4, AcquireGreaterEqual, 1)
-      aie.dma_bd(%output_0_5_buffer : memref<8xi32>, 0, 8)
+      aie.dma_bd(%output_0_5_buffer : memref<8xi32> offset = %c0_i32 len = %c8_i32 sizes = [] strides = [])
       aie.use_lock(%output_0_5_lock5, Release, 1)
       aie.next_bd ^bb1
     ^bb2:

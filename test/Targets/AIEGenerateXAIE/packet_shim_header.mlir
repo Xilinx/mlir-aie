@@ -55,22 +55,26 @@ module @aie_module {
     %6 = aie.buffer(%3) {address = 3072 : i32, sym_name = "buf1"} : memref<32xi32, 2>
     %7 = aie.external_buffer {sym_name = "buf"} : memref<32xi32>
     %8 = aie.mem(%3) {
+      %c0_i32 = arith.constant 0 : i32
+      %c32_i32 = arith.constant 32 : i32
       %10 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
     ^bb1:  // 2 preds: ^bb0, ^bb1
       aie.use_lock(%5, Acquire, 0)
-      aie.dma_bd(%6 : memref<32xi32, 2>, 0, 32)
+      aie.dma_bd(%6 : memref<32xi32, 2> offset = %c0_i32 len = %c32_i32 sizes = [] strides = [])
       aie.use_lock(%5, Release, 1)
       aie.next_bd ^bb1
     ^bb2:  // pred: ^bb0
       aie.end
     }
     %9 = aie.shim_dma(%0) {
+      %c0_i32 = arith.constant 0 : i32
+      %c32_i32 = arith.constant 32 : i32
       %10 = aie.lock(%0, 1)
       %11 = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
     ^bb1:  // 2 preds: ^bb0, ^bb1
       aie.use_lock(%10, Acquire, 1)
       aie.dma_bd_packet(6, 10)
-      aie.dma_bd(%7 : memref<32xi32>, 0, 32)
+      aie.dma_bd(%7 : memref<32xi32> offset = %c0_i32 len = %c32_i32 sizes = [] strides = [])
       aie.use_lock(%10, Release, 0)
       aie.next_bd ^bb1
     ^bb2:  // pred: ^bb0

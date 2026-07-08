@@ -11,8 +11,10 @@
 aie.device(npu1) {
   %tile_0_0 = aie.tile(0, 0)
   aie.runtime_sequence @double_free(%arg0: memref<8xi16>) {
+    %c0_i32 = arith.constant 0 : i32
+    %c8_i32 = arith.constant 8 : i32
     %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+      aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32 sizes = [] strides = [])
       aie.end
     }
     aiex.dma_start_task(%t)
@@ -21,6 +23,8 @@ aie.device(npu1) {
     aiex.dma_free_task(%t)
   }
 }
+
+
 
 // -----
 
@@ -32,8 +36,10 @@ aie.device(npu1) {
 aie.device(npu1) {
   %tile_0_0 = aie.tile(0, 0)
   aie.runtime_sequence @await_then_free_ok(%arg0: memref<8xi16>) {
+    %c0_i32 = arith.constant 0 : i32
+    %c8_i32 = arith.constant 8 : i32
     %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+      aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32 sizes = [] strides = [])
       aie.end
     }
     aiex.dma_start_task(%t)

@@ -36,27 +36,32 @@ aie.device(xcvc1902) {
 
     // Tile DMA
     %m73 = aie.mem(%t73) {
+      %c0_i32 = arith.constant 0 : i32
+      %c2_i32 = arith.constant 2 : i32
+      %c4_i32 = arith.constant 4 : i32
+      %c8_i32 = arith.constant 8 : i32
+      %c12_i32 = arith.constant 12 : i32
         %srcDma = aie.dma_start("MM2S", 0, ^bd0, ^dma1)
       ^dma1:
         %dstDma = aie.dma_start("S2MM", 0, ^bd2, ^end)
       ^bd0:
         aie.use_lock(%lock_e, Acquire, 0)
-        aie.dma_bd(%buf_l : memref<256xi32>, 0, 2)
+        aie.dma_bd(%buf_l : memref<256xi32> offset = %c0_i32 len = %c2_i32 sizes = [] strides = [])
         aie.use_lock(%lock_e, Release, 1)
         aie.next_bd ^bd1
       ^bd1:
         aie.use_lock(%lock_l, Acquire, 0)
-        aie.dma_bd(%buf_l : memref<256xi32>, 4, 2)
+        aie.dma_bd(%buf_l : memref<256xi32> offset = %c4_i32 len = %c2_i32 sizes = [] strides = [])
         aie.use_lock(%lock_l, Release, 1)
         aie.next_bd ^end
       ^bd2:
         aie.use_lock(%lock_n, Acquire, 0)
-        aie.dma_bd(%buf_l : memref<256xi32>, 8, 2)
+        aie.dma_bd(%buf_l : memref<256xi32> offset = %c8_i32 len = %c2_i32 sizes = [] strides = [])
         aie.use_lock(%lock_n, Release, 1)
         aie.next_bd ^bd3
       ^bd3:
         aie.use_lock(%lock_s, Acquire, 0)
-        aie.dma_bd(%buf_l : memref<256xi32>, 12, 2)
+        aie.dma_bd(%buf_l : memref<256xi32> offset = %c12_i32 len = %c2_i32 sizes = [] strides = [])
         aie.use_lock(%lock_s, Release, 1)
         aie.next_bd ^end
       ^end:

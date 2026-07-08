@@ -24,34 +24,36 @@ module @memtileDMA_channels {
         aie.objectfifo @objfifo (%tile11, {%tile33}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
         %mem11 = aie.memtile_dma(%tile11) {
+          %c0_i32 = arith.constant 0 : i32
+          %c16_i32 = arith.constant 16 : i32
             %dma1 = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
         ^bb1:
-            aie.dma_bd(%buff0 : memref<16xi32>, 0, 16)
+            aie.dma_bd(%buff0 : memref<16xi32> offset = %c0_i32 len = %c16_i32 sizes = [] strides = [])
             aie.next_bd ^bb1
         ^bb2:
             %dma2 = aie.dma_start(MM2S, 1, ^bb3, ^bb4)
         ^bb3:
-            aie.dma_bd(%buff2 : memref<16xi32>, 0, 16)
+            aie.dma_bd(%buff2 : memref<16xi32> offset = %c0_i32 len = %c16_i32 sizes = [] strides = [])
             aie.next_bd ^bb3
         ^bb4:
             %dma3 = aie.dma_start(MM2S, 2, ^bb5, ^bb6)
         ^bb5:
-            aie.dma_bd(%buff2 : memref<16xi32>, 0, 16)
+            aie.dma_bd(%buff2 : memref<16xi32> offset = %c0_i32 len = %c16_i32 sizes = [] strides = [])
             aie.next_bd ^bb5
         ^bb6:
             %dma4 = aie.dma_start(MM2S, 3, ^bb7, ^bb8)
         ^bb7:
-            aie.dma_bd(%buff2 : memref<16xi32>, 0, 16)
+            aie.dma_bd(%buff2 : memref<16xi32> offset = %c0_i32 len = %c16_i32 sizes = [] strides = [])
             aie.next_bd ^bb7
         ^bb8:
             %dma5 = aie.dma_start(MM2S, 4, ^bb9, ^bb10)
         ^bb9:
-            aie.dma_bd(%buff2 : memref<16xi32>, 0, 16)
+            aie.dma_bd(%buff2 : memref<16xi32> offset = %c0_i32 len = %c16_i32 sizes = [] strides = [])
             aie.next_bd ^bb9
         ^bb10:
             %dma6 = aie.dma_start(MM2S, 5, ^bb11, ^bb12)
         ^bb11:
-            aie.dma_bd(%buff2 : memref<16xi32>, 0, 16)
+            aie.dma_bd(%buff2 : memref<16xi32> offset = %c0_i32 len = %c16_i32 sizes = [] strides = [])
             aie.next_bd ^bb11
         ^bb12:
             aie.end

@@ -36,6 +36,7 @@ func.func @merge_single_column_mac(%A : vector<16xi16>,
     return %mac1 : vector<16xi48>
 }
 
+
 // -----
 
 // CHECK-LABEL: func.func @merge_single_column_mac(
@@ -70,6 +71,7 @@ func.func @merge_single_column_mac(%A : vector<16xi16>,
                                     : vector<32xi16>, vector<16xi16>, vector<16xi48>
     return %mac1 : vector<16xi48>
 }
+
 
 // -----
 

@@ -17,18 +17,20 @@ module {
     %lock_2 = aie.lock(%tile_0_0, 2)
 
     aie.bd_chain @simple_chain(%buf: memref<8xi16>, %l0: index, %l1: index, %l2: index) {
+      %c0_i32 = arith.constant 0 : i32
+      %c8_i32 = arith.constant 8 : i32
             aie.use_lock(%l0, "Acquire", 1)
-            aie.dma_bd(%buf : memref<8xi16>, 0, 8)
+            aie.dma_bd(%buf : memref<8xi16> offset = %c0_i32 len = %c8_i32 sizes = [] strides = [])
             aie.use_lock(%l1, "Release", 1)
             aie.next_bd ^bd1
         ^bd1:
             aie.use_lock(%l1, "Acquire", 1)
-            aie.dma_bd(%buf : memref<8xi16>, 0, 8)
+            aie.dma_bd(%buf : memref<8xi16> offset = %c0_i32 len = %c8_i32 sizes = [] strides = [])
             aie.use_lock(%l2, "Release", 1)
             aie.next_bd ^bd2
         ^bd2:
             aie.use_lock(%l2, "Acquire", 1)
-            aie.dma_bd(%buf : memref<8xi16>, 0, 8)
+            aie.dma_bd(%buf : memref<8xi16> offset = %c0_i32 len = %c8_i32 sizes = [] strides = [])
             aie.use_lock(%l0, "Release", 1)
             aie.end
     }
@@ -38,17 +40,17 @@ module {
                                     on (%tile_0_0, MM2S, 0) 
       // CHECK: %[[task1:.+]] = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
       // CHECK:   aie.use_lock(%lock_0, "Acquire", 1)
-      // CHECK:   aie.dma_bd(%buf : memref<8xi16>, 0, 8)
+      // CHECK:   aie.dma_bd(%buf : memref<8xi16> offset = {{.*}} len = {{.*}} sizes = {{.*}} strides = {{.*}})
       // CHECK:   aie.use_lock(%lock_1, "Release", 1)
       // CHECK:   aie.next_bd ^bb1
       // CHECK: ^bb1:
       // CHECK:   aie.use_lock(%lock_1, "Acquire", 1)
-      // CHECK:   aie.dma_bd(%buf : memref<12xi16>, 0, 8)
+      // CHECK:   aie.dma_bd(%buf : memref<12xi16> offset = {{.*}} len = {{.*}} sizes = {{.*}} strides = {{.*}})
       // CHECK:   aie.use_lock(%lock_2, "Release", 1)
       // CHECK:   aie.next_bd ^bb2
       // CHECK: ^bb2:
       // CHECK:   aie.use_lock(%lock_2, "Acquire", 1)
-      // CHECK:   aie.dma_bd(%buf : memref<8xi16>, 0, 8)
+      // CHECK:   aie.dma_bd(%buf : memref<8xi16> offset = {{.*}} len = {{.*}} sizes = {{.*}} strides = {{.*}})
       // CHECK:   aie.use_lock(%lock_1, "Release", 1)
       // CHECK:   aie.end
       // CHECK: }
@@ -57,17 +59,17 @@ module {
                                     on (%tile_0_0, MM2S, 1) 
       // CHECK: %[[task2:.+]] = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
       // CHECK:   aie.use_lock(%lock_0, "Acquire", 1)
-      // CHECK:   aie.dma_bd(%buf : memref<8xi16>, 0, 8)
+      // CHECK:   aie.dma_bd(%buf : memref<8xi16> offset = {{.*}} len = {{.*}} sizes = {{.*}} strides = {{.*}})
       // CHECK:   aie.use_lock(%lock_0, "Release", 1)
       // CHECK:   aie.next_bd ^bb1
       // CHECK: ^bb1:
       // CHECK:   aie.use_lock(%lock_0, "Acquire", 1)
-      // CHECK:   aie.dma_bd(%buf : memref<12xi16>, 0, 8)
+      // CHECK:   aie.dma_bd(%buf : memref<12xi16> offset = {{.*}} len = {{.*}} sizes = {{.*}} strides = {{.*}})
       // CHECK:   aie.use_lock(%lock_0, "Release", 1)
       // CHECK:   aie.next_bd ^bb2
       // CHECK: ^bb2:
       // CHECK:   aie.use_lock(%lock_0, "Acquire", 1)
-      // CHECK:   aie.dma_bd(%buf : memref<8xi16>, 0, 8)
+      // CHECK:   aie.dma_bd(%buf : memref<8xi16> offset = {{.*}} len = {{.*}} sizes = {{.*}} strides = {{.*}})
       // CHECK:   aie.use_lock(%lock_0, "Release", 1)
       // CHECK:   aie.end
       // CHECK: }
@@ -76,17 +78,17 @@ module {
                                     on (%tile_0_0, S2MM, 0) 
       // CHECK: %[[task3:.+]] = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
       // CHECK:   aie.use_lock(%lock_2, "Acquire", 1)
-      // CHECK:   aie.dma_bd(%buf : memref<8xi16>, 0, 8)
+      // CHECK:   aie.dma_bd(%buf : memref<8xi16> offset = {{.*}} len = {{.*}} sizes = {{.*}} strides = {{.*}})
       // CHECK:   aie.use_lock(%lock_1, "Release", 1)
       // CHECK:   aie.next_bd ^bb1
       // CHECK: ^bb1:
       // CHECK:   aie.use_lock(%lock_1, "Acquire", 1)
-      // CHECK:   aie.dma_bd(%buf : memref<12xi16>, 0, 8)
+      // CHECK:   aie.dma_bd(%buf : memref<12xi16> offset = {{.*}} len = {{.*}} sizes = {{.*}} strides = {{.*}})
       // CHECK:   aie.use_lock(%lock_0, "Release", 1)
       // CHECK:   aie.next_bd ^bb2
       // CHECK: ^bb2:
       // CHECK:   aie.use_lock(%lock_0, "Acquire", 1)
-      // CHECK:   aie.dma_bd(%buf : memref<8xi16>, 0, 8)
+      // CHECK:   aie.dma_bd(%buf : memref<8xi16> offset = {{.*}} len = {{.*}} sizes = {{.*}} strides = {{.*}})
       // CHECK:   aie.use_lock(%lock_2, "Release", 1)
       // CHECK:   aie.end
       // CHECK: }

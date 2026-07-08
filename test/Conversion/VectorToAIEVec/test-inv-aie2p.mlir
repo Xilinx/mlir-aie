@@ -53,7 +53,9 @@ func.func @test_no_inv_general_divf(%a: f32, %b: f32) -> f32 {
     return %0 : f32
 }
 
+
 // -----
+
 // Vector tests for arith.divf dense<1.0>/x → aievec.inv
 
 // CHECK-LABEL: func @test_inv_v16f32_aie2p

@@ -103,12 +103,12 @@ module {
     %mem_0_2 = aie.mem(%tile_0_2) {
       %0 = aie.dma(S2MM, 0) [{
         aie.use_lock(%tile_0_2_lock_0, AcquireGreaterEqual, 1)
-        aie.dma_bd(%tile_0_2_buff_0 : memref<64x64xi8>)
+        aie.dma_bd(%tile_0_2_buff_0 : memref<64x64xi8> sizes = [] strides = [])
         aie.use_lock(%tile_0_2_lock_1, Release, 1)
       }]
       %1 = aie.dma(MM2S, 0) [{
         aie.use_lock(%tile_0_2_lock_2, AcquireGreaterEqual, 1)
-        aie.dma_bd(%tile_0_2_buff_1 : memref<64x64xi8>)
+        aie.dma_bd(%tile_0_2_buff_1 : memref<64x64xi8> sizes = [] strides = [])
         aie.use_lock(%tile_0_2_lock_3, Release, 1)
       }]
       aie.end
@@ -139,12 +139,12 @@ module {
     %mem_0_3 = aie.mem(%tile_0_3) {
       %0 = aie.dma(S2MM, 0) [{
         aie.use_lock(%tile_0_3_lock_0, AcquireGreaterEqual, 1)
-        aie.dma_bd(%tile_0_3_buff_0 : memref<64x64xi8>)
+        aie.dma_bd(%tile_0_3_buff_0 : memref<64x64xi8> sizes = [] strides = [])
         aie.use_lock(%tile_0_3_lock_1, Release, 1)
       }]
       %1 = aie.dma(MM2S, 0) [{
         aie.use_lock(%tile_0_3_lock_2, AcquireGreaterEqual, 1)
-        aie.dma_bd(%tile_0_3_buff_1 : memref<64x64xi8>)
+        aie.dma_bd(%tile_0_3_buff_1 : memref<64x64xi8> sizes = [] strides = [])
         aie.use_lock(%tile_0_3_lock_3, Release, 1)
       }]
       aie.end
@@ -175,12 +175,12 @@ module {
     %mem_0_4 = aie.mem(%tile_0_4) {
       %0 = aie.dma(S2MM, 0) [{
         aie.use_lock(%tile_0_4_lock_0, AcquireGreaterEqual, 1)
-        aie.dma_bd(%tile_0_4_buff_0 : memref<64x64xi8>)
+        aie.dma_bd(%tile_0_4_buff_0 : memref<64x64xi8> sizes = [] strides = [])
         aie.use_lock(%tile_0_4_lock_1, Release, 1)
       }]
       %1 = aie.dma(MM2S, 0) [{
         aie.use_lock(%tile_0_4_lock_2, AcquireGreaterEqual, 1)
-        aie.dma_bd(%tile_0_4_buff_1 : memref<64x64xi8>)
+        aie.dma_bd(%tile_0_4_buff_1 : memref<64x64xi8> sizes = [] strides = [])
         aie.use_lock(%tile_0_4_lock_3, Release, 1)
       }]
       aie.end
@@ -211,18 +211,23 @@ module {
     %mem_0_5 = aie.mem(%tile_0_5) {
       %0 = aie.dma(S2MM, 0) [{
         aie.use_lock(%tile_0_5_lock_0, AcquireGreaterEqual, 1)
-        aie.dma_bd(%tile_0_5_buff_0 : memref<64x64xi8>)
+        aie.dma_bd(%tile_0_5_buff_0 : memref<64x64xi8> sizes = [] strides = [])
         aie.use_lock(%tile_0_5_lock_1, Release, 1)
       }]
       %1 = aie.dma(MM2S, 0) [{
         aie.use_lock(%tile_0_5_lock_2, AcquireGreaterEqual, 1)
-        aie.dma_bd(%tile_0_5_buff_1 : memref<64x64xi8>)
+        aie.dma_bd(%tile_0_5_buff_1 : memref<64x64xi8> sizes = [] strides = [])
         aie.use_lock(%tile_0_5_lock_3, Release, 1)
       }]
       aie.end
     }
 
     %memtile_dma_0_1 = aie.memtile_dma(%tile_0_1) {
+      %c0_i32 = arith.constant 0 : i32
+      %c4096_i32 = arith.constant 4096 : i32
+      %c8192_i32 = arith.constant 8192 : i32
+      %c12288_i32 = arith.constant 12288 : i32
+      %c16384_i32 = arith.constant 16384 : i32
       %buff_0 = aie.buffer(%tile_0_1) {sym_name = "memtile_buff_0"} : memref<4x64x64xi8>
       %buff_1 = aie.buffer(%tile_0_1) {sym_name = "memtile_buff_1"} : memref<4x64x64xi8>
       %memtile_lock_0 = aie.lock(%tile_0_1, 0) {init = 4 : i32, sym_name = "memtile_lock_0"}
@@ -231,53 +236,53 @@ module {
       %memtile_lock_3 = aie.lock(%tile_0_1, 3) {init = 4 : i32, sym_name = "memtile_lock_3"}
       %0 = aie.dma(S2MM, 0) [{
         aie.use_lock(%memtile_lock_0, AcquireGreaterEqual, 4)
-        aie.dma_bd(%buff_0 : memref<4x64x64xi8>, 0, 16384)
+        aie.dma_bd(%buff_0 : memref<4x64x64xi8> offset = %c0_i32 len = %c16384_i32 sizes = [] strides = [])
         aie.use_lock(%memtile_lock_1, Release, 4)
       }]
       %1 = aie.dma(MM2S, 0) [{
         aie.use_lock(%memtile_lock_1, AcquireGreaterEqual, 1)
-        aie.dma_bd(%buff_0 : memref<4x64x64xi8>, 0, 4096)
+        aie.dma_bd(%buff_0 : memref<4x64x64xi8> offset = %c0_i32 len = %c4096_i32 sizes = [] strides = [])
         aie.use_lock(%memtile_lock_0, Release, 1)
       }]
       %2 = aie.dma(MM2S, 1) [{
         aie.use_lock(%memtile_lock_1, AcquireGreaterEqual, 1)
-        aie.dma_bd(%buff_0 : memref<4x64x64xi8>, 4096, 4096)
+        aie.dma_bd(%buff_0 : memref<4x64x64xi8> offset = %c4096_i32 len = %c4096_i32 sizes = [] strides = [])
         aie.use_lock(%memtile_lock_0, Release, 1)
       }]
       %3 = aie.dma(MM2S, 2) [{
         aie.use_lock(%memtile_lock_1, AcquireGreaterEqual, 1)
-        aie.dma_bd(%buff_0 : memref<4x64x64xi8>, 8192, 4096)
+        aie.dma_bd(%buff_0 : memref<4x64x64xi8> offset = %c8192_i32 len = %c4096_i32 sizes = [] strides = [])
         aie.use_lock(%memtile_lock_0, Release, 1)
       }]
       %4 = aie.dma(MM2S, 3) [{
         aie.use_lock(%memtile_lock_1, AcquireGreaterEqual, 1)
-        aie.dma_bd(%buff_0 : memref<4x64x64xi8>, 12288, 4096)
+        aie.dma_bd(%buff_0 : memref<4x64x64xi8> offset = %c12288_i32 len = %c4096_i32 sizes = [] strides = [])
         aie.use_lock(%memtile_lock_0, Release, 1)
       }]
 
       %5 = aie.dma(S2MM, 1) [{
         aie.use_lock(%memtile_lock_3, AcquireGreaterEqual, 1)
-        aie.dma_bd(%buff_1 : memref<4x64x64xi8>, 0, 4096)
+        aie.dma_bd(%buff_1 : memref<4x64x64xi8> offset = %c0_i32 len = %c4096_i32 sizes = [] strides = [])
         aie.use_lock(%memtile_lock_2, Release, 1)
       }]
       %6 = aie.dma(S2MM, 2) [{
         aie.use_lock(%memtile_lock_3, AcquireGreaterEqual, 1)
-        aie.dma_bd(%buff_1 : memref<4x64x64xi8>, 4096, 4096)
+        aie.dma_bd(%buff_1 : memref<4x64x64xi8> offset = %c4096_i32 len = %c4096_i32 sizes = [] strides = [])
         aie.use_lock(%memtile_lock_2, Release, 1)
       }]
       %7 = aie.dma(S2MM, 3) [{
         aie.use_lock(%memtile_lock_3, AcquireGreaterEqual, 1)
-        aie.dma_bd(%buff_1 : memref<4x64x64xi8>, 8192, 4096)
+        aie.dma_bd(%buff_1 : memref<4x64x64xi8> offset = %c8192_i32 len = %c4096_i32 sizes = [] strides = [])
         aie.use_lock(%memtile_lock_2, Release, 1)
       }]
       %8 = aie.dma(S2MM, 4) [{
         aie.use_lock(%memtile_lock_3, AcquireGreaterEqual, 1)
-        aie.dma_bd(%buff_1 : memref<4x64x64xi8>, 12288, 4096)
+        aie.dma_bd(%buff_1 : memref<4x64x64xi8> offset = %c12288_i32 len = %c4096_i32 sizes = [] strides = [])
         aie.use_lock(%memtile_lock_2, Release, 1)
       }]
       %9 = aie.dma(MM2S, 4) [{
         aie.use_lock(%memtile_lock_2, AcquireGreaterEqual, 4)
-        aie.dma_bd(%buff_1 : memref<4x64x64xi8>, 0, 16384)
+        aie.dma_bd(%buff_1 : memref<4x64x64xi8> offset = %c0_i32 len = %c16384_i32 sizes = [] strides = [])
         aie.use_lock(%memtile_lock_3, Release, 4)
       }]
       aie.end

@@ -14,8 +14,10 @@ module {
 
     aie.runtime_sequence(%arg0: memref<32xi8>) {
       // CHECK: writebd {{.*}} burst_length = 64
+      %c4_i32 = arith.constant 4 : i32
+      %c16_i32 = arith.constant 16 : i32
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-          aie.dma_bd(%arg0 : memref<32xi8>, 4, 16) {bd_id = 1 : i32, burst_length = 64 : i32}
+          aie.dma_bd(%arg0 : memref<32xi8> offset = %c4_i32 len = %c16_i32 sizes = [] strides = []) {bd_id = 1 : i32, burst_length = 64 : i32}
           aie.end
       }
     }

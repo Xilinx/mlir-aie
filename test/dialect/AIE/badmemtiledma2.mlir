@@ -30,6 +30,8 @@ module @test {
 
       // Mem Tile DMA
       %m12 = aie.memtile_dma(%t12) {
+        %c0_i32 = arith.constant 0 : i32
+        %c256_i32 = arith.constant 256 : i32
           %dma = aie.dma_start("MM2S", 0, ^bd0, ^dma1)
         ^dma1:
           %dma1 = aie.dma_start("MM2S", 1, ^bd1, ^dma2)
@@ -44,31 +46,31 @@ module @test {
         ^dma6:
           %dma6 = aie.dma_start("MM2S", 6, ^bd6, ^end)
         ^bd0:
-          aie.dma_bd(%buf_0 : memref<256xi32>, 0, 256)
+          aie.dma_bd(%buf_0 : memref<256xi32> offset = %c0_i32 len = %c256_i32 sizes = [] strides = [])
           aie.use_lock(%lock_0, Release, 1)
           aie.next_bd ^bd0
         ^bd1:
-          aie.dma_bd(%buf_1 : memref<256xi32>, 0, 256)
+          aie.dma_bd(%buf_1 : memref<256xi32> offset = %c0_i32 len = %c256_i32 sizes = [] strides = [])
           aie.use_lock(%lock_1, Release, 1)
           aie.next_bd ^bd1
         ^bd2:
-          aie.dma_bd(%buf_2 : memref<256xi32>, 0, 256)
+          aie.dma_bd(%buf_2 : memref<256xi32> offset = %c0_i32 len = %c256_i32 sizes = [] strides = [])
           aie.use_lock(%lock_2, Release, 1)
           aie.next_bd ^bd2
         ^bd3:
-          aie.dma_bd(%buf_3 : memref<256xi32>, 0, 256)
+          aie.dma_bd(%buf_3 : memref<256xi32> offset = %c0_i32 len = %c256_i32 sizes = [] strides = [])
           aie.use_lock(%lock_3, Release, 1)
           aie.next_bd ^bd3
         ^bd4:
-          aie.dma_bd(%buf_4 : memref<256xi32>, 0, 256)
+          aie.dma_bd(%buf_4 : memref<256xi32> offset = %c0_i32 len = %c256_i32 sizes = [] strides = [])
           aie.use_lock(%lock_4, Release, 1)
           aie.next_bd ^bd4
         ^bd5:
-          aie.dma_bd(%buf_5 : memref<256xi32>, 0, 256)
+          aie.dma_bd(%buf_5 : memref<256xi32> offset = %c0_i32 len = %c256_i32 sizes = [] strides = [])
           aie.use_lock(%lock_5, Release, 1)
           aie.next_bd ^bd5
         ^bd6:
-          aie.dma_bd(%buf_6 : memref<256xi32>, 0, 256)
+          aie.dma_bd(%buf_6 : memref<256xi32> offset = %c0_i32 len = %c256_i32 sizes = [] strides = [])
           aie.use_lock(%lock_6, Release, 1)
           aie.next_bd ^bd6
         ^end:

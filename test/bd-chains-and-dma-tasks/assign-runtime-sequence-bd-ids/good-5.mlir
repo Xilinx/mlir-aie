@@ -15,10 +15,12 @@ module {
     aie.shim_dma_allocation @alloc0 (%tile_0_0, MM2S, 0)
 
     aie.runtime_sequence(%arg0: memref<8xi16>) {
+      %c0_i32 = arith.constant 0 : i32
+      %c8_i32 = arith.constant 8 : i32
       // Allocate all available BD IDs
       %t1 = aiex.dma_configure_task_for @alloc0 {
-        // CHECK:   aie.dma_bd(%arg0 : memref<8xi16>, 0, 8) {bd_id = 0 : i32}
-        aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+        // CHECK:   aie.dma_bd(%arg0 : memref<8xi16> offset = {{.*}} len = {{.*}} sizes = {{.*}} strides = {{.*}}) {bd_id = 0 : i32}
+        aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32 sizes = [] strides = [])
         aie.end
       }
       aiex.dma_start_task(%t1)

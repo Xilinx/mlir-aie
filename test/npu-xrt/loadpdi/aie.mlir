@@ -35,6 +35,8 @@ module {
         }
 
         aie.runtime_sequence @sequence(%a : memref<512xi32>) {
+          %c0_i32 = arith.constant 0 : i32
+          %c512_i32 = arith.constant 512 : i32
             
             // The "ID" attribute must match the ID given in "config.json".
             // During compilation, aiebu will package the PDI for this core together with this runtime sequence into a ELF file.
@@ -46,11 +48,11 @@ module {
             aiex.npu.load_pdi { device_ref = @add_two }
 
             %t_in = aiex.dma_configure_task_for @objfifo_in {
-                aie.dma_bd(%a : memref<512xi32>, 0, 512)
+                aie.dma_bd(%a : memref<512xi32> offset = %c0_i32 len = %c512_i32 sizes = [] strides = [])
                 aie.end
             }
             %t_out = aiex.dma_configure_task_for @objfifo_out {
-                aie.dma_bd(%a: memref<512xi32>, 0, 512)
+                aie.dma_bd(%a : memref<512xi32> offset = %c0_i32 len = %c512_i32 sizes = [] strides = [])
                 aie.end
             } {issue_token = true}
             aiex.dma_start_task(%t_in)

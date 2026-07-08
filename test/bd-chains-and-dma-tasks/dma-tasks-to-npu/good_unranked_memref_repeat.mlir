@@ -25,12 +25,13 @@ module {
       // CHECK: aiex.npu.writebd {bd_id = 0 : i32, buffer_length = 64 : i32, buffer_offset = 0 : i32, column = 0 : i32, d0_size = 2 : i32, d0_stride = 0 : i32, d0_zero_after = 0 : i32, d0_zero_before = 0 : i32, d1_size = 4 : i32, d1_stride = 7 : i32, d1_zero_after = 0 : i32, d1_zero_before = 0 : i32, d2_size = 0 : i32, d2_stride = 31 : i32, d2_zero_after = 0 : i32, d2_zero_before = 0 : i32, enable_packet = 0 : i32, iteration_current = 0 : i32, iteration_size = 3 : i32, iteration_stride = 63 : i32, lock_acq_enable = 0 : i32, lock_acq_id = 0 : i32, lock_acq_val = 0 : i32, lock_rel_id = 0 : i32, lock_rel_val = 0 : i32, next_bd = 0 : i32, out_of_order_id = 0 : i32, packet_id = 0 : i32, packet_type = 0 : i32, row = 0 : i32, use_next_bd = 0 : i32, valid_bd = 1 : i32}
       // CHECK-DAG: %[[AP0:.*]] = arith.constant 0 : i32
       // CHECK: aiex.npu.address_patch(%[[AP0]] : i32) {addr = 118788 : ui32, arg_idx = 0 : i32}
+      %c0_i32 = arith.constant 0 : i32
+      %c128_i32 = arith.constant 128 : i32
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
         // 4 dimensions with repeat count as the highest dimension
         // The len = 128 covers only the lowest 3 dimensions (8 * 4 * 4)
         // The 4th dimension (size=4, stride=128) is the iteration/repeat
-        aie.dma_bd(%arg0 : memref<*xbf16>, 0, 128,
-                   [<size=4, stride=128>, <size=8, stride=64>, <size=4, stride=16>, <size=4, stride=1>]) {bd_id = 0 : i32}
+        aie.dma_bd(%arg0 : memref<*xbf16> offset = %c0_i32 len = %c128_i32 sizes = [4, 8, 4, 4] strides = [128, 64, 16, 1]) {bd_id = 0 : i32}
         aie.end
       } {issue_token = true}
 

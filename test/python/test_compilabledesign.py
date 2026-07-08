@@ -670,13 +670,15 @@ def test_parse_dma_sizes_matches_real_mlir_format(tmp_path):
 module {
   aie.device(npu1) {
     aie.runtime_sequence(%arg0: memref<1024xi32>, %arg1: memref<1024xi32>) {
+      %c0_i32 = arith.constant 0 : i32
+      %c1024_i32 = arith.constant 1024 : i32
       %0 = aiex.dma_configure_task_for @of_in {
-        aie.dma_bd(%arg0 : memref<1024xi32>, 0, 1024, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1024, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg0 : memref<1024xi32> offset = %c0_i32 len = %c1024_i32 sizes = [1, 1, 1, 1024] strides = [0, 0, 0, 1]) {burst_length = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%0)
       %1 = aiex.dma_configure_task_for @of_out {
-        aie.dma_bd(%arg1 : memref<1024xi32>, 0, 1024, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1024, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg1 : memref<1024xi32> offset = %c0_i32 len = %c1024_i32 sizes = [1, 1, 1, 1024] strides = [0, 0, 0, 1]) {burst_length = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%1)
@@ -703,12 +705,14 @@ def test_parse_dma_sizes_handles_repeated_transfer(tmp_path):
 module {
   aie.device(npu1) {
     aie.runtime_sequence(%arg0: memref<1024xi32>) {
+      %c0_i32 = arith.constant 0 : i32
+      %c1024_i32 = arith.constant 1024 : i32
       %0 = aiex.dma_configure_task_for @of_in {
-        aie.dma_bd(%arg0 : memref<1024xi32>, 0, 1024, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1024, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg0 : memref<1024xi32> offset = %c0_i32 len = %c1024_i32 sizes = [1, 1, 1, 1024] strides = [0, 0, 0, 1]) {burst_length = 0 : i32}
         aie.end
       }
       %1 = aiex.dma_configure_task_for @of_in_again {
-        aie.dma_bd(%arg0 : memref<1024xi32>, 0, 1024, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1024, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg0 : memref<1024xi32> offset = %c0_i32 len = %c1024_i32 sizes = [1, 1, 1, 1024] strides = [0, 0, 0, 1]) {burst_length = 0 : i32}
         aie.end
       }
     }
@@ -730,12 +734,14 @@ def test_parse_dma_sizes_handles_disjoint_fan_out(tmp_path):
 module {
   aie.device(npu1) {
     aie.runtime_sequence(%arg0: memref<1024xi32>) {
+      %c0_i32 = arith.constant 0 : i32
+      %c512_i32 = arith.constant 512 : i32
       %0 = aiex.dma_configure_task_for @of_in_a {
-        aie.dma_bd(%arg0 : memref<1024xi32>, 0, 512, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1, stride = 0>, <size = 512, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg0 : memref<1024xi32> offset = %c0_i32 len = %c512_i32 sizes = [1, 1, 1, 512] strides = [0, 0, 0, 1]) {burst_length = 0 : i32}
         aie.end
       }
       %1 = aiex.dma_configure_task_for @of_in_b {
-        aie.dma_bd(%arg0 : memref<1024xi32>, 512, 512, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1, stride = 0>, <size = 512, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg0 : memref<1024xi32> offset = %c512_i32 len = %c512_i32 sizes = [1, 1, 1, 512] strides = [0, 0, 0, 1]) {burst_length = 0 : i32}
         aie.end
       }
     }

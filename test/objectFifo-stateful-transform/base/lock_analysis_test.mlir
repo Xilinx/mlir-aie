@@ -27,19 +27,19 @@
 // CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
 // CHECK:       aie.use_lock(%test_prod_lock, AcquireGreaterEqual, 1)
-// CHECK:       aie.dma_bd(%test_buff : memref<16xi32>, 0, 16)
+// CHECK:       aie.dma_bd(%test_buff : memref<16xi32> offset = {{.*}} len = {{.*}} sizes = {{.*}} strides = {{.*}})
 // CHECK:       aie.use_lock(%test_cons_lock, Release, 1)
 // CHECK:       aie.next_bd ^bb1
 // CHECK:     ^bb2:  // pred: ^bb0
 // CHECK:       %1 = aie.dma_start(MM2S, 0, ^bb3, ^bb5)
 // CHECK:     ^bb3:  // 2 preds: ^bb2, ^bb4
 // CHECK:       aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, 1)
-// CHECK:       aie.dma_bd(%[[VAL_4]] : memref<16xi32>, 0, 16)
+// CHECK:       aie.dma_bd(%[[VAL_4]] : memref<16xi32> offset = {{.*}} len = {{.*}} sizes = {{.*}} strides = {{.*}})
 // CHECK:       aie.use_lock(%[[VAL_6]], Release, 1)
 // CHECK:       aie.next_bd ^bb4
 // CHECK:     ^bb4:  // pred: ^bb3
 // CHECK:       aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, 1)
-// CHECK:       aie.dma_bd(%[[VAL_5]] : memref<16xi32>, 0, 16)
+// CHECK:       aie.dma_bd(%[[VAL_5]] : memref<16xi32> offset = {{.*}} len = {{.*}} sizes = {{.*}} strides = {{.*}})
 // CHECK:       aie.use_lock(%[[VAL_6]], Release, 1)
 // CHECK:       aie.next_bd ^bb3
 // CHECK:     ^bb5:  // pred: ^bb2
@@ -49,12 +49,12 @@
 // CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
 // CHECK:       aie.use_lock(%[[VAL_2]], AcquireGreaterEqual, 1)
-// CHECK:       aie.dma_bd(%[[VAL_0]] : memref<16xi32>, 0, 16)
+// CHECK:       aie.dma_bd(%[[VAL_0]] : memref<16xi32> offset = {{.*}} len = {{.*}} sizes = {{.*}} strides = {{.*}})
 // CHECK:       aie.use_lock(%[[VAL_3]], Release, 1)
 // CHECK:       aie.next_bd ^bb2
 // CHECK:     ^bb2:  // pred: ^bb1
 // CHECK:       aie.use_lock(%[[VAL_2]], AcquireGreaterEqual, 1)
-// CHECK:       aie.dma_bd(%[[VAL_1]] : memref<16xi32>, 0, 16)
+// CHECK:       aie.dma_bd(%[[VAL_1]] : memref<16xi32> offset = {{.*}} len = {{.*}} sizes = {{.*}} strides = {{.*}})
 // CHECK:       aie.use_lock(%[[VAL_3]], Release, 1)
 // CHECK:       aie.next_bd ^bb1
 // CHECK:     ^bb3:  // pred: ^bb0
@@ -73,12 +73,14 @@ module @lockAnalysis {
       aie.objectfifo @of1 (%tile12, {%tile33}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
       %mem_1_2 = aie.mem(%tile12) {
+        %c0_i32 = arith.constant 0 : i32
+        %c16_i32 = arith.constant 16 : i32
          %test_prod_lock = aie.lock(%tile12, 0) {init = 1 : i32, sym_name = "test_prod_lock"}
          %test_cons_lock = aie.lock(%tile12, 1) {init = 0 : i32, sym_name = "test_cons_lock"}
          %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
          ^bb1:
             aie.use_lock(%test_prod_lock, AcquireGreaterEqual, 1)
-            aie.dma_bd(%test_buff : memref<16xi32>, 0, 16)
+            aie.dma_bd(%test_buff : memref<16xi32> offset = %c0_i32 len = %c16_i32 sizes = [] strides = [])
             aie.use_lock(%test_cons_lock, Release, 1)
             aie.next_bd ^bb1
          ^bb2:

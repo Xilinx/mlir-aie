@@ -36,6 +36,7 @@ module @example0 {
  }
 }
 
+
 // -----
 
 // CHECK: %[[VECREAD2:.*]] = vector.transfer_read %{{.*}}[%c0{{.*}}], %cst{{.*}} {in_bounds = [true]}
@@ -64,6 +65,7 @@ module @example1 {
   }
  }
 }
+
 
 // -----
 
@@ -96,6 +98,7 @@ module @example2 {
  }
 }
 
+
 // -----
 
 // CHECK: %[[GETCAST2:.*]] = call @llvm.aie2.scd.read.vec(%c1{{.*}}) : (i32) -> vector<16xi32>
@@ -124,6 +127,7 @@ module @example3 {
  }
 }
 
+
 // -----
 
 // CHECK: %[[VECREAD3:.*]] = vector.transfer_read %{{.*}}[%c0{{.*}}], %c0{{.*}} {in_bounds = [true]}
@@ -151,6 +155,7 @@ module @example4 {
   }
  }
 }
+
 
 // -----
 

@@ -23,10 +23,12 @@ aie.device(xcvc1902) {
   %buffer_out = aie.external_buffer {sym_name = "buffer" } : memref<7168xi32>
 
   %m71 = aie.mem(%t71) {
+    %c0_i32 = arith.constant 0 : i32
+    %c7168_i32 = arith.constant 7168 : i32
       %srcDma = aie.dma_start(MM2S, 1, ^bd0, ^end)
     ^bd0:
       aie.use_lock(%lock_a_ping, "Acquire", 0)
-      aie.dma_bd(%buf71_0 : memref<7168xi32>, 0, 7168)
+      aie.dma_bd(%buf71_0 : memref<7168xi32> offset = %c0_i32 len = %c7168_i32 sizes = [] strides = [])
       aie.use_lock(%lock_a_ping, "Release", 1)
       aie.next_bd ^end
     ^end:
@@ -34,13 +36,15 @@ aie.device(xcvc1902) {
   }
 
   %dma = aie.shim_dma(%t70) {
+    %c0_i32 = arith.constant 0 : i32
+    %c7168_i32 = arith.constant 7168 : i32
     %lock1 = aie.lock(%t70, 2)
 
     aie.dma_start(S2MM, 0, ^bd0, ^end)
 
     ^bd0:
       aie.use_lock(%lock1, Acquire, 1)
-      aie.dma_bd(%buffer_out : memref<7168xi32>, 0, 7168)
+      aie.dma_bd(%buffer_out : memref<7168xi32> offset = %c0_i32 len = %c7168_i32 sizes = [] strides = [])
       aie.use_lock(%lock1, Release, 0)
       aie.next_bd ^bd0
     ^end:

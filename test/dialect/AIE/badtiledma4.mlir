@@ -22,21 +22,23 @@ module @test {
 
     // Tile DMA
     %m03 = aie.mem(%t03) {
+      %c0_i32 = arith.constant 0 : i32
+      %c256_i32 = arith.constant 256 : i32
         %dma = aie.dma_start("MM2S", 0, ^bd0, ^dma1)
       ^dma1:
         %dma2 = aie.dma_start("MM2S", 1, ^bd1, ^dma2)
       ^dma2:
         %dma3 = aie.dma_start("MM2S", 2, ^bd2, ^end)
       ^bd0:
-        aie.dma_bd(%buf_l : memref<256xi32>, 0, 256)
+        aie.dma_bd(%buf_l : memref<256xi32> offset = %c0_i32 len = %c256_i32 sizes = [] strides = [])
         aie.use_lock(%lock_e, Release, 1)
         aie.next_bd ^bd0
       ^bd1:
-        aie.dma_bd(%buf_l : memref<256xi32>, 0, 256)
+        aie.dma_bd(%buf_l : memref<256xi32> offset = %c0_i32 len = %c256_i32 sizes = [] strides = [])
         aie.use_lock(%lock_l, Release, 1)
         aie.next_bd ^bd1
       ^bd2:
-        aie.dma_bd(%buf_l : memref<256xi32>, 0, 256)
+        aie.dma_bd(%buf_l : memref<256xi32> offset = %c0_i32 len = %c256_i32 sizes = [] strides = [])
         aie.use_lock(%lock_n, Release, 1)
         aie.next_bd ^bd2
       ^end:

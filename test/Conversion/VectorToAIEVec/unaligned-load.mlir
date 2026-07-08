@@ -26,6 +26,7 @@ func.func @unaligned_read(%m: memref<64xi32>) -> (vector<8xi32>, vector<8xi32>) 
    return %0, %1 : vector<8xi32>, vector<8xi32>
 }
 
+
 // -----
 
 // CHECK-LABEL: func @unaligned_read

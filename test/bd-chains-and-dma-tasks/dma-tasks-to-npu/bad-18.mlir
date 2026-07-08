@@ -10,8 +10,10 @@ module {
 
     aie.runtime_sequence(%arg0: memref<8xi16>) {
       // CHECK: Packet ID exceeds the maximum supported by 5 bits.
+      %c0_i32 = arith.constant 0 : i32
+      %c8_i32 = arith.constant 8 : i32
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<8xi16>, 0, 8) {bd_id = 7 : i32, packet = #aie.packet_info<pkt_type = 1, pkt_id = 33>}
+        aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32 sizes = [] strides = []) {bd_id = 7 : i32, packet = #aie.packet_info<pkt_type = 1, pkt_id = 33>}
         aie.end
       } {issue_token = true}
     }

@@ -73,6 +73,8 @@ module {
         // 5. Configure and start output DMA
         // 6. Await output completion
         aie.runtime_sequence @sequence(%out : memref<1xi32>) {
+          %c0_i32 = arith.constant 0 : i32
+          %c1_i32 = arith.constant 1 : i32
 
             aiex.npu.load_pdi { device_ref = @empty }
             aiex.npu.load_pdi { device_ref = @regwrite_test }
@@ -96,7 +98,7 @@ module {
 
             // Configure output DMA
             %t_out = aiex.dma_configure_task_for @objfifo_out {
-                aie.dma_bd(%out : memref<1xi32>, 0, 1)
+                aie.dma_bd(%out : memref<1xi32> offset = %c0_i32 len = %c1_i32 sizes = [] strides = [])
                 aie.end
             } {issue_token = true}
 

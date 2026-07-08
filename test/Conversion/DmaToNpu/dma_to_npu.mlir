@@ -27,6 +27,7 @@ module  {
   }
 }
 
+
 // -----
 
 // CHECK: module
@@ -46,6 +47,7 @@ module  {
     aie.shim_dma_allocation @toMem (%tile_0_0, S2MM, 0)
   }
 }
+
 
 // -----
 
@@ -68,6 +70,7 @@ module  {
   }
 }
 
+
 // -----
 
 // CHECK: runtime_sequence
@@ -86,6 +89,7 @@ module {
   }
 }
 
+
 // -----
 
 // CHECK: runtime_sequence
@@ -101,6 +105,7 @@ module {
    }
   }
 }
+
 
 // -----
 
@@ -121,6 +126,7 @@ module {
     }
   }
 }
+
 
 // -----
 

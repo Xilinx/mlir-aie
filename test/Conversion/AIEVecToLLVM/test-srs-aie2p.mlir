@@ -35,10 +35,10 @@ func.func @v64bf16_srs_v64f32(%arg0 : vector<64xf32>) {
 // CHECK-NEXT: %[[CONCAT:.*]] = vector.shuffle %[[BITCAST4]], %[[BITCAST5]] [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
 // CHECK-NEXT: %[[RES:.*]] = llvm.bitcast %[[CONCAT]] : vector<32xi32> to vector<64xbf16>
 
+
 // -----
 
 func.func @v32i16_srs_v32i64(%arg0 : vector<32xi64>) {
-  %c0 = arith.constant 0 : i32
   %c5 = arith.constant 5 : i32
   %0 = aievec.srs %arg0, %c0 : vector<32xi64>, i32, vector<32xi16>
   %1 = aievec.srs %arg0, %c5 : vector<32xi64>, i32, vector<32xi16>
@@ -58,11 +58,10 @@ func.func @v32i16_srs_v32i64(%arg0 : vector<32xi64>) {
 // CHECK-SAME: %[[ARG0]], %[[SHIFT5]], %[[SIGN1]]) : 
 // CHECK-SAME: (vector<32xi64>, i32, i32) -> vector<32xi16>
 
+
 // -----
 
 func.func @v64i8_srs_v64i32(%arg0 : vector<64xi32>) {
-  %c0 = arith.constant 0 : i32
-  %c5 = arith.constant 5 : i32
   %0 = aievec.srs %arg0, %c0 : vector<64xi32>, i32, vector<64xi8>
   %1 = aievec.srs %arg0, %c5 : vector<64xi32>, i32, vector<64xi8>
   return
@@ -80,6 +79,7 @@ func.func @v64i8_srs_v64i32(%arg0 : vector<64xi32>) {
 // CHECK-NEXT: %[[SRS1:.*]] = "xllvm.intr.aie2p.I512.v64.acc32.srs"(
 // CHECK-SAME: %[[ARG0]], %[[SHIFT5]], %[[SIGN1]]) : 
 // CHECK-SAME: (vector<64xi32>, i32, i32) -> vector<64xi8>
+
 
 // -----
 

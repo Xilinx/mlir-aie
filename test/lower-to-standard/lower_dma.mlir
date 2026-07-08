@@ -36,10 +36,12 @@ module @example0 {
   %buf43 = aie.buffer(%t43) { sym_name = "b" } : memref<256xi32>
 
   %m33 = aie.mem(%t33) {
+    %c0_i32 = arith.constant 0 : i32
+    %c256_i32 = arith.constant 256 : i32
       %dmaSt0 = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
       aie.use_lock(%l33_0, Acquire, 1)
-      aie.dma_bd(%buf33 : memref<256xi32>, 0, 256)
+      aie.dma_bd(%buf33 : memref<256xi32> offset = %c0_i32 len = %c256_i32 sizes = [] strides = [])
       aie.use_lock(%l33_0, Release, 0)
       aie.next_bd ^end
     ^end:
@@ -47,10 +49,12 @@ module @example0 {
   }
 
   %m43 = aie.mem(%t43) {
+    %c0_i32 = arith.constant 0 : i32
+    %c256_i32 = arith.constant 256 : i32
       %dmaSt = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
       aie.use_lock(%l43_0, Acquire, 0)
-      aie.dma_bd(%buf43 : memref<256xi32>, 0, 256)
+      aie.dma_bd(%buf43 : memref<256xi32> offset = %c0_i32 len = %c256_i32 sizes = [] strides = [])
       aie.use_lock(%l43_0, Release, 1)
       aie.next_bd ^end
     ^end:

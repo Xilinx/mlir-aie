@@ -22,17 +22,20 @@ module @aie_module {
     %lock_7_3 = aie.lock(%tile_7_3, 1) {init = 1 : i32}
     %lock_7_3_0 = aie.lock(%tile_7_3, 0) {init = 0 : i32}
     %mem_7_3 = aie.mem(%tile_7_3) {
+      %c0_i32 = arith.constant 0 : i32
+      %c5_i32 = arith.constant 5 : i32
+      %c12_i32 = arith.constant 12 : i32
       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
     ^bb1:  // pred: ^bb0
       aie.use_lock(%lock_7_3, AcquireGreaterEqual, 1)
-      aie.dma_bd(%buf7 : memref<5xi32, 1 : i32>, 0, 5)
+      aie.dma_bd(%buf7 : memref<5xi32, 1 : i32> offset = %c0_i32 len = %c5_i32 sizes = [] strides = [])
       aie.use_lock(%lock_7_3_0, Release, 1)
       aie.next_bd ^bb4
     ^bb2:  // pred: ^bb0
       %1 = aie.dma_start(S2MM, 0, ^bb3, ^bb7, repeat_count = 7)
     ^bb3:  // pred: ^bb2
       aie.use_lock(%lock_7_3, AcquireGreaterEqual, 1)
-      aie.dma_bd(%buf8 : memref<12xi32, 1 : i32>, 0, 12)
+      aie.dma_bd(%buf8 : memref<12xi32, 1 : i32> offset = %c0_i32 len = %c12_i32 sizes = [] strides = [])
       aie.use_lock(%lock_7_3_0, Release, 1)
       aie.next_bd ^bb4
     ^bb4:  // 5 preds: ^bb1, ^bb3, ^bb5, ^bb6, ^bb8
@@ -41,14 +44,14 @@ module @aie_module {
       %2 = aie.dma_start(MM2S, 0, ^bb6, ^bb4, repeat_count = 7)
     ^bb6:  // pred: ^bb5
       aie.use_lock(%lock_7_3_0, AcquireGreaterEqual, 1)
-      aie.dma_bd(%buf8 : memref<12xi32, 1 : i32>, 0, 12)
+      aie.dma_bd(%buf8 : memref<12xi32, 1 : i32> offset = %c0_i32 len = %c12_i32 sizes = [] strides = [])
       aie.use_lock(%lock_7_3, Release, 1)
       aie.next_bd ^bb4
     ^bb7:  // pred: ^bb2
       %3 = aie.dma_start(MM2S, 0, ^bb8, ^bb5)
     ^bb8:  // pred: ^bb7
       aie.use_lock(%lock_7_3_0, AcquireGreaterEqual, 1)
-      aie.dma_bd(%buf7 : memref<5xi32, 1 : i32>, 0, 5)
+      aie.dma_bd(%buf7 : memref<5xi32, 1 : i32> offset = %c0_i32 len = %c5_i32 sizes = [] strides = [])
       aie.use_lock(%lock_7_3, Release, 1)
       aie.next_bd ^bb4
     }

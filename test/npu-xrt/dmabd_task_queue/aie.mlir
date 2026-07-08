@@ -35,17 +35,21 @@ module {
     %buf2 = aie.buffer(%tile_0_2) {sym_name = "buf2"} : memref<9xi32, 2 : i32> 
     %buf1 = aie.buffer(%tile_0_2) {sym_name = "buf1"} : memref<12xi32, 2 : i32> 
     %mem_0_2 = aie.mem(%tile_0_2) {
+      %c0_i32 = arith.constant 0 : i32
+      %c5_i32 = arith.constant 5 : i32
+      %c9_i32 = arith.constant 9 : i32
+      %c12_i32 = arith.constant 12 : i32
       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
     ^bb1:  // pred: ^bb0
       aie.use_lock(%lock_0_2_4, AcquireGreaterEqual, 1)
-      aie.dma_bd(%buf3 : memref<5xi32, 2 : i32>, 0, 5)
+      aie.dma_bd(%buf3 : memref<5xi32, 2 : i32> offset = %c0_i32 len = %c5_i32 sizes = [] strides = [])
       aie.use_lock(%lock_0_2_5, Release, 1)
       aie.next_bd ^bb4
     ^bb2:  // pred: ^bb0
       %1 = aie.dma_start(S2MM, 0, ^bb3, ^bb7, repeat_count = 7)
     ^bb3:  // pred: ^bb2
       aie.use_lock(%lock_0_2_4, AcquireGreaterEqual, 1)
-      aie.dma_bd(%buf4 : memref<12xi32, 2 : i32>, 0, 12)
+      aie.dma_bd(%buf4 : memref<12xi32, 2 : i32> offset = %c0_i32 len = %c12_i32 sizes = [] strides = [])
       aie.use_lock(%lock_0_2_5, Release, 1)
       aie.next_bd ^bb4
     ^bb4:  // 3 preds: ^bb1, ^bb3, ^bb5
@@ -54,19 +58,18 @@ module {
       %2 = aie.dma_start(S2MM, 1, ^bb6, ^bb4, repeat_count = 1)
     ^bb6:  // 2 preds: ^bb5, ^bb6
       aie.use_lock(%lock_0_2, AcquireGreaterEqual, 1)
-      aie.dma_bd(%buf1 : memref<12xi32, 2 : i32>, 0, 12)
+      aie.dma_bd(%buf1 : memref<12xi32, 2 : i32> offset = %c0_i32 len = %c12_i32 sizes = [] strides = [])
       aie.use_lock(%lock_0_2_3, Release, 1)
       aie.next_bd ^bb6
     ^bb7:  // pred: ^bb2
       %3 = aie.dma_start(MM2S, 0, ^bb8, ^bb5, repeat_count = 1)
     ^bb8:  // 2 preds: ^bb7, ^bb8
       aie.use_lock(%lock_0_2_7, AcquireGreaterEqual, 1)
-      aie.dma_bd(%buf2 : memref<9xi32, 2 : i32>, 0, 9)
+      aie.dma_bd(%buf2 : memref<9xi32, 2 : i32> offset = %c0_i32 len = %c9_i32 sizes = [] strides = [])
       aie.use_lock(%lock_0_2_6, Release, 1)
       aie.next_bd ^bb8
     }
     %core_0_2 = aie.core(%tile_0_2) {
-      %c0_i32 = arith.constant 0 : i32
       %c12 = arith.constant 12 : index
       %c9 = arith.constant 9 : index
       %c5 = arith.constant 5 : index
@@ -113,7 +116,7 @@ module {
       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3, repeat_count = 1)
     ^bb1:  // 2 preds: ^bb0, ^bb1
       aie.use_lock(%lock_2_1, AcquireGreaterEqual, 1)
-      aie.dma_bd(%buf5 : memref<9xi32, 1 : i32>, 0, 9)
+      aie.dma_bd(%buf5 : memref<9xi32, 1 : i32> offset = %c0_i32 len = %c9_i32 sizes = [] strides = [])
       aie.use_lock(%lock_2_1_2, Release, 1)
       aie.next_bd ^bb1
     ^bb2:  // pred: ^bb3
@@ -122,7 +125,7 @@ module {
       %1 = aie.dma_start(MM2S, 0, ^bb4, ^bb2, repeat_count = 1)
     ^bb4:  // 2 preds: ^bb3, ^bb4
       aie.use_lock(%lock_2_1_2, AcquireGreaterEqual, 1)
-      aie.dma_bd(%buf5 : memref<9xi32, 1 : i32>, 0, 9)
+      aie.dma_bd(%buf5 : memref<9xi32, 1 : i32> offset = %c0_i32 len = %c9_i32 sizes = [] strides = [])
       aie.use_lock(%lock_2_1, Release, 1)
       aie.next_bd ^bb4
     }
@@ -130,14 +133,14 @@ module {
       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
     ^bb1:  // pred: ^bb0
       aie.use_lock(%lock_0_1, AcquireGreaterEqual, 1)
-      aie.dma_bd(%buf7 : memref<5xi32, 1 : i32>, 0, 5)
+      aie.dma_bd(%buf7 : memref<5xi32, 1 : i32> offset = %c0_i32 len = %c5_i32 sizes = [] strides = [])
       aie.use_lock(%lock_0_1_1, Release, 1)
       aie.next_bd ^bb4
     ^bb2:  // pred: ^bb0
       %1 = aie.dma_start(S2MM, 0, ^bb3, ^bb5, repeat_count = 7)
     ^bb3:  // pred: ^bb2
       aie.use_lock(%lock_0_1, AcquireGreaterEqual, 1)
-      aie.dma_bd(%buf8 : memref<12xi32, 1 : i32>, 0, 12)
+      aie.dma_bd(%buf8 : memref<12xi32, 1 : i32> offset = %c0_i32 len = %c12_i32 sizes = [] strides = [])
       aie.use_lock(%lock_0_1_1, Release, 1)
       aie.next_bd ^bb4
     ^bb4:  // 5 preds: ^bb1, ^bb3, ^bb6, ^bb7, ^bb8
@@ -146,14 +149,14 @@ module {
       %2 = aie.dma_start(MM2S, 0, ^bb6, ^bb7)
     ^bb6:  // pred: ^bb5
       aie.use_lock(%lock_0_1_1, AcquireGreaterEqual, 1)
-      aie.dma_bd(%buf7 : memref<5xi32, 1 : i32>, 0, 5)
+      aie.dma_bd(%buf7 : memref<5xi32, 1 : i32> offset = %c0_i32 len = %c5_i32 sizes = [] strides = [])
       aie.use_lock(%lock_0_1, Release, 1)
       aie.next_bd ^bb4
     ^bb7:  // pred: ^bb5
       %3 = aie.dma_start(MM2S, 0, ^bb8, ^bb4, repeat_count = 7)
     ^bb8:  // pred: ^bb7
       aie.use_lock(%lock_0_1_1, AcquireGreaterEqual, 1)
-      aie.dma_bd(%buf8 : memref<12xi32, 1 : i32>, 0, 12)
+      aie.dma_bd(%buf8 : memref<12xi32, 1 : i32> offset = %c0_i32 len = %c12_i32 sizes = [] strides = [])
       aie.use_lock(%lock_0_1, Release, 1)
       aie.next_bd ^bb4
     }
@@ -161,7 +164,7 @@ module {
       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3, repeat_count = 1)
     ^bb1:  // 2 preds: ^bb0, ^bb1
       aie.use_lock(%lock_1_1, AcquireGreaterEqual, 1)
-      aie.dma_bd(%buf6 : memref<12xi32, 1 : i32>, 0, 12)
+      aie.dma_bd(%buf6 : memref<12xi32, 1 : i32> offset = %c0_i32 len = %c12_i32 sizes = [] strides = [])
       aie.use_lock(%lock_1_1_0, Release, 1)
       aie.next_bd ^bb1
     ^bb2:  // pred: ^bb3
@@ -170,7 +173,7 @@ module {
       %1 = aie.dma_start(MM2S, 0, ^bb4, ^bb2, repeat_count = 1)
     ^bb4:  // 2 preds: ^bb3, ^bb4
       aie.use_lock(%lock_1_1_0, AcquireGreaterEqual, 1)
-      aie.dma_bd(%buf6 : memref<12xi32, 1 : i32>, 0, 12)
+      aie.dma_bd(%buf6 : memref<12xi32, 1 : i32> offset = %c0_i32 len = %c12_i32 sizes = [] strides = [])
       aie.use_lock(%lock_1_1, Release, 1)
       aie.next_bd ^bb4
     }

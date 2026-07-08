@@ -21,6 +21,8 @@ module @test {
 
     // Tile DMA
     %m00 = aie.shim_dma(%t00) {
+      %c1_i32 = arith.constant 1 : i32
+      %c256_i32 = arith.constant 256 : i32
       // expected-error@-1 {{'aie.shim_dma' op uses more input channels than available on this tile}}
         %dma = aie.dma_start("S2MM", 0, ^bd0, ^dma1)
       ^dma1:
@@ -28,15 +30,15 @@ module @test {
       ^dma2:
         %dma3 = aie.dma_start("S2MM", 2, ^bd2, ^end)
       ^bd0:
-        aie.dma_bd(%buf_e : memref<256xi32>, 1, 256)
+        aie.dma_bd(%buf_e : memref<256xi32> offset = %c1_i32 len = %c256_i32 sizes = [] strides = [])
         aie.use_lock(%lock_e, Release, 1)
         aie.next_bd ^bd0
       ^bd1:
-        aie.dma_bd(%buf_l : memref<256xi32>, 1, 256)
+        aie.dma_bd(%buf_l : memref<256xi32> offset = %c1_i32 len = %c256_i32 sizes = [] strides = [])
         aie.use_lock(%lock_l, Release, 1)
         aie.next_bd ^bd1
       ^bd2:
-        aie.dma_bd(%buf_n : memref<256xi32>, 1, 256)
+        aie.dma_bd(%buf_n : memref<256xi32> offset = %c1_i32 len = %c256_i32 sizes = [] strides = [])
         aie.use_lock(%lock_n, Release, 1)
         aie.next_bd ^bd2
       ^end:
@@ -44,6 +46,8 @@ module @test {
     }
   }
 }
+
+
 
 // -----
 
@@ -55,12 +59,14 @@ module @test {
     %lock_test = aie.lock(%t1, 1)
     // expected-error@+1 {{'aie.shim_dma' op BD block must have at most one acquire UseLockOp, found 2}}
     %mem13 = aie.shim_dma(%t1) {
+      %c0_i32 = arith.constant 0 : i32
+      %c16_i32 = arith.constant 16 : i32
       %dma0 = aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
         // expected-note@+1 {{in this BD block}}
         aie.use_lock(%lock, Acquire, 1)
         aie.use_lock(%lock, Acquire, 1)
-        aie.dma_bd(%buff : memref<16xi32>, 0, 16)
+        aie.dma_bd(%buff : memref<16xi32> offset = %c0_i32 len = %c16_i32 sizes = [] strides = [])
         aie.use_lock(%lock, Release, 0)
         aie.next_bd ^bd0
       ^end:
@@ -68,6 +74,8 @@ module @test {
     }
   }
 }
+
+
 
 // -----
 
@@ -80,12 +88,14 @@ module @test {
     %cons_lock = aie.lock(%t1, 2) {init = 0 : i32}
     // expected-error@+1 {{'aie.shim_dma' op BD block must have at most one acquire UseLockOp, found 2}}
     %mem13 = aie.shim_dma(%t1) {
+      %c0_i32 = arith.constant 0 : i32
+      %c16_i32 = arith.constant 16 : i32
       %dma0 = aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
         // expected-note@+1 {{in this BD block}}
         aie.use_lock(%prod_lock, AcquireGreaterEqual, 1)
         aie.use_lock(%prod_lock_test, AcquireGreaterEqual, 1)
-        aie.dma_bd(%buff : memref<16xi32>, 0, 16)
+        aie.dma_bd(%buff : memref<16xi32> offset = %c0_i32 len = %c16_i32 sizes = [] strides = [])
         aie.use_lock(%cons_lock, Release, 1)
         aie.next_bd ^bd0
       ^end:
@@ -93,6 +103,8 @@ module @test {
     }
   }
 }
+
+
 
 // -----
 
@@ -105,11 +117,13 @@ module @test {
     %cons_lock_test = aie.lock(%t1, 1) {init = 0 : i32}
     // expected-error@+1 {{'aie.shim_dma' op BD block must have at most one release UseLockOp, found 2}}
     %mem13 = aie.shim_dma(%t1) {
+      %c0_i32 = arith.constant 0 : i32
+      %c16_i32 = arith.constant 16 : i32
       %dma0 = aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
         // expected-note@+1 {{in this BD block}}
         aie.use_lock(%prod_lock, AcquireGreaterEqual, 1)
-        aie.dma_bd(%buff : memref<16xi32>, 0, 16)
+        aie.dma_bd(%buff : memref<16xi32> offset = %c0_i32 len = %c16_i32 sizes = [] strides = [])
         aie.use_lock(%cons_lock, Release, 1)
         aie.use_lock(%cons_lock_test, Release, 1)
         aie.next_bd ^bd0
@@ -118,6 +132,8 @@ module @test {
     }
   }
 }
+
+
 
 // -----
 
@@ -130,12 +146,14 @@ module @test {
     %cons_lock = aie.lock(%t1, 2) {init = 0 : i32}
     // expected-error@+1 {{'aie.shim_dma' op BD block must have at most one DMABDOp, found 2}}
     %mem13 = aie.shim_dma(%t1) {
+      %c0_i32 = arith.constant 0 : i32
+      %c16_i32 = arith.constant 16 : i32
       %dma0 = aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
         // expected-note@+1 {{in this BD block}}
         aie.use_lock(%prod_lock, AcquireGreaterEqual, 1)
-        aie.dma_bd(%buff : memref<16xi32>, 0, 16)
-        aie.dma_bd(%buff2 : memref<16xi32>, 0, 16)
+        aie.dma_bd(%buff : memref<16xi32> offset = %c0_i32 len = %c16_i32 sizes = [] strides = [])
+        aie.dma_bd(%buff2 : memref<16xi32> offset = %c0_i32 len = %c16_i32 sizes = [] strides = [])
         aie.use_lock(%cons_lock, Release, 1)
         aie.next_bd ^bd0
       ^end:

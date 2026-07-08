@@ -18,8 +18,10 @@ module {
     %memtile_dma_0_1 = aie.memtile_dma(%tile_0_1) {
     ^bb0:
       aie.dma(S2MM, 0) [{
+        %c0_i32 = arith.constant 0 : i32
+        %c16_i32 = arith.constant 16 : i32
         aie.use_lock(%objFifo_in0_cons_prod_lock, AcquireGreaterEqual, 1)
-        aie.dma_bd(%objFifo_in0_cons_buff_0 : memref<16xi32>, 0, 16)
+        aie.dma_bd(%objFifo_in0_cons_buff_0 : memref<16xi32> offset = %c0_i32 len = %c16_i32 sizes = [] strides = [])
         aie.use_lock(%objFifo_in0_cons_cons_lock, Release, 1)
       }]
       aie.next_bd ^bb1
@@ -30,6 +32,7 @@ module {
   }
 }
 
+
 // -----
 
 // CHECK: error: 'aie.dma_bd' op Packet ID field can only hold 5 bits.
@@ -38,15 +41,18 @@ module {
     %tile14 = aie.tile(1, 4)
     %buf14 = aie.buffer(%tile14) { sym_name = "buf14" } : memref<128xi32>
     %mem14 = aie.mem(%tile14) {
+      %c0_i32 = arith.constant 0 : i32
+      %c128_i32 = arith.constant 128 : i32
       %srcDma = aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
-        aie.dma_bd(%buf14 : memref<128xi32>, 0, 128, [<size = 1, stride = 128>]) {packet = #aie.packet_info<pkt_type = 7, pkt_id = 33>}
+        aie.dma_bd(%buf14 : memref<128xi32> offset = %c0_i32 len = %c128_i32 sizes = [1] strides = [128]) {packet = #aie.packet_info<pkt_type = 7, pkt_id = 33>}
         aie.next_bd ^end
       ^end: 
         aie.end
     }
   }
 }
+
 
 // -----
 
@@ -56,9 +62,11 @@ module {
     %tile14 = aie.tile(1, 4)
     %buf14 = aie.buffer(%tile14) { sym_name = "buf14" } : memref<128x!aiex.bfp<"v8bfp16ebs8">>
     %mem14 = aie.mem(%tile14) {
+      %c0_i32 = arith.constant 0 : i32
+      %c128_i32 = arith.constant 128 : i32
       %srcDma = aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
-        aie.dma_bd(%buf14 : memref<128x!aiex.bfp<"v8bfp16ebs8">>, 0, 128, [<size = 8, stride = 16>]) {}
+        aie.dma_bd(%buf14 : memref<128x!aiex.bfp<"v8bfp16ebs8">> offset = %c0_i32 len = %c128_i32 sizes = [8] strides = [16]) {}
         aie.next_bd ^end
       ^end: 
         aie.end

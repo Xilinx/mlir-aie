@@ -21,104 +21,104 @@ module {
       %lock2 = aie.lock(%tile_0_1) {init = 0 : i32}
       %0 = aie.dma(S2MM, 0) [{
         aie.use_lock(%lock, AcquireGreaterEqual)
-        aie.dma_bd(%buffer_0_1 : memref<32xi32>)
+        aie.dma_bd(%buffer_0_1 : memref<32xi32> sizes = [] strides = [])
         aie.use_lock(%lock2, Release)
       }, {
         aie.use_lock(%lock, AcquireGreaterEqual)
-        aie.dma_bd(%buffer_0_1 : memref<32xi32>)
+        aie.dma_bd(%buffer_0_1 : memref<32xi32> sizes = [] strides = [])
         aie.use_lock(%lock2, Release)
       }, {
         aie.use_lock(%lock, AcquireGreaterEqual)
-        aie.dma_bd(%buffer_0_1 : memref<32xi32>)
+        aie.dma_bd(%buffer_0_1 : memref<32xi32> sizes = [] strides = [])
         aie.use_lock(%lock2, Release)
       }, {
         aie.use_lock(%lock, AcquireGreaterEqual)
-        aie.dma_bd(%buffer_0_1 : memref<32xi32>)
+        aie.dma_bd(%buffer_0_1 : memref<32xi32> sizes = [] strides = [])
         aie.use_lock(%lock2, Release)
       }, {
         aie.use_lock(%lock, AcquireGreaterEqual)
-        aie.dma_bd(%buffer_0_1 : memref<32xi32>)
+        aie.dma_bd(%buffer_0_1 : memref<32xi32> sizes = [] strides = [])
         aie.use_lock(%lock2, Release)
       }, {
         aie.use_lock(%lock, AcquireGreaterEqual)
-        aie.dma_bd(%buffer_0_1 : memref<32xi32>)
+        aie.dma_bd(%buffer_0_1 : memref<32xi32> sizes = [] strides = [])
         aie.use_lock(%lock2, Release)
       }, {
         aie.use_lock(%lock, AcquireGreaterEqual)
-        aie.dma_bd(%buffer_0_1 : memref<32xi32>)
+        aie.dma_bd(%buffer_0_1 : memref<32xi32> sizes = [] strides = [])
         aie.use_lock(%lock2, Release)
       }, {
         aie.use_lock(%lock, AcquireGreaterEqual)
-        aie.dma_bd(%buffer_0_1 : memref<32xi32>)
+        aie.dma_bd(%buffer_0_1 : memref<32xi32> sizes = [] strides = [])
         aie.use_lock(%lock2, Release)
       }, {
         aie.use_lock(%lock, AcquireGreaterEqual)
-        aie.dma_bd(%buffer_0_1 : memref<32xi32>)
+        aie.dma_bd(%buffer_0_1 : memref<32xi32> sizes = [] strides = [])
         aie.use_lock(%lock2, Release)
       }, {
         aie.use_lock(%lock, AcquireGreaterEqual)
-        aie.dma_bd(%buffer_0_1 : memref<32xi32>)
+        aie.dma_bd(%buffer_0_1 : memref<32xi32> sizes = [] strides = [])
         aie.use_lock(%lock2, Release)
       }, {
         aie.use_lock(%lock, AcquireGreaterEqual)
-        aie.dma_bd(%buffer_0_1 : memref<32xi32>)
+        aie.dma_bd(%buffer_0_1 : memref<32xi32> sizes = [] strides = [])
         aie.use_lock(%lock2, Release)
       }, {
         aie.use_lock(%lock, AcquireGreaterEqual)
-        aie.dma_bd(%buffer_0_1 : memref<32xi32>)
+        aie.dma_bd(%buffer_0_1 : memref<32xi32> sizes = [] strides = [])
         aie.use_lock(%lock2, Release)
       }, {
         aie.use_lock(%lock, AcquireGreaterEqual)
-        aie.dma_bd(%buffer_0_1 : memref<32xi32>)
+        aie.dma_bd(%buffer_0_1 : memref<32xi32> sizes = [] strides = [])
         aie.use_lock(%lock2, Release)
       }, {
         aie.use_lock(%lock, AcquireGreaterEqual)
-        aie.dma_bd(%buffer_0_1 : memref<32xi32>)
+        aie.dma_bd(%buffer_0_1 : memref<32xi32> sizes = [] strides = [])
         aie.use_lock(%lock2, Release)
       }, {
         aie.use_lock(%lock, AcquireGreaterEqual)
-        aie.dma_bd(%buffer_0_1 : memref<32xi32>)
+        aie.dma_bd(%buffer_0_1 : memref<32xi32> sizes = [] strides = [])
         aie.use_lock(%lock2, Release)
       }, {
         aie.use_lock(%lock, AcquireGreaterEqual)
-        aie.dma_bd(%buffer_0_1 : memref<32xi32>)
+        aie.dma_bd(%buffer_0_1 : memref<32xi32> sizes = [] strides = [])
         aie.use_lock(%lock2, Release)
       }, {
         aie.use_lock(%lock, AcquireGreaterEqual)
-        aie.dma_bd(%buffer_0_1 : memref<32xi32>)
+        aie.dma_bd(%buffer_0_1 : memref<32xi32> sizes = [] strides = [])
         aie.use_lock(%lock2, Release)
       }, {
         aie.use_lock(%lock, AcquireGreaterEqual)
-        aie.dma_bd(%buffer_0_1 : memref<32xi32>)
+        aie.dma_bd(%buffer_0_1 : memref<32xi32> sizes = [] strides = [])
         aie.use_lock(%lock2, Release)
       }, {
         aie.use_lock(%lock, AcquireGreaterEqual)
-        aie.dma_bd(%buffer_0_1 : memref<32xi32>)
+        aie.dma_bd(%buffer_0_1 : memref<32xi32> sizes = [] strides = [])
         aie.use_lock(%lock2, Release)
       }, {
         aie.use_lock(%lock, AcquireGreaterEqual)
-        aie.dma_bd(%buffer_0_1 : memref<32xi32>)
+        aie.dma_bd(%buffer_0_1 : memref<32xi32> sizes = [] strides = [])
         aie.use_lock(%lock2, Release)
       }, {
         aie.use_lock(%lock, AcquireGreaterEqual)
-        aie.dma_bd(%buffer_0_1 : memref<32xi32>)
+        aie.dma_bd(%buffer_0_1 : memref<32xi32> sizes = [] strides = [])
         aie.use_lock(%lock2, Release)
       }, {
         aie.use_lock(%lock, AcquireGreaterEqual)
-        aie.dma_bd(%buffer_0_1 : memref<32xi32>)
+        aie.dma_bd(%buffer_0_1 : memref<32xi32> sizes = [] strides = [])
         aie.use_lock(%lock2, Release)
       }, {
         aie.use_lock(%lock, AcquireGreaterEqual)
-        aie.dma_bd(%buffer_0_1 : memref<32xi32>)
+        aie.dma_bd(%buffer_0_1 : memref<32xi32> sizes = [] strides = [])
         aie.use_lock(%lock2, Release)
       }, {
         aie.use_lock(%lock, AcquireGreaterEqual)
-        aie.dma_bd(%buffer_0_1 : memref<32xi32>)
+        aie.dma_bd(%buffer_0_1 : memref<32xi32> sizes = [] strides = [])
         aie.use_lock(%lock2, Release)
       }, {
         aie.use_lock(%lock, AcquireGreaterEqual)
         // expected-error@+1 {{'aie.dma_bd' op Allocator exhausted available BD IDs (maximum 24 available for channel 0).}}
-        aie.dma_bd(%buffer_0_1 : memref<32xi32>)
+        aie.dma_bd(%buffer_0_1 : memref<32xi32> sizes = [] strides = [])
         aie.use_lock(%lock2, Release)
       }]
       aie.end

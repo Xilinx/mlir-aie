@@ -34,9 +34,11 @@ from util import construct_and_print_module
 #    aie.flow(%tile_0_1, DMA : 0, %tile_0_0, DMA : 0)
 #    aie.shim_dma_allocation @mem_A(MM2S, 0, 0)
 #    %memtile_dma_0_1 = aie.memtile_dma(%tile_0_1) {
+  %c0_i32 = arith.constant 0 : i32
+  %c2_i32 = arith.constant 2 : i32
 #      %0 = aie.dma(MM2S, 0) [{
 #        aie.use_lock(%lock_0_1_0, AcquireGreaterEqual)
-#        aie.dma_bd(%mem_A : memref<2x1xi16>, 0, 2, [<size = 1, stride = 1>, <size = 1, stride = 1>, <size = 1, stride = 1>, <size = 1, stride = 1>])
+#        aie.dma_bd(%mem_A : memref<2x1xi16> offset = %c0_i32 len = %c2_i32 sizes = [1, 1, 1, 1] strides = [1, 1, 1, 1])
 #        aie.use_lock(%lock_0_1, Release)
 #      }]
 #      aie.end

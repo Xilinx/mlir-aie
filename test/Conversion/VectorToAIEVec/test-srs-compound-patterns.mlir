@@ -224,8 +224,6 @@ func.func @test_scalar_srs_clamp_signed(%arg0: i32) -> i8 {
 // AIE2P: aievec.concat
 // AIE2P: aievec.ext_elem
 func.func @test_scalar_clamp_only_unsigned(%arg0: i32) -> i8 {
-  %c0 = arith.constant 0 : i32
-  %c255 = arith.constant 255 : i32
   %clamped0 = arith.maxsi %arg0, %c0 : i32
   %clamped = arith.minsi %clamped0, %c255 : i32
   %result = arith.trunci %clamped : i32 to i8

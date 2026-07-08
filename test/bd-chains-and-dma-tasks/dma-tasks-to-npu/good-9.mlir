@@ -19,9 +19,10 @@ module {
       // CHECK-DAG: %[[MWVAL:.*]] = arith.constant 12220 : i32
       // CHECK-DAG: %[[MWADDR:.*]] = arith.constant 1703940 : i32
       // CHECK: aiex.npu.maskwrite32(%[[MWADDR]], %[[MWVAL]], %[[MWMASK]]) : i32, i32, i32
+      %c4_i32 = arith.constant 4 : i32
+      %c16_i32 = arith.constant 16 : i32
       %t1 = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
-          aie.dma_bd(%buf : memref<32xi8>, 4, 16,
-                     [<size=2, stride=4>, <size=2, stride=8>, <size=4, stride=1>], [<const_pad_before=2, const_pad_after=2>, <const_pad_before=1, const_pad_after=1>]) {bd_id = 0 : i32}
+          aie.dma_bd(%buf : memref<32xi8> offset = %c4_i32 len = %c16_i32 sizes = [2, 2, 4] strides = [4, 8, 1] pad [<const_pad_before=2, const_pad_after=2>, <const_pad_before=1, const_pad_after=1>]) {bd_id = 0 : i32}
           aie.end
       }
     }

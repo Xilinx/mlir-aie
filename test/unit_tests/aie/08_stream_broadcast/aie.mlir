@@ -57,10 +57,12 @@ aie.device(xcvc1902) {
   }
 
   %mem13 = aie.mem(%tile13) {
+    %c0_i32 = arith.constant 0 : i32
+    %c256_i32 = arith.constant 256 : i32
     %dma0 = aie.dma_start("MM2S", 0, ^bd0, ^end)
     ^bd0:
       aie.use_lock(%lock13_5, "Acquire", 1)
-      aie.dma_bd(%buf13_1 : memref<256xi32>, 0, 256)
+      aie.dma_bd(%buf13_1 : memref<256xi32> offset = %c0_i32 len = %c256_i32 sizes = [] strides = [])
       aie.use_lock(%lock13_5, "Release", 0)
       aie.next_bd ^end // point to the next BD, or termination
     ^end:
@@ -94,10 +96,12 @@ aie.device(xcvc1902) {
   }
 
   %mem32 = aie.mem(%tile32) {
+    %c0_i32 = arith.constant 0 : i32
+    %c256_i32 = arith.constant 256 : i32
     %dma0 = aie.dma_start("S2MM", 1, ^bd0, ^end)
     ^bd0:
       aie.use_lock(%lock32_6, "Acquire", 0)
-      aie.dma_bd(%buf32_0 : memref<256xi32>, 0, 256)
+      aie.dma_bd(%buf32_0 : memref<256xi32> offset = %c0_i32 len = %c256_i32 sizes = [] strides = [])
       aie.use_lock(%lock32_6, "Release", 1)
       aie.next_bd ^end // point to the next BD, or termination
     ^end:
@@ -129,10 +133,12 @@ aie.device(xcvc1902) {
   }
 
   %mem33 = aie.mem(%tile33) {
+    %c0_i32 = arith.constant 0 : i32
+    %c256_i32 = arith.constant 256 : i32
     %dma0 = aie.dma_start("S2MM", 1, ^bd0, ^end)
     ^bd0:
       aie.use_lock(%lock33_6, "Acquire", 0)
-      aie.dma_bd(%buf33_0 : memref<256xi32>, 0, 256)
+      aie.dma_bd(%buf33_0 : memref<256xi32> offset = %c0_i32 len = %c256_i32 sizes = [] strides = [])
       aie.use_lock(%lock33_6, "Release", 1)
       aie.next_bd ^end // point to the next BD, or termination
     ^end:
@@ -164,10 +170,12 @@ aie.device(xcvc1902) {
   }
 
   %mem34 = aie.mem(%tile34) {
+    %c0_i32 = arith.constant 0 : i32
+    %c256_i32 = arith.constant 256 : i32
     %dma0 = aie.dma_start("S2MM", 1, ^bd0, ^end)
     ^bd0:
       aie.use_lock(%lock34_6, "Acquire", 0)
-      aie.dma_bd(%buf34_0 : memref<256xi32>, 0, 256)
+      aie.dma_bd(%buf34_0 : memref<256xi32> offset = %c0_i32 len = %c256_i32 sizes = [] strides = [])
       aie.use_lock(%lock34_6, "Release", 1)
       aie.next_bd ^end // point to the next BD, or termination
     ^end:

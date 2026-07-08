@@ -103,7 +103,6 @@ module {
   // This should not be transformed (1024-bit, not 2048-bit)
   func.func @no_split_srs_store_smaller(%arg0: vector<32xi32>, %arg1: memref<64xi16>) {
     %c0 = arith.constant 0 : index
-    %c0_i32 = arith.constant 0 : i32
     
     // CHECK: [[SRS:%.+]] = aievec.srs %arg0{{.*}}vector<32xi32>, i32, vector<32xi16>
     // CHECK: vector.store [[SRS]]{{.*}}vector<32xi16>
@@ -118,7 +117,6 @@ module {
   // This should not be transformed (SRS has multiple uses)
   func.func @no_split_srs_multiple_uses(%arg0: vector<64xi32>, %arg1: memref<128xi16>) -> vector<64xi16> {
     %c0 = arith.constant 0 : index
-    %c0_i32 = arith.constant 0 : i32
     
     // CHECK: [[SRS:%.+]] = aievec.srs %arg0{{.*}}vector<64xi32>, i32, vector<64xi16>
     // CHECK: vector.store [[SRS]]{{.*}}vector<64xi16>

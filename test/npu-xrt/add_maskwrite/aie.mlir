@@ -49,7 +49,7 @@ module {
       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
     ^bb1:
       aie.use_lock(%output_lock0, AcquireGreaterEqual, 1)
-      aie.dma_bd(%output_buffer : memref<8xi32>) { len = 8 : i32 }
+      aie.dma_bd(%output_buffer : memref<8xi32> sizes = [] strides = []) { len = 8 : i32 }
       aie.use_lock(%output_lock1, Release, 1)
       aie.next_bd ^bb1
     ^bb2:

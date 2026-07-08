@@ -31,6 +31,7 @@ module @test_core_tile_elements {
   }
 }
 
+
 // -----
 
 // Test MemTileDMAOp, BufferOp, LockOp with LogicalTileOp<MemTile>
@@ -51,6 +52,7 @@ module @test_mem_tile_elements {
   }
 }
 
+
 // -----
 
 // Test ShimDMAOp, LockOp with LogicalTileOp<ShimNOCTile>
@@ -69,6 +71,7 @@ module @test_shim_noc_tile_elements {
   }
 }
 
+
 // -----
 
 // Test ObjectFifoCreateOp with LogicalTileOp
@@ -84,6 +87,7 @@ module @test_objectfifo_shim_to_core {
     aie.end
   }
 }
+
 
 // -----
 
@@ -107,6 +111,7 @@ module @test_objectfifo_link {
   }
 }
 
+
 // -----
 
 // Test ShimDMAAllocationOp with LogicalTileOp<ShimNOCTile>
@@ -125,6 +130,7 @@ module @test_shim_dma_allocation {
   }
 }
 
+
 // -----
 
 // Mixed LogicalTileOp and TileOp usage
@@ -141,6 +147,7 @@ module @test_mixed_tile_types {
   }
 }
 
+
 // -----
 
 // Test DMAConfigureTaskOp with LogicalTileOp
@@ -150,8 +157,10 @@ module @test_dma_configure_task {
     %buffer = aie.external_buffer {sym_name = "ext_buffer"} : memref<1024xi32>
 
     aie.runtime_sequence(%arg0: memref<1024xi32>) {
+      %c0_i32 = arith.constant 0 : i32
+      %c1024_i32 = arith.constant 1024 : i32
       %task = aiex.dma_configure_task(%shim_tile, MM2S, 0) {
-        aie.dma_bd(%buffer : memref<1024xi32>, 0, 1024) {bd_id = 0 : i32}
+        aie.dma_bd(%buffer : memref<1024xi32> offset = %c0_i32 len = %c1024_i32 sizes = [] strides = []) {bd_id = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%task)
@@ -159,6 +168,7 @@ module @test_dma_configure_task {
     aie.end
   }
 }
+
 
 // -----
 
@@ -169,8 +179,9 @@ module @test_dma_configure_task_memtile {
     %buffer_in = aie.buffer(%mem_tile) {sym_name = "buf_in"} : memref<256xi32>
 
     aie.runtime_sequence(%arg0: memref<256xi32>) {
+      %c256_i32 = arith.constant 256 : i32
       %task = aiex.dma_configure_task(%mem_tile, S2MM, 0) {
-        aie.dma_bd(%buffer_in : memref<256xi32>, 0, 256) {bd_id = 0 : i32}
+        aie.dma_bd(%buffer_in : memref<256xi32> offset = %c0_i32 len = %c256_i32 sizes = [] strides = []) {bd_id = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%task)
@@ -178,6 +189,7 @@ module @test_dma_configure_task_memtile {
     aie.end
   }
 }
+
 
 // -----
 
@@ -194,6 +206,7 @@ module @test_cascade_flow_logical_tiles {
     aie.end
   }
 }
+
 
 // -----
 

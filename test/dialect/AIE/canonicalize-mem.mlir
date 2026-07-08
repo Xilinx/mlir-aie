@@ -10,8 +10,8 @@
 // Verify that canonicalize does not remove chained aie.next_bd
 
 // CHECK-LABEL:  module @test {
-// CHECK-NEXT:     %[[VAL_0:.*]] = aie.tile(1, 1)
-// CHECK-NEXT:     %[[VAL_1:.*]] = aie.mem(%[[VAL_0]]) {
+// CHECK:          %[[VAL_0:.*]] = aie.tile(1, 1)
+// CHECK:          %[[VAL_1:.*]] = aie.mem(%[[VAL_0]]) {
 // CHECK-NEXT:       %[[VAL_2:.*]] = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
 // CHECK-NEXT:     ^bb1:  // pred: ^bb0
 // CHECK-NEXT:       aie.next_bd ^bb2
@@ -33,24 +33,24 @@
 // CHECK-NEXT:    %[[VAL_1:.*]] = aie.dma_start(MM2S, 1, ^bb5, ^bb4)
 // CHECK-NEXT:  ^bb2:  // 2 preds: ^bb0, ^bb3
 // CHECK-NEXT:    aie.use_lock(%[[LOCK_0]], Acquire, 1)
-// CHECK-NEXT:    aie.dma_bd(%[[BUF_0]] : memref<256xi32>, 0, 256)
+// CHECK-NEXT:    aie.dma_bd(%[[BUF_0]] : memref<256xi32> offset = {{.*}} len = {{.*}} sizes = [] strides = [])
 // CHECK-NEXT:    aie.use_lock(%[[LOCK_0]], Release, 0)
 // CHECK-NEXT:    aie.next_bd ^bb3
 // CHECK-NEXT:  ^bb3:  // pred: ^bb2
 // CHECK-NEXT:    aie.use_lock(%[[LOCK_0]], Acquire, 1)
-// CHECK-NEXT:    aie.dma_bd(%[[BUF_1]] : memref<256xi32>, 0, 256)
+// CHECK-NEXT:    aie.dma_bd(%[[BUF_1]] : memref<256xi32> offset = {{.*}} len = {{.*}} sizes = [] strides = [])
 // CHECK-NEXT:    aie.use_lock(%[[LOCK_0]], Release, 0)
 // CHECK-NEXT:    aie.next_bd ^bb2
 // CHECK-NEXT:  ^bb4:  // pred: ^bb1
 // CHECK-NEXT:    aie.end
 // CHECK-NEXT:  ^bb5:  // 2 preds: ^bb1, ^bb6
 // CHECK-NEXT:    aie.use_lock(%[[LOCK_0]], Acquire, 1)
-// CHECK-NEXT:    aie.dma_bd(%[[BUF_2]] : memref<256xi32>, 0, 128)
+// CHECK-NEXT:    aie.dma_bd(%[[BUF_2]] : memref<256xi32> offset = {{.*}} len = {{.*}} sizes = [] strides = [])
 // CHECK-NEXT:    aie.use_lock(%[[LOCK_0]], Release, 0)
 // CHECK-NEXT:    aie.next_bd ^bb6
 // CHECK-NEXT:  ^bb6:  // pred: ^bb5
 // CHECK-NEXT:    aie.use_lock(%[[LOCK_0]], Acquire, 1)
-// CHECK-NEXT:    aie.dma_bd(%[[BUF_2]] : memref<256xi32>, 128, 128)
+// CHECK-NEXT:    aie.dma_bd(%[[BUF_2]] : memref<256xi32> offset = {{.*}} len = {{.*}} sizes = [] strides = [])
 // CHECK-NEXT:    aie.use_lock(%[[LOCK_0]], Release, 0)
 // CHECK-NEXT:    aie.next_bd ^bb5
 
@@ -81,49 +81,52 @@ module @test {
   %lock_3 = aie.lock(%t2, 0)
 
   %mem12 = aie.mem(%t2) {
+    %c0_i32 = arith.constant 0 : i32
+    %c128_i32 = arith.constant 128 : i32
+    %c256_i32 = arith.constant 256 : i32
       %start1 = aie.dma_start("MM2S", 0, ^bd0, ^dma0)
     ^dma0:
       %start2 = aie.dma_start("MM2S", 1, ^bd4, ^end)
     ^bd0:
       aie.use_lock(%lock_0, Acquire, 1)
-      aie.dma_bd(%buf_0 : memref<256xi32>, 0, 256)
+      aie.dma_bd(%buf_0 : memref<256xi32> offset = %c0_i32 len = %c256_i32 sizes = [] strides = [])
       aie.use_lock(%lock_0, Release, 0)
       aie.next_bd ^bd1
     ^bd1:
       aie.use_lock(%lock_0, Acquire, 1)
-      aie.dma_bd(%buf_1 : memref<256xi32>, 0, 256)
+      aie.dma_bd(%buf_1 : memref<256xi32> offset = %c0_i32 len = %c256_i32 sizes = [] strides = [])
       aie.use_lock(%lock_0, Release, 0)
       aie.next_bd ^bd2
     ^bd2:
       aie.use_lock(%lock_0, Acquire, 1)
-      aie.dma_bd(%buf_0 : memref<256xi32>, 0, 256)
+      aie.dma_bd(%buf_0 : memref<256xi32> offset = %c0_i32 len = %c256_i32 sizes = [] strides = [])
       aie.use_lock(%lock_0, Release, 0)
       aie.next_bd ^bd3
     ^bd3:
       aie.use_lock(%lock_0, Acquire, 1)
-      aie.dma_bd(%buf_1 : memref<256xi32>, 0, 256)
+      aie.dma_bd(%buf_1 : memref<256xi32> offset = %c0_i32 len = %c256_i32 sizes = [] strides = [])
       aie.use_lock(%lock_0, Release, 0)
       aie.next_bd ^bd0
     ^end:
       aie.end
     ^bd4:
       aie.use_lock(%lock_0, Acquire, 1)
-      aie.dma_bd(%buf_2 : memref<256xi32>, 0, 128)
+      aie.dma_bd(%buf_2 : memref<256xi32> offset = %c0_i32 len = %c128_i32 sizes = [] strides = [])
       aie.use_lock(%lock_0, Release, 0)
       aie.next_bd ^bd5
     ^bd5:
       aie.use_lock(%lock_0, Acquire, 1)
-      aie.dma_bd(%buf_2 : memref<256xi32>, 128, 128)
+      aie.dma_bd(%buf_2 : memref<256xi32> offset = %c128_i32 len = %c128_i32 sizes = [] strides = [])
       aie.use_lock(%lock_0, Release, 0)
       aie.next_bd ^bd6
     ^bd6:
       aie.use_lock(%lock_0, Acquire, 1)
-      aie.dma_bd(%buf_2 : memref<256xi32>, 0, 128)
+      aie.dma_bd(%buf_2 : memref<256xi32> offset = %c0_i32 len = %c128_i32 sizes = [] strides = [])
       aie.use_lock(%lock_0, Release, 0)
       aie.next_bd ^bd7
     ^bd7:
       aie.use_lock(%lock_0, Acquire, 1)
-      aie.dma_bd(%buf_2 : memref<256xi32>, 128, 128)
+      aie.dma_bd(%buf_2 : memref<256xi32> offset = %c128_i32 len = %c128_i32 sizes = [] strides = [])
       aie.use_lock(%lock_0, Release, 0)
       aie.next_bd ^bd4
   }

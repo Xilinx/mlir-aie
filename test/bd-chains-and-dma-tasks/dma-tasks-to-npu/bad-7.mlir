@@ -15,10 +15,12 @@ module {
 
     aie.runtime_sequence(%arg0: memref<32xi8>) {
       // expected-note@+1 {{Error encountered}}
+      %c3_i32 = arith.constant 3 : i32
+      %c4_i32 = arith.constant 4 : i32
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
           // expected-error@+2 {{Cannot lower buffer descriptor without assigned ID}}
           // expected-note@+1 {{Run the `--aie-assign-runtime-sequence-bd-ids` pass first or manually assign an ID to this buffer descriptor}}
-          aie.dma_bd(%arg0 : memref<32xi8>, 3, 4)
+          aie.dma_bd(%arg0 : memref<32xi8> offset = %c3_i32 len = %c4_i32 sizes = [] strides = [])
           aie.end
       }
     }
