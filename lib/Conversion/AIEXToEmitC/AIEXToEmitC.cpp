@@ -241,7 +241,8 @@ private:
     bool first = true;
     for (APInt word : data.getValues<APInt>()) {
       if (!first)
-      ss << llvm::format("0x%08xu", static_cast<unsigned>(word.getZExtValue()));
+        ss << llvm::format("0x%08xu",
+                           static_cast<unsigned>(word.getZExtValue()));
     }
     ss << "}";
     auto arrVar = emitc::VariableOp::create(b, loc, arrTy,
