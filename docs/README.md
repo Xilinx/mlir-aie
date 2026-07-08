@@ -124,7 +124,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    > associated with the currently checked-out release/commit of the repository. If it can't find a release for
    > this commit, it will error, since trying to compile a version of the programming examples in this repository
    > with a compiler wheel whose version does not exactly match very frequently leads to hard-to-debug errors. If
-   > you insist on using use the latest available release from `main`, pass `--latest`. To manually install
+   > you insist on use the latest available release from `main`, pass `--latest`. To manually install
    > a different wheel, follow the manual instructions below.
    >
    > *Tip:* The `utils/env_install.sh` script also works as an update script.
@@ -170,7 +170,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
          ```bash
          # Install IRON library and mlir-aie from a specific release,
-         # e.g., <verison> in the following command could be replaced with v1.1.3
+         # e.g., <version> in the following command could be replaced with v1.1.3
          python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/<version>
          git checkout <version>
          ```
@@ -219,9 +219,9 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
       # vscode) so we save the ${MLIR_AIE_INSTALL_DIR}/python in a .pth file in the site packages dir of the
       # ironenv venv; this allows the iron ipykernel to find the install dir regardless of if PYTHONPATH is
       # available or not.
-      MLIR_AIE_INSTALL=`$(pip show mlir_aie | grep ^Location: | awk '{print $2}')/mlir_aie` \
-      venv_site_packages=`python3 -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])'` \
-      echo ${MLIR_AIE_INSTALL}/python > $venv_site_packages/mlir-aie.pth
+      MLIR_AIE_INSTALL="$(pip show mlir_aie | grep ^Location: | awk '{print $2}')/mlir_aie"
+      venv_site_packages="$(python3 -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
+      echo "${MLIR_AIE_INSTALL}/python" > "$venv_site_packages/mlir-aie.pth"
       ```
 
    </details>

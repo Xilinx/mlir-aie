@@ -27,7 +27,7 @@ Make sure to run `black` on all Python and Jupyter notebooks, like so:
 black <the-file-i-changed>
 ```
 
-The CI will check black formatting of Python and Notebook files; there is a also a commit hook installed
+The CI will check black formatting of Python and Notebook files; there is also a commit hook installed
 by `utils/env_install.sh --dev` which will not allow you to push until it has scrubbed Jupyter
 notebooks of certain information.
 
