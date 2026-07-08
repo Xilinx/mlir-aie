@@ -1356,8 +1356,8 @@ struct SplitCertPageOpPattern : OpRewritePattern<AIEX::CertPageOp> {
     bool found_split_point = false;
     uint32_t cost = estimateCost(op, cert_page_size / 2, split_job, split_iter,
                                  found_split_point);
-    LLVM_DEBUG(llvm::outs()
-               << "Estimate cost for page: " << " is " << cost << "\n");
+    LLVM_DEBUG(llvm::outs() << "Estimate cost for page: "
+                            << " is " << cost << "\n");
 
     if (cost < split_threshold || !found_split_point)
       return failure();
