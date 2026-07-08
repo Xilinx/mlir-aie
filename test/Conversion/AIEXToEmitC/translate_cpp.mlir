@@ -1,10 +1,7 @@
 //===----------------------------------------------------------------------===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -15,7 +12,7 @@
 // are statically known and emitted as literals.
 
 // CHECK: #include "aie/Runtime/TxnEncoding.h"
-// CHECK: inline std::vector<uint32_t> generate_txn_seq() {
+// CHECK: inline std::vector<uint32_t> generate_txn_main_seq() {
 // CHECK:   std::vector<uint32_t> txn;
 // CHECK:   aie_runtime::txn_init(txn);
 // CHECK:   aie_runtime::txn_append_write32(txn,

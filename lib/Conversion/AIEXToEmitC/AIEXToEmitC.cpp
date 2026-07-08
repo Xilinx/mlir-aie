@@ -1,10 +1,7 @@
 //===- AIEXToEmitC.cpp - AIEX runtime sequence to EmitC --------*- C++ -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
@@ -241,8 +238,9 @@ private:
     bool first = true;
     for (APInt word : data.getValues<APInt>()) {
       if (!first)
-        ss << llvm::format("0x%08xu",
-                           static_cast<unsigned>(word.getZExtValue()));
+        ss << ", ";
+      ss << llvm::format("0x%08xu", static_cast<unsigned>(word.getZExtValue()));
+      first = false;
     }
     ss << "}";
     auto arrVar = emitc::VariableOp::create(b, loc, arrTy,
@@ -367,7 +365,8 @@ private:
         paramTypes.push_back(arg.getType());
 
     builder.setInsertionPointToEnd(moduleOp.getBody());
-    std::string funcName = "generate_txn_" + seqOp.getSymName().str();
+    std::string funcName = "generate_txn_" + deviceOp.getSymName().str() +
+                           "_" + seqOp.getSymName().str();
     auto funcOp = emitc::FuncOp::create(
         builder, loc, funcName,
         FunctionType::get(moduleOp.getContext(), paramTypes,
