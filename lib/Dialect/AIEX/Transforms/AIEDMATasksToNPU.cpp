@@ -350,9 +350,16 @@ struct AIEDMATasksToNPUPass
              << len << " bytes falls below minimum hardware transfer unit of "
              << (addr_granularity / 8) << " bytes.";
     }
-    // Process strides/wraps
-    std::optional<llvm::ArrayRef<AIE::BDDimLayoutAttr>> dims =
-        bd_op.getDimensions();
+    // Process strides/wraps. Fold the mixed sizes/strides to a constant
+    // BDDimLayoutAttr list; a runtime value on this static lowering path is an
+    // error. The owning storage must outlive the ArrayRef view below.
+    std::optional<llvm::SmallVector<AIE::BDDimLayoutAttr>> dimsStorage =
+        bd_op.getConstantDimensions();
+    if (!dimsStorage)
+      return failure();
+    std::optional<llvm::ArrayRef<AIE::BDDimLayoutAttr>> dims;
+    if (!dimsStorage->empty())
+      dims = llvm::ArrayRef<AIE::BDDimLayoutAttr>(*dimsStorage);
     llvm::SmallVector<int64_t, 4> sizes = llvm::SmallVector<int64_t, 4>(4, 0);
     llvm::SmallVector<int64_t, 4> strides = llvm::SmallVector<int64_t, 4>(4, 0);
 

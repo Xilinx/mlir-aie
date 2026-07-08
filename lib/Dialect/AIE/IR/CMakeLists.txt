@@ -21,6 +21,7 @@ add_mlir_dialect_library(AIE
 
   LINK_LIBS PUBLIC
   MLIRAIEUtil
+  MLIRArithDialect
   MLIRIR
   MLIRSupport
 )

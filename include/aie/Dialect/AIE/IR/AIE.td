@@ -26,6 +26,9 @@ def AIE_Dialect : Dialect {
   }];
   let useDefaultTypePrinterParser = 1;
   let useDefaultAttributePrinterParser = 1;
+  // aie.dma_bd materializes arith.constant operands for its offset/len fields
+  // (and its builders/canonicalizer create them), so arith must be loaded.
+  let dependentDialects = ["::mlir::arith::ArithDialect"];
 }
 
 #endif // AIE_BASE

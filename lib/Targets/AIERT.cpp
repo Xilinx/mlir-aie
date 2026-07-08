@@ -415,8 +415,15 @@ LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
       baseAddr += addrOffset.value();
   }
 
-  std::optional<llvm::ArrayRef<AIE::BDDimLayoutAttr>> dims =
-      bdOp.getDimensions();
+  // Fold the mixed sizes/strides to a constant BDDimLayoutAttr list. The owning
+  // storage must outlive the ArrayRef used below.
+  std::optional<llvm::SmallVector<AIE::BDDimLayoutAttr>> dimsStorage =
+      bdOp.getConstantDimensions();
+  if (!dimsStorage)
+    return failure();
+  std::optional<llvm::ArrayRef<AIE::BDDimLayoutAttr>> dims;
+  if (!dimsStorage->empty())
+    dims = llvm::ArrayRef<AIE::BDDimLayoutAttr>(*dimsStorage);
   uint64_t lenInBytes = bdOp.getLenInBytes();
   uint64_t basePlusOffsetInBytes = baseAddr + bdOp.getOffsetInBytes();
   if (!dims) {
@@ -505,7 +512,7 @@ LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
   if (packetID) {
     if (!packetType)
       bdOp.emitError("must have packetType with packetID");
-    if (bdOp.getLen() == 0)
+    if (bdOp.getConstantLen() == 0)
       return bdOp.emitOpError(
           "For MM2S channels, if Buffer_Length=0 then Enable_Packet must be "
           "set to 0, otherwise behavior is undefined (3.7.8 arch spec)");
