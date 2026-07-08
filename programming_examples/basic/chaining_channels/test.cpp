@@ -126,14 +126,14 @@ int main(int argc, const char *argv[]) {
                       kernel.group_id(3)); // 1KB write buffer
   auto bo_B = xrt::bo(device, N_read, XRT_BO_FLAGS_HOST_ONLY,
                       kernel.group_id(4)); // 4KB read buffer
-  // Placeholder buffers
-  auto bo_tmp1 = xrt::bo(device, 1, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
-  auto bo_tmp2 = xrt::bo(device, 1, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(6));
-  // Trace buffer (8KB if enabled, 1 byte otherwise)
+  // Trace lowering appends the trace buffer as the runtime_sequence operand
+  // right after the data buffers, so it lands at group_id(5) -- no padding
+  // buffers in front of it. It is only part of the ABI when tracing is enabled.
   constexpr int trace_size = 16384;
-  int actual_trace_size = enable_trace ? trace_size : 1;
-  auto bo_trace = xrt::bo(device, actual_trace_size, XRT_BO_FLAGS_HOST_ONLY,
-                          kernel.group_id(7));
+  xrt::bo bo_trace;
+  if (enable_trace)
+    bo_trace =
+        xrt::bo(device, trace_size, XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(5));
 
   if (verbosity >= 1)
     std::cout << "Writing data into buffer objects." << std::endl;
@@ -167,8 +167,18 @@ int main(int argc, const char *argv[]) {
   if (verbosity >= 1)
     std::cout << "Running Kernel." << std::endl;
   unsigned int opcode = 3;
-  auto run = kernel(opcode, bo_instr, instr_v.size(), bo_A, bo_B, bo_tmp1,
-                    bo_tmp2, bo_trace);
+  // Build the argument list explicitly so the trace buffer is only passed when
+  // tracing is enabled, matching the kernel's declared host-buffer ABI
+  // (opcode, instr, ninstr, A, B, [trace]).
+  auto run = xrt::run(kernel);
+  run.set_arg(0, opcode);
+  run.set_arg(1, bo_instr);
+  run.set_arg(2, instr_v.size());
+  run.set_arg(3, bo_A);
+  run.set_arg(4, bo_B);
+  if (enable_trace)
+    run.set_arg(5, bo_trace);
+  run.start();
   run.wait();
 
   bo_A.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
