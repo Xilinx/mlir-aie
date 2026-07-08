@@ -365,8 +365,8 @@ private:
         paramTypes.push_back(arg.getType());
 
     builder.setInsertionPointToEnd(moduleOp.getBody());
-    std::string funcName = "generate_txn_" + deviceOp.getSymName().str() +
-                           "_" + seqOp.getSymName().str();
+    std::string funcName = "generate_txn_" + deviceOp.getSymName().str() + "_" +
+                           seqOp.getSymName().str();
     auto funcOp = emitc::FuncOp::create(
         builder, loc, funcName,
         FunctionType::get(moduleOp.getContext(), paramTypes,
