@@ -10,6 +10,9 @@
 
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
 
+#include <optional>
+#include <set>
+
 using namespace xilinx::AIE;
 
 struct BdIdGenerator {
