@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Copyright (C) 2024 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 // test hang/timeout
 // REQUIRES: dont_run
