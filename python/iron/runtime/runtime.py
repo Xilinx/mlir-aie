@@ -45,6 +45,19 @@ from .task import (
 )
 
 
+def _iter_flat(obj):
+    """Yield obj and, recursively, the elements of any nested list/tuple.
+
+    Matches the traversal InlineOpRuntimeTask uses to find Buffer args, so
+    fifos nested in the inline_args structure are registered the same way.
+    """
+    if isinstance(obj, (list, tuple)):
+        for item in obj:
+            yield from _iter_flat(item)
+    else:
+        yield obj
+
+
 class IronRuntimeError(Exception):
     """Raised by the IRON Runtime when resolution encounters an unrecoverable state."""
 
@@ -328,9 +341,18 @@ class Runtime(Resolvable):
 
         Args:
             inline_func (Callable): The function to execute within an MLIR context.
-            inline_args (list): The state the function needs to execute.
+            inline_args (list): The state the function needs to execute. Any
+                ObjectFifoHandle passed here is registered with the Runtime (so
+                the Program resolves its shim allocation) and, if it has no
+                endpoint yet, is bound to a shim tile -- an inline op driving a
+                fifo from the runtime sequence is a host-side (shim) endpoint.
+                This mirrors how InlineOpRuntimeTask resolves Buffer args.
         """
-        # TODO: should filter args based on some criteria??
+        for arg in _iter_flat(inline_args):
+            if isinstance(arg, ObjectFifoHandle):
+                if arg.endpoint is None:
+                    arg.endpoint = RuntimeEndpoint(AnyShimTile)
+                self._fifos.add(arg)
         self._tasks.append(InlineOpRuntimeTask(inline_func, inline_args))
 
     def enable_trace(

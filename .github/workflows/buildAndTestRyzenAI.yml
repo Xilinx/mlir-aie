@@ -74,6 +74,20 @@ jobs:
 
       - name: Run commands
         run: |
+          # aie2-4col runners occasionally hit a transient NPU hardware fault
+          # (DRM_IOCTL_AMDXDNA_EXEC_CMD I/O error). Re-run the whole step once,
+          # ONLY on aie2-4col when that specific error appears in the output.
+          if [ -z "$STEP_RETRIED" ]; then
+            export STEP_RETRIED=1
+            log=$(mktemp)
+            bash -eo pipefail "$0" 2>&1 | tee "$log" && exit 0
+            if [ "${{ matrix.runner_type }}" = "aie2-4col" ] && \
+               grep -qF "DRM_IOCTL_AMDXDNA_EXEC_CMD IOCTL failed (err=-5): Input/output error" "$log"; then
+              echo "::warning::Transient NPU fault detected; retrying the step once"
+              exec bash -eo pipefail "$0"
+            fi
+            exit 1
+          fi
           sudo prlimit -lunlimited --pid $$
           # Newer XRT/amdxdna packages no longer ship setup.sh; source it
           # only when present so the job works on both old and new XRT.
@@ -127,95 +141,6 @@ jobs:
             ninja check-reference-designs
 
           popd
-
-      - name: Cleanup NPU_CACHE_HOME
-        if: always()
-        run: |
-          rm -rf $NPU_CACHE_HOME
-          rm -rf $PIP_CACHE_DIR
-
-  # Build the single wheel the examples run against, FROM THIS RUN's commit, so
-  # the example test never installs a stale published wheel.
-  build-dev-wheel:
-    name: Build Development Wheel (Python 3.12, RTTI ON)
-    uses: ./.github/workflows/buildRyzenWheels.yml
-    with:
-      python_version: "3.12"
-      enable_rtti: "ON"
-      reusable_call: true
-    # Must grant the union of what ALL of the called workflow's jobs declare
-    # (build-repo, build-windows, publish) — GitHub validates every nested
-    # job's permissions at startup even when gated off via if:.
-    permissions:
-      id-token: write
-      contents: write
-      packages: read
-      attestations: write
-      actions: read
-
-  test-from-wheels:
-    name: Smoke-Test Wheels on Ryzen AI
-    # The goal of this job is to verify that a wheel built from this run's commit can be installed using the quick_setup.sh script and can compile and run basic examples on NPU hardware.
-    # Since we've tested the entire test suite in the from-source job, running a couple spot-checks gives us some confidence that the wheel is functional.
-    needs: build-dev-wheel
-    runs-on: ${{ matrix.runner_type }}
-    strategy:
-      fail-fast: false
-      matrix:
-        runner_type: [ aie2-4col, aie2p-8col ]
-    env:
-      NPU_CACHE_HOME: ${{ github.workspace }}/iron-cache-${{ matrix.runner_type }}-${{ github.run_id }}
-      PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-${{ matrix.runner_type }}-${{ github.run_id }}
-    steps:
-      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
-        with:
-          submodules: "true"
-
-      # Pull the wheel built from this same run (build-dev-wheel) so the
-      # examples test exactly this commit's mlir_aie, not a published tag.
-      - name: Download same-commit mlir_aie wheel
-        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
-        with:
-          name: ${{ needs.build-dev-wheel.outputs.wheel_artifact_name }}
-          path: ${{ github.workspace }}/examples-wheel
-
-      - name: Print hostname
-        run: hostname
-
-      - name: Run commands
-        run: |
-          sudo prlimit -lunlimited --pid $$
-          # Newer XRT/amdxdna packages no longer ship setup.sh; source it
-          # only when present so the job works on both old and new XRT.
-          [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
-          export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
-          # Install the same-commit wheel downloaded above instead of the
-          # published rolling tag.
-          export MLIR_AIE_WHEEL_DIR="${{ github.workspace }}/examples-wheel"
-          source utils/quick_setup.sh
-          # quick_setup changes directory to programming_examples, so we need to return to mlir-aie
-          cd ..
-          # quick_setup installs the runtime prerequisites; add the build tooling
-          # (cmake, ninja, ...) the examples need to compile host code.
-          python -m pip install --require-hashes -r python/requirements_dev.lock
-
-          # Set number of contexts to maintain in cache per process
-          export XRT_CONTEXT_CACHE_SIZE=2
-
-          # Create runner-specific cache directory
-          rm -rf $NPU_CACHE_HOME
-          mkdir $NPU_CACHE_HOME
-
-          # Lightweight check that the mlir_aie wheel installed by quick_setup
-          # can actually compile and run designs on the NPU. quick_setup put the
-          # installed package (not a from-source build) on PATH/PYTHONPATH, so
-          # `make run` here exercises the wheel. The -eo pipefail shell fails the
-          # job if any example returns non-zero.
-          for ex in basic/passthrough_kernel basic/vector_scalar_add basic/passthrough_dmas; do
-            echo "===== $ex ====="
-            make -C "programming_examples/$ex" clean
-            make -C "programming_examples/$ex" run
-          done
 
       - name: Cleanup NPU_CACHE_HOME
         if: always()

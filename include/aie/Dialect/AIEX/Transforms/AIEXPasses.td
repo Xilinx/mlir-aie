@@ -241,6 +241,30 @@ def AIEAssignRuntimeSequenceBDIDs : Pass<"aie-assign-runtime-sequence-bd-ids", "
   ];
 }
 
+def AIEUnrollRuntimeSequenceLoops
+    : Pass<"aie-unroll-runtime-sequence-loops", "AIE::DeviceOp"> {
+  let summary = "Unroll constant-bound loops in runtime sequences";
+  let description = [{
+    Fully unrolls `scf.for` loops with compile-time-constant trip counts that
+    appear inside `aie.runtime_sequence` bodies.
+
+    Runs before `aie-assign-runtime-sequence-bd-ids` so BD-ID allocation sees
+    straight-line IR: configure operations in each loop iteration can receive 
+    individual BD IDs after unrolling.
+    
+    Runtime-bound loops (non-constant trip count) are left in place for the
+    dynamic EmitC lowering path.
+  }];
+
+  let constructor = "xilinx::AIEX::createAIEUnrollRuntimeSequenceLoopsPass()";
+  let dependentDialects = [
+    "mlir::arith::ArithDialect",
+    "mlir::scf::SCFDialect",
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
 def AIEDMATasksToNPU : Pass<"aie-dma-tasks-to-npu", "AIE::DeviceOp"> {
   let summary = "Lower configured DMA tasks to NPU instructions";
 
