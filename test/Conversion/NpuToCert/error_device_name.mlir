@@ -13,7 +13,9 @@
 module {
   aie.device(npu2) @not_main {
     aie.runtime_sequence @configure() {
-      aiex.npu.write32 {address = 12345 : ui32, value = 100 : ui32}
+      %addr = arith.constant 12345 : i32
+      %value = arith.constant 100 : i32
+      aiex.npu.write32 (%addr, %value) {column = 0 : i32, row = 0 : i32} : i32, i32
     }
   }
 }

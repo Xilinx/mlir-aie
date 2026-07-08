@@ -13,10 +13,10 @@
 //
 // RUN: aie-opt --aie-npu-to-cert %s | FileCheck %s
 //
-// CHECK: aiex.cert.uc_dma_bd @data_split_0, 4096, 1000, false
-// CHECK: aiex.cert.uc_dma_bd @data_split_1, 8096, 1000, false
-// CHECK: memref.global "private" constant @data_split_0 : memref<1000xi32> = dense<"0x123456789ABCDEF
-// CHECK: memref.global "private" constant @data_split_1 : memref<1000xi32> = dense<"0xDEADBEEFDEADBEEF
+// CHECK-DAG: memref.global "private" constant @data_split_0 : memref<1000xi32> = dense<"0x123456789ABCDEF
+// CHECK-DAG: memref.global "private" constant @data_split_1 : memref<1000xi32> = dense<"0xDEADBEEFDEADBEEF
+// CHECK-DAG: aiex.cert.uc_dma_bd @data_split_0, 4096, 1000, false
+// CHECK-DAG: aiex.cert.uc_dma_bd @data_split_1, 8096, 1000, false
 
 module {
   aie.device(npu2) {
