@@ -242,7 +242,8 @@ def collect_notices(
     - ``notices`` maps each raw notice line to the files it came from (inline
       headers + REUSE.toml declarations).
     - ``ordering_violations`` lists files where a copyright notice appears *after*
-      the ``SPDX-License-Identifier`` line (copyright must come first).
+      the ``SPDX-License-Identifier`` line (every copyright notice must come
+      before it).
     - ``forbidden_hits`` lists ``(file, matched_substring)`` for every forbidden
       string found in a header.
 
@@ -306,13 +307,14 @@ def collect_notices(
                 copyright_idxs.append(i)
             elif license_idx is None and _LICENSE_START.match(stripped):
                 license_idx = i
-        # Copyright must precede the license line: the first copyright notice has
-        # to come before the first license identifier. (A later copyright inside a
-        # vendored sub-block or an emitted template header is not a violation.)
+        # Copyright must precede the license line: *every* copyright notice has to
+        # come before the first license identifier. A file may carry several
+        # notices (e.g. AMD and Xilinx) at the top, but none of them may appear
+        # after the SPDX-License-Identifier line.
         if (
             license_idx is not None
             and copyright_idxs
-            and min(copyright_idxs) > license_idx
+            and max(copyright_idxs) > license_idx
         ):
             ordering_violations.append(rel)
     return notices, ordering_violations, forbidden_hits
