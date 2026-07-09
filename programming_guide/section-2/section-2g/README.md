@@ -359,43 +359,39 @@ channel indices; the lowering infers direction from `source` vs
 
 ### Manual stream routing (`switchbox` / `connect`)
 
-`flow` / `Flow` describe a route by its two *endpoints* and let the
-pathfinder pick the switchbox connections in between.  When you need to
-pin the exact path — reproducing a specific hardware configuration, or
-steering around a resource the router would otherwise pick — the
-dialect exposes the individual stream switches directly.  There is no
-IRON primitive for this; it lives only at the dialect tier.
+Almost always, `Flow` (IRON) or `flow` (dialect) is the right tool: you
+name the two *endpoints* and the `--aie-create-pathfinder-flows` pass
+picks the switchbox connections in between.  The rare exception is when
+you need to pin the *exact* path — reproducing a specific hardware
+configuration, or steering around a resource the router would otherwise
+take.  There is no `Flow`-style primitive for this; it's the one part
+of routing that has to be spelled out switchbox-by-switchbox.
 
-A `switchbox` region hangs off one tile and holds `connect` ops, each
-wiring one input port to one output port of that tile's stream switch
-(a full crossbar):
+So keep expressing the design with `flow` as above, and only replace
+the one route that needs pinning.  A `switchbox` region hangs off a
+tile and holds `connect` ops, each wiring one input port to one output
+port of that tile's stream switch (a full crossbar).  These two
+switchboxes pin the same `tile(0,2) → tile(0,3)` route the single
+`flow(tile_0_2, DMA, 0, tile_0_3, DMA, 1)` would have produced:
 
 ```python
-from aie.dialects.aie import switchbox, connect, tile
-from aie.dialects._aie_enum_gen import WireBundle
-
-t_0_2 = tile(0, 2)
-t_0_3 = tile(0, 3)
-
-@switchbox(t_0_2)
+@switchbox(tile_0_2)
 def sb_0_2():
     connect(WireBundle.DMA, 0, WireBundle.North, 1)   # DMA out → north
 
-@switchbox(t_0_3)
+@switchbox(tile_0_3)
 def sb_0_3():
     connect(WireBundle.South, 1, WireBundle.DMA, 1)   # south in → DMA
 ```
 
 The `North` output of `tile(0,2)` feeds the `South` input of
-`tile(0,3)`, so these two `connect` ops together implement the same
-route a single `flow(t_0_2, DMA, 0, t_0_3, DMA, 1)` would have produced
-— but every hop is now explicit and fixed.  `connect` takes
-`(source_bundle, source_channel, dest_bundle, dest_channel)`; a single
-`switchbox` may hold as many `connect` ops as the hardware has ports.
-
-When you write `flow`s instead, the `--aie-create-pathfinder-flows`
-pass is what expands them into exactly these `switchbox` / `connect`
-ops, so this is the layer the automatic router emits.
+`tile(0,3)`, so the two `connect` ops together carry the route end to
+end — but now every hop is fixed rather than router-chosen.  `connect`
+takes `(source_bundle, source_channel, dest_bundle, dest_channel)`, and
+a single `switchbox` may hold as many `connect` ops as the hardware has
+ports.  This is exactly the layer `--aie-create-pathfinder-flows` emits from a
+`flow`: pinning a path by hand produces the same kind of IR the pass
+would, you're just choosing which hops to fix.
 
 ### MLIR ↔ C kernel ABI
 
