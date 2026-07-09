@@ -154,7 +154,6 @@ jobs:
               -DVitis_VERSION_MAJOR=2023 \
               -DVitis_VERSION_MINOR=2 \
               -DLLVM_EXTERNAL_LIT=$(which lit) \
-              -DAIE_INCLUDE_INTEGRATION_TESTS=OFF \
               -DAIE_ENABLE_PYTHON_PASSES=OFF \
               -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
               -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
