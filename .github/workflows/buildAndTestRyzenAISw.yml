@@ -113,8 +113,18 @@ jobs:
             VERSION=$(utils/clone-llvm.sh --get-wheel-version)
 
             cd /workspace
-            pip -q download mlir==$VERSION \
-              -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
+            for attempt in 1 2 3; do
+              rm -f mlir-*.whl
+              if pip -q download mlir==$VERSION \
+                -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro; then
+                break
+              fi
+              if [ "$attempt" -eq 3 ]; then
+                echo "Failed to download MLIR wheel after ${attempt} attempts" >&2
+                exit 1
+              fi
+              sleep $((attempt * 5))
+            done
             unzip -q mlir-*.whl
 
             mkdir -p /workspace/install
