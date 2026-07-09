@@ -97,12 +97,13 @@ class npu_write_rtp(NpuWriteRTPOp):
 
 
 def _as_i32(v):
-    """Materialize an arith.constant i32 from a Python int, pass a Value through
-    unchanged, or return None for None. Mirrors the helper in aiex.py."""
+    """Materialize an arith.constant i32 from a Python/NumPy int, pass a Value
+    through unchanged, or return None for None. Shared by the dma_bd wrapper here
+    and the npu scalar op wrappers in aiex.py (imported from this module)."""
     if v is None:
         return None
-    if isinstance(v, int):
-        return constant(v, T.i32())
+    if isinstance(v, (int, np.integer)):
+        return constant(int(v), T.i32())
     return v
 
 
@@ -131,12 +132,14 @@ def dma_bd(
     dyn_sizes, _packed_sizes, static_sizes = _dispatch_mixed_values(sizes or [])
     dyn_strides, _packed_strides, static_strides = _dispatch_mixed_values(strides or [])
 
+    # Leave the static arrays unset (not empty) when there is no ND layout so
+    # the optional attributes elide from the printed op.
     return _DMABDOp(
         buffer,
         sizes=dyn_sizes,
         strides=dyn_strides,
-        static_sizes=static_sizes,
-        static_strides=static_strides,
+        static_sizes=static_sizes if static_sizes else None,
+        static_strides=static_strides if static_strides else None,
         offset=_as_i32(offset),
         len=_as_i32(len),
         **kwargs,

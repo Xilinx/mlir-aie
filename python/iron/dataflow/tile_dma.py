@@ -95,12 +95,13 @@ class Bd:
     # ``(pkt_type, pkt_id)``.  Pairs with a :class:`PacketFlow` that uses
     # the same ``pkt_id`` so the routing fabric dispatches correctly.
     packet: tuple[int, int] | None = None
-    # Multi-dimensional (strided) access pattern, as a list of
-    # ``(size, stride)`` tuples, innermost dimension last — the same form
-    # the ``aie.dma_bd`` dialect op's ``dimensions`` attribute accepts (lowered
-    # via the registered ``BDDimLayoutArrayAttr`` builder).  ``None`` (default)
-    # emits a plain contiguous transfer.
-    dimensions: list[tuple[int, int]] | None = None
+    # Multi-dimensional (strided) access pattern, given as parallel lists
+    # matching ``aie.dma_bd``'s ``sizes``/``strides`` operands (outermost
+    # dimension first). Each entry may be a Python int (constant) or an SSA
+    # ``Value`` (runtime). Empty lists (default) emit a plain contiguous
+    # transfer. ``sizes`` and ``strides`` must have the same length.
+    sizes: list = field(default_factory=list)
+    strides: list = field(default_factory=list)
 
 
 @dataclass
@@ -243,16 +244,9 @@ class TileDma(Resolvable):
                     with block[bd_block_idx[bd_pos]]:
                         for acq in bd.acquires:
                             acq.emit()
-                        # dma_bd: split bd.dimensions (list of (size, stride)
-                        # pairs) into parallel sizes/strides lists for the new
-                        # DynamicIndexList builder (matches npu.dma_memcpy_nd).
-                        bd_sizes = (
-                            [d[0] for d in bd.dimensions] if bd.dimensions else []
-                        )
-                        bd_strides = (
-                            [d[1] for d in bd.dimensions] if bd.dimensions else []
-                        )
-                        bd_kwargs = dict(sizes=bd_sizes, strides=bd_strides)
+                        # dma_bd takes sizes/strides directly (matches
+                        # npu.dma_memcpy_nd's DynamicIndexList operands).
+                        bd_kwargs = dict(sizes=bd.sizes, strides=bd.strides)
                         if bd.offset:
                             bd_kwargs["offset"] = bd.offset
                         if bd.length is not None:

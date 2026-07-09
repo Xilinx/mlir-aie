@@ -24,9 +24,9 @@ from .aie import (
     TileOp,
     bds,
     dma_bd,
+    _as_i32,
 )
 from .transform.structured import MixedValues, _dispatch_mixed_values
-from ..extras.dialects.arith import constant
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
 from ..helpers.util import v8bfp16ebs8, v16bfp16ebs16
@@ -47,17 +47,6 @@ from ..helpers.taplib import TensorAccessPattern
 
 # Comes from _aie
 register_dialect(get_dialect_registry())
-
-
-def _as_i32(v):
-    """Materialize an arith.constant i32 from a Python int, pass a Value through
-    unchanged, or return None for None. Used by npu scalar op wrappers and the
-    dma_bd wrapper to preserve historical int-argument APIs."""
-    if v is None:
-        return None
-    if isinstance(v, int):
-        return constant(v, T.i32())
-    return v
 
 
 def npu_write32(address, value, buffer=None, column=None, row=None, **kwargs):

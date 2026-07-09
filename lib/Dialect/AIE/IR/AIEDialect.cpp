@@ -2031,6 +2031,42 @@ BufferOp DMABDOp::getBufferOp() {
   return cast<BufferOp>(getBuffer().getDefiningOp());
 }
 
+void DMABDOp::buildMixed(mlir::OpBuilder &builder, mlir::OperationState &state,
+                         mlir::Value buffer, mlir::Value offset,
+                         mlir::Value len,
+                         llvm::ArrayRef<mlir::OpFoldResult> sizes,
+                         llvm::ArrayRef<mlir::OpFoldResult> strides,
+                         BDPadLayoutArrayAttr padDims, PacketInfoAttr packet) {
+  // Split each mixed list into its dynamic operands + static array with the
+  // ShapedType::kDynamic sentinel, exactly as tensor.extract_slice does.
+  llvm::SmallVector<int64_t> staticSizes, staticStrides;
+  llvm::SmallVector<mlir::Value> dynSizes, dynStrides;
+  mlir::dispatchIndexOpFoldResults(sizes, dynSizes, staticSizes);
+  mlir::dispatchIndexOpFoldResults(strides, dynStrides, staticStrides);
+
+  // Leave the static arrays unset when there is no ND layout so they elide
+  // from the printed form (a plain linear transfer has no sizes/strides).
+  DenseI64ArrayAttr staticSizesAttr =
+      staticSizes.empty() ? DenseI64ArrayAttr{}
+                          : builder.getDenseI64ArrayAttr(staticSizes);
+  DenseI64ArrayAttr staticStridesAttr =
+      staticStrides.empty() ? DenseI64ArrayAttr{}
+                            : builder.getDenseI64ArrayAttr(staticStrides);
+
+  build(builder, state, buffer, /*offset=*/offset, /*len=*/len,
+        /*sizes=*/dynSizes, /*strides=*/dynStrides,
+        /*static_sizes=*/staticSizesAttr,
+        /*static_strides=*/staticStridesAttr,
+        /*pad_dimensions=*/padDims,
+        /*pad_value=*/nullptr,
+        /*bd_id=*/nullptr,
+        /*packet=*/packet,
+        /*burst_length=*/nullptr,
+        /*offset_parameter=*/nullptr,
+        /*offset_state_table_idx=*/nullptr,
+        /*next_bd_id=*/nullptr);
+}
+
 void DMABDOp::buildWithConstants(mlir::OpBuilder &builder,
                                  mlir::OperationState &state,
                                  mlir::Value buffer, int32_t offset,
@@ -2042,36 +2078,29 @@ void DMABDOp::buildWithConstants(mlir::OpBuilder &builder,
   mlir::Value lenVal = arith::ConstantOp::create(
       builder, state.location, builder.getI32IntegerAttr(len));
 
-  // Decompose the outermost-first BDDimLayoutArrayAttr into all-static
-  // static_sizes / static_strides arrays; no dynamic operands are produced.
-  llvm::SmallVector<int64_t> staticSizes, staticStrides;
+  // Turn the outermost-first BDDimLayoutArrayAttr into all-constant
+  // OpFoldResults and let buildMixed handle the decomposition.
+  llvm::SmallVector<mlir::OpFoldResult> sizes, strides;
   if (dims) {
     for (BDDimLayoutAttr d : dims) {
-      staticSizes.push_back(static_cast<int64_t>(d.getSize()));
-      staticStrides.push_back(static_cast<int64_t>(d.getStride()));
+      sizes.push_back(builder.getI64IntegerAttr(d.getSize()));
+      strides.push_back(builder.getI64IntegerAttr(d.getStride()));
     }
   }
-
-  build(builder, state, buffer, /*offset=*/offsetVal, /*len=*/lenVal,
-        /*sizes=*/mlir::ValueRange{}, /*strides=*/mlir::ValueRange{},
-        /*static_sizes=*/builder.getDenseI64ArrayAttr(staticSizes),
-        /*static_strides=*/builder.getDenseI64ArrayAttr(staticStrides),
-        /*pad_dimensions=*/padDims,
-        /*pad_value=*/nullptr,
-        /*bd_id=*/nullptr,
-        /*packet=*/packet,
-        /*burst_length=*/nullptr,
-        /*offset_parameter=*/nullptr,
-        /*offset_state_table_idx=*/nullptr,
-        /*next_bd_id=*/nullptr);
+  buildMixed(builder, state, buffer, offsetVal, lenVal, sizes, strides, padDims,
+             packet);
 }
 
 llvm::SmallVector<mlir::OpFoldResult> DMABDOp::getMixedSizes() {
-  return ::mlir::getMixedValues(getStaticSizes(), getSizes(), getContext());
+  return ::mlir::getMixedValues(
+      getStaticSizes().value_or(llvm::ArrayRef<int64_t>{}), getSizes(),
+      getContext());
 }
 
 llvm::SmallVector<mlir::OpFoldResult> DMABDOp::getMixedStrides() {
-  return ::mlir::getMixedValues(getStaticStrides(), getStrides(), getContext());
+  return ::mlir::getMixedValues(
+      getStaticStrides().value_or(llvm::ArrayRef<int64_t>{}), getStrides(),
+      getContext());
 }
 
 std::optional<llvm::SmallVector<BDDimLayoutAttr>> DMABDOp::getFoldedDimensions(
@@ -2168,6 +2197,26 @@ LogicalResult DMABDOp::verify() {
   if (std::optional<int32_t> nextBdId = getNextBdId();
       nextBdId.has_value() && static_cast<uint32_t>(*nextBdId) >= maxBds)
     return emitOpError("nextBdId attribute exceeds max: ") << maxBds - 1;
+  // Guard the mixed static/dynamic invariant before any consumer counts
+  // sentinels against operands: the number of ShapedType::kDynamic entries in
+  // each static array must equal the number of dynamic operands, and sizes and
+  // strides must agree in rank. Skips the crash in getMixedValues when the two
+  // are inconsistent (llvm #179401).
+  llvm::ArrayRef<int64_t> staticSizes =
+      getStaticSizes().value_or(llvm::ArrayRef<int64_t>{});
+  llvm::ArrayRef<int64_t> staticStrides =
+      getStaticStrides().value_or(llvm::ArrayRef<int64_t>{});
+  if (failed(mlir::verifyListOfOperandsOrIntegers(
+          *this, "sizes", staticSizes.size(), staticSizes, getSizes())))
+    return failure();
+  if (failed(mlir::verifyListOfOperandsOrIntegers(
+          *this, "strides", staticStrides.size(), staticStrides, getStrides())))
+    return failure();
+  if (staticSizes.size() != staticStrides.size())
+    return emitOpError("expected the same number of sizes (")
+           << staticSizes.size() << ") and strides (" << staticStrides.size()
+           << ")";
+
   // Fold the mixed sizes/strides to a constant BDDimLayoutAttr list for
   // verification. A runtime size/stride yields nullopt + a diagnostic; on the
   // static verification path that is an error. `dims` mirrors the historical
@@ -2443,9 +2492,45 @@ struct LinearizeContiguousBDTransfer : public mlir::OpRewritePattern<DMABDOp> {
       op.getLenMutable().assign(lenConst);
       op.getSizesMutable().clear();
       op.getStridesMutable().clear();
-      // Clear to empty arrays (required attrs, not optional).
-      op.setStaticSizes({});
-      op.setStaticStrides({});
+      // Drop the static arrays entirely so the linear BD prints without any
+      // sizes/strides clause (the attributes are optional).
+      op.setStaticSizes(std::nullopt);
+      op.setStaticStrides(std::nullopt);
+    });
+    return mlir::success();
+  }
+};
+} // namespace
+
+// Canonicalization pattern for DMABDOp: fold a size/stride operand that is
+// actually a constant back into the static array (removing the operand), via
+// the upstream foldDynamicIndexList helper. Mirrors the constant-argument
+// folding tensor.extract_slice performs for its offsets/sizes/strides.
+namespace {
+struct FoldConstantBDDimList : public mlir::OpRewritePattern<DMABDOp> {
+  using OpRewritePattern::OpRewritePattern;
+
+  mlir::LogicalResult
+  matchAndRewrite(DMABDOp op, mlir::PatternRewriter &rewriter) const override {
+    llvm::SmallVector<mlir::OpFoldResult> sizes = op.getMixedSizes();
+    llvm::SmallVector<mlir::OpFoldResult> strides = op.getMixedStrides();
+    // foldDynamicIndexList returns success() only if it replaced a dynamic
+    // entry with a constant.
+    bool changed = succeeded(mlir::foldDynamicIndexList(sizes)) |
+                   succeeded(mlir::foldDynamicIndexList(strides));
+    if (!changed)
+      return mlir::failure();
+
+    llvm::SmallVector<int64_t> staticSizes, staticStrides;
+    llvm::SmallVector<mlir::Value> dynSizes, dynStrides;
+    mlir::dispatchIndexOpFoldResults(sizes, dynSizes, staticSizes);
+    mlir::dispatchIndexOpFoldResults(strides, dynStrides, staticStrides);
+
+    rewriter.modifyOpInPlace(op, [&]() {
+      op.getSizesMutable().assign(dynSizes);
+      op.getStridesMutable().assign(dynStrides);
+      op.setStaticSizes(staticSizes);
+      op.setStaticStrides(staticStrides);
     });
     return mlir::success();
   }
@@ -2454,7 +2539,7 @@ struct LinearizeContiguousBDTransfer : public mlir::OpRewritePattern<DMABDOp> {
 
 void DMABDOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
                                           MLIRContext *context) {
-  patterns.add<LinearizeContiguousBDTransfer>(context);
+  patterns.add<FoldConstantBDDimList, LinearizeContiguousBDTransfer>(context);
 }
 
 void DMAStartOp::getCanonicalizationPatterns(RewritePatternSet &patterns,

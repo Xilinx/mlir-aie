@@ -993,8 +993,8 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
         // operand. Outermost dimension first.
         Variadic<I64>:$sizes,
         Variadic<I64>:$strides,
-        DenseI64ArrayAttr:$static_sizes,
-        DenseI64ArrayAttr:$static_strides,
+        OptionalAttr<DenseI64ArrayAttr>:$static_sizes,
+        OptionalAttr<DenseI64ArrayAttr>:$static_strides,
         OptionalAttr<BDPadLayoutArrayAttr>:$pad_dimensions,
         DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value,
         OptionalAttr<AIEI32Attr>:$bd_id,
@@ -1015,8 +1015,8 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
     `(` $buffer `:` type($buffer)
     ( `offset` `=` $offset^ )?
     ( `len` `=` $len^ )?
-    `sizes` `=` custom<DynamicIndexList>($sizes, $static_sizes)
-    `strides` `=` custom<DynamicIndexList>($strides, $static_strides)
+    ( `sizes` `=` custom<DynamicIndexList>($sizes, $static_sizes)^ )?
+    ( `strides` `=` custom<DynamicIndexList>($strides, $static_strides)^ )?
     ( `pad` $pad_dimensions^ )?
     ( `pad_value` `=` $pad_value^ )?
     `)` attr-dict
@@ -1033,6 +1033,17 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
         ::mlir::Value buffer, int32_t offset, int32_t len,
         BDDimLayoutArrayAttr dims, BDPadLayoutArrayAttr padDims,
         PacketInfoAttr packet);
+
+    // Mixed static/dynamic builder: splits sizes/strides (each entry a constant
+    // or an SSA Value) into the operand + static-array pair via the upstream
+    // dispatchIndexOpFoldResults helper, exactly like tensor.extract_slice. An
+    // empty list leaves the corresponding static array unset so it elides.
+    static void buildMixed(
+        ::mlir::OpBuilder &builder, ::mlir::OperationState &state,
+        ::mlir::Value buffer, ::mlir::Value offset, ::mlir::Value len,
+        ::llvm::ArrayRef<::mlir::OpFoldResult> sizes,
+        ::llvm::ArrayRef<::mlir::OpFoldResult> strides,
+        BDPadLayoutArrayAttr padDims, PacketInfoAttr packet);
 
     BufferOp getBufferOp();
     int32_t getBufferElementTypeWidthInBytes() {
