@@ -15,12 +15,14 @@ def AIE_Dialect : Dialect {
   let name = "aie";
   let cppNamespace = "::xilinx::AIE";
   let description = [{
+
     This is a dialect for describing netlists of AIE components in a
     Versal device.  It focuses on representing logical stream connections
     between cores and DMAs, along with the implementation of those logical
     connections in the various switch components.  In the dialect, a
     switch is referred to as `switchbox` to avoid confusion with the
     `switch` keyword in C/C++.
+
   }];
   let useDefaultTypePrinterParser = 1;
   let useDefaultAttributePrinterParser = 1;
