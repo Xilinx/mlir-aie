@@ -64,10 +64,10 @@ jobs:
 
       - name: Print hostname
         run: hostname
-      
+
       - name: Setup virtual environment / prerequisites
         run: |
-          source ./utils/env_install.sh aie-venv --dev
+          source ./utils/env_install.sh aie-venv --dev --extras
 
           sed -i.bak 's/OUTPUT_TIMEOUT = 10/OUTPUT_TIMEOUT = 100/g' \
             $(python -c 'import site; print(site.getsitepackages()[0])')/jupyter_client/runapp.py

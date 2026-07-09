@@ -256,7 +256,8 @@ jobs:
   smoke-test-npu:
     name: Smoke-Test Wheel on Ryzen AI
     # Verify the 3.12 / RTTI-ON wheel built from THIS run installs via
-    # quick_setup.sh and can compile + run basic examples on NPU hardware.
+    # env_install.sh/env_setup.sh and can compile + run basic examples on NPU
+    # hardware.
     # The wheel itself is built on ubuntu-latest by build-repo; only this test
     # job uses the self-hosted NPU runners. PR-only: the merge queue and
     # nightly still get full from-source NPU coverage via buildAndTestRyzenAI.
@@ -302,10 +303,12 @@ jobs:
           # Install the same-commit wheel downloaded above instead of the
           # published rolling tag.
           export MLIR_AIE_WHEEL_DIR="${{ github.workspace }}/examples-wheel"
-          source utils/quick_setup.sh
-          # quick_setup changes directory to programming_examples, so we need to return to mlir-aie
-          cd ..
-          # quick_setup installs the runtime prerequisites; add the build tooling
+          # Install the runtime env (venv "ironenv" + mlir_aie wheel + Peano) and
+          # configure the shell against it, using the same scripts users run.
+          rm -rf ironenv
+          source utils/env_install.sh
+          source utils/env_setup.sh
+          # env_install installs the runtime prerequisites; add the build tooling
           # (cmake, ninja, ...) the examples need to compile host code.
           python -m pip install --require-hashes -r python/requirements_dev.lock
 
@@ -316,8 +319,8 @@ jobs:
           rm -rf $NPU_CACHE_HOME
           mkdir $NPU_CACHE_HOME
 
-          # Lightweight check that the mlir_aie wheel installed by quick_setup
-          # can actually compile and run designs on the NPU. quick_setup put the
+          # Lightweight check that the mlir_aie wheel installed by env_install
+          # can actually compile and run designs on the NPU. env_setup put the
           # installed package (not a from-source build) on PATH/PYTHONPATH, so
           # `make run` here exercises the wheel. The -eo pipefail shell fails the
           # job if any example returns non-zero.

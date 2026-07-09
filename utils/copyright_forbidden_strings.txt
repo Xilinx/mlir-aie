@@ -1,0 +1,15 @@
+ Forbidden license-header strings (one substring per line).
+#
+# utils/check_copyright_format.py fails if any of these substrings appears in a
+# file's header. They are remnants of the old LLVM-style boilerplate header that
+# the project replaced with a single SPDX-License-Identifier line; a stray copy
+# means a file was not migrated.
+#
+# Rules:
+#   - One substring per line; matching is case-insensitive.
+#   - Blank lines and lines starting with '#' are ignored.
+
+This file is licensed under
+This file licensed under
+See https://llvm.org/LICENSE.txt for license information
+Part of the LLVM Project
