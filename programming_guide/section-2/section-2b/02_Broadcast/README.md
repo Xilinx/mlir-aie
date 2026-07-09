@@ -23,7 +23,7 @@ of0 = ObjectFifo(line_type, name="objfifo0", depth=3)
 
 # Tasks for the cores to perform
 # ...
-    
+
 # Create workers to perform the tasks
 my_worker = Worker(core_fn, [of0.prod(), test_fn])
 my_worker2 = Worker(core_fn2, [of0.cons(), test_fn2])
@@ -75,7 +75,7 @@ def core_body():
     of0.release(ObjectFifoPort.Consume, 1)
     of1.release(ObjectFifoPort.Consume, 1)
 ```
-We can see that C requires one object from both `of0` and `of1` before it can proceed with its execution. However, B also requires an object from `of0` before it can produce the data for `of1`. Because C is waiting on B, the two tiles do not have the same rate of consumption from the broadcast connection and this results in the production rate of A being impacted. 
+We can see that C requires one object from both `of0` and `of1` before it can proceed with its execution. However, B also requires an object from `of0` before it can produce the data for `of1`. Because C is waiting on B, the two tiles do not have the same rate of consumption from the broadcast connection and this results in the production rate of A being impacted.
 
 To further represent this we can take the slightly lower-level view that the consumer tiles each have a pool of objects allocated for their Object FIFOs. To simplify things, only the pools used by the consumers are shown (for example, for `of1` only the pool on the side of consumer tile C is visible). Currently, all the pools have a depth of `1`.
 <img src="./../../../assets/SkipBroadcastNoFix.png" height="300">

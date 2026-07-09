@@ -11,17 +11,17 @@ There are a number of example designs available [here](../../programming_example
 
 ## Vision Kernels
 
-| Design name | Data type | Description | 
+| Design name | Data type | Description |
 |-|-|-|
-| [Vision Passthrough](../../programming_examples/vision/vision_passthrough/) | i8 | A simple pipeline with just one `passThrough` kernel. This pipeline mainly aims to test whether the data movement works correctly to copy a greyscale image. | 
-| [Color Detect](../../programming_examples/vision/color_detect/) | i32 | This multi-kernel, multi-core pipeline detects colors in an RGBA image. | 
-| [Edge Detect](../../programming_examples/vision/edge_detect/) | i32 | A multi-kernel, multi-core pipeline that detects edges in an image and overlays the detection on the original image. | 
-| [Color Threshold](../../programming_examples/vision/color_threshold/) | i32 | A multi-core data-parallel implementation of color thresholding of a RGBA image. | 
+| [Vision Passthrough](../../programming_examples/vision/vision_passthrough/) | i8 | A simple pipeline with just one `passThrough` kernel. This pipeline mainly aims to test whether the data movement works correctly to copy a greyscale image. |
+| [Color Detect](../../programming_examples/vision/color_detect/) | i32 | This multi-kernel, multi-core pipeline detects colors in an RGBA image. |
+| [Edge Detect](../../programming_examples/vision/edge_detect/) | i32 | A multi-kernel, multi-core pipeline that detects edges in an image and overlays the detection on the original image. |
+| [Color Threshold](../../programming_examples/vision/color_threshold/) | i32 | A multi-core data-parallel implementation of color thresholding of a RGBA image. |
 
 
 ## Machine Learning Designs
 
-| Design name | Data type | Description | 
+| Design name | Data type | Description |
 |-|-|-|
 |[bottleneck](../../programming_examples/ml/bottleneck/)|ui8|A Bottleneck Residual Block is a variant of the residual block that utilizes three convolutions, using 1x1, 3x3, and 1x1 filter sizes, respectively. The implementation features fusing of multiple kernels and dataflow optimizations, highlighting the unique architectural capabilities of AI Engines|
 |[resnet](../../programming_examples/ml/resnet/)|ui8|ResNet with offloaded conv2_x layers. The implementation features depth-first implementation of multiple bottleneck blocks across multiple NPU columns.|
@@ -33,4 +33,3 @@ There are a number of example designs available [here](../../programming_example
 
 -----
 [[Prev - Section 5](../section-5/)] [[Top](..)]
-
