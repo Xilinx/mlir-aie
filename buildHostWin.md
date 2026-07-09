@@ -1,7 +1,10 @@
 <!-- Copyright (C) 2019-2021 Xilinx, Inc. -->
 <!-- Copyright (C) 2022-2026 Advanced Micro Devices, Inc. -->
 <!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
-# Windows Setup and Build Instructions
+# Windows (via WSL) Setup and Build Instructions
+
+> **Windows via WSL:** This guide covers Windows Subsystem for Linux (WSL)-based workflows.
+> For native Windows, use [Native Windows Setup](buildHostWinNative.md).
 
 These instructions will guide you through everything required for building and executing a program on the Ryzen™ AI NPU on Windows. The instructions were tested on a ASUS Vivobook Pro 15 among other Phoenix and Strix equipped machines.
 
@@ -16,8 +19,8 @@ You will set up a Windows subsystem for Linux (WSL) Ubuntu install, which will b
 1. [Prepare Host Side: Natively on Win11](#prepare-host-side:-natively-on-win11) - Update NPU driver, complete XRT ddl def, install visual studio, cmake, clone XRT and mlir-aie
 1. [Setup up your environment](#set-up-your-environment)
 1. [Build a Design](#build-a-design)
-* [Optional: Install AIETools](#optinal:-install-aietools)
-* [Troubleshooting](#Troubleshooting)
+* [Optional: Install AIETools](#optional-install-aietools)
+* [Troubleshooting](#troubleshooting)
 
 
 ## Preparing WSL Side
