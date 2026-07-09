@@ -307,12 +307,12 @@ def shim_dma_bd(
     if transfer_len is None:
         transfer_len = np.prod(sizes[-3:])
 
-    dimensions = list(zip(sizes, strides))
     dma_bd(
         mem,
+        sizes=sizes,
+        strides=strides,
         offset=offset,
         len=transfer_len,
-        dimensions=dimensions,
         burst_length=burst_length,
         packet=packet,
         offset_parameter=offset_parameter,

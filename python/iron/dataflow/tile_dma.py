@@ -243,17 +243,22 @@ class TileDma(Resolvable):
                     with block[bd_block_idx[bd_pos]]:
                         for acq in bd.acquires:
                             acq.emit()
-                        # dma_bd: pass buffer + optional offset/length.
-                        # The dialect helper's signature is dma_bd(buffer, offset=, len=).
-                        bd_kwargs = {}
+                        # dma_bd: split bd.dimensions (list of (size, stride)
+                        # pairs) into parallel sizes/strides lists for the new
+                        # DynamicIndexList builder (matches npu.dma_memcpy_nd).
+                        bd_sizes = (
+                            [d[0] for d in bd.dimensions] if bd.dimensions else []
+                        )
+                        bd_strides = (
+                            [d[1] for d in bd.dimensions] if bd.dimensions else []
+                        )
+                        bd_kwargs = dict(sizes=bd_sizes, strides=bd_strides)
                         if bd.offset:
                             bd_kwargs["offset"] = bd.offset
                         if bd.length is not None:
                             bd_kwargs["len"] = bd.length
                         if bd.packet is not None:
                             bd_kwargs["packet"] = bd.packet
-                        if bd.dimensions is not None:
-                            bd_kwargs["dimensions"] = bd.dimensions
                         dma_bd(bd.buffer.op, **bd_kwargs)
                         for rel in bd.releases:
                             rel.emit()

@@ -10,8 +10,9 @@ import numpy as np
 
 from ._aie_enum_gen import *
 from ._aie_ops_gen import *
-from ._aie_ops_gen import _Dialect
+from ._aie_ops_gen import _Dialect, DMABDOp as _DMABDOp
 from ._ods_common import _cext
+from .transform.structured import MixedValues, _dispatch_mixed_values
 from .func import FuncOp
 from ..helpers.dialects.func import call
 from ..extras.dialects.arith import ScalarValue, constant
@@ -93,6 +94,50 @@ class npu_write_rtp(NpuWriteRTPOp):
         if isinstance(value, int):
             value = constant(value, T.i32())
         super().__init__(buffer=buff_name, index=index, value=value, loc=loc, ip=ip)
+
+
+def dma_bd(
+    buffer,
+    sizes: MixedValues | None = None,
+    strides: MixedValues | None = None,
+    offset=None,
+    len=None,
+    **kwargs,
+):
+    """User-facing aie.dma_bd builder with a single interleaved list per
+    dimension-list, mirroring aiex.npu.dma_memcpy_nd.
+
+    ``sizes`` and ``strides`` each accept one sequence where entries may be
+    Python ints (constant) or SSA Values (runtime).  ``offset`` and ``len``
+    accept ints or Values; plain ints are materialized as arith.constant i32.
+
+    Example::
+
+        %c0  = arith.constant 0  : i32
+        %len = ...
+        aie.dma_bd(%buf sizes=[16, %n] strides=[16, 1]
+                   offset=%c0 len=%len)
+    """
+    dyn_sizes, _packed_sizes, static_sizes = _dispatch_mixed_values(sizes or [])
+    dyn_strides, _packed_strides, static_strides = _dispatch_mixed_values(strides or [])
+
+    def _as_i32(v):
+        if v is None:
+            return None
+        if isinstance(v, int):
+            return constant(v, T.i32())
+        return v
+
+    return _DMABDOp(
+        buffer,
+        sizes=dyn_sizes,
+        strides=dyn_strides,
+        static_sizes=static_sizes,
+        static_strides=static_strides,
+        offset=_as_i32(offset),
+        len=_as_i32(len),
+        **kwargs,
+    )
 
 
 class external_func(FuncOp):
