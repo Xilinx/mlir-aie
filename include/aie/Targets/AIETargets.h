@@ -75,6 +75,8 @@ AIETranslateNpuToBinary(mlir::ModuleOp, std::vector<uint32_t> &,
                         llvm::StringRef deviceName = "",
                         llvm::StringRef sequenceName = "",
                         std::vector<TxnLocEntry> *locmap = nullptr);
+mlir::LogicalResult AIETranslateNpuToCpp(mlir::ModuleOp module,
+                                         llvm::raw_ostream &output);
 mlir::LogicalResult AIETranslateToUcDma(mlir::ModuleOp module,
                                         llvm::raw_ostream &output);
 mlir::LogicalResult AIETranslateToUcDma(mlir::ModuleOp, std::string &assembly);
