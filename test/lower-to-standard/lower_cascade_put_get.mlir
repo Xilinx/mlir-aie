@@ -22,7 +22,8 @@ module @example0 {
   %buf152 = aie.buffer(%t33) { sym_name = "a" } : memref<32x64xbf16, 2 : i32>
 
   aie.core(%t33) {
-    aie.use_lock(%l33_0, AcquireGreaterEqual, 1)
+    %c1_ul0 = arith.constant 1 : i32
+    aie.use_lock(%l33_0, AcquireGreaterEqual, %c1_ul0)
     // code
     %cst = arith.constant 0.000000e+00 : bf16
     %c0 = arith.constant 0 : index
@@ -30,7 +31,8 @@ module @example0 {
     %collapse_shape_111 = memref.collapse_shape %subview [[0, 1]] : memref<1x32xbf16, strided<[64, 1]>, 2 : i32> into memref<32xbf16, strided<[1]>, 2 : i32>
     %4 = vector.transfer_read %collapse_shape_111[%c0], %cst {in_bounds = [true]} : memref<32xbf16, strided<[1]>, 2 : i32>, vector<32xbf16>
     aie.put_cascade(%4 : vector<32xbf16>)
-    aie.use_lock(%l33_1, Release, 1)
+    %c1_ul1 = arith.constant 1 : i32
+    aie.use_lock(%l33_1, Release, %c1_ul1)
     aie.end
   }
  }
@@ -53,13 +55,15 @@ module @example1 {
   %buf = aie.buffer(%t33) { sym_name = "b" } : memref<32xbf16, 2 : i32>
 
   aie.core(%t33) {
-    aie.use_lock(%l33_0, AcquireGreaterEqual, 1)
+    %c1_ul2 = arith.constant 1 : i32
+    aie.use_lock(%l33_0, AcquireGreaterEqual, %c1_ul2)
     // simpler code - no subview or collapse_shape
     %cst = arith.constant 0.000000e+00 : bf16
     %c0 = arith.constant 0 : index
     %vec = vector.transfer_read %buf[%c0], %cst {in_bounds = [true]} : memref<32xbf16, 2 : i32>, vector<32xbf16>
     aie.put_cascade(%vec : vector<32xbf16>)
-    aie.use_lock(%l33_1, Release, 1)
+    %c1_ul3 = arith.constant 1 : i32
+    aie.use_lock(%l33_1, Release, %c1_ul3)
     aie.end
   }
  }
@@ -82,7 +86,8 @@ module @example2 {
   %buf152 = aie.buffer(%t33) { sym_name = "c" } : memref<32x64xbf16, 2 : i32>
 
   aie.core(%t33) {
-    aie.use_lock(%l33_0, AcquireGreaterEqual, 1)
+    %c1_ul4 = arith.constant 1 : i32
+    aie.use_lock(%l33_0, AcquireGreaterEqual, %c1_ul4)
     // code with get_cascade
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
@@ -90,7 +95,8 @@ module @example2 {
     %4 = aie.get_cascade() : vector<32xbf16>
     %collapse_shape_111 = memref.collapse_shape %subview [[0, 1]] : memref<1x32xbf16, strided<[64, 1], offset: ?>, 2 : i32> into memref<32xbf16, strided<[1], offset: ?>, 2 : i32>
     vector.transfer_write %4, %collapse_shape_111[%c0] {in_bounds = [true]} : vector<32xbf16>, memref<32xbf16, strided<[1], offset: ?>, 2 : i32>
-    aie.use_lock(%l33_1, Release, 1)
+    %c1_ul5 = arith.constant 1 : i32
+    aie.use_lock(%l33_1, Release, %c1_ul5)
     aie.end
   }
  }
@@ -113,12 +119,14 @@ module @example3 {
   %buf = aie.buffer(%t33) { sym_name = "d" } : memref<32xbf16, 2 : i32>
 
   aie.core(%t33) {
-    aie.use_lock(%l33_0, AcquireGreaterEqual, 1)
+    %c1_ul6 = arith.constant 1 : i32
+    aie.use_lock(%l33_0, AcquireGreaterEqual, %c1_ul6)
     // simpler code - no subview or collapse_shape, direct get_cascade
     %c0 = arith.constant 0 : index
     %vec = aie.get_cascade() : vector<32xbf16>
     vector.transfer_write %vec, %buf[%c0] {in_bounds = [true]} : vector<32xbf16>, memref<32xbf16, 2 : i32>
-    aie.use_lock(%l33_1, Release, 1)
+    %c1_ul7 = arith.constant 1 : i32
+    aie.use_lock(%l33_1, Release, %c1_ul7)
     aie.end
   }
  }
@@ -140,13 +148,15 @@ module @example4 {
   %buf = aie.buffer(%t33) { sym_name = "e" } : memref<16xi32, 2 : i32>
 
   aie.core(%t33) {
-    aie.use_lock(%l33_0, AcquireGreaterEqual, 1)
+    %c1_ul8 = arith.constant 1 : i32
+    aie.use_lock(%l33_0, AcquireGreaterEqual, %c1_ul8)
     // put_cascade with vector<16xi32> - no bitcast needed
     %c0_i32 = arith.constant 0 : i32
     %c0 = arith.constant 0 : index
     %vec = vector.transfer_read %buf[%c0], %c0_i32 {in_bounds = [true]} : memref<16xi32, 2 : i32>, vector<16xi32>
     aie.put_cascade(%vec : vector<16xi32>)
-    aie.use_lock(%l33_1, Release, 1)
+    %c1_ul9 = arith.constant 1 : i32
+    aie.use_lock(%l33_1, Release, %c1_ul9)
     aie.end
   }
  }
@@ -168,12 +178,14 @@ module @example5 {
   %buf = aie.buffer(%t33) { sym_name = "f" } : memref<16xi32, 2 : i32>
 
   aie.core(%t33) {
-    aie.use_lock(%l33_0, AcquireGreaterEqual, 1)
+    %c1_ul10 = arith.constant 1 : i32
+    aie.use_lock(%l33_0, AcquireGreaterEqual, %c1_ul10)
     // get_cascade with vector<16xi32> - no bitcast needed
     %c0 = arith.constant 0 : index
     %vec = aie.get_cascade() : vector<16xi32>
     vector.transfer_write %vec, %buf[%c0] {in_bounds = [true]} : vector<16xi32>, memref<16xi32, 2 : i32>
-    aie.use_lock(%l33_1, Release, 1)
+    %c1_ul11 = arith.constant 1 : i32
+    aie.use_lock(%l33_1, Release, %c1_ul11)
     aie.end
   }
  }

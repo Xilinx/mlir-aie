@@ -14,9 +14,11 @@
 // CHECK:      %[[C12:.*]] = arith.constant 12 : index
 // CHECK:      scf.for %{{.*}} = %{{.*}} to %[[C12]] step %{{.*}} {
 // repeat_count = 3 surfaces as a count-3 acquire/release, not a multiplied loop.
-// CHECK:        aie.use_lock(%{{.*}}, AcquireGreaterEqual, 3)
+// CHECK:        %{{.*}} = arith.constant 3 : i32
+// CHECK:        aie.use_lock(%{{.*}}, AcquireGreaterEqual, %{{.*}})
 // CHECK:        func.call @some_work
-// CHECK:        aie.use_lock(%{{.*}}, Release, 3)
+// CHECK:        %{{.*}} = arith.constant 3 : i32
+// CHECK:        aie.use_lock(%{{.*}}, Release, %{{.*}})
 // CHECK:      }
 // CHECK:      aie.end
 

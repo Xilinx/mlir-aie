@@ -38,20 +38,24 @@ aie.device(xcvc1902) {
   %core13 = aie.core(%tile13) {
     %0 = arith.constant 0 : i32
     %idx0 = arith.constant 3 : index
-    aie.use_lock(%lock13_3, "Acquire", 1) // acquire for read(e.g. input ping)
+    %c1_ul0 = arith.constant 1 : i32
+    aie.use_lock(%lock13_3, "Acquire", %c1_ul0) // acquire for read(e.g. input ping)
     %val = memref.load %buf13[%idx0] : memref<256xi32>
     aie.put_stream(%0 : i32, %val : i32)
-    aie.use_lock(%lock13_3, "Release", 0) // release for write
+    %c0_ul1 = arith.constant 0 : i32
+    aie.use_lock(%lock13_3, "Release", %c0_ul1) // release for write
     aie.end
   }
 
   %core23 = aie.core(%tile23) {
     %0 = arith.constant 0 : i32
     %idx0 = arith.constant 3 : index
-    aie.use_lock(%lock23_7, "Acquire", 0) // acquire for write
+    %c0_ul2 = arith.constant 0 : i32
+    aie.use_lock(%lock23_7, "Acquire", %c0_ul2) // acquire for write
     %val = aie.get_stream(%0 : i32) : i32
     memref.store %val, %buf23[%idx0] : memref<256xi32>
-    aie.use_lock(%lock23_7, "Release", 1) // release for read
+    %c1_ul3 = arith.constant 1 : i32
+    aie.use_lock(%lock23_7, "Release", %c1_ul3) // release for read
     aie.end
   }
 

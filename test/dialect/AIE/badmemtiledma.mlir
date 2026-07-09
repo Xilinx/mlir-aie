@@ -30,11 +30,14 @@ module @test {
     %mem13 = aie.memtile_dma(%t1) {
       %dma0 = aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
+        %c1_ul0 = arith.constant 1 : i32
         // expected-note@+1 {{in this BD block}}
-        aie.use_lock(%lock, Acquire, 1)
-        aie.use_lock(%lock, Acquire, 1)
+        aie.use_lock(%lock, Acquire, %c1_ul0)
+        %c1_ul1 = arith.constant 1 : i32
+        aie.use_lock(%lock, Acquire, %c1_ul1)
         aie.dma_bd(%buff : memref<16xi32>, 0, 16)
-        aie.use_lock(%lock, Release, 0)
+        %c0_ul2 = arith.constant 0 : i32
+        aie.use_lock(%lock, Release, %c0_ul2)
         aie.next_bd ^bd0
       ^end:
         aie.end
@@ -55,11 +58,14 @@ module @test {
     %mem13 = aie.memtile_dma(%t1) {
       %dma0 = aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
+        %c1_ul3 = arith.constant 1 : i32
         // expected-note@+1 {{in this BD block}}
-        aie.use_lock(%prod_lock, AcquireGreaterEqual, 1)
-        aie.use_lock(%prod_lock_test, AcquireGreaterEqual, 1)
+        aie.use_lock(%prod_lock, AcquireGreaterEqual, %c1_ul3)
+        %c1_ul4 = arith.constant 1 : i32
+        aie.use_lock(%prod_lock_test, AcquireGreaterEqual, %c1_ul4)
         aie.dma_bd(%buff : memref<16xi32>, 0, 16)
-        aie.use_lock(%cons_lock, Release, 1)
+        %c1_ul5 = arith.constant 1 : i32
+        aie.use_lock(%cons_lock, Release, %c1_ul5)
         aie.next_bd ^bd0
       ^end:
         aie.end
@@ -80,11 +86,14 @@ module @test {
     %mem13 = aie.memtile_dma(%t1) {
       %dma0 = aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
+        %c1_ul6 = arith.constant 1 : i32
         // expected-note@+1 {{in this BD block}}
-        aie.use_lock(%prod_lock, AcquireGreaterEqual, 1)
+        aie.use_lock(%prod_lock, AcquireGreaterEqual, %c1_ul6)
         aie.dma_bd(%buff : memref<16xi32>, 0, 16)
-        aie.use_lock(%cons_lock, Release, 1)
-        aie.use_lock(%cons_lock_test, Release, 1)
+        %c1_ul7 = arith.constant 1 : i32
+        aie.use_lock(%cons_lock, Release, %c1_ul7)
+        %c1_ul8 = arith.constant 1 : i32
+        aie.use_lock(%cons_lock_test, Release, %c1_ul8)
         aie.next_bd ^bd0
       ^end:
         aie.end
@@ -105,11 +114,13 @@ module @test {
     %mem13 = aie.memtile_dma(%t1) {
       %dma0 = aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
+        %c1_ul9 = arith.constant 1 : i32
         // expected-note@+1 {{in this BD block}}
-        aie.use_lock(%prod_lock, AcquireGreaterEqual, 1)
+        aie.use_lock(%prod_lock, AcquireGreaterEqual, %c1_ul9)
         aie.dma_bd(%buff : memref<16xi32>, 0, 16)
         aie.dma_bd(%buff2 : memref<16xi32>, 0, 16)
-        aie.use_lock(%cons_lock, Release, 1)
+        %c1_ul10 = arith.constant 1 : i32
+        aie.use_lock(%cons_lock, Release, %c1_ul10)
         aie.next_bd ^bd0
       ^end:
         aie.end

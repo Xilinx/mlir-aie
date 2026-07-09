@@ -25,73 +25,97 @@
 // CHECK-DAG:         %[[C4294967294:.*]] = arith.constant 4294967294 : index
 // CHECK-DAG:         %[[C2_0:.*]] = arith.constant 2 : index
 // CHECK:             scf.for %[[ARG0:.+]] = %[[C0]] to %[[C4294967294]] step %[[C2_0]] {
-// CHECK:               aie.use_lock(%[[LOCK_0]], Acquire, 0)
+// CHECK:               %{{.*}} = arith.constant 0 : i32
+// CHECK:               aie.use_lock(%[[LOCK_0]], Acquire, %{{.*}})
 // CHECK-NEXT:          %[[REINTERPRET_0:.+]] = memref.reinterpret_cast %[[BUFF_0]] to offset: [0], sizes: [4, 4], strides: [4, 1] : memref<16xi32> to memref<4x4xi32>
 // CHECK-NEXT:          func.call @some_work(%[[REINTERPRET_0]], %[[C0]]) : (memref<4x4xi32>, index) -> ()
-// CHECK:               aie.use_lock(%[[LOCK_0]], Release, 1)
+// CHECK:               %{{.*}} = arith.constant 1 : i32
+// CHECK:               aie.use_lock(%[[LOCK_0]], Release, %{{.*}})
 // CHECK-DAG:           %[[C2_4:.*]] = arith.constant 2 : index
 // CHECK:               scf.for %[[ARG1:.+]] = %[[C1]] to %[[C21]] step %[[C2_4]] {
-// CHECK-NEXT:            aie.use_lock(%[[LOCK_1]], Acquire, 0)
+// CHECK-NEXT:            %{{.*}} = arith.constant 0 : i32
+// CHECK-NEXT:            aie.use_lock(%[[LOCK_1]], Acquire, %{{.*}})
 // CHECK-NEXT:            %[[REINTERPRET_1:.+]] = memref.reinterpret_cast %[[BUFF_1]] to offset: [0], sizes: [4, 4], strides: [4, 1] : memref<16xi32> to memref<4x4xi32>
 // CHECK-NEXT:            func.call @some_work(%[[REINTERPRET_1]], %[[ARG1]]) : (memref<4x4xi32>, index) -> ()
-// CHECK-NEXT:            aie.use_lock(%[[LOCK_1]], Release, 1)
+// CHECK-NEXT:            %{{.*}} = arith.constant 1 : i32
+// CHECK-NEXT:            aie.use_lock(%[[LOCK_1]], Release, %{{.*}})
 // CHECK-DAG:             %[[C1_1:.*]] = arith.constant 1 : index
 // CHECK-DAG:             %[[MUL_0:.*]] = arith.muli %[[C1]], %[[C1_1]] : index
 // CHECK-DAG:             %[[ADD_0:.*]] = arith.addi %[[ARG1]], %[[MUL_0]] : index
-// CHECK-DAG:             aie.use_lock(%[[LOCK_0]], Acquire, 0)
+// CHECK-DAG:             %{{.*}} = arith.constant 0 : i32
+// CHECK-DAG:             aie.use_lock(%[[LOCK_0]], Acquire, %{{.*}})
 // CHECK:                 %[[REINTERPRET_2:.+]] = memref.reinterpret_cast %[[BUFF_0]] to offset: [0], sizes: [4, 4], strides: [4, 1] : memref<16xi32> to memref<4x4xi32>
 // CHECK-NEXT:            func.call @some_work(%[[REINTERPRET_2]], %[[ADD_0]]) : (memref<4x4xi32>, index) -> ()
-// CHECK-NEXT:            aie.use_lock(%[[LOCK_0]], Release, 1)
+// CHECK-NEXT:            %{{.*}} = arith.constant 1 : i32
+// CHECK-NEXT:            aie.use_lock(%[[LOCK_0]], Release, %{{.*}})
 // CHECK-NEXT:          }
-// CHECK:               aie.use_lock(%[[LOCK_1]], Acquire, 0)
+// CHECK:               %{{.*}} = arith.constant 0 : i32
+// CHECK:               aie.use_lock(%[[LOCK_1]], Acquire, %{{.*}})
 // CHECK-NEXT:          %[[REINTERPRET_3:.+]] = memref.reinterpret_cast %[[BUFF_1]] to offset: [0], sizes: [4, 4], strides: [4, 1] : memref<16xi32> to memref<4x4xi32>
 // CHECK-NEXT:          func.call @some_work(%[[REINTERPRET_3]], %[[C0]]) : (memref<4x4xi32>, index) -> ()
-// CHECK-NEXT:          aie.use_lock(%[[LOCK_1]], Release, 1)
-// CHECK:               aie.use_lock(%[[LOCK_0]], Acquire, 0)
+// CHECK-NEXT:          %{{.*}} = arith.constant 1 : i32
+// CHECK-NEXT:          aie.use_lock(%[[LOCK_1]], Release, %{{.*}})
+// CHECK:               %{{.*}} = arith.constant 0 : i32
+// CHECK:               aie.use_lock(%[[LOCK_0]], Acquire, %{{.*}})
 // CHECK-NEXT:          %[[REINTERPRET_4:.+]] = memref.reinterpret_cast %[[BUFF_0]] to offset: [0], sizes: [4, 4], strides: [4, 1] : memref<16xi32> to memref<4x4xi32>
 // CHECK-NEXT:          func.call @some_work(%[[REINTERPRET_4]], %[[C0]]) : (memref<4x4xi32>, index) -> ()
-// CHECK-NEXT:          aie.use_lock(%[[LOCK_0]], Release, 1)
+// CHECK-NEXT:          %{{.*}} = arith.constant 1 : i32
+// CHECK-NEXT:          aie.use_lock(%[[LOCK_0]], Release, %{{.*}})
 // CHECK:               %[[C2_3:.*]] = arith.constant 2 : index
 // CHECK:               scf.for %[[ARG1:.+]] = %[[C1]] to %[[C21]] step %[[C2_3]] {
-// CHECK-NEXT:            aie.use_lock(%[[LOCK_1]], Acquire, 0)
+// CHECK-NEXT:            %{{.*}} = arith.constant 0 : i32
+// CHECK-NEXT:            aie.use_lock(%[[LOCK_1]], Acquire, %{{.*}})
 // CHECK-NEXT:            %[[REINTERPRET_5:.+]] = memref.reinterpret_cast %[[BUFF_1]] to offset: [0], sizes: [4, 4], strides: [4, 1] : memref<16xi32> to memref<4x4xi32>
 // CHECK-NEXT:            func.call @some_work(%[[REINTERPRET_5]], %[[ARG1]]) : (memref<4x4xi32>, index) -> ()
-// CHECK-NEXT:            aie.use_lock(%[[LOCK_1]], Release, 1)
+// CHECK-NEXT:            %{{.*}} = arith.constant 1 : i32
+// CHECK-NEXT:            aie.use_lock(%[[LOCK_1]], Release, %{{.*}})
 // CHECK-DAG:             %[[C1_1:.*]] = arith.constant 1 : index
 // CHECK-DAG:             %[[MUL_1:.*]] = arith.muli %[[C1]], %[[C1_1]] : index
 // CHECK-DAG:             %[[ADD_1:.*]] = arith.addi %[[ARG1]], %[[MUL_1]] : index
-// CHECK-DAG:             aie.use_lock(%[[LOCK_0]], Acquire, 0)
+// CHECK-DAG:             %{{.*}} = arith.constant 0 : i32
+// CHECK-DAG:             aie.use_lock(%[[LOCK_0]], Acquire, %{{.*}})
 // CHECK:                 %[[REINTERPRET_6:.+]] = memref.reinterpret_cast %[[BUFF_0]] to offset: [0], sizes: [4, 4], strides: [4, 1] : memref<16xi32> to memref<4x4xi32>
 // CHECK-NEXT:            func.call @some_work(%[[REINTERPRET_6]], %[[ADD_1]]) : (memref<4x4xi32>, index) -> ()
-// CHECK-NEXT:            aie.use_lock(%[[LOCK_0]], Release, 1)
+// CHECK-NEXT:            %{{.*}} = arith.constant 1 : i32
+// CHECK-NEXT:            aie.use_lock(%[[LOCK_0]], Release, %{{.*}})
 // CHECK-NEXT:          }
-// CHECK:               aie.use_lock(%[[LOCK_1]], Acquire, 0)
+// CHECK:               %{{.*}} = arith.constant 0 : i32
+// CHECK:               aie.use_lock(%[[LOCK_1]], Acquire, %{{.*}})
 // CHECK-NEXT:          %[[REINTERPRET_7:.+]] = memref.reinterpret_cast %[[BUFF_1]] to offset: [0], sizes: [4, 4], strides: [4, 1] : memref<16xi32> to memref<4x4xi32>
 // CHECK-NEXT:          func.call @some_work(%[[REINTERPRET_7]], %[[C0]]) : (memref<4x4xi32>, index) -> ()
-// CHECK-NEXT:          aie.use_lock(%[[LOCK_1]], Release, 1)
+// CHECK-NEXT:          %{{.*}} = arith.constant 1 : i32
+// CHECK-NEXT:          aie.use_lock(%[[LOCK_1]], Release, %{{.*}})
 // CHECK-NEXT:        }
-// CHECK:             aie.use_lock(%[[LOCK_0]], Acquire, 0)
+// CHECK:             %{{.*}} = arith.constant 0 : i32
+// CHECK:             aie.use_lock(%[[LOCK_0]], Acquire, %{{.*}})
 // CHECK-NEXT:        %[[REINTERPRET_8:.+]] = memref.reinterpret_cast %[[BUFF_0]] to offset: [0], sizes: [4, 4], strides: [4, 1] : memref<16xi32> to memref<4x4xi32>
 // CHECK-NEXT:        func.call @some_work(%[[REINTERPRET_8]], %[[C0]]) : (memref<4x4xi32>, index) -> ()
-// CHECK:             aie.use_lock(%[[LOCK_0]], Release, 1)
+// CHECK:             %{{.*}} = arith.constant 1 : i32
+// CHECK:             aie.use_lock(%[[LOCK_0]], Release, %{{.*}})
 // CHECK:             %[[C2_4:.*]] = arith.constant 2 : index
 // CHECK:             scf.for %[[ARG0:.+]] = %[[C1]] to %[[C21]] step %[[C2_4]] {
-// CHECK-NEXT:          aie.use_lock(%[[LOCK_1]], Acquire, 0)
+// CHECK-NEXT:          %{{.*}} = arith.constant 0 : i32
+// CHECK-NEXT:          aie.use_lock(%[[LOCK_1]], Acquire, %{{.*}})
 // CHECK-NEXT:          %[[REINTERPRET_9:.+]] = memref.reinterpret_cast %[[BUFF_1]] to offset: [0], sizes: [4, 4], strides: [4, 1] : memref<16xi32> to memref<4x4xi32>
 // CHECK-NEXT:          func.call @some_work(%[[REINTERPRET_9]], %[[ARG0]]) : (memref<4x4xi32>, index) -> ()
-// CHECK-NEXT:          aie.use_lock(%[[LOCK_1]], Release, 1)
+// CHECK-NEXT:          %{{.*}} = arith.constant 1 : i32
+// CHECK-NEXT:          aie.use_lock(%[[LOCK_1]], Release, %{{.*}})
 // CHECK-DAG:           %[[C1_4:.*]] = arith.constant 1 : index
 // CHECK-DAG:           %[[MUL_2:.*]] = arith.muli %[[C1]], %[[C1_4]] : index
 // CHECK-DAG:           %[[ADD_2:.*]] = arith.addi %[[ARG0]], %[[MUL_2]] : index
-// CHECK-DAG:           aie.use_lock(%[[LOCK_0]], Acquire, 0)
+// CHECK-DAG:           %{{.*}} = arith.constant 0 : i32
+// CHECK-DAG:           aie.use_lock(%[[LOCK_0]], Acquire, %{{.*}})
 // CHECK:               %[[REINTERPRET_10:.+]] = memref.reinterpret_cast %[[BUFF_0]] to offset: [0], sizes: [4, 4], strides: [4, 1] : memref<16xi32> to memref<4x4xi32>
 // CHECK-NEXT:          func.call @some_work(%[[REINTERPRET_10]], %[[ADD_1]]) : (memref<4x4xi32>, index) -> ()
-// CHECK-NEXT:          aie.use_lock(%[[LOCK_0]], Release, 1)
+// CHECK-NEXT:          %{{.*}} = arith.constant 1 : i32
+// CHECK-NEXT:          aie.use_lock(%[[LOCK_0]], Release, %{{.*}})
 // CHECK-NEXT:        }
-// CHECK:             aie.use_lock(%[[LOCK_1]], Acquire, 0)
+// CHECK:             %{{.*}} = arith.constant 0 : i32
+// CHECK:             aie.use_lock(%[[LOCK_1]], Acquire, %{{.*}})
 // CHECK-NEXT:        %[[REINTERPRET_11:.+]] = memref.reinterpret_cast %[[BUFF_1]] to offset: [0], sizes: [4, 4], strides: [4, 1] : memref<16xi32> to memref<4x4xi32>
 // CHECK-NEXT:        func.call @some_work(%[[REINTERPRET_11]], %[[C0]]) : (memref<4x4xi32>, index) -> ()
-// CHECK-NEXT:        aie.use_lock(%[[LOCK_1]], Release, 1)
+// CHECK-NEXT:        %{{.*}} = arith.constant 1 : i32
+// CHECK-NEXT:        aie.use_lock(%[[LOCK_1]], Release, %{{.*}})
 module {
   aie.device(xcvc1902) {
     %tile12 = aie.tile(1, 2)
