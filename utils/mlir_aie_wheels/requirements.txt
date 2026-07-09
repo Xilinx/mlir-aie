@@ -8,6 +8,6 @@ numpy>=2.4.6
 pip
 pybind11[global]>=3.0.4
 rich
-setuptools>=82.0.1
+setuptools>=83.0.0
 wheel
 nanobind==2.12.0
