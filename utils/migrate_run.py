@@ -15,6 +15,7 @@ Strategy:
   * Lines that are FileCheck directives (contain 'CHECK') are left ALONE here;
     CHECK regeneration is a separate step for files that check dma_bd syntax.
 """
+
 import re
 import sys
 
@@ -39,19 +40,31 @@ def parse_legacy_body(body):
     idx = 0
     # offset (integer literal)
     if idx < len(rest) and re.fullmatch(r"-?\d+", rest[idx]):
-        offset = int(rest[idx]); idx += 1
+        offset = int(rest[idx])
+        idx += 1
     if idx < len(rest) and re.fullmatch(r"-?\d+", rest[idx]):
-        length = int(rest[idx]); idx += 1
+        length = int(rest[idx])
+        idx += 1
     if idx < len(rest) and rest[idx].startswith("["):
-        dims = rest[idx]; idx += 1
+        dims = rest[idx]
+        idx += 1
     if idx < len(rest) and rest[idx].startswith("["):
-        pad = rest[idx]; idx += 1
+        pad = rest[idx]
+        idx += 1
     if idx < len(rest) and rest[idx].startswith("pad_value"):
-        pad_value = rest[idx]; idx += 1
+        pad_value = rest[idx]
+        idx += 1
     if idx != len(rest):
         return None  # unrecognized trailing content
-    return dict(buf=buf, ty=ty, offset=offset, length=length,
-                dims=dims, pad=pad, pad_value=pad_value)
+    return dict(
+        buf=buf,
+        ty=ty,
+        offset=offset,
+        length=length,
+        dims=dims,
+        pad=pad,
+        pad_value=pad_value,
+    )
 
 
 def dims_to_lists(dims):
@@ -99,6 +112,7 @@ def main():
     # values are needed per enclosing region entry point. Skip CHECK lines.
     # region_entry_consts maps char-offset-of-region-open -> set(int values)
     from collections import defaultdict
+
     region_entry_consts = defaultdict(set)
 
     calls = find_dma_bd_calls(text)
@@ -108,7 +122,7 @@ def main():
         line = text[line_start:start]
         if "CHECK" in line or "//" in line:
             continue
-        body = whole[len("aie.dma_bd("):-1]
+        body = whole[len("aie.dma_bd(") : -1]
         before = set(consts_needed)
         new = convert(body)
         if new is None:
@@ -144,7 +158,8 @@ def main():
         # Simple heuristic: inject at every '{' that appears at end-of-line
         # (possibly with trailing space/comment) and belongs to an aie/aiex op.
         region_open_pat = re.compile(
-            r'((?:aie|aiex)\.\w+(?:\s+@\w+)?\s*\([^)]*\))\s*\{')
+            r"((?:aie|aiex)\.\w+(?:\s+@\w+)?\s*\([^)]*\))\s*\{"
+        )
         # Build the full set of all needed constants (any region gets all of
         # them; DCE removes unused ones, and MLIR allows unused constants).
         all_consts = set()
@@ -158,7 +173,7 @@ def main():
         def do_inject(m):
             # Indentation of the line containing the match.
             sol = text.rfind("\n", 0, m.start())
-            line_text = text[sol + 1:m.start()]
+            line_text = text[sol + 1 : m.start()]
             indent = re.match(r"[ \t]*", line_text).group(0)
             return m.group(0) + const_snippet(indent)
 

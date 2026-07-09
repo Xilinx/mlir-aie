@@ -102,19 +102,24 @@ def parse_and_convert(body):
 
     # offset: integer literal only (not %val — those are already new-style)
     if idx < len(rest) and re.fullmatch(r"-?\d+", rest[idx]):
-        offset = int(rest[idx]); idx += 1
+        offset = int(rest[idx])
+        idx += 1
     # len
     if idx < len(rest) and re.fullmatch(r"-?\d+", rest[idx]):
-        length = int(rest[idx]); idx += 1
+        length = int(rest[idx])
+        idx += 1
     # dimensions: [...] attribute form
     if idx < len(rest) and rest[idx].startswith("["):
-        dims_text = rest[idx]; idx += 1
+        dims_text = rest[idx]
+        idx += 1
     # pad_dimensions: [...] attribute form
     if idx < len(rest) and rest[idx].startswith("["):
-        pad_text = rest[idx]; idx += 1
+        pad_text = rest[idx]
+        idx += 1
     # pad_value = N
     if idx < len(rest) and rest[idx].startswith("pad_value"):
-        pad_value_text = rest[idx]; idx += 1
+        pad_value_text = rest[idx]
+        idx += 1
     if idx != len(rest):
         return None, set()
 
@@ -156,10 +161,10 @@ def parse_and_convert(body):
 # matching '}'. We use a simple scan rather than full parsing.
 # ---------------------------------------------------------------------------
 REGION_OPEN_PAT = re.compile(
-    r'(?:aie|aiex)\.\w+(?:\s+@\w+)?'   # op keyword
-    r'(?:\s*<[^>]*>)?'                  # optional generic params
-    r'\s*\([^)]*\)'                     # argument list
-    r'\s*\{'                            # opening brace
+    r"(?:aie|aiex)\.\w+(?:\s+@\w+)?"  # op keyword
+    r"(?:\s*<[^>]*>)?"  # optional generic params
+    r"\s*\([^)]*\)"  # argument list
+    r"\s*\{"  # opening brace
 )
 
 
@@ -223,7 +228,7 @@ def migrate_file(text):
                 continue
             if on_check_line(text, cstart):
                 continue
-            body = text[cstart + len("aie.dma_bd("):cend - 1]
+            body = text[cstart + len("aie.dma_bd(") : cend - 1]
             new_text, needed = parse_and_convert(body)
             if new_text is None:
                 if not re.search(r"\b(sizes|offset)\s*=", body):
@@ -246,8 +251,7 @@ def migrate_file(text):
         # Determine indentation from the line containing '{'
         ind = indent_of_line(text, rbrace) + "  "
         snippet = "".join(
-            f"\n{ind}%c{v}_i32 = arith.constant {v} : i32"
-            for v in sorted(consts)
+            f"\n{ind}%c{v}_i32 = arith.constant {v} : i32" for v in sorted(consts)
         )
         insertions.append((rbrace + 1, snippet))  # insert after '{'
 

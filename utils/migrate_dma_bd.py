@@ -18,6 +18,7 @@ Only the op-text rewrite lives here; it is deliberately conservative and skips
 any dma_bd whose offset/len are already SSA values (%...) or whose form it does
 not recognize, reporting them for manual handling.
 """
+
 import re
 import sys
 
