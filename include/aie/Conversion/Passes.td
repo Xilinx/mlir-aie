@@ -79,6 +79,31 @@ def ConvertAIEToTransaction : Pass<"convert-aie-to-transaction",
 }
 
 //===----------------------------------------------------------------------===//
+// AIEXToEmitC
+//===----------------------------------------------------------------------===//
+
+def ConvertAIEXToEmitC : Pass<"convert-aiex-to-emitc", "mlir::ModuleOp"> {
+  let summary = "Convert AIEX runtime sequence ops to EmitC for C++ TXN generation";
+  let description = [{
+    This pass converts the straight-line npu transaction ops in an
+    `aie.runtime_sequence` (`npu.write32`, `npu.maskwrite32`, `npu.sync`,
+    `npu.address_patch`, `npu.blockwrite`) into EmitC dialect calls naming the
+    functions in `aie/Runtime/TxnEncoding.h`. Running MLIR's `translateToCpp()`
+    on the result produces a standalone `generate_txn_<seq>(...)` C++ function
+    that assembles the TXN binary at run time -- the same words the compile-time
+    binary emitter (`AIETargetNPU.cpp`) produces, but from a C++ function so
+    runtime-valued operands can flow through to a single compiled xclbin.
+
+    Control flow (`scf.for`/`scf.if`) inside a runtime sequence is rejected with
+    a diagnostic; it is handled by later passes in the dynamic-sequences work.
+  }];
+  let constructor = "xilinx::createConvertAIEXToEmitCPass()";
+  let dependentDialects = ["mlir::emitc::EmitCDialect",
+                           "xilinx::AIE::AIEDialect",
+                           "xilinx::AIEX::AIEXDialect"];
+}
+
+//===----------------------------------------------------------------------===//
 // AIEToControlPackets
 //===----------------------------------------------------------------------===//
 

@@ -213,7 +213,6 @@ class CMakeBuild(build_ext):
             f"-DLLVM_ENABLE_RTTI={os.getenv('ENABLE_RTTI', 'ON')}",
             f"-DAIE_VITIS_COMPONENTS={os.getenv('AIE_VITIS_COMPONENTS', 'AIE2')}",
             "-DAIE_ENABLE_BINDINGS_PYTHON=ON",
-            "-DAIE_ENABLE_PYTHON_PASSES=OFF",
             "-DAIE_BUILD_LSP_SERVER=OFF",
             "-DAIE_BUILD_VISUALIZE=OFF",
             "-DMLIR_DETECT_PYTHON_ENV_PRIME_SEARCH=ON",
@@ -547,7 +546,7 @@ setup(
         "install": InstallWithPth,
     },
     zip_safe=False,
-    packages=find_packages(exclude=["wheelhouse", "python_bindings", "mlir-aie"]),
+    packages=find_packages(exclude=["wheelhouse", "mlir-aie"]),
     python_requires=">=3.11",
     install_requires=parse_requirements(
         Path(MLIR_AIE_SOURCE_DIR) / "python" / "requirements.txt"

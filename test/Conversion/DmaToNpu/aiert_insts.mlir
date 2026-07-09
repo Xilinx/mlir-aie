@@ -1,16 +1,18 @@
 //===- aiert_insts.mlir -----------------------------------------*- MLIR -*-===//
 //
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
 // Copyright (C) 2023 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
 // RUN: aie-opt --aie-dma-to-npu %s | FileCheck %s
 // CHECK: aiex.npu.blockwrite(%{{.*}}) {address = 118816 : ui32} : memref<8xi32>
-// CHECK: aiex.npu.write32 {address = 119300 : ui32, value = 2147483649 : ui32}
+// CHECK-DAG: %[[V0:.*]] = arith.constant -2147483647 : i32
+// CHECK-DAG: %[[A0:.*]] = arith.constant 119300 : i32
+// CHECK: aiex.npu.write32(%[[A0]], %[[V0]]) : i32, i32
 // CHECK: aiex.npu.blockwrite(%{{.*}}) {address = 118784 : ui32} : memref<8xi32>
-// CHECK: aiex.npu.write32 {address = 119316 : ui32, value = 0 : ui32}
+// CHECK: %[[A1:.*]] = arith.constant 119316 : i32
+// CHECK: aiex.npu.write32(%[[A1]], %{{.*}}) : i32, i32
 
 module {
   aie.device(npu1) {

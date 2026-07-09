@@ -35,19 +35,29 @@ module @test_simple_lock_set {
         // Set some runtime parameters before starting execution
 
         // 126976 = 0x0001F000 (lock 0 address in a compute tile's local address space)
-        // CHECK: aiex.npu.write32 {address = 126976 : ui32, column = 2 : i32, row = 2 : i32, value = 0 : ui32}
+        // CHECK-DAG: %[[V0:.*]] = arith.constant 0 : i32
+        // CHECK-DAG: %[[A0:.*]] = arith.constant 126976 : i32
+        // CHECK: aiex.npu.write32(%[[A0]], %[[V0]]) {column = 2 : i32, row = 2 : i32} : i32, i32
         aiex.set_lock(%lock22_0, 0)
         // 127216 = 0X0001F0F0
-        // CHECK: aiex.npu.write32 {address = 127216 : ui32, column = 2 : i32, row = 2 : i32, value = 1 : ui32}
+        // CHECK-DAG: %[[V1:.*]] = arith.constant 1 : i32
+        // CHECK-DAG: %[[A1:.*]] = arith.constant 127216 : i32
+        // CHECK: aiex.npu.write32(%[[A1]], %[[V1]]) {column = 2 : i32, row = 2 : i32} : i32, i32
         aiex.set_lock(%lock22_15, 1)
         // 786480 = 0x000C0030
-        // CHECK: aiex.npu.write32 {address = 786480 : ui32, column = 1 : i32, row = 1 : i32, value = 0 : ui32}
+        // CHECK-DAG: %[[V2:.*]] = arith.constant 0 : i32
+        // CHECK-DAG: %[[A2:.*]] = arith.constant 786480 : i32
+        // CHECK: aiex.npu.write32(%[[A2]], %[[V2]]) {column = 1 : i32, row = 1 : i32} : i32, i32
         aiex.set_lock(%lock11_3, 0)
         // 787328 = 0x000C0380
-        // CHECK: aiex.npu.write32 {address = 787328 : ui32, column = 1 : i32, row = 1 : i32, value = 0 : ui32}
+        // CHECK-DAG: %[[V3:.*]] = arith.constant 0 : i32
+        // CHECK-DAG: %[[A3:.*]] = arith.constant 787328 : i32
+        // CHECK: aiex.npu.write32(%[[A3]], %[[V3]]) {column = 1 : i32, row = 1 : i32} : i32, i32
         aiex.set_lock(%lock11_56, 0)
         // 82000 = 0x00014050
-        // CHECK: aiex.npu.write32 {address = 82000 : ui32, column = 0 : i32, row = 0 : i32, value = 0 : ui32}
+        // CHECK-DAG: %[[V4:.*]] = arith.constant 0 : i32
+        // CHECK-DAG: %[[A4:.*]] = arith.constant 82000 : i32
+        // CHECK: aiex.npu.write32(%[[A4]], %[[V4]]) {column = 0 : i32, row = 0 : i32} : i32, i32
         aiex.set_lock(%lock00_5, 0)
     }
   }

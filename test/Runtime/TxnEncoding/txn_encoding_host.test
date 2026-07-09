@@ -1,5 +1,5 @@
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 // Build the standalone host program against the dependency-free TxnEncoding.h
 // header (C++ standard library only, no MLIR/LLVM/aie-rt) and byte-check its
