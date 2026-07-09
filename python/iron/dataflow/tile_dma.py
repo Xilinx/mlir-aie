@@ -20,7 +20,7 @@ to be useful.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Iterable
+from typing import Any, Iterable
 
 from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
@@ -246,7 +246,9 @@ class TileDma(Resolvable):
                             acq.emit()
                         # dma_bd takes sizes/strides directly (matches
                         # npu.dma_memcpy_nd's DynamicIndexList operands).
-                        bd_kwargs = dict(sizes=bd.sizes, strides=bd.strides)
+                        bd_kwargs: dict[str, Any] = dict(
+                            sizes=bd.sizes, strides=bd.strides
+                        )
                         if bd.offset:
                             bd_kwargs["offset"] = bd.offset
                         if bd.length is not None:
