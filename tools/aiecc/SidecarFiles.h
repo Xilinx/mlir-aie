@@ -236,15 +236,39 @@ inline llvm::json::Value makePartitionJson(xilinx::AIE::DeviceOp devOp,
                               llvm::json::Array{std::string("0xC1")}}}}}}}}}}};
 }
 
+// Patch-info JSON for external buffers (the runtime control-packet buffer).
+// Consumed by `aiebu-asm` via the `patch_info_file` field in the full-ELF
+// config JSON. `ctrlPktArgIdx` is the runtime-sequence argument slot the
+// control-packet buffer occupies (the sequence's pre-lowering argument count,
+// since ctrl-packet-to-DMA appends the ctrl buffer as the next argument).
+inline llvm::json::Value makePatchInfoJson(int ctrlPktArgIdx,
+                                           int64_t ctrlPktSizeBytes) {
+  using O = llvm::json::Object;
+  return O{{"external_buffers",
+           O{{"buffer_ctrl",
+              O{{"xrt_id", ctrlPktArgIdx},
+                {"logical_id", -1},
+                {"size_in_bytes", ctrlPktSizeBytes},
+                {"ctrl_pkt_buffer", 1},
+                {"name", "runtime_control_packet"}}}}}};
+}
+
 // Full-ELF config.json fed to `aiebu-asm -t aie2_config`. One xrt-kernel per
 // device with ≥1 runtime sequence; PDIs array is shared (all devices) so
 // aiebu-asm can resolve any load_pdi reference. Argument count is
 // max(3, max runtime-seq arity). PDI IDs are read from `aiecc.pdi_id` on each
 // DeviceOp (stamped by `assignDevicePdiIds`).
-inline llvm::json::Value
-makeFullElfConfigJson(const Node<OpInModule<xilinx::AIE::DeviceOp>> &devices,
-                      const llvm::StringMap<std::string> &pdiPaths,
-                      const llvm::StringMap<std::string> &instsPaths) {
+//
+// `ctrlPktPaths` / `patchInfoPaths` (both device-keyed, optional) carry the
+// per-device control-packet binary and its patch-info JSON for the
+// load-pdi-to-ctrl-pkt reconfigure flow; when present they are attached to the
+// device's runtime-sequence instances.
+inline llvm::json::Value makeFullElfConfigJson(
+    const Node<OpInModule<xilinx::AIE::DeviceOp>> &devices,
+    const llvm::StringMap<std::string> &pdiPaths,
+    const llvm::StringMap<std::string> &instsPaths,
+    const llvm::StringMap<std::string> &ctrlPktPaths = {},
+    const llvm::StringMap<std::string> &patchInfoPaths = {}) {
   using O = llvm::json::Object;
   auto devId = [](xilinx::AIE::DeviceOp d) {
     return static_cast<int>(
@@ -275,6 +299,9 @@ makeFullElfConfigJson(const Node<OpInModule<xilinx::AIE::DeviceOp>> &devices,
             {"type", "char *"},
             {"offset", llvm::formatv("0x{0}", llvm::utohexstr(i * 8)).str()}});
 
+    auto ctrlPktIt = ctrlPktPaths.find(devName);
+    auto patchIt = patchInfoPaths.find(devName);
+
     llvm::json::Array instances;
     devOp.walk([&](xilinx::AIE::RuntimeSequenceOp seq) {
       // One `.bin` per runtime sequence, keyed "<device>_<sequence>". Only
@@ -285,8 +312,13 @@ makeFullElfConfigJson(const Node<OpInModule<xilinx::AIE::DeviceOp>> &devices,
       auto instsIt = instsPaths.find(npuSeqKey(devName, seq.getSymName()));
       if (instsIt == instsPaths.end())
         return;
-      instances.push_back(O{{"id", seq.getSymName().str()},
-                            {"TXN_ctrl_code_file", instsIt->second}});
+      O inst{{"id", seq.getSymName().str()},
+             {"TXN_ctrl_code_file", instsIt->second}};
+      if (ctrlPktIt != ctrlPktPaths.end())
+        inst["ctrl_packet_file"] = ctrlPktIt->second;
+      if (patchIt != patchInfoPaths.end())
+        inst["patch_info_file"] = patchIt->second;
+      instances.push_back(std::move(inst));
     });
     if (instances.empty())
       continue;

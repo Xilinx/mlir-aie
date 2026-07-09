@@ -13,6 +13,7 @@
 #include "mlir/Pass/Pass.h"
 
 #include "llvm/ADT/SmallSet.h"
+#include "llvm/ADT/SetVector.h"
 
 namespace xilinx::AIE {
 #define GEN_PASS_DEF_AIEGENERATECOLUMNCONTROLOVERLAY
@@ -144,12 +145,155 @@ struct AIEGenerateColumnControlOverlayPass
     registry.insert<memref::MemRefDialect>();
   }
   void runOnOperation() override {
-    DeviceOp device = getOperation();
+    ModuleOp module = getOperation();
+    OpBuilder builder(module.getContext());
+    auto boolTrue = builder.getBoolAttr(true);
+    auto boolFalse = builder.getBoolAttr(false);
+
+    // Gather source devices in module order. Skip a previously-generated
+    // overlay device so the pass is idempotent on its own output.
+    SmallVector<DeviceOp> sourceDevices;
+    for (auto dev : module.getOps<DeviceOp>()) {
+      if (dev.getSymName() == "ctrl_pkt_overlay")
+        continue;
+      sourceDevices.push_back(dev);
+    }
+
+    // Baseline-preserving fast path: unless a standalone `@ctrl_pkt_overlay`
+    // device was explicitly requested (the load-pdi-to-ctrl-pkt / reconfigure
+    // flow), apply the overlay in place to every device exactly as the legacy
+    // per-device pass did -- no extra attributes and no standalone device.
+    // This keeps both the default `route-shim-to-tct` flow and direct
+    // `route-shim-to-tile-ctrl=true` invocations byte-identical.
+    if (!clEmitStandaloneOverlay) {
+      for (auto dev : sourceDevices)
+        if (failed(applyOverlayToDevice(dev)))
+          return signalPassFailure();
+      return;
+    }
+
+    // Ctrl-pkt flow: apply the overlay in place to each participating device
+    // and emit a separate standalone `@ctrl_pkt_overlay` device.
+
+    // Devices that participate in the standalone overlay (i.e. have not opted
+    // out via `needs_ctrl_pkt_overlay = false`). Opted-out devices are tagged
+    // immediately with `has_ctrl_pkt_overlay = false`.
+    SmallVector<DeviceOp> participating;
+    for (auto dev : sourceDevices) {
+      if (deviceOptedOut(dev)) {
+        dev->setAttr("has_ctrl_pkt_overlay", boolFalse);
+        continue;
+      }
+      participating.push_back(dev);
+    }
+
+    // Step 1: apply the overlay in-place to each participating device, unless
+    // the user asked us to suppress the in-place application via
+    // `standalone-device-only`. Either way, tag each participating source
+    // device with a `has_ctrl_pkt_overlay` boolean reflecting what happened.
+    //
+    // Before applying the overlay to a device, ensure that device contains
+    // the full union of tiles referenced across all participating devices,
+    // so the overlay shape (routes, shim_dma_allocations) is identical in
+    // every device. When importing a missing tile, copy its attributes from
+    // a participating device's prototype so downstream passes that compare
+    // attribute dictionaries (e.g. AIEMaterializeRuntimeSequences) match.
+    llvm::SmallSetVector<AIE::TileID, 8> unionTiles;
+    llvm::DenseMap<AIE::TileID, AIE::TileOp> prototypeTile;
+    for (auto dev : participating) {
+      for (auto tOp : dev.getOps<AIE::TileOp>()) {
+        AIE::TileID id{tOp.colIndex(), tOp.rowIndex()};
+        unionTiles.insert(id);
+        if (!prototypeTile.contains(id))
+          prototypeTile[id] = tOp;
+      }
+    }
+
+    for (auto dev : participating) {
+      if (clStandaloneDeviceOnly) {
+        dev->setAttr("has_ctrl_pkt_overlay", boolFalse);
+        continue;
+      }
+      // Add any missing tiles from the union so the overlay shape is shared.
+      llvm::SmallSet<AIE::TileID, 8> existing;
+      for (auto tOp : dev.getOps<AIE::TileOp>())
+        existing.insert({tOp.colIndex(), tOp.rowIndex()});
+      OpBuilder b = OpBuilder::atBlockBegin(dev.getBody());
+      for (auto id : unionTiles) {
+        if (existing.contains(id))
+          continue;
+        auto proto = prototypeTile[id];
+        auto cloned = cast<AIE::TileOp>(b.clone(*proto.getOperation()));
+        (void)cloned;
+      }
+      if (failed(applyOverlayToDevice(dev)))
+        return signalPassFailure();
+      dev->setAttr("has_ctrl_pkt_overlay", boolTrue);
+    }
+
+    // Step 2: always emit a separate `@ctrl_pkt_overlay` device that contains
+    // only the overlay (and the union of tiles it references). This gives
+    // downstream consumers a single, isolated device to compile when they
+    // need to ship a reconfigure-only PDI, regardless of whether the overlay
+    // was also applied in place.
+    if (participating.empty())
+      return;
+
+    // Verify all participating devices share the same target.
+    auto refDevice = participating.front().getDevice();
+    for (auto dev : llvm::drop_begin(participating)) {
+      if (dev.getDevice() != refDevice) {
+        dev->emitOpError(
+            "cannot generate a single standalone ctrl_pkt_overlay device: "
+            "participating devices have mismatched target architectures.");
+        return signalPassFailure();
+      }
+    }
+
+    // Refuse to overwrite an existing symbol with the reserved name.
+    if (module.lookupSymbol("ctrl_pkt_overlay")) {
+      module.emitOpError(
+          "a symbol named `ctrl_pkt_overlay` already exists in the module; "
+          "cannot create a standalone ctrl_pkt_overlay device.");
+      return signalPassFailure();
+    }
+
+    // Create the new device at the end of the module.
+    builder.setInsertionPointToEnd(module.getBody());
+    Location loc = participating.front().getLoc();
+    auto overlayDevice = AIE::DeviceOp::create(
+        builder, loc, refDevice, builder.getStringAttr("ctrl_pkt_overlay"));
+    overlayDevice.getRegion().emplaceBlock();
+    Block *body = &overlayDevice.getRegion().front();
+    builder.setInsertionPointToEnd(body);
+    AIE::EndOp::create(builder, loc);
+
+    // Clone the union of TileIDs referenced across participating devices.
+    llvm::SmallSet<AIE::TileID, 8> seenTiles;
+    builder.setInsertionPointToStart(body);
+    for (auto dev : participating) {
+      for (auto tOp : dev.getOps<AIE::TileOp>()) {
+        AIE::TileID id{tOp.colIndex(), tOp.rowIndex()};
+        if (!seenTiles.insert(id).second)
+          continue;
+        AIE::TileOp::create(builder, tOp.getLoc(), id.col, id.row);
+      }
+    }
+
+    if (failed(applyOverlayToDevice(overlayDevice)))
+      return signalPassFailure();
+
+    overlayDevice->setAttr("has_ctrl_pkt_overlay", boolTrue);
+  }
+
+  // Apply the column-control overlay to `device` in place. Returns failure on
+  // a routing conflict.
+  LogicalResult applyOverlayToDevice(DeviceOp device) {
     const auto &targetModel = device.getTargetModel();
     OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
 
     if (targetModel.getTargetArch() == AIEArch::AIE1)
-      return; // Disable this pass for AIE1; AIE1 support NYI.
+      return success(); // Disable this pass for AIE1; AIE1 support NYI.
 
     // Collect existing TileOps
     llvm::MapVector<AIE::TileID, AIE::TileOp> tiles;
@@ -178,24 +322,41 @@ struct AIEGenerateColumnControlOverlayPass
           tilesOnCol.push_back(tOp);
         }
 
-        generatePacketFlowsForControl(
-            builder, device, shimTile, AIE::WireBundle::South, tilesOnCol,
-            AIE::WireBundle::TileControl, 0, tileIDMap, false);
+        if (failed(generatePacketFlowsForControl(
+                builder, device, shimTile, AIE::WireBundle::South, tilesOnCol,
+                AIE::WireBundle::TileControl, 0, tileIDMap, false)))
+          return failure();
       }
       if (clRouteShimDmaToTileCTRL) {
-        // Get all tile ops on column col
-        SmallVector<AIE::TileOp> tilesOnCol;
+        // Ensure tiles exist for the full range from shim (row 0) to the
+        // highest existing tile in the column. Intermediate tiles (e.g. mem
+        // tiles) are needed for control packet routing and will also need
+        // their switchboxes configured via control packets.
+        int maxRow = 0;
         for (auto &[tId, tOp] : tiles) {
-          if (tId.col != col)
-            continue;
+          if (tId.col == col)
+            maxRow = std::max(maxRow, tId.row);
+        }
+        SmallVector<AIE::TileOp> tilesOnCol;
+        for (int row = 0; row <= maxRow; row++) {
+          auto tOp = TileOp::getOrCreate(builder, device, col, row);
           tilesOnCol.push_back(tOp);
         }
 
-        generatePacketFlowsForControl(
-            builder, device, shimTile, AIE::WireBundle::DMA, tilesOnCol,
-            AIE::WireBundle::TileControl, 0, tileIDMap, true);
+        if (failed(generatePacketFlowsForControl(
+                builder, device, shimTile, AIE::WireBundle::DMA, tilesOnCol,
+                AIE::WireBundle::TileControl, 0, tileIDMap, true)))
+          return failure();
       }
     }
+    return success();
+  }
+
+  // Return true when the user has explicitly disabled overlay generation for
+  // this device via `needs_ctrl_pkt_overlay = false`.
+  static bool deviceOptedOut(DeviceOp device) {
+    auto attr = device->getAttrOfType<BoolAttr>("needs_ctrl_pkt_overlay");
+    return attr && !attr.getValue();
   }
 
   AIE::PacketFlowOp createPacketFlowOp(OpBuilder &builder, Location loc,
@@ -257,13 +418,11 @@ struct AIEGenerateColumnControlOverlayPass
 
   // Create packet flows per col which moves control packets to and from shim
   // dma
-  void generatePacketFlowsForControl(OpBuilder builder, DeviceOp device,
-                                     TileOp shimTile, WireBundle shimWireBundle,
-                                     SmallVector<AIE::TileOp> ctrlTiles,
-                                     WireBundle ctrlWireBundle,
-                                     int coreOrMemChanId,
-                                     DenseMap<TileID, int> tileIDMap,
-                                     bool isShimMM2S) {
+  LogicalResult generatePacketFlowsForControl(
+      OpBuilder builder, DeviceOp device, TileOp shimTile,
+      WireBundle shimWireBundle, SmallVector<AIE::TileOp> ctrlTiles,
+      WireBundle ctrlWireBundle, int coreOrMemChanId,
+      DenseMap<TileID, int> tileIDMap, bool isShimMM2S) {
     int ctrlPktFlowID = 0;
     auto rowToShimChanMap =
         getRowToShimChanMap(device.getTargetModel(), shimWireBundle);
@@ -287,7 +446,7 @@ struct AIEGenerateColumnControlOverlayPass
             "failed to generate column control overlay from shim dma to tile "
             "ctrl ports, because some shim mm2s dma channels were reserved "
             "from routing control packets.");
-        return signalPassFailure();
+        return failure();
       }
 
       auto keep_pkt_header = builder.getBoolAttr(true);
@@ -325,6 +484,7 @@ struct AIEGenerateColumnControlOverlayPass
           builder, tOp.getLoc(), StringRef(dma_name), shimTile.getResult(), dir,
           rowToShimChanMap[tOp.rowIndex()], false, nullptr);
     }
+    return success();
   }
 
   // Get packet-flow op with the same source or destination
@@ -358,7 +518,7 @@ std::unique_ptr<OperationPass<DeviceOp>> AIE::createAIEAssignTileCtrlIDsPass() {
   return std::make_unique<AIEAssignTileCtrlIDsPass>();
 }
 
-std::unique_ptr<OperationPass<DeviceOp>>
+std::unique_ptr<OperationPass<mlir::ModuleOp>>
 AIE::createAIEGenerateColumnControlOverlayPass() {
   return std::make_unique<AIEGenerateColumnControlOverlayPass>();
 }

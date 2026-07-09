@@ -408,7 +408,7 @@ def AIEAssignTileCtrlIDs : Pass<"aie-assign-tile-controller-ids", "DeviceOp"> {
   ];
 }
 
-def AIEGenerateColumnControlOverlay : Pass<"aie-generate-column-control-overlay", "DeviceOp"> {
+def AIEGenerateColumnControlOverlay : Pass<"aie-generate-column-control-overlay", "mlir::ModuleOp"> {
   let summary = "Spawns streaming interconnect network for column control";
   let description = [{
     For each column of AIE tiles being employed in the design, spawn a network of control packet
@@ -424,6 +424,10 @@ def AIEGenerateColumnControlOverlay : Pass<"aie-generate-column-control-overlay"
             "Flag to generate TCT routing between tile CTRL and shim SOUTH ports. Available options: ['shim-only', 'all-tiles', 'disable'].">,
     Option<"clRouteShimDmaToTileCTRL", "route-shim-to-tile-ctrl", "bool", /*default=*/"false",
             "Flag to generate routing between shim dma DMA and tile CTRL ports, for configuration.">,
+    Option<"clStandaloneDeviceOnly", "standalone-device-only", "bool", /*default=*/"false",
+            "Only emit the standalone @ctrl_pkt_overlay device; do not apply the overlay in place to source devices.">,
+    Option<"clEmitStandaloneOverlay", "emit-standalone-overlay", "bool", /*default=*/"false",
+            "Emit a standalone @ctrl_pkt_overlay device (and tag source devices) for the load-pdi-to-ctrl-pkt reconfigure flow. When false, the pass applies the overlay in place only (legacy behavior).">,
   ];
 }
 

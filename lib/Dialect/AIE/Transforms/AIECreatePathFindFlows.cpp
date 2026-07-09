@@ -282,6 +282,8 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
   DenseMap<PhysPort, BoolAttr> keepPktHeaderAttr;
   // Map from tileID and master ports to flags labelling control packet flows
   DenseMap<std::pair<PhysPort, int>, bool> ctrlPktFlows;
+  // Set of master ports that belong to control packet overlay flows
+  DenseSet<PhysPort> ctrlPktOverlayMasterPorts;
 
   for (auto tileOp : device.getOps<TileOp>()) {
     int col = tileOp.colIndex();
@@ -365,9 +367,10 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
       Port destPort = conn.dst;
       auto sourceFlow =
           std::make_pair(std::make_pair(tileId, sourcePort), flowID);
-      if (ctrlPktFlows[{{tileId, destPort}, flowID}])
+      if (ctrlPktFlows[{{tileId, destPort}, flowID}]) {
         ctrlPacketFlows[sourceFlow].push_back({tileId, destPort});
-      else
+        ctrlPktOverlayMasterPorts.insert({tileId, destPort});
+      } else
         packetFlows[sourceFlow].push_back({tileId, destPort});
       slavePorts.push_back(sourceFlow);
       LLVM_DEBUG(llvm::dbgs() << "flowID " << flowID << ':'
@@ -882,9 +885,11 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
         amsels.push_back(amselOps[msel]);
       }
 
-      MasterSetOp::create(builder, tileLoc, builder.getIndexType(), bundle,
-                          channel, amsels,
-                          keepPktHeaderAttr[{tileId, tileMaster}]);
+      auto msOp = MasterSetOp::create(builder, tileLoc, builder.getIndexType(),
+                                      bundle, channel, amsels,
+                                      keepPktHeaderAttr[{tileId, tileMaster}]);
+      if (ctrlPktOverlayMasterPorts.contains({tileId, tileMaster}))
+        msOp->setAttr("is_ctrl_pkt_overlay", builder.getUnitAttr());
     }
 
     // Generate the packet rules
@@ -910,11 +915,16 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
 #endif
       Value amsel = amselOps[slaveAMSels[group.front()]];
 
+      // Check if this group is a ctrl-pkt overlay flow
+      bool isCtrlPktGroup = ctrlPacketFlows.count(group.front()) > 0;
+
       PacketRulesOp packetrules;
       if (slaveRules.count(slave) == 0) {
         packetrules = PacketRulesOp::create(builder, tileLoc, bundle, channel);
         PacketRulesOp::ensureTerminator(packetrules.getRules(), builder,
                                         tileLoc);
+        if (isCtrlPktGroup)
+          packetrules->setAttr("is_ctrl_pkt_overlay", builder.getUnitAttr());
         slaveRules[slave] = packetrules;
       } else
         packetrules = slaveRules[slave];

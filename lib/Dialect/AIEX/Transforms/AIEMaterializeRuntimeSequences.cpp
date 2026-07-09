@@ -135,7 +135,9 @@ struct InsertLoadPdiForConfigurePattern : RewritePattern {
     rewriter.setInsertionPointToStart(configureBlock);
     AIEX::NpuLoadPdiOp::create(
         rewriter, configureOp.getLoc(),
-        FlatSymbolRefAttr::get(referencedDevice.getSymNameAttr()));
+        FlatSymbolRefAttr::get(referencedDevice.getSymNameAttr()),
+        /*id=*/nullptr, /*size=*/nullptr, /*address=*/nullptr,
+        /*expand_mode=*/configureOp.getExpandModeAttr());
 
     return success();
   }

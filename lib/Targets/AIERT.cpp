@@ -679,7 +679,8 @@ LogicalResult xilinx::AIE::AIERTControl::initBuffers(DeviceOp &targetOp) {
   return success();
 }
 
-LogicalResult xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp) {
+LogicalResult xilinx::AIE::AIERTControl::configureSwitches(
+    DeviceOp &targetOp, bool skipCtrlPktOverlay) {
 
   // StreamSwitch (switchbox) configuration
   for (auto switchboxOp : targetOp.getOps<SwitchboxOp>()) {
@@ -691,6 +692,8 @@ LogicalResult xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp) {
 
     Block &b = switchboxOp.getConnections().front();
     for (auto connectOp : b.getOps<ConnectOp>()) {
+      if (skipCtrlPktOverlay && connectOp->hasAttr("is_ctrl_pkt_overlay"))
+        continue;
       TxnLocBracket bracket(*this, connectOp.getLoc());
       TRY_XAIE_API_EMIT_ERROR(
           switchboxOp, XAie_StrmConnCctEnable, &aiert->devInst, tileLoc,
@@ -701,6 +704,8 @@ LogicalResult xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp) {
     }
 
     for (auto masterSetOp : b.getOps<MasterSetOp>()) {
+      if (skipCtrlPktOverlay && masterSetOp->hasAttr("is_ctrl_pkt_overlay"))
+        continue;
       TxnLocBracket bracket(*this, masterSetOp.getLoc());
       int mask = 0;
       int arbiter = -1;
@@ -736,6 +741,8 @@ LogicalResult xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp) {
     }
 
     for (auto packetRulesOp : b.getOps<PacketRulesOp>()) {
+      if (skipCtrlPktOverlay && packetRulesOp->hasAttr("is_ctrl_pkt_overlay"))
+        continue;
       TxnLocBracket bracket(*this, packetRulesOp.getLoc());
       int slot = 0;
       Block &block = packetRulesOp.getRules().front();
@@ -800,7 +807,8 @@ LogicalResult xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp) {
   return success();
 }
 
-LogicalResult xilinx::AIE::AIERTControl::addInitConfig(DeviceOp &targetOp) {
+LogicalResult xilinx::AIE::AIERTControl::addInitConfig(
+    DeviceOp &targetOp, bool skipCtrlPktOverlay) {
 
   if (failed(initLocks(targetOp))) {
     return failure();
@@ -865,7 +873,7 @@ LogicalResult xilinx::AIE::AIERTControl::addInitConfig(DeviceOp &targetOp) {
       }
   }
 
-  if (failed(configureSwitches(targetOp))) {
+  if (failed(configureSwitches(targetOp, skipCtrlPktOverlay))) {
     return failure();
   }
 

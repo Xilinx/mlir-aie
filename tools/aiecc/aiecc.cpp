@@ -352,16 +352,19 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
           .map<ModRef>("traced.mlir", PassPipeline{getTracePipeline(&context)})
           .map<ModRef>(
               "input_with_addresses.mlir",
-              PassPipeline{&context,
-                           [scheme = allocScheme.getValue(),
-                            dyn = dynamicObjFifos.getValue(),
-                            pkt = packetSwObjFifos.getValue(),
-                            ctrl = ctrlPktOverlay.getValue(),
-                            bf16 = bf16Emulation.getValue()](
-                               mlir::MLIRContext *ctx, mlir::ModuleOp mod) {
-                             return getInputWithAddressesPipeline(
-                                 ctx, mod, scheme, dyn, pkt, ctrl, bf16);
-                           }});
+              PassPipeline{
+                  &context,
+                  [scheme = allocScheme.getValue(),
+                   dyn = dynamicObjFifos.getValue(),
+                   pkt = packetSwObjFifos.getValue(),
+                   ctrl = ctrlPktOverlay.getValue() ||
+                          loadPdiToCtrlPkt.getValue(),
+                   ldpdi = loadPdiToCtrlPkt.getValue(),
+                   bf16 = bf16Emulation.getValue()](mlir::MLIRContext *ctx,
+                                                    mlir::ModuleOp mod) {
+                    return getInputWithAddressesPipeline(ctx, mod, scheme, dyn,
+                                                         pkt, ctrl, bf16, ldpdi);
+                  }});
 
   // Scratchpad run-time parameters sidecar file
   auto &paramsFile = withAddresses.map<std::string>(
@@ -580,8 +583,12 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   //     `convert-aie-to-transaction` reads each core's `elf_file` to emit a
   //     `@configure` sequence that reprograms the cores, so the cores must be
   //     lowered (a core without an `elf_file` is skipped from the transaction).
-  bool npuTransactionsNeedCoresLowered =
-      expandLoadPdis.getValue() || generateTxn;
+  //   * --load-pdi-to-ctrl-pkt expands the configuration into control packets
+  //     (via the same expand-load-pdi machinery), which likewise needs the
+  //     compiled cores.
+  bool npuTransactionsNeedCoresLowered = expandLoadPdis.getValue() ||
+                                         generateTxn.getValue() ||
+                                         loadPdiToCtrlPkt.getValue();
   EdgeWithTypedOutput<ModRef> &npuLoweringInput =
       npuTransactionsNeedCoresLowered
           ? static_cast<EdgeWithTypedOutput<ModRef> &>(physicalWithElfs)
@@ -589,17 +596,56 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   auto &npuLowered = npuLoweringInput.map<ModRef>(
       "npu_lowered.mlir",
       [expand = expandLoadPdis.getValue(),
+       ctrlPkt = loadPdiToCtrlPkt.getValue(),
        materialize = !noMaterialize.getValue()](
           const Item<ModRef> &item, Item<ModRef> &out) -> mlir::LogicalResult {
         ModRef clone = item.get().get().clone();
-        if (mlir::failed(
-                getNpuLoweringPipeline(clone->getContext(), materialize)
-                    ->run(*clone)))
-          return mlir::failure();
-        if (expand)
-          if (mlir::failed(
-                  getExpandLoadPdiPipeline(clone->getContext())->run(*clone)))
+        auto *ctx = clone->getContext();
+        if (ctrlPkt) {
+          // Ctrl-pkt / reconfigure flow: materialize runtime sequences, then
+          // expand `load_pdi @device` ops into `load_pdi @ctrl_pkt_overlay` +
+          // `aiex.npu.control_packet` ops. Before lowering the control packets
+          // to DMA, extract the control-packet binary per device and stash it
+          // (with the runtime-argument slot it occupies) on the DeviceOp, so
+          // the full-ELF config can bake it in as a data section. Finally
+          // lower the control packets to DMA and run the DMA→NPU lowering.
+          if (mlir::failed(getMaterializeRuntimeSeqPipeline(ctx)->run(*clone)))
             return mlir::failure();
+          auto expandPM = getExpandLoadPdiPipeline(ctx, /*ctrlPkt=*/true);
+          if (!expandPM || mlir::failed(expandPM->run(*clone)))
+            return mlir::failure();
+          for (auto dev : clone->getOps<DeviceOp>()) {
+            auto seqRange = dev.getOps<RuntimeSequenceOp>();
+            if (seqRange.empty())
+              continue;
+            RuntimeSequenceOp seq = *seqRange.begin();
+            std::vector<uint32_t> words;
+            if (mlir::failed(xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
+                    clone.get(), words, dev.getSymName(), "")))
+              return mlir::failure();
+            if (words.empty())
+              continue;
+            llvm::SmallVector<int32_t> data(words.begin(), words.end());
+            dev->setAttr("aiecc.ctrl_pkt_binary",
+                         mlir::DenseI32ArrayAttr::get(ctx, data));
+            int argCount = seq.getBody().empty()
+                               ? 0
+                               : seq.getBody().front().getNumArguments();
+            dev->setAttr("aiecc.ctrl_pkt_arg_idx",
+                         mlir::Builder(ctx).getI32IntegerAttr(argCount));
+          }
+          if (mlir::failed(getCtrlPktToDmaPipeline(ctx)->run(*clone)))
+            return mlir::failure();
+          if (mlir::failed(getPerDeviceDmaLoweringPipeline(ctx)->run(*clone)))
+            return mlir::failure();
+        } else {
+          if (mlir::failed(
+                  getNpuLoweringPipeline(ctx, materialize)->run(*clone)))
+            return mlir::failure();
+          if (expand)
+            if (mlir::failed(getExpandLoadPdiPipeline(ctx)->run(*clone)))
+              return mlir::failure();
+        }
         assignDevicePdiIds(*clone);
         assignLoadPdiIds(*clone);
         out.value = std::move(clone);
@@ -608,11 +654,17 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
 
   // Root of the static configuration branch; contains compiled cores, etc., to
   // produce xclbins, or feed into the full ELF. Usually, this is completely
-  // independent from the NPU runtime sequence compilation; however, the
-  // --expand-load-pdis pass generates new empty_0/1 devices, for which we must
-  // also generate PDIs, which is the only reason for the selection here
+  // independent from the NPU runtime sequence compilation; however, two passes
+  // synthesize new empty_0/1 reset devices (via the shared expand-load-pdi
+  // machinery), for which we must also generate PDIs / control packets, so the
+  // static branch must observe those devices by rooting on `npuLowered`:
+  //   * --expand-load-pdis generates the empty_0/1 devices directly.
+  //   * --load-pdi-to-ctrl-pkt runs the same expansion (with ctrl-pkt=true) and
+  //     additionally materializes the reconfigure runtime sequence, so the
+  //     control-packet flow (getControlPacketPipeline) sees a lowered module
+  //     rather than un-materialized `aiex.configure`/`aiex.run` ops.
   EdgeWithTypedOutput<ModRef> &staticInput =
-      expandLoadPdis.getValue()
+      (expandLoadPdis.getValue() || loadPdiToCtrlPkt.getValue())
           ? static_cast<EdgeWithTypedOutput<ModRef> &>(npuLowered)
           : static_cast<EdgeWithTypedOutput<ModRef> &>(physicalWithElfs);
   auto &staticPerDevice =
@@ -1018,22 +1070,80 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
       "npu_insts_full_elf_{0}.bin",
       [](const NpuProgram &p) { return p.insts; });
 
-  // Combined ELF: all PDIs + NPU insts bundled into one aie2_config ELF.
+  // Per-device control-packet artifacts for the load-pdi-to-ctrl-pkt
+  // reconfigure flow. The NPU-lowering edge stashed the control-packet words
+  // and the runtime-argument slot they occupy on each participating DeviceOp;
+  // surface them here as first-class graph artifacts so the engine materializes
+  // the `.ctrlpkt.bin` / `.patch_info.json` and the full-ELF config join can
+  // reference them by path (rather than writing files itself). The set is
+  // filtered to the devices that actually carry the attribute, so when the flow
+  // is inactive both edges are empty and the config omits the control-packet
+  // fields.
+  auto &ctrlPktDevices = npuLoweredPerDevice.filter(
+      "fullElfCtrlPktDevices", [](const OpInModule<DeviceOp> &x) {
+        return (bool)DeviceOp(x.op)->getAttrOfType<mlir::DenseI32ArrayAttr>(
+            "aiecc.ctrl_pkt_binary");
+      });
+
+  auto &fullElfCtrlpkt = ctrlPktDevices.map<std::vector<char>>(
+      "full_elf_{0}.ctrlpkt.bin",
+      emitBinary<OpInModule<DeviceOp>>(
+          [](const Item<OpInModule<DeviceOp>> &item,
+             std::vector<uint32_t> &words) -> mlir::LogicalResult {
+            DeviceOp d = item.get().op;
+            auto ref = d->getAttrOfType<mlir::DenseI32ArrayAttr>(
+                            "aiecc.ctrl_pkt_binary")
+                           .asArrayRef();
+            words.assign(ref.begin(), ref.end());
+            return mlir::success();
+          }));
+
+  auto &fullElfPatchInfo = ctrlPktDevices.map<llvm::json::Value>(
+      "full_elf_{0}.patch_info.json",
+      [](const Item<OpInModule<DeviceOp>> &item,
+         Item<llvm::json::Value> &out) -> mlir::LogicalResult {
+        DeviceOp d = item.get().op;
+        auto binRef =
+            d->getAttrOfType<mlir::DenseI32ArrayAttr>("aiecc.ctrl_pkt_binary")
+                .asArrayRef();
+        int argIdx =
+            (int)d->getAttrOfType<mlir::IntegerAttr>("aiecc.ctrl_pkt_arg_idx")
+                .getInt();
+        out.value = makePatchInfoJson(
+            argIdx, (int64_t)binRef.size() * sizeof(int32_t));
+        return mlir::success();
+      });
+
+  // Combined ELF: all PDIs + NPU insts bundled into one aie2_config ELF. The
+  // full-ELF NPU insts (unfolded DDR offset) plus, when the load-pdi-to-ctrl-pkt
+  // reconfigure flow is active, the per-device control-packet binary and
+  // patch-info edges are bundled in so their file dependency is captured in the
+  // graph; the join reads their materialized paths and hands them to the config
+  // builder, which attaches them to the owning device's runtime-sequence
+  // instances.
   auto &fullElfConfig =
-      bundle(npuLoweredPerDevice.out, pdi.out, npuInstsFullElf.out)
+      bundle(npuLoweredPerDevice.out, pdi.out, npuInstsFullElf.out,
+             fullElfCtrlpkt.out, fullElfPatchInfo.out)
           .join<llvm::json::Value>(
               "full_elf_config.json",
               [](const Node<OpInModule<DeviceOp>> &devices,
                  const Node<File> &pdis,
                  const Node<std::vector<char>> &instsBins,
+                 const Node<std::vector<char>> &ctrlPkts,
+                 const Node<llvm::json::Value> &patchInfos,
                  Item<llvm::json::Value> &out) -> mlir::LogicalResult {
                 llvm::StringMap<std::string> pdiPaths, instsPaths;
+                llvm::StringMap<std::string> ctrlPktPaths, patchInfoPaths;
                 for (const auto &item : pdis.items)
                   pdiPaths[item.key] = absolutePath(item.asFile());
                 for (const auto &item : instsBins.items)
                   instsPaths[item.key] = absolutePath(item.asFile());
-                out.value =
-                    makeFullElfConfigJson(devices, pdiPaths, instsPaths);
+                for (const auto &item : ctrlPkts.items)
+                  ctrlPktPaths[item.key] = absolutePath(item.asFile());
+                for (const auto &item : patchInfos.items)
+                  patchInfoPaths[item.key] = absolutePath(item.asFile());
+                out.value = makeFullElfConfigJson(devices, pdiPaths, instsPaths,
+                                                  ctrlPktPaths, patchInfoPaths);
                 return mlir::success();
               });
 
@@ -1146,7 +1256,13 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
     outputs.push_back(&pdi);
   if (generateTxn)
     outputs.push_back(&txn);
-  if (generateCtrlpkt) {
+  // The standalone control-packet artifacts (partial ELF + DMA sequence, with
+  // the DDR-aperture offset folded for the xclbin / instruction-buffer runtime)
+  // are the xclbin-path delivery mechanism. In the --load-pdi-to-ctrl-pkt
+  // reconfigure flow targeting a full ELF they are superseded: the control
+  // packets are baked into aie.elf directly (fold-free, via the fullElfCtrlpkt /
+  // patch-info edges), so the standalone partial outputs must not be emitted.
+  if (generateCtrlpkt && !(loadPdiToCtrlPkt && generateFullElf)) {
     outputs.push_back(&ctrlpkt);
     outputs.push_back(&ctrlpktDmaSeq);
     outputs.push_back(&ctrlpktElf);
@@ -1299,11 +1415,14 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  // The control-packet DMA sequence targets the xclbin / instruction-buffer
-  // runtime, never the full-ELF runtime, so the two must not be requested
-  // together (see the hard-coded fold in the ctrlpktDmaSeq edge).
-  if (generateFullElf && generateCtrlpkt) {
-    llvm::errs() << "aiecc: --get-full-elf and --get-ctrlpkt are "
+  // The standalone control-packet DMA sequence targets the xclbin /
+  // instruction-buffer runtime, never the full-ELF runtime, so the two must not
+  // be requested together (see the hard-coded fold in the ctrlpktDmaSeq edge).
+  // The --load-pdi-to-ctrl-pkt reconfigure flow is the exception: there the
+  // control packets are baked into the full ELF itself (fold-free, via the
+  // fullElfCtrlpkt / patch-info edges), so full-ELF + ctrl-pkt is valid.
+  if (generateFullElf && generateCtrlpkt && !loadPdiToCtrlPkt) {
+    llvm::errs() << "aiecc: --generate-full-elf and --aie-generate-ctrlpkt are "
                     "mutually exclusive\n";
     return 1;
   }

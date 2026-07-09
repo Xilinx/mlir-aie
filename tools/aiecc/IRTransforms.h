@@ -560,11 +560,10 @@ getTracePipeline(mlir::MLIRContext *ctx) {
 // Vector → AIEVec → buffer/lock/DMA setup → control-overlay → SCF lowering.
 // Operates on the whole module; the inner pipeline nests under DeviceOp.
 // Inspects `mod` for target arch (drives `convert-vector-to-aievec` opts).
-inline std::unique_ptr<mlir::PassManager>
-getInputWithAddressesPipeline(mlir::MLIRContext *ctx, mlir::ModuleOp mod,
-                              llvm::StringRef allocScheme, bool dynamicObjFifos,
-                              bool packetSwObjFifos, bool ctrlPktOverlay,
-                              bool bf16Emulation) {
+inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
+    mlir::MLIRContext *ctx, mlir::ModuleOp mod, llvm::StringRef allocScheme,
+    bool dynamicObjFifos, bool packetSwObjFifos, bool ctrlPktOverlay,
+    bool bf16Emulation, bool loadPdiToCtrlPkt = false) {
   using namespace xilinx::AIE;
   namespace X = xilinx::AIEX;
   auto pm = std::make_unique<mlir::PassManager>(ctx);
@@ -583,6 +582,24 @@ getInputWithAddressesPipeline(mlir::MLIRContext *ctx, mlir::ModuleOp mod,
   // buffers need addresses). params.txt is materialized as a separate graph
   // edge, so no `outputParamsFile` is set here.
   pm->addPass(X::createAIELowerScratchpadParametersPass());
+
+  // The control-overlay pass is module-level (it may emit a standalone
+  // `@ctrl_pkt_overlay` device). In the ctrl-pkt / reconfigure flow
+  // (`ctrlPktOverlay`) it must run BEFORE objectFIFO lowering so the overlay
+  // claims its shim DMA channels first and the objectFIFO transform
+  // (DMAChannelAnalysis) works around them. In the baseline flow it keeps its
+  // historical position (after objectFIFO + tile-ctrl-id assignment).
+  if (ctrlPktOverlay) {
+    if (mlir::failed(mlir::parsePassPipeline(
+            llvm::formatv(
+                "aie-generate-column-control-overlay{{route-shim-to-tile-ctrl="
+                "true emit-standalone-overlay={0}}",
+                loadPdiToCtrlPkt)
+                .str(),
+            *pm)))
+      return nullptr;
+  }
+
   mlir::OpPassManager &dpm = pm->nest<DeviceOp>();
   dpm.addPass(createAIEAssignLockIDsPass());
   if (mlir::failed(mlir::parsePassPipeline(
@@ -597,18 +614,23 @@ getInputWithAddressesPipeline(mlir::MLIRContext *ctx, mlir::ModuleOp mod,
   dpm.addPass(X::createAIEBroadcastPacketPass());
   dpm.addPass(X::createAIELowerMulticastPass());
   dpm.addPass(createAIEAssignTileCtrlIDsPass());
-  if (mlir::failed(mlir::parsePassPipeline(
-          llvm::formatv("aie-generate-column-control-overlay{{route-shim-to-"
-                        "tile-ctrl={0}}",
-                        ctrlPktOverlay)
-              .str(),
-          dpm)))
-    return nullptr;
+
+  // Baseline flow: run the (module-level) overlay pass at its historical
+  // position. Break out of the device nest to run it, then resume with a new
+  // device nest for the remaining per-device passes.
+  if (!ctrlPktOverlay) {
+    if (mlir::failed(mlir::parsePassPipeline(
+            "aie-generate-column-control-overlay{route-shim-to-tile-ctrl=false}",
+            *pm)))
+      return nullptr;
+  }
+
+  mlir::OpPassManager &dpm2 = pm->nest<DeviceOp>();
   AIEAssignBufferAddressesOptions bufOpts;
   bufOpts.clAllocScheme = allocScheme.str();
-  dpm.addPass(createAIEAssignBufferAddressesPass(bufOpts));
-  dpm.addPass(createAIEAssignCoreLinkFilesPass());
-  dpm.addPass(createAIEVectorTransferLoweringPass());
+  dpm2.addPass(createAIEAssignBufferAddressesPass(bufOpts));
+  dpm2.addPass(createAIEAssignCoreLinkFilesPass());
+  dpm2.addPass(createAIEVectorTransferLoweringPass());
   pm->addPass(xilinx::AIEX::createAIESCFToControlFlowPass());
   return pm;
 }
@@ -723,12 +745,59 @@ getNpuLoweringPipeline(mlir::MLIRContext *ctx, bool materialize = true) {
   return pm;
 }
 
-// `load_pdi { device_ref }` → explicit write sequences, avoiding a per-switch
-// full PDI reload.
+// `load_pdi { device_ref }` → explicit write32 or control-packet sequences.
+// With `ctrlPkt=false` the referenced device's configuration is emitted as
+// `write32`/`blockwrite` ops; with `ctrlPkt=true` it is emitted as
+// `aiex.npu.control_packet` ops (which a later ctrl-packet-to-dma pass streams
+// in), preceded by a `load_pdi @ctrl_pkt_overlay`.
 inline std::unique_ptr<mlir::PassManager>
-getExpandLoadPdiPipeline(mlir::MLIRContext *ctx) {
+getExpandLoadPdiPipeline(mlir::MLIRContext *ctx, bool ctrlPkt = false) {
   auto pm = std::make_unique<mlir::PassManager>(ctx);
-  pm->addPass(xilinx::AIEX::createAIEExpandLoadPdiPass());
+  std::string expandPipeline = std::string("aie-expand-load-pdi{ctrl-pkt=") +
+                               (ctrlPkt ? "true" : "false") + "}";
+  if (mlir::failed(mlir::parsePassPipeline(expandPipeline, *pm)))
+    return nullptr;
+  if (ctrlPkt)
+    pm->nest<xilinx::AIE::DeviceOp>().addPass(
+        xilinx::AIEX::createAIELegalizeControlPacketPass());
+  return pm;
+}
+
+// Runtime-sequence materialization only (module-level). This is "part A" of
+// getNpuLoweringPipeline, split out so the ctrl-packet flow can interpose
+// expand-load-pdi and ctrl-packet extraction before DMA lowering.
+inline std::unique_ptr<mlir::PassManager>
+getMaterializeRuntimeSeqPipeline(mlir::MLIRContext *ctx) {
+  namespace X = xilinx::AIEX;
+  auto pm = std::make_unique<mlir::PassManager>(ctx);
+  pm->addPass(X::createAIEMaterializeRuntimeSequencesPass());
+  return pm;
+}
+
+// Part B of NPU lowering: per-device DMA passes (all DeviceOp-nested). Handles
+// both user DMA ops and ctrl-pkt DMA ops in one shot.
+inline std::unique_ptr<mlir::PassManager>
+getPerDeviceDmaLoweringPipeline(mlir::MLIRContext *ctx) {
+  namespace X = xilinx::AIEX;
+  auto pm = std::make_unique<mlir::PassManager>(ctx);
+  auto &dpm = pm->nest<xilinx::AIE::DeviceOp>();
+  dpm.addPass(X::createAIEMaterializeBDChainsPass());
+  dpm.addPass(X::createAIESubstituteShimDMAAllocationsPass());
+  dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass());
+  dpm.addPass(mlir::createCanonicalizerPass());
+  dpm.addPass(X::createAIEDMATasksToNPUPass());
+  dpm.addPass(X::createAIEDmaToNpuPass());
+  dpm.addPass(X::createAIELowerSetLockPass());
+  return pm;
+}
+
+// Convert legalized control-packet ops into DMA task ops (device-nested). The
+// subsequent DMA→NPU lowering is done by getPerDeviceDmaLoweringPipeline.
+inline std::unique_ptr<mlir::PassManager>
+getCtrlPktToDmaPipeline(mlir::MLIRContext *ctx) {
+  auto pm = std::make_unique<mlir::PassManager>(ctx);
+  pm->nest<xilinx::AIE::DeviceOp>().addPass(
+      xilinx::AIEX::createAIECtrlPacketToDmaPass());
   return pm;
 }
 
