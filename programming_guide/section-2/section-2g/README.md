@@ -357,6 +357,64 @@ takes both tiles + their `WireBundle` (typically `WireBundle.DMA`) +
 channel indices; the lowering infers direction from `source` vs
 `dest`.
 
+### Manual stream routing (`switchbox` / `connect`)
+
+`flow` / `Flow` describe a route by its two *endpoints* and let the
+pathfinder pick the switchbox connections in between.  When you need to
+pin the exact path — reproducing a specific hardware configuration, or
+steering around a resource the router would otherwise pick — the
+dialect exposes the individual stream switches directly.  There is no
+IRON primitive for this; it lives only at the dialect tier.
+
+A `switchbox` region hangs off one tile and holds `connect` ops, each
+wiring one input port to one output port of that tile's stream switch
+(a full crossbar):
+
+```python
+from aie.dialects.aie import switchbox, connect, tile
+from aie.dialects._aie_enum_gen import WireBundle
+
+t_0_2 = tile(0, 2)
+t_0_3 = tile(0, 3)
+
+@switchbox(t_0_2)
+def sb_0_2():
+    connect(WireBundle.DMA, 0, WireBundle.North, 1)   # DMA out → north
+
+@switchbox(t_0_3)
+def sb_0_3():
+    connect(WireBundle.South, 1, WireBundle.DMA, 1)   # south in → DMA
+```
+
+The `North` output of `tile(0,2)` feeds the `South` input of
+`tile(0,3)`, so these two `connect` ops together implement the same
+route a single `flow(t_0_2, DMA, 0, t_0_3, DMA, 1)` would have produced
+— but every hop is now explicit and fixed.  `connect` takes
+`(source_bundle, source_channel, dest_bundle, dest_channel)`; a single
+`switchbox` may hold as many `connect` ops as the hardware has ports.
+
+When you write `flow`s instead, the `--aie-create-pathfinder-flows`
+pass is what expands them into exactly these `switchbox` / `connect`
+ops, so this is the layer the automatic router emits.
+
+### MLIR ↔ C kernel ABI
+
+External kernels are bound through
+[`external_func` / `ExternalFunction`](../../kernels_library.md), which
+hides the calling convention.  At the dialect tier the binding is a
+`func.func` whose argument types follow the MLIR
+[bare-pointer calling convention](https://mlir.llvm.org/docs/TargetLLVMIR/#bare-pointer-calling-convention-for-ranked-memref)
+— a `memref` becomes a plain C pointer (no descriptor struct), and C++
+name mangling is not applied, so the C function must be `extern "C"` or
+a plain C symbol:
+
+| MLIR type | C type    |
+| --------- | --------- |
+| `i32`     | `int32_t` |
+| `f32`     | `float`   |
+| `memref`  | C pointer |
+| `index`   | `int64_t` |
+
 The dialect tier is what `@iron.jit` ultimately lowers into.  For
 designs you intend to ship as part of the IRON examples, prefer the
 IRON Python primitives at the top of this page — they give you the
