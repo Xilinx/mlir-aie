@@ -3,3 +3,4 @@
 #
 add_subdirectory(AIEToConfiguration)
 add_subdirectory(AIEVecToLLVM)
+add_subdirectory(AIEXToEmitC)

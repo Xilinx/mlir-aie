@@ -88,7 +88,7 @@ jobs:
           sudo prlimit -lunlimited --pid $$
           pip cache purge
           source /opt/xilinx/xrt/setup.sh
-          source ./utils/env_install.sh aie-venv --dev
+          source ./utils/env_install.sh aie-venv --dev --extras
 
           sed -i.bak 's/OUTPUT_TIMEOUT = 10/OUTPUT_TIMEOUT = 100/g' \
             $(python -c 'import site; print(site.getsitepackages()[0])')/jupyter_client/runapp.py
@@ -109,7 +109,7 @@ jobs:
           LIT_OPTS="-j12 $LIT_OPTS"
 
           export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
-          
+
           cmake .. -G Ninja \
             -DCMAKE_BUILD_TYPE=Release \
             -DPython3_EXECUTABLE=$(which python) \
