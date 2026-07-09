@@ -21,7 +21,7 @@ module {
       %c32_i32 = arith.constant 32 : i32
       %t1 = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
           // expected-error@+1 {{without associated address}}
-          aie.dma_bd(%buf : memref<32xi8> offset = %c4_i32 len = %c32_i32 sizes = [] strides = []) {bd_id = 0 : i32}
+          aie.dma_bd(%buf : memref<32xi8> offset = %c4_i32 len = %c32_i32) {bd_id = 0 : i32}
           aie.end
       }
     }

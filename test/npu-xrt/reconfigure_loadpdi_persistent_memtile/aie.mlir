@@ -43,7 +43,7 @@ module {
           %c4_i32 = arith.constant 4 : i32
             %srcDma = aie.dma_start(MM2S, 0, ^bd0, ^end)
             ^bd0:
-                aie.dma_bd(%t11_buf : memref<4xi32> offset = %c0_i32 len = %c4_i32 sizes = [] strides = [])
+                aie.dma_bd(%t11_buf : memref<4xi32> offset = %c0_i32 len = %c4_i32)
                 aie.next_bd ^bd0
             ^end:
                 aie.end
@@ -61,14 +61,14 @@ module {
             %dma1 = aie.dma_start(S2MM, 0, ^dma1_bd0, ^dma2)
             ^dma1_bd0:
                 aie.use_lock(%t12_lock_input_produce, AcquireGreaterEqual, 1)
-                aie.dma_bd(%t12_buf_inp : memref<4xi32> offset = %c0_i32 len = %c4_i32 sizes = [] strides = [])
+                aie.dma_bd(%t12_buf_inp : memref<4xi32> offset = %c0_i32 len = %c4_i32)
                 aie.use_lock(%t12_lock_input_consume, Release, 1)
                 aie.next_bd ^dma1_bd0
             ^dma2:
                 %dma2 = aie.dma_start("MM2S", 0, ^dma2_bd0, ^end)
             ^dma2_bd0:
                 aie.use_lock(%t12_lock_output_consume, AcquireGreaterEqual, 1)
-                aie.dma_bd(%t12_buf_out : memref<4xi32> offset = %c0_i32 len = %c4_i32 sizes = [] strides = [])
+                aie.dma_bd(%t12_buf_out : memref<4xi32> offset = %c0_i32 len = %c4_i32)
                 aie.use_lock(%t12_lock_output_produce, Release, 1)
                 aie.next_bd ^dma2_bd0
             ^end:
@@ -99,7 +99,7 @@ module {
 
         aie.runtime_sequence (%a : memref<4xi32>) {
             %t_out = aiex.dma_configure_task (%t00, S2MM, 0) {
-                aie.dma_bd(%a : memref<4xi32> offset = %c0_i32 len = %c4_i32 sizes = [] strides = [])
+                aie.dma_bd(%a : memref<4xi32> offset = %c0_i32 len = %c4_i32)
                 aie.end
             } {issue_token = true}
             aiex.dma_start_task(%t_out)
@@ -124,7 +124,7 @@ module {
           %c4_i32 = arith.constant 4 : i32
             %srcDma = aie.dma_start(MM2S, 0, ^bd0, ^end)
             ^bd0:
-                aie.dma_bd(%t11_buf : memref<4xi32> offset = %c0_i32 len = %c4_i32 sizes = [] strides = [])
+                aie.dma_bd(%t11_buf : memref<4xi32> offset = %c0_i32 len = %c4_i32)
                 aie.next_bd ^bd0
             ^end:
                 aie.end
@@ -142,14 +142,14 @@ module {
             %dma1 = aie.dma_start(S2MM, 0, ^dma1_bd0, ^dma2)
             ^dma1_bd0:
                 aie.use_lock(%t12_lock_input_produce, AcquireGreaterEqual, 1)
-                aie.dma_bd(%t12_buf_inp : memref<4xi32> offset = %c0_i32 len = %c4_i32 sizes = [] strides = [])
+                aie.dma_bd(%t12_buf_inp : memref<4xi32> offset = %c0_i32 len = %c4_i32)
                 aie.use_lock(%t12_lock_input_consume, Release, 1)
                 aie.next_bd ^dma1_bd0
             ^dma2:
                 %dma2 = aie.dma_start("MM2S", 0, ^dma2_bd0, ^end)
             ^dma2_bd0:
                 aie.use_lock(%t12_lock_output_consume, AcquireGreaterEqual, 1)
-                aie.dma_bd(%t12_buf_out : memref<4xi32> offset = %c0_i32 len = %c4_i32 sizes = [] strides = [])
+                aie.dma_bd(%t12_buf_out : memref<4xi32> offset = %c0_i32 len = %c4_i32)
                 aie.use_lock(%t12_lock_output_produce, Release, 1)
                 aie.next_bd ^dma2_bd0
             ^end:
@@ -179,7 +179,7 @@ module {
 
         aie.runtime_sequence (%a : memref<4xi32>) {
             %t_out = aiex.dma_configure_task (%t00, S2MM, 0) {
-                aie.dma_bd(%a : memref<4xi32> offset = %c0_i32 len = %c4_i32 sizes = [] strides = [])
+                aie.dma_bd(%a : memref<4xi32> offset = %c0_i32 len = %c4_i32)
                 aie.end
             } {issue_token = true}
             aiex.dma_start_task(%t_out)

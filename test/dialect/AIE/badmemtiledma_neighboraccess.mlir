@@ -24,19 +24,19 @@ aie.device(xcve2802) {
     ^dma1:
     aie.dma_start("MM2S", 1, ^bd15, ^dma1)
     ^bd0:
-      aie.dma_bd(%buf : memref<256xi32> offset = %c0_i32 len = %c256_i32 sizes = [] strides = [])
+      aie.dma_bd(%buf : memref<256xi32> offset = %c0_i32 len = %c256_i32)
       aie.next_bd ^bd1
     ^bd1:
-      aie.dma_bd(%buf0 : memref<256xi32> offset = %c0_i32 len = %c256_i32 sizes = [] strides = [])
+      aie.dma_bd(%buf0 : memref<256xi32> offset = %c0_i32 len = %c256_i32)
       aie.next_bd ^bd2
     ^bd2:
-      aie.dma_bd(%buf2 : memref<256xi32> offset = %c0_i32 len = %c256_i32 sizes = [] strides = [])
+      aie.dma_bd(%buf2 : memref<256xi32> offset = %c0_i32 len = %c256_i32)
       aie.next_bd ^bd15
     ^bd15:
-      aie.dma_bd(%buf : memref<256xi32> offset = %c0_i32 len = %c256_i32 sizes = [] strides = [])
+      aie.dma_bd(%buf : memref<256xi32> offset = %c0_i32 len = %c256_i32)
       aie.next_bd ^bd16
     ^bd16:
-      aie.dma_bd(%buf : memref<256xi32> offset = %c0_i32 len = %c256_i32 sizes = [] strides = [])
+      aie.dma_bd(%buf : memref<256xi32> offset = %c0_i32 len = %c256_i32)
       aie.end
   }
 }

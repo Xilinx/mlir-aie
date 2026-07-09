@@ -17,7 +17,7 @@ module {
       %c4_i32 = arith.constant 4 : i32
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
           // expected-error@+1 {{Offset must be aligned to 4 byte boundary}}
-          aie.dma_bd(%arg0 : memref<32xi8> offset = %c3_i32 len = %c4_i32 sizes = [] strides = []) {bd_id = 0 : i32}
+          aie.dma_bd(%arg0 : memref<32xi8> offset = %c3_i32 len = %c4_i32) {bd_id = 0 : i32}
           aie.end
       }
     }

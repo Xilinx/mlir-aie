@@ -96,7 +96,7 @@ module {
       %0 = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
       aie.use_lock(%cons_lock_2, AcquireGreaterEqual, 1)
-      aie.dma_bd(%buf_2 : memref<8xi32> offset = %c0_i32 len = %c8_i32 sizes = [] strides = []) {packet = #aie.packet_info<pkt_id = 0, pkt_type = 0>}
+      aie.dma_bd(%buf_2 : memref<8xi32> offset = %c0_i32 len = %c8_i32) {packet = #aie.packet_info<pkt_id = 0, pkt_type = 0>}
       aie.use_lock(%prod_lock_2, Release, 1)
       aie.next_bd ^bd0
     ^end:
@@ -108,7 +108,7 @@ module {
       %0 = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
       aie.use_lock(%cons_lock_3, AcquireGreaterEqual, 1)
-      aie.dma_bd(%buf_3 : memref<8xi32> offset = %c0_i32 len = %c8_i32 sizes = [] strides = []) {packet = #aie.packet_info<pkt_id = 0, pkt_type = 0>}
+      aie.dma_bd(%buf_3 : memref<8xi32> offset = %c0_i32 len = %c8_i32) {packet = #aie.packet_info<pkt_id = 0, pkt_type = 0>}
       aie.use_lock(%prod_lock_3, Release, 1)
       aie.next_bd ^bd0
     ^end:

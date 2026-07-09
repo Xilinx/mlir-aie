@@ -26,13 +26,13 @@ aie.device(npu2) {
     %c0_i32 = arith.constant 0 : i32
     %c8_i32 = arith.constant 8 : i32
     %init = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32 sizes = [] strides = [])
+      aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32)
       aie.end
     } {issue_token = true}
     aiex.dma_start_task(%init)
     %last = scf.for %i = %c1 to %c4 step %c1 iter_args(%prev = %init) -> (index) {
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32 sizes = [] strides = [])
+        aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32)
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%t)

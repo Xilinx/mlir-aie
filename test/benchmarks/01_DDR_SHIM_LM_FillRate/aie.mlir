@@ -39,7 +39,7 @@ aie.device(xcvc1902) {
 
     ^bd0:
       aie.use_lock(%lock1, Acquire, 1)
-      aie.dma_bd(%buffer : memref<7168xi32> offset = %c0_i32 len = %c7168_i32 sizes = [] strides = [])
+      aie.dma_bd(%buffer : memref<7168xi32> offset = %c0_i32 len = %c7168_i32)
       aie.use_lock(%lock1, Release, 0)
       aie.next_bd ^bd0
     ^end:
@@ -57,7 +57,7 @@ aie.device(xcvc1902) {
     %srcDma = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
       aie.use_lock(%l71_0, "Acquire", 0)
-      aie.dma_bd(%buf71_0 : memref< 7168xi32> offset = %c0_i32 len = %c7168_i32 sizes = [] strides = [])
+      aie.dma_bd(%buf71_0 : memref< 7168xi32> offset = %c0_i32 len = %c7168_i32)
       aie.use_lock(%l71_0, "Release", 1)
       aie.next_bd ^end
     ^end:

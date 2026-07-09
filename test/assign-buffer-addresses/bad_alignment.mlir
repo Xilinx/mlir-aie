@@ -20,7 +20,7 @@ module {
       %0 = aie.dma(S2MM, 0) [{
         aie.use_lock(%lock_0_1, AcquireGreaterEqual)
         // expected-error@+1 {{'aie.dma_bd' op bd address must be 4 byte (32b) aligned; got base+offset: 1 (bytes)}}
-        aie.dma_bd(%buffer_0_1 : memref<128xi16> offset = %c0_i32 len = %c128_i32 sizes = [] strides = [])
+        aie.dma_bd(%buffer_0_1 : memref<128xi16> offset = %c0_i32 len = %c128_i32)
         aie.use_lock(%lock_0_1_0, Release)
       }]
       aie.end
@@ -43,7 +43,7 @@ module {
       %buffer_0_1 = aie.buffer(%tile_0_1) {address = 1 : i32} : memref<128xi16>
       %0 = aie.dma(S2MM, 0) [{
         aie.use_lock(%lock_0_1, AcquireGreaterEqual)
-        aie.dma_bd(%buffer_0_1 : memref<128xi16> offset = %c3_i32 len = %c128_i32 sizes = [] strides = [])
+        aie.dma_bd(%buffer_0_1 : memref<128xi16> offset = %c3_i32 len = %c128_i32)
         // expected-error@above {{'aie.dma_bd' op bd address must be 4 byte (32b) aligned; got base+offset: 7 (bytes)}}
         aie.use_lock(%lock_0_1_0, Release)
       }]
@@ -73,7 +73,7 @@ module {
       %0 = aie.dma(S2MM, 0) [{
         aie.use_lock(%lock_0_1, AcquireGreaterEqual)
         // 2*6 + 2 = 8 bytes i.e., 4B aligned...
-        aie.dma_bd(%buffer_0_1 : memref<128xi16> offset = %c3_i32 len = %c128_i32 sizes = [] strides = [])
+        aie.dma_bd(%buffer_0_1 : memref<128xi16> offset = %c3_i32 len = %c128_i32)
         aie.use_lock(%lock_0_1_0, Release)
       }]
       aie.end
@@ -98,7 +98,7 @@ module {
       %0 = aie.dma(S2MM, 0) [{
         aie.use_lock(%lock_0_1, AcquireGreaterEqual)
         // expected-error@below {{'aie.dma_bd' op bd address must be 4 byte (32b) aligned; got base+offset: 6 (bytes)}}
-        aie.dma_bd(%buffer_0_1 : memref<128xi16> offset = %c3_i32 len = %c128_i32 sizes = [] strides = [])
+        aie.dma_bd(%buffer_0_1 : memref<128xi16> offset = %c3_i32 len = %c128_i32)
         aie.use_lock(%lock_0_1_0, Release)
       }]
       aie.end

@@ -64,7 +64,7 @@ module {
       %buffer_0_1 = aie.buffer(%tile_0_1) {address = 0 : i32} : memref<8x!aiex.bfp<"v8bfp16ebs8">>
       %0 = aie.dma(S2MM, 0) [{
         aie.use_lock(%lock_0_1, AcquireGreaterEqual)
-        aie.dma_bd(%buffer_0_1 : memref<8x!aiex.bfp<"v8bfp16ebs8">> offset = %c0_i32 sizes = [] strides = [])
+        aie.dma_bd(%buffer_0_1 : memref<8x!aiex.bfp<"v8bfp16ebs8">> offset = %c0_i32)
         aie.use_lock(%lock_0_1_0, Release)
       }]
       aie.end

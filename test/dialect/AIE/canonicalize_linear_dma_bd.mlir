@@ -95,7 +95,7 @@ module {
       %c4096_i32 = arith.constant 4096 : i32
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
-        aie.dma_bd(%buf : memref<4096xi32> offset = %c0_i32 len = %c4096_i32 sizes = [] strides = [])
+        aie.dma_bd(%buf : memref<4096xi32> offset = %c0_i32 len = %c4096_i32)
         aie.next_bd ^end
       ^end:
         aie.end

@@ -75,11 +75,11 @@ module {
           %c0_i32 = arith.constant 0 : i32
           %c16_i32 = arith.constant 16 : i32
             %t_in = aiex.dma_configure_task_for @of_in {
-                aie.dma_bd(%a : memref<16xi32> offset = %c0_i32 len = %c16_i32 sizes = [] strides = [])
+                aie.dma_bd(%a : memref<16xi32> offset = %c0_i32 len = %c16_i32)
                 aie.end
             }
             %t_out = aiex.dma_configure_task_for @of_out {
-                aie.dma_bd(%a : memref<16xi32> offset = %c0_i32 len = %c16_i32 sizes = [] strides = [])
+                aie.dma_bd(%a : memref<16xi32> offset = %c0_i32 len = %c16_i32)
                 aie.end
             } {issue_token = true}
             aiex.dma_start_task(%t_in)

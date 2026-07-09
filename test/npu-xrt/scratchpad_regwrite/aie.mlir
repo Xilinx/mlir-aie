@@ -98,7 +98,7 @@ module {
 
             // Configure output DMA
             %t_out = aiex.dma_configure_task_for @objfifo_out {
-                aie.dma_bd(%out : memref<1xi32> offset = %c0_i32 len = %c1_i32 sizes = [] strides = [])
+                aie.dma_bd(%out : memref<1xi32> offset = %c0_i32 len = %c1_i32)
                 aie.end
             } {issue_token = true}
 

@@ -47,13 +47,13 @@ aie.device(xcvc1902) {
     ^bd4:
       aie.use_lock(%lock72_4, "Acquire", 1)
       aie.dma_bd_packet(0x0, 0x0)
-      aie.dma_bd(%buf72_0 : memref<1024xi32> offset = %c0_i32 len = %c1024_i32 sizes = [] strides = [])
+      aie.dma_bd(%buf72_0 : memref<1024xi32> offset = %c0_i32 len = %c1024_i32)
       aie.use_lock(%lock72_4, "Release", 0)
       aie.next_bd ^bd5
     ^bd5:
       aie.use_lock(%lock72_5, "Acquire", 1)
       aie.dma_bd_packet(0x1, 0x1)
-      aie.dma_bd(%buf72_1 : memref<1024xi32> offset = %c0_i32 len = %c1024_i32 sizes = [] strides = [])
+      aie.dma_bd(%buf72_1 : memref<1024xi32> offset = %c0_i32 len = %c1024_i32)
       aie.use_lock(%lock72_5, "Release", 0)
       aie.next_bd ^bd4
     ^end:
@@ -67,7 +67,7 @@ aie.device(xcvc1902) {
   aie.dma_start("S2MM", 0, ^bd0, ^end)
   ^bd0:
     aie.use_lock(%lock63_0, Acquire, 0)
-    aie.dma_bd(%buf63_0 : memref<1024xi32> offset = %c0_i32 len = %c1024_i32 sizes = [] strides = [])
+    aie.dma_bd(%buf63_0 : memref<1024xi32> offset = %c0_i32 len = %c1024_i32)
     aie.use_lock(%lock63_0, Release, 1)
     aie.next_bd ^bd0
   ^end:
@@ -82,7 +82,7 @@ aie.device(xcvc1902) {
   aie.dma_start("S2MM", 0, ^bd0, ^end)
   ^bd0:
     aie.use_lock(%lock64_0, Acquire, 0)
-    aie.dma_bd(%buf64_0 : memref<1024xi32> offset = %c0_i32 len = %c1024_i32 sizes = [] strides = [])
+    aie.dma_bd(%buf64_0 : memref<1024xi32> offset = %c0_i32 len = %c1024_i32)
     aie.use_lock(%lock64_0, Release, 1)
     aie.next_bd ^bd0
   ^end:
@@ -97,7 +97,7 @@ aie.device(xcvc1902) {
   aie.dma_start("S2MM", 0, ^bd0, ^end)
   ^bd0:
     aie.use_lock(%lock73_0, Acquire, 0)
-    aie.dma_bd(%buf73_0 : memref<1024xi32> offset = %c0_i32 len = %c1024_i32 sizes = [] strides = [])
+    aie.dma_bd(%buf73_0 : memref<1024xi32> offset = %c0_i32 len = %c1024_i32)
     aie.use_lock(%lock73_0, Release, 1)
     aie.next_bd ^bd0
   ^end:
@@ -112,7 +112,7 @@ aie.device(xcvc1902) {
   aie.dma_start("S2MM", 0, ^bd0, ^end)
   ^bd0:
     aie.use_lock(%lock74_0, Acquire, 0)
-    aie.dma_bd(%buf74_0 : memref<1024xi32> offset = %c0_i32 len = %c1024_i32 sizes = [] strides = [])
+    aie.dma_bd(%buf74_0 : memref<1024xi32> offset = %c0_i32 len = %c1024_i32)
     aie.use_lock(%lock74_0, Release, 1)
     aie.next_bd ^bd0
   ^end:

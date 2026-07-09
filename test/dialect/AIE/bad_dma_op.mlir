@@ -21,7 +21,7 @@ module {
         %c0_i32 = arith.constant 0 : i32
         %c16_i32 = arith.constant 16 : i32
         aie.use_lock(%objFifo_in0_cons_prod_lock, AcquireGreaterEqual, 1)
-        aie.dma_bd(%objFifo_in0_cons_buff_0 : memref<16xi32> offset = %c0_i32 len = %c16_i32 sizes = [] strides = [])
+        aie.dma_bd(%objFifo_in0_cons_buff_0 : memref<16xi32> offset = %c0_i32 len = %c16_i32)
         aie.use_lock(%objFifo_in0_cons_cons_lock, Release, 1)
       }]
       aie.next_bd ^bb1

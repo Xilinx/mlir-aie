@@ -658,213 +658,234 @@ module {
       aie.end
     } {stack_size = 3328 : i32}
     aie.runtime_sequence(%arg0: memref<16384xbf16>, %arg1: memref<32768xbf16>, %arg2: memref<16384xbf16>, %arg3: memref<8192xf32>) {
+      %c0_i32 = arith.constant 0 : i32
+      %c32_i32 = arith.constant 32 : i32
+      %c512_i32 = arith.constant 512 : i32
+      %c1024_i32 = arith.constant 1024 : i32
+      %c1056_i32 = arith.constant 1056 : i32
+      %c2048_i32 = arith.constant 2048 : i32
+      %c2080_i32 = arith.constant 2080 : i32
+      %c3072_i32 = arith.constant 3072 : i32
+      %c3104_i32 = arith.constant 3104 : i32
+      %c4096_i32 = arith.constant 4096 : i32
+      %c4128_i32 = arith.constant 4128 : i32
+      %c5120_i32 = arith.constant 5120 : i32
+      %c5152_i32 = arith.constant 5152 : i32
+      %c6144_i32 = arith.constant 6144 : i32
+      %c6176_i32 = arith.constant 6176 : i32
+      %c7168_i32 = arith.constant 7168 : i32
+      %c7200_i32 = arith.constant 7200 : i32
+      %c8192_i32 = arith.constant 8192 : i32
+      %c10240_i32 = arith.constant 10240 : i32
+      %c12288_i32 = arith.constant 12288 : i32
+      %c14336_i32 = arith.constant 14336 : i32
       %16 = aiex.dma_configure_task_for @outC_0 {
-        aie.dma_bd(%arg3 : memref<8192xf32>, 0, 512, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 16, stride = 64>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg3 : memref<8192xf32> offset = %c0_i32 len = %c512_i32 sizes = [1, 1, 16, 32] strides = [0, 0, 64, 1]) {burst_length = 0 : i32}
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%16)
       %17 = aiex.dma_configure_task_for @outC_0 {
-        aie.dma_bd(%arg3 : memref<8192xf32>, 32, 512, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 16, stride = 64>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg3 : memref<8192xf32> offset = %c32_i32 len = %c512_i32 sizes = [1, 1, 16, 32] strides = [0, 0, 64, 1]) {burst_length = 0 : i32}
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%17)
       %18 = aiex.dma_configure_task_for @outC_1 {
-        aie.dma_bd(%arg3 : memref<8192xf32>, 1024, 512, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 16, stride = 64>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg3 : memref<8192xf32> offset = %c1024_i32 len = %c512_i32 sizes = [1, 1, 16, 32] strides = [0, 0, 64, 1]) {burst_length = 0 : i32}
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%18)
       %19 = aiex.dma_configure_task_for @outC_1 {
-        aie.dma_bd(%arg3 : memref<8192xf32>, 1056, 512, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 16, stride = 64>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg3 : memref<8192xf32> offset = %c1056_i32 len = %c512_i32 sizes = [1, 1, 16, 32] strides = [0, 0, 64, 1]) {burst_length = 0 : i32}
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%19)
       %20 = aiex.dma_configure_task_for @outC_2 {
-        aie.dma_bd(%arg3 : memref<8192xf32>, 2048, 512, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 16, stride = 64>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg3 : memref<8192xf32> offset = %c2048_i32 len = %c512_i32 sizes = [1, 1, 16, 32] strides = [0, 0, 64, 1]) {burst_length = 0 : i32}
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%20)
       %21 = aiex.dma_configure_task_for @outC_2 {
-        aie.dma_bd(%arg3 : memref<8192xf32>, 2080, 512, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 16, stride = 64>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg3 : memref<8192xf32> offset = %c2080_i32 len = %c512_i32 sizes = [1, 1, 16, 32] strides = [0, 0, 64, 1]) {burst_length = 0 : i32}
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%21)
       %22 = aiex.dma_configure_task_for @outC_3 {
-        aie.dma_bd(%arg3 : memref<8192xf32>, 3072, 512, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 16, stride = 64>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg3 : memref<8192xf32> offset = %c3072_i32 len = %c512_i32 sizes = [1, 1, 16, 32] strides = [0, 0, 64, 1]) {burst_length = 0 : i32}
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%22)
       %23 = aiex.dma_configure_task_for @outC_3 {
-        aie.dma_bd(%arg3 : memref<8192xf32>, 3104, 512, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 16, stride = 64>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg3 : memref<8192xf32> offset = %c3104_i32 len = %c512_i32 sizes = [1, 1, 16, 32] strides = [0, 0, 64, 1]) {burst_length = 0 : i32}
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%23)
       %24 = aiex.dma_configure_task_for @outC_4 {
-        aie.dma_bd(%arg3 : memref<8192xf32>, 4096, 512, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 16, stride = 64>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg3 : memref<8192xf32> offset = %c4096_i32 len = %c512_i32 sizes = [1, 1, 16, 32] strides = [0, 0, 64, 1]) {burst_length = 0 : i32}
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%24)
       %25 = aiex.dma_configure_task_for @outC_4 {
-        aie.dma_bd(%arg3 : memref<8192xf32>, 4128, 512, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 16, stride = 64>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg3 : memref<8192xf32> offset = %c4128_i32 len = %c512_i32 sizes = [1, 1, 16, 32] strides = [0, 0, 64, 1]) {burst_length = 0 : i32}
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%25)
       %26 = aiex.dma_configure_task_for @outC_5 {
-        aie.dma_bd(%arg3 : memref<8192xf32>, 5120, 512, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 16, stride = 64>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg3 : memref<8192xf32> offset = %c5120_i32 len = %c512_i32 sizes = [1, 1, 16, 32] strides = [0, 0, 64, 1]) {burst_length = 0 : i32}
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%26)
       %27 = aiex.dma_configure_task_for @outC_5 {
-        aie.dma_bd(%arg3 : memref<8192xf32>, 5152, 512, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 16, stride = 64>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg3 : memref<8192xf32> offset = %c5152_i32 len = %c512_i32 sizes = [1, 1, 16, 32] strides = [0, 0, 64, 1]) {burst_length = 0 : i32}
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%27)
       %28 = aiex.dma_configure_task_for @outC_6 {
-        aie.dma_bd(%arg3 : memref<8192xf32>, 6144, 512, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 16, stride = 64>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg3 : memref<8192xf32> offset = %c6144_i32 len = %c512_i32 sizes = [1, 1, 16, 32] strides = [0, 0, 64, 1]) {burst_length = 0 : i32}
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%28)
       %29 = aiex.dma_configure_task_for @outC_6 {
-        aie.dma_bd(%arg3 : memref<8192xf32>, 6176, 512, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 16, stride = 64>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg3 : memref<8192xf32> offset = %c6176_i32 len = %c512_i32 sizes = [1, 1, 16, 32] strides = [0, 0, 64, 1]) {burst_length = 0 : i32}
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%29)
       %30 = aiex.dma_configure_task_for @outC_7 {
-        aie.dma_bd(%arg3 : memref<8192xf32>, 7168, 512, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 16, stride = 64>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg3 : memref<8192xf32> offset = %c7168_i32 len = %c512_i32 sizes = [1, 1, 16, 32] strides = [0, 0, 64, 1]) {burst_length = 0 : i32}
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%30)
       %31 = aiex.dma_configure_task_for @outC_7 {
-        aie.dma_bd(%arg3 : memref<8192xf32>, 7200, 512, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 16, stride = 64>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg3 : memref<8192xf32> offset = %c7200_i32 len = %c512_i32 sizes = [1, 1, 16, 32] strides = [0, 0, 64, 1]) {burst_length = 0 : i32}
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%31)
       %32 = aiex.dma_configure_task_for @inA_0 {
-        aie.dma_bd(%arg0 : memref<16384xbf16>, 0, 2048, [<size = 8, stride = 0>, <size = 4, stride = 32>, <size = 16, stride = 128>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg0 : memref<16384xbf16> offset = %c0_i32 len = %c2048_i32 sizes = [8, 4, 16, 32] strides = [0, 32, 128, 1]) {burst_length = 0 : i32}
         aie.end
       } {repeat_count = 7 : i32}
       aiex.dma_start_task(%32)
       %33 = aiex.dma_configure_task_for @inA_1 {
-        aie.dma_bd(%arg0 : memref<16384xbf16>, 2048, 2048, [<size = 8, stride = 0>, <size = 4, stride = 32>, <size = 16, stride = 128>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg0 : memref<16384xbf16> offset = %c2048_i32 len = %c2048_i32 sizes = [8, 4, 16, 32] strides = [0, 32, 128, 1]) {burst_length = 0 : i32}
         aie.end
       } {repeat_count = 7 : i32}
       aiex.dma_start_task(%33)
       %34 = aiex.dma_configure_task_for @inA_2 {
-        aie.dma_bd(%arg0 : memref<16384xbf16>, 4096, 2048, [<size = 8, stride = 0>, <size = 4, stride = 32>, <size = 16, stride = 128>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg0 : memref<16384xbf16> offset = %c4096_i32 len = %c2048_i32 sizes = [8, 4, 16, 32] strides = [0, 32, 128, 1]) {burst_length = 0 : i32}
         aie.end
       } {repeat_count = 7 : i32}
       aiex.dma_start_task(%34)
       %35 = aiex.dma_configure_task_for @inA_3 {
-        aie.dma_bd(%arg0 : memref<16384xbf16>, 6144, 2048, [<size = 8, stride = 0>, <size = 4, stride = 32>, <size = 16, stride = 128>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg0 : memref<16384xbf16> offset = %c6144_i32 len = %c2048_i32 sizes = [8, 4, 16, 32] strides = [0, 32, 128, 1]) {burst_length = 0 : i32}
         aie.end
       } {repeat_count = 7 : i32}
       aiex.dma_start_task(%35)
       %36 = aiex.dma_configure_task_for @inA_4 {
-        aie.dma_bd(%arg0 : memref<16384xbf16>, 8192, 2048, [<size = 8, stride = 0>, <size = 4, stride = 32>, <size = 16, stride = 128>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg0 : memref<16384xbf16> offset = %c8192_i32 len = %c2048_i32 sizes = [8, 4, 16, 32] strides = [0, 32, 128, 1]) {burst_length = 0 : i32}
         aie.end
       } {repeat_count = 7 : i32}
       aiex.dma_start_task(%36)
       %37 = aiex.dma_configure_task_for @inA_5 {
-        aie.dma_bd(%arg0 : memref<16384xbf16>, 10240, 2048, [<size = 8, stride = 0>, <size = 4, stride = 32>, <size = 16, stride = 128>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg0 : memref<16384xbf16> offset = %c10240_i32 len = %c2048_i32 sizes = [8, 4, 16, 32] strides = [0, 32, 128, 1]) {burst_length = 0 : i32}
         aie.end
       } {repeat_count = 7 : i32}
       aiex.dma_start_task(%37)
       %38 = aiex.dma_configure_task_for @inA_6 {
-        aie.dma_bd(%arg0 : memref<16384xbf16>, 12288, 2048, [<size = 8, stride = 0>, <size = 4, stride = 32>, <size = 16, stride = 128>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg0 : memref<16384xbf16> offset = %c12288_i32 len = %c2048_i32 sizes = [8, 4, 16, 32] strides = [0, 32, 128, 1]) {burst_length = 0 : i32}
         aie.end
       } {repeat_count = 7 : i32}
       aiex.dma_start_task(%38)
       %39 = aiex.dma_configure_task_for @inA_7 {
-        aie.dma_bd(%arg0 : memref<16384xbf16>, 14336, 2048, [<size = 8, stride = 0>, <size = 4, stride = 32>, <size = 16, stride = 128>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg0 : memref<16384xbf16> offset = %c14336_i32 len = %c2048_i32 sizes = [8, 4, 16, 32] strides = [0, 32, 128, 1]) {burst_length = 0 : i32}
         aie.end
       } {repeat_count = 7 : i32}
       aiex.dma_start_task(%39)
       %40 = aiex.dma_configure_task_for @inW1_0 {
-        aie.dma_bd(%arg1 : memref<32768xbf16>, 0, 4096, [<size = 8, stride = 32>, <size = 4, stride = 8192>, <size = 32, stride = 256>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg1 : memref<32768xbf16> offset = %c0_i32 len = %c4096_i32 sizes = [8, 4, 32, 32] strides = [32, 8192, 256, 1]) {burst_length = 0 : i32}
         aie.end
       } {repeat_count = 7 : i32}
       aiex.dma_start_task(%40)
       %41 = aiex.dma_configure_task_for @inW2_0 {
-        aie.dma_bd(%arg2 : memref<16384xbf16>, 0, 2048, [<size = 1, stride = 0>, <size = 2, stride = 32>, <size = 32, stride = 64>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg2 : memref<16384xbf16> offset = %c0_i32 len = %c2048_i32 sizes = [1, 2, 32, 32] strides = [0, 32, 64, 1]) {burst_length = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%41)
       %42 = aiex.dma_configure_task_for @inW2_0 {
-        aie.dma_bd(%arg2 : memref<16384xbf16>, 2048, 2048, [<size = 1, stride = 0>, <size = 2, stride = 32>, <size = 32, stride = 64>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg2 : memref<16384xbf16> offset = %c2048_i32 len = %c2048_i32 sizes = [1, 2, 32, 32] strides = [0, 32, 64, 1]) {burst_length = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%42)
       %43 = aiex.dma_configure_task_for @inW2_0 {
-        aie.dma_bd(%arg2 : memref<16384xbf16>, 4096, 2048, [<size = 1, stride = 0>, <size = 2, stride = 32>, <size = 32, stride = 64>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg2 : memref<16384xbf16> offset = %c4096_i32 len = %c2048_i32 sizes = [1, 2, 32, 32] strides = [0, 32, 64, 1]) {burst_length = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%43)
       %44 = aiex.dma_configure_task_for @inW2_0 {
-        aie.dma_bd(%arg2 : memref<16384xbf16>, 6144, 2048, [<size = 1, stride = 0>, <size = 2, stride = 32>, <size = 32, stride = 64>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg2 : memref<16384xbf16> offset = %c6144_i32 len = %c2048_i32 sizes = [1, 2, 32, 32] strides = [0, 32, 64, 1]) {burst_length = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%44)
       %45 = aiex.dma_configure_task_for @inW2_0 {
-        aie.dma_bd(%arg2 : memref<16384xbf16>, 8192, 2048, [<size = 1, stride = 0>, <size = 2, stride = 32>, <size = 32, stride = 64>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg2 : memref<16384xbf16> offset = %c8192_i32 len = %c2048_i32 sizes = [1, 2, 32, 32] strides = [0, 32, 64, 1]) {burst_length = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%45)
       %46 = aiex.dma_configure_task_for @inW2_0 {
-        aie.dma_bd(%arg2 : memref<16384xbf16>, 10240, 2048, [<size = 1, stride = 0>, <size = 2, stride = 32>, <size = 32, stride = 64>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg2 : memref<16384xbf16> offset = %c10240_i32 len = %c2048_i32 sizes = [1, 2, 32, 32] strides = [0, 32, 64, 1]) {burst_length = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%46)
       %47 = aiex.dma_configure_task_for @inW2_0 {
-        aie.dma_bd(%arg2 : memref<16384xbf16>, 12288, 2048, [<size = 1, stride = 0>, <size = 2, stride = 32>, <size = 32, stride = 64>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg2 : memref<16384xbf16> offset = %c12288_i32 len = %c2048_i32 sizes = [1, 2, 32, 32] strides = [0, 32, 64, 1]) {burst_length = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%47)
       %48 = aiex.dma_configure_task_for @inW2_0 {
-        aie.dma_bd(%arg2 : memref<16384xbf16>, 14336, 2048, [<size = 1, stride = 0>, <size = 2, stride = 32>, <size = 32, stride = 64>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg2 : memref<16384xbf16> offset = %c14336_i32 len = %c2048_i32 sizes = [1, 2, 32, 32] strides = [0, 32, 64, 1]) {burst_length = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%48)
       %49 = aiex.dma_configure_task_for @inW1_1 {
-        aie.dma_bd(%arg1 : memref<32768xbf16>, 0, 4096, [<size = 8, stride = 32>, <size = 4, stride = 8192>, <size = 32, stride = 256>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg1 : memref<32768xbf16> offset = %c0_i32 len = %c4096_i32 sizes = [8, 4, 32, 32] strides = [32, 8192, 256, 1]) {burst_length = 0 : i32}
         aie.end
       } {repeat_count = 7 : i32}
       aiex.dma_start_task(%49)
       %50 = aiex.dma_configure_task_for @inW2_1 {
-        aie.dma_bd(%arg2 : memref<16384xbf16>, 0, 2048, [<size = 1, stride = 0>, <size = 2, stride = 32>, <size = 32, stride = 64>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg2 : memref<16384xbf16> offset = %c0_i32 len = %c2048_i32 sizes = [1, 2, 32, 32] strides = [0, 32, 64, 1]) {burst_length = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%50)
       %51 = aiex.dma_configure_task_for @inW2_1 {
-        aie.dma_bd(%arg2 : memref<16384xbf16>, 2048, 2048, [<size = 1, stride = 0>, <size = 2, stride = 32>, <size = 32, stride = 64>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg2 : memref<16384xbf16> offset = %c2048_i32 len = %c2048_i32 sizes = [1, 2, 32, 32] strides = [0, 32, 64, 1]) {burst_length = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%51)
       %52 = aiex.dma_configure_task_for @inW2_1 {
-        aie.dma_bd(%arg2 : memref<16384xbf16>, 4096, 2048, [<size = 1, stride = 0>, <size = 2, stride = 32>, <size = 32, stride = 64>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg2 : memref<16384xbf16> offset = %c4096_i32 len = %c2048_i32 sizes = [1, 2, 32, 32] strides = [0, 32, 64, 1]) {burst_length = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%52)
       %53 = aiex.dma_configure_task_for @inW2_1 {
-        aie.dma_bd(%arg2 : memref<16384xbf16>, 6144, 2048, [<size = 1, stride = 0>, <size = 2, stride = 32>, <size = 32, stride = 64>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg2 : memref<16384xbf16> offset = %c6144_i32 len = %c2048_i32 sizes = [1, 2, 32, 32] strides = [0, 32, 64, 1]) {burst_length = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%53)
       %54 = aiex.dma_configure_task_for @inW2_1 {
-        aie.dma_bd(%arg2 : memref<16384xbf16>, 8192, 2048, [<size = 1, stride = 0>, <size = 2, stride = 32>, <size = 32, stride = 64>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg2 : memref<16384xbf16> offset = %c8192_i32 len = %c2048_i32 sizes = [1, 2, 32, 32] strides = [0, 32, 64, 1]) {burst_length = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%54)
       %55 = aiex.dma_configure_task_for @inW2_1 {
-        aie.dma_bd(%arg2 : memref<16384xbf16>, 10240, 2048, [<size = 1, stride = 0>, <size = 2, stride = 32>, <size = 32, stride = 64>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg2 : memref<16384xbf16> offset = %c10240_i32 len = %c2048_i32 sizes = [1, 2, 32, 32] strides = [0, 32, 64, 1]) {burst_length = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%55)
       %56 = aiex.dma_configure_task_for @inW2_1 {
-        aie.dma_bd(%arg2 : memref<16384xbf16>, 12288, 2048, [<size = 1, stride = 0>, <size = 2, stride = 32>, <size = 32, stride = 64>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg2 : memref<16384xbf16> offset = %c12288_i32 len = %c2048_i32 sizes = [1, 2, 32, 32] strides = [0, 32, 64, 1]) {burst_length = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%56)
       %57 = aiex.dma_configure_task_for @inW2_1 {
-        aie.dma_bd(%arg2 : memref<16384xbf16>, 14336, 2048, [<size = 1, stride = 0>, <size = 2, stride = 32>, <size = 32, stride = 64>, <size = 32, stride = 1>]) {burst_length = 0 : i32}
+        aie.dma_bd(%arg2 : memref<16384xbf16> offset = %c14336_i32 len = %c2048_i32 sizes = [1, 2, 32, 32] strides = [0, 32, 64, 1]) {burst_length = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%57)

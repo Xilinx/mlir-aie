@@ -17,7 +17,7 @@ module {
       %srcDma = aie.dma_start(S2MM, 0, ^bd0, ^end)
         ^bd0:
         // CHECK: Burst length is only supported in Shim NOC tiles that are connected to the memory-mapped NOC.
-        aie.dma_bd(%buf21_0 : memref<7168xi32> offset = %c0_i32 len = %c7168_i32 sizes = [] strides = []){ burst_length = 256 : i32 }
+        aie.dma_bd(%buf21_0 : memref<7168xi32> offset = %c0_i32 len = %c7168_i32){ burst_length = 256 : i32 }
         aie.next_bd ^end
       ^end:
         aie.end

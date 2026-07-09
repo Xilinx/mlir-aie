@@ -21,7 +21,7 @@ module {
       %c128_i32 = arith.constant 128 : i32
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
         // bf16 is 2 bytes, 128 elements = 256 bytes = 64 32-bit words
-        aie.dma_bd(%arg0 : memref<*xbf16> offset = %c0_i32 len = %c128_i32 sizes = [] strides = []) {bd_id = 0 : i32}
+        aie.dma_bd(%arg0 : memref<*xbf16> offset = %c0_i32 len = %c128_i32) {bd_id = 0 : i32}
         aie.end
       } {issue_token = true}
 

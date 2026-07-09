@@ -33,7 +33,7 @@ module @test_core_tile_with_locks {
       %c1024_i32 = arith.constant 1024 : i32
       %t1 = aiex.dma_configure_task(%tile_0_2, S2MM, 0) {
           aie.use_lock(%prod_lock, Acquire, 1)
-          aie.dma_bd(%buf : memref<1024xi32> offset = %c0_i32 len = %c1024_i32 sizes = [] strides = []) {bd_id = 0 : i32}
+          aie.dma_bd(%buf : memref<1024xi32> offset = %c0_i32 len = %c1024_i32) {bd_id = 0 : i32}
           aie.use_lock(%cons_lock, Release, 1)
           aie.end
       }
@@ -68,7 +68,7 @@ module @test_core_tile_looping_with_locks {
       %c4096_i32 = arith.constant 4096 : i32
       %t1 = aiex.dma_configure_task(%tile_0_2, S2MM, 0) {
           aie.use_lock(%prod_lock, Acquire, 1)
-          aie.dma_bd(%buf : memref<4096xi32> offset = %c0_i32 len = %c4096_i32 sizes = [] strides = []) {bd_id = 0 : i32, next_bd_id = 0 : i32}
+          aie.dma_bd(%buf : memref<4096xi32> offset = %c0_i32 len = %c4096_i32) {bd_id = 0 : i32, next_bd_id = 0 : i32}
           aie.use_lock(%cons_lock, Release, 1)
           aie.end
       }
@@ -102,7 +102,7 @@ module @test_core_tile_without_locks {
       %c0_i32 = arith.constant 0 : i32
       %c512_i32 = arith.constant 512 : i32
       %t1 = aiex.dma_configure_task(%tile_0_2, MM2S, 0) {
-          aie.dma_bd(%buf : memref<512xi32> offset = %c0_i32 len = %c512_i32 sizes = [] strides = []) {bd_id = 0 : i32}
+          aie.dma_bd(%buf : memref<512xi32> offset = %c0_i32 len = %c512_i32) {bd_id = 0 : i32}
           aie.end
       }
     }
@@ -140,7 +140,7 @@ module @test_memtile_with_locks {
       %c1024_i32 = arith.constant 1024 : i32
       %t1 = aiex.dma_configure_task(%tile_0_1, S2MM, 0) {
           aie.use_lock(%prod_lock, Acquire, 1)
-          aie.dma_bd(%buf : memref<1024xi32> offset = %c0_i32 len = %c1024_i32 sizes = [] strides = []) {bd_id = 0 : i32}
+          aie.dma_bd(%buf : memref<1024xi32> offset = %c0_i32 len = %c1024_i32) {bd_id = 0 : i32}
           aie.use_lock(%cons_lock, Release, 1)
           aie.end
       }
@@ -179,7 +179,7 @@ module @test_memtile_looping_with_locks {
       %c4096_i32 = arith.constant 4096 : i32
       %t1 = aiex.dma_configure_task(%tile_0_1, S2MM, 0) {
           aie.use_lock(%prod_lock, Acquire, 1)
-          aie.dma_bd(%buf : memref<4096xi32> offset = %c0_i32 len = %c4096_i32 sizes = [] strides = []) {bd_id = 0 : i32, next_bd_id = 0 : i32}
+          aie.dma_bd(%buf : memref<4096xi32> offset = %c0_i32 len = %c4096_i32) {bd_id = 0 : i32, next_bd_id = 0 : i32}
           aie.use_lock(%cons_lock, Release, 1)
           aie.end
       }
@@ -213,7 +213,7 @@ module @test_memtile_without_locks {
       %c0_i32 = arith.constant 0 : i32
       %c512_i32 = arith.constant 512 : i32
       %t1 = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
-          aie.dma_bd(%buf : memref<512xi32> offset = %c0_i32 len = %c512_i32 sizes = [] strides = []) {bd_id = 0 : i32}
+          aie.dma_bd(%buf : memref<512xi32> offset = %c0_i32 len = %c512_i32) {bd_id = 0 : i32}
           aie.end
       }
     }
@@ -249,7 +249,7 @@ module @test_memtile_with_acquire_ge_lock {
       %c2048_i32 = arith.constant 2048 : i32
       %t1 = aiex.dma_configure_task(%tile_0_1, S2MM, 0) {
           aie.use_lock(%prod_lock, AcquireGreaterEqual, 2)
-          aie.dma_bd(%buf : memref<2048xi32> offset = %c0_i32 len = %c2048_i32 sizes = [] strides = []) {bd_id = 0 : i32}
+          aie.dma_bd(%buf : memref<2048xi32> offset = %c0_i32 len = %c2048_i32) {bd_id = 0 : i32}
           aie.use_lock(%cons_lock, Release, 1)
           aie.end
       }
@@ -293,12 +293,12 @@ module @test_memtile_chain_with_locks {
       %c512_i32 = arith.constant 512 : i32
       %t1 = aiex.dma_configure_task(%tile_0_1, S2MM, 0) {
           aie.use_lock(%prod_lock, Acquire, 1)
-          aie.dma_bd(%buf0 : memref<512xi32> offset = %c0_i32 len = %c512_i32 sizes = [] strides = []) {bd_id = 0 : i32}
+          aie.dma_bd(%buf0 : memref<512xi32> offset = %c0_i32 len = %c512_i32) {bd_id = 0 : i32}
           aie.use_lock(%cons_lock, Release, 1)
           aie.next_bd ^bd1
         ^bd1:
           aie.use_lock(%prod_lock, Acquire, 1)
-          aie.dma_bd(%buf1 : memref<512xi32> offset = %c0_i32 len = %c512_i32 sizes = [] strides = []) {bd_id = 1 : i32}
+          aie.dma_bd(%buf1 : memref<512xi32> offset = %c0_i32 len = %c512_i32) {bd_id = 1 : i32}
           aie.use_lock(%cons_lock, Release, 1)
           aie.end
       }
@@ -336,7 +336,7 @@ module @test_memtile_different_lock_ids {
       %c1024_i32 = arith.constant 1024 : i32
       %t1 = aiex.dma_configure_task(%tile_0_1, S2MM, 0) {
           aie.use_lock(%prod_lock, Acquire, 1)
-          aie.dma_bd(%buf : memref<1024xi32> offset = %c0_i32 len = %c1024_i32 sizes = [] strides = []) {bd_id = 0 : i32}
+          aie.dma_bd(%buf : memref<1024xi32> offset = %c0_i32 len = %c1024_i32) {bd_id = 0 : i32}
           aie.use_lock(%cons_lock, Release, 1)
           aie.end
       }

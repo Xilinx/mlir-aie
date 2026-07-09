@@ -29,7 +29,7 @@ module {
           // CHECK-DAG: %[[MW1VAL:.*]] = arith.constant 1 : i32
           // CHECK-DAG: %[[MW1ADDR:.*]] = arith.constant 1703940 : i32
           // CHECK: aiex.npu.maskwrite32(%[[MW1ADDR]], %[[MW1VAL]], %[[MW1MASK]]) : i32, i32, i32
-          aie.dma_bd(%buf0 : memref<32xi8> offset = %c4_i32 len = %c16_i32 sizes = [] strides = []) {bd_id = 0 : i32}
+          aie.dma_bd(%buf0 : memref<32xi8> offset = %c4_i32 len = %c16_i32) {bd_id = 0 : i32}
           aie.next_bd ^bd2
         ^bd2:
           // maskwrite32 operands: address=1703972, value=16385, mask=524287
@@ -37,7 +37,7 @@ module {
           // CHECK-DAG: %[[MW2VAL:.*]] = arith.constant 16385 : i32
           // CHECK-DAG: %[[MW2ADDR:.*]] = arith.constant 1703972 : i32
           // CHECK: aiex.npu.maskwrite32(%[[MW2ADDR]], %[[MW2VAL]], %[[MW2MASK]]) : i32, i32, i32
-          aie.dma_bd(%buf1 : memref<32xi8> offset = %c4_i32 len = %c16_i32 sizes = [] strides = []) {bd_id = 1 : i32}
+          aie.dma_bd(%buf1 : memref<32xi8> offset = %c4_i32 len = %c16_i32) {bd_id = 1 : i32}
           aie.end
       }
     }

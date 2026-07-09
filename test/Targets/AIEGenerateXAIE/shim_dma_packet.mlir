@@ -36,7 +36,7 @@ module {
   ^bb1:  // 2 preds: ^bb0, ^bb1
     aie.use_lock(%lock70, Acquire, 1)
     aie.dma_bd_packet(0, 2)
-    aie.dma_bd(%buf : memref<32x32xi32> offset = %c0_i32 len = %c1024_i32 sizes = [] strides = [])
+    aie.dma_bd(%buf : memref<32x32xi32> offset = %c0_i32 len = %c1024_i32)
     aie.use_lock(%lock70, Release, 0)
     aie.next_bd ^bb1
   ^bb2:  // pred: ^bb0

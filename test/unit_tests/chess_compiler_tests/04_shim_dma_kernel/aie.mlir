@@ -44,22 +44,22 @@ aie.device(xcvc1902) {
       %dstDma = aie.dma_start("MM2S", 1, ^bd2, ^end)
     ^bd0:
       aie.use_lock(%lock_a_ping, "Acquire", 0)
-      aie.dma_bd(%buf_a_ping : memref<256xi32> offset = %c0_i32 len = %c256_i32 sizes = [] strides = [])
+      aie.dma_bd(%buf_a_ping : memref<256xi32> offset = %c0_i32 len = %c256_i32)
       aie.use_lock(%lock_a_ping, "Release", 1)
       aie.next_bd ^bd1
     ^bd1:
       aie.use_lock(%lock_a_pong, "Acquire", 0)
-      aie.dma_bd(%buf_a_pong : memref<256xi32> offset = %c0_i32 len = %c256_i32 sizes = [] strides = [])
+      aie.dma_bd(%buf_a_pong : memref<256xi32> offset = %c0_i32 len = %c256_i32)
       aie.use_lock(%lock_a_pong, "Release", 1)
       aie.next_bd ^bd0
     ^bd2:
       aie.use_lock(%lock_b_ping, "Acquire", 1)
-      aie.dma_bd(%buf_b_ping : memref<256xi32> offset = %c0_i32 len = %c256_i32 sizes = [] strides = [])
+      aie.dma_bd(%buf_b_ping : memref<256xi32> offset = %c0_i32 len = %c256_i32)
       aie.use_lock(%lock_b_ping, "Release", 0)
       aie.next_bd ^bd3
     ^bd3:
       aie.use_lock(%lock_b_pong, "Acquire", 1)
-      aie.dma_bd(%buf_b_pong : memref<256xi32> offset = %c0_i32 len = %c256_i32 sizes = [] strides = [])
+      aie.dma_bd(%buf_b_pong : memref<256xi32> offset = %c0_i32 len = %c256_i32)
       aie.use_lock(%lock_b_pong, "Release", 0)
       aie.next_bd ^bd2
     ^end:
@@ -85,12 +85,12 @@ aie.device(xcvc1902) {
       aie.dma_start(S2MM, 0, ^bd1, ^end)
     ^bd0:
       aie.use_lock(%lock1, Acquire, 1)
-      aie.dma_bd(%buffer_in : memref<512 x i32> offset = %c0_i32 len = %c512_i32 sizes = [] strides = [])
+      aie.dma_bd(%buffer_in : memref<512 x i32> offset = %c0_i32 len = %c512_i32)
       aie.use_lock(%lock1, Release, 0)
       aie.next_bd ^bd0
     ^bd1:
       aie.use_lock(%lock2, Acquire, 1)
-      aie.dma_bd(%buffer_out : memref<512 x i32> offset = %c0_i32 len = %c512_i32 sizes = [] strides = [])
+      aie.dma_bd(%buffer_out : memref<512 x i32> offset = %c0_i32 len = %c512_i32)
       aie.use_lock(%lock2, Release, 0)
       aie.next_bd ^bd1
     ^end:

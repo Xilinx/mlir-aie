@@ -17,8 +17,7 @@
 
 // len < product: outer dim is an iteration dim, must NOT linearize.
 // CANON-LABEL: @iter_bd_no_linearize
-// CANON:         aie.dma_bd(%arg0 : memref<131072xbf16>, 0, 4096,
-// CANON-SAME:        [<size = 32, stride = 4096>, <size = 1, stride = 64>, <size = 64, stride = 64>, <size = 64, stride = 1>]
+// CANON:         aie.dma_bd(%arg0 : memref<131072xbf16> offset = %{{.*}} len = %{{.*}} sizes = [32, 1, 64, 64] strides = [4096, 64, 64, 1])
 // LOWER-LABEL: @iter_bd_no_linearize
 // LOWER:         aiex.npu.writebd
 // LOWER-SAME:      buffer_length = 2048
@@ -47,8 +46,8 @@ module {
 
 // 4D, len == product: still linearizes.
 // CANON-LABEL: @iter_bd_4d_len_matches_linearizes
-// CANON:         aie.dma_bd(%arg0 : memref<131072xbf16>, 0, 131072)
-// CANON-NOT:         [<
+// CANON:         aie.dma_bd(%arg0 : memref<131072xbf16> offset = %{{.*}} len = %{{.*}})
+// CANON-NOT:         sizes = [
 module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
@@ -72,8 +71,8 @@ module {
 
 // 2D, len == product: still linearizes.
 // CANON-LABEL: @iter_bd_2d_len_matches_linearizes
-// CANON:         aie.dma_bd(%arg0 : memref<4096xbf16>, 0, 4096)
-// CANON-NOT:         [<
+// CANON:         aie.dma_bd(%arg0 : memref<4096xbf16> offset = %{{.*}} len = %{{.*}})
+// CANON-NOT:         sizes = [
 module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)

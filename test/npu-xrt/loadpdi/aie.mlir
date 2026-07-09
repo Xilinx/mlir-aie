@@ -48,11 +48,11 @@ module {
             aiex.npu.load_pdi { device_ref = @add_two }
 
             %t_in = aiex.dma_configure_task_for @objfifo_in {
-                aie.dma_bd(%a : memref<512xi32> offset = %c0_i32 len = %c512_i32 sizes = [] strides = [])
+                aie.dma_bd(%a : memref<512xi32> offset = %c0_i32 len = %c512_i32)
                 aie.end
             }
             %t_out = aiex.dma_configure_task_for @objfifo_out {
-                aie.dma_bd(%a : memref<512xi32> offset = %c0_i32 len = %c512_i32 sizes = [] strides = [])
+                aie.dma_bd(%a : memref<512xi32> offset = %c0_i32 len = %c512_i32)
                 aie.end
             } {issue_token = true}
             aiex.dma_start_task(%t_in)

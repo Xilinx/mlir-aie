@@ -16,7 +16,7 @@ module {
       %c16_i32 = arith.constant 16 : i32
       %t1 = aiex.dma_configure_task(%tile_0_2, MM2S, 0) {
       // expected-error@+1 {{Padding is supported only on MemTiles.}} 
-          aie.dma_bd(%buf : memref<32xi8> offset = %c4_i32 len = %c16_i32 sizes = [] strides = [] pad [<const_pad_before=2, const_pad_after=1>]) {bd_id = 0 : i32}
+          aie.dma_bd(%buf : memref<32xi8> offset = %c4_i32 len = %c16_i32 pad [<const_pad_before=2, const_pad_after=1>]) {bd_id = 0 : i32}
           aie.end
       }
     }

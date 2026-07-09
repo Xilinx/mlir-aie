@@ -25,7 +25,7 @@ module {
       %c0_i32 = arith.constant 0 : i32
       %c4096_i32 = arith.constant 4096 : i32
       %t0 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<4096xi32> offset = %c0_i32 len = %c4096_i32 sizes = [] strides = []) {bd_id = 0 : i32}
+        aie.dma_bd(%arg0 : memref<4096xi32> offset = %c0_i32 len = %c4096_i32) {bd_id = 0 : i32}
         aie.end
       }
 
@@ -35,22 +35,22 @@ module {
       %c3072_i32 = arith.constant 3072 : i32
       %t1 = aiex.dma_configure_task(%tile_0_1, S2MM, 0) {
         aie.use_lock(%prod_lock, AcquireGreaterEqual, 1)
-        aie.dma_bd(%out_buff : memref<4096xi32> offset = %c1024_i32 len = %c1024_i32 sizes = [] strides = []) {bd_id = 0 : i32}
+        aie.dma_bd(%out_buff : memref<4096xi32> offset = %c1024_i32 len = %c1024_i32) {bd_id = 0 : i32}
         aie.use_lock(%cons_lock, Release, 1)
         aie.next_bd ^bb1
       ^bb1:
         aie.use_lock(%prod_lock, AcquireGreaterEqual, 1)
-        aie.dma_bd(%out_buff : memref<4096xi32> offset = %c3072_i32 len = %c1024_i32 sizes = [] strides = []) {bd_id = 1 : i32}
+        aie.dma_bd(%out_buff : memref<4096xi32> offset = %c3072_i32 len = %c1024_i32) {bd_id = 1 : i32}
         aie.use_lock(%cons_lock, Release, 1)
         aie.next_bd ^bb2
       ^bb2:
         aie.use_lock(%prod_lock, AcquireGreaterEqual, 1)
-        aie.dma_bd(%out_buff : memref<4096xi32> offset = %c0_i32 len = %c1024_i32 sizes = [] strides = []) {bd_id = 2 : i32}
+        aie.dma_bd(%out_buff : memref<4096xi32> offset = %c0_i32 len = %c1024_i32) {bd_id = 2 : i32}
         aie.use_lock(%cons_lock, Release, 1)
         aie.next_bd ^bb3
       ^bb3:
         aie.use_lock(%prod_lock, AcquireGreaterEqual, 1)
-        aie.dma_bd(%out_buff : memref<4096xi32> offset = %c2048_i32 len = %c1024_i32 sizes = [] strides = []) {bd_id = 3 : i32}
+        aie.dma_bd(%out_buff : memref<4096xi32> offset = %c2048_i32 len = %c1024_i32) {bd_id = 3 : i32}
         aie.use_lock(%cons_lock, Release, 1)
         aie.end
       }
@@ -61,14 +61,14 @@ module {
       // Configure memtile DMA to send data to shim
       %t2 = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
         aie.use_lock(%cons_lock, AcquireGreaterEqual, 4)
-        aie.dma_bd(%out_buff : memref<4096xi32> offset = %c0_i32 len = %c4096_i32 sizes = [] strides = []) {bd_id = 4 : i32}
+        aie.dma_bd(%out_buff : memref<4096xi32> offset = %c0_i32 len = %c4096_i32) {bd_id = 4 : i32}
         aie.use_lock(%prod_lock, Release, 4)
         aie.end
       }
 
       // Configure shim DMA to receive data from memtile
       %t3 = aiex.dma_configure_task(%tile_0_0, S2MM, 0) {
-        aie.dma_bd(%arg1 : memref<4096xi32> offset = %c0_i32 len = %c4096_i32 sizes = [] strides = []) {bd_id = 1 : i32}
+        aie.dma_bd(%arg1 : memref<4096xi32> offset = %c0_i32 len = %c4096_i32) {bd_id = 1 : i32}
         aie.end
       } {issue_token = true}
 

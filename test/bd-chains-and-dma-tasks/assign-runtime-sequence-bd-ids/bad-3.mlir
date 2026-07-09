@@ -17,13 +17,13 @@ module {
       %c0_i32 = arith.constant 0 : i32
       %c8_i32 = arith.constant 8 : i32
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32 sizes = [] strides = []) {bd_id = 7 : i32}
+        aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32) {bd_id = 7 : i32}
         aie.end
       }
       // Reuse BD ID without explicit free
       // expected-error@+1 {{Specified buffer descriptor ID 7 is already in use}}
       %t2 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32 sizes = [] strides = []) {bd_id = 7 : i32}
+        aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32) {bd_id = 7 : i32}
         aie.end
       }
     }

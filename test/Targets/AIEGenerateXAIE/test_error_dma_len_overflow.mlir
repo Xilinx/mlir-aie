@@ -25,7 +25,7 @@ module {
       %srcDma = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
       %buf = aie.external_buffer { sym_name = "myBuffer_0_0_0" } : memref<536870912xi64>
-      aie.dma_bd(%buf : memref<536870912xi64> offset = %c0_i32 len = %c536870912_i32 sizes = [] strides = [])
+      aie.dma_bd(%buf : memref<536870912xi64> offset = %c0_i32 len = %c536870912_i32)
       aie.next_bd ^end
     ^end:
       aie.end

@@ -96,7 +96,7 @@ module @tutorial_2b {
           %dstDma = aie.dma_start("S2MM", 0, ^bd0, ^end)
           ^bd0:
             aie.use_lock(%lock34_wait, "AcquireGreaterEqual", 1)
-            aie.dma_bd(%buf34 : memref<128xi32> offset = %c0_i32 len = %c128_i32 sizes = [] strides = [])
+            aie.dma_bd(%buf34 : memref<128xi32> offset = %c0_i32 len = %c128_i32)
             aie.use_lock(%lock34_recv, "Release", 1)
             aie.next_bd ^end
           ^end:
