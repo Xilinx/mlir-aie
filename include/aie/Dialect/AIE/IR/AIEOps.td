@@ -1378,18 +1378,23 @@ def AIE_UseLockOp: AIE_Op<"use_lock", []> {
       Then, the value of the lock is decremented by `value`.
     - Release: In AIE1, set the lock to `value`.
       In AIE2, increment the lock by `value`.
+
+    The lock value is always given as an `i32` SSA `value` operand. Passes that
+    need a compile-time constant obtain it via `getConstantValue()`, which
+    expects the operand to be defined by an `arith.constant` and fails
+    otherwise.
   }];
 
   let arguments = (
     ins Index:$lock,
         LockAction:$action,
-        OptionalAttr<AIEI32Attr>:$value,
+        I32:$value,
         OptionalAttr<LockBlocking>:$blocking,
         DefaultValuedOptionalAttr<BoolAttr, "true">:$acq_en
   );
 
   let assemblyFormat = [{
-    `(` $lock `,` $action (`,` $value^)? (`,` $blocking^)? `)` attr-dict
+    `(` $lock `,` custom<UseLockValue>($action, $value, $blocking) `)` attr-dict
   }];
 
   let hasVerifier = 1;
@@ -1397,7 +1402,15 @@ def AIE_UseLockOp: AIE_Op<"use_lock", []> {
     OpBuilder<(ins "mlir::Value":$lock,
                    "xilinx::AIE::LockAction":$action,
                    "int32_t":$value), [{
-      build($_builder, $_state, lock, action, $_builder.getI32IntegerAttr(value), nullptr);
+      auto constant = mlir::arith::ConstantOp::create(
+          $_builder, $_state.location, $_builder.getI32Type(),
+          $_builder.getI32IntegerAttr(value));
+      build($_builder, $_state, lock, action, constant, /*blocking=*/nullptr);
+    }]>,
+    OpBuilder<(ins "mlir::Value":$lock,
+                   "xilinx::AIE::LockAction":$action,
+                   "mlir::Value":$value), [{
+      build($_builder, $_state, lock, action, value, /*blocking=*/nullptr);
     }]>
   ];
 
@@ -1405,7 +1418,9 @@ def AIE_UseLockOp: AIE_Op<"use_lock", []> {
     bool acquire() { return (getAction() == LockAction::Acquire); }
     bool acquireGE() { return (getAction() == LockAction::AcquireGreaterEqual); }
     bool release() { return (getAction() == LockAction::Release); }
-    int getLockValue() { return getValue().value_or(1); }
+    // Returns the compile-time constant lock value when `value` is defined by
+    // an arith.constant; otherwise emits an op error and returns failure.
+    mlir::FailureOr<int32_t> getConstantValue();
     int getTimeout() {
       // LockBlocking is an EnumAttr.
       if (auto val = getBlocking())

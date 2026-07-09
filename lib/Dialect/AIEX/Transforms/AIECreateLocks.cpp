@@ -11,6 +11,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Pass/Pass.h"
@@ -136,6 +137,9 @@ static int getLockID(DenseMap<std::pair<Operation *, int>, int> &locks,
 
 struct AIECreateLocksPass
     : public xilinx::AIEX::impl::AIECreateLocksBase<AIECreateLocksPass> {
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<arith::ArithDialect>();
+  }
   void runOnOperation() override {
 
     DeviceOp device = getOperation();
