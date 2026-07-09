@@ -1,4 +1,4 @@
-<!-- Copyright (C) 2019-2024 Advanced Micro Devices, Inc. -->
+<!-- Copyright (C) 2019-2026 Advanced Micro Devices, Inc. -->
 <!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 [![Build and Test across Python versions](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestPythons.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestPythons.yml) [![Build and Test with AIE tools on Ryzen™ AI](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestRyzenAI.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestRyzenAI.yml) [![Compile across platforms](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestMulti.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestMulti.yml)
 
@@ -31,9 +31,20 @@ The IRON Python API for Ryzen™ AI NPUs is described in the following paper:
   <img src="docs/assets/images/iron_linux_stack.svg" alt="Iron Linux Software Stack" width="50%">
 </p>
 
-# Getting Started for AMD Ryzen™ AI on Linux
+## Ryzen™ AI host setup
+
+| Host | Start here |
+| --- | --- |
+| Linux (Ubuntu) | [Continue with the Linux setup below](#getting-started-for-amd-ryzen-ai-on-linux) |
+| Linux (non-Ubuntu) | [Non-Ubuntu Linux Setup](docs/buildHostLinNonUbuntu.md) |
+| Windows 11 | [Native Windows Setup](docs/buildHostWinNative.md) |
+| Windows via WSL | [Windows via WSL Setup](docs/buildHostWin.md) |
+
+## Getting Started for AMD Ryzen™ AI on Linux
 
 These instructions will guide you through everything required for building and executing a program on the Ryzen™ AI NPU, starting from a fresh bare-bones **Ubuntu 24.04** or **Ubuntu 24.10** install.
+
+> **NOTE:** If you are using a different Linux distribution, see the [non-Ubuntu build guide](docs/buildHostLinNonUbuntu.md). Please be aware that building for distributions other than Ubuntu is experimental. Support may vary.
 
 ## Initial Setup
 
@@ -244,7 +255,7 @@ xrt-smi examine
 
    </details>
 
-## Build an IRON Design for AIEs in the AMD Ryzen™ AI NPU
+## Build an IRON Design for AIEs in the AMD Ryzen™ AI NPU on Linux
 
 For your design of interest, for instance from [programming_examples](programming_examples/), 2 steps are needed: (i) build the AIE design and then (ii) build the host code.
 
@@ -311,7 +322,7 @@ For your design of interest, for instance from [programming_examples](programmin
 
 ## Alternative: Build XDNA™ Driver and XRT from source
 
-If the [upstream packages](#install-from-upstream-packages-ubuntu-2404) do not support your kernel or distribution, you can build the driver and XRT from source:
+If the [upstream packages](#install-from-upstream-packages-ubuntu-2404-with-linux-617) do not support your kernel or distribution, you can build the driver and XRT from source:
 
 1. Execute the scripted build process:
 
