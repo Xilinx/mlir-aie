@@ -40,7 +40,6 @@ env:
             -DXRT_ROOT=/opt/xilinx/xrt \
             -DAIE_ENABLE_PYTHON_PASSES=OFF \
             -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON \
-            -DAIE_INCLUDE_INTEGRATION_TESTS=OFF
   LIT_OPTS: -sv --time-tests --timeout 600 --show-unsupported --show-excluded
 
 jobs:

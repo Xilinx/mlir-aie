@@ -78,9 +78,6 @@ endif()
 option(LLVM_INCLUDE_TOOLS "Generate build targets for the LLVM tools." ON)
 option(LLVM_BUILD_TOOLS
        "Build the LLVM tools. If OFF, just generate build targets." ON)
-option(AIE_INCLUDE_INTEGRATION_TESTS
-       "Generate build targets for the mlir-aie integration tests." OFF)
-
 # Take note of the current git revision for outputting version strings in built executables
 execute_process(COMMAND git rev-parse HEAD OUTPUT_VARIABLE AIE_GIT_COMMIT ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
 
