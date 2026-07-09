@@ -229,6 +229,36 @@ the original loop.
 -packet-sw-objFifos : Flag to enable aie.packetflow lowering from objectfifos.
 ```
 
+### `-aie-objectfifo-liveness`
+
+_Flag a specific under-buffered coupled-multicast objectFIFO class that hangs at runtime (not a general deadlock detector)._
+
+A coupled multicast (broadcast) objectFIFO whose consumers back-pressure the
+producer forms a dependency cycle. When the producer must re-acquire a slot
+on a later trip (replay, repeat_count >= 2) while the prior trip's tokens are
+still outstanding, the round-trip slack (2 * depth) can be smaller than the
+number of outstanding tokens demanded by the coupled fan-out
+(array_fan * trip_count). That is a static, structural deadlock: the IR
+compiles clean and then hangs the array at runtime.
+
+This pass builds the objectFIFO data + back-pressure dependency graph, finds
+cyclic strongly-connected components (Tarjan), and applies the validated SDF
+model PER coupled-multicast group (grouped by name base). Each group is
+scoped independently so an unrelated cycle elsewhere in the device cannot
+inflate its demand:
+
+  demand   = array_fan * T          (array_fan = the group's multicast
+                                      fan-out, summed across the SCCs it
+                                      spans; T = max repeat_count among the
+                                      fifos in those SCCs)
+  slack    = 2 * depth              (depth = min depth in the group)
+  DEADLOCK iff  T >= 2  AND  depth > 0  AND  demand > slack
+
+The T >= 2 replay guard avoids false positives on single-trip broadcasts.
+The analysis is sound for this static SDF class and conservative elsewhere
+(it never errors outside a proven cyclic under-buffered multicast); it does
+not claim to catch other deadlock classes.
+
 ### `-aie-place-tiles`
 
 _Place logical tiles onto physical AIE tiles_
