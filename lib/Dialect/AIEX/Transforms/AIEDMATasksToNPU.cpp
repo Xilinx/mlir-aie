@@ -15,6 +15,7 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -350,13 +351,26 @@ struct AIEDMATasksToNPUPass
              << len << " bytes falls below minimum hardware transfer unit of "
              << (addr_granularity / 8) << " bytes.";
     }
-    // Process strides/wraps. Fold the mixed sizes/strides to a constant
-    // BDDimLayoutAttr list; a runtime value on this static lowering path is an
-    // error. The owning storage must outlive the ArrayRef view below.
+    // Process strides/wraps. Runtime-valued sizes/strides are not supported on
+    // the static NPU lowering path; use constant sizes or the dynamic EmitC
+    // path.
+    for (mlir::OpFoldResult s : bd_op.getMixedSizes())
+      if (!mlir::getConstantIntValue(s))
+        return bd_op->emitOpError(
+            "runtime-valued BD size/stride is not supported on the static NPU "
+            "lowering path; use compile-time constants or the dynamic EmitC "
+            "path (--aie-npu-to-cpp)");
+    for (mlir::OpFoldResult s : bd_op.getMixedStrides())
+      if (!mlir::getConstantIntValue(s))
+        return bd_op->emitOpError(
+            "runtime-valued BD size/stride is not supported on the static NPU "
+            "lowering path; use compile-time constants or the dynamic EmitC "
+            "path (--aie-npu-to-cpp)");
+    // The owning storage must outlive the ArrayRef view below.
     std::optional<llvm::SmallVector<AIE::BDDimLayoutAttr>> dimsStorage =
         bd_op.getConstantDimensions();
     if (!dimsStorage)
-      return failure();
+      return bd_op->emitOpError("internal error folding BD dimensions");
     std::optional<llvm::ArrayRef<AIE::BDDimLayoutAttr>> dims;
     if (!dimsStorage->empty())
       dims = llvm::ArrayRef<AIE::BDDimLayoutAttr>(*dimsStorage);

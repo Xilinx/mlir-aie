@@ -96,6 +96,16 @@ class npu_write_rtp(NpuWriteRTPOp):
         super().__init__(buffer=buff_name, index=index, value=value, loc=loc, ip=ip)
 
 
+def _as_i32(v):
+    """Materialize an arith.constant i32 from a Python int, pass a Value through
+    unchanged, or return None for None. Mirrors the helper in aiex.py."""
+    if v is None:
+        return None
+    if isinstance(v, int):
+        return constant(v, T.i32())
+    return v
+
+
 def dma_bd(
     buffer,
     sizes: MixedValues | None = None,
@@ -120,13 +130,6 @@ def dma_bd(
     """
     dyn_sizes, _packed_sizes, static_sizes = _dispatch_mixed_values(sizes or [])
     dyn_strides, _packed_strides, static_strides = _dispatch_mixed_values(strides or [])
-
-    def _as_i32(v):
-        if v is None:
-            return None
-        if isinstance(v, int):
-            return constant(v, T.i32())
-        return v
 
     return _DMABDOp(
         buffer,

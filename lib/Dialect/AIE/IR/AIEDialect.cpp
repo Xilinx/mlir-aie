@@ -11,6 +11,7 @@
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/DialectImplementation.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/SymbolTable.h"
@@ -2032,8 +2033,8 @@ BufferOp DMABDOp::getBufferOp() {
 
 void DMABDOp::buildWithConstants(mlir::OpBuilder &builder,
                                  mlir::OperationState &state,
-                                 mlir::Value buffer, int offset, int len,
-                                 BDDimLayoutArrayAttr dims,
+                                 mlir::Value buffer, int32_t offset,
+                                 int32_t len, BDDimLayoutArrayAttr dims,
                                  BDPadLayoutArrayAttr padDims,
                                  PacketInfoAttr packet) {
   mlir::Value offsetVal = arith::ConstantOp::create(
@@ -2252,9 +2253,14 @@ LogicalResult DMABDOp::verify() {
       auto paddim = (*paddims)[i];
       actuallen *= paddim.getConstPadBefore() + paddim.getConstPadAfter() +
                    dim.getSize();
-      if (std::optional<int32_t> len = getConstantLen();
-          len.has_value() && actuallen > *len)
-        return emitOpError() << "Data exceeds len after padding.";
+      if (std::optional<int32_t> len = getConstantLen(); len.has_value()) {
+        if (actuallen > *len)
+          return emitOpError() << "Data exceeds len after padding.";
+      } else if (getLen()) {
+        return emitOpError()
+               << "Padding with a runtime len operand is not yet supported; "
+                  "use a compile-time constant len with padded BDs.";
+      }
     }
     if ((paddims->back().getConstPadBefore() *
          getBufferElementTypeWidthInBytes()) %
@@ -2391,12 +2397,18 @@ struct LinearizeContiguousBDTransfer : public mlir::OpRewritePattern<DMABDOp> {
     if (!bufferIsExternal && !parentIsShim && !inShimDMA)
       return mlir::failure();
 
-    // Only when ND dimensions are present and contiguous. A runtime-valued
-    // size/stride can't be folded/linearized here, so bail
-    // (getConstantDimensions returns nullopt and emits a diagnostic we suppress
-    // by checking first).
+    // Only when ND dimensions are present and all-constant. Runtime-valued
+    // sizes can't be folded/linearized; decline silently (no diagnostic) so
+    // valid IR with runtime sizes doesn't produce a spurious error.
     if (op.getMixedSizes().empty())
       return mlir::failure();
+    // Check all sizes/strides are constants before attempting to fold.
+    for (mlir::OpFoldResult s : op.getMixedSizes())
+      if (!mlir::getConstantIntValue(s))
+        return mlir::failure();
+    for (mlir::OpFoldResult s : op.getMixedStrides())
+      if (!mlir::getConstantIntValue(s))
+        return mlir::failure();
     std::optional<llvm::SmallVector<BDDimLayoutAttr>> dims =
         op.getFoldedDimensions([&]() { return op.emitError(); });
     if (!dims.has_value() || dims->empty())
@@ -2413,7 +2425,10 @@ struct LinearizeContiguousBDTransfer : public mlir::OpRewritePattern<DMABDOp> {
 
     // len < product: the outermost dim describes a hardware BD iteration
     // (preserved downstream as iteration_size/stride). Don't fold it away.
-    // A runtime len can't be compared, so bail.
+    // A runtime len can't be compared, so bail. Also bail if len is absent but
+    // the buffer is unranked (can't safely infer product == full transfer).
+    if (!op.getLen() && !op.getBuffer().getType().hasStaticShape())
+      return mlir::failure();
     std::optional<int32_t> lenVal = op.getConstantLen();
     if (lenVal.has_value() && static_cast<int64_t>(*lenVal) != product)
       return mlir::failure();

@@ -1030,7 +1030,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
     // int-argument producer call site source-compatible.
     static void buildWithConstants(
         ::mlir::OpBuilder &builder, ::mlir::OperationState &state,
-        ::mlir::Value buffer, int offset, int len,
+        ::mlir::Value buffer, int32_t offset, int32_t len,
         BDDimLayoutArrayAttr dims, BDPadLayoutArrayAttr padDims,
         PacketInfoAttr packet);
 

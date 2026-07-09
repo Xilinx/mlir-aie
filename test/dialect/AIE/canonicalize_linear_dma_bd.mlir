@@ -262,3 +262,26 @@ module {
     }
   }
 }
+
+// -----
+
+// Regression: a BD with a runtime-valued size (block argument) must pass
+// --canonicalize without emitting any diagnostic. The linearize pattern must
+// silently decline — not emit an error — when it cannot fold the size.
+
+// CHECK-LABEL: @rt_seq
+// CHECK:         aie.dma_bd
+// CHECK-SAME:      sizes = [%arg1
+module {
+  aie.device(npu1) {
+    %tile_0_0 = aie.tile(0, 0)
+    aie.runtime_sequence @rt_seq(%buf: memref<1024xi32>, %n: i64) {
+      %c0_i32 = arith.constant 0 : i32
+      %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
+        aie.dma_bd(%buf : memref<1024xi32> offset = %c0_i32
+                   sizes = [%n, 64] strides = [64, 1])
+        aie.end
+      }
+    }
+  }
+}

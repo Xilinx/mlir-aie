@@ -15,7 +15,7 @@ from ._aiex_ops_gen import (
     npu_rtp_write as _npu_rtp_write,
     npu_push_queue as _npu_push_queue,
 )
-from ._aie_ops_gen import ObjectFifoCreateOp, dma_bd, EndOp, RuntimeSequenceOp
+from ._aie_ops_gen import ObjectFifoCreateOp, EndOp, RuntimeSequenceOp
 from . import aie
 from .aie import (
     DMAChannelDir,
@@ -23,6 +23,7 @@ from .aie import (
     Neighbors,
     TileOp,
     bds,
+    dma_bd,
 )
 from .transform.structured import MixedValues, _dispatch_mixed_values
 from ..extras.dialects.arith import constant
@@ -49,11 +50,11 @@ register_dialect(get_dialect_registry())
 
 
 def _as_i32(v):
-    """Materialize an arith.constant i32 from a Python int, or pass a Value
-    through unchanged. The npu scalar ops (write32/maskwrite32/sync/
-    address_patch/rtp_write) carry their integer fields as SSA i32 operands;
-    these wrappers preserve the historical int-argument API by converting
-    constants on the user's behalf."""
+    """Materialize an arith.constant i32 from a Python int, pass a Value through
+    unchanged, or return None for None. Used by npu scalar op wrappers and the
+    dma_bd wrapper to preserve historical int-argument APIs."""
+    if v is None:
+        return None
     if isinstance(v, int):
         return constant(v, T.i32())
     return v

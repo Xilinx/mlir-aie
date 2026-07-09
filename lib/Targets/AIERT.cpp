@@ -8,6 +8,7 @@
 #include "aie/Targets/AIERT.h"
 #include "aie/Targets/AIETargetShared.h"
 
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Support/LogicalResult.h"
 
 extern "C" {
@@ -415,12 +416,23 @@ LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
       baseAddr += addrOffset.value();
   }
 
-  // Fold the mixed sizes/strides to a constant BDDimLayoutAttr list. The owning
-  // storage must outlive the ArrayRef used below.
+  // Runtime-valued sizes/strides are not supported on this static lowering
+  // path.
+  for (mlir::OpFoldResult s : bdOp.getMixedSizes())
+    if (!mlir::getConstantIntValue(s))
+      return bdOp->emitOpError(
+          "runtime-valued BD size/stride is not supported on the static XAIE "
+          "lowering path; use compile-time constant sizes");
+  for (mlir::OpFoldResult s : bdOp.getMixedStrides())
+    if (!mlir::getConstantIntValue(s))
+      return bdOp->emitOpError(
+          "runtime-valued BD size/stride is not supported on the static XAIE "
+          "lowering path; use compile-time constant sizes");
+  // The owning storage must outlive the ArrayRef used below.
   std::optional<llvm::SmallVector<AIE::BDDimLayoutAttr>> dimsStorage =
       bdOp.getConstantDimensions();
   if (!dimsStorage)
-    return failure();
+    return bdOp->emitOpError("internal error folding BD dimensions");
   std::optional<llvm::ArrayRef<AIE::BDDimLayoutAttr>> dims;
   if (!dimsStorage->empty())
     dims = llvm::ArrayRef<AIE::BDDimLayoutAttr>(*dimsStorage);

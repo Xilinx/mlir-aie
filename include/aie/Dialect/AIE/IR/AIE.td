@@ -26,8 +26,10 @@ def AIE_Dialect : Dialect {
   }];
   let useDefaultTypePrinterParser = 1;
   let useDefaultAttributePrinterParser = 1;
-  // aie.dma_bd materializes arith.constant operands for its offset/len fields
-  // (and its builders/canonicalizer create them), so arith must be loaded.
+  // DMABDOp::buildWithConstants and LinearizeContiguousBDTransfer create
+  // arith.constant ops via the MLIR builder API. MLIR requires dependent
+  // dialects to be pre-loaded before any op in this dialect may be built,
+  // so dialect-level declaration is the correct placement.
   let dependentDialects = ["::mlir::arith::ArithDialect"];
 }
 
