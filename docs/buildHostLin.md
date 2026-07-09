@@ -333,10 +333,11 @@ You will...
    ```bash
    git clone https://github.com/Xilinx/mlir-aie.git
    cd mlir-aie
-   ````
+   ```
 
-1. Source `utils/quick_setup.sh` to setup the prerequisites and
-   install the mlir-aie compiler tools from whls.
+1. Source `utils/env_install.sh` to create the `ironenv` virtual environment and
+   install the mlir-aie compiler tools from wheels, then source
+   `utils/env_setup.sh` to configure your shell.
 
 1. Jump ahead to [Build Device AIE Part](#build-device-aie-part) step 2 below.
 
@@ -345,7 +346,7 @@ You will...
 1. Clone [https://github.com/Xilinx/mlir-aie.git](https://github.com/Xilinx/mlir-aie.git) best under /home/username for speed (yourPathToBuildMLIR-AIE), with submodules:
    ```bash
    git clone --recurse-submodules https://github.com/Xilinx/mlir-aie.git
-   ````
+   ```
 
 1. Follow regular getting started instructions [Building on x86](https://xilinx.github.io/mlir-aie/Building.html) from step 2. Please disregard any instructions referencing alternative LibXAIE versions or sysroots.
 

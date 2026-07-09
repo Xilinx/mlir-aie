@@ -16,27 +16,6 @@ on:
         type: string
         required: false
         default: ''
-  workflow_call:
-    inputs:
-      python_version:
-        description: 'Single Python version to build (narrows the matrix when set)'
-        type: string
-        required: false
-        default: ''
-      enable_rtti:
-        description: 'Single RTTI setting to build, ON or OFF (narrows the matrix when set)'
-        type: string
-        required: false
-        default: ''
-      reusable_call:
-        description: 'True when invoked as a reusable workflow; suppresses publishing and Windows builds'
-        type: boolean
-        required: false
-        default: false
-    outputs:
-      wheel_artifact_name:
-        description: 'Name of the uploaded mlir_aie wheel artifact (for same-run download by the caller)'
-        value: ${{ jobs.build-repo.outputs.wheel_artifact_name }}
   push:
     tags:
       - 'v*.*.*'
@@ -65,30 +44,8 @@ env:
   PIP_DISABLE_PIP_VERSION_CHECK: "1"
 
 jobs:
-  setup:
-    name: Compute wheel build matrix
-    runs-on: ubuntu-latest
-    outputs:
-      matrix: ${{ steps.set.outputs.matrix }}
-    steps:
-      - id: set
-        shell: bash
-        # When invoked as a reusable workflow with a single python_version +
-        # enable_rtti, build just that one config; otherwise build the full
-        # published matrix.
-        run: |
-          if [ -n "${{ inputs.python_version }}" ] && [ -n "${{ inputs.enable_rtti }}" ]; then
-            echo 'matrix={"include":[{"python_version":"${{ inputs.python_version }}","ENABLE_RTTI":"${{ inputs.enable_rtti }}"}]}' >> "$GITHUB_OUTPUT"
-          else
-            echo 'matrix={"include":[{"python_version":"3.11","ENABLE_RTTI":"ON"},{"python_version":"3.11","ENABLE_RTTI":"OFF"},{"python_version":"3.12","ENABLE_RTTI":"ON"},{"python_version":"3.12","ENABLE_RTTI":"OFF"},{"python_version":"3.13","ENABLE_RTTI":"ON"},{"python_version":"3.13","ENABLE_RTTI":"OFF"},{"python_version":"3.14","ENABLE_RTTI":"ON"},{"python_version":"3.14","ENABLE_RTTI":"OFF"}]}' >> "$GITHUB_OUTPUT"
-          fi
-
   build-repo:
     name: Build and upload mlir_aie wheels
-    needs: setup
-
-    outputs:
-      wheel_artifact_name: ${{ steps.artifact_name.outputs.name }}
 
     runs-on: ubuntu-latest
 
@@ -100,7 +57,24 @@ jobs:
 
     strategy:
       fail-fast: false
-      matrix: ${{ fromJSON(needs.setup.outputs.matrix) }}
+      matrix:
+        include:
+          - python_version: "3.11"
+            ENABLE_RTTI: "ON"
+          - python_version: "3.11"
+            ENABLE_RTTI: "OFF"
+          - python_version: "3.12"
+            ENABLE_RTTI: "ON"
+          - python_version: "3.12"
+            ENABLE_RTTI: "OFF"
+          - python_version: "3.13"
+            ENABLE_RTTI: "ON"
+          - python_version: "3.13"
+            ENABLE_RTTI: "OFF"
+          - python_version: "3.14"
+            ENABLE_RTTI: "ON"
+          - python_version: "3.14"
+            ENABLE_RTTI: "OFF"
 
     steps:
       - name: Free disk space
@@ -277,18 +251,94 @@ jobs:
         with:
           path: wheelhouse/repaired_wheel/mlir_aie*whl
           name: ${{ steps.artifact_name.outputs.name }}
-          # Reusable-call wheels are only needed for same-run handoff to the
-          # examples job; keep them a week so they don't accumulate. Other
-          # triggers keep the repo-default retention (0 = use default).
-          retention-days: ${{ inputs.reusable_call && 7 || 0 }}
+
+
+  smoke-test-npu:
+    name: Smoke-Test Wheel on Ryzen AI
+    # Verify the 3.12 / RTTI-ON wheel built from THIS run installs via
+    # env_install.sh/env_setup.sh and can compile + run basic examples on NPU
+    # hardware.
+    # The wheel itself is built on ubuntu-latest by build-repo; only this test
+    # job uses the self-hosted NPU runners. PR-only: the merge queue and
+    # nightly still get full from-source NPU coverage via buildAndTestRyzenAI.
+    needs: build-repo
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ${{ matrix.runner_type }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner_type: [ aie2-4col, aie2p-8col ]
+    env:
+      # The self-hosted NPU runners ship Ryzen AI 1.3.0.1; override the
+      # workflow-level VITIS (which points at the ubuntu build container's
+      # path) so PATH below resolves the on-runner AIE tools.
+      VITIS: /opt/ryzen_ai-1.3.0.1/vitis_aie_essentials
+      NPU_CACHE_HOME: ${{ github.workspace }}/iron-cache-${{ matrix.runner_type }}-${{ github.run_id }}
+      PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-${{ matrix.runner_type }}-${{ github.run_id }}
+      SMOKE_PYTHON_VERSION: "3.12"
+      SMOKE_ENABLE_RTTI: "ON"
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          submodules: "true"
+
+      # Pull the 3.12 / RTTI-ON wheel built from this same run (build-repo) so
+      # the examples test exactly this commit's mlir_aie, not a published tag.
+      - name: Download same-commit mlir_aie wheel
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4
+        with:
+          name: mlir_aie_rtti_${{ env.SMOKE_ENABLE_RTTI }}-${{ env.SMOKE_PYTHON_VERSION }}
+          path: ${{ github.workspace }}/examples-wheel
+
+      - name: Print hostname
+        run: hostname
+
+      - name: Run commands
+        run: |
+          sudo prlimit -lunlimited --pid $$
+          # Newer XRT/amdxdna packages no longer ship setup.sh; source it
+          # only when present so the job works on both old and new XRT.
+          [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
+          export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
+          # Install the same-commit wheel downloaded above instead of the
+          # published rolling tag.
+          export MLIR_AIE_WHEEL_DIR="${{ github.workspace }}/examples-wheel"
+          # Install the runtime env (venv "ironenv" + mlir_aie wheel + Peano) and
+          # configure the shell against it, using the same scripts users run.
+          rm -rf ironenv
+          source utils/env_install.sh
+          source utils/env_setup.sh
+          # env_install installs the runtime prerequisites; add the build tooling
+          # (cmake, ninja, ...) the examples need to compile host code.
+          python -m pip install --require-hashes -r python/requirements_dev.lock
+
+          # Set number of contexts to maintain in cache per process
+          export XRT_CONTEXT_CACHE_SIZE=2
+
+          # Create runner-specific cache directory
+          rm -rf $NPU_CACHE_HOME
+          mkdir $NPU_CACHE_HOME
+
+          # Lightweight check that the mlir_aie wheel installed by env_install
+          # can actually compile and run designs on the NPU. env_setup put the
+          # installed package (not a from-source build) on PATH/PYTHONPATH, so
+          # `make run` here exercises the wheel. The -eo pipefail shell fails the
+          # job if any example returns non-zero.
+          for ex in basic/passthrough_kernel basic/vector_scalar_add basic/passthrough_dmas; do
+            echo "===== $ex ====="
+            make -C "programming_examples/$ex" clean
+            make -C "programming_examples/$ex" run
+          done
+
+      - name: Cleanup NPU_CACHE_HOME
+        if: always()
+        run: |
+          rm -rf $NPU_CACHE_HOME
+          rm -rf $PIP_CACHE_DIR
 
 
   build-windows:
     name: Build and upload mlir_aie wheels (Windows)
-    # A reusable call only needs the single narrowed Linux wheel; never build
-    # Windows for it.
-    if: ${{ !inputs.reusable_call }}
-
     runs-on: windows-2022
 
     permissions:
@@ -531,10 +581,9 @@ jobs:
   publish:
     name: Publish wheels
     if: |
-      !inputs.reusable_call &&
-      (github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'workflow_dispatch' ||
       github.event_name == 'schedule' ||
-      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')))
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))
     runs-on: ubuntu-latest
     needs: [build-repo, build-windows]
     permissions:
@@ -615,9 +664,8 @@ jobs:
       - name: Release latest wheels (RTTI ON)
         # Only publish from the nightly schedule or an intentional manual
         # refresh. Excludes pull_request so PRs no longer overwrite the shared
-        # rolling tag with unmerged branch content; excludes reusable calls so
-        # the test workflow never republishes.
-        if: ${{ !inputs.reusable_call && contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) }}
+        # rolling tag with unmerged branch content.
+        if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) }}
         uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd  # v1.21.0
         with:
           artifacts: wheels_on_flat/mlir_aie*whl
@@ -630,7 +678,7 @@ jobs:
           makeLatest: false
 
       - name: Release latest wheels (RTTI OFF)
-        if: ${{ !inputs.reusable_call && contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) }}
+        if: ${{ contains(fromJSON('["schedule","workflow_dispatch"]'), github.event_name) }}
         uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd  # v1.21.0
         with:
           artifacts: wheels_off_flat/mlir_aie*whl

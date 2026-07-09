@@ -116,18 +116,34 @@ jobs:
         run: |
 
           VERSION=$(utils/clone-llvm.sh --get-wheel-version)
-          if [ x"${{ matrix.ENABLE_RTTI }}" == x"OFF"]; then
+          if [ x"${{ matrix.ENABLE_RTTI }}" == x"OFF" ]; then
             WHEEL=mlir_no_rtti
           else
             WHEEL=mlir
           fi
-          pip -q download $WHEEL==$VERSION \
-            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
-          unzip -q mlir-*.whl
+          for attempt in 1 2 3; do
+            rm -f "$WHEEL"-*.whl
+            if pip -q download $WHEEL==$VERSION \
+              -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "Failed to download MLIR wheel after ${attempt} attempts" >&2
+              exit 1
+            fi
+            sleep $((attempt * 5))
+          done
+          unzip -q "$WHEEL"-*.whl
 
       # Build the repo test target in release mode to build and test.
       - name: Build and test
         run: |
+
+          if [ x"${{ matrix.ENABLE_RTTI }}" == x"OFF" ]; then
+            WHEEL=mlir_no_rtti
+          else
+            WHEEL=mlir
+          fi
 
           mkdir -p build_release/install
           cd build_release
@@ -154,8 +170,8 @@ jobs:
             -DLLVM_ENABLE_ASSERTIONS=${{ matrix.ENABLE_ASSERTIONS }} \
             -DLLVM_ENABLE_RTTI=${{ matrix.ENABLE_RTTI }} \
             -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
-            -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
-            -DLLVM_DIR=$PWD/../mlir/lib/cmake/llvm \
+            -DMLIR_DIR=$PWD/../$WHEEL/lib/cmake/mlir \
+            -DLLVM_DIR=$PWD/../$WHEEL/lib/cmake/llvm \
             -DLLVM_EXTERNAL_LIT="$LLVM_EXTERNAL_LIT"
 
           ninja
