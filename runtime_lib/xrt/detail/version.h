@@ -1,7 +1,7 @@
 /**
- * SPDX-License-Identifier: Apache-2.0
  * Copyright (C) 2019-2022 Xilinx, Inc.
  * Copyright (C) 2023 Advanced Micro Devices, Inc.
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 #ifndef _XRT_VERSION_H_

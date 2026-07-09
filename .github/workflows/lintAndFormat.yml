@@ -56,9 +56,20 @@ jobs:
       - name: Regenerate lockfiles
         run: utils/regenerate_lockfiles.sh
 
-      # Leaves any drift in the working tree so the suggester below can turn it
-      # into review suggestions. fail_level: any makes the job red on drift.
+      # Fail on any drift, regardless of which files the PR touched.
+      # action-suggester uses filter_mode: diff_context and silently passes
+      # when drift is in files not already in the PR diff (e.g. a Dependabot
+      # bump that updates requirements.txt but not the compiled .lock).
+      - name: Fail on lockfile drift
+        run: |
+          if ! git diff --exit-code; then
+            echo "::error::Lockfiles are out of date. Run utils/regenerate_lockfiles.sh and commit the result."
+            exit 1
+          fi
+
+      # Post the fix as inline PR suggestions (best-effort; does not gate merge).
       - name: Suggest lockfile updates
+        if: failure()
         uses: reviewdog/action-suggester@2558ba17e65a9039e73764a73009fc05fef28a46  # v1.24
         with:
           tool_name: regenerate-lockfiles
@@ -427,7 +438,7 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
       - name: Setup Python env
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
