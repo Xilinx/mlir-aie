@@ -7,7 +7,7 @@
 # Source for utils/mlir_wheels/requirements.lock. After editing this file,
 # regenerate the .lock with:
 #   utils/regenerate_lockfiles.sh
-setuptools>=82.0.1
+setuptools>=83.0.0
 wheel
 ninja!=1.13.0
 cmake==4.3.4
