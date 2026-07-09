@@ -61,6 +61,7 @@ module @test_srs_rounding {
 
     // Core with integer SRS (i32 -> i8): should get positive_inf rounding
     %core03 = aie.core(%t03) {
+      %c0 = arith.constant 0 : i32
       %v = arith.constant dense<42> : vector<16xi32>
       %srs = aievec.srs %v, %c0 : vector<16xi32>, i32, vector<16xi8>
       aie.end
@@ -78,6 +79,7 @@ module @test_srs_rounding {
 
     // Core with bf16 matmul AND integer SRS: conv_even should take precedence
     %core05 = aie.core(%t05) {
+      %c0 = arith.constant 0 : i32
       %lhs = arith.constant dense<1.0> : vector<4x8xbf16>
       %rhs = arith.constant dense<1.0> : vector<8x4xbf16>
       %acc = arith.constant dense<0.0> : vector<4x4xf32>

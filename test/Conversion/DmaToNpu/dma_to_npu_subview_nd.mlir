@@ -33,7 +33,6 @@ module {
   }
 }
 
-
 // -----
 
 // 3D -> 1D rank-reducing subview: pick (slice 2, row 3, all cols) of a
@@ -58,7 +57,6 @@ module {
     aie.shim_dma_allocation @buffer_3d_1d (%tile_0_0, S2MM, 0)
   }
 }
-
 
 // -----
 
@@ -86,7 +84,6 @@ module {
   }
 }
 
-
 // -----
 
 // 2D -> 1D rank-reducing subview with bf16 element type.
@@ -111,7 +108,6 @@ module {
     aie.shim_dma_allocation @buffer_bf16 (%tile_0_0, S2MM, 0)
   }
 }
-
 
 // -----
 

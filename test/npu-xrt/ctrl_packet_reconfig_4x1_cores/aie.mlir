@@ -121,12 +121,12 @@ module {
     %mem_0_2 = aie.mem(%tile_0_2) {
       %0 = aie.dma(S2MM, 0) [{
         aie.use_lock(%tile_0_2_lock_0, AcquireGreaterEqual, 1)
-        aie.dma_bd(%tile_0_2_buff_0 : memref<64x64xi8> sizes = [] strides = [])
+        aie.dma_bd(%tile_0_2_buff_0 : memref<64x64xi8>)
         aie.use_lock(%tile_0_2_lock_1, Release, 1)
       }]
       %1 = aie.dma(MM2S, 0) [{
         aie.use_lock(%tile_0_2_lock_2, AcquireGreaterEqual, 1)
-        aie.dma_bd(%tile_0_2_buff_1 : memref<64x64xi8> sizes = [] strides = [])
+        aie.dma_bd(%tile_0_2_buff_1 : memref<64x64xi8>)
         aie.use_lock(%tile_0_2_lock_3, Release, 1)
       }]
       aie.end
@@ -157,12 +157,12 @@ module {
     %mem_1_2 = aie.mem(%tile_1_2) {
       %0 = aie.dma(S2MM, 0) [{
         aie.use_lock(%tile_1_2_lock_0, AcquireGreaterEqual, 1)
-        aie.dma_bd(%tile_1_2_buff_0 : memref<64x64xi8> sizes = [] strides = [])
+        aie.dma_bd(%tile_1_2_buff_0 : memref<64x64xi8>)
         aie.use_lock(%tile_1_2_lock_1, Release, 1)
       }]
       %1 = aie.dma(MM2S, 0) [{
         aie.use_lock(%tile_1_2_lock_2, AcquireGreaterEqual, 1)
-        aie.dma_bd(%tile_1_2_buff_1 : memref<64x64xi8> sizes = [] strides = [])
+        aie.dma_bd(%tile_1_2_buff_1 : memref<64x64xi8>)
         aie.use_lock(%tile_1_2_lock_3, Release, 1)
       }]
       aie.end
@@ -193,12 +193,12 @@ module {
     %mem_2_2 = aie.mem(%tile_2_2) {
       %0 = aie.dma(S2MM, 0) [{
         aie.use_lock(%tile_2_2_lock_0, AcquireGreaterEqual, 1)
-        aie.dma_bd(%tile_2_2_buff_0 : memref<64x64xi8> sizes = [] strides = [])
+        aie.dma_bd(%tile_2_2_buff_0 : memref<64x64xi8>)
         aie.use_lock(%tile_2_2_lock_1, Release, 1)
       }]
       %1 = aie.dma(MM2S, 0) [{
         aie.use_lock(%tile_2_2_lock_2, AcquireGreaterEqual, 1)
-        aie.dma_bd(%tile_2_2_buff_1 : memref<64x64xi8> sizes = [] strides = [])
+        aie.dma_bd(%tile_2_2_buff_1 : memref<64x64xi8>)
         aie.use_lock(%tile_2_2_lock_3, Release, 1)
       }]
       aie.end
@@ -229,12 +229,12 @@ module {
     %mem_3_2 = aie.mem(%tile_3_2) {
       %0 = aie.dma(S2MM, 0) [{
         aie.use_lock(%tile_3_2_lock_0, AcquireGreaterEqual, 1)
-        aie.dma_bd(%tile_3_2_buff_0 : memref<64x64xi8> sizes = [] strides = [])
+        aie.dma_bd(%tile_3_2_buff_0 : memref<64x64xi8>)
         aie.use_lock(%tile_3_2_lock_1, Release, 1)
       }]
       %1 = aie.dma(MM2S, 0) [{
         aie.use_lock(%tile_3_2_lock_2, AcquireGreaterEqual, 1)
-        aie.dma_bd(%tile_3_2_buff_1 : memref<64x64xi8> sizes = [] strides = [])
+        aie.dma_bd(%tile_3_2_buff_1 : memref<64x64xi8>)
         aie.use_lock(%tile_3_2_lock_3, Release, 1)
       }]
       aie.end

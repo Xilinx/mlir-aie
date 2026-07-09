@@ -22,7 +22,6 @@ aie.device(npu1_1col) {
   aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0 (%tile_0_0, MM2S, 0)
 }
 
-
 // -----
 
 // CHECK-LABEL: aie.device(npu1_1col) {
@@ -38,7 +37,6 @@ aie.device(npu1_1col) {
   }
   aie.shim_dma_allocation @ctrlpkt_col0_mm2s_chan0 (%tile_0_0, MM2S, 0)
 }
-
 
 // -----
 
@@ -60,7 +58,6 @@ aie.device(npu1) {
   }
 }
 
-
 // -----
 
 // Check that control packets writes are combined on npu2
@@ -76,7 +73,6 @@ aie.device(npu2) {
     aiex.control_packet {address = 16 : ui32, data = array<i32: 500>, opcode = 0 : i32, stream_id = 0 : i32}
   }
 }
-
 
 // -----
 

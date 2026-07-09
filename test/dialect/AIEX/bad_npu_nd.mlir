@@ -26,7 +26,6 @@ module {
   }
 }
 
-
 // -----
 
 module {
@@ -48,7 +47,6 @@ module {
   }
 }
 
-
 // -----
 
 module {
@@ -66,7 +64,6 @@ module {
   }
 }
 
-
 // -----
 
 // Offsets need to be 4-byte aligned.
@@ -83,7 +80,6 @@ module {
     }
   }
 }
-
 
 // -----
 
@@ -108,7 +104,6 @@ module {
   }
 }
 
-
 // -----
 
 module {
@@ -127,7 +122,6 @@ module {
     aie.shim_dma_allocation @objectfifo (%tile_0_0, MM2S, 0)
   }
 }
-
 
 // -----
 
@@ -149,7 +143,6 @@ module {
   }
 }
 
-
 // -----
 
 module {
@@ -167,7 +160,6 @@ module {
     aie.shim_dma_allocation @objectfifo (%tile_0_0, MM2S, 0)
   }
 }
-
 
 // -----
 
@@ -189,7 +181,6 @@ module {
   }
 }
 
-
 // -----
 
 // stride of 1 i16 is ok, but not with size of 3xi16
@@ -208,7 +199,6 @@ module {
     aie.shim_dma_allocation @objectfifo (%tile_0_0, MM2S, 0)
   }
 }
-
 
 // -----
 
@@ -232,7 +222,6 @@ module {
   }
 }
 
-
 // -----
 
 // packet header id limit
@@ -253,7 +242,6 @@ module {
     aie.shim_dma_allocation @objectfifo (%tile_0_0, MM2S, 0)
   }
 }
-
 
 // -----
 

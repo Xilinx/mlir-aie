@@ -26,7 +26,6 @@ aie.device(npu1) {
   }
 }
 
-
 // -----
 
 // scf inside a runtime sequence is left untouched: the runtime sequence is
@@ -46,7 +45,6 @@ aie.device(npu1) {
     }
   }
 }
-
 
 // -----
 

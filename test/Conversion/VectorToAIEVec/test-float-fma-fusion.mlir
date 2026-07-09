@@ -20,7 +20,6 @@ func.func @test_fma_fusion_bf16_v16(%a: vector<16xbf16>,
     return %1 : vector<16xbf16>
 }
 
-
 // -----
 
 // Test commuted operand order: acc + mul
@@ -40,7 +39,6 @@ func.func @test_fma_fusion_bf16_v16_commuted(%a: vector<16xbf16>,
     // CHECK: return %[[RES]] : vector<16xbf16>
     return %1 : vector<16xbf16>
 }
-
 
 // -----
 

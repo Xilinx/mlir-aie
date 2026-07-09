@@ -15,7 +15,6 @@
 // concurrently, and cross-DeviceOp symbol table lookups from a verifier are
 // unsafe under threading.
 
-
 // -----
 
 // Test: reference to a non-existent runtime sequence name.
@@ -38,7 +37,6 @@ module {
   }
 }
 
-
 // -----
 
 // Test: argument count mismatch — caller passes more args than the sequence expects.
@@ -57,7 +55,6 @@ module {
     }
   }
 }
-
 
 // -----
 
@@ -81,7 +78,6 @@ module {
   }
 }
 
-
 // -----
 
 // Test: argument type mismatch — caller passes wrong element type.
@@ -104,7 +100,6 @@ module {
   }
 }
 
-
 // -----
 
 // Test: run references a symbol that exists in the callee device but is not a
@@ -124,7 +119,6 @@ module {
     }
   }
 }
-
 
 // -----
 

@@ -26,7 +26,6 @@ func.func @hoist_vector_transfer_read(%arg0: memref<256xf32>, %arg1: memref<256x
   return
 }
 
-
 // -----
 
 // CHECK-LABEL: func.func @hoist_vector_transfer_write
@@ -43,7 +42,6 @@ func.func @hoist_vector_transfer_write(%arg0: memref<256xf32>, %arg1: vector<16x
   }
   return
 }
-
 
 // -----
 
@@ -68,7 +66,6 @@ func.func @hoist_2d_memref(%arg0: memref<16x16xf32>, %arg1: memref<16x16xf32>) {
   }
   return
 }
-
 
 // -----
 
@@ -96,7 +93,6 @@ func.func @hoist_strided_memref(%arg0: memref<16x16x4x4xf32, 2>) {
   }
   return
 }
-
 
 // -----
 
@@ -133,7 +129,6 @@ func.func @preserve_contiguous_strided_layout(%arg0: memref<16x16xf32, 2>, %arg1
   }
   return
 }
-
 
 // -----
 

@@ -126,6 +126,7 @@ func.func @matmul_aie2p_i512_acc2048_int(%A : vector<16xi32>, %B : vector<32xi16
 
 func.func @matmul_aie2p_i1024_acc2048_int(%A : vector<32xi32>, %B : vector<64xi16>,
                                           %C : vector<32xi64>) -> vector<32xi64> {
+  %conf = arith.constant 0 : i32
   %0 = "xllvm.intr.aie2p.I1024.I1024.ACC2048.mac.conf"(%A, %B, %C, %conf) :
       (vector<32xi32>, vector<64xi16>, vector<32xi64>, i32) -> vector<32xi64>
   return %0 : vector<32xi64>

@@ -7,7 +7,6 @@
 
 // RUN: aie-opt %s --split-input-file -aie-insert-trace-flows | FileCheck %s
 
-
 // -----
 
 // Test: Shim tile is created when not defined
@@ -32,7 +31,6 @@ module @shim_create {
     // CHECK:   aie.packet_dest<%[[SHIM]], DMA : 1>
   }
 }
-
 
 // -----
 
@@ -68,7 +66,6 @@ module @multiple_traces {
   }
 }
 
-
 // -----
 
 // Test: Auto packet ID allocation when not specified
@@ -95,7 +92,6 @@ module @auto_packet_id {
     }
   }
 }
-
 
 // -----
 
@@ -129,7 +125,6 @@ module @auto_packet_id_skips_explicit {
   }
 }
 
-
 // -----
 
 // Test: Auto packet type detection from tile type
@@ -160,7 +155,6 @@ module @auto_packet_type {
     }
   }
 }
-
 
 // -----
 
@@ -194,7 +188,6 @@ module @core_and_mem {
   }
 }
 
-
 // -----
 
 // Test: MemTile trace routes from memtile to shim
@@ -221,7 +214,6 @@ module @memtile {
   }
 }
 
-
 // -----
 
 // Test: Shim tile trace routes from shim trace port back to same shim DMA
@@ -245,7 +237,6 @@ module @shimtile {
     // CHECK:   aie.packet_dest<%[[SHIM]], DMA : 1>
   }
 }
-
 
 // -----
 
@@ -272,7 +263,6 @@ module @shimtile_broadcast {
   }
 }
 
-
 // -----
 
 // Test: buffer_size in host_config sets BD buffer_length (8192 bytes = 2048 words)
@@ -294,7 +284,6 @@ module @buffer_size_config {
     }
   }
 }
-
 
 // -----
 

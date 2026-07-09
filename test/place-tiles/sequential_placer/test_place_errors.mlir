@@ -25,7 +25,6 @@ module @three_inputs_exceeds_capacity {
   }
 }
 
-
 // -----
 
 module @three_outputs_exceeds_capacity {
@@ -43,7 +42,6 @@ module @three_outputs_exceeds_capacity {
     aie.core(%core) { aie.end }
   }
 }
-
 
 // -----
 
@@ -82,7 +80,6 @@ module @memtile_exhaustion {
   }
 }
 
-
 // -----
 
 // ShimPLTile has no DMA, unconstrained placement not supported
@@ -92,7 +89,6 @@ module @shimpl_unsupported {
     %shim = aie.logical_tile<ShimPLTile>(?, ?)
   }
 }
-
 
 // -----
 
@@ -115,7 +111,6 @@ module @col_constraint_exhausted {
   }
 }
 
-
 // -----
 
 // Row constraint cannot be satisfied (all tiles in row taken)
@@ -136,7 +131,6 @@ module @row_constraint_exhausted {
     aie.core(%c5) { aie.end }
   }
 }
-
 
 // -----
 
@@ -165,7 +159,6 @@ module @shimnoc_exhaustion {
   }
 }
 
-
 // -----
 
 // All compute tiles exhausted (unconstrained)
@@ -186,7 +179,6 @@ module @compute_tiles_exhausted {
     aie.core(%c5) { aie.end }
   }
 }
-
 
 // -----
 
@@ -212,7 +204,6 @@ module @cascade_chain_unsatisfiable {
   }
 }
 
-
 // -----
 
 // Verifier-legal but lowering-illegal direction: lowering requires src to be
@@ -230,7 +221,6 @@ module @cascade_pinned_wrong_direction {
   }
 }
 
-
 // -----
 
 // Partial constraint (col=0) is incompatible with pinned src at (1,3).
@@ -247,7 +237,6 @@ module @cascade_partial_constraint_unsatisfiable {
   }
 }
 
-
 // -----
 
 // Hybrid cascade with conflicting partial constraint on the logical peer.
@@ -263,9 +252,8 @@ module @cascade_hybrid_unsatisfiable {
   }                                                                                                                                                                                                                                                                         
 }                                                                                                                                                                                                                                                                           
                                                                                                                                                                                           
-
-// -----
-
+// -----                                                                                                                                                                                                                                                                    
+  
 // Flow-derived MM2S demand exceeds shim capacity.
 module @flow_shim_output_exceeds_capacity {
   aie.device(npu1) {
@@ -279,7 +267,6 @@ module @flow_shim_output_exceeds_capacity {
     aie.flow(%shim, DMA : 2, %c3, DMA : 0)
   }
 }
-
 
 // -----
 
@@ -299,7 +286,6 @@ module @flow_distinct_channels_no_dedup {
     aie.flow(%shim, DMA : 2, %c3, DMA : 0)
   }
 }
-
 
 // -----
 
@@ -328,7 +314,6 @@ module @mixed_channels_exceed_capacity {
   }
 }
 
-
 // -----
 
 // Both endpoints pinned far apart: not memory-affinity neighbors.
@@ -349,7 +334,6 @@ module @buffer_adjacency_both_pinned_violation {
   }
 }
 
-
 // -----
 
 // Pinned owner + unconstrained consumer with a column constraint that has no
@@ -369,7 +353,6 @@ module @buffer_adjacency_unsatisfiable_column {
     }
   }
 }
-
 
 // -----
 

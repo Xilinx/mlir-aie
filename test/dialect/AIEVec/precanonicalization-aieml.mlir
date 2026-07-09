@@ -42,9 +42,7 @@ func.func @multidim_vector_transfer(%in : memref<64x64x4x8xbf16>,
 }
 
 //
-
 // -----
-
 //
 
 // CHECK: #[[IMIDXMAP:.*]] = affine_map<(d0) -> (d0 * 8)>
@@ -91,9 +89,7 @@ func.func @multidim_vector_transfer(%in : memref<64x64x32x8xbf16>,
 }
 
 //
-
 // -----
-
 //
 
 // CHECK: #[[IDXMAPA:.*]] = affine_map<(d0, d1, d2, d3, d4, d5) -> (d2, d0, d3, d5)>
@@ -131,9 +127,7 @@ func.func @vector_contract_permuted_b(%A : vector<1x1x4x8xbf16>,
 }
 
 //
-
 // -----
-
 //
 
 // CHECK: #[[IDXMAPA:.*]] = affine_map<(d0, d1, d2, d3, d4, d5) -> (d2, d0, d3, d5)>

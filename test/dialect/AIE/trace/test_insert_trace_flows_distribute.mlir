@@ -8,7 +8,6 @@
 // RUN: aie-opt %s --split-input-file -aie-insert-trace-flows="distribute-channels=true" | FileCheck %s
 // RUN: aie-opt %s --split-input-file -aie-insert-trace-flows | FileCheck %s --check-prefix=NODIST
 
-
 // -----
 
 // Test: Two traces are distributed across DMA channels 0 and 1.
@@ -56,7 +55,6 @@ module @distribute_two_traces {
   }
 }
 
-
 // -----
 
 // Test: Single trace -- no distribution even when enabled (only 1 trace).
@@ -83,14 +81,12 @@ module @distribute_single_trace {
   }
 }
 
-
 // -----
 
 // Test: Without distribute-channels, both traces use same DMA channel.
 // NODIST-LABEL: module @distribute_two_traces
 // NODIST: aie.packet_dest<%{{.*}}, DMA : 1>
 // NODIST: aie.packet_dest<%{{.*}}, DMA : 1>
-
 
 // -----
 
@@ -136,7 +132,6 @@ module @distribute_auto_argidx {
     // CHECK-DAG: aiex.npu.address_patch(%[[OFF1]] : i32) {{{.*}}arg_idx = 0 : i32
   }
 }
-
 
 // -----
 

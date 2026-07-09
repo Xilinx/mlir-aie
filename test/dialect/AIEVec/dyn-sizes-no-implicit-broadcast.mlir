@@ -17,7 +17,6 @@ func.func @test_dyn_dim_rewrite_to_const_false(%arg0: tensor<?xbf16>, %arg1: ten
     return %1, %3 : i1, i1
 }
 
-
 // -----
 
 // CHECK-LABEL: func.func @test_do_not_rewrite_no_attribute(
@@ -38,7 +37,6 @@ func.func @test_do_not_rewrite_no_attribute(%arg0: tensor<?xbf16>, %arg1: tensor
     return %1, %3 : i1, i1
 }
 
-
 // -----
 
 // CHECK-LABEL: func.func @test_static_dim_folding_with_attribute_and_no_rewrite(
@@ -53,7 +51,6 @@ func.func @test_static_dim_folding_with_attribute_and_no_rewrite(%arg0: tensor<1
     %3 = arith.cmpi eq, %dim_2, %c1 : index
     return %1, %3 : i1, i1
 }
-
 
 // -----
 

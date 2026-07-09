@@ -29,7 +29,6 @@ module @adjacency_steers_unconstrained_consumer {
   }
 }
 
-
 // -----
 
 // Star: pinned owner at (1, 3) plus three unconstrained consumers. Each
@@ -67,7 +66,6 @@ module @adjacency_star_three_consumers {
   }
 }
 
-
 // -----
 
 // Both endpoints pinned at compatible positions: owner at (0, 2), consumer
@@ -89,7 +87,6 @@ module @adjacency_both_pinned_compatible {
     // CHECK-NOT: aie.logical_tile
   }
 }
-
 
 // -----
 
@@ -114,7 +111,6 @@ module @adjacency_through_view_op {
   }
 }
 
-
 // -----
 
 // Self-reference: consumer reads a buffer attached to its own LTO. Not a
@@ -133,7 +129,6 @@ module @adjacency_self_reference_no_constraint {
     // CHECK-NOT: aie.logical_tile
   }
 }
-
 
 // -----
 

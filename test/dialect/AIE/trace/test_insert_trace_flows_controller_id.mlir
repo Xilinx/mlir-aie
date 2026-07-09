@@ -7,7 +7,6 @@
 
 // RUN: aie-opt %s --split-input-file -aie-insert-trace-flows | FileCheck %s
 
-
 // -----
 
 // Test: Pass auto-assigns controller_id=15 for shim on <=6 row device
@@ -33,7 +32,6 @@ module @ctrl_id_auto_assign {
     }
   }
 }
-
 
 // -----
 
@@ -61,7 +59,6 @@ module @ctrl_id_user_specified {
   }
 }
 
-
 // -----
 
 // Test: Pass auto-assigns controller_id when shim tile is created (no shim in input)
@@ -85,7 +82,6 @@ module @ctrl_id_created_shim {
     }
   }
 }
-
 
 // -----
 
