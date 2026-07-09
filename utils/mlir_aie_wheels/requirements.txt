@@ -5,7 +5,7 @@ cmake>=4.3.4, <5.0
 importlib-metadata
 ninja!=1.13.0; platform_system=="Windows"
 numpy>=2.4.6
-pip
+pip>=26.1.2
 pybind11[global]>=3.0.4
 rich
 setuptools>=83.0.0
