@@ -2,34 +2,87 @@
 <!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 [![Build and Test across Python versions](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestPythons.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestPythons.yml) [![Build and Test with AIE tools on Ryzen™ AI](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestRyzenAI.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestRyzenAI.yml) [![Compile across platforms](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestMulti.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestMulti.yml)
 
-# IRON API and MLIR-based AI Engine Toolchain
+# IRON / MLIR-AIE
+
+**A close-to-metal Python API for programming AMD Ryzen™ AI NPUs, built on an open-source MLIR-based compiler toolchain.**
 
 [![GitHub Pull Requests](https://img.shields.io/github/issues-pr-raw/Xilinx/mlir-aie?cacheSeconds=86400)](https://github.com/Xilinx/mlir-aie/pulls)
 [![GitHub Issues](https://img.shields.io/github/issues/Xilinx/mlir-aie/bug?cacheSeconds=86400)](https://github.com/Xilinx/mlir-aie/issues?q=is%3Aopen+is%3Aissue+label%3Abug)
-![GitHub Downloads](https://img.shields.io/github/downloads/Xilinx/mlir-aie/latest-wheels/total?color=blue&cacheSeconds=86400)
-![GitHub Downloads 2](https://img.shields.io/github/downloads/Xilinx/mlir-aie/latest-wheels-2/total?color=blue&cacheSeconds=86400)
-![GitHub Downloads 3](https://img.shields.io/github/downloads/Xilinx/mlir-aie/latest-wheels-3/total?color=blue&cacheSeconds=86400)
-![GitHub Downloads 4](https://img.shields.io/github/downloads/Xilinx/mlir-aie/latest-wheels-4/total?color=blue&cacheSeconds=86400)
 ![GitHub Contributors](https://img.shields.io/github/contributors/Xilinx/mlir-aie?cacheSeconds=86400)
+[![License](https://img.shields.io/badge/license-Apache%202.0%20with%20LLVM%20exception-blue)](LICENSE)
 
-_Note: Badge values are cached for up to 24 hours (`cacheSeconds=86400`) to reduce load on Shields.io and GitHub, so counts may lag behind real-time activity._
+📖 **[Documentation](https://xilinx.github.io/mlir-aie/)** &nbsp;·&nbsp; 🚀 **[Programming Guide](programming_guide/)** &nbsp;·&nbsp; 🐍 **[Python API](https://xilinx.github.io/mlir-aie/api/iron/)** &nbsp;·&nbsp; 💡 **[Examples](programming_examples/)**
+
+IRON lets performance engineers write Python that compiles directly to the AI
+Engine array inside AMD Ryzen™ AI processors — with full control over tile
+placement, data movement, and vectorized compute. It targets researchers and
+enthusiasts who want to unlock the NPU for workloads from machine learning to
+digital signal processing, and is designed to *complement*, not replace,
+mainstream inference tooling like the
+[AMD Ryzen™ AI Software Platform](https://github.com/amd/RyzenAI-SW/).
+
+```python
+import aie.iron as iron
+from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron.controlflow import range_
+import numpy as np
+
+data_ty = np.ndarray[(1024,), np.dtype[np.int32]]
+
+@iron.jit
+def vector_add_one(a_in, b_out):
+    of_in  = ObjectFifo(data_ty, name="in")     # host → compute tile
+    of_out = ObjectFifo(data_ty, name="out")    # compute tile → host
+
+    def core_fn(of_in, of_out):                 # runs on one AIE core
+        a = of_in.acquire(1)
+        b = of_out.acquire(1)
+        for i in range_(1024):
+            b[i] = a[i] + 1
+        of_in.release(1); of_out.release(1)
+
+    rt = Runtime()
+    with rt.sequence(data_ty, data_ty) as (a, b):
+        rt.start(Worker(core_fn, [of_in.cons(), of_out.prod()]))
+        rt.fill(of_in.prod(), a)
+        rt.drain(of_out.cons(), b, wait=True)
+    return Program(iron.get_current_device(), rt).resolve_program()
+
+a = iron.arange(1024, dtype=np.int32, device="npu")
+b = iron.zeros(1024,  dtype=np.int32, device="npu")
+vector_add_one(a, b)   # JIT-compiles on first call, runs on the NPU, caches after
+```
+
+`@iron.jit` compiles the design to an `xclbin` + instruction stream via the
+LLVM/MLIR-based [Peano](https://github.com/Xilinx/llvm-aie) compiler and runs it
+on the attached NPU. New to the concepts? Start with the
+[Programming Guide](programming_guide/) or the
+[Mini Tutorial](programming_guide/mini_tutorial/).
+
 <p align="left">
-  <img src="https://github.com/llvm/mlir-www/blob/main/website/static/LogoAssets/logo/PNG/full_color/mlir-identity-03.png" alt="MLIR logo" height="80" />
-  <img src="https://s3.dualstack.us-east-2.amazonaws.com/pythondotorg-assets/media/community/logos/python-logo-only.png" alt="Python logo" height="80" />
-  <img src="https://em-content.zobj.net/source/apple/271/mechanical-arm_1f9be.png" alt="Mechanical Arm" height="80" />
+  <img src="https://github.com/llvm/mlir-www/blob/main/website/static/LogoAssets/logo/PNG/full_color/mlir-identity-03.png" alt="MLIR logo" height="60" />
+  <img src="https://s3.dualstack.us-east-2.amazonaws.com/pythondotorg-assets/media/community/logos/python-logo-only.png" alt="Python logo" height="60" />
+  <img src="https://em-content.zobj.net/source/apple/271/mechanical-arm_1f9be.png" alt="Mechanical Arm" height="60" />
 </p>
 
-This project emphasizes fast, open-source toolchains for NPU devices including LLVM-based code generation. IRON contains a close-to-metal toolkit that empowers performance engineers to create fast and efficient designs for Ryzen™ AI NPUs powered by AI Engines. It provides Python APIs that enable developers to harness the unique architectural capabilities of AMD’s NPUs. However, this project is not intended to represent an end-to-end compilation flow for all application designs---it is designed to complement, not replace, mainstream NPU tooling for inference like the [AMD Ryzen™ AI Software Platform](https://github.com/amd/RyzenAI-SW/). Targeting researchers and enthusiasts, IRON is designed to unlock the full potential of NPUs for a wide range of workloads, from machine learning to digital signal processing and beyond. This repository includes programming guides and examples demonstrating the APIs. Additionally, the [Peano](https://github.com/Xilinx/llvm-aie) component extends the LLVM framework by adding support for the AI Engine processor as a target architecture, enabling integration with popular compiler frontends such as `clang`. Developers can leverage the [AIE API header library](https://xilinx.github.io/aie_api/topics.html) to implement efficient vectorized AIE core code in C++ that can be compiled by Peano.
+<details>
+<summary><b>More about the toolchain</b></summary>
 
-This repository contains an [MLIR-based](https://mlir.llvm.org/) toolchain for AI Engine-enabled devices, such as [AMD Ryzen™ AI](https://www.amd.com/en/products/processors/consumer/ryzen-ai.html) and [Versal™](https://www.xilinx.com/products/technology/ai-engine.html).  This repository can be used to generate low-level configurations for the AI Engine portion of these devices. AI Engines are organized as a spatial array of tiles, where each tile contains AI Engine cores and/or memories. The spatial array is connected by stream switches that can be configured to route data between AI Engine tiles scheduled by their programmable Data Movement Accelerators (DMAs). This repository contains MLIR representations, with multiple levels of abstraction, to target AI Engine devices. This enables compilers and developers to program AI Engine cores, as well as describe data movements and array connectivity.
+This repository contains an [MLIR-based](https://mlir.llvm.org/) toolchain for AI Engine-enabled devices, such as [AMD Ryzen™ AI](https://www.amd.com/en/products/processors/consumer/ryzen-ai.html) and [Versal™](https://www.xilinx.com/products/technology/ai-engine.html). It generates low-level configurations for the AI Engine portion of these devices. AI Engines are organized as a spatial array of tiles, where each tile contains AI Engine cores and/or memories. The spatial array is connected by stream switches that route data between tiles, scheduled by their programmable Data Movement Accelerators (DMAs). The repository provides MLIR representations at multiple levels of abstraction to target AI Engine devices, enabling compilers and developers to program cores and describe data movement and array connectivity.
 
-The IRON Python API for Ryzen™ AI NPUs is described in the following paper:
+The [Peano](https://github.com/Xilinx/llvm-aie) component extends LLVM with the AI Engine processor as a target architecture, enabling integration with compiler frontends such as `clang`. Developers can use the [AIE API header library](https://xilinx.github.io/aie_api/topics.html) to write efficient vectorized AIE core code in C++ that Peano compiles.
+
+IRON is described in the following paper:
 
 > E. Hunhoff, J. Melber, K. Denolf, A. Bisca, S. Bayliss, S. Neuendorffer, J. Fifield, J. Lo, P. Vasireddy, P. James-Roxby, E. Keller. "[Efficiency, Expressivity, and Extensibility in a Close-to-Metal NPU Programming Interface](https://arxiv.org/abs/2504.18430)". In 33rd IEEE International Symposium On Field-Programmable Custom Computing Machines, May 2025.
 
+</details>
+
 <p align="left">
-  <img src="docs/assets/images/iron_linux_stack.svg" alt="Iron Linux Software Stack" width="50%">
+  <img src="docs/assets/images/iron_linux_stack.svg" alt="IRON Linux Software Stack" width="50%">
 </p>
+
+_Note: badge values are cached for up to 24 hours (`cacheSeconds=86400`), so counts may lag behind real-time activity._
 
 ## Ryzen™ AI host setup
 
@@ -153,7 +206,7 @@ xrt-smi examine
    > associated with the currently checked-out release/commit of the repository. If it can't find a release for
    > this commit, it will error, since trying to compile a version of the programming examples in this repository
    > with a compiler wheel whose version does not exactly match very frequently leads to hard-to-debug errors. If
-   > you insist on using use the latest available release from `main`, pass `--latest`. To manually install
+   > you insist on using the latest available release from `main`, pass `--latest`. To manually install
    > a different wheel, follow the manual instructions below.
    >
    > *Tip:* The `utils/env_install.sh` script also works as an update script.
@@ -261,7 +314,7 @@ For your design of interest, for instance from [programming_examples](programmin
 
 ### Build Device AIE Part
 
-1. Goto the design of interest and run:
+1. Go to the design of interest and run:
    ```bash
    make
    ```
@@ -277,7 +330,7 @@ For your design of interest, for instance from [programming_examples](programmin
 
 1. Additional MLIR-AIE documentation is available on the [website](https://xilinx.github.io/mlir-aie/)
 
-1. AIE API header library documentation for single-core AIE programming in C++ is avaiable [here](https://xilinx.github.io/aie_api/topics.html)
+1. AIE API header library documentation for single-core AIE programming in C++ is available [here](https://xilinx.github.io/aie_api/topics.html)
 
 1. If you are a university researcher or student and interested in trying these tools on our Ryzen™ AI AUP Cloud systems, please contact the [AMD University Program](mailto:aup@amd.com)
 
@@ -368,4 +421,4 @@ Interested in contributing MLIR-AIE? [Information for developers](./CONTRIBUTING
 
 -----
 
-<p align="center">Copyright&copy; 2019-2024 Advanced Micro Devices, Inc</p>
+<p align="center">Copyright&copy; 2019-2021 Xilinx, Inc.<br>Copyright&copy; 2022-2026 Advanced Micro Devices, Inc.</p>

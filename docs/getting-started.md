@@ -124,7 +124,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
    > associated with the currently checked-out release/commit of the repository. If it can't find a release for
    > this commit, it will error, since trying to compile a version of the programming examples in this repository
    > with a compiler wheel whose version does not exactly match very frequently leads to hard-to-debug errors. If
-   > you insist on use the latest available release from `main`, pass `--latest`. To manually install
+   > you insist on using the latest available release from `main`, pass `--latest`. To manually install
    > a different wheel, follow the manual instructions below.
    >
    > *Tip:* The `utils/env_install.sh` script also works as an update script.
@@ -232,7 +232,7 @@ For your design of interest, for instance from [programming_examples](../program
 
 ### Build Device AIE Part
 
-1. Goto the design of interest and run:
+1. Go to the design of interest and run:
    ```bash
    make
    ```
@@ -248,7 +248,7 @@ For your design of interest, for instance from [programming_examples](../program
 
 1. Additional MLIR-AIE documentation is available on the [website](https://xilinx.github.io/mlir-aie/)
 
-1. AIE API header library documentation for single-core AIE programming in C++ is avaiable [here](https://xilinx.github.io/aie_api/topics.html)
+1. AIE API header library documentation for single-core AIE programming in C++ is available [here](https://xilinx.github.io/aie_api/topics.html)
 
 1. If you are a university researcher or student and interested in trying these tools on our Ryzen™ AI AUP Cloud systems, please contact the [AMD University Program](mailto:aup@amd.com)
 
