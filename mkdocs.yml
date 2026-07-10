@@ -203,11 +203,13 @@ nav:
     - Kernel Library: programming_guide/kernels_library.md
   - Glossary: glossary.md
   - API & Internals:
+    - Overview: api/index.md
     - Python API:
-      - IRON Python API: api/iron.md
+      - High-level IRON: api/iron_highlevel.md
+      - Lower-level primitives: api/iron_lowlevel.md
       - Tensor Access Patterns (taplib): api/taplib.md
-      - Utilities: api/utils.md
       - Kernels: api/kernels.md
+      - Utilities: api/utils.md
     - MLIR / C++:
       - Dialects Overview: AIEDesignPatterns.md
       - AIE Dialect: AIEDialect.md

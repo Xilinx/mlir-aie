@@ -29,10 +29,10 @@ with full control over tile placement, data movement, and vectorized compute.
 <span class="iron-card-desc">Tiles, ObjectFifos, data movement, vectorization, and ML examples.</span>
 </a>
 
-<a class="iron-card" href="api/iron/" markdown>
+<a class="iron-card" href="api/" markdown>
 <span class="iron-card-icon">🐍</span>
-<span class="iron-card-title">Python API</span>
-<span class="iron-card-desc">Full reference for iron, taplib, and the kernel library.</span>
+<span class="iron-card-title">API &amp; Internals</span>
+<span class="iron-card-desc">Full reference for iron, taplib, the kernel library, and the MLIR dialects.</span>
 </a>
 
 <a class="iron-card" href="programming_guide/mini_tutorial/" markdown>
