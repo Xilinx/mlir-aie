@@ -38,8 +38,8 @@ validation:
 
 theme:
   name: material
-  logo: assets/images/TLogoW.png
-  favicon: assets/images/favicon.ico
+  # No header logo image — the site name "IRON / MLIR-AIE" stands on its own.
+  favicon: assets/images/favicon.svg
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
