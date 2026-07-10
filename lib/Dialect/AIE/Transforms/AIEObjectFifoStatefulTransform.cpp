@@ -2367,10 +2367,9 @@ struct AIEObjectFifoStatefulTransformPass
       // accounting that cannot see through runtime-dependent control flow.
       // Runtime lock counts require semaphore locks (AIE2+); on architectures
       // with binary locks (AIE1) the dynamic lowering keeps static lock counts.
-      bool isDynamicCore =
-          dynamicLoweringTiles.count(coreOp.getTileOp()) > 0 &&
-          device.getTargetModel().hasProperty(
-              AIETargetModel::UsesSemaphoreLocks);
+      bool isDynamicCore = dynamicLoweringTiles.count(coreOp.getTileOp()) > 0 &&
+                           device.getTargetModel().hasProperty(
+                               AIETargetModel::UsesSemaphoreLocks);
       BufferOp heldBuffer;
       DenseMap<std::pair<ObjectFifoCreateOp, int>, Value> heldSlotIndex;
       if (isDynamicCore) {
@@ -2403,11 +2402,11 @@ struct AIEObjectFifoStatefulTransformPass
               /*initial_value*/ nullptr, /*mem_bank*/ nullptr,
               /*aligned*/ nullptr);
           builder.setInsertionPointToStart(&(coreOp.getBody().front()));
-          Value zero = arith::ConstantOp::create(
-              builder, coreOp.getLoc(), builder.getI32IntegerAttr(0));
+          Value zero = arith::ConstantOp::create(builder, coreOp.getLoc(),
+                                                 builder.getI32IntegerAttr(0));
           for (int slot = 0; slot < (int)slotOrder.size(); ++slot) {
-            Value idx = arith::ConstantOp::create(
-                builder, coreOp.getLoc(), builder.getIndexAttr(slot));
+            Value idx = arith::ConstantOp::create(builder, coreOp.getLoc(),
+                                                  builder.getIndexAttr(slot));
             heldSlotIndex[slotOrder[slot]] = idx;
             memref::StoreOp::create(builder, coreOp.getLoc(), zero, heldBuffer,
                                     ValueRange(ArrayRef({idx})));
@@ -2457,9 +2456,9 @@ struct AIEObjectFifoStatefulTransformPass
         // number of released elements.
         if (isDynamicCore && heldBuffer) {
           Value idx = heldSlotIndex[{op, portNum}];
-          Value held = memref::LoadOp::create(builder, releaseOp.getLoc(),
-                                              heldBuffer,
-                                              ValueRange(ArrayRef({idx})));
+          Value held =
+              memref::LoadOp::create(builder, releaseOp.getLoc(), heldBuffer,
+                                     ValueRange(ArrayRef({idx})));
           Value m = arith::ConstantOp::create(
               builder, releaseOp.getLoc(), builder.getI32IntegerAttr(numLocks));
           Value newHeld =
@@ -2530,21 +2529,20 @@ struct AIEObjectFifoStatefulTransformPass
           int acqNum = acquireOp.acqNumber();
           int repeat = op.getRepeatCount().value_or(1);
           Value idx = heldSlotIndex[{op, portNum}];
-          Value held = memref::LoadOp::create(builder, acquireOp.getLoc(),
-                                              heldBuffer,
-                                              ValueRange(ArrayRef({idx})));
+          Value held =
+              memref::LoadOp::create(builder, acquireOp.getLoc(), heldBuffer,
+                                     ValueRange(ArrayRef({idx})));
           Value nVal = arith::ConstantOp::create(
               builder, acquireOp.getLoc(), builder.getI32IntegerAttr(acqNum));
-          Value zero = arith::ConstantOp::create(
-              builder, acquireOp.getLoc(), builder.getI32IntegerAttr(0));
+          Value zero = arith::ConstantOp::create(builder, acquireOp.getLoc(),
+                                                 builder.getI32IntegerAttr(0));
           Value rawDelta =
               arith::SubIOp::create(builder, acquireOp.getLoc(), nVal, held);
           Value delta = arith::MaxSIOp::create(builder, acquireOp.getLoc(),
                                                rawDelta, zero);
           if (repeat > 1) {
             Value repeatVal = arith::ConstantOp::create(
-                builder, acquireOp.getLoc(),
-                builder.getI32IntegerAttr(repeat));
+                builder, acquireOp.getLoc(), builder.getI32IntegerAttr(repeat));
             delta = arith::MulIOp::create(builder, acquireOp.getLoc(), delta,
                                           repeatVal);
           }

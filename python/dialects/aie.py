@@ -86,7 +86,9 @@ assert _cext.globals._check_dialect_module_loaded("aie")
 from ._aie_ops_gen import use_lock as _use_lock
 
 
-def use_lock(lock, action, value=None, *, blocking=None, acq_en=None, loc=None, ip=None):
+def use_lock(
+    lock, action, value=None, *, blocking=None, acq_en=None, loc=None, ip=None
+):
     if value is None:
         value = 1
     if isinstance(value, int):
@@ -94,6 +96,7 @@ def use_lock(lock, action, value=None, *, blocking=None, acq_en=None, loc=None, 
     return _use_lock(
         lock, action, value, blocking=blocking, acq_en=acq_en, loc=loc, ip=ip
     )
+
 
 # Included in aie instead of aiex to avoid circular imports, as buffer uses this
 from ._aiex_ops_gen import NpuWriteRTPOp
