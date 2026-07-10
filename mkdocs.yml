@@ -198,6 +198,7 @@ nav:
     - Compilation Stages: programming_guide/compilation_stages.md
     - Implicit MLIR Context: programming_guide/implicit_mlir_context.md
     - Kernel Library: programming_guide/kernels_library.md
+  - Glossary: glossary.md
   - API & Internals:
     - Python API:
       - IRON Python API: api/iron.md
