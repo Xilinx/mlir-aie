@@ -183,7 +183,29 @@ jobs:
       - name: Copy clone-llvm.sh for wheel build
         working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
         shell: bash
-        run: cp ../clone-llvm.sh .
+        run: |
+          cp ../clone-llvm.sh .
+
+          # The checked-in clone-llvm.sh pins upstream llvm/llvm-project, not
+          # the ROCm fork commit this workflow actually built against. Repoint
+          # it at the commit/datetime resolved from the rocm-mlir-distro
+          # release asset (job: check_trigger) so download_mlir.sh's computed
+          # `pip download mlir==<version>` matches a wheel that actually
+          # exists in that release, instead of 404ing.
+          ROCM_COMMIT="${{ needs.check_trigger.outputs.rocm_commit }}"
+          ROCM_DATETIME="${{ needs.check_trigger.outputs.rocm_datetime }}"
+
+          BEFORE=$(md5sum clone-llvm.sh)
+          sed -i "s|^LLVM_PROJECT_COMMIT=.*|LLVM_PROJECT_COMMIT=${ROCM_COMMIT}|" clone-llvm.sh
+          sed -i "s|^DATETIME=.*|DATETIME=${ROCM_DATETIME}|" clone-llvm.sh
+          AFTER=$(md5sum clone-llvm.sh)
+          if [ "$BEFORE" == "$AFTER" ]; then
+            echo "::error::sed did not update clone-llvm.sh — check the file structure."
+            exit 1
+          fi
+
+          echo "Patched clone-llvm.sh: LLVM_PROJECT_COMMIT=${ROCM_COMMIT} DATETIME=${ROCM_DATETIME}"
+          grep -E '^(LLVM_PROJECT_COMMIT|DATETIME)=' clone-llvm.sh
 
       - name: Compute wheel version
         id: wheel_version
