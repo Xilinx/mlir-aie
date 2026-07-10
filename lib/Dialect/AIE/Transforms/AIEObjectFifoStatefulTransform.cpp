@@ -2519,11 +2519,15 @@ struct AIEObjectFifoStatefulTransformPass
           if (state.objFifoLinks.find(*linkOp) != state.objFifoLinks.end())
             target = state.objFifoLinks[*linkOp];
 
+        // The subview buffer references built at the end of this handler map
+        // each acquired access index to a physical buffer. For dynamic tiles
+        // they are only consumed for size-1 fifos: buffer addressing for
+        // size > 1 fifos is handled separately by the runtime index_switch in
+        // dynamicGlobalObjectFifos, which already replaced those accesses.
+        std::vector<int> acquiredIndices;
+
         // For dynamic tiles, compute the number of locks to acquire at runtime
-        // as max(0, acqNumber - held), using the runtime "held" counter. Buffer
-        // addressing for size > 1 fifos is handled separately (via runtime
-        // index_switch in dynamicGlobalObjectFifos); the subview references
-        // built below are only used for size-1 fifos.
+        // as max(0, acqNumber - held), using the runtime "held" counter.
         if (isDynamicCore && heldBuffer) {
           builder.setInsertionPointAfter(acquireOp);
           int acqNum = acquireOp.acqNumber();
@@ -2553,99 +2557,97 @@ struct AIEObjectFifoStatefulTransformPass
           memref::StoreOp::create(builder, acquireOp.getLoc(), newHeld,
                                   heldBuffer, ValueRange(ArrayRef({idx})));
 
-          // Build the subview buffer references (used by the subview.access
-          // replacement below for size-1 fifos).
-          std::vector<BufferOp *> subviewRefs;
-          subviewRefs.reserve(acqNum);
+          // Round-robin buffer index per acquired element (see note above).
           for (int i = 0; i < acqNum; i++) {
-            subviewRefs.push_back(&state.buffersPerFifo[target][start]);
+            acquiredIndices.push_back(start);
             start = (start + 1) % op.size();
           }
-          subviews[acquireOp] = subviewRefs;
           acqPerFifo[{op, portNum}] = start;
-          return WalkResult::advance();
-        }
+        } else {
 
-        // check how many elements have been released in between this AcquireOp
-        // and the previous one
-        // !!! operations may not be in the same block !!!
-        int numRel = 0;
-        for (std::vector<ObjectFifoReleaseOp>::iterator relOp =
-                 releaseOps[{op, portNum}].begin();
-             relOp != releaseOps[{op, portNum}].end();) {
-          bool erased = false;
-          Operation *acqBlockDefOp = acquireOp.getOperation();
-          do {
-            Operation *relBlockDefOp = (*relOp).getOperation();
+          // check how many elements have been released in between this
+          // AcquireOp and the previous one
+          // !!! operations may not be in the same block !!!
+          int numRel = 0;
+          for (std::vector<ObjectFifoReleaseOp>::iterator relOp =
+                   releaseOps[{op, portNum}].begin();
+               relOp != releaseOps[{op, portNum}].end();) {
+            bool erased = false;
+            Operation *acqBlockDefOp = acquireOp.getOperation();
             do {
-              if (acqBlockDefOp->getBlock() == relBlockDefOp->getBlock()) {
-                if (relBlockDefOp->isBeforeInBlock(acqBlockDefOp)) {
-                  numRel += (*relOp).relNumber();
-                  relOp = releaseOps[{op, portNum}].erase(relOp);
-                  // to ensure that we do not account
-                  // the ReleaseOps again later,
-                  // after the subview is created
-                  erased = true;
+              Operation *relBlockDefOp = (*relOp).getOperation();
+              do {
+                if (acqBlockDefOp->getBlock() == relBlockDefOp->getBlock()) {
+                  if (relBlockDefOp->isBeforeInBlock(acqBlockDefOp)) {
+                    numRel += (*relOp).relNumber();
+                    relOp = releaseOps[{op, portNum}].erase(relOp);
+                    // to ensure that we do not account
+                    // the ReleaseOps again later,
+                    // after the subview is created
+                    erased = true;
+                  }
                 }
-              }
-            } while ((relBlockDefOp = relBlockDefOp->getParentOp()) &&
-                     !isa<DeviceOp>(relBlockDefOp) && !erased);
-          } while ((acqBlockDefOp = acqBlockDefOp->getParentOp()) &&
-                   !isa<DeviceOp>(acqBlockDefOp) && !erased);
-          if (!erased)
-            ++relOp;
-        }
-
-        // track indices of elements to acquire
-        std::vector<int> acquiredIndices;
-        if (!acquiresPerFifo[{op, portNum}].empty()) {
-          // take into account what has already been acquired by previous
-          // AcquireOp in program order
-          acquiredIndices = acquiresPerFifo[{op, portNum}];
-          // take into account what has been released in-between
-          if (static_cast<size_t>(numRel) > acquiredIndices.size()) {
-            acquireOp->emitOpError("cannot release more elements than are "
-                                   "already acquired");
-            return WalkResult::interrupt();
+              } while ((relBlockDefOp = relBlockDefOp->getParentOp()) &&
+                       !isa<DeviceOp>(relBlockDefOp) && !erased);
+            } while ((acqBlockDefOp = acqBlockDefOp->getParentOp()) &&
+                     !isa<DeviceOp>(acqBlockDefOp) && !erased);
+            if (!erased)
+              ++relOp;
           }
-          for (int i = 0; i < numRel; i++)
-            acquiredIndices.erase(acquiredIndices.begin());
+
+          // track indices of elements to acquire
+          if (!acquiresPerFifo[{op, portNum}].empty()) {
+            // take into account what has already been acquired by previous
+            // AcquireOp in program order
+            acquiredIndices = acquiresPerFifo[{op, portNum}];
+            // take into account what has been released in-between
+            if (static_cast<size_t>(numRel) > acquiredIndices.size()) {
+              acquireOp->emitOpError("cannot release more elements than are "
+                                     "already acquired");
+              return WalkResult::interrupt();
+            }
+            for (int i = 0; i < numRel; i++)
+              acquiredIndices.erase(acquiredIndices.begin());
+          }
+
+          // acquire locks
+          int numLocks = acquireOp.acqNumber();
+          int alreadyAcq = acquiredIndices.size();
+          int numCreate;
+          if (numLocks > alreadyAcq)
+            numCreate = numLocks - alreadyAcq;
+          else
+            numCreate = 0;
+
+          // account for repetition
+          if (op.getRepeatCount().has_value())
+            numCreate *= op.getRepeatCount().value();
+
+          auto dev = op->getParentOfType<DeviceOp>();
+          if (auto &targetArch = dev.getTargetModel();
+              targetArch.getTargetArch() == AIEArch::AIE1)
+            createUseLocks(builder, op, port, acqPerFifo, numCreate,
+                           LockAction::Acquire, state);
+          else
+            createUseLocks(builder, op, port, acqPerFifo, numCreate,
+                           LockAction::AcquireGreaterEqual, state);
+
+          // create subview: buffers that were already acquired + new acquires
+          for (int i = 0; i < numCreate; i++) {
+            acquiredIndices.push_back(start);
+            start = (start + 1) % op.size();
+          }
+          acquiresPerFifo[{op, portNum}] = acquiredIndices;
         }
 
-        // acquire locks
-        int numLocks = acquireOp.acqNumber();
-        int alreadyAcq = acquiredIndices.size();
-        int numCreate;
-        if (numLocks > alreadyAcq)
-          numCreate = numLocks - alreadyAcq;
-        else
-          numCreate = 0;
-
-        // account for repetition
-        if (op.getRepeatCount().has_value())
-          numCreate *= op.getRepeatCount().value();
-
-        auto dev = op->getParentOfType<DeviceOp>();
-        if (auto &targetArch = dev.getTargetModel();
-            targetArch.getTargetArch() == AIEArch::AIE1)
-          createUseLocks(builder, op, port, acqPerFifo, numCreate,
-                         LockAction::Acquire, state);
-        else
-          createUseLocks(builder, op, port, acqPerFifo, numCreate,
-                         LockAction::AcquireGreaterEqual, state);
-
-        // create subview: buffers that were already acquired + new acquires
-        for (int i = 0; i < numCreate; i++) {
-          acquiredIndices.push_back(start);
-          start = (start + 1) % op.size();
-        }
+        // Build the subview buffer references shared by both paths (see note
+        // above). For size > 1 dynamic fifos these are dead because the
+        // accesses were already rewired by dynamicGlobalObjectFifos.
         std::vector<BufferOp *> subviewRefs;
         subviewRefs.reserve(acquiredIndices.size());
         for (auto index : acquiredIndices)
           subviewRefs.push_back(&state.buffersPerFifo[target][index]);
-
         subviews[acquireOp] = subviewRefs;
-        acquiresPerFifo[{op, portNum}] = acquiredIndices;
 
         return WalkResult::advance();
       });
