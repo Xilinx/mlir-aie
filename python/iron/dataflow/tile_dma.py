@@ -39,6 +39,7 @@ from ...dialects.aie import (
     use_lock,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from ..buffer import Buffer
+from ..device import Tile
 from ..lock import Lock
 from ..resolvable import Resolvable
 
@@ -129,7 +130,7 @@ class TileDma(Resolvable):
         channels: ordered list of [`DmaChannel`][iron.DmaChannel] entries.
     """
 
-    def __init__(self, tile, channels: Iterable[DmaChannel]):
+    def __init__(self, tile: Tile, channels: Iterable[DmaChannel]):
         self._tile = tile
         self._channels: list[DmaChannel] = list(channels)
         self._resolved = False

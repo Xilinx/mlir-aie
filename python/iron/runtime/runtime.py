@@ -11,7 +11,7 @@ from contextlib import contextmanager
 import itertools
 import logging
 import numpy as np
-from typing import Callable
+from typing import Callable, Iterator
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +131,9 @@ class Runtime(Resolvable):
         return list(self._tile_dmas)
 
     @contextmanager
-    def sequence(self, *input_types: type[np.ndarray]):
+    def sequence(
+        self, *input_types: type[np.ndarray]
+    ) -> Iterator[RuntimeData | tuple[RuntimeData, ...]]:
         """A RuntimeSequence is a sequence of operations that are performed in
         support of a program. Common operations include input and output data movement.
 

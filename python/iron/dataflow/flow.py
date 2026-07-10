@@ -64,8 +64,8 @@ class Flow(Resolvable):
 
     def __init__(
         self,
-        src,
-        dst,
+        src: Tile,
+        dst: Tile,
         *,
         src_port: WireBundle = WireBundle.DMA,
         src_channel: int = 0,
@@ -172,8 +172,8 @@ class PacketFlow(Resolvable):
     def __init__(
         self,
         pkt_id: int,
-        src,
-        dst,
+        src: Tile,
+        dst: Tile,
         *,
         src_port: WireBundle = WireBundle.DMA,
         src_channel: int = 0,

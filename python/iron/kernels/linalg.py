@@ -108,8 +108,8 @@ def mm(
     dim_m: int = 64,
     dim_k: int = 64,
     dim_n: int = 64,
-    input_dtype=np.int16,
-    output_dtype=np.int16,
+    input_dtype: type = np.int16,
+    output_dtype: type = np.int16,
     vectorized: bool = True,
     b_col_maj: bool = False,
     c_col_maj: bool = False,
@@ -206,8 +206,8 @@ def mm(
 def mv(
     dim_m: int = 32,
     dim_k: int = 32,
-    input_dtype=np.int16,
-    output_dtype=np.int32,
+    input_dtype: type = np.int16,
+    output_dtype: type = np.int32,
     vectorized: bool = True,
     use_chess: bool = False,
 ) -> ExternalFunction:
@@ -257,8 +257,8 @@ def cascade_mm(
     dim_m: int = 64,
     dim_k: int = 64,
     dim_n: int = 64,
-    input_dtype=np.int16,
-    output_dtype=np.int16,
+    input_dtype: type = np.int16,
+    output_dtype: type = np.int16,
     use_chess: bool = False,
 ) -> ExternalFunction:
     """Cascade matrix-multiply kernel for multi-core accumulation.

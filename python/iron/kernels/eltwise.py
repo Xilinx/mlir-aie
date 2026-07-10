@@ -41,7 +41,7 @@ def _eltwise_bf16_kernel(
     )
 
 
-def passthrough(tile_size: int = 4096, dtype=np.int32) -> ExternalFunction:
+def passthrough(tile_size: int = 4096, dtype: type = np.int32) -> ExternalFunction:
     """Element-wise passthrough kernel: copies input tile to output tile.
 
     Args:
@@ -66,7 +66,7 @@ def passthrough(tile_size: int = 4096, dtype=np.int32) -> ExternalFunction:
 
 def scale(
     tile_size: int = 1024,
-    dtype=np.int32,
+    dtype: type = np.int32,
     vectorized: bool = True,
     use_chess: bool = False,
 ) -> ExternalFunction:
@@ -102,7 +102,7 @@ def scale(
 
 
 def add(
-    tile_size: int = 1024, dtype=bfloat16, vectorized: bool = True
+    tile_size: int = 1024, dtype: type = bfloat16, vectorized: bool = True
 ) -> ExternalFunction:
     """Element-wise bf16 addition (tile_size must be 1024, hard-coded in C++).
 
@@ -121,7 +121,7 @@ def add(
 
 
 def mul(
-    tile_size: int = 1024, dtype=bfloat16, vectorized: bool = True
+    tile_size: int = 1024, dtype: type = bfloat16, vectorized: bool = True
 ) -> ExternalFunction:
     """Element-wise bf16 multiplication (tile_size must be 1024, hard-coded in C++).
 

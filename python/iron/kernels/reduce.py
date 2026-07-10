@@ -39,7 +39,7 @@ def _reduce_kernel(
 
 
 def reduce_add(
-    tile_size: int = 1024, dtype=np.int32, vectorized: bool = True
+    tile_size: int = 1024, dtype: type = np.int32, vectorized: bool = True
 ) -> ExternalFunction:
     """Reduction kernel: sums all elements of a tile to a scalar.
 
@@ -58,7 +58,7 @@ def reduce_add(
 
 
 def reduce_min(
-    tile_size: int = 1024, dtype=np.int32, vectorized: bool = True
+    tile_size: int = 1024, dtype: type = np.int32, vectorized: bool = True
 ) -> ExternalFunction:
     """Reduction kernel: finds the minimum element of a tile.
 
@@ -77,7 +77,7 @@ def reduce_min(
 
 
 def reduce_max(
-    tile_size: int = 1024, dtype=np.int32, vectorized: bool = True
+    tile_size: int = 1024, dtype: type = np.int32, vectorized: bool = True
 ) -> ExternalFunction:
     """Reduction kernel: finds the maximum element of a tile (int32 or bfloat16).
 
@@ -116,7 +116,7 @@ def reduce_max(
     )
 
 
-def compute_max(dtype=np.int32) -> ExternalFunction:
+def compute_max(dtype: type = np.int32) -> ExternalFunction:
     """Pairwise scalar max — companion to [`reduce_max`][iron.kernels.reduce.reduce_max] for multi-core
     reductions where each core produces a partial max and a final tree
     reduces them pairwise.

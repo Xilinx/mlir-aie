@@ -25,7 +25,7 @@ def conv2dk1(
     input_width: int = 32,
     input_channels: int = 64,
     output_channels: int = 64,
-    act_dtype=np.int8,
+    act_dtype: type = np.int8,
 ) -> ExternalFunction:
     """1x1 convolution kernel.
 
@@ -59,7 +59,7 @@ def conv2dk3(
     input_width: int = 32,
     input_channels: int = 64,
     output_channels: int = 64,
-    act_dtype=np.int8,
+    act_dtype: type = np.int8,
     weight_output_channels: int | None = None,
 ) -> ExternalFunction:
     """3x3 convolution kernel.
@@ -104,7 +104,7 @@ def conv2dk1_skip(
     input_width: int = 32,
     input_channels: int = 64,
     output_channels: int = 64,
-    act_dtype=np.int8,
+    act_dtype: type = np.int8,
 ) -> ExternalFunction:
     """1x1 convolution kernel with skip (residual) connection.
 
@@ -198,7 +198,7 @@ def conv2dk1_skip_init(
     input_width: int = 32,
     input_channels: int = 64,
     output_channels: int = 64,
-    act_dtype=np.int8,
+    act_dtype: type = np.int8,
     skip_input_channels: int | None = None,
 ) -> ExternalFunction:
     """1x1 convolution kernel with skip-init connection.
@@ -321,7 +321,7 @@ def bn_conv2dk1_skip(
     input_width: int = 32,
     input_channels: int = 64,
     output_channels: int = 64,
-    skip_dtype=np.uint8,
+    skip_dtype: type = np.uint8,
 ) -> ExternalFunction:
     """Bottleneck 1x1 conv with skip connection (uint8 in).
 
