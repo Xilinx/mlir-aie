@@ -69,11 +69,11 @@ class ScratchpadParameter(Resolvable):
         """The numpy scalar type of this parameter."""
         return self._dtype
 
-    def read(self):
-        """Emit ``aiex.read_scratchpad_parameter`` inside a core body.
+    def read(self) -> "ir.Value":
+        """Emit `aiex.read_scratchpad_parameter` inside a core body.
 
         Must be called within an active MLIR insertion point (i.e. inside a
-        Worker's ``core_fn``).
+        Worker's `core_fn`).
 
         Returns:
             An MLIR SSA value of the parameter's type.

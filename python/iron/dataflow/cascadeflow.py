@@ -5,10 +5,19 @@
 #
 """CascadeFlow: a directed cascade stream connection between two Workers."""
 
+from __future__ import annotations
+from typing import TYPE_CHECKING
+
 from ...dialects.aie import (
     cascade_flow as _cascade_flow_op,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from ..resolvable import Resolvable
+
+if TYPE_CHECKING:
+    # Import guarded: worker.py imports from dataflow/, so a module-level
+    # import here would be circular. The annotation is a lazy string via
+    # `from __future__ import annotations`, so this is type-check only.
+    from ..worker import Worker
 
 
 class CascadeFlow(Resolvable):
@@ -37,12 +46,12 @@ class CascadeFlow(Resolvable):
     cascades after placement — no global registry, no drain step.
     """
 
-    def __init__(self, src, dst):
+    def __init__(self, src: "Worker", dst: "Worker"):
         """Construct a CascadeFlow.
 
         Args:
-            src: Source ``Worker`` whose tile drives the cascade stream.
-            dst: Destination ``Worker`` whose tile reads the cascade stream.
+            src: Source `Worker` whose tile drives the cascade stream.
+            dst: Destination `Worker` whose tile reads the cascade stream.
         """
         self._src = src
         self._dst = dst
