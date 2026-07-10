@@ -3,7 +3,7 @@
 #   utils/regenerate_lockfiles.sh
 cmake>=4.3.4, <5.0
 pybind11>=3.0.4
-setuptools>=82.0.1
+setuptools>=83.0.0
 wheel
 ninja!=1.13.0
 cibuildwheel
@@ -24,6 +24,13 @@ pyright
 # path. Bump only alongside a compatible eudsl/distro rebuild.
 nanobind==2.12.0
 lit
+# numpy is ABI-coupled like nanobind (see above): keep this constraint identical
+# to utils/mlir_wheels/requirements.in and utils/mlir_aie_wheels/requirements.txt
+# so check_shared_dep_versions.py sees one resolved version everywhere. Without a
+# direct pin numpy would enter this lock only transitively (via matplotlib) and
+# lag the wheel builds. numpy 2.5.1 drops py3.11, hence the split marker.
+numpy>=2.4.6,<2.5; python_version == "3.11"
+numpy>=2.5.1; python_version >= "3.12"
 matplotlib
 psutil
 pytest

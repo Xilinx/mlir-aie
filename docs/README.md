@@ -326,8 +326,8 @@ Generated Code Documentation (rendered on the website):
 - [AIEVec Dialect](https://xilinx.github.io/mlir-aie/AIEVecDialect.html) - [AIEVec Passes](https://xilinx.github.io/mlir-aie/AIEVecPasses.html)
 - [ADF Dialect](https://xilinx.github.io/mlir-aie/ADFDialect.html) - [ADF Passes](https://xilinx.github.io/mlir-aie/ADFPasses.html)
 
-MLIR Tutorials
-- [Step-by-step Tutorial](../mlir_exercises/README.md)
+Tutorials
+- [IRON AIE Application Programming Guide](../programming_guide/README.md)
 - [AIE Design Patterns](AIEDesignPatterns.md)
 - [AIE Routing](AIERouting.md)
 - [AIE Vectorization of Scalar Code](AIEVectorization.md)

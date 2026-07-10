@@ -27,7 +27,7 @@ module @ctrl_id_auto_assign {
       // CHECK-DAG: %[[MASK:.*]] = arith.constant 65280 : i32
       // CHECK-DAG: %[[VAL:.*]] = arith.constant 3840 : i32
       // CHECK: aiex.npu.maskwrite32(%{{.*}}, %[[VAL]], %[[MASK]]) {{.*}} : i32, i32, i32
-      aie.trace.host_config buffer_size = 65536
+      aie.trace.host_config {buffer_size = 65536 : i32}
       aie.trace.start_config @core_trace
     }
   }
@@ -53,7 +53,7 @@ module @ctrl_id_user_specified {
       // CHECK-DAG: %[[MASK:.*]] = arith.constant 65280 : i32
       // CHECK-DAG: %[[VAL:.*]] = arith.constant 1280 : i32
       // CHECK: aiex.npu.maskwrite32(%{{.*}}, %[[VAL]], %[[MASK]]) {{.*}} : i32, i32, i32
-      aie.trace.host_config buffer_size = 65536
+      aie.trace.host_config {buffer_size = 65536 : i32}
       aie.trace.start_config @core_trace
     }
   }
@@ -77,7 +77,7 @@ module @ctrl_id_created_shim {
       // CHECK-DAG: %[[MASK:.*]] = arith.constant 65280 : i32
       // CHECK-DAG: %[[VAL:.*]] = arith.constant 3840 : i32
       // CHECK: aiex.npu.maskwrite32(%{{.*}}, %[[VAL]], %[[MASK]]) {{.*}} : i32, i32, i32
-      aie.trace.host_config buffer_size = 65536
+      aie.trace.host_config {buffer_size = 65536 : i32}
       aie.trace.start_config @core_trace
     }
   }
@@ -103,7 +103,7 @@ module @ctrl_id_npu2 {
       // CHECK-DAG: %[[MASK:.*]] = arith.constant 65280 : i32
       // CHECK-DAG: %[[VAL:.*]] = arith.constant 2560 : i32
       // CHECK: aiex.npu.maskwrite32(%{{.*}}, %[[VAL]], %[[MASK]]) {{.*}} : i32, i32, i32
-      aie.trace.host_config buffer_size = 65536
+      aie.trace.host_config {buffer_size = 65536 : i32}
       aie.trace.start_config @core_trace
     }
   }

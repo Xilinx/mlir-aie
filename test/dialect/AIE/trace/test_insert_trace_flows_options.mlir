@@ -21,7 +21,7 @@ module @options_single {
       aie.trace.stop broadcast=14
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 65536
+      aie.trace.host_config {buffer_size = 65536 : i32}
       aie.trace.start_config @core_trace
     }
     // CHAN0: aie.packet_dest<%{{.*}}, DMA : 0>
@@ -54,7 +54,7 @@ module @multi_column_single {
       aie.trace.stop broadcast=14
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 65536
+      aie.trace.host_config {buffer_size = 65536 : i32}
       aie.trace.start_config @trace_col0
     }
     // DEFAULT-COUNT-1: aiex.npu.writebd

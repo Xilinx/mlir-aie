@@ -8,14 +8,13 @@ from .utils import parity, extract_tile
 
 
 class TraceConfig:
-    DEFAULT_TRACE_BUFFER_INDEX = 4
     DEFAULT_TRACE_FILE = "trace.txt"
 
     def __init__(
         self,
         trace_size: int,
         trace_file: str = DEFAULT_TRACE_FILE,
-        ddr_id: int = DEFAULT_TRACE_BUFFER_INDEX,
+        reuse_output_buffer: bool = False,
         enable_ctrl_pkts: bool = False,
         last_tensor_shape=None,
         last_tensor_dtype=None,
@@ -24,7 +23,9 @@ class TraceConfig:
             raise ValueError(f"Invalid trace size: {trace_size}")
         self.trace_size = trace_size
         self.trace_file = trace_file
-        self.ddr_id = ddr_id
+        # When True, trace data is written into the tail of the last output
+        # buffer instead of a dedicated trailing trace buffer.
+        self.reuse_output_buffer = reuse_output_buffer
         self.enable_ctrl_pkts = enable_ctrl_pkts
         self.last_tensor_shape = last_tensor_shape
         self.last_tensor_dtype = last_tensor_dtype
@@ -39,8 +40,8 @@ class TraceConfig:
         bits = [f"trace_size={self.trace_size}"]
         if self.trace_file != self.DEFAULT_TRACE_FILE:
             bits.append(f"trace_file={self.trace_file!r}")
-        if self.ddr_id != self.DEFAULT_TRACE_BUFFER_INDEX:
-            bits.append(f"ddr_id={self.ddr_id}")
+        if self.reuse_output_buffer:
+            bits.append("reuse_output_buffer=True")
         if self.enable_ctrl_pkts:
             bits.append("enable_ctrl_pkts=True")
         return f"TraceConfig({', '.join(bits)})"

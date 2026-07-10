@@ -34,7 +34,7 @@ module @default_channel_conflict {
     }
 
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 8192
+      aie.trace.host_config {buffer_size = 8192 : i32}
       aie.trace.start_config @trace
     }
 
@@ -73,7 +73,7 @@ module @secondary_channel_used {
     }
 
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 8192
+      aie.trace.host_config {buffer_size = 8192 : i32}
       aie.trace.start_config @trace_a
       aie.trace.start_config @trace_b
     }

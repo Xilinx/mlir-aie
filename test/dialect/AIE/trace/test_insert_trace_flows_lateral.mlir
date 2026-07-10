@@ -31,7 +31,7 @@ module @lateral_basic {
     }
 
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 8192
+      aie.trace.host_config {buffer_size = 8192 : i32}
       aie.trace.start_config @core_trace
     }
 
@@ -72,7 +72,7 @@ module @lateral_no_spare {
     }
 
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 8192
+      aie.trace.host_config {buffer_size = 8192 : i32}
       aie.trace.start_config @trace
     }
 
@@ -113,7 +113,7 @@ module @lateral_and_distribute {
     }
 
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 8192
+      aie.trace.host_config {buffer_size = 8192 : i32}
       aie.trace.start_config @trace_a
       aie.trace.start_config @trace_b
     }
@@ -152,7 +152,7 @@ module @lateral_fallback_full_shim {
     }
 
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 8192
+      aie.trace.host_config {buffer_size = 8192 : i32}
       aie.trace.start_config @trace
     }
 
