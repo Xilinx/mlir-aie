@@ -84,7 +84,7 @@ jobs:
           ASSET=$(gh release view rocm-mlir-distro \
             --repo Xilinx/mlir-aie \
             --json assets \
-            --jq '[.assets[] | select(.name | test("mlir-.*linux_x86_64\\.whl"))] | sort_by(.updatedAt) | last | .name')
+            --jq '[.assets[] | select(.name | test("^mlir-.*x86_64.*\\.whl"))] | sort_by(.updatedAt) | last | .name')
 
           if [ -z "$ASSET" ] || [ "$ASSET" == "null" ]; then
             echo "::error::No mlir linux_x86_64 wheel found in rocm-mlir-distro release."
