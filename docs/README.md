@@ -281,7 +281,6 @@ Generated Code Documentation (rendered on the website):
 - [AIE Dialect](https://xilinx.github.io/mlir-aie/AIEDialect.html) - [AIE Passes](https://xilinx.github.io/mlir-aie/AIEPasses.html)
 - [AIEX Experimental Dialect](https://xilinx.github.io/mlir-aie/AIEXDialect.html) - [AIEX Experimental Passes](https://xilinx.github.io/mlir-aie/AIEXPasses.html)
 - [AIEVec Dialect](https://xilinx.github.io/mlir-aie/AIEVecDialect.html) - [AIEVec Passes](https://xilinx.github.io/mlir-aie/AIEVecPasses.html)
-- [ADF Dialect](https://xilinx.github.io/mlir-aie/ADFDialect.html) - [ADF Passes](https://xilinx.github.io/mlir-aie/ADFPasses.html)
 
 MLIR Tutorials
 - [Step-by-step Tutorial](../mlir_exercises/README.md)

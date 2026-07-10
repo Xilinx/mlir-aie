@@ -30,7 +30,6 @@ target_link_libraries(aie-visualize
   MLIRBuiltinToLLVMIRTranslation
   MLIRXLLVMToLLVMIRTranslation
   MLIRLLVMToLLVMIRTranslation
-  ADF
   AIE
   AIETransforms
   AIETargets

@@ -49,7 +49,6 @@ add_mlir_library(AIETargets
   AIETargetHSA.cpp
   AIETargetShared.cpp
   AIETargetSimulationFiles.cpp
-  ADFGenerateCppGraph.cpp
   AIEFlowsToJSON.cpp
   AIELLVMLink.cpp
 
@@ -86,7 +85,6 @@ add_mlir_library(AIETargets
   AIE
   AIEX
   AIEXUtils
-  ADF
 )
 
 target_link_libraries(AIETargets PRIVATE xaienginecdo_static)
