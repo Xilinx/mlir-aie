@@ -24,7 +24,7 @@ _RELU_FIXED_TILE = 1024
 def _eltwise_bf16_kernel(
     op: str, tile_size: int, dtype, vectorized: bool
 ) -> ExternalFunction:
-    """Shared implementation for :func:`add` and :func:`mul`."""
+    """Shared implementation for [`add`][iron.kernels.eltwise.add] and [`mul`][iron.kernels.eltwise.mul]."""
     _require_fixed_tile_size(op, tile_size, _ELTWISE_FIXED_TILE)
     if dtype is not bfloat16:
         raise ValueError(

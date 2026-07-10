@@ -220,7 +220,7 @@ def mv(
         output_dtype: Output element type. Only ``np.int32`` is supported.
         vectorized: If ``True`` use the vectorized variant.
         use_chess: If ``True`` build the .o with ``xchesscc_wrapper``
-            instead of Peano.  See :func:`mm` for the design-level
+            instead of Peano.  See [`mm`][iron.kernels.linalg.mm] for the design-level
             constraint (all EFs in one design must agree).
 
     Returns:
@@ -266,7 +266,7 @@ def cascade_mm(
     cascade_mm.cc emits all three cascade variants (``get_only``,
     ``put_only``, ``put_get``) plus a ``zero`` companion in one .o.  The
     returned ExternalFunction binds the ``get_only`` symbol; the other
-    three are sibling :class:`Kernel`\\s available as attributes:
+    three are sibling [`Kernel`][iron.Kernel]\\s available as attributes:
 
     * ``.get_only`` — same as the returned EF (top of the cascade chain).
     * ``.put_only`` — bottom of the chain.

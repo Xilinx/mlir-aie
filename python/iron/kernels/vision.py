@@ -33,7 +33,7 @@ def _color_convert_kernel(
 def _bitwise_kernel(
     op: str, line_width: int, dtype, use_chess: bool = False
 ) -> ExternalFunction:
-    """Shared implementation for :func:`bitwise_or` and :func:`bitwise_and`."""
+    """Shared implementation for [`bitwise_or`][iron.kernels.vision.bitwise_or] and [`bitwise_and`][iron.kernels.vision.bitwise_and]."""
     bit_width = _dtype_to_bit_width(dtype, factory_name=f"bitwise{op}")
     line_ty = np.ndarray[(line_width,), np.dtype[dtype]]
     return _make_extern(

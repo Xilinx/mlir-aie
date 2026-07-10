@@ -465,7 +465,7 @@ def bn_conv2dk1_partial_put_i8(
     width slice of the activation, multiplies against its weight half,
     and emits the partial sum onto the cascade stream (no separate
     output buffer — cascade-only).  Sister of
-    :func:`bn_conv2dk1_partial_get_relu_i8`.
+    [`bn_conv2dk1_partial_get_relu_i8`][iron.kernels.conv.bn_conv2dk1_partial_get_relu_i8].
 
     Currently defined in the .cc only for MobileNet V3's bn13 / bn14
     (one wrapper symbol per block); ``block_index`` selects which.
@@ -510,7 +510,7 @@ def bn_conv2dk1_partial_get_relu_i8(
     The GET tile of a two-tile cascade-split pointwise conv: consumes
     the cascade partial sum from its sister PUT tile, finishes the dot
     product against its weight half, applies ReLU, and writes the full
-    output buffer.  Sister of :func:`bn_conv2dk1_partial_put_i8`.
+    output buffer.  Sister of [`bn_conv2dk1_partial_put_i8`][iron.kernels.conv.bn_conv2dk1_partial_put_i8].
 
     Currently defined in the .cc only for MobileNet V3's bn13 / bn14
     (one wrapper symbol per block); ``block_index`` selects which.
@@ -549,7 +549,7 @@ def bn_conv2dk3_dw_out_split(
 ) -> ExternalFunction:
     """Depthwise 3x3 stride-1 conv with split output stream (uint8 in/out).
 
-    A variant of :func:`bn_conv2dk3_dw` (stride=1) that writes its output
+    A variant of [`bn_conv2dk3_dw`][iron.kernels.conv.bn_conv2dk3_dw] (stride=1) that writes its output
     to TWO separate buffers — the channel dimension is split in half so
     downstream cascade-PUT tiles can each consume one slice.  Used by
     MobileNet V3's bn13 / bn14 depthwise stage to feed the L3 cascade.
@@ -594,7 +594,7 @@ def bn_conv2dk1_input_split_partial_put_ui8(
 ) -> ExternalFunction:
     """Input-split cascade-PUT half of a 1x1 conv on uint8 activations.
 
-    Like :func:`bn_conv2dk1_partial_put_i8` but consumes a CHANNEL slice
+    Like [`bn_conv2dk1_partial_put_i8`][iron.kernels.conv.bn_conv2dk1_partial_put_i8] but consumes a CHANNEL slice
     (input-split) of a uint8 activation instead of a width slice of int8.
     Used by MobileNet V3's bn13 / bn14 L3 stage.
 
@@ -637,7 +637,7 @@ def bn_conv2dk1_input_split_partial_skip_get(
     The GET tile completes the cascade-split 1x1 + ReLU + residual add
     pattern: consumes the partial sum from its sister PUT tile, finishes
     the dot product, adds a skip row of int8 activations, and writes int8
-    output.  Sister of :func:`bn_conv2dk1_input_split_partial_put_ui8`.
+    output.  Sister of [`bn_conv2dk1_input_split_partial_put_ui8`][iron.kernels.conv.bn_conv2dk1_input_split_partial_put_ui8].
 
     Args:
         input_width: Spatial width of the input slice.
