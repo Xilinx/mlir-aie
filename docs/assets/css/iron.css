@@ -17,6 +17,16 @@
   --md-primary-fg-color--light: #3a3b3f;
   --md-primary-fg-color--dark:  #1a1a1b;
   --md-typeset-a-color:         #4db8c8;
+
+  /* Material's default slate is blue-tinted (hsla(232,15%,...)); ROCm's
+     dark mode is neutral charcoal. Override the backgrounds to neutral
+     greys so the body matches the charcoal header instead of clashing. */
+  --md-default-bg-color:        #1b1b1d;   /* page background */
+  --md-code-bg-color:           #242528;   /* code blocks / inline */
+  --md-default-fg-color:              rgba(255,255,255,0.87);
+  --md-default-fg-color--light:       rgba(255,255,255,0.60);
+  --md-default-fg-color--lighter:     rgba(255,255,255,0.32);
+  --md-default-fg-color--lightest:    rgba(255,255,255,0.12);
 }
 
 /* ── Code blocks ─────────────────────────────────────────────────────────── */
