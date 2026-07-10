@@ -25,19 +25,29 @@
 /* ── Landing page: quick-nav cards ──────────────────────────────────────── */
 .iron-cards {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  /* Always exactly 4 equal columns on desktop, wrap gracefully on mobile */
+  grid-template-columns: repeat(4, 1fr);
   gap: 1rem;
   margin: 1.5rem 0 2rem;
+}
+
+@media (max-width: 900px) {
+  .iron-cards { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 500px) {
+  .iron-cards { grid-template-columns: 1fr; }
 }
 
 .iron-card {
   border: 1px solid var(--md-default-fg-color--lightest);
   border-radius: 8px;
-  padding: 1.25rem 1.25rem 1rem;
+  padding: 1.25rem 1rem 1rem;
   text-decoration: none !important;
   transition: border-color 0.15s, box-shadow 0.15s;
-  display: block;
+  display: flex;
+  flex-direction: column;
   color: inherit;
+  min-height: 120px;
 }
 
 .iron-card:hover {
@@ -46,9 +56,19 @@
   color: inherit;
 }
 
-.iron-card-icon { font-size: 1.5rem; margin-bottom: 0.4rem; display: block; }
-.iron-card-title { font-weight: 600; font-size: 0.92rem; display: block; margin-bottom: 0.2rem; }
-.iron-card-desc  { font-size: 0.8rem; opacity: 0.72; line-height: 1.4; }
+.iron-card-icon { font-size: 1.4rem; margin-bottom: 0.5rem; display: block; line-height: 1; }
+.iron-card-title { font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 0.3rem; color: var(--md-typeset-a-color); }
+.iron-card-desc  { font-size: 0.78rem; opacity: 0.72; line-height: 1.4; }
+
+/* ── Wider content area ──────────────────────────────────────────────────── */
+/* Material default is 61rem — bump to 72rem for code-heavy content */
+.md-grid { max-width: 72rem; }
+
+/* ── Home page: no left sidebar, full-width content ─────────────────────── */
+/* On the landing page the left nav just shows "Home" which wastes space */
+[data-md-component="sidebar"][data-md-type="navigation"] .md-nav__title[for="__nav"] ~ .md-nav__list > .md-nav__item:only-child ~ * {
+  display: none;
+}
 
 /* ── Footer ──────────────────────────────────────────────────────────────── */
 .md-footer { font-size: 0.8rem; }

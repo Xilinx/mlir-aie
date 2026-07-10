@@ -23,7 +23,7 @@ exclude_docs: |
   Gemfile
   CMakeLists.txt
   *.dox
-  README.md
+  /README.md
 
 # Links to source files (*.py, *.cpp, *.h, etc.) and out-of-tree dirs
 # (programming_examples/, mlir_exercises/) are intentional "go read the
@@ -69,6 +69,7 @@ theme:
     - content.code.copy
     - content.code.annotate
     - toc.follow
+    - toc.integrate
 
 extra_css:
   - assets/css/iron.css
@@ -187,26 +188,27 @@ nav:
     - Compilation Stages: programming_guide/compilation_stages.md
     - Implicit MLIR Context: programming_guide/implicit_mlir_context.md
     - Kernel Library: programming_guide/kernels_library.md
-  - API Reference:
-    - IRON Python API: api/iron.md
-    - Tensor Access Patterns (taplib): api/taplib.md
-    - Utilities: api/utils.md
-    - Kernels: api/kernels.md
-  - MLIR / C++ Reference:
-    - Dialects Overview: AIEDesignPatterns.md
-    - AIE Dialect: AIEDialect.md
-    - AIEX Dialect: AIEXDialect.md
-    - AIEVec Dialect: AIEVecDialect.md
-    - ADF Dialect: ADFDialect.md
-    - AIE Passes: AIEPasses.md
-    - AIEX Passes: AIEXPasses.md
-    - AIEVec Passes: AIEVecPasses.md
-    - Routing: AIERouting.md
-    - Vectorization: AIEVectorization.md
-    - C++ API (Doxygen): api/cpp_doxygen.md
+  - API & Internals:
+    - Python API:
+      - IRON Python API: api/iron.md
+      - Tensor Access Patterns (taplib): api/taplib.md
+      - Utilities: api/utils.md
+      - Kernels: api/kernels.md
+    - MLIR / C++:
+      - Dialects Overview: AIEDesignPatterns.md
+      - AIE Dialect: AIEDialect.md
+      - AIEX Dialect: AIEXDialect.md
+      - AIEVec Dialect: AIEVecDialect.md
+      - ADF Dialect: ADFDialect.md
+      - AIE Passes: AIEPasses.md
+      - AIEX Passes: AIEXPasses.md
+      - AIEVec Passes: AIEVecPasses.md
+      - Routing: AIERouting.md
+      - Vectorization: AIEVectorization.md
+      - C++ API (Doxygen): api/cpp_doxygen.md
   - Developer Guide:
     - Contributing: CONTRIBUTING.md
     - Building from Source: Building.md
     - Developer Notes: Dev.md
+    - Presentations: Presentations.md
     - Security: SECURITY.md
-  - Presentations: Presentations.md
