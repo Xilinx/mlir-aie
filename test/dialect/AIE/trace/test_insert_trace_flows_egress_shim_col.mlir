@@ -23,7 +23,7 @@ module @default_egress {
       aie.trace.stop broadcast=14
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 8192
+      aie.trace.host_config {buffer_size = 8192 : i32}
       aie.trace.start_config @trace0
     }
   }
@@ -45,7 +45,7 @@ module @forced_egress {
       aie.trace.stop broadcast=14
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 8192 egress_shim_col = 1
+      aie.trace.host_config {buffer_size = 8192 : i32, egress_shim_col = 1 : i32}
       aie.trace.start_config @trace0
     }
   }

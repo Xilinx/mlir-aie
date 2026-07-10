@@ -111,9 +111,10 @@ int main(int argc, const char *argv[]) {
   int lut_volume = in_volume;
   int out_volume = in_volume;
 
-  int res = setup_and_run_aie<DATATYPE_IN1, DATATYPE_IN2, DATATYPE_OUT,
-                              initialize_bufIn1, initialize_bufIn2,
-                              initialize_bufOut, verify_rope_kernel>(
-      in_volume, lut_volume, out_volume, myargs);
+  int res = setup_and_run_aie(
+      verify_rope_kernel,
+      std::make_tuple(make_in<DATATYPE_IN1>(in_volume, initialize_bufIn1),
+                      make_in<DATATYPE_IN2>(lut_volume, initialize_bufIn2)),
+      make_out<DATATYPE_OUT>(out_volume, initialize_bufOut), myargs);
   return res;
 }

@@ -144,9 +144,6 @@ int main(int argc, const char *argv[]) {
   run0.set_arg(2, instr_0_v.size());
   run0.set_arg(3, bo_inA_0);
   run0.set_arg(4, bo_out_0);
-  run0.set_arg(5, 0);
-  run0.set_arg(6, 0);
-  run0.set_arg(7, 0);
 
   xrt::run run1_cfg = xrt::run(kernel0);
   run1_cfg.set_arg(0, opcode);
@@ -154,9 +151,6 @@ int main(int argc, const char *argv[]) {
   run1_cfg.set_arg(2, cfg_1_v.size());
   run1_cfg.set_arg(3, 0);
   run1_cfg.set_arg(4, 0);
-  run1_cfg.set_arg(5, 0);
-  run1_cfg.set_arg(6, 0);
-  run1_cfg.set_arg(7, 0);
 
   // Creating the second run
   xrt::run run1 = xrt::run(kernel0);
@@ -165,9 +159,6 @@ int main(int argc, const char *argv[]) {
   run1.set_arg(2, instr_1_v.size());
   run1.set_arg(3, bo_inA_1);
   run1.set_arg(4, bo_out_1);
-  run1.set_arg(5, 0);
-  run1.set_arg(6, 0);
-  run1.set_arg(7, 0);
 
   // Executing and waiting on the runlist
   runlist.add(run0);

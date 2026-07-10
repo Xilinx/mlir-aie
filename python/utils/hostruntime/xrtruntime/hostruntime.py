@@ -35,7 +35,7 @@ class XRTKernelHandle(KernelHandle):
     Handle for a loaded XRT kernel.
     """
 
-    def __init__(self, kernel, xclbin, context, insts, insts_bo=None):
+    def __init__(self, kernel, xclbin, context, insts, insts_bo=None, name=None):
         """
         Initialize the XRTKernelHandle.
 
@@ -45,12 +45,16 @@ class XRTKernelHandle(KernelHandle):
             context: The XRT context object.
             insts: The instructions for the kernel.
             insts_bo (optional): The instruction buffer object. Defaults to None.
+            name (optional): The resolved name of the loaded kernel, used to
+                look up the matching kernel in an xclbin that declares several.
+                Defaults to None.
         """
         self.kernel = kernel
         self.xclbin = xclbin
         self.context = context
         self.insts = insts
         self.insts_bo = insts_bo
+        self.name = name
 
 
 class XRTKernelResult(KernelResult):
@@ -217,7 +221,9 @@ class XRTHostRuntime(HostRuntime):
         else:
             kernel = pyxrt.kernel(context, kernel_name)
 
-        kernel_handle = XRTKernelHandle(kernel, xclbin, context, insts)
+        kernel_handle = XRTKernelHandle(
+            kernel, xclbin, context, insts, name=kernel_name
+        )
         return kernel_handle
 
     def run(
@@ -256,6 +262,34 @@ class XRTHostRuntime(HostRuntime):
             )
         [a.to("npu") for a in args]
         buffers = [a.buffer_object() for a in args]
+
+        # Validate BO count against xclbin metadata before calling into XRT.
+        # XRT's validate_bo_at_index segfaults if the index exceeds the count
+        # declared in kernels.json. The fixed args (opcode, instr, ninstr) are
+        # the first 3; the rest are host BOs. Passing fewer BOs than declared is
+        # fine (the kernel may declare a minimum ABI width); passing more is the
+        # fatal case.
+        xclbin_kernels = kernel_handle.xclbin.get_kernels()
+        # Match the kernel actually loaded into this handle; an xclbin may
+        # declare several kernels with different ABIs, so indexing [0] could
+        # validate against the wrong one.
+        xclbin_kernel = None
+        if kernel_handle.name is not None:
+            xclbin_kernel = next(
+                (k for k in xclbin_kernels if k.get_name() == kernel_handle.name),
+                None,
+            )
+        if xclbin_kernel is None and xclbin_kernels:
+            xclbin_kernel = xclbin_kernels[0]
+        if xclbin_kernel is not None:
+            declared_bo_count = xclbin_kernel.get_num_args() - 3
+            if len(buffers) > declared_bo_count:
+                raise HostRuntimeError(
+                    f"The xclbin declares {declared_bo_count} host buffer "
+                    f"argument(s) but {len(buffers)} were passed. Passing more "
+                    f"host buffers than the kernel ABI declares would segfault "
+                    f"in XRT argument setup."
+                )
 
         insts_bo = None
         insts_bytes = 0

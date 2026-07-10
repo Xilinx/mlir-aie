@@ -119,22 +119,43 @@ struct AIEInsertTraceFlowsPass
 
     // Get configuration from host_config
     int bufferSizeBytes = hostConfig.getBufferSize();
-    int traceArgIdx = hostConfig.getArgIdx();
+    bool reuseOutputBuffer = hostConfig.getReuseOutputBuffer();
     auto routing = hostConfig.getRouting();
     int egressShimColFromIR = hostConfig.getEgressShimCol();
 
-    // arg_idx=-1 means "append trace after last tensor"
+    // The trace buffer is a host buffer, i.e. an argument of the runtime
+    // sequence. Determine which argument index it occupies.
+    //
+    //   - Dedicated (default): append a fresh argument to the runtime sequence
+    //     for the trace buffer. It lands at the tail, so enabling trace never
+    //     perturbs the indices of the data arguments.
+    //   - Reuse-output: trace data is written into the tail of the last
+    //     existing argument (an output buffer), saving a host buffer. No new
+    //     argument is added; the offset skips past the output data.
+    int traceArgIdx;
     int traceBufferOffset = 0; // in bytes
-    if (traceArgIdx == -1) {
+    if (reuseOutputBuffer) {
       auto args = runtimeSeq.getBody().getArguments();
-      assert(!args.empty() && "runtime_sequence must have args for arg_idx=-1");
-
+      if (args.empty()) {
+        runtimeSeq.emitError() << "trace.host_config reuse_output_buffer "
+                                  "requires the runtime_sequence to have at "
+                                  "least one argument to reuse";
+        return signalPassFailure();
+      }
       Value lastArg = args.back();
       traceArgIdx = args.size() - 1;
-
       auto memrefType = cast<MemRefType>(lastArg.getType());
       traceBufferOffset = memrefType.getNumElements() *
                           (memrefType.getElementTypeBitWidth() / 8);
+    } else {
+      // Append a trace-buffer argument. Its element type/size is not part of
+      // the host ABI (the host sizes the buffer itself); use an i8 memref so
+      // the byte size is self-describing.
+      auto traceBufType = MemRefType::get(
+          {bufferSizeBytes}, IntegerType::get(device.getContext(), 8));
+      Block &entryBB = runtimeSeq.getBody().front();
+      entryBB.addArgument(traceBufType, runtimeSeq.getLoc());
+      traceArgIdx = entryBB.getNumArguments() - 1;
     }
 
     // Remove host_config op
