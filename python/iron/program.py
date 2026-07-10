@@ -27,8 +27,9 @@ class Program:
     ):
         """A Program represents all design information needed to run the design on a device.
 
-        Note: MLIR verification (``ctx.module.operation.verify()``) is performed inside
-        :meth:`resolve_program`, not during construction.
+        !!! note
+            MLIR verification (`ctx.module.operation.verify()`) is performed inside
+            [`resolve_program`][iron.program.Program.resolve_program], not during construction.
 
         Args:
             device (Device): The device used to generate the final MLIR for the design.

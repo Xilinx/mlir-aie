@@ -3,11 +3,12 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Iron-level Lock primitive — a named ``aie.lock`` on a specific tile.
+"""IRON-level Lock primitive — a named `aie.lock` on a specific tile.
 
-Pairs with :class:`Buffer` for designs that wire DMA / compute
-synchronization explicitly (via :class:`TileDma` and :class:`Flow`)
-instead of letting :class:`ObjectFifo` manage it.
+Pairs with [`Buffer`][iron.Buffer] for designs that wire DMA / compute
+synchronization explicitly (via [`TileDma`][iron.TileDma] and
+[`Flow`][iron.Flow]) instead of letting [`ObjectFifo`][iron.ObjectFifo]
+manage it.
 """
 
 import itertools
@@ -39,10 +40,10 @@ class Lock(Resolvable):
         Args:
             tile (Tile): The tile that owns this lock.
             lock_id (int | None): Hardware lock ID; passed straight through to
-                the underlying ``aie.lock`` op.  If ``None`` (the default),
+                the underlying `aie.lock` op. If `None` (the default),
                 the lowering pass picks one.
-            init (int): Initial lock value at design startup.  Defaults to 0.
-            name (str | None): Symbol name for the lock.  A unique name is
+            init (int): Initial lock value at design startup. Defaults to 0.
+            name (str | None): Symbol name for the lock. A unique name is
                 generated if not provided.
         """
         self._tile = tile
@@ -86,18 +87,19 @@ class Lock(Resolvable):
     # ------------------------------------------------------------------
 
     def acquire(self, value: int = 1) -> None:
-        """Emit ``aie.use_lock(self, AcquireGreaterEqual, value=value)``.
+        """Emit `aie.use_lock(self, AcquireGreaterEqual, value=value)`.
 
-        The default ``AcquireGreaterEqual`` mode matches what almost every
-        ObjectFifo / DMA-driven design wants; use :meth:`acquire_exact` for
-        the rarer ``Acquire`` (exact-equality) mode.
+        The default `AcquireGreaterEqual` mode matches what almost every
+        ObjectFifo / DMA-driven design wants; use
+        [`acquire_exact`][iron.lock.Lock.acquire_exact] for the rarer
+        `Acquire` (exact-equality) mode.
         """
         _use_lock(self.op, LockAction.AcquireGreaterEqual, value=value)
 
     def acquire_exact(self, value: int = 1) -> None:
-        """Emit ``aie.use_lock(self, Acquire, value=value)`` (exact match)."""
+        """Emit `aie.use_lock(self, Acquire, value=value)` (exact match)."""
         _use_lock(self.op, LockAction.Acquire, value=value)
 
     def release(self, value: int = 1) -> None:
-        """Emit ``aie.use_lock(self, Release, value=value)``."""
+        """Emit `aie.use_lock(self, Release, value=value)`."""
         _use_lock(self.op, LockAction.Release, value=value)

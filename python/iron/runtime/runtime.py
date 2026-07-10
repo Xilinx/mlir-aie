@@ -63,8 +63,14 @@ class IronRuntimeError(Exception):
 
 
 class Runtime(Resolvable):
-    """A Runtime contains that operations and structure of all operations that
-    need to be taken care of by the host/runtime in order to run a program.
+    """The host-side sequence of data-movement and worker-start operations that
+    execute an IRON design.
+
+    A Runtime describes what the host does at runtime: filling input
+    [`ObjectFifo`][iron.ObjectFifo]s with data, starting
+    [`Worker`][iron.Worker]s, and draining results back to host buffers.
+    Operations are declared inside a [`sequence`][iron.runtime.runtime.Runtime.sequence]
+    context.
     """
 
     def __init__(
@@ -98,17 +104,18 @@ class Runtime(Resolvable):
         self._egress_shim_col = 0
 
     def add_flow(self, flow) -> None:
-        """Register an explicit :class:`Flow` (or :class:`PacketFlow`) so the
-        Program resolves it alongside the ObjectFifos."""
+        """Register an explicit [`Flow`][iron.Flow] (or
+        [`PacketFlow`][iron.PacketFlow]) so the Program resolves it alongside
+        the ObjectFifos."""
         self._flows.append(flow)
 
     def add_lock(self, lock) -> None:
-        """Register an explicit :class:`Lock` shared between a Worker and a
-        :class:`TileDma`."""
+        """Register an explicit [`Lock`][iron.Lock] shared between a Worker and
+        a [`TileDma`][iron.TileDma]."""
         self._locks.append(lock)
 
     def add_tile_dma(self, tile_dma) -> None:
-        """Register an explicit :class:`TileDma` program."""
+        """Register an explicit [`TileDma`][iron.TileDma] program."""
         self._tile_dmas.append(tile_dma)
 
     @property
@@ -214,10 +221,10 @@ class Runtime(Resolvable):
             wait (bool, optional): Whether this Task should be awaited on or not. If not, it will be freed when the task group is finished. Defaults to False.
             tile (Tile | None, optional): The Shim tile to associate the data transfer with. Defaults to AnyShimTile.
             packet (tuple[int, int] | None, optional): Stamp the shim DMA's BD
-                with a packet header ``(pkt_type, pkt_id)``.  Pairs with
+                with a packet header `(pkt_type, pkt_id)`. Pairs with
                 downstream packet-switched routing (e.g. ObjectFifos lowered
-                with ``--packet-sw-objFifos`` or an explicit
-                :class:`~aie.iron.PacketFlow`).  Defaults to None.
+                with `--packet-sw-objFifos` or an explicit
+                [`PacketFlow`][iron.PacketFlow]). Defaults to None.
             offset_parameter (ScratchpadParameter | str | None, optional): A ScratchpadParameter (or its name) whose value is used as the element offset for this DMA transfer. Defaults to None.
 
         Raises:
@@ -266,7 +273,7 @@ class Runtime(Resolvable):
         packet: tuple[int, int] | None = None,
         offset_parameter: "ScratchpadParameter | str | None" = None,
     ) -> None:
-        """Conceptually fill an ObjectFifoHandle (of type consumer) of data and write that data to a runtime buffer.
+        """Conceptually drain an ObjectFifoHandle (of type consumer): read data from the ObjectFifo and write it to a runtime buffer.
         This should be called within a Runtime.sequence() context.
 
         Args:
@@ -278,10 +285,10 @@ class Runtime(Resolvable):
             wait (bool, optional): Whether this Task should be awaited on or not. If not, it will be freed when the task group is finished. Defaults to False.
             tile (Tile | None, optional): The Shim tile to associate the data transfer with. Defaults to AnyShimTile.
             packet (tuple[int, int] | None, optional): Stamp the shim DMA's BD
-                with a packet header ``(pkt_type, pkt_id)``.  Pairs with
+                with a packet header `(pkt_type, pkt_id)`. Pairs with
                 downstream packet-switched routing (e.g. ObjectFifos lowered
-                with ``--packet-sw-objFifos`` or an explicit
-                :class:`~aie.iron.PacketFlow`).  Defaults to None.
+                with `--packet-sw-objFifos` or an explicit
+                [`PacketFlow`][iron.PacketFlow]). Defaults to None.
             offset_parameter (ScratchpadParameter | str | None, optional): A ScratchpadParameter (or its name) whose value is used as the element offset for this DMA transfer. Defaults to None.
 
         Raises:
@@ -369,7 +376,7 @@ class Runtime(Resolvable):
         """Enable hardware tracing for this program.
 
         Configures the AIE trace units and routes trace packets to DDR via the shim DMA.
-        Should be called within a :meth:`sequence` context before data movement operations.
+        Should be called within a [`sequence`][iron.runtime.runtime.Runtime.sequence] context before data movement operations.
 
         Args:
             trace_size (int): Size of the trace buffer in bytes.
@@ -380,7 +387,7 @@ class Runtime(Resolvable):
                 Set to -1 to append trace data after the last runtime_sequence
                 tensor argument.
             coretile_events (list | None, optional): List of up to 8 core tile trace events.
-                See ``https://xilinx.github.io/mlir-aie/AIEXDialect.html`` for available
+                See [the AIEX dialect reference](../AIEXDialect.md) for available
                 events under (type)EventAIE such as CoreEventAIE.
                 Defaults to None (uses hardware defaults).
             coremem_events (list | None, optional): List of up to 8 core memory trace events.
@@ -412,11 +419,11 @@ class Runtime(Resolvable):
         self._tasks.append(_BarrierSetOp(barrier, value))
 
     def sync_parameters(self):
-        """Emit ``aiex.sync_scratchpad_parameters_from_host`` in the runtime sequence.
+        """Emit `aiex.sync_scratchpad_parameters_from_host` in the runtime sequence.
 
-        Call this within a :meth:`sequence` context after all parameters have
-        been written on the host side and before starting workers that read
-        them.
+        Call this within a [`sequence`][iron.runtime.runtime.Runtime.sequence] context after all
+        parameters have been written on the host side and before starting
+        workers that read them.
         """
         self._tasks.append(_SyncParametersTask())
 
@@ -506,7 +513,7 @@ class Runtime(Resolvable):
 
             if self._strict_task_groups and default_tasks and task_group_tasks:
                 raise IronRuntimeError(
-                    f"Mixing explicit task groups and the default task group is prohibitted. "
+                    f"Mixing explicit task groups and the default task group is prohibited. "
                     f"Please assign all default tasks ({task_group_actions[default_task_group]}) to a task group."
                 )
 
@@ -515,7 +522,7 @@ class Runtime(Resolvable):
 
 
 class _SyncParametersTask(Resolvable):
-    """Emits ``aiex.sync_scratchpad_parameters_from_host`` during runtime sequence resolution."""
+    """Emits `aiex.sync_scratchpad_parameters_from_host` during runtime sequence resolution."""
 
     def resolve(
         self,

@@ -113,17 +113,17 @@ class BaseKernel(Resolvable):
         return self._arg_types[arg_index]
 
     def arg_shape(self, arg_index: int = 0) -> tuple[int, ...]:
-        """Return the shape tuple of the array argument at ``arg_index``.
+        """Return the shape tuple of the array argument at `arg_index`.
 
-        Works for both ``np.ndarray[(...,), np.dtype[T]]`` parameterized
-        types (the canonical iron kernel signature) and MLIR MemRefType
+        Works for both `np.ndarray[(...,), np.dtype[T]]` parameterized
+        types (the canonical IRON kernel signature) and MLIR MemRefType
         operands.
 
         Args:
-            arg_index: Index into ``arg_types``.  Defaults to 0.
+            arg_index: Index into `arg_types`. Defaults to 0.
 
         Raises:
-            ValueError: When ``arg_index`` is out of range or the
+            ValueError: When `arg_index` is out of range or the
                 argument at that index is not an array type.
         """
         arg = self._resolve_arg(arg_index)
@@ -140,13 +140,13 @@ class BaseKernel(Resolvable):
         )
 
     def arg_dtype(self, arg_index: int = 0):
-        """Return the numpy dtype of the array argument at ``arg_index``.
+        """Return the numpy dtype of the array argument at `arg_index`.
 
         Args:
-            arg_index: Index into ``arg_types``.  Defaults to 0.
+            arg_index: Index into `arg_types`. Defaults to 0.
 
         Raises:
-            ValueError: When ``arg_index`` is out of range or the
+            ValueError: When `arg_index` is out of range or the
                 argument at that index is not an array type.
         """
         arg = self._resolve_arg(arg_index)
@@ -163,14 +163,15 @@ class BaseKernel(Resolvable):
         )
 
     def tile_size(self, arg_index: int = 0) -> int:
-        """Return the first dimension of the array argument at ``arg_index``.
+        """Return the first dimension of the array argument at `arg_index`.
 
-        Convenience wrapper over :meth:`arg_shape` for the common case of
-        a 1-D buffer argument.  ``tile_size(i)`` is equivalent to
-        ``arg_shape(i)[0]``.
+        Convenience wrapper over
+        [`arg_shape`][iron.kernel.BaseKernel.arg_shape] for the common case of
+        a 1-D buffer argument. `tile_size(i)` is equivalent to
+        `arg_shape(i)[0]`.
 
         Args:
-            arg_index: Index into ``arg_types``.  Defaults to 0.
+            arg_index: Index into `arg_types`. Defaults to 0.
         """
         shape = self.arg_shape(arg_index)
         if len(shape) == 0:
@@ -186,17 +187,17 @@ class BaseKernel(Resolvable):
     def __call__(self, *args, **kwargs):
         """Emit a func.call to this kernel, validating argument count.
 
-        Each argument is passed through :func:`_maybe_collapse_to_match`
-        before the call.  This silently inserts a ``memref.collapse_shape``
+        Each argument is passed through `_maybe_collapse_to_match`
+        before the call. This silently inserts a `memref.collapse_shape`
         when an N-D contiguous memref arg is being fed into a 1-D kernel
         signature with the same element count and dtype — the typical case
-        when an iron design holds 2-D ObjectFifo elements but the
-        ``aie.iron.kernels.X`` helper declares a flat 1-D arg.  See that
-        helper's docstring for the full set of conditions.  Real shape /
+        when an IRON design holds 2-D ObjectFifo elements but the
+        `iron.kernels.X` helper declares a flat 1-D arg. See that
+        helper's docstring for the full set of conditions. Real shape /
         dtype mismatches still fail at MLIR verification time.
 
-        ``**kwargs`` are forwarded to the underlying ``func.call`` builder
-        (typically ``loc=``, ``ip=`` for MLIR location / insertion point).
+        `**kwargs` are forwarded to the underlying `func.call` builder
+        (typically `loc=`, `ip=` for MLIR location / insertion point).
         """
         if not self._op:
             raise ValueError("Kernel must be resolved before it can be called.")
@@ -217,13 +218,13 @@ class BaseKernel(Resolvable):
 class Kernel(BaseKernel):
     """An AIE core function backed by a pre-compiled object file.
 
-    Use :class:`ExternalFunction` instead when you want to compile from
-    C/C++ source at JIT time.
+    Use [`ExternalFunction`][iron.ExternalFunction] instead when you want to
+    compile from C/C++ source at JIT time.
 
-    ``resolve()`` emits a ``func.func private`` declaration with a
-    ``link_with`` attribute naming ``object_file_name``.  The
-    ``aie-assign-core-link-files`` pass propagates this into the CoreOp's
-    ``link_files`` attribute so the linker knows which file to include.
+    `resolve()` emits a `func.func private` declaration with a
+    `link_with` attribute naming `object_file_name`. The
+    `aie-assign-core-link-files` pass propagates this into the CoreOp's
+    `link_files` attribute so the linker knows which file to include.
     """
 
     def __init__(
@@ -262,14 +263,14 @@ class Kernel(BaseKernel):
 class ExternalFunction(Kernel):
     """An AIE core function compiled from C/C++ source at JIT time.
 
-    Each instance is registered in ``_instances`` at construction time so that
-    the ``@jit`` decorator can discover and compile all source files before
-    invoking the MLIR compilation pipeline.  ``_instances`` is cleared at the
-    start of each ``@jit`` call to prevent stale registrations from a previous
+    Each instance is registered in `_instances` at construction time so that
+    the `@jit` decorator can discover and compile all source files before
+    invoking the MLIR compilation pipeline. `_instances` is cleared at the
+    start of each `@jit` call to prevent stale registrations from a previous
     (possibly failed) run.
 
-    Use the base :class:`Kernel` class instead when you have a pre-built
-    object file.
+    Use the base [`Kernel`][iron.Kernel] class instead when you have a
+    pre-built object file.
     """
 
     _instances: set = set()  # Registry of all live ExternalFunction instances.

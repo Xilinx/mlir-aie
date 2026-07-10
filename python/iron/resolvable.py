@@ -35,15 +35,15 @@ class Resolvable(Protocol):
 
         Override this in user-side Resolvable subclasses that reference tiles
         which aren't already discoverable via Workers or ObjectFifos. The
-        Program will resolve these tiles before calling :meth:`resolve`, so
-        ``tile.op`` is valid by then. Default: empty list.
+        Program will resolve these tiles before calling `resolve`, so
+        `tile.op` is valid by then. Default: empty list.
         """
         return []
 
 
 class NotResolvedError(Exception):
-    """Raised when a property or operation is accessed on a :class:`Resolvable` object
-    before :meth:`resolve` has been called.
+    """Raised when a property or operation is accessed on a `Resolvable` object
+    before `resolve` has been called.
     """
 
     def __init__(self, message="Cannot get operation; class not resolved."):

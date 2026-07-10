@@ -66,10 +66,10 @@ class Buffer(Resolvable):
         self._use_write_rtp = use_write_rtp
         self._tile = tile
         # Whether the user pinned this Buffer to an explicit tile at
-        # construction.  A Worker may auto-pin ``_tile`` later as a
-        # convenience, so ``_tile is not None`` is not a reliable signal of
+        # construction.  A Worker may auto-pin _tile later as a
+        # convenience, so `_tile is not None` is not a reliable signal of
         # user intent; this flag is.  Only explicitly-placed Buffers may be
-        # shared (read) across Workers — see :class:`Worker`.
+        # shared (read) across Workers — see Worker.
         self._explicit_tile = tile is not None
         self._owner_worker: "Worker | None" = None
 
@@ -81,12 +81,13 @@ class Buffer(Resolvable):
     def tiles(self) -> list:
         """Tile dependency for Program.resolve tile discovery.
 
-        Pinned Buffers (e.g. a compute Worker reading a neighbor tile's L1
-        directly) need their tile registered with the Device before
-        :meth:`resolve` runs.  Worker-attached Buffers without an explicit
-        placement get pinned to the Worker's tile in :class:`Worker.__init__`,
-        which is already discoverable via ``Worker.tile``; this method just
-        exposes any extra (cross-tile) placements.
+        Pinned Buffers (e.g. a compute [`Worker`][iron.Worker] reading a
+        neighbor tile's L1 directly) need their tile registered with the
+        Device before `resolve` runs. Worker-attached Buffers without an
+        explicit placement get pinned to the Worker's tile in
+        [`Worker`][iron.Worker]'s constructor, which is already discoverable
+        via `Worker.tile`; this method just exposes any extra (cross-tile)
+        placements.
         """
         return [self._tile] if self._tile is not None else []
 
