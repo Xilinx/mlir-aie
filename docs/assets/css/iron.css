@@ -2,21 +2,27 @@
 /* SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception */
 
 /* Primary: charcoal header matching rocm.docs.amd.com (#27282b / #1a1a1b).
-   Accent: restrained blue-teal for links (pydata-theme-like). */
+   Accent scheme: true-blue links, orange for interactive/hover accents. */
 :root {
   --md-primary-fg-color:        #27282b;  /* ROCm second-level nav charcoal */
   --md-primary-fg-color--light: #3a3b3f;
   --md-primary-fg-color--dark:  #1a1a1b;  /* ROCm top nav near-black */
   --md-primary-bg-color:        #ffffff;
   --md-primary-bg-color--light: rgba(255,255,255,0.7);
-  --md-typeset-a-color:         #0a7d91;  /* blue-teal link accent */
+
+  --md-typeset-a-color:               #1565d8;  /* true blue links */
+  --md-accent-fg-color:               #e8710a;  /* orange interactive accent */
+  --md-accent-fg-color--transparent:  rgba(232,113,10,0.12);
 }
 
 [data-md-color-scheme="slate"] {
   --md-primary-fg-color:        #27282b;
   --md-primary-fg-color--light: #3a3b3f;
   --md-primary-fg-color--dark:  #1a1a1b;
-  --md-typeset-a-color:         #4db8c8;
+
+  --md-typeset-a-color:               #5b9bff;  /* lighter blue on dark bg */
+  --md-accent-fg-color:               #ff9d42;  /* lighter orange on dark bg */
+  --md-accent-fg-color--transparent:  rgba(255,157,66,0.14);
 
   /* Material's default slate is blue-tinted (hsla(232,15%,...)); ROCm's
      dark mode is neutral charcoal. Override the backgrounds to neutral
@@ -32,6 +38,36 @@
 /* ── Code blocks ─────────────────────────────────────────────────────────── */
 .highlight pre { border-radius: 6px; }
 .md-typeset code { border-radius: 3px; }
+
+/* ── Syntax highlighting: blue + orange scheme ───────────────────────────────
+   Material maps pygments tokens onto these --md-code-hl-* variables. We tint
+   them into a blue/orange family: keywords & operators blue, strings & numbers
+   orange, functions a lighter blue, comments muted grey. */
+:root {
+  --md-code-hl-keyword-color:    #1565d8;  /* def, class, import, for   (blue)   */
+  --md-code-hl-operator-color:   #1565d8;  /* + - = ->                  (blue)   */
+  --md-code-hl-function-color:   #2e86de;  /* function/method names     (blue)   */
+  --md-code-hl-name-color:       var(--md-default-fg-color);
+  --md-code-hl-constant-color:   #0b7285;  /* True/False/None           (teal-blue) */
+  --md-code-hl-string-color:     #c05600;  /* "strings"                 (orange) */
+  --md-code-hl-number-color:     #c05600;  /* 1024, 3.14                (orange) */
+  --md-code-hl-special-color:    #e8710a;  /* decorators / @iron.jit    (orange) */
+  --md-code-hl-comment-color:    #6b7280;  /* # comments                (grey)   */
+  --md-code-hl-punctuation-color: var(--md-default-fg-color--light);
+}
+
+[data-md-color-scheme="slate"] {
+  --md-code-hl-keyword-color:    #6ba8ff;  /* brighter blue on dark bg  */
+  --md-code-hl-operator-color:   #6ba8ff;
+  --md-code-hl-function-color:   #7cb8ff;
+  --md-code-hl-name-color:       var(--md-default-fg-color);
+  --md-code-hl-constant-color:   #4db8c8;
+  --md-code-hl-string-color:     #ffab5e;  /* warm orange on dark bg    */
+  --md-code-hl-number-color:     #ffab5e;
+  --md-code-hl-special-color:    #ff9d42;  /* decorators                */
+  --md-code-hl-comment-color:    #8b93a1;
+  --md-code-hl-punctuation-color: var(--md-default-fg-color--light);
+}
 
 /* ── Landing page: quick-nav cards ──────────────────────────────────────── */
 .iron-cards {
