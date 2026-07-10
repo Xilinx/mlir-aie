@@ -8,12 +8,15 @@
 # the pinned LLVM_COMMIT in mlirDistroRocm.yml to confirm the commit works
 # end-to-end.
 
-name: MLIR AIE Distro (ROCm migration test)
+name: MLIR AIE Distro (ROCm migration)
 
 permissions:
   contents: read
 
 on:
+  pull_request:
+    paths:
+      - '.github/workflows/mlirAIEDistroRocm.yml'
   workflow_run:
     workflows: ["MLIR Distro (ROCm LLVM)"]
     types: [completed]
