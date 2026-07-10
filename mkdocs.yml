@@ -103,8 +103,11 @@ plugins:
             # Headings / structure
             show_root_heading: true
             show_root_full_path: false
-            show_symbol_type_heading: true
-            show_symbol_type_toc: true
+            # No symbol-type badges ("meth"/"func"/"attr") — those are
+            # Sphinx-derived abbreviations, not canonical Python. Methods
+            # still render with their full signature.
+            show_symbol_type_heading: false
+            show_symbol_type_toc: false
             members_order: source
             # Signatures — render annotations and cross-link the types
             show_signature: true
