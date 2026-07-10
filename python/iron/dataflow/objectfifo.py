@@ -409,8 +409,8 @@ class ObjectFifoHandle(Resolvable):
     functions call [`acquire`][iron.dataflow.objectfifo.ObjectFifoHandle.acquire]
     and [`release`][iron.dataflow.objectfifo.ObjectFifoHandle.release] on to
     move data through the fifo. Obtain them via
-    [`ObjectFifo.prod()`][iron.ObjectFifo.prod] and
-    [`ObjectFifo.cons()`][iron.ObjectFifo.cons].
+    [`ObjectFifo.prod()`][iron.dataflow.objectfifo.ObjectFifo.prod] and
+    [`ObjectFifo.cons()`][iron.dataflow.objectfifo.ObjectFifo.cons].
     """
 
     def __init__(
