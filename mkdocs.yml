@@ -94,11 +94,10 @@ plugins:
       default_handler: python
       handlers:
         python:
-          # Load Python's stdlib inventory so builtin types (int, str, ...)
-          # cross-link automatically in signatures.
-          inventories:
-            - https://docs.python.org/3/objects.inv
-            - https://numpy.org/doc/stable/objects.inv
+          # NOTE: deliberately no external `inventories:` (python/numpy
+          # objects.inv). CI runs `mkdocs build --strict`, and a fetch
+          # failure/403 from those hosts would abort the whole docs deploy.
+          # Internal iron cross-references don't need them.
           paths: [python]
           options:
             # Headings / structure

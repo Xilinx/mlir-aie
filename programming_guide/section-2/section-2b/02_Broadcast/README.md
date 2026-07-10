@@ -11,7 +11,7 @@ As was explained in the Introduction [section](../../section-2a/README.md), an O
 
 <img src="./../../../assets/Broadcast.png" height="200">
 
-For more low-level details regarding how the objects in the ObjectFifo are transferred via the AXI stream through the DMAs of the producer and consumer tiles please see the mlir-aie [tutorials](/mlir_exercises/tutorial-7/). They are, however, not required to understand or use the ObjectFifo API.
+For more low-level details regarding how the objects in the ObjectFifo are transferred via the AXI stream through the DMAs of the producer and consumer tiles please see the mlir-aie [tutorials](https://github.com/Xilinx/mlir-aie/tree/main/mlir_exercises/tutorial-7/). They are, however, not required to understand or use the ObjectFifo API.
 
 Below is an example of the ObjectFifo `of0` shown in the previous figure. It has a depth of `3` with one Worker running a producer process and three Workers running consumer processes:
 ```python
