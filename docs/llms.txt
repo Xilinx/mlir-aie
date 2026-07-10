@@ -21,7 +21,7 @@ the LLVM/MLIR-based Peano compiler.
 
 - [Getting Started](https://xilinx.github.io/mlir-aie/): install IRON on Ubuntu, build and run your first design
 - [Programming Guide](https://xilinx.github.io/mlir-aie/programming_guide/README/): full tutorial from tiles to multi-core ML examples
-- [API Reference](https://xilinx.github.io/mlir-aie/api/iron/): Python API (iron, taplib, kernels)
+- [API & Internals](https://xilinx.github.io/mlir-aie/api/): Python API (iron, taplib, kernels) and MLIR/C++ internals
 - [MLIR Dialect Reference](https://xilinx.github.io/mlir-aie/AIEDesignPatterns/): AIE, AIEX, AIEVec dialect and pass docs
 - [C++ API](https://xilinx.github.io/mlir-aie/doxygen/html/): Doxygen reference for the compiler internals
 

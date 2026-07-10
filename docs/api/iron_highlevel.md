@@ -1,7 +1,7 @@
 <!-- Copyright (C) 2024-2026 Advanced Micro Devices, Inc. -->
 <!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 
-# IRON Python API
+# High-level IRON API
 
 IRON is the high-level Python interface for programming AMD Ryzen™ AI NPUs.
 It exposes tile placement, data movement, and host runtime as Python objects
@@ -10,6 +10,9 @@ toolchain.
 
 All symbols documented here are importable directly from the `iron`
 namespace (e.g. `from iron import Worker, ObjectFifo, Runtime`).
+
+For hand-routed data movement below the [`ObjectFifo`][iron.ObjectFifo]
+abstraction, see the [Lower-level primitives](iron_lowlevel.md) page.
 
 ---
 
@@ -32,6 +35,16 @@ The objects you use to describe an NPU design.
 ### ObjectFifo
 
 ::: iron.dataflow.objectfifo
+    options:
+      show_root_heading: false
+
+### Runtime
+
+The host-side orchestration entry point. Lower-level runtime task types
+(`DMATask`, task groups) are documented on the
+[Lower-level primitives](iron_lowlevel.md#runtime-tasks) page.
+
+::: iron.runtime.runtime
     options:
       show_root_heading: false
 
@@ -107,54 +120,5 @@ into `iron` from `aie.utils`.
 ## Data type helpers
 
 ::: iron.dtype
-    options:
-      show_root_heading: false
-
----
-
-## Lower-level explicit-routing primitives
-
-Advanced primitives for hand-routed data movement, used when the
-[`ObjectFifo`][iron.ObjectFifo] abstraction is not enough.
-
-### Flow / PacketFlow
-
-::: iron.dataflow.flow
-    options:
-      show_root_heading: false
-
-### TileDma
-
-::: iron.dataflow.tile_dma
-    options:
-      show_root_heading: false
-
-### CascadeFlow / endpoints
-
-::: iron.dataflow.endpoint
-    options:
-      show_root_heading: false
-
-### Lock
-
-::: iron.lock
-    options:
-      show_root_heading: false
-
-### Runtime tasks
-
-::: iron.runtime.runtime
-    options:
-      show_root_heading: false
-
-::: iron.runtime.task
-    options:
-      show_root_heading: false
-
-::: iron.runtime.taskgroup
-    options:
-      show_root_heading: false
-
-::: iron.runtime.dmatask
     options:
       show_root_heading: false
