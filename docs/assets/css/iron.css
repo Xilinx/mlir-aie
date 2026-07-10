@@ -61,14 +61,11 @@
 .iron-card-desc  { font-size: 0.78rem; opacity: 0.72; line-height: 1.4; }
 
 /* ── Wider content area ──────────────────────────────────────────────────── */
-/* Material default is 61rem — bump to 72rem for code-heavy content */
-.md-grid { max-width: 72rem; }
+.md-grid { max-width: 72rem !important; }
 
-/* ── Home page: no left sidebar, full-width content ─────────────────────── */
-/* On the landing page the left nav just shows "Home" which wastes space */
-[data-md-component="sidebar"][data-md-type="navigation"] .md-nav__title[for="__nav"] ~ .md-nav__list > .md-nav__item:only-child ~ * {
-  display: none;
-}
+/* ── Hide right-side TOC sidebar globally ────────────────────────────────── */
+.md-sidebar--secondary { display: none !important; }
+.md-content { max-width: 100% !important; margin-right: 0 !important; }
 
 /* ── Footer ──────────────────────────────────────────────────────────────── */
 .md-footer { font-size: 0.8rem; }

@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Section 4b - Trace</ins>
+# Section 4b - Trace
 
 * [Section 4 - Performance Measurement & Vector Programming](../../section-4)
     * [Section 4a - Timers](../section-4a)

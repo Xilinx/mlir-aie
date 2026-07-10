@@ -5,20 +5,20 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Section 2f - Practical Examples</ins>
+# Section 2f - Practical Examples
 
-* [Section 2 - Data Movement (Object FIFOs)](../../section-2/)
+* [Section 2 - Data Movement (ObjectFifos)](../../section-2/)
     * [Section 2a - Introduction](../section-2a/)
-    * [Section 2b - Key Object FIFO Patterns](../section-2b/)
+    * [Section 2b - Key ObjectFifo Patterns](../section-2b/)
     * [Section 2c - Data Layout Transformations](../section-2c/)
     * [Section 2d - Runtime Data Movement](../section-2d/)
     * [Section 2e - Programming for multiple cores](../section-2e/)
     * Section 2f - Practical Examples
-    * [Section 2g - Data Movement Without Object FIFOs](../section-2g/)
+    * [Section 2g - Data Movement Without ObjectFifos](../section-2g/)
 
 -----
 
-This section introduces several examples with common Object FIFO data movement patterns. These examples are intended to be simple enough so as to be easily imported and adapted into other designs.
+This section introduces several examples with common ObjectFifo data movement patterns. These examples are intended to be simple enough so as to be easily imported and adapted into other designs.
 
 <details><summary><a href="./01_single_double_buffer/">Example 01 - Single / Double Buffer</a></summary>
 

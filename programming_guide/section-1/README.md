@@ -5,11 +5,11 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Section 1 - Basic AI Engine building blocks</ins>
+# Section 1 - Basic AI Engine building blocks
 
 When we program the AIE-array, we need to declare and configure its structural building blocks: compute tiles for vector processing, mem tiles as larger level-2 shared scratchpads, and shim tiles supporting data movement to NPU-external memory (i.e., main memory). In this programming guide, we will utilize the IRON Python library, which describes our overall NPU design — selecting which AI Engine tiles to use, what code each tile should run, how to move data between tiles, and how the design is invoked from the CPU side. Later on, we will explore vector programming in C/C++, which is useful for optimizing computation kernels for individual compute tiles.
 
-## <ins>Walkthrough of Python source file (aie2.py)</ins>
+## Walkthrough of Python source file (aie2.py)
 
 Let's look at a minimal IRON design in [aie2.py](./aie2.py). The whole design is one function decorated with `@iron.jit`: the first time you call it, IRON JIT-compiles the design and runs it on the attached NPU; `--dev <target> --emit-mlir` prints the lowered MLIR instead.
 
@@ -77,7 +77,7 @@ aiecc.py --placer=sa_placer --sa-seed=3 ...
 
 The SA placer optimizes wire length while respecting memory capacity, DMA channel limits, and cascade adjacency constraints. Not all seeds produce legal placements for every design — if compilation fails with a buffer overflow or routing error, try different seed values (e.g. sweep seeds 1–10) to find one that works. See [color_detect](../../programming_examples/vision/color_detect/) for an example that wires this up as `make use_sa_placer=1`.
 
-## <ins>Other Tile Types</ins>
+## Other Tile Types
 
 Besides compute tiles, an AIE-array also contains data movers for accessing L3 memory (shim DMAs) and larger L2 scratchpads (mem tiles), which have been available since the AIE-ML generation — see [the introduction of this programming guide](../README.md). Shim DMAs typically occupy row 0; mem tiles (when available) often reside on row 1. In IRON, you usually let the compiler place these, but you can also pin them explicitly. The following snippet shows pinned `Tile(col, row)` declarations covering all the tile types found in a single NPU column:
 
@@ -92,7 +92,7 @@ ComputeTile3 = Tile(0, 4)
 ComputeTile4 = Tile(0, 5)
 ```
 
-## <ins>Inspecting the generated MLIR</ins>
+## Inspecting the generated MLIR
 
 `@iron.jit` lowers your design through the AIE dialect on its way to a binary. To see the MLIR without running anything, pass `--dev <target> --emit-mlir`:
 

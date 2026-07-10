@@ -5,9 +5,9 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Join in L2</ins>
+# Join in L2
 
-The design in [join_L2.py](./join_L2.py) has three Workers where each one sends `8xi32` pieces of data to L2 via one of three Object FIFOs. There, the data is joined together into `24xi32` tensors based on the offsets for each Object FIFO. The data is then sent out to external memory using `of_out`.
+The design in [join_L2.py](./join_L2.py) has three Workers where each one sends `8xi32` pieces of data to L2 via one of three ObjectFifos. There, the data is joined together into `24xi32` tensors based on the offsets for each ObjectFifo. The data is then sent out to external memory using `of_out`.
 
 <img src="../../../assets/JoinL2.svg" height=200 width="700">
 
@@ -26,7 +26,7 @@ of_outs = (
 )
 ```
 
-All Workers are running the same process of acquiring one object from their respective input Object FIFOs to produce, writing `1` to all of its entries, and releasing the object.
+All Workers are running the same process of acquiring one object from their respective input ObjectFifos to produce, writing `1` to all of its entries, and releasing the object.
 
 This design is combined with the previous [distribute](../04_distribute_L2/distribute_L2.py) design to achieve a full data movement from external memory to the AIE array and back. The resulting code is available in [distribute_and_join_L2.py](./distribute_and_join_L2.py), wrapped in `@iron.jit` so a single command JIT-compiles and runs it on the attached NPU:
 ```bash

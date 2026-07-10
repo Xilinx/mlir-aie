@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>IRON AIE Application Programming Guide</ins>
+# IRON AIE Application Programming Guide
 
 This is the programming guide for **IRON** — the Python API for programming AMD Ryzen™ AI NPUs (and Versal™ AI Engines). It teaches how to design, run, and optimize code on the AIE-array.
 
@@ -79,7 +79,7 @@ my_design(a, b)              # compile + run + sync back
 
 * [Section 0 — Getting set up for IRON](./section-0/)
 * [Section 1 — Basic AI Engine building blocks](./section-1/) (Worker, Buffer, Runtime, Program, `@iron.jit`)
-* [Section 2 — Data movement (Object FIFOs)](./section-2/) (deep dive; 2a–2h)
+* [Section 2 — Data movement (ObjectFifos)](./section-2/) (deep dive; 2a–2h)
 * [Section 3 — My First Program](./section-3/) (end-to-end vector × scalar, JIT + decomposed XRT)
 * [Section 4 — Performance measurement & vector programming](./section-4/) (timers → trace → kernel vectorization)
 * [Section 5 — Example vector designs](./section-5/) (catalog)

@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Section 4 - Performance Measurement & Vector Programming</ins>
+# Section 4 - Performance Measurement & Vector Programming
 
 Now that you've had a chance to walk through the components of compiling and running a program on the Ryzen™ AI hardware in [section-3](../section-3), we will start looking at how we measure performance and utilize vector programming techniques to fully leverage the power of the AI Engines for parallel compute.
 

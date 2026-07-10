@@ -5,21 +5,21 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Section 2g - Data Movement Without Object FIFOs</ins>
+# Section 2g - Data Movement Without ObjectFifos
 
-* [Section 2 - Data Movement (Object FIFOs)](../../section-2/)
+* [Section 2 - Data Movement (ObjectFifos)](../../section-2/)
     * [Section 2a - Introduction](../section-2a/)
-    * [Section 2b - Key Object FIFO Patterns](../section-2b/)
+    * [Section 2b - Key ObjectFifo Patterns](../section-2b/)
     * [Section 2c - Data Layout Transformations](../section-2c/)
     * [Section 2d - Runtime Data Movement](../section-2d/)
     * [Section 2e - Programming for multiple cores](../section-2e/)
     * [Section 2f - Practical Examples](../section-2f/)
-    * Section 2g - Data Movement Without Object FIFOs
+    * Section 2g - Data Movement Without ObjectFifos
     * [Section 2h - Advanced ObjectFifo + Cross-Tile Buffer](../section-2h/)
 
 -----
 
-Not all data movement patterns fit cleanly into Object FIFOs.  This
+Not all data movement patterns fit cleanly into ObjectFifos.  This
 **advanced** section goes into detail about how to express data
 movement directly in terms of the underlying hardware pieces: per-tile
 Direct Memory Access (DMA) channels, buffer descriptors, hardware

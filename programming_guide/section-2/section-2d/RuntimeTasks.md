@@ -5,20 +5,20 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Section 2d - Runtime Data Movement</ins>
+# Section 2d - Runtime Data Movement
 
-* [Section 2 - Data Movement (Object FIFOs)](../../section-2/)
+* [Section 2 - Data Movement (ObjectFifos)](../../section-2/)
     * [Section 2a - Introduction](../section-2a/)
-    * [Section 2b - Key Object FIFO Patterns](../section-2b/)
+    * [Section 2b - Key ObjectFifo Patterns](../section-2b/)
     * [Section 2c - Data Layout Transformations](../section-2c/)
     * Section 2d - Runtime Data Movement
     * [Section 2e - Programming for multiple cores](../section-2e/)
     * [Section 2f - Practical Examples](../section-2f/)
-    * [Section 2g - Data Movement Without Object FIFOs](../section-2g/)
+    * [Section 2g - Data Movement Without ObjectFifos](../section-2g/)
 
 -----
 
-IRON provides a `Runtime` class with a `sequence()` function which can be programmed with `RuntimeTasks` that will launch one or more `Worker`s and fill and drain Object FIFOs with data from/to external memory. All IRON constructs introduced in this section are available [here](../../../python/iron/runtime/).
+IRON provides a `Runtime` class with a `sequence()` function which can be programmed with `RuntimeTasks` that will launch one or more `Worker`s and fill and drain ObjectFifos with data from/to external memory. All IRON constructs introduced in this section are available [here](../../../python/iron/runtime/).
 
 To create a `Runtime` `sequence` users can write:
 ```python
@@ -70,7 +70,7 @@ def fill(
 ```
 When the `wait` input is set to `True` this operation will be waited upon, i.e., a token will be produced when the operation is finished that a controller is waiting on. A `tile` (Shim tile) can also be explicitly specified, otherwise the compiler will choose one. The `task_group` is explained further in this section.
 
-The code snippet below shows how data from a source runtime buffer `a_in` is sent to the producer `ObjectFifoHandle` of `of_in`. This data could then be read via a consumer `ObjectFifoHandle` of the same Object FIFO.
+The code snippet below shows how data from a source runtime buffer `a_in` is sent to the producer `ObjectFifoHandle` of `of_in`. This data could then be read via a consumer `ObjectFifoHandle` of the same ObjectFifo.
 ```python
 rt = Runtime()
 with rt.sequence(data_ty, data_ty, data_ty) as (a_in, _, _):

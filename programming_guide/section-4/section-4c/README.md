@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Section 4c - Kernel Vectorization and Optimization</ins>
+# Section 4c - Kernel Vectorization and Optimization
 
 * [Section 4 - Performance Measurement & Vector Programming](../../section-4)
     * [Section 4a - Timers](../section-4a)

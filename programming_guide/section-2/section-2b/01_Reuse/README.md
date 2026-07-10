@@ -5,11 +5,11 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Object FIFO Reuse Pattern</ins>
+# ObjectFifo Reuse Pattern { #object-fifo-reuse-pattern }
 
-In the previous [section](../../section-2a/README.md#accessing-the-objects-of-an-object-fifo) it was mentioned that the Object FIFO acquire and release functions can be paired together to achieve the behaviour of a sliding window with data reuse. Specifically, this communication pattern occurs when a producer or a consumer of an Object FIFO releases fewer objects than it had previously acquired. As acquiring from an Object FIFO does not destroy the data, unreleased objects can continue to be used without requiring new copies of the data.
+In the previous [section](../../section-2a/README.md#accessing-the-objects-of-an-object-fifo) it was mentioned that the ObjectFifo acquire and release functions can be paired together to achieve the behaviour of a sliding window with data reuse. Specifically, this communication pattern occurs when a producer or a consumer of an ObjectFifo releases fewer objects than it had previously acquired. As acquiring from an ObjectFifo does not destroy the data, unreleased objects can continue to be used without requiring new copies of the data.
 
-It is important to note that each new acquire function will return a new object or array of objects that a process can access, which **includes unreleased objects from previous acquire calls**. The process should always use the result of the **most recent** acquire call to access unreleased objects to ensure a proper lowering through the Object FIFO primitive.
+It is important to note that each new acquire function will return a new object or array of objects that a process can access, which **includes unreleased objects from previous acquire calls**. The process should always use the result of the **most recent** acquire call to access unreleased objects to ensure a proper lowering through the ObjectFifo primitive.
 
 In the example below `of0` is created with a depth of 3 objects: object0, object1, and object2. The process running on the consumer Worker is showcased in the next figure and explained in-depth below.
 ```python

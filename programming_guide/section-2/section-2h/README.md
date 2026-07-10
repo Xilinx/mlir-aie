@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Section 2h - Advanced ObjectFifo + Cross-Tile Buffer</ins>
+# Section 2h - Advanced ObjectFifo + Cross-Tile Buffer
 
 Two opt-in patterns that show up in real designs but are not part of
 the introductory `ObjectFifo` API.  Both stay out of the way of simple

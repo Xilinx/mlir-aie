@@ -5,9 +5,9 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>External Memory to Core</ins>
+# External Memory to Core
 
-The design in [ext_to_core.py](./ext_to_core.py) uses an Object FIFO `of_in` to bring data from external memory to `my_worker` and another Object FIFO `of_out` to send the data from the Worker to external memory. Each fifo uses a double buffer.
+The design in [ext_to_core.py](./ext_to_core.py) uses an ObjectFifo `of_in` to bring data from external memory to `my_worker` and another ObjectFifo `of_out` to send the data from the Worker to external memory. Each fifo uses a double buffer.
 
 <img src="../../../assets/ExtMemToCore.svg" height=200 width="400">
 

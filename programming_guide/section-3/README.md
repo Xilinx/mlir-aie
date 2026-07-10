@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Section 3 - My First Program</ins>
+# Section 3 - My First Program
 
 <img align="right" width="500" height="250" src="../assets/binaryArtifacts.svg">
 
@@ -117,11 +117,11 @@ scale_fn = ExternalFunction(
 )
 ```
 
-Since the compute core can only access L1 memory, input data needs to be explicitly moved to (yellow arrow) and from (orange arrow) the L1 memory of the AIE. We will use the Object FIFO data movement primitive (introduced in [section-2](../section-2/)).
+Since the compute core can only access L1 memory, input data needs to be explicitly moved to (yellow arrow) and from (orange arrow) the L1 memory of the AIE. We will use the ObjectFifo data movement primitive (introduced in [section-2](../section-2/)).
 
 <img align="right" width="300" height="300" src="../assets/vector_scalar.svg">
 
-This enables looking at the data movement in the AIE-array from a logical view where we deploy 3 Object FIFOs: `of_in` to bring in the vector `a`, `of_factor` to bring in the scalar factor, and `of_out` to move the output vector `c`, all using shimDMA. Note that the objects for `of_in` and `of_out` are declared to have the `tile_ty` type: 1024 int32 elements, while the `factor` is an object containing a single integer. All Object FIFOs are set up using a depth size of 2 to enable the concurrent execution to the Shim Tile and Compute Tile DMAs with the processing on the compute core.
+This enables looking at the data movement in the AIE-array from a logical view where we deploy 3 ObjectFifos: `of_in` to bring in the vector `a`, `of_factor` to bring in the scalar factor, and `of_out` to move the output vector `c`, all using shimDMA. Note that the objects for `of_in` and `of_out` are declared to have the `tile_ty` type: 1024 int32 elements, while the `factor` is an object containing a single integer. All ObjectFifos are set up using a depth size of 2 to enable the concurrent execution to the Shim Tile and Compute Tile DMAs with the processing on the compute core.
 
 ```python
 # Input data movement
@@ -144,7 +144,7 @@ with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (a_in, f_in, c_out):
     rt.drain(of_out.cons(), c_out, wait=True)
 ```
 
-Finally, we need to configure how the compute core accesses the data moved to its L1 memory, in Object FIFO terminology: we need to program the acquire and release patterns of `of_in`, `of_factor` and `of_out`. Only a single factor is needed for the complete 4096 vector, while for every processing iteration on a sub-vector, we need to acquire an object of 1024 integers to read from `of_in` and one similar sized object from `of_out`. Then we call our previously declared external function with the acquired objects as operands. After the vector scalar operation, we need to release both objects to their respective `of_in` and `of_out` Object FIFOs. Finally, after the 4 sub-vector iterations, we release the `of_factor` Object FIFO.
+Finally, we need to configure how the compute core accesses the data moved to its L1 memory, in ObjectFifo terminology: we need to program the acquire and release patterns of `of_in`, `of_factor` and `of_out`. Only a single factor is needed for the complete 4096 vector, while for every processing iteration on a sub-vector, we need to acquire an object of 1024 integers to read from `of_in` and one similar sized object from `of_out`. Then we call our previously declared external function with the acquired objects as operands. After the vector scalar operation, we need to release both objects to their respective `of_in` and `of_out` ObjectFifos. Finally, after the 4 sub-vector iterations, we release the `of_factor` ObjectFifo.
 
 This access and execute pattern runs on the AIE compute core and needs to get linked against the precompiled external function `scale.o`. We run this pattern in a very large loop to enable enqueuing multiple rounds of vector scalar multiply work from the host code.
 

@@ -5,16 +5,16 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Section 2d - Runtime Data Movement</ins>
+# Section 2d - Runtime Data Movement
 
-* [Section 2 - Data Movement (Object FIFOs)](../../section-2/)
+* [Section 2 - Data Movement (ObjectFifos)](../../section-2/)
     * [Section 2a - Introduction](../section-2a/)
-    * [Section 2b - Key Object FIFO Patterns](../section-2b/)
+    * [Section 2b - Key ObjectFifo Patterns](../section-2b/)
     * [Section 2c - Data Layout Transformations](../section-2c/)
     * Section 2d - Runtime Data Movement
     * [Section 2e - Programming for multiple cores](../section-2e/)
     * [Section 2f - Practical Examples](../section-2f/)
-    * [Section 2g - Data Movement Without Object FIFOs](../section-2g/)
+    * [Section 2g - Data Movement Without ObjectFifos](../section-2g/)
 
 -----
 
@@ -26,7 +26,7 @@ The `npu_dma_memcpy_nd` function is key for enabling non-blocking, multi-dimensi
 ```python
 npu_dma_memcpy_nd(metadata, bd_id, mem, offsets=None, sizes=None, strides=None)
 ```
-- **`metadata`**: This is a reference to the object FIFO or the string name of an object FIFO that records a Shim Tile and one of its DMA channels allocated for the host-side memory transfer. In order to associate the memcpy operation with an object FIFO, this metadata string needs to match the object FIFO name string.
+- **`metadata`**: This is a reference to the ObjectFifo or the string name of an ObjectFifo that records a Shim Tile and one of its DMA channels allocated for the host-side memory transfer. In order to associate the memcpy operation with an ObjectFifo, this metadata string needs to match the ObjectFifo name string.
 - **`bd_id`**: Identifier integer for the particular Buffer Descriptor control registers used for this memcpy. A buffer descriptor contains all information needed for a DMA transfer described in the parameters below. 
 - **`mem`**: Reference to a host buffer, given as an argument to the sequence function, that this transfer will read from or write to. 
 - **`tap`** (optional): A `TensorAccessPattern` is an alternative method of specifying `offset`/`sizes`/`strides` for determining an access pattern over the `mem` buffer.
@@ -42,7 +42,7 @@ The strides and sizes express data transformations analogously to those describe
 npu_dma_memcpy_nd(of_in, 0, input_buffer, sizes=[1, 1, 1, 30])
 ```
 
-The example above describes a linear transfer of 30 data elements, or 120 Bytes, from the `input_buffer` in host memory into an object FIFO with matching metadata labeled "of_in". The `size` dimensions are expressed right to left where the right is dimension 0 and the left dimension 3. Higher dimensions not used should be set to `1`.
+The example above describes a linear transfer of 30 data elements, or 120 Bytes, from the `input_buffer` in host memory into an ObjectFifo with matching metadata labeled "of_in". The `size` dimensions are expressed right to left where the right is dimension 0 and the left dimension 3. Higher dimensions not used should be set to `1`.
 
 
 #### **Advanced Techniques for Multi-dimensional `npu_dma_memcpy_nd`**
@@ -106,17 +106,17 @@ Synchronization between DMA channels and the host is facilitated by the `dma_wai
 ```python
 dma_wait(metadata)
 ```
-- **`metadata`: The ObjectFifo python object or the name of the object fifo associated with the DMA option we will wait on.
+- **`metadata`: The ObjectFifo python object or the name of the ObjectFifo associated with the DMA option we will wait on.
 
 **Example Usage**:
 
-Waiting on DMAs associated with one object fifo:
+Waiting on DMAs associated with one ObjectFifo:
 ```python
-# Waits for the output data to transfer from the output object fifo to the host
+# Waits for the output data to transfer from the output ObjectFifo to the host
 dma_wait(of_out)  
 ```
 
-Waiting on DMAs associated with more than one object fifo:
+Waiting on DMAs associated with more than one ObjectFifo:
 ```python
 dma_wait(of_in, of_out)  
 ```
@@ -165,7 +165,7 @@ def shim_dma_single_bd_task(
     issue_token: bool = False,
 )
 ```
-- **`alloc`**: The `alloc` argument associates the DMA task with an ObjectFIFO. This argument is called `alloc` because the shim-side end of a data transfer (specifically a channel on a shim tile) is referenced through a so-called "shim DMA allocation". When an ObjectFIFO is created with a Shim Tile endpoint, an allocation with the same name as the ObjectFIFO is automatically generated.
+- **`alloc`**: The `alloc` argument associates the DMA task with an ObjectFifo. This argument is called `alloc` because the shim-side end of a data transfer (specifically a channel on a shim tile) is referenced through a so-called "shim DMA allocation". When an ObjectFifo is created with a Shim Tile endpoint, an allocation with the same name as the ObjectFifo is automatically generated.
 - **`mem`**: Reference to a host buffer, given as an argument to the sequence function, that this transfer will read from or write to. 
 - **`tap`** (optional): A `TensorAccessPattern` is an alternative method of specifying `offset`/`sizes`/`strides` for determining an access pattern over the `mem` buffer.
 - **`offset`** (optional): Starting point for the data transfer. Default values is `0`.
@@ -181,7 +181,7 @@ The strides and sizes express data transformations analogously to those describe
 out_task = shim_dma_single_bd_task(of_out, C, sizes=[1, 1, 1, N], issue_token=True)
 ```
 
-The example above describes a linear transfer of `N` data elements from the `C` buffer in host memory into an object FIFO with matching metadata labeled "of_out". The `sizes` dimensions are expressed right to left where the right is dimension 0 and the left dimension 3. Higher dimensions not used should be set to `1`.
+The example above describes a linear transfer of `N` data elements from the `C` buffer in host memory into an ObjectFifo with matching metadata labeled "of_out". The `sizes` dimensions are expressed right to left where the right is dimension 0 and the left dimension 3. Higher dimensions not used should be set to `1`.
 
 #### **Host Synchronization with `dma_await_task`**
 

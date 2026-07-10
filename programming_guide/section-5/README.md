@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Section 5 - Example Vector Designs</ins>
+# Section 5 - Example Vector Designs
 
 The [programming examples](../../programming_examples) are a number of sample designs that further help explain many of the unique features of AI Engines and the NPU array in Ryzen™ AI.
 
@@ -14,7 +14,7 @@ The [programming examples](../../programming_examples) are a number of sample de
 #### Passthrough
 
 The [passthrough](../../programming_examples/basic/passthrough_kernel/) example is the simplest "getting started" example.  It copies 4096 bytes from the input to output using vectorized loads and stores.  The design example shows a typical project organization which is easy to reproduce with other examples.  There are only really 3 important files here.
-1. [`passthrough_kernel.py`](../../programming_examples/basic/passthrough_kernel/passthrough_kernel.py) The IRON structural design plus the host-side test driver. Decorated with `@iron.jit` so the first call compiles the design and runs it on the NPU, then verifies the result against the input. Also shows a simple use of the Object FIFOs described in [section 2](../section-2).
+1. [`passthrough_kernel.py`](../../programming_examples/basic/passthrough_kernel/passthrough_kernel.py) The IRON structural design plus the host-side test driver. Decorated with `@iron.jit` so the first call compiles the design and runs it on the NPU, then verifies the result against the input. Also shows a simple use of the ObjectFifos described in [section 2](../section-2).
 1. [`passThrough.cc`](../../aie_kernels/generic/passThrough.cc)  This is a C++ file which performs the vectorized copy operation.
 1. [`Makefile`](../../programming_examples/basic/passthrough_kernel/Makefile) A Makefile documenting (and implementing) the build process for the various artifacts.
 

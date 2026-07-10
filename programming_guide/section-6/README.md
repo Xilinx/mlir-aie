@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Section 6 - Larger Example Designs</ins>
+# Section 6 - Larger Example Designs
 
 There are a number of example designs available [here](../../programming_examples/), which further help explain many of the unique features of AI Engines and the NPU array in Ryzen™ AI. This section contains more complex application designs for both vision and machine learning use cases. In particular, we will describe a ResNet implementation on Ryzen™ AI.
 

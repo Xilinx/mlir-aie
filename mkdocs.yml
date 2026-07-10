@@ -69,7 +69,6 @@ theme:
     - content.code.copy
     - content.code.annotate
     - toc.follow
-    - toc.integrate
 
 extra_css:
   - assets/css/iron.css

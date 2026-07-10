@@ -5,16 +5,16 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Section 2d - Runtime Data Movement</ins>
+# Section 2d - Runtime Data Movement
 
-* [Section 2 - Data Movement (Object FIFOs)](../../section-2/)
+* [Section 2 - Data Movement (ObjectFifos)](../../section-2/)
     * [Section 2a - Introduction](../section-2a/)
-    * [Section 2b - Key Object FIFO Patterns](../section-2b/)
+    * [Section 2b - Key ObjectFifo Patterns](../section-2b/)
     * [Section 2c - Data Layout Transformations](../section-2c/)
     * Section 2d - Runtime Data Movement
     * [Section 2e - Programming for multiple cores](../section-2e/)
     * [Section 2f - Practical Examples](../section-2f/)
-    * [Section 2g - Data Movement Without Object FIFOs](../section-2g/)
+    * [Section 2g - Data Movement Without ObjectFifos](../section-2g/)
 
 -----
 
