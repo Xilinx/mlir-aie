@@ -13,6 +13,7 @@
 
 #include <algorithm>
 #include <bits/stdc++.h>
+#include <cassert> // for assert(); not guaranteed via other headers
 #include <cmath>
 #include <fstream>
 #include <iostream>
