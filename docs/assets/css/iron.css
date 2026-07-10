@@ -1,20 +1,21 @@
 /* Copyright (C) 2024-2026 Advanced Micro Devices, Inc. */
 /* SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception */
 
-/* Primary: muted grey-teal. Accent: cyan for links and highlights. */
+/* Primary: charcoal header matching rocm.docs.amd.com (#27282b / #1a1a1b).
+   Accent: restrained blue-teal for links (pydata-theme-like). */
 :root {
-  --md-primary-fg-color:        #3a6570;
-  --md-primary-fg-color--light: #4a7d8c;
-  --md-primary-fg-color--dark:  #2a4d57;
+  --md-primary-fg-color:        #27282b;  /* ROCm second-level nav charcoal */
+  --md-primary-fg-color--light: #3a3b3f;
+  --md-primary-fg-color--dark:  #1a1a1b;  /* ROCm top nav near-black */
   --md-primary-bg-color:        #ffffff;
   --md-primary-bg-color--light: rgba(255,255,255,0.7);
-  --md-typeset-a-color:         #2a7282;
+  --md-typeset-a-color:         #0a7d91;  /* blue-teal link accent */
 }
 
 [data-md-color-scheme="slate"] {
-  --md-primary-fg-color:        #3a6570;
-  --md-primary-fg-color--light: #4a7d8c;
-  --md-primary-fg-color--dark:  #2a4d57;
+  --md-primary-fg-color:        #27282b;
+  --md-primary-fg-color--light: #3a3b3f;
+  --md-primary-fg-color--dark:  #1a1a1b;
   --md-typeset-a-color:         #4db8c8;
 }
 
