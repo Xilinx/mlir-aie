@@ -29,15 +29,7 @@ using namespace xilinx::AIEX;
 
 struct DMAStartBdChainForOpPattern : RewritePattern {
 
-  // Build-speed lever (byte-identical): the canonical path resolves each
-  // dma_start_bd_chain_for op's shim-DMA allocation via
-  // AIE::ShimDMAAllocationOp::getForSymbol -> device.lookupSymbol, a LINEAR
-  // symbol-table scan run once per DMAStartBdChainForOp. In large designs there
-  // are many of these, so the per-op O(allocations) scan makes the pass O(n^2).
-  // We instead build a SymbolTable for the device ONCE and look up in O(1). Same
-  // fix as AIESubstituteShimDMAAllocations. The pattern never erases/creates a
-  // symbol (it rewrites task ops, not ShimDMAAllocationOps), so the prebuilt
-  // table stays valid across the greedy run.
+  // Symbol-lookup cache used for speedier `ShimDMAAllocationOp` lookups
   const mlir::SymbolTable &symbolTable;
 
   DMAStartBdChainForOpPattern(MLIRContext *ctx,
