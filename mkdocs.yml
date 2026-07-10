@@ -94,17 +94,32 @@ plugins:
       default_handler: python
       handlers:
         python:
+          # Load Python's stdlib inventory so builtin types (int, str, ...)
+          # cross-link automatically in signatures.
+          inventories:
+            - https://docs.python.org/3/objects.inv
+            - https://numpy.org/doc/stable/objects.inv
           paths: [python]
           options:
+            # Headings / structure
             show_root_heading: true
             show_root_full_path: false
+            show_symbol_type_heading: true
+            show_symbol_type_toc: true
+            members_order: source
+            # Signatures — render annotations and cross-link the types
+            show_signature: true
+            show_signature_annotations: true
+            separate_signature: true
+            signature_crossrefs: true
+            # Docstrings
+            docstring_style: google
+            docstring_section_style: table
+            merge_init_into_class: true
+            show_if_no_docstring: false
             show_source: true
             show_bases: true
             show_inheritance_diagram: false
-            members_order: source
-            docstring_style: google
-            merge_init_into_class: true
-            show_if_no_docstring: false
             filters:
               - "!^_"
 
