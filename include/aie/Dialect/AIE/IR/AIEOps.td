@@ -1394,7 +1394,7 @@ def AIE_UseLockOp: AIE_Op<"use_lock", []> {
   );
 
   let assemblyFormat = [{
-    `(` $lock `,` custom<UseLockValue>($action, $value, $blocking) `)` attr-dict
+    `(` $lock `,` $action `,` $value (`,` $blocking^)? `)` attr-dict
   }];
 
   let hasVerifier = 1;

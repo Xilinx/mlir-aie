@@ -75,13 +75,9 @@ struct AIEDialectFoldInterface : DialectFoldInterface {
     //    them with a core's identical constants, which would leave the core
     //    referencing a device-level value that is erased when the core is
     //    outlined.
-    //  - aie.mem/aie.memtile_dma/aie.shim_dma bodies carry constant lock values
-    //    (aie.use_lock operands). If these hoisted to the device, CSE would
-    //    merge them with the identical constant kept local to a core, and since
-    //    the device-level constant dominates the core, the core's use would be
-    //    rewritten to reference it -- reintroducing the cross-region reference
-    //    that breaks core outlining. Keeping them local avoids the dominating
-    //    device-level duplicate entirely.
+    //  - Make sure SSA values for aie.use_lock operands in
+    //    aie.mem/aie.memtile_dma/aie.shim_dma bodies do not get
+    //    hoisted.
     return isa<CoreOp, RuntimeSequenceOp, MemOp, MemTileDMAOp, ShimDMAOp>(
         region->getParentOp());
   }
@@ -2689,10 +2685,8 @@ LogicalResult LockOp::verify() {
   return success();
 }
 
-// Centralized lookup for the compile-time constant lock value: returns the
-// integer if `op`'s value operand is defined by an arith.constant, otherwise
-// std::nullopt. This is the single place that knows how a static lock value is
-// recovered from the SSA operand.
+// Look up for compile-time constant lock values, if any.
+// Returns std::nullopt if lock value does not reference an `arith.constant`.
 static std::optional<int32_t> getConstantLockValue(UseLockOp op) {
   if (auto constant = op.getValue().getDefiningOp<arith::ConstantOp>())
     if (auto intAttr = llvm::dyn_cast<IntegerAttr>(constant.getValue()))
@@ -2763,8 +2757,8 @@ LogicalResult UseLockOp::verify() {
     return (*this)->emitOpError(
         "AcquireGreaterEqual is not supported in AIE1.");
 
-  // Locks used inside a DMA/BD block are configured via MMIO and therefore
-  // require a compile-time constant value (an arith.constant operand).
+  // Locks used inside a DMA/BD block are configured via static register writes
+  // and therefore require a compile-time constant value.
   if (HasSomeParent<MemOp, MemTileDMAOp, ShimDMAOp>::verifyTrait(*this)
           .succeeded() &&
       !getConstantLockValue(*this))
@@ -2857,69 +2851,6 @@ static void printTraceRegValue(OpAsmPrinter &printer, Operation *op,
 }
 
 // Helper to parse a LockBlocking enum keyword.
-static ParseResult parseLockBlockingKeyword(OpAsmParser &parser,
-                                            xilinx::AIE::LockBlockingAttr &blocking) {
-  StringRef keyword;
-  if (parser.parseKeyword(&keyword))
-    return failure();
-  auto symbol = xilinx::AIE::symbolizeLockBlocking(keyword);
-  if (!symbol)
-    return parser.emitError(parser.getCurrentLocation())
-           << "invalid lock blocking value: " << keyword;
-  blocking =
-      xilinx::AIE::LockBlockingAttr::get(parser.getContext(), *symbol);
-  return success();
-}
-
-// Custom parser for the value slot of aie.use_lock. The lock value is a
-// required `i32` SSA operand, optionally followed by a `blocking` keyword. The
-// action keyword is parsed here as well so that the printed form has no stray
-// space before the comma.
-static ParseResult
-parseUseLockValue(OpAsmParser &parser, xilinx::AIE::LockActionAttr &action,
-                  OpAsmParser::UnresolvedOperand &value,
-                  xilinx::AIE::LockBlockingAttr &blocking) {
-  // The action is accepted either as a bare keyword (`Acquire`) or, for
-  // backward compatibility with older textual IR, as a quoted string
-  // (`"Acquire"`).
-  StringRef actionKeyword;
-  std::string actionString;
-  if (succeeded(parser.parseOptionalKeyword(&actionKeyword))) {
-    // Parsed a bare keyword.
-  } else if (succeeded(parser.parseOptionalString(&actionString))) {
-    actionKeyword = actionString;
-  } else {
-    return parser.emitError(parser.getCurrentLocation())
-           << "expected lock action keyword";
-  }
-  auto actionSymbol = xilinx::AIE::symbolizeLockAction(actionKeyword);
-  if (!actionSymbol)
-    return parser.emitError(parser.getCurrentLocation())
-           << "invalid lock action: " << actionKeyword;
-  action = xilinx::AIE::LockActionAttr::get(parser.getContext(), *actionSymbol);
-
-  // The lock value SSA operand.
-  if (parser.parseComma() || parser.parseOperand(value))
-    return failure();
-
-  // Optionally parse a trailing blocking keyword.
-  if (!parser.parseOptionalComma())
-    return parseLockBlockingKeyword(parser, blocking);
-  return success();
-}
-
-// Custom printer for the value slot of aie.use_lock.
-static void printUseLockValue(OpAsmPrinter &printer, Operation *op,
-                              xilinx::AIE::LockActionAttr action, Value value,
-                              xilinx::AIE::LockBlockingAttr blocking) {
-  printer << xilinx::AIE::stringifyLockAction(action.getValue());
-  printer << ", ";
-  printer.printOperand(value);
-  if (blocking)
-    printer << ", "
-            << xilinx::AIE::stringifyLockBlocking(blocking.getValue());
-}
-
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIE/IR/AIEOps.cpp.inc"
 
