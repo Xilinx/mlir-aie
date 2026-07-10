@@ -59,7 +59,6 @@ theme:
     - navigation.tabs
     - navigation.tabs.sticky
     - navigation.sections
-    - navigation.expand
     - navigation.path
     - navigation.top
     - navigation.footer
@@ -133,54 +132,53 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Getting Started:
-    - Overview: getting-started.md
-    - Windows: buildHostWin.md
+    - Linux (Ubuntu): getting-started.md
+    - Windows (WSL): buildHostWin.md
     - Windows (Native): buildHostWinNative.md
     - Non-Ubuntu Linux: buildHostLinNonUbuntu.md
-    - Linux (Ubuntu): getting-started.md
     - Build from Source: Building.md
     - Versal: BuildingVersal.md
     - Devices: Devices.md
     - Platform Notes: Platform.md
   - Programming Guide:
-    - Overview: programming_guide/README.md
+    - Introduction: programming_guide/README.md
     - Mini Tutorial: programming_guide/mini_tutorial/README.md
     - "Section 0: Prerequisites": programming_guide/section-0/README.md
     - "Section 1: Tiles and Buffers": programming_guide/section-1/README.md
     - "Section 2: Data Movement":
-      - Overview: programming_guide/section-2/README.md
+      - Introduction: programming_guide/section-2/README.md
       - "2a: Single-Tile Data Movement": programming_guide/section-2/section-2a/README.md
-      - "2b: Broadcast and Reuse":
-        - Overview: programming_guide/section-2/section-2b/README.md
+      - "2b: ObjectFifo Patterns":
+        - Introduction: programming_guide/section-2/section-2b/README.md
         - Reuse: programming_guide/section-2/section-2b/01_Reuse/README.md
         - Broadcast: programming_guide/section-2/section-2b/02_Broadcast/README.md
         - Implicit Copy: programming_guide/section-2/section-2b/03_Implicit_Copy/README.md
         - Repeat: programming_guide/section-2/section-2b/04_Repeat/README.md
-      - "2c: Stream Transformations":
-        - Overview: programming_guide/section-2/section-2c/README.md
+      - "2c: Data Layout Transformations":
+        - Introduction: programming_guide/section-2/section-2c/README.md
         - To Stream: programming_guide/section-2/section-2c/to_stream_transformations/README.md
         - From Stream: programming_guide/section-2/section-2c/from_stream_transformations/README.md
       - "2d: DMA and Runtime Tasks":
-        - Overview: programming_guide/section-2/section-2d/README.md
+        - Introduction: programming_guide/section-2/section-2d/README.md
         - DMA Tasks: programming_guide/section-2/section-2d/DMATasks.md
         - Runtime Tasks: programming_guide/section-2/section-2d/RuntimeTasks.md
-      - "2e: Distributed Data Movement": programming_guide/section-2/section-2e/README.md
+      - "2e: Multiple Cores": programming_guide/section-2/section-2e/README.md
       - "2f: Multi-Core Patterns":
-        - Overview: programming_guide/section-2/section-2f/README.md
+        - Introduction: programming_guide/section-2/section-2f/README.md
         - Single/Double Buffer: programming_guide/section-2/section-2f/01_single_double_buffer/README.md
         - Ext Mem to Core: programming_guide/section-2/section-2f/02_external_mem_to_core/README.md
         - Ext Mem to Core (L2): programming_guide/section-2/section-2f/03_external_mem_to_core_L2/README.md
         - Distribute L2: programming_guide/section-2/section-2f/04_distribute_L2/README.md
         - Join L2: programming_guide/section-2/section-2f/05_join_L2/README.md
-      - "2g: Advanced Patterns": programming_guide/section-2/section-2g/README.md
-      - "2h: TAP / Tensor Access Patterns": programming_guide/section-2/section-2h/README.md
-    - "Section 3: Kernels": programming_guide/section-3/README.md
+      - "2g: Data Movement Without ObjectFifos": programming_guide/section-2/section-2g/README.md
+      - "2h: Tensor Access Patterns": programming_guide/section-2/section-2h/README.md
+    - "Section 3: My First Program": programming_guide/section-3/README.md
     - "Section 4: Performance":
-      - Overview: programming_guide/section-4/README.md
-      - "4a: Vectorization": programming_guide/section-4/section-4a/README.md
+      - Introduction: programming_guide/section-4/README.md
+      - "4a: Timers": programming_guide/section-4/section-4a/README.md
       - "4b: Tracing": programming_guide/section-4/section-4b/README.md
-      - "4c: Benchmarking": programming_guide/section-4/section-4c/README.md
-    - "Section 5: Kernel Library": programming_guide/section-5/README.md
+      - "4c: Vectorization": programming_guide/section-4/section-4c/README.md
+    - "Section 5: Example Designs": programming_guide/section-5/README.md
     - "Section 6: ML Examples": programming_guide/section-6/README.md
     - Quick Reference: programming_guide/quick_reference.md
     - IRON Configuration: programming_guide/iron_configuration.md
