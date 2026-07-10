@@ -1,0 +1,299 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# Temporary migration-test workflow.
+# Triggered after mlirDistroRocm.yml publishes wheels to the rocm-mlir-distro
+# release tag, or manually. Builds mlir-aie against those wheels on a single
+# representative platform, smoke-tests the result, and opens a PR that bumps
+# the pinned LLVM_COMMIT in mlirDistroRocm.yml to confirm the commit works
+# end-to-end.
+
+name: MLIR AIE Distro (ROCm migration test)
+
+permissions:
+  contents: read
+
+on:
+  workflow_run:
+    workflows: ["MLIR Distro (ROCm LLVM)"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      AIE_COMMIT:
+        description: 'mlir-aie commit to build (default: HEAD of main)'
+        type: string
+        required: false
+        default: ''
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}
+  cancel-in-progress: false
+
+jobs:
+
+  # Only proceed when the triggering mlirDistroRocm run succeeded (no-op for
+  # manual dispatch where there is no triggering run).
+  check_trigger:
+    name: Check trigger status
+    runs-on: ubuntu-latest
+    outputs:
+      should_run: ${{ steps.check.outputs.should_run }}
+      rocm_commit: ${{ steps.resolve.outputs.rocm_commit }}
+      rocm_datetime: ${{ steps.resolve.outputs.rocm_datetime }}
+    steps:
+      - name: Check upstream run conclusion
+        id: check
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_run" ]; then
+            CONCLUSION="${{ github.event.workflow_run.conclusion }}"
+            echo "Upstream mlirDistroRocm conclusion: $CONCLUSION"
+            if [ "$CONCLUSION" != "success" ]; then
+              echo "Upstream run did not succeed — skipping."
+              echo "should_run=false" >> $GITHUB_OUTPUT
+            else
+              echo "should_run=true" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "should_run=true" >> $GITHUB_OUTPUT
+          fi
+
+      # Parse the LLVM commit and DATETIME from the wheel filename in the
+      # rocm-mlir-distro release. Wheel names look like:
+      #   mlir-<ver>.<datetime>+<8-char-commit>-py3-none-linux_x86_64.whl
+      - name: Resolve ROCm LLVM commit from release assets
+        id: resolve
+        if: steps.check.outputs.should_run == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          sudo apt-get install -y -q jq
+
+          ASSET=$(gh release view rocm-mlir-distro \
+            --repo Xilinx/mlir-aie \
+            --json assets \
+            --jq '.assets[] | select(.name | test("mlir-.*linux_x86_64\\.whl")) | .name' \
+            | head -n1)
+
+          echo "Representative asset: $ASSET"
+
+          # Extract 8-char commit hash after the '+' in the version segment
+          ROCM_COMMIT=$(echo "$ASSET" | grep -oP '(?<=\+)[0-9a-f]{8}')
+          # Extract DATETIME (numeric segment between version dots and '+')
+          ROCM_DATETIME=$(echo "$ASSET" | grep -oP '\.\K[0-9]{10}(?=\+)')
+
+          if [ -z "$ROCM_COMMIT" ]; then
+            echo "::error::Could not parse commit hash from asset name: $ASSET"
+            exit 1
+          fi
+
+          echo "rocm_commit=$ROCM_COMMIT" >> $GITHUB_OUTPUT
+          echo "rocm_datetime=${ROCM_DATETIME:-unknown}" >> $GITHUB_OUTPUT
+          echo "ROCm LLVM commit: $ROCM_COMMIT  datetime: $ROCM_DATETIME"
+
+  build_and_test:
+    name: Build mlir-aie against rocm-mlir-distro (ubuntu x86_64 rtti=ON)
+    needs: check_trigger
+    if: needs.check_trigger.outputs.should_run == 'true'
+    runs-on: ubuntu-22.04
+
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+
+    steps:
+      - name: set ENV
+        shell: bash
+        run: |
+          echo "PIP_FIND_LINKS=https://github.com/Xilinx/mlir-aie/releases/expanded_assets/rocm-mlir-distro" | tee -a $GITHUB_ENV
+          echo "ENABLE_RTTI=ON" | tee -a $GITHUB_ENV
+
+      - name: Checkout actions
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          sparse-checkout: |
+            .github/actions
+            python/requirements_dev.lock
+          sparse-checkout-cone-mode: false
+
+      - uses: ./.github/actions/setup_base
+        id: setup_base
+        with:
+          MATRIX_OS: ubuntu-22.04
+          MATRIX_ARCH: x86_64
+
+      - uses: ./.github/actions/setup_ccache
+        id: setup_ccache
+        with:
+          MATRIX_OS: ubuntu-22.04
+          MATRIX_ARCH: x86_64
+          EXTRA_KEY: mlir-aie-rocm-migration-rtti-ON
+
+      - name: Shift workspace root
+        id: workspace_root
+        shell: bash
+        working-directory: ${{ env.TEMP }}
+        run: |
+          WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}/utils/mlir_aie_wheels"
+          echo "WORKSPACE_ROOT=$WORKSPACE_ROOT" >> $GITHUB_OUTPUT
+
+      - name: Resolve AIE commit
+        id: aie_commit
+        shell: bash
+        run: |
+          sudo apt install -y -q jq
+          if [ -n "${{ inputs.AIE_COMMIT }}" ]; then
+            AIE_PROJECT_COMMIT="${{ inputs.AIE_COMMIT }}"
+          else
+            AIE_PROJECT_COMMIT=$(curl -s \
+              https://api.github.com/repos/Xilinx/mlir-aie/commits/main \
+              | jq -r '.sha[:8]')
+          fi
+          echo "AIE_PROJECT_COMMIT=$AIE_PROJECT_COMMIT" >> $GITHUB_OUTPUT
+          DATETIME=$(date +"%Y%m%d%H")
+          echo "DATETIME=$DATETIME" >> $GITHUB_OUTPUT
+
+      - name: Get AIE
+        working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+        shell: bash
+        run: |
+          git clone --recursive https://github.com/Xilinx/mlir-aie.git
+          pushd mlir-aie
+          git reset --hard ${{ steps.aie_commit.outputs.AIE_PROJECT_COMMIT }}
+          git submodule update
+          popd
+
+      - name: Copy clone-llvm.sh for wheel build
+        working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+        shell: bash
+        run: cp ../clone-llvm.sh .
+
+      - name: Compute wheel version
+        id: wheel_version
+        shell: bash
+        working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+        run: |
+          set -euo pipefail
+          VERSION=$(AIE_WHEEL_KEEP_LOCAL=1 python _version_helper.py)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Build mlir-aie wheel
+        shell: bash
+        working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+        run: |
+          export PIP_NO_BUILD_ISOLATION=false
+
+          CIBW_ARCHS=x86_64 \
+          CMAKE_GENERATOR=Ninja \
+          DATETIME=${{ steps.aie_commit.outputs.DATETIME }} \
+          HOST_CCACHE_DIR=${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }} \
+          CIBW_CONTAINER_ENGINE_ARGS="-v ${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }}:/host${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }}" \
+          AIE_PROJECT_COMMIT=${{ steps.aie_commit.outputs.AIE_PROJECT_COMMIT }} \
+          AIE_WHEEL_KEEP_LOCAL=1 \
+          AIE_WHEEL_VERSION=${{ steps.wheel_version.outputs.version }} \
+          MATRIX_OS=ubuntu-22.04 \
+          PARALLEL_LEVEL=2 \
+          cibuildwheel --output-dir wheelhouse
+
+      - name: Download ccache from container
+        if: success() || failure()
+        working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+        shell: bash
+        run: |
+          ccache -s
+          HOST_CCACHE_DIR="$(ccache --get-config cache_dir)"
+          rm -rf $HOST_CCACHE_DIR
+          mv ./wheelhouse/.ccache $HOST_CCACHE_DIR
+
+      - name: Rename wheel
+        working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+        shell: bash
+        run: rename 's/cp312-cp312/py3-none/' wheelhouse/mlir_aie*whl
+
+      - name: Smoke test
+        shell: bash
+        working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+        run: |
+          python -m pip install --upgrade pip
+          python mlir-aie/utils/mlir_aie_wheels/vendor_eudsl.py \
+            --requirements mlir-aie/python/requirements.txt \
+            --install-non-eudsl
+          unzip -o -q wheelhouse/mlir_aie*py3-none*.whl
+
+          export PYTHONPATH=mlir_aie/python
+
+          python -c 'import aie.ir'
+          python -c 'import aie.extras'
+          python -c 'import aie.helpers'
+
+      - name: Upload wheel artifact
+        if: success()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
+          name: rocm-migration-wheel-ubuntu-x86_64
+
+  open_migration_pr:
+    name: Open migration PR
+    needs: [check_trigger, build_and_test]
+    if: needs.build_and_test.result == 'success'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Bump pinned LLVM_COMMIT in mlirDistroRocm.yml
+        shell: bash
+        run: |
+          COMMIT="${{ needs.check_trigger.outputs.rocm_commit }}"
+          DATETIME="${{ needs.check_trigger.outputs.rocm_datetime }}"
+
+          # Expand short commit to full 40-char hash for the default: field
+          FULL_COMMIT=$(curl -s \
+            "https://api.github.com/repos/ROCm/llvm-project/commits/${COMMIT}" \
+            | jq -r '.sha')
+
+          if [ -z "$FULL_COMMIT" ] || [ "$FULL_COMMIT" == "null" ]; then
+            # Fall back to short hash if API lookup fails
+            FULL_COMMIT="$COMMIT"
+          fi
+
+          echo "Bumping LLVM_COMMIT default to $FULL_COMMIT (datetime=$DATETIME)"
+
+          # Update the default LLVM_COMMIT in mlirDistroRocm.yml
+          sed -i "s|default: '[0-9a-f]\{40\}'|default: '$FULL_COMMIT'|" \
+            .github/workflows/mlirDistroRocm.yml
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1  # v8
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          commit-message: "rocm-migration: mlir-aie builds against ROCm LLVM @ ${{ needs.check_trigger.outputs.rocm_commit }}"
+          title: "[ROCm migration] mlir-aie ✓ against ROCm LLVM @ ${{ needs.check_trigger.outputs.rocm_commit }}"
+          body: |
+            Automated migration test passed.
+
+            mlir-aie built and smoke-tested successfully against the
+            `rocm-mlir-distro` wheels built from ROCm/llvm-project @
+            `${{ needs.check_trigger.outputs.rocm_commit }}`.
+
+            **What this PR does:**
+            - Bumps the pinned `LLVM_COMMIT` default in `mlirDistroRocm.yml`
+              to the commit that was just validated end-to-end.
+
+            **How to verify:**
+            - The `MLIR AIE Distro (ROCm migration test)` workflow that opened
+              this PR built and smoke-tested `aie.ir`, `aie.extras`, and
+              `aie.helpers` against the ROCm MLIR wheels.
+            - Re-run the workflow on this branch to reproduce.
+
+            Triggered by: ${{ github.event_name }}
+          branch: rocm-migration-bump-${{ needs.check_trigger.outputs.rocm_commit }}
+          base: main
+          delete-branch: true
