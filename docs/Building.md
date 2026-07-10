@@ -172,10 +172,6 @@ For your design of interest, for instance from [programming_examples](../program
 
 1. AIE API header library documentation for single-core AIE programming in C++ is avaiable [here](https://xilinx.github.io/aie_api/topics.html)
 
-## Contributing:
-
-Interested in contributing MLIR-AIE? [Information for developers](CONTRIBUTING.md)
-
 ## Alternative: Build XDNA™ Driver and XRT from source { #alternative-build-xdna-driver-and-xrt-from-source }
 
 If the [upstream packages](#install-from-upstream-packages-ubuntu-2404) do not support your kernel or distribution, you can build the driver and XRT from source:

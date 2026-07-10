@@ -38,7 +38,9 @@ validation:
 
 theme:
   name: material
-  # No header logo image — the site name "IRON / MLIR-AIE" stands on its own.
+  # "I" monogram, same mark as the browser-tab favicon, replacing Material's
+  # generic default header icon.
+  logo: assets/images/favicon.svg
   favicon: assets/images/favicon.svg
   palette:
     - media: "(prefers-color-scheme: light)"
@@ -59,6 +61,7 @@ theme:
     - navigation.tabs
     - navigation.tabs.sticky
     - navigation.sections
+    - navigation.indexes
     - navigation.path
     - navigation.top
     - navigation.footer
@@ -163,7 +166,7 @@ markdown_extensions:
 nav:
   - Home: index.md
   - Getting Started:
-    - Linux (Ubuntu): getting-started.md
+    - getting-started.md
     - Windows (WSL): buildHostWin.md
     - Windows (Native): buildHostWinNative.md
     - Non-Ubuntu Linux: buildHostLinNonUbuntu.md

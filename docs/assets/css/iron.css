@@ -88,6 +88,13 @@
 .iron-card-title { font-weight: 600; font-size: 0.9rem; display: block; margin-bottom: 0.3rem; color: var(--md-typeset-a-color); }
 .iron-card-desc  { font-size: 0.78rem; opacity: 0.72; line-height: 1.4; }
 
+/* ── Collapsible details ─────────────────────────────────────────────────── */
+/* Material sizes <details> like an admonition (0.64rem ≈ 12.8px), which is too
+   small for prose-heavy dropdowns like "More about the toolchain". Restore the
+   normal body text size for the summary and the content. */
+.md-typeset details { font-size: 0.8rem; }
+.md-typeset details > summary { font-size: 0.8rem; }
+
 /* ── Wider content area ──────────────────────────────────────────────────── */
 /* Both sidebars are shown (left = section nav, right = page TOC); widen the
    grid a little so the middle content column still has room between them. */

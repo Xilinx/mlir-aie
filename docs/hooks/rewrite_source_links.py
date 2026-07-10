@@ -183,10 +183,15 @@ def _rewrite_target(target, page_dir_link, page_dir_real, docs_dir, repo_root):
     # GitHub because the source is untouched). Directory targets point at the
     # section's README.md since MkDocs only rewrites links to .md pages.
     if page_dir_real == repo_root:
+        # Detect docs/ targets *lexically* (without resolving symlinks) so a
+        # page under docs/ that is itself a symlink out of the tree — e.g.
+        # docs/CONTRIBUTING.md -> ../CONTRIBUTING.md — still counts as an
+        # internal doc page rather than escaping to the GitHub rewrite below.
+        lexical = os.path.normpath(os.path.join(page_dir_real, decoded_path))
         if (
-            resolved == real_docs or resolved.startswith(real_docs + os.sep)
-        ) and os.path.exists(resolved):
-            return os.path.relpath(resolved, real_docs).replace(os.sep, "/") + suffix
+            lexical == docs_dir or lexical.startswith(docs_dir + os.sep)
+        ) and os.path.exists(lexical):
+            return os.path.relpath(lexical, docs_dir).replace(os.sep, "/") + suffix
         if (
             resolved == real_pg or resolved.startswith(real_pg + os.sep)
         ) and os.path.exists(resolved):
@@ -244,6 +249,15 @@ def on_page_markdown(markdown, page, config, files):
     page_dir_real = os.path.dirname(os.path.realpath(abs_src))
     docs_dir = os.path.abspath(config["docs_dir"])
     repo_root = os.path.dirname(os.path.realpath(docs_dir))
+
+    # The Getting Started page is a symlink to the repo-root README, whose H1 is
+    # the project name ("IRON / MLIR-AIE") — correct on GitHub, but on the docs
+    # site it duplicates the Home page and doesn't read as a Getting Started
+    # heading. Retitle just the site's H1 at build time so GitHub stays intact.
+    if os.path.realpath(abs_src) == os.path.join(repo_root, "README.md"):
+        markdown = re.sub(
+            r"^#[ \t]+.*$", "# Getting Started", markdown, count=1, flags=re.MULTILINE
+        )
 
     def _sub(match):
         target = match.group("target")

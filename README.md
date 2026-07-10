@@ -1,27 +1,25 @@
 <!-- Copyright (C) 2019-2021 Xilinx, Inc. -->
 <!-- Copyright (C) 2022-2026 Advanced Micro Devices, Inc. -->
 <!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
-[![Build and Test across Python versions](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestPythons.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestPythons.yml) [![Build and Test with AIE tools on Ryzen™ AI](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestRyzenAI.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestRyzenAI.yml) [![Compile across platforms](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestMulti.yml/badge.svg)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestMulti.yml)
-
 # IRON / MLIR-AIE
 
 **A close-to-metal Python API for programming AMD Ryzen™ AI NPUs, built on an open-source MLIR-based compiler toolchain.**
 
-[![Latest release](https://img.shields.io/github/v/release/Xilinx/mlir-aie?display_name=tag&sort=semver&cacheSeconds=86400)](https://github.com/Xilinx/mlir-aie/releases)
-[![GitHub Pull Requests](https://img.shields.io/github/issues-pr-raw/Xilinx/mlir-aie?cacheSeconds=86400)](https://github.com/Xilinx/mlir-aie/pulls)
-[![GitHub Issues](https://img.shields.io/github/issues/Xilinx/mlir-aie/bug?cacheSeconds=86400)](https://github.com/Xilinx/mlir-aie/issues?q=is%3Aopen+is%3Aissue+label%3Abug)
-![GitHub Contributors](https://img.shields.io/github/contributors/Xilinx/mlir-aie?cacheSeconds=86400)
+[![Build](https://img.shields.io/github/actions/workflow/status/Xilinx/mlir-aie/buildAndTestPythons.yml?branch=main&label=build&cacheSeconds=86400)](https://github.com/Xilinx/mlir-aie/actions/workflows/buildAndTestPythons.yml)
+[![Latest tag](https://img.shields.io/github/v/tag/Xilinx/mlir-aie?sort=semver&label=release&cacheSeconds=86400)](https://github.com/Xilinx/mlir-aie/tags)
 [![License](https://img.shields.io/badge/license-Apache%202.0%20with%20LLVM%20exception-blue)](LICENSE)
+[![Contributors](https://img.shields.io/github/contributors/Xilinx/mlir-aie?cacheSeconds=86400)](https://github.com/Xilinx/mlir-aie/graphs/contributors)
 
-📖 **[Documentation](https://xilinx.github.io/mlir-aie/)** &nbsp;·&nbsp; 🚀 **[Programming Guide](programming_guide/)** &nbsp;·&nbsp; 🐍 **[Python API](https://xilinx.github.io/mlir-aie/api/iron/)** &nbsp;·&nbsp; 💡 **[Examples](programming_examples/)**
+📖 **[Documentation](https://xilinx.github.io/mlir-aie/)** &nbsp;·&nbsp; 🚀 **[Programming Guide](programming_guide/)** &nbsp;·&nbsp; 🐍 **[Python API](https://xilinx.github.io/mlir-aie/api/)** &nbsp;·&nbsp; 💡 **[Examples](programming_examples/)**
 
-IRON lets performance engineers write Python that compiles directly to the AI
-Engine array inside AMD Ryzen™ AI processors — with full control over tile
-placement, data movement, and vectorized compute. It targets researchers and
-enthusiasts who want to unlock the NPU for workloads from machine learning to
-digital signal processing, and is designed to *complement*, not replace,
-mainstream inference tooling like the
-[AMD Ryzen™ AI Software Platform](https://github.com/amd/RyzenAI-SW/).
+Write Python. Run it on the NPU. IRON compiles your Python design straight to
+the AI Engine array inside AMD Ryzen™ AI processors — you control tile
+placement, data movement, and vectorized compute, with nothing hidden behind a
+framework. Built for researchers and performance engineers pushing the NPU on
+everything from machine learning to digital signal processing, IRON
+*complements* mainstream inference tooling like the
+[AMD Ryzen™ AI Software Platform](https://github.com/amd/RyzenAI-SW/) rather
+than replacing it.
 
 ```python
 import aie.iron as iron
@@ -61,13 +59,7 @@ on the attached NPU. New to the concepts? Start with the
 [Programming Guide](programming_guide/) or the
 [Mini Tutorial](programming_guide/mini_tutorial/).
 
-<p align="left">
-  <img src="https://github.com/llvm/mlir-www/blob/main/website/static/LogoAssets/logo/PNG/full_color/mlir-identity-03.png" alt="MLIR logo" height="60" />
-  <img src="https://s3.dualstack.us-east-2.amazonaws.com/pythondotorg-assets/media/community/logos/python-logo-only.png" alt="Python logo" height="60" />
-  <img src="https://em-content.zobj.net/source/apple/271/mechanical-arm_1f9be.png" alt="Mechanical Arm" height="60" />
-</p>
-
-<details>
+<details markdown="1">
 <summary><b>More about the toolchain</b></summary>
 
 This repository contains an [MLIR-based](https://mlir.llvm.org/) toolchain for AI Engine-enabled devices, such as [AMD Ryzen™ AI](https://www.amd.com/en/products/processors/consumer/ryzen-ai.html) and [Versal™](https://www.xilinx.com/products/technology/ai-engine.html). It generates low-level configurations for the AI Engine portion of these devices. AI Engines are organized as a spatial array of tiles, where each tile contains AI Engine cores and/or memories. The spatial array is connected by stream switches that route data between tiles, scheduled by their programmable Data Movement Accelerators (DMAs). The repository provides MLIR representations at multiple levels of abstraction to target AI Engine devices, enabling compilers and developers to program cores and describe data movement and array connectivity.
@@ -79,12 +71,6 @@ IRON is described in the following paper:
 > E. Hunhoff, J. Melber, K. Denolf, A. Bisca, S. Bayliss, S. Neuendorffer, J. Fifield, J. Lo, P. Vasireddy, P. James-Roxby, E. Keller. "[Efficiency, Expressivity, and Extensibility in a Close-to-Metal NPU Programming Interface](https://arxiv.org/abs/2504.18430)". In 33rd IEEE International Symposium On Field-Programmable Custom Computing Machines, May 2025.
 
 </details>
-
-<p align="left">
-  <img src="docs/assets/images/iron_linux_stack.svg" alt="IRON Linux Software Stack" width="50%">
-</p>
-
-_Note: badge values are cached for up to 24 hours (`cacheSeconds=86400`), so counts may lag behind real-time activity._
 
 ## Ryzen™ AI host setup
 
@@ -118,7 +104,7 @@ If starting from `Ubuntu 24.04` you may need to update the Linux kernel to 6.11+
 ### BIOS Settings:
 
 Turn off SecureBoot (Allows for unsigned drivers to be installed):
-   ```BIOS → Security → Secure boot → Disable```
+`BIOS → Security → Secure boot → Disable`
 
 ### Install the XDNA™ Driver and XRT
 
@@ -215,7 +201,7 @@ xrt-smi examine
    >
    > Below are the manual installation steps if you prefer to do this yourself.
 
-   <details>
+   <details markdown="1">
    <summary>Manual installation steps</summary>
 
    1. Setup a virtual environment:
@@ -344,18 +330,18 @@ For your design of interest, for instance from [programming_examples](programmin
 
    > This is an early access lounge, you must register and be granted access at this time.
 
-    1. Download VAIML Installer for Linux based compilation: `ryzen_ai-1.3.0ea1.tgz`
+   1. Download VAIML Installer for Linux based compilation: `ryzen_ai-1.3.0ea1.tgz`
 
-    1. Extract the required tools:
+   1. Extract the required tools:
 
-       ``` bash
-          tar -xzvf ryzen_ai-1.3.0ea1.tgz
-          cd ryzen_ai-1.3.0
-          mkdir vitis_aie_essentials
-          mv vitis_aie_essentials*.whl vitis_aie_essentials
-          cd vitis_aie_essentials
-          unzip vitis_aie_essentials*.whl
-       ```
+      ```bash
+      tar -xzvf ryzen_ai-1.3.0ea1.tgz
+      cd ryzen_ai-1.3.0
+      mkdir vitis_aie_essentials
+      mv vitis_aie_essentials*.whl vitis_aie_essentials
+      cd vitis_aie_essentials
+      unzip vitis_aie_essentials*.whl
+      ```
 
 1. Set up an AI Engine license.
 
@@ -367,12 +353,12 @@ For your design of interest, for instance from [programming_examples](programmin
 
    ```bash
    #!/bin/bash
-    #################################################################################
-    # Setup Vitis AIE Essentials
-    #################################################################################
-    export AIETOOLS_ROOT=/tools/ryzen_ai-1.3.0/vitis_aie_essentials
-    export PATH=$PATH:${AIETOOLS_ROOT}/bin
-    export LM_LICENSE_FILE=/opt/Xilinx.lic
+   #################################################################################
+   # Setup Vitis AIE Essentials
+   #################################################################################
+   export AIETOOLS_ROOT=/tools/ryzen_ai-1.3.0/vitis_aie_essentials
+   export PATH=$PATH:${AIETOOLS_ROOT}/bin
+   export LM_LICENSE_FILE=/opt/Xilinx.lic
    ```
 
 ## Alternative: Build XDNA™ Driver and XRT from source
@@ -405,7 +391,7 @@ If the [upstream packages](#install-from-upstream-packages-ubuntu-2404-with-linu
 ### Update BIOS:
 
 Be sure you have the latest BIOS for your laptop or mini PC, this will ensure the NPU (sometimes referred to as IPU) is enabled in the system. You may need to manually enable the NPU:
-   ```Advanced → CPU Configuration → IPU```
+`Advanced → CPU Configuration → IPU`
 
 > **NOTE:** Some manufacturers only provide Windows executables to update the BIOS, please do this before installing Ubuntu.
 
@@ -419,7 +405,7 @@ Be sure you have the latest BIOS for your laptop or mini PC, this will ensure th
 
 [MLIR Dialect and Compiler Documentation](https://xilinx.github.io/mlir-aie/)
 
-Interested in contributing MLIR-AIE? [Information for developers](./CONTRIBUTING.md)
+Interested in contributing MLIR-AIE? [Information for developers](docs/CONTRIBUTING.md)
 
 -----
 
