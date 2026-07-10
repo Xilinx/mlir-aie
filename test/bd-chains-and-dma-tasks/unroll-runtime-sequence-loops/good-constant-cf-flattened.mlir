@@ -33,7 +33,7 @@ aie.device(npu1) {
     %true = arith.constant true
     scf.if %true {
       %k = aiex.dma_configure_task_for @a {
-        aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32)
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8)
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%k)
@@ -65,7 +65,7 @@ aie.device(npu1) {
     scf.if %true {
       scf.for %i = %c0 to %c3 step %c1 {
         %k = aiex.dma_configure_task_for @b {
-          aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32)
+          aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8)
           aie.end
         } {issue_token = true}
         aiex.dma_start_task(%k)

@@ -23,18 +23,14 @@ module {
       // CHECK: aiex.npu.writebd {bd_id = 2 : i32, buffer_length = 5 : i32, buffer_offset = 4 : i32, column = 0 : i32, d0_size = 0 : i32, d0_stride = 0 : i32, d0_zero_after = 0 : i32, d0_zero_before = 0 : i32, d1_size = 0 : i32, d1_stride = 0 : i32, d1_zero_after = 0 : i32, d1_zero_before = 0 : i32, d2_size = 0 : i32, d2_stride = 0 : i32, d2_zero_after = 0 : i32, d2_zero_before = 0 : i32, enable_packet = 0 : i32, iteration_current = 0 : i32, iteration_size = 0 : i32, iteration_stride = 0 : i32, lock_acq_enable = 0 : i32, lock_acq_id = 0 : i32, lock_acq_val = 0 : i32, lock_rel_id = 0 : i32, lock_rel_val = 0 : i32, next_bd = 0 : i32, out_of_order_id = 0 : i32, packet_id = 0 : i32, packet_type = 0 : i32, row = 0 : i32, use_next_bd = 0 : i32, valid_bd = 1 : i32}
       // CHECK: %[[AP4:.*]] = arith.constant 4 : i32
       // CHECK: aiex.npu.address_patch(%[[AP4]] : i32) {addr = 118852 : ui32, arg_idx = 0 : i32}
-      %c0_i32 = arith.constant 0 : i32
-      %c2_i32 = arith.constant 2 : i32
-      %c8_i32 = arith.constant 8 : i32
-      %c10_i32 = arith.constant 10 : i32
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-          aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32) {bd_id = 0 : i32}
+          aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8) {bd_id = 0 : i32}
           aie.next_bd ^bd1
         ^bd1:
-          aie.dma_bd(%arg1 : memref<10xi32> offset = %c2_i32 len = %c10_i32) {bd_id = 1 : i32}
+          aie.dma_bd(%arg1 : memref<10xi32> offset = 2 len = 10) {bd_id = 1 : i32}
           aie.next_bd ^bd2
         ^bd2:
-          aie.dma_bd(%arg0 : memref<8xi16> offset = %c2_i32 len = %c10_i32) {bd_id = 2 : i32}
+          aie.dma_bd(%arg0 : memref<8xi16> offset = 2 len = 10) {bd_id = 2 : i32}
           aie.end
       }
     }

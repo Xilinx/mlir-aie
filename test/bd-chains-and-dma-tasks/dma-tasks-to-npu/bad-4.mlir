@@ -14,11 +14,9 @@ module {
     %tile_0_2 = aie.tile(0, 2)
 
     aie.runtime_sequence(%arg0: memref<32xi8>) {
-      %c4_i32 = arith.constant 4 : i32
-      %c8_i32 = arith.constant 8 : i32
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
           // expected-error@+1 {{Stride 0 is 2 elements * 1 bytes = 2 bytes, which is not divisible by 4}}
-          aie.dma_bd(%arg0 : memref<32xi8> offset = %c4_i32 len = %c8_i32 sizes = [8] strides = [2]) {bd_id = 0 : i32}
+          aie.dma_bd(%arg0 : memref<32xi8> offset = 4 len = 8 sizes = [8] strides = [2]) {bd_id = 0 : i32}
           aie.end
       }
     }

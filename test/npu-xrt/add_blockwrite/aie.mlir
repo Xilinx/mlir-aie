@@ -81,29 +81,27 @@ module {
     }
 
     %mem_0_2 = aie.mem(%tile_0_2) {
-      %c0_i32 = arith.constant 0 : i32
-      %c8_i32 = arith.constant 8 : i32
       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
     ^bb1:  // 2 preds: ^bb0, ^bb2
       aie.use_lock(%objFifo_in1_cons_prod_lock, AcquireGreaterEqual, 1)
-      aie.dma_bd(%objFifo_in1_cons_buff_0 : memref<8xi32> offset = %c0_i32 len = %c8_i32)
+      aie.dma_bd(%objFifo_in1_cons_buff_0 : memref<8xi32> offset = 0 len = 8)
       aie.use_lock(%objFifo_in1_cons_cons_lock, Release, 1)
       aie.next_bd ^bb2
     ^bb2:  // pred: ^bb1
       aie.use_lock(%objFifo_in1_cons_prod_lock, AcquireGreaterEqual, 1)
-      aie.dma_bd(%objFifo_in1_cons_buff_1 : memref<8xi32> offset = %c0_i32 len = %c8_i32)
+      aie.dma_bd(%objFifo_in1_cons_buff_1 : memref<8xi32> offset = 0 len = 8)
       aie.use_lock(%objFifo_in1_cons_cons_lock, Release, 1)
       aie.next_bd ^bb1
     ^bb3:  // pred: ^bb0
       %1 = aie.dma_start(MM2S, 0, ^bb4, ^bb6)
     ^bb4:  // 2 preds: ^bb3, ^bb5
       aie.use_lock(%objFifo_out1_cons_lock, AcquireGreaterEqual, 1)
-      aie.dma_bd(%objFifo_out1_buff_0 : memref<8xi32> offset = %c0_i32 len = %c8_i32)
+      aie.dma_bd(%objFifo_out1_buff_0 : memref<8xi32> offset = 0 len = 8)
       aie.use_lock(%objFifo_out1_prod_lock, Release, 1)
       aie.next_bd ^bb5
     ^bb5:  // pred: ^bb4
       aie.use_lock(%objFifo_out1_cons_lock, AcquireGreaterEqual, 1)
-      aie.dma_bd(%objFifo_out1_buff_1 : memref<8xi32> offset = %c0_i32 len = %c8_i32)
+      aie.dma_bd(%objFifo_out1_buff_1 : memref<8xi32> offset = 0 len = 8)
       aie.use_lock(%objFifo_out1_prod_lock, Release, 1)
       aie.next_bd ^bb4
     ^bb6:  // pred: ^bb3

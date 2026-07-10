@@ -81,52 +81,49 @@ module @test {
   %lock_3 = aie.lock(%t2, 0)
 
   %mem12 = aie.mem(%t2) {
-    %c0_i32 = arith.constant 0 : i32
-    %c128_i32 = arith.constant 128 : i32
-    %c256_i32 = arith.constant 256 : i32
       %start1 = aie.dma_start("MM2S", 0, ^bd0, ^dma0)
     ^dma0:
       %start2 = aie.dma_start("MM2S", 1, ^bd4, ^end)
     ^bd0:
       aie.use_lock(%lock_0, Acquire, 1)
-      aie.dma_bd(%buf_0 : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+      aie.dma_bd(%buf_0 : memref<256xi32> offset = 0 len = 256)
       aie.use_lock(%lock_0, Release, 0)
       aie.next_bd ^bd1
     ^bd1:
       aie.use_lock(%lock_0, Acquire, 1)
-      aie.dma_bd(%buf_1 : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+      aie.dma_bd(%buf_1 : memref<256xi32> offset = 0 len = 256)
       aie.use_lock(%lock_0, Release, 0)
       aie.next_bd ^bd2
     ^bd2:
       aie.use_lock(%lock_0, Acquire, 1)
-      aie.dma_bd(%buf_0 : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+      aie.dma_bd(%buf_0 : memref<256xi32> offset = 0 len = 256)
       aie.use_lock(%lock_0, Release, 0)
       aie.next_bd ^bd3
     ^bd3:
       aie.use_lock(%lock_0, Acquire, 1)
-      aie.dma_bd(%buf_1 : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+      aie.dma_bd(%buf_1 : memref<256xi32> offset = 0 len = 256)
       aie.use_lock(%lock_0, Release, 0)
       aie.next_bd ^bd0
     ^end:
       aie.end
     ^bd4:
       aie.use_lock(%lock_0, Acquire, 1)
-      aie.dma_bd(%buf_2 : memref<256xi32> offset = %c0_i32 len = %c128_i32)
+      aie.dma_bd(%buf_2 : memref<256xi32> offset = 0 len = 128)
       aie.use_lock(%lock_0, Release, 0)
       aie.next_bd ^bd5
     ^bd5:
       aie.use_lock(%lock_0, Acquire, 1)
-      aie.dma_bd(%buf_2 : memref<256xi32> offset = %c128_i32 len = %c128_i32)
+      aie.dma_bd(%buf_2 : memref<256xi32> offset = 128 len = 128)
       aie.use_lock(%lock_0, Release, 0)
       aie.next_bd ^bd6
     ^bd6:
       aie.use_lock(%lock_0, Acquire, 1)
-      aie.dma_bd(%buf_2 : memref<256xi32> offset = %c0_i32 len = %c128_i32)
+      aie.dma_bd(%buf_2 : memref<256xi32> offset = 0 len = 128)
       aie.use_lock(%lock_0, Release, 0)
       aie.next_bd ^bd7
     ^bd7:
       aie.use_lock(%lock_0, Acquire, 1)
-      aie.dma_bd(%buf_2 : memref<256xi32> offset = %c128_i32 len = %c128_i32)
+      aie.dma_bd(%buf_2 : memref<256xi32> offset = 128 len = 128)
       aie.use_lock(%lock_0, Release, 0)
       aie.next_bd ^bd4
   }

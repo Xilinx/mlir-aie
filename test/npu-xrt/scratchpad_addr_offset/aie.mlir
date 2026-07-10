@@ -53,21 +53,19 @@ module {
 
         // Runtime sequence
         aie.runtime_sequence @sequence(%in : memref<32xi32>, %out : memref<8xi32>) {
-          %c0_i32 = arith.constant 0 : i32
-          %c8_i32 = arith.constant 8 : i32
 
             aiex.npu.load_pdi { device_ref = @empty }
             aiex.npu.load_pdi { device_ref = @test }
 
             // Input DMA — offset_parameter patches the BD address at runtime
             %t_in = aiex.dma_configure_task_for @objfifo_in {
-                aie.dma_bd(%in : memref<32xi32> offset = %c0_i32 len = %c8_i32) {offset_parameter = @input_offset}
+                aie.dma_bd(%in : memref<32xi32> offset = 0 len = 8) {offset_parameter = @input_offset}
                 aie.end
             }
 
             // Output DMA
             %t_out = aiex.dma_configure_task_for @objfifo_out {
-                aie.dma_bd(%out : memref<8xi32> offset = %c0_i32 len = %c8_i32)
+                aie.dma_bd(%out : memref<8xi32> offset = 0 len = 8)
                 aie.end
             } {issue_token = true}
 

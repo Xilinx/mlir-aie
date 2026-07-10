@@ -48,19 +48,17 @@ module @aie_module  {
   %lock_e = aie.lock(%t02, 0)
 
   %m01 = aie.memtile_dma(%t01) {
-    %c0_i32 = arith.constant 0 : i32
-    %c16_i32 = arith.constant 16 : i32
       %srcDma = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
-      aie.dma_bd(%buf_w : memref<16xi32> offset = %c0_i32 len = %c16_i32)
+      aie.dma_bd(%buf_w : memref<16xi32> offset = 0 len = 16)
       aie.use_lock(%lock_w, "Release", 1)
       aie.next_bd ^bd1
     ^bd1:
-      aie.dma_bd(%buf_l : memref<16xi32> offset = %c0_i32 len = %c16_i32)
+      aie.dma_bd(%buf_l : memref<16xi32> offset = 0 len = 16)
       aie.use_lock(%lock_l, "Release", 1)
       aie.next_bd ^bd2
     ^bd2:
-      aie.dma_bd(%buf_e : memref<16xi32> offset = %c0_i32 len = %c16_i32)
+      aie.dma_bd(%buf_e : memref<16xi32> offset = 0 len = 16)
       aie.use_lock(%lock_e, "Release", 1)
       aie.next_bd ^end
     ^end:

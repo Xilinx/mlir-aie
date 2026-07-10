@@ -37,24 +37,22 @@ module @aie_module  {
     
     // Tile DMA
     %m73 = aie.mem(%t73) {
-      %c0_i32 = arith.constant 0 : i32
-      %c256_i32 = arith.constant 256 : i32
         %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^end)
       ^bd0:
         aie.use_lock(%lock_l1, AcquireGreaterEqual, 1)
-        aie.dma_bd(%buf_l : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+        aie.dma_bd(%buf_l : memref<256xi32> offset = 0 len = 256)
         aie.use_lock(%lock_l2, Release, 1)
         aie.next_bd ^bd1
       ^bd1:
-        aie.dma_bd(%buf_l : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+        aie.dma_bd(%buf_l : memref<256xi32> offset = 0 len = 256)
         aie.use_lock(%lock_l1, Release, 1)
         aie.next_bd ^bd2
       ^bd2:
-        aie.dma_bd(%buf_l : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+        aie.dma_bd(%buf_l : memref<256xi32> offset = 0 len = 256)
         aie.use_lock(%lock_l1, Release, 1)
         aie.next_bd ^bd3
       ^bd3:
-        aie.dma_bd(%buf_l : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+        aie.dma_bd(%buf_l : memref<256xi32> offset = 0 len = 256)
         aie.use_lock(%lock_l1, Release, 1)
         aie.next_bd ^end
       ^end:

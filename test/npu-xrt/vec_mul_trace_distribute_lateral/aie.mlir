@@ -123,9 +123,6 @@ module {
 
     aie.runtime_sequence(%arg0: memref<4096xi32>, %arg1: memref<1xi32>,
                          %arg2: memref<4096xi32>) {
-                           %c0_i32 = arith.constant 0 : i32
-                           %c1_i32 = arith.constant 1 : i32
-                           %c4096_i32 = arith.constant 4096 : i32
 
       // Trace: 8192 bytes per channel, 2 channels = 16384 total at arg_idx=4.
       // The distribute pass splits this into two 8192-byte regions by offset.
@@ -136,19 +133,19 @@ module {
 
       // Data transfers
       %0 = aiex.dma_configure_task_for @in {
-        aie.dma_bd(%arg0 : memref<4096xi32> offset = %c0_i32 len = %c4096_i32 sizes = [1, 1, 1, 4096] strides = [0, 0, 0, 1])
+        aie.dma_bd(%arg0 : memref<4096xi32> offset = 0 len = 4096 sizes = [1, 1, 1, 4096] strides = [0, 0, 0, 1])
           {burst_length = 0 : i32}
         aie.end
       } {issue_token = true}
 
       %1 = aiex.dma_configure_task_for @infactor {
-        aie.dma_bd(%arg1 : memref<1xi32> offset = %c0_i32 len = %c1_i32 sizes = [1, 1, 1, 1] strides = [0, 0, 0, 1])
+        aie.dma_bd(%arg1 : memref<1xi32> offset = 0 len = 1 sizes = [1, 1, 1, 1] strides = [0, 0, 0, 1])
           {burst_length = 0 : i32}
         aie.end
       } {issue_token = true}
 
       %2 = aiex.dma_configure_task_for @out_fwd {
-        aie.dma_bd(%arg2 : memref<4096xi32> offset = %c0_i32 len = %c4096_i32 sizes = [1, 1, 1, 4096] strides = [0, 0, 0, 1])
+        aie.dma_bd(%arg2 : memref<4096xi32> offset = 0 len = 4096 sizes = [1, 1, 1, 4096] strides = [0, 0, 0, 1])
           {burst_length = 0 : i32}
         aie.end
       } {issue_token = true}

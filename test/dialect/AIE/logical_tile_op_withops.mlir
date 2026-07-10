@@ -157,10 +157,8 @@ module @test_dma_configure_task {
     %buffer = aie.external_buffer {sym_name = "ext_buffer"} : memref<1024xi32>
 
     aie.runtime_sequence(%arg0: memref<1024xi32>) {
-      %c0_i32 = arith.constant 0 : i32
-      %c1024_i32 = arith.constant 1024 : i32
       %task = aiex.dma_configure_task(%shim_tile, MM2S, 0) {
-        aie.dma_bd(%buffer : memref<1024xi32> offset = %c0_i32 len = %c1024_i32) {bd_id = 0 : i32}
+        aie.dma_bd(%buffer : memref<1024xi32> offset = 0 len = 1024) {bd_id = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%task)
@@ -179,9 +177,8 @@ module @test_dma_configure_task_memtile {
     %buffer_in = aie.buffer(%mem_tile) {sym_name = "buf_in"} : memref<256xi32>
 
     aie.runtime_sequence(%arg0: memref<256xi32>) {
-      %c256_i32 = arith.constant 256 : i32
       %task = aiex.dma_configure_task(%mem_tile, S2MM, 0) {
-        aie.dma_bd(%buffer_in : memref<256xi32> len = %c256_i32) {bd_id = 0 : i32}
+        aie.dma_bd(%buffer_in : memref<256xi32> len = 256) {bd_id = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%task)

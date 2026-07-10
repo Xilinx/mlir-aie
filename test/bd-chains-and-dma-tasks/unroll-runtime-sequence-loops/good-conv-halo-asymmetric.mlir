@@ -33,22 +33,19 @@ aie.device(npu1) {
     %c1 = arith.constant 1 : index
     %c3 = arith.constant 3 : index
     // Prologue: boundary tile, no halo -> single BD (C=1).
-    %c0_i32 = arith.constant 0 : i32
-    %c256_i32 = arith.constant 256 : i32
     %init = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      aie.dma_bd(%arg0 : memref<1024xi32> offset = %c0_i32 len = %c256_i32)
+      aie.dma_bd(%arg0 : memref<1024xi32> offset = 0 len = 256)
       aie.end
     }
     aiex.dma_start_task(%init)
     // Interior tiles: main body + halo strip -> two-BD chain (C=2), one-behind
     // free of the previous tile's task.
     %last = scf.for %i = %c1 to %c3 step %c1 iter_args(%prev = %init) -> (index) {
-      %c128_i32 = arith.constant 128 : i32
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<1024xi32> offset = %c0_i32 len = %c128_i32)
+        aie.dma_bd(%arg0 : memref<1024xi32> offset = 0 len = 128)
         aie.next_bd ^halo
       ^halo:
-        aie.dma_bd(%arg0 : memref<1024xi32> offset = %c128_i32 len = %c128_i32)
+        aie.dma_bd(%arg0 : memref<1024xi32> offset = 128 len = 128)
         aie.end
       }
       aiex.dma_start_task(%t)

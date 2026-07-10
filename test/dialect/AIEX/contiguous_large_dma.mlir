@@ -94,12 +94,10 @@ module {
     %shim_noc_tile_0_0 = aie.tile(0, 0)
     aie.shim_dma_allocation @of_fromMem (%shim_noc_tile_0_0, MM2S, 0)
     aie.runtime_sequence @tasks_to_npu_large(%arg0: memref<2073600xi32>) {
-      %c0_i32 = arith.constant 0 : i32
-      %c2073600_i32 = arith.constant 2073600 : i32
       %0 = aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0) {
         // 1080 x 1920 i32: d0=1920 > 1023, d1=1080 > 1023, contiguous.
         // aie-dma-tasks-to-npu must lower to linear mode (d0_size=d1_size=0).
-        aie.dma_bd(%arg0 : memref<2073600xi32> offset = %c0_i32 len = %c2073600_i32 sizes = [1080, 1920] strides = [1920, 1])
+        aie.dma_bd(%arg0 : memref<2073600xi32> offset = 0 len = 2073600 sizes = [1080, 1920] strides = [1920, 1])
           {bd_id = 0 : i32}
         aie.end
       } {issue_token = true}

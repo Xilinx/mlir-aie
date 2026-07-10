@@ -25,10 +25,8 @@ aie.device(npu2) {
     %c1 = arith.constant 1 : index
     %c4 = arith.constant 4 : index
     scf.for %i = %c0 to %c4 step %c1 {
-      %c0_i32 = arith.constant 0 : i32
-      %c8_i32 = arith.constant 8 : i32
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32)
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8)
         aie.end
       }
       aiex.dma_start_task(%t)

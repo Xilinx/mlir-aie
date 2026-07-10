@@ -76,15 +76,13 @@ module {
         }
 
         aie.runtime_sequence @add_two_sequence(%a : memref<4xi32>) {
-          %c0_i32 = arith.constant 0 : i32
-          %c4_i32 = arith.constant 4 : i32
             
             %t_in = aiex.dma_configure_task_for @objfifo_in {
-                aie.dma_bd(%a : memref<4xi32> offset = %c0_i32 len = %c4_i32)
+                aie.dma_bd(%a : memref<4xi32> offset = 0 len = 4)
                 aie.end
             }
             %t_out = aiex.dma_configure_task_for @objfifo_out {
-                aie.dma_bd(%a : memref<4xi32> offset = %c0_i32 len = %c4_i32)
+                aie.dma_bd(%a: memref<4xi32> offset = 0 len = 4)
                 aie.end
             } {issue_token = true}
             aiex.dma_start_task(%t_in)
@@ -106,6 +104,7 @@ module {
             %c0 = arith.constant 0 : index
             %c1 = arith.constant 1 : index
             %c2 = arith.constant 2 : index
+            %c3_i32 = arith.constant 3 : i32
             %c8 = arith.constant 8 : index
             %c4 = arith.constant 4 : index
             %c_intmax = arith.constant 0xFFFFFE : index
@@ -129,11 +128,11 @@ module {
         aie.runtime_sequence @add_three_sequence(%a : memref<4xi32>) {
             
             %t_in = aiex.dma_configure_task_for @objfifo_in {
-                aie.dma_bd(%a : memref<4xi32> offset = %c0_i32 len = %c4_i32)
+                aie.dma_bd(%a : memref<4xi32> offset = 0 len = 4)
                 aie.end
             }
             %t_out = aiex.dma_configure_task_for @objfifo_out {
-                aie.dma_bd(%a : memref<4xi32> offset = %c0_i32 len = %c4_i32)
+                aie.dma_bd(%a: memref<4xi32> offset = 0 len = 4)
                 aie.end
             } {issue_token = true}
             aiex.dma_start_task(%t_in)

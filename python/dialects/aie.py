@@ -98,13 +98,25 @@ class npu_write_rtp(NpuWriteRTPOp):
 
 def _as_i32(v):
     """Materialize an arith.constant i32 from a Python/NumPy int, pass a Value
-    through unchanged, or return None for None. Shared by the dma_bd wrapper here
-    and the npu scalar op wrappers in aiex.py (imported from this module)."""
+    through unchanged, or return None for None. Shared by the npu scalar op
+    wrappers in aiex.py (imported from this module)."""
     if v is None:
         return None
     if isinstance(v, (int, np.integer)):
         return constant(int(v), T.i32())
     return v
+
+
+def _split_i32_scalar(v):
+    """Split a dma_bd offset/len argument into (operand, static_attr): a Python
+    int becomes a compile-time attribute (no arith.constant materialized), an SSA
+    Value becomes the runtime operand, and None leaves both unset. Mirrors the
+    operand-vs-attribute split sizes/strides already use."""
+    if v is None:
+        return None, None
+    if isinstance(v, (int, np.integer)):
+        return None, int(v)
+    return v, None
 
 
 def dma_bd(
@@ -120,17 +132,20 @@ def dma_bd(
 
     ``sizes`` and ``strides`` each accept one sequence where entries may be
     Python ints (constant) or SSA Values (runtime).  ``offset`` and ``len``
-    accept ints or Values; plain ints are materialized as arith.constant i32.
+    accept ints or Values; a plain int lands in the static_offset/static_len
+    attribute while a Value becomes a runtime operand.
 
     Example::
 
-        %c0  = arith.constant 0  : i32
         %len = ...
         aie.dma_bd(%buf sizes=[16, %n] strides=[16, 1]
-                   offset=%c0 len=%len)
+                   offset=0 len=%len)
     """
     dyn_sizes, _packed_sizes, static_sizes = _dispatch_mixed_values(sizes or [])
     dyn_strides, _packed_strides, static_strides = _dispatch_mixed_values(strides or [])
+
+    offset_operand, static_offset = _split_i32_scalar(offset)
+    len_operand, static_len = _split_i32_scalar(len)
 
     # Leave the static arrays unset (not empty) when there is no ND layout so
     # the optional attributes elide from the printed op.
@@ -140,8 +155,10 @@ def dma_bd(
         strides=dyn_strides,
         static_sizes=static_sizes if static_sizes else None,
         static_strides=static_strides if static_strides else None,
-        offset=_as_i32(offset),
-        len=_as_i32(len),
+        offset=offset_operand,
+        len=len_operand,
+        static_offset=static_offset,
+        static_len=static_len,
         **kwargs,
     )
 

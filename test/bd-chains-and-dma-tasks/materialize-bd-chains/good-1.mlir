@@ -15,16 +15,13 @@ module {
     %tile_0_2 = aie.tile(0, 2)
 
     aie.bd_chain @simple_chain(%arg0: memref<8xi16>, %arg1: memref<12xi16>, %arg2: memref<8xi16>) {
-      %c0_i32 = arith.constant 0 : i32
-      %c8_i32 = arith.constant 8 : i32
-      %c12_i32 = arith.constant 12 : i32
-            aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32 sizes = [1, 2, 2, 2] strides = [0, 2, 4, 1])
+            aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8 sizes = [1, 2, 2, 2] strides = [0, 2, 4, 1])
             aie.next_bd ^bd1
         ^bd1:
-            aie.dma_bd(%arg1 : memref<12xi16> offset = %c0_i32 len = %c12_i32)
+            aie.dma_bd(%arg1 : memref<12xi16> offset = 0 len = 12)
             aie.next_bd ^bd2
         ^bd2:
-            aie.dma_bd(%arg2 : memref<8xi16> offset = %c0_i32 len = %c8_i32)
+            aie.dma_bd(%arg2 : memref<8xi16> offset = 0 len = 8)
             aie.end
     }
 

@@ -39,19 +39,17 @@ module @test_xaie3 {
   %l33_1 = aie.lock(%t33, 1)
 
   %m33 = aie.mem(%t33) {
-    %c0_i32 = arith.constant 0 : i32
-    %c256_i32 = arith.constant 256 : i32
       %srcDma = aie.dma_start(MM2S, 0, ^bd0, ^dma0)
     ^dma0:
       %destDma = aie.dma_start(S2MM, 0, ^bd1, ^end)
     ^bd0:
       aie.use_lock(%l33_0, Acquire, 1)
-      aie.dma_bd(%buf33_0 : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+      aie.dma_bd(%buf33_0 : memref<256xi32> offset = 0 len = 256)
       aie.use_lock(%l33_0, Release, 0)
       aie.next_bd ^end
     ^bd1:
       aie.use_lock(%l33_1, Acquire, 1)
-      aie.dma_bd(%buf33_1 : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+      aie.dma_bd(%buf33_1 : memref<256xi32> offset = 0 len = 256)
       aie.use_lock(%l33_1, Release, 0)
       aie.next_bd ^end
     ^end:

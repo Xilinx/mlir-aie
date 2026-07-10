@@ -52,10 +52,8 @@ module {
     %tile_0_0 = aie.tile(2, 2)
 
     aie.runtime_sequence(%arg0: memref<8x!aiex.bfp<"v32bfp16ebz8">>, %arg1: memref<10x!aiex.bfp<"v8bfp16ebs8">>) {
-      %c0_i32 = arith.constant 0 : i32
-      %c8_i32 = arith.constant 8 : i32
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<8x!aiex.bfp<"v8bfp16ebs8">> offset = %c0_i32 len = %c8_i32) {bd_id = 7 : i32}
+        aie.dma_bd(%arg0 : memref<8x!aiex.bfp<"v8bfp16ebs8">> offset = 0 len = 8) {bd_id = 7 : i32}
         aie.end
       } {issue_token = true}
     }

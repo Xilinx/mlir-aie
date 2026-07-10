@@ -16,12 +16,10 @@ module @tutorial_2b {
     %buf14 = aie.buffer(%tile14) : memref<128xi16>
     %lock14_done = aie.lock(%tile14, 0) { init = 0 : i32 }
     %mem14 = aie.mem(%tile14) {
-      %c0_i32 = arith.constant 0 : i32
-      %c128_i32 = arith.constant 128 : i32
       %srcDma = aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
         // expected-error@+1 {{'aie.dma_bd' op For <32b width datatypes, inner-most dim stride must be 1}}
-        aie.dma_bd(%buf14 : memref<128xi16> offset = %c0_i32 len = %c128_i32 sizes = [32] strides = [2])
+        aie.dma_bd(%buf14 : memref<128xi16> offset = 0 len = 128 sizes = [32] strides = [2])
         aie.next_bd ^end
       ^end:
         aie.end

@@ -32,9 +32,6 @@ module @aie_module  {
   %l01_3 = aie.lock(%t01, 3)
 
   %m01 = aie.memtile_dma(%t01) {
-    %c0_i32 = arith.constant 0 : i32
-    %c16_i32 = arith.constant 16 : i32
-    %c128_i32 = arith.constant 128 : i32
       %srcDma = aie.dma_start(S2MM, 0, ^bd0, ^dma0)
     ^dma0:
       %memSrcDma = aie.dma_start(MM2S, 1, ^bd1, ^dma1)
@@ -44,22 +41,22 @@ module @aie_module  {
       %dstDma = aie.dma_start(MM2S, 0, ^bd3, ^end)
     ^bd0:
       aie.use_lock(%l01_0, "AcquireGreaterEqual", 1)
-      aie.dma_bd(%buf01_0 : memref<16xi32> offset = %c0_i32 len = %c128_i32 sizes = [2, 3, 2, 1] strides = [1, 2, 4, 1])
+      aie.dma_bd(%buf01_0 : memref<16xi32> offset = 0 len = 128 sizes = [2, 3, 2, 1] strides = [1, 2, 4, 1])
       aie.use_lock(%l01_1, "Release", 1)
       aie.next_bd ^bd0
     ^bd1:
       aie.use_lock(%l01_1, "AcquireGreaterEqual", 1)
-      aie.dma_bd(%buf01_0 : memref<16xi32> offset = %c0_i32 len = %c16_i32)
+      aie.dma_bd(%buf01_0 : memref<16xi32> offset = 0 len = 16)
       aie.use_lock(%l01_0, "Release", 1)
       aie.next_bd ^bd1
     ^bd2:
       aie.use_lock(%l01_2, "AcquireGreaterEqual", 1)
-      aie.dma_bd(%buf01_1 : memref<16xi32> offset = %c0_i32 len = %c16_i32)
+      aie.dma_bd(%buf01_1 : memref<16xi32> offset = 0 len = 16)
       aie.use_lock(%l01_3, "Release", 1)
       aie.next_bd ^bd2
     ^bd3:
       aie.use_lock(%l01_3, "AcquireGreaterEqual", 1)
-      aie.dma_bd(%buf01_1 : memref<16xi32> offset = %c0_i32 len = %c16_i32)
+      aie.dma_bd(%buf01_1 : memref<16xi32> offset = 0 len = 16)
       aie.use_lock(%l01_2, "Release", 1)
       aie.next_bd ^bd3
     ^end:

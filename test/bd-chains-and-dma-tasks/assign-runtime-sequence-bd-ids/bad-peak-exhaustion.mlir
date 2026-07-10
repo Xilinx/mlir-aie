@@ -12,41 +12,40 @@
 aie.device(npu2) {
   %tile_0_0 = aie.tile(0, 0)
   aie.runtime_sequence(%arg0: memref<8xi16>) {
-    %c0_i32 = arith.constant 0 : i32
     %t0  = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      %c8_i32 = arith.constant 8 : i32 aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32) aie.end }
+      aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8) aie.end }
     %t1  = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      %c8_i32 = arith.constant 8 : i32 aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32) aie.end }
+      aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8) aie.end }
     %t2  = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      %c8_i32 = arith.constant 8 : i32 aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32) aie.end }
+      aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8) aie.end }
     %t3  = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      %c8_i32 = arith.constant 8 : i32 aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32) aie.end }
+      aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8) aie.end }
     %t4  = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      %c8_i32 = arith.constant 8 : i32 aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32) aie.end }
+      aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8) aie.end }
     %t5  = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      %c8_i32 = arith.constant 8 : i32 aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32) aie.end }
+      aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8) aie.end }
     %t6  = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      %c8_i32 = arith.constant 8 : i32 aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32) aie.end }
+      aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8) aie.end }
     %t7  = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      %c8_i32 = arith.constant 8 : i32 aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32) aie.end }
+      aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8) aie.end }
     %t8  = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      %c8_i32 = arith.constant 8 : i32 aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32) aie.end }
+      aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8) aie.end }
     %t9  = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      %c8_i32 = arith.constant 8 : i32 aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32) aie.end }
+      aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8) aie.end }
     %t10 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      %c8_i32 = arith.constant 8 : i32 aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32) aie.end }
+      aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8) aie.end }
     %t11 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      %c8_i32 = arith.constant 8 : i32 aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32) aie.end }
+      aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8) aie.end }
     %t12 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      %c8_i32 = arith.constant 8 : i32 aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32) aie.end }
+      aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8) aie.end }
     %t13 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      %c8_i32 = arith.constant 8 : i32 aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32) aie.end }
+      aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8) aie.end }
     %t14 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      %c8_i32 = arith.constant 8 : i32 aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32) aie.end }
+      aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8) aie.end }
     %t15 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      %c8_i32 = arith.constant 8 : i32 aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32) aie.end }
+      aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8) aie.end }
     // expected-error@+1 {{Too many simultaneously active buffer descriptors}}
     %t16 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      %c8_i32 = arith.constant 8 : i32 aie.dma_bd(%arg0 : memref<8xi16> offset = %c0_i32 len = %c8_i32) aie.end }
+      aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8) aie.end }
   }
 }

@@ -154,42 +154,39 @@ module {
       aiex.npu.dma_wait {symbol = @out}
     }
     %mem_0_2 = aie.mem(%tile_0_2) {
-      %c0_i32 = arith.constant 0 : i32
-      %c16_i32 = arith.constant 16 : i32
-      %c256_i32 = arith.constant 256 : i32
       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
     ^bb1:  // 2 preds: ^bb0, ^bb2
       aie.use_lock(%in1_cons_prod_lock, AcquireGreaterEqual, 1)
-      aie.dma_bd(%in1_cons_buff_0 : memref<16xi32> offset = %c0_i32 len = %c16_i32)
+      aie.dma_bd(%in1_cons_buff_0 : memref<16xi32> offset = 0 len = 16)
       aie.use_lock(%in1_cons_cons_lock, Release, 1)
       aie.next_bd ^bb2
     ^bb2:  // pred: ^bb1
       aie.use_lock(%in1_cons_prod_lock, AcquireGreaterEqual, 1)
-      aie.dma_bd(%in1_cons_buff_1 : memref<16xi32> offset = %c0_i32 len = %c16_i32)
+      aie.dma_bd(%in1_cons_buff_1 : memref<16xi32> offset = 0 len = 16)
       aie.use_lock(%in1_cons_cons_lock, Release, 1)
       aie.next_bd ^bb1
     ^bb3:  // pred: ^bb0
       %1 = aie.dma_start(S2MM, 1, ^bb4, ^bb6)
     ^bb4:  // 2 preds: ^bb3, ^bb5
       aie.use_lock(%in2_mem_cons_prod_lock, AcquireGreaterEqual, 1)
-      aie.dma_bd(%in2_mem_cons_buff_0 : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+      aie.dma_bd(%in2_mem_cons_buff_0 : memref<256xi32> offset = 0 len = 256)
       aie.use_lock(%in2_mem_cons_cons_lock, Release, 1)
       aie.next_bd ^bb5
     ^bb5:  // pred: ^bb4
       aie.use_lock(%in2_mem_cons_prod_lock, AcquireGreaterEqual, 1)
-      aie.dma_bd(%in2_mem_cons_buff_1 : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+      aie.dma_bd(%in2_mem_cons_buff_1 : memref<256xi32> offset = 0 len = 256)
       aie.use_lock(%in2_mem_cons_cons_lock, Release, 1)
       aie.next_bd ^bb4
     ^bb6:  // pred: ^bb3
       %2 = aie.dma_start(MM2S, 0, ^bb7, ^bb9)
     ^bb7:  // 2 preds: ^bb6, ^bb8
       aie.use_lock(%out_cons_lock, AcquireGreaterEqual, 1)
-      aie.dma_bd(%out_buff_0 : memref<16xi32> offset = %c0_i32 len = %c16_i32)
+      aie.dma_bd(%out_buff_0 : memref<16xi32> offset = 0 len = 16)
       aie.use_lock(%out_prod_lock, Release, 1)
       aie.next_bd ^bb8
     ^bb8:  // pred: ^bb7
       aie.use_lock(%out_cons_lock, AcquireGreaterEqual, 1)
-      aie.dma_bd(%out_buff_1 : memref<16xi32> offset = %c0_i32 len = %c16_i32)
+      aie.dma_bd(%out_buff_1 : memref<16xi32> offset = 0 len = 16)
       aie.use_lock(%out_prod_lock, Release, 1)
       aie.next_bd ^bb7
     ^bb9:  // pred: ^bb6
@@ -200,12 +197,12 @@ module {
       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
     ^bb1:
       aie.use_lock(%in2_mem_cons_lock, AcquireGreaterEqual, 1)
-      aie.dma_bd(%in2_mem_buff_0 : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+      aie.dma_bd(%in2_mem_buff_0 : memref<256xi32> offset = 0 len = 256)
       aie.use_lock(%in2_mem_prod_lock, Release, 1)
       aie.next_bd ^bb2
     ^bb2:
       aie.use_lock(%in2_mem_cons_lock, AcquireGreaterEqual, 1)
-      aie.dma_bd(%in2_mem_buff_1 : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+      aie.dma_bd(%in2_mem_buff_1 : memref<256xi32> offset = 0 len = 256)
       aie.use_lock(%in2_mem_prod_lock, Release, 1)
       aie.next_bd ^bb1
     ^bb3:

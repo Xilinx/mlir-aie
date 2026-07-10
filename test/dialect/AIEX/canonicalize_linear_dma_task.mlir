@@ -46,10 +46,8 @@ module {
 
       // This DMA task op uses a different op (aie.dma_bd) and is not touched
       // by the NpuDmaMemcpyNdOp canonicalization pattern.
-      %c0_i32 = arith.constant 0 : i32
-      %c1024_i32 = arith.constant 1024 : i32
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<2x512xi32> offset = %c0_i32 len = %c1024_i32) {bd_id = 0 : i32}
+        aie.dma_bd(%arg0 : memref<2x512xi32> offset = 0 len = 1024) {bd_id = 0 : i32}
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%t)

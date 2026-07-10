@@ -24,24 +24,22 @@ module @shimtileDMA_channels {
         aie.objectfifo @objfifo (%tile33, {%tile20}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
         %mem12 = aie.shim_dma(%tile20) {
-          %c0_i32 = arith.constant 0 : i32
-          %c16_i32 = arith.constant 16 : i32
             %dma1 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
         ^bb1:
             aie.use_lock(%lock0, Acquire, 1)
-            aie.dma_bd(%buff0 : memref<16xi32> offset = %c0_i32 len = %c16_i32)
+            aie.dma_bd(%buff0 : memref<16xi32> offset = 0 len = 16)
             aie.use_lock(%lock0, Release, 0)
             aie.next_bd ^bb2
         ^bb2:
             aie.use_lock(%lock1, Acquire, 1)
-            aie.dma_bd(%buff1 : memref<16xi32> offset = %c0_i32 len = %c16_i32)
+            aie.dma_bd(%buff1 : memref<16xi32> offset = 0 len = 16)
             aie.use_lock(%lock1, Release, 0)
             aie.next_bd ^bb1
         ^bb3:
             %dma2 = aie.dma_start(S2MM, 1, ^bb4, ^bb5)
         ^bb4:
             aie.use_lock(%lock2, Acquire, 0)
-            aie.dma_bd(%buff2 : memref<16xi32> offset = %c0_i32 len = %c16_i32)
+            aie.dma_bd(%buff2 : memref<16xi32> offset = 0 len = 16)
             aie.use_lock(%lock2, Release, 1)
             aie.next_bd ^bb4
         ^bb5:

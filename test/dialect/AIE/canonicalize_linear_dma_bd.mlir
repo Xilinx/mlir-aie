@@ -39,7 +39,7 @@ module {
       %c1024_i32 = arith.constant 1024 : i32
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
-        aie.dma_bd(%buf : memref<1024xi32> offset = %c0_i32 len = %c1024_i32 sizes = [2, 512] strides = [512, 1])
+        aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 1024 sizes = [2, 512] strides = [512, 1])
         aie.next_bd ^end
       ^end:
         aie.end
@@ -67,7 +67,7 @@ module {
       %c1024_i32 = arith.constant 1024 : i32
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
-        aie.dma_bd(%buf : memref<1024xi32> offset = %c0_i32 len = %c1024_i32 sizes = [4, 8, 32] strides = [256, 32, 1])
+        aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 1024 sizes = [4, 8, 32] strides = [256, 32, 1])
         aie.next_bd ^end
       ^end:
         aie.end
@@ -92,10 +92,9 @@ module {
     %buf = aie.external_buffer { sym_name = "buf2" } : memref<4096xi32>
     aie.shim_dma(%tile_0_0) {
       %c0_i32 = arith.constant 0 : i32
-      %c4096_i32 = arith.constant 4096 : i32
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
-        aie.dma_bd(%buf : memref<4096xi32> offset = %c0_i32 len = %c4096_i32)
+        aie.dma_bd(%buf : memref<4096xi32> offset = 0 len = 4096)
         aie.next_bd ^end
       ^end:
         aie.end
@@ -127,7 +126,7 @@ module {
       %c1024_i32 = arith.constant 1024 : i32
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
-        aie.dma_bd(%buf : memref<1024xi32> offset = %c0_i32 len = %c1024_i32 sizes = [2, 512] strides = [512, 1]) {
+        aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 1024 sizes = [2, 512] strides = [512, 1]) {
             packet = #aie.packet_info<pkt_type = 0, pkt_id = 1>}
         aie.next_bd ^end
       ^end:
@@ -157,7 +156,7 @@ module {
       ^bd0:
         // stride 513 != product 512: genuinely strided, must not linearize.
         // max index = 1*513 + 511*1 = 1024 < 1200 (in bounds).
-        aie.dma_bd(%buf : memref<1200xi32> offset = %c0_i32 len = %c1024_i32 sizes = [2, 512] strides = [513, 1])
+        aie.dma_bd(%buf : memref<1200xi32> offset = 0 len = 1024 sizes = [2, 512] strides = [513, 1])
         aie.next_bd ^end
       ^end:
         aie.end
@@ -187,12 +186,11 @@ module {
     %buf = aie.external_buffer { sym_name = "buf4" } : memref<2073600xi32>
     aie.shim_dma(%tile_0_0) {
       %c0_i32 = arith.constant 0 : i32
-      %c2073600_i32 = arith.constant 2073600 : i32
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
         // 1080 x 1920: d0=1920 > 1023, d1=1080 > 1023, but contiguous so
         // LinearizeContiguousBDTransfer folds it to linear mode.
-        aie.dma_bd(%buf : memref<2073600xi32> offset = %c0_i32 len = %c2073600_i32 sizes = [1080, 1920] strides = [1920, 1])
+        aie.dma_bd(%buf : memref<2073600xi32> offset = 0 len = 2073600 sizes = [1080, 1920] strides = [1920, 1])
         aie.next_bd ^end
       ^end:
         aie.end
@@ -224,7 +222,7 @@ module {
       %c1024_i32 = arith.constant 1024 : i32
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
-        aie.dma_bd(%buf : memref<1024xi32> offset = %c0_i32 len = %c1024_i32 sizes = [2, 512] strides = [512, 1]) {
+        aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 1024 sizes = [2, 512] strides = [512, 1]) {
             burst_length = 64 : i32}
         aie.next_bd ^end
       ^end:
@@ -254,7 +252,7 @@ module {
       %c1024_i32 = arith.constant 1024 : i32
       aie.dma_start(MM2S, 0, ^bd0, ^end)
       ^bd0:
-        aie.dma_bd(%buf : memref<1024xi32> offset = %c0_i32 len = %c1024_i32 sizes = [2, 512] strides = [512, 1]) {
+        aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 1024 sizes = [2, 512] strides = [512, 1]) {
             bd_id = 3 : i32}
         aie.next_bd ^end
       ^end:
@@ -278,7 +276,7 @@ module {
     aie.runtime_sequence @rt_seq(%buf: memref<1024xi32>, %n: i64) {
       %c0_i32 = arith.constant 0 : i32
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%buf : memref<1024xi32> offset = %c0_i32
+        aie.dma_bd(%buf : memref<1024xi32> offset = 0
                    sizes = [%n, 64] strides = [64, 1])
         aie.end
       }

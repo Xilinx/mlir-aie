@@ -982,11 +982,16 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
 
   let arguments = (
     ins AnyRankedOrUnrankedMemRef:$buffer,
-        // in multiples of element width (not bytes); single scalar operands,
-        // a constant folds to the historical attribute value (see #3225 for the
-        // scalar-operand idiom). offset defaults to 0 when absent.
+        // offset/len are denominated in element width (not bytes). Like the
+        // sizes/strides DynamicIndexList below (and aiex.npu.dma_memcpy_nd's
+        // static_offsets), a compile-time constant lands in the
+        // $static_offset/$static_len attribute while a runtime value becomes the
+        // $offset/$len SSA operand. Absent operand AND attr means offset 0 /
+        // full-buffer len.
         Optional<I32>:$offset,
         Optional<I32>:$len,
+        OptionalAttr<AIEI32Attr>:$static_offset,
+        OptionalAttr<AIEI32Attr>:$static_len,
         // n-d tensor addressing: sizes/strides as a mixed static/dynamic index
         // list (DynamicIndexList), mirroring aiex.npu.dma_memcpy_nd. A constant
         // lands in static_sizes/static_strides; a runtime value becomes an
@@ -1013,8 +1018,8 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
   let hasVerifier = 1;
   let assemblyFormat = [{
     `(` $buffer `:` type($buffer)
-    ( `offset` `=` $offset^ )?
-    ( `len` `=` $len^ )?
+    ( `offset` `=` custom<DynamicScalar>($offset, $static_offset)^ )?
+    ( `len` `=` custom<DynamicScalar>($len, $static_len)^ )?
     ( `sizes` `=` custom<DynamicIndexList>($sizes, $static_sizes)^ )?
     ( `strides` `=` custom<DynamicIndexList>($strides, $static_strides)^ )?
     ( `pad` $pad_dimensions^ )?
@@ -1023,24 +1028,28 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
   }];
 
   let extraClassDeclaration = [{
-    // Shared base builder for the int-taking OpBuilder overloads: materializes
-    // arith.constant operands for offset/len and decomposes a
-    // BDDimLayoutArrayAttr (outermost-first) into all-static static_sizes /
-    // static_strides arrays (no dynamic operands). Keeps every historical
-    // int-argument producer call site source-compatible.
+    // Shared base builder for the int-taking OpBuilder overloads: routes the
+    // constant offset/len to the static_offset/static_len attributes (no
+    // arith.constant materialized) and decomposes a BDDimLayoutArrayAttr
+    // (outermost-first) into all-static static_sizes / static_strides arrays (no
+    // dynamic operands). Keeps every historical int-argument producer call site
+    // source-compatible.
     static void buildWithConstants(
         ::mlir::OpBuilder &builder, ::mlir::OperationState &state,
         ::mlir::Value buffer, int32_t offset, int32_t len,
         BDDimLayoutArrayAttr dims, BDPadLayoutArrayAttr padDims,
         PacketInfoAttr packet);
 
-    // Mixed static/dynamic builder: splits sizes/strides (each entry a constant
-    // or an SSA Value) into the operand + static-array pair via the upstream
-    // dispatchIndexOpFoldResults helper, exactly like tensor.extract_slice. An
-    // empty list leaves the corresponding static array unset so it elides.
+    // Mixed static/dynamic builder: splits offset/len and each sizes/strides
+    // entry (a constant attribute or an SSA Value) into the operand + static
+    // attribute pair via the upstream dispatchIndexOpFoldResults helper, exactly
+    // like tensor.extract_slice. An empty sizes/strides list leaves the
+    // corresponding static array unset so it elides; a null offset/len leaves
+    // both its operand and attribute unset.
     static void buildMixed(
         ::mlir::OpBuilder &builder, ::mlir::OperationState &state,
-        ::mlir::Value buffer, ::mlir::Value offset, ::mlir::Value len,
+        ::mlir::Value buffer, ::mlir::OpFoldResult offset,
+        ::mlir::OpFoldResult len,
         ::llvm::ArrayRef<::mlir::OpFoldResult> sizes,
         ::llvm::ArrayRef<::mlir::OpFoldResult> strides,
         BDPadLayoutArrayAttr padDims, PacketInfoAttr packet);
@@ -1052,22 +1061,34 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
       return dataLayout.getTypeSize(bufferType.getElementType());
     }
 
-    // Fold the offset/len operands to compile-time constants. Absent operand ->
-    // nullopt; a non-constant (runtime) operand also -> nullopt (callers on the
-    // static lowering path treat that as an error via getFoldedDimensions'
-    // sibling diagnostics).
+    // The offset/len as compile-time constants. A constant lives in the
+    // static_offset/static_len attribute; if instead a runtime operand is
+    // present, fold it (a constant-valued operand still resolves). Returns
+    // nullopt when neither is present or the operand is a genuine runtime value
+    // (callers on the static lowering path treat that as an error via
+    // getFoldedDimensions' sibling diagnostics).
     std::optional<int32_t> getConstantOffset() {
-      if (!getOffset()) return std::nullopt;
-      if (auto c = ::mlir::getConstantIntValue(getOffset()))
-        return static_cast<int32_t>(*c);
+      if (auto attr = getStaticOffset())
+        return static_cast<int32_t>(*attr);
+      if (getOffset())
+        if (auto c = ::mlir::getConstantIntValue(getOffset()))
+          return static_cast<int32_t>(*c);
       return std::nullopt;
     }
     std::optional<int32_t> getConstantLen() {
-      if (!getLen()) return std::nullopt;
-      if (auto c = ::mlir::getConstantIntValue(getLen()))
-        return static_cast<int32_t>(*c);
+      if (auto attr = getStaticLen())
+        return static_cast<int32_t>(*attr);
+      if (getLen())
+        if (auto c = ::mlir::getConstantIntValue(getLen()))
+          return static_cast<int32_t>(*c);
       return std::nullopt;
     }
+
+    // True when the BD carries an explicit length (a runtime operand or the
+    // static_len attribute). Distinct from getConstantLen(), which is nullopt
+    // for a runtime len even though a length IS present.
+    bool hasLen() { return getLen() || getStaticLen().has_value(); }
+    bool hasOffset() { return getOffset() || getStaticOffset().has_value(); }
 
     // sizes/strides as mixed static/dynamic index lists (DynamicIndexList),
     // mirroring aiex.npu.dma_memcpy_nd. Outermost dimension first.

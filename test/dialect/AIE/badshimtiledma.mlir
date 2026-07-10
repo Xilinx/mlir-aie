@@ -21,8 +21,6 @@ module @test {
 
     // Tile DMA
     %m00 = aie.shim_dma(%t00) {
-      %c1_i32 = arith.constant 1 : i32
-      %c256_i32 = arith.constant 256 : i32
       // expected-error@-1 {{'aie.shim_dma' op uses more input channels than available on this tile}}
         %dma = aie.dma_start("S2MM", 0, ^bd0, ^dma1)
       ^dma1:
@@ -30,15 +28,15 @@ module @test {
       ^dma2:
         %dma3 = aie.dma_start("S2MM", 2, ^bd2, ^end)
       ^bd0:
-        aie.dma_bd(%buf_e : memref<256xi32> offset = %c1_i32 len = %c256_i32)
+        aie.dma_bd(%buf_e : memref<256xi32> offset = 1 len = 256)
         aie.use_lock(%lock_e, Release, 1)
         aie.next_bd ^bd0
       ^bd1:
-        aie.dma_bd(%buf_l : memref<256xi32> offset = %c1_i32 len = %c256_i32)
+        aie.dma_bd(%buf_l : memref<256xi32> offset = 1 len = 256)
         aie.use_lock(%lock_l, Release, 1)
         aie.next_bd ^bd1
       ^bd2:
-        aie.dma_bd(%buf_n : memref<256xi32> offset = %c1_i32 len = %c256_i32)
+        aie.dma_bd(%buf_n : memref<256xi32> offset = 1 len = 256)
         aie.use_lock(%lock_n, Release, 1)
         aie.next_bd ^bd2
       ^end:
@@ -66,7 +64,7 @@ module @test {
         // expected-note@+1 {{in this BD block}}
         aie.use_lock(%lock, Acquire, 1)
         aie.use_lock(%lock, Acquire, 1)
-        aie.dma_bd(%buff : memref<16xi32> offset = %c0_i32 len = %c16_i32)
+        aie.dma_bd(%buff : memref<16xi32> offset = 0 len = 16)
         aie.use_lock(%lock, Release, 0)
         aie.next_bd ^bd0
       ^end:
@@ -95,7 +93,7 @@ module @test {
         // expected-note@+1 {{in this BD block}}
         aie.use_lock(%prod_lock, AcquireGreaterEqual, 1)
         aie.use_lock(%prod_lock_test, AcquireGreaterEqual, 1)
-        aie.dma_bd(%buff : memref<16xi32> offset = %c0_i32 len = %c16_i32)
+        aie.dma_bd(%buff : memref<16xi32> offset = 0 len = 16)
         aie.use_lock(%cons_lock, Release, 1)
         aie.next_bd ^bd0
       ^end:
@@ -123,7 +121,7 @@ module @test {
       ^bd0:
         // expected-note@+1 {{in this BD block}}
         aie.use_lock(%prod_lock, AcquireGreaterEqual, 1)
-        aie.dma_bd(%buff : memref<16xi32> offset = %c0_i32 len = %c16_i32)
+        aie.dma_bd(%buff : memref<16xi32> offset = 0 len = 16)
         aie.use_lock(%cons_lock, Release, 1)
         aie.use_lock(%cons_lock_test, Release, 1)
         aie.next_bd ^bd0
@@ -152,8 +150,8 @@ module @test {
       ^bd0:
         // expected-note@+1 {{in this BD block}}
         aie.use_lock(%prod_lock, AcquireGreaterEqual, 1)
-        aie.dma_bd(%buff : memref<16xi32> offset = %c0_i32 len = %c16_i32)
-        aie.dma_bd(%buff2 : memref<16xi32> offset = %c0_i32 len = %c16_i32)
+        aie.dma_bd(%buff : memref<16xi32> offset = 0 len = 16)
+        aie.dma_bd(%buff2 : memref<16xi32> offset = 0 len = 16)
         aie.use_lock(%cons_lock, Release, 1)
         aie.next_bd ^bd0
       ^end:

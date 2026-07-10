@@ -149,60 +149,58 @@ module @test_has_valid_bds {
     %tile = aie.logical_tile<CoreTile>(?, ?)
     %buf = aie.buffer(%tile) : memref<256xi32>
     aie.mem(%tile) {
-      %c0_i32 = arith.constant 0 : i32
-      %c256_i32 = arith.constant 256 : i32
       %dma = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
-      aie.dma_bd(%buf : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd1
     ^bd1:
-      aie.dma_bd(%buf : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd2
     ^bd2:
-      aie.dma_bd(%buf : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd3
     ^bd3:
-      aie.dma_bd(%buf : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd4
     ^bd4:
-      aie.dma_bd(%buf : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd5
     ^bd5:
-      aie.dma_bd(%buf : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd6
     ^bd6:
-      aie.dma_bd(%buf : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd7
     ^bd7:
-      aie.dma_bd(%buf : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd8
     ^bd8:
-      aie.dma_bd(%buf : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd9
     ^bd9:
-      aie.dma_bd(%buf : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd10
     ^bd10:
-      aie.dma_bd(%buf : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd11
     ^bd11:
-      aie.dma_bd(%buf : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd12
     ^bd12:
-      aie.dma_bd(%buf : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd13
     ^bd13:
-      aie.dma_bd(%buf : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd14
     ^bd14:
-      aie.dma_bd(%buf : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd15
     ^bd15:
-      aie.dma_bd(%buf : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd16
     ^bd16:
       // This is the 17th BD, should fail
-      aie.dma_bd(%buf : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
       aie.next_bd ^bd0
     ^end:
       aie.end

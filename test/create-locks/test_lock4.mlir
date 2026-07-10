@@ -98,7 +98,7 @@ module @test_lock4 {
       %dmaSt = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
       aiex.useToken @token0(Acquire, 1)
-      aie.dma_bd(%buf33 : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+      aie.dma_bd(%buf33 : memref<256xi32> offset = 0 len = 256)
       aiex.useToken @token0(Release, 2)
       aie.next_bd ^end
     ^end:
@@ -113,12 +113,12 @@ module @test_lock4 {
       %dmaSt1 = aie.dma_start(MM2S, 0, ^bd1, ^end)
     ^bd0:
       aiex.useToken @token0(Acquire, 1)
-      aie.dma_bd(%buf44 : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+      aie.dma_bd(%buf44 : memref<256xi32> offset = 0 len = 256)
       aiex.useToken @token0(Release, 2)
       aie.next_bd ^end
     ^bd1:
       aiex.useToken @token0(Acquire, 3)
-      aie.dma_bd(%buf44 : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+      aie.dma_bd(%buf44 : memref<256xi32> offset = 0 len = 256)
       aiex.useToken @token0(Release, 4)
       aie.next_bd ^end
     ^end:
@@ -131,7 +131,7 @@ module @test_lock4 {
     %dmaSt = aie.dma_start(S2MM, 0, ^bd0, ^end)
     ^bd0:
       aiex.useToken @token0(Acquire, 3)
-      aie.dma_bd(%buf55 : memref<256xi32> offset = %c0_i32 len = %c256_i32)
+      aie.dma_bd(%buf55 : memref<256xi32> offset = 0 len = 256)
       aiex.useToken @token0(Release, 4)
       aie.next_bd ^end
     ^end:

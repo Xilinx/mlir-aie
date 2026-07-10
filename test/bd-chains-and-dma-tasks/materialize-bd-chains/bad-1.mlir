@@ -15,15 +15,13 @@ module {
     %tile_0_2 = aie.tile(0, 2)
 
     aie.bd_chain @simple_chain(%buf: memref<8xi16>) {
-      %c0_i32 = arith.constant 0 : i32
-      %c8_i32 = arith.constant 8 : i32
-            aie.dma_bd(%buf : memref<8xi16> offset = %c0_i32 len = %c8_i32)
+            aie.dma_bd(%buf : memref<8xi16> offset = 0 len = 8)
             aie.next_bd ^bd1
         ^bd1:
-            aie.dma_bd(%buf : memref<8xi16> offset = %c0_i32 len = %c8_i32)
+            aie.dma_bd(%buf : memref<8xi16> offset = 0 len = 8)
             aie.end
         ^bd2:
-            aie.dma_bd(%buf : memref<8xi16> offset = %c0_i32 len = %c8_i32)
+            aie.dma_bd(%buf : memref<8xi16> offset = 0 len = 8)
             // expected-error@+1 {{Block ending in this terminator does not form a chain with entry block}}
             aie.end
     }

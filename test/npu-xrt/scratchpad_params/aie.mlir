@@ -46,10 +46,8 @@ module {
             aiex.sync_scratchpad_parameters_from_host
 
             // Configure output DMA
-            %c0_i32 = arith.constant 0 : i32
-            %c2_i32 = arith.constant 2 : i32
             %t_out = aiex.dma_configure_task_for @objfifo_out {
-                aie.dma_bd(%out : memref<2xbf16> offset = %c0_i32 len = %c2_i32)
+                aie.dma_bd(%out : memref<2xbf16> offset = 0 len = 2)
                 aie.end
             } {issue_token = true}
 

@@ -73,14 +73,12 @@ module @lockAnalysis {
       aie.objectfifo @of1 (%tile12, {%tile33}, 2 : i32) : !aie.objectfifo<memref<16xi32>>
 
       %mem_1_2 = aie.mem(%tile12) {
-        %c0_i32 = arith.constant 0 : i32
-        %c16_i32 = arith.constant 16 : i32
          %test_prod_lock = aie.lock(%tile12, 0) {init = 1 : i32, sym_name = "test_prod_lock"}
          %test_cons_lock = aie.lock(%tile12, 1) {init = 0 : i32, sym_name = "test_cons_lock"}
          %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
          ^bb1:
             aie.use_lock(%test_prod_lock, AcquireGreaterEqual, 1)
-            aie.dma_bd(%test_buff : memref<16xi32> offset = %c0_i32 len = %c16_i32)
+            aie.dma_bd(%test_buff : memref<16xi32> offset = 0 len = 16)
             aie.use_lock(%test_cons_lock, Release, 1)
             aie.next_bd ^bb1
          ^bb2:

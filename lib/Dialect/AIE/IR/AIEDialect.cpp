@@ -2031,9 +2031,64 @@ BufferOp DMABDOp::getBufferOp() {
   return cast<BufferOp>(getBuffer().getDefiningOp());
 }
 
+// Parse/print hooks for the custom<DynamicScalar>($operand, $static_attr)
+// directive: a single scalar that is either an SSA value (runtime, %v) or a
+// compile-time integer constant (folded into the attribute). Mirrors
+// custom<DynamicIndexList> but for one scalar rather than a list, so a constant
+// never materializes an operand. The generated code binds the Optional<I32>
+// operand as std::optional<UnresolvedOperand> and the OptionalAttr<AIEI32Attr>
+// as IntegerAttr, exactly like upstream transform.tune AlternativesOp.
+static ParseResult
+parseDynamicScalar(OpAsmParser &parser,
+                   std::optional<OpAsmParser::UnresolvedOperand> &operand,
+                   IntegerAttr &staticAttr) {
+  int64_t intValue;
+  OptionalParseResult intResult = parser.parseOptionalInteger(intValue);
+  if (intResult.has_value()) {
+    if (failed(*intResult))
+      return failure();
+    staticAttr =
+        parser.getBuilder().getI32IntegerAttr(static_cast<int32_t>(intValue));
+    return success();
+  }
+  // Not a plain integer: parse an SSA operand (resolved to i32 by the caller).
+  OpAsmParser::UnresolvedOperand op;
+  if (parser.parseOperand(op))
+    return failure();
+  operand = op;
+  return success();
+}
+
+static void printDynamicScalar(OpAsmPrinter &printer, Operation *,
+                               Value operand, IntegerAttr staticAttr) {
+  if (operand)
+    printer << operand;
+  else
+    printer << staticAttr.getInt();
+}
+
+// Split a scalar OpFoldResult into an operand (runtime value) or an i32
+// attribute (compile-time constant), mirroring how sizes/strides split a
+// constant into static_* and a runtime value into an operand. An absent (null)
+// OpFoldResult leaves both unset.
+static void splitScalarOfr(mlir::OpBuilder &builder, mlir::OpFoldResult ofr,
+                           mlir::Value &operand, mlir::IntegerAttr &attr) {
+  operand = nullptr;
+  attr = nullptr;
+  if (!ofr)
+    return;
+  if (auto v = llvm::dyn_cast_if_present<mlir::Value>(ofr)) {
+    operand = v;
+    return;
+  }
+  auto intAttr =
+      llvm::cast<mlir::IntegerAttr>(llvm::cast<mlir::Attribute>(ofr));
+  attr = builder.getI32IntegerAttr(static_cast<int32_t>(intAttr.getInt()));
+}
+
 void DMABDOp::buildMixed(mlir::OpBuilder &builder, mlir::OperationState &state,
-                         mlir::Value buffer, mlir::Value offset,
-                         mlir::Value len,
+                         mlir::Value buffer, mlir::OpFoldResult offset,
+                         mlir::OpFoldResult len,
                          llvm::ArrayRef<mlir::OpFoldResult> sizes,
                          llvm::ArrayRef<mlir::OpFoldResult> strides,
                          BDPadLayoutArrayAttr padDims, PacketInfoAttr packet) {
@@ -2053,7 +2108,15 @@ void DMABDOp::buildMixed(mlir::OpBuilder &builder, mlir::OperationState &state,
       staticStrides.empty() ? DenseI64ArrayAttr{}
                             : builder.getDenseI64ArrayAttr(staticStrides);
 
-  build(builder, state, buffer, /*offset=*/offset, /*len=*/len,
+  // A constant offset/len lands in the static_* attribute; a runtime value
+  // becomes the operand (same operand-vs-attr split as sizes/strides).
+  mlir::Value offsetVal, lenVal;
+  mlir::IntegerAttr offsetAttr, lenAttr;
+  splitScalarOfr(builder, offset, offsetVal, offsetAttr);
+  splitScalarOfr(builder, len, lenVal, lenAttr);
+
+  build(builder, state, buffer, /*offset=*/offsetVal, /*len=*/lenVal,
+        /*static_offset=*/offsetAttr, /*static_len=*/lenAttr,
         /*sizes=*/dynSizes, /*strides=*/dynStrides,
         /*static_sizes=*/staticSizesAttr,
         /*static_strides=*/staticStridesAttr,
@@ -2073,10 +2136,10 @@ void DMABDOp::buildWithConstants(mlir::OpBuilder &builder,
                                  int32_t len, BDDimLayoutArrayAttr dims,
                                  BDPadLayoutArrayAttr padDims,
                                  PacketInfoAttr packet) {
-  mlir::Value offsetVal = arith::ConstantOp::create(
-      builder, state.location, builder.getI32IntegerAttr(offset));
-  mlir::Value lenVal = arith::ConstantOp::create(
-      builder, state.location, builder.getI32IntegerAttr(len));
+  // Constant offset/len flow to the static_offset/static_len attributes (no
+  // arith.constant materialized). Pass them as attribute OpFoldResults.
+  mlir::OpFoldResult offsetOfr = builder.getI64IntegerAttr(offset);
+  mlir::OpFoldResult lenOfr = builder.getI64IntegerAttr(len);
 
   // Turn the outermost-first BDDimLayoutArrayAttr into all-constant
   // OpFoldResults and let buildMixed handle the decomposition.
@@ -2087,7 +2150,7 @@ void DMABDOp::buildWithConstants(mlir::OpBuilder &builder,
       strides.push_back(builder.getI64IntegerAttr(d.getStride()));
     }
   }
-  buildMixed(builder, state, buffer, offsetVal, lenVal, sizes, strides, padDims,
+  buildMixed(builder, state, buffer, offsetOfr, lenOfr, sizes, strides, padDims,
              packet);
 }
 
@@ -2339,9 +2402,10 @@ LogicalResult DMABDOp::verify() {
       return emitOpError("Packet ID field can only hold 5 bits.");
   }
 
-  if (!getLen() && !getBuffer().getType().hasStaticShape())
+  if (!hasLen() && !getBuffer().getType().hasStaticShape())
     return emitOpError() << "buffer with dynamic shape requires static length.";
-  // A runtime (non-constant) len does satisfy the "has a length" requirement.
+  // Either a runtime operand or the static_len attribute satisfies the "has a
+  // length" requirement.
 
   if (getBurstLength() != 0 && !parentTile.isShimNOCTile())
     return emitOpError("Burst length is only supported in Shim NOC tiles that "
@@ -2476,20 +2540,20 @@ struct LinearizeContiguousBDTransfer : public mlir::OpRewritePattern<DMABDOp> {
     // (preserved downstream as iteration_size/stride). Don't fold it away.
     // A runtime len can't be compared, so bail. Also bail if len is absent but
     // the buffer is unranked (can't safely infer product == full transfer).
-    if (!op.getLen() && !op.getBuffer().getType().hasStaticShape())
+    if (!op.hasLen() && !op.getBuffer().getType().hasStaticShape())
       return mlir::failure();
     std::optional<int32_t> lenVal = op.getConstantLen();
     if (lenVal.has_value() && static_cast<int64_t>(*lenVal) != product)
       return mlir::failure();
     int32_t len = static_cast<int32_t>(product);
 
-    // Rewrite to a linear BD: set len to a fresh constant operand and clear the
-    // sizes/strides (both operands and static arrays). All other attributes
-    // (offset, packet, burst_length, bd_id, etc.) are preserved automatically.
+    // Rewrite to a linear BD: set len as the static_len attribute (a constant,
+    // so no arith.constant operand) and clear the sizes/strides (both operands
+    // and static arrays). All other attributes (offset, packet, burst_length,
+    // bd_id, etc.) are preserved automatically.
     rewriter.modifyOpInPlace(op, [&]() {
-      auto lenConst = arith::ConstantOp::create(
-          rewriter, op.getLoc(), rewriter.getI32IntegerAttr(len));
-      op.getLenMutable().assign(lenConst);
+      op.getLenMutable().clear();
+      op.setStaticLen(len);
       op.getSizesMutable().clear();
       op.getStridesMutable().clear();
       // Drop the static arrays entirely so the linear BD prints without any
@@ -2502,10 +2566,11 @@ struct LinearizeContiguousBDTransfer : public mlir::OpRewritePattern<DMABDOp> {
 };
 } // namespace
 
-// Canonicalization pattern for DMABDOp: fold a size/stride operand that is
-// actually a constant back into the static array (removing the operand), via
-// the upstream foldDynamicIndexList helper. Mirrors the constant-argument
-// folding tensor.extract_slice performs for its offsets/sizes/strides.
+// Canonicalization pattern for DMABDOp: fold a constant offset/len/size/stride
+// operand back into the corresponding static attribute (removing the operand),
+// via the upstream foldDynamicIndexList helper for the lists and
+// getConstantIntValue for the scalars. Mirrors the constant-argument folding
+// tensor.extract_slice performs for its offsets/sizes/strides.
 namespace {
 struct FoldConstantBDDimList : public mlir::OpRewritePattern<DMABDOp> {
   using OpRewritePattern::OpRewritePattern;
@@ -2518,6 +2583,17 @@ struct FoldConstantBDDimList : public mlir::OpRewritePattern<DMABDOp> {
     // entry with a constant.
     bool changed = succeeded(mlir::foldDynamicIndexList(sizes)) |
                    succeeded(mlir::foldDynamicIndexList(strides));
+
+    // Fold a constant offset/len operand into its static_* attribute.
+    std::optional<int32_t> foldOffset, foldLen;
+    if (op.getOffset())
+      if (auto c = mlir::getConstantIntValue(op.getOffset()))
+        foldOffset = static_cast<int32_t>(*c);
+    if (op.getLen())
+      if (auto c = mlir::getConstantIntValue(op.getLen()))
+        foldLen = static_cast<int32_t>(*c);
+    changed |= foldOffset.has_value() || foldLen.has_value();
+
     if (!changed)
       return mlir::failure();
 
@@ -2529,8 +2605,24 @@ struct FoldConstantBDDimList : public mlir::OpRewritePattern<DMABDOp> {
     rewriter.modifyOpInPlace(op, [&]() {
       op.getSizesMutable().assign(dynSizes);
       op.getStridesMutable().assign(dynStrides);
-      op.setStaticSizes(staticSizes);
-      op.setStaticStrides(staticStrides);
+      // Leave the static arrays unset (not empty) when there is no ND layout so
+      // they elide from the printed form (a plain linear transfer).
+      if (staticSizes.empty())
+        op.removeStaticSizesAttr();
+      else
+        op.setStaticSizes(staticSizes);
+      if (staticStrides.empty())
+        op.removeStaticStridesAttr();
+      else
+        op.setStaticStrides(staticStrides);
+      if (foldOffset) {
+        op.getOffsetMutable().clear();
+        op.setStaticOffset(*foldOffset);
+      }
+      if (foldLen) {
+        op.getLenMutable().clear();
+        op.setStaticLen(*foldLen);
+      }
     });
     return mlir::success();
   }

@@ -16,7 +16,6 @@ module {
     %t1 = aie.tile(1, 1)
     %buf = aie.buffer(%t1) : memref<256xi32>
     %mem = aie.memtile_dma(%t1) {
-      %c0_i32 = arith.constant 0 : i32
       %c2_i32 = arith.constant 2 : i32
       %c3_i32 = arith.constant 3 : i32
       // Use muli so len is not a compile-time constant in the SSA sense
@@ -25,7 +24,7 @@ module {
       aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
         // expected-error@+1 {{'aie.dma_bd' op Padding with a runtime len operand is not yet supported}}
-        aie.dma_bd(%buf : memref<256xi32> offset = %c0_i32 len = %dyn_len
+        aie.dma_bd(%buf : memref<256xi32> offset = 0 len = %dyn_len
                    sizes = [2] strides = [128]
                    pad [<const_pad_before = 2, const_pad_after = 1>]
                    pad_value = 0)
