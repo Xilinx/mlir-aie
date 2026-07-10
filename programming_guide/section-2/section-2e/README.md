@@ -129,4 +129,4 @@ make emit-mlir-multi    # write the lowered MLIR for aie2_multi.py to build/aie_
 ```
 
 -----
-[Prev - Section 2d](../section-2d/)] [Up](..)] [Next - Section 2f](../section-2f/)]
+[Prev - Section 2d](../section-2d/) [Up](..) [Next - Section 2f](../section-2f/)

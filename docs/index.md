@@ -7,7 +7,7 @@ hide:
 <!-- Copyright (C) 2024-2026 Advanced Micro Devices, Inc. -->
 <!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 
-# 💪 IRON / MLIR-AIE
+# IRON / MLIR-AIE
 
 **Close-to-metal Python programming for AMD Ryzen™ AI NPUs.**
 

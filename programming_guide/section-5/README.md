@@ -59,4 +59,4 @@ The [passthrough DMAs](../../programming_examples/basic/passthrough_dmas/) examp
 1. **HARD** Which basic example is a component in [Softmax](../../programming_examples/ml/softmax/)? <img src="../../mlir_exercises/images/answer1.jpg" title="[Vector Exp](../../programming_examples/basic/vector_exp/)" height=25>
 
 -----
-[Prev - Section 4](../section-4/)] [Top](..)] [Next - Section 6](../section-6/)]
+[Prev - Section 4](../section-4/) [Top](..) [Next - Section 6](../section-6/)

@@ -115,4 +115,4 @@ The Makefile also exposes `make emit-mlir` which redirects the output to `build/
 5. Run `make clean`. Restore the Worker tile to `(0, 2)`. Remove the `while_true=False` argument and run `make emit-mlir`. What changed in the MLIR? <img src="../../../mlir_exercises/images/answer1.jpg" title="The core body is now nested inside an scf.for that bounds to sys.maxsize — the simulated while-true wrapper." height=25>
 
 -----
-[Prev - Section 0](../section-0/)] [Top](..)] [Next - Section 2](../section-2/)]
+[Prev - Section 0](../section-0/) [Top](..) [Next - Section 2](../section-2/)

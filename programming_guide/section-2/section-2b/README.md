@@ -41,4 +41,4 @@ The ObjectFifo primitive supports several data movement patterns. We will now de
 </details>
 
 -----
-[Prev - Section 2a](../section-2a/)] [Up](..)] [Next - Section 2c](../section-2c/)]
+[Prev - Section 2a](../section-2a/) [Up](..) [Next - Section 2c](../section-2c/)

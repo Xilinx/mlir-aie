@@ -146,4 +146,4 @@ Runtime sequence operations such as `fill()` and `drain()` in IRON, or `dma_wait
 Examples containing `tap`s are available in the [programming_examples](../../../programming_examples/). A few notable ones are [transposes](../../../programming_examples/basic/transposes/) (specifically `--strategy=dma`) and [row_wise_bias_add](../../../programming_examples/basic/row_wise_bias_add/).
 
 -----
-[Prev - Section 2b](../section-2b/)] [Up](..)] [Next - Section 2d](../section-2d/)]
+[Prev - Section 2b](../section-2b/) [Up](..) [Next - Section 2d](../section-2d/)

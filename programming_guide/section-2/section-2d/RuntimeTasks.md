@@ -202,4 +202,4 @@ with rt.sequence(data_ty, data_ty, data_ty) as (a_in, _, c_out):
 ```
 
 -----
-[Up](./README.md)]
+[Up](./README.md)

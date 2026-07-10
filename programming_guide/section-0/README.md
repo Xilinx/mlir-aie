@@ -34,4 +34,4 @@ This programming guide focuses on application programming for the NPU found in R
 * **Just want to see an end-to-end working program?** Jump to [Section 3 — My First Program](../section-3/).
 
 -----
-[Top](..)] [Next - Section 1](../section-1/)]
+[Top](..) [Next - Section 1](../section-1/)
