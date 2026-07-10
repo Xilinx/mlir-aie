@@ -16,7 +16,6 @@ lib/CAPI/           @fifield @abisca
 lib/Conversion/AIEVecToLLVM/  @jsetoain
 **/Target/**        @jsetoain @fifield
 **/Targets/**       @fifield @jgmelber @abisca
-mlir_exercises/**   @denolf @jackl-xilinx @abisca @fifield
 platforms/**        @jackl-xilinx @eddierichter-amd
 programming_examples/** @denolf @jgmelber @fifield @jackl-xilinx @andrej @pvasireddy-amd @hunhoffe
 programming_guide/**  @denolf @jgmelber @abisca @jackl-xilinx @andrej @hunhoffe

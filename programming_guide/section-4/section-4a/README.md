@@ -63,7 +63,7 @@ In our example [test.cpp](./test.cpp), we wrap our calls within a for loop (base
 It is also useful to run the kernel a number of times prior to calculating the steady-state run times. This hides initial startup timing overhead that sometimes occurs during the first few runs. We call these initial loops warmup iterations, where we do not verify the results or measure the run time during warmup.
 ```c++
   for (unsigned iter = 0; iter < num_iter; iter++) {
-    <... kernel run code ...>    
+    <... kernel run code ...>
     if (iter < n_warmup_iterations) {
       /* Warmup iterations do not count towards average runtime. */
       continue;
@@ -136,14 +136,13 @@ into the tolerance comparator above.
 ## <u>Exercises</u>
 1. Build + run the `@iron.jit` design with `make run` and note the reported NPU + end-to-end averages. (The defaults are `--warmup 4 --iters 10`; override via `--warmup N --iters M` on the python command line.) What did you see?
 
-1. Build the xclbin + insts pair via `make all`, then run the explicit C++ host with `make run_cpp` and note the reported "wall clock" time. <img src="../../../mlir_exercises/images/answer1.jpg" title="Answer can be anywhere from 300-600us" height=25>
+1. Build the xclbin + insts pair via `make all`, then run the explicit C++ host with `make run_cpp` and note the reported "wall clock" time. <img src="../../assets/answer1.jpg" title="Answer can be anywhere from 300-600us" height=25>
 
-1. The design was run once with a single iteration and no warmup. Run again with `make run_cpp` — same defaults. What reported Avg NPU time did you see this time? <img src="../../../mlir_exercises/images/answer1.jpg" title="Answer can still be anywhere from 300-600us but is likely different than before" height=25>
+1. The design was run once with a single iteration and no warmup. Run again with `make run_cpp` — same defaults. What reported Avg NPU time did you see this time? <img src="../../assets/answer1.jpg" title="Answer can still be anywhere from 300-600us but is likely different than before" height=25>
 
-1. Set iterations to 10 with `make run_cpp-10` (passes `--iters 10`). What reported Avg NPU time do you see this time? <img src="../../../mlir_exercises/images/answer1.jpg" title="This time, we see a narrower range between 300-400 us" height=25>
+1. Set iterations to 10 with `make run_cpp-10` (passes `--iters 10`). What reported Avg NPU time do you see this time? <img src="../../assets/answer1.jpg" title="This time, we see a narrower range between 300-400 us" height=25>
 
-1. Finally, add 4 warmup iterations to cut higher outliers when the application is first run by calling `make run_cpp-10-warmup`. This passes `--warmup 4` to the executable. What reported Avg NPU time do you see this time? <img src="../../../mlir_exercises/images/answer1.jpg" title="This time, we see an lower average range between 200-300 us" height=25>
+1. Finally, add 4 warmup iterations to cut higher outliers when the application is first run by calling `make run_cpp-10-warmup`. This passes `--warmup 4` to the executable. What reported Avg NPU time do you see this time? <img src="../../assets/answer1.jpg" title="This time, we see an lower average range between 200-300 us" height=25>
 
 -----
 [[Up]](../../section-4) [[Next]](../section-4b)
-

@@ -41,7 +41,7 @@ The [passthrough DMAs](../../programming_examples/basic/passthrough_dmas/) examp
 
 ## Machine Learning Kernels
 
-| Design name | Data type | Description | 
+| Design name | Data type | Description |
 |-|-|-|
 | [Eltwise (Add / Mul)](../../programming_examples/ml/eltwise/) | bfloat16 | Element-wise addition or multiplication of two vectors (`op={add,mul}` option). |
 | [Eltwise Unary (ReLU / SiLU / GELU)](../../programming_examples/ml/eltwise_unary/) | bfloat16 | Element-wise ReLU, SiLU, or GELU activation on a vector (`op={relu,silu,gelu}` option). |
@@ -50,13 +50,13 @@ The [passthrough DMAs](../../programming_examples/basic/passthrough_dmas/) examp
 
 ## Exercises
 
-1. Can you modify the [passthrough](../../programming_examples/basic/passthrough_kernel/) design to copy more (or less) data? <img src="../../mlir_exercises/images/answer1.jpg" title="Check the Makefile...in1_size and out_size" height=25>
+1. Can you modify the [passthrough](../../programming_examples/basic/passthrough_kernel/) design to copy more (or less) data? <img src="../assets/answer1.jpg" title="Check the Makefile...in1_size and out_size" height=25>
 
-1. Take a look at the host driver in our [Vector Exp](../../programming_examples/basic/vector_exp/) example [vector_exp.py](../../programming_examples/basic/vector_exp/vector_exp.py). Take note of the data type and the size of the test vector. What do you notice? <img src="../../mlir_exercises/images/answer1.jpg" title="We are testing 65536 values or 2^16, therefore testing all possible bfloat16 values through the approximation." height=25>
+1. Take a look at the host driver in our [Vector Exp](../../programming_examples/basic/vector_exp/) example [vector_exp.py](../../programming_examples/basic/vector_exp/vector_exp.py). Take note of the data type and the size of the test vector. What do you notice? <img src="../assets/answer1.jpg" title="We are testing 65536 values or 2^16, therefore testing all possible bfloat16 values through the approximation." height=25>
 
-1. What is the communication-to-computation  ratio in [Eltwise Unary (ReLU)](../../programming_examples/ml/eltwise_unary/)? <img src="../../mlir_exercises/images/answer1.jpg" title="~6 as reported by the Trace. This is why it is a good candidate for kernel fusion with Conv2D or GEMMs for ML." height=25>
+1. What is the communication-to-computation  ratio in [Eltwise Unary (ReLU)](../../programming_examples/ml/eltwise_unary/)? <img src="../assets/answer1.jpg" title="~6 as reported by the Trace. This is why it is a good candidate for kernel fusion with Conv2D or GEMMs for ML." height=25>
 
-1. **HARD** Which basic example is a component in [Softmax](../../programming_examples/ml/softmax/)? <img src="../../mlir_exercises/images/answer1.jpg" title="[Vector Exp](../../programming_examples/basic/vector_exp/)" height=25>
+1. **HARD** Which basic example is a component in [Softmax](../../programming_examples/ml/softmax/)? <img src="../assets/answer1.jpg" title="[Vector Exp](../../programming_examples/basic/vector_exp/)" height=25>
 
 -----
 [[Prev - Section 4](../section-4/)] [[Top](..)] [[Next - Section 6](../section-6/)]

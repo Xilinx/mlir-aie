@@ -178,7 +178,6 @@ jobs:
           # tests hang/fail on windows
           if [ x"${{ contains(matrix.OS, 'windows') }}" == x"false" ]; then
             ninja check-aie
-            ninja check-tutorials
             ninja check-reference-designs
             ninja check-programming-guide
           fi

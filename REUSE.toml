@@ -60,16 +60,6 @@ SPDX-License-Identifier = "Apache-2.0 WITH LLVM-exception"
 
 # --- Third-party / vendored carve-outs (keep upstream licenses) --------------
 
-# horizontal_diffusion example: MIT, from SAFARI Research Group (ETH Zurich / CMU)
-[[annotations]]
-path = "programming_examples/mlir/horizontal_diffusion/**"
-precedence = "override"
-SPDX-FileCopyrightText = [
-    "Copyright (c) 2023 SAFARI Research Group at ETH Zurich and Carnegie Mellon University",
-    "Copyright (C) 2023-2026 Advanced Micro Devices, Inc.",
-]
-SPDX-License-Identifier = "MIT"
-
 # petalinux demo apps vendored from Xilinx: MIT-licensed, with the full MIT
 # permission text retained inline. Declared here for REUSE; these are NOT under
 # the project's Apache-2.0 default.
