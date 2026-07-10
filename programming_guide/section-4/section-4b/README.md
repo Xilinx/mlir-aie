@@ -177,7 +177,7 @@ Once the design has been executed. We can then use the convenience function `wri
 Because the code patterns for measuring host code timing and configuring trace are so often repeated, they have been further wrapped into the convenience function `setup_and_run_aie` in [xrt_test_wrapper.h](../../../runtime_lib/test_lib/xrt_test_wrapper.h) which then allows us to create a simpler top level host code [test.cpp](./test.cpp).
 
 In our template host code [test.cpp](./test.cpp) for 2 inputs and 1 output, we customize the following:
-* Input and output buffer size (in bytes) - Specified in the [Makefile](./Makefile) and [CMakeLists.txt](./CMakeLists.txt) and then passed into the [vector_scalar_mul.py](./vector_scalar_mul.py) and [test.cpp](./test.cpp)
+* Input and output buffer size (in bytes) - Specified in the [Makefile](./Makefile) and [CMakeLists.txt](https://github.com/Xilinx/mlir-aie/blob/main/programming_guide/section-4/section-4b/CMakeLists.txt) and then passed into the [vector_scalar_mul.py](./vector_scalar_mul.py) and [test.cpp](./test.cpp)
     ```Makefile
         in1_size = 16384 # in bytes
         in2_size = 4 # in bytes, should always be 4 (1x int32)

@@ -156,7 +156,15 @@ def _rewrite_target(target, page_dir_link, page_dir_real, docs_dir, repo_root):
     in_docs_lexically = doc_candidate == docs_dir or doc_candidate.startswith(
         docs_dir + os.sep
     )
-    if in_docs_lexically and os.path.exists(doc_candidate):
+    # Exception: a page whose real source is the repo root (docs/getting-started
+    # -> ../README.md) writes links *repo-root-relative*, not docs-relative.
+    # Even if such a link lexically resolves under docs/, MkDocs serves the page
+    # at docs/ depth, so it must fall through to the repo-root rewrite below.
+    if (
+        in_docs_lexically
+        and os.path.exists(doc_candidate)
+        and page_dir_real != repo_root
+    ):
         return None
 
     # --- Repo-source resolution (real-filesystem / GitHub view) --------------
@@ -167,6 +175,27 @@ def _rewrite_target(target, page_dir_link, page_dir_real, docs_dir, repo_root):
 
     real_docs = os.path.realpath(docs_dir)
     real_pg = os.path.realpath(os.path.join(repo_root, "programming_guide"))
+
+    # --- Symlinked repo-root page (docs/getting-started.md -> ../README.md) ---
+    # The README is served from inside docs/, but its links are repo-root-
+    # relative (``docs/Building.md``, ``programming_guide/``). Rewrite those to
+    # doc-relative paths so they resolve on the site (they stay correct on
+    # GitHub because the source is untouched). Directory targets point at the
+    # section's README.md since MkDocs only rewrites links to .md pages.
+    if page_dir_real == repo_root:
+        if (
+            resolved == real_docs or resolved.startswith(real_docs + os.sep)
+        ) and os.path.exists(resolved):
+            return os.path.relpath(resolved, real_docs).replace(os.sep, "/") + suffix
+        if (
+            resolved == real_pg or resolved.startswith(real_pg + os.sep)
+        ) and os.path.exists(resolved):
+            sub = os.path.relpath(resolved, real_pg).replace(os.sep, "/")
+            docs_rel = "programming_guide" if sub == "." else f"programming_guide/{sub}"
+            if os.path.isdir(resolved):
+                docs_rel = docs_rel.rstrip("/") + "/README.md"
+            return docs_rel + suffix
+
     # Belt-and-suspenders: anything that still resolves inside the doc tree
     # (e.g. an intra-programming_guide link, or a broken doc link that doesn't
     # exist on disk) is a doc reference — leave it alone.

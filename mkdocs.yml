@@ -152,6 +152,13 @@ markdown_extensions:
   - footnotes
   - toc:
       permalink: true
+      # Use a GitHub-compatible slugifier so heading anchors match what GitHub
+      # generates (e.g. "Ryzen™ AI" -> "ryzen-ai", stripping the ™). This keeps
+      # same-page anchor links working on BOTH the docs site and GitHub, which
+      # matters for pages like README.md that render in both places.
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
 
 nav:
   - Home: index.md
