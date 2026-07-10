@@ -139,8 +139,6 @@ struct AIEMaterializeBDChainsPass
     rewriter_config.setRegionSimplificationLevel(
         GreedySimplifyRegionLevel::Disabled);
 
-    // Build the device symbol table ONCE (O(1) per-op allocation lookup instead
-    // of getForSymbol's per-op linear scan -> O(n^2)). Byte-identical.
     mlir::SymbolTable symbolTable(device);
 
     RewritePatternSet patterns_0(ctx);
