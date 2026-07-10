@@ -1,0 +1,476 @@
+# Copyright (C) 2023-2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+#
+# Variant of mlirDistro.yml that builds MLIR wheels from the ROCm/llvm-project
+# fork instead of upstream llvm/llvm-project. Triggered manually only — no cron,
+# no automatic PR trigger — so it cannot interfere with the canonical distro build.
+#
+# Default LLVM commit is the hash Jorn Tuyls validated:
+#   46fcb339fb61119b337f973c7ca9e710a319fdd0 (ROCm/llvm-project)
+# Override via the LLVM_COMMIT input for future hash bumps.
+
+name: MLIR Distro (ROCm LLVM)
+
+run-name: ${{ inputs.DISPATCH_NONCE && format('MLIR Distro ROCm [{0}]', inputs.DISPATCH_NONCE) || 'MLIR Distro ROCm' }}
+
+permissions:
+  contents: read
+
+on:
+  workflow_dispatch:
+    inputs:
+      LLVM_COMMIT:
+        description: 'ROCm/llvm-project commit hash to build (full or 8-char prefix)'
+        type: string
+        required: false
+        default: '46fcb339fb61119b337f973c7ca9e710a319fdd0'
+      LLVM_REPO:
+        description: 'GitHub org/repo to fetch LLVM sources from'
+        type: string
+        required: false
+        default: 'ROCm/llvm-project'
+      APPLY_PATCHES:
+        description: 'whether to apply patches to source'
+        type: string
+        required: false
+        default: 'true'
+      DEBUG_ENABLED:
+        description: 'Run the build with tmate debugging enabled'
+        type: boolean
+        required: false
+        default: false
+      DEBUG_OS:
+        description: 'which runner os to run the tmate action in'
+        type: string
+        default: 'ubuntu-22.04'
+        required: false
+      DEBUG_ARCH:
+        description: 'which runner arch to run the tmate action in'
+        type: string
+        default: 'x86_64'
+        required: false
+      DEBUG_DETACHED:
+        description: 'whether to launch tmate in detached mode'
+        type: boolean
+        required: false
+        default: true
+      DISPATCH_NONCE:
+        description: 'Optional unique identifier echoed into the run title.'
+        type: string
+        required: false
+        default: ''
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}
+  cancel-in-progress: false
+
+jobs:
+
+  get_llvm_project_commit:
+
+    name: Resolve LLVM commit
+
+    runs-on: ubuntu-latest
+
+    outputs:
+      LLVM_PROJECT_COMMIT: ${{ steps.resolve.outputs.LLVM_PROJECT_COMMIT }}
+      LLVM_REPO: ${{ steps.resolve.outputs.LLVM_REPO }}
+      DATETIME: ${{ steps.resolve.outputs.DATETIME }}
+
+    steps:
+      - name: Resolve commit and repo
+        id: resolve
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LLVM_REPO="${{ inputs.LLVM_REPO }}"
+          LLVM_COMMIT="${{ inputs.LLVM_COMMIT }}"
+
+          # If a full hash was given use it directly; if short, resolve via API.
+          if [ ${#LLVM_COMMIT} -eq 40 ]; then
+            LLVM_PROJECT_COMMIT="$LLVM_COMMIT"
+          else
+            sudo apt-get install -y -q jq
+            RESPONSE=$(curl --fail-with-body -sSL \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/${LLVM_REPO}/commits/${LLVM_COMMIT}") || {
+              echo "::error::GitHub API request failed resolving ${LLVM_COMMIT} in ${LLVM_REPO}"
+              echo "$RESPONSE"
+              exit 1
+            }
+            LLVM_PROJECT_COMMIT=$(echo "$RESPONSE" | jq -r '.sha')
+          fi
+
+          if [ -z "$LLVM_PROJECT_COMMIT" ] || [ "$LLVM_PROJECT_COMMIT" = "null" ]; then
+            echo "::error::LLVM_PROJECT_COMMIT is empty or null."
+            exit 1
+          fi
+
+          echo "LLVM_REPO=${LLVM_REPO}" | tee -a $GITHUB_OUTPUT
+          echo "LLVM_PROJECT_COMMIT=${LLVM_PROJECT_COMMIT}"
+          # Store only the 8-char prefix — matches what mlirDistro.yml does, keeps
+          # wheel version strings and artifact names at a readable length.
+          echo "LLVM_PROJECT_COMMIT=${LLVM_PROJECT_COMMIT:0:8}" | tee -a $GITHUB_OUTPUT
+          DATETIME=$(date +"%Y%m%d%H")
+          echo "DATETIME=${DATETIME}" | tee -a $GITHUB_OUTPUT
+
+  build:
+
+    needs: get_llvm_project_commit
+
+    name: ${{ matrix.OS }} ${{ matrix.ARCH }} rtti=${{ matrix.ENABLE_RTTI }}
+
+    continue-on-error: true
+
+    runs-on: ${{ matrix.OS }}
+
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - OS: ubuntu-22.04
+            ARCH: x86_64
+            ENABLE_RTTI: ON
+
+          - OS: ubuntu-22.04
+            ARCH: aarch64
+            ENABLE_RTTI: ON
+
+          - OS: windows-2022
+            ARCH: AMD64
+            ENABLE_RTTI: ON
+
+          - OS: ubuntu-22.04
+            ARCH: x86_64
+            ENABLE_RTTI: OFF
+
+          - OS: ubuntu-22.04
+            ARCH: aarch64
+            ENABLE_RTTI: OFF
+
+          - OS: windows-2022
+            ARCH: AMD64
+            ENABLE_RTTI: OFF
+
+    steps:
+
+    - name: set ENV
+      shell: bash
+      run: |
+
+        PIP_FIND_LINKS_URL="https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro"
+        echo "PIP_FIND_LINKS=$PIP_FIND_LINKS_URL" | tee -a $GITHUB_ENV
+        echo "ENABLE_RTTI=${{ matrix.ENABLE_RTTI }}" | tee -a $GITHUB_ENV
+
+    - name: Checkout actions
+      uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+      with:
+        sparse-checkout: |
+          .github/actions
+          python/requirements_dev.lock
+        sparse-checkout-cone-mode: false
+
+    - uses: ./.github/actions/setup_base
+      id: setup_base
+      with:
+        DEBUG_ENABLED: ${{ inputs.DEBUG_ENABLED }}
+        DEBUG_OS: ${{ inputs.DEBUG_OS }}
+        DEBUG_ARCH: ${{ inputs.DEBUG_ARCH }}
+        DEBUG_DETACHED: ${{ inputs.DEBUG_DETACHED }}
+        MATRIX_OS: ${{ matrix.OS }}
+        MATRIX_ARCH: ${{ matrix.ARCH }}
+
+    - uses: ./.github/actions/setup_ccache
+      id: setup_ccache
+      with:
+        MATRIX_OS: ${{ matrix.OS }}
+        MATRIX_ARCH: ${{ matrix.ARCH }}
+        EXTRA_KEY: rocm-mlir-distro-enable-rtti-${{ matrix.ENABLE_RTTI }}
+
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+      with:
+        python-version: '3.12'
+
+    - name: Shift workspace root
+      id: workspace_root
+      shell: bash
+      working-directory: ${{ env.TEMP }}
+      run: |
+
+        ls "${{ steps.setup_base.outputs.WORKSPACE_ROOT }}"
+
+        if [ x"${{ matrix.OS }}" == x"windows-2022" ]; then
+          WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}\utils\mlir_wheels"
+        else
+          WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}/utils/mlir_wheels"
+        fi
+
+        echo "WORKSPACE_ROOT=$WORKSPACE_ROOT" | tee -a $GITHUB_OUTPUT
+
+    - name: Get LLVM (ROCm fork)
+      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+      shell: bash
+      run: |
+
+        LLVM_REPO="${{ needs.get_llvm_project_commit.outputs.LLVM_REPO }}"
+        LLVM_PROJECT_COMMIT="${{ needs.get_llvm_project_commit.outputs.LLVM_PROJECT_COMMIT }}"
+
+        curl -s "https://codeload.github.com/${LLVM_REPO}/zip/${LLVM_PROJECT_COMMIT}" -o llvm.zip
+        unzip -q llvm.zip
+        rm -rf llvm.zip
+
+        # GitHub names the zip root dir "<repo-name>-<sha>" — handle both full
+        # and 8-char-prefix commits by globbing, then rename to the canonical
+        # "llvm-project" path that setup.py and cibuildwheel expect.
+        EXTRACTED=$(ls -d llvm-project-* 2>/dev/null | head -1)
+        if [ -z "$EXTRACTED" ]; then
+          echo "::error::Could not find extracted llvm-project directory."
+          ls -la
+          exit 1
+        fi
+        mv "$EXTRACTED" llvm-project
+
+    - name: cibuildwheel
+      if: ${{ matrix.OS != 'ubuntu-22.04' || matrix.ARCH != 'aarch64' }}
+      shell: bash
+      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+      run: |
+
+        APPLY_PATCHES=${{ inputs.APPLY_PATCHES == '' && 'true' || inputs.APPLY_PATCHES }} \
+        CIBW_ARCHS=${{ matrix.ARCH }} \
+        CMAKE_GENERATOR=Ninja \
+        DATETIME=${{ needs.get_llvm_project_commit.outputs.DATETIME }} \
+        HOST_CCACHE_DIR=${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }} \
+        LLVM_PROJECT_COMMIT=${{ needs.get_llvm_project_commit.outputs.LLVM_PROJECT_COMMIT }} \
+        MATRIX_OS=${{ matrix.OS }} \
+        PARALLEL_LEVEL=2 \
+        cibuildwheel --output-dir wheelhouse
+
+    - name: build aarch ubuntu wheel
+      if: ${{ matrix.OS == 'ubuntu-22.04' && matrix.ARCH == 'aarch64' }}
+      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+      shell: bash
+      run: |
+
+        export APPLY_PATCHES=${{ inputs.APPLY_PATCHES == '' && 'true' || inputs.APPLY_PATCHES }}
+        ./scripts/apply_patches.sh
+
+        pip install --upgrade pip
+
+        CIBW_ARCHS=${{ matrix.ARCH }} \
+        CMAKE_GENERATOR=Ninja \
+        DATETIME=${{ needs.get_llvm_project_commit.outputs.DATETIME }} \
+        LLVM_PROJECT_COMMIT=${{ needs.get_llvm_project_commit.outputs.LLVM_PROJECT_COMMIT }} \
+        MATRIX_OS=${{ matrix.OS }} \
+        PARALLEL_LEVEL=2 \
+        pip wheel . -v -w wheelhouse
+
+    - name: Clean llvm-project
+      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+      shell: bash
+      run: |
+
+        rm -rf llvm-project
+        rm -rf build
+
+    - name: Docker prune
+      if: contains(inputs.MATRIX_OS, 'ubuntu')
+      shell: bash
+      run: |
+
+        docker system prune -a -f
+
+    - name: Get wheel version
+      id: get_wheel_version
+      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+      shell: bash
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install --require-hashes -r ci-tools.lock
+        WHL=$(ls wheelhouse/mlir*whl)
+        echo "MLIR_WHEEL_VERSION=$(python -c "import pkginfo; w = pkginfo.Wheel('$WHL'); print(w.version.split('+')[0] + '+' + w.version.split('+')[1].rsplit('.', 1)[-1])")" | tee -a $GITHUB_OUTPUT
+
+    - name: Download cache from container ubuntu
+      if: (matrix.OS == 'ubuntu-22.04' && matrix.ARCH == 'x86_64') && (success() || failure())
+      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+      shell: bash
+      run: |
+
+        ccache -s
+        HOST_CCACHE_DIR="$(ccache --get-config cache_dir)"
+        rm -rf $HOST_CCACHE_DIR
+        mv ./wheelhouse/.ccache $HOST_CCACHE_DIR
+        ls -la $HOST_CCACHE_DIR
+        ccache -s
+
+    - name: Reset datetime ccache
+      if: runner.os != 'Windows'
+      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+      shell: bash
+      run: |
+
+        ccache --print-stats
+        HOST_CCACHE_DIR="$(ccache --get-config cache_dir)"
+        find $HOST_CCACHE_DIR -exec touch -a -m -t 201108231405.14 {} \;
+
+    - name: Build native_tools wheel
+      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+      if: matrix.ENABLE_RTTI == 'ON'
+      shell: bash
+      id: build_native_tools_wheel
+      run: |
+        python -m pip install --upgrade pip
+        python -m pip install --require-hashes -r requirements.lock
+
+        for TOOL in "llvm-tblgen" "mlir-tblgen" "mlir-linalg-ods-yaml-gen" "mlir-pdll" "llvm-config" "FileCheck"; do
+          if [ x"${{ matrix.OS }}" == x"windows-2022" ]; then
+            TOOL="$TOOL.exe"
+          fi
+          unzip -j wheelhouse/mlir*whl "mlir/bin/$TOOL" -d native_tools/
+        done
+
+        if [ x"${{ matrix.OS }}" == x"ubuntu-22.04" ]; then
+          PLAT="linux"
+        elif [ x"${{ matrix.OS }}" == x"windows-2022" ]; then
+          PLAT="win"
+        fi
+
+        PLAT=${PLAT}_$(echo ${{ matrix.ARCH }} | tr '[:upper:]' '[:lower:]')
+        pushd native_tools
+
+        MLIR_WHEEL_VERSION=${{ steps.get_wheel_version.outputs.MLIR_WHEEL_VERSION }} \
+        python setup.py bdist_wheel --dist-dir ../wheelhouse --plat $PLAT
+
+        popd
+
+    - name: Validate wheel metadata
+      working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+      shell: bash
+      run: |
+        python -m pip install --require-hashes -r ci-tools.lock
+        python -m twine check --strict wheelhouse/*.whl
+
+    - name: Generate build provenance attestation
+      uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373  # v4.1.1
+      with:
+        subject-path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
+
+    - name: Upload wheels
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+      with:
+        path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse/*.whl
+        name: build_artifact_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
+
+  smoke_test_wheels:
+
+    name: test ${{ matrix.OS }} ${{ matrix.ARCH }} rtti=${{ matrix.ENABLE_RTTI }}
+
+    needs: [build]
+
+    runs-on: ${{ matrix.OS }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - OS: ubuntu-22.04
+            ARCH: x86_64
+            ENABLE_RTTI: ON
+
+          - OS: windows-2022
+            ARCH: AMD64
+            ENABLE_RTTI: ON
+
+          - OS: ubuntu-22.04
+            ARCH: x86_64
+            ENABLE_RTTI: OFF
+
+          - OS: windows-2022
+            ARCH: AMD64
+            ENABLE_RTTI: OFF
+
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
+        with:
+          name: build_artifact_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
+          path: dist
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: '3.12'
+
+      - name: test
+        shell: bash
+        run: |
+          for w in dist/mlir*.whl; do
+            python -m zipfile -t "$w"
+          done
+
+          for w in dist/mlir*.whl; do
+            unzip -o -q "$w"
+          done
+          PYTHONPATH=$(find . -name mlir_core) python -c 'import mlir.ir'
+
+  upload_distro_wheels:
+
+    name: upload ${{ matrix.OS }} ${{ matrix.ARCH }} rtti=${{ matrix.ENABLE_RTTI }}
+
+    needs: smoke_test_wheels
+
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - OS: ubuntu-22.04
+            ARCH: x86_64
+            ENABLE_RTTI: ON
+
+          - OS: ubuntu-22.04
+            ARCH: aarch64
+            ENABLE_RTTI: ON
+
+          - OS: windows-2022
+            ARCH: AMD64
+            ENABLE_RTTI: ON
+
+          - OS: ubuntu-22.04
+            ARCH: x86_64
+            ENABLE_RTTI: OFF
+
+          - OS: ubuntu-22.04
+            ARCH: aarch64
+            ENABLE_RTTI: OFF
+
+          - OS: windows-2022
+            ARCH: AMD64
+            ENABLE_RTTI: OFF
+
+    permissions:
+      id-token: write
+      contents: write
+
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
+        with:
+          name: build_artifact_${{ matrix.OS }}_${{ matrix.ARCH }}_rtti_${{ matrix.ENABLE_RTTI }}
+          path: dist
+
+      - name: Release to rocm-mlir-distro
+        uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd  # v1.21.0
+        with:
+          artifacts: "dist/*.whl"
+          token: "${{ secrets.GITHUB_TOKEN }}"
+          tag: rocm-mlir-distro
+          name: rocm-mlir-distro
+          removeArtifacts: false
+          allowUpdates: true
+          replacesArtifacts: false
+          omitBodyDuringUpdate: true
+          makeLatest: false
