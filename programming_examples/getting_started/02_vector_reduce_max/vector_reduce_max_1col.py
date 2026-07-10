@@ -62,9 +62,9 @@ def vector_reduce_max(
     else:
         of_a_offsets = [0]
 
-    # split() distributes one large ObjectFIFO into n_cores smaller ones,
+    # split() distributes one large ObjectFifo into n_cores smaller ones,
     # each starting at the given offset. See programming_guide/section-2/section-2b/
-    # for more detail on ObjectFIFO distribute and join patterns.
+    # for more detail on ObjectFifo distribute and join patterns.
     in_fifos = of_in.cons().split(
         of_a_offsets,
         obj_types=[op_ty] * n_cores,
@@ -94,7 +94,7 @@ def vector_reduce_max(
 
     # final_core_body: runs on the last core in the cascade. This core does not
     # read results from a downstream neighbor — it is the terminal node that
-    # writes the final maximum value to the output ObjectFIFO.
+    # writes the final maximum value to the output ObjectFifo.
     def final_core_body(of_in, of_out, reduce_fn, nextC_buffer, tmp_buffer):
         elem_out = of_out.acquire(1)
         for _ in range_(num_iter):

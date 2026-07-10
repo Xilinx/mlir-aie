@@ -11,7 +11,7 @@ These examples illustrate how AIE designs are expressed at the MLIR level, which
 
 ## Examples
 
-* [MM_2x2](./MM_2x2/) - Matrix multiplication mapped onto a 2×2 array of AIE cores, in circuit-switched, packet-switched, and ObjectFIFO variants. Targets Versal VCK5000.
+* [MM_2x2](./MM_2x2/) - Matrix multiplication mapped onto a 2×2 array of AIE cores, in circuit-switched, packet-switched, and ObjectFifo variants. Targets Versal VCK5000.
 
 * [horizontal_diffusion](./horizontal_diffusion/) - Implementation of the horizontal diffusion stencil computation from the COSMO atmospheric model, demonstrating multi-core data streaming across AIE tiles. Published at ICS 2023. Targets Versal hardware.
 
