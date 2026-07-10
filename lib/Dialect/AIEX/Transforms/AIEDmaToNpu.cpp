@@ -1,10 +1,7 @@
 //===- AIEDmaToNpu.cpp ------------------------------------------*- C++ -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2023 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2023 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -14,6 +11,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -49,8 +47,9 @@ struct Write32SymToAddr : OpConversionPattern<NpuWrite32Op> {
       return failure();
     }
 
-    rewriter.replaceOpWithNewOp<NpuWrite32Op>(op, *address, op.getValue(),
-                                              nullptr, nullptr, nullptr);
+    Value addressVal = createConstantI32(rewriter, op->getLoc(), *address);
+    rewriter.replaceOpWithNewOp<NpuWrite32Op>(
+        op, addressVal, adaptor.getValue(), nullptr, nullptr, nullptr);
     return success();
   }
 };
@@ -96,9 +95,11 @@ struct MaskWrite32SymToAddr : OpConversionPattern<NpuMaskWrite32Op> {
       return failure();
     }
 
-    rewriter.replaceOpWithNewOp<NpuMaskWrite32Op>(op, *absoluteAddress,
-                                                  op.getValue(), op.getMask(),
-                                                  nullptr, nullptr, nullptr);
+    Value addressVal =
+        createConstantI32(rewriter, op->getLoc(), *absoluteAddress);
+    rewriter.replaceOpWithNewOp<NpuMaskWrite32Op>(
+        op, addressVal, adaptor.getValue(), adaptor.getMask(), nullptr, nullptr,
+        nullptr);
     return success();
   }
 };
@@ -130,8 +131,10 @@ struct RtpToWrite32Pattern : OpConversionPattern<NpuWriteRTPOp> {
     uint32_t idx = op.getIndex() * sizeof(uint32_t);
     uint32_t address = buffer.getAddress().value() + idx;
 
-    NpuWrite32Op::create(rewriter, op->getLoc(), address, op.getValue(),
-                         nullptr, rewriter.getI32IntegerAttr(tile.getCol()),
+    NpuWrite32Op::create(rewriter, op->getLoc(),
+                         createConstantI32(rewriter, op->getLoc(), address),
+                         adaptor.getValue(), nullptr,
+                         rewriter.getI32IntegerAttr(tile.getCol()),
                          rewriter.getI32IntegerAttr(tile.getRow()));
 
     rewriter.eraseOp(op);
@@ -167,25 +170,40 @@ public:
             shimTile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
         uint32_t data = controller_id_attr.getPktId() << 8;
         uint32_t mask = 0x00001F00;
-        NpuMaskWrite32Op::create(rewriter, op->getLoc(), ctrl_offset, data,
-                                 mask, nullptr, nullptr, nullptr);
+        NpuMaskWrite32Op::create(
+            rewriter, op->getLoc(),
+            createConstantI32(rewriter, op->getLoc(), ctrl_offset),
+            createConstantI32(rewriter, op->getLoc(), data),
+            createConstantI32(rewriter, op->getLoc(), mask), nullptr, nullptr,
+            nullptr);
       }
     }
 
     // the offset of the task queue register in the tile
     uint32_t queue_offset = ctrl_offset + 0x4;
 
-    // the value to write
-    uint32_t bd_id = op.getBdId();
-    uint32_t repeat_cnt = op.getRepeatCount();
+    // the value to write. bd_id and repeat_count are SSA operands; this static
+    // lowering needs them as compile-time constants to fold into the command
+    // word. Runtime-valued pushes are handled by the dynamic C++ path, not
+    // here.
+    std::optional<uint32_t> bd_id = getConstantIntOperand(op.getBdId());
+    std::optional<uint32_t> repeat_cnt =
+        getConstantIntOperand(op.getRepeatCount());
+    if (!bd_id || !repeat_cnt)
+      return op.emitOpError(
+          "cannot lower push_queue with non-constant bd_id or "
+          "repeat_count to a static write32");
     uint32_t cmd = 0;
-    cmd |= bd_id & 0xF;
-    cmd |= (repeat_cnt & 0xFF) << 16;
+    cmd |= *bd_id & 0xF;
+    cmd |= (*repeat_cnt & 0xFF) << 16;
     if (op.getIssueToken())
       cmd |= 0x80000000;
 
-    NpuWrite32Op::create(rewriter, op->getLoc(), queue_offset, cmd, nullptr,
-                         nullptr, nullptr);
+    NpuWrite32Op::create(
+        rewriter, op->getLoc(),
+        createConstantI32(rewriter, op->getLoc(), queue_offset),
+        createConstantI32(rewriter, op->getLoc(), cmd), nullptr, nullptr,
+        nullptr);
     rewriter.eraseOp(op);
     return success();
   }
@@ -459,7 +477,9 @@ public:
     // instruction to perform the patch.
     uint64_t addr = targetModel.getDmaBdAddress(tileCol, tileRow, op.getId()) +
                     targetModel.getDmaBdAddressOffset(tileCol, tileRow);
-    NpuAddressPatchOp::create(rewriter, op->getLoc(), addr, arg_idx, offset);
+    NpuAddressPatchOp::create(rewriter, op->getLoc(), addr, arg_idx,
+                              createConstantI32(rewriter, op->getLoc(),
+                                                static_cast<uint32_t>(offset)));
 
     // If this DMA op has an offset_state_table_idx, emit an
     // update_from_scratchpad to add the runtime offset to the BD address
@@ -471,10 +491,15 @@ public:
         return failure();
     }
 
-    // push the patched bd onto the dma task queue
+    // push the patched bd onto the dma task queue. bd_id and repeat_count are
+    // SSA operands; materialize them as constants here (the static path).
     NpuPushQueueOp::create(
         rewriter, op->getLoc(), column, row, infoOp.getChannelDirAttr(),
-        infoOp.getChannelIndexAttr(), issue_token, repeat_count, bd_id);
+        infoOp.getChannelIndexAttr(), issue_token,
+        createConstantI32(rewriter, op->getLoc(),
+                          static_cast<uint32_t>(repeat_count.getInt())),
+        createConstantI32(rewriter, op->getLoc(),
+                          static_cast<uint32_t>(bd_id.getInt())));
 
     rewriter.eraseOp(op);
     return success();
@@ -513,10 +538,16 @@ public:
 
     // Create with `column_num == 1` and `row_num == 1` to check for a single
     // column and row.
+    Location loc = op->getLoc();
     (void)rewriter.replaceOpWithNewOp<NpuSyncOp>(
-        op, shimTile.getCol(), shimTile.getRow(),
-        static_cast<uint32_t>(shimDmaAllocOp.getChannelDir()),
-        shimDmaAllocOp.getChannelIndex(), 1, 1);
+        op, createConstantI32(rewriter, loc, shimTile.getCol()),
+        createConstantI32(rewriter, loc, shimTile.getRow()),
+        createConstantI32(
+            rewriter, loc,
+            static_cast<uint32_t>(shimDmaAllocOp.getChannelDir())),
+        createConstantI32(rewriter, loc, shimDmaAllocOp.getChannelIndex()),
+        createConstantI32(rewriter, loc, 1),
+        createConstantI32(rewriter, loc, 1));
 
     return success();
   }
@@ -526,8 +557,17 @@ struct WriteBdToBlockWritePattern : OpConversionPattern<NpuWriteBdOp> {
   using OpConversionPattern::OpConversionPattern;
 
 public:
-  WriteBdToBlockWritePattern(MLIRContext *context, PatternBenefit benefit = 1)
-      : OpConversionPattern(context, benefit) {}
+  WriteBdToBlockWritePattern(
+      MLIRContext *context,
+      llvm::DenseMap<Attribute, memref::GlobalOp> *dedupCache, unsigned *nextId,
+      PatternBenefit benefit = 1)
+      : OpConversionPattern(context, benefit), dedupCache(dedupCache),
+        nextId(nextId) {}
+
+  // Per-pass-run memo + next free name index for blockwrite data globals (see
+  // getOrCreateDataMemref). Owned by the pass; live only during the conversion.
+  llvm::DenseMap<Attribute, memref::GlobalOp> *dedupCache;
+  unsigned *nextId;
 
   LogicalResult
   matchAndRewrite(NpuWriteBdOp op, OpAdaptor adaptor,
@@ -705,7 +745,8 @@ public:
     {
       OpBuilder::InsertionGuard guard(rewriter);
       rewriter.setInsertionPoint(op->getParentOfType<AIE::RuntimeSequenceOp>());
-      global = getOrCreateDataMemref(rewriter, dev, op.getLoc(), words);
+      global = getOrCreateDataMemref(rewriter, dev, op.getLoc(), words,
+                                     dedupCache, nextId);
     }
     auto memref = memref::GetGlobalOp::create(
         rewriter, op.getLoc(), global.getType(), global.getName());
@@ -719,10 +760,6 @@ public:
 
 struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
 
-  void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<memref::MemRefDialect>();
-  }
-
   void runOnOperation() override {
 
     AIE::DeviceOp device = getOperation();
@@ -730,6 +767,7 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
     ConversionTarget target(getContext());
     target.addLegalDialect<AIEXDialect>();
     target.addLegalDialect<memref::MemRefDialect>();
+    target.addLegalDialect<arith::ArithDialect>();
     target.addLegalOp<AIE::BufferOp>();
     target.addLegalOp<AIE::ShimDMAAllocationOp>();
     target.addLegalOp<AIE::TileOp>();
@@ -746,6 +784,25 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
     target.addDynamicallyLegalOp<NpuMaskWrite32Op>(
         [&](NpuMaskWrite32Op op) { return !op.getBuffer(); });
 
+    // Seed, from the device's existing globals, a dedup cache (initial-value ->
+    // global) and the next free "blockwrite_data_<n>" name index (one past the
+    // current max). WriteBdToBlockWritePattern keeps both in sync as it creates
+    // globals, giving O(1) dedup and name-uniquing per BD; seeding the index
+    // past the max keeps names unique by construction. Both are locals holding
+    // raw op handles and must not outlive this conversion.
+    llvm::DenseMap<Attribute, memref::GlobalOp> dataMemrefCache;
+    unsigned nextBlockwriteId = 0;
+    for (auto g : device.getOps<memref::GlobalOp>()) {
+      if (auto initVal = g.getInitialValue())
+        dataMemrefCache.try_emplace(*initVal, g);
+      StringRef suffix = g.getSymName();
+      if (suffix.consume_front("blockwrite_data_")) {
+        unsigned idx;
+        if (!suffix.getAsInteger(10, idx) && idx >= nextBlockwriteId)
+          nextBlockwriteId = idx + 1;
+      }
+    }
+
     RewritePatternSet patterns(&getContext());
     patterns.insert<BlockWriteSymToAddr>(&getContext());
     patterns.insert<DmaToNpuPattern>(&getContext());
@@ -754,7 +811,8 @@ struct AIEDmaToNpuPass : xilinx::AIEX::impl::AIEDmaToNpuBase<AIEDmaToNpuPass> {
     patterns.insert<PushQueuetoWrite32Pattern>(&getContext());
     patterns.insert<RtpToWrite32Pattern>(&getContext());
     patterns.insert<Write32SymToAddr>(&getContext());
-    patterns.insert<WriteBdToBlockWritePattern>(&getContext());
+    patterns.insert<WriteBdToBlockWritePattern>(&getContext(), &dataMemrefCache,
+                                                &nextBlockwriteId);
 
     if (failed(applyPartialConversion(device, target, std::move(patterns))))
       signalPassFailure();

@@ -1,6 +1,6 @@
 //===- AIEMLIRModule.cpp ----------------------------------------*- C++ -*-===//
 //
-// Copyright (C) 2022, Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (C) 2022 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
@@ -88,13 +88,6 @@ NB_MODULE(_aie, m) {
       throw nb::python_error();
     return nb::steal<nb::str>(pyS);
   };
-
-  m.def(
-      "translate_aie_vec_to_cpp",
-      [&stealCStr](MlirOperation op, bool aie2) {
-        return stealCStr(aieTranslateAIEVecToCpp(op, aie2));
-      },
-      "module"_a, "aie2"_a = false);
 
   m.def(
       "translate_mlir_to_llvmir",

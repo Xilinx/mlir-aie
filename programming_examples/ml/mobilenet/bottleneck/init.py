@@ -1,14 +1,12 @@
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2026, Advanced Micro Devices, Inc.
 """Init conv block (3x3 stride-2) for MobileNet V3 IRON API.
 
 Single builder `init_conv` mirrors the sibling-bottleneck signature shape:
-takes the block's scale factors and placement, owns its own activations
-fifos / weights buffer / kernel / worker, returns `(workers, act_in,
+takes the block's scale factors, owns its own activations fifos /
+weights buffer / kernel / worker, returns `(workers, act_in,
 act_init_out)`. `act_in` is the shim-DMA destination for the design's
 input activations and is exposed so the runtime sequence's `rt.fill`
 can address it.
@@ -23,7 +21,7 @@ from ._common import wts_buffer
 from ..network_spec import block as nsblock
 
 
-def init_conv(sf, *, tile, data_dir):
+def init_conv(sf, *, tile=None, data_dir):
     """Build the init 3x3 stride-2 conv block.
 
     Returns:

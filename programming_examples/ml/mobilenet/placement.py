@@ -1,9 +1,7 @@
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2026, Advanced Micro Devices, Inc.
 """MobileNet V3 — physical tile placement (algorithm/mapping split).
 
 Compute tiles use rows 2-5 of columns 0-7 (Strix layout). MemTiles live on

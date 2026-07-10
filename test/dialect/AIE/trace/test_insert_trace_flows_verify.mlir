@@ -1,10 +1,7 @@
 //===- test_insert_trace_flows_verify.mlir --------------------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -40,7 +37,7 @@ module @missing_start {
       aie.trace.stop broadcast=14
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 65536
+      aie.trace.host_config {buffer_size = 65536 : i32}
       aie.trace.start_config @core_trace
     }
   }
@@ -59,7 +56,7 @@ module @missing_stop {
       aie.trace.start broadcast=15
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 65536
+      aie.trace.host_config {buffer_size = 65536 : i32}
       aie.trace.start_config @core_trace
     }
   }
@@ -79,7 +76,7 @@ module @unresolved_logical_tile {
       aie.trace.stop broadcast=14
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 65536
+      aie.trace.host_config {buffer_size = 65536 : i32}
       aie.trace.start_config @core_trace
     }
   }
@@ -123,7 +120,7 @@ module @explicit_packet_id_collision {
       aie.trace.stop broadcast=14
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 65536
+      aie.trace.host_config {buffer_size = 65536 : i32}
       aie.trace.start_config @trace1
       aie.trace.start_config @trace2
     }
@@ -150,7 +147,7 @@ module @shim_full_no_lateral {
     }
 
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 8192
+      aie.trace.host_config {buffer_size = 8192 : i32}
       aie.trace.start_config @trace
     }
   }
@@ -170,7 +167,7 @@ module @invalid_egress_col_oob {
       aie.trace.stop broadcast=14
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 8192 egress_shim_col = 5
+      aie.trace.host_config {buffer_size = 8192 : i32, egress_shim_col = 5 : i32}
       aie.trace.start_config @trace0
     }
   }

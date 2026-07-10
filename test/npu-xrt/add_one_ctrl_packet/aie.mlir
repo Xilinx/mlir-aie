@@ -1,10 +1,7 @@
 //===- aie.mlir ------------------------------------------------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2024 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2024 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -126,29 +123,70 @@ module {
       aiex.npu.blockwrite(%0) {address = 0x1d000 : ui32, column = 0 : i32, row = 0 : i32} : memref<8xi32>
 
       // patch bd0 address for packet 0, push to mm2s_0_task_queue, wait
-      aiex.npu.address_patch {addr = 0x1d004 : ui32, arg_idx = 1 : i32, arg_plus = 0 : i32}
-      aiex.npu.maskwrite32 {address = 0x1d210 : ui32, column = 0 : i32, row = 0 : i32, mask = 0x00000F00 : ui32, value = 0x400 : ui32}
-      aiex.npu.write32 {address = 0x1d214 : ui32, column = 0 : i32, row = 0 : i32, value = 0x80000000 : ui32}
-      aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
+      %cst_npu_0 = arith.constant 0 : i32
+      aiex.npu.address_patch(%cst_npu_0 : i32) {addr = 0x1d004 : ui32, arg_idx = 1 : i32}
+      %cst_npu_1 = arith.constant 0x1d210 : i32
+      %cst_npu_2 = arith.constant 0x400 : i32
+      %cst_npu_3 = arith.constant 0x00000F00 : i32
+      aiex.npu.maskwrite32(%cst_npu_1, %cst_npu_2, %cst_npu_3) {column = 0 : i32, row = 0 : i32} : i32, i32, i32
+      %cst_npu_4 = arith.constant 0x1d214 : i32
+      %cst_npu_5 = arith.constant 0x80000000 : i32
+      aiex.npu.write32(%cst_npu_4, %cst_npu_5) {column = 0 : i32, row = 0 : i32} : i32, i32
+      %cst_npu_6 = arith.constant 0 : i32
+      %cst_npu_7 = arith.constant 0 : i32
+      %cst_npu_8 = arith.constant 1 : i32
+      %cst_npu_9 = arith.constant 0 : i32
+      %cst_npu_10 = arith.constant 1 : i32
+      %cst_npu_11 = arith.constant 1 : i32
+      aiex.npu.sync(%cst_npu_6, %cst_npu_7, %cst_npu_8, %cst_npu_9, %cst_npu_10, %cst_npu_11) : i32, i32, i32, i32, i32, i32
 
       // patch bd0 address for packet 1, push to mm2s_0_task_queue, wait
-      aiex.npu.address_patch {addr = 0x1d004 : ui32, arg_idx = 1 : i32, arg_plus = 8 : i32}
-      aiex.npu.write32 {address = 0x1d214 : ui32, column = 0 : i32, row = 0 : i32, value = 0x80000000 : ui32}
-      aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
+      %cst_npu_12 = arith.constant 8 : i32
+      aiex.npu.address_patch(%cst_npu_12 : i32) {addr = 0x1d004 : ui32, arg_idx = 1 : i32}
+      %cst_npu_13 = arith.constant 0x1d214 : i32
+      %cst_npu_14 = arith.constant 0x80000000 : i32
+      aiex.npu.write32(%cst_npu_13, %cst_npu_14) {column = 0 : i32, row = 0 : i32} : i32, i32
+      %cst_npu_15 = arith.constant 0 : i32
+      %cst_npu_16 = arith.constant 0 : i32
+      %cst_npu_17 = arith.constant 1 : i32
+      %cst_npu_18 = arith.constant 0 : i32
+      %cst_npu_19 = arith.constant 1 : i32
+      %cst_npu_20 = arith.constant 1 : i32
+      aiex.npu.sync(%cst_npu_15, %cst_npu_16, %cst_npu_17, %cst_npu_18, %cst_npu_19, %cst_npu_20) : i32, i32, i32, i32, i32, i32
 
       // wait for dma output
       aiex.npu.dma_wait {symbol = @out0}
 
       // patch bd0 length and address for packet 2, push to mm2s_0_task_queue, wait
-      aiex.npu.write32 {address = 0x1d000 : ui32, column = 0 : i32, row = 0 : i32, value = 1 : ui32}
-      aiex.npu.address_patch {addr = 0x1d004 : ui32, arg_idx = 1 : i32, arg_plus = 16 : i32}
-      aiex.npu.write32 {address = 0x1d214 : ui32, column = 0 : i32, row = 0 : i32, value = 0x80000000 : ui32}
-      aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
+      %cst_npu_21 = arith.constant 0x1d000 : i32
+      %cst_npu_22 = arith.constant 1 : i32
+      aiex.npu.write32(%cst_npu_21, %cst_npu_22) {column = 0 : i32, row = 0 : i32} : i32, i32
+      %cst_npu_23 = arith.constant 16 : i32
+      aiex.npu.address_patch(%cst_npu_23 : i32) {addr = 0x1d004 : ui32, arg_idx = 1 : i32}
+      %cst_npu_24 = arith.constant 0x1d214 : i32
+      %cst_npu_25 = arith.constant 0x80000000 : i32
+      aiex.npu.write32(%cst_npu_24, %cst_npu_25) {column = 0 : i32, row = 0 : i32} : i32, i32
+      %cst_npu_26 = arith.constant 0 : i32
+      %cst_npu_27 = arith.constant 0 : i32
+      %cst_npu_28 = arith.constant 1 : i32
+      %cst_npu_29 = arith.constant 0 : i32
+      %cst_npu_30 = arith.constant 1 : i32
+      %cst_npu_31 = arith.constant 1 : i32
+      aiex.npu.sync(%cst_npu_26, %cst_npu_27, %cst_npu_28, %cst_npu_29, %cst_npu_30, %cst_npu_31) : i32, i32, i32, i32, i32, i32
 
       // patch bd0 address for packet 3, push to mm2s_0_task_queue, wait
-      aiex.npu.address_patch {addr = 0x1d004 : ui32, arg_idx = 1 : i32, arg_plus = 20 : i32}
-      aiex.npu.write32 {address = 0x1d214 : ui32, column = 0 : i32, row = 0 : i32, value = 0x80000000 : ui32}
-      aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
+      %cst_npu_32 = arith.constant 20 : i32
+      aiex.npu.address_patch(%cst_npu_32 : i32) {addr = 0x1d004 : ui32, arg_idx = 1 : i32}
+      %cst_npu_33 = arith.constant 0x1d214 : i32
+      %cst_npu_34 = arith.constant 0x80000000 : i32
+      aiex.npu.write32(%cst_npu_33, %cst_npu_34) {column = 0 : i32, row = 0 : i32} : i32, i32
+      %cst_npu_35 = arith.constant 0 : i32
+      %cst_npu_36 = arith.constant 0 : i32
+      %cst_npu_37 = arith.constant 1 : i32
+      %cst_npu_38 = arith.constant 0 : i32
+      %cst_npu_39 = arith.constant 1 : i32
+      %cst_npu_40 = arith.constant 1 : i32
+      aiex.npu.sync(%cst_npu_35, %cst_npu_36, %cst_npu_37, %cst_npu_38, %cst_npu_39, %cst_npu_40) : i32, i32, i32, i32, i32, i32
 
       // wait for control port output
       aiex.npu.dma_wait {symbol = @ctrl0}

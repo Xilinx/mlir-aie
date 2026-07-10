@@ -1,16 +1,13 @@
 //===- test-bf16-emulation.mlir - bf16 emulation of f32 ops --------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// Copyright (C) 2026, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
 // Test the bf16-emulation option which demotes f32 vector arithmetic to bf16.
 
-// RUN: aie-opt %s -split-input-file --canonicalize-vector-for-aievec="aie-target=aie2 target-backend=llvmir bf16-emulation=true" | FileCheck %s
+// RUN: aie-opt %s -split-input-file --canonicalize-vector-for-aievec="aie-target=aie2 bf16-emulation" | FileCheck %s
 
 // Test: basic addf demotion
 // CHECK-LABEL: func @test_addf

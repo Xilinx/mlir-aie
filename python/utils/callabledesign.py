@@ -1,10 +1,8 @@
 # callabledesign.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2026 Advanced Micro Devices, Inc.
 """CallableDesign: JIT-compiles on first call and runs on the NPU.
 
 ``CallableDesign`` wraps a ``CompilableDesign`` (or creates one implicitly)
@@ -34,10 +32,13 @@ from __future__ import annotations
 import inspect as _inspect
 import logging
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any, Callable, TYPE_CHECKING
 
 from aie.utils.compile.cache.utils import _create_function_cache_key
 from aie.utils.compile.jit.compilabledesign import CompilableDesign
+
+if TYPE_CHECKING:
+    from aie.utils.npukernel import NPUKernel
 
 # NPUKernel and DefaultNPURuntime pull in the XRT runtime stack on import.
 # Defer to first call so importing CallableDesign on machines without an NPU
@@ -229,11 +230,20 @@ class CallableDesign:
             physical_mlir = compilable._kernel_dir / "input_with_addresses.mlir"
             if physical_mlir.exists():
                 trace_config.physical_mlir_path = str(physical_mlir)
+        # The lowered runtime_sequence operand list is the true host-buffer
+        # contract (one operand per host BO, including any trace/ctrl-packet
+        # buffer the lowering appended). Its length is floor-independent, unlike
+        # the kernels.json boN slot count which aiecc floors to the firmware
+        # command-chain minimum -- so this is what host buffer counts are
+        # validated against.
+        expected_sizes = compilable._expected_tensor_sizes
+        num_host_bos = len(expected_sizes) if expected_sizes is not None else None
         kernel = NPUKernel(
             xclbin_path,
             inst_path,
             kernel_name="MLIR_AIE",
             trace_config=trace_config,
+            num_host_bos=num_host_bos,
         )
         if compilable.use_cache:
             self._kernel_cache[cache_key] = kernel
@@ -310,10 +320,15 @@ class CallableDesign:
             k: v for k, v in effective_compile_kwargs.items() if k != "trace_config"
         }
 
+        from aie.utils import ensure_current_device
+
+        ensure_current_device()
+
         compilable = self._build_compilable(call_compile_kwargs)
 
-        # In-process key includes runtime_args (tensor shapes); on-disk key in
-        # _compute_cache_hash does not. Divergence is intentional: if a generator
+        # In-process key includes runtime_args (tensor shapes) and the active
+        # device; on-disk key in _compute_cache_hash does not include tensor
+        # shapes. Divergence is intentional: if a generator
         # omits CompileTime[T] for shape, the disk artifact reuses but the in-process
         # slot changes, so validate_tensor_args() surfaces the mismatch.
         generator = compilable.mlir_generator
@@ -326,11 +341,17 @@ class CallableDesign:
             cache_fn,
             runtime_args,
             cache_compile_kwargs,
+            extra_key=compilable._generation_cache_key(),
         )
 
-        if compilable.use_cache and cache_key in self._kernel_cache:
-            kernel = self._kernel_cache[cache_key]
-        else:
+        kernel = self._kernel_cache.get(cache_key) if compilable.use_cache else None
+        if kernel is not None and (
+            not Path(kernel.xclbin_path).is_file()
+            or not Path(kernel.insts_path).is_file()
+        ):
+            self._kernel_cache.pop(cache_key, None)
+            kernel = None
+        if kernel is None:
             kernel = self._compile_and_build_kernel(compilable, cache_key, trace_config)
 
         tensor_args, remaining_scalars = compilable.split_runtime_args(

@@ -1,10 +1,8 @@
 # cli.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2026 Advanced Micro Devices, Inc.
 """``run_design_cli`` — standard 3-mode dispatcher for IRON design CLIs.
 
 Almost every basic/ design's ``main()`` is the same skeleton:
@@ -20,8 +18,8 @@ Almost every basic/ design's ``main()`` is the same skeleton:
         _run_and_verify(opts)
 
 …where ``_compile_only`` always does the same ``--insts-path`` check +
-``set_current_device(from_name(opts.dev))`` + ``design.specialize(**kw)
-.compile(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path
+device binding + ``design.specialize(**kw).compile(
+xclbin_path=opts.xclbin_path, inst_path=opts.insts_path
 [, elf_path=opts.elf_path])``.
 
 This module wraps that skeleton so each design just declares the two
@@ -34,12 +32,58 @@ real ``iron.tensor`` instances at MLIR-gen time.
 from __future__ import annotations
 
 import sys
-from typing import Any, Callable, Mapping
+from typing import TYPE_CHECKING, Any, Callable, Mapping, TypeAlias
+
+if TYPE_CHECKING:
+    from aie.iron.device import Device
+
+_DeviceArg: TypeAlias = "Device | Callable[[Any], Device | None]"
 
 
 def _resolve(value: Any, opts) -> Any:
     """Resolve ``value`` to a concrete value: call it if callable, else pass through."""
     return value(opts) if callable(value) else value
+
+
+def _resolve_device(value: _DeviceArg, opts) -> "Device":
+    """Resolve a CLI device selector to a concrete Device."""
+    resolved = value(opts) if callable(value) else value
+    if resolved is None:
+        raise ValueError("run_design_cli: device selector returned None")
+    return resolved
+
+
+def _runtime_device_name(device: Any) -> str:
+    """Return the standard CLI name for a detected NPU device."""
+    from aie.utils.compile import resolve_target_arch
+
+    target_arch = resolve_target_arch(device)
+    if target_arch == "aie2":
+        return "npu"
+    if target_arch == "aie2p":
+        return "npu2"
+    raise RuntimeError(f"Unsupported runtime target architecture: {target_arch}")
+
+
+def _detect_runtime_target(opts, *, mode: str):
+    """Resolve the active NPU family for an automatic CLI target."""
+    from aie.utils import get_current_device
+
+    runtime_device = get_current_device()
+    if runtime_device is None:
+        if mode == "compile":
+            sys.exit(
+                "run_design_cli: compile-only mode requires --dev when no NPU "
+                "runtime device is available."
+            )
+        sys.exit(
+            "run_design_cli: no NPU runtime device is available for an "
+            "automatic target selection."
+        )
+
+    if hasattr(opts, "dev"):
+        opts.dev = _runtime_device_name(runtime_device)
+    return runtime_device
 
 
 def run_design_cli(
@@ -48,7 +92,7 @@ def run_design_cli(
     *,
     compile_kwargs: Mapping[str, Any] | Callable[[Any], Mapping[str, Any]],
     run_and_verify: Callable[[Any], None] | None = None,
-    device: Any | Callable[[Any], Any] | None = None,
+    device: _DeviceArg | None = None,
     emit_mlir: Callable[[Any], None] | None = None,
     validate: Callable[[Any], None] | None = None,
 ) -> None:
@@ -56,8 +100,11 @@ def run_design_cli(
 
     The standard branch tree (in order):
 
-      1. If ``validate`` is given, call ``validate(opts)`` first.
-      2. If ``opts.emit_mlir`` is True, set the current device, then:
+      1. Bind an explicit ``--dev`` target or concrete ``device`` argument,
+         or detect the attached runtime device for run and local compile-only
+         modes.
+      2. If ``validate`` is given, call ``validate(opts)``.
+      3. If ``opts.emit_mlir`` is True, then:
 
          * If an ``emit_mlir`` callback was supplied, call ``emit_mlir(opts)``.
          * Otherwise print ``design.specialize(**compile_kwargs).as_mlir()``
@@ -66,23 +113,23 @@ def run_design_cli(
 
          Then return.
 
-      3. If ``opts.xclbin_path`` is set:
+      4. If ``opts.xclbin_path`` is set:
 
          * Refuse if ``opts.insts_path`` is unset (``sys.exit`` with the
            standard message).
-         * Set the current device.
          * Call ``design.specialize(**compile_kwargs).compile(
            xclbin_path=opts.xclbin_path, inst_path=opts.insts_path,
            [elf_path=opts.elf_path])``.
 
-      4. Otherwise, call ``run_and_verify(opts)``.
+      5. Otherwise, call ``run_and_verify(opts)``.
 
     Args:
         design: The ``@iron.jit``-decorated design (a ``CallableDesign``).
         opts: Parsed ``argparse.Namespace`` — must expose at minimum
             ``xclbin_path`` / ``insts_path`` (the standard
-            ``add_compile_args`` flags).  ``emit_mlir`` and ``elf_path``
-            are read if present.
+            ``add_compile_args`` flags). ``dev`` may be ``None`` to request
+            automatic runtime selection. ``emit_mlir`` and ``elf_path`` are
+            read if present.
         compile_kwargs: Either a dict OR a callable that takes ``opts``
             and returns the kwargs dict to pass to
             ``design.specialize()``.  Callable form is convenient for
@@ -95,11 +142,12 @@ def run_design_cli(
             harness omit this; reaching the run branch without it exits
             with a clear "no python run path" message.
         device: Optional iron ``Device`` instance OR callable
-            ``opts -> Device``.  If omitted, defaults to
-            ``from_name(opts.dev)`` (using whatever device choices the
-            argparse setup allowed).  Pass a callable when the device
-            depends on more than just ``opts.dev`` — e.g. matmul's
-            ``(opts.dev, opts.n_aie_cols)`` mapping.
+            ``opts -> Device``. An explicit ``opts.dev`` is resolved through
+            this value, or through ``from_name(opts.dev)`` when omitted. When
+            ``opts.dev`` is ``None``, the dispatcher detects the attached NPU
+            family, updates ``opts.dev``, and then invokes a callable selector
+            so it can retain its declared column profile. Pass a ``Device``
+            instance to pin a target independently of the CLI.
         emit_mlir: Optional callable for the ``--emit-mlir`` branch.
             If ``opts.emit_mlir`` is True but this is None, the dispatcher
             falls back to printing
@@ -109,34 +157,60 @@ def run_design_cli(
             passed-in tensor).  Pass an explicit callable when the
             generator needs real ``iron.tensor`` instances at MLIR-gen
             time.
-        validate: Optional callable invoked before any branch — e.g. for
-            shape / arg consistency checks that should fire in all modes.
+        validate: Optional callable invoked after target selection — e.g.
+            for shape / arg consistency checks that should fire in all modes.
     """
-    # Late imports so this module is cheap to import even when no
-    # design ever calls it (and to dodge circular-import issues with
-    # aie.iron.device).
-    from aie.iron.device import from_name
+    # Late imports keep this module cheap to import and avoid circular imports
+    # until a design actually enters the dispatcher.
     from aie.utils.hostruntime import set_current_device
 
-    if validate is not None:
-        validate(opts)
+    emit_mlir_requested = getattr(opts, "emit_mlir", False)
+    compile_only_requested = getattr(opts, "xclbin_path", None) is not None
+    requested_dev = getattr(opts, "dev", None)
 
-    if device is None:
-        # Default: read opts.dev and pass through from_name.
-        if not hasattr(opts, "dev"):
+    if compile_only_requested and not getattr(opts, "insts_path", None):
+        sys.exit("--xclbin-path requires --insts-path (must be set together)")
+
+    if requested_dev is None:
+        has_concrete_device = device is not None and not callable(device)
+        if emit_mlir_requested and not has_concrete_device:
+            sys.exit(
+                "run_design_cli: --emit-mlir requires an explicit target; "
+                "pass --dev."
+            )
+
+        if device is None and not hasattr(opts, "dev"):
             raise ValueError(
                 "run_design_cli: device=None requires opts to expose a "
                 "'dev' attribute (the standard add_compile_args flag). "
                 "Pass device=<Device or callable> explicitly otherwise."
             )
 
-        def _default_device(opts):
-            return from_name(opts.dev)
+        if device is not None and not callable(device):
+            resolved_device = device
+        else:
+            mode = "compile" if compile_only_requested else "run"
+            _detect_runtime_target(opts, mode=mode)
+            if device is None:
+                from aie.iron.device import from_name
 
-        device = _default_device
+                resolved_device = from_name(opts.dev)
+            else:
+                resolved_device = _resolve_device(device, opts)
+        set_current_device(resolved_device)
+    else:
+        if device is None:
+            from aie.iron.device import from_name
 
-    if getattr(opts, "emit_mlir", False):
-        set_current_device(_resolve(device, opts))
+            resolved_device = from_name(requested_dev)
+        else:
+            resolved_device = _resolve_device(device, opts)
+        set_current_device(resolved_device)
+
+    if validate is not None:
+        validate(opts)
+
+    if emit_mlir_requested:
         if emit_mlir is not None:
             emit_mlir(opts)
         else:
@@ -144,10 +218,7 @@ def run_design_cli(
             print(design.specialize(**kwargs).as_mlir())
         return
 
-    if getattr(opts, "xclbin_path", None):
-        if not getattr(opts, "insts_path", None):
-            sys.exit("--xclbin-path requires --insts-path (must be set together)")
-        set_current_device(_resolve(device, opts))
+    if compile_only_requested:
         kwargs = _resolve(compile_kwargs, opts)
         spec = design.specialize(**kwargs)
         compile_opts = dict(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)

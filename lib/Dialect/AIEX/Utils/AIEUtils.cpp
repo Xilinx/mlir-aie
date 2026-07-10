@@ -1,10 +1,7 @@
 //===- AIEUtils.cpp ---------------------------------------------*- C++ -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2025 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2025 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -14,8 +11,8 @@
 using namespace mlir;
 using namespace xilinx;
 
-// Counter shared across calls to getOrCreateDataMemref so that uniquing scans
-// can skip past previously used indices efficiently.
+// Counter used to name private blockwrite data globals when no caller-supplied
+// next-index is available; the symbol-table probe below keeps names unique.
 static unsigned blockwriteDataCounter = 0;
 
 std::optional<AIEX::SubviewTraceResult>
@@ -125,37 +122,63 @@ AIEX::traceSubviewToBlockArgument(Value value) {
   return std::nullopt;
 }
 
-memref::GlobalOp AIEX::getOrCreateDataMemref(OpBuilder &builder,
-                                             AIE::DeviceOp dev,
-                                             mlir::Location loc,
-                                             ArrayRef<uint32_t> words) {
+memref::GlobalOp AIEX::getOrCreateDataMemref(
+    OpBuilder &builder, AIE::DeviceOp dev, mlir::Location loc,
+    ArrayRef<uint32_t> words,
+    llvm::DenseMap<mlir::Attribute, memref::GlobalOp> *dedupCache,
+    unsigned *nextId) {
   uint32_t num_words = words.size();
   MemRefType memrefType = MemRefType::get({num_words}, builder.getI32Type());
   TensorType tensorType =
       RankedTensorType::get({num_words}, builder.getI32Type());
-  memref::GlobalOp global = nullptr;
   auto initVal = DenseElementsAttr::get<uint32_t>(tensorType, words);
-  auto otherGlobals = dev.getOps<memref::GlobalOp>();
-  for (auto g : otherGlobals) {
-    if (g.getType() != memrefType)
-      continue;
-    auto otherValue = g.getInitialValue();
-    if (!otherValue)
-      continue;
-    if (*otherValue != initVal)
-      continue;
-    global = g;
-    break;
+
+  // Dedup. The initial-value attribute is uniqued and encodes both the element
+  // data and the (shaped) type, so it is a sufficient key on its own.
+  memref::GlobalOp global = nullptr;
+  if (dedupCache) {
+    // O(1): the cache is seeded by the caller from the device's existing
+    // globals and kept in sync below as we create new ones.
+    auto it = dedupCache->find(initVal);
+    if (it != dedupCache->end()) {
+      // initVal encodes element data + shape, but not memref layout/memory
+      // space.
+      if (it->second && it->second.getType() == memrefType)
+        return it->second;
+      dedupCache->erase(it);
+    }
+  } else {
+    // No cache supplied: scan existing globals for a match. Callers that create
+    // many globals should pass a cache (see header).
+    for (auto g : dev.getOps<memref::GlobalOp>()) {
+      if (g.getType() != memrefType)
+        continue;
+      auto otherValue = g.getInitialValue();
+      if (!otherValue)
+        continue;
+      if (*otherValue != initVal)
+        continue;
+      return g;
+    }
   }
-  if (!global) {
-    std::string name = "blockwrite_data_";
+
+  // With a caller-supplied `nextId` (one past the largest existing
+  // blockwrite_data_<n>) the name is unique by construction; otherwise probe
+  // the symbol table for a free index.
+  std::string name;
+  if (nextId) {
+    name = "blockwrite_data_" + std::to_string((*nextId)++);
+  } else {
+    name = "blockwrite_data_";
     while (dev.lookupSymbol(name + std::to_string(blockwriteDataCounter)))
       blockwriteDataCounter++;
-    name += std::to_string(blockwriteDataCounter);
-    global = memref::GlobalOp::create(builder, loc, name,
-                                      builder.getStringAttr("private"),
-                                      memrefType, initVal, true, nullptr);
+    name += std::to_string(blockwriteDataCounter++);
   }
+  global = memref::GlobalOp::create(builder, loc, name,
+                                    builder.getStringAttr("private"),
+                                    memrefType, initVal, true, nullptr);
+  if (dedupCache)
+    (*dedupCache)[initVal] = global;
   return global;
 }
 

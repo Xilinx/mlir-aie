@@ -1,13 +1,20 @@
-# Copyright (C) 2022, Advanced Micro Devices, Inc.
+# Copyright (C) 2022 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 from contextlib import contextmanager
-from functools import partial
 import itertools
 from operator import itemgetter
 
 import numpy as np
 
 from ._aiex_ops_gen import *
+from ._aiex_ops_gen import (
+    npu_write32 as _npu_write32,
+    npu_maskwrite32 as _npu_maskwrite32,
+    npu_sync as _npu_sync,
+    npu_address_patch as _npu_address_patch,
+    npu_rtp_write as _npu_rtp_write,
+    npu_push_queue as _npu_push_queue,
+)
 from ._aie_ops_gen import ObjectFifoCreateOp, dma_bd, EndOp, RuntimeSequenceOp
 from . import aie
 from .aie import (
@@ -18,6 +25,7 @@ from .aie import (
     bds,
 )
 from .transform.structured import MixedValues, _dispatch_mixed_values
+from ..extras.dialects.arith import constant
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
 from ..helpers.util import v8bfp16ebs8, v16bfp16ebs16
@@ -39,7 +47,74 @@ from ..helpers.taplib import TensorAccessPattern
 # Comes from _aie
 register_dialect(get_dialect_registry())
 
-npu_sync = partial(npu_sync, column_num=1, row_num=1)
+
+def _as_i32(v):
+    """Materialize an arith.constant i32 from a Python int, or pass a Value
+    through unchanged. The npu scalar ops (write32/maskwrite32/sync/
+    address_patch/rtp_write) carry their integer fields as SSA i32 operands;
+    these wrappers preserve the historical int-argument API by converting
+    constants on the user's behalf."""
+    if isinstance(v, int):
+        return constant(v, T.i32())
+    return v
+
+
+def npu_write32(address, value, buffer=None, column=None, row=None, **kwargs):
+    return _npu_write32(
+        _as_i32(address),
+        _as_i32(value),
+        buffer=buffer,
+        column=column,
+        row=row,
+        **kwargs,
+    )
+
+
+def npu_maskwrite32(address, value, mask, buffer=None, column=None, row=None, **kwargs):
+    return _npu_maskwrite32(
+        _as_i32(address),
+        _as_i32(value),
+        _as_i32(mask),
+        buffer=buffer,
+        column=column,
+        row=row,
+        **kwargs,
+    )
+
+
+def npu_sync(column, row, direction, channel, column_num=1, row_num=1, **kwargs):
+    return _npu_sync(
+        _as_i32(column),
+        _as_i32(row),
+        _as_i32(direction),
+        _as_i32(channel),
+        _as_i32(column_num),
+        _as_i32(row_num),
+        **kwargs,
+    )
+
+
+def npu_address_patch(addr, arg_idx, arg_plus, **kwargs):
+    return _npu_address_patch(addr, arg_idx, _as_i32(arg_plus), **kwargs)
+
+
+def npu_rtp_write(buffer, index, value, **kwargs):
+    return _npu_rtp_write(buffer, index, _as_i32(value), **kwargs)
+
+
+def npu_push_queue(
+    column, row, direction, channel, issue_token, repeat_count, bd_id, **kwargs
+):
+    return _npu_push_queue(
+        column,
+        row,
+        direction,
+        channel,
+        issue_token,
+        _as_i32(repeat_count),
+        _as_i32(bd_id),
+        **kwargs,
+    )
 
 
 def dma_wait(*args: ObjectFifoCreateOp | str):

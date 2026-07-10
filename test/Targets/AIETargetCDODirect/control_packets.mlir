@@ -1,14 +1,11 @@
 //===- control_packets.mlir ------------------------------------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2024 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2024 Advanced Micro Devices, Inc. or its affiliates
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-translate --aie-ctrlpkt-to-bin -aie-output-binary=false %s |& FileCheck %s
+// RUN: aie-translate --aie-ctrlpkt-to-bin -aie-output-binary=false %s 2>&1 | FileCheck %s
 
 // CHECK: 8000001B
 // CHECK: 0001F000

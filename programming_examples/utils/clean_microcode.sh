@@ -1,4 +1,8 @@
 #!/bin/bash
+
+# Copyright (C) 2024-2025 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 #echo $1
 sed -i ':a;N;$!ba;s/\.delay_slot\n//g' $1
 sed -i ':a;N;$!ba;s/\.swstall delay_slot\n//g' $1

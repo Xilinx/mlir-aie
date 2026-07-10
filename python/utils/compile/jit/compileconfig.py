@@ -1,10 +1,8 @@
 # compileconfig.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2026 Advanced Micro Devices, Inc.
 """``@iron.compileconfig`` decorator — attaches compile configuration to a generator.
 
 ``@compileconfig`` wraps a generator function in a ``CompilableDesign`` so that
@@ -17,7 +15,7 @@ from __future__ import annotations
 
 import functools
 from pathlib import Path
-from typing import Callable
+from typing import Any, Callable
 
 from .compilabledesign import CompilableDesign
 
@@ -65,7 +63,7 @@ def compileconfig(
 
         design = CompilableDesign(gemm_design, compile_kwargs={"M": 512, ...})
     """
-    config_kwargs = dict(
+    config_kwargs: dict[str, Any] = dict(
         use_cache=use_cache,
         compile_flags=list(compile_flags or []),
         source_files=list(source_files or []),

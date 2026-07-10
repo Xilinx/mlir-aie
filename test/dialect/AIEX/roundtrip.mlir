@@ -1,10 +1,7 @@
 //===- roundtrip.mlir ------------------------------------------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2024 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// Copyright (C) 2024, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -33,10 +30,12 @@ aie.device(npu1) {
 // -----
 
 // CHECK: aie.device
-// CHECK: aiex.npu.address_patch {addr = 123 : ui32, arg_idx = 3 : i32, arg_plus = 0 : i32}
+// CHECK: %[[ARGPLUS:.*]] = arith.constant 0 : i32
+// CHECK: aiex.npu.address_patch(%[[ARGPLUS]] : i32) {addr = 123 : ui32, arg_idx = 3 : i32}
 aie.device(npu1) {
   aie.runtime_sequence() {
-    aiex.npu.address_patch {addr = 123 : ui32, arg_idx = 3 : i32, arg_plus = 0 : i32}
+    %cst_npu_0 = arith.constant 0 : i32
+    aiex.npu.address_patch(%cst_npu_0 : i32) {addr = 123 : ui32, arg_idx = 3 : i32}
   }
 }
 
@@ -44,10 +43,14 @@ aie.device(npu1) {
 
 // CHECK: aie.device
 // CHECK: runtime_sequence @seq(%arg0: memref<1xi32>)
-// CHECK: aiex.npu.write32 {address = 432 : ui32, value = 1 : ui32}
+// CHECK-DAG: %[[WADDR:.*]] = arith.constant 432 : i32
+// CHECK-DAG: %[[WVAL:.*]] = arith.constant 1 : i32
+// CHECK: aiex.npu.write32(%[[WADDR]], %[[WVAL]]) : i32, i32
 aie.device(npu1) {
   aie.runtime_sequence @seq(%arg0 : memref<1xi32>) {
-    aiex.npu.write32 {address = 432 : ui32, value = 1 : ui32}
+    %cst_npu_1 = arith.constant 432 : i32
+    %cst_npu_2 = arith.constant 1 : i32
+    aiex.npu.write32(%cst_npu_1, %cst_npu_2) : i32, i32
   }
 }
 

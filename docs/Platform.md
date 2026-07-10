@@ -1,3 +1,5 @@
+<!-- Copyright (C) 2023 Advanced Micro Devices, Inc. -->
+<!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 # Building a platform for further exploration in hardware
 
 In order to facilitate additional exploration of the MLIR AIE tools in hardware, a basic platform can be built to run the generated programs on an AI Engine-enabled device + board (vck190). Such a platform also provides the necessary `sysroot` required to cross-compile MLIR AIE code for simulation, such as for the tutorials.
@@ -49,7 +51,7 @@ vck190 board + usb-c to usb cable + ethernet cable
 ## Board setup steps
 After the build is complete, format an SD card (16 GB+) in fat32 format and copy the files from the linux subdirectory onto the SD card.
 ```sh
-cp -r platforms/vck190_bare/petalinux/images/linux/* <SD card directory>
+cp -r platforms/vck190_bare_prod/petalinux/images/linux/* <SD card directory>
 ```
 Put the sd card into the micro sd slot to boot up the Versal device (top of the board), connect the board usb-c connector to your host machine and turn on the board. You should run a program like TeraTerm and configure it as a serial port (115200 baud, 8b data, no parity, 1b stop, no flow control). The serial port for Versal is usually the first port but may vary in your setup.
 
@@ -78,4 +80,4 @@ and run on the board as usual.
 
 -----
 
-<p align="center">Copyright&copy; 2019-2022 AMD/Xilinx</p>
+<p align="center">Copyright&copy; 2019-2021 Xilinx, Inc.<br>Copyright&copy; 2022-2026 Advanced Micro Devices, Inc.</p>

@@ -1,14 +1,11 @@
 //===- bd_chain_on_memtile/split_with_iterations.mlir ----------------------------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2025 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// Copyright (C) 2025, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
 
 // CHECK:     %memtile_dma_0_1 = aie.memtile_dma(%mem_tile_0_1) {
 // CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb7)
@@ -140,13 +137,13 @@ module {
     %tile_0_4 = aie.tile(0, 4)
     %shim_noc_tile_0_0 = aie.tile(0, 0)
     %mem_tile_0_1 = aie.tile(0, 1)
-    
-    aie.objectfifo @large_input(%shim_noc_tile_0_0, {%mem_tile_0_1}, 2 : i32) : !aie.objectfifo<memref<1024xui8>> 
-    
-    aie.objectfifo @small_output(%mem_tile_0_1, {%tile_0_2}, 2 : i32) {iter_count = 3 : i32} : !aie.objectfifo<memref<256xui8>> 
-    aie.objectfifo @medium_output(%mem_tile_0_1, {%tile_0_3}, 2 : i32) {iter_count = 4 : i32} : !aie.objectfifo<memref<384xui8>> 
-    aie.objectfifo @large_output(%mem_tile_0_1, {%tile_0_4}, 2 : i32) {iter_count = 5 : i32} : !aie.objectfifo<memref<384xui8>> 
-    
+
+    aie.objectfifo @large_input(%shim_noc_tile_0_0, {%mem_tile_0_1}, 2 : i32) : !aie.objectfifo<memref<1024xui8>>
+
+    aie.objectfifo @small_output(%mem_tile_0_1, {%tile_0_2}, 2 : i32) {iter_count = 3 : i32} : !aie.objectfifo<memref<256xui8>>
+    aie.objectfifo @medium_output(%mem_tile_0_1, {%tile_0_3}, 2 : i32) {iter_count = 4 : i32} : !aie.objectfifo<memref<384xui8>>
+    aie.objectfifo @large_output(%mem_tile_0_1, {%tile_0_4}, 2 : i32) {iter_count = 5 : i32} : !aie.objectfifo<memref<384xui8>>
+
     aie.objectfifo.link [@large_input] -> [@small_output, @medium_output, @large_output]([] [0, 256, 640])
   }
 }

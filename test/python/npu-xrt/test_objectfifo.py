@@ -1,8 +1,6 @@
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025-2026 AMD Inc.
 
 # RUN: %run_on_npu1% %pytest %s
 # RUN: %run_on_npu2% %pytest %s
@@ -12,9 +10,9 @@ import pytest
 import numpy as np
 
 from aie.dialects._aie_enum_gen import AIETileType
+from aie.ir import MLIRError
 from aie.iron import Buffer, ObjectFifo, Program, Runtime, Worker
 from aie.iron.dataflow.objectfifo import ObjectFifoLink
-from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
 from aie.iron.device import (
     NPU1Col1,
     NPU1,
@@ -30,71 +28,6 @@ from aie.iron.runtime.endpoint import RuntimeEndpoint
 @pytest.fixture(params=[NPU1Col1, NPU1, NPU2])
 def device(request):
     return request.param()
-
-
-def test_can_used_shared_mem(device):
-    n_ty = np.ndarray[(1024,), np.dtype[np.int32]]
-
-    # Legal affinity
-    of_legal = ObjectFifo(n_ty)
-    of_legal.prod().endpoint = ObjectFifoEndpoint(Tile(1, 2))
-    of_legal.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
-    assert of_legal.can_used_shared_mem(device)
-    assert of_legal.can_used_shared_mem(device, cons_only=True)
-
-    # Illegal affinity
-    of_illegal = ObjectFifo(n_ty)
-    of_illegal.prod().endpoint = ObjectFifoEndpoint(Tile(0, 0))
-    of_illegal.cons().endpoint = ObjectFifoEndpoint(Tile(1, 2))
-    assert not of_illegal.can_used_shared_mem(device)
-    assert of_illegal.can_used_shared_mem(device, cons_only=True)
-
-    # Multiple consumers, legal
-    of_mult_cons_legal = ObjectFifo(n_ty)
-    of_mult_cons_legal.prod().endpoint = ObjectFifoEndpoint(Tile(1, 2))
-    of_mult_cons_legal.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
-    of_mult_cons_legal.cons().endpoint = ObjectFifoEndpoint(Tile(1, 4))
-    assert of_mult_cons_legal.can_used_shared_mem(device)
-    assert of_mult_cons_legal.can_used_shared_mem(device, cons_only=True)
-
-    # Multiple consumers, illegal
-    of_mult_cons_illegal = ObjectFifo(n_ty)
-    of_mult_cons_illegal.prod().endpoint = ObjectFifoEndpoint(Tile(1, 2))
-    of_mult_cons_illegal.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
-    of_mult_cons_illegal.cons().endpoint = ObjectFifoEndpoint(Tile(0, 0))
-    assert not of_mult_cons_illegal.can_used_shared_mem(device)
-    assert not of_mult_cons_illegal.can_used_shared_mem(device, cons_only=True)
-
-    # Illegal producer, legal consumer
-    of_illegal_prod = ObjectFifo(n_ty)
-    of_illegal_prod.prod().endpoint = ObjectFifoEndpoint(Tile(0, 0))
-    of_illegal_prod.cons().endpoint = ObjectFifoEndpoint(Tile(1, 2))
-    assert not of_illegal_prod.can_used_shared_mem(device)
-    assert of_illegal_prod.can_used_shared_mem(device, cons_only=True)
-
-    # Forwarded ObjectFifo
-    of_forward = ObjectFifo(n_ty)
-    of_forward.prod().endpoint = ObjectFifoEndpoint(Tile(1, 2))
-    forwarded = of_forward.cons().forward(tile=AnyMemTile)
-    forwarded.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
-    with pytest.raises(ValueError):
-        of_forward.can_used_shared_mem(device)
-    with pytest.raises(ValueError):
-        forwarded.can_used_shared_mem(device)
-
-    # AnyComputeTile
-    of_any_compute = ObjectFifo(n_ty)
-    of_any_compute.prod().endpoint = ObjectFifoEndpoint(AnyComputeTile)
-    of_any_compute.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
-    with pytest.raises(ValueError):
-        of_any_compute.can_used_shared_mem(device)
-
-    # AnyShimTile
-    of_any_shim = ObjectFifo(n_ty)
-    of_any_shim.prod().endpoint = ObjectFifoEndpoint(AnyShimTile)
-    of_any_shim.cons().endpoint = ObjectFifoEndpoint(Tile(1, 3))
-    with pytest.raises(ValueError):
-        of_any_shim.can_used_shared_mem(device)
 
 
 def test_set_iter_count():
@@ -180,7 +113,12 @@ def test_runtime_endpoint_tile_type_validation():
 
 
 def test_workers_cannot_share_tile():
-    """Two workers placed on the same coordinates must error."""
+    """Two workers placed on the same coordinates must error.
+
+    The one-core-per-tile rule is enforced by the aie.device verifier, so the
+    collision surfaces as an MLIRError during module construction rather than a
+    Python-side check.
+    """
     n_ty = np.ndarray[(1024,), np.dtype[np.int32]]
     shared_tile = Tile(0, 2)
     of1 = ObjectFifo(n_ty, name="shared_of1")
@@ -192,12 +130,16 @@ def test_workers_cannot_share_tile():
         rt.start(w1, w2)
         rt.fill(of1.prod(), A)
         rt.fill(of2.prod(), B)
-    with pytest.raises(ValueError, match="Multiple workers cannot share the same tile"):
+    with pytest.raises(MLIRError, match="already has a core"):
         Program(NPU2(), rt).resolve_program()
 
 
 def test_workers_cannot_share_tile_by_coordinates():
-    """Two workers with different Tile objects but same coordinates must error."""
+    """Two workers with different Tile objects but same coordinates must error.
+
+    Distinct Tile objects now emit distinct aie.logical_tile ops (no Python-side
+    coordinate merging); the aie.device verifier rejects the shared coordinate.
+    """
     n_ty = np.ndarray[(1024,), np.dtype[np.int32]]
     tile_1 = Tile(0, 2)
     tile_2 = Tile(0, 2)
@@ -210,19 +152,22 @@ def test_workers_cannot_share_tile_by_coordinates():
         rt.start(w1, w2)
         rt.fill(of1.prod(), A)
         rt.fill(of2.prod(), B)
-    with pytest.raises(ValueError, match="Multiple workers cannot share the same tile"):
+    with pytest.raises(MLIRError, match="already has a core"):
         Program(NPU2(), rt).resolve_program()
 
 
 def test_buffer_cannot_be_shared_across_workers():
-    """A Buffer passed to two Workers must error on the second assignment."""
+    """An auto-placed Buffer (no explicit tile) passed to two Workers must
+    error on the second assignment, since its placement would be ambiguous.
+    (A Buffer pinned to an explicit tile may be shared — see
+    test/python/worker_buffer_sharing.py.)"""
     n_ty = np.ndarray[(1024,), np.dtype[np.int32]]
     buf_ty = np.ndarray[(16,), np.dtype[np.int32]]
     buf = Buffer(type=buf_ty, name="shared_buf")
     of1 = ObjectFifo(n_ty, name="buf_of1")
     _ = Worker(None, [of1.cons(), buf])
     of2 = ObjectFifo(n_ty, name="buf_of2")
-    with pytest.raises(ValueError, match="already placed on"):
+    with pytest.raises(ValueError, match="no explicit tile"):
         Worker(None, [of2.cons(), buf])
 
 

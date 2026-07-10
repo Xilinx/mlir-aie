@@ -1,10 +1,8 @@
 # npukernel.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025-2026 Advanced Micro Devices, Inc.
 from pathlib import Path
 from .trace import TraceConfig
 
@@ -21,6 +19,7 @@ class NPUKernel:
         device_index=0,
         kernel_name="MLIR_AIE",
         trace_config: TraceConfig | None = None,
+        num_host_bos: int | None = None,
     ):
         """
         Initialize the NPUKernel.
@@ -31,12 +30,21 @@ class NPUKernel:
             device_index (int, optional): Device index. Defaults to 0.
             kernel_name (str, optional): Name of the kernel. Defaults to "MLIR_AIE".
             trace_config (TraceConfig | None, optional): Trace configuration. Defaults to None.
+            num_host_bos (int | None, optional): The compiled design's true
+                host-buffer count -- the number of ``aie.runtime_sequence``
+                operands, including any trace/ctrl-packet buffer the lowering
+                appended. This is floor-independent (unlike the kernels.json
+                ``boN`` slot count, which aiecc floors to the firmware
+                command-chain minimum), so it is the correct value to validate
+                host buffer counts against. ``None`` when it could not be
+                determined (validation is then skipped).
         """
         self._xclbin_path = xclbin_path
         self._insts_path = insts_path
         self._kernel_name = kernel_name
         self._trace_config = trace_config
         self._device_index = device_index
+        self._num_host_bos = num_host_bos
 
     @property
     def trace_config(self) -> TraceConfig | None:
@@ -77,6 +85,18 @@ class NPUKernel:
             str: The kernel name.
         """
         return self._kernel_name
+
+    @property
+    def num_host_bos(self) -> int | None:
+        """
+        Get the compiled design's true host-buffer count.
+
+        Returns:
+            int | None: The number of ``aie.runtime_sequence`` operands the
+            design was compiled with (including any appended trace buffer), or
+            ``None`` if it could not be determined.
+        """
+        return self._num_host_bos
 
     # Blocking call.
     def __call__(self, *args, **kwargs):

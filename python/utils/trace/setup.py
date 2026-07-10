@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (C) 2024-2026 Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 import logging
@@ -7,7 +7,7 @@ logger = logging.getLogger(__name__)
 
 from aie.dialects.aie import (
     packetflow,
-    WireBundle,
+    WireBundle,  # pyright: ignore[reportAttributeAccessIssue]
     trace,
     trace_mode,
     trace_event,
@@ -17,16 +17,16 @@ from aie.dialects.aie import (
     trace_stop,
     trace_start_config,
     trace_host_config,
-    TraceMode,
-    TracePacketType,
-    DMAChannelDir,
-    get_target_model,
+    TraceMode,  # pyright: ignore[reportAttributeAccessIssue]
+    TracePacketType,  # pyright: ignore[reportAttributeAccessIssue]
+    DMAChannelDir,  # pyright: ignore[reportAttributeAccessIssue]
+    get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from aie.dialects.aiex import (
-    npu_write32,
-    npu_writebd,
-    npu_maskwrite32,
-    npu_address_patch,
+    npu_write32,  # pyright: ignore[reportAttributeAccessIssue]
+    npu_writebd,  # pyright: ignore[reportAttributeAccessIssue]
+    npu_maskwrite32,  # pyright: ignore[reportAttributeAccessIssue]
+    npu_address_patch,  # pyright: ignore[reportAttributeAccessIssue]
     npu_sync,
 )
 from .events import (
@@ -83,7 +83,7 @@ def configure_shimtile_dma_aie2(
     enable_token=0,
     enable_packet=1,  # valid for mm2s xfer only
     packet_id=0,  # for mm2s xfer
-    packet_type=PacketType.CORE,  # for mm2s xfer
+    packet_type: PacketType | int = PacketType.CORE,  # for mm2s xfer
     shim_burst_length=64,
 ):
 
@@ -521,7 +521,7 @@ def configure_trace(
 
 def start_trace(
     trace_size=8192,
-    ddr_id=4,
+    reuse_output_buffer=False,
     routing="single",
     egress_shim_col=0,
 ):
@@ -532,16 +532,17 @@ def start_trace(
 
     Args:
         trace_size: Trace buffer size in bytes. Default is 8192.
-        ddr_id: DDR buffer index (0-4) mapping to XRT group_id (3-7).
-                Default is 4 (group_id 7). Set to -1 to append trace data
-                after the last runtime_sequence tensor argument.
+        reuse_output_buffer: When False (default), trace lowering appends a
+                dedicated trace-buffer argument to the runtime_sequence. When
+                True, trace data is written into the tail of the last existing
+                argument (an output buffer), saving a host buffer.
         routing: Shim routing strategy. Currently only "single" is supported,
                  which routes all traces to column 0's shim.
     """
     # Emit host_config op (handles string-to-enum conversion for routing)
     trace_host_config(
         buffer_size=trace_size,
-        arg_idx=ddr_id,
+        reuse_output_buffer=reuse_output_buffer,
         routing=routing,
         egress_shim_col=egress_shim_col,
     )

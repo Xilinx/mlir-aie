@@ -1,3 +1,7 @@
+# Copyright (C) 2021 Xilinx, Inc.
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 build*
 _build*
 *.exe
@@ -29,6 +33,9 @@ CLAUDE.md
 utils/vitisVariables.config
 runtime_lib/xaiengine/src
 /ironenv
+/iron_env.cmd
+/iron_env.ps1
+/iron_env.sh
 /.cache
 
 # Local run/test artifacts under programming_examples/ and programming_guide/

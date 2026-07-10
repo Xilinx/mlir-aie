@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 # Auxiliary CI-only tools used by mlirDistro.yml.
 # delvewheel: Windows wheel repair. Pure-Python universal wheel — installs
 # harmlessly on Linux too.

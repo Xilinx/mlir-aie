@@ -1,11 +1,8 @@
 <!---//===- README.md ---------------------------------------*- Markdown -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2024, Advanced Micro Devices, Inc.
-// 
 //===----------------------------------------------------------------------===//-->
 
 # <ins>Section 2d - Runtime Data Movement</ins>
@@ -160,7 +157,7 @@ The dialect-direct lowering used by DMA task operations can be inspected for any
 def shim_dma_single_bd_task(
     alloc,
     mem,
-    tap: TensorAccessPatter | None = None,
+    tap: TensorAccessPattern | None = None,
     offset: int | None = None,
     sizes: MixedValues | None = None,
     strides: MixedValues | None = None,

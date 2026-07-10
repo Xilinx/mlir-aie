@@ -1,11 +1,8 @@
 <!---//===- README.md ---------------------------------------*- Markdown -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2024, Advanced Micro Devices, Inc.
-// 
 //===----------------------------------------------------------------------===//-->
 
 # <ins>Object FIFO Repeat Pattern</ins>
@@ -41,7 +38,7 @@ The `repeat_count` feature may also be used with a Compute tile producer. As syn
 
 > **NOTE:**  No additional memory is allocated when repeating. Instead, DMAs are programmed to push existing data buffers multiple times.
 
-For more information into DMAs and their buffer descriptors you can refer to the [Advanced Topic of Section 2a](../../section-2a/README.md#advanced-topic-data-movement-accelerators) and [Section 2g](../../section-2g/).
+For more information into DMAs and their buffer descriptors you can refer to the [Advanced Topic of Section 2a](../../section-2a/README.md#advanced-topic-direct-memory-access-channels) and [Section 2g](../../section-2g/).
 
 ### Link & Repeat
 

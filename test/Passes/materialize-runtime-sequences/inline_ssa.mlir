@@ -1,10 +1,7 @@
 //===- inline_ssa.mlir -----------------------------------------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2025 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// Copyright (C) 2025, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -44,7 +41,8 @@ module {
 
     aie.runtime_sequence (%arg0: memref<64xi32>) {
       // These are the operations that reference other SSA values in the device, which will require hoisting those SSA values into the calling device.
-      aiex.npu.rtp_write(@rtp_0_0, 0, -1168197103)
+      %cst_npu_0 = arith.constant -1168197103 : i32
+      aiex.npu.rtp_write(@rtp_0_0, 0, %cst_npu_0) : i32
       aiex.set_lock(%lock_0_2, 1)
     }
   }

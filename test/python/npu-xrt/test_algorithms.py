@@ -1,10 +1,8 @@
 # test_algorithms.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2026 Advanced Micro Devices, Inc.
 
 # RUN: %run_on_npu1% %pytest %s
 # RUN: %run_on_npu2% %pytest %s
@@ -16,11 +14,11 @@ import numpy as np
 import aie.iron as iron
 from aie.iron import CompileTime, ExternalFunction, In, Out
 from aie.iron.algorithms import (
-    for_each_typed,
-    transform_binary_typed,
-    transform_parallel_binary_typed,
-    transform_parallel_typed,
-    transform_typed,
+    for_each,
+    transform_binary,
+    transform_parallel_binary,
+    transform_parallel,
+    transform,
 )
 
 TILE_SIZE = 16
@@ -58,7 +56,7 @@ def run_transform(
             f"Tensor 1 dtype {dtype_out} doesn't match expected {dtype_in}"
         )
     tensor_ty = np.ndarray[(N_in,), np.dtype[dtype_in]]
-    return transform_typed(func, tensor_ty, tile_size=tile_size)
+    return transform(func, tensor_ty, tile_size=tile_size)
 
 
 @iron.jit
@@ -73,7 +71,7 @@ def run_transform_binary(
     tile_size: CompileTime[int] = 16,
 ):
     tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
-    return transform_binary_typed(func, tensor_ty, tile_size=tile_size)
+    return transform_binary(func, tensor_ty, tile_size=tile_size)
 
 
 @iron.jit
@@ -95,7 +93,7 @@ def run_transform_parallel(
             f"Tensor 1 dtype {dtype_out} doesn't match expected {dtype_in}"
         )
     tensor_ty = np.ndarray[(N_in,), np.dtype[dtype_in]]
-    return transform_parallel_typed(func, tensor_ty, tile_size=tile_size)
+    return transform_parallel(func, tensor_ty, tile_size=tile_size)
 
 
 @iron.jit
@@ -110,7 +108,7 @@ def run_transform_parallel_with_scalar(
     tile_size: CompileTime[int] = 16,
 ):
     tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
-    return transform_parallel_typed(func, tensor_ty, scalar_param, tile_size=tile_size)
+    return transform_parallel(func, tensor_ty, scalar_param, tile_size=tile_size)
 
 
 @iron.jit
@@ -125,7 +123,7 @@ def run_transform_parallel_binary(
     tile_size: CompileTime[int] = 16,
 ):
     tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
-    return transform_parallel_binary_typed(func, tensor_ty, tile_size=tile_size)
+    return transform_parallel_binary(func, tensor_ty, tile_size=tile_size)
 
 
 @iron.jit
@@ -138,7 +136,7 @@ def run_for_each(
     tile_size: CompileTime[int] = 16,
 ):
     tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
-    return for_each_typed(func, tensor_ty, tile_size=tile_size)
+    return for_each(func, tensor_ty, tile_size=tile_size)
 
 
 # =============================================================================

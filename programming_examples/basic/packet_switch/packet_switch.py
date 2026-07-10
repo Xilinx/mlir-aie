@@ -1,10 +1,8 @@
 # packet_switch/packet_switch.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
 """Packet-switched two-kernel demo — iron explicit-routing primitives.
 
 A single shim → memtile → compute → memtile → shim pipeline with two
@@ -27,7 +25,7 @@ packet ID, so use ``rt.inline_ops`` as the escape hatch there.
 Two invocation modes:
 
   * compile-only: ``... --op add --xclbin-path=PATH --insts-path=PATH``
-  * emit-MLIR:    ``... --op add --emit-mlir``
+  * emit-MLIR:    ``... --op add --dev npu --emit-mlir``
 """
 
 import argparse

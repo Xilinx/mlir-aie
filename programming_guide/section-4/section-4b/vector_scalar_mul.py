@@ -1,10 +1,8 @@
 # section-4/section-4b/vector_scalar_mul.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
 """Section-4b trace example — ``@iron.jit`` (vector * scalar).
 
 Same vector*scalar design as section-3/4a; this version exposes a
@@ -19,7 +17,8 @@ Three modes (same as section-3/4a):
 
 * ``python3 vector_scalar_mul.py [-t N]`` — JIT-compile + run on the
   attached NPU; with ``-t N`` (bytes) trace is enabled.
-* ``python3 vector_scalar_mul.py --emit-mlir`` — print the lowered MLIR.
+* ``python3 vector_scalar_mul.py --dev npu --emit-mlir`` — print the
+  lowered MLIR.
 * ``python3 vector_scalar_mul.py --xclbin-path X --insts-path Y`` —
   compile-only, drop the xclbin/insts pair for the explicit-XRT
   walkthrough.

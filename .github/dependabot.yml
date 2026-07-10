@@ -1,40 +1,57 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 version: 2
 updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 5
+      interval: "cron"
+      cronjob: "0 6 8,22 * *"
     groups:
-      actions-minor-patch:
+      github-actions-minor-patch:
         update-types: ["minor", "patch"]
+      github-actions-major:
+        update-types: ["major"]
 
+  # All pip manifests share a build toolchain (nanobind, pybind11, cmake,
+  # setuptools, numpy, ...). They live in one entry using the plural
+  # `directories` key so a bump to a shared dependency lands as a SINGLE
+  # cross-directory PR instead of independent per-directory PRs. Previously
+  # these were three separate entries; a per-directory bump moved one manifest
+  # and left the others behind, drifting nanobind out of ABI lockstep and
+  # breaking wheels at import time. One entry makes that divergence impossible
+  # by construction (the check_shared_dep_versions.py CI guard is the backstop
+  # for hand edits).
   - package-ecosystem: "pip"
-    directory: "/python"
+    directories:
+      - "/python"
+      - "/utils/mlir_wheels"
+      - "/utils/mlir_aie_wheels"
     schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 5
+      interval: "cron"
+      cronjob: "0 6 8,22 * *"
+    # nanobind is held at 2.12.0: 2.13.0 rejects passing an OpResult where a
+    # Value is declared, breaking eudsl-python-extras' ArithValue path. Bumping
+    # requires a compatible eudsl/mlir-distro rebuild, so let dependabot skip it
+    # until that lands (revisit alongside the eudsl/llvm bump).
+    ignore:
+      - dependency-name: "nanobind"
     groups:
-      python-minor-patch:
+      pip-minor-patch:
+        patterns: ["*"]
         update-types: ["minor", "patch"]
-
-  - package-ecosystem: "pip"
-    directory: "/utils/mlir_aie_wheels"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 3
-
-  - package-ecosystem: "pip"
-    directory: "/utils/mlir_wheels"
-    schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 3
+      pip-major:
+        patterns: ["*"]
+        update-types: ["major"]
 
   - package-ecosystem: "pre-commit"
     directory: "/"
     schedule:
-      interval: "weekly"
-    open-pull-requests-limit: 3
+      interval: "cron"
+      cronjob: "0 6 8,22 * *"
     groups:
       pre-commit-minor-patch:
         update-types: ["minor", "patch"]
+      pre-commit-major:
+        update-types: ["major"]

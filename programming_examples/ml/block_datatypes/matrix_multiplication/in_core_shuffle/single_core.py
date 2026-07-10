@@ -1,10 +1,8 @@
 # single_core.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
 """Scalar in-core shuffle for bfp16ebs8 tiles — ``@iron.jit`` IRON design.
 
 One AIE2P core runs the per-tile scalarShuffle helper on an A-tile

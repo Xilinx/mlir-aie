@@ -1,162 +1,73 @@
-# SPDX-FileCopyrightText: Copyright (C) 2024-2026 Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 """
-Trace utilites
+Trace utilities
 
-Trace utilities are designed to take the low level tile cofigurations need to configure trace and wrap them into convenient wrapper functions. We will go over descriptions of the functions and then dive deeper into Trace mechanisms and explanations.
+These utilities configure AIE hardware tracing and parse the resulting trace
+data. Tracing is expressed declaratively: you describe *what* to trace with
+`aie.trace` ops, and trace lowering (`aie-insert-trace-flows`) turns that into
+the register writes, packet flows, and shim DMA configuration that implement it.
 
-* `class GenericEvent`
-* `PortEventCodes`, `MemTileEventcodes`, `ShimTileEventCodes`
-    * event codes for port events for the different tile types: core, memtile, shimtile
-* `class PacketType`
-    * We use the packet type field in the packet header to help differentiate the tile that the packet came from. Since packet types don't inherently have meaning, we assign numerical values to each tile type: core, mem (for core), shimtilem, memtile
-* `class PortEvent`, `class MemTilePortEvent`, `class ShimTilePortEvent`
-    * class for port events to define accesses and `get_register_writes`
-* `isShimTile`, `isMemTile`
-    * Placeholder functions to test if a particular tile is a shim or mem tile. The current definitions is appropriate for phoenix and strix devices but these functions should be expanded to account for varying devcie types based on device model
-* `pack4bytes`
-    * Pack 4 bytes into a 32-bit word
+## Public API
 
-* `configure_coretile_tracing_aie2`, `configure_memtile_tracing_aie2`, `configure_shimtile_tracing_aie2`
-    * This function configures the a tile's trace unit given a set of configurations as described below:
-        function arguments:
-        * `tile` - ocre tile to configure
-        * `start` - start event. We generally use a global broadcast signal to synchronize the start event for multiple cores.
-        * `stop` - stop event. We generally use a global broadcast signal to synchronize the stop event for multiple cores.
-        * `events` - array of 8 events to trace
-        * `enable_packet` - enables putting event data into packets
-        * `packet_id` - packet id or flow id used to route the packets through the stream switch
-        * `packet_type` - packet type is an arbitrary field but we use it to describe the tile type the packets are coming from
-        * `shim_burst_length` - burst size for shim dma. Default is 256B but can be as low as 64B which may be helpful for small trace designs
+* `configure_trace(tiles_to_trace, ...)`
+    * Emit `aie.trace` ops for a list of tiles. Each op declares the start/stop
+      events, the up-to-8 events to monitor, and (via auto-detection) the tile
+      type. Call this once with all the tiles you want to trace. Per-tile-type
+      event lists can be overridden with `coretile_events`, `coremem_events`,
+      `memtile_events`, `shimtile_events`; otherwise sensible defaults are used.
+      Port activity is specified with `PortEvent` (see Port Events below).
 
-* `configure_timer_ctrl_coretile_aie2`, `configure_timer_ctrl_memtile_aie2`,`configure_timer_ctrl_shimtile_aie`
-    * Configures timer in each tile type to reset based on an `event`
+* `start_trace(trace_size, reuse_output_buffer=False, ...)`
+    * Emit, inside an `aie.runtime_sequence`, the `aie.trace.host_config` +
+      `aie.trace.start_config` ops that activate the configured traces and
+      describe the host trace buffer. `trace_size` is the buffer size in bytes.
+      By default trace lowering appends a dedicated trace-buffer argument to the
+      runtime sequence (it lands at the tail, so enabling trace never shifts the
+      data arguments' indices). Set `reuse_output_buffer=True` to instead write
+      trace data into the tail of the last output buffer, saving a host buffer.
 
-* `configure_broadcast_core_aie2`
-    *  Configure broadcast event based on an internal triggered event.
-        function arguments:
-        * `num` - broadcaast number we want to broadcast on
-        * `event` - the triggering broadcast event
+* `TraceConfig`
+    * Host-side trace configuration (buffer size, output file,
+      `reuse_output_buffer`, control-packet options). Carried by `NPUKernel`
+      and used by the runtime to size/append the trace buffer and to read the
+      trace data back after a run.
 
-* `configure_event_gen_core_aie2`
-    * Generate an `event` at the given `tile`. This event can broadcasted and use by all tiles in the device to synchronize to.
+* `parse_trace(trace_buffer, mlir_module_str)`
+    * Parse a raw trace buffer into Perfetto-compatible events, using the lowered
+      MLIR to recover which tiles/events were traced (see Trace parser below).
 
-* `configure_shimtile_dma_tracing_aie2`
-    * Configure shim tile's DMA for tracing. This configures the shim tile / bd to process a specficic `packet id` and `packet type`. It also configures the address patch. Note that we can call this multiple times for each `packet id`/ `packet type` but mapped to the same `ddr_id`, `size`, and `offset` and the packets will be written to the output location as they come in for all `packet id`/ `packet type` listed
+* `configure_packet_ctrl_flow`, `config_ctrl_pkts_aie`
+    * Lower-level helpers for control-packet-based trace configuration.
 
-* `configure_coretile_packet_tracing_aie2`, `configure_memtile_packet_tracing_aie2 `, `configure_shimtile_packet_tracing_aie2`
-    * Wrapper to configure the core tile and shim tile for packet tracing. This does the following:
-        1. Configure core tile based on start/ stop, events, and flow id. The flow id needs to be unique per flow.
-        2. Configure timer based on broadcast event (default is 15). This ensures all tiles keying off this event has a synchronized timer so their trace are synchronized. This event is also used as the start event for tracing.
-        3. Configure shim tile to receive this flow and move the data to offset/ size.
-    It does this by calling `configure_coretile_tracing_aie2`, `configure_time_ctrl_coretile_aie2` and `configure_shimtile_dma_tracing_aie2`.
+* Helpers in `utils.py` (`pack4bytes`, `create_ctrl_pkt`, `get_cycles`,
+  `get_cycles_summary`, `print_cycles_summary`, `get_vector_time`,
+  `split_trace_segments`, ...) are re-exported and documented in source.
 
-* `configure_packet_tracing_flow`
-    * Wrapper around packeflows to itereate over tiles_to_trace and route them to the shim for outputing the trace to L3 memory. This uses default values for the packet id that increases for each tile we trace, starting with 1. This should match the tile trace config that's set by configure_coretile_packet_tracing_aie2.
-    * *NOTE* - Because we do it this way, we inherently cannot trace more than 31 tiles.
+The high-level IRON entry point is `Runtime.enable_trace(...)`, which builds a
+`TraceConfig` and calls `configure_trace` / `start_trace` for you.
 
-        Function arguments:
-        * `tiles to trace` - array of tiles to trace
-        * `shim tile` - Single shim tile to configure for writing trace packets to DDR
+## The host trace buffer is a runtime_sequence operand
 
-        An example use case would be:
-        ```python
-        trace_utils.configure_packet_tracing_flows(tile_to_trace, ShimTile)
-        ```
+Every host buffer a kernel uses -- data, trace, control-packet -- is an argument
+of the `aie.runtime_sequence`, and argument *i* maps to XRT host BO *i* (after
+the fixed opcode/instr/ninstr scalars). Trace lowering makes the trace buffer one
+of those arguments by appending it, so:
 
-* `configure_shim_trace_start_aie2`
-    * Configure the shim tile to support packet tracing via:
-        1. Set an event generation to create a custom user event 1 (127, 0x7f)
-        2. Custom event also triggers a broadcast event (by default broadcast 15)
-        3. Custom event also resets timer (will be true for all tiles) so all timers are synchronized
-        The actual shim dma config is done via configure_shimtile_tracing_aie2 but this tends to be done for each tile we're tracing.
+* the trace buffer's index is wherever the tail is, not a fixed slot, and
+* the host BO count is simply the (lowered) runtime_sequence argument count.
 
-        Function arguments:
-        * `brdcst_num` - which broadcast number to use (1-15)
-        * `user_event` - Which user event do we want to generate which will be used to reset local timers and be broadcasted out on the `broadcast_num`
+Both the compiler (when emitting the trace buffer's address patch) and the host
+(when allocating and passing the trace buffer) agree on this index by
+construction; neither hardcodes it.
 
-* `gen_trace_done_aie2`
-    * Generate a done event (broadcasted shim user event) that the other tile will use as stop event
+## Trace Mechanisms and Explanations
 
-* `configure_packet_tracing_aie2` (packet switched multi-tile tracing)
-    * This wrapper function iterates over the `tiles_to_trace` array and calls the right version of `configure_*tile_packet_tracing_aie2`. A key distinction is made to choose the right start and stop event depending on the tile type. We pass in 3 sets of optional event arguments that allows them to be customized depending on the tile type.
-
-        Function arguments:
-        * `tiles to trace` - array of tiles to trace
-        * `shim tile` - Single shim tile to configure for writing trace packets to DDR
-        * `size` - trace buffer size (in bytes)
-        * `offset` - offest (in bytes) where trace buffer data should begin. By default, this is 0 but can be >0 if we share a buffer with an output.
-        * `enable_token` - enable token generation for shimdma. Not recommended since we generally have our dma size > trace data size which we don't always know how big it needs to be.
-        * `ddr_id` - which XRT buffer to use where 0 -> group_id(3) ... 4 -> group_id(7). We generally put trace last so we use ddr_id=4.
-        * `start_user_event` - which user event do we use as a start event
-        * `stop_user_event` - which user event do we use as a stop event
-        * `start_broadcast_num` - which broadcast number do we send the start user event
-        * `stop_broadcast_num` - which broadcast number do we send the stop user event
-        * `coretile_events` - which 8 events do we use for all coretiles in array
-        * `memtile_events` - which 8 events do we use for all memtiles in array
-        * `shimtile_events` - which 8 events do we use for all shimtiles in array
-        * `shim_burst_length` - burst size for shim dma. Default is 256B but can be as low as 64B which may be helpful for small trace designs
-
-        An example use case would be:
-        ```python
-        trace_utils.configure_packet_tracing_aie2(tile_to_trace, ShimTile, opts.trace_size)
-        ```
-
-* `configure_simple_tracing_aie2` (**DEPRECATED** cicuit switched single tile tracing)
-    * This function abstracts a number of python functions for configuring a core tile and an associated shim tile. It does not define the trace packet routing between the two however.
-
-        Function arguments:
-        * `channel` - S2MM channel used
-        * `bd_id` - DMA bd used. Be careful that we do not conflict with the auto-assigned bds from allocated by `npu_dma_memcpy_nd` calls
-        * `ddr_id` - Maps to one of the 3 inout buffers (1,2,3)
-        * `size` - trace buffer size (in bytes)
-        * `offset`- offset (in bytes) where trace buffer data should begin
-        * `start`- start event
-        * `stop`- stop event
-        * `events`- Vector of up to 8 events that we are tracing; these can be any from the `trace_events_enum` described below
-
-        The minimum function call supported is:
-        ```python
-        trace_utils.configure_simple_tracing_aie2(tile, shim)
-        ```
-        This version allows the default argument values as described below:
-        * `channel`=1 - to configure S2MM channel 1
-        * `bd_id`=13 - 13 is far enough that's unlikely to have conflict
-        * `ddr_id`=2 - Maps to inout2 buffer
-        * `size`=8192 - 8,192 bytes for trace buffer size
-        * `offset`=0 - An offset=0 means the trace data is in its own inout buffer (not appended to another channel)
-        * `start`=0x1 - Start event triggers right away when tile is enabled
-        * `stop`=0x0 - No Stop event
-        * `events` - a standard template of events commonly used below as below:
-           ```
-           events=[ CoreEvent.INSTR_EVENT_1,
-                    CoreEvent.INSTR_EVENT_0,
-                    CoreEvent.INSTR_VECTOR,
-                    CoreEvent.INSTR_LOCK_RELEASE_REQ,
-                    CoreEvent.INSTR_LOCK_ACQUIRE_REQ,
-                    CoreEvent.LOCK_STALL,
-                    PortEvent(CoreEvent.PORT_RUNNING_0, WireBundle.DMA, 0, True),   # DMA ch0 in
-                    PortEvent(CoreEvent.PORT_RUNNING_1, WireBundle.DMA, 0, False),  # DMA ch0 out
-                   ]
-           ```
-
-        A more common use case might be:
-        ```python
-        trace_utils.configure_simple_tracing_aie2(tile, shim, size=8192, offset=output_size, ddr_id_=2)
-        ```
-        This one allows us to control the size, offset, and inout buffer mapping.
-
-        To better appreciate what this wrapper function does, we need to delve more deeply into the details on how trace units are configured.
-
-* Additional helper functions can be found in the `trace.py` and are documented in the source directly.
-
-Trace Mechanisms and Explanations
-
-The basic concept for trace configuration as summarized in [section-4b](../../programming_guide/section-4/section-4b/). MOre details about the trace hardware can be found for AIE-ML/AIE2 at [am020](https://docs.amd.com/r/en-US/am020-versal-aie-ml/Trace).
+The basic concept for trace configuration is summarized in [section-4b](../../programming_guide/section-4/section-4b/). More details about the trace hardware can be found for AIE-ML/AIE2 at [am020](https://docs.amd.com/r/en-US/am020-versal-aie-ml/Trace).
 
 ### Trace Packet Routing
-Digging one level lower, tracing can be configured such that trace data is moved via circuit switch routing or packet switched routing. The deprecated `configure_simple_tracing_aie2` uses circuit switch tracing but this mechanism utilizes a dedicate stream along the stream switch path and limits the number of parallel tiles that can be traced. The preferred default mechanism is to use packet swtiched routing instead. This has the benefit of using a shared stream to route multiple tiles' trace packets. In practice, if a large amount trace data is being produced among a large number of tiles and aggregated into a single stream, there can be a limit to how much data that stream can support which may exert back pressure can cause overrun of trace data leading to invalid trace results. One limitation of packet switched routing is the additional packet header prepended to each packet (32b header for 7x 32b of data payload). This reduces the effective bandwidth of the trace data but the benefit of packet switched routing far outweigh this overhead limitation.
+Trace data is moved via packet-switched routing: tiles' trace streams are packetized and share a stream to a shim, which writes them to DDR. Packet switching lets multiple tiles' trace packets share a single stream. The trade-off is an extra packet header (32b header per 7x 32b of data payload), which reduces effective trace bandwidth; in practice the flexibility outweighs the overhead. If a large amount of trace data from many tiles is aggregated into one stream, the stream can back-pressure and overrun, producing invalid trace results -- in that case trace fewer tiles per stream or reduce the event rate.
 
 ### Trace Array Level Configuration (packet switched routing)
 We have already discussed configuring individual trace units in each tile to enable tracing and packetization of the trace data, configuring packet flows to route the trace data packets to a shim, and configuring the shim to write that data to DDR. However, a key aspect of full array level configuration involves supporting multi-tile trace which requires synchronization of trace data. This is done via using broadcasted user events as both local timer reset and start and stop synchronization, as explained below:
@@ -171,11 +82,11 @@ We have already discussed configuring individual trace units in each tile to ena
 
 `trace_events_enum.py` contains a list of all traceable events on AIE-ML devices.
 These include events on compute cores (`CoreEvent`), memory modules (`MemEvent`), shim tiles (`ShimEvent`) and mem tiles (`MemTileEvent`).
-When specifying a list of events to `configure_packet_tracing_aie2` and other functions, you can refer to events either by their name or their numeric values:
+When specifying a list of events to `configure_trace` (via the per-tile-type event lists), you can refer to events either by their name or their numeric values:
 ```
-configure_packet_tracing_aie2(..., events=[0x4B, 0x22, 0x21, 0x25])
+configure_trace(..., coretile_events=[0x4B, 0x22, 0x21, 0x25])
 # or, equivalently:
-configure_packet_tracing_aie2(..., events=[CoreEvent.INSTR_EVENT_1, CoreEvent.INSTR_EVENT_0, CoreEvent.INSTR_VECTOR, CoreEvent.INSTR_LOCK_RELEASE_REQ])
+configure_trace(..., coretile_events=[CoreEvent.INSTR_EVENT_1, CoreEvent.INSTR_EVENT_0, CoreEvent.INSTR_VECTOR, CoreEvent.INSTR_LOCK_RELEASE_REQ])
 ```
 
 #### Port Events
@@ -205,7 +116,7 @@ configure_trace(
 `PortEvent` is defined in [events/__init__.py](events/__init__.py) and `CoreEvent` is defined in [events/aie2.py](events/aie2.py) (generated during build). Likewise for memtiles and shimtiles, we have `MemTilePortEvent` and `ShimTilePortEvent`.
 
 ### Configure tile trace settings
-Under the hood of `configure_coretile_tracing_aie2`/ `configure_memtile_tracing_aie2`/ `configure_shimtile_tracing_aie2`, we perform trace configurations by writing specific values to trace configuration registers. This is done within the `aiex.runtime_sequence` block, where we call a set of configuration register writes (`aiex.npu.write32`) to configure the tile trace units and (`aiex.npu.writebd`) to configure the shimDMA.
+Under the hood, trace lowering performs trace configuration by writing specific values to trace configuration registers. This is done within the `aiex.runtime_sequence` block, where a set of configuration register writes (`aiex.npu.write32`) configure the tile trace units and (`aiex.npu.writebd`) configures the shimDMA.
 
 For a give AIE2 tile, we configure the trace control registers for the tile core and tile memory separately. There are 4 registers we generally use to configure the trace unit behavior. 2 are for configuring the general trace control and the other 2 are to specify which events our tile's trace hardware is monitoring.
 
@@ -363,21 +274,12 @@ npu_write32(column=0, row=4, address=0x3FF04, value=pack4bytes(0, 0, 0, 0),)
 The shimDMA needs to be configured to write the trace stream data to a valid location in DDR memory to be read by the host code. In the case of the NPU, we can use a template like the following where the main parameters that need to be defined include `buffer_length`, `buffer_offset`, `bd_id`, `ddr_id`, and `column`.
 
 * `buffer_length` - is the expected trace buffer size in bytes and should match what's expected from the host code when reading the trace buffer.
-* `buffer_offset` - specifies in bytes where the trace buffer starts in the output buffer and occurs after the main output buffer ends. If the output buffer size in words is 65,536, then the buffer offset would be 4*65,536 = 262,144 bytes.
-* `bd_id` - unique bd (out of 16 bds) to program for data movement. Since we're delcaring this manually, it's important that we dont' overlap with existing (and possibly auto-declared bd id values). In the matmul design, we needed this value to be at least 13.
+* `buffer_offset` - specifies in bytes where the trace buffer starts in the output buffer. It is 0 for a dedicated trace buffer; when reusing an output buffer it occurs after the main output data ends (e.g. if the output buffer is 65,536 words, the offset is 4*65,536 = 262,144 bytes).
+* `bd_id` - unique bd (out of 16 bds) to program for data movement. Since we're declaring this manually, it's important that we don't overlap with existing (and possibly auto-declared) bd id values. In the matmul design, we needed this value to be at least 13.
 * `column` - this shimDMA's column
-* `ddr_id` - very important to indicate which inout buffer DDR region we're mapping to.
+* `ddr_id` - the host argument index of the trace buffer (the runtime_sequence operand it lands on). This is the value the shim DMA's address patch is keyed to; the host must pass the trace buffer at the same index.
 
-An example ddr_id to inout buffer mapping is below:
-| ddr ID value | buffer | group_id |
-|-----------|--------|----------|
-| 0 | inout0 | 3 |
-| 1 | inout1 | 4 |
-| 2 | inout2 | 5 |
-| 3 | inout3 | 6 |
-| 4 | inout4 | 7 |
-
-By default, trace in our wrapper functions will map to inout4 (group_id 7).
+Because trace lowering appends the trace buffer as the last runtime_sequence argument, its `ddr_id` is the index of that appended operand (or, with `reuse_output_buffer`, the index of the reused output operand). The host argument index N maps to XRT group_id N+3 (the first three args are the opcode/instr/ninstr scalars).
 
 <u>Example shimDMA config</u>
 

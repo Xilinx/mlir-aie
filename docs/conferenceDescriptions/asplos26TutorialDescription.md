@@ -1,3 +1,6 @@
+<!-- Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
+
 # ASPLOS 2026 Tutorial: Leveraging the IRON AI Engine API to program the Ryzen™ AI NPU
 
 ## Introduction
@@ -32,7 +35,7 @@ Location: Pittsburgh, PA, USA
 | 08:15am | "Hello World" from Ryzen™ AI | Joe | [AI Engine Basic Building Blocks](../../programming_guide/section-1/) |
 | 08:35am | Exercise 1: Build and run your first program | All | [Passthrough](../../programming_examples/basic/passthrough_kernel/) |
 | 08:50am | Data movement on Ryzen™ AI with objectFIFOs | Erika | [Data Movement](../../programming_guide/section-2/) |
-| 09:10am | Exercise 2: Explore AIE DMA capabilities | All | [DMA Transpose](../../programming_examples/basic/dma_transpose/) |
+| 09:10am | Exercise 2: Explore AIE DMA capabilities | All | [DMA Transpose](../../programming_examples/basic/transposes/) |
 | 09:20am | Your First Program | Erika | [My First Program](../../programming_guide/section-3) |
 | 09:50am | Exercise 3: Vector-scalar mul | All | [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) |
 | 10:00am | Coffee Break | | |

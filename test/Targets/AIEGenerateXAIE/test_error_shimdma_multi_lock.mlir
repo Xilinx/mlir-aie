@@ -1,14 +1,11 @@
 //===- test_error_shimdma_multi_lock.mlir ----------------------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2023-2024 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2023-2024 Advanced Micro Devices, Inc. or its affiliates
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: (aie-translate --aie-generate-xaie %s 2>&1 || true) | FileCheck %s
+// RUN: not aie-translate --aie-generate-xaie %s 2>&1 | FileCheck %s
 // CHECK: used in a DMA block that have multiple locks.
 
 module @test_error_shimdma_multi_lock {

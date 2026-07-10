@@ -1,3 +1,6 @@
+<!-- Copyright (C) 2026 Advanced Micro Devices, Inc.
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
+
 # MLIR Trace Example
 
 Vector × scalar AIE design with custom hardware-event tracing on AMD NPU devices.
@@ -101,4 +104,4 @@ Generate visualization from existing parsed output:
 python3 visualize_trace.py -i trace.json -o trace_timeline.png -t "Trace Timeline"
 ```
 
-Copyright 2026 Advanced Micro Devices, Inc.
+Copyright (C) 2026 Advanced Micro Devices, Inc.

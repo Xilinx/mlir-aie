@@ -1,10 +1,7 @@
 //===- cpp_multi_device_sequence.mlir --------------------------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// Copyright (C) 2026, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -18,6 +15,13 @@
 // RUN: aiecc --no-xchesscc --no-xbridge --device-name=device2 --verbose --tmpdir=%t.dev2 %s 2>&1 | FileCheck %s --check-prefix=DEV2
 // RUN: aiecc --no-xchesscc --no-xbridge --device-name=device1 --sequence-name=seq_a --aie-generate-npu-insts --verbose --tmpdir=%t.seq_a %s 2>&1 | FileCheck %s --check-prefix=DEV1_SEQ_A
 // RUN: aiecc --no-xchesscc --no-xbridge --verbose --tmpdir=%t.all %s 2>&1 | FileCheck %s --check-prefix=ALL
+
+// The kernels.json host-buffer (boN) count must come from the SELECTED
+// sequence: seq_a has 6 host args (bo0..bo5), seq_b has 7 (bo0..bo6).
+// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device1 --sequence-name=seq_a --aie-generate-xclbin --tmpdir=%t.count_a %s
+// RUN: FileCheck %s --check-prefix=COUNT_A --input-file=%t.count_a/device1_kernels.json
+// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device1 --sequence-name=seq_b --aie-generate-xclbin --tmpdir=%t.count_b %s
+// RUN: FileCheck %s --check-prefix=COUNT_B --input-file=%t.count_b/device1_kernels.json
 // RUN: aie-opt -aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" %s -o %t.ctrlpkt_overlay.mlir && aiecc --no-xchesscc --no-xbridge --device-name=device1 --aie-generate-ctrlpkt --verbose --tmpdir=%t.ctrlpkt %t.ctrlpkt_overlay.mlir 2>&1 | FileCheck %s --check-prefix=CTRLPKT_DEV1
 
 // DEV1: Removing non-matching device: device2
@@ -46,6 +50,14 @@
 // CTRLPKT_DEV1-NOT: Processing device: device2
 // CTRLPKT_DEV1: Compilation completed successfully
 
+// seq_a: 6 host args -> bo0..bo5, no bo6.
+// COUNT_A: "name": "bo5"
+// COUNT_A-NOT: "name": "bo6"
+
+// seq_b: 7 host args -> bo0..bo6, no bo7.
+// COUNT_B: "name": "bo6"
+// COUNT_B-NOT: "name": "bo7"
+
 // device1 uses column 0, device2 uses column 1 so that both devices can be
 // compiled in the same pass manager invocation without tile address conflicts.
 module {
@@ -60,7 +72,11 @@ module {
       aie.end
     }
 
-    aie.runtime_sequence @seq_a(%arg0 : memref<16xi32>, %arg1 : memref<16xi32>) {
+    // seq_a and seq_b declare a DIFFERENT number of host arguments (6 vs 7,
+    // both above the kMinHostBOs=5 floor so the counts are distinguishable).
+    // This guards that --sequence-name drives the kernels.json boN count from
+    // the SELECTED sequence, not simply the first one on the device.
+    aie.runtime_sequence @seq_a(%arg0 : memref<16xi32>, %arg1 : memref<16xi32>, %arg2 : memref<16xi32>, %arg3 : memref<16xi32>, %arg4 : memref<16xi32>, %arg5 : memref<16xi32>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
       %c16 = arith.constant 16 : i64
@@ -69,7 +85,7 @@ module {
       aiex.npu.dma_wait {symbol = @out1}
     }
 
-    aie.runtime_sequence @seq_b(%arg0 : memref<16xi32>, %arg1 : memref<16xi32>) {
+    aie.runtime_sequence @seq_b(%arg0 : memref<16xi32>, %arg1 : memref<16xi32>, %arg2 : memref<16xi32>, %arg3 : memref<16xi32>, %arg4 : memref<16xi32>, %arg5 : memref<16xi32>, %arg6 : memref<16xi32>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
       %c16 = arith.constant 16 : i64

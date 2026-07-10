@@ -1,3 +1,6 @@
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 # generated with PYTHONPATH=python pybind11-stubgen --print-invalid-expressions-as-is aie._mlir_libs._aie
 
 from __future__ import annotations
@@ -13,7 +16,6 @@ __all__ = [
     "generate_xaie",
     "npu_instgen",
     "register_dialect",
-    "translate_aie_vec_to_cpp",
     "translate_mlir_to_llvmir",
 ]
 
@@ -33,7 +35,6 @@ def generate_cdo(
 def generate_xaie(module: Operation) -> str: ...
 def npu_instgen(module: Operation) -> list: ...
 def register_dialect(registry: DialectRegistry) -> None: ...
-def translate_aie_vec_to_cpp(module: Operation, aie2: bool = False) -> str: ...
 def translate_mlir_to_llvmir(module: Operation) -> str: ...
 
 class ObjectFifoType:

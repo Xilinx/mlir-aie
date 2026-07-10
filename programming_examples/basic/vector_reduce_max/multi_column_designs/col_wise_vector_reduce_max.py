@@ -1,10 +1,8 @@
 # multi_column_designs/col_wise_vector_reduce_max.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
 """Multi-column vector reduce-max (col-wise) — IRON + ``@iron.jit``.
 
 Spread the reduction across multiple columns (default 8 on NPU1, up to

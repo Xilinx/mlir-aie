@@ -1,9 +1,7 @@
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2026, Advanced Micro Devices, Inc.
 """Post-processing L1: avg pool + expand 1x1 conv.
 
 Mirror of the sibling bottleneck builders: takes the upstream activation
@@ -20,18 +18,20 @@ import numpy as np
 from aie.iron import ObjectFifo, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.iron.dataflow.endpoint import ObjectFifoEndpoint
+from aie.iron.device import AnyMemTile
 
 from ._common import i8, load_wts
 from ..network_spec import block as nsblock
 
 
-def post_l1(act_in, sf, *, tiles, data_dir):
+def post_l1(act_in, sf, *, tiles=None, data_dir):
     """Build the post-L1 (avg-pool + 1x1 expand) block.
 
     Args:
         act_in: ObjectFifo  — handoff from the cascade bottleneck (bn14 out).
         sf: dict            — full scale-factor mapping (uses sf["POST"]["conv1x1_1"]).
-        tiles: dict     — PLACEMENT["post_l1"] with keys "compute", "memtile".
+        tiles: dict | None  — PLACEMENT["post_l1"] with keys "compute", "memtile".
+            None leaves placement to the compiler (SA placer).
         data_dir: str       — directory holding `post_conv_chain.txt`.
 
     Returns:
@@ -68,7 +68,8 @@ def post_l1(act_in, sf, *, tiles, data_dir):
     # Pin the producer (source of weight data) to a MemTile. Normally a
     # Worker sets its fifo endpoint implicitly, but this fifo has no
     # producing Worker.
-    post_l1_wts_of.prod().endpoint = ObjectFifoEndpoint(tiles["memtile"])
+    memtile = tiles["memtile"] if tiles is not None else AnyMemTile.copy()
+    post_l1_wts_of.prod().endpoint = ObjectFifoEndpoint(memtile)
 
     # Round-trip avgpool output through L3 (DDR) so it can be re-broadcast to
     # all 4 PostL2 FC tiles — a direct compute→4-compute fan-out exceeds
@@ -137,7 +138,6 @@ def post_l1(act_in, sf, *, tiles, data_dir):
             post_L2_InC,  # outC_padd=1280 (next layer's input width)
             post_sf,
         ],
-        tile=tiles["compute"],
         # dynamic_objfifo_lowering keeps the inner loop intact instead of
         # unrolling for ping-pong; kernel uses runtime modulo indexing.
         # Without this attribute, the static objfifo lowering UNROLLS the
@@ -146,6 +146,7 @@ def post_l1(act_in, sf, *, tiles, data_dir):
         # loop intact with 1 call site). The dynamic lowering uses runtime
         # modulo indexing, preserving the loop structure.
         dynamic_objfifo_lowering=True,
+        tile=tiles["compute"] if tiles else None,
     )
 
     return [w_post_l1], act_out_post_avgpool_shim

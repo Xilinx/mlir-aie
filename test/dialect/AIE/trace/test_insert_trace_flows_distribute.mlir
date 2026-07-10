@@ -1,10 +1,7 @@
 //===- test_insert_trace_flows_distribute.mlir ----------------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -36,7 +33,7 @@ module @distribute_two_traces {
     }
 
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 8192
+      aie.trace.host_config {buffer_size = 8192 : i32}
       aie.trace.start_config @trace_a
       aie.trace.start_config @trace_b
     }
@@ -45,10 +42,13 @@ module @distribute_two_traces {
     // Two buffer descriptors (one per channel, distinct bd_ids).
     // CHECK-DAG: aiex.npu.writebd {bd_id = 15
     // CHECK-DAG: aiex.npu.writebd {bd_id = 14
-    // Both channels share arg_idx=4, split by offset within the trace buffer.
+    // Both channels share the appended trace arg (idx 1, after the 1 data
+    // arg), split by offset within the trace buffer.
     // Channel 0 at offset 0, channel 1 at offset 8192 (= buffer_size).
-    // CHECK-DAG: aiex.npu.address_patch {{{.*}}arg_idx = 4 : i32, arg_plus = 0
-    // CHECK-DAG: aiex.npu.address_patch {{{.*}}arg_idx = 4 : i32, arg_plus = 8192
+    // CHECK-DAG: %[[OFF0:.*]] = arith.constant 0 : i32
+    // CHECK-DAG: aiex.npu.address_patch(%[[OFF0]] : i32) {{{.*}}arg_idx = 1 : i32
+    // CHECK-DAG: %[[OFF1:.*]] = arith.constant 8192 : i32
+    // CHECK-DAG: aiex.npu.address_patch(%[[OFF1]] : i32) {{{.*}}arg_idx = 1 : i32
 
     // First trace -> channel 1 (default shim-channel), second -> channel 0
     // CHECK-DAG: aie.packet_dest<%{{.*}}, DMA : 1>
@@ -73,7 +73,7 @@ module @distribute_single_trace {
     }
 
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 8192
+      aie.trace.host_config {buffer_size = 8192 : i32}
       aie.trace.start_config @trace
     }
 
@@ -91,8 +91,8 @@ module @distribute_single_trace {
 
 // -----
 
-// Test: distribute with arg_idx=-1 still distributes (both channels share
-// the resolved arg_idx, split by offset within the same buffer).
+// Test: distribute with reuse_output_buffer still distributes (both channels
+// share the reused arg, split by offset within the same buffer).
 // CHECK-LABEL: module @distribute_auto_argidx
 module @distribute_auto_argidx {
   aie.device(npu1_1col) {
@@ -115,20 +115,22 @@ module @distribute_auto_argidx {
     }
 
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 8192 arg_idx = -1
+      aie.trace.host_config {buffer_size = 8192 : i32, reuse_output_buffer = true}
       aie.trace.start_config @trace_a
       aie.trace.start_config @trace_b
     }
 
-    // With arg_idx=-1, resolved arg_idx is shared by both channels.
+    // With reuse_output_buffer, the reused arg index is shared by both channels.
     // memref<16xi32> = 64 bytes, so base offset = 64.
     // Channel 0 at offset 64, channel 1 at offset 64 + 8192 = 8256.
     // CHECK-DAG: aie.packet_dest<%{{.*}}, DMA : 1>
     // CHECK-DAG: aie.packet_dest<%{{.*}}, DMA : 0>
     // CHECK-DAG: aiex.npu.writebd {bd_id = 15
     // CHECK-DAG: aiex.npu.writebd {bd_id = 14
-    // CHECK-DAG: aiex.npu.address_patch {{{.*}}arg_idx = 0 : i32, arg_plus = 64
-    // CHECK-DAG: aiex.npu.address_patch {{{.*}}arg_idx = 0 : i32, arg_plus = 8256
+    // CHECK-DAG: %[[OFF0:.*]] = arith.constant 64 : i32
+    // CHECK-DAG: aiex.npu.address_patch(%[[OFF0]] : i32) {{{.*}}arg_idx = 0 : i32
+    // CHECK-DAG: %[[OFF1:.*]] = arith.constant 8256 : i32
+    // CHECK-DAG: aiex.npu.address_patch(%[[OFF1]] : i32) {{{.*}}arg_idx = 0 : i32
   }
 }
 
@@ -174,7 +176,7 @@ module @distribute_four_traces_three_cols {
     }
 
     aie.runtime_sequence(%arg0: memref<16xi32>, %arg1: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 8192
+      aie.trace.host_config {buffer_size = 8192 : i32}
       aie.trace.start_config @trace_0_2
       aie.trace.start_config @trace_0_3
       aie.trace.start_config @trace_1_2
@@ -188,9 +190,12 @@ module @distribute_four_traces_three_cols {
     // Two BDs configured (one per channel)
     // CHECK-DAG: aiex.npu.writebd {bd_id = 15
     // CHECK-DAG: aiex.npu.writebd {bd_id = 14
-    // Both channels share arg_idx, split by offset
-    // CHECK-DAG: aiex.npu.address_patch {{{.*}}arg_idx = 4 : i32, arg_plus = 0
-    // CHECK-DAG: aiex.npu.address_patch {{{.*}}arg_idx = 4 : i32, arg_plus = 8192
+    // Both channels share the appended trace arg (idx 2, after the 2 data
+    // args), split by offset.
+    // CHECK-DAG: %[[OFF0:.*]] = arith.constant 0 : i32
+    // CHECK-DAG: aiex.npu.address_patch(%[[OFF0]] : i32) {{{.*}}arg_idx = 2 : i32
+    // CHECK-DAG: %[[OFF1:.*]] = arith.constant 8192 : i32
+    // CHECK-DAG: aiex.npu.address_patch(%[[OFF1]] : i32) {{{.*}}arg_idx = 2 : i32
 
     // Without distribute, all 4 traces use same channel
     // NODIST: aie.packet_dest<%{{.*}}, DMA : 1>

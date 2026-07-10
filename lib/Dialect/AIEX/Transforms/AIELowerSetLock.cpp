@@ -1,10 +1,7 @@
 //===- AIELowerSetLock.cpp --------------------------------------*- C++ -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2025 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// Copyright (C) 2025, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -13,6 +10,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 
@@ -55,9 +53,12 @@ public:
     auto localLockAddress =
         tm.getLocalLockAddress(lockID, lockOp.getTileID()).value();
 
+    Location loc = op.getLoc();
     rewriter.replaceOpWithNewOp<NpuWrite32Op>(
-        op, localLockAddress, op.getValue(), nullptr,
-        rewriter.getI32IntegerAttr(col), rewriter.getI32IntegerAttr(row));
+        op, createConstantI32(rewriter, loc, localLockAddress),
+        createConstantI32(rewriter, loc, static_cast<uint32_t>(op.getValue())),
+        nullptr, rewriter.getI32IntegerAttr(col),
+        rewriter.getI32IntegerAttr(row));
 
     return success();
   };
@@ -71,6 +72,7 @@ struct AIELowerSetLockPass
 
     ConversionTarget target(getContext());
     target.addLegalOp<NpuWrite32Op>();
+    target.addLegalDialect<arith::ArithDialect>();
     target.addIllegalOp<SetLockOp>();
 
     RewritePatternSet patterns(&getContext());

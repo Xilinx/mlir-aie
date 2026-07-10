@@ -1,13 +1,11 @@
 # tensor.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025-2026 Advanced Micro Devices, Inc.
 
 import numpy as np
-import pyxrt as xrt
+import pyxrt as xrt  # pyright: ignore[reportMissingImports]
 
 from ..tensor_class import Tensor
 from aie.helpers.util import np_ndarray_type_get_shape
@@ -29,6 +27,7 @@ class XRTTensor(Tensor):
         device="npu",
         flags=xrt.bo.host_only,
         group_id=0,
+        xrt_device=None,
     ):
         """
         Initialize the XRTTensor.
@@ -41,11 +40,13 @@ class XRTTensor(Tensor):
             device (str, optional): Device string identifier. Defaults to 'npu'.
             flags (optional): XRT buffer object flags. Defaults to xrt.bo.host_only.
             group_id (int, optional): XRT buffer object group ID. Defaults to 0.
+            xrt_device (optional): Existing PyXRT device handle to use for BO allocation.
+                When omitted, a new handle for device index 0 is opened for this tensor.
         """
         super().__init__(shape_or_data, dtype=dtype, device=device)
-        device_index = 0
-        self.xrt_device = xrt.device(device_index)
+        self.xrt_device = xrt_device if xrt_device is not None else xrt.device(0)
 
+        np_data = None
         # Extract the shape
         if isinstance(shape_or_data, tuple):
             # If this is a shape, check for it "ShapeLike"-ness using numpy ndarray types.
@@ -79,6 +80,7 @@ class XRTTensor(Tensor):
         self._data = np.frombuffer(ptr, dtype=self.dtype).reshape(self._shape)
 
         if not isinstance(shape_or_data, tuple):
+            assert np_data is not None
             np.copyto(self._data, np_data)
         else:
             self._data.fill(0)
@@ -110,12 +112,14 @@ class XRTTensor(Tensor):
         """
         Syncs the tensor data from the host to the device memory.
         """
+        assert self._bo is not None
         return self._bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_TO_DEVICE)
 
     def _sync_from_device(self):
         """
         Syncs the tensor data from the device to the host memory.
         """
+        assert self._bo is not None
         return self._bo.sync(xrt.xclBOSyncDirection.XCL_BO_SYNC_BO_FROM_DEVICE)
 
     def __del__(self):

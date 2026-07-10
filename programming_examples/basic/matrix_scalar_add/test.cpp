@@ -1,14 +1,12 @@
 //===- test.cpp -------------------------------------------000---*- C++ -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2023 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// Copyright (C) 2023, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
 #include "cxxopts.hpp"
+#include <algorithm>
 #include <cstdint>
 #include <fstream>
 #include <iostream>
@@ -29,6 +27,7 @@ constexpr int IMAGE_SIZE = (IMAGE_WIDTH * IMAGE_HEIGHT);
 constexpr int TILE_WIDTH = 16;
 constexpr int TILE_HEIGHT = 8;
 constexpr int TILE_SIZE = (TILE_WIDTH * TILE_HEIGHT);
+constexpr uint32_t OUTPUT_SENTINEL = 0x00deface;
 
 int main(int argc, const char *argv[]) {
   // Program arguments parsing
@@ -128,11 +127,15 @@ int main(int argc, const char *argv[]) {
     srcVecA.push_back(i + 1);
   memcpy(bufInA, srcVecA.data(), (srcVecA.size() * sizeof(uint32_t)));
 
+  uint32_t *bufOut = bo_out.map<uint32_t *>();
+  std::fill_n(bufOut, IMAGE_SIZE, OUTPUT_SENTINEL);
+
   void *bufInstr = bo_instr.map<void *>();
   memcpy(bufInstr, instr_v.data(), instr_v.size() * sizeof(int));
 
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_inA.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+  bo_out.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   if (verbosity >= 1)
     std::cout << "Running Kernel.\n";
@@ -142,28 +145,20 @@ int main(int argc, const char *argv[]) {
 
   bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
 
-  uint32_t *bufOut = bo_out.map<uint32_t *>();
-
   int errors = 0;
 
   for (int i = 0; i < IMAGE_SIZE; i++) {
-    uint32_t row = i / IMAGE_WIDTH;
-    uint32_t col = i % IMAGE_WIDTH;
+    int row = i / IMAGE_WIDTH;
+    int col = i % IMAGE_WIDTH;
     uint32_t s = bufInA[i];
     uint32_t d = bufOut[i];
 
-    if (row < TILE_HEIGHT && col < TILE_WIDTH) {
-      if (d != s + 1) {
-        errors++;
-        printf("[ERROR] row %d and col %d, %d != %d\n", row, col, s, d);
-      }
-    } else {
-      if (d == s + 1) {
-        errors++;
-        printf("[ERROR] row %d and col %d, %d == %d -- this was not supposed "
-               "to be changed\n",
-               row, col, s, d);
-      }
+    uint32_t expected =
+        row < TILE_HEIGHT && col < TILE_WIDTH ? s + 1 : OUTPUT_SENTINEL;
+    if (d != expected) {
+      errors++;
+      printf("[ERROR] row %d and col %d, expected %u but got %u\n", row, col,
+             expected, d);
     }
 
     printf("s[%d, %d] = 0x%x\n", row, col, s);

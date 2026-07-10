@@ -1,10 +1,7 @@
 <!---//===- README.md ---------------------------------------*- Markdown -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// Copyright (C) 2024-2026, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//-->
 
@@ -359,6 +356,60 @@ def mem_body():
 takes both tiles + their `WireBundle` (typically `WireBundle.DMA`) +
 channel indices; the lowering infers direction from `source` vs
 `dest`.
+
+### Manual stream routing (`switchbox` / `connect`)
+
+Almost always, `Flow` (IRON) or `flow` (dialect) is the right tool: you
+name the two *endpoints* and the `--aie-create-pathfinder-flows` pass
+picks the switchbox connections in between.  The rare exception is when
+you need to pin the *exact* path — reproducing a specific hardware
+configuration, or steering around a resource the router would otherwise
+take.  There is no `Flow`-style primitive for this; it's the one part
+of routing that has to be spelled out switchbox-by-switchbox.
+
+So keep expressing the design with `flow` as above, and only replace
+the one route that needs pinning.  A `switchbox` region hangs off a
+tile and holds `connect` ops, each wiring one input port to one output
+port of that tile's stream switch (a full crossbar).  These two
+switchboxes pin the same `tile(0,2) → tile(0,3)` route the single
+`flow(tile_0_2, DMA, 0, tile_0_3, DMA, 1)` would have produced:
+
+```python
+@switchbox(tile_0_2)
+def sb_0_2():
+    connect(WireBundle.DMA, 0, WireBundle.North, 1)   # DMA out → north
+
+@switchbox(tile_0_3)
+def sb_0_3():
+    connect(WireBundle.South, 1, WireBundle.DMA, 1)   # south in → DMA
+```
+
+The `North` output of `tile(0,2)` feeds the `South` input of
+`tile(0,3)`, so the two `connect` ops together carry the route end to
+end — but now every hop is fixed rather than router-chosen.  `connect`
+takes `(source_bundle, source_channel, dest_bundle, dest_channel)`, and
+a single `switchbox` may hold as many `connect` ops as the hardware has
+ports.  This is exactly the layer `--aie-create-pathfinder-flows` emits from a
+`flow`: pinning a path by hand produces the same kind of IR the pass
+would, you're just choosing which hops to fix.
+
+### MLIR ↔ C kernel ABI
+
+External kernels are bound through
+[`external_func` / `ExternalFunction`](../../kernels_library.md), which
+hides the calling convention.  At the dialect tier the binding is a
+`func.func` whose argument types follow the MLIR
+[bare-pointer calling convention](https://mlir.llvm.org/docs/TargetLLVMIR/#bare-pointer-calling-convention-for-ranked-memref)
+— a `memref` becomes a plain C pointer (no descriptor struct), and C++
+name mangling is not applied, so the C function must be `extern "C"` or
+a plain C symbol:
+
+| MLIR type | C type    |
+| --------- | --------- |
+| `i32`     | `int32_t` |
+| `f32`     | `float`   |
+| `memref`  | C pointer |
+| `index`   | `int64_t` |
 
 The dialect tier is what `@iron.jit` ultimately lowers into.  For
 designs you intend to ship as part of the IRON examples, prefer the

@@ -1,16 +1,13 @@
 <!---//===- README.md --------------------------------------*- Markdown -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2025 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2025, Advanced Micro Devices, Inc.
-// 
 //===----------------------------------------------------------------------===//-->
 
 # Block Datatypes - Matrix Multiplication
 
-This folder cotains multiple variations of the standard matrix multiplication example. In order to understand the matrix multiplication example itself, it is recommended to check the [original one](../../matrix_multiplication/whole_array/README.md), along with its corresponding README file, since explanations related to the matrix multiplication will be found there. Here, only differences related to using blocked datatypes will be mentioned and code comments have been removed.
+This folder cotains multiple variations of the standard matrix multiplication example. In order to understand the matrix multiplication example itself, it is recommended to check the [original one](../../../basic/matrix_multiplication/whole_array/README.md), along with its corresponding README file, since explanations related to the matrix multiplication will be found there. Here, only differences related to using blocked datatypes will be mentioned and code comments have been removed.
 
 Blocked datatypes require additional attention when declaring the matrix shapes, since they group multiple elements. When going through these examples, notice how matrices must be reshaped to take this into account (usually with divisions such as `[matrix_dimension] // 8`).
 
@@ -22,7 +19,7 @@ These examples are currently only supported when using the chess compiler. Assum
 
 At the IRON level, v8bfp16ebs8 and v8bfp16ebs16 have corresponding byte sizes of 9 and 17 bytes, which make it impossible to tile the subtiles in the correct order to feed them to the cores (the second level of tiling has been removed in these examples) because of the 4 byte granularity that Data Layout Transformations use. For this reason, these subtiles must be pretiled in main memory or apply the corresponding transformations inside the core. Other alternatives may be considered, such as adding padding to the blocks so that they align with the 4 byte granularity of DMAs.
 
-As described in the [original gemm example](../../matrix_multiplication/whole_array/README.md), there are multiple Data Layout Transformations (DLT) taking place in these implementations. Usage of blocked datatypes requires carefully managing these.
+As described in the [original gemm example](../../../basic/matrix_multiplication/whole_array/README.md), there are multiple Data Layout Transformations (DLT) taking place in these implementations. Usage of blocked datatypes requires carefully managing these.
 
 #### First DLT
 
@@ -51,7 +48,7 @@ The (impossible) equivalent transformation for block datatypes:
 
 ### Core Computations
 
-Once the data has reached a compute tile, block datatypes also have additional complexities. They require additional manipulation in order to be loaded in and stored out of registers. The additional manipulations required to achieve this can be seen in [mm.cc](./mm.cc).
+Once the data has reached a compute tile, block datatypes also have additional complexities. They require additional manipulation in order to be loaded in and stored out of registers. The additional manipulations required to achieve this can be seen in [mm_bfp.cc](../../../../aie_kernels/aie2p/mm_bfp.cc).
 
 The main difference is due to the difficulty of loading the block_vector into the appropriate registers (illustrated below). To fully understand this problem, it is important to keep in mind how memory is accessed by the cores to load into the registers. For more information, please consult the [programming guide](../../../../programming_guide/section-4/section-4c/README.md).
 <img src="./res/core_alignment.png" alt="Representation of difficulties of bfp vector loading"/>

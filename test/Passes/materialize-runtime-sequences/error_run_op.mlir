@@ -1,10 +1,7 @@
 //===- error_run_op.mlir ----------------------------------------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2025 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2025 Advanced Micro Devices, Inc. or its affiliates
 //
 //===----------------------------------------------------------------------===//
 
@@ -88,7 +85,9 @@ module {
 module {
   aie.device(npu2) @callee_dev {
     aie.runtime_sequence @seq_expects_i16 (%arg0: memref<16xi16>) {
-      aiex.npu.write32 {address = 100 : ui32, column = 1 : i32, row = 0 : i32, value = 42 : ui32}
+      %cst_npu_0 = arith.constant 100 : i32
+      %cst_npu_1 = arith.constant 42 : i32
+      aiex.npu.write32(%cst_npu_0, %cst_npu_1) {column = 1 : i32, row = 0 : i32} : i32, i32
     }
   }
   aie.device(npu2) {

@@ -1,3 +1,6 @@
+# Copyright (C) 2023-2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 name: Compile across platforms
 
 permissions:
@@ -72,12 +75,12 @@ jobs:
       # Clone the repo and its submodules. Do shallow clone to save clone
       # time.
       - name: Get the project repository
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
           fetch-depth: 2
           submodules: "true"
 
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
           python-version: '3.12'
 
@@ -91,7 +94,7 @@ jobs:
           python -m pip install --require-hashes -r python/requirements_dev.lock
 
       - name: Setup Cpp
-        uses: aminya/setup-cpp@1f17f92d6a52bfcb1a25348e2c526c2e5cbb1134  # v1.8.0
+        uses: aminya/setup-cpp@8170d66c458f4a045220b7b0966c10940bb2a15d  # v1.8.1
         with:
           compiler: ${{ matrix.COMPILER }}
           vcvarsall: ${{ contains(matrix.OS, 'windows') }}
@@ -113,18 +116,34 @@ jobs:
         run: |
 
           VERSION=$(utils/clone-llvm.sh --get-wheel-version)
-          if [ x"${{ matrix.ENABLE_RTTI }}" == x"OFF"]; then
+          if [ x"${{ matrix.ENABLE_RTTI }}" == x"OFF" ]; then
             WHEEL=mlir_no_rtti
           else
             WHEEL=mlir
           fi
-          pip -q download $WHEEL==$VERSION \
-            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
-          unzip -q mlir-*.whl
+          for attempt in 1 2 3; do
+            rm -f "$WHEEL"-*.whl
+            if pip -q download $WHEEL==$VERSION \
+              -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "Failed to download MLIR wheel after ${attempt} attempts" >&2
+              exit 1
+            fi
+            sleep $((attempt * 5))
+          done
+          unzip -q "$WHEEL"-*.whl
 
       # Build the repo test target in release mode to build and test.
       - name: Build and test
         run: |
+
+          if [ x"${{ matrix.ENABLE_RTTI }}" == x"OFF" ]; then
+            WHEEL=mlir_no_rtti
+          else
+            WHEEL=mlir
+          fi
 
           mkdir -p build_release/install
           cd build_release
@@ -151,15 +170,14 @@ jobs:
             -DLLVM_ENABLE_ASSERTIONS=${{ matrix.ENABLE_ASSERTIONS }} \
             -DLLVM_ENABLE_RTTI=${{ matrix.ENABLE_RTTI }} \
             -DCMAKE_MODULE_PATH=$PWD/../cmake/modulesXilinx \
-            -DMLIR_DIR=$PWD/../mlir/lib/cmake/mlir \
-            -DLLVM_DIR=$PWD/../mlir/lib/cmake/llvm \
+            -DMLIR_DIR=$PWD/../$WHEEL/lib/cmake/mlir \
+            -DLLVM_DIR=$PWD/../$WHEEL/lib/cmake/llvm \
             -DLLVM_EXTERNAL_LIT="$LLVM_EXTERNAL_LIT"
 
           ninja
           # tests hang/fail on windows
           if [ x"${{ contains(matrix.OS, 'windows') }}" == x"false" ]; then
             ninja check-aie
-            ninja check-tutorials
             ninja check-reference-designs
             ninja check-programming-guide
           fi

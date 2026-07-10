@@ -1,13 +1,11 @@
 # vector_vector_modulo/vector_vector_modulo.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
 """Element-wise vector % vector — IRON API design with ``@iron.jit``.
 
-The design body delegates to ``aie.iron.algorithms.transform_binary_typed``,
+The design body delegates to ``aie.iron.algorithms.transform_binary``,
 which handles the ObjectFifo / Worker / Runtime plumbing.  The entry point
 supports three invocation modes so the same file drives both the Ryzen AI
 NPU @iron.jit pipeline and the aiecc-based vck5000 (Versal AIE1) flow:
@@ -32,7 +30,7 @@ import numpy as np
 
 import aie.iron as iron
 from aie.iron import CompileTime, In, Out
-from aie.iron.algorithms import transform_binary_typed
+from aie.iron.algorithms import transform_binary
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
 
@@ -48,7 +46,7 @@ def vector_vector_modulo(
     tile_size: CompileTime[int] = 16,
 ):
     tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
-    return transform_binary_typed(lambda a, b: a % b, tensor_ty, tile_size=tile_size)
+    return transform_binary(lambda a, b: a % b, tensor_ty, tile_size=tile_size)
 
 
 def _make_argparser():

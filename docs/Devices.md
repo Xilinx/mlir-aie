@@ -1,3 +1,5 @@
+<!-- Copyright (C) 2026 Advanced Micro Devices, Inc. -->
+<!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 # Device support
 
 This repo supports a number of devices, at some level of completeness.
@@ -123,4 +125,4 @@ N Columns and 6 Rows
 
 -----
 
-<p align="center">Copyright&copy; 2024 AMD/Xilinx</p>
+<p align="center">Copyright&copy; 2024-2026 Advanced Micro Devices, Inc.</p>

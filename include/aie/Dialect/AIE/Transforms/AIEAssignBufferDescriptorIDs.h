@@ -1,10 +1,7 @@
 //===- AIEAssignBufferDescriptorIDs.h ---------------------------*- C++ -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2024 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2024 Advanced Micro Devices Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -12,6 +9,9 @@
 #define AIE_ASSIGN_BUFFER_DESCRIPTOR_IDS_H
 
 #include "aie/Dialect/AIE/IR/AIETargetModel.h"
+
+#include <optional>
+#include <set>
 
 using namespace xilinx::AIE;
 

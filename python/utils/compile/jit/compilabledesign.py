@@ -1,10 +1,8 @@
 # compilabledesign.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2026 Advanced Micro Devices, Inc.
 """CompilableDesign: bundles an MLIR generator with its compile-time configuration.
 
 Pairs an MLIR generator function (or ``.mlir`` file path) with explicit
@@ -14,24 +12,22 @@ pair via ``compile()``.
 Hashing is split into two halves so callers can distinguish "recipe changed"
 from "rebuild needed":
 
-* ``recipe_hash``   — generator bytecode + compile_kwargs + aiecc/compile flags
-* ``artifact_hash`` — source / object mtimes + tool mtimes + target arch
+* ``recipe_hash``   — generator identity + compile_kwargs + aiecc/compile flags
+* ``artifact_hash`` — source / object mtimes + tool mtimes + target device
 
 ``hash(design)`` composes both into a 24-hex cache key; no MLIR generation
 needed for a cache lookup.
 
-Generation is memoized at the instance level via :attr:`CompilableDesign._generated`
-(a ``functools.cached_property`` returning the MLIR text + collected
-``ExternalFunction`` instances). Caching the *text* — not the Module — is what
-makes this safe across MLIR Contexts: every consumer call re-parses into a
-fresh ``mlir_mod_ctx()`` and gets a Module bound to its own Context. Safe
-because all constructor inputs are frozen, so the generated MLIR is a pure
-function of the instance.
+Generation is memoized per active IRON device via :attr:`CompilableDesign._generated`.
+Caching the *text* — not the Module — is what makes this safe across MLIR
+Contexts: every consumer call re-parses into a fresh ``mlir_mod_ctx()`` and gets
+a Module bound to its own Context. The active device is part of the generation
+key because kernel factories and ``Program(...)`` creation can specialize on the
+current target.
 """
 
 from __future__ import annotations
 
-import functools
 import inspect
 import json
 import logging
@@ -48,11 +44,18 @@ from aie.utils.compile import (
 )
 from aie.utils.compile.cache.utils import file_lock
 from aie.utils.compile.utils import _cleanup_failed_compilation
-from aie.extras.context import mlir_mod_ctx
-from aie.ir import Module as _Module
+from aie.extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
+from aie.ir import (  # pyright: ignore[reportMissingImports]
+    Module as _Module,  # pyright: ignore[reportAttributeAccessIssue]
+)
 
 from ._dma_size_parser import parse_dma_sizes
-from ._hash import _compute_artifact_hash, _compute_hash, _compute_recipe_hash
+from ._hash import (
+    _compute_artifact_hash,
+    _compute_hash,
+    _compute_recipe_hash,
+    _device_identity_key,
+)
 from ._introspect import (
     _introspect_generator,
     _is_compile_param,
@@ -125,6 +128,7 @@ class CompilableDesign:
         self._inst_path: Path | None = None
         self._kernel_dir: Path | None = None
         self._expected_tensor_sizes: list[int] | None = None
+        self._generated_cache: dict[tuple, tuple[str, list]] = {}
 
         # Introspect generator signature to split param categories.  Cache
         # hints+sig on self so split_runtime_args / _generate_mlir reuse the
@@ -157,11 +161,11 @@ class CompilableDesign:
             self.mlir_generator,
             compile_kwargs={**self.compile_kwargs, **compile_kwargs},
             use_cache=self.use_cache,
-            compile_flags=self.compile_flags,
-            source_files=self.source_files,
-            include_paths=self.include_paths,
-            aiecc_flags=self.aiecc_flags,
-            object_files=self.object_files,
+            compile_flags=list(self.compile_flags),
+            source_files=list(self.source_files),
+            include_paths=list(self.include_paths),
+            aiecc_flags=list(self.aiecc_flags),
+            object_files=list(self.object_files),
         )
 
     def compile(
@@ -191,7 +195,6 @@ class CompilableDesign:
         too — the cache path doesn't track ELF artifacts.
         """
         from aie.iron.kernel import ExternalFunction
-        from aie.utils import DefaultNPURuntime
 
         if (xclbin_path is None) != (inst_path is None):
             raise ValueError(
@@ -201,6 +204,7 @@ class CompilableDesign:
                 f"inst_path={inst_path!r}."
             )
         explicit_paths = xclbin_path is not None
+        cache_hash = None
 
         if elf_path is not None and not explicit_paths:
             raise ValueError(
@@ -208,7 +212,11 @@ class CompilableDesign:
                 "(the JIT cache does not track ELF artifacts)."
             )
 
+        if not isinstance(self.mlir_generator, Path):
+            self._bind_generation_device()
+
         if explicit_paths:
+            assert xclbin_path is not None and inst_path is not None
             # Absolutize so compile_external_kernel's `cwd=kernel_dir` doesn't
             # turn relative paths into "build/build/foo.cc" etc.
             xclbin_path = Path(xclbin_path).resolve()
@@ -240,10 +248,9 @@ class CompilableDesign:
                 self._xclbin_path = xclbin_path
                 self._inst_path = inst_path
                 self._kernel_dir = kernel_dir
-                # Populate on cache hit too, else validate_tensor_args no-ops
-                # and callers see kernel garbage instead of a shape error.
-                if self._expected_tensor_sizes is None:
-                    self._expected_tensor_sizes = parse_dma_sizes(kernel_dir)
+                # The active artifact may have changed since the previous
+                # compile(), so refresh its validation metadata on every hit.
+                self._expected_tensor_sizes = parse_dma_sizes(kernel_dir)
                 return xclbin_path, inst_path
 
             if explicit_paths:
@@ -260,29 +267,12 @@ class CompilableDesign:
                 )
 
             try:
-                # _EXTERN_CACHE ops bind to a prior MLIR Context; reuse across
-                # contexts segfaults in func.function_type. Clear per compile.
-                from aie.iron.kernels._common import _EXTERN_CACHE
-
-                _EXTERN_CACHE.clear()
                 mlir_module = self._generate_mlir(ExternalFunction)
 
+                from aie.utils import get_current_device
                 from aie.utils.compile import resolve_target_arch
-                import aie.iron as _iron
 
-                # Prefer iron's current device (matches `iron.get_current_device()`
-                # inside the generator); fall back to XRT-detected only when unset.
-                # Without this, a Strix-targeted design (iron set to NPU2) running
-                # in an env without pyxrt silently builds .o files for aie2 instead
-                # of aie2p — link succeeds, runtime times out (ERT_CMD_STATE_TIMEOUT).
-                try:
-                    device = _iron.get_current_device()
-                except (RuntimeError, AttributeError):
-                    device = (
-                        DefaultNPURuntime.device()
-                        if DefaultNPURuntime is not None
-                        else None
-                    )
+                device = get_current_device(probe_runtime=False)
                 target_arch = resolve_target_arch(device)
 
                 external_kernels = list(ExternalFunction._instances)
@@ -324,7 +314,7 @@ class CompilableDesign:
                 # (missing xclbinutil/bootgen); verify outputs exist.
                 expected_outputs = [xclbin_path, inst_path]
                 if elf_path is not None:
-                    expected_outputs.append(elf_path)
+                    expected_outputs.append(Path(elf_path))
                 missing = [p for p in expected_outputs if not p.exists()]
                 if missing:
                     raise RuntimeError(
@@ -370,8 +360,8 @@ class CompilableDesign:
         if not callable(self.mlir_generator):
             # Static .mlir file: pass everything through as tensors,
             # but still filter compile-time-only kernel objects.
-            runtime_args = [a for a in runtime_args if not isinstance(a, Kernel)]
-            return runtime_args, runtime_kwargs
+            filtered = [a for a in runtime_args if not isinstance(a, Kernel)]
+            return filtered, runtime_kwargs
 
         tensor_args = []
         scalar_kwargs = dict(runtime_kwargs)
@@ -379,6 +369,7 @@ class CompilableDesign:
         # Reuse the cached intro from __init__ — same generator, same hints/sig.
         hints = self._hints
         sig = self._sig
+        assert sig is not None
         params = [
             (name, p)
             for name, p in sig.parameters.items()
@@ -423,7 +414,8 @@ class CompilableDesign:
         """Generate and return the MLIR module without compiling to xclbin.
 
         Useful for inspecting generated MLIR, debugging, or offline analysis.
-        Does not require an NPU or XRT to be present.
+        Binds an available runtime-detected device before generation so
+        target-sensitive builders and the generation cache see the same device.
 
         Returns:
             The generated ``mlir.ir.Module``.
@@ -439,7 +431,7 @@ class CompilableDesign:
         addressable footprint extracted from the compiled
         ``aiex.runtime_sequence``.  ``parse_dma_sizes`` returns
         ``max(offset + len)`` so multi-column fan-outs, repeated transfers
-        (matmul B reloaded each tile_row), and InOut buffers (for_each_typed
+        (matmul B reloaded each tile_row), and InOut buffers (for_each
         fill+drain on the same arg) all give the host-tensor size directly.
 
         Args with no associated DMA (entry == 0) are skipped — those are
@@ -495,10 +487,10 @@ class CompilableDesign:
                 k: _encode_kwarg(v) for k, v in self.compile_kwargs.items()
             },
             "compile_flags": self.compile_flags,
-            "source_files": [str(sf) for sf in self.source_files],
-            "include_paths": [str(p) for p in self.include_paths],
+            "source_files": [sf.as_posix() for sf in self.source_files],
+            "include_paths": [p.as_posix() for p in self.include_paths],
             "aiecc_flags": self.aiecc_flags,
-            "object_files": [str(of) for of in self.object_files],
+            "object_files": [of.as_posix() for of in self.object_files],
             "cache_hash": self._compute_cache_hash(),
         }
         return json.dumps(data)
@@ -553,8 +545,8 @@ class CompilableDesign:
     def recipe_hash(self) -> str:
         """Hash of the design recipe: generator + CompileTime[T] kwargs + flags.
 
-        Stable across rebuilds; identifies the *what* of compilation. Two
-        designs with equal ``recipe_hash`` produce identical MLIR.
+        Identifies the target-independent design recipe. Device-specialized
+        MLIR also depends on the bound device.
         """
         return _compute_recipe_hash(
             self.mlir_generator,
@@ -565,10 +557,10 @@ class CompilableDesign:
 
     @property
     def artifact_hash(self) -> str:
-        """Hash of the build environment: source/object mtimes + tool mtimes + arch.
+        """Hash of the build environment: source/object mtimes + tool mtimes + device.
 
         Changes whenever a kernel ``.cc``, an ``.o``, Peano, aiecc, or the
-        target arch changes; identifies the *with what* of compilation.
+        target device changes; identifies the *with what* of compilation.
         """
         return _compute_artifact_hash(
             self.mlir_generator,
@@ -586,25 +578,49 @@ class CompilableDesign:
             self.compile_flags,
         )
 
-    @functools.cached_property
-    def _generated(self) -> tuple[str, list]:
-        """Run the generator once and cache ``(mlir_text, external_kernels)``.
+    def _bind_generation_device(self):
+        """Bind an available runtime device before target-sensitive work."""
+        if isinstance(self.mlir_generator, Path):
+            return None
 
-        Generation (executing the user's MLIR builder) is the dominant
-        in-process cost on a cold-disk cache path. Caching the *text* — not
-        the Module — is safe across MLIR Contexts: the Module is bound to the
-        Context that built it, but the text is not, so each ``_generate_mlir``
-        call can re-parse into the live Context and return a fresh Module.
+        try:
+            from aie.utils import ensure_current_device
 
-        ExternalFunction instances are Python objects with no Context
-        affinity; cached directly. Their ``_compiled`` flag survives reuse,
-        so a second ``compile()`` correctly skips already-built kernels.
+            return ensure_current_device()
+        except (ImportError, RuntimeError, AttributeError, ValueError, TypeError):
+            return None
 
-        Safe to memoize because :class:`CompilableDesign` inputs are frozen
-        at ``__init__`` (``compile_kwargs`` is a ``MappingProxyType``; the
-        list fields are tuples), so the generated MLIR is a pure function
-        of ``self``.
+    def _generation_cache_key(self) -> tuple:
+        """Return the identity that affects cached MLIR generation.
+
+        Static ``.mlir`` files key on their path. Python generators key on the
+        explicitly bound device, without probing the runtime.
         """
+        if isinstance(self.mlir_generator, Path):
+            return ("path", str(self.mlir_generator))
+
+        try:
+            from aie.utils import get_current_device
+
+            device = get_current_device(probe_runtime=False)
+        except (ImportError, RuntimeError, AttributeError, ValueError, TypeError):
+            device = None
+
+        return ("device",) + _device_identity_key(device)
+
+    @property
+    def _generated(self) -> tuple[str, list]:
+        """Return cached ``(mlir_text, external_kernels)`` for the active device."""
+        self._bind_generation_device()
+        key = self._generation_cache_key()
+        generated = self._generated_cache.get(key)
+        if generated is None:
+            generated = self._generate_uncached()
+            self._generated_cache[key] = generated
+        return generated
+
+    def _generate_uncached(self) -> tuple[str, list]:
+        """Run the generator and collect generated MLIR text and external kernels."""
         from aie.iron.kernel import ExternalFunction
 
         if isinstance(self.mlir_generator, Path):
@@ -639,6 +655,7 @@ class CompilableDesign:
             )
 
         sig = self._sig
+        assert sig is not None
         compile_only_params = {
             name: p
             for name, p in sig.parameters.items()
@@ -655,7 +672,13 @@ class CompilableDesign:
                 f"compile_kwargs do not match CompileTime[T] parameters — {exc}"
             ) from exc
 
+        # Kernel factories cache ExternalFunction instances. Those instances
+        # retain MLIR operations after resolution, so every fresh generation
+        # must begin with a context-local factory cache.
+        from aie.iron.kernels._common import _EXTERN_CACHE
+
         ExternalFunction._instances.clear()
+        _EXTERN_CACHE.clear()
 
         _tensor_placeholders = {
             name: _TensorPlaceholder(name) for name in self.tensor_params
@@ -669,7 +692,7 @@ class CompilableDesign:
                 ExternalFunction._instances.add(_v)
 
         with compile_context(**self.compile_kwargs):
-            with mlir_mod_ctx() as ctx:
+            with mlir_mod_ctx() as ctx:  # pyright: ignore[reportGeneralTypeIssues]
                 result = self.mlir_generator(**_gen_call_kwargs)
                 module = ctx.module if result is None else result
                 if not module.operation.verify():
@@ -691,10 +714,12 @@ class CompilableDesign:
         """
         mlir_text, external_kernels = self._generated
         ExternalFunction._instances.update(external_kernels)
-        with mlir_mod_ctx():
+        with mlir_mod_ctx():  # pyright: ignore[reportGeneralTypeIssues]
             return _Module.parse(mlir_text)
 
     def __hash__(self) -> int:
+        # The cache hash includes the active target device. Do not use a
+        # CompilableDesign as a stable key while retargeting devices.
         # Fold the 96-bit cache hash down to a signed 64-bit Python hash.
         h = int(self._compute_cache_hash(), 16)
         # Wrap to the range [-(2^63), 2^63-1] by taking modulo and adjusting.

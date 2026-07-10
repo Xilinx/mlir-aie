@@ -1,10 +1,8 @@
 //===- AIEDialect.h ---------------------------------------------*- C++ -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2019-2022 Xilinx, Inc.
+// Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2019 Xilinx Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -62,6 +60,18 @@ bool isLinearTransfer(llvm::ArrayRef<int64_t> sizes,
 // This is the vector-form counterpart of AIE::isContiguousBDTransfer.
 bool isContiguousTransfer(llvm::ArrayRef<int64_t> sizes,
                           llvm::ArrayRef<int64_t> strides);
+
+// Folds an SSA value to a compile-time uint32_t if it is a constant integer,
+// otherwise returns nullopt. Used by ops whose operands carry
+// compile-time-known values in the static lowering path.
+std::optional<uint32_t> getConstantIntOperand(mlir::Value v);
+
+// Materializes a 32-bit integer constant. The inverse of getConstantIntOperand:
+// used when lowering passes feed a compile-time-known value into an npu op
+// whose operand is an SSA i32. The bit pattern (including high-bit values such
+// as 0x80000000) is preserved.
+mlir::Value createConstantI32(mlir::OpBuilder &builder, mlir::Location loc,
+                              uint32_t value);
 
 } // namespace AIEX
 } // namespace xilinx

@@ -1,10 +1,8 @@
 # parameter_scratchpad.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2026 Advanced Micro Devices, Inc.
 """Host-side runtime for writing named parameters to AIE cores via the
 scratchpad mechanism.
 
@@ -27,9 +25,9 @@ Usage::
 import struct
 from pathlib import Path
 
-import pyxrt
+import pyxrt  # pyright: ignore[reportMissingImports]
 
-from aie._mlir_libs._parameter_scratchpad import (
+from aie._mlir_libs._parameter_scratchpad import (  # pyright: ignore[reportMissingImports]
     ParameterScratchpad as _ParameterScratchpadImpl,
 )
 

@@ -1,22 +1,19 @@
 //===- AIE2_static_L1.mlir -------------------------------------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2023 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// Copyright (C) 2023, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
-// This tests a static pattern where a producer writes one element and a 
-// consumer consumes two elements at a time. The cores are adjacent to 
+// This tests a static pattern where a producer writes one element and a
+// consumer consumes two elements at a time. The cores are adjacent to
 // one another and should use shared memory.
 // In this case, "objects" really are just simple i32s.
 // The producer simply counts up from 0, step size 1.
 // The consumer copies what it sees into %dstbuf23.
 // In the end, %dstbuf23 should hold [0, 1, 2, 3, 4, 5, ... 15]
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
 
 // CHECK:     %[[t0:.*]] = aie.tile(2, 2)
 // CHECK:     %[[t1:.*]] = aie.tile(2, 3)

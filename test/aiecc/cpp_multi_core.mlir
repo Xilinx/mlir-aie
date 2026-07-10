@@ -1,10 +1,7 @@
 //===- cpp_multi_core.mlir -------------------------------------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// Copyright (C) 2026, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -17,8 +14,8 @@
 // CHECK: Successfully parsed input file
 // CHECK: Device 'main' with 2 core(s)
 // CHECK: Compiling 2 core(s)
-// CHECK: Compiling core (0, 2)
-// CHECK: Compiling core (1, 2)
+// CHECK-DAG: Compiling core (0, 2)
+// CHECK-DAG: Compiling core (1, 2)
 // CHECK: Compilation completed successfully
 
 module {

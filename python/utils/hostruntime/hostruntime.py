@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (C) 2025-2026 Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
 from abc import ABC, abstractmethod
@@ -107,6 +107,7 @@ class HostRuntime(ABC):
         accept any override whose arch matches and whose column count is <=
         the runtime device's column count.
         """
+        assert __package__ is not None
         mod = sys.modules[__package__]
         override = getattr(mod, "_CURRENT_DEVICE", None)
         if override is None:
@@ -141,18 +142,22 @@ class HostRuntime(ABC):
     def run(
         self,
         kernel_handle: KernelHandle,
-        *args,
+        args,
         trace_config: TraceConfig | None = None,
+        fail_on_error: bool = True,
         only_if_loaded=False,
+        **kwargs,
     ) -> KernelResult:
         """
         Run a loaded kernel.
 
         Args:
             kernel_handle (KernelHandle): The handle to the loaded kernel.
-            *args: Arguments to pass to the kernel.
+            args: Arguments to pass to the kernel.
             trace_config (TraceConfig | None, optional): Configuration for tracing. Defaults to None.
+            fail_on_error (bool, optional): Whether to raise an exception on kernel failure. Defaults to True.
             only_if_loaded (bool, optional): If True, only run if already loaded. Defaults to False.
+            **kwargs: Additional arguments.
 
         Returns:
             KernelResult: The result of the kernel execution.
@@ -179,10 +184,28 @@ class HostRuntime(ABC):
         trace_config = npu_kernel.trace_config
         handle = self.load(npu_kernel, **kwargs)
         if trace_config:
-            if trace_config.ddr_id == -1 and len(run_args) > 0:
+            if trace_config.reuse_output_buffer and len(run_args) > 0:
                 trace_config.last_tensor_shape = run_args[-1].shape
                 trace_config.last_tensor_dtype = np.dtype(run_args[-1].dtype)
             self.prepare_args_for_trace(run_args, trace_config)
+
+            # Passing a trace_config to a design that never called enable_trace
+            # means the lowering appended no trace operand, yet the host just
+            # appended a trace buffer above. The extra buffer has no matching
+            # runtime_sequence operand and would run with an empty trace (or,
+            # before the firmware-ABI floor over-declared kernels.json, segfault
+            # in XRT argument setup). Compare against the design's true operand
+            # count -- floor-independent, unlike the kernels.json boN slot count.
+            num_host_bos = npu_kernel.num_host_bos
+            if num_host_bos is not None and len(run_args) > num_host_bos:
+                raise HostRuntimeError(
+                    f"A trace_config was supplied but the compiled design has "
+                    f"{num_host_bos} host buffer argument(s), while running with "
+                    f"a trace buffer requires {len(run_args)}. The design must "
+                    f"call enable_trace(...) so trace lowering appends a trace "
+                    f"buffer operand; otherwise the trace buffer has nowhere to "
+                    f"land."
+                )
 
         ret = self.run(handle, list(run_args), trace_config=trace_config)
 
@@ -261,8 +284,9 @@ class HostRuntime(ABC):
         Returns:
             list[Tensor]: The updated list of tensors with trace buffers appended.
         """
-        if trace_config.ddr_id == -1:
-            # Create a new, extended out tensor.
+        if trace_config.reuse_output_buffer:
+            # Trace data is written into the tail of the last output buffer.
+            # Extend that buffer by the trace size; no new host buffer is added.
             out_size = trace_config.trace_size
             if len(args) > 0:
                 out_size += args[-1].nbytes
@@ -272,14 +296,11 @@ class HostRuntime(ABC):
                 out = tensor((out_size,), dtype=np.uint8)
                 args.append(out)
         else:
-            pad_until = trace_config.DEFAULT_TRACE_BUFFER_INDEX
-            if trace_config.enable_ctrl_pkts:
-                pad_until -= 1
-            while len(args) < pad_until:
-                # TODO out always needed so register buf 7 succeeds (not needed in C/C++ host code)
-                filler = tensor((1,), dtype=np.uint32)
-                args.append(filler)
-
+            # Dedicated trace buffer: trace lowering appended one trailing
+            # argument to the runtime_sequence, so the host appends exactly one
+            # trailing buffer here. The trace buffer lands at index len(args),
+            # which matches the appended argument's index by construction -- no
+            # positional padding is needed.
             if trace_config.enable_ctrl_pkts:
                 # write ctrl packets
                 ctrl_pkts = [
@@ -304,7 +325,7 @@ class HostRuntime(ABC):
     @classmethod
     def extract_trace_from_args(
         cls, args: list[Tensor], trace_config: TraceConfig
-    ) -> tuple[Tensor, Tensor | None]:
+    ) -> tuple[np.ndarray, np.ndarray | None]:
         """
         Extract trace and control buffers from the arguments.
 
@@ -313,15 +334,16 @@ class HostRuntime(ABC):
             trace_config (TraceConfig): Trace configuration.
 
         Returns:
-            tuple[Tensor, Tensor | None]: A tuple containing the trace buffer and optionally the control buffer.
+            tuple[np.ndarray, np.ndarray | None]: A tuple containing the trace buffer and optionally the control buffer.
         """
         trace_buff = None
         ctrl_buff = None
 
-        if trace_config.ddr_id == -1:
-            args[-1], trace_buff = cls._extract_prefix(
+        if trace_config.reuse_output_buffer:
+            prefix, trace_buff = cls._extract_prefix(
                 args[-1], trace_config.last_tensor_shape, trace_config.last_tensor_dtype
             )
+            args[-1] = prefix  # pyright: ignore[reportCallIssue, reportArgumentType]
         else:
             # The trace position is always last.
             trace_buff = args[-1].numpy()

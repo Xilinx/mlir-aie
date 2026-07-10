@@ -1,0 +1,6 @@
+# Pinned llvm-aie (Peano) nightly, installed at every IRON/CI setup site via
+# `pip install -r`. The version line is bumped automatically by the update-peano
+# workflow (utils/update_peano_version.py) so a bad nightly is caught in a PR
+# instead of breaking main. Mirrors the eudsl pin style in python/requirements.txt.
+-f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
+llvm-aie==21.0.0.2026070801+4fb2354f

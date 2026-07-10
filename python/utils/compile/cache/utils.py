@@ -1,10 +1,8 @@
 # utils.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025-2026 Advanced Micro Devices, Inc.
 """Cache key utilities and file locking for the JIT compilation cache."""
 
 import contextlib
@@ -110,8 +108,13 @@ def _release_lock(lock_file) -> None:
             pass
 
 
-def _create_function_cache_key(function, args, kwargs):
-    """Create a cache key for a function call based on function name and argument types/shapes."""
+def _create_function_cache_key(function, args, kwargs, *, extra_key=()):
+    """Create a cache key for a function call based on call inputs.
+
+    ``extra_key`` is an optional immutable discriminator owned by the caller.
+    It is kept outside ``kwargs`` so internal cache dimensions cannot collide
+    with user-facing compile-time parameter names.
+    """
     func_name = function.__name__
 
     # Create signature from argument types and shapes
@@ -134,7 +137,7 @@ def _create_function_cache_key(function, args, kwargs):
                         code.co_names,
                         code.co_filename,
                         (
-                            code.co_qualname
+                            code.co_qualname  # pyright: ignore[reportAttributeAccessIssue]
                             if hasattr(code, "co_qualname")
                             else code.co_name
                         ),
@@ -170,7 +173,7 @@ def _create_function_cache_key(function, args, kwargs):
                         code.co_names,
                         code.co_filename,
                         (
-                            code.co_qualname
+                            code.co_qualname  # pyright: ignore[reportAttributeAccessIssue]
                             if hasattr(code, "co_qualname")
                             else code.co_name
                         ),
@@ -192,7 +195,8 @@ def _create_function_cache_key(function, args, kwargs):
             signature_parts.append(f"{key}_{type(value).__name__}_{val_hash}")
 
     signature = "_".join(signature_parts)
-    return (func_name, signature)
+    key = (func_name, signature)
+    return (*key, extra_key) if extra_key else key
 
 
 @contextlib.contextmanager

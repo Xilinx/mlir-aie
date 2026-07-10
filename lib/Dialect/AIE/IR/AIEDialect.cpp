@@ -1,10 +1,8 @@
 //===- AIEDialect.cpp -------------------------------------------*- C++ -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2019-2022 Xilinx, Inc.
+// Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2019 Xilinx Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -66,8 +64,16 @@ struct AIEDialectFoldInterface : DialectFoldInterface {
   /// operation that is *not* isolated from above, should be used when
   /// materializing constants.
   bool shouldMaterializeInto(Region *region) const final override {
-    // If this is an AIE::CoreOp region, then insert into it.
-    return isa<CoreOp>(region->getParentOp());
+    // Materialize constants into the op that "owns" them rather than letting
+    // them hoist up to the enclosing IsolatedFromAbove aie.device:
+    //  - aie.core bodies are outlined into standalone funcs, so their
+    //    constants must stay local for the func to be self-contained.
+    //  - aie.runtime_sequence bodies carry constant operands (e.g. the scalar
+    //    fields of npu.* ops). Hoisting them to the device body lets CSE merge
+    //    them with a core's identical constants, which would leave the core
+    //    referencing a device-level value that is erased when the core is
+    //    outlined.
+    return isa<CoreOp, RuntimeSequenceOp>(region->getParentOp());
   }
 };
 
@@ -1281,6 +1287,39 @@ LogicalResult GetCascadeOp::verify() {
 //===----------------------------------------------------------------------===//
 // DeviceOp
 //===----------------------------------------------------------------------===//
+
+LogicalResult DeviceOp::verify() {
+  // A compute tile has exactly one core in hardware, so at most one aie.core
+  // may resolve to any given (col, row). Cores whose tile is a logical_tile
+  // with unspecified coordinates are skipped here — they cannot collide until
+  // --aie-place-tiles assigns them a position, at which point this same check
+  // runs again on the resulting aie.tile coordinates.
+  DenseMap<TileID, CoreOp> coreAtTile;
+  WalkResult result = walk([&](CoreOp core) {
+    auto tile =
+        llvm::dyn_cast_or_null<TileLike>(core.getTile().getDefiningOp());
+    if (!tile)
+      return WalkResult::advance();
+    std::optional<int> col = tile.tryGetCol();
+    std::optional<int> row = tile.tryGetRow();
+    if (!col || !row)
+      return WalkResult::advance();
+    TileID id{*col, *row};
+    auto [it, inserted] = coreAtTile.try_emplace(id, core);
+    if (!inserted) {
+      InFlightDiagnostic diag =
+          core.emitOpError()
+          << "tile (" << *col << ", " << *row
+          << ") already has a core; each compute tile can host only one core";
+      diag.attachNote(it->second.getLoc()) << "the other core is here";
+      return WalkResult::interrupt();
+    }
+    return WalkResult::advance();
+  });
+  if (result.wasInterrupted())
+    return failure();
+  return success();
+}
 
 const AIETargetModel &DeviceOp::getTargetModel() {
   return xilinx::AIE::getTargetModel(getDevice());

@@ -1,3 +1,6 @@
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 name: Build and Test with Ryzen AI Sofware
 
 permissions:
@@ -59,7 +62,7 @@ jobs:
         run: |
           docker system prune -a -f
 
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
           submodules: "true"
       - uses: uraimo/run-on-arch-action@fd7aa8593480287702b446a273a68f788a9bad3a  # v3
@@ -110,8 +113,18 @@ jobs:
             VERSION=$(utils/clone-llvm.sh --get-wheel-version)
 
             cd /workspace
-            pip -q download mlir==$VERSION \
-              -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
+            for attempt in 1 2 3; do
+              rm -f mlir-*.whl
+              if pip -q download mlir==$VERSION \
+                -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro; then
+                break
+              fi
+              if [ "$attempt" -eq 3 ]; then
+                echo "Failed to download MLIR wheel after ${attempt} attempts" >&2
+                exit 1
+              fi
+              sleep $((attempt * 5))
+            done
             unzip -q mlir-*.whl
 
             mkdir -p /workspace/install
@@ -128,7 +141,6 @@ jobs:
                 -DXRT_ROOT=/opt/xilinx/xrt \
                 -DAIE_ENABLE_PYTHON_PASSES=OFF \
                 -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON \
-                -DAIE_INCLUDE_INTEGRATION_TESTS=OFF \
                 -DAIE_VITIS_COMPONENTS='AIE2;AIE2P' \
                 -DPython3_EXECUTABLE=$(which python) \
                 -DLLVM_EXTERNAL_LIT=$(which lit) \
@@ -138,7 +150,7 @@ jobs:
 
             ninja install
             # filter out slow tests (e.g. create-flows/vecmul_4x4_slow_test.mlir) due to timeout.
-            export LIT_OPTS="-sv --timeout 600 --filter-out slow_test"
+            export LIT_OPTS="-j1 -sv --timeout 600 --filter-out slow_test"
             ninja check-aie
 
             popd

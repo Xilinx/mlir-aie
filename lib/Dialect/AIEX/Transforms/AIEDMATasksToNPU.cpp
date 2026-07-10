@@ -1,10 +1,7 @@
 //===- AIEDMATasksToNPU.cpp -------------------------------------*- C++ -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2024 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2024 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -16,6 +13,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -51,10 +49,15 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
                           "pass first or manually assign an ID.";
       return failure();
     }
+    // bd_id and repeat_count are SSA operands; materialize them as constants
+    // here (the static path).
+    Location loc = op.getLoc();
     rewriter.replaceOpWithNewOp<NpuPushQueueOp>(
         op, tile.getCol(), tile.getRow(), task_op.getDirection(),
-        task_op.getChannel(), task_op.getIssueToken(), task_op.getRepeatCount(),
-        *first_bd_id);
+        task_op.getChannel(), task_op.getIssueToken(),
+        createConstantI32(rewriter, loc,
+                          static_cast<uint32_t>(task_op.getRepeatCount())),
+        createConstantI32(rewriter, loc, *first_bd_id));
     return success();
   }
 };
@@ -77,9 +80,14 @@ struct DMAAwaitTaskOpPattern : OpConversionPattern<DMAAwaitTaskOp> {
       return err;
     }
     AIE::TileOp tile = task_op.getTileOp();
-    rewriter.replaceOpWithNewOp<NpuSyncOp>(op, tile.getCol(), tile.getRow(),
-                                           (uint32_t)task_op.getDirection(),
-                                           task_op.getChannel(), 1, 1);
+    Location loc = op.getLoc();
+    rewriter.replaceOpWithNewOp<NpuSyncOp>(
+        op, createConstantI32(rewriter, loc, tile.getCol()),
+        createConstantI32(rewriter, loc, tile.getRow()),
+        createConstantI32(rewriter, loc, (uint32_t)task_op.getDirection()),
+        createConstantI32(rewriter, loc, task_op.getChannel()),
+        createConstantI32(rewriter, loc, 1),
+        createConstantI32(rewriter, loc, 1));
     return success();
   }
 };
@@ -238,10 +246,13 @@ struct AIEDMATasksToNPUPass
 
       unsigned arg_idx = buf_arg.getArgNumber();
       offset += bd_op.getOffsetInBytes();
-      NpuAddressPatchOp::create(builder, bd_op.getLoc(),
-                                /*addr*/ register_addr,
-                                /*arg_idx*/ arg_idx,
-                                /*arg_plus*/ offset);
+      NpuAddressPatchOp::create(
+          builder, bd_op.getLoc(),
+          /*addr*/ register_addr,
+          /*arg_idx*/ arg_idx,
+          /*arg_plus*/
+          createConstantI32(builder, bd_op.getLoc(),
+                            static_cast<uint32_t>(offset)));
     } else if (AIE::BufferOp buffer =
                    llvm::dyn_cast<AIE::BufferOp>(buf.getDefiningOp())) {
       uint64_t buf_addr;
@@ -254,9 +265,14 @@ struct AIEDMATasksToNPUPass
       buf_addr = *buffer.getAddress();
       buf_addr += bd_op.getOffsetInBytes();
       if (target_model.isCoreTile(col, row)) {
-        NpuMaskWrite32Op::create(builder, bd_op.getLoc(), register_addr,
-                                 (buf_addr / 4) << 14, 0x0fffc000, nullptr,
-                                 nullptr, nullptr);
+        NpuMaskWrite32Op::create(
+            builder, bd_op.getLoc(),
+            createConstantI32(builder, bd_op.getLoc(),
+                              static_cast<uint32_t>(register_addr)),
+            createConstantI32(builder, bd_op.getLoc(),
+                              static_cast<uint32_t>((buf_addr / 4) << 14)),
+            createConstantI32(builder, bd_op.getLoc(), 0x0fffc000), nullptr,
+            nullptr, nullptr);
       } else if (target_model.isMemTile(col, row)) {
         // On AIE2p (NPU2), memtile DMAs use an offset-based address
         // space where the base depends on the relative position of the
@@ -270,12 +286,22 @@ struct AIEDMATasksToNPUPass
           if (addrOffset)
             buf_addr += addrOffset.value();
         }
-        NpuMaskWrite32Op::create(builder, bd_op.getLoc(), register_addr,
-                                 buf_addr / 4, 0x0007FFFF, nullptr, nullptr,
-                                 nullptr);
+        NpuMaskWrite32Op::create(
+            builder, bd_op.getLoc(),
+            createConstantI32(builder, bd_op.getLoc(),
+                              static_cast<uint32_t>(register_addr)),
+            createConstantI32(builder, bd_op.getLoc(),
+                              static_cast<uint32_t>(buf_addr / 4)),
+            createConstantI32(builder, bd_op.getLoc(), 0x0007FFFF), nullptr,
+            nullptr, nullptr);
       } else {
-        NpuWrite32Op::create(builder, bd_op.getLoc(), register_addr, buf_addr,
-                             nullptr, nullptr, nullptr);
+        NpuWrite32Op::create(
+            builder, bd_op.getLoc(),
+            createConstantI32(builder, bd_op.getLoc(),
+                              static_cast<uint32_t>(register_addr)),
+            createConstantI32(builder, bd_op.getLoc(),
+                              static_cast<uint32_t>(buf_addr)),
+            nullptr, nullptr, nullptr);
       }
     } else {
       return bd_op->emitOpError(
@@ -672,6 +698,7 @@ struct AIEDMATasksToNPUPass
     // Convert DMAStartBD and DMAAwaitBD ops
     ConversionTarget target(getContext());
     target.addLegalDialect<AIEXDialect>();
+    target.addLegalDialect<arith::ArithDialect>();
     target.addIllegalOp<DMAStartTaskOp>();
     target.addIllegalOp<DMAAwaitTaskOp>();
     RewritePatternSet patterns(&getContext());

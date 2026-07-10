@@ -1,21 +1,18 @@
 //===- base_test_shim.mlir --------------------------------------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2025 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2025, Advanced Micro Devices, Inc.
-// 
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
 
 // CHECK: module @elementGenerationShim {
 // CHECK:   aie.device(xcvc1902) {
 // CHECK:     %[[VAL_0:.*]] = aie.tile(1, 0)
 // CHECK:     %[[VAL_1:.*]] = aie.tile(1, 2)
-// CHECK:     %[[VAL_2:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of1_cons_buff_0"} : memref<16xi32> 
-// CHECK:     %[[VAL_3:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of1_cons_buff_1"} : memref<16xi32> 
+// CHECK:     %[[VAL_2:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of1_cons_buff_0"} : memref<16xi32>
+// CHECK:     %[[VAL_3:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "of1_cons_buff_1"} : memref<16xi32>
 // CHECK:     %[[VAL_4:.*]] = aie.lock(%[[VAL_1]], 0) {init = 0 : i32, sym_name = "of1_cons_lock_0"}
 // CHECK:     %[[VAL_5:.*]] = aie.lock(%[[VAL_1]], 1) {init = 0 : i32, sym_name = "of1_cons_lock_1"}
 // CHECK:     aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_1]], DMA : 0)

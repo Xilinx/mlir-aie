@@ -1,0 +1,18 @@
+{
+  "include": [
+    "python/iron",
+    "python/utils",
+    "python/helpers",
+    "python/compiler"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    "**/*.pyi"
+  ],
+  "extraPaths": [
+    "utils/pyright_stubs",
+    "install/python"
+  ],
+  "reportMissingModuleSource": false,
+  "typeCheckingMode": "standard"
+}

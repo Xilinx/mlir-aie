@@ -1,10 +1,7 @@
 #!/usr/bin/env python3
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2025 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-#
-# (c) Copyright 2025 Advanced Micro Devices, Inc.
 #
 """
 AIE Register Database Utilities
@@ -32,7 +29,7 @@ import json
 import logging
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional
 
 from aie.utils.config import root_path
 
@@ -59,7 +56,7 @@ class AIEAddressDecoder:
 
     def __init__(self):
         """Initialize decoder with register database"""
-        self.database = None
+        self.database: dict = {}
         self.load_database()
 
     def load_database(self):
@@ -99,7 +96,7 @@ class AIEAddressDecoder:
         import aie.dialects.aie as aiedialect
 
         # Get target model from npu1 device
-        device = aiedialect.AIEDevice.npu1
+        device = getattr(aiedialect, "AIEDevice").npu1
         target_model = aiedialect.get_target_model(device)
 
         # Extract col, row, and offset using target model
@@ -244,7 +241,7 @@ class AIEAddressDecoder:
         import aie.dialects.aie as aiedialect
 
         # Get target model from npu1 device
-        device = aiedialect.AIEDevice.npu1
+        device = getattr(aiedialect, "AIEDevice").npu1
         target_model = aiedialect.get_target_model(device)
 
         # Find the register
@@ -298,7 +295,7 @@ class AIEAddressDecoder:
 
     def format_result(
         self,
-        result: Dict,
+        result: Optional[Dict],
         include_delimiters: bool = False,
         show_bit_fields: bool = False,
     ) -> str:
@@ -526,7 +523,9 @@ class MLIRModuleAnnotator:
 
     def get_address_from_op(
         self, op, target_model
-    ) -> tuple[int, Optional[int], Optional[int], Optional[int], Optional[int]]:
+    ) -> tuple[
+        Optional[int], Optional[int], Optional[int], Optional[int], Optional[int]
+    ]:
         """
         Extract address, row, col, value, and mask from an operation.
 
@@ -551,25 +550,36 @@ class MLIRModuleAnnotator:
         value = None
         mask = None
 
-        # Get address - could be 'address' or 'addr' attribute
+        # write32/maskwrite32 carry address/value/mask as SSA i32 operands
+        # (materialized via arith.constant); address_patch's 'addr' and the
+        # 'row'/'column' placement fields remain attributes. fold_constant_operand
+        # folds the operand back to its constant integer (None if non-constant).
+        # Imported here (not at module top) to preserve regdb's load-without-MLIR
+        # property; aie.helpers.util pulls in the MLIR bindings.
+        from aie.helpers.util import (  # pyright: ignore[reportMissingImports]
+            fold_constant_operand,
+        )
+
+        # Get address - an SSA operand on write32/maskwrite32, or the 'addr'
+        # attribute on address_patch.
         if hasattr(op, "address") and op.address is not None:
-            address = int(op.address.value)
+            address = fold_constant_operand(op.address)
         elif hasattr(op, "addr") and op.addr is not None:
             address = int(op.addr.value)
 
-        # Get row and column if present
+        # Get row and column if present (these remain attributes)
         if hasattr(op, "row") and op.row is not None:
             row = int(op.row.value)
         if hasattr(op, "column") and op.column is not None:
             col = int(op.column.value)
 
-        # Get value if present
+        # Get value if present (SSA operand)
         if hasattr(op, "value") and op.value is not None:
-            value = int(op.value.value)
+            value = fold_constant_operand(op.value)
 
-        # Get mask if present (for maskwrite32)
+        # Get mask if present (SSA operand, for maskwrite32)
         if hasattr(op, "mask") and op.mask is not None:
-            mask = int(op.mask.value)
+            mask = fold_constant_operand(op.mask)
 
         # If row/col not present, extract from address
         if address is not None and row is None and col is None:
@@ -591,7 +601,9 @@ class MLIRModuleAnnotator:
             True if annotation was added, False otherwise
         """
         # Import here to avoid circular imports and allow module to load without MLIR
-        from aie.ir import StringAttr
+        from aie.ir import (  # pyright: ignore[reportMissingImports]
+            StringAttr,  # pyright: ignore[reportAttributeAccessIssue]
+        )
 
         address, row, col, value, mask = self.get_address_from_op(op, target_model)
 
@@ -612,6 +624,8 @@ class MLIRModuleAnnotator:
 
         # Decode the address
         decoded = self.decoder.parse_address(full_address)
+        if decoded is None:
+            return False
 
         # Generate comment
         comment = self.generate_comment(decoded, value, mask)
@@ -632,30 +646,44 @@ class MLIRModuleAnnotator:
             Number of operations annotated
         """
         # Import here to avoid circular imports and allow module to load without MLIR
-        from aie.extras.util import find_ops
+        from aie.extras.util import find_ops  # pyright: ignore[reportMissingImports]
         import aie.dialects.aie as aiedialect
         import aie.dialects.aiex as aiexdialect
+
+        # These op classes / enums come through compiled dialect bindings that
+        # pyright can't see; fetch them dynamically so the static checker is happy.
+        AIEDevice = getattr(aiedialect, "AIEDevice")
+        DeviceOp = getattr(aiedialect, "DeviceOp")
+        NpuWrite32Op = getattr(aiexdialect, "NpuWrite32Op")
+        NpuBlockWriteOp = getattr(aiexdialect, "NpuBlockWriteOp")
+        NpuMaskWrite32Op = getattr(aiexdialect, "NpuMaskWrite32Op")
+        NpuAddressPatchOp = getattr(aiexdialect, "NpuAddressPatchOp")
+        NpuControlPacketOp = getattr(aiexdialect, "NpuControlPacketOp")
 
         annotated_count = 0
 
         # Get device and target model
         devices = find_ops(
             module.operation,
-            lambda o: isinstance(o.operation.opview, aiedialect.DeviceOp),
+            lambda o: isinstance(
+                o.operation.opview, DeviceOp
+            ),  # pyright: ignore[reportArgumentType]
         )
 
         if not devices:
             logger.warning("No aie.device found, using default npu1 target model")
-            device = aiedialect.AIEDevice.npu1
+            device = AIEDevice.npu1
         else:
-            device = aiedialect.AIEDevice(int(devices[0].device))
+            device = AIEDevice(int(devices[0].device))
 
         target_model = aiedialect.get_target_model(device)
 
         # Find and annotate write32 operations
         write32_ops = find_ops(
             module.operation,
-            lambda o: isinstance(o.operation.opview, aiexdialect.NpuWrite32Op),
+            lambda o: isinstance(
+                o.operation.opview, NpuWrite32Op
+            ),  # pyright: ignore[reportArgumentType]
         )
         for op in write32_ops:
             if self.annotate_operation(op.opview, target_model):
@@ -664,7 +692,9 @@ class MLIRModuleAnnotator:
         # Find and annotate blockwrite operations
         blockwrite_ops = find_ops(
             module.operation,
-            lambda o: isinstance(o.operation.opview, aiexdialect.NpuBlockWriteOp),
+            lambda o: isinstance(
+                o.operation.opview, NpuBlockWriteOp
+            ),  # pyright: ignore[reportArgumentType]
         )
         for op in blockwrite_ops:
             if self.annotate_operation(op.opview, target_model):
@@ -673,7 +703,9 @@ class MLIRModuleAnnotator:
         # Find and annotate maskwrite32 operations
         maskwrite_ops = find_ops(
             module.operation,
-            lambda o: isinstance(o.operation.opview, aiexdialect.NpuMaskWrite32Op),
+            lambda o: isinstance(
+                o.operation.opview, NpuMaskWrite32Op
+            ),  # pyright: ignore[reportArgumentType]
         )
         for op in maskwrite_ops:
             if self.annotate_operation(op.opview, target_model):
@@ -682,7 +714,9 @@ class MLIRModuleAnnotator:
         # Find and annotate address_patch operations
         address_patch_ops = find_ops(
             module.operation,
-            lambda o: isinstance(o.operation.opview, aiexdialect.NpuAddressPatchOp),
+            lambda o: isinstance(
+                o.operation.opview, NpuAddressPatchOp
+            ),  # pyright: ignore[reportArgumentType]
         )
         for op in address_patch_ops:
             if self.annotate_operation(op.opview, target_model):
@@ -691,7 +725,9 @@ class MLIRModuleAnnotator:
         # Find and annotate control_packet operations
         control_packet_ops = find_ops(
             module.operation,
-            lambda o: isinstance(o.operation.opview, aiexdialect.NpuControlPacketOp),
+            lambda o: isinstance(
+                o.operation.opview, NpuControlPacketOp
+            ),  # pyright: ignore[reportArgumentType]
         )
         for op in control_packet_ops:
             if self.annotate_operation(op.opview, target_model):
@@ -711,8 +747,14 @@ class MLIRModuleAnnotator:
             Number of operations annotated
         """
         # Import here to avoid circular imports and allow module to load without MLIR
-        from aie.ir import Context, Module, Location
-        from aie._mlir_libs import get_dialect_registry
+        from aie.ir import (  # pyright: ignore[reportMissingImports]
+            Context,  # pyright: ignore[reportAttributeAccessIssue]
+            Module,  # pyright: ignore[reportAttributeAccessIssue]
+            Location,  # pyright: ignore[reportAttributeAccessIssue]
+        )
+        from aie._mlir_libs import (  # pyright: ignore[reportMissingImports]
+            get_dialect_registry,  # pyright: ignore[reportAttributeAccessIssue]
+        )
 
         # Read input file
         with open(input_path, "r") as f:
@@ -764,22 +806,22 @@ def main():
 Examples:
   # Decode an address
   %(prog)s 0x32000
-  
+
   # Decode an address and show bit field definitions
   %(prog)s 0x32000 --show-bit-fields
-  
+
   # Reverse lookup: find address for a register
   %(prog)s --col 0 --row 2 --register Core_Control
-  
+
   # Reverse lookup with bit fields
   %(prog)s --col 0 --row 2 --register Core_Control -b
 
   # Annotate MLIR file and write to output
   %(prog)s -a input.mlir -o output.mlir
-  
+
   # Annotate MLIR file in place
   %(prog)s -a input.mlir --in-place
-  
+
   # Annotate MLIR file and write to stdout
   %(prog)s -a input.mlir
         """,

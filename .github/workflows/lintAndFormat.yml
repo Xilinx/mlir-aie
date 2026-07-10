@@ -1,3 +1,7 @@
+# Copyright (C) 2021 Xilinx, Inc.
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 name: Lint and Format
 
 permissions:
@@ -19,6 +23,67 @@ env:
 
 jobs:
 
+  lockfiles:
+
+    name: Lockfiles match inputs
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: '3.12'
+
+      # Regenerate the hash-pinned lockfiles from their source manifests, then
+      # fail (and post the fix as a PR suggestion) if anything changed. Catches
+      # drift from source bumps (e.g. Dependabot editing requirements.txt/.in)
+      # that never regenerated the committed .lock files. The uv version must
+      # match the one pinned in regenerate_lockfiles.sh, otherwise
+      # resolution/header differences show up as spurious diffs, so read it
+      # straight from the script.
+      - name: Install pinned uv
+        run: |
+          UV_VERSION=$(sed -n 's/^UV_VERSION="\(.*\)"$/\1/p' utils/regenerate_lockfiles.sh)
+          echo "installing uv==${UV_VERSION}"
+          python -m pip install "uv==${UV_VERSION}"
+
+      - name: Regenerate lockfiles
+        run: utils/regenerate_lockfiles.sh
+
+      # Fail on any drift, regardless of which files the PR touched.
+      # action-suggester uses filter_mode: diff_context and silently passes
+      # when drift is in files not already in the PR diff (e.g. a Dependabot
+      # bump that updates requirements.txt but not the compiled .lock).
+      - name: Fail on lockfile drift
+        run: |
+          if ! git diff --exit-code; then
+            echo "::error::Lockfiles are out of date. Run utils/regenerate_lockfiles.sh and commit the result."
+            exit 1
+          fi
+
+      # Post the fix as inline PR suggestions (best-effort; does not gate merge).
+      - name: Suggest lockfile updates
+        if: failure()
+        uses: reviewdog/action-suggester@2558ba17e65a9039e73764a73009fc05fef28a46  # v1.24
+        with:
+          tool_name: regenerate-lockfiles
+          level: error
+          fail_level: any
+
+      # Cross-lock check: the regen above proves each lock matches its own
+      # source, but not that shared ABI-coupled deps (nanobind, pybind11, ...)
+      # resolve to the SAME version across locks. A per-directory Dependabot
+      # bump that moves one manifest and not another passes regen but breaks
+      # the wheel at import time; this guard turns that into a fast failure.
+      - name: Check shared dependency versions agree
+        run: python3 utils/check_shared_dep_versions.py
+
   clang-tidy-pylint:
 
     name: Python and C/C++ Lint
@@ -30,7 +95,7 @@ jobs:
       pull-requests: write
 
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
           fetch-depth: 2
           submodules: "true"
@@ -40,7 +105,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y clang-tidy ninja-build clang libelf-dev
 
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
           python-version: '3.12'
 
@@ -79,7 +144,6 @@ jobs:
             -DCMAKE_INSTALL_PREFIX=$PWD/install \
             -DAIE_COMPILER=NONE \
             -DAIE_LINKER=NONE \
-            -DAIE_ENABLE_PYTHON_PASSES=OFF \
             -DAIE_ENABLE_AIRBIN=OFF \
             -DHOST_COMPILER=NONE \
             -DLLVM_ENABLE_ASSERTIONS=ON \
@@ -92,7 +156,37 @@ jobs:
 
           ninja aie-headers mlir-headers
 
+          # Assemble the Python package sources (hand-written + tablegen'd op/enum
+          # wrappers) into build/python/aie. This needs only tablegen, not a full
+          # C++ build, so it stays cheap enough for the lint job. pyright resolves
+          # generated bindings from here; aie._mlir_libs (compiled) is not required
+          # because the few core-IR symbols it would provide are already handled by
+          # targeted per-line ignores in the sources.
+          #
+          # The MLIRPythonSources.Core.Python[.Extras] targets stage aie.ir,
+          # aie.passmanager, and the aie.extras package root; the _aie_enum_gen.py
+          # copy stages the trace/event enum bindings. Without these, those package
+          # roots don't exist in build/python and the imports fail with
+          # reportMissingImports (which the per-line reportAttributeAccessIssue
+          # ignores do not cover).
+          ninja \
+            python/AIEPythonSources.Dialects.aie.ops_gen \
+            python/AIEPythonSources.Dialects.aiex.ops_gen \
+            python/AIEPythonSources.Dialects.aievec.ops_gen \
+            python/AIEPythonModules.sources.AIEPythonSources \
+            python/AIEPythonModules.sources.MLIRPythonSources.Core.Python \
+            python/AIEPythonModules.sources.MLIRPythonSources.Core.Python.Extras \
+            python/aie/dialects/_aie_enum_gen.py
+
           popd
+
+      - name: Type check Python (pyright)
+        run: |
+          # pyrightconfig.json expects the built aie tree at install/python (see
+          # utils/pyright_stubs/README.md). Point it at the lint build output.
+          rm -rf install && mkdir install
+          ln -sfn "$PWD/build/python" install/python
+          pyright
 
       - name: Analyze
         id: clang-tidy-fixes
@@ -123,18 +217,18 @@ jobs:
 
     steps:
       - name: Get the project repository
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
           fetch-depth: 2
           submodules: "true"
 
       - name: Install clang-format
-        uses: aminya/setup-cpp@1f17f92d6a52bfcb1a25348e2c526c2e5cbb1134  # v1.8.0
+        uses: aminya/setup-cpp@8170d66c458f4a045220b7b0966c10940bb2a15d  # v1.8.1
         with:
           clangformat: 17.0.1
 
       - name: Setup Python env
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
           python-version: '3.12'
 
@@ -168,7 +262,7 @@ jobs:
           name: clang_format_diffs
 
       - name: Check C/C++ format
-        uses: reviewdog/action-suggester@aa38384ceb608d00f84b4690cacc83a5aba307ff  # v1.24
+        uses: reviewdog/action-suggester@2558ba17e65a9039e73764a73009fc05fef28a46  # v1.24
         with:
           tool_name: clang-format
           level: error
@@ -191,7 +285,7 @@ jobs:
 
       - name: Check Python format
         if: success() || failure()
-        uses: reviewdog/action-suggester@aa38384ceb608d00f84b4690cacc83a5aba307ff  # v1.24
+        uses: reviewdog/action-suggester@2558ba17e65a9039e73764a73009fc05fef28a46  # v1.24
         with:
           tool_name: black
           level: error
@@ -222,12 +316,12 @@ jobs:
           swap-storage: false
 
       - name: Get the project repository
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
           fetch-depth: 2
           submodules: "true"
 
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
           python-version: '3.12'
 
@@ -294,7 +388,6 @@ jobs:
             -DCMAKE_INSTALL_PREFIX=$PWD/install \
             -DAIE_COMPILER=NONE \
             -DAIE_LINKER=NONE \
-            -DAIE_ENABLE_PYTHON_PASSES=OFF \
             -DHOST_COMPILER=NONE \
             -DLLVM_ENABLE_ASSERTIONS=OFF \
             -DLLVM_ENABLE_RTTI=ON \
@@ -338,3 +431,29 @@ jobs:
           comment-author: 'github-actions[bot]'
           body-path: /home/runner/work/mlir-aie/mlir-aie/build_release/report/index.html
           edit-mode: replace
+
+  license-compliance:
+    name: License Compliance Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Setup Python env
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install "reuse[charset-normalizer]==6.2.0"
+
+      - name: Check Licenses
+        shell: bash
+        run: |
+          reuse download --all
+          reuse lint
+
+      - name: Check copyright notice format
+        run: python utils/check_copyright_format.py

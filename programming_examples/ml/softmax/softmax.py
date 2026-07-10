@@ -1,15 +1,13 @@
 # softmax/softmax.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
 """Tile-wise bf16 softmax — IRON API design with ``@iron.jit`` compilation.
 
 Softmax is computed independently per 1024-element tile (no cross-tile
 reduction), so the design scales the same way as ml/eltwise_unary: body
-delegates to ``iron.algorithms.transform_parallel_typed`` with
+delegates to ``iron.algorithms.transform_parallel`` with
 ``num_channels=2`` and ``pass_size_to_kernel=True`` (the softmax kernel
 signature is ``(in, out, line_size)``).
 """
@@ -21,7 +19,7 @@ from ml_dtypes import bfloat16
 
 import aie.iron as iron
 from aie.iron import CompileTime, In, Out, kernels
-from aie.iron.algorithms import transform_parallel_typed
+from aie.iron.algorithms import transform_parallel
 from aie.utils.hostruntime.argparse import (
     device_from_args,
     add_compile_args,
@@ -38,7 +36,7 @@ def softmax(
     size: CompileTime[int] = 262144,
     num_channels: CompileTime[int] = 2,
 ):
-    return transform_parallel_typed(
+    return transform_parallel(
         kernels.softmax(tile_size=1024),
         np.ndarray[(size,), np.dtype[bfloat16]],
         tile_size=1024,

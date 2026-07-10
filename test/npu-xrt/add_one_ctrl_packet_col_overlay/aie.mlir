@@ -1,10 +1,7 @@
 //===- aie.mlir ------------------------------------------------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2024 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2024 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -341,23 +338,71 @@ module {
 
       // write bd0
       aiex.npu.dma_memcpy_nd(%arg1[%c0_i64, %c0_i64, %c0_i64, %c0_i64] [%c1_i64, %c1_i64, %c1_i64, %c2_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64], packet = <pkt_id = 27, pkt_type = 1>) {id = 6 : i64, issue_token = true, metadata = @ctrlin0} : memref<8xi32>
-      aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
+      %cst_npu_0 = arith.constant 0 : i32
+      %cst_npu_1 = arith.constant 0 : i32
+      %cst_npu_2 = arith.constant 1 : i32
+      %cst_npu_3 = arith.constant 0 : i32
+      %cst_npu_4 = arith.constant 1 : i32
+      %cst_npu_5 = arith.constant 1 : i32
+      aiex.npu.sync(%cst_npu_0, %cst_npu_1, %cst_npu_2, %cst_npu_3, %cst_npu_4, %cst_npu_5) : i32, i32, i32, i32, i32, i32
       aiex.npu.dma_memcpy_nd(%arg1[%c0_i64, %c0_i64, %c0_i64, %c4_i64] [%c1_i64, %c1_i64, %c1_i64, %c2_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64], packet = <pkt_id = 29, pkt_type = 1>) {id = 7 : i64, issue_token = true, metadata = @ctrlin1} : memref<8xi32>
-      aiex.npu.sync {channel = 1 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
+      %cst_npu_6 = arith.constant 0 : i32
+      %cst_npu_7 = arith.constant 0 : i32
+      %cst_npu_8 = arith.constant 1 : i32
+      %cst_npu_9 = arith.constant 1 : i32
+      %cst_npu_10 = arith.constant 1 : i32
+      %cst_npu_11 = arith.constant 1 : i32
+      aiex.npu.sync(%cst_npu_6, %cst_npu_7, %cst_npu_8, %cst_npu_9, %cst_npu_10, %cst_npu_11) : i32, i32, i32, i32, i32, i32
       aiex.npu.dma_memcpy_nd(%arg1[%c0_i64, %c0_i64, %c0_i64, %c8_i64] [%c1_i64, %c1_i64, %c1_i64, %c2_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64], packet = <pkt_id = 30, pkt_type = 1>) {id = 8 : i64, issue_token = true, metadata = @ctrlin1} : memref<8xi32>
-      aiex.npu.sync {channel = 1 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
+      %cst_npu_12 = arith.constant 0 : i32
+      %cst_npu_13 = arith.constant 0 : i32
+      %cst_npu_14 = arith.constant 1 : i32
+      %cst_npu_15 = arith.constant 1 : i32
+      %cst_npu_16 = arith.constant 1 : i32
+      %cst_npu_17 = arith.constant 1 : i32
+      aiex.npu.sync(%cst_npu_12, %cst_npu_13, %cst_npu_14, %cst_npu_15, %cst_npu_16, %cst_npu_17) : i32, i32, i32, i32, i32, i32
       aiex.npu.dma_memcpy_nd(%arg1[%c0_i64, %c0_i64, %c0_i64, %c12_i64] [%c1_i64, %c1_i64, %c1_i64, %c2_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64], packet = <pkt_id = 31, pkt_type = 1>) {id = 9 : i64, issue_token = true, metadata = @ctrlin1} : memref<8xi32>
-      aiex.npu.sync {channel = 1 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
+      %cst_npu_18 = arith.constant 0 : i32
+      %cst_npu_19 = arith.constant 0 : i32
+      %cst_npu_20 = arith.constant 1 : i32
+      %cst_npu_21 = arith.constant 1 : i32
+      %cst_npu_22 = arith.constant 1 : i32
+      %cst_npu_23 = arith.constant 1 : i32
+      aiex.npu.sync(%cst_npu_18, %cst_npu_19, %cst_npu_20, %cst_npu_21, %cst_npu_22, %cst_npu_23) : i32, i32, i32, i32, i32, i32
 
       // patch bd0 address for packet 1, push to mm2s_0_task_queue, wait
       aiex.npu.dma_memcpy_nd(%arg1[%c0_i64, %c0_i64, %c0_i64, %c2_i64] [%c1_i64, %c1_i64, %c1_i64, %c2_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64], packet = <pkt_id = 27, pkt_type = 1>) {id = 6 : i64, issue_token = true, metadata = @ctrlin0} : memref<8xi32>
-      aiex.npu.sync {channel = 0 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
+      %cst_npu_24 = arith.constant 0 : i32
+      %cst_npu_25 = arith.constant 0 : i32
+      %cst_npu_26 = arith.constant 1 : i32
+      %cst_npu_27 = arith.constant 0 : i32
+      %cst_npu_28 = arith.constant 1 : i32
+      %cst_npu_29 = arith.constant 1 : i32
+      aiex.npu.sync(%cst_npu_24, %cst_npu_25, %cst_npu_26, %cst_npu_27, %cst_npu_28, %cst_npu_29) : i32, i32, i32, i32, i32, i32
       aiex.npu.dma_memcpy_nd(%arg1[%c0_i64, %c0_i64, %c0_i64, %c6_i64] [%c1_i64, %c1_i64, %c1_i64, %c2_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64], packet = <pkt_id = 29, pkt_type = 1>) {id = 7 : i64, issue_token = true, metadata = @ctrlin1} : memref<8xi32>
-      aiex.npu.sync {channel = 1 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
+      %cst_npu_30 = arith.constant 0 : i32
+      %cst_npu_31 = arith.constant 0 : i32
+      %cst_npu_32 = arith.constant 1 : i32
+      %cst_npu_33 = arith.constant 1 : i32
+      %cst_npu_34 = arith.constant 1 : i32
+      %cst_npu_35 = arith.constant 1 : i32
+      aiex.npu.sync(%cst_npu_30, %cst_npu_31, %cst_npu_32, %cst_npu_33, %cst_npu_34, %cst_npu_35) : i32, i32, i32, i32, i32, i32
       aiex.npu.dma_memcpy_nd(%arg1[%c0_i64, %c0_i64, %c0_i64, %c10_i64] [%c1_i64, %c1_i64, %c1_i64, %c2_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64], packet = <pkt_id = 30, pkt_type = 1>) {id = 8 : i64, issue_token = true, metadata = @ctrlin1} : memref<8xi32>
-      aiex.npu.sync {channel = 1 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
+      %cst_npu_36 = arith.constant 0 : i32
+      %cst_npu_37 = arith.constant 0 : i32
+      %cst_npu_38 = arith.constant 1 : i32
+      %cst_npu_39 = arith.constant 1 : i32
+      %cst_npu_40 = arith.constant 1 : i32
+      %cst_npu_41 = arith.constant 1 : i32
+      aiex.npu.sync(%cst_npu_36, %cst_npu_37, %cst_npu_38, %cst_npu_39, %cst_npu_40, %cst_npu_41) : i32, i32, i32, i32, i32, i32
       aiex.npu.dma_memcpy_nd(%arg1[%c0_i64, %c0_i64, %c0_i64, %c14_i64] [%c1_i64, %c1_i64, %c1_i64, %c2_i64] [%c0_i64, %c0_i64, %c0_i64, %c1_i64], packet = <pkt_id = 31, pkt_type = 1>) {id = 9 : i64, issue_token = true, metadata = @ctrlin1} : memref<8xi32>
-      aiex.npu.sync {channel = 1 : i32, column = 0 : i32, column_num = 1 : i32, direction = 1 : i32, row = 0 : i32, row_num = 1 : i32}
+      %cst_npu_42 = arith.constant 0 : i32
+      %cst_npu_43 = arith.constant 0 : i32
+      %cst_npu_44 = arith.constant 1 : i32
+      %cst_npu_45 = arith.constant 1 : i32
+      %cst_npu_46 = arith.constant 1 : i32
+      %cst_npu_47 = arith.constant 1 : i32
+      aiex.npu.sync(%cst_npu_42, %cst_npu_43, %cst_npu_44, %cst_npu_45, %cst_npu_46, %cst_npu_47) : i32, i32, i32, i32, i32, i32
 
       // wait for dma output
       aiex.npu.dma_wait {symbol = @out0}

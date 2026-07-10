@@ -1,10 +1,14 @@
-﻿# AIE Automatic Vectorization
+﻿<!-- Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
+<span style="color:red;font-weight:bold;font-size:48px">WARNING: This is documentation for legacy functionality. The last version where these passes are present is [tagged as "last-legacy-vectorize"](https://github.com/Xilinx/mlir-aie/tree/last-legacy-vectorize)</span>.
+
+# AIE Automatic Vectorization
 
 Achieving high performance with the AIEngine architecture typically requires executing vector multiply-accumulate instructions.  Ideally, an algorithm would start a new pipelined vector multiple-accumulate instruction on every clock cycle, although in practice achieving this outside of high-performance inner loops is very difficult.  Explicitly coding vector operations in C++ can take significant expertise, taking into account memory layout, register pressure, and different data types. [Ref:Vyasa](https://github.com/stephenneuendorffer/vyasa)  Fortunately, by leveraging the MLIR infrastructure, it is possible to generate reasonably high-performance code in many circumstances.
 
 ## Affine Loops
 
-A typical starting point for automatic vectorization is to consider Affine looped programs. [Example](https://github.com/Xilinx/mlir-aie/tree/main/test/aievec/pointwise_mult_f32.mlir)
+A typical starting point for automatic vectorization is to consider Affine looped programs.
 ```
 func.func @pointwise_mult (%A: memref<2048xf32>, %B: memref<2048xf32>, %C: memref<2048xf32>) {
     affine.for %arg0 = 0 to 2048 {
@@ -67,7 +71,7 @@ aie-opt -affine-super-vectorize="virtual-vector-size=8 vectorize-reductions" --a
 
 This code can be translated to C++ code that can be included in a Vitis design:
 ```
-aie-opt -affine-super-vectorize="virtual-vector-size=8" --aie-vectorize < ../../aie/test/aievec/pointwise_mult_f32.mlir | aie-translate --aievec-to-cpp
+aie-opt -affine-super-vectorize="virtual-vector-size=8" --aie-vectorize < pointwise_mult_f32.mlir | aie-translate --aievec-to-cpp
 ```
 ```
 void pointwise_mult(float * restrict v1, float * restrict v2, float * restrict v3) {

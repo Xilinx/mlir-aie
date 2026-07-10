@@ -1,11 +1,8 @@
 <!---//===- README.md --------------------------*- Markdown -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2025-2026, Advanced Micro Devices, Inc.
-// 
 //===----------------------------------------------------------------------===//-->
 
 # IRON Python Configurations
@@ -32,11 +29,10 @@ CPUOnlyTensor
 
 ## Default IRON Device
 
-If the IRON device is not set, many designs will fetch it on demand from the [`DefaultNPURuntime`](../python/utils/__init__.py) (a `CachedXRTRuntime` instance), which queries XRT for the attached NPU. You can override this by calling [`iron.set_current_device()`](../python/utils/hostruntime/__init__.py), which takes the new device and returns the previous one:
+If the IRON device is not set, many designs fetch it on demand from the [`DefaultNPURuntime`](../python/utils/__init__.py) (a `CachedXRTRuntime` instance), which queries XRT for the attached NPU. Select an explicit target with `iron.set_current_device()`:
 ```python
 >>> import aie.iron as iron
 >>> iron.set_current_device(iron.device.NPU1())
-<abc.NPU2 object at 0x722a659826c0>
 >>> iron.get_current_device()
 <abc.NPU1 object at 0x722a65903a10>
 ```
@@ -52,12 +48,12 @@ cache subdirectory, no collision with the binary for whatever NPU is
 physically attached:
 
 ```python
+import aie.iron as iron
 from aie.iron.device import NPU1Col1, NPU2Col1
-from aie.utils.hostruntime import set_current_device
 
 # Same generator, two arches → two distinct cache dirs.
 for dev_cls in (NPU1Col1, NPU2Col1):
-    set_current_device(dev_cls())
+    iron.set_current_device(dev_cls())
     my_design.specialize(N=4096).compile()
 ```
 
@@ -75,11 +71,17 @@ can drive their DMA-layout transforms from the kernel itself instead
 of hardcoding for one arch:
 
 ```python
+import aie.iron as iron
+from aie.iron.device import NPU2Col1
+
+iron.set_current_device(NPU2Col1())
 mm = kernels.mm(dim_m=64, dim_k=64, dim_n=64,
                 input_dtype=np.int16, output_dtype=np.int16)
 r, s, t = mm.mac_dims
-# r/s/t now reflect whichever arch is active per get_current_device().
 ```
+
+Set the target before constructing an arch-sensitive factory. The factory
+selects its source and MMUL geometry when it is created.
 
 The full per-arch table lives in
 [`python/iron/kernels/linalg.py`](../python/iron/kernels/linalg.py)
@@ -141,14 +143,14 @@ has a docstring; `help(obj)` or `print(obj.__doc__)` shows it.
 | `iron.{set_current_device, get_current_device}` | Read/write the active `Device` (see [§Default IRON Device](#default-iron-device)). |
 | `iron.kernels.*` | Pre-packaged kernel factories — `mm`, `conv2dk1`, `conv2dk3`, `passthrough`, eltwise, etc.  Each returns an `ExternalFunction` ready to bind in a `Worker`. |
 | `iron.{Buffer, Lock, Flow, TileDma, DmaChannel, Bd, Acquire, Release}` | IRON-Python peers of `ObjectFifo` for designs that want to hand-wire DMA + sync (canonical example: `programming_examples/basic/chaining_channels/`). |
-| `iron.algorithms.{transform_typed, transform_binary_typed, transform_parallel, for_each_typed}` | Element-wise dataflow templates — handle `Worker` / `ObjectFifo` / `Runtime` plumbing for one-arg / two-arg / multi-column / fill-and-drain patterns. |
+| `iron.algorithms.{transform, transform_binary, transform_parallel, for_each}` | Element-wise dataflow templates — handle `Worker` / `ObjectFifo` / `Runtime` plumbing for one-arg / two-arg / multi-column / fill-and-drain patterns. |
 | `iron.{compile_context, get_compile_arg}` | Dynamic compile-time arg injection.  See [§compile_context](#compile_context-for-nested-generator-helpers) below. |
 
 ### Argparse + runtime glue (`aie.iron.device`, `aie.utils`)
 
 | Helper | What it does |
 |--------|--------------|
-| `aie.utils.hostruntime.argparse.device_from_args(args)` | Resolve a parsed argparse `Namespace` to a `Device` — collapses `from_name(args.dev, n_cols=...)` boilerplate.  `n_cols="auto"` reads `args.n_cols` if present, otherwise defaults to 1.  Lives next to the `add_*_args` family that produces the `Namespace` it consumes. |
+| `aie.utils.hostruntime.argparse.device_from_args(args)` | Resolve an explicit parsed `args.dev` to a `Device` — collapses `from_name(args.dev, n_cols=...)` boilerplate. Returns `None` when target selection is automatic, so `run_design_cli()` can bind the attached runtime family. `n_cols="auto"` reads `args.n_cols` if present, otherwise defaults to 1. |
 | `aie.utils.DefaultNPURuntime` | Module-level `CachedXRTRuntime` instance; auto-detects NPU1 / NPU2 via XRT.  Used by `iron.tensor(..., device="npu")` and `@iron.jit` runtime binding. |
 | `aie.utils.hostruntime.argparse.{add_compile_args, add_runtime_args}` | Add the standard `--xclbin-path`/`--insts-path` and `--xclbin`/`--instr`/`-k`/`--trace_size` flags to a parser. |
 | `aie.utils.test.create_npu_kernel(opts)` | Build an `NPUKernel` (plus optional `TraceConfig`) from a parsed `argparse.Namespace`.  See `programming_examples/basic/vector_scalar_mul/test.py` for the canonical use pattern. |

@@ -1,3 +1,6 @@
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 import matplotlib.animation as animation
 import matplotlib.patheffects as pe
 import matplotlib.pyplot as plt
@@ -32,6 +35,7 @@ def animate_from_accesses(
     height_width_ratio = ceildiv(tensor_height, tensor_width)
     fig_height = min(fig_width, fig_width * height_width_ratio)
 
+    ax_count = None
     if not (access_count_tensors is None):
         fig_height *= 2
         fig, (ax_order, ax_count) = plt.subplots(2, 1)
@@ -48,7 +52,7 @@ def animate_from_accesses(
     ax_order.invert_yaxis()
     ax_order.set_title("Access Order Animation")
 
-    if not (access_count_tensors is None):
+    if ax_count is not None:
         ax_count.xaxis.tick_top()
         ax_count.invert_yaxis()
         ax_count.set_title(f"Access Counts")
@@ -56,7 +60,7 @@ def animate_from_accesses(
     def animate_order(i):
         access_heatmap = ax_order.pcolormesh(access_order_tensors[i])
 
-        if not (access_count_tensors is None):
+        if access_count_tensors is not None and ax_count is not None:
             count_heatmap = ax_count.pcolormesh(
                 xs, ys, access_count_tensors[i], cmap="gnuplot2"
             )
@@ -64,7 +68,7 @@ def animate_from_accesses(
                 access_heatmap,
                 count_heatmap,
             )
-        return access_heatmap
+        return (access_heatmap,)
 
     _animation = animation.FuncAnimation(
         fig,
@@ -105,6 +109,7 @@ def visualize_from_accesses(
     height_width_ratio = ceildiv(tensor_height, tensor_width)
     fig_height = min(fig_width, fig_width * height_width_ratio)
 
+    ax_count = None
     if not (access_count_tensor is None):
         fig_height *= 2
         fig, (ax_order, ax_count) = plt.subplots(2, 1)
@@ -122,7 +127,7 @@ def visualize_from_accesses(
     ax_order.invert_yaxis()
     ax_order.set_title("Access Order")
 
-    if not (access_count_tensor is None):
+    if access_count_tensor is not None and ax_count is not None:
         max_count = np.max(access_count_tensor)
         _count_heatmap = ax_count.pcolormesh(
             xs, ys, access_count_tensor, cmap="gnuplot2"

@@ -1,9 +1,7 @@
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2024 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024, Advanced Micro Devices, Inc.
 
 import argparse
 import math
@@ -96,7 +94,7 @@ def main(opts):
         trace_config = TraceConfig(
             trace_size=trace_size,
             trace_file=trace_file,
-            ddr_id=-1 if trace_after_output else 4,
+            reuse_output_buffer=trace_after_output,
             enable_ctrl_pkts=False,
             last_tensor_shape=out.shape,
             last_tensor_dtype=out.dtype,

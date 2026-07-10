@@ -1,10 +1,7 @@
 
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2021 Xilinx, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-# 
-# (c) Copyright 2021 Xilinx Inc.
 # 
 
 create_clock -name sys_clk0_0_clk_p -period 5.000 [get_ports sys_clk0_0_clk_p]

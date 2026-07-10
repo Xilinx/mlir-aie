@@ -1,14 +1,13 @@
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2022-2025 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// (c) Copyright 2024 AMD Inc.
 
 // RUN: aie-opt --verify-diagnostics --aie-assign-runtime-sequence-bd-ids %s
 
 // This test ensures that the proper error is emitted if a user tries to use more buffer descriptors than
-// are availalbe in the current device.
+// are available in the current device. The error attaches to the configure whose
+// BD cannot be allocated once the tile's pool is exhausted.
 
 module {
   aie.device(npu1) {
@@ -81,7 +80,7 @@ module {
         aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
         aie.end
       }
-      // expected-error@+1 {{Allocator exhausted available }}
+      // expected-error@+1 {{Too many simultaneously active buffer descriptors}}
       %t17 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
         aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
         aie.end

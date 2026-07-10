@@ -1,0 +1,74 @@
+version = 1
+
+# This file declares copyright and licensing for files that cannot carry an
+# inline SPDX header (binary assets, generated data, plain-text fixtures) and for
+# vendored third-party sources whose upstream license differs from the project
+# default (Apache-2.0 WITH LLVM-exception). Source files carry inline SPDX
+# headers instead; see https://reuse.software for the spec.
+#
+# NOTE: Within this file the LAST matching [[annotations]] table wins for a given
+# file, so the third-party carve-outs MUST stay below the first-party block.
+
+# --- First-party data / binary / fixture files -------------------------------
+# Matched by extension/name rather than enumerated individually. Git submodules
+# and .gitignore'd paths (build/, install/, third_party/, ...) are skipped by
+# reuse automatically, so these globs only ever touch first-party files. Any
+# vendored file needing a different license is carved out in the blocks below
+# (later [[annotations]] win).
+[[annotations]]
+path = [
+    # Images / diagrams
+    "**/*.png",
+    "**/*.jpg",
+    "**/*.ico",
+    "**/*.svg",
+    # Binary / generated artifacts
+    "**/*.elf",
+    "**/*.bin",
+    "**/*.cdo",
+    "**/*.pdi",
+    "**/*.xsa",
+    "**/*.prx",
+    "**/*.gtkw",
+    # Data / fixtures / config that cannot carry an inline header
+    "**/*.txt",
+    "**/*.json",
+    "**/*.xml",
+    "**/*.ipynb",
+    "**/*.lock",
+    "**/*.patch",
+    "**/*.gemspec",
+    # Build / project files without a usable comment header
+    "**/Makefile",
+    "**/Doxyfile",
+    ".github/CODEOWNERS",
+    # Petalinux generated config files (no extension)
+    "platforms/vck190_bare_es/petalinux/.petalinux/metadata",
+    "platforms/vck190_bare_es/petalinux/.petalinux/usage_statistics",
+    "platforms/vck190_bare_es/petalinux/.petalinux/usage_statistics_token",
+    "platforms/vck190_bare_es/petalinux/project-spec/attributes",
+    "platforms/vck190_bare_es/petalinux/project-spec/configs/config",
+    "platforms/vck190_bare_es/petalinux/project-spec/configs/init-ifupdown/interfaces",
+    "platforms/vck190_bare_es/petalinux/project-spec/configs/rootfs_config",
+    "platforms/vck190_bare_es/petalinux/project-spec/meta-user/README",
+    "platforms/vck190_bare_es/petalinux/project-spec/meta-user/conf/user-rootfsconfig",
+    "platforms/vck190_bare_es/petalinux/project-spec/meta-user/recipes-bsp/u-boot/u-boot-zynq-scr/boot.cmd.default",
+    "platforms/vck190_bare_es/petalinux/project-spec/meta-user/recipes-bsp/u-boot/u-boot-zynq-scr/boot.cmd.default.initrd",
+]
+SPDX-FileCopyrightText = "Copyright (C) 2018-2026 Advanced Micro Devices, Inc."
+SPDX-License-Identifier = "Apache-2.0 WITH LLVM-exception"
+
+# --- Third-party / vendored carve-outs (keep upstream licenses) --------------
+
+# petalinux demo apps vendored from Xilinx: MIT-licensed, with the full MIT
+# permission text retained inline. Declared here for REUSE; these are NOT under
+# the project's Apache-2.0 default.
+[[annotations]]
+path = [
+    "platforms/vck190_bare_es/petalinux/project-spec/meta-user/recipes-apps/gpio-demo/files/gpio-demo.c",
+    "platforms/vck190_bare_es/petalinux/project-spec/meta-user/recipes-apps/peekpoke/files/peek.c",
+    "platforms/vck190_bare_es/petalinux/project-spec/meta-user/recipes-apps/peekpoke/files/poke.c",
+]
+precedence = "override"
+SPDX-FileCopyrightText = "Copyright (C) 2013-2016 Xilinx, Inc."
+SPDX-License-Identifier = "MIT"

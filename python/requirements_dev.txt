@@ -1,9 +1,9 @@
 # Source for python/requirements_dev.lock (hash-pinned, --require-hashes-installed in CI).
 # After editing this file, regenerate the .lock with:
 #   utils/regenerate_lockfiles.sh
-cmake>=4.3.2, <5.0
+cmake>=4.3.4, <5.0
 pybind11>=3.0.4
-setuptools>=82.0.1
+setuptools>=83.0.0
 wheel
 ninja!=1.13.0
 cibuildwheel
@@ -13,10 +13,27 @@ cibuildwheel
 patchelf; platform_system == "Linux"
 pre-commit>=4.6.0,<5.0
 black[jupyter]
-nanobind>=2.12.0
+pyright
+# nanobind ABI-couples to the prebuilt mlir distro wheel (built against the
+# same version); a mismatch breaks Value-subclass recognition at runtime. Keep
+# this constraint identical to utils/mlir_wheels/requirements.in and
+# utils/mlir_aie_wheels/requirements.txt — the abi-deps CI guard
+# (utils/check_shared_dep_versions.py) fails the build if the resolved versions
+# diverge across those locks. Pinned at 2.12.0: 2.13.0 rejects passing an
+# OpResult where a Value is declared, breaking eudsl-python-extras' ArithValue
+# path. Bump only alongside a compatible eudsl/distro rebuild.
+nanobind==2.12.0
 lit
+# numpy is ABI-coupled like nanobind (see above): keep this constraint identical
+# to utils/mlir_wheels/requirements.in and utils/mlir_aie_wheels/requirements.txt
+# so check_shared_dep_versions.py sees one resolved version everywhere. Without a
+# direct pin numpy would enter this lock only transitively (via matplotlib) and
+# lag the wheel builds. numpy 2.5.1 drops py3.11, hence the split marker.
+numpy>=2.4.6,<2.5; python_version == "3.11"
+numpy>=2.5.1; python_version >= "3.12"
 matplotlib
 psutil
 pytest
 pyyaml
 cloudpickle # required by eudsl when it is vendored instead of installed
+reuse[charset-normalizer]==6.2.0

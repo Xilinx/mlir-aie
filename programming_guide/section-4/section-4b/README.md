@@ -1,10 +1,7 @@
 <!---//===- README.md --------------------------*- Markdown -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// Copyright (C) 2024-2026, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//-->
 
@@ -63,7 +60,7 @@ The `workers=[...]` argument picks the core tiles to trace.  To trace **mem tile
 ### <u>Customizing Trace Behavior</u>
 
 The trace configuration chooses helpful default settings so you can trace your design with little additional customization. However, if you want more control over some of these configuration, additional arguments are available in `enable_trace`:
-* `ddr_id` - XRT buffer index (0-4) to write trace data to, mapping to group_id (3-7). Defaults to 4 (group_id 7). Set to -1 to append trace data after the last runtime_sequence tensor argument. See [below](#2-configure-host-code-to-read-trace-data-and-write-it-to-a-text-file) for more details on XRT buffers.
+* `reuse_output_buffer` - by default (`False`), the trace buffer is a dedicated host buffer appended as the last runtime_sequence argument, so enabling trace does not shift your data arguments' indices. Set to `True` to instead write trace data into the tail of the last output buffer, saving a host buffer. See [below](#2-configure-host-code-to-read-trace-data-and-write-it-to-a-text-file) for more details on XRT buffers.
 * `coretile_events` - which 8 events do we use for all coretiles in array. Search under https://xilinx.github.io/mlir-aie/AIEXDialect.html for CoreEvent for the target device [[aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie)][[aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2)][[aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2p)].
 * `coremem_events` - which 8 events do we use for all core mem in array. Search under https://xilinx.github.io/mlir-aie/AIEXDialect.html for MemEvent for the target device [[aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie)][[aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2)][[aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2p)].
 * `memtile_events` - which 8 events do we use for all memtiles in array. Search under https://xilinx.github.io/mlir-aie/AIEXDialect.html for MemTileEvent for the target device [[aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memevent)][[aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memevent2)][[aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memevent2p)]
@@ -75,7 +72,6 @@ The trace configuration chooses helpful default settings so you can trace your d
     with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (a_in, f_in, c_out):
         rt.enable_trace(
             trace_size = trace_size,
-            ddr_id = 4,
             coretile_events = [
                     trace_utils.CoreEvent.INSTR_EVENT_0,
                     trace_utils.CoreEvent.INSTR_EVENT_1,
@@ -131,23 +127,23 @@ In order to write the DDR data to a text file, we need to know where in DDR the 
 |--------|--------|--------|
 | input A  | input B | output C  |
 
-To support trace, we will configure a shim tile to move the trace packet data to DDR through one of these XRT buffer objects. For simplicity, we choose `inout4 (7)` as the default case such that the new trace enabled mapping is:
+To support trace, we will configure a shim tile to move the trace packet data to DDR through an XRT buffer object. By default, trace lowering *appends* a dedicated trace buffer as the next inout buffer after your design's data buffers, so it lands right after the last data argument and your existing buffer indices are unchanged:
 
-| inout0 (3)| inout1 (4) | inout2 (5) | inout3 (6)| inout4 (7)|
-|--------|--------|--------|--------|--------|
-| input A  | output C | unused | unused | trace  |
+| inout0 (3)| inout1 (4) | inout2 (5)|
+|--------|--------|--------|
+| input A  | output C | trace  |
 
-| inout0 (3)| inout1 (4)| inout2 (5)| inout3 (6)| inout4 (7)|
-|--------|--------|--------|--------|--------|
-| input A  | input B | output C | unused | trace  |
+| inout0 (3)| inout1 (4)| inout2 (5)| inout3 (6)|
+|--------|--------|--------|--------|
+| input A  | input B | output C | trace  |
 
-In some designs, we have also used a pattern where we share an XRT buffer object where the trace data is written to same buffer object as the output by setting `ddr_id=-1`. This is helpful if we do not have a spare buffer object dedicated to trace, but requires precise declaration of offset size. See [Conv2d example](../../../programming_examples/ml/conv2d/).
+In some designs, we have also used a pattern where the trace data is written to the same buffer object as the output by setting `reuse_output_buffer=True`. This is helpful if we do not have a spare buffer object dedicated to trace, but requires precise declaration of offset size. See [Conv2d example](../../../programming_examples/ml/conv2d/).
 
 | inout0 (3)| inout1 (4)| inout2 (5)|
 |--------|--------|--------|
 | input A  | input B | (output C + trace) |
 
-By specifying `inout4 (7)` as the default case, we can leave the parameters for `enable_trace()` / `start_trace()` to their default values other than `trace_size`. However, if we do decide to customize the XRT buffer object used, we can do so through `ddr_id` (to specify the buffer to use). Setting `ddr_id=-1` appends trace data after the last output tensor, using the last argument's buffer index and a byte offset equal to the tensor size.
+With the default (dedicated) mode, we can leave the parameters for `enable_trace()` / `start_trace()` to their defaults other than `trace_size`. Setting `reuse_output_buffer=True` instead writes trace data after the last output tensor, reusing that argument's buffer with a byte offset equal to the tensor size.
 
 Once the design is configured to a XRT buffer object, we turn our attention to the host code to read the DDR data and write it to a file.
 
@@ -247,7 +243,7 @@ make trace
 ```
 
 
-### <u>(2b) Python Host code ([test.py](./test.py), [../../../python/xrt.py](../../../python/xrt.py))</u>
+### <u>(2b) Python Host code ([test.py](./test.py), [../../../python/utils/hostruntime/hostruntime.py](../../../python/utils/hostruntime/hostruntime.py))</u>
 In the [Makefile](./Makefile), we also have a `trace_py` target which calls the python host code `test.py` instead of the C/C++ host code `test.cpp`.
 
 #### test_utils (recommended)
@@ -266,7 +262,7 @@ The relevant CLI arguments (added by `aie.utils.hostruntime.argparse.add_runtime
 - `--trace-file`: Path to write raw trace data (default: `trace.txt`).
 - `--ddr-id`: DDR buffer index for trace (0-4, or -1 to append after last tensor). Default is 4.
 
-> **IMPORTANT**: The `ddr_id` value (set via `--ddr-id`) **must match** the `ddr_id` parameter in your IRON `enable_trace()` / `start_trace()` call, or buffer allocation will be incorrect.
+> **IMPORTANT**: The `ddr_id` value (set via `--ddr-id`) **must match** the `ddr_id` parameter in your IRON `enable_trace()` call, or buffer allocation will be incorrect.
 
 #### TraceConfig (manual setup)
 
@@ -283,7 +279,7 @@ trace_config = TraceConfig(
 
 npu_kernel = NPUKernel(
     xclbin_path="build/final.xclbin",
-    insts_path="build/insts.txt",
+    insts_path="build/insts.bin",
     trace_config=trace_config,
 )
 ```
@@ -370,12 +366,12 @@ Two side effects of the call worth knowing about:
 ## <u>3. Parse text file to generate a waveform json file</u>
 Once the packet trace text file is generated (`trace.txt`), we use a python-based trace parser ([parse.py](../../../python/utils/trace/parse.py)) to interpret the trace values and generate a waveform json file for visualization (with Perfetto). This is a step in the [Makefile](./Makefile) but can be executed from the command line as well.
 
-The `--mlir` argument should point to `input_with_addresses.mlir` from the `.prj` work directory, not the original source MLIR. This file contains the lowered register writes produced by the trace passes, which the parser uses to map raw trace packets back to named events.
+The `--mlir` argument should point to `input_with_addresses.mlir` from the `build` work directory, not the original source MLIR. This file contains the lowered register writes produced by the trace passes, which the parser uses to map raw trace packets back to named events.
 
 ```bash
 python ../../../python/utils/trace/parse.py \
     --input trace.txt \
-    --mlir build/aie.mlir.prj/input_with_addresses.mlir \
+    --mlir build/input_with_addresses.mlir \
     --output trace.json
 ```
 
@@ -386,9 +382,9 @@ Open https://ui.perfetto.dev in your browser and then open up the waveform json 
 
 ## <u>Additional Debug Hints</u>
 * If you are not getting valid trace data out (e.g. empty `trace.txt` or just 0's), then trace packets were not written to a file successfully. There could be a number of reasons for this but some things to check are:
-    * Did you write to the correct XRT buffer object that your host code is reading from? The default is `ddr_id=4` (`group_id=7`), which means trace data is written to a dedicated XRT buffer. If using `ddr_id=-1`, trace data is appended after the last tensor argument.
-        * If using the **Python host** (`DefaultNPURuntime` / `TraceConfig`), buffer management is handled automatically. However, `ddr_id` in `TraceConfig` must match the corresponding parameter in your IRON `enable_trace()` / `start_trace()` call.
-        * If using a **C/C++ host** with `ddr_id=-1`, trace data is appended to the last `runtime_sequence` argument's buffer at an offset equal to the output size. Allocate that buffer large enough for both output and trace data, and do **not** create a separate `bo_trace` at `group_id(7)`.
+    * Did you write to the correct XRT buffer object that your host code is reading from? By default, trace lowering appends a dedicated trace buffer as the last `runtime_sequence` argument, so the host must pass a trace buffer at that trailing index. With `reuse_output_buffer=True`, trace data is instead appended into the last output buffer.
+        * If using the **Python host** (`DefaultNPURuntime` / `TraceConfig`), buffer management is handled automatically. Keep `reuse_output_buffer` in `TraceConfig` consistent with the corresponding argument in your IRON `enable_trace()` / `start_trace()` call.
+        * If using a **C/C++ host** with `reuse_output_buffer=True`, trace data is appended to the last `runtime_sequence` argument's buffer at an offset equal to the output size. Allocate that buffer large enough for both output and trace data, and do **not** create a separate trace buffer.
     * It's possible that a simple core may have too few events to create a valid trace packet. For dialect-level designs, you can work around this by adding a ShimTile to the `tiles_to_trace` array in `configure_trace()` to generate additional trace data.
     * Check that the correct tile is being routed to the correct shim DMA. Using the declarative trace API handles this automatically.
     * You may get an invalid tile error if the `colshift` doesn't match the actually starting column of the design. This should automatically be set by the `parse.py` script but can also be specified manually. Phoenix (npu) devices should have `colshift=1` while Strix (npu2) should have `colshift=0` when allocated to an unused NPU.
@@ -401,7 +397,7 @@ Open https://ui.perfetto.dev in your browser and then open up the waveform json 
 
     <img src="../../assets/trace_vector_scalar_mul1.png" title="AIE-ML Vector Unit." height=250>
 
-    Based on this wave, You can mouse over each chunk of continguous data for `PortRunning0` (input dma port) and `PortRunning1` (output dma port). What is the chunk size? <img src="../../../mlir_exercises/images/answer1.jpg" title="1024" height=25> How many input and output chunks are there? <img src="../../../mlir_exercises/images/answer1.jpg" title="4 inputs and 4 outputs (last output might be truncated in viewer)" height=25> This should match iteration loop bounds in our example design.
+    Based on this wave, You can mouse over each chunk of continguous data for `PortRunning0` (input dma port) and `PortRunning1` (output dma port). What is the chunk size? <img src="../../assets/answer1.jpg" title="1024" height=25> How many input and output chunks are there? <img src="../../assets/answer1.jpg" title="4 inputs and 4 outputs (last output might be truncated in viewer)" height=25> This should match iteration loop bounds in our example design.
 
     There are a few common events in our waveform that are described below:
     * `INSTR_EVENT_0` - The event marking the beginning of our kernel. See [vector_scalar_mul.cc](./vector_scalar_mul.cc) where we added the function `event0()` before the loop. This is generally a handy thing to do to attach an event to the beginning of our kernel.

@@ -1,13 +1,11 @@
 #!/usr/bin/env python3
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2024-2025 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# Copyright (C) 2024-2025, Advanced Micro Devices, Inc. All rights reserved.
 
-from aie.ir import *
-from aie.dialects.aie import *
+from aie.ir import *  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
+from aie.dialects.aie import *  # pyright: ignore[reportMissingImports]
 
 import argparse
 
@@ -22,7 +20,7 @@ def main():
     # Read the data from the file
     data = args.file.read()
 
-    with Context() as ctx:
+    with Context() as ctx:  # pyright: ignore[reportUndefinedVariable]
         module = transaction_binary_to_mlir(ctx, data)
 
     print(str(module))

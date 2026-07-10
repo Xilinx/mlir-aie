@@ -1,11 +1,8 @@
 <!---//===- README.md ---------------------------------------*- Markdown -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Copyright (C) 2024, Advanced Micro Devices, Inc.
-// 
 //===----------------------------------------------------------------------===//-->
 
 # <ins>Section 2a - Introduction</ins>
@@ -50,7 +47,7 @@ line_type = np.ndarray[(line_size,), np.dtype[np.int32]]
 of_in = ObjectFifo(line_type, name="in", depth=3)
 ```
 
-Object FIFO endpoints are separated into producers and consumers, where an Object FIFO may only have one producer and one or multiple consumers. These endpoints are also referred to as the "actors" of the Object FIFO, based on dataflow theory terminology. At this level of abstraction the endpoints are typically Workers that have access to `ObjectFifoHandle`s, with one other use case being when an Object FIFO is filled from or drained to external memory at runtime (as explained in the Runtime Data Movement [section](../section-2d/README.md)). 
+Object FIFO endpoints are separated into producers and consumers, where an Object FIFO may only have one producer and one or multiple consumers. These endpoints are also referred to as the "actors" of the Object FIFO, based on dataflow theory terminology. At this level of abstraction the endpoints are typically Workers that have access to `ObjectFifoHandle`s, with one other use case being when an Object FIFO is filled from or drained to external memory at runtime (as explained in the Runtime Data Movement [section](../section-2d/README.md)).
 
 The code snippet below shows two Workers running processes defined by `core_fn` and `core_fn2` which take as input a producer or a consumer handle for `of_in` respectively:
 ```python
@@ -85,7 +82,7 @@ As the Object FIFO may only have one producer process, each call to `prod()` wil
 
 At the beginning of this section it was mentioned that the compiler can infer the endpoints of an Object FIFO based on its usage. This specifically refers to the usage of the `ObjectFifoHandle`s which can be used to collect the producer and consumers of an Object FIFO. One can thus observe different data movement patterns which are the subject of the next [section](../section-2b/README.md#key-object-fifo-patterns).
 
-During the next steps of the compiler flow, the Object FIFO producer and consumer Worker processes are mapped to explicit AIE tiles (see [Section 1 - Basic AI Engine building blocks](../../section-1/)) by the `--aie-place-tiles` compiler pass (defined in [`AIEPlaceTiles.cpp`](../../../lib/Dialect/AIE/Transforms/AIEPlaceTiles.cpp)). Under the hood, the data movement configuration for different types of tiles (Shim tiles, Mem tiles, and Compute tiles) is different, but there is no difference between them when using an Object FIFO. 
+During the next steps of the compiler flow, the Object FIFO producer and consumer Worker processes are mapped to explicit AIE tiles (see [Section 1 - Basic AI Engine building blocks](../../section-1/)) by the `--aie-place-tiles` compiler pass (defined in [`AIEPlaceTiles.cpp`](../../../lib/Dialect/AIE/Transforms/AIEPlaceTiles.cpp)). Under the hood, the data movement configuration for different types of tiles (Shim tiles, Mem tiles, and Compute tiles) is different, but there is no difference between them when using an Object FIFO.
 
 The same Object FIFO is also constructible directly from the AIE dialect (the form `@iron.jit` ultimately compiles to). Users who need fine control over placement or the underlying MLIR can use the `object_fifo` class constructor in [aie.py](../../../python/dialects/aie.py):
 ```python
@@ -145,7 +142,7 @@ def _release(
         num_elem: int,
     )
 ```
-A process may release one, some or all of the objects it has acquired. The release function will release objects from oldest to youngest in acquired order. If a process does not release all of the objects it has acquired, then the next time it acquires objects the oldest objects will be those that were not released. This functionality is intended to achieve the behaviour of a sliding window through the Object FIFO primitive. This is described further in the ["Key Object FIFO Patterns" section](../section-2b/01_Reuse/README.md#object-fifo-reuse-pattern). 
+A process may release one, some or all of the objects it has acquired. The release function will release objects from oldest to youngest in acquired order. If a process does not release all of the objects it has acquired, then the next time it acquires objects the oldest objects will be those that were not released. This functionality is intended to achieve the behaviour of a sliding window through the Object FIFO primitive. This is described further in the ["Key Object FIFO Patterns" section](../section-2b/01_Reuse/README.md#object-fifo-reuse-pattern).
 
 When acquiring the objects of an Object FIFO it is important to note that any <u>unreleased objects from a previous acquire</u> will also be returned by the <u>most recent</u> acquire call. Unreleased objects will not be reacquired in the sense that the synchronization mechanism used under the hood has already been set in place such that the process already has the sole access rights to the unreleased objects from the previous acquire. As such, two acquire calls back-to-back without a release call in-between will result in the same objects being returned by both acquire calls. This decision was made to facilitate the understanding of releasing objects between calls to the acquire function as well as to ensure a proper lowering through the Object FIFO primitive. A code example of this behaviour is available in the ["Key Object FIFO Patterns" section](../section-2b/01_Reuse/README.md#object-fifo-reuse-pattern).
 
@@ -335,7 +332,7 @@ When an Object FIFO is initialized upon creation, the underlying synchronization
 
 **The remaining inputs of the Object FIFO are considered an advanced topic and are not required to understand the rest of this guide.**
 
-The `via_DMA` input of the Object FIFO is used mostly for debug or benchmarking purposes. It can be set to true to enforce that the lowered data movement configuration use the Direct Memory Access channels (or "DMAs") of the tiles. The DMAs are described further in the Advanced Topic section below. For further information about the Object FIFO lowering and how the `via_DMA` attribute influences it please see the sections of the MLIR-AIE [tutorials](../../../mlir_exercises/) on communication using local memory or DMAs.
+The `via_DMA` input of the Object FIFO is used mostly for debug or benchmarking purposes. It can be set to true to enforce that the lowered data movement configuration use the Direct Memory Access channels (or "DMAs") of the tiles. The DMAs are described further in the Advanced Topic section below. For further information about the Object FIFO lowering and how the `via_DMA` attribute influences it please see [Section 2g - Data Movement Without Object FIFOs](../section-2g/), which covers the DMAs, buffer descriptors, and stream routing the lowering produces.
 
 The `plio` input is used to provide information about the data movement configuration to the Object FIFO lowering. When the Object FIFO is lowered the communication flows which are established between its tiles will be wired through a dedicated `plio` port.
 
@@ -387,9 +384,9 @@ The intent of this high-level view showcases that the DMA is able to interact wi
 > **NOTE:**  It is possible to directly configure the DMAs without the use of the Object FIFO primitive to setup data movement between tiles. This is described in [Section 2g](../section-2g/README.md).
 
 ## <u>Exercises</u>
-1. In the previous [subsection](./README.md/#specifying-the-object-fifo-depth-as-an-array) it was explained that the conceptual depth of `3` for `of0` could be represented as an array of depths `[2, 3]`. With the advanced knowledge on the topic of DMAs, do you think those are the minimal depths required for the design to execute without deadlocking? <img src="../../../mlir_exercises/images/answer1.jpg" title="No. In the case of producer A, only a single object needs to be allocated, in which case the compute core and the DMA will have to wait while the other party respectively computes or moves the data. This is similar for consumer B, where a depth of 2 would suffice. So the minimal depths for the design to run without deadlocking are [1, 2]." height=25>
+1. In the previous [subsection](./README.md/#specifying-the-object-fifo-depth-as-an-array) it was explained that the conceptual depth of `3` for `of0` could be represented as an array of depths `[2, 3]`. With the advanced knowledge on the topic of DMAs, do you think those are the minimal depths required for the design to execute without deadlocking? <img src="../../assets/answer1.jpg" title="No. In the case of producer A, only a single object needs to be allocated, in which case the compute core and the DMA will have to wait while the other party respectively computes or moves the data. This is similar for consumer B, where a depth of 2 would suffice. So the minimal depths for the design to run without deadlocking are [1, 2]." height=25>
 
-2. Do you think the depths `[2, 3]` are sufficient for both compute cores on A and B to execute concurrently with their DMAs? <img src="../../../mlir_exercises/images/answer1.jpg" title="Producer A requires a ping-pong buffer to function concurrently with its DMA. Similarly, consumer B requires two additional objects that the DMA can write new data into while B computes. The updated depths are [2, 4]." height=25>
+2. Do you think the depths `[2, 3]` are sufficient for both compute cores on A and B to execute concurrently with their DMAs? <img src="../../assets/answer1.jpg" title="Producer A requires a ping-pong buffer to function concurrently with its DMA. Similarly, consumer B requires two additional objects that the DMA can write new data into while B computes. The updated depths are [2, 4]." height=25>
 
 -----
 [[Up](..)] [[Next - Section 2b](../section-2b/)]

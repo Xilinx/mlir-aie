@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
-# (c) Copyright 2026 Advanced Micro Devices, Inc.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 import json
 import argparse
 import logging
@@ -8,8 +9,15 @@ import re
 
 logger = logging.getLogger(__name__)
 
-from aie.extras.util import find_ops
-from aie.ir import Context, Module, Location
+from aie.extras.util import find_ops  # pyright: ignore[reportMissingImports]
+from aie.helpers.util import (  # pyright: ignore[reportMissingImports]
+    fold_constant_operand,
+)
+from aie.ir import (  # pyright: ignore[reportMissingImports]
+    Context,  # pyright: ignore[reportAttributeAccessIssue]
+    Module,  # pyright: ignore[reportAttributeAccessIssue]
+    Location,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from aie.utils.trace.utils import (
     parity,
     extract_tile,
@@ -100,52 +108,6 @@ def flatten_repeat_command(commands):
             flat_commands.append(c)
             prev = c
     return flat_commands
-
-
-# Using trace_event_0 = 0x4B222125, trace_event_1 = 0x2D2C1A4F
-def lookupEventNameInStr(event, pid, pid_events):
-    # TODO Expand to other pid for multiple cores? even/odd
-    # For now, we assume a single trace event and key based on that
-    # in the future, the pid will be used to match the right events
-    logger.debug("pid_events[0]: %s", pid_events[0])
-    logger.debug("event: %s", event)
-    logger.debug("pid_events[0][event]: %s", pid_events[0][int(event)])
-    return lookup_event_name_by_code(pid_events[0][int(event)])
-
-    # if pid == 0 or pid == 2: # Core trace
-    #     if event == "0":
-    #         return "KernelExecutesVectorInstruction"
-    #     elif event == "1":
-    #         return "KernelStarts"
-    #     elif event == "2":
-    #         return "KernelDone"
-    #     elif event == "3":
-    #         return "PortRunning0"
-    #     elif event == "4":
-    #         return "PortRunning1"
-    #     elif event == "5":
-    #         return "LockStall"
-    #     elif event == "6":
-    #         return "LockAcquireInstr"
-    #     elif event == "7":lookupEventNameInstr
-    #         return "LockReleaseInstr"
-    # elif pid == 1 or pid == 3: # Memory trace
-    #     if event == "0":
-    #         return "S2mm0StartTask"
-    #     elif event == "1":
-    #         return "S2mm1StartTask"
-    #     elif event == "2":
-    #         return "Mm2s0StartTask"
-    #     elif event == "3":
-    #         return "Mm2s1StartTask"
-    #     elif event == "4":
-    #         return "S2mm0FinishedTask"
-    #     elif event == "5":
-    #         return "S2mm1FinishedTask"
-    #     elif event == "6":
-    #         return "Mm2s0FinishedTask"
-    #     elif event == "7":
-    #         return "Mm2s1FinishedTask"
 
 
 # This function assert an end event for all active events if:
@@ -252,6 +214,9 @@ def convert_commands_to_json(trace_events, commands, pid_events, events_module):
                 active_events[i] = 0
 
             logger.debug("num commands: %s", len(command))
+            cycles = 0
+            multiple_list = list()
+            event = None
             for c in command:
                 t = c["type"]
                 if "Single" in t:
@@ -370,7 +335,7 @@ def convert_commands_to_json(trace_events, commands, pid_events, events_module):
 
 
 def process_name_metadata(trace_events, pid, trace_type, loc):
-    trace_event = {"name": "process_name"}
+    trace_event: dict = {"name": "process_name"}
     trace_event["ph"] = "M"
     trace_event["pid"] = pid
     trace_event["args"] = {}
@@ -389,7 +354,7 @@ def thread_name_metadata(
     trace_events, trace_type, loc, pid, tid, pid_events, events_module
 ):
     # def thread_name_metadata(trace_events, trace_type, pid, tid):
-    trace_event = {"name": "thread_name"}
+    trace_event: dict = {"name": "thread_name"}
     trace_event["ph"] = "M"
     trace_event["pid"] = pid
     trace_event["tid"] = tid
@@ -415,36 +380,57 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None):
     for t in range(NUM_TRACE_TYPES):
         pid_events.append(dict())
 
+    # These op classes / enums come through compiled dialect bindings that
+    # pyright can't see; fetch them dynamically so the static checker is happy.
+    NpuWrite32Op = getattr(aiexdialect, "NpuWrite32Op")
+    DeviceOp = getattr(aiedialect, "DeviceOp")
+    AIEDevice = getattr(aiedialect, "AIEDevice")
+
     with Context(), Location.unknown():
         module = Module.parse(mlir_module_str)
 
         write32s = find_ops(
             module.operation,
-            lambda o: isinstance(o.operation.opview, aiexdialect.NpuWrite32Op),
+            lambda o: isinstance(
+                o.operation.opview, NpuWrite32Op
+            ),  # pyright: ignore[reportArgumentType]
         )
         device = find_ops(
             module.operation,
-            lambda o: isinstance(o.operation.opview, aiedialect.DeviceOp),
+            lambda o: isinstance(
+                o.operation.opview, DeviceOp
+            ),  # pyright: ignore[reportArgumentType]
         )
-        device = aiedialect.AIEDevice(int(device[0].device))
+        device = AIEDevice(int(device[0].device))
         target_model = aiedialect.get_target_model(device)
         events_module = get_events_for_device(str(device))
 
+    # write32 carries address/value as SSA i32 operands (materialized via
+    # arith.constant); row/column remain optional attributes. fold_constant_operand
+    # folds the operand back to its constant integer (None if non-constant).
     for write32 in write32s:
         address = None
         row = None
         col = None
         value = None
         if write32.address:
-            address = write32.address.value
+            address = fold_constant_operand(write32.address)
         if write32.row:
             row = write32.row.value
         if write32.column:
             col = write32.column.value
         if write32.value:
-            value = write32.value.value
+            value = fold_constant_operand(write32.value)
 
         if row is None and col is None:
+            if address is None:
+                logger.error(
+                    "Could not decode write32 op '%s': address is not a "
+                    "compile-time constant (trace config requires constant "
+                    "operands)",
+                    write32,
+                )
+                sys.exit(1)
             row = (address >> target_model.get_row_shift()) & 0x1F
             col = (address >> target_model.get_column_shift()) & 0x1F
             address = address & 0xFFFFF  # 20 bits address
@@ -456,8 +442,12 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None):
             col,
             hex(value) if value is not None else None,
         )
-        if None in [row, col, address, value]:
-            logger.error("Could not decode write32 op '%s'", write32)
+        if row is None or col is None or address is None or value is None:
+            logger.error(
+                "Could not decode write32 op '%s': address or value is not a "
+                "compile-time constant (trace config requires constant operands)",
+                write32,
+            )
             sys.exit(1)
 
         # Adjust column based on colshift

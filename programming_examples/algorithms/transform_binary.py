@@ -1,15 +1,13 @@
 # transform_binary.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2026 Advanced Micro Devices, Inc.
 """Tutorial: tile-by-tile two-input elementwise transform on the NPU.
 
 Applies ``lambda a, b: a + b`` to each ``tile_size``-element tile of two
 1-D int32 tensors.  The design body delegates to
-:func:`aie.iron.algorithms.transform_binary_typed`.
+:func:`aie.iron.algorithms.transform_binary`.
 """
 
 import argparse
@@ -18,7 +16,6 @@ import numpy as np
 
 import aie.iron as iron
 from aie.iron import CompileTime, In, Out
-from aie.iron.algorithms import transform_binary_typed
 from aie.utils.verify import assert_pass
 
 
@@ -33,7 +30,9 @@ def transform_binary(
     tile_size: CompileTime[int] = 16,
 ):
     tensor_ty = np.ndarray[(num_elements,), np.dtype[dtype]]
-    return transform_binary_typed(lambda a, b: a + b, tensor_ty, tile_size=tile_size)
+    return iron.algorithms.transform_binary(
+        lambda a, b: a + b, tensor_ty, tile_size=tile_size
+    )
 
 
 def main():

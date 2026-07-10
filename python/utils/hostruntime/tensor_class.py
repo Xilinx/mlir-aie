@@ -1,13 +1,12 @@
 # tensor.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025-2026 Advanced Micro Devices, Inc.
 from abc import ABC, abstractmethod
 from functools import cached_property
 import numpy as np
+import numpy.typing as npt
 
 # Mapping from ml_dtypes (non-native numpy) types to their torch equivalents.
 # Native numpy dtypes (float32, int32, …) are handled directly by torch.from_numpy
@@ -19,7 +18,7 @@ _ML_DTYPE_TO_TORCH: dict | None = None
 def _ml_dtype_to_torch_map():
     global _ML_DTYPE_TO_TORCH
     if _ML_DTYPE_TO_TORCH is None:
-        import torch
+        import torch  # pyright: ignore[reportMissingImports]
         import ml_dtypes
 
         _candidates = {
@@ -67,7 +66,7 @@ def _array_to_torch(array: np.ndarray):
     # _ml_dtype_to_torch_map() imports torch (raising ImportError with a helpful message
     # if absent) and returns the ml_dtype -> torch dtype mapping.
     torch_dtype = _ml_dtype_to_torch_map().get(array.dtype)
-    import torch  # already imported by _ml_dtype_to_torch_map(); cached by Python
+    import torch  # pyright: ignore[reportMissingImports]  # already imported by _ml_dtype_to_torch_map(); cached by Python
 
     if torch_dtype is None:
         # Native numpy dtype: torch.from_numpy handles it directly and fastest.
@@ -92,7 +91,7 @@ class Tensor(ABC):
     DEFAULT_INT_DTYPE = np.int64  # torch has default int64
     DEFAULT_FLOAT_DTYPE = np.float32  # torch has default float32
 
-    def __init__(self, shape_or_data, dtype=np.uint32, device="npu"):
+    def __init__(self, shape_or_data, dtype: npt.DTypeLike = np.uint32, device="npu"):
         """
         Initialize the tensor.
 
@@ -110,7 +109,7 @@ class Tensor(ABC):
 
     @property
     @abstractmethod
-    def data(self):
+    def data(self) -> np.ndarray:
         """
         Subclasses must implement a data property.
 
@@ -121,7 +120,7 @@ class Tensor(ABC):
 
     @property
     @abstractmethod
-    def shape(self):
+    def shape(self) -> tuple[int, ...]:
         """
         Subclasses must implement a shape property.
 
@@ -370,7 +369,7 @@ class Tensor(ABC):
         Raises:
             ImportError: If torch is not installed.
         """
-        import torch
+        import torch  # pyright: ignore[reportMissingImports]
         from ml_dtypes import bfloat16
 
         # Detach (to drop grad) and ensure on CPU
@@ -675,7 +674,7 @@ class CPUOnlyTensor(Tensor):
     DEVICES = ["cpu"]
     DEFAULT_DEVICE = "cpu"
 
-    def __init__(self, shape_or_data, dtype=np.uint32, device="cpu"):
+    def __init__(self, shape_or_data, dtype: npt.DTypeLike = np.uint32, device="cpu"):
         """
         Initialize the CPUOnlyTensor.
 

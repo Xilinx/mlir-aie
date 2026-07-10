@@ -1,10 +1,7 @@
 <!---//===- README.md --------------------------*- Markdown -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// Copyright (C) 2022-2026, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//-->
 
@@ -14,7 +11,7 @@ When we program the AIE-array, we need to declare and configure its structural b
 
 ## <ins>Walkthrough of Python source file (aie2.py)</ins>
 
-Let's look at a minimal IRON design in [aie2.py](./aie2.py). The whole design is one function decorated with `@iron.jit`: the first time you call it, IRON JIT-compiles the design and runs it on the attached NPU; `--emit-mlir` prints the lowered MLIR instead.
+Let's look at a minimal IRON design in [aie2.py](./aie2.py). The whole design is one function decorated with `@iron.jit`: the first time you call it, IRON JIT-compiles the design and runs it on the attached NPU; `--dev <target> --emit-mlir` prints the lowered MLIR instead.
 
 ```python
 import aie.iron as iron
@@ -97,10 +94,10 @@ ComputeTile4 = Tile(0, 5)
 
 ## <ins>Inspecting the generated MLIR</ins>
 
-`@iron.jit` lowers your design through the AIE dialect on its way to a binary. To see the MLIR without running anything, pass `--emit-mlir`:
+`@iron.jit` lowers your design through the AIE dialect on its way to a binary. To see the MLIR without running anything, pass `--dev <target> --emit-mlir`:
 
 ```shell
-python3 aie2.py --emit-mlir
+python3 aie2.py --dev npu --emit-mlir
 ```
 
 The Makefile also exposes `make emit-mlir` which redirects the output to `build/aie.mlir`.
@@ -109,13 +106,13 @@ The Makefile also exposes `make emit-mlir` which redirects the output to `build/
 
 1. Run `make` (the default target runs the design on the NPU) — you should see `PASS!`. Then run `make emit-mlir` and inspect `build/aie.mlir`.
 
-2. Run `make clean`. In the worker's body, replace `range_` with `range` (no underscore). What changes in `build/aie.mlir`? <img src="../../mlir_exercises/images/answer1.jpg" title="The generated MLIR contains no scf.for loop; the same memref.store instructions are emitted many times in a row." height=25>
+2. Run `make clean`. In the worker's body, replace `range_` with `range` (no underscore). What changes in `build/aie.mlir`? <img src="../assets/answer1.jpg" title="The generated MLIR contains no scf.for loop; the same memref.store instructions are emitted many times in a row." height=25>
 
-3. Run `make clean`. Introduce an error in the Python source — e.g., misspell `sequence` as `sequenc`. What message do you see? <img src="../../mlir_exercises/images/answer1.jpg" title="A Python AttributeError, raised before any MLIR is produced." height=25>
+3. Run `make clean`. Introduce an error in the Python source — e.g., misspell `sequence` as `sequenc`. What message do you see? <img src="../assets/answer1.jpg" title="A Python AttributeError, raised before any MLIR is produced." height=25>
 
-4. Run `make clean`. Restore the spelling, then change the Worker's tile to `Tile(-1, 3)` (an invalid location). What message do you see? <img src="../../mlir_exercises/images/answer1.jpg" title="A placement / tile-coordinate constraint error." height=25>
+4. Run `make clean`. Restore the spelling, then change the Worker's tile to `Tile(-1, 3)` (an invalid location). What message do you see? <img src="../assets/answer1.jpg" title="A placement / tile-coordinate constraint error." height=25>
 
-5. Run `make clean`. Restore the Worker tile to `(0, 2)`. Remove the `while_true=False` argument and run `make emit-mlir`. What changed in the MLIR? <img src="../../mlir_exercises/images/answer1.jpg" title="The core body is now nested inside an scf.for that bounds to sys.maxsize — the simulated while-true wrapper." height=25>
+5. Run `make clean`. Restore the Worker tile to `(0, 2)`. Remove the `while_true=False` argument and run `make emit-mlir`. What changed in the MLIR? <img src="../assets/answer1.jpg" title="The core body is now nested inside an scf.for that bounds to sys.maxsize — the simulated while-true wrapper." height=25>
 
 -----
 [[Prev - Section 0](../section-0/)] [[Top](..)] [[Next - Section 2](../section-2/)]

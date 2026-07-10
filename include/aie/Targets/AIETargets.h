@@ -1,8 +1,8 @@
+/* Copyright (C) 2021 Xilinx, Inc.
+ * Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
+ * SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception */
+
 //===- AIETargets.h ---------------------------------------------*- C++ -*-===//
-//
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
-// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 
@@ -73,6 +73,8 @@ AIETranslateNpuToBinary(mlir::ModuleOp, std::vector<uint32_t> &,
                         llvm::StringRef deviceName = "",
                         llvm::StringRef sequenceName = "",
                         std::vector<TxnLocEntry> *locmap = nullptr);
+mlir::LogicalResult AIETranslateNpuToCpp(mlir::ModuleOp module,
+                                         llvm::raw_ostream &output);
 mlir::LogicalResult AIETranslateToUcDma(mlir::ModuleOp module,
                                         llvm::raw_ostream &output);
 mlir::LogicalResult AIETranslateToUcDma(mlir::ModuleOp, std::string &assembly);
@@ -106,13 +108,6 @@ mlir::LogicalResult AIETranslateToTargetArch(mlir::ModuleOp module,
 
 } // namespace AIE
 
-namespace aievec {
-
-/// Translates the AIE vector dialect MLIR to C++ code.
-mlir::LogicalResult translateAIEVecToCpp(mlir::Operation *op, bool aie2,
-                                         mlir::raw_ostream &os);
-
-} // namespace aievec
 } // namespace xilinx
 
 #endif

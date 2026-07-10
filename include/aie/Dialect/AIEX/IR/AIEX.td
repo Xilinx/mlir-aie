@@ -1,10 +1,8 @@
 //===- AIE.td ----------------------------------------------*- tablegen -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2019-2022 Xilinx, Inc.
+// Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2019 Xilinx Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -578,13 +576,16 @@ def AIE_NpuWriteRTPOp: AIEX_Op<"npu.rtp_write", []> {
   let arguments = (
     ins FlatSymbolRefAttr:$buffer,
         UI32Attr:$index,
-        I32Attr:$value
+        I32:$value
   );
   let results = (outs );
-  let assemblyFormat = [{ `(` $buffer `,` $index `,` $value `)` attr-dict
+  let assemblyFormat = [{
+    `(` $buffer `,` $index `,` $value `)` attr-dict `:` type($value)
   }];
   let description = [{
-    rtp write operator
+    rtp write operator. `value` is an SSA operand; use arith.constant for a
+    compile-time-known value or pass a runtime sequence value to supply the RTP
+    value at runtime.
   }];
 }
 
@@ -597,16 +598,22 @@ def AIE_NpuPushQueueOp: AIEX_Op<"npu.push_queue", []> {
         DMAChannelDir:$direction,
         I32Attr:$channel,
         BoolAttr:$issue_token,
-        I32Attr:$repeat_count,
-        I32Attr:$bd_id
+        I32:$repeat_count,
+        I32:$bd_id
   );
   let results = (outs );
   let assemblyFormat = [{
-    `(` $column `,` $row `,` $direction `:` $channel `)` attr-dict
+    `(` $column `,` $row `,` $direction `:` $channel `)`
+    `bd_id` $bd_id `repeat` $repeat_count attr-dict `:` type($bd_id) `,` type($repeat_count)
   }];
   let hasVerifier = 1;
   let description = [{
-    bd queue push operator
+    bd queue push operator.
+
+    'bd_id' (which physical buffer descriptor slot to launch) and 'repeat_count'
+    (outer-dimension repeat for the launch) are SSA operands; use arith.constant
+    for compile-time-known values or pass runtime sequence values to select the
+    BD / repeat count at runtime.
   }];
 }
 
@@ -614,18 +621,23 @@ def AIE_NpuPushQueueOp: AIEX_Op<"npu.push_queue", []> {
 def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", []> {
   let summary = "write32 operator";
   let arguments = (
-    ins UI32Attr:$address,
-        UI32Attr:$value,
+    ins I32:$address,
+        I32:$value,
         OptionalAttr<FlatSymbolRefAttr>:$buffer,
         OptionalAttr<I32Attr>:$column,
         OptionalAttr<I32Attr>:$row
   );
   let results = (outs );
   let assemblyFormat = [{
-    attr-dict
+    `(` $address `,` $value `)` attr-dict `:` type($address) `,` type($value)
   }];
   let description = [{
     NPU write32 operator writes a 32bit value to the AIE array.
+
+    'address' and 'value' are SSA operands; use arith.constant for
+    compile-time-known values or pass runtime sequence values for
+    runtime-parameterized sequences.
+
     If 'buffer' is present then 'address' is interpreted as an offset into the
     aie.buffer with symbol name 'buffer'.
     If 'column' and 'row' are present then 'address' is interpreted as an offset
@@ -634,6 +646,7 @@ def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", []> {
     'address' is interpreted as a full 32-bit address in the AIE array.
   }];
   let extraClassDeclaration = [{
+    // Compile-time absolute address, or nullopt if 'address' is not constant.
     std::optional<uint32_t> getAbsoluteAddress();
   }];
 }
@@ -642,19 +655,24 @@ def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", []> {
 def AIE_NpuMaskWrite32Op: AIEX_Op<"npu.maskwrite32", []> {
   let summary = "Write a masked 32-bit value to the AIE array";
   let arguments = (
-    ins UI32Attr:$address,
-        UI32Attr:$value,
-        UI32Attr:$mask,
+    ins I32:$address,
+        I32:$value,
+        I32:$mask,
         OptionalAttr<FlatSymbolRefAttr>:$buffer,
         OptionalAttr<I32Attr>:$column,
         OptionalAttr<I32Attr>:$row
   );
   let results = (outs );
   let assemblyFormat = [{
-    attr-dict
+    `(` $address `,` $value `,` $mask `)` attr-dict `:` type($address) `,` type($value) `,` type($mask)
   }];
   let description = [{
     NPU mask write32 operator writes a masked 32bit value to the AIE array.
+
+    'address', 'value', and 'mask' are SSA operands; use arith.constant for
+    compile-time-known values or pass runtime sequence values for
+    runtime-parameterized sequences.
+
     If 'buffer' is present then 'address' is interpreted as an offset into the
     aie.buffer with symbol name 'buffer'.
     If 'column' and 'row' are present then 'address' is interpreted as an offset
@@ -663,6 +681,7 @@ def AIE_NpuMaskWrite32Op: AIEX_Op<"npu.maskwrite32", []> {
     'address' is interpreted as a full 32-bit address in the AIE array.
   }];
   let extraClassDeclaration = [{
+    // Compile-time absolute address, or nullopt if 'address' is not constant.
     std::optional<uint32_t> getAbsoluteAddress();
   }];
 }
@@ -700,19 +719,23 @@ def AIE_NpuBlockWriteOp: AIEX_Op<"npu.blockwrite", []> {
 def AIE_NpuSyncOp: AIEX_Op<"npu.sync", []> {
   let summary = "sync operator";
   let arguments = (
-    ins I32Attr:$column,
-        I32Attr:$row,
-        I32Attr:$direction,
-        I32Attr:$channel,
-        I32Attr:$column_num,
-        I32Attr:$row_num
+    ins I32:$column,
+        I32:$row,
+        I32:$direction,
+        I32:$channel,
+        I32:$column_num,
+        I32:$row_num
   );
   let results = (outs );
   let assemblyFormat = [{
-    attr-dict
+    `(` $column `,` $row `,` $direction `,` $channel `,` $column_num `,` $row_num `)` attr-dict `:` type(operands)
   }];
   let description = [{
     The sync operation blocks execution of the instruction stream until a task-complete token (TCT) is received on `column`, `row`, channel `channel`, direction `direction` (where `0` is `S2MM` and `1` is `MM2S`).
+
+    All parameters are SSA values. Use `arith.constant` for compile-time-known
+    values; pass runtime sequence arguments (or values derived from them)
+    directly for runtime-parameterized sequences.
 
     #### Troubleshooting
 
@@ -727,14 +750,16 @@ def AIE_NpuAddressPatchOp: AIEX_Op<"npu.address_patch", []> {
   let arguments = (
     ins UI32Attr:$addr,
         I32Attr:$arg_idx,
-        I32Attr:$arg_plus
+        I32:$arg_plus
   );
   let results = (outs );
   let assemblyFormat = [{
-    attr-dict
+    `(` $arg_plus `:` type($arg_plus) `)` attr-dict
   }];
   let description = [{
-    address patch operator
+    address patch operator. `arg_plus` is an SSA value; use arith.constant for
+    a compile-time-known offset or pass a runtime sequence value for a
+    runtime-parameterized buffer offset.
   }];
 }
 
@@ -972,7 +997,7 @@ def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
   let hasCanonicalizeMethod = 1;
 }
 
-def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"AIE::RuntimeSequenceOp">, TileElement]>, Results<(outs Index:$result)> {
+def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::RuntimeSequenceOp">, TileElement]>, Results<(outs Index:$result)> {
   let summary = "Concrete Instantiation of a Buffer Descriptor Chain as a Task on a Channel and Direction on a Tile";
   let description = [{
     Encapsulates the DMA configuration of one task, that is the (chain of) buffer descriptors to be executed on a given channel and direction on a tile.
@@ -1022,7 +1047,7 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"AIE::Runt
   ];
 }
 
-def AIE_DMAConfigureTaskForOp : AIEX_Op<"dma_configure_task_for", [HasParent<"AIE::RuntimeSequenceOp">]>, Results<(outs Index:$result)> {
+def AIE_DMAConfigureTaskForOp : AIEX_Op<"dma_configure_task_for", [HasAncestor<"AIE::RuntimeSequenceOp">]>, Results<(outs Index:$result)> {
   let summary = "As dma_configure_task, but specify tile, direction and channel by reference to a Shim DMA allocation op";
 
   let arguments = (
@@ -1036,7 +1061,7 @@ def AIE_DMAConfigureTaskForOp : AIEX_Op<"dma_configure_task_for", [HasParent<"AI
   let assemblyFormat = [{ $alloc regions attr-dict }];
 }
 
-def AIE_DMAFreeTaskOp : AIEX_Op<"dma_free_task", [HasParent<"AIE::RuntimeSequenceOp">]> {
+def AIE_DMAFreeTaskOp : AIEX_Op<"dma_free_task", [HasAncestor<"AIE::RuntimeSequenceOp">]> {
   let summary = "Free all Buffer Descriptor IDs Associated with the Given Task";
   let description = [{
     This operation informs the static buffer descriptor allocator pass in the compiler that the buffer descriptor IDs it has allocated to the BDs inside the referenced task can be reused thereafter.
@@ -1060,7 +1085,7 @@ def AIE_DMAFreeTaskOp : AIEX_Op<"dma_free_task", [HasParent<"AIE::RuntimeSequenc
   }];
 }
 
-def AIE_DMAStartTaskOp : AIEX_Op<"dma_start_task", [HasParent<"AIE::RuntimeSequenceOp">]> {
+def AIE_DMAStartTaskOp : AIEX_Op<"dma_start_task", [HasAncestor<"AIE::RuntimeSequenceOp">]> {
   let summary = "Submit a Preconfigured Task to the Task Queue";
   let description = [{
     Submits the referenced task for execution on the tile, channel and direction it has been configured to run on.
@@ -1084,7 +1109,7 @@ def AIE_DMAStartTaskOp : AIEX_Op<"dma_start_task", [HasParent<"AIE::RuntimeSeque
   }];
 }
 
-def AIE_DMAAwaitTaskOp : AIEX_Op<"dma_await_task", [HasParent<"AIE::RuntimeSequenceOp">]> {
+def AIE_DMAAwaitTaskOp : AIEX_Op<"dma_await_task", [HasAncestor<"AIE::RuntimeSequenceOp">]> {
   let summary = "Await Completion of a Previously Submitted DMA Task";
   let description = [{
     This operation will block execution of the runtime sequence until the referenced previously started DMA task has completed.

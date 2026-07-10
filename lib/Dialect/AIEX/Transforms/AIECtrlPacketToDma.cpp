@@ -1,10 +1,7 @@
 //===- AIECtrlPacketToDma.cpp -----------------------------------*- C++ -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2024 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2024 Advanced Micro Devices Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -13,6 +10,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Pass/Pass.h"
@@ -201,12 +199,12 @@ struct AIECtrlPacketToDmaPass
                                  /*offset_parameter=*/FlatSymbolRefAttr(),
                                  /*offset_state_table_idx=*/IntegerAttr());
 
-        auto shimRow = builder.getI32IntegerAttr(0);
-        auto shimCol = builder.getI32IntegerAttr(col);
-        auto dir = builder.getI32IntegerAttr(1); // MM2S
-        auto chan = builder.getI32IntegerAttr(batchIt->shimChan);
-        auto col_num = builder.getI32IntegerAttr(1);
-        auto row_num = builder.getI32IntegerAttr(1);
+        Value shimRow = AIEX::createConstantI32(builder, loc, 0);
+        Value shimCol = AIEX::createConstantI32(builder, loc, col);
+        Value dir = AIEX::createConstantI32(builder, loc, 1); // MM2S
+        Value chan = AIEX::createConstantI32(builder, loc, batchIt->shimChan);
+        Value col_num = AIEX::createConstantI32(builder, loc, 1);
+        Value row_num = AIEX::createConstantI32(builder, loc, 1);
         AIEX::NpuSyncOp::create(builder, loc, shimCol, shimRow, dir, chan,
                                 col_num, row_num);
         ++batchIt;

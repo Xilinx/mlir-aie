@@ -1,10 +1,7 @@
 <!---//===- README.md --------------------------------------*- Markdown -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// Copyright (C) 2026, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//-->
 
@@ -99,7 +96,7 @@ make devicename=npu2 run M=4096 K=4096 N=2048
   AIE compute cores (8 columns × 4 rows).
 - The kernels live inside each example directory rather than under
   `aie_kernels/aie2p/`, because each config carries its own microkernel
-  schedule. This folder ships its own [`makefile_common`](./makefile_common)
+  schedule. This folder ships its own [`makefile_common`](../matrix_multiplication/makefile_common)
   (a copy of `../matrix_multiplication/makefile_common` with `kernel_dir`
   made overridable) so each per-example `Makefile` can do
   `kernel_dir := ${srcdir}` and pull the in-tree kernel.

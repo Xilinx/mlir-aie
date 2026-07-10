@@ -1,9 +1,8 @@
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2021-2022 Xilinx, Inc.
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2021 Xilinx Inc.
 
 # optional parameters
 #  -DTOOLCHAINFILES_PATH: path to cross compilation toolchain files, default: <mlir-aie-root-dir>/cmake/toolchainFiles
@@ -79,9 +78,6 @@ endif()
 option(LLVM_INCLUDE_TOOLS "Generate build targets for the LLVM tools." ON)
 option(LLVM_BUILD_TOOLS
        "Build the LLVM tools. If OFF, just generate build targets." ON)
-option(AIE_INCLUDE_INTEGRATION_TESTS
-       "Generate build targets for the mlir-aie integration tests." OFF)
-
 # Take note of the current git revision for outputting version strings in built executables
 execute_process(COMMAND git rev-parse HEAD OUTPUT_VARIABLE AIE_GIT_COMMIT ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
 
@@ -178,12 +174,9 @@ include_directories(${PROJECT_BINARY_DIR}/include)
 cmake_dependent_option(AIE_ENABLE_BINDINGS_PYTHON
   "Enables building of Python bindings." ON "MLIR_ENABLE_BINDINGS_PYTHON" OFF)
 
-cmake_dependent_option(AIE_ENABLE_PYTHON_PASSES
-  "Enables building of passes that connect to python." OFF "AIE_ENABLE_BINDINGS_PYTHON;LLVM_ENABLE_RTTI" OFF)
-
 find_library(XRT_COREUTIL xrt_coreutil HINTS ${XRT_LIB_DIR})
 
-# On Windows, the UUID library is linked implicitly. 
+# On Windows, the UUID library is linked implicitly.
 # Just tell CMake that it's available.
 if(WIN32)
   set(UUID TRUE)
@@ -193,19 +186,6 @@ endif()
 
 cmake_dependent_option(AIE_ENABLE_XRT_PYTHON_BINDINGS
   "Enables building of python bindings to XRT runtime." ON "XRT_COREUTIL;UUID" OFF)
-
-if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
-  add_library(xrt_coreutil SHARED IMPORTED)
-  if (WIN32)
-    # FindXRT.cmake returns only an import lib. We also need the runtime dll.
-    set_target_properties(xrt_coreutil PROPERTIES
-      IMPORTED_IMPLIB   "${XRT_COREUTIL}"
-      IMPORTED_LOCATION "${XRT_BIN_DIR}/xrt_coreutil.dll"
-    )
-  else()
-    set_property(TARGET xrt_coreutil PROPERTY IMPORTED_LOCATION "${XRT_COREUTIL}")
-  endif()
-endif()
 
 # Detect whether PyTorch is importable by the configured Python interpreter.
 # Used to enable/skip lit tests that require torch (# REQUIRES: pytorch).
@@ -305,6 +285,21 @@ add_subdirectory(aie_runtime_lib)
 add_subdirectory(tools)
 add_subdirectory(runtime_lib)
 
+# Bundle llvm-objcopy alongside the AIE bin/ tools.
+#
+# The IRON JIT external-kernel path renames symbols in Peano-compiled objects
+# via `objcopy --redefine-sym`. Those objects use the AIEngine ELF e_machine,
+# which GNU binutils objcopy can't parse; however, the llvm-objcopy
+# implementation is architecture-agnostic, so we ship it along our tools.
+set(_aie_llvm_objcopy "${LLVM_TOOLS_BINARY_DIR}/llvm-objcopy${CMAKE_EXECUTABLE_SUFFIX}")
+if(EXISTS "${_aie_llvm_objcopy}")
+  install(PROGRAMS "${_aie_llvm_objcopy}"
+          DESTINATION bin
+          COMPONENT aie-tools)
+else()
+  message(FATAL_ERROR "llvm-objcopy not found at ${_aie_llvm_objcopy}")
+endif()
+
 if(AIE_ENABLE_BINDINGS_PYTHON)
   add_subdirectory(python)
 endif()
@@ -352,7 +347,6 @@ endif()
 add_subdirectory(programming_examples)
 add_subdirectory(programming_guide)
 add_subdirectory(test)
-add_subdirectory(mlir_exercises)
 add_subdirectory(cmake/modules)
 
 get_filename_component(COMPILER_DIRECTORY ${CMAKE_CXX_COMPILER} DIRECTORY)

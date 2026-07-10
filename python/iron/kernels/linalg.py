@@ -1,10 +1,8 @@
 # kernels/linalg.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2026 Advanced Micro Devices, Inc.
 """Linear algebra kernel factories: mm, mv, cascade_mm."""
 
 import numpy as np
@@ -34,13 +32,19 @@ _CASCADE_COMBOS = {
 # Larger values would shuffle A/B into a tiled layout the scalar kernel
 # does not understand, producing garbage outputs (262144-element mismatch
 # observed in CI with the previous (4, 4, 4) entries).
+_CASCADE_MM_SCALAR_DIMS = {
+    (np.int16, np.int16): (1, 1, 1),
+    (np.int16, np.int32): (1, 1, 1),
+    (bfloat16, bfloat16): (1, 1, 1),
+    (bfloat16, np.float32): (1, 1, 1),
+}
+
 _CASCADE_MM_MAC_DIMS = {
-    "aie2": {
-        (np.int16, np.int16): (1, 1, 1),
-        (np.int16, np.int32): (1, 1, 1),
-        (bfloat16, bfloat16): (1, 1, 1),
-        (bfloat16, np.float32): (1, 1, 1),
-    },
+    # cascade_mm.cc is currently shared by AIE2 and AIE2P through
+    # _kernel_source's aie2 fallback.  It is scalar on both targets, so the
+    # required stream layout remains plain row-major.
+    "aie2": _CASCADE_MM_SCALAR_DIMS,
+    "aie2p": _CASCADE_MM_SCALAR_DIMS,
 }
 
 _MM_COMBOS = {

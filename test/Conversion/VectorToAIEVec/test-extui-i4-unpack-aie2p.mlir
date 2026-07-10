@@ -1,14 +1,11 @@
 //===- test-extui-i4-unpack-aie2p.mlir --------------------------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// Copyright (C) 2026, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt %s --convert-vector-to-aievec='aie-target=aie2p target-backend=llvmir' -cse | FileCheck %s
+// RUN: aie-opt %s --convert-vector-to-aievec='aie-target=aie2p' -cse | FileCheck %s
 
 // Canonical standard-MLIR for AWQ int4 unpack on AIE2P:
 //   1. byte load (vector<N/2 x i8>)

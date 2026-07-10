@@ -1,10 +1,8 @@
 # runtime.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024-2026 Advanced Micro Devices, Inc.
 """Runtime: orchestrates host-side data movement and worker execution for an IRON program."""
 
 from __future__ import annotations
@@ -19,11 +17,16 @@ logger = logging.getLogger(__name__)
 
 from ...utils import trace as trace_utils
 
-from ... import ir  # type: ignore
+from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 
-from ...dialects.aie import tile
-from ...dialects.aiex import runtime_sequence, sync_scratchpad_parameters_from_host
-from ...dialects._aiex_ops_gen import dma_await_task, dma_free_task  # type: ignore
+from ...dialects.aiex import (
+    runtime_sequence,
+    sync_scratchpad_parameters_from_host,  # pyright: ignore[reportAttributeAccessIssue]
+)
+from ...dialects._aiex_ops_gen import (  # pyright: ignore[reportMissingImports]
+    dma_await_task,
+    dma_free_task,
+)
 from ...helpers.taplib import TensorAccessPattern
 from ..dataflow import ObjectFifoHandle
 from ..device import Tile, AnyShimTile
@@ -40,6 +43,19 @@ from .task import (
     InlineOpRuntimeTask,
     FinishTaskGroupTask,
 )
+
+
+def _iter_flat(obj):
+    """Yield obj and, recursively, the elements of any nested list/tuple.
+
+    Matches the traversal InlineOpRuntimeTask uses to find Buffer args, so
+    fifos nested in the inline_args structure are registered the same way.
+    """
+    if isinstance(obj, (list, tuple)):
+        for item in obj:
+            yield from _iter_flat(item)
+    else:
+        yield obj
 
 
 class IronRuntimeError(Exception):
@@ -63,9 +79,9 @@ class Runtime(Resolvable):
 
         """
         self._rt_data = []
-        self._tasks: list[RuntimeTask] = []
-        self._fifos = set()
-        self._workers = []
+        self._tasks: list[Resolvable] = []
+        self._fifos: set[ObjectFifoHandle] = set()
+        self._workers: list[Worker] = []
         # Lower-level explicit-routing primitives (peers of ObjectFifo for
         # designs that hand-wire flows + DMA programs instead of letting
         # ObjectFifo manage them).
@@ -78,7 +94,7 @@ class Runtime(Resolvable):
         self._trace_workers = None
         self._strict_task_groups = strict_task_groups
         self._task_group_index = itertools.count()
-        self._ddr_id = 4
+        self._reuse_output_buffer = False
         self._egress_shim_col = 0
 
     def add_flow(self, flow) -> None:
@@ -325,16 +341,25 @@ class Runtime(Resolvable):
 
         Args:
             inline_func (Callable): The function to execute within an MLIR context.
-            inline_args (list): The state the function needs to execute.
+            inline_args (list): The state the function needs to execute. Any
+                ObjectFifoHandle passed here is registered with the Runtime (so
+                the Program resolves its shim allocation) and, if it has no
+                endpoint yet, is bound to a shim tile -- an inline op driving a
+                fifo from the runtime sequence is a host-side (shim) endpoint.
+                This mirrors how InlineOpRuntimeTask resolves Buffer args.
         """
-        # TODO: should filter args based on some criteria??
+        for arg in _iter_flat(inline_args):
+            if isinstance(arg, ObjectFifoHandle):
+                if arg.endpoint is None:
+                    arg.endpoint = RuntimeEndpoint(AnyShimTile)
+                self._fifos.add(arg)
         self._tasks.append(InlineOpRuntimeTask(inline_func, inline_args))
 
     def enable_trace(
         self,
-        trace_size: int = None,
+        trace_size: int | None = None,
         workers: list | None = None,
-        ddr_id: int = 4,
+        reuse_output_buffer: bool = False,
         coretile_events: list | None = None,
         coremem_events: list | None = None,
         memtile_events: list | None = None,
@@ -350,10 +375,12 @@ class Runtime(Resolvable):
             trace_size (int): Size of the trace buffer in bytes.
             workers (list[Worker] | None, optional): Specific workers to trace. If None,
                 all workers with ``trace`` set will be traced. Defaults to None.
-            ddr_id (int, optional): XRT inout buffer index (0-4) to write trace data
-                into, mapping to group_id (3-7). Defaults to 4 (group_id 7).
-                Set to -1 to append trace data after the last runtime_sequence
-                tensor argument.
+            reuse_output_buffer (bool, optional): When False (default), trace
+                lowering appends a dedicated trace-buffer argument to the
+                runtime_sequence; it lands at the tail so enabling trace never
+                perturbs the data arguments' indices. When True, trace data is
+                written into the tail of the last output buffer, saving a host
+                buffer. Defaults to False.
             coretile_events (list | None, optional): List of up to 8 core tile trace events.
                 See ``https://xilinx.github.io/mlir-aie/AIEXDialect.html`` for available
                 events under (type)EventAIE such as CoreEventAIE.
@@ -369,7 +396,7 @@ class Runtime(Resolvable):
         """
         self._trace_size = trace_size
         self._trace_workers = workers
-        self._ddr_id = ddr_id
+        self._reuse_output_buffer = reuse_output_buffer
         self._coretile_events = coretile_events
         self._coremem_events = coremem_events
         self._memtile_events = memtile_events
@@ -403,17 +430,7 @@ class Runtime(Resolvable):
     @property
     def fifos(self) -> list[ObjectFifoHandle]:
         """The ObjectFifoHandles associated with the Runtime by calls to fill() and drain()"""
-        return self._fifos.copy()
-
-    def get_first_cons_shimtile(self):
-        """Find the first consumer side of an objfifo that is in the 0th row
-        and uses it as the trace shim tile
-        """
-        for of_handle in self._fifos:
-            if not of_handle._is_prod:
-                endpoint_tile = of_handle._object_fifo._cons[0]._endpoint._tile
-                if endpoint_tile.row == 0:
-                    return endpoint_tile.op
+        return list(self._fifos)
 
     def resolve(
         self,
@@ -430,7 +447,7 @@ class Runtime(Resolvable):
             if self._trace_size is not None and self._trace_size > 0:
                 trace_utils.start_trace(
                     trace_size=self._trace_size,
-                    ddr_id=self._ddr_id,
+                    reuse_output_buffer=self._reuse_output_buffer,
                     routing="single",
                     egress_shim_col=self._egress_shim_col,
                 )
@@ -457,7 +474,8 @@ class Runtime(Resolvable):
                         if fn != dma_await_task and fn != dma_free_task
                     ]
                     raise IronRuntimeError(
-                        f"Unknown action type detected: {','.join(unknown_actions)}"
+                        f"Unknown action type detected: "
+                        f"{','.join(str(a) for a in unknown_actions)}"
                     )
 
                 for fn, args in wait_tasks + free_tasks:

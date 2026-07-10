@@ -1,21 +1,18 @@
 //===- no_register_external_buffers_test.mlir -------------------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2025 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// Copyright (C) 2025, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
 
 // CHECK:           aie.device(xcvc1902) {
 // CHECK:             %{{.*}}tile_7_2 = aie.tile(7, 2)
 // CHECK:             %{{.*}}tile_7_0 = aie.tile(7, 0)
-// CHECK:             %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_7_2) {sym_name = "ext_of_cons_buff_0"} : memref<16xi32> 
-// CHECK:             %[[VAL_1:.*]] = aie.buffer(%{{.*}}tile_7_2) {sym_name = "ext_of_cons_buff_1"} : memref<16xi32> 
-// CHECK:             %[[VAL_2:.*]] = aie.buffer(%{{.*}}tile_7_2) {sym_name = "ext_of_cons_buff_2"} : memref<16xi32> 
+// CHECK:             %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_7_2) {sym_name = "ext_of_cons_buff_0"} : memref<16xi32>
+// CHECK:             %[[VAL_1:.*]] = aie.buffer(%{{.*}}tile_7_2) {sym_name = "ext_of_cons_buff_1"} : memref<16xi32>
+// CHECK:             %[[VAL_2:.*]] = aie.buffer(%{{.*}}tile_7_2) {sym_name = "ext_of_cons_buff_2"} : memref<16xi32>
 // CHECK:             %[[VAL_3:.*]] = aie.lock(%{{.*}}tile_7_2, 0) {init = 0 : i32, sym_name = "ext_of_cons_lock_0"}
 // CHECK:             %[[VAL_4:.*]] = aie.lock(%{{.*}}tile_7_2, 1) {init = 0 : i32, sym_name = "ext_of_cons_lock_1"}
 // CHECK:             %[[VAL_5:.*]] = aie.lock(%{{.*}}tile_7_2, 2) {init = 0 : i32, sym_name = "ext_of_cons_lock_2"}

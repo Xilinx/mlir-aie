@@ -1,11 +1,8 @@
 //===- Passes.h - AIE Vector Passes -----------------------------*- C++ -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2022 Xilinx, Inc.
+// Copyright (C) 2023 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2022 Xilinx Inc.
-// (c) Copyright 2023 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 // Register all the AIE vectorization passes
@@ -63,8 +60,6 @@ namespace aievec {
 
 #define GEN_PASS_DECL
 #include "aie/Dialect/AIEVec/Transforms/Passes.h.inc"
-
-std::unique_ptr<mlir::Pass> createAIEVectorizePass();
 
 std::unique_ptr<mlir::Pass> createSplitVectorLoadUpsChainsPass();
 

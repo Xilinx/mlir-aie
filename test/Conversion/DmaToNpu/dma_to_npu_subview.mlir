@@ -1,10 +1,7 @@
 //===- dma_to_npu_subview.mlir ---------------------------------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2025 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// Copyright (C) 2025, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -13,9 +10,9 @@
 // Test that memref.subview is correctly traced through to adjust address patches
 
 // CHECK-LABEL: module
-// CHECK: aiex.npu.address_patch
+// CHECK: %[[P:.*]] = arith.constant 512 : i32
+// CHECK: aiex.npu.address_patch(%[[P]] : i32)
 // CHECK-SAME: arg_idx = 0 : i32
-// CHECK-SAME: arg_plus = 512 : i32
 module {
   aie.device(npu1) {
     aie.runtime_sequence(%arg0: memref<1024xi32>) {

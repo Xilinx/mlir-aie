@@ -1,3 +1,7 @@
+# Copyright (C) 2021 Xilinx, Inc.
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 name: Build and Test across Python versions
 
 permissions:
@@ -47,12 +51,12 @@ jobs:
       # Clone the repo and its submodules. Do shallow clone to save clone
       # time.
       - name: Get the project repository
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
           fetch-depth: 2
           submodules: "true"
 
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
           python-version: ${{ matrix.python_version }}
 
@@ -73,8 +77,18 @@ jobs:
         id: mlir-wheels
         run: |
           VERSION=$(utils/clone-llvm.sh --get-wheel-version)
-          pip -q download mlir==$VERSION \
-            -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
+          for attempt in 1 2 3; do
+            rm -f mlir-*.whl
+            if pip -q download mlir==$VERSION \
+              -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "Failed to download MLIR wheel after ${attempt} attempts" >&2
+              exit 1
+            fi
+            sleep $((attempt * 5))
+          done
           unzip -q mlir-*.whl
 
       - name: Ccache for C++ compilation
@@ -120,7 +134,6 @@ jobs:
           # filter out slow tests (e.g. create-flows/vecmul_4x4_slow_test.mlir) due to timeout.
           export LIT_OPTS="-sv --timeout 600 --filter-out slow_test"
           ninja check-aie
-          ninja check-tutorials
           ninja check-reference-designs
           ninja check-programming-guide
 
@@ -156,6 +169,5 @@ jobs:
 
           ninja
           ninja check-aie
-          ninja check-tutorials
           ninja check-reference-designs
           ninja check-programming-guide

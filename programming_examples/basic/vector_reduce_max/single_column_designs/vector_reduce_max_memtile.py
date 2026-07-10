@@ -1,10 +1,8 @@
 # single_column_designs/vector_reduce_max_memtile.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
 """Single-column vector reduce-max (memtile variant) — IRON + ``@iron.jit``.
 
 4 cores compute partial max in parallel; the memtile joins the 4 per-

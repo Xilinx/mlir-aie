@@ -1,10 +1,7 @@
 //===- test.cpp -------------------------------------------------*- C++ -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// Copyright (C) 2025-2026, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -110,7 +107,8 @@ int main(int argc, const char *argv[]) {
   args myargs = parse_args(argc, argv);
   int in_volume = (ROWS * COLS);
   int out_volume = in_volume;
-  return setup_and_run_aie<DATATYPE_IN1, DATATYPE_OUT, initialize_bufIn1,
-                           initialize_bufOut, verify_norm_kernel>(
-      in_volume, out_volume, myargs);
+  return setup_and_run_aie(
+      verify_norm_kernel,
+      std::make_tuple(make_in<DATATYPE_IN1>(in_volume, initialize_bufIn1)),
+      make_out<DATATYPE_OUT>(out_volume, initialize_bufOut), myargs);
 }

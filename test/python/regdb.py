@@ -1,9 +1,7 @@
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2025 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025 Advanced Micro Devices, Inc.
 
 # RUN: %python %s | FileCheck %s
 
@@ -311,8 +309,12 @@ module {
     aie.device(npu1) {
     %tile_0_2 = aie.tile(0, 2)
     aie.runtime_sequence() {
-        aiex.npu.write32 {address = 0x32000 : ui32, column = 0 : i32, row = 2 : i32, value = 1 : ui32}
-        aiex.npu.write32 {address = 0x20010 : ui32, column = 0 : i32, row = 2 : i32, value = 0 : ui32}
+        %addr0 = arith.constant 0x32000 : i32
+        %val0 = arith.constant 1 : i32
+        aiex.npu.write32(%addr0, %val0) {column = 0 : i32, row = 2 : i32} : i32, i32
+        %addr1 = arith.constant 0x20010 : i32
+        %val1 = arith.constant 0 : i32
+        aiex.npu.write32(%addr1, %val1) {column = 0 : i32, row = 2 : i32} : i32, i32
     }
     }
 }

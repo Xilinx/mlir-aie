@@ -1,10 +1,7 @@
 //===- AIETraceOps.td --------------------------------------*- tablegen -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2025 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// Copyright (C) 2025, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 // Defines operations for AIE trace configuration
@@ -484,8 +481,11 @@ def AIE_TraceHostConfigOp : AIE_Op<"trace.host_config", [
 
     Attributes:
     - buffer_size: Trace buffer size in bytes
-    - arg_idx (default=4): XRT argument index for trace buffer. Set to -1 to
-      append trace data after the last tensor argument in the runtime_sequence.
+    - reuse_output_buffer (default=false): When false, trace lowering appends a
+      dedicated trace-buffer argument to the runtime_sequence; it lands at the
+      tail so enabling trace never perturbs the data arguments' indices. When
+      true, trace data is written into the tail of the last existing argument
+      (an output buffer), saving a host buffer.
     - routing (default=single): Shim routing strategy. Currently only 'single'
       is supported, which routes all traces to a single shim tile.
     - egress_shim_col (default=0): Column index of the shim tile that receives
@@ -494,7 +494,7 @@ def AIE_TraceHostConfigOp : AIE_Op<"trace.host_config", [
     Example:
     ```mlir
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size=65536 egress_shim_col=4
+      aie.trace.host_config {buffer_size = 65536 : i32, egress_shim_col = 4 : i32}
       aie.trace.start_config @trace1
     }
     ```
@@ -502,12 +502,12 @@ def AIE_TraceHostConfigOp : AIE_Op<"trace.host_config", [
 
   let arguments = (ins
     AIEI32Attr:$buffer_size,
-    DefaultValuedAttr<AIEI32Attr, "4">:$arg_idx,
+    DefaultValuedAttr<BoolAttr, "false">:$reuse_output_buffer,
     DefaultValuedAttr<TraceShimRoutingAttr, "TraceShimRouting::Single">:$routing,
     DefaultValuedAttr<AIEI32Attr, "0">:$egress_shim_col
   );
 
-  let hasCustomAssemblyFormat = 1;
+  let assemblyFormat = [{ attr-dict }];
   let hasVerifier = 1;
 }
 

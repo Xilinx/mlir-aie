@@ -1,4 +1,4 @@
-# Copyright (C) 2022-2026, Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 include(AddMLIRPython)
@@ -18,12 +18,14 @@ declare_mlir_python_sources(AIEPythonExtensions)
 
 declare_mlir_python_sources(AIEPythonSources.Dialects
   ADD_TO_PARENT AIEPythonSources
+  SOURCES
+    dialects/__init__.py
 )
 
 declare_mlir_python_sources(AIEPythonSources.Util
   ADD_TO_PARENT AIEPythonSources
   SOURCES
-    util.py
+    __init__.py
 )
 
 declare_mlir_python_sources(AIEPythonSources.Tools
@@ -80,8 +82,6 @@ declare_mlir_python_sources(AIEPythonSources.Helpers
   ADD_TO_PARENT AIEPythonSources
   SOURCES_GLOB
     helpers/*.py
-    helpers/dialects/ext/*.py
-    helpers/runtime/*.py
     helpers/taplib/*.py
 )
 
@@ -154,285 +154,128 @@ declare_mlir_python_sources(AIEPythonSources.Compiler
     compiler/txn2mlir/*.py
 )
 
-if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
-  declare_mlir_python_sources(AIEPythonSources.XRT
-    ADD_TO_PARENT AIEPythonSources
-    SOURCES
-      xrt.py
-      _mlir_libs/_xrt.pyi
-  )
-endif()
-
-declare_mlir_python_sources(AIEPythonSources.AIERT
-  ADD_TO_PARENT AIEPythonSources
-  SOURCES
-    aiert.py
-)
-
 ################################################################################
 # Extensions
 ################################################################################
 
-if (AIE_ENABLE_PYTHON_PASSES)
-  # What's going on here? This branch builds a single shared library Python C extension module
-  # with absolutely everything, including the kitchen sink. I.e, this "omnibus" shared library
-  # will have absolutely all the MLIR code (including C APIs), all the upstream C extension modules,
-  # our main C extension module (AIEMLIRModule.cpp) and the PythonPass.cpp C extension module.
-  #
-  # Why do this? This is a way to call arbitrary MLIR code from the python bindings. Such as, for example,
-  # PythonPass.cpp does.
-  #
-  # Note, this depends on MLIR being compiled with RTTI (i.e., LLVM_ENABLE_RTTI=ON) and the
-  # guard includes this.
+# Standard Python C extension bindings.
+declare_mlir_python_extension(AIEPythonExtensions.MLIR
+  MODULE_NAME _aie
+  ADD_TO_PARENT AIEPythonExtensions
+  ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}
 
-  get_property(MLIR_CONVERSION_LIBS GLOBAL PROPERTY MLIR_CONVERSION_LIBS)
-  get_property(MLIR_DIALECT_LIBS GLOBAL PROPERTY MLIR_DIALECT_LIBS)
-  get_property(MLIR_EXTENSION_LIBS GLOBAL PROPERTY MLIR_EXTENSION_LIBS)
-  get_property(MLIR_TRANSLATION_LIBS GLOBAL PROPERTY MLIR_TRANSLATION_LIBS)
-  get_property(MLIR_UPSTREAM_CAPI_LIBS GLOBAL PROPERTY MLIR_UPSTREAM_CAPI_LIBS)
-
-  # Dig out all of the upstream cpp source files associated with the C extension modules.
-  _flatten_mlir_python_targets(mlir_python_sources MLIRPythonSources)
-  set(_mlir_python_cpp_sources)
-  foreach(s ${mlir_python_sources})
-    get_target_property(_sources ${s} INTERFACE_SOURCES)
-    list(FILTER _sources INCLUDE REGEX "(\.cpp|\.h)$")
-    if(_sources)
-      list(APPEND _mlir_python_cpp_sources ${_sources})
-    endif()
-  endforeach()
-
-  # Missed one...
-  get_target_property(RegisterEverythingSources MLIRPythonExtension.RegisterEverything INTERFACE_SOURCES)
-
-  set(PYBINDINGS_SRC "${MLIR_INSTALL_PREFIX}/src/python/MLIRPythonExtension.Core")
-
-  set(_py_srcs
-    ${CMAKE_CURRENT_SOURCE_DIR}/AIEMLIRModule.cpp
-    # Python passes
-    ${CMAKE_CURRENT_SOURCE_DIR}/PybindTypes.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/PythonPass.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/RouterPass.cpp
-
-    ${_mlir_python_cpp_sources}
-    ${RegisterEverythingSources}
-  )
-
-  set(_py_libs
-    LLVMSupport
+  PARTIAL_SOURCES_INTENDED
+  SOURCES
+    AIEMLIRModule.cpp
+  EMBED_CAPI_LINK_LIBS
     AIECAPI
-    AIETargets
-    ${MLIR_CONVERSION_LIBS}
-    ${MLIR_DIALECT_LIBS}
-    ${MLIR_EXTENSION_LIBS}
-    ${MLIR_TRANSLATION_LIBS}
-    ${MLIR_UPSTREAM_CAPI_LIBS}
-  )
+  PRIVATE_LINK_LIBS
+    LLVMSupport
+)
 
-  if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
-    list(APPEND _py_srcs ${CMAKE_CURRENT_SOURCE_DIR}/XRTModule.cpp)
-    list(APPEND _py_libs xrt_coreutil)
-    if(NOT WIN32)
-      list(APPEND _py_libs uuid)
-    endif()
-  endif()
-  list(APPEND _py_srcs ${CMAKE_CURRENT_SOURCE_DIR}/AIERTModule.cpp)
+add_mlir_python_common_capi_library(AIEAggregateCAPI
+  INSTALL_COMPONENT AIEPythonModules
+  INSTALL_DESTINATION ${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs
+  OUTPUT_DIRECTORY "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs"
+  RELATIVE_INSTALL_ROOT "../../../.."
+  DECLARED_SOURCES
+    MLIRPythonSources
+    MLIRPythonExtension.Core
+    MLIRPythonExtension.RegisterEverything
+    MLIRPythonExtension.ExecutionEngine
+    AIEPythonSources
+    AIEPythonExtensions
+)
 
-  declare_mlir_python_extension(AIEPythonExtensions.MLIR
-    MODULE_NAME _aie
-    ADD_TO_PARENT AIEPythonExtensions
-    ROOT_DIR "/"
+add_mlir_python_modules(AIEPythonModules
+  ROOT_PREFIX "${AIE_PYTHON_PACKAGES_DIR}/aie"
+  INSTALL_PREFIX "${AIE_PYTHON_INSTALL_DIR}/aie"
+  DECLARED_SOURCES
+    AIEPythonSources
+    MLIRPythonSources
+    MLIRPythonExtension.Core
+    MLIRPythonExtension.RegisterEverything
+    MLIRPythonExtension.ExecutionEngine
+    AIEPythonExtensions
+  COMMON_CAPI_LINK_LIBS
+    AIEAggregateCAPI
+)
 
-    SOURCES
-      ${_py_srcs}
+# Vendor eudsl-python-extras into the build directory
+add_custom_command(
+  TARGET AIEPythonModules POST_BUILD
+  COMMAND ${Python3_EXECUTABLE} ${AIE_SOURCE_DIR}/utils/mlir_aie_wheels/vendor_eudsl.py
+    --requirements ${AIE_SOURCE_DIR}/python/requirements.txt
+    --target ${AIE_PYTHON_PACKAGES_DIR}
+  COMMENT "Vendoring eudsl-python-extras"
+)
 
-    PRIVATE_LINK_LIBS
-      ${_py_libs}
-  )
-  target_include_directories(
-    AIEPythonExtensions.MLIR
-    INTERFACE $<BUILD_INTERFACE:${PYBINDINGS_SRC}>
-  )
-  if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
-    target_include_directories(AIEPythonExtensions.MLIR INTERFACE ${XRT_INCLUDE_DIR})
-    target_link_directories(AIEPythonExtensions.MLIR INTERFACE ${XRT_LIB_DIR})
-  endif()
+install(
+  DIRECTORY "${AIE_PYTHON_PACKAGES_DIR}/aie/extras"
+  DESTINATION "${AIE_PYTHON_INSTALL_DIR}/aie"
+  COMPONENT aie-python
+)
 
-  # Kill all of the dependencies (mlir_python_DEPENDS) on cpp sources in the dialect build targets
-  # so the C extension modules don't get built but the Python sources do get installed.
-  _flatten_mlir_python_targets(mlir_python_sources_deps MLIRPythonSources)
-  list(FILTER mlir_python_sources_deps INCLUDE REGEX "^MLIRPythonSources.Dialects")
-  foreach(t ${mlir_python_sources_deps})
-    set_property(TARGET ${t} PROPERTY mlir_python_DEPENDS "")
-  endforeach()
-  set_property(TARGET MLIRPythonSources.ExecutionEngine PROPERTY mlir_python_DEPENDS "")
+# Note: events_database.json is generated at build time by the
+# GenerateAIEEventsTD target (include/aie/Dialect/AIE/IR/CMakeLists.txt).
+# Python trace event enums are sourced from the TableGen-generated
+# _aie_enum_gen.py bindings (no separate generation step needed).
 
-  # Set NB_DOMAIN for nanobind, to avoid domain conflict with other LLVM projects.
-  set(MLIR_BINDINGS_PYTHON_NB_DOMAIN "_aie")
-
-  add_mlir_python_modules(AIEPythonModules
-    ROOT_PREFIX "${AIE_PYTHON_PACKAGES_DIR}/aie"
-    INSTALL_PREFIX "${AIE_PYTHON_INSTALL_DIR}/aie"
-    DECLARED_SOURCES
-      ${mlir_python_sources_deps}
-      MLIRPythonSources.Core.Python
-      MLIRPythonSources.ExecutionEngine
-      AIEPythonExtensions.MLIR
-      AIEPythonSources
-  )
-
-  set(_other_extensions
-    _aie_python_passes
-    _mlir
-    _mlirAsyncPasses
-    _mlirDialectsLinalg
-    _mlirDialectsPDL
-    _mlirDialectsQuant
-    _mlirDialectsSparseTensor
-    _mlirDialectsTransform
-    _mlirExecutionEngine
-    _mlirGPUPasses
-    _mlirLinalgPasses
-    _mlirPythonTest
-    _mlirRegisterEverything
-    _mlirSparseTensorPasses
-  )
-  if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
-    list(APPEND _other_extensions _xrt)
-  endif()
-
-  file(MAKE_DIRECTORY "${CMAKE_BINARY_DIR}/${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs")
-
-  # This is the trick that makes multiple Python C extension modules packaged into one shared library work;
-  # Python importlib machinery looks for PyInit__your_module based on the filename _your_module.so.
-  # Thus, if you have a symlink _your_module.so -> BIGOMNIBUS.so, it will look for PyInit__your_module in
-  # BIGOMNIBUS.so.
-  foreach(ext ${_other_extensions})
-    # Build time/directory creation.
-    add_custom_target("symlink_${ext}"
-      COMMAND ${CMAKE_COMMAND} -E create_symlink
-        "_aie${PYTHON_MODULE_EXTENSION}"
-        "${ext}${PYTHON_MODULE_EXTENSION}"
-      DEPENDS AIEPythonExtensions
-      WORKING_DIRECTORY "${CMAKE_BINARY_DIR}/${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs"
-    )
-    add_dependencies(AIEPythonModules "symlink_${ext}")
-    # Install time/directory creation.
-    install(CODE "execute_process(
-      COMMAND ${CMAKE_COMMAND} -E create_symlink
-              _aie${PYTHON_MODULE_EXTENSION}
-              ${ext}${PYTHON_MODULE_EXTENSION}
-              WORKING_DIRECTORY ${CMAKE_INSTALL_PREFIX}/${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs
-      )"
-    )
-  endforeach()
-
-else ()
-
-  # Standard Python C extension bindings.
-  declare_mlir_python_extension(AIEPythonExtensions.MLIR
-    MODULE_NAME _aie
-    ADD_TO_PARENT AIEPythonExtensions
-    ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}
-
-    PARTIAL_SOURCES_INTENDED
-    SOURCES
-      AIEMLIRModule.cpp
-    EMBED_CAPI_LINK_LIBS
-      AIECAPI
-    PRIVATE_LINK_LIBS
-      LLVMSupport
-  )
-
-  if(AIE_ENABLE_XRT_PYTHON_BINDINGS)
-    declare_mlir_python_extension(AIEPythonExtensions.XRT
-      MODULE_NAME _xrt
-      ADD_TO_PARENT AIEPythonExtensions
-      ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}
-
-      PARTIAL_SOURCES_INTENDED
-      SOURCES
-        XRTModule.cpp
-
-      PRIVATE_LINK_LIBS
-        LLVMSupport
-        xrt_coreutil
-    )
-    if(NOT WIN32)
-      target_link_libraries(AIEPythonExtensions.XRT INTERFACE uuid)
-    endif()
-    target_include_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_INCLUDE_DIR})
-    target_link_directories(AIEPythonExtensions.XRT INTERFACE ${XRT_LIB_DIR})
-  endif()
-
-  add_mlir_python_common_capi_library(AIEAggregateCAPI
-    INSTALL_COMPONENT AIEPythonModules
-    INSTALL_DESTINATION ${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs
-    OUTPUT_DIRECTORY "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs"
-    RELATIVE_INSTALL_ROOT "../../../.."
-    DECLARED_SOURCES
-      MLIRPythonSources
-      MLIRPythonExtension.Core
-      MLIRPythonExtension.RegisterEverything
-      MLIRPythonExtension.ExecutionEngine
-      AIEPythonSources
-      AIEPythonExtensions
-  )
-
-  add_mlir_python_modules(AIEPythonModules
-    ROOT_PREFIX "${AIE_PYTHON_PACKAGES_DIR}/aie"
-    INSTALL_PREFIX "${AIE_PYTHON_INSTALL_DIR}/aie"
-    DECLARED_SOURCES
-      AIEPythonSources
-      MLIRPythonSources
-      MLIRPythonExtension.Core
-      MLIRPythonExtension.RegisterEverything
-      MLIRPythonExtension.ExecutionEngine
-      AIEPythonExtensions
-    COMMON_CAPI_LINK_LIBS
-      AIEAggregateCAPI
-  )
-
-  # Vendor eudsl-python-extras into the build directory
-  add_custom_command(
-    TARGET AIEPythonModules POST_BUILD
-    COMMAND ${Python3_EXECUTABLE} ${AIE_SOURCE_DIR}/utils/mlir_aie_wheels/vendor_eudsl.py
-      --requirements ${AIE_SOURCE_DIR}/python/requirements.txt
-      --target ${AIE_PYTHON_PACKAGES_DIR}
-    COMMENT "Vendoring eudsl-python-extras"
-  )
-
-  install(
-    DIRECTORY "${AIE_PYTHON_PACKAGES_DIR}/aie/extras"
-    DESTINATION "${AIE_PYTHON_INSTALL_DIR}/aie"
-    COMPONENT aie-python
-  )
-
-  # Note: events_database.json is generated at build time by the
-  # GenerateAIEEventsTD target (include/aie/Dialect/AIE/IR/CMakeLists.txt).
-  # Python trace event enums are sourced from the TableGen-generated
-  # _aie_enum_gen.py bindings (no separate generation step needed).
-
-
-endif ()
+# Stage the MLIR core type stubs (Context, Location, Module, ...) next to the
+# compiled extension. aie/ir.py re-exports those symbols via
+# `from ._mlir_libs._mlir.ir import *`; the .py sources we assemble don't carry
+# their types, so a static type checker can only resolve them from these stubs.
+# They ship with the MLIR distro but aren't copied by add_mlir_python_modules.
+add_custom_command(
+  TARGET AIEPythonModules POST_BUILD
+  COMMAND ${CMAKE_COMMAND} -E copy_if_different
+    "${MLIR_INSTALL_PREFIX}/src/python/MLIRPythonExtension.Core.type_stub_gen/_mlir_libs/_mlir/__init__.pyi"
+    "${MLIR_INSTALL_PREFIX}/src/python/MLIRPythonExtension.Core.type_stub_gen/_mlir_libs/_mlir/ir.pyi"
+    "${MLIR_INSTALL_PREFIX}/src/python/MLIRPythonExtension.Core.type_stub_gen/_mlir_libs/_mlir/passmanager.pyi"
+    "${MLIR_INSTALL_PREFIX}/src/python/MLIRPythonExtension.Core.type_stub_gen/_mlir_libs/_mlir/rewrite.pyi"
+    "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs/_mlir/"
+  COMMENT "Staging MLIR core type stubs for pyright"
+)
 
 ################################################################################
-# ParameterScratchpad pybind11 module (no MLIR/XRT deps — uses buffer pointer)
+# ParameterScratchpad pybind11 module (uses a raw buffer)
 ################################################################################
-find_package(pybind11 CONFIG QUIET)
-if(pybind11_FOUND)
+if(AIE_ENABLE_XRT_PYTHON_BINDINGS)
+  find_package(pybind11 CONFIG QUIET)
+  if(NOT pybind11_FOUND)
+    execute_process(
+      COMMAND "${Python3_EXECUTABLE}" -m pybind11 --cmakedir
+      RESULT_VARIABLE _pybind11_cmakedir_result
+      OUTPUT_VARIABLE _pybind11_cmakedir
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+      ERROR_QUIET
+    )
+    if(NOT _pybind11_cmakedir_result EQUAL 0)
+      message(FATAL_ERROR
+        "AIE_ENABLE_XRT_PYTHON_BINDINGS requires pybind11 in ${Python3_EXECUTABLE}."
+      )
+    endif()
+    find_package(pybind11 CONFIG REQUIRED
+      PATHS "${_pybind11_cmakedir}"
+      NO_DEFAULT_PATH
+    )
+  endif()
+
   pybind11_add_module(_parameter_scratchpad
     ${CMAKE_CURRENT_SOURCE_DIR}/ParameterScratchpadModule.cpp
   )
+  target_compile_definitions(_parameter_scratchpad PRIVATE TEST_UTILS_USE_XRT=0)
   target_include_directories(_parameter_scratchpad PRIVATE
     ${AIE_SOURCE_DIR}/runtime_lib/test_lib
   )
   set_target_properties(_parameter_scratchpad PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs"
+    RUNTIME_OUTPUT_DIRECTORY "${AIE_PYTHON_PACKAGES_DIR}/aie/_mlir_libs"
   )
   add_dependencies(AIEPythonModules _parameter_scratchpad)
   install(TARGETS _parameter_scratchpad
     LIBRARY DESTINATION "${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs"
+    RUNTIME DESTINATION "${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs"
     COMPONENT aie-python
   )
 endif()
@@ -479,26 +322,6 @@ foreach(r ${_runtime_deps})
     DESTINATION "${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs"
   )
 endforeach()
-
-# libxrt_coreutil has to be handled differentled because it's versioned...
-if (AIE_ENABLE_XRT_PYTHON_BINDINGS)
-  # for build dir
-  add_custom_command(
-    TARGET AIEPythonModules.extension._xrt.dso PRE_BUILD
-    COMMENT "Copying libxrt_coreutil into _mlir_libs during build"
-    DEPENDS "${XRT_COREUTIL}"
-    COMMAND "${CMAKE_COMMAND}" -E copy
-    "${XRT_COREUTIL}" "${CMAKE_CURRENT_BINARY_DIR}/aie/_mlir_libs/libxrt_coreutil.so"
-  )
-  # for install
-  install(FILES
-    "${XRT_COREUTIL}"
-    COMPONENT xrt_coreutil
-    DESTINATION "${CMAKE_INSTALL_PREFIX}/${AIE_PYTHON_INSTALL_DIR}/aie/_mlir_libs"
-    # hack
-    RENAME libxrt_coreutil.so.2
-  )
-endif()
 
 # during build
 add_custom_command(

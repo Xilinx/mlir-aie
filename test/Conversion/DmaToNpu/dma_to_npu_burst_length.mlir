@@ -1,8 +1,7 @@
 //===- dma_to_npu_burst_length.mlir -----------------------------------------*- MLIR -*-===//
 //
+// Copyright (C) 2025 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2025 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 

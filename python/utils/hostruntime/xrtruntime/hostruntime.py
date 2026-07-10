@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (C) 2025-2026 Advanced Micro Devices, Inc. All rights reserved.
+# Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
 """
@@ -17,12 +17,13 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 import numpy as np
-import pyxrt
+import pyxrt  # pyright: ignore[reportMissingImports]
 
 from ..hostruntime import HostRuntime, HostRuntimeError, KernelHandle, KernelResult
 
 if TYPE_CHECKING:
     from aie.iron.device import Device
+    from ...trace import TraceConfig
 from .tensor import XRTTensor
 
 logger = logging.getLogger(__name__)
@@ -34,7 +35,7 @@ class XRTKernelHandle(KernelHandle):
     Handle for a loaded XRT kernel.
     """
 
-    def __init__(self, kernel, xclbin, context, insts, insts_bo=None):
+    def __init__(self, kernel, xclbin, context, insts, insts_bo=None, name=None):
         """
         Initialize the XRTKernelHandle.
 
@@ -44,12 +45,16 @@ class XRTKernelHandle(KernelHandle):
             context: The XRT context object.
             insts: The instructions for the kernel.
             insts_bo (optional): The instruction buffer object. Defaults to None.
+            name (optional): The resolved name of the loaded kernel, used to
+                look up the matching kernel in an xclbin that declares several.
+                Defaults to None.
         """
         self.kernel = kernel
         self.xclbin = xclbin
         self.context = context
         self.insts = insts
         self.insts_bo = insts_bo
+        self.name = name
 
 
 class XRTKernelResult(KernelResult):
@@ -59,9 +64,9 @@ class XRTKernelResult(KernelResult):
         self,
         ret: pyxrt.ert_cmd_state,
         npu_time: int,
-        trace_data: XRTTensor | None = None,
+        trace_config: "TraceConfig | None" = None,
     ):
-        super().__init__(npu_time, trace_data)
+        super().__init__(npu_time, trace_config)
         self.ret = ret
 
     def is_success(self) -> bool:
@@ -134,7 +139,7 @@ class XRTHostRuntime(HostRuntime):
 
         self._device_type_str = self._device.get_info(pyxrt.xrt_info_device.name)
 
-        self.npu_str = None
+        self.npu_str: str | None = None
         for key, value in self.NPU_MODELS.items():
             if any([model in self._device_type_str for model in self.NPU_MODELS[key]]):
                 self.npu_str = key
@@ -216,15 +221,18 @@ class XRTHostRuntime(HostRuntime):
         else:
             kernel = pyxrt.kernel(context, kernel_name)
 
-        kernel_handle = XRTKernelHandle(kernel, xclbin, context, insts)
+        kernel_handle = XRTKernelHandle(
+            kernel, xclbin, context, insts, name=kernel_name
+        )
         return kernel_handle
 
     def run(
         self,
-        kernel_handle: XRTKernelHandle,
+        kernel_handle: KernelHandle,
         args,
         trace_config=None,
         fail_on_error: bool = True,
+        only_if_loaded: bool = False,
         **kwargs,
     ) -> XRTKernelResult:
         """
@@ -235,6 +243,7 @@ class XRTHostRuntime(HostRuntime):
             args: Arguments to pass to the kernel.
             trace_config (optional): Configuration for tracing. Defaults to None.
             fail_on_error (bool, optional): Whether to raise an exception on kernel failure. Defaults to True.
+            only_if_loaded (bool, optional): Accepted for API compatibility with the runtime base class.
             **kwargs: Additional arguments.
 
         Returns:
@@ -243,6 +252,7 @@ class XRTHostRuntime(HostRuntime):
         Raises:
             HostRuntimeError: If arguments are invalid or kernel execution fails (and fail_on_error is True).
         """
+        assert isinstance(kernel_handle, XRTKernelHandle)
         self.check_device_consistency()
         # Filter out callable functions and check arg types
         args = [a for a in args if not callable(a)]
@@ -252,6 +262,34 @@ class XRTHostRuntime(HostRuntime):
             )
         [a.to("npu") for a in args]
         buffers = [a.buffer_object() for a in args]
+
+        # Validate BO count against xclbin metadata before calling into XRT.
+        # XRT's validate_bo_at_index segfaults if the index exceeds the count
+        # declared in kernels.json. The fixed args (opcode, instr, ninstr) are
+        # the first 3; the rest are host BOs. Passing fewer BOs than declared is
+        # fine (the kernel may declare a minimum ABI width); passing more is the
+        # fatal case.
+        xclbin_kernels = kernel_handle.xclbin.get_kernels()
+        # Match the kernel actually loaded into this handle; an xclbin may
+        # declare several kernels with different ABIs, so indexing [0] could
+        # validate against the wrong one.
+        xclbin_kernel = None
+        if kernel_handle.name is not None:
+            xclbin_kernel = next(
+                (k for k in xclbin_kernels if k.get_name() == kernel_handle.name),
+                None,
+            )
+        if xclbin_kernel is None and xclbin_kernels:
+            xclbin_kernel = xclbin_kernels[0]
+        if xclbin_kernel is not None:
+            declared_bo_count = xclbin_kernel.get_num_args() - 3
+            if len(buffers) > declared_bo_count:
+                raise HostRuntimeError(
+                    f"The xclbin declares {declared_bo_count} host buffer "
+                    f"argument(s) but {len(buffers)} were passed. Passing more "
+                    f"host buffers than the kernel ABI declares would segfault "
+                    f"in XRT argument setup."
+                )
 
         insts_bo = None
         insts_bytes = 0
@@ -268,6 +306,7 @@ class XRTHostRuntime(HostRuntime):
                         kernel_handle.insts,
                         flags=pyxrt.bo.cacheable,
                         group_id=kernel_handle.kernel.group_id(1),
+                        xrt_device=self._device,
                     ).buffer_object()
 
             start = time.time_ns()
@@ -294,11 +333,11 @@ class XRTHostRuntime(HostRuntime):
         Raises:
             HostRuntimeError: If the device string is unknown.
         """
-        from aie.iron.device import NPU1, NPU2
+        from aie.iron.device import from_name
 
         devices = {
-            "npu1": NPU1(),
-            "npu2": NPU2(),
+            "npu1": from_name("npu1", n_cols=None),
+            "npu2": from_name("npu2", n_cols=None),
         }
 
         if self.npu_str in devices:
@@ -330,19 +369,21 @@ class CachedXRTKernelHandle(XRTKernelHandle):
 
     def invalidate(self):
         """
-        Invalidate the handle and release resources.
+        Invalidate the handle and release resources in dependency order.
         """
         self._is_valid = False
-        if hasattr(self, "context"):
-            del self.context
+        # Instruction BOs and kernels depend on the hardware context. Those must
+        # be released before dropping the handle's context reference.
+        if hasattr(self, "insts_bo"):
+            del self.insts_bo
         if hasattr(self, "kernel"):
             del self.kernel
+        if hasattr(self, "context"):
+            del self.context
         if hasattr(self, "xclbin"):
             del self.xclbin
         if hasattr(self, "insts"):
             del self.insts
-        if hasattr(self, "insts_bo"):
-            del self.insts_bo
 
 
 class CachedXRTRuntime(XRTHostRuntime):
@@ -381,30 +422,40 @@ class CachedXRTRuntime(XRTHostRuntime):
         self._insts_content_cache = OrderedDict()
 
         # Set default from dict if present
-        self._cache_size = None
-        if self.npu_str in self.NPU_CONTEXT_CACHE_SIZE.keys():
-            self._cache_size = self.NPU_CONTEXT_CACHE_SIZE[self.npu_str]
+        cache_size: int | None = None
+        if self.npu_str is not None and self.npu_str in self.NPU_CONTEXT_CACHE_SIZE:
+            cache_size = self.NPU_CONTEXT_CACHE_SIZE[self.npu_str]
 
         # Environment variable always override default values
         # TODO: should probably emit warning if exceeds recorded max size.
-        self._cache_size = os.environ.get("XRT_CONTEXT_CACHE_SIZE", self._cache_size)
+        _env_cache_size = os.environ.get("XRT_CONTEXT_CACHE_SIZE")
+        if _env_cache_size is not None:
+            cache_size = int(_env_cache_size)
 
         # Error if no default and no env var
-        if self._cache_size is None:
+        if cache_size is None:
             raise HostRuntimeError(f"No known cache size for {self.npu_str}")
+        self._cache_size: int = cache_size
 
         atexit.register(self.cleanup)
 
     def cleanup(self):
         """
-        Clean up the cache by evicting all entries.
+        Clean up cached XRT resources in dependency order.
         """
-        while self._context_cache:
-            self._evict()
         while self._insts_cache:
             self._evict_insts()
+        while self._context_cache:
+            self._evict()
         self._insts_content_cache.clear()
         gc.collect()  # Make sure contexts are garbage collected.
+
+    def _cleanup_entry_insts(self, entry):
+        """Release instruction BOs owned by a cached context entry."""
+        for insts_key in list(entry.get("insts_keys", ())):
+            insts_entry = self._insts_cache.pop(insts_key, None)
+            if insts_entry is not None:
+                self._cleanup_insts_entry(insts_key, insts_entry)
 
     def _cleanup_entry(self, entry):
         handles = entry["handles"]
@@ -414,6 +465,8 @@ class CachedXRTRuntime(XRTHostRuntime):
             handle = ref()
             if handle:
                 handle.invalidate()
+
+        self._cleanup_entry_insts(entry)
 
         # Clear kernel cache so pyxrt.kernel objects are released with the context
         entry["kernels"].clear()
@@ -429,14 +482,18 @@ class CachedXRTRuntime(XRTHostRuntime):
         # Pop the oldest item
         key, entry = self._context_cache.popitem(last=False)
         self._cleanup_entry(entry)
+        gc.collect()
 
-    def _cleanup_insts_entry(self, entry):
+    def _cleanup_insts_entry(self, insts_key, entry):
+        owner_entry = entry.get("owner_entry")
+        if owner_entry is not None:
+            owner_entry.get("insts_keys", set()).discard(insts_key)
         # Delete the key (not a local copy) so the refcount drops here.
         del entry["insts_bo"]
 
     def _evict_insts(self):
         key, entry = self._insts_cache.popitem(last=False)
-        self._cleanup_insts_entry(entry)
+        self._cleanup_insts_entry(key, entry)
 
     def _read_insts_cached(self, insts_path, insts_mtime):
         """``read_insts(insts_path)`` memoised by ``(path, mtime)``.
@@ -458,7 +515,7 @@ class CachedXRTRuntime(XRTHostRuntime):
 
     def run(
         self,
-        kernel_handle: XRTKernelHandle,
+        kernel_handle: KernelHandle,
         args,
         trace_config=None,
         fail_on_error: bool = True,
@@ -610,15 +667,10 @@ class CachedXRTRuntime(XRTHostRuntime):
                     try:
                         context = pyxrt.hw_context(self._device, xclbin_uuid)
                     except RuntimeError as e:
-                        # If we hit a resource limit (err=-2 usually means EMFILE/ENFILE or similar resource exhaustion)
-                        # and we have items in the cache, try evicting.
-                        if (
-                            "No such file or directory" in str(e)
-                            and self._context_cache
-                            and retries < max_retries
-                        ):
+                        # Context-slot exhaustion is reported differently across XRT backends.
+                        # Evict cached contexts and retry, but only while cached entries remain.
+                        if self._context_cache and retries < max_retries:
                             self._evict()
-                            gc.collect()  # Make sure contexts are garbage collected.
                             retries += 1
                         else:
                             raise e
@@ -628,6 +680,7 @@ class CachedXRTRuntime(XRTHostRuntime):
                     "xclbin": xclbin,
                     "kernels": {},  # kernel_name -> pyxrt.kernel (strong ref, tied to context)
                     "handles": [],
+                    "insts_keys": set(),
                     "uuid": xclbin_uuid,
                 }
                 self._context_cache[context_key] = entry
@@ -676,12 +729,15 @@ class CachedXRTRuntime(XRTHostRuntime):
                         insts,
                         flags=pyxrt.bo.cacheable,
                         group_id=group_id,
+                        xrt_device=self._device,
                     ).buffer_object()
 
                     insts_entry = {
                         "insts_bo": insts_bo,
+                        "owner_entry": entry,
                     }
                     self._insts_cache[insts_key] = insts_entry
+                    entry["insts_keys"].add(insts_key)
 
             kernel_handle = CachedXRTKernelHandle(
                 kernel, xclbin, context, insts, insts_bo

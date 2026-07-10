@@ -1,4 +1,4 @@
-# Copyright (C) 2022, Advanced Micro Devices, Inc.
+# Copyright (C) 2022 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 from dataclasses import dataclass
 import inspect
@@ -36,7 +36,6 @@ from .._mlir_libs._aie import (
     generate_control_packets,
     translate_npu_to_binary,
     register_dialect,
-    translate_aie_vec_to_cpp,
     translate_mlir_to_llvmir,
     transaction_binary_to_mlir,
     tile_like_is_core_tile,
@@ -89,6 +88,10 @@ class npu_write_rtp(NpuWriteRTPOp):
         buff_name = buffer
         if isinstance(buffer, BufferOp):
             buff_name = buffer.sym_name.value
+        # `value` is an SSA i32 operand; materialize a constant from a plain int
+        # while still accepting a Value for runtime-parameterized sequences.
+        if isinstance(value, int):
+            value = constant(value, T.i32())
         super().__init__(buffer=buff_name, index=index, value=value, loc=loc, ip=ip)
 
 
@@ -646,7 +649,7 @@ def trace_start_config(name, *, loc=None, ip=None):
 def trace_host_config(
     buffer_size,
     *,
-    arg_idx=4,
+    reuse_output_buffer=False,
     routing=TraceShimRouting.Single,
     egress_shim_col=0,
     loc=None,
@@ -659,7 +662,7 @@ def trace_host_config(
             raise ValueError(f"Unknown routing strategy: {routing}.")
     return TraceHostConfigOp(
         buffer_size=buffer_size,
-        arg_idx=arg_idx,
+        reuse_output_buffer=reuse_output_buffer,
         routing=routing,
         egress_shim_col=egress_shim_col,
         loc=loc,

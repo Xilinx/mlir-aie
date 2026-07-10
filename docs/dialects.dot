@@ -1,6 +1,10 @@
+// Copyright (C) 2022 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 digraph G {
-  // Note: Remember to run the circt/utils/update-docs-dialects.sh script after
-  // modifying this file to regenerate the .svg and .png renders of the graph.
+  // Note: the .svg and .png renders of this graph are regenerated from this
+  // file by the Generate GitHub Pages workflow (.github/workflows/generateDocs.yml)
+  // via `dot -Tpng` / `dot -Tsvg`. To preview locally, run those commands yourself.
   rankdir = TB
   splines=spline
   node [shape=box style=filled fillcolor="white"]
@@ -20,8 +24,8 @@ digraph G {
     node [fillcolor="#f5edbc"]
     label = "mlir_aie"
 
-   { rank = same; AIE [URL="https://circt.llvm.org/docs/Dialects/FSM/"]
-    AIEVec [URL="https://circt.llvm.org/docs/Dialects/FSM/"] }
+   { rank = same; AIE [URL="AIEDialect.html"]
+    AIEVec [URL="AIEVecDialect.html"] }
   }
 
   subgraph input_formats {

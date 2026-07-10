@@ -1,4 +1,8 @@
 #!/usr/bin/env bash
+
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 set -eux
 
 # Match both older NPUs ("AMD NPU Device") and newer Strix NPUs ("Neural Processing Unit")

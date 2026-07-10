@@ -1,10 +1,7 @@
 //===- aiecc.cpp ------------------------------------------------*- C++ -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -47,6 +44,7 @@
 #include "llvm/Support/Process.h"
 #include "llvm/Support/Program.h"
 #include "llvm/Support/SourceMgr.h"
+#include "llvm/Support/ThreadPool.h"
 #include "llvm/Support/ToolOutputFile.h"
 #include "llvm/Support/raw_ostream.h"
 
@@ -110,7 +108,6 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
-#include <future>
 #include <iomanip>
 #include <map>
 #include <memory>
@@ -328,6 +325,10 @@ static cl::opt<bool> dryRun("n",
                             cl::desc("Dry run mode (don't execute commands)"),
                             cl::init(false), cl::cat(aieCompilerOptions));
 
+// Default true (enabled by #2549). Kept in sync with the
+// aie-objectFifo-stateful-transform pass-level default (AIEPasses.td) so the
+// lowering a design gets is the same whether it goes through aiecc or a
+// standalone `aie-opt` run.
 static cl::opt<bool> dynamicObjFifos("dynamic-objFifos",
                                      cl::desc("Use dynamic object FIFOs"),
                                      cl::init(true),
@@ -403,8 +404,8 @@ static cl::opt<bool> keepLoc(
 static cl::opt<unsigned> numThreads(
     "j", cl::Prefix,
     cl::desc("Number of parallel threads for core compilation (0 = auto-detect "
-             "based on CPU count, default: 1 for sequential)"),
-    cl::init(1), cl::cat(aieCompilerOptions));
+             "based on CPU count, default: 0)"),
+    cl::init(0), cl::cat(aieCompilerOptions));
 
 static cl::alias numThreadsLong("nthreads", cl::desc("Alias for -j"),
                                 cl::aliasopt(numThreads),
@@ -1469,8 +1470,7 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
   }
 
   // Step 1: Convert vector to aievec (this is a pipeline, not a single pass)
-  // Only add for AIE2 and later targets - AIE1 doesn't support
-  // target-backend=llvmir
+  // Only add for AIE2 and later targets
   // NOTE: Use parsePassPipeline instead of buildConvertVectorToAIEVec because
   // ConvertVectorToAIEVecOptions only propagates aie-target to its sub-pipeline
   // options (canonicalize, lower, optimize) through parseFromString, not
@@ -1481,7 +1481,6 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
       lowerTarget == "aie2p") {
     std::string vecPipeline =
         "convert-vector-to-aievec{aie-target=" + lowerTarget +
-        " target-backend=llvmir" +
         (bf16Emulation ? " bf16-emulation=true" : "") + "}";
     if (failed(parsePassPipeline(vecPipeline, pm))) {
       llvm::errs() << "Error: Failed to parse convert-vector-to-aievec "
@@ -1558,8 +1557,12 @@ static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
 
   devicePm2.addPass(xilinx::AIE::createAIEVectorTransferLoweringPass());
 
-  // Step 5: Convert SCF to CF (module-level pass)
-  pm.addPass(createSCFToControlFlowPass());
+  // Step 5: Convert SCF to CF (module-level pass).
+  // Uses the runtime-sequence-aware lowering rather than the generic
+  // convert-scf-to-cf: scf inside an aie.runtime_sequence is left intact (it
+  // is NoTerminator and lowered to a flat NPU instruction stream by its own
+  // path), while core/host scf is lowered to cf as usual.
+  pm.addPass(xilinx::AIEX::createAIESCFToControlFlowPass());
 
   if (verbose) {
     llvm::outs() << "Running resource allocation pipeline in-memory "
@@ -1642,8 +1645,14 @@ static LogicalResult runNpuLoweringPipeline(ModuleOp moduleOp,
     OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
     devicePm.addPass(xilinx::AIEX::createAIEMaterializeBDChainsPass());
     devicePm.addPass(xilinx::AIEX::createAIESubstituteShimDMAAllocationsPass());
-    devicePm.addPass(xilinx::AIEX::createAIEAssignRuntimeSequenceBDIDsPass());
+    // Unroll constant-trip runtime-sequence loops first so BD-ID allocation
+    // runs on straight-line IR (no back-edges): a task freed a later iteration
+    // becomes N distinct configures, and ordinary liveness-based allocation
+    // recycles their ids. Runtime-bound loops are left rolled for the dynamic
+    // path. Canonicalize folds the constants unrolling exposes before alloc.
+    devicePm.addPass(xilinx::AIEX::createAIEUnrollRuntimeSequenceLoopsPass());
     devicePm.addPass(createCanonicalizerPass());
+    devicePm.addPass(xilinx::AIEX::createAIEAssignRuntimeSequenceBDIDsPass());
     devicePm.addPass(xilinx::AIEX::createAIEDMATasksToNPUPass());
     devicePm.addPass(xilinx::AIEX::createAIEDmaToNpuPass());
     devicePm.addPass(xilinx::AIEX::createAIELowerSetLockPass());
@@ -2018,6 +2027,11 @@ struct CoreCompilationResult {
 /// - 'nuw' flag on getelementptr (inferred by ConstantFolding/InstCombine)
 /// - 'nocreateundeforpoison' attribute (with any trailing whitespace)
 /// - 'inf'/'-inf'/'nan' float-literal keywords (rewritten to hex form)
+/// Also strips, for codegen quality rather than parsing:
+/// - ', align <N>' attributes. Retaining them makes Peano's capped-O1 opt skip
+///   vectorizing the matmul reduction loop, scalarizing it into ~10x more
+///   program memory and overflowing AIE core memory. Do not remove without
+///   confirming the i8 matmul still fits program memory.
 static std::string downgradeIRForPeano(StringRef ir) {
   std::string result = ir.str();
   auto replaceAll = [&](StringRef from, StringRef to) {
@@ -2064,6 +2078,43 @@ static std::string downgradeIRForPeano(StringRef ir) {
   replaceTypedLiteral("double -inf", "double 0xFFF0000000000000");
   replaceTypedLiteral("double inf", "double 0x7FF0000000000000");
   replaceTypedLiteral("double nan", "double 0x7FF8000000000000");
+  // Bare inf/nan literals in phi instructions: LLVM 23
+  // (llvm/llvm-project@41c214f0b115, 2026-05-07,
+  // https://github.com/llvm/llvm-project/pull/190649) omits the type prefix for
+  // infinity/NaN constants that appear as phi operands, e.g.
+  //   phi float [ %a, %bb ], [ -inf, %entry ]
+  //   phi float [ %x, %bb1 ], [ %y, %bb2 ], [ -inf, %entry ]
+  // Peano's LLVM 21 does not recognise the bare 'inf'/'nan' keywords and
+  // requires the double-widened hex form.
+  // replaceTypedLiteral() is intentionally not used here: it checks that the
+  // character *before* the match is not an identifier char, which would skip
+  // the ", -inf" pattern when the preceding operand ends with an identifier
+  // character (e.g. "%x, -inf"). Instead, check token boundaries around the
+  // bare literal itself: require a non-identifier char before '-'/'i'/'n' and
+  // a non-identifier char after 'f'/'n'.
+  {
+    auto rewriteBareLiteral = [&](StringRef from, StringRef to) {
+      size_t pos = 0;
+      while ((pos = result.find(from.data(), pos, from.size())) !=
+             std::string::npos) {
+        bool okBefore =
+            pos == 0 ||
+            !isIdentChar(static_cast<unsigned char>(result[pos - 1]));
+        size_t after = pos + from.size();
+        bool okAfter = after >= result.size() ||
+                       !isIdentChar(static_cast<unsigned char>(result[after]));
+        if (okBefore && okAfter) {
+          result.replace(pos, from.size(), to.data(), to.size());
+          pos += to.size();
+        } else {
+          pos += from.size();
+        }
+      }
+    };
+    rewriteBareLiteral("-inf", "0xFFF0000000000000");
+    rewriteBareLiteral("inf", "0x7FF0000000000000");
+    rewriteBareLiteral("nan", "0x7FF8000000000000");
+  }
   // Strip 'nocreateundeforpoison' and any trailing whitespace: current Peano
   // LLVM cannot parse this attribute.
   const std::string nocreate = "nocreateundeforpoison";
@@ -2073,6 +2124,236 @@ static std::string downgradeIRForPeano(StringRef ir) {
     while (end < result.size() && (result[end] == ' ' || result[end] == '\t'))
       ++end;
     result.erase(pos, end - pos);
+  }
+  // Strip ', align <N>' attributes (matches old Python
+  // drop_alignment_for_peano). Retaining align attributes causes Peano's
+  // capped-O1 opt to skip vectorizing the matmul K-loop, scalarizing it into
+  // ~10x more program memory and overflowing AIE core memory.
+  const std::string alignPat = ", align ";
+  pos = 0;
+  while ((pos = result.find(alignPat, pos)) != std::string::npos) {
+    size_t end = pos + alignPat.size();
+    while (end < result.size() && result[end] >= '0' && result[end] <= '9')
+      ++end;
+    if (end > pos + alignPat.size())
+      result.erase(pos, end - pos);
+    else
+      pos = end;
+  }
+  // Rewrite 'f0x<8hex>' typed float literals to the double-widened '0x<16hex>'
+  // form that Peano's LLVM 21 opt can parse.
+  // Introduced by llvm/llvm-project@41c214f0b115 (2026-05-07,
+  // "[AsmWriter] Change the output syntax of floating-point literals.",
+  // https://github.com/llvm/llvm-project/pull/190649): "the hexadecimal
+  // output generally changes to f0x... notation, and is used when 6 decimal
+  // digits are insufficient to accurately represent the number."
+  // Older LLVM (including Peano's LLVM 21) only accepts float constants
+  // widened to double, written as 0x<16 hex digits>.
+  // Only match at token boundaries: the character before 'f' must not be an
+  // identifier character (to avoid matching inside %f0xDEAD or similar), and
+  // the character after the 8 hex digits must not be a hex digit (to avoid
+  // partial matches against longer hex strings).
+  {
+    const std::string f0xPfx = "f0x";
+    pos = 0;
+    while ((pos = result.find(f0xPfx, pos)) != std::string::npos) {
+      // Require a non-identifier, non-sigil character before 'f' to avoid
+      // matching inside LLVM IR value names like '%f0xDEAD' or '@f0xBEEF'.
+      if (pos > 0 && (isIdentChar(result[pos - 1]) || result[pos - 1] == '%' ||
+                      result[pos - 1] == '@')) {
+        pos += f0xPfx.size();
+        continue;
+      }
+      size_t hexStart = pos + f0xPfx.size();
+      size_t hexEnd = hexStart;
+      while (hexEnd < result.size() && hexEnd < hexStart + 8 &&
+             std::isxdigit(static_cast<unsigned char>(result[hexEnd])))
+        ++hexEnd;
+      // Require exactly 8 hex digits followed by a non-hex-digit boundary.
+      bool trailingOk =
+          hexEnd >= result.size() ||
+          !std::isxdigit(static_cast<unsigned char>(result[hexEnd]));
+      if (hexEnd - hexStart == 8 && trailingOk) {
+        // Decode the 32-bit float bit pattern and re-encode as a double so
+        // that Peano's LLVM 21 opt can parse the resulting hex literal.
+        uint32_t fbits = static_cast<uint32_t>(
+            std::stoul(result.substr(hexStart, 8), nullptr, 16));
+        float fval;
+        std::memcpy(&fval, &fbits, sizeof(fval));
+        double dval = static_cast<double>(fval);
+        uint64_t dbits;
+        std::memcpy(&dbits, &dval, sizeof(dval));
+        // Format as "0x" followed by 16 uppercase hex digits.
+        std::string replacement = "0x";
+        for (int shift = 60; shift >= 0; shift -= 4)
+          replacement += "0123456789ABCDEF"[(dbits >> shift) & 0xFu];
+        result.replace(pos, hexEnd - pos, replacement);
+        pos += replacement.size();
+      } else {
+        pos = hexEnd;
+      }
+    }
+  }
+  // Rewrite decimal bfloat16 literals ('bfloat N.NNe+NN') to the hexadecimal
+  // form ('bfloat 0xR<4hex>') that Peano's LLVM 21 opt can parse.
+  // Also introduced by llvm/llvm-project@41c214f0b115 (2026-05-07,
+  // "[AsmWriter] Change the output syntax of floating-point literals.",
+  // https://github.com/llvm/llvm-project/pull/190649): "extends the base
+  // decimal output literal to support non-double types." Peano's LLVM 21 can
+  // only parse bfloat constants in the 0xR-prefixed bit-exact hex form. The
+  // conversion uses round-to-nearest-even so that the encoded bits match the
+  // original bfloat16 constant exactly.
+  {
+    // Match "bfloat" followed by a decimal number (not already 0x-prefixed).
+    const std::string bfPfx = "bfloat ";
+    pos = 0;
+    while ((pos = result.find(bfPfx, pos)) != std::string::npos) {
+      size_t numStart = pos + bfPfx.size();
+      // Skip if this is already a hex constant (0x / 0xR / 0xH …).
+      if (numStart + 1 < result.size() && result[numStart] == '0' &&
+          result[numStart + 1] == 'x') {
+        pos = numStart;
+        continue;
+      }
+      // Collect an optional leading '-' and then digits/dot/exponent chars.
+      size_t numEnd = numStart;
+      if (numEnd < result.size() && result[numEnd] == '-')
+        ++numEnd;
+      // Must start with a digit.
+      if (numEnd >= result.size() ||
+          !std::isdigit(static_cast<unsigned char>(result[numEnd]))) {
+        pos = numStart;
+        continue;
+      }
+      while (numEnd < result.size() &&
+             (std::isdigit(static_cast<unsigned char>(result[numEnd])) ||
+              result[numEnd] == '.' || result[numEnd] == 'e' ||
+              result[numEnd] == 'E' || result[numEnd] == '+' ||
+              result[numEnd] == '-'))
+        ++numEnd;
+      std::string numStr = result.substr(numStart, numEnd - numStart);
+      // Parse as float32 and convert to bfloat16 via round-to-nearest-even.
+      // bfloat16 shares the float32 exponent; its 16 bits are the top 16 bits
+      // of float32 (after RNE rounding).
+      char *endp = nullptr;
+      float fval = std::strtof(numStr.c_str(), &endp);
+      // Require that strtof consumed the *entire* numStr; if it stopped early
+      // (e.g. on an unexpected character) we must not rewrite the token using
+      // a partially-parsed value.
+      if (!endp || endp != numStr.c_str() + numStr.size()) {
+        pos = numEnd;
+        continue;
+      }
+      uint32_t f32bits;
+      std::memcpy(&f32bits, &fval, sizeof(f32bits));
+      // Round-to-nearest-even: add 0x7FFF + the LSB of the bfloat16 position.
+      uint32_t lsb = (f32bits >> 16) & 1u;
+      uint16_t bf16bits =
+          static_cast<uint16_t>((f32bits + 0x7FFFu + lsb) >> 16);
+      // Format as "bfloat 0xR" followed by 4 uppercase hex digits.
+      std::string replacement = "bfloat 0xR";
+      for (int shift = 12; shift >= 0; shift -= 4)
+        replacement += "0123456789ABCDEF"[(bf16bits >> shift) & 0xFu];
+      result.replace(pos, numEnd - pos, replacement);
+      pos += replacement.size();
+    }
+  }
+  // Second pass: rewrite bare decimal bfloat constants that appear without an
+  // explicit type prefix (e.g. 'fmul bfloat %x, 1.445310e+00'). In such
+  // instructions LLVM 23 omits the type keyword before the constant operand;
+  // Peano's LLVM 21 cannot parse the decimal form in this context either.
+  // Strategy: scan line-by-line; for any line whose instruction type is
+  // 'bfloat', convert every bare decimal float operand on that line.
+  {
+    auto convertDecimalBf = [&](uint32_t f32bits) -> std::string {
+      uint32_t lsb = (f32bits >> 16) & 1u;
+      uint16_t bf16bits =
+          static_cast<uint16_t>((f32bits + 0x7FFFu + lsb) >> 16);
+      std::string r = "0xR";
+      for (int sh = 12; sh >= 0; sh -= 4)
+        r += "0123456789ABCDEF"[(bf16bits >> sh) & 0xFu];
+      return r;
+    };
+    // We need to process line-by-line, so work on a copy split into lines.
+    std::string out;
+    out.reserve(result.size());
+    size_t lineStart = 0;
+    while (lineStart <= result.size()) {
+      size_t lineEnd = result.find('\n', lineStart);
+      bool hasNewline = (lineEnd != std::string::npos);
+      if (!hasNewline)
+        lineEnd = result.size();
+      std::string line = result.substr(lineStart, lineEnd - lineStart);
+      // Only process lines where 'bfloat' appears as a type (i.e., the word
+      // 'bfloat' is in the instruction line, not as part of an identifier).
+      // Simple heuristic: look for " bfloat " or " bfloat," or "= bfloat ".
+      bool hasBfloatType = line.find(" bfloat ") != std::string::npos ||
+                           line.find(" bfloat,") != std::string::npos ||
+                           line.find("= bfloat\n") != std::string::npos;
+      if (hasBfloatType) {
+        // Scan for bare decimal float literals: must be preceded by ", " (or
+        // "( ") and start with an optional '-' then a digit.
+        std::string newLine;
+        newLine.reserve(line.size());
+        size_t lp = 0;
+        while (lp < line.size()) {
+          // Look for ", " or "( " before a potential decimal.
+          size_t sep = line.find(", ", lp);
+          size_t paren = line.find("( ", lp);
+          size_t next =
+              (sep < paren ? sep : paren); // take whichever comes first
+          if (next == std::string::npos) {
+            newLine += line.substr(lp);
+            break;
+          }
+          size_t afterSep = next + 2; // skip ", " or "( "
+          newLine += line.substr(lp, afterSep - lp);
+          lp = afterSep;
+          // Try to parse a decimal float starting here.
+          size_t numStart = lp;
+          size_t numEnd = numStart;
+          if (numEnd < line.size() && line[numEnd] == '-')
+            ++numEnd;
+          if (numEnd >= line.size() ||
+              !std::isdigit(static_cast<unsigned char>(line[numEnd]))) {
+            continue; // not a decimal, keep scanning
+          }
+          while (numEnd < line.size() &&
+                 (std::isdigit(static_cast<unsigned char>(line[numEnd])) ||
+                  line[numEnd] == '.' || line[numEnd] == 'e' ||
+                  line[numEnd] == 'E' || line[numEnd] == '+' ||
+                  line[numEnd] == '-'))
+            ++numEnd;
+          std::string numStr = line.substr(numStart, numEnd - numStart);
+          // Skip if it already looks like an integer (no '.', 'e', or 'E').
+          bool isFloat = numStr.find('.') != std::string::npos ||
+                         numStr.find('e') != std::string::npos ||
+                         numStr.find('E') != std::string::npos;
+          if (!isFloat) {
+            newLine += numStr;
+            lp = numEnd;
+            continue;
+          }
+          char *ep = nullptr;
+          float fv = std::strtof(numStr.c_str(), &ep);
+          if (!ep || ep != numStr.c_str() + numStr.size()) {
+            newLine += numStr;
+            lp = numEnd;
+            continue;
+          }
+          uint32_t f32bits;
+          std::memcpy(&f32bits, &fv, sizeof(f32bits));
+          newLine += convertDecimalBf(f32bits);
+          lp = numEnd;
+        }
+        line = std::move(newLine);
+      }
+      out += line;
+      if (hasNewline)
+        out += '\n';
+      lineStart = lineEnd + (hasNewline ? 1 : result.size() + 1);
+    }
+    result = std::move(out);
   }
   return result;
 }
@@ -2260,8 +2541,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     SmallString<128> chessHackPath(tmpDirName);
     sys::path::append(chessHackPath,
                       deviceName.str() + "_core_" + std::to_string(core.col) +
-                          "_" + std::to_string(core.col) + "_" +
-                          std::to_string(core.row) + ".chesshack.ll");
+                          "_" + std::to_string(core.row) + ".chesshack.ll");
     {
       std::error_code ec;
       raw_fd_ostream chessHackFile(chessHackPath, ec);
@@ -2722,7 +3002,7 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
 }
 
 /// Compile all cores in a device, optionally in parallel.
-/// When numThreads > 1, cores are compiled in parallel using std::async.
+/// When numThreads > 1, cores are compiled in parallel using DefaultThreadPool.
 /// Each parallel task gets its own MLIRContext to avoid threading issues.
 static LogicalResult
 compileCores(MLIRContext &context, ModuleOp moduleOp, Operation *deviceOp,
@@ -2779,15 +3059,67 @@ compileCores(MLIRContext &context, ModuleOp moduleOp, Operation *deviceOp,
     return success();
   }
 
-  // Parallel compilation using std::async
+  // Parallel compilation using DefaultThreadPool
   // We need to serialize the module to string and deserialize in each thread
   // because MLIRContext is not thread-safe for multi-threaded mutation.
 
-  // First, serialize the module to string for parallel workers
-  std::string moduleStr;
+  // Each parallel worker re-parses the module in its own MLIRContext and the
+  // per-core lowering then keeps only its own core, discarding everything else.
+  // Serializing the whole multi-core, multi-device module once and handing that
+  // same string to every worker is O(N) memory per worker for an N-core device,
+  // and the string also carries the runtime sequences, which the per-core
+  // lowering never touches but which dominate the module text once the host DMA
+  // program is unrolled (tens of thousands of dma_bd ops). For large designs
+  // the peak memory and the repeated full-module clones become the dominant
+  // cost.
+  //
+  // Instead, build a stripped base module once, then derive a small per-core
+  // slice from it. The stripped base drops (a) the runtime sequences (host-side
+  // DMA orchestration, unused by per-core lowering) and (b) every other device
+  // (a core only references its own device's tiles/buffers/locks/objectfifos).
+  // Each per-core slice clones that small base and erases the other cores.
+  // Cloning the stripped base instead of the full module makes the per-core
+  // clones cheap, and the resulting slice strings are byte-identical to the old
+  // path, so the emitted object/ELF is unchanged. Slicing runs here (serial,
+  // one clone live at a time, so peak memory stays bounded) before the parallel
+  // fan-out.
+  OwningOpRef<ModuleOp> strippedBase = moduleOp.clone();
   {
-    llvm::raw_string_ostream os(moduleStr);
-    moduleOp->print(os);
+    // Strip the runtime sequences (host-side, unused by per-core lowering)...
+    SmallVector<xilinx::AIE::RuntimeSequenceOp> seqs;
+    strippedBase->walk(
+        [&](xilinx::AIE::RuntimeSequenceOp s) { seqs.push_back(s); });
+    for (auto s : seqs)
+      s.erase();
+    // ...and every other device. compileCores is per-device and a per-core
+    // object only references its own device's tiles/buffers/locks/objectfifos,
+    // never a sibling device, so dropping the other device shells shrinks each
+    // per-core slice further without changing the emitted object/ELF.
+    SmallVector<xilinx::AIE::DeviceOp> otherDevices;
+    strippedBase->walk([&](xilinx::AIE::DeviceOp d) {
+      if (d.getSymName() != deviceName)
+        otherDevices.push_back(d);
+    });
+    for (auto d : otherDevices)
+      d.erase();
+  }
+  std::map<std::pair<int, int>, std::string> coreModuleStrs;
+  for (const auto &core : cores) {
+    OwningOpRef<ModuleOp> slice = strippedBase->clone();
+    SmallVector<xilinx::AIE::CoreOp> otherCores;
+    slice->walk([&](xilinx::AIE::CoreOp c) {
+      auto t = dyn_cast<xilinx::AIE::TileOp>(c.getTile().getDefiningOp());
+      if (!t || t.getCol() != core.col || t.getRow() != core.row)
+        otherCores.push_back(c);
+    });
+    for (auto c : otherCores)
+      c.erase();
+    std::string s;
+    {
+      llvm::raw_string_ostream os(s);
+      slice->print(os);
+    }
+    coreModuleStrs[{core.col, core.row}] = std::move(s);
   }
 
   // Get the dialect registry to use for parallel contexts
@@ -2796,92 +3128,55 @@ compileCores(MLIRContext &context, ModuleOp moduleOp, Operation *deviceOp,
   xilinx::registerAllDialects(registry);
   mlir::registerAllExtensions(registry);
 
-  // Thread-safe results storage
   std::mutex resultsMutex;
   std::atomic<bool> hasFailure{false};
 
-  // Create futures for parallel tasks
-  std::vector<std::future<void>> futures;
-  futures.reserve(cores.size());
-
-  // Use a semaphore-like pattern with atomic counter for thread limiting
-  std::atomic<unsigned> activeThreads{0};
+  llvm::DefaultThreadPool pool(llvm::hardware_concurrency(nThreads));
 
   for (const auto &core : cores) {
-    // Wait if we've reached the thread limit
-    while (activeThreads.load() >= nThreads) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
+    pool.async([&registry, &coreModuleStrs, deviceName = deviceName.str(),
+                tmpDirName = tmpDirName.str(), aieTarget = aieTarget.str(),
+                core, &resultsMutex, &elfPaths, &hasFailure]() {
+      if (hasFailure.load())
+        return;
 
-    // Check if any thread has failed
-    if (hasFailure.load()) {
-      break;
-    }
+      MLIRContext threadContext;
+      threadContext.appendDialectRegistry(registry);
+      threadContext.loadAllAvailableDialects();
+      mlir::registerBuiltinDialectTranslation(threadContext);
+      mlir::registerLLVMDialectTranslation(threadContext);
+      xilinx::xllvm::registerXLLVMDialectTranslation(threadContext);
 
-    activeThreads++;
+      ParserConfig parseConfig(&threadContext);
+      OwningOpRef<ModuleOp> threadModule = parseSourceString<ModuleOp>(
+          coreModuleStrs.at({core.col, core.row}), parseConfig);
 
-    // Create task for this core
-    futures.push_back(std::async(
-        std::launch::async,
-        [&registry, &moduleStr, deviceName = deviceName.str(),
-         tmpDirName = tmpDirName.str(), aieTarget = aieTarget.str(), core,
-         &resultsMutex, &elfPaths, &hasFailure, &activeThreads]() {
-          // Each thread creates its own MLIRContext
-          MLIRContext threadContext;
-          threadContext.appendDialectRegistry(registry);
-          threadContext.loadAllAvailableDialects();
+      if (!threadModule) {
+        std::lock_guard<std::mutex> lock(resultsMutex);
+        llvm::errs() << "Error: Failed to parse module for core (" << core.col
+                     << ", " << core.row << ")\n";
+        hasFailure.store(true);
+        return;
+      }
 
-          // Register LLVM IR translation dialects
-          mlir::registerBuiltinDialectTranslation(threadContext);
-          mlir::registerLLVMDialectTranslation(threadContext);
-          xilinx::xllvm::registerXLLVMDialectTranslation(threadContext);
+      std::string elfPath;
+      if (failed(compileCore(threadContext, *threadModule, deviceName, core,
+                             tmpDirName, aieTarget, elfPath))) {
+        hasFailure.store(true);
+        return;
+      }
 
-          // Parse the module in this thread's context
-          ParserConfig parseConfig(&threadContext);
-          OwningOpRef<ModuleOp> threadModule =
-              parseSourceString<ModuleOp>(moduleStr, parseConfig);
-
-          if (!threadModule) {
-            {
-              std::lock_guard<std::mutex> lock(resultsMutex);
-              llvm::errs() << "Error: Failed to parse module for core ("
-                           << core.col << ", " << core.row << ")\n";
-            }
-            hasFailure.store(true);
-            activeThreads--;
-            return;
-          }
-
-          // Compile the core (note: compileCore may emit its own
-          // diagnostics to stderr which can interleave with other threads)
-          std::string elfPath;
-          if (failed(compileCore(threadContext, *threadModule, deviceName, core,
-                                 tmpDirName, aieTarget, elfPath))) {
-            hasFailure.store(true);
-            activeThreads--;
-            return;
-          }
-
-          // Store result
-          if (!elfPath.empty()) {
-            std::lock_guard<std::mutex> lock(resultsMutex);
-            elfPaths[{core.col, core.row}] = elfPath;
-          }
-
-          activeThreads--;
-        }));
+      if (!elfPath.empty()) {
+        std::lock_guard<std::mutex> lock(resultsMutex);
+        elfPaths[{core.col, core.row}] = elfPath;
+      }
+    });
   }
 
-  // Wait for all tasks to complete
-  for (auto &future : futures) {
-    future.wait();
-  }
+  pool.wait();
 
-  // hasFailure is atomic — multiple threads may set it concurrently without
-  // a race. We report failure if any core compilation failed.
-  if (hasFailure.load()) {
+  if (hasFailure.load())
     return failure();
-  }
 
   return success();
 }
@@ -3489,8 +3784,8 @@ static LogicalResult generateMemTopologyJson(StringRef jsonPath) {
   return writeJsonToFile(jsonPath, llvm::json::Value(std::move(memData)));
 }
 
-static LogicalResult generateKernelsJson(StringRef jsonPath,
-                                         StringRef devName) {
+static LogicalResult generateKernelsJson(StringRef jsonPath, StringRef devName,
+                                         int numHostBOs) {
   llvm::json::Array arguments;
   arguments.push_back(llvm::json::Object{{"name", "opcode"},
                                          {"address-qualifier", "SCALAR"},
@@ -3507,7 +3802,7 @@ static LogicalResult generateKernelsJson(StringRef jsonPath,
                                          {"offset", "0x10"}});
 
   int offset = 0x14;
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < numHostBOs; i++) {
     std::string offsetHex = llvm::formatv("0x{0}", llvm::utohexstr(offset));
     arguments.push_back(llvm::json::Object{{"name", ("bo" + Twine(i)).str()},
                                            {"memory-connection", "HOST"},
@@ -3795,26 +4090,40 @@ static void assignPdiIds(ModuleOp moduleOp,
 // NPU Instruction Generation
 //===----------------------------------------------------------------------===//
 
-/// Generate NPU instructions from an in-memory module.
-/// This clones the module since NPU lowering is destructive.
+/// Generate NPU instructions from an in-memory module (clones it, since NPU
+/// lowering is destructive). When devName is empty, generate for ALL devices
+/// from a SINGLE whole-module lowering (the O(devices) path used on the
+/// full-ELF / no-expand-load-pdis path): the runtime-sequence materialize pass
+/// and patchPdiIds operate on the whole module independently of which device is
+/// later extracted, so lowering once and translating every device's runtime
+/// sequence is byte-identical to lowering per device. When devName is set, only
+/// that device is emitted.
 static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
                                              StringRef tmpDirName,
-                                             StringRef devName) {
+                                             StringRef devName = "") {
   // Full ELF requires NPU instructions
   if (!generateNpuInsts && !generateFullElf) {
     return success();
   }
 
+  bool allDevices = devName.empty();
+
   if (verbose) {
-    llvm::outs() << "Generating NPU instructions for device: " << devName
-                 << "\n";
+    if (allDevices)
+      llvm::outs() << "Generating NPU instructions for all devices\n";
+    else
+      llvm::outs() << "Generating NPU instructions for device: " << devName
+                   << "\n";
   }
 
   // In dry-run mode, just show what would be done and return
   if (dryRun) {
     if (verbose) {
-      llvm::outs() << "Would generate NPU instructions for device: " << devName
-                   << "\n";
+      if (allDevices)
+        llvm::outs() << "Would generate NPU instructions for all devices\n";
+      else
+        llvm::outs() << "Would generate NPU instructions for device: "
+                     << devName << "\n";
     }
     return success();
   }
@@ -3833,14 +4142,23 @@ static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
 
   // Dump intermediate if requested
   SmallString<128> npuLoweredPath(tmpDirName);
-  sys::path::append(npuLoweredPath, devName.str() + "_npu_lowered.mlir");
+  sys::path::append(npuLoweredPath, allDevices
+                                        ? std::string("all_npu_lowered.mlir")
+                                        : devName.str() + "_npu_lowered.mlir");
   dumpModuleToFile(*clonedModule, npuLoweredPath, "NPU lowered module");
 
   // Step 2: Translate to NPU binary
-  // Find device and generate instructions for each runtime sequence
+  // Generate instructions for each device's runtime sequences. In single-device
+  // mode only the requested device is emitted; in all-devices mode the optional
+  // --device-name filter is honored, otherwise every device.
   LogicalResult result = success();
   for (auto devOp : clonedModule->getOps<xilinx::AIE::DeviceOp>()) {
-    if (devOp.getSymName() != devName) {
+    StringRef curDevName = devOp.getSymName();
+    if (allDevices) {
+      if (!deviceName.empty() && curDevName != deviceName) {
+        continue;
+      }
+    } else if (curDevName != devName) {
       continue;
     }
 
@@ -3855,7 +4173,7 @@ static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
 
       StringRef seqName = seq.getSymName();
       std::string outputFileName =
-          formatString(instsName, devName.str(), seqName);
+          formatString(instsName, curDevName.str(), seqName);
 
       // Determine output path:
       // - If generateNpuInsts is set, use the filename as-is (relative to cwd)
@@ -3881,7 +4199,7 @@ static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
       std::vector<uint32_t> instructions;
       std::vector<xilinx::AIE::TxnLocEntry> locmap;
       if (failed(xilinx::AIE::AIETranslateNpuToBinary(
-              *clonedModule, instructions, devName, seqName,
+              *clonedModule, instructions, curDevName, seqName,
               keepLoc ? &locmap : nullptr))) {
         llvm::errs() << "Error generating NPU instructions for sequence: "
                      << seqName << "\n";
@@ -3922,7 +4240,8 @@ static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
           return;
         }
         StringRef binBaseName = sys::path::filename(outputPath);
-        xilinx::AIE::emitNpuLocmapJSON(locFile, devName, binBaseName, locmap);
+        xilinx::AIE::emitNpuLocmapJSON(locFile, curDevName, binBaseName,
+                                       locmap);
         if (verbose)
           llvm::outs() << "Wrote " << locmap.size()
                        << " locmap entries to: " << locmapPath << "\n";
@@ -4003,6 +4322,41 @@ static LogicalResult generateTransactionOutput(ModuleOp moduleOp,
   }
 
   return success();
+}
+
+//===----------------------------------------------------------------------===//
+// Host-buffer count helpers (shared by ctrl-packet index + kernels.json count)
+//===----------------------------------------------------------------------===//
+
+/// Return the argument count of `dev`'s compiled non-empty runtime_sequence, or
+/// std::nullopt if the device has no matching runtime_sequence with a body.
+/// When
+/// --sequence-name is set, only that sequence is considered (matching the
+/// filtering the instruction/control-packet generation paths apply), so the
+/// count reflects the sequence actually compiled. This is the host-buffer
+/// contract before any ctrl-packet buffer is appended (the ctrlpkt operand is
+/// added later by AIECtrlPacketToDma, outside this count).
+static std::optional<int>
+getRuntimeSequenceArgCount(xilinx::AIE::DeviceOp dev) {
+  for (auto seqOp : dev.getOps<xilinx::AIE::RuntimeSequenceOp>()) {
+    if (!sequenceName.empty() && seqOp.getSymName() != sequenceName)
+      continue;
+    if (!seqOp.getBody().empty())
+      return static_cast<int>(seqOp.getBody().front().getNumArguments());
+  }
+  return std::nullopt;
+}
+
+/// A ctrl-packet reconfig "base" device carries a control-packet shim DMA
+/// allocation (emitted by -aie-generate-column-control-overlay) whose symbol is
+/// prefixed with "ctrlpkt". Its presence means the host passes one extra
+/// control-packet buffer beyond the data buffers.
+static bool deviceUsesControlPackets(xilinx::AIE::DeviceOp dev) {
+  for (auto allocOp : dev.getOps<xilinx::AIE::ShimDMAAllocationOp>()) {
+    if (allocOp.getSymName().starts_with("ctrlpkt"))
+      return true;
+  }
+  return false;
 }
 
 //===----------------------------------------------------------------------===//
@@ -4213,12 +4567,7 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
     if (devOp.getSymName() != devName) {
       continue;
     }
-    for (auto seqOp : devOp.getOps<xilinx::AIE::RuntimeSequenceOp>()) {
-      if (!seqOp.getBody().empty()) {
-        ctrlIdx = seqOp.getBody().front().getNumArguments();
-        break;
-      }
-    }
+    ctrlIdx = getRuntimeSequenceArgCount(devOp).value_or(0);
     break;
   }
 
@@ -4776,10 +5125,100 @@ generateFullElfArtifact(ArrayRef<DeviceElfInfo> deviceInfos,
 // CDO/PDI/xclbin Generation
 //===----------------------------------------------------------------------===//
 
+/// Maximum number of host buffer (boN) arguments a kernel may take.
+///
+/// The NPU firmware only pre-translates the first 5 host buffer addresses from
+/// the host address space into the AIE address space. Buffers beyond that would
+/// be DMA'd from the wrong address -- except AIETargetNPU folds the translation
+/// offset into the DDR address patch for those args (see kDDRAIEAddrOffset), so
+/// designs with more than 5 host buffers work correctly. This cap is therefore
+/// a conservative, verified ceiling rather than a hard hardware limit: host BO
+/// counts up to this value are validated on hardware (see the many_buffers
+/// test). Raise it (and extend the hardware tests) if larger counts are needed
+/// and verified.
+static constexpr int kMaxHostBOs = 16;
+
+/// Minimum number of host buffer (boN) slots every kernel must declare.
+///
+/// The NPU firmware's command-chain handler (xrt::runlist / ERT_CMD_CHAIN)
+/// walks consecutive per-command slots assuming a fixed minimum argument
+/// stride of 5 words. A kernel that declares fewer than 5 boN slots produces
+/// an undersized first slot, so the walker reads the second command from the
+/// wrong offset and the runlist aborts (ERT_CMD_STATE_ABORT). Single-command
+/// launches (the ergonomic kernel(...) call or a 1-element runlist) never walk
+/// to a second slot and so are unaffected -- which is why this only surfaces
+/// for multi-run runlists (e.g. the add_one_two_txn / add_one_two_runlist
+/// tests). Declaring extra slots is harmless: XRT tolerates a kernel declaring
+/// more host BOs than the host passes; under-declaring segfaults (#3248).
+///
+/// aiecc cannot know at compile time whether a kernel will be consumed by a
+/// multi-command runlist, so we always declare at least this many slots to
+/// conform to the firmware chain ABI. Verified on hardware: counts 2/3/4 abort
+/// the two-run runlist, 5 passes. This is a firmware constraint, not an XRT or
+/// mlir-aie bug; the historical hardcoded-5 encoded exactly this contract.
+static constexpr int kMinHostBOs = 5;
+
+/// Last-resort host-buffer (boN) count for a device that has no
+/// runtime_sequence AND no sibling sequence to derive from. Normally a
+/// sequence-less device (e.g. the ctrl-packet reconfig "base" xclbin) gets its
+/// count derived from the sibling "main" device's sequence and threaded in via
+/// the hostBOCountOverride argument to computeNumHostBOs (see the capture at
+/// the device-filter loop in compileAIEModule). This constant only applies when
+/// even that is unavailable. Equal to kMinHostBOs for the same firmware-ABI
+/// reason.
+static constexpr int kNoSequenceHostBOs = kMinHostBOs;
+
+/// Compute the number of host buffer (boN) arguments XRT must declare in
+/// kernels.json for `devName`.
+///
+/// The runtime_sequence's block-argument list is the host-call ABI: argument i
+/// maps to host BO i (after the fixed opcode/instr/ninstr scalars). Every host
+/// buffer -- data, trace, and control-packet -- is a block argument by the time
+/// the sequence is lowered (trace lowering and ctrl-packet-to-dma each append
+/// their buffer as an argument), so the count is simply the lowered sequence's
+/// argument count, floored at kMinHostBOs to satisfy the firmware command-chain
+/// ABI (see kMinHostBOs).
+///
+/// A device with no runtime_sequence of its own (the ctrl-packet reconfig
+/// "base" xclbin) has no operand list to read here, because its sibling "main"
+/// device has already been erased from `moduleOp` by the time this runs. Its
+/// true count is captured before that erase and passed as
+/// `hostBOCountOverride`; when set, it is used directly (still floored). Only
+/// when no override is available does the count fall back to
+/// kNoSequenceHostBOs.
+static FailureOr<int>
+computeNumHostBOs(ModuleOp moduleOp, StringRef devName, StringRef tmpDirName,
+                  std::optional<int> hostBOCountOverride = std::nullopt) {
+  if (hostBOCountOverride)
+    return std::max(kMinHostBOs, *hostBOCountOverride);
+
+  // Lower a private clone so the source module is untouched, then read the
+  // argument count off the lowered runtime_sequence.
+  OwningOpRef<ModuleOp> clonedModule = moduleOp.clone();
+  if (failed(runNpuLoweringPipeline(*clonedModule, tmpDirName)))
+    return failure();
+
+  for (auto devOp : clonedModule->getOps<xilinx::AIE::DeviceOp>()) {
+    if (devOp.getSymName() != devName)
+      continue;
+    if (auto argCount = getRuntimeSequenceArgCount(devOp))
+      return std::max(kMinHostBOs, *argCount);
+    // Device exists but has no runtime_sequence.
+    return kNoSequenceHostBOs;
+  }
+
+  return kNoSequenceHostBOs;
+}
+
 /// Generate CDO/PDI/xclbin artifacts from an in-memory module.
-static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
-                                          StringRef tmpDirName,
-                                          StringRef devName) {
+///
+/// `hostBOCountOverride`, when set, forces the kernels.json host-buffer count
+/// instead of deriving it from this module's runtime_sequence. Used for the
+/// ctrl-packet reconfig "base" device, whose sibling "main" sequence (the real
+/// source of its ABI) has been erased before this runs.
+static LogicalResult
+generateCdoArtifacts(ModuleOp moduleOp, StringRef tmpDirName, StringRef devName,
+                     std::optional<int> hostBOCountOverride = std::nullopt) {
   // Full ELF requires PDI generation
   bool needPdi = generatePdi || generateFullElf;
   if (!generateCdo && !needPdi && !generateXclbin) {
@@ -4800,7 +5239,19 @@ static LogicalResult generateCdoArtifacts(ModuleOp moduleOp,
 
     SmallString<128> kernelsPath(tmpDirName);
     sys::path::append(kernelsPath, devName.str() + "_kernels.json");
-    if (failed(generateKernelsJson(kernelsPath, devName)))
+    FailureOr<int> numHostBOs =
+        computeNumHostBOs(moduleOp, devName, tmpDirName, hostBOCountOverride);
+    if (failed(numHostBOs))
+      return failure();
+    if (*numHostBOs > kMaxHostBOs) {
+      llvm::errs() << "error: device '" << devName << "' has " << *numHostBOs
+                   << " host buffer arguments, which exceeds the maximum "
+                      "supported and verified count of "
+                   << kMaxHostBOs
+                   << ". Reduce the number of host buffer arguments.\n";
+      return failure();
+    }
+    if (failed(generateKernelsJson(kernelsPath, devName, *numHostBOs)))
       return failure();
 
     // Generate partition JSON (with placeholder PDI path in dry-run)
@@ -5331,6 +5782,12 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
   // passes run. This is correct because resource allocation passes operate
   // independently per DeviceOp and do not share state across devices.
   OwningOpRef<ModuleOp> unfilteredModule;
+  // The ctrl-packet reconfig "base" device has no runtime_sequence of its own;
+  // its host-buffer ABI is defined by the sibling "main" device's sequence. We
+  // capture that count here, BEFORE the sibling is erased below, and thread it
+  // into kernels.json generation (generateCdoArtifacts) so base declares the
+  // exact number of host buffers instead of falling back to kNoSequenceHostBOs.
+  std::optional<int> baseHostBOCountOverride;
   if (!deviceName.empty()) {
     if (generateCtrlPkt) {
       unfilteredModule = moduleOp.clone();
@@ -5342,9 +5799,34 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
       }
     }
     SmallVector<xilinx::AIE::DeviceOp> toErase;
+    xilinx::AIE::DeviceOp keptDevice;
     for (auto deviceOp : moduleOp.getOps<xilinx::AIE::DeviceOp>()) {
       if (deviceOp.getSymName() != deviceName) {
         toErase.push_back(deviceOp);
+      } else {
+        keptDevice = deviceOp;
+      }
+    }
+    // Derive the kept device's host-BO count from the unique sibling sequence
+    // only when the kept device has none of its own (e.g. the ctrl-packet base
+    // xclbin). The count is the sibling's data args plus one control-packet
+    // buffer when the kept device carries a ctrlpkt shim allocation, matching
+    // the ctrlIdx + 1 contract in generateControlPacketOutput.
+    if (keptDevice && !getRuntimeSequenceArgCount(keptDevice)) {
+      std::optional<int> siblingArgCount;
+      bool uniqueSibling = true;
+      for (auto deviceOp : toErase) {
+        if (auto argCount = getRuntimeSequenceArgCount(deviceOp)) {
+          if (siblingArgCount) {
+            uniqueSibling = false;
+            break;
+          }
+          siblingArgCount = argCount;
+        }
+      }
+      if (siblingArgCount && uniqueSibling) {
+        baseHostBOCountOverride =
+            *siblingArgCount + (deviceUsesControlPackets(keptDevice) ? 1 : 0);
       }
     }
     for (auto deviceOp : toErase) {
@@ -5469,9 +5951,19 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
     }
 
     // Generate NPU instructions from in-memory module.
-    if (!generateCtrlPkt &&
-        failed(generateNpuInstructions(moduleOp, tmpDirName, devName))) {
-      return failure();
+    // (this runs runNpuLoweringPipeline = the runtime-sequence MATERIALIZE
+    // pass)
+    //
+    // On the full-ELF / no-expand-load-pdis path, NPU instructions for all
+    // devices are generated together after this loop by a single call to
+    // generateNpuInstructions (no devName); skip the per-device call here.
+    bool deferNpuInstsToOncePass =
+        generateFullElf && !expandLoadPdis && !generateCtrlPkt;
+    if (!deferNpuInstsToOncePass) {
+      if (!generateCtrlPkt &&
+          failed(generateNpuInstructions(moduleOp, tmpDirName, devName))) {
+        return failure();
+      }
     }
 
     // Generate transaction MLIR output if requested.
@@ -5485,7 +5977,8 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
     }
 
     // Generate CDO/PDI/xclbin from in-memory module
-    if (failed(generateCdoArtifacts(moduleOp, tmpDirName, devName))) {
+    if (failed(generateCdoArtifacts(moduleOp, tmpDirName, devName,
+                                    baseHostBOCountOverride))) {
       return failure();
     }
 
@@ -5604,8 +6097,12 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
                      << " (from expanded module)\n";
       }
 
-      // Generate CDO/PDI
-      if (failed(generateCdoArtifacts(*expandedModule, tmpDirName, devName))) {
+      // Generate CDO/PDI. The base host-BO override applies only to the device
+      // it was captured for.
+      std::optional<int> overrideForDevice =
+          (devName == deviceName) ? baseHostBOCountOverride : std::nullopt;
+      if (failed(generateCdoArtifacts(*expandedModule, tmpDirName, devName,
+                                      overrideForDevice))) {
         return failure();
       }
 
@@ -5675,6 +6172,14 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
       });
 
       deviceElfInfos.push_back(std::move(info));
+    }
+  }
+
+  // Full-ELF / no-expand path: generate all devices' NPU instructions from a
+  // single whole-module lowering (devName omitted = all devices).
+  if (generateFullElf && !expandLoadPdis && !generateCtrlPkt) {
+    if (failed(generateNpuInstructions(moduleOp, tmpDirName))) {
+      return failure();
     }
   }
 

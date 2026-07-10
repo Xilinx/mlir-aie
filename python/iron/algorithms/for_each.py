@@ -1,10 +1,8 @@
 # for_each.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2026 Advanced Micro Devices, Inc.
 """``for_each``: apply a function in-place over a tiled tensor on an AIE core."""
 
 import numpy as np
@@ -14,19 +12,18 @@ from aie.iron.controlflow import range_
 import aie.iron as iron
 
 
-def for_each_typed(func, tensor_ty, tile_size=16):
+def for_each(func, tensor_ty, tile_size=16):
     """In-place transform using a tensor type descriptor.
 
-    Like :func:`for_each` but accepts a numpy ``ndarray`` type descriptor
-    instead of a real tensor.  Intended for use inside ``@iron.jit``
-    generator bodies where shape and dtype are expressed as ``CompileTime[T]``
-    parameters::
+    Accepts a numpy ``ndarray`` type descriptor instead of a real tensor.
+    Intended for use inside ``@iron.jit`` generator bodies where shape and
+    dtype are expressed as ``CompileTime[T]`` parameters::
 
         @iron.jit
         def my_design(data: InOut,
                       N: CompileTime[int], dtype: CompileTime[type] = np.int32):
             tensor_ty = np.ndarray[(N,), np.dtype[dtype]]
-            return iron.algorithms.for_each_typed(lambda x: x + 1, tensor_ty)
+            return iron.algorithms.for_each(lambda x: x + 1, tensor_ty)
 
     Args:
         func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
@@ -45,7 +42,7 @@ def for_each_typed(func, tensor_ty, tile_size=16):
         dtype = dtype_arg.__args__[0]
     except Exception as exc:
         raise TypeError(
-            f"for_each_typed expects a numpy ndarray type such as "
+            f"for_each expects a numpy ndarray type such as "
             f"np.ndarray[(N,), np.dtype[np.int32]], got {tensor_ty!r}"
         ) from exc
 
@@ -191,12 +188,12 @@ def _for_each_real(func, tensor, *params, tile_size=16):
     rt = Runtime()
     all_types = [tensor_ty] + param_tensor_types
     with rt.sequence(*all_types) as seq_args:
-        if len(all_types) == 1:
-            tensor_arg = seq_args
-            param_seq_args = []
-        else:
+        if isinstance(seq_args, tuple):
             tensor_arg = seq_args[0]
             param_seq_args = seq_args[1:]
+        else:
+            tensor_arg = seq_args
+            param_seq_args = []
 
         rt.start(worker)
 

@@ -1,10 +1,7 @@
 //===- AIEInsertTraceFlows.cpp ----------------------------------*- C++ -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// Copyright (C) 2026, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -12,6 +9,7 @@
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/Pass/Pass.h"
 
@@ -121,22 +119,43 @@ struct AIEInsertTraceFlowsPass
 
     // Get configuration from host_config
     int bufferSizeBytes = hostConfig.getBufferSize();
-    int traceArgIdx = hostConfig.getArgIdx();
+    bool reuseOutputBuffer = hostConfig.getReuseOutputBuffer();
     auto routing = hostConfig.getRouting();
     int egressShimColFromIR = hostConfig.getEgressShimCol();
 
-    // arg_idx=-1 means "append trace after last tensor"
+    // The trace buffer is a host buffer, i.e. an argument of the runtime
+    // sequence. Determine which argument index it occupies.
+    //
+    //   - Dedicated (default): append a fresh argument to the runtime sequence
+    //     for the trace buffer. It lands at the tail, so enabling trace never
+    //     perturbs the indices of the data arguments.
+    //   - Reuse-output: trace data is written into the tail of the last
+    //     existing argument (an output buffer), saving a host buffer. No new
+    //     argument is added; the offset skips past the output data.
+    int traceArgIdx;
     int traceBufferOffset = 0; // in bytes
-    if (traceArgIdx == -1) {
+    if (reuseOutputBuffer) {
       auto args = runtimeSeq.getBody().getArguments();
-      assert(!args.empty() && "runtime_sequence must have args for arg_idx=-1");
-
+      if (args.empty()) {
+        runtimeSeq.emitError() << "trace.host_config reuse_output_buffer "
+                                  "requires the runtime_sequence to have at "
+                                  "least one argument to reuse";
+        return signalPassFailure();
+      }
       Value lastArg = args.back();
       traceArgIdx = args.size() - 1;
-
       auto memrefType = cast<MemRefType>(lastArg.getType());
       traceBufferOffset = memrefType.getNumElements() *
                           (memrefType.getElementTypeBitWidth() / 8);
+    } else {
+      // Append a trace-buffer argument. Its element type/size is not part of
+      // the host ABI (the host sizes the buffer itself); use an i8 memref so
+      // the byte size is self-describing.
+      auto traceBufType = MemRefType::get(
+          {bufferSizeBytes}, IntegerType::get(device.getContext(), 8));
+      Block &entryBB = runtimeSeq.getBody().front();
+      entryBB.addArgument(traceBufType, runtimeSeq.getLoc());
+      traceArgIdx = entryBB.getNumArguments() - 1;
     }
 
     // Remove host_config op
@@ -225,6 +244,12 @@ struct AIEInsertTraceFlowsPass
       }
     }
 
+    // Each (tile, trace unit) pair may be configured at most once: a hardware
+    // trace unit emits a single packet stream, so two aie.trace ops targeting
+    // the same unit would race on one packet id and corrupt routing. The
+    // packet type identifies the unit (Core/Mem/MemTile/ShimTile).
+    std::set<std::tuple<int, int, int>> seenTraceUnits; // (col, row, pktType)
+
     for (auto trace : traces) {
       auto tile = cast<TileOp>(trace.getTile().getDefiningOp());
 
@@ -252,6 +277,17 @@ struct AIEInsertTraceFlowsPass
           // Core tile defaults to core type
           packetType = TracePacketType::Core;
         }
+      }
+
+      // Reject a second trace op on the same hardware unit of the same tile.
+      auto unitKey = std::make_tuple(tile.getCol(), tile.getRow(),
+                                     static_cast<int>(*packetType));
+      if (!seenTraceUnits.insert(unitKey).second) {
+        trace.emitError() << "tile (" << tile.getCol() << ", " << tile.getRow()
+                          << ") is traced more than once on the same trace "
+                             "unit; each unit can have only one trace "
+                             "configuration";
+        return signalPassFailure();
       }
 
       // Allocate packet ID if not specified (precomputed in (col, row)
@@ -665,8 +701,11 @@ struct AIEInsertTraceFlowsPass
           targetModel.encodeFieldValue(*resetField, *broadcastEvent);
 
       xilinx::AIEX::NpuWrite32Op::create(
-          builder, runtimeSeq.getLoc(), timerCtrlAddr, timerCtrlValue, nullptr,
-          builder.getI32IntegerAttr(col), builder.getI32IntegerAttr(row));
+          builder, runtimeSeq.getLoc(),
+          AIEX::createConstantI32(builder, runtimeSeq.getLoc(), timerCtrlAddr),
+          AIEX::createConstantI32(builder, runtimeSeq.getLoc(), timerCtrlValue),
+          nullptr, builder.getI32IntegerAttr(col),
+          builder.getI32IntegerAttr(row));
     }
 
     // 4c-4f. Insert per-shim configurations
@@ -710,9 +749,10 @@ struct AIEInsertTraceFlowsPass
         // baseOffset + bufferSizeBytes when distribute is active).
         uint32_t bdAddress = computeBDAddress(shimCol, chanDesc.bdId,
                                               shimInfo.shimTile, targetModel);
-        xilinx::AIEX::NpuAddressPatchOp::create(builder, runtimeSeq.getLoc(),
-                                                bdAddress, chanDesc.argIdx,
-                                                chanDesc.bufferOffset);
+        xilinx::AIEX::NpuAddressPatchOp::create(
+            builder, runtimeSeq.getLoc(), bdAddress, chanDesc.argIdx,
+            AIEX::createConstantI32(builder, runtimeSeq.getLoc(),
+                                    chanDesc.bufferOffset));
 
         // 4e. DMA channel configuration — set Controller_ID from tile attribute
         uint32_t ctrlAddr =
@@ -739,7 +779,10 @@ struct AIEInsertTraceFlowsPass
           llvm::report_fatal_error(
               "Controller_ID field does not fit in 32-bit register");
         xilinx::AIEX::NpuMaskWrite32Op::create(
-            builder, runtimeSeq.getLoc(), ctrlAddr, ctrlIdValue, *ctrlIdMask,
+            builder, runtimeSeq.getLoc(),
+            AIEX::createConstantI32(builder, runtimeSeq.getLoc(), ctrlAddr),
+            AIEX::createConstantI32(builder, runtimeSeq.getLoc(), ctrlIdValue),
+            AIEX::createConstantI32(builder, runtimeSeq.getLoc(), *ctrlIdMask),
             nullptr, builder.getI32IntegerAttr(shimCol),
             builder.getI32IntegerAttr(0));
 
@@ -762,8 +805,12 @@ struct AIEInsertTraceFlowsPass
             targetModel.encodeFieldValue(*tokenField, 1) |
             targetModel.encodeFieldValue(*bdIdField, chanDesc.bdId);
         xilinx::AIEX::NpuWrite32Op::create(
-            builder, runtimeSeq.getLoc(), queueReg->offset, queueValue, nullptr,
-            builder.getI32IntegerAttr(shimCol), builder.getI32IntegerAttr(0));
+            builder, runtimeSeq.getLoc(),
+            AIEX::createConstantI32(builder, runtimeSeq.getLoc(),
+                                    queueReg->offset),
+            AIEX::createConstantI32(builder, runtimeSeq.getLoc(), queueValue),
+            nullptr, builder.getI32IntegerAttr(shimCol),
+            builder.getI32IntegerAttr(0));
       }
 
       // 4f. Shim timer and broadcast control (only if start broadcast is used)
@@ -788,7 +835,11 @@ struct AIEInsertTraceFlowsPass
         uint32_t shimTimerCtrlValue =
             targetModel.encodeFieldValue(*shimResetField, *userEvent1);
         xilinx::AIEX::NpuWrite32Op::create(
-            builder, runtimeSeq.getLoc(), shimTimerCtrlAddr, shimTimerCtrlValue,
+            builder, runtimeSeq.getLoc(),
+            AIEX::createConstantI32(builder, runtimeSeq.getLoc(),
+                                    shimTimerCtrlAddr),
+            AIEX::createConstantI32(builder, runtimeSeq.getLoc(),
+                                    shimTimerCtrlValue),
             nullptr, builder.getI32IntegerAttr(shimCol),
             builder.getI32IntegerAttr(0));
 
@@ -801,7 +852,10 @@ struct AIEInsertTraceFlowsPass
           llvm::report_fatal_error(llvm::Twine("Failed to lookup ") +
                                    broadcastRegName);
         xilinx::AIEX::NpuWrite32Op::create(
-            builder, runtimeSeq.getLoc(), broadcastReg->offset, *userEvent1,
+            builder, runtimeSeq.getLoc(),
+            AIEX::createConstantI32(builder, runtimeSeq.getLoc(),
+                                    broadcastReg->offset),
+            AIEX::createConstantI32(builder, runtimeSeq.getLoc(), *userEvent1),
             nullptr, builder.getI32IntegerAttr(shimCol),
             builder.getI32IntegerAttr(0));
 
@@ -811,7 +865,10 @@ struct AIEInsertTraceFlowsPass
         if (!eventGenReg)
           llvm::report_fatal_error("Failed to lookup Event_Generate register");
         xilinx::AIEX::NpuWrite32Op::create(
-            builder, runtimeSeq.getLoc(), eventGenReg->offset, *userEvent1,
+            builder, runtimeSeq.getLoc(),
+            AIEX::createConstantI32(builder, runtimeSeq.getLoc(),
+                                    eventGenReg->offset),
+            AIEX::createConstantI32(builder, runtimeSeq.getLoc(), *userEvent1),
             nullptr, builder.getI32IntegerAttr(shimCol),
             builder.getI32IntegerAttr(0));
       }
@@ -842,7 +899,10 @@ struct AIEInsertTraceFlowsPass
         llvm::report_fatal_error(llvm::Twine("Failed to lookup ") +
                                  broadcastRegName);
       xilinx::AIEX::NpuWrite32Op::create(
-          builder, runtimeSeq.getLoc(), broadcastReg->offset, *userEvent0,
+          builder, runtimeSeq.getLoc(),
+          AIEX::createConstantI32(builder, runtimeSeq.getLoc(),
+                                  broadcastReg->offset),
+          AIEX::createConstantI32(builder, runtimeSeq.getLoc(), *userEvent0),
           nullptr, builder.getI32IntegerAttr(shimCol),
           builder.getI32IntegerAttr(0));
 
@@ -851,7 +911,10 @@ struct AIEInsertTraceFlowsPass
       if (!stopEventGenReg)
         llvm::report_fatal_error("Failed to lookup Event_Generate register");
       xilinx::AIEX::NpuWrite32Op::create(
-          builder, runtimeSeq.getLoc(), stopEventGenReg->offset, *userEvent0,
+          builder, runtimeSeq.getLoc(),
+          AIEX::createConstantI32(builder, runtimeSeq.getLoc(),
+                                  stopEventGenReg->offset),
+          AIEX::createConstantI32(builder, runtimeSeq.getLoc(), *userEvent0),
           nullptr, builder.getI32IntegerAttr(shimCol),
           builder.getI32IntegerAttr(0));
     }

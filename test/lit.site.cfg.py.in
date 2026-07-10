@@ -1,10 +1,9 @@
 # ./lit.site.cfg.py.in -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2021 Xilinx, Inc.
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2021 Xilinx Inc.
 
 @LIT_SITE_CFG_IN_HEADER@
 
@@ -56,7 +55,6 @@ config.hsa_found = r"""@hsa-runtime64_FOUND@"""
 config.enable_chess_tests = lit.util.pythonize_bool(r"""@ENABLE_CHESS_TESTS@""")
 config.enable_board_tests = lit.util.pythonize_bool(r"""@ENABLE_BOARD_TESTS@""")
 config.enable_python_tests = lit.util.pythonize_bool(r"""@ENABLE_PYTHON_TESTS@""")
-config.python_passes = lit.util.pythonize_bool(r"""@AIE_ENABLE_PYTHON_PASSES@""")
 config.xrt_python_bindings = lit.util.pythonize_bool(r"""@AIE_ENABLE_XRT_PYTHON_BINDINGS@""")
 config.has_mlir_runtime_libraries = lit.util.pythonize_bool(r"""@HAS_MLIR_RUNTIME_LIBRARIES@""")
 config.pytorch = lit.util.pythonize_bool(r"""@AIE_ENABLE_PYTORCH@""")
@@ -87,7 +85,6 @@ except KeyError:
     key, = e.args
     lit_config.fatal("unable to find %r parameter, use '--param=%s=VALUE'" % (key,key))
 
-config.aie_include_integration_tests = r"""@AIE_INCLUDE_INTEGRATION_TESTS@"""
 
 import lit.llvm
 lit.llvm.initialize(lit_config, config)

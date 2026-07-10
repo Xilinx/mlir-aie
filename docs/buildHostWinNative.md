@@ -1,81 +1,61 @@
+<!-- Copyright (C) 2026 Advanced Micro Devices, Inc.
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
+
 # Native Windows Setup and Build Instructions
 
-This guide covers the **native Windows** (not WSL) setup for **IRON/mlir-aie**.
+This guide covers the **native Windows** setup for **IRON/mlir-aie**, which is the recommended path on Windows 11. These instructions will guide you through installing and configuring everything required to both build and execute programs on the Ryzen™ AI NPU, entirely within Windows and without the need for a POSIX environment. If you prefer, you may instead use the [WSL2 setup](buildHostWin.md) to build and run IRON in a Linux environment on Windows.
 
-These instructions will guide you through installing and configuring everything required to both build and execute programs on the Ryzen™ AI NPU, entirely within Windows and without the need for a POSIX environment. The instructions were tested on a GMKtec Evo X-2 running Windows 11 Pro and using Visual Studio 2026 with Ryzen™ AI NPU driver version 1.6.1.
+Use an **x64 Native Tools Command Prompt for Visual Studio** in `cmd.exe` for the commands in this guide. It initializes MSVC, the linker, and the Windows SDK in one place. Visual Studio and Visual Studio Build Tools install this environment automatically and create a shortcut in the Start menu. PowerShell is also supported; see [Addendum A](#addendum-a-powershell).
 
-During the course of this guide, you will:
-1) Prepare the Windows toolchain to collect dependencies and compile C++ projects.
-2) Manually compile the Windows Xilinx™ RunTime (XRT) directly from source.
-3) Set up your native Windows mlir-aie/IRON environment.
-4) Learn how to compile your own mlir-aie wheels.
-5) Compile and run an IRON example test project directly on Windows.
+> **Python note:** The Windows XRT SDK supplies `pyxrt` bindings for **CPython 3.13**. Use Python 3.13 with the SDK. Do not choose another Python version unless you already have an XRT distribution with matching bindings. Building and packaging XRT from source on Windows is an advanced task outside the scope of this guide.
 
-> NOTE: IRON on native Windows is still **experimental** and requires significantly more complicated/manual steps than the WSL2 build (`docs/buildHostWin.md`). Additionally, this workflow may be subject to change as it is further developed. Should everything work flawlessly the first time, it will likely take you approximately **two hours** to complete this guide. If you run into problems, this can easily become a weekend project.
+## Contents
 
-## Shell choice (read this first)
+1. [Install the Windows development environment](#1-install-the-windows-development-environment)
+2. [Update and verify the NPU driver](#2-update-and-verify-the-npu-driver)
+3. [Install the Windows XRT SDK](#3-install-the-windows-xrt-sdk)
+4. [Set up IRON](#4-set-up-iron)
+5. [Run a complete NPU program](#5-run-a-complete-npu-program)
+6. [Addendum A: PowerShell](#addendum-a-powershell)
+7. [Addendum B: Build `mlir-aie` wheels locally](#addendum-b-build-mlir-aie-wheels-locally)
 
-Unlike most distributions of Linux, Windows is packaged with *two* shell environments: the legacy DOS `cmd.exe` (Command Prompt), which is barely more than a 'dumb terminal', and PowerShell, which is comparable to Bash on POSIX systems in terms of flexiblity and scripting. While it presents limitations, this guide assumes familiarity with `cmd.exe` and, given that some steps are simpler because of it's terminal-like nature, is written with that in mind. However, PowerShell is strongly recommended for the adventurous as it may make *using* mlir-aie/IRON easier in the long run, especially as all modern version of Windows now use PowerShell as the default prompt.
+## 1. Install the Windows development environment
 
-**Recommended (path of least resistance):**
-- Use **"x64 Native Tools Command Prompt for VS"** (**cmd.exe**) for the XRT build and most/all of this guide. This should "just work".
+Together, the items below form the expected native Windows development environment for this repository.
 
-**PowerShell (advanced users):**
-- PowerShell is supported for most steps, but the setup is more complex and not completely documented here.
-- Because Visual Studio does not currently ship a "Native Tools" prompt version for PowerShell, you must place the build tools on PATH manually. The two easiest ways to do this are to:
+You need:
 
-  Either open the **Native Tools cmd prompt first**, then run `pwsh` (assumes PowerShell 7, else `powershell` for 5.1) from inside it (PATH and env vars should be inherited)
+- A Windows 11 system with a supported Ryzen™ AI / XDNA™ NPU.
+- **Visual Studio 2026** (preferred) or **Visual Studio 2022**. The full IDE and the matching Build Tools package are both supported.
+- **Python 3.13**. This may be through an ordinary install or a Conda / Miniforge environment. See [Addendum A](#addendum-a-powershell) for Conda / Miniforge usage.
+- **CMake**. The CMake supplied by a current Visual Studio installation should be fine; a current Kitware download is also suitable.
+- **Git for Windows**. Install it with Visual Studio or as a separate package.
+- The latest Ryzen™ AI / XDNA™ NPU driver and the Windows **XRT SDK**.
 
-  **-OR-**
+### 1.1 Visual Studio components
 
-  You can manually set up the env vars by invoking the Visual Studio `vcvarsall.bat` script from within an already-open PowerShell session: 
-```powershell
-& 'C:/Program Files/Microsoft Visual Studio/18/Community/VC/Auxiliary/Build/vcvarsall.bat' x64
-```
-- Further hints for the "PowerShell-first" path are available in the Addendum.
+When using the Visual Studio Installer (below), select **Desktop development with C++** and confirm that the following components are installed. Use the search box under the **Individual components** tab when needed:
 
----
+- MSVC x64/x86 build tools
+- Windows SDK
+- C++ CMake tools for Windows
+- C++ Clang Compiler for Windows
+- MSBuild support for LLVM (`clang-cl`) toolset
+- Git for Windows, when Git is not installed separately
 
-## 1) Install base tooling
+The Clang and LLVM components support CMake configurations to build native C++ host applications.
 
-You will need the following tools installed and accessible on your Windows system:
+### 1.2 Install the tools
 
-> NOTE: This guide assumes you are installing everything into default locations, as a single-user (not system-wide/"all users"), and that the option to place binaries on PATH is taken whenever given (notably for Python and CMake). If you install to custom paths, please adjust the commands below accordingly.
-
-- **Visual Studio** (Community or Build Tools)
-- **Python >= 3.12** (CPython or Miniforge/Conda: see Addendum)
-- **OpenSSL** (used to compile the mlir-aie wheels as well as the Boost dependency for XRT)
-- **CMake** (highly recommended, but also installed by VS)
-- **Git** (optional unless not selected in VS installer)
-
-Additionally, we will be updating your NPU driver and installing the dependency package manager **vcpkg**.
-
-### 1.1 Visual Studio / build tools components (required)
-
-In the Visual Studio installer, select:
-
-- Workload: **Desktop development with C++**
-- Individual components to explicitly check:
-  - **C++ x64/x86 Spectre-mitigated libraries** (XRT forces `/Qspectre`)
-  - **C++ Clang Compiler for Windows** (Large. Can be skipped if you already have LLVM installed and on PATH)
-  - **MSBuild support for LLVM (clang-cl) toolset**
-  - **Git for Windows** (Optional, but must be installed separately if not selected here)
-
-### 1.2 Quick install using `winget`
-
-> NOTE: Choose **either** VS Studio Community (recommended) or Build Tools.
+Most tools may be installed via the Windows command-line package manager, `winget`:
 
 ```bat
-REM Visual Studio Community (recommended) OR Build Tools
+REM Choose one: the full IDE or the matching Build Tools package.
 winget install -e --id Microsoft.VisualStudio.Community
 REM winget install -e --id Microsoft.VisualStudio.BuildTools
 
-REM Python 3.12 (CPython)
-winget install -e --id Python.Python.3.12
-
-REM OpenSSL (optional)
-REM OpenSSL will be compiled by vcpkg if you don't have it installed.
-winget install -e --id OpenSSL.OpenSSL
+REM Python 3.13 (CPython)
+winget install -e --id Python.Python.3.13
 
 REM CMake
 winget install -e --id Kitware.CMake
@@ -84,485 +64,163 @@ REM Git (optional unless not selected in VS installer)
 winget install -e --id Git.Git
 ```
 
-### 1.3 Manual download links
-
-If you don't have/want/like `winget`, download from the following links:
+Manual downloads are also available here:
 
 ```text
-Visual Studio:
-  https://visualstudio.microsoft.com/downloads/
-
-Python:
-  https://www.python.org/downloads/windows/
-
-OpenSSL:
-  https://slproweb.com/products/Win32OpenSSL.html
-
-CMake:
-  https://cmake.org/download/
-
-Git:
-  https://git-scm.com/download/win
+Visual Studio: https://visualstudio.microsoft.com/downloads/
+Python:        https://www.python.org/downloads/windows/
+CMake:         https://cmake.org/download/
+Git:           https://git-scm.com/download/win
 ```
 
-### 1.4 Install the Ryzen™ AI / NPU driver
+## 2. Update and verify the NPU driver
 
-Install **the latest NPU driver** for your machine.
+Chipset driver updates for Ryzen™ AI / XDNA™ APUs are regularly available through the AMD™ Software / Adrenalin™ application. Ensure you have the latest driver version for your system and verify your NPU is accessible by:
 
-AMD™'s Ryzen™ AI docs provide driver version guidance and installation steps:
+```bat
+"C:\Windows\System32\AMD\xrt-smi.exe" examine
+```
+
+NPU Driver Version 32.0.20101.3760 (XRT Version 2.21.0) is the minimum supported by this repository on Windows. Older versions may function in some cases, but they are not recommended.
+
+## 3. Install the Windows XRT SDK
+
+The XRT SDK provides the native Windows headers, import libraries, and tools used by C++ host applications. It also supplies the `pyxrt` binding used by Python JIT designs.
+
+Download:
 
 ```text
-Ryzen(TM) AI Software installation instructions:
-  https://ryzenai.docs.amd.com/en/1.6/inst.html
+https://github.com/Xilinx/XRT/releases/download/2.21.75/xrt_windows_sdk.zip
 ```
 
-After install + reboot, verify the driver can talk to the NPU:
+Extract the SDK such that `xrt_sdk\xrt` becomes:
 
-```bat
-"%WINDIR%/System32/AMD/xrt-smi.exe" examine
+```text
+C:\Xilinx\XRT
 ```
+> This is the canonical location. If you install the SDK elsewhere, pass that location to `iron_setup.py` in the next section. The activation helper it generates will record the selected XRT installation.
 
-If `xrt-smi.exe` is missing, or `examine` fails, **stop here** and fix the driver install first.
+## 4. Set up IRON
 
-
-### 1.5 Clone the repos
-
-Pick a working directory root (these examples use `C:/dev`).
+Clone the `mlir-aie` repository, then create the local IRON environment:
 
 ```bat
-mkdir C:/dev
-cd C:/dev
+cd /d C:\dev
 
-REM XRT
-git clone --recurse-submodules https://github.com/Xilinx/XRT.git
-
-REM mlir-aie
 git clone --recurse-submodules https://github.com/Xilinx/mlir-aie.git
+cd mlir-aie
 
-REM vcpkg (needed to install XRT dependencies)
-git clone https://github.com/microsoft/vcpkg.git
-cd C:/dev/vcpkg
-bootstrap-vcpkg.bat
+python utils\iron_setup.py
+call .\iron_env.cmd
 ```
 
-### 1.6 Configure vcpkg
+The two commands have different jobs. `iron_setup.py` creates or updates the checkout-local `ironenv`, including all necessary dependencies; `iron_env.cmd` activates it in the current prompt and supplies the IRON and XRT paths. Call `iron_env.cmd` in every new Native Tools prompt. Rerun setup after updating the checkout or changing the XRT SDK location; it refreshes the existing environment and rewrites the helpers.
 
-NOTE: Visual Studio bundles its own minimal vcpkg instance. If you see any errors containing:
-```text
-Could not locate a manifest (vcpkg.json) ... This vcpkg distribution does not have a classic mode instance.
-```
-then the above standalone vcpkg clone is not being used. Make sure your `VCPKG_ROOT` env var points to the git clone and that it is on PATH:
+For normal use, no options are needed. Add `--dev` when preparing a contributor checkout: it installs the pinned development tools and the repository's pre-commit and pre-push hooks. Add `--extras` for the PyTorch-based material or Jupyter notebooks: it installs CPU PyTorch, Notebook, and an `ironenv` Jupyter kernel. These options work alone or in combination.
+
+If you installed the XRT SDK to a different location, supply that location when creating the helper. It is saved in the generated helpers, so later shells still only need `iron_env.cmd`:
 
 ```bat
-set "VCPKG_ROOT=C:/dev/vcpkg"
-set "PATH=%VCPKG_ROOT%;%PATH%"
+python utils\iron_setup.py --xrt-root D:\tools\XRT
+call .\iron_env.cmd
 ```
 
-You will need to do this **every time** you open a new Native Tools cmd prompt if you want to use the packages installed via the standalone vcpkg.
+## 5. Run a complete NPU program
+
+Many example programs are available in the `programming_examples` and `programming_guide` directories. Try running the SAXPY example to exercise the complete `mlir-aie` toolchain. The design computes `Z = 3X + Y` on one AI Engine tile. Its Python file describes the data movement and runtime sequence; the adjacent C++ file contains the vectorized AI Engine kernel. `@iron.jit` compiles them into an NPU program.
+
+```bat
+cd programming_examples\getting_started\01_SAXPY
+python saxpy.py
+```
+
+The script compiles the design, runs it on the attached NPU, and checks the result against a NumPy reference. If it prints `PASS!`, you have just successfully run your first IRON NPU program on Windows!
+
+Most existing learning material uses direct Python JIT scripts, so continue with the [mini tutorial](../programming_guide/mini_tutorial/) or feel free to try any other Python scripts in `programming_examples` or `programming_guide`.
+
 
 ---
 
-## 2) Build + install XRT
+## Addendum A: PowerShell
 
-### 2.1 Install XRT deps via vcpkg and pip
+Visual Studio's Native Tools environment is also available in PowerShell by using the "Developer PowerShell for VS" shortcut in the Start menu. It is equivalent to the Native Tools `cmd.exe` prompt.
 
-Open:
-
-- **Search bar --> native tools --> x64 Native Tools Command Prompt for VS**
-
-From the Native Tools cmd prompt:
+Alternatively, since PowerShell uses the same toolchain as `cmd.exe`, you may enter it at any time from the Native Tools `cmd.exe` prompt:
 
 ```bat
-set "VCPKG_ROOT=C:/dev/vcpkg"
-cd "%VCPKG_ROOT%"
-
-REM Force 64-bit libraries (vcpkg default is x86)
-REM Omit `openssl` if you installed it from binaries (saves several minutes)
-vcpkg.exe install --triplet x64-windows boost opencl openssl protobuf
-```
-This will take a considerable amount of time (20-30 minutes) as vcpkg has to compile boost, openssl, and protobuf from source.
-
-You must also install pybind11 into your Python environment
-```bat
-pip install --upgrade pip
-pip install pybind11
+pwsh
 ```
 
-### 2.2 Configure / build / install XRT
-
-Set your paths:
-
-```bat
-set "XRT_REPO=C:/dev/XRT"
-set "XRT_SRC=%XRT_REPO%/src"
-set "XRT_BUILD=%XRT_REPO%/build/WRelease"
-set "XRT_ROOT=C:/Xilinx/XRT"
-set "VCPKG_ROOT=C:/dev/vcpkg"
-```
-
-Configure:
-
-```bat
-cmake -S "%XRT_SRC%" -B "%XRT_BUILD%" -A x64 ^
-  -DXRT_NPU=1 ^
-  -DBOOST_ROOT="%VCPKG_ROOT%/installed/x64-windows" ^
-  -DKHRONOS="%VCPKG_ROOT%/installed/x64-windows" ^
-  -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-```
-
-Build:
-
-```bat
-cmake --build "%XRT_BUILD%" --config Release --parallel
-```
-Building/compiling XRT will also take some time, usually 10-20 minutes depending on the machine.
-
-Install:
-
-```bat
-cmake --install "%XRT_BUILD%" --config Release --prefix "%XRT_ROOT%"
-```
-
-### 2.3 Patch the XRT install (runtime DLLs + signed `xrt_coreutil`)
-
-#### 2.3.1 Copy required runtime DLLs into `ext/bin`
-
-XRT tools will fail to run if these minimal DLLs aren't available in the `ext/bin` directory.
-
-```bat
-set "EXTBIN=%XRT_ROOT%/ext/bin"
-if not exist "%EXTBIN%" mkdir "%EXTBIN%"
-
-copy "%VCPKG_ROOT%\installed\x64-windows\bin\boost_filesystem*.dll"      "%EXTBIN%\" >NUL
-copy "%VCPKG_ROOT%\installed\x64-windows\bin\boost_program_options*.dll" "%EXTBIN%\" >NUL
-copy "%VCPKG_ROOT%\installed\x64-windows\bin\libprotobuf.dll"            "%EXTBIN%\" >NUL
-```
-
-#### 2.3.2 Replace `xrt_coreutil.dll` with the driver-signed version
-
-On Windows, the NPU driver installs a **signed** `xrt_coreutil.dll`. In practice you want that one, not the XRT-built version.
-Here we copy, with overwrite, from the driver location into your XRT install.
-
-```bat
-set "SIGNED_DLL=%WINDIR%\System32\AMD\xrt_coreutil.dll"
-if not exist "%SIGNED_DLL%" set "SIGNED_DLL=%WINDIR%\System32\xrt_coreutil.dll"
-
-if not exist "%SIGNED_DLL%" (
-  echo ERROR: Signed xrt_coreutil.dll not found in System32. Check your driver install.
-  exit /b 1
-)
-
-copy "%SIGNED_DLL%" "%XRT_ROOT%\xrt_coreutil.dll" /y
-```
-
-#### 2.3.3 Rebuild the import lib for `xrt_coreutil`
-
-We need to be able to link against the signed library. It would be silly at this point to introduce a POSIX environment just to get access to `gendef`, so we will do it manually.
-
-A short PowerShell script, runable from cmd, is provided below to create and place `xrt_coreutil.def` and `xrt_coreutil.lib` for you:
-
-```bat
-powershell -NoProfile -ExecutionPolicy Bypass -Command ^
-  "$dll=Join-Path $env:XRT_ROOT 'xrt_coreutil.dll';" ^
-  "$libDir=Join-Path $env:XRT_ROOT 'lib';" ^
-  "Push-Location $libDir;" ^
-  "@('LIBRARY xrt_coreutil','EXPORTS')|Set-Content xrt_coreutil.def -Encoding ascii;" ^
-  "dumpbin /exports $dll|Where-Object{$_ -match '^^\s+(\d+)\s+[0-9A-F]+\s+[0-9A-F]+\s+(\S+)'}|ForEach-Object{('{0} @{1}' -f $matches[2],$matches[1])}|Select-Object -Unique|Add-Content xrt_coreutil.def -Encoding ascii;" ^
-  "lib /nologo /def:xrt_coreutil.def /machine:x64 /out:xrt_coreutil.lib;" ^
-  "Pop-Location"
-```
-
-### 2.4 Validate XRT
-
-```bat
-REM XRT tool (from your install)
-"%XRT_ROOT%/unwrapped/loader.bat" -exec xclbinutil --help
-```
-If you see the help message, XRT is installed correctly. 
-
----
-
-## 3) Set up IRON (create the venv + baseline deps)
-
-From the **mlir-aie repo root** (still in the same Native Tools cmd prompt):
-
-```bat
-cd C:/dev/mlir-aie
-
-REM Create/refresh the IRON venv and install deps.
-python utils/iron_setup.py
-```
-
-Activate the venv and apply the IRON toolchain env vars to your current **cmd.exe** session:
-
-```bat
-python utils/iron_setup.py env --shell cmd > "%TEMP%\iron_env.bat" && call "%TEMP%\iron_env.bat"
-```
-
-> If you prefer PowerShell, use `python utils/iron_setup.py env --shell pwsh | iex`.
-
----
-
-## 4) Build + install mlir-aie wheels locally
-
-### 4.1 Build the wheels
-
->NOTE: The build process will create a `/tmp/` directory at the root of the drive containing your mlir-aie repo (e.g. `C:/tmp/`). It can safely be deleted after the build completes, and it **must** be deleted if you want to re-run the build.
-
-Make sure you are in your venv (after `activate.bat`) and have applied the env vars from section 3.1.
-
-Choose what CPython tags to build (example shows CPython 3.12 only):
-
-```bat
-set "CIBW_BUILD=cp312-*"
-```
-
-And point to your OpenSSL vcpkg install (needed for the wheels):
->NOTE: if you installed pre-built OpenSSL binaries (i.e. not through vcpkg), `OPENSSL_ROOT_DIR` should already be on PATH and this may be skipped. 
-
-```bat
-set "OPENSSL_ROOT_DIR=%VCPKG_ROOT%/installed/x64-windows"
-```
-
-Build:
-
-```bat
-python utils/mlir_aie_wheels/scripts/build_local.py
-```
-Compliation will take some time (10-15 minutes).
-
-In the output directory:
-
-- `utils/mlir_aie_wheels/wheelhouse/`
-
-You should see **two wheels**:
-
-- `mlir_aie-...whl`
-- `mlir_aie_python_bindings-...whl`
-
-### 4.2 Install your local wheels into IRON
-
-Install from the wheelhouse:
-
-```bat
-python utils/iron_setup.py install --mlir-aie wheelhouse
-```
-
-### 4.3 Re-apply mlir-aie env vars
-
-After installing, re-run `iron_setup.py env` so it exports `MLIR_AIE_INSTALL_DIR` and updates PATH/PYTHONPATH:
-
-```bat
-python utils/iron_setup.py env --shell cmd > "%TEMP%\iron_env.bat" && call "%TEMP%\iron_env.bat"
-```
-
-> Again, if you prefer PowerShell, use `python utils/iron_setup.py env --shell pwsh | iex`.
-
----
-
-### 4.4 Validate the mlir-aie install
-
-```bat
-python -c "import aie; import importlib.util as u; print('aie.xrt:', bool(u.find_spec('aie.xrt')))"
-```
-
-If this prints `aie.xrt: True`, you're good to go.
-
-## 5) Build and run an example
-
-From inside an example directory (recommended):
-
-```bat
-cd /d programming_examples/basic/vector_scalar_mul
-python ../../../utils/run_example.py build
-python ../../../utils/run_example.py run
-```
-
-Or from the repo root:
-
-```bat
-python utils/run_example.py run --example-dir programming_examples/basic/vector_scalar_mul
-```
-If this prints `PASS!` at the end, your IRON system is fully configured and functional.
-
----
-
-## Troubleshooting
-
-### XRT build fails with "could not find any instance of Visual Studio."
-
-With newer versions of VS, this error is usually because older CMake installs occur earlier on PATH. Strawbery Perl, for instance, tends to do this, as can having ad older CMake installed into your Python/Conda environmet.  
-
-Check which CMake is being used:
-
-```bat
-where cmake
-cmake --version
-```
-Alter your PATH ordering in Windows "Environment Variables" or uninstall/upgrade conflicting CMake installs. Then delete your XRT `WRelease` build dir and reconfigure.
-The standalone CMake installation in this guide is intended to mitigate this problem, but it must be first on PATH to be effective.
-
-### XRT build fails with Spectre-related errors (MSB8042, /Qspectre)
-
-Install **C++ Spectre-mitigated libs** in the Visual Studio installer, then delete your XRT build dir and reconfigure.
-
-### CMake can't find Python (or finds the wrong one)
-
-- Make sure the intended `python.exe` is first on PATH or activate your conda env before configuring XRT.
-- Confirm `%PYLIB%` exists (`dir "%PYLIB%"`).
-- Wipe the build dir and reconfigure (CMake caches the first Python it sees).
-
-### CMake can't find Boost / Protobuf
-
-- Confirm you have set `%VCPKG_ROOT%` correctly.
-- Confirm you installed the packages for the same triplet (`x64-windows`) you're building with.
-- If you changed vcpkg settings, wipe the XRT build dir and reconfigure.
-
-### `xrt-smi` missing or fails
-
-- Reinstall/upgrade the NPU driver (run installer as admin; reboot).
-- Confirm it landed at `%WINDIR%/System32/AMD/xrt-smi.exe`.
-
-### XRT tools fail to start due to missing DLLs
-
-- You may need the VC++ runtime: install "Visual C++ 2015-2022 Redistributable (x64)".
-- Confirm you copied Boost/Protobuf DLLs into `%XRT_ROOT%/ext/bin`.
-
-### You installed XRT somewhere else
-
-Set `XRT_ROOT` accordingly (cmd):
-
-```bat
-set "XRT_ROOT=D:/path/to/XRT"
-```
-
-and re-run the "cmd-friendly" env snippet in section 3.1.
-
-### Wheels fail to build due to `Ninja` missing: "no such file or directory"
-
-This error message is misleading: it is asctually due to a stale build cache.
-Ninja is istalled for you, but you must delete your `/tmp/` directory (e.g. `C:/tmp/`), and the `build` directories under `utils/mlir_aie_wheels/`, **every time** before re-running the build.
-
----
-
-## Addendum
-
-### Dev Shell for PowerShell 7
-
-If you prefer to use PowerShell, it may be convenient to always launch it with the VS build tools already enabled.
-To do so, simply navigate to `C:/Users/%USERNAME%/Documents/PowerShell` and paste the following script in `profile.ps1` (or create it if it does not exist).
-Be sure to include the region tags and respect any existing such tags in your profile.
+The compiler environment will be inherited automatically. To set up from PowerShell, run the same setup command and dot-source the generated helper:
 
 ```powershell
-#region enter dev tools mode (amd64)
-<# VS Developer Shell (amd64) on every pwsh start #>
-
-# Set this in a shell/session to skip DevShell init:
-#   $env:DISABLE_VSDEVSHELL = "1"
-if (-not $env:DISABLE_VSDEVSHELL) {
-    # Avoid re-entering DevShell if we're already in it.
-    if (-not $env:VSCMD_VER) {
-        $startLocation = Get-Location
-        # The install directory should be in the same place, with the same name, for all distributions of VS.
-        # Query `vswhere` from that location to find the real/latest VS and launch the DevShell script.
-        try {
-            $vswhere = "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe"
-            if (Test-Path $vswhere) {
-                $vsInstall = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
-                $devShell  = Join-Path $vsInstall 'Common7/Tools/Launch-VsDevShell.ps1'
-                if (Test-Path $devShell) {
-                    & $devShell -Arch amd64 -HostArch amd64
-                }
-            }
-        } catch {
-            Write-Verbose "VS Dev Shell init skipped: $($_.Exception.Message)"
-        } finally {
-            # Keep your original working directory even if DevShell changes it
-            Set-Location $startLocation
-        }
-    }
-}
-
-# Prefer standalone/"classic mode" vcpkg.
-# Comment out the next line to disable this whole standalone-vcpkg block (env vars + PATH).
-$enableStandaloneVcpkg = $true
-
-if ((Get-Variable enableStandaloneVcpkg -ValueOnly -ErrorAction SilentlyContinue)) {
-    # This overrides the DevShell env var pointing to the stripped-down vcpkg that ships with VS.
-    $preferredVcpkgRoot = "C:/dev/vcpkg"
-    if (Test-Path (Join-Path $preferredVcpkgRoot "vcpkg.exe")) {
-        $env:VCPKG_ROOT = $preferredVcpkgRoot
-        # Match the DevShell architecture (amd64) to prevent implicit x86 builds.
-        $env:VCPKG_DEFAULT_TRIPLET = "x64-windows"
-        # Add VCPKG_ROOT to PATH (once).
-        $vcpkgPath = (Resolve-Path -LiteralPath $env:VCPKG_ROOT).Path
-        $pathParts = @($env:Path -split ';' | Where-Object { $_ })
-        $vcpkgNorm = $vcpkgPath.TrimEnd('\','/')
-        $hasVcpkg  = $pathParts | ForEach-Object { $_.TrimEnd('\','/') } | Where-Object { $_ -ieq $vcpkgNorm } | Select-Object -First 1
-        if (-not $hasVcpkg) {
-            $env:Path = "$vcpkgPath;$env:Path"
-        }
-    }
-}
-
-# Print output confirming the running version and vcpkg directory.
-if ($env:VSCMD_ARG_TGT_ARCH) {
-    Write-Host "VS DevShell: Target = $($env:VSCMD_ARG_TGT_ARCH) Host = $($env:VSCMD_ARG_HOST_ARCH) Version = $env:VSCMD_VER"
-} else {
-    Write-Warning "VS DevShell not active (no VSCMD_* vars found)."
-}
-Write-Host "VCPKG_ROOT = $env:VCPKG_ROOT"
-if ($env:VCPKG_DEFAULT_TRIPLET) { Write-Host "VCPKG_TRIPLET = $env:VCPKG_DEFAULT_TRIPLET" }
-#endregion
+python .\utils\iron_setup.py
+. .\iron_env.ps1
 ```
 
-### Notes on PowerShell usage
-- Install the latest PowerShell 7+ from either:
-winget
+In later PowerShell sessions, dot-source `iron_env.ps1` again. Dot-sourcing keeps the activated environment in the current shell.
+
+However, if you are following this guide using PowerShell, please keep the syntactical differences between the two shells in mind. For instance, PowerShell environment variables use `$env:NAME` while `cmd.exe` uses `%NAME%`. Likewise, PS uses `&` to invoke programs while `cmd.exe` uses `call` for batch files. Etc.
+
+### Conda or Miniforge Python
+
+A dedicated Conda or Miniforge environment works with the SDK when it uses Python 3.13. Activate it before running `iron_setup.py`; the helper creates `ironenv` with that interpreter.
+
 ```powershell
-winget install -e --id Microsoft.Powershell
+conda create -n iron python=3.13
+conda activate iron
+python .\utils\iron_setup.py
+. .\iron_env.ps1
 ```
-or manually from:
+
+`iron_setup.py` uses its running interpreter only when it creates `ironenv`. Remove and recreate `ironenv` before switching the interpreter used by an existing environment.
+
+## Addendum B: Build `mlir-aie` wheels locally
+
+Build local wheels when altering core `mlir-aie` files, testing a local commit, or working on packaging.
+
+### B.1 Install OpenSSL
+
+Local wheel builds compile components that link against OpenSSL. Install the full **Win64 OpenSSL** package from Shining Light Productions; it supplies the headers and libraries required by the build and is much faster and easier than compiling from source. **Do not** use the "Light" package.
+
 ```text
-https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell
+https://slproweb.com/products/Win32OpenSSL.html
 ```
-#### Some commands/scripts may need minor syntax changes to run in PowerShell.
-- You can run cmd commands from within PowerShell by prefixing them with `cmd /c`, e.g.: 
-  ```powershell
-  cmd /c "set XRT_ROOT=C:/Xilinx/XRT"
-  ``` 
-- Alternatively, you can set env vars in PowerShell using `$env:VAR_NAME = "value"`, e.g.:
-  ```powershell
-  $env:XRT_ROOT = "C:/Xilinx/XRT"
-  ```
-- Likewise, commands with variables like `%VCPKG_ROOT%` will need to be changed to `$($env:VCPKG_ROOT)` in PowerShell. So: 
-  ```powershell
-  set "PATH=%VCPKG_ROOT%;%PATH%"
-  ```
-  becomes:
-  ```powershell
-  $env:PATH = "$($env:VCPKG_ROOT);$($env:PATH)"
-  ```
-  But for CMake:
-  ```powershell
-  cmake -S "$env:XRT_SRC" -B "$env:XRT_BUILD" -A x64 `
-    -DXRT_NPU=1 `
-    -DBOOST_ROOT="$env:VCPKG_INSTALLED/installed/x64-windows" `
-    -DKHRONOS="$env:VCPKG_INSTALLED/installed/x64-windows" `
-    -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
-  ``` 
-- When copying multi-line commands from this doc, ensure that line continuation characters (carrot `^` for cmd, backtick `` ` `` for PowerShell) are adjusted accordingly.
-- Some command names slightly differ. For instance, the `cmd.exe` `where` is `Get-Command` (or aliased directly as `where.exe`) in PowerShell, and `copy` is `Copy-Item` (or `cp`), etc.
 
-### Using Conda/Miniforge Python
-- If you have Ryzen™ AI Software installed, and you followed the driver install instructions, you very likely have Conda/Miniforge installed as well.
-- You can use the Conda Python for building/running XRT and IRON, but it is recommended to create a separate Conda env for IRON development to avoid conflicts with the driver-installed env.
-  ```powershell
-  conda create -n py312 python=3.12
-  ```
-- Ensure you activate your conda env every time you enter a new shell before running Python commands:
-  ```powershell  
-  conda activate py312
-  ```
-- In this case, you can skip installing Python via `winget` or the official installer.
+From an x64 Native Tools prompt in a configured checkout, set the OpenSSL location and the CMake arguments for the build:
 
+```bat
+set "OPENSSL_ROOT_DIR=C:\Program Files\OpenSSL-Win64"
+set "PATH=%OPENSSL_ROOT_DIR%\bin;%PATH%"
+set "CMAKE_ARGS=-DOPENSSL_ROOT_DIR=%OPENSSL_ROOT_DIR% -DOPENSSL_USE_STATIC_LIBS=TRUE"
+```
+
+### B.2 Build the wheels
+
+Activate the IRON environment, install the local wheel-build tools, and build one Python version. This example uses Python 3.13:
+
+```bat
+cd /d C:\dev\mlir-aie
+
+call .\iron_env.cmd
+python -m pip install --require-hashes -r python\requirements_dev.lock
+
+python utils\mlir_aie_wheels\scripts\build_local.py --cp313
+```
+
+The wheelhouse is:
+
+```text
+utils\mlir_aie_wheels\wheelhouse
+```
+
+Install the locally built wheels into IRON, then refresh the shell environment:
+
+```bat
+python utils\iron_setup.py --wheelhouse utils\mlir_aie_wheels\wheelhouse
+call .\iron_env.cmd
+```
+
+The local-wheel path force-reinstalls `mlir_aie` from the selected wheelhouse. The rest of setup still reconciles the repository's declared requirements.
+
+Use `--cp312` or `--cp314` only when the selected XRT distribution supplies matching `pyxrt` bindings. The local builder manages the staging directories. Remove `utils\mlir_aie_wheels\wheelhouse` and `C:\tmp` to clean up when you are done.

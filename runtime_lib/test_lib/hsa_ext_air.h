@@ -3,7 +3,8 @@
 // The University of Illinois/NCSA
 // Open Source License (NCSA)
 //
-// Copyright (c) 2023, Advanced Micro Devices, Inc. All rights reserved.
+// Copyright (C) 2023 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: NCSA
 //
 // Developed by:
 //

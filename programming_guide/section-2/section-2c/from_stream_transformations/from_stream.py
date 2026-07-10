@@ -1,10 +1,8 @@
 # from_stream.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
 """``dims_from_stream`` example — Iron API design with ``@iron.jit``.
 
 A 24-element int32 vector is forwarded shim -> memtile -> core -> memtile

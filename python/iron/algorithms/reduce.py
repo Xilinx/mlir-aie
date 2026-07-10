@@ -1,10 +1,8 @@
 # reduce.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2026 Advanced Micro Devices, Inc.
 """Reduction algorithms built on IRON.
 
 Reductions differ from :mod:`~aie.iron.algorithms.transform` in two ways:
@@ -24,7 +22,7 @@ import numpy as np
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 import aie.iron as iron
 
-from .transform import make_param_descriptor
+from ._transform import make_param_descriptor
 
 
 def _reduce_gen(func, input_desc, output_desc, *, trace_size=0):
@@ -72,7 +70,9 @@ def _reduce_gen(func, input_desc, output_desc, *, trace_size=0):
     )
 
     rt = Runtime()
-    with rt.sequence(in_ty, out_ty) as (a_in, c_out):
+    with rt.sequence(in_ty, out_ty) as seq_args:
+        assert isinstance(seq_args, tuple)
+        a_in, c_out = seq_args
         if trace_size > 0:
             rt.enable_trace(trace_size)
         rt.start(worker)
@@ -89,10 +89,10 @@ def _reduce_gen(func, input_desc, output_desc, *, trace_size=0):
     return Program(device, rt).resolve_program()
 
 
-def reduce_typed(func, input_ty, output_ty, *, trace_size=0):
+def reduce(func, input_ty, output_ty, *, trace_size=0):
     """Apply reduction ``func`` over an entire input tensor producing ``output_ty``.
 
-    Like :func:`~aie.iron.algorithms.transform.transform_typed` but for
+    Like :func:`~aie.iron.algorithms.transform.transform` but for
     reductions: hands the whole input to ``func`` in a single kernel call
     rather than iterating per-tile.  Intended for use inside ``@iron.jit``
     generator bodies where input/output shapes are expressed as
@@ -102,7 +102,7 @@ def reduce_typed(func, input_ty, output_ty, *, trace_size=0):
         def my_design(inp: In, out: Out, *, N: CompileTime[int]):
             in_ty = np.ndarray[(N,), np.dtype[np.int32]]
             out_ty = np.ndarray[(1,), np.dtype[np.int32]]
-            return reduce_typed(my_reduce_kernel, in_ty, out_ty)
+            return reduce(my_reduce_kernel, in_ty, out_ty)
 
     Args:
         func: :class:`~aie.iron.kernel.ExternalFunction` with signature

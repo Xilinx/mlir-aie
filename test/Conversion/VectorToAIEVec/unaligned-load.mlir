@@ -1,5 +1,7 @@
+// Copyright (C) 2023-2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 // RUN: aie-opt %s --convert-vector-to-aievec -split-input-file | FileCheck %s
-// RUN: aie-opt %s --convert-vector-to-aievec="aie-target=aie2" -split-input-file | FileCheck %s --check-prefix=CHECK-V2
 
 // CHECK-LABEL: func @unaligned_read
 // CHECK: %[[C0:.*]] = arith.constant 0 : index
@@ -15,16 +17,6 @@
 // CHECK: %[[V1:.*]] = aievec_aie1.ext %[[V1ROT]] {index = 0 : i8} : vector<16xi32>, vector<8xi32>
 // CHECK: return %[[V0]], %[[V1]] : vector<8xi32>, vector<8xi32>
 
-// CHECK-V2-LABEL: func @unaligned_read
-// CHECK-V2: %[[C24i32:.*]] = arith.constant 24 : i32
-// CHECK-V2: %[[C12i32:.*]] = arith.constant 12 : i32
-// CHECK-V2: %[[C0:.*]] = arith.constant 0 : index
-// CHECK-V2: %[[LV:.*]] = aievec.upd %{{.*}}[%[[C0]]] {index = 0 : i8, offset = 0 : i32} : memref<64xi32>, vector<16xi32>
-// CHECK-V2: %[[LV0:.*]] = aievec.ext %[[LV]] {index = 0 : i8} : vector<16xi32>, vector<8xi32>
-// CHECK-V2: %[[LV1:.*]] = aievec.ext %[[LV]] {index = 1 : i8} : vector<16xi32>, vector<8xi32>
-// CHECK-V2: %[[R0:.*]] = aievec.shift %[[LV0]], %[[LV1]], %[[C12i32]] {isAcc = false} : vector<8xi32>, vector<8xi32>, i32, vector<8xi32>
-// CHECK-V2: %[[R1:.*]] = aievec.shift %[[LV0]], %[[LV1]], %[[C24i32]] {isAcc = false} : vector<8xi32>, vector<8xi32>, i32, vector<8xi32>
-// CHECK-V2: return %[[R0]], %[[R1]] : vector<8xi32>, vector<8xi32>
 func.func @unaligned_read(%m: memref<64xi32>) -> (vector<8xi32>, vector<8xi32>) {
    %c0_i32 = arith.constant 0 : i32
    %c3 = arith.constant 3 : index
@@ -50,16 +42,6 @@ func.func @unaligned_read(%m: memref<64xi32>) -> (vector<8xi32>, vector<8xi32>) 
 // CHECK: %[[V1:.*]] = aievec_aie1.ext %[[V1ROT]] {index = 0 : i8} : vector<32xi16>, vector<16xi16>
 // CHECK: return %[[V0]], %[[V1]] : vector<16xi16>, vector<16xi16>
 
-// CHECK-V2-LABEL: func @unaligned_read
-// CHECK-V2: %[[C12i32:.*]] = arith.constant 12 : i32
-// CHECK-V2: %[[C6i32:.*]] = arith.constant 6 : i32
-// CHECK-V2: %[[C0:.*]] = arith.constant 0 : index
-// CHECK-V2: %[[LV:.*]] = aievec.upd %{{.*}}[%[[C0]]] {index = 0 : i8, offset = 0 : i32} : memref<64xi16>, vector<32xi16>
-// CHECK-V2: %[[LV0:.*]] = aievec.ext %[[LV]] {index = 0 : i8} : vector<32xi16>, vector<16xi16>
-// CHECK-V2: %[[LV1:.*]] = aievec.ext %[[LV]] {index = 1 : i8} : vector<32xi16>, vector<16xi16>
-// CHECK-V2: %[[R0:.*]] = aievec.shift %[[LV0]], %[[LV1]], %[[C6i32]] {isAcc = false} : vector<16xi16>, vector<16xi16>, i32, vector<16xi16>
-// CHECK-V2: %[[R1:.*]] = aievec.shift %[[LV0]], %[[LV1]], %[[C12i32]] {isAcc = false} : vector<16xi16>, vector<16xi16>, i32, vector<16xi16>
-// CHECK-V2: return %[[R0]], %[[R1]] : vector<16xi16>, vector<16xi16>
 func.func @unaligned_read(%m: memref<64xi16>) -> (vector<16xi16>, vector<16xi16>) {
    %c0_i16 = arith.constant 0 : i16
    %c3 = arith.constant 3 : index

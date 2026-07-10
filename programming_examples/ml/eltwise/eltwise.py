@@ -1,13 +1,11 @@
 # eltwise/eltwise.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024-2026 Advanced Micro Devices, Inc. or its affiliates
 """Element-wise bf16 binary op (add or mul) — IRON API + ``@iron.jit``.
 
-Body delegates to ``iron.algorithms.transform_parallel_binary_typed``; the
+Body delegates to ``iron.algorithms.transform_parallel_binary``; the
 per-tile kernel is selected by the ``op`` CompileTime parameter and pulled from
 ``aie.iron.kernels`` (``kernels.add`` or ``kernels.mul``).
 """
@@ -19,7 +17,7 @@ from ml_dtypes import bfloat16
 
 import aie.iron as iron
 from aie.iron import CompileTime, In, Out, kernels
-from aie.iron.algorithms import transform_parallel_binary_typed
+from aie.iron.algorithms import transform_parallel_binary
 from aie.utils.hostruntime.argparse import (
     device_from_args,
     add_compile_args,
@@ -41,7 +39,7 @@ def eltwise(
     num_channels: CompileTime[int] = 1,
     op: CompileTime[str] = "add",
 ):
-    return transform_parallel_binary_typed(
+    return transform_parallel_binary(
         _KERNEL_FACTORIES[op](tile_size=1024),
         np.ndarray[(size,), np.dtype[bfloat16]],
         tile_size=1024,

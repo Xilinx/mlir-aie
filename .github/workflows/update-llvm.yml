@@ -1,3 +1,6 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
 name: Update LLVM Version
 
 on:
@@ -25,10 +28,10 @@ jobs:
     # Cap total runtime: mlirDistro can take ~1h, leave headroom for the rest.
     timeout-minutes: 180
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10  # v6
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
       - name: Set up Python
-        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
         with:
           python-version: '3.x'
 
@@ -122,8 +125,8 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          if [ -f utils/llvm-update-rotation.txt ]; then
-            users=($(cat utils/llvm-update-rotation.txt))
+          if [ -f utils/dependency-update-rotation.txt ]; then
+            users=($(cat utils/dependency-update-rotation.txt))
             count=${#users[@]}
             if [ $count -gt 0 ]; then
               # Find the last assignee

@@ -1,10 +1,7 @@
 //===- aie.mlir ------------------------------------------------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// Copyright (C) 2026, Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 //
@@ -160,8 +157,10 @@ module {
       // TRACE INITIALIZATION
       // ========================================================================
 
-      // Configure trace output buffer (8192 bytes, default arg_idx=4)
-      aie.trace.host_config buffer_size = 8192
+      // Configure trace output buffer (8192 bytes). Trace lowering appends a
+      // dedicated trace-buffer argument to the runtime_sequence (here at the
+      // tail, after the 3 data args).
+      aie.trace.host_config {buffer_size = 8192 : i32}
 
       aie.trace.start_config @core_trace
       aie.trace.start_config @mem_trace

@@ -1,10 +1,7 @@
 //===- test_insert_trace_flows.mlir ---------------------------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -26,7 +23,7 @@ module @shim_create {
       aie.trace.stop broadcast=14
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 65536
+      aie.trace.host_config {buffer_size = 65536 : i32}
       aie.trace.start_config @core_trace
     }
     // CHECK: aie.packet_flow(1)
@@ -60,7 +57,7 @@ module @multiple_traces {
       aie.trace.stop broadcast=14
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 65536
+      aie.trace.host_config {buffer_size = 65536 : i32}
       aie.trace.start_config @trace1
     }
     // CHECK-DAG: aie.packet_source<%[[TILE2]], Trace : 0>
@@ -90,7 +87,7 @@ module @auto_packet_id {
       aie.trace.stop broadcast=14
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 65536
+      aie.trace.host_config {buffer_size = 65536 : i32}
       aie.trace.start_config @trace1
     }
   }
@@ -121,7 +118,7 @@ module @auto_packet_id_skips_explicit {
       aie.trace.stop broadcast=14
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 65536
+      aie.trace.host_config {buffer_size = 65536 : i32}
       aie.trace.start_config @auto_trace
       aie.trace.start_config @pinned_trace
     }
@@ -153,7 +150,7 @@ module @auto_packet_type {
       aie.trace.stop broadcast=14
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 65536
+      aie.trace.host_config {buffer_size = 65536 : i32}
       aie.trace.start_config @core_trace
     }
   }
@@ -182,7 +179,7 @@ module @core_and_mem {
       aie.trace.stop broadcast=14
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 65536
+      aie.trace.host_config {buffer_size = 65536 : i32}
       aie.trace.start_config @core_trace
     }
     // CHECK-DAG: aie.packet_source<%[[TILE]], Trace : 0>
@@ -208,7 +205,7 @@ module @memtile {
       aie.trace.stop broadcast=14
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 65536
+      aie.trace.host_config {buffer_size = 65536 : i32}
       aie.trace.start_config @memtile_trace
     }
     // CHECK: aie.packet_flow(1)
@@ -232,7 +229,7 @@ module @shimtile {
       aie.trace.stop event=<"NONE">
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 65536
+      aie.trace.host_config {buffer_size = 65536 : i32}
       aie.trace.start_config @shim_trace
     }
     // CHECK: aie.packet_flow(1)
@@ -258,7 +255,7 @@ module @shimtile_broadcast {
       aie.trace.stop broadcast=14
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 65536
+      aie.trace.host_config {buffer_size = 65536 : i32}
       aie.trace.start_config @shim_trace
     }
     // CHECK: aie.packet_flow(1)
@@ -282,7 +279,7 @@ module @buffer_size_config {
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
       // CHECK: aiex.npu.writebd {{{.*}}buffer_length = 2048{{.*}}}
-      aie.trace.host_config buffer_size = 8192
+      aie.trace.host_config {buffer_size = 8192 : i32}
       aie.trace.start_config @core_trace
     }
   }
@@ -290,7 +287,7 @@ module @buffer_size_config {
 
 // -----
 
-// Test: arg_idx=-1 uses last arg index with size offset (1024*4=4096)
+// Test: reuse_output_buffer uses last arg index with size offset (1024*4=4096)
 // CHECK-LABEL: module @trace_after_last_tensor
 module @trace_after_last_tensor {
   aie.device(npu1_1col) {
@@ -303,8 +300,9 @@ module @trace_after_last_tensor {
       aie.trace.stop broadcast=14
     }
     aie.runtime_sequence(%arg0: memref<16xi32>, %arg1: memref<1024xi32>) {
-      // CHECK: aiex.npu.address_patch {{{.*}}arg_idx = 1{{.*}}arg_plus = 4096{{.*}}}
-      aie.trace.host_config buffer_size = 8192 arg_idx = -1
+      // CHECK: %[[OFF:.*]] = arith.constant 4096 : i32
+      // CHECK: aiex.npu.address_patch(%[[OFF]] : i32) {{{.*}}arg_idx = 1{{.*}}}
+      aie.trace.host_config {buffer_size = 8192 : i32, reuse_output_buffer = true}
       aie.trace.start_config @core_trace
     }
   }

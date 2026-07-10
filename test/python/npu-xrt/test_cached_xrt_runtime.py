@@ -1,8 +1,6 @@
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2022-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025-2026 AMD Inc.
 
 # RUN: %run_on_npu1% %pytest %s
 # RUN: %run_on_npu2% %pytest %s
@@ -169,8 +167,12 @@ def test_runtime_eviction_logic(runtime):
 
 
 def test_runtime_cache_fill(runtime):
-    """Test filling the cache to its capacity."""
+    """Test filling the Python-side cache to its configured capacity."""
 
+    # Use a deliberately small artificial capacity. On Windows, reserved
+    # resources make the practical limit lower than the nominal cache size.
+    original_size = runtime._cache_size
+    runtime._cache_size = min(original_size, 8)
     # Clear the per-instance kernel cache so every transform() call triggers a
     # fresh compile() and populates _context_cache, regardless of prior tests.
     transform._kernel_cache.clear()
@@ -178,31 +180,74 @@ def test_runtime_cache_fill(runtime):
     # Ensure cache is empty
     runtime.cleanup()
 
-    input_tensor = iron.arange(32, dtype=np.int32)
+    try:
+        runtime.cleanup()
 
-    # Load kernels up to capacity + 1
-    limit = runtime._cache_size
-    first_key = None
+        input_tensor = iron.arange(32, dtype=np.int32)
 
-    for i in range(limit + 1):
-        transform(
-            input_tensor, input_tensor, func=lambda x, val=i: x + val, num_elements=32
-        )
+        # Load kernels up to the artificial capacity + 1.
+        limit = runtime._cache_size
+        first_key = None
 
-        if i == 0:
-            first_key = list(runtime._context_cache.keys())[0]
+        for i in range(runtime._cache_size + 1):
+            transform(
+                input_tensor,
+                input_tensor,
+                func=lambda x, val=i: x + val,
+                num_elements=32,
+            )
 
-        # On Phoenix (npu1) the runtime drains the cache entirely at cap+1
-        # (firmware workaround for EXEC_CMD ENOENT after partial eviction);
-        # other NPUs use single-entry LRU eviction, so the cap is held.
-        if runtime.npu_str == "npu1":
-            expected_size = (i + 1) if i < limit else 1
-        else:
-            expected_size = min(i + 1, limit)
-        assert len(runtime._context_cache) == expected_size
+            if i == 0:
+                first_key = next(iter(runtime._context_cache))
 
-    # The first entry is gone either way (Phoenix drained, others LRU-evicted).
-    assert first_key not in runtime._context_cache
+            if runtime.npu_str == "npu1":
+                expected_size = (i + 1) if i < runtime._cache_size else 1
+            else:
+                expected_size = min(i + 1, runtime._cache_size)
+            assert len(runtime._context_cache) == expected_size
+
+        assert first_key not in runtime._context_cache
+    finally:
+        runtime.cleanup()
+        runtime._cache_size = original_size
+
+
+def test_context_creation_retry_after_capacity_error(runtime, monkeypatch):
+    """Test context creation after evicting a cached context."""
+
+    import aie.utils.hostruntime.xrtruntime.hostruntime as hostruntime_module
+
+    original_size = runtime._cache_size
+    runtime._cache_size = 2
+
+    try:
+        transform._kernel_cache.clear()
+        runtime.cleanup()
+
+        input_tensor = iron.arange(32, dtype=np.int32)
+        transform(input_tensor, input_tensor, func=lambda x: x + 1, num_elements=32)
+
+        real_hw_context = hostruntime_module.pyxrt.hw_context
+        attempts = 0
+
+        def fail_once(*args):
+            nonlocal attempts
+            attempts += 1
+            if attempts == 1:
+                raise RuntimeError(
+                    "Failed to create context virtual (0xc01e0009): "
+                    "There was an error while creating context"
+                )
+            return real_hw_context(*args)
+
+        monkeypatch.setattr(hostruntime_module.pyxrt, "hw_context", fail_once)
+        transform(input_tensor, input_tensor, func=lambda x: x * 2, num_elements=32)
+
+        assert attempts == 2
+        assert len(runtime._context_cache) == 1
+    finally:
+        runtime.cleanup()
+        runtime._cache_size = original_size
 
 
 def test_runtime_mtime_sensitivity(runtime):

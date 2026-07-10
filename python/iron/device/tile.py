@@ -1,15 +1,15 @@
 # tile.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2024 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2024 Advanced Micro Devices, Inc.
 
 from __future__ import annotations
 
-from ...dialects._aie_enum_gen import AIETileType
-from ...dialects.aie import LogicalTileOp, TileOp
+from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
+    AIETileType,
+)
+from ...dialects.aie import LogicalTileOp
 
 
 class Tile:
@@ -42,7 +42,7 @@ class Tile:
         self.row: int | None = row
         self.tile_type: AIETileType | None = tile_type
         self.allocation_scheme: str | None = allocation_scheme
-        self._op: LogicalTileOp | TileOp | None = None
+        self._op: LogicalTileOp | None = None
 
     def copy(self) -> Tile:
         """Return a Tile instance with the same col, row, tile_type, and allocation_scheme."""
@@ -53,14 +53,42 @@ class Tile:
             allocation_scheme=self.allocation_scheme,
         )
 
+    def with_type(
+        self,
+        tile_type: AIETileType,
+        *,
+        allocation_scheme: str | None = None,
+        mismatch_msg: str | None = None,
+    ) -> Tile:
+        """Return a fresh Tile with ``tile_type`` stamped, preserving col/row.
+
+        Always returns a new object — never mutates self. Raises ValueError if
+        the existing tile_type conflicts with tile_type.
+        """
+        if self.tile_type is not None and self.tile_type != tile_type:
+            raise ValueError(
+                mismatch_msg
+                or f"Expected a {tile_type} tile, but got tile_type={self.tile_type}"
+            )
+        return Tile(
+            self.col,
+            self.row,
+            tile_type=tile_type,
+            allocation_scheme=(
+                allocation_scheme
+                if allocation_scheme is not None
+                else self.allocation_scheme
+            ),
+        )
+
     @property
-    def op(self) -> LogicalTileOp | TileOp:
+    def op(self) -> LogicalTileOp:
         if not self._op:
             raise ValueError("Cannot get op before it is set.")
         return self._op
 
     @op.setter
-    def op(self, op: LogicalTileOp | TileOp):
+    def op(self, op: LogicalTileOp):
         if self._op and self._op != op:
             raise ValueError("Cannot change operation once it is set.")
         self._op = op

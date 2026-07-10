@@ -1,10 +1,7 @@
 //===- test_insert_trace_flows_egress_shim_col.mlir -----------*- MLIR -*-===//
 //
-// This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-// See https://llvm.org/LICENSE.txt for license information.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
-// (c) Copyright 2026 Advanced Micro Devices, Inc.
 //
 //===----------------------------------------------------------------------===//
 
@@ -26,7 +23,7 @@ module @default_egress {
       aie.trace.stop broadcast=14
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 8192
+      aie.trace.host_config {buffer_size = 8192 : i32}
       aie.trace.start_config @trace0
     }
   }
@@ -48,7 +45,7 @@ module @forced_egress {
       aie.trace.stop broadcast=14
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 8192 egress_shim_col = 1
+      aie.trace.host_config {buffer_size = 8192 : i32, egress_shim_col = 1 : i32}
       aie.trace.start_config @trace0
     }
   }

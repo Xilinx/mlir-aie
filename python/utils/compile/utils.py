@@ -1,10 +1,8 @@
 # utils.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025-2026 Advanced Micro Devices, Inc.
 """Low-level helpers for compiling MLIR modules and external C++ kernels to NPU artifacts."""
 
 import logging
@@ -12,8 +10,14 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
+from typing import TYPE_CHECKING
 import aie.compiler.aiecc.main as aiecc
 import aie.utils.config as config
+
+if TYPE_CHECKING:
+    from aie.ir import (  # pyright: ignore[reportMissingImports]
+        Module,  # pyright: ignore[reportAttributeAccessIssue]
+    )
 
 logger = logging.getLogger(__name__)
 
@@ -22,8 +26,12 @@ def resolve_target_arch(device=None) -> str:
     """Return ``'aie2'`` or ``'aie2p'`` for the given device, or ``'aie2'`` if device is None."""
     if device is None:
         return "aie2"
-    from aie.dialects._aie_enum_gen import AIEArch
-    from aie.dialects.aie import get_target_model
+    from aie.dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
+        AIEArch,
+    )
+    from aie.dialects.aie import (
+        get_target_model,  # pyright: ignore[reportAttributeAccessIssue]
+    )
     from aie.iron.device import Device
 
     if isinstance(device, Device):
@@ -102,6 +110,12 @@ def compile_cxx_core_function(
             "-Wno-empty-body",
             "-O2",
             "-DNDEBUG",
+            # Pre-trip aie_api's aie_adf.hpp include guard so stock upstream
+            # aie_api never pulls in <adf.h> (Vitis-only, absent from Peano).
+            # No mlir-aie kernel uses adf:: symbols, so this only elides dead
+            # code.  (The chess path gets the same define centrally in
+            # tools/chess-clang/xchesscc_wrapper.)
+            "-D__AIE_API_AIE_ADF_HPP__",
             f"--target={target_arch}-none-unknown-elf",
         ]
 
@@ -131,7 +145,7 @@ def compile_cxx_core_function(
 
 
 def compile_mlir_module(
-    mlir_module: str,
+    mlir_module: "str | Module",
     insts_path: str | Path | None = None,
     pdi_path: str | Path | None = None,
     xclbin_path: str | Path | None = None,
@@ -211,7 +225,7 @@ def compile_mlir_module(
         try:
             from aie.iron.kernel import ExternalFunction
         except ImportError:
-            ExternalFunction = None  # type: ignore
+            ExternalFunction = None
         if ExternalFunction is not None:
             target_arch = resolve_target_arch(device)
             for func in list(ExternalFunction._instances):
@@ -254,14 +268,7 @@ def compile_mlir_module(
 
 def _rename_symbol_in_object(object_path: str, old_name: str, new_name: str) -> None:
     """Rename a symbol in a compiled object file using llvm-objcopy."""
-    objcopy = shutil.which("llvm-objcopy")
-    if not objcopy:
-        objcopy = shutil.which("objcopy")
-    if not objcopy:
-        raise RuntimeError(
-            "Cannot rename symbol: neither 'llvm-objcopy' nor 'objcopy' found in PATH. "
-            "Install the LLVM toolchain or GNU binutils."
-        )
+    objcopy = config.objcopy_path()
     result = subprocess.run(
         [objcopy, f"--redefine-sym={old_name}={new_name}", str(object_path)],
         capture_output=True,

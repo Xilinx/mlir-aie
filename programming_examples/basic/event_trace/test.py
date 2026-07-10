@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
 # test.py -*- Python -*-
 #
-# This file is licensed under the Apache License v2.0 with LLVM Exceptions.
-# See https://llvm.org/LICENSE.txt for license information.
+# Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-# (c) Copyright 2025-2026 Advanced Micro Devices, Inc. or its affiliates
 """Python test harness for the event-trace vector_scalar_mul design.
 
 Loads the pre-compiled xclbin/insts produced by the Makefile's
@@ -38,8 +36,6 @@ def main(opts):
     ref = in1_np * scale_factor
 
     npu_opts = create_npu_kernel(opts)
-    if npu_opts.npu_kernel.trace_config:
-        npu_opts.npu_kernel.trace_config.enable_ctrl_pkts = True
 
     print("Running...\n")
     res = DefaultNPURuntime.run_test(
