@@ -55,9 +55,10 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" == "workflow_run" ]; then
             CONCLUSION="${{ github.event.workflow_run.conclusion }}"
-            echo "Upstream mlirDistroRocm conclusion: $CONCLUSION"
-            if [ "$CONCLUSION" != "success" ]; then
-              echo "Upstream run did not succeed — skipping."
+            BRANCH="${{ github.event.workflow_run.head_branch }}"
+            echo "Upstream mlirDistroRocm conclusion: $CONCLUSION on branch: $BRANCH"
+            if [ "$CONCLUSION" != "success" ] || [ "$BRANCH" != "main" ]; then
+              echo "Upstream run did not succeed on main — skipping."
               echo "should_run=false" >> $GITHUB_OUTPUT
             else
               echo "should_run=true" >> $GITHUB_OUTPUT
@@ -78,11 +79,17 @@ jobs:
         run: |
           sudo apt-get install -y -q jq
 
+          # Sort by updated_at descending so the newest x86_64 wheel is always first,
+          # regardless of how many wheels accumulate in the release.
           ASSET=$(gh release view rocm-mlir-distro \
             --repo Xilinx/mlir-aie \
             --json assets \
-            --jq '.assets[] | select(.name | test("mlir-.*linux_x86_64\\.whl")) | .name' \
-            | head -n1)
+            --jq '[.assets[] | select(.name | test("mlir-.*linux_x86_64\\.whl"))] | sort_by(.updatedAt) | last | .name')
+
+          if [ -z "$ASSET" ] || [ "$ASSET" == "null" ]; then
+            echo "::error::No mlir linux_x86_64 wheel found in rocm-mlir-distro release."
+            exit 1
+          fi
 
           echo "Representative asset: $ASSET"
 
@@ -274,9 +281,17 @@ jobs:
 
           echo "Bumping LLVM_COMMIT default to $FULL_COMMIT (datetime=$DATETIME)"
 
-          # Update the default LLVM_COMMIT in mlirDistroRocm.yml
-          sed -i "s|default: '[0-9a-f]\{40\}'|default: '$FULL_COMMIT'|" \
-            .github/workflows/mlirDistroRocm.yml
+          # Scope the replacement to the LLVM_COMMIT input block by matching
+          # the two-line context: the description line followed by the default.
+          TARGET=.github/workflows/mlirDistroRocm.yml
+          BEFORE=$(md5sum "$TARGET")
+          sed -i "/description: 'LLVM commit/{n; s|default: '[0-9a-f]*'|default: '$FULL_COMMIT'|}" \
+            "$TARGET"
+          AFTER=$(md5sum "$TARGET")
+          if [ "$BEFORE" == "$AFTER" ]; then
+            echo "::error::sed did not update LLVM_COMMIT in $TARGET — check the file structure."
+            exit 1
+          fi
 
       - name: Create Pull Request
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1  # v8
