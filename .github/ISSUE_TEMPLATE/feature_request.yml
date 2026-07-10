@@ -1,0 +1,19 @@
+name: Feature request
+description: Suggest a new capability or improvement
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: Describe the use case or the problem you're hitting. What would you like IRON to support?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: If you have an idea for the API or approach, sketch it here. Alternatives you've considered are welcome too.
+    validations:
+      required: false

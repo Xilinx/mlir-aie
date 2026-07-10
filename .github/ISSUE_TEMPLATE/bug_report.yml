@@ -1,0 +1,39 @@
+name: Bug report
+description: Report something that isn't working as expected
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, and what happened instead?
+      placeholder: A clear description of the bug, ideally with a minimal example or the failing command.
+    validations:
+      required: true
+
+  - type: input
+    id: hardware
+    attributes:
+      label: Hardware / device
+      description: Which NPU are you targeting?
+      placeholder: e.g. Ryzen AI Strix (npu2), Phoenix (npu1), Versal, or "N/A"
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: mlir-aie release/commit and how you installed (wheel or from source).
+      placeholder: e.g. v1.3.4 wheel, or main @ <commit>
+    validations:
+      required: false
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs
+      description: Paste any error output or a stack trace. This is automatically formatted as code.
+      render: shell
+    validations:
+      required: false
