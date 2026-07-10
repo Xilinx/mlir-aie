@@ -125,6 +125,13 @@ plugins:
             filters:
               - "!^_"
 
+# Build-time hooks. rewrite_source_links rewrites relative links that point at
+# repo source files/dirs (python/, programming_examples/, etc.) into absolute
+# github.com URLs so they don't 404 on the site, while leaving the markdown
+# source relative so GitHub browsing keeps working. See the file for details.
+hooks:
+  - docs/hooks/rewrite_source_links.py
+
 markdown_extensions:
   - admonition
   - pymdownx.details
