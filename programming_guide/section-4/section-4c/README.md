@@ -289,4 +289,4 @@ Let's examine this more closely in our example.
 1. Now go back and uncomment the pragma lines again and rerun the build and cleanup script (`make clean; make trace; <mlir-aie>/ironenv/lib/python<ver>/site-packages/llvm-aie/bin/llvm-objdump -dr build/core_0_2.elf > disassembly_0_2.txt`). Search for `vector_scalar_mul_vector` again and count the number of inner loop lines, as well as `VMUL/VMAC` lines again. How many do you see? <img src="../../../mlir_exercises/images/answer1.jpg" title="2 inner loop lines. 1 VMUL." height=25> This matches with our hand calculation that the inner loop is limited to 2 because of the vector stores. 
 
 -----
-[[Prev]](../section-4b) [[Up]](../../section-4) [[Next - Section 5]](../../section-5)
+[Prev](../section-4b) [Up](../../section-4) [Next - Section 5](../../section-5)

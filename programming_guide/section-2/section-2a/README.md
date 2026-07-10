@@ -389,4 +389,4 @@ The intent of this high-level view showcases that the DMA is able to interact wi
 2. Do you think the depths `[2, 3]` are sufficient for both compute cores on A and B to execute concurrently with their DMAs? <img src="../../../mlir_exercises/images/answer1.jpg" title="Producer A requires a ping-pong buffer to function concurrently with its DMA. Similarly, consumer B requires two additional objects that the DMA can write new data into while B computes. The updated depths are [2, 4]." height=25>
 
 -----
-[[Up](..)] [[Next - Section 2b](../section-2b/)]
+[Up](..)] [Next - Section 2b](../section-2b/)]

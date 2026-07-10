@@ -32,5 +32,5 @@ There are a number of example designs available [here](../../programming_example
 3. Suppose you have a bottleneck block with input dimensions of 32x32x256. After passing through the 1x1 convolutional layer, the output dimensions become 32x32x64. What would be the output dimensions after the subsequent 3x3 convolutional layer, assuming a stride of 1 with no padding and an output channel of 64? <img src="../../mlir_exercises/images/answer1.jpg" title="30×30×64. Without padding, the spatial dimensions would shrink by two pixels in each dimension due to the 3x3 convolution operation." height=25>
 
 -----
-[[Prev - Section 5](../section-5/)] [[Top](..)]
+[Prev - Section 5](../section-5/)] [Top](..)]
 

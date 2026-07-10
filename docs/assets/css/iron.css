@@ -1,0 +1,54 @@
+/* Copyright (C) 2024-2026 Advanced Micro Devices, Inc. */
+/* SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception */
+
+/* Primary: muted grey-teal. Accent: cyan for links and highlights. */
+:root {
+  --md-primary-fg-color:        #3a6570;
+  --md-primary-fg-color--light: #4a7d8c;
+  --md-primary-fg-color--dark:  #2a4d57;
+  --md-primary-bg-color:        #ffffff;
+  --md-primary-bg-color--light: rgba(255,255,255,0.7);
+  --md-typeset-a-color:         #2a7282;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color:        #3a6570;
+  --md-primary-fg-color--light: #4a7d8c;
+  --md-primary-fg-color--dark:  #2a4d57;
+  --md-typeset-a-color:         #4db8c8;
+}
+
+/* ── Code blocks ─────────────────────────────────────────────────────────── */
+.highlight pre { border-radius: 6px; }
+.md-typeset code { border-radius: 3px; }
+
+/* ── Landing page: quick-nav cards ──────────────────────────────────────── */
+.iron-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0 2rem;
+}
+
+.iron-card {
+  border: 1px solid var(--md-default-fg-color--lightest);
+  border-radius: 8px;
+  padding: 1.25rem 1.25rem 1rem;
+  text-decoration: none !important;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  display: block;
+  color: inherit;
+}
+
+.iron-card:hover {
+  border-color: var(--md-accent-fg-color);
+  box-shadow: 0 0 0 2px var(--md-accent-fg-color--transparent);
+  color: inherit;
+}
+
+.iron-card-icon { font-size: 1.5rem; margin-bottom: 0.4rem; display: block; }
+.iron-card-title { font-weight: 600; font-size: 0.92rem; display: block; margin-bottom: 0.2rem; }
+.iron-card-desc  { font-size: 0.8rem; opacity: 0.72; line-height: 1.4; }
+
+/* ── Footer ──────────────────────────────────────────────────────────────── */
+.md-footer { font-size: 0.8rem; }

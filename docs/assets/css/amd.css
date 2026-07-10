@@ -1,0 +1,171 @@
+/* Copyright (C) 2024-2026 Advanced Micro Devices, Inc. */
+/* SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception */
+
+/* ── Color tokens ───────────────────────────────────────────────────────────
+   Primary: deep charcoal (not red) — red is an accent only.
+   This reads as a serious technical tool, not a marketing page.          */
+:root {
+  --amd-red:    #ED1C24;
+  --amd-dark:   #1a1a1a;
+  --amd-mid:    #2d2d2d;
+
+  /* Header/nav background color */
+  --md-primary-fg-color:        var(--amd-dark);
+  --md-primary-fg-color--light: #3d3d3d;
+  --md-primary-fg-color--dark:  #0a0a0a;
+  --md-primary-bg-color:        #ffffff;
+  --md-primary-bg-color--light: rgba(255,255,255,0.72);
+
+  /* Accent: red — used for links, hover states, active indicators */
+  --md-accent-fg-color:               var(--amd-red);
+  --md-accent-fg-color--transparent:  rgba(237,28,36,0.12);
+
+  /* Inline link color — Material doesn't auto-derive this from accent */
+  --md-typeset-a-color:         var(--amd-red);
+}
+
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color:        #1e1e1e;
+  --md-primary-fg-color--light: #2c2c2c;
+  --md-primary-fg-color--dark:  #111111;
+  --md-primary-bg-color:        #1e1e1e;
+
+  --md-accent-fg-color:               #ff4d52;
+  --md-accent-fg-color--transparent:  rgba(255,77,82,0.15);
+  --md-typeset-a-color:               #ff4d52;
+
+  --md-default-bg-color:        #111418;
+  --md-default-fg-color:        #d1d5db;
+  --md-default-fg-color--light: #9ca3af;
+  --md-code-bg-color:           #1a1f27;
+  --md-code-fg-color:           #e2e8f0;
+}
+
+/* ── Header / nav bar ───────────────────────────────────────────────────── */
+.md-header {
+  background: var(--amd-dark);
+  box-shadow: 0 1px 0 rgba(255,255,255,0.06);
+}
+
+.md-tabs {
+  background: var(--amd-mid);
+}
+
+/* Red left-border indicator on active tab, not a full underline bar */
+.md-tabs__link--active {
+  opacity: 1;
+  border-bottom: 3px solid var(--amd-red);
+}
+
+/* ── Sidebar nav ────────────────────────────────────────────────────────── */
+/* Active item: red left border, muted red background */
+.md-nav__item--active > .md-nav__link {
+  color: var(--md-accent-fg-color);
+}
+
+.md-nav__link:is(:focus, :hover) {
+  color: var(--md-accent-fg-color);
+}
+
+/* ── Code blocks ────────────────────────────────────────────────────────── */
+.highlight pre {
+  border-radius: 6px;
+}
+
+.md-typeset code {
+  border-radius: 3px;
+}
+
+/* ── Landing page cards ─────────────────────────────────────────────────── */
+.iron-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
+  margin: 1.5rem 0 2rem;
+}
+
+.iron-card {
+  background: var(--md-code-bg-color, #f8f9fa);
+  border: 1px solid var(--md-default-fg-color--light, #e5e7eb);
+  border-radius: 8px;
+  padding: 1.25rem 1.25rem 1rem;
+  text-decoration: none !important;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  display: block;
+}
+
+.iron-card:hover {
+  border-color: var(--amd-red);
+  box-shadow: 0 0 0 2px rgba(237,28,36,0.12);
+}
+
+.iron-card-icon {
+  font-size: 1.6rem;
+  margin-bottom: 0.5rem;
+  display: block;
+  line-height: 1;
+}
+
+.iron-card-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--md-default-fg-color);
+  margin-bottom: 0.3rem;
+  display: block;
+}
+
+.iron-card-desc {
+  font-size: 0.82rem;
+  color: var(--md-default-fg-color--light, #6b7280);
+  line-height: 1.4;
+}
+
+/* ── Hero / landing splash ──────────────────────────────────────────────── */
+.iron-hero {
+  background: linear-gradient(135deg, #0f1117 0%, #1a1f27 60%, #1e2030 100%);
+  border-radius: 10px;
+  padding: 2.5rem 2rem 2rem;
+  margin-bottom: 1.75rem;
+  border: 1px solid rgba(255,255,255,0.06);
+}
+
+.iron-hero h1 {
+  font-size: 2rem;
+  font-weight: 700;
+  color: #f9fafb;
+  margin: 0 0 0.4rem;
+  line-height: 1.15;
+}
+
+.iron-hero .iron-hero-sub {
+  font-size: 1.05rem;
+  color: #9ca3af;
+  max-width: 620px;
+  line-height: 1.55;
+  margin-bottom: 1.25rem;
+}
+
+.iron-badge {
+  display: inline-block;
+  background: rgba(237,28,36,0.15);
+  color: #ff6b6f;
+  border: 1px solid rgba(237,28,36,0.3);
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 0.2rem 0.7rem;
+  margin-bottom: 1.25rem;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+/* ── Admonitions ────────────────────────────────────────────────────────── */
+.md-typeset .admonition.tip,
+.md-typeset details.tip {
+  border-color: var(--amd-red);
+}
+
+/* ── Footer ─────────────────────────────────────────────────────────────── */
+.md-footer {
+  font-size: 0.8rem;
+}

@@ -35,4 +35,4 @@ The `# To/from AIE-array data movement` section of the design code is described 
 Other examples containing this data movement pattern are available in the [programming_examples/matrix_multiplication/](../../../../programming_examples/basic/matrix_multiplication/).
 
 -----
-[[Prev](../02_external_mem_to_core/)] [[Up](..)] [[Next](../04_distribute_L2/)]
+[Prev](../02_external_mem_to_core/)] [Up](..)] [Next](../04_distribute_L2/)]

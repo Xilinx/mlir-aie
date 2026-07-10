@@ -11,6 +11,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'
 #  pull_request:
   workflow_dispatch:
 
@@ -27,13 +29,17 @@ jobs:
       - name: Configure Environment
         run: echo "$GITHUB_WORKSPACE/llvm/install/bin" >> $GITHUB_PATH
 
-      # Clone the repo and its submodules. Do shallow clone to save clone
-      # time.
+      # mike needs the full gh-pages branch history to update versions.json
       - name: Get the project repository
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
         with:
-          fetch-depth: 2
+          fetch-depth: 0
           submodules: "true"
+
+      - name: Configure git for mike
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Install packages
         run: sudo apt-get install -y graphviz lld doxygen
@@ -45,6 +51,7 @@ jobs:
               --requirements python/requirements.txt \
               --install-non-eudsl
           python -m pip install --require-hashes -r python/requirements_dev.lock
+          pip install -r docs/requirements-mkdocs.txt
 
       - name: Install Ninja
         # https://github.com/llvm/actions/tree/main/install-ninja
@@ -70,7 +77,6 @@ jobs:
       - name: Get MLIR
         id: mlir-wheels
         run: |
-
           VERSION=$(utils/clone-llvm.sh --get-wheel-version)
           pip -q download mlir==$VERSION \
             -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
@@ -80,10 +86,8 @@ jobs:
           echo "MLIR_WHEEL_VERSION=$VERSION" | tee -a $GITHUB_OUTPUT
           echo "MLIR_DIR=$PWD/mlir" | tee -a $GITHUB_OUTPUT
 
-      # Build the repo test target in release mode to build and test.
-      - name: Build Docs
+      - name: Build C++ Doxygen Docs
         run: |
-
           mkdir build_release
           pushd build_release
 
@@ -98,28 +102,54 @@ jobs:
             -DLLVM_EXTERNAL_LIT=$(which lit)
           make docs
           popd
-          pushd python
-          doxygen
-          popd
-          cp -r docs/* build_release/docs
-          dot -Tpng docs/dialects.dot > build_release/docs/dialects.png
-          dot -Tsvg docs/dialects.dot > build_release/docs/dialects.svg
 
-      - name: Save MLIR Version
+      - name: Render dialect graph
         run: |
-          echo "{" > build_release/docs/build_info.json
-          echo "llvm-version: \"${{ steps.mlir-wheels.outputs.MLIR_WHEEL_VERSION }}\"," >> build_release/docs/build_info.json
-          echo "}" > build_release/docs/build_info.json
+          dot -Tpng docs/dialects.dot > docs/dialects.png
+          dot -Tsvg docs/dialects.dot > docs/dialects.svg
 
-      - name: test
+      - name: Copy generated dialect docs into docs/
         run: |
-          find ./build_release/docs
+          # cmake writes AIEDialect.md etc to build_release/docs/ via mlir-tblgen
+          cp build_release/docs/*.md docs/ 2>/dev/null || true
 
-      - name: Publish to GitHub-Pages
+      - name: Resolve version label
+        id: version
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+            # e.g. refs/tags/v1.4.0 → "1.4"  (major.minor only)
+            RAW="${GITHUB_REF#refs/tags/v}"
+            LABEL="${RAW%.*}"
+            echo "label=${LABEL}" >> $GITHUB_OUTPUT
+            echo "aliases=latest" >> $GITHUB_OUTPUT
+          else
+            echo "label=dev" >> $GITHUB_OUTPUT
+            echo "aliases=" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Deploy with mike
         if: github.event_name != 'pull_request'
-        # https://github.com/peaceiris/actions-gh-pages/releases/tag/v3.9.3
-        uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453  # v4.1.0
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./build_release/docs
-          enable_jekyll: true
+        run: |
+          LABEL="${{ steps.version.outputs.label }}"
+          ALIASES="${{ steps.version.outputs.aliases }}"
+
+          if [ -n "$ALIASES" ]; then
+            mike deploy --push --update-aliases "$LABEL" $ALIASES
+          else
+            mike deploy --push "$LABEL"
+          fi
+
+      - name: Copy Doxygen output into gh-pages
+        if: github.event_name != 'pull_request'
+        run: |
+          # mike has already pushed the MkDocs site to gh-pages.
+          # Check out gh-pages, inject Doxygen under the versioned path, push.
+          LABEL="${{ steps.version.outputs.label }}"
+          git fetch origin gh-pages
+          git checkout gh-pages
+          mkdir -p "${LABEL}/doxygen"
+          cp -r build_release/doxygen/html "${LABEL}/doxygen/"
+          git add "${LABEL}/doxygen/"
+          git diff --cached --quiet || git commit -m "docs: add Doxygen output for ${LABEL}"
+          git push origin gh-pages
+          git checkout -

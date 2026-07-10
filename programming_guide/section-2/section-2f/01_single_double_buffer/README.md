@@ -33,4 +33,4 @@ make emit-mlir                        # writes the lowered MLIR to build/aie.mli
 ```
 
 -----
-[[Up](..)] [[Next](../02_external_mem_to_core/)]
+[Up](..)] [Next](../02_external_mem_to_core/)]

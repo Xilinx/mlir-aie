@@ -1,0 +1,212 @@
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+site_name: IRON / MLIR-AIE
+# MIGRATION NOTE: if the repo moves orgs, update site_url, repo_name, repo_url here.
+# The docs content uses only relative links; only these three lines need changing.
+site_url: https://xilinx.github.io/mlir-aie/
+site_description: >-
+  IRON — a close-to-metal Python API for programming AMD Ryzen™ AI NPUs,
+  built on an open-source MLIR-based compiler toolchain.
+site_author: AMD Advanced Micro Devices
+repo_name: Xilinx/mlir-aie
+repo_url: https://github.com/Xilinx/mlir-aie
+edit_uri: edit/main/
+
+docs_dir: docs
+site_dir: site
+exclude_docs: |
+  *.cfg.in
+  *.cfg
+  *.dot
+  *.gemspec
+  Gemfile
+  CMakeLists.txt
+  *.dox
+  README.md
+
+# Links to source files (*.py, *.cpp, *.h, etc.) and out-of-tree dirs
+# (programming_examples/, mlir_exercises/) are intentional "go read the
+# source" links that work on GitHub but don't resolve as doc pages.
+# Suppress the noise; keep absolute_links warnings for real broken links.
+validation:
+  links:
+    absolute_links: warn
+    unrecognized_links: ignore
+    anchors: warn
+    not_found: ignore
+
+theme:
+  name: material
+  logo: assets/images/TLogoW.png
+  favicon: assets/images/favicon.ico
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.path
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.tabs.link
+    - content.code.copy
+    - content.code.annotate
+    - toc.follow
+
+extra_css:
+  - assets/css/iron.css
+
+extra:
+  # Version picker — populated by mike at deploy time from versions.json
+  version:
+    provider: mike
+    default: latest
+    alias: true
+  # Social links appear in the footer
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/Xilinx/mlir-aie
+      name: mlir-aie on GitHub
+    - icon: fontawesome/solid/paper-plane
+      link: mailto:aup@amd.com
+      name: AMD University Program
+
+plugins:
+  - search
+  # Sitemap is built-in to MkDocs — Google/Bing pick it up at /sitemap.xml
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          paths: [python]
+          options:
+            show_root_heading: true
+            show_root_full_path: false
+            show_source: true
+            show_bases: true
+            show_inheritance_diagram: false
+            members_order: source
+            docstring_style: google
+            merge_init_into_class: true
+            show_if_no_docstring: false
+            filters:
+              - "!^_"
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - Overview: getting-started.md
+    - Windows: buildHostWin.md
+    - Windows (Native): buildHostWinNative.md
+    - Non-Ubuntu Linux: buildHostLinNonUbuntu.md
+    - Linux (Ubuntu): getting-started.md
+    - Build from Source: Building.md
+    - Versal: BuildingVersal.md
+    - Devices: Devices.md
+    - Platform Notes: Platform.md
+  - Programming Guide:
+    - Overview: programming_guide/README.md
+    - Mini Tutorial: programming_guide/mini_tutorial/README.md
+    - "Section 0: Prerequisites": programming_guide/section-0/README.md
+    - "Section 1: Tiles and Buffers": programming_guide/section-1/README.md
+    - "Section 2: Data Movement":
+      - Overview: programming_guide/section-2/README.md
+      - "2a: Single-Tile Data Movement": programming_guide/section-2/section-2a/README.md
+      - "2b: Broadcast and Reuse":
+        - Overview: programming_guide/section-2/section-2b/README.md
+        - Reuse: programming_guide/section-2/section-2b/01_Reuse/README.md
+        - Broadcast: programming_guide/section-2/section-2b/02_Broadcast/README.md
+        - Implicit Copy: programming_guide/section-2/section-2b/03_Implicit_Copy/README.md
+        - Repeat: programming_guide/section-2/section-2b/04_Repeat/README.md
+      - "2c: Stream Transformations":
+        - Overview: programming_guide/section-2/section-2c/README.md
+        - To Stream: programming_guide/section-2/section-2c/to_stream_transformations/README.md
+        - From Stream: programming_guide/section-2/section-2c/from_stream_transformations/README.md
+      - "2d: DMA and Runtime Tasks":
+        - Overview: programming_guide/section-2/section-2d/README.md
+        - DMA Tasks: programming_guide/section-2/section-2d/DMATasks.md
+        - Runtime Tasks: programming_guide/section-2/section-2d/RuntimeTasks.md
+      - "2e: Distributed Data Movement": programming_guide/section-2/section-2e/README.md
+      - "2f: Multi-Core Patterns":
+        - Overview: programming_guide/section-2/section-2f/README.md
+        - Single/Double Buffer: programming_guide/section-2/section-2f/01_single_double_buffer/README.md
+        - Ext Mem to Core: programming_guide/section-2/section-2f/02_external_mem_to_core/README.md
+        - Ext Mem to Core (L2): programming_guide/section-2/section-2f/03_external_mem_to_core_L2/README.md
+        - Distribute L2: programming_guide/section-2/section-2f/04_distribute_L2/README.md
+        - Join L2: programming_guide/section-2/section-2f/05_join_L2/README.md
+      - "2g: Advanced Patterns": programming_guide/section-2/section-2g/README.md
+      - "2h: TAP / Tensor Access Patterns": programming_guide/section-2/section-2h/README.md
+    - "Section 3: Kernels": programming_guide/section-3/README.md
+    - "Section 4: Performance":
+      - Overview: programming_guide/section-4/README.md
+      - "4a: Vectorization": programming_guide/section-4/section-4a/README.md
+      - "4b: Tracing": programming_guide/section-4/section-4b/README.md
+      - "4c: Benchmarking": programming_guide/section-4/section-4c/README.md
+    - "Section 5: Kernel Library": programming_guide/section-5/README.md
+    - "Section 6: ML Examples": programming_guide/section-6/README.md
+    - Quick Reference: programming_guide/quick_reference.md
+    - IRON Configuration: programming_guide/iron_configuration.md
+    - Compilation Stages: programming_guide/compilation_stages.md
+    - Implicit MLIR Context: programming_guide/implicit_mlir_context.md
+    - Kernel Library: programming_guide/kernels_library.md
+  - API Reference:
+    - IRON Python API: api/iron.md
+    - Tensor Access Patterns (taplib): api/taplib.md
+    - Utilities: api/utils.md
+    - Kernels: api/kernels.md
+  - MLIR / C++ Reference:
+    - Dialects Overview: AIEDesignPatterns.md
+    - AIE Dialect: AIEDialect.md
+    - AIEX Dialect: AIEXDialect.md
+    - AIEVec Dialect: AIEVecDialect.md
+    - ADF Dialect: ADFDialect.md
+    - AIE Passes: AIEPasses.md
+    - AIEX Passes: AIEXPasses.md
+    - AIEVec Passes: AIEVecPasses.md
+    - Routing: AIERouting.md
+    - Vectorization: AIEVectorization.md
+    - C++ API (Doxygen): api/cpp_doxygen.md
+  - Developer Guide:
+    - Contributing: CONTRIBUTING.md
+    - Building from Source: Building.md
+    - Developer Notes: Dev.md
+    - Security: SECURITY.md
+  - Presentations: Presentations.md

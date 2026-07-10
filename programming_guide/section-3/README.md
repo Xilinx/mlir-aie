@@ -397,4 +397,4 @@ Because our design is defined in several different files such as:
 ensuring that top level design parameters stay consistent is important so we don't, for example, get system hangs when buffer sizes in the host code don't match the buffer size in the top level design. The `@iron.jit` path handles this automatically — the same design function defines the shapes used to allocate `iron.tensor` inputs and the runtime sequence. For the explicit-XRT walkthrough, [section-4b](../section-4/section-4b) shares example design templates that put these top level parameters in the `Makefile` and pass them to the other design files; the same pattern is visible in example designs like [vector_scalar_mul](../../programming_examples/basic/vector_scalar_mul).
 
 -----
-[[Prev - Section 2](../section-2/)] [[Top](..)] [[Next - Section 4](../section-4/)]
+[Prev - Section 2](../section-2/)] [Top](..)] [Next - Section 4](../section-4/)]
