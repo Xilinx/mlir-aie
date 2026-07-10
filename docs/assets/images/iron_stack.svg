@@ -10,7 +10,7 @@
     </marker>
   </defs>
   <style>
-    .fillO { fill:#f2913d; }
+    .fillO { fill:#d1730f; }
     .fillB { fill:#4d86ee; }
     .fillN { fill:#3a3d44; }
     .edge  { fill:none; stroke:#26272b; stroke-width:2.4; stroke-linejoin:round; stroke-linecap:round; }
