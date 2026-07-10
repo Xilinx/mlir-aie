@@ -1,13 +1,9 @@
-# Copyright (C) 2023-2026 Advanced Micro Devices, Inc.
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 # Variant of mlirDistro.yml that builds MLIR wheels from the ROCm/llvm-project
 # fork instead of upstream llvm/llvm-project. Triggered manually only — no cron,
 # no automatic PR trigger — so it cannot interfere with the canonical distro build.
-#
-# Default LLVM commit is the hash Jorn Tuyls validated:
-#   46fcb339fb61119b337f973c7ca9e710a319fdd0 (ROCm/llvm-project)
-# Override via the LLVM_COMMIT input for future hash bumps.
 
 name: MLIR Distro (ROCm LLVM)
 
