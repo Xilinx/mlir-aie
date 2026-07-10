@@ -524,6 +524,9 @@ LogicalResult configureBdInBlock(const AIE::AIETargetModel &targetModel,
   if (packetID) {
     if (!packetType)
       bdOp.emitError("must have packetType with packetID");
+    // getConstantLen() is nullopt for a runtime len operand, so this guard only
+    // catches a compile-time-zero length. A runtime len that happens to be 0 is
+    // not diagnosed here (runtime len is not yet reachable on this static path).
     if (bdOp.getConstantLen() == 0)
       return bdOp.emitOpError(
           "For MM2S channels, if Buffer_Length=0 then Enable_Packet must be "

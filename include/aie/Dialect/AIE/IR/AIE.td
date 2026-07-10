@@ -26,10 +26,11 @@ def AIE_Dialect : Dialect {
   }];
   let useDefaultTypePrinterParser = 1;
   let useDefaultAttributePrinterParser = 1;
-  // DMABDOp::buildWithConstants and LinearizeContiguousBDTransfer create
-  // arith.constant ops via the MLIR builder API. MLIR requires dependent
-  // dialects to be pre-loaded before any op in this dialect may be built,
-  // so dialect-level declaration is the correct placement.
+  // Several AIE constructs materialize arith ops via the builder API (e.g. the
+  // Python wrappers in dialects/aie.py build arith.constant for runtime scalar
+  // operands, and AIEX lowerings emit arith into runtime_sequence bodies). MLIR
+  // requires dependent dialects to be pre-loaded before ops referencing them may
+  // be built, so declaring the dependency at dialect level is the safe placement.
   let dependentDialects = ["::mlir::arith::ArithDialect"];
 }
 
