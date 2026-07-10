@@ -5,7 +5,10 @@ from __future__ import annotations
 from collections import abc
 from copy import deepcopy
 import numpy as np
-from typing import Any, Callable, Sequence
+from typing import Any, Callable, Sequence, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from matplotlib.animation import FuncAnimation
 
 from .tap import TensorAccessPattern
 from .utils import (
@@ -244,7 +247,9 @@ class TensorAccessSequence(abc.MutableSequence, abc.Iterable):
             combined_access_order_tensor -= 1
         return (combined_access_order_tensor, combined_access_count_tensor)
 
-    def animate(self, title: str | None = None, animate_access_count: bool = False):
+    def animate(
+        self, title: str | None = None, animate_access_count: bool = False
+    ) -> "FuncAnimation":
         """
         Creates and returns a handle to a TensorAccessSequence animation. Each frame
         in the animation represents one TensorAccessPattern in the sequence.

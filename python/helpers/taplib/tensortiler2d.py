@@ -123,7 +123,12 @@ class TensorTiler2D:
         pattern_repeat: int = 1,
         prune_step: bool = True,
     ) -> TensorAccessSequence:
-        """
+        """Build a TensorAccessSequence by tiling a tensor with explicit per-dimension steps.
+
+        This is the general-purpose tiler that the simpler ``simple_tiler`` /
+        ``group_tiler`` factories delegate to. It produces one
+        TensorAccessPattern per tile group, giving full control over tile
+        size, group repeats, per-dimension step, and iteration order.
 
         Args:
             tensor_dims (Sequence[int]): The dimensions of the tensor to tile.
@@ -133,8 +138,8 @@ class TensorTiler2D:
             tile_col_major (bool, optional): Iterate column major within each tile. Defaults to False.
             tile_group_col_major (bool, optional): Iterate column major between tiles in a group within a TensorAccessSequence. Defaults to False.
             iter_col_major (bool, optional): Iterate column major over tiles within the TensorAccessSequence. Defaults to False.
-            allow_partial (bool, optional): _description_. Defaults to False.
-            pattern_repeat (int, optional): _description_. Defaults to 1.
+            allow_partial (bool, optional): Whether to allow partial tile groups. A tensor always decomposes into tiles evenly, but it may not decompose into tile *groups* evenly. When False, a partial tile grouping raises a ValueError; when True, partial groupings at the tensor edges are permitted. Defaults to False.
+            pattern_repeat (int, optional): Apply the access pattern n times within a single TensorAccessPattern. Defaults to 1.
             prune_step (bool, optional): Prune the iteration steps in the tiling process. Defaults to True.
 
         Raises:
