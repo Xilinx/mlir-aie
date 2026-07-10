@@ -7,14 +7,14 @@
 
 # Section 2d - Runtime Data Movement
 
-* [Section 2 - Data Movement (ObjectFifos)](../../section-2/)
-    * [Section 2a - Introduction](../section-2a/)
-    * [Section 2b - Key ObjectFifo Patterns](../section-2b/)
-    * [Section 2c - Data Layout Transformations](../section-2c/)
+* [Section 2 - Data Movement (ObjectFifos)](../../section-2/README.md)
+    * [Section 2a - Introduction](../section-2a/README.md)
+    * [Section 2b - Key ObjectFifo Patterns](../section-2b/README.md)
+    * [Section 2c - Data Layout Transformations](../section-2c/README.md)
     * Section 2d - Runtime Data Movement
-    * [Section 2e - Programming for multiple cores](../section-2e/)
-    * [Section 2f - Practical Examples](../section-2f/)
-    * [Section 2g - Data Movement Without ObjectFifos](../section-2g/)
+    * [Section 2e - Programming for multiple cores](../section-2e/README.md)
+    * [Section 2f - Practical Examples](../section-2f/README.md)
+    * [Section 2g - Data Movement Without ObjectFifos](../section-2g/README.md)
 
 -----
 
@@ -35,7 +35,7 @@ npu_dma_memcpy_nd(metadata, bd_id, mem, offsets=None, sizes=None, strides=None)
 - **`strides`** (optional): Interval steps between data points in each dimension, useful for striding-across and reshaping data.
 - **`burst_length`** (optional): The configuration of the burst length for the DMA task. If `0`, defaults to the highest available value.
 
-The strides and sizes express data transformations analogously to those described in [Section 2C](../section-2c).
+The strides and sizes express data transformations analogously to those described in [Section 2C](../section-2c/README.md).
 
 **Example Usage**:
 ```python
@@ -174,7 +174,7 @@ def shim_dma_single_bd_task(
 - **`issue_token`** (optional): If a token is issued, one may call `dma_await_task` on the returned task. Default is `False`.
 - **`burst_length`** (optional): The configuration of the burst length for the DMA task. If `0`, defaults to the highest available value.
 
-The strides and sizes express data transformations analogously to those described in [Section 2C](../section-2c).
+The strides and sizes express data transformations analogously to those described in [Section 2C](../section-2c/README.md).
 
 **Example Usage**:
 ```python

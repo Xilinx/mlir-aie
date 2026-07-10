@@ -9,7 +9,7 @@
 
 This is the programming guide for **IRON** — the Python API for programming AMD Ryzen™ AI NPUs (and Versal™ AI Engines). It teaches how to design, run, and optimize code on the AIE-array.
 
-> **First time here?** If you haven't installed the toolchain yet, start at the [repo root README](../README.md) (driver, XRT, IRON install). Then come back here.
+> **First time here?** If you haven't installed the toolchain yet, start at the [repo root README](../getting-started.md) (driver, XRT, IRON install). Then come back here.
 >
 > **Want the shortest possible on-ramp?** See the [Mini Tutorial](./mini_tutorial/) — five tiny exercises that get a working design on the NPU in minutes.
 
@@ -65,7 +65,7 @@ my_design(a, b)              # compile + run + sync back
 | You want… | Read |
 |---|---|
 | Quickest possible on-ramp (5 small kernels) | [Mini Tutorial](./mini_tutorial/) |
-| Install + driver setup | [Repo root README](../README.md) |
+| Install + driver setup | [Repo root README](../getting-started.md) |
 | The full guide, top to bottom | [Section 0](./section-0/) onward |
 | The shortest end-to-end working program | [Section 3 — My First Program](./section-3/) |
 | Optimizing — measure, then tune | [Section 4](./section-4/) (timers, trace, vectorization) |

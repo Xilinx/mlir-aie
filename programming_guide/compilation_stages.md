@@ -12,7 +12,7 @@ and the moment XRT runs it on the NPU.
 
 This page is a reference, not a tutorial. If you only want to *use*
 `@iron.jit`, the [landing page](./README.md) and
-[Section 3](./section-3/) are enough. Come here when you need to debug
+[Section 3](./section-3/README.md) are enough. Come here when you need to debug
 a cache miss, plumb a custom kernel object, or understand which setting
 lives at which stage.
 
@@ -377,5 +377,5 @@ default.
   level).
 - [`implicit_mlir_context.md`](./implicit_mlir_context.md) — what
   goes wrong when MLIR ops leak across `Context` boundaries.
-- [Section 1](./section-1/) — the building blocks the generator
+- [Section 1](./section-1/README.md) — the building blocks the generator
   produces (`Worker`, `ObjectFifo`, `Runtime`, `Program`).
