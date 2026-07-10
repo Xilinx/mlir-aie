@@ -1,79 +1,78 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 560" width="680" height="560" font-family="'Comic Sans MS','Chalkboard SE','Segoe Print',system-ui,sans-serif">
-  <!-- IRON architecture, hand-drawn style. Theme-neutral colours so it reads on
-       both the light and dark docs backgrounds. Blue = software layers,
-       orange = IRON (the star), the NPU is drawn as a small AIE tile array. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 566" width="640" height="566" font-family="'Segoe UI',system-ui,-apple-system,sans-serif">
+  <!-- IRON architecture. Hand-drawn (Excalidraw-style) wobbly strokes via
+       slightly-irregular rounded paths + a subtle double outline. Theme-neutral
+       colours read on both light and dark docs backgrounds.
+       Orange = IRON (the star), blue = compiler/runtime layers, the NPU is an
+       AIE tile array. -->
   <defs>
-    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0,0 L10,5 L0,10 z" fill="#8a8f98"/>
+    <marker id="ah" viewBox="0 0 12 12" refX="8" refY="6" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M1,1 L11,6 L1,11" fill="none" stroke="#9aa0aa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
     </marker>
   </defs>
-
   <style>
-    .box   { stroke:#3a3b3f; stroke-width:2.5; }
-    .blue  { fill:#2f6fed; }
-    .orange{ fill:#e8710a; }
-    .lbl   { fill:#ffffff; font-weight:700; text-anchor:middle; }
-    .sub   { fill:#e8ecf4; font-size:13px; text-anchor:middle; opacity:.9; }
-    .flow  { stroke:#8a8f98; stroke-width:2.5; fill:none; marker-end:url(#arrow); }
-    .note  { fill:#8a8f98; font-size:12.5px; }
-    .panel { fill:rgba(127,127,127,0.05); stroke:rgba(127,127,127,0.22); stroke-width:1.5; }
+    .fillO { fill:#f2913d; }
+    .fillB { fill:#4d86ee; }
+    .fillN { fill:#3a3d44; }
+    .edge  { fill:none; stroke:#26272b; stroke-width:2.4; stroke-linejoin:round; stroke-linecap:round; }
+    .lbl   { fill:#fff; font-weight:700; text-anchor:middle; }
+    .sub   { fill:#f3f5fa; font-size:12.5px; text-anchor:middle; opacity:.92; }
+    .flow  { fill:none; stroke:#9aa0aa; stroke-width:2.4; stroke-linecap:round; marker-end:url(#ah); }
+    .note  { fill:#9aa0aa; font-size:12px; font-style:italic; }
   </style>
 
-  <rect class="panel" x="6" y="6" width="668" height="548" rx="14"/>
+  <!-- box 1: Your Python design (orange) -->
+  <path class="fillO" d="M203,25 C338,20 470,23 476,30 C482,40 481,72 476,80 C340,86 208,84 202,79 C197,70 198,32 203,25 Z"/>
+  <path class="edge"  d="M203,25 C338,20 470,23 476,30 C482,40 481,72 476,80 C340,86 208,84 202,79 C197,70 198,32 203,25 Z"/>
+  <text class="lbl" x="339" y="50" font-size="18">Your Python design</text>
+  <text class="sub" x="339" y="70">decorated with @iron.jit</text>
+  <path class="flow" d="M339,88 C336,98 342,104 339,116"/>
+  <text class="note" x="350" y="106">write</text>
 
-  <!-- 1. Your Python design -->
-  <rect class="box orange" x="200" y="26" width="280" height="58" rx="12"/>
-  <text class="lbl" x="340" y="50" font-size="19">Your Python design</text>
-  <text class="sub" x="340" y="70">decorated with @iron.jit</text>
+  <!-- box 2: IRON (orange, the star) -->
+  <path class="fillO" d="M232,120 C340,116 442,119 448,126 C454,136 453,168 448,176 C341,181 236,180 231,175 C226,166 227,127 232,120 Z"/>
+  <path class="edge"  d="M232,120 C340,116 442,119 448,126 C454,136 453,168 448,176 C341,181 236,180 231,175 C226,166 227,127 232,120 Z"/>
+  <text class="lbl" x="339" y="146" font-size="19">IRON</text>
+  <text class="sub" x="339" y="166">the aie.iron Python API</text>
+  <path class="flow" d="M339,183 C342,193 336,199 339,211"/>
+  <text class="note" x="350" y="201">lowers to</text>
 
-  <path class="flow" d="M340,84 L340,116"/>
-  <text class="note" x="352" y="104">write</text>
+  <!-- box 3: MLIR-AIE compiler (blue) -->
+  <path class="fillB" d="M197,214 C340,210 476,213 482,220 C488,230 487,262 482,270 C341,275 202,274 196,269 C191,260 192,221 197,214 Z"/>
+  <path class="edge"  d="M197,214 C340,210 476,213 482,220 C488,230 487,262 482,270 C341,275 202,274 196,269 C191,260 192,221 197,214 Z"/>
+  <text class="lbl" x="339" y="239" font-size="17">MLIR-AIE compiler</text>
+  <text class="sub" x="339" y="259">aie · aiex · aievec dialects</text>
+  <path class="flow" d="M339,277 C336,287 342,293 339,305"/>
+  <text class="note" x="350" y="295">per-core code</text>
 
-  <!-- 2. IRON -->
-  <rect class="box orange" x="220" y="118" width="240" height="58" rx="12"/>
-  <text class="lbl" x="340" y="142" font-size="19">IRON</text>
-  <text class="sub" x="340" y="162">the aie.iron Python API</text>
+  <!-- box 4: Peano (blue) -->
+  <path class="fillB" d="M214,308 C340,304 456,307 462,314 C468,324 467,356 462,364 C341,369 220,368 214,363 C209,354 210,315 214,308 Z"/>
+  <path class="edge"  d="M214,308 C340,304 456,307 462,314 C468,324 467,356 462,364 C341,369 220,368 214,363 C209,354 210,315 214,308 Z"/>
+  <text class="lbl" x="339" y="333" font-size="17">Peano</text>
+  <text class="sub" x="339" y="353">LLVM compiler for the AIE core</text>
+  <path class="flow" d="M339,371 C342,381 336,387 339,399"/>
+  <text class="note" x="350" y="389">xclbin + instructions</text>
 
-  <path class="flow" d="M340,176 L340,208"/>
-  <text class="note" x="352" y="196">lowers to</text>
+  <!-- box 5: XRT + XDNA driver (blue) -->
+  <path class="fillB" d="M197,402 C340,398 476,401 482,408 C488,418 487,450 482,458 C341,463 202,462 196,457 C191,448 192,409 197,402 Z"/>
+  <path class="edge"  d="M197,402 C340,398 476,401 482,408 C488,418 487,450 482,458 C341,463 202,462 196,457 C191,448 192,409 197,402 Z"/>
+  <text class="lbl" x="339" y="427" font-size="17">XRT + XDNA™ driver</text>
+  <text class="sub" x="339" y="447">loads &amp; runs on the host</text>
+  <path class="flow" d="M339,465 C336,474 342,479 339,488"/>
 
-  <!-- 3. MLIR-AIE compiler -->
-  <rect class="box blue" x="196" y="210" width="288" height="58" rx="12"/>
-  <text class="lbl" x="340" y="234" font-size="18">MLIR-AIE compiler</text>
-  <text class="sub" x="340" y="254">aie · aiex · aievec dialects</text>
-
-  <path class="flow" d="M340,268 L340,300"/>
-  <text class="note" x="352" y="288">per-core code</text>
-
-  <!-- 4. Peano -->
-  <rect class="box blue" x="220" y="302" width="240" height="58" rx="12"/>
-  <text class="lbl" x="340" y="326" font-size="18">Peano</text>
-  <text class="sub" x="340" y="346">LLVM compiler for the AIE core</text>
-
-  <path class="flow" d="M340,360 L340,392"/>
-  <text class="note" x="352" y="380">xclbin + instructions</text>
-
-  <!-- 5. XRT + XDNA driver -->
-  <rect class="box blue" x="196" y="394" width="288" height="58" rx="12"/>
-  <text class="lbl" x="340" y="418" font-size="18">XRT + XDNA™ driver</text>
-  <text class="sub" x="340" y="438">loads &amp; runs on the host</text>
-
-  <path class="flow" d="M340,452 L340,478"/>
-
-  <!-- 6. NPU as a tile array -->
-  <rect class="box" fill="#27282b" x="170" y="480" width="340" height="66" rx="12"/>
-  <text class="lbl" x="250" y="519" font-size="18" text-anchor="start">AMD Ryzen™ AI NPU</text>
-  <!-- little 3x3 AIE tile grid on the right -->
-  <g stroke="#3a3b3f" stroke-width="1.5">
-    <rect x="432" y="494" width="12" height="12" rx="2" fill="#e8710a"/>
-    <rect x="447" y="494" width="12" height="12" rx="2" fill="#2f6fed"/>
-    <rect x="462" y="494" width="12" height="12" rx="2" fill="#2f6fed"/>
-    <rect x="432" y="509" width="12" height="12" rx="2" fill="#2f6fed"/>
-    <rect x="447" y="509" width="12" height="12" rx="2" fill="#2f6fed"/>
-    <rect x="462" y="509" width="12" height="12" rx="2" fill="#2f6fed"/>
-    <rect x="432" y="524" width="12" height="12" rx="2" fill="#6b7280"/>
-    <rect x="447" y="524" width="12" height="12" rx="2" fill="#6b7280"/>
-    <rect x="462" y="524" width="12" height="12" rx="2" fill="#6b7280"/>
+  <!-- box 6: NPU with AIE tile array (widest box — it's the hardware base) -->
+  <path class="fillN" d="M138,492 C340,487 532,491 538,498 C544,510 543,548 538,556 C341,561 144,560 138,555 C133,545 132,499 138,492 Z"/>
+  <path class="edge"  d="M138,492 C340,487 532,491 538,498 C544,510 543,548 538,556 C341,561 144,560 138,555 C133,545 132,499 138,492 Z"/>
+  <text class="lbl" x="228" y="530" font-size="17" text-anchor="middle">AMD Ryzen™ AI NPU</text>
+  <g stroke="#26272b" stroke-width="1.4">
+    <rect x="440" y="506" width="13" height="13" rx="2.5" class="fillO"/>
+    <rect x="456" y="506" width="13" height="13" rx="2.5" class="fillB"/>
+    <rect x="472" y="506" width="13" height="13" rx="2.5" class="fillB"/>
+    <rect x="440" y="522" width="13" height="13" rx="2.5" class="fillB"/>
+    <rect x="456" y="522" width="13" height="13" rx="2.5" class="fillB"/>
+    <rect x="472" y="522" width="13" height="13" rx="2.5" class="fillB"/>
+    <rect x="440" y="538" width="13" height="13" rx="2.5" fill="#6b7280"/>
+    <rect x="456" y="538" width="13" height="13" rx="2.5" fill="#6b7280"/>
+    <rect x="472" y="538" width="13" height="13" rx="2.5" fill="#6b7280"/>
   </g>
-  <text class="note" x="484" y="516" font-size="11">AIE tile array</text>
+  <text class="note" x="498" y="528" font-size="10.5">AIE tiles</text>
 </svg>

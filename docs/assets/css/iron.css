@@ -39,6 +39,12 @@
 .highlight pre { border-radius: 6px; }
 .md-typeset code { border-radius: 3px; }
 
+/* ── Figures ─────────────────────────────────────────────────────────────── */
+/* A <figure> shrinks to its image width, which cramps the caption. Let the
+   caption stay comfortably readable while the image keeps its intrinsic size. */
+.md-typeset figure { max-width: 100%; }
+.md-typeset figure > figcaption { max-width: 32rem; margin-left: auto; margin-right: auto; }
+
 /* Syntax highlighting uses Material's default (canonical) token palette —
    full color variety for keywords / functions / builtins / strings / numbers,
    matching what developers expect from GitHub/VSCode. The blue-link and
