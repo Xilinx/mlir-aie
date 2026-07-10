@@ -2363,12 +2363,21 @@ Traits: `HasParent<TraceOp>`
 
 _Configure host buffer for trace data collection_
 
+Syntax:
+
+```
+operation ::= `aie.trace.host_config` attr-dict
+```
+
 Configures host-side trace buffer.
 
 Attributes:
 - buffer_size: Trace buffer size in bytes
-- arg_idx (default=4): XRT argument index for trace buffer. Set to -1 to
-  append trace data after the last tensor argument in the runtime_sequence.
+- reuse_output_buffer (default=false): When false, trace lowering appends a
+  dedicated trace-buffer argument to the runtime_sequence; it lands at the
+  tail so enabling trace never perturbs the data arguments' indices. When
+  true, trace data is written into the tail of the last existing argument
+  (an output buffer), saving a host buffer.
 - routing (default=single): Shim routing strategy. Currently only 'single'
   is supported, which routes all traces to a single shim tile.
 - egress_shim_col (default=0): Column index of the shim tile that receives
@@ -2377,7 +2386,7 @@ Attributes:
 Example:
 ```mlir
 aie.runtime_sequence(%arg0: memref<16xi32>) {
-  aie.trace.host_config buffer_size=65536 egress_shim_col=4
+  aie.trace.host_config {buffer_size = 65536 : i32, egress_shim_col = 4 : i32}
   aie.trace.start_config @trace1
 }
 ```
@@ -2389,7 +2398,7 @@ Traits: `HasParent<RuntimeSequenceOp>`
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
 <tr><td><code>buffer_size</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
-<tr><td><code>arg_idx</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
+<tr><td><code>reuse_output_buffer</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 <tr><td><code>routing</code></td><td>::xilinx::AIE::TraceShimRoutingAttr</td><td><details><summary>Shim tile routing strategy for trace collection</summary>{{% markdown %}}
     Determines how traces are routed to shim tiles:
     - single: All traces route to a single shim tile (column 0)
