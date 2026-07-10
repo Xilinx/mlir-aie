@@ -12,6 +12,7 @@
 #include "mlir/Analysis/CallGraph.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/IR/SymbolTable.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Transforms/DialectConversion.h"
@@ -28,9 +29,22 @@ using namespace xilinx::AIEX;
 
 struct DMAStartBdChainForOpPattern : RewritePattern {
 
-  DMAStartBdChainForOpPattern(MLIRContext *ctx)
+  // Build-speed lever (byte-identical): the canonical path resolves each
+  // dma_start_bd_chain_for op's shim-DMA allocation via
+  // AIE::ShimDMAAllocationOp::getForSymbol -> device.lookupSymbol, a LINEAR
+  // symbol-table scan run once per DMAStartBdChainForOp. In large designs there
+  // are many of these, so the per-op O(allocations) scan makes the pass O(n^2).
+  // We instead build a SymbolTable for the device ONCE and look up in O(1). Same
+  // fix as AIESubstituteShimDMAAllocations. The pattern never erases/creates a
+  // symbol (it rewrites task ops, not ShimDMAAllocationOps), so the prebuilt
+  // table stays valid across the greedy run.
+  const mlir::SymbolTable &symbolTable;
+
+  DMAStartBdChainForOpPattern(MLIRContext *ctx,
+                              const mlir::SymbolTable &symbolTable)
       : RewritePattern(DMAStartBdChainForOp::getOperationName(),
-                       PatternBenefit(1), ctx) {}
+                       PatternBenefit(1), ctx),
+        symbolTable(symbolTable) {}
 
   LogicalResult matchAndRewrite(Operation *op_any,
                                 PatternRewriter &rewriter) const override {
@@ -38,10 +52,9 @@ struct DMAStartBdChainForOpPattern : RewritePattern {
     if (!op) {
       return failure();
     }
-    AIE::DeviceOp device = op->getParentOfType<AIE::DeviceOp>();
 
     AIE::ShimDMAAllocationOp alloc_op =
-        AIE::ShimDMAAllocationOp::getForSymbol(device, op.getAlloc());
+        symbolTable.lookup<AIE::ShimDMAAllocationOp>(op.getAlloc());
     if (!alloc_op) {
       return op.emitOpError("no shim DMA allocation found for symbol");
     }
@@ -126,8 +139,12 @@ struct AIEMaterializeBDChainsPass
     rewriter_config.setRegionSimplificationLevel(
         GreedySimplifyRegionLevel::Disabled);
 
+    // Build the device symbol table ONCE (O(1) per-op allocation lookup instead
+    // of getForSymbol's per-op linear scan -> O(n^2)). Byte-identical.
+    mlir::SymbolTable symbolTable(device);
+
     RewritePatternSet patterns_0(ctx);
-    patterns_0.insert<DMAStartBdChainForOpPattern>(ctx);
+    patterns_0.insert<DMAStartBdChainForOpPattern>(ctx, symbolTable);
     DMAConfigureTaskOp::getCanonicalizationPatterns(patterns_0, ctx);
     if (failed(applyPatternsGreedily(device, std::move(patterns_0),
                                      rewriter_config))) {
