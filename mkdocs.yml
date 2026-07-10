@@ -142,7 +142,6 @@ nav:
     - Platform Notes: Platform.md
   - Programming Guide:
     - Introduction: programming_guide/README.md
-    - Mini Tutorial: programming_guide/mini_tutorial/README.md
     - "Section 0: Prerequisites": programming_guide/section-0/README.md
     - "Section 1: Tiles and Buffers": programming_guide/section-1/README.md
     - "Section 2: Data Movement":
