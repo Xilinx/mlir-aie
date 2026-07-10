@@ -24,6 +24,11 @@ on:
         type: string
         required: false
         default: ''
+      CREATE_PR:
+        description: 'Open a bump PR on success (skip for build-only testing)'
+        type: boolean
+        required: false
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}
@@ -238,7 +243,7 @@ jobs:
   open_migration_pr:
     name: Open migration PR
     needs: [check_trigger, build_and_test]
-    if: needs.build_and_test.result == 'success'
+    if: needs.build_and_test.result == 'success' && (github.event_name == 'workflow_run' || inputs.CREATE_PR == true)
     runs-on: ubuntu-latest
 
     permissions:
