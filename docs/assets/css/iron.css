@@ -108,11 +108,9 @@
 .iron-card-desc  { font-size: 0.78rem; opacity: 0.72; line-height: 1.4; }
 
 /* ── Wider content area ──────────────────────────────────────────────────── */
-.md-grid { max-width: 72rem !important; }
-
-/* ── Hide right-side TOC sidebar globally ────────────────────────────────── */
-.md-sidebar--secondary { display: none !important; }
-.md-content { max-width: 100% !important; margin-right: 0 !important; }
+/* Both sidebars are shown (left = section nav, right = page TOC); widen the
+   grid a little so the middle content column still has room between them. */
+.md-grid { max-width: 76rem !important; }
 
 /* ── Footer ──────────────────────────────────────────────────────────────── */
 .md-footer { font-size: 0.8rem; }
