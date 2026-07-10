@@ -16,7 +16,7 @@ You will set up a Windows subsystem for Linux (WSL) Ubuntu install, which will b
 
 ## Setup and Build Steps
 1. [Preparing WSL Side](#preparing-wsl-side) - Prepare WSL, clone and install mlir-aie, prepare XRT dll, clone and build XRT
-1. [Prepare Host Side: Natively on Win11](#prepare-host-side:-natively-on-win11) - Update NPU driver, complete XRT ddl def, install visual studio, cmake, clone XRT and mlir-aie
+1. [Prepare Host Side: Natively on Win11](#prepare-host-side-natively-on-win11) - Update NPU driver, complete XRT ddl def, install visual studio, cmake, clone XRT and mlir-aie
 1. [Setup up your environment](#set-up-your-environment)
 1. [Build a Design](#build-a-design)
 * [Optional: Install AIETools](#optional-install-aietools)
@@ -47,7 +47,7 @@ All steps in WSL Ubuntu terminal.
    ```
    git clone --recurse-submodules https://github.com/Xilinx/mlir-aie.git
    ````
-   This github repo will be used for building the IRON tools as cloning/ updating/ building in WSL is much faster for files stored in WSL drive space. A separate clone of the mlir-aie repo will be used for working with example designs so that powershell can find the diretory path. See [below](#prepare-host-side:-natively-on-win11)
+   This github repo will be used for building the IRON tools as cloning/ updating/ building in WSL is much faster for files stored in WSL drive space. A separate clone of the mlir-aie repo will be used for working with example designs so that powershell can find the diretory path. See [below](#prepare-host-side-natively-on-win11)
 
 1. Install or Build mlir-aie tools under WSL2:
 
@@ -138,7 +138,7 @@ All steps in WSL Ubuntu terminal.
    ./build.sh -noert
    ```
 
-## Prepare Host Side: Natively on Win11
+## Prepare Host Side: Natively on Win11 { #prepare-host-side-natively-on-win11 }
 
 All steps in Win11 (powershell where needed).
 

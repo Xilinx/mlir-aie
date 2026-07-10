@@ -78,7 +78,7 @@ Why Mac? Because some people do dev on a Mac.
    </p>
 5. A **MLIR Distro** job will appear under the same actions tab (where you can monitor progress).
 
-### Developing/extending
+### Developing/extending { #developing-extending }
 
 A brief overview: 
 

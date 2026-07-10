@@ -365,7 +365,7 @@ of_in.allocate(B)
 
 > **NOTE:**  Currently, both producer and consumer of the Object FIFO must have direct shared memory access to the targeted AIE tile.
 
-### Advanced Topic: Direct Memory Access Channels
+### Advanced Topic: Direct Memory Access Channels { #advanced-topic-direct-memory-access-channels }
 
 **The following topic is not required to understand the rest of this guide.**
 

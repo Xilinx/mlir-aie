@@ -25,7 +25,7 @@ movement directly in terms of the underlying hardware pieces: per-tile
 Direct Memory Access (DMA) channels, buffer descriptors, hardware
 locks, and the AXI-stream routes between them.  To better understand
 the code and concepts here, it is recommended to first read the
-[Advanced Topic of Section 2a on DMAs](../section-2a/README.md/#advanced-topic--data-movement-accelerators).
+[Advanced Topic of Section 2a on DMAs](../section-2a/README.md#advanced-topic-direct-memory-access-channels).
 
 IRON exposes the same surface in two tiers — both fully supported,
 both lower into the same `aie.flow` / `aie.lock` / `aie.mem` /

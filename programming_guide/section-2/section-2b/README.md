@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Section 2b - Key Object FIFO Patterns</ins>
+# <ins>Section 2b - Key Object FIFO Patterns</ins> { #key-object-fifo-patterns }
 
 * [Section 2 - Data Movement (Object FIFOs)](../../section-2/)
     * [Section 2a - Introduction](../section-2a/)

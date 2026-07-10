@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Section 2c - Data Layout Transformations</ins>
+# <ins>Section 2c - Data Layout Transformations</ins> { #data-layout-transformations }
 
 * [Section 2 - Data Movement (Object FIFOs)](../../section-2/)
     * [Section 2a - Introduction](../section-2a/)
