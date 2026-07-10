@@ -20,7 +20,7 @@ with full control over tile placement, data movement, and vectorized compute.
 <a class="iron-card" href="getting-started/" markdown>
 <span class="iron-card-icon">🚀</span>
 <span class="iron-card-title">Get Started</span>
-<span class="iron-card-desc">Install IRON on Ubuntu, build and run your first NPU design.</span>
+<span class="iron-card-desc">Install IRON, build and run your first NPU design.</span>
 </a>
 
 <a class="iron-card" href="programming_guide/" markdown>
@@ -96,43 +96,9 @@ on the attached NPU. Subsequent calls hit a cache.
 ## Architecture
 
 <figure markdown>
-  ![IRON Linux software stack](assets/images/iron_linux_stack.svg){ width=540 }
-  <figcaption>IRON sits between your Python code and the NPU hardware, built on open LLVM/MLIR infrastructure.</figcaption>
+  ![IRON software stack](assets/images/iron_stack.svg){ width=460 }
+  <figcaption>From a Python design to running on the NPU — IRON lowers through the MLIR-AIE compiler and Peano, then XRT loads it onto the AI Engine tile array.</figcaption>
 </figure>
-
----
-
-## Key concepts
-
-| Concept | What it is |
-|---------|-----------|
-| **Worker** | Code running on one AIE compute tile |
-| **ObjectFifo** | Streaming data channel: host↔tile or tile↔tile |
-| **Runtime** | Host-side sequence — fill inputs, drain outputs |
-| **TensorAccessPattern** | Multi-dimensional DMA tiling descriptor |
-| **Peano** | LLVM-based compiler for the AIE core ISA |
-
----
-
-## Install
-
-```bash
-git clone https://github.com/Xilinx/mlir-aie.git && cd mlir-aie
-source utils/env_install.sh   # one time
-source utils/env_setup.sh     # every new shell
-```
-
-Supports Python **3.11 – 3.14** on **Ubuntu 24.04+** and **Windows**.
-Wheels available on PyPI-compatible index — see [Getting Started](getting-started/) for the full guide.
-
----
-
-## Citation
-
-> E. Hunhoff, J. Melber, K. Denolf, A. Bisca, S. Bayliss, S. Neuendorffer, J. Fifield,
-> J. Lo, P. Vasireddy, P. James-Roxby, E. Keller.
-> "[Efficiency, Expressivity, and Extensibility in a Close-to-Metal NPU Programming Interface](https://arxiv.org/abs/2504.18430)".
-> In 33rd IEEE International Symposium On Field-Programmable Custom Computing Machines, May 2025.
 
 ---
 

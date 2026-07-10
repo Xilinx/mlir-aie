@@ -39,35 +39,10 @@
 .highlight pre { border-radius: 6px; }
 .md-typeset code { border-radius: 3px; }
 
-/* ── Syntax highlighting: blue + orange scheme ───────────────────────────────
-   Material maps pygments tokens onto these --md-code-hl-* variables. We tint
-   them into a blue/orange family: keywords & operators blue, strings & numbers
-   orange, functions a lighter blue, comments muted grey. */
-:root {
-  --md-code-hl-keyword-color:    #1565d8;  /* def, class, import, for   (blue)   */
-  --md-code-hl-operator-color:   #1565d8;  /* + - = ->                  (blue)   */
-  --md-code-hl-function-color:   #2e86de;  /* function/method names     (blue)   */
-  --md-code-hl-name-color:       var(--md-default-fg-color);
-  --md-code-hl-constant-color:   #0b7285;  /* True/False/None           (teal-blue) */
-  --md-code-hl-string-color:     #c05600;  /* "strings"                 (orange) */
-  --md-code-hl-number-color:     #c05600;  /* 1024, 3.14                (orange) */
-  --md-code-hl-special-color:    #e8710a;  /* decorators / @iron.jit    (orange) */
-  --md-code-hl-comment-color:    #6b7280;  /* # comments                (grey)   */
-  --md-code-hl-punctuation-color: var(--md-default-fg-color--light);
-}
-
-[data-md-color-scheme="slate"] {
-  --md-code-hl-keyword-color:    #6ba8ff;  /* brighter blue on dark bg  */
-  --md-code-hl-operator-color:   #6ba8ff;
-  --md-code-hl-function-color:   #7cb8ff;
-  --md-code-hl-name-color:       var(--md-default-fg-color);
-  --md-code-hl-constant-color:   #4db8c8;
-  --md-code-hl-string-color:     #ffab5e;  /* warm orange on dark bg    */
-  --md-code-hl-number-color:     #ffab5e;
-  --md-code-hl-special-color:    #ff9d42;  /* decorators                */
-  --md-code-hl-comment-color:    #8b93a1;
-  --md-code-hl-punctuation-color: var(--md-default-fg-color--light);
-}
+/* Syntax highlighting uses Material's default (canonical) token palette —
+   full color variety for keywords / functions / builtins / strings / numbers,
+   matching what developers expect from GitHub/VSCode. The blue-link and
+   orange-interactive accents are theme chrome and defined separately above. */
 
 /* ── Landing page: quick-nav cards ──────────────────────────────────────── */
 .iron-cards {

@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 560" width="680" height="560" font-family="'Comic Sans MS','Chalkboard SE','Segoe Print',system-ui,sans-serif">
+  <!-- IRON architecture, hand-drawn style. Theme-neutral colours so it reads on
+       both the light and dark docs backgrounds. Blue = software layers,
+       orange = IRON (the star), the NPU is drawn as a small AIE tile array. -->
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#8a8f98"/>
+    </marker>
+  </defs>
+
+  <style>
+    .box   { stroke:#3a3b3f; stroke-width:2.5; }
+    .blue  { fill:#2f6fed; }
+    .orange{ fill:#e8710a; }
+    .lbl   { fill:#ffffff; font-weight:700; text-anchor:middle; }
+    .sub   { fill:#e8ecf4; font-size:13px; text-anchor:middle; opacity:.9; }
+    .flow  { stroke:#8a8f98; stroke-width:2.5; fill:none; marker-end:url(#arrow); }
+    .note  { fill:#8a8f98; font-size:12.5px; }
+    .panel { fill:rgba(127,127,127,0.05); stroke:rgba(127,127,127,0.22); stroke-width:1.5; }
+  </style>
+
+  <rect class="panel" x="6" y="6" width="668" height="548" rx="14"/>
+
+  <!-- 1. Your Python design -->
+  <rect class="box orange" x="200" y="26" width="280" height="58" rx="12"/>
+  <text class="lbl" x="340" y="50" font-size="19">Your Python design</text>
+  <text class="sub" x="340" y="70">decorated with @iron.jit</text>
+
+  <path class="flow" d="M340,84 L340,116"/>
+  <text class="note" x="352" y="104">write</text>
+
+  <!-- 2. IRON -->
+  <rect class="box orange" x="220" y="118" width="240" height="58" rx="12"/>
+  <text class="lbl" x="340" y="142" font-size="19">IRON</text>
+  <text class="sub" x="340" y="162">the aie.iron Python API</text>
+
+  <path class="flow" d="M340,176 L340,208"/>
+  <text class="note" x="352" y="196">lowers to</text>
+
+  <!-- 3. MLIR-AIE compiler -->
+  <rect class="box blue" x="196" y="210" width="288" height="58" rx="12"/>
+  <text class="lbl" x="340" y="234" font-size="18">MLIR-AIE compiler</text>
+  <text class="sub" x="340" y="254">aie · aiex · aievec dialects</text>
+
+  <path class="flow" d="M340,268 L340,300"/>
+  <text class="note" x="352" y="288">per-core code</text>
+
+  <!-- 4. Peano -->
+  <rect class="box blue" x="220" y="302" width="240" height="58" rx="12"/>
+  <text class="lbl" x="340" y="326" font-size="18">Peano</text>
+  <text class="sub" x="340" y="346">LLVM compiler for the AIE core</text>
+
+  <path class="flow" d="M340,360 L340,392"/>
+  <text class="note" x="352" y="380">xclbin + instructions</text>
+
+  <!-- 5. XRT + XDNA driver -->
+  <rect class="box blue" x="196" y="394" width="288" height="58" rx="12"/>
+  <text class="lbl" x="340" y="418" font-size="18">XRT + XDNA™ driver</text>
+  <text class="sub" x="340" y="438">loads &amp; runs on the host</text>
+
+  <path class="flow" d="M340,452 L340,478"/>
+
+  <!-- 6. NPU as a tile array -->
+  <rect class="box" fill="#27282b" x="170" y="480" width="340" height="66" rx="12"/>
+  <text class="lbl" x="250" y="519" font-size="18" text-anchor="start">AMD Ryzen™ AI NPU</text>
+  <!-- little 3x3 AIE tile grid on the right -->
+  <g stroke="#3a3b3f" stroke-width="1.5">
+    <rect x="432" y="494" width="12" height="12" rx="2" fill="#e8710a"/>
+    <rect x="447" y="494" width="12" height="12" rx="2" fill="#2f6fed"/>
+    <rect x="462" y="494" width="12" height="12" rx="2" fill="#2f6fed"/>
+    <rect x="432" y="509" width="12" height="12" rx="2" fill="#2f6fed"/>
+    <rect x="447" y="509" width="12" height="12" rx="2" fill="#2f6fed"/>
+    <rect x="462" y="509" width="12" height="12" rx="2" fill="#2f6fed"/>
+    <rect x="432" y="524" width="12" height="12" rx="2" fill="#6b7280"/>
+    <rect x="447" y="524" width="12" height="12" rx="2" fill="#6b7280"/>
+    <rect x="462" y="524" width="12" height="12" rx="2" fill="#6b7280"/>
+  </g>
+  <text class="note" x="484" y="516" font-size="11">AIE tile array</text>
+</svg>
