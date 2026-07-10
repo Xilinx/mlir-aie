@@ -139,4 +139,4 @@ CoreTile neighbors (south, north, west) so the kernel can read all
 four without DMA round-trips.
 
 -----
-[Prev - Section 2g](../section-2g/) [Top](..) [Next - Section 3](../../section-3/)
+[Prev - Section 2g](../section-2g/) &middot; [Top](..) &middot; [Next - Section 3](../../section-3/)

@@ -78,4 +78,4 @@ my_worker = Worker(core_fn, [of0.cons(), test_fn2])
 ```
 
 -----
-[Up](..) [Next](../02_Broadcast/)
+[Up](..) &middot; [Next](../02_Broadcast/)

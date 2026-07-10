@@ -17,13 +17,13 @@ with full control over tile placement, data movement, and vectorized compute.
 
 <div class="iron-cards" markdown>
 
-<a class="iron-card" href="README/" markdown>
+<a class="iron-card" href="getting-started/" markdown>
 <span class="iron-card-icon">🚀</span>
 <span class="iron-card-title">Get Started</span>
 <span class="iron-card-desc">Install IRON on Ubuntu, build and run your first NPU design.</span>
 </a>
 
-<a class="iron-card" href="programming_guide/README/" markdown>
+<a class="iron-card" href="programming_guide/" markdown>
 <span class="iron-card-icon">📖</span>
 <span class="iron-card-title">Programming Guide</span>
 <span class="iron-card-desc">Tiles, ObjectFifos, data movement, vectorization, and ML examples.</span>
@@ -35,7 +35,7 @@ with full control over tile placement, data movement, and vectorized compute.
 <span class="iron-card-desc">Full reference for iron, taplib, and the kernel library.</span>
 </a>
 
-<a class="iron-card" href="programming_guide/mini_tutorial/README/" markdown>
+<a class="iron-card" href="programming_guide/mini_tutorial/" markdown>
 <span class="iron-card-icon">⚡</span>
 <span class="iron-card-title">Mini Tutorial</span>
 <span class="iron-card-desc">Five short exercises — a working NPU design in minutes.</span>
@@ -123,7 +123,7 @@ source utils/env_setup.sh     # every new shell
 ```
 
 Supports Python **3.11 – 3.14** on **Ubuntu 24.04+** and **Windows**.
-Wheels available on PyPI-compatible index — see [Getting Started](README/) for the full guide.
+Wheels available on PyPI-compatible index — see [Getting Started](getting-started/) for the full guide.
 
 ---
 

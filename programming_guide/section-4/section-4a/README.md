@@ -145,5 +145,5 @@ into the tolerance comparator above.
 1. Finally, add 4 warmup iterations to cut higher outliers when the application is first run by calling `make run_cpp-10-warmup`. This passes `--warmup 4` to the executable. What reported Avg NPU time do you see this time? <img src="../../../mlir_exercises/images/answer1.jpg" title="This time, we see an lower average range between 200-300 us" height=25>
 
 -----
-[Up](../../section-4) [Next](../section-4b)
+[Up](../../section-4) &middot; [Next](../section-4b)
 
