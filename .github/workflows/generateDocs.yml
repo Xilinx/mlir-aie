@@ -18,8 +18,8 @@ on:
     inputs:
       version_label:
         description: >-
-          Deploy the current docs under this version label (e.g. "1.3") and
-          tag it "latest". Leave blank to deploy as "dev". Use this to
+          Deploy the current docs under this version label (e.g. "1.3.4")
+          and tag it "latest". Leave blank to deploy as "dev". Use this to
           backfill a release whose git tag predates the mike/MkDocs setup.
         required: false
         default: ""
@@ -132,9 +132,10 @@ jobs:
             echo "label=${MANUAL_LABEL}" >> $GITHUB_OUTPUT
             echo "aliases=latest" >> $GITHUB_OUTPUT
           elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
-            # e.g. refs/tags/v1.4.0 → "1.4"  (major.minor only)
-            RAW="${GITHUB_REF#refs/tags/v}"
-            LABEL="${RAW%.*}"
+            # Full version per release: e.g. refs/tags/v1.4.0 → "1.4.0".
+            # Every tagged release gets its own picker entry; the newest is
+            # always aliased "latest".
+            LABEL="${GITHUB_REF#refs/tags/v}"
             echo "label=${LABEL}" >> $GITHUB_OUTPUT
             echo "aliases=latest" >> $GITHUB_OUTPUT
           else
