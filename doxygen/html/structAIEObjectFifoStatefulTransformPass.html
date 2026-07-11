@@ -185,6 +185,9 @@ Public Member Functions</h2></td></tr>
 <tr class="memitem:a46eacaf881a52907373fdadf558ceefd" id="r_a46eacaf881a52907373fdadf558ceefd"><td class="memItemLeft" align="right" valign="top">LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#a46eacaf881a52907373fdadf558ceefd">verifyObjectFifoLinks</a> (DeviceOp &amp;device)</td></tr>
 <tr class="memdesc:a46eacaf881a52907373fdadf558ceefd"><td class="mdescLeft">&#160;</td><td class="mdescRight">Function used to verify that an objectfifo is present in at most one ObjectFifoLinkOp.  <br /></td></tr>
 <tr class="separator:a46eacaf881a52907373fdadf558ceefd"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ae62cf0150ac554c97c5b897fdc101c61" id="r_ae62cf0150ac554c97c5b897fdc101c61"><td class="memItemLeft" align="right" valign="top">LogicalResult&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#ae62cf0150ac554c97c5b897fdc101c61">verifyObjectFifoTilesArePlaced</a> (DeviceOp &amp;device)</td></tr>
+<tr class="memdesc:ae62cf0150ac554c97c5b897fdc101c61"><td class="mdescLeft">&#160;</td><td class="mdescRight">This pass assumes every objectFifo producer/consumer tile is a placed <code>aie.tile</code>; the rest of the pass reaches them via getProducerTileOp() / cast&lt;TileOp&gt;(...), which dereferences a null if a tile is still an unplaced <code>aie.logical_tile</code> (or any non-TileOp).  <br /></td></tr>
+<tr class="separator:ae62cf0150ac554c97c5b897fdc101c61"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aeb8fca113bd4114f9e7391dc4baf2836" id="r_aeb8fca113bd4114f9e7391dc4baf2836"><td class="memItemLeft" align="right" valign="top">int&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="structAIEObjectFifoStatefulTransformPass.html#aeb8fca113bd4114f9e7391dc4baf2836">getStartPacketID</a> (DeviceOp &amp;device)</td></tr>
 <tr class="memdesc:aeb8fca113bd4114f9e7391dc4baf2836"><td class="mdescLeft">&#160;</td><td class="mdescRight">Account for already used packet IDs and return next available ID.  <br /></td></tr>
 <tr class="separator:aeb8fca113bd4114f9e7391dc4baf2836"><td class="memSeparator" colspan="2">&#160;</td></tr>
@@ -354,7 +357,7 @@ Static Public Member Functions</h2></td></tr>
 
 <p>Helper function to assign DMA channel indices for FIFOs based on cross-tile conditions. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l02402">2402</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l02430">2430</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00124">DMAChannelAnalysis::getDMAChannelIndex()</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00184">ObjectFifoState::splitFifos</a>.</p>
 
@@ -1825,7 +1828,7 @@ template&lt;typename MyOp &gt; </div>
 
 <p>Account for already used packet IDs and return next available ID. </p>
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l02389">2389</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l02417">2417</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 </div>
 </div>
@@ -2256,7 +2259,7 @@ template&lt;typename MyOp &gt; </div>
 </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l02439">2439</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l02467">2467</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00177">ObjectFifoState::buffersPerFifo</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00155">DMAChannelAnalysis::checkAIEStreamIndex()</a>, <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00187">ObjectFifoState::objFifoLinks</a>, <a class="el" href="AIEPathFinder_8h_source.html#l00098">xilinx::AIE::port</a>, and <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l00184">ObjectFifoState::splitFifos</a>.</p>
 
@@ -2435,13 +2438,44 @@ template&lt;typename MyOp &gt; </div>
 
 </div>
 </div>
+<a id="ae62cf0150ac554c97c5b897fdc101c61" name="ae62cf0150ac554c97c5b897fdc101c61"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ae62cf0150ac554c97c5b897fdc101c61">&#9670;&#160;</a></span>verifyObjectFifoTilesArePlaced()</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">LogicalResult AIEObjectFifoStatefulTransformPass::verifyObjectFifoTilesArePlaced </td>
+          <td>(</td>
+          <td class="paramtype">DeviceOp &amp;&#160;</td>
+          <td class="paramname"><em>device</em></td><td>)</td>
+          <td></td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">inline</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+<p>This pass assumes every objectFifo producer/consumer tile is a placed <code>aie.tile</code>; the rest of the pass reaches them via getProducerTileOp() / cast&lt;TileOp&gt;(...), which dereferences a null if a tile is still an unplaced <code>aie.logical_tile</code> (or any non-TileOp). </p>
+<p>Emit a diagnostic and fail cleanly instead of crashing when a design reaches this pass before placement (e.g. &ndash;aie-place-tiles was not run first). </p>
+
+<p class="definition">Definition at line <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html#l02394">2394</a> of file <a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a>.</p>
+
+</div>
+</div>
 <hr/>The documentation for this struct was generated from the following file:<ul>
 <li>lib/Dialect/AIE/Transforms/<a class="el" href="AIEObjectFifoStatefulTransform_8cpp_source.html">AIEObjectFifoStatefulTransform.cpp</a></li>
 </ul>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Sat Jul 11 2026 15:37:40 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Sat Jul 11 2026 23:54:44 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
