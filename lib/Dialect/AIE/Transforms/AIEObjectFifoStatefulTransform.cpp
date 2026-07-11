@@ -2365,7 +2365,7 @@ struct AIEObjectFifoStatefulTransformPass
       //===----------------------------------------------------------------===//
       // For tiles using the dynamic objectFifo lowering, the number of locks
       // to acquire is computed at runtime from a per-(fifo,port) "held" counter
-      // stored in a local buffer. 
+      // stored in a local buffer.
       // Runtime lock counts require semaphore locks (AIE2+); on architectures
       // with binary locks (AIE1) the dynamic lowering keeps static lock counts.
       bool isDynamicCore = dynamicLoweringTiles.count(coreOp.getTileOp()) > 0 &&
