@@ -1,33 +1,31 @@
 <map id="include/aie/Targets/AIETargets.h" name="include/aie/Targets/AIETargets.h">
-<area shape="rect" id="Node000001" title=" " alt="" coords="1651,5,1795,45"/>
+<area shape="rect" id="Node000001" title=" " alt="" coords="1543,5,1687,45"/>
 <area shape="rect" id="Node000002" href="$Translation_8cpp.html" title=" " alt="" coords="5,101,180,126"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="1638,29,1391,30,1034,39,617,59,403,75,193,96,146,103,145,98,192,91,402,70,617,54,1033,33,1391,25,1638,24"/>
-<area shape="rect" id="Node000003" href="$ADFGenerateCppGraph_8cpp.html" title=" " alt="" coords="205,93,410,133"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="1637,30,1424,35,1123,46,775,66,422,96,411,97,410,92,422,91,775,60,1122,41,1423,30,1637,25"/>
-<area shape="rect" id="Node000004" href="$AIEFlowsToJSON_8cpp.html" title=" " alt="" coords="435,101,660,126"/>
-<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="1638,32,1222,52,949,71,673,96,617,103,616,98,672,91,949,66,1222,47,1638,27"/>
-<area shape="rect" id="Node000005" href="$AIELLVMLink_8cpp.html" title=" " alt="" coords="685,101,887,126"/>
-<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="1638,34,1313,56,1107,74,900,96,850,103,849,98,899,91,1106,68,1312,51,1637,29"/>
-<area shape="rect" id="Node000006" href="$AIETargetBCF_8cpp.html" title=" " alt="" coords="911,101,1117,126"/>
-<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="1638,38,1408,62,1129,96,1081,103,1080,98,1128,91,1407,56,1637,32"/>
-<area shape="rect" id="Node000007" href="$AIETargetCDODirect_8cpp.html" title=" " alt="" coords="1141,101,1391,126"/>
-<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="1638,45,1327,103,1326,98,1637,40"/>
-<area shape="rect" id="Node000008" href="$AIETargetCppTxn_8cpp.html" title=" " alt="" coords="1415,93,1594,133"/>
-<area shape="poly" id="edge7_Node000001_Node000008" title=" " alt="" coords="1663,53,1554,96,1552,91,1662,48"/>
-<area shape="rect" id="Node000009" href="$AIETargetHSA_8cpp.html" title=" " alt="" coords="1619,101,1828,126"/>
-<area shape="poly" id="edge8_Node000001_Node000009" title=" " alt="" coords="1726,59,1726,100,1721,100,1721,59"/>
-<area shape="rect" id="Node000010" href="$AIETargetLdScript_8cpp.html" title=" " alt="" coords="1852,101,2085,126"/>
-<area shape="poly" id="edge9_Node000001_Node000010" title=" " alt="" coords="1791,47,1937,98,1935,103,1789,52"/>
-<area shape="rect" id="Node000011" href="$AIETargetNPU_8cpp.html" title=" " alt="" coords="2109,101,2319,126"/>
-<area shape="poly" id="edge10_Node000001_Node000011" title=" " alt="" coords="1809,39,2149,98,2148,103,1809,44"/>
-<area shape="rect" id="Node000012" href="$AIETargetShared_8cpp.html" title=" " alt="" coords="2343,101,2570,126"/>
-<area shape="poly" id="edge11_Node000001_Node000012" title=" " alt="" coords="1809,32,2045,57,2332,91,2384,98,2383,103,2331,96,2044,62,1809,38"/>
-<area shape="rect" id="Node000013" href="$AIETargetSimulationFiles_8cpp.html" title=" " alt="" coords="2594,93,2818,133"/>
-<area shape="poly" id="edge12_Node000001_Node000013" title=" " alt="" coords="1810,29,2148,51,2364,69,2582,91,2594,92,2594,97,2582,96,2364,74,2148,56,1809,34"/>
-<area shape="rect" id="Node000014" href="$AIETargetUcCert_8cpp.html" title=" " alt="" coords="2841,101,3067,126"/>
-<area shape="poly" id="edge13_Node000001_Node000014" title=" " alt="" coords="1809,27,2247,46,2537,65,2830,91,2886,98,2886,103,2830,96,2536,70,2247,51,1809,32"/>
-<area shape="rect" id="Node000015" href="$AIETargetXAIEV2_8cpp.html" title=" " alt="" coords="3091,101,3319,126"/>
-<area shape="poly" id="edge14_Node000001_Node000015" title=" " alt="" coords="1809,25,2031,30,2345,42,2709,61,3080,91,3137,98,3136,103,3079,96,2709,66,2345,47,2031,36,1809,31"/>
-<area shape="rect" id="Node000016" href="$AIETargets_8cpp.html" title=" " alt="" coords="3343,101,3531,126"/>
-<area shape="poly" id="edge15_Node000001_Node000016" title=" " alt="" coords="1809,24,2067,25,2444,33,2883,54,3110,70,3332,91,3381,98,3380,103,3331,96,3109,75,2883,59,2443,39,2067,30,1809,29"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="1530,29,1298,31,967,41,582,61,385,76,192,96,146,103,145,98,191,91,384,71,582,55,967,35,1298,26,1530,24"/>
+<area shape="rect" id="Node000003" href="$AIEFlowsToJSON_8cpp.html" title=" " alt="" coords="204,101,429,126"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="1530,32,1065,50,756,69,442,96,386,103,385,98,442,91,756,64,1065,45,1529,26"/>
+<area shape="rect" id="Node000004" href="$AIELLVMLink_8cpp.html" title=" " alt="" coords="454,101,657,126"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="1530,33,1156,53,914,71,669,96,619,103,618,98,668,91,913,66,1155,48,1530,27"/>
+<area shape="rect" id="Node000005" href="$AIETargetBCF_8cpp.html" title=" " alt="" coords="681,101,886,126"/>
+<area shape="poly" id="edge4_Node000001_Node000005" title=" " alt="" coords="1530,35,1249,59,898,96,848,103,848,98,898,91,1248,53,1529,30"/>
+<area shape="rect" id="Node000006" href="$AIETargetCDODirect_8cpp.html" title=" " alt="" coords="911,101,1160,126"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="1530,42,1113,103,1112,98,1529,37"/>
+<area shape="rect" id="Node000007" href="$AIETargetCppTxn_8cpp.html" title=" " alt="" coords="1185,93,1363,133"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="1531,51,1350,96,1349,91,1529,45"/>
+<area shape="rect" id="Node000008" href="$AIETargetHSA_8cpp.html" title=" " alt="" coords="1388,101,1597,126"/>
+<area shape="poly" id="edge7_Node000001_Node000008" title=" " alt="" coords="1578,56,1511,103,1508,98,1575,51"/>
+<area shape="rect" id="Node000009" href="$AIETargetLdScript_8cpp.html" title=" " alt="" coords="1621,101,1855,126"/>
+<area shape="poly" id="edge8_Node000001_Node000009" title=" " alt="" coords="1655,51,1723,98,1720,103,1652,56"/>
+<area shape="rect" id="Node000010" href="$AIETargetNPU_8cpp.html" title=" " alt="" coords="1879,101,2088,126"/>
+<area shape="poly" id="edge9_Node000001_Node000010" title=" " alt="" coords="1701,44,1935,98,1934,103,1700,49"/>
+<area shape="rect" id="Node000011" href="$AIETargetShared_8cpp.html" title=" " alt="" coords="2113,101,2339,126"/>
+<area shape="poly" id="edge10_Node000001_Node000011" title=" " alt="" coords="1701,35,2101,91,2151,98,2150,103,2100,96,1701,41"/>
+<area shape="rect" id="Node000012" href="$AIETargetSimulationFiles_8cpp.html" title=" " alt="" coords="2363,93,2587,133"/>
+<area shape="poly" id="edge11_Node000001_Node000012" title=" " alt="" coords="1701,30,1990,54,2352,91,2364,92,2363,97,2351,96,1990,59,1701,35"/>
+<area shape="rect" id="Node000013" href="$AIETargetUcCert_8cpp.html" title=" " alt="" coords="2611,101,2836,126"/>
+<area shape="poly" id="edge12_Node000001_Node000013" title=" " alt="" coords="1701,27,2090,48,2344,67,2600,91,2655,98,2654,103,2599,96,2343,72,2090,54,1701,33"/>
+<area shape="rect" id="Node000014" href="$AIETargetXAIEV2_8cpp.html" title=" " alt="" coords="2860,101,3088,126"/>
+<area shape="poly" id="edge13_Node000001_Node000014" title=" " alt="" coords="1701,26,2189,44,2516,63,2849,91,2906,98,2906,103,2848,96,2516,68,2189,49,1701,31"/>
+<area shape="rect" id="Node000015" href="$AIETargets_8cpp.html" title=" " alt="" coords="3112,101,3300,126"/>
+<area shape="poly" id="edge14_Node000001_Node000015" title=" " alt="" coords="1701,24,1941,26,2288,36,2691,56,2898,71,3101,91,3150,98,3149,103,3100,96,2898,76,2690,61,2288,41,1941,32,1701,29"/>
 </map>
