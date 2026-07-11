@@ -138,6 +138,15 @@ def _rewrite_target(target, page_dir_link, page_dir_real, docs_dir, repo_root):
     if stripped.startswith("/"):
         return None
 
+    # Skip the generated Doxygen output. It isn't a repo source file — CI builds
+    # it with `make docs` and injects it into the deployed site at the version
+    # root (``<version>/doxygen/html/``). The cpp_doxygen page links to it with
+    # ``../../doxygen/html/...`` to climb out of ``api/``; leave that as-is so it
+    # resolves on the live site instead of being rewritten to a (nonexistent)
+    # GitHub source path.
+    if "doxygen/html/" in stripped:
+        return None
+
     # Separate the path from any #anchor / ?query suffix.
     path_part, suffix = _split_suffix(stripped)
     if not path_part:

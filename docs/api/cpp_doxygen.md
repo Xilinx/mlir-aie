@@ -11,7 +11,7 @@ library.
 !!! note "Opens in a new tab"
     The Doxygen HTML output is a self-contained static site linked below.
 
-[Open C++ Doxygen Reference](../doxygen/html/index.html){ .md-button .md-button--primary target="_blank" }
+[Open C++ Doxygen Reference](../../doxygen/html/index.html){ .md-button .md-button--primary target="_blank" }
 
 ## What's covered
 
