@@ -119,12 +119,12 @@ def passthroughKernel():
 
             # Verify start_trace() generates host_config and start_config ops
             # CHECK: aie.runtime_sequence
-            # CHECK:   aie.trace.host_config buffer_size = 8192
+            # CHECK:   aie.trace.host_config {buffer_size = 8192 : i32}
             # CHECK:   aie.trace.start_config @trace_core_1
             # CHECK:   aie.trace.start_config @trace_shim_2
             @runtime_sequence(tensor_ty, tensor_ty, tensor_ty)
             def sequence(inTensor, outTensor, notUsed):
-                trace_utils.start_trace(trace_size=8192, ddr_id=4)
+                trace_utils.start_trace(trace_size=8192)
 
                 npu_dma_memcpy_nd(
                     metadata=of_in,

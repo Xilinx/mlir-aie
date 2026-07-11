@@ -740,89 +740,12 @@ ParseResult TraceEdgeEventOp::parse(OpAsmParser &parser,
 // TraceHostConfigOp
 //===----------------------------------------------------------------------===//
 
-void TraceHostConfigOp::print(OpAsmPrinter &p) {
-  p << " buffer_size = " << getBufferSize();
-
-  // Only print non-default values
-  if (getArgIdx() != 4)
-    p << " arg_idx = " << getArgIdx();
-
-  if (getRouting() != TraceShimRouting::Single)
-    p << " routing = " << stringifyTraceShimRouting(getRouting());
-
-  if (getEgressShimCol() != 0)
-    p << " egress_shim_col = " << getEgressShimCol();
-
-  p.printOptionalAttrDict(
-      (*this)->getAttrs(),
-      /*elidedAttrs=*/{"buffer_size", "arg_idx", "routing", "egress_shim_col"});
-}
-
-ParseResult TraceHostConfigOp::parse(OpAsmParser &parser,
-                                     OperationState &result) {
-  // Parse required buffer_size
-  IntegerAttr bufferSize;
-  if (parser.parseKeyword("buffer_size") || parser.parseEqual() ||
-      parser.parseAttribute(bufferSize, parser.getBuilder().getI32Type(),
-                            "buffer_size", result.attributes))
-    return failure();
-
-  // Parse arg_idx (default: 4)
-  int32_t argIdxVal = 4;
-  if (succeeded(parser.parseOptionalKeyword("arg_idx"))) {
-    IntegerAttr argIdx;
-    if (parser.parseEqual() ||
-        parser.parseAttribute(argIdx, parser.getBuilder().getI32Type(),
-                              "arg_idx", result.attributes))
-      return failure();
-  } else {
-    result.attributes.set("arg_idx",
-                          parser.getBuilder().getI32IntegerAttr(argIdxVal));
-  }
-
-  // Parse routing (default: single)
-  TraceShimRouting routingVal = TraceShimRouting::Single;
-  if (succeeded(parser.parseOptionalKeyword("routing"))) {
-    if (parser.parseEqual())
-      return failure();
-    StringRef routingStr;
-    if (failed(parser.parseKeyword(&routingStr)))
-      return failure();
-    auto routing = symbolizeTraceShimRouting(routingStr);
-    if (!routing)
-      return parser.emitError(parser.getCurrentLocation(),
-                              "unknown routing strategy: ")
-             << routingStr;
-    routingVal = *routing;
-  }
-  result.attributes.set(
-      "routing", TraceShimRoutingAttr::get(parser.getContext(), routingVal));
-
-  // Parse egress_shim_col (default: 0 = column 0)
-  int32_t egressShimColVal = 0;
-  if (succeeded(parser.parseOptionalKeyword("egress_shim_col"))) {
-    IntegerAttr egressShimCol;
-    if (parser.parseEqual() ||
-        parser.parseAttribute(egressShimCol, parser.getBuilder().getI32Type(),
-                              "egress_shim_col", result.attributes))
-      return failure();
-  } else {
-    result.attributes.set(
-        "egress_shim_col",
-        parser.getBuilder().getI32IntegerAttr(egressShimColVal));
-  }
-
-  if (parser.parseOptionalAttrDict(result.attributes))
-    return failure();
-
-  return success();
-}
-
 LogicalResult TraceHostConfigOp::verify() {
-  // arg_idx=-1 means "append after last tensor", only valid with single shim
-  if (getArgIdx() == -1) {
+  // Reusing the last output buffer for trace data only works with a single
+  // shim destination (the trace bytes are appended to one buffer).
+  if (getReuseOutputBuffer()) {
     if (getRouting() != TraceShimRouting::Single) {
-      return emitOpError("arg_idx=-1 (append trace after last tensor) "
+      return emitOpError("reuse_output_buffer (append trace after last tensor) "
                          "only works with single shim destination strategy "
                          "(routing=single)");
     }

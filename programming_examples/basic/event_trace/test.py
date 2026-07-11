@@ -36,8 +36,6 @@ def main(opts):
     ref = in1_np * scale_factor
 
     npu_opts = create_npu_kernel(opts)
-    if npu_opts.npu_kernel.trace_config:
-        npu_opts.npu_kernel.trace_config.enable_ctrl_pkts = True
 
     print("Running...\n")
     res = DefaultNPURuntime.run_test(
