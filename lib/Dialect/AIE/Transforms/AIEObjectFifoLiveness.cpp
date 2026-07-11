@@ -33,13 +33,13 @@
 //
 // Coupling (which fifos are halves of ONE logical broadcast tensor) is a
 // property the IR does not carry: the halves can live on different, unlinked
-// MemTiles, so neither aie.objectfifo.link nor a shared producer tile identifies
-// them -- only their shared name base does (see nameBase). Because a name is a
-// weak signal, the grouping is gated on structural agreement (identical element
-// type, depth and repeat_count, and disjoint consumer tiles); a fifo that only
-// shares the base name is analyzed on its own rather than folded in. A durable
-// fix would be a first-class coupling attribute on the frontend ops; that is a
-// tracked follow-up.
+// MemTiles, so neither aie.objectfifo.link nor a shared producer tile
+// identifies them -- only their shared name base does (see nameBase). Because a
+// name is a weak signal, the grouping is gated on structural agreement
+// (identical element type, depth and repeat_count, and disjoint consumer
+// tiles); a fifo that only shares the base name is analyzed on its own rather
+// than folded in. A durable fix would be a first-class coupling attribute on
+// the frontend ops; that is a tracked follow-up.
 //
 // The T >= 2 replay guard avoids false positives on single-trip broadcasts
 // (which fan out once and drain monotonically). The analysis is sound for this
@@ -161,9 +161,9 @@ struct AIEObjectFifoLivenessPass
     // find_cycles: the graph is undirected, so a directed SCC search would just
     // recover connected components (every shared-tile edge is a 2-cycle). Use a
     // union-find and treat a component of size > 1 as a cycle; a lone fifo that
-    // shares no tile is acyclic. sccId is the component root for cyclic nodes and
-    // -1 otherwise (the downstream group logic only keys off sccId identity, so a
-    // root index is as good as a dense SCC id).
+    // shares no tile is acyclic. sccId is the component root for cyclic nodes
+    // and -1 otherwise (the downstream group logic only keys off sccId
+    // identity, so a root index is as good as a dense SCC id).
     SmallVector<int> uf(n);
     for (unsigned i = 0; i < n; ++i)
       uf[i] = i;
@@ -188,7 +188,8 @@ struct AIEObjectFifoLivenessPass
     // SDF check, scoped PER coupled-multicast group -- NOT globally. A coupled
     // broadcast is a group of cyclic multicast objectFIFOs that are one logical
     // broadcast tensor (e.g. memW1_0 + memW1_1 = one weight broadcast, split
-    // across MemTiles); the halves can land in different components, so the group
+    // across MemTiles); the halves can land in different components, so the
+    // group
     // -- not the component -- is the unit of coupling, and array_fan SUMS the
     // group's fan-out across the components it spans. The trip-count T is taken
     // ONLY from the component(s) this group lives in, so an unrelated
@@ -196,25 +197,27 @@ struct AIEObjectFifoLivenessPass
     // inflate this group's demand and false-positive.
     //
     // The IR carries no signal for "these fifos are one logical tensor", so the
-    // grouping keys off the shared name base (nameBase). Because a name is a weak
-    // signal, it is GATED on structural agreement before two fifos are coupled:
-    // identical element type, depth and repeat_count, and DISJOINT consumer tiles
-    // (two halves of a broadcast reach different cores). A fifo that shares the
-    // base name but fails any gate is analyzed as its own standalone group rather
-    // than folded in -- so a stray name collision cannot fabricate a coupling,
-    // and the summation is never applied to fifos that are not actually halves.
+    // grouping keys off the shared name base (nameBase). Because a name is a
+    // weak signal, it is GATED on structural agreement before two fifos are
+    // coupled: identical element type, depth and repeat_count, and DISJOINT
+    // consumer tiles (two halves of a broadcast reach different cores). A fifo
+    // that shares the base name but fails any gate is analyzed as its own
+    // standalone group rather than folded in -- so a stray name collision
+    // cannot fabricate a coupling, and the summation is never applied to fifos
+    // that are not actually halves.
     struct Group {
       long fan = 0, depth = 0;
       unsigned rep = 0;
-      std::string name;           // display name (nameBase of the representative)
-      mlir::Type elemTy;          // coupling signature: element type ...
-      long sigDepth = 0;          // ... depth ...
-      long sigRepeat = 0;         // ... and repeat_count must all match to couple
+      std::string name;   // display name (nameBase of the representative)
+      mlir::Type elemTy;  // coupling signature: element type ...
+      long sigDepth = 0;  // ... depth ...
+      long sigRepeat = 0; // ... and repeat_count must all match to couple
       llvm::DenseSet<mlir::Value> cons; // consumer tiles (must stay disjoint)
       std::set<int> sccs;
     };
     SmallVector<Group> groupList;
-    llvm::StringMap<unsigned> groupIdx; // name base -> owning group in groupList
+    llvm::StringMap<unsigned>
+        groupIdx; // name base -> owning group in groupList
     for (unsigned i = 0; i < n; ++i) {
       if (sccId[i] < 0 || fifos[i].cons.size() <= 1)
         continue; // only a cyclic multicast couples a broadcast
@@ -233,9 +236,9 @@ struct AIEObjectFifoLivenessPass
           slot = it->second;
       }
       if (slot < 0) {
-        // First fifo for this base, or a same-name fifo that failed a gate: open
-        // a fresh group. Only the first owns the name-base map slot; a later
-        // mismatching fifo becomes an unindexed standalone group.
+        // First fifo for this base, or a same-name fifo that failed a gate:
+        // open a fresh group. Only the first owns the name-base map slot; a
+        // later mismatching fifo becomes an unindexed standalone group.
         Group g;
         g.rep = i;
         g.name = base.str();
@@ -248,8 +251,7 @@ struct AIEObjectFifoLivenessPass
         if (it == groupIdx.end())
           groupIdx[base] = slot;
       } else {
-        groupList[slot].depth =
-            std::min(groupList[slot].depth, fifos[i].depth);
+        groupList[slot].depth = std::min(groupList[slot].depth, fifos[i].depth);
       }
       Group &g = groupList[slot];
       g.fan += (long)fifos[i].cons.size();
