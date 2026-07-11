@@ -213,11 +213,11 @@ nav:
       - "4c: Vectorization": programming_guide/section-4/section-4c/README.md
     - "Section 5: Example Designs": programming_guide/section-5/README.md
     - "Section 6: ML Examples": programming_guide/section-6/README.md
-    - Quick Reference: programming_guide/quick_reference.md
-    - IRON Configuration: programming_guide/iron_configuration.md
-    - Compilation Stages: programming_guide/compilation_stages.md
-    - Implicit MLIR Context: programming_guide/implicit_mlir_context.md
-    - Kernel Library: programming_guide/kernels_library.md
+    - Extra References:
+      - IRON Configuration: programming_guide/iron_configuration.md
+      - Compilation Stages: programming_guide/compilation_stages.md
+      - Implicit MLIR Context: programming_guide/implicit_mlir_context.md
+      - Kernel Library: programming_guide/kernels_library.md
   - API & Internals:
     - Overview: api/index.md
     - Python API:

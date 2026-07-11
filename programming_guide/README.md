@@ -20,9 +20,9 @@ This is the programming guide for **IRON** — the Python API for programming AM
 * The NPU is a 2D grid of **AIE tiles**. The interesting ones are **compute tiles** (run code) and **mem tiles** (shared L2 scratchpad). At the edge of the array, **shim tiles** move data to/from main memory.
 * Tiles are connected by **stream switches**. The path from main memory to a compute tile is always shim → (mem) → compute, scheduled by per-tile **DMA engines**.
 * You describe an NPU program in Python:
-  * A **Worker** is the code that runs on one compute tile.
-  * An **ObjectFifo** is a streaming channel between two endpoints (host↔tile, tile↔tile). Acquire / release.
-  * A **Runtime** sequence is the host-side dance — what tensors get filled into the array, what gets drained back.
+    * A **Worker** is the code that runs on one compute tile.
+    * An **ObjectFifo** is a streaming channel between two endpoints (host↔tile, tile↔tile). Acquire / release.
+    * A **Runtime** sequence is the host-side dance — what tensors get filled into the array, what gets drained back.
 * You wrap the whole thing in `@iron.jit`. Calling the decorated function the first time JIT-compiles to an `xclbin` + instruction stream and runs it on the attached NPU. Subsequent calls hit a cache.
 
 ```python
@@ -137,7 +137,7 @@ The vocabulary IRON and this documentation use, grouped by topic. Where a term m
 | [**TensorAccessPattern (TAP)**](../docs/api/taplib.md) | A description of how a tensor is sliced and streamed to/from the NPU across multiple DMA transfers. Passed as `tap=` to `rt.fill()` / `rt.drain()`. |
 | [**Flow**](../docs/api/iron_lowlevel.md#iron.dataflow.flow.Flow) / [**PacketFlow**](../docs/api/iron_lowlevel.md#iron.dataflow.flow.PacketFlow) | Lower-level explicit-routing primitives: `Flow` for circuit-switched routes, `PacketFlow` for packet-switched routes with caller-controlled packet IDs. |
 | [**TileDma**](../docs/api/iron_lowlevel.md#iron.dataflow.tile_dma.TileDma) | A lower-level explicit per-tile DMA program, used when the ObjectFifo abstraction hides too much. |
-| **Runtime sequence** | The `rt.sequence(...)` context in which `fill` / `drain` / `start` operations are declared. |
+| [**Runtime sequence**](../docs/api/iron_highlevel.md#iron.runtime.runtime.Runtime.sequence) | The `rt.sequence(...)` context in which `fill` / `drain` / `start` operations are declared. |
 
 ### Compilation
 
@@ -168,10 +168,12 @@ The vocabulary IRON and this documentation use, grouped by topic. Where a term m
 
 ## Further reading
 
-* [Quick reference](./quick_reference.md) — IRON API cheat sheet.
 * E. Hunhoff, J. Melber, K. Denolf, A. Bisca, S. Bayliss, S. Neuendorffer, J. Fifield, J. Lo, P. Vasireddy, P. James-Roxby, E. Keller. "[Efficiency, Expressivity, and Extensibility in a Close-to-Metal NPU Programming Interface](https://arxiv.org/abs/2504.18430)". In 33rd IEEE International Symposium On Field-Programmable Custom Computing Machines, May 2025. — the IRON paper.
-* AIE architecture manuals: [AIE1 (AM009)](https://docs.amd.com/r/en-US/am009-versal-ai-engine/Overview), [AIE2 (AM020)](https://docs.amd.com/r/en-US/am020-versal-aie-ml/Overview).
 * [AMD XDNA™ NPU in Ryzen™ AI Processors](https://ieeexplore.ieee.org/document/10592049) — IEEE Hot Chips paper.
+* AIE architecture manuals: [AIE1 — AM009](https://docs.amd.com/r/en-US/am009-versal-ai-engine/Overview), [AIE2 — AM020](https://docs.amd.com/r/en-US/am020-versal-aie-ml/Overview).
+* AIE register references: [AIE1 — AM015](https://docs.amd.com/r/en-US/am015-versal-aie-register-reference/Overview), [AIE2 — AM025](https://docs.amd.com/r/en-US/am025-versal-aie-ml-register-reference/Overview).
+* [AIE API User Guide](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/index.html) — the C++ header-only vector library for kernel code.
+* [Summary documentation links (UG1076)](https://docs.amd.com/r/en-US/ug1076-ai-engine-environment/Documentation).
 
 -----
 [Section 0 — Getting set up for IRON →](./section-0/)

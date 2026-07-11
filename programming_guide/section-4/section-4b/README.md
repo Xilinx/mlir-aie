@@ -85,6 +85,25 @@ The trace configuration chooses helpful default settings so you can trace your d
         )
     ```
 
+#### Common core-tile trace event IDs
+
+The symbolic `CoreEvent` names above map to raw hardware event IDs. Some commonly used core-tile events:
+
+| Event | Event ID | Decimal |
+|-------|----------|---------|
+| True | `0x01` | 1 |
+| Stream stalls | `0x18` | 24 |
+| Lock stall | `0x1A` | 26 |
+| Core Instruction — Event 0 | `0x21` | 33 |
+| Core Instruction — Event 1 | `0x22` | 34 |
+| Vector Instructions (VMAC, VADD, VCMP) | `0x25` | 37 |
+| Lock acquire requests | `0x2C` | 44 |
+| Lock release requests | `0x2D` | 45 |
+| Core Port Running 0 | `0x4B` | 75 |
+| Core Port Running 1 | `0x4F` | 79 |
+
+A more exhaustive list of events for the core tile, core memory, mem tile, and shim tile is in [this header file](https://github.com/Xilinx/aie-rt/blob/main-aie/driver/src/events/xaie_events_aie.h).
+
 ### <u>PortEvent API</u>
 
 Port events monitor activity on stream switch ports. A **physical port** on the stream switch is identified by three components: the **bundle** (which interface on the tile, e.g., DMA, North, South), the **channel** (which channel within that bundle), and the **direction** (master for input/S2MM, slave for output/MM2S).

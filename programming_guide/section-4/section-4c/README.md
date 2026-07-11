@@ -138,6 +138,19 @@ In this example, the vectorization strategy was relatively straight forward. Ins
 
 > **NOTE** - AIE API is a portable programming interface that is implemented as a C++ header-only library providing types and operations that get translated into generation specific efficient low-level intrinsics. AIE kernels can also be programmed directly in these low-level C++ intrinsics: [AIE1 Intrinsics User Guide - v2023.2](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_intrinsics/intrinsics/index.html) and [AIE2 Intrinsics User Guide - v2023.2](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_ml_intrinsics/intrinsics/index.html)
 
+### <u>AIE API quick reference</u>
+
+The core AIE API vector operations used throughout kernel code:
+
+| Signature | Description | Example |
+|-----------|-------------|---------|
+| `aie::vector<T, N> v` | Declare a vector of `N` elements of type `T`. | `aie::vector<int16_t, 32> v;` |
+| `aie::load_v<N>(ptr)` | Load `N` contiguous elements into a vector register. | `auto a = aie::load_v<32>(pA);` |
+| `aie::store_v(ptr, v)` | Store a vector register back to local memory. | `aie::store_v(pC, cout);` |
+| `aie::mul(a, b)` / `aie::mac(acc, a, b)` | Vector multiply / multiply-accumulate. | `auto acc = aie::mul(a, b);` |
+
+For the full type-and-vector-size table, see the [AIE API User Guide](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/group__group__basic__types.html).
+
 ## <u>Vectorization Exercises</u>
 1. Let's take a look at the trace for our vector scalar design. First, let's edit our [vector_scalar_mul design](../../../programming_examples/basic/vector_scalar_mul/) so that the [vector_scalar_mul.py](../../../programming_examples/basic/vector_scalar_mul/vector_scalar_mul.py) source file has `vectorized=False`. In the [vector_scalar_mul.py](../../../programming_examples/basic/vector_scalar_mul/vector_scalar_mul.py) source code, we now have selected the scalar version of the kernel function. We're also going to build the 32-bit integer version of the design by passing the environment variables `int_bit_width=32` to our `makefile` command, by running  `make int_bit_width=32 trace`. This makefile argument is defined in our makefile to customize datatypes and buffer sizes in our design code (`vector_scalar_mul.py`) and our host code (`test.cpp`). After the trace compilation is complete, open `trace_vector_scalar_mul.json` in https://ui.perfetto.dev and measure the delta between `event 0` and `event 1`. Note that in the Perfetto waveform, 1 us is equal to 1 clock cycle. How many cycles did you measure? <img src="../../../mlir_exercises/images/answer1.jpg" title="~12,297 cycles" height=25> 
 
