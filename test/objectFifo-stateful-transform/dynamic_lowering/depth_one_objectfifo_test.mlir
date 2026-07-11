@@ -7,55 +7,61 @@
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
 
-// CHECK:  module {
-// CHECK:    aie.device(npu1_1col) {
-// CHECK:      func.func @passthrough_10_i32(%arg0: memref<10xi32>) {
-// CHECK:        return
-// CHECK:      }
-// CHECK:      %{{.*}}tile_0_0 = aie.tile(0, 0)
-// CHECK:      %{{.*}}tile_0_2 = aie.tile(0, 2)
-// CHECK:      %{{.*}}tile_0_4 = aie.tile(0, 4)
-// CHECK:      %[[VAL_0:.*]] = aie.buffer(%{{.*}}tile_0_2) {sym_name = "input_fifo_cons_buff_0"} : memref<10xi32>
-// CHECK:      %[[VAL_1:.*]] = aie.lock(%{{.*}}tile_0_2, 0) {init = 1 : i32, sym_name = "input_fifo_cons_prod_lock_0"}
-// CHECK:      %[[VAL_2:.*]] = aie.lock(%{{.*}}tile_0_2, 1) {init = 0 : i32, sym_name = "input_fifo_cons_cons_lock_0"}
-// CHECK:      aie.flow(%{{.*}}tile_0_0, DMA : 0, %{{.*}}tile_0_2, DMA : 0)
-// CHECK:      %buffer_0_2 = aie.buffer(%{{.*}}tile_0_2) : memref<1xi32>
-// CHECK:      %core_0_2 = aie.core(%{{.*}}tile_0_2) {
-// CHECK:        %c0_i32 = arith.constant 0 : i32
-// CHECK:        %{{.*}} = arith.constant 0 : i32
-// CHECK:        %c0 = arith.constant 0 : index
-// CHECK:        %c1_i32 = arith.constant 1 : i32
-// CHECK:        memref.store %{{.*}}, %buffer_0_2[%c0] : memref<1xi32>
-// CHECK:        %{{.*}} = arith.constant 0 : index
-// CHECK:        %{{.*}} = arith.constant 1 : index
-// CHECK:        %{{.*}} = arith.constant 10 : index
-// CHECK:        %{{.*}} = scf.for %arg0 = %{{.*}} to %{{.*}} step %{{.*}} iter_args(%{{.*}} = %c0_i32) -> (i32) {
-// CHECK:          %{{.*}} = arith.constant 1 : i32
-// CHECK:          %{{.*}} = arith.constant 0 : i32
-// CHECK:          %{{.*}} = arith.subi %{{.*}}, %{{.*}} : i32
-// CHECK:          %{{.*}} = arith.maxsi %{{.*}}, %{{.*}} : i32
-// CHECK:          aie.use_lock(%[[VAL_2]], AcquireGreaterEqual, %{{.*}})
-// CHECK:          %{{.*}} = arith.addi %{{.*}}, %{{.*}} : i32
-// CHECK:          func.call @passthrough_10_i32(%[[VAL_0]]) : (memref<10xi32>) -> ()
-// CHECK:          %{{.*}} = arith.constant 1 : i32
-// CHECK:          aie.use_lock(%[[VAL_1]], Release, %{{.*}})
-// CHECK:          scf.yield %{{.*}} : i32
-// CHECK:        }
-// CHECK:        aie.end
-// CHECK:      } {dynamic_objfifo_lowering = true}
-// CHECK:      aie.shim_dma_allocation @input_fifo_shim_alloc(%shim_noc_tile_0_0, MM2S, 0)
-// CHECK:      %mem_0_2 = aie.mem(%{{.*}}tile_0_2) {
-// CHECK:        %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
-// CHECK:      ^bb1:  // 2 preds: ^bb0, ^bb1
-// CHECK:        aie.use_lock(%[[VAL_1]], AcquireGreaterEqual, %{{.*}})
-// CHECK:        aie.dma_bd(%[[VAL_0]] : memref<10xi32> offset = {{.*}} len = {{.*}})
-// CHECK:        aie.use_lock(%[[VAL_2]], Release, %{{.*}})
-// CHECK:        aie.next_bd ^bb1
-// CHECK:      ^bb2:  // pred: ^bb0
-// CHECK:        aie.end
-// CHECK:      }
-// CHECK:    }
-// CHECK:  }
+// CHECK-LABEL:   aie.device(npu1_1col) {
+// CHECK:           func.func @passthrough_10_i32(%[[VAL_0:.*]]: memref<10xi32>) {
+// CHECK:             return
+// CHECK:           }
+// CHECK:           %[[VAL_1:.*]] = aie.tile(0, 0)
+// CHECK:           %[[VAL_2:.*]] = aie.tile(0, 2)
+// CHECK:           %[[VAL_3:.*]] = aie.tile(0, 4)
+// CHECK:           %[[VAL_4:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "input_fifo_cons_buff_0"} : memref<10xi32>
+// CHECK:           %[[VAL_5:.*]] = aie.lock(%[[VAL_2]], 0) {init = 1 : i32, sym_name = "input_fifo_cons_prod_lock_0"}
+// CHECK:           %[[VAL_6:.*]] = aie.lock(%[[VAL_2]], 1) {init = 0 : i32, sym_name = "input_fifo_cons_cons_lock_0"}
+// CHECK:           %[[VAL_7:.*]] = aie.lock(%[[VAL_1]], 0) {init = 0 : i32, sym_name = "input_fifo_prod_lock_0"}
+// CHECK:           %[[VAL_8:.*]] = aie.lock(%[[VAL_1]], 1) {init = 0 : i32, sym_name = "input_fifo_cons_lock_0"}
+// CHECK:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_2]], DMA : 0)
+// CHECK:           %[[VAL_9:.*]] = aie.core(%[[VAL_2]]) {
+// CHECK:             %[[VAL_10:.*]] = arith.constant 0 : i32
+// CHECK:             %[[VAL_11:.*]] = arith.constant 0 : i32
+// CHECK:             %[[VAL_12:.*]] = arith.constant 1 : i32
+// CHECK:             %[[VAL_13:.*]] = arith.constant 0 : index
+// CHECK:             %[[VAL_14:.*]] = arith.constant 1 : index
+// CHECK:             %[[VAL_15:.*]] = arith.constant 10 : index
+// CHECK:             %[[VAL_16:.*]]:2 = scf.for %[[VAL_17:.*]] = %[[VAL_13]] to %[[VAL_15]] step %[[VAL_14]] iter_args(%[[VAL_18:.*]] = %[[VAL_10]], %[[VAL_19:.*]] = %[[VAL_11]]) -> (i32, i32) {
+// CHECK:               %[[VAL_20:.*]] = arith.constant 1 : i32
+// CHECK:               %[[VAL_21:.*]] = arith.constant 0 : i32
+// CHECK:               %[[VAL_22:.*]] = arith.subi %[[VAL_20]], %[[VAL_18]] : i32
+// CHECK:               %[[VAL_23:.*]] = arith.maxsi %[[VAL_22]], %[[VAL_21]] : i32
+// CHECK:               aie.use_lock(%[[VAL_6]], AcquireGreaterEqual, %[[VAL_23]])
+// CHECK:               %[[VAL_24:.*]] = arith.addi %[[VAL_18]], %[[VAL_23]] : i32
+// CHECK:               func.call @passthrough_10_i32(%[[VAL_4]]) : (memref<10xi32>) -> ()
+// CHECK:               %[[VAL_25:.*]] = arith.constant 1 : i32
+// CHECK:               aie.use_lock(%[[VAL_5]], Release, %[[VAL_25]])
+// CHECK:               %[[VAL_26:.*]] = arith.constant 1 : i32
+// CHECK:               %[[VAL_27:.*]] = arith.subi %[[VAL_24]], %[[VAL_26]] : i32
+// CHECK:               %[[VAL_28:.*]] = arith.constant 1 : i32
+// CHECK:               %[[VAL_29:.*]] = arith.addi %[[VAL_19]], %[[VAL_28]] : i32
+// CHECK:               %[[VAL_30:.*]] = arith.cmpi sge, %[[VAL_29]], %[[VAL_12]] : i32
+// CHECK:               %[[VAL_31:.*]] = arith.subi %[[VAL_29]], %[[VAL_12]] : i32
+// CHECK:               %[[VAL_32:.*]] = arith.select %[[VAL_30]], %[[VAL_31]], %[[VAL_29]] : i32
+// CHECK:               scf.yield %[[VAL_27]], %[[VAL_32]] : i32, i32
+// CHECK:             } {aie.unroll_hint = 1 : i64}
+// CHECK:             aie.end
+// CHECK:           } {dynamic_objfifo_lowering = true}
+// CHECK:           aie.shim_dma_allocation @input_fifo_shim_alloc(%[[VAL_1]], MM2S, 0)
+// CHECK:           %[[VAL_33:.*]] = aie.mem(%[[VAL_2]]) {
+// CHECK:             %[[VAL_34:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
+// CHECK:           ^bb1:
+// CHECK:             %[[VAL_35:.*]] = arith.constant 1 : i32
+// CHECK:             aie.use_lock(%[[VAL_5]], AcquireGreaterEqual, %[[VAL_35]])
+// CHECK:             aie.dma_bd(%[[VAL_4]] : memref<10xi32>, 0, 10)
+// CHECK:             %[[VAL_36:.*]] = arith.constant 1 : i32
+// CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[VAL_36]])
+// CHECK:             aie.next_bd ^bb1
+// CHECK:           ^bb2:
+// CHECK:             aie.end
+// CHECK:           }
+// CHECK:         }
 
 module {
   aie.device(npu1_1col) {
