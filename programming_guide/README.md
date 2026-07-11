@@ -127,17 +127,17 @@ The vocabulary IRON and this documentation use, grouped by topic. Where a term m
 
 | Term | Definition |
 |------|------------|
-| [**Worker**](../docs/api/iron_highlevel.md#iron.worker.Worker) | The IRON object describing the code that runs on one compute tile. Prefer "Worker" over "process" or "task". |
-| [**ObjectFifo**](../docs/api/iron_highlevel.md#iron.dataflow.objectfifo.ObjectFifo) | The synchronized streaming-data primitive between two endpoints (host↔tile or tile↔tile). Producers and consumers `acquire` / `release` its elements. Reserve "channel" for AXI stream channels. |
-| [**ObjectFifoHandle**](../docs/api/iron_highlevel.md#iron.dataflow.objectfifo.ObjectFifoHandle) | A producer or consumer handle to an ObjectFifo, obtained via `of.prod()` / `of.cons()`. Worker core functions call `acquire` / `release` on it. |
-| [**Runtime**](../docs/api/iron_highlevel.md#iron.runtime.runtime.Runtime) | The host-side description of `fill` / `drain` operations and Worker `start`s, declared with `rt.sequence(...)`. Distinct from "host code" (the C++/Python testbench that calls the design). |
-| [**Program**](../docs/api/iron_highlevel.md#iron.program.Program) | The top-level container that binds a device and a Runtime and resolves the design to MLIR. |
-| [**Buffer**](../docs/api/iron_highlevel.md#iron.buffer.Buffer) | A named memory region on a tile, accessible by both Workers and the Runtime (often used for runtime parameters). |
-| [**Kernel**](../docs/api/iron_highlevel.md#iron.kernel.Kernel) / [**ExternalFunction**](../docs/api/iron_highlevel.md#iron.kernel.ExternalFunction) | Wrappers for AIE core functions: `Kernel` for a pre-compiled object file, `ExternalFunction` for C/C++ source compiled at JIT time. |
+| [**Worker**](../docs/api/iron.md#iron.worker.Worker) | The IRON object describing the code that runs on one compute tile. Prefer "Worker" over "process" or "task". |
+| [**ObjectFifo**](../docs/api/iron.md#iron.dataflow.objectfifo.ObjectFifo) | The synchronized streaming-data primitive between two endpoints (host↔tile or tile↔tile). Producers and consumers `acquire` / `release` its elements. Reserve "channel" for AXI stream channels. |
+| [**ObjectFifoHandle**](../docs/api/iron.md#iron.dataflow.objectfifo.ObjectFifoHandle) | A producer or consumer handle to an ObjectFifo, obtained via `of.prod()` / `of.cons()`. Worker core functions call `acquire` / `release` on it. |
+| [**Runtime**](../docs/api/iron.md#iron.runtime.runtime.Runtime) | The host-side description of `fill` / `drain` operations and Worker `start`s, declared with `rt.sequence(...)`. Distinct from "host code" (the C++/Python testbench that calls the design). |
+| [**Program**](../docs/api/iron.md#iron.program.Program) | The top-level container that binds a device and a Runtime and resolves the design to MLIR. |
+| [**Buffer**](../docs/api/iron.md#iron.buffer.Buffer) | A named memory region on a tile, accessible by both Workers and the Runtime (often used for runtime parameters). |
+| [**Kernel**](../docs/api/iron.md#iron.kernel.Kernel) / [**ExternalFunction**](../docs/api/iron.md#iron.kernel.ExternalFunction) | Wrappers for AIE core functions: `Kernel` for a pre-compiled object file, `ExternalFunction` for C/C++ source compiled at JIT time. |
 | [**TensorAccessPattern (TAP)**](../docs/api/taplib.md) | A description of how a tensor is sliced and streamed to/from the NPU across multiple DMA transfers. Passed as `tap=` to `rt.fill()` / `rt.drain()`. |
-| [**Flow**](../docs/api/iron_lowlevel.md#iron.dataflow.flow.Flow) / [**PacketFlow**](../docs/api/iron_lowlevel.md#iron.dataflow.flow.PacketFlow) | Lower-level explicit-routing primitives: `Flow` for circuit-switched routes, `PacketFlow` for packet-switched routes with caller-controlled packet IDs. |
-| [**TileDma**](../docs/api/iron_lowlevel.md#iron.dataflow.tile_dma.TileDma) | A lower-level explicit per-tile DMA program, used when the ObjectFifo abstraction hides too much. |
-| [**Runtime sequence**](../docs/api/iron_highlevel.md#iron.runtime.runtime.Runtime.sequence) | The `rt.sequence(...)` context in which `fill` / `drain` / `start` operations are declared. |
+| [**Flow**](../docs/api/iron.md#iron.dataflow.flow.Flow) / [**PacketFlow**](../docs/api/iron.md#iron.dataflow.flow.PacketFlow) | Lower-level explicit-routing primitives: `Flow` for circuit-switched routes, `PacketFlow` for packet-switched routes with caller-controlled packet IDs. |
+| [**TileDma**](../docs/api/iron.md#iron.dataflow.tile_dma.TileDma) | A lower-level explicit per-tile DMA program, used when the ObjectFifo abstraction hides too much. |
+| [**Runtime sequence**](../docs/api/iron.md#iron.runtime.runtime.Runtime.sequence) | The `rt.sequence(...)` context in which `fill` / `drain` / `start` operations are declared. |
 
 ### Compilation
 

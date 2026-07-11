@@ -1,24 +1,26 @@
 <!-- Copyright (C) 2024-2026 Advanced Micro Devices, Inc. -->
 <!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 
-# High-level IRON API
+# IRON API (`aie.iron`)
 
 IRON is the high-level Python interface for programming AMD Ryzen™ AI NPUs.
-It exposes tile placement, data movement, and host runtime as Python objects
-that compile to an optimized `xclbin` + instruction stream via the MLIR-AIE
-toolchain.
+You describe a design as Python objects — tiles, workers, data movement, and a
+host runtime — and IRON compiles it to an optimized `xclbin` + instruction
+stream via the MLIR-AIE toolchain.
+
+Every object on this page is **resolvable**: it lowers to one or more MLIR
+operations when the design is compiled. That is what makes it the high-level
+layer. For the direct MLIR op wrappers that IRON lowers *to*, see the
+[Dialect op wrappers](dialect_wrappers.md) page.
 
 All symbols documented here are importable directly from the `iron`
 namespace (e.g. `from iron import Worker, ObjectFifo, Runtime`).
-
-For hand-routed data movement below the [`ObjectFifo`][iron.ObjectFifo]
-abstraction, see the [Lower-level primitives](iron_lowlevel.md) page.
 
 ---
 
 ## Core design abstractions
 
-The objects you use to describe an NPU design.
+The objects most designs are built from.
 
 ### Program
 
@@ -40,9 +42,8 @@ The objects you use to describe an NPU design.
 
 ### Runtime
 
-The host-side orchestration entry point. Lower-level runtime task types
-(`DMATask`, task groups) are documented on the
-[Lower-level primitives](iron_lowlevel.md#runtime-tasks) page.
+The host-side orchestration entry point that declares `fill` / `drain` /
+`start` operations via `rt.sequence(...)`.
 
 ::: iron.runtime.runtime
     options:
@@ -120,5 +121,65 @@ into `iron` from `aie.utils`.
 ## Data type helpers
 
 ::: iron.dtype
+    options:
+      show_root_heading: false
+
+---
+
+## Advanced primitives
+
+Still part of the high-level `aie.iron` API — every object here is resolvable —
+but reach for these only when the managed [`ObjectFifo`][iron.ObjectFifo]
+abstraction is not enough and you need explicit control over routing, DMA
+descriptors, and locks.
+
+### Flow / PacketFlow
+
+Circuit-switched ([`Flow`][iron.Flow]) and packet-switched
+([`PacketFlow`][iron.PacketFlow]) stream connections, plus the
+[`PacketDest`][iron.PacketDest] endpoint descriptor.
+
+::: iron.dataflow.flow
+    options:
+      show_root_heading: false
+
+### CascadeFlow
+
+Directed cascade-stream connection between two adjacent Workers.
+
+::: iron.dataflow.cascadeflow
+    options:
+      show_root_heading: false
+
+### TileDma / DmaChannel / Bd
+
+Explicit tile DMA programs: [`TileDma`][iron.TileDma],
+[`DmaChannel`][iron.DmaChannel], buffer descriptors ([`Bd`][iron.Bd]), and the
+[`Acquire`][iron.Acquire] / [`Release`][iron.Release] lock actions.
+
+::: iron.dataflow.tile_dma
+    options:
+      show_root_heading: false
+
+### Lock
+
+::: iron.lock
+    options:
+      show_root_heading: false
+
+### Runtime tasks
+
+Lower-level runtime task types scheduled by the
+[`Runtime`][iron.runtime.runtime.Runtime].
+
+::: iron.runtime.task
+    options:
+      show_root_heading: false
+
+::: iron.runtime.taskgroup
+    options:
+      show_root_heading: false
+
+::: iron.runtime.dmatask
     options:
       show_root_heading: false

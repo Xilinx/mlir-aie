@@ -221,8 +221,8 @@ nav:
   - API & Internals:
     - Overview: api/index.md
     - Python API:
-      - High-level IRON: api/iron_highlevel.md
-      - Lower-level primitives: api/iron_lowlevel.md
+      - IRON (aie.iron): api/iron.md
+      - Dialect op wrappers: api/dialect_wrappers.md
       - Tensor Access Patterns (taplib): api/taplib.md
       - Kernels: api/kernels.md
       - Utilities: api/utils.md

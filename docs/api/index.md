@@ -8,35 +8,35 @@ high-level Python API you write designs in down to the low-level MLIR dialects
 and C++ compiler internals.
 
 The stack is organized in layers. Most users only need the top layer; the lower
-layers are here for advanced designs, hand-tuned data movement, and compiler
-work.
+layers are here for advanced designs, op-by-op construction, and compiler work.
 
 ## The layers
 
 | Layer | What it is | When you reach for it |
 |-------|------------|-----------------------|
-| **High-level IRON** (`aie.iron`) | The primary user API: `@iron.jit`, `Worker`, `ObjectFifo`, `Runtime`, `Program`, `Buffer`, `Kernel`, and the NumPy-like tensor factories. | Writing NPU designs. Start here. |
-| **Lower-level IRON primitives** | Explicit-routing / DMA building blocks: `Flow`, `PacketFlow`, `TileDma`, `DmaChannel`, `Bd`, `Lock`, `CascadeFlow`. | When the managed `ObjectFifo` abstraction is not enough and you need to hand-route data movement. |
+| **IRON** (`aie.iron`) | The high-level Python API. Every object is *resolvable* — it lowers to MLIR when compiled: `@iron.jit`, `Worker`, `ObjectFifo`, `Runtime`, `Program`, `Buffer`, `Kernel`, the tensor factories, and advanced primitives like `Flow`, `TileDma`, and `Lock`. | Writing NPU designs. Start here. |
+| **Dialect op wrappers** (`aie.dialects.*`) | The low-level Python layer: thin wrappers around individual MLIR ops of the `aie` / `aiex` / `aievec` dialects. This is what `aie.iron` lowers *to*. | Op-by-op construction, custom lowerings, reading emitted MLIR. |
 | **Utilities** | `taplib` tensor access patterns, the pre-built kernel library, and host-runtime helpers. | Tiling / streaming descriptors, ready-made kernels, host glue. |
-| **Low-level MLIR / C++** | The `aie` / `aiex` / `aievec` / `adf` dialects, their passes, and the generated C++ API. | Compiler internals, custom passes, reading generated MLIR. |
+| **MLIR / C++** | The `aie` / `aiex` / `aievec` / `adf` dialect definitions, their passes, and the generated C++ API. | Compiler internals, custom passes, dialect op reference. |
 
 ## Python API
 
 <div class="grid cards" markdown>
 
--   :material-rocket-launch: **[High-level IRON](iron_highlevel.md)**
+-   :material-rocket-launch: **[IRON (`aie.iron`)](iron.md)**
 
     ---
 
-    The primary user API. `Program`, `Worker`, `ObjectFifo`, `Runtime`,
-    `Buffer`, `Kernel`, plus `@iron.jit` and the tensor factories.
+    The high-level user API. `Program`, `Worker`, `ObjectFifo`, `Runtime`,
+    `Buffer`, `Kernel`, `@iron.jit`, the tensor factories, plus advanced
+    resolvable primitives (`Flow`, `TileDma`, `Lock`).
 
--   :material-tune: **[Lower-level primitives](iron_lowlevel.md)**
+-   :material-tune: **[Dialect op wrappers (`aie.dialects.*`)](dialect_wrappers.md)**
 
     ---
 
-    Explicit routing and DMA: `Flow`, `PacketFlow`, `TileDma`, `DmaChannel`,
-    `Bd`, `Lock`, `CascadeFlow`, and runtime tasks.
+    The low-level layer IRON lowers to: direct Python wrappers around the
+    `aie` / `aiex` / `aievec` MLIR operations.
 
 -   :material-grid: **[Tensor Access Patterns (taplib)](taplib.md)**
 
