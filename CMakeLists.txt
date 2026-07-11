@@ -345,10 +345,12 @@ endif()
 
 # Last because each of these has its own CMakeLists.txt which reloads/re-finds LLVM, thus resettings globals.
 # The test/example/tutorial subdirectories' check-* lit targets depend on AIEPythonModules, so they
-# require the Python bindings. Gate them behind an option (mirroring AIE_INCLUDE_DOCS) so the compiler
-# can be configured and built with AIE_ENABLE_BINDINGS_PYTHON=OFF.
-option(AIE_INCLUDE_TESTS_AND_EXAMPLES
-       "Build the test/example/tutorial subdirectories (require the Python bindings)" ON)
+# require the Python bindings. Gate them behind an option that is forced OFF when the bindings are
+# off (mirroring how AIE_ENABLE_BINDINGS_PYTHON itself is defined above), so the compiler can be
+# configured and built standalone with a single -DAIE_ENABLE_BINDINGS_PYTHON=OFF.
+cmake_dependent_option(AIE_INCLUDE_TESTS_AND_EXAMPLES
+       "Build the test/example/tutorial subdirectories (require the Python bindings)" ON
+       "AIE_ENABLE_BINDINGS_PYTHON" OFF)
 if(AIE_INCLUDE_TESTS_AND_EXAMPLES)
   add_subdirectory(programming_examples)
   add_subdirectory(programming_guide)
