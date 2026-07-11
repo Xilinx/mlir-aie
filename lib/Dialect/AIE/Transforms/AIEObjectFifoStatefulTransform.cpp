@@ -1674,10 +1674,7 @@ struct AIEObjectFifoStatefulTransformPass
     }
   }
 
-  /// Emit a UseLockOp whose lock value is a runtime-computed SSA i32. Used by
-  /// the dynamic objectFifo lowering, where the number of locks to
-  /// acquire/release is not known at compile time. Only valid for AIE2
-  /// semaphore locks (the dynamic lowering targets AIE2/AIE2p).
+  /// Emit a UseLockOp whose lock value is a runtime-computed SSA i32.
   void createUseLocksRuntime(OpBuilder &builder, ObjectFifoCreateOp op,
                              ObjectFifoPort port, Value count,
                              LockAction lockAction, ObjectFifoState &state) {
@@ -2368,8 +2365,7 @@ struct AIEObjectFifoStatefulTransformPass
       //===----------------------------------------------------------------===//
       // For tiles using the dynamic objectFifo lowering, the number of locks
       // to acquire is computed at runtime from a per-(fifo,port) "held" counter
-      // stored in a local buffer. This replaces the static (cyclostatic)
-      // accounting that cannot see through runtime-dependent control flow.
+      // stored in a local buffer. 
       // Runtime lock counts require semaphore locks (AIE2+); on architectures
       // with binary locks (AIE1) the dynamic lowering keeps static lock counts.
       bool isDynamicCore = dynamicLoweringTiles.count(coreOp.getTileOp()) > 0 &&
