@@ -24,7 +24,6 @@ digraph G {
     node [fillcolor="#f5edbc"]
     label = "mlir_aie"
 
-    ADF [URL="ADFDialect.html"]
    { rank = same; AIE [URL="AIEDialect.html"]
     AIEVec [URL="AIEVecDialect.html"] }
   }
@@ -38,7 +37,6 @@ digraph G {
   // File formats
   subgraph output_formats {
     node [fillcolor="#7fc97f" shape="note"]
-    ADFCPPFile [label="adf.cpp"]
     subgraph cluster_configuration {
       label = "configuration"
       LLFile [label=".ll"]
@@ -47,16 +45,9 @@ digraph G {
   }
 
   Affine -> AIE [ltail=cluster_mlir, style=dashed]
-  ADF -> AIE [style=dashed]
-  ADF -> ADFCPPFile
   Affine -> AIEVec
-  AIEVec -> ADFCPPFile
   AIE -> LLFile [lhead=cluster_mlir]
   AIEVec -> LLFile [style=dashed]
-  ADFCPPFile -> Vitis
   Pytorch -> torch_mlir -> Affine [lhead=cluster_mlir]
   CPPFile -> polygeist -> Affine [lhead=cluster_mlir]
-
-  // For layout
-  Affine -> ADF [style=invis]
 }
