@@ -60,8 +60,6 @@ mlir::LogicalResult AIETranslateToHSA(mlir::ModuleOp module,
 mlir::LogicalResult AIEFlowsToJSON(mlir::ModuleOp module,
                                    llvm::raw_ostream &output,
                                    llvm::StringRef deviceName = "");
-mlir::LogicalResult ADFGenerateCPPGraph(mlir::ModuleOp module,
-                                        llvm::raw_ostream &output);
 mlir::LogicalResult AIETranslateSCSimConfig(mlir::ModuleOp module,
                                             llvm::raw_ostream &output,
                                             llvm::StringRef deviceName = "");
