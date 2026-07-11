@@ -201,12 +201,34 @@ def _rewrite_target(target, page_dir_link, page_dir_real, docs_dir, repo_root):
                 docs_rel = docs_rel.rstrip("/") + "/README.md"
             return docs_rel + suffix
 
-    # Belt-and-suspenders: anything that still resolves inside the doc tree
-    # (e.g. an intra-programming_guide link, or a broken doc link that doesn't
-    # exist on disk) is a doc reference — leave it alone.
-    for root in (real_docs, real_pg):
-        if resolved == root or resolved.startswith(root + os.sep):
-            return None
+    # A link that resolves into the docs tree proper (docs/…, but not the
+    # programming_guide symlink) from a page whose source lives *outside* that
+    # location needs the extra ``docs/`` hop stripped for the site. E.g. the
+    # symlinked programming_guide page writes ``../docs/api/index.md`` so the
+    # link is correct on GitHub; on the site MkDocs resolves relative to
+    # docs/programming_guide/, so it must become ``../api/index.md``. Emit the
+    # path relative to the page's docs-view directory and let MkDocs convert
+    # the .md target to the final page URL.
+    if (resolved == real_docs or resolved.startswith(real_docs + os.sep)) and (
+        resolved != real_pg and not resolved.startswith(real_pg + os.sep)
+    ):
+        rel_doc = os.path.relpath(resolved, page_dir_link).replace(os.sep, "/")
+        if not rel_doc.startswith(".."):
+            rel_doc = "./" + rel_doc
+        return rel_doc + suffix
+
+    # Belt-and-suspenders: an intra-programming_guide link (or a broken doc link
+    # that doesn't exist on disk) is a doc reference — leave it alone.
+    if resolved == real_pg or resolved.startswith(real_pg + os.sep):
+        return None
+
+    # The repo-root README is itself served on the site as the Getting Started
+    # page (docs/getting-started.md -> ../README.md). A relative ``../README.md``
+    # link from another doc page should land on that in-site page, not bounce
+    # out to GitHub. Map it to a page-relative path to docs/getting-started/.
+    if resolved == os.path.join(repo_root, "README.md"):
+        gs = os.path.join(real_docs, "getting-started.md")
+        return os.path.relpath(gs, page_dir_link).replace(os.sep, "/") + suffix
 
     # Must live under the repo root to be a source link we can map to GitHub.
     if not (resolved == repo_root or resolved.startswith(repo_root + os.sep)):
