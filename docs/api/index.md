@@ -16,7 +16,8 @@ layers are here for advanced designs, op-by-op construction, and compiler work.
 |-------|------------|-----------------------|
 | **IRON** (`aie.iron`) | The high-level Python API. Every object is *resolvable* — it lowers to MLIR when compiled: `@iron.jit`, `Worker`, `ObjectFifo`, `Runtime`, `Program`, `Buffer`, `Kernel`, the tensor factories, and advanced primitives like `Flow`, `TileDma`, and `Lock`. | Writing NPU designs. Start here. |
 | **Dialect op wrappers** (`aie.dialects.*`) | The low-level Python layer: thin wrappers around individual MLIR ops of the `aie` / `aiex` / `aievec` dialects. This is what `aie.iron` lowers *to*. | Op-by-op construction, custom lowerings, reading emitted MLIR. |
-| **Utilities** | `taplib` tensor access patterns, the pre-built kernel library, and host-runtime helpers. | Tiling / streaming descriptors, ready-made kernels, host glue. |
+| **C++ AIE kernels** (`aie_kernels`, AIE API) | The per-core compute code that runs *on* an AIE tile, written in C++ with the [AIE API](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/index.html) header library or low-level intrinsics. | Writing or tuning the vectorized math a `Worker` runs. |
+| **Utilities** | `taplib` tensor access patterns, the pre-built Python kernel library, and host-runtime helpers. | Tiling / streaming descriptors, ready-made kernels, host glue. |
 | **MLIR / C++** | The `aie` / `aiex` / `aievec` / `adf` dialect definitions, their passes, and the generated C++ API. | Compiler internals, custom passes, dialect op reference. |
 
 ## Python API
@@ -45,12 +46,19 @@ layers are here for advanced designs, op-by-op construction, and compiler work.
     `TensorAccessPattern`, `TensorAccessSequence`, and `TensorTiler2D` for
     describing how data is tiled and streamed.
 
--   :material-library: **[Kernel Library](kernels.md)**
+-   :material-library: **[Python Kernel Library](kernels.md)**
 
     ---
 
-    Pre-built AIE kernel wrappers for element-wise, reduction, linalg,
+    Pre-built `iron.kernels` wrappers for element-wise, reduction, linalg,
     convolution, activation, and vision operations.
+
+-   :material-code-braces: **[C++ AIE kernels](aie_kernels.md)**
+
+    ---
+
+    The C++ compute code that runs on a tile — the `aie_kernels` library and
+    the AIE API header library used to write it.
 
 -   :material-wrench: **[Utilities](utils.md)**
 
@@ -65,8 +73,6 @@ layers are here for advanced designs, op-by-op construction, and compiler work.
 The compiler layer beneath the Python API. See the dialect and pass reference
 pages in the **MLIR / C++** group of this section:
 
-- [Dialects Overview](../AIEDesignPatterns.md) — design patterns across the
-  `aie` / `aiex` / `aievec` / `adf` dialects.
 - [AIE Dialect](../AIEDialect.md), [AIEX Dialect](../AIEXDialect.md),
   [AIEVec Dialect](../AIEVecDialect.md), [ADF Dialect](../ADFDialect.md) —
   op-by-op reference.

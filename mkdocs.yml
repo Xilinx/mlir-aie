@@ -24,6 +24,11 @@ exclude_docs: |
   CMakeLists.txt
   *.dox
   /README.md
+  # Legacy raw-MLIR walkthroughs (deprecated AIE. syntax, Versal-era). Kept in
+  # the repo for reference but not published on the site.
+  /AIEDesignPatterns.md
+  /AIERouting.md
+  /AIEVectorization.md
 
 # Links to source files (*.py, *.cpp, *.h, etc.) and out-of-tree dirs
 # (programming_examples/, mlir_exercises/) are intentional "go read the
@@ -227,10 +232,10 @@ nav:
       - IRON (aie.iron): api/iron.md
       - Dialect op wrappers: api/dialect_wrappers.md
       - Tensor Access Patterns (taplib): api/taplib.md
-      - Kernels: api/kernels.md
+      - Python Kernel Library: api/kernels.md
+      - C++ AIE kernels: api/aie_kernels.md
       - Utilities: api/utils.md
     - MLIR / C++:
-      - Dialects Overview: AIEDesignPatterns.md
       - AIE Dialect: AIEDialect.md
       - AIEX Dialect: AIEXDialect.md
       - AIEVec Dialect: AIEVecDialect.md
@@ -238,8 +243,6 @@ nav:
       - AIE Passes: AIEPasses.md
       - AIEX Passes: AIEXPasses.md
       - AIEVec Passes: AIEVecPasses.md
-      - Routing: AIERouting.md
-      - Vectorization: AIEVectorization.md
       - C++ API (Doxygen): api/cpp_doxygen.md
   - Developer Guide:
     - Contributing: CONTRIBUTING.md
