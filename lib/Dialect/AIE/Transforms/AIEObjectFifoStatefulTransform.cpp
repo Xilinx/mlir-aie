@@ -17,8 +17,10 @@
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Utils/Utils.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/Dominance.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/Mem2Reg.h"
 
 #include "mlir/IR/Operation.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
@@ -2339,6 +2341,9 @@ struct AIEObjectFifoStatefulTransformPass
     //===------------------------------------------------------------------===//
     // Replace ops
     //===------------------------------------------------------------------===//
+    // Runtime held-counter allocas collected across all cores. They are
+    // promoted to SSA values by mem2reg once all rewriting is complete.
+    SmallVector<memref::AllocaOp> heldCounterAllocas;
     for (auto coreOp : device.getOps<CoreOp>()) {
       DenseMap<ObjectFifoAcquireOp, std::vector<BufferOp *>>
           subviews; // maps each "subview" to its buffer references (subviews
@@ -2370,48 +2375,35 @@ struct AIEObjectFifoStatefulTransformPass
       bool isDynamicCore = dynamicLoweringTiles.count(coreOp.getTileOp()) > 0 &&
                            device.getTargetModel().hasProperty(
                                AIETargetModel::UsesSemaphoreLocks);
-      BufferOp heldBuffer;
-      DenseMap<std::pair<ObjectFifoCreateOp, int>, Value> heldSlotIndex;
+      // One runtime "held" counter per (fifo, port), emitted as a
+      // single-element memref.alloca so the acquire/release bookkeeping is
+      // just plain load/store. These are promoted to SSA values by mem2reg at
+      // the end of the pass.
+      DenseMap<std::pair<ObjectFifoCreateOp, int>, memref::AllocaOp> heldAlloca;
       if (isDynamicCore) {
-        DenseMap<std::pair<ObjectFifoCreateOp, int>, int> heldSlot;
-        // Ordered list of (fifo, port) keys indexed by their slot number, so
-        // that the counter buffer is initialized deterministically (a plain
-        // DenseMap iteration order is not stable).
-        SmallVector<std::pair<ObjectFifoCreateOp, int>> slotOrder;
-        auto assignSlot = [&](ObjectFifoCreateOp fifo, ObjectFifoPort p) {
+        auto ensureSlot = [&](ObjectFifoCreateOp fifo, ObjectFifoPort p) {
           int pn = p == ObjectFifoPort::Produce ? 0 : 1;
-          if (!heldSlot.count({fifo, pn})) {
-            heldSlot[{fifo, pn}] = slotOrder.size();
-            slotOrder.push_back({fifo, pn});
-          }
-        };
-        coreOp.walk([&](ObjectFifoAcquireOp a) {
-          assignSlot(a.getObjectFifo(), a.getPort());
-        });
-        coreOp.walk([&](ObjectFifoReleaseOp r) {
-          assignSlot(r.getObjectFifo(), r.getPort());
-        });
-        if (!slotOrder.empty()) {
-          builder.setInsertionPoint(coreOp);
-          auto heldTy =
-              MemRefType::get(SmallVector<int64_t>{(int64_t)slotOrder.size()},
-                              builder.getI32Type());
-          heldBuffer = BufferOp::create(
-              builder, coreOp.getLoc(), heldTy, coreOp.getTile(),
-              /*sym_name*/ nullptr, /*address*/ nullptr,
-              /*initial_value*/ nullptr, /*mem_bank*/ nullptr,
-              /*aligned*/ nullptr);
+          if (heldAlloca.count({fifo, pn}))
+            return;
+          OpBuilder::InsertionGuard g(builder);
           builder.setInsertionPointToStart(&(coreOp.getBody().front()));
+          auto counterTy = MemRefType::get({}, builder.getI32Type());
+          auto counter =
+              memref::AllocaOp::create(builder, coreOp.getLoc(), counterTy);
+          counter->setAttr("aie.held_counter", builder.getUnitAttr());
           Value zero = arith::ConstantOp::create(builder, coreOp.getLoc(),
                                                  builder.getI32IntegerAttr(0));
-          for (int slot = 0; slot < (int)slotOrder.size(); ++slot) {
-            Value idx = arith::ConstantOp::create(builder, coreOp.getLoc(),
-                                                  builder.getIndexAttr(slot));
-            heldSlotIndex[slotOrder[slot]] = idx;
-            memref::StoreOp::create(builder, coreOp.getLoc(), zero, heldBuffer,
-                                    ValueRange(ArrayRef({idx})));
-          }
-        }
+          memref::StoreOp::create(builder, coreOp.getLoc(), zero, counter,
+                                  ValueRange{});
+          heldAlloca[{fifo, pn}] = counter;
+          heldCounterAllocas.push_back(counter);
+        };
+        coreOp.walk([&](ObjectFifoAcquireOp a) {
+          ensureSlot(a.getObjectFifo(), a.getPort());
+        });
+        coreOp.walk([&](ObjectFifoReleaseOp r) {
+          ensureSlot(r.getObjectFifo(), r.getPort());
+        });
       }
 
       //===----------------------------------------------------------------===//
@@ -2454,17 +2446,17 @@ struct AIEObjectFifoStatefulTransformPass
 
         // For dynamic tiles, decrement the runtime "held" counter by the
         // number of released elements.
-        if (isDynamicCore && heldBuffer) {
-          Value idx = heldSlotIndex[{op, portNum}];
-          Value held =
-              memref::LoadOp::create(builder, releaseOp.getLoc(), heldBuffer,
-                                     ValueRange(ArrayRef({idx})));
+        if (memref::AllocaOp counter = isDynamicCore
+                                           ? heldAlloca.lookup({op, portNum})
+                                           : memref::AllocaOp()) {
+          Value held = memref::LoadOp::create(builder, releaseOp.getLoc(),
+                                              counter, ValueRange{});
           Value m = arith::ConstantOp::create(
               builder, releaseOp.getLoc(), builder.getI32IntegerAttr(numLocks));
           Value newHeld =
               arith::SubIOp::create(builder, releaseOp.getLoc(), held, m);
-          memref::StoreOp::create(builder, releaseOp.getLoc(), newHeld,
-                                  heldBuffer, ValueRange(ArrayRef({idx})));
+          memref::StoreOp::create(builder, releaseOp.getLoc(), newHeld, counter,
+                                  ValueRange{});
         }
 
         // register release op
@@ -2528,14 +2520,15 @@ struct AIEObjectFifoStatefulTransformPass
 
         // For dynamic tiles, compute the number of locks to acquire at runtime
         // as max(0, acqNumber - held), using the runtime "held" counter.
-        if (isDynamicCore && heldBuffer) {
+        memref::AllocaOp counter = isDynamicCore
+                                       ? heldAlloca.lookup({op, portNum})
+                                       : memref::AllocaOp();
+        if (counter) {
           builder.setInsertionPointAfter(acquireOp);
           int acqNum = acquireOp.acqNumber();
           int repeat = op.getRepeatCount().value_or(1);
-          Value idx = heldSlotIndex[{op, portNum}];
-          Value held =
-              memref::LoadOp::create(builder, acquireOp.getLoc(), heldBuffer,
-                                     ValueRange(ArrayRef({idx})));
+          Value held = memref::LoadOp::create(builder, acquireOp.getLoc(),
+                                              counter, ValueRange{});
           Value nVal = arith::ConstantOp::create(
               builder, acquireOp.getLoc(), builder.getI32IntegerAttr(acqNum));
           Value zero = arith::ConstantOp::create(builder, acquireOp.getLoc(),
@@ -2554,8 +2547,8 @@ struct AIEObjectFifoStatefulTransformPass
                                 LockAction::AcquireGreaterEqual, state);
           Value newHeld =
               arith::AddIOp::create(builder, acquireOp.getLoc(), held, delta);
-          memref::StoreOp::create(builder, acquireOp.getLoc(), newHeld,
-                                  heldBuffer, ValueRange(ArrayRef({idx})));
+          memref::StoreOp::create(builder, acquireOp.getLoc(), newHeld, counter,
+                                  ValueRange{});
 
           // Round-robin buffer index per acquired element (see note above).
           for (int i = 0; i < acqNum; i++) {
@@ -2728,6 +2721,40 @@ struct AIEObjectFifoStatefulTransformPass
     }
     for (auto *op : opsToErase) {
       op->erase();
+    }
+
+    //===------------------------------------------------------------------===//
+    // Promote runtime held-counter allocas to SSA values (mem2reg).
+    //===------------------------------------------------------------------===//
+    // The held counters were emitted as single-element memref.alloca so the
+    // acquire/release bookkeeping could be written as plain load/store. Run
+    // mem2reg here as an in-pass step so it always executes, then require that
+    // every counter was fully promoted: a surviving alloca would mean opaque
+    // memory traffic left in the core, which we treat as a hard error.
+    if (!heldCounterAllocas.empty()) {
+      SmallVector<PromotableAllocationOpInterface> allocators;
+      allocators.reserve(heldCounterAllocas.size());
+      for (memref::AllocaOp counter : heldCounterAllocas)
+        allocators.push_back(
+            cast<PromotableAllocationOpInterface>(counter.getOperation()));
+      OpBuilder promoteBuilder(device);
+      DominanceInfo dominance;
+      const DataLayout dataLayout = DataLayout::closest(device.getOperation());
+      (void)tryToPromoteMemorySlots(allocators, promoteBuilder, dataLayout,
+                                    dominance);
+
+      bool residualCounter = false;
+      device.walk([&](memref::AllocaOp counter) {
+        if (counter->hasAttr("aie.held_counter")) {
+          counter.emitOpError(
+              "dynamic objectFifo held counter could not be promoted to an SSA "
+              "value by mem2reg; runtime lock bookkeeping would remain in "
+              "memory");
+          residualCounter = true;
+        }
+      });
+      if (residualCounter)
+        return signalPassFailure();
     }
   }
 };
