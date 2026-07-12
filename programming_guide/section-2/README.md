@@ -17,56 +17,30 @@ To understand the need for a data movement abstraction we must first understand 
 
 > **NOTE:**  For more in-depth, low-level material on ObjectFifo programming in MLIR, please see the MLIR-AIE [tutorials](../../mlir_exercises/).
 
-This guide is split into five sections, where each section builds on top of the previous ones:
-> **NOTE:**  Section 2f contains several practical code examples with common design patterns using the ObjectFifo which can be quickly picked up and tweaked for desired use.
+This guide is split into eight subsections, where each builds on top of the previous ones:
 
-<details><summary><a href="./section-2a">Section 2a - Introduction</a></summary>
+* **[Section 2a - Introduction](./section-2a)**
+    * Initializing an ObjectFifo
+    * Accessing the objects of an ObjectFifo
+    * ObjectFifos with same producer / consumer
+* **[Section 2b - Key ObjectFifo Patterns](./section-2b)**
+    * Data movement patterns supported by the ObjectFifo: Reuse, Broadcast, Distribute, Join, Repeat
+* **[Section 2c - Data Layout Transformations](./section-2c)**
+    * Data layout transformation capabilities
+* **[Section 2d - Runtime Data Movement](./section-2d)**
+    * Managing runtime data movement between host memory and the AIE array
+* **[Section 2e - Programming for multiple cores](./section-2e)**
+    * Efficiently upgrading to designs with multiple cores
+* **[Section 2f - Practical Examples](./section-2f)**
+    * Common design patterns using ObjectFifos: single / double buffer, external memory to core (with and without L2), distribute in L2, join in L2
+* **[Section 2g - Data Movement Without ObjectFifos](./section-2g)**
+    * Programming DMA regions directly
+* **[Section 2h - Advanced ObjectFifo + Cross-Tile Buffer](./section-2h)**
+    * Asymmetric producer/consumer transfer granularity (`consumer_obj_type=`)
+    * Direct AIE-stream connections (`aie_stream=(end, port)`)
+    * Cross-tile Buffer placement in `Worker.fn_args` for neighbor-L1 access
 
-* Initializing an ObjectFifo
-* Accessing the objects of an ObjectFifo
-* ObjectFifos with same producer / consumer
-</details>
-<details><summary><a href="./section-2b">Section 2b - Key ObjectFifo Patterns</a></summary>
-
-* Introduce data movement patterns supported by the ObjectFifo
-    * Reuse
-    * Broadcast
-    * Distribute
-    * Join
-    * Repeat
-</details>
-<details><summary><a href="./section-2c">Section 2c - Data Layout Transformations</a></summary>
-
-* Introduce data layout transformation capabilities
-</details>
-<details><summary><a href="./section-2d">Section 2d - Runtime Data Movement</a></summary>
-
-* Walkthrough of the process of managing runtime data movement from/to host memory to/from the AIE array
-</details>
-<details><summary><a href="./section-2e">Section 2e - Programming for multiple cores</a></summary>
-
-* Walkthrough of the process of efficiently upgrading to designs with multiple cores
-</details>
-<details><summary><a href="./section-2f">Section 2f - Practical Examples</a></summary>
-
-* Practical examples using ObjectFifos
-    * Single / Double buffer
-    * External memory to core
-    * External memory to core using L2
-    * Distribute in L2
-    * Join in L2
-</details>
-<details><summary><a href="./section-2g">Section 2g - Data Movement Without ObjectFifos</a></summary>
-
-* Walkthrough of the process of programming DMA regions
-</details>
-<details><summary><a href="./section-2h">Section 2h - Advanced ObjectFifo + Cross-Tile Buffer</a></summary>
-
-* Asymmetric producer/consumer transfer granularity (`consumer_obj_type=`)
-* Direct AIE-stream connections (`aie_stream=(end, port)`)
-* Cross-tile Buffer placement in `Worker.fn_args` for neighbor-L1 access
-</details>
-
+> **NOTE:** Section 2f contains several practical code examples with common design patterns using the ObjectFifo which can be quickly picked up and tweaked for your own use.
 
 -----
 [Prev](../section-1/) &middot; [Top](..) &middot; [Next](../section-3/)
