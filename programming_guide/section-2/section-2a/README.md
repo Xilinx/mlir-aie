@@ -384,7 +384,7 @@ The intent of this high-level view showcases that the DMA is able to interact wi
 > **NOTE:**  It is possible to directly configure the DMAs without the use of the ObjectFifo primitive to setup data movement between tiles. This is described in [Section 2g](../section-2g/README.md).
 
 ## <u>Exercises</u>
-1. In the previous [subsection](./README.md/#specifying-the-object-fifo-depth-as-an-array) it was explained that the conceptual depth of `3` for `of0` could be represented as an array of depths `[2, 3]`. With the advanced knowledge on the topic of DMAs, do you think those are the minimal depths required for the design to execute without deadlocking?
+1. In the previous [subsection](./README.md#specifying-the-object-fifo-depth-as-an-array) it was explained that the conceptual depth of `3` for `of0` could be represented as an array of depths `[2, 3]`. With the advanced knowledge on the topic of DMAs, do you think those are the minimal depths required for the design to execute without deadlocking?
     <details markdown="1"><summary>Show answer</summary>
     No. In the case of producer A, only a single object needs to be allocated, in which case the compute core and the DMA will have to wait while the other party respectively computes or moves the data. This is similar for consumer B, where a depth of 2 would suffice. So the minimal depths for the design to run without deadlocking are `[1, 2]`.
     </details>

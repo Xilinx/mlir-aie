@@ -30,7 +30,7 @@ bench = run_iters(
 print_benchmark(bench)
 ```
 
-`[vector_scalar_mul.py](./vector_scalar_mul.py)` uses this directly; running `make run` (or `python3 vector_scalar_mul.py --iters 10 --warmup 4`) prints the canonical `avg/min/max us` pair for both NPU and end-to-end timings.
+[vector_scalar_mul.py](./vector_scalar_mul.py) uses this directly; running `make run` (or `python3 vector_scalar_mul.py --iters 10 --warmup 4`) prints the canonical `avg/min/max us` pair for both NPU and end-to-end timings.
 
 The rest of this section walks down through what's happening underneath, using the explicit chrono-loop in [test.cpp](./test.cpp) and the manual accumulator loop in [test.py](./test.py).
 

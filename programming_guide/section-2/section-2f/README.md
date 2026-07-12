@@ -20,26 +20,16 @@
 
 This section introduces several examples with common ObjectFifo data movement patterns. These examples are intended to be simple enough so as to be easily imported and adapted into other designs.
 
-<details><summary><a href="./01_single_double_buffer/">Example 01 - Single / Double Buffer</a></summary>
-
-* Core to core data movement using single / double buffer
-</details>
-<details><summary><a href="./02_external_mem_to_core/">Example 02 - External Memory to Core</a></summary>
-
-* External memory to core and back using double buffers
-</details>
-<details><summary><a href="./03_external_mem_to_core_L2/">Example 03 - External Memory to Core through L2</a></summary>
-
-* External memory to core and back through L2 using double buffers
-</details>
-<details><summary><a href="./04_distribute_L2/">Example 04 - Distribute from L2</a></summary>
-
-*  Distribute data from external memory to cores through L2
-</details>
-<details><summary><a href="./05_join_L2/">Example 05 - Join in L2</a></summary>
-
-* Join data from cores to external memory through L2
-</details>
+* **[Example 01 - Single / Double Buffer](./01_single_double_buffer/)**
+    * Core to core data movement using single / double buffer
+* **[Example 02 - External Memory to Core](./02_external_mem_to_core/)**
+    * External memory to core and back using double buffers
+* **[Example 03 - External Memory to Core through L2](./03_external_mem_to_core_L2/)**
+    * External memory to core and back through L2 using double buffers
+* **[Example 04 - Distribute from L2](./04_distribute_L2/)**
+    * Distribute data from external memory to cores through L2
+* **[Example 05 - Join in L2](./05_join_L2/)**
+    * Join data from cores to external memory through L2
 
 -----
 [Prev](../section-2e/) &middot; [Top](..) &middot; [Next](../section-2g/)

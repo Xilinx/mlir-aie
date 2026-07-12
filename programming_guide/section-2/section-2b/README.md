@@ -21,24 +21,16 @@
 
 The ObjectFifo primitive supports several data movement patterns. We will now describe each of the currently supported patterns in four subsections and provide links to more in-depth practical code examples that showcase each of them.
 
-<details><summary><a href="./01_Reuse/">ObjectFifo Reuse Pattern</a></summary>
-
-* Reuse the unreleased objects of an ObjectFifo
-</details>
-<details><summary><a href="./02_Broadcast/">ObjectFifo Broadcast Pattern</a></summary>
-
-* Broadcast data from one producer to multiple consumers
-</details>
-<details><summary><a href="./03_Implicit_Copy/">Implicit Copy Across ObjectFifos: Distribute &amp; Join Patterns</a></summary>
-
-* Implicit copy of data from one ObjectFifo to another
-* Distribute different pieces of the input data to multiple consumers 
-* Join outputs from different producers into a bigger data tensor
-</details>
-<details><summary><a href="./04_Repeat/">ObjectFifo Repeat Pattern</a></summary>
-
-* Leverage ObjectFifo Link to repeat data from the producer
-</details>
+* **[ObjectFifo Reuse Pattern](./01_Reuse/)**
+    * Reuse the unreleased objects of an ObjectFifo
+* **[ObjectFifo Broadcast Pattern](./02_Broadcast/)**
+    * Broadcast data from one producer to multiple consumers
+* **[Implicit Copy Across ObjectFifos: Distribute & Join Patterns](./03_Implicit_Copy/)**
+    * Implicit copy of data from one ObjectFifo to another
+    * Distribute different pieces of the input data to multiple consumers
+    * Join outputs from different producers into a bigger data tensor
+* **[ObjectFifo Repeat Pattern](./04_Repeat/)**
+    * Leverage ObjectFifo Link to repeat data from the producer
 
 -----
 [Prev](../section-2a/) &middot; [Top](..) &middot; [Next](../section-2c/)
