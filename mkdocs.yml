@@ -13,6 +13,11 @@ repo_name: Xilinx/mlir-aie
 repo_url: https://github.com/Xilinx/mlir-aie
 edit_uri: edit/main/
 
+# Fail the build on any warning (broken link, bad reference, etc.). Applies to
+# every invocation — local `mkdocs build`/`serve` and the CI `mike deploy` —
+# so problems surface before they reach the deployed site.
+strict: true
+
 # Shown in the footer of every page.
 copyright: >-
   Copyright © 2019–2021 Xilinx, Inc. | Copyright © 2022–2026 Advanced Micro
@@ -111,9 +116,9 @@ plugins:
       handlers:
         python:
           # NOTE: deliberately no external `inventories:` (python/numpy
-          # objects.inv). CI runs `mkdocs build --strict`, and a fetch
-          # failure/403 from those hosts would abort the whole docs deploy.
-          # Internal iron cross-references don't need them.
+          # objects.inv). The build is strict (see `strict: true` above), so a
+          # fetch failure/403 from those hosts would abort the whole docs
+          # deploy. Internal iron cross-references don't need them.
           paths: [python]
           options:
             # Headings / structure
