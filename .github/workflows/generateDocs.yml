@@ -126,25 +126,42 @@ jobs:
         env:
           MANUAL_LABEL: ${{ github.event.inputs.version_label }}
         run: |
+          # Also resolve the git ref that in-page "go read the source" links
+          # should point at (consumed by docs/hooks/rewrite_source_links.py via
+          # DOCS_GITHUB_REF). It must match the deployed docs version so a
+          # pinned version's links don't drift to main.
           if [[ -n "${MANUAL_LABEL}" ]]; then
             # Manual backfill: workflow_dispatch with an explicit label
             # (e.g. "1.3"). Deploy under that label and make it "latest".
+            # Point source links at the matching tag if it exists, else main.
+            REF="main"
+            if git rev-parse -q --verify "refs/tags/v${MANUAL_LABEL}" >/dev/null; then
+              REF="v${MANUAL_LABEL}"
+            fi
             echo "label=${MANUAL_LABEL}" >> $GITHUB_OUTPUT
             echo "aliases=latest" >> $GITHUB_OUTPUT
+            echo "ref=${REF}" >> $GITHUB_OUTPUT
           elif [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
             # Full version per release: e.g. refs/tags/v1.4.0 → "1.4.0".
             # Every tagged release gets its own picker entry; the newest is
-            # always aliased "latest".
+            # always aliased "latest". Source links pin to the release tag.
             LABEL="${GITHUB_REF#refs/tags/v}"
             echo "label=${LABEL}" >> $GITHUB_OUTPUT
             echo "aliases=latest" >> $GITHUB_OUTPUT
+            echo "ref=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
           else
+            # main push -> "dev" docs; source links point at main.
             echo "label=dev" >> $GITHUB_OUTPUT
             echo "aliases=" >> $GITHUB_OUTPUT
+            echo "ref=main" >> $GITHUB_OUTPUT
           fi
 
       - name: Deploy with mike
         if: github.event_name != 'pull_request'
+        env:
+          # Consumed by docs/hooks/rewrite_source_links.py so in-page source
+          # links point at the same git ref as this docs version.
+          DOCS_GITHUB_REF: ${{ steps.version.outputs.ref }}
         run: |
           LABEL="${{ steps.version.outputs.label }}"
           ALIASES="${{ steps.version.outputs.aliases }}"

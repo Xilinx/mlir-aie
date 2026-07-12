@@ -27,11 +27,17 @@ import re
 import urllib.parse
 
 # --- Configuration -----------------------------------------------------------
-# These may need updating if the project moves to a different GitHub org, or if
-# per-version docs should point at a release *tag* instead of ``main`` (in that
-# case set GITHUB_BRANCH to the tag, e.g. via an env var at deploy time).
+# GITHUB_REPO may need updating if the project moves to a different GitHub org.
+#
+# GITHUB_BRANCH is the git ref that rewritten source links point at. It MUST
+# match the version of the docs being built, otherwise a pinned version's docs
+# would link to source that has since drifted on ``main``. mike deploys each
+# version separately, so the CI workflow sets ``DOCS_GITHUB_REF`` per deploy:
+#   * a tagged release (docs version "1.4.0")  -> ref "v1.4.0"
+#   * a main push (docs version "dev")          -> ref "main"
+# Falls back to ``main`` for local builds / when the env var is unset.
 GITHUB_REPO = "Xilinx/mlir-aie"
-GITHUB_BRANCH = "main"
+GITHUB_BRANCH = os.environ.get("DOCS_GITHUB_REF", "main")
 
 _BLOB_BASE = f"https://github.com/{GITHUB_REPO}/blob/{GITHUB_BRANCH}"
 _TREE_BASE = f"https://github.com/{GITHUB_REPO}/tree/{GITHUB_BRANCH}"
