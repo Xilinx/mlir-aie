@@ -21,11 +21,10 @@ This programming guide focuses on application programming for the NPU found in R
 
 ## AMD Ryzen™ AI Initial Setup
 
-#### **Please be sure to follow the quick setup path.**
+Please be sure to follow the quick setup path:
 
-### [Getting Started on AMD Ryzen™ AI with Linux](../../README.md) **(Recommended)**
-
-### [Building IRON and MLIR-AIE from source on Linux](../../Building.md)
+* **[Getting Started on AMD Ryzen™ AI with Linux](../../README.md)** *(Recommended)*
+* [Building IRON and MLIR-AIE from source on Linux](../../Building.md) *(for developers)*
 
 ## Once you have a working NPU
 

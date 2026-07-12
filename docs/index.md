@@ -100,9 +100,3 @@ on the attached NPU. Subsequent calls hit a cache.
   <figcaption>From a Python design to running on the NPU — IRON lowers through the MLIR-AIE compiler and Peano, then XRT loads it onto the AI Engine tile array.</figcaption>
 </figure>
 
----
-
-<p style="font-size:0.8rem; opacity:0.6;">
-Copyright © 2019–2021 Xilinx, Inc. &nbsp;|&nbsp; Copyright © 2022–2026 Advanced Micro Devices, Inc.<br>
-Licensed under Apache 2.0 with LLVM exception.
-</p>
