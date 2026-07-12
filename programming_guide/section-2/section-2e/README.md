@@ -22,7 +22,7 @@ This section walks through scaling a single-Worker IRON design out to multiple W
 
 Both files are wrapped in `@iron.jit`, so calling each design from `_run_and_verify` JIT-compiles and runs end-to-end on the attached NPU; `--dev <target> --emit-mlir` prints the lowered MLIR for inspection.
 
-In the first part of our design we set up the data movement using ObjectFifos. The simple design has a total of four ObjectFifos, two of which are created by forwarding data for an implicit copy. The ObjectFifos move objects of datatype `<48xi32>`. `of_in` brings data from external memory and is linked, through a Mem tile, to `of_in0` which brings data from the Mem tile to the Worker. For the output side, `of_out0` brings data from the Worker to the Mem tile where it is linked to `of_out` to bring the data out to external memory. The corresponding code is shown below:
+In the first part of our design we set up the data movement using ObjectFifos. The simple design has a total of four ObjectFifos, two of which are created by forwarding data for an implicit copy. The ObjectFifos move objects of datatype `<48xi32>`. `of_in` brings data from external memory and is linked, through a Mem tile, to `of_in1` which brings data from the Mem tile to the Worker. For the output side, `of_out1` brings data from the Worker to the Mem tile where it is linked to `of_out` to bring the data out to external memory. The corresponding code is shown below:
 ```python
 data_size = 48
 

@@ -76,7 +76,7 @@ def core_fn2(of_in, test_func2):
 
 # Create workers to perform the tasks
 my_worker = Worker(core_fn, [of_in.prod(), test_fn])
-my_worker = Worker(core_fn2, [of_in.cons(), test_fn2])
+my_worker2 = Worker(core_fn2, [of_in.cons(), test_fn2])
 ```
 As the ObjectFifo may only have one producer process, each call to `prod()` will return a reference to the same `ObjectFifoHandle`, whereas each call of `cons()` will return a reference to a new `ObjectFifoHandle` for that consumer process.
 
@@ -172,7 +172,7 @@ def core_fn2(of_in, test_func2):
 
 # Create workers to perform the tasks
 my_worker = Worker(core_fn, [of_in.prod(), test_fn])
-my_worker = Worker(core_fn2, [of_in.cons(), test_fn2])
+my_worker2 = Worker(core_fn2, [of_in.cons(), test_fn2])
 ```
 
 The closer-to-metal API variants of the `acquire()` and `release()` functions of the `object_fifo` class are shown below:

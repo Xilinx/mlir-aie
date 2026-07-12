@@ -7,6 +7,18 @@
 
 # Section 2h - Advanced ObjectFifo + Cross-Tile Buffer
 
+* [Section 2 - Data Movement (ObjectFifos)](../../section-2/)
+    * [Section 2a - Introduction](../section-2a/)
+    * [Section 2b - Key ObjectFifo Patterns](../section-2b/)
+    * [Section 2c - Data Layout Transformations](../section-2c/)
+    * [Section 2d - Runtime Data Movement](../section-2d/)
+    * [Section 2e - Programming for multiple cores](../section-2e/)
+    * [Section 2f - Practical Examples](../section-2f/)
+    * [Section 2g - Data Movement Without ObjectFifos](../section-2g/)
+    * Section 2h - Advanced ObjectFifo + Cross-Tile Buffer
+
+-----
+
 Two opt-in patterns that show up in real designs but are not part of
 the introductory `ObjectFifo` API.  Both stay out of the way of simple
 designs and only kick in when explicitly requested.
