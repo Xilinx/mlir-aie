@@ -106,13 +106,25 @@ The Makefile also exposes `make emit-mlir` which redirects the output to `build/
 
 1. Run `make` (the default target runs the design on the NPU) — you should see `PASS!`. Then run `make emit-mlir` and inspect `build/aie.mlir`.
 
-2. Run `make clean`. In the worker's body, replace `range_` with `range` (no underscore). What changes in `build/aie.mlir`? <img src="../../../mlir_exercises/images/answer1.jpg" title="The generated MLIR contains no scf.for loop; the same memref.store instructions are emitted many times in a row." height=25>
+2. Run `make clean`. In the worker's body, replace `range_` with `range` (no underscore). What changes in `build/aie.mlir`?
+   <details markdown="1"><summary>Show answer</summary>
+   The generated MLIR contains no scf.for loop; the same memref.store instructions are emitted many times in a row.
+   </details>
 
-3. Run `make clean`. Introduce an error in the Python source — e.g., misspell `sequence` as `sequenc`. What message do you see? <img src="../../../mlir_exercises/images/answer1.jpg" title="A Python AttributeError, raised before any MLIR is produced." height=25>
+3. Run `make clean`. Introduce an error in the Python source — e.g., misspell `sequence` as `sequenc`. What message do you see?
+   <details markdown="1"><summary>Show answer</summary>
+   A Python AttributeError, raised before any MLIR is produced.
+   </details>
 
-4. Run `make clean`. Restore the spelling, then change the Worker's tile to `Tile(-1, 3)` (an invalid location). What message do you see? <img src="../../../mlir_exercises/images/answer1.jpg" title="A placement / tile-coordinate constraint error." height=25>
+4. Run `make clean`. Restore the spelling, then change the Worker's tile to `Tile(-1, 3)` (an invalid location). What message do you see?
+   <details markdown="1"><summary>Show answer</summary>
+   A placement / tile-coordinate constraint error.
+   </details>
 
-5. Run `make clean`. Restore the Worker tile to `(0, 2)`. Remove the `while_true=False` argument and run `make emit-mlir`. What changed in the MLIR? <img src="../../../mlir_exercises/images/answer1.jpg" title="The core body is now nested inside an scf.for that bounds to sys.maxsize — the simulated while-true wrapper." height=25>
+5. Run `make clean`. Restore the Worker tile to `(0, 2)`. Remove the `while_true=False` argument and run `make emit-mlir`. What changed in the MLIR?
+   <details markdown="1"><summary>Show answer</summary>
+   The core body is now nested inside an scf.for that bounds to sys.maxsize — the simulated while-true wrapper.
+   </details>
 
 -----
 [Prev - Section 0](../section-0/) &middot; [Top](..) &middot; [Next - Section 2](../section-2/)
