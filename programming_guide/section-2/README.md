@@ -69,4 +69,4 @@ This guide is split into five sections, where each section builds on top of the 
 
 
 -----
-[Prev - Section 1](../section-1/) &middot; [Top](..) &middot; [Next - Section 3](../section-3/)
+[Prev](../section-1/) &middot; [Top](..) &middot; [Next](../section-3/)

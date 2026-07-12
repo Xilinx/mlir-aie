@@ -157,5 +157,5 @@ into the tolerance comparator above.
     </details>
 
 -----
-[Up](../../section-4) &middot; [Next](../section-4b)
+[Top](../../section-4) &middot; [Next](../section-4b)
 

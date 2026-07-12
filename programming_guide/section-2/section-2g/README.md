@@ -364,4 +364,4 @@ caching, host-side tensor surface, and `--emit-mlir` introspection
 for free.
 
 -----
-[Prev - Section 2f](../section-2f/) &middot; [Up](..) &middot; [Next - Section 2h](../section-2h/)
+[Prev](../section-2f/) &middot; [Top](..) &middot; [Next](../section-2h/)

@@ -33,4 +33,4 @@ Please be sure to follow the quick setup path:
 * **Just want to see an end-to-end working program?** Jump to [Section 3 — My First Program](../section-3/).
 
 -----
-[Top](..) &middot; [Next - Section 1](../section-1/)
+[Top](..) &middot; [Next](../section-1/)

@@ -42,4 +42,4 @@ This section introduces several examples with common ObjectFifo data movement pa
 </details>
 
 -----
-[Prev - Section 2e](../section-2e/) &middot; [Up](..) &middot; [Next - Section 2g](../section-2g/)
+[Prev](../section-2e/) &middot; [Top](..) &middot; [Next](../section-2g/)

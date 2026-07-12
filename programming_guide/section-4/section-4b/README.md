@@ -440,4 +440,4 @@ Open https://ui.perfetto.dev in your browser and then open up the waveform json 
     We will look at more exercises with Trace and performance measurement in the next [section](../section-4c).
 
 -----
-[Prev](../section-4a) &middot; [Up](../../section-4) &middot; [Next](../section-4c)
+[Prev](../section-4a) &middot; [Top](../../section-4) &middot; [Next](../section-4c)

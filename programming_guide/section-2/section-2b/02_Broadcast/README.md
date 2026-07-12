@@ -89,4 +89,4 @@ where tiles A and B retain the original depth of 1 while C now has a depth of 2 
 <img src="./../../../assets/SkipBroadcastFix.png" height="300">
 
 -----
-[Prev](../01_Reuse/) &middot; [Up](..) &middot; [Next](../03_Implicit_Copy/)
+[Prev](../01_Reuse/) &middot; [Top](..) &middot; [Next](../03_Implicit_Copy/)

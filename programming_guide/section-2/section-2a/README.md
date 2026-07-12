@@ -395,4 +395,4 @@ The intent of this high-level view showcases that the DMA is able to interact wi
     </details>
 
 -----
-[Up](..) &middot; [Next - Section 2b](../section-2b/)
+[Top](..) &middot; [Next](../section-2b/)

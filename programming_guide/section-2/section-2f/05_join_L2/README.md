@@ -42,4 +42,4 @@ The `# To/from AIE-array data movement` section of the design code is described 
 Other examples containing this data movement pattern are available in the [programming_examples](../../../../programming_examples/). A notable one is [vector_exp](../../../../programming_examples/basic/vector_exp/).
 
 -----
-[Prev](../04_distribute_L2/) &middot; [Up](..) &middot; [Next - Section 2g](../../section-2g/)
+[Prev](../04_distribute_L2/) &middot; [Top](..) &middot; [Next](../../section-2g/)

@@ -31,4 +31,4 @@ For IRON constructs like `RuntimeTasks`, please continue with this [reading](./R
 For the AIE dialect functions like `npu_dma_memcpy_nd` and `dma_wait` please continue reading [here](./DMATasks.md).
 
 -----
-[Prev - Section 2c](../section-2c/) &middot; [Up](..) &middot; [Next - Section 2e](../section-2e/)
+[Prev](../section-2c/) &middot; [Top](..) &middot; [Next](../section-2e/)

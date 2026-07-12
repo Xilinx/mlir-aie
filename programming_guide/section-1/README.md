@@ -127,4 +127,4 @@ The Makefile also exposes `make emit-mlir` which redirects the output to `build/
     </details>
 
 -----
-[Prev - Section 0](../section-0/) &middot; [Top](..) &middot; [Next - Section 2](../section-2/)
+[Prev](../section-0/) &middot; [Top](..) &middot; [Next](../section-2/)

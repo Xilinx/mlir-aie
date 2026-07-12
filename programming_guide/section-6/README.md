@@ -41,5 +41,5 @@ There are a number of example designs available [here](../../programming_example
     </details>
 
 -----
-[Prev - Section 5](../section-5/) &middot; [Top](..)
+[Prev](../section-5/) &middot; [Top](..)
 

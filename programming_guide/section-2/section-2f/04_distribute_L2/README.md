@@ -38,4 +38,4 @@ make emit-mlir                        # writes the lowered MLIR to build/aie.mli
 Other examples containing this data movement pattern are available in the [programming_examples/matrix_multiplication/](../../../../programming_examples/basic/matrix_multiplication/).
 
 -----
-[Prev](../03_external_mem_to_core_L2/) &middot; [Up](..) &middot; [Next](../05_join_L2/)
+[Prev](../03_external_mem_to_core_L2/) &middot; [Top](..) &middot; [Next](../05_join_L2/)

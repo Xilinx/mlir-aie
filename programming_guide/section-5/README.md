@@ -71,4 +71,4 @@ The [passthrough DMAs](../../programming_examples/basic/passthrough_dmas/) examp
     </details>
 
 -----
-[Prev - Section 4](../section-4/) &middot; [Top](..) &middot; [Next - Section 6](../section-6/)
+[Prev](../section-4/) &middot; [Top](..) &middot; [Next](../section-6/)

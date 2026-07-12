@@ -342,4 +342,4 @@ Let's examine this more closely in our example.
    This matches with our hand calculation that the inner loop is limited to 2 because of the vector stores.
 
 -----
-[Prev](../section-4b) &middot; [Up](../../section-4) &middot; [Next - Section 5](../../section-5)
+[Prev](../section-4b) &middot; [Top](../../section-4) &middot; [Next](../../section-5)

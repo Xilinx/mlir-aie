@@ -16,4 +16,4 @@ It is helpful to first examine performance measurement before we delve into vect
 * [Section 4c - Kernel vectorization and optimization](./section-4c)
 
 -----
-[Prev - Section 3](../section-3/) &middot; [Top](..) &middot; [Next - Section 5](../section-5/)
+[Prev](../section-3/) &middot; [Top](..) &middot; [Next](../section-5/)
