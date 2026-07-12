@@ -8,23 +8,20 @@ between memory and AIE compute tiles. A **Tensor Access Pattern** (TAP)
 describes a multi-dimensional iteration over a buffer, generating the DMA
 descriptor sequences that the NPU hardware executes.
 
-## TensorAccessPattern
-
-::: helpers.taplib.tap
+::: helpers.taplib.tap.TensorAccessPattern
     options:
-      show_root_heading: false
+      show_root_heading: true
+      heading_level: 2
 
-## TensorAccessSequence
-
-::: helpers.taplib.tas
+::: helpers.taplib.tas.TensorAccessSequence
     options:
-      show_root_heading: false
+      show_root_heading: true
+      heading_level: 2
 
-## TensorTiler2D
-
-::: helpers.taplib.tensortiler2d
+::: helpers.taplib.tensortiler2d.TensorTiler2D
     options:
-      show_root_heading: false
+      show_root_heading: true
+      heading_level: 2
 
 ## Utilities
 

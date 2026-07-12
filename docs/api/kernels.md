@@ -1,10 +1,11 @@
 <!-- Copyright (C) 2024-2026 Advanced Micro Devices, Inc. -->
 <!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 
-# Kernel Library
+# Python Kernel Library
 
 Pre-built AIE kernel wrappers for common operations. These provide ready-to-use
-`Worker`-compatible callables backed by optimized native AIE code.
+`Worker`-compatible callables backed by optimized native AIE code. For the C++
+kernel sources these wrap, see [C++ AIE kernels](aie_kernels.md).
 
 ## Element-wise operations
 
