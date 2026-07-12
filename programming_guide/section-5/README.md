@@ -25,7 +25,7 @@ The [passthrough DMAs](../../programming_examples/basic/passthrough_dmas/) examp
 | Design name | Data type | Description |
 |-|-|-|
 | [Vector Scalar Add](../../programming_examples/basic/vector_scalar_add/) | i32 | Adds 1 to every element in  vector |
-| [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) | i32 | Returns a vector multiplied by a scale factor |
+| [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) | i16 | Returns a vector multiplied by a scale factor |
 | [Vector Vector Add](../../programming_examples/basic/vector_vector_add/) | i32 | Returns a vector summed with another vector |
 | [Vector Vector Modulo](../../programming_examples/basic/vector_vector_modulo/) | i32 | Returns vector % vector |
 | [Vector Vector Multiply](../../programming_examples/basic/vector_vector_mul/) | i32 | Returns a vector multiplied by a vector |

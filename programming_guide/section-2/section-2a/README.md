@@ -343,7 +343,7 @@ The ObjectFifo is a synchronized data movement primitive that couples dedicated 
 The ObjectFifo lowering pass presents two compiler flags which are made available through the `aiecc` compiler pipeline. These flags enable the user to drive some of the lowering decisions which affect the complexity of the Worker code generated for object accesses, as well as what hardware capabilities will be leveraged for the data movement represented by the ObjectFifos.
 
 These flags are:
-- `dynamic-objFifos`: when enabled, the compiler will generated MLIR `scf.index_switch` operations to keep track of the number of acquired objects versus released ones during the execution of a Worker. This feature is particularly useful when these numbers differ between iterations of a Worker's execution, as it enables dynamic runtime resolution of the number of accessed objects.
+- `dynamic-objFifos`: when enabled, the compiler will generate MLIR `scf.index_switch` operations to keep track of the number of acquired objects versus released ones during the execution of a Worker. This feature is particularly useful when these numbers differ between iterations of a Worker's execution, as it enables dynamic runtime resolution of the number of accessed objects.
 - `packet-sw-objFifos`: when enabled, the compiler will configure the AXI stream data movement using packet switched flows (instead of the default circuit switched flows). This feature is in the early stages of development and currently only supports ObjectFifos between Workers, and between Workers and external memory.
 
 These flags can be combined with calls to `aiecc`, or directly to the ObjectFifo lowering pass, as follows:
