@@ -153,33 +153,33 @@ For the full type-and-vector-size table, see the [AIE API User Guide](https://ww
 
 ## <u>Vectorization Exercises</u>
 1. Let's take a look at the trace for our vector scalar design. First, let's edit our [vector_scalar_mul design](../../../programming_examples/basic/vector_scalar_mul/) so that the [vector_scalar_mul.py](../../../programming_examples/basic/vector_scalar_mul/vector_scalar_mul.py) source file has `vectorized=False`. In the [vector_scalar_mul.py](../../../programming_examples/basic/vector_scalar_mul/vector_scalar_mul.py) source code, we now have selected the scalar version of the kernel function. We're also going to build the 32-bit integer version of the design by passing the environment variables `int_bit_width=32` to our `makefile` command, by running  `make int_bit_width=32 trace`. This makefile argument is defined in our makefile to customize datatypes and buffer sizes in our design code (`vector_scalar_mul.py`) and our host code (`test.cpp`). After the trace compilation is complete, open `trace_vector_scalar_mul.json` in https://ui.perfetto.dev and measure the delta between `event 0` and `event 1`. Note that in the Perfetto waveform, 1 us is equal to 1 clock cycle. How many cycles did you measure?
-   <details markdown="1"><summary>Show answer</summary>
-   ~12,297 cycles
-   </details>
+    <details markdown="1"><summary>Show answer</summary>
+    ~12,297 cycles
+    </details>
 
     You may notice that in our `vector_scalar_mul` example, we call `python/utils/trace/get_trace_summary.py` to analyze the generated json file and measure the delta between `event 0` and `event 1` automatically, providing the number of kernel invocations, and the first/ min/ avg/ max number of cycles. This is a handy utility for summarizing kernel performance for single core designs.
 
 1. Now let's turn vectorization back on by changing `vectorized=True`. But we're also going to disable any pragma guided optimization first to see its effect. In the [scale.cc](../../../aie_kernels/aie2/scale.cc), comment out the lines before the `for loop` that says `AIE_PREPARE_FOR_PIPELINING AIE_LOOP_MIN_ITERATION_COUNT(16)`. **NOTE** Be sure to edit both the general template and the `int32_t` template specialization as we will be testing that case next. Then rerun the compilation (`make clean; make int_bit_width=32 trace`). Measure the delta between `event 0` and `event 1` again. What value do you see now?
-   <details markdown="1"><summary>Show answer</summary>
-   ~1490 cycles
-   </details>
+    <details markdown="1"><summary>Show answer</summary>
+    ~1490 cycles
+    </details>
 
 
     That's quite an improvement, ~8X reduction in compute latency. However, there's more optimization that can be had with vector code and that involves optimization pragmas. 
 
 1. Go back to [scale.cc](../../../aie_kernels/aie2/scale.cc) and uncomment the lines with `AIE_PREPARE_FOR_PIPELINING AIE_LOOP_MIN_ITERATION_COUNT(16)` to enable those pragmas. Then rerun the compilation (`make clean; make int_bit_width=32 trace`). Measure the delta between `event 0` and `event 1` again. What value do you see now?
-   <details markdown="1"><summary>Show answer</summary>
-   339 cycles
-   </details>
+    <details markdown="1"><summary>Show answer</summary>
+    339 cycles
+    </details>
 
     Now, we're really seeing some savings (another factor ~4X savings or ~36X compared to the scalar version). The line we added helps guide the compiler to find optimal schedules. For kernel loops, `AIE_PREPARE_FOR_PIPELINING` and `AIE_LOOP_MIN_ITERATION_COUNT(16)` are particularly useful:
     * `AIE_PREPARE_FOR_PIPELINING` - Used in the innermost loop to tell the compiler to enable software pipelining. This is needed to enable subsequent loop optimization pragmas.
     * `AIE_LOOP_MIN_ITERATION_COUNT(MIN)` - An extremely helpful pragma. This tells the compiler the minimum iterations we expect this loop to have. If we want to specify both minimum and maximum iterations, we can used `, AIE_LOOP_RANGE(MIN,MAX)`. We often parameterize loop bounds based on size and even if the loop size is declared as a const, it's still a runtime computed value. Giving the MIN value in this pragma is particular helpful because it guides the scheduler to know how many iterations we have and can therefore properly schedule the loop instructions for that number rather than the worse case of 1.
     
 1. Finally, we're going to rerun the compilation on a 16-bit integer version of our design with vectorization still turned on our optimization pragmas enabled for our kernel code. This is the default configuration of the `vector_scalar_mul` design (`make clean; make trace`). Measure the delta between `event 0` and `event 1` again. What value do you now see?
-   <details markdown="1"><summary>Show answer</summary>
-   78 cycles
-   </details>
+    <details markdown="1"><summary>Show answer</summary>
+    78 cycles
+    </details>
 
     We see another 4X factor as we are able to process twice as much data per iteration as well as requiring less vector multiplies per iteration giving us a total improvement of ~157X from the scalar version.
     
@@ -264,18 +264,18 @@ Looking at this table, we quickly see that the data movement is the bottleneck f
     This matches what we expected to see. But note how it's obvious from the waveform how dominant data movement is as compared to compute.
 
 1. We can already see that our design is imbalanced between data movement and compute where we have 72 cycles for compute and 512 cycles for data movement. Let's take a look at the [Matrix Multiply Example](../../../programming_examples/basic/matrix_multiplication/single_core) and see if we can do better. In the description, it talks about how each iteration of the kernel is by default configured for MxKxN values of 64x64x64 giving us 262,144 MACs. Given that we're working with `int16_t` datatype which has 64 MACs per clock, how many cycles will the ideal case take?
-   <details markdown="1"><summary>Show answer</summary>
-   2048 cycles = 262,144/ 64
-   </details>
+    <details markdown="1"><summary>Show answer</summary>
+    2048 cycles = 262,144/ 64
+    </details>
    Given that the A and B matrix are each 64x64 x `int16_t` and our stream switch channels are 32-bits wide, how many cycles does it take to move data to the compute tile (bear in mind A and B can be moved in parallel via separate channels).
-   <details markdown="1"><summary>Show answer</summary>
-   2048 cycles = 64x64/2
-   </details>
+    <details markdown="1"><summary>Show answer</summary>
+    2048 cycles = 64x64/2
+    </details>
 
 1. So this example should be perfectly balanced between compute and data movement! Navigate to the [Matrix Multiply Example](../../../programming_examples/basic/matrix_multiplication/single_core) and run the trace build (`make clean; make trace`). Then open the generated waveform json (`trace_mm.json`) and measure the delta between `event 0` and `event 1` in the first run. What value did you get and how close is it to ideal?
-   <details markdown="1"><summary>Show answer</summary>
-   ~2535 cycles which is 80% of 2048
-   </details>
+    <details markdown="1"><summary>Show answer</summary>
+    ~2535 cycles which is 80% of 2048
+    </details>
    You should now see that the compute cycles and the data movement cycles are much more closely matched!
 
 ## <u>Diving Deep - Examining the Microcode</u>
@@ -326,19 +326,19 @@ Let's examine this more closely in our example.
     </details>
 
 1. Now look at each line and count how many lines contain a `VMUL` or `VMAC` in them? What number do you get?
-   <details markdown="1"><summary>Show answer</summary>
-   Only 1 VMUL
-   </details>
+    <details markdown="1"><summary>Show answer</summary>
+    Only 1 `VMUL`
+    </details>
 
 1. The number you got gives us a rough idea of how optimized the innermost loop of our algorithm is. In this case, we have 1 VMAC out of 9 cycles or ~11% MAC utilization. If the inner loop take 11 cycles and we iterate 32 times, how many cycles should this version take and how close are we to the measured cycle count?
-   <details markdown="1"><summary>Show answer</summary>
-   11*32=352 cycles out of ~309 cycles measured. Pretty close. Overhead is ~15 cycles
-   </details>
+    <details markdown="1"><summary>Show answer</summary>
+    11*32=352 cycles out of ~309 cycles measured. Pretty close. Overhead is ~15 cycles
+    </details>
 
 1. Now go back and uncomment the pragma lines again and rerun the build and cleanup script (`make clean; make trace; <mlir-aie>/ironenv/lib/python<ver>/site-packages/llvm-aie/bin/llvm-objdump -dr build/core_0_2.elf > disassembly_0_2.txt`). Search for `vector_scalar_mul_vector` again and count the number of inner loop lines, as well as `VMUL/VMAC` lines again. How many do you see?
-   <details markdown="1"><summary>Show answer</summary>
-   2 inner loop lines. 1 VMUL.
-   </details>
+    <details markdown="1"><summary>Show answer</summary>
+    2 inner loop lines. 1 `VMUL`.
+    </details>
    This matches with our hand calculation that the inner loop is limited to 2 because of the vector stores.
 
 -----
