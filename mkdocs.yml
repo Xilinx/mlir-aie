@@ -29,6 +29,9 @@ exclude_docs: |
   /AIEDesignPatterns.md
   /AIERouting.md
   /AIEVectorization.md
+  # Internal maintainer notes (wheel-build machinery). Kept in the repo, not
+  # published on the site.
+  /Dev.md
 
 # Links to source files (*.py, *.cpp, *.h, etc.) and out-of-tree dirs
 # (programming_examples/, mlir_exercises/) are intentional "go read the
@@ -226,6 +229,7 @@ nav:
       - Compilation Stages: programming_guide/compilation_stages.md
       - Implicit MLIR Context: programming_guide/implicit_mlir_context.md
       - Kernel Library: programming_guide/kernels_library.md
+      - Presentations: Presentations.md
   - API & Internals:
     - Overview: api/index.md
     - Python API:
@@ -246,6 +250,4 @@ nav:
       - C++ API (Doxygen): api/cpp_doxygen.md
   - Developer Guide:
     - Contributing: CONTRIBUTING.md
-    - Developer Notes: Dev.md
-    - Presentations: Presentations.md
     - Security: SECURITY.md
