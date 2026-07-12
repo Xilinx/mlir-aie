@@ -38,7 +38,9 @@ to make sure it isn't already listed.
    source utils/env_install.sh --dev
    ```
    This installs the toolchain and registers the pre-commit / pre-push hooks
-   (see [Formatting and hooks](#formatting-and-hooks) below).
+   (see [Formatting and hooks](#formatting-and-hooks) below). To build the
+   toolchain from source instead of installing wheels, see
+   [Building from source](docs/Building.md).
 3. **Make your change**, targeting `main`. Keep the PR focused, and make sure it
    builds.
 4. **Add tests for new functionality.** New features should come with a test or

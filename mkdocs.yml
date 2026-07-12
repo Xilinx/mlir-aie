@@ -246,7 +246,6 @@ nav:
       - C++ API (Doxygen): api/cpp_doxygen.md
   - Developer Guide:
     - Contributing: CONTRIBUTING.md
-    - Building from Source: Building.md
     - Developer Notes: Dev.md
     - Presentations: Presentations.md
     - Security: SECURITY.md
