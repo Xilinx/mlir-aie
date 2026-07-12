@@ -50,7 +50,6 @@ runtime_lib/xaiengine/src
 # Local docs-preview symlinks + placeholder (created for `mkdocs serve`;
 # the real files live at repo root and CI generates dialects.png)
 /docs/programming_guide
-/docs/SECURITY.md
 /docs/dialects.png
 
 # Local Claude Code tooling/settings
