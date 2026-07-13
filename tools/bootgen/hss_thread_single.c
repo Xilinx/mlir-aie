@@ -2,11 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 // Single-threaded fallback for lms-hash-sigs' hss_thread.h abstraction, for
-// platforms without POSIX pthreads (e.g. MSVC). This bootgen snapshot only
-// vendors the pthread-based implementation (hss_thread_pthread.c); per
-// hss_thread.h's own documented contract, a thread collection of 0/NULL is a
-// valid, non-threaded return, and callers must tolerate work being completed
-// synchronously within hss_thread_issue_work.
+// platforms without pthreads (e.g. MSVC) since only the pthread backend is
+// vendored. hss_thread.h documents a NULL collection as a valid non-threaded
+// mode, so completing work synchronously here is expected.
 
 #include "hss_thread.h"
 
