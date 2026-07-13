@@ -107,17 +107,9 @@ string(REPLACE "#include \"openssl/ms/applink.c\"" "" FILE_CONTENTS "${FILE_CONT
 file(WRITE ${BOOTGEN_SOURCE}/main.cpp "${FILE_CONTENTS}")
 
 add_library(bootgen-lib STATIC ${libsources})
-# Force PIE/PIC explicitly rather than inheriting whatever the top-level
-# project's global flags happen to be: bootgen has no dependency on
-# MLIR/LLVM, but it's configured as part of the same CMake invocation, so it
-# silently inherits global compiler/linker defaults set by
-# find_package(MLIR)/include(HandleLLVMOptions) upstream. When those global
-# defaults produce a non-PIE bootgen executable that still declares dynamic
-# NEEDED libs and an RPATH, auditwheel repair's patchelf-based RPATH rewrite
-# has been observed to corrupt the binary (jumps into the non-executable
-# DYNAMIC segment at runtime -- SIGSEGV/SEGV_ACCERR before main() even
-# runs). Pinning PIE here keeps bootgen's ELF layout the standard one
-# patchelf actually exercises, independent of what MLIR/LLVM sets globally.
+# bootgen must be compiled with PIE/PIC, irrespective of the remainder of
+# the project, because  auditwheel repair's patchelf-based RPATH rewrite
+# corrupts the non-PIE binary
 set_target_properties(bootgen-lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
   set(bootgen_warning_ignores
