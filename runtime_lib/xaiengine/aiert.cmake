@@ -1,6 +1,35 @@
 # Copyright (C) 2023-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+# third_party/aie-rt tracks upstream Xilinx/aie-rt directly (no personal
+# fork). Functionality mlir-aie needs that isn't upstream yet is vendored as
+# patch files under third_party/patches/aie-rt and applied here, once, at
+# configure time. See third_party/patches/aie-rt/README.md.
+function(apply_aie_rt_vendor_patches AIE_RT_ROOT PATCH_DIR)
+  set(_sentinel ${AIE_RT_ROOT}/driver/src/io_backend/ext/xaie_amdair.c)
+  if(EXISTS ${_sentinel})
+    return()
+  endif()
+
+  file(GLOB _patches ${PATCH_DIR}/*.patch)
+  list(SORT _patches)
+  find_package(Git REQUIRED)
+  foreach(_patch ${_patches})
+    message(STATUS "Applying vendored aie-rt patch: ${_patch}")
+    execute_process(
+      COMMAND ${GIT_EXECUTABLE} apply ${_patch}
+      WORKING_DIRECTORY ${AIE_RT_ROOT}
+      RESULT_VARIABLE _patch_result
+      ERROR_VARIABLE _patch_error)
+    if(NOT _patch_result EQUAL 0)
+      message(FATAL_ERROR
+        "Failed to apply vendored aie-rt patch ${_patch}:\n${_patch_error}\n"
+        "If ${AIE_RT_ROOT} has local modifications, reset it with "
+        "'git -C ${AIE_RT_ROOT} checkout -- .' and re-run CMake.")
+    endif()
+  endforeach()
+endfunction()
+
 function(add_aiert_headers TARGET SRCPATH BUILDPATH INSTALLPATH)
   message("Installing aie-rt includes for ${TARGET} from ${SRCPATH} in ${BUILDPATH}")
   file(GLOB libheaders ${SRCPATH}/*.h)
