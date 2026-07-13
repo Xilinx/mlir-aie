@@ -370,8 +370,11 @@ inline void writeCheckpoint(llvm::ArrayRef<EdgeBase *> cutEdges,
         destName = std::to_string(i) + "_" + base;
       llvm::SmallString<256> dest(dir);
       llvm::sys::path::append(dest, destName);
-      if (llvm::sys::fs::copy_file(src, dest))
+      if (std::error_code ec = llvm::sys::fs::copy_file(src, dest)) {
+        llvm::errs() << "aiecc: checkpoint failed to copy '" << src << "' to '"
+                     << dest << "': " << ec.message() << "\n";
         continue;
+      }
       frontier.push_back(llvm::json::Object{
           {"name", e->name}, {"key", it->key}, {"path", destName}});
     }

@@ -126,7 +126,7 @@ inline mlir::LogicalResult assemblePdi(const Item<std::string> &bifItem,
 // directory name under `<aietools>/tps/lnx64/`. Empty for unsupported targets.
 inline std::string getChessTarget(llvm::StringRef aieTarget) {
   std::string t = aieTarget.lower();
-  if (t == "aie2")
+  if (t == "aie2" || t == "aieml")
     return "target_aie_ml";
   if (t == "aie2p")
     return "target_aie2p";

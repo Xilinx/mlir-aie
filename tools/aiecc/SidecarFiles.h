@@ -277,12 +277,16 @@ makeFullElfConfigJson(const Node<OpInModule<xilinx::AIE::DeviceOp>> &devices,
 
     llvm::json::Array instances;
     devOp.walk([&](xilinx::AIE::RuntimeSequenceOp seq) {
-      // One `.bin` per runtime sequence, keyed "<device>_<sequence>".
+      // One `.bin` per runtime sequence, keyed "<device>_<sequence>". Only
+      // sequences that were actually lowered to a control-code binary have an
+      // entry in `instsPaths`; skip the rest (e.g. filtered out via
+      // `--sequence-name`) so we don't emit an instance with an empty
+      // TXN_ctrl_code_file, which is invalid for `aiebu-asm -t aie2_config`.
       auto instsIt = instsPaths.find(npuSeqKey(devName, seq.getSymName()));
-      std::string instsPath =
-          instsIt == instsPaths.end() ? "" : instsIt->second;
-      instances.push_back(
-          O{{"id", seq.getSymName().str()}, {"TXN_ctrl_code_file", instsPath}});
+      if (instsIt == instsPaths.end())
+        return;
+      instances.push_back(O{{"id", seq.getSymName().str()},
+                            {"TXN_ctrl_code_file", instsIt->second}});
     });
     if (instances.empty())
       continue;

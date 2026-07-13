@@ -230,6 +230,7 @@ void AIEX::emitScratchpadParamsFile(ModuleOp moduleOp, llvm::raw_ostream &os) {
     std::string typeStr;
     llvm::raw_string_ostream ts(typeStr);
     p.getType().print(ts);
+    ts.flush();
     StringRef kindStr =
         p.getKind().value() == AIEX::ScratchpadParameterKind::Addr ? "addr"
                                                                    : "core";
