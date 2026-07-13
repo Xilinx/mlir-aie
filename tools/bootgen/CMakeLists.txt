@@ -144,6 +144,18 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
   target_compile_options(bootgen-lib PRIVATE /wd4996 /wd4840 /wd4005 /wd5033)
 endif()
 target_compile_options(bootgen-lib PRIVATE ${bootgen_warning_ignores})
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+  # Explicit -fPIC, not just the POSITION_INDEPENDENT_CODE property above:
+  # that property relies on CMake's CMP0083 + the CheckPIESupported module
+  # to inject the right compiler/linker flags, and this project never calls
+  # check_pie_supported(), so the property silently does nothing on some
+  # toolchains (observed on the manylinux_2_28 gcc-toolset used to build
+  # release wheels, which -- unlike a distro's system gcc -- does not
+  # default to PIE/PIC either). Passed last so it wins (compilers apply
+  # "last flag wins" for -fPIC/-fno-PIC) over anything inherited from the
+  # linked MLIR/LLVM package's own build configuration.
+  target_compile_options(bootgen-lib PRIVATE -fPIC)
+endif()
 target_include_directories(bootgen-lib PRIVATE ${BOOTGEN_SOURCE} ${OPENSSL_INCLUDE_DIR})
 # Make C API header available publicly
 target_include_directories(bootgen-lib PUBLIC
@@ -165,6 +177,15 @@ target_compile_options(bootgen PRIVATE ${bootgen_warning_ignores})
 if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
   target_compile_options(bootgen PRIVATE /EHsc)
   target_compile_options(bootgen PRIVATE /wd4996 /wd4840 /wd4005 /wd5033)
+endif()
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
+  # Explicit -fPIE/-pie (see bootgen-lib above for why the
+  # POSITION_INDEPENDENT_CODE property alone can't be trusted). Passed last
+  # so it wins -- compilers apply "last flag wins" for -fPIE/-fno-PIE and
+  # -pie/-no-pie -- over anything inherited from the linked MLIR/LLVM
+  # package's own build configuration.
+  target_compile_options(bootgen PRIVATE -fPIE)
+  target_link_options(bootgen PRIVATE -fPIE -pie)
 endif()
 target_compile_definitions(bootgen PRIVATE OPENSSL_USE_APPLINK)
 target_link_libraries(bootgen PRIVATE bootgen-lib OpenSSL::SSL OpenSSL::applink)
