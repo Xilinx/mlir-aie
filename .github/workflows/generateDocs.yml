@@ -195,7 +195,11 @@ jobs:
           git fetch origin gh-pages
           git worktree add ../gh-pages-wt gh-pages
           mkdir -p "../gh-pages-wt/${LABEL}/doxygen"
-          cp -r build_release/doxygen/html "../gh-pages-wt/${LABEL}/doxygen/"
+          # Doxygen writes under the docs/ subdir of the build tree because
+          # docs/CMakeLists.txt sets OUTPUT_DIRECTORY to its own binary dir
+          # (add_subdirectory(docs) => build_release/docs), matching the
+          # "Copy generated dialect docs" step that reads build_release/docs/*.md.
+          cp -r build_release/docs/doxygen/html "../gh-pages-wt/${LABEL}/doxygen/"
           git -C ../gh-pages-wt add "${LABEL}/doxygen/"
           git -C ../gh-pages-wt diff --cached --quiet \
             || git -C ../gh-pages-wt commit -m "docs: add Doxygen output for ${LABEL}"
