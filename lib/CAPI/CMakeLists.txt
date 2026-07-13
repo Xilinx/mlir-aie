@@ -8,7 +8,6 @@ add_mlir_public_c_api_library(AIECAPI
   Translation.cpp
 
   LINK_LIBS PUBLIC
-  ADF
   AIE
   AIETargets
   AIETransforms

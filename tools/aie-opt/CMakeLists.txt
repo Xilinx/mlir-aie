@@ -23,7 +23,6 @@ set(LIBS
   ${conversion_libs}
   ${extension_libs}
   MLIROptLib
-  ADF
   AIE
   AIETransforms
   AIEX
