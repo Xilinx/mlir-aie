@@ -114,7 +114,7 @@ add_library(bootgen-lms-hash-sigs STATIC
   ${lms_hash_sigs_dir}/lms_sign.c
   ${lms_hash_sigs_dir}/sha256.c)
 set_target_properties(bootgen-lms-hash-sigs PROPERTIES POSITION_INDEPENDENT_CODE ON)
-target_include_directories(bootgen-lms-hash-sigs PRIVATE ${OPENSSL_INCLUDE_DIR})
+target_include_directories(bootgen-lms-hash-sigs PRIVATE ${lms_hash_sigs_dir} ${OPENSSL_INCLUDE_DIR})
 # PUBLIC: static-lib consumers need these transitively on their link line.
 target_link_libraries(bootgen-lms-hash-sigs PUBLIC OpenSSL::Crypto Threads::Threads)
 if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
@@ -140,6 +140,7 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     -Wno-deprecated-register
     -Wno-dynamic-class-memaccess
     -Wno-implicit-fallthrough
+    -Wno-incompatible-pointer-types
     -Wno-incompatible-pointer-types-discards-qualifiers
     -Wno-misleading-indentation
     -Wno-non-virtual-dtor
