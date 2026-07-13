@@ -1701,9 +1701,12 @@ TileOp TileOp::getOrCreate(mlir::OpBuilder builder, DeviceOp device, int col,
 //===----------------------------------------------------------------------===//
 
 LogicalResult ShimMuxOp::verify() {
-  // ShimMux requires a placed tile (TileOp), not a logical tile
+  // The port/connection checks below are keyed off the target model for a
+  // placed tile. Before --aie-place-tiles the tile is still an
+  // aie.logical_tile, so defer those checks to the post-placement re-verify --
+  // mirroring SwitchboxOp::verify and the UsesAreAccessible trait.
   if (!isa<TileOp>(getTile().getDefiningOp()))
-    return emitOpError("requires a placed tile (aie.tile), not a logical tile");
+    return success();
 
   Region &body = getConnections();
   DenseSet<Port> destset;
@@ -2522,9 +2525,13 @@ void DMAStartOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
 //===----------------------------------------------------------------------===//
 
 LogicalResult SwitchboxOp::verify() {
-  // Switchbox requires a placed tile (TileOp), not a logical tile
+  // The remaining checks (port bounds, legal-connection rules) are all keyed
+  // off the target model for a placed tile. Before --aie-place-tiles runs the
+  // tile is still an aie.logical_tile, so defer those checks to the
+  // post-placement re-verify -- mirroring how UsesAreAccessible and FlowOp
+  // skip target-model checks on logical tiles.
   if (!isa<TileOp>(getTile().getDefiningOp()))
-    return emitOpError("requires a placed tile (aie.tile), not a logical tile");
+    return success();
 
   Region &body = getConnections();
   DenseSet<Port> sourceset;

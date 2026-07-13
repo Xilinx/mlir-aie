@@ -364,34 +364,66 @@ name the two *endpoints* and the `--aie-create-pathfinder-flows` pass
 picks the switchbox connections in between.  The rare exception is when
 you need to pin the *exact* path — reproducing a specific hardware
 configuration, or steering around a resource the router would otherwise
-take.  There is no `Flow`-style primitive for this; it's the one part
-of routing that has to be spelled out switchbox-by-switchbox.
+take.
 
-So keep expressing the design with `flow` as above, and only replace
-the one route that needs pinning.  A `switchbox` region hangs off a
-tile and holds `connect` ops, each wiring one input port to one output
-port of that tile's stream switch (a full crossbar).  These two
-switchboxes pin the same `tile(0,2) → tile(0,3)` route the single
-`flow(tile_0_2, DMA, 0, tile_0_3, DMA, 1)` would have produced:
+There is no dedicated IRON class for this, and none is needed.  A
+`switchbox` region hangs off a tile and holds `connect` ops, each wiring
+one input port to one output port of that tile's stream switch (a full
+crossbar); a shim endpoint also needs a `shim_mux` translating its DMA
+ports to the stream switch.  Both are ordinary `aie` dialect ops, and
+IRON already has a generic way to emit device-level ops: any object with
+`tiles()` and `resolve()` (the `Resolvable` protocol) handed to a
+`Worker` via `fn_args` is resolved at device scope, with its tiles
+placed first.  So a small user-side class emits the configuration with
+no new API:
 
 ```python
-@switchbox(tile_0_2)
-def sb_0_2():
-    connect(WireBundle.DMA, 0, WireBundle.North, 1)   # DMA out → north
+from aie.dialects.aie import switchbox, connect, EndOp
+from aie.dialects._aie_enum_gen import WireBundle
 
-@switchbox(tile_0_3)
-def sb_0_3():
-    connect(WireBundle.South, 1, WireBundle.DMA, 1)   # south in → DMA
+class PinnedSwitchbox:
+    def __init__(self, tile, conns):
+        self._tile, self._conns = tile, conns
+
+    def tiles(self):                       # placed before resolve()
+        return [self._tile]
+
+    def resolve(self, loc=None, ip=None):
+        @switchbox(self._tile.op)
+        def _sb():
+            for sb, sc, db, dc in self._conns:
+                connect(sb, sc, db, dc)
+            EndOp()                        # aie.switchbox needs an explicit terminator
+
+# pin one hop; hand it to a Worker in fn_args (the core_fn ignores it):
+sb = PinnedSwitchbox(compute_tile, [(WireBundle.South, 1, WireBundle.DMA, 0)])
+worker = Worker(core_fn, [..., sb], tile=compute_tile)
 ```
 
-The `North` output of `tile(0,2)` feeds the `South` input of
-`tile(0,3)`, so the two `connect` ops together carry the route end to
-end — but now every hop is fixed rather than router-chosen.  `connect`
-takes `(source_bundle, source_channel, dest_bundle, dest_channel)`, and
-a single `switchbox` may hold as many `connect` ops as the hardware has
-ports.  This is exactly the layer `--aie-create-pathfinder-flows` emits from a
-`flow`: pinning a path by hand produces the same kind of IR the pass
-would, you're just choosing which hops to fix.
+`connect` takes `(source_bundle, source_channel, dest_bundle,
+dest_channel)`, and a single `switchbox` may hold as many `connect` ops
+as the hardware has ports.
+
+Two things to know before reaching for this:
+
+* **The ports must match what the router would pick.**  A hand-written
+  connection only carries data if its source/destination ports (and the
+  matching DMA channels) line up with the rest of the path.  The
+  reliable way to get them right is to build the equivalent `Flow`/
+  `ObjectFifo` design first and dump the connections the pass generates
+  (`aie-opt --aie-place-tiles --aie-objectFifo-stateful-transform
+  --aie-create-pathfinder-flows`), then reproduce those exact ports.
+
+* **Manual and automatic routing don't share a hop.**  If a pinned
+  `connect` competes with a `flow` the pathfinder is also trying to
+  route through the same ports, routing fails ("Unable to find a legal
+  routing").  Pin connections on a *disjoint* segment (the pathfinder
+  augments the rest of that tile's switchbox around them), or pin the
+  whole path and use no `flow` at all.
+
+A complete, hardware-verified example that pins every hop of a
+shim → compute → shim passthrough by hand lives in
+[`programming_examples/basic/manual_switchbox`](../../../programming_examples/basic/manual_switchbox/).
 
 ### MLIR ↔ C kernel ABI
 
