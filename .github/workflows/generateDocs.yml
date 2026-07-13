@@ -44,6 +44,14 @@ jobs:
           fetch-depth: 0
           submodules: "true"
 
+      # docs/programming_guide is a gitignored symlink to the repo-root
+      # programming_guide/ tree (kept out of git so a stray `git add .` during
+      # local `mkdocs serve` can't commit it). The nav references pages under it,
+      # so recreate it here or the strict build aborts on missing-nav-target
+      # warnings.
+      - name: Link programming_guide into docs tree
+        run: ln -s ../programming_guide docs/programming_guide
+
       - name: Configure git for mike
         run: |
           git config user.name "github-actions[bot]"
