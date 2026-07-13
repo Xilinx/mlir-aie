@@ -146,10 +146,7 @@ endif()
 target_compile_options(bootgen-lib PRIVATE ${bootgen_warning_ignores})
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND NOT MSVC)
   # The POSITION_INDEPENDENT_CODE property above doesn't reliably force PIC
-  # here (this project never calls check_pie_supported(), which CMP0083
-  # needs), so pass -fPIC explicitly, last, so it wins over any inherited
-  # -fno-PIC. NOT MSVC excludes clang-cl, which also matches "Clang" but
-  # can't parse this flag.
+  # so pass -fPIC explicitly, last, so it wins over any inherited -fno-PIC.
   target_compile_options(bootgen-lib PRIVATE -fPIC)
 endif()
 target_include_directories(bootgen-lib PRIVATE ${BOOTGEN_SOURCE} ${OPENSSL_INCLUDE_DIR})
