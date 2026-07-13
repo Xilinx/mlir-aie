@@ -40,7 +40,8 @@ aie.device(xcvc1902) {
       memref.store %sum_iter, %buf13_0[%arg0] : memref<256xi32>
       scf.yield %sum_next : i32
     }
-    aie.use_lock(%lock13_0, "Release", 1)
+    %c1_ul0 = arith.constant 1 : i32
+    aie.use_lock(%lock13_0, "Release", %c1_ul0)
     aie.end
   }
   func.func @do_sieve(%bufin: memref<256xi32>, %bufout:memref<256xi32>) -> () {
@@ -89,27 +90,39 @@ aie.device(xcvc1902) {
   }
 
   %core14 = aie.core(%tile14) {
-    aie.use_lock(%lock13_0, "Acquire", 1)
-    aie.use_lock(%lock14_0, "Acquire", 0)
+    %c1_ul1 = arith.constant 1 : i32
+    aie.use_lock(%lock13_0, "Acquire", %c1_ul1)
+    %c0_ul2 = arith.constant 0 : i32
+    aie.use_lock(%lock14_0, "Acquire", %c0_ul2)
     func.call @do_sieve(%buf13_0, %buf14_0) : (memref<256xi32>, memref<256xi32>) -> ()
-    aie.use_lock(%lock13_0, "Release", 0)
-    aie.use_lock(%lock14_0, "Release", 1)
+    %c0_ul3 = arith.constant 0 : i32
+    aie.use_lock(%lock13_0, "Release", %c0_ul3)
+    %c1_ul4 = arith.constant 1 : i32
+    aie.use_lock(%lock14_0, "Release", %c1_ul4)
     aie.end
   }
   %core15 = aie.core(%tile15) {
-    aie.use_lock(%lock14_0, "Acquire", 1)
-    aie.use_lock(%lock15_0, "Acquire", 0)
+    %c1_ul5 = arith.constant 1 : i32
+    aie.use_lock(%lock14_0, "Acquire", %c1_ul5)
+    %c0_ul6 = arith.constant 0 : i32
+    aie.use_lock(%lock15_0, "Acquire", %c0_ul6)
     func.call @do_sieve(%buf14_0, %buf15_0) : (memref<256xi32>, memref<256xi32>) -> ()
-    aie.use_lock(%lock14_0, "Release", 0)
-    aie.use_lock(%lock15_0, "Release", 1)
+    %c0_ul7 = arith.constant 0 : i32
+    aie.use_lock(%lock14_0, "Release", %c0_ul7)
+    %c1_ul8 = arith.constant 1 : i32
+    aie.use_lock(%lock15_0, "Release", %c1_ul8)
     aie.end
   }
   %core16 = aie.core(%tile16) {
-    aie.use_lock(%lock15_0, "Acquire", 1)
-    aie.use_lock(%lock16_0, "Acquire", 0)
+    %c1_ul9 = arith.constant 1 : i32
+    aie.use_lock(%lock15_0, "Acquire", %c1_ul9)
+    %c0_ul10 = arith.constant 0 : i32
+    aie.use_lock(%lock16_0, "Acquire", %c0_ul10)
     func.call @do_sieve(%buf15_0, %buf16_0) : (memref<256xi32>, memref<256xi32>) -> ()
-    aie.use_lock(%lock15_0, "Release", 0)
-    aie.use_lock(%lock16_0, "Release", 1)
+    %c0_ul11 = arith.constant 0 : i32
+    aie.use_lock(%lock15_0, "Release", %c0_ul11)
+    %c1_ul12 = arith.constant 1 : i32
+    aie.use_lock(%lock16_0, "Release", %c1_ul12)
     aie.end
   }
   

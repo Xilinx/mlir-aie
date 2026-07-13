@@ -14,7 +14,8 @@ module @test {
   %lock = aie.lock(%t2, 3) { sym_name = "lock1" }
 
   func.func @task3() -> () {
-    aie.use_lock(%lock, "Acquire", 1)
+    %c1_ul0 = arith.constant 1 : i32
+    aie.use_lock(%lock, "Acquire", %c1_ul0)
     return
   }
 }

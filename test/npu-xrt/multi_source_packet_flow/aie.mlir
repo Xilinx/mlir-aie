@@ -61,13 +61,15 @@ module {
       %c1 = arith.constant 1 : index
       %c8 = arith.constant 8 : index
       %c1_i32 = arith.constant 1 : i32
-      aie.use_lock(%prod_lock_2, AcquireGreaterEqual, 1)
+      %c1_ul0 = arith.constant 1 : i32
+      aie.use_lock(%prod_lock_2, AcquireGreaterEqual, %c1_ul0)
       scf.for %i = %c0 to %c8 step %c1 {
         %i_i32 = arith.index_cast %i : index to i32
         %val = arith.addi %i_i32, %c1_i32 : i32
         memref.store %val, %buf_2[%i] : memref<8xi32>
       }
-      aie.use_lock(%cons_lock_2, Release, 1)
+      %c1_ul1 = arith.constant 1 : i32
+      aie.use_lock(%cons_lock_2, Release, %c1_ul1)
       aie.end
     }
 
@@ -77,13 +79,15 @@ module {
       %c1 = arith.constant 1 : index
       %c8 = arith.constant 8 : index
       %c101_i32 = arith.constant 101 : i32
-      aie.use_lock(%prod_lock_3, AcquireGreaterEqual, 1)
+      %c1_ul2 = arith.constant 1 : i32
+      aie.use_lock(%prod_lock_3, AcquireGreaterEqual, %c1_ul2)
       scf.for %i = %c0 to %c8 step %c1 {
         %i_i32 = arith.index_cast %i : index to i32
         %val = arith.addi %i_i32, %c101_i32 : i32
         memref.store %val, %buf_3[%i] : memref<8xi32>
       }
-      aie.use_lock(%cons_lock_3, Release, 1)
+      %c1_ul3 = arith.constant 1 : i32
+      aie.use_lock(%cons_lock_3, Release, %c1_ul3)
       aie.end
     }
 
@@ -93,9 +97,11 @@ module {
     %mem_0_2 = aie.mem(%tile_0_2) {
       %0 = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
-      aie.use_lock(%cons_lock_2, AcquireGreaterEqual, 1)
+      %c1_ul4 = arith.constant 1 : i32
+      aie.use_lock(%cons_lock_2, AcquireGreaterEqual, %c1_ul4)
       aie.dma_bd(%buf_2 : memref<8xi32>, 0, 8) {packet = #aie.packet_info<pkt_id = 0, pkt_type = 0>}
-      aie.use_lock(%prod_lock_2, Release, 1)
+      %c1_ul5 = arith.constant 1 : i32
+      aie.use_lock(%prod_lock_2, Release, %c1_ul5)
       aie.next_bd ^bd0
     ^end:
       aie.end
@@ -105,9 +111,11 @@ module {
     %mem_0_3 = aie.mem(%tile_0_3) {
       %0 = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
-      aie.use_lock(%cons_lock_3, AcquireGreaterEqual, 1)
+      %c1_ul6 = arith.constant 1 : i32
+      aie.use_lock(%cons_lock_3, AcquireGreaterEqual, %c1_ul6)
       aie.dma_bd(%buf_3 : memref<8xi32>, 0, 8) {packet = #aie.packet_info<pkt_id = 0, pkt_type = 0>}
-      aie.use_lock(%prod_lock_3, Release, 1)
+      %c1_ul7 = arith.constant 1 : i32
+      aie.use_lock(%prod_lock_3, Release, %c1_ul7)
       aie.next_bd ^bd0
     ^end:
       aie.end

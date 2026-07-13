@@ -21,19 +21,25 @@
 // CHECK:     %mem_1_3 = aie.mem(%tile_1_3) {
 // CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb3
-// CHECK:       aie.use_lock(%of_producer_stream_cons_prod_lock_0, AcquireGreaterEqual, 1)
+// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.use_lock(%of_producer_stream_cons_prod_lock_0, AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%of_producer_stream_cons_buff_0 : memref<16xi32>, 0, 16)
-// CHECK:       aie.use_lock(%of_producer_stream_cons_cons_lock_0, Release, 1)
+// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.use_lock(%of_producer_stream_cons_cons_lock_0, Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb2
 // CHECK:     ^bb2:  // pred: ^bb1
-// CHECK:       aie.use_lock(%of_producer_stream_cons_prod_lock_0, AcquireGreaterEqual, 1)
+// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.use_lock(%of_producer_stream_cons_prod_lock_0, AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%of_producer_stream_cons_buff_1 : memref<16xi32>, 0, 16)
-// CHECK:       aie.use_lock(%of_producer_stream_cons_cons_lock_0, Release, 1)
+// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.use_lock(%of_producer_stream_cons_cons_lock_0, Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb3
 // CHECK:     ^bb3:  // pred: ^bb2
-// CHECK:       aie.use_lock(%of_producer_stream_cons_prod_lock_0, AcquireGreaterEqual, 1)
+// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.use_lock(%of_producer_stream_cons_prod_lock_0, AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%of_producer_stream_cons_buff_2 : memref<16xi32>, 0, 16)
-// CHECK:       aie.use_lock(%of_producer_stream_cons_cons_lock_0, Release, 1)
+// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.use_lock(%of_producer_stream_cons_cons_lock_0, Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb1
 // CHECK:     ^bb4:  // pred: ^bb0
 // CHECK:       aie.end

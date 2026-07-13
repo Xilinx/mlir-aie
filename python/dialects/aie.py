@@ -61,6 +61,7 @@ from ..ir import (
     Block,
     BlockList,
     DenseElementsAttr,
+    DenseI32ArrayAttr,
     DictAttr,
     FunctionType,
     InsertionPoint,
@@ -78,6 +79,25 @@ from ..ir import (
 # Comes from _aie
 register_dialect(get_dialect_registry())
 assert _cext.globals._check_dialect_module_loaded("aie")
+
+# The generated `use_lock` builder takes the lock value as an SSA i32 operand.
+# Wrap it so callers may still pass a plain Python int (materialized as an
+# arith.constant) or omit the value entirely (defaults to 1), while also
+# accepting a Value for runtime-parameterized lock values.
+from ._aie_ops_gen import use_lock as _use_lock
+
+
+def use_lock(
+    lock, action, value=None, *, blocking=None, acq_en=None, loc=None, ip=None
+):
+    if value is None:
+        value = 1
+    if isinstance(value, int):
+        value = constant(value, T.i32())
+    return _use_lock(
+        lock, action, value, blocking=blocking, acq_en=acq_en, loc=loc, ip=ip
+    )
+
 
 # Included in aie instead of aiex to avoid circular imports, as buffer uses this
 from ._aiex_ops_gen import NpuWriteRTPOp
@@ -548,6 +568,12 @@ class object_fifo(ObjectFifoCreateOp):
         int_stream_port = IntegerAttr.get(T.i32(), stream_port)
         self.attributes["aie_stream"] = int_stream_end
         self.attributes["aie_stream_port"] = int_stream_port
+
+    def set_prod_dma_channel(self, channel):
+        self.attributes["prod_dma_channel"] = IntegerAttr.get(T.i32(), channel)
+
+    def set_cons_dma_channels(self, channels):
+        self.attributes["cons_dma_channels"] = DenseI32ArrayAttr.get(list(channels))
 
 
 # Create an aie objectFifo_link between input and output objectFifos.

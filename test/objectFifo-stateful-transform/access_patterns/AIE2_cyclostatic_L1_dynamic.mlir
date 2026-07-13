@@ -15,9 +15,11 @@
 // Consumer pattern {1,2,1} over a depth-4 fifo: each acquire resolves its buffer
 // through a runtime index_switch (the hallmark of dynamic lowering).
 // CHECK:      %core_2_3 = aie.core
-// CHECK:        aie.use_lock(%{{.*}}, AcquireGreaterEqual, 1)
+// CHECK:        %{{.*}} = arith.constant 1 : i32
+// CHECK:        aie.use_lock(%{{.*}}, AcquireGreaterEqual, %{{.*}})
 // CHECK:        scf.index_switch
-// CHECK:        aie.use_lock(%{{.*}}, AcquireGreaterEqual, 2)
+// CHECK:        %{{.*}} = arith.constant 2 : i32
+// CHECK:        aie.use_lock(%{{.*}}, AcquireGreaterEqual, %{{.*}})
 // CHECK:        scf.index_switch
 // CHECK:        scf.index_switch
 // CHECK:        aie.end

@@ -16,8 +16,10 @@ module @test {
   %mem13 = aie.mem(%t1) {
     %dma0 = aie.dma_start("MM2S", 0, ^bd0, ^end)
     ^bd0:
-      aie.use_lock(%lock, "Acquire", 1)
-      aie.use_lock(%lock, "Release", 0)
+      %c1_ul0 = arith.constant 1 : i32
+      aie.use_lock(%lock, "Acquire", %c1_ul0)
+      %c0_ul1 = arith.constant 0 : i32
+      aie.use_lock(%lock, "Release", %c0_ul1)
       aie.next_bd ^end // point to the next BD, or termination
     ^end:
       aie.end

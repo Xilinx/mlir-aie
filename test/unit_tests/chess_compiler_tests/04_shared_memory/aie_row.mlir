@@ -31,8 +31,10 @@ aie.device(xcvc1902) {
   %lock33_7 = aie.lock(%tile33, 7) { sym_name = "output_lock" } // output buffer lock
 
   %core13 = aie.core(%tile23) {
-    aie.use_lock(%lock23_3, "Acquire", 1) // acquire for read(e.g. input ping)
-    aie.use_lock(%lock23_5, "Acquire", 0) // acquire for write
+    %c1_ul0 = arith.constant 1 : i32
+    aie.use_lock(%lock23_3, "Acquire", %c1_ul0) // acquire for read(e.g. input ping)
+    %c0_ul1 = arith.constant 0 : i32
+    aie.use_lock(%lock23_5, "Acquire", %c0_ul1) // acquire for write
     %idx1 = arith.constant 3 : index
     %val1 = memref.load %buf13_0[%idx1] : memref<256xi32>
     %2    = arith.addi %val1, %val1 : i32
@@ -41,15 +43,19 @@ aie.device(xcvc1902) {
     %5 = arith.addi %4, %val1 : i32
     %idx2 = arith.constant 5 : index
     memref.store %5, %buf13_1[%idx2] : memref<256xi32>
-    aie.use_lock(%lock23_3, "Release", 0) // release for write
-    aie.use_lock(%lock23_5, "Release", 1) // release for read
+    %c0_ul2 = arith.constant 0 : i32
+    aie.use_lock(%lock23_3, "Release", %c0_ul2) // release for write
+    %c1_ul3 = arith.constant 1 : i32
+    aie.use_lock(%lock23_5, "Release", %c1_ul3) // release for read
     aie.end
   }
 
 
   %core33 = aie.core(%tile33) {
-  aie.use_lock(%lock23_5, "Acquire", 1) // acquire for read(e.g. input ping)
-    aie.use_lock(%lock33_7, "Acquire", 0) // acquire for write
+  %c1_ul4 = arith.constant 1 : i32
+  aie.use_lock(%lock23_5, "Acquire", %c1_ul4) // acquire for read(e.g. input ping)
+    %c0_ul5 = arith.constant 0 : i32
+    aie.use_lock(%lock33_7, "Acquire", %c0_ul5) // acquire for write
     %idx1 = arith.constant 3 : index
     %val1 = memref.load %buf13_1[%idx1] : memref<256xi32>
     %2    = arith.addi %val1, %val1 : i32
@@ -58,8 +64,10 @@ aie.device(xcvc1902) {
     %5 = arith.addi %4, %val1 : i32
     %idx2 = arith.constant 5 : index
     memref.store %5, %buf33_0[%idx2] : memref<256xi32>
-    aie.use_lock(%lock23_5, "Release", 0) // release for write
-    aie.use_lock(%lock33_7, "Release", 1) // release for read
+    %c0_ul6 = arith.constant 0 : i32
+    aie.use_lock(%lock23_5, "Release", %c0_ul6) // release for write
+    %c1_ul7 = arith.constant 1 : i32
+    aie.use_lock(%lock33_7, "Release", %c1_ul7) // release for read
     aie.end
   }
 

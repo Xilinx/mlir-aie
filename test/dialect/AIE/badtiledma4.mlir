@@ -29,15 +29,18 @@ module @test {
         %dma3 = aie.dma_start("MM2S", 2, ^bd2, ^end)
       ^bd0:
         aie.dma_bd(%buf_l : memref<256xi32>, 0, 256)
-        aie.use_lock(%lock_e, Release, 1)
+        %c1_ul0 = arith.constant 1 : i32
+        aie.use_lock(%lock_e, Release, %c1_ul0)
         aie.next_bd ^bd0
       ^bd1:
         aie.dma_bd(%buf_l : memref<256xi32>, 0, 256)
-        aie.use_lock(%lock_l, Release, 1)
+        %c1_ul1 = arith.constant 1 : i32
+        aie.use_lock(%lock_l, Release, %c1_ul1)
         aie.next_bd ^bd1
       ^bd2:
         aie.dma_bd(%buf_l : memref<256xi32>, 0, 256)
-        aie.use_lock(%lock_n, Release, 1)
+        %c1_ul2 = arith.constant 1 : i32
+        aie.use_lock(%lock_n, Release, %c1_ul2)
         aie.next_bd ^bd2
       ^end:
         aie.end

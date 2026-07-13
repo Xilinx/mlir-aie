@@ -16,11 +16,15 @@ module @test_error_shimdma_multi_lock {
   aie.shim_dma(%t30) {
     aie.dma_start(MM2S, 0, ^bb1, ^end)
   ^bb1:
-    aie.use_lock(%l30_0, Acquire, 1)
+    %c1_ul0 = arith.constant 1 : i32
+    aie.use_lock(%l30_0, Acquire, %c1_ul0)
     // This should fail because only one state can be acquired in a ShimBd
-    aie.use_lock(%l30_1, Acquire, 1)
-    aie.use_lock(%l30_0, Release, 0)
-    aie.use_lock(%l30_1, Release, 0)
+    %c1_ul1 = arith.constant 1 : i32
+    aie.use_lock(%l30_1, Acquire, %c1_ul1)
+    %c0_ul2 = arith.constant 0 : i32
+    aie.use_lock(%l30_0, Release, %c0_ul2)
+    %c0_ul3 = arith.constant 0 : i32
+    aie.use_lock(%l30_1, Release, %c0_ul3)
     aie.next_bd ^end
   ^end:
     aie.end
