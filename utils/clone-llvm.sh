@@ -9,11 +9,14 @@
 # This script checks out LLVM.  We use this instead of a git submodule to avoid
 # excessive copies of the LLVM tree.
 #
+# As of the ROCm/llvm-project migration, LLVM is sourced from the ROCm fork
+# (github.com/ROCm/llvm-project) rather than upstream llvm/llvm-project.
+#
 ##===----------------------------------------------------------------------===##
 
 # The LLVM commit to use.
-LLVM_PROJECT_COMMIT=068c6c5c0c8a0555036a2ff09a99f486548e6e8d
-DATETIME=2026060107
+LLVM_PROJECT_COMMIT=46fcb339fb61119b337f973c7ca9e710a319fdd0
+DATETIME=2026071017
 WHEEL_VERSION=23.0.0.$DATETIME+${LLVM_PROJECT_COMMIT:0:8}
 
 ############################################################################################
@@ -43,7 +46,7 @@ if [ x"$1" == x--llvm-worktree ]; then
   )
 else
   # Fetch main first just to clone
-  git clone --depth 1 https://github.com/llvm/llvm-project.git llvm
+  git clone --depth 1 https://github.com/ROCm/llvm-project.git llvm
   (
     cd llvm
     # Then fetch the interesting part
