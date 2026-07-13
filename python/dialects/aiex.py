@@ -302,7 +302,7 @@ def shim_dma_bd(
         sizes=sizes,
         strides=strides,
         offset=offset,
-        len=transfer_len,
+        transfer_len=transfer_len,
         burst_length=burst_length,
         packet=packet,
         offset_parameter=offset_parameter,

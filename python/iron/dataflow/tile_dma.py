@@ -252,7 +252,7 @@ class TileDma(Resolvable):
                         if bd.offset:
                             bd_kwargs["offset"] = bd.offset
                         if bd.length is not None:
-                            bd_kwargs["len"] = bd.length
+                            bd_kwargs["transfer_len"] = bd.length
                         if bd.packet is not None:
                             bd_kwargs["packet"] = bd.packet
                         dma_bd(bd.buffer.op, **bd_kwargs)

@@ -111,7 +111,12 @@ def _split_i32_scalar(v):
     """Split a dma_bd offset/len argument into (operand, static_attr): a Python
     int becomes a compile-time attribute (no arith.constant materialized), an SSA
     Value becomes the runtime operand, and None leaves both unset. Mirrors the
-    operand-vs-attribute split sizes/strides already use."""
+    operand-vs-attribute split sizes/strides already use.
+
+    Contrast with ``_as_i32``: that helper always emits an ``arith.constant``
+    for integer inputs, which is correct for scalar ops whose operand IS an SSA
+    i32. Here a constant lands in the static_offset/static_len attribute instead,
+    so no constant op is materialized."""
     if v is None:
         return None, None
     if isinstance(v, (int, np.integer)):
@@ -124,16 +129,18 @@ def dma_bd(
     sizes: MixedValues | None = None,
     strides: MixedValues | None = None,
     offset=None,
-    len=None,
+    transfer_len=None,
     **kwargs,
 ):
     """User-facing aie.dma_bd builder with a single interleaved list per
     dimension-list, mirroring aiex.npu.dma_memcpy_nd.
 
     ``sizes`` and ``strides`` each accept one sequence where entries may be
-    Python ints (constant) or SSA Values (runtime).  ``offset`` and ``len``
-    accept ints or Values; a plain int lands in the static_offset/static_len
-    attribute while a Value becomes a runtime operand.
+    Python ints (constant) or SSA Values (runtime).  ``offset`` and
+    ``transfer_len`` accept ints or Values; a plain int lands in the
+    static_offset/static_len attribute while a Value becomes a runtime operand.
+    (``transfer_len`` maps to the op's ``len`` operand; the Python name avoids
+    shadowing the builtin and matches ``shim_dma_bd``.)
 
     Example::
 
@@ -145,7 +152,7 @@ def dma_bd(
     dyn_strides, _packed_strides, static_strides = _dispatch_mixed_values(strides or [])
 
     offset_operand, static_offset = _split_i32_scalar(offset)
-    len_operand, static_len = _split_i32_scalar(len)
+    len_operand, static_len = _split_i32_scalar(transfer_len)
 
     # Leave the static arrays unset (not empty) when there is no ND layout so
     # the optional attributes elide from the printed op.

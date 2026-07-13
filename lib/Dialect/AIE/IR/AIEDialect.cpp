@@ -2137,9 +2137,10 @@ void DMABDOp::buildWithConstants(mlir::OpBuilder &builder,
                                  BDPadLayoutArrayAttr padDims,
                                  PacketInfoAttr packet) {
   // Constant offset/len flow to the static_offset/static_len attributes (no
-  // arith.constant materialized). Pass them as attribute OpFoldResults.
-  mlir::OpFoldResult offsetOfr = builder.getI64IntegerAttr(offset);
-  mlir::OpFoldResult lenOfr = builder.getI64IntegerAttr(len);
+  // arith.constant materialized). Use i32 to match the AIEI32Attr type so
+  // splitScalarOfr's cast stays sign-exact for negative offsets.
+  mlir::OpFoldResult offsetOfr = builder.getI32IntegerAttr(offset);
+  mlir::OpFoldResult lenOfr = builder.getI32IntegerAttr(len);
 
   // Turn the outermost-first BDDimLayoutArrayAttr into all-constant
   // OpFoldResults and let buildMixed handle the decomposition.
