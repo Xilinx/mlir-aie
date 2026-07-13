@@ -3,94 +3,58 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 set(BOOTGEN_SOURCE ${PROJECT_SOURCE_DIR}/third_party/bootgen)
-set(libsources
-  cdo-alloc.c
-  cdo-binary.c
-  cdo-command.c
-  cdo-load.c
-  cdo-metadata.c
-  cdo-npi.c
-  cdo-overlay.c
-  cdo-raw.c
-  cdo-source.c
-  cJSON.c
-  authentication.cpp
-  authentication-versal.cpp
-  authentication-zynq.cpp
-  authentication-zynqmp.cpp
-  authkeys.cpp
-  authkeys-versal.cpp
-  bifoptions.cpp
-  bif.tab.cpp
-  bif.yy.cpp
-  binary.cpp
-  binary-versal.cpp
-  binfile.cpp
-  bitutils.cpp
-  bitutils-versal.cpp
-  bootheader.cpp
-  bootheader-versal.cpp
-  bootheader-zynq.cpp
-  bootheader-zynqmp.cpp
-  bootimage.cpp
-  bootimage-versal.cpp
-  bootimage-zynq.cpp
-  bootimage-zynqmp.cpp
-  checksum.cpp
-  checksum-versal.cpp
-  cmdoptions.tab.cpp
-  cmdoptions.yy.cpp
-  elftools.cpp
-  encryption.cpp
-  encryption-versal.cpp
-  encryption-versalnet.cpp
-  encryption-zynq.cpp
-  encryption-zynqmp.cpp
-  encryptutils.cpp
-  hash.cpp
-  imageheadertable.cpp
-  imageheadertable-versal.cpp
-  imageheadertable-zynq.cpp
-  imageheadertable-zynqmp.cpp
-  kdf.cpp
-  Keccak-compact.cpp
-  Keccak-compact-versal.cpp
-  logger.cpp
-  # main.cpp
-  mcsfile.cpp
-  options.cpp
-  outputfile.cpp
-  outputfile-versal.cpp
-  parsing.cpp
-  partition.cpp
-  partitionheadertable.cpp
-  partitionheadertable-versal.cpp
-  partitionheadertable-zynq.cpp
-  partitionheadertable-zynqmp.cpp
-  partition-versal.cpp
-  postprocess.cpp
-  readimage.cpp
-  readimage-versal.cpp
-  readimage-zynq.cpp
-  readimage-zynqmp.cpp
-  reginit.cpp
-  reginit.tab.cpp
-  reginit.yy.cpp
-  verifyimage-versal.cpp
-  verifyimage-zynqmp.cpp
-  bootgen_c_api.cpp)
-list(TRANSFORM libsources PREPEND ${BOOTGEN_SOURCE}/)
+
+# Upstream (xilinx_v2026.1) organizes sources per-architecture under
+# <component>/src with matching <component>/include headers, rather than the
+# single flat directory of older releases. Mirror upstream's own Makefile,
+# which globs each of these directories rather than listing files by name.
+set(bootgen_src_dirs
+  common
+  spartanup
+  versal
+  versal_2ve_2vm
+  zynq
+  zynqmp
+  utils)
+set(libsources)
+foreach(dir ${bootgen_src_dirs})
+  file(GLOB dir_sources ${BOOTGEN_SOURCE}/${dir}/src/*.cpp ${BOOTGEN_SOURCE}/${dir}/src/*.c)
+  list(APPEND libsources ${dir_sources})
+endforeach()
+# main.cpp holds the CLI entry point and is only used by the bootgen
+# executable below, not by bootgen-lib.
+list(REMOVE_ITEM libsources ${BOOTGEN_SOURCE}/common/src/main.cpp)
+# Pregenerated bison/flex grammar sources.
+list(APPEND libsources
+  ${BOOTGEN_SOURCE}/bisonflex/bif.tab.cpp
+  ${BOOTGEN_SOURCE}/bisonflex/bif.yy.cpp
+  ${BOOTGEN_SOURCE}/bisonflex/cmdoptions.tab.cpp
+  ${BOOTGEN_SOURCE}/bisonflex/cmdoptions.yy.cpp
+  ${BOOTGEN_SOURCE}/bisonflex/reginit.tab.cpp
+  ${BOOTGEN_SOURCE}/bisonflex/reginit.yy.cpp)
+
+set(bootgen_include_dirs
+  ${BOOTGEN_SOURCE}/bisonflex
+  ${BOOTGEN_SOURCE}/common/include
+  ${BOOTGEN_SOURCE}/spartanup/include
+  ${BOOTGEN_SOURCE}/versal/include
+  ${BOOTGEN_SOURCE}/versal_2ve_2vm/include
+  ${BOOTGEN_SOURCE}/zynq/include
+  ${BOOTGEN_SOURCE}/zynqmp/include
+  ${BOOTGEN_SOURCE}/utils/include
+  ${BOOTGEN_SOURCE}/lms-hash-sigs
+  ${BOOTGEN_SOURCE}/win_include)
 
 # malloc.h is deprecated and should not be used
 # https://stackoverflow.com/a/56463133
 # If you want to use malloc, then include stdlib.h
-file(READ ${BOOTGEN_SOURCE}/cdo-npi.c FILE_CONTENTS)
+file(READ ${BOOTGEN_SOURCE}/utils/src/cdo-npi.c FILE_CONTENTS)
 string(REPLACE "#include <malloc.h>" "" FILE_CONTENTS "${FILE_CONTENTS}")
-file(WRITE ${BOOTGEN_SOURCE}/cdo-npi.c "${FILE_CONTENTS}")
+file(WRITE ${BOOTGEN_SOURCE}/utils/src/cdo-npi.c "${FILE_CONTENTS}")
 
-file(READ ${BOOTGEN_SOURCE}/cdo-alloc.c FILE_CONTENTS)
+file(READ ${BOOTGEN_SOURCE}/utils/src/cdo-alloc.c FILE_CONTENTS)
 string(REPLACE "#include <malloc.h>" "" FILE_CONTENTS "${FILE_CONTENTS}")
-file(WRITE ${BOOTGEN_SOURCE}/cdo-alloc.c "${FILE_CONTENTS}")
+file(WRITE ${BOOTGEN_SOURCE}/utils/src/cdo-alloc.c "${FILE_CONTENTS}")
 
 
 find_package(OpenSSL REQUIRED)
@@ -101,10 +65,58 @@ else()
   message (FATAL_ERROR "OpenSSL Not found.")
 endif()
 
+find_package(Threads REQUIRED)
+
 # since we explicitly link OpenSSL::applink
-file(READ ${BOOTGEN_SOURCE}/main.cpp FILE_CONTENTS)
+file(READ ${BOOTGEN_SOURCE}/common/src/main.cpp FILE_CONTENTS)
 string(REPLACE "#include \"openssl/ms/applink.c\"" "" FILE_CONTENTS "${FILE_CONTENTS}")
-file(WRITE ${BOOTGEN_SOURCE}/main.cpp "${FILE_CONTENTS}")
+file(WRITE ${BOOTGEN_SOURCE}/common/src/main.cpp "${FILE_CONTENTS}")
+
+# Vendored LMS/HSS post-quantum hash-based signature library used by
+# upstream's newer secure-boot support. Built as a plain static library
+# rather than shelling out to its own Makefile (as upstream's build does).
+# hss_thread_single.c is an alternative to hss_thread_pthread.c (upstream
+# selects one or the other); we follow upstream's own Makefile and use the
+# pthread variant, so hss_thread_single.c is intentionally excluded.
+set(lms_hash_sigs_dir ${BOOTGEN_SOURCE}/lms-hash-sigs)
+add_library(bootgen-lms-hash-sigs STATIC
+  ${lms_hash_sigs_dir}/endian.c
+  ${lms_hash_sigs_dir}/fips202.c
+  ${lms_hash_sigs_dir}/hss.c
+  ${lms_hash_sigs_dir}/hss_alloc.c
+  ${lms_hash_sigs_dir}/hss_aux.c
+  ${lms_hash_sigs_dir}/hss_common.c
+  ${lms_hash_sigs_dir}/hss_compute.c
+  ${lms_hash_sigs_dir}/hss_derive.c
+  ${lms_hash_sigs_dir}/hss_generate.c
+  ${lms_hash_sigs_dir}/hss_keygen.c
+  ${lms_hash_sigs_dir}/hss_param.c
+  ${lms_hash_sigs_dir}/hss_reserve.c
+  ${lms_hash_sigs_dir}/hss_sign.c
+  ${lms_hash_sigs_dir}/hss_sign_inc.c
+  ${lms_hash_sigs_dir}/hss_thread_pthread.c
+  ${lms_hash_sigs_dir}/hss_verify.c
+  ${lms_hash_sigs_dir}/hss_verify_inc.c
+  ${lms_hash_sigs_dir}/hss_zeroize.c
+  ${lms_hash_sigs_dir}/lm_common.c
+  ${lms_hash_sigs_dir}/lm_ots_common.c
+  ${lms_hash_sigs_dir}/lm_ots_sign.c
+  ${lms_hash_sigs_dir}/lm_ots_verify.c
+  ${lms_hash_sigs_dir}/lm_verify.c
+  ${lms_hash_sigs_dir}/lms_hash.c
+  ${lms_hash_sigs_dir}/lms_keys.c
+  ${lms_hash_sigs_dir}/lms_sign.c
+  ${lms_hash_sigs_dir}/sha256.c)
+set_target_properties(bootgen-lms-hash-sigs PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(bootgen-lms-hash-sigs PRIVATE ${OPENSSL_INCLUDE_DIR})
+target_link_libraries(bootgen-lms-hash-sigs PRIVATE OpenSSL::Crypto Threads::Threads)
+if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
+  target_compile_options(bootgen-lms-hash-sigs PRIVATE
+    -Wno-deprecated-declarations
+    -Wno-sign-compare
+    -Wno-type-limits
+    -Wno-unused)
+endif()
 
 add_library(bootgen-lib STATIC ${libsources})
 # bootgen must be compiled with PIE/PIC, irrespective of the remainder of
@@ -144,22 +156,23 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
   target_compile_options(bootgen-lib PRIVATE /wd4996 /wd4840 /wd4005 /wd5033)
 endif()
 target_compile_options(bootgen-lib PRIVATE ${bootgen_warning_ignores})
-target_include_directories(bootgen-lib PRIVATE ${BOOTGEN_SOURCE} ${OPENSSL_INCLUDE_DIR})
+target_include_directories(bootgen-lib PRIVATE ${bootgen_include_dirs} ${OPENSSL_INCLUDE_DIR})
 # Make C API header available publicly
 target_include_directories(bootgen-lib PUBLIC
-  $<BUILD_INTERFACE:${BOOTGEN_SOURCE}>
+  $<BUILD_INTERFACE:${BOOTGEN_SOURCE}/common/include>
   $<INSTALL_INTERFACE:include>)
+target_link_libraries(bootgen-lib PRIVATE bootgen-lms-hash-sigs Threads::Threads)
 install(
   TARGETS bootgen-lib
   DESTINATION lib
   EXPORT bootgen-lib)
 install(
-  FILES ${BOOTGEN_SOURCE}/bootgen_c_api.h
+  FILES ${BOOTGEN_SOURCE}/common/include/bootgen_c_api.h
   DESTINATION include)
 
-add_executable(bootgen ${BOOTGEN_SOURCE}/main.cpp)
+add_executable(bootgen ${BOOTGEN_SOURCE}/common/src/main.cpp)
 set_target_properties(bootgen PROPERTIES POSITION_INDEPENDENT_CODE ON)
-target_include_directories(bootgen PUBLIC ${BOOTGEN_SOURCE} ${OPENSSL_INCLUDE_DIR}
+target_include_directories(bootgen PUBLIC ${bootgen_include_dirs} ${OPENSSL_INCLUDE_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}/include)
 target_compile_options(bootgen PRIVATE ${bootgen_warning_ignores})
 if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
