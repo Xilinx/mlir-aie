@@ -18,7 +18,8 @@ set(bootgen_src_dirs
   utils)
 set(libsources)
 foreach(dir ${bootgen_src_dirs})
-  file(GLOB dir_sources ${BOOTGEN_SOURCE}/${dir}/src/*.cpp ${BOOTGEN_SOURCE}/${dir}/src/*.c)
+  file(GLOB dir_sources CONFIGURE_DEPENDS
+    ${BOOTGEN_SOURCE}/${dir}/src/*.cpp ${BOOTGEN_SOURCE}/${dir}/src/*.c)
   list(APPEND libsources ${dir_sources})
 endforeach()
 # main.cpp holds the CLI entry point and is only used by the bootgen
@@ -75,10 +76,19 @@ file(WRITE ${BOOTGEN_SOURCE}/common/src/main.cpp "${FILE_CONTENTS}")
 # Vendored LMS/HSS post-quantum hash-based signature library used by
 # upstream's newer secure-boot support. Built as a plain static library
 # rather than shelling out to its own Makefile (as upstream's build does).
-# hss_thread_single.c is an alternative to hss_thread_pthread.c (upstream
-# selects one or the other); we follow upstream's own Makefile and use the
-# pthread variant, so hss_thread_single.c is intentionally excluded.
+#
+# This bootgen snapshot only vendors the pthread-based implementation of
+# lms-hash-sigs' threading abstraction (hss_thread_pthread.c); upstream's own
+# Makefile is Linux-only and doesn't need an alternative. On platforms
+# without real pthreads (MSVC), fall back to our own single-threaded
+# implementation of the same small API (hss_thread.h documents a 0/NULL
+# thread collection as a valid, non-threaded return).
 set(lms_hash_sigs_dir ${BOOTGEN_SOURCE}/lms-hash-sigs)
+if(CMAKE_USE_PTHREADS_INIT)
+  set(bootgen_hss_thread_source ${lms_hash_sigs_dir}/hss_thread_pthread.c)
+else()
+  set(bootgen_hss_thread_source ${CMAKE_CURRENT_SOURCE_DIR}/hss_thread_single.c)
+endif()
 add_library(bootgen-lms-hash-sigs STATIC
   ${lms_hash_sigs_dir}/endian.c
   ${lms_hash_sigs_dir}/fips202.c
@@ -94,7 +104,7 @@ add_library(bootgen-lms-hash-sigs STATIC
   ${lms_hash_sigs_dir}/hss_reserve.c
   ${lms_hash_sigs_dir}/hss_sign.c
   ${lms_hash_sigs_dir}/hss_sign_inc.c
-  ${lms_hash_sigs_dir}/hss_thread_pthread.c
+  ${bootgen_hss_thread_source}
   ${lms_hash_sigs_dir}/hss_verify.c
   ${lms_hash_sigs_dir}/hss_verify_inc.c
   ${lms_hash_sigs_dir}/hss_zeroize.c
@@ -109,7 +119,10 @@ add_library(bootgen-lms-hash-sigs STATIC
   ${lms_hash_sigs_dir}/sha256.c)
 set_target_properties(bootgen-lms-hash-sigs PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(bootgen-lms-hash-sigs PRIVATE ${OPENSSL_INCLUDE_DIR})
-target_link_libraries(bootgen-lms-hash-sigs PRIVATE OpenSSL::Crypto Threads::Threads)
+# PUBLIC: bootgen-lib links this privately, but as a static library its own
+# consumers (the bootgen executable) still need OpenSSL::Crypto/Threads on
+# their final link line to resolve symbols pulled in transitively.
+target_link_libraries(bootgen-lms-hash-sigs PUBLIC OpenSSL::Crypto Threads::Threads)
 if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
   target_compile_options(bootgen-lms-hash-sigs PRIVATE
     -Wno-deprecated-declarations
@@ -161,7 +174,9 @@ target_include_directories(bootgen-lib PRIVATE ${bootgen_include_dirs} ${OPENSSL
 target_include_directories(bootgen-lib PUBLIC
   $<BUILD_INTERFACE:${BOOTGEN_SOURCE}/common/include>
   $<INSTALL_INTERFACE:include>)
-target_link_libraries(bootgen-lib PRIVATE bootgen-lms-hash-sigs Threads::Threads)
+# PUBLIC for the same reason as bootgen-lms-hash-sigs above: bootgen-lib is
+# static, so its own consumers need these on their link line too.
+target_link_libraries(bootgen-lib PUBLIC bootgen-lms-hash-sigs Threads::Threads)
 install(
   TARGETS bootgen-lib
   DESTINATION lib
