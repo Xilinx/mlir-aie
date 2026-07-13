@@ -1,0 +1,246 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# Validates the ROCm-built mlir_aie wheel (see the rocm-mlir-distro release,
+# published by mlirDistroRocm.yml) against real Ryzen AI NPU hardware, before
+# it's promoted into the production mlir-distro pipeline (see the
+# rocm-llvm-distro-migration PR, which should not merge until this passes).
+#
+# Builds mlir-aie against the current rocm-mlir-distro release, pip-installs
+# the resulting wheel exactly as an end user following the README would, and
+# runs the programming_examples/ Makefile-driven examples on self-hosted NPU
+# runners. test/ and programming_guide/ are intentionally out of scope here:
+# their lit suites need a CMake-configured lit.site.cfg.py, which a bare pip
+# install can't produce — see buildAndTestRyzenAI.yml for the from-source
+# path that does cover them.
+
+name: Test ROCm mlir_aie wheel on Ryzen AI
+
+permissions:
+  contents: read
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/testRocmWheelOnRyzenAI.yml'
+      - 'utils/run_programming_examples_from_wheel.py'
+  workflow_dispatch:
+    inputs:
+      AIE_COMMIT:
+        description: 'mlir-aie commit to build (default: HEAD of main)'
+        type: string
+        required: false
+        default: ''
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.event_name }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+
+  build_wheel:
+    name: Build mlir-aie against rocm-mlir-distro (ubuntu x86_64 rtti=ON)
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: set ENV
+        shell: bash
+        run: |
+          echo "PIP_FIND_LINKS=https://github.com/Xilinx/mlir-aie/releases/expanded_assets/rocm-mlir-distro" | tee -a $GITHUB_ENV
+          echo "ENABLE_RTTI=ON" | tee -a $GITHUB_ENV
+
+      - name: Checkout actions
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          sparse-checkout: |
+            .github/actions
+            python/requirements_dev.lock
+          sparse-checkout-cone-mode: false
+
+      - uses: ./.github/actions/setup_base
+        id: setup_base
+        with:
+          MATRIX_OS: ubuntu-22.04
+          MATRIX_ARCH: x86_64
+
+      - uses: ./.github/actions/setup_ccache
+        id: setup_ccache
+        with:
+          MATRIX_OS: ubuntu-22.04
+          MATRIX_ARCH: x86_64
+          EXTRA_KEY: test-rocm-wheel-ryzenai-rtti-ON
+
+      - name: Shift workspace root
+        id: workspace_root
+        shell: bash
+        working-directory: ${{ env.TEMP }}
+        run: |
+          WORKSPACE_ROOT="${{ steps.setup_base.outputs.WORKSPACE_ROOT }}/utils/mlir_aie_wheels"
+          echo "WORKSPACE_ROOT=$WORKSPACE_ROOT" | tee -a $GITHUB_OUTPUT
+
+      - name: Resolve AIE commit
+        id: aie_commit
+        shell: bash
+        run: |
+          sudo apt-get install -y -q jq
+          if [ -n "${{ inputs.AIE_COMMIT }}" ]; then
+            AIE_PROJECT_COMMIT="${{ inputs.AIE_COMMIT }}"
+          else
+            AIE_PROJECT_COMMIT=$(curl -s \
+              https://api.github.com/repos/Xilinx/mlir-aie/commits/main \
+              | jq -r '.sha[:8]')
+          fi
+          echo "AIE_PROJECT_COMMIT=$AIE_PROJECT_COMMIT" | tee -a $GITHUB_OUTPUT
+          echo "DATETIME=$(date +"%Y%m%d%H")" | tee -a $GITHUB_OUTPUT
+
+      # Wheel names look like: mlir-<ver>.<datetime>+<8-char-commit>-py3-none-linux_x86_64.whl
+      - name: Resolve ROCm LLVM commit from release assets
+        id: resolve_rocm
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          ASSET=$(gh release view rocm-mlir-distro \
+            --repo Xilinx/mlir-aie \
+            --json assets \
+            --jq '[.assets[] | select(.name | test("^mlir-.*x86_64.*\\.whl"))] | sort_by(.updatedAt) | last | .name')
+
+          if [ -z "$ASSET" ] || [ "$ASSET" == "null" ]; then
+            echo "::error::No mlir linux_x86_64 wheel found in rocm-mlir-distro release."
+            exit 1
+          fi
+
+          ROCM_COMMIT=$(echo "$ASSET" | grep -oP '(?<=\+)[0-9a-f]{8}')
+          ROCM_DATETIME=$(echo "$ASSET" | grep -oP '\.\K[0-9]{10}(?=\+)')
+
+          if [ -z "$ROCM_COMMIT" ]; then
+            echo "::error::Could not parse commit hash from asset name: $ASSET"
+            exit 1
+          fi
+
+          echo "rocm_commit=$ROCM_COMMIT" | tee -a $GITHUB_OUTPUT
+          echo "rocm_datetime=${ROCM_DATETIME:-unknown}" | tee -a $GITHUB_OUTPUT
+          echo "Resolved from $ASSET: commit=$ROCM_COMMIT datetime=$ROCM_DATETIME"
+
+      - name: Get AIE
+        working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+        shell: bash
+        run: |
+          git clone --recursive https://github.com/Xilinx/mlir-aie.git
+          pushd mlir-aie
+          git reset --hard ${{ steps.aie_commit.outputs.AIE_PROJECT_COMMIT }}
+          git submodule update
+          popd
+
+      # The checked-in clone-llvm.sh pins whatever mlir-distro is on at this
+      # commit, not the ROCm fork commit we're validating here. Repoint the
+      # copy at the resolved rocm-mlir-distro asset so download_mlir.sh's
+      # `pip download mlir==<version>` matches a wheel that actually exists.
+      - name: Copy and patch clone-llvm.sh for wheel build
+        working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+        shell: bash
+        run: |
+          cp ../clone-llvm.sh .
+
+          ROCM_COMMIT="${{ steps.resolve_rocm.outputs.rocm_commit }}"
+          ROCM_DATETIME="${{ steps.resolve_rocm.outputs.rocm_datetime }}"
+
+          BEFORE=$(md5sum clone-llvm.sh)
+          sed -i "s|^LLVM_PROJECT_COMMIT=.*|LLVM_PROJECT_COMMIT=${ROCM_COMMIT}|" clone-llvm.sh
+          sed -i "s|^DATETIME=.*|DATETIME=${ROCM_DATETIME}|" clone-llvm.sh
+          AFTER=$(md5sum clone-llvm.sh)
+          if [ "$BEFORE" == "$AFTER" ]; then
+            echo "::error::sed did not update clone-llvm.sh — check the file structure."
+            exit 1
+          fi
+
+          grep -E '^(LLVM_PROJECT_COMMIT|DATETIME)=' clone-llvm.sh
+
+      - name: Compute wheel version
+        id: wheel_version
+        shell: bash
+        working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+        run: |
+          set -euo pipefail
+          VERSION=$(AIE_WHEEL_KEEP_LOCAL=1 python _version_helper.py)
+          echo "version=$VERSION" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Build mlir-aie wheel
+        shell: bash
+        working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+        run: |
+          export PIP_NO_BUILD_ISOLATION=false
+
+          CIBW_ARCHS=x86_64 \
+          CMAKE_GENERATOR=Ninja \
+          DATETIME=${{ steps.aie_commit.outputs.DATETIME }} \
+          HOST_CCACHE_DIR=${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }} \
+          CIBW_CONTAINER_ENGINE_ARGS="-v ${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }}:/host${{ steps.setup_ccache.outputs.HOST_CCACHE_DIR }}" \
+          AIE_PROJECT_COMMIT=${{ steps.aie_commit.outputs.AIE_PROJECT_COMMIT }} \
+          AIE_WHEEL_KEEP_LOCAL=1 \
+          AIE_WHEEL_VERSION=${{ steps.wheel_version.outputs.version }} \
+          MATRIX_OS=ubuntu-22.04 \
+          PARALLEL_LEVEL=2 \
+          cibuildwheel --output-dir wheelhouse
+
+      - name: Download ccache from container
+        if: success() || failure()
+        working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+        shell: bash
+        run: |
+          ccache -s
+          HOST_CCACHE_DIR="$(ccache --get-config cache_dir)"
+          rm -rf $HOST_CCACHE_DIR
+          mv ./wheelhouse/.ccache $HOST_CCACHE_DIR
+
+      - name: Rename wheel
+        working-directory: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}
+        shell: bash
+        run: rename 's/cp312-cp312/py3-none/' wheelhouse/mlir_aie*whl
+
+      - name: Upload wheel artifact
+        if: success()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7
+        with:
+          path: ${{ steps.workspace_root.outputs.WORKSPACE_ROOT }}/wheelhouse/mlir_aie*py3-none*.whl
+          name: rocm-wheel-ryzenai-validation
+
+  test_examples_on_hardware:
+    name: Run programming_examples (${{ matrix.runner_type }})
+    needs: build_wheel
+    runs-on: ${{ matrix.runner_type }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner_type: [aie2-4col, aie2p-8col]
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      - name: Print hostname
+        run: hostname
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8
+        with:
+          name: rocm-wheel-ryzenai-validation
+          path: dist
+
+      # Installs exactly like a real IRON user would (README "Install IRON"
+      # steps), not a from-source build — this job validates the distributed
+      # wheel artifact itself.
+      - name: Install wheel + Peano into a fresh venv
+        shell: bash
+        run: |
+          python3 -m venv wheel-test-venv
+          source wheel-test-venv/bin/activate
+          python3 -m pip install --upgrade pip
+          python3 -m pip install dist/mlir_aie*py3-none*.whl
+          python3 -m pip install -r utils/peano-requirements.txt
+
+      - name: Run programming_examples against the wheel
+        shell: bash
+        run: |
+          [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
+          source wheel-test-venv/bin/activate
+          source utils/env_setup.sh
+          python3 utils/run_programming_examples_from_wheel.py --runner-type ${{ matrix.runner_type }}
