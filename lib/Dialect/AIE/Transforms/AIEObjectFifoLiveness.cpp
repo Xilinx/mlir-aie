@@ -15,17 +15,31 @@
 // is a static, structural deadlock: the IR compiles clean and then hangs the
 // NPU at runtime.
 //
-// This pass builds the objectFIFO data + back-pressure dependency graph, finds
-// cyclic strongly-connected components (Tarjan), and applies the validated SDF
-// model PER coupled-multicast group (grouped by name base) so an unrelated
-// cycle elsewhere in the device cannot inflate a group's demand:
+// This pass builds the objectFIFO data + back-pressure dependency graph. The
+// graph is UNDIRECTED (a shared tile couples its producer and consumer fifos
+// with data and back-pressure edges in both directions), so cycle detection
+// degenerates to connected components: any fifo that shares a tile with another
+// sits in a back-pressure loop. We therefore group fifos with a union-find and
+// treat a component of size > 1 as a cycle. The validated SDF model is then
+// applied PER coupled-multicast group so an unrelated cycle elsewhere in the
+// device cannot inflate a group's demand:
 //
 //   demand   = array_fan * T          (array_fan = the group's multicast
-//                                        fan-out, summed across the SCCs it
-//                                        spans; T = max repeat_count among the
-//                                        fifos in those SCCs)
+//                                        fan-out, summed across the components
+//                                        it spans; T = max repeat_count among
+//                                        the fifos in those components)
 //   slack    = 2 * depth              (depth = min depth in the group)
 //   DEADLOCK iff  T >= 2  AND  depth > 0  AND  demand > slack
+//
+// Coupling (which fifos are halves of ONE logical broadcast tensor) is a
+// property the IR does not carry: the halves can live on different, unlinked
+// MemTiles, so neither aie.objectfifo.link nor a shared producer tile
+// identifies them -- only their shared name base does (see nameBase). Because a
+// name is a weak signal, the grouping is gated on structural agreement
+// (identical element type, depth and repeat_count, and disjoint consumer
+// tiles); a fifo that only shares the base name is analyzed on its own rather
+// than folded in. A durable fix would be a first-class coupling attribute on
+// the frontend ops; that is a tracked follow-up.
 //
 // The T >= 2 replay guard avoids false positives on single-trip broadcasts
 // (which fan out once and drain monotonically). The analysis is sound for this
@@ -44,11 +58,11 @@
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/SmallVector.h"
+#include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
 
 #include <algorithm>
 #include <functional>
-#include <map>
 #include <set>
 #include <string>
 #include <vector>
@@ -92,6 +106,7 @@ struct AIEObjectFifoLivenessPass
       SmallVector<mlir::Value> cons;
       long repeat;
       StringRef name;
+      mlir::Type elemTy; // coupling signature (see nameBase gating below)
     };
     SmallVector<F> fifos;
 
@@ -112,6 +127,7 @@ struct AIEObjectFifoLivenessPass
       f.repeat = 1;
       if (auto rc = ofo.getRepeatCount())
         f.repeat = *rc;
+      f.elemTy = ofo.getElemType();
       fifos.push_back(f);
     });
 
@@ -142,75 +158,106 @@ struct AIEObjectFifoLivenessPass
         }
     }
 
-    // find_cycles: Tarjan SCC; assign an SCC id to every node in a cycle
-    // (component of size > 1). Nodes not in any cycle keep sccId = -1.
-    SmallVector<int> idx(n, -1), low(n, 0);
-    SmallVector<char> onStack(n, 0);
-    SmallVector<unsigned> stk;
-    int counter = 0;
-    SmallVector<int> sccId(n, -1);
-    int sccCount = 0;
-    std::function<void(unsigned)> dfs = [&](unsigned v) {
-      idx[v] = low[v] = counter++;
-      stk.push_back(v);
-      onStack[v] = 1;
-      for (unsigned w : adj[v]) {
-        if (idx[w] == -1) {
-          dfs(w);
-          low[v] = std::min(low[v], low[w]);
-        } else if (onStack[w]) {
-          low[v] = std::min(low[v], idx[w]);
-        }
+    // find_cycles: the graph is undirected, so a directed SCC search would just
+    // recover connected components (every shared-tile edge is a 2-cycle). Use a
+    // union-find and treat a component of size > 1 as a cycle; a lone fifo that
+    // shares no tile is acyclic. sccId is the component root for cyclic nodes
+    // and -1 otherwise (the downstream group logic only keys off sccId
+    // identity, so a root index is as good as a dense SCC id).
+    SmallVector<int> uf(n);
+    for (unsigned i = 0; i < n; ++i)
+      uf[i] = i;
+    std::function<int(int)> find = [&](int x) {
+      while (uf[x] != x) {
+        uf[x] = uf[uf[x]]; // path halving
+        x = uf[x];
       }
-      if (low[v] == idx[v]) {
-        SmallVector<unsigned> comp;
-        while (true) {
-          unsigned w = stk.back();
-          stk.pop_back();
-          onStack[w] = 0;
-          comp.push_back(w);
-          if (w == v)
-            break;
-        }
-        if (comp.size() > 1) {
-          for (unsigned w : comp)
-            sccId[w] = sccCount;
-          ++sccCount;
-        }
-      }
+      return x;
     };
     for (unsigned v = 0; v < n; ++v)
-      if (idx[v] == -1)
-        dfs(v);
+      for (unsigned w : adj[v])
+        uf[find(v)] = find(w);
+    SmallVector<int> compSize(n, 0);
+    for (unsigned i = 0; i < n; ++i)
+      ++compSize[find(i)];
+    SmallVector<int> sccId(n, -1);
+    for (unsigned i = 0; i < n; ++i)
+      if (compSize[find(i)] > 1)
+        sccId[i] = find(i);
 
     // SDF check, scoped PER coupled-multicast group -- NOT globally. A coupled
-    // broadcast is a name-base group of cyclic multicast objectFIFOs (e.g.
-    // memW1_0 + memW1_1 = one weight broadcast, split across MemTiles); the
-    // halves can land in different SCCs, so the group -- not the SCC -- is the
-    // unit of coupling, and array_fan SUMS the group's fan-out across the SCCs
-    // it spans. The trip-count T is taken ONLY from the SCC(s) this group lives
-    // in, so an unrelated high-repeat_count (or a wide broadcast) elsewhere in
-    // the device cannot inflate this group's demand and false-positive.
+    // broadcast is a group of cyclic multicast objectFIFOs that are one logical
+    // broadcast tensor (e.g. memW1_0 + memW1_1 = one weight broadcast, split
+    // across MemTiles); the halves can land in different components, so the
+    // group
+    // -- not the component -- is the unit of coupling, and array_fan SUMS the
+    // group's fan-out across the components it spans. The trip-count T is taken
+    // ONLY from the component(s) this group lives in, so an unrelated
+    // high-repeat_count (or a wide broadcast) elsewhere in the device cannot
+    // inflate this group's demand and false-positive.
+    //
+    // The IR carries no signal for "these fifos are one logical tensor", so the
+    // grouping keys off the shared name base (nameBase). Because a name is a
+    // weak signal, it is GATED on structural agreement before two fifos are
+    // coupled: identical element type, depth and repeat_count, and DISJOINT
+    // consumer tiles (two halves of a broadcast reach different cores). A fifo
+    // that shares the base name but fails any gate is analyzed as its own
+    // standalone group rather than folded in -- so a stray name collision
+    // cannot fabricate a coupling, and the summation is never applied to fifos
+    // that are not actually halves.
     struct Group {
       long fan = 0, depth = 0;
-      bool haveDepth = false, haveRep = false;
       unsigned rep = 0;
+      std::string name;   // display name (nameBase of the representative)
+      mlir::Type elemTy;  // coupling signature: element type ...
+      long sigDepth = 0;  // ... depth ...
+      long sigRepeat = 0; // ... and repeat_count must all match to couple
+      llvm::DenseSet<mlir::Value> cons; // consumer tiles (must stay disjoint)
       std::set<int> sccs;
     };
-    std::map<std::string, Group> groups;
+    SmallVector<Group> groupList;
+    llvm::StringMap<unsigned>
+        groupIdx; // name base -> owning group in groupList
     for (unsigned i = 0; i < n; ++i) {
       if (sccId[i] < 0 || fifos[i].cons.size() <= 1)
         continue; // only a cyclic multicast couples a broadcast
-      Group &g = groups[nameBase(fifos[i].name).str()];
-      g.fan += (long)fifos[i].cons.size();
-      g.depth =
-          g.haveDepth ? std::min(g.depth, fifos[i].depth) : fifos[i].depth;
-      g.haveDepth = true;
-      g.sccs.insert(sccId[i]);
-      if (!g.haveRep) {
-        g.rep = i;
-        g.haveRep = true;
+      StringRef base = nameBase(fifos[i].name);
+      int slot = -1;
+      auto it = groupIdx.find(base);
+      if (it != groupIdx.end()) {
+        Group &cand = groupList[it->second];
+        bool consistent = cand.elemTy == fifos[i].elemTy &&
+                          cand.sigDepth == fifos[i].depth &&
+                          cand.sigRepeat == fifos[i].repeat;
+        for (mlir::Value c : fifos[i].cons)
+          if (consistent && cand.cons.contains(c))
+            consistent = false;
+        if (consistent)
+          slot = it->second;
       }
+      if (slot < 0) {
+        // First fifo for this base, or a same-name fifo that failed a gate:
+        // open a fresh group. Only the first owns the name-base map slot; a
+        // later mismatching fifo becomes an unindexed standalone group.
+        Group g;
+        g.rep = i;
+        g.name = base.str();
+        g.elemTy = fifos[i].elemTy;
+        g.sigDepth = fifos[i].depth;
+        g.sigRepeat = fifos[i].repeat;
+        g.depth = fifos[i].depth;
+        groupList.push_back(std::move(g));
+        slot = (int)groupList.size() - 1;
+        if (it == groupIdx.end())
+          groupIdx[base] = slot;
+      } else {
+        groupList[slot].depth = std::min(groupList[slot].depth, fifos[i].depth);
+      }
+      Group &g = groupList[slot];
+      g.fan += (long)fifos[i].cons.size();
+      for (mlir::Value c : fifos[i].cons)
+        g.cons.insert(c);
+      g.sccs.insert(sccId[i]);
     }
 
     // Replay guard (mirrors sdf_checker.py): the multicast back-pressure cycle
@@ -220,9 +267,8 @@ struct AIEObjectFifoLivenessPass
     // it never deadlocks regardless of fan-out (confirmed: bundled whole_array
     // matmul examples broadcast to the whole array at depth 2, T == 1, and RUN
     // on device).
-    for (auto &kv : groups) {
-      Group &g = kv.second;
-      long T = 1; // trip-count from the SCC(s) coupled to THIS broadcast only
+    for (Group &g : groupList) {
+      long T = 1; // trip-count from the component(s) coupled to THIS broadcast
       for (unsigned i = 0; i < n; ++i)
         if (sccId[i] >= 0 && g.sccs.count(sccId[i]))
           T = std::max(T, fifos[i].repeat);
@@ -232,7 +278,7 @@ struct AIEObjectFifoLivenessPass
         continue;
       long reqDepth = (demand + 1) / 2; // ceil(demand / 2)
       fifos[g.rep].op->emitError()
-          << "objectFIFO @" << kv.first
+          << "objectFIFO @" << g.name
           << " in a cyclic dependency requires depth >= " << reqDepth
           << " for deadlock-free execution; allocated depth = " << g.depth
           << ". (Coupled broadcast fan-out " << g.fan << " x trip-count " << T
