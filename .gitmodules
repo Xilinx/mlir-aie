@@ -14,8 +14,7 @@
 	branch = strix_2024.2
 [submodule "third_party/bootgen"]
 	path = third_party/bootgen
-	url = https://github.com/jgmelber/bootgen.git
-	branch = c-api-support
+	url = https://github.com/Xilinx/bootgen.git
 [submodule "third_party/aie_api"]
 	path = third_party/aie_api
 	url = https://github.com/Xilinx/aie_api

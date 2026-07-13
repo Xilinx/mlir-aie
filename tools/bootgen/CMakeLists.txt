@@ -31,6 +31,12 @@ list(APPEND libsources
   ${BOOTGEN_SOURCE}/bisonflex/cmdoptions.yy.cpp
   ${BOOTGEN_SOURCE}/bisonflex/reginit.tab.cpp
   ${BOOTGEN_SOURCE}/bisonflex/reginit.yy.cpp)
+# C API for exception-safe PDI generation, so tools like aiecc can call
+# bootgen as a library instead of shelling out. Lives here rather than in
+# the submodule since it's mlir-aie-specific and only adds new files (no
+# upstream source is touched), letting third_party/bootgen track upstream
+# Xilinx/bootgen directly.
+list(APPEND libsources ${CMAKE_CURRENT_SOURCE_DIR}/bootgen_c_api.cpp)
 
 set(bootgen_include_dirs
   ${BOOTGEN_SOURCE}/bisonflex
@@ -55,6 +61,13 @@ file(READ ${BOOTGEN_SOURCE}/utils/src/cdo-alloc.c FILE_CONTENTS)
 string(REPLACE "#include <malloc.h>" "" FILE_CONTENTS "${FILE_CONTENTS}")
 file(WRITE ${BOOTGEN_SOURCE}/utils/src/cdo-alloc.c "${FILE_CONTENTS}")
 
+# Strip the per-CDO-file "Generating: ..." printf: cdo_driver_mlir_aie is
+# called directly (not via the bootgen executable) by mlir-aie's own CDO
+# generation, once per emitted CDO file, and this pollutes aiecc's output.
+file(READ ${BOOTGEN_SOURCE}/cdo-driver/cdo_driver.c FILE_CONTENTS)
+string(REGEX REPLACE "\n[ \t]*printf\\(\"Generating: %s\\\\n\", cdoFileName\\);"
+  "" FILE_CONTENTS "${FILE_CONTENTS}")
+file(WRITE ${BOOTGEN_SOURCE}/cdo-driver/cdo_driver.c "${FILE_CONTENTS}")
 
 find_package(OpenSSL REQUIRED)
 if (OPENSSL_FOUND)
@@ -167,7 +180,7 @@ target_compile_options(bootgen-lib PRIVATE ${bootgen_warning_ignores})
 target_include_directories(bootgen-lib PRIVATE ${bootgen_include_dirs} ${OPENSSL_INCLUDE_DIR})
 # Make C API header available publicly
 target_include_directories(bootgen-lib PUBLIC
-  $<BUILD_INTERFACE:${BOOTGEN_SOURCE}/common/include>
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
   $<INSTALL_INTERFACE:include>)
 # PUBLIC: same reason as bootgen-lms-hash-sigs above.
 target_link_libraries(bootgen-lib PUBLIC bootgen-lms-hash-sigs Threads::Threads)
@@ -176,7 +189,7 @@ install(
   DESTINATION lib
   EXPORT bootgen-lib)
 install(
-  FILES ${BOOTGEN_SOURCE}/common/include/bootgen_c_api.h
+  FILES ${CMAKE_CURRENT_SOURCE_DIR}/bootgen_c_api.h
   DESTINATION include)
 
 add_executable(bootgen ${BOOTGEN_SOURCE}/common/src/main.cpp)
