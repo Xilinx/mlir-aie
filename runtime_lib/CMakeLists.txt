@@ -17,10 +17,6 @@ set(AIE_RUNTIME_TEST_TARGET_VAL ${AIR_RUNTIME_TEST_TARGET})
 if(NOT x86_64_TOOLCHAIN_FILE)
   set(x86_64_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/toolchainFiles/toolchain_x86_64.cmake")
 endif()
-# For now, using the same toolchain file for x86_64 and HSA, can seperate if needed
-if(NOT x86_64-hsa_TOOLCHAIN_FILE)
-  set(x86_64-hsa_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/toolchainFiles/toolchain_x86_64.cmake")
-endif()
 if(NOT aarch64_TOOLCHAIN_FILE)
   if(SysrootAarch64)
   set(aarch64_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/toolchainFiles/toolchain_clang_crosscomp_pynq.cmake")
@@ -120,8 +116,6 @@ foreach(target ${AIE_RUNTIME_TARGETS})
           -DAIE_RUNTIME_TARGET=${target}
           -DLibXAIE_INC_DIR=${XILINX_XAIE_INCLUDE_DIR}
           -DXRT_ROOT=${XRT_ROOT}
-          -Dhsa-runtime64_DIR=${hsa-runtime64_DIR}
-          -Dhsakmt_DIR=${hsakmt_DIR}
       DEPENDS ${testLibDependsOnXaiengine}
       BUILD_ALWAYS true
       STEP_TARGETS clean build install test

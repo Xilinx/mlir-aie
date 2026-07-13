@@ -113,7 +113,6 @@ find_package(Vitis 2023.2 COMPONENTS ${AIE_VITIS_COMPONENTS})
 configure_file(./utils/vitisVariables.config.in
                ${CMAKE_BINARY_DIR}/utils/vitisVariables.config @ONLY)
 find_package(XRT)
-find_package(hsa-runtime64)
 
 # Find AIEBU library for direct ELF generation (optional, falls back to subprocess)
 find_package(aiebu QUIET NO_DEFAULT_PATH

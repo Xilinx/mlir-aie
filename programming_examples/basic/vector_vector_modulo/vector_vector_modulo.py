@@ -6,9 +6,7 @@
 """Element-wise vector % vector — IRON API design with ``@iron.jit``.
 
 The design body delegates to ``aie.iron.algorithms.transform_binary``,
-which handles the ObjectFifo / Worker / Runtime plumbing.  The entry point
-supports three invocation modes so the same file drives both the Ryzen AI
-NPU @iron.jit pipeline and the aiecc-based vck5000 (Versal AIE1) flow:
+which handles the ObjectFifo / Worker / Runtime plumbing.
 
   * standalone:  ``python3 vector_vector_modulo.py``
         JIT-compile + run + verify via ``iron.tensor``.
@@ -17,10 +15,8 @@ NPU @iron.jit pipeline and the aiecc-based vck5000 (Versal AIE1) flow:
         Used by the NPU ``Makefile`` to drive @iron.jit's ``compile()`` and
         hand the artifacts to the C++ ``test.cpp`` host.
 
-  * emit-MLIR:  ``... -d {npu,npu2,xcvc1902} --emit-mlir``
-        Print the resolved MLIR module to stdout for the aiecc
-        Makefile rule (used by the vck5000 path; aiecc consumes the
-        printed MLIR and produces ``test.elf`` via Chess + HSA).
+  * emit-MLIR:  ``... -d {npu,npu2} --emit-mlir``
+        Print the resolved MLIR module to stdout.
 """
 
 import argparse
@@ -51,7 +47,7 @@ def vector_vector_modulo(
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Vector Vector Modulo")
-    add_compile_args(p, dev_choices=("npu", "npu2", "xcvc1902"), with_emit_mlir=True)
+    add_compile_args(p, dev_choices=("npu", "npu2"), with_emit_mlir=True)
     p.add_argument("-n", "--num-elements", type=int, default=256)
     p.add_argument("--tile-size", type=int, default=16)
     p.add_argument("-v", "--verbose", action="store_true")

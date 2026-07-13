@@ -458,11 +458,6 @@ static cl::opt<std::string> repeaterOutputDir(
     cl::desc("Output directory for repeater scripts (default: .prj dir)"),
     cl::init(""), cl::cat(aieCompilerOptions));
 
-static cl::opt<bool> linkAgainstHsa(
-    "link_against_hsa",
-    cl::desc("Link against HSA runtime (-lhsa-runtime64 from ROCm)"),
-    cl::init(false), cl::cat(aieCompilerOptions));
-
 static cl::opt<bool> noMaterialize(
     "no-materialize",
     cl::desc("Skip aie-materialize-runtime-sequences pass in NPU lowering"),
@@ -2970,18 +2965,6 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     linkCmd.push_back("-Wl,--orphan-handling=error");
     linkCmd.push_back("-Wl,-T," + std::string(absLdScriptPath));
 
-    // Add HSA runtime linking if requested
-    if (linkAgainstHsa) {
-      if (!sysroot.empty()) {
-        SmallString<256> rocmLibPath(sysroot);
-        sys::path::append(rocmLibPath, "opt", "rocm", "lib");
-        linkCmd.push_back("-L" + std::string(rocmLibPath));
-      } else {
-        linkCmd.push_back("-L/opt/rocm/lib");
-      }
-      linkCmd.push_back("-lhsa-runtime64");
-    }
-
     linkCmd.push_back("-o");
     linkCmd.push_back(std::string(elfPath));
 
@@ -3651,18 +3634,6 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
       linkCmd.push_back("-Wl,--gc-sections");
       linkCmd.push_back("-Wl,--orphan-handling=error");
       linkCmd.push_back("-Wl,-T," + std::string(absLdScriptPath));
-
-      // Add HSA runtime linking if requested
-      if (linkAgainstHsa) {
-        if (!sysroot.empty()) {
-          SmallString<256> rocmLibPath(sysroot);
-          sys::path::append(rocmLibPath, "opt", "rocm", "lib");
-          linkCmd.push_back("-L" + std::string(rocmLibPath));
-        } else {
-          linkCmd.push_back("-L/opt/rocm/lib");
-        }
-        linkCmd.push_back("-lhsa-runtime64");
-      }
 
       linkCmd.push_back("-o");
       linkCmd.push_back(std::string(elfPath));
@@ -5619,13 +5590,7 @@ static LogicalResult compileHostProgram(StringRef tmpDirName,
 
   // Auto-discover runtime library paths
   std::string installPath = getInstallPath();
-  std::string archName;
-
-  if (linkAgainstHsa) {
-    archName = StringRef(hostTarget.getValue()).split('-').first.str() + "-hsa";
-  } else {
-    archName = StringRef(hostTarget.getValue()).split('-').first.str();
-  }
+  std::string archName = StringRef(hostTarget.getValue()).split('-').first.str();
 
   // xaiengine include and library paths
   SmallString<256> xaiengineInclude(installPath);
@@ -5639,11 +5604,7 @@ static LogicalResult compileHostProgram(StringRef tmpDirName,
   SmallString<256> testLibPath(installPath);
   sys::path::append(testLibPath, "runtime_lib", archName, "test_lib", "lib");
   SmallString<256> memAllocator(testLibPath);
-  if (linkAgainstHsa) {
-    sys::path::append(memAllocator, "libmemory_allocator_hsa.a");
-  } else {
-    sys::path::append(memAllocator, "libmemory_allocator_ion.a");
-  }
+  sys::path::append(memAllocator, "libmemory_allocator_ion.a");
 
   // Add auto-discovered paths
   cmd.push_back(std::string(memAllocator));
@@ -5654,11 +5615,6 @@ static LogicalResult compileHostProgram(StringRef tmpDirName,
   cmd.push_back("-fuse-ld=lld");
   cmd.push_back("-lm");
   cmd.push_back("-lxaienginecdo");
-
-  // HSA-specific flags
-  if (linkAgainstHsa) {
-    cmd.push_back("-DHSA_RUNTIME");
-  }
 
   // AIE target defines
   auto targetDefines = xilinx::aiecc::getAieTargetDefines(aieTarget);

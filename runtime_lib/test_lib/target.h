@@ -9,13 +9,7 @@
 #define AIE_TARGET_H
 
 #include <list>
-#include <vector>
 #include <xaiengine.h>
-
-#ifdef HSA_RUNTIME
-#include "hsa/hsa.h"
-#include "hsa/hsa_ext_amd.h"
-#endif
 
 struct ext_mem_model_t {
   void *virtualAddr;
@@ -30,11 +24,6 @@ struct aie_libxaie_ctx_t {
   XAie_DevInst *XAieDevInst;
   // Some device memory allocators need this to keep track of VA->PA mappings
   std::list<ext_mem_model_t> allocations;
-#ifdef HSA_RUNTIME
-  hsa_queue_t *cmd_queue;
-  std::vector<hsa_agent_t> agents;
-  hsa_amd_memory_pool_t global_mem_pool;
-#endif
 };
 
 #endif
