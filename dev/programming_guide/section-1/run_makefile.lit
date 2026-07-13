@@ -1,0 +1,13 @@
+// Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai, peano
+// REQUIRES: makefile_examples
+//
+// RUN: mkdir -p test_run_makefile
+// RUN: cd test_run_makefile
+// RUN: make -f %S/Makefile clean
+// RUN: %run_on_npu1% make -f %S/Makefile devicename=npu emit-mlir
+// RUN: %run_on_npu1% make -f %S/Makefile devicename=npu run
+// RUN: %run_on_npu2% make -f %S/Makefile devicename=npu2 emit-mlir
+// RUN: %run_on_npu2% make -f %S/Makefile devicename=npu2 run
