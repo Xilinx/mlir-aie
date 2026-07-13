@@ -455,7 +455,7 @@ def run_conv_torch_test(
         trace_config = TraceConfig(
             trace_size=trace_size,
             trace_file=trace_file,
-            ddr_id=-1,
+            reuse_output_buffer=True,
             enable_ctrl_pkts=False,
             last_tensor_shape=out.shape,
             last_tensor_dtype=out.dtype,

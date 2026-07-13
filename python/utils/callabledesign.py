@@ -230,11 +230,20 @@ class CallableDesign:
             physical_mlir = compilable._kernel_dir / "input_with_addresses.mlir"
             if physical_mlir.exists():
                 trace_config.physical_mlir_path = str(physical_mlir)
+        # The lowered runtime_sequence operand list is the true host-buffer
+        # contract (one operand per host BO, including any trace/ctrl-packet
+        # buffer the lowering appended). Its length is floor-independent, unlike
+        # the kernels.json boN slot count which aiecc floors to the firmware
+        # command-chain minimum -- so this is what host buffer counts are
+        # validated against.
+        expected_sizes = compilable._expected_tensor_sizes
+        num_host_bos = len(expected_sizes) if expected_sizes is not None else None
         kernel = NPUKernel(
             xclbin_path,
             inst_path,
             kernel_name="MLIR_AIE",
             trace_config=trace_config,
+            num_host_bos=num_host_bos,
         )
         if compilable.use_cache:
             self._kernel_cache[cache_key] = kernel

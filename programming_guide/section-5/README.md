@@ -41,7 +41,7 @@ The [passthrough DMAs](../../programming_examples/basic/passthrough_dmas/) examp
 
 ## Machine Learning Kernels
 
-| Design name | Data type | Description | 
+| Design name | Data type | Description |
 |-|-|-|
 | [Eltwise (Add / Mul)](../../programming_examples/ml/eltwise/) | bfloat16 | Element-wise addition or multiplication of two vectors (`op={add,mul}` option). |
 | [Eltwise Unary (ReLU / SiLU / GELU)](../../programming_examples/ml/eltwise_unary/) | bfloat16 | Element-wise ReLU, SiLU, or GELU activation on a vector (`op={relu,silu,gelu}` option). |

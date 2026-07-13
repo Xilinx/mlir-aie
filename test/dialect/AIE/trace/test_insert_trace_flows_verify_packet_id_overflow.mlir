@@ -35,7 +35,7 @@ module @auto_packet_id_overflow_with_reservations {
       aie.trace.stop broadcast=14
     }
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 65536
+      aie.trace.host_config {buffer_size = 65536 : i32}
       aie.trace.start_config @pinned1
       aie.trace.start_config @pinned2
       aie.trace.start_config @auto

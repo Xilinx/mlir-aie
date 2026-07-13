@@ -33,7 +33,7 @@ module @duplicate_core_unit {
     }
 
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 8192
+      aie.trace.host_config {buffer_size = 8192 : i32}
       aie.trace.start_config @trace_a
       aie.trace.start_config @trace_b
     }
@@ -63,7 +63,7 @@ module @core_and_mem_units_ok {
     }
 
     aie.runtime_sequence(%arg0: memref<16xi32>) {
-      aie.trace.host_config buffer_size = 8192
+      aie.trace.host_config {buffer_size = 8192 : i32}
       aie.trace.start_config @trace_core
       aie.trace.start_config @trace_mem
     }

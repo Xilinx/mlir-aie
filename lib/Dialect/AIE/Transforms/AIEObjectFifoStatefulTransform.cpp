@@ -2385,6 +2385,34 @@ struct AIEObjectFifoStatefulTransformPass
     return hasError ? failure() : success();
   }
 
+  /// This pass assumes every objectFifo producer/consumer tile is a placed
+  /// `aie.tile`; the rest of the pass reaches them via getProducerTileOp() /
+  /// cast<TileOp>(...), which dereferences a null if a tile is still an
+  /// unplaced `aie.logical_tile` (or any non-TileOp). Emit a diagnostic and
+  /// fail cleanly instead of crashing when a design reaches this pass before
+  /// placement (e.g. --aie-place-tiles was not run first).
+  LogicalResult verifyObjectFifoTilesArePlaced(DeviceOp &device) {
+    auto isPlacedTile = [](Value tile) {
+      return isa_and_nonnull<TileOp>(tile.getDefiningOp());
+    };
+    bool hasError = false;
+    for (ObjectFifoCreateOp createOp : device.getOps<ObjectFifoCreateOp>()) {
+      if (!isPlacedTile(createOp.getProducerTile())) {
+        createOp.emitOpError("producer tile is not a placed aie.tile; run "
+                             "--aie-place-tiles before this pass");
+        hasError = true;
+      }
+      for (Value consumerTile : createOp.getConsumerTiles()) {
+        if (!isPlacedTile(consumerTile)) {
+          createOp.emitOpError("consumer tile is not a placed aie.tile; run "
+                               "--aie-place-tiles before this pass");
+          hasError = true;
+        }
+      }
+    }
+    return hasError ? failure() : success();
+  }
+
   /// Account for already used packet IDs and return next available ID.
   int getStartPacketID(DeviceOp &device) {
     int packetID = 0;
@@ -2454,6 +2482,9 @@ struct AIEObjectFifoStatefulTransformPass
         objectFifoTiles; // track cores to check for loops during unrolling
 
     if (failed(verifyObjectFifoLinks(device)))
+      return signalPassFailure();
+
+    if (failed(verifyObjectFifoTilesArePlaced(device)))
       return signalPassFailure();
 
     //===------------------------------------------------------------------===//

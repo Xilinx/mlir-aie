@@ -15,7 +15,7 @@ In this section of the programming guide, we introduce the ObjectFifo high-level
 
 To understand the need for a data movement abstraction we must first understand the hardware architecture with which we are working. The AIE array is a [spatial compute architecture](../README.md) with explicit data movement requirements. Each compute unit of the array works on data that is stored within its L1 memory module and that data needs to be explicitly moved there as part of the AIE's array global data movement configuration. This configuration involves several specialized hardware resources that handle the data movement over the entire array in such a way that data arrives at its destination without loss. The ObjectFifo provides users with a way to specify the data movement in a more human-comprehensible and accessible manner, without sacrificing some of the more advanced control possibilities which the hardware provides.
 
-> **NOTE:**  For more in-depth, low-level material on ObjectFifo programming in MLIR, please see the MLIR-AIE [tutorials](../../mlir_exercises/).
+> **NOTE:**  For more in-depth, low-level material on the data movement the ObjectFifo lowers into — DMAs, buffer descriptors, locks, and stream routing — see [Section 2g - Data Movement Without ObjectFifos](./section-2g/).
 
 This guide is split into eight subsections, where each builds on top of the previous ones:
 

@@ -56,5 +56,5 @@ before-build = [
 ]
 
 [build-system]
-requires = ["setuptools>=82.0.1", "nanobind", "pip>=26.1.2", 'ninja!=1.13.0; platform_system=="Windows"']
+requires = ["setuptools>=83.0.0", "nanobind", "pip>=26.1.2", 'ninja!=1.13.0; platform_system=="Windows"']
 build-backend = "setuptools.build_meta"

@@ -33,7 +33,7 @@ void scale_scalar(T *a, T *c, T factor, const int32_t N) {
 Here, the code iterates over the input vector (`a`) and multiplies each element from the vector with a scalar value (`factor`) before storing the results in output vector (`c`). The simple C/C++ code for this consists of a for-loop, with a simple read and scalar multiply operation inside the loop.
 
 ### <u>AIE API</u>
-To vectorize this, we first need to familiarize ourselves with the AIE API which abstracts the underlying AIE processor and associated low-level intrinsics with a higher level C++ API. Documentation for AIE API (2023.2 Vitis tools) can be found [here](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/group__group__arithmetic.html#gafdca71673bdae6c6642b88dab9aee1fe). To view details on the vector x scalar multiplier, on the left pane, navigate to *AI Engine API User Guide -> API Reference -> Arithmetic* and select the first `aie::mul` which shows a `Vec * E` where `E` is an elementary data type like a scalar int. 
+To vectorize this, we first need to familiarize ourselves with the AIE API which abstracts the underlying AIE processor and associated low-level intrinsics with a higher level C++ API. Documentation for AIE API (2023.2 Vitis tools) can be found [here](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/group__group__arithmetic.html#gafdca71673bdae6c6642b88dab9aee1fe). To view details on the vector x scalar multiplier, on the left pane, navigate to *AI Engine API User Guide -> API Reference -> Arithmetic* and select the first `aie::mul` which shows a `Vec * E` where `E` is an elementary data type like a scalar int.
 
 To be able to use this AIE API function in our kernel code, we first need to include the AIE API headers in our kernel source.
 ```C++
@@ -165,7 +165,7 @@ For the full type-and-vector-size table, see the [AIE API User Guide](https://ww
     </details>
 
 
-    That's quite an improvement, ~8X reduction in compute latency. However, there's more optimization that can be had with vector code and that involves optimization pragmas. 
+    That's quite an improvement, ~8X reduction in compute latency. However, there's more optimization that can be had with vector code and that involves optimization pragmas.
 
 1. Go back to [scale.cc](../../../aie_kernels/aie2/scale.cc) and uncomment the lines with `AIE_PREPARE_FOR_PIPELINING AIE_LOOP_MIN_ITERATION_COUNT(16)` to enable those pragmas. Then rerun the compilation (`make clean; make int_bit_width=32 trace`). Measure the delta between `event 0` and `event 1` again. What value do you see now?
     <details markdown="1"><summary>Show answer</summary>
@@ -175,14 +175,14 @@ For the full type-and-vector-size table, see the [AIE API User Guide](https://ww
     Now, we're really seeing some savings (another factor ~4X savings or ~36X compared to the scalar version). The line we added helps guide the compiler to find optimal schedules. For kernel loops, `AIE_PREPARE_FOR_PIPELINING` and `AIE_LOOP_MIN_ITERATION_COUNT(16)` are particularly useful:
     * `AIE_PREPARE_FOR_PIPELINING` - Used in the innermost loop to tell the compiler to enable software pipelining. This is needed to enable subsequent loop optimization pragmas.
     * `AIE_LOOP_MIN_ITERATION_COUNT(MIN)` - An extremely helpful pragma. This tells the compiler the minimum iterations we expect this loop to have. If we want to specify both minimum and maximum iterations, we can used `, AIE_LOOP_RANGE(MIN,MAX)`. We often parameterize loop bounds based on size and even if the loop size is declared as a const, it's still a runtime computed value. Giving the MIN value in this pragma is particular helpful because it guides the scheduler to know how many iterations we have and can therefore properly schedule the loop instructions for that number rather than the worse case of 1.
-    
+
 1. Finally, we're going to rerun the compilation on a 16-bit integer version of our design with vectorization still turned on our optimization pragmas enabled for our kernel code. This is the default configuration of the `vector_scalar_mul` design (`make clean; make trace`). Measure the delta between `event 0` and `event 1` again. What value do you now see?
     <details markdown="1"><summary>Show answer</summary>
     78 cycles
     </details>
 
     We see another 4X factor as we are able to process twice as much data per iteration as well as requiring less vector multiplies per iteration giving us a total improvement of ~157X from the scalar version.
-    
+
 
 ## Optimization - Coding for the Architecture
 
@@ -202,7 +202,7 @@ Once data is loaded and permuted, it passes to the Multiplier block which suppor
 
 ### The Vector Unit - SRS and Stores
 
-Once data has been computed (either in 1 cycle or accumulated over a number of cycles), the results can then be written back out to local L1 memory via the Store Unit. This mirrors the 2 Load Units except there is a just 1 Store Unit. Bridging between the accumulator registers and vector registers or local L1 memory utilizes the SRS Unit (shift-round-saturate) which shifts, rounds and saturates with a number of configurable rounding and saturation modes. 
+Once data has been computed (either in 1 cycle or accumulated over a number of cycles), the results can then be written back out to local L1 memory via the Store Unit. This mirrors the 2 Load Units except there is a just 1 Store Unit. Bridging between the accumulator registers and vector registers or local L1 memory utilizes the SRS Unit (shift-round-saturate) which shifts, rounds and saturates with a number of configurable rounding and saturation modes.
 
 <img src="../../assets/aie-ml_srs_ups.png" title="AIE-ML SRS UPS Unit." height=230>
 
@@ -210,7 +210,7 @@ The SRS path is on the right of the diagram above with the corollary path, the U
 
 ### The Vector Unit - Shift/ Shuffle/ Adder Path
 
-Finally, we have an additional parallel processing path which performs shift, shuffle, simple addition, comparison and a number of other vector functions. This path runs in parallel with the main integer vector datapath and may be tasked to do the aforementioned functions without the need of the VMAC datapath. 
+Finally, we have an additional parallel processing path which performs shift, shuffle, simple addition, comparison and a number of other vector functions. This path runs in parallel with the main integer vector datapath and may be tasked to do the aforementioned functions without the need of the VMAC datapath.
 
 <img src="../../assets/aie-ml_shift_adder_path.png" title="AIE-ML Shift Adder Unit." height=200>
 
@@ -224,17 +224,17 @@ Now that we have a better understanding of the architecture, let's take a closer
 
 > **NOTE** - Matrix multiplication mode table is in the AIE API User Guide [here](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/group__group__mmul.html). Another way to see the total number of MACs for different bit precisions is the `Table: Supported Precision Width of the Vector Data Path` in the [AM020 spec](https://docs.amd.com/r/en-US/am020-versal-aie-ml/Functional-Overview).
 
-This table tells us that for 16-bit x 16-bit compute, we have 64 MACs available per cycle. However, these MACs are targeting matrix multiplication (with its accompanying post-addition steps). In practice, we have 32 accumulator lanes available. That means for eltwise operations, we can only use 32 MACs per cycle. 
+This table tells us that for 16-bit x 16-bit compute, we have 64 MACs available per cycle. However, these MACs are targeting matrix multiplication (with its accompanying post-addition steps). In practice, we have 32 accumulator lanes available. That means for eltwise operations, we can only use 32 MACs per cycle.
 
 #### <u>MAC efficiency</u>
 Using this information and our Vector Scalar Multiply example, we know that each call to the kernel passes in an array of 1024 16-bit data. With 32 MACs available, our `vector_factor` is 32 and therefore, we would ideally need 1024 / 32 = 32 cycles to process this amount of data given our 32 MACs-per-clock eltwise vector MAC configuration. Our final optimized cycle count for the kernel was 72 cycles or roughly 2x the ideal number of cycles.
 
-Total MAC efficiency is a product of the (MAC schedule efficiency) x (per clock MAC utilization efficiency). 
+Total MAC efficiency is a product of the (MAC schedule efficiency) x (per clock MAC utilization efficiency).
 * (MAC schedule efficiency or Ideal MAC cycles) / (Actual MAC cycles), e.g. 32/ 72 = 44%
 * (per clock MAC utilization efficiency or # of MACs used)/ (total # of MACs available), e.g. 32/ 64 = 50%.
 Therefore, the total MAC efficiency is 44% x 50% = 22%.
 
-Let's file that result away but look at our algorithm from load/store bandwidth perspective. 
+Let's file that result away but look at our algorithm from load/store bandwidth perspective.
 
 #### <u>Load/ Store Bandwidth efficiency</u>
 To process a vector of 32 int16 values times a scalar, let's ignore the scalar load and focus only on the vector one. 32 int16 = 512-bits which would take 2x 256-bit loads or 2 cycles. It might be possible to do it in a single cycle if the data is interleaved across banks. We also need to store 2x 256-bits which will take 2 cycles since we only have 1 Store Unit. This means that even if we could do a VMAC every cycle, we need 2 cycles to load the inputs and 2 cycles to store the outputs. This explains why our optimized vector results was 72, since based on this 2 cycle requirement, our minimum cycles for our data size is 64 cycles. The remaining 6 cycles is loop preamble, loop postamble and function initialization and cleanup overhead.
@@ -279,9 +279,9 @@ Looking at this table, we quickly see that the data movement is the bottleneck f
    You should now see that the compute cycles and the data movement cycles are much more closely matched!
 
 ## <u>Diving Deep - Examining the Microcode</u>
-Let's take another look at the results of our [vector_scalar_mul design](../../../programming_examples/basic/vector_scalar_mul/). Let's also go back one step and comment out `AIE_PREPARE_FOR_PIPELINING AIE_LOOP_MIN_ITERATION_COUNT(16)` and rerun the compilation (`make clean; make trace`). 
+Let's take another look at the results of our [vector_scalar_mul design](../../../programming_examples/basic/vector_scalar_mul/). Let's also go back one step and comment out `AIE_PREPARE_FOR_PIPELINING AIE_LOOP_MIN_ITERATION_COUNT(16)` and rerun the compilation (`make clean; make trace`).
 
-At this point, we can actually take a look at the disassembly code. The disassembly is the precise schedule of instructions that our AIE executes in order to run the kernel program. To obtain the disassembly, we can run the `llvm-objdump` on the generated object or elf file. 
+At this point, we can actually take a look at the disassembly code. The disassembly is the precise schedule of instructions that our AIE executes in order to run the kernel program. To obtain the disassembly, we can run the `llvm-objdump` on the generated object or elf file.
 ```bash
 <mlir-aie>/ironenv/lib/python<ver>/site-packages/llvm-aie/bin/llvm-objdump -dr build/core_0_2.elf > disassembly_0_2.txt
 ```
@@ -306,19 +306,19 @@ Instruction Line Number ---- Encoded Instruction ---- 1 or more slots of ISA com
 | VSRS .. | Vector SRS |
 | VSHUFFLE .. | Vector shuffle |
 
-Fully analyzing and understanding this microcode is beyond the scope of this programming guide but we will focus on key parts of this microcode, labeled by 3 types of comments in particular: 
+Fully analyzing and understanding this microcode is beyond the scope of this programming guide but we will focus on key parts of this microcode, labeled by 3 types of comments in particular:
 
-`<8 digit number> <label>` where `<label>` can be `<main>` or function name like `<vector_scalar_mul_vector> - The start of the function we're interested in. 
+`<8 digit number> <label>` where `<label>` can be `<main>` or function name like `<vector_scalar_mul_vector> - The start of the function we're interested in.
 
 `<8 digit number> <.LBB?_?>:` - The start of a zero-overhead loop.
 
-`<8 digit number> <.L_LEnd?>` - The end of a zero-overhead loop. 
+`<8 digit number> <.L_LEnd?>` - The end of a zero-overhead loop.
 > **NOTE** The line after this label is the last line within the loop, not just the lines strictly between `<.LBB?_?>` and `.L_LEnd?`. In general, labels are for the line after the label.
 
 Let's examine this more closely in our example.
 
 ## <u>Optimization Exercises - Part 2</u>
-1. Go back and comment out the pragma lines (`AIE_PREPARE_FOR_PIPELINING AIE_LOOP_MIN_ITERATION_COUNT(16)`) again and rerun the build (`make clean; make trace`). Run the disassembler and open `disassembly_0_2.txt` and take a look through the file. 
+1. Go back and comment out the pragma lines (`AIE_PREPARE_FOR_PIPELINING AIE_LOOP_MIN_ITERATION_COUNT(16)`) again and rerun the build (`make clean; make trace`). Run the disassembler and open `disassembly_0_2.txt` and take a look through the file.
 
     Search for `vector_scalar_mul_vector`. Then scroll down until you see the first `LBB` line after that. Count the number of lines until you reach the next `LBB or L_LEnd` line. If the next line is L_LEnd, be sure to add 1 to your total count. How many lines are in this inner loop?
     <details markdown="1"><summary>Show answer</summary>

@@ -649,7 +649,7 @@ def trace_start_config(name, *, loc=None, ip=None):
 def trace_host_config(
     buffer_size,
     *,
-    arg_idx=4,
+    reuse_output_buffer=False,
     routing=TraceShimRouting.Single,
     egress_shim_col=0,
     loc=None,
@@ -662,7 +662,7 @@ def trace_host_config(
             raise ValueError(f"Unknown routing strategy: {routing}.")
     return TraceHostConfigOp(
         buffer_size=buffer_size,
-        arg_idx=arg_idx,
+        reuse_output_buffer=reuse_output_buffer,
         routing=routing,
         egress_shim_col=egress_shim_col,
         loc=loc,

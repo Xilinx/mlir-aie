@@ -63,7 +63,7 @@ In our example [test.cpp](./test.cpp), we wrap our calls within a for loop (base
 It is also useful to run the kernel a number of times prior to calculating the steady-state run times. This hides initial startup timing overhead that sometimes occurs during the first few runs. We call these initial loops warmup iterations, where we do not verify the results or measure the run time during warmup.
 ```c++
   for (unsigned iter = 0; iter < num_iter; iter++) {
-    <... kernel run code ...>    
+    <... kernel run code ...>
     if (iter < n_warmup_iterations) {
       /* Warmup iterations do not count towards average runtime. */
       continue;
@@ -158,4 +158,3 @@ into the tolerance comparator above.
 
 -----
 [Top](../../section-4) &middot; [Next](../section-4b)
-

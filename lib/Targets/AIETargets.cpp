@@ -8,7 +8,6 @@
 
 #include "aie/Targets/AIETargets.h"
 
-#include "aie/Dialect/ADF/ADFDialect.h"
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEVec/IR/AIEVecDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
@@ -21,6 +20,7 @@
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/Dialect/Index/IR/IndexDialect.h"
+#include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/Math/IR/Math.h"
 #include "mlir/Dialect/Ptr/IR/PtrOps.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
@@ -312,12 +312,6 @@ void registerAIETranslations() {
       },
       registerDialects);
 
-  TranslateFromMLIRRegistration registrationXADF(
-      "adf-generate-cpp-graph", "Translate ADFDialect to C++ graph",
-      ADFGenerateCPPGraph, [](DialectRegistry &registry) {
-        registry.insert<xilinx::ADF::ADFDialect>();
-        registerDialects(registry);
-      });
   TranslateFromMLIRRegistration registrationXAIE(
       "aie-generate-xaie", "Generate libxaie configuration",
       [](ModuleOp module, raw_ostream &output) {
