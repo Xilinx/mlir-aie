@@ -84,6 +84,25 @@ jobs:
       - name: Check shared dependency versions agree
         run: python3 utils/check_shared_dep_versions.py
 
+  aie-api-submodule:
+
+    name: aie_api submodule pin is not stale
+
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+
+      # third_party/aie_api tracks stock upstream Xilinx/aie_api directly (no
+      # fork, see #3262). The pin has twice been silently reverted to a stale
+      # pre-#3262 commit by a merge/rebase from a branch based before the fix
+      # landed (#3292, #3330). Fail fast on a third recurrence.
+      - name: Verify aie_api pin is reachable from upstream main
+        run: python3 utils/check_aie_api_submodule.py
+
   clang-tidy-pylint:
 
     name: Python and C/C++ Lint
