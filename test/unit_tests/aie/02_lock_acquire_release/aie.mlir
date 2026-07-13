@@ -20,9 +20,12 @@ aie.device(xcvc1902) {
   %lock13_5 = aie.lock(%tile13, 5) { sym_name = "lock2" }
 
   %core13 = aie.core(%tile13) {
-    aie.use_lock(%lock13_3, "Acquire", 0) // acquire for write (e.g. input ping)
-    aie.use_lock(%lock13_5, "Acquire", 0) // acquire for write (e.g. input ping)
-    aie.use_lock(%lock13_5, "Release", 1) // release for read
+    %c0_ul0 = arith.constant 0 : i32
+    aie.use_lock(%lock13_3, "Acquire", %c0_ul0) // acquire for write (e.g. input ping)
+    %c0_ul1 = arith.constant 0 : i32
+    aie.use_lock(%lock13_5, "Acquire", %c0_ul1) // acquire for write (e.g. input ping)
+    %c1_ul2 = arith.constant 1 : i32
+    aie.use_lock(%lock13_5, "Release", %c1_ul2) // release for read
     aie.end
   }
 

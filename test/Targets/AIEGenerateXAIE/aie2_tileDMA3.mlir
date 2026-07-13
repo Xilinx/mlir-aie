@@ -34,7 +34,8 @@ module @aie_module  {
         // Note: acquire and release are different locks.
         //aie.use_lock(%lock_a_write, AcquireGreaterEqual, 1)
         aie.dma_bd(%buf_a_ping : memref<256xi32>, 0, 256)
-        aie.use_lock(%lock_a_read, Release, 1)
+        %c1_ul0 = arith.constant 1 : i32
+        aie.use_lock(%lock_a_read, Release, %c1_ul0)
         aie.next_bd ^end
       ^end:
         aie.end

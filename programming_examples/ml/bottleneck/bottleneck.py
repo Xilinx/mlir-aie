@@ -130,6 +130,7 @@ def bottleneck(
         Worker(
             conv1x1_fn,
             fn_args=[wts_buf_00.cons(), of_act_l3l2.cons(), of_act_2_3_5.prod(), conv1],
+            stack_size=0x1000,
         )
     )
 
@@ -147,7 +148,7 @@ def bottleneck(
             elem_out,
             tensor_w,
             l2_in_c,
-            l2_out_c,
+            l2_out_c // 2,
             3,
             3,
             0,
@@ -168,7 +169,7 @@ def bottleneck(
                 elem_out,
                 tensor_w,
                 l2_in_c,
-                l2_out_c,
+                l2_out_c // 2,
                 3,
                 3,
                 1,
@@ -189,7 +190,7 @@ def bottleneck(
             elem_out,
             tensor_w,
             l2_in_c,
-            l2_out_c,
+            l2_out_c // 2,
             3,
             3,
             2,

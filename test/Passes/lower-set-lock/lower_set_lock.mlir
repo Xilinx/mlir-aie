@@ -21,8 +21,10 @@ module @test_simple_lock_set {
     %lock00_5 = aie.lock(%shimtile00, 5)  {init = 1 : i32}
 
     %core22 = aie.core(%tile22) {
-        aie.use_lock(%lock22_0, "Acquire", 0)
-        aie.use_lock(%lock22_15, "Acquire", 1)
+        %c0_ul0 = arith.constant 0 : i32
+        aie.use_lock(%lock22_0, "Acquire", %c0_ul0)
+        %c1_ul1 = arith.constant 1 : i32
+        aie.use_lock(%lock22_15, "Acquire", %c1_ul1)
         // Do operations
         aie.end
     }

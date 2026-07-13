@@ -60,9 +60,11 @@ module {
       %lock_0_1_0 = aie.lock(%tile_0_1) {init = 0 : i32}
       %buffer_0_1 = aie.buffer(%tile_0_1) {address = 0 : i32} : memref<8x!aiex.bfp<"v8bfp16ebs8">>
       %0 = aie.dma(S2MM, 0) [{
-        aie.use_lock(%lock_0_1, AcquireGreaterEqual)
+        %c1_ul0 = arith.constant 1 : i32
+        aie.use_lock(%lock_0_1, AcquireGreaterEqual, %c1_ul0)
         aie.dma_bd(%buffer_0_1 : memref<8x!aiex.bfp<"v8bfp16ebs8">>, 0)
-        aie.use_lock(%lock_0_1_0, Release)
+        %c1_ul1 = arith.constant 1 : i32
+        aie.use_lock(%lock_0_1_0, Release, %c1_ul1)
       }]
       aie.end
     }

@@ -81,9 +81,11 @@ module @multi_depth {
             %height = arith.constant 32 : index
             %iter_max = arith.constant 4 : index
 
-            aie.use_lock(%lock_pc, Acquire, 0)
+            %c0_ul0 = arith.constant 0 : i32
+            aie.use_lock(%lock_pc, Acquire, %c0_ul0)
 
-            aie.use_lock(%lock_out, Acquire, 0)
+            %c0_ul1 = arith.constant 0 : i32
+            aie.use_lock(%lock_out, Acquire, %c0_ul1)
 
             scf.for %iter = %c0 to %iter_max step %c1 {
                 %subviewIn_21 = aie.objectfifo.acquire @of_in (Consume, 1) : !aie.objectfifosubview<memref<32xi32>>
@@ -98,9 +100,11 @@ module @multi_depth {
                 aie.objectfifo.release @of_inter (Consume, 1)
             }
 
-            aie.use_lock(%lock_out, Release, 1)
+            %c1_ul2 = arith.constant 1 : i32
+            aie.use_lock(%lock_out, Release, %c1_ul2)
 
-            aie.use_lock(%lock_pc, Release, 1)
+            %c1_ul3 = arith.constant 1 : i32
+            aie.use_lock(%lock_pc, Release, %c1_ul3)
 
             aie.end
         }

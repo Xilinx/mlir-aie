@@ -31,9 +31,11 @@
          %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^end, repeat_count = 3)
        ^bd0:
          // Note: acquire and release are different locks.
-         aie.use_lock(%lock_a_write, AcquireGreaterEqual, 1)
+         %c1_ul0 = arith.constant 1 : i32
+         aie.use_lock(%lock_a_write, AcquireGreaterEqual, %c1_ul0)
          aie.dma_bd(%buf_a_ping : memref<256xi32>, 0, 256)
-         aie.use_lock(%lock_a_read, Release, 1)
+         %c1_ul1 = arith.constant 1 : i32
+         aie.use_lock(%lock_a_read, Release, %c1_ul1)
          aie.next_bd ^end
        ^end:
          aie.end

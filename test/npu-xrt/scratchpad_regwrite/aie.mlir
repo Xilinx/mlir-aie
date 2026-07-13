@@ -45,13 +45,15 @@ module {
             %c2_i32 = arith.constant 2 : i32
 
             // Block until run-time parameters are ready
-            aie.use_lock(%sync_lock, Acquire, 1)
+            %c1_ul0 = arith.constant 1 : i32
+            aie.use_lock(%sync_lock, Acquire, %c1_ul0)
 
             // Read the parameter written by UPDATE_REG
             %raw_val = memref.load %params_buf[%c0] : memref<2xi32>
 
             // Reset run-time parameter lock for next iteration
-            aie.use_lock(%sync_lock, Release, 0)
+            %c0_ul1 = arith.constant 0 : i32
+            aie.use_lock(%sync_lock, Release, %c0_ul1)
 
             // Undo the left-shift-by-2 that was applied to survive the 0xFFFFFFFC masking in the firmware
             %val = arith.shrui %raw_val, %c2_i32 : i32

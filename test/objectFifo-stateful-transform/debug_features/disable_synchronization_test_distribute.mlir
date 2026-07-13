@@ -26,9 +26,11 @@
 // CHECK:     %{{.*}} = aie.mem(%[[TILE_2_2]]) {
 // CHECK:       %{{.*}} = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
 // CHECK:     ^bb1:
-// CHECK:       aie.use_lock(%[[LINK1_CONS_LOCK]], AcquireGreaterEqual, 1)
+// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.use_lock(%[[LINK1_CONS_LOCK]], AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%[[LINK1_BUFF]] : memref<4x4xi32>, 0, 16)
-// CHECK:       aie.use_lock(%[[LINK1_PROD_LOCK]], Release, 1)
+// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.use_lock(%[[LINK1_PROD_LOCK]], Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb1
 // CHECK:     ^bb2:
 // CHECK:       aie.end
@@ -57,9 +59,11 @@
 // CHECK:     %{{.*}} = aie.mem(%[[TILE_2_3]]) {
 // CHECK:       %{{.*}} = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
 // CHECK:     ^bb1:
-// CHECK:       aie.use_lock(%[[LINK2_CONS_LOCK]], AcquireGreaterEqual, 1)
+// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.use_lock(%[[LINK2_CONS_LOCK]], AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%[[LINK2_BUFF]] : memref<20xi32>, 0, 20)
-// CHECK:       aie.use_lock(%[[LINK2_PROD_LOCK]], Release, 1)
+// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.use_lock(%[[LINK2_PROD_LOCK]], Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb1
 // CHECK:     ^bb2:
 // CHECK:       aie.end

@@ -119,9 +119,11 @@ module {
     ^dma0:
       aie.dma_start(MM2S, 0, ^bd1, ^end)
     ^bd0:
-      aie.use_lock(%lock0, Acquire, 0)
+      %c0_ul0 = arith.constant 0 : i32
+      aie.use_lock(%lock0, Acquire, %c0_ul0)
       aie.dma_bd(%buffer : memref<16 x f32>, 0, 16) {bd_id = 0 : i32}
-      aie.use_lock(%lock0, Release, 1)
+      %c1_ul1 = arith.constant 1 : i32
+      aie.use_lock(%lock0, Release, %c1_ul1)
       aie.next_bd ^bd0
     ^bd1:
       // aie.use_lock(%lock1, Acquire, 1)

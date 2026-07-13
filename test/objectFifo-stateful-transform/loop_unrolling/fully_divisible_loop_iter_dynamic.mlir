@@ -16,11 +16,13 @@
 // CHECK:      %[[C1:.*]] = arith.constant 1 : index
 // CHECK:      %[[C4:.*]] = arith.constant 4 : index
 // CHECK:      scf.for %{{.*}} = %{{.*}} to %[[C4]] step %[[C1]] {
-// CHECK:        aie.use_lock(%{{.*}}, Acquire, 0)
+// CHECK:        %{{.*}} = arith.constant 0 : i32
+// CHECK:        aie.use_lock(%{{.*}}, Acquire, %{{.*}})
 // Runtime buffer selection via index_switch is the hallmark of dynamic lowering.
 // CHECK:        scf.index_switch
 // CHECK:        func.call @some_work
-// CHECK:        aie.use_lock(%{{.*}}, Release, 1)
+// CHECK:        %{{.*}} = arith.constant 1 : i32
+// CHECK:        aie.use_lock(%{{.*}}, Release, %{{.*}})
 // CHECK:      }
 // CHECK:      aie.end
 

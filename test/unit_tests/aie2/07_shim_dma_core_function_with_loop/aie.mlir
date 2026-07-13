@@ -43,17 +43,25 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
       %c64 = arith.constant 64 : index
       scf.for %iv = %lb to %ub step %step {
 
-        aie.use_lock(%lock_a_ping, "Acquire", 1) // acquire for read
-        aie.use_lock(%lock_b_ping, "Acquire", 0) // acquire for write
+        %c1_ul0 = arith.constant 1 : i32
+        aie.use_lock(%lock_a_ping, "Acquire", %c1_ul0) // acquire for read
+        %c0_ul1 = arith.constant 0 : i32
+        aie.use_lock(%lock_b_ping, "Acquire", %c0_ul1) // acquire for write
         func.call @func(%buf_a_ping, %buf_b_ping,%buffer_size) : (memref<64xi32>, memref<64xi32>,i32) -> ()
-        aie.use_lock(%lock_a_ping, "Release", 0) // release for write
-        aie.use_lock(%lock_b_ping, "Release", 1) // release for read
+        %c0_ul2 = arith.constant 0 : i32
+        aie.use_lock(%lock_a_ping, "Release", %c0_ul2) // release for write
+        %c1_ul3 = arith.constant 1 : i32
+        aie.use_lock(%lock_b_ping, "Release", %c1_ul3) // release for read
 
-        aie.use_lock(%lock_a_pong, "Acquire", 1) // acquire for read
-        aie.use_lock(%lock_b_pong, "Acquire", 0) // acquire for write
+        %c1_ul4 = arith.constant 1 : i32
+        aie.use_lock(%lock_a_pong, "Acquire", %c1_ul4) // acquire for read
+        %c0_ul5 = arith.constant 0 : i32
+        aie.use_lock(%lock_b_pong, "Acquire", %c0_ul5) // acquire for write
         func.call @func(%buf_a_pong, %buf_b_pong,%buffer_size) : (memref<64xi32>, memref<64xi32>,i32) -> ()
-        aie.use_lock(%lock_a_pong, "Release", 0) // release for write
-        aie.use_lock(%lock_b_pong, "Release", 1) // release for read
+        %c0_ul6 = arith.constant 0 : i32
+        aie.use_lock(%lock_a_pong, "Release", %c0_ul6) // release for write
+        %c1_ul7 = arith.constant 1 : i32
+        aie.use_lock(%lock_b_pong, "Release", %c1_ul7) // release for read
       }
 
       aie.end
@@ -65,24 +73,32 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
       ^dma0:
         %dstDma = aie.dma_start("MM2S", 1, ^bd2, ^end)
       ^bd0:
-        aie.use_lock(%lock_a_ping, "Acquire", 0)
+        %c0_ul8 = arith.constant 0 : i32
+        aie.use_lock(%lock_a_ping, "Acquire", %c0_ul8)
         aie.dma_bd(%buf_a_ping : memref<64xi32>, 0, 64)
-        aie.use_lock(%lock_a_ping, "Release", 1)
+        %c1_ul9 = arith.constant 1 : i32
+        aie.use_lock(%lock_a_ping, "Release", %c1_ul9)
         aie.next_bd ^bd1
       ^bd1:
-        aie.use_lock(%lock_a_pong, "Acquire", 0)
+        %c0_ul10 = arith.constant 0 : i32
+        aie.use_lock(%lock_a_pong, "Acquire", %c0_ul10)
         aie.dma_bd(%buf_a_pong : memref<64xi32>, 0, 64)
-        aie.use_lock(%lock_a_pong, "Release", 1)
+        %c1_ul11 = arith.constant 1 : i32
+        aie.use_lock(%lock_a_pong, "Release", %c1_ul11)
         aie.next_bd ^bd0
       ^bd2:
-        aie.use_lock(%lock_b_ping, "Acquire", 1)
+        %c1_ul12 = arith.constant 1 : i32
+        aie.use_lock(%lock_b_ping, "Acquire", %c1_ul12)
         aie.dma_bd(%buf_b_ping : memref<64xi32>, 0, 64)
-        aie.use_lock(%lock_b_ping, "Release", 0)
+        %c0_ul13 = arith.constant 0 : i32
+        aie.use_lock(%lock_b_ping, "Release", %c0_ul13)
         aie.next_bd ^bd3
       ^bd3:
-        aie.use_lock(%lock_b_pong, "Acquire", 1)
+        %c1_ul14 = arith.constant 1 : i32
+        aie.use_lock(%lock_b_pong, "Acquire", %c1_ul14)
         aie.dma_bd(%buf_b_pong : memref<64xi32>, 0, 64)
-        aie.use_lock(%lock_b_pong, "Release", 0)
+        %c0_ul15 = arith.constant 0 : i32
+        aie.use_lock(%lock_b_pong, "Release", %c0_ul15)
         aie.next_bd ^bd2
       ^end:
         aie.end
@@ -112,14 +128,18 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
       ^dma:
         aie.dma_start(S2MM, 0, ^bd1, ^end)
       ^bd0:
-        aie.use_lock(%lock1, Acquire, 1)
+        %c1_ul16 = arith.constant 1 : i32
+        aie.use_lock(%lock1, Acquire, %c1_ul16)
         aie.dma_bd(%buffer_in : memref<512 x i32>, 0, 512)
-        aie.use_lock(%lock1, Release, 0)
+        %c0_ul17 = arith.constant 0 : i32
+        aie.use_lock(%lock1, Release, %c0_ul17)
         aie.next_bd ^bd0
       ^bd1:
-        aie.use_lock(%lock2, Acquire, 1)
+        %c1_ul18 = arith.constant 1 : i32
+        aie.use_lock(%lock2, Acquire, %c1_ul18)
         aie.dma_bd(%buffer_out : memref<512 x i32>, 0, 512)
-        aie.use_lock(%lock2, Release, 0)
+        %c0_ul19 = arith.constant 0 : i32
+        aie.use_lock(%lock2, Release, %c0_ul19)
         aie.next_bd ^bd1
       ^end:
         aie.end
