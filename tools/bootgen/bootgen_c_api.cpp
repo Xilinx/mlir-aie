@@ -26,9 +26,15 @@ int bootgen_generate_pdi(const char *bif_path, const char *pdi_path,
                          enum bootgen_arch_type arch, int overwrite,
                          char *error_msg, int error_msg_size) {
   // Validate inputs
-  if (!bif_path || !pdi_path) {
-    copy_error_message(error_msg, error_msg_size, "Invalid NULL path argument");
+  if (!bif_path) {
+    copy_error_message(error_msg, error_msg_size,
+                       "Invalid NULL bif_path argument");
     return BOOTGEN_ERROR_INVALID_BIF;
+  }
+  if (!pdi_path) {
+    copy_error_message(error_msg, error_msg_size,
+                       "Invalid NULL pdi_path argument");
+    return BOOTGEN_ERROR_INVALID_OUTPUT;
   }
 
   // Map C enum to C++ enum

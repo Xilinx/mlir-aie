@@ -153,8 +153,10 @@ if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
     -Wno-deprecated-register
     -Wno-dynamic-class-memaccess
     -Wno-implicit-fallthrough
-    -Wno-incompatible-pointer-types
-    -Wno-incompatible-pointer-types-discards-qualifiers
+    # C-only diagnostics: passing these while compiling C++ sources is an
+    # unused command-line argument, which is fatal under -Werror=unused.
+    $<$<COMPILE_LANGUAGE:C>:-Wno-incompatible-pointer-types>
+    $<$<COMPILE_LANGUAGE:C>:-Wno-incompatible-pointer-types-discards-qualifiers>
     -Wno-misleading-indentation
     -Wno-non-virtual-dtor
     -Wno-overloaded-virtual
