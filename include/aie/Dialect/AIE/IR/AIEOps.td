@@ -1855,6 +1855,11 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
         // aie_stream==2 means enable aie stream ports on producer and consumer tiles
         OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>, IntMaxValue<2>]>>:$aie_stream,
         OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>, IntMaxValue<1>]>>:$aie_stream_port,
+        // Pin the DMA channel for an endpoint instead of first-free assignment.
+        // prod_dma_channel pins the producer endpoint's channel; cons_dma_channels
+        // holds one entry per consumer (-1 = auto-assign that consumer).
+        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$prod_dma_channel,
+        OptionalAttr<DenseI32ArrayAttr>:$cons_dma_channels,
         InitValuesArrayAttr:$initValues,
         OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions,
         OptionalAttr<AIEI32Attr>:$iter_count

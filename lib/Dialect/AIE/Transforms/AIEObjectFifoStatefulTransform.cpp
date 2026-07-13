@@ -152,6 +152,22 @@ public:
     return -1;
   }
 
+  /// Reserve a user-pinned DMA channel for (tileOp, dir). Returns the channel
+  /// on success; returns -1 if the channel is out of range for the tile or is
+  /// already in use (the caller emits a diagnostic). Reserving up-front ensures
+  /// first-free auto-assignment never steals a pinned channel.
+  int reservePinnedChannel(TileOp tileOp, DMAChannelDir dir, int channel) {
+    int maxChannelNum = (dir == DMAChannelDir::MM2S)
+                            ? tileOp.getNumSourceConnections(WireBundle::DMA)
+                            : tileOp.getNumDestConnections(WireBundle::DMA);
+    if (channel < 0 || channel >= maxChannelNum)
+      return -1;
+    if (channelsPerTile[{tileOp.getResult(), dir, channel}] != 0)
+      return -1;
+    channelsPerTile[{tileOp.getResult(), dir, channel}] = 1;
+    return channel;
+  }
+
   /// Given a tile and DMAChannel, adds entry to aieStreamsPerTile or
   /// throws an error if the stream is already used.
   void checkAIEStreamIndex(TileOp tileOp, DMAChannel chan) {
@@ -1899,11 +1915,17 @@ struct AIEObjectFifoStatefulTransformPass
                                        : !crossTileInfos.at(producer);
 
       if (shouldProcessProducer) {
-        bool requiresAdjacentTileAccessChannels = crossTileInfos.at(producer);
-        int channelIndex = dmaAnalysis.getDMAChannelIndex(
-            producer.getProducerTileOp(), DMAChannelDir::MM2S,
-            requiresAdjacentTileAccessChannels);
-        fifo_dma_channel_index[producer] = channelIndex;
+        // A pinned channel was already reserved in reservePinnedChannels();
+        // honor it here instead of first-free assignment.
+        if (auto pin = producer.getProdDmaChannel()) {
+          fifo_dma_channel_index[producer] = *pin;
+        } else {
+          bool requiresAdjacentTileAccessChannels = crossTileInfos.at(producer);
+          int channelIndex = dmaAnalysis.getDMAChannelIndex(
+              producer.getProducerTileOp(), DMAChannelDir::MM2S,
+              requiresAdjacentTileAccessChannels);
+          fifo_dma_channel_index[producer] = channelIndex;
+        }
       }
 
       for (auto consumer : consumers) {
@@ -1914,14 +1936,55 @@ struct AIEObjectFifoStatefulTransformPass
                                          : !crossTileInfos.at(consumer);
 
         if (shouldProcessConsumer) {
-          bool requiresAdjacentTileAccessChannels = crossTileInfos.at(consumer);
-          int channelIndex = dmaAnalysis.getDMAChannelIndex(
-              consumer.getProducerTileOp(), DMAChannelDir::S2MM,
-              requiresAdjacentTileAccessChannels);
-          fifo_dma_channel_index[consumer] = channelIndex;
+          // Post-split each consumer is its own single-endpoint fifo carrying
+          // its pin (if any) as prod_dma_channel; honor it here.
+          if (auto pin = consumer.getProdDmaChannel()) {
+            fifo_dma_channel_index[consumer] = *pin;
+          } else {
+            bool requiresAdjacentTileAccessChannels =
+                crossTileInfos.at(consumer);
+            int channelIndex = dmaAnalysis.getDMAChannelIndex(
+                consumer.getProducerTileOp(), DMAChannelDir::S2MM,
+                requiresAdjacentTileAccessChannels);
+            fifo_dma_channel_index[consumer] = channelIndex;
+          }
         }
       }
     }
+  }
+
+  /// Reserve every user-pinned DMA channel before any first-free assignment,
+  /// so auto-assignment cannot steal a pinned channel. Emits a clean diagnostic
+  /// on an out-of-range channel, a collision between two pins on the same
+  /// (tile, dir), or a pin combined with aie_stream (which bypasses DMA).
+  /// Returns failure if any conflict was found.
+  LogicalResult reservePinnedChannels(DMAChannelAnalysis &dmaAnalysis,
+                                      ObjectFifoState &state) {
+    for (auto &[producer, consumers] : state.splitFifos) {
+      if (auto pin = producer.getProdDmaChannel()) {
+        if (producer.getAieStream())
+          return producer.emitOpError(
+              "cannot pin a DMA channel on an objectfifo that also uses "
+              "aie_stream (stream ports bypass DMA channels)");
+        if (dmaAnalysis.reservePinnedChannel(producer.getProducerTileOp(),
+                                             DMAChannelDir::MM2S, *pin) < 0)
+          return producer.emitOpError("pinned MM2S DMA channel ")
+                 << *pin << " is out of range or already in use on this tile";
+      }
+      for (auto consumer : consumers) {
+        if (auto pin = consumer.getProdDmaChannel()) {
+          if (consumer.getAieStream())
+            return consumer.emitOpError(
+                "cannot pin a DMA channel on an objectfifo that also uses "
+                "aie_stream (stream ports bypass DMA channels)");
+          if (dmaAnalysis.reservePinnedChannel(consumer.getProducerTileOp(),
+                                               DMAChannelDir::S2MM, *pin) < 0)
+            return consumer.emitOpError("pinned S2MM DMA channel ")
+                   << *pin << " is out of range or already in use on this tile";
+        }
+      }
+    }
+    return success();
   }
 
   void runOnOperation() override {
@@ -2030,6 +2093,17 @@ struct AIEObjectFifoStatefulTransformPass
             createOp->removeAttr("aie_stream");
             createOp->removeAttr("aie_stream_port");
           }
+        }
+        // Propagate this consumer's pinned DMA channel (if any) from the
+        // original op's cons_dma_channels array onto the fresh consumer fifo.
+        // Post-split each consumer is its own single-endpoint fifo, so it
+        // carries the pin as prod_dma_channel (the split consumer fifo's tile
+        // is the one that owns the S2MM channel).
+        if (auto consChans = createOp.getConsDmaChannels()) {
+          ArrayRef<int> chans = *consChans;
+          if (consumerIndex < (int)chans.size() && chans[consumerIndex] >= 0)
+            consumerFifo.setProdDmaChannelAttr(
+                builder.getI32IntegerAttr(chans[consumerIndex]));
         }
 
         // identify external buffers that were registered to the consumer fifo
@@ -2147,6 +2221,11 @@ struct AIEObjectFifoStatefulTransformPass
 
     // maps ends of split FIFO to DMA channels
     std::map<ObjectFifoCreateOp, int> fifo_dma_channel_index;
+
+    // Reserve user-pinned channels before any first-free assignment so
+    // auto-assignment cannot steal a pinned channel.
+    if (failed(reservePinnedChannels(dmaAnalysis, state)))
+      return signalPassFailure();
 
     // assign channel indices for FIFOs with cross-tile issues first
     assignDMAChannelIndices(dmaAnalysis, crossTileInfos, fifo_dma_channel_index,

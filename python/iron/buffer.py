@@ -38,6 +38,7 @@ class Buffer(Resolvable):
         name: str | None = None,
         tile: Tile | None = None,
         use_write_rtp: bool = False,
+        address: int | None = None,
     ):
         """A Buffer is a memory region declared at the top-level of the design, allowing it to
         be accessed by both Workers and the Runtime.
@@ -48,6 +49,7 @@ class Buffer(Resolvable):
             name (str | None, optional): The name of the buffer. If none is given, a unique name will be generated. Defaults to None.
             tile (Tile | None, optional): The tile for the buffer. Automatically set to the Worker's tile when the buffer is passed in the Worker's fn_args list. Defaults to None.
             use_write_rtp (bool, optional): If use_write_rtp, write_rtp/read_rtp operations will be generated. Otherwise, traditional write/read operations will be used. Defaults to False.
+            address (int | None, optional): Pin the buffer to a fixed L1 address. Needed for host-written RTP buffers the runtime pokes at a hardcoded address. Defaults to None (compiler-assigned).
 
         Raises:
             ValueError: If neither ``type`` nor ``initial_value`` is provided.
@@ -64,6 +66,7 @@ class Buffer(Resolvable):
         if not self._name:
             self._name = f"buf_{next(Buffer._gbuf_index)}"
         self._use_write_rtp = use_write_rtp
+        self._address = address
         self._tile = tile
         # Whether the user pinned this Buffer to an explicit tile at
         # construction.  A Worker may auto-pin ``_tile`` later as a
@@ -133,6 +136,7 @@ class Buffer(Resolvable):
                 tile=self._tile.op,
                 datatype=self._arr_type,
                 name=self._name,
+                address=self._address,
                 initial_value=self._initial_value,
                 use_write_rtp=self._use_write_rtp,
             )
