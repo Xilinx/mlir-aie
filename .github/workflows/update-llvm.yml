@@ -3,13 +3,6 @@
 
 name: Update LLVM Version
 
-# The automatic schedule is paused as of the ROCm/llvm-project migration:
-# utils/update_llvm_version.py is hardcoded to upstream llvm/llvm-project
-# (including cross-checking llvm/torch-mlir and llvm/eudsl compatibility
-# windows that don't apply to the ROCm fork), so left running biweekly it
-# would silently open PRs proposing to revert clone-llvm.sh back toward
-# upstream commits. workflow_dispatch is kept for manual, upstream-specific
-# use. Making this ROCm-aware is left as future work.
 on:
   workflow_dispatch:
     inputs:
@@ -17,12 +10,12 @@ on:
         description: 'Specific LLVM hash to use'
         required: false
         type: string
-  # schedule:
-  #   # Run every other Monday at 6:00 UTC (approx biweekly)
-  #   # Note: GitHub Actions cron doesn't support "every 2 weeks" directly.
-  #   # Running weekly is usually fine, or 1st and 15th.
-  #   # Using 1st and 15th of every month.
-  #   - cron: '0 6 1,15 * *'
+  schedule:
+    # Run every other Monday at 6:00 UTC (approx biweekly)
+    # Note: GitHub Actions cron doesn't support "every 2 weeks" directly.
+    # Running weekly is usually fine, or 1st and 15th.
+    # Using 1st and 15th of every month.
+    - cron: '0 6 1,15 * *'
 
 permissions:
   contents: write
