@@ -16,10 +16,12 @@ module {
       %lock_0_1_0 = aie.lock(%tile_0_1) {init = 0 : i32}
       %buffer_0_1 = aie.buffer(%tile_0_1) {address = 1 : i32} : memref<128xi16>
       %0 = aie.dma(S2MM, 0) [{
-        aie.use_lock(%lock_0_1, AcquireGreaterEqual)
+        %c1_ul0 = arith.constant 1 : i32
+        aie.use_lock(%lock_0_1, AcquireGreaterEqual, %c1_ul0)
         // expected-error@+1 {{'aie.dma_bd' op bd address must be 4 byte (32b) aligned; got base+offset: 1 (bytes)}}
         aie.dma_bd(%buffer_0_1 : memref<128xi16>, 0, 128)
-        aie.use_lock(%lock_0_1_0, Release)
+        %c1_ul1 = arith.constant 1 : i32
+        aie.use_lock(%lock_0_1_0, Release, %c1_ul1)
       }]
       aie.end
     }
@@ -36,10 +38,12 @@ module {
       %lock_0_1_0 = aie.lock(%tile_0_1) {init = 0 : i32}
       %buffer_0_1 = aie.buffer(%tile_0_1) {address = 1 : i32} : memref<128xi16>
       %0 = aie.dma(S2MM, 0) [{
-        aie.use_lock(%lock_0_1, AcquireGreaterEqual)
+        %c1_ul2 = arith.constant 1 : i32
+        aie.use_lock(%lock_0_1, AcquireGreaterEqual, %c1_ul2)
         aie.dma_bd(%buffer_0_1 : memref<128xi16>, 3, 128)
         // expected-error@above {{'aie.dma_bd' op bd address must be 4 byte (32b) aligned; got base+offset: 7 (bytes)}}
-        aie.use_lock(%lock_0_1_0, Release)
+        %c1_ul3 = arith.constant 1 : i32
+        aie.use_lock(%lock_0_1_0, Release, %c1_ul3)
       }]
       aie.end
     }
@@ -61,10 +65,12 @@ module {
       %lock_0_1_0 = aie.lock(%tile_0_1) {init = 0 : i32}
       %buffer_0_1 = aie.buffer(%tile_0_1) {address = 2 : i32} : memref<128xi16>
       %0 = aie.dma(S2MM, 0) [{
-        aie.use_lock(%lock_0_1, AcquireGreaterEqual)
+        %c1_ul4 = arith.constant 1 : i32
+        aie.use_lock(%lock_0_1, AcquireGreaterEqual, %c1_ul4)
         // 2*6 + 2 = 8 bytes i.e., 4B aligned...
         aie.dma_bd(%buffer_0_1 : memref<128xi16>, 3, 128)
-        aie.use_lock(%lock_0_1_0, Release)
+        %c1_ul5 = arith.constant 1 : i32
+        aie.use_lock(%lock_0_1_0, Release, %c1_ul5)
       }]
       aie.end
     }
@@ -82,10 +88,12 @@ module {
       %lock_0_1_0 = aie.lock(%tile_0_1) {init = 0 : i32}
       %buffer_0_1 = aie.buffer(%tile_0_1) {address = 0 : i32} : memref<128xi16>
       %0 = aie.dma(S2MM, 0) [{
-        aie.use_lock(%lock_0_1, AcquireGreaterEqual)
+        %c1_ul6 = arith.constant 1 : i32
+        aie.use_lock(%lock_0_1, AcquireGreaterEqual, %c1_ul6)
         // expected-error@below {{'aie.dma_bd' op bd address must be 4 byte (32b) aligned; got base+offset: 6 (bytes)}}
         aie.dma_bd(%buffer_0_1 : memref<128xi16>, 3, 128)
-        aie.use_lock(%lock_0_1_0, Release)
+        %c1_ul7 = arith.constant 1 : i32
+        aie.use_lock(%lock_0_1_0, Release, %c1_ul7)
       }]
       aie.end
     }

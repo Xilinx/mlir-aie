@@ -20,8 +20,10 @@ from aie.iron.device import (
 # CHECK:     %[[TILE:.*]] = aie.logical_tile<CoreTile>(?, ?)
 # CHECK:     %[[LOCK:.*]] = aie.lock(%[[TILE]])
 # CHECK:     %{{.*}} = aie.core(%[[TILE]]) {
-# CHECK:         aie.use_lock(%[[LOCK]], Acquire, 1)
-# CHECK:         aie.use_lock(%[[LOCK]], Release, 1)
+# CHECK:         %{{.*}} = arith.constant 1 : i32
+# CHECK:         aie.use_lock(%[[LOCK]], Acquire, %{{.*}})
+# CHECK:         %{{.*}} = arith.constant 1 : i32
+# CHECK:         aie.use_lock(%[[LOCK]], Release, %{{.*}})
 # CHECK:     }
 # CHECK:     aie.runtime_sequence(%arg0: memref<16xi32>) {
 # CHECK:       aiex.set_lock(%[[LOCK]], 1)

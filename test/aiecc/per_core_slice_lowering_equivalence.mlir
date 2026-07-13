@@ -48,19 +48,23 @@ module @full {
   %l12 = aie.lock(%t12, 0)
   %b12 = aie.buffer(%t12) { sym_name = "a12" } : memref<16xi32>
   %c02 = aie.core(%t02) {
-    aie.use_lock(%l02, Acquire, 0)
+    %c0_ul0 = arith.constant 0 : i32
+    aie.use_lock(%l02, Acquire, %c0_ul0)
     %v = arith.constant 7 : i32
     %i = arith.constant 3 : index
     memref.store %v, %b02[%i] : memref<16xi32>
-    aie.use_lock(%l02, Release, 1)
+    %c1_ul1 = arith.constant 1 : i32
+    aie.use_lock(%l02, Release, %c1_ul1)
     aie.end
   }
   %c12 = aie.core(%t12) {
-    aie.use_lock(%l12, Acquire, 0)
+    %c0_ul2 = arith.constant 0 : i32
+    aie.use_lock(%l12, Acquire, %c0_ul2)
     %v = arith.constant 99 : i32
     %i = arith.constant 5 : index
     memref.store %v, %b12[%i] : memref<16xi32>
-    aie.use_lock(%l12, Release, 1)
+    %c1_ul3 = arith.constant 1 : i32
+    aie.use_lock(%l12, Release, %c1_ul3)
     aie.end
   }
   aie.runtime_sequence @seq(%arg0 : memref<16xi32>) {
@@ -75,11 +79,13 @@ module @full {
   %l12 = aie.lock(%t12, 0)
   %b22 = aie.buffer(%t12) { sym_name = "a22" } : memref<16xi32>
   %c12 = aie.core(%t12) {
-    aie.use_lock(%l12, Acquire, 0)
+    %c0_ul4 = arith.constant 0 : i32
+    aie.use_lock(%l12, Acquire, %c0_ul4)
     %v = arith.constant 42 : i32
     %i = arith.constant 1 : index
     memref.store %v, %b22[%i] : memref<16xi32>
-    aie.use_lock(%l12, Release, 1)
+    %c1_ul5 = arith.constant 1 : i32
+    aie.use_lock(%l12, Release, %c1_ul5)
     aie.end
   }
  }

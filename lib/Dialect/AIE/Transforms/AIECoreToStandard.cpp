@@ -443,19 +443,19 @@ struct AIEUseLockToStdLowering : OpConversionPattern<UseLockOp> {
         return useLock.emitOpError("Could not find the intrinsic function!");
 
       SmallVector<Value, 2> args;
-      auto lockValue = useLock.getLockValue();
+      auto i32Ty = IntegerType::get(rewriter.getContext(), 32);
+      args.push_back(arith::IndexCastOp::create(rewriter, useLock.getLoc(),
+                                                i32Ty, useLock.getLock()));
 
-      // AIE2 acquire greater equal is encoded as a negative value.
+      Value value = adaptor.getValue();
+      // AIE2 acquire-greater-equal is encoded as a negative value, so negate
+      // it at runtime.
       if (useLock.acquireGE()) {
-        lockValue = -lockValue;
+        Value zero = arith::ConstantOp::create(
+            rewriter, useLock.getLoc(), i32Ty, rewriter.getI32IntegerAttr(0));
+        value = arith::SubIOp::create(rewriter, useLock.getLoc(), zero, value);
       }
-      args.push_back(arith::IndexCastOp::create(
-          rewriter, useLock.getLoc(),
-          IntegerType::get(rewriter.getContext(), 32), useLock.getLock()));
-      args.push_back(
-          arith::ConstantOp::create(rewriter, useLock.getLoc(),
-                                    IntegerType::get(rewriter.getContext(), 32),
-                                    rewriter.getI32IntegerAttr(lockValue)));
+      args.push_back(value);
 
       func::CallOp::create(rewriter, useLock.getLoc(), useLockFunc, args);
     }

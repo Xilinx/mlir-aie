@@ -26,12 +26,15 @@ aie.device(xcvc1902) {
   ^dma0:
     %dstDma = aie.dma_start("MM2S", 0, ^bb3, ^end)
   ^bb2:
-    aie.use_lock(%10, Acquire, 0)
+    %c0_ul0 = arith.constant 0 : i32
+    aie.use_lock(%10, Acquire, %c0_ul0)
     aie.dma_bd(%11 : memref<256xi32>, 0, 256)
-    aie.use_lock(%10, Release, 1)
+    %c1_ul1 = arith.constant 1 : i32
+    aie.use_lock(%10, Release, %c1_ul1)
     aie.next_bd ^bb2
   ^bb3:
-    aie.use_lock(%10, Acquire, 1)
+    %c1_ul2 = arith.constant 1 : i32
+    aie.use_lock(%10, Acquire, %c1_ul2)
     aie.dma_bd_packet(0x6, 10)
     aie.dma_bd(%11 : memref<256xi32>, 0, 256)
     aie.next_bd ^bb3
@@ -44,15 +47,19 @@ aie.device(xcvc1902) {
   ^dma0:
     aie.dma_start("S2MM", 0, ^bb1, ^end)
   ^bb0:
-    aie.use_lock(%lock1, Acquire, 1)
+    %c1_ul3 = arith.constant 1 : i32
+    aie.use_lock(%lock1, Acquire, %c1_ul3)
     aie.dma_bd_packet(0x2, 3)
     aie.dma_bd(%buf_i : memref<256xi32>, 0, 256)
-    aie.use_lock(%lock1, Release, 0)
+    %c0_ul4 = arith.constant 0 : i32
+    aie.use_lock(%lock1, Release, %c0_ul4)
     aie.next_bd ^bb0
   ^bb1:
-    aie.use_lock(%lock2, Acquire, 0)
+    %c0_ul5 = arith.constant 0 : i32
+    aie.use_lock(%lock2, Acquire, %c0_ul5)
     aie.dma_bd(%buf_o : memref<257xi32>, 0, 257)
-    aie.use_lock(%lock2, Release, 1)
+    %c1_ul6 = arith.constant 1 : i32
+    aie.use_lock(%lock2, Release, %c1_ul6)
     aie.next_bd ^bb1
   ^end:
     aie.end

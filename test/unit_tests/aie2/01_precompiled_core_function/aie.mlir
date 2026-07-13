@@ -23,11 +23,15 @@ module @test_chesss_01_precompiled_core_function {
     func.func private @func(%A: memref<256xi32>, %B: memref<256xi32>) -> () attributes {link_with = "kernel.o"}
 
     %core13 = aie.core(%tile13) {
-      aie.use_lock(%lock13_3, "Acquire", 1) // acquire for read(e.g. input ping)
-      aie.use_lock(%lock13_5, "Acquire", 0) // acquire for write
+      %c1_ul0 = arith.constant 1 : i32
+      aie.use_lock(%lock13_3, "Acquire", %c1_ul0) // acquire for read(e.g. input ping)
+      %c0_ul1 = arith.constant 0 : i32
+      aie.use_lock(%lock13_5, "Acquire", %c0_ul1) // acquire for write
       func.call @func(%buf13_0, %buf13_1) : (memref<256xi32>, memref<256xi32>) -> ()
-      aie.use_lock(%lock13_3, "Release", 0) // release for write
-      aie.use_lock(%lock13_5, "Release", 1) // release for read
+      %c0_ul2 = arith.constant 0 : i32
+      aie.use_lock(%lock13_3, "Release", %c0_ul2) // release for write
+      %c1_ul3 = arith.constant 1 : i32
+      aie.use_lock(%lock13_5, "Release", %c1_ul3) // release for read
       aie.end
     }
   }

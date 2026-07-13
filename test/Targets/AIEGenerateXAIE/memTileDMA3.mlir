@@ -24,32 +24,40 @@ module @aie_module {
     %memtile_dma_2_1 = aie.memtile_dma(%tile_2_1) {
       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
     ^bb1:  // pred: ^bb0
-      aie.use_lock(%lock_2_1, AcquireGreaterEqual, 1)
+      %c1_ul0 = arith.constant 1 : i32
+      aie.use_lock(%lock_2_1, AcquireGreaterEqual, %c1_ul0)
       aie.dma_bd(%buf7 : memref<5xi32, 1 : i32>, 0, 5)
-      aie.use_lock(%lock_2_1_0, Release, 1)
+      %c1_ul1 = arith.constant 1 : i32
+      aie.use_lock(%lock_2_1_0, Release, %c1_ul1)
       aie.next_bd ^bb4
     ^bb2:  // pred: ^bb0
       %1 = aie.dma_start(S2MM, 0, ^bb3, ^bb7, repeat_count = 7)
     ^bb3:  // pred: ^bb2
-      aie.use_lock(%lock_2_1, AcquireGreaterEqual, 1)
+      %c1_ul2 = arith.constant 1 : i32
+      aie.use_lock(%lock_2_1, AcquireGreaterEqual, %c1_ul2)
       aie.dma_bd(%buf8 : memref<12xi32, 1 : i32>, 0, 12)
-      aie.use_lock(%lock_2_1_0, Release, 1)
+      %c1_ul3 = arith.constant 1 : i32
+      aie.use_lock(%lock_2_1_0, Release, %c1_ul3)
       aie.next_bd ^bb4
     ^bb4:  // 5 preds: ^bb1, ^bb3, ^bb5, ^bb6, ^bb8
       aie.end
     ^bb5:  // pred: ^bb7
       %2 = aie.dma_start(MM2S, 0, ^bb6, ^bb4, repeat_count = 7)
     ^bb6:  // pred: ^bb5
-      aie.use_lock(%lock_2_1_0, AcquireGreaterEqual, 1)
+      %c1_ul4 = arith.constant 1 : i32
+      aie.use_lock(%lock_2_1_0, AcquireGreaterEqual, %c1_ul4)
       aie.dma_bd(%buf8 : memref<12xi32, 1 : i32>, 0, 12)
-      aie.use_lock(%lock_2_1, Release, 1)
+      %c1_ul5 = arith.constant 1 : i32
+      aie.use_lock(%lock_2_1, Release, %c1_ul5)
       aie.next_bd ^bb4
     ^bb7:  // pred: ^bb2
       %3 = aie.dma_start(MM2S, 0, ^bb8, ^bb5)
     ^bb8:  // pred: ^bb7
-      aie.use_lock(%lock_2_1_0, AcquireGreaterEqual, 1)
+      %c1_ul6 = arith.constant 1 : i32
+      aie.use_lock(%lock_2_1_0, AcquireGreaterEqual, %c1_ul6)
       aie.dma_bd(%buf7 : memref<5xi32, 1 : i32>, 0, 5)
-      aie.use_lock(%lock_2_1, Release, 1)
+      %c1_ul7 = arith.constant 1 : i32
+      aie.use_lock(%lock_2_1, Release, %c1_ul7)
       aie.next_bd ^bb4
     }
   }

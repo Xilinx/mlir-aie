@@ -43,24 +43,32 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
       ^dma0:
         %dstDma = aie.dma_start("MM2S", 1, ^bd2, ^end)
       ^bd0:
-        aie.use_lock(%lock_a_write, AcquireGreaterEqual, 1)
+        %c1_ul0 = arith.constant 1 : i32
+        aie.use_lock(%lock_a_write, AcquireGreaterEqual, %c1_ul0)
         aie.dma_bd(%buf_a_ping : memref<16xi32>, 0, 16)
-        aie.use_lock(%lock_a_read, Release, 1)
+        %c1_ul1 = arith.constant 1 : i32
+        aie.use_lock(%lock_a_read, Release, %c1_ul1)
         aie.next_bd ^bd1
       ^bd1:
-        aie.use_lock(%lock_a_write, AcquireGreaterEqual, 1)
+        %c1_ul2 = arith.constant 1 : i32
+        aie.use_lock(%lock_a_write, AcquireGreaterEqual, %c1_ul2)
         aie.dma_bd(%buf_a_pong : memref<16xi32>, 0, 16)
-        aie.use_lock(%lock_a_read, Release, 1)
+        %c1_ul3 = arith.constant 1 : i32
+        aie.use_lock(%lock_a_read, Release, %c1_ul3)
         aie.next_bd ^bd0
       ^bd2:
-        aie.use_lock(%lock_b_read, AcquireGreaterEqual, 1)
+        %c1_ul4 = arith.constant 1 : i32
+        aie.use_lock(%lock_b_read, AcquireGreaterEqual, %c1_ul4)
         aie.dma_bd(%buf_b_ping : memref<16xi32>, 0, 16)
-        aie.use_lock(%lock_b_write, Release, 1)
+        %c1_ul5 = arith.constant 1 : i32
+        aie.use_lock(%lock_b_write, Release, %c1_ul5)
         aie.next_bd ^bd3
       ^bd3:
-        aie.use_lock(%lock_b_read, AcquireGreaterEqual, 1)
+        %c1_ul6 = arith.constant 1 : i32
+        aie.use_lock(%lock_b_read, AcquireGreaterEqual, %c1_ul6)
         aie.dma_bd(%buf_b_pong : memref<16xi32>, 0, 16)
-        aie.use_lock(%lock_b_write, Release, 1)
+        %c1_ul7 = arith.constant 1 : i32
+        aie.use_lock(%lock_b_write, Release, %c1_ul7)
         aie.next_bd ^bd2
       ^end:
         aie.end
@@ -84,14 +92,18 @@ module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
       ^dma:
         aie.dma_start(S2MM, 0, ^bd1, ^end)
       ^bd0:
-        aie.use_lock(%lock1_read, AcquireGreaterEqual, 1)
+        %c1_ul8 = arith.constant 1 : i32
+        aie.use_lock(%lock1_read, AcquireGreaterEqual, %c1_ul8)
         aie.dma_bd(%buffer_in : memref<32 x i32>, 0, 32)
-        aie.use_lock(%lock1_write, Release, 1)
+        %c1_ul9 = arith.constant 1 : i32
+        aie.use_lock(%lock1_write, Release, %c1_ul9)
         aie.next_bd ^bd0
       ^bd1:
-        aie.use_lock(%lock2_write, AcquireGreaterEqual, 1)
+        %c1_ul10 = arith.constant 1 : i32
+        aie.use_lock(%lock2_write, AcquireGreaterEqual, %c1_ul10)
         aie.dma_bd(%buffer_out : memref<32 x i32>, 0, 32)
-        aie.use_lock(%lock2_read, Release, 1)
+        %c1_ul11 = arith.constant 1 : i32
+        aie.use_lock(%lock2_read, Release, %c1_ul11)
         aie.next_bd ^bd1
       ^end:
         aie.end

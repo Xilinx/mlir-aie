@@ -19,11 +19,13 @@ module @slice {
   %l12 = aie.lock(%t12, 0)
   %b12 = aie.buffer(%t12) { sym_name = "a12" } : memref<16xi32>
   %c02 = aie.core(%t02) {
-    aie.use_lock(%l02, Acquire, 0)
+    %c0_ul0 = arith.constant 0 : i32
+    aie.use_lock(%l02, Acquire, %c0_ul0)
     %v = arith.constant 7 : i32
     %i = arith.constant 3 : index
     memref.store %v, %b02[%i] : memref<16xi32>
-    aie.use_lock(%l02, Release, 1)
+    %c1_ul1 = arith.constant 1 : i32
+    aie.use_lock(%l02, Release, %c1_ul1)
     aie.end
   }
  }

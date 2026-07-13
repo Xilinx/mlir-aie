@@ -39,21 +39,26 @@ module @aie_module  {
     %m73 = aie.mem(%t73) {
         %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^end)
       ^bd0:
-        aie.use_lock(%lock_l1, AcquireGreaterEqual, 1)
+        %c1_ul0 = arith.constant 1 : i32
+        aie.use_lock(%lock_l1, AcquireGreaterEqual, %c1_ul0)
         aie.dma_bd(%buf_l : memref<256xi32>, 0, 256)
-        aie.use_lock(%lock_l2, Release, 1)
+        %c1_ul1 = arith.constant 1 : i32
+        aie.use_lock(%lock_l2, Release, %c1_ul1)
         aie.next_bd ^bd1
       ^bd1:
         aie.dma_bd(%buf_l : memref<256xi32>, 0, 256)
-        aie.use_lock(%lock_l1, Release, 1)
+        %c1_ul2 = arith.constant 1 : i32
+        aie.use_lock(%lock_l1, Release, %c1_ul2)
         aie.next_bd ^bd2
       ^bd2:
         aie.dma_bd(%buf_l : memref<256xi32>, 0, 256)
-        aie.use_lock(%lock_l1, Release, 1)
+        %c1_ul3 = arith.constant 1 : i32
+        aie.use_lock(%lock_l1, Release, %c1_ul3)
         aie.next_bd ^bd3
       ^bd3:
         aie.dma_bd(%buf_l : memref<256xi32>, 0, 256)
-        aie.use_lock(%lock_l1, Release, 1)
+        %c1_ul4 = arith.constant 1 : i32
+        aie.use_lock(%lock_l1, Release, %c1_ul4)
         aie.next_bd ^end
       ^end:
         aie.end

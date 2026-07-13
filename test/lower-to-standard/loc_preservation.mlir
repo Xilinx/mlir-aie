@@ -20,7 +20,8 @@ module @loc_test {
   %buf13 = aie.buffer(%tile13) {sym_name = "my_buf"} : memref<16xi32> loc(#buf_loc)
 
   func.func private @kernel(%lock : index) {
-    aie.use_lock(%lock, "Acquire", 0) loc(#user_loc)
+    %c0_ul0 = arith.constant 0 : i32
+    aie.use_lock(%lock, "Acquire", %c0_ul0) loc(#user_loc)
     return
   }
 

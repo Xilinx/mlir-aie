@@ -79,6 +79,25 @@ from ..ir import (
 register_dialect(get_dialect_registry())
 assert _cext.globals._check_dialect_module_loaded("aie")
 
+# The generated `use_lock` builder takes the lock value as an SSA i32 operand.
+# Wrap it so callers may still pass a plain Python int (materialized as an
+# arith.constant) or omit the value entirely (defaults to 1), while also
+# accepting a Value for runtime-parameterized lock values.
+from ._aie_ops_gen import use_lock as _use_lock
+
+
+def use_lock(
+    lock, action, value=None, *, blocking=None, acq_en=None, loc=None, ip=None
+):
+    if value is None:
+        value = 1
+    if isinstance(value, int):
+        value = constant(value, T.i32())
+    return _use_lock(
+        lock, action, value, blocking=blocking, acq_en=acq_en, loc=loc, ip=ip
+    )
+
+
 # Included in aie instead of aiex to avoid circular imports, as buffer uses this
 from ._aiex_ops_gen import NpuWriteRTPOp
 

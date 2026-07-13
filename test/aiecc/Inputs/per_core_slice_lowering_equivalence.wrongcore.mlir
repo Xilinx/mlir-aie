@@ -16,11 +16,13 @@ module @slice_wrongcore {
   %l12 = aie.lock(%t12, 0)
   %b12 = aie.buffer(%t12) { sym_name = "a12" } : memref<16xi32>
   %c12 = aie.core(%t12) {
-    aie.use_lock(%l12, Acquire, 0)
+    %c0_ul0 = arith.constant 0 : i32
+    aie.use_lock(%l12, Acquire, %c0_ul0)
     %v = arith.constant 99 : i32
     %i = arith.constant 5 : index
     memref.store %v, %b12[%i] : memref<16xi32>
-    aie.use_lock(%l12, Release, 1)
+    %c1_ul1 = arith.constant 1 : i32
+    aie.use_lock(%l12, Release, %c1_ul1)
     aie.end
   }
  }

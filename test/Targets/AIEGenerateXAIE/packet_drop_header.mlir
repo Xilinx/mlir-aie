@@ -64,16 +64,20 @@ module @aie_module {
     ^bb1:  // pred: ^bb0
       %8 = aie.dma_start(MM2S, 0, ^bb3, ^bb4)
     ^bb2:  // 2 preds: ^bb0, ^bb2
-      aie.use_lock(%4, Acquire, 0)
+      %c0_ul0 = arith.constant 0 : i32
+      aie.use_lock(%4, Acquire, %c0_ul0)
       aie.dma_bd_packet(2, 3)
       aie.dma_bd(%5 : memref<16xi32, 2>, 0, 16)
-      aie.use_lock(%4, Release, 1)
+      %c1_ul1 = arith.constant 1 : i32
+      aie.use_lock(%4, Release, %c1_ul1)
       aie.next_bd ^bb2
     ^bb3:  // 2 preds: ^bb1, ^bb3
-      aie.use_lock(%4, Acquire, 1)
+      %c1_ul2 = arith.constant 1 : i32
+      aie.use_lock(%4, Acquire, %c1_ul2)
       aie.dma_bd_packet(6, 10)
       aie.dma_bd(%5 : memref<16xi32, 2>, 0, 16)
-      aie.use_lock(%4, Release, 0)
+      %c0_ul3 = arith.constant 0 : i32
+      aie.use_lock(%4, Release, %c0_ul3)
       aie.next_bd ^bb3
     ^bb4:  // pred: ^bb1
       aie.end
