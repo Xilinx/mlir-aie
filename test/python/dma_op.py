@@ -36,8 +36,7 @@ from util import construct_and_print_module
 #    %memtile_dma_0_1 = aie.memtile_dma(%tile_0_1) {
 #      %0 = aie.dma(MM2S, 0) [{
 #        aie.use_lock(%lock_0_1_0, AcquireGreaterEqual)
-#        %c2_i32 = arith.constant 2 : i32
-#        aie.dma_bd(%mem_A : memref<2x1xi16> len = %c2_i32 sizes = [1, 1, 1, 1] strides = [1, 1, 1, 1])
+#        aie.dma_bd(%mem_A : memref<2x1xi16> len = 2 sizes = [1, 1, 1, 1] strides = [1, 1, 1, 1])
 #        aie.use_lock(%lock_0_1, Release)
 #      }]
 #      aie.end
@@ -70,7 +69,7 @@ def objFifo_example():
                 use_lock(cons_lock_mem_A, LockAction.AcquireGreaterEqual)
                 dma_bd(
                     buff_mem_A,
-                    len=2,
+                    transfer_len=2,
                     sizes=[1, 1, 1, 1],
                     strides=[1, 1, 1, 1],
                 )
