@@ -397,6 +397,7 @@ def resnet_conv2_x(
                     i,
                 ],
                 tile=cores[i][0],
+                stack_size=0x1000,
             )
         )
         workers.append(

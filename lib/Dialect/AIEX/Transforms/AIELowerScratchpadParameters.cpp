@@ -79,6 +79,10 @@ struct AIELowerScratchpadParametersPass
           AIELowerScratchpadParametersPass> {
   using AIELowerScratchpadParametersBase::AIELowerScratchpadParametersBase;
 
+  void getDependentDialects(DialectRegistry &registry) const override {
+    registry.insert<arith::ArithDialect>();
+  }
+
   // For each read_scratchpad_parameter of a unique parameter, create a 2xi32
   // buffer and store a reference to it on the ReadScratchpadParameterOp as
   // the `buffer` attribute.

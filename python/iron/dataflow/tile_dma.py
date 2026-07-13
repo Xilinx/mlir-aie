@@ -31,6 +31,7 @@ from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
 from ...dialects.aie import (
     EndOp,  # pyright: ignore[reportAttributeAccessIssue]
     dma_bd,  # pyright: ignore[reportAttributeAccessIssue]
+    dma_bd_packet,  # pyright: ignore[reportAttributeAccessIssue]
     dma_start,
     mem,
     memtile_dma,
@@ -249,8 +250,13 @@ class TileDma(Resolvable):
                             bd_kwargs["offset"] = bd.offset
                         if bd.length is not None:
                             bd_kwargs["transfer_len"] = bd.length
+                        # A packet header must be a distinct aie.dma_bd_packet op
+                        # placed BEFORE the aie.dma_bd: the CDO/xclbin backends
+                        # (AIERT / AIETargetXAIEV2) read the header only from that
+                        # op, not from a `packet` attribute on the dma_bd.
                         if bd.packet is not None:
-                            bd_kwargs["packet"] = bd.packet
+                            pkt_type, pkt_id = bd.packet
+                            dma_bd_packet(pkt_type, pkt_id)
                         dma_bd(bd.buffer.op, **bd_kwargs)
                         for rel in bd.releases:
                             rel.emit()

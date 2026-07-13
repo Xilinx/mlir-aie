@@ -186,13 +186,19 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
       if (op.acquire() || op.acquireGE()) {
         hasAcq = true;
         acqLockID = lockID;
-        acqValue = op.getLockValue();
+        auto value = op.getConstantValue();
+        if (failed(value))
+          return failure();
+        acqValue = *value;
         if (op.acquireGE())
           acqValue = -acqValue;
       } else if (op.release()) {
         hasRel = true;
         relLockID = lockID;
-        relValue = op.getLockValue();
+        auto value = op.getConstantValue();
+        if (failed(value))
+          return failure();
+        relValue = *value;
       } else {
         // unreachable for current targets
         return op.emitOpError("unsupported lock action");

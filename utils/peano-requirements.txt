@@ -3,4 +3,4 @@
 # workflow (utils/update_peano_version.py) so a bad nightly is caught in a PR
 # instead of breaking main. Mirrors the eudsl pin style in python/requirements.txt.
 -f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly
-llvm-aie==21.0.0.2026070801+4fb2354f
+llvm-aie==21.0.0.2026071301+3a4f47b4

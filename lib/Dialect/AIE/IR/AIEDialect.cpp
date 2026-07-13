@@ -13,6 +13,7 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/DialectImplementation.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/SymbolTable.h"
 #include "mlir/Interfaces/FoldInterfaces.h"
@@ -76,7 +77,11 @@ struct AIEDialectFoldInterface : DialectFoldInterface {
     //    them with a core's identical constants, which would leave the core
     //    referencing a device-level value that is erased when the core is
     //    outlined.
-    return isa<CoreOp, RuntimeSequenceOp>(region->getParentOp());
+    //  - Make sure SSA values for aie.use_lock operands in
+    //    aie.mem/aie.memtile_dma/aie.shim_dma bodies do not get
+    //    hoisted.
+    return isa<CoreOp, RuntimeSequenceOp, MemOp, MemTileDMAOp, ShimDMAOp>(
+        region->getParentOp());
   }
 };
 
@@ -1698,9 +1703,12 @@ TileOp TileOp::getOrCreate(mlir::OpBuilder builder, DeviceOp device, int col,
 //===----------------------------------------------------------------------===//
 
 LogicalResult ShimMuxOp::verify() {
-  // ShimMux requires a placed tile (TileOp), not a logical tile
+  // The port/connection checks below are keyed off the target model for a
+  // placed tile. Before --aie-place-tiles the tile is still an
+  // aie.logical_tile, so defer those checks to the post-placement re-verify --
+  // mirroring SwitchboxOp::verify and the UsesAreAccessible trait.
   if (!isa<TileOp>(getTile().getDefiningOp()))
-    return emitOpError("requires a placed tile (aie.tile), not a logical tile");
+    return success();
 
   Region &body = getConnections();
   DenseSet<Port> destset;
@@ -2627,9 +2635,13 @@ void DMAStartOp::getCanonicalizationPatterns(RewritePatternSet &patterns,
 //===----------------------------------------------------------------------===//
 
 LogicalResult SwitchboxOp::verify() {
-  // Switchbox requires a placed tile (TileOp), not a logical tile
+  // The remaining checks (port bounds, legal-connection rules) are all keyed
+  // off the target model for a placed tile. Before --aie-place-tiles runs the
+  // tile is still an aie.logical_tile, so defer those checks to the
+  // post-placement re-verify -- mirroring how UsesAreAccessible and FlowOp
+  // skip target-model checks on logical tiles.
   if (!isa<TileOp>(getTile().getDefiningOp()))
-    return emitOpError("requires a placed tile (aie.tile), not a logical tile");
+    return success();
 
   Region &body = getConnections();
   DenseSet<Port> sourceset;
@@ -2790,6 +2802,15 @@ LogicalResult LockOp::verify() {
   return success();
 }
 
+// Look up for compile-time constant lock values, if any.
+// Returns std::nullopt if lock value does not reference an `arith.constant`.
+static std::optional<int32_t> getConstantLockValue(UseLockOp op) {
+  if (auto constant = op.getValue().getDefiningOp<arith::ConstantOp>())
+    if (auto intAttr = llvm::dyn_cast<IntegerAttr>(constant.getValue()))
+      return (int32_t)intAttr.getInt();
+  return std::nullopt;
+}
+
 struct UsesOneLockInDMABlock {
   static LogicalResult verifyTrait(Operation *op) {
     auto *block = op->getBlock();
@@ -2811,16 +2832,21 @@ struct AcquireReleaseOneStateInDMABlock {
     auto *block = op->getBlock();
     int acqValue = -1, relValue = -1;
     for (auto op : block->getOps<UseLockOp>()) {
+      // Non-constant lock values cannot be compared here; the passes that
+      // require a constant enforce that separately via getConstantValue().
+      auto value = getConstantLockValue(op);
+      if (!value)
+        continue;
       if (op.acquire() || op.acquireGE()) {
-        if (acqValue != -1 && acqValue != op.getLockValue()) {
+        if (acqValue != -1 && acqValue != *value) {
           return failure();
         }
-        acqValue = op.getLockValue();
+        acqValue = *value;
       } else if (op.release()) {
-        if (relValue != -1 && relValue != op.getLockValue()) {
+        if (relValue != -1 && relValue != *value) {
           return failure();
         }
-        relValue = op.getLockValue();
+        relValue = *value;
       }
     }
     return success();
@@ -2847,6 +2873,15 @@ LogicalResult UseLockOp::verify() {
   if (targetModel.getTargetArch() == AIEArch::AIE1 && acquireGE())
     return (*this)->emitOpError(
         "AcquireGreaterEqual is not supported in AIE1.");
+
+  // Locks used inside a DMA/BD block are configured via static register writes
+  // and therefore require a compile-time constant value.
+  if (HasSomeParent<MemOp, MemTileDMAOp, ShimDMAOp>::verifyTrait(*this)
+          .succeeded() &&
+      !getConstantLockValue(*this))
+    return (*this)->emitOpError(
+        "lock value in a DMA/BD block must be a compile-time constant "
+        "(defined by an arith.constant).");
 
   // Otherwise, AIE.useLock should be inside MemOp, MemTileDMAOp, or
   // ShimDMAOp,
@@ -2932,8 +2967,16 @@ static void printTraceRegValue(OpAsmPrinter &printer, Operation *op,
   xilinx::AIE::printTraceEventEnum(printer, value);
 }
 
+// Helper to parse a LockBlocking enum keyword.
 #define GET_OP_CLASSES
 #include "aie/Dialect/AIE/IR/AIEOps.cpp.inc"
+
+FailureOr<int32_t> UseLockOp::getConstantValue() {
+  if (auto value = getConstantLockValue(*this))
+    return *value;
+  return emitOpError("expected the lock value to be a compile-time constant "
+                     "(defined by an arith.constant).");
+}
 
 TileOp SwitchboxOp::getTileOp() {
   return cast<TileElement>(this->getOperation()).getTileOp();

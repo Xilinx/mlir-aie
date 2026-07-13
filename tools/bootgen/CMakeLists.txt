@@ -107,6 +107,10 @@ string(REPLACE "#include \"openssl/ms/applink.c\"" "" FILE_CONTENTS "${FILE_CONT
 file(WRITE ${BOOTGEN_SOURCE}/main.cpp "${FILE_CONTENTS}")
 
 add_library(bootgen-lib STATIC ${libsources})
+# bootgen must be compiled with PIE/PIC, irrespective of the remainder of
+# the project, because  auditwheel repair's patchelf-based RPATH rewrite
+# corrupts the non-PIE binary
+set_target_properties(bootgen-lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
   set(bootgen_warning_ignores
     -Wno-cast-qual
@@ -154,6 +158,7 @@ install(
   DESTINATION include)
 
 add_executable(bootgen ${BOOTGEN_SOURCE}/main.cpp)
+set_target_properties(bootgen PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_include_directories(bootgen PUBLIC ${BOOTGEN_SOURCE} ${OPENSSL_INCLUDE_DIR}
   ${CMAKE_CURRENT_BINARY_DIR}/include)
 target_compile_options(bootgen PRIVATE ${bootgen_warning_ignores})

@@ -162,6 +162,8 @@ struct AIEDMATasksToNPUPass
               [&](AIE::DMABDOp bd_op) { return WalkResult::advance(); })
           .Case<AIE::UseLockOp>(
               [&](AIE::UseLockOp lock_op) { return WalkResult::advance(); })
+          .Case<arith::ConstantOp>(
+              [&](arith::ConstantOp const_op) { return WalkResult::advance(); })
           .Case<AIE::NextBDOp>(
               [&](AIE::NextBDOp lock_op) { return WalkResult::advance(); })
           .Case<AIE::EndOp>(
@@ -557,7 +559,10 @@ struct AIEDMATasksToNPUPass
 
       if (acq_lock.getLockID().has_value()) {
         lock_acq_id = acq_lock.getLockID().value();
-        lock_acq_val = acquire_op.getLockValue();
+        auto value = acquire_op.getConstantValue();
+        if (failed(value))
+          return failure();
+        lock_acq_val = *value;
         // For AcquireGreaterEqual, negate the value to signal the hardware
         // to use >= comparison instead of == comparison.
         if (acquire_op.acquireGE())
@@ -567,7 +572,10 @@ struct AIEDMATasksToNPUPass
 
       if (rel_lock.getLockID().has_value()) {
         lock_rel_id = rel_lock.getLockID().value();
-        lock_rel_val = release_op.getLockValue();
+        auto value = release_op.getConstantValue();
+        if (failed(value))
+          return failure();
+        lock_rel_val = *value;
       }
 
       // For memtile, add lock offset using getLockLocalBaseIndex.

@@ -320,17 +320,25 @@ LogicalResult configureLocksInBdBlock(const AIE::AIETargetModel &targetModel,
     lock = cast<AIE::LockOp>(op.getLock().getDefiningOp());
     switch (op.getAction()) {
     case AIE::LockAction::Acquire:
-    case AIE::LockAction::AcquireGreaterEqual:
+    case AIE::LockAction::AcquireGreaterEqual: {
       acqEn = op.getAcqEn();
       acqLockId = lock.getLockIDValue();
-      acqValue = op.getLockValue();
+      auto value = op.getConstantValue();
+      if (failed(value))
+        return failure();
+      acqValue = *value;
       if (op.acquireGE())
         acqValue.value() = -acqValue.value();
       break;
-    case AIE::LockAction::Release:
+    }
+    case AIE::LockAction::Release: {
       relLockId = lock.getLockIDValue();
-      relValue = op.getLockValue();
+      auto value = op.getConstantValue();
+      if (failed(value))
+        return failure();
+      relValue = *value;
       break;
+    }
     }
   }
 
