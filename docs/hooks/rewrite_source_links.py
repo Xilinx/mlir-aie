@@ -262,9 +262,7 @@ def _rewrite_target(target, page_dir_link, page_dir_real, docs_dir, repo_root):
 
     # Re-encode path segments so spaces etc. are URL-safe, but keep "/" as the
     # separator.
-    encoded_rel = "/".join(
-        urllib.parse.quote(seg) for seg in rel.split("/")
-    )
+    encoded_rel = "/".join(urllib.parse.quote(seg) for seg in rel.split("/"))
 
     return f"{base}/{encoded_rel}{suffix}"
 
