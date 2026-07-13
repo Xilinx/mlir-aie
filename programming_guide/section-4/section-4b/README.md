@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Section 4b - Trace</ins>
+# Section 4b - Trace
 
 * [Section 4 - Performance Measurement & Vector Programming](../../section-4)
     * [Section 4a - Timers](../section-4a)
@@ -61,10 +61,10 @@ The `workers=[...]` argument picks the core tiles to trace.  To trace **mem tile
 
 The trace configuration chooses helpful default settings so you can trace your design with little additional customization. However, if you want more control over some of these configuration, additional arguments are available in `enable_trace`:
 * `reuse_output_buffer` - by default (`False`), the trace buffer is a dedicated host buffer appended as the last runtime_sequence argument, so enabling trace does not shift your data arguments' indices. Set to `True` to instead write trace data into the tail of the last output buffer, saving a host buffer. See [below](#2-configure-host-code-to-read-trace-data-and-write-it-to-a-text-file) for more details on XRT buffers.
-* `coretile_events` - which 8 events do we use for all coretiles in array. Search under https://xilinx.github.io/mlir-aie/AIEXDialect.html for CoreEvent for the target device [[aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie)][[aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2)][[aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2p)].
-* `coremem_events` - which 8 events do we use for all core mem in array. Search under https://xilinx.github.io/mlir-aie/AIEXDialect.html for MemEvent for the target device [[aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie)][[aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2)][[aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2p)].
-* `memtile_events` - which 8 events do we use for all memtiles in array. Search under https://xilinx.github.io/mlir-aie/AIEXDialect.html for MemTileEvent for the target device [[aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memevent)][[aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memevent2)][[aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memevent2p)]
-* `shimtile_events` - which 8 events do we use for all shimtiles in array. Search under https://xilinx.github.io/mlir-aie/AIEXDialect.html for ShimTileEvent for the target device [[aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#shimtileevent)][[aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#shimtileevent2)][[aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#shimtileevent2p)]
+* `coretile_events` - which 8 events do we use for all coretiles in array. Search under [AIEXDialect](https://xilinx.github.io/mlir-aie/AIEXDialect.html) for CoreEvent for the target device: [aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie) &middot; [aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2) &middot; [aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2p).
+* `coremem_events` - which 8 events do we use for all core mem in array. Search under [AIEXDialect](https://xilinx.github.io/mlir-aie/AIEXDialect.html) for MemEvent for the target device: [aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie) &middot; [aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2) &middot; [aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#coreeventaie2p).
+* `memtile_events` - which 8 events do we use for all memtiles in array. Search under [AIEXDialect](https://xilinx.github.io/mlir-aie/AIEXDialect.html) for MemTileEvent for the target device: [aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memevent) &middot; [aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memevent2) &middot; [aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#memevent2p).
+* `shimtile_events` - which 8 events do we use for all shimtiles in array. Search under [AIEXDialect](https://xilinx.github.io/mlir-aie/AIEXDialect.html) for ShimTileEvent for the target device: [aie1](https://xilinx.github.io/mlir-aie/AIEXDialect.html#shimtileevent) &middot; [aie2](https://xilinx.github.io/mlir-aie/AIEXDialect.html#shimtileevent2) &middot; [aie2p](https://xilinx.github.io/mlir-aie/AIEXDialect.html#shimtileevent2p).
 
     ```python
     ...
@@ -83,6 +83,25 @@ The trace configuration chooses helpful default settings so you can trace your d
                     trace_utils.CoreEvent.DISABLED]
         )
     ```
+
+#### Common core-tile trace event IDs
+
+The symbolic `CoreEvent` names above map to raw hardware event IDs. Some commonly used core-tile events:
+
+| Event | Event ID | Decimal |
+|-------|----------|---------|
+| True | `0x01` | 1 |
+| Stream stalls | `0x18` | 24 |
+| Lock stall | `0x1A` | 26 |
+| Core Instruction — Event 0 | `0x21` | 33 |
+| Core Instruction — Event 1 | `0x22` | 34 |
+| Vector Instructions (VMAC, VADD, VCMP) | `0x25` | 37 |
+| Lock acquire requests | `0x2C` | 44 |
+| Lock release requests | `0x2D` | 45 |
+| Core Port Running 0 | `0x4B` | 75 |
+| Core Port Running 1 | `0x4F` | 79 |
+
+A more exhaustive list of events for the core tile, core memory, mem tile, and shim tile is in [this header file](https://github.com/Xilinx/aie-rt/blob/main-aie/driver/src/events/xaie_events_aie.h).
 
 ### <u>PortEvent API</u>
 
@@ -176,7 +195,7 @@ Once the design has been executed. We can then use the convenience function `wri
 Because the code patterns for measuring host code timing and configuring trace are so often repeated, they have been further wrapped into the convenience function `setup_and_run_aie` in [xrt_test_wrapper.h](../../../runtime_lib/test_lib/xrt_test_wrapper.h) which then allows us to create a simpler top level host code [test.cpp](./test.cpp).
 
 In our template host code [test.cpp](./test.cpp) for 2 inputs and 1 output, we customize the following:
-* Input and output buffer size (in bytes) - Specified in the [Makefile](./Makefile) and [CMakeLists.txt](./CMakeLists.txt) and then passed into the [vector_scalar_mul.py](./vector_scalar_mul.py) and [test.cpp](./test.cpp)
+* Input and output buffer size (in bytes) - Specified in the [Makefile](./Makefile) and [CMakeLists.txt](https://github.com/Xilinx/mlir-aie/blob/main/programming_guide/section-4/section-4b/CMakeLists.txt) and then passed into the [vector_scalar_mul.py](./vector_scalar_mul.py) and [test.cpp](./test.cpp)
     ```Makefile
         in1_size = 16384 # in bytes
         in2_size = 4 # in bytes, should always be 4 (1x int32)
@@ -397,7 +416,15 @@ Open https://ui.perfetto.dev in your browser and then open up the waveform json 
 
     <img src="../../assets/trace_vector_scalar_mul1.png" title="AIE-ML Vector Unit." height=250>
 
-    Based on this wave, You can mouse over each chunk of continguous data for `PortRunning0` (input dma port) and `PortRunning1` (output dma port). What is the chunk size? <img src="../../assets/answer1.jpg" title="1024" height=25> How many input and output chunks are there? <img src="../../assets/answer1.jpg" title="4 inputs and 4 outputs (last output might be truncated in viewer)" height=25> This should match iteration loop bounds in our example design.
+    Based on this wave, You can mouse over each chunk of continguous data for `PortRunning0` (input dma port) and `PortRunning1` (output dma port). What is the chunk size?
+    <details markdown="1"><summary>Show answer</summary>
+    1024
+    </details>
+    How many input and output chunks are there?
+    <details markdown="1"><summary>Show answer</summary>
+    4 inputs and 4 outputs (last output might be truncated in viewer)
+    </details>
+    This should match iteration loop bounds in our example design.
 
     There are a few common events in our waveform that are described below:
     * `INSTR_EVENT_0` - The event marking the beginning of our kernel. See [vector_scalar_mul.cc](./vector_scalar_mul.cc) where we added the function `event0()` before the loop. This is generally a handy thing to do to attach an event to the beginning of our kernel.
@@ -412,4 +439,4 @@ Open https://ui.perfetto.dev in your browser and then open up the waveform json 
     We will look at more exercises with Trace and performance measurement in the next [section](../section-4c).
 
 -----
-[[Prev]](../section-4a) [[Up]](../../section-4) [[Next]](../section-4c)
+[Prev](../section-4a) &middot; [Top](../../section-4) &middot; [Next](../section-4c)

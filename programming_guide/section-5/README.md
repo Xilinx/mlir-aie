@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Section 5 - Example Vector Designs</ins>
+# Section 5 - Example Vector Designs
 
 The [programming examples](../../programming_examples) are a number of sample designs that further help explain many of the unique features of AI Engines and the NPU array in Ryzen™ AI.
 
@@ -14,7 +14,7 @@ The [programming examples](../../programming_examples) are a number of sample de
 #### Passthrough
 
 The [passthrough](../../programming_examples/basic/passthrough_kernel/) example is the simplest "getting started" example.  It copies 4096 bytes from the input to output using vectorized loads and stores.  The design example shows a typical project organization which is easy to reproduce with other examples.  There are only really 3 important files here.
-1. [`passthrough_kernel.py`](../../programming_examples/basic/passthrough_kernel/passthrough_kernel.py) The IRON structural design plus the host-side test driver. Decorated with `@iron.jit` so the first call compiles the design and runs it on the NPU, then verifies the result against the input. Also shows a simple use of the Object FIFOs described in [section 2](../section-2).
+1. [`passthrough_kernel.py`](../../programming_examples/basic/passthrough_kernel/passthrough_kernel.py) The IRON structural design plus the host-side test driver. Decorated with `@iron.jit` so the first call compiles the design and runs it on the NPU, then verifies the result against the input. Also shows a simple use of the ObjectFifos described in [section 2](../section-2).
 1. [`passThrough.cc`](../../aie_kernels/generic/passThrough.cc)  This is a C++ file which performs the vectorized copy operation.
 1. [`Makefile`](../../programming_examples/basic/passthrough_kernel/Makefile) A Makefile documenting (and implementing) the build process for the various artifacts.
 
@@ -25,7 +25,7 @@ The [passthrough DMAs](../../programming_examples/basic/passthrough_dmas/) examp
 | Design name | Data type | Description |
 |-|-|-|
 | [Vector Scalar Add](../../programming_examples/basic/vector_scalar_add/) | i32 | Adds 1 to every element in  vector |
-| [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) | i32 | Returns a vector multiplied by a scale factor |
+| [Vector Scalar Mul](../../programming_examples/basic/vector_scalar_mul/) | i16 | Returns a vector multiplied by a scale factor |
 | [Vector Vector Add](../../programming_examples/basic/vector_vector_add/) | i32 | Returns a vector summed with another vector |
 | [Vector Vector Modulo](../../programming_examples/basic/vector_vector_modulo/) | i32 | Returns vector % vector |
 | [Vector Vector Multiply](../../programming_examples/basic/vector_vector_mul/) | i32 | Returns a vector multiplied by a vector |
@@ -50,13 +50,25 @@ The [passthrough DMAs](../../programming_examples/basic/passthrough_dmas/) examp
 
 ## Exercises
 
-1. Can you modify the [passthrough](../../programming_examples/basic/passthrough_kernel/) design to copy more (or less) data? <img src="../assets/answer1.jpg" title="Check the Makefile...in1_size and out_size" height=25>
+1. Can you modify the [passthrough](../../programming_examples/basic/passthrough_kernel/) design to copy more (or less) data?
+    <details markdown="1"><summary>Show answer</summary>
+    Check the `Makefile` — `in1_size` and `out_size`.
+    </details>
 
-1. Take a look at the host driver in our [Vector Exp](../../programming_examples/basic/vector_exp/) example [vector_exp.py](../../programming_examples/basic/vector_exp/vector_exp.py). Take note of the data type and the size of the test vector. What do you notice? <img src="../assets/answer1.jpg" title="We are testing 65536 values or 2^16, therefore testing all possible bfloat16 values through the approximation." height=25>
+1. Take a look at the host driver in our [Vector Exp](../../programming_examples/basic/vector_exp/) example [vector_exp.py](../../programming_examples/basic/vector_exp/vector_exp.py). Take note of the data type and the size of the test vector. What do you notice?
+    <details markdown="1"><summary>Show answer</summary>
+    We are testing 65536 values or 2^16, therefore testing all possible `bfloat16` values through the approximation.
+    </details>
 
-1. What is the communication-to-computation  ratio in [Eltwise Unary (ReLU)](../../programming_examples/ml/eltwise_unary/)? <img src="../assets/answer1.jpg" title="~6 as reported by the Trace. This is why it is a good candidate for kernel fusion with Conv2D or GEMMs for ML." height=25>
+1. What is the communication-to-computation  ratio in [Eltwise Unary (ReLU)](../../programming_examples/ml/eltwise_unary/)?
+    <details markdown="1"><summary>Show answer</summary>
+    ~6 as reported by the Trace. This is why it is a good candidate for kernel fusion with Conv2D or GEMMs for ML.
+    </details>
 
-1. **HARD** Which basic example is a component in [Softmax](../../programming_examples/ml/softmax/)? <img src="../assets/answer1.jpg" title="[Vector Exp](../../programming_examples/basic/vector_exp/)" height=25>
+1. **HARD** Which basic example is a component in [Softmax](../../programming_examples/ml/softmax/)?
+    <details markdown="1"><summary>Show answer</summary>
+    [Vector Exp](../../programming_examples/basic/vector_exp/)
+    </details>
 
 -----
-[[Prev - Section 4](../section-4/)] [[Top](..)] [[Next - Section 6](../section-6/)]
+[Prev](../section-4/) &middot; [Top](..) &middot; [Next](../section-6/)

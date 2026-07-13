@@ -13,11 +13,11 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 There are CI/GHA workflows that build
 
 1. a distribution of LLVM+MLIR
-   1. [mlirDistro.yml](..%2F.github%2Fworkflows%2FmlirDistro.yml)
-   2. [Accompanying scripts](..%2Futils%2Fmlir_wheels)
+   1. [mlirDistro.yml](https://github.com/Xilinx/mlir-aie/blob/main/.github/workflows/mlirDistro.yml)
+   2. [Accompanying scripts](https://github.com/Xilinx/mlir-aie/tree/main/utils/mlir_wheels)
 2. a distribution of MLIR-AIE
-   1. [mlirAIEDistro.yml](..%2F.github%2Fworkflows%2FmlirAIEDistro.yml)
-   2. [Accompanying scripts](..%2Futils%2Fmlir_aie_wheels)
+   1. [mlirAIEDistro.yml](https://github.com/Xilinx/mlir-aie/blob/main/.github/workflows/mlirAIEDistro.yml)
+   2. [Accompanying scripts](https://github.com/Xilinx/mlir-aie/tree/main/utils/mlir_aie_wheels)
 
 The builds are packaged as [Python wheels](https://packaging.python.org/en/latest/specifications/binary-distribution-format/).
 Why package binaries + C++ source as Python wheels? Because doing so enables this:
@@ -78,14 +78,14 @@ Why Mac? Because some people do dev on a Mac.
    </p>
 5. A **MLIR Distro** job will appear under the same actions tab (where you can monitor progress).
 
-### Developing/extending
+### Developing/extending { #developing-extending }
 
 A brief overview: 
 
-* Everything is meant to flow through [cibuildwheel](https://cibuildwheel.readthedocs.io/en/stable) so start by studying the [pyproject.toml](..%2Futils%2Fmlir_wheels%2Fpyproject.toml) files;
-* CMake is driven through [setup.py](..%2Futils%2Fmlir_aie_wheels%2Fsetup.py)s.
+* Everything is meant to flow through [cibuildwheel](https://cibuildwheel.readthedocs.io/en/stable) so start by studying the [pyproject.toml](https://github.com/Xilinx/mlir-aie/tree/main/utils/mlir_wheels%2Fpyproject.toml) files;
+* CMake is driven through [setup.py](https://github.com/Xilinx/mlir-aie/tree/main/utils/mlir_aie_wheels%2Fsetup.py)s.
 * The GitHub actions:
-  * All actions related to the wheels use a "base" [action.yml](..%2F.github%2Factions%2Fsetup_base%2Faction.yml) to setup the environment; this base action sets up compilers and docker and deletes unnncessary packages and etc.
+  * All actions related to the wheels use a "base" [action.yml](https://github.com/Xilinx/mlir-aie/blob/main/.github/actions/setup_base/action.yml) to setup the environment; this base action sets up compilers and docker and deletes unnncessary packages and etc.
   * The build process for each of LLVM+MLIR, MLIR-AIE consists of ~three jobs:
     * Building the base distribution (either LLVM+MLIR or MLIR-AIE)
     * Building the python bindings
@@ -105,7 +105,7 @@ And it likely couldn't be otherwise due to the enormous number of incidental com
 
 But if you must:
 
-* There are [build_local.sh](..%2Futils%2Fmlir_wheels%2Fscripts%2Fbuild_local.sh) scripts for both wheels; they are a very poor approximation of the GitHub environment but they're moderately useful for flushing out major issues.
+* There are [build_local.sh](https://github.com/Xilinx/mlir-aie/tree/main/utils/mlir_wheels%2Fscripts%2Fbuild_local.sh) scripts for both wheels; they are a very poor approximation of the GitHub environment but they're moderately useful for flushing out major issues.
 * Uncomment `pull_request:` at the tops of the yaml to get the actions to run on a PR for the actions themselves (there's probably a better to handle this...).
   * In this mode, the wheels will deposited under the [dev-wheels release page](https://github.com/Xilinx/mlir-aie/releases/tag/dev-wheels).
 * The actions themselves have options that are accessible through the **Run workflow** UI (that's what those fields are in the dropdown):
@@ -140,4 +140,4 @@ But if you must:
 * On downstream consumers of the LLVM+MLIR (or MLIR-AIE) wheel, cibuildwheel doesn't quite work out because it won't enable you `pip install` wheels from a different platform.
   For example, if you try to cross-compile MLIR-AIE (for aarch64) by `pip install`ing an already built aarch64 LLVM+MLIR wheel you will fail because `pip install` will only grab/find the x86 wheel.
   [The cibuildwheel people have decided this is "won't fix"](https://github.com/pypa/cibuildwheel/issues/1547).
-  The workaroud is `pip -q download mlir --platform $PLAT --only-binary=:all:` (as in [download_mlir.sh](..%2Futils%2Fmlir_aie_wheels%2Fscripts%2Fdownload_mlir.sh)).
+  The workaroud is `pip -q download mlir --platform $PLAT --only-binary=:all:` (as in [download_mlir.sh](https://github.com/Xilinx/mlir-aie/tree/main/utils/mlir_aie_wheels%2Fscripts%2Fdownload_mlir.sh)).

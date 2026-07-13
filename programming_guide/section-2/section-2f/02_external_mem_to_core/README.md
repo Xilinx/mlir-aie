@@ -5,9 +5,9 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>External Memory to Core</ins>
+# External Memory to Core
 
-The design in [ext_to_core.py](./ext_to_core.py) uses an Object FIFO `of_in` to bring data from external memory to `my_worker` and another Object FIFO `of_out` to send the data from the Worker to external memory. Each fifo uses a double buffer.
+The design in [ext_to_core.py](./ext_to_core.py) uses an ObjectFifo `of_in` to bring data from external memory to `my_worker` and another ObjectFifo `of_out` to send the data from the Worker to external memory. Each fifo uses a double buffer.
 
 <img src="../../../assets/ExtMemToCore.svg" height=200 width="400">
 
@@ -30,4 +30,4 @@ The `# To/from AIE-array data movement` section of the design code is described 
 Other examples containing this data movement pattern are available in the [programming_examples](../../../../programming_examples/). A few notable ones are [vector_reduce_add](../../../../programming_examples/basic/vector_reduce_add/) and [vector_scalar_add](../../../../programming_examples/basic/vector_scalar_add/).
 
 -----
-[[Prev](../01_single_double_buffer/)] [[Up](..)] [[Next](../03_external_mem_to_core_L2/)]
+[Prev](../01_single_double_buffer/) &middot; [Top](..) &middot; [Next](../03_external_mem_to_core_L2/)

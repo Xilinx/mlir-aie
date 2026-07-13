@@ -33,7 +33,7 @@ def _color_convert_kernel(
 def _bitwise_kernel(
     op: str, line_width: int, dtype, use_chess: bool = False
 ) -> ExternalFunction:
-    """Shared implementation for :func:`bitwise_or` and :func:`bitwise_and`."""
+    """Shared implementation for [`bitwise_or`][iron.kernels.vision.bitwise_or] and [`bitwise_and`][iron.kernels.vision.bitwise_and]."""
     bit_width = _dtype_to_bit_width(dtype, factory_name=f"bitwise{op}")
     line_ty = np.ndarray[(line_width,), np.dtype[dtype]]
     return _make_extern(
@@ -53,7 +53,7 @@ def rgba2hue(line_width: int = 1920, use_chess: bool = False) -> ExternalFunctio
 
 
 def threshold(
-    line_width: int = 1920, dtype=np.uint8, use_chess: bool = False
+    line_width: int = 1920, dtype: type = np.uint8, use_chess: bool = False
 ) -> ExternalFunction:
     """Applies a threshold operation to a line of pixels.
 
@@ -79,14 +79,14 @@ def threshold(
 
 
 def bitwise_or(
-    line_width: int = 1920, dtype=np.uint8, use_chess: bool = False
+    line_width: int = 1920, dtype: type = np.uint8, use_chess: bool = False
 ) -> ExternalFunction:
     """Element-wise bitwise OR of two lines."""
     return _bitwise_kernel("OR", line_width, dtype, use_chess=use_chess)
 
 
 def bitwise_and(
-    line_width: int = 1920, dtype=np.uint8, use_chess: bool = False
+    line_width: int = 1920, dtype: type = np.uint8, use_chess: bool = False
 ) -> ExternalFunction:
     """Element-wise bitwise AND of two lines."""
     return _bitwise_kernel("AND", line_width, dtype, use_chess=use_chess)
@@ -119,7 +119,7 @@ def filter2d(line_width: int = 1920, use_chess: bool = False) -> ExternalFunctio
 
 
 def add_weighted(
-    line_width: int = 1920, dtype=np.uint8, use_chess: bool = False
+    line_width: int = 1920, dtype: type = np.uint8, use_chess: bool = False
 ) -> ExternalFunction:
     """Weighted addition of two lines with a gamma offset.
 

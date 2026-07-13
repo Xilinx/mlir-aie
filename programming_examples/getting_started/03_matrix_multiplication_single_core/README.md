@@ -58,9 +58,9 @@ available. The availalbe sizes for different architectures are documented
 For brevity, the code refers to different memories as "levels"; the higher
 the level, the farther away from the AI Engine compute core the memory is, i.e.
 L3 is DRAM memory shared with the CPU, L2 is the memory on memory tiles and
-L1 is compute core memory. The ObjectFIFOs that move data are named accordingly
+L1 is compute core memory. The ObjectFifos that move data are named accordingly
 by which matrix they move (`A`, `B` or `C`), followed by their source and
-destination memories. For example, the ObjectFIFO `fifo_A_L3L2` moves `A` from 
+destination memories. For example, the ObjectFifo `fifo_A_L3L2` moves `A` from 
 DRAM into the memory tile.
 
 ### L3 &rightarrow; L2: Larger Tiles

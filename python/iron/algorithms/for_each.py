@@ -26,7 +26,7 @@ def for_each(func, tensor_ty, tile_size=16):
             return iron.algorithms.for_each(lambda x: x + 1, tensor_ty)
 
     Args:
-        func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
+        func: Function or `ExternalFunction` to apply.
         tensor_ty: A numpy ``ndarray`` type (e.g. ``np.ndarray[(1024,),
             np.dtype[np.int32]]``). Shape and dtype are inferred from this.
         tile_size (int, optional): Number of elements per tile. Defaults to 16.

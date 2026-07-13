@@ -24,10 +24,10 @@ This IRON design flow example, called "Passthrough Kernel", demonstrates a simpl
 <img align="right" width="300" height="300" src="../../../programming_guide/assets/passthrough_simple.svg"> 
 
 This simple example effectively passes data through a single compute tile in the NPU's AIE array. The design is described as shown in the figure to the right. The overall design flow is as follows:
-1. An object FIFO called "of_in" connects a Shim Tile to a Compute Tile, and another called "of_out" connects the Compute Tile back to the Shim Tile. 
+1. An ObjectFifo called "of_in" connects a Shim Tile to a Compute Tile, and another called "of_out" connects the Compute Tile back to the Shim Tile. 
 1. The runtime data movement is expressed to read `4096` uint8_t data from host memory to the compute tile and write the `4096` data back to host memory. 
 1. The compute tile acquires this input data in "object" sized (`1024`) blocks from "of_in" and copies them to another output "object" it has acquired from "of_out". A scalar kernel defined via a Python function is invoked on the Compute Tile's AIE core to copy the data from the input "object" to the output "object".
-1. After the copy is performed, the Compute Tile releases the "objects", allowing the DMAs (abstracted by the object FIFO) to transfer the data back to host memory and copy additional blocks into the Compute Tile,  "of_out" and "of_in" respectively.
+1. After the copy is performed, the Compute Tile releases the "objects", allowing the DMAs (abstracted by the ObjectFifo) to transfer the data back to host memory and copy additional blocks into the Compute Tile,  "of_out" and "of_in" respectively.
 
 It is important to note that the Shim Tile and Compute Tile DMAs move data concurrently, and the Compute Tile's AIE Core also processes data concurrently with the data movement. This is made possible by expressing `depth` is `2` when constructing the `ObjectFifo`, for example, `ObjectFifo(line_ty, depth=2)` to denote ping-pong buffers. By default, the depth is `2` in recognition of this common pattern.
 
