@@ -1,0 +1,17 @@
+<map id="cxxopts::values::standard_value&lt; T &gt;" name="cxxopts::values::standard_value&lt; T &gt;">
+<area shape="rect" id="Node000001" title=" " alt="" coords="237,287,425,327"/>
+<area shape="rect" id="Node000002" href="$classcxxopts_1_1values_1_1abstract__value.html" title=" " alt="" coords="239,197,423,237"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="333,251,333,287,328,287,328,251"/>
+<area shape="rect" id="Node000003" href="$classcxxopts_1_1Value.html" title=" " alt="" coords="26,95,142,120"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="124,123,289,195,286,200,122,128"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="5,5,163,45"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="87,59,87,94,81,94,81,59"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="166,95,295,120"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="241,132,251,152,265,172,294,195,291,199,261,175,247,155,237,134"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="319,95,361,120"/>
+<area shape="poly" id="edge5_Node000002_Node000006" title=" " alt="" coords="336,134,335,144,333,197,327,197,329,144,331,133"/>
+<area shape="rect" id="Node000007" href="$classbool.html" title=" " alt="" coords="393,95,444,120"/>
+<area shape="poly" id="edge6_Node000002_Node000007" title=" " alt="" coords="414,134,404,155,391,175,365,199,361,195,387,172,400,152,409,132"/>
+<area shape="rect" id="Node000008" title=" " alt="" coords="491,95,549,120"/>
+<area shape="poly" id="edge7_Node000002_Node000008" title=" " alt="" coords="513,134,501,156,483,175,455,192,424,204,422,199,452,188,480,171,497,153,509,131"/>
+</map>
