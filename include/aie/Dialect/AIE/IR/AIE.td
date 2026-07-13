@@ -26,11 +26,8 @@ def AIE_Dialect : Dialect {
   }];
   let useDefaultTypePrinterParser = 1;
   let useDefaultAttributePrinterParser = 1;
-  // Several AIE constructs materialize arith ops via the builder API (e.g. the
-  // Python wrappers in dialects/aie.py build arith.constant for runtime scalar
-  // operands, and AIEX lowerings emit arith into runtime_sequence bodies). MLIR
-  // requires dependent dialects to be pre-loaded before ops referencing them may
-  // be built, so declaring the dependency at dialect level is the safe placement.
+  // Python wrappers in dialects/aie.py and AIEX lowerings emit arith.constant
+  // and other operations, so this dialect depends on arith being available.
   let dependentDialects = ["::mlir::arith::ArithDialect"];
 }
 

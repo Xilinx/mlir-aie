@@ -2033,11 +2033,8 @@ BufferOp DMABDOp::getBufferOp() {
 
 // Parse/print hooks for the custom<DynamicScalar>($operand, $static_attr)
 // directive: a single scalar that is either an SSA value (runtime, %v) or a
-// compile-time integer constant (folded into the attribute). Mirrors
-// custom<DynamicIndexList> but for one scalar rather than a list, so a constant
-// never materializes an operand. The generated code binds the Optional<I32>
-// operand as std::optional<UnresolvedOperand> and the OptionalAttr<AIEI32Attr>
-// as IntegerAttr, exactly like upstream transform.tune AlternativesOp.
+// compile-time integer constant (folded into the attribute), so a constant
+// never materializes an operand. The scalar analog of custom<DynamicIndexList>.
 static ParseResult
 parseDynamicScalar(OpAsmParser &parser,
                    std::optional<OpAsmParser::UnresolvedOperand> &operand,
@@ -2068,9 +2065,7 @@ static void printDynamicScalar(OpAsmPrinter &printer, Operation *,
 }
 
 // Split a scalar OpFoldResult into an operand (runtime value) or an i32
-// attribute (compile-time constant), mirroring how sizes/strides split a
-// constant into static_* and a runtime value into an operand. An absent (null)
-// OpFoldResult leaves both unset.
+// attribute (compile-time constant). A null OpFoldResult leaves both unset.
 static void splitScalarOfr(mlir::OpBuilder &builder, mlir::OpFoldResult ofr,
                            mlir::Value &operand, mlir::IntegerAttr &attr) {
   operand = nullptr;
@@ -2092,15 +2087,15 @@ void DMABDOp::buildMixed(mlir::OpBuilder &builder, mlir::OperationState &state,
                          llvm::ArrayRef<mlir::OpFoldResult> sizes,
                          llvm::ArrayRef<mlir::OpFoldResult> strides,
                          BDPadLayoutArrayAttr padDims, PacketInfoAttr packet) {
-  // Split each mixed list into its dynamic operands + static array with the
-  // ShapedType::kDynamic sentinel, exactly as tensor.extract_slice does.
+  // Split each mixed list into its dynamic operands + static array (with the
+  // ShapedType::kDynamic sentinel for the runtime entries).
   llvm::SmallVector<int64_t> staticSizes, staticStrides;
   llvm::SmallVector<mlir::Value> dynSizes, dynStrides;
   mlir::dispatchIndexOpFoldResults(sizes, dynSizes, staticSizes);
   mlir::dispatchIndexOpFoldResults(strides, dynStrides, staticStrides);
 
   // Leave the static arrays unset when there is no ND layout so they elide
-  // from the printed form (a plain linear transfer has no sizes/strides).
+  // from the printed form.
   DenseI64ArrayAttr staticSizesAttr =
       staticSizes.empty() ? DenseI64ArrayAttr{}
                           : builder.getDenseI64ArrayAttr(staticSizes);
@@ -2137,13 +2132,13 @@ void DMABDOp::buildWithConstants(mlir::OpBuilder &builder,
                                  BDPadLayoutArrayAttr padDims,
                                  PacketInfoAttr packet) {
   // Constant offset/len flow to the static_offset/static_len attributes (no
-  // arith.constant materialized). Use i32 to match the AIEI32Attr type so
-  // splitScalarOfr's cast stays sign-exact for negative offsets.
+  // arith.constant materialized). i32 matches AIEI32Attr, keeping the cast
+  // sign-exact for negative offsets.
   mlir::OpFoldResult offsetOfr = builder.getI32IntegerAttr(offset);
   mlir::OpFoldResult lenOfr = builder.getI32IntegerAttr(len);
 
   // Turn the outermost-first BDDimLayoutArrayAttr into all-constant
-  // OpFoldResults and let buildMixed handle the decomposition.
+  // OpFoldResults for buildMixed.
   llvm::SmallVector<mlir::OpFoldResult> sizes, strides;
   if (dims) {
     for (BDDimLayoutAttr d : dims) {
@@ -2261,11 +2256,9 @@ LogicalResult DMABDOp::verify() {
   if (std::optional<int32_t> nextBdId = getNextBdId();
       nextBdId.has_value() && static_cast<uint32_t>(*nextBdId) >= maxBds)
     return emitOpError("nextBdId attribute exceeds max: ") << maxBds - 1;
-  // Guard the mixed static/dynamic invariant before any consumer counts
-  // sentinels against operands: the number of ShapedType::kDynamic entries in
-  // each static array must equal the number of dynamic operands, and sizes and
-  // strides must agree in rank. Skips the crash in getMixedValues when the two
-  // are inconsistent (llvm #179401).
+  // The dynamic-operand count must match the kDynamic-sentinel count in each
+  // static array, and sizes/strides must agree in rank. Checked before any
+  // consumer calls getMixedValues, which crashes on a mismatch (llvm #179401).
   llvm::ArrayRef<int64_t> staticSizes =
       getStaticSizes().value_or(llvm::ArrayRef<int64_t>{});
   llvm::ArrayRef<int64_t> staticStrides =
@@ -2282,9 +2275,7 @@ LogicalResult DMABDOp::verify() {
            << ")";
 
   // Fold the mixed sizes/strides to a constant BDDimLayoutAttr list for
-  // verification. A runtime size/stride yields nullopt + a diagnostic; on the
-  // static verification path that is an error. `dims` mirrors the historical
-  // std::optional<ArrayRef> shape so the checks below are unchanged.
+  // verification; a runtime size/stride yields nullopt plus a diagnostic.
   std::optional<llvm::SmallVector<BDDimLayoutAttr>> dims;
   if (!getMixedSizes().empty()) {
     dims = getConstantDimensions();
@@ -2403,10 +2394,10 @@ LogicalResult DMABDOp::verify() {
       return emitOpError("Packet ID field can only hold 5 bits.");
   }
 
+  // A runtime len operand or the static_len attribute both count as having a
+  // length here.
   if (!hasLen() && !getBuffer().getType().hasStaticShape())
     return emitOpError() << "buffer with dynamic shape requires static length.";
-  // Either a runtime operand or the static_len attribute satisfies the "has a
-  // length" requirement.
 
   if (getBurstLength() != 0 && !parentTile.isShimNOCTile())
     return emitOpError("Burst length is only supported in Shim NOC tiles that "
@@ -2511,12 +2502,11 @@ struct LinearizeContiguousBDTransfer : public mlir::OpRewritePattern<DMABDOp> {
     if (!bufferIsExternal && !parentIsShim && !inShimDMA)
       return mlir::failure();
 
-    // Only when ND dimensions are present and all-constant. Runtime-valued
-    // sizes can't be folded/linearized; decline silently (no diagnostic) so
-    // valid IR with runtime sizes doesn't produce a spurious error.
+    // Only ND dimensions that are present and all-constant can be linearized;
+    // decline silently on runtime-valued sizes/strides so valid dynamic IR
+    // doesn't get a spurious diagnostic.
     if (op.getMixedSizes().empty())
       return mlir::failure();
-    // Check all sizes/strides are constants before attempting to fold.
     for (mlir::OpFoldResult s : op.getMixedSizes())
       if (!mlir::getConstantIntValue(s))
         return mlir::failure();
@@ -2548,17 +2538,13 @@ struct LinearizeContiguousBDTransfer : public mlir::OpRewritePattern<DMABDOp> {
       return mlir::failure();
     int32_t len = static_cast<int32_t>(product);
 
-    // Rewrite to a linear BD: set len as the static_len attribute (a constant,
-    // so no arith.constant operand) and clear the sizes/strides (both operands
-    // and static arrays). All other attributes (offset, packet, burst_length,
-    // bd_id, etc.) are preserved automatically.
+    // Rewrite to a linear BD: len as the static_len attribute, sizes/strides
+    // cleared. Other attributes are preserved.
     rewriter.modifyOpInPlace(op, [&]() {
       op.getLenMutable().clear();
       op.setStaticLen(len);
       op.getSizesMutable().clear();
       op.getStridesMutable().clear();
-      // Drop the static arrays entirely so the linear BD prints without any
-      // sizes/strides clause (the attributes are optional).
       op.setStaticSizes(std::nullopt);
       op.setStaticStrides(std::nullopt);
     });
@@ -2568,10 +2554,7 @@ struct LinearizeContiguousBDTransfer : public mlir::OpRewritePattern<DMABDOp> {
 } // namespace
 
 // Canonicalization pattern for DMABDOp: fold a constant offset/len/size/stride
-// operand back into the corresponding static attribute (removing the operand),
-// via the upstream foldDynamicIndexList helper for the lists and
-// getConstantIntValue for the scalars. Mirrors the constant-argument folding
-// tensor.extract_slice performs for its offsets/sizes/strides.
+// operand back into the corresponding static_* attribute, removing the operand.
 namespace {
 struct FoldConstantBDDimList : public mlir::OpRewritePattern<DMABDOp> {
   using OpRewritePattern::OpRewritePattern;
@@ -2606,8 +2589,7 @@ struct FoldConstantBDDimList : public mlir::OpRewritePattern<DMABDOp> {
     rewriter.modifyOpInPlace(op, [&]() {
       op.getSizesMutable().assign(dynSizes);
       op.getStridesMutable().assign(dynStrides);
-      // Leave the static arrays unset (not empty) when there is no ND layout so
-      // they elide from the printed form (a plain linear transfer).
+      // Leave the static arrays unset when there is no ND layout so they elide.
       if (staticSizes.empty())
         op.removeStaticSizesAttr();
       else

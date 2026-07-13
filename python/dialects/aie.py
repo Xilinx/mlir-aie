@@ -109,14 +109,9 @@ def _as_i32(v):
 
 def _split_i32_scalar(v):
     """Split a dma_bd offset/len argument into (operand, static_attr): a Python
-    int becomes a compile-time attribute (no arith.constant materialized), an SSA
-    Value becomes the runtime operand, and None leaves both unset. Mirrors the
-    operand-vs-attribute split sizes/strides already use.
-
-    Contrast with ``_as_i32``: that helper always emits an ``arith.constant``
-    for integer inputs, which is correct for scalar ops whose operand IS an SSA
-    i32. Here a constant lands in the static_offset/static_len attribute instead,
-    so no constant op is materialized."""
+    int becomes the static attribute, an SSA Value becomes the runtime operand,
+    and None leaves both unset. Unlike ``_as_i32``, an int stays an attribute
+    rather than being materialized as an arith.constant operand."""
     if v is None:
         return None, None
     if isinstance(v, (int, np.integer)):
@@ -154,8 +149,7 @@ def dma_bd(
     offset_operand, static_offset = _split_i32_scalar(offset)
     len_operand, static_len = _split_i32_scalar(transfer_len)
 
-    # Leave the static arrays unset (not empty) when there is no ND layout so
-    # the optional attributes elide from the printed op.
+    # Leave the static arrays unset when there is no ND layout so they elide.
     return _DMABDOp(
         buffer,
         sizes=dyn_sizes,

@@ -95,11 +95,9 @@ class Bd:
     # ``(pkt_type, pkt_id)``.  Pairs with a :class:`PacketFlow` that uses
     # the same ``pkt_id`` so the routing fabric dispatches correctly.
     packet: tuple[int, int] | None = None
-    # Multi-dimensional (strided) access pattern, given as parallel lists
-    # matching ``aie.dma_bd``'s ``sizes``/``strides`` operands (outermost
-    # dimension first). Each entry may be a Python int (constant) or an SSA
-    # ``Value`` (runtime). Empty lists (default) emit a plain contiguous
-    # transfer. ``sizes`` and ``strides`` must have the same length.
+    # Strided access pattern, outermost dimension first; each entry is a
+    # constant int or a runtime Value. Empty (default) emits a contiguous
+    # transfer. sizes and strides must have equal length.
     sizes: list = field(default_factory=list)
     strides: list = field(default_factory=list)
 
@@ -244,8 +242,6 @@ class TileDma(Resolvable):
                     with block[bd_block_idx[bd_pos]]:
                         for acq in bd.acquires:
                             acq.emit()
-                        # dma_bd takes sizes/strides directly (matches
-                        # npu.dma_memcpy_nd's DynamicIndexList operands).
                         bd_kwargs: dict[str, Any] = dict(
                             sizes=bd.sizes, strides=bd.strides
                         )

@@ -982,12 +982,10 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
 
   let arguments = (
     ins AnyRankedOrUnrankedMemRef:$buffer,
-        // offset/len are denominated in element width (not bytes). Like the
-        // sizes/strides DynamicIndexList below (and aiex.npu.dma_memcpy_nd's
-        // static_offsets), a compile-time constant lands in the
-        // $static_offset/$static_len attribute while a runtime value becomes the
-        // $offset/$len SSA operand. Absent operand AND attr means offset 0 /
-        // full-buffer len.
+        // offset/len are denominated in element width (not bytes).
+        // Can be given as a static attribute or a runtime SSA value. If neither
+        // are given, we assume zero for the offset and the memref's full buffer
+        // length for the length.
         Optional<I32>:$offset,
         Optional<I32>:$len,
         OptionalAttr<AIEI32Attr>:$static_offset,
@@ -1032,8 +1030,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
     // constant offset/len to the static_offset/static_len attributes (no
     // arith.constant materialized) and decomposes a BDDimLayoutArrayAttr
     // (outermost-first) into all-static static_sizes / static_strides arrays (no
-    // dynamic operands). Keeps every historical int-argument producer call site
-    // source-compatible.
+    // dynamic operands).
     static void buildWithConstants(
         ::mlir::OpBuilder &builder, ::mlir::OperationState &state,
         ::mlir::Value buffer, int32_t offset, int32_t len,
@@ -1041,11 +1038,9 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
         PacketInfoAttr packet);
 
     // Mixed static/dynamic builder: splits offset/len and each sizes/strides
-    // entry (a constant attribute or an SSA Value) into the operand + static
-    // attribute pair via the upstream dispatchIndexOpFoldResults helper, exactly
-    // like tensor.extract_slice. An empty sizes/strides list leaves the
-    // corresponding static array unset so it elides; a null offset/len leaves
-    // both its operand and attribute unset.
+    // entry into the operand + static attribute pair via the upstream
+    // dispatchIndexOpFoldResults helper. An empty sizes/strides list leaves the
+    // corresponding static array unset so it elides.
     static void buildMixed(
         ::mlir::OpBuilder &builder, ::mlir::OperationState &state,
         ::mlir::Value buffer, ::mlir::OpFoldResult offset,
@@ -1061,12 +1056,9 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
       return dataLayout.getTypeSize(bufferType.getElementType());
     }
 
-    // The offset/len as compile-time constants. A constant lives in the
-    // static_offset/static_len attribute; if instead a runtime operand is
-    // present, fold it (a constant-valued operand still resolves). Returns
-    // nullopt when neither is present or the operand is a genuine runtime value
-    // (callers on the static lowering path treat that as an error via
-    // getFoldedDimensions' sibling diagnostics).
+    // The offset/len as a compile-time constant: the static_offset/static_len
+    // attribute, or a constant-valued operand folded down. Returns nullopt for a
+    // genuine runtime value.
     std::optional<int32_t> getConstantOffset() {
       if (auto attr = getStaticOffset())
         return static_cast<int32_t>(*attr);
@@ -1084,9 +1076,9 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
       return std::nullopt;
     }
 
-    // True when the BD carries an explicit length (a runtime operand or the
-    // static_len attribute). Distinct from getConstantLen(), which is nullopt
-    // for a runtime len even though a length IS present.
+    // True when the BD carries an explicit length (runtime operand or
+    // static_len attribute), even a runtime one for which getConstantLen() is
+    // nullopt.
     bool hasLen() { return getLen() || getStaticLen().has_value(); }
     bool hasOffset() { return getOffset() || getStaticOffset().has_value(); }
 
