@@ -9,34 +9,9 @@
 
 // Test verification errors when using LogicalTileOp with TileElement ops
 
-// Interconnect ops explicitly require placed TileOp
-// CHECK: error{{.*}}'aie.switchbox' op requires a placed tile (aie.tile), not a logical tile
-module @test_switchbox_with_logical_tile {
-  aie.device(npu2) {
-    %tile = aie.logical_tile<CoreTile>(?, ?)
-    // Switchbox requires aie.tile, not aie.logical_tile
-    aie.switchbox(%tile) {
-      aie.end
-    }
-    aie.end
-  }
-}
-
-// -----
-
-// CHECK: error{{.*}}'aie.shim_mux' op requires a placed tile (aie.tile), not a logical tile
-module @test_shim_mux_with_logical_tile {
-  aie.device(npu2) {
-    %tile = aie.logical_tile<ShimNOCTile>(?, ?)
-    // ShimMux requires aie.tile, not aie.logical_tile
-    aie.shim_mux(%tile) {
-      aie.connect<North : 0, DMA : 0>
-    }
-    aie.end
-  }
-}
-
-// -----
+// Note: aie.switchbox and aie.shim_mux intentionally accept a logical tile and
+// defer their target-model checks to post-placement re-verify -- see
+// switchbox_logical_tile.mlir.
 
 // MemOp with wrong tile type
 // CHECK: error{{.*}}'aie.mem' op failed to verify that op exists in a core tile
