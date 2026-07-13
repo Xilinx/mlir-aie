@@ -1,0 +1,9 @@
+<map id="include/aie/Runtime/TxnEncoding.h" name="include/aie/Runtime/TxnEncoding.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="58,5,210,45"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,93,76,119"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="113,48,67,86,64,82,110,44"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="101,93,167,119"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="137,46,137,79,131,79,131,46"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="192,93,255,119"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="157,44,202,82,198,86,154,48"/>
+</map>
