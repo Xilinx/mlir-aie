@@ -61,6 +61,7 @@ $(function() {
 <code>#include &quot;<a class="el" href="AIETokenAnalysis_8h_source.html">aie/Dialect/AIEX/AIETokenAnalysis.h</a>&quot;</code><br />
 <code>#include &quot;<a class="el" href="AIEXDialect_8h_source.html">aie/Dialect/AIEX/IR/AIEXDialect.h</a>&quot;</code><br />
 <code>#include &quot;<a class="el" href="AIEXPasses_8h_source.html">aie/Dialect/AIEX/Transforms/AIEXPasses.h</a>&quot;</code><br />
+<code>#include &quot;mlir/Dialect/Arith/IR/Arith.h&quot;</code><br />
 <code>#include &quot;mlir/IR/Attributes.h&quot;</code><br />
 <code>#include &quot;mlir/IR/PatternMatch.h&quot;</code><br />
 <code>#include &quot;mlir/Pass/Pass.h&quot;</code><br />
@@ -74,27 +75,29 @@ $(function() {
 <div id="dynsection-0-content" class="dyncontent" style="display:none;">
 <div class="center"><img src="AIECreateLocks_8cpp__incl.png" border="0" usemap="#alib_2Dialect_2AIEX_2Transforms_2AIECreateLocks_8cpp" alt=""/></div>
 <map name="alib_2Dialect_2AIEX_2Transforms_2AIECreateLocks_8cpp" id="alib_2Dialect_2AIEX_2Transforms_2AIECreateLocks_8cpp">
-<area shape="rect" title=" " alt="" coords="2839,5,3037,45"/>
+<area shape="rect" title=" " alt="" coords="2864,5,3063,45"/>
 <area shape="rect" href="AIEDialect_8h.html" title=" " alt="" coords="1568,269,1703,309"/>
-<area shape="poly" title=" " alt="" coords="2845,48,1717,274,1716,269,2844,43"/>
+<area shape="poly" title=" " alt="" coords="2869,48,1717,275,1716,269,2868,43"/>
 <area shape="rect" href="AIETokenAnalysis_8h.html" title=" " alt="" coords="184,93,372,133"/>
-<area shape="poly" title=" " alt="" coords="2839,33,386,111,386,106,2838,27"/>
+<area shape="poly" title=" " alt="" coords="2864,32,386,111,386,106,2864,27"/>
 <area shape="rect" href="AIEXDialect_8h.html" title=" " alt="" coords="2624,181,2767,221"/>
-<area shape="poly" title=" " alt="" coords="2839,46,2789,65,2765,79,2744,95,2730,111,2719,130,2705,168,2700,167,2714,128,2726,108,2740,91,2762,74,2786,61,2837,41"/>
-<area shape="rect" href="AIEXPasses_8h.html" title=" " alt="" coords="2767,93,2970,133"/>
-<area shape="poly" title=" " alt="" coords="2925,47,2895,84,2891,81,2921,44"/>
+<area shape="poly" title=" " alt="" coords="2864,38,2803,46,2743,59,2693,75,2675,84,2663,95,2655,112,2656,131,2663,150,2674,169,2669,171,2659,152,2651,132,2650,111,2659,92,2672,80,2691,70,2742,53,2802,41,2863,33"/>
+<area shape="rect" href="AIEXPasses_8h.html" title=" " alt="" coords="2673,93,2875,133"/>
+<area shape="poly" title=" " alt="" coords="2923,48,2829,90,2827,85,2921,43"/>
 <area shape="rect" title=" " alt="" coords="2791,189,2917,214"/>
-<area shape="poly" title=" " alt="" coords="2839,43,2793,62,2774,77,2758,95,2751,113,2758,132,2781,160,2812,180,2809,185,2778,164,2753,135,2746,113,2753,92,2770,73,2791,58,2837,38"/>
+<area shape="poly" title=" " alt="" coords="2954,47,2871,178,2866,175,2949,44"/>
 <area shape="rect" title=" " alt="" coords="2942,181,3145,221"/>
-<area shape="poly" title=" " alt="" coords="2953,44,2984,92,3029,168,3024,171,2980,95,2949,47"/>
-<area shape="rect" title=" " alt="" coords="3045,101,3191,126"/>
-<area shape="poly" title=" " alt="" coords="2979,43,3083,93,3081,97,2976,48"/>
-<area shape="rect" title=" " alt="" coords="3215,101,3381,126"/>
-<area shape="poly" title=" " alt="" coords="3018,43,3238,95,3236,100,3016,48"/>
-<area shape="rect" title=" " alt="" coords="3406,93,3585,133"/>
-<area shape="poly" title=" " alt="" coords="3038,37,3393,90,3392,96,3037,43"/>
-<area shape="rect" title=" " alt="" coords="3609,101,3867,126"/>
-<area shape="poly" title=" " alt="" coords="3038,33,3291,58,3597,91,3642,96,3641,101,3596,96,3291,63,3037,38"/>
+<area shape="poly" title=" " alt="" coords="2968,45,2975,86,2991,132,3017,170,3013,173,2986,135,2970,88,2963,46"/>
+<area shape="rect" title=" " alt="" coords="3001,93,3134,133"/>
+<area shape="poly" title=" " alt="" coords="2988,44,3035,82,3032,86,2985,48"/>
+<area shape="rect" title=" " alt="" coords="3159,101,3304,126"/>
+<area shape="poly" title=" " alt="" coords="3023,43,3183,94,3182,99,3021,48"/>
+<area shape="rect" title=" " alt="" coords="3328,101,3495,126"/>
+<area shape="poly" title=" " alt="" coords="3063,43,3317,91,3341,95,3340,101,3316,96,3062,48"/>
+<area shape="rect" title=" " alt="" coords="3519,93,3698,133"/>
+<area shape="poly" title=" " alt="" coords="3063,34,3264,58,3506,91,3506,96,3263,63,3063,40"/>
+<area shape="rect" title=" " alt="" coords="3722,101,3981,126"/>
+<area shape="poly" title=" " alt="" coords="3063,32,3354,56,3710,91,3757,96,3756,102,3710,96,3353,61,3063,37"/>
 <area shape="rect" href="AIEEnums_8h.html" title=" " alt="" coords="2834,453,2933,478"/>
 <area shape="poly" title=" " alt="" coords="1703,289,1874,292,2093,303,2306,322,2394,337,2459,355,2475,364,2486,375,2496,386,2511,395,2592,423,2675,442,2754,453,2820,459,2820,464,2753,459,2674,447,2590,428,2509,400,2493,390,2482,379,2472,368,2457,360,2393,342,2306,328,2093,308,1873,298,1703,294"/>
 <area shape="rect" href="AIETargetModel_8h.html" title=" " alt="" coords="574,357,713,397"/>
@@ -170,7 +173,7 @@ $(function() {
 <area shape="rect" href="AIEXEnums_8h.html" title=" " alt="" coords="2968,445,3111,485"/>
 <area shape="poly" title=" " alt="" coords="2735,219,2817,267,2873,310,2927,355,3012,433,3009,437,2924,359,2870,314,2814,272,2732,224"/>
 <area shape="rect" title=" " alt="" coords="3052,277,3197,302"/>
-<area shape="poly" title=" " alt="" coords="2767,216,2780,219,3041,267,3062,271,3061,276,3040,272,2779,224,2766,221"/>
+<area shape="poly" title=" " alt="" coords="2768,216,2779,219,3041,267,3062,271,3061,276,3040,272,2777,224,2766,222"/>
 <area shape="rect" title=" " alt="" coords="2348,269,2491,309"/>
 <area shape="poly" title=" " alt="" coords="2636,224,2493,268,2492,263,2634,219"/>
 <area shape="rect" title=" " alt="" coords="2515,269,2657,309"/>
@@ -179,9 +182,9 @@ $(function() {
 <area shape="poly" title=" " alt="" coords="3043,485,3047,527,3041,527,3038,486"/>
 <area shape="rect" title=" " alt="" coords="3133,533,3276,573"/>
 <area shape="poly" title=" " alt="" coords="3077,483,3158,525,3155,529,3074,488"/>
-<area shape="poly" title=" " alt="" coords="2832,136,2746,178,2744,173,2829,131"/>
-<area shape="poly" title=" " alt="" coords="2868,134,2861,175,2856,174,2863,133"/>
-<area shape="poly" title=" " alt="" coords="2908,131,2994,173,2992,178,2906,136"/>
+<area shape="poly" title=" " alt="" coords="2759,135,2724,173,2720,169,2755,132"/>
+<area shape="poly" title=" " alt="" coords="2794,132,2835,176,2832,180,2790,135"/>
+<area shape="poly" title=" " alt="" coords="2834,131,2972,175,2971,180,2832,136"/>
 </map>
 </div>
 </div>
@@ -221,7 +224,7 @@ Macros</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIECreateLocks_8cpp_source.html#l00025">25</a> of file <a class="el" href="AIECreateLocks_8cpp_source.html">AIECreateLocks.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIECreateLocks_8cpp_source.html#l00026">26</a> of file <a class="el" href="AIECreateLocks_8cpp_source.html">AIECreateLocks.cpp</a>.</p>
 
 </div>
 </div>
@@ -237,14 +240,14 @@ Macros</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIECreateLocks_8cpp_source.html#l00021">21</a> of file <a class="el" href="AIECreateLocks_8cpp_source.html">AIECreateLocks.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIECreateLocks_8cpp_source.html#l00022">22</a> of file <a class="el" href="AIECreateLocks_8cpp_source.html">AIECreateLocks.cpp</a>.</p>
 
 </div>
 </div>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Sun Jul 12 2026 04:29:05 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Mon Jul 13 2026 16:55:36 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>

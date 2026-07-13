@@ -2688,7 +2688,7 @@ _Acquire/release lock op_
 Syntax:
 
 ```
-operation ::= `aie.use_lock` `(` $lock `,` $action (`,` $value^)? (`,` $blocking^)? `)` attr-dict
+operation ::= `aie.use_lock` `(` $lock `,` $action `,` $value (`,` $blocking^)? `)` attr-dict
 ```
 
 This operation uses a lock.
@@ -2703,12 +2703,16 @@ The behavior of this operation is dependent on `action`:
 - Release: In AIE1, set the lock to `value`.
   In AIE2, increment the lock by `value`.
 
+The lock value is always given as an `i32` SSA `value` operand. Passes that
+need a compile-time constant obtain it via `getConstantValue()`, which
+expects the operand to be defined by an `arith.constant` and fails
+otherwise.
+
 #### Attributes:
 
 <table>
 <tr><th>Attribute</th><th>MLIR Type</th><th>Description</th></tr>
 <tr><td><code>action</code></td><td>xilinx::AIE::LockActionAttr</td><td>lock acquire/release</td></tr>
-<tr><td><code>value</code></td><td>::mlir::IntegerAttr</td><td>32-bit signless integer attribute</td></tr>
 <tr><td><code>blocking</code></td><td>xilinx::AIE::LockBlockingAttr</td><td>lock operation is blocking</td></tr>
 <tr><td><code>acq_en</code></td><td>::mlir::BoolAttr</td><td>bool attribute</td></tr>
 </table>
@@ -2718,6 +2722,7 @@ The behavior of this operation is dependent on `action`:
 | Operand | Description |
 | :-----: | ----------- |
 | `lock` | index |
+| `value` | 32-bit signless integer |
 
 
 

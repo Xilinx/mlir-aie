@@ -58,9 +58,11 @@ $(function() {
 </div><!--header-->
 <div class="contents">
 <div class="textblock"><code>#include &quot;<a class="el" href="AIEDialect_8h_source.html">aie/Dialect/AIE/IR/AIEDialect.h</a>&quot;</code><br />
+<code>#include &quot;mlir/Dialect/Arith/IR/Arith.h&quot;</code><br />
 <code>#include &quot;mlir/Dialect/Func/IR/FuncOps.h&quot;</code><br />
 <code>#include &quot;mlir/Dialect/MemRef/IR/MemRef.h&quot;</code><br />
 <code>#include &quot;mlir/IR/DialectImplementation.h&quot;</code><br />
+<code>#include &quot;mlir/IR/Matchers.h&quot;</code><br />
 <code>#include &quot;mlir/IR/OpDefinition.h&quot;</code><br />
 <code>#include &quot;mlir/IR/SymbolTable.h&quot;</code><br />
 <code>#include &quot;mlir/Interfaces/FoldInterfaces.h&quot;</code><br />
@@ -80,39 +82,43 @@ $(function() {
 <div id="dynsection-0-content" class="dyncontent" style="display:none;">
 <div class="center"><img src="AIEDialect_8cpp__incl.png" border="0" usemap="#alib_2Dialect_2AIE_2IR_2AIEDialect_8cpp" alt=""/></div>
 <map name="alib_2Dialect_2AIE_2IR_2AIEDialect_8cpp" id="alib_2Dialect_2AIE_2IR_2AIEDialect_8cpp">
-<area shape="rect" title=" " alt="" coords="2169,5,2300,45"/>
+<area shape="rect" title=" " alt="" coords="2285,5,2416,45"/>
 <area shape="rect" href="AIEDialect_8h.html" title=" " alt="" coords="1149,93,1283,133"/>
-<area shape="poly" title=" " alt="" coords="2169,31,2014,36,1800,48,1553,67,1303,96,1297,97,1296,92,1302,91,1552,62,1799,42,2014,31,2169,26"/>
+<area shape="poly" title=" " alt="" coords="2285,30,2114,34,1871,45,1589,64,1303,96,1297,97,1296,92,1302,91,1589,59,1870,40,2114,29,2285,25"/>
 <area shape="rect" title=" " alt="" coords="5,181,155,221"/>
-<area shape="poly" title=" " alt="" coords="2169,29,1930,32,1568,41,1141,61,920,76,703,96,553,114,437,132,169,184,168,178,436,127,553,108,702,91,919,71,1140,56,1568,36,1930,27,2169,24"/>
+<area shape="poly" title=" " alt="" coords="2285,29,2029,31,1638,39,1174,59,933,75,698,96,552,114,407,138,169,183,168,178,406,132,551,109,697,91,933,70,1173,54,1638,33,2029,25,2285,24"/>
 <area shape="rect" title=" " alt="" coords="179,181,336,221"/>
-<area shape="poly" title=" " alt="" coords="2169,31,1884,42,1438,68,1177,88,903,114,624,145,350,184,349,179,623,140,902,108,1176,83,1437,63,1884,37,2169,26"/>
+<area shape="poly" title=" " alt="" coords="2285,32,1807,53,1476,72,1138,96,745,130,572,151,350,184,350,178,571,146,744,125,1137,91,1475,66,1806,47,2285,26"/>
 <area shape="rect" title=" " alt="" coords="2295,189,2457,214"/>
-<area shape="poly" title=" " alt="" coords="2169,29,1966,31,1706,40,1581,49,1473,60,1392,76,1365,85,1350,95,1344,104,1342,113,1344,122,1350,131,1370,144,1405,154,1510,168,1648,176,1804,178,2103,176,2216,176,2283,179,2313,183,2312,189,2282,184,2216,181,2103,182,1803,183,1648,181,1509,173,1404,159,1368,149,1346,135,1339,125,1336,113,1339,102,1346,91,1363,80,1391,71,1472,55,1581,43,1706,35,1966,26,2169,24"/>
-<area shape="rect" title=" " alt="" coords="1359,101,1590,126"/>
-<area shape="poly" title=" " alt="" coords="2169,35,1920,60,1603,96,1563,101,1562,96,1602,91,1920,55,2169,30"/>
-<area shape="rect" title=" " alt="" coords="1614,101,1778,126"/>
-<area shape="poly" title=" " alt="" coords="2169,38,1998,63,1791,96,1765,101,1764,95,1790,91,1997,58,2169,33"/>
-<area shape="rect" title=" " alt="" coords="1802,101,2027,126"/>
-<area shape="poly" title=" " alt="" coords="2170,47,1971,100,1970,94,2168,42"/>
-<area shape="rect" title=" " alt="" coords="2052,93,2228,133"/>
-<area shape="poly" title=" " alt="" coords="2215,48,2173,86,2169,82,2212,44"/>
-<area shape="rect" title=" " alt="" coords="2253,101,2409,126"/>
-<area shape="poly" title=" " alt="" coords="2258,44,2309,89,2305,93,2254,48"/>
-<area shape="rect" title=" " alt="" coords="2433,101,2604,126"/>
-<area shape="poly" title=" " alt="" coords="2298,43,2469,94,2467,99,2296,48"/>
-<area shape="rect" title=" " alt="" coords="2629,93,2771,133"/>
-<area shape="poly" title=" " alt="" coords="2301,35,2616,91,2615,96,2300,40"/>
-<area shape="rect" title=" " alt="" coords="2795,93,2930,133"/>
-<area shape="poly" title=" " alt="" coords="2300,30,2511,51,2644,69,2782,90,2781,96,2644,74,2510,57,2300,35"/>
-<area shape="rect" title=" " alt="" coords="2954,93,3089,133"/>
-<area shape="poly" title=" " alt="" coords="2301,27,2576,47,2756,65,2941,90,2940,96,2755,70,2576,52,2300,32"/>
-<area shape="rect" title=" " alt="" coords="3113,93,3247,133"/>
-<area shape="poly" title=" " alt="" coords="2300,26,2443,31,2639,42,2866,61,3099,90,3098,96,2865,67,2639,47,2442,36,2300,31"/>
-<area shape="rect" title=" " alt="" coords="3272,93,3413,133"/>
-<area shape="poly" title=" " alt="" coords="2300,25,2466,29,2702,39,2976,59,3258,91,3258,96,2975,64,2701,44,2466,34,2300,30"/>
-<area shape="rect" title=" " alt="" coords="3437,93,3600,133"/>
-<area shape="poly" title=" " alt="" coords="2300,24,2490,28,2766,38,3089,58,3258,72,3424,91,3423,96,3257,77,3089,63,2765,43,2490,33,2300,30"/>
+<area shape="poly" title=" " alt="" coords="2285,29,2058,29,1760,36,1616,44,1491,56,1397,73,1367,84,1349,95,1342,104,1340,113,1342,122,1348,131,1369,144,1404,154,1509,168,1647,176,1803,178,2103,176,2216,176,2283,179,2314,184,2313,189,2282,184,2216,181,2103,182,1803,183,1647,181,1508,174,1403,159,1367,149,1345,135,1337,125,1335,113,1337,102,1345,91,1364,79,1396,68,1490,51,1615,39,1760,31,2058,24,2285,23"/>
+<area shape="rect" title=" " alt="" coords="1359,93,1492,133"/>
+<area shape="poly" title=" " alt="" coords="2285,31,2146,37,1955,48,1734,68,1506,96,1505,91,1733,62,1954,43,2146,32,2285,26"/>
+<area shape="rect" title=" " alt="" coords="1517,101,1747,126"/>
+<area shape="poly" title=" " alt="" coords="2285,36,2053,61,1760,96,1721,101,1720,96,1760,91,2053,56,2285,31"/>
+<area shape="rect" title=" " alt="" coords="1772,101,1913,126"/>
+<area shape="poly" title=" " alt="" coords="2285,38,2122,63,1927,96,1905,100,1904,95,1926,91,2121,57,2285,33"/>
+<area shape="rect" title=" " alt="" coords="1938,101,2102,126"/>
+<area shape="poly" title=" " alt="" coords="2286,46,2078,100,2077,95,2284,41"/>
+<area shape="rect" title=" " alt="" coords="2126,101,2351,126"/>
+<area shape="poly" title=" " alt="" coords="2327,48,2267,94,2264,90,2324,43"/>
+<area shape="rect" title=" " alt="" coords="2376,93,2552,133"/>
+<area shape="poly" title=" " alt="" coords="2377,43,2430,83,2427,87,2374,48"/>
+<area shape="rect" title=" " alt="" coords="2577,101,2733,126"/>
+<area shape="poly" title=" " alt="" coords="2417,43,2601,94,2600,99,2416,48"/>
+<area shape="rect" title=" " alt="" coords="2757,101,2928,126"/>
+<area shape="poly" title=" " alt="" coords="2416,35,2746,91,2772,95,2771,101,2745,96,2416,40"/>
+<area shape="rect" title=" " alt="" coords="2953,93,3095,133"/>
+<area shape="poly" title=" " alt="" coords="2417,29,2644,51,2789,69,2939,91,2939,96,2788,74,2643,56,2416,34"/>
+<area shape="rect" title=" " alt="" coords="3119,93,3254,133"/>
+<area shape="poly" title=" " alt="" coords="2417,27,2712,45,2906,64,3106,91,3105,96,2906,69,2711,50,2416,32"/>
+<area shape="rect" title=" " alt="" coords="3278,93,3413,133"/>
+<area shape="poly" title=" " alt="" coords="2416,25,2566,30,2774,41,3016,60,3265,91,3264,96,3015,65,2774,46,2566,35,2416,30"/>
+<area shape="rect" title=" " alt="" coords="3437,93,3571,133"/>
+<area shape="poly" title=" " alt="" coords="2417,24,2590,27,2837,37,3126,57,3275,72,3423,91,3422,96,3275,77,3125,62,2837,42,2590,32,2416,30"/>
+<area shape="rect" title=" " alt="" coords="3596,93,3737,133"/>
+<area shape="poly" title=" " alt="" coords="2417,24,2613,25,2899,34,3236,54,3410,70,3583,91,3582,96,3410,75,3235,60,2899,39,2612,31,2417,29"/>
+<area shape="rect" title=" " alt="" coords="3761,93,3924,133"/>
+<area shape="poly" title=" " alt="" coords="2416,24,2635,25,2962,33,3348,54,3550,70,3748,91,3747,96,3549,75,3348,59,2961,39,2635,30,2416,29"/>
 <area shape="rect" href="AIEEnums_8h.html" title=" " alt="" coords="877,277,976,302"/>
 <area shape="poly" title=" " alt="" coords="1284,130,1328,146,1366,166,1379,179,1387,192,1387,207,1378,223,1331,234,1227,250,990,282,989,277,1226,245,1330,229,1374,219,1382,206,1382,194,1375,182,1363,171,1326,150,1283,135"/>
 <area shape="rect" href="AIETargetModel_8h.html" title=" " alt="" coords="1439,181,1577,221"/>
@@ -224,7 +230,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEDialect_8cpp_source.html#l03129">3129</a> of file <a class="el" href="AIEDialect_8cpp_source.html">AIEDialect.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEDialect_8cpp_source.html#l03166">3166</a> of file <a class="el" href="AIEDialect_8cpp_source.html">AIEDialect.cpp</a>.</p>
 
 </div>
 </div>
@@ -254,7 +260,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEDialect_8cpp_source.html#l02824">2824</a> of file <a class="el" href="AIEDialect_8cpp_source.html">AIEDialect.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEDialect_8cpp_source.html#l02854">2854</a> of file <a class="el" href="AIEDialect_8cpp_source.html">AIEDialect.cpp</a>.</p>
 
 </div>
 </div>
@@ -284,7 +290,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEDialect_8cpp_source.html#l00029">29</a> of file <a class="el" href="AIEDialect_8cpp_source.html">AIEDialect.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEDialect_8cpp_source.html#l00031">31</a> of file <a class="el" href="AIEDialect_8cpp_source.html">AIEDialect.cpp</a>.</p>
 
 </div>
 </div>
@@ -335,7 +341,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEDialect_8cpp_source.html#l01662">1662</a> of file <a class="el" href="AIEDialect_8cpp_source.html">AIEDialect.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEDialect_8cpp_source.html#l01668">1668</a> of file <a class="el" href="AIEDialect_8cpp_source.html">AIEDialect.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a5907560450a4177611806ceb3f5166fe">xilinx::AIE::AIETargetModel::isLegalTileConnection()</a>.</p>
 
@@ -379,7 +385,7 @@ Functions</h2></td></tr>
       </table>
 </div><div class="memdoc">
 
-<p class="definition">Definition at line <a class="el" href="AIEDialect_8cpp_source.html#l01652">1652</a> of file <a class="el" href="AIEDialect_8cpp_source.html">AIEDialect.cpp</a>.</p>
+<p class="definition">Definition at line <a class="el" href="AIEDialect_8cpp_source.html#l01658">1658</a> of file <a class="el" href="AIEDialect_8cpp_source.html">AIEDialect.cpp</a>.</p>
 
 <p class="reference">References <a class="el" href="classxilinx_1_1AIE_1_1AIETargetModel.html#a5907560450a4177611806ceb3f5166fe">xilinx::AIE::AIETargetModel::isLegalTileConnection()</a>.</p>
 
@@ -388,7 +394,7 @@ Functions</h2></td></tr>
 </div><!-- contents -->
 <!-- start footer part -->
 <hr class="footer"/><address class="footer"><small>
-Generated on Sun Jul 12 2026 04:29:05 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
+Generated on Mon Jul 13 2026 16:55:36 for MLIR-AIE by&#160;<a href="https://www.doxygen.org/index.html"><img class="footer" src="doxygen.svg" width="104" height="31" alt="doxygen"/></a> 1.9.8
 </small></address>
 </body>
 </html>
