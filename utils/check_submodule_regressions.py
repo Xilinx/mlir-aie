@@ -19,16 +19,24 @@ own). It only cares whether, for each path, HEAD's pin is equal to or a
 descendant of origin/main's pin -- which is exactly what a silent revert
 from a stale-branch merge is not.
 
-A submodule whose .gitmodules url changed in this diff is skipped: a
-deliberate remote switch (see #3262) can legitimately be a non-fast-forward
-change in commit history, and the url edit itself is a visible, reviewed
-part of the diff.
+A submodule whose .gitmodules url also changed in this diff is still held
+to the same standard: the ancestry check runs against the *new* url instead
+of being skipped, since a bad merge could just as easily regress the url
+back to an old fork alongside the pin (that combination must not silently
+pass just because "the url changed"). A deliberate remote switch (see
+#3262) can legitimately be a non-fast-forward change -- when it is, this
+script fails and says so, rather than silently waving it through; landing
+one is a manual, reviewed action (e.g. an admin merge), not something this
+check should rubber-stamp.
 """
 
 import subprocess
 import sys
 
 BASE_REF = "origin/main"
+
+# Ancestry checks only need commit/tree objects, not blobs or tags.
+FETCH_FLAGS = ["--quiet", "--force", "--filter=blob:none", "--no-tags"]
 
 
 def run(*args):
@@ -44,8 +52,11 @@ def try_run(*args):
 
 def submodule_paths_and_urls(rev):
     ok, paths_out = try_run(
-        "git", "config", f"--blob={rev}:.gitmodules",
-        "--get-regexp", r"^submodule\..*\.path$",
+        "git",
+        "config",
+        f"--blob={rev}:.gitmodules",
+        "--get-regexp",
+        r"^submodule\..*\.path$",
     )
     if not ok:
         return {}
@@ -53,8 +64,11 @@ def submodule_paths_and_urls(rev):
     urls = dict(
         line.split(" ", 1)
         for line in run(
-            "git", "config", f"--blob={rev}:.gitmodules",
-            "--get-regexp", r"^submodule\..*\.url$",
+            "git",
+            "config",
+            f"--blob={rev}:.gitmodules",
+            "--get-regexp",
+            r"^submodule\..*\.url$",
         ).splitlines()
     )
 
@@ -74,18 +88,32 @@ def pinned_commit(rev, path):
     return out.split()[2]
 
 
-def check_submodule(path, url, old_pin, new_pin):
+def fetch_into(url, commit, ref):
+    return try_run("git", "fetch", *FETCH_FLAGS, url, f"{commit}:{ref}")[0]
+
+
+def is_forward_move(path, url, old_pin, new_pin):
+    """Returns True if new_pin is reachable from old_pin at url, False if
+    it provably isn't, or None if that couldn't be determined (e.g. old_pin
+    no longer exists on any ref reachable from url)."""
     old_ref = f"refs/tmp/submodule-check-old-{abs(hash(path))}"
     new_ref = f"refs/tmp/submodule-check-new-{abs(hash(path))}"
-    run("git", "fetch", "--quiet", "--force", url, f"{old_pin}:{old_ref}")
-    run("git", "fetch", "--quiet", "--force", url, f"{new_pin}:{new_ref}")
-    return subprocess.run(
-        ["git", "merge-base", "--is-ancestor", old_ref, new_ref]
-    ).returncode == 0
+
+    if not fetch_into(url, old_pin, old_ref) or not fetch_into(url, new_pin, new_ref):
+        return None
+
+    return (
+        subprocess.run(
+            ["git", "merge-base", "--is-ancestor", old_ref, new_ref]
+        ).returncode
+        == 0
+    )
 
 
 def main():
-    run("git", "fetch", "--quiet", "origin", "main")
+    if not try_run("git", "fetch", "--quiet", "origin", "main")[0]:
+        print(f"::error::Could not fetch {BASE_REF} from origin to compare against.")
+        sys.exit(1)
 
     head_submodules = submodule_paths_and_urls("HEAD")
     base_submodules = submodule_paths_and_urls(BASE_REF)
@@ -103,29 +131,37 @@ def main():
             print(f"OK: {path} unchanged ({new_pin}).")
             continue
 
-        if base_submodules.get(path) != url:
-            print(
-                f"NOTE: {path} changed its .gitmodules url in this diff; "
-                "skipping the ancestry check (the remote switch is itself "
-                "a visible, reviewed part of the diff)."
-            )
-            continue
+        url_changed = base_submodules.get(path) != url
+        result = is_forward_move(path, url, old_pin, new_pin)
 
-        if check_submodule(path, url, old_pin, new_pin):
-            print(f"OK: {path} moved forward {old_pin} -> {new_pin}")
+        if result is True:
+            note = " (url also changed)" if url_changed else ""
+            print(f"OK: {path} moved forward {old_pin} -> {new_pin}{note}")
         else:
-            failures.append((path, old_pin, new_pin))
+            failures.append((path, old_pin, new_pin, url, url_changed, result))
 
     if failures:
-        for path, old_pin, new_pin in failures:
+        for path, old_pin, new_pin, url, url_changed, result in failures:
+            reason = (
+                f"{old_pin} is not reachable from {url} at all"
+                if result is None
+                else f"{new_pin} is not a descendant of it at {url}"
+            )
+            url_note = (
+                " Its .gitmodules url also changed in this diff -- a "
+                "deliberate remote switch can legitimately be non-fast-forward, "
+                "but that requires a human to say so explicitly (e.g. an admin "
+                "merge), not a silently passing check."
+                if url_changed
+                else ""
+            )
             print(
                 f"::error::{path} moved from {old_pin} (on {BASE_REF}) to "
-                f"{new_pin}, which is not a descendant of it. This is what a "
-                "silent regression from a stale-branch merge looks like (see "
-                "#3292, #3330). If this is an intentional downgrade, rebase "
-                "onto the latest main before merging so the pin doesn't "
-                "silently clobber a bump that landed after this branch was "
-                "created."
+                f"{new_pin}: {reason}. This is what a silent regression from a "
+                "stale-branch merge looks like (see #3292, #3330)."
+                f"{url_note} If this is an intentional downgrade, rebase onto "
+                "the latest main before merging so the pin doesn't silently "
+                "clobber a bump that landed after this branch was created."
             )
         sys.exit(1)
 
