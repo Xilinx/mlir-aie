@@ -49,19 +49,35 @@ def parse_lit(path: Path):
     return requires, xfail, run_lines
 
 
-def substitute(cmd: str, lit_dir: Path, repo_root: Path, npu_kind: str) -> str:
+def substitute(
+    cmd: str, lit_dir: Path, repo_root: Path, npu_kind: str, tmp: Path, stem: str
+) -> str:
     cmd = cmd.replace("%S", str(lit_dir))
-    wrapper = f'"{sys.executable}" "{repo_root / "utils" / "run_on_npu.py"}" "{npu_kind}"'
+    # Match lit's %t/%T: %T is the per-test scratch directory, %t is a unique
+    # path stem within it (tests commonly append a suffix, e.g. "%t.work").
+    cmd = cmd.replace("%T", str(tmp))
+    cmd = cmd.replace("%t", str(tmp / stem))
+    wrapper = (
+        f'"{sys.executable}" "{repo_root / "utils" / "run_on_npu.py"}" "{npu_kind}"'
+    )
     cmd = re.sub(r"%run_on_npu[12]%", wrapper, cmd)
     return cmd
 
 
-def run_one(lit_path: Path, run_lines: list[str], lit_dir: Path, repo_root: Path,
-            npu_kind: str, timeout: int):
-    script = "set -euo pipefail\n" + "\n".join(
-        substitute(line, lit_dir, repo_root, npu_kind) for line in run_lines
-    )
-    with tempfile.TemporaryDirectory(prefix=lit_path.stem + "_") as tmp:
+def run_one(
+    lit_path: Path,
+    run_lines: list[str],
+    lit_dir: Path,
+    repo_root: Path,
+    npu_kind: str,
+    timeout: int,
+):
+    with tempfile.TemporaryDirectory(prefix=lit_path.stem + "_") as tmp_str:
+        tmp = Path(tmp_str)
+        script = "set -euo pipefail\n" + "\n".join(
+            substitute(line, lit_dir, repo_root, npu_kind, tmp, lit_path.stem)
+            for line in run_lines
+        )
         try:
             proc = subprocess.run(
                 ["bash", "-c", script],
@@ -71,7 +87,10 @@ def run_one(lit_path: Path, run_lines: list[str], lit_dir: Path, repo_root: Path
                 timeout=timeout,
             )
         except subprocess.TimeoutExpired as e:
-            return False, f"TIMEOUT after {timeout}s\n{e.stdout or ''}\n{e.stderr or ''}"
+            return (
+                False,
+                f"TIMEOUT after {timeout}s\n{e.stdout or ''}\n{e.stderr or ''}",
+            )
         if proc.returncode != 0:
             return False, f"exit={proc.returncode}\n{proc.stdout}\n{proc.stderr}"
         return True, proc.stdout
@@ -80,7 +99,9 @@ def run_one(lit_path: Path, run_lines: list[str], lit_dir: Path, repo_root: Path
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--runner-type", required=True, choices=sorted(NPU_FEATURE))
-    ap.add_argument("--repo-root", default=Path(__file__).resolve().parent.parent, type=Path)
+    ap.add_argument(
+        "--repo-root", default=Path(__file__).resolve().parent.parent, type=Path
+    )
     ap.add_argument("--root", default="programming_examples", type=Path)
     ap.add_argument("--timeout", type=int, default=900)
     args = ap.parse_args()
@@ -93,7 +114,7 @@ def main():
         root.rglob("run_strix_makefile*.lit")
     )
 
-    passed, xfailed, skipped, failed = [], [], [], []
+    passed, xfailed, xpassed, skipped, failed = [], [], [], [], []
 
     for lit_path in lit_files:
         requires, xfail, run_lines = parse_lit(lit_path)
@@ -111,18 +132,29 @@ def main():
             skipped.append((rel, "chess-only (out of scope)"))
             continue
 
-        ok, log = run_one(lit_path, run_lines, lit_path.parent, args.repo_root, npu_kind, args.timeout)
-        if ok:
-            (xfailed if xfail else passed).append(rel)
-        elif xfail:
-            # Expected failure under XFAIL: this is the normal lit outcome, not a regression.
-            xfailed.append(rel)
+        ok, log = run_one(
+            lit_path, run_lines, lit_path.parent, args.repo_root, npu_kind, args.timeout
+        )
+        if xfail:
+            if ok:
+                # Unexpected pass under XFAIL: lit reports this as XPASS, a
+                # regression signal (the XFAIL marker is now stale), not a
+                # clean result to fold silently into "xfailed".
+                xpassed.append(rel)
+            else:
+                # Expected failure under XFAIL: this is the normal lit outcome.
+                xfailed.append(rel)
+        elif ok:
+            passed.append(rel)
         else:
             failed.append((rel, log))
 
     print("\n==== programming_examples (wheel-driven) summary ====")
     print(f"  passed:  {len(passed)}")
     print(f"  xfailed: {len(xfailed)} (expected, not counted as failures)")
+    print(
+        f"  xpassed: {len(xpassed)} (unexpected pass under XFAIL -- treated as a failure)"
+    )
     print(f"  skipped: {len(skipped)}")
     print(f"  failed:  {len(failed)}")
 
@@ -131,13 +163,18 @@ def main():
         for rel, reason in skipped:
             print(f"  {rel}: {reason}")
 
+    if xpassed:
+        print("\n-- xpassed (remove the stale XFAIL marker) --")
+        for rel in xpassed:
+            print(f"  {rel}")
+
     if failed:
         print("\n-- failed --")
         for rel, log in failed:
             print(f"\n[FAILED] {rel}")
             print(log[-4000:])
 
-    sys.exit(1 if failed else 0)
+    sys.exit(1 if failed or xpassed else 0)
 
 
 if __name__ == "__main__":
