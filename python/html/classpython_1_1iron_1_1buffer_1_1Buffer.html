@@ -21,7 +21,7 @@
  <tbody>
  <tr id="projectrow">
   <td id="projectalign">
-   <div id="projectname">IRON<span id="projectnumber">&#160;696ba5a590b5c765aa07aac2483d6f73f139fee2</span>
+   <div id="projectname">IRON<span id="projectnumber">&#160;76d7ac3ce3ff04e91a268704f2d514cba761e620</span>
    </div>
   </td>
  </tr>
@@ -108,8 +108,8 @@ Collaboration diagram for python.iron.buffer.Buffer:</div>
 <table class="memberdecls">
 <tr class="heading"><td colspan="2"><h2 class="groupheader"><a id="pub-methods" name="pub-methods"></a>
 Public Member Functions</h2></td></tr>
-<tr class="memitem:ac198583bb69144f98cf6cb78a69d95d7" id="r_ac198583bb69144f98cf6cb78a69d95d7"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classpython_1_1iron_1_1buffer_1_1Buffer.html#ac198583bb69144f98cf6cb78a69d95d7">__init__</a> (self, type[np.ndarray]|None type=None, np.ndarray|None initial_value=None, str|None name=None, Tile|None <a class="el" href="classpython_1_1iron_1_1buffer_1_1Buffer.html#aefda6a7d888ac136030cd706f4c306d5">tile</a>=None, bool use_write_rtp=False)</td></tr>
-<tr class="separator:ac198583bb69144f98cf6cb78a69d95d7"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:afa88403b87402b4099880e19384c909c" id="r_afa88403b87402b4099880e19384c909c"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classpython_1_1iron_1_1buffer_1_1Buffer.html#afa88403b87402b4099880e19384c909c">__init__</a> (self, type[np.ndarray]|None type=None, np.ndarray|None initial_value=None, str|None name=None, Tile|None <a class="el" href="classpython_1_1iron_1_1buffer_1_1Buffer.html#aefda6a7d888ac136030cd706f4c306d5">tile</a>=None, bool use_write_rtp=False, int|None address=None)</td></tr>
+<tr class="separator:afa88403b87402b4099880e19384c909c"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:aefda6a7d888ac136030cd706f4c306d5" id="r_aefda6a7d888ac136030cd706f4c306d5"><td class="memItemLeft" align="right" valign="top">Tile|None&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classpython_1_1iron_1_1buffer_1_1Buffer.html#aefda6a7d888ac136030cd706f4c306d5">tile</a> (self)</td></tr>
 <tr class="separator:aefda6a7d888ac136030cd706f4c306d5"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a243c489003afa671afa779af85166e4a" id="r_a243c489003afa671afa779af85166e4a"><td class="memItemLeft" align="right" valign="top">list&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classpython_1_1iron_1_1buffer_1_1Buffer.html#a243c489003afa671afa779af85166e4a">tiles</a> (self)</td></tr>
@@ -139,6 +139,8 @@ Protected Attributes</h2></td></tr>
 <tr class="separator:aac3cba1dd7b925f8f6e8b63627fdb392"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:af87fdeb8c4b79586691c1ba69e9168f5" id="r_af87fdeb8c4b79586691c1ba69e9168f5"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classpython_1_1iron_1_1buffer_1_1Buffer.html#af87fdeb8c4b79586691c1ba69e9168f5">_use_write_rtp</a></td></tr>
 <tr class="separator:af87fdeb8c4b79586691c1ba69e9168f5"><td class="memSeparator" colspan="2">&#160;</td></tr>
+<tr class="memitem:ac25a5a610405e6a550d76bba45cd4a0f" id="r_ac25a5a610405e6a550d76bba45cd4a0f"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classpython_1_1iron_1_1buffer_1_1Buffer.html#ac25a5a610405e6a550d76bba45cd4a0f">_address</a></td></tr>
+<tr class="separator:ac25a5a610405e6a550d76bba45cd4a0f"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a85b51ecd05c22d19bf23611c13e17676" id="r_a85b51ecd05c22d19bf23611c13e17676"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classpython_1_1iron_1_1buffer_1_1Buffer.html#a85b51ecd05c22d19bf23611c13e17676">_tile</a></td></tr>
 <tr class="separator:a85b51ecd05c22d19bf23611c13e17676"><td class="memSeparator" colspan="2">&#160;</td></tr>
 <tr class="memitem:a8bec3b3b4feecb6fd3692f814cac8f35" id="r_a8bec3b3b4feecb6fd3692f814cac8f35"><td class="memItemLeft" align="right" valign="top">&#160;</td><td class="memItemRight" valign="bottom"><a class="el" href="classpython_1_1iron_1_1buffer_1_1Buffer.html#a8bec3b3b4feecb6fd3692f814cac8f35">_explicit_tile</a></td></tr>
@@ -153,8 +155,8 @@ Static Protected Attributes</h2></td></tr>
 <div class="textblock"><pre class="fragment">A buffer that is available both to Workers and to the Runtime for operations.
 This is often used for Runtime Parameters.
 </pre> </div><h2 class="groupheader">Constructor &amp; Destructor Documentation</h2>
-<a id="ac198583bb69144f98cf6cb78a69d95d7" name="ac198583bb69144f98cf6cb78a69d95d7"></a>
-<h2 class="memtitle"><span class="permalink"><a href="#ac198583bb69144f98cf6cb78a69d95d7">&#9670;&#160;</a></span>__init__()</h2>
+<a id="afa88403b87402b4099880e19384c909c" name="afa88403b87402b4099880e19384c909c"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#afa88403b87402b4099880e19384c909c">&#9670;&#160;</a></span>__init__()</h2>
 
 <div class="memitem">
 <div class="memproto">
@@ -193,7 +195,13 @@ This is often used for Runtime Parameters.
           <td class="paramkey"></td>
           <td></td>
           <td class="paramtype">bool &#160;</td>
-          <td class="paramname"><em>use_write_rtp</em> = <code>False</code>&#160;</td>
+          <td class="paramname"><em>use_write_rtp</em> = <code>False</code>, </td>
+        </tr>
+        <tr>
+          <td class="paramkey"></td>
+          <td></td>
+          <td class="paramtype">int | None &#160;</td>
+          <td class="paramname"><em>address</em> = <code>None</code>&#160;</td>
         </tr>
         <tr>
           <td></td>
@@ -211,6 +219,7 @@ Args:
     name (str | None, optional): The name of the buffer. If none is given, a unique name will be generated. Defaults to None.
     tile (Tile | None, optional): The tile for the buffer. Automatically set to the Worker's tile when the buffer is passed in the Worker's fn_args list. Defaults to None.
     use_write_rtp (bool, optional): If use_write_rtp, write_rtp/read_rtp operations will be generated. Otherwise, traditional write/read operations will be used. Defaults to False.
+    address (int | None, optional): Pin the buffer to a fixed L1 address. Needed for host-written RTP buffers the runtime pokes at a hardcoded address. Defaults to None (compiler-assigned).
 
 Raises:
     ValueError: If neither ``type`` nor ``initial_value`` is provided.
@@ -423,6 +432,28 @@ exposes any extra (cross-tile) placements.
 </div>
 </div>
 <h2 class="groupheader">Member Data Documentation</h2>
+<a id="ac25a5a610405e6a550d76bba45cd4a0f" name="ac25a5a610405e6a550d76bba45cd4a0f"></a>
+<h2 class="memtitle"><span class="permalink"><a href="#ac25a5a610405e6a550d76bba45cd4a0f">&#9670;&#160;</a></span>_address</h2>
+
+<div class="memitem">
+<div class="memproto">
+<table class="mlabels">
+  <tr>
+  <td class="mlabels-left">
+      <table class="memname">
+        <tr>
+          <td class="memname">python.iron.buffer.Buffer._address</td>
+        </tr>
+      </table>
+  </td>
+  <td class="mlabels-right">
+<span class="mlabels"><span class="mlabel">protected</span></span>  </td>
+  </tr>
+</table>
+</div><div class="memdoc">
+
+</div>
+</div>
 <a id="aac3cba1dd7b925f8f6e8b63627fdb392" name="aac3cba1dd7b925f8f6e8b63627fdb392"></a>
 <h2 class="memtitle"><span class="permalink"><a href="#aac3cba1dd7b925f8f6e8b63627fdb392">&#9670;&#160;</a></span>_arr_type</h2>
 
