@@ -25,7 +25,7 @@ Turn off SecureBoot (Allows for unsigned drivers to be installed):
 
 ### Install the XDNA™ Driver and XRT
 
-#### Install from upstream packages (Ubuntu 24.04 with Linux 6.17+)
+#### Install from upstream packages (Ubuntu 24.04 with Linux 6.17+) { #install-from-upstream-packages-ubuntu-2404 }
 
 Install the XDNA driver and XRT runtime from the AMD PPA:
 
@@ -172,11 +172,7 @@ For your design of interest, for instance from [programming_examples](../program
 
 1. AIE API header library documentation for single-core AIE programming in C++ is avaiable [here](https://xilinx.github.io/aie_api/topics.html)
 
-## Contributing:
-
-Interested in contributing MLIR-AIE? [Information for developers](../CONTRIBUTING.md)
-
-## Alternative: Build XDNA™ Driver and XRT from source
+## Alternative: Build XDNA™ Driver and XRT from source { #alternative-build-xdna-driver-and-xrt-from-source }
 
 If the [upstream packages](#install-from-upstream-packages-ubuntu-2404) do not support your kernel or distribution, you can build the driver and XRT from source:
 

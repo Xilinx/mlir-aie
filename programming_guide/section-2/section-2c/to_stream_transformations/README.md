@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>To Stream Data Layout Transformations</ins>
+# To Stream Data Layout Transformations
 
 In the [to_stream.py](./to_stream.py) design we first bring `24xi32` data from external memory to L2 memory (i.e., a Mem tile) with `of_in0`. We then use `of_in1` to forward the data from the `MemTile` to `my_worker`. Two FIFOs then move the output data from the Worker:
 - first to L2 via `of_out1`, applying a data layout transformation as the data is pushed onto the AXI stream by the Worker tile's DMA,

@@ -17,14 +17,15 @@ class ScratchpadParameter(Resolvable):
     """A named runtime parameter communicated from host to AIE cores via the
     scratchpad mechanism.
 
-    Declare a ``ScratchpadParameter`` at design time.  Pass it to a
-    :class:`Worker` via ``fn_args`` and call :meth:`read` inside the
-    ``core_fn`` to obtain its current value.  The ``--aie-lower-scratchpad-parameters``
-    pass automatically inserts the necessary lock and scratchpad-sync
-    preamble ops.
+    Declare a `ScratchpadParameter` at design time. Pass it to a
+    [`Worker`][iron.Worker] via `fn_args` and call
+    [`read`][iron.scratchpad_parameter.ScratchpadParameter.read] inside the
+    `core_fn` to obtain its current value. The
+    `--aie-lower-scratchpad-parameters` pass automatically inserts the
+    necessary lock and scratchpad-sync preamble ops.
 
-    Example::
-
+    Example:
+        ```python
         import numpy as np
         from aie.iron import ScratchpadParameter, Worker, Runtime, Program
 
@@ -40,6 +41,7 @@ class ScratchpadParameter(Resolvable):
         with rt.sequence(output_type) as out:
             # The compiler automatically inserts the parameter-sync preamble.
             ...
+        ```
     """
 
     def __init__(self, name: str, dtype: NpuDType):
@@ -67,11 +69,11 @@ class ScratchpadParameter(Resolvable):
         """The numpy scalar type of this parameter."""
         return self._dtype
 
-    def read(self):
-        """Emit ``aiex.read_scratchpad_parameter`` inside a core body.
+    def read(self) -> "ir.Value":
+        """Emit `aiex.read_scratchpad_parameter` inside a core body.
 
         Must be called within an active MLIR insertion point (i.e. inside a
-        Worker's ``core_fn``).
+        Worker's `core_fn`).
 
         Returns:
             An MLIR SSA value of the parameter's type.

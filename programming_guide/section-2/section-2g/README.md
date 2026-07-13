@@ -5,27 +5,27 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Section 2g - Data Movement Without Object FIFOs</ins>
+# Section 2g - Data Movement Without ObjectFifos
 
-* [Section 2 - Data Movement (Object FIFOs)](../../section-2/)
+* [Section 2 - Data Movement (ObjectFifos)](../../section-2/)
     * [Section 2a - Introduction](../section-2a/)
-    * [Section 2b - Key Object FIFO Patterns](../section-2b/)
+    * [Section 2b - Key ObjectFifo Patterns](../section-2b/)
     * [Section 2c - Data Layout Transformations](../section-2c/)
     * [Section 2d - Runtime Data Movement](../section-2d/)
     * [Section 2e - Programming for multiple cores](../section-2e/)
     * [Section 2f - Practical Examples](../section-2f/)
-    * Section 2g - Data Movement Without Object FIFOs
+    * Section 2g - Data Movement Without ObjectFifos
     * [Section 2h - Advanced ObjectFifo + Cross-Tile Buffer](../section-2h/)
 
 -----
 
-Not all data movement patterns fit cleanly into Object FIFOs.  This
+Not all data movement patterns fit cleanly into ObjectFifos.  This
 **advanced** section goes into detail about how to express data
 movement directly in terms of the underlying hardware pieces: per-tile
 Direct Memory Access (DMA) channels, buffer descriptors, hardware
 locks, and the AXI-stream routes between them.  To better understand
 the code and concepts here, it is recommended to first read the
-[Advanced Topic of Section 2a on DMAs](../section-2a/README.md/#advanced-topic--data-movement-accelerators).
+[Advanced Topic of Section 2a on DMAs](../section-2a/README.md#advanced-topic-direct-memory-access-channels).
 
 IRON exposes the same surface in two tiers — both fully supported,
 both lower into the same `aie.flow` / `aie.lock` / `aie.mem` /
@@ -450,4 +450,4 @@ caching, host-side tensor surface, and `--emit-mlir` introspection
 for free.
 
 -----
-[[Prev - Section 2f](../section-2f/)] [[Up](..)] [[Next - Section 2h](../section-2h/)]
+[Prev](../section-2f/) &middot; [Top](..) &middot; [Next](../section-2h/)

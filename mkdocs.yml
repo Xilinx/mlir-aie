@@ -1,0 +1,264 @@
+# Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+site_name: IRON / MLIR-AIE
+# MIGRATION NOTE: if the repo moves orgs, update site_url, repo_name, repo_url here.
+# The docs content uses only relative links; only these three lines need changing.
+site_url: https://xilinx.github.io/mlir-aie/
+site_description: >-
+  IRON — a close-to-metal Python API for programming AMD Ryzen™ AI NPUs,
+  built on an open-source MLIR-based compiler toolchain.
+site_author: AMD Advanced Micro Devices
+repo_name: Xilinx/mlir-aie
+repo_url: https://github.com/Xilinx/mlir-aie
+edit_uri: edit/main/
+
+# Fail the build on any warning (broken link, bad reference, etc.). Applies to
+# every invocation — local `mkdocs build`/`serve` and the CI `mike deploy` —
+# so problems surface before they reach the deployed site.
+strict: true
+
+# Shown in the footer of every page.
+copyright: >-
+  Copyright © 2019–2021 Xilinx, Inc. | Copyright © 2022–2026 Advanced Micro
+  Devices, Inc. Licensed under Apache 2.0 with LLVM exception.
+
+docs_dir: docs
+site_dir: site
+exclude_docs: |
+  *.cfg.in
+  *.cfg
+  *.dot
+  *.gemspec
+  Gemfile
+  CMakeLists.txt
+  *.dox
+  /README.md
+  # Legacy raw-MLIR walkthroughs (deprecated AIE. syntax, Versal-era). Kept in
+  # the repo for reference but not published on the site.
+  /AIEDesignPatterns.md
+  /AIERouting.md
+  /AIEVectorization.md
+  # Internal maintainer notes (wheel-build machinery). Kept in the repo, not
+  # published on the site.
+  /Dev.md
+
+# Links to source files (*.py, *.cpp, *.h, etc.) and out-of-tree dirs
+# (programming_examples/, mlir_exercises/) are intentional "go read the
+# source" links that work on GitHub but don't resolve as doc pages.
+# Suppress the noise; keep absolute_links warnings for real broken links.
+validation:
+  links:
+    absolute_links: warn
+    unrecognized_links: ignore
+    anchors: warn
+    not_found: ignore
+
+theme:
+  name: material
+  # "I" monogram, same mark as the browser-tab favicon, replacing Material's
+  # generic default header icon.
+  logo: assets/images/favicon.svg
+  favicon: assets/images/favicon.svg
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: teal
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: teal
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.indexes
+    - navigation.path
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.tabs.link
+    - content.code.copy
+    - content.code.annotate
+    - toc.follow
+
+extra_css:
+  - assets/css/iron.css
+
+extra:
+  # Version picker — populated by mike at deploy time from versions.json
+  version:
+    provider: mike
+    default: latest
+    alias: true
+  # Social links appear in the footer
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/Xilinx/mlir-aie
+      name: mlir-aie on GitHub
+    - icon: fontawesome/solid/paper-plane
+      link: mailto:aup@amd.com
+      name: AMD University Program
+
+plugins:
+  - search
+  # Sitemap is built-in to MkDocs — Google/Bing pick it up at /sitemap.xml
+  - mkdocstrings:
+      default_handler: python
+      handlers:
+        python:
+          # NOTE: deliberately no external `inventories:` (python/numpy
+          # objects.inv). The build is strict (see `strict: true` above), so a
+          # fetch failure/403 from those hosts would abort the whole docs
+          # deploy. Internal iron cross-references don't need them.
+          paths: [python]
+          options:
+            # Headings / structure
+            show_root_heading: true
+            show_root_full_path: false
+            # No symbol-type badges ("meth"/"func"/"attr") — those are
+            # Sphinx-derived abbreviations, not canonical Python. Methods
+            # still render with their full signature.
+            show_symbol_type_heading: false
+            show_symbol_type_toc: false
+            members_order: source
+            # Signatures — render annotations and cross-link the types
+            show_signature: true
+            show_signature_annotations: true
+            separate_signature: true
+            signature_crossrefs: true
+            # Docstrings
+            docstring_style: google
+            docstring_section_style: table
+            merge_init_into_class: true
+            show_if_no_docstring: false
+            show_source: true
+            show_bases: true
+            show_inheritance_diagram: false
+            filters:
+              - "!^_"
+
+# Build-time hooks. rewrite_source_links rewrites relative links that point at
+# repo source files/dirs (python/, programming_examples/, etc.) into absolute
+# github.com URLs so they don't 404 on the site, while leaving the markdown
+# source relative so GitHub browsing keeps working. See the file for details.
+hooks:
+  - docs/hooks/rewrite_source_links.py
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - attr_list
+  - md_in_html
+  - tables
+  - footnotes
+  - toc:
+      permalink: true
+      # Use a GitHub-compatible slugifier so heading anchors match what GitHub
+      # generates (e.g. "Ryzen™ AI" -> "ryzen-ai", stripping the ™). This keeps
+      # same-page anchor links working on BOTH the docs site and GitHub, which
+      # matters for pages like README.md that render in both places.
+      slugify: !!python/object/apply:pymdownx.slugs.slugify
+        kwds:
+          case: lower
+
+nav:
+  - Home: index.md
+  - Getting Started:
+    - getting-started.md
+    - Windows (WSL): buildHostWin.md
+    - Windows (Native): buildHostWinNative.md
+    - Non-Ubuntu Linux: buildHostLinNonUbuntu.md
+    - Build from Source: Building.md
+    - Versal: BuildingVersal.md
+    - Devices: Devices.md
+    - Platform Notes: Platform.md
+  - Programming Guide:
+    - Introduction: programming_guide/README.md
+    - Mini Tutorial: programming_guide/mini_tutorial/README.md
+    - "Section 0: Prerequisites": programming_guide/section-0/README.md
+    - "Section 1: Tiles and Buffers": programming_guide/section-1/README.md
+    - "Section 2: Data Movement":
+      - Introduction: programming_guide/section-2/README.md
+      - "2a: Single-Tile Data Movement": programming_guide/section-2/section-2a/README.md
+      - "2b: ObjectFifo Patterns":
+        - Introduction: programming_guide/section-2/section-2b/README.md
+        - Reuse: programming_guide/section-2/section-2b/01_Reuse/README.md
+        - Broadcast: programming_guide/section-2/section-2b/02_Broadcast/README.md
+        - Implicit Copy: programming_guide/section-2/section-2b/03_Implicit_Copy/README.md
+        - Repeat: programming_guide/section-2/section-2b/04_Repeat/README.md
+      - "2c: Data Layout Transformations":
+        - Introduction: programming_guide/section-2/section-2c/README.md
+        - To Stream: programming_guide/section-2/section-2c/to_stream_transformations/README.md
+        - From Stream: programming_guide/section-2/section-2c/from_stream_transformations/README.md
+      - "2d: DMA and Runtime Tasks":
+        - Introduction: programming_guide/section-2/section-2d/README.md
+        - DMA Tasks: programming_guide/section-2/section-2d/DMATasks.md
+        - Runtime Tasks: programming_guide/section-2/section-2d/RuntimeTasks.md
+      - "2e: Multiple Cores": programming_guide/section-2/section-2e/README.md
+      - "2f: Multi-Core Patterns":
+        - Introduction: programming_guide/section-2/section-2f/README.md
+        - Single/Double Buffer: programming_guide/section-2/section-2f/01_single_double_buffer/README.md
+        - Ext Mem to Core: programming_guide/section-2/section-2f/02_external_mem_to_core/README.md
+        - Ext Mem to Core (L2): programming_guide/section-2/section-2f/03_external_mem_to_core_L2/README.md
+        - Distribute L2: programming_guide/section-2/section-2f/04_distribute_L2/README.md
+        - Join L2: programming_guide/section-2/section-2f/05_join_L2/README.md
+      - "2g: Data Movement Without ObjectFifos": programming_guide/section-2/section-2g/README.md
+      - "2h: Tensor Access Patterns": programming_guide/section-2/section-2h/README.md
+    - "Section 3: My First Program": programming_guide/section-3/README.md
+    - "Section 4: Performance":
+      - Introduction: programming_guide/section-4/README.md
+      - "4a: Timers": programming_guide/section-4/section-4a/README.md
+      - "4b: Tracing": programming_guide/section-4/section-4b/README.md
+      - "4c: Vectorization": programming_guide/section-4/section-4c/README.md
+    - "Section 5: Example Designs": programming_guide/section-5/README.md
+    - "Section 6: ML Examples": programming_guide/section-6/README.md
+    - Extra References:
+      - IRON Configuration: programming_guide/iron_configuration.md
+      - Compilation Stages: programming_guide/compilation_stages.md
+      - Implicit MLIR Context: programming_guide/implicit_mlir_context.md
+      - Kernel Library: programming_guide/kernels_library.md
+      - Presentations: Presentations.md
+  - API & Internals:
+    - Overview: api/index.md
+    - Python API:
+      - IRON (aie.iron): api/iron.md
+      - Dialect op wrappers: api/dialect_wrappers.md
+      - Tensor Access Patterns (taplib): api/taplib.md
+      - Python Kernel Library: api/kernels.md
+      - C++ AIE kernels: api/aie_kernels.md
+      - Utilities: api/utils.md
+    - MLIR / C++:
+      - AIE Dialect: AIEDialect.md
+      - AIEX Dialect: AIEXDialect.md
+      - AIEVec Dialect: AIEVecDialect.md
+      - ADF Dialect: ADFDialect.md
+      - AIE Passes: AIEPasses.md
+      - AIEX Passes: AIEXPasses.md
+      - AIEVec Passes: AIEVecPasses.md
+      - C++ API (Doxygen): api/cpp_doxygen.md
+  - Developer Guide:
+    - Contributing: CONTRIBUTING.md
+    - Security: SECURITY.md

@@ -5,11 +5,11 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Section 3 - My First Program</ins>
+# Section 3 - My First Program
 
 <img align="right" width="500" height="250" src="../assets/binaryArtifacts.svg">
 
-This section creates the first program that will run on the AIE-array. As shown in the figure on the right, we will have to create both binaries for the AIE-array (device) and CPU (host) parts. For the AIE-array, a structural description and kernel code is compiled into the AIE-array binaries: an XCLBIN file ("final.xclbin") and an instruction sequence ("insts.bin"). The host code ("test.exe") loads these AIE-array binaries and contains the test functionality.
+This section creates the first program that will run on the AIE-array. As shown in the figure on the right, we will have to create both binaries for the AIE-array (device) and CPU (host) parts. For the AIE-array, a structural description and kernel code is compiled into the AIE-array binaries: an XCLBIN file ("final.xclbin") and an instruction sequence ("insts.bin"). The host code ("vectorScalar.exe") loads these AIE-array binaries and contains the test functionality.
 
 For the AIE-array structural description we will combine what you learned in [section-1](../section-1) for defining a basic structural design in Python with the data movement part from [section-2](../section-2).
 
@@ -117,11 +117,11 @@ scale_fn = ExternalFunction(
 )
 ```
 
-Since the compute core can only access L1 memory, input data needs to be explicitly moved to (yellow arrow) and from (orange arrow) the L1 memory of the AIE. We will use the Object FIFO data movement primitive (introduced in [section-2](../section-2/)).
+Since the compute core can only access L1 memory, input data needs to be explicitly moved to (yellow arrow) and from (orange arrow) the L1 memory of the AIE. We will use the ObjectFifo data movement primitive (introduced in [section-2](../section-2/)).
 
 <img align="right" width="300" height="300" src="../assets/vector_scalar.svg">
 
-This enables looking at the data movement in the AIE-array from a logical view where we deploy 3 Object FIFOs: `of_in` to bring in the vector `a`, `of_factor` to bring in the scalar factor, and `of_out` to move the output vector `c`, all using shimDMA. Note that the objects for `of_in` and `of_out` are declared to have the `tile_ty` type: 1024 int32 elements, while the `factor` is an object containing a single integer. All Object FIFOs are set up using a depth size of 2 to enable the concurrent execution to the Shim Tile and Compute Tile DMAs with the processing on the compute core.
+This enables looking at the data movement in the AIE-array from a logical view where we deploy 3 ObjectFifos: `of_in` to bring in the vector `a`, `of_factor` to bring in the scalar factor, and `of_out` to move the output vector `c`, all using shimDMA. Note that the objects for `of_in` and `of_out` are declared to have the `tile_ty` type: 1024 int32 elements, while the `factor` is an object containing a single integer. All ObjectFifos are set up using a depth size of 2 to enable the concurrent execution to the Shim Tile and Compute Tile DMAs with the processing on the compute core.
 
 ```python
 # Input data movement
@@ -144,9 +144,9 @@ with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (a_in, f_in, c_out):
     rt.drain(of_out.cons(), c_out, wait=True)
 ```
 
-Finally, we need to configure how the compute core accesses the data moved to its L1 memory, in Object FIFO terminology: we need to program the acquire and release patterns of `of_in`, `of_factor` and `of_out`. Only a single factor is needed for the complete 4096 vector, while for every processing iteration on a sub-vector, we need to acquire an object of 1024 integers to read from `of_in` and one similar sized object from `of_out`. Then we call our previously declared external function with the acquired objects as operands. After the vector scalar operation, we need to release both objects to their respective `of_in` and `of_out` Object FIFOs. Finally, after the 4 sub-vector iterations, we release the `of_factor` Object FIFO.
+Finally, we need to configure how the compute core accesses the data moved to its L1 memory, in ObjectFifo terminology: we need to program the acquire and release patterns of `of_in`, `of_factor` and `of_out`. Only a single factor is needed for the complete 4096 vector, while for every processing iteration on a sub-vector, we need to acquire an object of 1024 integers to read from `of_in` and one similar sized object from `of_out`. Then we call our previously declared external function with the acquired objects as operands. After the vector scalar operation, we need to release both objects to their respective `of_in` and `of_out` ObjectFifos. Finally, after the 4 sub-vector iterations, we release the `of_factor` ObjectFifo.
 
-This access and execute pattern runs on the AIE compute core and needs to get linked against the precompiled external function `scale.o`. We run this pattern in a very large loop to enable enqueuing multiple rounds of vector scalar multiply work from the host code.
+This access and execute pattern runs on the AIE compute core and calls the external function defined in [vector_scalar_mul.cc](./vector_scalar_mul.cc), which `@iron.jit` auto-builds via `ExternalFunction`. We run this pattern in a very large loop to enable enqueuing multiple rounds of vector scalar multiply work from the host code.
 
 ```python
 # Task for the core to perform
@@ -167,7 +167,7 @@ my_worker = Worker(core_fn, [of_in.cons(), of_factor.cons(), of_out.prod(), scal
 
 ### Kernel Code
 
-We can program the AIE compute core using C++ code and compile it with the selected single-core AIE compiler into a kernel object file. For our local version of vector scalar multiply, we will use a generic implementation of the `scale.cc` source (called [vector_scalar_mul.cc](./vector_scalar_mul.cc)) that can run on the scalar processor part of the AIE. The `vector_scalar_mul_aie_scalar` function processes one data element at a time, taking advantage of AIE scalar datapath to load, multiply and store data elements.
+We can program the AIE compute core using C++ code and compile it with the selected single-core AIE compiler into a kernel object file. For our vector scalar multiply, we use a generic implementation in [vector_scalar_mul.cc](./vector_scalar_mul.cc) that can run on the scalar processor part of the AIE. The `vector_scalar_mul_aie_scalar` function processes one data element at a time, taking advantage of AIE scalar datapath to load, multiply and store data elements.
 
 ```c
 void vector_scalar_mul_aie_scalar(int32_t *a, int32_t *c,
@@ -397,4 +397,4 @@ Because our design is defined in several different files such as:
 ensuring that top level design parameters stay consistent is important so we don't, for example, get system hangs when buffer sizes in the host code don't match the buffer size in the top level design. The `@iron.jit` path handles this automatically — the same design function defines the shapes used to allocate `iron.tensor` inputs and the runtime sequence. For the explicit-XRT walkthrough, [section-4b](../section-4/section-4b) shares example design templates that put these top level parameters in the `Makefile` and pass them to the other design files; the same pattern is visible in example designs like [vector_scalar_mul](../../programming_examples/basic/vector_scalar_mul).
 
 -----
-[[Prev - Section 2](../section-2/)] [[Top](..)] [[Next - Section 4](../section-4/)]
+[Prev](../section-2/) &middot; [Top](..) &middot; [Next](../section-4/)

@@ -1,0 +1,10 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# Blank issues stay enabled on purpose: researchers and enthusiasts often
+# have questions that don't fit the bug/feature forms.
+blank_issues_enabled: true
+contact_links:
+  - name: Question or discussion
+    url: https://github.com/Xilinx/mlir-aie/discussions
+    about: For usage questions, ideas, and general discussion, please start a Discussion.

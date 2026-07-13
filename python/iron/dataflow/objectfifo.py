@@ -39,12 +39,20 @@ from ..device import Tile, AnyMemTile
 
 
 class ObjectFifo(Resolvable):
-    """An ObjectFifo is a method of representing synchronized, explicit dataflow between
-    IRON program components such as Workers and the Runtime.
+    """A synchronized, explicit dataflow channel between IRON program
+    components such as [`Worker`][iron.Worker]s and the [`Runtime`][iron.Runtime].
 
-    Internally, it is a circular buffer with a given depth and type of buffer. The
-    users of an ObjectFifo are explicitly either a Producer or a Consumer, and each
-    user has an ObjectFifoEndpoint carrying its (possibly unplaced) tile.
+    Internally, an ObjectFifo is a circular buffer with a given depth and
+    element type. Its users are explicitly either a *producer* or a
+    *consumer*, and each user holds an [`ObjectFifoHandle`][iron.dataflow.objectfifo.ObjectFifoHandle]
+    carrying its (possibly unplaced) tile.
+
+    Example:
+        ```python
+        of = ObjectFifo(np.ndarray[(1024,), np.dtype[np.int32]], name="in")
+        producer = of.prod()   # one producer handle
+        consumer = of.cons()   # one or more consumer handles
+        ```
     """
 
     # Used to generate unique ObjectFifo names when none is provided.
@@ -420,7 +428,15 @@ class ObjectFifo(Resolvable):
 
 
 class ObjectFifoHandle(Resolvable):
-    """This class represents a handle to an ObjectFifo. A handle may be of type Producer or type Consumer."""
+    """A handle to an [`ObjectFifo`][iron.ObjectFifo], of type *producer* or *consumer*.
+
+    Producer and consumer handles are what [`Worker`][iron.Worker] core
+    functions call [`acquire`][iron.dataflow.objectfifo.ObjectFifoHandle.acquire]
+    and [`release`][iron.dataflow.objectfifo.ObjectFifoHandle.release] on to
+    move data through the fifo. Obtain them via
+    [`ObjectFifo.prod()`][iron.dataflow.objectfifo.ObjectFifo.prod] and
+    [`ObjectFifo.cons()`][iron.dataflow.objectfifo.ObjectFifo.cons].
+    """
 
     def __init__(
         self,
@@ -470,17 +486,16 @@ class ObjectFifoHandle(Resolvable):
         self,
         num_elem: int,
     ) -> list:
-        """Acquire access to some elements of the ObjectFifo using ObjectFifo synchronization to moderate access.
+        """Acquire access to some elements of the ObjectFifo, using ObjectFifo synchronization to moderate access.
 
         Args:
-            num_elem (int): Number of elements to acquire. If some elements are already acquired, it will only require the additional elements needed
-            to acquire a total of num_elem.
+            num_elem (int): Number of elements to acquire. If some elements are already acquired, only the additional elements needed to reach a total of ``num_elem`` are acquired.
 
         Raises:
             ValueError: Number of elements cannot exceed ObjectFifo depth.
 
         Returns:
-            list: A indexable handle to the acquired elements.
+            An indexable handle to the acquired elements: a single element when ``num_elem == 1``, or an indexable view when ``num_elem > 1``.
         """
         if self._depth < num_elem:
             raise ValueError(
@@ -492,14 +507,13 @@ class ObjectFifoHandle(Resolvable):
         self,
         num_elem: int,
     ) -> None:
-        """Release access to some elements of the ObjectFifo. This the other endpoint of the ObjectFifo to acquire them.
+        """Release access to some elements of the ObjectFifo, allowing the other endpoint of the ObjectFifo to acquire them.
 
         Args:
             num_elem (int): Number of elements to release.
 
         Raises:
             ValueError: Number of elements cannot exceed ObjectFifo depth.
-
         """
         if self._depth < num_elem:
             raise ValueError(

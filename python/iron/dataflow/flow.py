@@ -3,22 +3,22 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Iron-level circuit- and packet-switched route primitives.
+"""IRON-level circuit- and packet-switched route primitives.
 
-Two classes live here: :class:`Flow` (circuit-switched) and
-:class:`PacketFlow` (packet-switched, with explicit packet IDs), plus
-the small :class:`PacketDest` dataclass PacketFlow uses for its
-destination list.  They share a private ``_emit_shim_dma_alloc``
-helper and are treated as a sibling pair by ``dataflow/__init__.py``;
+Two classes live here: [`Flow`][iron.Flow] (circuit-switched) and
+[`PacketFlow`][iron.PacketFlow] (packet-switched, with explicit packet IDs),
+plus the small [`PacketDest`][iron.PacketDest] dataclass PacketFlow uses for
+its destination list. They share a private `_emit_shim_dma_alloc`
+helper and are treated as a sibling pair by `dataflow/__init__.py`;
 splitting them across two modules would either duplicate the helper
 or require a third file to hold it.
 
-Both are peers of :class:`ObjectFifo` in the dataflow namespace.
+Both are peers of [`ObjectFifo`][iron.ObjectFifo] in the dataflow namespace.
 ObjectFifo wraps *route + buffers + locks + DMA* into one
-circular-buffer abstraction; ``Flow`` / ``PacketFlow`` are the
+circular-buffer abstraction; `Flow` / `PacketFlow` are the
 lower-level "just declare the route" primitives, paired with explicit
-:class:`TileDma` programs (and :class:`Buffer` / :class:`Lock`
-shared state) for designs that need direct control.
+[`TileDma`][iron.TileDma] programs (and [`Buffer`][iron.Buffer] /
+[`Lock`][iron.Lock] shared state) for designs that need direct control.
 """
 
 from dataclasses import dataclass
@@ -57,15 +57,15 @@ class Flow(Resolvable):
     """An explicit AXI-stream route between (src_tile, src_port, src_channel) and
     (dst_tile, dst_port, dst_channel).
 
-    Lowers to a single ``aie.flow`` op.  The user is responsible for
-    arranging matching :class:`TileDma` channels on the producer and
+    Lowers to a single `aie.flow` op. The user is responsible for
+    arranging matching [`TileDma`][iron.TileDma] channels on the producer and
     consumer ends.
     """
 
     def __init__(
         self,
-        src,
-        dst,
+        src: Tile,
+        dst: Tile,
         *,
         src_port: WireBundle = WireBundle.DMA,
         src_channel: int = 0,
@@ -143,10 +143,10 @@ class Flow(Resolvable):
 
 @dataclass
 class PacketDest:
-    """One destination endpoint of a :class:`PacketFlow`.  Held as a small
-    dataclass so the PacketFlow constructor's destination list reads cleanly
-    when there are multiple sinks (uncommon, but the underlying op supports
-    it).
+    """One destination endpoint of a [`PacketFlow`][iron.PacketFlow]. Held as a
+    small dataclass so the PacketFlow constructor's destination list reads
+    cleanly when there are multiple sinks (uncommon, but the underlying op
+    supports it).
     """
 
     tile: Tile
@@ -155,25 +155,25 @@ class PacketDest:
 
 
 class PacketFlow(Resolvable):
-    """An explicit packet-switched route with caller-controlled ``pkt_id``.
+    """An explicit packet-switched route with caller-controlled `pkt_id`.
 
-    Peer of :class:`Flow` for the packet-switched case.  Unlike the
-    ``--packet-sw-objFifos`` global lowering (which auto-assigns sequential
-    packet IDs to every ObjectFifo in the design), :class:`PacketFlow`
+    Peer of [`Flow`][iron.Flow] for the packet-switched case. Unlike the
+    `--packet-sw-objFifos` global lowering (which auto-assigns sequential
+    packet IDs to every ObjectFifo in the design), `PacketFlow`
     exposes the packet ID directly so the same ID can be reused across
     stages and used as a routing decision (e.g. memtile dispatch by
-    ``pkt_id`` to one of several compute cores).
+    `pkt_id` to one of several compute cores).
 
-    Lowers to a single ``aie.packetflow`` op containing one
-    ``aie.packet_source`` and one or more ``aie.packet_dest`` ops in its
+    Lowers to a single `aie.packetflow` op containing one
+    `aie.packet_source` and one or more `aie.packet_dest` ops in its
     region.
     """
 
     def __init__(
         self,
         pkt_id: int,
-        src,
-        dst,
+        src: Tile,
+        dst: Tile,
         *,
         src_port: WireBundle = WireBundle.DMA,
         src_channel: int = 0,
@@ -190,15 +190,19 @@ class PacketFlow(Resolvable):
                 dispatch.  Caller controls the value (often reused across
                 stages so a memtile can re-emit packets keeping the original
                 ID for downstream routing).
-            src, dst: Source / primary destination tiles.
-            src_port / src_channel / dst_port / dst_channel: As for :class:`Flow`.
+            src: Source tile.
+            dst: Primary destination tile.
+            src_port: Source port bundle (as for [`Flow`][iron.Flow]).
+            src_channel: Source channel (as for [`Flow`][iron.Flow]).
+            dst_port: Destination port bundle (as for [`Flow`][iron.Flow]).
+            dst_channel: Destination channel (as for [`Flow`][iron.Flow]).
             extra_dsts: Additional destination endpoints if this packet needs
-                to fan out.  Each is a :class:`PacketDest`.
-            keep_pkt_header: If ``True``, downstream tile receives the 4-byte
+                to fan out. Each is a [`PacketDest`][iron.PacketDest].
+            keep_pkt_header: If `True`, downstream tile receives the 4-byte
                 packet header alongside the payload (useful when the receiver
-                needs to re-emit with the same pkt_id).  Defaults to ``False``.
-            shim_symbol: Same meaning as on :class:`Flow` — auto-emit a
-                matching ``aie.shim_dma_allocation`` when one endpoint is a
+                needs to re-emit with the same pkt_id). Defaults to `False`.
+            shim_symbol: Same meaning as on [`Flow`][iron.Flow] — auto-emit a
+                matching `aie.shim_dma_allocation` when one endpoint is a
                 shim tile.
         """
         self._pkt_id = pkt_id

@@ -8,10 +8,7 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 If you believe you have found a security vulnerability in mlir-aie, please
 report it privately rather than opening a public issue.
 
-The preferred channel is GitHub's private vulnerability reporting:
-
-  https://github.com/Xilinx/mlir-aie/security/advisories/new
-
+The preferred channel is GitHub's [private vulnerability reporting](https://github.com/Xilinx/mlir-aie/security/advisories/new).
 This opens a private advisory thread visible only to the maintainers. We
 will acknowledge reports as soon as we are able.
 
