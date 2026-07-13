@@ -183,14 +183,21 @@ jobs:
       - name: Copy Doxygen output into gh-pages
         if: github.event_name != 'pull_request'
         run: |
-          # mike has already pushed the MkDocs site to gh-pages.
-          # Check out gh-pages, inject Doxygen under the versioned path, push.
+          # mike has already pushed the MkDocs site to gh-pages. Inject the
+          # Doxygen HTML under the versioned path and push.
+          #
+          # Use a dedicated worktree instead of `git checkout gh-pages` in the
+          # main tree: the "Copy generated dialect docs" step overwrites the
+          # tracked docs/*Dialect.md / *Passes.md stubs, leaving the tree dirty,
+          # so a branch switch here would abort ("local changes would be
+          # overwritten by checkout").
           LABEL="${{ steps.version.outputs.label }}"
           git fetch origin gh-pages
-          git checkout gh-pages
-          mkdir -p "${LABEL}/doxygen"
-          cp -r build_release/doxygen/html "${LABEL}/doxygen/"
-          git add "${LABEL}/doxygen/"
-          git diff --cached --quiet || git commit -m "docs: add Doxygen output for ${LABEL}"
-          git push origin gh-pages
-          git checkout -
+          git worktree add ../gh-pages-wt gh-pages
+          mkdir -p "../gh-pages-wt/${LABEL}/doxygen"
+          cp -r build_release/doxygen/html "../gh-pages-wt/${LABEL}/doxygen/"
+          git -C ../gh-pages-wt add "${LABEL}/doxygen/"
+          git -C ../gh-pages-wt diff --cached --quiet \
+            || git -C ../gh-pages-wt commit -m "docs: add Doxygen output for ${LABEL}"
+          git -C ../gh-pages-wt push origin gh-pages
+          git worktree remove ../gh-pages-wt
