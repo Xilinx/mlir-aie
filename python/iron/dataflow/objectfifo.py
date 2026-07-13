@@ -178,12 +178,15 @@ class ObjectFifo(Resolvable):
             f"prod={prod_endpoint}, cons={[c.endpoint for c in self._cons]})"
         )
 
-    def prod(self, depth: int | None = None) -> ObjectFifoHandle:
+    def prod(
+        self, depth: int | None = None, channel: int | None = None
+    ) -> ObjectFifoHandle:
         """Returns an ObjectFifoHandle of type producer. Each ObjectFifo may have only one producer
         handle, so if one already exists, a new reference to this handle will be returned.
 
         Args:
             depth (int | None, optional): The depth of the buffers at the endpoint corresponding to the producer handle. Defaults to None.
+            channel (int | None, optional): Pin the producer endpoint's DMA channel instead of first-free assignment. Defaults to None (auto-assign).
 
         Raises:
             ValueError: Arguments are validated
@@ -200,14 +203,20 @@ class ObjectFifo(Resolvable):
                     depth = self._depth
             elif depth < 1:
                 raise ValueError(f"Depth must be > 1, but got {depth}")
+            if channel is not None and self._prod.channel != channel:
+                raise ValueError(
+                    f"Producer handle for {self.name} already pinned to channel "
+                    f"{self._prod.channel}, cannot re-pin to {channel}."
+                )
         else:
-            self._prod = ObjectFifoHandle(self, True, depth)
+            self._prod = ObjectFifoHandle(self, True, depth, channel=channel)
         return self._prod
 
     def cons(
         self,
         depth: int | None = None,
         dims_from_stream: StreamDims | None = None,
+        channel: int | None = None,
     ) -> ObjectFifoHandle:
         """Returns an ObjectFifoHandle of type consumer. Each ObjectFifo may have multiple consumers, so this
         will return a new consumer handle every time it is called.
@@ -215,6 +224,7 @@ class ObjectFifo(Resolvable):
         Args:
             depth (int | None, optional): The depth of the buffers at the endpoint corresponding to this consumer handle. Defaults to None.
             dims_from_stream (StreamDims | None, optional): Dimensions from stream for this consumer. Defaults to None.
+            channel (int | None, optional): Pin this consumer endpoint's DMA channel instead of first-free assignment. Defaults to None (auto-assign).
 
         Raises:
             ValueError: Arguments are validated
@@ -232,7 +242,11 @@ class ObjectFifo(Resolvable):
             dims_from_stream = self._dims_from_stream_per_cons
         self._cons.append(
             ObjectFifoHandle(
-                self, is_prod=False, depth=depth, dims_from_stream=dims_from_stream
+                self,
+                is_prod=False,
+                depth=depth,
+                dims_from_stream=dims_from_stream,
+                channel=channel,
             )
         )
         return self._cons[-1]
@@ -362,6 +376,17 @@ class ObjectFifo(Resolvable):
             if self._aie_stream is not None:
                 op.set_aie_stream(*self._aie_stream)
 
+            # Pin DMA channels requested on the handles. The producer channel
+            # and one channel per consumer (-1 = auto-assign that consumer) are
+            # stamped onto the op for the stateful-transform pass to honor.
+            if self._prod is not None and self._prod.channel is not None:
+                op.set_prod_dma_channel(self._prod.channel)
+            cons_channels = [con.channel for con in self._cons]
+            if any(ch is not None for ch in cons_channels):
+                op.set_cons_dma_channels(
+                    [-1 if ch is None else ch for ch in cons_channels]
+                )
+
             # Shared-memory delegate: redirect the fifo's buffer pool to a tile
             # whose memory module is shared with both prod and cons. See the
             # delegate_tile docstring on ObjectFifo for the constraint.
@@ -403,6 +428,7 @@ class ObjectFifoHandle(Resolvable):
         is_prod: bool,
         depth: int | None = None,
         dims_from_stream: StreamDims | None = None,
+        channel: int | None = None,
     ):
         """Construct an ObjectFifoHandle
 
@@ -411,6 +437,7 @@ class ObjectFifoHandle(Resolvable):
             is_prod (bool): Whether the handle should be producer or consumer handle.
             depth (int | None, optional): The depth of the ObjectFifo at this endpoint. Defaults to None.
             dims_from_stream (StreamDims | None, optional): A unique dimensions from stream. This is only valid for consumer handles. Defaults to None.
+            channel (int | None, optional): Pin this endpoint's DMA channel instead of first-free assignment. Defaults to None (auto-assign).
 
         Raises:
             ValueError: Arguments are validated.
@@ -435,6 +462,7 @@ class ObjectFifoHandle(Resolvable):
         self._is_prod = is_prod
         self._object_fifo = of
         self._depth = depth
+        self._channel = channel
         self._endpoint = None
         self._dims_from_stream = dims_from_stream
 
@@ -483,6 +511,11 @@ class ObjectFifoHandle(Resolvable):
     def name(self) -> str:
         """The name of the ObjectFifo"""
         return self._object_fifo.name
+
+    @property
+    def channel(self) -> int | None:
+        """The pinned DMA channel for this handle's endpoint, or None to auto-assign."""
+        return self._channel
 
     @property
     def op(self) -> ObjectFifoCreateOp:

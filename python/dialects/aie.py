@@ -61,6 +61,7 @@ from ..ir import (
     Block,
     BlockList,
     DenseElementsAttr,
+    DenseI32ArrayAttr,
     DictAttr,
     FunctionType,
     InsertionPoint,
@@ -548,6 +549,12 @@ class object_fifo(ObjectFifoCreateOp):
         int_stream_port = IntegerAttr.get(T.i32(), stream_port)
         self.attributes["aie_stream"] = int_stream_end
         self.attributes["aie_stream_port"] = int_stream_port
+
+    def set_prod_dma_channel(self, channel):
+        self.attributes["prod_dma_channel"] = IntegerAttr.get(T.i32(), channel)
+
+    def set_cons_dma_channels(self, channels):
+        self.attributes["cons_dma_channels"] = DenseI32ArrayAttr.get(list(channels))
 
 
 # Create an aie objectFifo_link between input and output objectFifos.
