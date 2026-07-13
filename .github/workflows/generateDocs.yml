@@ -58,7 +58,7 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Install packages
-        run: sudo apt-get install -y graphviz lld doxygen
+        run: sudo apt-get install -y graphviz lld doxygen ninja-build
 
       - name: Install Python packages
         run: |
@@ -68,10 +68,6 @@ jobs:
               --install-non-eudsl
           python -m pip install --require-hashes -r python/requirements_dev.lock
           pip install -r docs/requirements-mkdocs.txt
-
-      - name: Install Ninja
-        # https://github.com/llvm/actions/tree/main/install-ninja
-        uses: llvm/actions/install-ninja@6a57890d0e3f9f35dfc72e7e48bc5e1e527cdd6c  # main (no tags)
 
       - name: Get Submodule Hash
         id: get-submodule-hash
