@@ -1,23 +1,14 @@
-/******************************************************************************
- * Copyright 2024-2026 Advanced Micro Devices, Inc.
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- * http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- ******************************************************************************/
+//===- bootgen_c_api.cpp - Exception-safe PDI generation API ----*- C++ -*-===//
+//
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+//===----------------------------------------------------------------------===//
 
 #include "bootgen_c_api.h"
+#include "bootgenexception.h"
 #include "bootimage.h"
 #include "options.h"
-#include "bootgenexception.h"
 
 #include <cstring>
 #include <string>
@@ -36,8 +27,7 @@ int bootgen_generate_pdi(const char *bif_path, const char *pdi_path,
                          char *error_msg, int error_msg_size) {
   // Validate inputs
   if (!bif_path || !pdi_path) {
-    copy_error_message(error_msg, error_msg_size,
-                       "Invalid NULL path argument");
+    copy_error_message(error_msg, error_msg_size, "Invalid NULL path argument");
     return BOOTGEN_ERROR_INVALID_BIF;
   }
 
