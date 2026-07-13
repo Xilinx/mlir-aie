@@ -84,9 +84,9 @@ jobs:
       - name: Check shared dependency versions agree
         run: python3 utils/check_shared_dep_versions.py
 
-  aie-api-submodule:
+  submodule-regressions:
 
-    name: aie_api submodule pin is not stale
+    name: Submodule pins haven't regressed
 
     runs-on: ubuntu-latest
 
@@ -96,12 +96,13 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
 
-      # third_party/aie_api tracks stock upstream Xilinx/aie_api directly (no
-      # fork, see #3262). The pin has twice been silently reverted to a stale
-      # pre-#3262 commit by a merge/rebase from a branch based before the fix
-      # landed (#3292, #3330). Fail fast on a third recurrence.
-      - name: Verify aie_api pin is reachable from upstream main
-        run: python3 utils/check_aie_api_submodule.py
+      # A PR branch based on an old commit of main can silently reset a
+      # submodule's gitlink back to an older pin when merged, undoing a bump
+      # that has since landed on main -- third_party/aie_api hit this twice
+      # (#3292, then again via #3296, fixed by #3330). Fail fast on a repeat,
+      # for any submodule, not just aie_api.
+      - name: Verify no submodule pin moved backward relative to main
+        run: python3 utils/check_submodule_regressions.py
 
   clang-tidy-pylint:
 
