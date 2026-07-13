@@ -32,10 +32,7 @@ list(APPEND libsources
   ${BOOTGEN_SOURCE}/bisonflex/reginit.tab.cpp
   ${BOOTGEN_SOURCE}/bisonflex/reginit.yy.cpp)
 # C API for exception-safe PDI generation, so tools like aiecc can call
-# bootgen as a library instead of shelling out. Lives here rather than in
-# the submodule since it's mlir-aie-specific and only adds new files (no
-# upstream source is touched), letting third_party/bootgen track upstream
-# Xilinx/bootgen directly.
+# bootgen as a library instead of shelling out.
 list(APPEND libsources ${CMAKE_CURRENT_SOURCE_DIR}/bootgen_c_api.cpp)
 
 set(bootgen_include_dirs
@@ -62,8 +59,7 @@ string(REPLACE "#include <malloc.h>" "" FILE_CONTENTS "${FILE_CONTENTS}")
 file(WRITE ${BOOTGEN_SOURCE}/utils/src/cdo-alloc.c "${FILE_CONTENTS}")
 
 # Strip the per-CDO-file "Generating: ..." printf: cdo_driver_mlir_aie is
-# called directly (not via the bootgen executable) by mlir-aie's own CDO
-# generation, once per emitted CDO file, and this pollutes aiecc's output.
+# called directly (not via the bootgen executable) 
 file(READ ${BOOTGEN_SOURCE}/cdo-driver/cdo_driver.c FILE_CONTENTS)
 string(REGEX REPLACE "\n[ \t]*printf\\(\"Generating: %s\\\\n\", cdoFileName\\);"
   "" FILE_CONTENTS "${FILE_CONTENTS}")
@@ -89,9 +85,7 @@ file(WRITE ${BOOTGEN_SOURCE}/common/src/main.cpp "${FILE_CONTENTS}")
 # own Makefile.
 #
 # Only the pthread threading backend is vendored (upstream's Makefile is
-# Linux-only). MSVC has no <pthread.h>, so fall back to our own
-# single-threaded implementation of the same API (hss_thread.h allows a
-# NULL/0 collection as a valid non-threaded mode).
+# Linux-only). MSVC has no <pthread.h>
 set(lms_hash_sigs_dir ${BOOTGEN_SOURCE}/lms-hash-sigs)
 if(CMAKE_USE_PTHREADS_INIT)
   set(bootgen_hss_thread_source ${lms_hash_sigs_dir}/hss_thread_pthread.c)
@@ -141,9 +135,8 @@ if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
 endif()
 
 add_library(bootgen-lib STATIC ${libsources})
-# bootgen must be compiled with PIE/PIC, irrespective of the remainder of
-# the project, because auditwheel repair's patchelf-based RPATH rewrite
-# corrupts the non-PIE binary.
+# bootgen must be compiled with PIE/PIC, auditwheel repair's 
+# patchelf-based RPATH rewrite corrupts the non-PIE binary.
 set_target_properties(bootgen-lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")
   set(bootgen_warning_ignores
@@ -183,10 +176,7 @@ endif()
 target_compile_options(bootgen-lib PRIVATE ${bootgen_warning_ignores})
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND NOT MSVC)
   # The POSITION_INDEPENDENT_CODE property above doesn't reliably force PIC
-  # here (this project never calls check_pie_supported(), which CMP0083
-  # needs), so pass -fPIC explicitly, last, so it wins over any inherited
-  # -fno-PIC. NOT MSVC excludes clang-cl, which also matches "Clang" but
-  # can't parse this flag.
+  # so pass -fPIC explicitly, last, so it wins over any inherited -fno-PIC.
   target_compile_options(bootgen-lib PRIVATE -fPIC)
 endif()
 target_include_directories(bootgen-lib PRIVATE ${bootgen_include_dirs} ${OPENSSL_INCLUDE_DIR})
