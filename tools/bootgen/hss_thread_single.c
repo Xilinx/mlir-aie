@@ -14,9 +14,9 @@ struct thread_collection *hss_thread_init(int num_threads) {
 }
 
 void hss_thread_issue_work(struct thread_collection *col,
-                            void (*function)(const void *detail,
-                                              struct thread_collection *col),
-                            const void *detail, size_t size_detail_structure) {
+                           void (*function)(const void *detail,
+                                            struct thread_collection *col),
+                           const void *detail, size_t size_detail_structure) {
   (void)size_detail_structure;
   function(detail, col);
 }
