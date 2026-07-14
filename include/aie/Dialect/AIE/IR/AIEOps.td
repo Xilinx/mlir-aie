@@ -345,7 +345,7 @@ def AIE_ShimDMAOp: AIE_Op<"shim_dma", [
           aie.dma_start(MM2S, 0, ^bd0, ^end)
         ^bd0:
           aie.use_lock(%lock1, Acquire, 1)
-          aie.dma_bd(%buf : memref<512 x i16>, 0, 512)
+          aie.dma_bd(%buf : memref<512xi16> offset = 0 len = 512)
           aie.use_lock(%lock1, Release, 0)
           aie.next_bd ^bd0
         ^end:
@@ -848,7 +848,7 @@ def AIE_DMABDPACKETOp: AIE_Op<"dma_bd_packet", []> {
       ^bd5:
         aie.use_lock(%lck, "Acquire", 0)
         aie.dma_bd_packet(0x4, 0xD)
-        aie.dma_bd(<$buf0 : memref<512xi32>, 0, 512>, 1)
+        aie.dma_bd(%buf0 : memref<512xi32> offset = 0 len = 512)
         aie.use_lock(%lck, "Release", 1)
         br ^bd6 // point to the next Block, which is also a different Block Descriptor
     ```
@@ -898,13 +898,13 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
       ^bd5:
         aie.use_lock(%lck, "Acquire", 0)
         // transfer the first 32 elements of the memref
-        aie.dma_bd(<$buf0 : memref<128xi32>, 0, 32)
+        aie.dma_bd(%buf0 : memref<128xi32> offset = 0 len = 32)
         aie.use_lock(%lck, "Release", 1)
         aie.next_bd ^bd6 // point to the next bb, which describes the next buffer descriptor
       ^bd6:
         aie.use_lock(%lck, "Acquire", 1)
         // transfer the last 32 elements of the memref
-        aie.dma_bd(<$buf1 : memref<128xi32>, 96, 32)
+        aie.dma_bd(%buf1 : memref<128xi32> offset = 96 len = 32)
         aie.use_lock(%lck, "Release", 0)
         aie.next_bd ^end
 
@@ -912,7 +912,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
 
       // this defines a BD that does not use any lock
       ^bd8:
-        aie.dma_bd(<$buf2 : memref<64xi32>, 0, 64)
+        aie.dma_bd(%buf2 : memref<64xi32> offset = 0 len = 64)
     ```
 
     #### Background/context
@@ -954,7 +954,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
     elements:
 
     ```
-    aie.dma_bd(%buf : memref<128xi32>, 0, 128, [<8, 16>, <2, 1>, <8, 2>])
+    aie.dma_bd(%buf : memref<128xi32> offset = 0 len = 128 sizes = [8, 2, 8] strides = [16, 1, 2])
     ```
 
     implies
@@ -1170,7 +1170,7 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
         aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
         aie.use_lock(%lock0, "Acquire", 0)
-        aie.dma_bd(%buffer : memref<16 x f32>, 0, 16)
+        aie.dma_bd(%buffer : memref<16xf32> offset = 0 len = 16)
         aie.use_lock(%lock0, "Release", 1)
         br ^bd0
       ^end:
@@ -1252,7 +1252,7 @@ def AIE_MemOp: AIE_Op<"mem", [
           %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^end)
         ^bd0:
           aie.use_lock(%lock, "Acquire", 0)
-          aie.dma_bd(%buf : memref<64xi16>, 0, 64)
+          aie.dma_bd(%buf : memref<64xi16> offset = 0 len = 64)
           aie.use_lock(%lock, "Release", 1)
           aie.next_bd ^bd0
         ^end:
@@ -1295,7 +1295,7 @@ def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
           %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^end)
         ^bd0:
           aie.use_lock(%lock, "Acquire", 0)
-          aie.dma_bd(%buf : memref<64xi16>, 0, 64>, 0)
+          aie.dma_bd(%buf : memref<64xi16> offset = 0 len = 64)
           aie.use_lock(%lock, "Release", 1)
           aie.next_bd ^bd0
         ^end:
@@ -1331,7 +1331,7 @@ def AIE_NextBDOp: AIE_Op<"next_bd", [Terminator]> {
           %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^end)
         ^bd0:
           aie.use_lock(%lock, "Acquire", 0)
-          aie.dma_bd(%buf : memref<64xi16>, 0, 64)
+          aie.dma_bd(%buf : memref<64xi16> offset = 0 len = 64)
           aie.use_lock(%lock, "Release", 1)
           aie.next_bd ^bd0
         ^end:
