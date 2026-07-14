@@ -26,23 +26,23 @@ for _ in range(100):
     repo = g.get_repo("makslevental/wheels")
     release = repo.get_release(113028511)
     assets = release.get_assets()
-    for ass in assets:
-        if "35ca6498" in ass.name:
+    for a in assets:
+        if "35ca6498" in a.name:
             continue
-        if ass.created_at.date() < twomonthsago:
-            print(ass.name)
-            assert ass.delete_asset()
+        if a.created_at.date() < twomonthsago:
+            print(a.name)
+            assert a.delete_asset()
             n_deleted += 1
 
     repo = g.get_repo("makslevental/mlir-wheels")
     release = repo.get_release(111725799)
     assets = release.get_assets()
-    for ass in assets:
-        if "35ca6498" in ass.name:
+    for a in assets:
+        if "35ca6498" in a.name:
             continue
-        if ass.created_at.date() < twomonthsago:
-            print(ass.name)
-            assert ass.delete_asset()
+        if a.created_at.date() < twomonthsago:
+            print(a.name)
+            assert a.delete_asset()
             n_deleted += 1
 
     if n_deleted == 0:

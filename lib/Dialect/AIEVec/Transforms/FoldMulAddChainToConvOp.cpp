@@ -291,8 +291,7 @@ struct LongestConvMACChainAnalysis {
     else
       extOp = dyn_cast<aievec::ExtOp>(mulOpLhsDefOp);
 
-    // XXX: Actually, ExtOp might not exist but should work anyway.
-    // XXX: Should it, though?
+    // The ExtOp may be absent; bail out of the fold in that case.
     if (!extOp)
       return nullptr;
 
@@ -333,9 +332,8 @@ struct LongestConvMACChainAnalysis {
     auto upChainAccMulOp = acc.getDefiningOp<arith::MulIOp>();
     if (upChainAccMulOp) {
       auto convMac2 = getConvMacFromMulOp(upChainAccMulOp);
-      // XXX: We pre-sort the top two MACs to make sure that an undefined
-      // XXX: accumulator ends up on top of the chain.
-      // XXX: But it might not be necessary? CHECK!
+      // Pre-sort the top two MACs so that an undefined accumulator ends up
+      // at the top of the chain.
       if (convMac2 && convMac->lhs == convMac2->lhs &&
           convMac->rhs == convMac->rhs) {
         if (convMac->bcastIdx < convMac2->bcastIdx &&
@@ -387,10 +385,8 @@ struct LongestConvMACChainAnalysis {
     convMacChain->push_back(std::move(macConvChainElem));
   }
 };
-// HACK: For some reason, it's not possible to access the analysis manager from
-// HACK: within an analysis, but we need it to build the analysis recursively.
-// HACK: If there is a good reason not to do this, we should find an
-// HACK: alternative way to build the MAC chain.
+// The analysis manager is not directly accessible from within an analysis, but
+// it is needed to build the MAC chain recursively, so it is held here.
 AnalysisManager *LongestConvMACChainAnalysis::am = nullptr;
 
 // This conversion pattern folds a MAC chain into mul_conv and mac_conv

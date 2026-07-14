@@ -70,8 +70,8 @@ _np_dtype_to_mlir_type_ctor = defaultdict(
         v8bfp16ebs8: v8bfp16ebs8.get,
         v16bfp16ebs16: v16bfp16ebs16.get,
         # Index Types
-        # this is technically wrong i guess but numpy by default casts python scalars to this
-        # so to support passing lists of ints we map to index type
+        # Not strictly correct, but numpy casts Python scalars to these types by
+        # default, so we map them to index type to support passing lists of ints.
         np.longlong: T.index,
         np.uintp: T.index,
     },
