@@ -13,6 +13,15 @@ include(ExternalProject)
 
 project("runtime-libs")
 
+include("xaiengine/aiert.cmake")
+# Apply vendored aie-rt patches before anything in this file globs its
+# sources (the xaiengine_<target> ExternalProject below re-applies them
+# too, but that happens later, at build time, in its own nested configure —
+# too late for xaienginecdo_static's file(GLOB ...) further down).
+apply_aie_rt_vendor_patches(
+    ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/aie-rt
+    ${CMAKE_CURRENT_SOURCE_DIR}/../third_party/patches/aie-rt)
+
 set(AIE_RUNTIME_TEST_TARGET_VAL ${AIR_RUNTIME_TEST_TARGET})
 if(NOT x86_64_TOOLCHAIN_FILE)
   set(x86_64_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../cmake/toolchainFiles/toolchain_x86_64.cmake")
@@ -129,7 +138,6 @@ foreach(target ${AIE_RUNTIME_TARGETS})
   endif()
 endforeach()
 
-include("xaiengine/aiert.cmake")
 set(XAIE_SOURCE_DIR "../third_party/aie-rt/driver/src")
 set(BOOTGEN_SOURCE_DIR ${PROJECT_SOURCE_DIR}/../third_party/bootgen)
 
