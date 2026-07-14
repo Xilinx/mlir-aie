@@ -5590,7 +5590,8 @@ static LogicalResult compileHostProgram(StringRef tmpDirName,
 
   // Auto-discover runtime library paths
   std::string installPath = getInstallPath();
-  std::string archName = StringRef(hostTarget.getValue()).split('-').first.str();
+  std::string archName =
+      StringRef(hostTarget.getValue()).split('-').first.str();
 
   // xaiengine include and library paths
   SmallString<256> xaiengineInclude(installPath);

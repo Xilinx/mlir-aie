@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// REQUIRES: aiesimulator, valid_xchess_license, !hsa
+// REQUIRES: aiesimulator, valid_xchess_license
 // RUN: %PYTHON aiecc.py --aiesim --xchesscc --xbridge --no-compile-host %s %test_lib_flags %S/test.cpp
 // RUN: xchesscc_wrapper aie2 +l aie.mlir.prj/main_core_1_3.bcf %S/kernel.cc -o custom_1_3.elf
 // RUN: aie.mlir.prj/aiesim.sh | FileCheck %s
