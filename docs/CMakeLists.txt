@@ -16,7 +16,9 @@ if (DOXYGEN_FOUND)
     OUTPUT_STRIP_TRAILING_WHITESPACE
     ERROR_QUIET)
   if (NOT PACKAGE_VERSION)
-    set(PACKAGE_VERSION "unknown")
+    # Leave empty rather than "unknown" so the doxygen header renders a clean
+    # "MLIR-AIE" instead of "MLIR-AIE unknown" when no version is resolvable.
+    set(PACKAGE_VERSION "")
   endif()
 
   if (HAVE_DOT)
