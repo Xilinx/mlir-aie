@@ -197,8 +197,7 @@ buildHostExeSubgraph(EdgeWithTypedOutput<OpInModule<DeviceOp>> &perDevice,
   // We bundle aie_inc.cpp to capture it as a dependency (included as `-I`).
   // perDevice feeds the device symbol name for diagnostics; arches feeds the
   // architecture information in the `__AIEARCH__` define.
-  HostRuntimeLibs rt =
-      getHostRuntimeLibs(getInstallDir(), hostTarget);
+  HostRuntimeLibs rt = getHostRuntimeLibs(getInstallDir(), hostTarget);
   std::string outputName = hostOutputName;
   return bundle(aieInc.out, arches.out)
       .join<File>(

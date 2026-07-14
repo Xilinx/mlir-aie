@@ -182,10 +182,10 @@ inline HostRuntimeLibs getHostRuntimeLibs(llvm::StringRef installDir,
                                           llvm::StringRef target) {
   std::string archTag = target.split('-').first.str();
   std::string base = llvm::formatv("{0}/runtime_lib/{1}", installDir, archTag);
-  return {llvm::formatv("{0}/xaiengine/include", base),
-          llvm::formatv("{0}/xaiengine/lib", base),
-          llvm::formatv("{0}/test_lib/lib/{1}", base,
-                        "libmemory_allocator_ion.a")};
+  return {
+      llvm::formatv("{0}/xaiengine/include", base),
+      llvm::formatv("{0}/xaiengine/lib", base),
+      llvm::formatv("{0}/test_lib/lib/{1}", base, "libmemory_allocator_ion.a")};
 }
 
 } // namespace xilinx::aiecc
