@@ -74,15 +74,16 @@ std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEInsertTraceFlowsPass();
 #define GEN_PASS_REGISTRATION
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
 
-/// Overall Flow:
-/// rewrite switchboxes to assign unassigned connections, ensure this can be
-/// done concurrently ( by different threads)
-/// 1. Goal is to rewrite all flows in the device into switchboxes + shim-mux
-/// 2. multiple passes of the rewrite pattern rewriting streamswitch
-/// configurations to routes
-/// 3. rewrite flows to stream-switches using 'weights' from analysis pass.
-/// 4. check a region is legal
-/// 5. rewrite stream-switches (within a bounding box) back to flows
+/// \brief Routes flows in a device by lowering them to stream-switch
+/// configurations.
+///
+/// Overall flow:
+/// 1. Rewrite all flows in the device into switchboxes + shim-mux.
+/// 2. Run multiple passes of the rewrite pattern, rewriting stream-switch
+///    configurations to routes.
+/// 3. Rewrite flows to stream-switches using 'weights' from the analysis pass.
+/// 4. Check that a region is legal.
+/// 5. Rewrite stream-switches (within a bounding box) back to flows.
 struct AIEPathfinderPass
     : impl::AIERoutePathfinderFlowsBase<AIEPathfinderPass> {
 

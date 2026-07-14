@@ -192,8 +192,8 @@ nav:
     - Windows (Native): buildHostWinNative.md
     - Non-Ubuntu Linux: buildHostLinNonUbuntu.md
     - Build from Source: Building.md
-    - Versal: BuildingVersal.md
     - Devices: Devices.md
+    - Versal: BuildingVersal.md
     - Platform Notes: Platform.md
   - Programming Guide:
     - Introduction: programming_guide/README.md
@@ -240,7 +240,6 @@ nav:
       - Compilation Stages: programming_guide/compilation_stages.md
       - Implicit MLIR Context: programming_guide/implicit_mlir_context.md
       - Kernel Library: programming_guide/kernels_library.md
-      - Presentations: Presentations.md
   - API & Internals:
     - Overview: api/index.md
     - Python API:
@@ -249,16 +248,16 @@ nav:
       - Tensor Access Patterns (taplib): api/taplib.md
       - Python Kernel Library: api/kernels.md
       - C++ AIE kernels: api/aie_kernels.md
-      - Utilities: api/utils.md
     - MLIR / C++:
       - AIE Dialect: AIEDialect.md
       - AIEX Dialect: AIEXDialect.md
       - AIEVec Dialect: AIEVecDialect.md
-      - ADF Dialect: ADFDialect.md
       - AIE Passes: AIEPasses.md
       - AIEX Passes: AIEXPasses.md
       - AIEVec Passes: AIEVecPasses.md
       - C++ API (Doxygen): api/cpp_doxygen.md
-  - Developer Guide:
+  - Community:
+    - Used in / Cited in: UsedIn.md
     - Contributing: CONTRIBUTING.md
+    - Roadmap: ROADMAP.md
     - Security: SECURITY.md
