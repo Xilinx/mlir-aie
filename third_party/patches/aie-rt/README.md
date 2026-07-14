@@ -1,3 +1,6 @@
+<!-- Copyright (C) 2026 Advanced Micro Devices, Inc.
+SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
+
 # Vendored aie-rt patches
 
 `third_party/aie-rt` is pinned to a commit on upstream

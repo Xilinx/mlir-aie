@@ -28,9 +28,18 @@ index 87cdbd9f..a731b73a 100644
  #include "xaie_events_aie.h"
  #include "xaie_feature_config.h"
 diff --git a/driver/src/global/xaiegbl.c b/driver/src/global/xaiegbl.c
-index 3986369b..5b88dce9 100644
+index 3986369b..ed2bfd45 100644
 --- a/driver/src/global/xaiegbl.c
 +++ b/driver/src/global/xaiegbl.c
+@@ -234,7 +234,7 @@ AieRC XAie_CfgInitialize(XAie_DevInst *InstPtr, XAie_Config *ConfigPtr)
+ 	memcpy(&InstPtr->PartProp, &ConfigPtr->PartProp,
+ 		sizeof(ConfigPtr->PartProp));
+ 
+-	RC = XAie_IOInit(InstPtr);
++	RC = XAie_IOInit(InstPtr, ConfigPtr->Backend);
+ 	if(RC != XAIE_OK) {
+ 		return RC;
+ 	}
 @@ -1062,7 +1062,7 @@ AieRC XAie_PerfUtilization(XAie_DevInst *DevInst, XAie_PerfInst *PerfInst)
  		XAIE_DBG("Start Col: %d\tnum: %d\n",
  				PartRange.Start, PartRange.Num);
@@ -40,6 +49,18 @@ index 3986369b..5b88dce9 100644
  			PerfInst->Range->Num > DevInst->NumCols) {
  		XAIE_ERROR("Invalid range!\n");
  		return XAIE_INVALID_ARGS;
+diff --git a/driver/src/global/xaiegbl.h b/driver/src/global/xaiegbl.h
+index bda0f9d4..53d2d15e 100644
+--- a/driver/src/global/xaiegbl.h
++++ b/driver/src/global/xaiegbl.h
+@@ -193,6 +193,7 @@ typedef struct {
+ 	u8 AieTileRowStart;
+ 	u8 AieTileNumRows;
+ 	XAie_PartitionProp PartProp;
++	XAie_BackendType Backend;
+ } XAie_Config;
+ 
+ /*
 diff --git a/driver/src/io_backend/ext/xaie_cdo.c b/driver/src/io_backend/ext/xaie_cdo.c
 index c127865d..f04ee2ca 100644
 --- a/driver/src/io_backend/ext/xaie_cdo.c
@@ -169,4 +190,41 @@ index 625d9b6b..8130f5f8 100644
 +uint ess_NpiRead32(uint64_t Addr);
  
  #endif
+ 
+diff --git a/driver/src/io_backend/xaie_io.c b/driver/src/io_backend/xaie_io.c
+index ac4d979e..19de4c82 100644
+--- a/driver/src/io_backend/xaie_io.c
++++ b/driver/src/io_backend/xaie_io.c
+@@ -118,10 +118,17 @@ static const XAie_Backend *IOBackend[XAIE_IO_BACKEND_MAX] =
+ * @note		Internal Only.
+ *
+ ******************************************************************************/
+-AieRC XAie_IOInit(XAie_DevInst *DevInst)
++AieRC XAie_IOInit(XAie_DevInst *DevInst, XAie_BackendType backend)
+ {
+ 	AieRC RC;
+-	const XAie_Backend *Backend = IOBackend[XAIE_DEFAULT_BACKEND];
++	const XAie_Backend *Backend;
++
++	if (backend >= XAIE_IO_BACKEND_MAX) {
++		XAIE_DBG("Invalid backend %d; using default\n", backend);
++		backend = XAIE_DEFAULT_BACKEND;
++	}
++
++	Backend = IOBackend[backend];
+ 
+ 	RC = Backend->Ops.Init(DevInst);
+ 	if(RC != XAIE_OK) {
+diff --git a/driver/src/io_backend/xaie_io.h b/driver/src/io_backend/xaie_io.h
+index 2bfcb76f..566a2285 100644
+--- a/driver/src/io_backend/xaie_io.h
++++ b/driver/src/io_backend/xaie_io.h
+@@ -215,7 +215,7 @@ struct XAie_Backend {
+ };
+ 
+ /************************** Function Prototypes  *****************************/
+-AieRC XAie_IOInit(XAie_DevInst *DevInst);
++AieRC XAie_IOInit(XAie_DevInst *DevInst, XAie_BackendType backend);
+ 
+ #endif	/* End of protection macro */
  
