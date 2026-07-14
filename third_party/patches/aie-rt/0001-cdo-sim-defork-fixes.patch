@@ -40,19 +40,6 @@ index 3986369b..5b88dce9 100644
  			PerfInst->Range->Num > DevInst->NumCols) {
  		XAIE_ERROR("Invalid range!\n");
  		return XAIE_INVALID_ARGS;
-diff --git a/driver/src/global/xaiegbl.h b/driver/src/global/xaiegbl.h
-index bda0f9d4..701b352c 100644
---- a/driver/src/global/xaiegbl.h
-+++ b/driver/src/global/xaiegbl.h
-@@ -912,7 +912,7 @@ static inline void XAie_SetupConfigPartProp(XAie_Config *ConfigPtr, u32 Nid,
- *		more memory from the user application for resource management.
- *
- *******************************************************************************/
--#define XAie_InstDeclare(Inst, ConfigPtr) XAie_DevInst Inst = { 0 }
-+#define XAie_InstDeclare(Inst, ConfigPtr) XAie_DevInst Inst = {}
- 
- /*****************************************************************************/
- /**
 diff --git a/driver/src/io_backend/ext/xaie_cdo.c b/driver/src/io_backend/ext/xaie_cdo.c
 index c127865d..f04ee2ca 100644
 --- a/driver/src/io_backend/ext/xaie_cdo.c
@@ -162,28 +149,15 @@ index b71ca046..a3393e69 100644
  }
  
 diff --git a/driver/src/io_backend/ext/xaie_sim.c b/driver/src/io_backend/ext/xaie_sim.c
-index 625d9b6b..00c79ec5 100644
+index 625d9b6b..8130f5f8 100644
 --- a/driver/src/io_backend/ext/xaie_sim.c
 +++ b/driver/src/io_backend/ext/xaie_sim.c
-@@ -27,14 +27,27 @@
- #include <stdlib.h>
- #include <string.h>
- 
--#ifdef __linux__
-+#ifdef __AIESIM__
-+#ifdef _WIN32
-+#include <windows.h>
-+#else
- #include <pthread.h>
--#include <unistd.h>
-+#endif
- #endif
+@@ -34,7 +34,16 @@
  
  #ifdef __AIESIM__ /* AIE simulator */
  
 -#include "main_rts.h"
 +#include <stdint.h>
-+#include <unistd.h>
 +
 +typedef unsigned int uint;
 +
@@ -196,16 +170,3 @@ index 625d9b6b..00c79ec5 100644
  
  #endif
  
-@@ -461,7 +474,11 @@ static AieRC XAie_SimIO_RunOp(void *IOInst, XAie_DevInst *DevInst,
- 
- static u64 XAie_SimIOGetTid(void)
- {
--		return (u64)pthread_self();
-+#ifdef _WIN32
-+	return GetCurrentThreadId();
-+#else
-+	return (u64)pthread_self();
-+#endif
- }
- 
- #else

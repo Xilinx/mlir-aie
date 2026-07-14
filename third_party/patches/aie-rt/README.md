@@ -8,8 +8,7 @@ upstream yet, applied automatically at CMake configure time (see
 
 - `0001-cdo-sim-defork-fixes.patch`: works around aie-rt's
   `cdo_rts.h`/`main_rts.h` dependencies on Vitis-only headers by replacing the
-  includes with local forward declarations (`xaie_cdo.c`, `xaie_sim.c`), adds
-  Windows thread handling in the sim backend, fixes a resource-manager memory
-  leak (`RscArrPerTile` in `xaie_io_common.c`), and carries a few minor
-  build/warning fixes. None of this is present upstream as of the pinned
-  commit.
+  includes with local forward declarations (`xaie_cdo.c`, `xaie_sim.c`), fixes
+  a resource-manager memory leak (`RscArrPerTile` in `xaie_io_common.c`), and
+  carries a few minor build/warning fixes. None of this is present upstream as
+  of the pinned commit.

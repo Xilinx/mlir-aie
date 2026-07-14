@@ -6,23 +6,22 @@
 # patch files under third_party/patches/aie-rt and applied here, once, at
 # configure time. See third_party/patches/aie-rt/README.md.
 function(apply_aie_rt_vendor_patches AIE_RT_ROOT PATCH_DIR)
-  # The vendored patches only modify existing upstream files, so detect an
-  # already-patched tree by content rather than by a created-file sentinel:
-  # 0001 replaces xaie_cdo.c's cdo_rts.h include with a cdo_Write32 forward
-  # declaration that upstream does not have.
-  set(_sentinel ${AIE_RT_ROOT}/driver/src/io_backend/ext/xaie_cdo.c)
-  if(EXISTS ${_sentinel})
-    file(READ ${_sentinel} _sentinel_contents)
-    string(FIND "${_sentinel_contents}" "void cdo_Write32(" _sentinel_hit)
-    if(NOT _sentinel_hit EQUAL -1)
-      return()
-    endif()
-  endif()
-
   file(GLOB _patches ${PATCH_DIR}/*.patch)
   list(SORT _patches)
   find_package(Git REQUIRED)
   foreach(_patch ${_patches})
+    # Idempotent per patch: skip any patch that is already applied (a clean
+    # reverse-apply check succeeds only when the tree already contains it).
+    execute_process(
+      COMMAND ${GIT_EXECUTABLE} apply --reverse --check ${_patch}
+      WORKING_DIRECTORY ${AIE_RT_ROOT}
+      RESULT_VARIABLE _already_applied
+      ERROR_QUIET)
+    if(_already_applied EQUAL 0)
+      message(STATUS "Vendored aie-rt patch already applied, skipping: ${_patch}")
+      continue()
+    endif()
+
     message(STATUS "Applying vendored aie-rt patch: ${_patch}")
     execute_process(
       COMMAND ${GIT_EXECUTABLE} apply ${_patch}
