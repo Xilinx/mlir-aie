@@ -204,13 +204,13 @@ jobs:
           # owns versioned subdirs (dev/, 1.x.y/, versions.json, index.html);
           # everything else at the root is carry-over from the old Jekyll setup.
           cd ../gh-pages-wt
-          git ls-files \
-            | grep -v '^\.nojekyll$' \
-            | grep -v '^index\.html$' \
-            | grep -v '^versions\.json$' \
-            | grep -vE '^(dev|latest)/' \
-            | grep -vE '^[0-9]+\.' \
-            | xargs -r git rm -rf --ignore-unmatch -q
+          git ls-files -z \
+            | grep -zv '^\.nojekyll$' \
+            | grep -zv '^index\.html$' \
+            | grep -zv '^versions\.json$' \
+            | grep -zvE '^(dev|latest)/' \
+            | grep -zvE '^[0-9]+\.' \
+            | xargs -0 -r git rm -rf --ignore-unmatch -q
           cd -
 
           mkdir -p "../gh-pages-wt/${LABEL}/doxygen"
