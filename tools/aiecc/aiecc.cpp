@@ -1273,8 +1273,10 @@ int main(int argc, char **argv) {
   context.loadAllAvailableDialects();
 
   llvm::SourceMgr sourceMgr;
+  unsigned inputBufferId = 0;
   if (auto inputBuf = mlir::openInputFile(getInputFilename()))
-    sourceMgr.AddNewSourceBuffer(std::move(inputBuf), llvm::SMLoc());
+    inputBufferId =
+        sourceMgr.AddNewSourceBuffer(std::move(inputBuf), llvm::SMLoc());
   mlir::SourceMgrDiagnosticHandler diagHandler(sourceMgr, &context);
   ShellCommand::addInstallPrefix("peano", peanoInstallDir);
   ShellCommand::verbose = verbose;
@@ -1309,6 +1311,22 @@ int main(int argc, char **argv) {
   // enforce the requirement here.
   if (getInputFilename().empty()) {
     llvm::errs() << "aiecc: no input file specified; expected an input .mlir\n";
+    return 1;
+  }
+
+  // Reject an empty (or whitespace-only) input up front. Such a module has no
+  // aie.device, so --aie-canonicalize-device silently wraps it in a default,
+  // non-NPU 'main' device; the failure then surfaces much later as a confusing
+  // "'main' is not NPU" error from CDO/PDI/xclbin generation. Catch it here and
+  // emit a clear diagnostic instead.
+  if (sourceMgr.getNumBuffers() == 0) {
+    llvm::errs() << "aiecc: could not open input file '" << getInputFilename()
+                 << "'\n";
+    return 1;
+  }
+  if (sourceMgr.getMemoryBuffer(inputBufferId)->getBuffer().trim().empty()) {
+    llvm::errs() << "aiecc: input file '" << getInputFilename()
+                 << "' is empty; expected MLIR containing an aie.device\n";
     return 1;
   }
 
