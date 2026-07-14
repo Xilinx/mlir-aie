@@ -44,14 +44,14 @@ aie.device(xcvc1902) {
     %lb = arith.constant 0 : index
     %ub = arith.constant 4 : index
     %step = arith.constant 1 : index
-    
+
     %sum_0 = arith.constant 0 : i32
     %inc = arith.constant 1 : i32
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %c64 = arith.constant 64 : index
     scf.for %iv = %lb to %ub step %step {
-      
+
       %c1_ul1 = arith.constant 1 : i32
       aie.use_lock(%lock_a_ping, "Acquire", %c1_ul1) // acquire for read
       %c0_ul2 = arith.constant 0 : i32

@@ -17,8 +17,8 @@
 module @aie_module {
   aie.device(xcve2802) {
     %tile_2_1 = aie.tile(2, 1)
-    %buf8 = aie.buffer(%tile_2_1) {address = 1824 : i32, sym_name = "buf8"} : memref<12xi32, 1 : i32> 
-    %buf7 = aie.buffer(%tile_2_1) {address = 1872 : i32, sym_name = "buf7"} : memref<5xi32, 1 : i32> 
+    %buf8 = aie.buffer(%tile_2_1) {address = 1824 : i32, sym_name = "buf8"} : memref<12xi32, 1 : i32>
+    %buf7 = aie.buffer(%tile_2_1) {address = 1872 : i32, sym_name = "buf7"} : memref<5xi32, 1 : i32>
     %lock_2_1 = aie.lock(%tile_2_1, 1) {init = 1 : i32}
     %lock_2_1_0 = aie.lock(%tile_2_1, 0) {init = 0 : i32}
     %memtile_dma_2_1 = aie.memtile_dma(%tile_2_1) {

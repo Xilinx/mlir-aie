@@ -26,14 +26,14 @@ module {
     %lock_0_2_5 = aie.lock(%tile_0_2, 2) {init = 0 : i32}
     %lock_0_2_6 = aie.lock(%tile_0_2, 1) {init = 1 : i32}
     %lock_0_2_7 = aie.lock(%tile_0_2, 0) {init = 0 : i32}
-    %buf8 = aie.buffer(%tile_0_1) {sym_name = "buf8"} : memref<12xi32, 1 : i32> 
-    %buf7 = aie.buffer(%tile_0_1) {sym_name = "buf7"} : memref<5xi32, 1 : i32> 
-    %buf6 = aie.buffer(%tile_1_1) {sym_name = "buf6"} : memref<12xi32, 1 : i32> 
-    %buf5 = aie.buffer(%tile_2_1) {sym_name = "buf5"} : memref<9xi32, 1 : i32> 
-    %buf4 = aie.buffer(%tile_0_2) {sym_name = "buf4"} : memref<12xi32, 2 : i32> 
-    %buf3 = aie.buffer(%tile_0_2) {sym_name = "buf3"} : memref<5xi32, 2 : i32> 
-    %buf2 = aie.buffer(%tile_0_2) {sym_name = "buf2"} : memref<9xi32, 2 : i32> 
-    %buf1 = aie.buffer(%tile_0_2) {sym_name = "buf1"} : memref<12xi32, 2 : i32> 
+    %buf8 = aie.buffer(%tile_0_1) {sym_name = "buf8"} : memref<12xi32, 1 : i32>
+    %buf7 = aie.buffer(%tile_0_1) {sym_name = "buf7"} : memref<5xi32, 1 : i32>
+    %buf6 = aie.buffer(%tile_1_1) {sym_name = "buf6"} : memref<12xi32, 1 : i32>
+    %buf5 = aie.buffer(%tile_2_1) {sym_name = "buf5"} : memref<9xi32, 1 : i32>
+    %buf4 = aie.buffer(%tile_0_2) {sym_name = "buf4"} : memref<12xi32, 2 : i32>
+    %buf3 = aie.buffer(%tile_0_2) {sym_name = "buf3"} : memref<5xi32, 2 : i32>
+    %buf2 = aie.buffer(%tile_0_2) {sym_name = "buf2"} : memref<9xi32, 2 : i32>
+    %buf1 = aie.buffer(%tile_0_2) {sym_name = "buf1"} : memref<12xi32, 2 : i32>
     %mem_0_2 = aie.mem(%tile_0_2) {
       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
     ^bb1:  // pred: ^bb0
@@ -224,4 +224,3 @@ module {
     }
   }
 }
-

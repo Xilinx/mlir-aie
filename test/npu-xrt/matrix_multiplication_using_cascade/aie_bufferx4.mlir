@@ -48,21 +48,21 @@ module {
     %lock_3_2_15 = aie.lock(%tile_3_2, 2) {init = 0 : i32}
     %lock_3_2_16 = aie.lock(%tile_3_2, 1) {init = 1 : i32}
     %lock_3_2_17 = aie.lock(%tile_3_2, 0) {init = 0 : i32}
-    %buf14 = aie.buffer(%tile_0_1) {mem_bank = 0 : i32, sym_name = "buf14"} : memref<16x16xi32, 1 : i32> 
-    %buf13 = aie.buffer(%tile_1_1) {mem_bank = 0 : i32, sym_name = "buf13"} : memref<16x16xi32, 1 : i32> 
-    %buf12 = aie.buffer(%tile_0_1) {mem_bank = 0 : i32, sym_name = "buf12"} : memref<16x16xi32, 1 : i32> 
-    %buf11 = aie.buffer(%tile_3_2) {mem_bank = 0 : i32, sym_name = "buf11"} : memref<1x4x4x4xi32, 2 : i32> 
-    %buf10 = aie.buffer(%tile_3_2) {mem_bank = 0 : i32, sym_name = "buf10"} : memref<4x1x4x4xi32, 2 : i32> 
-    %buf9 = aie.buffer(%tile_3_2) {mem_bank = 0 : i32, sym_name = "buf9"} : memref<4x4x4x4xi32, 2 : i32> 
-    %buf8 = aie.buffer(%tile_2_2) {mem_bank = 0 : i32, sym_name = "buf8"} : memref<1x4x4x4xi32, 2 : i32> 
-    %buf7 = aie.buffer(%tile_2_2) {mem_bank = 0 : i32, sym_name = "buf7"} : memref<4x1x4x4xi32, 2 : i32> 
-    %buf6 = aie.buffer(%tile_2_2) {mem_bank = 0 : i32, sym_name = "buf6"} : memref<4x4x4x4xi32, 2 : i32> 
-    %buf5 = aie.buffer(%tile_1_2) {mem_bank = 0 : i32, sym_name = "buf5"} : memref<1x4x4x4xi32, 2 : i32> 
-    %buf4 = aie.buffer(%tile_1_2) {mem_bank = 0 : i32, sym_name = "buf4"} : memref<4x1x4x4xi32, 2 : i32> 
-    %buf3 = aie.buffer(%tile_1_2) {mem_bank = 0 : i32, sym_name = "buf3"} : memref<4x4x4x4xi32, 2 : i32> 
-    %buf2 = aie.buffer(%tile_0_2) {mem_bank = 0 : i32, sym_name = "buf2"} : memref<1x4x4x4xi32, 2 : i32> 
-    %buf1 = aie.buffer(%tile_0_2) {mem_bank = 0 : i32, sym_name = "buf1"} : memref<4x1x4x4xi32, 2 : i32> 
-    %buf0 = aie.buffer(%tile_0_2) {mem_bank = 0 : i32, sym_name = "buf0"} : memref<4x4x4x4xi32, 2 : i32> 
+    %buf14 = aie.buffer(%tile_0_1) {mem_bank = 0 : i32, sym_name = "buf14"} : memref<16x16xi32, 1 : i32>
+    %buf13 = aie.buffer(%tile_1_1) {mem_bank = 0 : i32, sym_name = "buf13"} : memref<16x16xi32, 1 : i32>
+    %buf12 = aie.buffer(%tile_0_1) {mem_bank = 0 : i32, sym_name = "buf12"} : memref<16x16xi32, 1 : i32>
+    %buf11 = aie.buffer(%tile_3_2) {mem_bank = 0 : i32, sym_name = "buf11"} : memref<1x4x4x4xi32, 2 : i32>
+    %buf10 = aie.buffer(%tile_3_2) {mem_bank = 0 : i32, sym_name = "buf10"} : memref<4x1x4x4xi32, 2 : i32>
+    %buf9 = aie.buffer(%tile_3_2) {mem_bank = 0 : i32, sym_name = "buf9"} : memref<4x4x4x4xi32, 2 : i32>
+    %buf8 = aie.buffer(%tile_2_2) {mem_bank = 0 : i32, sym_name = "buf8"} : memref<1x4x4x4xi32, 2 : i32>
+    %buf7 = aie.buffer(%tile_2_2) {mem_bank = 0 : i32, sym_name = "buf7"} : memref<4x1x4x4xi32, 2 : i32>
+    %buf6 = aie.buffer(%tile_2_2) {mem_bank = 0 : i32, sym_name = "buf6"} : memref<4x4x4x4xi32, 2 : i32>
+    %buf5 = aie.buffer(%tile_1_2) {mem_bank = 0 : i32, sym_name = "buf5"} : memref<1x4x4x4xi32, 2 : i32>
+    %buf4 = aie.buffer(%tile_1_2) {mem_bank = 0 : i32, sym_name = "buf4"} : memref<4x1x4x4xi32, 2 : i32>
+    %buf3 = aie.buffer(%tile_1_2) {mem_bank = 0 : i32, sym_name = "buf3"} : memref<4x4x4x4xi32, 2 : i32>
+    %buf2 = aie.buffer(%tile_0_2) {mem_bank = 0 : i32, sym_name = "buf2"} : memref<1x4x4x4xi32, 2 : i32>
+    %buf1 = aie.buffer(%tile_0_2) {mem_bank = 0 : i32, sym_name = "buf1"} : memref<4x1x4x4xi32, 2 : i32>
+    %buf0 = aie.buffer(%tile_0_2) {mem_bank = 0 : i32, sym_name = "buf0"} : memref<4x4x4x4xi32, 2 : i32>
     aie.objectfifo @of0 (%tile_0_2, {%tile_1_2}, 1 : i32) : !aie.objectfifo<memref<1xi32>>
     aie.objectfifo @of1 (%tile_1_2, {%tile_2_2}, 1 : i32) : !aie.objectfifo<memref<1xi32>>
     aie.objectfifo @of2 (%tile_2_2, {%tile_3_2}, 1 : i32) : !aie.objectfifo<memref<1xi32>>
@@ -483,28 +483,28 @@ module {
     aie.cascade_flow(%tile_1_2, %tile_2_2)
     aie.cascade_flow(%tile_2_2, %tile_3_2)
     // <trace>
-    aie.packet_flow(0) { 
-      aie.packet_source<%tile_0_2, Trace : 0> 
+    aie.packet_flow(0) {
+      aie.packet_source<%tile_0_2, Trace : 0>
       aie.packet_dest<%tile_0_0, DMA : 1>
     } {keep_pkt_header = true}
-    aie.packet_flow(1) { 
-      aie.packet_source<%tile_1_2, Trace : 0> 
+    aie.packet_flow(1) {
+      aie.packet_source<%tile_1_2, Trace : 0>
       aie.packet_dest<%tile_1_0, DMA : 1>
     } {keep_pkt_header = true}
-    aie.packet_flow(2) { 
-      aie.packet_source<%tile_2_2, Trace : 0> 
+    aie.packet_flow(2) {
+      aie.packet_source<%tile_2_2, Trace : 0>
       aie.packet_dest<%tile_2_0, DMA : 1>
     } {keep_pkt_header = true}
-    aie.packet_flow(3) { 
-      aie.packet_source<%tile_3_2, Trace : 0> 
+    aie.packet_flow(3) {
+      aie.packet_source<%tile_3_2, Trace : 0>
       aie.packet_dest<%tile_3_0, DMA : 1>
     } {keep_pkt_header = true}
-    aie.packet_flow(4) { 
-      aie.packet_source<%tile_0_1, Trace : 0> 
+    aie.packet_flow(4) {
+      aie.packet_source<%tile_0_1, Trace : 0>
       aie.packet_dest<%tile_0_0, DMA : 1>
     } {keep_pkt_header = true}
-    aie.packet_flow(5) { 
-      aie.packet_source<%tile_1_1, Trace : 0> 
+    aie.packet_flow(5) {
+      aie.packet_source<%tile_1_1, Trace : 0>
       aie.packet_dest<%tile_1_0, DMA : 1>
     } {keep_pkt_header = true}
     // </trace>
@@ -518,7 +518,7 @@ module {
       aie.use_lock(%lock_0_1_1, Release, %c4_ul38)
       aie.next_bd ^bb1
     ^bb2:  // pred: ^bb3
-      aie.end   
+      aie.end
     ^bb3:  // pred: ^bb5
       %1 = aie.dma_start(S2MM, 1, ^bb4, ^bb2, repeat_count = 1)
     ^bb4:  // 2 preds: ^bb3, ^bb4
@@ -629,7 +629,7 @@ module {
       // <trace>
       %cst_npu_0 = arith.constant 212992 : i32
       %cst_npu_1 = arith.constant 31232 : i32
-      aiex.npu.write32(%cst_npu_0, %cst_npu_1) {column = 3 : i32, row = 2 : i32} : i32, i32 // [14:8] reset event: 122(BROADCAST_15)	
+      aiex.npu.write32(%cst_npu_0, %cst_npu_1) {column = 3 : i32, row = 2 : i32} : i32, i32 // [14:8] reset event: 122(BROADCAST_15)
       %cst_npu_2 = arith.constant 213200 : i32
       %cst_npu_3 = arith.constant 7995392 : i32
       aiex.npu.write32(%cst_npu_2, %cst_npu_3) {column = 3 : i32, row = 2 : i32} : i32, i32 // [22:16] start event: 122(BROADCAST_15)
@@ -655,7 +655,7 @@ module {
 
       %cst_npu_16 = arith.constant 212992 : i32
       %cst_npu_17 = arith.constant 31232 : i32
-      aiex.npu.write32(%cst_npu_16, %cst_npu_17) {column = 2 : i32, row = 2 : i32} : i32, i32 // [14:8] reset event: 122(BROADCAST_15)	
+      aiex.npu.write32(%cst_npu_16, %cst_npu_17) {column = 2 : i32, row = 2 : i32} : i32, i32 // [14:8] reset event: 122(BROADCAST_15)
       %cst_npu_18 = arith.constant 213200 : i32
       %cst_npu_19 = arith.constant 7995392 : i32
       aiex.npu.write32(%cst_npu_18, %cst_npu_19) {column = 2 : i32, row = 2 : i32} : i32, i32 // [22:16] start event: 122(BROADCAST_15)
@@ -681,7 +681,7 @@ module {
 
       %cst_npu_32 = arith.constant 212992 : i32
       %cst_npu_33 = arith.constant 31232 : i32
-      aiex.npu.write32(%cst_npu_32, %cst_npu_33) {column = 1 : i32, row = 2 : i32} : i32, i32 // [14:8] reset event: 122(BROADCAST_15)	
+      aiex.npu.write32(%cst_npu_32, %cst_npu_33) {column = 1 : i32, row = 2 : i32} : i32, i32 // [14:8] reset event: 122(BROADCAST_15)
       %cst_npu_34 = arith.constant 213200 : i32
       %cst_npu_35 = arith.constant 7995392 : i32
       aiex.npu.write32(%cst_npu_34, %cst_npu_35) {column = 1 : i32, row = 2 : i32} : i32, i32 // [22:16] start event: 122(BROADCAST_15)
@@ -704,7 +704,7 @@ module {
       %cst_npu_46 = arith.constant 119308 : i32
       %cst_npu_47 = arith.constant 13 : i32
       aiex.npu.write32(%cst_npu_46, %cst_npu_47) {column = 1 : i32, row = 0 : i32} : i32, i32
-      
+
       %cst_npu_48 = arith.constant 212992 : i32
       %cst_npu_49 = arith.constant 31232 : i32
       aiex.npu.write32(%cst_npu_48, %cst_npu_49) {column = 0 : i32, row = 2 : i32} : i32, i32 // [14:8] reset event: 122(BROADCAST_15)
@@ -730,7 +730,7 @@ module {
       %cst_npu_62 = arith.constant 119308 : i32
       %cst_npu_63 = arith.constant 12 : i32
       aiex.npu.write32(%cst_npu_62, %cst_npu_63) {column = 0 : i32, row = 0 : i32} : i32, i32
-      
+
       %cst_npu_64 = arith.constant 606208 : i32
       %cst_npu_65 = arith.constant 40192 : i32
       aiex.npu.write32(%cst_npu_64, %cst_npu_65) {column = 1 : i32, row = 1 : i32} : i32, i32 // [15:8] reset event: 157(BROADCAST_15)
@@ -745,7 +745,7 @@ module {
       aiex.npu.write32(%cst_npu_70, %cst_npu_71) {column = 1 : i32, row = 1 : i32} : i32, i32 // events: 0x00 00 01(true) 50(port0 run)
       %cst_npu_72 = arith.constant 606436 : i32
       %cst_npu_73 = arith.constant 1415076960 : i32
-      aiex.npu.write32(%cst_npu_72, %cst_npu_73) {column = 1 : i32, row = 1 : i32} : i32, i32 // events: 0x54(port1 run) 58(port2 run) 5C(port3 run) 60(port4 run) 
+      aiex.npu.write32(%cst_npu_72, %cst_npu_73) {column = 1 : i32, row = 1 : i32} : i32, i32 // events: 0x54(port1 run) 58(port2 run) 5C(port3 run) 60(port4 run)
       %cst_npu_74 = arith.constant 724736 : i32
       %cst_npu_75 = arith.constant 33620000 : i32
       aiex.npu.write32(%cst_npu_74, %cst_npu_75) {column = 1 : i32, row = 1 : i32} : i32, i32 // [29:24] port3 MM2S-2, [21:16] port2 MM2S-1, [13:8] port1 MM2S-0, [5:0] port0 S2MM-0
@@ -756,7 +756,7 @@ module {
       %cst_npu_78 = arith.constant 119308 : i32
       %cst_npu_79 = arith.constant 11 : i32
       aiex.npu.write32(%cst_npu_78, %cst_npu_79) {column = 1 : i32, row = 0 : i32} : i32, i32
-      
+
       %cst_npu_80 = arith.constant 606208 : i32
       %cst_npu_81 = arith.constant 40192 : i32
       aiex.npu.write32(%cst_npu_80, %cst_npu_81) {column = 0 : i32, row = 1 : i32} : i32, i32 // [15:8] reset event: 157(BROADCAST_15)
@@ -782,7 +782,7 @@ module {
       %cst_npu_94 = arith.constant 119308 : i32
       %cst_npu_95 = arith.constant 10 : i32
       aiex.npu.write32(%cst_npu_94, %cst_npu_95) {column = 0 : i32, row = 0 : i32} : i32, i32
-     
+
       %cst_npu_96 = arith.constant 212992 : i32
       %cst_npu_97 = arith.constant 32512 : i32
       aiex.npu.write32(%cst_npu_96, %cst_npu_97) {column = 0 : i32, row = 0 : i32} : i32, i32 // [14:8] reset event: 127(USER_EVENT_1)
@@ -792,7 +792,7 @@ module {
       %cst_npu_100 = arith.constant 213000 : i32
       %cst_npu_101 = arith.constant 127 : i32
       aiex.npu.write32(%cst_npu_100, %cst_npu_101) {column = 0 : i32, row = 0 : i32} : i32, i32 // event generate [6:0]: 127(USER_EVENT_1)
-     
+
       // </trace>
       memref.assume_alignment %arg0, 64 : memref<16x16xi32>
       memref.assume_alignment %arg1, 64 : memref<16x16xi32>

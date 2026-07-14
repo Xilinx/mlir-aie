@@ -14,7 +14,7 @@ aie.device(xcvc1902) {
 
   %t70 = aie.tile(7, 0)
   %t71 = aie.tile(7, 1)
- 
+
   %lock_a_ping = aie.lock(%t71, 3) // a_ping
 
   %buf71_0 = aie.buffer(%t71) {sym_name = "buf71_0" } : memref<7168xi32>
@@ -59,7 +59,7 @@ aie.device(xcvc1902) {
   %sw2 = aie.switchbox(%t71){
     aie.connect<"DMA" : 1, "South" : 2>
   }
-  
+
   %sw1  = aie.switchbox(%t70) {
     aie.connect<"North" : 2, "South" : 2>
   }

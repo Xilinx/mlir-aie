@@ -47,7 +47,7 @@ aie.device(xcvc1902) {
     ^end:
       aie.end
   }
-  
+
   %buf71_0 = aie.buffer(%t71) {sym_name = "buf71_0" } : memref<7168xi32>
 
   %l71_0 = aie.lock(%t71, 0)

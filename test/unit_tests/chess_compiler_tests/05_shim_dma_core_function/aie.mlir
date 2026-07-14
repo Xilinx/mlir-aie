@@ -36,13 +36,13 @@ aie.device(xcvc1902) {
   func.func private @func(%A: memref<256xi32>, %B: memref<256xi32>) -> () attributes {link_with = "kernel.o"}
 
   %c13 = aie.core(%t73) {
-    
+
     %lb = arith.constant 0 : index
     %ub = arith.constant 1 : index
     %step = arith.constant 1 : index
-    
+
     scf.for %iv = %lb to %ub step %step {
-      
+
       %c1_ul1 = arith.constant 1 : i32
       aie.use_lock(%lock_a_ping, "Acquire", %c1_ul1) // acquire for read
       %c0_ul2 = arith.constant 0 : i32
@@ -62,7 +62,7 @@ aie.device(xcvc1902) {
       aie.use_lock(%lock_a_pong, "Release", %c0_ul7) // release for write
       %c1_ul8 = arith.constant 1 : i32
       aie.use_lock(%lock_b_pong, "Release", %c1_ul8) // release for read
-      
+
     }
 
     aie.end

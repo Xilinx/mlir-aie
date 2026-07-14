@@ -40,8 +40,8 @@ module {
     }
 
     aie.runtime_sequence(%buf: memref<8xi16>) {
-      %t1 = aiex.dma_start_bd_chain @simple_chain(%buf, %lock_0, %lock_1, %lock_2) : (memref<8xi16>, index, index, index)  
-                                    on (%tile_0_0, MM2S, 0) 
+      %t1 = aiex.dma_start_bd_chain @simple_chain(%buf, %lock_0, %lock_1, %lock_2) : (memref<8xi16>, index, index, index)
+                                    on (%tile_0_0, MM2S, 0)
       // CHECK: %[[task1:.+]] = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
       // CHECK:   aie.use_lock(%lock_0, "Acquire", %{{.*}})
       // CHECK:   aie.dma_bd(%buf : memref<8xi16> offset = {{.*}} len = {{.*}})
@@ -59,8 +59,8 @@ module {
       // CHECK:   aie.end
       // CHECK: }
       // CHECK: aiex.dma_start_task(%[[task1]])
-      %t2 = aiex.dma_start_bd_chain @simple_chain(%buf, %lock_0, %lock_0, %lock_0) : (memref<8xi16>, index, index, index)  
-                                    on (%tile_0_0, MM2S, 1) 
+      %t2 = aiex.dma_start_bd_chain @simple_chain(%buf, %lock_0, %lock_0, %lock_0) : (memref<8xi16>, index, index, index)
+                                    on (%tile_0_0, MM2S, 1)
       // CHECK: %[[task2:.+]] = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
       // CHECK:   aie.use_lock(%lock_0, "Acquire", %{{.*}})
       // CHECK:   aie.dma_bd(%buf : memref<8xi16> offset = {{.*}} len = {{.*}})
@@ -78,8 +78,8 @@ module {
       // CHECK:   aie.end
       // CHECK: }
       // CHECK: aiex.dma_start_task(%[[task2]])
-      %t3 = aiex.dma_start_bd_chain @simple_chain(%buf, %lock_2, %lock_1, %lock_0) : (memref<8xi16>, index, index, index)  
-                                    on (%tile_0_0, S2MM, 0) 
+      %t3 = aiex.dma_start_bd_chain @simple_chain(%buf, %lock_2, %lock_1, %lock_0) : (memref<8xi16>, index, index, index)
+                                    on (%tile_0_0, S2MM, 0)
       // CHECK: %[[task3:.+]] = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
       // CHECK:   aie.use_lock(%lock_2, "Acquire", %{{.*}})
       // CHECK:   aie.dma_bd(%buf : memref<8xi16> offset = {{.*}} len = {{.*}})
@@ -101,4 +101,3 @@ module {
     }
   }
 }
-

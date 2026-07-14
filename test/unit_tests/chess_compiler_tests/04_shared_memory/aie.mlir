@@ -67,6 +67,6 @@ aie.device(xcvc1902) {
     aie.use_lock(%lock14_7, "Release", %c1_ul7) // release for read
     aie.end
   }
-  
+
 }
 }

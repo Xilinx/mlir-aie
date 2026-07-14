@@ -26,12 +26,12 @@ module {
     %lock_0_2_5 = aie.lock(%tile_0_2, 2) {init = 0 : i32}
     %lock_0_2_6 = aie.lock(%tile_0_2, 1) {init = 1 : i32}
     %lock_0_2_7 = aie.lock(%tile_0_2, 0) {init = 0 : i32}
-    %buf5 = aie.buffer(%tile_0_1) {mem_bank = 0 : i32, sym_name = "buf5"} : memref<16x16xi32, 1 : i32> 
-    %buf4 = aie.buffer(%tile_1_1) {mem_bank = 0 : i32, sym_name = "buf4"} : memref<16x16xi32, 1 : i32> 
-    %buf3 = aie.buffer(%tile_2_1) {mem_bank = 0 : i32, sym_name = "buf3"} : memref<16x16xi32, 1 : i32> 
-    %buf2 = aie.buffer(%tile_0_2) {mem_bank = 0 : i32, sym_name = "buf2"} : memref<2x4x4x8xi32, 2 : i32> 
-    %buf1 = aie.buffer(%tile_0_2) {mem_bank = 0 : i32, sym_name = "buf1"} : memref<4x2x8x4xi32, 2 : i32> 
-    %buf0 = aie.buffer(%tile_0_2) {mem_bank = 0 : i32, sym_name = "buf0"} : memref<4x4x4x4xi32, 2 : i32> 
+    %buf5 = aie.buffer(%tile_0_1) {mem_bank = 0 : i32, sym_name = "buf5"} : memref<16x16xi32, 1 : i32>
+    %buf4 = aie.buffer(%tile_1_1) {mem_bank = 0 : i32, sym_name = "buf4"} : memref<16x16xi32, 1 : i32>
+    %buf3 = aie.buffer(%tile_2_1) {mem_bank = 0 : i32, sym_name = "buf3"} : memref<16x16xi32, 1 : i32>
+    %buf2 = aie.buffer(%tile_0_2) {mem_bank = 0 : i32, sym_name = "buf2"} : memref<2x4x4x8xi32, 2 : i32>
+    %buf1 = aie.buffer(%tile_0_2) {mem_bank = 0 : i32, sym_name = "buf1"} : memref<4x2x8x4xi32, 2 : i32>
+    %buf0 = aie.buffer(%tile_0_2) {mem_bank = 0 : i32, sym_name = "buf0"} : memref<4x4x4x4xi32, 2 : i32>
     %mem_0_2 = aie.mem(%tile_0_2) {
       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb5, repeat_count = 1)
     ^bb1:  // 2 preds: ^bb0, ^bb1
@@ -111,12 +111,12 @@ module {
     aie.flow(%tile_1_1, DMA : 0, %tile_0_2, DMA : 1)
     aie.flow(%tile_0_2, DMA : 0, %tile_2_1, DMA : 0)
     // <trace>
-    aie.packet_flow(0) { 
-      aie.packet_source<%tile_0_2, Trace : 0> 
+    aie.packet_flow(0) {
+      aie.packet_source<%tile_0_2, Trace : 0>
       aie.packet_dest<%tile_0_0, DMA : 1>
     } {keep_pkt_header = true}
-    aie.packet_flow(4) { 
-      aie.packet_source<%tile_0_1, Trace : 0> 
+    aie.packet_flow(4) {
+      aie.packet_source<%tile_0_1, Trace : 0>
       aie.packet_dest<%tile_0_0, DMA : 1>
     } {keep_pkt_header = true}
     // </trace>
@@ -186,7 +186,7 @@ module {
     aie.shim_dma_allocation @airMemcpyId12 (%tile_0_0, S2MM, 0)
     aie.shim_dma_allocation @airMemcpyId4 (%tile_0_0, MM2S, 0)
     aie.shim_dma_allocation @airMemcpyId5 (%tile_0_0, MM2S, 1)
-    aie.runtime_sequence(%arg0: memref<16x16xi32>, %arg1: memref<16x16xi32>, %arg2: memref<16x16xi32>) {     
+    aie.runtime_sequence(%arg0: memref<16x16xi32>, %arg1: memref<16x16xi32>, %arg2: memref<16x16xi32>) {
       // <trace>
       %cst_npu_0 = arith.constant 212992 : i32
       %cst_npu_1 = arith.constant 31232 : i32
@@ -239,7 +239,7 @@ module {
       %cst_npu_30 = arith.constant 119308 : i32
       %cst_npu_31 = arith.constant 10 : i32
       aiex.npu.write32(%cst_npu_30, %cst_npu_31) {column = 0 : i32, row = 0 : i32} : i32, i32
-     
+
       %cst_npu_32 = arith.constant 212992 : i32
       %cst_npu_33 = arith.constant 32512 : i32
       aiex.npu.write32(%cst_npu_32, %cst_npu_33) {column = 0 : i32, row = 0 : i32} : i32, i32 // [14:8] reset event: 127(USER_EVENT_1)

@@ -34,7 +34,7 @@ module @aie_module  {
     %lock_l2 = aie.lock(%t73, 4)
     %lock_n = aie.lock(%t74, 0)
     %lock_s = aie.lock(%t72, 0)
-    
+
     // Tile DMA
     %m73 = aie.mem(%t73) {
         %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^end)

@@ -9,7 +9,7 @@ module {
   aie.device(NPUDEVICE) {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_1 = aie.tile(0, 1)
-    
+
     // Locks for synchronization between S2MM and MM2S on memtile
     %prod_lock = aie.lock(%tile_0_1, 0) {init = 4 : i32, sym_name = "prod_lock"}
     %cons_lock = aie.lock(%tile_0_1, 1) {init = 0 : i32, sym_name = "cons_lock"}

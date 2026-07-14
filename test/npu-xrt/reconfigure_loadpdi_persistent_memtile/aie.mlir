@@ -34,7 +34,7 @@ module {
         %t11 = aie.tile(1, 1)
         %t02 = aie.tile(0, 2)
         %t12 = aie.tile(1, 2)
-        
+
         %t11_lock = aie.lock(%t11) { init = 1 : i32 }
         %t11_buf = aie.buffer(%t11) { initial_value = dense<[11, 22, 33, 44]> : tensor<4xi32> } : memref<4xi32>
 
@@ -81,7 +81,7 @@ module {
 
         aie.flow(%t11, DMA : 0, %t12, DMA : 0)
         aie.flow(%t12, DMA : 0, %t00, DMA : 0)
-        
+
         aie.core(%t12) {
             %c0 = arith.constant 0 : index
             %c1 = arith.constant 1 : index
@@ -115,7 +115,7 @@ module {
         }
 
     }
-    
+
     aie.device(npu2) @yield_uninitialized_memtile {
 
         %t00 = aie.tile(0, 0)
@@ -123,7 +123,7 @@ module {
         %t11 = aie.tile(1, 1)
         %t02 = aie.tile(0, 2)
         %t12 = aie.tile(1, 2)
-        
+
         %t11_lock = aie.lock(%t11) { init = 1 : i32 }
         %t11_buf = aie.buffer(%t11) : memref<4xi32>
 
@@ -170,7 +170,7 @@ module {
 
         aie.flow(%t11, DMA : 0, %t12, DMA : 0)
         aie.flow(%t12, DMA : 0, %t00, DMA : 0)
-        
+
         aie.core(%t12) {
             %c0 = arith.constant 0 : index
             %c1 = arith.constant 1 : index

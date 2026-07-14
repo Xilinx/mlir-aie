@@ -22,10 +22,10 @@
 // CHECK-NEXT:     }
 
 // CHECK:      %[[TILE_1_2:.*]] = aie.tile(1, 2)
-// CHECK-DAG:  %[[BUF_0:.*]] = aie.buffer(%[[TILE_1_2]]) {sym_name = "buf_0"} : memref<256xi32> 
-// CHECK-DAG:  %[[BUF_1:.*]] = aie.buffer(%[[TILE_1_2]]) {sym_name = "buf_1"} : memref<256xi32> 
-// CHECK-DAG:  %[[BUF_2:.*]] = aie.buffer(%[[TILE_1_2]]) {sym_name = "buf_2"} : memref<256xi32> 
-// CHECK-DAG:  %[[BUF_3:.*]] = aie.buffer(%[[TILE_1_2]]) {sym_name = "buf_3"} : memref<256xi32> 
+// CHECK-DAG:  %[[BUF_0:.*]] = aie.buffer(%[[TILE_1_2]]) {sym_name = "buf_0"} : memref<256xi32>
+// CHECK-DAG:  %[[BUF_1:.*]] = aie.buffer(%[[TILE_1_2]]) {sym_name = "buf_1"} : memref<256xi32>
+// CHECK-DAG:  %[[BUF_2:.*]] = aie.buffer(%[[TILE_1_2]]) {sym_name = "buf_2"} : memref<256xi32>
+// CHECK-DAG:  %[[BUF_3:.*]] = aie.buffer(%[[TILE_1_2]]) {sym_name = "buf_3"} : memref<256xi32>
 // CHECK-DAG:  %[[LOCK_0:.*]] = aie.lock(%{{.*}}, 0)
 // CHECK:   aie.mem(%[[TILE_1_2]]) {
 // CHECK-NEXT:    %{{.*}} = arith.constant 0 : i32

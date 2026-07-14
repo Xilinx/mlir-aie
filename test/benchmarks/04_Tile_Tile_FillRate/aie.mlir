@@ -14,7 +14,7 @@ aie.device(xcvc1902) {
 
   %tile13 = aie.tile(1, 3)
   %tile14 = aie.tile(1, 4)
- 
+
 
   %buf13_0 = aie.buffer(%tile13) { sym_name = "a13" } : memref<512xi32>
 

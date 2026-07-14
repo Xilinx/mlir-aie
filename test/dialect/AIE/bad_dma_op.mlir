@@ -48,7 +48,7 @@ module {
       ^bd0:
         aie.dma_bd(%buf14 : memref<128xi32> offset = 0 len = 128 sizes = [1] strides = [128]) {packet = #aie.packet_info<pkt_type = 7, pkt_id = 33>}
         aie.next_bd ^end
-      ^end: 
+      ^end:
         aie.end
     }
   }
@@ -57,7 +57,7 @@ module {
 
 // -----
 
-// CHECK: For >32b width datatypes, inner-most dim stride must be 1 
+// CHECK: For >32b width datatypes, inner-most dim stride must be 1
 module {
   aie.device(npu1) {
     %tile14 = aie.tile(1, 4)
@@ -69,7 +69,7 @@ module {
       ^bd0:
         aie.dma_bd(%buf14 : memref<128x!aiex.bfp<"v8bfp16ebs8">> offset = 0 len = 128 sizes = [8] strides = [16]) {}
         aie.next_bd ^end
-      ^end: 
+      ^end:
         aie.end
     }
   }
