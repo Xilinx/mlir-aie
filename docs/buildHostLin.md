@@ -127,7 +127,7 @@ You will...
       sudo apt install libpython3.8-dev
       ```
 
-### Update Linux for Ubuntu 22.04 and 24.04
+### Update Linux for Ubuntu 22.04 and 24.04 { #update-linux }
 
 > The reason we need to update the kernel is that the XDNA driver requires IOMMU SVA support. This step is required for Ubuntu 22.04 LTS.
 > If you are using Ubuntu 24.04 you can install a prebuilt kernel from the [Ubuntu Mainline Kernel PPA](https://kernel.ubuntu.com/mainline/v6.11/).
@@ -197,7 +197,7 @@ You will...
     sudo shutdown --reboot 0
     ```
 
-### Install the XDNA™ Driver
+### Install the XDNA™ Driver { #install-the-xdna-driver }
 
 1. Install a more recent CMake, which is needed for building XRT.
 
@@ -325,7 +325,7 @@ You will...
 
 1. Choose *one* of the two options (A or B) below for installing MLIR-AIE.
 
-### Option A - Quick Setup for Ryzen™ AI Application Development
+### Option A - Quick Setup for Ryzen™ AI Application Development { #option-a---quick-setup-for-ryzen-ai-application-development }
 
    > NOTE: Installing the mlir-aie tools from wheels via the quick setup path supports AIE-ML (AIE2) and AIE2P, it does NOT support Versal™ devices with AIE.
 
@@ -341,7 +341,7 @@ You will...
 
 1. Jump ahead to [Build Device AIE Part](#build-device-aie-part) step 2 below.
 
-### Option B - Build mlir-aie Tools from Source for Development
+### Option B - Build mlir-aie Tools from Source for Development { #option-b---build-mlir-aie-tools-from-source-for-development }
 
 1. Clone [https://github.com/Xilinx/mlir-aie.git](https://github.com/Xilinx/mlir-aie.git) best under /home/username for speed (yourPathToBuildMLIR-AIE), with submodules:
    ```bash

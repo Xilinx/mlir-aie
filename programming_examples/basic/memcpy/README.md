@@ -129,5 +129,5 @@ By the end of this exercise, you should have a solid understanding of:
 
 * How to configure a scalable data movement design across a Ryzen AI NPU
 * The impact of architectural parameters on dataflow and bandwidth
-* How IRON APIs map to low-level hardware capabilities like DMA engines and object FIFOs
+* How IRON APIs map to low-level hardware capabilities like DMA engines and ObjectFifos
 * The importance of proper transfer scheduling and synchronization of runtime data movement operations

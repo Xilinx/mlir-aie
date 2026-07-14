@@ -18,11 +18,10 @@ It demonstrates a number of features that scale to more realistic designs:
 
 ## Source Files Overview
 
-`matrix_scalar_add.py`: An `@iron.jit`-decorated design covering both the Ryzen AI NPU pipeline and the aiecc-based VCK5000 (Versal AIE1) flow. Three invocation modes:
+`matrix_scalar_add.py`: An `@iron.jit`-decorated design targeting the Ryzen AI NPU pipeline. Two invocation modes:
 
 * standalone — `python3 matrix_scalar_add.py`
 * compile-only — `... --xclbin-path=PATH --insts-path=PATH` (used by the NPU `Makefile`)
-* emit-MLIR — `... -d xcvc1902 --emit-mlir` (used by the VCK5000 path; aiecc consumes the printed MLIR with `--link_against_hsa`)
 
 ## Usage
 
@@ -35,7 +34,7 @@ python3 matrix_scalar_add.py
 The standalone command detects the attached NPU family automatically. Pass
 `-d npu2` only when selecting the NPU2 target explicitly.
 
-A Makefile is available for the native C++ host and VCK5000 flows:
+A Makefile is available for the native C++ host flow:
 
 ```shell
 make
@@ -43,10 +42,3 @@ make run
 ```
 
 For NPU2 (Strix): `make devicename=npu2 && make run devicename=npu2`.
-
-### VCK5000
-
-```shell
-make vck5000
-./test.elf
-```

@@ -5,9 +5,7 @@
 #
 ##===----------------------------------------------------------------------===##
 #
-# NPU paths use compile_mlir_module directly via --xclbin-path /
-# --insts-path.  vck5000 (Versal AIE1) stays on the legacy
-# print-MLIR + aiecc flow.
+# NPU paths use compile_mlir_module directly via --xclbin-path / --insts-path.
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
@@ -33,19 +31,6 @@ $(eval $(call build_host_exe,${targetname},_build,test.cpp))
 .PHONY: run
 run: ${targetname}.exe ${xclbin_target} ${insts_target}
 	${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE
-
-# vck5000 (Versal AIE1) path stays on the legacy print-MLIR + aiecc flow.
-build/aie_vck5000.mlir: ${srcdir}/${aie_py_src}
-	mkdir -p ${@D}
-	python3 $< -d xcvc1902 -c 6 --emit-mlir > $@
-
-.PHONY: vck5000
-vck5000: build/aie_vck5000.mlir
-	aiecc --link_against_hsa --host-target=x86_64-amd-linux-gnu $< \
-		-I${srcdir}/../../../install/runtime_lib/x86_64-hsa/test_lib/include \
-		${srcdir}/test_vck5000.cpp \
-		${srcdir}/../../../install/runtime_lib/x86_64-hsa/test_lib/src/test_library.cpp \
-		-Wl,--whole-archive -Wl,--no-whole-archive -lstdc++ -ldl -lelf -o test.elf
 
 .PHONY: clean
 clean:

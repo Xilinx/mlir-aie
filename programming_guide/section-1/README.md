@@ -5,11 +5,11 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Section 1 - Basic AI Engine building blocks</ins>
+# Section 1 - Basic AI Engine building blocks
 
 When we program the AIE-array, we need to declare and configure its structural building blocks: compute tiles for vector processing, mem tiles as larger level-2 shared scratchpads, and shim tiles supporting data movement to NPU-external memory (i.e., main memory). In this programming guide, we will utilize the IRON Python library, which describes our overall NPU design — selecting which AI Engine tiles to use, what code each tile should run, how to move data between tiles, and how the design is invoked from the CPU side. Later on, we will explore vector programming in C/C++, which is useful for optimizing computation kernels for individual compute tiles.
 
-## <ins>Walkthrough of Python source file (aie2.py)</ins>
+## Walkthrough of Python source file (aie2.py)
 
 Let's look at a minimal IRON design in [aie2.py](./aie2.py). The whole design is one function decorated with `@iron.jit`: the first time you call it, IRON JIT-compiles the design and runs it on the attached NPU; `--dev <target> --emit-mlir` prints the lowered MLIR instead.
 
@@ -77,7 +77,7 @@ aiecc.py --placer=sa_placer --sa-seed=3 ...
 
 The SA placer optimizes wire length while respecting memory capacity, DMA channel limits, and cascade adjacency constraints. Not all seeds produce legal placements for every design — if compilation fails with a buffer overflow or routing error, try different seed values (e.g. sweep seeds 1–10) to find one that works. See [color_detect](../../programming_examples/vision/color_detect/) for an example that wires this up as `make use_sa_placer=1`.
 
-## <ins>Other Tile Types</ins>
+## Other Tile Types
 
 Besides compute tiles, an AIE-array also contains data movers for accessing L3 memory (shim DMAs) and larger L2 scratchpads (mem tiles), which have been available since the AIE-ML generation — see [the introduction of this programming guide](../README.md). Shim DMAs typically occupy row 0; mem tiles (when available) often reside on row 1. In IRON, you usually let the compiler place these, but you can also pin them explicitly. The following snippet shows pinned `Tile(col, row)` declarations covering all the tile types found in a single NPU column:
 
@@ -92,7 +92,7 @@ ComputeTile3 = Tile(0, 4)
 ComputeTile4 = Tile(0, 5)
 ```
 
-## <ins>Inspecting the generated MLIR</ins>
+## Inspecting the generated MLIR
 
 `@iron.jit` lowers your design through the AIE dialect on its way to a binary. To see the MLIR without running anything, pass `--dev <target> --emit-mlir`:
 
@@ -106,13 +106,25 @@ The Makefile also exposes `make emit-mlir` which redirects the output to `build/
 
 1. Run `make` (the default target runs the design on the NPU) — you should see `PASS!`. Then run `make emit-mlir` and inspect `build/aie.mlir`.
 
-2. Run `make clean`. In the worker's body, replace `range_` with `range` (no underscore). What changes in `build/aie.mlir`? <img src="../assets/answer1.jpg" title="The generated MLIR contains no scf.for loop; the same memref.store instructions are emitted many times in a row." height=25>
+2. Run `make clean`. In the worker's body, replace `range_` with `range` (no underscore). What changes in `build/aie.mlir`?
+    <details markdown="1"><summary>Show answer</summary>
+    The generated MLIR contains no `scf.for` loop; the same `memref.store` instructions are emitted many times in a row.
+    </details>
 
-3. Run `make clean`. Introduce an error in the Python source — e.g., misspell `sequence` as `sequenc`. What message do you see? <img src="../assets/answer1.jpg" title="A Python AttributeError, raised before any MLIR is produced." height=25>
+3. Run `make clean`. Introduce an error in the Python source — e.g., misspell `sequence` as `sequenc`. What message do you see?
+    <details markdown="1"><summary>Show answer</summary>
+    A Python `AttributeError`, raised before any MLIR is produced.
+    </details>
 
-4. Run `make clean`. Restore the spelling, then change the Worker's tile to `Tile(-1, 3)` (an invalid location). What message do you see? <img src="../assets/answer1.jpg" title="A placement / tile-coordinate constraint error." height=25>
+4. Run `make clean`. Restore the spelling, then change the Worker's tile to `Tile(-1, 3)` (an invalid location). What message do you see?
+    <details markdown="1"><summary>Show answer</summary>
+    A placement / tile-coordinate constraint error.
+    </details>
 
-5. Run `make clean`. Restore the Worker tile to `(0, 2)`. Remove the `while_true=False` argument and run `make emit-mlir`. What changed in the MLIR? <img src="../assets/answer1.jpg" title="The core body is now nested inside an scf.for that bounds to sys.maxsize — the simulated while-true wrapper." height=25>
+5. Run `make clean`. Restore the Worker tile to `(0, 2)`. Remove the `while_true=False` argument and run `make emit-mlir`. What changed in the MLIR?
+    <details markdown="1"><summary>Show answer</summary>
+    The core body is now nested inside an `scf.for` that bounds to `sys.maxsize` — the simulated while-true wrapper.
+    </details>
 
 -----
-[[Prev - Section 0](../section-0/)] [[Top](..)] [[Next - Section 2](../section-2/)]
+[Prev](../section-0/) &middot; [Top](..) &middot; [Next](../section-2/)

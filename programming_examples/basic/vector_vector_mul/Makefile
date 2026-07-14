@@ -13,36 +13,15 @@ targetname = vector_vector_mul
 aie_py_src = ${targetname}.py
 devicename ?= $(if $(filter 1,$(NPU2)),npu2,npu)
 
-.PHONY: all run run_py vck5000 clean
+.PHONY: all run run_py clean
 
 all:
 	@echo "JIT mode: kernel compiles on first 'make run'."
-	@echo "For VCK5000, run 'make vck5000'."
 
 run: run_py
 
 run_py:
 	${powershell} python3 ${srcdir}/${aie_py_src} --dev ${devicename}
-
-# ----------------------------------------------------------------------------
-# VCK5000 path: emit MLIR for XCVC1902, build host via aiecc + test_vck5000.cpp.
-# Unlike the NPU path, VCK5000 does not go through the @iron.jit host runtime.
-# ----------------------------------------------------------------------------
-
-build/aie.mlir: ${srcdir}/${aie_py_src}
-	mkdir -p ${@D}
-	python3 $< -d xcvc1902 --emit-mlir > $@
-
-vck5000: build/aie.mlir
-	aiecc --xchesscc --link_against_hsa --host-target=x86_64-amd-linux-gnu build/aie.mlir \
-		-I/opt/xaiengine/include \
-		-I${srcdir}/../../../install/runtime_lib/x86_64-hsa/test_lib/include \
-		-L/opt/xaiengine/lib \
-		-L/lib/x86_64-linux-gnu/ \
-		${srcdir}/test_vck5000.cpp \
-		${srcdir}/../../../install/runtime_lib/x86_64-hsa/test_lib/src/test_library.cpp \
-		-Wl,-R/opt/xaiengine/lib \
-		-Wl,--whole-archive -Wl,--no-whole-archive -lstdc++ -ldl -lelf -o test.elf
 
 clean:
 	rm -rf build _build inst aie.mlir.prj core_* test.elf ${targetname}.exe

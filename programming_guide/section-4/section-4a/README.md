@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Section 4a - Timers</ins>
+# Section 4a - Timers
 
 * [Section 4 - Performance Measurement & Vector Programming](../../section-4)
     * Section 4a - Timers
@@ -16,7 +16,7 @@
 
 We begin by first looking at timers for measuring application performance and what that tells us. The performance of an accelerated AI Engine application involves a number of components on the software stack, from invoking the application at the OS level, to passing control on to the kernel drivers, moving and dispatching work to the AIE array, running the accelerated application on AIE cores, and finally returning the data to the application for next-step processing. The most straightforward way to capture the performance of this entire stack of communication and processing is with an application timer, also known as the "wall clock" time. This gives us the upper bounds for how long an AIE accelerated application takes but adds to it the OS and kernel driver overhead. This is something that can be minimized when running multiple iterations of an accelerated program or running a sufficiently compute intensive application. Let's take a look at how we add the "wall clock" timer to an example program.
 
-## <ins>The Compact Form: ``@iron.jit`` + ``run_iters``</ins>
+## The Compact Form: ``@iron.jit`` + ``run_iters``
 
 In a `@iron.jit`-decorated design, calling the design at the host side is what runs the kernel.  The IRON helper [`aie.utils.benchmark.run_iters`](../../../python/utils/benchmark.py) wraps that call site in a `warmup + iters` loop, captures NPU-side time (from the kernel result) and end-to-end host time, and returns a `BenchmarkResult`.  The pair is exactly what the explicit chrono-loop in `test.cpp` does — in one line:
 
@@ -30,11 +30,11 @@ bench = run_iters(
 print_benchmark(bench)
 ```
 
-`[vector_scalar_mul.py](./vector_scalar_mul.py)` uses this directly; running `make run` (or `python3 vector_scalar_mul.py --iters 10 --warmup 4`) prints the canonical `avg/min/max us` pair for both NPU and end-to-end timings.
+[vector_scalar_mul.py](./vector_scalar_mul.py) uses this directly; running `make run` (or `python3 vector_scalar_mul.py --iters 10 --warmup 4`) prints the canonical `avg/min/max us` pair for both NPU and end-to-end timings.
 
 The rest of this section walks down through what's happening underneath, using the explicit chrono-loop in [test.cpp](./test.cpp) and the manual accumulator loop in [test.py](./test.py).
 
-## <ins>Application timer - Modifying [test.cpp](./test.cpp)</ins>
+## Application timer - Modifying [test.cpp](./test.cpp)
 Adding the application timer is as simple as noting a start and stop time surrounding the calling of the kernel function. We can use the clock timer from the chrono library which is included via `#include <chrono>` but this may already be imported by other libraries (this is the case in our `test.cpp`). Then we record the start and stop time of our chrono timer with timer function calls surrounding our kernel function as follows:
 
 ```c++
@@ -49,7 +49,7 @@ Adding the application timer is as simple as noting a start and stop time surrou
 ```
 This provides us with a good baseline for how long our accelerated kernel function takes.
 
-## <ins>Multiple iterations</ins>
+## Multiple iterations
 A timer for a single kernel function call is a useful starting point for understanding performance but there can be a lot of variability and overhead for a single call that is smoothed out when run multiple times. In order to benchmark the steady-state kernel run time, we can add code around our kernel call to execute multiple times and capture the minimium, maximum, and average time that our kernel takes.
 
 In our example [test.cpp](./test.cpp), we wrap our calls within a for loop (based on `num_iter` or number of iterations).
@@ -89,7 +89,7 @@ We can then compute and print the actual average, minimum and maximum run times 
 
 In addition, if you have an estimate of the number of MACs each kernel execution takes, you can report additional performance data such as GFLOPs as can be seen in the matrix multiplication example [test.cpp](../../../programming_examples/basic/matrix_multiplication/test.cpp#L295).
 
-## <ins>Verifying NPU output: `aie.utils.verify`</ins>
+## Verifying NPU output: `aie.utils.verify`
 
 Benchmarking is paired with a correctness check.  AIE kernels are
 often LUT approximations or use saturating arithmetic, so the canonical
@@ -136,13 +136,25 @@ into the tolerance comparator above.
 ## <u>Exercises</u>
 1. Build + run the `@iron.jit` design with `make run` and note the reported NPU + end-to-end averages. (The defaults are `--warmup 4 --iters 10`; override via `--warmup N --iters M` on the python command line.) What did you see?
 
-1. Build the xclbin + insts pair via `make all`, then run the explicit C++ host with `make run_cpp` and note the reported "wall clock" time. <img src="../../assets/answer1.jpg" title="Answer can be anywhere from 300-600us" height=25>
+1. Build the xclbin + insts pair via `make all`, then run the explicit C++ host with `make run_cpp` and note the reported "wall clock" time.
+    <details markdown="1"><summary>Show answer</summary>
+    Answer can be anywhere from 300-600us
+    </details>
 
-1. The design was run once with a single iteration and no warmup. Run again with `make run_cpp` — same defaults. What reported Avg NPU time did you see this time? <img src="../../assets/answer1.jpg" title="Answer can still be anywhere from 300-600us but is likely different than before" height=25>
+1. The design was run once with a single iteration and no warmup. Run again with `make run_cpp` — same defaults. What reported Avg NPU time did you see this time?
+    <details markdown="1"><summary>Show answer</summary>
+    Answer can still be anywhere from 300-600us but is likely different than before
+    </details>
 
-1. Set iterations to 10 with `make run_cpp-10` (passes `--iters 10`). What reported Avg NPU time do you see this time? <img src="../../assets/answer1.jpg" title="This time, we see a narrower range between 300-400 us" height=25>
+1. Set iterations to 10 with `make run_cpp-10` (passes `--iters 10`). What reported Avg NPU time do you see this time?
+    <details markdown="1"><summary>Show answer</summary>
+    This time, we see a narrower range between 300-400 us
+    </details>
 
-1. Finally, add 4 warmup iterations to cut higher outliers when the application is first run by calling `make run_cpp-10-warmup`. This passes `--warmup 4` to the executable. What reported Avg NPU time do you see this time? <img src="../../assets/answer1.jpg" title="This time, we see an lower average range between 200-300 us" height=25>
+1. Finally, add 4 warmup iterations to cut higher outliers when the application is first run by calling `make run_cpp-10-warmup`. This passes `--warmup 4` to the executable. What reported Avg NPU time do you see this time?
+    <details markdown="1"><summary>Show answer</summary>
+    This time, we see an lower average range between 200-300 us
+    </details>
 
 -----
-[[Up]](../../section-4) [[Next]](../section-4b)
+[Top](../../section-4) &middot; [Next](../section-4b)

@@ -54,9 +54,6 @@ void emitNpuLocmapJSON(llvm::raw_ostream &output, llvm::StringRef deviceName,
 mlir::LogicalResult AIETranslateToXAIEV2(mlir::ModuleOp module,
                                          llvm::raw_ostream &output,
                                          llvm::StringRef deviceName = "");
-mlir::LogicalResult AIETranslateToHSA(mlir::ModuleOp module,
-                                      llvm::raw_ostream &output,
-                                      llvm::StringRef deviceName = "");
 mlir::LogicalResult AIEFlowsToJSON(mlir::ModuleOp module,
                                    llvm::raw_ostream &output,
                                    llvm::StringRef deviceName = "");

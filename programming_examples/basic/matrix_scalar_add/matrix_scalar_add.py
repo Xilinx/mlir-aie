@@ -12,11 +12,10 @@ writes it to the corresponding output tile. The remaining output positions
 retain their initial values — a subtile-region DMA access pattern. Default
 config: 16x128 matrix, 8x16 tile.
 
-Three invocation modes:
+Two invocation modes:
 
   * standalone:   ``python3 matrix_scalar_add.py``
   * compile-only: ``... --xclbin-path=PATH --insts-path=PATH``  (NPU Makefile)
-  * emit-MLIR:    ``... -d xcvc1902 --emit-mlir``               (vck5000)
 """
 
 import argparse
@@ -78,7 +77,7 @@ def matrix_scalar_add(
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Matrix Scalar Add")
-    add_compile_args(p, dev_choices=("npu", "npu2", "xcvc1902"), with_emit_mlir=True)
+    add_compile_args(p, dev_choices=("npu", "npu2"), with_emit_mlir=True)
     p.add_argument("--matrix-height", type=int, default=16)
     p.add_argument("--matrix-width", type=int, default=128)
     p.add_argument("--tile-height", type=int, default=8)

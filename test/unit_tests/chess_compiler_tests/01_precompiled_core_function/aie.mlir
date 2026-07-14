@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// REQUIRES: aiesimulator, valid_xchess_license, !hsa
+// REQUIRES: aiesimulator, valid_xchess_license
 // RUN: xchesscc_wrapper aie -c %S/kernel.cc
 // RUN: %PYTHON aiecc.py --aiesim --xbridge --xchesscc %s %test_lib_flags %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf

@@ -6,12 +6,12 @@
 """Factory functions for AIE kernel ExternalFunctions.
 
 Submodules:
-- :mod:`.eltwise` — passthrough, scale, add, mul, relu
-- :mod:`.reduce` — reduce_add, reduce_min, reduce_max, compute_max
-- :mod:`.vision` — rgba2hue, threshold, bitwise_or, bitwise_and, gray2rgba, rgba2gray, filter2d, add_weighted
-- :mod:`.activation` — softmax, gelu, silu, swiglu, bf16_exp
-- :mod:`.linalg` — mm, mv, cascade_mm  (mm/mv expose ``.zero`` for the companion zero-fill kernel)
-- :mod:`.conv` — conv2dk1, conv2dk3, conv2dk1_skip, conv2dk1_i8, conv2dk14, conv2dk1_skip_init, bn_*
+- `eltwise` — passthrough, scale, add, mul, relu
+- `reduce` — reduce_add, reduce_min, reduce_max, compute_max
+- `vision` — rgba2hue, threshold, bitwise_or, bitwise_and, gray2rgba, rgba2gray, filter2d, add_weighted
+- `activation` — softmax, gelu, silu, swiglu, bf16_exp
+- `linalg` — mm, mv, cascade_mm  (mm/mv expose ``.zero`` for the companion zero-fill kernel)
+- `conv` — conv2dk1, conv2dk3, conv2dk1_skip, conv2dk1_i8, conv2dk14, conv2dk1_skip_init, bn_*
 """
 
 from .eltwise import passthrough, scale, add, mul, relu

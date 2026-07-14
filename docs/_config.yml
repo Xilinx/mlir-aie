@@ -1,6 +1,0 @@
-# Copyright (C) 2021 Xilinx, Inc.
-# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-
-title: Xilinx AIEngine MLIR Dialect
-description:  An MLIR Dialect for targeting AIEngine-based devices
-theme: jekyll-theme-dinky

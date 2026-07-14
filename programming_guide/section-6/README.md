@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Section 6 - Larger Example Designs</ins>
+# Section 6 - Larger Example Designs
 
 There are a number of example designs available [here](../../programming_examples/), which further help explain many of the unique features of AI Engines and the NPU array in Ryzen™ AI. This section contains more complex application designs for both vision and machine learning use cases. In particular, we will describe a ResNet implementation on Ryzen™ AI.
 
@@ -27,9 +27,18 @@ There are a number of example designs available [here](../../programming_example
 |[resnet](../../programming_examples/ml/resnet/)|ui8|ResNet with offloaded conv2_x layers. The implementation features depth-first implementation of multiple bottleneck blocks across multiple NPU columns.|
 
 ## Exercises
-1. In [bottleneck](../../programming_examples/ml/bottleneck/) design, how many different types of fused computations do you observe? <img src="../assets/answer1.jpg" title="2. Convolution fused with ReLU and Convolution fused with element-wise addition. Please note that fusing adjacent convolution and batch norm layers is another inference-time optimization, which our implementation can handle." height=25>
-2. In [bottleneck](../../programming_examples/ml/bottleneck/) design following a dataflow approach, how many elements does the 3x3 convolution operation require from the 1x1 convolution core to proceed with its computation? <img src="../assets/answer1.jpg" title="3. This allows for the necessary neighborhood information required by the convolutional kernel to be available for processing." height=25>
-3. Suppose you have a bottleneck block with input dimensions of 32x32x256. After passing through the 1x1 convolutional layer, the output dimensions become 32x32x64. What would be the output dimensions after the subsequent 3x3 convolutional layer, assuming a stride of 1 with no padding and an output channel of 64? <img src="../assets/answer1.jpg" title="30×30×64. Without padding, the spatial dimensions would shrink by two pixels in each dimension due to the 3x3 convolution operation." height=25>
+1. In [bottleneck](../../programming_examples/ml/bottleneck/) design, how many different types of fused computations do you observe?
+    <details markdown="1"><summary>Show answer</summary>
+    2. Convolution fused with ReLU and Convolution fused with element-wise addition. Please note that fusing adjacent convolution and batch norm layers is another inference-time optimization, which our implementation can handle.
+    </details>
+2. In [bottleneck](../../programming_examples/ml/bottleneck/) design following a dataflow approach, how many elements does the 3x3 convolution operation require from the 1x1 convolution core to proceed with its computation?
+    <details markdown="1"><summary>Show answer</summary>
+    3. This allows for the necessary neighborhood information required by the convolutional kernel to be available for processing.
+    </details>
+3. Suppose you have a bottleneck block with input dimensions of 32x32x256. After passing through the 1x1 convolutional layer, the output dimensions become 32x32x64. What would be the output dimensions after the subsequent 3x3 convolutional layer, assuming a stride of 1 with no padding and an output channel of 64?
+    <details markdown="1"><summary>Show answer</summary>
+    30×30×64. Without padding, the spatial dimensions would shrink by two pixels in each dimension due to the 3x3 convolution operation.
+    </details>
 
 -----
-[[Prev - Section 5](../section-5/)] [[Top](..)]
+[Prev](../section-5/) &middot; [Top](..)

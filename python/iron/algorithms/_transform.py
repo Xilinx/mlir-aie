@@ -231,7 +231,7 @@ def _transform_parallel_gen(
         tile_size: Size of each tile processed by a worker (default: 16)
         trace_size: When > 0, enable per-column-Worker core trace and a
             ``trace_size``-byte runtime trace buffer (default: 0).  Same
-            event0()/event1() expectation as :func:`_transform_gen`.
+            event0()/event1() expectation as `_transform_gen`.
         num_channels: Shim DMA channels per column to drive, 1 or 2 (default: 1).
             With 2, two workers per column run in parallel on disjoint
             sub-ranges, doubling DDR throughput.  Not compatible with shared
@@ -480,9 +480,9 @@ def _transform_parallel_gen(
 
 def make_param_descriptor(tensor_ty):
     """Build a fake-tensor descriptor (``.shape``, ``.size``, ``.dtype``) for
-    use as an extra param to :func:`transform` and friends.
+    use as an extra param to [`transform`][iron.algorithms._transform.transform] and friends.
 
-    Mirrors :func:`_make_fake_tensor` but skips the tile-divisibility check
+    Mirrors `_make_fake_tensor` but skips the tile-divisibility check
     because params (e.g. a 1-element ``factor`` tensor) are passed through
     a dedicated ObjectFifo and aren't tiled.
     """
@@ -523,7 +523,7 @@ def _make_fake_tensor(tensor_ty, tile_size, fn_name):
     Extracts ``num_elements`` and ``dtype`` from *tensor_ty*, validates that
     *tile_size* divides evenly into *num_elements*, and returns a lightweight
     object exposing ``.shape``, ``.size``, and ``.dtype`` attributes — enough
-    for :func:`_transform_gen` and :func:`_transform_parallel_gen` to operate
+    for `_transform_gen` and `_transform_parallel_gen` to operate
     without real NPU memory.
 
     Args:
@@ -568,7 +568,7 @@ def _make_fake_tensor(tensor_ty, tile_size, fn_name):
 def transform(func, tensor_ty, *params, tile_size=16, trace_size=0):
     """Apply ``func`` element-wise over a tensor described by *tensor_ty*.
 
-    Like :func:`transform` but accepts a numpy ``ndarray`` type descriptor
+    Like [`transform`][iron.algorithms._transform.transform] but accepts a numpy ``ndarray`` type descriptor
     instead of a real tensor.  Intended for use inside ``@iron.jit`` generator
     bodies where the tensor's shape and dtype are expressed as ``CompileTime[T]``
     parameters and the actual tensors are not yet available::
@@ -580,13 +580,13 @@ def transform(func, tensor_ty, *params, tile_size=16, trace_size=0):
             return iron.algorithms.transform(lambda x: x + 1, tensor_ty)
 
     Args:
-        func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
+        func: Function or `ExternalFunction` to apply.
         tensor_ty: A numpy ``ndarray`` type (e.g. ``np.ndarray[(1024,),
             np.dtype[np.int32]]``). Shape and dtype are inferred from this.
         *params: Additional parameters forwarded to ``func`` (ExternalFunction
             only).  Each ``param`` may be a real tensor, a numpy ``ndarray``
             type descriptor (transparently expanded via
-            :func:`make_param_descriptor`), or a numpy scalar type.
+            [`make_param_descriptor`][iron.algorithms._transform.make_param_descriptor]), or a numpy scalar type.
         tile_size (int, optional): Number of elements per tile. Defaults to 16.
         trace_size (int, optional): When > 0, enable Worker core trace and a
             ``trace_size``-byte runtime trace buffer. Defaults to 0 (off).
@@ -609,12 +609,12 @@ def transform(func, tensor_ty, *params, tile_size=16, trace_size=0):
 def transform_binary(func, tensor_ty, tile_size=16, trace_size=0):
     """Apply ``func`` element-wise over two tensors described by *tensor_ty*.
 
-    Like :func:`transform_binary` but accepts a numpy ``ndarray`` type
+    Like [`transform_binary`][iron.algorithms._transform.transform_binary] but accepts a numpy ``ndarray`` type
     descriptor instead of real tensors.  Intended for use inside
     ``@iron.jit`` generator bodies.
 
     Args:
-        func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
+        func: Function or `ExternalFunction` to apply.
         tensor_ty: A numpy ``ndarray`` type (e.g. ``np.ndarray[(1024,),
             np.dtype[np.int32]]``). Shape and dtype are inferred from this.
         tile_size (int, optional): Number of elements per tile. Defaults to 16.
@@ -645,12 +645,12 @@ def transform_parallel(
 ):
     """Apply ``func`` element-wise in parallel using a tensor type descriptor.
 
-    Like :func:`transform_parallel` but accepts a numpy ``ndarray`` type
+    Like [`transform_parallel`][iron.algorithms._transform.transform_parallel] but accepts a numpy ``ndarray`` type
     descriptor instead of a real tensor.  Intended for use inside
     ``@iron.jit`` generator bodies.
 
     Args:
-        func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
+        func: Function or `ExternalFunction` to apply.
         tensor_ty: A numpy ``ndarray`` type (e.g. ``np.ndarray[(1024,),
             np.dtype[np.int32]]``). Shape and dtype are inferred from this.
         *params: Additional compile-time scalar parameters forwarded to
@@ -695,12 +695,12 @@ def transform_parallel_binary(
 ):
     """Apply ``func`` over two tensors in parallel using a tensor type descriptor.
 
-    Like :func:`transform_parallel_binary` but accepts a numpy ``ndarray``
+    Like [`transform_parallel_binary`][iron.algorithms._transform.transform_parallel_binary] but accepts a numpy ``ndarray``
     type descriptor instead of real tensors.  Intended for use inside
     ``@iron.jit`` generator bodies.
 
     Args:
-        func: Function or :class:`~aie.iron.kernel.ExternalFunction` to apply.
+        func: Function or `ExternalFunction` to apply.
         tensor_ty: A numpy ``ndarray`` type (e.g. ``np.ndarray[(1024,),
             np.dtype[np.int32]]``). Shape and dtype are inferred from this.
         tile_size (int, optional): Number of elements per tile per worker.
@@ -709,7 +709,7 @@ def transform_parallel_binary(
             trace and a ``trace_size``-byte runtime trace buffer.
             Defaults to 0 (off).
         num_channels (int, optional): Shim DMA channels per column to drive,
-            1 or 2.  Defaults to 1.  See :func:`transform_parallel`.
+            1 or 2.  Defaults to 1.  See [`transform_parallel`][iron.algorithms._transform.transform_parallel].
         pass_size_to_kernel (bool, optional): Append ``tile_size`` as a
             trailing ``int`` argument on every kernel call.  Defaults to True.
 

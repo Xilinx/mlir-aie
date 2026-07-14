@@ -25,8 +25,6 @@ MLIR_CAPI_EXPORTED MlirStringRef
 aieTranslateControlPacketsToUI32Vec(MlirOperation op, MlirStringRef deviceName);
 MLIR_CAPI_EXPORTED MlirStringRef aieTranslateToXAIEV2(MlirOperation op,
                                                       MlirStringRef deviceName);
-MLIR_CAPI_EXPORTED MlirStringRef aieTranslateToHSA(MlirOperation op,
-                                                   MlirStringRef deviceName);
 MLIR_CAPI_EXPORTED MlirStringRef aieTranslateToBCF(MlirOperation op, int col,
                                                    int row,
                                                    MlirStringRef deviceName);
