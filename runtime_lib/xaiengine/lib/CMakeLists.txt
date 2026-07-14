@@ -39,6 +39,10 @@ else()
     set(XAIE_SOURCE_DIR ../../../third_party/aie-rt/driver/src)
     set(BOOTGEN_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../third_party/bootgen)
 
+    apply_aie_rt_vendor_patches(
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../third_party/aie-rt
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../third_party/patches/aie-rt)
+
     add_aiert_headers(xaienginecdo
                         ${XAIE_SOURCE_DIR}
                         ${CMAKE_CURRENT_BINARY_DIR}/../include
