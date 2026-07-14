@@ -246,6 +246,11 @@ jobs:
       - name: Run programming_examples against the wheel
         shell: bash
         run: |
+          # Without this, XRT's mmap of the NPU BO fails with
+          # "Resource temporarily unavailable" (EAGAIN) on these runners'
+          # default RLIMIT_MEMLOCK. Same fix as buildAndTestRyzenAI.yml /
+          # buildRyzenWheels.yml.
+          sudo prlimit -lunlimited --pid $$
           [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
           source wheel-test-venv/bin/activate
           source utils/env_setup.sh
