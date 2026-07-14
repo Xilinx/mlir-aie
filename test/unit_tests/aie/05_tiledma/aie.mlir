@@ -31,10 +31,10 @@ aie.device(xcvc1902) {
   aie.switchbox(%tile33) { aie.connect<"West": 3, "DMA": 1> }
 
   %core13 = aie.core(%tile13) {
-    %c1_ul0 = arith.constant 1 : i32
-    aie.use_lock(%lock13_3, "Acquire", %c1_ul0) // acquire for read(e.g. input ping)
-    %c0_ul1 = arith.constant 0 : i32
-    aie.use_lock(%lock13_5, "Acquire", %c0_ul1) // acquire for write
+    %c1_ul1 = arith.constant 1 : i32
+    aie.use_lock(%lock13_3, "Acquire", %c1_ul1) // acquire for read(e.g. input ping)
+    %c0_ul2 = arith.constant 0 : i32
+    aie.use_lock(%lock13_5, "Acquire", %c0_ul2) // acquire for write
     %idx1 = arith.constant 3 : index
     %val1 = memref.load %buf13_0[%idx1] : memref<256xi32>
     %2    = arith.addi %val1, %val1 : i32
@@ -43,18 +43,18 @@ aie.device(xcvc1902) {
     %5 = arith.addi %4, %val1 : i32
     %idx2 = arith.constant 5 : index
     memref.store %5, %buf13_1[%idx2] : memref<256xi32>
-    %c0_ul2 = arith.constant 0 : i32
-    aie.use_lock(%lock13_3, "Release", %c0_ul2) // release for write
-    %c1_ul3 = arith.constant 1 : i32
-    aie.use_lock(%lock13_5, "Release", %c1_ul3) // release for read
+    %c0_ul3 = arith.constant 0 : i32
+    aie.use_lock(%lock13_3, "Release", %c0_ul3) // release for write
+    %c1_ul4 = arith.constant 1 : i32
+    aie.use_lock(%lock13_5, "Release", %c1_ul4) // release for read
     aie.end
   }
 
   %core33 = aie.core(%tile33) {
-    %c1_ul4 = arith.constant 1 : i32
-    aie.use_lock(%lock33_6, "Acquire", %c1_ul4) // acquire for read(e.g. input ping)
-    %c0_ul5 = arith.constant 0 : i32
-    aie.use_lock(%lock33_7, "Acquire", %c0_ul5) // acquire for write
+    %c1_ul5 = arith.constant 1 : i32
+    aie.use_lock(%lock33_6, "Acquire", %c1_ul5) // acquire for read(e.g. input ping)
+    %c0_ul6 = arith.constant 0 : i32
+    aie.use_lock(%lock33_7, "Acquire", %c0_ul6) // acquire for write
     %idx1 = arith.constant 5 : index
     %val1 = memref.load %buf33_0[%idx1] : memref<256xi32>
     %2    = arith.addi %val1, %val1 : i32
@@ -63,34 +63,38 @@ aie.device(xcvc1902) {
     %5 = arith.addi %4, %val1 : i32
     %idx2 = arith.constant 5 : index
     memref.store %5, %buf33_1[%idx2] : memref<256xi32>
-    %c0_ul6 = arith.constant 0 : i32
-    aie.use_lock(%lock33_6, "Release", %c0_ul6) // release for write
-    %c1_ul7 = arith.constant 1 : i32
-    aie.use_lock(%lock33_7, "Release", %c1_ul7) // release for read
+    %c0_ul7 = arith.constant 0 : i32
+    aie.use_lock(%lock33_6, "Release", %c0_ul7) // release for write
+    %c1_ul8 = arith.constant 1 : i32
+    aie.use_lock(%lock33_7, "Release", %c1_ul8) // release for read
     aie.end
   }
 
   %mem13 = aie.mem(%tile13) {
+    %c0_i32 = arith.constant 0 : i32
+    %c256_i32 = arith.constant 256 : i32
     %dma0 = aie.dma_start("MM2S", 0, ^bd0, ^end)
     ^bd0:
-      %c1_ul8 = arith.constant 1 : i32
-      aie.use_lock(%lock13_5, "Acquire", %c1_ul8)
-      aie.dma_bd(%buf13_1 : memref<256xi32>, 0, 256)
-      %c0_ul9 = arith.constant 0 : i32
-      aie.use_lock(%lock13_5, "Release", %c0_ul9)
+      %c1_ul1 = arith.constant 1 : i32
+      aie.use_lock(%lock13_5, "Acquire", %c1_ul1)
+      aie.dma_bd(%buf13_1 : memref<256xi32> offset = 0 len = 256)
+      %c0_ul2 = arith.constant 0 : i32
+      aie.use_lock(%lock13_5, "Release", %c0_ul2)
       aie.next_bd ^end // point to the next BD, or termination
     ^end:
       aie.end
   }
 
   %mem33 = aie.mem(%tile33) {
+    %c0_i32 = arith.constant 0 : i32
+    %c256_i32 = arith.constant 256 : i32
     %dma0 = aie.dma_start("S2MM", 1, ^bd0, ^end)
     ^bd0:
-      %c0_ul10 = arith.constant 0 : i32
-      aie.use_lock(%lock33_6, "Acquire", %c0_ul10)
-      aie.dma_bd(%buf33_0: memref<256xi32>, 0, 256)
-      %c1_ul11 = arith.constant 1 : i32
-      aie.use_lock(%lock33_6, "Release", %c1_ul11)
+      %c0_ul3 = arith.constant 0 : i32
+      aie.use_lock(%lock33_6, "Acquire", %c0_ul3)
+      aie.dma_bd(%buf33_0 : memref<256xi32> offset = 0 len = 256)
+      %c1_ul4 = arith.constant 1 : i32
+      aie.use_lock(%lock33_6, "Release", %c1_ul4)
       aie.next_bd ^end // point to the next BD, or termination
     ^end:
       aie.end

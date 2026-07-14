@@ -141,7 +141,7 @@ module {
       %objFifo_in0_cons_cons_lock = aie.lock(%tile_0_1, 1) {init = 0 : i32, sym_name = "objFifo_in0_cons_cons_lock"}
       %objFifo_out0_prod_lock = aie.lock(%tile_0_1, 2) {init = 1 : i32, sym_name = "objFifo_out0_prod_lock"}
       %objFifo_out0_cons_lock = aie.lock(%tile_0_1, 3) {init = 0 : i32, sym_name = "objFifo_out0_cons_lock"}
-      
+
       %objFifo_in1_cons_buff_0 = aie.buffer(%tile_0_1) {sym_name = "objFifo_in1_cons_buff_0"} : memref<64x64xi8>
       %objFifo_in1_cons_buff_1 = aie.buffer(%tile_0_1) {sym_name = "objFifo_in1_cons_buff_1"} : memref<64x64xi8>
       %objFifo_out1_buff_0 = aie.buffer(%tile_0_1) {sym_name = "objFifo_out1_buff_0"} : memref<64x64xi8>
@@ -178,7 +178,7 @@ module {
         %c1_ul15 = arith.constant 1 : i32
         aie.use_lock(%objFifo_out0_cons_lock, Release, %c1_ul15)
       }]
-      
+
       %4 = aie.dma(S2MM, 2) [{
         %c1_ul16 = arith.constant 1 : i32
         aie.use_lock(%objFifo_in1_cons_prod_lock, AcquireGreaterEqual, %c1_ul16)

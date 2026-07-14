@@ -18,7 +18,7 @@
 // CHECK:     %shim_dma_2_0 = aie.shim_dma(%{{.*}}tile_2_0) {
 // CHECK:       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
-// CHECK:       aie.dma_bd(%ext_buffer_in : memref<64xi32>, 0, 64)
+// CHECK:       aie.dma_bd(%ext_buffer_in : memref<64xi32> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.next_bd ^bb1
 // CHECK:     ^bb2:  // pred: ^bb0
 // CHECK:       aie.end
@@ -27,10 +27,10 @@
 // CHECK:     %mem_1_3 = aie.mem(%{{.*}}tile_1_3) {
 // CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
-// CHECK:       aie.dma_bd(%[[VAL_0]] : memref<16xi32>, 0, 16)
+// CHECK:       aie.dma_bd(%[[VAL_0]] : memref<16xi32> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.next_bd ^bb2
 // CHECK:     ^bb2:  // pred: ^bb1
-// CHECK:       aie.dma_bd(%[[VAL_1]] : memref<16xi32>, 0, 16)
+// CHECK:       aie.dma_bd(%[[VAL_1]] : memref<16xi32> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.next_bd ^bb1
 // CHECK:     ^bb3:  // pred: ^bb0
 // CHECK:       aie.end

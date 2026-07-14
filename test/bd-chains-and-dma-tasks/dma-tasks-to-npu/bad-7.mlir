@@ -18,7 +18,7 @@ module {
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
           // expected-error@+2 {{Cannot lower buffer descriptor without assigned ID}}
           // expected-note@+1 {{Run the `--aie-assign-runtime-sequence-bd-ids` pass first or manually assign an ID to this buffer descriptor}}
-          aie.dma_bd(%arg0 : memref<32xi8>, 3, 4)
+          aie.dma_bd(%arg0 : memref<32xi8> offset = 3 len = 4)
           aie.end
       }
     }

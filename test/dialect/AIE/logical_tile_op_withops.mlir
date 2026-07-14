@@ -31,6 +31,7 @@ module @test_core_tile_elements {
   }
 }
 
+
 // -----
 
 // Test MemTileDMAOp, BufferOp, LockOp with LogicalTileOp<MemTile>
@@ -51,6 +52,7 @@ module @test_mem_tile_elements {
   }
 }
 
+
 // -----
 
 // Test ShimDMAOp, LockOp with LogicalTileOp<ShimNOCTile>
@@ -69,6 +71,7 @@ module @test_shim_noc_tile_elements {
   }
 }
 
+
 // -----
 
 // Test ObjectFifoCreateOp with LogicalTileOp
@@ -84,6 +87,7 @@ module @test_objectfifo_shim_to_core {
     aie.end
   }
 }
+
 
 // -----
 
@@ -107,6 +111,7 @@ module @test_objectfifo_link {
   }
 }
 
+
 // -----
 
 // Test ShimDMAAllocationOp with LogicalTileOp<ShimNOCTile>
@@ -125,6 +130,7 @@ module @test_shim_dma_allocation {
   }
 }
 
+
 // -----
 
 // Mixed LogicalTileOp and TileOp usage
@@ -141,6 +147,7 @@ module @test_mixed_tile_types {
   }
 }
 
+
 // -----
 
 // Test DMAConfigureTaskOp with LogicalTileOp
@@ -151,7 +158,7 @@ module @test_dma_configure_task {
 
     aie.runtime_sequence(%arg0: memref<1024xi32>) {
       %task = aiex.dma_configure_task(%shim_tile, MM2S, 0) {
-        aie.dma_bd(%buffer : memref<1024xi32>, 0, 1024) {bd_id = 0 : i32}
+        aie.dma_bd(%buffer : memref<1024xi32> offset = 0 len = 1024) {bd_id = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%task)
@@ -159,6 +166,7 @@ module @test_dma_configure_task {
     aie.end
   }
 }
+
 
 // -----
 
@@ -170,7 +178,7 @@ module @test_dma_configure_task_memtile {
 
     aie.runtime_sequence(%arg0: memref<256xi32>) {
       %task = aiex.dma_configure_task(%mem_tile, S2MM, 0) {
-        aie.dma_bd(%buffer_in : memref<256xi32>, 0, 256) {bd_id = 0 : i32}
+        aie.dma_bd(%buffer_in : memref<256xi32> len = 256) {bd_id = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%task)
@@ -178,6 +186,7 @@ module @test_dma_configure_task_memtile {
     aie.end
   }
 }
+
 
 // -----
 
@@ -194,6 +203,7 @@ module @test_cascade_flow_logical_tiles {
     aie.end
   }
 }
+
 
 // -----
 

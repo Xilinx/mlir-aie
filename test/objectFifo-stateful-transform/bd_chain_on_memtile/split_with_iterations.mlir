@@ -10,61 +10,45 @@
 // CHECK:     %memtile_dma_0_1 = aie.memtile_dma(%mem_tile_0_1) {
 // CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb7)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb6
-// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%large_input_cons_prod_lock_0, AcquireGreaterEqual, %{{.*}})
-// CHECK:       aie.dma_bd(%large_input_cons_buff_0 : memref<1024xui8>, 0, 256)
-// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.dma_bd(%large_input_cons_buff_0 : memref<1024xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%large_input_cons_cons_lock_0, Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb2
 // CHECK:     ^bb2:  // pred: ^bb1
-// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%large_input_cons_prod_lock_1, AcquireGreaterEqual, %{{.*}})
-// CHECK:       aie.dma_bd(%large_input_cons_buff_0 : memref<1024xui8>, 256, 384)
-// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.dma_bd(%large_input_cons_buff_0 : memref<1024xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%large_input_cons_cons_lock_1, Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb3
 // CHECK:     ^bb3:  // pred: ^bb2
-// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%large_input_cons_prod_lock_2, AcquireGreaterEqual, %{{.*}})
-// CHECK:       aie.dma_bd(%large_input_cons_buff_0 : memref<1024xui8>, 640, 384)
-// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.dma_bd(%large_input_cons_buff_0 : memref<1024xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%large_input_cons_cons_lock_2, Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb4
 // CHECK:     ^bb4:  // pred: ^bb3
-// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%large_input_cons_prod_lock_0, AcquireGreaterEqual, %{{.*}})
-// CHECK:       aie.dma_bd(%large_input_cons_buff_1 : memref<1024xui8>, 0, 256)
-// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.dma_bd(%large_input_cons_buff_1 : memref<1024xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%large_input_cons_cons_lock_0, Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb5
 // CHECK:     ^bb5:  // pred: ^bb4
-// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%large_input_cons_prod_lock_1, AcquireGreaterEqual, %{{.*}})
-// CHECK:       aie.dma_bd(%large_input_cons_buff_1 : memref<1024xui8>, 256, 384)
-// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.dma_bd(%large_input_cons_buff_1 : memref<1024xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%large_input_cons_cons_lock_1, Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb6
 // CHECK:     ^bb6:  // pred: ^bb5
-// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%large_input_cons_prod_lock_2, AcquireGreaterEqual, %{{.*}})
-// CHECK:       aie.dma_bd(%large_input_cons_buff_1 : memref<1024xui8>, 640, 384)
-// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.dma_bd(%large_input_cons_buff_1 : memref<1024xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%large_input_cons_cons_lock_2, Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb1
 // CHECK:     ^bb7:  // pred: ^bb0
 // CHECK:       %1 = aie.dma_start(MM2S, 0, ^bb8, ^bb11, repeat_count = 2)
 // CHECK:     ^bb8:  // pred: ^bb7
-// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%large_input_cons_cons_lock_0, AcquireGreaterEqual, %{{.*}})
-// CHECK:       aie.dma_bd(%large_input_cons_buff_0 : memref<1024xui8>, 0, 256)
-// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.dma_bd(%large_input_cons_buff_0 : memref<1024xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%large_input_cons_prod_lock_0, Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb9
 // CHECK:     ^bb9:  // pred: ^bb8
-// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%large_input_cons_cons_lock_0, AcquireGreaterEqual, %{{.*}})
-// CHECK:       aie.dma_bd(%large_input_cons_buff_1 : memref<1024xui8>, 0, 256)
-// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.dma_bd(%large_input_cons_buff_1 : memref<1024xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%large_input_cons_prod_lock_0, Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb10
 // CHECK:     ^bb10:  // pred: ^bb9
@@ -72,17 +56,13 @@
 // CHECK:     ^bb11:  // pred: ^bb7
 // CHECK:       %2 = aie.dma_start(MM2S, 1, ^bb12, ^bb15, repeat_count = 3)
 // CHECK:     ^bb12:  // pred: ^bb11
-// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%large_input_cons_cons_lock_1, AcquireGreaterEqual, %{{.*}})
-// CHECK:       aie.dma_bd(%large_input_cons_buff_0 : memref<1024xui8>, 256, 384)
-// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.dma_bd(%large_input_cons_buff_0 : memref<1024xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%large_input_cons_prod_lock_1, Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb13
 // CHECK:     ^bb13:  // pred: ^bb12
-// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%large_input_cons_cons_lock_1, AcquireGreaterEqual, %{{.*}})
-// CHECK:       aie.dma_bd(%large_input_cons_buff_1 : memref<1024xui8>, 256, 384)
-// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.dma_bd(%large_input_cons_buff_1 : memref<1024xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%large_input_cons_prod_lock_1, Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb14
 // CHECK:     ^bb14:  // pred: ^bb13
@@ -90,17 +70,13 @@
 // CHECK:     ^bb15:  // pred: ^bb11
 // CHECK:       %3 = aie.dma_start(MM2S, 2, ^bb16, ^bb19, repeat_count = 4)
 // CHECK:     ^bb16:  // pred: ^bb15
-// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%large_input_cons_cons_lock_2, AcquireGreaterEqual, %{{.*}})
-// CHECK:       aie.dma_bd(%large_input_cons_buff_0 : memref<1024xui8>, 640, 384)
-// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.dma_bd(%large_input_cons_buff_0 : memref<1024xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%large_input_cons_prod_lock_2, Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb17
 // CHECK:     ^bb17:  // pred: ^bb16
-// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%large_input_cons_cons_lock_2, AcquireGreaterEqual, %{{.*}})
-// CHECK:       aie.dma_bd(%large_input_cons_buff_1 : memref<1024xui8>, 640, 384)
-// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.dma_bd(%large_input_cons_buff_1 : memref<1024xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%large_input_cons_prod_lock_2, Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb18
 // CHECK:     ^bb18:  // pred: ^bb17
@@ -111,17 +87,13 @@
 // CHECK:     %mem_0_2 = aie.mem(%tile_0_2) {
 // CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
-// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%small_output_cons_prod_lock_0, AcquireGreaterEqual, %{{.*}})
-// CHECK:       aie.dma_bd(%small_output_cons_buff_0 : memref<256xui8>, 0, 256)
-// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.dma_bd(%small_output_cons_buff_0 : memref<256xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%small_output_cons_cons_lock_0, Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb2
 // CHECK:     ^bb2:  // pred: ^bb1
-// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%small_output_cons_prod_lock_0, AcquireGreaterEqual, %{{.*}})
-// CHECK:       aie.dma_bd(%small_output_cons_buff_1 : memref<256xui8>, 0, 256)
-// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.dma_bd(%small_output_cons_buff_1 : memref<256xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%small_output_cons_cons_lock_0, Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb1
 // CHECK:     ^bb3:  // pred: ^bb0
@@ -130,17 +102,13 @@
 // CHECK:     %mem_0_3 = aie.mem(%tile_0_3) {
 // CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
-// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%medium_output_cons_prod_lock_0, AcquireGreaterEqual, %{{.*}})
-// CHECK:       aie.dma_bd(%medium_output_cons_buff_0 : memref<384xui8>, 0, 384)
-// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.dma_bd(%medium_output_cons_buff_0 : memref<384xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%medium_output_cons_cons_lock_0, Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb2
 // CHECK:     ^bb2:  // pred: ^bb1
-// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%medium_output_cons_prod_lock_0, AcquireGreaterEqual, %{{.*}})
-// CHECK:       aie.dma_bd(%medium_output_cons_buff_1 : memref<384xui8>, 0, 384)
-// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.dma_bd(%medium_output_cons_buff_1 : memref<384xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%medium_output_cons_cons_lock_0, Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb1
 // CHECK:     ^bb3:  // pred: ^bb0
@@ -149,17 +117,13 @@
 // CHECK:     %mem_0_4 = aie.mem(%tile_0_4) {
 // CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
-// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%large_output_cons_prod_lock_0, AcquireGreaterEqual, %{{.*}})
-// CHECK:       aie.dma_bd(%large_output_cons_buff_0 : memref<384xui8>, 0, 384)
-// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.dma_bd(%large_output_cons_buff_0 : memref<384xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%large_output_cons_cons_lock_0, Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb2
 // CHECK:     ^bb2:  // pred: ^bb1
-// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%large_output_cons_prod_lock_0, AcquireGreaterEqual, %{{.*}})
-// CHECK:       aie.dma_bd(%large_output_cons_buff_1 : memref<384xui8>, 0, 384)
-// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.dma_bd(%large_output_cons_buff_1 : memref<384xui8> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%large_output_cons_cons_lock_0, Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb1
 // CHECK:     ^bb3:  // pred: ^bb0

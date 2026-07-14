@@ -13,7 +13,7 @@ module {
     aie.runtime_sequence(%arg0: memref<32xi8>, %arg1: memref<32xi8>) {
       // CHECK: writebd {{.*}} packet_id = 2 : i32, packet_type = 1 : i32
       %t0 = aiex.dma_configure_task(%tile_0_0, MM2S, 0, <pkt_type = 1, pkt_id = 1>) {
-          aie.dma_bd(%arg0 : memref<32xi8>, 4, 16) {bd_id = 0 : i32, packet = #aie.packet_info<pkt_type = 1, pkt_id = 2>}
+          aie.dma_bd(%arg0 : memref<32xi8> offset = 4 len = 16) {bd_id = 0 : i32, packet = #aie.packet_info<pkt_type = 1, pkt_id = 2>}
           aie.end
       }
     }

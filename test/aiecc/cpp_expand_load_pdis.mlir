@@ -87,11 +87,11 @@ module {
 
         aie.runtime_sequence @add_one_seq(%a : memref<16xi32>) {
             %t_in = aiex.dma_configure_task_for @of_in {
-                aie.dma_bd(%a : memref<16xi32>, 0, 16)
+                aie.dma_bd(%a : memref<16xi32> offset = 0 len = 16)
                 aie.end
             }
             %t_out = aiex.dma_configure_task_for @of_out {
-                aie.dma_bd(%a : memref<16xi32>, 0, 16)
+                aie.dma_bd(%a : memref<16xi32> offset = 0 len = 16)
                 aie.end
             } {issue_token = true}
             aiex.dma_start_task(%t_in)

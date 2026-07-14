@@ -15,7 +15,7 @@ from ._aiex_ops_gen import (
     npu_rtp_write as _npu_rtp_write,
     npu_push_queue as _npu_push_queue,
 )
-from ._aie_ops_gen import ObjectFifoCreateOp, dma_bd, EndOp, RuntimeSequenceOp
+from ._aie_ops_gen import ObjectFifoCreateOp, EndOp, RuntimeSequenceOp
 from . import aie
 from .aie import (
     DMAChannelDir,
@@ -23,9 +23,10 @@ from .aie import (
     Neighbors,
     TileOp,
     bds,
+    dma_bd,
+    _as_i32,
 )
 from .transform.structured import MixedValues, _dispatch_mixed_values
-from ..extras.dialects.arith import constant
 from .._mlir_libs import get_dialect_registry
 from .._mlir_libs._aie import *
 from ..helpers.util import v8bfp16ebs8, v16bfp16ebs16
@@ -46,17 +47,6 @@ from ..helpers.taplib import TensorAccessPattern
 
 # Comes from _aie
 register_dialect(get_dialect_registry())
-
-
-def _as_i32(v):
-    """Materialize an arith.constant i32 from a Python int, or pass a Value
-    through unchanged. The npu scalar ops (write32/maskwrite32/sync/
-    address_patch/rtp_write) carry their integer fields as SSA i32 operands;
-    these wrappers preserve the historical int-argument API by converting
-    constants on the user's behalf."""
-    if isinstance(v, int):
-        return constant(v, T.i32())
-    return v
 
 
 def npu_write32(address, value, buffer=None, column=None, row=None, **kwargs):
@@ -307,12 +297,12 @@ def shim_dma_bd(
     if transfer_len is None:
         transfer_len = np.prod(sizes[-3:])
 
-    dimensions = list(zip(sizes, strides))
     dma_bd(
         mem,
+        sizes=sizes,
+        strides=strides,
         offset=offset,
-        len=transfer_len,
-        dimensions=dimensions,
+        transfer_len=transfer_len,
         burst_length=burst_length,
         packet=packet,
         offset_parameter=offset_parameter,

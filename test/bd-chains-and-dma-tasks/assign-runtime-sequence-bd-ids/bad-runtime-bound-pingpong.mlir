@@ -21,14 +21,14 @@ aie.device(npu1) {
                                                %n: index) {
     %c1 = arith.constant 1 : index
     %init = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      aie.dma_bd(%arg0 : memref<1024xi32>, 0, 256)
+      aie.dma_bd(%arg0 : memref<1024xi32> offset = 0 len = 256)
       aie.end
     }
     aiex.dma_start_task(%init)
     // expected-error@+1 {{Runtime-valued control flow in a runtime sequence is not supported}}
     %last = scf.for %i = %c1 to %n step %c1 iter_args(%prev = %init) -> (index) {
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<1024xi32>, 0, 256)
+        aie.dma_bd(%arg0 : memref<1024xi32> offset = 0 len = 256)
         aie.end
       }
       aiex.dma_start_task(%t)

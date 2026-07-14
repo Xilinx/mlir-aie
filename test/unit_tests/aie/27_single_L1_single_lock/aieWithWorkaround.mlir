@@ -36,8 +36,8 @@ aie.device(xcvc1902) {
     aie.use_lock(%lockCore, "Acquire", %c0_ul2)
     %c1_ul3 = arith.constant 1 : i32
     aie.use_lock(%lockCore, "Release", %c1_ul3)
-    // aie.use_lock(%dummyLock, "Acquire", 0)
-    // aie.use_lock(%dummyLock, "Release", 0)
+    // aie.use_lock(%dummyLock, "Acquire", %{{.*}})
+    // aie.use_lock(%dummyLock, "Release", %{{.*}})
 
     %c0_ul4 = arith.constant 0 : i32
     aie.use_lock(%lockCore, "Acquire", %c0_ul4)
@@ -49,8 +49,8 @@ aie.device(xcvc1902) {
     aie.use_lock(%lockCore, "Acquire", %c0_ul6)
     %c1_ul7 = arith.constant 1 : i32
     aie.use_lock(%lockCore, "Release", %c1_ul7)
-    // aie.use_lock(%dummyLock, "Acquire", 0)
-    // aie.use_lock(%dummyLock, "Release", 0)
+    // aie.use_lock(%dummyLock, "Acquire", %{{.*}})
+    // aie.use_lock(%dummyLock, "Release", %{{.*}})
 
     %c0_ul8 = arith.constant 0 : i32
     aie.use_lock(%lockCore, "Acquire", %c0_ul8)
@@ -62,8 +62,8 @@ aie.device(xcvc1902) {
     aie.use_lock(%lockCore, "Acquire", %c0_ul10)
     %c1_ul11 = arith.constant 1 : i32
     aie.use_lock(%lockCore, "Release", %c1_ul11)
-    // aie.use_lock(%dummyLock, "Acquire", 0)
-    // aie.use_lock(%dummyLock, "Release", 0)
+    // aie.use_lock(%dummyLock, "Acquire", %{{.*}})
+    // aie.use_lock(%dummyLock, "Release", %{{.*}})
 
     %c0_ul12 = arith.constant 0 : i32
     aie.use_lock(%lockCore, "Acquire", %c0_ul12)
@@ -75,11 +75,11 @@ aie.device(xcvc1902) {
     aie.use_lock(%lockCore, "Acquire", %c0_ul14)
     %c1_ul15 = arith.constant 1 : i32
     aie.use_lock(%lockCore, "Release", %c1_ul15)
-    // aie.use_lock(%dummyLock, "Acquire", 0)
-    // aie.use_lock(%dummyLock, "Release", 0)
+    // aie.use_lock(%dummyLock, "Acquire", %{{.*}})
+    // aie.use_lock(%dummyLock, "Release", %{{.*}})
 
     aie.end
   }
-  
+
 }
 }

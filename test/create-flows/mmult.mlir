@@ -48,38 +48,40 @@ module @aie.herd_0  {
     %9 = aie.lock(%3, 0)
     %10 = aie.buffer(%3) {sym_name = "buf9"} : memref<16x16xf32, 2>
     %11 = aie.mem(%3)  {
+      %c0_i32 = arith.constant 0 : i32
+      %c256_i32 = arith.constant 256 : i32
       %63 = aie.dma_start(S2MM, 0, ^bb1, ^bb5)
     ^bb1:  // 2 preds: ^bb0, ^bb2
-      %c0_ul0 = arith.constant 0 : i32
-      aie.use_lock(%9, Acquire, %c0_ul0)
-      aie.dma_bd(%10 : memref<16x16xf32, 2>, 0, 256)
-      %c1_ul1 = arith.constant 1 : i32
-      aie.use_lock(%9, Release, %c1_ul1)
+      %c0_ul1 = arith.constant 0 : i32
+      aie.use_lock(%9, Acquire, %c0_ul1)
+      aie.dma_bd(%10 : memref<16x16xf32, 2> offset = 0 len = 256)
+      %c1_ul2 = arith.constant 1 : i32
+      aie.use_lock(%9, Release, %c1_ul2)
       aie.next_bd ^bb2
     ^bb2:  // pred: ^bb1
-      %c0_ul2 = arith.constant 0 : i32
-      aie.use_lock(%4, Acquire, %c0_ul2)
-      aie.dma_bd(%6 : memref<16x16xf32, 2>, 0, 256)
-      %c1_ul3 = arith.constant 1 : i32
-      aie.use_lock(%4, Release, %c1_ul3)
+      %c0_ul3 = arith.constant 0 : i32
+      aie.use_lock(%4, Acquire, %c0_ul3)
+      aie.dma_bd(%6 : memref<16x16xf32, 2> offset = 0 len = 256)
+      %c1_ul4 = arith.constant 1 : i32
+      aie.use_lock(%4, Release, %c1_ul4)
       aie.next_bd ^bb1
     ^bb3:  // pred: ^bb5
       %64 = aie.dma_start(S2MM, 1, ^bb4, ^bb7)
     ^bb4:  // 2 preds: ^bb3, ^bb4
-      %c0_ul4 = arith.constant 0 : i32
-      aie.use_lock(%7, Acquire, %c0_ul4)
-      aie.dma_bd(%8 : memref<16x16xf32, 2>, 0, 256)
-      %c1_ul5 = arith.constant 1 : i32
-      aie.use_lock(%7, Release, %c1_ul5)
+      %c0_ul5 = arith.constant 0 : i32
+      aie.use_lock(%7, Acquire, %c0_ul5)
+      aie.dma_bd(%8 : memref<16x16xf32, 2> offset = 0 len = 256)
+      %c1_ul6 = arith.constant 1 : i32
+      aie.use_lock(%7, Release, %c1_ul6)
       aie.next_bd ^bb4
     ^bb5:  // pred: ^bb0
       %65 = aie.dma_start(MM2S, 0, ^bb6, ^bb3)
     ^bb6:  // 2 preds: ^bb5, ^bb6
-      %c1_ul6 = arith.constant 1 : i32
-      aie.use_lock(%5, Acquire, %c1_ul6)
-      aie.dma_bd(%6 : memref<16x16xf32, 2>, 0, 256)
-      %c0_ul7 = arith.constant 0 : i32
-      aie.use_lock(%5, Release, %c0_ul7)
+      %c1_ul7 = arith.constant 1 : i32
+      aie.use_lock(%5, Acquire, %c1_ul7)
+      aie.dma_bd(%6 : memref<16x16xf32, 2> offset = 0 len = 256)
+      %c0_ul8 = arith.constant 0 : i32
+      aie.use_lock(%5, Release, %c0_ul8)
       aie.next_bd ^bb6
     ^bb7:  // pred: ^bb3
       aie.end
@@ -97,38 +99,40 @@ module @aie.herd_0  {
     %23 = aie.lock(%17, 0)
     %24 = aie.buffer(%17) {sym_name = "buf6"} : memref<16x16xf32, 2>
     %25 = aie.mem(%17)  {
+      %c0_i32 = arith.constant 0 : i32
+      %c256_i32 = arith.constant 256 : i32
       %63 = aie.dma_start(S2MM, 0, ^bb1, ^bb5)
     ^bb1:  // 2 preds: ^bb0, ^bb2
-      %c0_ul8 = arith.constant 0 : i32
-      aie.use_lock(%23, Acquire, %c0_ul8)
-      aie.dma_bd(%24 : memref<16x16xf32, 2>, 0, 256)
-      %c1_ul9 = arith.constant 1 : i32
-      aie.use_lock(%23, Release, %c1_ul9)
+      %c0_ul9 = arith.constant 0 : i32
+      aie.use_lock(%23, Acquire, %c0_ul9)
+      aie.dma_bd(%24 : memref<16x16xf32, 2> offset = 0 len = 256)
+      %c1_ul10 = arith.constant 1 : i32
+      aie.use_lock(%23, Release, %c1_ul10)
       aie.next_bd ^bb2
     ^bb2:  // pred: ^bb1
-      %c0_ul10 = arith.constant 0 : i32
-      aie.use_lock(%18, Acquire, %c0_ul10)
-      aie.dma_bd(%20 : memref<16x16xf32, 2>, 0, 256)
-      %c1_ul11 = arith.constant 1 : i32
-      aie.use_lock(%18, Release, %c1_ul11)
+      %c0_ul11 = arith.constant 0 : i32
+      aie.use_lock(%18, Acquire, %c0_ul11)
+      aie.dma_bd(%20 : memref<16x16xf32, 2> offset = 0 len = 256)
+      %c1_ul12 = arith.constant 1 : i32
+      aie.use_lock(%18, Release, %c1_ul12)
       aie.next_bd ^bb1
     ^bb3:  // pred: ^bb5
       %64 = aie.dma_start(S2MM, 1, ^bb4, ^bb7)
     ^bb4:  // 2 preds: ^bb3, ^bb4
-      %c0_ul12 = arith.constant 0 : i32
-      aie.use_lock(%21, Acquire, %c0_ul12)
-      aie.dma_bd(%22 : memref<16x16xf32, 2>, 0, 256)
-      %c1_ul13 = arith.constant 1 : i32
-      aie.use_lock(%21, Release, %c1_ul13)
+      %c0_ul13 = arith.constant 0 : i32
+      aie.use_lock(%21, Acquire, %c0_ul13)
+      aie.dma_bd(%22 : memref<16x16xf32, 2> offset = 0 len = 256)
+      %c1_ul14 = arith.constant 1 : i32
+      aie.use_lock(%21, Release, %c1_ul14)
       aie.next_bd ^bb4
     ^bb5:  // pred: ^bb0
       %65 = aie.dma_start(MM2S, 0, ^bb6, ^bb3)
     ^bb6:  // 2 preds: ^bb5, ^bb6
-      %c1_ul14 = arith.constant 1 : i32
-      aie.use_lock(%19, Acquire, %c1_ul14)
-      aie.dma_bd(%20 : memref<16x16xf32, 2>, 0, 256)
-      %c0_ul15 = arith.constant 0 : i32
-      aie.use_lock(%19, Release, %c0_ul15)
+      %c1_ul15 = arith.constant 1 : i32
+      aie.use_lock(%19, Acquire, %c1_ul15)
+      aie.dma_bd(%20 : memref<16x16xf32, 2> offset = 0 len = 256)
+      %c0_ul16 = arith.constant 0 : i32
+      aie.use_lock(%19, Release, %c0_ul16)
       aie.next_bd ^bb6
     ^bb7:  // pred: ^bb3
       aie.end
@@ -146,38 +150,40 @@ module @aie.herd_0  {
     %37 = aie.lock(%31, 0)
     %38 = aie.buffer(%31) {sym_name = "buf3"} : memref<16x16xf32, 2>
     %39 = aie.mem(%31)  {
+      %c0_i32 = arith.constant 0 : i32
+      %c256_i32 = arith.constant 256 : i32
       %63 = aie.dma_start(S2MM, 0, ^bb1, ^bb5)
     ^bb1:  // 2 preds: ^bb0, ^bb2
-      %c0_ul16 = arith.constant 0 : i32
-      aie.use_lock(%37, Acquire, %c0_ul16)
-      aie.dma_bd(%38 : memref<16x16xf32, 2>, 0, 256)
-      %c1_ul17 = arith.constant 1 : i32
-      aie.use_lock(%37, Release, %c1_ul17)
+      %c0_ul17 = arith.constant 0 : i32
+      aie.use_lock(%37, Acquire, %c0_ul17)
+      aie.dma_bd(%38 : memref<16x16xf32, 2> offset = 0 len = 256)
+      %c1_ul18 = arith.constant 1 : i32
+      aie.use_lock(%37, Release, %c1_ul18)
       aie.next_bd ^bb2
     ^bb2:  // pred: ^bb1
-      %c0_ul18 = arith.constant 0 : i32
-      aie.use_lock(%32, Acquire, %c0_ul18)
-      aie.dma_bd(%34 : memref<16x16xf32, 2>, 0, 256)
-      %c1_ul19 = arith.constant 1 : i32
-      aie.use_lock(%32, Release, %c1_ul19)
+      %c0_ul19 = arith.constant 0 : i32
+      aie.use_lock(%32, Acquire, %c0_ul19)
+      aie.dma_bd(%34 : memref<16x16xf32, 2> offset = 0 len = 256)
+      %c1_ul20 = arith.constant 1 : i32
+      aie.use_lock(%32, Release, %c1_ul20)
       aie.next_bd ^bb1
     ^bb3:  // pred: ^bb5
       %64 = aie.dma_start(S2MM, 1, ^bb4, ^bb7)
     ^bb4:  // 2 preds: ^bb3, ^bb4
-      %c0_ul20 = arith.constant 0 : i32
-      aie.use_lock(%35, Acquire, %c0_ul20)
-      aie.dma_bd(%36 : memref<16x16xf32, 2>, 0, 256)
-      %c1_ul21 = arith.constant 1 : i32
-      aie.use_lock(%35, Release, %c1_ul21)
+      %c0_ul21 = arith.constant 0 : i32
+      aie.use_lock(%35, Acquire, %c0_ul21)
+      aie.dma_bd(%36 : memref<16x16xf32, 2> offset = 0 len = 256)
+      %c1_ul22 = arith.constant 1 : i32
+      aie.use_lock(%35, Release, %c1_ul22)
       aie.next_bd ^bb4
     ^bb5:  // pred: ^bb0
       %65 = aie.dma_start(MM2S, 0, ^bb6, ^bb3)
     ^bb6:  // 2 preds: ^bb5, ^bb6
-      %c1_ul22 = arith.constant 1 : i32
-      aie.use_lock(%33, Acquire, %c1_ul22)
-      aie.dma_bd(%34 : memref<16x16xf32, 2>, 0, 256)
-      %c0_ul23 = arith.constant 0 : i32
-      aie.use_lock(%33, Release, %c0_ul23)
+      %c1_ul23 = arith.constant 1 : i32
+      aie.use_lock(%33, Acquire, %c1_ul23)
+      aie.dma_bd(%34 : memref<16x16xf32, 2> offset = 0 len = 256)
+      %c0_ul24 = arith.constant 0 : i32
+      aie.use_lock(%33, Release, %c0_ul24)
       aie.next_bd ^bb6
     ^bb7:  // pred: ^bb3
       aie.end
@@ -195,38 +201,40 @@ module @aie.herd_0  {
     %51 = aie.lock(%45, 0)
     %52 = aie.buffer(%45) {sym_name = "buf0"} : memref<16x16xf32, 2>
     %53 = aie.mem(%45)  {
+      %c0_i32 = arith.constant 0 : i32
+      %c256_i32 = arith.constant 256 : i32
       %63 = aie.dma_start(S2MM, 0, ^bb1, ^bb5)
     ^bb1:  // 2 preds: ^bb0, ^bb2
-      %c0_ul24 = arith.constant 0 : i32
-      aie.use_lock(%51, Acquire, %c0_ul24)
-      aie.dma_bd(%52 : memref<16x16xf32, 2>, 0, 256)
-      %c1_ul25 = arith.constant 1 : i32
-      aie.use_lock(%51, Release, %c1_ul25)
+      %c0_ul25 = arith.constant 0 : i32
+      aie.use_lock(%51, Acquire, %c0_ul25)
+      aie.dma_bd(%52 : memref<16x16xf32, 2> offset = 0 len = 256)
+      %c1_ul26 = arith.constant 1 : i32
+      aie.use_lock(%51, Release, %c1_ul26)
       aie.next_bd ^bb2
     ^bb2:  // pred: ^bb1
-      %c0_ul26 = arith.constant 0 : i32
-      aie.use_lock(%46, Acquire, %c0_ul26)
-      aie.dma_bd(%48 : memref<16x16xf32, 2>, 0, 256)
-      %c1_ul27 = arith.constant 1 : i32
-      aie.use_lock(%46, Release, %c1_ul27)
+      %c0_ul27 = arith.constant 0 : i32
+      aie.use_lock(%46, Acquire, %c0_ul27)
+      aie.dma_bd(%48 : memref<16x16xf32, 2> offset = 0 len = 256)
+      %c1_ul28 = arith.constant 1 : i32
+      aie.use_lock(%46, Release, %c1_ul28)
       aie.next_bd ^bb1
     ^bb3:  // pred: ^bb5
       %64 = aie.dma_start(S2MM, 1, ^bb4, ^bb7)
     ^bb4:  // 2 preds: ^bb3, ^bb4
-      %c0_ul28 = arith.constant 0 : i32
-      aie.use_lock(%49, Acquire, %c0_ul28)
-      aie.dma_bd(%50 : memref<16x16xf32, 2>, 0, 256)
-      %c1_ul29 = arith.constant 1 : i32
-      aie.use_lock(%49, Release, %c1_ul29)
+      %c0_ul29 = arith.constant 0 : i32
+      aie.use_lock(%49, Acquire, %c0_ul29)
+      aie.dma_bd(%50 : memref<16x16xf32, 2> offset = 0 len = 256)
+      %c1_ul30 = arith.constant 1 : i32
+      aie.use_lock(%49, Release, %c1_ul30)
       aie.next_bd ^bb4
     ^bb5:  // pred: ^bb0
       %65 = aie.dma_start(MM2S, 0, ^bb6, ^bb3)
     ^bb6:  // 2 preds: ^bb5, ^bb6
-      %c1_ul30 = arith.constant 1 : i32
-      aie.use_lock(%47, Acquire, %c1_ul30)
-      aie.dma_bd(%48 : memref<16x16xf32, 2>, 0, 256)
-      %c0_ul31 = arith.constant 0 : i32
-      aie.use_lock(%47, Release, %c0_ul31)
+      %c1_ul31 = arith.constant 1 : i32
+      aie.use_lock(%47, Acquire, %c1_ul31)
+      aie.dma_bd(%48 : memref<16x16xf32, 2> offset = 0 len = 256)
+      %c0_ul32 = arith.constant 0 : i32
+      aie.use_lock(%47, Release, %c0_ul32)
       aie.next_bd ^bb6
     ^bb7:  // pred: ^bb3
       aie.end

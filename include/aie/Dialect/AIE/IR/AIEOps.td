@@ -345,7 +345,7 @@ def AIE_ShimDMAOp: AIE_Op<"shim_dma", [
           aie.dma_start(MM2S, 0, ^bd0, ^end)
         ^bd0:
           aie.use_lock(%lock1, Acquire, 1)
-          aie.dma_bd(%buf : memref<512 x i16>, 0, 512)
+          aie.dma_bd(%buf : memref<512xi16> offset = 0 len = 512)
           aie.use_lock(%lock1, Release, 0)
           aie.next_bd ^bd0
         ^end:
@@ -848,7 +848,7 @@ def AIE_DMABDPACKETOp: AIE_Op<"dma_bd_packet", []> {
       ^bd5:
         aie.use_lock(%lck, "Acquire", 0)
         aie.dma_bd_packet(0x4, 0xD)
-        aie.dma_bd(<$buf0 : memref<512xi32>, 0, 512>, 1)
+        aie.dma_bd(%buf0 : memref<512xi32> offset = 0 len = 512)
         aie.use_lock(%lck, "Release", 1)
         br ^bd6 // point to the next Block, which is also a different Block Descriptor
     ```
@@ -868,7 +868,7 @@ def AIE_DMABDPACKETOp: AIE_Op<"dma_bd_packet", []> {
   }];
 }
 
-def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
+def AIE_DMABDOp: AIE_Op<"dma_bd", [AttrSizedOperandSegments]> {
   let summary = "Declare a dma buffer descriptor op";
   let description = [{
     This operation describes a buffer descriptor for DMA operations. In particular, it specifies
@@ -898,13 +898,13 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
       ^bd5:
         aie.use_lock(%lck, "Acquire", 0)
         // transfer the first 32 elements of the memref
-        aie.dma_bd(<$buf0 : memref<128xi32>, 0, 32)
+        aie.dma_bd(%buf0 : memref<128xi32> offset = 0 len = 32)
         aie.use_lock(%lck, "Release", 1)
         aie.next_bd ^bd6 // point to the next bb, which describes the next buffer descriptor
       ^bd6:
         aie.use_lock(%lck, "Acquire", 1)
         // transfer the last 32 elements of the memref
-        aie.dma_bd(<$buf1 : memref<128xi32>, 96, 32)
+        aie.dma_bd(%buf1 : memref<128xi32> offset = 96 len = 32)
         aie.use_lock(%lck, "Release", 0)
         aie.next_bd ^end
 
@@ -912,7 +912,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
 
       // this defines a BD that does not use any lock
       ^bd8:
-        aie.dma_bd(<$buf2 : memref<64xi32>, 0, 64)
+        aie.dma_bd(%buf2 : memref<64xi32> offset = 0 len = 64)
     ```
 
     #### Background/context
@@ -954,7 +954,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
     elements:
 
     ```
-    aie.dma_bd(%buf : memref<128xi32>, 0, 128, [<8, 16>, <2, 1>, <8, 2>])
+    aie.dma_bd(%buf : memref<128xi32> offset = 0 len = 128 sizes = [8, 2, 8] strides = [16, 1, 2])
     ```
 
     implies
@@ -982,11 +982,22 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
 
   let arguments = (
     ins AnyRankedOrUnrankedMemRef:$buffer,
-        // in multiples of element width (not bytes)
-        DefaultValuedAttr<AIEI32Attr, "0">:$offset,
-        // in multiples of element width (not bytes)
-        OptionalAttr<AIEI32Attr>:$len,
-        OptionalAttr<BDDimLayoutArrayAttr>:$dimensions,
+        // offset/len are denominated in element width (not bytes).
+        // Can be given as a static attribute or a runtime SSA value. If neither
+        // are given, we assume zero for the offset and the memref's full buffer
+        // length for the length.
+        Optional<I32>:$offset,
+        Optional<I32>:$len,
+        OptionalAttr<AIEI32Attr>:$static_offset,
+        OptionalAttr<AIEI32Attr>:$static_len,
+        // n-d tensor addressing: sizes/strides as a mixed static/dynamic index
+        // list (DynamicIndexList), mirroring aiex.npu.dma_memcpy_nd. A constant
+        // lands in static_sizes/static_strides; a runtime value becomes an
+        // operand. Outermost dimension first.
+        Variadic<I64>:$sizes,
+        Variadic<I64>:$strides,
+        OptionalAttr<DenseI64ArrayAttr>:$static_sizes,
+        OptionalAttr<DenseI64ArrayAttr>:$static_strides,
         OptionalAttr<BDPadLayoutArrayAttr>:$pad_dimensions,
         DefaultValuedOptionalAttr<AIEI32Attr, "0">:$pad_value,
         OptionalAttr<AIEI32Attr>:$bd_id,
@@ -1003,17 +1014,91 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
   );
 
   let hasVerifier = 1;
-  let hasCustomAssemblyFormat = 1;
+  let assemblyFormat = [{
+    `(` $buffer `:` type($buffer)
+    ( `offset` `=` custom<DynamicScalar>($offset, $static_offset)^ )?
+    ( `len` `=` custom<DynamicScalar>($len, $static_len)^ )?
+    ( `sizes` `=` custom<DynamicIndexList>($sizes, $static_sizes)^ )?
+    ( `strides` `=` custom<DynamicIndexList>($strides, $static_strides)^ )?
+    ( `pad` $pad_dimensions^ )?
+    ( `pad_value` `=` $pad_value^ )?
+    `)` attr-dict
+  }];
 
   let extraClassDeclaration = [{
+    // Shared base builder for the int-taking OpBuilder overloads: routes the
+    // constant offset/len to the static_offset/static_len attributes (no
+    // arith.constant materialized) and decomposes a BDDimLayoutArrayAttr
+    // (outermost-first) into all-static static_sizes / static_strides arrays (no
+    // dynamic operands).
+    static void buildWithConstants(
+        ::mlir::OpBuilder &builder, ::mlir::OperationState &state,
+        ::mlir::Value buffer, int32_t offset, int32_t len,
+        BDDimLayoutArrayAttr dims, BDPadLayoutArrayAttr padDims,
+        PacketInfoAttr packet);
+
+    // Mixed static/dynamic builder: splits offset/len and each sizes/strides
+    // entry into the operand + static attribute pair via the upstream
+    // dispatchIndexOpFoldResults helper. An empty sizes/strides list leaves the
+    // corresponding static array unset so it elides.
+    static void buildMixed(
+        ::mlir::OpBuilder &builder, ::mlir::OperationState &state,
+        ::mlir::Value buffer, ::mlir::OpFoldResult offset,
+        ::mlir::OpFoldResult len,
+        ::llvm::ArrayRef<::mlir::OpFoldResult> sizes,
+        ::llvm::ArrayRef<::mlir::OpFoldResult> strides,
+        BDPadLayoutArrayAttr padDims, PacketInfoAttr packet);
+
     BufferOp getBufferOp();
     int32_t getBufferElementTypeWidthInBytes() {
       mlir::DataLayout dataLayout = mlir::DataLayout::closest(*this);
       auto bufferType = llvm::cast<mlir::BaseMemRefType>(getBuffer().getType());
       return dataLayout.getTypeSize(bufferType.getElementType());
     }
+
+    // The offset/len as a compile-time constant: the static_offset/static_len
+    // attribute, or a constant-valued operand folded down. Returns nullopt for a
+    // genuine runtime value.
+    std::optional<int32_t> getConstantOffset() {
+      if (auto attr = getStaticOffset())
+        return static_cast<int32_t>(*attr);
+      if (getOffset())
+        if (auto c = ::mlir::getConstantIntValue(getOffset()))
+          return static_cast<int32_t>(*c);
+      return std::nullopt;
+    }
+    std::optional<int32_t> getConstantLen() {
+      if (auto attr = getStaticLen())
+        return static_cast<int32_t>(*attr);
+      if (getLen())
+        if (auto c = ::mlir::getConstantIntValue(getLen()))
+          return static_cast<int32_t>(*c);
+      return std::nullopt;
+    }
+
+    // True when the BD carries an explicit length (runtime operand or
+    // static_len attribute), even a runtime one for which getConstantLen() is
+    // nullopt.
+    bool hasLen() { return getLen() || getStaticLen().has_value(); }
+    bool hasOffset() { return getOffset() || getStaticOffset().has_value(); }
+
+    // sizes/strides as mixed static/dynamic index lists (DynamicIndexList),
+    // mirroring aiex.npu.dma_memcpy_nd. Outermost dimension first.
+    ::llvm::SmallVector<::mlir::OpFoldResult> getMixedSizes();
+    ::llvm::SmallVector<::mlir::OpFoldResult> getMixedStrides();
+
+    // Reconstruct the historical BDDimLayoutAttr list (outermost-first) by
+    // folding the mixed sizes/strides to constants. Returns:
+    //   - empty vector if there are no dimensions (linear transfer);
+    //   - nullopt (and calls emitError) if any size/stride is a runtime value
+    //     on this static path, or the sizes/strides counts disagree.
+    std::optional<::llvm::SmallVector<BDDimLayoutAttr>>
+    getFoldedDimensions(::llvm::function_ref<::mlir::InFlightDiagnostic()> emitError);
+    // Convenience: fold with a default error emitter (this->emitOpError()).
+    std::optional<::llvm::SmallVector<BDDimLayoutAttr>> getConstantDimensions();
+
     uint64_t getLenInBytes() {
-      if (std::optional<int32_t> len = getLen(); len.has_value())
+      if (std::optional<int32_t> len = getConstantLen(); len.has_value())
         return static_cast<uint64_t>(static_cast<uint32_t>(len.value())) *
                static_cast<uint64_t>(getBufferElementTypeWidthInBytes());
       auto memrefType = llvm::dyn_cast<mlir::MemRefType>(getBuffer().getType());
@@ -1023,7 +1108,7 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
              static_cast<uint64_t>(getBufferElementTypeWidthInBytes());
     }
     int64_t getOffsetInBytes() {
-      return static_cast<int64_t>(getOffset()) *
+      return static_cast<int64_t>(getConstantOffset().value_or(0)) *
              static_cast<int64_t>(getBufferElementTypeWidthInBytes());
     }
   }];
@@ -1032,56 +1117,37 @@ def AIE_DMABDOp: AIE_Op<"dma_bd", []> {
   let hasCanonicalizer = 1;
   let builders = [
     OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len), [{
-      $_state.addOperands(buffer);
-      $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
-      $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
+      buildWithConstants($_builder, $_state, buffer, offset, len,
+                         BDDimLayoutArrayAttr{}, BDPadLayoutArrayAttr{},
+                         PacketInfoAttr{});
     }]>,
     OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDDimLayoutArrayAttr":$dims), [{
-      $_state.addOperands(buffer);
-      $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
-      $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
-      $_state.addAttribute("dimensions", dims);
+      buildWithConstants($_builder, $_state, buffer, offset, len, dims,
+                         BDPadLayoutArrayAttr{}, PacketInfoAttr{});
     }]>,
     OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDPadLayoutArrayAttr":$paddims), [{
-      $_state.addOperands(buffer);
-      $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
-      $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
-      $_state.addAttribute("pad_dimensions", paddims);
+      buildWithConstants($_builder, $_state, buffer, offset, len,
+                         BDDimLayoutArrayAttr{}, paddims, PacketInfoAttr{});
     }]>,
     OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDDimLayoutArrayAttr":$dims, "BDPadLayoutArrayAttr":$paddims), [{
-      $_state.addOperands(buffer);
-      $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
-      $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
-      $_state.addAttribute("dimensions", dims);
-      $_state.addAttribute("pad_dimensions", paddims);
+      buildWithConstants($_builder, $_state, buffer, offset, len, dims, paddims,
+                         PacketInfoAttr{});
     }]>,
     OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "PacketInfoAttr":$pkt), [{
-      $_state.addOperands(buffer);
-      $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
-      $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
-      $_state.addAttribute("packet", pkt);
+      buildWithConstants($_builder, $_state, buffer, offset, len,
+                         BDDimLayoutArrayAttr{}, BDPadLayoutArrayAttr{}, pkt);
     }]>,
     OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDDimLayoutArrayAttr":$dims, "PacketInfoAttr":$pkt), [{
-      $_state.addOperands(buffer);
-      $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
-      $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
-      $_state.addAttribute("dimensions", dims);
-      $_state.addAttribute("packet", pkt);
+      buildWithConstants($_builder, $_state, buffer, offset, len, dims,
+                         BDPadLayoutArrayAttr{}, pkt);
     }]>,
     OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDPadLayoutArrayAttr":$paddims, "PacketInfoAttr":$pkt), [{
-      $_state.addOperands(buffer);
-      $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
-      $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
-      $_state.addAttribute("pad_dimensions", paddims);
-      $_state.addAttribute("packet", pkt);
+      buildWithConstants($_builder, $_state, buffer, offset, len,
+                         BDDimLayoutArrayAttr{}, paddims, pkt);
     }]>,
     OpBuilder<(ins "mlir::Value":$buffer, "int":$offset, "int":$len, "BDDimLayoutArrayAttr":$dims, "BDPadLayoutArrayAttr":$paddims, "PacketInfoAttr":$pkt), [{
-      $_state.addOperands(buffer);
-      $_state.addAttribute("offset", $_builder.getI32IntegerAttr(offset));
-      $_state.addAttribute("len", $_builder.getI32IntegerAttr(len));
-      $_state.addAttribute("dimensions", dims);
-      $_state.addAttribute("pad_dimensions", paddims);
-      $_state.addAttribute("packet", pkt);
+      buildWithConstants($_builder, $_state, buffer, offset, len, dims, paddims,
+                         pkt);
     }]>
   ];
 }
@@ -1104,7 +1170,7 @@ def AIE_DMAStartOp: AIE_Op<"dma_start", [
         aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
         aie.use_lock(%lock0, "Acquire", 0)
-        aie.dma_bd(%buffer : memref<16 x f32>, 0, 16)
+        aie.dma_bd(%buffer : memref<16xf32> offset = 0 len = 16)
         aie.use_lock(%lock0, "Release", 1)
         br ^bd0
       ^end:
@@ -1186,7 +1252,7 @@ def AIE_MemOp: AIE_Op<"mem", [
           %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^end)
         ^bd0:
           aie.use_lock(%lock, "Acquire", 0)
-          aie.dma_bd(%buf : memref<64xi16>, 0, 64)
+          aie.dma_bd(%buf : memref<64xi16> offset = 0 len = 64)
           aie.use_lock(%lock, "Release", 1)
           aie.next_bd ^bd0
         ^end:
@@ -1229,7 +1295,7 @@ def AIE_MemTileDMAOp: AIE_Op<"memtile_dma", [
           %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^end)
         ^bd0:
           aie.use_lock(%lock, "Acquire", 0)
-          aie.dma_bd(%buf : memref<64xi16>, 0, 64>, 0)
+          aie.dma_bd(%buf : memref<64xi16> offset = 0 len = 64)
           aie.use_lock(%lock, "Release", 1)
           aie.next_bd ^bd0
         ^end:
@@ -1265,7 +1331,7 @@ def AIE_NextBDOp: AIE_Op<"next_bd", [Terminator]> {
           %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^end)
         ^bd0:
           aie.use_lock(%lock, "Acquire", 0)
-          aie.dma_bd(%buf : memref<64xi16>, 0, 64)
+          aie.dma_bd(%buf : memref<64xi16> offset = 0 len = 64)
           aie.use_lock(%lock, "Release", 1)
           aie.next_bd ^bd0
         ^end:

@@ -11,7 +11,7 @@ module {
     aie.runtime_sequence(%arg0: memref<8xi16>) {
       // CHECK: Packet Type exceeds the maximum supported by 3 bits.
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<8xi16>, 0, 8) {bd_id = 7 : i32, packet = #aie.packet_info<pkt_type = 8, pkt_id = 2>}
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8) {bd_id = 7 : i32, packet = #aie.packet_info<pkt_type = 8, pkt_id = 2>}
         aie.end
       } {issue_token = true}
     }

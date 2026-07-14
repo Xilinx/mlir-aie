@@ -11,6 +11,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/ControlFlow/IR/ControlFlowOps.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
 #include "mlir/IR/Attributes.h"
@@ -132,6 +133,7 @@ struct AIELowerMemcpyPass
 
     ConversionTarget target(getContext());
     RewritePatternSet patterns(&getContext());
+    target.addLegalDialect<arith::ArithDialect>();
     target.addLegalOp<DMAStartOp>();
     target.addLegalOp<DMABDOp>();
     target.addLegalOp<UseTokenOp>();

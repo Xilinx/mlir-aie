@@ -16,8 +16,7 @@ module {
     aie.runtime_sequence(%arg0: memref<32xi8>) {
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
           // expected-error@+1 {{Stride 0 must be a positive integer}}
-          aie.dma_bd(%arg0 : memref<32xi8>, 4, 32,
-                     [<size=4, stride=0>]) {bd_id = 0 : i32}
+          aie.dma_bd(%arg0 : memref<32xi8> offset = 4 len = 32 sizes = [4] strides = [0]) {bd_id = 0 : i32}
           aie.end
       }
     }

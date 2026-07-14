@@ -18,7 +18,7 @@ module {
       aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
         // expected-error@+1 {{'aie.dma_bd' op Data exceeds len after padding.}}
-        aie.dma_bd(%buf : memref<256xi32>, 0, 4, [<size = 2, stride = 128>], [<const_pad_before = 2, const_pad_after = 1>], pad_value = 0)
+        aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 4 sizes = [2] strides = [128] pad [<const_pad_before = 2, const_pad_after = 1>] pad_value = 0)
         aie.next_bd ^end
       ^end:
         aie.end

@@ -19,6 +19,7 @@
 
 // RUN: aie-opt --canonicalize --split-input-file %s | FileCheck %s
 
+
 // -----
 
 // A contiguous aiex.npu.dma_memcpy_nd next to a aiex.dma_configure_task.
@@ -46,7 +47,7 @@ module {
       // This DMA task op uses a different op (aie.dma_bd) and is not touched
       // by the NpuDmaMemcpyNdOp canonicalization pattern.
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<2x512xi32>, 0, 1024) {bd_id = 0 : i32}
+        aie.dma_bd(%arg0 : memref<2x512xi32> offset = 0 len = 1024) {bd_id = 0 : i32}
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%t)
@@ -55,6 +56,7 @@ module {
     aie.shim_dma_allocation @of_fromMem (%tile_0_0, MM2S, 0)
   }
 }
+
 
 // -----
 

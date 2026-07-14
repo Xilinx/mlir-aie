@@ -18,10 +18,8 @@
 // CHECK:     %shim_dma_2_0 = aie.shim_dma(%shim_noc_tile_2_0) {
 // CHECK:       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
-// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%of_stream_cons_lock_0, AcquireGreaterEqual, %{{.*}})
-// CHECK:       aie.dma_bd(%ext_buffer_in : memref<16xi32>, 0, 16)
-// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.dma_bd(%ext_buffer_in : memref<16xi32> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%of_stream_prod_lock_0, Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb1
 // CHECK:     ^bb2:  // pred: ^bb0

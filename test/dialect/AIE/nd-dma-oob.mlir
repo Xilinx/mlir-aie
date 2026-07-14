@@ -27,7 +27,7 @@ module @tutorial_2b {
             // attempt an access at index 128, which is OOB for a 128xi32 
             // memref.
             // expected-error@+1 {{Specified stride(s) and size(s) result in out of bounds access}}
-            aie.dma_bd(%buf14 : memref<128xi32>, 0, 128, [<size = 2, stride = 128>])
+            aie.dma_bd(%buf14 : memref<128xi32> offset = 0 len = 128 sizes = [2] strides = [128])
             aie.next_bd ^end
           ^end: 
             aie.end

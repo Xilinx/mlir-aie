@@ -27,58 +27,136 @@
 // like, where lock acquire/release numbers are not known statically. The
 // test currently fails because this is only a concept and not yet implemented:
 
-// CHECK-LABEL: module @aie2_dynamic_locks {
-// CHECK:         aie.device(xcve2302) {
-// CHECK:           %[[VAL_0:.*]] = aie.tile(2, 2)
-// CHECK:           %[[VAL_1:.*]] = aie.tile(4, 3)
-// CHECK:           %[[VAL_2:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "fifo_cons_buff_0"} : memref<i64>
-// CHECK:           %[[VAL_3:.*]] = aie.lock(%[[VAL_1]], 0) {init = 1 : i32, sym_name = "fifo_cons_prod_lock_0"}
-// CHECK:           %[[VAL_4:.*]] = aie.lock(%[[VAL_1]], 1) {init = 0 : i32, sym_name = "fifo_cons_cons_lock_0"}
-// CHECK:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_0]]) {sym_name = "fifo_buff_0"} : memref<i64>
-// CHECK:           %[[VAL_6:.*]] = aie.lock(%[[VAL_0]], 0) {init = 1 : i32, sym_name = "fifo_prod_lock_0"}
-// CHECK:           %[[VAL_7:.*]] = aie.lock(%[[VAL_0]], 1) {init = 0 : i32, sym_name = "fifo_cons_lock_0"}
-// CHECK:           aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_1]], DMA : 0)
-// CHECK:           %[[VAL_8:.*]] = aie.core(%[[VAL_0]]) {
-// CHECK:             %[[VAL_9:.*]] = arith.constant 0 : index
-// CHECK:             %[[VAL_10:.*]] = arith.constant 1 : index
-// CHECK:             %[[VAL_11:.*]] = arith.constant 3 : index
-// CHECK:             %[[VAL_12:.*]] = arith.constant 16 : index
-// CHECK:             %[[VAL_13:.*]] = arith.constant 1 : i64
-// CHECK:             %[[VAL_14:.*]] = arith.constant 1 : i32
-// CHECK:             aie.use_lock(%[[VAL_6]], AcquireGreaterEqual, %[[VAL_14]])
-// CHECK:             scf.for %[[VAL_15:.*]] = %[[VAL_9]] to %[[VAL_11]] step %[[VAL_10]] {
-// CHECK:               memref.store %[[VAL_13]], %[[VAL_5]][] : memref<i64>
-// CHECK:               %[[VAL_16:.*]] = arith.constant 1 : i32
-// CHECK:               aie.use_lock(%[[VAL_7]], Release, %[[VAL_16]])
-// CHECK:             }
-// CHECK:             aie.end
-// CHECK:           }
-// CHECK:           %[[VAL_17:.*]] = aie.mem(%[[VAL_0]]) {
-// CHECK:             %[[VAL_18:.*]] = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
-// CHECK:           ^bb1:
-// CHECK:             %[[VAL_19:.*]] = arith.constant 1 : i32
-// CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[VAL_19]])
-// CHECK:             aie.dma_bd(%[[VAL_5]] : memref<i64>, 0, 1)
-// CHECK:             %[[VAL_20:.*]] = arith.constant 1 : i32
-// CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[VAL_20]])
-// CHECK:             aie.next_bd ^bb1
-// CHECK:           ^bb2:
-// CHECK:             aie.end
-// CHECK:           }
-// CHECK:           %[[VAL_21:.*]] = aie.mem(%[[VAL_1]]) {
-// CHECK:             %[[VAL_22:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
-// CHECK:           ^bb1:
-// CHECK:             %[[VAL_23:.*]] = arith.constant 1 : i32
-// CHECK:             aie.use_lock(%[[VAL_3]], AcquireGreaterEqual, %[[VAL_23]])
-// CHECK:             aie.dma_bd(%[[VAL_2]] : memref<i64>, 0, 1)
-// CHECK:             %[[VAL_24:.*]] = arith.constant 1 : i32
-// CHECK:             aie.use_lock(%[[VAL_4]], Release, %[[VAL_24]])
-// CHECK:             aie.next_bd ^bb1
-// CHECK:           ^bb2:
-// CHECK:             aie.end
-// CHECK:           }
-// CHECK:         }
+// CHECK: module @aie2_dynamic_locks {
+// CHECK:   aie.device(xcve2302) {
+// CHECK:     %[[tile23:.*]] = aie.tile(2, 2)
+// CHECK:     %[[tile43:.*]] = aie.tile(4, 3)
+
+// The setup for flows, locks, and buffers can be the same in the dynamic case:
+// CHECK:     %[[fifo_buff_0:.*]] = aie.buffer(%[[tile23]]) {sym_name = "fifo_buff_0"} : memref<i64>
+// CHECK:     %[[fifo_prod_lock:.*]] = aie.lock(%[[tile23]], 0) {init = 1 : i32, sym_name = "fifo_prod_lock_0"}
+// CHECK:     %[[fifo_cons_lock:.*]] = aie.lock(%[[tile23]], 1) {init = 0 : i32, sym_name = "fifo_cons_lock_0"}
+// CHECK:     %[[fifo_cons_buff_0:.*]] = aie.buffer(%[[tile43]]) {sym_name = "fifo_cons_buff_0"} : memref<i64>
+// CHECK:     %[[fifo_cons_prod_lock:.*]] = aie.lock(%[[tile43]], 0) {init = 1 : i32, sym_name = "fifo_cons_prod_lock_0"}
+// CHECK:     %[[fifo_cons_cons_lock:.*]] = aie.lock(%[[tile43]], 1) {init = 0 : i32, sym_name = "fifo_cons_cons_lock_0"}
+// CHECK:     aie.flow(%[[tile23]], DMA : 0, %[[tile43]], DMA : 0)
+
+// CHECK:     %[[ssa8:.*]] = aie.core(%[[tile23]]) {
+// CHECK:       %c0 = arith.constant 0 : index
+// CHECK:       %c1 = arith.constant 1 : index
+// CHECK:       %c3 = arith.constant 3 : index
+// CHECK:       %c16 = arith.constant 16 : index
+// CHECK:       %c1_i64 = arith.constant 1 : i64
+
+// We need a SSA value that keeps track of the number of objects currently
+// held so the lock acquire can be appropriately increased/decreased.
+// At a lower level, we would do this with PHI nodes, which in MLIR look like
+// arguments to the basic blocks. The "scf" dialect can also generated phi
+// nodes by using iter_args, and scf.yield, which we use here (untested,
+// and I have not used this before so it may be wrong, but the idea is to
+// have the value change from iteration to iteration).
+
+// This is what currently is being generated:
+//              aie.use_lock(%[[fifo_prod_lock]], AcquireGreaterEqual, %{{.*}})
+// Instead:
+//   Initialize the number of objects held, which is always zero at the
+//   beginning before any acquires:
+// CHECK:       %[[lock0_num0:.*]] = arith.constant 0 : i32
+//   The number of objects to acquire is statically encoded as a constant (this
+//   is XXX copied straight from the argument to acquire<Produce>(..., XXX))
+// CHECK:       %[[uselock0_target:.*]] = arith.constant 1 : i32
+//   Calculate the difference between currently held objects and how many we
+//   target, then acquire that many:
+// CHECK:       %[[uselock0_diff:.*]] = arith.subi %[[lock0_num0]], %[[uselock0_target:.*]] : i32
+//   If the difference is greater than zero, this means we want more objects
+//   than we already hold. Therefore we need to acquire a lock. If it is smaller
+//   (the below SSA evaluates to false), no additional locks need to be
+//   acquired.
+// CHECK:       %[[uselock0_need_acq:.*]] = arith.cmpi "sgt" %[[uselock0_diff]], 1 : i32
+//   If we enter the if condition, we acquire more objects, thus must update our
+//   SSA value for the number of objects currently held.
+// CHECK:       %[[lock0_num1:.*]] = scf.if %[[uselock0_need_acq]] -> (i32) {
+//   The only thing that is different about acquiring the lock is that we use
+//   a new useLockDyn that takes an SSA value instead of a constant for the
+//   lock value, so that it can be dynamic.
+// CHECK:         aiex.useLockDyn(%[[fifo_prod_lock]], AcquireGreaterEqual, %[[uselock0_diff]])
+//   We also need to update how many elements we hold now that we acquired more:
+// CHECK:         %[[uselock0_newnum:.*]] = arith.addi %[[lock0_num0]], 1 : i32
+// CHECK:         scf.yield %[[uselock0_newnum]]
+// CHECK:       } else {
+//   The number of objects held remains unchanged since we did not need to
+//   acquire any additional ones:
+// CHECK:         scf.yield %[[lock0_num0]]
+//              }
+
+// No release in input code here, so there's nothing for lowering it here
+// either. Let's go into the loop.
+
+// CHECK:       %c1_0 = arith.constant 1 : index
+
+// The number of objects held varies from iteration to iteration. In scf we
+// can treat this as if the loop was a function and the number of locks held
+// were an argument to the loop function. `scf.yield` tells what the value for
+// that argument will be on the next iteration. The value assigned in the
+// `iter_args()` is the value it will hold on the first iteration.
+// CHECK:       %[[lock0_num2]] = scf.for %arg0 = %c0 to %c3 step %c1_0 iter_args(%[[lock0_num_iter:.*]] = %[[lock0_num1]]) -> (i32) {
+
+// Acquire inside loop:
+//   The current implementation does not generate a lock acquire here at all.
+//   We need one, but only on the second iteration. The same code as above will
+//   figure this out:
+// CHECK:         %[[uselock1_target:.*]] = arith.constant 1 : i32
+// CHECK:         %[[uselock1_diff:.*]] = arith.subi %[[lock0_num_iter]], %[[uselock1_target:.*]] : i32
+// CHECK:         %[[uselock1_need_acq:.*]] = arith.cmpi "sgt" %[[uselock1_diff]], 1 : i32
+// CHECK:         %[[lock0_num3:.*]] = scf.if %[[uselock1_need_acq]] -> (i32) {
+// CHECK:           aiex.useLockDyn(%[[fifo_prod_lock]], AcquireGreaterEqual, %[[uselock1_diff]])
+// CHECK:           %[[uselock1_newnum:.*]] = arith.addi %[[lock0_num_iter]], 1 : i32
+// CHECK:           scf.yield %[[uselock1_newnum]]
+// CHECK:         } else {
+// CHECK:           scf.yield %[[lock0_num_iter]]
+//                }
+// CHECK:         memref.store %c1_i64, %[[fifo_buff_0]][] : memref<i64>
+
+// Release inside loop:
+//   The release will always release, but additionally to
+// CHECK:         aie.use_lock(%[[fifo_cons_lock]], Release, %{{.*}})
+// CHECK:         %[[lock0_num4:.*]] = arith.subi %[[lock0_num3]], 1 : i32
+
+// At the very end of the loop, we need to yield how many objects are being held
+// after all the acquires and releases inside the loop:
+// CHECK:         scf.yield %lock0_num4
 // CHECK:       }
+// CHECK:       aie.end
+// CHECK:     }
+
+// The DMAs should remain all the same and will be configured statically:
+// CHECK:     %[[ssa9:.*]] = aie.mem(%[[tile23]]) {
+// CHECK:       %11 = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
+// CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
+// CHECK:       aie.use_lock(%[[fifo_cons_lock]], AcquireGreaterEqual, %{{.*}})
+// CHECK:       aie.dma_bd(%[[fifo_buff_0]] : memref<i64> offset = {{.*}} len = {{.*}} sizes = {{.*}} strides = {{.*}})
+// CHECK:       aie.use_lock(%[[fifo_prod_lock]], Release, %{{.*}})
+// CHECK:       aie.next_bd ^bb1
+// CHECK:     ^bb2:  // pred: ^bb0
+// CHECK:       aie.end
+// CHECK:     }
+// CHECK:     %10 = aie.mem(%[[tile43]]) {
+// CHECK:       %11 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
+// CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb1
+// CHECK:       aie.use_lock(%[[fifo_cons_prod_lock]], AcquireGreaterEqual, %{{.*}})
+// CHECK:       aie.dma_bd(%[[fifo_cons_buff_0]] : memref<i64> offset = {{.*}} len = {{.*}} sizes = {{.*}} strides = {{.*}})
+// CHECK:       aie.use_lock(%[[fifo_cons_cons_lock]], Release, %{{.*}})
+// CHECK:       aie.next_bd ^bb1
+// CHECK:     ^bb2:  // pred: ^bb0
+// CHECK:       aie.end
+// CHECK:     }
+// CHECK:   }
+// CHECK: }
+
+
+// Again, none of this has been implemented yet, so we expect this all to fail:
+// XFAIL: *
+
 
 module @aie2_dynamic_locks {
     aie.device(xcve2302) {

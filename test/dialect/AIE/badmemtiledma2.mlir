@@ -44,39 +44,39 @@ module @test {
         ^dma6:
           %dma6 = aie.dma_start("MM2S", 6, ^bd6, ^end)
         ^bd0:
-          aie.dma_bd(%buf_0 : memref<256xi32>, 0, 256)
-          %c1_ul0 = arith.constant 1 : i32
-          aie.use_lock(%lock_0, Release, %c1_ul0)
+          aie.dma_bd(%buf_0 : memref<256xi32> offset = 0 len = 256)
+          %c1_ul1 = arith.constant 1 : i32
+          aie.use_lock(%lock_0, Release, %c1_ul1)
           aie.next_bd ^bd0
         ^bd1:
-          aie.dma_bd(%buf_1 : memref<256xi32>, 0, 256)
-          %c1_ul1 = arith.constant 1 : i32
-          aie.use_lock(%lock_1, Release, %c1_ul1)
+          aie.dma_bd(%buf_1 : memref<256xi32> offset = 0 len = 256)
+          %c1_ul2 = arith.constant 1 : i32
+          aie.use_lock(%lock_1, Release, %c1_ul2)
           aie.next_bd ^bd1
         ^bd2:
-          aie.dma_bd(%buf_2 : memref<256xi32>, 0, 256)
-          %c1_ul2 = arith.constant 1 : i32
-          aie.use_lock(%lock_2, Release, %c1_ul2)
+          aie.dma_bd(%buf_2 : memref<256xi32> offset = 0 len = 256)
+          %c1_ul3 = arith.constant 1 : i32
+          aie.use_lock(%lock_2, Release, %c1_ul3)
           aie.next_bd ^bd2
         ^bd3:
-          aie.dma_bd(%buf_3 : memref<256xi32>, 0, 256)
-          %c1_ul3 = arith.constant 1 : i32
-          aie.use_lock(%lock_3, Release, %c1_ul3)
+          aie.dma_bd(%buf_3 : memref<256xi32> offset = 0 len = 256)
+          %c1_ul4 = arith.constant 1 : i32
+          aie.use_lock(%lock_3, Release, %c1_ul4)
           aie.next_bd ^bd3
         ^bd4:
-          aie.dma_bd(%buf_4 : memref<256xi32>, 0, 256)
-          %c1_ul4 = arith.constant 1 : i32
-          aie.use_lock(%lock_4, Release, %c1_ul4)
+          aie.dma_bd(%buf_4 : memref<256xi32> offset = 0 len = 256)
+          %c1_ul5 = arith.constant 1 : i32
+          aie.use_lock(%lock_4, Release, %c1_ul5)
           aie.next_bd ^bd4
         ^bd5:
-          aie.dma_bd(%buf_5 : memref<256xi32>, 0, 256)
-          %c1_ul5 = arith.constant 1 : i32
-          aie.use_lock(%lock_5, Release, %c1_ul5)
+          aie.dma_bd(%buf_5 : memref<256xi32> offset = 0 len = 256)
+          %c1_ul6 = arith.constant 1 : i32
+          aie.use_lock(%lock_5, Release, %c1_ul6)
           aie.next_bd ^bd5
         ^bd6:
-          aie.dma_bd(%buf_6 : memref<256xi32>, 0, 256)
-          %c1_ul6 = arith.constant 1 : i32
-          aie.use_lock(%lock_6, Release, %c1_ul6)
+          aie.dma_bd(%buf_6 : memref<256xi32> offset = 0 len = 256)
+          %c1_ul7 = arith.constant 1 : i32
+          aie.use_lock(%lock_6, Release, %c1_ul7)
           aie.next_bd ^bd6
         ^end:
           aie.end

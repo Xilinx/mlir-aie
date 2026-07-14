@@ -41,20 +41,20 @@ module {
     %mem_0_2 = aie.mem(%tile_0_2) {
       %0 = aie.dma_start(S2MM, 0, ^s2mm, ^mm2s_entry)
     ^s2mm:
-      %c1_ul0 = arith.constant 1 : i32
-      aie.use_lock(%lock_in, AcquireGreaterEqual, %c1_ul0)
-      aie.dma_bd(%core_buf : memref<256xi32>, 0, 256)
       %c1_ul1 = arith.constant 1 : i32
-      aie.use_lock(%lock_out, Release, %c1_ul1)
+      aie.use_lock(%lock_in, AcquireGreaterEqual, %c1_ul1)
+      aie.dma_bd(%core_buf : memref<256xi32> offset = 0 len = 256)
+      %c1_ul2 = arith.constant 1 : i32
+      aie.use_lock(%lock_out, Release, %c1_ul2)
       aie.next_bd ^s2mm
     ^mm2s_entry:
       %1 = aie.dma_start(MM2S, 0, ^mm2s, ^end)
     ^mm2s:
-      %c1_ul2 = arith.constant 1 : i32
-      aie.use_lock(%lock_out, AcquireGreaterEqual, %c1_ul2)
-      aie.dma_bd(%core_buf : memref<256xi32>, 0, 256)
       %c1_ul3 = arith.constant 1 : i32
-      aie.use_lock(%lock_in, Release, %c1_ul3)
+      aie.use_lock(%lock_out, AcquireGreaterEqual, %c1_ul3)
+      aie.dma_bd(%core_buf : memref<256xi32> offset = 0 len = 256)
+      %c1_ul4 = arith.constant 1 : i32
+      aie.use_lock(%lock_in, Release, %c1_ul4)
       aie.next_bd ^mm2s
     ^end:
       aie.end
@@ -69,7 +69,7 @@ module {
       // transfers into output[0..5119]. Uses repeat_count to avoid
       // consuming shim BDs for the receive side.
       %recv = aiex.dma_configure_task(%tile_0_0, S2MM, 0) {
-        aie.dma_bd(%output : memref<5120xi32>, 0, 5120, [<size = 20, stride = 256>, <size = 256, stride = 1>]) {bd_id = 8 : i32}
+        aie.dma_bd(%output : memref<5120xi32> offset = 0 len = 5120 sizes = [20, 256] strides = [256, 1]) {bd_id = 8 : i32}
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%recv)
@@ -78,49 +78,49 @@ module {
       // Pattern: a[0], b[0], a[1], b[1], a[2], b[2], a[3], b[3]
 
       %t0 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%buf_a : memref<2560xi32>, 0, 256) {bd_id = 0 : i32}
+        aie.dma_bd(%buf_a : memref<2560xi32> offset = 0 len = 256) {bd_id = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%t0)
 
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%buf_b : memref<2560xi32>, 0, 256) {bd_id = 1 : i32}
+        aie.dma_bd(%buf_b : memref<2560xi32> offset = 0 len = 256) {bd_id = 1 : i32}
         aie.end
       }
       aiex.dma_start_task(%t1)
 
       %t2 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%buf_a : memref<2560xi32>, 256, 256) {bd_id = 2 : i32}
+        aie.dma_bd(%buf_a : memref<2560xi32> offset = 256 len = 256) {bd_id = 2 : i32}
         aie.end
       }
       aiex.dma_start_task(%t2)
 
       %t3 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%buf_b : memref<2560xi32>, 256, 256) {bd_id = 3 : i32}
+        aie.dma_bd(%buf_b : memref<2560xi32> offset = 256 len = 256) {bd_id = 3 : i32}
         aie.end
       }
       aiex.dma_start_task(%t3)
 
       %t4 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%buf_a : memref<2560xi32>, 512, 256) {bd_id = 4 : i32}
+        aie.dma_bd(%buf_a : memref<2560xi32> offset = 512 len = 256) {bd_id = 4 : i32}
         aie.end
       }
       aiex.dma_start_task(%t4)
 
       %t5 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%buf_b : memref<2560xi32>, 512, 256) {bd_id = 5 : i32}
+        aie.dma_bd(%buf_b : memref<2560xi32> offset = 512 len = 256) {bd_id = 5 : i32}
         aie.end
       }
       aiex.dma_start_task(%t5)
 
       %t6 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%buf_a : memref<2560xi32>, 768, 256) {bd_id = 6 : i32}
+        aie.dma_bd(%buf_a : memref<2560xi32> offset = 768 len = 256) {bd_id = 6 : i32}
         aie.end
       }
       aiex.dma_start_task(%t6)
 
       %t7 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%buf_b : memref<2560xi32>, 768, 256) {bd_id = 7 : i32}
+        aie.dma_bd(%buf_b : memref<2560xi32> offset = 768 len = 256) {bd_id = 7 : i32}
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%t7)
@@ -138,49 +138,49 @@ module {
       // ===== Batch 1: MM2S tasks 8-15, BD IDs 0-7 reused =====
 
       %t8 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%buf_a : memref<2560xi32>, 1024, 256) {bd_id = 0 : i32}
+        aie.dma_bd(%buf_a : memref<2560xi32> offset = 1024 len = 256) {bd_id = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%t8)
 
       %t9 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%buf_b : memref<2560xi32>, 1024, 256) {bd_id = 1 : i32}
+        aie.dma_bd(%buf_b : memref<2560xi32> offset = 1024 len = 256) {bd_id = 1 : i32}
         aie.end
       }
       aiex.dma_start_task(%t9)
 
       %t10 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%buf_a : memref<2560xi32>, 1280, 256) {bd_id = 2 : i32}
+        aie.dma_bd(%buf_a : memref<2560xi32> offset = 1280 len = 256) {bd_id = 2 : i32}
         aie.end
       }
       aiex.dma_start_task(%t10)
 
       %t11 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%buf_b : memref<2560xi32>, 1280, 256) {bd_id = 3 : i32}
+        aie.dma_bd(%buf_b : memref<2560xi32> offset = 1280 len = 256) {bd_id = 3 : i32}
         aie.end
       }
       aiex.dma_start_task(%t11)
 
       %t12 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%buf_a : memref<2560xi32>, 1536, 256) {bd_id = 4 : i32}
+        aie.dma_bd(%buf_a : memref<2560xi32> offset = 1536 len = 256) {bd_id = 4 : i32}
         aie.end
       }
       aiex.dma_start_task(%t12)
 
       %t13 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%buf_b : memref<2560xi32>, 1536, 256) {bd_id = 5 : i32}
+        aie.dma_bd(%buf_b : memref<2560xi32> offset = 1536 len = 256) {bd_id = 5 : i32}
         aie.end
       }
       aiex.dma_start_task(%t13)
 
       %t14 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%buf_a : memref<2560xi32>, 1792, 256) {bd_id = 6 : i32}
+        aie.dma_bd(%buf_a : memref<2560xi32> offset = 1792 len = 256) {bd_id = 6 : i32}
         aie.end
       }
       aiex.dma_start_task(%t14)
 
       %t15 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%buf_b : memref<2560xi32>, 1792, 256) {bd_id = 7 : i32}
+        aie.dma_bd(%buf_b : memref<2560xi32> offset = 1792 len = 256) {bd_id = 7 : i32}
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%t15)
@@ -198,25 +198,25 @@ module {
       // ===== Batch 2: MM2S tasks 16-19, BD IDs 0-3 reused again =====
 
       %t16 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%buf_a : memref<2560xi32>, 2048, 256) {bd_id = 0 : i32}
+        aie.dma_bd(%buf_a : memref<2560xi32> offset = 2048 len = 256) {bd_id = 0 : i32}
         aie.end
       }
       aiex.dma_start_task(%t16)
 
       %t17 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%buf_b : memref<2560xi32>, 2048, 256) {bd_id = 1 : i32}
+        aie.dma_bd(%buf_b : memref<2560xi32> offset = 2048 len = 256) {bd_id = 1 : i32}
         aie.end
       }
       aiex.dma_start_task(%t17)
 
       %t18 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%buf_a : memref<2560xi32>, 2304, 256) {bd_id = 2 : i32}
+        aie.dma_bd(%buf_a : memref<2560xi32> offset = 2304 len = 256) {bd_id = 2 : i32}
         aie.end
       }
       aiex.dma_start_task(%t18)
 
       %t19 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%buf_b : memref<2560xi32>, 2304, 256) {bd_id = 3 : i32}
+        aie.dma_bd(%buf_b : memref<2560xi32> offset = 2304 len = 256) {bd_id = 3 : i32}
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%t19)

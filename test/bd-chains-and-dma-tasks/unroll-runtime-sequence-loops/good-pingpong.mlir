@@ -29,14 +29,15 @@ aie.device(npu1) {
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
     %c4 = arith.constant 4 : index
+    %c0_i32 = arith.constant 0 : i32
     %init = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      aie.dma_bd(%arg0 : memref<1024xi32>, 0, 256)
+      aie.dma_bd(%arg0 : memref<1024xi32> offset = 0 len = 256)
       aie.end
     }
     aiex.dma_start_task(%init)
     %last = scf.for %i = %c1 to %c4 step %c1 iter_args(%prev = %init) -> (index) {
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<1024xi32>, 0, 256)
+        aie.dma_bd(%arg0 : memref<1024xi32> offset = 0 len = 256)
         aie.end
       }
       aiex.dma_start_task(%t)
@@ -47,6 +48,8 @@ aie.device(npu1) {
     aiex.dma_free_task(%last)
   }
 }
+
+
 
 // -----
 
@@ -59,8 +62,9 @@ aie.device(npu1) {
 aie.device(npu1) {
   %tile_0_0 = aie.tile(0, 0)
   aie.runtime_sequence @straight_line_unaffected(%arg0: memref<1024xi32>) {
+    %c0_i32 = arith.constant 0 : i32
     %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-      aie.dma_bd(%arg0 : memref<1024xi32>, 0, 1024)
+      aie.dma_bd(%arg0 : memref<1024xi32> offset = 0 len = 1024)
       aie.end
     }
     aiex.dma_start_task(%t)

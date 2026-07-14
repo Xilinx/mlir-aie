@@ -15,7 +15,9 @@
 //
 //===----------------------------------------------------------------------===//
 
+
 // -----
+
 // Test 1: NpuDmaMemcpyNdOp with d0 > 1023 (contiguous) is accepted and folded.
 //
 // RUN: aie-opt --canonicalize --split-input-file %s | FileCheck %s --check-prefix=CANON
@@ -37,7 +39,9 @@ module {
   }
 }
 
+
 // -----
+
 // Test 2: NpuDmaMemcpyNdOp contiguous with i8 (lineWidthInBytes > 1023).
 //         Motivating case: 1920x1080 RGBA image as int8.
 //         d0 = 7680 i8 elements = 1920 in 32-bit word units, d1 = 1080.
@@ -57,14 +61,18 @@ module {
   }
 }
 
+
 // -----
+
 // Test 3: After aie-dma-tasks-to-npu, a contiguous shim BD with d0/d1 > 1023
 //         is lowered to linear mode (d0_size=d1_size=0).
 //
 // RUN: aie-opt --pass-pipeline='any(aie.device(aie-dma-tasks-to-npu))' \
 // RUN:   --split-input-file %s | FileCheck %s --check-prefix=LOWER
 //
+
 // -----
+
 // Test 4: After aie-dma-to-npu, a contiguous NpuDmaMemcpyNdOp with d0/d1>1023
 //         is lowered to linear mode.  This is the NpuDmaMemcpyNdOp counterpart
 //         of Test 3, covering the path used by hand-written MLIR files.
@@ -89,8 +97,7 @@ module {
       %0 = aiex.dma_configure_task(%shim_noc_tile_0_0, MM2S, 0) {
         // 1080 x 1920 i32: d0=1920 > 1023, d1=1080 > 1023, contiguous.
         // aie-dma-tasks-to-npu must lower to linear mode (d0_size=d1_size=0).
-        aie.dma_bd(%arg0 : memref<2073600xi32>, 0, 2073600,
-          [<size = 1080, stride = 1920>, <size = 1920, stride = 1>])
+        aie.dma_bd(%arg0 : memref<2073600xi32> offset = 0 len = 2073600 sizes = [1080, 1920] strides = [1920, 1])
           {bd_id = 0 : i32}
         aie.end
       } {issue_token = true}
@@ -100,7 +107,9 @@ module {
   }
 }
 
+
 // -----
+
 // Test 4 module: NpuDmaMemcpyNdOp with d0=1920>1023 and d1=1080>1023 lowered
 // to linear mode by aie-dma-to-npu (the NpuDmaMemcpyNdOp lowering path).
 

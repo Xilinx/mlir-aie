@@ -3,9 +3,9 @@
 
 # RUN: %python %s | FileCheck %s
 
-"""Test that Bd.dimensions forwards a multi-dimensional (strided) access
-pattern to the underlying aie.dma_bd op, emitting <size = .., stride = ..>
-dims in the lowered MLIR."""
+"""Test that Bd.sizes/strides forward a multi-dimensional (strided) access
+pattern to the underlying aie.dma_bd op, emitting the sizes/strides clause
+in the lowered MLIR."""
 
 import numpy as np
 
@@ -33,7 +33,8 @@ def emit_strided_bd():
                         buffer=buf,
                         offset=0,
                         length=n,
-                        dimensions=[(16, 16), (16, 1)],
+                        sizes=[16, 16],
+                        strides=[16, 1],
                         next="self",
                     ),
                 ],
@@ -49,5 +50,5 @@ def emit_strided_bd():
     return Program(NPU2Col1(), rt).resolve_program()
 
 
-# CHECK: aie.dma_bd({{.*}} : memref<256xi32>, 0, 256, [<size = 16, stride = 16>, <size = 16, stride = 1>])
+# CHECK: aie.dma_bd({{.*}} : memref<256xi32> len = {{.*}} sizes = [16, 16] strides = [16, 1])
 print(emit_strided_bd())

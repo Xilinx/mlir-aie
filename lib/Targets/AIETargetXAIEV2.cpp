@@ -11,6 +11,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Targets/AIETargets.h"
 
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Pass/Pass.h"
@@ -108,6 +109,8 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
     int elementWidthInBytes = 0;
     int ndims = 0;
     ArrayRef<BDDimLayoutAttr> dims;
+    // Owning storage for the folded dims; must outlive `dims` (used far below).
+    SmallVector<BDDimLayoutAttr> dimsStorage;
     //      StringRef FifoMode = disable; // FIXME: when to enable FIFO mode?
     for (auto op : block->getOps<DMABDOp>()) {
       foundBd = true;
@@ -130,8 +133,24 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
       lenA = op.getLenInBytes();
       offsetA = op.getOffsetInBytes();
       elementWidthInBytes = op.getBufferElementTypeWidthInBytes();
-      if (op.getDimensions()) {
-        dims = *op.getDimensions();
+      if (!op.getMixedSizes().empty()) {
+        // Runtime-valued sizes/strides are not supported on this static path.
+        for (mlir::OpFoldResult s : op.getMixedSizes())
+          if (!mlir::getConstantIntValue(s))
+            return op->emitOpError(
+                "runtime-valued BD size/stride is not supported on the static "
+                "XAIE lowering path; use compile-time constant sizes");
+        for (mlir::OpFoldResult s : op.getMixedStrides())
+          if (!mlir::getConstantIntValue(s))
+            return op->emitOpError(
+                "runtime-valued BD size/stride is not supported on the static "
+                "XAIE lowering path; use compile-time constant sizes");
+        std::optional<SmallVector<BDDimLayoutAttr>> folded =
+            op.getConstantDimensions();
+        if (!folded)
+          return op->emitOpError("internal error folding BD dimensions");
+        dimsStorage = std::move(*folded);
+        dims = dimsStorage;
         ndims = dims.size();
       }
     }

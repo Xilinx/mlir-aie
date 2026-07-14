@@ -17,8 +17,8 @@ module {
     aie.runtime_sequence(%arg0: memref<8xi16>) {
       // Allocate all available BD IDs
       %t1 = aiex.dma_configure_task_for @alloc0 {
-        // CHECK:   aie.dma_bd(%arg0 : memref<8xi16>, 0, 8) {bd_id = 0 : i32}
-        aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+        // CHECK:   aie.dma_bd(%arg0 : memref<8xi16> offset = {{.*}} len = {{.*}}) {bd_id = 0 : i32}
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8)
         aie.end
       }
       aiex.dma_start_task(%t1)
