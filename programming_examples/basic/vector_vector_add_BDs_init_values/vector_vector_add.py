@@ -21,10 +21,10 @@ Two pedagogical points, both visible in the design body:
      ``programming_examples/basic/custom_dma/`` for a richer user-side
      :class:`Resolvable` example.
 
-Two invocation modes:
+Invocation:
 
   * compile-only: ``... --xclbin-path=PATH --insts-path=PATH``  (NPU Makefile)
-  * emit-MLIR:    ``... -d xcvc1902 --emit-mlir``               (vck5000)
+  * emit-MLIR:    ``... -d {npu,npu2} --emit-mlir``
 """
 
 import argparse
@@ -233,7 +233,7 @@ def vector_vector_add(
 
 def _make_argparser():
     p = argparse.ArgumentParser(prog="AIE Vector Vector Add (BDs init values)")
-    add_compile_args(p, dev_choices=("npu", "npu2", "xcvc1902"), with_emit_mlir=True)
+    add_compile_args(p, dev_choices=("npu", "npu2"), with_emit_mlir=True)
     p.add_argument("-c", "--col", type=int, default=0)
     return p
 

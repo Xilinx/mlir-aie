@@ -10,7 +10,7 @@ Shared utilities for AIE/AIR lit test configuration.
 Consolidates hardware detection, path management, and common substitutions.
 
 This module provides a centralized way to handle:
-- Hardware detection (ROCm, XRT, NPU devices)
+- Hardware detection (XRT, NPU devices)
 - Tool detection (Chess, Peano, aiesimulator)
 - PATH management
 - Common substitutions and features
@@ -19,8 +19,8 @@ Usage:
     from lit_config_helpers import LitConfigHelper
 
     helper = LitConfigHelper()
-    rocm_config = helper.detect_rocm(config.hsa_dir, config.enable_board_tests)
-    helper.apply_config_to_lit(config, {"rocm": rocm_config})
+    xrt_config = helper.detect_xrt(...)
+    helper.apply_config_to_lit(config, {"xrt": xrt_config})
 """
 
 import logging
@@ -155,104 +155,6 @@ class LitConfigHelper:
             paths.extend(current_paths.split(os.path.pathsep))
         paths = [os.path.normcase(os.path.normpath(p)) for p in paths]
         llvm_config.config.environment["PATH"] = os.pathsep.join(paths)
-
-    @staticmethod
-    def detect_rocm(
-        hsa_dir: str, aie_host_target: str, enable_board_tests: bool = False
-    ) -> HardwareConfig:
-        """
-        Detect ROCm/HSA installation and VCK5000 hardware.
-
-        Args:
-            hsa_dir: Path to HSA runtime directory
-            aie_host_target: Host target architecture (must contain 'hsa' for ROCm)
-            enable_board_tests: Whether to enable board testing
-
-        Returns:
-            HardwareConfig with ROCm detection results
-        """
-        config = HardwareConfig()
-
-        if not hsa_dir or "NOTFOUND" in hsa_dir:
-            logger.info("ROCm not found")
-            config.substitutions = {
-                "%run_on_vck5000": "echo",
-                "%link_against_hsa%": "",
-                "%HSA_DIR%": "",
-            }
-            return config
-
-        if "hsa" not in aie_host_target:
-            logger.info(
-                "ROCm found, but disabled because host target %s", aie_host_target
-            )
-            config.substitutions = {
-                "%run_on_vck5000": "echo",
-                "%link_against_hsa%": "",
-                "%HSA_DIR%": "",
-            }
-            return config
-
-        # Getting the path to the ROCm directory
-        # hsa-runtime64 points to cmake dir, go up three directories
-        rocm_root = os.path.abspath(os.path.join(hsa_dir, "..", "..", ".."))
-        logger.info("Found ROCm: %s", rocm_root)
-
-        config.found = True
-        config.features.append("hsa")
-        config.substitutions = {
-            "%HSA_DIR%": rocm_root,
-            "%link_against_hsa%": "--link_against_hsa",
-        }
-
-        # Check for VCK5000 hardware
-        found_vck5000 = False
-        if enable_board_tests:
-            try:
-                # Use experimental ROCm install that can see the AIE device
-                env = os.environ.copy()
-                env["LD_LIBRARY_PATH"] = f"{rocm_root}/lib/"
-                result = subprocess.run(
-                    ["rocminfo"],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    env=env,
-                    timeout=10,
-                )
-                output = result.stdout.decode("utf-8", errors="ignore").split("\n")
-
-                for line in output:
-                    if "Versal VCK5000" in line:
-                        logger.info(
-                            "Found VCK5000 in rocminfo. Enabling on board tests"
-                        )
-                        found_vck5000 = True
-                        config.substitutions["%run_on_vck5000"] = (
-                            "flock /tmp/vck5000.lock"
-                        )
-                        break
-
-                if not found_vck5000:
-                    logger.warning(
-                        "Enable board set and HSA found but couldn't find device using rocminfo"
-                    )
-                    config.substitutions["%run_on_vck5000"] = "echo"
-            except subprocess.TimeoutExpired:
-                logger.warning("Enable board set and HSA found but rocminfo timed out")
-                config.substitutions["%run_on_vck5000"] = "echo"
-            except FileNotFoundError:
-                logger.warning("Enable board set and HSA found but rocminfo not found")
-                config.substitutions["%run_on_vck5000"] = "echo"
-            except Exception as e:
-                logger.warning(
-                    "Enable board set and HSA found but unable to run rocminfo: %s", e
-                )
-                config.substitutions["%run_on_vck5000"] = "echo"
-        else:
-            logger.info("Skipping execution of unit tests (ENABLE_BOARD_TESTS=OFF)")
-            config.substitutions["%run_on_vck5000"] = "echo"
-
-        return config
 
     @staticmethod
     def detect_xrt(

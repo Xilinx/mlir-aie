@@ -13,7 +13,7 @@ In the below diagrams:
 ## AIE Version 1
 
 ```aie.device(xcvc1902) { ... }```
-This device is present on the VCK190 and VCK5000 boards.
+This device is present on the VCK190 board.
 50 Columns and 9 Rows
 ```
 8 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC

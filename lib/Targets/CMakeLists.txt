@@ -44,7 +44,6 @@ add_mlir_library(AIETargets
   AIETargetLdScript.cpp
   AIETargetUcCert.cpp
   AIETargetXAIEV2.cpp
-  AIETargetHSA.cpp
   AIETargetShared.cpp
   AIETargetSimulationFiles.cpp
   AIEFlowsToJSON.cpp

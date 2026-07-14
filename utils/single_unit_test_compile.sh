@@ -44,17 +44,10 @@ if [ "$runTimeArch" == "aarch64" ]; then
         ./test.cpp -o test.elf
 elif [ "$runTimeArch" == "x86_64" ]; then
     runtimeLibs+=/x86_64
-    
+
 	  aiecc.py -v --host-target=x86_64-amd-linux-gnu  aie.mlir \
 						-I${runtimeLibs}/test_lib/include ${runtimeLibs}/test_lib/src/test_library.cpp \
 						test.cpp -Wl,--no-whole-archive -lstdc++ -ldl -o test.elf
-elif [ "$runTimeArch" == "x86_64-hsa" ]; then
-    runtimeLibs+=/x86_64-hsa
-    
-	  aiecc.py -v --host-target=x86_64-amd-linux-gnu  --link_against_hsa aie.mlir \
-						-I${runtimeLibs}/test_lib/include ${runtimeLibs}/test_lib/src/test_library.cpp \
-						test.cpp -Wl,--no-whole-archive -lstdc++ -ldl -o test.elf
-
 else
     echo "Error: unsupported runtime architecture"
 fi

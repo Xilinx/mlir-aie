@@ -70,7 +70,6 @@ option(ENABLE_CHESS_TESTS "Enable backend tests using xchesscc" ${DEFAULT_ENABLE
 find_package(Python3 COMPONENTS Interpreter)
 find_package(XRT)
 find_package(OpenCV)
-find_package(hsa-runtime64)
 
 # Look for LibXAIE
 if (DEFINED LibXAIE_${AIE_RUNTIME_TEST_TARGET}_DIR)
