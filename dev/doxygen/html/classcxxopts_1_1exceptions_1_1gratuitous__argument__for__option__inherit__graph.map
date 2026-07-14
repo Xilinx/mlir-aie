@@ -1,0 +1,9 @@
+<map id="cxxopts::exceptions::gratuitous_argument_for_option" name="cxxopts::exceptions::gratuitous_argument_for_option">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,255,172,309"/>
+<area shape="rect" id="Node000002" href="$classcxxopts_1_1exceptions_1_1parsing.html" title=" " alt="" coords="13,167,164,207"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="91,220,91,255,86,255,86,220"/>
+<area shape="rect" id="Node000003" href="$classcxxopts_1_1exceptions_1_1exception.html" title=" " alt="" coords="13,79,164,119"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="91,133,91,166,86,166,86,133"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="31,5,146,31"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="91,44,91,79,86,79,86,44"/>
+</map>
