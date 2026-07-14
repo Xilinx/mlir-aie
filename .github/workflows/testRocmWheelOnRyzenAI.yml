@@ -229,11 +229,10 @@ jobs:
       # steps), not a from-source build — this job validates the distributed
       # wheel artifact itself.
       #
-      # Also pulls in a pip-installed cmake (same pin as
-      # python/requirements_dev.txt): several programming_examples/
-      # CMakeLists.txt require a newer CMake than what's on the self-hosted
-      # runners' PATH, and this keeps the test venv self-contained instead
-      # of depending on runner-level package upgrades.
+      # Same as buildRyzenWheels.yml's programming_examples smoke test: the
+      # runtime install above doesn't include a C++ build toolchain, but
+      # programming_examples/*/CMakeLists.txt need a newer cmake (and ninja)
+      # than what's on the self-hosted runners' PATH to compile host code.
       - name: Install wheel + Peano into a fresh venv
         shell: bash
         run: |
@@ -242,7 +241,7 @@ jobs:
           python3 -m pip install --upgrade pip
           python3 -m pip install dist/mlir_aie*py3-none*.whl
           python3 -m pip install -r utils/peano-requirements.txt
-          python3 -m pip install "cmake>=4.3.4, <5.0"
+          python3 -m pip install --require-hashes -r python/requirements_dev.lock
 
       - name: Run programming_examples against the wheel
         shell: bash
