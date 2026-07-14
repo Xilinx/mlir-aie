@@ -16,6 +16,10 @@ Scope, matching what a `pip install mlir_aie` + Peano-only user gets:
   - only the NPU family this runner targets (ryzen_ai_npu1 / ryzen_ai_npu2)
   - `chess`-only variants, and anything requiring `opencv` or `torch` extras,
     are reported as skipped rather than silently dropped
+  - a test can also fail purely because it reaches for a tool/package the
+    wheel-only environment doesn't ship (FileCheck, jupyter, an undeclared
+    torch import, ...) without that being spelled out in REQUIRES; those are
+    detected from the failure output and reported as skipped too
 """
 
 import argparse
@@ -32,6 +36,23 @@ EXTRA_FEATURES_SKIPPED = {"opencv", "torch"}
 REQUIRES_RE = re.compile(r"^//\s*REQUIRES:\s*(.*)$")
 XFAIL_RE = re.compile(r"^//\s*XFAIL:")
 RUN_RE = re.compile(r"^//\s*RUN:\s*(.*)$")
+
+MISSING_MODULE_RE = re.compile(r"ModuleNotFoundError: No module named '([\w.]+)'")
+COMMAND_NOT_FOUND_RE = re.compile(
+    r"(?:/bin/sh: \d+: |bash: line \d+: )(\S+): (?:not found|command not found)"
+)
+
+
+def missing_optional_dependency(log: str) -> str | None:
+    """Recognize a failure caused by a tool/package the wheel-only
+    environment doesn't ship, even when the .lit file's REQUIRES didn't
+    declare it (e.g. mobilenet imports torch without REQUIRES: torch, and
+    notebook/FileCheck-based examples don't declare those tools at all)."""
+    if m := MISSING_MODULE_RE.search(log):
+        return f"missing Python package '{m.group(1)}'"
+    if m := COMMAND_NOT_FOUND_RE.search(log):
+        return f"missing tool '{m.group(1)}'"
+    return None
 
 
 def parse_lit(path: Path):
@@ -135,7 +156,9 @@ def main():
         ok, log = run_one(
             lit_path, run_lines, lit_path.parent, args.repo_root, npu_kind, args.timeout
         )
-        if xfail:
+        if not ok and (reason := missing_optional_dependency(log)):
+            skipped.append((rel, f"{reason} (out of scope)"))
+        elif xfail:
             if ok:
                 # Unexpected pass under XFAIL: lit reports this as XPASS, a
                 # regression signal (the XFAIL marker is now stale), not a
