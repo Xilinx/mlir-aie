@@ -27,15 +27,15 @@ $ pip download mlir -f https://github.com/Xilinx/mlir-aie/releases/expanded_asse
 
 Looking in links: https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
 Collecting mlir
-  Downloading https://github.com/Xilinx/mlir-aie/releases/download/mlir-distro/mlir-19.0.0.2023121201+d36b483...
+  Downloading https://github.com/Xilinx/mlir-aie/releases/download/mlir-distro/mlir-23.0.0.2026071405+46fcb339...
      ╸━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 18.7/792.9 MB 14.6 MB/s eta 0:00:54
 
-Saved ./mlir-19.0.0.2023121201+d36b483...
+Saved ./mlir-23.0.0.2026071405+46fcb339...
 Successfully downloaded mlir
 
-$ unzip mlir-19.0.0.2023121201+d36b483...
+$ unzip mlir-23.0.0.2026071405+46fcb339...
 
-Archive:  mlir-19.0.0.2023121201+d36b483...
+Archive:  mlir-23.0.0.2026071405+46fcb339...
    creating: mlir/
    creating: mlir.libs/
    creating: mlir/src/
@@ -44,39 +44,31 @@ Archive:  mlir-19.0.0.2023121201+d36b483...
    creating: mlir/bin/
 ```
 
-**and this will work for all platforms that the wheels are being built for**. 
-I.e., no need to specify arch or platform or whatever (pip takes care of it).
-And also, of course, `pip download mlir==19.0.0.2023121201+d36b483` works (`19.0.0.2023121201+d36b483` is the "version" of wheel).
+This works for every platform the wheels are built for; there is no need to specify an
+architecture or platform, since pip resolves it. A specific version can be requested directly,
+e.g. `pip download mlir==23.0.0.2026071405+46fcb339`. The version string follows the scheme
+`<llvm_major>.0.0.<datetime>+<llvm_commit_prefix>` defined in
+[utils/clone-llvm.sh](https://github.com/Xilinx/mlir-aie/blob/main/utils/clone-llvm.sh); as of
+this writing LLVM is sourced from the [ROCm/llvm-project](https://github.com/ROCm/llvm-project)
+fork rather than upstream, so the major version tracks that fork.
 
-Currently we are building for
+The wheels are currently built for
 
 * Linux
   * x86_64 ([manylinux_2_27](https://github.com/pypa/manylinux))
   * aarch64
 * Windows
   * AMD64
-* MacOS
-  * x86_64
-  * arm64
-
-Why Mac? Because some people do dev on a Mac.
 
 ### How to cut a new wheel
 
-1. Go to the [actions tab](https://github.com/Xilinx/mlir-aie/actions) @ github.com/Xilinx/mlir-aie;
-2. Select **MLIR Distro** in the left-most column (under **Actions**)
-   <p align="center">
-    <img width="300" alt="image" src="https://github.com/Xilinx/mlir-aie/assets/5657668/4a1aa2be-7088-4f43-9bc6-4964c46b03a8">
-   </p>
-3. Select **Run workflow** at the far right
-   <p align="center">
-    <img width="300" alt="image" src="https://github.com/Xilinx/mlir-aie/assets/5657668/8dce0e03-1756-4ba2-82c9-2e4d8e019e2f">
-   </p>
-4. Finally (ignoring all of the options) hit the green `Run workflow`
-   <p align="center">
-    <img width="300" alt="image" src="https://github.com/Xilinx/mlir-aie/assets/5657668/82454733-1661-4963-8ed9-ceea68ebe947">
-   </p>
-5. A **MLIR Distro** job will appear under the same actions tab (where you can monitor progress).
+1. Go to the [Actions tab](https://github.com/Xilinx/mlir-aie/actions) at github.com/Xilinx/mlir-aie.
+2. Select **MLIR Distro** in the left-hand column (under **Actions**).
+3. Select **Run workflow** at the far right.
+4. The dispatch options all have defaults, so they can be left as-is; hit the green **Run workflow** button.
+5. A **MLIR Distro** job will appear under the same Actions tab, where progress can be monitored.
+
+The same procedure applies to the **MLIR AIE Distro** workflow for the MLIR-AIE wheels.
 
 ### Developing/extending { #developing-extending }
 
@@ -90,54 +82,45 @@ A brief overview:
     * Building the base distribution (either LLVM+MLIR or MLIR-AIE)
     * Building the python bindings
     * Upload/release
-  * aarch64 is handled in a special way for both LLVM+MLIR and MLIR-AIE
-    * For LLVM+MLIR the wheel is built in just the runner environment. 
-      The reason for this is I can't figure out how to get the aarch64 sysroot (headers), for cross-compiling, in any of the manylinux_x86 containers (AlmaLinux 8, a RHEL derivative does have some kind of header rpms but they're missing something that prevents their use).
-    * For MLIR-AIE, for the distro wheel, the above is also true. **But for the python bindings**  (i.e., the thing you might want to `pip install aie`) the wheel is built in an aarch64 emulated environment in a manylinux_aarch64 container.
-      Note, you could try to do this for the other wheels but it would definitely take too long for LLVM+MLIR and would probably take tool long for MLIR-AIE.
+  * aarch64 is handled specially for both LLVM+MLIR and MLIR-AIE:
+    * For LLVM+MLIR the wheel is built directly in the runner environment, because the aarch64 sysroot (headers) needed for cross-compiling is not readily available in the manylinux_x86 containers.
+    * For MLIR-AIE, the distro wheel is built the same way. The python bindings (the `aie` package installed via `pip install aie`), however, are built in an aarch64-emulated `manylinux_aarch64` container. Emulation is impractical for the larger LLVM+MLIR build, so it is reserved for the bindings.
 
 #### Tips
 
-Probably don't mess with this 🤷. This is the biggest rube-goldberg machine of scripts/code/hacks/tweaks/workarounds I have ever conjured into existence.
-If you're reading this at some future date in the hopes of solving a problem you're having, I'm sorry.
-I have literally lost whole days of my life to making improvements (days lost to just babysitting GHA to get feedback on a change).
-And it likely couldn't be otherwise due to the enormous number of incidental complexities involved (building an unconventional package for C++ sources across multiple platforms _and_ architectures _and_ in an automated/reproducible way).
+The wheel-build system is intricate: it packages C++ sources as Python wheels across multiple
+platforms and architectures in an automated, reproducible way, and that requirement drives a
+fair amount of incidental complexity. Change it deliberately, and expect slow feedback loops
+since most issues only surface in CI.
 
-But if you must:
+Useful entry points:
 
-* There are [build_local.sh](https://github.com/Xilinx/mlir-aie/tree/main/utils/mlir_wheels%2Fscripts%2Fbuild_local.sh) scripts for both wheels; they are a very poor approximation of the GitHub environment but they're moderately useful for flushing out major issues.
-* Uncomment `pull_request:` at the tops of the yaml to get the actions to run on a PR for the actions themselves (there's probably a better to handle this...).
-  * In this mode, the wheels will deposited under the [dev-wheels release page](https://github.com/Xilinx/mlir-aie/releases/tag/dev-wheels).
-* The actions themselves have options that are accessible through the **Run workflow** UI (that's what those fields are in the dropdown):
-  * `commit to build`: should be obvious.
-  * `Run the build with tmate debugging enabled`: this is your last resort; this enables you to ssh directly into the runner using your GitHub ssh key.
-    By default, the way it works is when the job finishes (either crashes or whatever) but before it exits, the log UI will start spamming something like
+* There are [build_local.sh](https://github.com/Xilinx/mlir-aie/tree/main/utils/mlir_wheels%2Fscripts%2Fbuild_local.sh) scripts for both wheels. They only approximate the GitHub environment, but are useful for flushing out major issues locally.
+* Both workflows have a path-scoped `pull_request:` trigger that runs them when their own YAML changes, so edits to the workflows are exercised on the PR that makes them.
+  * In this mode, the wheels are deposited under the [dev-wheels release page](https://github.com/Xilinx/mlir-aie/releases/tag/dev-wheels).
+* The workflows expose `workflow_dispatch` inputs through the **Run workflow** UI:
+  * `LLVM_COMMIT`: the LLVM commit to build (defaults to empty, i.e. the commit pinned in the repo).
+  * `APPLY_PATCHES`: whether to apply the vendored source patches (defaults to `true`).
+  * `DEBUG_ENABLED`: runs the build with [tmate](https://github.com/marketplace/actions/debugging-with-tmate) debugging enabled, allowing an SSH session into the runner using your GitHub SSH key. When the job reaches its end (on success or failure) but before it exits, the log will print connection details such as
     ```shell
     Waiting for session to end
     Notice: SSH: ssh Jj2rULLuwCJkvgRB9324ZbQD6@nyc1.tmate.io
     Notice: or: ssh -i <path-to-private-SSH-key> Jj2rULLuwCJkvgRB9324ZbQD6@nyc1.tmate.io
     ```
-    which (assuming your ssh credentials work with GitHub) you can just copy+paste into your terminal and hit enter. The three other options in the workflow dispatch UI control aspects of this "experience":
-    * `which runner os to run the tmate action in`: obvious
-    * `which runner arch to run the tmate action in`: obvious
-    * `whether to launch tmate in detached mode`: this controls whether the ssh tunnel is advertised after all the jobs have run (detached mode) or if it is advertised at the beginning (attached mode).
+    which can be copied into a terminal to connect. Three related inputs control this session:
+    * `DEBUG_OS`: which runner OS to run the tmate action in.
+    * `DEBUG_ARCH`: which runner architecture to run the tmate action in.
+    * `DEBUG_DETACHED`: whether the SSH tunnel is advertised after all jobs have run (detached mode) or at the beginning (attached mode).
 
-##### A few of the gotchas/surprises that I can remember fighting:
+##### Known gotchas and non-obvious behaviors
 
-* In many places you will see `PIP_NO_BUILD_ISOLATION=false` - this means the opposite of what it says i.e., this actually turns off build isolation (i.e., equivalent to passing `--no-build-isolation` to `pip wheel`). [Don't ask me why](https://github.com/pypa/pip/issues/5229#issuecomment-387301397).
-* As of today (12/13/23), CMake will segfault during `Detecting CXX compiler ABI info` on mac for `cmake>3.27.9` inside of cibuildwheel.
-* `caution filename not matched` during `unzip` is due to a glob that matches multiple files; escape the glob like `mlir_aie\*.whl`.
-* Files creating in a cibuildwheel container (i.e., on Linux) have timestamps in the future. This will lead to `ninja` looping forever during a `cmake .. -G Ninja ...` configure step. Hence there's something like `find mlir -exec touch -a -m -t 201108231405.14 {} \;` in various places (where `201108231405.14` is just an arbitrary timestamp in the past).
-* The `setup.py`s have needed an ungodly amount of fiddling in order to satisfy the pecularities of all platforms/arches;
-    * When building MLIR-AIE On Windows, because of `LNK1170: line in command file contains 131071 or more characters`, the LLVM+MLIR distro is moved to `/tmp/m`.
-    * On Windows, when the C runtime is statically linked because that's what you need in order to support multithreading (or is it the inverse?).
-    * On Windows, `cl.exe` is used because what configuration system you get otherwise would OOM (or something like that).
-    * **In order to support cross-compilation**, every build of LLVM+MLIR also a wheel called `mlir_native_tools`, which basically contains `mlir-tblgen` et al. and is labeled with the commit and the platform/arch.
-      These tools are then found (by various means) and then injected into the build environment (by various means).
-      Why do this instead of using LLVM's native cross-compilation "flow" (which is supposed to build these tools during cross-compile for the host)?
-      Because I couldn't get that to work, either because it isn't intended to support what I'm doing or because I was misusing it.
-      Either way, this should be revisited.
-* On downstream consumers of the LLVM+MLIR (or MLIR-AIE) wheel, cibuildwheel doesn't quite work out because it won't enable you `pip install` wheels from a different platform.
-  For example, if you try to cross-compile MLIR-AIE (for aarch64) by `pip install`ing an already built aarch64 LLVM+MLIR wheel you will fail because `pip install` will only grab/find the x86 wheel.
-  [The cibuildwheel people have decided this is "won't fix"](https://github.com/pypa/cibuildwheel/issues/1547).
-  The workaroud is `pip -q download mlir --platform $PLAT --only-binary=:all:` (as in [download_mlir.sh](https://github.com/Xilinx/mlir-aie/tree/main/utils/mlir_aie_wheels%2Fscripts%2Fdownload_mlir.sh)).
+* In many places `PIP_NO_BUILD_ISOLATION=false` appears. Counterintuitively, this *disables* build isolation (equivalent to passing `--no-build-isolation` to `pip wheel`); see [this pip issue](https://github.com/pypa/pip/issues/5229#issuecomment-387301397) for the rationale.
+* CMake versions in the 3.28 range have been observed to segfault during `Detecting CXX compiler ABI info` inside cibuildwheel, so the build pins a known-good version (`cmake==4.3.4`) in the wheel [pyproject.toml](https://github.com/Xilinx/mlir-aie/blob/main/utils/mlir_wheels/pyproject.toml) files.
+* `caution filename not matched` during `unzip` is caused by a glob that matches multiple files; escape the glob, e.g. `mlir_aie\*.whl`.
+* Files created inside a cibuildwheel container (on Linux) can carry future timestamps, which makes `ninja` loop indefinitely during the `cmake .. -G Ninja ...` configure step. To avoid this, the build resets timestamps to a fixed past value, e.g. `find mlir -exec touch -a -m -t 201108231405.14 {} \;` (the exact value is arbitrary, as long as it is in the past).
+* The `setup.py` files accommodate several platform-specific requirements:
+    * On Windows, to avoid `LNK1170: line in command file contains 131071 or more characters`, the LLVM+MLIR distro is relocated to a short path (`C:/tmp/aiewhls` by default, configurable via the `AIE_WHEEL_BUILD_ROOT` environment variable).
+    * On Windows, the C runtime is statically linked to support multithreading.
+    * On Windows, `cl.exe` is used because the alternative configuration path exhausts memory.
+    * To support cross-compilation, every LLVM+MLIR build also produces a `mlir_native_tools` wheel containing `mlir-tblgen` and related tools, labeled with the commit and platform/arch. These tools are located and injected into the build environment during cross-compilation. This is used in place of LLVM's built-in cross-compilation flow, which did not work for this setup; revisiting that flow remains a possible future improvement.
+* cibuildwheel does not let downstream consumers `pip install` a wheel built for a different platform. For example, cross-compiling MLIR-AIE for aarch64 by `pip install`ing a prebuilt aarch64 LLVM+MLIR wheel fails, because `pip install` resolves only the host (x86) wheel. The cibuildwheel maintainers have marked this [won't fix](https://github.com/pypa/cibuildwheel/issues/1547). The workaround is `pip -q download mlir --platform $PLAT --only-binary=:all:` (see [download_mlir.sh](https://github.com/Xilinx/mlir-aie/tree/main/utils/mlir_aie_wheels%2Fscripts%2Fdownload_mlir.sh)).

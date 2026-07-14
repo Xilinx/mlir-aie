@@ -230,12 +230,9 @@ int main(int argc, const char *argv[]) {
 
       auto CVec = bfp16ebs8ToFloat(C_VOLUME, CVecBfp.data(), 0);
 
-      // This is just a hack that should be removed later, I am multiplying by
-      // the identity and comparing AVec between the CPU and NPU shuffling. This
-      // is just wasteful and adds a very high complexity: it is just meant to
-      // save on time while testing the shuffling in core. Note that B is
-      // actually not even used. The idea is that since B is the identity
-      // matrix, C should be equal to A shuffled, which is A_ShuffledxId.
+      // Verification path for the in-core shuffle: B is the identity matrix, so
+      // C equals A shuffled (A_Shuffled x Id). This lets us compare the CPU and
+      // NPU shuffling of A directly. B is otherwise unused here.
       AVec = bfp16ebs8ToFloat(A_VOLUME, AVecBfpShuffled.data(), 0);
 
       if (verbosity >= 1) {
