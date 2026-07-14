@@ -13,7 +13,7 @@ $$\text{SwiGLU}(x, W, V) = \text{SiLU}(xW) \otimes (xV)$$
 
 where $\otimes$ denotes element-wise multiplication, $W$ and $V$ are two separate weight projections, and $\text{SiLU}(x) = x \cdot \sigma(x)$ is the Sigmoid Linear Unit. In practice the input gate and the linear projection are stored as two halves of a single weight matrix.
 
-This design implements a `bfloat16` based SwiGLU on a vector, distributed in parallel across multiple AIE cores and NPU columns. The design accepts two input vectors (the gated and linear projections) and produces one output vector. Unlike single-input activation functions such as ReLU or GeLU, SwiGLU requires two simultaneous input streams per core, reflected in the two-ObjectFIFO input structure of this design.
+This design implements a `bfloat16` based SwiGLU on a vector, distributed in parallel across multiple AIE cores and NPU columns. The design accepts two input vectors (the gated and linear projections) and produces one output vector. Unlike single-input activation functions such as ReLU or GeLU, SwiGLU requires two simultaneous input streams per core, reflected in the two-ObjectFifo input structure of this design.
 
 ## Source Files Overview
 

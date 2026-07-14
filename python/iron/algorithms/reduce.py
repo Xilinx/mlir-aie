@@ -5,14 +5,14 @@
 #
 """Reduction algorithms built on IRON.
 
-Reductions differ from :mod:`~aie.iron.algorithms.transform` in two ways:
+Reductions differ from `transform` in two ways:
 
 * Output shape is *smaller* than input shape (often ``(1,)`` for a scalar
   reduction), so the same-shape invariant ``_transform_gen`` enforces does
   not apply.
 * The whole input is handed to the kernel in **one** call rather than tiled.
   Reductions need accumulator state across the elements, which a per-tile
-  lambda can't model -- so these helpers accept an :class:`ExternalFunction`
+  lambda can't model -- so these helpers accept an [`ExternalFunction`][iron.ExternalFunction]
   with signature ``(input_tile, output_tile, input_size: np.int32)`` and
   do not have a lambda path.
 """
@@ -29,14 +29,14 @@ def _reduce_gen(func, input_desc, output_desc, *, trace_size=0):
     """Generate a reduction design: whole input -> smaller output via one kernel call.
 
     Args:
-        func: :class:`~aie.iron.kernel.ExternalFunction`. The kernel is
+        func: `ExternalFunction`. The kernel is
             invoked once per design execution with arguments
             ``(input_tile, output_tile, input_num_elements)`` -- the third
             arg is passed as a literal ``np.int32`` so the kernel can size
             its accumulator loop.
         input_desc: A fake-tensor descriptor (``.shape``, ``.size``,
             ``.dtype``) for the input.  Build via
-            :func:`make_param_descriptor`.
+            [`make_param_descriptor`][iron.algorithms.reduce.make_param_descriptor].
         output_desc: Same, for the output (typically ``(1,)``-shaped).
         trace_size: When > 0, enable Worker core trace and a
             ``trace_size``-byte runtime trace buffer (default: 0).  Kernel
@@ -92,7 +92,7 @@ def _reduce_gen(func, input_desc, output_desc, *, trace_size=0):
 def reduce(func, input_ty, output_ty, *, trace_size=0):
     """Apply reduction ``func`` over an entire input tensor producing ``output_ty``.
 
-    Like :func:`~aie.iron.algorithms.transform.transform` but for
+    Like `transform` but for
     reductions: hands the whole input to ``func`` in a single kernel call
     rather than iterating per-tile.  Intended for use inside ``@iron.jit``
     generator bodies where input/output shapes are expressed as
@@ -105,7 +105,7 @@ def reduce(func, input_ty, output_ty, *, trace_size=0):
             return reduce(my_reduce_kernel, in_ty, out_ty)
 
     Args:
-        func: :class:`~aie.iron.kernel.ExternalFunction` with signature
+        func: `ExternalFunction` with signature
             ``(input_array, output_array, input_size: np.int32)``.
         input_ty: A numpy ``ndarray`` type (e.g. ``np.ndarray[(1024,),
             np.dtype[np.int32]]``) for the input tensor.

@@ -129,7 +129,7 @@ These are some plots that may help you give some intuition about how to best pro
   <summary>Maximal tilings</summary>
   <img src="./res/max_tilings.png" alt="Plot showing the impact of using max tilings" width=1080/>
 
-  Note that when using object fifos for data movement, buffers must be allocated twice to achieve higher performance. In order to remember what is allocated in each compute core's memory, please refer to the [programming_guide](../../../../programming_guide/section-0/README.md). The available memory per core in Strix is 64kB and the used memory in these kernels can be computed as follows:
+  Note that when using ObjectFifos for data movement, buffers must be allocated twice to achieve higher performance. In order to remember what is allocated in each compute core's memory, please refer to the [programming_guide](../../../../programming_guide/section-0/README.md). The available memory per core in Strix is 64kB and the used memory in these kernels can be computed as follows:
   \[matrix_size\]x\[number_of_matrices\]x\[dtype_size\]x2 + \[stack_size\]
 </details>
 

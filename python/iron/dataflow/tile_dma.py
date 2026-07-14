@@ -3,18 +3,18 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Iron-level explicit per-tile DMA program.
+"""IRON-level explicit per-tile DMA program.
 
-Peer of :class:`Worker` (which describes the compute body of a tile).
-A :class:`TileDma` describes the DMA engine program for the same (or a
-different) tile — what each hardware DMA channel does, which buffers
+Peer of [`Worker`][iron.Worker] (which describes the compute body of a tile).
+A [`TileDma`][iron.TileDma] describes the DMA engine program for the same (or
+a different) tile — what each hardware DMA channel does, which buffers
 it reads/writes, and how it synchronizes with the compute side via
 locks.
 
-Used together with :class:`Flow` / :class:`PacketFlow` (which describe
-the AXI-stream routes) and explicit :class:`Buffer` + :class:`Lock`
-declarations, for designs where :class:`ObjectFifo` would hide too much
-to be useful.
+Used together with [`Flow`][iron.Flow] / [`PacketFlow`][iron.PacketFlow]
+(which describe the AXI-stream routes) and explicit [`Buffer`][iron.Buffer]
++ [`Lock`][iron.Lock] declarations, for designs where
+[`ObjectFifo`][iron.ObjectFifo] would hide too much to be useful.
 """
 
 from __future__ import annotations
@@ -40,6 +40,7 @@ from ...dialects.aie import (
     use_lock,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from ..buffer import Buffer
+from ..device import Tile
 from ..lock import Lock
 from ..resolvable import Resolvable
 
@@ -72,17 +73,17 @@ class Release:
 
 @dataclass
 class Bd:
-    """A single buffer-descriptor entry in a :class:`DmaChannel`'s chain.
+    """A single buffer-descriptor entry in a [`DmaChannel`][iron.DmaChannel]'s chain.
 
-    Lowers to one basic block containing acquires + ``aie.dma_bd`` +
-    releases + an ``aie.next_bd``.  The ``next`` field selects what the
-    ``next_bd`` points at:
+    Lowers to one basic block containing acquires + `aie.dma_bd` +
+    releases + an `aie.next_bd`. The `next` field selects what the
+    `next_bd` points at:
 
-    * ``"self"`` (default) — the BD loops to itself (the common "keep
+    - `"self"` (default) — the BD loops to itself (the common "keep
       streaming" pattern).
-    * an ``int`` ``i`` — point at the i-th BD in this channel's ``bds``
-      list (zero-based).  Useful for explicit cycles in a multi-BD chain.
-    * ``None`` — emit no ``next_bd`` (rarely useful; this leaves the
+    - an `int` `i` — point at the i-th BD in this channel's `bds`
+      list (zero-based). Useful for explicit cycles in a multi-BD chain.
+    - `None` — emit no `next_bd` (rarely useful; this leaves the
       basic block without a terminator).
     """
 
@@ -93,8 +94,8 @@ class Bd:
     releases: list[Release] = field(default_factory=list)
     next: int | str | None = "self"
     # When set, stamps a packet header on every transfer this BD emits:
-    # ``(pkt_type, pkt_id)``.  Pairs with a :class:`PacketFlow` that uses
-    # the same ``pkt_id`` so the routing fabric dispatches correctly.
+    # (pkt_type, pkt_id).  Pairs with a PacketFlow that uses
+    # the same pkt_id so the routing fabric dispatches correctly.
     packet: tuple[int, int] | None = None
     # Strided access pattern, outermost dimension first; each entry is a
     # constant int or a runtime Value. Empty (default) emits a contiguous
@@ -108,10 +109,10 @@ class DmaChannel:
     """One hardware DMA channel on a tile, with its BD chain.
 
     Args:
-        direction: ``DMAChannelDir.S2MM`` (host→tile) or ``DMAChannelDir.MM2S``
+        direction: `DMAChannelDir.S2MM` (host→tile) or `DMAChannelDir.MM2S`
             (tile→host).
         channel: hardware channel index.
-        bds: ordered list of :class:`Bd` entries that form the chain.
+        bds: ordered list of [`Bd`][iron.Bd] entries that form the chain.
     """
 
     direction: DMAChannelDir
@@ -120,16 +121,16 @@ class DmaChannel:
 
 
 class TileDma(Resolvable):
-    """Per-tile DMA program — lowers to an ``aie.mem`` (compute tile),
-    ``aie.memtile_dma`` (memtile), or ``aie.shim_dma`` (shim tile) region
+    """Per-tile DMA program — lowers to an `aie.mem` (compute tile),
+    `aie.memtile_dma` (memtile), or `aie.shim_dma` (shim tile) region
     based on the tile's type.
 
     Args:
         tile: the tile whose DMA hardware this program targets.
-        channels: ordered list of :class:`DmaChannel` entries.
+        channels: ordered list of [`DmaChannel`][iron.DmaChannel] entries.
     """
 
-    def __init__(self, tile, channels: Iterable[DmaChannel]):
+    def __init__(self, tile: Tile, channels: Iterable[DmaChannel]):
         self._tile = tile
         self._channels: list[DmaChannel] = list(channels)
         self._resolved = False

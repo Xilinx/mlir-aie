@@ -39,10 +39,10 @@ class DMATask(RuntimeTask):
             wait (bool, optional): Whether this task should conclude with a call to await or a call to free. Defaults to False.
             offset_parameter (str | None, optional): Name of a ScratchpadParameter whose value is used as the element offset for this DMA transfer. Defaults to None.
             packet (tuple[int, int] | None, optional): Stamp the shim DMA's
-                BD with a packet header ``(pkt_type, pkt_id)``.  Pairs with
+                BD with a packet header `(pkt_type, pkt_id)`. Pairs with
                 downstream packet-switched routing (e.g. ObjectFifos
-                lowered with ``--packet-sw-objFifos`` or an explicit
-                :class:`PacketFlow`).  Defaults to None.
+                lowered with `--packet-sw-objFifos` or an explicit
+                [`PacketFlow`][iron.PacketFlow]). Defaults to None.
         """
         self._object_fifo = object_fifo
         self._rt_data = rt_data

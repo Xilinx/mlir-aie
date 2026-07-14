@@ -580,9 +580,9 @@ def AIE_AMSelOp: AIE_Op<"amsel", [
     This code associates arbiter 5 with msel=3.  A packet-switched connection is made routing
     traffic from the South:0 port to the East:0 port using this arbiter.
     There are 6 arbiters per switchbox and 4 possible master select values.
-    See also [MasterSetOp](#aiemasterset-aiemastersetop),
-    [PacketRulesOp](#aiepacketrules-aiepacketrulesop), and
-    [PacketRuleOp](#aierule-aiepacketruleop) for more information.
+    See also [MasterSetOp](#aiemasterset-xilinxaiemastersetop),
+    [PacketRulesOp](#aiepacket_rules-xilinxaiepacketrulesop), and
+    [PacketRuleOp](#aierule-xilinxaiepacketruleop) for more information.
   }];
 
   let assemblyFormat = [{
@@ -663,7 +663,7 @@ def AIE_WireOp: AIE_Op<"wire", []> {
   let description = [{
     The `aie.wire` operation represents a physical set of connections between components in a Versal device.
     Typically, these components are switches, represented by an `aie.switchbox` operation, and tiles,
-    represented by an [aie.tile](#aietile-aietileop) operation.
+    represented by an [aie.tile](#aietile-xilinxaietileop) operation.
   }];
 
   let assemblyFormat = [{
@@ -682,9 +682,9 @@ def AIE_PacketRulesOp: AIE_Op<"packet_rules", [SingleBlockImplicitTerminator<"En
     This operation defines packet-switched routing configuration for packets entering a switchbox.
     It references a port of the containing switchbox, which must be unique among other packetRules
     operations and [aie.connect]($aieconnect-aieconnectop) operations in the containing switchbox.
-    It contains a region of up to 4 [aie.rule](#aierule-aiepacketruleop) operations.
+    It contains a region of up to 4 [aie.rule](#aierule-xilinxaiepacketruleop) operations.
 
-    See [aie.rule](#aierule-aiepacketruleop) for an example.
+    See [aie.rule](#aierule-xilinxaiepacketruleop) for an example.
   }];
 
   let assemblyFormat = [{ `(` $source_bundle `:` $source_channel `)` regions attr-dict }];
@@ -706,7 +706,7 @@ def AIE_PacketRuleOp: AIE_Op<"rule", [HasParent<"PacketRulesOp">]> {
   let description = [{
     This operation defines a matching rule and a destination for packet-switched
     connections in a switchbox.  Routing is based on the ID field of packet arriving on the
-    matching port of the containing [aie.packetRules](#aiepacketrules-aiepacketrulesop).
+    matching port of the containing [aie.packetRules](#aiepacket_rules-xilinxaiepacketrulesop).
     The ID is first bitwise-AND'd with the mask and then checked for equality with the given ID.
     It is routed to arbiter and master set associated with the first matching entry.
 
@@ -793,9 +793,9 @@ def AIE_PacketSourceOp: AIE_Op<"packet_source", [HasParent<"PacketFlowOp">]> {
   let summary = "A sourceport";
   let description = [{
     An object representing the destination of a packet-switched flow. This must exist
-    within an [aie.packet_flow](#aiepacketflow-aiepacketflowop) operation.
+    within an [aie.packet_flow](#aiepacket_flow-xilinxaiepacketflowop) operation.
 
-    See [aie.packet_flow](#aiepacketflow-aiepacketflowop) for an example.
+    See [aie.packet_flow](#aiepacket_flow-xilinxaiepacketflowop) for an example.
   }];
 
   let assemblyFormat = [{
@@ -817,10 +817,10 @@ def AIE_PacketDestOp: AIE_Op<"packet_dest", [HasParent<"PacketFlowOp">]> {
   let summary = "A destination port";
   let description = [{
     A object representing the destination of a packet-switched flow. This must exist
-    within an [aie.packet_flow](#aiepacketflow-aiepacketflowop) operation. The destination
+    within an [aie.packet_flow](#aiepacket_flow-xilinxaiepacketflowop) operation. The destination
     Must be unique within a design.
 
-    See [aie.packet_flow](#aiepacketflow-aiepacketflowop) for an example.
+    See [aie.packet_flow](#aiepacket_flow-xilinxaiepacketflowop) for an example.
   }];
 
   let assemblyFormat = [{

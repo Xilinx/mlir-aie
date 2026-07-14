@@ -182,10 +182,11 @@ aie-opt --affine-loop-unroll="unroll-full unroll-full-threshold=3" --canonicaliz
 
 One way to generate the code for Affine loops is using [Polygeist](https://github.com/wsmoses/Polygeist), a clang-based frontend to MLIR.
 
-```
+```bash
 mlir-clang conv2d.c --function=conv2d -S --raise-scf-to-affine
 ```
-```
+
+```c
 void conv2d(int img_in[17][272], int kernel_coeff[3][3], int img_out[16][256]) {
     for(int r = 0; r < 16; r++)
         for(int c = 0; c < 256; c++) {

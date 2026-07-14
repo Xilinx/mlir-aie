@@ -21,7 +21,7 @@ _REDUCE_MAX_OBJ = "reduce_max.cc.o"
 def _reduce_kernel(
     op: str, tile_size: int, dtype, vectorized: bool
 ) -> ExternalFunction:
-    """Shared implementation for :func:`reduce_add` and :func:`reduce_min`."""
+    """Shared implementation for [`reduce_add`][iron.kernels.reduce.reduce_add] and [`reduce_min`][iron.kernels.reduce.reduce_min]."""
     if np.dtype(dtype) != np.dtype(np.int32):
         raise ValueError(
             f"reduce_{op}() dtype must be np.int32, got {dtype}. "
@@ -39,7 +39,7 @@ def _reduce_kernel(
 
 
 def reduce_add(
-    tile_size: int = 1024, dtype=np.int32, vectorized: bool = True
+    tile_size: int = 1024, dtype: type = np.int32, vectorized: bool = True
 ) -> ExternalFunction:
     """Reduction kernel: sums all elements of a tile to a scalar.
 
@@ -58,7 +58,7 @@ def reduce_add(
 
 
 def reduce_min(
-    tile_size: int = 1024, dtype=np.int32, vectorized: bool = True
+    tile_size: int = 1024, dtype: type = np.int32, vectorized: bool = True
 ) -> ExternalFunction:
     """Reduction kernel: finds the minimum element of a tile.
 
@@ -77,7 +77,7 @@ def reduce_min(
 
 
 def reduce_max(
-    tile_size: int = 1024, dtype=np.int32, vectorized: bool = True
+    tile_size: int = 1024, dtype: type = np.int32, vectorized: bool = True
 ) -> ExternalFunction:
     """Reduction kernel: finds the maximum element of a tile (int32 or bfloat16).
 
@@ -116,12 +116,12 @@ def reduce_max(
     )
 
 
-def compute_max(dtype=np.int32) -> ExternalFunction:
-    """Pairwise scalar max — companion to :func:`reduce_max` for multi-core
+def compute_max(dtype: type = np.int32) -> ExternalFunction:
+    """Pairwise scalar max — companion to [`reduce_max`][iron.kernels.reduce.reduce_max] for multi-core
     reductions where each core produces a partial max and a final tree
     reduces them pairwise.
 
-    Lives in the same ``reduce_max.cc`` as :func:`reduce_max`; sharing the
+    Lives in the same ``reduce_max.cc`` as [`reduce_max`][iron.kernels.reduce.reduce_max]; sharing the
     output ``.o`` (via ``shared_object_file_name``) means both factories
     in the same design compile the source exactly once.
 

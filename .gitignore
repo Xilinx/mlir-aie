@@ -43,3 +43,14 @@ runtime_lib/xaiengine/src
 **/test_stx/
 **/trace.txt
 **/trace_*.json
+
+# MkDocs local build output
+/site/
+
+# Local docs-preview symlinks + placeholder (created for `mkdocs serve`;
+# the real files live at repo root and CI generates dialects.png)
+/docs/programming_guide
+/docs/dialects.png
+
+# Local Claude Code tooling/settings
+/.claude/

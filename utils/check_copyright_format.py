@@ -268,10 +268,14 @@ def collect_notices(
 
     self_rel = str(Path(__file__).resolve().relative_to(REPO_ROOT))
     # Skip the data files too: they contain holder names / forbidden strings that
-    # would otherwise be flagged as violations of themselves.
+    # would otherwise be flagged as violations of themselves. mkdocs.yml carries a
+    # real SPDX header at the top (validated by reuse lint), but its Material
+    # `copyright:` footer setting is a config key the notice regex cannot tell
+    # apart from a file license header, so the whole file is exempt here.
     skip_exact = {
         "REUSE.toml",
         self_rel,
+        "mkdocs.yml",
         str(WHITELIST_PATH.relative_to(REPO_ROOT)),
         str(FORBIDDEN_PATH.relative_to(REPO_ROOT)),
     }

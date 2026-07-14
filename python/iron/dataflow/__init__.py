@@ -6,12 +6,13 @@
 """Dataflow primitives for IRON designs.
 
 High-level (managed routing + buffers + locks):
-    :class:`ObjectFifo`, :class:`CascadeFlow`
+[`ObjectFifo`][iron.ObjectFifo], [`CascadeFlow`][iron.CascadeFlow]
 
 Lower-level (explicit routing + DMA programs; peers of the above):
-    :class:`Flow`, :class:`PacketFlow`, :class:`PacketDest`,
-    :class:`TileDma`, :class:`DmaChannel`, :class:`Bd`,
-    :class:`Acquire`, :class:`Release`
+[`Flow`][iron.Flow], [`PacketFlow`][iron.PacketFlow],
+[`PacketDest`][iron.PacketDest], [`TileDma`][iron.TileDma],
+[`DmaChannel`][iron.DmaChannel], [`Bd`][iron.Bd],
+[`Acquire`][iron.Acquire], [`Release`][iron.Release]
 """
 
 from .objectfifo import (

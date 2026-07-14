@@ -5,11 +5,11 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>Section 0 - Getting Set Up for IRON</ins>
+# Section 0 - Getting Set Up for IRON
 
 This programming guide focuses on application programming for the NPU found in Ryzen™ AI laptops and mini PCs. The latest information on Ryzen™ AI CPUs can be found [here](https://www.amd.com/en/products/processors/consumer/ryzen-ai.html).
 
-## <ins>Example Recommended Hardware</ins>
+## Example Recommended Hardware
 
 * [Phoenix Point Mini PC: Minisforum EM780 : AMD Ryzen™ 7 7840U](https://www.minisforum.com/collections/amd-series/products/minisforum-em780)
   
@@ -19,19 +19,18 @@ This programming guide focuses on application programming for the NPU found in R
   
 * [Krackan Point Mini PC: ASRock 4x4 BOX-AI350 : AMD Ryzen™ AI 7 350](https://www.asrockind.com/en-gb/4X4%20BOX-AI350)
 
-## <ins>AMD Ryzen™ AI Initial Setup</ins>
+## AMD Ryzen™ AI Initial Setup
 
-#### **Please be sure to follow the quick setup path.**
+Please be sure to follow the quick setup path:
 
-### [Getting Started on AMD Ryzen™ AI with Linux](../../README.md) **(Recommended)**
+* **[Getting Started on AMD Ryzen™ AI with Linux](../../README.md)** *(Recommended)*
+* [Building IRON and MLIR-AIE from source on Linux](../../Building.md) *(for developers)*
 
-### [Building IRON and MLIR-AIE from source on Linux](../../docs/Building.md)
-
-## <ins>Once you have a working NPU</ins>
+## Once you have a working NPU
 
 * **Fastest on-ramp:** the [Mini Tutorial](../mini_tutorial/) — five tiny `@iron.jit` exercises that get a design running on the NPU in minutes.
 * **Full guide top-to-bottom:** continue with [Section 1 — Basic AI Engine building blocks](../section-1/).
 * **Just want to see an end-to-end working program?** Jump to [Section 3 — My First Program](../section-3/).
 
 -----
-[[Top](..)] [[Next - Section 1](../section-1/)]
+[Top](..) &middot; [Next](../section-1/)

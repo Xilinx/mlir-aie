@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# <ins>From Stream Data Layout Transformations</ins>
+# From Stream Data Layout Transformations
 
 In the [from_stream.py](./from_stream.py) design we first bring `24xi32` data from external memory to L2 memory (i.e., a Mem tile) with `of_in0`. We then use `of_in1` to forward the data from the `MemTile` to `my_worker` and apply a data layout transformation as the data is read from the AXI stream into local memory by the Worker tile's DMA. Two FIFOs then move the output data from the Worker first to L2 via `of_out1`, then to external memory via `of_out0` as `24xi32` tensors. All FIFOs use double buffers.
 

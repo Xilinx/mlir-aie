@@ -197,7 +197,7 @@ def _make_extern(
 
     ``use_chess`` selects the Chess (xchesscc) compiler instead of Peano
     for this kernel's .o build.  See
-    :class:`aie.iron.kernel.ExternalFunction` for the design-level
+    `ExternalFunction` for the design-level
     contract: all EFs in a single ``@iron.jit`` design must share the
     same toolchain choice (mixed peano/chess is rejected at compile
     time).

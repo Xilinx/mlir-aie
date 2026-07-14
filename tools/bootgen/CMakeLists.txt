@@ -144,6 +144,11 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
   target_compile_options(bootgen-lib PRIVATE /wd4996 /wd4840 /wd4005 /wd5033)
 endif()
 target_compile_options(bootgen-lib PRIVATE ${bootgen_warning_ignores})
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND NOT MSVC)
+  # The POSITION_INDEPENDENT_CODE property above doesn't reliably force PIC
+  # so pass -fPIC explicitly, last, so it wins over any inherited -fno-PIC.
+  target_compile_options(bootgen-lib PRIVATE -fPIC)
+endif()
 target_include_directories(bootgen-lib PRIVATE ${BOOTGEN_SOURCE} ${OPENSSL_INCLUDE_DIR})
 # Make C API header available publicly
 target_include_directories(bootgen-lib PUBLIC
@@ -165,6 +170,12 @@ target_compile_options(bootgen PRIVATE ${bootgen_warning_ignores})
 if (CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
   target_compile_options(bootgen PRIVATE /EHsc)
   target_compile_options(bootgen PRIVATE /wd4996 /wd4840 /wd4005 /wd5033)
+endif()
+if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU" AND NOT MSVC)
+  # See bootgen-lib above. -fPIE is compile-only; -pie is the link-mode
+  # switch (kept separate since some toolchains don't accept -fPIE at link).
+  target_compile_options(bootgen PRIVATE -fPIE)
+  target_link_options(bootgen PRIVATE -pie)
 endif()
 target_compile_definitions(bootgen PRIVATE OPENSSL_USE_APPLINK)
 target_link_libraries(bootgen PRIVATE bootgen-lib OpenSSL::SSL OpenSSL::applink)
