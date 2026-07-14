@@ -2,6 +2,10 @@
 <!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 # Building the code
 
+!!! note "Versal AI Engine flow"
+    This page covers the Versal™ AI Engine flow (VCK190). It is supported but is not
+    part of the actively-tested Ryzen™ AI (NPU) path.
+
 ## Prerequisites
 
 ```

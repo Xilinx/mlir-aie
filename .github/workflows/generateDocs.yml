@@ -176,6 +176,15 @@ jobs:
             mike deploy --push "$LABEL"
           fi
 
+          # Ensure the root index.html redirects to the default version.
+          # "latest" takes priority when it exists (i.e. after a tagged release);
+          # otherwise fall back to "dev" for main-branch pushes.
+          if mike list | grep -q "latest"; then
+            mike set-default --push latest
+          else
+            mike set-default --push dev
+          fi
+
       - name: Copy Doxygen output into gh-pages
         if: github.event_name != 'pull_request'
         run: |
@@ -190,6 +199,20 @@ jobs:
           LABEL="${{ steps.version.outputs.label }}"
           git fetch origin gh-pages
           git worktree add ../gh-pages-wt gh-pages
+
+          # Remove legacy Jekyll/CMake detritus from the gh-pages root. mike
+          # owns versioned subdirs (dev/, 1.x.y/, versions.json, index.html);
+          # everything else at the root is carry-over from the old Jekyll setup.
+          cd ../gh-pages-wt
+          git ls-files -z \
+            | grep -zv '^\.nojekyll$' \
+            | grep -zv '^index\.html$' \
+            | grep -zv '^versions\.json$' \
+            | grep -zvE '^(dev|latest)/' \
+            | grep -zvE '^[0-9]+\.' \
+            | xargs -0 -r git rm -rf --ignore-unmatch -q
+          cd -
+
           mkdir -p "../gh-pages-wt/${LABEL}/doxygen"
           # Doxygen writes under the docs/ subdir of the build tree because
           # docs/CMakeLists.txt sets OUTPUT_DIRECTORY to its own binary dir

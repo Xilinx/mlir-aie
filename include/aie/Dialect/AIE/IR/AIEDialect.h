@@ -72,7 +72,7 @@ verifyOffsetSizeAndStrideOp(mlir::OffsetSizeAndStrideOpInterface op);
 
 } // namespace xilinx::AIE
 
-/// Include the generated interface declarations.
+// Include the generated interface declarations.
 #include "aie/Dialect/AIE/IR/AIEInterfaces.h.inc"
 
 namespace xilinx::AIE {

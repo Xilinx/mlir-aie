@@ -2,6 +2,10 @@
 <!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 # Building a platform for further exploration in hardware
 
+!!! note "Versal platform flow"
+    This page covers the Versal™ platform flow (VCK190). It is supported but is not
+    part of the actively-tested Ryzen™ AI (NPU) path.
+
 In order to facilitate additional exploration of the MLIR AIE tools in hardware, a basic platform can be built to run the generated programs on an AI Engine-enabled device + board (vck190). Such a platform also provides the necessary `sysroot` required to cross-compile MLIR AIE code for simulation, such as for the tutorials.
 
 Building a platform to explore MLIR AIE generated designs consists of building the Vitis hardware design and the Petalinux kernel and linux filesystem to run it. The Petalinux filesystem can be targeted by the MLIR AIE python build scripts (aiecc.py) when cross-compiling the host code to be run on the board. Even without a physical board, we can still build the platform and associated sysroot to support cross-compilation. Once a physical board is present, we can complete the steps to run the AIE designs on a live board.
