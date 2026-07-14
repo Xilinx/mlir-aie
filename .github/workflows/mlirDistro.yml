@@ -1,12 +1,6 @@
 # Copyright (C) 2023-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-# Builds MLIR wheels from the ROCm/llvm-project fork (github.com/ROCm/llvm-project,
-# default branch amd-staging) rather than upstream llvm/llvm-project. Still
-# publishes to the same mlir-distro release tag, so every downstream consumer
-# (mlirAIEDistro.yml, buildAndTestPythons.yml, buildAndTestRyzenAI.yml, etc.)
-# picks this up with no changes of their own.
-
 name: MLIR Distro
 
 # When dispatched with DISPATCH_NONCE set, embed the nonce in the run title so
