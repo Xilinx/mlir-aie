@@ -711,18 +711,7 @@
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#building-on-x86-targetting-the-vck5000-with-seperate-builds-of-rocm-runtime-and-aie-rt" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Building on X86 targetting the VCK5000 with seperate builds of ROCm runtime and aie-rt
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Building on X86 targetting the VCK5000 with seperate builds of ROCm runtime and aie-rt">
+    <nav class="md-nav" aria-label="Building on X86 for mlir-aie development">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3132,18 +3121,7 @@
     </span>
   </a>
   
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#building-on-x86-targetting-the-vck5000-with-seperate-builds-of-rocm-runtime-and-aie-rt" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Building on X86 targetting the VCK5000 with seperate builds of ROCm runtime and aie-rt
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Building on X86 targetting the VCK5000 with seperate builds of ROCm runtime and aie-rt">
+    <nav class="md-nav" aria-label="Building on X86 for mlir-aie development">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
@@ -3251,7 +3229,6 @@
 <p>The cmake and python packages prerequisites can be satisfied by sourcing the <code>utils/setup_python_packages.sh</code> script. See step 2 of the build instructions. 
 This script requires <code>virtualenv</code>.</p>
 <p>clang/llvm 14+ are recommended to be built with the provided scripts. See step 3. of the build instructions. </p>
-<p>When targetting the VCK5000 Versal device, you must build and install our experimental ROCm runtime which allows us to communicate with the AIEs. The <a href="https://github.com/Xilinx/ROCm-air-platforms">ROCm-air-platforms</a> repository contains documentation on how to install our experimental ROCm runtime. When targetting the VCK5000, it will be necessary to <a href="https://rocm.docs.amd.com/en/docs-5.6.0/deploy/linux/os-native/install.html">install a global version of ROCM 5.6</a>. Details of all these steps can be found in the <a href="https://github.com/Xilinx/ROCm-air-platforms#getting-started">ROCm-air-platforms</a> repo. </p>
 <h2 id="building-on-x86-for-mlir-aie-development">Building on X86 for mlir-aie development<a class="headerlink" href="#building-on-x86-for-mlir-aie-development" title="Permanent link">&para;</a></h2>
 <ol>
 <li>
@@ -3302,16 +3279,12 @@ in the case of compilation problem.)
 This will build LLVM in <code>llvm/build</code> and install the LLVM binaries under <code>llvm/install</code>.</p>
 </li>
 <li>
-<p>Build the MLIR-AIE tools by calling <code>utils/build-mlir-aie.sh</code> or <code>utils/build-mlir-aie-pcie.sh</code> 
-    for Ryzen AI or Versal respectively  with the path to the <code>llvm/build</code> directory. 
-    The Vitis environment will have to be set up for this to succeed.  </p>
+<p>Build the MLIR-AIE tools by calling <code>utils/build-mlir-aie.sh</code>
+    with the path to the <code>llvm/build</code> directory.
+    The Vitis environment will have to be set up for this to succeed.</p>
 <p>Building mlir-aie for a Ryzen AI system:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>source &lt;Vitis Install Path&gt;/settings64.sh
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>./utils/build-mlir-aie.sh &lt;llvm dir&gt;/&lt;build dir&gt;
-</code></pre></div>
-<p>Building mlir-aie for a VCK5000 system:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>source &lt;Vitis Install Path&gt;/settings64.sh
-<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>./utils/build-mlir-aie-pcie.sh &lt;llvm dir&gt;/&lt;build dir&gt;
 </code></pre></div>
 <p>This will create a <code>build</code> and <code>install</code> folder in the directory that you cloned MLIR AIE into. </p>
 <p>The MLIR AIE tools will be able to generate binaries targetting a combination of AIEngine and ARM/x86 processors. </p>
@@ -3320,41 +3293,20 @@ This will build LLVM in <code>llvm/build</code> and install the LLVM binaries un
 <p>In order to run all the tools, it is necessary to add some paths into your environment. This can be
 done by sourcing the <code>utils/env_setup.sh</code> script with the paths to the install folders for mlir-aie
 and llvm.
-    <div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>source utils/env_setup.sh &lt;mlir-aie&gt;/install &lt;llvm dir&gt;/install
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>source utils/env_setup.sh &lt;mlir-aie&gt;/install &lt;llvm dir&gt;/install
 </code></pre></div></p>
-</li>
-<li>
-<p><strong>Only for the VCK5000:</strong> The PCIe AIR runtime requires the use of the <a href="https://github.com/Xilinx/ROCm-air-platforms/tree/main/driver">AIR PCIe kernel driver</a>. This directory contains documentation on how to compile and load the AIR PCIe kernel driver.</p>
 </li>
 </ol>
 <p>Note that when coming back to this install with a fresh environment, it is necessary to rerun the <code>utils/env_setup.sh</code> script to setup your environment as well as activate the Python virtual environment using the following command.
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>source ironenv/bin/activate
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>source ironenv/bin/activate
 </code></pre></div></p>
-<h2 id="building-on-x86-targetting-the-vck5000-with-seperate-builds-of-rocm-runtime-and-aie-rt">Building on X86 targetting the VCK5000 with seperate builds of ROCm runtime and aie-rt<a class="headerlink" href="#building-on-x86-targetting-the-vck5000-with-seperate-builds-of-rocm-runtime-and-aie-rt" title="Permanent link">&para;</a></h2>
-<p>The <code>build-mlir-aie-pcie.sh</code> script will automatically build a local install of the ROCm Runtime and aie-rt if the corresponding install directories are not provided. Another option is to build these externally and then point <code>build-mlir-aie-pcie.sh</code> to where they are installed. Below are the steps for how to build the tools using this second option.</p>
-<p>We chose to install the aie-rt library in /opt/xaiengine but it is not required for the tools to be installed there. Just ensure that when building mlir-aie and mlir-air, that you point to the directory in which the aie-rt library was installed. Below are the steps to build the aie-rt library and move the installation to /opt/xaiengine.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>git clone https://github.com/stephenneuendorffer/aie-rt
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>cd aie-rt
-<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>git checkout phoenix_v2023.2
-<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>cd driver/src
-<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>make -f Makefile.Linux CFLAGS=&quot;-D__AIEAMDAIR__&quot;
-<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a>sudo cp -r ../include /opt/xaiengine/
-<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>sudo cp libxaiengine.so* /opt/xaiengine/lib/
-<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a>export LD_LIBRARY_PATH=/opt/xaiengine/lib:${LD_LIBRARY_PATH}
-</code></pre></div>
-<p>To install our experimental ROCm runtime  which allows us to communicate with the AIEs on the VCK5000, it is necessary to <a href="https://rocm.docs.amd.com/en/docs-5.6.0/deploy/linux/os-native/install.html">install a global version of ROCM 5.6</a>. Details of all these steps can be found in the <a href="https://github.com/Xilinx/ROCm-air-platforms#getting-started">ROCm-air-platforms</a>. Afterwards, follow the steps in <a href="https://github.com/Xilinx/ROCm-air-platforms#getting-started">ROCm-air-platforms</a> to build the experimental ROCm runtime that targets the AIEs in the VCK5000. You can run the following script to clone the ROCm-air-platforms repository:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>./utils/clone-rocm-air-platforms.sh
-</code></pre></div>
-<p>Then, set <code>${ROCM_ROOT}</code> to the ROCm install. Then, run the following command to build the mlir-aie toolchain targetting the VCK5000 pointing to the externally installed aie-rt and experimental ROCm runtime.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>./utils/build-mlir-aie-pcie.sh llvm/build/ build install /opt/xaiengine ${ROCM_ROOT}/lib/cmake/hsa-runtime64/ ${ROCM_ROOT}/lib/cmake/hsakmt/
-</code></pre></div>
 <h3 id="sysroot">Sysroot<a class="headerlink" href="#sysroot" title="Permanent link">&para;</a></h3>
 <p>Since the AIE tools are cross-compiling, in order to actually compile code, we need a 'sysroot' directory,
 containing an ARM rootfs.  This rootfs must match what will be available in the runtime environment.
 Note that copying the rootfs is often insufficient, since many root file systems include absolute links.
 Absolute symbolic links can be converted to relative symbolic links using <a href="https://github.com/brandt/symlinks">symlinks</a>.</p>
-<p><div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="nb">cd</span><span class="w"> </span>/
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a>sudo<span class="w"> </span>symlinks<span class="w"> </span>-rc<span class="w"> </span>.
+<p><div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nb">cd</span><span class="w"> </span>/
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>sudo<span class="w"> </span>symlinks<span class="w"> </span>-rc<span class="w"> </span>.
 </code></pre></div>
 Following the <a href="../Platform/">platform build steps</a> will create such a sysroot based on PetaLinux. Note that those instructions require Vitis 2021.2 -- building a sysroot with Vitis 2023.2 will not currently succeed.</p>
 <hr />
