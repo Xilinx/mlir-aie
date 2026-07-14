@@ -240,7 +240,6 @@ nav:
       - Compilation Stages: programming_guide/compilation_stages.md
       - Implicit MLIR Context: programming_guide/implicit_mlir_context.md
       - Kernel Library: programming_guide/kernels_library.md
-      - Presentations: Presentations.md
   - API & Internals:
     - Overview: api/index.md
     - Python API:
@@ -259,6 +258,8 @@ nav:
       - AIEX Passes: AIEXPasses.md
       - AIEVec Passes: AIEVecPasses.md
       - C++ API (Doxygen): api/cpp_doxygen.md
-  - Developer Guide:
+  - Community:
+    - Used in / Cited in: UsedIn.md
     - Contributing: CONTRIBUTING.md
+    - Roadmap: ROADMAP.md
     - Security: SECURITY.md
