@@ -1,0 +1,9 @@
+<map id="AIEBufferToStandard" name="AIEBufferToStandard">
+<area shape="rect" id="Node000001" title=" " alt="" coords="170,108,325,133"/>
+<area shape="rect" id="Node000002" href="$classOpConversionPattern.html" title=" " alt="" coords="5,5,164,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="131,50,229,106,226,110,128,54"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="188,13,307,38"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="250,52,250,108,245,108,245,52"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="331,13,369,38"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="334,51,301,86,268,110,265,106,298,82,331,47"/>
+</map>
