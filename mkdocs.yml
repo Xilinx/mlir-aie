@@ -193,6 +193,8 @@ nav:
     - Non-Ubuntu Linux: buildHostLinNonUbuntu.md
     - Build from Source: Building.md
     - Devices: Devices.md
+    - Versal: BuildingVersal.md
+    - Platform Notes: Platform.md
   - Programming Guide:
     - Introduction: programming_guide/README.md
     - Mini Tutorial: programming_guide/mini_tutorial/README.md
