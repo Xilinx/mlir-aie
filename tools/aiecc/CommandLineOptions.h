@@ -219,10 +219,6 @@ inline cl::opt<std::string>
                cl::init("x86_64-linux-gnu"));
 inline cl::opt<std::string>
     sysroot("sysroot", cl::desc("Sysroot for host cross-compilation"));
-inline cl::opt<bool> linkAgainstHsa(
-    "link_against_hsa",
-    cl::desc(
-        "Link the host program against the HSA runtime (-lhsa-runtime64)"));
 inline cl::opt<bool> aiesim(
     "aiesim",
     cl::desc("Generate an AIE simulator Work folder (requires --xbridge)"));

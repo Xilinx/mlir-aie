@@ -198,7 +198,7 @@ buildHostExeSubgraph(EdgeWithTypedOutput<OpInModule<DeviceOp>> &perDevice,
   // perDevice feeds the device symbol name for diagnostics; arches feeds the
   // architecture information in the `__AIEARCH__` define.
   HostRuntimeLibs rt =
-      getHostRuntimeLibs(getInstallDir(), hostTarget, linkAgainstHsa);
+      getHostRuntimeLibs(getInstallDir(), hostTarget);
   std::string outputName = hostOutputName;
   return bundle(aieInc.out, arches.out)
       .join<File>(
@@ -236,8 +236,6 @@ buildHostExeSubgraph(EdgeWithTypedOutput<OpInModule<DeviceOp>> &perDevice,
                 .arg("-fuse-ld=lld")
                 .arg("-lm")
                 .arg("-lxaienginecdo");
-            if (linkAgainstHsa)
-              cmd.arg("-DHSA_RUNTIME");
             cmd.arg(aieArchDefine(arch));
             for (const auto &d : hostIncludeDirs)
               cmd.arg("-I" + d);

@@ -171,8 +171,7 @@ inline std::string aieArchDefine(llvm::StringRef target) {
 
 // Statically-available host runtime libraries shipped with the toolchain (not
 // compilation outputs), resolved under `<installDir>/runtime_lib/<archTag>`.
-// `archTag` is the host arch (the target triple's first component) plus a
-// "-hsa" suffix when linking against the HSA runtime.
+// `archTag` is the host arch (the target triple's first component).
 struct HostRuntimeLibs {
   std::string xaiengineInclude;
   std::string xaiengineLib;
@@ -180,17 +179,13 @@ struct HostRuntimeLibs {
 };
 
 inline HostRuntimeLibs getHostRuntimeLibs(llvm::StringRef installDir,
-                                          llvm::StringRef target,
-                                          bool linkAgainstHsa) {
+                                          llvm::StringRef target) {
   std::string archTag = target.split('-').first.str();
-  if (linkAgainstHsa)
-    archTag += "-hsa";
   std::string base = llvm::formatv("{0}/runtime_lib/{1}", installDir, archTag);
   return {llvm::formatv("{0}/xaiengine/include", base),
           llvm::formatv("{0}/xaiengine/lib", base),
           llvm::formatv("{0}/test_lib/lib/{1}", base,
-                        linkAgainstHsa ? "libmemory_allocator_hsa.a"
-                                       : "libmemory_allocator_ion.a")};
+                        "libmemory_allocator_ion.a")};
 }
 
 } // namespace xilinx::aiecc
