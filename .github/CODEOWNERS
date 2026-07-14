@@ -3,31 +3,30 @@
 
 # Repo infrastructure
 .github                        @stephenneuendorffer @fifield @erwei-xilinx @jgmelber @andrej @hunhoffe
-tools/**                       @erwei-xilinx
-utils/**                       @erwei-xilinx
+tools/**                       @erwei-xilinx @hunhoffe @andrej
+utils/**                       @erwei-xilinx @hunhoffe @andrej
 
 # Compiler: dialects, conversions, targets
-**/AIE/**                      @abisca @stephenneuendorffer @fifield @erwei-xilinx
-**/AIEX/**                     @jgmelber @abisca @fifield
-**/AIEVec/**                   @jsetoain
+**/AIE/**                      @abisca @stephenneuendorffer @fifield @erwei-xilinx @hunhoffe
+**/AIEX/**                     @jgmelber @abisca @fifield @hunhoffe
+**/AIEVec/**                   @jsetoain @erwei-xilinx
 **/XLLVM/                      @jsetoain
 **/Conversion/                 @erwei-xilinx @jsetoain
 lib/Conversion/AIEVecToLLVM/   @jsetoain
 **/Target/**                   @jsetoain @fifield
-**/Targets/**                  @fifield @jgmelber @abisca
+**/Targets/**                  @fifield @jgmelber
 **/AIETargetModel.*            @stephenneuendorffer
-lib/CAPI/                      @fifield @abisca
-include/aie/Bindings/          @abisca
+lib/CAPI/                      @fifield
 
 # Runtime libraries
-aie_runtime_lib/**             @stephenneuendorffer @jackl-xilinx
-runtime_lib/**                 @stephenneuendorffer @jackl-xilinx
+aie_runtime_lib/**             @stephenneuendorffer @jgmelber @hunhoffe @andrej
+runtime_lib/**                 @stephenneuendorffer @jgmelber @hunhoffe @andrej
 
 # Python frontend / bindings
 python/**                      @abisca @andrej @jgmelber @hunhoffe
 
 # Kernels
-aie_kernels/**                 @denolf @jgmelber @jackl-xilinx @andrej
+aie_kernels/**                 @jgmelber @jackl-xilinx @andrej @hunhoffe
 
 # Platforms
 platforms/**                   @jackl-xilinx @eddierichter-amd @jgmelber
@@ -38,6 +37,6 @@ programming_guide/**           @denolf @jgmelber @abisca @jackl-xilinx @andrej @
 programming_examples/**        @denolf @jgmelber @fifield @jackl-xilinx @andrej @hunhoffe
 
 # Tests
-test/**                        @stephenneuendorffer @jgmelber @fifield @jackl-xilinx @abisca @hunhoffe
+test/**                        @stephenneuendorffer @jgmelber @fifield @jackl-xilinx @hunhoffe
 test/**/AIEVec*/**             @jsetoain
 test/unit_tests/aievec_tests/  @jsetoain
