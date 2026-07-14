@@ -35,9 +35,9 @@
 // CHECK:           %[[VAL_19:.*]] = aie.shim_dma(%[[VAL_0]]) {
 // CHECK:             %[[VAL_20:.*]] = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb1
-// CHECK:             aie.use_lock(%[[VAL_17]], AcquireGreaterEqual, 1)
+// CHECK:             aie.use_lock(%[[VAL_17]], AcquireGreaterEqual, %{{.*}})
 // CHECK:             aie.dma_bd(%[[VAL_18]] : memref<64xi32> offset = {{.*}} len = {{.*}})
-// CHECK:             aie.use_lock(%[[VAL_16]], Release, 1)
+// CHECK:             aie.use_lock(%[[VAL_16]], Release, %{{.*}})
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb2:  // pred: ^bb0
 // CHECK:             aie.end
@@ -46,14 +46,14 @@
 // CHECK:           %[[VAL_21:.*]] = aie.mem(%[[VAL_1]]) {
 // CHECK:             %[[VAL_22:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb2
-// CHECK:             aie.use_lock(%[[VAL_6]], AcquireGreaterEqual, 1)
+// CHECK:             aie.use_lock(%[[VAL_6]], AcquireGreaterEqual, %{{.*}})
 // CHECK:             aie.dma_bd(%[[VAL_4]] : memref<16xi32> offset = {{.*}} len = {{.*}})
-// CHECK:             aie.use_lock(%[[VAL_7]], Release, 1)
+// CHECK:             aie.use_lock(%[[VAL_7]], Release, %{{.*}})
 // CHECK:             aie.next_bd ^bb2
 // CHECK:           ^bb2:  // pred: ^bb1
-// CHECK:             aie.use_lock(%[[VAL_6]], AcquireGreaterEqual, 1)
+// CHECK:             aie.use_lock(%[[VAL_6]], AcquireGreaterEqual, %{{.*}})
 // CHECK:             aie.dma_bd(%[[VAL_5]] : memref<16xi32> offset = {{.*}} len = {{.*}})
-// CHECK:             aie.use_lock(%[[VAL_7]], Release, 1)
+// CHECK:             aie.use_lock(%[[VAL_7]], Release, %{{.*}})
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb3:  // pred: ^bb0
 // CHECK:             aie.end
@@ -61,14 +61,14 @@
 // CHECK:           %[[VAL_23:.*]] = aie.mem(%[[VAL_2]]) {
 // CHECK:             %[[VAL_24:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb2
-// CHECK:             aie.use_lock(%[[VAL_10]], AcquireGreaterEqual, 1)
+// CHECK:             aie.use_lock(%[[VAL_10]], AcquireGreaterEqual, %{{.*}})
 // CHECK:             aie.dma_bd(%[[VAL_8]] : memref<16xi32> offset = {{.*}} len = {{.*}})
-// CHECK:             aie.use_lock(%[[VAL_11]], Release, 1)
+// CHECK:             aie.use_lock(%[[VAL_11]], Release, %{{.*}})
 // CHECK:             aie.next_bd ^bb2
 // CHECK:           ^bb2:  // pred: ^bb1
-// CHECK:             aie.use_lock(%[[VAL_10]], AcquireGreaterEqual, 1)
+// CHECK:             aie.use_lock(%[[VAL_10]], AcquireGreaterEqual, %{{.*}})
 // CHECK:             aie.dma_bd(%[[VAL_9]] : memref<16xi32> offset = {{.*}} len = {{.*}})
-// CHECK:             aie.use_lock(%[[VAL_11]], Release, 1)
+// CHECK:             aie.use_lock(%[[VAL_11]], Release, %{{.*}})
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb3:  // pred: ^bb0
 // CHECK:             aie.end
@@ -76,14 +76,14 @@
 // CHECK:           %[[VAL_25:.*]] = aie.mem(%[[VAL_3]]) {
 // CHECK:             %[[VAL_26:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb2
-// CHECK:             aie.use_lock(%[[VAL_14]], AcquireGreaterEqual, 1)
+// CHECK:             aie.use_lock(%[[VAL_14]], AcquireGreaterEqual, %{{.*}})
 // CHECK:             aie.dma_bd(%[[VAL_12]] : memref<16xi32> offset = {{.*}} len = {{.*}})
-// CHECK:             aie.use_lock(%[[VAL_15]], Release, 1)
+// CHECK:             aie.use_lock(%[[VAL_15]], Release, %{{.*}})
 // CHECK:             aie.next_bd ^bb2
 // CHECK:           ^bb2:  // pred: ^bb1
-// CHECK:             aie.use_lock(%[[VAL_14]], AcquireGreaterEqual, 1)
+// CHECK:             aie.use_lock(%[[VAL_14]], AcquireGreaterEqual, %{{.*}})
 // CHECK:             aie.dma_bd(%[[VAL_13]] : memref<16xi32> offset = {{.*}} len = {{.*}})
-// CHECK:             aie.use_lock(%[[VAL_15]], Release, 1)
+// CHECK:             aie.use_lock(%[[VAL_15]], Release, %{{.*}})
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb3:  // pred: ^bb0
 // CHECK:             aie.end

@@ -30,9 +30,11 @@ aie.device(xcvc1902) {
     %c512_i32 = arith.constant 512 : i32
     %dma0 = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
-      aie.use_lock(%lock13_5, "Acquire", 1)
+      %c1_ul1 = arith.constant 1 : i32
+      aie.use_lock(%lock13_5, "Acquire", %c1_ul1)
       aie.dma_bd(%buf13_0 : memref<512xi32> offset = 0 len = 512)
-      aie.use_lock(%lock13_5, "Release", 0)
+      %c0_ul2 = arith.constant 0 : i32
+      aie.use_lock(%lock13_5, "Release", %c0_ul2)
       aie.next_bd ^end // point to the next BD, or termination
     ^end:
       aie.end
@@ -48,9 +50,11 @@ aie.device(xcvc1902) {
     %c512_i32 = arith.constant 512 : i32
     %dma0 = aie.dma_start(S2MM, 1, ^bd0, ^end)
     ^bd0:
-      aie.use_lock(%lock14_6, "Acquire", 0)
+      %c0_ul3 = arith.constant 0 : i32
+      aie.use_lock(%lock14_6, "Acquire", %c0_ul3)
       aie.dma_bd(%buf14_0 : memref<512xi32> offset = 0 len = 512)
-      aie.use_lock(%lock14_6, "Release", 1)
+      %c1_ul4 = arith.constant 1 : i32
+      aie.use_lock(%lock14_6, "Release", %c1_ul4)
       aie.next_bd ^end // point to the next BD, or termination
     ^end:
       aie.end

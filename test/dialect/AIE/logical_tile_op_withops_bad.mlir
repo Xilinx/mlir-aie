@@ -9,36 +9,9 @@
 
 // Test verification errors when using LogicalTileOp with TileElement ops
 
-// Interconnect ops explicitly require placed TileOp
-// CHECK: error{{.*}}'aie.switchbox' op requires a placed tile (aie.tile), not a logical tile
-module @test_switchbox_with_logical_tile {
-  aie.device(npu2) {
-    %tile = aie.logical_tile<CoreTile>(?, ?)
-    // Switchbox requires aie.tile, not aie.logical_tile
-    aie.switchbox(%tile) {
-      aie.end
-    }
-    aie.end
-  }
-}
-
-
-// -----
-
-// CHECK: error{{.*}}'aie.shim_mux' op requires a placed tile (aie.tile), not a logical tile
-module @test_shim_mux_with_logical_tile {
-  aie.device(npu2) {
-    %tile = aie.logical_tile<ShimNOCTile>(?, ?)
-    // ShimMux requires aie.tile, not aie.logical_tile
-    aie.shim_mux(%tile) {
-      aie.connect<North : 0, DMA : 0>
-    }
-    aie.end
-  }
-}
-
-
-// -----
+// Note: aie.switchbox and aie.shim_mux intentionally accept a logical tile and
+// defer their target-model checks to post-placement re-verify -- see
+// switchbox_logical_tile.mlir.
 
 // MemOp with wrong tile type
 // CHECK: error{{.*}}'aie.mem' op failed to verify that op exists in a core tile
@@ -52,7 +25,6 @@ module @test_mem_wrong_tile_type {
     aie.end
   }
 }
-
 
 // -----
 
@@ -69,7 +41,6 @@ module @test_memtile_dma_wrong_tile_type {
   }
 }
 
-
 // -----
 
 // ShimDMAOp with wrong tile type
@@ -85,7 +56,6 @@ module @test_shim_dma_wrong_tile_type {
   }
 }
 
-
 // -----
 
 // BufferOp on tile without memory
@@ -98,7 +68,6 @@ module @test_buffer_on_shim_tile {
     aie.end
   }
 }
-
 
 // -----
 
@@ -114,7 +83,6 @@ module @test_shim_dma_allocation_wrong_tile_type {
     aie.end
   }
 }
-
 
 // -----
 
@@ -139,7 +107,6 @@ module @test_has_valid_dma_channels {
   }
 }
 
-
 // -----
 
 // HasValidBDs trait verification with LogicalTileOp
@@ -151,56 +118,56 @@ module @test_has_valid_bds {
     aie.mem(%tile) {
       %dma = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      aie.dma_bd(%buf : memref<256xi32> len = 256)
       aie.next_bd ^bd1
     ^bd1:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      aie.dma_bd(%buf : memref<256xi32> len = 256)
       aie.next_bd ^bd2
     ^bd2:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      aie.dma_bd(%buf : memref<256xi32> len = 256)
       aie.next_bd ^bd3
     ^bd3:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      aie.dma_bd(%buf : memref<256xi32> len = 256)
       aie.next_bd ^bd4
     ^bd4:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      aie.dma_bd(%buf : memref<256xi32> len = 256)
       aie.next_bd ^bd5
     ^bd5:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      aie.dma_bd(%buf : memref<256xi32> len = 256)
       aie.next_bd ^bd6
     ^bd6:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      aie.dma_bd(%buf : memref<256xi32> len = 256)
       aie.next_bd ^bd7
     ^bd7:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      aie.dma_bd(%buf : memref<256xi32> len = 256)
       aie.next_bd ^bd8
     ^bd8:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      aie.dma_bd(%buf : memref<256xi32> len = 256)
       aie.next_bd ^bd9
     ^bd9:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      aie.dma_bd(%buf : memref<256xi32> len = 256)
       aie.next_bd ^bd10
     ^bd10:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      aie.dma_bd(%buf : memref<256xi32> len = 256)
       aie.next_bd ^bd11
     ^bd11:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      aie.dma_bd(%buf : memref<256xi32> len = 256)
       aie.next_bd ^bd12
     ^bd12:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      aie.dma_bd(%buf : memref<256xi32> len = 256)
       aie.next_bd ^bd13
     ^bd13:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      aie.dma_bd(%buf : memref<256xi32> len = 256)
       aie.next_bd ^bd14
     ^bd14:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      aie.dma_bd(%buf : memref<256xi32> len = 256)
       aie.next_bd ^bd15
     ^bd15:
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      aie.dma_bd(%buf : memref<256xi32> len = 256)
       aie.next_bd ^bd16
     ^bd16:
       // This is the 17th BD, should fail
-      aie.dma_bd(%buf : memref<256xi32> offset = 0 len = 256)
+      aie.dma_bd(%buf : memref<256xi32> len = 256)
       aie.next_bd ^bd0
     ^end:
       aie.end
@@ -208,7 +175,6 @@ module @test_has_valid_bds {
     aie.end
   }
 }
-
 
 // -----
 
@@ -221,7 +187,6 @@ module @test_configure_cascade_rejects_logical {
     aie.end
   }
 }
-
 
 // -----
 
@@ -236,7 +201,6 @@ module @test_cascade_flow_rejects_shim {
   }
 }
 
-
 // -----
 
 // Test cascade_flow rejects MemTile
@@ -249,7 +213,6 @@ module @test_cascade_flow_rejects_memtile {
     aie.end
   }
 }
-
 
 // -----
 

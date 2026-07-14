@@ -19,9 +19,11 @@ module {
     ^bb0:
       aie.dma(S2MM, 0) [{
         %c0_i32 = arith.constant 0 : i32
-        aie.use_lock(%objFifo_in0_cons_prod_lock, AcquireGreaterEqual, 1)
+        %c1_ul1 = arith.constant 1 : i32
+        aie.use_lock(%objFifo_in0_cons_prod_lock, AcquireGreaterEqual, %c1_ul1)
         aie.dma_bd(%objFifo_in0_cons_buff_0 : memref<16xi32> offset = 0 len = 16)
-        aie.use_lock(%objFifo_in0_cons_cons_lock, Release, 1)
+        %c1_ul2 = arith.constant 1 : i32
+        aie.use_lock(%objFifo_in0_cons_cons_lock, Release, %c1_ul2)
       }]
       aie.next_bd ^bb1
     ^bb1:

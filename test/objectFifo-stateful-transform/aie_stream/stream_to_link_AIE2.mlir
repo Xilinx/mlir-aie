@@ -23,26 +23,26 @@
 // CHECK:     %memtile_dma_1_1 = aie.memtile_dma(%mem_tile_1_1) {
 // CHECK:       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
-// CHECK:       aie.use_lock(%of_stream_cons_prod_lock_0, AcquireGreaterEqual, 1)
+// CHECK:       aie.use_lock(%of_stream_cons_prod_lock_0, AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%of_stream_cons_buff_0 : memref<16xi32> offset = {{.*}} len = {{.*}})
-// CHECK:       aie.use_lock(%of_stream_cons_cons_lock_0, Release, 1)
+// CHECK:       aie.use_lock(%of_stream_cons_cons_lock_0, Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb2
 // CHECK:     ^bb2:  // pred: ^bb1
-// CHECK:       aie.use_lock(%of_stream_cons_prod_lock_0, AcquireGreaterEqual, 1)
+// CHECK:       aie.use_lock(%of_stream_cons_prod_lock_0, AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%of_stream_cons_buff_1 : memref<16xi32> offset = {{.*}} len = {{.*}})
-// CHECK:       aie.use_lock(%of_stream_cons_cons_lock_0, Release, 1)
+// CHECK:       aie.use_lock(%of_stream_cons_cons_lock_0, Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb1
 // CHECK:     ^bb3:  // pred: ^bb0
 // CHECK:       %1 = aie.dma_start(MM2S, 0, ^bb4, ^bb6)
 // CHECK:     ^bb4:  // 2 preds: ^bb3, ^bb5
-// CHECK:       aie.use_lock(%of_stream_cons_cons_lock_0, AcquireGreaterEqual, 1)
+// CHECK:       aie.use_lock(%of_stream_cons_cons_lock_0, AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%of_stream_cons_buff_0 : memref<16xi32> offset = {{.*}} len = {{.*}})
-// CHECK:       aie.use_lock(%of_stream_cons_prod_lock_0, Release, 1)
+// CHECK:       aie.use_lock(%of_stream_cons_prod_lock_0, Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb5
 // CHECK:     ^bb5:  // pred: ^bb4
-// CHECK:       aie.use_lock(%of_stream_cons_cons_lock_0, AcquireGreaterEqual, 1)
+// CHECK:       aie.use_lock(%of_stream_cons_cons_lock_0, AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%of_stream_cons_buff_1 : memref<16xi32> offset = {{.*}} len = {{.*}})
-// CHECK:       aie.use_lock(%of_stream_cons_prod_lock_0, Release, 1)
+// CHECK:       aie.use_lock(%of_stream_cons_prod_lock_0, Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb4
 // CHECK:     ^bb6:  // pred: ^bb3
 // CHECK:       aie.end

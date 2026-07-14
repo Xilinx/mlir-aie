@@ -41,16 +41,20 @@ module {
     %mem_0_2 = aie.mem(%tile_0_2) {
       %0 = aie.dma_start(S2MM, 0, ^s2mm, ^mm2s_entry)
     ^s2mm:
-      aie.use_lock(%lock_in, AcquireGreaterEqual, 1)
+      %c1_ul1 = arith.constant 1 : i32
+      aie.use_lock(%lock_in, AcquireGreaterEqual, %c1_ul1)
       aie.dma_bd(%core_buf : memref<256xi32> offset = 0 len = 256)
-      aie.use_lock(%lock_out, Release, 1)
+      %c1_ul2 = arith.constant 1 : i32
+      aie.use_lock(%lock_out, Release, %c1_ul2)
       aie.next_bd ^s2mm
     ^mm2s_entry:
       %1 = aie.dma_start(MM2S, 0, ^mm2s, ^end)
     ^mm2s:
-      aie.use_lock(%lock_out, AcquireGreaterEqual, 1)
+      %c1_ul3 = arith.constant 1 : i32
+      aie.use_lock(%lock_out, AcquireGreaterEqual, %c1_ul3)
       aie.dma_bd(%core_buf : memref<256xi32> offset = 0 len = 256)
-      aie.use_lock(%lock_in, Release, 1)
+      %c1_ul4 = arith.constant 1 : i32
+      aie.use_lock(%lock_in, Release, %c1_ul4)
       aie.next_bd ^mm2s
     ^end:
       aie.end

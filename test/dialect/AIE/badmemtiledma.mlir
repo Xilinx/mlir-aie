@@ -35,10 +35,13 @@ module @test {
       %dma0 = aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
         // expected-note@+1 {{in this BD block}}
-        aie.use_lock(%lock, Acquire, 1)
-        aie.use_lock(%lock, Acquire, 1)
+        %c1_ul1 = arith.constant 1 : i32
+        aie.use_lock(%lock, Acquire, %c1_ul1)
+        %c1_ul2 = arith.constant 1 : i32
+        aie.use_lock(%lock, Acquire, %c1_ul2)
         aie.dma_bd(%buff : memref<16xi32> offset = 0 len = 16)
-        aie.use_lock(%lock, Release, 0)
+        %c0_ul3 = arith.constant 0 : i32
+        aie.use_lock(%lock, Release, %c0_ul3)
         aie.next_bd ^bd0
       ^end:
         aie.end
@@ -64,10 +67,13 @@ module @test {
       %dma0 = aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
         // expected-note@+1 {{in this BD block}}
-        aie.use_lock(%prod_lock, AcquireGreaterEqual, 1)
-        aie.use_lock(%prod_lock_test, AcquireGreaterEqual, 1)
+        %c1_ul4 = arith.constant 1 : i32
+        aie.use_lock(%prod_lock, AcquireGreaterEqual, %c1_ul4)
+        %c1_ul5 = arith.constant 1 : i32
+        aie.use_lock(%prod_lock_test, AcquireGreaterEqual, %c1_ul5)
         aie.dma_bd(%buff : memref<16xi32> offset = 0 len = 16)
-        aie.use_lock(%cons_lock, Release, 1)
+        %c1_ul6 = arith.constant 1 : i32
+        aie.use_lock(%cons_lock, Release, %c1_ul6)
         aie.next_bd ^bd0
       ^end:
         aie.end
@@ -93,10 +99,13 @@ module @test {
       %dma0 = aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
         // expected-note@+1 {{in this BD block}}
-        aie.use_lock(%prod_lock, AcquireGreaterEqual, 1)
+        %c1_ul7 = arith.constant 1 : i32
+        aie.use_lock(%prod_lock, AcquireGreaterEqual, %c1_ul7)
         aie.dma_bd(%buff : memref<16xi32> offset = 0 len = 16)
-        aie.use_lock(%cons_lock, Release, 1)
-        aie.use_lock(%cons_lock_test, Release, 1)
+        %c1_ul8 = arith.constant 1 : i32
+        aie.use_lock(%cons_lock, Release, %c1_ul8)
+        %c1_ul9 = arith.constant 1 : i32
+        aie.use_lock(%cons_lock_test, Release, %c1_ul9)
         aie.next_bd ^bd0
       ^end:
         aie.end
@@ -122,10 +131,12 @@ module @test {
       %dma0 = aie.dma_start("MM2S", 0, ^bd0, ^end)
       ^bd0:
         // expected-note@+1 {{in this BD block}}
-        aie.use_lock(%prod_lock, AcquireGreaterEqual, 1)
+        %c1_ul10 = arith.constant 1 : i32
+        aie.use_lock(%prod_lock, AcquireGreaterEqual, %c1_ul10)
         aie.dma_bd(%buff : memref<16xi32> offset = 0 len = 16)
         aie.dma_bd(%buff2 : memref<16xi32> offset = 0 len = 16)
-        aie.use_lock(%cons_lock, Release, 1)
+        %c1_ul11 = arith.constant 1 : i32
+        aie.use_lock(%cons_lock, Release, %c1_ul11)
         aie.next_bd ^bd0
       ^end:
         aie.end

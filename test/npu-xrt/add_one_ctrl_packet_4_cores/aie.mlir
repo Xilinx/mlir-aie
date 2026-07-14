@@ -83,28 +83,32 @@ module {
       }
       %c4294967295 = arith.constant 4294967295 : index
       scf.for %arg0 = %c0 to %c4294967295 step %c1 {
-        aie.use_lock(%input_0_2_lock0, AcquireGreaterEqual, 1)
+        %c1_ul1 = arith.constant 1 : i32
+        aie.use_lock(%input_0_2_lock0, AcquireGreaterEqual, %c1_ul1)
         scf.for %arg1 = %c0 to %c8 step %c1 {
           // 4
           %1 = memref.load %input_0_2_buffer[%arg1] : memref<8xi32>
           %2 = arith.addi %1, %c1_i32 : i32
           memref.store %2, %input_0_2_buffer[%arg1] : memref<8xi32>
         }
-        aie.use_lock(%input_0_2_lock0, AcquireGreaterEqual, 1)
+        %c1_ul2 = arith.constant 1 : i32
+        aie.use_lock(%input_0_2_lock0, AcquireGreaterEqual, %c1_ul2)
         scf.for %arg1 = %c0 to %c8 step %c1 {
           // 5
           %1 = memref.load %input_0_2_buffer[%arg1] : memref<8xi32>
           %2 = arith.addi %1, %c1_i32 : i32
           memref.store %2, %input_0_2_buffer[%arg1] : memref<8xi32>
         }
-        aie.use_lock(%input_0_2_lock2, AcquireGreaterEqual, 1)
+        %c1_ul3 = arith.constant 1 : i32
+        aie.use_lock(%input_0_2_lock2, AcquireGreaterEqual, %c1_ul3)
         scf.for %arg1 = %c0 to %c8 step %c1 {
           // 6
           %1 = memref.load %input_0_2_buffer[%arg1] : memref<8xi32>
           %2 = arith.addi %1, %c1_i32 : i32
           memref.store %2, %input_0_2_buffer[%arg1] : memref<8xi32>
         }
-        aie.use_lock(%input_0_2_lock2, AcquireGreaterEqual, 1)
+        %c1_ul4 = arith.constant 1 : i32
+        aie.use_lock(%input_0_2_lock2, AcquireGreaterEqual, %c1_ul4)
         scf.for %arg1 = %c0 to %c8 step %c1 {
           // 7
           %1 = memref.load %input_0_2_buffer[%arg1] : memref<8xi32>
@@ -112,12 +116,14 @@ module {
           memref.store %2, %input_0_2_buffer[%arg1] : memref<8xi32>
         }
         // write to output buffer
-        aie.use_lock(%output_0_2_lock5, AcquireGreaterEqual, 1)
+        %c1_ul5 = arith.constant 1 : i32
+        aie.use_lock(%output_0_2_lock5, AcquireGreaterEqual, %c1_ul5)
         scf.for %arg1 = %c0 to %c8 step %c1 {
             %1 = memref.load %input_0_2_buffer[%arg1] : memref<8xi32>
             memref.store %1, %output_0_2_buffer[%arg1] : memref<8xi32>
         }
-        aie.use_lock(%output_0_2_lock4, Release, 1)
+        %c1_ul6 = arith.constant 1 : i32
+        aie.use_lock(%output_0_2_lock4, Release, %c1_ul6)
       }
       aie.end
     }
@@ -125,9 +131,11 @@ module {
     %mem_0_2 = aie.mem(%tile_0_2) {
       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
     ^bb1:  // 2 preds: ^bb0, ^bb2
-      aie.use_lock(%output_0_2_lock4, AcquireGreaterEqual, 1)
+      %c1_ul7 = arith.constant 1 : i32
+      aie.use_lock(%output_0_2_lock4, AcquireGreaterEqual, %c1_ul7)
       aie.dma_bd(%output_0_2_buffer : memref<8xi32> offset = 0 len = 8)
-      aie.use_lock(%output_0_2_lock5, Release, 1)
+      %c1_ul8 = arith.constant 1 : i32
+      aie.use_lock(%output_0_2_lock5, Release, %c1_ul8)
       aie.next_bd ^bb1
     ^bb2:
       aie.end
@@ -147,28 +155,32 @@ module {
       }
       %c4294967295 = arith.constant 4294967295 : index
       scf.for %arg0 = %c0 to %c4294967295 step %c1 {
-        aie.use_lock(%input_0_3_lock0, AcquireGreaterEqual, 1)
+        %c1_ul9 = arith.constant 1 : i32
+        aie.use_lock(%input_0_3_lock0, AcquireGreaterEqual, %c1_ul9)
         scf.for %arg1 = %c0 to %c8 step %c1 {
           // 4
           %1 = memref.load %input_0_3_buffer[%arg1] : memref<8xi32>
           %2 = arith.addi %1, %c1_i32 : i32
           memref.store %2, %input_0_3_buffer[%arg1] : memref<8xi32>
         }
-        aie.use_lock(%input_0_3_lock0, AcquireGreaterEqual, 1)
+        %c1_ul10 = arith.constant 1 : i32
+        aie.use_lock(%input_0_3_lock0, AcquireGreaterEqual, %c1_ul10)
         scf.for %arg1 = %c0 to %c8 step %c1 {
           // 5
           %1 = memref.load %input_0_3_buffer[%arg1] : memref<8xi32>
           %2 = arith.addi %1, %c1_i32 : i32
           memref.store %2, %input_0_3_buffer[%arg1] : memref<8xi32>
         }
-        aie.use_lock(%input_0_3_lock2, AcquireGreaterEqual, 1)
+        %c1_ul11 = arith.constant 1 : i32
+        aie.use_lock(%input_0_3_lock2, AcquireGreaterEqual, %c1_ul11)
         scf.for %arg1 = %c0 to %c8 step %c1 {
           // 6
           %1 = memref.load %input_0_3_buffer[%arg1] : memref<8xi32>
           %2 = arith.addi %1, %c1_i32 : i32
           memref.store %2, %input_0_3_buffer[%arg1] : memref<8xi32>
         }
-        aie.use_lock(%input_0_3_lock2, AcquireGreaterEqual, 1)
+        %c1_ul12 = arith.constant 1 : i32
+        aie.use_lock(%input_0_3_lock2, AcquireGreaterEqual, %c1_ul12)
         scf.for %arg1 = %c0 to %c8 step %c1 {
           // 7
           %1 = memref.load %input_0_3_buffer[%arg1] : memref<8xi32>
@@ -176,12 +188,14 @@ module {
           memref.store %2, %input_0_3_buffer[%arg1] : memref<8xi32>
         }
         // write to output buffer
-        aie.use_lock(%output_0_3_lock5, AcquireGreaterEqual, 1)
+        %c1_ul13 = arith.constant 1 : i32
+        aie.use_lock(%output_0_3_lock5, AcquireGreaterEqual, %c1_ul13)
         scf.for %arg1 = %c0 to %c8 step %c1 {
             %1 = memref.load %input_0_3_buffer[%arg1] : memref<8xi32>
             memref.store %1, %output_0_3_buffer[%arg1] : memref<8xi32>
         }
-        aie.use_lock(%output_0_3_lock4, Release, 1)
+        %c1_ul14 = arith.constant 1 : i32
+        aie.use_lock(%output_0_3_lock4, Release, %c1_ul14)
       }
       aie.end
     }
@@ -189,9 +203,11 @@ module {
     %mem_0_3 = aie.mem(%tile_0_3) {
       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
     ^bb1:  // 2 preds: ^bb0, ^bb2
-      aie.use_lock(%output_0_3_lock4, AcquireGreaterEqual, 1)
+      %c1_ul15 = arith.constant 1 : i32
+      aie.use_lock(%output_0_3_lock4, AcquireGreaterEqual, %c1_ul15)
       aie.dma_bd(%output_0_3_buffer : memref<8xi32> offset = 0 len = 8)
-      aie.use_lock(%output_0_3_lock5, Release, 1)
+      %c1_ul16 = arith.constant 1 : i32
+      aie.use_lock(%output_0_3_lock5, Release, %c1_ul16)
       aie.next_bd ^bb1
     ^bb2:
       aie.end
@@ -211,28 +227,32 @@ module {
       }
       %c4294967295 = arith.constant 4294967295 : index
       scf.for %arg0 = %c0 to %c4294967295 step %c1 {
-        aie.use_lock(%input_0_4_lock0, AcquireGreaterEqual, 1)
+        %c1_ul17 = arith.constant 1 : i32
+        aie.use_lock(%input_0_4_lock0, AcquireGreaterEqual, %c1_ul17)
         scf.for %arg1 = %c0 to %c8 step %c1 {
           // 4
           %1 = memref.load %input_0_4_buffer[%arg1] : memref<8xi32>
           %2 = arith.addi %1, %c1_i32 : i32
           memref.store %2, %input_0_4_buffer[%arg1] : memref<8xi32>
         }
-        aie.use_lock(%input_0_4_lock0, AcquireGreaterEqual, 1)
+        %c1_ul18 = arith.constant 1 : i32
+        aie.use_lock(%input_0_4_lock0, AcquireGreaterEqual, %c1_ul18)
         scf.for %arg1 = %c0 to %c8 step %c1 {
           // 5
           %1 = memref.load %input_0_4_buffer[%arg1] : memref<8xi32>
           %2 = arith.addi %1, %c1_i32 : i32
           memref.store %2, %input_0_4_buffer[%arg1] : memref<8xi32>
         }
-        aie.use_lock(%input_0_4_lock2, AcquireGreaterEqual, 1)
+        %c1_ul19 = arith.constant 1 : i32
+        aie.use_lock(%input_0_4_lock2, AcquireGreaterEqual, %c1_ul19)
         scf.for %arg1 = %c0 to %c8 step %c1 {
           // 6
           %1 = memref.load %input_0_4_buffer[%arg1] : memref<8xi32>
           %2 = arith.addi %1, %c1_i32 : i32
           memref.store %2, %input_0_4_buffer[%arg1] : memref<8xi32>
         }
-        aie.use_lock(%input_0_4_lock2, AcquireGreaterEqual, 1)
+        %c1_ul20 = arith.constant 1 : i32
+        aie.use_lock(%input_0_4_lock2, AcquireGreaterEqual, %c1_ul20)
         scf.for %arg1 = %c0 to %c8 step %c1 {
           // 7
           %1 = memref.load %input_0_4_buffer[%arg1] : memref<8xi32>
@@ -240,12 +260,14 @@ module {
           memref.store %2, %input_0_4_buffer[%arg1] : memref<8xi32>
         }
         // write to output buffer
-        aie.use_lock(%output_0_4_lock5, AcquireGreaterEqual, 1)
+        %c1_ul21 = arith.constant 1 : i32
+        aie.use_lock(%output_0_4_lock5, AcquireGreaterEqual, %c1_ul21)
         scf.for %arg1 = %c0 to %c8 step %c1 {
             %1 = memref.load %input_0_4_buffer[%arg1] : memref<8xi32>
             memref.store %1, %output_0_4_buffer[%arg1] : memref<8xi32>
         }
-        aie.use_lock(%output_0_4_lock4, Release, 1)
+        %c1_ul22 = arith.constant 1 : i32
+        aie.use_lock(%output_0_4_lock4, Release, %c1_ul22)
       }
       aie.end
     }
@@ -253,9 +275,11 @@ module {
     %mem_0_4 = aie.mem(%tile_0_4) {
       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
     ^bb1:  // 2 preds: ^bb0, ^bb2
-      aie.use_lock(%output_0_4_lock4, AcquireGreaterEqual, 1)
+      %c1_ul23 = arith.constant 1 : i32
+      aie.use_lock(%output_0_4_lock4, AcquireGreaterEqual, %c1_ul23)
       aie.dma_bd(%output_0_4_buffer : memref<8xi32> offset = 0 len = 8)
-      aie.use_lock(%output_0_4_lock5, Release, 1)
+      %c1_ul24 = arith.constant 1 : i32
+      aie.use_lock(%output_0_4_lock5, Release, %c1_ul24)
       aie.next_bd ^bb1
     ^bb2:
       aie.end
@@ -275,28 +299,32 @@ module {
       }
       %c4294967295 = arith.constant 4294967295 : index
       scf.for %arg0 = %c0 to %c4294967295 step %c1 {
-        aie.use_lock(%input_0_5_lock0, AcquireGreaterEqual, 1)
+        %c1_ul25 = arith.constant 1 : i32
+        aie.use_lock(%input_0_5_lock0, AcquireGreaterEqual, %c1_ul25)
         scf.for %arg1 = %c0 to %c8 step %c1 {
           // 4
           %1 = memref.load %input_0_5_buffer[%arg1] : memref<8xi32>
           %2 = arith.addi %1, %c1_i32 : i32
           memref.store %2, %input_0_5_buffer[%arg1] : memref<8xi32>
         }
-        aie.use_lock(%input_0_5_lock0, AcquireGreaterEqual, 1)
+        %c1_ul26 = arith.constant 1 : i32
+        aie.use_lock(%input_0_5_lock0, AcquireGreaterEqual, %c1_ul26)
         scf.for %arg1 = %c0 to %c8 step %c1 {
           // 5
           %1 = memref.load %input_0_5_buffer[%arg1] : memref<8xi32>
           %2 = arith.addi %1, %c1_i32 : i32
           memref.store %2, %input_0_5_buffer[%arg1] : memref<8xi32>
         }
-        aie.use_lock(%input_0_5_lock2, AcquireGreaterEqual, 1)
+        %c1_ul27 = arith.constant 1 : i32
+        aie.use_lock(%input_0_5_lock2, AcquireGreaterEqual, %c1_ul27)
         scf.for %arg1 = %c0 to %c8 step %c1 {
           // 6
           %1 = memref.load %input_0_5_buffer[%arg1] : memref<8xi32>
           %2 = arith.addi %1, %c1_i32 : i32
           memref.store %2, %input_0_5_buffer[%arg1] : memref<8xi32>
         }
-        aie.use_lock(%input_0_5_lock2, AcquireGreaterEqual, 1)
+        %c1_ul28 = arith.constant 1 : i32
+        aie.use_lock(%input_0_5_lock2, AcquireGreaterEqual, %c1_ul28)
         scf.for %arg1 = %c0 to %c8 step %c1 {
           // 7
           %1 = memref.load %input_0_5_buffer[%arg1] : memref<8xi32>
@@ -304,12 +332,14 @@ module {
           memref.store %2, %input_0_5_buffer[%arg1] : memref<8xi32>
         }
         // write to output buffer
-        aie.use_lock(%output_0_5_lock5, AcquireGreaterEqual, 1)
+        %c1_ul29 = arith.constant 1 : i32
+        aie.use_lock(%output_0_5_lock5, AcquireGreaterEqual, %c1_ul29)
         scf.for %arg1 = %c0 to %c8 step %c1 {
             %1 = memref.load %input_0_5_buffer[%arg1] : memref<8xi32>
             memref.store %1, %output_0_5_buffer[%arg1] : memref<8xi32>
         }
-        aie.use_lock(%output_0_5_lock4, Release, 1)
+        %c1_ul30 = arith.constant 1 : i32
+        aie.use_lock(%output_0_5_lock4, Release, %c1_ul30)
       }
       aie.end
     }
@@ -317,9 +347,11 @@ module {
     %mem_0_5 = aie.mem(%tile_0_5) {
       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
     ^bb1:  // 2 preds: ^bb0, ^bb2
-      aie.use_lock(%output_0_5_lock4, AcquireGreaterEqual, 1)
+      %c1_ul31 = arith.constant 1 : i32
+      aie.use_lock(%output_0_5_lock4, AcquireGreaterEqual, %c1_ul31)
       aie.dma_bd(%output_0_5_buffer : memref<8xi32> offset = 0 len = 8)
-      aie.use_lock(%output_0_5_lock5, Release, 1)
+      %c1_ul32 = arith.constant 1 : i32
+      aie.use_lock(%output_0_5_lock5, Release, %c1_ul32)
       aie.next_bd ^bb1
     ^bb2:
       aie.end

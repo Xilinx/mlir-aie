@@ -32,10 +32,12 @@ module {
   %shimdma70 = aie.shim_dma(%tile70)  {
     aie.dma_start(MM2S, 0, ^bb1, ^bb2)
   ^bb1:  // 2 preds: ^bb0, ^bb1
-    aie.use_lock(%lock70, Acquire, 1)
+    %c1_ul1 = arith.constant 1 : i32
+    aie.use_lock(%lock70, Acquire, %c1_ul1)
     aie.dma_bd_packet(0, 2)
     aie.dma_bd(%buf : memref<32x32xi32> offset = 0 len = 1024)
-    aie.use_lock(%lock70, Release, 0)
+    %c0_ul2 = arith.constant 0 : i32
+    aie.use_lock(%lock70, Release, %c0_ul2)
     aie.next_bd ^bb1
   ^bb2:  // pred: ^bb0
     aie.end

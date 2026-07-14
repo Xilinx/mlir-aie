@@ -29,24 +29,32 @@ module {
 
       // Configure memtile DMA to receive from shim
       %t1 = aiex.dma_configure_task(%tile_0_1, S2MM, 0) {
-        aie.use_lock(%prod_lock, AcquireGreaterEqual, 1)
+        %c1_ul1 = arith.constant 1 : i32
+        aie.use_lock(%prod_lock, AcquireGreaterEqual, %c1_ul1)
         aie.dma_bd(%out_buff : memref<4096xi32> offset = 1024 len = 1024) {bd_id = 0 : i32}
-        aie.use_lock(%cons_lock, Release, 1)
+        %c1_ul2 = arith.constant 1 : i32
+        aie.use_lock(%cons_lock, Release, %c1_ul2)
         aie.next_bd ^bb1
       ^bb1:
-        aie.use_lock(%prod_lock, AcquireGreaterEqual, 1)
+        %c1_ul3 = arith.constant 1 : i32
+        aie.use_lock(%prod_lock, AcquireGreaterEqual, %c1_ul3)
         aie.dma_bd(%out_buff : memref<4096xi32> offset = 3072 len = 1024) {bd_id = 1 : i32}
-        aie.use_lock(%cons_lock, Release, 1)
+        %c1_ul4 = arith.constant 1 : i32
+        aie.use_lock(%cons_lock, Release, %c1_ul4)
         aie.next_bd ^bb2
       ^bb2:
-        aie.use_lock(%prod_lock, AcquireGreaterEqual, 1)
+        %c1_ul5 = arith.constant 1 : i32
+        aie.use_lock(%prod_lock, AcquireGreaterEqual, %c1_ul5)
         aie.dma_bd(%out_buff : memref<4096xi32> offset = 0 len = 1024) {bd_id = 2 : i32}
-        aie.use_lock(%cons_lock, Release, 1)
+        %c1_ul6 = arith.constant 1 : i32
+        aie.use_lock(%cons_lock, Release, %c1_ul6)
         aie.next_bd ^bb3
       ^bb3:
-        aie.use_lock(%prod_lock, AcquireGreaterEqual, 1)
+        %c1_ul7 = arith.constant 1 : i32
+        aie.use_lock(%prod_lock, AcquireGreaterEqual, %c1_ul7)
         aie.dma_bd(%out_buff : memref<4096xi32> offset = 2048 len = 1024) {bd_id = 3 : i32}
-        aie.use_lock(%cons_lock, Release, 1)
+        %c1_ul8 = arith.constant 1 : i32
+        aie.use_lock(%cons_lock, Release, %c1_ul8)
         aie.end
       }
 
@@ -55,9 +63,11 @@ module {
 
       // Configure memtile DMA to send data to shim
       %t2 = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
-        aie.use_lock(%cons_lock, AcquireGreaterEqual, 4)
+        %c4_ul9 = arith.constant 4 : i32
+        aie.use_lock(%cons_lock, AcquireGreaterEqual, %c4_ul9)
         aie.dma_bd(%out_buff : memref<4096xi32> offset = 0 len = 4096) {bd_id = 4 : i32}
-        aie.use_lock(%prod_lock, Release, 4)
+        %c4_ul10 = arith.constant 4 : i32
+        aie.use_lock(%prod_lock, Release, %c4_ul10)
         aie.end
       }
 

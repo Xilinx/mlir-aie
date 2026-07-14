@@ -37,45 +37,45 @@
 // CHECK:             %[[VAL_20:.*]] = arith.constant 12 : index
 // CHECK:             %[[VAL_21:.*]] = arith.constant 2 : index
 // CHECK:             scf.for %[[VAL_22:.*]] = %[[VAL_18]] to %[[VAL_20]] step %[[VAL_21]] {
-// CHECK:               aie.use_lock(%[[VAL_8]], Acquire, 0)
+// CHECK:               aie.use_lock(%[[VAL_8]], Acquire, %{{.*}})
 // CHECK:               func.call @some_work(%[[VAL_6]]) : (memref<16xi32>) -> ()
-// CHECK:               aie.use_lock(%[[VAL_8]], Release, 1)
-// CHECK:               aie.use_lock(%[[VAL_9]], Acquire, 0)
+// CHECK:               aie.use_lock(%[[VAL_8]], Release, %{{.*}})
+// CHECK:               aie.use_lock(%[[VAL_9]], Acquire, %{{.*}})
 // CHECK:               func.call @some_work(%[[VAL_7]]) : (memref<16xi32>) -> ()
-// CHECK:               aie.use_lock(%[[VAL_9]], Release, 1)
+// CHECK:               aie.use_lock(%[[VAL_9]], Release, %{{.*}})
 // CHECK:             }
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:           %[[VAL_23:.*]] = aie.mem(%[[VAL_0]]) {
 // CHECK:             %[[VAL_24:.*]] = aie.dma_start(MM2S, 1, ^bb1, ^bb3)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb2
-// CHECK:             aie.use_lock(%[[VAL_11]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[VAL_11]], Acquire, %{{.*}})
 // CHECK:             aie.dma_bd(%[[VAL_10]] : memref<16xi32> offset = {{.*}} len = {{.*}})
-// CHECK:             aie.use_lock(%[[VAL_11]], Release, 0)
+// CHECK:             aie.use_lock(%[[VAL_11]], Release, %{{.*}})
 // CHECK:             aie.next_bd ^bb2
 // CHECK:           ^bb2:  // pred: ^bb1
-// CHECK:             aie.use_lock(%[[VAL_13]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[VAL_13]], Acquire, %{{.*}})
 // CHECK:             aie.dma_bd(%[[VAL_12]] : memref<16xi32> offset = {{.*}} len = {{.*}})
-// CHECK:             aie.use_lock(%[[VAL_13]], Release, 0)
+// CHECK:             aie.use_lock(%[[VAL_13]], Release, %{{.*}})
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb3:  // pred: ^bb0
 // CHECK:             %[[VAL_25:.*]] = aie.dma_start(S2MM, 0, ^bb4, ^bb5)
 // CHECK:           ^bb4:  // 2 preds: ^bb3, ^bb4
-// CHECK:             aie.use_lock(%[[VAL_15]], Acquire, 0)
+// CHECK:             aie.use_lock(%[[VAL_15]], Acquire, %{{.*}})
 // CHECK:             aie.dma_bd(%[[VAL_14]] : memref<16xi32> offset = {{.*}} len = {{.*}})
-// CHECK:             aie.use_lock(%[[VAL_15]], Release, 1)
+// CHECK:             aie.use_lock(%[[VAL_15]], Release, %{{.*}})
 // CHECK:             aie.next_bd ^bb4
 // CHECK:           ^bb5:  // pred: ^bb3
 // CHECK:             %[[VAL_26:.*]] = aie.dma_start(MM2S, 0, ^bb6, ^bb8)
 // CHECK:           ^bb6:  // 2 preds: ^bb5, ^bb7
-// CHECK:             aie.use_lock(%[[VAL_8]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[VAL_8]], Acquire, %{{.*}})
 // CHECK:             aie.dma_bd(%[[VAL_6]] : memref<16xi32> offset = {{.*}} len = {{.*}})
-// CHECK:             aie.use_lock(%[[VAL_8]], Release, 0)
+// CHECK:             aie.use_lock(%[[VAL_8]], Release, %{{.*}})
 // CHECK:             aie.next_bd ^bb7
 // CHECK:           ^bb7:  // pred: ^bb6
-// CHECK:             aie.use_lock(%[[VAL_9]], Acquire, 1)
+// CHECK:             aie.use_lock(%[[VAL_9]], Acquire, %{{.*}})
 // CHECK:             aie.dma_bd(%[[VAL_7]] : memref<16xi32> offset = {{.*}} len = {{.*}})
-// CHECK:             aie.use_lock(%[[VAL_9]], Release, 0)
+// CHECK:             aie.use_lock(%[[VAL_9]], Release, %{{.*}})
 // CHECK:             aie.next_bd ^bb6
 // CHECK:           ^bb8:  // pred: ^bb5
 // CHECK:             aie.end
@@ -83,14 +83,14 @@
 // CHECK:           %[[VAL_27:.*]] = aie.mem(%[[VAL_1]]) {
 // CHECK:             %[[VAL_28:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb2
-// CHECK:             aie.use_lock(%[[VAL_4]], Acquire, 0)
+// CHECK:             aie.use_lock(%[[VAL_4]], Acquire, %{{.*}})
 // CHECK:             aie.dma_bd(%[[VAL_2]] : memref<16xi32> offset = {{.*}} len = {{.*}})
-// CHECK:             aie.use_lock(%[[VAL_4]], Release, 1)
+// CHECK:             aie.use_lock(%[[VAL_4]], Release, %{{.*}})
 // CHECK:             aie.next_bd ^bb2
 // CHECK:           ^bb2:  // pred: ^bb1
-// CHECK:             aie.use_lock(%[[VAL_5]], Acquire, 0)
+// CHECK:             aie.use_lock(%[[VAL_5]], Acquire, %{{.*}})
 // CHECK:             aie.dma_bd(%[[VAL_3]] : memref<16xi32> offset = {{.*}} len = {{.*}})
-// CHECK:             aie.use_lock(%[[VAL_5]], Release, 1)
+// CHECK:             aie.use_lock(%[[VAL_5]], Release, %{{.*}})
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb3:  // pred: ^bb0
 // CHECK:             aie.end
@@ -133,21 +133,27 @@ module @tileDMA_channels {
         %mem12 = aie.mem(%tile12) {
             %dma1 = aie.dma_start(MM2S, 1, ^bb1, ^bb3)
         ^bb1:
-            aie.use_lock(%lock0, Acquire, 1)
+            %c1_ul1 = arith.constant 1 : i32
+            aie.use_lock(%lock0, Acquire, %c1_ul1)
             aie.dma_bd(%buff0 : memref<16xi32> offset = 0 len = 16)
-            aie.use_lock(%lock0, Release, 0)
+            %c0_ul2 = arith.constant 0 : i32
+            aie.use_lock(%lock0, Release, %c0_ul2)
             aie.next_bd ^bb2
         ^bb2:
-            aie.use_lock(%lock1, Acquire, 1)
+            %c1_ul3 = arith.constant 1 : i32
+            aie.use_lock(%lock1, Acquire, %c1_ul3)
             aie.dma_bd(%buff1 : memref<16xi32> offset = 0 len = 16)
-            aie.use_lock(%lock1, Release, 0)
+            %c0_ul4 = arith.constant 0 : i32
+            aie.use_lock(%lock1, Release, %c0_ul4)
             aie.next_bd ^bb1
         ^bb3:
             %dma2 = aie.dma_start(S2MM, 0, ^bb4, ^bb5)
         ^bb4:
-            aie.use_lock(%lock2, Acquire, 0)
+            %c0_ul5 = arith.constant 0 : i32
+            aie.use_lock(%lock2, Acquire, %c0_ul5)
             aie.dma_bd(%buff2 : memref<16xi32> offset = 0 len = 16)
-            aie.use_lock(%lock2, Release, 1)
+            %c1_ul6 = arith.constant 1 : i32
+            aie.use_lock(%lock2, Release, %c1_ul6)
             aie.next_bd ^bb4
         ^bb5:
             aie.end

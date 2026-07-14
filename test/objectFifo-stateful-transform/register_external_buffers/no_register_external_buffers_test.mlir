@@ -21,19 +21,19 @@
 // CHECK:             %mem_7_2 = aie.mem(%{{.*}}tile_7_2) {
 // CHECK:               %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb4)
 // CHECK:             ^bb1:  // 2 preds: ^bb0, ^bb3
-// CHECK:               aie.use_lock(%[[VAL_3]], Acquire, 0)
+// CHECK:               aie.use_lock(%[[VAL_3]], Acquire, %{{.*}})
 // CHECK:               aie.dma_bd(%[[VAL_0]] : memref<16xi32> offset = {{.*}} len = {{.*}})
-// CHECK:               aie.use_lock(%[[VAL_3]], Release, 1)
+// CHECK:               aie.use_lock(%[[VAL_3]], Release, %{{.*}})
 // CHECK:               aie.next_bd ^bb2
 // CHECK:             ^bb2:  // pred: ^bb1
-// CHECK:               aie.use_lock(%[[VAL_4]], Acquire, 0)
+// CHECK:               aie.use_lock(%[[VAL_4]], Acquire, %{{.*}})
 // CHECK:               aie.dma_bd(%[[VAL_1]] : memref<16xi32> offset = {{.*}} len = {{.*}})
-// CHECK:               aie.use_lock(%[[VAL_4]], Release, 1)
+// CHECK:               aie.use_lock(%[[VAL_4]], Release, %{{.*}})
 // CHECK:               aie.next_bd ^bb3
 // CHECK:             ^bb3:  // pred: ^bb2
-// CHECK:               aie.use_lock(%[[VAL_5]], Acquire, 0)
+// CHECK:               aie.use_lock(%[[VAL_5]], Acquire, %{{.*}})
 // CHECK:               aie.dma_bd(%[[VAL_2]] : memref<16xi32> offset = {{.*}} len = {{.*}})
-// CHECK:               aie.use_lock(%[[VAL_5]], Release, 1)
+// CHECK:               aie.use_lock(%[[VAL_5]], Release, %{{.*}})
 // CHECK:               aie.next_bd ^bb1
 // CHECK:             ^bb4:  // pred: ^bb0
 // CHECK:               aie.end

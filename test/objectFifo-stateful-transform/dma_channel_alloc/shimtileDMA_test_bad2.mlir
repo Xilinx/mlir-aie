@@ -26,21 +26,27 @@ module @shimtileDMA_channels {
         %mem12 = aie.shim_dma(%tile20) {
             %dma1 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
         ^bb1:
-            aie.use_lock(%lock0, Acquire, 1)
+            %c1_ul1 = arith.constant 1 : i32
+            aie.use_lock(%lock0, Acquire, %c1_ul1)
             aie.dma_bd(%buff0 : memref<16xi32> offset = 0 len = 16)
-            aie.use_lock(%lock0, Release, 0)
+            %c0_ul2 = arith.constant 0 : i32
+            aie.use_lock(%lock0, Release, %c0_ul2)
             aie.next_bd ^bb2
         ^bb2:
-            aie.use_lock(%lock1, Acquire, 1)
+            %c1_ul3 = arith.constant 1 : i32
+            aie.use_lock(%lock1, Acquire, %c1_ul3)
             aie.dma_bd(%buff1 : memref<16xi32> offset = 0 len = 16)
-            aie.use_lock(%lock1, Release, 0)
+            %c0_ul4 = arith.constant 0 : i32
+            aie.use_lock(%lock1, Release, %c0_ul4)
             aie.next_bd ^bb1
         ^bb3:
             %dma2 = aie.dma_start(S2MM, 1, ^bb4, ^bb5)
         ^bb4:
-            aie.use_lock(%lock2, Acquire, 0)
+            %c0_ul5 = arith.constant 0 : i32
+            aie.use_lock(%lock2, Acquire, %c0_ul5)
             aie.dma_bd(%buff2 : memref<16xi32> offset = 0 len = 16)
-            aie.use_lock(%lock2, Release, 1)
+            %c1_ul6 = arith.constant 1 : i32
+            aie.use_lock(%lock2, Release, %c1_ul6)
             aie.next_bd ^bb4
         ^bb5:
             aie.end

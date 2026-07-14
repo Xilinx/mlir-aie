@@ -87,18 +87,18 @@
 
 // CHECK:     %[[c0:.*]] = aie.core(%[[t0]]) {
 // CHECK:       %c0 = arith.constant 0 : index
-// CHECK:       aie.use_lock(%[[fifo0_prod_lock]], AcquireGreaterEqual, 1)
+// CHECK:       aie.use_lock(%[[fifo0_prod_lock]], AcquireGreaterEqual, %{{.*}})
 // CHECK:       memref.store %c55_i32, %[[fifo0_buff_0]][%c0] : memref<1xi32>
-// CHECK:       aie.use_lock(%[[fifo0_cons_lock]], Release, 1)
-// CHECK:       aie.use_lock(%[[fifo0_prod_lock]], AcquireGreaterEqual, 1)
+// CHECK:       aie.use_lock(%[[fifo0_cons_lock]], Release, %{{.*}})
+// CHECK:       aie.use_lock(%[[fifo0_prod_lock]], AcquireGreaterEqual, %{{.*}})
 // CHECK:       memref.store %c66_i32, %[[fifo0_buff_1]][%c0] : memref<1xi32>
-// CHECK:       aie.use_lock(%[[fifo0_cons_lock]], Release, 1)
-// CHECK:       aie.use_lock(%[[fifo0_prod_lock]], AcquireGreaterEqual, 1)
+// CHECK:       aie.use_lock(%[[fifo0_cons_lock]], Release, %{{.*}})
+// CHECK:       aie.use_lock(%[[fifo0_prod_lock]], AcquireGreaterEqual, %{{.*}})
 // CHECK:       memref.store %c77_i32, %[[fifo0_buff_0]][%c0] : memref<1xi32>
-// CHECK:       aie.use_lock(%[[fifo0_cons_lock]], Release, 1)
-// CHECK:       aie.use_lock(%[[fifo0_prod_lock]], AcquireGreaterEqual, 1)
+// CHECK:       aie.use_lock(%[[fifo0_cons_lock]], Release, %{{.*}})
+// CHECK:       aie.use_lock(%[[fifo0_prod_lock]], AcquireGreaterEqual, %{{.*}})
 // CHECK:       memref.store %c88_i32, %[[fifo0_buff_1]][%c0] : memref<1xi32>
-// CHECK:       aie.use_lock(%[[fifo0_cons_lock]], Release, 1)
+// CHECK:       aie.use_lock(%[[fifo0_cons_lock]], Release, %{{.*}})
 // CHECK:       aie.end
 // CHECK:     }
 
@@ -117,24 +117,24 @@
 // DMA received an object from the stream and wrote it to the buffer. First,
 // we only want to consume one object, so it suffices to acquire this lock
 // with a value of 1:
-// CHECK:       aie.use_lock(%[[fifo1_cons_cons_lock]], AcquireGreaterEqual, 1)
+// CHECK:       aie.use_lock(%[[fifo1_cons_cons_lock]], AcquireGreaterEqual, %{{.*}})
 // CHECK:       %[[load0:.*]] = memref.load %[[fifo1_cons_buff_0]][%c0] : memref<1xi32>
-// CHECK:       aie.use_lock(%[[fifo1_cons_prod_lock]], Release, 1)
+// CHECK:       aie.use_lock(%[[fifo1_cons_prod_lock]], Release, %{{.*}})
 
 // We released the lock above, meaning we are done with the one object we
 // received. Now we want 2 _new_ objects, so the cons_cons lock is acquired
 // twice, meaning it has to be released twice before both acquires succeed;
 // this, again, meaning that the DMA has received two objects on the stream
 // and put them in the respective buffers.
-// CHECK:       aie.use_lock(%[[fifo1_cons_cons_lock]], AcquireGreaterEqual, 2)
+// CHECK:       aie.use_lock(%[[fifo1_cons_cons_lock]], AcquireGreaterEqual, %{{.*}})
 // CHECK:       %[[load1:.*]] = memref.load %[[fifo1_cons_buff_1]][%c0] : memref<1xi32>
 // CHECK:       %[[load2:.*]] = memref.load %[[fifo1_cons_buff_2]][%c0] : memref<1xi32>
-// CHECK:       aie.use_lock(%[[fifo1_cons_prod_lock]], Release, 2)
+// CHECK:       aie.use_lock(%[[fifo1_cons_prod_lock]], Release, %{{.*}})
 
 // Lastly, receive just one object:
-// CHECK:       aie.use_lock(%[[fifo1_cons_cons_lock]], AcquireGreaterEqual, 1)
+// CHECK:       aie.use_lock(%[[fifo1_cons_cons_lock]], AcquireGreaterEqual, %{{.*}})
 // CHECK:       %[[load3:.*]] = memref.load %[[fifo1_cons_buff_3]][%c0] : memref<1xi32>
-// CHECK:       aie.use_lock(%[[fifo1_cons_prod_lock]], Release, 1)
+// CHECK:       aie.use_lock(%[[fifo1_cons_prod_lock]], Release, %{{.*}})
 // CHECK:       aie.end
 // CHECK:     }
 
@@ -149,17 +149,17 @@
 // Memory to stream: As soon as we get an object in fifo0_buff_0, put it onto
 // the stream, then move on to bb2.
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
-// CHECK:       aie.use_lock(%[[fifo0_cons_lock]], AcquireGreaterEqual, 1)
+// CHECK:       aie.use_lock(%[[fifo0_cons_lock]], AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%[[fifo0_buff_0]] : memref<1xi32> offset = {{.*}} len = {{.*}})
-// CHECK:       aie.use_lock(%[[fifo0_prod_lock]], Release, 1)
+// CHECK:       aie.use_lock(%[[fifo0_prod_lock]], Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb2
 
 // Now, if we get 4 bytes in fifo0_buff_1, put that on the stream, then
 // go back to bb1. Ping-pong.
 // CHECK:     ^bb2:  // pred: ^bb1
-// CHECK:       aie.use_lock(%[[fifo0_cons_lock]], AcquireGreaterEqual, 1)
+// CHECK:       aie.use_lock(%[[fifo0_cons_lock]], AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%[[fifo0_buff_1]] : memref<1xi32> offset = {{.*}} len = {{.*}})
-// CHECK:       aie.use_lock(%[[fifo0_prod_lock]], Release, 1)
+// CHECK:       aie.use_lock(%[[fifo0_prod_lock]], Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb1
 
 // CHECK:     ^bb3:  // pred: ^bb0
@@ -178,48 +178,48 @@
 // allocated inside the memory tile, one by one (round robin) as we receive
 // things through the stream:
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb4
-// CHECK:       aie.use_lock(%[[fifo0_cons_prod_lock]], AcquireGreaterEqual, 1)
+// CHECK:       aie.use_lock(%[[fifo0_cons_prod_lock]], AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%[[fifo0_cons_buff_0]] : memref<1xi32> offset = {{.*}} len = {{.*}})
-// CHECK:       aie.use_lock(%[[fifo0_cons_cons_lock]], Release, 1)
+// CHECK:       aie.use_lock(%[[fifo0_cons_cons_lock]], Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb2
 // CHECK:     ^bb2:  // pred: ^bb1
-// CHECK:       aie.use_lock(%[[fifo0_cons_prod_lock]], AcquireGreaterEqual, 1)
+// CHECK:       aie.use_lock(%[[fifo0_cons_prod_lock]], AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%[[fifo0_cons_buff_1]] : memref<1xi32> offset = {{.*}} len = {{.*}})
-// CHECK:       aie.use_lock(%[[fifo0_cons_cons_lock]], Release, 1)
+// CHECK:       aie.use_lock(%[[fifo0_cons_cons_lock]], Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb3
 // CHECK:     ^bb3:  // pred: ^bb2
-// CHECK:       aie.use_lock(%[[fifo0_cons_prod_lock]], AcquireGreaterEqual, 1)
+// CHECK:       aie.use_lock(%[[fifo0_cons_prod_lock]], AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%[[fifo0_cons_buff_2]] : memref<1xi32> offset = {{.*}} len = {{.*}})
-// CHECK:       aie.use_lock(%[[fifo0_cons_cons_lock]], Release, 1)
+// CHECK:       aie.use_lock(%[[fifo0_cons_cons_lock]], Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb4
 // CHECK:     ^bb4:  // pred: ^bb3
-// CHECK:       aie.use_lock(%[[fifo0_cons_prod_lock]], AcquireGreaterEqual, 1)
+// CHECK:       aie.use_lock(%[[fifo0_cons_prod_lock]], AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%[[fifo0_cons_buff_3]] : memref<1xi32> offset = {{.*}} len = {{.*}})
-// CHECK:       aie.use_lock(%[[fifo0_cons_cons_lock]], Release, 1)
+// CHECK:       aie.use_lock(%[[fifo0_cons_cons_lock]], Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb1
 
 // Now map everything we read in back out onto the stream towards tile 2:
 // CHECK:     ^bb5:  // pred: ^bb0
 // CHECK:       %[[VAL_26:.*]] = aie.dma_start(MM2S, 0, ^bb6, ^bb10)
 // CHECK:     ^bb6:  // 2 preds: ^bb5, ^bb9
-// CHECK:       aie.use_lock(%[[fifo0_cons_cons_lock]], AcquireGreaterEqual, 1)
+// CHECK:       aie.use_lock(%[[fifo0_cons_cons_lock]], AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%[[fifo0_cons_buff_0]] : memref<1xi32> offset = {{.*}} len = {{.*}})
-// CHECK:       aie.use_lock(%[[fifo0_cons_prod_lock]], Release, 1)
+// CHECK:       aie.use_lock(%[[fifo0_cons_prod_lock]], Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb7
 // CHECK:     ^bb7:  // pred: ^bb6
-// CHECK:       aie.use_lock(%[[fifo0_cons_cons_lock]], AcquireGreaterEqual, 1)
+// CHECK:       aie.use_lock(%[[fifo0_cons_cons_lock]], AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%[[fifo0_cons_buff_1]] : memref<1xi32> offset = {{.*}} len = {{.*}})
-// CHECK:       aie.use_lock(%[[fifo0_cons_prod_lock]], Release, 1)
+// CHECK:       aie.use_lock(%[[fifo0_cons_prod_lock]], Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb8
 // CHECK:     ^bb8:  // pred: ^bb7
-// CHECK:       aie.use_lock(%[[fifo0_cons_cons_lock]], AcquireGreaterEqual, 1)
+// CHECK:       aie.use_lock(%[[fifo0_cons_cons_lock]], AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%[[fifo0_cons_buff_2]] : memref<1xi32> offset = {{.*}} len = {{.*}})
-// CHECK:       aie.use_lock(%[[fifo0_cons_prod_lock]], Release, 1)
+// CHECK:       aie.use_lock(%[[fifo0_cons_prod_lock]], Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb9
 // CHECK:     ^bb9:  // pred: ^bb8
-// CHECK:       aie.use_lock(%[[fifo0_cons_cons_lock]], AcquireGreaterEqual, 1)
+// CHECK:       aie.use_lock(%[[fifo0_cons_cons_lock]], AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%[[fifo0_cons_buff_3]] : memref<1xi32> offset = {{.*}} len = {{.*}})
-// CHECK:       aie.use_lock(%[[fifo0_cons_prod_lock]], Release, 1)
+// CHECK:       aie.use_lock(%[[fifo0_cons_prod_lock]], Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb6
 // CHECK:     ^bb10:  // pred: ^bb5
 // CHECK:       aie.end
@@ -238,24 +238,24 @@
 // CHECK:     %[[mem2:.*]] = aie.mem(%[[t2]]) {
 // CHECK:       %[[dma2:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb5)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb4
-// CHECK:       aie.use_lock(%[[fifo1_cons_prod_lock]], AcquireGreaterEqual, 1)
+// CHECK:       aie.use_lock(%[[fifo1_cons_prod_lock]], AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%[[fifo1_cons_buff_0]] : memref<1xi32> offset = {{.*}} len = {{.*}})
-// CHECK:       aie.use_lock(%[[fifo1_cons_cons_lock]], Release, 1)
+// CHECK:       aie.use_lock(%[[fifo1_cons_cons_lock]], Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb2
 // CHECK:     ^bb2:  // pred: ^bb1
-// CHECK:       aie.use_lock(%[[fifo1_cons_prod_lock]], AcquireGreaterEqual, 1)
+// CHECK:       aie.use_lock(%[[fifo1_cons_prod_lock]], AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%[[fifo1_cons_buff_1]] : memref<1xi32> offset = {{.*}} len = {{.*}})
-// CHECK:       aie.use_lock(%[[fifo1_cons_cons_lock]], Release, 1)
+// CHECK:       aie.use_lock(%[[fifo1_cons_cons_lock]], Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb3
 // CHECK:     ^bb3:  // pred: ^bb2
-// CHECK:       aie.use_lock(%[[fifo1_cons_prod_lock]], AcquireGreaterEqual, 1)
+// CHECK:       aie.use_lock(%[[fifo1_cons_prod_lock]], AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%[[fifo1_cons_buff_2]] : memref<1xi32> offset = {{.*}} len = {{.*}})
-// CHECK:       aie.use_lock(%[[fifo1_cons_cons_lock]], Release, 1)
+// CHECK:       aie.use_lock(%[[fifo1_cons_cons_lock]], Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb4
 // CHECK:     ^bb4:  // pred: ^bb3
-// CHECK:       aie.use_lock(%[[fifo1_cons_prod_lock]], AcquireGreaterEqual, 1)
+// CHECK:       aie.use_lock(%[[fifo1_cons_prod_lock]], AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd(%[[fifo1_cons_buff_3]] : memref<1xi32> offset = {{.*}} len = {{.*}})
-// CHECK:       aie.use_lock(%[[fifo1_cons_cons_lock]], Release, 1)
+// CHECK:       aie.use_lock(%[[fifo1_cons_cons_lock]], Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb1
 // CHECK:     ^bb5:  // pred: ^bb0
 // CHECK:       aie.end

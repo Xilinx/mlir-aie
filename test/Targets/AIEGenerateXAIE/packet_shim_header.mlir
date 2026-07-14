@@ -59,9 +59,11 @@ module @aie_module {
       %c32_i32 = arith.constant 32 : i32
       %10 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
     ^bb1:  // 2 preds: ^bb0, ^bb1
-      aie.use_lock(%5, Acquire, 0)
+      %c0_ul1 = arith.constant 0 : i32
+      aie.use_lock(%5, Acquire, %c0_ul1)
       aie.dma_bd(%6 : memref<32xi32, 2> offset = 0 len = 32)
-      aie.use_lock(%5, Release, 1)
+      %c1_ul2 = arith.constant 1 : i32
+      aie.use_lock(%5, Release, %c1_ul2)
       aie.next_bd ^bb1
     ^bb2:  // pred: ^bb0
       aie.end
@@ -72,10 +74,12 @@ module @aie_module {
       %10 = aie.lock(%0, 1)
       %11 = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
     ^bb1:  // 2 preds: ^bb0, ^bb1
-      aie.use_lock(%10, Acquire, 1)
+      %c1_ul3 = arith.constant 1 : i32
+      aie.use_lock(%10, Acquire, %c1_ul3)
       aie.dma_bd_packet(6, 10)
       aie.dma_bd(%7 : memref<32xi32> offset = 0 len = 32)
-      aie.use_lock(%10, Release, 0)
+      %c0_ul4 = arith.constant 0 : i32
+      aie.use_lock(%10, Release, %c0_ul4)
       aie.next_bd ^bb1
     ^bb2:  // pred: ^bb0
       aie.end
