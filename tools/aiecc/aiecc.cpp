@@ -128,16 +128,25 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
           .threadSafe();
   EdgeWithTypedOutput<File> &chessObject =
       bundle(arches.out, chessLinked.out)
-          .map<File>(objName, ShellCommand{"xchesscc_wrapper"}
-                                  .value()
-                                  .arg("+w")
-                                  .arg(chessWork)
-                                  .arg("-c")
-                                  .arg("-d")
-                                  .arg("+Wclang,-xir")
-                                  .arg("-f")
-                                  .input()
-                                  .output("-o"))
+          .map<File>(objName,
+                     [chessWork](const Item<std::string> &arch,
+                                 const Item<File> &ir,
+                                 Item<File> &out) -> mlir::LogicalResult {
+                       // may run in parallel; give each invocation its own 
+                       // work dir
+                       std::string coreWork = chessWork + "/" + out.key;
+                       llvm::sys::fs::create_directories(coreWork);
+                       return ShellCommand{"xchesscc_wrapper"}
+                           .value()
+                           .arg("+w")
+                           .arg(coreWork)
+                           .arg("-c")
+                           .arg("-d")
+                           .arg("+Wclang,-xir")
+                           .arg("-f")
+                           .input()
+                           .output("-o")(arch, ir, out);
+                     })
           .threadSafe();
 
   // Peano path: downgrade -> opt -> llc.
@@ -498,17 +507,28 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
       });
   EdgeWithTypedOutput<File> &chessElfs =
       bundle(perCoreArches.out, objects.out, linkWithObjs.out, bcfScripts.out)
-          .map<File>("elfs_{0}.elf", ShellCommand{"xchesscc_wrapper"}
-                                         .value()
-                                         .arg("+w")
-                                         .arg(chessWork)
-                                         .arg("-d")
-                                         .arg("-f")
-                                         .input()
-                                         .inputs()
-                                         .arg("+l")
-                                         .input()
-                                         .output("-o"))
+          .map<File>("elfs_{0}.elf",
+                     [chessWork](
+                         const Item<std::string> &arch, const Item<File> &obj,
+                         const Item<std::vector<std::string>> &linkWith,
+                         const Item<std::string> &bcf,
+                         Item<File> &out) -> mlir::LogicalResult {
+                       // may run in parallel; give each invocation its own 
+                       // work dir
+                       std::string coreWork = chessWork + "/" + out.key;
+                       llvm::sys::fs::create_directories(coreWork);
+                       return ShellCommand{"xchesscc_wrapper"}
+                           .value()
+                           .arg("+w")
+                           .arg(coreWork)
+                           .arg("-d")
+                           .arg("-f")
+                           .input()
+                           .inputs()
+                           .arg("+l")
+                           .input()
+                           .output("-o")(arch, obj, linkWith, bcf, out);
+                     })
           .threadSafe();
 
   // peano linking
