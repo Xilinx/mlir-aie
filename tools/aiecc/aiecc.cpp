@@ -132,7 +132,7 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
                      [chessWork](const Item<std::string> &arch,
                                  const Item<File> &ir,
                                  Item<File> &out) -> mlir::LogicalResult {
-                       // may run in parallel; give each invocation its own 
+                       // may run in parallel; give each invocation its own
                        // work dir
                        std::string coreWork = chessWork + "/" + out.key;
                        llvm::sys::fs::create_directories(coreWork);
@@ -508,12 +508,12 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   EdgeWithTypedOutput<File> &chessElfs =
       bundle(perCoreArches.out, objects.out, linkWithObjs.out, bcfScripts.out)
           .map<File>("elfs_{0}.elf",
-                     [chessWork](
-                         const Item<std::string> &arch, const Item<File> &obj,
-                         const Item<std::vector<std::string>> &linkWith,
-                         const Item<std::string> &bcf,
-                         Item<File> &out) -> mlir::LogicalResult {
-                       // may run in parallel; give each invocation its own 
+                     [chessWork](const Item<std::string> &arch,
+                                 const Item<File> &obj,
+                                 const Item<std::vector<std::string>> &linkWith,
+                                 const Item<std::string> &bcf,
+                                 Item<File> &out) -> mlir::LogicalResult {
+                       // may run in parallel; give each invocation its own
                        // work dir
                        std::string coreWork = chessWork + "/" + out.key;
                        llvm::sys::fs::create_directories(coreWork);
