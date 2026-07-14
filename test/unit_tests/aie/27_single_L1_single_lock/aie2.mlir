@@ -6,7 +6,6 @@
 //
 //===----------------------------------------------------------------------===//
 
-// REQUIRES: hsa
 // RUN: %PYTHON aiecc.py %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s %test_lib_flags %extraAieCcFlags% %S/test.cpp -o test.elf
 // RUN: %run_on_board ./test.elf
 

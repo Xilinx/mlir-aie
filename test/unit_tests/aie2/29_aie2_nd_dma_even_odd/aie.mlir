@@ -20,7 +20,7 @@
 // The DMA receives this data and writes it to a buffer linearly, which is
 // checked from the host code to be correct.
 
-// REQUIRES: aiesimulator, valid_xchess_license, !hsa
+// REQUIRES: aiesimulator, valid_xchess_license
 // RUN: %PYTHON aiecc.py --aiesim --xchesscc --xbridge %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %link_against_hsa% %s %test_lib_flags %extraAieCcFlags% %S/test.cpp -o test.elf
 // RUN: sh -c 'aie.mlir.prj/aiesim.sh; exit 0' | FileCheck %s
 

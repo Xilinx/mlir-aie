@@ -99,7 +99,7 @@ jobs:
             RESPONSE=$(curl --fail-with-body -sSL \
               -H "Authorization: Bearer $GH_TOKEN" \
               -H "Accept: application/vnd.github+json" \
-              https://api.github.com/repos/llvm/llvm-project/commits/main) || {
+              https://api.github.com/repos/ROCm/llvm-project/commits/amd-staging) || {
               echo "::error::GitHub API request failed."
               echo "Response body:"
               echo "$RESPONSE"
@@ -107,7 +107,7 @@ jobs:
             }
             LLVM_PROJECT_COMMIT=$(echo "$RESPONSE" | jq -r '.sha')
           else
-            LLVM_PROJECT_COMMIT="${{ inputs.llvm_commit }}"
+            LLVM_PROJECT_COMMIT="${{ inputs.LLVM_COMMIT }}"
           fi
 
           if [ -z "$LLVM_PROJECT_COMMIT" ] || [ "$LLVM_PROJECT_COMMIT" = "null" ]; then
@@ -237,7 +237,7 @@ jobs:
       shell: bash
       run: |
 
-        curl -s https://codeload.github.com/llvm/llvm-project/zip/${{ needs.get_llvm_project_commit.outputs.LLVM_PROJECT_COMMIT }} -o llvm.zip
+        curl -s https://codeload.github.com/ROCm/llvm-project/zip/${{ needs.get_llvm_project_commit.outputs.LLVM_PROJECT_COMMIT }} -o llvm.zip
         unzip -q llvm.zip
         rm -rf llvm.zip
         LLVM_PROJECT_COMMIT=${{ needs.get_llvm_project_commit.outputs.LLVM_PROJECT_COMMIT }}

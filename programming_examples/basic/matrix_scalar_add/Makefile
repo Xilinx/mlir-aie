@@ -6,7 +6,6 @@
 ##===----------------------------------------------------------------------===##
 #
 # NPU paths use @iron.jit's compile() directly via --xclbin-path / --insts-path.
-# The vck5000 (Versal AIE1) path uses the legacy print-MLIR + aiecc flow.
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
@@ -31,23 +30,6 @@ $(eval $(call build_host_exe,${targetname},_build,test.cpp))
 .PHONY: run
 run: ${targetname}.exe ${xclbin_target} ${insts_target}
 	${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE
-
-# vck5000 (Versal AIE1) path stays on the legacy print-MLIR + aiecc flow.
-build/aie_vck5000.mlir: ${srcdir}/${aie_py_src}
-	mkdir -p ${@D}
-	python3 $< -d xcvc1902 --emit-mlir > $@
-
-.PHONY: vck5000
-vck5000: build/aie_vck5000.mlir
-	aiecc --link_against_hsa --host-target=x86_64-amd-linux-gnu $< \
-		-I/opt/xaiengine/include \
-		-I${srcdir}/../../../install/runtime_lib/x86_64-hsa/test_lib/include \
-		-L/opt/xaiengine/lib \
-		-L/lib/x86_64-linux-gnu/ \
-		${srcdir}/test_vck5000.cpp \
-		${srcdir}/../../../install/runtime_lib/x86_64-hsa/test_lib/src/test_library.cpp \
-		-Wl,-R/opt/xaiengine/lib \
-		-Wl,--whole-archive -Wl,--no-whole-archive -lstdc++ -ldl -lelf -o test.elf
 
 .PHONY: clean
 clean:

@@ -35,7 +35,7 @@ what gates code in the aie-api headers.
 
 | internal name(s)   | marketing name   | chips with this architecture          |
 |--------------------|------------------|---------------------------------------|
-| `aie`              | AIE              | Versal VCK5000                        |
+| `aie`              | AIE              | Versal VCK190                         |
 | `aie2` (== NPU1)   | AIE-ML (XDNA)    | Phoenix                               |
 | `aie2p` (== NPU2)  | XDNA2            | Strix Point, Strix Halo, Krackan      |
 | `aie2ps`           | AIE-MLv2         | Telluride                             |

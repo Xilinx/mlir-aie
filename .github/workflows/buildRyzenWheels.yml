@@ -262,7 +262,6 @@ jobs:
     # job uses the self-hosted NPU runners. PR-only: the merge queue and
     # nightly still get full from-source NPU coverage via buildAndTestRyzenAI.
     needs: build-repo
-    if: ${{ github.event_name == 'pull_request' }}
     runs-on: ${{ matrix.runner_type }}
     strategy:
       fail-fast: false

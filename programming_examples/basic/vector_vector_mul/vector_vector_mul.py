@@ -8,13 +8,12 @@
 Two int32 vectors are multiplied element-wise on a single AIE compute tile,
 in tile-of-16 sub-vectors fed via three depth-2 ObjectFifos (two in, one out).
 
-Driven via the standard 3-mode CLI:
+Driven via the standard CLI:
 
 * default          — JIT-compile + run on the attached NPU + verify.
 * ``--xclbin-path`` / ``--insts-path`` — compile-only, used by the
   Makefile so a C++ testbench can drive the design.
-* ``--emit-mlir``  — print MLIR to stdout for the selected ``--dev``
-  (e.g. ``-d xcvc1902 --emit-mlir`` for the VCK5000 toolchain).
+* ``--emit-mlir``  — print MLIR to stdout for the selected ``--dev``.
 """
 
 import argparse
@@ -83,7 +82,7 @@ def _run_and_verify(opts):
 
 def main():
     p = argparse.ArgumentParser(prog="AIE Vector-Vector Multiply")
-    add_compile_args(p, dev_choices=("npu", "npu2", "xcvc1902"), with_emit_mlir=True)
+    add_compile_args(p, dev_choices=("npu", "npu2"), with_emit_mlir=True)
     add_benchmark_args(p)
     p.add_argument(
         "-n",

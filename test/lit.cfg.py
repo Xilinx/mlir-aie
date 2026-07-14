@@ -60,10 +60,11 @@ LitConfigHelper.setup_test_lib_substitutions(
 # Not using run_on_board anymore, need more specific per-platform commands
 config.substitutions.append(("%run_on_board", "echo"))
 
-# Detect ROCm/HSA and VCK5000
-rocm_config = LitConfigHelper.detect_rocm(
-    config.hsa_dir, config.aieHostTarget, config.enable_board_tests
-)
+# VCK5000/HSA support has been removed; these substitutions are permanent
+# no-ops kept so existing RUN lines referencing them keep working.
+config.substitutions.append(("%run_on_vck5000", "echo"))
+config.substitutions.append(("%link_against_hsa%", ""))
+config.substitutions.append(("%HSA_DIR%", ""))
 
 # Add Vitis components as features
 LitConfigHelper.add_vitis_components_features(config, config.vitis_components)
@@ -148,7 +149,6 @@ aiesim_config = LitConfigHelper.detect_aiesimulator(config.aie_obj_root)
 LitConfigHelper.apply_config_to_lit(
     config,
     {
-        "rocm": rocm_config,
         "xrt": xrt_config,
         "peano": peano_config,
         "chess": chess_config,
