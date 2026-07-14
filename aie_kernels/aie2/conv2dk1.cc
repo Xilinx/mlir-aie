@@ -267,7 +267,8 @@ void conv2dk1_ui8_vector(uint8_t *input, int8_t *kernels, uint8_t *output,
     acc_tmp[x] = aie::zeros<acc32, 32>();
   }
 
-  // TODO: keeping this variable produces incorrect results and a worse schedule.
+  // TODO: keeping this variable produces incorrect results and a worse
+  // schedule.
   const int iw = input_width;
   const int iw_32 = (input_width / 4) / 8;
 
