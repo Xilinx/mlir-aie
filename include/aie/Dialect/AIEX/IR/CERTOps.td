@@ -65,7 +65,34 @@ def AIE_CertUcDmaBdOp : AIEX_Op<"cert.uc_dma_bd", [HasParent<"CertUcDmaChainOp">
   }];
 }
 
-def AIE_CertJobOp: AIEX_Op<"cert.job", [ParentOneOf<["AIE::DeviceOp", "CertAttachToGroupOp"]>,
+def AIE_CertPageOp: AIEX_Op<"cert.page",
+                            [ParentOneOf<["AIE::DeviceOp", "CertAttachToGroupOp", "CertSectionOp"]>,
+                             SingleBlockImplicitTerminator<"AIE::EndOp">]> {
+  let summary = "A control code page";
+  let description = [{
+    This operation represents a page of control code. Pages are the basic unit
+    of control code organization, with a maximum size of 8192 bytes. Each page
+    typically contains one job along with its associated data.
+
+    Corresponds to the `.eop` (end of page) directive in assembly.
+
+    Example:
+    ```
+      cert.page {
+        cert.job(0) {
+          cert.write32(0x1000, 42)
+        }
+      }
+    ```
+  }];
+  let regions = (region
+    AnyRegion:$body
+  );
+  let assemblyFormat = [{ $body attr-dict }];
+}
+
+def AIE_CertJobOp: AIEX_Op<"cert.job", [ParentOneOf<["AIE::DeviceOp", "CertAttachToGroupOp",
+                                                      "CertPageOp", "CertSectionOp"]>,
                                         SingleBlockImplicitTerminator<"AIE::EndOp">]> {
   let summary = "Start a job with a given job ID";
   let description = [{
@@ -238,6 +265,34 @@ def AIE_CertRemoteBarrierOp: AIEX_Op<"cert.remote_barrier", [HasParent<"CertJobO
   }];
 }
 
+def AIE_CertPreemptOp: AIEX_Op<"cert.preempt", [HasParent<"CertJobOp">]> {
+  let summary = "Preemption point with save/restore control code references";
+  let description = [{
+    This operation defines a preemption point in control code. If preemption is
+    required, the runtime will execute either the save or restore control code
+    section depending on the context switch direction.
+
+    - `id`: Preemption point index (must be consistent across all uCs in multi-uC case)
+    - `save_section`: Symbol reference to control code section for saving state
+    - `restore_section`: Symbol reference to control code section for restoring state
+
+    This opcode should take one whole job which in turn should take one whole page.
+
+    Example:
+    ```
+      cert.preempt(0, @save0, @restore0)
+    ```
+  }];
+  let arguments = (
+    ins I32Attr:$id,
+        FlatSymbolRefAttr:$save_section,
+        FlatSymbolRefAttr:$restore_section
+  );
+  let assemblyFormat = [{
+    `(` $id `,` $save_section `,` $restore_section `)` attr-dict
+  }];
+}
+
 def AIE_CertNopOp: AIEX_Op<"cert.nop", []> {
   let summary = "No operation (NOP)";
   let description = [{
@@ -249,6 +304,68 @@ def AIE_CertNopOp: AIEX_Op<"cert.nop", []> {
     ```
   }];
   let assemblyFormat = [{ attr-dict }];
+}
+
+def AIE_CertSectionOp: AIEX_Op<"cert.section",
+                               [Symbol,
+                                ParentOneOf<["AIE::DeviceOp", "CertAttachToGroupOp"]>,
+                                SingleBlockImplicitTerminator<"AIE::EndOp">]> {
+  let summary = "Named control code section";
+  let description = [{
+    This operation defines a named section of control code that can be referenced
+    by other operations (like cert.load_pdi or cert.preempt). It corresponds to the
+    assembly pattern of `label: ... .endl label`.
+
+    The section contains one or more jobs and can be loaded/executed by referencing
+    its symbol.
+
+    Example:
+    ```
+      cert.section @pdi0 {
+        cert.job(10) {
+          cert.write32(0x6A3000, 0x2)
+        }
+      }
+
+      cert.job(0) {
+        cert.load_pdi(0, @pdi0)
+      }
+    ```
+  }];
+  let arguments = (
+    ins SymbolNameAttr:$sym_name
+  );
+  let regions = (region
+    AnyRegion:$body
+  );
+  let assemblyFormat = [{
+    $sym_name $body attr-dict
+  }];
+}
+
+def AIE_CertLoadPdiOp: AIEX_Op<"cert.load_pdi", [HasParent<"CertJobOp">]> {
+  let summary = "Load PDI (Platform Device Image)";
+  let description = [{
+    This operation loads a PDI (Platform Device Image), which is a piece of control code.
+    It can be loaded by other control code at any time. The `pdi_id` is an ELF-wide unique
+    identifier that specifies a unique PDI. Consecutive loading of the same PDI results in
+    subsequent loads being skipped by the microcontroller. The `symbol` operand refers to
+    a cert.section containing the PDI jobs.
+
+    This opcode should take one whole job which in turn should take one whole page.
+
+    Example:
+    ```
+      cert.load_pdi(0, @pdi_section)
+    ```
+  }];
+  let arguments = (
+    ins UI32Attr:$pdi_id,
+        FlatSymbolRefAttr:$symbol
+  );
+  let assemblyFormat = [{
+    `(` $pdi_id `,` $symbol `)` attr-dict
+  }];
 }
 
 def AIE_CertAttachToGroupOp: AIEX_Op<"cert.attach_to_group", [SingleBlockImplicitTerminator<"AIE::EndOp">]> {

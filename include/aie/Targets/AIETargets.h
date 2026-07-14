@@ -74,7 +74,9 @@ mlir::LogicalResult AIETranslateNpuToCpp(mlir::ModuleOp module,
                                          llvm::raw_ostream &output);
 mlir::LogicalResult AIETranslateToUcDma(mlir::ModuleOp module,
                                         llvm::raw_ostream &output);
-mlir::LogicalResult AIETranslateToUcDma(mlir::ModuleOp, std::string &assembly);
+mlir::LogicalResult AIETranslateToUcDma(mlir::ModuleOp module,
+                                        std::string &assembly,
+                                        llvm::StringRef outputPath = "");
 mlir::LogicalResult
 AIETranslateControlPacketsToUI32Vec(mlir::ModuleOp, std::vector<uint32_t> &,
                                     llvm::StringRef deviceName = "",
