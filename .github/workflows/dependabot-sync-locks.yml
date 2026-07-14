@@ -1,0 +1,75 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# Keep the hash-pinned lockfiles in sync on Dependabot PRs.
+#
+# Dependabot bumps the source manifests (requirements.txt / .in / pyproject.toml)
+# but cannot regenerate the compiled .lock files -- it has no post-update hook.
+# This workflow closes that gap: on a Dependabot PR it recompiles the lockfiles
+# from the just-bumped sources and commits the result back onto the same PR
+# branch, so the PR arrives complete and no maintainer has to check it out.
+#
+# Why this trigger/token combination:
+#   * `pull_request` (not `pull_request_target`): a Dependabot PR whose base ref
+#     was created by dependabot[bot] gets a permanently read-only token under
+#     pull_request_target, and the permissions key cannot override that. A plain
+#     `pull_request` run DOES honor the permissions key for Dependabot since
+#     GitHub's 2021-10 change, so `contents: write` below actually grants write.
+#   * built-in GITHUB_TOKEN, no PAT/App: Dependabot branches live in this repo
+#     (not a fork), so contents: write is enough to push back.
+#
+# The commit message carries `[dependabot skip]` so Dependabot won't force-push
+# over our lockfile commit when it rebases the branch.
+
+name: Dependabot Sync Lockfiles
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  sync-locks:
+    name: Regenerate lockfiles on Dependabot PRs
+    # Only Dependabot's own PRs; nothing else should get a write token here.
+    if: github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          # Check out the PR branch itself (not the merge ref) so the commit we
+          # push lands on Dependabot's branch. persist-credentials keeps the
+          # GITHUB_TOKEN available for the push.
+          ref: ${{ github.head_ref }}
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: '3.12'
+
+      # uv version must match the one pinned in regenerate_lockfiles.sh, else
+      # resolution/header differences would show up as spurious diffs. Read it
+      # straight from the script so the two never drift.
+      - name: Install pinned uv
+        run: |
+          UV_VERSION=$(sed -n 's/^UV_VERSION="\(.*\)"$/\1/p' utils/regenerate_lockfiles.sh)
+          echo "installing uv==${UV_VERSION}"
+          python -m pip install "uv==${UV_VERSION}"
+
+      - name: Regenerate lockfiles
+        run: utils/regenerate_lockfiles.sh
+
+      - name: Commit regenerated lockfiles
+        run: |
+          if git diff --quiet; then
+            echo "Lockfiles already in sync; nothing to commit."
+            exit 0
+          fi
+          git config user.name "dependabot[bot]"
+          git config user.email "49699333+dependabot[bot]@users.noreply.github.com"
+          git commit -am "Regenerate lockfiles [dependabot skip]"
+          git push origin HEAD:"${{ github.head_ref }}"
