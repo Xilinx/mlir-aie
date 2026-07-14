@@ -3052,6 +3052,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="-aie-npu-to-cert">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#options_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -3569,6 +3586,23 @@
     </span>
   </a>
   
+    <nav class="md-nav" aria-label="-aie-npu-to-cert">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#options_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Options
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
 </li>
       
         <li class="md-nav__item">
@@ -3845,6 +3879,11 @@ module (name, global state_table_idx, type, and kind).</p>
 aie.runtime_sequence operations into aiex.cert operations enclosed in
 aiex.cert.job operations. The write32, maskwrite32, blockwrite and sync
 operations are supported.</p>
+<p>Referenced devices are absorbed into cert.section operations and removed
+from the output, keeping only the main device.</p>
+<h4 id="options_1">Options<a class="headerlink" href="#options_1" title="Permanent link">&para;</a></h4>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>-device-name : Name of the main device to emit (other devices are removed after absorption)
+</code></pre></div>
 <h3 id="-aie-scf-to-control-flow"><code>-aie-scf-to-control-flow</code><a class="headerlink" href="#-aie-scf-to-control-flow" title="Permanent link">&para;</a></h3>
 <p><em>Lower scf to cf everywhere except inside runtime sequences</em></p>
 <p>Converts structured control flow (<code>scf</code>) to unstructured control flow
