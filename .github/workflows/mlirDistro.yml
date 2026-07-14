@@ -113,7 +113,7 @@ jobs:
             }
             LLVM_PROJECT_COMMIT=$(echo "$RESPONSE" | jq -r '.sha')
           else
-            LLVM_PROJECT_COMMIT="${{ inputs.llvm_commit }}"
+            LLVM_PROJECT_COMMIT="${{ inputs.LLVM_COMMIT }}"
           fi
 
           if [ -z "$LLVM_PROJECT_COMMIT" ] || [ "$LLVM_PROJECT_COMMIT" = "null" ]; then
