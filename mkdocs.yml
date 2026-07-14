@@ -192,8 +192,8 @@ nav:
     - Windows (Native): buildHostWinNative.md
     - Non-Ubuntu Linux: buildHostLinNonUbuntu.md
     - Build from Source: Building.md
-    - Versal: BuildingVersal.md
     - Devices: Devices.md
+    - Versal: BuildingVersal.md
     - Platform Notes: Platform.md
   - Programming Guide:
     - Introduction: programming_guide/README.md
@@ -248,12 +248,10 @@ nav:
       - Tensor Access Patterns (taplib): api/taplib.md
       - Python Kernel Library: api/kernels.md
       - C++ AIE kernels: api/aie_kernels.md
-      - Utilities: api/utils.md
     - MLIR / C++:
       - AIE Dialect: AIEDialect.md
       - AIEX Dialect: AIEXDialect.md
       - AIEVec Dialect: AIEVecDialect.md
-      - ADF Dialect: ADFDialect.md
       - AIE Passes: AIEPasses.md
       - AIEX Passes: AIEXPasses.md
       - AIEVec Passes: AIEVecPasses.md

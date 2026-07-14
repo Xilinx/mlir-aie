@@ -7,7 +7,7 @@
 
 # IRON AIE Application Programming Guide
 
-This is the programming guide for **IRON** — the Python API for programming AMD Ryzen™ AI NPUs (and Versal™ AI Engines). It teaches how to design, run, and optimize code on the AIE-array.
+This is the programming guide for **IRON** — the Python API for programming AMD Ryzen™ AI NPUs. It teaches how to design, run, and optimize code on the AIE-array.
 
 > **First time here?** If you haven't installed the toolchain yet, start with the [installation instructions](../README.md) (driver, XRT, IRON install). Then come back here.
 >
@@ -113,7 +113,7 @@ The vocabulary IRON and this documentation use, grouped by topic. Where a term m
 | **Stream switch** | The programmable interconnect that routes AXI streams between tiles. |
 | **DMA** | Direct Memory Access engine. Each tile has DMA channels that move data between the tile's local memory and the AXI stream, following programmable access patterns. |
 | **XDNA™ / XDNA™ 2** | AMD's NPU hardware generations. XDNA (AIE-ML / AIE2) is in Phoenix/HawkPoint; XDNA 2 (AIE2P) is in Strix/Krackan. |
-| **Versal™** | AMD's adaptive SoC family that also contains AI Engine tiles; a secondary IRON target. |
+| **Versal™** | AMD's adaptive SoC family that also contains AI Engine tiles. A secondary IRON target (VCK190); supported but not part of the actively-tested NPU path. |
 
 ### Devices
 

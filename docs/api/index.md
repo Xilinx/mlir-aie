@@ -60,12 +60,6 @@ layers are here for advanced designs, op-by-op construction, and compiler work.
     The C++ compute code that runs on a tile — the `aie_kernels` library and
     the AIE API header library used to write it.
 
--   :material-wrench: **[Utilities](utils.md)**
-
-    ---
-
-    Host-runtime helpers for buffer management and NPU control.
-
 </div>
 
 ## Low-level MLIR / C++
@@ -74,8 +68,7 @@ The compiler layer beneath the Python API. See the dialect and pass reference
 pages in the **MLIR / C++** group of this section:
 
 - [AIE Dialect](../AIEDialect.md), [AIEX Dialect](../AIEXDialect.md),
-  [AIEVec Dialect](../AIEVecDialect.md), [ADF Dialect](../ADFDialect.md) —
-  op-by-op reference.
+  [AIEVec Dialect](../AIEVecDialect.md) — op-by-op reference.
 - [AIE Passes](../AIEPasses.md), [AIEX Passes](../AIEXPasses.md),
   [AIEVec Passes](../AIEVecPasses.md) — registered compiler passes.
 - [C++ API (Doxygen)](cpp_doxygen.md) — generated reference for the dialect
