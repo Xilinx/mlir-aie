@@ -1,9 +1,0 @@
-<map id="python.iron.dataflow.objectfifo.ObjectFifoLink" name="python.iron.dataflow.objectfifo.ObjectFifoLink">
-<area shape="rect" id="Node000001" title=" " alt="" coords="75,152,299,192"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="5,79,151,104"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="107,110,163,150,159,154,103,114"/>
-<area shape="rect" id="Node000003" href="$classpython_1_1iron_1_1resolvable_1_1Resolvable.html" title=" " alt="" coords="175,79,419,104"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="271,114,215,154,212,150,268,110"/>
-<area shape="rect" id="Node000004" title=" " alt="" coords="259,5,334,31"/>
-<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="299,44,299,79,294,79,294,44"/>
-</map>

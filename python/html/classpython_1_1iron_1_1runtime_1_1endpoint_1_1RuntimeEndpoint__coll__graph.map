@@ -1,5 +1,0 @@
-<map id="python.iron.runtime.endpoint.RuntimeEndpoint" name="python.iron.runtime.endpoint.RuntimeEndpoint">
-<area shape="rect" id="Node000001" title=" " alt="" coords="7,93,223,133"/>
-<area shape="rect" id="Node000002" href="$classpython_1_1iron_1_1dataflow_1_1endpoint_1_1ObjectFifoEndpoint.html" title=" " alt="" coords="5,5,225,45"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="118,59,118,93,113,93,113,59"/>
-</map>

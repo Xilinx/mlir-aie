@@ -1,9 +1,0 @@
-<map id="python.utils.hostruntime.hostruntime.HostRuntime" name="python.utils.hostruntime.hostruntime.HostRuntime">
-<area shape="rect" id="Node000001" title=" " alt="" coords="42,79,311,119"/>
-<area shape="rect" id="Node000003" href="$classpython_1_1utils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1XRTHostRuntime.html" title=" " alt="" coords="5,167,348,207"/>
-<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="179,133,179,166,174,166,174,133"/>
-<area shape="rect" id="Node000002" title=" " alt="" coords="152,5,201,31"/>
-<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="179,44,179,79,174,79,174,44"/>
-<area shape="rect" id="Node000004" href="$classpython_1_1utils_1_1hostruntime_1_1xrtruntime_1_1hostruntime_1_1CachedXRTRuntime.html" title=" " alt="" coords="5,255,348,295"/>
-<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="179,221,179,254,174,254,174,221"/>
-</map>
