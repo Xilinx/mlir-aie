@@ -1,26 +1,43 @@
-**                  @abisca @stephenneuendorffer @fifield @jgmelber
-.github             @stephenneuendorffer @fifield @erwei-xilinx
-aie_kernels/**      @denolf @jgmelber @jackl-xilinx @andrej
-aie_runtime_lib/**  @stephenneuendorffer @jackl-xilinx
-cmake/**            @denolf @stephenneuendorffer
-docs/**             @stephenneuendorffer @abisca @jackl-xilinx @jgmelber
-**/AIEVec/**        @jsetoain
-**/AIE/**           @abisca @stephenneuendorffer @fifield @erwei-xilinx
-**/AIEX/**          @jgmelber @abisca @fifield
-**/XLLVM/           @jsetoain
-**/AIETargetModel.* @stephenneuendorffer
-include/Bindings/   @abisca
-**/Conversion/      @erwei-xilinx @jsetoain
-lib/CAPI/           @fifield @abisca
-lib/Conversion/AIEVecToLLVM/  @jsetoain
-**/Target/**        @jsetoain @fifield
-**/Targets/**       @fifield @jgmelber @abisca
-platforms/**        @jackl-xilinx @eddierichter-amd
-programming_examples/** @denolf @jgmelber @fifield @jackl-xilinx @andrej @pvasireddy-amd @hunhoffe
-programming_guide/**  @denolf @jgmelber @abisca @jackl-xilinx @andrej @hunhoffe
-python/**           @abisca @jackl-xilinx @andrej @pvasireddy-amd @jgmelber @hunhoffe
-runtime_lib/**      @stephenneuendorffer @jackl-xilinx
-test/**             @stephenneuendorffer @jgmelber @fifield @jackl-xilinx @abisca @hunhoffe
-test/aievec/        @jsetoain
-test/objectFifo*/** @abisca @denolf
-utils/**            @jackl-xilinx @jgmelber @andrej @abisca @erwei-xilinx @hunhoffe
+# Global fallback
+**                             @jgmelber @fifield @hunhoffe @andrej
+
+# Repo infrastructure
+.github                        @stephenneuendorffer @fifield @erwei-xilinx @jgmelber @andrej @hunhoffe
+tools/**                       @erwei-xilinx
+utils/**                       @erwei-xilinx
+
+# Compiler: dialects, conversions, targets
+**/AIE/**                      @abisca @stephenneuendorffer @fifield @erwei-xilinx
+**/AIEX/**                     @jgmelber @abisca @fifield
+**/AIEVec/**                   @jsetoain
+**/XLLVM/                      @jsetoain
+**/Conversion/                 @erwei-xilinx @jsetoain
+lib/Conversion/AIEVecToLLVM/   @jsetoain
+**/Target/**                   @jsetoain @fifield
+**/Targets/**                  @fifield @jgmelber @abisca
+**/AIETargetModel.*            @stephenneuendorffer
+lib/CAPI/                      @fifield @abisca
+include/aie/Bindings/          @abisca
+
+# Runtime libraries
+aie_runtime_lib/**             @stephenneuendorffer @jackl-xilinx
+runtime_lib/**                 @stephenneuendorffer @jackl-xilinx
+
+# Python frontend / bindings
+python/**                      @abisca @andrej @jgmelber @hunhoffe
+
+# Kernels
+aie_kernels/**                 @denolf @jgmelber @jackl-xilinx @andrej
+
+# Platforms
+platforms/**                   @jackl-xilinx @eddierichter-amd @jgmelber
+
+# Docs, guides, examples
+docs/**                        @stephenneuendorffer @jgmelber @hunhoffe
+programming_guide/**           @denolf @jgmelber @abisca @jackl-xilinx @andrej @hunhoffe
+programming_examples/**        @denolf @jgmelber @fifield @jackl-xilinx @andrej @hunhoffe
+
+# Tests
+test/**                        @stephenneuendorffer @jgmelber @fifield @jackl-xilinx @abisca @hunhoffe
+test/**/AIEVec*/**             @jsetoain
+test/unit_tests/aievec_tests/  @jsetoain
