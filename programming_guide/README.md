@@ -7,7 +7,7 @@
 
 # IRON AIE Application Programming Guide
 
-This is the programming guide for **IRON** — the Python API for programming AMD Ryzen™ AI NPUs (and Versal™ AI Engines). It teaches how to design, run, and optimize code on the AIE-array.
+This is the programming guide for **IRON** — the Python API for programming AMD Ryzen™ AI NPUs. It teaches how to design, run, and optimize code on the AIE-array.
 
 > **First time here?** If you haven't installed the toolchain yet, start with the [installation instructions](../README.md) (driver, XRT, IRON install). Then come back here.
 >
@@ -113,7 +113,6 @@ The vocabulary IRON and this documentation use, grouped by topic. Where a term m
 | **Stream switch** | The programmable interconnect that routes AXI streams between tiles. |
 | **DMA** | Direct Memory Access engine. Each tile has DMA channels that move data between the tile's local memory and the AXI stream, following programmable access patterns. |
 | **XDNA™ / XDNA™ 2** | AMD's NPU hardware generations. XDNA (AIE-ML / AIE2) is in Phoenix/HawkPoint; XDNA 2 (AIE2P) is in Strix/Krackan. |
-| **Versal™** | AMD's adaptive SoC family that also contains AI Engine tiles; a secondary IRON target. |
 
 ### Devices
 
@@ -170,8 +169,8 @@ The vocabulary IRON and this documentation use, grouped by topic. Where a term m
 
 * E. Hunhoff, J. Melber, K. Denolf, A. Bisca, S. Bayliss, S. Neuendorffer, J. Fifield, J. Lo, P. Vasireddy, P. James-Roxby, E. Keller. "[Efficiency, Expressivity, and Extensibility in a Close-to-Metal NPU Programming Interface](https://arxiv.org/abs/2504.18430)". In 33rd IEEE International Symposium On Field-Programmable Custom Computing Machines, May 2025. — the IRON paper.
 * [AMD XDNA™ NPU in Ryzen™ AI Processors](https://ieeexplore.ieee.org/document/10592049) — IEEE Hot Chips paper.
-* AIE architecture manuals: [AIE1 — AM009](https://docs.amd.com/r/en-US/am009-versal-ai-engine/Overview), [AIE2 — AM020](https://docs.amd.com/r/en-US/am020-versal-aie-ml/Overview).
-* AIE register references: [AIE1 — AM015](https://docs.amd.com/r/en-US/am015-versal-aie-register-reference/Overview), [AIE2 — AM025](https://docs.amd.com/r/en-US/am025-versal-aie-ml-register-reference/Overview).
+* AIE architecture manual: [AIE2 — AM020](https://docs.amd.com/r/en-US/am020-versal-aie-ml/Overview).
+* AIE register reference: [AIE2 — AM025](https://docs.amd.com/r/en-US/am025-versal-aie-ml-register-reference/Overview).
 * [AIE API User Guide](https://www.xilinx.com/htmldocs/xilinx2023_2/aiengine_api/aie_api/doc/index.html) — the C++ header-only vector library for kernel code.
 * [Summary documentation links (UG1076)](https://docs.amd.com/r/en-US/ug1076-ai-engine-environment/Documentation).
 

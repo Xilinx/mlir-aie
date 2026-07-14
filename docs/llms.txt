@@ -34,4 +34,4 @@ the LLVM/MLIR-based Peano compiler.
 ## Target hardware
 
 AMD Ryzen™ AI (Phoenix, Hawk Point, Strix Point) — XDNA™ and XDNA™ 2 NPUs.
-Also supports AMD Versal™ AI Engine devices.
+Targets AMD Ryzen™ AI NPUs (npu1: Phoenix/HawkPoint, npu2: Strix/Krackan).
