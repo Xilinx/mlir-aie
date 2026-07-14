@@ -1,0 +1,29 @@
+<map id="cxxopts::exceptions::exception" name="cxxopts::exceptions::exception">
+<area shape="rect" id="Node000001" title=" " alt="" coords="168,245,319,285"/>
+<area shape="rect" id="Node000003" href="$classcxxopts_1_1exceptions_1_1option__has__no__value.html" title=" " alt="" coords="367,181,533,221"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="321,238,384,218,386,223,322,243"/>
+<area shape="rect" id="Node000004" href="$classcxxopts_1_1exceptions_1_1parsing.html" title=" " alt="" coords="375,245,525,285"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="332,262,374,262,374,267,332,267"/>
+<area shape="rect" id="Node000012" href="$classcxxopts_1_1exceptions_1_1specification.html" title=" " alt="" coords="375,485,525,525"/>
+<area shape="poly" id="edge11_Node000001_Node000012" title=" " alt="" coords="273,293,434,483,429,486,269,297"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,252,120,277"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="134,262,168,262,168,267,134,267"/>
+<area shape="rect" id="Node000005" href="$classcxxopts_1_1exceptions_1_1gratuitous__argument__for__option.html" title=" " alt="" coords="599,5,765,60"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="528,235,531,231,545,211,552,192,555,153,557,113,565,92,579,71,597,56,600,60,583,74,569,94,562,114,560,153,558,193,550,214,535,234,531,238"/>
+<area shape="rect" id="Node000006" href="$classcxxopts_1_1exceptions_1_1incorrect__argument__type.html" title=" " alt="" coords="585,85,779,125"/>
+<area shape="poly" id="edge5_Node000004_Node000006" title=" " alt="" coords="526,235,531,231,548,207,554,184,561,159,580,135,598,123,601,127,583,139,566,161,560,185,553,210,535,234,530,239"/>
+<area shape="rect" id="Node000007" href="$classcxxopts_1_1exceptions_1_1invalid__option__syntax.html" title=" " alt="" coords="595,149,769,189"/>
+<area shape="poly" id="edge6_Node000004_Node000007" title=" " alt="" coords="519,237,532,230,556,214,580,198,609,186,611,191,583,203,559,219,535,235,521,242"/>
+<area shape="rect" id="Node000008" href="$classcxxopts_1_1exceptions_1_1missing__argument.html" title=" " alt="" coords="607,213,757,253"/>
+<area shape="poly" id="edge7_Node000004_Node000008" title=" " alt="" coords="539,250,606,240,607,246,540,255"/>
+<area shape="rect" id="Node000009" href="$classcxxopts_1_1exceptions_1_1no__such__option.html" title=" " alt="" coords="607,277,757,317"/>
+<area shape="poly" id="edge8_Node000004_Node000009" title=" " alt="" coords="540,274,607,284,606,289,539,280"/>
+<area shape="rect" id="Node000010" href="$classcxxopts_1_1exceptions_1_1option__requires__argument.html" title=" " alt="" coords="581,341,783,381"/>
+<area shape="poly" id="edge9_Node000004_Node000010" title=" " alt="" coords="502,289,582,326,615,338,613,343,580,331,500,294"/>
+<area shape="rect" id="Node000011" href="$classcxxopts_1_1exceptions_1_1requested__option__not__present.html" title=" " alt="" coords="597,405,767,460"/>
+<area shape="poly" id="edge10_Node000004_Node000011" title=" " alt="" coords="478,294,524,343,583,390,605,403,602,408,580,395,521,346,474,297"/>
+<area shape="rect" id="Node000013" href="$classcxxopts_1_1exceptions_1_1invalid__option__format.html" title=" " alt="" coords="595,485,769,525"/>
+<area shape="poly" id="edge12_Node000012_Node000013" title=" " alt="" coords="540,502,595,502,595,507,540,507"/>
+<area shape="rect" id="Node000014" href="$classcxxopts_1_1exceptions_1_1option__already__exists.html" title=" " alt="" coords="595,549,769,589"/>
+<area shape="poly" id="edge13_Node000012_Node000014" title=" " alt="" coords="537,526,610,546,608,551,536,531"/>
+</map>
