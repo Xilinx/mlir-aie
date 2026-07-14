@@ -15,7 +15,7 @@
         <link rel="canonical" href="https://xilinx.github.io/mlir-aie/dev/Platform/">
       
       
-        <link rel="prev" href="../Devices/">
+        <link rel="prev" href="../BuildingVersal/">
       
       
         <link rel="next" href="../programming_guide/">
@@ -632,14 +632,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../BuildingVersal/" class="md-nav__link">
+      <a href="../Devices/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Versal
+    Devices
   
 
     
@@ -660,14 +660,14 @@
   
   
     <li class="md-nav__item">
-      <a href="../Devices/" class="md-nav__link">
+      <a href="../BuildingVersal/" class="md-nav__link">
         
   
   
   <span class="md-ellipsis">
     
   
-    Devices
+    Versal
   
 
     
@@ -2419,8 +2419,6 @@
       
         
       
-        
-      
     
     
     
@@ -2606,34 +2604,6 @@
 
               
             
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../api/utils/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Utilities
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
           </ul>
         </nav>
       
@@ -2650,8 +2620,6 @@
   
     
     
-      
-        
       
         
       
@@ -2783,34 +2751,6 @@
     
   
     AIEVec Dialect
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../ADFDialect/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    ADF Dialect
   
 
     
@@ -3295,6 +3235,11 @@
 <!-- Copyright (C) 2023 Advanced Micro Devices, Inc. -->
 <!-- SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 <h1 id="building-a-platform-for-further-exploration-in-hardware">Building a platform for further exploration in hardware<a class="headerlink" href="#building-a-platform-for-further-exploration-in-hardware" title="Permanent link">&para;</a></h1>
+<div class="admonition note">
+<p class="admonition-title">Versal platform flow</p>
+<p>This page covers the Versal™ platform flow (VCK190). It is supported but is not
+part of the actively-tested Ryzen™ AI (NPU) path.</p>
+</div>
 <p>In order to facilitate additional exploration of the MLIR AIE tools in hardware, a basic platform can be built to run the generated programs on an AI Engine-enabled device + board (vck190). Such a platform also provides the necessary <code>sysroot</code> required to cross-compile MLIR AIE code for simulation, such as for the tutorials.</p>
 <p>Building a platform to explore MLIR AIE generated designs consists of building the Vitis hardware design and the Petalinux kernel and linux filesystem to run it. The Petalinux filesystem can be targeted by the MLIR AIE python build scripts (aiecc.py) when cross-compiling the host code to be run on the board. Even without a physical board, we can still build the platform and associated sysroot to support cross-compilation. Once a physical board is present, we can complete the steps to run the AIE designs on a live board.</p>
 <h2 id="prerequisites-for-building-the-platform-and-sysroot">Prerequisites for building the platform and sysroot<a class="headerlink" href="#prerequisites-for-building-the-platform-and-sysroot" title="Permanent link">&para;</a></h2>
@@ -3382,7 +3327,7 @@ and run on the board as usual.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../Devices/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Devices">
+          <a href="../BuildingVersal/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Versal">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -3392,7 +3337,7 @@ and run on the board as usual.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                Devices
+                Versal
               </div>
             </div>
           </a>

@@ -15,10 +15,10 @@
         <link rel="canonical" href="https://xilinx.github.io/mlir-aie/dev/Devices/">
       
       
-        <link rel="prev" href="../BuildingVersal/">
+        <link rel="prev" href="../Building/">
       
       
-        <link rel="next" href="../Platform/">
+        <link rel="next" href="../BuildingVersal/">
       
       
         
@@ -629,34 +629,6 @@
                 
   
   
-  
-  
-    <li class="md-nav__item">
-      <a href="../BuildingVersal/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Versal
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
     
   
   
@@ -720,6 +692,18 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#versal-devices" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Versal devices
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Versal devices">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
   <a href="#aie-version-1" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -729,8 +713,8 @@
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#aie-version-2" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -740,11 +724,44 @@
   </a>
   
 </li>
+        
+      </ul>
+    </nav>
+  
+</li>
       
     </ul>
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../BuildingVersal/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Versal
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -2375,8 +2392,6 @@
       
         
       
-        
-      
     
     
     
@@ -2562,34 +2577,6 @@
 
               
             
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../api/utils/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Utilities
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
           </ul>
         </nav>
       
@@ -2606,8 +2593,6 @@
   
     
     
-      
-        
       
         
       
@@ -2739,34 +2724,6 @@
     
   
     AIEVec Dialect
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../ADFDialect/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    ADF Dialect
   
 
     
@@ -3115,6 +3072,18 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
+  <a href="#versal-devices" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Versal devices
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Versal devices">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
   <a href="#aie-version-1" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3124,8 +3093,8 @@
   </a>
   
 </li>
-      
-        <li class="md-nav__item">
+        
+          <li class="md-nav__item">
   <a href="#aie-version-2" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3133,6 +3102,11 @@
       
     </span>
   </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -3214,59 +3188,16 @@ In the below diagrams:
 <code>P</code> represents a 'Shim PL tile' including a stream connection to programmable logic.
 <code>D</code> represents a 'Shim DMA tile' including a Shim DMA, stream switch, and (in some devices), a stream connection to programmable logic.
 <code>.</code> represents an unusable tile.</p>
-<h2 id="aie-version-1">AIE Version 1<a class="headerlink" href="#aie-version-1" title="Permanent link">&para;</a></h2>
-<p><code>aie.device(xcvc1902) { ... }</code>
-This device is present on the VCK190 board.
-50 Columns and 9 Rows
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>8 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>7 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>6 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>5 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>4 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>3 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>2 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>1 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>0 PPDDPPDDPPDDPPPPPPDDPPPPPPDDPPPPPPDDPPPPPPDDPPDDPP
-<a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>  01234567890123456789012345678901234567890123456789
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a>            1111111111222222222233333333334444444444
-</code></pre></div></p>
-<h2 id="aie-version-2">AIE Version 2<a class="headerlink" href="#aie-version-2" title="Permanent link">&para;</a></h2>
-<p><code>aie.device(xcve2302) {}</code>
-17 Columns and 4 Rows
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>3 CCCCCCCCCCCCCCCCC
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>2 CCCCCCCCCCCCCCCCC
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>1 MMMMMMMMMMMMMMMMM
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>0 PPDDPPDDPPDDPPPPP
-<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>  01234567890123456
-<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>            1111111
-</code></pre></div></p>
-<p><code>aie.device(xcve2802) {}</code>
-This device is present on the V70 board
-38 Columns and 11 Rows
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>0 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>9 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>8 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>7 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>6 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>5 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
-<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>4 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
-<a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>3 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
-<a id="__codelineno-2-9" name="__codelineno-2-9" href="#__codelineno-2-9"></a>2 MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
-<a id="__codelineno-2-10" name="__codelineno-2-10" href="#__codelineno-2-10"></a>1 MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
-<a id="__codelineno-2-11" name="__codelineno-2-11" href="#__codelineno-2-11"></a>0 PPDDPPDDPPPPPPDDPPPPPPDDPPPPPPDDPPDDPP
-<a id="__codelineno-2-12" name="__codelineno-2-12" href="#__codelineno-2-12"></a>  01234567890123456789012345678901234567
-<a id="__codelineno-2-13" name="__codelineno-2-13" href="#__codelineno-2-13"></a>            1111111111222222222233333333
-</code></pre></div></p>
 <p><code>aie.device(npu1) {}</code>
 This device is present in Ryzen Phoenix (e.g. 7940HS) and HawkPoint (e.g., 8040HS) SOCs.
 4 Columns<sup>1</sup> and 6 Rows
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>5 CCCC
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>4 CCCC
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>3 CCCC
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>2 CCCC
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>1 MMMM
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>0 DDDD
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>  1234
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>5 CCCC
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>4 CCCC
+<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>3 CCCC
+<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>2 CCCC
+<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>1 MMMM
+<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>0 DDDD
+<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>  1234
 </code></pre></div></p>
 <blockquote>
 <p><sup>1</sup> The hidden zeroth-column of Phoenix NPUs is irregular and no longer exposed through MLIR-AIE.</p>
@@ -3277,24 +3208,24 @@ This device is present in Ryzen Phoenix (e.g. 7940HS) and HawkPoint (e.g., 8040H
 <code>aie.device(npu1_3col) {}</code>
 These devices represent a npu1 device, or a physical partition thereof, including a number of columns with a DMA shim tile.
 N Columns and 6 Rows
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>5 CCCC
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>4 CCCC
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>3 CCCC
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>2 CCCC
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>1 MMMM
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>0 DDDD
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>  0..N
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>5 CCCC
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>4 CCCC
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>3 CCCC
+<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>2 CCCC
+<a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>1 MMMM
+<a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>0 DDDD
+<a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>  0..N
 </code></pre></div></p>
 <p><code>aie.device(npu2) {}</code>
 This NPU device is present in Ryzen AI: Strix, Strix Halo and Krackan Point SOCs.
 8 Columns and 6 Rows
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>5 CCCCCCCC
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>4 CCCCCCCC
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>3 CCCCCCCC
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>2 CCCCCCCC
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>1 MMMMMMMM
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>0 DDDDDDDD
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>  01234567
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>5 CCCCCCCC
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>4 CCCCCCCC
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>3 CCCCCCCC
+<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>2 CCCCCCCC
+<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>1 MMMMMMMM
+<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>0 DDDDDDDD
+<a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>  01234567
 </code></pre></div></p>
 <p><code>aie.device(npu2_1col) {}</code>
 <code>aie.device(npu2_2col) {}</code>
@@ -3305,13 +3236,59 @@ This NPU device is present in Ryzen AI: Strix, Strix Halo and Krackan Point SOCs
 <code>aie.device(npu2_7col) {}</code>
 These devices represent a physical partition of an npu2 device, including a number of columns with a DMA shim tile.
 N Columns and 6 Rows
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>5 CCCCCCC
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>4 CCCCCCC
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>3 CCCCCCC
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>2 CCCCCCC
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>1 MMMMMMM
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>0 DDDDDDD
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>  0.....N
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>5 CCCCCCC
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>4 CCCCCCC
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>3 CCCCCCC
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>2 CCCCCCC
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>1 MMMMMMM
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a>0 DDDDDDD
+<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a>  0.....N
+</code></pre></div></p>
+<h2 id="versal-devices">Versal devices<a class="headerlink" href="#versal-devices" title="Permanent link">&para;</a></h2>
+<p>The following Versal™ AI Engine devices are supported but are not part of the
+actively-tested Ryzen™ AI (NPU) path.</p>
+<h3 id="aie-version-1">AIE Version 1<a class="headerlink" href="#aie-version-1" title="Permanent link">&para;</a></h3>
+<p><code>aie.device(xcvc1902) { ... }</code>
+This device is present on the VCK190 board.
+50 Columns and 9 Rows
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>8 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>7 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>6 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>5 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>4 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a>3 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>2 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>1 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>0 PPDDPPDDPPDDPPPPPPDDPPPPPPDDPPPPPPDDPPPPPPDDPPDDPP
+<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a>  01234567890123456789012345678901234567890123456789
+<a id="__codelineno-4-11" name="__codelineno-4-11" href="#__codelineno-4-11"></a>            1111111111222222222233333333334444444444
+</code></pre></div></p>
+<h3 id="aie-version-2">AIE Version 2<a class="headerlink" href="#aie-version-2" title="Permanent link">&para;</a></h3>
+<p><code>aie.device(xcve2302) {}</code>
+17 Columns and 4 Rows
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>3 CCCCCCCCCCCCCCCCC
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>2 CCCCCCCCCCCCCCCCC
+<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>1 MMMMMMMMMMMMMMMMM
+<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a>0 PPDDPPDDPPDDPPPPP
+<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>  01234567890123456
+<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>            1111111
+</code></pre></div></p>
+<p><code>aie.device(xcve2802) {}</code>
+This device is present on the V70 board
+38 Columns and 11 Rows
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>0 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>9 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>8 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>7 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>6 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a>5 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a>4 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a>3 CCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCCC
+<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a>2 MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>1 MMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMMM
+<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a>0 PPDDPPDDPPPPPPDDPPPPPPDDPPPPPPDDPPDDPP
+<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>  01234567890123456789012345678901234567
+<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a>            1111111111222222222233333333
 </code></pre></div></p>
 <hr />
 <p align="center">Copyright&copy; 2024-2026 Advanced Micro Devices, Inc.</p>
@@ -3352,7 +3329,7 @@ N Columns and 6 Rows
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../BuildingVersal/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Versal">
+          <a href="../Building/" class="md-footer__link md-footer__link--prev" aria-label="Previous: Build from Source">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -3362,20 +3339,20 @@ N Columns and 6 Rows
                 Previous
               </span>
               <div class="md-ellipsis">
-                Versal
+                Build from Source
               </div>
             </div>
           </a>
         
         
           
-          <a href="../Platform/" class="md-footer__link md-footer__link--next" aria-label="Next: Platform Notes">
+          <a href="../BuildingVersal/" class="md-footer__link md-footer__link--next" aria-label="Next: Versal">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Platform Notes
+                Versal
               </div>
             </div>
             <div class="md-footer__button md-icon">

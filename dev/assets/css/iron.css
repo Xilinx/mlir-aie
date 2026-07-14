@@ -100,5 +100,10 @@
    grid a little so the middle content column still has room between them. */
 .md-grid { max-width: 76rem !important; }
 
+/* ── Dialect pages ───────────────────────────────────────────────────────── */
+/* mlir-tblgen bakes a <div class="toc"> into generated dialect docs;
+   mkdocs-material already renders the sidebar TOC, so hide the duplicate. */
+.toc { display: none; }
+
 /* ── Footer ──────────────────────────────────────────────────────────────── */
 .md-footer { font-size: 0.8rem; }

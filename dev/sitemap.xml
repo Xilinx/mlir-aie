@@ -5,10 +5,6 @@
          <lastmod>2026-07-14</lastmod>
     </url>
     <url>
-         <loc>https://xilinx.github.io/mlir-aie/dev/ADFDialect/</loc>
-         <lastmod>2026-07-14</lastmod>
-    </url>
-    <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/AIEDialect/</loc>
          <lastmod>2026-07-14</lastmod>
     </url>
@@ -126,10 +122,6 @@
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/api/taplib/</loc>
-         <lastmod>2026-07-14</lastmod>
-    </url>
-    <url>
-         <loc>https://xilinx.github.io/mlir-aie/dev/api/utils/</loc>
          <lastmod>2026-07-14</lastmod>
     </url>
     <url>
