@@ -6,9 +6,10 @@ patches in this directory carry functionality mlir-aie depends on that isn't
 upstream yet, applied automatically at CMake configure time (see
 `runtime_lib/xaiengine/aiert.cmake`).
 
-- `0001-vck5000-cdo-sim-fixes.patch`: adds the VCK5000/AMDAIR IO backend
-  (`xaie_amdair.c`, used by `runtime_lib/test_lib/test_library.cpp` for
-  VCK5000 hardware testing), works around aie-rt's `cdo_rts.h`/`main_rts.h`
-  header dependencies on Vitis-only headers, and fixes a resource-manager
-  memory leak (`RscArrPerTile`). None of this is present upstream as of the
-  pinned commit.
+- `0001-cdo-sim-defork-fixes.patch`: works around aie-rt's
+  `cdo_rts.h`/`main_rts.h` dependencies on Vitis-only headers by replacing the
+  includes with local forward declarations (`xaie_cdo.c`, `xaie_sim.c`), adds
+  Windows thread handling in the sim backend, fixes a resource-manager memory
+  leak (`RscArrPerTile` in `xaie_io_common.c`), and carries a few minor
+  build/warning fixes. None of this is present upstream as of the pinned
+  commit.

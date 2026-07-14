@@ -1,0 +1,211 @@
+diff --git a/driver/src/common/xaie_txn.h b/driver/src/common/xaie_txn.h
+index 28bad064..35b6b5c6 100644
+--- a/driver/src/common/xaie_txn.h
++++ b/driver/src/common/xaie_txn.h
+@@ -42,7 +42,8 @@ typedef enum {
+ 	XAIE_IO_CUSTOM_OP_RECORD_TIMER, // Previously this was XAIE_IO_CUSTOM_OP_BEGIN + 3
+ 	XAIE_IO_CUSTOM_OP_MERGE_SYNC, // Previously this was XAIE_IO_CUSTOM_OP_BEGIN + 4
+ 	XAIE_IO_CUSTOM_OP_NEXT,
+-	XAIE_IO_CUSTOM_OP_MAX = UCHAR_MAX,
++	/* add new op here */
++	XAIE_IO_CUSTOM_OP_MAX
+ } XAie_TxnOpcode;
+ 
+ struct XAie_TxnCmd {
+diff --git a/driver/src/core/xaie_core_aie.c b/driver/src/core/xaie_core_aie.c
+index 87cdbd9f..a731b73a 100644
+--- a/driver/src/core/xaie_core_aie.c
++++ b/driver/src/core/xaie_core_aie.c
+@@ -21,10 +21,6 @@
+ *
+ ******************************************************************************/
+ /***************************** Include Files *********************************/
+-#ifdef __linux__
+-#include <unistd.h>
+-#endif
+-
+ #include "xaie_core_aie.h"
+ #include "xaie_events_aie.h"
+ #include "xaie_feature_config.h"
+diff --git a/driver/src/global/xaiegbl.c b/driver/src/global/xaiegbl.c
+index 3986369b..5b88dce9 100644
+--- a/driver/src/global/xaiegbl.c
++++ b/driver/src/global/xaiegbl.c
+@@ -1062,7 +1062,7 @@ AieRC XAie_PerfUtilization(XAie_DevInst *DevInst, XAie_PerfInst *PerfInst)
+ 		XAIE_DBG("Start Col: %d\tnum: %d\n",
+ 				PartRange.Start, PartRange.Num);
+ 		PerfInst->Range = &PartRange;
+-	} else if (PerfInst->Range->Num <= 0U ||
++	} else if (PerfInst->Range->Num == 0U ||
+ 			PerfInst->Range->Num > DevInst->NumCols) {
+ 		XAIE_ERROR("Invalid range!\n");
+ 		return XAIE_INVALID_ARGS;
+diff --git a/driver/src/global/xaiegbl.h b/driver/src/global/xaiegbl.h
+index bda0f9d4..701b352c 100644
+--- a/driver/src/global/xaiegbl.h
++++ b/driver/src/global/xaiegbl.h
+@@ -912,7 +912,7 @@ static inline void XAie_SetupConfigPartProp(XAie_Config *ConfigPtr, u32 Nid,
+ *		more memory from the user application for resource management.
+ *
+ *******************************************************************************/
+-#define XAie_InstDeclare(Inst, ConfigPtr) XAie_DevInst Inst = { 0 }
++#define XAie_InstDeclare(Inst, ConfigPtr) XAie_DevInst Inst = {}
+ 
+ /*****************************************************************************/
+ /**
+diff --git a/driver/src/io_backend/ext/xaie_cdo.c b/driver/src/io_backend/ext/xaie_cdo.c
+index c127865d..f04ee2ca 100644
+--- a/driver/src/io_backend/ext/xaie_cdo.c
++++ b/driver/src/io_backend/ext/xaie_cdo.c
+@@ -29,7 +29,13 @@
+ 
+ #ifdef __AIECDO__ /* AIE simulator */
+ 
+-#include "cdo_rts.h"
++#include "stdint.h"
++
++void cdo_Write32(uint64_t, uint32_t);
++void cdo_MaskWrite32(uint64_t , uint32_t, uint32_t);
++void cdo_MaskPoll(uint64_t , uint32_t, uint32_t, uint32_t);
++void cdo_BlockWrite32(uint64_t, const uint32_t*, uint32_t);
++void cdo_BlockSet32(uint64_t, uint32_t, uint32_t);
+ 
+ #endif
+ 
+diff --git a/driver/src/io_backend/ext/xaie_debug.c b/driver/src/io_backend/ext/xaie_debug.c
+index e44e8afd..eed7a88f 100644
+--- a/driver/src/io_backend/ext/xaie_debug.c
++++ b/driver/src/io_backend/ext/xaie_debug.c
+@@ -107,7 +107,7 @@ static AieRC XAie_DebugIO_Write32(void *IOInst, u64 RegOff, u32 Value)
+ {
+ 	XAie_DebugIO *DebugIOInst = (XAie_DebugIO *)IOInst;
+ 
+-	printf("W: %p, 0x%x\n", (char *)DebugIOInst->BaseAddr + RegOff, Value);
++	printf("W: %p, 0x%x\n", (uint8_t *) DebugIOInst->BaseAddr + RegOff, Value);
+ 
+ 	return XAIE_OK;
+ }
+@@ -131,7 +131,7 @@ static AieRC XAie_DebugIO_Read32(void *IOInst, u64 RegOff, u32 *Data)
+ 	XAie_DebugIO *DebugIOInst = (XAie_DebugIO *)IOInst;
+ 
+ 	*Data = 0U;
+-	printf("R: %p, 0x%x\n", (char *) DebugIOInst->BaseAddr + RegOff, 0);
++	printf("R: %p, 0x%x\n", (uint8_t *) DebugIOInst->BaseAddr + RegOff, 0);
+ 
+ 	return XAIE_OK;
+ }
+@@ -157,7 +157,7 @@ static AieRC XAie_DebugIO_MaskWrite32(void *IOInst, u64 RegOff, u32 Mask,
+ {
+ 	XAie_DebugIO *DebugIOInst = (XAie_DebugIO *)IOInst;
+ 
+-	printf("MW: %p, 0x%x, 0x%x\n", (char *) DebugIOInst->BaseAddr + RegOff,
++	printf("MW: %p, 0x%x, 0x%x\n", (uint8_t *) DebugIOInst->BaseAddr + RegOff,
+ 			Mask, Value);
+ 
+ 	return XAIE_OK;
+@@ -184,7 +184,7 @@ static AieRC XAie_DebugIO_MaskPoll(void *IOInst, u64 RegOff, u32 Mask, u32 Value
+ {
+ 	XAie_DebugIO *DebugIOInst = (XAie_DebugIO *)IOInst;
+ 
+-	printf("MP: %p, 0x%x, 0x%x, 0x%d\n", (char *) DebugIOInst->BaseAddr +
++	printf("MP: %p, 0x%x, 0x%x, 0x%d\n", (uint8_t *) DebugIOInst->BaseAddr +
+ 			RegOff, Mask, Value, TimeOutUs);
+ 
+ 	return XAIE_ERR;
+@@ -302,7 +302,7 @@ static AieRC _XAie_DebugIO_NpiMaskPoll(void *IOInst, u64 RegOff, u32 Mask,
+ {
+ 	XAie_DebugIO *DebugIOInst = (XAie_DebugIO *)IOInst;
+ 
+-	printf("MP: %p, 0x%x, 0x%x, 0x%d\n", (char *) DebugIOInst->NpiBaseAddr +
++	printf("MP: %p, 0x%x, 0x%x, 0x%d\n", (uint8_t *) DebugIOInst->NpiBaseAddr +
+ 			RegOff, Mask, Value, TimeOutUs);
+ 
+ 	return XAIE_OK;
+diff --git a/driver/src/io_backend/ext/xaie_io_common.c b/driver/src/io_backend/ext/xaie_io_common.c
+index b71ca046..a3393e69 100644
+--- a/driver/src/io_backend/ext/xaie_io_common.c
++++ b/driver/src/io_backend/ext/xaie_io_common.c
+@@ -392,11 +392,12 @@ static AieRC _XAie_RequestBroadcastChannelRscCommon(XAie_DevInst *DevInst,
+ AieRC _XAie_RequestRscCommon(XAie_DevInst *DevInst, XAie_BackendTilesRsc *Args)
+ {
+ 	AieRC RC;
+-	u32 *RscArrPerTile;
+-
+-	RscArrPerTile = (u32*)malloc(Args->NumRscPerTile * sizeof(u32));
++	u32 *RscArrPerTile = malloc(sizeof(u32) * Args->NumRscPerTile);
++	if (RscArrPerTile == NULL)
++		return XAIE_ERR;
+ 
+ 	if (Args->RscType == XAIE_BCAST_CHANNEL_RSC) {
++		free((void*)RscArrPerTile);
+ 		return _XAie_RequestBroadcastChannelRscCommon(DevInst, Args);
+ 	}
+ 
+@@ -419,9 +420,8 @@ AieRC _XAie_RequestRscCommon(XAie_DevInst *DevInst, XAie_BackendTilesRsc *Args)
+ 			for (u32 j = 0; j < Args->NumRscPerTile; j++) {
+ 				Args->Rscs[j].RscId = RscArrPerTile[j];
+ 			}
+-
+ 		}
+-		free(RscArrPerTile);
++		free((void*)RscArrPerTile);
+ 		return RC;
+ 	}
+ 
+@@ -434,7 +434,7 @@ AieRC _XAie_RequestRscCommon(XAie_DevInst *DevInst, XAie_BackendTilesRsc *Args)
+ 			Args->Rscs[j].RscId = RscArrPerTile[j];
+ 		}
+ 	}
+-	free(RscArrPerTile);
++	free((void*)RscArrPerTile);
+ 	return RC;
+ }
+ 
+diff --git a/driver/src/io_backend/ext/xaie_sim.c b/driver/src/io_backend/ext/xaie_sim.c
+index 625d9b6b..00c79ec5 100644
+--- a/driver/src/io_backend/ext/xaie_sim.c
++++ b/driver/src/io_backend/ext/xaie_sim.c
+@@ -27,14 +27,27 @@
+ #include <stdlib.h>
+ #include <string.h>
+ 
+-#ifdef __linux__
++#ifdef __AIESIM__
++#ifdef _WIN32
++#include <windows.h>
++#else
+ #include <pthread.h>
+-#include <unistd.h>
++#endif
+ #endif
+ 
+ #ifdef __AIESIM__ /* AIE simulator */
+ 
+-#include "main_rts.h"
++#include <stdint.h>
++#include <unistd.h>
++
++typedef unsigned int uint;
++
++void ess_Write32(uint64_t Addr, uint Data);
++uint ess_Read32(uint64_t Addr);
++void ess_WriteCmd(unsigned char Command, unsigned char ColId, unsigned char RowId, unsigned int CmdWd0, unsigned int CmdWd1, unsigned char *CmdStr);
++
++void ess_NpiWrite32(uint64_t Addr, uint Data);
++uint ess_NpiRead32(uint64_t Addr);
+ 
+ #endif
+ 
+@@ -461,7 +474,11 @@ static AieRC XAie_SimIO_RunOp(void *IOInst, XAie_DevInst *DevInst,
+ 
+ static u64 XAie_SimIOGetTid(void)
+ {
+-		return (u64)pthread_self();
++#ifdef _WIN32
++	return GetCurrentThreadId();
++#else
++	return (u64)pthread_self();
++#endif
+ }
+ 
+ #else

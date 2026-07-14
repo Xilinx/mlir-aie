@@ -6,9 +6,17 @@
 # patch files under third_party/patches/aie-rt and applied here, once, at
 # configure time. See third_party/patches/aie-rt/README.md.
 function(apply_aie_rt_vendor_patches AIE_RT_ROOT PATCH_DIR)
-  set(_sentinel ${AIE_RT_ROOT}/driver/src/io_backend/ext/xaie_amdair.c)
+  # The vendored patches only modify existing upstream files, so detect an
+  # already-patched tree by content rather than by a created-file sentinel:
+  # 0001 replaces xaie_cdo.c's cdo_rts.h include with a cdo_Write32 forward
+  # declaration that upstream does not have.
+  set(_sentinel ${AIE_RT_ROOT}/driver/src/io_backend/ext/xaie_cdo.c)
   if(EXISTS ${_sentinel})
-    return()
+    file(READ ${_sentinel} _sentinel_contents)
+    string(FIND "${_sentinel_contents}" "void cdo_Write32(" _sentinel_hit)
+    if(NOT _sentinel_hit EQUAL -1)
+      return()
+    endif()
   endif()
 
   file(GLOB _patches ${PATCH_DIR}/*.patch)
@@ -79,7 +87,6 @@ cmake_parse_arguments(ARG "STATIC" "" "" ${ARGN})
   file(GLOB libsources ${XAIE_SOURCE}/*/*.c ${XAIE_SOURCE}/*/*/*.c)
 
   if(WIN32)
-    list(FILTER libsources EXCLUDE REGEX xaie_amdair)
     list(FILTER libsources EXCLUDE REGEX xaie_sim\.c$)
   endif()
 
