@@ -65,11 +65,15 @@
          <lastmod>2026-07-14</lastmod>
     </url>
     <url>
-         <loc>https://xilinx.github.io/mlir-aie/dev/Presentations/</loc>
+         <loc>https://xilinx.github.io/mlir-aie/dev/ROADMAP/</loc>
          <lastmod>2026-07-14</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/SECURITY/</loc>
+         <lastmod>2026-07-14</lastmod>
+    </url>
+    <url>
+         <loc>https://xilinx.github.io/mlir-aie/dev/UsedIn/</loc>
          <lastmod>2026-07-14</lastmod>
     </url>
     <url>
