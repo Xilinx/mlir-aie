@@ -4167,11 +4167,16 @@ static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
 
       // Generate NPU instructions using direct C++ API call.
       // This replaces the subprocess call to aie-translate --aie-npu-to-binary.
+      // The full-ELF runtime (xrt.ext.kernel) assigns NPU-space device
+      // addresses to all host buffers, so the DDR-aperture offset for arguments
+      // beyond the firmware-translated set must NOT be folded into the TXN. The
+      // xclbin + instruction-buffer runtime does need it.
       std::vector<uint32_t> instructions;
       std::vector<xilinx::AIE::TxnLocEntry> locmap;
       if (failed(xilinx::AIE::AIETranslateNpuToBinary(
               *clonedModule, instructions, curDevName, seqName,
-              keepLoc ? &locmap : nullptr))) {
+              keepLoc ? &locmap : nullptr,
+              /*foldDDRAddrOffset=*/!generateFullElf))) {
         llvm::errs() << "Error generating NPU instructions for sequence: "
                      << seqName << "\n";
         result = failure();
@@ -4469,7 +4474,8 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
   std::vector<xilinx::AIE::TxnLocEntry> dmaSeqLocmap;
   if (failed(xilinx::AIE::AIETranslateNpuToBinary(
           *clonedModule, dmaSeqInstructions, devName, "" /* all sequences */,
-          keepLoc ? &dmaSeqLocmap : nullptr))) {
+          keepLoc ? &dmaSeqLocmap : nullptr,
+          /*foldDDRAddrOffset=*/!generateFullElf))) {
     llvm::errs() << "Error generating control packet DMA sequence for device: "
                  << devName << "\n";
     return failure();
@@ -6095,8 +6101,13 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
         sys::path::append(outputPath, outputFileName);
 
         std::vector<uint32_t> instructions;
+        // Multi-PDI full-ELF path: same as the single-sequence full-ELF case,
+        // the runtime translates all host buffer addresses, so do not fold the
+        // DDR-aperture offset into the TXN.
         if (failed(xilinx::AIE::AIETranslateNpuToBinary(
-                *expandedModule, instructions, devName, seqName))) {
+                *expandedModule, instructions, devName, seqName,
+                /*locmap=*/nullptr,
+                /*foldDDRAddrOffset=*/!generateFullElf))) {
           llvm::errs() << "Error generating NPU instructions for sequence: "
                        << seqName << "\n";
           return;

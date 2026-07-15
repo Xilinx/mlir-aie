@@ -157,6 +157,15 @@ void registerAIETranslations() {
       llvm::cl::desc(
           "Select binary (true) or text (false) output for supported "
           "translations. e.g. aie-npu-to-binary, aie-ctrlpkt-to-bin"));
+  static llvm::cl::opt<bool> npuFoldDDRAddrOffset(
+      "aie-npu-fold-ddr-addr-offset", llvm::cl::init(true),
+      llvm::cl::desc(
+          "For aie-npu-to-binary: fold the AIE DDR-aperture offset into the "
+          "arg_plus of DDR address patches for host arguments beyond the "
+          "firmware-translated set. Required for the xclbin + "
+          "instruction-buffer "
+          "runtime; must be false for the full-ELF (xrt.ext.kernel) runtime, "
+          "which translates all host buffer addresses itself."));
   static llvm::cl::opt<std::string> deviceName(
       "aie-device-name", llvm::cl::init(""),
       llvm::cl::desc("Specify which device to translate"));
@@ -366,9 +375,9 @@ void registerAIETranslations() {
         std::vector<uint32_t> instructions;
         std::vector<TxnLocEntry> locmap;
         bool emitLocmap = !npuEmitLocmap.empty();
-        auto r = AIETranslateNpuToBinary(module, instructions, deviceName,
-                                         sequenceName,
-                                         emitLocmap ? &locmap : nullptr);
+        auto r = AIETranslateNpuToBinary(
+            module, instructions, deviceName, sequenceName,
+            emitLocmap ? &locmap : nullptr, npuFoldDDRAddrOffset);
         if (failed(r))
           return r;
         // The binary (or hex text) is always emitted to the main output.
