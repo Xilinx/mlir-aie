@@ -751,11 +751,14 @@ static ParseResult parseObjectFifoInitValues(OpAsmParser &parser,
   Type tensorType = mlir::memref::getTensorTypeFromMemRefType(memrefType);
   if (parser.parseAttribute(initValues, tensorType))
     return failure();
+  auto initialValues = llvm::dyn_cast<mlir::ArrayAttr>(initValues);
+  if (!initialValues)
+    return parser.emitError(parser.getNameLoc())
+           << "initial values should be an array attribute";
+  if ((int)initialValues.size() != depth)
+    return parser.emitError(parser.getNameLoc())
+           << "initial values should initialize all objects";
   for (int i = 0; i < depth; i++) {
-    auto initialValues = llvm::cast<mlir::ArrayAttr>(initValues);
-    if ((int)initialValues.size() != depth)
-      return parser.emitError(parser.getNameLoc())
-             << "initial values should initialize all objects";
     if (!llvm::isa<ElementsAttr>(initialValues[i]))
       return parser.emitError(parser.getNameLoc())
              << "initial value should be an elements attribute";
