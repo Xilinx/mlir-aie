@@ -340,6 +340,14 @@ struct AIEDMATasksToNPUPass
 
     uint32_t bd_id = bd_op.getBdId().value();
     int64_t offset = bd_op.getOffsetInBytes();
+    // A runtime len operand would be silently baked to the buffer's element
+    // count by getLenInBytes(); reject it on the static path (as sizes/strides
+    // are below) rather than encode a wrong length.
+    if (bd_op.getLen() && !bd_op.getConstantLen())
+      return bd_op->emitOpError(
+          "runtime-valued BD len is not supported on the static NPU "
+          "lowering path; use a compile-time constant or the dynamic EmitC "
+          "path (--aie-npu-to-cpp)");
     uint64_t len = bd_op.getLenInBytes();
     uint64_t len_addr_granularity = len * 8 / addr_granularity;
 
