@@ -257,8 +257,8 @@ struct Engine {
     const unsigned totalSteps = reachable.size();
     unsigned step = 0;
     size_t progressPrevLen = 0;
-    std::mutex progressMutex;   // serializes concurrent per-item updates
-    std::string progressBase;   // base line for the current edge
+    std::mutex progressMutex; // serializes concurrent per-item updates
+    std::string progressBase; // base line for the current edge
     // Overwrite the previous status; pad to clear any leftover characters.
     auto writeProgressLine = [&](const std::string &line) {
       size_t pad =
@@ -271,9 +271,9 @@ struct Engine {
       for (NodeBase *n : e->inputNodes())
         if (n)
           inItems += n->itemRefs().size();
-      std::string line =
-          "(" + std::to_string(step) + "/" + std::to_string(totalSteps) + ") " +
-          displayName(e).str();
+      std::string line = "(" + std::to_string(step) + "/" +
+                         std::to_string(totalSteps) + ") " +
+                         displayName(e).str();
       if (opts.progress) {
         std::lock_guard<std::mutex> lock(progressMutex);
         progressBase = line;

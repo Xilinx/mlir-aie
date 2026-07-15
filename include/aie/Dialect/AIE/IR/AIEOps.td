@@ -1451,29 +1451,34 @@ def AIE_UseLockOp: AIE_Op<"use_lock", []> {
     otherwise.
   }];
 
-  let arguments = (ins Index:$lock, LockAction:$action, I32:$value,
-      OptionalAttr<LockBlocking>:$blocking,
-      DefaultValuedOptionalAttr<BoolAttr, "true">:$acq_en);
+  let arguments = (
+    ins Index:$lock,
+        LockAction:$action,
+        I32:$value,
+        OptionalAttr<LockBlocking>:$blocking,
+        DefaultValuedOptionalAttr<BoolAttr, "true">:$acq_en
+  );
 
   let assemblyFormat = [{
     `(` $lock `,` $action `,` $value (`,` $blocking^)? `)` attr-dict
   }];
 
   let hasVerifier = 1;
-  let builders =
-      [OpBuilder<(ins "mlir::Value":$lock, "xilinx::AIE::LockAction":$action,
-                     "int32_t":$value),
-                 [{
+  let builders = [
+    OpBuilder<(ins "mlir::Value":$lock,
+                   "xilinx::AIE::LockAction":$action,
+                   "int32_t":$value), [{
       auto constant = mlir::arith::ConstantOp::create(
           $_builder, $_state.location, $_builder.getI32Type(),
           $_builder.getI32IntegerAttr(value));
       build($_builder, $_state, lock, action, constant, /*blocking=*/nullptr);
     }]>,
-       OpBuilder<(ins "mlir::Value":$lock, "xilinx::AIE::LockAction":$action,
-                     "mlir::Value":$value),
-                 [{
+    OpBuilder<(ins "mlir::Value":$lock,
+                   "xilinx::AIE::LockAction":$action,
+                   "mlir::Value":$value), [{
       build($_builder, $_state, lock, action, value, /*blocking=*/nullptr);
-    }]>];
+    }]>
+  ];
 
   let extraClassDeclaration = [{
     bool acquire() { return (getAction() == LockAction::Acquire); }
@@ -1891,41 +1896,40 @@ def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]
     When `repeat_count == 1`, this simplifies to `iter_count * elemNumber`.
   }];
 
-  let arguments = (ins SymbolNameAttr:$sym_name, Index:$producerTile,
-      Variadic<Index>:$consumerTiles, AIE_ObjectFifo_Depth:$elemNumber,
-      TypeAttrOf<AIE_ObjectFifoType>:$elemType,
-      // Optional consumer element type for asymmetric transfer granularity.
-      // Producer sends elemType-sized transfers, consumer receives
-      // consumerElemType-sized transfers. Producer element size must be
-      // an integer multiple of consumer element size.
-      OptionalAttr<TypeAttrOf<AIE_ObjectFifoType>>:$consumerElemType,
-      BDDimLayoutArrayAttr:$dimensionsToStream,
-      BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer,
-      DefaultValuedAttr<BoolAttr, "false">:$via_DMA,
-      DefaultValuedAttr<BoolAttr, "false">:$plio,
-      // disable_synchronization==true will skip lock generation for
-      // objectfifo synchronous accesses
-      DefaultValuedAttr<BoolAttr, "false">:$disable_synchronization,
-      // repeat_count==1 means "do it once"
-      OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$repeat_count,
-      // aie_stream==0 means enable aie stream port on producer tile
-      // aie_stream==1 means enable aie stream port on consumer tile
-      // aie_stream==2 means enable aie stream ports on producer and consumer
-      // tiles
-      OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>,
-                                             IntMaxValue<2>]>>:$aie_stream,
-      OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>,
-                                             IntMaxValue<1>]>>:$aie_stream_port,
-      // Pin the DMA channel for an endpoint instead of first-free assignment.
-      // prod_dma_channel pins the producer endpoint's channel;
-      // cons_dma_channels holds one entry per consumer (-1 = auto-assign that
-      // consumer).
-      OptionalAttr<ConfinedAttr<
-          AIEI32Attr, [IntMinValue<0>]>>:$prod_dma_channel,
-      OptionalAttr<DenseI32ArrayAttr>:$cons_dma_channels,
-      InitValuesArrayAttr:$initValues,
-      OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions,
-      OptionalAttr<AIEI32Attr>:$iter_count);
+  let arguments = (
+    ins SymbolNameAttr:$sym_name,
+        Index:$producerTile,
+        Variadic<Index>:$consumerTiles,
+        AIE_ObjectFifo_Depth:$elemNumber,
+        TypeAttrOf<AIE_ObjectFifoType>:$elemType,
+        // Optional consumer element type for asymmetric transfer granularity.
+        // Producer sends elemType-sized transfers, consumer receives
+        // consumerElemType-sized transfers. Producer element size must be
+        // an integer multiple of consumer element size.
+        OptionalAttr<TypeAttrOf<AIE_ObjectFifoType>>:$consumerElemType,
+        BDDimLayoutArrayAttr:$dimensionsToStream,
+        BDDimLayoutArrayArrayAttr:$dimensionsFromStreamPerConsumer,
+        DefaultValuedAttr<BoolAttr, "false">:$via_DMA,
+        DefaultValuedAttr<BoolAttr, "false">:$plio,
+        // disable_synchronization==true will skip lock generation for
+        // objectfifo synchronous accesses
+        DefaultValuedAttr<BoolAttr, "false">:$disable_synchronization,
+        // repeat_count==1 means "do it once"
+        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<1>]>>:$repeat_count,
+        // aie_stream==0 means enable aie stream port on producer tile
+        // aie_stream==1 means enable aie stream port on consumer tile
+        // aie_stream==2 means enable aie stream ports on producer and consumer tiles
+        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>, IntMaxValue<2>]>>:$aie_stream,
+        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>, IntMaxValue<1>]>>:$aie_stream_port,
+        // Pin the DMA channel for an endpoint instead of first-free assignment.
+        // prod_dma_channel pins the producer endpoint's channel; cons_dma_channels
+        // holds one entry per consumer (-1 = auto-assign that consumer).
+        OptionalAttr<ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>>:$prod_dma_channel,
+        OptionalAttr<DenseI32ArrayAttr>:$cons_dma_channels,
+        InitValuesArrayAttr:$initValues,
+        OptionalAttr<BDPadLayoutArrayAttr>:$padDimensions,
+        OptionalAttr<AIEI32Attr>:$iter_count
+  );
 
   let assemblyFormat = [{
     $sym_name
