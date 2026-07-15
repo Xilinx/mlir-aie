@@ -714,8 +714,12 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
         ModRef clone = item.get().get().clone();
         if (mlir::failed(getControlPacketDmaPipeline(&context)->run(*clone)))
           return mlir::failure();
-        return xilinx::AIE::AIETranslateNpuToBinary(clone.get(), words,
-                                                    item.key, "");
+        // The full-ELF runtime translates every host buffer address itself, so
+        // the DDR-aperture offset must not be folded into the TXN; the
+        // xclbin + instruction-buffer runtime does still need it.
+        return xilinx::AIE::AIETranslateNpuToBinary(
+            clone.get(), words, item.key, "",
+            /*locmap=*/nullptr, /*foldDDRAddrOffset=*/!generateFullElf);
       }));
 
   // Partial ELF containing the DMA sequence and the control packet data;
@@ -940,9 +944,13 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
         NpuProgram prog;
         prog.deviceName = devOp.getSymName().str();
         std::vector<uint32_t> insts;
+        // The full-ELF runtime translates every host buffer address itself, so
+        // the DDR-aperture offset must not be folded into the TXN; the
+        // xclbin + instruction-buffer runtime does still need it.
         if (mlir::failed(xilinx::AIE::AIETranslateNpuToBinary(
                 item.get().module.get(), insts, devOp.getSymName(),
-                seq.getSymName(), &prog.locmap)))
+                seq.getSymName(), &prog.locmap,
+                /*foldDDRAddrOffset=*/!generateFullElf)))
           return mlir::failure();
         prog.insts = wordsToBytes(insts);
         out.value = std::move(prog);
