@@ -255,19 +255,13 @@ buildHostExeSubgraph(EdgeWithTypedOutput<OpInModule<DeviceOp>> &perDevice,
 
 // Translate each runtime sequence into its NPU program: one NpuProgram item
 // (the transaction instruction binary + its source-location map) per sequence,
-// keyed "<device>_<sequence>". Both the .bin words and the locmap fall out of a
-// single AIETranslateNpuToBinary call, so they travel together and translation
-// is never repeated.
+// keyed "<device>_<sequence>".
 //
 // `foldDDRAddrOffset` selects how host-buffer addresses are encoded in the TXN:
 //   * true  -- the DDR-aperture offset is folded into the transaction, as the
 //              xclbin + instruction-buffer runtime expects;
 //   * false -- the offset is left out, as the full-ELF runtime (xrt.ext.kernel)
 //              assigns NPU-space device addresses to every host buffer itself.
-// The two variants differ only in this flag, so the whole edge is shared here
-// and instantiated once per runtime (see buildMainGraph) -- both must be able
-// to coexist because a single invocation can request a full ELF and an
-// xclbin/insts.bin at the same time.
 EdgeWithTypedOutput<NpuProgram> &buildNpuProgramSubgraph(
     EdgeWithTypedOutput<OpInModule<xilinx::AIE::RuntimeSequenceOp>> &perSeq,
     std::string programName, bool foldDDRAddrOffset) {
