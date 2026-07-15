@@ -253,6 +253,46 @@ buildHostExeSubgraph(EdgeWithTypedOutput<OpInModule<DeviceOp>> &perDevice,
           });
 }
 
+// Translate each runtime sequence into its NPU program: one NpuProgram item
+// (the transaction instruction binary + its source-location map) per sequence,
+// keyed "<device>_<sequence>". Both the .bin words and the locmap fall out of a
+// single AIETranslateNpuToBinary call, so they travel together and translation
+// is never repeated.
+//
+// `foldDDRAddrOffset` selects how host-buffer addresses are encoded in the TXN:
+//   * true  -- the DDR-aperture offset is folded into the transaction, as the
+//              xclbin + instruction-buffer runtime expects;
+//   * false -- the offset is left out, as the full-ELF runtime (xrt.ext.kernel)
+//              assigns NPU-space device addresses to every host buffer itself.
+// The two variants differ only in this flag, so the whole edge is shared here
+// and instantiated once per runtime (see buildMainGraph) -- both must be able
+// to coexist because a single invocation can request a full ELF and an
+// xclbin/insts.bin at the same time.
+EdgeWithTypedOutput<NpuProgram> &buildNpuProgramSubgraph(
+    EdgeWithTypedOutput<OpInModule<xilinx::AIE::RuntimeSequenceOp>> &perSeq,
+    std::string programName, bool foldDDRAddrOffset) {
+  auto &npuProgram = perSeq.map<NpuProgram>(
+      std::move(programName),
+      [foldDDRAddrOffset](
+          const Item<OpInModule<xilinx::AIE::RuntimeSequenceOp>> &item,
+          Item<NpuProgram> &out) -> mlir::LogicalResult {
+        xilinx::AIE::RuntimeSequenceOp seq = item.get().op;
+        DeviceOp devOp = seq->getParentOfType<DeviceOp>();
+        NpuProgram prog;
+        prog.deviceName = devOp.getSymName().str();
+        std::vector<uint32_t> insts;
+        if (mlir::failed(xilinx::AIE::AIETranslateNpuToBinary(
+                item.get().module.get(), insts, devOp.getSymName(),
+                seq.getSymName(), &prog.locmap, foldDDRAddrOffset)))
+          return mlir::failure();
+        prog.insts = wordsToBytes(insts);
+        out.value = std::move(prog);
+        return mlir::success();
+      });
+  npuProgram.producesFiles = false;
+  return npuProgram;
+}
+
 } // namespace
 
 //===----------------------------------------------------------------------===//
@@ -933,30 +973,19 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                     return seqFilter.empty() || seq.getSymName() == seqFilter;
                   });
 
-  // Translate each sequence exactly once: the .bin bytes and the locmap are
-  // captured together in a single NpuProgram payload.
-  auto &npuProgram = perSeq.map<NpuProgram>(
-      "npu_program_{0}.bin",
-      [](const Item<OpInModule<RuntimeSequenceOp>> &item,
-         Item<NpuProgram> &out) -> mlir::LogicalResult {
-        RuntimeSequenceOp seq = item.get().op;
-        DeviceOp devOp = seq->getParentOfType<DeviceOp>();
-        NpuProgram prog;
-        prog.deviceName = devOp.getSymName().str();
-        std::vector<uint32_t> insts;
-        // The full-ELF runtime translates every host buffer address itself, so
-        // the DDR-aperture offset must not be folded into the TXN; the
-        // xclbin + instruction-buffer runtime does still need it.
-        if (mlir::failed(xilinx::AIE::AIETranslateNpuToBinary(
-                item.get().module.get(), insts, devOp.getSymName(),
-                seq.getSymName(), &prog.locmap,
-                /*foldDDRAddrOffset=*/!generateFullElf)))
-          return mlir::failure();
-        prog.insts = wordsToBytes(insts);
-        out.value = std::move(prog);
-        return mlir::success();
-      });
-  npuProgram.producesFiles = false;
+  // Translate each sequence exactly once into its NPU program (the .bin bytes
+  // and the locmap). Two variants are built from the same per-sequence input,
+  // differing only in whether the DDR-aperture offset is folded into the TXN:
+  //   * npuProgram (folded) drives the xclbin / instruction-buffer artifacts
+  //     (instElf, insts.bin, locmap), whose runtime needs the offset folded in;
+  //   * npuProgramFullElf (not folded, built just below the full-ELF section)
+  //     drives the combined full ELF, whose runtime assigns host-buffer
+  //     addresses itself.
+  // Keeping them as separate edges is what lets a single invocation request
+  // both a full ELF and an xclbin/insts.bin and get correct address folding for
+  // each. Both share buildNpuProgramSubgraph.
+  auto &npuProgram = buildNpuProgramSubgraph(perSeq, "npu_program_{0}.bin",
+                                             /*foldDDRAddrOffset=*/true);
 
   auto &npuInsts = npuProgram.map<std::vector<char>>(
       npuInstsName.getValue(), [](const NpuProgram &p) { return p.insts; });
@@ -1001,9 +1030,21 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   //--------------------------------------------------------------------------//
   // Combined full ELF (joins the static configuration + NPU branches)
   //--------------------------------------------------------------------------//
+  // The full ELF consumes its own NPU program variant, translated WITHOUT
+  // folding the DDR-aperture offset (foldDDRAddrOffset=false): the full-ELF
+  // runtime assigns host-buffer addresses itself, so the offset must not be
+  // baked into the TXN. This is a distinct edge from `npuInsts` (which folds
+  // the offset for the xclbin path) so that requesting a full ELF and an
+  // xclbin/insts.bin in the same run yields each with the correct folding.
+  auto &npuProgramFullElf = buildNpuProgramSubgraph(
+      perSeq, "npu_program_full_elf_{0}.bin", /*foldDDRAddrOffset=*/false);
+  auto &npuInstsFullElf = npuProgramFullElf.map<std::vector<char>>(
+      "npu_insts_full_elf_{0}.bin",
+      [](const NpuProgram &p) { return p.insts; });
+
   // Combined ELF: all PDIs + NPU insts bundled into one aie2_config ELF.
   auto &fullElfConfig =
-      bundle(npuLoweredPerDevice.out, pdi.out, npuInsts.out)
+      bundle(npuLoweredPerDevice.out, pdi.out, npuInstsFullElf.out)
           .join<llvm::json::Value>(
               "full_elf_config.json",
               [](const Node<OpInModule<DeviceOp>> &devices,
