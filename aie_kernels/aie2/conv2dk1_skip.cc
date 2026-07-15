@@ -382,7 +382,7 @@ void conv2dk1_skip_i8_vector(uint8_t *input0, uint8_t *input1, int8_t *kernels,
   //             // 13 cycles delay for vload.
   //             // 7 gives us 3 cycle inner loop.
   //             // 13 gave 1 cycle inner loop before partial load, not it only
-  //             gets 2 cycles (not sure why?)
+  //             gets 2 cycles
   //         {
   //             aie::vector<uint8, 32> in_a      =
   //             aie::load_v<32>(input0+input_offset1); input_offset1 += 32; //
@@ -406,7 +406,7 @@ void conv2dk1_skip_i8_vector(uint8_t *input0, uint8_t *input1, int8_t *kernels,
   //             // 13 cycles delay for vload.
   //             // 7 gives us 3 cycle inner loop.
   //             // 13 gave 1 cycle inner loop before partial load, not it only
-  //             gets 2 cycles (not sure why?)
+  //             gets 2 cycles
   //         {
   //             aie::vector<uint8, 32> in_a      =
   //             aie::load_v<32>(input1+input_offset2); input_offset2 += 32; //
@@ -628,7 +628,7 @@ void conv2dk1_skip_ui8_vector(uint8_t *input0, uint8_t *input1, int8_t *kernels,
   //             // 13 cycles delay for vload.
   //             // 7 gives us 3 cycle inner loop.
   //             // 13 gave 1 cycle inner loop before partial load, not it only
-  //             gets 2 cycles (not sure why?)
+  //             gets 2 cycles
   //         {
   //             aie::vector<uint8, 32> in_a      =
   //             aie::load_v<32>(input0+input_offset1); input_offset1 += 32; //
@@ -652,7 +652,7 @@ void conv2dk1_skip_ui8_vector(uint8_t *input0, uint8_t *input1, int8_t *kernels,
   //             // 13 cycles delay for vload.
   //             // 7 gives us 3 cycle inner loop.
   //             // 13 gave 1 cycle inner loop before partial load, not it only
-  //             gets 2 cycles (not sure why?)
+  //             gets 2 cycles
   //         {
   //             aie::vector<uint8, 32> in_a      =
   //             aie::load_v<32>(input1+input_offset2); input_offset2 += 32; //

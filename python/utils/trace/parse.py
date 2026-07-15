@@ -371,8 +371,7 @@ def thread_name_metadata(
 # labels_list: list(idx=label idx, value=label code)
 #
 # This searches for npu.write32 and categorizes them based on address and row.
-# It's probably not the best way to do it but it's the initial implementation.
-# memtile and core/shim tiles have different addresses. For now, we distinguish
+# memtile and core/shim tiles have different addresses, so we distinguish
 # between core and shim tile by row=0
 def parse_mlir_trace_events(mlir_module_str, colshift=None):
 

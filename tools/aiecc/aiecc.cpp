@@ -2532,26 +2532,26 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     }
     std::string downgradedIR = downgradeIRForChess((*bufOrErr)->getBuffer());
 
-    // Write downgraded IR to .chesshack.ll
-    SmallString<128> chessHackPath(tmpDirName);
-    sys::path::append(chessHackPath,
+    // Write downgraded IR to .chess-compat.ll
+    SmallString<128> chessCompatPath(tmpDirName);
+    sys::path::append(chessCompatPath,
                       deviceName.str() + "_core_" + std::to_string(core.col) +
-                          "_" + std::to_string(core.row) + ".chesshack.ll");
+                          "_" + std::to_string(core.row) + ".chess-compat.ll");
     {
       std::error_code ec;
-      raw_fd_ostream chessHackFile(chessHackPath, ec);
+      raw_fd_ostream chessCompatFile(chessCompatPath, ec);
       if (ec) {
         std::lock_guard<std::mutex> lock(outputMutex);
-        llvm::errs() << "Error writing chesshack file: " << ec.message()
+        llvm::errs() << "Error writing chess-compat file: " << ec.message()
                      << "\n";
         return failure();
       }
-      chessHackFile << downgradedIR;
+      chessCompatFile << downgradedIR;
     }
 
     if (verbose) {
       std::lock_guard<std::mutex> lock(outputMutex);
-      llvm::outs() << "Applied IR downgrade for Chess: " << chessHackPath
+      llvm::outs() << "Applied IR downgrade for Chess: " << chessCompatPath
                    << "\n";
     }
 
@@ -2561,8 +2561,8 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
                       deviceName.str() + "_core_" + std::to_string(core.col) +
                           "_" + std::to_string(core.row) + ".chesslinked.ll");
 
-    std::string linkedResult =
-        runChessLlvmLink(chessHackPath, chessLinkedPath, aieTarget, tmpDirName);
+    std::string linkedResult = runChessLlvmLink(
+        chessCompatPath, chessLinkedPath, aieTarget, tmpDirName);
     if (linkedResult.empty()) {
       return failure();
     }
@@ -3259,25 +3259,26 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
     }
     std::string downgradedIR = downgradeIRForChess((*bufOrErr)->getBuffer());
 
-    SmallString<128> chessHackPath(tmpDirName);
-    sys::path::append(chessHackPath, deviceName.str() + "_input.chesshack.ll");
+    SmallString<128> chessCompatPath(tmpDirName);
+    sys::path::append(chessCompatPath,
+                      deviceName.str() + "_input.chess-compat.ll");
     {
       std::error_code ec;
-      raw_fd_ostream chessHackFile(chessHackPath, ec);
+      raw_fd_ostream chessCompatFile(chessCompatPath, ec);
       if (ec) {
-        llvm::errs() << "Error writing chesshack file: " << ec.message()
+        llvm::errs() << "Error writing chess-compat file: " << ec.message()
                      << "\n";
         return failure();
       }
-      chessHackFile << downgradedIR;
+      chessCompatFile << downgradedIR;
     }
 
     SmallString<128> chessLinkedPath(tmpDirName);
     sys::path::append(chessLinkedPath,
                       deviceName.str() + "_input.chesslinked.ll");
 
-    std::string linkedResult =
-        runChessLlvmLink(chessHackPath, chessLinkedPath, aieTarget, tmpDirName);
+    std::string linkedResult = runChessLlvmLink(
+        chessCompatPath, chessLinkedPath, aieTarget, tmpDirName);
     if (linkedResult.empty()) {
       return failure();
     }
@@ -4167,11 +4168,16 @@ static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
 
       // Generate NPU instructions using direct C++ API call.
       // This replaces the subprocess call to aie-translate --aie-npu-to-binary.
+      // The full-ELF runtime (xrt.ext.kernel) assigns NPU-space device
+      // addresses to all host buffers, so the DDR-aperture offset for arguments
+      // beyond the firmware-translated set must NOT be folded into the TXN. The
+      // xclbin + instruction-buffer runtime does need it.
       std::vector<uint32_t> instructions;
       std::vector<xilinx::AIE::TxnLocEntry> locmap;
       if (failed(xilinx::AIE::AIETranslateNpuToBinary(
               *clonedModule, instructions, curDevName, seqName,
-              keepLoc ? &locmap : nullptr))) {
+              keepLoc ? &locmap : nullptr,
+              /*foldDDRAddrOffset=*/!generateFullElf))) {
         llvm::errs() << "Error generating NPU instructions for sequence: "
                      << seqName << "\n";
         result = failure();
@@ -4469,7 +4475,8 @@ static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
   std::vector<xilinx::AIE::TxnLocEntry> dmaSeqLocmap;
   if (failed(xilinx::AIE::AIETranslateNpuToBinary(
           *clonedModule, dmaSeqInstructions, devName, "" /* all sequences */,
-          keepLoc ? &dmaSeqLocmap : nullptr))) {
+          keepLoc ? &dmaSeqLocmap : nullptr,
+          /*foldDDRAddrOffset=*/!generateFullElf))) {
     llvm::errs() << "Error generating control packet DMA sequence for device: "
                  << devName << "\n";
     return failure();
@@ -6095,8 +6102,13 @@ static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
         sys::path::append(outputPath, outputFileName);
 
         std::vector<uint32_t> instructions;
+        // Multi-PDI full-ELF path: same as the single-sequence full-ELF case,
+        // the runtime translates all host buffer addresses, so do not fold the
+        // DDR-aperture offset into the TXN.
         if (failed(xilinx::AIE::AIETranslateNpuToBinary(
-                *expandedModule, instructions, devName, seqName))) {
+                *expandedModule, instructions, devName, seqName,
+                /*locmap=*/nullptr,
+                /*foldDDRAddrOffset=*/!generateFullElf))) {
           llvm::errs() << "Error generating NPU instructions for sequence: "
                        << seqName << "\n";
           return;

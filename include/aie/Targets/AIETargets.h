@@ -65,11 +65,10 @@ mlir::LogicalResult AIETranslateShimSolution(mlir::ModuleOp module,
                                              llvm::StringRef deviceName = "");
 mlir::LogicalResult AIETranslateGraphXPE(mlir::ModuleOp module,
                                          llvm::raw_ostream &, llvm::StringRef);
-mlir::LogicalResult
-AIETranslateNpuToBinary(mlir::ModuleOp, std::vector<uint32_t> &,
-                        llvm::StringRef deviceName = "",
-                        llvm::StringRef sequenceName = "",
-                        std::vector<TxnLocEntry> *locmap = nullptr);
+mlir::LogicalResult AIETranslateNpuToBinary(
+    mlir::ModuleOp, std::vector<uint32_t> &, llvm::StringRef deviceName = "",
+    llvm::StringRef sequenceName = "",
+    std::vector<TxnLocEntry> *locmap = nullptr, bool foldDDRAddrOffset = true);
 mlir::LogicalResult AIETranslateNpuToCpp(mlir::ModuleOp module,
                                          llvm::raw_ostream &output);
 mlir::LogicalResult AIETranslateToUcDma(mlir::ModuleOp module,

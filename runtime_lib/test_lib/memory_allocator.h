@@ -45,7 +45,7 @@ static uint16_t nextAlignedAddr;
 /// @param handle External memory model handle for tracking the allocation
 /// @param size The number of 32-bit words to allocate
 /// @return A host-side pointer that can write into the allocated buffer
-/// @todo This is at best a quick hack and should be replaced
+/// @note This is a minimal allocator intended for test use.
 int *mlir_aie_mem_alloc(aie_libxaie_ctx_t *ctx, ext_mem_model_t &handle,
                         int size);
 
