@@ -72,63 +72,13 @@ inline std::mutex &fileWriteMutex() {
   return m;
 }
 
-// Max worker threads for the per-item fan-out of thread-safe edges. Set by the
-// execution engine from -j (1 = sequential). Only edges marked threadSafe --
-// context-free external-tool invocations -- consult it.
-inline unsigned &parallelThreadCount() {
-  static unsigned n = 1;
-  return n;
-}
-
-// Optional progress callback invoked by parallelForItems after each item
-// finishes, with (completed, total) for the current fan-out. Set by the
-// execution engine to render per-item progress; left null otherwise. It may be
-// called concurrently from worker threads, so any implementation must lock.
-inline std::function<void(size_t, size_t)> &itemProgressHook() {
-  static std::function<void(size_t, size_t)> hook;
-  return hook;
-}
-
-// Invoke `body(i)` for every i in [0, n). When `threads > 1` and there is more
-// than one item, the invocations run on a small fixed pool; otherwise they run
-// sequentially in order. All invocations are awaited even if one fails; the
-// result is failure if any invocation failed. `body` must be safe to call
-// concurrently for distinct indices.
-template <typename Body>
-inline mlir::LogicalResult parallelForItems(size_t n, unsigned threads,
-                                            Body body) {
-  auto &progress = itemProgressHook();
-  if (threads <= 1 || n <= 1) {
-    for (size_t i = 0; i < n; ++i) {
-      if (mlir::failed(body(i)))
-        return mlir::failure();
-      if (progress)
-        progress(i + 1, n);
-    }
-    return mlir::success();
-  }
-  std::atomic<size_t> next{0};
-  std::atomic<bool> failed{false};
-  std::atomic<size_t> done{0};
-  unsigned nWorkers = static_cast<unsigned>(std::min<size_t>(threads, n));
-  auto worker = [&]() {
-    for (;;) {
-      size_t i = next.fetch_add(1, std::memory_order_relaxed);
-      if (i >= n || failed.load(std::memory_order_relaxed))
-        break;
-      if (mlir::failed(body(i)))
-        failed.store(true, std::memory_order_relaxed);
-      else if (progress)
-        progress(done.fetch_add(1, std::memory_order_relaxed) + 1, n);
-    }
-  };
-  std::vector<std::thread> pool;
-  pool.reserve(nWorkers);
-  for (unsigned w = 0; w < nWorkers; ++w)
-    pool.emplace_back(worker);
-  for (std::thread &t : pool)
-    t.join();
-  return failed.load() ? mlir::failure() : mlir::success();
+// Serializes diagnostic/progress writes to the shared stdout/stderr so that
+// concurrent worker threads (and the tool-invocation echo) don't interleave
+// their lines. Any code that prints a full log line from a worker thread should
+// hold this across the write (and flush before releasing).
+inline std::mutex &logMutex() {
+  static std::mutex m;
+  return m;
 }
 
 //===----------------------------------------------------------------------===//
@@ -533,6 +483,19 @@ struct EdgeBase {
   virtual NodeBase *outputNode() = 0;
   virtual mlir::LogicalResult execute() = 0;
 
+  // Fan-out interface. Fan-out edges (Map/BundleForEach) produce one output
+  // item per key and are executed by the scheduler as independent (edge, key)
+  // tasks: `open()` creates all output slots (making the key set final) without
+  // running any per-key work, and `runItem(i)` runs the action for slot `i`.
+  // Structural edges leave isFanOut() false and run as a single `execute()`.
+  // `execute()` remains valid on fan-out edges (open + sequential runItem) for
+  // non-scheduled callers.
+  virtual bool isFanOut() const { return false; }
+  virtual mlir::LogicalResult open() { return mlir::success(); }
+  virtual size_t numItems() const { return 0; }
+  virtual llvm::StringRef itemKey(size_t) const { return {}; }
+  virtual mlir::LogicalResult runItem(size_t) { return mlir::failure(); }
+
   // Key of the item whose per-item action failed (first failure wins under
   // parallelism); empty for whole-edge failures. Reported in the failure
   // diagnostic to identify the offending instance.
@@ -775,24 +738,40 @@ struct MapEdge : Edge<In, Out> {
   MapEdge(Node<In> &src, std::string name, MapFn f)
       : Edge<In, Out>(src, std::move(name)), fn(std::move(f)) {}
 
-  mlir::LogicalResult execute() override {
-    // Prepare all output slots sequentially (cheap: renders paths and creates
-    // parent dirs), then apply `fn` per item. When this edge is thread-safe
-    // (a context-free external tool), the per-item applications run in
-    // parallel.
+  bool isFanOut() const override { return true; }
+
+  // Prepare all output slots (renders paths, creates parent dirs) without
+  // running any per-item work; the scheduler runs the items as separate tasks.
+  mlir::LogicalResult open() override {
     const size_t n = this->in.items.size();
     this->out.items.clear();
     this->out.items.reserve(n);
     for (const auto &inItem : this->in.items)
       this->out.items.push_back(this->prepareItem(inItem.key));
-    return parallelForItems(
-        n, this->isThreadSafe ? parallelThreadCount() : 1u, [&](size_t i) {
-          if (mlir::failed(fn(this->in.items[i], this->out.items[i]))) {
-            this->recordFailedKey(this->in.items[i].key);
-            return mlir::failure();
-          }
-          return mlir::success();
-        });
+    return mlir::success();
+  }
+
+  size_t numItems() const override { return this->out.items.size(); }
+
+  llvm::StringRef itemKey(size_t i) const override {
+    return this->out.items[i].key;
+  }
+
+  mlir::LogicalResult runItem(size_t i) override {
+    if (mlir::failed(fn(this->in.items[i], this->out.items[i]))) {
+      this->recordFailedKey(this->in.items[i].key);
+      return mlir::failure();
+    }
+    return mlir::success();
+  }
+
+  mlir::LogicalResult execute() override {
+    if (mlir::failed(open()))
+      return mlir::failure();
+    for (size_t i = 0, n = this->out.items.size(); i < n; ++i)
+      if (mlir::failed(runItem(i)))
+        return mlir::failure();
+    return mlir::success();
   }
 };
 
@@ -927,53 +906,72 @@ struct BundleForEachEdge : EdgeWithTypedOutput<U> {
     return r;
   }
 
-  mlir::LogicalResult execute() override {
+  bool isFanOut() const override { return true; }
+
+  // Prepare one output slot per key of the first source node; the scheduler
+  // runs the per-key actions as separate tasks.
+  mlir::LogicalResult open() override {
     auto &firstNode = std::get<0>(in);
     const size_t n = firstNode.items.size();
     this->out.items.clear();
     this->out.items.reserve(n);
     for (const auto &firstItem : firstNode.items)
       this->out.items.push_back(this->prepareItem(firstItem.key));
-    // Zip the source nodes by the first source's keys and run `fn` per key.
-    // Thread-safe edges (context-free external tools) fan out across the pool.
-    return parallelForItems(
-        n, this->isThreadSafe ? parallelThreadCount() : 1u, [&](size_t i) {
-          const std::string &key = firstNode.items[i].key;
-          Item<U> &outItem = this->out.items[i];
-          mlir::LogicalResult r = std::apply(
-              [&](Node<Ts> &...nodes) -> mlir::LogicalResult {
-                auto findItem = [&key](auto &node)
-                    -> const std::decay_t<decltype(node.items.front())> * {
-                  for (const auto &item : node.items)
-                    if (item.key == key)
-                      return &item;
-                  return nullptr;
-                };
-                bool anyMissing = false;
-                auto require = [&anyMissing](auto *p) {
-                  if (!p)
-                    anyMissing = true;
-                  return p;
-                };
-                auto found = std::make_tuple(require(findItem(nodes))...);
-                if (anyMissing) {
-                  llvm::errs() << "aiecc: bundle edge '" << this->name
-                               << "': a bundled source node has no item for "
-                                  "key '"
-                               << key
-                               << "'; the bundled nodes have incompatible "
-                                  "keys\n";
-                  return mlir::failure();
-                }
-                return std::apply(
-                    [&](auto *...items) { return fn(*items..., outItem); },
-                    found);
-              },
-              in);
-          if (mlir::failed(r))
-            this->recordFailedKey(key);
-          return r;
-        });
+    return mlir::success();
+  }
+
+  size_t numItems() const override { return this->out.items.size(); }
+
+  llvm::StringRef itemKey(size_t i) const override {
+    return this->out.items[i].key;
+  }
+
+  // Zip the source nodes by the first source's key `i` and run `fn` on the
+  // matched items.
+  mlir::LogicalResult runItem(size_t i) override {
+    const std::string &key = this->out.items[i].key;
+    Item<U> &outItem = this->out.items[i];
+    mlir::LogicalResult r = std::apply(
+        [&](Node<Ts> &...nodes) -> mlir::LogicalResult {
+          auto findItem = [&key](auto &node)
+              -> const std::decay_t<decltype(node.items.front())> * {
+            for (const auto &item : node.items)
+              if (item.key == key)
+                return &item;
+            return nullptr;
+          };
+          bool anyMissing = false;
+          auto require = [&anyMissing](auto *p) {
+            if (!p)
+              anyMissing = true;
+            return p;
+          };
+          auto found = std::make_tuple(require(findItem(nodes))...);
+          if (anyMissing) {
+            llvm::errs() << "aiecc: bundle edge '" << this->name
+                         << "': a bundled source node has no item for "
+                            "key '"
+                         << key
+                         << "'; the bundled nodes have incompatible "
+                            "keys\n";
+            return mlir::failure();
+          }
+          return std::apply(
+              [&](auto *...items) { return fn(*items..., outItem); }, found);
+        },
+        in);
+    if (mlir::failed(r))
+      this->recordFailedKey(key);
+    return r;
+  }
+
+  mlir::LogicalResult execute() override {
+    if (mlir::failed(open()))
+      return mlir::failure();
+    for (size_t i = 0, n = this->out.items.size(); i < n; ++i)
+      if (mlir::failed(runItem(i)))
+        return mlir::failure();
+    return mlir::success();
   }
 };
 
