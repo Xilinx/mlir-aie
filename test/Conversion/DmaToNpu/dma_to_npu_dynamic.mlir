@@ -17,12 +17,17 @@
 
 // A non-contiguous transfer with a runtime d1 size. d1 lands in the 10-bit
 // wrap field, so a guard is emitted; the BD size/stride words become write32
-// overrides after the template blockwrite.
+// overrides after the template blockwrite. The override addresses pin the shim
+// BD-word layout: buffer_length is word 0 (BD base 118784), d0 word 3 (+12),
+// d1 word 4 (+16), d2 word 5 (+20), iteration word 6 (+24).
 // CHECK-LABEL: @seq
 // CHECK: aiex.npu.blockwrite
 // CHECK: aiex.npu.assert_bd_field(%{{.*}}) {max = 1023 : i32}
-// CHECK: aiex.npu.write32
-// CHECK: aiex.npu.write32
+// CHECK: aiex.npu.write32(%c118784{{.*}})
+// CHECK: aiex.npu.write32(%c118796{{.*}})
+// CHECK: aiex.npu.write32(%c118800{{.*}})
+// CHECK: aiex.npu.write32(%c118804{{.*}})
+// CHECK: aiex.npu.write32(%c118808{{.*}})
 // CHECK: aiex.npu.address_patch
 module {
   aie.device(npu1) {

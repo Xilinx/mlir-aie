@@ -478,9 +478,14 @@ struct AIEDMATasksToNPUPass
                               createConstantI32(builder, loc, elemWidth)),
         createConstantI32(builder, loc, gran));
 
+    // The BD-level repeat_count (encoder output) is unused here: the dma_task
+    // queue push is emitted separately by DMAStartTaskOpPattern from the task
+    // op's repeat_count, not the BD's outer dim.
+    Value bdRepeatCount;
     if (failed(emitDynamicShimBdWordOverrides(
             builder, loc, target_model, col, row, bd_op.getBdId().value(),
-            sizes4, strides4, elemWidth, bd_op.getBurstLength(), bufLen)))
+            sizes4, strides4, elemWidth, bd_op.getBurstLength(), bufLen,
+            bdRepeatCount)))
       return failure();
     return setAddressForSingleBD(builder, bd_op, tile);
   }

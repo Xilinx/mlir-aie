@@ -170,20 +170,26 @@ buildBdWord(mlir::OpBuilder &builder, mlir::Location loc,
 // only the descriptor template (locks, next_bd, packet) and the queue push
 // differ, and those stay with each caller.
 //
-// `mixedSizes`/`mixedStrides` are innermost-first (d0..d3). `bufLenOverride`,
-// if non-null, is written verbatim into buffer_length (word 0) -- dma_task
-// passes its runtime `len`; dma_memcpy_nd passes null, so buffer_length is
-// computed as the d0*d1*d2 hardware-unit size-product. Emits
+// `mixedSizes`/`mixedStrides` are outermost-first (d3..d0), matching
+// NpuDmaMemcpyNdOp::getMixedSizes and AIE::DMABDOp::getMixedSizes.
+// `bufLenOverride`, if non-null, is written verbatim into buffer_length
+// (word 0) -- dma_task passes its runtime `len`; dma_memcpy_nd passes null, so
+// buffer_length is computed as the d0*d1*d2 hardware-unit size-product. Emits
 // `npu.assert_bd_field` guards for runtime values landing in narrow fields
 // (d0/d1 wrap 10-bit in ND mode, iteration wrap 6-bit always). The op verifier
 // is expected to have enforced the supported scope (shim NOC, innermost stride
 // == 1) already.
+//
+// On success `repeatCountOut` receives the hardware iteration/repeat value for
+// the outer (d3) dimension, which the caller feeds to its queue push (this is
+// the biased hw value, matching the static path's `repeat_count = sizes[3]`).
 mlir::LogicalResult emitDynamicShimBdWordOverrides(
     mlir::OpBuilder &builder, mlir::Location loc,
     const xilinx::AIE::AIETargetModel &targetModel, int tileCol, int tileRow,
     uint32_t bdId, llvm::ArrayRef<mlir::OpFoldResult> mixedSizes,
     llvm::ArrayRef<mlir::OpFoldResult> mixedStrides, uint64_t elemWidth,
-    uint32_t burstLength, mlir::Value bufLenOverride);
+    uint32_t burstLength, mlir::Value bufLenOverride,
+    mlir::Value &repeatCountOut);
 
 } // namespace xilinx::AIEX
 

@@ -183,28 +183,39 @@ public:
     // the offset of the task queue register in the tile
     uint32_t queue_offset = ctrl_offset + 0x4;
 
-    // the value to write. bd_id and repeat_count are SSA operands; this static
-    // lowering needs them as compile-time constants to fold into the command
-    // word. Runtime-valued pushes are handled by the dynamic C++ path, not
-    // here.
+    // The command word packs bd_id [3:0], repeat_count [23:16], and the
+    // issue-token bit [31]. bd_id is always compile-time (the BD-ID allocation
+    // pass); repeat_count may be a runtime SSA value (a runtime outer/repeat
+    // dimension). When both are constant we fold the whole word to a constant;
+    // when repeat_count is runtime we build the word with arith (bd_id and the
+    // issue bit fold in as a constant base), so a runtime repeat still lowers
+    // to a valid write32 instead of being rejected.
     std::optional<uint32_t> bd_id = getConstantIntOperand(op.getBdId());
-    std::optional<uint32_t> repeat_cnt =
-        getConstantIntOperand(op.getRepeatCount());
-    if (!bd_id || !repeat_cnt)
-      return op.emitOpError(
-          "cannot lower push_queue with non-constant bd_id or "
-          "repeat_count to a static write32");
-    uint32_t cmd = 0;
-    cmd |= *bd_id & 0xF;
-    cmd |= (*repeat_cnt & 0xFF) << 16;
-    if (op.getIssueToken())
-      cmd |= 0x80000000;
+    if (!bd_id)
+      return op.emitOpError("cannot lower push_queue with non-constant bd_id");
+    uint32_t cmdBase = (*bd_id & 0xF) | (op.getIssueToken() ? 0x80000000 : 0);
+
+    Value cmdVal;
+    if (std::optional<uint32_t> repeat_cnt =
+            getConstantIntOperand(op.getRepeatCount())) {
+      cmdVal = createConstantI32(rewriter, op->getLoc(),
+                                 cmdBase | ((*repeat_cnt & 0xFF) << 16));
+    } else {
+      // cmdBase | ((repeat & 0xFF) << 16), as arith over the SSA repeat_count.
+      Location loc = op->getLoc();
+      Value repeat = op.getRepeatCount();
+      Value masked = arith::AndIOp::create(
+          rewriter, loc, repeat, createConstantI32(rewriter, loc, 0xFF));
+      Value shifted = arith::ShLIOp::create(
+          rewriter, loc, masked, createConstantI32(rewriter, loc, 16));
+      cmdVal = arith::OrIOp::create(
+          rewriter, loc, createConstantI32(rewriter, loc, cmdBase), shifted);
+    }
 
     NpuWrite32Op::create(
         rewriter, op->getLoc(),
-        createConstantI32(rewriter, op->getLoc(), queue_offset),
-        createConstantI32(rewriter, op->getLoc(), cmd), nullptr, nullptr,
-        nullptr);
+        createConstantI32(rewriter, op->getLoc(), queue_offset), cmdVal,
+        nullptr, nullptr, nullptr);
     rewriter.eraseOp(op);
     return success();
   }
@@ -587,12 +598,14 @@ public:
         /*burst_length=*/IntegerAttr::get(i32ty, op.getBurstLength()));
 
     // Emit the runtime size/stride BD-word overrides (shared with dma_task).
-    // buffer_length is the size-product here, so pass no override (null).
+    // buffer_length is the size-product here, so pass no override (null); the
+    // encoder returns the hw repeat_count for the queue push.
+    Value repeatCount;
     if (failed(emitDynamicShimBdWordOverrides(
             rewriter, loc, targetModel, tileCol, tileRow, op.getId(),
             op.getMixedSizes(), op.getMixedStrides(),
             op.getElementTypeBitwidth(), op.getBurstLength(),
-            /*bufLenOverride=*/Value())))
+            /*bufLenOverride=*/Value(), repeatCount)))
       return failure();
 
     // Address patch for the buffer pointer (offset is compile-time here).
@@ -601,10 +614,6 @@ public:
                                       arg_idx)))
       return failure();
 
-    // Push the BD. repeat_count is the outer (d3) element count; it may be a
-    // runtime value, so it flows in as an SSA operand.
-    Value repeatCount =
-        getAsValue(rewriter, loc, op.getMixedSizes().back(), i32ty);
     NpuPushQueueOp::create(
         rewriter, loc, column, row, infoOp.getChannelDirAttr(),
         infoOp.getChannelIndexAttr(), issue_token, repeatCount,

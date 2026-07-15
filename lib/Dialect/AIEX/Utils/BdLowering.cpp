@@ -106,7 +106,7 @@ LogicalResult emitDynamicShimBdWordOverrides(
     OpBuilder &builder, Location loc, const AIE::AIETargetModel &targetModel,
     int tileCol, int tileRow, uint32_t bdId, ArrayRef<OpFoldResult> mixedSizes,
     ArrayRef<OpFoldResult> mixedStrides, uint64_t elemWidth,
-    uint32_t burstLength, Value bufLenOverride) {
+    uint32_t burstLength, Value bufLenOverride, Value &repeatCountOut) {
   auto i32ty = builder.getIntegerType(32);
 
   // Compute the hardware sizes/strides as SSA values via the shared encoder.
@@ -223,6 +223,20 @@ LogicalResult emitDynamicShimBdWordOverrides(
   // both modes (the outer repeat dimension is independent of linearization).
   writeWord(
       6, buildBdWord(builder, loc, {{hwS[3], 0x3F, 20}, {hwT[3], 0xFFFFF, 0}}));
+
+  // repeat_count for the queue push is the biased hw iteration value (matching
+  // the static path's `repeat_count = sizes[3]`), NOT the raw outer size: an
+  // outer size of N encodes to (N > 1 ? N - 1 : 0). When the outer size is a
+  // compile-time constant, emit a foldable arith.constant so the static
+  // push_queue lowering can consume it; only a genuinely runtime outer size
+  // yields the SSA-computed hwS[3].
+  if (auto outerConst = getConstantIntValue(sizesRev[3])) {
+    int64_t r = *outerConst > 1 ? *outerConst - 1 : 0;
+    repeatCountOut =
+        arith::ConstantOp::create(builder, loc, IntegerAttr::get(i32ty, r));
+  } else {
+    repeatCountOut = hwS[3];
+  }
   return success();
 }
 
