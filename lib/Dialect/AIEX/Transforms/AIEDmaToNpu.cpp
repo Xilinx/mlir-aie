@@ -623,23 +623,32 @@ public:
     // back to ND mode; the verifier's constant-bound check + the fact that a
     // runtime d0/d1 *size* that could exceed the 10-bit field is rejected there
     // keeps that safe.
+    // Contiguity decides linear mode (d0/d1 folded into buffer_length, dodging
+    // the 10-bit d0_size limit). This is a RUNTIME-AWARE extension of the static
+    // isContiguousTransfer, not a reimplementation: that helper reads a
+    // dimension's own size (`sizes[i] > 1`), so it cannot classify a transfer
+    // whose d1/d2 SIZE is runtime. Here a runtime outer size is still provably
+    // contiguous when its stride equals the product of the (constant) inner
+    // sizes -- contiguity never needs a dimension's own size, only the compared
+    // stride and the strictly-inner sizes. The common case: only the block
+    // count is runtime while the block shape is fixed. When a NEEDED operand is
+    // runtime, contiguity is undecidable and we fall back to ND mode (safe: a
+    // runtime d0/d1 size that could overflow the 10-bit field is guarded below).
     auto cst = [&](OpFoldResult v) { return getConstantIntValue(v); };
     auto knownContiguous = [&]() -> bool {
       // d0 (innermost) stride must be a constant 1.
       auto s0 = cst(mixedStridesRev[0]);
       if (!s0 || *s0 != 1)
         return false;
-      // For each of d1, d2: if its size is >1 (or runtime, i.e. possibly >1),
-      // its stride must equal the product of the strictly-inner sizes, which
-      // must therefore be constant.
       auto sz0 = cst(mixedSizesRev[0]);
+      // d1/d2 each add a constraint UNLESS their size is a constant 1: their
+      // stride must equal the product of the strictly-inner sizes (all of which
+      // must therefore be constant to check).
       auto d1sz = cst(mixedSizesRev[1]);
       auto d1st = cst(mixedStridesRev[1]);
-      // d1 contributes a constraint unless its size is a constant 1.
-      if (!(d1sz && *d1sz == 1)) {
+      if (!(d1sz && *d1sz == 1))
         if (!sz0 || !d1st || *d1st != *sz0)
           return false;
-      }
       auto d2sz = cst(mixedSizesRev[2]);
       auto d2st = cst(mixedStridesRev[2]);
       if (!(d2sz && *d2sz == 1)) {

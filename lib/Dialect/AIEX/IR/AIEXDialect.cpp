@@ -486,7 +486,7 @@ checkBurstLength(const xilinx::AIE::AIETargetModel &targetModel,
 // sizes/strides, and hard-error on any statically-provable violation. Runtime
 // values that cannot be checked here are rejected (never silently masked): the
 // scope below is exactly what the dynamic BD encoder (AIEDmaToNpu.cpp
-// lowerDynamicBd) can lower correctly. Bounded-but-runtime transfers (e.g. a
+// lowerDynamic) can lower correctly. Bounded-but-runtime transfers (e.g. a
 // GEMM whose sizes are bounded by buffer capacity) are supported because their
 // bounds are enforced by the caller/buffer extent, not by masking here.
 LogicalResult AIEX::NpuDmaMemcpyNdOp::verifyDynamicSizesStrides(
@@ -602,7 +602,7 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
   });
 
   // Dynamic (runtime SSA size/stride) path: enforce the supported scope and
-  // guard bounds up front. See AIEDmaToNpu.cpp lowerDynamicBd for the encoding.
+  // guard bounds up front. See AIEDmaToNpu.cpp lowerDynamic for the encoding.
   if (!allStridesConstant || !allSizesConstant)
     return verifyDynamicSizesStrides(targetModel, buffer);
 
