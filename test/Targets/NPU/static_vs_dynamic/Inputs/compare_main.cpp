@@ -64,8 +64,10 @@ bool equal(const char *aName, const std::vector<uint32_t> &a, const char *bName,
   size_t lim = a.size() < b.size() ? a.size() : b.size();
   for (size_t i = 0; i < lim; ++i) {
     if (a[i] != b[i]) {
-      std::fprintf(stderr, "%s vs %s differ at word %zu: 0x%08x vs 0x%08x\n",
-                   aName, bName, i, a[i], b[i]);
+      std::fprintf(stderr,
+                   "%s vs %s differ at word %zu: 0x%08llx vs 0x%08llx\n",
+                   aName, bName, i, (unsigned long long)a[i],
+                   (unsigned long long)b[i]);
       return false;
     }
   }
