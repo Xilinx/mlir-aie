@@ -26,6 +26,7 @@
 #include "llvm/Support/raw_ostream.h"
 
 #include <algorithm>
+#include <chrono>
 #include <string>
 #include <thread>
 #include <utility>
@@ -297,8 +298,16 @@ struct Engine {
       if (opts.verbose || opts.progress)
         reportEdge(e.get());
       auto sat = satisfied.find(e.get());
+      auto edgeStart = std::chrono::steady_clock::now();
       mlir::LogicalResult r =
           sat != satisfied.end() ? e->loadFromDisk(sat->second) : e->execute();
+      if (opts.verbose) {
+        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                      std::chrono::steady_clock::now() - edgeStart)
+                      .count();
+        llvm::errs() << "aiecc: edge '" << displayName(e.get()) << "' took "
+                     << ms << " ms\n";
+      }
       if (mlir::failed(r)) {
         failedEdge = e.get();
         if (opts.progress)
