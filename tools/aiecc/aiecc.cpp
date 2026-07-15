@@ -1360,8 +1360,11 @@ int main(int argc, char **argv) {
     }
   }
 
-  Engine engine({outputDir, getWorkDir(), verbose, progress, keepIntermediates,
-                 numThreads,
+  // Progress is on by default; --no-progress turns it off, and --verbose
+  // (line-per-edge logging) takes precedence over the single-line display.
+  bool showProgress = !noProgress && !verbose;
+  Engine engine({outputDir, getWorkDir(), verbose, showProgress,
+                 keepIntermediates, numThreads,
                  std::vector<std::string>(getKeys.begin(), getKeys.end())});
   if (mlir::failed(engine.run(g, outputs, satisfied))) {
     // On-failure reproducer ("repeater"): dump a checkpoint of the failed

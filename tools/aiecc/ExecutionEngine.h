@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <chrono>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <utility>
@@ -250,14 +251,21 @@ struct Engine {
       return llvm::sys::path::filename(e->name);
     };
 
-    // Per-edge progress reporting (--verbose / --progress), format
-    // "(x/y) <edge> (a inputs)": x is the 1-based position among edges that
-    // run, y the total reachable, a the number of input items consumed.
+    // Per-edge progress reporting (--verbose / --progress);
     // --verbose logs one line per edge; --progress overwrites a single line
     // with a leading '\r'.
     const unsigned totalSteps = reachable.size();
     unsigned step = 0;
     size_t progressPrevLen = 0;
+    std::mutex progressMutex;   // serializes concurrent per-item updates
+    std::string progressBase;   // base line for the current edge
+    // Overwrite the previous status; pad to clear any leftover characters.
+    auto writeProgressLine = [&](const std::string &line) {
+      size_t pad =
+          progressPrevLen > line.size() ? progressPrevLen - line.size() : 0;
+      llvm::errs() << '\r' << line << std::string(pad, ' ');
+      progressPrevLen = line.size();
+    };
     auto reportEdge = [&](EdgeBase *e) {
       size_t inItems = 0;
       for (NodeBase *n : e->inputNodes())
@@ -265,17 +273,27 @@ struct Engine {
           inItems += n->itemRefs().size();
       std::string line =
           "(" + std::to_string(step) + "/" + std::to_string(totalSteps) + ") " +
-          displayName(e).str() + " (" + std::to_string(inItems) + " inputs)";
+          displayName(e).str();
       if (opts.progress) {
-        // Overwrite the previous status; pad to clear any leftover characters.
-        size_t pad =
-            progressPrevLen > line.size() ? progressPrevLen - line.size() : 0;
-        llvm::errs() << '\r' << line << std::string(pad, ' ');
-        progressPrevLen = line.size();
+        std::lock_guard<std::mutex> lock(progressMutex);
+        progressBase = line;
+        writeProgressLine(line);
       } else {
         llvm::errs() << "aiecc: " << line << "\n";
       }
     };
+
+    // Per-item fan-out progress
+    if (opts.progress) {
+      itemProgressHook() = [&](size_t done, size_t total) {
+        if (total <= 1)
+          return;
+        std::lock_guard<std::mutex> lock(progressMutex);
+        writeProgressLine(progressBase + ", " + std::to_string(done) + "/" +
+                          std::to_string(total));
+      };
+    }
+    llvm::scope_exit clearItemHook([&]() { itemProgressHook() = nullptr; });
 
     // Effective worker count: 0 auto-detects the hardware concurrency; 1 runs
     // fully sequentially. Thread-safe edges (external-tool invocations) fan

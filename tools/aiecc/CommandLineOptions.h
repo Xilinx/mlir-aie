@@ -382,9 +382,11 @@ inline cl::opt<bool> profile("profile", cl::desc("Deprecated, ignored"));
 inline cl::opt<bool> progress(
     "progress",
     cl::desc("Show single-line execution progress: overwrite one status line "
-             "'(x/y) <edge> (a inputs)' per executed edge, where x/y is the "
-             "step out of the total reachable edges and a is the number of "
-             "input items the edge consumes"));
+             "per executed edge. On by default; disable with "
+             "--no-progress. Suppressed under --verbose."));
+inline cl::opt<bool> noProgress(
+    "no-progress",
+    cl::desc("Disable the default single-line execution progress output"));
 // Graph cut / checkpoint & resume. `--checkpoint=<dir>` dumps the artifacts
 // selected by `--get` (narrowed by `--get-key`) plus a `manifest.json`
 // describing them into <dir> after a successful run — a "prefix" of the build.
@@ -580,7 +582,8 @@ struct ResumeState {
 // (--checkpoint), plus reporting/parallelism. Returns 0 (rejected), 1
 // (self-contained token), or 2 (also consumes the following token).
 inline int resumePassthroughKind(llvm::StringRef a) {
-  if (a == "-v" || a == "--verbose" || a == "--progress")
+  if (a == "-v" || a == "--verbose" || a == "--progress" ||
+      a == "--no-progress")
     return 1;
   if (a.starts_with("--get=") || a.starts_with("-g=") ||
       a.starts_with("--get-key=") || a.starts_with("-j") ||

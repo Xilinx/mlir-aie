@@ -74,6 +74,15 @@ inline unsigned &parallelThreadCount() {
   return n;
 }
 
+// Optional progress callback invoked by parallelForItems after each item
+// finishes, with (completed, total) for the current fan-out. Set by the
+// execution engine to render per-item progress; left null otherwise. It may be
+// called concurrently from worker threads, so any implementation must lock.
+inline std::function<void(size_t, size_t)> &itemProgressHook() {
+  static std::function<void(size_t, size_t)> hook;
+  return hook;
+}
+
 // Invoke `body(i)` for every i in [0, n). When `threads > 1` and there is more
 // than one item, the invocations run on a small fixed pool; otherwise they run
 // sequentially in order. All invocations are awaited even if one fails; the
@@ -82,14 +91,19 @@ inline unsigned &parallelThreadCount() {
 template <typename Body>
 inline mlir::LogicalResult parallelForItems(size_t n, unsigned threads,
                                             Body body) {
+  auto &progress = itemProgressHook();
   if (threads <= 1 || n <= 1) {
-    for (size_t i = 0; i < n; ++i)
+    for (size_t i = 0; i < n; ++i) {
       if (mlir::failed(body(i)))
         return mlir::failure();
+      if (progress)
+        progress(i + 1, n);
+    }
     return mlir::success();
   }
   std::atomic<size_t> next{0};
   std::atomic<bool> failed{false};
+  std::atomic<size_t> done{0};
   unsigned nWorkers = static_cast<unsigned>(std::min<size_t>(threads, n));
   auto worker = [&]() {
     for (;;) {
@@ -98,6 +112,8 @@ inline mlir::LogicalResult parallelForItems(size_t n, unsigned threads,
         break;
       if (mlir::failed(body(i)))
         failed.store(true, std::memory_order_relaxed);
+      else if (progress)
+        progress(done.fetch_add(1, std::memory_order_relaxed) + 1, n);
     }
   };
   std::vector<std::thread> pool;
