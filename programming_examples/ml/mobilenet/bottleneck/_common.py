@@ -24,9 +24,8 @@ def load_wts(data_dir, filename, expected_size):
     """Load int8 weights from `data_dir/filename`.
 
     Raises FileNotFoundError if the file is missing or ValueError if its size
-    doesn't match `expected_size` — silent fallback to zero-filled weights
-    used to compile a numerically-broken design that ran fine but produced
-    wrong output.
+    doesn't match `expected_size`, rather than silently falling back to
+    zero-filled weights, which would produce incorrect results.
     """
     path = os.path.join(data_dir, filename)
     if not os.path.exists(path):

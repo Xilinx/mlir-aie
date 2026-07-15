@@ -78,8 +78,7 @@ def _closure_key(fn):
 def _try_acquire_lock(lock_file) -> bool:
     if os.name == "nt":
         # msvcrt.locking locks a byte-range starting at the current file position.
-        # Try to use the first byte to provide a process-wide lock.
-        # Hacky and brittle, but works well enough to prevent a race.
+        # Lock the first byte to provide a process-wide lock.
         try:
             lock_file.seek(0)
             msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)

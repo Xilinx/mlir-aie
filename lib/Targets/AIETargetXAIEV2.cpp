@@ -79,8 +79,8 @@ static std::string wireBundleToPortType(WireBundle bundle) {
   }
 }
 
-// FIXME: code bloat. this shouldn't really be a template, but need
-// a proper DMA-like interface
+// FIXME: this is a template pending a common DMA-like interface across the op
+// types.
 // blockMap: A map that gives a unique bd ID assignment for every block.
 template <typename OpType>
 static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
@@ -300,7 +300,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
                << deviceInstRef << ", " << tileLocStr(col, row) << ", "
                << "/* ChNum */" << chNum
                << ", "
-               // TODO hack until physical dialect changes
+               // TODO: interim handling until the physical dialect changes.
                << "/* dmaDir */ DMA_" << dmaDir << ", "
                << "/* BdNum */" << bdNum << "));\n";
       } else {
@@ -311,7 +311,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
                << deviceInstRef << ", " << tileLocStr(col, row) << ", "
                << "/* ChNum */" << chNum
                << ", "
-               // TODO hack until physical dialect changes
+               // TODO: interim handling until the physical dialect changes.
                << "/* dmaDir */ DMA_" << dmaDir << ", "
                << "/* BdNum */" << bdNum << ", "
                << "/* Repeat */ " << repeatCount << ", "
@@ -323,7 +323,7 @@ static mlir::LogicalResult generateDMAConfig(OpType memOp, raw_ostream &output,
              << tileLocStr(col, row) << ", "
              << "/* ChNum */ " << chNum
              << ", "
-             // TODO hack until physical dialect changes
+             // TODO: interim handling until the physical dialect changes.
              << "/* dmaDir */ DMA_" << dmaDir << "));\n";
     }
   }
