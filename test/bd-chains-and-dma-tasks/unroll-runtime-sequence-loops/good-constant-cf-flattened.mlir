@@ -16,6 +16,8 @@
 // straight-line IR (runtime-valued control flow is instead rejected by the
 // allocator's validate() gate for the dynamic path).
 
+
+
 // -----
 
 // Constant-predicate scf.if is folded away.
@@ -26,10 +28,12 @@ aie.device(npu1) {
   %tile_0_0 = aie.tile(0, 0)
   aie.shim_dma_allocation @a(%tile_0_0, MM2S, 0)
   aie.runtime_sequence @const_if(%arg0: memref<8xi16>) {
+    %c0_i32 = arith.constant 0 : i32
+    %c8_i32 = arith.constant 8 : i32
     %true = arith.constant true
     scf.if %true {
       %k = aiex.dma_configure_task_for @a {
-        aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+        aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8)
         aie.end
       } {issue_token = true}
       aiex.dma_start_task(%k)
@@ -37,6 +41,8 @@ aie.device(npu1) {
     }
   }
 }
+
+
 
 // -----
 
@@ -50,6 +56,8 @@ aie.device(npu1) {
   %tile_0_0 = aie.tile(0, 0)
   aie.shim_dma_allocation @b(%tile_0_0, MM2S, 0)
   aie.runtime_sequence @const_if_for(%arg0: memref<8xi16>) {
+    %c0_i32 = arith.constant 0 : i32
+    %c8_i32 = arith.constant 8 : i32
     %true = arith.constant true
     %c0 = arith.constant 0 : index
     %c1 = arith.constant 1 : index
@@ -57,7 +65,7 @@ aie.device(npu1) {
     scf.if %true {
       scf.for %i = %c0 to %c3 step %c1 {
         %k = aiex.dma_configure_task_for @b {
-          aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+          aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8)
           aie.end
         } {issue_token = true}
         aiex.dma_start_task(%k)

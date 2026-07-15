@@ -10,13 +10,13 @@ module {
     %tile_0_0 = aie.tile(0, 0)
     %tile_0_2 = aie.tile(0, 2)
     %tile_0_3 = aie.tile(0, 3)
-    %out_buff_0 = aie.buffer(%tile_0_2) {sym_name = "out_buff_0"} : memref<16xi32> 
-    %out_buff_1 = aie.buffer(%tile_0_2) {sym_name = "out_buff_1"} : memref<16xi32> 
+    %out_buff_0 = aie.buffer(%tile_0_2) {sym_name = "out_buff_0"} : memref<16xi32>
+    %out_buff_1 = aie.buffer(%tile_0_2) {sym_name = "out_buff_1"} : memref<16xi32>
     %out_prod_lock = aie.lock(%tile_0_2, 4) {init = 2 : i32, sym_name = "out_prod_lock"}
     %out_cons_lock = aie.lock(%tile_0_2, 5) {init = 0 : i32, sym_name = "out_cons_lock"}
-    %in2_mem_buff = aie.buffer(%tile_0_2) {sym_name = "in2_mem_buff_0"} : memref<256xi32> = dense<[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255]> 
-    %in1_cons_buff_0 = aie.buffer(%tile_0_2) {sym_name = "in1_cons_buff_0"} : memref<16xi32> 
-    %in1_cons_buff_1 = aie.buffer(%tile_0_2) {sym_name = "in1_cons_buff_1"} : memref<16xi32> 
+    %in2_mem_buff = aie.buffer(%tile_0_2) {sym_name = "in2_mem_buff_0"} : memref<256xi32> = dense<[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153, 154, 155, 156, 157, 158, 159, 160, 161, 162, 163, 164, 165, 166, 167, 168, 169, 170, 171, 172, 173, 174, 175, 176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 188, 189, 190, 191, 192, 193, 194, 195, 196, 197, 198, 199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215, 216, 217, 218, 219, 220, 221, 222, 223, 224, 225, 226, 227, 228, 229, 230, 231, 232, 233, 234, 235, 236, 237, 238, 239, 240, 241, 242, 243, 244, 245, 246, 247, 248, 249, 250, 251, 252, 253, 254, 255]>
+    %in1_cons_buff_0 = aie.buffer(%tile_0_2) {sym_name = "in1_cons_buff_0"} : memref<16xi32>
+    %in1_cons_buff_1 = aie.buffer(%tile_0_2) {sym_name = "in1_cons_buff_1"} : memref<16xi32>
     %in1_cons_prod_lock = aie.lock(%tile_0_2, 0) {init = 2 : i32, sym_name = "in1_cons_prod_lock"}
     %in1_cons_cons_lock = aie.lock(%tile_0_2, 1) {init = 0 : i32, sym_name = "in1_cons_cons_lock"}
     aie.flow(%tile_0_0, DMA : 0, %tile_0_2, DMA : 0)
@@ -32,10 +32,10 @@ module {
       %c2 = arith.constant 2 : index
       scf.for %arg0 = %c0 to %c9223372036854775806 step %c2 {
         scf.for %arg1 = %c0 to %c16 step %c2 {
-          %c1_ul0 = arith.constant 1 : i32
-          aie.use_lock(%in1_cons_cons_lock, AcquireGreaterEqual, %c1_ul0)
           %c1_ul1 = arith.constant 1 : i32
-          aie.use_lock(%out_prod_lock, AcquireGreaterEqual, %c1_ul1)
+          aie.use_lock(%in1_cons_cons_lock, AcquireGreaterEqual, %c1_ul1)
+          %c1_ul2 = arith.constant 1 : i32
+          aie.use_lock(%out_prod_lock, AcquireGreaterEqual, %c1_ul2)
           scf.for %arg2 = %c0 to %c16 step %c1 {
             %1 = memref.load %in1_cons_buff_0[%arg2] : memref<16xi32>
             %2 = arith.muli %arg1, %c16 : index
@@ -44,15 +44,15 @@ module {
             %5 = arith.addi %1, %4 : i32
             memref.store %5, %out_buff_0[%arg2] : memref<16xi32>
           }
-          %c1_ul2 = arith.constant 1 : i32
-          aie.use_lock(%in1_cons_prod_lock, Release, %c1_ul2)
           %c1_ul3 = arith.constant 1 : i32
-          aie.use_lock(%out_cons_lock, Release, %c1_ul3)
-          %0 = arith.addi %arg1, %c1 : index
+          aie.use_lock(%in1_cons_prod_lock, Release, %c1_ul3)
           %c1_ul4 = arith.constant 1 : i32
-          aie.use_lock(%in1_cons_cons_lock, AcquireGreaterEqual, %c1_ul4)
+          aie.use_lock(%out_cons_lock, Release, %c1_ul4)
+          %0 = arith.addi %arg1, %c1 : index
           %c1_ul5 = arith.constant 1 : i32
-          aie.use_lock(%out_prod_lock, AcquireGreaterEqual, %c1_ul5)
+          aie.use_lock(%in1_cons_cons_lock, AcquireGreaterEqual, %c1_ul5)
+          %c1_ul6 = arith.constant 1 : i32
+          aie.use_lock(%out_prod_lock, AcquireGreaterEqual, %c1_ul6)
           scf.for %arg2 = %c0 to %c16 step %c2 {
             %1 = memref.load %in1_cons_buff_1[%arg2] : memref<16xi32>
             %2 = arith.muli %0, %c16 : index
@@ -68,16 +68,16 @@ module {
             %11 = arith.addi %7, %10 : i32
             memref.store %11, %out_buff_1[%6] : memref<16xi32>
           }
-          %c1_ul6 = arith.constant 1 : i32
-          aie.use_lock(%in1_cons_prod_lock, Release, %c1_ul6)
           %c1_ul7 = arith.constant 1 : i32
-          aie.use_lock(%out_cons_lock, Release, %c1_ul7)
+          aie.use_lock(%in1_cons_prod_lock, Release, %c1_ul7)
+          %c1_ul8 = arith.constant 1 : i32
+          aie.use_lock(%out_cons_lock, Release, %c1_ul8)
         }
         scf.for %arg1 = %c0 to %c16 step %c2 {
-          %c1_ul8 = arith.constant 1 : i32
-          aie.use_lock(%in1_cons_cons_lock, AcquireGreaterEqual, %c1_ul8)
           %c1_ul9 = arith.constant 1 : i32
-          aie.use_lock(%out_prod_lock, AcquireGreaterEqual, %c1_ul9)
+          aie.use_lock(%in1_cons_cons_lock, AcquireGreaterEqual, %c1_ul9)
+          %c1_ul10 = arith.constant 1 : i32
+          aie.use_lock(%out_prod_lock, AcquireGreaterEqual, %c1_ul10)
           scf.for %arg2 = %c0 to %c16 step %c1 {
             %1 = memref.load %in1_cons_buff_0[%arg2] : memref<16xi32>
             %2 = arith.muli %arg1, %c16 : index
@@ -86,15 +86,15 @@ module {
             %5 = arith.addi %1, %4 : i32
             memref.store %5, %out_buff_0[%arg2] : memref<16xi32>
           }
-          %c1_ul10 = arith.constant 1 : i32
-          aie.use_lock(%in1_cons_prod_lock, Release, %c1_ul10)
           %c1_ul11 = arith.constant 1 : i32
-          aie.use_lock(%out_cons_lock, Release, %c1_ul11)
-          %0 = arith.addi %arg1, %c1 : index
+          aie.use_lock(%in1_cons_prod_lock, Release, %c1_ul11)
           %c1_ul12 = arith.constant 1 : i32
-          aie.use_lock(%in1_cons_cons_lock, AcquireGreaterEqual, %c1_ul12)
+          aie.use_lock(%out_cons_lock, Release, %c1_ul12)
+          %0 = arith.addi %arg1, %c1 : index
           %c1_ul13 = arith.constant 1 : i32
-          aie.use_lock(%out_prod_lock, AcquireGreaterEqual, %c1_ul13)
+          aie.use_lock(%in1_cons_cons_lock, AcquireGreaterEqual, %c1_ul13)
+          %c1_ul14 = arith.constant 1 : i32
+          aie.use_lock(%out_prod_lock, AcquireGreaterEqual, %c1_ul14)
           scf.for %arg2 = %c0 to %c16 step %c2 {
             %1 = memref.load %in1_cons_buff_1[%arg2] : memref<16xi32>
             %2 = arith.muli %0, %c16 : index
@@ -110,17 +110,17 @@ module {
             %11 = arith.addi %7, %10 : i32
             memref.store %11, %out_buff_1[%6] : memref<16xi32>
           }
-          %c1_ul14 = arith.constant 1 : i32
-          aie.use_lock(%in1_cons_prod_lock, Release, %c1_ul14)
           %c1_ul15 = arith.constant 1 : i32
-          aie.use_lock(%out_cons_lock, Release, %c1_ul15)
+          aie.use_lock(%in1_cons_prod_lock, Release, %c1_ul15)
+          %c1_ul16 = arith.constant 1 : i32
+          aie.use_lock(%out_cons_lock, Release, %c1_ul16)
         }
       }
       scf.for %arg0 = %c0 to %c16 step %c2 {
-        %c1_ul16 = arith.constant 1 : i32
-        aie.use_lock(%in1_cons_cons_lock, AcquireGreaterEqual, %c1_ul16)
         %c1_ul17 = arith.constant 1 : i32
-        aie.use_lock(%out_prod_lock, AcquireGreaterEqual, %c1_ul17)
+        aie.use_lock(%in1_cons_cons_lock, AcquireGreaterEqual, %c1_ul17)
+        %c1_ul18 = arith.constant 1 : i32
+        aie.use_lock(%out_prod_lock, AcquireGreaterEqual, %c1_ul18)
         scf.for %arg1 = %c0 to %c16 step %c1 {
           %1 = memref.load %in1_cons_buff_0[%arg1] : memref<16xi32>
           %2 = arith.muli %arg0, %c16 : index
@@ -129,15 +129,15 @@ module {
           %5 = arith.addi %1, %4 : i32
           memref.store %5, %out_buff_0[%arg1] : memref<16xi32>
         }
-        %c1_ul18 = arith.constant 1 : i32
-        aie.use_lock(%in1_cons_prod_lock, Release, %c1_ul18)
         %c1_ul19 = arith.constant 1 : i32
-        aie.use_lock(%out_cons_lock, Release, %c1_ul19)
-        %0 = arith.addi %arg0, %c1 : index
+        aie.use_lock(%in1_cons_prod_lock, Release, %c1_ul19)
         %c1_ul20 = arith.constant 1 : i32
-        aie.use_lock(%in1_cons_cons_lock, AcquireGreaterEqual, %c1_ul20)
+        aie.use_lock(%out_cons_lock, Release, %c1_ul20)
+        %0 = arith.addi %arg0, %c1 : index
         %c1_ul21 = arith.constant 1 : i32
-        aie.use_lock(%out_prod_lock, AcquireGreaterEqual, %c1_ul21)
+        aie.use_lock(%in1_cons_cons_lock, AcquireGreaterEqual, %c1_ul21)
+        %c1_ul22 = arith.constant 1 : i32
+        aie.use_lock(%out_prod_lock, AcquireGreaterEqual, %c1_ul22)
         scf.for %arg1 = %c0 to %c16 step %c2 {
           %1 = memref.load %in1_cons_buff_1[%arg1] : memref<16xi32>
           %2 = arith.muli %0, %c16 : index
@@ -153,10 +153,10 @@ module {
           %11 = arith.addi %7, %10 : i32
           memref.store %11, %out_buff_1[%6] : memref<16xi32>
         }
-        %c1_ul22 = arith.constant 1 : i32
-        aie.use_lock(%in1_cons_prod_lock, Release, %c1_ul22)
         %c1_ul23 = arith.constant 1 : i32
-        aie.use_lock(%out_cons_lock, Release, %c1_ul23)
+        aie.use_lock(%in1_cons_prod_lock, Release, %c1_ul23)
+        %c1_ul24 = arith.constant 1 : i32
+        aie.use_lock(%out_cons_lock, Release, %c1_ul24)
       }
       aie.end
     }
@@ -169,34 +169,34 @@ module {
     %mem_0_2 = aie.mem(%tile_0_2) {
       %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
     ^bb1:  // 2 preds: ^bb0, ^bb2
-      %c1_ul24 = arith.constant 1 : i32
-      aie.use_lock(%in1_cons_prod_lock, AcquireGreaterEqual, %c1_ul24)
-      aie.dma_bd(%in1_cons_buff_0 : memref<16xi32>, 0, 16)
       %c1_ul25 = arith.constant 1 : i32
-      aie.use_lock(%in1_cons_cons_lock, Release, %c1_ul25)
+      aie.use_lock(%in1_cons_prod_lock, AcquireGreaterEqual, %c1_ul25)
+      aie.dma_bd(%in1_cons_buff_0 : memref<16xi32> offset = 0 len = 16)
+      %c1_ul26 = arith.constant 1 : i32
+      aie.use_lock(%in1_cons_cons_lock, Release, %c1_ul26)
       aie.next_bd ^bb2
     ^bb2:  // pred: ^bb1
-      %c1_ul26 = arith.constant 1 : i32
-      aie.use_lock(%in1_cons_prod_lock, AcquireGreaterEqual, %c1_ul26)
-      aie.dma_bd(%in1_cons_buff_1 : memref<16xi32>, 0, 16)
       %c1_ul27 = arith.constant 1 : i32
-      aie.use_lock(%in1_cons_cons_lock, Release, %c1_ul27)
+      aie.use_lock(%in1_cons_prod_lock, AcquireGreaterEqual, %c1_ul27)
+      aie.dma_bd(%in1_cons_buff_1 : memref<16xi32> offset = 0 len = 16)
+      %c1_ul28 = arith.constant 1 : i32
+      aie.use_lock(%in1_cons_cons_lock, Release, %c1_ul28)
       aie.next_bd ^bb1
     ^bb3:  // pred: ^bb0
       %2 = aie.dma_start(MM2S, 0, ^bb7, ^bb9)
     ^bb7:  // 2 preds: ^bb6, ^bb8
-      %c1_ul28 = arith.constant 1 : i32
-      aie.use_lock(%out_cons_lock, AcquireGreaterEqual, %c1_ul28)
-      aie.dma_bd(%out_buff_0 : memref<16xi32>, 0, 16)
       %c1_ul29 = arith.constant 1 : i32
-      aie.use_lock(%out_prod_lock, Release, %c1_ul29)
+      aie.use_lock(%out_cons_lock, AcquireGreaterEqual, %c1_ul29)
+      aie.dma_bd(%out_buff_0 : memref<16xi32> offset = 0 len = 16)
+      %c1_ul30 = arith.constant 1 : i32
+      aie.use_lock(%out_prod_lock, Release, %c1_ul30)
       aie.next_bd ^bb8
     ^bb8:  // pred: ^bb7
-      %c1_ul30 = arith.constant 1 : i32
-      aie.use_lock(%out_cons_lock, AcquireGreaterEqual, %c1_ul30)
-      aie.dma_bd(%out_buff_1 : memref<16xi32>, 0, 16)
       %c1_ul31 = arith.constant 1 : i32
-      aie.use_lock(%out_prod_lock, Release, %c1_ul31)
+      aie.use_lock(%out_cons_lock, AcquireGreaterEqual, %c1_ul31)
+      aie.dma_bd(%out_buff_1 : memref<16xi32> offset = 0 len = 16)
+      %c1_ul32 = arith.constant 1 : i32
+      aie.use_lock(%out_prod_lock, Release, %c1_ul32)
       aie.next_bd ^bb7
     ^bb9:  // pred: ^bb6
       aie.end

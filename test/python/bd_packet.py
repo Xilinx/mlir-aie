@@ -52,6 +52,6 @@ def emit_packet_bd():
 # The packet header is a distinct op emitted immediately before the dma_bd,
 # and the dma_bd itself carries no packet attribute.
 # CHECK: aie.dma_bd_packet(0, 5)
-# CHECK-NEXT: aie.dma_bd({{.*}} : memref<256xi32>, 0, 256)
+# CHECK-NEXT: aie.dma_bd({{.*}} : memref<256xi32> len = 256)
 # CHECK-NOT: aie.dma_bd({{.*}}packet
 print(emit_packet_bd())

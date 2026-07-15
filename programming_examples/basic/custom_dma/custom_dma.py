@@ -127,17 +127,17 @@ class ScatterReadDMA(Resolvable):
             dma_start(DMAChannelDir.MM2S, 0, dest=block[1], chain=block[4])
             with block[1]:  # BD1: row at offset_a
                 use_lock(mem_cons_lock, LockAction.AcquireGreaterEqual)
-                dma_bd(src_buf, offset=self._offset_a, len=self._transfer_len)
+                dma_bd(src_buf, offset=self._offset_a, transfer_len=self._transfer_len)
                 use_lock(mem_prod_lock, LockAction.Release)
                 next_bd(block[2])
             with block[2]:  # BD2: row at offset_b
                 use_lock(mem_cons_lock, LockAction.AcquireGreaterEqual)
-                dma_bd(src_buf, offset=self._offset_b, len=self._transfer_len)
+                dma_bd(src_buf, offset=self._offset_b, transfer_len=self._transfer_len)
                 use_lock(mem_prod_lock, LockAction.Release)
                 next_bd(block[3])
             with block[3]:  # BD3: row at offset_c
                 use_lock(mem_cons_lock, LockAction.AcquireGreaterEqual)
-                dma_bd(src_buf, offset=self._offset_c, len=self._transfer_len)
+                dma_bd(src_buf, offset=self._offset_c, transfer_len=self._transfer_len)
                 use_lock(mem_prod_lock, LockAction.Release)
                 next_bd(block[1])
             with block[4]:

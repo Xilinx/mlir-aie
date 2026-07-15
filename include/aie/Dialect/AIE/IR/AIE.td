@@ -26,6 +26,9 @@ def AIE_Dialect : Dialect {
   }];
   let useDefaultTypePrinterParser = 1;
   let useDefaultAttributePrinterParser = 1;
+  // Python wrappers in dialects/aie.py and AIEX lowerings emit arith.constant
+  // and other operations, so this dialect depends on arith being available.
+  let dependentDialects = ["::mlir::arith::ArithDialect"];
 }
 
 #endif // AIE_BASE

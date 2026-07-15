@@ -318,10 +318,10 @@ jobs:
         ls -la $HOST_CCACHE_DIR
         ccache -s
 
-    # For whatever reason, the timestamps on all of the files that come out of the docker container
-    # are some amount ahead in time (maybe 12 hours?). that means if you try to rebuild at any point
-    # within that window ccache will not hit because the timestamps of the cached objects are ahead of
-    # your build time. I'm not 100% sure about this explanation/mechanism but this fixed ccache misses for me.
+    # The timestamps on files produced by the docker container are ahead of the host
+    # clock (by roughly 12 hours). Rebuilding within that window causes ccache misses,
+    # because the cached objects' timestamps are ahead of the build time. Normalizing
+    # the timestamps below avoids these misses.
     #
     # Windows cibuildwheel doesn't use a Linux docker container, so the timestamp drift doesn't
     # happen there. Also, the per-file `-exec ... \;` blows MSYS bash's env-block limit on the

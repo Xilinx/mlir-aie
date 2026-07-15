@@ -19,7 +19,7 @@ module {
       %subview = memref.subview %arg0[64] [128] [1] : memref<1024xi16> to memref<128xi16, strided<[1], offset: 64>>
       %reinterpret = memref.reinterpret_cast %subview to offset: [0], sizes: [128], strides: [1] : memref<128xi16, strided<[1], offset: 64>> to memref<128xi16>
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%reinterpret : memref<128xi16>, 0, 128) {bd_id = 7 : i32}
+        aie.dma_bd(%reinterpret : memref<128xi16> offset = 0 len = 128) {bd_id = 7 : i32}
         aie.end
       } {issue_token = true}
       

@@ -26,13 +26,13 @@
 
 // MM2S: 2 BDs for depth=2, each 40 elements
 // CHECK: aie.memtile_dma
-// CHECK: aie.dma_bd(%{{.*}} : memref<40xi32>, 0, 40)
-// CHECK: aie.dma_bd(%{{.*}} : memref<40xi32>, 0, 40)
+// CHECK: aie.dma_bd(%{{.*}} : memref<40xi32> offset = {{.*}} len = {{.*}})
+// CHECK: aie.dma_bd(%{{.*}} : memref<40xi32> offset = {{.*}} len = {{.*}})
 
 // S2MM: 2 BDs (consumer depth=2), 10 elements each
 // CHECK: aie.mem
-// CHECK: aie.dma_bd(%{{.*}} : memref<10xi32>, 0, 10)
-// CHECK: aie.dma_bd(%{{.*}} : memref<10xi32>, 0, 10)
+// CHECK: aie.dma_bd(%{{.*}} : memref<10xi32> offset = {{.*}} len = {{.*}})
+// CHECK: aie.dma_bd(%{{.*}} : memref<10xi32> offset = {{.*}} len = {{.*}})
 
 module {
   aie.device(npu2) {

@@ -204,7 +204,7 @@ class CMakeBuild(build_ext):
             "-DCMAKE_C_VISIBILITY_PRESET=hidden",
             "-DCMAKE_CXX_VISIBILITY_PRESET=hidden",
             "-DBUILD_SHARED_LIBS=OFF",
-            # get rid of that annoying af git on the end of .17git
+            # Strip the trailing "git" from the version suffix (e.g. ".17git").
             "-DLLVM_VERSION_SUFFIX=",
             # Disables generation of "version soname" (i.e. libFoo.so.<version>), which
             # causes pure duplication of various shlibs for Python wheels.

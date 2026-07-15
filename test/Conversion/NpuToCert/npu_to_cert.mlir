@@ -17,6 +17,7 @@ aie.device(npu2) {
   }
 }
 
+
 // -----
 
 // CHECK: aiex.cert.uc_dma_chain @chain_0 {
@@ -30,6 +31,7 @@ aie.device(npu2) {
     aiex.npu.blockwrite(%0) {address = 4321 : ui32} : memref<11xi32>
   }
 }
+
 
 // -----
 
@@ -47,6 +49,7 @@ aie.device(npu2) {
   }
 }
 
+
 // -----
 
 // CHECK: aiex.cert.apply_offset_57(@blockwrite_data_21, 1, 2)
@@ -60,6 +63,7 @@ aie.device(npu2) {
       aiex.npu.address_patch(%cst_npu_8 : i32) {addr = 10 : ui32, arg_idx = 2 : i32}
   }
 }
+
 
 // -----
 

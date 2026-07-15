@@ -17,6 +17,7 @@ module {
   }
 }
 
+
 // -----
 
 // CHECK: Block type v8bfp16ebs8 is not supported in the specified model
@@ -41,6 +42,7 @@ module {
   }
 }
 
+
 // -----
 
 // CHECK: Invalid block type: v32bfp16ebz8. Known types are: v8bfp16ebs8, v16bfp16ebs16.
@@ -51,12 +53,13 @@ module {
 
     aie.runtime_sequence(%arg0: memref<8x!aiex.bfp<"v32bfp16ebz8">>, %arg1: memref<10x!aiex.bfp<"v8bfp16ebs8">>) {
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-        aie.dma_bd(%arg0 : memref<8x!aiex.bfp<"v8bfp16ebs8">>, 0, 8) {bd_id = 7 : i32}
+        aie.dma_bd(%arg0 : memref<8x!aiex.bfp<"v8bfp16ebs8">> offset = 0 len = 8) {bd_id = 7 : i32}
         aie.end
       } {issue_token = true}
     }
   }
 }
+
 
 // -----
 
@@ -69,11 +72,11 @@ module {
       %lock_0_1_0 = aie.lock(%tile_0_1) {init = 0 : i32}
       %buffer_0_1 = aie.buffer(%tile_0_1) {address = 0 : i32} : memref<7x!aiex.bfp<"v8bfp16ebs8">>
       %0 = aie.dma(S2MM, 0) [{
-        %c1_ul0 = arith.constant 1 : i32
-        aie.use_lock(%lock_0_1, AcquireGreaterEqual, %c1_ul0)
-        aie.dma_bd(%buffer_0_1 : memref<7x!aiex.bfp<"v8bfp16ebs8">>, 0)
         %c1_ul1 = arith.constant 1 : i32
-        aie.use_lock(%lock_0_1_0, Release, %c1_ul1)
+        aie.use_lock(%lock_0_1, AcquireGreaterEqual, %c1_ul1)
+        aie.dma_bd(%buffer_0_1 : memref<7x!aiex.bfp<"v8bfp16ebs8">>)
+        %c1_ul2 = arith.constant 1 : i32
+        aie.use_lock(%lock_0_1_0, Release, %c1_ul2)
       }]
       aie.end
     }

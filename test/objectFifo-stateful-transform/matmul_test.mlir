@@ -40,57 +40,37 @@
 // CHECK:             scf.for %[[VAL_29:.*]] = %[[VAL_25]] to %[[VAL_28]] step %[[VAL_26]] {
 // CHECK:               %[[VAL_30:.*]] = arith.constant 2 : index
 // CHECK:               scf.for %[[VAL_31:.*]] = %[[VAL_25]] to %[[VAL_27]] step %[[VAL_30]] {
-// CHECK:                 %{{.*}} = arith.constant 1 : i32
 // CHECK:                 aie.use_lock(%[[VAL_6]], AcquireGreaterEqual, %{{.*}})
 // CHECK:                 func.call @zero_scalar_i16(%[[VAL_4]]) : (memref<16x16xi16>) -> ()
 // CHECK:                 %[[VAL_32:.*]] = arith.constant 2 : index
 // CHECK:                 scf.for %[[VAL_33:.*]] = %[[VAL_25]] to %[[VAL_27]] step %[[VAL_32]] {
-// CHECK:                   %{{.*}} = arith.constant 1 : i32
 // CHECK:                   aie.use_lock(%[[VAL_17]], AcquireGreaterEqual, %{{.*}})
-// CHECK:                   %{{.*}} = arith.constant 1 : i32
 // CHECK:                   aie.use_lock(%[[VAL_11]], AcquireGreaterEqual, %{{.*}})
 // CHECK:                   func.call @matmul_scalar_i16_i16(%[[VAL_14]], %[[VAL_8]], %[[VAL_4]]) : (memref<16x8xi16>, memref<8x16xi16>, memref<16x16xi16>) -> ()
-// CHECK:                   %{{.*}} = arith.constant 1 : i32
 // CHECK:                   aie.use_lock(%[[VAL_16]], Release, %{{.*}})
-// CHECK:                   %{{.*}} = arith.constant 1 : i32
 // CHECK:                   aie.use_lock(%[[VAL_10]], Release, %{{.*}})
-// CHECK:                   %{{.*}} = arith.constant 1 : i32
 // CHECK:                   aie.use_lock(%[[VAL_17]], AcquireGreaterEqual, %{{.*}})
-// CHECK:                   %{{.*}} = arith.constant 1 : i32
 // CHECK:                   aie.use_lock(%[[VAL_11]], AcquireGreaterEqual, %{{.*}})
 // CHECK:                   func.call @matmul_scalar_i16_i16(%[[VAL_15]], %[[VAL_9]], %[[VAL_4]]) : (memref<16x8xi16>, memref<8x16xi16>, memref<16x16xi16>) -> ()
-// CHECK:                   %{{.*}} = arith.constant 1 : i32
 // CHECK:                   aie.use_lock(%[[VAL_16]], Release, %{{.*}})
-// CHECK:                   %{{.*}} = arith.constant 1 : i32
 // CHECK:                   aie.use_lock(%[[VAL_10]], Release, %{{.*}})
 // CHECK:                 }
-// CHECK:                 %{{.*}} = arith.constant 1 : i32
 // CHECK:                 aie.use_lock(%[[VAL_7]], Release, %{{.*}})
-// CHECK:                 %{{.*}} = arith.constant 1 : i32
 // CHECK:                 aie.use_lock(%[[VAL_6]], AcquireGreaterEqual, %{{.*}})
 // CHECK:                 func.call @zero_scalar_i16(%[[VAL_5]]) : (memref<16x16xi16>) -> ()
 // CHECK:                 %[[VAL_34:.*]] = arith.constant 2 : index
 // CHECK:                 scf.for %[[VAL_35:.*]] = %[[VAL_25]] to %[[VAL_27]] step %[[VAL_34]] {
-// CHECK:                   %{{.*}} = arith.constant 1 : i32
 // CHECK:                   aie.use_lock(%[[VAL_17]], AcquireGreaterEqual, %{{.*}})
-// CHECK:                   %{{.*}} = arith.constant 1 : i32
 // CHECK:                   aie.use_lock(%[[VAL_11]], AcquireGreaterEqual, %{{.*}})
 // CHECK:                   func.call @matmul_scalar_i16_i16(%[[VAL_14]], %[[VAL_8]], %[[VAL_5]]) : (memref<16x8xi16>, memref<8x16xi16>, memref<16x16xi16>) -> ()
-// CHECK:                   %{{.*}} = arith.constant 1 : i32
 // CHECK:                   aie.use_lock(%[[VAL_16]], Release, %{{.*}})
-// CHECK:                   %{{.*}} = arith.constant 1 : i32
 // CHECK:                   aie.use_lock(%[[VAL_10]], Release, %{{.*}})
-// CHECK:                   %{{.*}} = arith.constant 1 : i32
 // CHECK:                   aie.use_lock(%[[VAL_17]], AcquireGreaterEqual, %{{.*}})
-// CHECK:                   %{{.*}} = arith.constant 1 : i32
 // CHECK:                   aie.use_lock(%[[VAL_11]], AcquireGreaterEqual, %{{.*}})
 // CHECK:                   func.call @matmul_scalar_i16_i16(%[[VAL_15]], %[[VAL_9]], %[[VAL_5]]) : (memref<16x8xi16>, memref<8x16xi16>, memref<16x16xi16>) -> ()
-// CHECK:                   %{{.*}} = arith.constant 1 : i32
 // CHECK:                   aie.use_lock(%[[VAL_16]], Release, %{{.*}})
-// CHECK:                   %{{.*}} = arith.constant 1 : i32
 // CHECK:                   aie.use_lock(%[[VAL_10]], Release, %{{.*}})
 // CHECK:                 }
-// CHECK:                 %{{.*}} = arith.constant 1 : i32
 // CHECK:                 aie.use_lock(%[[VAL_7]], Release, %{{.*}})
 // CHECK:               }
 // CHECK:             }
@@ -100,49 +80,37 @@
 // CHECK:           %[[VAL_36:.*]] = aie.mem(%[[VAL_1]]) {
 // CHECK:             %[[VAL_37:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:  // 2 preds: ^bb0, ^bb2
-// CHECK:             %{{.*}} = arith.constant 1 : i32
 // CHECK:             aie.use_lock(%[[VAL_16]], AcquireGreaterEqual, %{{.*}})
-// CHECK:             aie.dma_bd(%[[VAL_14]] : memref<16x8xi16>, 0, 128)
-// CHECK:             %{{.*}} = arith.constant 1 : i32
+// CHECK:             aie.dma_bd(%[[VAL_14]] : memref<16x8xi16> offset = {{.*}} len = {{.*}})
 // CHECK:             aie.use_lock(%[[VAL_17]], Release, %{{.*}})
 // CHECK:             aie.next_bd ^bb2
 // CHECK:           ^bb2:  // pred: ^bb1
-// CHECK:             %{{.*}} = arith.constant 1 : i32
 // CHECK:             aie.use_lock(%[[VAL_16]], AcquireGreaterEqual, %{{.*}})
-// CHECK:             aie.dma_bd(%[[VAL_15]] : memref<16x8xi16>, 0, 128)
-// CHECK:             %{{.*}} = arith.constant 1 : i32
+// CHECK:             aie.dma_bd(%[[VAL_15]] : memref<16x8xi16> offset = {{.*}} len = {{.*}})
 // CHECK:             aie.use_lock(%[[VAL_17]], Release, %{{.*}})
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb3:  // pred: ^bb0
 // CHECK:             %[[VAL_38:.*]] = aie.dma_start(S2MM, 1, ^bb4, ^bb6)
 // CHECK:           ^bb4:  // 2 preds: ^bb3, ^bb5
-// CHECK:             %{{.*}} = arith.constant 1 : i32
 // CHECK:             aie.use_lock(%[[VAL_10]], AcquireGreaterEqual, %{{.*}})
-// CHECK:             aie.dma_bd(%[[VAL_8]] : memref<8x16xi16>, 0, 128)
-// CHECK:             %{{.*}} = arith.constant 1 : i32
+// CHECK:             aie.dma_bd(%[[VAL_8]] : memref<8x16xi16> offset = {{.*}} len = {{.*}})
 // CHECK:             aie.use_lock(%[[VAL_11]], Release, %{{.*}})
 // CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb5:  // pred: ^bb4
-// CHECK:             %{{.*}} = arith.constant 1 : i32
 // CHECK:             aie.use_lock(%[[VAL_10]], AcquireGreaterEqual, %{{.*}})
-// CHECK:             aie.dma_bd(%[[VAL_9]] : memref<8x16xi16>, 0, 128)
-// CHECK:             %{{.*}} = arith.constant 1 : i32
+// CHECK:             aie.dma_bd(%[[VAL_9]] : memref<8x16xi16> offset = {{.*}} len = {{.*}})
 // CHECK:             aie.use_lock(%[[VAL_11]], Release, %{{.*}})
 // CHECK:             aie.next_bd ^bb4
 // CHECK:           ^bb6:  // pred: ^bb3
 // CHECK:             %[[VAL_39:.*]] = aie.dma_start(MM2S, 0, ^bb7, ^bb9)
 // CHECK:           ^bb7:  // 2 preds: ^bb6, ^bb8
-// CHECK:             %{{.*}} = arith.constant 1 : i32
 // CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %{{.*}})
-// CHECK:             aie.dma_bd(%[[VAL_4]] : memref<16x16xi16>, 0, 256)
-// CHECK:             %{{.*}} = arith.constant 1 : i32
+// CHECK:             aie.dma_bd(%[[VAL_4]] : memref<16x16xi16> offset = {{.*}} len = {{.*}})
 // CHECK:             aie.use_lock(%[[VAL_6]], Release, %{{.*}})
 // CHECK:             aie.next_bd ^bb8
 // CHECK:           ^bb8:  // pred: ^bb7
-// CHECK:             %{{.*}} = arith.constant 1 : i32
 // CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %{{.*}})
-// CHECK:             aie.dma_bd(%[[VAL_5]] : memref<16x16xi16>, 0, 256)
-// CHECK:             %{{.*}} = arith.constant 1 : i32
+// CHECK:             aie.dma_bd(%[[VAL_5]] : memref<16x16xi16> offset = {{.*}} len = {{.*}})
 // CHECK:             aie.use_lock(%[[VAL_6]], Release, %{{.*}})
 // CHECK:             aie.next_bd ^bb7
 // CHECK:           ^bb9:  // pred: ^bb6

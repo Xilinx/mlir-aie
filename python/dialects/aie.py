@@ -10,8 +10,9 @@ import numpy as np
 
 from ._aie_enum_gen import *
 from ._aie_ops_gen import *
-from ._aie_ops_gen import _Dialect
+from ._aie_ops_gen import _Dialect, DMABDOp as _DMABDOp
 from ._ods_common import _cext
+from .transform.structured import MixedValues, _dispatch_mixed_values
 from .func import FuncOp
 from ..helpers.dialects.func import call
 from ..extras.dialects.arith import ScalarValue, constant
@@ -113,6 +114,74 @@ class npu_write_rtp(NpuWriteRTPOp):
         if isinstance(value, int):
             value = constant(value, T.i32())
         super().__init__(buffer=buff_name, index=index, value=value, loc=loc, ip=ip)
+
+
+def _as_i32(v):
+    """Materialize an arith.constant i32 from a Python/NumPy int, pass a Value
+    through unchanged, or return None for None. Shared by the npu scalar op
+    wrappers in aiex.py (imported from this module)."""
+    if v is None:
+        return None
+    if isinstance(v, (int, np.integer)):
+        return constant(int(v), T.i32())
+    return v
+
+
+def _split_i32_scalar(v):
+    """Split a dma_bd offset/len argument into (operand, static_attr): a Python
+    int becomes the static attribute, an SSA Value becomes the runtime operand,
+    and None leaves both unset. Unlike ``_as_i32``, an int stays an attribute
+    rather than being materialized as an arith.constant operand."""
+    if v is None:
+        return None, None
+    if isinstance(v, (int, np.integer)):
+        return None, int(v)
+    return v, None
+
+
+def dma_bd(
+    buffer,
+    sizes: MixedValues | None = None,
+    strides: MixedValues | None = None,
+    offset=None,
+    transfer_len=None,
+    **kwargs,
+):
+    """User-facing aie.dma_bd builder with a single interleaved list per
+    dimension-list, mirroring aiex.npu.dma_memcpy_nd.
+
+    ``sizes`` and ``strides`` each accept one sequence where entries may be
+    Python ints (constant) or SSA Values (runtime).  ``offset`` and
+    ``transfer_len`` accept ints or Values; a plain int lands in the
+    static_offset/static_len attribute while a Value becomes a runtime operand.
+    (``transfer_len`` maps to the op's ``len`` operand; the Python name avoids
+    shadowing the builtin and matches ``shim_dma_bd``.)
+
+    Example::
+
+        %len = ...
+        aie.dma_bd(%buf sizes=[16, %n] strides=[16, 1]
+                   offset=0 len=%len)
+    """
+    dyn_sizes, _packed_sizes, static_sizes = _dispatch_mixed_values(sizes or [])
+    dyn_strides, _packed_strides, static_strides = _dispatch_mixed_values(strides or [])
+
+    offset_operand, static_offset = _split_i32_scalar(offset)
+    len_operand, static_len = _split_i32_scalar(transfer_len)
+
+    # Leave the static arrays unset when there is no ND layout so they elide.
+    return _DMABDOp(
+        buffer,
+        sizes=dyn_sizes,
+        strides=dyn_strides,
+        static_sizes=static_sizes if static_sizes else None,
+        static_strides=static_strides if static_strides else None,
+        offset=offset_operand,
+        len=len_operand,
+        static_offset=static_offset,
+        static_len=static_len,
+        **kwargs,
+    )
 
 
 class external_func(FuncOp):

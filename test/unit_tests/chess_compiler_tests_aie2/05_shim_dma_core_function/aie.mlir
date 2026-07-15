@@ -44,25 +44,25 @@ module @test_chess_05_shim_dma_core_function {
       %step = arith.constant 1 : index
 
       scf.for %iv = %lb to %ub step %step {
-        %c1_ul0 = arith.constant 1 : i32
-        aie.use_lock(%lock_a_read, AcquireGreaterEqual, %c1_ul0) // acquire for read
         %c1_ul1 = arith.constant 1 : i32
-        aie.use_lock(%lock_b_write, AcquireGreaterEqual, %c1_ul1) // acquire for write
-        func.call @func(%buf_a_ping, %buf_b_ping) : (memref<16xi32>, memref<16xi32>) -> ()
+        aie.use_lock(%lock_a_read, AcquireGreaterEqual, %c1_ul1) // acquire for read
         %c1_ul2 = arith.constant 1 : i32
-        aie.use_lock(%lock_a_write, Release, %c1_ul2) // release for write
+        aie.use_lock(%lock_b_write, AcquireGreaterEqual, %c1_ul2) // acquire for write
+        func.call @func(%buf_a_ping, %buf_b_ping) : (memref<16xi32>, memref<16xi32>) -> ()
         %c1_ul3 = arith.constant 1 : i32
-        aie.use_lock(%lock_b_read, Release, %c1_ul3) // release for read
-
+        aie.use_lock(%lock_a_write, Release, %c1_ul3) // release for write
         %c1_ul4 = arith.constant 1 : i32
-        aie.use_lock(%lock_a_read, AcquireGreaterEqual, %c1_ul4) // acquire for read
+        aie.use_lock(%lock_b_read, Release, %c1_ul4) // release for read
+
         %c1_ul5 = arith.constant 1 : i32
-        aie.use_lock(%lock_b_write, AcquireGreaterEqual, %c1_ul5) // acquire for write
-        func.call @func(%buf_a_pong, %buf_b_pong) : (memref<16xi32>, memref<16xi32>) -> ()
+        aie.use_lock(%lock_a_read, AcquireGreaterEqual, %c1_ul5) // acquire for read
         %c1_ul6 = arith.constant 1 : i32
-        aie.use_lock(%lock_a_write, Release, %c1_ul6) // release for write
+        aie.use_lock(%lock_b_write, AcquireGreaterEqual, %c1_ul6) // acquire for write
+        func.call @func(%buf_a_pong, %buf_b_pong) : (memref<16xi32>, memref<16xi32>) -> ()
         %c1_ul7 = arith.constant 1 : i32
-        aie.use_lock(%lock_b_read, Release, %c1_ul7) // release for read
+        aie.use_lock(%lock_a_write, Release, %c1_ul7) // release for write
+        %c1_ul8 = arith.constant 1 : i32
+        aie.use_lock(%lock_b_read, Release, %c1_ul8) // release for read
       }
 
       aie.end
@@ -70,36 +70,37 @@ module @test_chess_05_shim_dma_core_function {
 
     // Tile DMA
     %m73 = aie.mem(%t73) {
+      %c0_i32 = arith.constant 0 : i32
         %srcDma = aie.dma_start("S2MM", 0, ^bd0, ^dma0)
       ^dma0:
         %dstDma = aie.dma_start("MM2S", 1, ^bd2, ^end)
       ^bd0:
-        %c1_ul8 = arith.constant 1 : i32
-        aie.use_lock(%lock_a_write, AcquireGreaterEqual, %c1_ul8)
-        aie.dma_bd(%buf_a_ping : memref<16xi32>, 0, 16)
-        %c1_ul9 = arith.constant 1 : i32
-        aie.use_lock(%lock_a_read, Release, %c1_ul9)
+        %c1_ul1 = arith.constant 1 : i32
+        aie.use_lock(%lock_a_write, AcquireGreaterEqual, %c1_ul1)
+        aie.dma_bd(%buf_a_ping : memref<16xi32> offset = 0 len = 16)
+        %c1_ul2 = arith.constant 1 : i32
+        aie.use_lock(%lock_a_read, Release, %c1_ul2)
         aie.next_bd ^bd1
       ^bd1:
-        %c1_ul10 = arith.constant 1 : i32
-        aie.use_lock(%lock_a_write, AcquireGreaterEqual, %c1_ul10)
-        aie.dma_bd(%buf_a_pong : memref<16xi32>, 0, 16)
-        %c1_ul11 = arith.constant 1 : i32
-        aie.use_lock(%lock_a_read, Release, %c1_ul11)
+        %c1_ul3 = arith.constant 1 : i32
+        aie.use_lock(%lock_a_write, AcquireGreaterEqual, %c1_ul3)
+        aie.dma_bd(%buf_a_pong : memref<16xi32> offset = 0 len = 16)
+        %c1_ul4 = arith.constant 1 : i32
+        aie.use_lock(%lock_a_read, Release, %c1_ul4)
         aie.next_bd ^bd0
       ^bd2:
-        %c1_ul12 = arith.constant 1 : i32
-        aie.use_lock(%lock_b_read, AcquireGreaterEqual, %c1_ul12)
-        aie.dma_bd(%buf_b_ping : memref<16xi32>, 0, 16)
-        %c1_ul13 = arith.constant 1 : i32
-        aie.use_lock(%lock_b_write, Release, %c1_ul13)
+        %c1_ul5 = arith.constant 1 : i32
+        aie.use_lock(%lock_b_read, AcquireGreaterEqual, %c1_ul5)
+        aie.dma_bd(%buf_b_ping : memref<16xi32> offset = 0 len = 16)
+        %c1_ul6 = arith.constant 1 : i32
+        aie.use_lock(%lock_b_write, Release, %c1_ul6)
         aie.next_bd ^bd3
       ^bd3:
-        %c1_ul14 = arith.constant 1 : i32
-        aie.use_lock(%lock_b_read, AcquireGreaterEqual, %c1_ul14)
-        aie.dma_bd(%buf_b_pong : memref<16xi32>, 0, 16)
-        %c1_ul15 = arith.constant 1 : i32
-        aie.use_lock(%lock_b_write, Release, %c1_ul15)
+        %c1_ul7 = arith.constant 1 : i32
+        aie.use_lock(%lock_b_read, AcquireGreaterEqual, %c1_ul7)
+        aie.dma_bd(%buf_b_pong : memref<16xi32> offset = 0 len = 16)
+        %c1_ul8 = arith.constant 1 : i32
+        aie.use_lock(%lock_b_write, Release, %c1_ul8)
         aie.next_bd ^bd2
       ^end:
         aie.end
@@ -119,22 +120,23 @@ module @test_chess_05_shim_dma_core_function {
 
     // Shim DMA loads large buffer to local memory
     %dma = aie.shim_dma(%t70) {
+      %c0_i32 = arith.constant 0 : i32
         aie.dma_start(MM2S, 0, ^bd0, ^dma)
       ^dma:
         aie.dma_start(S2MM, 0, ^bd1, ^end)
       ^bd0:
-        %c1_ul16 = arith.constant 1 : i32
-        aie.use_lock(%lock1_read, AcquireGreaterEqual, %c1_ul16)
-        aie.dma_bd(%buffer_in : memref<32 x i32>, 0, 32)
-        %c1_ul17 = arith.constant 1 : i32
-        aie.use_lock(%lock1_write, Release, %c1_ul17)
+        %c1_ul9 = arith.constant 1 : i32
+        aie.use_lock(%lock1_read, AcquireGreaterEqual, %c1_ul9)
+        aie.dma_bd(%buffer_in : memref<32 x i32> offset = 0 len = 32)
+        %c1_ul10 = arith.constant 1 : i32
+        aie.use_lock(%lock1_write, Release, %c1_ul10)
         aie.next_bd ^bd0
       ^bd1:
-        %c1_ul18 = arith.constant 1 : i32
-        aie.use_lock(%lock2_write, AcquireGreaterEqual, %c1_ul18)
-        aie.dma_bd(%buffer_out : memref<32 x i32>, 0, 32)
-        %c1_ul19 = arith.constant 1 : i32
-        aie.use_lock(%lock2_read, Release, %c1_ul19)
+        %c1_ul11 = arith.constant 1 : i32
+        aie.use_lock(%lock2_write, AcquireGreaterEqual, %c1_ul11)
+        aie.dma_bd(%buffer_out : memref<32 x i32> offset = 0 len = 32)
+        %c1_ul12 = arith.constant 1 : i32
+        aie.use_lock(%lock2_read, Release, %c1_ul12)
         aie.next_bd ^bd1
       ^end:
         aie.end

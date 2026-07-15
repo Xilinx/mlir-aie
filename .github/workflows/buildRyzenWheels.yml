@@ -416,8 +416,8 @@ jobs:
         with:
           arch: x64
 
-      # We don't get OpenSSL for free on Windows. Manage the pain.
-      # Try vcpkg's GHA cache to avoid building OpenSSL for every matrix element.
+      # OpenSSL is not available by default on Windows and must be built.
+      # Use vcpkg's GHA cache to avoid rebuilding OpenSSL for every matrix element.
       - name: Enable vcpkg binary caching
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9
         with:

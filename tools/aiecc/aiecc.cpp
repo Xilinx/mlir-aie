@@ -2532,26 +2532,26 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
     }
     std::string downgradedIR = downgradeIRForChess((*bufOrErr)->getBuffer());
 
-    // Write downgraded IR to .chesshack.ll
-    SmallString<128> chessHackPath(tmpDirName);
-    sys::path::append(chessHackPath,
+    // Write downgraded IR to .chess-compat.ll
+    SmallString<128> chessCompatPath(tmpDirName);
+    sys::path::append(chessCompatPath,
                       deviceName.str() + "_core_" + std::to_string(core.col) +
-                          "_" + std::to_string(core.row) + ".chesshack.ll");
+                          "_" + std::to_string(core.row) + ".chess-compat.ll");
     {
       std::error_code ec;
-      raw_fd_ostream chessHackFile(chessHackPath, ec);
+      raw_fd_ostream chessCompatFile(chessCompatPath, ec);
       if (ec) {
         std::lock_guard<std::mutex> lock(outputMutex);
-        llvm::errs() << "Error writing chesshack file: " << ec.message()
+        llvm::errs() << "Error writing chess-compat file: " << ec.message()
                      << "\n";
         return failure();
       }
-      chessHackFile << downgradedIR;
+      chessCompatFile << downgradedIR;
     }
 
     if (verbose) {
       std::lock_guard<std::mutex> lock(outputMutex);
-      llvm::outs() << "Applied IR downgrade for Chess: " << chessHackPath
+      llvm::outs() << "Applied IR downgrade for Chess: " << chessCompatPath
                    << "\n";
     }
 
@@ -2561,8 +2561,8 @@ static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
                       deviceName.str() + "_core_" + std::to_string(core.col) +
                           "_" + std::to_string(core.row) + ".chesslinked.ll");
 
-    std::string linkedResult =
-        runChessLlvmLink(chessHackPath, chessLinkedPath, aieTarget, tmpDirName);
+    std::string linkedResult = runChessLlvmLink(
+        chessCompatPath, chessLinkedPath, aieTarget, tmpDirName);
     if (linkedResult.empty()) {
       return failure();
     }
@@ -3259,25 +3259,26 @@ compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
     }
     std::string downgradedIR = downgradeIRForChess((*bufOrErr)->getBuffer());
 
-    SmallString<128> chessHackPath(tmpDirName);
-    sys::path::append(chessHackPath, deviceName.str() + "_input.chesshack.ll");
+    SmallString<128> chessCompatPath(tmpDirName);
+    sys::path::append(chessCompatPath,
+                      deviceName.str() + "_input.chess-compat.ll");
     {
       std::error_code ec;
-      raw_fd_ostream chessHackFile(chessHackPath, ec);
+      raw_fd_ostream chessCompatFile(chessCompatPath, ec);
       if (ec) {
-        llvm::errs() << "Error writing chesshack file: " << ec.message()
+        llvm::errs() << "Error writing chess-compat file: " << ec.message()
                      << "\n";
         return failure();
       }
-      chessHackFile << downgradedIR;
+      chessCompatFile << downgradedIR;
     }
 
     SmallString<128> chessLinkedPath(tmpDirName);
     sys::path::append(chessLinkedPath,
                       deviceName.str() + "_input.chesslinked.ll");
 
-    std::string linkedResult =
-        runChessLlvmLink(chessHackPath, chessLinkedPath, aieTarget, tmpDirName);
+    std::string linkedResult = runChessLlvmLink(
+        chessCompatPath, chessLinkedPath, aieTarget, tmpDirName);
     if (linkedResult.empty()) {
       return failure();
     }

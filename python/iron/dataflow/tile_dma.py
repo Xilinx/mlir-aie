@@ -20,7 +20,7 @@ Used together with [`Flow`][iron.Flow] / [`PacketFlow`][iron.PacketFlow]
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Iterable
+from typing import Any, Iterable
 
 from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
@@ -97,12 +97,11 @@ class Bd:
     # (pkt_type, pkt_id).  Pairs with a PacketFlow that uses
     # the same pkt_id so the routing fabric dispatches correctly.
     packet: tuple[int, int] | None = None
-    # Multi-dimensional (strided) access pattern, as a list of
-    # ``(size, stride)`` tuples, innermost dimension last — the same form
-    # the ``aie.dma_bd`` dialect op's ``dimensions`` attribute accepts (lowered
-    # via the registered ``BDDimLayoutArrayAttr`` builder).  ``None`` (default)
-    # emits a plain contiguous transfer.
-    dimensions: list[tuple[int, int]] | None = None
+    # Strided access pattern, outermost dimension first; each entry is a
+    # constant int or a runtime Value. Empty (default) emits a contiguous
+    # transfer. sizes and strides must have equal length.
+    sizes: list = field(default_factory=list)
+    strides: list = field(default_factory=list)
 
 
 @dataclass
@@ -245,15 +244,13 @@ class TileDma(Resolvable):
                     with block[bd_block_idx[bd_pos]]:
                         for acq in bd.acquires:
                             acq.emit()
-                        # dma_bd: pass buffer + optional offset/length.
-                        # The dialect helper's signature is dma_bd(buffer, offset=, len=).
-                        bd_kwargs = {}
+                        bd_kwargs: dict[str, Any] = dict(
+                            sizes=bd.sizes, strides=bd.strides
+                        )
                         if bd.offset:
                             bd_kwargs["offset"] = bd.offset
                         if bd.length is not None:
-                            bd_kwargs["len"] = bd.length
-                        if bd.dimensions is not None:
-                            bd_kwargs["dimensions"] = bd.dimensions
+                            bd_kwargs["transfer_len"] = bd.length
                         # A packet header must be a distinct aie.dma_bd_packet op
                         # placed BEFORE the aie.dma_bd: the CDO/xclbin backends
                         # (AIERT / AIETargetXAIEV2) read the header only from that

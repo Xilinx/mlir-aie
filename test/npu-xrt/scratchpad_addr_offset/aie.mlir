@@ -59,13 +59,13 @@ module {
 
             // Input DMA — offset_parameter patches the BD address at runtime
             %t_in = aiex.dma_configure_task_for @objfifo_in {
-                aie.dma_bd(%in : memref<32xi32>, 0, 8) {offset_parameter = @input_offset}
+                aie.dma_bd(%in : memref<32xi32> offset = 0 len = 8) {offset_parameter = @input_offset}
                 aie.end
             }
 
             // Output DMA
             %t_out = aiex.dma_configure_task_for @objfifo_out {
-                aie.dma_bd(%out : memref<8xi32>, 0, 8)
+                aie.dma_bd(%out : memref<8xi32> offset = 0 len = 8)
                 aie.end
             } {issue_token = true}
 

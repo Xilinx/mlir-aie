@@ -64,7 +64,7 @@ It is important to note that data layout transformations are interpreted differe
 
 As a practical example, here is an access pattern that corresponds to alternating between even and odd elements every 8 elements in a 128 element buffer/stream:
 ```mlir
-aie.dma_bd(%buf : memref<128xi32>, 0, 128, [<8, 16>, <2, 1>, <8, 2>])
+aie.dma_bd(%buf : memref<128xi32> offset = 0 len = 128 sizes = [8, 2, 8] strides = [16, 1, 2])
 ```
 which translates to:
 ```c

@@ -28,7 +28,7 @@ from .events import (
 
 NUM_EVENTS = 8  # number of events we can view per trace
 
-rowoffset = 1  # TODO tmeporary workaround to figure out row offset for AIE2 for tiles
+rowoffset = 1  # TODO: temporary workaround to determine row offset for AIE2 tiles
 
 eventIRFile = "eventIR.txt"
 tmpTraceDirName = "tmpTrace"

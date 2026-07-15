@@ -13,11 +13,11 @@ module {
     %buf = aie.buffer(%tile_0_2) : memref<8xi16>
 
     aie.bd_chain @simple_chain(%arg0: memref<8xi16>) {
-            aie.dma_bd(%arg0 : memref<8xi16>, 0, 8)
+            aie.dma_bd(%arg0 : memref<8xi16> offset = 0 len = 8)
             aie.next_bd ^bd1
         ^bd1:
             // expected-note@+1{{user}}
-            aie.dma_bd(%buf : memref<8xi16>, 0, 8)
+            aie.dma_bd(%buf : memref<8xi16> offset = 0 len = 8)
             aie.end
     }
 

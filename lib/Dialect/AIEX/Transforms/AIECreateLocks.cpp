@@ -194,7 +194,7 @@ struct AIECreateLocksPass
                       (!IsAcqUserCore && IsRelUserCore)))
         continue;
       assert(tileOp &&
-             "Sorry, the lock users of this chain do not have a common lock");
+             "the lock users of this chain do not have a common lock");
 
       TileOp tile = cast<TileOp>(tileOp);
       int lockID = getLockID(locks, tileOp);

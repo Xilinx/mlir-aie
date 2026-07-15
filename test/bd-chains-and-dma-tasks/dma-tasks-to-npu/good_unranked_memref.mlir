@@ -19,7 +19,7 @@ module {
       // CHECK: aiex.npu.address_patch(%[[AP0]] : i32) {addr = 118788 : ui32, arg_idx = 0 : i32}
       %t1 = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
         // bf16 is 2 bytes, 128 elements = 256 bytes = 64 32-bit words
-        aie.dma_bd(%arg0 : memref<*xbf16>, 0, 128) {bd_id = 0 : i32}
+        aie.dma_bd(%arg0 : memref<*xbf16> offset = 0 len = 128) {bd_id = 0 : i32}
         aie.end
       } {issue_token = true}
 

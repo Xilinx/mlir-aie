@@ -32,19 +32,15 @@
 // CHECK:     %[[VAL_13:.*]] = aie.mem(%[[VAL_2]]) {
 // CHECK:       aie.dma_start(MM2S, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
-// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%[[VAL_12]], AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd_packet(0, 2)
-// CHECK:       aie.dma_bd(%[[VAL_9]] : memref<16xi32>, 0, 16)
-// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.dma_bd(%[[VAL_9]] : memref<16xi32> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%[[VAL_11]], Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb2
 // CHECK:     ^bb2:  // pred: ^bb1
-// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%[[VAL_12]], AcquireGreaterEqual, %{{.*}})
 // CHECK:       aie.dma_bd_packet(0, 2)
-// CHECK:       aie.dma_bd(%[[VAL_10]] : memref<16xi32>, 0, 16)
-// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.dma_bd(%[[VAL_10]] : memref<16xi32> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%[[VAL_11]], Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb1
 // CHECK:     ^bb3:  // pred: ^bb0
@@ -53,17 +49,13 @@
 // CHECK:     %[[VAL_14:.*]] = aie.mem(%[[VAL_4]]) {
 // CHECK:       aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:     ^bb1:  // 2 preds: ^bb0, ^bb2
-// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %{{.*}})
-// CHECK:       aie.dma_bd(%[[VAL_5]] : memref<16xi32>, 0, 16)
-// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.dma_bd(%[[VAL_5]] : memref<16xi32> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%[[VAL_8]], Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb2
 // CHECK:     ^bb2:  // pred: ^bb1
-// CHECK:       %{{.*}} = arith.constant 1 : i32
 // CHECK:       aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %{{.*}})
-// CHECK:       aie.dma_bd(%[[VAL_6]] : memref<16xi32>, 0, 16)
-// CHECK:       %{{.*}} = arith.constant 1 : i32
+// CHECK:       aie.dma_bd(%[[VAL_6]] : memref<16xi32> offset = {{.*}} len = {{.*}})
 // CHECK:       aie.use_lock(%[[VAL_8]], Release, %{{.*}})
 // CHECK:       aie.next_bd ^bb1
 // CHECK:     ^bb3:  // pred: ^bb0

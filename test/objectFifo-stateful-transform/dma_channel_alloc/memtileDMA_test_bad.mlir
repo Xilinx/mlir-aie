@@ -26,32 +26,32 @@ module @memtileDMA_channels {
         %mem11 = aie.memtile_dma(%tile11) {
             %dma1 = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
         ^bb1:
-            aie.dma_bd(%buff0 : memref<16xi32>, 0, 16)
+            aie.dma_bd(%buff0 : memref<16xi32> offset = 0 len = 16)
             aie.next_bd ^bb1
         ^bb2:
             %dma2 = aie.dma_start(S2MM, 1, ^bb3, ^bb4)
         ^bb3:
-            aie.dma_bd(%buff2 : memref<16xi32>, 0, 16)
+            aie.dma_bd(%buff2 : memref<16xi32> offset = 0 len = 16)
             aie.next_bd ^bb3
         ^bb4:
             %dma3 = aie.dma_start(S2MM, 2, ^bb5, ^bb6)
         ^bb5:
-            aie.dma_bd(%buff2 : memref<16xi32>, 0, 16)
+            aie.dma_bd(%buff2 : memref<16xi32> offset = 0 len = 16)
             aie.next_bd ^bb5
         ^bb6:
             %dma4 = aie.dma_start(S2MM, 3, ^bb7, ^bb8)
         ^bb7:
-            aie.dma_bd(%buff2 : memref<16xi32>, 0, 16)
+            aie.dma_bd(%buff2 : memref<16xi32> offset = 0 len = 16)
             aie.next_bd ^bb7
         ^bb8:
             %dma5 = aie.dma_start(S2MM, 4, ^bb9, ^bb10)
         ^bb9:
-            aie.dma_bd(%buff2 : memref<16xi32>, 0, 16)
+            aie.dma_bd(%buff2 : memref<16xi32> offset = 0 len = 16)
             aie.next_bd ^bb9
         ^bb10:
             %dma6 = aie.dma_start(S2MM, 5, ^bb11, ^bb12)
         ^bb11:
-            aie.dma_bd(%buff2 : memref<16xi32>, 0, 16)
+            aie.dma_bd(%buff2 : memref<16xi32> offset = 0 len = 16)
             aie.next_bd ^bb11
         ^bb12:
             aie.end

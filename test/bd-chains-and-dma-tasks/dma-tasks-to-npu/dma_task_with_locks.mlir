@@ -29,17 +29,21 @@ module @test_core_tile_with_locks {
     %cons_lock = aie.lock(%tile_0_2, 1) {init = 0 : i32}
 
     aie.runtime_sequence(%arg0: memref<1024xi32>) {
+      %c0_i32 = arith.constant 0 : i32
+      %c1024_i32 = arith.constant 1024 : i32
       %t1 = aiex.dma_configure_task(%tile_0_2, S2MM, 0) {
-          %c1_ul0 = arith.constant 1 : i32
-          aie.use_lock(%prod_lock, Acquire, %c1_ul0)
-          aie.dma_bd(%buf : memref<1024xi32>, 0, 1024) {bd_id = 0 : i32}
           %c1_ul1 = arith.constant 1 : i32
-          aie.use_lock(%cons_lock, Release, %c1_ul1)
+          aie.use_lock(%prod_lock, Acquire, %c1_ul1)
+          aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 1024) {bd_id = 0 : i32}
+          %c1_ul2 = arith.constant 1 : i32
+          aie.use_lock(%cons_lock, Release, %c1_ul2)
           aie.end
       }
     }
   }
 }
+
+
 
 // -----
 
@@ -62,17 +66,21 @@ module @test_core_tile_looping_with_locks {
     %cons_lock = aie.lock(%tile_0_2, 1) {init = 0 : i32}
 
     aie.runtime_sequence(%arg0: memref<4096xi32>) {
+      %c0_i32 = arith.constant 0 : i32
+      %c4096_i32 = arith.constant 4096 : i32
       %t1 = aiex.dma_configure_task(%tile_0_2, S2MM, 0) {
-          %c1_ul2 = arith.constant 1 : i32
-          aie.use_lock(%prod_lock, Acquire, %c1_ul2)
-          aie.dma_bd(%buf : memref<4096xi32>, 0, 4096) {bd_id = 0 : i32, next_bd_id = 0 : i32}
           %c1_ul3 = arith.constant 1 : i32
-          aie.use_lock(%cons_lock, Release, %c1_ul3)
+          aie.use_lock(%prod_lock, Acquire, %c1_ul3)
+          aie.dma_bd(%buf : memref<4096xi32> offset = 0 len = 4096) {bd_id = 0 : i32, next_bd_id = 0 : i32}
+          %c1_ul4 = arith.constant 1 : i32
+          aie.use_lock(%cons_lock, Release, %c1_ul4)
           aie.end
       }
     }
   }
 }
+
+
 
 // -----
 
@@ -95,13 +103,17 @@ module @test_core_tile_without_locks {
     %buf = aie.buffer(%tile_0_2) { address = 0x0 : i32 } : memref<512xi32>
 
     aie.runtime_sequence(%arg0: memref<512xi32>) {
+      %c0_i32 = arith.constant 0 : i32
+      %c512_i32 = arith.constant 512 : i32
       %t1 = aiex.dma_configure_task(%tile_0_2, MM2S, 0) {
-          aie.dma_bd(%buf : memref<512xi32>, 0, 512) {bd_id = 0 : i32}
+          aie.dma_bd(%buf : memref<512xi32> offset = 0 len = 512) {bd_id = 0 : i32}
           aie.end
       }
     }
   }
 }
+
+
 
 // -----
 
@@ -128,17 +140,21 @@ module @test_memtile_with_locks {
     %cons_lock = aie.lock(%tile_0_1, 1) {init = 0 : i32}
 
     aie.runtime_sequence(%arg0: memref<1024xi32>) {
+      %c0_i32 = arith.constant 0 : i32
+      %c1024_i32 = arith.constant 1024 : i32
       %t1 = aiex.dma_configure_task(%tile_0_1, S2MM, 0) {
-          %c1_ul4 = arith.constant 1 : i32
-          aie.use_lock(%prod_lock, Acquire, %c1_ul4)
-          aie.dma_bd(%buf : memref<1024xi32>, 0, 1024) {bd_id = 0 : i32}
           %c1_ul5 = arith.constant 1 : i32
-          aie.use_lock(%cons_lock, Release, %c1_ul5)
+          aie.use_lock(%prod_lock, Acquire, %c1_ul5)
+          aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 1024) {bd_id = 0 : i32}
+          %c1_ul6 = arith.constant 1 : i32
+          aie.use_lock(%cons_lock, Release, %c1_ul6)
           aie.end
       }
     }
   }
 }
+
+
 
 // -----
 
@@ -165,17 +181,21 @@ module @test_memtile_looping_with_locks {
     %cons_lock = aie.lock(%tile_0_1, 1) {init = 0 : i32}
 
     aie.runtime_sequence(%arg0: memref<4096xi32>) {
+      %c0_i32 = arith.constant 0 : i32
+      %c4096_i32 = arith.constant 4096 : i32
       %t1 = aiex.dma_configure_task(%tile_0_1, S2MM, 0) {
-          %c1_ul6 = arith.constant 1 : i32
-          aie.use_lock(%prod_lock, Acquire, %c1_ul6)
-          aie.dma_bd(%buf : memref<4096xi32>, 0, 4096) {bd_id = 0 : i32, next_bd_id = 0 : i32}
           %c1_ul7 = arith.constant 1 : i32
-          aie.use_lock(%cons_lock, Release, %c1_ul7)
+          aie.use_lock(%prod_lock, Acquire, %c1_ul7)
+          aie.dma_bd(%buf : memref<4096xi32> offset = 0 len = 4096) {bd_id = 0 : i32, next_bd_id = 0 : i32}
+          %c1_ul8 = arith.constant 1 : i32
+          aie.use_lock(%cons_lock, Release, %c1_ul8)
           aie.end
       }
     }
   }
 }
+
+
 
 // -----
 
@@ -198,13 +218,17 @@ module @test_memtile_without_locks {
     %buf = aie.buffer(%tile_0_1) { address = 0x0 : i32 } : memref<512xi32>
 
     aie.runtime_sequence(%arg0: memref<512xi32>) {
+      %c0_i32 = arith.constant 0 : i32
+      %c512_i32 = arith.constant 512 : i32
       %t1 = aiex.dma_configure_task(%tile_0_1, MM2S, 0) {
-          aie.dma_bd(%buf : memref<512xi32>, 0, 512) {bd_id = 0 : i32}
+          aie.dma_bd(%buf : memref<512xi32> offset = 0 len = 512) {bd_id = 0 : i32}
           aie.end
       }
     }
   }
 }
+
+
 
 // -----
 
@@ -229,17 +253,20 @@ module @test_memtile_with_acquire_ge_lock {
     %cons_lock = aie.lock(%tile_0_1, 1) {init = 0 : i32}
 
     aie.runtime_sequence(%arg0: memref<2048xi32>) {
+      %c0_i32 = arith.constant 0 : i32
       %t1 = aiex.dma_configure_task(%tile_0_1, S2MM, 0) {
-          %c2_ul8 = arith.constant 2 : i32
-          aie.use_lock(%prod_lock, AcquireGreaterEqual, %c2_ul8)
-          aie.dma_bd(%buf : memref<2048xi32>, 0, 2048) {bd_id = 0 : i32}
-          %c1_ul9 = arith.constant 1 : i32
-          aie.use_lock(%cons_lock, Release, %c1_ul9)
+          %c2_ul9 = arith.constant 2 : i32
+          aie.use_lock(%prod_lock, AcquireGreaterEqual, %c2_ul9)
+          aie.dma_bd(%buf : memref<2048xi32> offset = 0 len = 2048) {bd_id = 0 : i32}
+          %c1_ul10 = arith.constant 1 : i32
+          aie.use_lock(%cons_lock, Release, %c1_ul10)
           aie.end
       }
     }
   }
 }
+
+
 
 // -----
 
@@ -271,24 +298,28 @@ module @test_memtile_chain_with_locks {
     %cons_lock = aie.lock(%tile_0_1, 1) {init = 0 : i32}
 
     aie.runtime_sequence(%arg0: memref<1024xi32>) {
+      %c0_i32 = arith.constant 0 : i32
+      %c512_i32 = arith.constant 512 : i32
       %t1 = aiex.dma_configure_task(%tile_0_1, S2MM, 0) {
-          %c1_ul10 = arith.constant 1 : i32
-          aie.use_lock(%prod_lock, Acquire, %c1_ul10)
-          aie.dma_bd(%buf0 : memref<512xi32>, 0, 512) {bd_id = 0 : i32}
           %c1_ul11 = arith.constant 1 : i32
-          aie.use_lock(%cons_lock, Release, %c1_ul11)
+          aie.use_lock(%prod_lock, Acquire, %c1_ul11)
+          aie.dma_bd(%buf0 : memref<512xi32> offset = 0 len = 512) {bd_id = 0 : i32}
+          %c1_ul12 = arith.constant 1 : i32
+          aie.use_lock(%cons_lock, Release, %c1_ul12)
           aie.next_bd ^bd1
         ^bd1:
-          %c1_ul12 = arith.constant 1 : i32
-          aie.use_lock(%prod_lock, Acquire, %c1_ul12)
-          aie.dma_bd(%buf1 : memref<512xi32>, 0, 512) {bd_id = 1 : i32}
           %c1_ul13 = arith.constant 1 : i32
-          aie.use_lock(%cons_lock, Release, %c1_ul13)
+          aie.use_lock(%prod_lock, Acquire, %c1_ul13)
+          aie.dma_bd(%buf1 : memref<512xi32> offset = 0 len = 512) {bd_id = 1 : i32}
+          %c1_ul14 = arith.constant 1 : i32
+          aie.use_lock(%cons_lock, Release, %c1_ul14)
           aie.end
       }
     }
   }
 }
+
+
 
 // -----
 
@@ -314,12 +345,14 @@ module @test_memtile_different_lock_ids {
     %cons_lock = aie.lock(%tile_0_1, 3) {init = 0 : i32}
 
     aie.runtime_sequence(%arg0: memref<1024xi32>) {
+      %c0_i32 = arith.constant 0 : i32
+      %c1024_i32 = arith.constant 1024 : i32
       %t1 = aiex.dma_configure_task(%tile_0_1, S2MM, 0) {
-          %c1_ul14 = arith.constant 1 : i32
-          aie.use_lock(%prod_lock, Acquire, %c1_ul14)
-          aie.dma_bd(%buf : memref<1024xi32>, 0, 1024) {bd_id = 0 : i32}
           %c1_ul15 = arith.constant 1 : i32
-          aie.use_lock(%cons_lock, Release, %c1_ul15)
+          aie.use_lock(%prod_lock, Acquire, %c1_ul15)
+          aie.dma_bd(%buf : memref<1024xi32> offset = 0 len = 1024) {bd_id = 0 : i32}
+          %c1_ul16 = arith.constant 1 : i32
+          aie.use_lock(%cons_lock, Release, %c1_ul16)
           aie.end
       }
     }

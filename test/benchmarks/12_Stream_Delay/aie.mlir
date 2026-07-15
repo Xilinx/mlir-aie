@@ -30,13 +30,15 @@ aie.device(xcvc1902) {
 
 
   %mem13 = aie.mem(%tile13) {
+    %c0_i32 = arith.constant 0 : i32
+    %c512_i32 = arith.constant 512 : i32
     %dma0 = aie.dma_start(MM2S, 0, ^bd0, ^end)
     ^bd0:
-      %c1_ul0 = arith.constant 1 : i32
-      aie.use_lock(%lock13_5, "Acquire", %c1_ul0)
-      aie.dma_bd(%buf13_0 : memref<512xi32>, 0, 512)
-      %c0_ul1 = arith.constant 0 : i32
-      aie.use_lock(%lock13_5, "Release", %c0_ul1)
+      %c1_ul1 = arith.constant 1 : i32
+      aie.use_lock(%lock13_5, "Acquire", %c1_ul1)
+      aie.dma_bd(%buf13_0 : memref<512xi32> offset = 0 len = 512)
+      %c0_ul2 = arith.constant 0 : i32
+      aie.use_lock(%lock13_5, "Release", %c0_ul2)
       aie.next_bd ^end
     ^end:
       aie.end
@@ -48,15 +50,17 @@ aie.device(xcvc1902) {
   %buf43_1 = aie.buffer(%tile43) { sym_name = "b43" } : memref<256xi32>
 
   %mem43 = aie.mem(%tile43) {
+    %c0_i32 = arith.constant 0 : i32
+    %c512_i32 = arith.constant 512 : i32
 
 
      %dma0 = aie.dma_start(S2MM, 1, ^bd0, ^end)
     ^bd0:
-      %c0_ul2 = arith.constant 0 : i32
-      aie.use_lock(%lock43_6, "Acquire", %c0_ul2)
-      aie.dma_bd(%buf43_0: memref<512xi32>, 0, 512)
-      %c1_ul3 = arith.constant 1 : i32
-      aie.use_lock(%lock43_6, "Release", %c1_ul3)
+      %c0_ul3 = arith.constant 0 : i32
+      aie.use_lock(%lock43_6, "Acquire", %c0_ul3)
+      aie.dma_bd(%buf43_0 : memref<512xi32> offset = 0 len = 512)
+      %c1_ul4 = arith.constant 1 : i32
+      aie.use_lock(%lock43_6, "Release", %c1_ul4)
       aie.next_bd ^end
     ^end:
       aie.end
