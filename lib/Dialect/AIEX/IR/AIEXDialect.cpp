@@ -976,7 +976,43 @@ AIEX::DMAConfigureTaskOp::canonicalize(AIEX::DMAConfigureTaskOp op,
   return failure();
 }
 
+// Enforce the per-BD ND access-pattern limit for BDs nested inside a
+// runtime-sequence DMA task. The AIE::DMABDOp verifier skips these BDs (their
+// parent is a DMA task op, not a *DMAOp), so this is the only check of the BD
+// dimension count on the runtime-sequence path.
+//
+// This path lowers to a shim NPU BD (aie-dma-tasks-to-npu), whose register file
+// exposes the ND access dimensions plus one hardware iteration/repeat dimension.
+// aiex.shim_dma_single_bd_task hoists the leading tap dimension into that
+// iteration register, so a BD here may carry one dimension beyond the tile's ND
+// access limit -- except on a MemTile, whose ND limit already spans the full
+// width. This mirrors the uniform 4-dimension cap enforced later by
+// AIEDMATasksToNPU.
+static LogicalResult
+verifyTaskBDDimensions(const AIE::AIETargetModel &targetModel, int col, int row,
+                       Region &body) {
+  size_t maxNDims = targetModel.getBDMaxDims(col, row);
+  if (!targetModel.isMemTile(col, row))
+    ++maxNDims; // leading dim is hoisted into the iteration/repeat register
+  LogicalResult result = success();
+  body.walk([&](AIE::DMABDOp bd) {
+    size_t numDims = bd.getMixedSizes().size();
+    if (numDims > maxNDims) {
+      bd.emitOpError() << "Cannot give more than " << std::to_string(maxNDims)
+                       << " dimensions for step sizes and wraps on this tile "
+                          "(got "
+                       << std::to_string(numDims) << " dimensions).";
+      result = failure();
+    }
+  });
+  return result;
+}
+
 LogicalResult AIEX::DMAConfigureTaskOp::verify() {
+  const AIE::AIETargetModel &targetModel = AIE::getTargetModel(getOperation());
+  if (failed(verifyTaskBDDimensions(targetModel, getTileID().col,
+                                    getTileID().row, getBody())))
+    return failure();
   Region &body = getBody();
   for (auto it = body.begin(); it != body.end(); ++it) {
     Block &block = *it;
@@ -1011,6 +1047,25 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
     }
   }
   return success();
+}
+
+LogicalResult AIEX::DMAConfigureTaskForOp::verify() {
+  // Recover the shim tile through the referenced shim DMA allocation symbol so
+  // the per-BD dimension limit can be enforced on the runtime-sequence path
+  // before the allocation is substituted into a concrete DMAConfigureTaskOp.
+  AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
+  if (!dev)
+    return success();
+  AIE::ShimDMAAllocationOp allocOp =
+      AIE::ShimDMAAllocationOp::getForSymbol(dev, getAlloc().getRootReference());
+  if (!allocOp)
+    return success(); // symbol resolved during a later pass; defer the check
+  AIE::TileOp tile = allocOp.getTileOp();
+  if (!tile)
+    return success();
+  const AIE::AIETargetModel &targetModel = AIE::getTargetModel(getOperation());
+  return verifyTaskBDDimensions(targetModel, tile.getCol(), tile.getRow(),
+                                getBody());
 }
 
 //===----------------------------------------------------------------------===//
