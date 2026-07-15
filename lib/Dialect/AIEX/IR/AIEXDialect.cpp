@@ -981,12 +981,15 @@ AIEX::DMAConfigureTaskOp::canonicalize(AIEX::DMAConfigureTaskOp op,
 // parent is a DMA task op, not a *DMAOp), so this is the only check of the BD
 // dimension count on the runtime-sequence path.
 //
-// This path lowers to a shim NPU BD (aie-dma-tasks-to-npu), whose register file
-// exposes the ND access dimensions plus one hardware iteration/repeat
-// dimension. aiex.shim_dma_single_bd_task hoists the leading tap dimension into
-// that iteration register, so a BD here may carry one dimension beyond the
-// tile's ND access limit -- except on a MemTile, whose ND limit already spans
-// the full width. This mirrors the uniform 4-dimension cap enforced later by
+// Every AIE2/AIE2P DMA BD register file carries getBDMaxDims ND address
+// dimensions (D0..) plus one separate iteration/repeat dimension: a core/shim
+// BD has D0..D2 + iteration, a MemTile BD has D0..D3 + iteration. On this path
+// aiex.shim_dma_single_bd_task hoists the leading tap dimension into that
+// iteration register, so a shim/core BD may carry one dimension beyond its ND
+// access limit (3 + 1). A MemTile is not given the +1: AIEDMATasksToNPU maps
+// the 4th task dimension onto the iteration register for every tile type and
+// caps the total at 4, which the MemTile's 4 ND dimensions already reach. Both
+// branches therefore land on the same uniform 4-dimension cap enforced later by
 // AIEDMATasksToNPU.
 static LogicalResult
 verifyTaskBDDimensions(const AIE::AIETargetModel &targetModel, int col, int row,
