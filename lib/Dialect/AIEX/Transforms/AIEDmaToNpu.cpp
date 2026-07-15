@@ -239,7 +239,6 @@ public:
     auto *ctx = op->getContext();
     auto i32ty = IntegerType::get(ctx, 32);
     auto zero = IntegerAttr::get(i32ty, 0);
-    auto memref = adaptor.getMemref();
 
     auto dev = op->getParentOfType<AIE::DeviceOp>();
     if (!dev)
@@ -309,7 +308,6 @@ public:
     llvm::SmallVector<int64_t, 4> strides(4);
     getHardwareStridesWraps(targetModel, op, bufferType, inputSizes,
                             inputStrides, sizes, strides);
-    int64_t offset = op.getOffsetInBytes();
 
     // column
     column = IntegerAttr::get(i32ty, tileCol);
@@ -328,43 +326,6 @@ public:
                                   inputStrides, sizes, strides, isLinear))) {
       return failure();
     }
-
-    // arg_idx and offset for block arguments
-    AIE::RuntimeSequenceOp seq_op =
-        op->getParentOfType<AIE::RuntimeSequenceOp>();
-    if (!seq_op) {
-      op->emitOpError("NpuDmaMemcpyNdOps must have RuntimeSequenceOp parent at "
-                      "time of lowering.");
-      return failure();
-    }
-
-    mlir::Value rootMemref = memref;
-    int64_t subviewOffset = 0;
-
-    // Trace through memref.subview and memref.reinterpret_cast chain, if any,
-    // to find root block argument
-    auto traceResult = traceSubviewToBlockArgument(memref);
-    if (!traceResult) {
-      return op->emitOpError(
-          "memref must be a block argument or subview/cast/reinterpret_cast of "
-          "a block argument with static offsets, sizes, and strides");
-    }
-    rootMemref = traceResult->rootArg;
-    subviewOffset = traceResult->offsetInBytes;
-
-    // Find the argument index of the root memref
-    Block &entryBB = seq_op.getBody().front();
-    int arg_idx = -1;
-    for (int i = 0, e = entryBB.getNumArguments(); i < e; i++) {
-      if (entryBB.getArgument(i) == rootMemref) {
-        arg_idx = i;
-        break;
-      }
-    }
-    if (arg_idx < 0)
-      return failure();
-
-    offset += subviewOffset;
 
     // bd_id
     bd_id = IntegerAttr::get(i32ty, op.getId());
@@ -488,23 +449,12 @@ public:
         d0_zero_before, d1_zero_before, d2_zero_before, d0_zero_after,
         d1_zero_after, d2_zero_after, burst_length);
 
-    // compute the location of the address to patch in the bd and emit patch
-    // instruction to perform the patch.
-    uint64_t addr = targetModel.getDmaBdAddress(tileCol, tileRow, op.getId()) +
-                    targetModel.getDmaBdAddressOffset(tileCol, tileRow);
-    NpuAddressPatchOp::create(rewriter, op->getLoc(), addr, arg_idx,
-                              createConstantI32(rewriter, op->getLoc(),
-                                                static_cast<uint32_t>(offset)));
-
-    // If this DMA op has an offset_state_table_idx, emit an
-    // update_from_scratchpad to add the runtime offset to the BD address
-    // register.
-    if (op.getOffsetStateTableIdxAttr()) {
-      auto bufType = cast<BaseMemRefType>(op.getMemref().getType());
-      if (failed(emitUpdateBdAddressFromOffsetParameter(rewriter, op, bufType,
-                                                        addr)))
-        return failure();
-    }
+    // Resolve the buffer's runtime-sequence arg and emit the address patch
+    // (plus any offset-state update).
+    int arg_idx = -1;
+    if (failed(
+            emitBufferAddressPatch(op, adaptor, rewriter, tileCol, tileRow, arg_idx)))
+      return failure();
 
     // push the patched bd onto the dma task queue. bd_id and repeat_count are
     // SSA operands; materialize them as constants here (the static path).
@@ -517,6 +467,55 @@ public:
                           static_cast<uint32_t>(bd_id.getInt())));
 
     rewriter.eraseOp(op);
+    return success();
+  }
+
+  // Resolve the runtime-sequence argument index the descriptor's buffer traces
+  // back to, and emit the address-patch (plus an offset-state update, if the op
+  // carries one) that binds the runtime buffer pointer into the BD. Shared by
+  // the static and dynamic lowering paths, which are otherwise identical here.
+  // On success `argIdx` receives the resolved index.
+  LogicalResult emitBufferAddressPatch(NpuDmaMemcpyNdOp op, OpAdaptor adaptor,
+                                       ConversionPatternRewriter &rewriter,
+                                       int tileCol, int tileRow,
+                                       int &argIdx) const {
+    AIE::RuntimeSequenceOp seqOp = op->getParentOfType<AIE::RuntimeSequenceOp>();
+    if (!seqOp)
+      return op->emitOpError("NpuDmaMemcpyNdOps must have RuntimeSequenceOp "
+                             "parent at time of lowering.");
+    auto traceResult = traceSubviewToBlockArgument(adaptor.getMemref());
+    if (!traceResult)
+      return op->emitOpError(
+          "memref must be a block argument or subview/cast/reinterpret_cast of "
+          "a block argument with static offsets, sizes, and strides");
+    argIdx = -1;
+    Block &entryBB = seqOp.getBody().front();
+    for (int i = 0, e = entryBB.getNumArguments(); i < e; i++)
+      if (entryBB.getArgument(i) == traceResult->rootArg) {
+        argIdx = i;
+        break;
+      }
+    if (argIdx < 0)
+      return failure();
+    int64_t offset = op.getOffsetInBytes() + traceResult->offsetInBytes;
+
+    const auto &targetModel = AIE::getTargetModel(op);
+    uint64_t patchAddr =
+        targetModel.getDmaBdAddress(tileCol, tileRow, op.getId()) +
+        targetModel.getDmaBdAddressOffset(tileCol, tileRow);
+    NpuAddressPatchOp::create(rewriter, op->getLoc(), patchAddr, argIdx,
+                              createConstantI32(rewriter, op->getLoc(),
+                                                static_cast<uint32_t>(offset)));
+
+    // If this DMA op has an offset_state_table_idx, emit an
+    // update_from_scratchpad to add the runtime offset to the BD address
+    // register (additive; applied after the base patch above).
+    if (op.getOffsetStateTableIdxAttr()) {
+      auto bufType = cast<BaseMemRefType>(op.getMemref().getType());
+      if (failed(emitUpdateBdAddressFromOffsetParameter(rewriter, op, bufType,
+                                                        patchAddr)))
+        return failure();
+    }
     return success();
   }
 
@@ -555,28 +554,6 @@ public:
     bool isMM2S = channelDir == AIE::DMAChannelDir::MM2S;
     int tileCol = shimTile.getCol();
     int tileRow = shimTile.getRow();
-
-    // arg_idx + static byte offset (offsets are compile-time on this path).
-    AIE::RuntimeSequenceOp seq_op =
-        op->getParentOfType<AIE::RuntimeSequenceOp>();
-    if (!seq_op)
-      return op->emitOpError("NpuDmaMemcpyNdOps must have RuntimeSequenceOp "
-                             "parent at time of lowering.");
-    auto traceResult = traceSubviewToBlockArgument(adaptor.getMemref());
-    if (!traceResult)
-      return op->emitOpError(
-          "memref must be a block argument or subview/cast/reinterpret_cast of "
-          "a block argument with static offsets, sizes, and strides");
-    int arg_idx = -1;
-    Block &entryBB = seq_op.getBody().front();
-    for (int i = 0, e = entryBB.getNumArguments(); i < e; i++)
-      if (entryBB.getArgument(i) == traceResult->rootArg) {
-        arg_idx = i;
-        break;
-      }
-    if (arg_idx < 0)
-      return failure();
-    int64_t offset = op.getOffsetInBytes() + traceResult->offsetInBytes;
 
     // Packet / token setup (identical to the static path).
     auto column = IntegerAttr::get(i32ty, tileCol);
@@ -735,11 +712,10 @@ public:
                              {{hwS[3], 0x3F, 20}, {hwT[3], 0xFFFFF, 0}}));
 
     // Address patch for the buffer pointer (offset is compile-time here).
-    uint64_t patchAddr =
-        bdAddr + targetModel.getDmaBdAddressOffset(tileCol, tileRow);
-    NpuAddressPatchOp::create(
-        rewriter, loc, patchAddr, arg_idx,
-        createConstantI32(rewriter, loc, static_cast<uint32_t>(offset)));
+    int arg_idx = -1;
+    if (failed(
+            emitBufferAddressPatch(op, adaptor, rewriter, tileCol, tileRow, arg_idx)))
+      return failure();
 
     // Push the BD. repeat_count is the outer (d3) element count; it may be a
     // runtime value, so it flows in as an SSA operand.
