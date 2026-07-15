@@ -982,11 +982,11 @@ AIEX::DMAConfigureTaskOp::canonicalize(AIEX::DMAConfigureTaskOp op,
 // dimension count on the runtime-sequence path.
 //
 // This path lowers to a shim NPU BD (aie-dma-tasks-to-npu), whose register file
-// exposes the ND access dimensions plus one hardware iteration/repeat dimension.
-// aiex.shim_dma_single_bd_task hoists the leading tap dimension into that
-// iteration register, so a BD here may carry one dimension beyond the tile's ND
-// access limit -- except on a MemTile, whose ND limit already spans the full
-// width. This mirrors the uniform 4-dimension cap enforced later by
+// exposes the ND access dimensions plus one hardware iteration/repeat
+// dimension. aiex.shim_dma_single_bd_task hoists the leading tap dimension into
+// that iteration register, so a BD here may carry one dimension beyond the
+// tile's ND access limit -- except on a MemTile, whose ND limit already spans
+// the full width. This mirrors the uniform 4-dimension cap enforced later by
 // AIEDMATasksToNPU.
 static LogicalResult
 verifyTaskBDDimensions(const AIE::AIETargetModel &targetModel, int col, int row,
@@ -1010,8 +1010,13 @@ verifyTaskBDDimensions(const AIE::AIETargetModel &targetModel, int col, int row,
 
 LogicalResult AIEX::DMAConfigureTaskOp::verify() {
   const AIE::AIETargetModel &targetModel = AIE::getTargetModel(getOperation());
-  if (failed(verifyTaskBDDimensions(targetModel, getTileID().col,
-                                    getTileID().row, getBody())))
+  // Skip the per-BD dimension check on an unplaced (logical) tile: the ND limit
+  // is a function of the tile's placed coordinates, which are not yet known.
+  // The verifier runs again on the concrete tile once placement resolves it.
+  std::optional<int> col = getTileLike().tryGetCol();
+  std::optional<int> row = getTileLike().tryGetRow();
+  if (col && row &&
+      failed(verifyTaskBDDimensions(targetModel, *col, *row, getBody())))
     return failure();
   Region &body = getBody();
   for (auto it = body.begin(); it != body.end(); ++it) {
@@ -1056,11 +1061,15 @@ LogicalResult AIEX::DMAConfigureTaskForOp::verify() {
   AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
   if (!dev)
     return success();
-  AIE::ShimDMAAllocationOp allocOp =
-      AIE::ShimDMAAllocationOp::getForSymbol(dev, getAlloc().getRootReference());
+  AIE::ShimDMAAllocationOp allocOp = AIE::ShimDMAAllocationOp::getForSymbol(
+      dev, getAlloc().getRootReference());
   if (!allocOp)
     return success(); // symbol resolved during a later pass; defer the check
-  AIE::TileOp tile = allocOp.getTileOp();
+  // Do not call allocOp.getTileOp(): it hard-asserts when the allocation is
+  // still bound to an unplaced (logical) tile. Resolve the concrete tile
+  // defensively and defer the check until placement substitutes a real tile.
+  auto tile =
+      llvm::dyn_cast_or_null<AIE::TileOp>(allocOp.getTile().getDefiningOp());
   if (!tile)
     return success();
   const AIE::AIETargetModel &targetModel = AIE::getTargetModel(getOperation());
