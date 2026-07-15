@@ -15,7 +15,6 @@ updates:
     # cooldown adds that floor. Security-alert PRs bypass cooldown entirely.
     cooldown:
       default-days: 7
-      semver-major-days: 7
     groups:
       github-actions-minor-patch:
         update-types: ["minor", "patch"]
@@ -44,7 +43,6 @@ updates:
       - dependency-name: "nanobind"
     cooldown:
       default-days: 7
-      semver-major-days: 7
     # `group-by: dependency-name` makes Dependabot open ONE pull request per
     # dependency spanning ALL directories above, so a shared package (numpy,
     # setuptools, ...) is bumped to the same version in /python and both wheel
@@ -65,7 +63,6 @@ updates:
       cronjob: "0 6 8,22 * *"
     cooldown:
       default-days: 7
-      semver-major-days: 7
     groups:
       pre-commit-minor-patch:
         update-types: ["minor", "patch"]
