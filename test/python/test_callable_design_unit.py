@@ -166,6 +166,7 @@ class TestJitDecorator:
             "include_paths",
             "object_files",
             "trace_config",
+            "full_elf",
         }
         assert _JIT_CONFIG_KEYS == expected
 

@@ -111,6 +111,9 @@ class CallableDesign:
             ``trace_size`` compile kwarg so generators can use
             ``trace_size: CompileTime[int] = 0`` instead of receiving the full
             ``TraceConfig`` object.
+        full_elf: When ``True``, the design compiles to a single self-contained
+            full ELF (PDIs + TXN control code) and runs through the full-ELF
+            ``XRTHostRuntime`` path.  Forwarded to ``CompilableDesign``.
     """
 
     def __init__(
@@ -125,6 +128,7 @@ class CallableDesign:
         include_paths: list[str | Path] | None = None,
         object_files: list[str | Path] | None = None,
         trace_config=None,
+        full_elf: bool = False,
     ):
         if isinstance(mlir_generator, CompilableDesign):
             self.compilable = mlir_generator
@@ -138,6 +142,7 @@ class CallableDesign:
                 compile_flags=compile_flags,
                 include_paths=include_paths,
                 object_files=object_files,
+                full_elf=full_elf,
             )
 
         self.trace_config = trace_config
@@ -238,13 +243,24 @@ class CallableDesign:
         # validated against.
         expected_sizes = compilable._expected_tensor_sizes
         num_host_bos = len(expected_sizes) if expected_sizes is not None else None
-        kernel = NPUKernel(
-            xclbin_path,
-            inst_path,
-            kernel_name="MLIR_AIE",
-            trace_config=trace_config,
-            num_host_bos=num_host_bos,
-        )
+        if compilable.full_elf:
+            # Full-ELF: compile() returns (elf_path, None). The kernel is loaded
+            # standalone from the ELF and addressed by its "<device>:<sequence>"
+            # name (there is no xclbin/insts pair).
+            kernel = NPUKernel(
+                elf_path=compilable._elf_path,
+                kernel_name=compilable._full_elf_kernel_name,
+                trace_config=trace_config,
+                num_host_bos=num_host_bos,
+            )
+        else:
+            kernel = NPUKernel(
+                xclbin_path,
+                inst_path,
+                kernel_name="MLIR_AIE",
+                trace_config=trace_config,
+                num_host_bos=num_host_bos,
+            )
         if compilable.use_cache:
             self._kernel_cache[cache_key] = kernel
         return kernel
@@ -345,12 +361,17 @@ class CallableDesign:
         )
 
         kernel = self._kernel_cache.get(cache_key) if compilable.use_cache else None
-        if kernel is not None and (
-            not Path(kernel.xclbin_path).is_file()
-            or not Path(kernel.insts_path).is_file()
-        ):
-            self._kernel_cache.pop(cache_key, None)
-            kernel = None
+        if kernel is not None:
+            if compilable.full_elf:
+                artifacts_present = Path(kernel.elf_path).is_file()
+            else:
+                artifacts_present = (
+                    Path(kernel.xclbin_path).is_file()
+                    and Path(kernel.insts_path).is_file()
+                )
+            if not artifacts_present:
+                self._kernel_cache.pop(cache_key, None)
+                kernel = None
         if kernel is None:
             kernel = self._compile_and_build_kernel(compilable, cache_key, trace_config)
 
@@ -379,8 +400,11 @@ class CallableDesign:
             )
 
             self._kernel_cache.pop(cache_key, None)
-            xclbin_path, _ = compilable.compile()
-            _evict_xrt_context(xclbin_path)
+            # compile() returns the primary artifact path first (xclbin, or the
+            # full ELF in full-ELF mode) -- the same path the context cache is
+            # keyed on, so it is the correct eviction key either way.
+            primary_artifact, _ = compilable.compile()
+            _evict_xrt_context(primary_artifact)
             kernel = self._compile_and_build_kernel(compilable, cache_key, trace_config)
             return kernel(*tensor_args, **remaining_scalars)
 
@@ -409,7 +433,8 @@ class CallableDesign:
         xclbin_path: Path | str | None = None,
         inst_path: Path | str | None = None,
         elf_path: Path | str | None = None,
-    ) -> tuple[Path, Path]:
+        full_elf_path: Path | str | None = None,
+    ) -> tuple[Path, Path | None]:
         """Eagerly compile this design and return ``(xclbin_path, inst_path)``.
 
         With no arguments, pre-warms the on-disk cache so subsequent calls with
@@ -426,9 +451,16 @@ class CallableDesign:
         instructions into an ELF (via ``aiebu-asm``) at that path.  Needed by
         C++ testbenches that load instructions through ``xrt::elf`` +
         ``xrt::module``; requires explicit ``xclbin_path`` + ``inst_path``.
+
+        ``full_elf_path`` (or ``full_elf=True`` on the design) selects full-ELF
+        mode: a single self-contained ELF is written there instead of an
+        xclbin + insts pair, and the return value is ``(elf_path, None)``.
         """
         return self.compilable.compile(
-            xclbin_path=xclbin_path, inst_path=inst_path, elf_path=elf_path
+            xclbin_path=xclbin_path,
+            inst_path=inst_path,
+            elf_path=elf_path,
+            full_elf_path=full_elf_path,
         )
 
     def as_mlir(self, *runtime_args, **runtime_kwargs) -> str:

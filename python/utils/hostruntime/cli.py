@@ -113,11 +113,14 @@ def run_design_cli(
 
          Then return.
 
-      4. If ``opts.xclbin_path`` is set:
+      4. If ``opts.xclbin_path`` or ``opts.full_elf_path`` is set (compile-only):
 
-         * Refuse if ``opts.insts_path`` is unset (``sys.exit`` with the
-           standard message).
-         * Call ``design.specialize(**compile_kwargs).compile(
+         * For ``full_elf_path``: call ``design.specialize(**compile_kwargs)
+           .compile(full_elf_path=opts.full_elf_path)`` — a single
+           self-contained ELF, no xclbin/insts.
+         * Otherwise refuse if ``opts.insts_path`` is unset (``sys.exit`` with
+           the standard message), then call
+           ``design.specialize(**compile_kwargs).compile(
            xclbin_path=opts.xclbin_path, inst_path=opts.insts_path,
            [elf_path=opts.elf_path])``.
 
@@ -165,10 +168,15 @@ def run_design_cli(
     from aie.utils.hostruntime import set_current_device
 
     emit_mlir_requested = getattr(opts, "emit_mlir", False)
-    compile_only_requested = getattr(opts, "xclbin_path", None) is not None
+    full_elf_path = getattr(opts, "full_elf_path", None)
+    compile_only_requested = (
+        getattr(opts, "xclbin_path", None) is not None or full_elf_path is not None
+    )
     requested_dev = getattr(opts, "dev", None)
 
-    if compile_only_requested and not getattr(opts, "insts_path", None):
+    if getattr(opts, "xclbin_path", None) is not None and not getattr(
+        opts, "insts_path", None
+    ):
         sys.exit("--xclbin-path requires --insts-path (must be set together)")
 
     if requested_dev is None:
@@ -221,6 +229,10 @@ def run_design_cli(
     if compile_only_requested:
         kwargs = _resolve(compile_kwargs, opts)
         spec = design.specialize(**kwargs)
+        if full_elf_path is not None:
+            # Full ELF is self-contained: no xclbin/insts pair.
+            spec.compile(full_elf_path=full_elf_path)
+            return
         compile_opts = dict(xclbin_path=opts.xclbin_path, inst_path=opts.insts_path)
         elf_path = getattr(opts, "elf_path", None)
         if elf_path is not None:

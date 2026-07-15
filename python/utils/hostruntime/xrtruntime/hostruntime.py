@@ -35,19 +35,32 @@ class XRTKernelHandle(KernelHandle):
     Handle for a loaded XRT kernel.
     """
 
-    def __init__(self, kernel, xclbin, context, insts, insts_bo=None, name=None):
+    def __init__(
+        self,
+        kernel,
+        xclbin,
+        context,
+        insts,
+        insts_bo=None,
+        name=None,
+        is_full_elf=False,
+    ):
         """
         Initialize the XRTKernelHandle.
 
         Args:
             kernel: The XRT kernel object.
-            xclbin: The XRT xclbin object.
+            xclbin: The XRT xclbin object.  ``None`` on the full-ELF path.
             context: The XRT context object.
-            insts: The instructions for the kernel.
+            insts: The instructions for the kernel.  ``None`` on the full-ELF
+                path (the ELF carries its own control code).
             insts_bo (optional): The instruction buffer object. Defaults to None.
             name (optional): The resolved name of the loaded kernel, used to
                 look up the matching kernel in an xclbin that declares several.
                 Defaults to None.
+            is_full_elf (bool, optional): True when the kernel was loaded from a
+                self-contained full ELF; selects the ``run.set_arg`` +
+                ``run.start`` execution path in ``run()``.  Defaults to False.
         """
         self.kernel = kernel
         self.xclbin = xclbin
@@ -55,6 +68,7 @@ class XRTKernelHandle(KernelHandle):
         self.insts = insts
         self.insts_bo = insts_bo
         self.name = name
+        self.is_full_elf = is_full_elf
 
 
 class XRTKernelResult(KernelResult):
@@ -185,6 +199,10 @@ class XRTHostRuntime(HostRuntime):
             HostRuntimeError: If xclbin or insts files do not exist, or if kernel is not found.
         """
         self.check_device_consistency()
+
+        if getattr(npu_kernel, "elf_path", None) is not None:
+            return self._load_full_elf(npu_kernel)
+
         xclbin_path = Path(npu_kernel.xclbin_path).resolve()
         insts_path = Path(npu_kernel.insts_path).resolve()
         kernel_name = npu_kernel.kernel_name
@@ -226,6 +244,29 @@ class XRTHostRuntime(HostRuntime):
         )
         return kernel_handle
 
+    def _load_full_elf(self, npu_kernel) -> XRTKernelHandle:
+        """Load a kernel from a self-contained full ELF.
+
+        The full ELF bundles the PDIs + TXN control code, so the hardware
+        context is created directly from ``pyxrt.elf(path)`` (no xclbin), and
+        the kernel is addressed by its ``"<device>:<sequence>"`` name.
+        """
+        elf_path = Path(npu_kernel.elf_path).resolve()
+        kernel_name = npu_kernel.kernel_name
+
+        if not elf_path.exists() or not elf_path.is_file():
+            raise HostRuntimeError(
+                f"full ELF {elf_path} does not exist or is not a file."
+            )
+
+        elf = pyxrt.elf(str(elf_path))
+        context = pyxrt.hw_context(self._device, elf)
+        kernel = pyxrt.ext.kernel(context, kernel_name)
+
+        return XRTKernelHandle(
+            kernel, None, context, None, name=kernel_name, is_full_elf=True
+        )
+
     def run(
         self,
         kernel_handle: KernelHandle,
@@ -262,6 +303,9 @@ class XRTHostRuntime(HostRuntime):
             )
         [a.to("npu") for a in args]
         buffers = [a.buffer_object() for a in args]
+
+        if kernel_handle.is_full_elf:
+            return self._run_full_elf(kernel_handle, buffers, fail_on_error)
 
         # Validate BO count against xclbin metadata before calling into XRT.
         # XRT's validate_bo_at_index segfaults if the index exceeds the count
@@ -323,6 +367,33 @@ class XRTHostRuntime(HostRuntime):
 
         return XRTKernelResult(r, stop - start)
 
+    def _run_full_elf(
+        self,
+        kernel_handle: "XRTKernelHandle",
+        buffers,
+        fail_on_error: bool,
+    ) -> XRTKernelResult:
+        """Execute a full-ELF kernel via the ``run.set_arg`` / ``start`` path.
+
+        Full-ELF kernels carry their own control code in the ELF, so there is
+        no instruction buffer to pass: each host buffer (including any trace
+        buffer the trace lowering appended) is bound positionally with
+        ``set_arg``.
+        """
+        run = pyxrt.run(kernel_handle.kernel)
+        for i, buf in enumerate(buffers):
+            run.set_arg(i, buf)
+
+        start = time.time_ns()
+        run.start()
+        r = run.wait2()
+        stop = time.time_ns()
+
+        if fail_on_error and r != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
+            raise HostRuntimeError(f"Kernel returned {str(r)}")
+
+        return XRTKernelResult(r, stop - start)
+
     def device(self) -> "Device":
         """
         Get the device associated with this runtime.
@@ -353,18 +424,32 @@ class CachedXRTKernelHandle(XRTKernelHandle):
     A cached handle for a loaded XRT kernel.
     """
 
-    def __init__(self, kernel, xclbin, context, insts, insts_bo=None):
+    def __init__(
+        self,
+        kernel,
+        xclbin,
+        context,
+        insts,
+        insts_bo=None,
+        name=None,
+        is_full_elf=False,
+    ):
         """
         Initialize the CachedXRTKernelHandle.
 
         Args:
             kernel: The XRT kernel object.
-            xclbin: The XRT xclbin object.
+            xclbin: The XRT xclbin object.  ``None`` on the full-ELF path.
             context: The XRT context object.
-            insts: The instructions for the kernel.
+            insts: The instructions for the kernel.  ``None`` on the full-ELF path.
             insts_bo (optional): The instruction buffer object. Defaults to None.
+            name (optional): The resolved kernel name. Defaults to None.
+            is_full_elf (bool, optional): True when loaded from a full ELF.
+                Defaults to False.
         """
-        super().__init__(kernel, xclbin, context, insts, insts_bo)
+        super().__init__(
+            kernel, xclbin, context, insts, insts_bo, name=name, is_full_elf=is_full_elf
+        )
         self._is_valid = True
 
     def invalidate(self):
@@ -590,6 +675,88 @@ class CachedXRTRuntime(XRTHostRuntime):
             self._evict_insts()
         gc.collect()
 
+    def _load_full_elf_cached(
+        self, npu_kernel, retry: bool = True
+    ) -> CachedXRTKernelHandle:
+        """Cached full-ELF load: reuse a hw_context keyed on ``(elf_path, mtime)``.
+
+        Full ELFs carry their own PDIs + control code, so the context is built
+        from ``pyxrt.elf`` (no xclbin, no instruction BO cache).  Context reuse
+        follows the same LRU + Phoenix-drain policy as the xclbin path.
+        """
+        elf_path = Path(npu_kernel.elf_path).resolve()
+        kernel_name = npu_kernel.kernel_name
+
+        if not elf_path.exists() or not elf_path.is_file():
+            raise HostRuntimeError(
+                f"full ELF {elf_path} does not exist or is not a file."
+            )
+
+        elf_mtime = elf_path.stat().st_mtime
+        context_key = (str(elf_path), elf_mtime)
+
+        try:
+            if context_key in self._context_cache:
+                entry = self._context_cache[context_key]
+                self._context_cache.move_to_end(context_key)
+                context = entry["context"]
+                entry["handles"] = [
+                    ref for ref in entry["handles"] if ref() is not None
+                ]
+            else:
+                if len(self._context_cache) >= self._cache_size:
+                    if self.npu_str == "npu1":
+                        while self._context_cache:
+                            self._evict()
+                    else:
+                        self._evict()
+
+                elf = pyxrt.elf(str(elf_path))
+
+                context = None
+                retries = 0
+                max_retries = len(self._context_cache) if retry else 0
+                while context is None:
+                    try:
+                        context = pyxrt.hw_context(self._device, elf)
+                    except RuntimeError as e:
+                        if self._context_cache and retries < max_retries:
+                            self._evict()
+                            retries += 1
+                        else:
+                            raise e
+
+                entry = {
+                    "context": context,
+                    "xclbin": None,
+                    "kernels": {},
+                    "handles": [],
+                    "insts_keys": set(),
+                    "uuid": None,
+                }
+                self._context_cache[context_key] = entry
+
+            if kernel_name not in entry["kernels"]:
+                entry["kernels"][kernel_name] = pyxrt.ext.kernel(context, kernel_name)
+            kernel = entry["kernels"][kernel_name]
+
+            kernel_handle = CachedXRTKernelHandle(
+                kernel, None, context, None, name=kernel_name, is_full_elf=True
+            )
+            entry["handles"].append(weakref.ref(kernel_handle))
+            return kernel_handle
+
+        except Exception:
+            if context_key in self._context_cache:
+                entry = self._context_cache[context_key]
+                entry["handles"] = [
+                    ref for ref in entry["handles"] if ref() is not None
+                ]
+                if not entry["handles"]:
+                    del self._context_cache[context_key]
+                    self._cleanup_entry(entry)
+            raise
+
     def load(
         self,
         npu_kernel,
@@ -611,6 +778,10 @@ class CachedXRTRuntime(XRTHostRuntime):
             HostRuntimeError: If xclbin or insts files do not exist, or if kernel is not found.
         """
         self.check_device_consistency()
+
+        if getattr(npu_kernel, "elf_path", None) is not None:
+            return self._load_full_elf_cached(npu_kernel, retry=retry)
+
         xclbin_path = Path(npu_kernel.xclbin_path).resolve()
         insts_path = Path(npu_kernel.insts_path).resolve()
         kernel_name = npu_kernel.kernel_name
