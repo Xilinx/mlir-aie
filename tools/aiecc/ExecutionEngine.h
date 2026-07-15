@@ -267,10 +267,6 @@ struct Engine {
       progressPrevLen = line.size();
     };
     auto reportEdge = [&](EdgeBase *e) {
-      size_t inItems = 0;
-      for (NodeBase *n : e->inputNodes())
-        if (n)
-          inItems += n->itemRefs().size();
       std::string line = "(" + std::to_string(step) + "/" +
                          std::to_string(totalSteps) + ") " +
                          displayName(e).str();
