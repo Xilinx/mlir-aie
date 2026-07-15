@@ -8,6 +8,14 @@ updates:
     schedule:
       interval: "cron"
       cronjob: "0 6 8,22 * *"
+    # Wait for a release to age before proposing it: cuts churn from
+    # same-week point releases and blunts supply-chain risk from a freshly
+    # published (possibly compromised) version. The biweekly schedule bounds
+    # how stale a check can be but gives NO minimum age on what it adopts;
+    # cooldown adds that floor. Security-alert PRs bypass cooldown entirely.
+    cooldown:
+      default-days: 7
+      semver-major-days: 7
     groups:
       github-actions-minor-patch:
         update-types: ["minor", "patch"]
@@ -15,14 +23,11 @@ updates:
         update-types: ["major"]
 
   # All pip manifests share a build toolchain (nanobind, pybind11, cmake,
-  # setuptools, numpy, ...). They live in one entry using the plural
-  # `directories` key so a bump to a shared dependency lands as a SINGLE
-  # cross-directory PR instead of independent per-directory PRs. Previously
-  # these were three separate entries; a per-directory bump moved one manifest
-  # and left the others behind, drifting nanobind out of ABI lockstep and
-  # breaking wheels at import time. One entry makes that divergence impossible
-  # by construction (the check_shared_dep_versions.py CI guard is the backstop
-  # for hand edits).
+  # setuptools, numpy, ...) that must resolve to the same version across every
+  # directory to stay ABI-compatible with the prebuilt distro wheels. They are
+  # covered by one entry using the plural `directories` key, combined with the
+  # `group-by` grouping below, so a shared-dependency bump is synchronized
+  # across all three directories rather than fanning out per directory.
   - package-ecosystem: "pip"
     directories:
       - "/python"
@@ -37,19 +42,30 @@ updates:
     # until that lands (revisit alongside the eudsl/llvm bump).
     ignore:
       - dependency-name: "nanobind"
+    cooldown:
+      default-days: 7
+      semver-major-days: 7
+    # `group-by: dependency-name` makes Dependabot open ONE pull request per
+    # dependency spanning ALL directories above, so a shared package (numpy,
+    # setuptools, ...) is bumped to the same version in /python and both wheel
+    # dirs in a single PR. Without it, `directories` (plural) runs a separate
+    # update job per directory and the same bump fans out into independent
+    # per-directory PRs that can merge at different times, leaving the shared
+    # ABI toolchain out of lockstep. The committed .lock files are regenerated
+    # and committed onto the same PR by the dependabot-sync-locks workflow.
     groups:
-      pip-minor-patch:
+      cross-directory:
         patterns: ["*"]
-        update-types: ["minor", "patch"]
-      pip-major:
-        patterns: ["*"]
-        update-types: ["major"]
+        group-by: dependency-name
 
   - package-ecosystem: "pre-commit"
     directory: "/"
     schedule:
       interval: "cron"
       cronjob: "0 6 8,22 * *"
+    cooldown:
+      default-days: 7
+      semver-major-days: 7
     groups:
       pre-commit-minor-patch:
         update-types: ["minor", "patch"]
