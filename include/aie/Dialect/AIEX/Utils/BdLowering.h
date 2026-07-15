@@ -24,9 +24,15 @@
 
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Value.h"
+#include "mlir/Support/LLVM.h"
+#include "llvm/ADT/ArrayRef.h"
 
 #include <cstdint>
 #include <tuple>
+
+namespace xilinx::AIE {
+class AIETargetModel;
+} // namespace xilinx::AIE
 
 namespace xilinx::AIEX {
 
@@ -156,6 +162,28 @@ mlir::Value getAsValue(mlir::OpBuilder &builder, mlir::Location loc,
 mlir::Value
 buildBdWord(mlir::OpBuilder &builder, mlir::Location loc,
             llvm::ArrayRef<std::tuple<mlir::Value, uint32_t, uint32_t>> fields);
+
+// Emit the per-word `npu.write32` overrides that carry a shim-NOC BD's runtime
+// sizes/strides, on top of a zero-template blockwrite whose size/stride words
+// were left at 0. Shared by the dma_memcpy_nd and dma_task dynamic lowering
+// paths, which converge on the identical shim BD-word layout (words 0/3/4/5/6);
+// only the descriptor template (locks, next_bd, packet) and the queue push
+// differ, and those stay with each caller.
+//
+// `mixedSizes`/`mixedStrides` are innermost-first (d0..d3). `bufLenOverride`,
+// if non-null, is written verbatim into buffer_length (word 0) -- dma_task
+// passes its runtime `len`; dma_memcpy_nd passes null, so buffer_length is
+// computed as the d0*d1*d2 hardware-unit size-product. Emits
+// `npu.assert_bd_field` guards for runtime values landing in narrow fields
+// (d0/d1 wrap 10-bit in ND mode, iteration wrap 6-bit always). The op verifier
+// is expected to have enforced the supported scope (shim NOC, innermost stride
+// == 1) already.
+mlir::LogicalResult emitDynamicShimBdWordOverrides(
+    mlir::OpBuilder &builder, mlir::Location loc,
+    const xilinx::AIE::AIETargetModel &targetModel, int tileCol, int tileRow,
+    uint32_t bdId, llvm::ArrayRef<mlir::OpFoldResult> mixedSizes,
+    llvm::ArrayRef<mlir::OpFoldResult> mixedStrides, uint64_t elemWidth,
+    uint32_t burstLength, mlir::Value bufLenOverride);
 
 } // namespace xilinx::AIEX
 

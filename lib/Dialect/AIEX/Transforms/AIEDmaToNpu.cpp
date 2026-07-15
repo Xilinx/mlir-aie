@@ -452,8 +452,8 @@ public:
     // Resolve the buffer's runtime-sequence arg and emit the address patch
     // (plus any offset-state update).
     int arg_idx = -1;
-    if (failed(
-            emitBufferAddressPatch(op, adaptor, rewriter, tileCol, tileRow, arg_idx)))
+    if (failed(emitBufferAddressPatch(op, adaptor, rewriter, tileCol, tileRow,
+                                      arg_idx)))
       return failure();
 
     // push the patched bd onto the dma task queue. bd_id and repeat_count are
@@ -479,7 +479,8 @@ public:
                                        ConversionPatternRewriter &rewriter,
                                        int tileCol, int tileRow,
                                        int &argIdx) const {
-    AIE::RuntimeSequenceOp seqOp = op->getParentOfType<AIE::RuntimeSequenceOp>();
+    AIE::RuntimeSequenceOp seqOp =
+        op->getParentOfType<AIE::RuntimeSequenceOp>();
     if (!seqOp)
       return op->emitOpError("NpuDmaMemcpyNdOps must have RuntimeSequenceOp "
                              "parent at time of lowering.");
@@ -585,150 +586,25 @@ public:
         /*d1_zero_after=*/zero, /*d2_zero_after=*/zero,
         /*burst_length=*/IntegerAttr::get(i32ty, op.getBurstLength()));
 
-    // Compute the hardware sizes/strides as SSA values via the shared encoder.
-    uint64_t elemWidth = op.getElementTypeBitwidth();
-    uint32_t gran = targetModel.getAddressGenGranularity();
-    SmallVector<OpFoldResult, 4> mixedSizesRev(
-        llvm::reverse(op.getMixedSizes()));
-    SmallVector<OpFoldResult, 4> mixedStridesRev(
-        llvm::reverse(op.getMixedStrides()));
-    Value inS[4], inT[4], hwS[4], hwT[4];
-    for (int i = 0; i < 4; i++) {
-      inS[i] = getAsValue(rewriter, loc, mixedSizesRev[i], i32ty);
-      inT[i] = getAsValue(rewriter, loc, mixedStridesRev[i], i32ty);
-    }
-    int64_t innerStride0 = getConstantIntValue(mixedStridesRev[0]).value();
-    SsaStridePolicy policy(rewriter, loc, innerStride0);
-    encodeHardwareStridesWraps(policy, elemWidth, gran, inS, inT, hwS, hwT);
-
-    // buffer_length (word[0]) = d0 * d1 * d2 in hardware units. hwS[0] already
-    // carries the elemWidth/gran scaling; d1/d2 are element counts.
-    Value bufLen = arith::MulIOp::create(
-        rewriter, loc, arith::MulIOp::create(rewriter, loc, hwS[0], inS[1]),
-        inS[2]);
-
-    // Linear-mode decision, mirroring the static path: a contiguous shim-NOC
-    // transfer is lowered to linear mode (d0_size=d1_size=0, whole transfer in
-    // buffer_length), which avoids the 10-bit d0_size limit. The contiguity
-    // relation compares sizes against strides, so it must be decidable from
-    // compile-time constants; the verifier rejects a would-be-contiguous
-    // transfer whose relevant operands are runtime, so if we get here with a
-    // runtime size in d0/d1 the transfer is genuinely non-contiguous (ND).
-    // Contiguity compares each dimension's stride against the product of the
-    // *inner* sizes -- it never needs a dimension's own size. So a transfer
-    // with runtime *outer* sizes is still provably contiguous as long as the
-    // inner sizes and the compared strides are compile-time constants (the
-    // common case: only the block count is runtime, the block shape is fixed).
-    // When a needed operand is runtime, contiguity is undecidable and we fall
-    // back to ND mode; the verifier's constant-bound check + the fact that a
-    // runtime d0/d1 *size* that could exceed the 10-bit field is rejected there
-    // keeps that safe.
-    // Contiguity decides linear mode (d0/d1 folded into buffer_length, dodging
-    // the 10-bit d0_size limit). This is a RUNTIME-AWARE extension of the static
-    // isContiguousTransfer, not a reimplementation: that helper reads a
-    // dimension's own size (`sizes[i] > 1`), so it cannot classify a transfer
-    // whose d1/d2 SIZE is runtime. Here a runtime outer size is still provably
-    // contiguous when its stride equals the product of the (constant) inner
-    // sizes -- contiguity never needs a dimension's own size, only the compared
-    // stride and the strictly-inner sizes. The common case: only the block
-    // count is runtime while the block shape is fixed. When a NEEDED operand is
-    // runtime, contiguity is undecidable and we fall back to ND mode (safe: a
-    // runtime d0/d1 size that could overflow the 10-bit field is guarded below).
-    auto cst = [&](OpFoldResult v) { return getConstantIntValue(v); };
-    auto knownContiguous = [&]() -> bool {
-      // d0 (innermost) stride must be a constant 1.
-      auto s0 = cst(mixedStridesRev[0]);
-      if (!s0 || *s0 != 1)
-        return false;
-      auto sz0 = cst(mixedSizesRev[0]);
-      // d1/d2 each add a constraint UNLESS their size is a constant 1: their
-      // stride must equal the product of the strictly-inner sizes (all of which
-      // must therefore be constant to check).
-      auto d1sz = cst(mixedSizesRev[1]);
-      auto d1st = cst(mixedStridesRev[1]);
-      if (!(d1sz && *d1sz == 1))
-        if (!sz0 || !d1st || *d1st != *sz0)
-          return false;
-      auto d2sz = cst(mixedSizesRev[2]);
-      auto d2st = cst(mixedStridesRev[2]);
-      if (!(d2sz && *d2sz == 1)) {
-        auto prod01 =
-            (sz0 && d1sz) ? std::optional<int64_t>(*sz0 * *d1sz) : std::nullopt;
-        if (!prod01 || !d2st || *d2st != *prod01)
-          return false;
-      }
-      return true;
-    };
-    bool isLinear = knownContiguous();
-
-    // Host-side bounds guard for a RUNTIME size that lands in a narrow BD field
-    // (masking would silently truncate an out-of-range value). Constant sizes
-    // are already range-checked by the verifier, so guard only runtime ones,
-    // and only for fields actually used: d0/d1 wrap (10-bit) exist in ND mode;
-    // the iteration wrap (6-bit) always. The guard is on the hardware value.
-    auto guardField = [&](OpFoldResult inSize, Value hwVal, int64_t fieldMax) {
-      if (getConstantIntValue(inSize))
-        return; // constant: verifier already enforced the bound.
-      NpuAssertBdFieldOp::create(rewriter, loc, hwVal,
-                                 rewriter.getI32IntegerAttr(fieldMax));
-    };
-    if (!isLinear) {
-      guardField(mixedSizesRev[0], hwS[0], (1 << 10) - 1);
-      guardField(mixedSizesRev[1], hwS[1], (1 << 10) - 1);
-    }
-    guardField(mixedSizesRev[3], hwS[3], (1 << 6) - 1);
-
-    uint64_t bdAddr = targetModel.getDmaBdAddress(tileCol, tileRow, op.getId());
-    auto writeWord = [&](uint32_t wordIdx, Value val) {
-      NpuWrite32Op::create(
-          rewriter, loc,
-          createConstantI32(rewriter, loc,
-                            static_cast<uint32_t>(bdAddr + wordIdx * 4)),
-          val, nullptr, nullptr, nullptr);
-    };
-
-    // word[0] buffer_length is always overridden (it carries the runtime
-    // element count in both linear and ND modes).
-    writeWord(0, bufLen);
-
-    // In linear mode the d0/d1/d2 size/stride words stay at their zero template
-    // values (matching the static path); only buffer_length + iteration are
-    // meaningful. In ND mode, override the size/stride words.
-    if (!isLinear) {
-      // word[3]: d0_size [29:20], d0_stride [19:0].
-      writeWord(3, buildBdWord(rewriter, loc,
-                               {{hwS[0], 0x3FF, 20}, {hwT[0], 0xFFFFF, 0}}));
-      // word[4]: burst_length [31:30] (static), d1_size [29:20],
-      //          d1_stride [19:0].
-      Value burst = createConstantI32(
-          rewriter, loc,
-          (getShimBurstLengthEncoding(targetModel, op.getBurstLength()) & 0x3)
-              << 30);
-      writeWord(4, arith::OrIOp::create(rewriter, loc, burst,
-                                        buildBdWord(rewriter, loc,
-                                                    {{hwS[1], 0x3FF, 20},
-                                                     {hwT[1], 0xFFFFF, 0}})));
-      // word[5]: AXCache [27:24] (static), d2_stride [19:0]. Shim d2_size is
-      //          always 0 (the template already has it), carried by bufLen.
-      Value axcache = createConstantI32(rewriter, loc, (2u & 0xf) << 24);
-      writeWord(5, arith::OrIOp::create(
-                       rewriter, loc, axcache,
-                       buildBdWord(rewriter, loc, {{hwT[2], 0xFFFFF, 0}})));
-    }
-    // word[6]: iteration_size [25:20], iteration_stride [19:0]. Meaningful in
-    // both modes (the outer repeat dimension is independent of linearization).
-    writeWord(6, buildBdWord(rewriter, loc,
-                             {{hwS[3], 0x3F, 20}, {hwT[3], 0xFFFFF, 0}}));
+    // Emit the runtime size/stride BD-word overrides (shared with dma_task).
+    // buffer_length is the size-product here, so pass no override (null).
+    if (failed(emitDynamicShimBdWordOverrides(
+            rewriter, loc, targetModel, tileCol, tileRow, op.getId(),
+            op.getMixedSizes(), op.getMixedStrides(),
+            op.getElementTypeBitwidth(), op.getBurstLength(),
+            /*bufLenOverride=*/Value())))
+      return failure();
 
     // Address patch for the buffer pointer (offset is compile-time here).
     int arg_idx = -1;
-    if (failed(
-            emitBufferAddressPatch(op, adaptor, rewriter, tileCol, tileRow, arg_idx)))
+    if (failed(emitBufferAddressPatch(op, adaptor, rewriter, tileCol, tileRow,
+                                      arg_idx)))
       return failure();
 
     // Push the BD. repeat_count is the outer (d3) element count; it may be a
     // runtime value, so it flows in as an SSA operand.
-    Value repeatCount = getAsValue(rewriter, loc, mixedSizesRev[3], i32ty);
+    Value repeatCount =
+        getAsValue(rewriter, loc, op.getMixedSizes().back(), i32ty);
     NpuPushQueueOp::create(
         rewriter, loc, column, row, infoOp.getChannelDirAttr(),
         infoOp.getChannelIndexAttr(), issue_token, repeatCount,
