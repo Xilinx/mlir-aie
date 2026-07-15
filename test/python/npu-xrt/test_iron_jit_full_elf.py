@@ -113,20 +113,14 @@ def test_full_elf_aot_single_elf(tmp_path):
 
 
 def test_full_elf_matches_xclbin_path(input_array):
-    """Full-ELF output is identical to the default xclbin+insts path."""
+    """Full-ELF output is identical to the default xclbin+insts path.
+
+    The full-ELF design is derived from the xclbin one with
+    ``specialize(full_elf=True)`` -- one design, two compile paths.
+    """
 
     @iron.jit(N=_N, add_value=9)
-    def add_nine_xclbin(
-        input_buf: In,
-        output_buf: Out,
-        *,
-        N: CompileTime[int],
-        add_value: CompileTime[int],
-    ):
-        return _add_const_design(input_buf, output_buf, N=N, add_value=add_value)
-
-    @iron.jit(N=_N, add_value=9, full_elf=True)
-    def add_nine_full_elf(
+    def add_nine(
         input_buf: In,
         output_buf: Out,
         *,
@@ -136,11 +130,11 @@ def test_full_elf_matches_xclbin_path(input_array):
         return _add_const_design(input_buf, output_buf, N=N, add_value=add_value)
 
     out_xclbin = iron.zeros(_N, dtype=np.int32, device="npu")
-    add_nine_xclbin(input_array, out_xclbin)
+    add_nine(input_array, out_xclbin)
     out_xclbin.to("cpu")
 
     out_elf = iron.zeros(_N, dtype=np.int32, device="npu")
-    add_nine_full_elf(input_array, out_elf)
+    add_nine.specialize(full_elf=True)(input_array, out_elf)
     out_elf.to("cpu")
 
     np.testing.assert_array_equal(out_elf.numpy(), out_xclbin.numpy())

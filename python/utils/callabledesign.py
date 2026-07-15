@@ -408,12 +408,19 @@ class CallableDesign:
             kernel = self._compile_and_build_kernel(compilable, cache_key, trace_config)
             return kernel(*tensor_args, **remaining_scalars)
 
-    def specialize(self, **compile_kwargs) -> "CallableDesign":
-        """Return a new ``CallableDesign`` with additional ``CompileTime[T]`` kwargs bound.
+    def specialize(self, **overrides) -> "CallableDesign":
+        """Return a new ``CallableDesign`` with overrides applied.
 
-        The given kwargs are merged onto any pre-bound ``compile_kwargs`` with
-        call-time values winning — matching ``__call__`` / ``as_mlir`` semantics.
-        Config (``source_files``, ``aiecc_flags``, etc.) is preserved.
+        Overrides are split by name: those matching a configuration parameter
+        (``use_cache``, ``aiecc_flags``, ``full_elf``, ``trace_config``, …)
+        replace that config; all others are treated as ``CompileTime[T]`` values
+        and merged onto any pre-bound ``compile_kwargs`` (call-time values
+        winning — matching ``__call__`` / ``as_mlir`` semantics).  Every other
+        config is preserved.
+
+        Config is thus as retargetable as ``CompileTime[T]`` kwargs — e.g.
+        ``design.specialize(full_elf=True)`` re-aims an existing design at the
+        full-ELF path, symmetric with ``@iron.jit(full_elf=True)``.
 
         Use together with :meth:`compile` to perform ahead-of-time compilation
         of a JIT-decorated design at known shapes::
@@ -423,9 +430,13 @@ class CallableDesign:
 
             matmul.specialize(M=256, K=256, N=256, element_type=np.int16).compile()
         """
+        # trace_config lives on CallableDesign; every other config lives on the
+        # underlying CompilableDesign.  Pull trace_config out and forward the
+        # rest (config + CompileTime[T] kwargs) to the CompilableDesign split.
+        trace_config = overrides.pop("trace_config", self.trace_config)
         return CallableDesign(
-            self.compilable.specialize(**compile_kwargs),
-            trace_config=self.trace_config,
+            self.compilable.specialize(**overrides),
+            trace_config=trace_config,
         )
 
     def compile(

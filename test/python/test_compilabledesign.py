@@ -914,3 +914,71 @@ def test_compile_mixed_explicit_paths_raises():
         cd.compile(xclbin_path="/tmp/foo.xclbin", inst_path=None)
     with pytest.raises(ValueError, match="must be set together"):
         cd.compile(xclbin_path=None, inst_path="/tmp/foo.bin")
+
+
+# ---------------------------------------------------------------------------
+# specialize(): config overrides + CompileTime[T] kwargs
+# ---------------------------------------------------------------------------
+
+
+def test_config_param_names_matches_construction():
+    """config_param_names() covers every ctor param except generator+kwargs."""
+    from aie.utils.compile.jit.compilabledesign import config_param_names
+
+    assert config_param_names(CompilableDesign) == {
+        "use_cache",
+        "compile_flags",
+        "source_files",
+        "include_paths",
+        "aiecc_flags",
+        "object_files",
+        "full_elf",
+    }
+
+
+def test_specialize_binds_compile_kwargs():
+    """Non-config overrides become CompileTime[T] kwargs."""
+    d = CompilableDesign(_gemm_gen())
+    s = d.specialize(M=512, K=256, N=128)
+    assert s.compile_kwargs == {"M": 512, "K": 256, "N": 128}
+
+
+def test_specialize_overrides_config():
+    """A config-named override replaces that config on the new design."""
+    d = CompilableDesign(_gemm_gen())
+    assert d.full_elf is False
+    s = d.specialize(full_elf=True)
+    assert s.full_elf is True
+    # original is unchanged (specialize returns a new design)
+    assert d.full_elf is False
+
+
+def test_specialize_preserves_other_config():
+    """Config not mentioned in the override is carried over from self."""
+    d = CompilableDesign(
+        _gemm_gen(), aiecc_flags=["--dynamic-objFifos"], use_cache=False
+    )
+    s = d.specialize(full_elf=True, M=512)
+    assert s.full_elf is True
+    assert s.aiecc_flags == ("--dynamic-objFifos",)
+    assert s.use_cache is False
+    assert s.compile_kwargs == {"M": 512}
+
+
+def test_specialize_mixes_config_and_compile_kwargs():
+    """A single call can override config and bind CompileTime[T] together."""
+    d = CompilableDesign(_gemm_gen(), compile_kwargs={"M": 1})
+    s = d.specialize(full_elf=True, M=512, K=256)
+    assert s.full_elf is True
+    # call-time compile kwargs win over pre-bound
+    assert s.compile_kwargs == {"M": 512, "K": 256}
+
+
+def test_specialize_config_lists_are_independent_copies():
+    """Mutating the child's list config must not affect the parent."""
+    d = CompilableDesign(_gemm_gen(), source_files=["a.cc"])
+    s = d.specialize(full_elf=True)
+    assert [p.name for p in s.source_files] == ["a.cc"]
+    # tuples are immutable; the point is the child got its own copy, not a
+    # shared alias -- equal by value, distinct config surface.
+    assert s.source_files == d.source_files

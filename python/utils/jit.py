@@ -50,15 +50,13 @@ import inspect as _inspect
 from typing import Callable
 
 from aie.utils.callabledesign import CallableDesign as _CallableDesign
+from aie.utils.compile.jit.compilabledesign import config_param_names
 
-# Derived from CallableDesign.__init__ so it stays in sync automatically.
-# Excludes 'self', 'mlir_generator', and 'compile_kwargs' — those are
-# positional/compile-param arguments, not config keys.
-_JIT_CONFIG_KEYS = frozenset(
-    p
-    for p in _inspect.signature(_CallableDesign.__init__).parameters
-    if p not in ("self", "mlir_generator", "compile_kwargs")
-)
+# Derived from CallableDesign.__init__ so it stays in sync automatically:
+# everything but the generator and its compile_kwargs.  Shared with
+# CompilableDesign/CallableDesign.specialize() via config_param_names() so the
+# decorator and specialize() agree on what counts as config.
+_JIT_CONFIG_KEYS = config_param_names(_CallableDesign)
 
 
 def jit(mlir_generator: Callable | None = None, **kwargs):

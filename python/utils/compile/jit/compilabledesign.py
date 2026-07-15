@@ -69,6 +69,28 @@ from .markers import CompileTime, In, InOut, Out
 logger = logging.getLogger(__name__)
 
 
+def config_param_names(cls) -> frozenset[str]:
+    """Names of ``cls.__init__``'s configuration parameters.
+
+    Everything on the constructor except the generator itself and its
+    ``compile_kwargs`` (the ``CompileTime[T]`` values).  This is the single
+    source of truth for:
+
+    * ``specialize()``'s split of overrides into config vs. ``CompileTime[T]``
+      kwargs, and
+    * ``@iron.jit``'s detection of config keys (``jit._JIT_CONFIG_KEYS``).
+
+    Deriving it from the signature means a newly added config parameter is
+    honored by ``specialize`` and the decorator automatically, instead of being
+    silently dropped by a hand-maintained list.
+    """
+    return frozenset(
+        name
+        for name in inspect.signature(cls).parameters
+        if name not in ("mlir_generator", "compile_kwargs")
+    )
+
+
 class CompilableDesign:
     """Bundles an MLIR generator with compile-time parameters.
 
@@ -159,23 +181,45 @@ class CompilableDesign:
     # Public API
     # ------------------------------------------------------------------
 
-    def specialize(self, **compile_kwargs) -> "CompilableDesign":
-        """Return a new ``CompilableDesign`` with additional ``CompileTime[T]`` kwargs bound.
+    def _config(self) -> dict[str, Any]:
+        """Current values of every configuration parameter, keyed by name.
 
-        The given kwargs are merged onto ``self.compile_kwargs`` with call-time
-        values winning.  All other config (``source_files``, ``aiecc_flags``,
-        ``include_paths``, etc.) is preserved.
+        Read back from the stored attributes (which share the constructor
+        parameter names), so a new config parameter is carried by ``specialize``
+        automatically.  List-typed configs are copied to keep the new design
+        independent of this one.
         """
+        config: dict[str, Any] = {}
+        for name in config_param_names(type(self)):
+            value = getattr(self, name)
+            config[name] = list(value) if isinstance(value, tuple) else value
+        return config
+
+    def specialize(self, **overrides) -> "CompilableDesign":
+        """Return a new ``CompilableDesign`` with overrides applied.
+
+        Overrides are split by name: those matching a configuration parameter
+        (``use_cache``, ``aiecc_flags``, ``full_elf``, …) replace that config;
+        all others are treated as ``CompileTime[T]`` values and merged onto
+        ``self.compile_kwargs`` (call-time values winning).  Every other config
+        is preserved from ``self``.
+
+        This makes config as retargetable as ``CompileTime[T]`` kwargs — e.g.
+        ``design.specialize(full_elf=True)`` re-aims an existing design at the
+        full-ELF path, symmetric with ``@iron.jit(full_elf=True)``.
+        """
+        config = self._config()
+        config_keys = config_param_names(type(self))
+        compile_kwargs = dict(self.compile_kwargs)
+        for name, value in overrides.items():
+            if name in config_keys:
+                config[name] = value
+            else:
+                compile_kwargs[name] = value
         return CompilableDesign(
             self.mlir_generator,
-            compile_kwargs={**self.compile_kwargs, **compile_kwargs},
-            use_cache=self.use_cache,
-            compile_flags=list(self.compile_flags),
-            source_files=list(self.source_files),
-            include_paths=list(self.include_paths),
-            aiecc_flags=list(self.aiecc_flags),
-            object_files=list(self.object_files),
-            full_elf=self.full_elf,
+            compile_kwargs=compile_kwargs,
+            **config,
         )
 
     def compile(
