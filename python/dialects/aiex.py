@@ -356,6 +356,27 @@ def shim_dma_single_bd_task(
         # so here we make sure it is evaluated and properly is seen as an integer.
         offset = int(tap.offset)
 
+    # The shim DMA BD has 3 access dimensions plus a hardware repeat/iteration
+    # dimension. The repeat_count below hoists sizes[0] into that iteration
+    # dimension, but the transferred extent is prod(sizes[-3:]) (see shim_dma_bd),
+    # so sizes[0] is left out of it only when there are 4 dimensions. With fewer
+    # than 4 dims and sizes[0] > 1, sizes[0] is counted both as a real access dim
+    # (in transfer_len and in the BD dimensions) and as repeat_count, so the shim
+    # re-issues the whole transfer sizes[0] times, waits on the objectfifo for that
+    # many objects, and dma_await_task never returns. Normalize to the canonical
+    # 4-dim form (left-pad with unit dims) so sizes[0] is only ever the iteration
+    # dimension, and reject taps with more than 4 dims instead of silently emitting
+    # a wrong BD.
+    if sizes is not None:
+        if len(sizes) > 4:
+            raise ValueError(
+                f"shim DMA BD supports at most 4 dimensions, got {len(sizes)}"
+            )
+        while len(sizes) < 4:
+            sizes = [1] + list(sizes)
+            if strides is not None:
+                strides = [0] + list(strides)
+
     repeat_count = 0
     if sizes and sizes[0] > 1:
         repeat_count = sizes[0] - 1
