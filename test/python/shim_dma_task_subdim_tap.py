@@ -51,7 +51,10 @@ def case(name, dims, sizes, strides, use_tap=True):
                         )
                     else:
                         shim_dma_single_bd_task(
-                            of, out, sizes=list(sizes), strides=list(strides),
+                            of,
+                            out,
+                            sizes=list(sizes),
+                            strides=list(strides),
                             issue_token=True,
                         )
 
@@ -62,38 +65,38 @@ def case(name, dims, sizes, strides, use_tap=True):
 
 # rank 2, leading > 1: sub-4-dim, must normalize (no repeat).
 # CHECK-LABEL: CASE rank2
-# CHECK: aie.dma_bd(%{{.*}} : memref<8192xbf16>, 0, 8192, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 8, stride = 1024>, <size = 1024, stride = 1>])
+# CHECK: aie.dma_bd(%{{.*}} : memref<8192xbf16> offset = {{.*}} len = {{.*}} sizes = [1, 1, 8, 1024] strides = [0, 0, 1024, 1])
 # CHECK-NOT: repeat_count
 case("rank2", (8, 1024), [8, 1024], [1024, 1])
 
 # rank 3, leading > 1 (the deinterleave drain that first exposed this).
 # CHECK-LABEL: CASE rank3
-# CHECK: aie.dma_bd(%{{.*}} : memref<262144xbf16>, 0, 262144, [<size = 1, stride = 0>, <size = 64, stride = 1024>, <size = 4, stride = 65536>, <size = 1024, stride = 1>])
+# CHECK: aie.dma_bd(%{{.*}} : memref<262144xbf16> offset = {{.*}} len = {{.*}} sizes = [1, 64, 4, 1024] strides = [0, 1024, 65536, 1])
 # CHECK-NOT: repeat_count
 case("rank3", (4, 64, 1024), [64, 4, 1024], [1024, 65536, 1])
 
 # rank 4, leading unit (the common simple_tiler fill): unchanged, no repeat.
 # CHECK-LABEL: CASE rank4_lead1
-# CHECK: aie.dma_bd(%{{.*}} : memref<262144xbf16>, 0, 262144, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 64, stride = 4096>, <size = 4096, stride = 1>])
+# CHECK: aie.dma_bd(%{{.*}} : memref<262144xbf16> offset = {{.*}} len = {{.*}} sizes = [1, 1, 64, 4096] strides = [0, 0, 4096, 1])
 # CHECK-NOT: repeat_count
 case("rank4_lead1", (1, 1, 64, 4096), [1, 1, 64, 4096], [0, 0, 4096, 1])
 
 # rank 4, leading > 1: a genuine iteration dim, repeat_count MUST be kept.
 # CHECK-LABEL: CASE rank4_lead4
-# CHECK: aie.dma_bd(%{{.*}} : memref<32768xbf16>, 0, 8192, [<size = 4, stride = 8192>, <size = 1, stride = 0>, <size = 8, stride = 1024>, <size = 1024, stride = 1>])
+# CHECK: aie.dma_bd(%{{.*}} : memref<32768xbf16> offset = {{.*}} len = {{.*}} sizes = [4, 1, 8, 1024] strides = [8192, 0, 1024, 1])
 # CHECK: repeat_count = 3
 case("rank4_lead4", (4, 1, 8, 1024), [4, 1, 8, 1024], [8192, 0, 1024, 1])
 
 # rank 3 via explicit sizes=/strides= (no tap): same normalization as tap=.
 # CHECK-LABEL: CASE rank3_explicit
-# CHECK: aie.dma_bd(%{{.*}} : memref<262144xbf16>, 0, 262144, [<size = 1, stride = 0>, <size = 64, stride = 1024>, <size = 4, stride = 65536>, <size = 1024, stride = 1>])
+# CHECK: aie.dma_bd(%{{.*}} : memref<262144xbf16> offset = {{.*}} len = {{.*}} sizes = [1, 64, 4, 1024] strides = [0, 1024, 65536, 1])
 # CHECK-NOT: repeat_count
 case("rank3_explicit", None, [64, 4, 1024], [1024, 65536, 1], use_tap=False)
 
 # the documented explicit contiguous form (sizes only, no strides) must be
 # unchanged: 4-dim, leading units, single linear transfer, no repeat.
 # CHECK-LABEL: CASE explicit_contiguous
-# CHECK: aie.dma_bd(%{{.*}} : memref<4096xbf16>, 0, 4096, [<size = 1, stride = 0>, <size = 1, stride = 0>, <size = 1, stride = 0>, <size = 4096, stride = 1>])
+# CHECK: aie.dma_bd(%{{.*}} : memref<4096xbf16> offset = {{.*}} len = {{.*}} sizes = [1, 1, 1, 4096] strides = [0, 0, 0, 1])
 # CHECK-NOT: repeat_count
 case("explicit_contiguous", None, [1, 1, 1, 4096], None, use_tap=False)
 
