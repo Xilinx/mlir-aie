@@ -39,7 +39,7 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
     // Pass 1: collect all sources (order-independent; supports fan-in).
     for (Operation &Op : b.getOperations()) {
       if (auto pktSource = dyn_cast<PacketSourceOp>(Op)) {
-        auto srcTile = dyn_cast<TileOp>(pktSource.getTile().getDefiningOp());
+        auto srcTile = cast<TileOp>(pktSource.getTile().getDefiningOp());
         sources.push_back(
             {{srcTile.colIndex(), srcTile.rowIndex()}, pktSource.port()});
       }
@@ -53,7 +53,7 @@ LogicalResult DynamicTileAnalysis::runAnalysis(DeviceOp &device) {
     // fan-in topologies are routed (not just the last source).
     for (Operation &Op : b.getOperations()) {
       if (auto pktDest = dyn_cast<PacketDestOp>(Op)) {
-        auto dstTile = dyn_cast<TileOp>(pktDest.getTile().getDefiningOp());
+        auto dstTile = cast<TileOp>(pktDest.getTile().getDefiningOp());
         Port dstPort = pktDest.port();
         TileID dstCoords = {dstTile.colIndex(), dstTile.rowIndex()};
         for (auto &[srcCoords, srcPort] : sources) {
