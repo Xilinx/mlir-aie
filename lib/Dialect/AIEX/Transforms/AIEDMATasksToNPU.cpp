@@ -492,8 +492,9 @@ struct AIEDMATasksToNPUPass
     // op's repeat_count, not the BD's outer dim.
     Value bdRepeatCount;
     if (failed(emitDynamicShimBdWordOverrides(
-            builder, loc, target_model, col, row, bd_op.getBdId().value(),
-            sizes4, strides4, elemWidth, bd_op.getBurstLength(), bufLen,
+            builder, loc, target_model, col, row,
+            builder.getI32IntegerAttr(bd_op.getBdId().value()), sizes4,
+            strides4, elemWidth, bd_op.getBurstLength(), bufLen,
             bdRepeatCount)))
       return failure();
     return setAddressForSingleBD(builder, bd_op, tile);

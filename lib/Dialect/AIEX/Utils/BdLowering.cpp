@@ -156,9 +156,10 @@ Value buildBdWord(OpBuilder &builder, Location loc,
 
 LogicalResult emitDynamicShimBdWordOverrides(
     OpBuilder &builder, Location loc, const AIE::AIETargetModel &targetModel,
-    int tileCol, int tileRow, uint32_t bdId, ArrayRef<OpFoldResult> mixedSizes,
-    ArrayRef<OpFoldResult> mixedStrides, uint64_t elemWidth,
-    uint32_t burstLength, Value bufLenOverride, Value &repeatCountOut) {
+    int tileCol, int tileRow, OpFoldResult bdId,
+    ArrayRef<OpFoldResult> mixedSizes, ArrayRef<OpFoldResult> mixedStrides,
+    uint64_t elemWidth, uint32_t burstLength, Value bufLenOverride,
+    Value &repeatCountOut) {
   auto i32ty = builder.getIntegerType(32);
 
   // Compute the hardware sizes/strides as SSA values via the shared encoder.
@@ -248,13 +249,34 @@ LogicalResult emitDynamicShimBdWordOverrides(
   for (int i = 1; i < 4; i++)
     guardDivisible(stridesRev[i], inT[i], /*allowUnit=*/false);
 
-  uint64_t bdAddr = targetModel.getDmaBdAddress(tileCol, tileRow, bdId);
+  // The shim BD register block is at getDmaBdAddress(col,row,bd_id), which is
+  // linear in bd_id (base + bd_id * bdStride). For a constant bd_id the whole
+  // address folds to a literal (byte-identical to the static path); for a
+  // runtime bd_id (dynamic free-list pool) the base is emitted as arith so each
+  // override targets base + bd_id*bdStride + wordIdx*4 at runtime.
+  std::optional<int64_t> constBdId = getConstantIntValue(bdId);
+  Value bdBase; // set only when bd_id is runtime
+  if (!constBdId) {
+    uint64_t addrForId0 = targetModel.getDmaBdAddress(tileCol, tileRow, 0);
+    uint64_t bdStride =
+        targetModel.getDmaBdAddress(tileCol, tileRow, 1) - addrForId0;
+    Value bdIdVal = getAsValue(builder, loc, bdId, i32ty);
+    bdBase = arith::AddIOp::create(
+        builder, loc, createConstantI32(builder, loc, addrForId0),
+        arith::MulIOp::create(builder, loc, bdIdVal,
+                              createConstantI32(builder, loc, bdStride)));
+  }
+  uint64_t bdAddr =
+      constBdId ? targetModel.getDmaBdAddress(tileCol, tileRow, *constBdId) : 0;
   auto writeWord = [&](uint32_t wordIdx, Value val) {
-    NpuWrite32Op::create(
-        builder, loc,
-        createConstantI32(builder, loc,
-                          static_cast<uint32_t>(bdAddr + wordIdx * 4)),
-        val, nullptr, nullptr, nullptr);
+    Value addr;
+    if (constBdId)
+      addr = createConstantI32(builder, loc,
+                               static_cast<uint32_t>(bdAddr + wordIdx * 4));
+    else
+      addr = arith::AddIOp::create(
+          builder, loc, bdBase, createConstantI32(builder, loc, wordIdx * 4));
+    NpuWrite32Op::create(builder, loc, addr, val, nullptr, nullptr, nullptr);
   };
 
   // word[0] buffer_length is always overridden (it carries the runtime element

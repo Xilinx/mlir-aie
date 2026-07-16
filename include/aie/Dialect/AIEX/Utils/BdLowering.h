@@ -239,18 +239,36 @@ mlir::Value
 buildBdWord(mlir::OpBuilder &builder, mlir::Location loc,
             llvm::ArrayRef<std::tuple<mlir::Value, uint32_t, uint32_t>> fields);
 
-// Emit the per-word `npu.write32` overrides carrying a shim-NOC BD's runtime
-// sizes/strides on top of a zero-template blockwrite, plus assert_bd_field /
-// assert_bd_divisible guards for runtime values in narrow or sub-granule
-// fields. Shared by the dma_memcpy_nd and dma_task paths.
-// `mixedSizes`/`mixedStrides` are outermost-first (d3..d0). `bufLenOverride`,
-// if non-null, sets buffer_length (dma_task's runtime len); else it is the
-// d0*d1*d2 size-product. `repeatCountOut` receives the biased hardware
-// outer-dim (d3) value for the caller's queue push.
+// Emit the per-word `npu.write32` overrides that carry a shim-NOC BD's runtime
+// sizes/strides, on top of a zero-template blockwrite whose size/stride words
+// were left at 0. Shared by the dma_memcpy_nd and dma_task dynamic lowering
+// paths, which converge on the identical shim BD-word layout (words 0/3/4/5/6);
+// only the descriptor template (locks, next_bd, packet) and the queue push
+// differ, and those stay with each caller.
+//
+// `mixedSizes`/`mixedStrides` are outermost-first (d3..d0), matching
+// NpuDmaMemcpyNdOp::getMixedSizes and AIE::DMABDOp::getMixedSizes.
+// `bufLenOverride`, if non-null, is written verbatim into buffer_length
+// (word 0) -- dma_task passes its runtime `len`; dma_memcpy_nd passes null, so
+// buffer_length is computed as the d0*d1*d2 hardware-unit size-product. Emits
+// `npu.assert_bd_field` guards for runtime values landing in narrow fields
+// (d0/d1 wrap 10-bit in ND mode, iteration wrap 6-bit always). The op verifier
+// is expected to have enforced the supported scope (shim NOC, innermost stride
+// == 1) already.
+//
+// On success `repeatCountOut` receives the hardware iteration/repeat value for
+// the outer (d3) dimension, which the caller feeds to its queue push (this is
+// the biased hw value, matching the static path's `repeat_count = sizes[3]`).
+//
+// `bdId` may be a compile-time constant (the static/pinned case: the override
+// addresses fold to literals, byte-identical to before) or a runtime SSA value
+// (the dynamic free-list pool case: the BD register base becomes
+// `getDmaBdAddress(col,row,0) + bdId*0x20` -- linear in bdId -- and each
+// override address is emitted as arith over that base).
 mlir::LogicalResult emitDynamicShimBdWordOverrides(
     mlir::OpBuilder &builder, mlir::Location loc,
     const xilinx::AIE::AIETargetModel &targetModel, int tileCol, int tileRow,
-    uint32_t bdId, llvm::ArrayRef<mlir::OpFoldResult> mixedSizes,
+    mlir::OpFoldResult bdId, llvm::ArrayRef<mlir::OpFoldResult> mixedSizes,
     llvm::ArrayRef<mlir::OpFoldResult> mixedStrides, uint64_t elemWidth,
     uint32_t burstLength, mlir::Value bufLenOverride,
     mlir::Value &repeatCountOut);

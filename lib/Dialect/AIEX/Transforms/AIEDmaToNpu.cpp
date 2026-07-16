@@ -602,9 +602,10 @@ public:
     // encoder returns the hw repeat_count for the queue push.
     Value repeatCount;
     if (failed(emitDynamicShimBdWordOverrides(
-            rewriter, loc, targetModel, tileCol, tileRow, op.getId(),
-            op.getMixedSizes(), op.getMixedStrides(),
-            op.getElementTypeBitwidth(), op.getBurstLength(),
+            rewriter, loc, targetModel, tileCol, tileRow,
+            rewriter.getI32IntegerAttr(op.getId()), op.getMixedSizes(),
+            op.getMixedStrides(), op.getElementTypeBitwidth(),
+            op.getBurstLength(),
             /*bufLenOverride=*/Value(), repeatCount)))
       return failure();
 
