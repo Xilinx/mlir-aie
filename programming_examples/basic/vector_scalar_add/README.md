@@ -123,3 +123,15 @@ written in place, so `--problem-size` must match the size the artifacts were
 compiled for. Note the run inputs are the **xclbin + insts** — the PDI is
 packed *inside* the xclbin and is not a standalone run input on the IRON
 runtime.
+
+Because this path bypasses JIT generation, there is no compiled recipe to
+validate the artifacts against. An xclbin built for the wrong NPU family runs
+without error but silently returns zeros, so pass `--dev` to declare the
+family the artifacts target — the run aborts up front if the attached device's
+architecture doesn't match:
+
+```shell
+python3 vector_scalar_add.py --dev npu2 \
+    --from-xclbin ./artifacts/vector_scalar_add.xclbin \
+    --from-insts ./artifacts/vector_scalar_add.insts.bin
+```

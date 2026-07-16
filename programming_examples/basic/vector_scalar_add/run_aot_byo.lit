@@ -12,5 +12,5 @@
 // RUN: rm -rf %S/test_stx
 // RUN: mkdir -p %S/test_stx
 // RUN: %run_on_npu1% python3 %S/vector_scalar_add.py --aot-dir %S/test_stx
-// RUN: %run_on_npu1% python3 %S/vector_scalar_add.py --from-xclbin %S/test_stx/vector_scalar_add.xclbin --from-insts %S/test_stx/vector_scalar_add.insts.bin
+// RUN: %run_on_npu1% python3 %S/vector_scalar_add.py --dev npu --from-xclbin %S/test_stx/vector_scalar_add.xclbin --from-insts %S/test_stx/vector_scalar_add.insts.bin
 // RUN: rm -rf %S/test_stx

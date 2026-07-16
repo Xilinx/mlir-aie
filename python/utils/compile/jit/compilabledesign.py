@@ -359,11 +359,14 @@ class CompilableDesign:
         return self._xclbin_path, self._inst_path
 
     def get_pdi_path(self) -> Path | None:
-        """Return the PDI path for the most recent compile, or ``None``.
+        """Return ``<kernel_dir>/main.pdi`` if it exists, else ``None``.
 
-        aiecc writes a ``main.pdi`` into the kernel directory on every compile
-        (cache mode included), so this locates the PDI even when ``compile()``
-        was called without an explicit ``pdi_path``.  Returns ``None`` if no
+        In default cache mode, aiecc emits a ``main.pdi`` into the cache
+        directory alongside the xclbin, so this locates that PDI without a
+        recompile.  It is *not* a general "PDI for the most recent compile"
+        accessor: when ``compile(pdi_path=...)`` names an explicit output, the
+        PDI is written to that path (not ``<kernel_dir>/main.pdi``), so use the
+        path you passed rather than this method.  Returns ``None`` if no
         compile has happened yet or the file is absent.
         """
         if self._kernel_dir is None:

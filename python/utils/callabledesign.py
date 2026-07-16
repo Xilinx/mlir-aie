@@ -441,9 +441,11 @@ class CallableDesign:
         )
 
     def get_pdi_path(self) -> Path | None:
-        """Return the PDI path for the most recent compile, or ``None``.
+        """Return the cache-mode ``main.pdi`` if it exists, else ``None``.
 
-        Thin passthrough to :meth:`CompilableDesign.get_pdi_path`.
+        Thin passthrough to :meth:`CompilableDesign.get_pdi_path` — see there
+        for why this only locates the cache-directory PDI, not a
+        ``compile(pdi_path=...)`` output.
         """
         return self.compilable.get_pdi_path()
 

@@ -18,7 +18,8 @@ Invocation modes:
     PDI / ELF into DIR and prints where each landed — see ``aot_compile``)
   * bring-your-own:  ``... --from-xclbin=PATH --from-insts=PATH``  (loads a
     pre-built xclbin + insts — from any toolchain — and runs it; see
-    ``run_from_artifacts``)
+    ``run_from_artifacts``.  Pass ``--dev`` to assert the attached NPU family
+    matches the artifacts, since a mismatched xclbin silently returns zeros.)
 """
 
 import argparse
@@ -30,6 +31,7 @@ import aie.iron as iron
 from aie.iron import CompileTime, In, Out
 from aie.iron.algorithms import transform
 from aie.utils import NPUKernel
+from aie.utils.compile import resolve_target_arch
 from aie.utils.hostruntime.argparse import (
     device_from_args,
     add_compile_args,
@@ -133,6 +135,36 @@ def aot_compile(opts):
         print(f"  {label}: {path}  ({'ok' if path.exists() else 'MISSING'})")
 
 
+def _check_runtime_device(opts):
+    """Guard the BYO run against an artifact / hardware architecture mismatch.
+
+    ``NPUKernel`` runs on whatever NPU is attached, and an xclbin built for the
+    wrong family (e.g. an npu1 artifact on a Strix npu2 box) does not error — it
+    silently returns zeros.  ``--dev`` lets the caller declare the family the
+    pre-built artifacts target; when given, verify the attached device matches
+    before running so the mismatch fails loudly instead of producing garbage.
+    """
+    expected_device = device_from_args(opts)
+    if expected_device is None:
+        # No --dev: nothing to check against; the runtime uses the attached NPU.
+        return
+
+    runtime_device = iron.get_current_device()
+    if runtime_device is None:
+        raise SystemExit(
+            "no NPU runtime device is available to run the pre-built artifacts"
+        )
+
+    expected_arch = resolve_target_arch(expected_device)
+    runtime_arch = resolve_target_arch(runtime_device)
+    if expected_arch != runtime_arch:
+        raise SystemExit(
+            f"--dev {opts.dev!r} targets {expected_arch}, but the attached NPU "
+            f"is {runtime_arch}.  The pre-built artifacts must match the "
+            f"runtime device family or the kernel silently returns zeros."
+        )
+
+
 def run_from_artifacts(opts):
     """Run a pre-built xclbin + insts, bypassing the @iron.jit generation path.
 
@@ -143,6 +175,7 @@ def run_from_artifacts(opts):
     element count must match what the artifacts were compiled for
     (``--problem-size``).
     """
+    _check_runtime_device(opts)
     npu_kernel = NPUKernel(opts.from_xclbin, opts.from_insts)
 
     in_t = iron.arange(1, opts.problem_size + 1, dtype=np.int32, device="npu")
