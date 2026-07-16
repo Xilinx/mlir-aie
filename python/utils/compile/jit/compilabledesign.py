@@ -173,6 +173,7 @@ class CompilableDesign:
         xclbin_path: Path | str | None = None,
         inst_path: Path | str | None = None,
         elf_path: Path | str | None = None,
+        pdi_path: Path | str | None = None,
     ) -> tuple[Path, Path]:
         """Compile the generator to ``(xclbin_path, inst_path)``.
 
@@ -193,6 +194,12 @@ class CompilableDesign:
         suitable for C++ testbenches that load through ``xrt::elf`` +
         ``xrt::module``.  Requires ``xclbin_path`` / ``inst_path`` to be set
         too — the cache path doesn't track ELF artifacts.
+
+        ``pdi_path`` is likewise optional: when set, aiecc writes the
+        Programmable Device Image (config data packed by ``bootgen``) to that
+        path.  Like ``elf_path`` it requires explicit ``xclbin_path`` /
+        ``inst_path``.  In default cache mode aiecc still emits a ``main.pdi``
+        into the cache directory — use :meth:`get_pdi_path` to locate it.
         """
         from aie.iron.kernel import ExternalFunction
 
@@ -212,6 +219,13 @@ class CompilableDesign:
                 "(the JIT cache does not track ELF artifacts)."
             )
 
+        if pdi_path is not None and not explicit_paths:
+            raise ValueError(
+                "compile(): pdi_path requires explicit xclbin_path + inst_path "
+                "(the JIT cache does not track caller-named PDI artifacts; use "
+                "get_pdi_path() to locate the cache-mode main.pdi)."
+            )
+
         if not isinstance(self.mlir_generator, Path):
             self._bind_generation_device()
 
@@ -223,6 +237,8 @@ class CompilableDesign:
             inst_path = Path(inst_path).resolve()
             if elf_path is not None:
                 elf_path = Path(elf_path).resolve()
+            if pdi_path is not None:
+                pdi_path = Path(pdi_path).resolve()
             # Per-xclbin scratch dir (mirrors aiecc's default <input>.prj
             # naming) so two siblings sharing one build/ don't clobber each
             # other's input_with_addresses.mlir / .o files.
@@ -305,6 +321,7 @@ class CompilableDesign:
                     insts_path=inst_path,
                     xclbin_path=xclbin_path,
                     elf_path=elf_path,
+                    pdi_path=pdi_path,
                     work_dir=kernel_dir,
                     use_chess=use_chess,
                     options=list(self.aiecc_flags) if self.aiecc_flags else None,
@@ -315,6 +332,8 @@ class CompilableDesign:
                 expected_outputs = [xclbin_path, inst_path]
                 if elf_path is not None:
                     expected_outputs.append(Path(elf_path))
+                if pdi_path is not None:
+                    expected_outputs.append(Path(pdi_path))
                 missing = [p for p in expected_outputs if not p.exists()]
                 if missing:
                     raise RuntimeError(
@@ -338,6 +357,19 @@ class CompilableDesign:
         if self._xclbin_path is None or self._inst_path is None:
             return None
         return self._xclbin_path, self._inst_path
+
+    def get_pdi_path(self) -> Path | None:
+        """Return the PDI path for the most recent compile, or ``None``.
+
+        aiecc writes a ``main.pdi`` into the kernel directory on every compile
+        (cache mode included), so this locates the PDI even when ``compile()``
+        was called without an explicit ``pdi_path``.  Returns ``None`` if no
+        compile has happened yet or the file is absent.
+        """
+        if self._kernel_dir is None:
+            return None
+        pdi = self._kernel_dir / "main.pdi"
+        return pdi if pdi.exists() else None
 
     def split_runtime_args(
         self, runtime_args: tuple, runtime_kwargs: dict[str, Any]

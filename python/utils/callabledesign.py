@@ -409,6 +409,7 @@ class CallableDesign:
         xclbin_path: Path | str | None = None,
         inst_path: Path | str | None = None,
         elf_path: Path | str | None = None,
+        pdi_path: Path | str | None = None,
     ) -> tuple[Path, Path]:
         """Eagerly compile this design and return ``(xclbin_path, inst_path)``.
 
@@ -426,10 +427,25 @@ class CallableDesign:
         instructions into an ELF (via ``aiebu-asm``) at that path.  Needed by
         C++ testbenches that load instructions through ``xrt::elf`` +
         ``xrt::module``; requires explicit ``xclbin_path`` + ``inst_path``.
+
+        ``pdi_path`` is optional: when set, aiecc writes the Programmable
+        Device Image to that path.  Requires explicit ``xclbin_path`` +
+        ``inst_path``.  In cache mode, use :meth:`get_pdi_path` to locate the
+        ``main.pdi`` aiecc emits into the cache directory.
         """
         return self.compilable.compile(
-            xclbin_path=xclbin_path, inst_path=inst_path, elf_path=elf_path
+            xclbin_path=xclbin_path,
+            inst_path=inst_path,
+            elf_path=elf_path,
+            pdi_path=pdi_path,
         )
+
+    def get_pdi_path(self) -> Path | None:
+        """Return the PDI path for the most recent compile, or ``None``.
+
+        Thin passthrough to :meth:`CompilableDesign.get_pdi_path`.
+        """
+        return self.compilable.get_pdi_path()
 
     def as_mlir(self, *runtime_args, **runtime_kwargs) -> str:
         """Return the resolved MLIR text for this kernel without compiling.

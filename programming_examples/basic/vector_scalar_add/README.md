@@ -65,3 +65,61 @@ To run the runlist testbench (NPU2 only):
 ```shell
 make run_runlist devicename=npu2
 ```
+
+### Controlling artifact output
+
+By default `@iron.jit` writes its artifacts into the on-disk cache
+(`$NPU_CACHE_HOME`) with fixed names. When you need the artifacts at chosen
+paths — for a Makefile, a bring-up flow, or to grab the PDI — pass explicit
+paths to `.compile()`, which bypasses the cache and writes exactly where you
+ask.
+
+This design's `--aot-dir` flag demonstrates the pattern (see `aot_compile` in
+`vector_scalar_add.py`):
+
+```shell
+python3 vector_scalar_add.py --aot-dir ./artifacts
+```
+
+which writes and reports each artifact:
+
+```
+Wrote artifacts:
+  xclbin: artifacts/vector_scalar_add.xclbin  (ok)
+  insts : artifacts/vector_scalar_add.insts.bin  (ok)
+  pdi   : artifacts/vector_scalar_add.pdi  (ok)
+  elf   : artifacts/vector_scalar_add.insts.elf  (ok)
+```
+
+The compile-only Makefile flow uses the same knobs as individual CLI flags —
+`--xclbin-path`, `--insts-path`, and optionally `--pdi-path` / `--elf-path`.
+See [`compilation_stages.md`](../../../programming_guide/compilation_stages.md#controlling-artifact-output)
+for the full artifact list and how to locate the cache-mode PDI via
+`get_pdi_path()`.
+
+### Running pre-built artifacts (bring your own)
+
+The reverse direction: run an xclbin + instruction binary that was built
+*outside* the `@iron.jit` generation path. `NPUKernel` loads any such pair —
+whether it came from the `--aot-dir` export above, a Makefile, a raw `aiecc`
+invocation, or another tool — so you can run pre-built binaries without
+re-generating the design.
+
+This design's `--from-xclbin` / `--from-insts` flags demonstrate it (see
+`run_from_artifacts` in `vector_scalar_add.py`):
+
+```shell
+# build artifacts however you like (here, reuse the --aot-dir export)
+python3 vector_scalar_add.py --aot-dir ./artifacts
+
+# then run them, bypassing JIT generation entirely
+python3 vector_scalar_add.py \
+    --from-xclbin ./artifacts/vector_scalar_add.xclbin \
+    --from-insts ./artifacts/vector_scalar_add.insts.bin
+```
+
+Inputs are passed as IRON tensors; the output tensor is pre-allocated and
+written in place, so `--problem-size` must match the size the artifacts were
+compiled for. Note the run inputs are the **xclbin + insts** — the PDI is
+packed *inside* the xclbin and is not a standalone run input on the IRON
+runtime.
