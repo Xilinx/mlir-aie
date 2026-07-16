@@ -109,7 +109,7 @@ struct AIECreateCoresPass
         tiles[{colIndex, rowIndex}] = tile;
       }
       Operation *tileOp = tiles[{colIndex, rowIndex}];
-      TileOp tile = dyn_cast<TileOp>(tileOp);
+      TileOp tile = cast<TileOp>(tileOp);
       builder.setInsertionPointAfter(tileOp);
 
       // create MemOp
