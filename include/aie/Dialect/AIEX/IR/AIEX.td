@@ -1128,6 +1128,8 @@ def AIE_DMAConfigureTaskForOp : AIEX_Op<"dma_configure_task_for", [HasAncestor<"
   let regions = (region AnyRegion:$body);
 
   let assemblyFormat = [{ $alloc regions attr-dict }];
+
+  let hasVerifier = 1;
 }
 
 def AIE_DMAFreeTaskOp : AIEX_Op<"dma_free_task", [HasAncestor<"AIE::RuntimeSequenceOp">]> {

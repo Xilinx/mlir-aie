@@ -2291,14 +2291,15 @@ LogicalResult DMABDOp::verify() {
       return failure();
   }
   if (dims.has_value()) {
-    size_t maxNDims = 3;
-    if (getOperation()->getParentOfType<MemTileDMAOp>())
-      maxNDims = 4;
+    // The per-BD ND access-pattern limit is a hardware property of the tile;
+    // query it from the target model by tile type rather than inferring it
+    // from the parent op type.
+    size_t maxNDims = targetModel.getBDMaxDims(parentTile.getTileType());
     if (dims->size() > maxNDims)
       return emitOpError() << "Cannot give more than "
                            << std::to_string(maxNDims)
-                           << " dimensions for step sizes and wraps in this "
-                              " tile (got "
+                           << " dimensions for step sizes and wraps on this "
+                              "tile (got "
                            << std::to_string(dims->size()) << " dimensions).";
 
     auto buffer = llvm::dyn_cast<MemRefType>(getBuffer().getType());

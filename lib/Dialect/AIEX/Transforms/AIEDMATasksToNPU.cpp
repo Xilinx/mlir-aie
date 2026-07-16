@@ -230,7 +230,7 @@ struct AIEDMATasksToNPUPass
     // A buffer descriptor can refer to a statically allocated aie.buffer, or to
     // a DDR buffer which will be passed as a runtime argument (block
     // argument). Try to find the root block argument, either directly or
-    // through subviews/casts.
+    // through supported subview/view/cast chains.
     mlir::BlockArgument buf_arg = nullptr;
     int64_t offset = 0;
 
@@ -310,8 +310,10 @@ struct AIEDMATasksToNPUPass
     } else {
       return bd_op->emitOpError(
           "Buffer argument must be a constant aie.buffer, a runtime sequence "
-          "input argument, or a (chain of) subview(s) or cast(s) of a block "
-          "argument with constant offsets and strides equal to one.");
+          "input argument, or a supported chain of memref.subview, "
+          "memref.view, memref.cast, or memref.reinterpret_cast operations "
+          "rooted at a block argument. Subviews must be static and contiguous; "
+          "views must have a constant byte shift and no dynamic result sizes.");
     }
 
     // If this BD has an offset_state_table_idx, emit update_from_scratchpad to

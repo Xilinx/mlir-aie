@@ -7,6 +7,7 @@
 
 #include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 
 using namespace mlir;
 using namespace xilinx;
@@ -112,6 +113,24 @@ AIEX::traceSubviewToBlockArgument(Value value) {
       offsetInBytes += (resOff - srcOff) * (elemSizeInBits / 8);
 
       current = subviewOp.getSource();
+      continue;
+    }
+
+    // Handle memref.view. The fused full-ELF path materializes every DMA
+    // buffer as a typed, contiguous view sliced out of a single flat byte
+    // arena (a runtime-sequence block argument) at a constant byte offset:
+    //   %v = memref.view %arena[%byte_off][] : memref<Nxi8> to memref<...>
+    // A memref.view result always has an identity (contiguous) layout, so only
+    // the byte offset needs to be accumulated before following the source.
+    if (auto viewOp = dyn_cast<memref::ViewOp>(defOp)) {
+      if (!viewOp.getSizes().empty())
+        return std::nullopt; // dynamic result sizes unsupported
+      std::optional<int64_t> byteShift =
+          getConstantIntValue(viewOp.getByteShift());
+      if (!byteShift)
+        return std::nullopt; // non-constant byte offset
+      offsetInBytes += *byteShift;
+      current = viewOp.getSource();
       continue;
     }
 

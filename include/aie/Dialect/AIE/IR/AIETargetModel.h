@@ -291,6 +291,13 @@ public:
   /// Return the number of buffer descriptors for a given tile type.
   virtual uint32_t getNumBDs(AIETileType tileType) const = 0;
 
+  /// Return the maximum number of addressing dimensions (wraps/strides) a
+  /// single buffer descriptor supports for a given tile type. This is the
+  /// hardware ND access-pattern limit; it does not count the separate shim
+  /// iteration/repeat dimension that runtime-sequence BD tasks hoist the
+  /// leading tap dimension into.
+  virtual uint32_t getBDMaxDims(AIETileType tileType) const = 0;
+
   /// Get stream switch port index for a given port specification
   /// Return port index for Stream_Switch_Event_Port_Selection register, or
   /// nullopt if invalid
@@ -302,6 +309,12 @@ public:
   /// tile.
   uint32_t getNumBDs(int col, int row) const {
     return getNumBDs(getTileType(col, row));
+  }
+
+  /// Return the maximum number of BD addressing dimensions for the tile at
+  /// (`col`, `row`).
+  uint32_t getBDMaxDims(int col, int row) const {
+    return getBDMaxDims(getTileType(col, row));
   }
 
   /// Return the number of buffer descriptors accessible on channel `channel`
@@ -477,6 +490,10 @@ public:
   uint32_t getNumBDs(AIETileType tileType) const override {
     return 16; // AIE1 has no MemTiles, always 16
   }
+  uint32_t getBDMaxDims(AIETileType tileType) const override {
+    // AIE1 has no MemTiles; preserve the historical BD dimension limit.
+    return 3;
+  }
   bool isBdChannelAccessible(int col, int row, uint32_t bd_id,
                              int channel) const override {
     return true;
@@ -581,6 +598,10 @@ public:
 
   uint32_t getNumBDs(AIETileType tileType) const override {
     return tileType == AIETileType::MemTile ? 48 : 16;
+  }
+  uint32_t getBDMaxDims(AIETileType tileType) const override {
+    // MemTile BDs support 4 ND dimensions; core and shim BDs support 3.
+    return tileType == AIETileType::MemTile ? 4 : 3;
   }
 
   bool isBdChannelAccessible(int col, int row, uint32_t bd_id,
