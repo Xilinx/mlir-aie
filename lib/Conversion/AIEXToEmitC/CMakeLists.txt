@@ -16,6 +16,7 @@ add_mlir_conversion_library(MLIRAIEXToEmitC
   AIE
   AIEX
   MLIRArithToEmitC
+  MLIRSCFToEmitC
   MLIREmitCDialect
   MLIREmitCTransforms
   MLIRSCFDialect
