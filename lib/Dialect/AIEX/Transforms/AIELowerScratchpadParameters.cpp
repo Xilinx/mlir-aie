@@ -266,8 +266,6 @@ struct AIELowerScratchpadParametersPass
   }
 
   // Emit a single params.txt for the whole module to `outputParamsFile`.
-  // The actual serialization lives in the shared `emitScratchpadParamsFile`
-  // helper so the aiecc graph and this pass stay in sync.
   LogicalResult emitParamsFile() {
     if (outputParamsFile.empty())
       return success();

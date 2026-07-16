@@ -12,9 +12,6 @@
 // graph-builder helpers in aiecc.cpp read these globals directly; centralizing
 // the definitions here keeps the driver logic uncluttered.
 //
-// Flags that are accepted for compatibility but not yet implemented are
-// tracked in FEATURE_GAPS.md.
-//
 //===----------------------------------------------------------------------===//
 
 #ifndef AIECC_COMMANDLINEOPTIONS_H
@@ -45,12 +42,12 @@ namespace cl = llvm::cl;
 // Command-line options
 //===----------------------------------------------------------------------===//
 
-// Positional arguments: the input `.mlir` plus any host C/C++ source files.
-// The MLIR file is the one ending in `.mlir` (or the first non-host-source
-// positional); every other C/C++ positional is a host source.
+// Positional arguments: exactly one input MLIR file before a `--` separator (or
+// no inputs for `--emit-dot`); positionals and flags after the `--` separator
+// are forwarded to the host code compiler.
 inline cl::list<std::string>
     positionalArgs(cl::Positional,
-                   cl::desc("<input mlir> [host source files...]"),
+                   cl::desc("<input mlir> [-- <host cc args>...]"),
                    cl::ZeroOrMore);
 inline cl::opt<std::string>
     hostOutputName("o", cl::desc("Output filename for host compilation"),
@@ -155,23 +152,16 @@ inline cl::opt<bool> noUnified(
     cl::desc("Compile cores independently (negates --unified; the default)"));
 
 //===----------------------------------------------------------------------===//
-// Stage gating
+// Link stage gating
 //===----------------------------------------------------------------------===//
-// Enable/disable the core compile and link stages. Both default on. Disabling
-// either means no per-core ELFs are freshly built; the driver instead reuses
-// the `elf_file` attributes already present in the input IR (pre-baked ELFs).
+// The link stage is on by default. With --no-link the driver stops at the
+// per-core objects instead of linking them into ELFs.
 
-inline cl::opt<bool> compile(
-    "compile",
-    cl::desc("Compile AIE cores (default; --no-compile reuses pre-baked ELFs)"),
-    cl::init(true));
-inline cl::opt<bool> noCompile("no-compile",
-                               cl::desc("Disable compiling of AIE cores"));
-inline cl::opt<bool>
-    link("link",
-         cl::desc("Link AIE cores (default; --no-link reuses pre-baked ELFs)"),
-         cl::init(true));
-inline cl::opt<bool> noLink("no-link", cl::desc("Disable linking of AIE code"));
+inline cl::opt<bool> link("link",
+                          cl::desc("Link AIE cores into ELFs (default)"),
+                          cl::init(true));
+inline cl::opt<bool> noLink("no-link",
+                            cl::desc("Stop at per-core objects; do not link"));
 
 // Runtime sequence to compile (empty = all). Filters the per-sequence NPU
 // instruction stream by RuntimeSequenceOp symbol name.
@@ -197,20 +187,20 @@ inline cl::alias numThreadsAlias("nthreads", cl::desc("Alias for -j"),
 //===----------------------------------------------------------------------===//
 // Host compilation options
 //===----------------------------------------------------------------------===//
-// Compile the user-provided host source files (positional C/C++ args) into a
-// host executable that drives the array via libxaiengine. The host program
-// `#include`s the generated `aie_inc.cpp` array-configuration source, so the
-// workdir (where it lands) is added to the include path automatically.
+// Compile the user-provided host source files into a host executable that
+// drives the array via libxaiengine. The host program `#include`s the generated
+// `aie_inc.cpp` array-configuration source, so the workdir (where it lands) is
+// added to the include path automatically.
 //
-// Any arguments following a `--` separator on the command line are forwarded
-// verbatim to the host compiler (all AIE architectures). Arguments *before*
-// `--` are parsed strictly: unknown options are rejected, not silently
-// forwarded.
+// Host source files and host-compiler flags are passed after a `--` separator
+// and forwarded verbatim to the host compiler (all AIE architectures).
+// Arguments *before* `--` are parsed strictly: unknown options are rejected,
+// not silently forwarded.
 
 inline cl::opt<bool> compileHost(
     "compile-host",
-    cl::desc("Compile the host program from the positional C/C++ source "
-             "files into a host executable"));
+    cl::desc("Compile the host program from the host C/C++ source files given "
+             "after `--` into a host executable"));
 inline cl::opt<bool> noCompileHost(
     "no-compile-host",
     cl::desc("Disable compiling of the host program (negates --compile-host)"));
@@ -254,6 +244,13 @@ inline cl::opt<std::string> npuInstsName(
     "npu-insts-name",
     cl::desc("Output NPU insts filename template (use {0} for multi-device)"),
     cl::init("insts_{0}.bin"));
+
+// Emit the per-core ELFs (or, with --no-link, the per-core objects) as an
+// output. Cores are still compiled on demand for any artifact that embeds them
+// (e.g. --aie-generate-xclbin); this flag additionally writes them out.
+inline cl::opt<bool>
+    compile("compile",
+            cl::desc("Emit the per-core ELFs (objects with --no-link)"));
 
 inline cl::opt<bool> generateInputWithAddresses(
     "aie-generate-input-with-addresses",
@@ -367,11 +364,11 @@ inline cl::list<std::string> getKeys(
     cl::CommaSeparated, cl::value_desc("key"));
 
 //===----------------------------------------------------------------------===//
-// Backward-compatibility / deferred flags
+// Diagnostics, dry-run, progress, and checkpoint/resume
 //===----------------------------------------------------------------------===//
-// Accepted so existing invocations and scripts don't fail with "unknown
-// argument". Most are no-ops; the ones with real behavior this driver does not
-// yet implement are tracked in FEATURE_GAPS.md.
+// Version/diagnostic flags, the `-n` dry run, execution-progress reporting, and
+// the checkpoint/resume + on-failure reproducer machinery. `--profile` is
+// accepted but ignored for backward compatibility.
 
 // Print version info and exit.
 inline cl::opt<bool> showVersion("aie-version",
@@ -426,22 +423,14 @@ inline cl::opt<std::string> repeaterOutputDir(
 //===----------------------------------------------------------------------===//
 // Resolved options
 //===----------------------------------------------------------------------===//
-// A handful of options are not independent, so main calls resolveOptions()
-// once, right after command-line parsing and before building the graph. It
-// settles the coupled Chess/Peano toolchain selection in place (xchesscc/
-// xbridge) and folds each enable/`--no-*` flag pair into one of the globals
-// below. These live alongside the command-line options so the rest of the
-// driver reads them exactly like any other option.
+// A handful of options are coupled, e.g. the enable/`--no-*` flags.
+// main calls resolveOptions() once to resolve these.
 
-// --aiesim is active unless explicitly negated.
+// Whether to generate the AIE simulator Work folder (off unless --aiesim).
 inline bool wantAiesim = false;
-// Fresh per-core ELFs are built only when both the compile and link stages are
-// enabled; otherwise the driver reuses the pre-baked `elf_file` attributes
-// already present in the input IR.
+// ELFs are produced when the link stage is on; with --no-link the driver stops
+// at the per-core objects.
 inline bool doBuildElfs = false;
-// Core objects are compiled whenever the compile stage is enabled, regardless
-// of linking: with --no-link the driver stops at the per-core objects.
-inline bool doCompileObjects = false;
 // Compile all cores of a device into one shared object (negated by
 // --no-unified).
 inline bool doUnified = false;
@@ -449,17 +438,9 @@ inline bool doUnified = false;
 inline bool doCompileHost = false;
 
 // Resolve inter-option coupling and populate the resolved-option globals above.
-// Chess compile and xbridge link are coupled: xbridge can only link
-// Chess-compiled objects (BCF expects Chess-specific sections), and Chess
-// objects cannot be linked by Peano lld. Asking for either selects the full
-// Chess flow; explicit --no-xchesscc/--no-xbridge force the Peano flow and win
-// over the coupling (--no-xchesscc implies --no-xbridge because Peano objects
-// cannot be linked by the Chess bridge). --aiesim additionally implies the
-// Chess toolchain because the simulator consumes Chess-built core ELFs, and
-// only errors when the user explicitly forced the Peano flow.
 //
-// Returns false (after a diagnostic) if the requested combination is impossible
-// — currently only --aiesim together with an explicitly forced Peano flow.
+// Returns false (after a diagnostic) if the requested combination is
+// impossible.
 inline bool resolveOptions() {
   if (noXchesscc) {
     xchesscc = false;
@@ -483,8 +464,7 @@ inline bool resolveOptions() {
     xbridge = true;
   }
 
-  doCompileObjects = compile && !noCompile;
-  doBuildElfs = doCompileObjects && (link && !noLink);
+  doBuildElfs = link && !noLink;
   doUnified = unified && !noUnified;
   doCompileHost = compileHost && !noCompileHost;
   return true;
@@ -507,15 +487,9 @@ inline bool isHostSourceFile(llvm::StringRef name) {
          name.ends_with(".C");
 }
 
-// The MLIR input among the positionals: the first `.mlir`, else the first
-// positional that isn't a host source file, else the first positional.
+// The MLIR input: the single positional argument (empty when none was given,
+// e.g. for --emit-dot).
 inline std::string getInputFilename() {
-  for (const auto &arg : positionalArgs)
-    if (llvm::StringRef(arg).ends_with(".mlir"))
-      return arg;
-  for (const auto &arg : positionalArgs)
-    if (!isHostSourceFile(arg))
-      return arg;
   return positionalArgs.empty() ? std::string() : positionalArgs.front();
 }
 
@@ -532,28 +506,18 @@ inline std::string getWorkDir() {
   return std::string(absWork);
 }
 
-// Every positional C/C++ source file (i.e. all positionals except the MLIR
-// input).
+// Host C/C++ source files, taken from the `--` passthrough tail.
 inline std::vector<std::string> getHostSourceFiles() {
-  std::string mlirFile = getInputFilename();
   std::vector<std::string> hostFiles;
-  for (const auto &arg : positionalArgs)
-    if (arg != mlirFile && isHostSourceFile(arg))
+  for (const auto &arg : hostPassthroughArgs)
+    if (isHostSourceFile(arg))
       hostFiles.push_back(arg);
   return hostFiles;
 }
 
-// Whether any host source file was provided, either positionally or in the
-// `--` passthrough tail. Used to decide whether host compilation has work to
-// do; the passthrough tail itself is forwarded verbatim to the host compiler.
-inline bool hasHostSourceFiles() {
-  if (!getHostSourceFiles().empty())
-    return true;
-  for (const auto &arg : hostPassthroughArgs)
-    if (isHostSourceFile(arg))
-      return true;
-  return false;
-}
+// Whether any host source file was provided in the `--` passthrough tail. Used
+// to decide whether host compilation has work to do.
+inline bool hasHostSourceFiles() { return !getHostSourceFiles().empty(); }
 
 //===----------------------------------------------------------------------===//
 // Checkpoint / resume manifest handling
@@ -561,9 +525,7 @@ inline bool hasHostSourceFiles() {
 // A checkpoint restores a graph cut from disk. Its manifest records the argv
 // that built the cut (so a resume reconstructs an identical graph — same
 // device, options and item keys) plus a frontier: for each cut edge output, the
-// {name, key} it belongs to and the saved artifact `path`. Manifest parsing and
-// the associated command-line rebuild live here with the rest of the CLI
-// handling rather than in the driver.
+// {name, key} it belongs to and the saved artifact `path`.
 
 struct CheckpointEntry {
   std::string name; // producing edge's output-name template
@@ -614,8 +576,24 @@ resolveCommandLine(int argc, char **argv, ResumeState &resume,
   }
 
   if (resumePath.empty()) {
-    graphArgv.assign(argv, argv + argc);
-    return graphArgv;
+    std::vector<std::string> full(argv, argv + argc);
+    // The recorded graph-argv must exclude the execution-only flags that select
+    // the cut (--get/-g/--get-key) and write the checkpoint (--checkpoint):
+    // replaying them on resume would re-restrict the run to the cut instead of
+    // continuing past it. This run itself still sees the full argv.
+    for (size_t i = 0; i < full.size(); ++i) {
+      llvm::StringRef a(full[i]);
+      if (a == "--get" || a == "-g" || a == "--get-key" ||
+          a == "--checkpoint") {
+        ++i; // also skip its separate value token
+        continue;
+      }
+      if (a.starts_with("--get=") || a.starts_with("-g=") ||
+          a.starts_with("--get-key=") || a.starts_with("--checkpoint="))
+        continue;
+      graphArgv.push_back(full[i]);
+    }
+    return full;
   }
 
   auto buf = llvm::MemoryBuffer::getFile(resumePath);

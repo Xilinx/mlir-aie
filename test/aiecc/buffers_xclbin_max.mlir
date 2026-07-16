@@ -9,7 +9,7 @@
 // verified count (16). aiecc must reject it at compile time rather than emit an
 // xclbin whose extra buffers would not be DMA'd correctly.
 
-// RUN: not %python aiecc.py -n --no-compile --no-link --aie-generate-xclbin %s 2>&1 | FileCheck %s
+// RUN: not %python aiecc.py -n --no-link --aie-generate-xclbin %s 2>&1 | FileCheck %s
 
 // CHECK: error: device 'main' has 17 host buffer arguments
 // CHECK-SAME: exceeds the maximum supported and verified count of 16

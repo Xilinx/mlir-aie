@@ -9,11 +9,11 @@
 
 // Test external object file linking via link_with attribute
 
-// RUN: aiecc --no-xchesscc --no-xbridge --no-compile --aie-generate-npu-insts --verbose %s 2>&1 | FileCheck %s
+// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-npu-insts --verbose %s 2>&1 | FileCheck %s
 
 // Coverage: parse -> resource allocation (placed) -> routing (input_physical)
-// -> completion. --no-compile skips core object compile; link_with objects are
-// consumed at link time only.
+// -> completion. The npu-insts path does not pull core compilation; link_with
+// objects are consumed at link time only.
 // CHECK: ({{[0-9]+}}/{{[0-9]+}}) input.mlir
 // CHECK: ({{[0-9]+}}/{{[0-9]+}}) placed.mlir
 // CHECK: ({{[0-9]+}}/{{[0-9]+}}) input_physical.mlir

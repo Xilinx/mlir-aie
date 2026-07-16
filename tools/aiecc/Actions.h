@@ -5,8 +5,13 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Named action classes carried by Edges. Lambdas are also valid actions and
-// live at their use sites.
+// Reusable action classes: an "action" is the transformation callable an edge
+// invokes to turn its input Item(s) into an output Item -- i.e. what you pass
+// as the `fn` argument to `.map()` / `.join()` when building the graph (a
+// MapEdge applies it per input item, a BundleForEachEdge applies it per zipped
+// bundle). Plain lambdas are also valid actions and live at their use sites;
+// the named classes here (ShellCommand, PassPipeline, ...) are the ones reused
+// across many edges.
 //
 //===----------------------------------------------------------------------===//
 

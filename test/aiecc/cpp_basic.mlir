@@ -7,8 +7,8 @@
 
 // REQUIRES: peano
 
-// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-npu-insts --aie-generate-xclbin --verbose %s 2>&1 | FileCheck %s
-// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-npu-insts --aie-generate-xclbin -n --verbose %s 2>&1 | FileCheck %s --check-prefix=DRY
+// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-npu-insts --compile --verbose %s 2>&1 | FileCheck %s
+// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-npu-insts --compile -n --verbose %s 2>&1 | FileCheck %s --check-prefix=DRY
 // RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-npu-insts --verbose %s 2>&1 | FileCheck %s --check-prefix=NPU
 
 // Pipeline coverage: parse input -> placement/resource allocation -> routing

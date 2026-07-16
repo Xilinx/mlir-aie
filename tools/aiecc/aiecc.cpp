@@ -244,12 +244,10 @@ buildHostExeSubgraph(EdgeWithTypedOutput<OpInModule<DeviceOp>> &perDevice,
               cmd.arg("-L" + d);
             for (const auto &l : hostLibs)
               cmd.arg("-l" + l);
-            // Host-compiler passthrough: arguments after the `--` separator
-            // are forwarded verbatim.
+            // Host sources and host-compiler flags arrive after the `--`
+            // separator and are forwarded verbatim.
             for (const auto &a : hostPassthroughArgs)
               cmd.arg(a);
-            for (const auto &s : getHostSourceFiles())
-              cmd.arg(s);
             cmd.output("-o");
             return cmd(out);
           });
@@ -582,15 +580,14 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                   .output("-o"))
           .threadSafe();
 
-  // --compile/--link gating:
-  //   * compile + link: build fresh per-core ELFs (Chess/xbridge or Peano);
-  //   * compile, no-link: the compiled object masquerades as the "elf" for
-  //     downstream configuration;
-  //   * no-compile: reuse the pre-baked `elf_file` attributes in the IR.
+  // --link gating:
+  //   * link (default): build fresh per-core ELFs (Chess/xbridge or Peano);
+  //   * --no-link: the compiled object masquerades as the "elf" for downstream
+  //     configuration.
+  // Cores that already carry an `elf_file` attribute are handled separately by
+  // `preBakedElfs` and merged into `physicalWithElfs`.
   EdgeWithTypedOutput<File> &compiledElfs =
-      !doCompileObjects ? preBakedElfs
-      : doBuildElfs     ? (xbridge ? chessElfs : peanoElfs)
-                        : objects;
+      doBuildElfs ? (xbridge ? chessElfs : peanoElfs) : objects;
 
   // --- Per-device configuration artifacts ---------------------------------
 
@@ -1081,7 +1078,6 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // The AIE1 host-compilation subgraph (aie_inc.cpp + clang++ link) lives in
   // buildHostExeSubgraph, which reads the host-compilation command-line option
   // globals directly (see its comment).
-  std::vector<std::string> hostSrcs = getHostSourceFiles();
   auto &hostExe = buildHostExeSubgraph(staticPerDevice, perDeviceArches);
 
   // --- AIE simulator Work folder -----------------------------------------
@@ -1109,8 +1105,8 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
     aiesimCfg.hostArgs.push_back("-L" + dir);
   for (const auto &lib : hostLibs)
     aiesimCfg.hostArgs.push_back("-l" + lib);
-  for (const auto &src : hostSrcs)
-    aiesimCfg.hostArgs.push_back(src);
+  for (const auto &a : hostPassthroughArgs)
+    aiesimCfg.hostArgs.push_back(a);
 
   auto &aiesimWork = staticPerDevice.map<File>(
       "aiesim_{0}.stamp",
@@ -1142,20 +1138,18 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   if (generateScratchpadParams)
     outputs.push_back(&paramsFile);
 
-  // Default build (no specific artifact requested): root core compilation so a
-  // bare `aiecc design.mlir` builds every device's cores up front (ELFs when
-  // linking, objects with --no-link; --no-unified + Chess + --no-link emits no
-  // object at all). When a specific artifact IS requested we don't force-root
-  // compilation -- the engine pulls per-core ELFs on demand through
-  // `physicalWithElfs` for artifacts that embed them, and a pure insts/elf run
-  // without --expand-load-pdis reaches instructions via `npuLowered` (rooted at
-  // the un-patched `physical`), so the compile/link subgraph prunes entirely.
+  // Core compilation output: emit the per-core ELFs (or objects with --no-link)
+  // when --compile is passed, or as the default when no other artifact was
+  // requested (so a bare `aiecc design.mlir` builds every device's cores up
+  // front). When a specific artifact IS requested the engine still pulls
+  // per-core ELFs on demand through `physicalWithElfs` for artifacts that embed
+  // them, so this only governs whether the cores are also written out.
   bool anySpecificOutput =
       generateInputWithAddresses || generateScratchpadParams ||
       generateNpuInsts || keepLoc || generateElf || generateCdo ||
       generatePdi || generateTxn || generateCtrlpkt || generateXclbin ||
       generateFullElf || wantAiesim || doCompileHost || !getOutputs.empty();
-  if (doCompileObjects && !anySpecificOutput) {
+  if (compile || !anySpecificOutput) {
     if (doBuildElfs)
       outputs.push_back(&compiledElfs);
     else if (!(noUnified && xchesscc))
@@ -1286,6 +1280,15 @@ int main(int argc, char **argv) {
     }
   llvm::cl::ParseCommandLineOptions(parseArgc, effArgv,
                                     "aiecc declarative driver\n");
+
+  // Exactly one input MLIR file may appear before the `--` separator; host
+  // source files and host-compiler flags belong after it.
+  if (positionalArgs.size() > 1) {
+    llvm::errs() << "aiecc: only one input MLIR file is allowed before '--'; "
+                    "pass host source files and host-compiler flags after "
+                    "'--'\n";
+    return 1;
+  }
 
   if (showVersion) {
     printVersion(llvm::outs());
