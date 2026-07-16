@@ -22,6 +22,13 @@ namespace xilinx::AIEX {
 
 //===----------------------------------------------------------------------===//
 // SsaStridePolicy: arith-emitting mirror of ConstStridePolicy.
+//
+// Arithmetic is i32, matching the 32-bit BD word fields the results are packed
+// into. ConstStridePolicy uses int64, but the two agree because every value
+// here is a size/stride/offset bounded by a BD hardware field (<= 20-bit) or by
+// the 32-bit buffer_length, so no intermediate product overflows 32 bits. (A
+// stride large enough to overflow -- ~2^31/elemWidth elements -- exceeds any
+// single shim BD's addressable extent.)
 //===----------------------------------------------------------------------===//
 
 Value SsaStridePolicy::cst(int64_t c) const {

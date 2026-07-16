@@ -142,3 +142,21 @@ module {
     }
   }
 }
+
+// -----
+
+// A CONSTANT non-zero offset paired with a RUNTIME stride on the same dim: the
+// offset*stride term isn't compile-time foldable, so arg_plus must be built
+// with arith rather than via getOffsetInBytes() (which would read the runtime
+// stride as a constant). Regression for that crash.
+// CHECK-LABEL: @const_offset_rt_stride
+// CHECK: aiex.npu.address_patch(%{{.*}} : i32)
+module {
+  aie.device(npu1) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @alloc0(%t, MM2S, 0)
+    aie.runtime_sequence @const_offset_rt_stride(%arg0: memref<4096xi32>, %st: i64) {
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 16, 0][1, 1, 4, 8][0, 0, %st, 1]) {id = 0 : i64, metadata = @alloc0} : memref<4096xi32>
+    }
+  }
+}

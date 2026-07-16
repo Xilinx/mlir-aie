@@ -523,12 +523,23 @@ public:
     int64_t elemBytes = op.getElementTypeBitwidth() / 8;
     auto offsets = llvm::to_vector<4>(llvm::reverse(op.getMixedOffsets()));
     auto strides = llvm::to_vector<4>(llvm::reverse(op.getMixedStrides()));
-    bool offsetIsRuntime = !llvm::all_of(offsets, [](OpFoldResult s) {
-      return getConstantIntValue(s).has_value();
-    });
+    // The constant fast-path is only valid when every term of
+    // sum(offset[i] * stride[i]) is compile-time known, i.e. each non-zero
+    // offset has both a constant offset and a constant stride (a zero offset
+    // contributes nothing regardless of its stride). Otherwise build arg_plus
+    // with arith. This mirrors getOffsetInBytes(), which reads stride[i] only
+    // where offset[i] != 0.
+    bool offsetFoldsToConstant = true;
+    for (size_t i = 0; i < offsets.size(); i++) {
+      auto off = getConstantIntValue(offsets[i]);
+      if (!off || (*off != 0 && !getConstantIntValue(strides[i]))) {
+        offsetFoldsToConstant = false;
+        break;
+      }
+    }
 
     Value argPlus;
-    if (!offsetIsRuntime) {
+    if (offsetFoldsToConstant) {
       argPlus =
           createConstantI32(rewriter, loc,
                             static_cast<uint32_t>(op.getOffsetInBytes() +
