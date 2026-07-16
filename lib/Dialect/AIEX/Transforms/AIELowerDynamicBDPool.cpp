@@ -58,6 +58,12 @@ struct AIELowerDynamicBDPoolPass
   // The (col,row) of the tile each task's id belongs to, so a push names the
   // right pool even when the id is a loop result rather than a direct pop.
   llvm::DenseMap<Value, std::pair<int, int>> tileForTask;
+  // A representative configure for each task value whose (tile,dir,channel) an
+  // await can reference. For a loop-carried task this stays the init (iteration
+  // 0) configure, which is loop-invariant and dominates a post-loop await --
+  // the value the await originally named (a loop result) has no defining
+  // configure to resolve, so awaits are redirected here.
+  llvm::DenseMap<Value, DMAConfigureTaskOp> originConfigure;
 
   // Count the BD ops in a configure's body (across all its blocks).
   static unsigned countBds(DMAConfigureTaskOp cfg) {
@@ -84,6 +90,7 @@ struct AIELowerDynamicBDPoolPass
     cfg.getBdIdValMutable().assign(bdId);
     pairedId[cfg.getResult()] = bdId;
     tileForTask[cfg.getResult()] = {tile.getCol(), tile.getRow()};
+    originConfigure[cfg.getResult()] = cfg;
     return success();
   }
 
@@ -133,11 +140,15 @@ struct AIELowerDynamicBDPoolPass
     // each carried task iter_arg / result with its new id iter_arg / result,
     // and propagate the tile from the corresponding init task.
     for (auto [i, k] : llvm::enumerate(carried)) {
-      auto tile = tileForTask.lookup(forOp.getInitArgs()[k]);
+      Value init = forOp.getInitArgs()[k];
+      auto tile = tileForTask.lookup(init);
+      DMAConfigureTaskOp origin = originConfigure.lookup(init);
       pairedId[newFor.getRegionIterArg(k)] = newFor.getRegionIterArg(nOrig + i);
       tileForTask[newFor.getRegionIterArg(k)] = tile;
+      originConfigure[newFor.getRegionIterArg(k)] = origin;
       pairedId[newFor.getResult(k)] = newFor.getResult(nOrig + i);
       tileForTask[newFor.getResult(k)] = tile;
+      originConfigure[newFor.getResult(k)] = origin;
     }
     return newFor;
   }
@@ -191,7 +202,11 @@ struct AIELowerDynamicBDPoolPass
       for (scf::ForOp f : llvm::reverse(loops))
         carryIdsThroughLoop(f);
 
-      // 3. free/await -> push (await keeps its sync, adds a push).
+      // 3. free/await -> push (await keeps its sync, adds a push). An await on a
+      //    loop result / region-arg cannot resolve its configure (a loop result
+      //    has no defining configure), so redirect it to the loop-invariant
+      //    origin configure, whose tile/dir/channel is identical every
+      //    iteration.
       llvm::DenseSet<Value> released;
       SmallVector<Operation *> toErase;
       r = seq.walk([&](Operation *op) -> WalkResult {
@@ -202,6 +217,15 @@ struct AIELowerDynamicBDPoolPass
         } else if (auto await = dyn_cast<DMAAwaitTaskOp>(op)) {
           if (failed(lowerRelease(await.getTask(), await, released)))
             return WalkResult::interrupt();
+          if (!await.getTask().getDefiningOp<DMAConfigureTaskOp>()) {
+            DMAConfigureTaskOp origin = originConfigure.lookup(await.getTask());
+            if (!origin)
+              return await.emitOpError(
+                         "awaits a task whose configure cannot be resolved for "
+                         "the dynamic pool path"),
+                     WalkResult::interrupt();
+            await.getTaskMutable().assign(origin.getResult());
+          }
         }
         return WalkResult::advance();
       });

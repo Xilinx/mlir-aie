@@ -184,12 +184,12 @@ public:
     uint32_t queue_offset = ctrl_offset + 0x4;
 
     // The command word packs bd_id [3:0], repeat_count [23:16], and the
-    // issue-token bit [31]. Both bd_id (dynamic free-list pool) and repeat_count
-    // (runtime outer/repeat dimension) may be runtime SSA values; the issue bit
-    // is always compile-time. When every runtime field is constant we fold the
-    // whole word to a constant (byte-identical to the static path); otherwise we
-    // build the word with arith so a runtime bd_id and/or repeat still lowers to
-    // a valid write32 instead of being rejected.
+    // issue-token bit [31]. Both bd_id (dynamic free-list pool) and
+    // repeat_count (runtime outer/repeat dimension) may be runtime SSA values;
+    // the issue bit is always compile-time. When every runtime field is
+    // constant we fold the whole word to a constant (byte-identical to the
+    // static path); otherwise we build the word with arith so a runtime bd_id
+    // and/or repeat still lowers to a valid write32 instead of being rejected.
     Location loc = op->getLoc();
     auto i32ty = rewriter.getIntegerType(32);
     std::optional<uint32_t> bd_id = getConstantIntOperand(op.getBdId());
@@ -199,9 +199,9 @@ public:
 
     Value cmdVal;
     if (bd_id && repeat_cnt) {
-      cmdVal = createConstantI32(
-          rewriter, loc,
-          (*bd_id & 0xF) | ((*repeat_cnt & 0xFF) << 16) | issueBit);
+      cmdVal = createConstantI32(rewriter, loc,
+                                 (*bd_id & 0xF) | ((*repeat_cnt & 0xFF) << 16) |
+                                     issueBit);
     } else {
       // (bd_id & 0xF) | ((repeat & 0xFF) << 16) | issueBit, as arith over the
       // runtime operands (a constant field folds to its constant contribution).
@@ -210,9 +210,9 @@ public:
           rewriter, loc, getAsValue(rewriter, loc, op.getBdId(), i32ty),
           createConstantI32(rewriter, loc, 0xF));
       cmd = arith::OrIOp::create(rewriter, loc, cmd, bdField);
-      Value masked = arith::AndIOp::create(
-          rewriter, loc, op.getRepeatCount(),
-          createConstantI32(rewriter, loc, 0xFF));
+      Value masked =
+          arith::AndIOp::create(rewriter, loc, op.getRepeatCount(),
+                                createConstantI32(rewriter, loc, 0xFF));
       Value shifted = arith::ShLIOp::create(
           rewriter, loc, masked, createConstantI32(rewriter, loc, 16));
       cmdVal = arith::OrIOp::create(rewriter, loc, cmd, shifted);
@@ -532,8 +532,8 @@ public:
         llvm::to_vector(llvm::reverse(op.getMixedOffsets())),
         llvm::to_vector(llvm::reverse(op.getMixedStrides())),
         op.getElementTypeBitwidth() / 8, traceResult->offsetInBytes);
-    NpuAddressPatchOp::create(rewriter, op->getLoc(), patchAddr, argIdx,
-                              argPlus);
+    NpuAddressPatchOp::create(rewriter, op->getLoc(), patchAddr,
+                              /*addr_val=*/Value(), argIdx, argPlus);
 
     // If this DMA op has an offset_state_table_idx, emit an
     // update_from_scratchpad to add the runtime offset to the BD address

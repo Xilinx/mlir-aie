@@ -15,19 +15,22 @@
 //   - the popped id is carried through scf.for alongside the task (a second
 //     i32 iter_arg), so the free of the PREVIOUS iteration's task pushes the
 //     right id;
-//   - the free after the loop pushes the last id; the await is kept (it lowers
-//     to a sync later) and the redundant free-after-await is dropped.
+//   - the free after the loop pushes the last id; the redundant free-after-
+//     await is dropped;
+//   - the await, which named the loop-result task (no defining configure to
+//     resolve), is redirected to the loop-invariant init configure %[[INIT_T]]
+//     -- same tile/dir/channel every iteration.
 
 // CHECK-LABEL: @runtime_bound_pingpong
 // CHECK: %[[INIT:.*]] = aiex.dma_bd_pool_pop(0, 0) : i32
-// CHECK: aiex.dma_configure_task(%{{.*}}, MM2S, 0) bd_id %[[INIT]] : i32
-// CHECK: %[[LOOP:.*]]:2 = scf.for {{.*}} iter_args(%[[PREVT:.*]] = %{{.*}}, %[[PREVID:.*]] = %[[INIT]]) -> (index, i32)
+// CHECK: %[[INIT_T:.*]] = aiex.dma_configure_task(%{{.*}}, MM2S, 0) bd_id %[[INIT]] : i32
+// CHECK: %[[LOOP:.*]]:2 = scf.for {{.*}} iter_args(%[[PREVT:.*]] = %[[INIT_T]], %[[PREVID:.*]] = %[[INIT]]) -> (index, i32)
 // CHECK:   %[[T:.*]] = aiex.dma_bd_pool_pop(0, 0) : i32
 // CHECK:   aiex.dma_configure_task(%{{.*}}, MM2S, 0) bd_id %[[T]] : i32
 // CHECK:   aiex.dma_bd_pool_push(0, 0) bd_id %[[PREVID]] : i32
 // CHECK:   scf.yield %{{.*}}, %[[T]] : index, i32
 // CHECK: aiex.dma_bd_pool_push(0, 0) bd_id %[[LOOP]]#1 : i32
-// CHECK: aiex.dma_await_task(%[[LOOP]]#0)
+// CHECK: aiex.dma_await_task(%[[INIT_T]])
 
 aie.device(npu1) {
   %tile_0_0 = aie.tile(0, 0)

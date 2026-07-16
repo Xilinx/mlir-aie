@@ -239,6 +239,17 @@ mlir::Value
 buildBdWord(mlir::OpBuilder &builder, mlir::Location loc,
             llvm::ArrayRef<std::tuple<mlir::Value, uint32_t, uint32_t>> fields);
 
+// The base register address of a BD block, `getDmaBdAddress(col,row,bd_id)`, as
+// an i32 Value. The address is linear in bd_id (base + bd_id*bdStride), so a
+// constant bdId folds to the exact literal the static path uses, while a
+// runtime bdId (dynamic free-list pool) is emitted as arith. Shared by the
+// BD-word encoder and the descriptor / address-patch lowering so every register
+// touched for one BD is computed from the same base.
+mlir::Value getBdRegisterBase(mlir::OpBuilder &builder, mlir::Location loc,
+                              const xilinx::AIE::AIETargetModel &targetModel,
+                              int tileCol, int tileRow,
+                              mlir::OpFoldResult bdId);
+
 // Emit the per-word `npu.write32` overrides that carry a shim-NOC BD's runtime
 // sizes/strides, on top of a zero-template blockwrite whose size/stride words
 // were left at 0. Shared by the dma_memcpy_nd and dma_task dynamic lowering

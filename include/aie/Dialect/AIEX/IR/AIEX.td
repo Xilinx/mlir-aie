@@ -827,18 +827,28 @@ def AIE_NpuAddressPatchOp: AIEX_Op<"npu.address_patch", []> {
   let summary = "address patch operator";
   let arguments = (
     ins UI32Attr:$addr,
+        Optional<I32>:$addr_val,
         I32Attr:$arg_idx,
         I32:$arg_plus
   );
   let results = (outs );
   let assemblyFormat = [{
-    `(` $arg_plus `:` type($arg_plus) `)` attr-dict
+    `(` $arg_plus `:` type($arg_plus) `)` (`addr` $addr_val^ `:` type($addr_val))?
+    attr-dict
   }];
   let description = [{
     address patch operator. `arg_plus` is an SSA value; use arith.constant for
     a compile-time-known offset or pass a runtime sequence value for a
     runtime-parameterized buffer offset.
+
+    `addr` is the register to patch (the BD's buffer-address word). It is a
+    compile-time attribute on the static path; when the BD id is chosen at
+    runtime (dynamic free-list pool) the register address is itself runtime and
+    is supplied via the optional `addr_val` operand instead, which then takes
+    precedence. Only the EmitC (C++ TXN) target supports a runtime `addr_val`;
+    the static binary target requires the constant `addr`.
   }];
+  let hasVerifier = 1;
 }
 
 def AIE_NpuPreemptOp: AIEX_Op<"npu.preempt", []> {

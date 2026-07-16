@@ -171,7 +171,10 @@ private:
           ++count;
         })
         .Case<AIEX::NpuAddressPatchOp>([&](auto ap) {
-          Value addrV = u32Literal(b, loc, ap.getAddr());
+          // A runtime bd_id makes the patched register address runtime: prefer
+          // the SSA addr_val (flows through arith-to-emitc) over the constant.
+          Value addrV = ap.getAddrVal() ? ap.getAddrVal()
+                                        : u32Literal(b, loc, ap.getAddr());
           Value idxV = emitc::ConstantOp::create(
               b, loc, emitc::OpaqueType::get(b.getContext(), "int32_t"),
               emitc::OpaqueAttr::get(b.getContext(),

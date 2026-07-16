@@ -877,6 +877,19 @@ LogicalResult AIEX::NpuAssertBdDivisibleOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// NpuAddressPatchOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AIEX::NpuAddressPatchOp::verify() {
+  // A runtime register address (addr_val) is meaningful only on the EmitC (C++
+  // TXN) target; the constant `addr` still carries the fallback / static value.
+  // The static binary target checks for the operand and diagnoses it there.
+  if (getAddrVal() && !getAddrVal().getType().isInteger(32))
+    return emitOpError("addr_val must be an i32 value");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // NpuUpdateFromScratchpadOp
 //===----------------------------------------------------------------------===//
 

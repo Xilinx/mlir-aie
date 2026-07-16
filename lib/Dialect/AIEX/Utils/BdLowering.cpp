@@ -154,6 +154,26 @@ Value buildBdWord(OpBuilder &builder, Location loc,
   return result;
 }
 
+Value getBdRegisterBase(OpBuilder &builder, Location loc,
+                        const AIE::AIETargetModel &targetModel, int tileCol,
+                        int tileRow, OpFoldResult bdId) {
+  auto i32ty = builder.getIntegerType(32);
+  if (auto c = getConstantIntValue(bdId))
+    return createConstantI32(builder, loc,
+                             static_cast<uint32_t>(targetModel.getDmaBdAddress(
+                                 tileCol, tileRow, *c)));
+  // Runtime bd_id: base + bd_id * bdStride, with base/stride from the (linear)
+  // target-model address function.
+  uint64_t addrForId0 = targetModel.getDmaBdAddress(tileCol, tileRow, 0);
+  uint64_t bdStride =
+      targetModel.getDmaBdAddress(tileCol, tileRow, 1) - addrForId0;
+  Value bdIdVal = getAsValue(builder, loc, bdId, i32ty);
+  return arith::AddIOp::create(
+      builder, loc, createConstantI32(builder, loc, addrForId0),
+      arith::MulIOp::create(builder, loc, bdIdVal,
+                            createConstantI32(builder, loc, bdStride)));
+}
+
 LogicalResult emitDynamicShimBdWordOverrides(
     OpBuilder &builder, Location loc, const AIE::AIETargetModel &targetModel,
     int tileCol, int tileRow, OpFoldResult bdId,
@@ -249,33 +269,23 @@ LogicalResult emitDynamicShimBdWordOverrides(
   for (int i = 1; i < 4; i++)
     guardDivisible(stridesRev[i], inT[i], /*allowUnit=*/false);
 
-  // The shim BD register block is at getDmaBdAddress(col,row,bd_id), which is
-  // linear in bd_id (base + bd_id * bdStride). For a constant bd_id the whole
-  // address folds to a literal (byte-identical to the static path); for a
-  // runtime bd_id (dynamic free-list pool) the base is emitted as arith so each
-  // override targets base + bd_id*bdStride + wordIdx*4 at runtime.
-  std::optional<int64_t> constBdId = getConstantIntValue(bdId);
-  Value bdBase; // set only when bd_id is runtime
-  if (!constBdId) {
-    uint64_t addrForId0 = targetModel.getDmaBdAddress(tileCol, tileRow, 0);
-    uint64_t bdStride =
-        targetModel.getDmaBdAddress(tileCol, tileRow, 1) - addrForId0;
-    Value bdIdVal = getAsValue(builder, loc, bdId, i32ty);
-    bdBase = arith::AddIOp::create(
-        builder, loc, createConstantI32(builder, loc, addrForId0),
-        arith::MulIOp::create(builder, loc, bdIdVal,
-                              createConstantI32(builder, loc, bdStride)));
-  }
-  uint64_t bdAddr =
-      constBdId ? targetModel.getDmaBdAddress(tileCol, tileRow, *constBdId) : 0;
+  // The shim BD register block is at getDmaBdAddress(col,row,bd_id). A constant
+  // bd_id folds to the literal the static path uses; a runtime bd_id (dynamic
+  // free-list pool) yields an arith expression base + bd_id*bdStride, so each
+  // override targets that base + wordIdx*4.
+  Value bdBase =
+      getBdRegisterBase(builder, loc, targetModel, tileCol, tileRow, bdId);
+  std::optional<int64_t> constBase = getConstantIntValue(bdBase);
   auto writeWord = [&](uint32_t wordIdx, Value val) {
-    Value addr;
-    if (constBdId)
-      addr = createConstantI32(builder, loc,
-                               static_cast<uint32_t>(bdAddr + wordIdx * 4));
-    else
-      addr = arith::AddIOp::create(
-          builder, loc, bdBase, createConstantI32(builder, loc, wordIdx * 4));
+    // Fold the whole address to a literal when the base is constant, so the
+    // static/pinned path emits the same single constant it always has.
+    Value addr =
+        constBase
+            ? createConstantI32(builder, loc,
+                                static_cast<uint32_t>(*constBase + wordIdx * 4))
+            : arith::AddIOp::create(
+                  builder, loc, bdBase,
+                  createConstantI32(builder, loc, wordIdx * 4));
     NpuWrite32Op::create(builder, loc, addr, val, nullptr, nullptr, nullptr);
   };
 
