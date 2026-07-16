@@ -20,7 +20,7 @@ from ...utils import trace as trace_utils
 from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 
 from ...dialects.aiex import (
-    npu_load_pdi,
+    npu_load_pdi,  # pyright: ignore[reportAttributeAccessIssue]
     runtime_sequence,
     sync_scratchpad_parameters_from_host,  # pyright: ignore[reportAttributeAccessIssue]
 )

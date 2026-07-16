@@ -246,7 +246,12 @@ class CallableDesign:
         if compilable.full_elf:
             # Full-ELF: compile() returns (elf_path, None). The kernel is loaded
             # standalone from the ELF and addressed by its "<device>:<sequence>"
-            # name (there is no xclbin/insts pair).
+            # name (there is no xclbin/insts pair). compile() always sets both
+            # of these on the full-ELF path.
+            assert (
+                compilable._elf_path is not None
+                and compilable._full_elf_kernel_name is not None
+            )
             kernel = NPUKernel(
                 elf_path=compilable._elf_path,
                 kernel_name=compilable._full_elf_kernel_name,

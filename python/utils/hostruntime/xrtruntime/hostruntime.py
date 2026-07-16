@@ -203,6 +203,8 @@ class XRTHostRuntime(HostRuntime):
         if getattr(npu_kernel, "elf_path", None) is not None:
             return self._load_full_elf(npu_kernel)
 
+        # Not the full-ELF path, so the xclbin + insts pair is populated.
+        assert npu_kernel.xclbin_path is not None and npu_kernel.insts_path is not None
         xclbin_path = Path(npu_kernel.xclbin_path).resolve()
         insts_path = Path(npu_kernel.insts_path).resolve()
         kernel_name = npu_kernel.kernel_name
@@ -386,7 +388,9 @@ class XRTHostRuntime(HostRuntime):
 
         start = time.time_ns()
         run.start()
-        r = run.wait2()
+        # run.wait() returns the ert_cmd_state; run.wait2() returns None, so it
+        # cannot be checked against ERT_CMD_STATE_COMPLETED.
+        r = run.wait()
         stop = time.time_ns()
 
         if fail_on_error and r != pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:

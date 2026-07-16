@@ -495,7 +495,7 @@ class CompilableDesign:
         generated module for the first ``aie.device`` and its first
         ``aie.runtime_sequence``.
         """
-        from aie.ir import StringAttr
+        from aie.ir import StringAttr  # pyright: ignore[reportMissingImports]
 
         module = self._generate_mlir(ExternalFunction)
         for op in module.body.operations:
