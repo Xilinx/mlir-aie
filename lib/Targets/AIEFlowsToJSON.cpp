@@ -61,11 +61,11 @@ void translateSwitchboxes(DeviceOp targetOp, raw_ostream &output) {
     Block &b = r.front();
     for (Operation &Op : b.getOperations()) {
       if (auto pktSource = dyn_cast<PacketSourceOp>(Op)) {
-        TileOp source = dyn_cast<TileOp>(pktSource.getTile().getDefiningOp());
+        TileOp source = cast<TileOp>(pktSource.getTile().getDefiningOp());
         TileID srcID = {source.colIndex(), source.rowIndex()};
         sourceCounts[srcID]++;
       } else if (auto pktDest = dyn_cast<PacketDestOp>(Op)) {
-        TileOp dest = dyn_cast<TileOp>(pktDest.getTile().getDefiningOp());
+        TileOp dest = cast<TileOp>(pktDest.getTile().getDefiningOp());
         TileID dstID = {dest.colIndex(), dest.rowIndex()};
         destinationCounts[dstID]++;
       }
@@ -282,10 +282,10 @@ void translatePacketFlows(DeviceOp targetOp, int &flowCount,
     TileOp source, dest;
     for (Operation &Op : b.getOperations()) {
       if (auto pktSource = dyn_cast<PacketSourceOp>(Op)) {
-        source = dyn_cast<TileOp>(pktSource.getTile().getDefiningOp());
+        source = cast<TileOp>(pktSource.getTile().getDefiningOp());
         sourcePort = pktSource.port();
       } else if (auto pktDest = dyn_cast<PacketDestOp>(Op)) {
-        dest = dyn_cast<TileOp>(pktDest.getTile().getDefiningOp());
+        dest = cast<TileOp>(pktDest.getTile().getDefiningOp());
         destPort = pktDest.port();
       }
     }
