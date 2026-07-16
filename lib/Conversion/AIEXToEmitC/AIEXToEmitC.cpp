@@ -195,6 +195,26 @@ private:
                                         ") return std::nullopt;",
                                     ValueRange{g.getValue()});
         })
+        .Case<AIEX::NpuAssertBdDivisibleOp>([&](auto g) {
+          // Host-side realizability guard: a runtime size/stride whose byte
+          // extent isn't a whole number of granules can't be encoded, so the
+          // builder yields no stream rather than a corrupt one. allow_unit
+          // exempts a unit stride (the contiguous sub-granule case). Not
+          // counted: it appends nothing to the txn stream. Verbatim
+          // placeholders are positional, so the value is passed once per `{}`
+          // it appears in.
+          std::string d = std::to_string(g.getDivisor());
+          if (g.getAllowUnit())
+            emitc::VerbatimOp::create(b, loc,
+                                      "if ({} != 1 && {} % " + d +
+                                          " != 0) return "
+                                          "std::nullopt;",
+                                      ValueRange{g.getValue(), g.getValue()});
+          else
+            emitc::VerbatimOp::create(
+                b, loc, "if ({} % " + d + " != 0) return std::nullopt;",
+                ValueRange{g.getValue()});
+        })
         // memref.get_global feeding a blockwrite is consumed by
         // convertBlockWrite (data inlined); the now-dead op is erased later.
         .Case<memref::GetGlobalOp>([&](auto) {})

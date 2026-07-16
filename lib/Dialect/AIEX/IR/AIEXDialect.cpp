@@ -165,7 +165,7 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
     }
   }
 
-  if (inputSizes[0] * elemWidth % addressGranularity != 0) {
+  if (!isConstMultipleOfGranule(inputSizes[0], elemWidth, addressGranularity)) {
     std::stringstream msg;
     msg << "Transfer sizes must be multiples of " << (addressGranularity / 8)
         << " bytes. " << inputSizes[0] << " elements at " << (elemWidth / 8)
@@ -195,7 +195,8 @@ AIEX::verifyStridesWraps(mlir::Operation *forOp,
     // addressGranularity, which is checked below
     if (i == 0 && inputStrides[i] == 1)
       continue;
-    if (inputStrides[i] * elemWidth % addressGranularity != 0) {
+    if (!isConstMultipleOfGranule(inputStrides[i], elemWidth,
+                                  addressGranularity)) {
       std::stringstream msg;
       msg << "Stride " << i << " is " << inputStrides[i] << " elements * "
           << (elemWidth / 8) << " bytes = " << (inputStrides[i] * elemWidth / 8)
@@ -287,18 +288,22 @@ int64_t AIEX::NpuDmaMemcpyNdOp::getOffsetInBytes() {
       llvm::map_to_vector(llvm::reverse(getMixedOffsets()), [](OpFoldResult s) {
         return getConstantIntValue(s).value();
       });
-  llvm::SmallVector<int64_t, 4> strides =
-      llvm::map_to_vector(llvm::reverse(getMixedStrides()), [](OpFoldResult s) {
-        return getConstantIntValue(s).value();
-      });
+  auto strides = llvm::to_vector<4>(llvm::reverse(getMixedStrides()));
   size_t offset = 0;
   size_t R = offsets.size();
   size_t el_bit_width = getElementTypeBitwidth();
   assert(el_bit_width % 8 == 0 &&
          "Expected Memref element bitwidth to be multiple of 8.");
   size_t S = el_bit_width / 8;
-  for (size_t i = 0; i < R; i++)
-    offset += offsets[i] * strides[i] * S;
+  // A dimension only contributes to the byte offset when its (constant) offset
+  // is non-zero; a runtime stride paired with a zero offset is fine and must
+  // not be forced to a constant. The verifier requires any stride multiplied by
+  // a non-zero offset to be constant.
+  for (size_t i = 0; i < R; i++) {
+    if (offsets[i] == 0)
+      continue;
+    offset += offsets[i] * getConstantIntValue(strides[i]).value() * S;
+  }
   return offset;
 }
 
@@ -521,14 +526,10 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verifyDynamicSizesStrides(
   auto sizes = getMixedSizes();
   auto strides = getMixedStrides();
 
-  // Innermost stride must be a compile-time 1 (contiguous innermost scan). The
-  // encoder relies on this to resolve the d0 special case statically.
-  mlir::OpFoldResult innerStride = strides.back();
-  auto innerStrideConst = getConstantIntValue(innerStride);
-  if (!innerStrideConst || *innerStrideConst != 1)
-    return emitOpError(
-        "innermost stride must be a compile-time constant 1 with runtime "
-        "sizes/strides.");
+  // The innermost stride may be runtime like any other dimension: the encoder
+  // resolves its collapse-to-zero case with a select, and its realizability
+  // (unit stride, or granule-aligned) is enforced below for constants and by an
+  // assert_bd_divisible guard for runtime values.
 
   // (The memref must also trace to a runtime-sequence block argument through
   // static subview/cast offsets; that structural check, with the same clean
@@ -541,20 +542,47 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verifyDynamicSizesStrides(
   // the caller; the encoder masks nothing, so an out-of-range constant is a
   // hard error here rather than a silent truncation downstream. (Under the
   // all-or-nothing rule this fires only for a fully-constant size vector paired
-  // with runtime strides, but is kept general.) Sizes are outermost-first;
-  // hardware d0/d1 wrap is 10-bit and the iteration (d3) wrap is 6-bit.
+  // with runtime strides, but is kept general.)
+  //
+  // The bounds are checked against the ENCODED hardware value, matching
+  // verifyStridesWraps: d0 wrap is scaled to address-gen granules
+  // (size * elemWidth / gran), the iteration wrap is biased by -1, and d1 is a
+  // raw element count. Sizes are outermost-first; d0/d1 wrap is 10-bit and the
+  // iteration (d3) wrap is 6-bit.
+  DataLayout dataLayout = DataLayout::closest(getOperation());
+  uint64_t elemWidth = dataLayout.getTypeSizeInBits(buffer.getElementType());
+  uint32_t gran = targetModel.getAddressGenGranularity();
   llvm::SmallVector<mlir::OpFoldResult, 4> sizesRev(llvm::reverse(sizes));
-  auto checkSize = [&](mlir::OpFoldResult ofr, int64_t hi,
+  auto checkSize = [&](mlir::OpFoldResult ofr, int64_t hwVal, int64_t hi,
                        llvm::StringRef what) -> LogicalResult {
-    if (auto c = getConstantIntValue(ofr))
-      if (*c < 0 || *c > hi)
-        return emitOpError(what) << " constant value " << *c
-                                 << " exceeds hardware range [0:" << hi << "].";
+    if (!getConstantIntValue(ofr))
+      return success();
+    if (hwVal < 0 || hwVal > hi)
+      return emitOpError(what) << " hardware value " << hwVal
+                               << " exceeds hardware range [0:" << hi << "].";
     return success();
   };
-  if (failed(checkSize(sizesRev[0], (1 << 10) - 1, "d0 size")) ||
-      failed(checkSize(sizesRev[1], (1 << 10) - 1, "d1 size")) ||
-      failed(checkSize(sizesRev[3], (1 << 6), "iteration size")))
+  auto hwSize = [&](mlir::OpFoldResult ofr) {
+    return getConstantIntValue(ofr).value_or(0);
+  };
+  int64_t d0Hw = (int64_t)(hwSize(sizesRev[0]) * elemWidth / gran);
+  int64_t d1Hw = hwSize(sizesRev[1]);
+  int64_t iterRaw = hwSize(sizesRev[3]);
+  int64_t iterHw = iterRaw > 1 ? iterRaw - 1 : 0;
+  if (failed(checkSize(sizesRev[0], d0Hw, ShimBdFieldWidths::d0WrapMax(),
+                       "d0 size")) ||
+      failed(checkSize(sizesRev[1], d1Hw, ShimBdFieldWidths::d1WrapMax(),
+                       "d1 size")) ||
+      failed(checkSize(sizesRev[3], iterHw, ShimBdFieldWidths::iterWrapMax(),
+                       "iteration size")))
+    return failure();
+
+  // Realizability of the CONSTANT size/stride operands (divisibility +
+  // positivity, innermost-first). Runtime operands get an assert_bd_divisible
+  // guard at lowering time. Shared with the dma_task path.
+  llvm::SmallVector<mlir::OpFoldResult, 4> stridesRev(llvm::reverse(strides));
+  if (failed(verifyConstBdRealizability(getOperation(), sizesRev, stridesRev,
+                                        elemWidth, gran)))
     return failure();
 
   // A runtime size landing in a narrow BD field (d0/d1 wrap 10-bit, iteration
@@ -840,6 +868,24 @@ LogicalResult AIEX::NpuAssertBdFieldOp::verify() {
       return emitOpError("constant value ")
              << *c << " exceeds the guarded field range [0:" << getMax()
              << "].";
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// NpuAssertBdDivisibleOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AIEX::NpuAssertBdDivisibleOp::verify() {
+  if (getDivisor() == 0)
+    return emitOpError("divisor must be non-zero.");
+  if (auto c = getConstantIntValue(getValue())) {
+    if (getAllowUnit() && *c == 1)
+      return success();
+    if (*c % (int64_t)getDivisor() != 0)
+      return emitOpError("constant value ")
+             << *c << " is not divisible by " << getDivisor()
+             << " (transfer is not a whole number of address-gen granules).";
+  }
   return success();
 }
 

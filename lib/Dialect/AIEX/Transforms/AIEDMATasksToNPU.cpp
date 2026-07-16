@@ -520,16 +520,19 @@ struct AIEDMATasksToNPUPass
       if (bd_op.getPadDimensions().has_value())
         return bd_op->emitOpError(
             "zero padding is not supported with runtime sizes/strides/len.");
-      // The innermost stride must be a compile-time 1 (the encoder resolves the
-      // d0 special case statically); mixed lists are outermost-first.
-      auto strides = bd_op.getMixedStrides();
-      if (!strides.empty()) {
-        auto innermost = getConstantIntValue(strides.back());
-        if (!innermost || *innermost != 1)
-          return bd_op->emitOpError(
-              "innermost stride must be a compile-time constant 1 with runtime "
-              "sizes/strides/len.");
-      }
+      // Realizability of the constant size/stride operands (runtime ones are
+      // guarded at lowering by the shared encoder). Mixed lists are
+      // outermost-first; the helper wants innermost-first.
+      uint64_t elemWidth =
+          static_cast<uint64_t>(bd_op.getBufferElementTypeWidthInBytes()) * 8;
+      SmallVector<OpFoldResult, 4> sizesRev(
+          llvm::reverse(bd_op.getMixedSizes()));
+      SmallVector<OpFoldResult, 4> stridesRev(
+          llvm::reverse(bd_op.getMixedStrides()));
+      if (failed(verifyConstBdRealizability(
+              bd_op, sizesRev, stridesRev, elemWidth,
+              target_model.getAddressGenGranularity())))
+        return failure();
       return rewriteSingleBDDynamic(builder, block, bd_op, tile, packet);
     }
 

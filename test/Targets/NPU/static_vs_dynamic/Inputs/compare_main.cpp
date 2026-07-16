@@ -84,22 +84,46 @@ bool replayToRegisters(const char *name, const std::vector<uint32_t> &txn,
   }
   size_t pos = 4;                 // skip the 4-word header
   uint64_t synthKey = 1ULL << 40; // positional keys for non-write ops
+  // Require `need` words to remain from the current opcode, else the stream is
+  // truncated: report and fail (returning stops the loop rather than spinning).
+  auto have = [&](size_t need) -> bool {
+    if (pos + need <= txn.size())
+      return true;
+    std::fprintf(stderr,
+                 "%s: truncated stream: opcode 0x%x at word %zu needs "
+                 "%zu words, only %zu remain\n",
+                 name, txn[pos], pos, need, txn.size() - pos);
+    return false;
+  };
   while (pos < txn.size()) {
     uint32_t opc = txn[pos];
     switch (opc) {
     case TXN_OPC_WRITE: {
-      if (pos + 6 > txn.size())
-        break;
+      if (!have(6))
+        return false;
       regs[txn[pos + 2]] = txn[pos + 4];
       pos += 6;
       break;
     }
     case TXN_OPC_BLOCKWRITE: {
-      if (pos + 4 > txn.size())
-        break;
+      if (!have(4))
+        return false;
       uint32_t addr = txn[pos + 2];
       uint32_t byteSize = txn[pos + 3];
+      if (byteSize % sizeof(uint32_t) != 0) {
+        std::fprintf(stderr, "%s: blockwrite byteSize %u not word-aligned\n",
+                     name, byteSize);
+        return false;
+      }
       size_t total = byteSize / sizeof(uint32_t);
+      if (total < 4) {
+        std::fprintf(stderr,
+                     "%s: blockwrite byteSize %u smaller than 4-word header\n",
+                     name, byteSize);
+        return false;
+      }
+      if (!have(total))
+        return false;
       for (size_t i = 4; i < total; ++i)
         regs[addr + (i - 4) * 4] = txn[pos + i];
       pos += total;
@@ -107,20 +131,24 @@ bool replayToRegisters(const char *name, const std::vector<uint32_t> &txn,
     }
     case TXN_OPC_MASKWRITE: {
       // Apply as a masked RMW so it composes with any write to the same reg.
-      if (pos + 7 > txn.size())
-        break;
+      if (!have(7))
+        return false;
       uint32_t addr = txn[pos + 2], val = txn[pos + 4], mask = txn[pos + 5];
       regs[addr] = (regs[addr] & ~mask) | (val & mask);
       pos += 7;
       break;
     }
     case TXN_OPC_TCT: { // sync
+      if (!have(4))
+        return false;
       regs[synthKey++] = txn[pos + 2];
       regs[synthKey++] = txn[pos + 3];
       pos += 4;
       break;
     }
-    case TXN_OPC_DDR_PATCH: {           // address_patch
+    case TXN_OPC_DDR_PATCH: { // address_patch
+      if (!have(12))
+        return false;
       regs[synthKey++] = txn[pos + 6];  // register to patch
       regs[synthKey++] = txn[pos + 8];  // arg_idx
       regs[synthKey++] = txn[pos + 10]; // arg_plus

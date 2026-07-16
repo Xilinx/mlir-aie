@@ -26,14 +26,17 @@ module {
 
 // -----
 
-// The innermost stride must be a compile-time constant 1.
+// A constant innermost stride whose byte extent isn't a whole granule is not
+// realizable (int8, stride 2 = 16 bits vs the 32-bit granule). A runtime len
+// forces the dynamic path. (A unit or granule-aligned innermost stride, runtime
+// or constant, is fine -- see runtime-len.mlir.)
 module {
   aie.device(npu1) {
     %tile_0_0 = aie.tile(0, 0)
-    aie.runtime_sequence(%arg0: memref<4096xi32>, %s: i64) {
+    aie.runtime_sequence(%arg0: memref<4096xi8>, %len: i32) {
       %t = aiex.dma_configure_task(%tile_0_0, MM2S, 0) {
-          // expected-error@+1 {{innermost stride must be a compile-time constant 1}}
-          aie.dma_bd(%arg0 : memref<4096xi32> offset = 0 len = 4096 sizes = [1, 8, 16, 32] strides = [4096, 512, 32, %s]) {bd_id = 0 : i32}
+          // expected-error@+1 {{stride 0 is 2 elements at 1 bytes each, not a multiple of the 4-byte address-gen granule}}
+          aie.dma_bd(%arg0 : memref<4096xi8> offset = 0 len = %len sizes = [1, 8, 16, 4] strides = [4096, 512, 4, 2]) {bd_id = 0 : i32}
           aie.end
       }
     }

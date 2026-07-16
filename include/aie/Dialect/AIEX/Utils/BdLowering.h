@@ -33,6 +33,51 @@ class AIETargetModel;
 
 namespace xilinx::AIEX {
 
+// Shim-NOC BD hardware field widths (bits). The d0/d1 wrap and iteration wrap
+// bound the encoded sizes that can be programmed without silent truncation; the
+// dynamic verifier and the runtime-value guard share these so the constant and
+// runtime paths reject exactly the same overflows.
+//
+// TODO: these mirror the XAIEMLGBL_NOC_MODULE_* register widths hardcoded in
+// verifyStridesWraps for every tile type; a getDmaBdWrapBits(tileType) accessor
+// on AIETargetModel would let all sites (and non-shim tiles) share one source.
+struct ShimBdFieldWidths {
+  static constexpr int64_t kD0WrapBits = 10;
+  static constexpr int64_t kD1WrapBits = 10;
+  static constexpr int64_t kIterWrapBits = 6;
+  static constexpr int64_t d0WrapMax() { return (1 << kD0WrapBits) - 1; }
+  static constexpr int64_t d1WrapMax() { return (1 << kD1WrapBits) - 1; }
+  static constexpr int64_t iterWrapMax() { return (1 << kIterWrapBits) - 1; }
+};
+
+// The address generator transfers whole granules only, so a size or stride is
+// realizable iff its byte extent (value * elemWidth) is a granule multiple.
+// Dividing through by gcd(elemWidth, gran), that is `value % divisor == 0` with
+// divisor = gran / gcd(elemWidth, gran) -- the element-count multiple a size or
+// stride must land on (e.g. int8 against a 32-bit granule => divisor 4). Shared
+// so the static verifier, the dynamic verifier, and the runtime guard apply one
+// definition (see issue #2566).
+int64_t bdGranuleDivisor(uint64_t elemWidth, uint32_t addressGranularity);
+
+// Whether a constant element count is realizable: value * elemWidth is a whole
+// number of granules. Equivalent to value % bdGranuleDivisor(...) == 0.
+bool isConstMultipleOfGranule(int64_t value, uint64_t elemWidth,
+                              uint32_t addressGranularity);
+
+// Check the CONSTANT size/stride operands of a shim-NOC BD for hardware
+// realizability, shared by the dma_memcpy_nd verifier and the dma_task lowering
+// so both dynamic paths reject the same unrealizable constants. Runtime
+// operands are skipped here (guarded at lowering by assert_bd_divisible). Sizes
+// and strides are innermost-first (d0 first) and of equal length. Checks: d0
+// size and every non-unit stride must be a whole number of granules; the
+// innermost stride may be 1 (contiguous); a stride must be positive where its
+// size > 1. Emits a diagnostic on `op` and returns failure on the first
+// violation.
+mlir::LogicalResult verifyConstBdRealizability(
+    mlir::Operation *op, llvm::ArrayRef<mlir::OpFoldResult> sizesInnermostFirst,
+    llvm::ArrayRef<mlir::OpFoldResult> stridesInnermostFirst,
+    uint64_t elemWidth, uint32_t addressGranularity);
+
 // Shared hardware size/stride encoder.
 //
 // The AIE DMA buffer descriptor encodes each dimension's wrap ("size") and step
@@ -43,11 +88,11 @@ namespace xilinx::AIEX {
 // chain of `arith` ops over runtime SSA operands.
 //
 // A Policy provides a value type `V` and: cst(int64), mul/div/sub over a V and
-// an int64 constant, selectGT1/selectGT0(cond, then, els), and
-// d0StrideIsZero(inStride0, elemWidth, gran) deciding the innermost special
-// case. For the constant policy these are plain integer ops and a C++ ternary;
-// for the SSA policy they emit arith ops. Inputs/outputs are 4-element arrays
-// in innermost-first order [d0, d1, d2, d3/iter].
+// an int64 constant, and the selects selectGT1/selectGT0/selectLt(a, b, then,
+// els). For the constant policy these are plain integer ops and C++ ternaries;
+// for the SSA policy they emit arith ops, so every dimension (including the
+// innermost) may be a runtime value. Inputs/outputs are 4-element arrays in
+// innermost-first order [d0, d1, d2, d3/iter].
 template <typename Policy>
 void encodeHardwareStridesWraps(Policy &p, uint64_t elemWidth,
                                 uint32_t addressGranularity,
@@ -64,25 +109,21 @@ void encodeHardwareStridesWraps(Policy &p, uint64_t elemWidth,
 
   // d0_size, d0_stride
   sizes[0] = p.div(p.mul(inputSizes[0], elemWidth), addressGranularity);
-  // The innermost stride is the sub-granularity / wide-element special case.
-  // The static path folds this from constants; the dynamic path requires
-  // inputStrides[0] == 1 (verified), so in both domains d0_stride resolves to a
-  // compile-time constant and the branch is decided by the policy on constants.
-  if (p.d0StrideIsZero(inputStrides[0], elemWidth, addressGranularity)) {
-    // First reason: the hardware cannot transfer less than addressGranularity
-    // bits at a time, but the user may express a contiguous transfer of
-    // multiple elements with a stride smaller than addressGranularity. Setting
-    // the stride to 1 (encoded in hardware as 0) allows such transfers.
-    //   verify: inStride0*elemWidth < gran  iff  inSize0*elemWidth > gran.
-    // Second reason: when elemWidth > gran, all bytes must be copied, so the
-    // stride must be 1 (encoded as 0).
-    //   verify: inStride0*elemWidth % gran == 0
-    //           && inStride0 == 1 if elemWidth > gran.
-    // This forbids a stride > 1 for elemWidths bigger than gran even when a
-    // multiple of it; such transfers must use an additional dimension.
+  // The innermost stride has a collapse-to-zero case: a sub-granule stride (its
+  // byte extent < one granule -- the contiguous unit-stride case) or an element
+  // wider than a granule encodes as hardware stride 0. Otherwise it is the
+  // normal biased stride. The wide-element test is purely compile-time; the
+  // sub-granule test is a policy select over the (possibly runtime) stride, so
+  // d0 is handled exactly like d1/d2/d3 below -- no compile-time constraint on
+  // the innermost stride. (Realizability of a non-unit sub-granule stride, e.g.
+  // int8 stride 2, is enforced separately: constants by the verifier, runtime
+  // by an assert_bd_divisible guard with the unit-stride exemption.)
+  if (elemWidth > addressGranularity) {
     strides[0] = p.cst(0);
   } else {
-    strides[0] = biasedStride(inputStrides[0]);
+    strides[0] = p.selectLt(p.mul(inputStrides[0], elemWidth),
+                            p.cst((int64_t)addressGranularity), p.cst(0),
+                            biasedStride(inputStrides[0]));
   }
 
   // d1_size, d1_stride / d2_size, d2_stride: stride only matters when size > 1.
@@ -114,26 +155,18 @@ struct ConstStridePolicy {
   static V sub(V v, int64_t c) { return v - c; }
   static V selectGT1(V cond, V t, V e) { return cond > 1 ? t : e; }
   static V selectGT0(V cond, V t, V e) { return cond > 0 ? t : e; }
-  static bool d0StrideIsZero(V inStride0, uint64_t elemWidth, uint32_t gran) {
-    return inStride0 * (int64_t)elemWidth < (int64_t)gran || elemWidth > gran;
-  }
+  static V selectLt(V a, V b, V t, V e) { return a < b ? t : e; }
 };
 
 // SSA (runtime arith) policy: emits i32 arith ops mirroring ConstStridePolicy.
-// The innermost-stride special case (d0StrideIsZero) is still resolved on
-// compile-time constants: the dynamic path requires inputStrides[0] == 1 and
-// elemWidth/gran are always constants, so no runtime branch is ever needed for
-// it. Every other primitive builds an arith op at the policy's insertion point.
+// Every primitive builds an arith op at the policy's insertion point, so the
+// innermost stride may be a runtime value like any other dimension.
 struct SsaStridePolicy {
   using V = mlir::Value;
   mlir::OpBuilder &builder;
   mlir::Location loc;
-  // The compile-time innermost stride (== 1 on the dynamic path) so the d0
-  // special case matches the constant policy exactly.
-  int64_t constInStride0;
 
-  SsaStridePolicy(mlir::OpBuilder &b, mlir::Location l, int64_t inStride0)
-      : builder(b), loc(l), constInStride0(inStride0) {}
+  SsaStridePolicy(mlir::OpBuilder &b, mlir::Location l) : builder(b), loc(l) {}
 
   V cst(int64_t c) const;
   V mul(V v, int64_t c) const;
@@ -141,11 +174,7 @@ struct SsaStridePolicy {
   V sub(V v, int64_t c) const;
   V selectGT1(V cond, V t, V e) const;
   V selectGT0(V cond, V t, V e) const;
-  bool d0StrideIsZero(V /*inStride0*/, uint64_t elemWidth,
-                      uint32_t gran) const {
-    return constInStride0 * (int64_t)elemWidth < (int64_t)gran ||
-           elemWidth > gran;
-  }
+  V selectLt(V a, V b, V t, V e) const;
 };
 
 // Coerce an OpFoldResult (constant attr or SSA value) to an SSA Value of the

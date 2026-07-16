@@ -685,6 +685,41 @@ def AIE_NpuAssertBdFieldOp: AIEX_Op<"npu.assert_bd_field", []> {
   let hasVerifier = 1;
 }
 
+// ASSERT_BD_DIVISIBLE
+def AIE_NpuAssertBdDivisibleOp: AIEX_Op<"npu.assert_bd_divisible", []> {
+  let summary = "Guard a runtime BD size/stride against the address-gen granule";
+  let arguments = (
+    ins I32:$value,
+        I32Attr:$divisor,
+        UnitAttr:$allow_unit
+  );
+  let results = (outs );
+  let assemblyFormat = [{
+    `(` $value `)` attr-dict `:` type($value)
+  }];
+  let description = [{
+    Asserts, at TXN-build time, that a runtime size/stride is realizable in
+    hardware: its byte extent is a whole number of address-gen granules, i.e.
+    `value % divisor == 0`. The hardware transfers whole granules only, so a
+    size or stride whose `value * elemWidth` is not a granule multiple (e.g. an
+    int8 innermost size of 2 = 16 bits against a 32-bit granule) cannot be
+    encoded. `divisor` is the compile-time granule/element ratio.
+
+    `allow_unit` exempts a value of 1 from the divisibility rule: the innermost
+    stride is allowed to be sub-granule when it is exactly 1 (the contiguous
+    scan the encoder collapses to hardware stride 0), but a non-unit sub-granule
+    stride (e.g. int8 stride 2) is still unrealizable. So with `allow_unit` the
+    predicate is `value == 1 || value % divisor == 0`.
+
+    Like `assert_bd_field`, the TXN stream has no on-device trap, so the guard
+    runs host-side: --aie-npu-to-cpp lowers it to an early
+    `if (value % divisor != 0) return std::nullopt;` (or, with `allow_unit`,
+    `if (value != 1 && value % divisor != 0) ...`). On the binary path the value
+    is constant; the op verifies the bound and is otherwise inert.
+  }];
+  let hasVerifier = 1;
+}
+
 // MASKWRITE
 def AIE_NpuMaskWrite32Op: AIEX_Op<"npu.maskwrite32", []> {
   let summary = "Write a masked 32-bit value to the AIE array";

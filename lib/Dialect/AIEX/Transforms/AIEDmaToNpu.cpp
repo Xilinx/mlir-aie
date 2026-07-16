@@ -183,13 +183,9 @@ public:
     // the offset of the task queue register in the tile
     uint32_t queue_offset = ctrl_offset + 0x4;
 
-    // The command word packs bd_id [3:0], repeat_count [23:16], and the
-    // issue-token bit [31]. bd_id is always compile-time (the BD-ID allocation
-    // pass); repeat_count may be a runtime SSA value (a runtime outer/repeat
-    // dimension). When both are constant we fold the whole word to a constant;
-    // when repeat_count is runtime we build the word with arith (bd_id and the
-    // issue bit fold in as a constant base), so a runtime repeat still lowers
-    // to a valid write32 instead of being rejected.
+    // Command word: bd_id [3:0], repeat_count [23:16], issue-token bit [31].
+    // bd_id is always compile-time; repeat_count may be a runtime SSA value, in
+    // which case the word is built with arith over a constant base.
     std::optional<uint32_t> bd_id = getConstantIntOperand(op.getBdId());
     if (!bd_id)
       return op.emitOpError("cannot lower push_queue with non-constant bd_id");
@@ -201,7 +197,6 @@ public:
       cmdVal = createConstantI32(rewriter, op->getLoc(),
                                  cmdBase | ((*repeat_cnt & 0xFF) << 16));
     } else {
-      // cmdBase | ((repeat & 0xFF) << 16), as arith over the SSA repeat_count.
       Location loc = op->getLoc();
       Value repeat = op.getRepeatCount();
       Value masked = arith::AndIOp::create(
