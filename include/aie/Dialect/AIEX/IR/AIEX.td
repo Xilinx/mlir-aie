@@ -1241,6 +1241,55 @@ def AIE_DMAAwaitTaskOp : AIEX_Op<"dma_await_task", [HasAncestor<"AIE::RuntimeSeq
   }];
 }
 
+def AIE_DMABdPoolPopOp : AIEX_Op<"dma_bd_pool_pop", [HasAncestor<"AIE::RuntimeSequenceOp">]>, Results<(outs I32:$bd_id)> {
+  let summary = "Pop a free Buffer Descriptor ID from the runtime free-list pool for a tile";
+  let description = [{
+    Draws a buffer-descriptor ID from the per-tile runtime free-list pool and
+    returns it as an SSA value. This is the dynamic counterpart to the static
+    BD-ID allocator: inside a runtime-bound `scf.for` the ID is chosen at
+    runtime rather than baked at compile time.
+
+    Only meaningful on the dynamic EmitC lowering path (the static binary TXN
+    stream has no runtime pool). The `aie-lower-dynamic-bd-pool` pass inserts
+    this op in place of the implicit allocation a `dma_configure_task` performs.
+    If the pool is empty at runtime, the generated builder yields no stream
+    (`std::nullopt`).
+  }];
+
+  let arguments = (
+    ins I32Attr:$column,
+        I32Attr:$row
+  );
+
+  let assemblyFormat = [{
+    `(` $column `,` $row `)` attr-dict `:` type($bd_id)
+  }];
+}
+
+def AIE_DMABdPoolPushOp : AIEX_Op<"dma_bd_pool_push", [HasAncestor<"AIE::RuntimeSequenceOp">]> {
+  let summary = "Return a Buffer Descriptor ID to the runtime free-list pool for a tile";
+  let description = [{
+    Returns a buffer-descriptor ID previously obtained from
+    `aiex.dma_bd_pool_pop` to the per-tile runtime free-list pool, making it
+    available for reuse. This is the dynamic counterpart to the static
+    allocator's free/await recycling.
+
+    Only meaningful on the dynamic EmitC lowering path. The
+    `aie-lower-dynamic-bd-pool` pass inserts this op in place of a
+    `dma_free_task` / the recycling half of a `dma_await_task`.
+  }];
+
+  let arguments = (
+    ins I32Attr:$column,
+        I32Attr:$row,
+        I32:$bd_id
+  );
+
+  let assemblyFormat = [{
+    `(` $column `,` $row `)` `bd_id` $bd_id attr-dict `:` type($bd_id)
+  }];
+}
+
 def AIE_DMAStartBdChainOp: AIEX_Op<"dma_start_bd_chain", [HasParent<"AIE::RuntimeSequenceOp">, TileElement]>,
     Results<(outs Index:$result)>
   {
