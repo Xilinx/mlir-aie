@@ -133,6 +133,9 @@ struct ShellCommand {
 
   std::string tool;
   std::vector<Part> parts;
+  // When set, the tool runs against an output path inside this directory and
+  // the artifact is moved to its requested path afterwards (see .workDir()).
+  std::string workDirPath;
 
   inline static std::vector<std::string> searchPaths;
   inline static std::map<std::string, std::string> toolPathCache;
@@ -252,6 +255,16 @@ struct ShellCommand {
     return *this;
   }
 
+  // Run the tool inside `dir`: its output (and any fixed-named sidecar files it
+  // writes next to that output) land under `dir`, then the requested artifact
+  // is moved to its final path. Give each concurrent invocation its own dir so
+  // their identically-named sidecars can't clobber one another (e.g. chess
+  // drops `.map`/`.lst`/`.srv` next to its `-o` file).
+  ShellCommand &workDir(std::string dir) {
+    workDirPath = std::move(dir);
+    return *this;
+  }
+
   // Uniform entry: takes any number of input Items (in bundle declaration
   // order) followed by the Item<File> output. Each input/value part consumes
   // the next source in order.
@@ -271,6 +284,22 @@ private:
     return run(items, out);
   }
 
+  // Move a produced artifact from its isolated work-dir path to the requested
+  // final path. rename() stays within the filesystem in the common case; fall
+  // back to copy for a cross-device move.
+  static mlir::LogicalResult moveOutput(const std::string &from,
+                                        const std::string &to) {
+    if (llvm::sys::fs::rename(from, to)) {
+      if (std::error_code ec = llvm::sys::fs::copy_file(from, to)) {
+        llvm::errs() << "aiecc: failed to move output '" << from << "' to '"
+                     << to << "': " << ec.message() << "\n";
+        return mlir::failure();
+      }
+      llvm::sys::fs::remove(from);
+    }
+    return mlir::success();
+  }
+
   mlir::LogicalResult run(llvm::ArrayRef<const ItemBase *> sources,
                           Item<File> &out) const {
     std::string resolved = resolveTool(tool);
@@ -286,6 +315,33 @@ private:
       }
       resolved = tool;
     }
+
+    // Without .workDir(), run directly against the requested output path.
+    if (workDirPath.empty())
+      return runResolved(std::move(resolved), sources, out);
+
+    // Isolation: redirect the output -- and the fixed-named sidecar files some
+    // tools write next to it -- into a private work dir, then move the
+    // requested artifact to its final path once the tool succeeds.
+    if (llvm::sys::fs::create_directories(workDirPath)) {
+      llvm::errs() << "aiecc: ShellCommand '" << tool
+                   << "': cannot create work dir '" << workDirPath << "'\n";
+      return mlir::failure();
+    }
+    std::string finalPath = out.filePath;
+    std::string isolated =
+        workDirPath + "/" + llvm::sys::path::filename(finalPath).str();
+    out.filePath = isolated;
+    mlir::LogicalResult rc = runResolved(std::move(resolved), sources, out);
+    out.filePath = finalPath;
+    if (mlir::failed(rc))
+      return mlir::failure();
+    return moveOutput(isolated, finalPath);
+  }
+
+  mlir::LogicalResult runResolved(std::string resolved,
+                                  llvm::ArrayRef<const ItemBase *> sources,
+                                  Item<File> &out) const {
     std::vector<std::string> cmd{std::move(resolved)};
     cmd.reserve(parts.size() + 2);
     size_t cursor = 0;

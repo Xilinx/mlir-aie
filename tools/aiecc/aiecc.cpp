@@ -132,10 +132,11 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
                      [chessWork](const Item<std::string> &arch,
                                  const Item<File> &ir,
                                  Item<File> &out) -> mlir::LogicalResult {
-                       // may run in parallel; give each invocation its own
-                       // work dir
+                       // Runs in parallel: give each invocation its own work
+                       // dir so xchesscc's fixed-named `-o` sidecars don't
+                       // collide (+w is its compile scratch; .workDir()
+                       // isolates the outputs).
                        std::string coreWork = chessWork + "/" + out.key;
-                       llvm::sys::fs::create_directories(coreWork);
                        return ShellCommand{"xchesscc_wrapper"}
                            .value()
                            .arg("+w")
@@ -145,7 +146,8 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
                            .arg("+Wclang,-xir")
                            .arg("-f")
                            .input()
-                           .output("-o")(arch, ir, out);
+                           .output("-o")
+                           .workDir(coreWork)(arch, ir, out);
                      })
           .threadSafe();
 
@@ -544,10 +546,11 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                  const Item<std::vector<std::string>> &linkWith,
                                  const Item<std::string> &bcf,
                                  Item<File> &out) -> mlir::LogicalResult {
-                       // may run in parallel; give each invocation its own
-                       // work dir
+                       // Runs in parallel: give each invocation its own work
+                       // dir so the linker's fixed-named `-o` sidecars don't
+                       // collide (+w is its compile scratch; .workDir()
+                       // isolates the outputs).
                        std::string coreWork = chessWork + "/" + out.key;
-                       llvm::sys::fs::create_directories(coreWork);
                        return ShellCommand{"xchesscc_wrapper"}
                            .value()
                            .arg("+w")
@@ -558,7 +561,8 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                            .inputs()
                            .arg("+l")
                            .input()
-                           .output("-o")(arch, obj, linkWith, bcf, out);
+                           .output("-o")
+                           .workDir(coreWork)(arch, obj, linkWith, bcf, out);
                      })
           .threadSafe();
 
