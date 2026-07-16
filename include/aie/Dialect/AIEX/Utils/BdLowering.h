@@ -33,14 +33,10 @@ class AIETargetModel;
 
 namespace xilinx::AIEX {
 
-// Shim-NOC BD hardware field widths (bits). The d0/d1 wrap and iteration wrap
-// bound the encoded sizes that can be programmed without silent truncation; the
-// dynamic verifier and the runtime-value guard share these so the constant and
-// runtime paths reject exactly the same overflows.
-//
-// TODO: these mirror the XAIEMLGBL_NOC_MODULE_* register widths hardcoded in
-// verifyStridesWraps for every tile type; a getDmaBdWrapBits(tileType) accessor
-// on AIETargetModel would let all sites (and non-shim tiles) share one source.
+// Shim-NOC BD hardware field widths (bits), shared by the dynamic verifier and
+// the runtime-value guard so both reject the same field overflows.
+// TODO: fold into a getDmaBdWrapBits(tileType) accessor on AIETargetModel (also
+// covers the widths hardcoded per tile type in verifyStridesWraps).
 struct ShimBdFieldWidths {
   static constexpr int64_t kD0WrapBits = 10;
   static constexpr int64_t kD1WrapBits = 10;
@@ -56,7 +52,7 @@ struct ShimBdFieldWidths {
 // divisor = gran / gcd(elemWidth, gran) -- the element-count multiple a size or
 // stride must land on (e.g. int8 against a 32-bit granule => divisor 4). Shared
 // so the static verifier, the dynamic verifier, and the runtime guard apply one
-// definition (see issue #2566).
+// definition.
 int64_t bdGranuleDivisor(uint64_t elemWidth, uint32_t addressGranularity);
 
 // Whether a constant element count is realizable: value * elemWidth is a whole
@@ -64,35 +60,24 @@ int64_t bdGranuleDivisor(uint64_t elemWidth, uint32_t addressGranularity);
 bool isConstMultipleOfGranule(int64_t value, uint64_t elemWidth,
                               uint32_t addressGranularity);
 
-// Check the CONSTANT size/stride operands of a shim-NOC BD for hardware
-// realizability, shared by the dma_memcpy_nd verifier and the dma_task lowering
-// so both dynamic paths reject the same unrealizable constants. Runtime
-// operands are skipped here (guarded at lowering by assert_bd_divisible). Sizes
-// and strides are innermost-first (d0 first) and of equal length. Checks: d0
-// size and every non-unit stride must be a whole number of granules; the
-// innermost stride may be 1 (contiguous); a stride must be positive where its
-// size > 1. Emits a diagnostic on `op` and returns failure on the first
-// violation.
+// Check the constant size/stride operands (innermost-first) of a shim-NOC BD
+// for realizability: d0 size and every non-unit stride must be a whole number
+// of granules (a unit innermost stride is the exempt contiguous case), and a
+// stride must be positive where its size > 1. Runtime operands are skipped
+// (guarded at lowering by assert_bd_divisible). Shared by both dynamic paths;
+// emits a diagnostic on `op` and fails on the first violation.
 mlir::LogicalResult verifyConstBdRealizability(
     mlir::Operation *op, llvm::ArrayRef<mlir::OpFoldResult> sizesInnermostFirst,
     llvm::ArrayRef<mlir::OpFoldResult> stridesInnermostFirst,
     uint64_t elemWidth, uint32_t addressGranularity);
 
-// Shared hardware size/stride encoder.
-//
-// The AIE DMA buffer descriptor encodes each dimension's wrap ("size") and step
-// ("stride") in hardware units: sizes count elements scaled to the address-gen
-// granularity, and strides are stored biased by -1 (so a stored 0 means a step
-// of one granule). The exact same arithmetic must produce the constant-folded
-// values used by the static lowering AND, in the dynamic path, an equivalent
-// chain of `arith` ops over runtime SSA operands.
-//
-// A Policy provides a value type `V` and: cst(int64), mul/div/sub over a V and
-// an int64 constant, and the selects selectGT1/selectGT0/selectLt(a, b, then,
-// els). For the constant policy these are plain integer ops and C++ ternaries;
-// for the SSA policy they emit arith ops, so every dimension (including the
-// innermost) may be a runtime value. Inputs/outputs are 4-element arrays in
-// innermost-first order [d0, d1, d2, d3/iter].
+// Shared hardware size/stride encoder. The BD encodes each dimension's wrap
+// ("size") scaled to address-gen granules and step ("stride") biased by -1 (a
+// stored 0 means one granule). One algorithm drives both lowerings via a
+// Policy: ConstStridePolicy (int64 math) for the static path, SsaStridePolicy
+// (arith ops) for runtime operands -- keeping them bit-identical. The Policy
+// supplies cst/mul/div/sub and selectGT1/selectGT0/selectLt. Inputs/outputs are
+// 4-element arrays in innermost-first order [d0, d1, d2, d3/iter].
 template <typename Policy>
 void encodeHardwareStridesWraps(Policy &p, uint64_t elemWidth,
                                 uint32_t addressGranularity,
@@ -109,15 +94,11 @@ void encodeHardwareStridesWraps(Policy &p, uint64_t elemWidth,
 
   // d0_size, d0_stride
   sizes[0] = p.div(p.mul(inputSizes[0], elemWidth), addressGranularity);
-  // The innermost stride has a collapse-to-zero case: a sub-granule stride (its
-  // byte extent < one granule -- the contiguous unit-stride case) or an element
-  // wider than a granule encodes as hardware stride 0. Otherwise it is the
-  // normal biased stride. The wide-element test is purely compile-time; the
-  // sub-granule test is a policy select over the (possibly runtime) stride, so
-  // d0 is handled exactly like d1/d2/d3 below -- no compile-time constraint on
-  // the innermost stride. (Realizability of a non-unit sub-granule stride, e.g.
-  // int8 stride 2, is enforced separately: constants by the verifier, runtime
-  // by an assert_bd_divisible guard with the unit-stride exemption.)
+  // d0_stride collapses to hardware 0 for a sub-granule stride (byte extent <
+  // one granule, i.e. the contiguous unit-stride case) or a wide element; else
+  // it is the biased stride. The wide-element test is compile-time; the
+  // sub-granule test is a policy select, so the stride may be runtime. A
+  // non-unit sub-granule stride is unrealizable and rejected/guarded elsewhere.
   if (elemWidth > addressGranularity) {
     strides[0] = p.cst(0);
   } else {
@@ -146,7 +127,7 @@ void encodeHardwareStridesWraps(Policy &p, uint64_t elemWidth,
       p.cst(0));
 }
 
-// Constant (compile-time int64) policy: the original static arithmetic.
+// Constant (compile-time int64) policy: plain integer arithmetic.
 struct ConstStridePolicy {
   using V = int64_t;
   static V cst(int64_t c) { return c; }
@@ -189,26 +170,14 @@ mlir::Value
 buildBdWord(mlir::OpBuilder &builder, mlir::Location loc,
             llvm::ArrayRef<std::tuple<mlir::Value, uint32_t, uint32_t>> fields);
 
-// Emit the per-word `npu.write32` overrides that carry a shim-NOC BD's runtime
-// sizes/strides, on top of a zero-template blockwrite whose size/stride words
-// were left at 0. Shared by the dma_memcpy_nd and dma_task dynamic lowering
-// paths, which converge on the identical shim BD-word layout (words 0/3/4/5/6);
-// only the descriptor template (locks, next_bd, packet) and the queue push
-// differ, and those stay with each caller.
-//
-// `mixedSizes`/`mixedStrides` are outermost-first (d3..d0), matching
-// NpuDmaMemcpyNdOp::getMixedSizes and AIE::DMABDOp::getMixedSizes.
-// `bufLenOverride`, if non-null, is written verbatim into buffer_length
-// (word 0) -- dma_task passes its runtime `len`; dma_memcpy_nd passes null, so
-// buffer_length is computed as the d0*d1*d2 hardware-unit size-product. Emits
-// `npu.assert_bd_field` guards for runtime values landing in narrow fields
-// (d0/d1 wrap 10-bit in ND mode, iteration wrap 6-bit always). The op verifier
-// is expected to have enforced the supported scope (shim NOC, innermost stride
-// == 1) already.
-//
-// On success `repeatCountOut` receives the hardware iteration/repeat value for
-// the outer (d3) dimension, which the caller feeds to its queue push (this is
-// the biased hw value, matching the static path's `repeat_count = sizes[3]`).
+// Emit the per-word `npu.write32` overrides carrying a shim-NOC BD's runtime
+// sizes/strides on top of a zero-template blockwrite, plus assert_bd_field /
+// assert_bd_divisible guards for runtime values in narrow or sub-granule
+// fields. Shared by the dma_memcpy_nd and dma_task paths.
+// `mixedSizes`/`mixedStrides` are outermost-first (d3..d0). `bufLenOverride`,
+// if non-null, sets buffer_length (dma_task's runtime len); else it is the
+// d0*d1*d2 size-product. `repeatCountOut` receives the biased hardware
+// outer-dim (d3) value for the caller's queue push.
 mlir::LogicalResult emitDynamicShimBdWordOverrides(
     mlir::OpBuilder &builder, mlir::Location loc,
     const xilinx::AIE::AIETargetModel &targetModel, int tileCol, int tileRow,

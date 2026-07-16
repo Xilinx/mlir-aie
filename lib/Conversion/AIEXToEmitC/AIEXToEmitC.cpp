@@ -187,9 +187,7 @@ private:
         .Case<AIEX::NpuAssertBdFieldOp>([&](auto g) {
           // Host-side bounds guard: if the runtime value overflows its narrow
           // BD field, the builder yields no stream (std::nullopt) rather than a
-          // truncated one. Emitted before any txn op it guards, so the early
-          // return happens before the vector is used. Not counted: it appends
-          // nothing to the txn stream.
+          // truncated one. Appends nothing, so not counted.
           emitc::VerbatimOp::create(b, loc,
                                     "if ({} > " + std::to_string(g.getMax()) +
                                         ") return std::nullopt;",
@@ -198,11 +196,8 @@ private:
         .Case<AIEX::NpuAssertBdDivisibleOp>([&](auto g) {
           // Host-side realizability guard: a runtime size/stride whose byte
           // extent isn't a whole number of granules can't be encoded, so the
-          // builder yields no stream rather than a corrupt one. allow_unit
-          // exempts a unit stride (the contiguous sub-granule case). Not
-          // counted: it appends nothing to the txn stream. Verbatim
-          // placeholders are positional, so the value is passed once per `{}`
-          // it appears in.
+          // builder yields no stream. allow_unit exempts a unit stride (the
+          // contiguous sub-granule case). Appends nothing, so not counted.
           std::string d = std::to_string(g.getDivisor());
           if (g.getAllowUnit())
             emitc::VerbatimOp::create(b, loc,

@@ -226,11 +226,10 @@ public:
   LogicalResult
   matchAndRewrite(NpuDmaMemcpyNdOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    // Runtime (SSA) sizes/strides take the dynamic path; a fully-constant
-    // descriptor takes the original static path below unchanged (so its output
-    // stays byte-identical). The op verifier has already enforced the supported
-    // scope for the dynamic case (shim NOC, innermost stride 1, all-or-nothing,
-    // no padding, in-range constants).
+    // Any runtime (SSA) offset/size/stride takes the dynamic path; a
+    // fully-constant descriptor takes the static path below. The op verifier
+    // has already enforced the supported scope for the dynamic case (shim NOC,
+    // no padding, realizable/in-range constants).
     bool allOffsetsConstant =
         llvm::all_of(op.getMixedOffsets(),
                      [](OpFoldResult s) { return getConstantIntValue(s); });
@@ -577,18 +576,13 @@ public:
     return success();
   }
 
-  // Lower a shim-NOC dma_memcpy_nd carrying runtime (SSA) sizes/strides.
-  //
-  // Strategy (see the milestone #3222 "dynamic BD-word encoder" step): emit the
-  // SAME NpuWriteBdOp as the static path but with zero placeholders in every
-  // size/stride-bearing field, so WriteBdToBlockWritePattern still folds it
-  // into a single static-template blockwrite. Then override each size/stride BD
-  // word with an npu.write32 whose value is computed from the runtime operands
-  // via the shared encoder (SsaStridePolicy) -- identical arithmetic to the
-  // static path, so a runtime value equal to a constant reproduces the same
-  // word. The write32s follow the blockwrite in program order, at fixed
-  // absolute register addresses, so ordering is guaranteed without any
-  // grouping.
+  // Lower a shim-NOC dma_memcpy_nd carrying runtime (SSA) sizes/strides. Emit
+  // the same NpuWriteBdOp as the static path but with zeros in every
+  // size/stride-bearing field (still folded to one blockwrite), then override
+  // each size/stride word with an npu.write32 from the shared encoder -- same
+  // arithmetic as the static path, so a runtime value equal to a constant
+  // reproduces the same word. The write32s follow in program order at fixed
+  // addresses, so ordering needs no grouping.
   LogicalResult lowerDynamic(NpuDmaMemcpyNdOp op, OpAdaptor adaptor,
                              ConversionPatternRewriter &rewriter) const {
     const auto &targetModel = AIE::getTargetModel(op);

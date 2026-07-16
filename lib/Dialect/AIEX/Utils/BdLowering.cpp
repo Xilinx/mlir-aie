@@ -23,12 +23,10 @@ namespace xilinx::AIEX {
 //===----------------------------------------------------------------------===//
 // SsaStridePolicy: arith-emitting mirror of ConstStridePolicy.
 //
-// Arithmetic is i32, matching the 32-bit BD word fields the results are packed
-// into. ConstStridePolicy uses int64, but the two agree because every value
-// here is a size/stride/offset bounded by a BD hardware field (<= 20-bit) or by
-// the 32-bit buffer_length, so no intermediate product overflows 32 bits. (A
-// stride large enough to overflow -- ~2^31/elemWidth elements -- exceeds any
-// single shim BD's addressable extent.)
+// Arithmetic is i32, matching the BD word fields. This agrees with
+// ConstStridePolicy's int64 because every value is bounded by a BD field or the
+// 32-bit buffer_length, so no intermediate product overflows (a stride big
+// enough to overflow exceeds a single shim BD's extent).
 //===----------------------------------------------------------------------===//
 
 Value SsaStridePolicy::cst(int64_t c) const {
@@ -192,17 +190,12 @@ LogicalResult emitDynamicShimBdWordOverrides(
         builder, loc, arith::MulIOp::create(builder, loc, hwS[0], inS[1]),
         inS[2]);
 
-  // Linear-mode decision. This is a RUNTIME-AWARE extension of the static
-  // isContiguousTransfer, not a reimplementation: that helper reads a
-  // dimension's own size (`sizes[i] > 1`), so it cannot classify a transfer
-  // whose d1/d2 SIZE is runtime. Here a runtime outer size is still provably
-  // contiguous when its stride equals the product of the (constant) inner sizes
-  // -- contiguity never needs a dimension's own size, only the compared stride
-  // and the strictly-inner sizes (the common "runtime block count, fixed block
-  // shape" case). When a NEEDED operand is runtime, contiguity is undecidable
-  // and we fall back to ND mode (safe: a runtime d0/d1 size that could overflow
-  // the 10-bit field is guarded below). A contiguous transfer folds d0/d1 into
-  // buffer_length, dodging the 10-bit d0_size limit.
+  // Linear-mode decision: a transfer is contiguous when each outer stride
+  // equals the product of the strictly-inner sizes -- which never needs a
+  // dimension's own size, so a runtime outer size stays decidable. If a needed
+  // operand is runtime we fall back to ND mode (safe: narrow-field sizes are
+  // guarded below). Linear mode folds d0/d1 into buffer_length, dodging the
+  // 10-bit d0_size limit.
   auto cst = [&](OpFoldResult v) { return getConstantIntValue(v); };
   auto knownContiguous = [&]() -> bool {
     auto s0 = cst(stridesRev[0]);

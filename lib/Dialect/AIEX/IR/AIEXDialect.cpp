@@ -488,12 +488,9 @@ checkBurstLength(const xilinx::AIE::AIETargetModel &targetModel,
 }
 
 // Verify the supported scope for a dma_memcpy_nd carrying runtime (SSA)
-// sizes/strides, and hard-error on any statically-provable violation. Runtime
-// values that cannot be checked here are rejected (never silently masked): the
-// scope below is exactly what the dynamic BD encoder (AIEDmaToNpu.cpp
-// lowerDynamic) can lower correctly. Bounded-but-runtime transfers (e.g. a
-// GEMM whose sizes are bounded by buffer capacity) are supported because their
-// bounds are enforced by the caller/buffer extent, not by masking here.
+// offsets/sizes/strides, hard-erroring on any statically-provable violation.
+// The scope here is exactly what the dynamic BD encoder (AIEDmaToNpu.cpp
+// lowerDynamic) can lower; runtime values are never silently masked.
 LogicalResult AIEX::NpuDmaMemcpyNdOp::verifyDynamicSizesStrides(
     const AIE::AIETargetModel &targetModel, mlir::BaseMemRefType buffer) {
   // Shim NOC only.
@@ -521,8 +518,7 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verifyDynamicSizesStrides(
   // SSA value while others stay constant. Only the runtime-dependent fields
   // need runtime handling; the encoder produces the same word for a constant
   // operand either way, so the static ≡ dynamic byte-identity holds field by
-  // field. (This matches the milestone's GEMM target, whose tiling dimensions
-  // are constant while the problem dimensions are runtime.)
+  // field.
   auto sizes = getMixedSizes();
   auto strides = getMixedStrides();
 
@@ -537,18 +533,11 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verifyDynamicSizesStrides(
   // owns the trace utility. It is not duplicated here to keep the dialect
   // verifier free of the analysis-layer dependency.)
 
-  // Compile-time guard: any size operand that IS a constant must fit its
-  // hardware wrap field. Runtime operands are bounded by the buffer extent at
-  // the caller; the encoder masks nothing, so an out-of-range constant is a
-  // hard error here rather than a silent truncation downstream. (Under the
-  // all-or-nothing rule this fires only for a fully-constant size vector paired
-  // with runtime strides, but is kept general.)
-  //
-  // The bounds are checked against the ENCODED hardware value, matching
-  // verifyStridesWraps: d0 wrap is scaled to address-gen granules
-  // (size * elemWidth / gran), the iteration wrap is biased by -1, and d1 is a
-  // raw element count. Sizes are outermost-first; d0/d1 wrap is 10-bit and the
-  // iteration (d3) wrap is 6-bit.
+  // A constant size must fit its hardware wrap field (an out-of-range constant
+  // is a hard error, never a silent truncation); runtime sizes are guarded at
+  // lowering. Bounds are checked on the ENCODED value, matching
+  // verifyStridesWraps: d0 wrap scaled to granules (size * elemWidth / gran),
+  // iteration wrap biased by -1, d1 a raw element count. Sizes outermost-first.
   DataLayout dataLayout = DataLayout::closest(getOperation());
   uint64_t elemWidth = dataLayout.getTypeSizeInBits(buffer.getElementType());
   uint32_t gran = targetModel.getAddressGenGranularity();

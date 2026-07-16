@@ -406,10 +406,9 @@ struct AIEDMATasksToNPUPass
   // Dynamic (runtime SSA size/stride/len) shim-NOC BD lowering, the dma_task
   // sibling of DmaToNpuPattern::lowerDynamic. Emits a zero-template
   // NpuWriteBdOp (constant locks/packet/next_bd baked in, size/stride words
-  // zeroed) that WriteBdToBlockWritePattern folds to one blockwrite, then
-  // per-word write32 overrides carrying the runtime sizes/strides via the
-  // shared encoder. Scope is enforced by the caller (shim NOC, no padding,
-  // innermost stride == 1).
+  // zeroed) folded to one blockwrite, then per-word write32 overrides via the
+  // shared encoder. Scope (shim NOC, no padding, realizability) is enforced by
+  // the caller.
   LogicalResult
   rewriteSingleBDDynamic(OpBuilder &builder, Block &block, AIE::DMABDOp bd_op,
                          AIE::TileOp &tile,
@@ -502,10 +501,10 @@ struct AIEDMATasksToNPUPass
     uint32_t bd_id = bd_op.getBdId().value();
     int64_t offset = bd_op.getOffsetInBytes();
 
-    // Runtime (SSA) sizes/strides/len take the dynamic BD-word encoder path;
-    // a fully-constant descriptor takes the static path below unchanged. Only
-    // the shim-NOC layout is encodable this way (see rewriteSingleBDDynamic),
-    // so anything the dynamic path can't represent stays a clean diagnostic.
+    // Runtime (SSA) sizes/strides/len take the dynamic BD-word encoder path; a
+    // fully-constant descriptor takes the static path below. Only the shim-NOC
+    // layout is encodable this way (see rewriteSingleBDDynamic), so anything
+    // the dynamic path can't represent stays a clean diagnostic.
     bool runtimeLen = bd_op.getLen() && !bd_op.getConstantLen();
     bool runtimeDims =
         llvm::any_of(bd_op.getMixedSizes(),
