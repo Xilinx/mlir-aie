@@ -300,7 +300,7 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
     // Pass 1: collect all sources (order-independent; supports fan-in).
     for (Operation &Op : b.getOperations()) {
       if (auto pktSource = dyn_cast<PacketSourceOp>(Op)) {
-        auto srcTile = dyn_cast<TileOp>(pktSource.getTile().getDefiningOp());
+        auto srcTile = cast<TileOp>(pktSource.getTile().getDefiningOp());
         sources.push_back(
             {{srcTile.colIndex(), srcTile.rowIndex()}, pktSource.port()});
       }
@@ -313,7 +313,7 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
       auto pktDest = dyn_cast<PacketDestOp>(Op);
       if (!pktDest)
         continue;
-      auto destTile = dyn_cast<TileOp>(pktDest.getTile().getDefiningOp());
+      auto destTile = cast<TileOp>(pktDest.getTile().getDefiningOp());
       Port destPort = pktDest.port();
       TileID destCoords = {destTile.colIndex(), destTile.rowIndex()};
       // Assign "keep_pkt_header flag"
