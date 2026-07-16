@@ -32,6 +32,7 @@
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Format.h"
 
@@ -50,6 +51,12 @@ constexpr llvm::StringLiteral kTxnVecType = "std::vector<uint32_t>";
 
 emitc::OpaqueType getU32Type(MLIRContext *ctx) {
   return emitc::OpaqueType::get(ctx, "uint32_t");
+}
+
+// The C++ variable name of the runtime BD pool for a tile. One pool per tile
+// that draws BD ids at runtime, declared in the generated function's prologue.
+std::string bdPoolName(uint32_t col, uint32_t row) {
+  return "bd_pool_" + std::to_string(col) + "_" + std::to_string(row);
 }
 
 // A uint32_t literal operand (e.g. `42u`) for a txn_append_* argument. Used for
@@ -147,7 +154,10 @@ private:
 
     llvm::TypeSwitch<Operation *, void>(op)
         .Case<AIEX::NpuWrite32Op>([&](auto w) {
-          Value addrV = resolvedAddr(b, loc, w);
+          // A compile-time address folds to a literal; a runtime address (the
+          // dynamic BD pool's bdBase + wordIdx, arith over a popped id) is
+          // passed through as SSA and lowered by convert-arith-to-emitc.
+          Value addrV = runtimeOrResolvedAddr(b, loc, w, w.getAddress());
           if (!addrV)
             return fail(w, "cannot convert a symbolic/unresolved write32 "
                            "address to the C++ TXN target");
@@ -156,7 +166,7 @@ private:
           ++count;
         })
         .Case<AIEX::NpuMaskWrite32Op>([&](auto mw) {
-          Value addrV = resolvedAddr(b, loc, mw);
+          Value addrV = runtimeOrResolvedAddr(b, loc, mw, mw.getAddress());
           if (!addrV)
             return fail(mw, "cannot convert a symbolic/unresolved maskwrite32 "
                             "address to the C++ TXN target");
@@ -213,6 +223,30 @@ private:
                 b, loc, "if ({} % " + d + " != 0) return std::nullopt;",
                 ValueRange{g.getValue()});
         })
+        .Case<AIEX::DMABdPoolPopOp>([&](AIEX::DMABdPoolPopOp pop) {
+          // Draw a BD id from the tile's runtime pool into a fresh C++
+          // variable, and fail the build (nullopt) if the pool is empty -- the
+          // runtime backstop for a working set exceeding the tile's BD count.
+          // The pool variable was declared in the prologue (see emitFunction).
+          // Downstream ops (write32 addresses, push_queue) consume the id, so
+          // replace the op's SSA result with a literal naming the new variable.
+          std::string var = "bd_" + std::to_string(nextPoolVar++);
+          emitc::VerbatimOp::create(
+              b, loc,
+              "uint32_t " + var + "; if (!aie_runtime::bd_pool_pop(" +
+                  bdPoolName(pop.getColumn(), pop.getRow()) + ", " + var +
+                  ")) return std::nullopt;");
+          Value ref =
+              emitc::LiteralOp::create(b, loc, pop.getBdId().getType(), var);
+          pop.getBdId().replaceAllUsesWith(ref);
+        })
+        .Case<AIEX::DMABdPoolPushOp>([&](AIEX::DMABdPoolPushOp push) {
+          // Return a BD id to the tile's runtime pool.
+          emitc::CallOpaqueOp::create(
+              b, loc, TypeRange{}, "aie_runtime::bd_pool_push",
+              ValueRange{poolRef(b, loc, push.getColumn(), push.getRow()),
+                         push.getBdId()});
+        })
         // memref.get_global feeding a blockwrite is consumed by
         // convertBlockWrite (data inlined); the now-dead op is erased later.
         .Case<memref::GetGlobalOp>([&](auto) {})
@@ -237,10 +271,32 @@ private:
     return u32Literal(b, loc, it->second);
   }
 
+  // The address for a write32/maskwrite32: the compile-time literal when the
+  // device resolved one, otherwise the op's SSA address operand when it is a
+  // genuine runtime value (the dynamic BD pool computes bdBase + wordIdx as
+  // arith over a popped id -- lowered to C++ by convert-arith-to-emitc). Null
+  // only for a truly symbolic/unresolved address.
+  Value runtimeOrResolvedAddr(OpBuilder &b, Location loc, Operation *clone,
+                              Value addrOperand) {
+    if (Value lit = resolvedAddr(b, loc, clone))
+      return lit;
+    if (addrOperand && !addrOperand.getDefiningOp<arith::ConstantOp>())
+      return addrOperand;
+    return {};
+  }
+
   // Emit a diagnostic on `op` and mark the conversion failed.
   void fail(Operation *op, const llvm::Twine &msg) {
     op->emitOpError(msg);
     ok = false;
+  }
+
+  // An emitc.literal referencing a tile's pool variable (for pass-by-reference
+  // into bd_pool_push).
+  Value poolRef(OpBuilder &b, Location loc, uint32_t col, uint32_t row) {
+    return emitc::LiteralOp::create(
+        b, loc, emitc::OpaqueType::get(b.getContext(), "aie_runtime::BdPool"),
+        bdPoolName(col, row));
   }
 
   void convertBlockWrite(OpBuilder &b, Location loc, AIEX::NpuBlockWriteOp bw) {
@@ -290,6 +346,8 @@ private:
   Value txnVec;
   const DeviceResolved &resolved;
   bool ok = true;
+  // Counter for unique popped-BD-id C++ variable names.
+  unsigned nextPoolVar = 0;
 };
 
 struct ConvertAIEXToEmitCPass
@@ -421,6 +479,32 @@ private:
     emitc::VerbatimOp::create(fb, loc, "std::vector<uint32_t> txn;");
     Value txnVec = emitc::LiteralOp::create(fb, loc, txnVecType, "txn");
     emitTxnCall(fb, loc, "txn_init", txnVec, {});
+
+    // Declare a runtime BD free-list pool for each tile that draws ids at
+    // runtime (dynamic free-list path). The pool size is the tile's BD count
+    // from the target model -- never hardcoded here. One decl per distinct
+    // tile.
+    const AIE::AIETargetModel &targetModel = deviceOp.getTargetModel();
+    llvm::SmallSet<std::pair<uint32_t, uint32_t>, 4> pooledTiles;
+    seqOp.walk([&](Operation *op) {
+      uint32_t col, row;
+      if (auto pop = dyn_cast<AIEX::DMABdPoolPopOp>(op)) {
+        col = pop.getColumn();
+        row = pop.getRow();
+      } else if (auto push = dyn_cast<AIEX::DMABdPoolPushOp>(op)) {
+        col = push.getColumn();
+        row = push.getRow();
+      } else {
+        return;
+      }
+      if (!pooledTiles.insert({col, row}).second)
+        return;
+      uint32_t numBDs = targetModel.getNumBDs(col, row);
+      emitc::VerbatimOp::create(fb, loc,
+                                "aie_runtime::BdPool " + bdPoolName(col, row) +
+                                    " = aie_runtime::bd_pool_init(" +
+                                    std::to_string(numBDs) + ");");
+    });
 
     // Clone the straight-line sequence body into the function, mapping the
     // non-memref block args to the function parameters. While the originals are

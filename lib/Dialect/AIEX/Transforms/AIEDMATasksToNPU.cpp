@@ -481,7 +481,8 @@ struct AIEDMATasksToNPUPass
       // write32s at the same base. Register replay treats a blockwrite of N
       // words and N write32s identically, so this matches the static BD.
       if (failed(emitShimTemplateWordOverrides(builder, loc, target_model, col,
-                                               row, bdIdOfr, f)))
+                                               row, bdIdOfr, f,
+                                               bd_op.getBurstLength())))
         return failure();
     } else {
       // Zero-template BD: constant fields baked in, size/stride words zeroed
@@ -549,14 +550,22 @@ struct AIEDMATasksToNPUPass
     return setAddressForSingleBD(builder, bd_op, tile, bdIdOfr);
   }
 
-  // Emit the shim BD "template" words (the constant lock / packet / next_bd /
-  // valid / buffer_offset words the size/stride encoder leaves alone) as
-  // runtime-addressed write32s. Used only on the runtime-bd_id path, where the
-  // usual constant-address zero-template blockwrite cannot be formed. The word
-  // layout mirrors WriteBdToBlockWritePattern's shim packing for words 1, 2, 7.
+  // Emit the shim BD "template" words as runtime-addressed write32s: the words
+  // the size/stride encoder does not fully own. Used only on the runtime-bd_id
+  // path, where the usual constant-address zero-template blockwrite cannot be
+  // formed. The word layout mirrors WriteBdToBlockWritePattern's shim packing.
+  //
+  // The encoder always overrides words 0 (buffer_length) and 6 (iteration), and
+  // in ND mode also 3/4/5. In linear mode it skips 3/4/5. Words 4 and 5 carry
+  // CONSTANT burst_length / AXCache bits even in linear mode (the static
+  // blockwrite bakes them), so this function emits those constants; in ND mode
+  // the encoder's later write32 to the same register supplies burst|d1 /
+  // axcache |d2 and wins by last-write. Words 1/2/7 are never touched by the
+  // encoder.
   LogicalResult emitShimTemplateWordOverrides(
       OpBuilder &builder, Location loc, const AIE::AIETargetModel &target_model,
-      int col, int row, OpFoldResult bdId, const BdTemplateFields &f) {
+      int col, int row, OpFoldResult bdId, const BdTemplateFields &f,
+      uint32_t burstLength) {
     Value bdBase =
         getBdRegisterBase(builder, loc, target_model, col, row, bdId);
     auto writeWord = [&](uint32_t wordIdx, uint32_t val) {
@@ -573,6 +582,14 @@ struct AIEDMATasksToNPUPass
     uint32_t w2 = ((f.enable_packet & 0x1) << 30) |
                   ((f.packet_id & 0x1f) << 19) | ((f.packet_type & 0x7) << 16);
     writeWord(2, w2);
+    // word[4] burst_length [31:30] (constant); d1_size/stride overlaid by the
+    // encoder in ND mode.
+    writeWord(4,
+              (AIE::getShimBurstLengthEncoding(target_model, burstLength) & 0x3)
+                  << 30);
+    // word[5] AXCache [27:24] = 2 (constant, enables NoC upsizing); d2_stride
+    // overlaid by the encoder in ND mode.
+    writeWord(5, (2u & 0xf) << 24);
     // word[7] next_bd [30:27], use_next_bd [26], valid_bd [25], lock fields.
     uint32_t w7 = ((f.next_bd_id & 0xf) << 27) | ((f.use_next_bd & 0x1) << 26) |
                   (1u << 25) | ((f.lock_rel_val & 0x7f) << 18) |
