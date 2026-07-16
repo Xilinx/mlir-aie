@@ -107,3 +107,38 @@ module {
     }
   }
 }
+
+// -----
+
+// A runtime OFFSET is supported: the byte offset (offset * stride * elemBytes)
+// is built with arith and flows through the SSA arg_plus of the address patch.
+// Here offset %o with innermost stride 1 on i32 gives arg_plus = %o * 4.
+// CHECK-LABEL: @rt_offset
+// CHECK: %[[T:.*]] = arith.trunci %arg1 : i64 to i32
+// CHECK: arith.muli %[[T]]
+// CHECK: aiex.npu.address_patch(%{{.*}} : i32)
+module {
+  aie.device(npu1) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @alloc0(%t, MM2S, 0)
+    aie.runtime_sequence @rt_offset(%arg0: memref<4096xi32>, %o: i64) {
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, %o][1, 1, 1, 64][0, 0, 0, 1]) {id = 0 : i64, metadata = @alloc0} : memref<4096xi32>
+    }
+  }
+}
+
+// -----
+
+// A runtime offset paired with a runtime stride: offset * stride is a single
+// arith.muli (both operands runtime). No made-up "constant stride" restriction.
+// CHECK-LABEL: @rt_offset_stride
+// CHECK: aiex.npu.address_patch(%{{.*}} : i32)
+module {
+  aie.device(npu1) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @alloc0(%t, MM2S, 0)
+    aie.runtime_sequence @rt_offset_stride(%arg0: memref<4096xi32>, %o: i64, %st: i64) {
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, %o, 0][1, 1, 4, 8][0, 0, %st, 1]) {id = 0 : i64, metadata = @alloc0} : memref<4096xi32>
+    }
+  }
+}

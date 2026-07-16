@@ -9,20 +9,9 @@
 
 // RUN: aie-opt --split-input-file --aie-dma-to-npu --verify-diagnostics %s
 
-// Runtime offsets are not supported (the buffer pointer is set by the address
-// patch from a compile-time offset).
-module {
-  aie.device(npu1) {
-    %t = aie.tile(0, 0)
-    aie.shim_dma_allocation @a(%t, MM2S, 0)
-    aie.runtime_sequence @s(%arg0: memref<4096xi32>, %n: i64) {
-      // expected-error@+1 {{Only constant offsets currently supported}}
-      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, %n][2, 4, 8, 32][2048, 256, 64, 1]) {id = 0 : i64, metadata = @a} : memref<4096xi32>
-    }
-  }
-}
-
-// -----
+// (Runtime offsets ARE supported -- they lower to an arith-built arg_plus on
+// the address patch; see dma_to_npu_dynamic.mlir. Only genuinely unrealizable
+// or unencodable cases are rejected below.)
 
 // A constant innermost stride whose byte extent isn't a whole granule is not
 // realizable (int8, stride 2 = 16 bits vs the 32-bit granule), even when
