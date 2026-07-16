@@ -190,6 +190,28 @@ module @test_dma_configure_task_memtile {
 
 // -----
 
+// Test DMAConfigureTaskForOp whose shim_dma_allocation is bound to a logical
+// tile: the verifier must defer (not resolve the concrete tile) rather than
+// hard-asserting in ShimDMAAllocationOp::getTileOp().
+module @test_dma_configure_task_for_logical {
+  aie.device(npu2) {
+    %shim_tile = aie.logical_tile<ShimNOCTile>(?, ?)
+    aie.shim_dma_allocation @alloc0(%shim_tile, MM2S, 0)
+
+    aie.runtime_sequence(%arg0: memref<1024xi32>) {
+      %task = aiex.dma_configure_task_for @alloc0 {
+        aie.dma_bd(%arg0 : memref<1024xi32> offset = 0 len = 1024) {bd_id = 0 : i32}
+        aie.end
+      }
+      aiex.dma_start_task(%task)
+    }
+    aie.end
+  }
+}
+
+
+// -----
+
 // Test CascadeFlowOp with LogicalTileOp
 // CHECK-LABEL: @test_cascade_flow_logical_tiles
 // CHECK: %[[CORE1:.*]] = aie.logical_tile<CoreTile>(?, ?)
