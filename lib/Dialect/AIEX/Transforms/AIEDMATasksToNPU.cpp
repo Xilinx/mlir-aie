@@ -51,14 +51,15 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
                           "pass first or manually assign an ID.";
       return failure();
     }
-    // bd_id and repeat_count are SSA operands; materialize them as constants
-    // here (the static path).
+    // push_queue takes bd_id + repeat_count as SSA operands. repeat_count is a
+    // runtime operand when present (dynamic tile count), else the compile-time
+    // attribute materialized as a constant.
     Location loc = op.getLoc();
+    Value repeatCount = getAsValue(rewriter, loc, task_op.getRepeatCountValue(),
+                                   rewriter.getI32Type());
     rewriter.replaceOpWithNewOp<NpuPushQueueOp>(
         op, tile.getCol(), tile.getRow(), task_op.getDirection(),
-        task_op.getChannel(), task_op.getIssueToken(),
-        createConstantI32(rewriter, loc,
-                          static_cast<uint32_t>(task_op.getRepeatCount())),
+        task_op.getChannel(), task_op.getIssueToken(), repeatCount,
         createConstantI32(rewriter, loc, *first_bd_id));
     return success();
   }
@@ -249,14 +250,21 @@ struct AIEDMATasksToNPUPass
       }
 
       unsigned arg_idx = buf_arg.getArgNumber();
-      offset += bd_op.getOffsetInBytes();
-      NpuAddressPatchOp::create(
-          builder, bd_op.getLoc(),
-          /*addr*/ register_addr,
-          /*arg_idx*/ arg_idx,
-          /*arg_plus*/
-          createConstantI32(builder, bd_op.getLoc(),
-                            static_cast<uint32_t>(offset)));
+      // arg_plus = buffer byte offset. The dma_bd offset is a single element
+      // offset (stride 1); a constant folds to a constant (byte-identical to
+      // before), a runtime offset operand is built with arith. `offset` here is
+      // the constant subview base in bytes.
+      OpFoldResult offsetOfr =
+          bd_op.getOffset() ? OpFoldResult(bd_op.getOffset())
+                            : OpFoldResult(builder.getI32IntegerAttr(
+                                  bd_op.getConstantOffset().value_or(0)));
+      OpFoldResult oneStride = builder.getI32IntegerAttr(1);
+      Value argPlus =
+          buildArgPlusValue(builder, bd_op.getLoc(), {offsetOfr}, {oneStride},
+                            bd_op.getBufferElementTypeWidthInBytes(), offset);
+      NpuAddressPatchOp::create(builder, bd_op.getLoc(),
+                                /*addr*/ register_addr,
+                                /*arg_idx*/ arg_idx, argPlus);
     } else if (AIE::BufferOp buffer =
                    llvm::dyn_cast<AIE::BufferOp>(buf.getDefiningOp())) {
       uint64_t buf_addr;
@@ -501,19 +509,20 @@ struct AIEDMATasksToNPUPass
     uint32_t addr_granularity = target_model.getAddressGenGranularity();
 
     uint32_t bd_id = bd_op.getBdId().value();
-    int64_t offset = bd_op.getOffsetInBytes();
 
-    // Runtime (SSA) sizes/strides/len take the dynamic BD-word encoder path; a
-    // fully-constant descriptor takes the static path below. Only the shim-NOC
-    // layout is encodable this way (see rewriteSingleBDDynamic), so anything
-    // the dynamic path can't represent stays a clean diagnostic.
+    // Runtime (SSA) sizes/strides/len/offset take the dynamic BD-word encoder
+    // path; a fully-constant descriptor takes the static path below unchanged.
+    // Only the shim-NOC layout is encodable this way (see
+    // rewriteSingleBDDynamic), so anything the dynamic path can't represent
+    // stays a clean diagnostic.
     bool runtimeLen = bd_op.getLen() && !bd_op.getConstantLen();
+    bool runtimeOffset = bd_op.getOffset() && !bd_op.getConstantOffset();
     bool runtimeDims =
         llvm::any_of(bd_op.getMixedSizes(),
                      [](OpFoldResult s) { return !getConstantIntValue(s); }) ||
         llvm::any_of(bd_op.getMixedStrides(),
                      [](OpFoldResult s) { return !getConstantIntValue(s); });
-    if (runtimeLen || runtimeDims) {
+    if (runtimeLen || runtimeDims || runtimeOffset) {
       if (!target_model.isShimNOCTile(tile.getCol(), tile.getRow()))
         return bd_op->emitOpError(
             "runtime-valued BD size/stride/len is only supported on shim NOC "
@@ -537,6 +546,8 @@ struct AIEDMATasksToNPUPass
       return rewriteSingleBDDynamic(builder, block, bd_op, tile, packet);
     }
 
+    // Static path: offset is constant here (runtime offset routed above).
+    int64_t offset = bd_op.getOffsetInBytes();
     uint64_t len = bd_op.getLenInBytes();
     uint64_t len_addr_granularity = len * 8 / addr_granularity;
 

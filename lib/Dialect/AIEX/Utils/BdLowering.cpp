@@ -88,6 +88,50 @@ Value getAsValue(OpBuilder &builder, Location loc, OpFoldResult ofr,
   return val;
 }
 
+Value buildArgPlusValue(OpBuilder &builder, Location loc,
+                        ArrayRef<OpFoldResult> elementOffsets,
+                        ArrayRef<OpFoldResult> strides, int64_t elemWidthBytes,
+                        int64_t baseByteOffset) {
+  auto i32ty = builder.getIntegerType(32);
+
+  // Fast path: everything constant -> fold to one arith.constant, matching the
+  // static lowering byte-for-byte.
+  bool allConst = llvm::all_of(elementOffsets,
+                               [](OpFoldResult o) {
+                                 return getConstantIntValue(o).has_value();
+                               }) &&
+                  llvm::all_of(strides, [](OpFoldResult s) {
+                    return getConstantIntValue(s).has_value();
+                  });
+  if (allConst) {
+    int64_t bytes = baseByteOffset;
+    for (auto [o, s] : llvm::zip(elementOffsets, strides))
+      bytes +=
+          *getConstantIntValue(o) * *getConstantIntValue(s) * elemWidthBytes;
+    return arith::ConstantOp::create(builder, loc,
+                                     IntegerAttr::get(i32ty, bytes));
+  }
+
+  // Runtime path: sum(offset[i] * stride[i]) * elemWidthBytes + base, as arith.
+  Value acc =
+      arith::ConstantOp::create(builder, loc, IntegerAttr::get(i32ty, 0));
+  for (auto [o, s] : llvm::zip(elementOffsets, strides)) {
+    Value ov = getAsValue(builder, loc, o, i32ty);
+    Value sv = getAsValue(builder, loc, s, i32ty);
+    Value prod = arith::MulIOp::create(builder, loc, ov, sv);
+    acc = arith::AddIOp::create(builder, loc, acc, prod);
+  }
+  Value width = arith::ConstantOp::create(
+      builder, loc, IntegerAttr::get(i32ty, elemWidthBytes));
+  acc = arith::MulIOp::create(builder, loc, acc, width);
+  if (baseByteOffset != 0) {
+    Value base = arith::ConstantOp::create(
+        builder, loc, IntegerAttr::get(i32ty, baseByteOffset));
+    acc = arith::AddIOp::create(builder, loc, acc, base);
+  }
+  return acc;
+}
+
 Value buildBdWord(OpBuilder &builder, Location loc,
                   ArrayRef<std::tuple<Value, uint32_t, uint32_t>> fields) {
   auto i32ty = builder.getIntegerType(32);

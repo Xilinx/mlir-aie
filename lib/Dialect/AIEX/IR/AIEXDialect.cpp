@@ -604,21 +604,21 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
     return emitOpError("Minimum data transfer size required is ")
            << addressGranularity << "bits. ";
   }
-  bool allOffsetsConstant = llvm::all_of(getMixedOffsets(), [](OpFoldResult s) {
-    return getConstantIntValue(s).has_value();
-  });
   bool allStridesConstant = llvm::all_of(getMixedStrides(), [](OpFoldResult s) {
     return getConstantIntValue(s).has_value();
   });
   bool allSizesConstant = llvm::all_of(getMixedSizes(), [](OpFoldResult s) {
     return getConstantIntValue(s).has_value();
   });
+  bool allOffsetsConstant = llvm::all_of(getMixedOffsets(), [](OpFoldResult s) {
+    return getConstantIntValue(s).has_value();
+  });
 
-  // Dynamic (runtime SSA offset/size/stride) path: a runtime value can only be
-  // programmed via the host-side address-patch / BD-word overrides, so any
-  // runtime operand routes here. See AIEDmaToNpu.cpp lowerDynamic and
-  // emitBufferAddressPatch for the encoding.
-  if (!allOffsetsConstant || !allStridesConstant || !allSizesConstant)
+  // Dynamic path: any runtime size/stride/offset. A runtime offset flows into
+  // the address-patch arg_plus as arith (see AIEDmaToNpu.cpp emitBufferAddress-
+  // Patch); runtime sizes/strides use the dynamic BD-word encoder. The shared
+  // scope check enforces what the dynamic lowering can represent.
+  if (!allStridesConstant || !allSizesConstant || !allOffsetsConstant)
     return verifyDynamicSizesStrides(targetModel, buffer);
 
   llvm::SmallVector<int64_t, 4> inputSizes =

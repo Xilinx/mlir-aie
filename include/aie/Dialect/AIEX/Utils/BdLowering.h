@@ -221,6 +221,18 @@ struct SsaStridePolicy {
 mlir::Value getAsValue(mlir::OpBuilder &builder, mlir::Location loc,
                        mlir::OpFoldResult ofr, mlir::Type intType);
 
+// Build the address-patch `arg_plus` (buffer BYTE offset) as an i32 Value.
+// `elementOffsets` (innermost-first) are the per-dim element offsets and
+// `strides` their matching strides; the byte offset is
+// sum(elementOffsets[i] * strides[i]) * elemWidthBytes + baseByteOffset.
+// Any entry may be a runtime Value; a fully-constant set folds to a single
+// arith.constant. Shared by the memcpy_nd and dma_task dynamic lowerings so a
+// runtime DMA offset flows into the patch instead of being rejected.
+mlir::Value buildArgPlusValue(mlir::OpBuilder &builder, mlir::Location loc,
+                              llvm::ArrayRef<mlir::OpFoldResult> elementOffsets,
+                              llvm::ArrayRef<mlir::OpFoldResult> strides,
+                              int64_t elemWidthBytes, int64_t baseByteOffset);
+
 // Pack a set of (value, mask, shift) fields into a single i32 BD word via
 // arith and/shl/or. mask == 0xFFFFFFFF skips the AND; shift == 0 skips the SHL.
 mlir::Value

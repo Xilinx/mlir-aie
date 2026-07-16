@@ -512,57 +512,17 @@ public:
         targetModel.getDmaBdAddress(tileCol, tileRow, op.getId()) +
         targetModel.getDmaBdAddressOffset(tileCol, tileRow);
 
-    // arg_plus is the byte offset added to the runtime buffer base:
-    //   sum(offset[i] * stride[i]) * elemBytes + constBase
-    // where constBase is the subview/cast trace offset. When every offset is
-    // constant this folds to a single constant (byte-identical to before); a
-    // runtime offset (or a runtime stride paired with a non-zero offset) is
-    // built with arith and flows through the SSA arg_plus operand.
-    Location loc = op->getLoc();
-    int64_t elemBytes = op.getElementTypeBitwidth() / 8;
-    auto offsets = llvm::to_vector<4>(llvm::reverse(op.getMixedOffsets()));
-    auto strides = llvm::to_vector<4>(llvm::reverse(op.getMixedStrides()));
-    // The constant fast-path is only valid when every term of
-    // sum(offset[i] * stride[i]) is compile-time known, i.e. each non-zero
-    // offset has both a constant offset and a constant stride (a zero offset
-    // contributes nothing regardless of its stride). Otherwise build arg_plus
-    // with arith. This mirrors getOffsetInBytes(), which reads stride[i] only
-    // where offset[i] != 0.
-    bool offsetFoldsToConstant = true;
-    for (size_t i = 0; i < offsets.size(); i++) {
-      auto off = getConstantIntValue(offsets[i]);
-      if (!off || (*off != 0 && !getConstantIntValue(strides[i]))) {
-        offsetFoldsToConstant = false;
-        break;
-      }
-    }
-
-    Value argPlus;
-    if (offsetFoldsToConstant) {
-      argPlus =
-          createConstantI32(rewriter, loc,
-                            static_cast<uint32_t>(op.getOffsetInBytes() +
-                                                  traceResult->offsetInBytes));
-    } else {
-      // Element-count offset = sum(offset[i] * stride[i]), then scale to bytes.
-      auto i32ty = rewriter.getIntegerType(32);
-      Value elems = createConstantI32(rewriter, loc, 0);
-      for (size_t i = 0; i < offsets.size(); i++) {
-        if (auto c = getConstantIntValue(offsets[i]); c && *c == 0)
-          continue;
-        Value off = getAsValue(rewriter, loc, offsets[i], i32ty);
-        Value str = getAsValue(rewriter, loc, strides[i], i32ty);
-        Value term = arith::MulIOp::create(rewriter, loc, off, str);
-        elems = arith::AddIOp::create(rewriter, loc, elems, term);
-      }
-      Value bytes = arith::MulIOp::create(
-          rewriter, loc, elems, createConstantI32(rewriter, loc, elemBytes));
-      argPlus = arith::AddIOp::create(
-          rewriter, loc, bytes,
-          createConstantI32(rewriter, loc,
-                            static_cast<uint32_t>(traceResult->offsetInBytes)));
-    }
-    NpuAddressPatchOp::create(rewriter, loc, patchAddr, argIdx, argPlus);
+    // arg_plus is the buffer byte offset. Constant offsets fold to a constant
+    // (byte-identical to the static path); a runtime offset operand is built
+    // with arith so it flows into the patch instead of being rejected. The
+    // subview trace contributes a constant base byte offset.
+    Value argPlus = buildArgPlusValue(
+        rewriter, op->getLoc(),
+        llvm::to_vector(llvm::reverse(op.getMixedOffsets())),
+        llvm::to_vector(llvm::reverse(op.getMixedStrides())),
+        op.getElementTypeBitwidth() / 8, traceResult->offsetInBytes);
+    NpuAddressPatchOp::create(rewriter, op->getLoc(), patchAddr, argIdx,
+                              argPlus);
 
     // If this DMA op has an offset_state_table_idx, emit an
     // update_from_scratchpad to add the runtime offset to the BD address

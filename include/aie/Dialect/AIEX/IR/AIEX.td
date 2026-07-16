@@ -1091,6 +1091,7 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::Ru
         I32Attr:$channel,
         DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
         DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
+        Optional<I32>:$repeat_count_val,
         OptionalAttr<PacketInfoAttr>:$packet
   );
 
@@ -1099,12 +1100,21 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::Ru
   );
 
   let assemblyFormat = [{
-    `(` $tile `,` $direction `,` $channel (`,` $packet^)? `)` regions attr-dict
+    `(` $tile `,` $direction `,` $channel (`,` $packet^)? `)`
+    (`repeat` $repeat_count_val^ `:` type($repeat_count_val))? regions attr-dict
   }];
 
   let extraClassDeclaration = [{
     AIE::TileOp getTileOp();
     std::optional<uint32_t> getFirstBdId();
+    // The repeat count as an OpFoldResult: the runtime operand if present, else
+    // the compile-time attribute. Mirrors dma_bd's offset/len duality.
+    mlir::OpFoldResult getRepeatCountValue() {
+      if (mlir::Value v = getRepeatCountVal())
+        return v;
+      return mlir::IntegerAttr::get(
+          mlir::IntegerType::get(getContext(), 32), getRepeatCount());
+    }
   }];
 
   let extraClassDefinition = [{
@@ -1120,7 +1130,8 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::Ru
       build($_builder, $_state, result, tile,
             xilinx::AIE::DMAChannelDirAttr::get(odsBuilder.getContext(), dir),
             $_builder.getI32IntegerAttr(channel_index), $_builder.getBoolAttr(token),
-            $_builder.getI32IntegerAttr(repeat), nullptr);
+            $_builder.getI32IntegerAttr(repeat), /*repeat_count_val=*/nullptr,
+            /*packet=*/nullptr);
     }]>
   ];
 }
@@ -1131,14 +1142,28 @@ def AIE_DMAConfigureTaskForOp : AIEX_Op<"dma_configure_task_for", [HasAncestor<"
   let arguments = (
     ins SymbolRefAttr:$alloc,
         DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
-        DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count
+        DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
+        Optional<I32>:$repeat_count_val
   );
 
   let regions = (region AnyRegion:$body);
 
-  let assemblyFormat = [{ $alloc regions attr-dict }];
+  let assemblyFormat = [{
+    $alloc (`repeat` $repeat_count_val^ `:` type($repeat_count_val))? regions attr-dict
+  }];
 
   let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    // The repeat count as an OpFoldResult: runtime operand if present, else the
+    // compile-time attribute.
+    mlir::OpFoldResult getRepeatCountValue() {
+      if (mlir::Value v = getRepeatCountVal())
+        return v;
+      return mlir::IntegerAttr::get(
+          mlir::IntegerType::get(getContext(), 32), getRepeatCount());
+    }
+  }];
 }
 
 def AIE_DMAFreeTaskOp : AIEX_Op<"dma_free_task", [HasAncestor<"AIE::RuntimeSequenceOp">]> {

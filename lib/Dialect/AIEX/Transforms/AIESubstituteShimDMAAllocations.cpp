@@ -67,8 +67,11 @@ struct DMAConfigureTaskForOpPattern
 
     DMAConfigureTaskOp new_op = DMAConfigureTaskOp::create(
         rewriter, op.getLoc(), rewriter.getIndexType(), tile.getResult(),
-        alloc_op.getChannelDir(), (int32_t)alloc_op.getChannelIndex(),
-        op.getIssueToken(), op.getRepeatCount(),
+        alloc_op.getChannelDirAttr(),
+        rewriter.getI32IntegerAttr((int32_t)alloc_op.getChannelIndex()),
+        rewriter.getBoolAttr(op.getIssueToken()),
+        rewriter.getI32IntegerAttr(op.getRepeatCount()),
+        /*repeat_count_val=*/op.getRepeatCountVal(),
         alloc_op.getPacket().value_or(nullptr));
     rewriter.replaceAllUsesWith(op.getResult(), new_op.getResult());
     rewriter.inlineRegionBefore(op.getBody(), new_op.getBody(),
