@@ -72,7 +72,7 @@ struct DMAConfigureTaskForOpPattern
         rewriter.getBoolAttr(op.getIssueToken()),
         rewriter.getI32IntegerAttr(op.getRepeatCount()),
         /*repeat_count_val=*/op.getRepeatCountVal(),
-        alloc_op.getPacket().value_or(nullptr));
+        /*bd_id_val=*/nullptr, alloc_op.getPacket().value_or(nullptr));
     rewriter.replaceAllUsesWith(op.getResult(), new_op.getResult());
     rewriter.inlineRegionBefore(op.getBody(), new_op.getBody(),
                                 new_op.getBody().begin());
