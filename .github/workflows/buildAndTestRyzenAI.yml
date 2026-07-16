@@ -71,6 +71,15 @@ jobs:
           sed -i.bak 's/OUTPUT_TIMEOUT = 10/OUTPUT_TIMEOUT = 100/g' \
             $(python -c 'import site; print(site.getsitepackages()[0])')/jupyter_client/runapp.py
 
+      - name: Check OpenCV availability
+        run: |
+          if ! pkg-config --exists opencv4; then
+            echo "::error::OpenCV not found on runner. Vision tests require OpenCV."
+            echo "Install libopencv-dev or ensure pkg-config can find opencv4."
+            exit 1
+          fi
+          echo "OpenCV found: $(pkg-config --modversion opencv4)"
+
       - name: Run commands
         run: |
           # aie2-4col runners occasionally hit a transient NPU hardware fault
@@ -107,7 +116,8 @@ jobs:
           export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
 
           # Build from source!
-          export EXTRA_CMAKE_ARGS="-DPython3_EXECUTABLE=$(which python) $CMAKE_ARGS"
+          OPENCV_CMAKE="-DOpenCV_DIR=$(pkg-config --variable=prefix opencv4)/lib/cmake/opencv4"
+          export EXTRA_CMAKE_ARGS="-DPython3_EXECUTABLE=$(which python) $CMAKE_ARGS $OPENCV_CMAKE"
           ./utils/build-mlir-aie-from-wheels.sh "" build mlir_aie
 
           pushd build
