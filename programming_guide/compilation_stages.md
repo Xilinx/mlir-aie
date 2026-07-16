@@ -212,8 +212,9 @@ If you're using the default cache (no explicit paths) but still need the PDI,
 it without recompiling via `get_pdi_path()`:
 
 ```python
-my_design.specialize(N=4096).compile()   # cache mode
-pdi = my_design.specialize(N=4096).get_pdi_path()   # -> Path to main.pdi
+spec = my_design.specialize(N=4096)
+spec.compile()   # cache mode
+pdi = spec.get_pdi_path()   # -> Path to main.pdi
 ```
 
 The [`vector_scalar_add`](../programming_examples/basic/vector_scalar_add/)
