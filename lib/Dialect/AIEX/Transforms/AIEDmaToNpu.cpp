@@ -183,28 +183,39 @@ public:
     // the offset of the task queue register in the tile
     uint32_t queue_offset = ctrl_offset + 0x4;
 
-    // Command word: bd_id [3:0], repeat_count [23:16], issue-token bit [31].
-    // bd_id is always compile-time; repeat_count may be a runtime SSA value, in
-    // which case the word is built with arith over a constant base.
+    // The command word packs bd_id [3:0], repeat_count [23:16], and the
+    // issue-token bit [31]. Both bd_id (dynamic free-list pool) and repeat_count
+    // (runtime outer/repeat dimension) may be runtime SSA values; the issue bit
+    // is always compile-time. When every runtime field is constant we fold the
+    // whole word to a constant (byte-identical to the static path); otherwise we
+    // build the word with arith so a runtime bd_id and/or repeat still lowers to
+    // a valid write32 instead of being rejected.
+    Location loc = op->getLoc();
+    auto i32ty = rewriter.getIntegerType(32);
     std::optional<uint32_t> bd_id = getConstantIntOperand(op.getBdId());
-    if (!bd_id)
-      return op.emitOpError("cannot lower push_queue with non-constant bd_id");
-    uint32_t cmdBase = (*bd_id & 0xF) | (op.getIssueToken() ? 0x80000000 : 0);
+    std::optional<uint32_t> repeat_cnt =
+        getConstantIntOperand(op.getRepeatCount());
+    uint32_t issueBit = op.getIssueToken() ? 0x80000000 : 0;
 
     Value cmdVal;
-    if (std::optional<uint32_t> repeat_cnt =
-            getConstantIntOperand(op.getRepeatCount())) {
-      cmdVal = createConstantI32(rewriter, op->getLoc(),
-                                 cmdBase | ((*repeat_cnt & 0xFF) << 16));
+    if (bd_id && repeat_cnt) {
+      cmdVal = createConstantI32(
+          rewriter, loc,
+          (*bd_id & 0xF) | ((*repeat_cnt & 0xFF) << 16) | issueBit);
     } else {
-      Location loc = op->getLoc();
-      Value repeat = op.getRepeatCount();
+      // (bd_id & 0xF) | ((repeat & 0xFF) << 16) | issueBit, as arith over the
+      // runtime operands (a constant field folds to its constant contribution).
+      Value cmd = createConstantI32(rewriter, loc, issueBit);
+      Value bdField = arith::AndIOp::create(
+          rewriter, loc, getAsValue(rewriter, loc, op.getBdId(), i32ty),
+          createConstantI32(rewriter, loc, 0xF));
+      cmd = arith::OrIOp::create(rewriter, loc, cmd, bdField);
       Value masked = arith::AndIOp::create(
-          rewriter, loc, repeat, createConstantI32(rewriter, loc, 0xFF));
+          rewriter, loc, op.getRepeatCount(),
+          createConstantI32(rewriter, loc, 0xFF));
       Value shifted = arith::ShLIOp::create(
           rewriter, loc, masked, createConstantI32(rewriter, loc, 16));
-      cmdVal = arith::OrIOp::create(
-          rewriter, loc, createConstantI32(rewriter, loc, cmdBase), shifted);
+      cmdVal = arith::OrIOp::create(rewriter, loc, cmd, shifted);
     }
 
     NpuWrite32Op::create(
