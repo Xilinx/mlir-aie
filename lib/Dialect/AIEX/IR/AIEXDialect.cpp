@@ -976,7 +976,51 @@ AIEX::DMAConfigureTaskOp::canonicalize(AIEX::DMAConfigureTaskOp op,
   return failure();
 }
 
+// Enforce the per-BD ND access-pattern limit for BDs nested inside a
+// runtime-sequence DMA task. The AIE::DMABDOp verifier skips these BDs (their
+// parent is a DMA task op, not a *DMAOp), so this is the only check of the BD
+// dimension count on the runtime-sequence path.
+//
+// Every AIE2/AIE2P DMA BD register file carries getBDMaxDims ND address
+// dimensions (D0..) plus one separate iteration/repeat dimension: a core/shim
+// BD has D0..D2 + iteration, a MemTile BD has D0..D3 + iteration. On this path
+// aiex.shim_dma_single_bd_task hoists the leading tap dimension into that
+// iteration register, so a shim/core BD may carry one dimension beyond its ND
+// access limit (3 + 1). A MemTile is not given the +1: AIEDMATasksToNPU maps
+// the 4th task dimension onto the iteration register for every tile type and
+// caps the total at 4, which the MemTile's 4 ND dimensions already reach. Both
+// branches therefore land on the same uniform 4-dimension cap enforced later by
+// AIEDMATasksToNPU.
+static LogicalResult
+verifyTaskBDDimensions(const AIE::AIETargetModel &targetModel, int col, int row,
+                       Region &body) {
+  size_t maxNDims = targetModel.getBDMaxDims(col, row);
+  if (!targetModel.isMemTile(col, row))
+    ++maxNDims; // leading dim is hoisted into the iteration/repeat register
+  LogicalResult result = success();
+  body.walk([&](AIE::DMABDOp bd) {
+    size_t numDims = bd.getMixedSizes().size();
+    if (numDims > maxNDims) {
+      bd.emitOpError() << "Cannot give more than " << std::to_string(maxNDims)
+                       << " dimensions for step sizes and wraps on this tile "
+                          "(got "
+                       << std::to_string(numDims) << " dimensions).";
+      result = failure();
+    }
+  });
+  return result;
+}
+
 LogicalResult AIEX::DMAConfigureTaskOp::verify() {
+  const AIE::AIETargetModel &targetModel = AIE::getTargetModel(getOperation());
+  // Skip the per-BD dimension check on an unplaced (logical) tile: the ND limit
+  // is a function of the tile's placed coordinates, which are not yet known.
+  // The verifier runs again on the concrete tile once placement resolves it.
+  std::optional<int> col = getTileLike().tryGetCol();
+  std::optional<int> row = getTileLike().tryGetRow();
+  if (col && row &&
+      failed(verifyTaskBDDimensions(targetModel, *col, *row, getBody())))
+    return failure();
   Region &body = getBody();
   for (auto it = body.begin(); it != body.end(); ++it) {
     Block &block = *it;
@@ -1011,6 +1055,29 @@ LogicalResult AIEX::DMAConfigureTaskOp::verify() {
     }
   }
   return success();
+}
+
+LogicalResult AIEX::DMAConfigureTaskForOp::verify() {
+  // Recover the shim tile through the referenced shim DMA allocation symbol so
+  // the per-BD dimension limit can be enforced on the runtime-sequence path
+  // before the allocation is substituted into a concrete DMAConfigureTaskOp.
+  AIE::DeviceOp dev = getOperation()->getParentOfType<AIE::DeviceOp>();
+  if (!dev)
+    return success();
+  AIE::ShimDMAAllocationOp allocOp = AIE::ShimDMAAllocationOp::getForSymbol(
+      dev, getAlloc().getRootReference());
+  if (!allocOp)
+    return success(); // symbol resolved during a later pass; defer the check
+  // Do not call allocOp.getTileOp(): it hard-asserts when the allocation is
+  // still bound to an unplaced (logical) tile. Resolve the concrete tile
+  // defensively and defer the check until placement substitutes a real tile.
+  auto tile =
+      llvm::dyn_cast_or_null<AIE::TileOp>(allocOp.getTile().getDefiningOp());
+  if (!tile)
+    return success();
+  const AIE::AIETargetModel &targetModel = AIE::getTargetModel(getOperation());
+  return verifyTaskBDDimensions(targetModel, tile.getCol(), tile.getRow(),
+                                getBody());
 }
 
 //===----------------------------------------------------------------------===//

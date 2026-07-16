@@ -33,20 +33,22 @@ memref::GlobalOp getOrCreateDataMemref(
     llvm::DenseMap<mlir::Attribute, memref::GlobalOp> *dedupCache = nullptr,
     unsigned *nextId = nullptr);
 
-// Result of tracing through subview/cast operations to a block argument for
-// traceSubviewToBlockArgument function.
+// Result of tracing through supported view/cast operations to a block argument
+// for traceSubviewToBlockArgument function.
 struct SubviewTraceResult {
   BlockArgument rootArg;
   int64_t offsetInBytes;
 };
 
-// Trace through memref.subview, memref.cast, and memref.reinterpret_cast
-// operations until the referenced SSA value is a block argument.
+// Trace through memref.subview, memref.view, memref.cast, and
+// memref.reinterpret_cast operations until the referenced SSA value is a block
+// argument.
 //
 // Returns the root block argument and cumulative byte offset, or std::nullopt
 // if the chain doesn't lead to a block argument or contains unsupported ops.
 //
-// This function checks that all subviews remain static and contiguous.
+// This function checks that all subviews remain static and contiguous. A
+// memref.view must have a constant byte shift and no dynamic result sizes.
 std::optional<SubviewTraceResult> traceSubviewToBlockArgument(Value value);
 
 // Emit an `aiex.npu.update_from_scratchpad` op that adds the runtime offset
@@ -57,5 +59,5 @@ LogicalResult emitUpdateBdAddressFromOffsetParameter(OpBuilder &builder,
                                                      Operation *bdOp,
                                                      BaseMemRefType bufType,
                                                      uint64_t registerAddr);
-}
+} // namespace AIEX
 } // namespace xilinx

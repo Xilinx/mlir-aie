@@ -711,14 +711,14 @@ static void printObjectFifoInitValues(OpAsmPrinter &p, ObjectFifoCreateOp op,
     // is the first entry of the ArrayAttr.
     int depth;
     if (isa<ArrayAttr>(numElem)) {
-      depth = llvm::dyn_cast<mlir::IntegerAttr>(
-                  llvm::dyn_cast<mlir::ArrayAttr>(numElem)[0])
-                  .getInt();
+      depth =
+          llvm::cast<mlir::IntegerAttr>(llvm::cast<mlir::ArrayAttr>(numElem)[0])
+              .getInt();
     } else {
-      depth = llvm::dyn_cast<mlir::IntegerAttr>(numElem).getInt();
+      depth = llvm::cast<mlir::IntegerAttr>(numElem).getInt();
     }
     for (int i = 0; i < depth; i++) {
-      p.printStrippedAttrOrType(llvm::dyn_cast<mlir::ArrayAttr>(initValues)[i]);
+      p.printStrippedAttrOrType(llvm::cast<mlir::ArrayAttr>(initValues)[i]);
       if (i < depth - 1) {
         p << ", ";
       }
@@ -732,11 +732,11 @@ static ParseResult parseObjectFifoInitValues(OpAsmParser &parser,
                                              Attribute &initValues) {
   int depth;
   if (isa<ArrayAttr>(numElem)) {
-    depth = llvm::dyn_cast<mlir::IntegerAttr>(
-                llvm::dyn_cast<mlir::ArrayAttr>(numElem)[0])
-                .getInt();
+    depth =
+        llvm::cast<mlir::IntegerAttr>(llvm::cast<mlir::ArrayAttr>(numElem)[0])
+            .getInt();
   } else {
-    depth = llvm::dyn_cast<mlir::IntegerAttr>(numElem).getInt();
+    depth = llvm::cast<mlir::IntegerAttr>(numElem).getInt();
   }
   auto objfifoType = llvm::cast<AIEObjectFifoType>(type.getValue());
   auto memrefType = llvm::cast<MemRefType>(objfifoType.getElementType());
@@ -799,7 +799,7 @@ ObjectFifoCreateOp ObjectFifoAllocateOp::getObjectFifo() {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
       if (auto *st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
           isa_and_nonnull<ObjectFifoCreateOp>(st))
-        return dyn_cast<ObjectFifoCreateOp>(st);
+        return cast<ObjectFifoCreateOp>(st);
     }
   }
   return {};
@@ -932,10 +932,10 @@ std::vector<ObjectFifoCreateOp> ObjectFifoLinkOp::getInputObjectFifos() {
   while ((parent = parent->getParentOp())) {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
       for (auto sym : getFifoIns()) {
-        auto name = dyn_cast<FlatSymbolRefAttr>(sym);
+        auto name = cast<FlatSymbolRefAttr>(sym);
         if (auto *st = SymbolTable::lookupSymbolIn(parent, name);
             isa_and_nonnull<ObjectFifoCreateOp>(st))
-          inputObjFifos.push_back(dyn_cast<ObjectFifoCreateOp>(st));
+          inputObjFifos.push_back(cast<ObjectFifoCreateOp>(st));
       }
     }
   }
@@ -948,10 +948,10 @@ std::vector<ObjectFifoCreateOp> ObjectFifoLinkOp::getOutputObjectFifos() {
   while ((parent = parent->getParentOp())) {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
       for (auto sym : getFifoOuts()) {
-        auto name = dyn_cast<FlatSymbolRefAttr>(sym);
+        auto name = cast<FlatSymbolRefAttr>(sym);
         if (auto *st = mlir::SymbolTable::lookupSymbolIn(parent, name);
             isa_and_nonnull<ObjectFifoCreateOp>(st))
-          outputObjFifos.push_back(dyn_cast<ObjectFifoCreateOp>(st));
+          outputObjFifos.push_back(cast<ObjectFifoCreateOp>(st));
       }
     }
   }
@@ -1019,7 +1019,7 @@ ObjectFifoCreateOp ObjectFifoRegisterExternalBuffersOp::getObjectFifo() {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
       if (auto *st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
           isa_and_nonnull<ObjectFifoCreateOp>(st))
-        return dyn_cast<ObjectFifoCreateOp>(st);
+        return cast<ObjectFifoCreateOp>(st);
     }
   }
   return {};
@@ -1084,7 +1084,7 @@ ObjectFifoCreateOp ObjectFifoAcquireOp::getObjectFifo() {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
       if (auto *st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
           isa_and_nonnull<ObjectFifoCreateOp>(st))
-        return dyn_cast<ObjectFifoCreateOp>(st);
+        return cast<ObjectFifoCreateOp>(st);
     }
   }
   return {};
@@ -1131,7 +1131,7 @@ ObjectFifoCreateOp ObjectFifoReleaseOp::getObjectFifo() {
     if (parent->hasTrait<OpTrait::SymbolTable>()) {
       if (auto *st = SymbolTable::lookupSymbolIn(parent, getObjFifoName());
           isa_and_nonnull<ObjectFifoCreateOp>(st))
-        return dyn_cast<ObjectFifoCreateOp>(st);
+        return cast<ObjectFifoCreateOp>(st);
     }
   }
   return {};
@@ -2291,14 +2291,15 @@ LogicalResult DMABDOp::verify() {
       return failure();
   }
   if (dims.has_value()) {
-    size_t maxNDims = 3;
-    if (getOperation()->getParentOfType<MemTileDMAOp>())
-      maxNDims = 4;
+    // The per-BD ND access-pattern limit is a hardware property of the tile;
+    // query it from the target model by tile type rather than inferring it
+    // from the parent op type.
+    size_t maxNDims = targetModel.getBDMaxDims(parentTile.getTileType());
     if (dims->size() > maxNDims)
       return emitOpError() << "Cannot give more than "
                            << std::to_string(maxNDims)
-                           << " dimensions for step sizes and wraps in this "
-                              " tile (got "
+                           << " dimensions for step sizes and wraps on this "
+                              "tile (got "
                            << std::to_string(dims->size()) << " dimensions).";
 
     auto buffer = llvm::dyn_cast<MemRefType>(getBuffer().getType());
@@ -2480,9 +2481,8 @@ static LogicalResult FoldDMAStartOp(DMAStartOp op, PatternRewriter &rewriter) {
   }
 
   // Repeating BD chains detected. Erasing repetitions.
-  auto lastBDTerm = dyn_cast<NextBDOp>(reachable.back()->getTerminator());
-  auto lastUniqueBDTerm =
-      dyn_cast<NextBDOp>(uniquePattern.back()->getTerminator());
+  auto lastBDTerm = cast<NextBDOp>(reachable.back()->getTerminator());
+  auto lastUniqueBDTerm = cast<NextBDOp>(uniquePattern.back()->getTerminator());
   lastUniqueBDTerm.setSuccessor(lastBDTerm.getSuccessor());
 
   return success();
@@ -2724,7 +2724,7 @@ LogicalResult SwitchboxOp::verify() {
 
       int arbiter = -1;
       for (auto val : connectOp.getAmsels()) {
-        auto amsel = dyn_cast<AMSelOp>(val.getDefiningOp());
+        auto amsel = cast<AMSelOp>(val.getDefiningOp());
         if (arbiter != -1 && arbiter != amsel.arbiterIndex())
           return connectOp.emitOpError(
               "a master port can only be tied to one arbiter");
@@ -2743,7 +2743,7 @@ LogicalResult SwitchboxOp::verify() {
       std::vector<PacketRulesOp> slvs;
       for (auto *user : amselOp.getResult().getUsers()) {
         if (auto s = dyn_cast<PacketRuleOp>(user)) {
-          auto pktRules = dyn_cast<PacketRulesOp>(s->getParentOp());
+          auto pktRules = cast<PacketRulesOp>(s->getParentOp());
           slvs.push_back(pktRules);
         } else if (auto m = dyn_cast<MasterSetOp>(user))
           mstrs.push_back(m);
@@ -2856,7 +2856,7 @@ struct AcquireReleaseOneStateInDMABlock {
 struct AccessesLocalLocks {
   static LogicalResult verifyTrait(Operation *op) {
     if (auto memOp = op->getParentOfType<MemOp>()) {
-      auto useLock = dyn_cast<UseLockOp>(op);
+      auto useLock = cast<UseLockOp>(op);
       if (auto lock = useLock.getLockOp(); lock.getTile() != memOp.getTile())
         return failure();
     }

@@ -635,7 +635,7 @@ generateAIEVecOpsForReductionOp(ConversionPatternRewriter &rewriter,
          "shiftIndex must be power of 2");
 
   Location loc = srcOp.getLoc();
-  auto vType = dyn_cast<VectorType>(curValue.getType());
+  auto vType = cast<VectorType>(curValue.getType());
   Type scalarType = vType.getElementType();
   Type vecType = curValue.getType();
   DstOpTy curOp = nullptr;
@@ -2216,7 +2216,7 @@ struct LowerVectorCmpOpToAIEVecCmpOp : OpConversionPattern<SrcOpTy> {
     if (!aieCmpOp)
       return failure();
 
-    VectorType resultType = dyn_cast<VectorType>(srcOp.getResult().getType());
+    VectorType resultType = cast<VectorType>(srcOp.getResult().getType());
     // Convert vector i1 type to unsigned interger type by built-in unrealized
     // conversion cast op.
     rewriter.replaceOpWithNewOp<UnrealizedConversionCastOp>(
@@ -2614,7 +2614,7 @@ struct LowerVectorReductionAddBfloat16OpAIE2
     Type accType = getVectorOpDestType(cast<VectorType>(curValue.getType()),
                                        /*AIE2 =*/true);
     unsigned accWidth =
-        dyn_cast<VectorType>(accType).getElementType().getIntOrFloatBitWidth();
+        cast<VectorType>(accType).getElementType().getIntOrFloatBitWidth();
 
     auto upsOp = aievec::UPSOp::create(rewriter, loc, accType, curValue);
     curValue = upsOp.getResult();
@@ -2716,7 +2716,7 @@ struct LowerVectorReductionAddBfloat16OpAIE2P
     Type accType = getVectorOpDestType(
         cast<VectorType>(inputToReduce.getType()), /*AIE2 =*/true);
     unsigned accWidth =
-        dyn_cast<VectorType>(accType).getElementType().getIntOrFloatBitWidth();
+        cast<VectorType>(accType).getElementType().getIntOrFloatBitWidth();
 
     auto upsOp = aievec::UPSOp::create(rewriter, loc, accType, inputToReduce);
     Value curValue = upsOp.getResult();
@@ -3415,8 +3415,8 @@ struct LowerExtOpPattern : OpConversionPattern<SrcOpTy> {
   LogicalResult
   matchAndRewrite(SrcOpTy extOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    VectorType srcType = dyn_cast<VectorType>(extOp.getIn().getType());
-    VectorType dstType = dyn_cast<VectorType>(extOp.getOut().getType());
+    VectorType srcType = cast<VectorType>(extOp.getIn().getType());
+    VectorType dstType = cast<VectorType>(extOp.getOut().getType());
 
     Type scalarType = dstType.getElementType();
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
@@ -3653,8 +3653,8 @@ struct LowerTruncOpPattern : OpConversionPattern<SrcOpTy> {
   LogicalResult
   matchAndRewrite(SrcOpTy truncOp, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    VectorType srcType = dyn_cast<VectorType>(truncOp.getIn().getType());
-    VectorType dstType = dyn_cast<VectorType>(truncOp.getOut().getType());
+    VectorType srcType = cast<VectorType>(truncOp.getIn().getType());
+    VectorType dstType = cast<VectorType>(truncOp.getOut().getType());
     Type scalarType = srcType.getElementType();
     unsigned elWidth = scalarType.getIntOrFloatBitWidth();
     auto accType =
