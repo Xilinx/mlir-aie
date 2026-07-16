@@ -82,6 +82,26 @@ struct AIELowerDynamicBDPoolPass
           "chain under a runtime-bound loop needs runtime next_bd chaining "
           "(not yet implemented)");
 
+    // In a dynamic (pool) sequence the pool owns ALL id allocation: a pinned
+    // bd_id would collide with a runtime pop that hands out the same id from
+    // the full 0..N-1 range, so a hand-pinned id here is an error. Allocation
+    // is all-pool or (for a straight-line sequence) all-static, never mixed.
+    WalkResult pinned = cfg.walk([&](AIE::DMABDOp bd) {
+      if (bd.getBdId().has_value()) {
+        bd.emitOpError(
+            "pins a buffer descriptor ID inside a runtime-bound "
+            "sequence that draws IDs from the dynamic pool; a pinned "
+            "ID would collide with a runtime-allocated one. Allocate "
+            "every BD in this sequence from the pool (drop the "
+            "bd_id), or make the sequence straight-line so the static "
+            "allocator assigns all IDs.");
+        return WalkResult::interrupt();
+      }
+      return WalkResult::advance();
+    });
+    if (pinned.wasInterrupted())
+      return failure();
+
     AIE::TileOp tile = cfg.getTileOp();
     OpBuilder b(cfg);
     Value bdId = DMABdPoolPopOp::create(b, cfg.getLoc(), b.getI32Type(),
@@ -202,7 +222,8 @@ struct AIELowerDynamicBDPoolPass
       for (scf::ForOp f : llvm::reverse(loops))
         carryIdsThroughLoop(f);
 
-      // 3. free/await -> push (await keeps its sync, adds a push). An await on a
+      // 3. free/await -> push (await keeps its sync, adds a push). An await on
+      // a
       //    loop result / region-arg cannot resolve its configure (a loop result
       //    has no defining configure), so redirect it to the loop-invariant
       //    origin configure, whose tile/dir/channel is identical every
