@@ -6,7 +6,7 @@
 # REQUIRES: ryzen_ai_npu1, peano
 #
 # RUN: %python %S/aie2.py > ./aie2.mlir
-# RUN: %aiecc %backend_flags --no-aiesim --aie-generate-npu-insts \
+# RUN: %aiecc %backend_flags --no-aiesim --get-npu-insts \
 # RUN:        --aie-generate-xclbin --no-compile-host \
 # RUN:        --xclbin-name=final.xclbin --npu-insts-name=insts.bin ./aie2.mlir
 # RUN: %host_clang %S/test.cpp -o test.exe -std=c++17 -Wall \

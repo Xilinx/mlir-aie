@@ -221,13 +221,13 @@ def compile_mlir_module(
             f"--peano={config.peano_install_dir()}",
         ]
     if insts_path:
-        args.extend(["--aie-generate-npu-insts", f"--npu-insts-name={insts_path}"])
+        args.extend(["--get-npu-insts", f"--npu-insts-name={insts_path}"])
     if pdi_path:
-        args.extend(["--aie-generate-pdi", f"--pdi-name={pdi_path}"])
+        args.extend(["--get-pdi", f"--pdi-name={pdi_path}"])
     if xclbin_path:
-        args.extend(["--aie-generate-xclbin", f"--xclbin-name={xclbin_path}"])
+        args.extend(["--get-xclbin", f"--xclbin-name={xclbin_path}"])
     if elf_path:
-        args.extend(["--aie-generate-elf", f"--elf-name={elf_path}"])
+        args.extend(["--get-elf", f"--elf-name={elf_path}"])
     if work_dir:
         args.append(f"--tmpdir={work_dir}")
         # Emit input_with_addresses.mlir into work_dir; the JIT DMA-size
@@ -235,7 +235,7 @@ def compile_mlir_module(
         # It is a requested output, so it lands in --output-dir; point that at
         # work_dir (the insts/xclbin/pdi paths are absolute and unaffected).
         args.append(f"--output-dir={work_dir}")
-        args.append("--aie-generate-input-with-addresses")
+        args.append("--get-input-with-addresses")
     if verbose:
         args.append("--verbose")
     if options:

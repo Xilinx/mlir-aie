@@ -100,10 +100,10 @@ group_objs=${group_objs_${targetname}}
 build/final.xclbin: build/${mlirFileName}.mlir ${group_objs}
 	mkdir -p ${@D}
 ifeq ($(CHESS), true)
-	cd ${@D} && aiecc -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} ${alloc_scheme} \
+	cd ${@D} && aiecc -v --get-xclbin --no-compile-host --xclbin-name=${@F} ${alloc_scheme} \
 				--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
 else
-	cd ${@D} && aiecc -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} ${alloc_scheme} \
+	cd ${@D} && aiecc -v --get-xclbin --no-compile-host --xclbin-name=${@F} ${alloc_scheme} \
     		--no-xchesscc --no-xbridge \
 				--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
 endif
@@ -111,10 +111,10 @@ endif
 build/final_trace.xclbin: build/${mlirFileName}_trace.mlir ${group_objs}
 	mkdir -p ${@D}
 ifeq ($(CHESS), true)
-	cd ${@D} && aiecc -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} ${alloc_scheme} \
+	cd ${@D} && aiecc -v --get-xclbin --no-compile-host --xclbin-name=${@F} ${alloc_scheme} \
 				--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
 else
-	cd ${@D} && aiecc -v --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} ${alloc_scheme} \
+	cd ${@D} && aiecc -v --get-xclbin --no-compile-host --xclbin-name=${@F} ${alloc_scheme} \
     		--no-xchesscc --no-xbridge \
 				--aie-generate-npu-insts --npu-insts-name=insts.bin $(<:%=../%)
 endif
