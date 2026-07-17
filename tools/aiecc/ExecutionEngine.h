@@ -194,20 +194,30 @@ struct Engine {
   // `deserCtx` is forwarded verbatim to any resumed edge's restoreNode (see
   // --resume / `satisfied`); the engine never inspects it -- it is an opaque
   // capability bag owned by the caller (see Items.h DeserializeContext).
+  //
+  // `buildAlso` edges are built too (added as reachability roots) but are NOT
+  // treated as outputs: they stay in the work dir as intermediates rather than
+  // being relocated to the output dir. Used for `--cut` checkpoint frontiers,
+  // which must be produced (and captured) without moving them out from under
+  // the downstream consumers that reference them by path (e.g. core ELFs the
+  // CDO step loads).
   mlir::LogicalResult
   run(Graph &g, const std::vector<EdgeBase *> &outputs,
       const llvm::DenseMap<EdgeBase *, RestoredNode> &satisfied =
           llvm::DenseMap<EdgeBase *, RestoredNode>{},
-      const DeserializeContext &deserCtx = {}) {
+      const DeserializeContext &deserCtx = {},
+      const std::vector<EdgeBase *> &buildAlso = {}) {
     llvm::sys::fs::create_directories(opts.workDir);
     if (!opts.outputDir.empty())
       llvm::sys::fs::create_directories(opts.outputDir);
 
-    // Walk dependencies backwards from the requested outputs to find the set
-    // of edges that actually need to run. Anything not reached is pruned.
+    // Walk dependencies backwards from the requested outputs (and any extra
+    // `buildAlso` roots) to find the set of edges that actually need to run.
+    // Anything not reached is pruned.
     llvm::DenseSet<EdgeBase *> reachable;
     {
       std::vector<EdgeBase *> stack(outputs.begin(), outputs.end());
+      stack.insert(stack.end(), buildAlso.begin(), buildAlso.end());
       while (!stack.empty()) {
         EdgeBase *e = stack.back();
         stack.pop_back();

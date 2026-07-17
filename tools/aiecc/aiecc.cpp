@@ -1198,13 +1198,14 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
       return resolved;
     };
 
-    // --get only selects outputs; --cut both builds and marks a cut point.
+    // --get selects outputs (relocated to the output dir). --cut only marks a
+    // checkpoint cut point: the edge is built (see Engine::run `buildAlso`) but
+    // stays in the work dir as an intermediate, so downstream consumers that
+    // reference it by path (e.g. the CDO step loading core ELFs) still find it.
     for (EdgeBase *e : resolveNames(getOutputs, "--get"))
       outputs.push_back(e);
-    for (EdgeBase *e : resolveNames(cutOutputs, "--cut")) {
-      outputs.push_back(e);
+    for (EdgeBase *e : resolveNames(cutOutputs, "--cut"))
       cutEdges.push_back(e);
-    }
   }
 
   return outputs;
@@ -1393,8 +1394,8 @@ int main(int argc, char **argv) {
   bool showProgress = !noProgress && !verbose;
   Engine engine({outputDir, getWorkDir(), verbose, showProgress,
                  keepIntermediates, numThreads, profile});
-  if (mlir::failed(
-          engine.run(g, outputs, satisfied, DeserializeContext{&context}))) {
+  if (mlir::failed(engine.run(g, outputs, satisfied,
+                              DeserializeContext{&context}, cutEdges))) {
     // On-failure reproducer ("repeater"): dump a checkpoint of the failed
     // edge's already-computed inputs and print a command that reloads them and
     // re-runs just the failed edge. Opt-in via --enable-repeater-scripts.
