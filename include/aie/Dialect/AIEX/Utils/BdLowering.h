@@ -19,12 +19,15 @@
 #ifndef AIE_DIALECT_AIEX_UTILS_BDLOWERING_H
 #define AIE_DIALECT_AIEX_UTILS_BDLOWERING_H
 
+#include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/Operation.h"
 #include "mlir/IR/Value.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/ArrayRef.h"
 
 #include <cstdint>
+#include <numeric>
 #include <tuple>
 
 namespace xilinx::AIE {
@@ -53,12 +56,22 @@ struct ShimBdFieldWidths {
 // stride must land on (e.g. int8 against a 32-bit granule => divisor 4). Shared
 // so the static verifier, the dynamic verifier, and the runtime guard apply one
 // definition.
-int64_t bdGranuleDivisor(uint64_t elemWidth, uint32_t addressGranularity);
+//
+// These realizability predicates are header-inline (no AIEX-op dependencies) so
+// the AIEX dialect verifier can call them without the AIEX IR library depending
+// on AIEXUtils -- which would close a link cycle (AIEXUtils already uses AIEX
+// ops).
+inline int64_t bdGranuleDivisor(uint64_t elemWidth,
+                                uint32_t addressGranularity) {
+  return addressGranularity / std::gcd(elemWidth, (uint64_t)addressGranularity);
+}
 
 // Whether a constant element count is realizable: value * elemWidth is a whole
 // number of granules. Equivalent to value % bdGranuleDivisor(...) == 0.
-bool isConstMultipleOfGranule(int64_t value, uint64_t elemWidth,
-                              uint32_t addressGranularity);
+inline bool isConstMultipleOfGranule(int64_t value, uint64_t elemWidth,
+                                     uint32_t addressGranularity) {
+  return value * (int64_t)elemWidth % (int64_t)addressGranularity == 0;
+}
 
 // Check the constant size/stride operands (innermost-first) of a shim-NOC BD
 // for realizability: d0 size and every non-unit stride must be a whole number
@@ -66,10 +79,43 @@ bool isConstMultipleOfGranule(int64_t value, uint64_t elemWidth,
 // stride must be positive where its size > 1. Runtime operands are skipped
 // (guarded at lowering by assert_bd_divisible). Shared by both dynamic paths;
 // emits a diagnostic on `op` and fails on the first violation.
-mlir::LogicalResult verifyConstBdRealizability(
-    mlir::Operation *op, llvm::ArrayRef<mlir::OpFoldResult> sizesInnermostFirst,
-    llvm::ArrayRef<mlir::OpFoldResult> stridesInnermostFirst,
-    uint64_t elemWidth, uint32_t addressGranularity);
+inline mlir::LogicalResult
+verifyConstBdRealizability(mlir::Operation *op,
+                           llvm::ArrayRef<mlir::OpFoldResult> sizes,
+                           llvm::ArrayRef<mlir::OpFoldResult> strides,
+                           uint64_t elemWidth, uint32_t gran) {
+  if (!sizes.empty())
+    if (auto d0 = mlir::getConstantIntValue(sizes[0]))
+      if (!isConstMultipleOfGranule(*d0, elemWidth, gran))
+        return op->emitOpError("d0 size ")
+               << *d0 << " elements at " << (elemWidth / 8)
+               << " bytes each is not a multiple of the " << (gran / 8)
+               << "-byte address-gen granule.";
+  for (int i = 0; i < (int)strides.size(); i++) {
+    auto s = mlir::getConstantIntValue(strides[i]);
+    if (!s)
+      continue;
+    // A unit innermost stride is the contiguous sub-granule case (collapses to
+    // hardware stride 0); every other stride must be granule-aligned.
+    if (i == 0 && *s == 1)
+      continue;
+    if (!isConstMultipleOfGranule(*s, elemWidth, gran))
+      return op->emitOpError("stride ")
+             << i << " is " << *s << " elements at " << (elemWidth / 8)
+             << " bytes each, not a multiple of the " << (gran / 8)
+             << "-byte address-gen granule.";
+  }
+  // A stride must be positive where its size > 1 (it is never applied when
+  // size == 1). Runtime strides are trusted (the caller controls them).
+  for (int i = 0; i < (int)sizes.size() && i < (int)strides.size(); i++) {
+    auto sz = mlir::getConstantIntValue(sizes[i]);
+    auto st = mlir::getConstantIntValue(strides[i]);
+    if (sz && st && *sz > 1 && *st < 1)
+      return op->emitOpError("stride ")
+             << i << " must be positive when size > 1.";
+  }
+  return mlir::success();
+}
 
 // Shared hardware size/stride encoder. The BD encodes each dimension's wrap
 // ("size") scaled to address-gen granules and step ("stride") biased by -1 (a
