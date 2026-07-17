@@ -208,13 +208,23 @@ my_design.specialize(N=4096).compile(
 track caller-named PDI/ELF artifacts.
 
 If you're using the default cache (no explicit paths) but still need the PDI,
-`aiecc` writes a `main.pdi` into the cache directory on every compile. Locate
-it without recompiling via `get_pdi_path()`:
+`aiecc` writes a `<device>.pdi` (`main.pdi` for `@iron.jit` designs) into the
+cache directory on every compile. Locate it without recompiling via
+`get_pdi_path()`, which finds the PDI regardless of the device symbol name:
 
 ```python
 spec = my_design.specialize(N=4096)
 spec.compile()   # cache mode
-pdi = spec.get_pdi_path()   # -> Path to main.pdi
+pdi = spec.get_pdi_path()   # -> Path to the emitted .pdi
+```
+
+A multi-device design emits one PDI per `aie.device`. Use `get_pdi_paths()`
+for the full list, or `get_pdi_path(device_name="…")` to pick one by its
+`aie.device` symbol:
+
+```python
+all_pdis = spec.get_pdi_paths()                  # -> [Path, ...]
+one = spec.get_pdi_path(device_name="second")    # -> Path to second.pdi
 ```
 
 The [`vector_scalar_add`](../programming_examples/basic/vector_scalar_add/)

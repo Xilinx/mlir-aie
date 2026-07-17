@@ -945,3 +945,13 @@ def test_get_pdi_path_none_before_compile():
 
     cd = CompilableDesign(gen)
     assert cd.get_pdi_path() is None
+
+
+def test_get_pdi_paths_empty_before_compile():
+    """get_pdi_paths() returns [] when no compile has happened yet."""
+
+    def gen():
+        pass
+
+    cd = CompilableDesign(gen)
+    assert cd.get_pdi_paths() == []

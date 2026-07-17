@@ -440,15 +440,22 @@ class CallableDesign:
             pdi_path=pdi_path,
         )
 
-    def get_pdi_path(self) -> Path | None:
-        """Return the cache-mode ``main.pdi`` if it exists, else ``None``.
+    def get_pdi_path(self, device_name: str | None = None) -> Path | None:
+        """Return one cache-directory PDI, or ``None`` if none is present.
 
-        Thin passthrough to :meth:`CompilableDesign.get_pdi_path` — see there
-        for the full caveats: this only works for ``@iron.jit``-based designs
-        (which always emit device symbol ``main``), not for BYO ``.mlir``
-        generators, and not for explicit ``compile(pdi_path=...)`` outputs.
+        Thin passthrough to :meth:`CompilableDesign.get_pdi_path`; pass
+        ``device_name`` to pick a specific ``aie.device``'s PDI in a
+        multi-device design.
         """
-        return self.compilable.get_pdi_path()
+        return self.compilable.get_pdi_path(device_name)
+
+    def get_pdi_paths(self) -> list[Path]:
+        """Return every cache-directory PDI aiecc emitted, sorted by name.
+
+        Thin passthrough to :meth:`CompilableDesign.get_pdi_paths` — use this
+        for a multi-device design where a single return is ambiguous.
+        """
+        return self.compilable.get_pdi_paths()
 
     def as_mlir(self, *runtime_args, **runtime_kwargs) -> str:
         """Return the resolved MLIR text for this kernel without compiling.

@@ -22,6 +22,8 @@ Coverage:
 - TraceConfig passed to a design that never calls enable_trace → HostRuntimeError
 """
 
+from pathlib import Path
+
 import numpy as np
 import pytest
 
@@ -39,6 +41,10 @@ from aie.iron import (
     compileconfig,
 )
 from aie.iron.controlflow import range_
+
+# A real two-device design (one aie.device per PDI), used to exercise the
+# multi-PDI accessors against genuine aiecc output rather than fabricated files.
+_TWO_DEVICE_MLIR = Path(__file__).parents[2] / "npu-xrt" / "add_one_two" / "aie.mlir"
 
 # ---------------------------------------------------------------------------
 # Shared design: element-wise add of a constant
@@ -294,3 +300,52 @@ def test_trace_config_without_enable_trace_raises(input_array, N):
     out = iron.zeros(N, dtype=np.int32, device="npu")
     with pytest.raises(HostRuntimeError, match="host buffer argument"):
         add_traced(input_array, out, N=N, add_value=9, trace_config=trace_cfg)
+
+
+# ---------------------------------------------------------------------------
+# 9. PDI accessors against a real single- and multi-device compile
+# ---------------------------------------------------------------------------
+
+
+def _device_enum_name():
+    """The aie.device enum string (e.g. 'npu1_1col') for the attached NPU."""
+    device = iron.get_current_device()
+    return str(device.resolve())
+
+
+def test_get_pdi_path_single_device(N):
+    """get_pdi_path() finds the PDI aiecc actually emits for a 1-device design."""
+    design = add_const_design.specialize(N=N, add_value=5)
+    design.compile()  # cache mode: aiecc emits <device>.pdi into kernel_dir
+
+    pdi = design.get_pdi_path()
+    assert pdi is not None
+    assert pdi.exists()
+    assert pdi.suffix == ".pdi"
+    # IRON always names the device 'main', so the PDI is main.pdi.
+    assert pdi.name == "main.pdi"
+    assert design.get_pdi_paths() == [pdi]
+
+
+def test_get_pdi_paths_multi_device(tmp_path):
+    """A real two-device compile emits two PDIs; the accessors expose both.
+
+    Compiles test/npu-xrt/add_one_two/aie.mlir (two aie.device ops: @design1,
+    @design2) through the BYO-.mlir CompilableDesign path.  This is the case
+    the old main.pdi-hardcoded accessor silently missed.
+    """
+    src = _TWO_DEVICE_MLIR.read_text().replace("NPUDEVICE", _device_enum_name())
+    mlir = tmp_path / "two_device.mlir"
+    mlir.write_text(src)
+
+    design = CompilableDesign(mlir)
+    design.compile()  # cache mode: one <device>.pdi per aie.device
+
+    pdis = design.get_pdi_paths()
+    assert [p.name for p in pdis] == ["design1.pdi", "design2.pdi"]
+    assert all(p.exists() for p in pdis)
+
+    # device_name selects a specific device's PDI; a bad name returns None.
+    assert design.get_pdi_path(device_name="design1") == pdis[0]
+    assert design.get_pdi_path(device_name="design2") == pdis[1]
+    assert design.get_pdi_path(device_name="nope") is None

@@ -358,27 +358,51 @@ class CompilableDesign:
             return None
         return self._xclbin_path, self._inst_path
 
-    def get_pdi_path(self) -> Path | None:
-        """Return ``<kernel_dir>/main.pdi`` if it exists, else ``None``.
+    def get_pdi_paths(self) -> list[Path]:
+        """Return every cache-directory PDI aiecc emitted, sorted by name.
 
-        In default cache mode, aiecc names the PDI after the ``aie.device``
-        symbol in the compiled MLIR.  IRON's ``@iron.jit`` path always uses
-        ``main`` as that symbol name, so the file is ``main.pdi``.  If
-        ``self.mlir_generator`` is a raw ``.mlir`` ``Path`` whose top-level
-        ``aie.device`` uses a different symbol name, this method will not find
-        the PDI — locate it manually in ``<kernel_dir>`` or pass an explicit
-        ``pdi_path`` to ``compile()``.
+        In default cache mode aiecc names each PDI after its ``aie.device``
+        symbol in the compiled MLIR (``<device>.pdi``) and writes it into the
+        work dir alongside the xclbin.  A single-device design yields one PDI;
+        a multi-device design yields one per ``aie.device``.
 
-        It is *not* a general "PDI for the most recent compile" accessor: when
-        ``compile(pdi_path=...)`` names an explicit output, the PDI is written
-        to that caller-supplied path (not ``<kernel_dir>/main.pdi``), so use
-        the path you passed rather than this method.  Returns ``None`` if no
-        compile has happened yet or the file is absent.
+        This is *not* a "PDI for the most recent compile" accessor: a
+        ``compile(pdi_path=...)`` call writes the PDI to that caller-supplied
+        path (outside ``kernel_dir``), so use the path you passed rather than
+        this method.  Returns ``[]`` if no compile has happened yet or no PDI
+        is present.
         """
         if self._kernel_dir is None:
+            return []
+        return sorted(self._kernel_dir.glob("*.pdi"))
+
+    def get_pdi_path(self, device_name: str | None = None) -> Path | None:
+        """Return one cache-directory PDI, or ``None`` if none is present.
+
+        Convenience wrapper over :meth:`get_pdi_paths` for the common
+        single-device case.  aiecc names each PDI after its ``aie.device``
+        symbol (``<device>.pdi``); IRON's ``@iron.jit`` path uses ``main`` so
+        it lands as ``main.pdi``, but a raw ``.mlir`` ``Path`` generator can
+        use any name, so this finds the PDI regardless of the device name.
+
+        Args:
+            device_name: For a multi-device design, the ``aie.device`` symbol
+                whose PDI you want (i.e. ``<device_name>.pdi``).  Leave as
+                ``None`` for a single-device design.
+
+        Returns:
+            The matching PDI, the sole PDI when there's exactly one, or
+            ``None`` when there is no PDI (or the named one is absent).  When
+            several PDIs exist and ``device_name`` is not given, returns the
+            first by name and leaves the rest to :meth:`get_pdi_paths`.
+        """
+        pdis = self.get_pdi_paths()
+        if not pdis:
             return None
-        pdi = self._kernel_dir / "main.pdi"
-        return pdi if pdi.exists() else None
+        if device_name is not None:
+            target = self._kernel_dir / f"{device_name}.pdi"  # type: ignore[operator]
+            return target if target in pdis else None
+        return pdis[0]
 
     def split_runtime_args(
         self, runtime_args: tuple, runtime_kwargs: dict[str, Any]
