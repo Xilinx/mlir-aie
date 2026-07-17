@@ -238,14 +238,12 @@ auto deserializeFile() {
 // Per-Node serialization: capture/restore a whole node's items as a group
 //===----------------------------------------------------------------------===//
 //
-// Checkpointing captures a frontier one *node* at a time, not one item at a
-// time. NodeSerializer::write lays a node's items out under a directory however
-// it likes and returns a JSON descriptor; NodeDeserializer::read consumes that
+// NodeSerializer::write lays a node's items out under a directory however it
+// likes and returns a JSON descriptor; NodeDeserializer::read consumes that
 // descriptor to rebuild the items. The default treats each item as an
-// independent artifact (delegating to the per-item Serializer/Deserializer), so
-// every self-contained payload behaves as before. Payloads whose items share
-// structure (OpInModule: one module, many focus ops) or carry a companion
-// directory (Directory) specialize this.
+// independent artifact (delegating to the per-item Serializer/Deserializer).
+// Payloads whose items share // structure (OpInModule: one module, many focus
+// ops) or carry a companion directory (Directory) specialize this.
 
 // Position of `target` among `KeyOp`s in `module`'s pre-order walk, or -1.
 template <typename KeyOp>
@@ -658,11 +656,6 @@ struct EdgeWithTypedOutput : EdgeBase {
   }
 
   // Rehydrate output items from artifacts on disk (see EdgeBase::restoreNode).
-  // Per-node capture/restore: delegate to NodeSerializer<Out> /
-  // NodeDeserializer<Out> so a payload that shares structure across items (e.g.
-  // OpInModule) can write the shared part once. This generic code never
-  // branches on Out. A node is resumable iff NodeDeserializer<Out> succeeds
-  // (default: iff the payload has a Deserializer).
   llvm::json::Value captureNode(llvm::StringRef dir) final {
     return NodeSerializer<Out>::write(out.items, dir);
   }

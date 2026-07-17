@@ -157,10 +157,7 @@ struct Serializer<NpuProgram> {
 
 // Opaque bag of ambient resources a Deserializer may need to lift a payload
 // from disk on --resume. The graph and execution engine forward this through
-// without ever inspecting it; only the per-type Deserializer specializations
-// that need a resource read from it. A payload type that needs some resource
-// adds a field here and reads it from its own Deserializer -- the generic
-// graph/engine code never changes and never specializes on a payload type.
+// without inspecting it.
 struct DeserializeContext {
   // The context module-valued payloads are re-parsed into on --resume. Null
   // when no MLIR payload can appear at a resumable cut.
@@ -192,8 +189,7 @@ template <typename T>
 struct Deserializer;
 
 // A File payload is just its on-disk path (held on the Item), so lifting it is
-// a no-op; this lets File nodes resume through the same seam as every other
-// type.
+// a no-op.
 template <>
 struct Deserializer<File> {
   static mlir::FailureOr<File> read(llvm::StringRef /*path*/,
