@@ -64,10 +64,10 @@ enum TxnOpcode : uint32_t {
 
 // Upper bound on a tile's buffer-descriptor count across all tile types, sizing
 // the pool's fixed storage. This is a standalone header (no MLIR / target model
-// here), so the ACTUAL per-tile count is supplied at runtime by the compiler via
-// bd_pool_init(getNumBDs(col,row)) -- this constant only bounds the array. AIE2
-// memtiles have the most BDs (48); shim/core have 16. Keep this >= the largest
-// getNumBDs any target model returns.
+// here), so the ACTUAL per-tile count is supplied at runtime by the compiler
+// via bd_pool_init(getNumBDs(col,row)) -- this constant only bounds the array.
+// AIE2 memtiles have the most BDs (48); shim/core have 16. Keep this >= the
+// largest getNumBDs any target model returns.
 constexpr uint32_t kMaxBDsPerTile = 48;
 
 // Runtime buffer-descriptor free-list pool, for dynamic runtime sequences whose
