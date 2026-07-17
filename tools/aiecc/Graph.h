@@ -520,11 +520,6 @@ struct EdgeBase {
   Graph &graph;
   std::string name;
   std::string outputDir; // engine sets this before execute()
-  // --get-key routing (engine-populated on requested-output edges): when
-  // `outputKeys` is non-empty, only items whose key is listed are placed in
-  // `outputDir`; every other item spills to `spilloverDir` (the work dir).
-  std::vector<std::string> outputKeys;
-  std::string spilloverDir;
   bool producesFiles = true;
 
   // True if execute() is free of shared, mutable state — in particular it does
@@ -542,7 +537,7 @@ struct EdgeBase {
 
   // Key of the item whose per-item action failed (first failure wins under
   // parallelism); empty for whole-edge failures. Reported in the failure
-  // diagnostic so the user can target that key with --get-key.
+  // diagnostic to identify the offending instance.
   std::atomic<bool> failedKeySet{false};
   std::string failedKey;
   void recordFailedKey(llvm::StringRef k) {
@@ -585,13 +580,7 @@ struct EdgeBase {
       fileName.replace(pos, 3, key.str());
     if (llvm::sys::path::is_absolute(fileName))
       return fileName;
-    // Non-selected keys (see --get-key / outputKeys) spill to the work dir so
-    // only the requested keys land in the output dir.
-    llvm::StringRef dir = outputDir;
-    if (!outputKeys.empty() && std::find(outputKeys.begin(), outputKeys.end(),
-                                         key.str()) == outputKeys.end())
-      dir = spilloverDir;
-    llvm::SmallString<256> path(dir);
+    llvm::SmallString<256> path(outputDir);
     llvm::sys::path::append(path, fileName);
     return std::string(path.str());
   }

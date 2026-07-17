@@ -69,11 +69,11 @@ an intermediate result, and then continue from that point rather than starting
 over. `--checkpoint` and `--resume` let you do exactly that.
 
 First, compile up to some intermediate stage and save the result. Here we stop
-at the routed physical IR (`--get`, described below, selects where to stop) and
+at the routed physical IR (`--cut`, described below, selects where to cut) and
 write the checkpoint into the directory `cp`:
 
 ```bash
-aiecc --get=input_physical.mlir --checkpoint=cp design.mlir
+aiecc --cut=input_physical.mlir --checkpoint=cp design.mlir
 ```
 
 Now you can open the intermediate files saved in `cp` and edit them — for
@@ -92,7 +92,7 @@ checkpoint manifest, so it inherits the original device, toolchain and lowering
 options automatically — you neither repeat them nor may override them. `--resume`
 rejects any graph-shaping flag on its command line, since changing the graph
 would invalidate the saved intermediates; only execution-only flags may
-accompany it: `--get`, `--get-key`, `--checkpoint`, `-j`, `-v`/`--verbose`, and
+accompany it: `--get`, `--cut`, `--checkpoint`, `-j`, `-v`/`--verbose`, and
 `--progress`.
 
 This makes it easy to isolate a problem: compile up to just before a stage you
@@ -101,14 +101,14 @@ after it.
 
 Adding `--emit-dot` previews where the checkpoint will cut the build. Here the
 NPU-instruction flow is cut right after routing produces the physical IR: the
-steps run before the cut are shaded green (the `--get` frontier, whose artifacts
+steps run before the cut are shaded green (the `--cut` frontier, whose artifacts
 are saved to disk, darker), and the steps a `--resume` runs afterwards sit
 across the dashed red *cut* arrows. Each edge runs at most once across the pair:
 the prefix and frontier during `--checkpoint`, the downstream steps during
 `--resume` (which reloads the frontier from disk rather than rebuilding it).
 
 ```bash
-aiecc --aie-generate-npu-insts --get=input_physical.mlir --checkpoint=cp \
+aiecc --aie-generate-npu-insts --cut=input_physical.mlir --checkpoint=cp \
       --emit-dot | dot -Tsvg -o cut.svg
 ```
 
@@ -124,9 +124,7 @@ exact inputs the failing step saw.
 `--get=<name>` asks for any single artifact in the build by name, including
 intermediates that don't have their own `--aie-generate-*` flag (such as the
 per-core objects or the routed IR). Run with `--emit-dot` to see the available
-names; passing an unrecognized name prints the full list. `--get-key=<key>`
-narrows the result further to a single instance, such as one device, core, or
-sequence.
+names; passing an unrecognized name prints the full list.
 
 ```bash
 aiecc --get=objects_{0}.o design.mlir           # just the per-core objects
@@ -139,7 +137,7 @@ some stage, then resume and ask only for the one output you want; the compiler
 reuses the checkpointed intermediates instead of recomputing them:
 
 ```bash
-aiecc --get=physical_with_elfs.mlir --checkpoint=cp design.mlir
+aiecc --cut=physical_with_elfs.mlir --checkpoint=cp design.mlir
 aiecc --resume=cp/manifest.json --get=cdo_{0}   # only the CDO, from the checkpoint
 ```
 
@@ -170,9 +168,8 @@ artifacts you asked for.
 **Keys** are what make fan-out/fan-in well-defined: an edge that splits a module
 per-device produces one item per device, each with a stable key (the device
 name). Downstream edges zip nodes *by key*, so a core's object, its ld script,
-and its arch string all line up. Keys also name checkpoint frontier entries and
-drive `--get-key`. In edge output names/file paths, `{0}` gets substituted for 
-each item's key.
+and its arch string all line up. Keys also name checkpoint frontier entries. In
+edge output names/file paths, `{0}` gets substituted for each item's key.
 
 ### Keeping the graph static
 

@@ -173,9 +173,6 @@ struct Engine {
     bool progress = false;
     bool keepIntermediates = false;
     unsigned numThreads = 1; // 0 = auto-detect; 1 = sequential
-    // When non-empty, only output items whose key is listed are written to the
-    // output directory (the --get-key filter); empty writes every key.
-    std::vector<std::string> outputKeyFilter;
     bool profile = false; // print a per-edge execution-time summary at the end
   };
 
@@ -231,20 +228,10 @@ struct Engine {
     for (auto &e : g.edges) {
       bool out = isOutput(e.get());
       e->outputDir = out ? opts.outputDir : opts.workDir;
-      // --get-key: keep only the listed keys of the requested outputs in the
-      // output dir; the rest spill to the work dir. Execution is unaffected —
-      // this only routes where each produced artifact lands.
-      if (out && !opts.outputKeyFilter.empty()) {
-        e->outputKeys = opts.outputKeyFilter;
-        e->spilloverDir = opts.workDir;
-      }
     }
     llvm::scope_exit clearWiring([&]() {
-      for (auto &e : g.edges) {
+      for (auto &e : g.edges)
         e->outputDir.clear();
-        e->outputKeys.clear();
-        e->spilloverDir.clear();
-      }
     });
 
     // An edge's `name` doubles as its output-path template and may embed

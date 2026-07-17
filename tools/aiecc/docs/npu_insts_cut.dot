@@ -6,7 +6,7 @@ digraph aiecc {
   n0 [label="input.mlir", style=filled, fillcolor="#cdeccd"];
   n1 [label="placed.mlir", style=filled, fillcolor="#cdeccd"];
   n2 [label="traced.mlir", style=filled, fillcolor="#cdeccd"];
-  n3 [label="work/input_with_addresses.mlir", style=filled, fillcolor="#cdeccd"];
+  n3 [label="input_with_addresses.mlir", style=filled, fillcolor="#cdeccd"];
   n4 [label="input_physical.mlir", style=filled, fillcolor="#8fd694"];
   n5 [label="npu_lowered.mlir"];
   n6 [label="npu_seq_{0}.mlir"];

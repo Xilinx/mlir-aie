@@ -328,26 +328,23 @@ inline cl::opt<std::string>
 // General-purpose output selector: request one or more graph outputs by their
 // public name (repeatable, or comma-separated). Complements the dedicated
 // `aie-generate-*` flags for outputs that don't have one (e.g. the core
-// `objects`/`elfs`). It also doubles as the graph-cut specification: the edges
-// named here are exactly the artifacts a `--checkpoint` captures (and a
-// `--resume` reloads). The set of recognized names is defined where the graph
-// is built; an unknown name is a hard error.
+// `objects`/`elfs`). The set of recognized names is defined where the graph is
+// built; an unknown name is a hard error.
 inline cl::list<std::string> getOutputs(
     "get",
-    cl::desc("Request graph output(s) by name (repeatable / comma-separated); "
-             "also the cut points for --checkpoint"),
+    cl::desc("Request graph output(s) by name (repeatable / comma-separated)"),
     cl::CommaSeparated, cl::value_desc("name"));
 inline cl::alias getOutputsAlias("g", cl::desc("Alias for --get"),
                                  cl::aliasopt(getOutputs));
-// Restrict which item keys of the requested outputs are written to the output
-// directory (a key identifies a device/core/sequence instance). Empty writes
-// every key. Pairs with --get for surgical single-instance extraction; does not
-// affect what a --checkpoint captures (a checkpoint always snapshots all keys).
-inline cl::list<std::string> getKeys(
-    "get-key",
-    cl::desc("Restrict generated outputs to these item keys (repeatable / "
-             "comma-separated); empty emits all keys"),
-    cl::CommaSeparated, cl::value_desc("key"));
+// Checkpoint cut points: the edges (named like --get) whose outputs a
+// `--checkpoint` captures and a `--resume` reloads. Built like any requested
+// output, then snapshotted. Separate from --get so selecting an output does not
+// implicitly cut the graph there.
+inline cl::list<std::string> cutOutputs(
+    "cut",
+    cl::desc("Graph edge(s) to cut at for --checkpoint (repeatable / "
+             "comma-separated); named like --get"),
+    cl::CommaSeparated, cl::value_desc("name"));
 
 //===----------------------------------------------------------------------===//
 // Diagnostics, dry-run, progress, and checkpoint/resume
@@ -372,15 +369,15 @@ inline cl::opt<bool> noProgress(
     "no-progress",
     cl::desc("Disable the default single-line execution progress output"));
 // Graph cut / checkpoint & resume. `--checkpoint=<dir>` dumps the artifacts
-// selected by `--get` (narrowed by `--get-key`) plus a `manifest.json`
-// describing them into <dir> after a successful run — a "prefix" of the build.
-// `--resume=<manifest.json>` rebuilds the graph from the manifest's recorded
-// argv, reloads those artifacts from disk instead of recomputing them, and
-// continues the "suffix" (optionally narrowed with `--get`). Not tied to any
-// failure mode; the cut is wherever `--get` points.
+// selected by `--cut` plus a `manifest.json` describing them into <dir> after a
+// successful run — a "prefix" of the build. `--resume=<manifest.json>` rebuilds
+// the graph from the manifest's recorded argv, reloads those artifacts from
+// disk instead of recomputing them, and continues the "suffix" (optionally
+// narrowed with `--get`). Not tied to any failure mode; the cut is wherever
+// `--cut` points.
 inline cl::opt<std::string> checkpointDir(
     "checkpoint",
-    cl::desc("After a successful run, write the --get artifacts + a "
+    cl::desc("After a successful run, write the --cut artifacts + a "
              "manifest.json to this dir (a resumable graph cut)"),
     cl::value_desc("dir"), cl::init(""));
 inline cl::opt<std::string> resumeManifest(
@@ -524,18 +521,18 @@ struct ResumeState {
 };
 
 // Execution-only flags that may accompany --resume: they don't reshape the
-// graph, only what the suffix run targets (--get/--get-key) or captures
-// (--checkpoint), plus reporting/parallelism. Returns 0 (rejected), 1
+// graph, only what the suffix run targets (--get), where it cuts (--cut) or
+// captures (--checkpoint), plus reporting/parallelism. Returns 0 (rejected), 1
 // (self-contained token), or 2 (also consumes the following token).
 inline int resumePassthroughKind(llvm::StringRef a) {
   if (a == "-v" || a == "--verbose" || a == "--progress" ||
       a == "--no-progress")
     return 1;
   if (a.starts_with("--get=") || a.starts_with("-g=") ||
-      a.starts_with("--get-key=") || a.starts_with("-j") ||
+      a.starts_with("--cut=") || a.starts_with("-j") ||
       a.starts_with("--checkpoint="))
     return 1;
-  if (a == "--get" || a == "-g" || a == "--get-key" || a == "--checkpoint")
+  if (a == "--get" || a == "-g" || a == "--cut" || a == "--checkpoint")
     return 2;
   return 0;
 }
@@ -562,18 +559,18 @@ resolveCommandLine(int argc, char **argv, ResumeState &resume,
   if (resumePath.empty()) {
     std::vector<std::string> full(argv, argv + argc);
     // The recorded graph-argv must exclude the execution-only flags that select
-    // the cut (--get/-g/--get-key) and write the checkpoint (--checkpoint):
-    // replaying them on resume would re-restrict the run to the cut instead of
-    // continuing past it. This run itself still sees the full argv.
+    // outputs (--get/-g), the cut (--cut) and write the checkpoint
+    // (--checkpoint): replaying them on resume would re-restrict the run to the
+    // cut instead of continuing past it. This run itself still sees the full
+    // argv.
     for (size_t i = 0; i < full.size(); ++i) {
       llvm::StringRef a(full[i]);
-      if (a == "--get" || a == "-g" || a == "--get-key" ||
-          a == "--checkpoint") {
+      if (a == "--get" || a == "-g" || a == "--cut" || a == "--checkpoint") {
         ++i; // also skip its separate value token
         continue;
       }
       if (a.starts_with("--get=") || a.starts_with("-g=") ||
-          a.starts_with("--get-key=") || a.starts_with("--checkpoint="))
+          a.starts_with("--cut=") || a.starts_with("--checkpoint="))
         continue;
       graphArgv.push_back(full[i]);
     }

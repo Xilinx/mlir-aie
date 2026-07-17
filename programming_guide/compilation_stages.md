@@ -372,6 +372,10 @@ default.
 
 ## Related reading
 
+- [`aiecc` compiler driver](https://github.com/Xilinx/mlir-aie/blob/main/tools/aiecc/README.md)
+  — the declarative build-graph driver that turns the lowered MLIR into
+  core ELFs, CDO/PDI, xclbin and NPU instruction streams, with a developer
+  guide to its `Edge`/`Node`/`Item` graph model and `--checkpoint`/`--resume`.
 - [`iron_configuration.md`](./iron_configuration.md) — environment
   variables (cache dir, default tensor class, default device, log
   level).

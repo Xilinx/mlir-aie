@@ -466,12 +466,11 @@ private:
       llvm::outs() << '\n';
       llvm::outs().flush();
     }
-    if (dryRun) {
-      // Touch an empty output so the path resolves for the engine.
-      std::error_code ec;
-      llvm::raw_fd_ostream f(outputFile, ec);
+    if (dryRun)
+      // A dry run only echoes the command (under --verbose); it produces no
+      // output file. Nothing downstream reads intermediate contents in this
+      // mode, so the paths need not exist on disk.
       return mlir::success();
-    }
     llvm::SmallVector<llvm::StringRef> argv(cmd.begin(), cmd.end());
     std::string errMsg;
     // Capture the tool's stdout+stderr into a temp file so routine chatter

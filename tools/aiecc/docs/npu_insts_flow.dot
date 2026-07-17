@@ -6,7 +6,7 @@ digraph aiecc {
   n0 [label="input.mlir"];
   n1 [label="placed.mlir"];
   n2 [label="traced.mlir"];
-  n3 [label="work/input_with_addresses.mlir"];
+  n3 [label="input_with_addresses.mlir"];
   n4 [label="input_physical.mlir"];
   n5 [label="npu_lowered.mlir"];
   n6 [label="npu_seq_{0}.mlir"];

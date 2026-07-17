@@ -155,16 +155,16 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
       llvmIR.map<std::string>("peano-compat_{0}.ll", downgradeIRForPeano)
           .map<File>("opted_{0}.ll", optCmd)
           .threadSafe();
+  ShellCommand llcCmd{"llc"};
+  llcCmd.input()
+      .arg("-O" + std::to_string(optLevel.getValue()))
+      .value("--march=")
+      .arg("--function-sections")
+      .arg("--filetype=obj")
+      .output("-o");
   EdgeWithTypedOutput<Directory> &peanoObject =
       bundle(opted.out, arches.out)
-          .map<Directory>(objName,
-                          ShellCommand{"llc"}
-                              .input()
-                              .arg("-O" + std::to_string(optLevel.getValue()))
-                              .value("--march=")
-                              .arg("--function-sections")
-                              .arg("--filetype=obj")
-                              .output("-o"))
+          .map<Directory>(objName, llcCmd)
           .threadSafe();
 
   return xchesscc ? chessObject : peanoObject;
@@ -286,11 +286,10 @@ EdgeWithTypedOutput<NpuProgram> &buildNpuProgramSubgraph(
 //===----------------------------------------------------------------------===//
 
 // Assemble the full compilation artifact graph into `g` and return the list of
-// requested output edges. The explicitly requested edges named via `--get` on
-// the command line are also appended to `getEdges` to be used as the cut points
-// a `--checkpoint` captures.
+// requested output edges. Edges named via `--cut` are appended to `cutEdges`
+// (and built) so a `--checkpoint` can capture them as its cut points.
 std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
-                                       std::vector<EdgeBase *> &getEdges) {
+                                       std::vector<EdgeBase *> &cutEdges) {
 
   //--------------------------------------------------------------------------//
   // Helpers
@@ -352,7 +351,7 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                            placerType.getValue(), saSeed.getValue())})
           .map<ModRef>("traced.mlir", PassPipeline{getTracePipeline(&context)})
           .map<ModRef>(
-              workDirStr + "/input_with_addresses.mlir",
+              "input_with_addresses.mlir",
               PassPipeline{&context,
                            [scheme = allocScheme.getValue(),
                             dyn = dynamicObjFifos.getValue(),
@@ -366,7 +365,7 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
 
   // Scratchpad run-time parameters sidecar file
   auto &paramsFile = withAddresses.map<std::string>(
-      workDirStr + "/params.txt", [](const ModRef &mod) -> std::string {
+      "params.txt", [](const ModRef &mod) -> std::string {
         std::string txt;
         llvm::raw_string_ostream os(txt);
         xilinx::AIEX::emitScratchpadParamsFile(mod.get(), os);
@@ -722,12 +721,12 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
         ModRef clone = item.get().get().clone();
         if (mlir::failed(getControlPacketDmaPipeline(&context)->run(*clone)))
           return mlir::failure();
-        // The full-ELF runtime translates every host buffer address itself, so
-        // the DDR-aperture offset must not be folded into the TXN; the
-        // xclbin + instruction-buffer runtime does still need it.
+        // The control-packet DMA sequence only ever pairs with the xclbin /
+        // instruction-buffer runtime (full ELF is rejected up front), which
+        // folds the DDR-aperture offset into the TXN.
         return xilinx::AIE::AIETranslateNpuToBinary(
             clone.get(), words, item.key, "",
-            /*locmap=*/nullptr, /*foldDDRAddrOffset=*/!generateFullElf);
+            /*locmap=*/nullptr, /*foldDDRAddrOffset=*/true);
       }));
 
   // Partial ELF containing the DMA sequence and the control packet data;
@@ -1122,7 +1121,8 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
       generateInputWithAddresses || generateScratchpadParams ||
       generateNpuInsts || keepLoc || generateElf || generateCdo ||
       generatePdi || generateTxn || generateCtrlpkt || generateXclbin ||
-      generateFullElf || wantAiesim || doCompileHost || !getOutputs.empty();
+      generateFullElf || wantAiesim || doCompileHost || !getOutputs.empty() ||
+      !cutOutputs.empty();
   if (generateCoreElfs || !anySpecificOutput)
     outputs.push_back(&compiledElfs);
 
@@ -1164,35 +1164,46 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
       outputs.push_back(&hostExe);
   }
 
-  // --get=<name>: general-purpose escape hatch to request any output by the
-  // exact name its edge is registered with. The chosen edges are also the cut
-  // points a --checkpoint captures, so they are reported back via `getEdges`.
-  if (!getOutputs.empty()) {
-    // A few names are registered on two edges by design: the toolchain /
-    // strategy variants that emit the same artifact (chess vs peano
-    // "elfs_{0}.elf", per-core vs unified "objects_{0}.o"). Exactly one of each
-    // pair is live in any given build, so disambiguate by keeping only edges
-    // reachable from the selected terminals (`compiledElfs` / `objects`) plus
-    // whatever this run already produces.
+  // --get=<name> / --cut=<name>: request outputs (and cut points) by the exact
+  // name their edge is registered with. A few names are registered on two edges
+  // by design: the toolchain / strategy variants that emit the same artifact
+  // (chess vs peano "elfs_{0}.elf", per-core vs unified "objects_{0}.o").
+  // Exactly one of each pair is live in any given build, so disambiguate by
+  // keeping only edges reachable from the selected terminals (`compiledElfs` /
+  // `objects`) plus whatever this run already produces.
+  if (!getOutputs.empty() || !cutOutputs.empty()) {
     std::vector<EdgeBase *> liveRoots = outputs;
     liveRoots.push_back(&compiledElfs);
     liveRoots.push_back(&objects);
     llvm::DenseSet<EdgeBase *> live = reachableEdges(liveRoots);
 
-    for (const std::string &want : getOutputs) {
-      llvm::Expected<EdgeBase *> chosen = resolveLiveEdge(g, want, live);
-      if (!chosen) {
-        llvm::errs() << "aiecc: --get: " << llvm::toString(chosen.takeError())
-                     << "; known outputs are:\n";
-        std::set<llvm::StringRef> names;
-        for (const auto &e : g.edges)
-          names.insert(e->name);
-        for (llvm::StringRef n : names)
-          llvm::errs() << "  " << n << '\n';
-        std::exit(1);
+    auto resolveNames = [&](llvm::ArrayRef<std::string> names,
+                            llvm::StringRef flag) -> std::vector<EdgeBase *> {
+      std::vector<EdgeBase *> resolved;
+      for (const std::string &want : names) {
+        llvm::Expected<EdgeBase *> chosen = resolveLiveEdge(g, want, live);
+        if (!chosen) {
+          llvm::errs() << "aiecc: " << flag << ": "
+                       << llvm::toString(chosen.takeError())
+                       << "; known outputs are:\n";
+          std::set<llvm::StringRef> names;
+          for (const auto &e : g.edges)
+            names.insert(e->name);
+          for (llvm::StringRef n : names)
+            llvm::errs() << "  " << n << '\n';
+          std::exit(1);
+        }
+        resolved.push_back(*chosen);
       }
-      outputs.push_back(*chosen);
-      getEdges.push_back(*chosen);
+      return resolved;
+    };
+
+    // --get only selects outputs; --cut both builds and marks a cut point.
+    for (EdgeBase *e : resolveNames(getOutputs, "--get"))
+      outputs.push_back(e);
+    for (EdgeBase *e : resolveNames(cutOutputs, "--cut")) {
+      outputs.push_back(e);
+      cutEdges.push_back(e);
     }
   }
 
@@ -1282,6 +1293,15 @@ int main(int argc, char **argv) {
     return 1;
   }
 
+  // The control-packet DMA sequence targets the xclbin / instruction-buffer
+  // runtime, never the full-ELF runtime, so the two must not be requested
+  // together (see the hard-coded fold in the ctrlpktDmaSeq edge).
+  if (generateFullElf && generateCtrlpkt) {
+    llvm::errs() << "aiecc: --generate-full-elf and --aie-generate-ctrlpkt are "
+                    "mutually exclusive\n";
+    return 1;
+  }
+
   // MLIR Context
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
@@ -1308,14 +1328,15 @@ int main(int argc, char **argv) {
   // All edge declarations live in buildMainGraph; main just builds the graph
   // and then either visualizes it (--emit-dot) or runs it through the engine.
   Graph g;
-  std::vector<EdgeBase *> getEdges; // the --get cut, captured by --checkpoint
-  std::vector<EdgeBase *> outputs = buildMainGraph(context, g, getEdges);
+  std::vector<EdgeBase *>
+      cutEdges; // the --cut points, captured by --checkpoint
+  std::vector<EdgeBase *> outputs = buildMainGraph(context, g, cutEdges);
 
   // --emit-dot: visualize the (pruned) static graph and exit without running.
   // Needs no input file (the graph is static), so it runs before the input-file
-  // check below. A --get/--checkpoint cut (getEdges) is marked in the output.
+  // check below. A --cut/--checkpoint cut is marked in the output.
   if (emitDot) {
-    writeDotGraph(g, outputs, llvm::outs(), getEdges);
+    writeDotGraph(g, outputs, llvm::outs(), cutEdges);
     return 0;
   }
 
@@ -1371,9 +1392,7 @@ int main(int argc, char **argv) {
   // (line-per-edge logging) takes precedence over the single-line display.
   bool showProgress = !noProgress && !verbose;
   Engine engine({outputDir, getWorkDir(), verbose, showProgress,
-                 keepIntermediates, numThreads,
-                 std::vector<std::string>(getKeys.begin(), getKeys.end()),
-                 profile});
+                 keepIntermediates, numThreads, profile});
   if (mlir::failed(
           engine.run(g, outputs, satisfied, DeserializeContext{&context}))) {
     // On-failure reproducer ("repeater"): dump a checkpoint of the failed
@@ -1399,11 +1418,10 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  // --checkpoint: dump the --get cut (artifacts + manifest.json) so a later
-  // --resume can reload it and continue. Shares edge identification with --get
-  // (getEdges) so the two never drift.
+  // --checkpoint: dump the --cut cut (artifacts + manifest.json) so a later
+  // --resume can reload it and continue.
   if (!checkpointDir.empty())
-    writeCheckpoint(getEdges, checkpointDir, graphArgv);
+    writeCheckpoint(cutEdges, checkpointDir, graphArgv);
 
   return 0;
 }
