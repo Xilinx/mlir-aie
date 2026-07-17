@@ -27,7 +27,7 @@
 # RUN: %aiecc --no-xchesscc --no-xbridge --no-aiesim --aie-generate-xclbin --aie-generate-npu-insts --aie-generate-input-with-addresses --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.bin trace_lowered.mlir
 #
 # Run on NPU1 hardware:
-# RUN: %run_on_npu1% %python %S/test.py --xclbin final.xclbin --instr insts.bin --kernel MLIR_AIE --trace_size 16384 --mlir trace_lowered.mlir.prj/input_with_addresses.mlir | FileCheck %s
+# RUN: %run_on_npu1% %python %S/test.py --xclbin final.xclbin --instr insts.bin --kernel MLIR_AIE --trace_size 16384 --mlir input_with_addresses.mlir | FileCheck %s
 # CHECK: PASS!
 
 import argparse

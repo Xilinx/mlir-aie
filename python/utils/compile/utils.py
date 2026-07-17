@@ -215,6 +215,9 @@ def compile_mlir_module(
         args.append(f"--tmpdir={work_dir}")
         # Emit input_with_addresses.mlir into work_dir; the JIT DMA-size
         # validator (parse_dma_sizes) and the trace parser read it from there.
+        # It is a requested output, so it lands in --output-dir; point that at
+        # work_dir (the insts/xclbin/pdi paths are absolute and unaffected).
+        args.append(f"--output-dir={work_dir}")
         args.append("--aie-generate-input-with-addresses")
     if verbose:
         args.append("--verbose")

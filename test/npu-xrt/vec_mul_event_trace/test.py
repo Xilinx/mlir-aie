@@ -14,7 +14,7 @@
 # RUN: %aiecc %backend_flags --no-aiesim --aie-generate-xclbin --aie-generate-npu-insts --aie-generate-input-with-addresses --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.bin %S/aie.mlir
 
 # Run the test (input_with_addresses.mlir contains the lowered npu_write ops)
-# RUN: %run_on_npu2% %python %S/test.py --xclbin final.xclbin --instr insts.bin --kernel MLIR_AIE --trace_size 8192 --mlir aie.mlir.prj/input_with_addresses.mlir | FileCheck %s
+# RUN: %run_on_npu2% %python %S/test.py --xclbin final.xclbin --instr insts.bin --kernel MLIR_AIE --trace_size 8192 --mlir input_with_addresses.mlir | FileCheck %s
 # CHECK: PASS!
 import argparse
 import numpy as np
