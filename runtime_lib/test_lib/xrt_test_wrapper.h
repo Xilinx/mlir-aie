@@ -127,11 +127,19 @@ OutBuf<T> make_out(int volume, void (*init)(T *, int)) {
 template <typename Verify, typename TOut, typename... TIns>
 int setup_and_run_aie(Verify verify_results, std::tuple<InBuf<TIns>...> inputs,
                       OutBuf<TOut> output, struct args myargs,
-                      bool enable_ctrl_pkts = false) {
+                      bool enable_ctrl_pkts = false,
+                      int num_trailing_params = 0) {
 
   srand(time(NULL));
 
   constexpr int num_inputs = sizeof...(TIns);
+  // Some designs place scalar/param buffers AFTER the output in the host ABI.
+  // The IRON `transform` runtime sequence, for example, is ordered
+  // [inputs, output, params].  `num_trailing_params` counts how many of the
+  // trailing entries in `inputs` are actually such params: they are bound to
+  // kernel arg slots *after* the output instead of before it.  The verifier
+  // still receives all buffers in declared order (inputs..., params..., out).
+  const int num_real_inputs = num_inputs - num_trailing_params;
 
   // Load instruction sequence
   std::vector<uint32_t> instr_v = test_utils::load_instr_binary(myargs.instr);
@@ -148,6 +156,14 @@ int setup_and_run_aie(Verify verify_results, std::tuple<InBuf<TIns>...> inputs,
   // The fixed scalar args occupy kernel arg slots 0..2 (opcode, instr, ninstr).
   // Data buffers start at slot 3, i.e. group_id(3 + data_index).
   constexpr int kFirstDataArg = 3;
+  // Output slot follows the *real* inputs; trailing params come after it.
+  const int out_arg = kFirstDataArg + num_real_inputs;
+  // Kernel arg slot for the idx-th declared `inputs` entry (real input or
+  // trailing param).
+  auto data_arg_slot = [&](int idx) {
+    return (idx < num_real_inputs) ? (kFirstDataArg + idx)
+                                   : (out_arg + 1 + (idx - num_real_inputs));
+  };
 
   // Instruction buffer (kernel arg slot 1).
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
@@ -174,7 +190,7 @@ int setup_and_run_aie(Verify verify_results, std::tuple<InBuf<TIns>...> inputs,
     auto one = [&](auto &desc, auto &ptr_slot) {
       using T = typename std::remove_reference_t<decltype(desc)>::elem_type;
       auto bo = xrt::bo(device, desc.volume * sizeof(T), XRT_BO_FLAGS_HOST_ONLY,
-                        kernel.group_id(kFirstDataArg + idx));
+                        kernel.group_id(data_arg_slot(idx)));
       T *mapped = bo.template map<T *>();
       desc.init(mapped, desc.volume);
       bo.sync(XCL_BO_SYNC_BO_TO_DEVICE);
@@ -188,8 +204,7 @@ int setup_and_run_aie(Verify verify_results, std::tuple<InBuf<TIns>...> inputs,
   };
   std::apply(alloc_inputs, inputs);
 
-  // Output buffer follows the inputs.
-  const int out_arg = kFirstDataArg + num_inputs;
+  // Output buffer follows the real inputs (any params come after it).
   auto bo_out = xrt::bo(device, output.volume * sizeof(TOut),
                         XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(out_arg));
   TOut *bufOut = bo_out.map<TOut *>();
@@ -201,7 +216,7 @@ int setup_and_run_aie(Verify verify_results, std::tuple<InBuf<TIns>...> inputs,
   // Control packets are a trace-side feature, so they are only part of the ABI
   // when tracing is also enabled.
   const bool use_ctrl_pkts = enable_ctrl_pkts && myargs.trace_size > 0;
-  int next_arg = out_arg + 1;
+  int next_arg = out_arg + 1 + num_trailing_params;
 
   xrt::bo bo_ctrlpkts;
   uint32_t *bufCtrlPkts = nullptr;
@@ -272,7 +287,7 @@ int setup_and_run_aie(Verify verify_results, std::tuple<InBuf<TIns>...> inputs,
     run.set_arg(1, bo_instr);
     run.set_arg(2, instr_v.size());
     for (int i = 0; i < num_inputs; i++)
-      run.set_arg(kFirstDataArg + i, in_bos[i]);
+      run.set_arg(data_arg_slot(i), in_bos[i]);
     run.set_arg(out_arg, bo_out);
     if (ctrlpkt_arg >= 0)
       run.set_arg(ctrlpkt_arg, bo_ctrlpkts);
