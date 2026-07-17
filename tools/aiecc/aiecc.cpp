@@ -581,7 +581,7 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   //     `@configure` sequence that reprograms the cores, so the cores must be
   //     lowered (a core without an `elf_file` is skipped from the transaction).
   bool npuTransactionsNeedCoresLowered =
-      expandLoadPdis.getValue() || generateTxn.getValue();
+      expandLoadPdis.getValue() || generateTxn;
   EdgeWithTypedOutput<ModRef> &npuLoweringInput =
       npuTransactionsNeedCoresLowered
           ? static_cast<EdgeWithTypedOutput<ModRef> &>(physicalWithElfs)
@@ -629,10 +629,9 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
         // CDO (and the PDI/xclbin built from it) is NPU-only
         if (!d.getTargetModel().hasProperty(
                 xilinx::AIE::AIETargetModel::IsNPU)) {
-          llvm::errs()
-              << "aiecc: --aie-generate-cdo/-pdi/-xclbin require an NPU "
-                 "device, but '"
-              << d.getSymName() << "' is not NPU\n";
+          llvm::errs() << "aiecc: --get-cdo/-pdi/-xclbin require an NPU "
+                          "device, but '"
+                       << d.getSymName() << "' is not NPU\n";
           return mlir::failure();
         }
         const std::string &cdoDir = out.filePath;
@@ -747,7 +746,7 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                 return mlir::success();
               });
 
-  // When --aie-generate-elf is also set, the combined control-packet ELF is the
+  // When --get-elf is also set, the combined control-packet ELF is the
   // artifact the user asked for at --elf-name (the plain instruction ELF is
   // skipped whenever control packets are generated). Otherwise it goes to
   // --ctrlpkt-elf-name.
@@ -1118,7 +1117,7 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   if (generateScratchpadParams)
     outputs.push_back(&paramsFile);
 
-  // Core-ELF output: emit the per-core ELFs when --aie-generate-core-elfs is
+  // Core-ELF output: emit the per-core ELFs when --get-core-elfs is
   // passed, or as the default when no other artifact was requested (so a bare
   // `aiecc design.mlir` builds every device's cores up front).
   bool anySpecificOutput =
@@ -1244,6 +1243,10 @@ int main(int argc, char **argv) {
       cli::resolveCommandLine(argc, argv, resume, graphArgv);
   if (!effArgvStore)
     return 1;
+  // Resolve the `--get-<name>` artifact shorthands (setting the
+  // output-selection bools) before cl parsing sees them.
+  if (!cli::applyOutputSelectorFlags(*effArgvStore))
+    return 1;
   std::vector<char *> effArgvPtrs;
   effArgvPtrs.reserve(effArgvStore->size());
   for (std::string &s : *effArgvStore)
@@ -1291,7 +1294,7 @@ int main(int argc, char **argv) {
   // assumes it runs on the *pre*-NPU-lowering module. The two are incompatible
   // as implemented.
   if (expandLoadPdis && generateCtrlpkt) {
-    llvm::errs() << "aiecc: --expand-load-pdis and --aie-generate-ctrlpkt are "
+    llvm::errs() << "aiecc: --expand-load-pdis and --get-ctrlpkt are "
                     "mutually exclusive\n";
     return 1;
   }
@@ -1300,7 +1303,7 @@ int main(int argc, char **argv) {
   // runtime, never the full-ELF runtime, so the two must not be requested
   // together (see the hard-coded fold in the ctrlpktDmaSeq edge).
   if (generateFullElf && generateCtrlpkt) {
-    llvm::errs() << "aiecc: --generate-full-elf and --aie-generate-ctrlpkt are "
+    llvm::errs() << "aiecc: --get-full-elf and --get-ctrlpkt are "
                     "mutually exclusive\n";
     return 1;
   }
