@@ -19,7 +19,7 @@ Invocation modes:
   * bring-your-own:  ``... --from-xclbin=PATH --from-insts=PATH``  (loads a
     pre-built xclbin + insts — from any toolchain — and runs it; see
     ``run_from_artifacts``.  Pass ``--dev`` to assert the attached NPU family
-    matches the artifacts, since a mismatched xclbin silently returns zeros.)
+    matches the artifacts, since a mismatched xclbin typically hangs or times out.)
 """
 
 import argparse
@@ -136,33 +136,30 @@ def aot_compile(opts):
 
 
 def _check_runtime_device(opts):
-    """Guard the BYO run against an artifact / hardware architecture mismatch.
+    """Bind a device and guard the BYO run against an artifact/hardware mismatch.
 
-    ``NPUKernel`` runs on whatever NPU is attached, and an xclbin built for the
-    wrong family (e.g. an npu1 artifact on a Strix npu2 box) does not error — it
-    silently returns zeros.  ``--dev`` lets the caller declare the family the
-    pre-built artifacts target; when given, verify the attached device matches
-    before running so the mismatch fails loudly instead of producing garbage.
+    Binds the current device (required before ``iron.arange``/``iron.zeros_like``
+    can allocate NPU tensors).  When ``--dev`` is given, also checks that the
+    attached NPU's architecture matches — a mismatched xclbin typically hangs or
+    times out rather than producing clean output, so fail loudly up front.
     """
-    expected_device = device_from_args(opts)
-    if expected_device is None:
-        # No --dev: nothing to check against; the runtime uses the attached NPU.
-        return
-
-    runtime_device = iron.get_current_device()
+    # Always probe the runtime first so we know what HW is actually attached.
+    runtime_device = iron.ensure_current_device()
     if runtime_device is None:
         raise SystemExit(
             "no NPU runtime device is available to run the pre-built artifacts"
         )
 
-    expected_arch = resolve_target_arch(expected_device)
-    runtime_arch = resolve_target_arch(runtime_device)
-    if expected_arch != runtime_arch:
-        raise SystemExit(
-            f"--dev {opts.dev!r} targets {expected_arch}, but the attached NPU "
-            f"is {runtime_arch}.  The pre-built artifacts must match the "
-            f"runtime device family or the kernel silently returns zeros."
-        )
+    expected_device = device_from_args(opts)
+    if expected_device is not None:
+        expected_arch = resolve_target_arch(expected_device)
+        runtime_arch = resolve_target_arch(runtime_device)
+        if expected_arch != runtime_arch:
+            raise SystemExit(
+                f"--dev {opts.dev!r} targets {expected_arch}, but the attached NPU "
+                f"is {runtime_arch}.  The pre-built artifacts must match the "
+                f"runtime device family or the kernel will hang or time out."
+            )
 
 
 def run_from_artifacts(opts):

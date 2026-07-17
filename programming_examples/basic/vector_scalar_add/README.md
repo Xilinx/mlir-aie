@@ -125,9 +125,9 @@ packed *inside* the xclbin and is not a standalone run input on the IRON
 runtime.
 
 Because this path bypasses JIT generation, there is no compiled recipe to
-validate the artifacts against. An xclbin built for the wrong NPU family runs
-without error but silently returns zeros, so pass `--dev` to declare the
-family the artifacts target — the run aborts up front if the attached device's
+validate the artifacts against. An xclbin built for the wrong NPU family will
+typically hang or time out, so pass `--dev` to declare the family the
+artifacts target — the run aborts up front if the attached device's
 architecture doesn't match:
 
 ```shell

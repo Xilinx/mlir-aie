@@ -361,12 +361,18 @@ class CompilableDesign:
     def get_pdi_path(self) -> Path | None:
         """Return ``<kernel_dir>/main.pdi`` if it exists, else ``None``.
 
-        In default cache mode, aiecc emits a ``main.pdi`` into the cache
-        directory alongside the xclbin, so this locates that PDI without a
-        recompile.  It is *not* a general "PDI for the most recent compile"
-        accessor: when ``compile(pdi_path=...)`` names an explicit output, the
-        PDI is written to that path (not ``<kernel_dir>/main.pdi``), so use the
-        path you passed rather than this method.  Returns ``None`` if no
+        In default cache mode, aiecc names the PDI after the ``aie.device``
+        symbol in the compiled MLIR.  IRON's ``@iron.jit`` path always uses
+        ``main`` as that symbol name, so the file is ``main.pdi``.  If
+        ``self.mlir_generator`` is a raw ``.mlir`` ``Path`` whose top-level
+        ``aie.device`` uses a different symbol name, this method will not find
+        the PDI — locate it manually in ``<kernel_dir>`` or pass an explicit
+        ``pdi_path`` to ``compile()``.
+
+        It is *not* a general "PDI for the most recent compile" accessor: when
+        ``compile(pdi_path=...)`` names an explicit output, the PDI is written
+        to that caller-supplied path (not ``<kernel_dir>/main.pdi``), so use
+        the path you passed rather than this method.  Returns ``None`` if no
         compile has happened yet or the file is absent.
         """
         if self._kernel_dir is None:
