@@ -247,7 +247,6 @@ nav:
       - Kernel Library: programming_guide/kernels_library.md
   - API & Internals:
     - Overview: api/index.md
-    - aiecc Compiler Driver: aiecc/README.md
     - Python API:
       - IRON (aie.iron): api/iron.md
       - Dialect op wrappers: api/dialect_wrappers.md
@@ -262,6 +261,7 @@ nav:
       - AIEX Passes: AIEXPasses.md
       - AIEVec Passes: AIEVecPasses.md
       - C++ API (Doxygen): api/cpp_doxygen.md
+    - aiecc Compiler Driver: aiecc/README.md
   - Community:
     - Used in / Cited in: UsedIn.md
     - Contributing: CONTRIBUTING.md
