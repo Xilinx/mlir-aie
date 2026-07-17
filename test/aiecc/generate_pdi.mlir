@@ -8,11 +8,12 @@
 // REQUIRES: chess
 // REQUIRES: peano
 
-// Run in a unique per-test dir: Chess drops cwd-relative scratch, so concurrent
-// runs in a shared directory clobber each other.
-// RUN: rm -rf %t && mkdir -p %t
-// RUN: cd %t && %python aiecc.py -v --xchesscc --xbridge --aie-generate-pdi --pdi-name=MlirAie0.pdi %s 2>&1 | FileCheck %s --check-prefix=XCHESSCC
-// RUN: cd %t && %python aiecc.py -v --no-xchesscc --no-xbridge --aie-generate-pdi --pdi-name=MlirAie1.pdi %s 2>&1 | FileCheck %s --check-prefix=PEANO
+// Give each run private output/work dirs: Chess drops scratch and aiecc emits
+// per-core dirs into the output dir, so concurrent runs sharing a directory (as
+// the lit suite does) would clobber each other. The PDIs land in %t; the final
+// ls checks both are there.
+// RUN: %python aiecc.py -v --xchesscc --xbridge --aie-generate-pdi --pdi-name=MlirAie0.pdi --output-dir=%t --tmpdir=%t.prj %s 2>&1 | FileCheck %s --check-prefix=XCHESSCC
+// RUN: %python aiecc.py -v --no-xchesscc --no-xbridge --aie-generate-pdi --pdi-name=MlirAie1.pdi --output-dir=%t --tmpdir=%t.prj %s 2>&1 | FileCheck %s --check-prefix=PEANO
 
 // RUN: ls %t | grep MlirAie | FileCheck %s --check-prefix=CHECK-FILE
 

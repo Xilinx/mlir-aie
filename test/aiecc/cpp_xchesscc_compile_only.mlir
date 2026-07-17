@@ -11,10 +11,10 @@
 
 // REQUIRES: chess
 
-// Run in a unique per-test dir: Chess drops cwd-relative scratch, so concurrent
-// runs in a shared directory clobber each other.
-// RUN: rm -rf %t && mkdir -p %t
-// RUN: cd %t && aiecc --xchesscc --get='objects_{0}.o' -v %s 2>&1 | FileCheck %s
+// Give this run private output/work dirs: Chess drops scratch and the requested
+// objects_<core> dir goes to the output dir, so concurrent runs sharing a
+// directory (as the lit suite does) would clobber each other.
+// RUN: aiecc --xchesscc --get='objects_{0}.o' -v --output-dir=%t --tmpdir=%t.prj %s 2>&1 | FileCheck %s
 
 // CHECK: chess-llvm-link
 // CHECK-SAME: chess_intrinsic_wrapper
