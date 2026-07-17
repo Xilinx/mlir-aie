@@ -352,19 +352,18 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
           .map<ModRef>("traced.mlir", PassPipeline{getTracePipeline(&context)})
           .map<ModRef>(
               "input_with_addresses.mlir",
-              PassPipeline{
-                  &context,
-                  [scheme = allocScheme.getValue(),
-                   dyn = dynamicObjFifos.getValue(),
-                   pkt = packetSwObjFifos.getValue(),
-                   ctrl = ctrlPktOverlay.getValue() ||
-                          loadPdiToCtrlPkt.getValue(),
-                   ldpdi = loadPdiToCtrlPkt.getValue(),
-                   bf16 = bf16Emulation.getValue()](mlir::MLIRContext *ctx,
-                                                    mlir::ModuleOp mod) {
-                    return getInputWithAddressesPipeline(ctx, mod, scheme, dyn,
-                                                         pkt, ctrl, bf16, ldpdi);
-                  }});
+              PassPipeline{&context,
+                           [scheme = allocScheme.getValue(),
+                            dyn = dynamicObjFifos.getValue(),
+                            pkt = packetSwObjFifos.getValue(),
+                            ctrl = ctrlPktOverlay.getValue() ||
+                                   loadPdiToCtrlPkt.getValue(),
+                            ldpdi = loadPdiToCtrlPkt.getValue(),
+                            bf16 = bf16Emulation.getValue()](
+                               mlir::MLIRContext *ctx, mlir::ModuleOp mod) {
+                             return getInputWithAddressesPipeline(
+                                 ctx, mod, scheme, dyn, pkt, ctrl, bf16, ldpdi);
+                           }});
 
   // Scratchpad run-time parameters sidecar file
   auto &paramsFile = withAddresses.map<std::string>(
@@ -1109,18 +1108,18 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
         int argIdx =
             (int)d->getAttrOfType<mlir::IntegerAttr>("aiecc.ctrl_pkt_arg_idx")
                 .getInt();
-        out.value = makePatchInfoJson(
-            argIdx, (int64_t)binRef.size() * sizeof(int32_t));
+        out.value =
+            makePatchInfoJson(argIdx, (int64_t)binRef.size() * sizeof(int32_t));
         return mlir::success();
       });
 
   // Combined ELF: all PDIs + NPU insts bundled into one aie2_config ELF. The
-  // full-ELF NPU insts (unfolded DDR offset) plus, when the load-pdi-to-ctrl-pkt
-  // reconfigure flow is active, the per-device control-packet binary and
-  // patch-info edges are bundled in so their file dependency is captured in the
-  // graph; the join reads their materialized paths and hands them to the config
-  // builder, which attaches them to the owning device's runtime-sequence
-  // instances.
+  // full-ELF NPU insts (unfolded DDR offset) plus, when the
+  // load-pdi-to-ctrl-pkt reconfigure flow is active, the per-device
+  // control-packet binary and patch-info edges are bundled in so their file
+  // dependency is captured in the graph; the join reads their materialized
+  // paths and hands them to the config builder, which attaches them to the
+  // owning device's runtime-sequence instances.
   auto &fullElfConfig =
       bundle(npuLoweredPerDevice.out, pdi.out, npuInstsFullElf.out,
              fullElfCtrlpkt.out, fullElfPatchInfo.out)
@@ -1260,8 +1259,8 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // the DDR-aperture offset folded for the xclbin / instruction-buffer runtime)
   // are the xclbin-path delivery mechanism. In the --load-pdi-to-ctrl-pkt
   // reconfigure flow targeting a full ELF they are superseded: the control
-  // packets are baked into aie.elf directly (fold-free, via the fullElfCtrlpkt /
-  // patch-info edges), so the standalone partial outputs must not be emitted.
+  // packets are baked into aie.elf directly (fold-free, via the fullElfCtrlpkt
+  // / patch-info edges), so the standalone partial outputs must not be emitted.
   if (generateCtrlpkt && !(loadPdiToCtrlPkt && generateFullElf)) {
     outputs.push_back(&ctrlpkt);
     outputs.push_back(&ctrlpktDmaSeq);

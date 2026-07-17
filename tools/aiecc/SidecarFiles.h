@@ -245,12 +245,11 @@ inline llvm::json::Value makePatchInfoJson(int ctrlPktArgIdx,
                                            int64_t ctrlPktSizeBytes) {
   using O = llvm::json::Object;
   return O{{"external_buffers",
-           O{{"buffer_ctrl",
-              O{{"xrt_id", ctrlPktArgIdx},
-                {"logical_id", -1},
-                {"size_in_bytes", ctrlPktSizeBytes},
-                {"ctrl_pkt_buffer", 1},
-                {"name", "runtime_control_packet"}}}}}};
+            O{{"buffer_ctrl", O{{"xrt_id", ctrlPktArgIdx},
+                                {"logical_id", -1},
+                                {"size_in_bytes", ctrlPktSizeBytes},
+                                {"ctrl_pkt_buffer", 1},
+                                {"name", "runtime_control_packet"}}}}}};
 }
 
 // Full-ELF config.json fed to `aiebu-asm -t aie2_config`. One xrt-kernel per
@@ -263,12 +262,12 @@ inline llvm::json::Value makePatchInfoJson(int ctrlPktArgIdx,
 // per-device control-packet binary and its patch-info JSON for the
 // load-pdi-to-ctrl-pkt reconfigure flow; when present they are attached to the
 // device's runtime-sequence instances.
-inline llvm::json::Value makeFullElfConfigJson(
-    const Node<OpInModule<xilinx::AIE::DeviceOp>> &devices,
-    const llvm::StringMap<std::string> &pdiPaths,
-    const llvm::StringMap<std::string> &instsPaths,
-    const llvm::StringMap<std::string> &ctrlPktPaths = {},
-    const llvm::StringMap<std::string> &patchInfoPaths = {}) {
+inline llvm::json::Value
+makeFullElfConfigJson(const Node<OpInModule<xilinx::AIE::DeviceOp>> &devices,
+                      const llvm::StringMap<std::string> &pdiPaths,
+                      const llvm::StringMap<std::string> &instsPaths,
+                      const llvm::StringMap<std::string> &ctrlPktPaths = {},
+                      const llvm::StringMap<std::string> &patchInfoPaths = {}) {
   using O = llvm::json::Object;
   auto devId = [](xilinx::AIE::DeviceOp d) {
     return static_cast<int>(

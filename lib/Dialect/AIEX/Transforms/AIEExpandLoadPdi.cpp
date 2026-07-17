@@ -136,8 +136,7 @@ static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,
     builder.setInsertionPointToStart(moduleOp.getBody());
 
     std::string emptyName = "empty_" + std::to_string(index % 2);
-    AIE::DeviceOp emptyDevice =
-        moduleOp.lookupSymbol<AIE::DeviceOp>(emptyName);
+    AIE::DeviceOp emptyDevice = moduleOp.lookupSymbol<AIE::DeviceOp>(emptyName);
     if (!emptyDevice) {
       auto deviceType = referencedDevice.getDevice();
       auto loc = builder.getUnknownLoc();
@@ -158,14 +157,16 @@ static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,
     NpuLoadPdiOp::create(builder, loadPdiOp.getLoc(), preloadRef,
                          /*id=*/nullptr, /*size=*/nullptr,
                          /*address=*/nullptr,
-                         /*expand_mode=*/AIEX::ExpandModeAttr::get(
-                             builder.getContext(), AIEX::ExpandMode::none));
+                         /*expand_mode=*/
+                         AIEX::ExpandModeAttr::get(builder.getContext(),
+                                                   AIEX::ExpandMode::none));
   } else {
     NpuLoadPdiOp::create(builder, loadPdiOp.getLoc(), preloadRef,
                          loadPdiOp.getIdAttr(), loadPdiOp.getSizeAttr(),
                          loadPdiOp.getAddressAttr(),
-                         /*expand_mode=*/AIEX::ExpandModeAttr::get(
-                             builder.getContext(), AIEX::ExpandMode::none));
+                         /*expand_mode=*/
+                         AIEX::ExpandModeAttr::get(builder.getContext(),
+                                                   AIEX::ExpandMode::none));
   }
 
   // Step 2: generate and insert configuration ops.
@@ -210,8 +211,8 @@ struct AIEExpandLoadPdiPass
         [&](NpuLoadPdiOp loadPdiOp) { loadPdiOps.push_back(loadPdiOp); });
 
     // Map the legacy bool option to the new ExpandMode enum.
-    AIEX::ExpandMode defaultMode = clCtrlPkt ? AIEX::ExpandMode::ctrlpkt
-                                             : AIEX::ExpandMode::write32;
+    AIEX::ExpandMode defaultMode =
+        clCtrlPkt ? AIEX::ExpandMode::ctrlpkt : AIEX::ExpandMode::write32;
 
     // Transform load_pdi ops
     unsigned idx = 0;

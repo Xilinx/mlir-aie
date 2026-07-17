@@ -679,8 +679,9 @@ LogicalResult xilinx::AIE::AIERTControl::initBuffers(DeviceOp &targetOp) {
   return success();
 }
 
-LogicalResult xilinx::AIE::AIERTControl::configureSwitches(
-    DeviceOp &targetOp, bool skipCtrlPktOverlay) {
+LogicalResult
+xilinx::AIE::AIERTControl::configureSwitches(DeviceOp &targetOp,
+                                             bool skipCtrlPktOverlay) {
 
   // StreamSwitch (switchbox) configuration
   for (auto switchboxOp : targetOp.getOps<SwitchboxOp>()) {
@@ -807,8 +808,9 @@ LogicalResult xilinx::AIE::AIERTControl::configureSwitches(
   return success();
 }
 
-LogicalResult xilinx::AIE::AIERTControl::addInitConfig(
-    DeviceOp &targetOp, bool skipCtrlPktOverlay) {
+LogicalResult
+xilinx::AIE::AIERTControl::addInitConfig(DeviceOp &targetOp,
+                                         bool skipCtrlPktOverlay) {
 
   if (failed(initLocks(targetOp))) {
     return failure();

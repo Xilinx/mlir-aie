@@ -12,8 +12,8 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/Pass/Pass.h"
 
-#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/SetVector.h"
+#include "llvm/ADT/SmallSet.h"
 
 namespace xilinx::AIE {
 #define GEN_PASS_DEF_AIEGENERATECOLUMNCONTROLOVERLAY

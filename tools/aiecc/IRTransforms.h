@@ -619,9 +619,10 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
   // position. Break out of the device nest to run it, then resume with a new
   // device nest for the remaining per-device passes.
   if (!ctrlPktOverlay) {
-    if (mlir::failed(mlir::parsePassPipeline(
-            "aie-generate-column-control-overlay{route-shim-to-tile-ctrl=false}",
-            *pm)))
+    if (mlir::failed(
+            mlir::parsePassPipeline("aie-generate-column-control-overlay{route-"
+                                    "shim-to-tile-ctrl=false}",
+                                    *pm)))
       return nullptr;
   }
 
