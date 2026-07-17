@@ -5,7 +5,7 @@
 // 
 //===----------------------------------------------------------===//-->
 
-# aiecc — the AIE compiler driver
+# `aiecc`: the MLIR-AIE compiler driver
 
 `aiecc` takes an AIE `.mlir` design and produces the artifacts needed to run it
 on an NPU (instruction streams, ELFs, PDIs, xclbins, …).
@@ -18,11 +18,7 @@ To also build a **host program** that drives the array, pass `--compile-host`
 and put the host C/C++ sources after a `--`
 
 ```bash
-aiecc --compile-host [options] <input.mlir> -- host.cpp [host-compiler flags]
-
-# e.g. build the design and a host executable, with extra include/lib flags:
-aiecc --compile-host design.mlir -- -I/inc -L/lib -lfoo host.cpp
-# -> a.out   (name the executable with -o, e.g. -o test.exe)
+aiecc --compile-host [options] <input.mlir> -o host.exe -- host.cpp [host-compiler flags]
 ```
 
 ---
@@ -100,7 +96,7 @@ you want (`--get`, described below). The saved frontier is read back from disk
 checkpoint are skipped entirely, and only what comes after runs:
 
 ```bash
-aiecc --resume=cp/manifest.json --get='insts_{0}.bin'
+aiecc --resume=cp/manifest.json
 ```
 
 The resume invocation rebuilds the graph from the flags recorded in the
