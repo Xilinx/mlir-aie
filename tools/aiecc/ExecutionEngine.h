@@ -589,8 +589,8 @@ struct Engine {
         auto sat = satisfied.find(st[u].edge);
         if (sat == satisfied.end())
           continue;
-        if (mlir::failed(st[u].edge->restoreNode(
-                sat->second.descriptor, sat->second.dir, deserCtx))) {
+        if (mlir::failed(st[u].edge->restoreNode(sat->second.descriptor,
+                                                 sat->second.dir, deserCtx))) {
           failedEdge = st[u].edge;
           failed = true;
           llvm::errs() << "aiecc: edge '" << displayName(st[u].edge)
