@@ -364,12 +364,16 @@ def compile_external_kernel(func, kernel_dir, target_arch):
 
 
 def _cleanup_failed_compilation(cache_dir):
-    """Clean up cache directory after failed compilation, preserving the lock file."""
+    """Clean up cache directory after failed compilation.
+
+    Preserves the lock file and, when present, the ``repeater`` reproducer dir
+    that aiecc's ``--enable-repeater-scripts`` writes.
+    """
     if not os.path.exists(cache_dir):
         return
 
     for item in os.listdir(cache_dir):
-        if item == ".lock":
+        if item in (".lock", "repeater"):
             continue
         item_path = os.path.join(cache_dir, item)
         if os.path.isfile(item_path):

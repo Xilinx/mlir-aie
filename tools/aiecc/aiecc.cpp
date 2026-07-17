@@ -1358,16 +1358,22 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  // Reject an empty (or whitespace-only) input up front.
-  if (sourceMgr.getNumBuffers() == 0) {
-    llvm::errs() << "aiecc: could not open input file '" << getInputFilename()
-                 << "'\n";
-    return 1;
-  }
-  if (sourceMgr.getMemoryBuffer(inputBufferId)->getBuffer().trim().empty()) {
-    llvm::errs() << "aiecc: input file '" << getInputFilename()
-                 << "' is empty; expected MLIR containing an aie.device\n";
-    return 1;
+  // Reject an empty (or whitespace-only) input up front. A --resume is exempt:
+  // the restored frontier feeds the downstream edges, so the original input
+  // .mlir is usually pruned (and may be gone, e.g. wiped by a caller's failed-
+  // compile cleanup). If it turns out to be needed, its fileInput edge errors
+  // when executed.
+  if (!resume.active) {
+    if (sourceMgr.getNumBuffers() == 0) {
+      llvm::errs() << "aiecc: could not open input file '" << getInputFilename()
+                   << "'\n";
+      return 1;
+    }
+    if (sourceMgr.getMemoryBuffer(inputBufferId)->getBuffer().trim().empty()) {
+      llvm::errs() << "aiecc: input file '" << getInputFilename()
+                   << "' is empty; expected MLIR containing an aie.device\n";
+      return 1;
+    }
   }
 
   // Resume: map each checkpoint frontier entry to its producing edge and
