@@ -12,11 +12,9 @@
 
 // RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-xclbin --aie-generate-elf --elf-name=test_insts.elf --verbose %s 2>&1 | FileCheck %s
 
-// CHECK: Successfully parsed input file
-// CHECK: Found 1 AIE device
-// CHECK: Generating ELF for device
-// CHECK: Generated ELF: test_insts.elf
-// CHECK: Compilation completed successfully
+// ELF generation for NPU instructions via aiebu-asm, honoring --elf-name.
+// CHECK: ({{[0-9]+}}/{{[0-9]+}}) test_insts.elf
+// CHECK: wrote edge 'test_insts.elf'
 
 module {
   aie.device(npu1_1col) {

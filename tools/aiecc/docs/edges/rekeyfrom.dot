@@ -1,0 +1,39 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// rekeyFrom: re-key a secondary node onto the primary node's keys.
+// One output item per primary item, aliasing (dashed) the secondary item
+// whose key = keyFn(primary payload). Here each core picks its device's item.
+digraph rekeyFrom {
+  rankdir=LR;
+  node [shape=box, fontname="monospace", fontsize=10];
+  graph [fontname="monospace", fontsize=11];
+
+  subgraph cluster_primary {
+    label="Node<P> (primary: cores)";
+    style=filled; color="#eeeeee";
+    p0 [label="key=core0\ndev=d0"];
+    p1 [label="key=core1\ndev=d0"];
+    p2 [label="key=core2\ndev=d1"];
+  }
+  subgraph cluster_secondary {
+    label="Node<S> (secondary: devices)";
+    style=filled; color="#e8e0ff";
+    s0 [label="key=d0"];
+    s1 [label="key=d1"];
+  }
+  subgraph cluster_out {
+    label="Node<S> (re-keyed to cores)";
+    style=filled; color="#cfe8ff";
+    o0 [label="key=core0"];
+    o1 [label="key=core1"];
+    o2 [label="key=core2"];
+  }
+
+  p0 -> o0 [label="keyFn=d0"];
+  p1 -> o1 [label="keyFn=d0"];
+  p2 -> o2 [label="keyFn=d1"];
+
+  s0 -> o0 [style=dashed, label="alias", constraint=false];
+  s0 -> o1 [style=dashed, constraint=false];
+  s1 -> o2 [style=dashed, constraint=false];
+}

@@ -7,8 +7,11 @@
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Value.h"
 #include "llvm/ADT/DenseMap.h"
+
+#include "llvm/Support/raw_ostream.h"
 
 using namespace mlir;
 
@@ -59,5 +62,16 @@ LogicalResult emitUpdateBdAddressFromOffsetParameter(OpBuilder &builder,
                                                      Operation *bdOp,
                                                      BaseMemRefType bufType,
                                                      uint64_t registerAddr);
+
+// Emit the params.txt description of every `aiex.scratchpad_parameter` in
+// `moduleOp` (with their assigned `state_table_idx`/`kind`) to `os`.
+//
+// Format (one entry per line, easily parsed with std::ifstream >>):
+//   <num_parameters>
+//   <name> <state_table_idx> <type> <kind>
+//   ...
+// where kind is "core" (shift-2 encoded, for read_scratchpad_parameter) or
+// "addr" (raw, for offset_parameter on DMA ops).
+void emitScratchpadParamsFile(mlir::ModuleOp moduleOp, llvm::raw_ostream &os);
 } // namespace AIEX
 } // namespace xilinx

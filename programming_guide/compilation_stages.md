@@ -166,7 +166,7 @@ linked into the final xclbin.
 | `main_core_<col>_<row>.ld.script` | linker script Peano used to lay out that ELF |
 | `main_core_<col>_<row>.ll` | per-core LLVM IR before `opt` |
 | `main_core_<col>_<row>.opt.ll` | per-core LLVM IR after `opt` |
-| `main_core_<col>_<row>.peano-compat.ll` | LLVM IR downgraded for Peano compatibility |
+| `main_core_<col>_<row>.peano-compat.ll` | Peano-compatible IR (LLVM-23 features downgraded for Peano's opt/llc) |
 | `main_core_<col>_<row>.o` | per-core compiled object that links into the `.elf` |
 | `<kernel>.cc` | `ExternalFunction` kernel source, copied in for `clang` |
 | `<kernel>_<hash>.o` | `clang`'s compiled `.o` for that `ExternalFunction` |
@@ -372,6 +372,10 @@ default.
 
 ## Related reading
 
+- [`aiecc` compiler driver](../tools/aiecc/README.md)
+  — the declarative build-graph driver that turns the lowered MLIR into
+  core ELFs, CDO/PDI, xclbin and NPU instruction streams, with a developer
+  guide to its `Edge`/`Node`/`Item` graph model and `--checkpoint`/`--resume`.
 - [`iron_configuration.md`](./iron_configuration.md) — environment
   variables (cache dir, default tensor class, default device, log
   level).

@@ -1,0 +1,27 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// map: one output item per input item, preserving keys.
+digraph map {
+  rankdir=LR;
+  node [shape=box, fontname="monospace", fontsize=10];
+  graph [fontname="monospace", fontsize=11];
+
+  subgraph cluster_in {
+    label="Node<In>";
+    style=filled; color="#eeeeee";
+    iA [label="key=a"];
+    iB [label="key=b"];
+    iC [label="key=c"];
+  }
+  subgraph cluster_out {
+    label="Node<U>";
+    style=filled; color="#cfe8ff";
+    oA [label="key=a"];
+    oB [label="key=b"];
+    oC [label="key=c"];
+  }
+
+  iA -> oA [label="fn"];
+  iB -> oB [label="fn"];
+  iC -> oC [label="fn"];
+}

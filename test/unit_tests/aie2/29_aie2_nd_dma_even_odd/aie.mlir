@@ -21,7 +21,7 @@
 // checked from the host code to be correct.
 
 // REQUIRES: aiesimulator, valid_xchess_license
-// RUN: %PYTHON aiecc.py --aiesim --xchesscc --xbridge %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %link_against_hsa% %s %test_lib_flags %extraAieCcFlags% %S/test.cpp -o test.elf
+// RUN: %PYTHON aiecc.py --aiesim --xchesscc --xbridge %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %link_against_hsa% %s %test_lib_flags %extraAieCcFlags% -o test.elf -- %S/test.cpp
 // RUN: sh -c 'aie.mlir.prj/aiesim.sh; exit 0' | FileCheck %s
 
 // CHECK: AIE2 ISS

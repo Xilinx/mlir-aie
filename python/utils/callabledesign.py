@@ -344,14 +344,19 @@ class CallableDesign:
             extra_key=compilable._generation_cache_key(),
         )
 
-        kernel = self._kernel_cache.get(cache_key) if compilable.use_cache else None
-        if kernel is not None and (
-            not Path(kernel.xclbin_path).is_file()
-            or not Path(kernel.insts_path).is_file()
-        ):
-            self._kernel_cache.pop(cache_key, None)
-            kernel = None
-        if kernel is None:
+        if compilable.use_cache and cache_key in self._kernel_cache:
+            kernel = self._kernel_cache[cache_key]
+            # Defend against an on-disk artifact being removed out from under a
+            # live in-memory cache entry (e.g. a caller clearing ~/.npu/cache
+            # between dispatches): recompile if either the cached xclbin or the
+            # instructions file is gone.
+            if not (
+                Path(kernel.xclbin_path).is_file() and Path(kernel.insts_path).is_file()
+            ):
+                kernel = self._compile_and_build_kernel(
+                    compilable, cache_key, trace_config
+                )
+        else:
             kernel = self._compile_and_build_kernel(compilable, cache_key, trace_config)
 
         tensor_args, remaining_scalars = compilable.split_runtime_args(

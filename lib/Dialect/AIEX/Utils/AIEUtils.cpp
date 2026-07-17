@@ -220,3 +220,22 @@ LogicalResult AIEX::emitUpdateBdAddressFromOffsetParameter(
       /*buffer=*/nullptr, /*column=*/nullptr, /*row=*/nullptr);
   return success();
 }
+
+void AIEX::emitScratchpadParamsFile(ModuleOp moduleOp, llvm::raw_ostream &os) {
+  SmallVector<AIEX::ScratchpadParameterOp> allParams;
+  moduleOp.walk([&](AIEX::ScratchpadParameterOp p) { allParams.push_back(p); });
+
+  os << allParams.size() << "\n";
+  for (auto p : allParams) {
+    std::string typeStr;
+    llvm::raw_string_ostream ts(typeStr);
+    p.getType().print(ts);
+    ts.flush();
+    StringRef kindStr =
+        p.getKind().value() == AIEX::ScratchpadParameterKind::Addr ? "addr"
+                                                                   : "core";
+    os << p.getSymName() << " "
+       << static_cast<unsigned>(p.getStateTableIdx().value()) << " " << typeStr
+       << " " << kindStr << "\n";
+  }
+}

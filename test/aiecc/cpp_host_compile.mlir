@@ -5,36 +5,34 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Test host compilation flags with C++ aiecc.
-// Uses dry-run mode since we don't have actual host source files.
+// Test host compilation flags with aiecc. Host source files and any extra host
+// compiler arguments are passed after the `--` separator; everything before
+// `--` is parsed strictly by aiecc (unknown options are rejected, not silently
+// forwarded). Runs use dry-run (-n) so the observable aie_inc generation and
+// host clang++ invocation are checked without depending on a real host link.
 
 // REQUIRES: peano
 
-// Test: aie_inc.cpp generation is triggered by --compile-host
-// RUN: aiecc --no-xchesscc --no-xbridge --compile-host -n --verbose %s 2>&1 | FileCheck %s
-// RUN: aiecc --no-xchesscc --no-xbridge --compile-host --host-target=aarch64-linux-gnu -n --verbose %s 2>&1 | FileCheck %s --check-prefix=AARCH64
+// RUN: echo "int main(){return 0;}" > %t.cpp
 
-// Test: full host compilation with -I/-L/-l/-o and host source file. Host
-// flags and host source files are passed after the `--` separator.
-// RUN: aiecc --no-xchesscc --no-xbridge --compile-host -n --verbose %s -- \
-// RUN:   -I/some/include -L/some/lib -lsomelib /tmp/host_test.cpp -o host_out 2>&1 \
-// RUN:   | FileCheck %s --check-prefix=HOSTFULL
+// aie_inc.cpp generation and host clang++ (C++17) are triggered by --compile-host.
+// RUN: aiecc --no-xchesscc --no-xbridge --compile-host -n --verbose %s -- %t.cpp 2>&1 | FileCheck %s
 
-// CHECK: Generating aie_inc.cpp for device
-// CHECK: aie-translate
-// CHECK: --aie-generate-xaie
+// --host-target propagates to the host compiler target triple.
+// RUN: aiecc --no-xchesscc --no-xbridge --compile-host --host-target=aarch64-linux-gnu -n --verbose %s -- %t.cpp 2>&1 | FileCheck %s --check-prefix=AARCH64
 
-// AARCH64: Generating aie_inc.cpp for device
-// AARCH64: aie-translate
-// AARCH64: --aie-generate-xaie
+// Host source files and extra flags after `--` are forwarded verbatim, in
+// order, to the host clang++ driver. This works for AIE2 host compilation
+// (device is npu1_1col below), not just AIE1.
+// RUN: aiecc --no-xchesscc --no-xbridge --compile-host -n --verbose %s -- -I/some/include -L/some/lib -lsomelib %t.cpp 2>&1 | FileCheck %s --check-prefix=HOSTFULL
 
-// HOSTFULL: clang++
-// HOSTFULL-SAME: -std=c++17
-// HOSTFULL: -I/some/include
-// HOSTFULL: -L/some/lib
-// HOSTFULL: -lsomelib
-// HOSTFULL: /tmp/host_test.cpp
-// HOSTFULL: -o host_out
+// CHECK: ({{[0-9]+}}/{{[0-9]+}}) aie_inc.cpp
+// CHECK: exec:{{.*}}clang++{{.*}}-std=c++17
+
+// AARCH64: exec:{{.*}}clang++{{.*}}--target=aarch64-linux-gnu
+
+// HOSTFULL: ({{[0-9]+}}/{{[0-9]+}}) aie_inc.cpp
+// HOSTFULL: exec:{{.*}}clang++{{.*}}-I/some/include{{.*}}-L/some/lib{{.*}}-lsomelib{{.*}}.cpp
 
 module {
   aie.device(npu1_1col) {

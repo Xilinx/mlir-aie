@@ -6,8 +6,7 @@
 # REQUIRES: ryzen_ai_npu2, peano, xrt_python_bindings, xrt_python_ctrl_scratchpad_bo
 #
 # RUN: %python %S/aie_design.py > aie.mlir
-# RUN: %aiecc -v --generate-full-elf --no-xchesscc --no-xbridge --dynamic-objFifos aie.mlir
-# RUN: cp aie.mlir.prj/params.txt .
+# RUN: %aiecc -v --generate-full-elf --no-xchesscc --no-xbridge --dynamic-objFifos --emit-scratchpad-parameters aie.mlir
 # RUN: %run_on_npu2% %pytest %s
 #
 # This is the Python equivalent of the C++ test in ../scratchpad_params/.

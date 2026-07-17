@@ -13,15 +13,15 @@
 // Test ELF generation
 // RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-elf --verbose %s 2>&1 | FileCheck %s --check-prefix=ELF
 
-// ELF: Generating ELF for device
-// ELF: Generated ELF:
+// ELF: ({{[0-9]+}}/{{[0-9]+}}) design.elf
+// ELF: wrote edge 'design.elf'
 
 // Test PDI generation
 // RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-cdo --aie-generate-pdi --verbose %s 2>&1 | FileCheck %s --check-prefix=PDI
 
-// PDI: Generating CDO artifacts for device
-// PDI: bootgen
-// PDI: Generated PDI
+// PDI: ({{[0-9]+}}/{{[0-9]+}}) cdo_{{.*}}
+// PDI: ({{[0-9]+}}/{{[0-9]+}}) {{.*}}.pdi
+// PDI: wrote edge '{{.*}}.pdi'
 
 module {
   aie.device(npu1_1col) {

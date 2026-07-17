@@ -1,0 +1,25 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// join: fold every item of a node into a single output item.
+digraph join {
+  rankdir=LR;
+  node [shape=box, fontname="monospace", fontsize=10];
+  graph [fontname="monospace", fontsize=11];
+
+  subgraph cluster_in {
+    label="Node<T>";
+    style=filled; color="#eeeeee";
+    iA [label="key=a"];
+    iB [label="key=b"];
+    iC [label="key=c"];
+  }
+  subgraph cluster_out {
+    label="Node<U> (singleton)";
+    style=filled; color="#cfe8ff";
+    o0 [label="key=name"];
+  }
+
+  iA -> o0 [label="fn"];
+  iB -> o0;
+  iC -> o0;
+}

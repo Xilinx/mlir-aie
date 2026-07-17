@@ -6,25 +6,18 @@
 //===----------------------------------------------------------------------===//
 
 // Regression test: downgradeIRForPeano must rewrite 'f0x<8hex>' typed float
-// literals (introduced in LLVM 23) to the double-widened '0x<16hex>' form
-// that Peano's LLVM 21 opt can parse.
-//
-// Without the fix, aiecc fails with:
-//   opt: ...peano-compat.ll:N:M: error: expected value token
-//     %r = fadd float %x, f0x3727C5AC
-//
-// The constant 9.99999974E-6 (float32 bits 0x3727C5AC, the layernorm epsilon)
-// is a concrete trigger: LLVM 23's IR printer emits it as 'f0x3727C5AC'
-// because it cannot be represented exactly as a short decimal literal.
-// After downgrade the peano-compat.ll must use the equivalent double-widened
-// form '0x3EE4F8B580000000' which Peano's LLVM 21 can parse.
+// literals (an LLVM 23 printing form) to the double-widened '0x<16hex>' form
+// Peano's opt accepts. The trigger constant 9.99999974E-6 (float32 bits
+// 0x3727C5AC, the layernorm epsilon) is printed as 'f0x3727C5AC'; the
+// downgraded peano-compat.ll must use '0x3EE4F8B580000000' and contain no
+// 'f0x' literal.
 
 // REQUIRES: peano
 
 // RUN: aiecc --no-xchesscc --no-xbridge --tmpdir %t %s
-// RUN: FileCheck %s --input-file %t/main_core_0_2.peano-compat.ll \
+// RUN: FileCheck %s --input-file %t/peano-compat_main_core_0_2.ll \
 // RUN:   --implicit-check-not="f0x"
-// RUN: FileCheck %s --input-file %t/main_core_0_2.peano-compat.ll \
+// RUN: FileCheck %s --input-file %t/peano-compat_main_core_0_2.ll \
 // RUN:   --check-prefix=CHECK-HEX
 
 // CHECK: define void @core_0_2()
