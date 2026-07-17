@@ -65,11 +65,7 @@ auto emitBinary(Fill fill) {
 
 // Materialize an MLIR module from an item whose payload carries IR. Overloaded
 // per module-bearing payload type: ModRef and OpInModule clone their in-memory
-// module; File re-parses its .mlir text into `ctx`. A payload of any other type
-// has no viable overload and fails to compile, so only edges that genuinely
-// carry IR can feed an MLIR action -- the module-ness lives here in the MLIR
-// domain, not as per-type logic on the generic Item. (FilterEdge aliasing is
-// handled transparently by the Item accessors these forward to.)
+// module; File re-parses its .mlir text into `ctx`.
 inline mlir::OwningOpRef<mlir::ModuleOp>
 asModule(const Item<mlir::OwningOpRef<mlir::ModuleOp>> &in,
          mlir::MLIRContext * /*ctx*/) {
@@ -467,9 +463,6 @@ private:
       llvm::outs().flush();
     }
     if (dryRun)
-      // A dry run only echoes the command (under --verbose); it produces no
-      // output file. Nothing downstream reads intermediate contents in this
-      // mode, so the paths need not exist on disk.
       return mlir::success();
     llvm::SmallVector<llvm::StringRef> argv(cmd.begin(), cmd.end());
     std::string errMsg;

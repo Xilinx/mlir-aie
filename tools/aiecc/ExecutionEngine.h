@@ -83,6 +83,23 @@ resolveLiveEdge(const Graph &g, llvm::StringRef name,
   return chosen;
 }
 
+// Resolve a list of output names (as accepted by --get / --cut) to their live
+// edges via resolveLiveEdge. Returns the resolved edges in order, or the first
+// name's Error; the caller owns how that error is reported (see aiecc.cpp).
+inline llvm::Expected<std::vector<EdgeBase *>>
+resolveLiveEdges(const Graph &g, llvm::ArrayRef<std::string> names,
+                 const llvm::DenseSet<EdgeBase *> &live) {
+  std::vector<EdgeBase *> resolved;
+  resolved.reserve(names.size());
+  for (llvm::StringRef name : names) {
+    llvm::Expected<EdgeBase *> e = resolveLiveEdge(g, name, live);
+    if (!e)
+      return e.takeError();
+    resolved.push_back(*e);
+  }
+  return resolved;
+}
+
 // Emit a GraphViz `dot` description of the sub-graph reachable from the
 // requested `outputs` (pipe through `dot`). Each node is a compilation-graph
 // edge labeled by its output-name template; an arrow runs from a producing

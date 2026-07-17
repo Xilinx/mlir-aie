@@ -1177,34 +1177,32 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
     liveRoots.push_back(&objects);
     llvm::DenseSet<EdgeBase *> live = reachableEdges(liveRoots);
 
-    auto resolveNames = [&](llvm::ArrayRef<std::string> names,
-                            llvm::StringRef flag) -> std::vector<EdgeBase *> {
-      std::vector<EdgeBase *> resolved;
-      for (const std::string &want : names) {
-        llvm::Expected<EdgeBase *> chosen = resolveLiveEdge(g, want, live);
-        if (!chosen) {
-          llvm::errs() << "aiecc: " << flag << ": "
-                       << llvm::toString(chosen.takeError())
-                       << "; known outputs are:\n";
-          std::set<llvm::StringRef> names;
-          for (const auto &e : g.edges)
-            names.insert(e->name);
-          for (llvm::StringRef n : names)
-            llvm::errs() << "  " << n << '\n';
-          std::exit(1);
-        }
-        resolved.push_back(*chosen);
-      }
-      return resolved;
+    // resolveLiveEdges does the name->edge resolution (with chess/peano
+    // disambiguation); the driver owns only the error-reporting policy.
+    auto select = [&](llvm::ArrayRef<std::string> names,
+                      llvm::StringRef flag) -> std::vector<EdgeBase *> {
+      llvm::Expected<std::vector<EdgeBase *>> resolved =
+          resolveLiveEdges(g, names, live);
+      if (resolved)
+        return std::move(*resolved);
+      llvm::errs() << "aiecc: " << flag << ": "
+                   << llvm::toString(resolved.takeError())
+                   << "; known outputs are:\n";
+      std::set<llvm::StringRef> known;
+      for (const auto &e : g.edges)
+        known.insert(e->name);
+      for (llvm::StringRef n : known)
+        llvm::errs() << "  " << n << '\n';
+      std::exit(1);
     };
 
     // --get selects outputs (relocated to the output dir). --cut only marks a
     // checkpoint cut point: the edge is built (see Engine::run `buildAlso`) but
     // stays in the work dir as an intermediate, so downstream consumers that
     // reference it by path (e.g. the CDO step loading core ELFs) still find it.
-    for (EdgeBase *e : resolveNames(getOutputs, "--get"))
+    for (EdgeBase *e : select(getOutputs, "--get"))
       outputs.push_back(e);
-    for (EdgeBase *e : resolveNames(cutOutputs, "--cut"))
+    for (EdgeBase *e : select(cutOutputs, "--cut"))
       cutEdges.push_back(e);
   }
 
