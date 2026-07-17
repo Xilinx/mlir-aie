@@ -82,7 +82,7 @@
 // CHECK:           ^bb1:
 // CHECK:             %[[VAL_59:.*]] = arith.constant 1 : i32
 // CHECK:             aie.use_lock(%[[VAL_14]], AcquireGreaterEqual, %[[VAL_59]])
-// CHECK:             aie.dma_bd(%[[VAL_12]] : memref<16xi32>, 0, 16)
+// CHECK:             aie.dma_bd(%[[VAL_12]] : memref<16xi32> offset = 0 len = 16)
 // CHECK:             %[[VAL_60:.*]] = arith.constant 1 : i32
 // CHECK:             aie.use_lock(%[[VAL_13]], Release, %[[VAL_60]])
 // CHECK:             aie.next_bd ^bb1
@@ -94,7 +94,7 @@
 // CHECK:           ^bb1:
 // CHECK:             %[[VAL_63:.*]] = arith.constant 1 : i32
 // CHECK:             aie.use_lock(%[[VAL_10]], AcquireGreaterEqual, %[[VAL_63]])
-// CHECK:             aie.dma_bd(%[[VAL_9]] : memref<16xi32>, 0, 16)
+// CHECK:             aie.dma_bd(%[[VAL_9]] : memref<16xi32> offset = 0 len = 16)
 // CHECK:             %[[VAL_64:.*]] = arith.constant 1 : i32
 // CHECK:             aie.use_lock(%[[VAL_11]], Release, %[[VAL_64]])
 // CHECK:             aie.next_bd ^bb1
@@ -103,7 +103,7 @@
 // CHECK:           ^bb3:
 // CHECK:             %[[VAL_66:.*]] = arith.constant 1 : i32
 // CHECK:             aie.use_lock(%[[VAL_8]], AcquireGreaterEqual, %[[VAL_66]])
-// CHECK:             aie.dma_bd(%[[VAL_6]] : memref<16xi32>, 0, 16)
+// CHECK:             aie.dma_bd(%[[VAL_6]] : memref<16xi32> offset = 0 len = 16)
 // CHECK:             %[[VAL_67:.*]] = arith.constant 1 : i32
 // CHECK:             aie.use_lock(%[[VAL_7]], Release, %[[VAL_67]])
 // CHECK:             aie.next_bd ^bb3
@@ -115,7 +115,7 @@
 // CHECK:           ^bb1:
 // CHECK:             %[[VAL_70:.*]] = arith.constant 1 : i32
 // CHECK:             aie.use_lock(%[[VAL_4]], AcquireGreaterEqual, %[[VAL_70]])
-// CHECK:             aie.dma_bd(%[[VAL_3]] : memref<16xi32>, 0, 16)
+// CHECK:             aie.dma_bd(%[[VAL_3]] : memref<16xi32> offset = 0 len = 16)
 // CHECK:             %[[VAL_71:.*]] = arith.constant 1 : i32
 // CHECK:             aie.use_lock(%[[VAL_5]], Release, %[[VAL_71]])
 // CHECK:             aie.next_bd ^bb1

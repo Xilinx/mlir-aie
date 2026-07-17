@@ -88,29 +88,29 @@
 // CHECK:             %[[VAL_57:.*]] = aie.dma_start(MM2S, 0, ^bb1, ^bb4)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[VAL_21]], AcquireGreaterEqual, %[[VAL_56]])
-// CHECK:             aie.dma_bd(%[[VAL_17]] : memref<8xi8>, 0, 8)
+// CHECK:             aie.dma_bd(%[[VAL_17]] : memref<8xi8> offset = 0 len = 8)
 // CHECK:             aie.use_lock(%[[VAL_20]], Release, %[[VAL_56]])
 // CHECK:             aie.next_bd ^bb2
 // CHECK:           ^bb2:
 // CHECK:             aie.use_lock(%[[VAL_21]], AcquireGreaterEqual, %[[VAL_56]])
-// CHECK:             aie.dma_bd(%[[VAL_18]] : memref<8xi8>, 0, 8)
+// CHECK:             aie.dma_bd(%[[VAL_18]] : memref<8xi8> offset = 0 len = 8)
 // CHECK:             aie.use_lock(%[[VAL_20]], Release, %[[VAL_56]])
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb3:
 // CHECK:             aie.use_lock(%[[VAL_21]], AcquireGreaterEqual, %[[VAL_56]])
-// CHECK:             aie.dma_bd(%[[VAL_19]] : memref<8xi8>, 0, 8)
+// CHECK:             aie.dma_bd(%[[VAL_19]] : memref<8xi8> offset = 0 len = 8)
 // CHECK:             aie.use_lock(%[[VAL_20]], Release, %[[VAL_56]])
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb4:
 // CHECK:             %[[VAL_58:.*]] = aie.dma_start(MM2S, 1, ^bb5, ^bb7)
 // CHECK:           ^bb5:
 // CHECK:             aie.use_lock(%[[VAL_10]], AcquireGreaterEqual, %[[VAL_56]])
-// CHECK:             aie.dma_bd(%[[VAL_7]] : memref<8xi8>, 0, 8)
+// CHECK:             aie.dma_bd(%[[VAL_7]] : memref<8xi8> offset = 0 len = 8)
 // CHECK:             aie.use_lock(%[[VAL_9]], Release, %[[VAL_56]])
 // CHECK:             aie.next_bd ^bb6
 // CHECK:           ^bb6:
 // CHECK:             aie.use_lock(%[[VAL_10]], AcquireGreaterEqual, %[[VAL_56]])
-// CHECK:             aie.dma_bd(%[[VAL_8]] : memref<8xi8>, 0, 8)
+// CHECK:             aie.dma_bd(%[[VAL_8]] : memref<8xi8> offset = 0 len = 8)
 // CHECK:             aie.use_lock(%[[VAL_9]], Release, %[[VAL_56]])
 // CHECK:             aie.next_bd ^bb5
 // CHECK:           ^bb7:
@@ -121,45 +121,46 @@
 // CHECK:             %[[VAL_61:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb5)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[VAL_15]], AcquireGreaterEqual, %[[VAL_60]])
-// CHECK:             aie.dma_bd(%[[VAL_11]] : memref<8xi8>, 0, 8)
+// CHECK:             aie.dma_bd(%[[VAL_11]] : memref<8xi8> offset = 0 len = 8)
 // CHECK:             aie.use_lock(%[[VAL_16]], Release, %[[VAL_60]])
 // CHECK:             aie.next_bd ^bb2
 // CHECK:           ^bb2:
 // CHECK:             aie.use_lock(%[[VAL_15]], AcquireGreaterEqual, %[[VAL_60]])
-// CHECK:             aie.dma_bd(%[[VAL_12]] : memref<8xi8>, 0, 8)
+// CHECK:             aie.dma_bd(%[[VAL_12]] : memref<8xi8> offset = 0 len = 8)
 // CHECK:             aie.use_lock(%[[VAL_16]], Release, %[[VAL_60]])
 // CHECK:             aie.next_bd ^bb3
 // CHECK:           ^bb3:
 // CHECK:             aie.use_lock(%[[VAL_15]], AcquireGreaterEqual, %[[VAL_60]])
-// CHECK:             aie.dma_bd(%[[VAL_13]] : memref<8xi8>, 0, 8)
+// CHECK:             aie.dma_bd(%[[VAL_13]] : memref<8xi8> offset = 0 len = 8)
 // CHECK:             aie.use_lock(%[[VAL_16]], Release, %[[VAL_60]])
 // CHECK:             aie.next_bd ^bb4
 // CHECK:           ^bb4:
 // CHECK:             aie.use_lock(%[[VAL_15]], AcquireGreaterEqual, %[[VAL_60]])
-// CHECK:             aie.dma_bd(%[[VAL_14]] : memref<8xi8>, 0, 8)
+// CHECK:             aie.dma_bd(%[[VAL_14]] : memref<8xi8> offset = 0 len = 8)
 // CHECK:             aie.use_lock(%[[VAL_16]], Release, %[[VAL_60]])
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb5:
 // CHECK:             %[[VAL_62:.*]] = aie.dma_start(S2MM, 1, ^bb6, ^bb9)
 // CHECK:           ^bb6:
 // CHECK:             aie.use_lock(%[[VAL_5]], AcquireGreaterEqual, %[[VAL_60]])
-// CHECK:             aie.dma_bd(%[[VAL_2]] : memref<8xi8>, 0, 8)
+// CHECK:             aie.dma_bd(%[[VAL_2]] : memref<8xi8> offset = 0 len = 8)
 // CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[VAL_60]])
 // CHECK:             aie.next_bd ^bb7
 // CHECK:           ^bb7:
 // CHECK:             aie.use_lock(%[[VAL_5]], AcquireGreaterEqual, %[[VAL_60]])
-// CHECK:             aie.dma_bd(%[[VAL_3]] : memref<8xi8>, 0, 8)
+// CHECK:             aie.dma_bd(%[[VAL_3]] : memref<8xi8> offset = 0 len = 8)
 // CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[VAL_60]])
 // CHECK:             aie.next_bd ^bb8
 // CHECK:           ^bb8:
 // CHECK:             aie.use_lock(%[[VAL_5]], AcquireGreaterEqual, %[[VAL_60]])
-// CHECK:             aie.dma_bd(%[[VAL_4]] : memref<8xi8>, 0, 8)
+// CHECK:             aie.dma_bd(%[[VAL_4]] : memref<8xi8> offset = 0 len = 8)
 // CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[VAL_60]])
 // CHECK:             aie.next_bd ^bb6
 // CHECK:           ^bb9:
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:         }
+
 
 module {
   aie.device(npu2) {
