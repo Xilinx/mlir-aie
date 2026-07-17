@@ -45,7 +45,12 @@ using namespace xilinx::AIE;
 
 #define LOOP_VAR_DEPENDENCY (-2)
 
-// Marker for `memref.alloca`s emitted by this pass for bookkeeping only (number of locks held, current buffer index). We use memrefs for these bookkeeping values because it enables easier threading through loop/control-flow structures. A `mem2reg` pass at the end converts them back to SSA values; this marker ensures that we convert _all_ allocas back to SSA values but touch _no_ allocas that were not emitted by us.
+// Marker for `memref.alloca`s emitted by this pass for bookkeeping only (number
+// of locks held, current buffer index). We use memrefs for these bookkeeping
+// values because it enables easier threading through loop/control-flow
+// structures. A `mem2reg` pass at the end converts them back to SSA values;
+// this marker ensures that we convert _all_ allocas back to SSA values but
+// touch _no_ allocas that were not emitted by us.
 static constexpr llvm::StringLiteral kBookkeepingSlotAttrName =
     "aie.objectfifo.bookkeeping_slot";
 
@@ -215,7 +220,9 @@ struct ObjectFifoState {
                         // memory module
   DenseMap<Operation *, DenseMap<std::pair<ObjectFifoCreateOp, int>, Value>>
       counterSlotsPerCore; // core -> (fifo, port) -> bookkeeping counter;
-                           // the counter is used for both the runtime buffer index_switch and (on binary-lock architectures) the runtime lock index_switch
+                           // the counter is used for both the runtime buffer
+                           // index_switch and (on binary-lock architectures)
+                           // the runtime lock index_switch
 };
 
 struct AIEObjectFifoStatefulTransformPass
