@@ -7,7 +7,6 @@
 #
 # RUN: %python %S/aie_design.py > aie.mlir
 # RUN: %aiecc -v --generate-full-elf --no-xchesscc --no-xbridge --dynamic-objFifos --emit-scratchpad-parameters aie.mlir
-# RUN: cp aie.mlir.prj/params.txt .
 # RUN: %run_on_npu2% %pytest %s
 #
 # Setup:
