@@ -6,24 +6,17 @@
 //===----------------------------------------------------------------------===//
 
 // Regression test: downgradeIRForPeano must rewrite decimal bfloat16 literals
-// (introduced in llvm/llvm-project@41c214f0b115, 2026-05-07) to the
-// 0xR-prefixed bit-exact hex form that Peano's LLVM 21 opt can parse.
-//
-// Without the fix, aiecc fails with:
-//   opt: ...peano-compat.ll: error: floating point constant invalid for type
-//     %r = fmul bfloat %v, 1.445310e+00
-//
-// The constant 1.445310e+00 is the bfloat16 approximation of log2(e), with
-// bit pattern 0xR3FB9. LLVM 23 emits it as a decimal string; Peano's LLVM 21
-// opt requires the hex form. After downgrade the peano-compat.ll must use
-// '0xR3FB9' and contain no bare decimal bfloat literals.
+// (an LLVM 23 printing form) to the 0xR-prefixed bit-exact hex form Peano's opt
+// accepts, e.g. `fmul bfloat %v, 1.445310e+00` -> 0xR3FB9 (the bfloat16
+// approximation of log2(e)). The downgraded peano-compat.ll must use '0xR3FB9'
+// and contain no bare decimal bfloat literals.
 
 // REQUIRES: peano
 
 // RUN: aiecc --no-xchesscc --no-xbridge --tmpdir %t %s
-// RUN: FileCheck %s --input-file %t/main_core_0_2.peano-compat.ll \
+// RUN: FileCheck %s --input-file %t/peano-compat_main_core_0_2.ll \
 // RUN:   --implicit-check-not="bfloat {{[0-9][0-9]*\.[0-9]}}"
-// RUN: FileCheck %s --input-file %t/main_core_0_2.peano-compat.ll \
+// RUN: FileCheck %s --input-file %t/peano-compat_main_core_0_2.ll \
 // RUN:   --check-prefix=CHECK-HEX
 
 // CHECK: define void @core_0_2()
@@ -41,7 +34,7 @@ module {
       %c1  = arith.constant 1 : index
       // bfloat16 approximation of log2(e) (bits 0x3FB9, decimal 1.445310e+00).
       // LLVM 23 emits this as 'bfloat 1.445310e+00'; the downgrade must
-      // rewrite it to 'bfloat 0xR3FB9' for Peano's LLVM 21 to parse.
+      // rewrite it to 'bfloat 0xR3FB9' for Peano's opt to parse.
       %log2e = arith.constant 1.445310e+00 : bf16
       scf.for %i = %c0 to %c32 step %c1 {
         %v = memref.load %buf_in[%i] : memref<32xbf16>

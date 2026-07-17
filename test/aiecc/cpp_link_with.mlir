@@ -9,14 +9,15 @@
 
 // Test external object file linking via link_with attribute
 
-// RUN: aiecc --no-xchesscc --no-xbridge --no-compile --verbose %s | FileCheck %s
+// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-npu-insts --verbose %s 2>&1 | FileCheck %s
 
-// CHECK: Successfully parsed input file
-// CHECK: Running resource allocation pipeline in-memory
-// CHECK: Resource allocation pipeline completed successfully
-// CHECK: Running routing pipeline in-memory
-// CHECK: Routing pipeline completed successfully
-// CHECK: Compilation completed successfully
+// Coverage: parse -> resource allocation (placed) -> routing (input_physical)
+// -> completion. The npu-insts path does not pull core compilation; link_with
+// objects are consumed at link time only.
+// CHECK: ({{[0-9]+}}/{{[0-9]+}}) input.mlir
+// CHECK: ({{[0-9]+}}/{{[0-9]+}}) placed.mlir
+// CHECK: ({{[0-9]+}}/{{[0-9]+}}) input_physical.mlir
+// CHECK: wrote edge 'insts_
 
 module {
   aie.device(npu1_1col) {

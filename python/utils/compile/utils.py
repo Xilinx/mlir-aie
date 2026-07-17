@@ -213,6 +213,12 @@ def compile_mlir_module(
         args.extend(["--aie-generate-elf", f"--elf-name={elf_path}"])
     if work_dir:
         args.append(f"--tmpdir={work_dir}")
+        # Emit input_with_addresses.mlir into work_dir; the JIT DMA-size
+        # validator (parse_dma_sizes) and the trace parser read it from there.
+        # It is a requested output, so it lands in --output-dir; point that at
+        # work_dir (the insts/xclbin/pdi paths are absolute and unaffected).
+        args.append(f"--output-dir={work_dir}")
+        args.append("--aie-generate-input-with-addresses")
     if verbose:
         args.append("--verbose")
     if options:
@@ -358,12 +364,16 @@ def compile_external_kernel(func, kernel_dir, target_arch):
 
 
 def _cleanup_failed_compilation(cache_dir):
-    """Clean up cache directory after failed compilation, preserving the lock file."""
+    """Clean up cache directory after failed compilation.
+
+    Preserves the lock file and, when present, the ``repeater`` reproducer dir
+    that aiecc's ``--enable-repeater-scripts`` writes.
+    """
     if not os.path.exists(cache_dir):
         return
 
     for item in os.listdir(cache_dir):
-        if item == ".lock":
+        if item in (".lock", "repeater"):
             continue
         item_path = os.path.join(cache_dir, item)
         if os.path.isfile(item_path):

@@ -1,0 +1,33 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// bundle(a, b).map: zip several nodes by key, one output item per key.
+// Each output item is produced from the matched items of every source node.
+digraph bundle_map {
+  rankdir=LR;
+  node [shape=box, fontname="monospace", fontsize=10];
+  graph [fontname="monospace", fontsize=11];
+
+  subgraph cluster_a {
+    label="Node<A>";
+    style=filled; color="#eeeeee";
+    a1 [label="key=a"];
+    a2 [label="key=b"];
+  }
+  subgraph cluster_b {
+    label="Node<B>";
+    style=filled; color="#e8e0ff";
+    b1 [label="key=a"];
+    b2 [label="key=b"];
+  }
+  subgraph cluster_out {
+    label="Node<U>";
+    style=filled; color="#cfe8ff";
+    o1 [label="key=a"];
+    o2 [label="key=b"];
+  }
+
+  a1 -> o1 [label="fn"];
+  b1 -> o1;
+  a2 -> o2 [label="fn"];
+  b2 -> o2;
+}

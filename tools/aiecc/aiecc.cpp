@@ -1,6326 +1,1454 @@
-//===- aiecc.cpp ------------------------------------------------*- C++ -*-===//
+//===- aiecc.cpp -----------------------------------------------*- C++ -*-===//
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//
 //
-// This is the main entry point for the AIE compiler driver (aiecc).
-// It orchestrates the compilation flow for AIE devices.
+// Declarative AIE compiler driver
 //
-// This C++ implementation provides similar functionality to the Python aiecc.py
-// tool with the following architecture:
+// This is the main entry point to the MLIR-AIE toolchain; the compiler
+// driver invokes all other parts of the toolchain as required to assemble
+// the the requested compilation artifacts (binaries, sidecar files, etc.).
 //
-// 1. Command-line argument parsing using LLVM CommandLine library
-// 2. MLIR module loading and parsing
-// 3. MLIR transformation pipeline execution
-// 4. Core compilation (xchesscc/peano)
-// 5. NPU instruction generation
-// 6. CDO/PDI/xclbin generation
-// 7. Multi-device support
+// This driver is an orchestrator of many tools. To keep its code maintainable,
+// we express this orchestration in a declarative manner: A static graph encodes
+// which inputs the generatable outputs depend on and what tool calls transform
+// inputs to outputs.
+//
+// When adding code here, please...
+// 1. ...express all dependencies, however small, EXPLICITLY as nodes/edges in
+//       the graph. Bundles are useful for grouping multiple inputs.
+// 2. ...use the `Item` abstraction for inputs and outputs. DO NOT WRITE CODE
+//       THAT MANUALLY WRITES TO DISK. Create an `Item` and let the consumer
+//       of your outputs decide if they need them in-memory or on disk!
+// 3. ...keep the graph STATICALLY DECLARED. Building the graph should have no
+//       side effects. We want to be able to visualize the graph.
+// 4. ...do as LITTLE WORK as possible in the compiler driver. If what you're
+//       doing is an involved transformation, it does not belong in this
+//       orchestrator -- create an MLIR pass or a new tool instead.
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinOps.h"
+#include "AIECCVersion.h"
+#include "Actions.h"
+#include "CommandLineOptions.h"
+#include "ExecutionEngine.h"
+#include "Graph.h"
+#include "IRTransforms.h"
+#include "Items.h"
+#include "SidecarFiles.h"
+#include "Tools.h"
+#include "Utils.h"
+#include "aiecc_aiesim.h"
+
+#include "aie/Conversion/Passes.h"
+#include "aie/Dialect/AIEVec/Pipelines/Passes.h"
+#include "aie/Dialect/AIEVec/TransformOps/DialectExtension.h"
+#include "aie/InitialAllDialect.h"
+#include "aie/Target/LLVMIR/Dialect/XLLVM/XLLVMToLLVMIRTranslation.h"
+
+#include "mlir/IR/AsmState.h"
 #include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/DialectRegistry.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/IR/OperationSupport.h"
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllExtensions.h"
 #include "mlir/InitAllPasses.h"
-#include "mlir/Parser/Parser.h"
-#include "mlir/Pass/PassManager.h"
-#include "mlir/Pass/PassRegistry.h"
 #include "mlir/Support/FileUtilities.h"
-#include "mlir/Support/ToolUtilities.h"
-
-#include "llvm/Support/CommandLine.h"
-#include "llvm/Support/FileSystem.h"
-#include "llvm/Support/InitLLVM.h"
-#include "llvm/Support/JSON.h"
-#include "llvm/Support/MemoryBuffer.h"
-#include "llvm/Support/Path.h"
-#include "llvm/Support/Process.h"
-#include "llvm/Support/Program.h"
-#include "llvm/Support/SourceMgr.h"
-#include "llvm/Support/ThreadPool.h"
-#include "llvm/Support/ToolOutputFile.h"
-#include "llvm/Support/raw_ostream.h"
-
-#include <random>
-
-#include "aie/Conversion/Passes.h"
-#include "aie/Dialect/AIE/IR/AIEDialect.h"
-#include "aie/Dialect/AIE/Transforms/AIEPasses.h"
-#include "aie/Dialect/AIEVec/Analysis/Passes.h"
-#include "aie/Dialect/AIEVec/Pipelines/Passes.h"
-#include "aie/Dialect/AIEVec/TransformOps/DialectExtension.h"
-#include "aie/Dialect/AIEVec/Transforms/Passes.h"
-#include "aie/Dialect/AIEX/IR/AIEXDialect.h"
-#include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
-#include "aie/InitialAllDialect.h"
-#include "aie/Targets/AIETargets.h"
-#include "aie/version.h"
-
-#include "aiecc_aiesim.h"
-
-#include "mlir/Conversion/AffineToStandard/AffineToStandard.h"
-#include "mlir/Conversion/ArithToLLVM/ArithToLLVM.h"
-#include "mlir/Conversion/ControlFlowToLLVM/ControlFlowToLLVM.h"
-#include "mlir/Conversion/FuncToLLVM/ConvertFuncToLLVMPass.h"
-#include "mlir/Conversion/IndexToLLVM/IndexToLLVM.h"
-#include "mlir/Conversion/MathToLLVM/MathToLLVM.h"
-#include "mlir/Conversion/MemRefToLLVM/MemRefToLLVM.h"
-#include "mlir/Conversion/Passes.h"
-#include "mlir/Dialect/Arith/IR/Arith.h"
-#include "mlir/Dialect/Arith/Transforms/Passes.h"
-#include "mlir/Dialect/ControlFlow/IR/ControlFlow.h"
-#include "mlir/Dialect/Func/IR/FuncOps.h"
-#include "mlir/Dialect/MemRef/IR/MemRef.h"
-#include "mlir/Dialect/MemRef/Transforms/Passes.h"
-#include "mlir/Dialect/SCF/IR/SCF.h"
-#include "mlir/Dialect/Vector/IR/VectorOps.h"
 #include "mlir/Target/LLVMIR/Dialect/Builtin/BuiltinToLLVMIRTranslation.h"
 #include "mlir/Target/LLVMIR/Dialect/LLVMIR/LLVMToLLVMIRTranslation.h"
-#include "mlir/Target/LLVMIR/Export.h"
-#include "mlir/Transforms/Passes.h"
 
-#include "aie/Target/LLVMIR/Dialect/XLLVM/XLLVMToLLVMIRTranslation.h"
+#include "llvm/ADT/StringMap.h"
+#include "llvm/Support/CommandLine.h"
+#include "llvm/Support/InitLLVM.h"
+#include "llvm/Support/SourceMgr.h"
 
-#include "llvm/IR/Module.h"
-
-// Optional library integrations for direct calls instead of subprocess
-#ifdef AIECC_HAS_AIEBU_LIBRARY
-// Use C API to avoid exception handling issues with LLVM's -fno-exceptions
-#include <aiebu/aiebu.h>
-#endif
-
-#ifdef AIECC_HAS_BOOTGEN_LIBRARY
-// Use C API wrapper that handles exceptions internally
-#include "bootgen_c_api.h"
-#endif
-
-#include <atomic>
-#include <cctype>
-#include <chrono>
-#include <cstdint>
 #include <cstdlib>
-#include <cstring>
-#include <fstream>
-#include <iomanip>
-#include <map>
-#include <memory>
-#include <mutex>
-#include <optional>
-#include <string>
-#include <system_error>
-#include <thread>
-#include <vector>
+#include <set>
 
-using namespace llvm;
-using namespace mlir;
+using namespace xilinx::aiecc;
+using namespace xilinx::aiecc::cli;
+
+namespace {
 
 //===----------------------------------------------------------------------===//
-// Command Line Options
+// Shared subgraphs
 //===----------------------------------------------------------------------===//
 
-static cl::OptionCategory aieCompilerOptions("AIE Compiler Options");
-
-static cl::list<std::string>
-    positionalArgs(cl::Positional,
-                   cl::desc("<input file> [host source files...]"),
-                   cl::ZeroOrMore, cl::cat(aieCompilerOptions));
-
-static cl::opt<bool> showVersion("aie-version",
-                                 cl::desc("Show version information"),
-                                 cl::init(false), cl::cat(aieCompilerOptions));
-
-static cl::opt<std::string> sysroot("sysroot",
-                                    cl::desc("Sysroot for cross-compilation"),
-                                    cl::init(""), cl::cat(aieCompilerOptions));
-
-static cl::opt<std::string> tmpDir("tmpdir",
-                                   cl::desc("Directory for temporary files"),
-                                   cl::init(""), cl::cat(aieCompilerOptions));
-
-static cl::opt<bool> verbose("verbose", cl::desc("Enable verbose output"),
-                             cl::init(false), cl::cat(aieCompilerOptions));
-
-static cl::alias verboseShort("v", cl::desc("Alias for --verbose"),
-                              cl::aliasopt(verbose),
-                              cl::cat(aieCompilerOptions));
-
-static cl::opt<bool> xbridge("xbridge", cl::desc("Link using xbridge"),
-                             cl::init(true), cl::cat(aieCompilerOptions));
-
-static cl::opt<bool> noXbridge("no-xbridge",
-                               cl::desc("Link using peano (disable xbridge)"),
-                               cl::init(false), cl::cat(aieCompilerOptions));
-
-static cl::opt<bool> xchesscc("xchesscc", cl::desc("Compile using xchesscc"),
-                              cl::init(true), cl::cat(aieCompilerOptions));
-
-static cl::opt<bool> noXchesscc(
-    "no-xchesscc",
-    cl::desc("Compile using peano (also disables xbridge; incompatible with "
-             "--aiesim)"),
-    cl::init(false), cl::cat(aieCompilerOptions));
-
-static cl::opt<bool> aiesim("aiesim", cl::desc("Generate aiesim Work folder"),
-                            cl::init(false), cl::cat(aieCompilerOptions));
-
-static cl::opt<bool> noAiesim("no-aiesim",
-                              cl::desc("Do not generate aiesim Work folder"),
-                              cl::init(false), cl::cat(aieCompilerOptions));
-
-static cl::opt<bool>
-    compileHost("compile-host",
-                cl::desc("Enable compiling of the host program"),
-                cl::init(false), cl::cat(aieCompilerOptions));
-
-static cl::opt<bool>
-    noCompileHost("no-compile-host",
-                  cl::desc("Disable compiling of the host program"),
-                  cl::init(false), cl::cat(aieCompilerOptions));
-
-static cl::opt<std::string>
-    hostTarget("host-target",
-               cl::desc("Target architecture of the host program"),
-               cl::init("x86_64-linux-gnu"), cl::cat(aieCompilerOptions));
-
-static cl::opt<bool> compile("compile",
-                             cl::desc("Enable compiling of AIE cores"),
-                             cl::init(true), cl::cat(aieCompilerOptions));
-
-static cl::opt<bool> noCompile("no-compile",
-                               cl::desc("Disable compiling of AIE cores"),
-                               cl::init(false), cl::cat(aieCompilerOptions));
-
-static cl::opt<bool> link("link", cl::desc("Enable linking of AIE code"),
-                          cl::init(true), cl::cat(aieCompilerOptions));
-
-static cl::opt<bool> noLink("no-link", cl::desc("Disable linking of AIE code"),
-                            cl::init(false), cl::cat(aieCompilerOptions));
-
-static cl::opt<std::string> allocScheme(
-    "alloc-scheme",
-    cl::desc(
-        "Allocation scheme for AIE buffers (basic-sequential, bank-aware, "
-        "or empty string for bank-aware with fallback to basic-sequential)"),
-    cl::init(""), cl::cat(aieCompilerOptions));
-
-static cl::opt<int> coresPerCol(
-    "cores-per-col",
-    cl::desc("Limit cores per column for tile placement (-1 = no limit)"),
-    cl::init(-1), cl::cat(aieCompilerOptions));
-
-static cl::opt<xilinx::AIE::PlacerType> placerType(
-    "placer", cl::desc("Placement algorithm to use"),
-    cl::values(clEnumValN(xilinx::AIE::PlacerType::SequentialPlacer,
-                          "sequential_placer",
-                          "Sequential column-major placement"),
-               clEnumValN(xilinx::AIE::PlacerType::SAPlacer, "sa_placer",
-                          "Simulated annealing placement")),
-    cl::init(xilinx::AIE::PlacerType::SequentialPlacer),
-    cl::cat(aieCompilerOptions));
-
-static cl::opt<int>
-    saSeed("sa-seed",
-           cl::desc("Random seed for SA placer (0 = non-deterministic)"),
-           cl::init(1), cl::cat(aieCompilerOptions));
-
-static cl::opt<bool>
-    generateNpuInsts("aie-generate-npu-insts",
-                     cl::desc("Generate NPU instruction stream"),
-                     cl::init(false), cl::cat(aieCompilerOptions));
-
-static cl::opt<std::string>
-    instsName("npu-insts-name",
-              cl::desc("Output instructions filename for NPU target"),
-              cl::init("{0}_{1}.bin"), cl::cat(aieCompilerOptions));
-
-static cl::opt<bool> generateElf(
-    "aie-generate-elf",
-    cl::desc("Generate ELF for AIE control/configuration (via aiebu)"),
-    cl::init(false), cl::cat(aieCompilerOptions));
-
-static cl::opt<std::string>
-    elfName("elf-name", cl::desc("Output ELF filename for instruction ELF"),
-            cl::init("design.elf"), cl::cat(aieCompilerOptions));
-
-static cl::opt<bool> generateFullElf(
-    "generate-full-elf",
-    cl::desc("Generate complete full ELF with PDIs using aiebu-asm"),
-    cl::init(false), cl::cat(aieCompilerOptions));
-
-static cl::opt<std::string>
-    fullElfName("full-elf-name",
-                cl::desc("Output filename for full ELF (default: aie.elf)"),
-                cl::init("aie.elf"), cl::cat(aieCompilerOptions));
-
-static cl::opt<bool> generateCdo("aie-generate-cdo",
-                                 cl::desc("Generate libxaie v2 for CDO"),
-                                 cl::init(false), cl::cat(aieCompilerOptions));
-
-static cl::opt<bool> generatePdi("aie-generate-pdi",
-                                 cl::desc("Generate PDI binary"),
-                                 cl::init(false), cl::cat(aieCompilerOptions));
-
-static cl::opt<std::string> pdiName("pdi-name", cl::desc("Output PDI filename"),
-                                    cl::init("{0}.pdi"),
-                                    cl::cat(aieCompilerOptions));
-
-static cl::opt<bool> expandLoadPdis(
-    "expand-load-pdis",
-    cl::desc("Expand load_pdi operations to explicit configuration sequences"),
-    cl::init(false), cl::cat(aieCompilerOptions));
-
-static cl::opt<bool> generateXclbin("aie-generate-xclbin",
-                                    cl::desc("Generate xclbin"),
-                                    cl::init(false),
-                                    cl::cat(aieCompilerOptions));
-
-static cl::opt<std::string> xclbinName("xclbin-name",
-                                       cl::desc("Output xclbin filename"),
-                                       cl::init("{0}.xclbin"),
-                                       cl::cat(aieCompilerOptions));
-
-static cl::opt<std::string>
-    xclbinInput("xclbin-input",
-                cl::desc("Input xclbin to extend with additional kernel/PDI"),
-                cl::init(""), cl::cat(aieCompilerOptions));
-
-static cl::opt<std::string>
-    xclbinKernelName("xclbin-kernel-name",
-                     cl::desc("Kernel name in xclbin (default: MLIR_AIE)"),
-                     cl::init("MLIR_AIE"), cl::cat(aieCompilerOptions));
-
-static cl::opt<std::string>
-    xclbinInstanceName("xclbin-instance-name",
-                       cl::desc("Instance name in xclbin (default: MLIRAIE)"),
-                       cl::init("MLIRAIE"), cl::cat(aieCompilerOptions));
-
-static cl::opt<std::string>
-    xclbinKernelId("xclbin-kernel-id",
-                   cl::desc("Kernel ID in xclbin (default: 0x901)"),
-                   cl::init("0x901"), cl::cat(aieCompilerOptions));
-
-static cl::opt<std::string>
-    deviceName("device-name", cl::desc("Device configuration to compile"),
-               cl::init(""), cl::cat(aieCompilerOptions));
-
-static cl::opt<std::string>
-    sequenceName("sequence-name", cl::desc("Runtime sequence name to compile"),
-                 cl::init(""), cl::cat(aieCompilerOptions));
-
-static cl::opt<unsigned> optLevel("O", cl::desc("Optimization level (0-3)"),
-                                  cl::init(2), cl::cat(aieCompilerOptions));
-
-static cl::alias optLevelLong("opt-level", cl::desc("Alias for -O"),
-                              cl::aliasopt(optLevel),
-                              cl::cat(aieCompilerOptions));
-
-static cl::opt<bool> dryRun("n",
-                            cl::desc("Dry run mode (don't execute commands)"),
-                            cl::init(false), cl::cat(aieCompilerOptions));
-
-// Default true (enabled by #2549). Kept in sync with the
-// aie-objectFifo-stateful-transform pass-level default (AIEPasses.td) so the
-// lowering a design gets is the same whether it goes through aiecc or a
-// standalone `aie-opt` run.
-static cl::opt<bool> dynamicObjFifos("dynamic-objFifos",
-                                     cl::desc("Use dynamic object FIFOs"),
-                                     cl::init(true),
-                                     cl::cat(aieCompilerOptions));
-
-static cl::opt<bool> packetSwObjFifos("packet-sw-objFifos",
-                                      cl::desc("Use packet-switched flows"),
-                                      cl::init(false),
-                                      cl::cat(aieCompilerOptions));
-
-static cl::opt<bool> ctrlPktOverlay("generate-ctrl-pkt-overlay",
-                                    cl::desc("Generate control packet overlay"),
-                                    cl::init(false),
-                                    cl::cat(aieCompilerOptions));
-
-static cl::opt<bool>
-    generateTxn("aie-generate-txn",
-                cl::desc("Generate transaction binary MLIR for configuration"),
-                cl::init(false), cl::cat(aieCompilerOptions));
-
-static cl::opt<std::string>
-    txnName("txn-name",
-            cl::desc("Output filename for transaction MLIR. "
-                     "`{0}` is replaced with device name."),
-            cl::init("{0}_transaction.mlir"), cl::cat(aieCompilerOptions));
-
-static cl::opt<bool>
-    generateCtrlPkt("aie-generate-ctrlpkt",
-                    cl::desc("Generate control packets for configuration"),
-                    cl::init(false), cl::cat(aieCompilerOptions));
-
-static cl::opt<std::string>
-    ctrlPktName("ctrlpkt-name",
-                cl::desc("Output filename for control packet binary data. "
-                         "`{0}` is replaced with device name."),
-                cl::init("{0}_ctrlpkt.bin"), cl::cat(aieCompilerOptions));
-
-static cl::opt<std::string>
-    ctrlPktDmaSeqName("ctrlpkt-dma-seq-name",
-                      cl::desc("Output filename for control packet DMA "
-                               "sequence. `{0}` is replaced with device name."),
-                      cl::init("{0}_ctrlpkt_dma_seq.bin"),
-                      cl::cat(aieCompilerOptions));
-
-static cl::opt<std::string>
-    ctrlPktElfName("ctrlpkt-elf-name",
-                   cl::desc("Output filename for control packet combined ELF. "
-                            "`{0}` is replaced with device name."),
-                   cl::init("{0}_ctrlpkt.elf"), cl::cat(aieCompilerOptions));
-
-static cl::opt<std::string>
-    peanoInstallDir("peano", cl::desc("Peano compiler installation directory"),
-                    cl::init(""), cl::cat(aieCompilerOptions));
-
-static cl::opt<std::string>
-    aietoolsDir("aietools", cl::desc("Path to aietools installation directory"),
-                cl::init(""), cl::cat(aieCompilerOptions));
-
-static cl::opt<bool> dumpIntermediates(
-    "dump-intermediates",
-    cl::desc("Dump intermediate MLIR files for debugging (default: off)"),
-    cl::init(false), cl::cat(aieCompilerOptions));
-
-static cl::opt<bool> keepLoc(
-    "keep-loc",
-    cl::desc("Emit a <bin>.locmap.json sidecar next to each NPU instruction "
-             "binary, mapping each transaction word back to the MLIR Location "
-             "of the op that produced it (and its regdb register name where "
-             "applicable). Also keeps debug-info on intermediate MLIR dumps. "
-             "Off by default."),
-    cl::init(false), cl::cat(aieCompilerOptions));
-
-static cl::opt<unsigned> numThreads(
-    "j", cl::Prefix,
-    cl::desc("Number of parallel threads for core compilation (0 = auto-detect "
-             "based on CPU count, default: 0)"),
-    cl::init(0), cl::cat(aieCompilerOptions));
-
-static cl::alias numThreadsLong("nthreads", cl::desc("Alias for -j"),
-                                cl::aliasopt(numThreads),
-                                cl::cat(aieCompilerOptions));
-
-static cl::opt<bool> unified(
-    "unified",
-    cl::desc("Compile all cores together in a single process (default: off)"),
-    cl::init(false), cl::cat(aieCompilerOptions));
-
-static cl::opt<bool> noUnified(
-    "no-unified",
-    cl::desc("Compile cores independently in separate processes (default)"),
-    cl::init(false), cl::cat(aieCompilerOptions));
-
-static cl::opt<bool> bf16Emulation(
-    "bf16-emulation",
-    cl::desc("Emulate f32 vector arithmetic using bf16 operations in "
-             "convert-vector-to-aievec"),
-    cl::init(false), cl::cat(aieCompilerOptions));
-
-// Backward compatibility flags (no-ops in C++ aiecc)
-// These flags existed in Python aiecc.py but are not used in the core
-// compilation flow. They are kept for backward compatibility so that
-// existing scripts and test cases don't fail with "unknown argument" errors.
-
-// Note: --vectorize was removed - it was defined but never used in Python
-// aiecc.py
-
-static cl::opt<bool> profile("profile",
-                             cl::desc("Enable profiling (deprecated, ignored)"),
-                             cl::init(false), cl::cat(aieCompilerOptions));
-
-static cl::opt<bool>
-    progress("progress", cl::desc("Show progress output (deprecated, ignored)"),
-             cl::init(false), cl::cat(aieCompilerOptions));
-
-static cl::opt<bool> enableRepeaterScripts(
-    "enable-repeater-scripts",
-    cl::desc("Generate repeater scripts on compilation failure"),
-    cl::init(true), cl::cat(aieCompilerOptions));
-
-static cl::opt<bool>
-    disableRepeaterScripts("disable-repeater-scripts",
-                           cl::desc("Disable repeater script generation"),
-                           cl::init(false), cl::cat(aieCompilerOptions));
-
-static cl::opt<std::string> repeaterOutputDir(
-    "repeater-output-dir",
-    cl::desc("Output directory for repeater scripts (default: .prj dir)"),
-    cl::init(""), cl::cat(aieCompilerOptions));
-
-static cl::opt<bool> noMaterialize(
-    "no-materialize",
-    cl::desc("Skip aie-materialize-runtime-sequences pass in NPU lowering"),
-    cl::init(false), cl::cat(aieCompilerOptions));
-
-// Host compilation options
-static cl::list<std::string> hostIncludeDirs("I", cl::Prefix,
-                                             cl::desc("Include directory"),
-                                             cl::cat(aieCompilerOptions));
-
-static cl::list<std::string> hostLibDirs("L", cl::Prefix,
-                                         cl::desc("Library search directory"),
-                                         cl::cat(aieCompilerOptions));
-
-static cl::list<std::string> hostLibs("l", cl::Prefix, cl::desc("Link library"),
-                                      cl::cat(aieCompilerOptions));
-
-static cl::opt<std::string>
-    outputFilename("o", cl::desc("Output filename for host compilation"),
-                   cl::init(""), cl::cat(aieCompilerOptions));
-
-// Host-compiler passthrough captured after the `--` separator on the command
-// line, preserved in user-specified order. Anything before `--` must be a
-// recognized aiecc option (or a positional input file); unknown flags there
-// are rejected by ParseCommandLineOptions.
-static std::vector<std::string> hostExtraArgs;
-
-//===----------------------------------------------------------------------===//
-// Thread-safe output
-//===----------------------------------------------------------------------===//
-
-// Global mutex for thread-safe verbose output during parallel compilation
-static std::mutex outputMutex;
-
-//===----------------------------------------------------------------------===//
-// Helper Functions
-//===----------------------------------------------------------------------===//
-
-// Forward declarations
-static std::string findAiebuAsm();
-
-#ifdef AIECC_HAS_AIEBU_LIBRARY
-static std::optional<std::vector<char>> readBinaryFile(StringRef path);
-static std::optional<std::vector<char>> generateElfViaAiebuLibrary(
-    aiebu_assembler_buffer_type type, const std::vector<char> &buffer1,
-    const std::vector<char> &buffer2, const std::vector<char> &patchJson);
-static std::optional<std::vector<char>>
-generateElfViaAiebuLibraryConfig(const std::vector<char> &configJson);
-static LogicalResult writeElfFile(StringRef path,
-                                  const std::vector<char> &elfData);
-#endif
-
-static void printVersion(raw_ostream &os) {
-  os << "aiecc (C++ version) " << AIE_GIT_COMMIT << "\n";
-}
-
-// Check if a filename is a host source file (C/C++)
-static bool isHostSourceFile(StringRef filename) {
-  return filename.ends_with(".c") || filename.ends_with(".cpp") ||
-         filename.ends_with(".cc") || filename.ends_with(".cxx") ||
-         filename.ends_with(".C");
-}
-
-// Get the MLIR input filename from positional arguments.
-// The MLIR file is identified by .mlir extension or as the first positional
-// arg.
-static std::string getInputFilename() {
-  // First pass: look for .mlir file
-  for (const auto &arg : positionalArgs) {
-    if (StringRef(arg).ends_with(".mlir"))
-      return arg;
-  }
-  // Fallback: first positional arg that isn't a host source file
-  for (const auto &arg : positionalArgs) {
-    if (!isHostSourceFile(arg))
-      return arg;
-  }
-  // Last resort: first positional arg
-  if (!positionalArgs.empty())
-    return positionalArgs[0];
-  return "";
-}
-
-// Get host source files: positional args (before `--`) plus any host source
-// files appearing among the post-`--` passthrough args.
-static std::vector<std::string> getHostSourceFiles() {
-  std::string mlirFile = getInputFilename();
-  std::vector<std::string> hostFiles;
-  for (const auto &arg : positionalArgs) {
-    if (arg != mlirFile && isHostSourceFile(arg))
-      hostFiles.push_back(arg);
-  }
-  for (const auto &arg : hostExtraArgs) {
-    if (isHostSourceFile(arg))
-      hostFiles.push_back(arg);
-  }
-  return hostFiles;
-}
-
-static void printModuleWithDebugInfo(ModuleOp moduleOp, raw_ostream &os) {
-  OpPrintingFlags flags;
-  flags.enableDebugInfo(/*enable=*/true);
-  moduleOp->print(os, flags);
-}
-
-/// Dump an MLIR module to a file if --dump-intermediates is enabled.
-/// Returns true on success, false on failure.
-static bool dumpModuleToFile(ModuleOp moduleOp, StringRef filePath,
-                             StringRef description) {
-  if (!dumpIntermediates)
-    return true;
-
-  std::error_code ec;
-  raw_fd_ostream file(filePath, ec);
-  if (ec) {
-    llvm::errs() << "Warning: Could not dump " << description << " to "
-                 << filePath << ": " << ec.message() << "\n";
-    return false;
-  }
-  printModuleWithDebugInfo(moduleOp, file);
-  file.close();
-
-  if (verbose) {
-    llvm::outs() << "Dumped " << description << " to: " << filePath << "\n";
-  }
-  return true;
-}
-
-static std::string findAieTool(StringRef toolName) {
-  // Try to find tool in PATH
-  auto result = sys::findProgramByName(toolName);
-  if (result) {
-    return *result;
-  }
-
-  // Try relative to this executable
-  auto mainExecutable = sys::fs::getMainExecutable(
-      nullptr, reinterpret_cast<void *>(&findAieTool));
-  SmallString<128> toolPath(sys::path::parent_path(mainExecutable));
-  sys::path::append(toolPath, toolName);
-
-  if (sys::fs::can_execute(toolPath)) {
-    return std::string(toolPath);
-  }
-
-  return "";
-}
-
-static bool executeCommand(ArrayRef<StringRef> command,
-                           bool verboseOutput = true) {
-  if (verbose && verboseOutput) {
-    std::lock_guard<std::mutex> lock(outputMutex);
-    bool first = true;
-    for (const auto &arg : command) {
-      if (!first)
-        llvm::outs() << " ";
-      llvm::outs() << arg;
-      first = false;
-    }
-    llvm::outs() << "\n";
-    llvm::outs().flush();
-  }
-
-  if (dryRun) {
-    if (verbose) {
-      std::lock_guard<std::mutex> lock(outputMutex);
-      llvm::outs() << "Dry run - command not executed\n";
-      llvm::outs().flush();
-    }
-    return true;
-  }
-
-  std::string errMsg;
-  int result = sys::ExecuteAndWait(command[0], command, /*Env=*/std::nullopt,
-                                   /*Redirects=*/{},
-                                   /*secondsToWait=*/0,
-                                   /*memoryLimit=*/0, &errMsg);
-
-  if (result != 0) {
-    llvm::errs() << "Error: Command failed with exit code " << result << "\n";
-    if (!errMsg.empty()) {
-      llvm::errs() << "Error message: " << errMsg << "\n";
-    }
-    return false;
-  }
-
-  return true;
-}
-
-// Overload to avoid the pattern: vector<string> -> vector<StringRef> -> execute
-static bool executeCommand(ArrayRef<std::string> command,
-                           bool verboseOutput = true) {
-  SmallVector<StringRef, 16> cmdRefs;
-  cmdRefs.reserve(command.size());
-  for (const auto &arg : command) {
-    cmdRefs.push_back(arg);
-  }
-  return executeCommand(ArrayRef<StringRef>(cmdRefs), verboseOutput);
-}
-
-// Replace placeholders in format strings
-static std::string formatString(StringRef formatStr, StringRef deviceName,
-                                StringRef seqName = "") {
-  std::string result = formatStr.str();
-  size_t pos = result.find("{0}");
-  if (pos != std::string::npos) {
-    result.replace(pos, 3, deviceName.str());
-  }
-  pos = result.find("{1}");
-  if (pos != std::string::npos && !seqName.empty()) {
-    result.replace(pos, 3, seqName.str());
-  }
-  return result;
-}
-
-// Get Peano target triple from AIE target
-static std::string getPeanoTarget(StringRef aieTarget) {
-  std::string target = aieTarget.lower();
-  return target + "-none-unknown-elf";
-}
-
-// Discover Peano installation directory (matching Python logic)
-static std::string discoverPeanoInstallDir() {
-  // 1. Check if --peano was specified
-  if (!peanoInstallDir.empty()) {
-    if (sys::fs::is_directory(peanoInstallDir)) {
-      return peanoInstallDir;
-    }
-  }
-
-  // 2. Check PEANO_INSTALL_DIR environment variable
-  if (const char *peanoEnv = std::getenv("PEANO_INSTALL_DIR")) {
-    if (sys::fs::is_directory(peanoEnv)) {
-      return peanoEnv;
-    }
-  }
-
-  // 3. Try relative to this executable (install area)
-  auto mainExe = sys::fs::getMainExecutable(
-      nullptr, reinterpret_cast<void *>(&discoverPeanoInstallDir));
-  SmallString<256> exeDir(sys::path::parent_path(mainExe));
-  // Go up from bin/ to install prefix
-  SmallString<256> installPrefix(sys::path::parent_path(exeDir));
-
-  SmallString<256> peanoDir(installPrefix);
-  sys::path::append(peanoDir, "peano");
-  if (sys::fs::is_directory(peanoDir)) {
-    return std::string(peanoDir);
-  }
-
-  // 4. Try sibling peano directory (build area)
-  SmallString<256> siblingPeano(sys::path::parent_path(installPrefix));
-  sys::path::append(siblingPeano, "peano");
-  if (sys::fs::is_directory(siblingPeano)) {
-    return std::string(siblingPeano);
-  }
-
-  // 5. Try Python site-packages location (llvm-aie package)
-  // This matches: sysconfig.get_path("platlib")/llvm-aie in Python
-  // Common locations: ~/.local/lib/pythonX.Y/site-packages/llvm-aie
-  //                   /path/to/venv/lib/pythonX.Y/site-packages/llvm-aie
-
-  // Try VIRTUAL_ENV first if set
-  if (const char *venvPath = std::getenv("VIRTUAL_ENV")) {
-    SmallString<256> venvLlvmAie(venvPath);
-    // Try common Python versions
-    for (const char *pyver :
-         {"python3.12", "python3.11", "python3.10", "python3.9"}) {
-      SmallString<256> testPath(venvLlvmAie);
-      sys::path::append(testPath, "lib", pyver, "site-packages", "llvm-aie");
-      if (sys::fs::is_directory(testPath)) {
-        return std::string(testPath);
-      }
-    }
-  }
-
-  // Try running python to get the actual site-packages path
-  // This is a fallback that invokes python -c "import sysconfig;
-  // print(sysconfig.get_path('platlib'))"
-  // Use LLVM's ExecuteAndWait with output redirection to avoid shell injection
-  {
-    auto pythonPath = sys::findProgramByName("python3");
-    if (!pythonPath) {
-      pythonPath = sys::findProgramByName("python");
-    }
-
-    if (pythonPath) {
-      // Create a temporary file for output
-      SmallString<128> tempFile;
-      std::error_code ec =
-          sys::fs::createTemporaryFile("peano-discover", "txt", tempFile);
-      if (!ec) {
-        StringRef nullFile;
-#ifdef _WIN32
-        nullFile = "NUL";
-#else
-        nullFile = "/dev/null";
-#endif
-        // Redirect stdout to temp file, stderr to /dev/null
-        std::optional<StringRef> redirects[] = {/*stdin=*/nullFile,
-                                                /*stdout=*/StringRef(tempFile),
-                                                /*stderr=*/nullFile};
-
-        SmallVector<StringRef, 4> args = {
-            *pythonPath, "-c",
-            "import sysconfig; print(sysconfig.get_path('platlib'))"};
-
-        int result =
-            sys::ExecuteAndWait(*pythonPath, args, /*Env=*/std::nullopt,
-                                redirects, /*secondsToWait=*/5);
-
-        if (result == 0) {
-          // Read the output from the temp file
-          auto bufOrErr = MemoryBuffer::getFile(tempFile);
-          if (bufOrErr) {
-            std::string output = (*bufOrErr)->getBuffer().str();
-            // Remove trailing newline
-            while (!output.empty() &&
-                   (output.back() == '\n' || output.back() == '\r')) {
-              output.pop_back();
-            }
-            SmallString<256> llvmAiePath(output);
-            sys::path::append(llvmAiePath, "llvm-aie");
-            sys::fs::remove(tempFile);
-            if (sys::fs::is_directory(llvmAiePath)) {
-              return std::string(llvmAiePath);
-            }
-          }
-        }
-        sys::fs::remove(tempFile);
-      }
-    }
-  }
-
-  return "";
-}
-
-// Cached Peano install directory
-static std::optional<std::string> cachedPeanoDir;
-static std::once_flag peanoDirFlag;
-
-// Discover aietools installation directory by finding xchesscc in PATH
-static std::string discoverAietoolsDir() {
-  // 1. Check if --aietools was specified
-  if (!aietoolsDir.empty()) {
-    if (sys::fs::is_directory(aietoolsDir)) {
-      return aietoolsDir;
-    }
-  }
-
-  // 2. Check AIETOOLS_ROOT environment variable
-  if (const char *envRoot = std::getenv("AIETOOLS_ROOT")) {
-    if (sys::fs::is_directory(envRoot)) {
-      return envRoot;
-    }
-  }
-
-  // 3. Find xchesscc in PATH and derive aietools from it
-  auto xchessccPath = sys::findProgramByName("xchesscc");
-  if (xchessccPath) {
-    // xchesscc is typically at <aietools>/bin/xchesscc or
-    // <aietools>/bin/unwrapped/lnx64.o/xchesscc
-    // Use std::string to avoid self-referencing issues with parent_path
-    std::string binDir = std::string(sys::path::parent_path(*xchessccPath));
-
-    // Handle unwrapped paths
-    // (e.g., aietools/bin/unwrapped/lnx64.o/xchesscc)
-    StringRef parentName = sys::path::filename(binDir);
-    if (parentName == "lnx64.o") {
-      binDir = std::string(sys::path::parent_path(binDir)); // up from lnx64.o
-      binDir = std::string(sys::path::parent_path(binDir)); // up from unwrapped
-      binDir = std::string(sys::path::parent_path(binDir)); // up from bin
-    } else if (parentName == "bin") {
-      binDir = std::string(sys::path::parent_path(binDir)); // up from bin
-    } else {
-      // Assume it's in bin/ directory
-      binDir = std::string(sys::path::parent_path(binDir));
-    }
-
-    if (sys::fs::is_directory(binDir)) {
-      return binDir;
-    }
-  }
-
-  return "";
-}
-
-// Cached aietools install directory (thread-safe via std::call_once)
-static std::string cachedAietoolsDir;
-static std::once_flag aietoolsDirFlag;
-
-static StringRef getAietoolsDir() {
-  std::call_once(aietoolsDirFlag, [] {
-    cachedAietoolsDir = discoverAietoolsDir();
-    if (verbose && !cachedAietoolsDir.empty()) {
-      std::lock_guard<std::mutex> lock(outputMutex);
-      llvm::outs() << "Discovered aietools installation: " << cachedAietoolsDir
-                   << "\n";
-    }
-  });
-  return cachedAietoolsDir;
-}
-
-static StringRef getPeanoInstallDir() {
-  std::call_once(peanoDirFlag, [] {
-    cachedPeanoDir = discoverPeanoInstallDir();
-    if (verbose && !cachedPeanoDir->empty()) {
-      std::lock_guard<std::mutex> lock(outputMutex);
-      llvm::outs() << "Discovered Peano installation: " << *cachedPeanoDir
-                   << "\n";
-    }
-  });
-  return *cachedPeanoDir;
-}
-
-// Downgrade LLVM IR for compatibility with Chess toolchain's older LLVM.
-// The Chess LLVM is based on an older version that doesn't support modern
-// memory/capture attributes. This function performs string replacements
-// matching the Python downgrade_ir_for_chess() function.
-static std::string downgradeIRForChess(StringRef llvmIR) {
-  std::string result = llvmIR.str();
-
-  // Replace memory attributes
-  auto replace = [&result](const std::string &from, const std::string &to) {
-    size_t pos = 0;
-    while ((pos = result.find(from, pos)) != std::string::npos) {
-      result.replace(pos, from.length(), to);
-      pos += to.length();
-    }
-  };
-
-  replace("memory(none)", "readnone");
-  replace("memory(read)", "readonly");
-  replace("memory(write)", "writeonly");
-  replace("memory(argmem: readwrite)", "argmemonly");
-  replace("memory(argmem: read)", "argmemonly readonly");
-  replace("memory(argmem: write)", "argmemonly writeonly");
-  replace("memory(inaccessiblemem: readwrite)", "inaccessiblememonly");
-  replace("memory(inaccessiblemem: read)", "inaccessiblememonly readonly");
-  replace("memory(inaccessiblemem: write)", "inaccessiblememonly writeonly");
-  replace("memory(argmem: readwrite, inaccessiblemem: readwrite)",
-          "inaccessiblemem_or_argmemonly");
-  replace("memory(argmem: read, inaccessiblemem: read)",
-          "inaccessiblemem_or_argmemonly readonly");
-  replace("memory(argmem: write, inaccessiblemem: write)",
-          "inaccessiblemem_or_argmemonly writeonly");
-  replace("captures(none)", "nocapture");
-  replace("getelementptr inbounds nuw", "getelementptr inbounds");
-
-  // Remove nocreateundeforpoison attribute using regex-like logic
-  // Pattern: \bnocreateundeforpoison\s+
-  // We'll do a simple find-and-replace for this attribute
-  size_t pos = 0;
-  while ((pos = result.find("nocreateundeforpoison", pos)) !=
-         std::string::npos) {
-    // Find the end of the attribute (skip trailing whitespace)
-    size_t end = pos + strlen("nocreateundeforpoison");
-    while (end < result.size() && (result[end] == ' ' || result[end] == '\t')) {
-      end++;
-    }
-    result.erase(pos, end - pos);
-  }
-
-  return result;
-}
-
-// Get the chess-llvm-link target directory name for a given AIE target
-static std::string getChessTarget(StringRef aieTarget) {
-  std::string target = aieTarget.lower();
-  if (target == "aie2") {
-    return "target_aie_ml";
-  } else if (target == "aie2p") {
-    return "target_aie2p";
-  } else if (target == "aie" || target == "aie1") {
-    return "target";
-  }
-  // Unknown target - warn and return empty
-  llvm::errs() << "Warning: Unsupported AIE target for chess toolchain: "
-               << aieTarget << "\n";
-  return "";
-}
-
-// Get the install path for mlir-aie (for finding runtime libraries)
-// Checks multiple possible locations to support both build and install areas
-static std::string getInstallPath() {
-  auto mainExe = sys::fs::getMainExecutable(
-      nullptr, reinterpret_cast<void *>(&getInstallPath));
-  SmallString<256> binDir(sys::path::parent_path(mainExe));
-  // Go up from bin/ to install prefix
-  SmallString<256> installPrefix(sys::path::parent_path(binDir));
-
-  // Check if aie_runtime_lib exists at this location
-  SmallString<256> runtimeLibPath(installPrefix);
-  sys::path::append(runtimeLibPath, "aie_runtime_lib");
-  if (sys::fs::is_directory(runtimeLibPath)) {
-    return std::string(installPrefix);
-  }
-
-  // Try sibling "install" directory (for when running from build/bin)
-  SmallString<256> siblingInstall(sys::path::parent_path(installPrefix));
-  sys::path::append(siblingInstall, "install");
-  SmallString<256> siblingRuntimeLib(siblingInstall);
-  sys::path::append(siblingRuntimeLib, "aie_runtime_lib");
-  if (sys::fs::is_directory(siblingRuntimeLib)) {
-    return std::string(siblingInstall);
-  }
-
-  // Check MLIR_AIE_INSTALL_DIR environment variable
-  if (const char *installEnv = std::getenv("MLIR_AIE_INSTALL_DIR")) {
-    if (sys::fs::is_directory(installEnv)) {
-      return installEnv;
-    }
-  }
-
-  // Fallback: return the original calculated path
-  return std::string(installPrefix);
-}
-
-// Find Peano compiler tools
-static std::string findPeanoTool(StringRef toolName) {
-  StringRef peanoDir = getPeanoInstallDir();
-
-  if (!peanoDir.empty()) {
-    SmallString<128> toolPath(peanoDir);
-    sys::path::append(toolPath, "bin", toolName);
-    if (sys::fs::can_execute(toolPath)) {
-      return std::string(toolPath);
-    }
-  }
-
-  // Try PATH as fallback
-  auto result = sys::findProgramByName(toolName);
-  if (result) {
-    return *result;
-  }
-
-  return "";
-}
-
-// Run chess-llvm-link to link LLVM IR with chess_intrinsic_wrapper.ll
-// Returns the path to the linked .ll file, or empty string on failure.
-static std::string runChessLlvmLink(StringRef inputLLPath, StringRef outputPath,
-                                    StringRef aieTarget, StringRef tmpDirName) {
-  StringRef aietoolsPath = getAietoolsDir();
-  if (aietoolsPath.empty()) {
-    llvm::errs() << "Error: Could not find aietools (xchesscc not in PATH)\n";
-    return "";
-  }
-
-  // Build chess-llvm-link path
-  // Path: <aietools>/tps/lnx64/<target>/bin/LNa64bin/chess-llvm-link
-  std::string chessTarget = getChessTarget(aieTarget);
-  SmallString<256> chessLlvmLinkPath(aietoolsPath);
-  sys::path::append(chessLlvmLinkPath, "tps", "lnx64", chessTarget, "bin");
-  sys::path::append(chessLlvmLinkPath, "LNa64bin", "chess-llvm-link");
-
-  if (!sys::fs::can_execute(chessLlvmLinkPath)) {
-    if (verbose) {
-      llvm::outs() << "chess-llvm-link not found at: " << chessLlvmLinkPath
-                   << ", skipping chess-llvm-link step\n";
-    }
-    // Return the input file directly (skip linking)
-    return std::string(inputLLPath);
-  }
-
-  // Build chess_intrinsic_wrapper.ll path
-  std::string installPath = getInstallPath();
-  SmallString<256> wrapperPath(installPath);
-  std::string aieTargetUpper = aieTarget.upper();
-  sys::path::append(wrapperPath, "aie_runtime_lib", aieTargetUpper,
-                    "chess_intrinsic_wrapper.ll");
-
-  if (!sys::fs::exists(wrapperPath)) {
-    if (verbose) {
-      llvm::outs() << "chess_intrinsic_wrapper.ll not found at: " << wrapperPath
-                   << ", skipping chess-llvm-link step\n";
-    }
-    // Return the input file directly (skip linking with wrapper)
-    return std::string(inputLLPath);
-  }
-
-  // Run chess-llvm-link
-  SmallVector<std::string, 8> cmd = {std::string(chessLlvmLinkPath),
-                                     inputLLPath.str(),
-                                     std::string(wrapperPath),
-                                     "-S",
-                                     "-o",
-                                     outputPath.str()};
-
-  if (!executeCommand(cmd)) {
-    llvm::errs() << "Error running chess-llvm-link\n";
-    return "";
-  }
-
-  return outputPath.str();
-}
-
-// Extract _include _file entries from a BCF file
-// BCF files contain lines like: _include _file path/to/file.o
-// These specify object files that need to be linked.
-static std::vector<std::string> extractInputFilesFromBCF(StringRef bcfPath) {
-  std::vector<std::string> files;
-
-  auto bufOrErr = MemoryBuffer::getFile(bcfPath);
-  if (!bufOrErr) {
-    llvm::errs() << "Warning: Could not read BCF file '" << bcfPath
-                 << "': " << bufOrErr.getError().message() << "\n";
-    return files;
-  }
-
-  StringRef content = (*bufOrErr)->getBuffer();
-  SmallVector<StringRef, 32> lines;
-  content.split(lines, '\n');
-
-  for (StringRef line : lines) {
-    // Match: _include _file <path>
-    line = line.trim();
-    if (line.starts_with("_include _file ")) {
-      StringRef filePath = line.drop_front(strlen("_include _file ")).trim();
-      if (!filePath.empty()) {
-        files.push_back(filePath.str());
-      }
-    }
-  }
-
-  return files;
-}
-
-// Get the AIE target architecture for a device using direct C++ API call.
-// This replaces the subprocess call to aie-translate
-// --aie-generate-target-arch.
-static std::string getAIETargetForDevice(ModuleOp moduleOp,
-                                         StringRef deviceName) {
-  std::string targetArch;
-  llvm::raw_string_ostream os(targetArch);
-
-  if (failed(xilinx::AIE::AIETranslateToTargetArch(moduleOp, os, deviceName))) {
-    if (verbose) {
-      llvm::outs() << "Warning: Could not determine target for device "
-                   << deviceName << ", defaulting to aie2\n";
-    }
-    return "aie2";
-  }
-
-  // Trim trailing newline/whitespace from the output
-  while (!targetArch.empty() &&
-         (targetArch.back() == '\n' || targetArch.back() == '\r' ||
-          targetArch.back() == ' ' || targetArch.back() == '\t')) {
-    targetArch.pop_back();
-  }
-
-  if (targetArch.empty()) {
-    if (verbose) {
-      llvm::outs() << "Warning: Empty target for device " << deviceName
-                   << ", defaulting to aie2\n";
-    }
-    return "aie2";
-  }
-
-  if (verbose) {
-    llvm::outs() << "Detected target architecture for device " << deviceName
-                 << ": " << targetArch << "\n";
-  }
-
-  return targetArch;
-}
-
-//===----------------------------------------------------------------------===//
-// AIE Device and Core Discovery
-//===----------------------------------------------------------------------===//
-
-/// Per-core metadata extracted from a CoreOp before the compilation pipeline
-/// begins.  All fields are populated by getCoreInfo().
-struct CoreInfo {
-  std::int32_t col = 0; ///< Tile column (from TileOp).
-  std::int32_t row = 0; ///< Tile row (from TileOp).
-  /// External object files to link into this core's ELF.  Populated from
-  /// CoreOp::getLinkFiles() (canonical) or CoreOp::getLinkWith() (deprecated
-  /// fallback when aie-assign-core-link-files was not run).
-  SmallVector<std::string> linkFiles;
-  /// If non-empty, the ELF was provided via the elf_file attribute; no
-  /// compilation is needed.
-  std::string elfFile;
-};
-
-/// Returns true if the CoreOp has a non-empty body (i.e., anything beyond the
-/// mandatory aie.end terminator).
-static bool coreHasNonemptyBody(xilinx::AIE::CoreOp coreOp) {
-  for (auto &block : coreOp.getBody()) {
-    if (block.getOperations().size() > 1)
-      return true;
-  }
-  return false;
-}
-
-/// Returns true if a CoreOp requires compilation or linking.
-///
-/// Skips hollow cores created by --expand-load-pdis (empty body, no elf_file,
-/// no link files), which exist only to satisfy structural constraints.
-static bool coreNeedsCompilation(xilinx::AIE::CoreOp coreOp) {
-  return coreOp.getElfFileAttr() || coreOp.getLinkWithAttr() ||
-         coreOp.getLinkFiles() || coreHasNonemptyBody(coreOp);
-}
-
-/// Extracts tile coordinates and link-file metadata from a CoreOp.
-///
-/// Prefers the canonical link_files attribute (set by
-/// aie-assign-core-link-files). Falls back to the deprecated core-level
-/// link_with attribute if link_files is absent (e.g., the pass was not run).
-static CoreInfo getCoreInfo(xilinx::AIE::CoreOp coreOp) {
-  CoreInfo info;
-  auto tileOp = dyn_cast<xilinx::AIE::TileOp>(coreOp.getTile().getDefiningOp());
-  if (tileOp) {
-    info.col = tileOp.getCol();
-    info.row = tileOp.getRow();
-  }
-
-  // Prefer canonical link_files ArrayAttr (populated by AIEAssignCoreLinkFiles,
-  // which runs as part of the resource-allocation pipeline).
-  if (auto filesAttr = coreOp.getLinkFiles()) {
-    for (auto f : filesAttr->getAsRange<mlir::StringAttr>())
-      info.linkFiles.push_back(f.getValue().str());
-  } else if (auto linkWithAttr = coreOp.getLinkWithAttr()) {
-    // Fallback: deprecated core-level link_with was not migrated by the pass
-    // (e.g., pipeline was not run). Treat it as a single-element list.
-    info.linkFiles.push_back(linkWithAttr.getValue().str());
-  }
-
-  if (auto elfAttr = coreOp.getElfFileAttr()) {
-    info.elfFile = elfAttr.getValue().str();
-  }
-
-  return info;
-}
-
-//===----------------------------------------------------------------------===//
-// Repeater Script Generation
-//===----------------------------------------------------------------------===//
-
-/// Check if repeater script generation is enabled.
-static bool repeaterEnabled() {
-  if (disableRepeaterScripts)
-    return false;
-  return enableRepeaterScripts || !repeaterOutputDir.empty();
-}
-
-/// Generate a repeater script and save intermediate MLIR when a pipeline fails.
-/// If pipelineOverride is non-empty, use it as the PASS_PIPELINE string
-/// instead of pm.printAsTextualPipeline(). This allows callers to provide
-/// the exact pipeline string that matches the legacy Python format.
-static void handlePassFailure(StringRef preRunIR, PassManager &pm,
-                              StringRef description, StringRef outputDir,
-                              ArrayRef<std::string> diagnostics,
-                              StringRef pipelineOverride = "") {
-  // Generate a unique suffix from timestamp and PID
-  auto now = std::chrono::system_clock::now();
-  auto epoch = now.time_since_epoch();
-  auto secs = std::chrono::duration_cast<std::chrono::seconds>(epoch).count();
-  auto pid = llvm::sys::Process::getProcessId();
-  std::string suffix = std::to_string(secs) + "_" + std::to_string(pid);
-
-  // Ensure output directory exists
-  if (std::error_code ec = sys::fs::create_directories(outputDir)) {
-    llvm::errs() << "Warning: Could not create repeater output directory '"
-                 << outputDir << "': " << ec.message() << "\n";
-    return;
-  }
-
-  // Save pre-transformation MLIR
-  SmallString<256> mlirPath(outputDir);
-  sys::path::append(mlirPath, "aiecc_failure_" + suffix + ".mlir");
-
-  {
-    std::error_code ec;
-    raw_fd_ostream mlirFile(mlirPath, ec);
-    if (ec) {
-      llvm::errs() << "Warning: Could not write intermediate MLIR: "
-                   << ec.message() << "\n";
-      return;
-    }
-    mlirFile << preRunIR;
-  }
-
-  // Get the textual pipeline string
-  std::string pipelineStr;
-  if (!pipelineOverride.empty()) {
-    pipelineStr = pipelineOverride.str();
-  } else {
-    llvm::raw_string_ostream pipelineOS(pipelineStr);
-    pm.printAsTextualPipeline(pipelineOS);
-  }
-
-  // Generate the repeater shell script
-  SmallString<256> scriptPath(outputDir);
-  sys::path::append(scriptPath, "aiecc_repeater_" + suffix + ".sh");
-
-  {
-    std::error_code ec;
-    raw_fd_ostream scriptFile(scriptPath, ec);
-    if (ec) {
-      llvm::errs() << "Warning: Could not write repeater script: "
-                   << ec.message() << "\n";
-      return;
-    }
-    scriptFile << "#!/bin/bash\n";
-    scriptFile << "set -e\n";
-    scriptFile << "# Repeater script for: " << description << "\n";
-
-    // Include captured diagnostics for reference
-    if (!diagnostics.empty()) {
-      scriptFile << "echo \"Original MLIR Diagnostics:\"\n";
-      scriptFile << "cat << 'DIAGNOSTICS_EOF'\n";
-      for (const auto &diag : diagnostics) {
-        scriptFile << diag << "\n";
-      }
-      scriptFile << "DIAGNOSTICS_EOF\n";
-      scriptFile << "echo \"\"\n\n";
-    }
-
-    scriptFile << "MLIR_FILE='" << mlirPath << "'\n";
-    scriptFile << "PASS_PIPELINE='" << pipelineStr << "'\n";
-    scriptFile << "aie-opt --mlir-print-ir-after-all --mlir-disable-threading "
-                  "--pass-pipeline=\"$PASS_PIPELINE\" \"$MLIR_FILE\"\n";
-  }
-
-  // Make the script executable
-  sys::fs::setPermissions(scriptPath, sys::fs::perms::owner_all |
-                                          sys::fs::perms::group_read |
-                                          sys::fs::perms::group_exe);
-
-  // Print failure info to stderr
-  llvm::errs() << "AIECC COMPILATION FAILED\n";
-  llvm::errs() << "Intermediate MLIR saved to: " << mlirPath << "\n";
-  llvm::errs() << "Repeater script generated: " << scriptPath << "\n";
-}
-
-/// Run a PassManager with repeater script support. If the pipeline fails and
-/// repeater is enabled, generates a shell script to reproduce the failure.
-/// Captures MLIR diagnostics for inclusion in the repeater script.
-/// If pipelineOverride is provided, it is used as the PASS_PIPELINE string
-/// instead of the output of pm.printAsTextualPipeline().
-static LogicalResult runPipelineWithRepeater(PassManager &pm, ModuleOp moduleOp,
-                                             StringRef description,
-                                             StringRef outputDir,
-                                             StringRef pipelineOverride = "") {
-  // Capture IR before the pass runs (the pass may corrupt the module on
-  // failure)
-  std::string preRunIR;
-  if (repeaterEnabled()) {
-    llvm::raw_string_ostream os(preRunIR);
-    moduleOp->print(os);
-  }
-
-  // Install a diagnostic handler to capture diagnostics for the repeater script
-  std::vector<std::string> capturedDiagnostics;
-  MLIRContext *ctx = moduleOp.getContext();
-  ScopedDiagnosticHandler diagHandler(ctx, [&](Diagnostic &diag) {
-    std::string diagStr;
-    llvm::raw_string_ostream os(diagStr);
-    diag.print(os);
-    capturedDiagnostics.push_back(std::move(diagStr));
-    // Return failure to let the default handler also process the diagnostic
-    return failure();
-  });
-
-  if (succeeded(pm.run(moduleOp)))
-    return success();
-
-  if (repeaterEnabled()) {
-    // Use repeaterOutputDir if set, otherwise fall back to the provided dir
-    StringRef dir =
-        repeaterOutputDir.empty() ? outputDir : StringRef(repeaterOutputDir);
-    handlePassFailure(preRunIR, pm, description, dir, capturedDiagnostics,
-                      pipelineOverride);
-  }
-
-  return failure();
-}
-
-//===----------------------------------------------------------------------===//
-// In-Memory Pass Execution
-//===----------------------------------------------------------------------===//
-
-/// Check if the module contains any aie.logical_tile ops.
-static bool hasLogicalTileOps(ModuleOp moduleOp) {
-  bool found = false;
-  moduleOp.walk([&](xilinx::AIE::LogicalTileOp) {
-    found = true;
-    return WalkResult::interrupt();
-  });
-  return found;
-}
-
-/// Run tile placement pass in-memory, only when logical tile ops exist.
-/// This converts aie.logical_tile ops to aie.tile ops and must run before
-/// all other passes (trace lowering, resource allocation, routing) because
-/// downstream passes require physical tile coordinates.
-static LogicalResult runPlacementPipeline(ModuleOp moduleOp,
-                                          StringRef tmpDirName) {
-  if (!hasLogicalTileOps(moduleOp))
-    return success();
-
-  MLIRContext *ctx = moduleOp.getContext();
-  PassManager pm(ctx);
-
-  if (verbose) {
-    pm.enableVerifier(true);
-    SmallString<128> crashFile(tmpDirName);
-    sys::path::append(crashFile, "placement_crash.mlir");
-    pm.enableCrashReproducerGeneration(crashFile);
-  }
-
-  OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
-  xilinx::AIE::AIEPlaceTilesOptions placeTilesOpts;
-  placeTilesOpts.clPlacerType = placerType;
-  placeTilesOpts.clCoresPerCol = coresPerCol;
-  placeTilesOpts.clSASeed = saSeed;
-  devicePm.addPass(xilinx::AIE::createAIEPlaceTilesPass(placeTilesOpts));
-
-  if (verbose) {
-    llvm::outs() << "Running tile placement pipeline in-memory\n";
-    llvm::outs().flush();
-  }
-
-  if (failed(runPipelineWithRepeater(pm, moduleOp, "tile placement",
-                                     tmpDirName))) {
-    llvm::errs() << "Error: Tile placement pipeline failed\n";
-    return failure();
-  }
-
-  if (verbose) {
-    llvm::outs() << "Tile placement pipeline completed successfully\n";
-  }
-
-  return success();
-}
-
-/// Check if the module contains any aie.trace ops.
-static bool hasTraceOps(ModuleOp moduleOp) {
-  bool found = false;
-  moduleOp.walk([&](xilinx::AIE::TraceOp) {
-    found = true;
-    return WalkResult::interrupt();
-  });
-  return found;
-}
-
-/// Run trace lowering passes in-memory, only when trace ops exist.
-/// Separated from resource allocation to avoid crashes on Assert builds
-/// when no trace ops are present.
-static LogicalResult runTraceLoweringPipeline(ModuleOp moduleOp,
-                                              StringRef tmpDirName) {
-  if (!hasTraceOps(moduleOp))
-    return success();
-
-  MLIRContext *ctx = moduleOp.getContext();
-  PassManager pm(ctx);
-
-  if (verbose) {
-    pm.enableVerifier(true);
-    SmallString<128> crashFile(tmpDirName);
-    sys::path::append(crashFile, "trace_lowering_crash.mlir");
-    pm.enableCrashReproducerGeneration(crashFile);
-  }
-
-  OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
-  devicePm.addPass(xilinx::AIE::createAIEInsertTraceFlowsPass());
-  devicePm.addPass(xilinx::AIE::createAIETraceToConfigPass());
-  devicePm.addPass(xilinx::AIE::createAIETraceRegPackWritesPass());
-  devicePm.addPass(xilinx::AIEX::createAIEXInlineTraceConfigPass());
-
-  if (verbose) {
-    llvm::outs() << "Running trace lowering pipeline in-memory\n";
-    llvm::outs().flush();
-  }
-
-  if (failed(runPipelineWithRepeater(pm, moduleOp, "trace lowering",
-                                     tmpDirName))) {
-    llvm::errs() << "Error: Trace lowering pipeline failed\n";
-    return failure();
-  }
-
-  if (verbose) {
-    llvm::outs() << "Trace lowering pipeline completed successfully\n";
-  }
-
-  return success();
-}
-
-/// Run the resource allocation pipeline in-memory using PassManager.
-/// This replaces the subprocess call to aie-opt with direct API calls.
-static LogicalResult runResourceAllocationPipeline(ModuleOp moduleOp,
-                                                   StringRef aieTarget,
-                                                   StringRef tmpDirName) {
-  MLIRContext *ctx = moduleOp.getContext();
-  PassManager pm(ctx);
-
-  // Enable verification between passes if verbose
-  if (verbose) {
-    pm.enableVerifier(true);
-    // Enable crash reproducer to help debug CI failures
-    SmallString<128> crashFile(tmpDirName);
-    sys::path::append(crashFile, "resource_alloc_crash.mlir");
-    pm.enableCrashReproducerGeneration(crashFile);
-  }
-
-  // Step 1: Convert vector to aievec (this is a pipeline, not a single pass)
-  // Only add for AIE2 and later targets
-  // NOTE: Use parsePassPipeline instead of buildConvertVectorToAIEVec because
-  // ConvertVectorToAIEVecOptions only propagates aie-target to its sub-pipeline
-  // options (canonicalize, lower, optimize) through parseFromString, not
-  // through direct member assignment. Without this, aie2p falls back to aie1
-  // patterns.
-  std::string lowerTarget = aieTarget.lower();
-  if (lowerTarget == "aie2" || lowerTarget == "aieml" ||
-      lowerTarget == "aie2p") {
-    std::string vecPipeline =
-        "convert-vector-to-aievec{aie-target=" + lowerTarget +
-        (bf16Emulation ? " bf16-emulation=true" : "") + "}";
-    if (failed(parsePassPipeline(vecPipeline, pm))) {
-      llvm::errs() << "Error: Failed to parse convert-vector-to-aievec "
-                      "pipeline\n";
-      return failure();
-    }
-  }
-
-  // Step 2: Lower affine
-  pm.addPass(createLowerAffinePass());
-
-  // Step 3: Canonicalize device (module-level pass)
-  pm.addPass(xilinx::AIE::createAIECanonicalizeDevicePass());
-
-  // Lower parameter ops to scratchpad operations, create core buffers, and
-  // emit the parameter-sync preamble (lock + use_lock in each core that reads
-  // parameters; create_scratchpad + set_lock in each runtime sequence).
-  // This must run before AIEAssignLockIDs so the newly created locks receive
-  // IDs, and before address assignment so new buffers get addresses.
-  {
-    xilinx::AIEX::AIELowerScratchpadParametersOptions paramOpts;
-    if (!tmpDirName.empty()) {
-      SmallString<128> paramsPath(tmpDirName);
-      sys::path::append(paramsPath, "params.txt");
-      paramOpts.outputParamsFile = paramsPath.str().str();
-    }
-    pm.addPass(xilinx::AIEX::createAIELowerScratchpadParametersPass(
-        std::move(paramOpts)));
-  }
-
-  // Step 4: Device-level passes - use nest<DeviceOp>()
-  OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
-  // Note: Trace lowering runs in a separate guarded pipeline
-  // (runTraceLoweringPipeline) before this function is called.
-  devicePm.addPass(xilinx::AIE::createAIEAssignLockIDsPass());
-  {
-    std::string objFifoPipelineStr =
-        "aie-objectFifo-stateful-transform{dynamic-objFifos=" +
-        std::string(dynamicObjFifos ? "true" : "false") +
-        " packet-sw-objFifos=" +
-        std::string(packetSwObjFifos ? "true" : "false") + "}";
-    if (failed(parsePassPipeline(objFifoPipelineStr, devicePm))) {
-      llvm::errs() << "Error: Failed to parse objectFifo pipeline\n";
-      return failure();
-    }
-  }
-  devicePm.addPass(xilinx::AIE::createAIEAssignBufferDescriptorIDsPass());
-  devicePm.addPass(xilinx::AIE::createAIELowerCascadeFlowsPass());
-  devicePm.addPass(xilinx::AIEX::createAIEBroadcastPacketPass());
-  devicePm.addPass(xilinx::AIEX::createAIELowerMulticastPass());
-  devicePm.addPass(xilinx::AIE::createAIEAssignTileCtrlIDsPass());
-  {
-    std::string overlayPipelineStr =
-        "aie-generate-column-control-overlay{route-shim-to-tile-ctrl=" +
-        std::string(ctrlPktOverlay ? "true" : "false") + "}";
-    if (failed(parsePassPipeline(overlayPipelineStr, devicePm))) {
-      llvm::errs() << "Error: Failed to parse overlay pipeline\n";
-      return failure();
-    }
-  }
-
-  // Resume device-level passes after the module-level parameter lowering
-  // (which already ran before the first devicePm, see above).
-  OpPassManager &devicePm2 = pm.nest<xilinx::AIE::DeviceOp>();
-
-  // Create buffer address assignment pass with alloc-scheme option
-  xilinx::AIE::AIEAssignBufferAddressesOptions bufferOpts;
-  bufferOpts.clAllocScheme = allocScheme.getValue();
-  devicePm2.addPass(
-      xilinx::AIE::createAIEAssignBufferAddressesPass(bufferOpts));
-
-  // Infer per-core link_files from func-level link_with attributes
-  devicePm2.addPass(xilinx::AIE::createAIEAssignCoreLinkFilesPass());
-
-  devicePm2.addPass(xilinx::AIE::createAIEVectorTransferLoweringPass());
-
-  // Step 5: Convert SCF to CF (module-level pass).
-  // Uses the runtime-sequence-aware lowering rather than the generic
-  // convert-scf-to-cf: scf inside an aie.runtime_sequence is left intact (it
-  // is NoTerminator and lowered to a flat NPU instruction stream by its own
-  // path), while core/host scf is lowered to cf as usual.
-  pm.addPass(xilinx::AIEX::createAIESCFToControlFlowPass());
-
-  if (verbose) {
-    llvm::outs() << "Running resource allocation pipeline in-memory "
-                 << "(alloc-scheme=" << allocScheme.getValue() << ")\n";
-    llvm::outs().flush();
-  }
-
-  if (failed(runPipelineWithRepeater(pm, moduleOp, "resource allocation",
-                                     tmpDirName))) {
-    llvm::errs() << "Error: Resource allocation pipeline failed\n";
-    return failure();
-  }
-
-  if (verbose) {
-    llvm::outs() << "Resource allocation pipeline completed successfully\n";
-  }
-
-  return success();
-}
-
-/// Run the routing pipeline in-memory using PassManager.
-/// This replaces the subprocess call to aie-opt with direct API calls.
-static LogicalResult runRoutingPipeline(ModuleOp moduleOp,
-                                        StringRef tmpDirName) {
-  MLIRContext *ctx = moduleOp.getContext();
-  PassManager pm(ctx);
-
-  if (verbose) {
-    pm.enableVerifier(true);
-  }
-
-  // Routing is a device-level pass
-  OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
-  devicePm.addPass(xilinx::AIE::createAIEPathfinderPass());
-
-  if (verbose) {
-    llvm::outs() << "Running routing pipeline in-memory\n";
-  }
-
-  if (failed(runPipelineWithRepeater(
-          pm, moduleOp, "routing", tmpDirName,
-          "builtin.module(aie.device(aie-create-pathfinder-flows))"))) {
-    llvm::errs() << "Error: Routing pipeline failed\n";
-    return failure();
-  }
-
-  if (verbose) {
-    llvm::outs() << "Routing pipeline completed successfully\n";
-  }
-
-  return success();
-}
-
-// Forward declarations
-static void assignPdiIds(ModuleOp moduleOp);
-static void assignPdiIds(ModuleOp moduleOp,
-                         const std::map<std::string, int> &pdiIdMapping);
-
-/// Run the NPU lowering pipeline in-memory using PassManager.
-/// This replaces the subprocess call to aie-opt with direct API calls.
-static LogicalResult runNpuLoweringPipeline(ModuleOp moduleOp,
-                                            StringRef tmpDirName,
-                                            bool patchPdiIds = false) {
-  MLIRContext *ctx = moduleOp.getContext();
-
-  // Phase 1: Core NPU lowering passes
-  {
-    PassManager pm(ctx);
-    if (verbose) {
-      pm.enableVerifier(true);
-    }
-
-    // Add materialize runtime sequences pass at module level (before device
-    // nesting) unless --no-materialize is specified
-    if (!noMaterialize) {
-      pm.addPass(xilinx::AIEX::createAIEMaterializeRuntimeSequencesPass());
-    }
-
-    // Device-level passes
-    OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
-    devicePm.addPass(xilinx::AIEX::createAIEMaterializeBDChainsPass());
-    devicePm.addPass(xilinx::AIEX::createAIESubstituteShimDMAAllocationsPass());
-    // Unroll constant-trip runtime-sequence loops first so BD-ID allocation
-    // runs on straight-line IR (no back-edges): a task freed a later iteration
-    // becomes N distinct configures, and ordinary liveness-based allocation
-    // recycles their ids. Runtime-bound loops are left rolled for the dynamic
-    // path. Canonicalize folds the constants unrolling exposes before alloc.
-    devicePm.addPass(xilinx::AIEX::createAIEUnrollRuntimeSequenceLoopsPass());
-    devicePm.addPass(createCanonicalizerPass());
-    devicePm.addPass(xilinx::AIEX::createAIEAssignRuntimeSequenceBDIDsPass());
-    devicePm.addPass(xilinx::AIEX::createAIEDMATasksToNPUPass());
-    devicePm.addPass(xilinx::AIEX::createAIEDmaToNpuPass());
-    devicePm.addPass(xilinx::AIEX::createAIELowerSetLockPass());
-
-    if (verbose) {
-      llvm::outs() << "Running NPU lowering pipeline in-memory\n";
-    }
-
-    if (failed(runPipelineWithRepeater(pm, moduleOp, "NPU lowering",
-                                       tmpDirName))) {
-      llvm::errs() << "Error: NPU lowering pipeline failed\n";
-      return failure();
-    }
-  }
-
-  // Phase 2: Assign PDI IDs BEFORE expand-load-pdis (which copies IDs from
-  // original load_pdi ops to the new empty device load_pdi ops).
-  if (patchPdiIds) {
-    assignPdiIds(moduleOp);
-  }
-
-  // Phase 3: Expand load_pdi operations if requested
-  if (expandLoadPdis) {
-    PassManager pm(ctx);
-    if (verbose) {
-      pm.enableVerifier(true);
-    }
-    pm.addPass(xilinx::AIEX::createAIEExpandLoadPdiPass());
-    if (failed(runPipelineWithRepeater(pm, moduleOp, "expand-load-pdi",
-                                       tmpDirName))) {
-      llvm::errs() << "Error: expand-load-pdi pass failed\n";
-      return failure();
-    }
-  }
-
-  if (verbose) {
-    llvm::outs() << "NPU lowering pipeline completed successfully\n";
-  }
-
-  return success();
-}
-
-/// Run the transaction generation pipeline in-memory using PassManager.
-/// This converts the AIE device to a sequence of transaction binary operations.
-/// The pipeline: convert-aie-to-transaction{elf-dir=... device-name=...}
-static LogicalResult runTransactionPipeline(ModuleOp moduleOp, StringRef elfDir,
-                                            StringRef devName,
-                                            StringRef tmpDirName) {
-  MLIRContext *ctx = moduleOp.getContext();
-  PassManager pm(ctx);
-
-  if (verbose) {
-    pm.enableVerifier(true);
-  }
-
-  // Build pass pipeline string with options.
-  // Use aie-opt compatible syntax: the pass runs at the aie.device level.
-  std::string pipelineStr =
-      "convert-aie-to-transaction{elf-dir=" + elfDir.str() +
-      " device-name=" + devName.str() + "}";
-  OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
-  if (failed(parsePassPipeline(pipelineStr, devicePm))) {
-    llvm::errs() << "Error: Failed to parse transaction pipeline\n";
-    return failure();
-  }
-
-  if (verbose) {
-    llvm::outs() << "Running transaction generation pipeline in-memory\n";
-  }
-
-  if (failed(runPipelineWithRepeater(pm, moduleOp, "transaction generation",
-                                     tmpDirName))) {
-    llvm::errs() << "Error: Transaction generation pipeline failed\n";
-    return failure();
-  }
-
-  if (verbose) {
-    llvm::outs() << "Transaction generation pipeline completed successfully\n";
-  }
-
-  return success();
-}
-
-/// Run the control packet generation pipeline in-memory using PassManager.
-/// Pipeline: convert-aie-to-transaction{elf-dir=... device-name=...}
-///           → aie-txn-to-ctrl-packet → aie-legalize-ctrl-packet
-static LogicalResult runControlPacketPipeline(ModuleOp moduleOp,
-                                              StringRef elfDir,
-                                              StringRef devName,
-                                              StringRef tmpDirName) {
-  MLIRContext *ctx = moduleOp.getContext();
-  PassManager pm(ctx);
-
-  if (verbose) {
-    pm.enableVerifier(true);
-  }
-
-  // Use parsePassPipeline for convert-aie-to-transaction (needs elf-dir and
-  // device-name options). Add the remaining passes directly.
-  std::string txnPipelineStr =
-      "convert-aie-to-transaction{elf-dir=" + elfDir.str() +
-      " device-name=" + devName.str() + "}";
-  OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
-  if (failed(parsePassPipeline(txnPipelineStr, devicePm))) {
-    llvm::errs() << "Error: Failed to parse control packet pipeline\n";
-    return failure();
-  }
-  devicePm.addPass(xilinx::AIEX::createAIETxnToControlPacketPass());
-  devicePm.addPass(xilinx::AIEX::createAIELegalizeControlPacketPass());
-
-  if (verbose) {
-    llvm::outs() << "Running control packet pipeline in-memory\n";
-  }
-
-  if (failed(runPipelineWithRepeater(pm, moduleOp, "control packet",
-                                     tmpDirName))) {
-    llvm::errs() << "Error: Control packet pipeline failed\n";
-    return failure();
-  }
-
-  if (verbose) {
-    llvm::outs() << "Control packet pipeline completed successfully\n";
-  }
-
-  return success();
-}
-
-/// Run the control packet DMA lowering pipeline in-memory using PassManager.
-/// Pipeline: aie-ctrl-packet-to-dma → aie-dma-to-npu
-static LogicalResult runControlPacketDmaPipeline(ModuleOp moduleOp,
-                                                 StringRef tmpDirName) {
-  MLIRContext *ctx = moduleOp.getContext();
-  PassManager pm(ctx);
-
-  if (verbose) {
-    pm.enableVerifier(true);
-  }
-
-  OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
-  devicePm.addPass(xilinx::AIEX::createAIECtrlPacketToDmaPass());
-  devicePm.addPass(xilinx::AIEX::createAIEDmaToNpuPass());
-
-  if (verbose) {
-    llvm::outs() << "Running control packet DMA pipeline in-memory\n";
-  }
-
-  if (failed(runPipelineWithRepeater(pm, moduleOp, "control packet DMA",
-                                     tmpDirName))) {
-    llvm::errs() << "Error: Control packet DMA pipeline failed\n";
-    return failure();
-  }
-
-  if (verbose) {
-    llvm::outs() << "Control packet DMA pipeline completed successfully\n";
-  }
-
-  return success();
-}
-
-/// Run the LLVM lowering pipeline in-memory using PassManager.
-/// This replaces the subprocess calls to aie-opt and aie-translate for
-/// core compilation. The pipeline:
-/// 1. Runs nested passes inside aie.device (localize-locks,
-/// normalize-address-spaces)
-/// 2. Runs aie-standard-lowering with specific core coordinates to extract core
-/// 3. Runs standard LLVM lowering passes
-/// 4. Results in a pure LLVM dialect module ready for translation to LLVM IR
-///
-/// NOTE: This function modifies moduleOp destructively - it removes all cores
-/// except the specified one. Caller should pass a cloned module.
-static LogicalResult runLLVMLoweringPipeline(ModuleOp moduleOp,
-                                             StringRef deviceName, int col,
-                                             int row,
-                                             StringRef aieTarget = "aie2",
-                                             StringRef tmpDirName = "") {
-  MLIRContext *ctx = moduleOp.getContext();
-  PassManager pm(ctx);
-
-  if (verbose) {
-    pm.enableVerifier(true);
-  }
-
-  // Step 1: Nested passes inside aie.device
-  OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
-  devicePm.addPass(xilinx::AIE::createAIELocalizeLocksPass());
-  devicePm.addPass(xilinx::AIE::createAIENormalizeAddressSpacesPass());
-  devicePm.addPass(xilinx::AIEX::createAIETransformBfpTypesPass());
-
-  // Step 2: aie-standard-lowering with specific core coordinates
-  // This extracts the specified core and removes the aie.device wrapper
-  xilinx::AIE::AIECoreToStandardOptions coreOpts;
-  coreOpts.deviceName = deviceName.str();
-  coreOpts.tileCol = col;
-  coreOpts.tileRow = row;
-  pm.addPass(xilinx::AIE::createAIECoreToStandardPass(coreOpts));
-
-  // Step 3: AIEX to standard lowering
-  pm.addPass(xilinx::AIEX::createAIEXToStandardPass());
-
-  // Step 4: AIEVec to LLVM conversion
-  xilinx::ConvertAIEVecToLLVMOptions aievecOpts;
-  aievecOpts.aieTarget = aieTarget.lower();
-  pm.addPass(xilinx::aievec::createConvertAIEVecToLLVMPass(aievecOpts));
-
-  // Step 5: Standard LLVM lowering passes
-  pm.addPass(createCanonicalizerPass());
-  pm.addPass(createCSEPass());
-  pm.addPass(memref::createExpandStridedMetadataPass());
-  pm.addPass(createLowerAffinePass());
-  pm.addPass(arith::createArithExpandOpsPass());
-  pm.addPass(createFinalizeMemRefToLLVMConversionPass());
-  pm.addPass(createConvertFuncToLLVMPass(
-      ConvertFuncToLLVMPassOptions{/*useBarePtrCallConv=*/true}));
-  // convert-to-llvm with dynamic=true to use DataLayoutAnalysis for proper
-  // index type conversion (matches the old Python aiecc's convert-to-llvm)
-  {
-    ConvertToLLVMPassOptions llvmOpts;
-    llvmOpts.useDynamic = true;
-    pm.addPass(createConvertToLLVMPass(llvmOpts));
-  }
-  pm.addPass(createConvertVectorToLLVMPass());
-  pm.addPass(createUBToLLVMConversionPass());
-  pm.addPass(createCanonicalizerPass());
-  pm.addPass(createCSEPass());
-
-  if (verbose) {
-    std::lock_guard<std::mutex> lock(outputMutex);
-    llvm::outs() << "Running LLVM lowering pipeline in-memory for core (" << col
-                 << ", " << row << ")\n";
-  }
-
-  if (failed(
-          runPipelineWithRepeater(pm, moduleOp, "LLVM lowering", tmpDirName))) {
-    llvm::errs() << "Error: LLVM lowering pipeline failed for core (" << col
-                 << ", " << row << ")\n";
-    return failure();
-  }
-
-  if (verbose) {
-    std::lock_guard<std::mutex> lock(outputMutex);
-    llvm::outs() << "LLVM lowering pipeline completed successfully for core ("
-                 << col << ", " << row << ")\n";
-  }
-
-  return success();
-}
-
-/// Run the LLVM lowering pipeline for unified compilation (all cores together).
-/// Unlike runLLVMLoweringPipeline, this does not filter to a specific core.
-/// All cores are lowered together into a single module.
-///
-/// NOTE: This function modifies moduleOp destructively. Caller should pass a
-/// cloned module.
-static LogicalResult runUnifiedLLVMLoweringPipeline(ModuleOp moduleOp,
-                                                    StringRef deviceName,
-                                                    StringRef aieTarget,
-                                                    StringRef tmpDirName = "") {
-  MLIRContext *ctx = moduleOp.getContext();
-  PassManager pm(ctx);
-
-  if (verbose) {
-    pm.enableVerifier(true);
-  }
-
-  // Step 1: Nested passes inside aie.device
-  OpPassManager &devicePm = pm.nest<xilinx::AIE::DeviceOp>();
-  devicePm.addPass(xilinx::AIE::createAIELocalizeLocksPass());
-  devicePm.addPass(xilinx::AIE::createAIENormalizeAddressSpacesPass());
-  devicePm.addPass(xilinx::AIEX::createAIETransformBfpTypesPass());
-
-  // Step 2: aie-standard-lowering WITHOUT specific core coordinates
-  // This exports ALL cores by using default values (-1, -1)
-  xilinx::AIE::AIECoreToStandardOptions coreOpts;
-  coreOpts.deviceName = deviceName.str();
-  // tileCol and tileRow default to -1 (process all cores)
-  pm.addPass(xilinx::AIE::createAIECoreToStandardPass(coreOpts));
-
-  // Step 3: AIEX to standard lowering
-  pm.addPass(xilinx::AIEX::createAIEXToStandardPass());
-
-  // Step 4: AIEVec to LLVM conversion
-  xilinx::ConvertAIEVecToLLVMOptions aievecOpts;
-  aievecOpts.aieTarget = aieTarget.lower();
-  pm.addPass(xilinx::aievec::createConvertAIEVecToLLVMPass(aievecOpts));
-
-  // Step 5: Standard LLVM lowering passes
-  pm.addPass(createCanonicalizerPass());
-  pm.addPass(createCSEPass());
-  pm.addPass(memref::createExpandStridedMetadataPass());
-  pm.addPass(createLowerAffinePass());
-  pm.addPass(arith::createArithExpandOpsPass());
-  pm.addPass(createFinalizeMemRefToLLVMConversionPass());
-  pm.addPass(createConvertFuncToLLVMPass(
-      ConvertFuncToLLVMPassOptions{/*useBarePtrCallConv=*/true}));
-  {
-    ConvertToLLVMPassOptions llvmOpts;
-    llvmOpts.useDynamic = true;
-    pm.addPass(createConvertToLLVMPass(llvmOpts));
-  }
-  pm.addPass(createCanonicalizerPass());
-  pm.addPass(createCSEPass());
-
-  if (verbose) {
-    llvm::outs() << "Running unified LLVM lowering pipeline in-memory for all "
-                    "cores\n";
-  }
-
-  if (failed(runPipelineWithRepeater(pm, moduleOp, "unified LLVM lowering",
-                                     tmpDirName))) {
-    llvm::errs() << "Error: Unified LLVM lowering pipeline failed\n";
-    return failure();
-  }
-
-  if (verbose) {
-    llvm::outs() << "Unified LLVM lowering pipeline completed successfully\n";
-  }
-
-  return success();
-}
-
-/// Copy \p src to \p destDir / \p destBasename atomically by writing to a
-/// sibling temp file first, then renaming.  On POSIX, rename(2) is atomic
-/// within the same filesystem, so parallel compilations sharing the same
-/// destination filename do not corrupt each other's copy.
-static LogicalResult atomicCopyFile(StringRef src, StringRef destDir,
-                                    StringRef destBasename) {
-  SmallString<256> dest(destDir);
-  sys::path::append(dest, destBasename);
-
-  // Write to a sibling temp file in destDir, then rename atomically.
-  // Keeping the temp in the same directory ensures they share a filesystem,
-  // so rename(2) is never cross-device (no EXDEV failure).
-  SmallString<256> tmpModel(destDir);
-  SmallString<64> tmpFilename;
-  tmpFilename += sys::path::stem(destBasename);
-  tmpFilename += "-%%%%%%";
-  tmpFilename += sys::path::extension(destBasename);
-  sys::path::append(tmpModel, tmpFilename);
-  SmallString<256> tmpPath;
-  if (sys::fs::createUniqueFile(tmpModel, tmpPath)) {
-    llvm::errs() << "Error: could not create temp file in " << destDir << "\n";
-    return failure();
-  }
-
-  if (std::error_code ec = sys::fs::copy_file(src, tmpPath)) {
-    llvm::errs() << "Error: could not copy " << src << " to " << tmpPath << ": "
-                 << ec.message() << "\n";
-    sys::fs::remove(tmpPath);
-    return failure();
-  }
-
-  if (std::error_code ec = sys::fs::rename(tmpPath, dest)) {
-    llvm::errs() << "Error: could not rename " << tmpPath << " to " << dest
-                 << ": " << ec.message() << "\n";
-    sys::fs::remove(tmpPath);
-    return failure();
-  }
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// Core Compilation
-//===----------------------------------------------------------------------===//
-
-struct CoreCompilationResult {
-  std::string elfPath;
-  bool success;
-};
-
-/// Downgrade LLVM IR for Peano compatibility.
-/// Strips LLVM 23+ features that Peano 19's opt/llc can't parse:
-/// - 'nuw' flag on getelementptr (inferred by ConstantFolding/InstCombine)
-/// - 'nocreateundeforpoison' attribute (with any trailing whitespace)
-/// - 'inf'/'-inf'/'nan' float-literal keywords (rewritten to hex form)
-/// Also strips, for codegen quality rather than parsing:
-/// - ', align <N>' attributes. Retaining them makes Peano's capped-O1 opt skip
-///   vectorizing the matmul reduction loop, scalarizing it into ~10x more
-///   program memory and overflowing AIE core memory. Do not remove without
-///   confirming the i8 matmul still fits program memory.
-static std::string downgradeIRForPeano(StringRef ir) {
-  std::string result = ir.str();
-  auto replaceAll = [&](StringRef from, StringRef to) {
-    size_t pos = 0;
-    while ((pos = result.find(from.data(), pos, from.size())) !=
-           std::string::npos) {
-      result.replace(pos, from.size(), to.data(), to.size());
-      pos += to.size();
-    }
-  };
-  // Strip 'nuw' from 'getelementptr inbounds nuw' -> 'getelementptr inbounds':
-  // recent main LLVM infers nuw on geps, which Peano's opt cannot parse.
-  replaceAll("getelementptr inbounds nuw", "getelementptr inbounds");
-  // Recent main LLVM prints special float values as 'inf'/'-inf'/'nan'
-  // keywords; Peano's opt only accepts the hex form. The literals appear
-  // prefixed by their type in initializers (the position we emit), so anchor
-  // the rewrite on the type keyword to pick the correct hex width. Require a
-  // non-identifier char before the keyword so 'float' does not match inside
-  // 'bfloat' (which would corrupt the wider type's already-correct text).
-  auto isIdentChar = [](char c) {
-    return std::isalnum(static_cast<unsigned char>(c)) || c == '_';
-  };
-  auto replaceTypedLiteral = [&](StringRef from, StringRef to) {
-    size_t pos = 0;
-    while ((pos = result.find(from.data(), pos, from.size())) !=
-           std::string::npos) {
-      if (pos == 0 || !isIdentChar(result[pos - 1])) {
-        result.replace(pos, from.size(), to.data(), to.size());
-        pos += to.size();
-      } else {
-        pos += from.size();
-      }
-    }
-  };
-  replaceTypedLiteral("half -inf", "half 0xHFC00");
-  replaceTypedLiteral("half inf", "half 0xH7C00");
-  replaceTypedLiteral("half nan", "half 0xH7E00");
-  replaceTypedLiteral("bfloat -inf", "bfloat 0xRFF80");
-  replaceTypedLiteral("bfloat inf", "bfloat 0xR7F80");
-  replaceTypedLiteral("bfloat nan", "bfloat 0xR7FC0");
-  replaceTypedLiteral("float -inf", "float 0xFFF0000000000000");
-  replaceTypedLiteral("float inf", "float 0x7FF0000000000000");
-  replaceTypedLiteral("float nan", "float 0x7FF8000000000000");
-  replaceTypedLiteral("double -inf", "double 0xFFF0000000000000");
-  replaceTypedLiteral("double inf", "double 0x7FF0000000000000");
-  replaceTypedLiteral("double nan", "double 0x7FF8000000000000");
-  // Bare inf/nan literals in phi instructions: LLVM 23
-  // (llvm/llvm-project@41c214f0b115, 2026-05-07,
-  // https://github.com/llvm/llvm-project/pull/190649) omits the type prefix for
-  // infinity/NaN constants that appear as phi operands, e.g.
-  //   phi float [ %a, %bb ], [ -inf, %entry ]
-  //   phi float [ %x, %bb1 ], [ %y, %bb2 ], [ -inf, %entry ]
-  // Peano's LLVM 21 does not recognise the bare 'inf'/'nan' keywords and
-  // requires the double-widened hex form.
-  // replaceTypedLiteral() is intentionally not used here: it checks that the
-  // character *before* the match is not an identifier char, which would skip
-  // the ", -inf" pattern when the preceding operand ends with an identifier
-  // character (e.g. "%x, -inf"). Instead, check token boundaries around the
-  // bare literal itself: require a non-identifier char before '-'/'i'/'n' and
-  // a non-identifier char after 'f'/'n'.
-  {
-    auto rewriteBareLiteral = [&](StringRef from, StringRef to) {
-      size_t pos = 0;
-      while ((pos = result.find(from.data(), pos, from.size())) !=
-             std::string::npos) {
-        bool okBefore =
-            pos == 0 ||
-            !isIdentChar(static_cast<unsigned char>(result[pos - 1]));
-        size_t after = pos + from.size();
-        bool okAfter = after >= result.size() ||
-                       !isIdentChar(static_cast<unsigned char>(result[after]));
-        if (okBefore && okAfter) {
-          result.replace(pos, from.size(), to.data(), to.size());
-          pos += to.size();
-        } else {
-          pos += from.size();
-        }
-      }
-    };
-    rewriteBareLiteral("-inf", "0xFFF0000000000000");
-    rewriteBareLiteral("inf", "0x7FF0000000000000");
-    rewriteBareLiteral("nan", "0x7FF8000000000000");
-  }
-  // Strip 'nocreateundeforpoison' and any trailing whitespace: current Peano
-  // LLVM cannot parse this attribute.
-  const std::string nocreate = "nocreateundeforpoison";
-  size_t pos = 0;
-  while ((pos = result.find(nocreate, pos)) != std::string::npos) {
-    size_t end = pos + nocreate.size();
-    while (end < result.size() && (result[end] == ' ' || result[end] == '\t'))
-      ++end;
-    result.erase(pos, end - pos);
-  }
-  // Strip ', align <N>' attributes (matches old Python
-  // drop_alignment_for_peano). Retaining align attributes causes Peano's
-  // capped-O1 opt to skip vectorizing the matmul K-loop, scalarizing it into
-  // ~10x more program memory and overflowing AIE core memory.
-  const std::string alignPat = ", align ";
-  pos = 0;
-  while ((pos = result.find(alignPat, pos)) != std::string::npos) {
-    size_t end = pos + alignPat.size();
-    while (end < result.size() && result[end] >= '0' && result[end] <= '9')
-      ++end;
-    if (end > pos + alignPat.size())
-      result.erase(pos, end - pos);
-    else
-      pos = end;
-  }
-  // Rewrite 'f0x<8hex>' typed float literals to the double-widened '0x<16hex>'
-  // form that Peano's LLVM 21 opt can parse.
-  // Introduced by llvm/llvm-project@41c214f0b115 (2026-05-07,
-  // "[AsmWriter] Change the output syntax of floating-point literals.",
-  // https://github.com/llvm/llvm-project/pull/190649): "the hexadecimal
-  // output generally changes to f0x... notation, and is used when 6 decimal
-  // digits are insufficient to accurately represent the number."
-  // Older LLVM (including Peano's LLVM 21) only accepts float constants
-  // widened to double, written as 0x<16 hex digits>.
-  // Only match at token boundaries: the character before 'f' must not be an
-  // identifier character (to avoid matching inside %f0xDEAD or similar), and
-  // the character after the 8 hex digits must not be a hex digit (to avoid
-  // partial matches against longer hex strings).
-  {
-    const std::string f0xPfx = "f0x";
-    pos = 0;
-    while ((pos = result.find(f0xPfx, pos)) != std::string::npos) {
-      // Require a non-identifier, non-sigil character before 'f' to avoid
-      // matching inside LLVM IR value names like '%f0xDEAD' or '@f0xBEEF'.
-      if (pos > 0 && (isIdentChar(result[pos - 1]) || result[pos - 1] == '%' ||
-                      result[pos - 1] == '@')) {
-        pos += f0xPfx.size();
-        continue;
-      }
-      size_t hexStart = pos + f0xPfx.size();
-      size_t hexEnd = hexStart;
-      while (hexEnd < result.size() && hexEnd < hexStart + 8 &&
-             std::isxdigit(static_cast<unsigned char>(result[hexEnd])))
-        ++hexEnd;
-      // Require exactly 8 hex digits followed by a non-hex-digit boundary.
-      bool trailingOk =
-          hexEnd >= result.size() ||
-          !std::isxdigit(static_cast<unsigned char>(result[hexEnd]));
-      if (hexEnd - hexStart == 8 && trailingOk) {
-        // Decode the 32-bit float bit pattern and re-encode as a double so
-        // that Peano's LLVM 21 opt can parse the resulting hex literal.
-        uint32_t fbits = static_cast<uint32_t>(
-            std::stoul(result.substr(hexStart, 8), nullptr, 16));
-        float fval;
-        std::memcpy(&fval, &fbits, sizeof(fval));
-        double dval = static_cast<double>(fval);
-        uint64_t dbits;
-        std::memcpy(&dbits, &dval, sizeof(dval));
-        // Format as "0x" followed by 16 uppercase hex digits.
-        std::string replacement = "0x";
-        for (int shift = 60; shift >= 0; shift -= 4)
-          replacement += "0123456789ABCDEF"[(dbits >> shift) & 0xFu];
-        result.replace(pos, hexEnd - pos, replacement);
-        pos += replacement.size();
-      } else {
-        pos = hexEnd;
-      }
-    }
-  }
-  // Rewrite decimal bfloat16 literals ('bfloat N.NNe+NN') to the hexadecimal
-  // form ('bfloat 0xR<4hex>') that Peano's LLVM 21 opt can parse.
-  // Also introduced by llvm/llvm-project@41c214f0b115 (2026-05-07,
-  // "[AsmWriter] Change the output syntax of floating-point literals.",
-  // https://github.com/llvm/llvm-project/pull/190649): "extends the base
-  // decimal output literal to support non-double types." Peano's LLVM 21 can
-  // only parse bfloat constants in the 0xR-prefixed bit-exact hex form. The
-  // conversion uses round-to-nearest-even so that the encoded bits match the
-  // original bfloat16 constant exactly.
-  {
-    // Match "bfloat" followed by a decimal number (not already 0x-prefixed).
-    const std::string bfPfx = "bfloat ";
-    pos = 0;
-    while ((pos = result.find(bfPfx, pos)) != std::string::npos) {
-      size_t numStart = pos + bfPfx.size();
-      // Skip if this is already a hex constant (0x / 0xR / 0xH …).
-      if (numStart + 1 < result.size() && result[numStart] == '0' &&
-          result[numStart + 1] == 'x') {
-        pos = numStart;
-        continue;
-      }
-      // Collect an optional leading '-' and then digits/dot/exponent chars.
-      size_t numEnd = numStart;
-      if (numEnd < result.size() && result[numEnd] == '-')
-        ++numEnd;
-      // Must start with a digit.
-      if (numEnd >= result.size() ||
-          !std::isdigit(static_cast<unsigned char>(result[numEnd]))) {
-        pos = numStart;
-        continue;
-      }
-      while (numEnd < result.size() &&
-             (std::isdigit(static_cast<unsigned char>(result[numEnd])) ||
-              result[numEnd] == '.' || result[numEnd] == 'e' ||
-              result[numEnd] == 'E' || result[numEnd] == '+' ||
-              result[numEnd] == '-'))
-        ++numEnd;
-      std::string numStr = result.substr(numStart, numEnd - numStart);
-      // Parse as float32 and convert to bfloat16 via round-to-nearest-even.
-      // bfloat16 shares the float32 exponent; its 16 bits are the top 16 bits
-      // of float32 (after RNE rounding).
-      char *endp = nullptr;
-      float fval = std::strtof(numStr.c_str(), &endp);
-      // Require that strtof consumed the *entire* numStr; if it stopped early
-      // (e.g. on an unexpected character) we must not rewrite the token using
-      // a partially-parsed value.
-      if (!endp || endp != numStr.c_str() + numStr.size()) {
-        pos = numEnd;
-        continue;
-      }
-      uint32_t f32bits;
-      std::memcpy(&f32bits, &fval, sizeof(f32bits));
-      // Round-to-nearest-even: add 0x7FFF + the LSB of the bfloat16 position.
-      uint32_t lsb = (f32bits >> 16) & 1u;
-      uint16_t bf16bits =
-          static_cast<uint16_t>((f32bits + 0x7FFFu + lsb) >> 16);
-      // Format as "bfloat 0xR" followed by 4 uppercase hex digits.
-      std::string replacement = "bfloat 0xR";
-      for (int shift = 12; shift >= 0; shift -= 4)
-        replacement += "0123456789ABCDEF"[(bf16bits >> shift) & 0xFu];
-      result.replace(pos, numEnd - pos, replacement);
-      pos += replacement.size();
-    }
-  }
-  // Second pass: rewrite bare decimal bfloat constants that appear without an
-  // explicit type prefix (e.g. 'fmul bfloat %x, 1.445310e+00'). In such
-  // instructions LLVM 23 omits the type keyword before the constant operand;
-  // Peano's LLVM 21 cannot parse the decimal form in this context either.
-  // Strategy: scan line-by-line; for any line whose instruction type is
-  // 'bfloat', convert every bare decimal float operand on that line.
-  {
-    auto convertDecimalBf = [&](uint32_t f32bits) -> std::string {
-      uint32_t lsb = (f32bits >> 16) & 1u;
-      uint16_t bf16bits =
-          static_cast<uint16_t>((f32bits + 0x7FFFu + lsb) >> 16);
-      std::string r = "0xR";
-      for (int sh = 12; sh >= 0; sh -= 4)
-        r += "0123456789ABCDEF"[(bf16bits >> sh) & 0xFu];
-      return r;
-    };
-    // We need to process line-by-line, so work on a copy split into lines.
-    std::string out;
-    out.reserve(result.size());
-    size_t lineStart = 0;
-    while (lineStart <= result.size()) {
-      size_t lineEnd = result.find('\n', lineStart);
-      bool hasNewline = (lineEnd != std::string::npos);
-      if (!hasNewline)
-        lineEnd = result.size();
-      std::string line = result.substr(lineStart, lineEnd - lineStart);
-      // Only process lines where 'bfloat' appears as a type (i.e., the word
-      // 'bfloat' is in the instruction line, not as part of an identifier).
-      // Simple heuristic: look for " bfloat " or " bfloat," or "= bfloat ".
-      bool hasBfloatType = line.find(" bfloat ") != std::string::npos ||
-                           line.find(" bfloat,") != std::string::npos ||
-                           line.find("= bfloat\n") != std::string::npos;
-      if (hasBfloatType) {
-        // Scan for bare decimal float literals: must be preceded by ", " (or
-        // "( ") and start with an optional '-' then a digit.
-        std::string newLine;
-        newLine.reserve(line.size());
-        size_t lp = 0;
-        while (lp < line.size()) {
-          // Look for ", " or "( " before a potential decimal.
-          size_t sep = line.find(", ", lp);
-          size_t paren = line.find("( ", lp);
-          size_t next =
-              (sep < paren ? sep : paren); // take whichever comes first
-          if (next == std::string::npos) {
-            newLine += line.substr(lp);
-            break;
-          }
-          size_t afterSep = next + 2; // skip ", " or "( "
-          newLine += line.substr(lp, afterSep - lp);
-          lp = afterSep;
-          // Try to parse a decimal float starting here.
-          size_t numStart = lp;
-          size_t numEnd = numStart;
-          if (numEnd < line.size() && line[numEnd] == '-')
-            ++numEnd;
-          if (numEnd >= line.size() ||
-              !std::isdigit(static_cast<unsigned char>(line[numEnd]))) {
-            continue; // not a decimal, keep scanning
-          }
-          while (numEnd < line.size() &&
-                 (std::isdigit(static_cast<unsigned char>(line[numEnd])) ||
-                  line[numEnd] == '.' || line[numEnd] == 'e' ||
-                  line[numEnd] == 'E' || line[numEnd] == '+' ||
-                  line[numEnd] == '-'))
-            ++numEnd;
-          std::string numStr = line.substr(numStart, numEnd - numStart);
-          // Skip if it already looks like an integer (no '.', 'e', or 'E').
-          bool isFloat = numStr.find('.') != std::string::npos ||
-                         numStr.find('e') != std::string::npos ||
-                         numStr.find('E') != std::string::npos;
-          if (!isFloat) {
-            newLine += numStr;
-            lp = numEnd;
-            continue;
-          }
-          char *ep = nullptr;
-          float fv = std::strtof(numStr.c_str(), &ep);
-          if (!ep || ep != numStr.c_str() + numStr.size()) {
-            newLine += numStr;
-            lp = numEnd;
-            continue;
-          }
-          uint32_t f32bits;
-          std::memcpy(&f32bits, &fv, sizeof(f32bits));
-          newLine += convertDecimalBf(f32bits);
-          lp = numEnd;
-        }
-        line = std::move(newLine);
-      }
-      out += line;
-      if (hasNewline)
-        out += '\n';
-      lineStart = lineEnd + (hasNewline ? 1 : result.size() + 1);
-    }
-    result = std::move(out);
-  }
-  return result;
-}
-
-/// Read LLVM IR, downgrade it for Peano compatibility, write to output path.
-static LogicalResult applyPeanoCompat(StringRef inputPath,
-                                      StringRef outputPath) {
-  auto bufOrErr = llvm::MemoryBuffer::getFile(inputPath);
-  if (!bufOrErr) {
-    std::lock_guard<std::mutex> lock(outputMutex);
-    llvm::errs() << "Error reading LLVM IR for Peano compatibility: "
-                 << bufOrErr.getError().message() << "\n";
-    return failure();
-  }
-  std::string downgraded = downgradeIRForPeano((*bufOrErr)->getBuffer());
-  std::error_code ec;
-  llvm::raw_fd_ostream out(outputPath, ec);
-  if (ec) {
-    std::lock_guard<std::mutex> lock(outputMutex);
-    llvm::errs() << "Error writing Peano-compatible IR: " << ec.message()
-                 << "\n";
-    return failure();
-  }
-  out << downgraded;
-  return success();
-}
-
-static LogicalResult compileCore(MLIRContext &context, ModuleOp moduleOp,
-                                 StringRef deviceName, const CoreInfo &core,
-                                 StringRef tmpDirName, StringRef aieTarget,
-                                 std::string &outElfPath) {
-
-  if (!compile) {
-    // If we're not compiling, check if elf_file was already provided
-    if (!core.elfFile.empty()) {
-      outElfPath = core.elfFile;
-      return success();
-    }
-    return success(); // Skip compilation
-  }
-
-  // When --no-unified is explicitly set with xchesscc, compile and link are
-  // combined into one step. If --no-link is also set, skip compilation entirely
-  // since xchesscc cannot produce object files without linking in this mode.
-  // Note: This optimization only applies when --no-unified is explicitly
-  // passed, not when unified is just false by default.
-  if (noUnified && xchesscc && !link) {
-    if (verbose) {
-      std::lock_guard<std::mutex> lock(outputMutex);
-      llvm::outs() << "Skipping core (" << core.col << ", " << core.row
-                   << ") compilation: xchesscc requires linking\n";
-    }
-    return success();
-  }
-
-  if (verbose) {
-    std::lock_guard<std::mutex> lock(outputMutex);
-    llvm::outs() << "Compiling core (" << core.col << ", " << core.row << ")\n";
-  }
-
-  // Step 1: Clone module and run LLVM lowering pipeline in-memory
-  // The pipeline is destructive (removes other cores), so we clone first.
-  OwningOpRef<ModuleOp> coreModule = moduleOp.clone();
-
-  // Register LLVM IR translation dialects
-  mlir::registerBuiltinDialectTranslation(context);
-  mlir::registerLLVMDialectTranslation(context);
-  xilinx::xllvm::registerXLLVMDialectTranslation(context);
-
-  if (failed(runLLVMLoweringPipeline(*coreModule, deviceName, core.col,
-                                     core.row, aieTarget, tmpDirName))) {
-    std::lock_guard<std::mutex> lock(outputMutex);
-    llvm::errs() << "Error lowering core to LLVM\n";
-    return failure();
-  }
-
-  // Step 2: Translate to LLVM IR in-memory using translateModuleToLLVMIR
-  SmallString<128> llvmIRPath(tmpDirName);
-  sys::path::append(llvmIRPath, deviceName.str() + "_core_" +
-                                    std::to_string(core.col) + "_" +
-                                    std::to_string(core.row) + ".ll");
-
-  llvm::LLVMContext llvmCtx;
-  std::unique_ptr<llvm::Module> llvmModule =
-      translateModuleToLLVMIR(*coreModule, llvmCtx);
-  if (!llvmModule) {
-    std::lock_guard<std::mutex> lock(outputMutex);
-    llvm::errs() << "Error translating to LLVM IR for core (" << core.col
-                 << ", " << core.row << ")\n";
-    return failure();
-  }
-
-  // Write LLVM IR to file for Peano toolchain
-  {
-    std::error_code ec;
-    raw_fd_ostream llvmIRFile(llvmIRPath, ec);
-    if (ec) {
-      std::lock_guard<std::mutex> lock(outputMutex);
-      llvm::errs() << "Error opening LLVM IR file: " << ec.message() << "\n";
-      return failure();
-    }
-    llvmModule->print(llvmIRFile, nullptr);
-    if (verbose) {
-      std::lock_guard<std::mutex> lock(outputMutex);
-      llvm::outs() << "Generated LLVM IR: " << llvmIRPath << "\n";
-    }
-  }
-
-  // Step 3: Generate linker script (for non-xbridge linking)
-  // Note: BCF is generated later in the linking step when xbridge is enabled
-  SmallString<128> ldScriptPath(tmpDirName);
-  sys::path::append(ldScriptPath, deviceName.str() + "_core_" +
-                                      std::to_string(core.col) + "_" +
-                                      std::to_string(core.row) + ".ld.script");
-
-  if (!xbridge) {
-    // Clone the pre-lowering module for ldscript generation.  We need a
-    // separate clone here because coreModule will be destructively lowered to
-    // LLVM IR by runLLVMLoweringPipeline below, making it unsuitable for
-    // AIETranslateToLdScript.  We also cannot mutate the shared moduleOp
-    // (data race with parallel core threads), so this per-thread clone is the
-    // correct place to rewrite link_files to absolute paths.
-    OwningOpRef<ModuleOp> ldScriptModule = moduleOp.clone();
-    ldScriptModule->walk([&](xilinx::AIE::CoreOp coreOp) {
-      auto tileOp =
-          dyn_cast<xilinx::AIE::TileOp>(coreOp.getTile().getDefiningOp());
-      if (!tileOp || tileOp.getCol() != core.col || tileOp.getRow() != core.row)
-        return;
-      if (auto filesAttr = coreOp.getLinkFiles()) {
-        SmallVector<mlir::Attribute> absFiles;
-        for (auto f : filesAttr->getAsRange<mlir::StringAttr>()) {
-          SmallString<256> absPath(tmpDirName);
-          sys::path::append(absPath, sys::path::filename(f.getValue()));
-          absFiles.push_back(
-              mlir::StringAttr::get(ldScriptModule->getContext(), absPath));
-        }
-        coreOp.setLinkFilesAttr(
-            mlir::ArrayAttr::get(ldScriptModule->getContext(), absFiles));
-      }
-    });
-
-    // Generate linker script from the pre-lowering clone with absolute paths.
-    std::error_code ec;
-    raw_fd_ostream ldScriptFile(ldScriptPath, ec);
-    if (ec) {
-      std::lock_guard<std::mutex> lock(outputMutex);
-      llvm::errs() << "Error opening linker script file: " << ec.message()
-                   << "\n";
-      return failure();
-    }
-
-    if (failed(xilinx::AIE::AIETranslateToLdScript(
-            *ldScriptModule, ldScriptFile, core.col, core.row, deviceName))) {
-      std::lock_guard<std::mutex> lock(outputMutex);
-      llvm::errs() << "Error generating linker script\n";
-      return failure();
-    }
-
-    if (verbose) {
-      std::lock_guard<std::mutex> lock(outputMutex);
-      llvm::outs() << "Generated linker script: " << ldScriptPath << "\n";
-    }
-  }
-
-  // Step 4: Compile LLVM IR to object file
-  SmallString<128> objPath(tmpDirName);
-  sys::path::append(objPath, deviceName.str() + "_core_" +
-                                 std::to_string(core.col) + "_" +
-                                 std::to_string(core.row) + ".o");
-
-  if (xchesscc) {
-    // xchesscc compilation: IR downgrade -> chess-llvm-link -> xchesscc_wrapper
-
-    // Step 4a: Read LLVM IR and apply downgrade for Chess compatibility
-    auto bufOrErr = MemoryBuffer::getFile(llvmIRPath);
-    if (!bufOrErr) {
-      std::lock_guard<std::mutex> lock(outputMutex);
-      llvm::errs() << "Error reading LLVM IR file: "
-                   << bufOrErr.getError().message() << "\n";
-      return failure();
-    }
-    std::string downgradedIR = downgradeIRForChess((*bufOrErr)->getBuffer());
-
-    // Write downgraded IR to .chess-compat.ll
-    SmallString<128> chessCompatPath(tmpDirName);
-    sys::path::append(chessCompatPath,
-                      deviceName.str() + "_core_" + std::to_string(core.col) +
-                          "_" + std::to_string(core.row) + ".chess-compat.ll");
-    {
-      std::error_code ec;
-      raw_fd_ostream chessCompatFile(chessCompatPath, ec);
-      if (ec) {
-        std::lock_guard<std::mutex> lock(outputMutex);
-        llvm::errs() << "Error writing chess-compat file: " << ec.message()
-                     << "\n";
-        return failure();
-      }
-      chessCompatFile << downgradedIR;
-    }
-
-    if (verbose) {
-      std::lock_guard<std::mutex> lock(outputMutex);
-      llvm::outs() << "Applied IR downgrade for Chess: " << chessCompatPath
-                   << "\n";
-    }
-
-    // Step 4b: Run chess-llvm-link to link with intrinsic wrapper
-    SmallString<128> chessLinkedPath(tmpDirName);
-    sys::path::append(chessLinkedPath,
-                      deviceName.str() + "_core_" + std::to_string(core.col) +
-                          "_" + std::to_string(core.row) + ".chesslinked.ll");
-
-    std::string linkedResult = runChessLlvmLink(
-        chessCompatPath, chessLinkedPath, aieTarget, tmpDirName);
-    if (linkedResult.empty()) {
-      return failure();
-    }
-
-    if (verbose) {
-      std::lock_guard<std::mutex> lock(outputMutex);
-      llvm::outs() << "Linked with chess intrinsic wrapper: " << chessLinkedPath
-                   << "\n";
-    }
-
-    // Step 4c: Compile with xchesscc_wrapper
-    // Find xchesscc_wrapper in PATH
-    auto xchessccWrapperPath = sys::findProgramByName("xchesscc_wrapper");
-    if (!xchessccWrapperPath) {
-      std::lock_guard<std::mutex> lock(outputMutex);
-      llvm::errs() << "Error: Could not find xchesscc_wrapper in PATH\n";
-      return failure();
-    }
-
-    SmallString<128> workDir(tmpDirName);
-    sys::path::append(workDir, "work");
-
-    // xchesscc_wrapper <target> +w <work> -c -d +Wclang,-xir -f <input.ll> -o
-    // <output.o>
-    std::string aieTargetLower = aieTarget.lower();
-    SmallVector<std::string, 16> xchessCmd = {*xchessccWrapperPath,
-                                              aieTargetLower,
-                                              "+w",
-                                              std::string(workDir),
-                                              "-c",
-                                              "-d",
-                                              "+Wclang,-xir",
-                                              "-f",
-                                              std::string(chessLinkedPath),
-                                              "-o",
-                                              std::string(objPath)};
-
-    if (!executeCommand(xchessCmd)) {
-      std::lock_guard<std::mutex> lock(outputMutex);
-      llvm::errs() << "Error running xchesscc_wrapper\n";
-      return failure();
-    }
-
-    if (verbose) {
-      std::lock_guard<std::mutex> lock(outputMutex);
-      llvm::outs() << "Compiled with xchesscc: " << objPath << "\n";
-    }
-  } else {
-    // Use Peano toolchain
-    std::string peanoOpt = findPeanoTool("opt");
-    std::string peanoLlc = findPeanoTool("llc");
-
-    if (peanoOpt.empty() || peanoLlc.empty()) {
-      std::lock_guard<std::mutex> lock(outputMutex);
-      llvm::errs() << "Error: Could not find Peano compiler tools (opt/llc)\n";
-      llvm::errs() << "Set PEANO_INSTALL_DIR or use --peano option\n";
-      return failure();
-    }
-
-    // Downgrade IR for Peano compatibility
-    SmallString<128> peanoCompatPath(tmpDirName);
-    sys::path::append(peanoCompatPath,
-                      deviceName.str() + "_core_" + std::to_string(core.col) +
-                          "_" + std::to_string(core.row) + ".peano-compat.ll");
-    if (failed(applyPeanoCompat(llvmIRPath, peanoCompatPath)))
-      return failure();
-
-    // Run opt on Peano-compatible IR.
-    // Cap opt level at O1 for Peano to match old Python aiecc behavior.
-    // Higher levels cause SLP vectorizer to create types that crash GlobalISel.
-    SmallString<128> optPath(tmpDirName);
-    sys::path::append(optPath, deviceName.str() + "_core_" +
-                                   std::to_string(core.col) + "_" +
-                                   std::to_string(core.row) + ".opt.ll");
-
-    unsigned safeOptLevel = optLevel > 1 ? 1 : optLevel;
-    std::string optLevelStr = std::to_string(optLevel);
-    SmallVector<std::string, 12> optCmd = {
-        peanoOpt,
-        "--passes=default<O" + std::to_string(safeOptLevel) + ">",
-        "-inline-threshold=10",
-        "-S",
-        std::string(peanoCompatPath),
-        "-o",
-        std::string(optPath)};
-
-    if (optLevel >= 3) {
-      optCmd.insert(optCmd.begin() + 1, "-disable-loop-idiom-memset");
-    }
-
-    if (!executeCommand(optCmd)) {
-      std::lock_guard<std::mutex> lock(outputMutex);
-      llvm::errs() << "Error running Peano opt\n";
-      return failure();
-    }
-
-    // Run llc
-    SmallVector<std::string, 10> llcCmd = {peanoLlc,
-                                           std::string(optPath),
-                                           "-O" + optLevelStr,
-                                           "--march=" + aieTarget.lower(),
-                                           "--function-sections",
-                                           "--filetype=obj",
-                                           "-o",
-                                           std::string(objPath)};
-
-    if (!executeCommand(llcCmd)) {
-      std::lock_guard<std::mutex> lock(outputMutex);
-      llvm::errs() << "Error running Peano llc\n";
-      return failure();
-    }
-  }
-
-  // Step 5: Link to ELF
-  if (!link) {
-    outElfPath = std::string(objPath);
-    return success();
-  }
-
-  // When elf_file is already set in the MLIR (e.g., elf_file =
-  // "custom_1_3.elf"), use that path as the output ELF. This matches the Python
-  // driver's behavior:
-  //   file_core_elf = elf_file if elf_file else corefile(...)
-  // The test flow compiles the core body to that path, then the test's RUN step
-  // overwrites it with the actual kernel. The aiesim artifacts reference this
-  // path, so they must point to the same file the test populates.
-  SmallString<128> elfPath;
-  if (!core.elfFile.empty()) {
-    elfPath = core.elfFile;
-  } else {
-    elfPath = tmpDirName;
-    sys::path::append(elfPath, deviceName.str() + "_core_" +
-                                   std::to_string(core.col) + "_" +
-                                   std::to_string(core.row) + ".elf");
-  }
-
-  // Make the ELF path absolute so CDO generation can find it
-  SmallString<256> absElfPath;
-  std::error_code ec = sys::fs::real_path(elfPath, absElfPath);
-  if (ec) {
-    // If real_path fails (file doesn't exist yet), make it absolute manually
-    if (sys::path::is_absolute(elfPath)) {
-      absElfPath = elfPath;
-    } else {
-      sys::fs::current_path(absElfPath);
-      sys::path::append(absElfPath, elfPath);
-      sys::path::remove_dots(absElfPath, /*remove_dot_dot=*/true);
-    }
-  }
-  elfPath = absElfPath;
-
-  if (xbridge) {
-    // xbridge linking: generate BCF, extract link_with, link with
-    // xchesscc_wrapper. Note: xbridge only supports xchesscc-compiled objects;
-    // Peano-compiled objects must use the Peano linker path (--no-xbridge).
-
-    // Generate BCF file
-    SmallString<128> bcfPath(tmpDirName);
-    sys::path::append(bcfPath, deviceName.str() + "_core_" +
-                                   std::to_string(core.col) + "_" +
-                                   std::to_string(core.row) + ".bcf");
-
-    {
-      std::error_code ec;
-      raw_fd_ostream bcfFile(bcfPath, ec);
-      if (ec) {
-        std::lock_guard<std::mutex> lock(outputMutex);
-        llvm::errs() << "Error opening BCF file: " << ec.message() << "\n";
-        return failure();
-      }
-
-      if (failed(xilinx::AIE::AIETranslateToBCF(moduleOp, bcfFile, core.col,
-                                                core.row, deviceName))) {
-        std::lock_guard<std::mutex> lock(outputMutex);
-        llvm::errs() << "Error generating BCF file\n";
-        return failure();
-      }
-    }
-
-    if (verbose) {
-      std::lock_guard<std::mutex> lock(outputMutex);
-      llvm::outs() << "Generated BCF: " << bcfPath << "\n";
-    }
-
-    // Extract external object files listed in the BCF's _include _file
-    // directives. Search order: current working directory, then tmpDirName (JIT
-    // cache), then the directory containing the input MLIR file.
-    std::vector<std::string> linkWithFiles = extractInputFilesFromBCF(bcfPath);
-    std::string linkWithArgs;
-    for (const auto &linkWithFile : linkWithFiles) {
-      SmallString<256> srcPath;
-      if (sys::path::is_absolute(linkWithFile)) {
-        srcPath = linkWithFile;
-      } else {
-        // First try current working directory
-        SmallString<256> cwdPath;
-        sys::fs::current_path(cwdPath);
-        sys::path::append(cwdPath, linkWithFile);
-        if (sys::fs::exists(cwdPath)) {
-          srcPath = cwdPath;
-        } else {
-          // Try tmpDirName (used in JIT where .o is pre-compiled there)
-          SmallString<256> tmpPath(tmpDirName);
-          sys::path::append(tmpPath, linkWithFile);
-          if (sys::fs::exists(tmpPath)) {
-            srcPath = tmpPath;
-          } else {
-            // Fall back to input file directory
-            SmallString<256> inputDir =
-                sys::path::parent_path(getInputFilename());
-            if (inputDir.empty()) {
-              sys::fs::current_path(inputDir);
-            }
-            srcPath = inputDir;
-            sys::path::append(srcPath, linkWithFile);
-            sys::path::remove_dots(srcPath, /*remove_dot_dot=*/true);
-          }
-        }
-      }
-
-      // Copy to .prj directory atomically to avoid races between parallel
-      // cores.
-      SmallString<256> destPath(tmpDirName);
-      sys::path::append(destPath, sys::path::filename(linkWithFile));
-      if (srcPath != destPath) {
-        if (failed(atomicCopyFile(srcPath, tmpDirName,
-                                  sys::path::filename(linkWithFile))))
-          return failure();
-
-        if (verbose) {
-          std::lock_guard<std::mutex> lock(outputMutex);
-          llvm::outs() << "Copied external object: " << srcPath << " -> "
-                       << destPath << "\n";
-        }
-      }
-
-      if (!linkWithArgs.empty()) {
-        linkWithArgs += " ";
-      }
-      linkWithArgs += std::string(destPath);
-    }
-
-    // Find xchesscc_wrapper
-    auto xchessccWrapperPath = sys::findProgramByName("xchesscc_wrapper");
-    if (!xchessccWrapperPath) {
-      std::lock_guard<std::mutex> lock(outputMutex);
-      llvm::errs() << "Error: Could not find xchesscc_wrapper in PATH for "
-                      "xbridge linking\n";
-      return failure();
-    }
-
-    SmallString<128> workDir(tmpDirName);
-    sys::path::append(workDir, "work");
-
-    // Link: xchesscc_wrapper <target> +w <work> -d -f <obj> [link_with_files]
-    // +l <bcf> -o <elf>
-    std::string aieTargetLower = aieTarget.lower();
-    SmallVector<std::string, 20> linkCmd = {
-        *xchessccWrapperPath, aieTargetLower, "+w",
-        std::string(workDir), "-d",           "-f",
-        std::string(objPath)};
-
-    // Append external object files (previously copied to tmpDirName) to the
-    // xchesscc_wrapper link command.
-    for (const auto &linkWithFile : linkWithFiles) {
-      SmallString<256> localPath(tmpDirName);
-      sys::path::append(localPath, sys::path::filename(linkWithFile));
-      linkCmd.push_back(std::string(localPath));
-    }
-
-    linkCmd.push_back("+l");
-    linkCmd.push_back(std::string(bcfPath));
-    linkCmd.push_back("-o");
-    linkCmd.push_back(std::string(elfPath));
-
-    if (!executeCommand(linkCmd)) {
-      std::lock_guard<std::mutex> lock(outputMutex);
-      llvm::errs() << "Error linking with xbridge\n";
-      return failure();
-    }
-
-    if (verbose) {
-      std::lock_guard<std::mutex> lock(outputMutex);
-      llvm::outs() << "Linked with xbridge: " << elfPath << "\n";
-    }
-  } else {
-    // Link with Peano clang
-    std::string peanoClang = findPeanoTool("clang");
-    if (peanoClang.empty()) {
-      std::lock_guard<std::mutex> lock(outputMutex);
-      llvm::errs() << "Error: Could not find Peano clang\n";
-      return failure();
-    }
-
-    std::string peanoTarget = getPeanoTarget(aieTarget);
-    std::string optLevelStr = std::to_string(optLevel);
-
-    // Get Peano bin directory for the linker
-    StringRef peanoDir = getPeanoInstallDir();
-    SmallString<128> peanoBinDir;
-    if (!peanoDir.empty()) {
-      peanoBinDir = peanoDir;
-      sys::path::append(peanoBinDir, "bin");
-    } else {
-      // Infer from clang path
-      peanoBinDir = sys::path::parent_path(peanoClang);
-    }
-
-    // Find Peano's lld linker explicitly
-    SmallString<256> peanoLld(peanoBinDir);
-    sys::path::append(peanoLld, "ld.lld");
-
-    SmallVector<std::string, 20> linkCmd = {peanoClang, "-O" + optLevelStr,
-                                            "--target=" + peanoTarget};
-
-    // Explicitly specify Peano's lld linker to avoid using system ld
-    if (sys::fs::can_execute(peanoLld)) {
-      linkCmd.push_back("-fuse-ld=" + std::string(peanoLld));
-    } else {
-      // Fallback: try to use lld from Peano bin via -B
-      linkCmd.push_back("-B" + std::string(peanoBinDir));
-      linkCmd.push_back("-fuse-ld=lld");
-    }
-
-    linkCmd.push_back(std::string(objPath));
-
-    // Handle external object files specified via link_files (or deprecated
-    // link_with).  The linker script generated by aie-translate will include an
-    // INPUT() directive for each file, but uses a relative path.  We copy every
-    // file to the .prj directory so the linker can find them.
-    for (const auto &lf : core.linkFiles) {
-      SmallString<256> srcLinkWith;
-      if (sys::path::is_absolute(lf)) {
-        srcLinkWith = lf;
-      } else {
-        // First try current working directory
-        SmallString<256> cwdPath;
-        sys::fs::current_path(cwdPath);
-        sys::path::append(cwdPath, lf);
-        if (sys::fs::exists(cwdPath)) {
-          srcLinkWith = cwdPath;
-        } else {
-          // Try tmpDirName (used in JIT where .o is pre-compiled there)
-          SmallString<256> tmpPath(tmpDirName);
-          sys::path::append(tmpPath, lf);
-          if (sys::fs::exists(tmpPath)) {
-            srcLinkWith = tmpPath;
-          } else {
-            // Fall back to input file directory
-            SmallString<256> inputDir =
-                sys::path::parent_path(getInputFilename());
-            if (inputDir.empty()) {
-              sys::fs::current_path(inputDir);
-            }
-            srcLinkWith = inputDir;
-            sys::path::append(srcLinkWith, lf);
-            sys::path::remove_dots(srcLinkWith, /*remove_dot_dot=*/true);
-          }
-        }
-      }
-
-      // Copy the object file to the .prj directory so the linker script's
-      // INPUT() directive can find it. Copy atomically to avoid races between
-      // parallel cores that share the same .o filename.
-      SmallString<256> destLinkWith(tmpDirName);
-      sys::path::append(destLinkWith, sys::path::filename(lf));
-      if (srcLinkWith != destLinkWith) {
-        if (failed(atomicCopyFile(srcLinkWith, tmpDirName,
-                                  sys::path::filename(lf))))
-          return failure();
-
-        if (verbose) {
-          std::lock_guard<std::mutex> lock(outputMutex);
-          llvm::outs() << "Copied external object: " << srcLinkWith << " -> "
-                       << destLinkWith << "\n";
-        }
-      } else if (verbose) {
-        std::lock_guard<std::mutex> lock(outputMutex);
-        llvm::outs() << "External object already in place: " << srcLinkWith
-                     << "\n";
-      }
-
-      // Note: We don't add the object file to linkCmd because the linker
-      // script already has INPUT() directives for each file
-    }
-
-    // Make linker script path absolute
-    SmallString<128> absLdScriptPath;
-    if (sys::path::is_absolute(ldScriptPath)) {
-      absLdScriptPath = ldScriptPath;
-    } else {
-      std::error_code ec = sys::fs::real_path(ldScriptPath, absLdScriptPath);
-      if (ec) {
-        sys::fs::current_path(absLdScriptPath);
-        sys::path::append(absLdScriptPath, ldScriptPath);
-      }
-    }
-
-    linkCmd.push_back("-Wl,--gc-sections");
-    linkCmd.push_back("-Wl,--orphan-handling=error");
-    linkCmd.push_back("-Wl,-T," + std::string(absLdScriptPath));
-
-    linkCmd.push_back("-o");
-    linkCmd.push_back(std::string(elfPath));
-
-    if (!executeCommand(linkCmd)) {
-      std::lock_guard<std::mutex> lock(outputMutex);
-      llvm::errs() << "Error linking ELF file\n";
-      return failure();
-    }
-  }
-
-  outElfPath = std::string(elfPath);
-  if (verbose) {
-    std::lock_guard<std::mutex> lock(outputMutex);
-    llvm::outs() << "Generated ELF: " << outElfPath << "\n";
-  }
-
-  return success();
-}
-
-/// Compile all cores in a device, optionally in parallel.
-/// When numThreads > 1, cores are compiled in parallel using DefaultThreadPool.
-/// Each parallel task gets its own MLIRContext to avoid threading issues.
-static LogicalResult
-compileCores(MLIRContext &context, ModuleOp moduleOp, Operation *deviceOp,
-             StringRef deviceName, StringRef tmpDirName, StringRef aieTarget,
-             std::map<std::pair<int, int>, std::string> &elfPaths) {
-
-  SmallVector<CoreInfo> cores;
-  deviceOp->walk([&](xilinx::AIE::CoreOp coreOp) {
-    if (coreNeedsCompilation(coreOp))
-      cores.push_back(getCoreInfo(coreOp));
-  });
-
-  if (cores.empty()) {
-    if (verbose) {
-      llvm::outs() << "No cores to compile in device " << deviceName << "\n";
-    }
-    return success();
-  }
-
-  // Determine number of threads to use
-  unsigned nThreads = numThreads;
-  if (nThreads == 0) {
-    nThreads = std::thread::hardware_concurrency();
-    if (nThreads == 0) {
-      nThreads = 4; // Reasonable default if hardware_concurrency() fails
-    }
-  }
-
-  // Cap threads at number of cores
-  nThreads = std::min(nThreads, static_cast<unsigned>(cores.size()));
-
-  if (verbose) {
-    if (nThreads > 1) {
-      llvm::outs() << "Compiling " << cores.size() << " core(s) in parallel ("
-                   << nThreads << " threads)\n";
-    } else {
-      llvm::outs() << "Compiling " << cores.size() << " core(s) sequentially\n";
-    }
-  }
-
-  // Sequential compilation (default, nThreads == 1)
-  if (nThreads <= 1) {
-    for (const auto &core : cores) {
-      std::string elfPath;
-      if (failed(compileCore(context, moduleOp, deviceName, core, tmpDirName,
-                             aieTarget, elfPath))) {
-        return failure();
-      }
-
-      if (!elfPath.empty()) {
-        elfPaths[{core.col, core.row}] = elfPath;
-      }
-    }
-    return success();
-  }
-
-  // Parallel compilation using DefaultThreadPool
-  // We need to serialize the module to string and deserialize in each thread
-  // because MLIRContext is not thread-safe for multi-threaded mutation.
-
-  // Each parallel worker re-parses the module in its own MLIRContext and the
-  // per-core lowering then keeps only its own core, discarding everything else.
-  // Serializing the whole multi-core, multi-device module once and handing that
-  // same string to every worker is O(N) memory per worker for an N-core device,
-  // and the string also carries the runtime sequences, which the per-core
-  // lowering never touches but which dominate the module text once the host DMA
-  // program is unrolled (tens of thousands of dma_bd ops). For large designs
-  // the peak memory and the repeated full-module clones become the dominant
-  // cost.
-  //
-  // Instead, build a stripped base module once, then derive a small per-core
-  // slice from it. The stripped base drops (a) the runtime sequences (host-side
-  // DMA orchestration, unused by per-core lowering) and (b) every other device
-  // (a core only references its own device's tiles/buffers/locks/objectfifos).
-  // Each per-core slice clones that small base and erases the other cores.
-  // Cloning the stripped base instead of the full module makes the per-core
-  // clones cheap, and the resulting slice strings are byte-identical to the old
-  // path, so the emitted object/ELF is unchanged. Slicing runs here (serial,
-  // one clone live at a time, so peak memory stays bounded) before the parallel
-  // fan-out.
-  OwningOpRef<ModuleOp> strippedBase = moduleOp.clone();
-  {
-    // Strip the runtime sequences (host-side, unused by per-core lowering)...
-    SmallVector<xilinx::AIE::RuntimeSequenceOp> seqs;
-    strippedBase->walk(
-        [&](xilinx::AIE::RuntimeSequenceOp s) { seqs.push_back(s); });
-    for (auto s : seqs)
-      s.erase();
-    // ...and every other device. compileCores is per-device and a per-core
-    // object only references its own device's tiles/buffers/locks/objectfifos,
-    // never a sibling device, so dropping the other device shells shrinks each
-    // per-core slice further without changing the emitted object/ELF.
-    SmallVector<xilinx::AIE::DeviceOp> otherDevices;
-    strippedBase->walk([&](xilinx::AIE::DeviceOp d) {
-      if (d.getSymName() != deviceName)
-        otherDevices.push_back(d);
-    });
-    for (auto d : otherDevices)
-      d.erase();
-  }
-  std::map<std::pair<int, int>, std::string> coreModuleStrs;
-  for (const auto &core : cores) {
-    OwningOpRef<ModuleOp> slice = strippedBase->clone();
-    SmallVector<xilinx::AIE::CoreOp> otherCores;
-    slice->walk([&](xilinx::AIE::CoreOp c) {
-      auto t = dyn_cast<xilinx::AIE::TileOp>(c.getTile().getDefiningOp());
-      if (!t || t.getCol() != core.col || t.getRow() != core.row)
-        otherCores.push_back(c);
-    });
-    for (auto c : otherCores)
-      c.erase();
-    std::string s;
-    {
-      llvm::raw_string_ostream os(s);
-      slice->print(os);
-    }
-    coreModuleStrs[{core.col, core.row}] = std::move(s);
-  }
-
-  // Get the dialect registry to use for parallel contexts
-  DialectRegistry registry;
-  mlir::registerAllDialects(registry);
-  xilinx::registerAllDialects(registry);
-  mlir::registerAllExtensions(registry);
-
-  std::mutex resultsMutex;
-  std::atomic<bool> hasFailure{false};
-
-  llvm::DefaultThreadPool pool(llvm::hardware_concurrency(nThreads));
-
-  for (const auto &core : cores) {
-    pool.async([&registry, &coreModuleStrs, deviceName = deviceName.str(),
-                tmpDirName = tmpDirName.str(), aieTarget = aieTarget.str(),
-                core, &resultsMutex, &elfPaths, &hasFailure]() {
-      if (hasFailure.load())
-        return;
-
-      MLIRContext threadContext;
-      threadContext.appendDialectRegistry(registry);
-      threadContext.loadAllAvailableDialects();
-      mlir::registerBuiltinDialectTranslation(threadContext);
-      mlir::registerLLVMDialectTranslation(threadContext);
-      xilinx::xllvm::registerXLLVMDialectTranslation(threadContext);
-
-      ParserConfig parseConfig(&threadContext);
-      OwningOpRef<ModuleOp> threadModule = parseSourceString<ModuleOp>(
-          coreModuleStrs.at({core.col, core.row}), parseConfig);
-
-      if (!threadModule) {
-        std::lock_guard<std::mutex> lock(resultsMutex);
-        llvm::errs() << "Error: Failed to parse module for core (" << core.col
-                     << ", " << core.row << ")\n";
-        hasFailure.store(true);
-        return;
-      }
-
-      std::string elfPath;
-      if (failed(compileCore(threadContext, *threadModule, deviceName, core,
-                             tmpDirName, aieTarget, elfPath))) {
-        hasFailure.store(true);
-        return;
-      }
-
-      if (!elfPath.empty()) {
-        std::lock_guard<std::mutex> lock(resultsMutex);
-        elfPaths[{core.col, core.row}] = elfPath;
-      }
-    });
-  }
-
-  pool.wait();
-
-  if (hasFailure.load())
-    return failure();
-
-  return success();
-}
-
-/// Compile all cores using unified compilation mode.
-/// In unified mode:
-/// 1. All cores are lowered together to a single LLVM IR file
-/// 2. That IR is compiled to a single object file
-/// 3. Each core is linked separately using its own linker script/BCF
-/// This can be faster than per-core compilation when cores share code.
-static LogicalResult
-compileCoresUnified(MLIRContext &context, ModuleOp moduleOp,
-                    Operation *deviceOp, StringRef deviceName,
-                    StringRef tmpDirName, StringRef aieTarget,
-                    std::map<std::pair<int, int>, std::string> &elfPaths) {
-
-  SmallVector<CoreInfo> cores;
-  deviceOp->walk([&](xilinx::AIE::CoreOp coreOp) {
-    if (coreNeedsCompilation(coreOp))
-      cores.push_back(getCoreInfo(coreOp));
-  });
-
-  if (cores.empty()) {
-    if (verbose) {
-      llvm::outs() << "No cores to compile in device " << deviceName << "\n";
-    }
-    return success();
-  }
-
-  if (!compile) {
-    // If we're not compiling, just collect existing ELF paths
-    for (const auto &core : cores) {
-      if (!core.elfFile.empty()) {
-        elfPaths[{core.col, core.row}] = core.elfFile;
-      }
-    }
-    return success();
-  }
-
-  if (verbose) {
-    llvm::outs() << "Compiling " << cores.size()
-                 << " core(s) using unified compilation\n";
-  }
-
-  // Step 1: Clone module and run unified LLVM lowering pipeline
-  OwningOpRef<ModuleOp> unifiedModule = moduleOp.clone();
-
-  // Register LLVM IR translation dialects
-  mlir::registerBuiltinDialectTranslation(context);
-  mlir::registerLLVMDialectTranslation(context);
-  xilinx::xllvm::registerXLLVMDialectTranslation(context);
-
-  if (failed(runUnifiedLLVMLoweringPipeline(*unifiedModule, deviceName,
-                                            aieTarget, tmpDirName))) {
-    llvm::errs() << "Error: Unified LLVM lowering failed\n";
-    return failure();
-  }
-
-  // Step 2: Translate to LLVM IR
-  SmallString<128> llvmIRPath(tmpDirName);
-  sys::path::append(llvmIRPath, deviceName.str() + "_input.ll");
-
-  llvm::LLVMContext llvmCtx;
-  std::unique_ptr<llvm::Module> llvmModule =
-      translateModuleToLLVMIR(*unifiedModule, llvmCtx);
-  if (!llvmModule) {
-    llvm::errs() << "Error translating unified module to LLVM IR\n";
-    return failure();
-  }
-
-  // Write LLVM IR to file
-  {
-    std::error_code ec;
-    raw_fd_ostream llvmIRFile(llvmIRPath, ec);
-    if (ec) {
-      llvm::errs() << "Error opening unified LLVM IR file: " << ec.message()
-                   << "\n";
-      return failure();
-    }
-    llvmModule->print(llvmIRFile, nullptr);
-    if (verbose) {
-      llvm::outs() << "Generated unified LLVM IR: " << llvmIRPath << "\n";
-    }
-  }
-
-  // Step 3: Compile to single object file
-  SmallString<128> objPath(tmpDirName);
-  sys::path::append(objPath, deviceName.str() + "_input.o");
-
-  if (xchesscc) {
-    // xchesscc compilation
-    auto bufOrErr = MemoryBuffer::getFile(llvmIRPath);
-    if (!bufOrErr) {
-      llvm::errs() << "Error reading unified LLVM IR: "
-                   << bufOrErr.getError().message() << "\n";
-      return failure();
-    }
-    std::string downgradedIR = downgradeIRForChess((*bufOrErr)->getBuffer());
-
-    SmallString<128> chessCompatPath(tmpDirName);
-    sys::path::append(chessCompatPath,
-                      deviceName.str() + "_input.chess-compat.ll");
-    {
-      std::error_code ec;
-      raw_fd_ostream chessCompatFile(chessCompatPath, ec);
-      if (ec) {
-        llvm::errs() << "Error writing chess-compat file: " << ec.message()
-                     << "\n";
-        return failure();
-      }
-      chessCompatFile << downgradedIR;
-    }
-
-    SmallString<128> chessLinkedPath(tmpDirName);
-    sys::path::append(chessLinkedPath,
-                      deviceName.str() + "_input.chesslinked.ll");
-
-    std::string linkedResult = runChessLlvmLink(
-        chessCompatPath, chessLinkedPath, aieTarget, tmpDirName);
-    if (linkedResult.empty()) {
-      return failure();
-    }
-
-    auto xchessccWrapperPath = sys::findProgramByName("xchesscc_wrapper");
-    if (!xchessccWrapperPath) {
-      llvm::errs() << "Error: Could not find xchesscc_wrapper in PATH\n";
-      return failure();
-    }
-
-    SmallString<128> workDir(tmpDirName);
-    sys::path::append(workDir, "work");
-
-    std::string aieTargetLower = aieTarget.lower();
-    SmallVector<std::string, 16> xchessCmd = {*xchessccWrapperPath,
-                                              aieTargetLower,
-                                              "+w",
-                                              std::string(workDir),
-                                              "-c",
-                                              "-d",
-                                              "+Wclang,-xir",
-                                              "-f",
-                                              std::string(chessLinkedPath),
-                                              "-o",
-                                              std::string(objPath)};
-
-    if (!executeCommand(xchessCmd)) {
-      llvm::errs()
-          << "Error running xchesscc_wrapper for unified compilation\n";
-      return failure();
-    }
-
-    if (verbose) {
-      llvm::outs() << "Compiled unified object with xchesscc: " << objPath
-                   << "\n";
-    }
-  } else {
-    // Peano compilation
-    std::string peanoOpt = findPeanoTool("opt");
-    std::string peanoLlc = findPeanoTool("llc");
-
-    if (peanoOpt.empty() || peanoLlc.empty()) {
-      llvm::errs() << "Error: Could not find Peano compiler tools\n";
-      return failure();
-    }
-
-    // Downgrade IR for Peano compatibility
-    SmallString<128> peanoCompatPath(tmpDirName);
-    sys::path::append(peanoCompatPath,
-                      deviceName.str() + "_input.peano-compat.ll");
-    if (failed(applyPeanoCompat(llvmIRPath, peanoCompatPath)))
-      return failure();
-
-    // Run opt (cap at O1 to match old Python aiecc, prevent SLP vectorizer
-    // crashes)
-    SmallString<128> optPath(tmpDirName);
-    sys::path::append(optPath, deviceName.str() + "_input.opt.ll");
-
-    unsigned safeOptLevel = optLevel > 1 ? 1 : optLevel;
-    std::string optLevelStr = std::to_string(optLevel);
-    SmallVector<std::string, 12> optCmd = {
-        peanoOpt,
-        "--passes=default<O" + std::to_string(safeOptLevel) + ">",
-        "-inline-threshold=10",
-        "-S",
-        std::string(peanoCompatPath),
-        "-o",
-        std::string(optPath)};
-
-    if (optLevel >= 3) {
-      optCmd.insert(optCmd.begin() + 1, "-disable-loop-idiom-memset");
-    }
-
-    if (!executeCommand(optCmd)) {
-      llvm::errs() << "Error running Peano opt for unified compilation\n";
-      return failure();
-    }
-
-    // Run llc
-    SmallVector<std::string, 10> llcCmd = {peanoLlc,
-                                           std::string(optPath),
-                                           "-O" + optLevelStr,
-                                           "--march=" + aieTarget.lower(),
-                                           "--function-sections",
-                                           "--filetype=obj",
-                                           "-o",
-                                           std::string(objPath)};
-
-    if (!executeCommand(llcCmd)) {
-      llvm::errs() << "Error running Peano llc for unified compilation\n";
-      return failure();
-    }
-
-    if (verbose) {
-      llvm::outs() << "Compiled unified object with Peano: " << objPath << "\n";
-    }
-  }
-
-  // Step 4: Link each core separately using the shared object file
-  if (!link) {
-    // If not linking, just return the object path for all cores
-    for (const auto &core : cores) {
-      elfPaths[{core.col, core.row}] = std::string(objPath);
-    }
-    return success();
-  }
-
-  for (const auto &core : cores) {
-    if (verbose) {
-      llvm::outs() << "Linking core (" << core.col << ", " << core.row
-                   << ") from unified object\n";
-    }
-
-    // When elf_file is already set in the MLIR, use that path as the output
-    // ELF. This matches the Python driver's behavior. See compileCore() for
-    // the same fix and rationale.
-    SmallString<128> elfPath;
-    if (!core.elfFile.empty()) {
-      elfPath = core.elfFile;
-    } else {
-      elfPath = tmpDirName;
-      sys::path::append(elfPath, deviceName.str() + "_core_" +
-                                     std::to_string(core.col) + "_" +
-                                     std::to_string(core.row) + ".elf");
-    }
-
-    // Make ELF path absolute
-    SmallString<256> absElfPath;
-    std::error_code ec = sys::fs::real_path(elfPath, absElfPath);
-    if (ec) {
-      if (sys::path::is_absolute(elfPath)) {
-        absElfPath = elfPath;
-      } else {
-        sys::fs::current_path(absElfPath);
-        sys::path::append(absElfPath, elfPath);
-        sys::path::remove_dots(absElfPath, /*remove_dot_dot=*/true);
-      }
-    }
-    elfPath = absElfPath;
-
-    if (xbridge) {
-      // xbridge linking with BCF
-      SmallString<128> bcfPath(tmpDirName);
-      sys::path::append(bcfPath, deviceName.str() + "_core_" +
-                                     std::to_string(core.col) + "_" +
-                                     std::to_string(core.row) + ".bcf");
-
-      {
-        std::error_code ec;
-        raw_fd_ostream bcfFile(bcfPath, ec);
-        if (ec) {
-          llvm::errs() << "Error opening BCF file: " << ec.message() << "\n";
-          return failure();
-        }
-
-        if (failed(xilinx::AIE::AIETranslateToBCF(moduleOp, bcfFile, core.col,
-                                                  core.row, deviceName))) {
-          llvm::errs() << "Error generating BCF file for core (" << core.col
-                       << ", " << core.row << ")\n";
-          return failure();
-        }
-      }
-
-      std::vector<std::string> linkWithFiles =
-          extractInputFilesFromBCF(bcfPath);
-
-      // Copy link_with files to .prj directory
-      // Search order: current working directory, tmpDirName, input file
-      // directory
-      for (const auto &linkWithFile : linkWithFiles) {
-        SmallString<256> srcPath;
-        if (sys::path::is_absolute(linkWithFile)) {
-          srcPath = linkWithFile;
-        } else {
-          // First try current working directory
-          SmallString<256> cwdPath;
-          sys::fs::current_path(cwdPath);
-          sys::path::append(cwdPath, linkWithFile);
-          if (sys::fs::exists(cwdPath)) {
-            srcPath = cwdPath;
-          } else {
-            // Try tmpDirName (used in JIT where .o is pre-compiled there)
-            SmallString<256> tmpPath(tmpDirName);
-            sys::path::append(tmpPath, linkWithFile);
-            if (sys::fs::exists(tmpPath)) {
-              srcPath = tmpPath;
-            } else {
-              // Fall back to input file directory
-              SmallString<256> inputDir =
-                  sys::path::parent_path(getInputFilename());
-              if (inputDir.empty()) {
-                sys::fs::current_path(inputDir);
-              }
-              srcPath = inputDir;
-              sys::path::append(srcPath, linkWithFile);
-              sys::path::remove_dots(srcPath, /*remove_dot_dot=*/true);
-            }
-          }
-        }
-
-        SmallString<256> destPath(tmpDirName);
-        sys::path::append(destPath, sys::path::filename(linkWithFile));
-        if (failed(atomicCopyFile(srcPath, tmpDirName,
-                                  sys::path::filename(linkWithFile))))
-          return failure();
-      }
-
-      auto xchessccWrapperPath = sys::findProgramByName("xchesscc_wrapper");
-      if (!xchessccWrapperPath) {
-        llvm::errs() << "Error: Could not find xchesscc_wrapper for xbridge\n";
-        return failure();
-      }
-
-      SmallString<128> workDir(tmpDirName);
-      sys::path::append(workDir, "work");
-
-      std::string aieTargetLower = aieTarget.lower();
-      SmallVector<std::string, 20> linkCmd = {
-          *xchessccWrapperPath, aieTargetLower, "+w",
-          std::string(workDir), "-d",           "-f",
-          std::string(objPath)};
-
-      for (const auto &linkWithFile : linkWithFiles) {
-        SmallString<256> localPath(tmpDirName);
-        sys::path::append(localPath, sys::path::filename(linkWithFile));
-        linkCmd.push_back(std::string(localPath));
-      }
-
-      linkCmd.push_back("+l");
-      linkCmd.push_back(std::string(bcfPath));
-      linkCmd.push_back("-o");
-      linkCmd.push_back(std::string(elfPath));
-
-      if (!executeCommand(linkCmd)) {
-        llvm::errs() << "Error linking core (" << core.col << ", " << core.row
-                     << ") with xbridge\n";
-        return failure();
-      }
-    } else {
-      // Peano linking with linker script
-      SmallString<128> ldScriptPath(tmpDirName);
-      sys::path::append(ldScriptPath,
-                        deviceName.str() + "_core_" + std::to_string(core.col) +
-                            "_" + std::to_string(core.row) + ".ld.script");
-
-      {
-        std::error_code ec;
-        raw_fd_ostream ldScriptFile(ldScriptPath, ec);
-        if (ec) {
-          llvm::errs() << "Error opening linker script file: " << ec.message()
-                       << "\n";
-          return failure();
-        }
-
-        if (failed(xilinx::AIE::AIETranslateToLdScript(
-                moduleOp, ldScriptFile, core.col, core.row, deviceName))) {
-          llvm::errs() << "Error generating linker script for core ("
-                       << core.col << ", " << core.row << ")\n";
-          return failure();
-        }
-      }
-
-      std::string peanoClang = findPeanoTool("clang");
-      if (peanoClang.empty()) {
-        llvm::errs() << "Error: Could not find Peano clang\n";
-        return failure();
-      }
-
-      std::string peanoTarget = getPeanoTarget(aieTarget);
-      std::string optLevelStr = std::to_string(optLevel);
-
-      StringRef peanoDir = getPeanoInstallDir();
-      SmallString<128> peanoBinDir;
-      if (!peanoDir.empty()) {
-        peanoBinDir = peanoDir;
-        sys::path::append(peanoBinDir, "bin");
-      } else {
-        peanoBinDir = sys::path::parent_path(peanoClang);
-      }
-
-      SmallString<256> peanoLld(peanoBinDir);
-      sys::path::append(peanoLld, "ld.lld");
-
-      // Handle external object files specified via link_files (or deprecated
-      // link_with). Search order: absolute, cwd, tmpDirName, input file dir.
-      for (const auto &lf : core.linkFiles) {
-        SmallString<256> srcLinkWith;
-        if (sys::path::is_absolute(lf)) {
-          srcLinkWith = lf;
-        } else {
-          // First try current working directory
-          SmallString<256> cwdPath;
-          sys::fs::current_path(cwdPath);
-          sys::path::append(cwdPath, lf);
-          if (sys::fs::exists(cwdPath)) {
-            srcLinkWith = cwdPath;
-          } else {
-            // Try tmpDirName (used in JIT where .o is pre-compiled there)
-            SmallString<256> tmpPath(tmpDirName);
-            sys::path::append(tmpPath, lf);
-            if (sys::fs::exists(tmpPath)) {
-              srcLinkWith = tmpPath;
-            } else {
-              // Fall back to input file directory
-              SmallString<256> inputDir =
-                  sys::path::parent_path(getInputFilename());
-              if (inputDir.empty()) {
-                sys::fs::current_path(inputDir);
-              }
-              srcLinkWith = inputDir;
-              sys::path::append(srcLinkWith, lf);
-              sys::path::remove_dots(srcLinkWith, /*remove_dot_dot=*/true);
-            }
-          }
-        }
-
-        SmallString<256> destLinkWith(tmpDirName);
-        sys::path::append(destLinkWith, sys::path::filename(lf));
-        if (srcLinkWith != destLinkWith) {
-          if (failed(atomicCopyFile(srcLinkWith, tmpDirName,
-                                    sys::path::filename(lf))))
-            return failure();
-          if (verbose)
-            llvm::outs() << "Copied link_with object: " << srcLinkWith << " -> "
-                         << destLinkWith << "\n";
-        } else if (verbose) {
-          llvm::outs() << "link_with object already in place: " << srcLinkWith
-                       << "\n";
-        }
-      }
-
-      SmallString<128> absLdScriptPath;
-      if (sys::path::is_absolute(ldScriptPath)) {
-        absLdScriptPath = ldScriptPath;
-      } else {
-        std::error_code ec = sys::fs::real_path(ldScriptPath, absLdScriptPath);
-        if (ec) {
-          sys::fs::current_path(absLdScriptPath);
-          sys::path::append(absLdScriptPath, ldScriptPath);
-        }
-      }
-
-      SmallVector<std::string, 20> linkCmd = {peanoClang, "-O" + optLevelStr,
-                                              "--target=" + peanoTarget};
-
-      if (sys::fs::can_execute(peanoLld)) {
-        linkCmd.push_back("-fuse-ld=" + std::string(peanoLld));
-      } else {
-        linkCmd.push_back("-B" + std::string(peanoBinDir));
-        linkCmd.push_back("-fuse-ld=lld");
-      }
-
-      linkCmd.push_back(std::string(objPath));
-      linkCmd.push_back("-Wl,--gc-sections");
-      linkCmd.push_back("-Wl,--orphan-handling=error");
-      linkCmd.push_back("-Wl,-T," + std::string(absLdScriptPath));
-
-      linkCmd.push_back("-o");
-      linkCmd.push_back(std::string(elfPath));
-
-      if (!executeCommand(linkCmd)) {
-        llvm::errs() << "Error linking core (" << core.col << ", " << core.row
-                     << ")\n";
-        return failure();
-      }
-    }
-
-    elfPaths[{core.col, core.row}] = std::string(elfPath);
-    if (verbose) {
-      llvm::outs() << "Generated ELF: " << elfPath << "\n";
-    }
-  }
-
-  return success();
-}
-
-// Update MLIR module with ELF file paths
-/// Update the in-memory module with ELF paths for compiled cores.
-/// This modifies the module directly without disk I/O.
-static LogicalResult updateModuleWithElfs(
-    ModuleOp moduleOp, StringRef deviceName,
-    const std::map<std::pair<int, int>, std::string> &elfPaths) {
-
-  if (elfPaths.empty()) {
-    return success();
-  }
-
-  if (verbose) {
-    llvm::outs() << "Updating module with ELF paths for device: " << deviceName
-                 << "\n";
-  }
-
-  // Update cores with ELF paths
-  moduleOp.walk([&](xilinx::AIE::DeviceOp devOp) {
-    if (devOp.getSymName() != deviceName) {
-      return;
-    }
-
-    devOp.walk([&](xilinx::AIE::CoreOp coreOp) {
-      auto tileOp =
-          dyn_cast<xilinx::AIE::TileOp>(coreOp.getTile().getDefiningOp());
-      if (!tileOp)
-        return;
-
-      std::int32_t col = tileOp.getCol();
-      std::int32_t row = tileOp.getRow();
-
-      auto it = elfPaths.find({col, row});
-      if (it != elfPaths.end()) {
-        // When elf_file is specified, create a new core with empty body
-        // (matching Python's set_elf_file_for_core behavior)
-        OpBuilder builder(coreOp->getContext());
-        builder.setInsertionPoint(coreOp);
-
-        auto newCore = xilinx::AIE::CoreOp::create(
-            builder, coreOp.getLoc(), builder.getIndexType(), coreOp.getTile());
-
-        // Copy all attributes from the old core
-        for (auto attr : coreOp->getAttrs()) {
-          newCore->setAttr(attr.getName(), attr.getValue());
-        }
-        // Set the elf_file attribute
-        newCore.setElfFileAttr(builder.getStringAttr(it->second));
-
-        // Create empty body with just aie.end
-        Block *newBlock = builder.createBlock(&newCore.getBody());
-        builder.setInsertionPointToEnd(newBlock);
-        xilinx::AIE::EndOp::create(builder, coreOp.getLoc());
-
-        // Erase the old core
-        coreOp.erase();
-      }
-    });
-  });
-
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// JSON Generation for xclbin Metadata
-//===----------------------------------------------------------------------===//
-
-/// Helper to write a llvm::json::Value to a file with pretty-printing.
-static LogicalResult writeJsonToFile(StringRef jsonPath,
-                                     const llvm::json::Value &value) {
-  std::error_code ec;
-  raw_fd_ostream os(jsonPath, ec);
-  if (ec) {
-    llvm::errs() << "Error: Could not open file for writing: " << jsonPath
-                 << ": " << ec.message() << "\n";
-    return failure();
-  }
-  os << llvm::formatv("{0:2}", value) << "\n";
-  return success();
-}
-
-static LogicalResult generateMemTopologyJson(StringRef jsonPath) {
-  llvm::json::Object hostMem({{"m_type", "MEM_DRAM"},
-                              {"m_used", "1"},
-                              {"m_sizeKB", "0x10000"},
-                              {"m_tag", "HOST"},
-                              {"m_base_address", "0x4000000"}});
-  llvm::json::Object sramMem({{"m_type", "MEM_DRAM"},
-                              {"m_used", "1"},
-                              {"m_sizeKB", "0xc000"},
-                              {"m_tag", "SRAM"},
-                              {"m_base_address", "0x4000000"}});
-
-  llvm::json::Object memTopology(
-      {{"m_count", "2"},
-       {"m_mem_data",
-        llvm::json::Array{std::move(hostMem), std::move(sramMem)}}});
-
-  llvm::json::Object memData({{"mem_topology", std::move(memTopology)}});
-  return writeJsonToFile(jsonPath, llvm::json::Value(std::move(memData)));
-}
-
-static LogicalResult generateKernelsJson(StringRef jsonPath, StringRef devName,
-                                         int numHostBOs) {
-  llvm::json::Array arguments;
-  arguments.push_back(llvm::json::Object{{"name", "opcode"},
-                                         {"address-qualifier", "SCALAR"},
-                                         {"type", "uint64_t"},
-                                         {"offset", "0x00"}});
-  arguments.push_back(llvm::json::Object{{"name", "instr"},
-                                         {"memory-connection", "SRAM"},
-                                         {"address-qualifier", "GLOBAL"},
-                                         {"type", "char *"},
-                                         {"offset", "0x08"}});
-  arguments.push_back(llvm::json::Object{{"name", "ninstr"},
-                                         {"address-qualifier", "SCALAR"},
-                                         {"type", "uint32_t"},
-                                         {"offset", "0x10"}});
-
-  int offset = 0x14;
-  for (int i = 0; i < numHostBOs; i++) {
-    std::string offsetHex = llvm::formatv("0x{0}", llvm::utohexstr(offset));
-    arguments.push_back(llvm::json::Object{{"name", ("bo" + Twine(i)).str()},
-                                           {"memory-connection", "HOST"},
-                                           {"address-qualifier", "GLOBAL"},
-                                           {"type", "void*"},
-                                           {"offset", offsetHex}});
-    offset += 8;
-  }
-
-  // Build kernel JSON bottom-up to avoid deeply nested brace initialization
-  llvm::json::Object extendedData(
-      {{"subtype", "DPU"},
-       {"functional", "0"},
-       {"dpu_kernel_id", xclbinKernelId.getValue()}});
-
-  llvm::json::Object kernel(
-      {{"name", xclbinKernelName.getValue()},
-       {"type", "dpu"},
-       {"extended-data", std::move(extendedData)},
-       {"arguments", std::move(arguments)},
-       {"instances", llvm::json::Array{llvm::json::Object(
-                         {{"name", xclbinInstanceName.getValue()}})}}});
-
-  llvm::json::Object psKernels(
-      {{"kernels", llvm::json::Array{std::move(kernel)}}});
-
-  llvm::json::Object kernelsData({{"ps-kernels", std::move(psKernels)}});
-  return writeJsonToFile(jsonPath, llvm::json::Value(std::move(kernelsData)));
-}
-
-/// Generate a UUID v4 string (matches Python's uuid.uuid4())
-static std::string generateUUID() {
-  static std::random_device rd;
-  static std::mt19937 gen(rd());
-  static std::uniform_int_distribution<uint32_t> dis(0, 0xFFFFFFFF);
-
-  uint32_t data[4];
-  for (int i = 0; i < 4; i++)
-    data[i] = dis(gen);
-
-  // Set version to 4 (random UUID)
-  data[1] = (data[1] & 0xFFFF0FFF) | 0x4000;
-  // Set variant to RFC 4122
-  data[2] = (data[2] & 0x3FFFFFFF) | 0x80000000;
-
-  return llvm::formatv("{0:x-8}-{1:x-4}-{2:x-4}-{3:x-4}-{4:x-12}", data[0],
-                       data[1] >> 16, data[1] & 0xFFFF, data[2] >> 16,
-                       ((uint64_t)(data[2] & 0xFFFF) << 32) | data[3]);
-}
-
-static LogicalResult generatePartitionJson(StringRef jsonPath,
-                                           StringRef devName, StringRef pdiPath,
-                                           xilinx::AIE::DeviceOp deviceOp) {
-  // Query device model for partition dimensions (matches Python emit_partition)
-  const auto &targetModel = deviceOp.getTargetModel();
-  int numCols = targetModel.columns();
-  auto device = deviceOp.getDevice();
-
-  // NPU1 and NPU2 (full devices) always start at column 0.
-  // Virtualized devices (e.g., npu1_4col) use a range of start columns.
-  llvm::json::Array startColumns;
-  if (device == xilinx::AIE::AIEDevice::npu1 ||
-      device == xilinx::AIE::AIEDevice::npu2) {
-    startColumns.push_back(0);
-  } else {
-    for (int i = 1; i < 6 - numCols; ++i)
-      startColumns.push_back(i);
-  }
-
-  // Build partition JSON using llvm::json (bottom-up to avoid brace nesting)
-  llvm::json::Object cdoGroup(
-      {{"name", "DPU"},
-       {"type", "PRIMARY"},
-       {"pdi_id", "0x01"},
-       {"dpu_kernel_ids", llvm::json::Array{xclbinKernelId.getValue()}},
-       {"pre_cdo_groups", llvm::json::Array{std::string("0xC1")}}});
-
-  // Generate unique UUID for this PDI (matches Python aiecc behavior)
-  std::string pdiUUID = generateUUID();
-
-  llvm::json::Object pdiEntry(
-      {{"uuid", pdiUUID},
-       {"file_name", pdiPath.str()},
-       {"cdo_groups", llvm::json::Array{std::move(cdoGroup)}}});
-
-  llvm::json::Object partition(
-      {{"column_width", numCols}, {"start_columns", std::move(startColumns)}});
-
-  llvm::json::Object aiePartition(
-      {{"name", "QoS"},
-       {"operations_per_cycle", "2048"},
-       {"inference_fingerprint", "23423"},
-       {"pre_post_fingerprint", "12345"},
-       {"partition", std::move(partition)},
-       {"PDIs", llvm::json::Array{std::move(pdiEntry)}}});
-
-  llvm::json::Object partitionData(
-      {{"aie_partition", std::move(aiePartition)}});
-  return writeJsonToFile(jsonPath, llvm::json::Value(std::move(partitionData)));
-}
-
-/// Extract AIE_PARTITION section from existing xclbin and merge new PDI.
-/// Returns the merged partition JSON path, or empty on failure.
-static LogicalResult extractAndMergePartition(StringRef inputXclbin,
-                                              StringRef newPartitionPath,
-                                              StringRef outputPartitionPath,
-                                              StringRef tmpDirName) {
-  // Find xclbinutil
-  auto xclbinutilPath = sys::findProgramByName("xclbinutil");
-  if (!xclbinutilPath) {
-    llvm::errs() << "Error: xclbinutil not found\n";
-    return failure();
-  }
-
-  // Extract partition from input xclbin
-  SmallString<128> inputPartitionPath(tmpDirName);
-  sys::path::append(inputPartitionPath, "input_aie_partition.json");
-
-  SmallVector<std::string, 10> extractCmd = {
-      *xclbinutilPath,
-      "--dump-section",
-      "AIE_PARTITION:JSON:" + std::string(inputPartitionPath),
-      "--force",
-      "--quiet",
-      "--input",
-      inputXclbin.str()};
-
-  if (!executeCommand(extractCmd)) {
-    llvm::errs() << "Error extracting AIE_PARTITION from input xclbin\n";
-    return failure();
-  }
-
-  if (verbose) {
-    llvm::outs() << "Extracted partition from input xclbin: "
-                 << inputPartitionPath << "\n";
-  }
-
-  // Read input partition JSON
-  auto inputBufOrErr = llvm::MemoryBuffer::getFile(inputPartitionPath);
-  if (!inputBufOrErr) {
-    llvm::errs() << "Error reading input partition JSON: "
-                 << inputBufOrErr.getError().message() << "\n";
-    return failure();
-  }
-
-  // Read new partition JSON
-  auto newBufOrErr = llvm::MemoryBuffer::getFile(newPartitionPath);
-  if (!newBufOrErr) {
-    llvm::errs() << "Error reading new partition JSON: "
-                 << newBufOrErr.getError().message() << "\n";
-    return failure();
-  }
-
-  // Parse both JSON files
-  auto inputJson = llvm::json::parse(inputBufOrErr.get()->getBuffer());
-  if (!inputJson) {
-    llvm::errs() << "Error parsing input partition JSON: "
-                 << llvm::toString(inputJson.takeError()) << "\n";
-    return failure();
-  }
-
-  auto newJson = llvm::json::parse(newBufOrErr.get()->getBuffer());
-  if (!newJson) {
-    llvm::errs() << "Error parsing new partition JSON: "
-                 << llvm::toString(newJson.takeError()) << "\n";
-    return failure();
-  }
-
-  // Get the PDIs arrays from both
-  auto *inputObj = inputJson->getAsObject();
-  auto *newObj = newJson->getAsObject();
-  if (!inputObj || !newObj) {
-    llvm::errs() << "Error: JSON files are not objects\n";
-    return failure();
-  }
-
-  auto *inputPartition = inputObj->getObject("aie_partition");
-  auto *newPartition = newObj->getObject("aie_partition");
-  if (!inputPartition || !newPartition) {
-    llvm::errs() << "Error: Missing aie_partition in JSON\n";
-    return failure();
-  }
-
-  auto *inputPDIs = inputPartition->getArray("PDIs");
-  auto *newPDIs = newPartition->getArray("PDIs");
-  if (!inputPDIs || !newPDIs) {
-    llvm::errs() << "Error: Missing PDIs array in partition JSON\n";
-    return failure();
-  }
-
-  // Append only the first PDI from new partition (matches Python aiecc
-  // behavior)
-  if (newPDIs->size() == 0) {
-    llvm::errs() << "Error: New partition has no PDIs\n";
-    return failure();
-  }
-  inputPDIs->push_back(std::move((*newPDIs)[0]));
-
-  // Write merged partition JSON
-  std::error_code ec;
-  raw_fd_ostream outFile(outputPartitionPath, ec);
-  if (ec) {
-    llvm::errs() << "Error writing merged partition JSON: " << ec.message()
-                 << "\n";
-    return failure();
-  }
-  outFile << llvm::formatv("{0:2}", *inputJson);
-
-  if (verbose) {
-    llvm::outs() << "Merged partition JSON: " << outputPartitionPath << "\n";
-  }
-
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// PDI ID Assignment
-//===----------------------------------------------------------------------===//
-
-/// Assign numeric PDI IDs to NpuLoadPdiOp ops that reference devices.
-/// Must be called AFTER NPU lowering (which lowers aiex.configure to
-/// npu.load_pdi). Maps each device to a 1-based ID (in device iteration
-/// order) and patches the load_pdi ops so the instruction binary encodes
-/// the correct IDs.
-static void assignPdiIds(ModuleOp moduleOp) {
-  // Build mapping in device iteration order (matching Python driver's
-  // enumerate() behavior). Use MapVector to preserve insertion order.
-  llvm::MapVector<StringRef, int> deviceToPdiId;
-  int nextId = 1;
-  for (auto deviceOp : moduleOp.getOps<xilinx::AIE::DeviceOp>()) {
-    if (!deviceName.empty() && deviceOp.getSymName() != deviceName)
-      continue;
-    deviceToPdiId[deviceOp.getSymName()] = nextId++;
-  }
-
-  moduleOp.walk([&](mlir::Operation *op) {
-    auto loadPdiOp = mlir::dyn_cast<xilinx::AIEX::NpuLoadPdiOp>(op);
-    if (!loadPdiOp)
-      return;
-    auto deviceRefAttr = loadPdiOp.getDeviceRefAttr();
-    if (!deviceRefAttr)
-      return;
-    StringRef refName = deviceRefAttr.getValue();
-    auto it = deviceToPdiId.find(refName);
-    if (it == deviceToPdiId.end()) {
-      loadPdiOp.emitWarning() << "load_pdi references unknown device '"
-                              << refName << "'; PDI ID will remain 0";
-      return;
-    }
-    loadPdiOp.setId(static_cast<uint32_t>(it->second));
-    if (verbose) {
-      llvm::outs() << "Assigned PDI id=" << it->second
-                   << " to load_pdi referencing @" << refName << "\n";
-    }
-  });
-}
-
-/// Assign PDI IDs using a pre-computed mapping (for full ELF + expand-load-pdis
-/// where a global mapping that includes empty devices is needed).
-static void assignPdiIds(ModuleOp moduleOp,
-                         const std::map<std::string, int> &pdiIdMapping) {
-  moduleOp.walk([&](mlir::Operation *op) {
-    auto loadPdiOp = mlir::dyn_cast<xilinx::AIEX::NpuLoadPdiOp>(op);
-    if (!loadPdiOp)
-      return;
-    auto deviceRefAttr = loadPdiOp.getDeviceRefAttr();
-    if (!deviceRefAttr)
-      return;
-    std::string refName = deviceRefAttr.getValue().str();
-    auto it = pdiIdMapping.find(refName);
-    if (it == pdiIdMapping.end()) {
-      loadPdiOp.emitWarning() << "load_pdi references unknown device '"
-                              << refName << "'; PDI ID will remain 0";
-      return;
-    }
-    loadPdiOp.setId(static_cast<uint32_t>(it->second));
-    if (verbose) {
-      llvm::outs() << "Assigned PDI id=" << it->second
-                   << " to load_pdi referencing @" << refName << "\n";
-    }
-  });
-}
-
-//===----------------------------------------------------------------------===//
-// NPU Instruction Generation
-//===----------------------------------------------------------------------===//
-
-/// Generate NPU instructions from an in-memory module (clones it, since NPU
-/// lowering is destructive). When devName is empty, generate for ALL devices
-/// from a SINGLE whole-module lowering (the O(devices) path used on the
-/// full-ELF / no-expand-load-pdis path): the runtime-sequence materialize pass
-/// and patchPdiIds operate on the whole module independently of which device is
-/// later extracted, so lowering once and translating every device's runtime
-/// sequence is byte-identical to lowering per device. When devName is set, only
-/// that device is emitted.
-static LogicalResult generateNpuInstructions(ModuleOp moduleOp,
-                                             StringRef tmpDirName,
-                                             StringRef devName = "") {
-  // Full ELF requires NPU instructions
-  if (!generateNpuInsts && !generateFullElf) {
-    return success();
-  }
-
-  bool allDevices = devName.empty();
-
-  if (verbose) {
-    if (allDevices)
-      llvm::outs() << "Generating NPU instructions for all devices\n";
-    else
-      llvm::outs() << "Generating NPU instructions for device: " << devName
-                   << "\n";
-  }
-
-  // In dry-run mode, just show what would be done and return
-  if (dryRun) {
-    if (verbose) {
-      if (allDevices)
-        llvm::outs() << "Would generate NPU instructions for all devices\n";
-      else
-        llvm::outs() << "Would generate NPU instructions for device: "
-                     << devName << "\n";
-    }
-    return success();
-  }
-
-  // Clone the module since NPU lowering is destructive
-  OwningOpRef<ModuleOp> clonedModule = moduleOp.clone();
-
-  // Run NPU lowering passes in-memory on the clone.
-  // When generating full ELF, patch PDI IDs between core NPU lowering and
-  // expand-load-pdis so the IDs are assigned to the original device refs
-  // before expand-load-pdis copies them to empty device load_pdi ops.
-  if (failed(runNpuLoweringPipeline(*clonedModule, tmpDirName,
-                                    /*patchPdiIds=*/generateFullElf))) {
-    return failure();
-  }
-
-  // Dump intermediate if requested
-  SmallString<128> npuLoweredPath(tmpDirName);
-  sys::path::append(npuLoweredPath, allDevices
-                                        ? std::string("all_npu_lowered.mlir")
-                                        : devName.str() + "_npu_lowered.mlir");
-  dumpModuleToFile(*clonedModule, npuLoweredPath, "NPU lowered module");
-
-  // Step 2: Translate to NPU binary
-  // Generate instructions for each device's runtime sequences. In single-device
-  // mode only the requested device is emitted; in all-devices mode the optional
-  // --device-name filter is honored, otherwise every device.
-  LogicalResult result = success();
-  for (auto devOp : clonedModule->getOps<xilinx::AIE::DeviceOp>()) {
-    StringRef curDevName = devOp.getSymName();
-    if (allDevices) {
-      if (!deviceName.empty() && curDevName != deviceName) {
-        continue;
-      }
-    } else if (curDevName != devName) {
-      continue;
-    }
-
-    devOp.walk([&](xilinx::AIE::RuntimeSequenceOp seq) {
-      if (failed(result)) {
-        return; // Skip if already failed
-      }
-
-      if (!sequenceName.empty() && seq.getSymName() != sequenceName) {
-        return;
-      }
-
-      StringRef seqName = seq.getSymName();
-      std::string outputFileName =
-          formatString(instsName, curDevName.str(), seqName);
-
-      // Determine output path:
-      // - If generateNpuInsts is set, use the filename as-is (relative to cwd)
-      //   This matches Python aiecc.py behavior where --npu-insts-name
-      //   specifies the output path relative to the current directory.
-      // - Otherwise (e.g., for generateFullElf), write to tmpDirName so
-      //   the full ELF generation can find them.
-      SmallString<128> outputPath;
-      if (generateNpuInsts) {
-        outputPath = outputFileName;
-      } else {
-        outputPath = tmpDirName;
-        sys::path::append(outputPath, outputFileName);
-      }
-
-      if (verbose) {
-        llvm::outs() << "Generating NPU instructions for sequence: " << seqName
-                     << " -> " << outputPath << "\n";
-      }
-
-      // Generate NPU instructions using direct C++ API call.
-      // This replaces the subprocess call to aie-translate --aie-npu-to-binary.
-      // The full-ELF runtime (xrt.ext.kernel) assigns NPU-space device
-      // addresses to all host buffers, so the DDR-aperture offset for arguments
-      // beyond the firmware-translated set must NOT be folded into the TXN. The
-      // xclbin + instruction-buffer runtime does need it.
-      std::vector<uint32_t> instructions;
-      std::vector<xilinx::AIE::TxnLocEntry> locmap;
-      if (failed(xilinx::AIE::AIETranslateNpuToBinary(
-              *clonedModule, instructions, curDevName, seqName,
-              keepLoc ? &locmap : nullptr,
-              /*foldDDRAddrOffset=*/!generateFullElf))) {
-        llvm::errs() << "Error generating NPU instructions for sequence: "
-                     << seqName << "\n";
-        result = failure();
-        return;
-      }
-
-      // Write instructions to binary file
-      std::error_code ec;
-      raw_fd_ostream binFile(outputPath, ec, sys::fs::OpenFlags::OF_None);
-      if (ec) {
-        llvm::errs() << "Error opening NPU instructions file: " << ec.message()
-                     << "\n";
-        result = failure();
-        return;
-      }
-
-      binFile.write(reinterpret_cast<const char *>(instructions.data()),
-                    instructions.size() * sizeof(uint32_t));
-
-      if (verbose) {
-        llvm::outs() << "Wrote " << instructions.size()
-                     << " instructions to: " << outputPath << "\n";
-      }
-
-      // Emit the JSON sidecar when --keep-loc is on. Sidecar path is the
-      // .bin path with ".locmap.json" appended, so the .bin itself is
-      // unchanged for downstream XRT consumers.
-      if (keepLoc) {
-        SmallString<128> locmapPath(outputPath);
-        locmapPath.append(".locmap.json");
-        std::error_code locEc;
-        raw_fd_ostream locFile(locmapPath, locEc, sys::fs::OpenFlags::OF_Text);
-        if (locEc) {
-          llvm::errs() << "Error opening locmap sidecar: " << locEc.message()
-                       << "\n";
-          result = failure();
-          return;
-        }
-        StringRef binBaseName = sys::path::filename(outputPath);
-        xilinx::AIE::emitNpuLocmapJSON(locFile, curDevName, binBaseName,
-                                       locmap);
-        if (verbose)
-          llvm::outs() << "Wrote " << locmap.size()
-                       << " locmap entries to: " << locmapPath << "\n";
-      }
-    });
-  }
-
-  if (failed(result)) {
-    return failure();
-  }
-
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// Transaction Generation
-//===----------------------------------------------------------------------===//
-
-/// Generate transaction MLIR output for a device.
-/// This converts the device configuration to transaction binary operations.
-static LogicalResult generateTransactionOutput(ModuleOp moduleOp,
-                                               StringRef tmpDirName,
-                                               StringRef devName) {
-  if (!generateTxn) {
-    return success();
-  }
-
-  if (verbose) {
-    llvm::outs() << "Generating transaction MLIR for device: " << devName
-                 << "\n";
-  }
-
-  // In dry-run mode, just show what would be done
-  if (dryRun) {
-    if (verbose) {
-      llvm::outs() << "Would generate transaction MLIR for device: " << devName
-                   << "\n";
-    }
-    return success();
-  }
-
-  // Clone the module since transaction generation is destructive
-  OwningOpRef<ModuleOp> clonedModule = moduleOp.clone();
-
-  // Run transaction pipeline on the original (pre-NPU-lowered) module.
-  // The convert-aie-to-transaction pass creates a @configure runtime
-  // sequence containing device configuration operations (write32,
-  // blockwrite, etc.) by reading the device's DMA, lock, and core
-  // configuration. This must happen BEFORE NPU lowering which destroys
-  // that state.
-  if (failed(runTransactionPipeline(*clonedModule, tmpDirName, devName,
-                                    tmpDirName))) {
-    return failure();
-  }
-
-  // Write the transaction MLIR to output file (CWD for relative paths).
-  std::string outputFileName = formatString(txnName, devName);
-  SmallString<128> outputPath(outputFileName);
-
-  // Dump intermediate MLIR
-  SmallString<128> txnMlirPath(tmpDirName);
-  sys::path::append(txnMlirPath, devName.str() + "_txn.mlir");
-  dumpModuleToFile(*clonedModule, txnMlirPath, "Transaction MLIR");
-
-  // Copy to output location
-  std::error_code ec;
-  raw_fd_ostream outFile(outputPath, ec, sys::fs::OpenFlags::OF_None);
-  if (ec) {
-    llvm::errs() << "Error opening transaction output file: " << ec.message()
-                 << "\n";
-    return failure();
-  }
-
-  clonedModule->print(outFile);
-
-  if (verbose) {
-    llvm::outs() << "Wrote transaction MLIR to: " << outputPath << "\n";
-  }
-
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// Host-buffer count helpers (shared by ctrl-packet index + kernels.json count)
-//===----------------------------------------------------------------------===//
-
-/// Return the argument count of `dev`'s compiled non-empty runtime_sequence, or
-/// std::nullopt if the device has no matching runtime_sequence with a body.
-/// When
-/// --sequence-name is set, only that sequence is considered (matching the
-/// filtering the instruction/control-packet generation paths apply), so the
-/// count reflects the sequence actually compiled. This is the host-buffer
-/// contract before any ctrl-packet buffer is appended (the ctrlpkt operand is
-/// added later by AIECtrlPacketToDma, outside this count).
-static std::optional<int>
-getRuntimeSequenceArgCount(xilinx::AIE::DeviceOp dev) {
-  for (auto seqOp : dev.getOps<xilinx::AIE::RuntimeSequenceOp>()) {
-    if (!sequenceName.empty() && seqOp.getSymName() != sequenceName)
-      continue;
-    if (!seqOp.getBody().empty())
-      return static_cast<int>(seqOp.getBody().front().getNumArguments());
-  }
-  return std::nullopt;
-}
-
-/// A ctrl-packet reconfig "base" device carries a control-packet shim DMA
-/// allocation (emitted by -aie-generate-column-control-overlay) whose symbol is
-/// prefixed with "ctrlpkt". Its presence means the host passes one extra
-/// control-packet buffer beyond the data buffers.
-static bool deviceUsesControlPackets(xilinx::AIE::DeviceOp dev) {
-  for (auto allocOp : dev.getOps<xilinx::AIE::ShimDMAAllocationOp>()) {
-    if (allocOp.getSymName().starts_with("ctrlpkt"))
-      return true;
-  }
-  return false;
-}
-
-//===----------------------------------------------------------------------===//
-// Control Packet Generation
-//===----------------------------------------------------------------------===//
-
-/// Generate control packet output for a device.
-/// This converts the device configuration to control packets and generates:
-/// 1. Control packet binary data (ctrlpkt.bin)
-/// 2. Control packet DMA sequence binary (ctrlpkt_dma_seq.bin or instsName)
-/// 3. Combined ELF file (ctrlpkt.elf) if aiebu-asm is available
-static LogicalResult generateControlPacketOutput(ModuleOp moduleOp,
-                                                 StringRef tmpDirName,
-                                                 StringRef devName) {
-  if (!generateCtrlPkt) {
-    return success();
-  }
-
-  if (verbose) {
-    llvm::outs() << "Generating control packets for device: " << devName
-                 << "\n";
-  }
-
-  if (dryRun) {
-    if (verbose) {
-      llvm::outs() << "Would generate control packets for device: " << devName
-                   << "\n";
-    }
-    return success();
-  }
-
-  // Clone the module since the control packet pipelines are destructive.
-  OwningOpRef<ModuleOp> clonedModule = moduleOp.clone();
-
-  // Step 1: Run control packet pipeline in-memory.
-  // Pipeline: convert-aie-to-transaction → aie-txn-to-ctrl-packet →
-  //           aie-legalize-ctrl-packet
-  if (failed(runControlPacketPipeline(*clonedModule, tmpDirName, devName,
-                                      tmpDirName))) {
-    return failure();
-  }
-
-  // Dump intermediate MLIR for debugging
-  SmallString<128> ctrlPktMlirPath(tmpDirName);
-  sys::path::append(ctrlPktMlirPath, devName.str() + "_ctrlpkt.mlir");
-  dumpModuleToFile(*clonedModule, ctrlPktMlirPath, "control packet MLIR");
-
-  // Translate control packet ops to binary
-  std::string ctrlPktBinFileName = formatString(ctrlPktName, devName);
-  SmallString<128> ctrlPktBinPath;
-  if (sys::path::is_absolute(ctrlPktBinFileName)) {
-    ctrlPktBinPath = ctrlPktBinFileName;
-  } else {
-    ctrlPktBinPath = ctrlPktBinFileName;
-  }
-
-  std::vector<uint32_t> ctrlPktInstructions;
-  std::vector<xilinx::AIE::TxnLocEntry> ctrlPktLocmap;
-  if (failed(xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
-          *clonedModule, ctrlPktInstructions, devName, "",
-          keepLoc ? &ctrlPktLocmap : nullptr))) {
-    llvm::errs() << "Error generating control packet binary for device: "
-                 << devName << "\n";
-    return failure();
-  }
-
-  // Write control packet binary
-  {
-    std::error_code ec;
-    raw_fd_ostream binFile(ctrlPktBinPath, ec, sys::fs::OpenFlags::OF_None);
-    if (ec) {
-      llvm::errs() << "Error opening control packet binary file: "
-                   << ec.message() << "\n";
-      return failure();
-    }
-    binFile.write(reinterpret_cast<const char *>(ctrlPktInstructions.data()),
-                  ctrlPktInstructions.size() * sizeof(uint32_t));
-  }
-
-  if (verbose) {
-    llvm::outs() << "Wrote " << ctrlPktInstructions.size()
-                 << " control packet instructions to: " << ctrlPktBinPath
-                 << "\n";
-  }
-
-  if (keepLoc) {
-    SmallString<128> locmapPath(ctrlPktBinPath);
-    locmapPath.append(".locmap.json");
-    std::error_code locEc;
-    raw_fd_ostream locFile(locmapPath, locEc, sys::fs::OpenFlags::OF_Text);
-    if (locEc) {
-      llvm::errs() << "Error opening locmap sidecar: " << locEc.message()
-                   << "\n";
-      return failure();
-    }
-    StringRef binBaseName = sys::path::filename(ctrlPktBinPath);
-    xilinx::AIE::emitNpuLocmapJSON(locFile, devName, binBaseName,
-                                   ctrlPktLocmap);
-    if (verbose)
-      llvm::outs() << "Wrote " << ctrlPktLocmap.size()
-                   << " locmap entries to: " << locmapPath << "\n";
-  }
-
-  // Step 2: Run control packet DMA lowering pipeline in-memory.
-  // Pipeline: aie-ctrl-packet-to-dma → aie-dma-to-npu
-  if (failed(runControlPacketDmaPipeline(*clonedModule, tmpDirName))) {
-    return failure();
-  }
-
-  // Dump intermediate MLIR for debugging
-  SmallString<128> dmaSeqMlirPath(tmpDirName);
-  sys::path::append(dmaSeqMlirPath, devName.str() + "_ctrlpkt_dma_seq.mlir");
-  dumpModuleToFile(*clonedModule, dmaSeqMlirPath,
-                   "control packet DMA sequence MLIR");
-
-  // Assign PDI IDs after DMA lowering (matches legacy ordering)
-  if (generateFullElf || generateElf) {
-    assignPdiIds(*clonedModule);
-  }
-
-  // Generate DMA sequence binary using AIETranslateNpuToBinary.
-  // When --aie-generate-npu-insts is also set, write the DMA sequence to
-  // instsName (e.g. aie_run_seq.bin) instead of ctrlPktDmaSeqName. This
-  // matches the legacy Python driver where process_ctrlpkt() overwrites
-  // opts.insts_name with the ctrl packet DMA sequence — the DMA sequence
-  // IS the NPU instruction stream the host loads.
-  std::string dmaSeqBinFileName =
-      generateNpuInsts
-          ? formatString(instsName, devName.str(), StringRef("seq"))
-          : formatString(ctrlPktDmaSeqName, devName);
-  SmallString<128> dmaSeqBinPath;
-  if (sys::path::is_absolute(dmaSeqBinFileName)) {
-    dmaSeqBinPath = dmaSeqBinFileName;
-  } else {
-    dmaSeqBinPath = dmaSeqBinFileName;
-  }
-
-  std::vector<uint32_t> dmaSeqInstructions;
-  std::vector<xilinx::AIE::TxnLocEntry> dmaSeqLocmap;
-  if (failed(xilinx::AIE::AIETranslateNpuToBinary(
-          *clonedModule, dmaSeqInstructions, devName, "" /* all sequences */,
-          keepLoc ? &dmaSeqLocmap : nullptr,
-          /*foldDDRAddrOffset=*/!generateFullElf))) {
-    llvm::errs() << "Error generating control packet DMA sequence for device: "
-                 << devName << "\n";
-    return failure();
-  }
-
-  // Write DMA sequence binary
-  {
-    std::error_code ec;
-    raw_fd_ostream binFile(dmaSeqBinPath, ec, sys::fs::OpenFlags::OF_None);
-    if (ec) {
-      llvm::errs() << "Error opening DMA sequence binary file: " << ec.message()
-                   << "\n";
-      return failure();
-    }
-    binFile.write(reinterpret_cast<const char *>(dmaSeqInstructions.data()),
-                  dmaSeqInstructions.size() * sizeof(uint32_t));
-  }
-
-  if (verbose) {
-    llvm::outs() << "Wrote " << dmaSeqInstructions.size()
-                 << " DMA sequence instructions to: " << dmaSeqBinPath << "\n";
-  }
-
-  if (keepLoc) {
-    SmallString<128> locmapPath(dmaSeqBinPath);
-    locmapPath.append(".locmap.json");
-    std::error_code locEc;
-    raw_fd_ostream locFile(locmapPath, locEc, sys::fs::OpenFlags::OF_Text);
-    if (!locEc) {
-      StringRef binBaseName = sys::path::filename(dmaSeqBinPath);
-      xilinx::AIE::emitNpuLocmapJSON(locFile, devName, binBaseName,
-                                     dmaSeqLocmap);
-      if (verbose)
-        llvm::outs() << "Wrote " << dmaSeqLocmap.size()
-                     << " locmap entries to: " << locmapPath << "\n";
-    } else {
-      llvm::errs() << "Error opening locmap sidecar: " << locEc.message()
-                   << "\n";
-      return failure();
-    }
-  }
-
-  // Step 3: Generate combined ELF using aiebu-asm (if available)
-
-  // When --aie-generate-elf is also set, use elfName for the output ELF
-  // so the user gets the combined ctrl packet ELF at their requested name.
-  std::string elfFileName = generateElf
-                                ? formatString(elfName, devName.str(), "")
-                                : formatString(ctrlPktElfName, devName);
-  SmallString<128> elfPath;
-  if (sys::path::is_absolute(elfFileName)) {
-    elfPath = elfFileName;
-  } else if (generateElf) {
-    elfPath = elfFileName;
-  } else {
-    elfPath = tmpDirName;
-    sys::path::append(elfPath, elfFileName);
-  }
-
-  // Count runtime sequence arguments from the ORIGINAL module to determine
-  // ctrl_pkt buffer index. Must use moduleOp (pre-lowered), not clonedModule
-  // (post ctrl-packet-to-DMA), because ctrl-packet-to-DMA adds an extra
-  // argument for the control packet buffer itself.
-  int ctrlIdx = 0;
-  for (auto devOp : moduleOp.getOps<xilinx::AIE::DeviceOp>()) {
-    if (devOp.getSymName() != devName) {
-      continue;
-    }
-    ctrlIdx = getRuntimeSequenceArgCount(devOp).value_or(0);
-    break;
-  }
-
-  // Generate external_buffers.json for aiebu-asm
-  SmallString<128> extBufJsonPath(tmpDirName);
-  sys::path::append(extBufJsonPath, "external_buffers.json");
-
-  uint64_t ctrlPktSize = ctrlPktInstructions.size() * sizeof(uint32_t);
-  {
-    std::error_code ec;
-    raw_fd_ostream jsonFile(extBufJsonPath, ec, sys::fs::OpenFlags::OF_None);
-    if (ec) {
-      llvm::errs() << "Error creating external_buffers.json: " << ec.message()
-                   << "\n";
-      return failure();
-    }
-    jsonFile << "{\n";
-    jsonFile << "  \"external_buffers\": {\n";
-    jsonFile << "    \"buffer_ctrl\": {\n";
-    jsonFile << "      \"xrt_id\": " << ctrlIdx << ",\n";
-    jsonFile << "      \"logical_id\": -1,\n";
-    jsonFile << "      \"size_in_bytes\": " << ctrlPktSize << ",\n";
-    jsonFile << "      \"ctrl_pkt_buffer\": 1,\n";
-    jsonFile << "      \"name\": \"runtime_control_packet\"\n";
-    jsonFile << "    }\n";
-    jsonFile << "  }\n";
-    jsonFile << "}\n";
-  }
-
-#ifdef AIECC_HAS_AIEBU_LIBRARY
-  // Try library path first: pass in-memory data directly to avoid file I/O
-  {
-    std::vector<char> instrData(
-        reinterpret_cast<const char *>(dmaSeqInstructions.data()),
-        reinterpret_cast<const char *>(dmaSeqInstructions.data()) +
-            dmaSeqInstructions.size() * sizeof(uint32_t));
-    std::vector<char> ctrlData(
-        reinterpret_cast<const char *>(ctrlPktInstructions.data()),
-        reinterpret_cast<const char *>(ctrlPktInstructions.data()) +
-            ctrlPktInstructions.size() * sizeof(uint32_t));
-    auto patchData = readBinaryFile(extBufJsonPath);
-    if (patchData) {
-      auto elfData = generateElfViaAiebuLibrary(
-          aiebu_assembler_buffer_type_blob_instr_transaction, instrData,
-          ctrlData, *patchData);
-      if (elfData) {
-        if (succeeded(writeElfFile(elfPath, *elfData))) {
-          if (verbose) {
-            llvm::outs() << "Generated control packet ELF: " << elfPath << "\n";
-          }
-          return success();
-        }
-      }
-    }
-    if (verbose) {
-      llvm::outs() << "aiebu library call failed, falling back to subprocess\n";
-    }
-  }
-#endif // AIECC_HAS_AIEBU_LIBRARY
-
-  // Subprocess fallback: run aiebu-asm to generate combined ELF
-  std::string aiebuAsmPath = findAiebuAsm();
-  if (aiebuAsmPath.empty()) {
-    if (verbose) {
-      llvm::outs() << "aiebu-asm not found, skipping control packet ELF "
-                      "generation\n";
-    }
-    return success();
-  }
-
-  std::vector<StringRef> args;
-  args.push_back(aiebuAsmPath);
-  args.push_back("-t");
-  args.push_back("aie2txn");
-  args.push_back("-c");
-  args.push_back(dmaSeqBinPath);
-  args.push_back("-o");
-  args.push_back(elfPath);
-  args.push_back("-j");
-  args.push_back(extBufJsonPath);
-  args.push_back("-p");
-  args.push_back(ctrlPktBinPath);
-
-  if (verbose) {
-    llvm::outs() << "Running: ";
-    for (const auto &arg : args) {
-      llvm::outs() << arg << " ";
-    }
-    llvm::outs() << "\n";
-  }
-
-  std::string errMsg;
-  int exitCode = sys::ExecuteAndWait(aiebuAsmPath, args, std::nullopt, {},
-                                     /*SecondsToWait=*/0,
-                                     /*MemoryLimit=*/0, &errMsg);
-  if (exitCode != 0) {
-    llvm::errs() << "Error running aiebu-asm for control packet ELF: " << errMsg
-                 << "\n";
-    return failure();
-  }
-
-  if (verbose) {
-    llvm::outs() << "Generated control packet ELF: " << elfPath << "\n";
-  }
-
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// ELF Generation (via aiebu-asm)
-//===----------------------------------------------------------------------===//
-
-#ifdef AIECC_HAS_AIEBU_LIBRARY
-/// Helper to read a binary file into a vector of chars.
-static std::optional<std::vector<char>> readBinaryFile(StringRef path) {
-  auto bufferOrErr = llvm::MemoryBuffer::getFile(path);
-  if (!bufferOrErr) {
-    return std::nullopt;
-  }
-  auto &buffer = *bufferOrErr;
-  const char *data = buffer->getBufferStart();
-  size_t size = buffer->getBufferSize();
-  return std::vector<char>(data, data + size);
-}
-
-/// Generate ELF using aiebu C API with transaction instructions.
-/// Returns the ELF data or nullopt on failure.
-static std::optional<std::vector<char>>
-generateElfViaAiebuLibrary(aiebu_assembler_buffer_type type,
-                           const std::vector<char> &buffer1,
-                           const std::vector<char> &buffer2 = {},
-                           const std::vector<char> &patchJson = {}) {
-  void *elfBuf = nullptr;
-  int result = aiebu_assembler_get_elf(
-      type, buffer1.data(), buffer1.size(),
-      buffer2.empty() ? nullptr : buffer2.data(), buffer2.size(), &elfBuf,
-      patchJson.empty() ? nullptr : patchJson.data(), patchJson.size(),
-      nullptr, // libs
-      nullptr, // libpaths
-      nullptr, // pm_ctrlpkts
-      0);      // pm_ctrlpkt_size
-
-  if (result <= 0 || elfBuf == nullptr) {
-    if (verbose) {
-      llvm::errs() << "aiebu library error: returned " << result << "\n";
-    }
-    if (elfBuf) {
-      free(elfBuf);
-    }
-    return std::nullopt;
-  }
-
-  // Copy data and free the allocated buffer
-  std::vector<char> elfData(static_cast<char *>(elfBuf),
-                            static_cast<char *>(elfBuf) + result);
-  free(elfBuf);
-  return elfData;
-}
-
-/// Generate ELF using aiebu C API with config JSON (for aie2_config type).
-/// Returns the ELF data or nullopt on failure.
-static std::optional<std::vector<char>>
-generateElfViaAiebuLibraryConfig(const std::vector<char> &configJson) {
-  void *elfBuf = nullptr;
-  int result = aiebu_assembler_get_elf(aiebu_assembler_buffer_type_aie2_config,
-                                       configJson.data(), configJson.size(),
-                                       nullptr, 0,          // buffer2
-                                       &elfBuf, nullptr, 0, // patch_json
-                                       nullptr,             // libs
-                                       nullptr,             // libpaths
-                                       nullptr,             // pm_ctrlpkts
-                                       0);                  // pm_ctrlpkt_size
-
-  if (result <= 0 || elfBuf == nullptr) {
-    if (verbose) {
-      llvm::errs() << "aiebu library error (config): returned " << result
-                   << "\n";
-    }
-    if (elfBuf) {
-      free(elfBuf);
-    }
-    return std::nullopt;
-  }
-
-  std::vector<char> elfData(static_cast<char *>(elfBuf),
-                            static_cast<char *>(elfBuf) + result);
-  free(elfBuf);
-  return elfData;
-}
-
-/// Write ELF data to a file.
-static LogicalResult writeElfFile(StringRef path,
-                                  const std::vector<char> &elfData) {
-  std::error_code ec;
-  raw_fd_ostream elfFile(path, ec, sys::fs::OpenFlags::OF_None);
-  if (ec) {
-    llvm::errs() << "Error writing ELF file " << path << ": " << ec.message()
-                 << "\n";
-    return failure();
-  }
-  elfFile.write(elfData.data(), elfData.size());
-  elfFile.close();
-  return success();
-}
-#endif // AIECC_HAS_AIEBU_LIBRARY
-
-/// Find aiebu-asm binary in PATH or at default locations.
-static std::string findAiebuAsm() {
-  // First try PATH
-  auto aiebuAsmPath = sys::findProgramByName("aiebu-asm");
-  if (aiebuAsmPath) {
-    return *aiebuAsmPath;
-  }
-
-  // Try XRT installation location (common case)
-  std::string xrtPath = "/opt/xilinx/xrt/bin/aiebu-asm";
-  if (sys::fs::can_execute(xrtPath)) {
-    return xrtPath;
-  }
-
-  // Try Ubuntu package location
-  std::string ubuntuPath = "/usr/bin/aiebu-asm";
-  if (sys::fs::can_execute(ubuntuPath)) {
-    return ubuntuPath;
-  }
-
-  // Try standalone aiebu installation
-  std::string defaultPath = "/opt/xilinx/aiebu/bin/aiebu-asm";
-  if (sys::fs::can_execute(defaultPath)) {
-    return defaultPath;
-  }
-
-  return "";
-}
-
-/// Generate ELF file from NPU instruction binary using aiebu-asm.
-/// This generates an ELF that can be loaded using xrt::elf API.
-static LogicalResult generateElfFromInsts(ModuleOp moduleOp,
-                                          StringRef tmpDirName,
-                                          StringRef devName) {
-  if (!generateElf) {
-    return success();
-  }
-
-  // When control packets are also being generated, the combined ELF is
-  // produced by generateControlPacketOutput() which includes both the DMA
-  // sequence and control packet data. Skip standalone ELF generation here.
-  if (generateCtrlPkt) {
-    return success();
-  }
-
-  if (verbose) {
-    llvm::outs() << "Generating ELF for device: " << devName << "\n";
-  }
-
-  if (dryRun) {
-    if (verbose) {
-      llvm::outs() << "Would generate ELF for device: " << devName << "\n";
-    }
-    return success();
-  }
-
-  // Clone and run NPU lowering (same as generateNpuInstructions)
-  OwningOpRef<ModuleOp> clonedModule = moduleOp.clone();
-
-  if (failed(runNpuLoweringPipeline(*clonedModule, tmpDirName))) {
-    llvm::errs() << "Error running NPU lowering pipeline for ELF generation\n";
-    return failure();
-  }
-
-  // Generate instructions for each sequence and combine them
-  std::vector<uint32_t> allInstructions;
-  LogicalResult result = success();
-
-  for (auto devOp : clonedModule->getOps<xilinx::AIE::DeviceOp>()) {
-    if (devOp.getSymName() != devName) {
-      continue;
-    }
-
-    devOp.walk([&](xilinx::AIE::RuntimeSequenceOp seq) {
-      if (failed(result)) {
-        return;
-      }
-
-      if (!sequenceName.empty() && seq.getSymName() != sequenceName) {
-        return;
-      }
-
-      std::vector<uint32_t> instructions;
-      if (failed(xilinx::AIE::AIETranslateNpuToBinary(
-              *clonedModule, instructions, devName, seq.getSymName()))) {
-        llvm::errs() << "Error generating NPU instructions for ELF: "
-                     << seq.getSymName() << "\n";
-        result = failure();
-        return;
-      }
-
-      // Append to combined instructions
-      allInstructions.insert(allInstructions.end(), instructions.begin(),
-                             instructions.end());
-    });
-  }
-
-  if (failed(result)) {
-    return failure();
-  }
-
-  if (allInstructions.empty()) {
-    llvm::errs() << "Warning: No NPU instructions generated for ELF\n";
-    return success();
-  }
-
-  // Determine output ELF path
-  std::string outputElfPath = formatString(elfName, devName.str(), "");
-
-#ifdef AIECC_HAS_AIEBU_LIBRARY
-  // Try library path first: convert instructions directly to ELF in-memory
-  {
-    std::vector<char> instData(
-        reinterpret_cast<const char *>(allInstructions.data()),
-        reinterpret_cast<const char *>(allInstructions.data()) +
-            allInstructions.size() * sizeof(uint32_t));
-
-    auto elfData = generateElfViaAiebuLibrary(
-        aiebu_assembler_buffer_type_blob_instr_transaction, instData);
-    if (elfData) {
-      if (succeeded(writeElfFile(outputElfPath, *elfData))) {
-        if (verbose) {
-          llvm::outs() << "Generated ELF: " << outputElfPath << "\n";
-        }
-        return success();
-      }
-    }
-    if (verbose) {
-      llvm::outs() << "aiebu library call failed, falling back to subprocess\n";
-    }
-  }
-#endif // AIECC_HAS_AIEBU_LIBRARY
-
-  // Subprocess fallback: write instructions to temp file and run aiebu-asm
-  std::string aiebuAsmBin = findAiebuAsm();
-  if (aiebuAsmBin.empty()) {
-    llvm::errs() << "Error: aiebu-asm not found in PATH or at known "
-                    "locations (/opt/xilinx/xrt/bin, /usr/bin, "
-                    "/opt/xilinx/aiebu/bin)\n";
-    return failure();
-  }
-
-  if (verbose) {
-    llvm::outs() << "Found aiebu-asm: " << aiebuAsmBin << "\n";
-  }
-
-  SmallString<128> tempBinPath(tmpDirName);
-  sys::path::append(tempBinPath, devName.str() + "_elf_insts.bin");
-
-  {
-    std::error_code ec;
-    raw_fd_ostream binFile(tempBinPath, ec, sys::fs::OpenFlags::OF_None);
-    if (ec) {
-      llvm::errs() << "Error creating temp binary for ELF: " << ec.message()
-                   << "\n";
-      return failure();
-    }
-    binFile.write(reinterpret_cast<const char *>(allInstructions.data()),
-                  allInstructions.size() * sizeof(uint32_t));
-    binFile.close();
-  }
-
-  if (verbose) {
-    llvm::outs() << "Wrote " << allInstructions.size()
-                 << " instructions to temp file: " << tempBinPath << "\n";
-  }
-
-  // Run aiebu-asm to convert binary to ELF
-  // aiebu-asm -t aie2txn -c <input.bin> -o <output.elf>
-  SmallVector<std::string, 10> aiebuCmd = {
-      aiebuAsmBin, "-t",         "aie2txn", "-c", std::string(tempBinPath),
-      "-o",        outputElfPath};
-
-  if (!executeCommand(aiebuCmd)) {
-    llvm::errs() << "Error running aiebu-asm\n";
-    return failure();
-  }
-
-  if (verbose) {
-    llvm::outs() << "Generated ELF: " << outputElfPath << "\n";
-  }
-
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// Full ELF Generation (via aiebu-asm aie2_config)
-//===----------------------------------------------------------------------===//
-
-/// Structure to hold device info for full ELF generation.
-struct DeviceElfInfo {
-  std::string deviceName;
-  std::string pdiPath;
-  std::vector<std::pair<std::string, std::string>>
-      sequences; // (seqName, instsPath)
-  int pdiId;
-  int argCount = 3; // Number of runtime sequence arguments
-};
-
-/// Generate full ELF containing PDIs and instruction sequences.
-/// This creates a config.json and calls aiebu-asm -t aie2_config.
-static LogicalResult
-generateFullElfArtifact(ArrayRef<DeviceElfInfo> deviceInfos,
-                        StringRef tmpDirName) {
-  if (!generateFullElf) {
-    return success();
-  }
-
-  if (deviceInfos.empty()) {
-    return success();
-  }
-
-  if (verbose) {
-    llvm::outs() << "Generating full ELF with " << deviceInfos.size()
-                 << " device(s)\n";
-  }
-
-  if (dryRun) {
-    if (verbose) {
-      llvm::outs() << "Would generate full ELF\n";
-    }
-    return success();
-  }
-
-  // Build config.json structure
-  // Format: { "xrt-kernels": [ { "name": ..., "PDIs": [...], "instance": [...]
-  // } ] }
-  //
-  // Filter out devices with no runtime sequences (matching Python behavior).
-  SmallVector<const DeviceElfInfo *> activeDevices;
-  for (const auto &info : deviceInfos) {
-    if (!info.sequences.empty())
-      activeDevices.push_back(&info);
-  }
-
-  // Build config JSON using llvm::json for proper escaping.
-  llvm::json::Array xrtKernels;
-
-  for (const auto *infoPtr : activeDevices) {
-    const auto &info = *infoPtr;
-
-    // Arguments - generate based on actual runtime sequence parameter count
-    llvm::json::Array arguments;
-    for (int i = 0; i < info.argCount; ++i) {
-      char offsetBuf[16];
-      snprintf(offsetBuf, sizeof(offsetBuf), "0x%x", i * 8);
-      arguments.push_back(
-          llvm::json::Object{{"name", ("arg_" + Twine(i)).str()},
-                             {"type", "char *"},
-                             {"offset", std::string(offsetBuf)}});
-    }
-
-    // PDIs - list ALL device PDIs in each kernel entry (matching Python driver
-    // behavior). aiebu-asm needs all PDI references available because the
-    // instruction binary may reference PDIs from any device.
-    llvm::json::Array pdis;
-    for (const auto &di : deviceInfos) {
-      pdis.push_back(
-          llvm::json::Object{{"id", di.pdiId}, {"PDI_file", di.pdiPath}});
-    }
-
-    // Instances (runtime sequences)
-    llvm::json::Array instances;
-    for (const auto &seq : info.sequences) {
-      instances.push_back(llvm::json::Object{
-          {"id", seq.first}, {"TXN_ctrl_code_file", seq.second}});
-    }
-
-    xrtKernels.push_back(
-        llvm::json::Object{{"name", info.deviceName},
-                           {"arguments", std::move(arguments)},
-                           {"PDIs", std::move(pdis)},
-                           {"instance", std::move(instances)}});
-  }
-
-  llvm::json::Value configValue(
-      llvm::json::Object{{"xrt-kernels", std::move(xrtKernels)}});
-
-  // Serialize to string (needed for both file output and library path).
-  std::string configJson;
-  llvm::raw_string_ostream jsonStream(configJson);
-  jsonStream << llvm::formatv("{0:2}", configValue);
-
-  // Write config.json
-  SmallString<128> configPath(tmpDirName);
-  sys::path::append(configPath, "full_elf_config.json");
-
-  if (failed(writeJsonToFile(configPath, configValue))) {
-    return failure();
-  }
-
-  if (verbose) {
-    llvm::outs() << "Generated config.json: " << configPath << "\n";
-    llvm::outs().flush();
-  }
-
-#ifdef AIECC_HAS_AIEBU_LIBRARY
-  // Try library path first: pass config JSON directly to aiebu C API
-  {
-    std::vector<char> configData(configJson.begin(), configJson.end());
-    auto elfData = generateElfViaAiebuLibraryConfig(configData);
-    if (elfData) {
-      if (succeeded(writeElfFile(fullElfName.getValue(), *elfData))) {
-        if (verbose) {
-          llvm::outs() << "Generated full ELF: " << fullElfName << "\n";
-          llvm::outs().flush();
-        }
-        return success();
-      }
-    }
-    if (verbose) {
-      llvm::outs() << "aiebu library call failed, falling back to subprocess\n";
-      llvm::outs().flush();
-    }
-  }
-#endif // AIECC_HAS_AIEBU_LIBRARY
-
-  // Subprocess fallback: run aiebu-asm -t aie2_config -j config.json -o
-  // output.elf
-  std::string aiebuAsmBin = findAiebuAsm();
-  if (aiebuAsmBin.empty()) {
-    llvm::errs() << "Error: aiebu-asm not found for full ELF generation\n";
-    return failure();
-  }
-
-  SmallVector<std::string, 10> aiebuCmd = {aiebuAsmBin,
-                                           "-t",
-                                           "aie2_config",
-                                           "-j",
-                                           std::string(configPath),
-                                           "-o",
-                                           fullElfName.getValue()};
-
-  if (!executeCommand(aiebuCmd)) {
-    llvm::errs() << "Error running aiebu-asm for full ELF\n";
-    llvm::errs().flush();
-    return failure();
-  }
-
-  if (verbose) {
-    llvm::outs() << "Generated full ELF: " << fullElfName << "\n";
-    llvm::outs().flush();
-  }
-
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// CDO/PDI/xclbin Generation
-//===----------------------------------------------------------------------===//
-
-/// Maximum number of host buffer (boN) arguments a kernel may take.
-///
-/// The NPU firmware only pre-translates the first 5 host buffer addresses from
-/// the host address space into the AIE address space. Buffers beyond that would
-/// be DMA'd from the wrong address -- except AIETargetNPU folds the translation
-/// offset into the DDR address patch for those args (see kDDRAIEAddrOffset), so
-/// designs with more than 5 host buffers work correctly. This cap is therefore
-/// a conservative, verified ceiling rather than a hard hardware limit: host BO
-/// counts up to this value are validated on hardware (see the many_buffers
-/// test). Raise it (and extend the hardware tests) if larger counts are needed
-/// and verified.
-static constexpr int kMaxHostBOs = 16;
-
-/// Minimum number of host buffer (boN) slots every kernel must declare.
-///
-/// The NPU firmware's command-chain handler (xrt::runlist / ERT_CMD_CHAIN)
-/// walks consecutive per-command slots assuming a fixed minimum argument
-/// stride of 5 words. A kernel that declares fewer than 5 boN slots produces
-/// an undersized first slot, so the walker reads the second command from the
-/// wrong offset and the runlist aborts (ERT_CMD_STATE_ABORT). Single-command
-/// launches (the ergonomic kernel(...) call or a 1-element runlist) never walk
-/// to a second slot and so are unaffected -- which is why this only surfaces
-/// for multi-run runlists (e.g. the add_one_two_txn / add_one_two_runlist
-/// tests). Declaring extra slots is harmless: XRT tolerates a kernel declaring
-/// more host BOs than the host passes; under-declaring segfaults (#3248).
-///
-/// aiecc cannot know at compile time whether a kernel will be consumed by a
-/// multi-command runlist, so we always declare at least this many slots to
-/// conform to the firmware chain ABI. Verified on hardware: counts 2/3/4 abort
-/// the two-run runlist, 5 passes. This is a firmware constraint, not an XRT or
-/// mlir-aie bug; the historical hardcoded-5 encoded exactly this contract.
-static constexpr int kMinHostBOs = 5;
-
-/// Last-resort host-buffer (boN) count for a device that has no
-/// runtime_sequence AND no sibling sequence to derive from. Normally a
-/// sequence-less device (e.g. the ctrl-packet reconfig "base" xclbin) gets its
-/// count derived from the sibling "main" device's sequence and threaded in via
-/// the hostBOCountOverride argument to computeNumHostBOs (see the capture at
-/// the device-filter loop in compileAIEModule). This constant only applies when
-/// even that is unavailable. Equal to kMinHostBOs for the same firmware-ABI
-/// reason.
-static constexpr int kNoSequenceHostBOs = kMinHostBOs;
-
-/// Compute the number of host buffer (boN) arguments XRT must declare in
-/// kernels.json for `devName`.
-///
-/// The runtime_sequence's block-argument list is the host-call ABI: argument i
-/// maps to host BO i (after the fixed opcode/instr/ninstr scalars). Every host
-/// buffer -- data, trace, and control-packet -- is a block argument by the time
-/// the sequence is lowered (trace lowering and ctrl-packet-to-dma each append
-/// their buffer as an argument), so the count is simply the lowered sequence's
-/// argument count, floored at kMinHostBOs to satisfy the firmware command-chain
-/// ABI (see kMinHostBOs).
-///
-/// A device with no runtime_sequence of its own (the ctrl-packet reconfig
-/// "base" xclbin) has no operand list to read here, because its sibling "main"
-/// device has already been erased from `moduleOp` by the time this runs. Its
-/// true count is captured before that erase and passed as
-/// `hostBOCountOverride`; when set, it is used directly (still floored). Only
-/// when no override is available does the count fall back to
-/// kNoSequenceHostBOs.
-static FailureOr<int>
-computeNumHostBOs(ModuleOp moduleOp, StringRef devName, StringRef tmpDirName,
-                  std::optional<int> hostBOCountOverride = std::nullopt) {
-  if (hostBOCountOverride)
-    return std::max(kMinHostBOs, *hostBOCountOverride);
-
-  // Lower a private clone so the source module is untouched, then read the
-  // argument count off the lowered runtime_sequence.
-  OwningOpRef<ModuleOp> clonedModule = moduleOp.clone();
-  if (failed(runNpuLoweringPipeline(*clonedModule, tmpDirName)))
-    return failure();
-
-  for (auto devOp : clonedModule->getOps<xilinx::AIE::DeviceOp>()) {
-    if (devOp.getSymName() != devName)
-      continue;
-    if (auto argCount = getRuntimeSequenceArgCount(devOp))
-      return std::max(kMinHostBOs, *argCount);
-    // Device exists but has no runtime_sequence.
-    return kNoSequenceHostBOs;
-  }
-
-  return kNoSequenceHostBOs;
-}
-
-/// Generate CDO/PDI/xclbin artifacts from an in-memory module.
-///
-/// `hostBOCountOverride`, when set, forces the kernels.json host-buffer count
-/// instead of deriving it from this module's runtime_sequence. Used for the
-/// ctrl-packet reconfig "base" device, whose sibling "main" sequence (the real
-/// source of its ABI) has been erased before this runs.
-static LogicalResult
-generateCdoArtifacts(ModuleOp moduleOp, StringRef tmpDirName, StringRef devName,
-                     std::optional<int> hostBOCountOverride = std::nullopt) {
-  // Full ELF requires PDI generation
-  bool needPdi = generatePdi || generateFullElf;
-  if (!generateCdo && !needPdi && !generateXclbin) {
-    return success();
-  }
-
-  if (verbose) {
-    llvm::outs() << "Generating CDO artifacts for device: " << devName << "\n";
-  }
-
-  // Generate JSON metadata files for xclbin even in dry-run mode
-  // (matching Python aiecc.py behavior where -n only skips command execution)
-  if (generateXclbin) {
-    SmallString<128> memTopoPath(tmpDirName);
-    sys::path::append(memTopoPath, devName.str() + "_mem_topology.json");
-    if (failed(generateMemTopologyJson(memTopoPath)))
-      return failure();
-
-    SmallString<128> kernelsPath(tmpDirName);
-    sys::path::append(kernelsPath, devName.str() + "_kernels.json");
-    FailureOr<int> numHostBOs =
-        computeNumHostBOs(moduleOp, devName, tmpDirName, hostBOCountOverride);
-    if (failed(numHostBOs))
-      return failure();
-    if (*numHostBOs > kMaxHostBOs) {
-      llvm::errs() << "error: device '" << devName << "' has " << *numHostBOs
-                   << " host buffer arguments, which exceeds the maximum "
-                      "supported and verified count of "
-                   << kMaxHostBOs
-                   << ". Reduce the number of host buffer arguments.\n";
-      return failure();
-    }
-    if (failed(generateKernelsJson(kernelsPath, devName, *numHostBOs)))
-      return failure();
-
-    // Generate partition JSON (with placeholder PDI path in dry-run)
-    SmallString<128> partitionPath(tmpDirName);
-    sys::path::append(partitionPath, devName.str() + "_aie_partition.json");
-    std::string pdiFileName = formatString(pdiName, devName);
-    // When user explicitly requests PDI, it goes to CWD; otherwise tmpDir.
-    SmallString<128> pdiPathForJson;
-    if (generatePdi) {
-      pdiPathForJson = pdiFileName;
-    } else {
-      pdiPathForJson = tmpDirName;
-      sys::path::append(pdiPathForJson, pdiFileName);
-    }
-    // Make absolute for partition JSON
-    SmallString<128> absPdiPath;
-    if (sys::path::is_absolute(pdiPathForJson)) {
-      absPdiPath = pdiPathForJson;
-    } else {
-      sys::fs::current_path(absPdiPath);
-      sys::path::append(absPdiPath, pdiPathForJson);
-    }
-    // Find the DeviceOp for partition metadata
-    xilinx::AIE::DeviceOp deviceOp = nullptr;
-    moduleOp->walk([&](xilinx::AIE::DeviceOp op) {
-      if (op.getSymName() == devName)
-        deviceOp = op;
-    });
-    if (!deviceOp) {
-      llvm::errs() << "Error: DeviceOp not found for partition JSON: "
-                   << devName << "\n";
-      return failure();
-    }
-    if (failed(generatePartitionJson(partitionPath, devName, absPdiPath,
-                                     deviceOp)))
-      return failure();
-
-    if (verbose) {
-      llvm::outs() << "Generated JSON metadata files in: " << tmpDirName
-                   << "\n";
-    }
-  }
-
-  // In dry-run mode, skip CDO generation (C++ API) but still print commands
-  if (!dryRun) {
-    // Generate CDO files using direct C++ API call.
-    // This replaces the subprocess call to aie-translate --aie-generate-cdo.
-    // AIETranslateToCDODirect generates CDO files directly to the work
-    // directory: {devName}_aie_cdo_elfs.bin, {devName}_aie_cdo_init.bin,
-    // {devName}_aie_cdo_enable.bin
-    if (failed(xilinx::AIE::AIETranslateToCDODirect(moduleOp, tmpDirName,
-                                                    devName,
-                                                    /*bigEndian=*/false,
-                                                    /*emitUnified=*/false,
-                                                    /*cdoDebug=*/false,
-                                                    /*aieSim=*/false,
-                                                    /*xaieDebug=*/false,
-                                                    /*enableCores=*/true))) {
-      llvm::errs() << "Error generating CDO files\n";
-      return failure();
-    }
-
-    if (verbose) {
-      llvm::outs() << "Generated CDO files in: " << tmpDirName << "\n";
-    }
-  }
-
-  // Generate PDI if requested (also required for full ELF)
-  if (needPdi || generateXclbin) {
-    // Find bootgen (needed for subprocess fallback if library unavailable)
-    std::string bootgenPath = findAieTool("bootgen");
-#ifndef AIECC_HAS_BOOTGEN_LIBRARY
-    // Without library, we require bootgen subprocess
-    if (bootgenPath.empty()) {
-      llvm::errs()
-          << "Error: bootgen not found, cannot generate requested PDI/xclbin\n";
-      return failure();
-    }
-#endif
-
-    std::string pdiFileName = formatString(pdiName, devName);
-    // When user explicitly requests PDI (--aie-generate-pdi), write to CWD.
-    // Otherwise write to tmpDir for isolation (matches Python aiecc.py).
-    SmallString<128> pdiPath;
-    if (generatePdi) {
-      pdiPath = pdiFileName;
-    } else {
-      pdiPath = tmpDirName;
-      sys::path::append(pdiPath, pdiFileName);
-    }
-
-    // Create BIF file (skip in dry-run)
-    SmallString<128> bifPath(tmpDirName);
-    sys::path::append(bifPath, devName.str() + "_design.bif");
-
-    if (!dryRun) {
-      std::error_code ec;
-      raw_fd_ostream bifFile(bifPath, ec);
-      if (ec) {
-        llvm::errs() << "Error creating BIF file: " << ec.message() << "\n";
-        return failure();
-      }
-
-      bifFile << "all:\n";
-      bifFile << "{\n";
-      bifFile << "  id_code = 0x14ca8093\n";
-      bifFile << "  extended_id_code = 0x01\n";
-      bifFile << "  image\n";
-      bifFile << "  {\n";
-      bifFile << "    name=aie_image, id=0x1c000000\n";
-      bifFile << "    { type=cdo ";
-      bifFile << "file=" << tmpDirName << "/" << devName
-              << "_aie_cdo_elfs.bin ";
-      bifFile << "file=" << tmpDirName << "/" << devName
-              << "_aie_cdo_init.bin ";
-      bifFile << "file=" << tmpDirName << "/" << devName
-              << "_aie_cdo_enable.bin";
-      bifFile << " }\n";
-      bifFile << "  }\n";
-      bifFile << "}\n";
-      bifFile.close();
-    }
-
-    bool pdiGenerated = false;
-
-#ifdef AIECC_HAS_BOOTGEN_LIBRARY
-    // Try using bootgen library directly via C API
-    if (!dryRun) {
-      if (verbose) {
-        llvm::outs() << "Using bootgen library for PDI generation\n";
-        // Print equivalent command for verbose output compatibility
-        llvm::outs() << "bootgen -arch versal -image " << bifPath << " -o "
-                     << pdiPath << " -w\n";
-        llvm::outs().flush();
-      }
-      char errorMsg[256] = {0};
-      int result = bootgen_generate_pdi(
-          std::string(bifPath).c_str(), std::string(pdiPath).c_str(),
-          BOOTGEN_ARCH_VERSAL, /*overwrite=*/1, errorMsg, sizeof(errorMsg));
-      if (result == BOOTGEN_SUCCESS) {
-        if (verbose) {
-          llvm::outs() << "Generated PDI via library: " << pdiPath << "\n";
-        }
-        pdiGenerated = true;
-      } else {
-        if (verbose) {
-          llvm::outs() << "bootgen library failed (" << errorMsg
-                       << "), falling back to subprocess\n";
-        }
-      }
-    }
-#endif // AIECC_HAS_BOOTGEN_LIBRARY
-
-    // Subprocess fallback if library not available or failed
-    if (!pdiGenerated && !dryRun) {
-      if (bootgenPath.empty()) {
-        llvm::errs()
-            << "Error: bootgen not found, cannot generate requested PDI\n";
-        return failure();
-      }
-
-      SmallVector<std::string, 8> bootgenCmd = {bootgenPath,
-                                                "-arch",
-                                                "versal",
-                                                "-image",
-                                                std::string(bifPath),
-                                                "-o",
-                                                std::string(pdiPath),
-                                                "-w"};
-
-      if (verbose) {
-        llvm::outs() << bootgenPath << " -arch versal -image " << bifPath
-                     << " -o " << pdiPath << " -w\n";
-        llvm::outs().flush();
-      }
-
-      // Execute bootgen command
-      if (!executeCommand(bootgenCmd, /*verboseOutput=*/false)) {
-        llvm::errs() << "Error generating PDI\n";
-        return failure();
-      }
-
-      if (verbose) {
-        llvm::outs() << "Generated PDI: " << pdiPath << "\n";
-      }
-    }
-
-    if (dryRun && verbose) {
-      if (!bootgenPath.empty()) {
-        llvm::outs() << bootgenPath << " -arch versal -image " << bifPath
-                     << " -o " << pdiPath << " -w\n";
-        llvm::outs() << "Dry run - command not executed\n";
-      }
-      llvm::outs() << "Would generate PDI: " << pdiPath << "\n";
-    }
-
-    // Generate xclbin if requested
-    if (generateXclbin) {
-      std::string xclbinutilPath = findAieTool("xclbinutil");
-      if (xclbinutilPath.empty()) {
-        if (verbose) {
-          llvm::outs()
-              << "Warning: xclbinutil not found, skipping xclbin generation\n";
-        }
-        return success();
-      }
-
-      if (verbose) {
-        llvm::outs() << "Generating xclbin for device: " << devName << "\n";
-      }
-
-      // JSON metadata files were already generated earlier (even in dry-run)
-      SmallString<128> memTopoPath(tmpDirName);
-      sys::path::append(memTopoPath, devName.str() + "_mem_topology.json");
-
-      SmallString<128> kernelsPath(tmpDirName);
-      sys::path::append(kernelsPath, devName.str() + "_kernels.json");
-
-      SmallString<128> partitionPath(tmpDirName);
-      sys::path::append(partitionPath, devName.str() + "_aie_partition.json");
-
-      // Build xclbin
-      std::string xclbinFileName = formatString(xclbinName, devName);
-      SmallString<128> xclbinPath;
-      if (sys::path::is_absolute(xclbinFileName)) {
-        xclbinPath = xclbinFileName;
-      } else {
-        xclbinPath = xclbinFileName;
-      }
-
-      SmallVector<std::string, 16> xclbinCmd;
-
-      // Handle xclbin-input: merge with existing xclbin
-      if (!xclbinInput.empty()) {
-        if (verbose) {
-          llvm::outs() << "Extending existing xclbin: " << xclbinInput << "\n";
-        }
-
-        // Merge partition JSONs
-        SmallString<128> mergedPartitionPath(tmpDirName);
-        sys::path::append(mergedPartitionPath,
-                          devName.str() + "_merged_partition.json");
-
-        if (failed(extractAndMergePartition(xclbinInput, partitionPath,
-                                            mergedPartitionPath, tmpDirName))) {
-          return failure();
-        }
-
-        xclbinCmd = {xclbinutilPath,
-                     "--input",
-                     xclbinInput.getValue(),
-                     "--add-kernel",
-                     std::string(kernelsPath),
-                     "--add-replace-section",
-                     "AIE_PARTITION:JSON:" + std::string(mergedPartitionPath),
-                     "--force",
-                     "--output",
-                     std::string(xclbinPath)};
-      } else {
-        // Create new xclbin from scratch
-        xclbinCmd = {xclbinutilPath,
-                     "--add-replace-section",
-                     "MEM_TOPOLOGY:JSON:" + std::string(memTopoPath),
-                     "--add-kernel",
-                     std::string(kernelsPath),
-                     "--add-replace-section",
-                     "AIE_PARTITION:JSON:" + std::string(partitionPath),
-                     "--force",
-                     "--output",
-                     std::string(xclbinPath)};
-      }
-
-      if (!executeCommand(xclbinCmd)) {
-        llvm::errs() << "Error generating xclbin\n";
-        return failure();
-      }
-
-      if (verbose && !dryRun) {
-        llvm::outs() << "Generated xclbin: " << xclbinPath << "\n";
-      }
-    }
-  }
-
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// AIE Simulation and Host Compilation (delegated to aiecc_aiesim.cpp)
-//===----------------------------------------------------------------------===//
-
-/// Create AiesimConfig from current command-line options
-static xilinx::aiecc::AiesimConfig createAiesimConfig() {
-  xilinx::aiecc::AiesimConfig config;
-  config.enabled = aiesim && !noAiesim;
-  config.compileHost = compileHost && !noCompileHost;
-  config.verbose = verbose;
-  config.dryRun = dryRun;
-  config.hostTarget = hostTarget.getValue();
-  config.aietoolsPath = getAietoolsDir();
-  config.installPath = getInstallPath();
-
-  // Populate host args for aiesim ps.so compilation.
-  // Matches Python's strip_host_args_for_aiesim(): all host args except -o.
-  for (const auto &dir : hostIncludeDirs)
-    config.hostArgs.push_back("-I" + dir);
-  for (const auto &dir : hostLibDirs)
-    config.hostArgs.push_back("-L" + dir);
-  for (const auto &lib : hostLibs)
-    config.hostArgs.push_back("-l" + lib);
-  for (const auto &src : getHostSourceFiles())
-    config.hostArgs.push_back(src);
-
-  return config;
-}
-
-//===----------------------------------------------------------------------===//
-// Host Compilation
-//===----------------------------------------------------------------------===//
-
-/// Compile host program using clang++.
-/// This matches the behavior of the old Python process_host_cgen() function.
-static LogicalResult compileHostProgram(StringRef tmpDirName,
-                                        StringRef aieTarget) {
-  if (!compileHost) {
-    return success();
-  }
-
-  std::vector<std::string> hostSourceFiles = getHostSourceFiles();
-  if (hostSourceFiles.empty()) {
-    if (verbose) {
-      llvm::outs() << "Host compilation enabled but no host source files "
-                      "provided, skipping\n";
-    }
-    return success();
-  }
-
-  if (verbose) {
-    llvm::outs() << "Compiling host program\n";
-  }
-
-  // Find clang++ in PATH
-  auto clangppPath = sys::findProgramByName("clang++");
-  if (!clangppPath) {
-    llvm::errs() << "Error: Could not find clang++ in PATH for host "
-                    "compilation\n";
-    return failure();
-  }
-
-  SmallVector<std::string, 32> cmd;
-  cmd.push_back(*clangppPath);
-  cmd.push_back("-std=c++17");
-
-  // Set host target
-  if (!hostTarget.empty()) {
-    cmd.push_back("--target=" + hostTarget.getValue());
-  }
-
-  // Set sysroot
-  if (!sysroot.empty()) {
-    cmd.push_back("--sysroot=" + sysroot.getValue());
-    if (hostTarget.getValue() == "aarch64-linux-gnu") {
-      cmd.push_back("--gcc-toolchain=" + sysroot.getValue() + "/usr");
-    }
-  }
-
-  // Auto-discover runtime library paths
-  std::string installPath = getInstallPath();
-  std::string archName =
-      StringRef(hostTarget.getValue()).split('-').first.str();
-
-  // xaiengine include and library paths
-  SmallString<256> xaiengineInclude(installPath);
-  sys::path::append(xaiengineInclude, "runtime_lib", archName, "xaiengine",
-                    "include");
-
-  SmallString<256> xaiengineLib(installPath);
-  sys::path::append(xaiengineLib, "runtime_lib", archName, "xaiengine", "lib");
-
-  // Memory allocator library
-  SmallString<256> testLibPath(installPath);
-  sys::path::append(testLibPath, "runtime_lib", archName, "test_lib", "lib");
-  SmallString<256> memAllocator(testLibPath);
-  sys::path::append(memAllocator, "libmemory_allocator_ion.a");
-
-  // Add auto-discovered paths
-  cmd.push_back(std::string(memAllocator));
-  cmd.push_back("-I" + std::string(xaiengineInclude));
-  cmd.push_back("-L" + std::string(xaiengineLib));
-  cmd.push_back("-Wl,-R" + std::string(xaiengineLib));
-  cmd.push_back("-I" + tmpDirName.str());
-  cmd.push_back("-fuse-ld=lld");
-  cmd.push_back("-lm");
-  cmd.push_back("-lxaienginecdo");
-
-  // AIE target defines
-  auto targetDefines = xilinx::aiecc::getAieTargetDefines(aieTarget);
-  for (const auto &def : targetDefines) {
-    cmd.push_back(def);
-  }
-
-  // User-provided include directories
-  for (const auto &dir : hostIncludeDirs) {
-    cmd.push_back("-I" + dir);
-  }
-
-  // User-provided library directories
-  for (const auto &dir : hostLibDirs) {
-    cmd.push_back("-L" + dir);
-  }
-
-  // User-provided libraries
-  for (const auto &lib : hostLibs) {
-    cmd.push_back("-l" + lib);
-  }
-
-  // Post-`--` passthrough, in user-specified order. Host source files mixed
-  // in here are already included.
-  for (const auto &arg : hostExtraArgs) {
-    cmd.push_back(arg);
-  }
-
-  // Positional host source files (pre-`--` legacy form)
-  std::string mlirFile = getInputFilename();
-  for (const auto &arg : positionalArgs) {
-    if (arg != mlirFile && isHostSourceFile(arg))
-      cmd.push_back(arg);
-  }
-
-  // Output filename
-  if (!outputFilename.empty()) {
-    cmd.push_back("-o");
-    cmd.push_back(outputFilename.getValue());
-  }
-
-  if (!executeCommand(cmd)) {
-    llvm::errs() << "Error: Host compilation failed\n";
-    return failure();
-  }
-
-  if (verbose) {
-    llvm::outs() << "Host compilation completed successfully\n";
-  }
-
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
-// Main Compilation Flow
-//===----------------------------------------------------------------------===//
-
-static LogicalResult compileAIEModule(MLIRContext &context, ModuleOp moduleOp,
-                                      StringRef tmpDirName) {
-  if (verbose) {
-    llvm::outs() << "Starting AIE compilation in directory: " << tmpDirName
-                 << "\n";
-  }
-
-  // Count devices and cores for verbose output
-  unsigned deviceCount = 0;
-  if (verbose) {
-    for (auto deviceOp : moduleOp.getOps<xilinx::AIE::DeviceOp>()) {
-      if (!deviceName.empty() && deviceOp.getSymName() != deviceName) {
-        continue;
-      }
-      deviceCount++;
-      unsigned coreCount = 0;
-      deviceOp.walk([&](xilinx::AIE::CoreOp) { coreCount++; });
-      llvm::outs() << "  Device";
-      if (deviceOp.getSymNameAttr()) {
-        llvm::outs() << " '" << deviceOp.getSymName() << "'";
-      }
-      llvm::outs() << " with " << coreCount << " core(s)\n";
-    }
-
-    if (deviceCount == 0) {
-      llvm::errs() << "Error: No AIE devices found in module\n";
-      return failure();
-    }
-    llvm::outs() << "Found " << deviceCount << " AIE device(s)\n";
-  }
-
-  // Dump input MLIR if requested
-  SmallString<128> inputPath(tmpDirName);
-  sys::path::append(inputPath, "input.mlir");
-  dumpModuleToFile(moduleOp, inputPath, "input MLIR");
-
-  // Detect AIE target early from the input module
-  std::string aieTarget = "aie2"; // Default
-  for (auto deviceOp : moduleOp.getOps<xilinx::AIE::DeviceOp>()) {
-    if (!deviceName.empty() && deviceOp.getSymName() != deviceName) {
-      continue;
-    }
-    aieTarget = getAIETargetForDevice(moduleOp, deviceOp.getSymName());
-    break;
-  }
-
-  if (verbose) {
-    llvm::outs() << "Detected AIE target: " << aieTarget << "\n";
-  }
-
-  // When --device-name is specified, filter out non-matching devices before
-  // running any passes. Resource allocation and routing passes use
-  // pm.nest<DeviceOp>() and operate independently per device, so there is no
-  // need to process devices that won't be compiled. Running passes on multiple
-  // devices with overlapping tile coordinates (e.g. two npu1_1col devices both
-  // using tile(0,2)) can cause crashes in address assignment passes.
-  //
-  // Control packet generation requires a post-resource-allocation snapshot of
-  // all devices (convert-aie-to-transaction needs shim_dma_allocation ops
-  // which are injected during resource allocation). When both --device-name and
-  // --aie-generate-ctrlpkt are active, we clone the full module, run the
-  // complete pipeline on the clone, and save it as unfilteredModule. The
-  // primary moduleOp then has non-matching devices erased before its own
-  // passes run. This is correct because resource allocation passes operate
-  // independently per DeviceOp and do not share state across devices.
-  OwningOpRef<ModuleOp> unfilteredModule;
-  // The ctrl-packet reconfig "base" device has no runtime_sequence of its own;
-  // its host-buffer ABI is defined by the sibling "main" device's sequence. We
-  // capture that count here, BEFORE the sibling is erased below, and thread it
-  // into kernels.json generation (generateCdoArtifacts) so base declares the
-  // exact number of host buffers instead of falling back to kNoSequenceHostBOs.
-  std::optional<int> baseHostBOCountOverride;
-  if (!deviceName.empty()) {
-    if (generateCtrlPkt) {
-      unfilteredModule = moduleOp.clone();
-      if (failed(runTraceLoweringPipeline(*unfilteredModule, tmpDirName)) ||
-          failed(runResourceAllocationPipeline(*unfilteredModule, aieTarget,
-                                               tmpDirName)) ||
-          failed(runRoutingPipeline(*unfilteredModule, tmpDirName))) {
-        return failure();
-      }
-    }
-    SmallVector<xilinx::AIE::DeviceOp> toErase;
-    xilinx::AIE::DeviceOp keptDevice;
-    for (auto deviceOp : moduleOp.getOps<xilinx::AIE::DeviceOp>()) {
-      if (deviceOp.getSymName() != deviceName) {
-        toErase.push_back(deviceOp);
-      } else {
-        keptDevice = deviceOp;
-      }
-    }
-    // Derive the kept device's host-BO count from the unique sibling sequence
-    // only when the kept device has none of its own (e.g. the ctrl-packet base
-    // xclbin). The count is the sibling's data args plus one control-packet
-    // buffer when the kept device carries a ctrlpkt shim allocation, matching
-    // the ctrlIdx + 1 contract in generateControlPacketOutput.
-    if (keptDevice && !getRuntimeSequenceArgCount(keptDevice)) {
-      std::optional<int> siblingArgCount;
-      bool uniqueSibling = true;
-      for (auto deviceOp : toErase) {
-        if (auto argCount = getRuntimeSequenceArgCount(deviceOp)) {
-          if (siblingArgCount) {
-            uniqueSibling = false;
-            break;
-          }
-          siblingArgCount = argCount;
-        }
-      }
-      if (siblingArgCount && uniqueSibling) {
-        baseHostBOCountOverride =
-            *siblingArgCount + (deviceUsesControlPackets(keptDevice) ? 1 : 0);
-      }
-    }
-    for (auto deviceOp : toErase) {
-      if (verbose) {
-        llvm::outs() << "Removing non-matching device: "
-                     << deviceOp.getSymName() << "\n";
-      }
-      deviceOp.erase();
-    }
-  }
-
-  // Step 0: Run tile placement (only when logical tile ops exist)
-  // This converts aie.logical_tile -> aie.tile before any other passes.
-  if (failed(runPlacementPipeline(moduleOp, tmpDirName))) {
-    return failure();
-  }
-
-  // Step 1a: Run trace lowering (only when trace ops exist)
-  if (failed(runTraceLoweringPipeline(moduleOp, tmpDirName))) {
-    return failure();
-  }
-
-  // Step 1b: Run resource allocation and lowering passes in-memory
-  if (failed(runResourceAllocationPipeline(moduleOp, aieTarget, tmpDirName))) {
-    return failure();
-  }
-
-  // Write intermediate file only if we're compiling cores (LLVM lowering
-  // subprocess needs it)
-  // TODO: Eliminate this when LLVM lowering is converted to in-memory
-  SmallString<128> withAddressesPath(tmpDirName);
-  sys::path::append(withAddressesPath, "input_with_addresses.mlir");
-  if (compile) {
-    std::error_code ec;
-    raw_fd_ostream file(withAddressesPath, ec);
-    if (ec) {
-      llvm::errs() << "Error writing intermediate MLIR: " << ec.message()
-                   << "\n";
-      return failure();
-    }
-    if (dumpIntermediates) {
-      printModuleWithDebugInfo(moduleOp, file);
-    } else {
-      moduleOp->print(file);
-    }
-
-    if (verbose) {
-      llvm::outs() << "Wrote module with addresses to: " << withAddressesPath
-                   << "\n";
-    }
-  }
-
-  // Step 2: Run routing in-memory
-  if (failed(runRoutingPipeline(moduleOp, tmpDirName))) {
-    return failure();
-  }
-
-  // Dump physical module if requested (for debugging only)
-  SmallString<128> physicalPath(tmpDirName);
-  sys::path::append(physicalPath, "input_physical.mlir");
-  dumpModuleToFile(moduleOp, physicalPath, "physical module");
-
-  // Step 3: Compile cores and generate artifacts for each device
-  // Collect device info for full ELF generation if requested
-  std::vector<DeviceElfInfo> deviceElfInfos;
-  int devicePdiId = 1; // Start PDI IDs from 1
-
-  // Phase A: Compile cores for each original device and update ELF paths.
-  // This must happen on the original module before NPU lowering.
-  for (auto deviceOp : moduleOp.getOps<xilinx::AIE::DeviceOp>()) {
-    StringRef devName = deviceOp.getSymName();
-
-    if (verbose) {
-      llvm::outs() << "\nProcessing device: " << devName << "\n";
-    }
-
-    // Compile cores using in-memory LLVM lowering and translation
-    std::map<std::pair<int, int>, std::string> elfPaths;
-    if (unified) {
-      // Unified compilation: all cores compiled together into one object
-      if (failed(compileCoresUnified(context, moduleOp, deviceOp, devName,
-                                     tmpDirName, aieTarget, elfPaths))) {
-        return failure();
-      }
-    } else {
-      // Per-core compilation (default): each core compiled separately
-      if (failed(compileCores(context, moduleOp, deviceOp, devName, tmpDirName,
-                              aieTarget, elfPaths))) {
-        return failure();
-      }
-    }
-
-    // Update module with ELF paths in-memory (no disk I/O)
-    if (failed(updateModuleWithElfs(moduleOp, devName, elfPaths))) {
-      return failure();
-    }
-    // Also update unfiltered module so ctrl packet generation can find ELFs
-    if (unfilteredModule) {
-      if (failed(updateModuleWithElfs(*unfilteredModule, devName, elfPaths))) {
-        return failure();
-      }
-    }
-
-    // Dump module with ELFs if requested (for debugging only)
-    SmallString<128> physicalWithElfsPath(tmpDirName);
-    sys::path::append(physicalWithElfsPath,
-                      devName.str() + "_physical_with_elfs.mlir");
-    dumpModuleToFile(moduleOp, physicalWithElfsPath, "module with ELFs");
-
-    // Generate control packet output BEFORE NPU instructions
-    ModuleOp ctrlPktModule = unfilteredModule ? *unfilteredModule : moduleOp;
-    if (failed(
-            generateControlPacketOutput(ctrlPktModule, tmpDirName, devName))) {
-      return failure();
-    }
-
-    // For the full ELF + expand-load-pdis path, skip per-device NPU/CDO
-    // generation here — Phase B below handles everything from a single
-    // expanded clone (matching the old Python FlowRunner behavior).
-    if (generateFullElf && expandLoadPdis) {
-      continue;
-    }
-
-    // Generate NPU instructions from in-memory module.
-    // (this runs runNpuLoweringPipeline = the runtime-sequence MATERIALIZE
-    // pass)
-    //
-    // On the full-ELF / no-expand-load-pdis path, NPU instructions for all
-    // devices are generated together after this loop by a single call to
-    // generateNpuInstructions (no devName); skip the per-device call here.
-    bool deferNpuInstsToOncePass =
-        generateFullElf && !expandLoadPdis && !generateCtrlPkt;
-    if (!deferNpuInstsToOncePass) {
-      if (!generateCtrlPkt &&
-          failed(generateNpuInstructions(moduleOp, tmpDirName, devName))) {
-        return failure();
-      }
-    }
-
-    // Generate transaction MLIR output if requested.
-    if (failed(generateTransactionOutput(moduleOp, tmpDirName, devName))) {
-      return failure();
-    }
-
-    // Generate ELF from NPU instructions (via aiebu-asm)
-    if (failed(generateElfFromInsts(moduleOp, tmpDirName, devName))) {
-      return failure();
-    }
-
-    // Generate CDO/PDI/xclbin from in-memory module
-    if (failed(generateCdoArtifacts(moduleOp, tmpDirName, devName,
-                                    baseHostBOCountOverride))) {
-      return failure();
-    }
-
-    // Generate aie_inc.cpp and aiesim work folder if requested
-    auto aiesimConfig = createAiesimConfig();
-    if (failed(xilinx::aiecc::generateAieIncCpp(moduleOp, tmpDirName, devName,
-                                                aiesimConfig))) {
-      return failure();
-    }
-    if (failed(xilinx::aiecc::generateAiesim(moduleOp, tmpDirName, devName,
-                                             aieTarget, aiesimConfig))) {
-      return failure();
-    }
-
-    // Collect info for full ELF generation
-    if (generateFullElf) {
-      DeviceElfInfo info;
-      info.deviceName = devName.str();
-      info.pdiId = devicePdiId++;
-
-      // Get absolute path to tmpDir for aiebu-asm (it needs absolute paths)
-      SmallString<256> absTmpDir;
-      if (auto ec = sys::fs::real_path(tmpDirName, absTmpDir)) {
-        sys::fs::current_path(absTmpDir);
-        sys::path::append(absTmpDir, tmpDirName);
-      }
-
-      std::string pdiFileName = formatString(pdiName, devName);
-      SmallString<256> pdiFullPath;
-      if (generatePdi) {
-        if (sys::path::is_absolute(pdiFileName)) {
-          pdiFullPath = pdiFileName;
-        } else {
-          sys::fs::current_path(pdiFullPath);
-          sys::path::append(pdiFullPath, pdiFileName);
-        }
-      } else {
-        pdiFullPath = absTmpDir;
-        sys::path::append(pdiFullPath, pdiFileName);
-      }
-      info.pdiPath = std::string(pdiFullPath);
-
-      for (auto seqOp : deviceOp.getOps<xilinx::AIE::RuntimeSequenceOp>()) {
-        StringRef seqName = seqOp.getSymName();
-        std::string instsFileName =
-            formatString(instsName, devName.str(), seqName);
-        SmallString<256> instsFullPath(absTmpDir);
-        sys::path::append(instsFullPath, instsFileName);
-        info.sequences.emplace_back(seqName.str(), std::string(instsFullPath));
-        // Get argument count from the runtime sequence body
-        if (!seqOp.getBody().empty()) {
-          int numArgs = seqOp.getBody().front().getNumArguments();
-          if (numArgs > info.argCount)
-            info.argCount = numArgs;
-        }
-      }
-
-      deviceElfInfos.push_back(std::move(info));
-    }
-  }
-
-  // Phase B: Full ELF with expand-load-pdis — single expanded clone.
-  // This matches the old Python FlowRunner behavior: run NPU lowering +
-  // expand-load-pdis ONCE on a single module, then generate ALL artifacts
-  // (CDO/PDI + NPU instructions) from that same module.
-  if (generateFullElf && expandLoadPdis) {
-    // 1. Clone module (now has ELF paths from Phase A)
-    OwningOpRef<ModuleOp> expandedModule = moduleOp.clone();
-
-    // 2. Run NPU lowering + expand-load-pdis ONCE (no PDI IDs yet)
-    if (failed(runNpuLoweringPipeline(*expandedModule, tmpDirName,
-                                      /*patchPdiIds=*/false))) {
-      llvm::errs() << "Error: expanded NPU lowering pipeline failed\n";
-      return failure();
-    }
-
-    // 3. Enumerate ALL devices in module iteration order (includes empties)
-    std::vector<std::string> allDeviceNames;
-    for (auto devOp : expandedModule->getOps<xilinx::AIE::DeviceOp>()) {
-      std::string name = devOp.getSymName().str();
-      if (!deviceName.empty() && name != deviceName.getValue() &&
-          !StringRef(name).starts_with("empty_"))
-        continue;
-      allDeviceNames.push_back(name);
-    }
-
-    // 4. Build PDI ID mapping (module order, sequential from 1)
-    std::map<std::string, int> pdiMapping;
-    int nextId = 1;
-    for (auto &name : allDeviceNames)
-      pdiMapping[name] = nextId++;
-
-    if (verbose) {
-      llvm::outs() << "\nExpanded module PDI ID mapping:\n";
-      for (auto &name : allDeviceNames) {
-        llvm::outs() << "  @" << name << " -> PDI ID " << pdiMapping[name]
-                     << "\n";
-      }
-    }
-
-    // 5. Assign PDI IDs on the expanded module
-    assignPdiIds(*expandedModule, pdiMapping);
-
-    // 6. For each device: CDO/PDI + NPU instructions + collect info
-    SmallString<256> absTmpDir;
-    if (auto ec = sys::fs::real_path(tmpDirName, absTmpDir)) {
-      sys::fs::current_path(absTmpDir);
-      sys::path::append(absTmpDir, tmpDirName);
-    }
-
-    for (auto devOp : expandedModule->getOps<xilinx::AIE::DeviceOp>()) {
-      StringRef devName = devOp.getSymName();
-
-      if (verbose) {
-        llvm::outs() << "\nGenerating artifacts for device: " << devName
-                     << " (from expanded module)\n";
-      }
-
-      // Generate CDO/PDI. The base host-BO override applies only to the device
-      // it was captured for.
-      std::optional<int> overrideForDevice =
-          (devName == deviceName) ? baseHostBOCountOverride : std::nullopt;
-      if (failed(generateCdoArtifacts(*expandedModule, tmpDirName, devName,
-                                      overrideForDevice))) {
-        return failure();
-      }
-
-      // Collect DeviceElfInfo
-      DeviceElfInfo info;
-      info.deviceName = devName.str();
-      info.pdiId = pdiMapping[devName.str()];
-
-      std::string pdiFileName = formatString(pdiName, devName);
-      SmallString<256> pdiFullPath;
-      if (generatePdi) {
-        if (sys::path::is_absolute(pdiFileName)) {
-          pdiFullPath = pdiFileName;
-        } else {
-          sys::fs::current_path(pdiFullPath);
-          sys::path::append(pdiFullPath, pdiFileName);
-        }
-      } else {
-        pdiFullPath = absTmpDir;
-        sys::path::append(pdiFullPath, pdiFileName);
-      }
-      info.pdiPath = std::string(pdiFullPath);
-
-      // Generate NPU instructions for devices with runtime sequences
-      devOp.walk([&](xilinx::AIE::RuntimeSequenceOp seq) {
-        StringRef seqName = seq.getSymName();
-        if (!sequenceName.empty() && seqName != sequenceName)
-          return;
-
-        std::string outputFileName =
-            formatString(instsName, devName.str(), seqName);
-        SmallString<128> outputPath(tmpDirName);
-        sys::path::append(outputPath, outputFileName);
-
-        std::vector<uint32_t> instructions;
-        // Multi-PDI full-ELF path: same as the single-sequence full-ELF case,
-        // the runtime translates all host buffer addresses, so do not fold the
-        // DDR-aperture offset into the TXN.
-        if (failed(xilinx::AIE::AIETranslateNpuToBinary(
-                *expandedModule, instructions, devName, seqName,
-                /*locmap=*/nullptr,
-                /*foldDDRAddrOffset=*/!generateFullElf))) {
-          llvm::errs() << "Error generating NPU instructions for sequence: "
-                       << seqName << "\n";
-          return;
-        }
-
-        std::error_code ec;
-        raw_fd_ostream binFile(outputPath, ec, sys::fs::OpenFlags::OF_None);
-        if (ec) {
-          llvm::errs() << "Error opening NPU instructions file: "
-                       << ec.message() << "\n";
-          return;
-        }
-        binFile.write(reinterpret_cast<const char *>(instructions.data()),
-                      instructions.size() * sizeof(uint32_t));
-
-        if (verbose) {
-          llvm::outs() << "Wrote " << instructions.size()
-                       << " instructions to: " << outputPath << "\n";
-        }
-
-        SmallString<256> instsFullPath(absTmpDir);
-        sys::path::append(instsFullPath, outputFileName);
-        info.sequences.emplace_back(seqName.str(), std::string(instsFullPath));
-        // Get argument count from the runtime sequence body
-        if (!seq.getBody().empty()) {
-          int numArgs = seq.getBody().front().getNumArguments();
-          if (numArgs > info.argCount)
-            info.argCount = numArgs;
-        }
+using ModRef = mlir::OwningOpRef<mlir::ModuleOp>;
+using xilinx::AIE::DeviceOp;
+
+// Produce a per-key object (.o) -- these are the core program memories, either
+// as per-core objects or a single unified object (only difference is
+// cardinality of the input module/arches edges). We define a chess path and a
+// peano path; the `xchesscc` command-line flag selects which output edge is
+// returned.
+EdgeWithTypedOutput<Directory> &
+buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
+                    EdgeWithTypedOutput<std::string> &arches,
+                    std::string objName) {
+  std::string installDir = getInstallDir();
+  std::string aietoolsRoot = discoverAietoolsDir(aietoolsDir.getValue());
+
+  // Shared between chess and peano: LLLVMIR lowering
+  auto &llvmIR = lowered.map<std::string>("llvmIR_{0}.ll", translateToLLVMIR);
+
+  // Chess path: downgrade -> chess-llvm-link (intrinsic wrapper) ->
+  // `xchesscc_wrapper -c`.
+  auto &chessCompat =
+      llvmIR.map<std::string>("chess-compat_{0}.ll", downgradeIRForChess)
+          .threadSafe();
+  auto &chessLinked =
+      bundle(chessCompat.out, arches.out)
+          .map<File>("chesslinked_{0}.ll",
+                     [aietoolsRoot,
+                      installDir](const Item<std::string> &ir,
+                                  const Item<std::string> &archItem,
+                                  Item<File> &out) -> mlir::LogicalResult {
+                       llvm::StringRef arch = archItem.get();
+                       std::string linkTool =
+                           getChessLLVMLinkPath(arch, aietoolsRoot);
+                       if (linkTool.empty()) {
+                         llvm::errs()
+                             << "aiecc: --xchesscc/--xbridge require aietools; "
+                                "set --aietools or put xchesscc on PATH\n";
+                         return mlir::failure();
+                       }
+                       std::string wrapper =
+                           getChessIntrinsicWrapperPath(arch, installDir);
+                       auto cmd = ShellCommand{linkTool}
+                                      .input()
+                                      .arg(wrapper)
+                                      .arg("-S")
+                                      .output("-o");
+                       return cmd(ir, out);
+                     })
+          .threadSafe();
+  // Chess object: the `.o` and chess's sidecars (`<obj>.o.lst`, ...) land in
+  // the output `Directory`; `+w` scratch shares it too.
+  EdgeWithTypedOutput<Directory> &chessObject =
+      bundle(arches.out, chessLinked.out)
+          .map<Directory>(objName, ShellCommand{"xchesscc_wrapper"}
+                                       .value()
+                                       .arg("+w")
+                                       .outputDir()
+                                       .arg("-c")
+                                       .arg("-d")
+                                       .arg("+Wclang,-xir")
+                                       .arg("-f")
+                                       .input()
+                                       .output("-o"))
+          .threadSafe();
+
+  // Peano path: downgrade -> opt -> llc.
+  unsigned optPassLevel = std::min<unsigned>(optLevel, 1u);
+  ShellCommand optCmd{"opt"};
+  if (optLevel >= 3)
+    optCmd.arg("-disable-loop-idiom-memset");
+  optCmd.arg("--passes=default<O" + std::to_string(optPassLevel) + ">")
+      .arg("-inline-threshold=10")
+      .arg("-S")
+      .input()
+      .output("-o");
+  auto &opted =
+      llvmIR.map<std::string>("peano-compat_{0}.ll", downgradeIRForPeano)
+          .map<File>("opted_{0}.ll", optCmd)
+          .threadSafe();
+  ShellCommand llcCmd{"llc"};
+  llcCmd.input()
+      .arg("-O" + std::to_string(optLevel.getValue()))
+      .value("--march=")
+      .arg("--function-sections")
+      .arg("--filetype=obj")
+      .output("-o");
+  EdgeWithTypedOutput<Directory> &peanoObject =
+      bundle(opted.out, arches.out)
+          .map<Directory>(objName, llcCmd)
+          .threadSafe();
+
+  return xchesscc ? chessObject : peanoObject;
+}
+
+// Host-compilation subgraph. Emits the per-device `aie_inc.cpp` array
+// configuration source and compiles the user's host sources against it.
+EdgeWithTypedOutput<File> &
+buildHostExeSubgraph(EdgeWithTypedOutput<OpInModule<DeviceOp>> &perDevice,
+                     EdgeWithTypedOutput<std::string> &arches) {
+  auto &aieInc = perDevice.map<std::string>(
+      "aie_inc.cpp",
+      [](const Item<OpInModule<DeviceOp>> &item,
+         Item<std::string> &out) -> mlir::LogicalResult {
+        DeviceOp d = item.get().op;
+        llvm::raw_string_ostream os(out.value.emplace());
+        return xilinx::AIE::AIETranslateToXAIEV2(item.get().module.get(), os,
+                                                 d.getSymName());
       });
 
-      deviceElfInfos.push_back(std::move(info));
-    }
-  }
+  // clang++ edge: produce a single host executable.
+  // We bundle aie_inc.cpp to capture it as a dependency (included as `-I`).
+  // perDevice feeds the device symbol name for diagnostics; arches feeds the
+  // architecture information in the `__AIEARCH__` define.
+  HostRuntimeLibs rt = getHostRuntimeLibs(getInstallDir(), hostTarget);
+  std::string outputName = hostOutputName;
+  return bundle(aieInc.out, arches.out)
+      .join<File>(
+          std::move(outputName),
+          [rt](const Node<std::string> &incs, const Node<std::string> &arches,
+               Item<File> &out) -> mlir::LogicalResult {
+            // Host compilation supports a single device only.
+            if (incs.items.size() != 1) {
+              llvm::errs()
+                  << "aiecc: host compilation requires exactly one device, "
+                  << "but " << incs.items.size()
+                  << " were found; select one with --device-name\n";
+              return mlir::failure();
+            }
+            assert(arches.items.size() == 1 && incs.items.size() == 1 &&
+                   "host exe expects one device's arch and include dir");
+            // Materialize aie_inc.cpp; its directory goes on the include path.
+            std::string incDir = std::string(
+                llvm::sys::path::parent_path(incs.items.front().asFile()));
+            const std::string &arch = arches.items.front().get();
 
-  // Full-ELF / no-expand path: generate all devices' NPU instructions from a
-  // single whole-module lowering (devName omitted = all devices).
-  if (generateFullElf && !expandLoadPdis && !generateCtrlPkt) {
-    if (failed(generateNpuInstructions(moduleOp, tmpDirName))) {
-      return failure();
-    }
-  }
-
-  // Generate full ELF after all devices are processed
-  if (failed(generateFullElfArtifact(deviceElfInfos, tmpDirName))) {
-    return failure();
-  }
-
-  // Host compilation (after all device processing, since host code may
-  // #include "aie_inc.cpp" which is generated by generateAieIncCpp above)
-  if (failed(compileHostProgram(tmpDirName, aieTarget))) {
-    return failure();
-  }
-
-  return success();
+            // Compilation command
+            ShellCommand cmd{"clang++"};
+            cmd.arg("-std=c++17");
+            if (!hostTarget.empty())
+              cmd.arg("--target=" + hostTarget);
+            if (!sysroot.empty()) {
+              cmd.arg("--sysroot=" + sysroot);
+              if (hostTarget == "aarch64-linux-gnu")
+                cmd.arg("--gcc-toolchain=" + sysroot + "/usr");
+            }
+            cmd.arg(rt.memoryAllocator)
+                .arg("-I" + rt.xaiengineInclude)
+                .arg("-L" + rt.xaiengineLib)
+                .arg("-Wl,-R" + rt.xaiengineLib)
+                .arg("-I" + incDir)
+                .arg("-fuse-ld=lld")
+                .arg("-lm")
+                .arg("-lxaienginecdo");
+            cmd.arg(aieArchDefine(arch));
+            for (const auto &d : hostIncludeDirs)
+              cmd.arg("-I" + d);
+            for (const auto &d : hostLibDirs)
+              cmd.arg("-L" + d);
+            for (const auto &l : hostLibs)
+              cmd.arg("-l" + l);
+            // Host sources and host-compiler flags arrive after the `--`
+            // separator and are forwarded verbatim.
+            for (const auto &a : hostPassthroughArgs)
+              cmd.arg(a);
+            cmd.output("-o");
+            return cmd(out);
+          });
 }
 
-static int processInputFile(StringRef inputFile, StringRef tmpDirName) {
-  // Register passes for in-memory execution (must happen before context
-  // creation)
-  registerAllPasses();
-  xilinx::registerConversionPasses();
-  xilinx::AIE::registerAIEPasses();
-  xilinx::AIEX::registerAIEXPasses();
-  xilinx::aievec::registerAIEVecAnalysisPasses();
-  xilinx::aievec::registerAIEVecPasses();
-  xilinx::aievec::registerAIEVecPipelines();
+// Translate each runtime sequence into its NPU program: one NpuProgram item
+// (the transaction instruction binary + its source-location map) per sequence,
+// keyed "<device>_<sequence>".
+//
+// `foldDDRAddrOffset` selects how host-buffer addresses are encoded in the TXN:
+//   * true  -- the DDR-aperture offset is folded into the transaction, as the
+//              xclbin + instruction-buffer runtime expects;
+//   * false -- the offset is left out, as the full-ELF runtime (xrt.ext.kernel)
+//              assigns NPU-space device addresses to every host buffer itself.
+EdgeWithTypedOutput<NpuProgram> &buildNpuProgramSubgraph(
+    EdgeWithTypedOutput<OpInModule<xilinx::AIE::RuntimeSequenceOp>> &perSeq,
+    std::string programName, bool foldDDRAddrOffset) {
+  auto &npuProgram = perSeq.map<NpuProgram>(
+      std::move(programName),
+      [foldDDRAddrOffset](
+          const Item<OpInModule<xilinx::AIE::RuntimeSequenceOp>> &item,
+          Item<NpuProgram> &out) -> mlir::LogicalResult {
+        xilinx::AIE::RuntimeSequenceOp seq = item.get().op;
+        DeviceOp devOp = seq->getParentOfType<DeviceOp>();
+        NpuProgram prog;
+        prog.deviceName = devOp.getSymName().str();
+        std::vector<uint32_t> insts;
+        if (mlir::failed(xilinx::AIE::AIETranslateNpuToBinary(
+                item.get().module.get(), insts, devOp.getSymName(),
+                seq.getSymName(), &prog.locmap, foldDDRAddrOffset)))
+          return mlir::failure();
+        prog.insts = wordsToBytes(insts);
+        out.value = std::move(prog);
+        return mlir::success();
+      });
+  npuProgram.producesFiles = false;
+  return npuProgram;
+}
 
-  // Set up dialect registry with all MLIR and AIE dialects
-  DialectRegistry registry;
-  registerAllDialects(registry);
-  xilinx::registerAllDialects(registry);
-  registerAllExtensions(registry);
-  xilinx::aievec::registerTransformDialectExtension(registry);
+} // namespace
 
-  // Create context and attach registry
-  MLIRContext context;
-  context.appendDialectRegistry(registry);
-  context.loadAllAvailableDialects();
+//===----------------------------------------------------------------------===//
+// Main compilation graph
+//===----------------------------------------------------------------------===//
 
-  OwningOpRef<ModuleOp> inputModuleOp;
+// Assemble the full compilation artifact graph into `g` and return the list of
+// requested output edges. Edges named via `--cut` are appended to `cutEdges`
+// (and built) so a `--checkpoint` can capture them as its cut points.
+std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
+                                       std::vector<EdgeBase *> &cutEdges) {
 
-  if (inputFile.empty()) {
-    llvm::errs() << "Error: No input file specified\n";
-    return 1;
+  //--------------------------------------------------------------------------//
+  // Helpers
+  //--------------------------------------------------------------------------//
+
+  using xilinx::AIE::CoreOp;
+  using xilinx::AIE::DeviceOp;
+  using xilinx::AIE::RuntimeSequenceOp;
+  using xilinx::AIE::TileOp;
+  using ModRef = mlir::OwningOpRef<mlir::ModuleOp>;
+
+  std::string devFilter = deviceName.getValue();
+  std::string inputFile = getInputFilename();
+
+  // Chess/xbridge toolchain locations
+  std::string aietoolsRoot = discoverAietoolsDir(aietoolsDir.getValue());
+  std::string installDir = getInstallDir();
+  std::string workDirStr = getWorkDir();
+  // xchesscc_wrapper scratch dir
+  std::string chessWork = workDirStr + "/chess_work";
+  std::string lldPath = ShellCommand::resolveTool("ld.lld");
+
+  auto matchesDeviceFilter = [devFilter](DeviceOp d) {
+    // Empty reset devices synthesized by --expand-load-pdis must always be
+    // included, regardless of --device-name.
+    return devFilter.empty() || d.getSymName() == devFilter ||
+           d.getSymName().starts_with("empty_");
+  };
+
+  // Split a whole-module edge into one item per DeviceOp (keyed by bare device
+  // name), then drop devices that don't match --device-name.
+  auto splitPerDevice = [&matchesDeviceFilter](EdgeWithTypedOutput<ModRef> &src,
+                                               std::string nameFmt,
+                                               std::string filterName)
+      -> EdgeWithTypedOutput<OpInModule<DeviceOp>> & {
+    return src
+        .split<OpInModule<DeviceOp>>(std::move(nameFmt),
+                                     SplitIRAction<DeviceOp>([](DeviceOp d) {
+                                       return d.getSymName().str();
+                                     }))
+        .filter(std::move(filterName),
+                [matchesDeviceFilter](const OpInModule<DeviceOp> &x) {
+                  return matchesDeviceFilter(DeviceOp(x.op));
+                });
+  };
+
+  //--------------------------------------------------------------------------//
+  // Graph
+  //--------------------------------------------------------------------------//
+
+  std::vector<EdgeBase *> outputs;
+  auto &input = g.fileInput(inputFile, "input.mlir");
+
+  auto &withAddresses =
+      input
+          .map<ModRef>("placed.mlir",
+                       PassPipeline{getPlacementPipeline(
+                           &context, coresPerCol.getValue(),
+                           placerType.getValue(), saSeed.getValue())})
+          .map<ModRef>("traced.mlir", PassPipeline{getTracePipeline(&context)})
+          .map<ModRef>(
+              "input_with_addresses.mlir",
+              PassPipeline{&context,
+                           [scheme = allocScheme.getValue(),
+                            dyn = dynamicObjFifos.getValue(),
+                            pkt = packetSwObjFifos.getValue(),
+                            ctrl = ctrlPktOverlay.getValue(),
+                            bf16 = bf16Emulation.getValue()](
+                               mlir::MLIRContext *ctx, mlir::ModuleOp mod) {
+                             return getInputWithAddressesPipeline(
+                                 ctx, mod, scheme, dyn, pkt, ctrl, bf16);
+                           }});
+
+  // Scratchpad run-time parameters sidecar file
+  auto &paramsFile = withAddresses.map<std::string>(
+      "params.txt", [](const ModRef &mod) -> std::string {
+        std::string txt;
+        llvm::raw_string_ostream os(txt);
+        xilinx::AIEX::emitScratchpadParamsFile(mod.get(), os);
+        return txt;
+      });
+
+  auto &physical = withAddresses.map<ModRef>(
+      "input_physical.mlir", PassPipeline{getRoutingPipeline(&context)});
+
+  // Split every core once, then filter into compile / pre-baked subviews.
+  auto &allCores =
+      physical
+          .split<OpInModule<CoreOp>>(
+              "perCore_{0}.mlir",
+              SplitIRAction<CoreOp>([](CoreOp c) { return coreKey(c); }))
+          .filter("perCoreInDevice",
+                  [matchesDeviceFilter](const OpInModule<CoreOp> &x) {
+                    return matchesDeviceFilter(
+                        CoreOp(x.op)->getParentOfType<DeviceOp>());
+                  });
+
+  // Cores whose MLIR we must compile. A core without an `elf_file` attribute is
+  // always compiled. A core that already carries an `elf_file` normally needs
+  // no compilation -- its ELF is used verbatim (see `preBakedElfs`).
+  // However, some external tests that manually link pre-baked cores rely on a
+  // per-core BCF being emitted for every core, so if chess is enabled we
+  // compile all cores regardless.
+  auto &perCore =
+      allCores.filter("perCoreCompile", [](const OpInModule<CoreOp> &x) {
+        return !CoreOp(x.op).getElfFileAttr() || xbridge;
+      });
+
+  // Cores whose `elf_file` attribute already points to a built object.
+  auto &preBakedElfs =
+      allCores
+          .filter("preBakedCores",
+                  [](const OpInModule<CoreOp> &x) {
+                    return (bool)CoreOp(x.op).getElfFileAttr();
+                  })
+          .map<File>("preBakedElfs_{0}.elf",
+                     [](const Item<OpInModule<CoreOp>> &item,
+                        Item<File> &out) -> mlir::LogicalResult {
+                       CoreOp core = item.get().op;
+                       out.filePath =
+                           absolutePath(core.getElfFileAttr().getValue());
+                       out.value = File{};
+                       return mlir::success();
+                     });
+  preBakedElfs.producesFiles = false;
+
+  // Per-core arch string (feeds link --target= and llc --march=).
+  auto &perCoreArches = perCore.map<std::string>(
+      "perCoreArches_{0}.txt", [](const OpInModule<CoreOp> &core) {
+        return detectAIETarget(
+            core.module.get(),
+            core.op->getParentOfType<DeviceOp>().getSymName());
+      });
+
+  // Per-core .o node. Two strategies selectable:
+  //   * unified: compile all cores of a device into one shared object, then
+  //     re-key that device-wide object onto each of the device's cores;
+  //   * per-core: compile each core's own module to its own object.
+
+  // Unified strategy
+  auto &physicalPerDevice = splitPerDevice(
+      physical, "perDeviceCompile_{0}.mlir", "perDeviceCompileMatching");
+  auto &perDeviceArches = physicalPerDevice.map<std::string>(
+      "perDeviceArches_{0}.txt", [](const OpInModule<DeviceOp> &dev) {
+        return detectAIETarget(dev.module.get(), DeviceOp(dev.op).getSymName());
+      });
+  auto &unifiedLowered = physicalPerDevice.map<ModRef>(
+      "unifiedLowered_{0}.mlir",
+      [](const Item<OpInModule<DeviceOp>> &item, Item<ModRef> &out) {
+        DeviceOp d = item.get().op;
+        return loweringPipeline(item.get().module.get(), d.getSymName(), -1, -1,
+                                out);
+      });
+  auto &unifiedObjects = buildObjectSubgraph(unifiedLowered, perDeviceArches,
+                                             "unifiedObjects_{0}.o");
+  // Each core links against its device's shared object: re-key the device-keyed
+  // unified objects onto the per-core keys.
+  EdgeWithTypedOutput<Directory> &unifiedCoreObjects =
+      perCore.rekeyFrom<Directory>(
+          "objects_{0}.o", unifiedObjects.out,
+          [](const OpInModule<CoreOp> &core) {
+            return core.op->getParentOfType<DeviceOp>().getSymName().str();
+          });
+
+  // Per-core strategy
+  auto &perCoreLowered = perCore.map<ModRef>(
+      "lowered_{0}.mlir",
+      [](const Item<OpInModule<CoreOp>> &item, Item<ModRef> &out) {
+        CoreOp core = item.get().op;
+        auto tile = mlir::cast<TileOp>(core.getTile().getDefiningOp());
+        return loweringPipeline(item.get().module.get(),
+                                core->getParentOfType<DeviceOp>().getSymName(),
+                                tile.getCol(), tile.getRow(), out);
+      });
+  EdgeWithTypedOutput<Directory> &perCoreObjects =
+      buildObjectSubgraph(perCoreLowered, perCoreArches, "objects_{0}.o");
+
+  EdgeWithTypedOutput<Directory> &objects =
+      doUnified ? unifiedCoreObjects : perCoreObjects;
+
+  // ld scripts (with link_files absolutized so INPUT() is cwd-invariant).
+  auto &ldScripts = perCore.map<std::string>(
+      "ldScripts_{0}.ld.script",
+      [inputFile, workDirStr](const Item<OpInModule<CoreOp>> &item,
+                              Item<std::string> &out) -> mlir::LogicalResult {
+        CoreOp op = item.get().op;
+        auto tile = mlir::cast<TileOp>(op.getTile().getDefiningOp());
+        auto rewritten =
+            absolutizeLinkFiles(item.get().module.get(), tile.getCol(),
+                                tile.getRow(), inputFile, workDirStr);
+        llvm::raw_string_ostream os(out.value.emplace());
+        return xilinx::AIE::AIETranslateToLdScript(
+            rewritten.get(), os, tile.getCol(), tile.getRow(),
+            op->getParentOfType<DeviceOp>().getSymName());
+      });
+
+  // Link each core's object into its .elf; user can chose between
+  // chess/xbridge or peano
+
+  // chess linking
+  auto &bcfScripts = perCore.map<std::string>(
+      "{0}.bcf",
+      [](const Item<OpInModule<CoreOp>> &item,
+         Item<std::string> &out) -> mlir::LogicalResult {
+        CoreOp op = item.get().op;
+        auto tile = mlir::cast<TileOp>(op.getTile().getDefiningOp());
+        llvm::raw_string_ostream os(out.value.emplace());
+        return xilinx::AIE::AIETranslateToBCF(
+            item.get().module.get(), os, tile.getCol(), tile.getRow(),
+            op->getParentOfType<DeviceOp>().getSymName());
+      });
+  auto &linkWithObjs = bcfScripts.map<std::vector<std::string>>(
+      "linkwith_{0}.txt",
+      [inputFile,
+       workDirStr](const Item<std::string> &bcf,
+                   Item<std::vector<std::string>> &out) -> mlir::LogicalResult {
+        std::vector<std::string> resolved;
+        for (const auto &f : parseBcfIncludeFiles(bcf.get()))
+          resolved.push_back(resolveExternalPath(f, inputFile, workDirStr));
+        out.value = std::move(resolved);
+        return mlir::success();
+      });
+  // Chess link: the ELF and the sidecar files chess writes beside it (`.map`,
+  // `.lst`, ...) land in the output `Directory`; `+w` scratch shares it too.
+  EdgeWithTypedOutput<Directory> &chessElfs =
+      bundle(perCoreArches.out, objects.out, linkWithObjs.out, bcfScripts.out)
+          .map<Directory>("elfs_{0}.elf", ShellCommand{"xchesscc_wrapper"}
+                                              .value()
+                                              .arg("+w")
+                                              .outputDir()
+                                              .arg("-d")
+                                              .arg("-f")
+                                              .input()
+                                              .inputs()
+                                              .arg("+l")
+                                              .input()
+                                              .output("-o"))
+          .threadSafe();
+
+  // peano linking
+  EdgeWithTypedOutput<Directory> &peanoElfs =
+      bundle(perCoreArches.out, objects.out, ldScripts.out)
+          .map<Directory>(
+              "elfs_{0}.elf",
+              ShellCommand{"clang"}
+                  .arg("-O" + std::to_string(optLevel))
+                  .value("--target=", "-none-unknown-elf")
+                  .arg(lldPath.empty() ? "-fuse-ld=lld" : "-fuse-ld=" + lldPath)
+                  .input()
+                  .arg("-Wl,--gc-sections")
+                  .arg("-Wl,--orphan-handling=error")
+                  .input("-Wl,-T,")
+                  .output("-o"))
+          .threadSafe();
+
+  // Fresh per-core ELFs (Chess/xbridge or Peano). Cores that already carry an
+  // `elf_file` attribute are handled separately by `preBakedElfs` and merged
+  // into `physicalWithElfs`.
+  EdgeWithTypedOutput<Directory> &compiledElfs =
+      xbridge ? chessElfs : peanoElfs;
+
+  // --- Per-device configuration artifacts ---------------------------------
+
+  // Patch ELF paths back into the physical IR
+  auto &physicalWithElfs =
+      bundle(compiledElfs.out, preBakedElfs.out, physical.out)
+          .join<ModRef>(
+              "physical_with_elfs.mlir",
+              [](const Node<Directory> &compiled, const Node<File> &preBaked,
+                 const Node<ModRef> &physicalN,
+                 Item<ModRef> &out) -> mlir::LogicalResult {
+                // ELF paths must be absolute for the aie-rt loader.
+                llvm::StringMap<std::string> byKey;
+                for (const auto &item : compiled.items)
+                  byKey[item.key] = absolutePath(item.filePath);
+                for (const auto &item : preBaked.items)
+                  byKey[item.key] = absolutePath(item.filePath);
+                out.value = patchCoreElfFiles(physicalN.get().get(), byKey);
+                return mlir::success();
+              });
+
+  // NPU runtime-sequence lowering needs only the placed+routed `physical`
+  // module, so feeding it keeps the instruction-sequence branch independent of
+  // per-core compilation. Two cases reference the compiled cores and so run on
+  // the ELF-patched `physicalWithElfs` module instead:
+  //   * --expand-load-pdis references the compiled cores directly.
+  //   * the transaction output embeds each core's compiled program:
+  //     `convert-aie-to-transaction` reads each core's `elf_file` to emit a
+  //     `@configure` sequence that reprograms the cores, so the cores must be
+  //     lowered (a core without an `elf_file` is skipped from the transaction).
+  bool npuTransactionsNeedCoresLowered =
+      expandLoadPdis.getValue() || generateTxn.getValue();
+  EdgeWithTypedOutput<ModRef> &npuLoweringInput =
+      npuTransactionsNeedCoresLowered
+          ? static_cast<EdgeWithTypedOutput<ModRef> &>(physicalWithElfs)
+          : static_cast<EdgeWithTypedOutput<ModRef> &>(physical);
+  auto &npuLowered = npuLoweringInput.map<ModRef>(
+      "npu_lowered.mlir",
+      [expand = expandLoadPdis.getValue(),
+       materialize = !noMaterialize.getValue()](
+          const Item<ModRef> &item, Item<ModRef> &out) -> mlir::LogicalResult {
+        ModRef clone = item.get().get().clone();
+        if (mlir::failed(
+                getNpuLoweringPipeline(clone->getContext(), materialize)
+                    ->run(*clone)))
+          return mlir::failure();
+        if (expand)
+          if (mlir::failed(
+                  getExpandLoadPdiPipeline(clone->getContext())->run(*clone)))
+            return mlir::failure();
+        assignDevicePdiIds(*clone);
+        assignLoadPdiIds(*clone);
+        out.value = std::move(clone);
+        return mlir::success();
+      });
+
+  // Root of the static configuration branch; contains compiled cores, etc., to
+  // produce xclbins, or feed into the full ELF. Usually, this is completely
+  // independent from the NPU runtime sequence compilation; however, the
+  // --expand-load-pdis pass generates new empty_0/1 devices, for which we must
+  // also generate PDIs, which is the only reason for the selection here
+  EdgeWithTypedOutput<ModRef> &staticInput =
+      expandLoadPdis.getValue()
+          ? static_cast<EdgeWithTypedOutput<ModRef> &>(npuLowered)
+          : static_cast<EdgeWithTypedOutput<ModRef> &>(physicalWithElfs);
+  auto &staticPerDevice =
+      splitPerDevice(staticInput, "perDevice_{0}.mlir", "perDeviceMatching");
+
+  // Per-device CDO binaries. The CDO is a *directory* of `.bin` files (the
+  // libxaie v2 configuration), so it is a `Directory` bundle: filePath is the
+  // directory itself and its whole contents travel together.
+  auto &cdo = staticPerDevice.map<Directory>(
+      "cdo_{0}",
+      [](const Item<OpInModule<DeviceOp>> &item,
+         Item<Directory> &out) -> mlir::LogicalResult {
+        DeviceOp d = item.get().op;
+        // CDO (and the PDI/xclbin built from it) is NPU-only
+        if (!d.getTargetModel().hasProperty(
+                xilinx::AIE::AIETargetModel::IsNPU)) {
+          llvm::errs()
+              << "aiecc: --aie-generate-cdo/-pdi/-xclbin require an NPU "
+                 "device, but '"
+              << d.getSymName() << "' is not NPU\n";
+          return mlir::failure();
+        }
+        const std::string &cdoDir = out.filePath;
+        out.value = Directory{cdoDir};
+        if (dryRun)
+          return mlir::success();
+        // The CDO output path is itself a directory that the translation
+        // writes its `.bin` files into, so create it here (prepareItem only
+        // makes the parent)
+        if (llvm::sys::fs::create_directories(cdoDir))
+          return mlir::failure();
+        if (mlir::failed(xilinx::AIE::AIETranslateToCDODirect(
+                item.get().module.get(), cdoDir, d.getSymName(), false, false,
+                false, false, false, /*enableCores=*/true)))
+          return mlir::failure();
+        return mlir::success();
+      });
+
+  // CDO + BIF → PDI via bootgen
+  auto &bif =
+      bundle(staticPerDevice.out, cdo.out)
+          .map<std::string>("bif_{0}.bif",
+                            [](const Item<OpInModule<DeviceOp>> &devItem,
+                               const Item<Directory> &cdoItem,
+                               Item<std::string> &out) -> mlir::LogicalResult {
+                              DeviceOp d = devItem.get().op;
+                              out.value =
+                                  makeBifText(absolutePath(cdoItem.asFile()),
+                                              d.getSymName());
+                              return mlir::success();
+                            });
+
+  // BIF → PDI
+#ifdef AIECC_HAS_BOOTGEN_LIBRARY
+  auto &pdi = bif.map<File>(pdiName.getValue(),
+                            [](const Item<std::string> &bifItem,
+                               Item<File> &out) -> mlir::LogicalResult {
+                              if (dryRun) {
+                                std::error_code ec;
+                                llvm::raw_fd_ostream f(out.filePath, ec);
+                                out.value = File{};
+                                return mlir::success();
+                              }
+                              return assemblePdi(bifItem, out, verbose,
+                                                 ShellCommand::progress);
+                            });
+#else
+  auto &pdi = bif.map<File>(pdiName.getValue(), ShellCommand{"bootgen"}
+                                                    .arg("-arch")
+                                                    .arg("versal")
+                                                    .arg("-image")
+                                                    .input()
+                                                    .arg("-o")
+                                                    .output()
+                                                    .arg("-w"));
+#endif // AIECC_HAS_BOOTGEN_LIBRARY
+
+  // Per-device control-packet artifacts: the control-packet binary and the
+  // DMA sequence that streams it in.
+  auto &ctrlpktLowered = staticPerDevice.map<ModRef>(
+      "ctrlpkt_lowered_{0}.mlir",
+      [&context](const Item<OpInModule<DeviceOp>> &item,
+                 Item<ModRef> &out) -> mlir::LogicalResult {
+        DeviceOp d = item.get().op;
+        ModRef clone = item.get().module.get().clone();
+        auto pm =
+            getControlPacketPipeline(&context, /*elfDir=*/"", d.getSymName());
+        if (!pm || mlir::failed(pm->run(*clone)))
+          return mlir::failure();
+        out.value = std::move(clone);
+        return mlir::success();
+      });
+
+  auto &ctrlpkt = ctrlpktLowered.map<std::vector<char>>(
+      ctrlpktName.getValue(),
+      emitBinary<ModRef>(
+          [](const Item<ModRef> &item, std::vector<uint32_t> &words) {
+            return xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
+                item.get().get(), words, item.key, "");
+          }));
+
+  auto &ctrlpktDmaSeq = ctrlpktLowered.map<std::vector<char>>(
+      ctrlpktDmaSeqName.getValue(),
+      emitBinary<ModRef>([&context](const Item<ModRef> &item,
+                                    std::vector<uint32_t> &words)
+                             -> mlir::LogicalResult {
+        ModRef clone = item.get().get().clone();
+        if (mlir::failed(getControlPacketDmaPipeline(&context)->run(*clone)))
+          return mlir::failure();
+        // The control-packet DMA sequence only ever pairs with the xclbin /
+        // instruction-buffer runtime (full ELF is rejected up front), which
+        // folds the DDR-aperture offset into the TXN.
+        return xilinx::AIE::AIETranslateNpuToBinary(
+            clone.get(), words, item.key, "",
+            /*locmap=*/nullptr, /*foldDDRAddrOffset=*/true);
+      }));
+
+  // Partial ELF containing the DMA sequence and the control packet data;
+  // this is still used in combination with an xclbin. The
+  // ctrlpkt_extbuf_{0}.json patch tells the assembler which runtime argument
+  // slot carries the control-packet buffer and how large it is.
+  auto &ctrlpktExtBuf =
+      bundle(staticPerDevice.out, ctrlpkt.out)
+          .map<llvm::json::Value>(
+              "ctrlpkt_extbuf_{0}.json",
+              [seqFilter = sequenceName.getValue()](
+                  const Item<OpInModule<DeviceOp>> &devItem,
+                  const Item<std::vector<char>> &ctrlItem,
+                  Item<llvm::json::Value> &out) -> mlir::LogicalResult {
+                out.value = makeCtrlpktExtBufJson(
+                    devItem.get().op, ctrlItem.get().size(), seqFilter);
+                return mlir::success();
+              });
+
+  // When --aie-generate-elf is also set, the combined control-packet ELF is the
+  // artifact the user asked for at --elf-name (the plain instruction ELF is
+  // skipped whenever control packets are generated). Otherwise it goes to
+  // --ctrlpkt-elf-name.
+  std::string ctrlpktElfOutName = (generateElf && generateCtrlpkt)
+                                      ? elfName.getValue()
+                                      : ctrlpktElfName.getValue();
+
+#ifdef AIECC_HAS_AIEBU_LIBRARY
+  auto &ctrlpktElf =
+      bundle(ctrlpktDmaSeq.out, ctrlpkt.out, ctrlpktExtBuf.out)
+          .map<File>(ctrlpktElfOutName,
+                     [](const Item<std::vector<char>> &dmaSeqItem,
+                        const Item<std::vector<char>> &ctrlItem,
+                        const Item<llvm::json::Value> &patchItem,
+                        Item<File> &out) -> mlir::LogicalResult {
+                       std::string patch =
+                           llvm::formatv("{0:2}", patchItem.get()).str();
+                       return assembleElf(dmaSeqItem.get(), ctrlItem.get(),
+                                          llvm::StringRef(patch), out, verbose,
+                                          ShellCommand::progress);
+                     });
+#else
+  auto &ctrlpktElf = bundle(ctrlpktDmaSeq.out, ctrlpkt.out, ctrlpktExtBuf.out)
+                         .map<File>(ctrlpktElfOutName, ShellCommand{"aiebu-asm"}
+                                                           .arg("-t")
+                                                           .arg("aie2txn")
+                                                           .arg("-c")
+                                                           .input()
+                                                           .arg("-p")
+                                                           .input()
+                                                           .arg("-j")
+                                                           .input()
+                                                           .arg("-o")
+                                                           .output());
+#endif // AIECC_HAS_AIEBU_LIBRARY
+
+  // Per-device xclbin (memory topology + kernel metadata + PDI partition).
+  auto &memTopo = staticPerDevice.map<llvm::json::Value>(
+      "memTopology_{0}.json",
+      [](const OpInModule<DeviceOp> &) { return makeMemTopologyJson(); });
+
+  std::string kName = xclbinKernelName, iName = xclbinInstanceName,
+              kId = xclbinKernelId;
+  auto &kernels = staticPerDevice.map<llvm::json::Value>(
+      "kernels_{0}.json",
+      [kName, iName, kId, seqFilter = sequenceName.getValue()](
+          const Item<OpInModule<DeviceOp>> &devItem,
+          Item<llvm::json::Value> &out) -> mlir::LogicalResult {
+        int numHostBOs = computeNumHostBOs(devItem.get().op, seqFilter);
+        if (numHostBOs > kMaxHostBOs) {
+          llvm::errs() << "error: device '" << devItem.key << "' has "
+                       << numHostBOs
+                       << " host buffer arguments, which exceeds the maximum "
+                          "supported and verified count of "
+                       << kMaxHostBOs
+                       << ". Reduce the number of host buffer arguments.\n";
+          return mlir::failure();
+        }
+        out.value = makeKernelsJson(kName, iName, kId, numHostBOs);
+        return mlir::success();
+      });
+
+  // Partition JSON: bundle staticPerDevice with pdi to declare the dep.
+  auto &partition =
+      bundle(staticPerDevice.out, pdi.out)
+          .map<llvm::json::Value>(
+              "partition_{0}.json",
+              [kId](const Item<OpInModule<DeviceOp>> &devItem,
+                    const Item<File> &pdiItem, Item<llvm::json::Value> &out) {
+                out.value = makePartitionJson(
+                    devItem.get().op, absolutePath(pdiItem.asFile()), kId);
+                return mlir::success();
+              });
+
+  // xclbin assembly. Two selectable options:
+  //  * from scratch: memory topology + kernel metadata + PDI partition;
+  //  * --xclbin-input: extend an existing xclbin by merging this design's PDI
+  //    into its AIE_PARTITION and adding the kernel.
+
+  // From-scratch flow
+  EdgeWithTypedOutput<File> &xclbinFromScratch =
+      bundle(memTopo.out, kernels.out, partition.out)
+          .map<File>(xclbinName.getValue(), ShellCommand{"xclbinutil"}
+                                                .arg("--add-replace-section")
+                                                .input("MEM_TOPOLOGY:JSON:")
+                                                .arg("--add-kernel")
+                                                .input()
+                                                .arg("--add-replace-section")
+                                                .input("AIE_PARTITION:JSON:")
+                                                .arg("--force")
+                                                .arg("--output")
+                                                .output());
+
+  // --xclbin-input flow: dump the existing xclbin's AIE_PARTITION, append this
+  // design's first PDI to it, then re-emit with the merged partition and our
+  // kernel
+  std::string inXclbin = xclbinInput.getValue();
+  // xclbinutil can only emit the section to a file; lift it into a parsed JSON
+  // payload (via the json Deserializer) so the merge below works on the
+  // in-memory object.
+  // TODO: Feels like the Item deserializer abstraction should handle this
+  // deserialization step from a shell command, but it does not yet.
+  auto &inputPartitionFile = staticPerDevice.map<File>(
+      "input_aie_partition_{0}.json", ShellCommand{"xclbinutil"}
+                                          .arg("--dump-section")
+                                          .outputConcat("AIE_PARTITION:JSON:")
+                                          .arg("--force")
+                                          .arg("--quiet")
+                                          .arg("--input")
+                                          .arg(inXclbin));
+  auto &inputPartition = inputPartitionFile.map<llvm::json::Value>(
+      "input_aie_partition_parsed_{0}.json",
+      deserializeFile<llvm::json::Value>());
+
+  auto &mergedPartition =
+      bundle(inputPartition.out, partition.out)
+          .map<llvm::json::Value>(
+              "merged_partition_{0}.json",
+              [](const Item<llvm::json::Value> &inPart,
+                 const Item<llvm::json::Value> &newPart,
+                 Item<llvm::json::Value> &out) -> mlir::LogicalResult {
+                llvm::json::Value merged = inPart.get();
+                auto *inObj = merged.getAsObject();
+                const auto *newObj = newPart.get().getAsObject();
+                auto *inPartObj =
+                    inObj ? inObj->getObject("aie_partition") : nullptr;
+                const auto *newPartObj =
+                    newObj ? newObj->getObject("aie_partition") : nullptr;
+                auto *inPDIs =
+                    inPartObj ? inPartObj->getArray("PDIs") : nullptr;
+                const auto *newPDIs =
+                    newPartObj ? newPartObj->getArray("PDIs") : nullptr;
+                if (!inPDIs || !newPDIs || newPDIs->empty()) {
+                  llvm::errs() << "aiecc: malformed AIE_PARTITION when "
+                                  "merging --xclbin-input\n";
+                  return mlir::failure();
+                }
+                // Append only this design's first PDI.
+                inPDIs->push_back((*newPDIs)[0]);
+                out.value = std::move(merged);
+                return mlir::success();
+              });
+
+  EdgeWithTypedOutput<File> &xclbinExtended =
+      bundle(kernels.out, mergedPartition.out)
+          .map<File>(xclbinName.getValue(), ShellCommand{"xclbinutil"}
+                                                .arg("--input")
+                                                .arg(inXclbin)
+                                                .arg("--add-kernel")
+                                                .input()
+                                                .arg("--add-replace-section")
+                                                .input("AIE_PARTITION:JSON:")
+                                                .arg("--force")
+                                                .arg("--output")
+                                                .output());
+
+  EdgeWithTypedOutput<File> &xclbin =
+      xclbinInput.empty() ? xclbinFromScratch : xclbinExtended;
+
+  //--------------------------------------------------------------------------//
+  // NPU instruction-sequence branch
+  //--------------------------------------------------------------------------//
+  auto &npuLoweredPerDevice =
+      splitPerDevice(npuLowered, "perDeviceNPULowered_{0}.mlir",
+                     "perDeviceNPULoweredMatching");
+
+  // Per-device transaction configuration MLIR. `convert-aie-to-transaction`
+  // reads each core's ELF (the patched IR carries absolute `elf_file` paths,
+  // so the empty elf-dir is only a fallback) and emits a `@configure` runtime
+  // sequence of write/blockwrite ops. The cores are lowered because
+  // `npuLoweringInput` selects the ELF-patched module whenever the transaction
+  // output is requested (see `npuTransactionsNeedCoresLowered`).
+  auto &txn = npuLoweredPerDevice.map<ModRef>(
+      txnName.getValue(),
+      [&context](const Item<OpInModule<DeviceOp>> &item,
+                 Item<ModRef> &out) -> mlir::LogicalResult {
+        DeviceOp d = item.get().op;
+        ModRef clone = item.get().module.get().clone();
+        auto pm =
+            getTransactionPipeline(&context, /*elfDir=*/"", d.getSymName());
+        if (!pm || mlir::failed(pm->run(*clone)))
+          return mlir::failure();
+        out.value = std::move(clone);
+        return mlir::success();
+      });
+
+  // One item per runtime sequence, keyed "<device>_<sequence>"
+  auto &perSeq =
+      npuLowered
+          .split<OpInModule<RuntimeSequenceOp>>(
+              "npu_seq_{0}.mlir",
+              SplitIRAction<RuntimeSequenceOp>([](RuntimeSequenceOp s) {
+                return npuSeqKey(s->getParentOfType<DeviceOp>().getSymName(),
+                                 s.getSymName());
+              }))
+          .filter("perSeqMatching",
+                  [matchesDeviceFilter, seqFilter = sequenceName.getValue()](
+                      const OpInModule<RuntimeSequenceOp> &x) {
+                    RuntimeSequenceOp seq = x.op;
+                    if (!matchesDeviceFilter(seq->getParentOfType<DeviceOp>()))
+                      return false;
+                    // --sequence-name: keep only the named runtime sequence.
+                    return seqFilter.empty() || seq.getSymName() == seqFilter;
+                  });
+
+  // Translate each sequence exactly once into its NPU program (the .bin bytes
+  // and the locmap). Two variants are built from the same per-sequence input,
+  // differing only in whether the DDR-aperture offset is folded into the TXN:
+  //   * npuProgram (folded) drives the xclbin / instruction-buffer artifacts
+  //     (instElf, insts.bin, locmap), whose runtime needs the offset folded in;
+  //   * npuProgramFullElf (not folded, built just below the full-ELF section)
+  //     drives the combined full ELF, whose runtime assigns host-buffer
+  //     addresses itself.
+  auto &npuProgram = buildNpuProgramSubgraph(perSeq, "npu_program_{0}.bin",
+                                             /*foldDDRAddrOffset=*/true);
+
+  auto &npuInsts = npuProgram.map<std::vector<char>>(
+      npuInstsName.getValue(), [](const NpuProgram &p) { return p.insts; });
+
+  auto &npuLocmap =
+      bundle(npuInsts.out, npuProgram.out)
+          .map<std::string>(
+              npuInstsName.getValue() + ".locmap.json",
+              [](const Item<std::vector<char>> &binItem,
+                 const Item<NpuProgram> &progItem,
+                 Item<std::string> &out) -> mlir::LogicalResult {
+                const NpuProgram &prog = progItem.get();
+                std::string binName =
+                    llvm::sys::path::filename(binItem.filePath).str();
+                llvm::raw_string_ostream os(out.value.emplace());
+                xilinx::AIE::emitNpuLocmapJSON(os, prog.deviceName, binName,
+                                               prog.locmap);
+                return mlir::success();
+              });
+
+  // Partial ELF; This embeds the instruction sequence in an ELF format that is
+  // loaded alongside an xclbin. It reuses the per-sequence instruction binary
+  // already produced by `npuInsts` rather than re-translating the module.
+#ifdef AIECC_HAS_AIEBU_LIBRARY
+  auto &instElf =
+      npuInsts.map<File>(elfName.getValue(),
+                         [](const Item<std::vector<char>> &item,
+                            Item<File> &out) -> mlir::LogicalResult {
+                           return assembleElf(item.get(), /*buffer2=*/{},
+                                              /*patchJson=*/{}, out, verbose,
+                                              ShellCommand::progress);
+                         });
+#else
+  auto &instElf =
+      npuInsts.map<File>(elfName.getValue(), ShellCommand{"aiebu-asm"}
+                                                 .arg("-t")
+                                                 .arg("aie2txn")
+                                                 .arg("-c")
+                                                 .input()
+                                                 .arg("-o")
+                                                 .output());
+#endif // AIECC_HAS_AIEBU_LIBRARY
+
+  //--------------------------------------------------------------------------//
+  // Combined full ELF (joins the static configuration + NPU branches)
+  //--------------------------------------------------------------------------//
+  // The full ELF consumes its own NPU program variant, translated WITHOUT
+  // folding the DDR-aperture offset (foldDDRAddrOffset=false): the full-ELF
+  // runtime assigns host-buffer addresses itself, so the offset must not be
+  // baked into the TXN.
+  auto &npuProgramFullElf = buildNpuProgramSubgraph(
+      perSeq, "npu_program_full_elf_{0}.bin", /*foldDDRAddrOffset=*/false);
+  auto &npuInstsFullElf = npuProgramFullElf.map<std::vector<char>>(
+      "npu_insts_full_elf_{0}.bin",
+      [](const NpuProgram &p) { return p.insts; });
+
+  // Combined ELF: all PDIs + NPU insts bundled into one aie2_config ELF.
+  auto &fullElfConfig =
+      bundle(npuLoweredPerDevice.out, pdi.out, npuInstsFullElf.out)
+          .join<llvm::json::Value>(
+              "full_elf_config.json",
+              [](const Node<OpInModule<DeviceOp>> &devices,
+                 const Node<File> &pdis,
+                 const Node<std::vector<char>> &instsBins,
+                 Item<llvm::json::Value> &out) -> mlir::LogicalResult {
+                llvm::StringMap<std::string> pdiPaths, instsPaths;
+                for (const auto &item : pdis.items)
+                  pdiPaths[item.key] = absolutePath(item.asFile());
+                for (const auto &item : instsBins.items)
+                  instsPaths[item.key] = absolutePath(item.asFile());
+                out.value =
+                    makeFullElfConfigJson(devices, pdiPaths, instsPaths);
+                return mlir::success();
+              });
+
+  // TODO(aiebu-aie2_config): unlike the instruction and control-packet ELFs,
+  // the full ELF is assembled by shelling out to `aiebu-asm -t aie2_config`
+  // rather than calling the in-process aiebu library. The library's
+  // `aiebu_assembler_buffer_type_aie2_config` entry point is a no-op in this
+  // XRT build (it returns a 0-byte ELF), whereas the CLI tool assembles the
+  // same config correctly. This is the one remaining shell-out edge in the ELF
+  // path; it should move in-memory once the library's aie2_config support is
+  // understood/fixed. Until then this stays a declarative ShellCommand edge so
+  // the driver never grows ad-hoc subprocess or temp-file machinery.
+  auto &fullElf =
+      fullElfConfig.map<File>(fullElfName.getValue(), ShellCommand{"aiebu-asm"}
+                                                          .arg("-t")
+                                                          .arg("aie2_config")
+                                                          .arg("-j")
+                                                          .input()
+                                                          .arg("-o")
+                                                          .output());
+
+  //--------------------------------------------------------------------------//
+  // Host program
+  //--------------------------------------------------------------------------//
+  auto &hostExe = buildHostExeSubgraph(staticPerDevice, perDeviceArches);
+
+  //--------------------------------------------------------------------------//
+  // AIE simulator Work folder
+  //--------------------------------------------------------------------------//
+  // Per device, emit the `sim/` work folder (graph.xpe, shim solution, scsim
+  // config, flows), build ps.so, and the `aiesim.sh` launcher.
+  //
+  // TODO: aiecc_aiesim.cpp is a non-declarative blackbox — it shells out to
+  // aie-translate/aie-opt/clang++ itself and writes a fixed directory layout
+  // (Work folder + ps.so + aiesim.sh) straight to disk, bypassing the Item
+  // abstraction and the graph. It should be refactored into proper graph edges
+  // (one Item per generated artifact). It hangs off `staticPerDevice`, so the
+  // engine still schedules it after the core ELFs the simulator reads are
+  // built.
+  xilinx::aiecc::AiesimConfig aiesimCfg;
+  aiesimCfg.enabled = wantAiesim;
+  aiesimCfg.compileHost = doCompileHost;
+  aiesimCfg.verbose = verbose;
+  aiesimCfg.dryRun = dryRun;
+  aiesimCfg.hostTarget = hostTarget.getValue();
+  aiesimCfg.aietoolsPath = aietoolsRoot;
+  aiesimCfg.installPath = installDir;
+  for (const auto &dir : hostIncludeDirs)
+    aiesimCfg.hostArgs.push_back("-I" + dir);
+  for (const auto &dir : hostLibDirs)
+    aiesimCfg.hostArgs.push_back("-L" + dir);
+  for (const auto &lib : hostLibs)
+    aiesimCfg.hostArgs.push_back("-l" + lib);
+  for (const auto &a : hostPassthroughArgs)
+    aiesimCfg.hostArgs.push_back(a);
+
+  auto &aiesimWork = staticPerDevice.map<File>(
+      "aiesim_{0}.stamp",
+      [aiesimCfg, workDirStr](const Item<OpInModule<DeviceOp>> &item,
+                              Item<File> &out) -> mlir::LogicalResult {
+        DeviceOp d = item.get().op;
+        mlir::ModuleOp mod = item.get().module.get();
+        std::string devName = d.getSymName().str();
+        std::string aieTarget = detectAIETarget(mod, d.getSymName());
+        if (mlir::failed(xilinx::aiecc::generateAieIncCpp(mod, workDirStr,
+                                                          devName, aiesimCfg)))
+          return mlir::failure();
+        if (mlir::failed(xilinx::aiecc::generateAiesim(mod, workDirStr, devName,
+                                                       aieTarget, aiesimCfg)))
+          return mlir::failure();
+        out.value = File{};
+        return mlir::success();
+      });
+  // The aiesim module performs its own disk writes (Work folder + ps.so +
+  // aiesim.sh), so there is no single File for the engine to materialize.
+  aiesimWork.producesFiles = false;
+
+  //--------------------------------------------------------------------------//
+  // Output selection
+  //--------------------------------------------------------------------------//
+  if (generateScratchpadParams)
+    outputs.push_back(&paramsFile);
+
+  // Core-ELF output: emit the per-core ELFs when --aie-generate-core-elfs is
+  // passed, or as the default when no other artifact was requested (so a bare
+  // `aiecc design.mlir` builds every device's cores up front).
+  bool anySpecificOutput =
+      generateInputWithAddresses || generateScratchpadParams ||
+      generateNpuInsts || keepLoc || generateElf || generateCdo ||
+      generatePdi || generateTxn || generateCtrlpkt || generateXclbin ||
+      generateFullElf || wantAiesim || doCompileHost || !getOutputs.empty() ||
+      !cutOutputs.empty();
+  if (generateCoreElfs || !anySpecificOutput)
+    outputs.push_back(&compiledElfs);
+
+  if (generateInputWithAddresses)
+    outputs.push_back(&withAddresses);
+  if (generateNpuInsts)
+    outputs.push_back(&npuInsts);
+  if (keepLoc)
+    outputs.push_back(&npuLocmap);
+  // The plain instruction ELF is skipped when control packets are also being
+  // generated: in that case the combined control-packet ELF (produced below)
+  // is the artifact written to --elf-name.
+  if (generateElf && !generateCtrlpkt)
+    outputs.push_back(&instElf);
+  if (generateCdo)
+    outputs.push_back(&cdo);
+  if (generatePdi)
+    outputs.push_back(&pdi);
+  if (generateTxn)
+    outputs.push_back(&txn);
+  if (generateCtrlpkt) {
+    outputs.push_back(&ctrlpkt);
+    outputs.push_back(&ctrlpktDmaSeq);
+    outputs.push_back(&ctrlpktElf);
+  }
+  if (generateXclbin)
+    outputs.push_back(&xclbin);
+  if (generateFullElf)
+    outputs.push_back(&fullElf);
+  // AIE simulator Work folder: only when explicitly requested.
+  if (wantAiesim)
+    outputs.push_back(&aiesimWork);
+  // Host executable: only when explicitly requested and host sources exist.
+  if (doCompileHost) {
+    if (!hasHostSourceFiles())
+      llvm::errs() << "aiecc: --compile-host given but no host source files "
+                      "were provided; skipping host compilation\n";
+    else
+      outputs.push_back(&hostExe);
   }
 
-  ParserConfig parseConfig(&context);
-  SourceMgr sourceMgr;
-  inputModuleOp = parseSourceFile<ModuleOp>(inputFile, sourceMgr, parseConfig);
+  // --get=<name> / --cut=<name>: request outputs (and cut points) by the exact
+  // name their edge is registered with. A few names are registered on two edges
+  // by design: the toolchain / strategy variants that emit the same artifact
+  // (chess vs peano "elfs_{0}.elf", per-core vs unified "objects_{0}.o").
+  // Exactly one of each pair is live in any given build, so disambiguate by
+  // keeping only edges reachable from the selected terminals (`compiledElfs` /
+  // `objects`) plus whatever this run already produces.
+  if (!getOutputs.empty() || !cutOutputs.empty()) {
+    std::vector<EdgeBase *> liveRoots = outputs;
+    liveRoots.push_back(&compiledElfs);
+    liveRoots.push_back(&objects);
+    llvm::DenseSet<EdgeBase *> live = reachableEdges(liveRoots);
 
-  if (!inputModuleOp) {
-    llvm::errs() << "Error parsing MLIR file\n";
-    return 1;
+    // resolveLiveEdges does the name->edge resolution (with chess/peano
+    // disambiguation); the driver owns only the error-reporting policy.
+    auto select = [&](llvm::ArrayRef<std::string> names,
+                      llvm::StringRef flag) -> std::vector<EdgeBase *> {
+      llvm::Expected<std::vector<EdgeBase *>> resolved =
+          resolveLiveEdges(g, names, live);
+      if (resolved)
+        return std::move(*resolved);
+      llvm::errs() << "aiecc: " << flag << ": "
+                   << llvm::toString(resolved.takeError())
+                   << "; known outputs are:\n";
+      std::set<llvm::StringRef> known;
+      for (const auto &e : g.edges)
+        known.insert(e->name);
+      for (llvm::StringRef n : known)
+        llvm::errs() << "  " << n << '\n';
+      std::exit(1);
+    };
+
+    // --get selects outputs (relocated to the output dir). --cut only marks a
+    // checkpoint cut point: the edge is built (see Engine::run `buildAlso`) but
+    // stays in the work dir as an intermediate, so downstream consumers that
+    // reference it by path (e.g. the CDO step loading core ELFs) still find it.
+    for (EdgeBase *e : select(getOutputs, "--get"))
+      outputs.push_back(e);
+    for (EdgeBase *e : select(cutOutputs, "--cut"))
+      cutEdges.push_back(e);
   }
 
-  // Set up diagnostic handler to print all diagnostics (including warnings)
-  // This ensures that pass diagnostics like buffer allocation warnings are
-  // visible to the user. The handler will print to stderr by default.
-  SourceMgrDiagnosticHandler diagHandler(sourceMgr, &context);
-
-  if (verbose) {
-    llvm::outs() << "Successfully parsed input file: " << inputFile << "\n";
-  }
-
-  // Create temporary directory if needed
-  SmallString<128> actualTmpDir;
-  if (!tmpDirName.empty()) {
-    actualTmpDir = tmpDirName;
-  } else {
-    // Create a project directory based on input filename
-    StringRef baseName = sys::path::filename(inputFile);
-    actualTmpDir = baseName;
-    actualTmpDir += ".prj";
-  }
-
-  std::error_code ec = sys::fs::create_directory(actualTmpDir);
-  if (ec && ec != std::errc::file_exists) {
-    llvm::errs() << "Error creating temporary directory: " << ec.message()
-                 << "\n";
-    return 1;
-  }
-
-  if (verbose) {
-    llvm::outs() << "Using temporary directory: " << actualTmpDir << "\n";
-  }
-
-  // Run the compilation flow
-  if (failed(compileAIEModule(context, inputModuleOp.get(), actualTmpDir))) {
-    llvm::errs() << "Compilation failed\n";
-    return 1;
-  }
-
-  llvm::outs() << "Compilation completed successfully\n";
-  return 0;
+  return outputs;
 }
 
 //===----------------------------------------------------------------------===//
-// Main Entry Point
+// Main
 //===----------------------------------------------------------------------===//
 
 int main(int argc, char **argv) {
-  InitLLVM y(argc, argv);
 
-  // Split argv on the first standalone `--`. Everything after is forwarded
-  // verbatim to the host compiler (host-source files are routed separately
-  // via getHostSourceFiles()). Everything before must be a recognized aiecc
-  // option or input file; unknown flags there are rejected by LLVM.
-  std::vector<char *> frontArgv;
-  frontArgv.reserve(argc);
-  bool sawSeparator = false;
-  for (int i = 0; i < argc; ++i) {
-    if (i > 0 && !sawSeparator && std::strcmp(argv[i], "--") == 0) {
-      sawSeparator = true;
-      continue;
+  //--------------------------------------------------------------------------//
+  // Context setup
+  //--------------------------------------------------------------------------//
+
+  llvm::InitLLVM y(argc, argv);
+  mlir::registerAsmPrinterCLOptions();
+  mlir::registerAllPasses();
+  xilinx::registerConversionPasses();
+  xilinx::AIE::registerAIEPasses();
+  xilinx::AIEX::registerAIEXPasses();
+  xilinx::aievec::registerAIEVecPasses();
+  xilinx::aievec::registerAIEVecPipelines();
+
+  llvm::cl::SetVersionPrinter(printVersion);
+
+  // If --resume=<manifest> is given, rebuild the effective command line from
+  // the checkpoint manifest (parsing lives in CommandLineOptions.h); otherwise
+  // use argv as-is. `graphArgv` is what a checkpoint written by this run
+  // records so a later resume rebuilds an identical graph.
+  cli::ResumeState resume;
+  std::vector<std::string> graphArgv;
+  std::optional<std::vector<std::string>> effArgvStore =
+      cli::resolveCommandLine(argc, argv, resume, graphArgv);
+  if (!effArgvStore)
+    return 1;
+  std::vector<char *> effArgvPtrs;
+  effArgvPtrs.reserve(effArgvStore->size());
+  for (std::string &s : *effArgvStore)
+    effArgvPtrs.push_back(s.data());
+  int effArgc = static_cast<int>(effArgvPtrs.size());
+  char **effArgv = effArgvPtrs.data();
+
+  // Split host-compiler passthrough args (after a `--` separator) off before cl
+  // parsing: everything before `--` is parsed strictly, everything after is
+  // forwarded verbatim to the host compiler (AIE1 host-compilation flow only).
+  // Truncating parseArgc keeps cl from treating the tail as positionals.
+  int parseArgc = effArgc;
+  for (int i = 1; i < effArgc; ++i)
+    if (llvm::StringRef(effArgv[i]) == "--") {
+      parseArgc = i;
+      hostPassthroughArgs.assign(effArgv + i + 1, effArgv + effArgc);
+      break;
     }
-    if (sawSeparator) {
-      hostExtraArgs.emplace_back(argv[i]);
-    } else {
-      frontArgv.push_back(argv[i]);
-    }
+  llvm::cl::ParseCommandLineOptions(parseArgc, effArgv,
+                                    "aiecc declarative driver\n");
+
+  // Exactly one input MLIR file may appear before the `--` separator; host
+  // source files and host-compiler flags belong after it.
+  if (positionalArgs.size() > 1) {
+    llvm::errs() << "aiecc: only one input MLIR file is allowed before '--'; "
+                    "pass host source files and host-compiler flags after "
+                    "'--'\n";
+    return 1;
   }
-
-  cl::AddExtraVersionPrinter(printVersion);
-  cl::ParseCommandLineOptions(static_cast<int>(frontArgv.size()),
-                              frontArgv.data(), "AIE Compiler Driver\n");
 
   if (showVersion) {
     printVersion(llvm::outs());
     return 0;
   }
 
-  // Handle conflicting options
-  if (noAiesim) {
-    aiesim = false;
-  }
-  if (noXbridge) {
-    xbridge = false;
-  }
-  if (noXchesscc) {
-    xchesscc = false;
-    // Without xchesscc, linking would use the Peano-compiled object path.
-    // xbridge does not support linking Peano-compiled objects, so disable it
-    // automatically to keep the behavior consistent with the supported flow.
-    xbridge = false;
-  }
-  if (noCompile) {
-    compile = false;
-  }
-  if (noLink) {
-    link = false;
-  }
-  if (noUnified) {
-    unified = false;
-  }
-  if (noCompileHost) {
-    compileHost = false;
-  }
+  // Resolve inter-option coupling once, up front: the Chess/Peano toolchain
+  // selection (xchesscc/xbridge), the --aiesim implication, and the
+  // resolved-option globals (wantAiesim, doUnified, doCompileHost). See
+  // CommandLineOptions.h.
+  if (!cli::resolveOptions())
+    return 1;
 
-  // Validate: aiesim requires xbridge; since --no-xchesscc disables xbridge,
-  // it is also incompatible with --aiesim.
-  if (aiesim && !xbridge) {
-    if (noXchesscc)
-      llvm::errs() << "Error: AIE Simulation (--aiesim) is incompatible with "
-                      "--no-xchesscc because xbridge is required for aiesim "
-                      "and --no-xchesscc disables xbridge\n";
-    else
-      llvm::errs()
-          << "Error: AIE Simulation (--aiesim) currently requires --xbridge\n";
+  // --expand-load-pdis reconfigures via PDI swaps and routes the config branch
+  // through the NPU-lowered module; control-packet generation currently
+  // assumes it runs on the *pre*-NPU-lowering module. The two are incompatible
+  // as implemented.
+  if (expandLoadPdis && generateCtrlpkt) {
+    llvm::errs() << "aiecc: --expand-load-pdis and --aie-generate-ctrlpkt are "
+                    "mutually exclusive\n";
     return 1;
   }
 
-  // Process the input file
-  return processInputFile(getInputFilename(), tmpDir);
+  // The control-packet DMA sequence targets the xclbin / instruction-buffer
+  // runtime, never the full-ELF runtime, so the two must not be requested
+  // together (see the hard-coded fold in the ctrlpktDmaSeq edge).
+  if (generateFullElf && generateCtrlpkt) {
+    llvm::errs() << "aiecc: --generate-full-elf and --aie-generate-ctrlpkt are "
+                    "mutually exclusive\n";
+    return 1;
+  }
+
+  // --cut only makes sense as a checkpoint frontier: it stops the build at the
+  // named edge(s) and snapshots them, so it requires --checkpoint to say where.
+  if (!cutOutputs.empty() && checkpointDir.empty()) {
+    llvm::errs()
+        << "aiecc: --cut requires --checkpoint (it marks where to stop "
+           "the build and snapshot it for a later --resume)\n";
+    return 1;
+  }
+
+  // MLIR Context
+  mlir::DialectRegistry registry;
+  mlir::registerAllDialects(registry);
+  xilinx::registerAllDialects(registry);
+  mlir::registerAllExtensions(registry);
+  xilinx::aievec::registerTransformDialectExtension(registry);
+  registerLLVMIRTranslations(registry);
+  mlir::MLIRContext context(registry);
+  context.loadAllAvailableDialects();
+
+  llvm::SourceMgr sourceMgr;
+  unsigned inputBufferId = 0;
+  if (auto inputBuf = mlir::openInputFile(getInputFilename()))
+    inputBufferId =
+        sourceMgr.AddNewSourceBuffer(std::move(inputBuf), llvm::SMLoc());
+  mlir::SourceMgrDiagnosticHandler diagHandler(sourceMgr, &context);
+  ShellCommand::addInstallPrefix("peano", peanoInstallDir);
+  ShellCommand::verbose = verbose;
+  ShellCommand::dryRun = dryRun;
+
+  //--------------------------------------------------------------------------//
+  // Compilation artifact graph
+  //--------------------------------------------------------------------------//
+  // All edge declarations live in buildMainGraph; main just builds the graph
+  // and then either visualizes it (--emit-dot) or runs it through the engine.
+  Graph g;
+  std::vector<EdgeBase *>
+      cutEdges; // the --cut points, captured by --checkpoint
+  std::vector<EdgeBase *> outputs = buildMainGraph(context, g, cutEdges);
+
+  // --emit-dot: visualize the (pruned) static graph and exit without running.
+  // Needs no input file (the graph is static), so it runs before the input-file
+  // check below. A --cut/--checkpoint cut is marked in the output.
+  if (emitDot) {
+    writeDotGraph(g, outputs, llvm::outs(), cutEdges);
+    return 0;
+  }
+
+  // Every other mode actually runs the graph, which requires an input .mlir.
+  if (getInputFilename().empty()) {
+    llvm::errs() << "aiecc: no input file specified; expected an input .mlir\n";
+    return 1;
+  }
+
+  // Reject an empty (or whitespace-only) input up front. A --resume is exempt:
+  // the restored frontier feeds the downstream edges, so the original input
+  // .mlir is usually pruned (and may be gone, e.g. wiped by a caller's failed-
+  // compile cleanup). If it turns out to be needed, its fileInput edge errors
+  // when executed.
+  if (!resume.active) {
+    if (sourceMgr.getNumBuffers() == 0) {
+      llvm::errs() << "aiecc: could not open input file '" << getInputFilename()
+                   << "'\n";
+      return 1;
+    }
+    if (sourceMgr.getMemoryBuffer(inputBufferId)->getBuffer().trim().empty()) {
+      llvm::errs() << "aiecc: input file '" << getInputFilename()
+                   << "' is empty; expected MLIR containing an aie.device\n";
+      return 1;
+    }
+  }
+
+  // Resume: map each checkpoint frontier entry to its producing edge and
+  // satisfy it from the saved artifacts instead of recomputing. Edge lookup and
+  // its chess/peano disambiguation are shared with --get via resolveLiveEdge.
+  llvm::DenseMap<EdgeBase *, RestoredNode> satisfied;
+  if (resume.active) {
+    // With --get, a resume targets exactly the requested edge(s) (a surgical
+    // suffix) rather than adding to the manifest's full build.
+    if (!getOutputs.empty()) {
+      llvm::DenseSet<llvm::StringRef> want(getOutputs.begin(),
+                                           getOutputs.end());
+      std::vector<EdgeBase *> filtered;
+      for (EdgeBase *e : outputs)
+        if (want.count(e->name))
+          filtered.push_back(e);
+      outputs = std::move(filtered);
+    }
+    llvm::DenseSet<EdgeBase *> reach = reachableEdges(outputs);
+    for (const cli::CheckpointEntry &fe : resume.frontier) {
+      llvm::Expected<EdgeBase *> e = resolveLiveEdge(g, fe.name, reach);
+      if (!e) {
+        llvm::errs() << "aiecc: --resume: " << llvm::toString(e.takeError())
+                     << "\n";
+        return 1;
+      }
+      llvm::SmallString<256> p(resume.manifestDir);
+      llvm::sys::path::append(p, fe.dir);
+      satisfied[*e] = RestoredNode{fe.descriptor, std::string(p.str())};
+    }
+  }
+
+  // Progress is on by default; --no-progress turns it off, and --verbose
+  // (line-per-edge logging) takes precedence over the single-line display.
+  bool showProgress = !noProgress && !verbose;
+  ShellCommand::progress = showProgress;
+  Engine engine({outputDir, getWorkDir(), verbose, showProgress,
+                 keepIntermediates, numThreads, profile});
+  // --cut stops the build at the cut point: only the prefix up to the cut
+  // edges is produced (as work-dir intermediates) and snapshotted by
+  // --checkpoint; the requested final artifacts are NOT built here (the
+  // recorded manifest argv lets a later --resume build them). Without --cut,
+  // build the requested outputs normally. `cutEdges` is empty on a --resume.
+  const std::vector<EdgeBase *> noOutputs;
+  const std::vector<EdgeBase *> &runOutputs =
+      cutEdges.empty() ? outputs : noOutputs;
+  if (mlir::failed(engine.run(g, runOutputs, satisfied,
+                              DeserializeContext{&context}, cutEdges))) {
+    // On-failure reproducer ("repeater"): dump a checkpoint of the failed
+    // edge's already-computed inputs and print a command that reloads them and
+    // re-runs just the failed edge. Opt-in via --enable-repeater-scripts.
+    if (enableRepeaterScripts && !disableRepeaterScripts && engine.failedEdge) {
+      std::string dir = repeaterOutputDir.empty()
+                            ? getWorkDir() + "/repeater"
+                            : repeaterOutputDir.getValue();
+      std::vector<EdgeBase *> frontierEdges;
+      for (NodeBase *n : engine.failedEdge->inputNodes())
+        if (n && n->producer)
+          frontierEdges.push_back(n->producer);
+      // Record argv that rebuilds this graph, narrowed to the failed edge so a
+      // resume reloads its inputs and re-runs only it.
+      std::vector<std::string> reproArgv = graphArgv;
+      reproArgv.push_back("--get=" + engine.failedEdge->name);
+      writeCheckpoint(frontierEdges, dir, reproArgv);
+      llvm::errs() << "aiecc: To reproduce, run: aiecc --resume=" << dir
+                   << "/manifest.json\n";
+    }
+    llvm::errs() << "aiecc: pipeline failed\n";
+    return 1;
+  }
+
+  // --checkpoint: dump the --cut cut (artifacts + manifest.json) so a later
+  // --resume can reload it and continue.
+  if (!checkpointDir.empty())
+    writeCheckpoint(cutEdges, checkpointDir, graphArgv);
+
+  return 0;
 }

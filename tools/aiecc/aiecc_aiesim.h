@@ -23,9 +23,8 @@
 namespace xilinx {
 namespace aiecc {
 
-/// Configuration options for aiesim generation.
-/// These are passed from the main aiecc driver to avoid global state.
-/// Uses std::string for paths to ensure proper lifetime management.
+/// Configuration options passed from the main aiecc driver to aiesim
+/// generation. Paths use std::string for lifetime management.
 struct AiesimConfig {
   bool enabled = false;
   bool compileHost = false;
@@ -34,9 +33,8 @@ struct AiesimConfig {
   std::string hostTarget = "x86_64-linux-gnu";
   std::string aietoolsPath;
   std::string installPath;
-  /// Host args for aiesim ps.so compilation (source files, -I, -L, -l flags).
-  /// Equivalent to Python's strip_host_args_for_aiesim(opts.host_args):
-  /// all host args except -o.
+  /// Host args for aiesim ps.so compilation: all host args except -o (source
+  /// files, -I, -L, -l flags).
   std::vector<std::string> hostArgs;
 };
 

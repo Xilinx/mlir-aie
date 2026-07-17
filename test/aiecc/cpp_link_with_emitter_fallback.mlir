@@ -23,7 +23,7 @@ module {
   aie.device(npu1_1col) {
     %tile_0_2 = aie.tile(0, 2)
 
-    // Core keeps the old core-level link_with (no pass run, no link_files set).
+    // Core keeps a core-level link_with (no pass run, no link_files set).
     %core_0_2 = aie.core(%tile_0_2) {
       aie.end
     } {link_with = "fallback.o"}

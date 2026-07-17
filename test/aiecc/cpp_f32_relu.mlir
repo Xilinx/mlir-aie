@@ -12,10 +12,12 @@
 
 // REQUIRES: peano
 
-// RUN: aiecc --no-xchesscc --no-xbridge --verbose %s | FileCheck %s
+// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-xclbin --verbose %s 2>&1 | FileCheck %s
 
-// CHECK: LLVM lowering pipeline completed successfully
-// CHECK: Compilation completed successfully
+// Regression: without the fix, LLVM translation fails on unrealized casts.
+// Reaching routing and a successful xclbin write proves lowering succeeded.
+// CHECK: ({{[0-9]+}}/{{[0-9]+}}) input_physical.mlir
+// CHECK: wrote edge 'aie.xclbin'
 
 module attributes {dlti.dl_spec = #dlti.dl_spec<index = 32>} {
   aie.device(npu1_1col) {

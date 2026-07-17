@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Test aiesim work folder generation with C++ aiecc.
+// Test aiesim work folder generation with aiecc.
 // Uses dry-run mode since aiesim requires actual xchesscc/aietools.
 
 // REQUIRES: chess
@@ -23,7 +23,7 @@
 // CHECK: aie-translate
 // CHECK: --aie-mlir-to-scsim-config
 
-// NOXBRIDGE: Error: AIE Simulation (--aiesim) currently requires --xbridge
+// NOXBRIDGE: --aiesim requires --xbridge
 
 module {
   aie.device(npu1_1col) {

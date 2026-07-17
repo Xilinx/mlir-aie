@@ -9,14 +9,16 @@
 
 // Test buffer allocation scheme options
 
-// RUN: aiecc --no-xchesscc --no-xbridge --alloc-scheme=basic-sequential --verbose %s | FileCheck %s --check-prefix=BASIC
-// RUN: aiecc --no-xchesscc --no-xbridge --alloc-scheme=bank-aware --verbose %s | FileCheck %s --check-prefix=BANK
+// RUN: aiecc --no-xchesscc --no-xbridge --alloc-scheme=basic-sequential --aie-generate-input-with-addresses --verbose %s 2>&1 | FileCheck %s --check-prefix=BASIC
+// RUN: aiecc --no-xchesscc --no-xbridge --alloc-scheme=bank-aware --aie-generate-input-with-addresses --verbose %s 2>&1 | FileCheck %s --check-prefix=BANK
 
-// BASIC: alloc-scheme=basic-sequential
-// BASIC: Compilation completed successfully
+// Each allocation scheme must produce valid buffer addresses
+// (input_with_addresses), which is the artifact this test verifies.
+// BASIC: ({{[0-9]+}}/{{[0-9]+}}) input_with_addresses.mlir
+// BASIC: wrote edge 'input_with_addresses.mlir'
 
-// BANK: alloc-scheme=bank-aware
-// BANK: Compilation completed successfully
+// BANK: ({{[0-9]+}}/{{[0-9]+}}) input_with_addresses.mlir
+// BANK: wrote edge 'input_with_addresses.mlir'
 
 module {
   aie.device(npu1_1col) {
