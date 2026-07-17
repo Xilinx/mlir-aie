@@ -306,13 +306,16 @@ private:
   // The address for a write32/maskwrite32: the compile-time literal when the
   // device resolved one, otherwise the op's SSA address operand when it is a
   // genuine runtime value (the dynamic BD pool computes bdBase + wordIdx as
-  // arith over a popped id -- lowered to C++ by convert-arith-to-emitc). Null
-  // only for a truly symbolic/unresolved address.
+  // arith over a popped id -- lowered to C++ by convert-arith-to-emitc). A
+  // usable runtime address must be arith-derived (has a defining op); a bare
+  // block argument selects no hardware register and stays rejected. Null for a
+  // truly symbolic/unresolved address.
   Value runtimeOrResolvedAddr(OpBuilder &b, Location loc, Operation *clone,
                               Value addrOperand) {
     if (Value lit = resolvedAddr(b, loc, clone))
       return lit;
-    if (addrOperand && !addrOperand.getDefiningOp<arith::ConstantOp>())
+    Operation *def = addrOperand ? addrOperand.getDefiningOp() : nullptr;
+    if (def && !isa<arith::ConstantOp>(def))
       return addrOperand;
     return {};
   }
