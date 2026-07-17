@@ -70,7 +70,7 @@
 // CHECK:             %[[VAL_24:.*]] = aie.dma_start(MM2S, 0, ^bb1, ^bb2)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[VAL_23]])
-// CHECK:             aie.dma_bd(%[[VAL_5]] : memref<i64>, 0, 1)
+// CHECK:             aie.dma_bd(%[[VAL_5]] : memref<i64> offset = 0 len = 1)
 // CHECK:             aie.use_lock(%[[VAL_6]], Release, %[[VAL_23]])
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb2:
@@ -81,13 +81,14 @@
 // CHECK:             %[[VAL_27:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb2)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[VAL_3]], AcquireGreaterEqual, %[[VAL_26]])
-// CHECK:             aie.dma_bd(%[[VAL_2]] : memref<i64>, 0, 1)
+// CHECK:             aie.dma_bd(%[[VAL_2]] : memref<i64> offset = 0 len = 1)
 // CHECK:             aie.use_lock(%[[VAL_4]], Release, %[[VAL_26]])
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb2:
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:         }
+
 
 module @aie2_dynamic_locks {
     aie.device(xcve2302) {
