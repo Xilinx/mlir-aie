@@ -73,8 +73,8 @@ int main(int argc, const char *argv[]) {
 
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
-  auto bo_input = xrt::bo(device, in_len * sizeof(DTYPE), XRT_BO_FLAGS_HOST_ONLY,
-                          kernel.group_id(3));
+  auto bo_input = xrt::bo(device, in_len * sizeof(DTYPE),
+                          XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(3));
   auto bo_output = xrt::bo(device, out_len * sizeof(DTYPE),
                            XRT_BO_FLAGS_HOST_ONLY, kernel.group_id(4));
 
