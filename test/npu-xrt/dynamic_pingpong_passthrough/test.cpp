@@ -3,11 +3,12 @@
 
 // Host for the dynamic (runtime tile-count) ping-pong passthrough. Unlike a
 // static design, the instruction stream is NOT read from an insts.bin: it is
-// built AT RUNTIME by the generated C++ TXN builder (generate_txn_main_sequence,
-// from GEN_HDR) called with the tile count `n` chosen at runtime (argv[1]). That
-// is the whole point of the dynamic BD free-list pool -- one compiled design
-// serves any n. The builder returns std::nullopt if n exceeds the tile's BD
-// pool; we treat that as a build failure.
+// built AT RUNTIME by the generated C++ TXN builder
+// (generate_txn_main_sequence, from GEN_HDR) called with the tile count `n`
+// chosen at runtime (argv[1]). That is the whole point of the dynamic BD
+// free-list pool -- one compiled design serves any n. The builder returns
+// std::nullopt if n exceeds the tile's BD pool; we treat that as a build
+// failure.
 
 #include <algorithm>
 #include <cassert>
