@@ -34,6 +34,11 @@ exclude_docs: |
   CMakeLists.txt
   *.dox
   /README.md
+  # aiecc/ is a symlink to tools/aiecc (its README is published); keep the
+  # driver's C++ sources and build files out of the site.
+  /aiecc/*.cpp
+  /aiecc/*.h
+  /aiecc/*.cmake
   # Legacy raw-MLIR walkthroughs (deprecated AIE. syntax, Versal-era). Kept in
   # the repo for reference but not published on the site.
   /AIEDesignPatterns.md
@@ -242,6 +247,7 @@ nav:
       - Kernel Library: programming_guide/kernels_library.md
   - API & Internals:
     - Overview: api/index.md
+    - aiecc Compiler Driver: aiecc/README.md
     - Python API:
       - IRON (aie.iron): api/iron.md
       - Dialect op wrappers: api/dialect_wrappers.md

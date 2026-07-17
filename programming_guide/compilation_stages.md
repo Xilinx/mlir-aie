@@ -372,7 +372,7 @@ default.
 
 ## Related reading
 
-- [`aiecc` compiler driver](https://github.com/Xilinx/mlir-aie/blob/main/tools/aiecc/README.md)
+- [`aiecc` compiler driver](../tools/aiecc/README.md)
   — the declarative build-graph driver that turns the lowered MLIR into
   core ELFs, CDO/PDI, xclbin and NPU instruction streams, with a developer
   guide to its `Edge`/`Node`/`Item` graph model and `--checkpoint`/`--resume`.
