@@ -15,13 +15,17 @@
 // Verify aiesim requires xbridge
 // RUN: not aiecc --no-xbridge --aiesim -n %s 2>&1 | FileCheck %s --check-prefix=NOXBRIDGE
 
-// CHECK: Generating aiesim work folder for device
-// CHECK: aie-translate
-// CHECK: --aie-mlir-to-xpe
-// CHECK: aie-translate
-// CHECK: --aie-mlir-to-shim-solution
-// CHECK: aie-translate
-// CHECK: --aie-mlir-to-scsim-config
+// The sim/ work folder is assembled from declarative graph edges: the
+// graph/shim/scsim descriptors and routed flows are emitted in-process, and
+// the ps.so co-simulation model is linked from the toolchain's
+// genwrapper_for_ps.cpp. (--aie-mlir-to-* no longer shells out.)
+// CHECK-DAG: graph.xpe
+// CHECK-DAG: aieshim_solution.aiesol
+// CHECK-DAG: scsim_config.json
+// CHECK-DAG: flows_physical.json
+// CHECK-DAG: -D__AIESIM__
+// CHECK-DAG: genwrapper_for_ps.cpp
+// CHECK-DAG: {{.*}}ps.so
 
 // NOXBRIDGE: --aiesim requires --xbridge
 
