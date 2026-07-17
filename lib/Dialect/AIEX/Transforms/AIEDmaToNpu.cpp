@@ -620,7 +620,8 @@ public:
             /*bufLenOverride=*/Value(), repeatCount)))
       return failure();
 
-    // Address patch for the buffer pointer (offset is compile-time here).
+    // Address patch for the buffer pointer; emitBufferAddressPatch folds a
+    // constant offset or builds a runtime arg_plus with arith as needed.
     int arg_idx = -1;
     if (failed(emitBufferAddressPatch(op, adaptor, rewriter, tileCol, tileRow,
                                       arg_idx)))
