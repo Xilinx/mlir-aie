@@ -601,8 +601,8 @@ getInputWithAddressesPipeline(mlir::MLIRContext *ctx, mlir::ModuleOp mod,
   // iteration maps to a fixed rotation of buffers/locks.
   if (!dynamicObjFifos)
     dpm.addPass(createAIEObjectFifoUnrollPass());
-  // Promote the objectFifo bookkeeping counters (memref.alloca inside the cores)
-  // to loop-carried SSA values, then fold the resulting constant buffer
+  // Promote the objectFifo bookkeeping counters (memref.alloca inside the
+  // cores) to loop-carried SSA values, then fold the resulting constant buffer
   // selection and lock arithmetic.
   dpm.addPass(mlir::createMem2Reg());
   dpm.addPass(mlir::createCanonicalizerPass());
