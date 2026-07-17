@@ -59,6 +59,10 @@
 
 namespace xilinx::aiecc {
 
+//===----------------------------------------------------------------------===//
+// Helpers
+//===----------------------------------------------------------------------===//
+
 // Serializes the lazy "write payload to disk" step in Item::asFile() so that
 // concurrent edges (see ExecutionEngine's parallel scheduler) can safely
 // materialize intermediates. Each item is normally written by a single
@@ -126,6 +130,10 @@ inline mlir::LogicalResult parallelForItems(size_t n, unsigned threads,
     t.join();
   return failed.load() ? mlir::failure() : mlir::success();
 }
+
+//===----------------------------------------------------------------------===//
+// Items
+//===----------------------------------------------------------------------===//
 
 struct ItemBase {
   std::string key;
@@ -463,6 +471,10 @@ struct NodeDeserializer<Directory> {
 struct Graph;
 struct EdgeBase;
 
+//===----------------------------------------------------------------------===//
+// Nodes
+//===----------------------------------------------------------------------===//
+
 // A Node is a collection of Items (artifacts) produced by an Edge.
 // Type-erased base; Node<T> holds the typed items.
 struct NodeBase {
@@ -496,6 +508,10 @@ struct Node : NodeBase {
     return r;
   }
 };
+
+//===----------------------------------------------------------------------===//
+// Edges
+//===----------------------------------------------------------------------===//
 
 // An Edge transforms one Node to another, either by performing an action (e.g.
 // IR -> Binary) or by reorganizing the graph (e.g. splitting IR into

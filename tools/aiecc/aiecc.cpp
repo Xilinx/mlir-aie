@@ -337,22 +337,6 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                 });
   };
 
-  // Clone a per-device module and run a device-level pass pipeline built by
-  // `makePipeline(ctx, elfDir, devName)`; a null pipeline or a failed run fails
-  // the edge. Shared by the transaction and control-packet lowerings.
-  auto runDevicePipeline = [&context](auto makePipeline) {
-    return [&context, makePipeline](const Item<OpInModule<DeviceOp>> &item,
-                                    Item<ModRef> &out) -> mlir::LogicalResult {
-      DeviceOp d = item.get().op;
-      ModRef clone = item.get().module.get().clone();
-      auto pm = makePipeline(&context, /*elfDir=*/"", d.getSymName());
-      if (!pm || mlir::failed(pm->run(*clone)))
-        return mlir::failure();
-      out.value = std::move(clone);
-      return mlir::success();
-    };
-  };
-
   //--------------------------------------------------------------------------//
   // Graph
   //--------------------------------------------------------------------------//
@@ -709,7 +693,18 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // Per-device control-packet artifacts: the control-packet binary and the
   // DMA sequence that streams it in.
   auto &ctrlpktLowered = staticPerDevice.map<ModRef>(
-      "ctrlpkt_lowered_{0}.mlir", runDevicePipeline(getControlPacketPipeline));
+      "ctrlpkt_lowered_{0}.mlir",
+      [&context](const Item<OpInModule<DeviceOp>> &item,
+                 Item<ModRef> &out) -> mlir::LogicalResult {
+        DeviceOp d = item.get().op;
+        ModRef clone = item.get().module.get().clone();
+        auto pm =
+            getControlPacketPipeline(&context, /*elfDir=*/"", d.getSymName());
+        if (!pm || mlir::failed(pm->run(*clone)))
+          return mlir::failure();
+        out.value = std::move(clone);
+        return mlir::success();
+      });
 
   auto &ctrlpkt = ctrlpktLowered.map<std::vector<char>>(
       ctrlpktName.getValue(),
@@ -925,7 +920,18 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // `npuLoweringInput` selects the ELF-patched module whenever the transaction
   // output is requested (see `npuTransactionsNeedCoresLowered`).
   auto &txn = npuLoweredPerDevice.map<ModRef>(
-      txnName.getValue(), runDevicePipeline(getTransactionPipeline));
+      txnName.getValue(),
+      [&context](const Item<OpInModule<DeviceOp>> &item,
+                 Item<ModRef> &out) -> mlir::LogicalResult {
+        DeviceOp d = item.get().op;
+        ModRef clone = item.get().module.get().clone();
+        auto pm =
+            getTransactionPipeline(&context, /*elfDir=*/"", d.getSymName());
+        if (!pm || mlir::failed(pm->run(*clone)))
+          return mlir::failure();
+        out.value = std::move(clone);
+        return mlir::success();
+      });
 
   // One item per runtime sequence, keyed "<device>_<sequence>"
   auto &perSeq =
