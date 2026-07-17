@@ -11,7 +11,21 @@
 on an NPU (instruction streams, ELFs, PDIs, xclbins, …).
 
 ```bash
-aiecc [options] <input.mlir> [host sources...]
+aiecc [options] <input.mlir>
+```
+
+To also build a **host program** that drives the array, pass `--compile-host`
+and put the host C/C++ sources — and any host-compiler flags — after a `--`
+separator. Everything after `--` is forwarded verbatim to the host compiler
+(`clang++`), which `#include`s the generated `aie_inc.cpp` array-configuration
+source (its directory is added to the include path automatically):
+
+```bash
+aiecc --compile-host [options] <input.mlir> -- host.cpp [host-compiler flags]
+
+# e.g. build the design and a host executable, with extra include/lib flags:
+aiecc --compile-host design.mlir -- -I/inc -L/lib -lfoo host.cpp
+# -> a.out   (name the executable with -o, e.g. -o test.exe)
 ```
 
 ---
