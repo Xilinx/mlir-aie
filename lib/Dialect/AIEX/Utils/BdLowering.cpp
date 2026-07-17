@@ -243,8 +243,18 @@ LogicalResult emitDynamicShimBdWordOverrides(
   }
   // word[6]: iteration_size [25:20], iteration_stride [19:0]. Meaningful in
   // both modes (the outer repeat dimension is independent of linearization).
-  writeWord(
-      6, buildBdWord(builder, loc, {{hwS[3], 0x3F, 20}, {hwT[3], 0xFFFFF, 0}}));
+  // A zero outer stride is a pure repeat: the BD wraps every iteration and the
+  // repeat is carried by the queue push's repeat_count, so BOTH iteration fields
+  // must be 0 (matching AIEDmaToNpu's static rule). hwT[3] already collapses to
+  // 0 for a zero stride; gate iteration_size the same way so hwS[3] can stay the
+  // (size - 1) value repeatCountOut needs.
+  Value zeroI32 = createConstantI32(builder, loc, 0);
+  Value iterStridePos = arith::CmpIOp::create(
+      builder, loc, arith::CmpIPredicate::sgt, inT[3], zeroI32);
+  Value iterSizeField =
+      arith::SelectOp::create(builder, loc, iterStridePos, hwS[3], zeroI32);
+  writeWord(6, buildBdWord(builder, loc,
+                           {{iterSizeField, 0x3F, 20}, {hwT[3], 0xFFFFF, 0}}));
 
   // repeat_count for the queue push is the biased hw iteration value (matching
   // the static path's `repeat_count = sizes[3]`), NOT the raw outer size: an
