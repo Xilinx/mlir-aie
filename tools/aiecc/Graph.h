@@ -481,20 +481,30 @@ struct EdgeBase {
   virtual ~EdgeBase() = default;
 
   virtual NodeBase *outputNode() = 0;
-  virtual mlir::LogicalResult execute() = 0;
 
   // Fan-out interface. Fan-out edges (Map/BundleForEach) produce one output
   // item per key and are executed by the scheduler as independent (edge, key)
-  // tasks: `open()` creates all output slots (making the key set final) without
-  // running any per-key work, and `runItem(i)` runs the action for slot `i`.
-  // Structural edges leave isFanOut() false and run as a single `execute()`.
-  // `execute()` remains valid on fan-out edges (open + sequential runItem) for
-  // non-scheduled callers.
+  // tasks: `prepare()` creates all output slots (making the key set final)
+  // without running any per-key work, and `executeForItem(i)` runs the action
+  // for slot `i`. Structural edges leave isFanOut() false and run as a single
+  // whole-edge `execute()`.
   virtual bool isFanOut() const { return false; }
-  virtual mlir::LogicalResult open() { return mlir::success(); }
+  virtual mlir::LogicalResult prepare() { return mlir::success(); }
   virtual size_t numItems() const { return 0; }
   virtual llvm::StringRef itemKey(size_t) const { return {}; }
-  virtual mlir::LogicalResult runItem(size_t) { return mlir::failure(); }
+  virtual mlir::LogicalResult executeForItem(size_t) { return mlir::failure(); }
+
+  // Run the whole edge. The default drives the fan-out interface (prepare, then
+  // each item sequentially) and is what fan-out edges use directly; structural
+  // edges override this with their whole-edge action.
+  virtual mlir::LogicalResult execute() {
+    if (mlir::failed(prepare()))
+      return mlir::failure();
+    for (size_t i = 0, n = numItems(); i < n; ++i)
+      if (mlir::failed(executeForItem(i)))
+        return mlir::failure();
+    return mlir::success();
+  }
 
   // Key of the item whose per-item action failed (first failure wins under
   // parallelism); empty for whole-edge failures. Reported in the failure
@@ -742,7 +752,7 @@ struct MapEdge : Edge<In, Out> {
 
   // Prepare all output slots (renders paths, creates parent dirs) without
   // running any per-item work; the scheduler runs the items as separate tasks.
-  mlir::LogicalResult open() override {
+  mlir::LogicalResult prepare() override {
     const size_t n = this->in.items.size();
     this->out.items.clear();
     this->out.items.reserve(n);
@@ -757,20 +767,11 @@ struct MapEdge : Edge<In, Out> {
     return this->out.items[i].key;
   }
 
-  mlir::LogicalResult runItem(size_t i) override {
+  mlir::LogicalResult executeForItem(size_t i) override {
     if (mlir::failed(fn(this->in.items[i], this->out.items[i]))) {
       this->recordFailedKey(this->in.items[i].key);
       return mlir::failure();
     }
-    return mlir::success();
-  }
-
-  mlir::LogicalResult execute() override {
-    if (mlir::failed(open()))
-      return mlir::failure();
-    for (size_t i = 0, n = this->out.items.size(); i < n; ++i)
-      if (mlir::failed(runItem(i)))
-        return mlir::failure();
     return mlir::success();
   }
 };
@@ -910,7 +911,7 @@ struct BundleForEachEdge : EdgeWithTypedOutput<U> {
 
   // Prepare one output slot per key of the first source node; the scheduler
   // runs the per-key actions as separate tasks.
-  mlir::LogicalResult open() override {
+  mlir::LogicalResult prepare() override {
     auto &firstNode = std::get<0>(in);
     const size_t n = firstNode.items.size();
     this->out.items.clear();
@@ -928,7 +929,7 @@ struct BundleForEachEdge : EdgeWithTypedOutput<U> {
 
   // Zip the source nodes by the first source's key `i` and run `fn` on the
   // matched items.
-  mlir::LogicalResult runItem(size_t i) override {
+  mlir::LogicalResult executeForItem(size_t i) override {
     const std::string &key = this->out.items[i].key;
     Item<U> &outItem = this->out.items[i];
     mlir::LogicalResult r = std::apply(
@@ -963,15 +964,6 @@ struct BundleForEachEdge : EdgeWithTypedOutput<U> {
     if (mlir::failed(r))
       this->recordFailedKey(key);
     return r;
-  }
-
-  mlir::LogicalResult execute() override {
-    if (mlir::failed(open()))
-      return mlir::failure();
-    for (size_t i = 0, n = this->out.items.size(); i < n; ++i)
-      if (mlir::failed(runItem(i)))
-        return mlir::failure();
-    return mlir::success();
   }
 };
 

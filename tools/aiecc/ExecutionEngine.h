@@ -205,13 +205,14 @@ struct Engine {
 
   // Fine-grained (edge, key) task scheduler for the reachable sub-graph.
   //
-  // A fan-out edge (Map/BundleForEach) is `open()`ed to create its per-key
+  // A fan-out edge (Map/BundleForEach) is `prepare()`d to create its per-key
   // output slots and then runs one task per key ("item"); a structural edge
   // (split / join / filter / rekey / ...) runs as a single whole-edge
   // `execute()`. A task becomes runnable as soon as the specific inputs it
-  // consumes are ready -- per key for fan-out edges -- so a core's downstream
-  // work (e.g. linking its ELF) can begin while other cores are still
-  // compiling, rather than waiting on a whole-edge barrier.
+  // consumes are ready -- per key for fan-out edges -- so an item's downstream
+  // work (e.g. a later stage of that item's pipeline) can begin while other
+  // items are still being produced, rather than waiting on a whole-edge
+  // barrier.
   //
   // A task is "exclusive" when its edge is not marked threadSafe: such edges
   // may touch shared, non-thread-safe state (today, the shared MLIRContext), so
@@ -348,7 +349,7 @@ struct Engine {
     // fan-outs finalize immediately. Called under `mtx`.
     void openEdge(unsigned u) {
       EdgeState &s = st[u];
-      if (mlir::failed(s.edge->open())) {
+      if (mlir::failed(s.edge->prepare())) {
         failed = true;
         failedEdge = s.edge;
         return;
@@ -367,9 +368,10 @@ struct Engine {
       }
     }
 
-    // Single-line progress: "(done/total) [i/n] edge_1, [j/m] edge_2, ...".
-    // The list is the edges with an in-flight task; i/n is that edge's per-item
-    // fan-out progress (0/1 for whole-edge tasks). Called under `mtx`.
+    // Single-line progress: "(done/total) [i/n] edge_1, edge_2, ...". The list
+    // is the edges with an in-flight task; fan-out edges carry an [i/n]
+    // per-item progress prefix, whole-edge edges just their name. Called under
+    // `mtx`.
     void renderProgress() {
       if (!opts.progress)
         return;
@@ -379,12 +381,12 @@ struct Engine {
       for (unsigned u = 0; u < numEdges; ++u) {
         if (st[u].running == 0)
           continue;
-        size_t total = st[u].fan ? st[u].itemsTotal : 1;
-        size_t done = st[u].fan ? st[u].itemsDone : 0;
         line += (first ? " " : ", ");
         first = false;
-        line += "[" + std::to_string(done) + "/" + std::to_string(total) +
-                "] " + displayName(st[u].edge).str();
+        if (st[u].fan)
+          line += "[" + std::to_string(st[u].itemsDone) + "/" +
+                  std::to_string(st[u].itemsTotal) + "] ";
+        line += displayName(st[u].edge).str();
       }
       size_t pad =
           progressPrevLen > line.size() ? progressPrevLen - line.size() : 0;
@@ -527,7 +529,7 @@ struct Engine {
         // Run the task without the scheduler lock.
         mlir::LogicalResult r = task.item < 0
                                     ? s.edge->execute()
-                                    : s.edge->runItem((size_t)task.item);
+                                    : s.edge->executeForItem((size_t)task.item);
 
         lock.lock();
         --s.running;
@@ -652,7 +654,7 @@ struct Engine {
   // insertion order, a valid topo order by construction). Materialization is
   // lazy: intermediates only hit disk when a downstream action calls
   // asFile(); declared outputs (and all reachable edges under
-  // --keep-intermediates) are force-written at the end.
+  // --dump-intermediates) are force-written at the end.
   //
   // `deserCtx` is forwarded verbatim to any resumed edge's restoreNode (see
   // --resume / `satisfied`); the engine never inspects it -- it is an opaque
@@ -727,7 +729,7 @@ struct Engine {
       return mlir::failure();
     auto &edgeTimings = scheduler.edgeTimings;
 
-    // Force declared outputs (and, under --keep-intermediates, every reachable
+    // Force declared outputs (and, under --dump-intermediates, every reachable
     // edge) to disk.
     for (auto &e : g.edges) {
       if (!reachable.count(e.get()) || !e->producesFiles || !e->outputNode() ||
