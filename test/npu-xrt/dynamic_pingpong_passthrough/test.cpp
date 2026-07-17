@@ -115,7 +115,7 @@ int main(int argc, const char *argv[]) {
     }
   }
 
-  std::cout << (pass ? "PASS!" : "FAIL.") << " (n=" << n
-            << ", " << instr_v.size() << " insts)\n";
+  std::cout << (pass ? "PASS!" : "FAIL.") << " (n=" << n << ", "
+            << instr_v.size() << " insts)\n";
   return pass ? 0 : 1;
 }
