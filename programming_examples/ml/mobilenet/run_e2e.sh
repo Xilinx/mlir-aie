@@ -74,7 +74,7 @@ cd "build_${TAG}"
 # Fall back to ${SRCDIR}/build/final_mobilenet.prj/ for local runs.
 ln -sf ../build/final_mobilenet.prj/*.o . 2>/dev/null || true
 ln -sf "${SRCDIR}/build/final_mobilenet.prj/"*.o . 2>/dev/null || true
-aiecc --get-xclbin --no-compile-host \
+aiecc --get-xclbin \
     --xclbin-name="${TAG}.xclbin" \
     --no-xchesscc --no-xbridge \
     --dynamic-objFifos=false \

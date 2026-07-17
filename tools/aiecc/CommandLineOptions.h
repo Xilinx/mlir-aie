@@ -71,12 +71,10 @@ inline cl::opt<bool> emitDot(
     cl::desc("Print a GraphViz `dot` description of the compilation graph "
              "(only the edges reachable from the requested outputs) to stdout "
              "and exit, without running the pipeline. Pipe through `dot`."));
-inline cl::opt<bool> keepLoc(
-    "keep-loc",
-    cl::desc("Emit a <bin>.locmap.json sidecar next to each NPU instruction "
-             "binary, mapping each transaction word back to the MLIR Location "
-             "of the op that produced it (and its regdb register name where "
-             "applicable). Off by default."));
+// Selected with --get-locmap: emit a <bin>.locmap.json sidecar next to each NPU
+// instruction binary, mapping each transaction word back to the MLIR Location
+// of the op that produced it (and its regdb register name where applicable).
+inline bool keepLoc = false;
 inline cl::opt<std::string>
     deviceName("device-name",
                cl::desc("Filter to a single aie.device by symbol name"));
@@ -184,24 +182,17 @@ inline cl::alias numThreadsAlias("nthreads", cl::desc("Alias for -j"),
 // Host source files and host-compiler flags are passed after a `--` separator
 // and forwarded verbatim to the host compiler (all AIE architectures).
 
-inline cl::opt<bool> compileHost(
-    "compile-host",
-    cl::desc("Compile the host program from the host C/C++ source files given "
-             "after `--` into a host executable"));
-inline cl::opt<bool> noCompileHost(
-    "no-compile-host",
-    cl::desc("Disable compiling of the host program (negates --compile-host)"));
+// Selected with --get-host: compile the host program from the host C/C++ source
+// files given after `--` into a host executable.
+inline bool generateHost = false;
 inline cl::opt<std::string>
     hostTarget("host-target", cl::desc("Target triple of the host program"),
                cl::init("x86_64-linux-gnu"));
 inline cl::opt<std::string>
     sysroot("sysroot", cl::desc("Sysroot for host cross-compilation"));
-inline cl::opt<bool> aiesim(
-    "aiesim",
-    cl::desc("Generate an AIE simulator Work folder (requires --xbridge)"));
-inline cl::opt<bool>
-    noAiesim("no-aiesim",
-             cl::desc("Do not generate an AIE simulator Work folder"));
+// Selected with --get-aiesim: generate an AIE simulator Work folder (requires
+// --xbridge).
+inline bool generateAiesim = false;
 inline cl::list<std::string>
     hostIncludeDirs("I", cl::Prefix, cl::desc("Host include directory"));
 inline cl::list<std::string>
@@ -349,6 +340,9 @@ inline llvm::ArrayRef<OutputSelector> outputSelectors() {
       {"ctrlpkt", "{0}_ctrlpkt.bin", &generateCtrlpkt},
       {"xclbin", "aie.xclbin", &generateXclbin},
       {"full-elf", "aie.elf", &generateFullElf},
+      {"locmap", "insts_{0}.bin.locmap.json", &keepLoc},
+      {"host", "a.out", &generateHost},
+      {"aiesim", "aiesim_{0}.stamp", &generateAiesim},
   };
   return table;
 }
@@ -454,12 +448,12 @@ inline cl::opt<std::string> repeaterOutputDir(
 // A handful of options are coupled, e.g. the enable/`--no-*` flags.
 // main calls resolveOptions() once to resolve these.
 
-// Whether to generate the AIE simulator Work folder (off unless --aiesim).
+// Whether to generate the AIE simulator Work folder (off unless --get-aiesim).
 inline bool wantAiesim = false;
-// Compile all cores of a device into one shared object (negated by
+// Compile all cores of a device together into one shared object (negated by
 // --no-unified).
 inline bool doUnified = false;
-// Compile the host program (negated by --no-compile-host).
+// Compile the host program (selected by --get-host).
 inline bool doCompileHost = false;
 
 // Resolve inter-option coupling and populate the resolved-option globals above.
@@ -478,11 +472,12 @@ inline bool resolveOptions() {
     xbridge = true;
   }
 
-  wantAiesim = aiesim && !noAiesim;
+  wantAiesim = generateAiesim;
   if (wantAiesim && !xbridge) {
     if (noXbridge || noXchesscc) {
-      llvm::errs() << "aiecc: --aiesim requires --xbridge (the AIE simulator "
-                      "consumes Chess-compiled cores)\n";
+      llvm::errs()
+          << "aiecc: --get-aiesim requires --xbridge (the AIE simulator "
+             "consumes Chess-compiled cores)\n";
       return false;
     }
     xchesscc = true;
@@ -490,7 +485,7 @@ inline bool resolveOptions() {
   }
 
   doUnified = unified && !noUnified;
-  doCompileHost = compileHost && !noCompileHost;
+  doCompileHost = generateHost;
   return true;
 }
 

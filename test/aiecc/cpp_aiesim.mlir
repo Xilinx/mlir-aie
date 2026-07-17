@@ -10,10 +10,10 @@
 
 // REQUIRES: chess
 
-// RUN: aiecc --xchesscc --xbridge --aiesim -n --verbose %s 2>&1 | FileCheck %s
+// RUN: aiecc --xchesscc --xbridge --get-aiesim -n --verbose %s 2>&1 | FileCheck %s
 
 // Verify aiesim requires xbridge
-// RUN: not aiecc --no-xbridge --aiesim -n %s 2>&1 | FileCheck %s --check-prefix=NOXBRIDGE
+// RUN: not aiecc --no-xbridge --get-aiesim -n %s 2>&1 | FileCheck %s --check-prefix=NOXBRIDGE
 
 // CHECK: Generating aiesim work folder for device
 // CHECK: aie-translate
@@ -23,7 +23,7 @@
 // CHECK: aie-translate
 // CHECK: --aie-mlir-to-scsim-config
 
-// NOXBRIDGE: --aiesim requires --xbridge
+// NOXBRIDGE: --get-aiesim requires --xbridge
 
 module {
   aie.device(npu1_1col) {

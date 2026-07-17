@@ -210,12 +210,10 @@ def compile_mlir_module(
         # in a single Chess process to amortise startup cost; matches the
         # makefile-common ``aiecc_chess_flags=--unified`` recipe.
         args = [
-            "--no-compile-host",
             "--unified",
         ]
     else:
         args = [
-            "--no-compile-host",
             "--no-xchesscc",
             "--no-xbridge",
             f"--peano={config.peano_install_dir()}",

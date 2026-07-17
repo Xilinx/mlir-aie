@@ -11,7 +11,7 @@
 
 # Build the test
 # RUN: xchesscc_wrapper aie2p -I %aietools/include -c %S/vector_scalar_mul.cc -o vector_scalar_mul.o
-# RUN: %aiecc %backend_flags --no-aiesim --get-xclbin --get-npu-insts --get-input-with-addresses --no-compile-host --xclbin-name=final.xclbin --npu-insts-name=insts.bin %S/aie.mlir
+# RUN: %aiecc %backend_flags --get-xclbin --get-npu-insts --get-input-with-addresses --xclbin-name=final.xclbin --npu-insts-name=insts.bin %S/aie.mlir
 
 # Run the test (input_with_addresses.mlir contains the lowered npu_write ops)
 # RUN: %run_on_npu2% %python %S/test.py --xclbin final.xclbin --instr insts.bin --kernel MLIR_AIE --trace_size 8192 --mlir input_with_addresses.mlir | FileCheck %s

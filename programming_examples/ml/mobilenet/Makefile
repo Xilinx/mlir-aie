@@ -49,7 +49,7 @@ build/${MLIR_FILE}_unplaced.mlir: ${srcdir}/${MLIR_FILE}.py
 SA_SEED ?= 3
 build/sa_mobilenet.xclbin: build/${MLIR_FILE}_unplaced.mlir
 	mkdir -p ${@D}
-	cd ${@D} && aiecc --get-xclbin --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc --get-xclbin --xclbin-name=${@F} \
 		--no-xchesscc --no-xbridge \
 		--dynamic-objFifos=false \
 		--placer=sa_placer --sa-seed=$(SA_SEED) \

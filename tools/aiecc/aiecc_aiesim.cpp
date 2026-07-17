@@ -11,8 +11,8 @@
 // this module is a blackbox: it shells out to aie-translate/aie-opt/clang++
 // directly and writes a fixed Work-folder layout (sim/ + ps.so + aiesim.sh)
 // straight to disk, bypassing the graph and the Item abstraction. It is invoked
-// from aiecc.cpp as a single opaque sink (see the --aiesim node). It should be
-// refactored into proper declarative graph edges (one Item per generated
+// from aiecc.cpp as a single opaque sink (see the --get-aiesim node). It should
+// be refactored into proper declarative graph edges (one Item per generated
 // artifact).
 //
 //===----------------------------------------------------------------------===//

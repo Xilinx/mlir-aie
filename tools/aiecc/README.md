@@ -14,11 +14,11 @@ on an NPU (instruction streams, ELFs, PDIs, xclbins, …).
 aiecc [options] <input.mlir>
 ```
 
-To also build a **host program** that drives the array, pass `--compile-host`
+To also build a **host program** that drives the array, pass `--get-host`
 and put the host C/C++ sources after a `--`
 
 ```bash
-aiecc --compile-host [options] <input.mlir> -o host.exe -- host.cpp [host-compiler flags]
+aiecc --get-host [options] <input.mlir> -o host.exe -- host.cpp [host-compiler flags]
 ```
 
 ---

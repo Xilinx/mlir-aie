@@ -1161,7 +1161,7 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // Host executable: only when explicitly requested and host sources exist.
   if (doCompileHost) {
     if (!hasHostSourceFiles())
-      llvm::errs() << "aiecc: --compile-host given but no host source files "
+      llvm::errs() << "aiecc: --get-host given but no host source files "
                       "were provided; skipping host compilation\n";
     else
       outputs.push_back(&hostExe);
@@ -1283,7 +1283,7 @@ int main(int argc, char **argv) {
   }
 
   // Resolve inter-option coupling once, up front: the Chess/Peano toolchain
-  // selection (xchesscc/xbridge), the --aiesim implication, and the
+  // selection (xchesscc/xbridge), the --get-aiesim implication, and the
   // resolved-option globals (wantAiesim, doUnified, doCompileHost). See
   // CommandLineOptions.h.
   if (!cli::resolveOptions())
