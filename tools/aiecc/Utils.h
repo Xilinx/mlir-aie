@@ -18,16 +18,80 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FileSystem.h"
+#include "llvm/Support/MemoryBuffer.h"
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Program.h"
 
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <string>
 #include <system_error>
 #include <vector>
 
+#ifndef _WIN32
+#include <fcntl.h>
+#include <unistd.h>
+#endif
+
 namespace xilinx::aiecc {
+
+// RAII: while alive (when `enable`), redirect the process's stdout+stderr
+// (fd 1 & 2) into a temp file, capturing an in-process tool library's chatter
+// instead of letting it leak (and corrupt the single-line --progress display).
+// On destruction it restores the fds and loads the captured text into `out`, so
+// the caller can choose to replay it -- e.g. only when the library call failed.
+// A disabled instance (verbose runs) is a no-op and leaves `out` empty, letting
+// the library write straight to the terminal.
+//
+// It redirects *process-global* fds, so instances must not overlap; the
+// in-process library edges that use it (assemblePdi/assembleElf) are not
+// `threadSafe`, so the engine runs them serially.
+class CaptureStdio {
+public:
+  CaptureStdio(bool enable, std::string &out) : out(out) {
+#ifndef _WIN32
+    if (!enable)
+      return;
+    llvm::SmallString<128> path;
+    int fd = -1;
+    if (llvm::sys::fs::createTemporaryFile("aiecc-lib", "log", fd, path))
+      return;
+    tmpPath = std::string(path.str());
+    std::fflush(stdout);
+    std::fflush(stderr);
+    savedOut = ::dup(STDOUT_FILENO);
+    savedErr = ::dup(STDERR_FILENO);
+    ::dup2(fd, STDOUT_FILENO);
+    ::dup2(fd, STDERR_FILENO);
+    ::close(fd);
+#else
+    (void)enable;
+#endif
+  }
+  ~CaptureStdio() {
+#ifndef _WIN32
+    if (savedOut < 0)
+      return;
+    std::fflush(stdout);
+    std::fflush(stderr);
+    ::dup2(savedOut, STDOUT_FILENO);
+    ::close(savedOut);
+    ::dup2(savedErr, STDERR_FILENO);
+    ::close(savedErr);
+    if (auto buf = llvm::MemoryBuffer::getFile(tmpPath))
+      out = (*buf)->getBuffer().str();
+    llvm::sys::fs::remove(tmpPath);
+#endif
+  }
+  CaptureStdio(const CaptureStdio &) = delete;
+  CaptureStdio &operator=(const CaptureStdio &) = delete;
+
+private:
+  std::string &out;
+  int savedOut = -1, savedErr = -1;
+  std::string tmpPath;
+};
 
 // Reinterpret a u32 instruction stream as its raw little-endian bytes. Every
 // AIE binary translator emits `std::vector<uint32_t>`, but artifacts are

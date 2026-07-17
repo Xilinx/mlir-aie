@@ -63,14 +63,22 @@ namespace xilinx::aiecc {
 inline mlir::LogicalResult assembleElf(llvm::ArrayRef<char> buffer1,
                                        llvm::ArrayRef<char> buffer2,
                                        llvm::StringRef patchJson,
-                                       Item<File> &out) {
+                                       Item<File> &out, bool verbose,
+                                       bool progress) {
   void *elfBuf = nullptr;
-  int result = aiebu_assembler_get_elf(
-      aiebu_assembler_buffer_type_blob_instr_transaction, buffer1.data(),
-      buffer1.size(), buffer2.empty() ? nullptr : buffer2.data(),
-      buffer2.size(), &elfBuf, patchJson.empty() ? nullptr : patchJson.data(),
-      patchJson.size(), /*libs=*/nullptr, /*libpaths=*/nullptr,
-      /*pm_ctrlpkts=*/nullptr, /*pm_ctrlpkt_size=*/0);
+  int result;
+  std::string captured;
+  {
+    // Capture the aiebu library's stdout/stderr chatter (unless --verbose) so
+    // it doesn't corrupt the output; replayed only if the call fails.
+    CaptureStdio cap(!verbose, captured);
+    result = aiebu_assembler_get_elf(
+        aiebu_assembler_buffer_type_blob_instr_transaction, buffer1.data(),
+        buffer1.size(), buffer2.empty() ? nullptr : buffer2.data(),
+        buffer2.size(), &elfBuf, patchJson.empty() ? nullptr : patchJson.data(),
+        patchJson.size(), /*libs=*/nullptr, /*libpaths=*/nullptr,
+        /*pm_ctrlpkts=*/nullptr, /*pm_ctrlpkt_size=*/0);
+  }
   if (result > 0 && elfBuf) {
     std::error_code ec;
     llvm::raw_fd_ostream os(out.filePath, ec);
@@ -87,6 +95,11 @@ inline mlir::LogicalResult assembleElf(llvm::ArrayRef<char> buffer1,
   }
   if (elfBuf)
     free(elfBuf);
+  if (!captured.empty()) {
+    if (progress)
+      llvm::errs() << '\n';
+    llvm::errs() << captured;
+  }
   llvm::errs() << "aiecc: aiebu_assembler_get_elf failed (code " << result
                << ")\n";
   return mlir::failure();
@@ -101,12 +114,26 @@ inline mlir::LogicalResult assembleElf(llvm::ArrayRef<char> buffer1,
 // Only compiled when the bootgen library is linked; otherwise a declarative
 // `bootgen` ShellCommand edge is used (see the `pdi` edge).
 inline mlir::LogicalResult assemblePdi(const Item<std::string> &bifItem,
-                                       Item<File> &out) {
+                                       Item<File> &out, bool verbose,
+                                       bool progress) {
   char errMsg[1024] = {0};
-  int rc = bootgen_generate_pdi(bifItem.asFile().c_str(), out.filePath.c_str(),
-                                BOOTGEN_ARCH_VERSAL, /*overwrite=*/1, errMsg,
-                                sizeof(errMsg));
+  int rc;
+  std::string captured;
+  {
+    // bootgen prints internal notes (e.g. "default set as dl9") straight to
+    // stdout; capture them (unless --verbose) and replay only on failure. Real
+    // errors also come back in errMsg.
+    CaptureStdio cap(!verbose, captured);
+    rc = bootgen_generate_pdi(bifItem.asFile().c_str(), out.filePath.c_str(),
+                              BOOTGEN_ARCH_VERSAL, /*overwrite=*/1, errMsg,
+                              sizeof(errMsg));
+  }
   if (rc != BOOTGEN_SUCCESS) {
+    if (!captured.empty()) {
+      if (progress)
+        llvm::errs() << '\n';
+      llvm::errs() << captured;
+    }
     llvm::errs() << "aiecc: bootgen_generate_pdi failed (code " << rc << ")";
     if (errMsg[0] != '\0')
       llvm::errs() << ": " << errMsg;

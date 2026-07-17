@@ -676,7 +676,8 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                 out.value = File{};
                                 return mlir::success();
                               }
-                              return assemblePdi(bifItem, out);
+                              return assemblePdi(bifItem, out, verbose,
+                                                 ShellCommand::progress);
                             });
 #else
   auto &pdi = bif.map<File>(pdiName.getValue(), ShellCommand{"bootgen"}
@@ -765,7 +766,8 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                        std::string patch =
                            llvm::formatv("{0:2}", patchItem.get()).str();
                        return assembleElf(dmaSeqItem.get(), ctrlItem.get(),
-                                          llvm::StringRef(patch), out);
+                                          llvm::StringRef(patch), out, verbose,
+                                          ShellCommand::progress);
                      });
 #else
   auto &ctrlpktElf = bundle(ctrlpktDmaSeq.out, ctrlpkt.out, ctrlpktExtBuf.out)
@@ -985,12 +987,14 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // loaded alongside an xclbin. It reuses the per-sequence instruction binary
   // already produced by `npuInsts` rather than re-translating the module.
 #ifdef AIECC_HAS_AIEBU_LIBRARY
-  auto &instElf = npuInsts.map<File>(
-      elfName.getValue(),
-      [](const Item<std::vector<char>> &item,
-         Item<File> &out) -> mlir::LogicalResult {
-        return assembleElf(item.get(), /*buffer2=*/{}, /*patchJson=*/{}, out);
-      });
+  auto &instElf =
+      npuInsts.map<File>(elfName.getValue(),
+                         [](const Item<std::vector<char>> &item,
+                            Item<File> &out) -> mlir::LogicalResult {
+                           return assembleElf(item.get(), /*buffer2=*/{},
+                                              /*patchJson=*/{}, out, verbose,
+                                              ShellCommand::progress);
+                         });
 #else
   auto &instElf =
       npuInsts.map<File>(elfName.getValue(), ShellCommand{"aiebu-asm"}
@@ -1399,6 +1403,7 @@ int main(int argc, char **argv) {
   // Progress is on by default; --no-progress turns it off, and --verbose
   // (line-per-edge logging) takes precedence over the single-line display.
   bool showProgress = !noProgress && !verbose;
+  ShellCommand::progress = showProgress;
   Engine engine({outputDir, getWorkDir(), verbose, showProgress,
                  keepIntermediates, numThreads, profile});
   // --cut stops the build at the cut point: only the prefix up to the cut
