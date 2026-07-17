@@ -169,6 +169,13 @@ inline void writeDotGraph(const Graph &g,
   os << "}\n";
 }
 
+// A checkpoint node to restore in place of executing an edge: the JSON
+// descriptor captureNode produced plus the directory its artifacts live in.
+struct RestoredNode {
+  llvm::json::Value descriptor = nullptr;
+  std::string dir;
+};
+
 struct Engine {
   struct Options {
     std::string outputDir; // where persisted outputs go
@@ -196,11 +203,15 @@ struct Engine {
   // lazy: intermediates only hit disk when a downstream action calls
   // asFile(); declared outputs (and all reachable edges under
   // --keep-intermediates) are force-written at the end.
+  //
+  // `deserCtx` is forwarded verbatim to any resumed edge's restoreNode (see
+  // --resume / `satisfied`); the engine never inspects it -- it is an opaque
+  // capability bag owned by the caller (see Items.h DeserializeContext).
   mlir::LogicalResult
   run(Graph &g, const std::vector<EdgeBase *> &outputs,
-      const llvm::DenseMap<EdgeBase *, llvm::StringMap<std::string>>
-          &satisfied = llvm::DenseMap<EdgeBase *, llvm::StringMap<std::string>>{
-              0}) {
+      const llvm::DenseMap<EdgeBase *, RestoredNode> &satisfied =
+          llvm::DenseMap<EdgeBase *, RestoredNode>{},
+      const DeserializeContext &deserCtx = {}) {
     llvm::sys::fs::create_directories(opts.workDir);
     if (!opts.outputDir.empty())
       llvm::sys::fs::create_directories(opts.outputDir);
@@ -314,8 +325,10 @@ struct Engine {
         reportEdge(e.get());
       auto sat = satisfied.find(e.get());
       auto edgeStart = std::chrono::steady_clock::now();
-      mlir::LogicalResult r =
-          sat != satisfied.end() ? e->loadFromDisk(sat->second) : e->execute();
+      mlir::LogicalResult r = sat != satisfied.end()
+                                  ? e->restoreNode(sat->second.descriptor,
+                                                   sat->second.dir, deserCtx)
+                                  : e->execute();
       if (opts.verbose) {
         auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                       std::chrono::steady_clock::now() - edgeStart)
@@ -366,10 +379,11 @@ struct Engine {
   }
 };
 
-// Write a checkpoint of a graph cut: copy each cut edge's produced artifacts
-// into `dir` alongside a `manifest.json` recording {argv, frontier} where each
-// frontier entry is {name, key, path}. A later
-// `aiecc --resume=<dir>/manifest.json` reloads these as graph leaves and
+// Write a checkpoint of a graph cut: each cut edge captures its whole output
+// node (via captureNode) into its own subdir of `dir`, and a `manifest.json`
+// records {argv, frontier} where each frontier entry is {name, dir, descriptor}
+// -- the per-node restore descriptor that captureNode returned. A later
+// `aiecc --resume=<dir>/manifest.json` rebuilds each node via restoreNode and
 // continues (optionally narrowing the suffix with `--get`). Every item of each
 // cut edge is captured — the checkpoint is a complete snapshot of the cut.
 inline void writeCheckpoint(llvm::ArrayRef<EdgeBase *> cutEdges,
@@ -380,45 +394,33 @@ inline void writeCheckpoint(llvm::ArrayRef<EdgeBase *> cutEdges,
     return;
   }
   llvm::json::Array frontier;
-  llvm::StringSet<> used;
+  llvm::StringSet<> usedDirs;
   for (EdgeBase *e : cutEdges) {
-    NodeBase *out = e ? e->outputNode() : nullptr;
-    if (!out)
+    if (!e || !e->outputNode())
       continue;
-    for (const ItemBase *it : out->itemRefs()) {
-      const std::string *bdir = it->bundleDir();
-      // Unique destination name to avoid collisions across cut edges / keys.
-      std::string base =
-          llvm::sys::path::filename(bdir ? *bdir : it->filePath).str();
-      std::string destName = base;
-      for (unsigned i = 1; !used.insert(destName).second; ++i)
-        destName = std::to_string(i) + "_" + base;
-      llvm::SmallString<256> dest(dir);
-      llvm::sys::path::append(dest, destName);
-      std::string recordPath = destName;
-      if (bdir) {
-        // Copy the whole bundle folder; the recorded path points at the item's
-        // primary artifact inside the copy.
-        if (std::error_code ec = copyDirectoryRecursively(*bdir, dest)) {
-          llvm::errs() << "aiecc: checkpoint failed to copy bundle '" << *bdir
-                       << "' to '" << dest << "': " << ec.message() << "\n";
-          continue;
-        }
-        llvm::StringRef rel =
-            llvm::StringRef(it->filePath).substr(bdir->size());
-        while (rel.starts_with("/"))
-          rel = rel.drop_front();
-        if (!rel.empty())
-          recordPath = destName + "/" + rel.str();
-      } else if (std::error_code ec =
-                     llvm::sys::fs::copy_file(it->asFile(), dest)) {
-        llvm::errs() << "aiecc: checkpoint failed to copy '" << it->asFile()
-                     << "' to '" << dest << "': " << ec.message() << "\n";
-        continue;
-      }
-      frontier.push_back(llvm::json::Object{
-          {"name", e->name}, {"key", it->key}, {"path", recordPath}});
+    // Each node captures its own group of artifacts into a subdir so shared
+    // names (e.g. OpInModule's module.mlir) can't collide across cut edges.
+    std::string base = llvm::sys::path::filename(e->name).str();
+    std::string sub;
+    for (char c : base) {
+      bool ok = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                (c >= '0' && c <= '9') || c == '.' || c == '-' || c == '_';
+      sub += ok ? c : '_';
     }
+    if (sub.empty())
+      sub = "node";
+    std::string uniq = sub;
+    for (unsigned i = 1; !usedDirs.insert(uniq).second; ++i)
+      uniq = sub + "_" + std::to_string(i);
+    llvm::SmallString<256> subAbs(dir);
+    llvm::sys::path::append(subAbs, uniq);
+    if (llvm::sys::fs::create_directories(subAbs))
+      continue;
+    llvm::json::Value descriptor = e->captureNode(subAbs);
+    frontier.push_back(
+        llvm::json::Object{{"name", e->name},
+                           {"dir", uniq},
+                           {"descriptor", std::move(descriptor)}});
   }
   llvm::json::Array argvArr;
   for (const std::string &a : argv)

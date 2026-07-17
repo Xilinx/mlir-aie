@@ -63,9 +63,33 @@ auto emitBinary(Fill fill) {
   };
 }
 
+// Materialize an MLIR module from an item whose payload carries IR. Overloaded
+// per module-bearing payload type: ModRef and OpInModule clone their in-memory
+// module; File re-parses its .mlir text into `ctx`. A payload of any other type
+// has no viable overload and fails to compile, so only edges that genuinely
+// carry IR can feed an MLIR action -- the module-ness lives here in the MLIR
+// domain, not as per-type logic on the generic Item. (FilterEdge aliasing is
+// handled transparently by the Item accessors these forward to.)
+inline mlir::OwningOpRef<mlir::ModuleOp>
+asModule(const Item<mlir::OwningOpRef<mlir::ModuleOp>> &in,
+         mlir::MLIRContext * /*ctx*/) {
+  return mlir::OwningOpRef<mlir::ModuleOp>(in.get().get().clone());
+}
+
+template <typename KeyOp>
+inline mlir::OwningOpRef<mlir::ModuleOp>
+asModule(const Item<OpInModule<KeyOp>> &in, mlir::MLIRContext * /*ctx*/) {
+  return mlir::OwningOpRef<mlir::ModuleOp>(in.get().module.get().clone());
+}
+
+inline mlir::OwningOpRef<mlir::ModuleOp> asModule(const Item<File> &in,
+                                                  mlir::MLIRContext *ctx) {
+  return parseModuleFromFile(in.asFile(), ctx);
+}
+
 // PassPipeline — execute an MLIR pass-pipeline on a clone of the input.
-// Accepts any payload Item::asModule can materialize (ModRef / OpInModule /
-// File).
+// Accepts any payload the asModule overloads accept (ModRef / OpInModule /
+// File); any other payload type fails to compile.
 //
 // Two construction modes:
 //  - Pre-built form: pass an already-configured PassManager. Use when the
@@ -90,7 +114,7 @@ struct PassPipeline {
   mlir::LogicalResult
   operator()(const Item<T> &in,
              Item<mlir::OwningOpRef<mlir::ModuleOp>> &out) const {
-    auto mod = in.asModule(ctx);
+    auto mod = asModule(in, ctx);
     if (!mod) {
       llvm::errs() << "aiecc: PassPipeline could not obtain input module\n";
       return mlir::failure();

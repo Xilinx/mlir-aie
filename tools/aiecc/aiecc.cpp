@@ -1351,9 +1351,9 @@ int main(int argc, char **argv) {
   }
 
   // Resume: map each checkpoint frontier entry to its producing edge and
-  // satisfy it from the saved artifact instead of recomputing. Edge lookup and
+  // satisfy it from the saved artifacts instead of recomputing. Edge lookup and
   // its chess/peano disambiguation are shared with --get via resolveLiveEdge.
-  llvm::DenseMap<EdgeBase *, llvm::StringMap<std::string>> satisfied;
+  llvm::DenseMap<EdgeBase *, RestoredNode> satisfied;
   if (resume.active) {
     // With --get, a resume targets exactly the requested edge(s) (a surgical
     // suffix) rather than adding to the manifest's full build.
@@ -1375,8 +1375,8 @@ int main(int argc, char **argv) {
         return 1;
       }
       llvm::SmallString<256> p(resume.manifestDir);
-      llvm::sys::path::append(p, fe.path);
-      satisfied[*e][fe.key] = std::string(p.str());
+      llvm::sys::path::append(p, fe.dir);
+      satisfied[*e] = RestoredNode{fe.descriptor, std::string(p.str())};
     }
   }
 
@@ -1386,7 +1386,8 @@ int main(int argc, char **argv) {
   Engine engine({outputDir, getWorkDir(), verbose, showProgress,
                  keepIntermediates, numThreads,
                  std::vector<std::string>(getKeys.begin(), getKeys.end())});
-  if (mlir::failed(engine.run(g, outputs, satisfied))) {
+  if (mlir::failed(
+          engine.run(g, outputs, satisfied, DeserializeContext{&context}))) {
     // On-failure reproducer ("repeater"): dump a checkpoint of the failed
     // edge's already-computed inputs and print a command that reloads them and
     // re-runs just the failed edge. Opt-in via --enable-repeater-scripts.

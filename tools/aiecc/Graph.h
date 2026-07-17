@@ -16,6 +16,7 @@
 #define AIECC_GRAPH_H
 
 #include "Items.h"
+#include "Utils.h"
 
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Diagnostics.h"
@@ -30,6 +31,7 @@
 #include "llvm/ADT/SmallVector.h"
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/FileSystem.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -141,10 +143,6 @@ struct ItemBase {
   // expand to one argv per element (and never materialize a file); everything
   // else yields a single entry. Used by ShellCommand's variadic `inputs()`.
   virtual std::vector<std::string> asArgList() const { return {asString()}; }
-
-  // For `Directory` payloads, the folder whose entire contents travel with the
-  // item (recursively copied when a checkpoint captures it); null otherwise.
-  virtual const std::string *bundleDir() const { return nullptr; }
 };
 
 template <typename T>
@@ -170,15 +168,6 @@ struct Item : ItemBase {
       return get();
     else
       return {asString()};
-  }
-
-  const std::string *bundleDir() const override {
-    if (aliasSource)
-      return aliasSource->bundleDir();
-    if constexpr (std::is_same_v<T, Directory>)
-      return value ? &value->dir : nullptr;
-    else
-      return nullptr;
   }
 
   std::string asString() const override {
@@ -220,30 +209,6 @@ struct Item : ItemBase {
       return filePath;
     }
   }
-
-  template <typename U = T, typename = std::enable_if_t<HasAsModuleV<U>>>
-  mlir::OwningOpRef<mlir::ModuleOp>
-  asModule(mlir::MLIRContext *ctx = nullptr) const {
-    if (aliasSource)
-      return aliasSource->asModule(ctx);
-    if constexpr (std::is_same_v<U, mlir::OwningOpRef<mlir::ModuleOp>>)
-      return mlir::OwningOpRef<mlir::ModuleOp>(get().get().clone());
-    else if constexpr (IsOpInModule<U>::value)
-      return mlir::OwningOpRef<mlir::ModuleOp>(get().module.get().clone());
-    else { // File
-      assert(ctx && "Item<File>::asModule requires an MLIRContext");
-      std::string err;
-      auto buf = mlir::openInputFile(asFile(), &err);
-      if (!buf) {
-        llvm::errs() << "aiecc: " << err << "\n";
-        return nullptr;
-      }
-      llvm::SourceMgr sm;
-      sm.AddNewSourceBuffer(std::move(buf), llvm::SMLoc());
-      mlir::SourceMgrDiagnosticHandler dh(sm, ctx);
-      return mlir::parseSourceFile<mlir::ModuleOp>(sm, ctx);
-    }
-  }
 };
 
 // Map action that lifts a File produced by an external tool into a typed
@@ -253,13 +218,247 @@ struct Item : ItemBase {
 template <typename T>
 auto deserializeFile() {
   return [](const Item<File> &in, Item<T> &out) -> mlir::LogicalResult {
-    auto value = Deserializer<T>::read(in.asFile());
+    auto value = Deserializer<T>::read(in.asFile(), DeserializeContext{});
     if (mlir::failed(value))
       return mlir::failure();
     out.value = std::move(*value);
     return mlir::success();
   };
 }
+
+//===----------------------------------------------------------------------===//
+// Per-Node serialization: capture/restore a whole node's items as a group
+//===----------------------------------------------------------------------===//
+//
+// Checkpointing captures a frontier one *node* at a time, not one item at a
+// time. NodeSerializer::write lays a node's items out under a directory however
+// it likes and returns a JSON descriptor; NodeDeserializer::read consumes that
+// descriptor to rebuild the items. The default treats each item as an
+// independent artifact (delegating to the per-item Serializer/Deserializer), so
+// every self-contained payload behaves as before. Payloads whose items share
+// structure (OpInModule: one module, many focus ops) or carry a companion
+// directory (Directory) specialize this.
+
+// Position of `target` among `KeyOp`s in `module`'s pre-order walk, or -1.
+template <typename KeyOp>
+inline int64_t opWalkIndex(mlir::ModuleOp module, KeyOp target) {
+  int64_t idx = 0, found = -1;
+  module.walk([&](KeyOp op) -> mlir::WalkResult {
+    if (op == target) {
+      found = idx;
+      return mlir::WalkResult::interrupt();
+    }
+    ++idx;
+    return mlir::WalkResult::advance();
+  });
+  return found;
+}
+
+// The `KeyOp` at pre-order walk position `target` in `module`, or null.
+template <typename KeyOp>
+inline KeyOp opAtWalkIndex(mlir::ModuleOp module, int64_t target) {
+  int64_t idx = 0;
+  KeyOp result;
+  module.walk([&](KeyOp op) -> mlir::WalkResult {
+    if (idx++ == target) {
+      result = op;
+      return mlir::WalkResult::interrupt();
+    }
+    return mlir::WalkResult::advance();
+  });
+  return result;
+}
+
+template <typename T>
+struct NodeSerializer {
+  // Default: each item is an independent artifact. Materialize each item's file
+  // into `dir` and record {key, path}. Requires a per-item Serializer (via
+  // asFile()); in-memory-only payloads specialize this instead.
+  static llvm::json::Value write(llvm::ArrayRef<Item<T>> items,
+                                 llvm::StringRef dir) {
+    llvm::json::Array entries;
+    llvm::StringSet<> used;
+    for (const Item<T> &it : items) {
+      llvm::StringRef src = it.asFile();
+      std::string base = llvm::sys::path::filename(it.filePath).str();
+      std::string name = base;
+      for (unsigned i = 1; !used.insert(name).second; ++i)
+        name = std::to_string(i) + "_" + base;
+      llvm::SmallString<256> dest(dir);
+      llvm::sys::path::append(dest, name);
+      (void)llvm::sys::fs::copy_file(src, dest);
+      entries.push_back(llvm::json::Object{{"key", it.key}, {"path", name}});
+    }
+    return llvm::json::Object{{"items", std::move(entries)}};
+  }
+};
+
+template <typename T>
+struct NodeDeserializer {
+  // Default: rebuild each item independently via Deserializer<T>. A node is
+  // resumable iff its payload is (HasDeserializerV).
+  static mlir::FailureOr<std::vector<Item<T>>>
+  read(const llvm::json::Value &desc, llvm::StringRef dir,
+       const DeserializeContext &dc) {
+    if constexpr (!HasDeserializerV<T>) {
+      llvm::errs() << "aiecc: cannot resume: payload is not deserializable\n";
+      return mlir::failure();
+    } else {
+      const llvm::json::Object *o = desc.getAsObject();
+      const llvm::json::Array *entries = o ? o->getArray("items") : nullptr;
+      std::vector<Item<T>> items;
+      if (!entries)
+        return items;
+      for (const llvm::json::Value &e : *entries) {
+        const llvm::json::Object *eo = e.getAsObject();
+        llvm::SmallString<256> p(dir);
+        llvm::sys::path::append(p, eo->getString("path").value_or(""));
+        auto v = Deserializer<T>::read(p, dc);
+        if (mlir::failed(v))
+          return mlir::failure();
+        Item<T> it;
+        it.key = eo->getString("key").value_or("").str();
+        it.filePath = std::string(p.str());
+        it.fileWritten = true;
+        it.value = std::move(*v);
+        items.push_back(std::move(it));
+      }
+      return items;
+    }
+  }
+};
+
+// OpInModule: all items share the same module content and differ only in which
+// op is focused. Write the module once and record each item's focus op as its
+// pre-order walk index; on restore, parse the module once and rebind.
+template <typename KeyOp>
+struct NodeSerializer<OpInModule<KeyOp>> {
+  static llvm::json::Value write(llvm::ArrayRef<Item<OpInModule<KeyOp>>> items,
+                                 llvm::StringRef dir) {
+    std::string moduleName = "module.mlir";
+    if (!items.empty()) {
+      llvm::SmallString<256> dest(dir);
+      llvm::sys::path::append(dest, moduleName);
+      std::error_code ec;
+      llvm::raw_fd_ostream os(dest, ec);
+      if (!ec)
+        printModuleWithDebugInfo(items.front().get().module.get(), os);
+    }
+    llvm::json::Array entries;
+    for (const Item<OpInModule<KeyOp>> &it : items)
+      entries.push_back(llvm::json::Object{
+          {"key", it.key},
+          {"walkIdx", opWalkIndex<KeyOp>(it.get().module.get(), it.get().op)}});
+    return llvm::json::Object{{"module", moduleName},
+                              {"items", std::move(entries)}};
+  }
+};
+
+template <typename KeyOp>
+struct NodeDeserializer<OpInModule<KeyOp>> {
+  static mlir::FailureOr<std::vector<Item<OpInModule<KeyOp>>>>
+  read(const llvm::json::Value &desc, llvm::StringRef dir,
+       const DeserializeContext &dc) {
+    if (!dc.mlirContext) {
+      llvm::errs() << "aiecc: cannot resume: no MLIRContext to parse module\n";
+      return mlir::failure();
+    }
+    const llvm::json::Object *o = desc.getAsObject();
+    llvm::SmallString<256> modPath(dir);
+    llvm::sys::path::append(modPath, o->getString("module").value_or(""));
+    mlir::OwningOpRef<mlir::ModuleOp> parsed =
+        parseModuleFromFile(modPath, dc.mlirContext);
+    if (!parsed) {
+      llvm::errs() << "aiecc: cannot resume: failed to parse '" << modPath
+                   << "'\n";
+      return mlir::failure();
+    }
+    const llvm::json::Array *entries = o->getArray("items");
+    std::vector<Item<OpInModule<KeyOp>>> items;
+    if (!entries)
+      return items;
+    for (const llvm::json::Value &e : *entries) {
+      const llvm::json::Object *eo = e.getAsObject();
+      int64_t walkIdx = eo->getInteger("walkIdx").value_or(-1);
+      // Each item owns its own module (matching the split); clone per item.
+      mlir::OwningOpRef<mlir::ModuleOp> clone(parsed.get().clone());
+      KeyOp op = opAtWalkIndex<KeyOp>(clone.get(), walkIdx);
+      if (!op) {
+        llvm::errs() << "aiecc: cannot resume: focus op index " << walkIdx
+                     << " out of range\n";
+        return mlir::failure();
+      }
+      Item<OpInModule<KeyOp>> it;
+      it.key = eo->getString("key").value_or("").str();
+      it.value = OpInModule<KeyOp>{std::move(clone), op};
+      items.push_back(std::move(it));
+    }
+    return items;
+  }
+};
+
+// Directory: each item carries a companion folder that must travel whole.
+// Copy each item's bundle into its own subdir and record the item's primary
+// artifact as a path relative to that subdir; on restore, point the item back
+// at the copied folder.
+template <>
+struct NodeSerializer<Directory> {
+  static llvm::json::Value write(llvm::ArrayRef<Item<Directory>> items,
+                                 llvm::StringRef dir) {
+    llvm::json::Array entries;
+    llvm::StringSet<> used;
+    for (const Item<Directory> &it : items) {
+      const std::string &bundle = it.get().dir;
+      std::string base = llvm::sys::path::filename(bundle).str();
+      std::string name = base;
+      for (unsigned i = 1; !used.insert(name).second; ++i)
+        name = std::to_string(i) + "_" + base;
+      llvm::SmallString<256> dest(dir);
+      llvm::sys::path::append(dest, name);
+      if (std::error_code ec = copyDirectoryRecursively(bundle, dest)) {
+        llvm::errs() << "aiecc: checkpoint failed to copy bundle '" << bundle
+                     << "': " << ec.message() << "\n";
+      }
+      // Primary artifact's path within the bundle (empty when the item's path
+      // *is* the directory, e.g. a CDO).
+      llvm::StringRef rel = llvm::StringRef(it.filePath).substr(bundle.size());
+      while (rel.starts_with("/"))
+        rel = rel.drop_front();
+      entries.push_back(llvm::json::Object{
+          {"key", it.key}, {"path", name}, {"file", rel.str()}});
+    }
+    return llvm::json::Object{{"items", std::move(entries)}};
+  }
+};
+
+template <>
+struct NodeDeserializer<Directory> {
+  static mlir::FailureOr<std::vector<Item<Directory>>>
+  read(const llvm::json::Value &desc, llvm::StringRef dir,
+       const DeserializeContext & /*dc*/) {
+    const llvm::json::Object *o = desc.getAsObject();
+    const llvm::json::Array *entries = o ? o->getArray("items") : nullptr;
+    std::vector<Item<Directory>> items;
+    if (!entries)
+      return items;
+    for (const llvm::json::Value &e : *entries) {
+      const llvm::json::Object *eo = e.getAsObject();
+      llvm::SmallString<256> folder(dir);
+      llvm::sys::path::append(folder, eo->getString("path").value_or(""));
+      llvm::StringRef rel = eo->getString("file").value_or("");
+      llvm::SmallString<256> primary(folder);
+      if (!rel.empty())
+        llvm::sys::path::append(primary, rel);
+      Item<Directory> it;
+      it.key = eo->getString("key").value_or("").str();
+      it.filePath = std::string(primary.str());
+      it.fileWritten = true;
+      it.value = Directory{std::string(folder.str())};
+      items.push_back(std::move(it));
+    }
+    return items;
+  }
+};
 
 struct Graph;
 struct EdgeBase;
@@ -336,11 +535,18 @@ struct EdgeBase {
       failedKey = k.str();
   }
 
-  // Populate this edge's output items from pre-generated on-disk artifacts
-  // (--resume checkpoint replay) instead of executing. `keyToPath` maps each
-  // item key to its artifact path. Default: unsupported (non-serializable cut).
-  virtual mlir::LogicalResult
-  loadFromDisk(const llvm::StringMap<std::string> &keyToPath) {
+  // Capture this edge's output node into `dir` for a checkpoint, returning a
+  // JSON descriptor the resume path feeds back to restoreNode. Default: nothing
+  // (edges with no typed output).
+  virtual llvm::json::Value captureNode(llvm::StringRef dir) {
+    return llvm::json::Value(nullptr);
+  }
+
+  // Rebuild this edge's output node from a checkpoint descriptor (see
+  // captureNode) instead of executing. Default: unsupported.
+  virtual mlir::LogicalResult restoreNode(const llvm::json::Value &desc,
+                                          llvm::StringRef dir,
+                                          const DeserializeContext &dc) {
     return mlir::failure();
   }
 
@@ -446,39 +652,23 @@ struct EdgeWithTypedOutput : EdgeBase {
       (void)item.asFile();
   }
 
-  // Rehydrate output items from artifacts on disk (see EdgeBase::loadFromDisk).
-  // File payloads only need the path; other payloads need a Deserializer<Out>,
-  // otherwise the cut is not resumable at this type.
-  mlir::LogicalResult
-  loadFromDisk(const llvm::StringMap<std::string> &keyToPath) final {
-    out.items.clear();
-    for (const auto &kv : keyToPath) {
-      Item<Out> item;
-      item.key = kv.first().str();
-      item.filePath = kv.second;
-      item.fileWritten = true; // already on disk; don't rewrite it
-      if constexpr (std::is_same_v<Out, File>) {
-        item.value = File{};
-      } else if constexpr (std::is_same_v<Out, Directory>) {
-        // File-like: the whole bundle was copied back by the checkpoint. Recover
-        // the companion folder (filePath is the directory for a CDO, a file
-        // inside it for a core bundle).
-        item.value = Directory{
-            llvm::sys::fs::is_directory(item.filePath)
-                ? item.filePath
-                : llvm::sys::path::parent_path(item.filePath).str()};
-      } else if constexpr (HasDeserializerV<Out>) {
-        auto v = Deserializer<Out>::read(item.filePath);
-        if (mlir::failed(v))
-          return mlir::failure();
-        item.value = std::move(*v);
-      } else {
-        llvm::errs() << "aiecc: cannot resume at edge '" << this->name
-                     << "': its output type is not deserializable\n";
-        return mlir::failure();
-      }
-      out.items.push_back(std::move(item));
-    }
+  // Rehydrate output items from artifacts on disk (see EdgeBase::restoreNode).
+  // Per-node capture/restore: delegate to NodeSerializer<Out> /
+  // NodeDeserializer<Out> so a payload that shares structure across items (e.g.
+  // OpInModule) can write the shared part once. This generic code never
+  // branches on Out. A node is resumable iff NodeDeserializer<Out> succeeds
+  // (default: iff the payload has a Deserializer).
+  llvm::json::Value captureNode(llvm::StringRef dir) final {
+    return NodeSerializer<Out>::write(out.items, dir);
+  }
+
+  mlir::LogicalResult restoreNode(const llvm::json::Value &desc,
+                                  llvm::StringRef dir,
+                                  const DeserializeContext &dc) final {
+    auto items = NodeDeserializer<Out>::read(desc, dir, dc);
+    if (mlir::failed(items))
+      return mlir::failure();
+    out.items = std::move(*items);
     return mlir::success();
   }
 

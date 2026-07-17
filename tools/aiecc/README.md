@@ -78,13 +78,22 @@ aiecc --get=input_physical.mlir --checkpoint=cp design.mlir
 
 Now you can open the intermediate files saved in `cp` and edit them — for
 instance, to hand-tweak the IR and see how a change affects the rest of the
-build. When you are ready, resume from the checkpoint and finish compilation.
-The remaining stages read your edited files as-is, and none of the work before
-the checkpoint is repeated:
+build. When you are ready, resume from the checkpoint and ask for the artifact
+you want (`--get`, described below). The saved frontier is read back from disk
+(IR frontiers are re-parsed from their `.mlir` text), the stages before the
+checkpoint are skipped entirely, and only what comes after runs:
 
 ```bash
-aiecc --resume=cp/manifest.json --aie-generate-npu-insts
+aiecc --resume=cp/manifest.json --get='insts_{0}.bin'
 ```
+
+The resume invocation rebuilds the graph from the flags recorded in the
+checkpoint manifest, so it inherits the original device, toolchain and lowering
+options automatically — you neither repeat them nor may override them. `--resume`
+rejects any graph-shaping flag on its command line, since changing the graph
+would invalidate the saved intermediates; only execution-only flags may
+accompany it: `--get`, `--get-key`, `--checkpoint`, `-j`, `-v`/`--verbose`, and
+`--progress`.
 
 This makes it easy to isolate a problem: compile up to just before a stage you
 suspect, change the intermediate result by hand, and re-run only what comes

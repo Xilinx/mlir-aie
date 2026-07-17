@@ -238,9 +238,9 @@ inline cl::opt<std::string> npuInstsName(
 // any artifact that embeds them (e.g. --aie-generate-xclbin); this flag
 // additionally writes them out. (Request the pre-link objects instead with
 // --get=objects_{0}.o.)
-inline cl::opt<bool> generateCoreElfs(
-    "aie-generate-core-elfs",
-    cl::desc("Emit the per-core ELFs as an output"));
+inline cl::opt<bool>
+    generateCoreElfs("aie-generate-core-elfs",
+                     cl::desc("Emit the per-core ELFs as an output"));
 
 inline cl::opt<bool> generateInputWithAddresses(
     "aie-generate-input-with-addresses",
@@ -510,13 +510,14 @@ inline bool hasHostSourceFiles() { return !getHostSourceFiles().empty(); }
 //===----------------------------------------------------------------------===//
 // A checkpoint restores a graph cut from disk. Its manifest records the argv
 // that built the cut (so a resume reconstructs an identical graph — same
-// device, options and item keys) plus a frontier: for each cut edge output, the
-// {name, key} it belongs to and the saved artifact `path`.
+// device, options and item keys) plus a frontier: for each cut edge, the
+// {name} it belongs to, the {dir} its artifacts live in, and the per-node
+// {descriptor} that its restoreNode consumes.
 
 struct CheckpointEntry {
   std::string name; // producing edge's output-name template
-  std::string key;  // item key within that edge
-  std::string path; // artifact path, relative to the manifest directory
+  std::string dir;  // node subdir, relative to manifest
+  llvm::json::Value descriptor = nullptr; // per-node restore descriptor
 };
 
 struct ResumeState {
@@ -610,7 +611,9 @@ resolveCommandLine(int argc, char **argv, ResumeState &resume,
           auto s = fo->getString(k);
           return s ? s->str() : std::string();
         };
-        resume.frontier.push_back({get("name"), get("key"), get("path")});
+        const llvm::json::Value *desc = fo->get("descriptor");
+        resume.frontier.push_back({get("name"), get("dir"),
+                                   desc ? *desc : llvm::json::Value(nullptr)});
       }
   resume.manifestDir = llvm::sys::path::parent_path(resumePath).str();
   resume.active = true;

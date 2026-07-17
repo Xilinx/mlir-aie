@@ -18,14 +18,19 @@
 #include "aie/Targets/AIETargets.h"
 
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Diagnostics.h"
+#include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/OwningOpRef.h"
+#include "mlir/Parser/Parser.h"
+#include "mlir/Support/FileUtilities.h"
 #include "mlir/Support/LogicalResult.h"
 
 #include "llvm/ADT/StringRef.h"
 #include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/JSON.h"
 #include "llvm/Support/MemoryBuffer.h"
+#include "llvm/Support/SourceMgr.h"
 #include "llvm/Support/raw_ostream.h"
 
 #include <string>
@@ -62,7 +67,6 @@ template <typename T>
 constexpr bool IsFileLikeV =
     std::is_same_v<T, File> || std::is_same_v<T, Directory>;
 
-
 // A whole-module clone paired with a pointer to one op inside it. Lambdas
 // see the full surrounding context while `op` identifies the focus.
 template <typename KeyOp>
@@ -70,17 +74,6 @@ struct OpInModule {
   mlir::OwningOpRef<mlir::ModuleOp> module;
   KeyOp op;
 };
-
-template <typename>
-struct IsOpInModule : std::false_type {};
-template <typename X>
-struct IsOpInModule<OpInModule<X>> : std::true_type {};
-
-template <typename T>
-constexpr bool HasAsModuleV =
-    std::is_same_v<T, File> ||
-    std::is_same_v<T, mlir::OwningOpRef<mlir::ModuleOp>> ||
-    IsOpInModule<T>::value;
 
 // One runtime sequence's NPU program: the transaction instruction binary and
 // its source-location map. Both fall out of a single AIETranslateNpuToBinary
@@ -162,16 +155,78 @@ struct Serializer<NpuProgram> {
 // Deserializer: how a tool-produced file is lifted back into a payload
 //===----------------------------------------------------------------------===//
 
+// Opaque bag of ambient resources a Deserializer may need to lift a payload
+// from disk on --resume. The graph and execution engine forward this through
+// without ever inspecting it; only the per-type Deserializer specializations
+// that need a resource read from it. A payload type that needs some resource
+// adds a field here and reads it from its own Deserializer -- the generic
+// graph/engine code never changes and never specializes on a payload type.
+struct DeserializeContext {
+  // The context module-valued payloads are re-parsed into on --resume. Null
+  // when no MLIR payload can appear at a resumable cut.
+  mlir::MLIRContext *mlirContext = nullptr;
+};
+
+// Parse a .mlir file back into a module in `ctx`.
+inline mlir::OwningOpRef<mlir::ModuleOp>
+parseModuleFromFile(llvm::StringRef path, mlir::MLIRContext *ctx) {
+  assert(ctx && "parseModuleFromFile requires an MLIRContext");
+  std::string err;
+  auto buf = mlir::openInputFile(path, &err);
+  if (!buf) {
+    llvm::errs() << "aiecc: " << err << "\n";
+    return nullptr;
+  }
+  llvm::SourceMgr sm;
+  sm.AddNewSourceBuffer(std::move(buf), llvm::SMLoc());
+  mlir::SourceMgrDiagnosticHandler dh(sm, ctx);
+  return mlir::parseSourceFile<mlir::ModuleOp>(sm, ctx);
+}
+
 // Per-payload read trait: the inverse of Serializer. Specialize for payloads an
 // external tool emits as a file, to lift them back into a typed Item so
 // downstream edges see the parsed value instead of raw bytes. Undefined by
-// default; opt in per type.
+// default; opt in per type. `dc` carries any ambient resource the read needs
+// (e.g. an MLIRContext); specializations that don't need one ignore it.
 template <typename T>
 struct Deserializer;
 
+// A File payload is just its on-disk path (held on the Item), so lifting it is
+// a no-op; this lets File nodes resume through the same seam as every other
+// type.
+template <>
+struct Deserializer<File> {
+  static mlir::FailureOr<File> read(llvm::StringRef /*path*/,
+                                    const DeserializeContext & /*dc*/) {
+    return File{};
+  }
+};
+
+// An IR frontier is re-parsed from its saved .mlir text into the shared
+// MLIRContext carried by `dc`.
+template <>
+struct Deserializer<mlir::OwningOpRef<mlir::ModuleOp>> {
+  static mlir::FailureOr<mlir::OwningOpRef<mlir::ModuleOp>>
+  read(llvm::StringRef path, const DeserializeContext &dc) {
+    if (!dc.mlirContext) {
+      llvm::errs() << "aiecc: cannot parse module '" << path
+                   << "': no MLIRContext available\n";
+      return mlir::failure();
+    }
+    mlir::OwningOpRef<mlir::ModuleOp> mod =
+        parseModuleFromFile(path, dc.mlirContext);
+    if (!mod) {
+      llvm::errs() << "aiecc: failed to parse '" << path << "'\n";
+      return mlir::failure();
+    }
+    return std::move(mod);
+  }
+};
+
 template <>
 struct Deserializer<llvm::json::Value> {
-  static mlir::FailureOr<llvm::json::Value> read(llvm::StringRef path) {
+  static mlir::FailureOr<llvm::json::Value>
+  read(llvm::StringRef path, const DeserializeContext & /*dc*/) {
     auto buf = llvm::MemoryBuffer::getFile(path);
     if (!buf) {
       llvm::errs() << "aiecc: cannot read JSON file '" << path
@@ -190,7 +245,8 @@ struct Deserializer<llvm::json::Value> {
 
 template <>
 struct Deserializer<std::vector<char>> {
-  static mlir::FailureOr<std::vector<char>> read(llvm::StringRef path) {
+  static mlir::FailureOr<std::vector<char>>
+  read(llvm::StringRef path, const DeserializeContext & /*dc*/) {
     auto buf = llvm::MemoryBuffer::getFile(path);
     if (!buf) {
       llvm::errs() << "aiecc: cannot read file '" << path
@@ -204,7 +260,8 @@ struct Deserializer<std::vector<char>> {
 
 template <>
 struct Deserializer<std::string> {
-  static mlir::FailureOr<std::string> read(llvm::StringRef path) {
+  static mlir::FailureOr<std::string> read(llvm::StringRef path,
+                                           const DeserializeContext & /*dc*/) {
     auto buf = llvm::MemoryBuffer::getFile(path);
     if (!buf) {
       llvm::errs() << "aiecc: cannot read file '" << path
@@ -221,7 +278,8 @@ template <typename T, typename = void>
 struct HasDeserializer : std::false_type {};
 template <typename T>
 struct HasDeserializer<T, std::void_t<decltype(Deserializer<T>::read(
-                              std::declval<llvm::StringRef>()))>>
+                              std::declval<llvm::StringRef>(),
+                              std::declval<const DeserializeContext &>()))>>
     : std::true_type {};
 template <typename T>
 inline constexpr bool HasDeserializerV = HasDeserializer<T>::value;

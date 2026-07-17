@@ -11,7 +11,7 @@
 // RUN: rm -rf %t && mkdir -p %t
 // RUN: not %python aiecc.py --aie-generate-core-elfs --enable-repeater-scripts --repeater-output-dir=%t/ckpt %s 2>&1 | FileCheck %s
 // RUN: cat %t/ckpt/manifest.json | FileCheck --check-prefix=MANIFEST %s
-// RUN: cat %t/ckpt/input_with_addresses.mlir | FileCheck --check-prefix=MLIR %s
+// RUN: cat %t/ckpt/*/input_with_addresses.mlir | FileCheck --check-prefix=MLIR %s
 
 // The routing failure is reported and a resumable checkpoint is written.
 // CHECK: 'aie.rule' op can lead to false packet id match for id 28, which is not supposed to pass through this port
