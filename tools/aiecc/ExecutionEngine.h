@@ -9,6 +9,7 @@
 #define AIECC_EXECUTIONENGINE_H
 
 #include "Graph.h"
+#include "Utils.h"
 
 #include "mlir/Support/LogicalResult.h"
 #include "llvm/ADT/ArrayRef.h"
@@ -385,21 +386,38 @@ inline void writeCheckpoint(llvm::ArrayRef<EdgeBase *> cutEdges,
     if (!out)
       continue;
     for (const ItemBase *it : out->itemRefs()) {
-      const std::string &src = it->asFile();
+      const std::string *bdir = it->bundleDir();
       // Unique destination name to avoid collisions across cut edges / keys.
-      std::string base = llvm::sys::path::filename(it->filePath).str();
+      std::string base =
+          llvm::sys::path::filename(bdir ? *bdir : it->filePath).str();
       std::string destName = base;
       for (unsigned i = 1; !used.insert(destName).second; ++i)
         destName = std::to_string(i) + "_" + base;
       llvm::SmallString<256> dest(dir);
       llvm::sys::path::append(dest, destName);
-      if (std::error_code ec = llvm::sys::fs::copy_file(src, dest)) {
-        llvm::errs() << "aiecc: checkpoint failed to copy '" << src << "' to '"
-                     << dest << "': " << ec.message() << "\n";
+      std::string recordPath = destName;
+      if (bdir) {
+        // Copy the whole bundle folder; the recorded path points at the item's
+        // primary artifact inside the copy.
+        if (std::error_code ec = copyDirectoryRecursively(*bdir, dest)) {
+          llvm::errs() << "aiecc: checkpoint failed to copy bundle '" << *bdir
+                       << "' to '" << dest << "': " << ec.message() << "\n";
+          continue;
+        }
+        llvm::StringRef rel =
+            llvm::StringRef(it->filePath).substr(bdir->size());
+        while (rel.starts_with("/"))
+          rel = rel.drop_front();
+        if (!rel.empty())
+          recordPath = destName + "/" + rel.str();
+      } else if (std::error_code ec =
+                     llvm::sys::fs::copy_file(it->asFile(), dest)) {
+        llvm::errs() << "aiecc: checkpoint failed to copy '" << it->asFile()
+                     << "' to '" << dest << "': " << ec.message() << "\n";
         continue;
       }
       frontier.push_back(llvm::json::Object{
-          {"name", e->name}, {"key", it->key}, {"path", destName}});
+          {"name", e->name}, {"key", it->key}, {"path", recordPath}});
     }
   }
   llvm::json::Array argvArr;

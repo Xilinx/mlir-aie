@@ -12,7 +12,7 @@
 // have wrongly declared only 5 and under-provisioned the host ABI.
 
 // RUN: aie-opt -aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" %s -o %t_overlay.mlir
-// RUN: %python aiecc.py -n --no-link --device-name=base --aie-generate-xclbin --tmpdir=%t.prj %t_overlay.mlir
+// RUN: %python aiecc.py -n --device-name=base --aie-generate-xclbin --tmpdir=%t.prj %t_overlay.mlir
 // RUN: FileCheck %s --input-file=%t.prj/kernels_base.json
 
 // CHECK: "name": "bo0"

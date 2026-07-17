@@ -117,7 +117,7 @@ struct PassPipeline {
 //                      .input().output("-o")
 struct ShellCommand {
   struct Part {
-    enum Kind { Literal, Slot, SlotList, Output } kind;
+    enum Kind { Literal, Slot, SlotList, Output, OutputDir } kind;
     enum Mode { Path, Value } mode = Path;
     std::string text;
     std::string suffix;
@@ -134,13 +134,13 @@ struct ShellCommand {
     static Part mkOutput(std::string prefix, bool concat = false) {
       return {Output, concat ? Value : Path, std::move(prefix), {}};
     }
+    static Part mkOutputDir(std::string prefix) {
+      return {OutputDir, Path, std::move(prefix), {}};
+    }
   };
 
   std::string tool;
   std::vector<Part> parts;
-  // When set, the tool runs against an output path inside this directory and
-  // the artifact is moved to its requested path afterwards (see .workDir()).
-  std::string workDirPath;
 
   inline static std::vector<std::string> searchPaths;
   inline static std::map<std::string, std::string> toolPathCache;
@@ -260,13 +260,12 @@ struct ShellCommand {
     return *this;
   }
 
-  // Run the tool inside `dir`: its output (and any fixed-named sidecar files it
-  // writes next to that output) land under `dir`, then the requested artifact
-  // is moved to its final path. Give each concurrent invocation its own dir so
-  // their identically-named sidecars can't clobber one another (e.g. chess
-  // drops `.map`/`.lst`/`.srv` next to its `-o` file).
-  ShellCommand &workDir(std::string dir) {
-    workDirPath = std::move(dir);
+  // Insert the output *directory* path. Only meaningful when the edge's output
+  // is an Item<Directory>: that is the folder ShellCommand creates and runs the
+  // tool inside, so a tool that takes its own scratch/work dir (e.g. chess's
+  // `+w <dir>`) can point at it.
+  ShellCommand &outputDir(std::string prefix = "") {
+    parts.push_back(Part::mkOutputDir(std::move(prefix)));
     return *this;
   }
 
@@ -276,7 +275,8 @@ struct ShellCommand {
   template <typename... Args>
   mlir::LogicalResult operator()(Args &&...args) const {
     static_assert(sizeof...(Args) >= 1,
-                  "ShellCommand requires at least the output Item<File>&");
+                  "ShellCommand requires at least the output Item (File or "
+                  "Directory) as its last argument");
     return invokeImpl(std::forward_as_tuple(std::forward<Args>(args)...),
                       std::make_index_sequence<sizeof...(Args) - 1>{});
   }
@@ -289,19 +289,39 @@ private:
     return run(items, out);
   }
 
-  // Move a produced artifact from its isolated work-dir path to the requested
-  // final path. rename() stays within the filesystem in the common case; fall
-  // back to copy for a cross-device move.
-  static mlir::LogicalResult moveOutput(const std::string &from,
-                                        const std::string &to) {
-    if (llvm::sys::fs::rename(from, to)) {
-      if (std::error_code ec = llvm::sys::fs::copy_file(from, to)) {
-        llvm::errs() << "aiecc: failed to move output '" << from << "' to '"
-                     << to << "': " << ec.message() << "\n";
+  mlir::LogicalResult run(llvm::ArrayRef<const ItemBase *> sources,
+                          Item<Directory> &out) const {
+    std::string resolved = resolveTool(tool);
+    if (resolved.empty()) {
+      if (!dryRun) {
+        llvm::errs() << "aiecc: ShellCommand: tool '" << tool
+                     << "' not found in search paths or PATH\n";
         return mlir::failure();
       }
-      llvm::sys::fs::remove(from);
+      resolved = tool;
     }
+    // The output is a directory holding the `-o` file and the sidecar files the
+    // tool writes beside it (e.g. chess's `<elf>.map`). Run the tool in place
+    // there -- nothing is copied or moved. Each item's key gives it its own
+    // directory (named after the requested output's stem), so parallel per-core
+    // invocations never share one. A tool scratch dir (`+w`) can point at it
+    // via .outputDir().
+    llvm::SmallString<256> dir(llvm::sys::path::parent_path(out.filePath));
+    llvm::sys::path::append(
+        dir, llvm::sys::path::stem(llvm::sys::path::filename(out.filePath)));
+    if (llvm::sys::fs::create_directories(dir)) {
+      llvm::errs() << "aiecc: ShellCommand '" << tool
+                   << "': cannot create output dir '" << dir << "'\n";
+      return mlir::failure();
+    }
+    std::string outputFile =
+        (llvm::Twine(dir) + "/" + llvm::sys::path::filename(out.filePath))
+            .str();
+    if (mlir::failed(
+            runResolved(std::move(resolved), sources, outputFile, dir)))
+      return mlir::failure();
+    out.filePath = outputFile;
+    out.value = Directory{std::string(dir)};
     return mlir::success();
   }
 
@@ -320,33 +340,17 @@ private:
       }
       resolved = tool;
     }
-
-    // Without .workDir(), run directly against the requested output path.
-    if (workDirPath.empty())
-      return runResolved(std::move(resolved), sources, out);
-
-    // Isolation: redirect the output -- and the fixed-named sidecar files some
-    // tools write next to it -- into a private work dir, then move the
-    // requested artifact to its final path once the tool succeeds.
-    if (llvm::sys::fs::create_directories(workDirPath)) {
-      llvm::errs() << "aiecc: ShellCommand '" << tool
-                   << "': cannot create work dir '" << workDirPath << "'\n";
+    if (mlir::failed(runResolved(std::move(resolved), sources, out.filePath,
+                                 /*outputDir=*/"")))
       return mlir::failure();
-    }
-    std::string finalPath = out.filePath;
-    std::string isolated =
-        workDirPath + "/" + llvm::sys::path::filename(finalPath).str();
-    out.filePath = isolated;
-    mlir::LogicalResult rc = runResolved(std::move(resolved), sources, out);
-    out.filePath = finalPath;
-    if (mlir::failed(rc))
-      return mlir::failure();
-    return moveOutput(isolated, finalPath);
+    out.value = File{};
+    return mlir::success();
   }
 
   mlir::LogicalResult runResolved(std::string resolved,
                                   llvm::ArrayRef<const ItemBase *> sources,
-                                  Item<File> &out) const {
+                                  llvm::StringRef outputFile,
+                                  llvm::StringRef outputDirPath) const {
     std::vector<std::string> cmd{std::move(resolved)};
     cmd.reserve(parts.size() + 2);
     size_t cursor = 0;
@@ -379,12 +383,15 @@ private:
         break;
       case Part::Output:
         if (p.mode == Part::Value) {
-          cmd.push_back(p.text + out.filePath);
+          cmd.push_back(p.text + outputFile.str());
         } else {
           if (!p.text.empty())
             cmd.push_back(p.text);
-          cmd.push_back(out.filePath);
+          cmd.push_back(outputFile.str());
         }
+        break;
+      case Part::OutputDir:
+        cmd.push_back(p.text + outputDirPath.str());
         break;
       }
     }
@@ -401,8 +408,7 @@ private:
       llvm::outs() << "Dry run - command not executed\n";
       // Touch an empty output so the path resolves for the engine.
       std::error_code ec;
-      llvm::raw_fd_ostream f(out.filePath, ec);
-      out.value = File{};
+      llvm::raw_fd_ostream f(outputFile, ec);
       return mlir::success();
     }
     llvm::SmallVector<llvm::StringRef> argv(cmd.begin(), cmd.end());
@@ -437,7 +443,6 @@ private:
       llvm::errs() << "aiecc: '" << cmd[0] << "' failed: " << errMsg << "\n";
       return mlir::failure();
     }
-    out.value = File{};
     return mlir::success();
   }
 };

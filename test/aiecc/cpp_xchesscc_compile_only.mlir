@@ -5,13 +5,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Test xchesscc compile-only mode (--no-link): the core is compiled to an
-// object with xchesscc (Chess intrinsic-wrapper link + xchesscc -c) but is not
-// linked into an ELF, and Peano's llc is never used.
+// Test xchesscc compile-only: requesting the object output (--get=objects_{0}.o)
+// compiles the core with xchesscc (Chess intrinsic-wrapper link + xchesscc -c)
+// but does not link it into an ELF, and Peano's llc is never used.
 
 // REQUIRES: chess
 
-// RUN: aiecc --xchesscc --no-link -v %s 2>&1 | FileCheck %s
+// RUN: aiecc --xchesscc --get='objects_{0}.o' -v %s 2>&1 | FileCheck %s
 
 // CHECK: chess-llvm-link
 // CHECK-SAME: chess_intrinsic_wrapper

@@ -152,17 +152,6 @@ inline cl::opt<bool> noUnified(
     cl::desc("Compile cores independently (negates --unified; the default)"));
 
 //===----------------------------------------------------------------------===//
-// Link stage gating
-//===----------------------------------------------------------------------===//
-// The link stage is on by default. With --no-link the driver stops at the
-// per-core objects instead of linking them into ELFs.
-
-inline cl::opt<bool> link("link",
-                          cl::desc("Link AIE cores into ELFs (default)"),
-                          cl::init(true));
-inline cl::opt<bool> noLink("no-link",
-                            cl::desc("Stop at per-core objects; do not link"));
-
 // Runtime sequence to compile (empty = all). Filters the per-sequence NPU
 // instruction stream by RuntimeSequenceOp symbol name.
 inline cl::opt<std::string>
@@ -245,12 +234,13 @@ inline cl::opt<std::string> npuInstsName(
     cl::desc("Output NPU insts filename template (use {0} for multi-device)"),
     cl::init("insts_{0}.bin"));
 
-// Emit the per-core ELFs (or, with --no-link, the per-core objects) as an
-// output. Cores are still compiled on demand for any artifact that embeds them
-// (e.g. --aie-generate-xclbin); this flag additionally writes them out.
-inline cl::opt<bool>
-    compile("compile",
-            cl::desc("Emit the per-core ELFs (objects with --no-link)"));
+// Emit the per-core ELFs as an output. Cores are still compiled on demand for
+// any artifact that embeds them (e.g. --aie-generate-xclbin); this flag
+// additionally writes them out. (Request the pre-link objects instead with
+// --get=objects_{0}.o.)
+inline cl::opt<bool> generateCoreElfs(
+    "aie-generate-core-elfs",
+    cl::desc("Emit the per-core ELFs as an output"));
 
 inline cl::opt<bool> generateInputWithAddresses(
     "aie-generate-input-with-addresses",
@@ -428,9 +418,6 @@ inline cl::opt<std::string> repeaterOutputDir(
 
 // Whether to generate the AIE simulator Work folder (off unless --aiesim).
 inline bool wantAiesim = false;
-// ELFs are produced when the link stage is on; with --no-link the driver stops
-// at the per-core objects.
-inline bool doBuildElfs = false;
 // Compile all cores of a device into one shared object (negated by
 // --no-unified).
 inline bool doUnified = false;
@@ -464,7 +451,6 @@ inline bool resolveOptions() {
     xbridge = true;
   }
 
-  doBuildElfs = link && !noLink;
   doUnified = unified && !noUnified;
   doCompileHost = compileHost && !noCompileHost;
   return true;

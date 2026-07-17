@@ -141,6 +141,10 @@ struct ItemBase {
   // expand to one argv per element (and never materialize a file); everything
   // else yields a single entry. Used by ShellCommand's variadic `inputs()`.
   virtual std::vector<std::string> asArgList() const { return {asString()}; }
+
+  // For `Directory` payloads, the folder whose entire contents travel with the
+  // item (recursively copied when a checkpoint captures it); null otherwise.
+  virtual const std::string *bundleDir() const { return nullptr; }
 };
 
 template <typename T>
@@ -168,11 +172,20 @@ struct Item : ItemBase {
       return {asString()};
   }
 
+  const std::string *bundleDir() const override {
+    if (aliasSource)
+      return aliasSource->bundleDir();
+    if constexpr (std::is_same_v<T, Directory>)
+      return value ? &value->dir : nullptr;
+    else
+      return nullptr;
+  }
+
   std::string asString() const override {
     if (aliasSource)
       return aliasSource->asString();
-    if constexpr (std::is_same_v<T, File>)
-      llvm_unreachable("asString() not valid for Item<File>");
+    if constexpr (IsFileLikeV<T>)
+      llvm_unreachable("asString() not valid for file-like payloads");
     else {
       assert(value && "Item has no value to render");
       std::string out;
@@ -186,7 +199,7 @@ struct Item : ItemBase {
     if (aliasSource)
       return aliasSource->asFile();
     assert(!filePath.empty() && "Item has no assigned filePath");
-    if constexpr (std::is_same_v<T, File>)
+    if constexpr (IsFileLikeV<T>)
       return filePath;
     else {
       if (fileWritten)
@@ -446,6 +459,14 @@ struct EdgeWithTypedOutput : EdgeBase {
       item.fileWritten = true; // already on disk; don't rewrite it
       if constexpr (std::is_same_v<Out, File>) {
         item.value = File{};
+      } else if constexpr (std::is_same_v<Out, Directory>) {
+        // File-like: the whole bundle was copied back by the checkpoint. Recover
+        // the companion folder (filePath is the directory for a CDO, a file
+        // inside it for a core bundle).
+        item.value = Directory{
+            llvm::sys::fs::is_directory(item.filePath)
+                ? item.filePath
+                : llvm::sys::path::parent_path(item.filePath).str()};
       } else if constexpr (HasDeserializerV<Out>) {
         auto v = Deserializer<Out>::read(item.filePath);
         if (mlir::failed(v))

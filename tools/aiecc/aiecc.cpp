@@ -84,13 +84,12 @@ using xilinx::AIE::DeviceOp;
 // cardinality of the input module/arches edges). We define a chess path and a
 // peano path; the `xchesscc` command-line flag selects which output edge is
 // returned.
-EdgeWithTypedOutput<File> &
+EdgeWithTypedOutput<Directory> &
 buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
                     EdgeWithTypedOutput<std::string> &arches,
                     std::string objName) {
   std::string installDir = getInstallDir();
   std::string aietoolsRoot = discoverAietoolsDir(aietoolsDir.getValue());
-  std::string chessWork = getWorkDir() + "/chess_work";
 
   // Shared between chess and peano: LLLVMIR lowering
   auto &llvmIR = lowered.map<std::string>("llvmIR_{0}.ll", translateToLLVMIR);
@@ -126,29 +125,20 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
                        return cmd(ir, out);
                      })
           .threadSafe();
-  EdgeWithTypedOutput<File> &chessObject =
+  // Chess object: the `.o` and chess's sidecars (`<obj>.o.lst`, ...) land in
+  // the output `Directory`; `+w` scratch shares it too.
+  EdgeWithTypedOutput<Directory> &chessObject =
       bundle(arches.out, chessLinked.out)
-          .map<File>(objName,
-                     [chessWork](const Item<std::string> &arch,
-                                 const Item<File> &ir,
-                                 Item<File> &out) -> mlir::LogicalResult {
-                       // Runs in parallel: give each invocation its own work
-                       // dir so xchesscc's fixed-named `-o` sidecars don't
-                       // collide (+w is its compile scratch; .workDir()
-                       // isolates the outputs).
-                       std::string coreWork = chessWork + "/" + out.key;
-                       return ShellCommand{"xchesscc_wrapper"}
-                           .value()
-                           .arg("+w")
-                           .arg(coreWork)
-                           .arg("-c")
-                           .arg("-d")
-                           .arg("+Wclang,-xir")
-                           .arg("-f")
-                           .input()
-                           .output("-o")
-                           .workDir(coreWork)(arch, ir, out);
-                     })
+          .map<Directory>(objName, ShellCommand{"xchesscc_wrapper"}
+                                       .value()
+                                       .arg("+w")
+                                       .outputDir()
+                                       .arg("-c")
+                                       .arg("-d")
+                                       .arg("+Wclang,-xir")
+                                       .arg("-f")
+                                       .input()
+                                       .output("-o"))
           .threadSafe();
 
   // Peano path: downgrade -> opt -> llc.
@@ -165,16 +155,16 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
       llvmIR.map<std::string>("peano-compat_{0}.ll", downgradeIRForPeano)
           .map<File>("opted_{0}.ll", optCmd)
           .threadSafe();
-  EdgeWithTypedOutput<File> &peanoObject =
+  EdgeWithTypedOutput<Directory> &peanoObject =
       bundle(opted.out, arches.out)
-          .map<File>(objName,
-                     ShellCommand{"llc"}
-                         .input()
-                         .arg("-O" + std::to_string(optLevel.getValue()))
-                         .value("--march=")
-                         .arg("--function-sections")
-                         .arg("--filetype=obj")
-                         .output("-o"))
+          .map<Directory>(objName,
+                          ShellCommand{"llc"}
+                              .input()
+                              .arg("-O" + std::to_string(optLevel.getValue()))
+                              .value("--march=")
+                              .arg("--function-sections")
+                              .arg("--filetype=obj")
+                              .output("-o"))
           .threadSafe();
 
   return xchesscc ? chessObject : peanoObject;
@@ -420,7 +410,7 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // compile all cores regardless.
   auto &perCore =
       allCores.filter("perCoreCompile", [](const OpInModule<CoreOp> &x) {
-        return !CoreOp(x.op).getElfFileAttr() || (doBuildElfs && xbridge);
+        return !CoreOp(x.op).getElfFileAttr() || xbridge;
       });
 
   // Cores whose `elf_file` attribute already points to a built object.
@@ -472,10 +462,12 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                              "unifiedObjects_{0}.o");
   // Each core links against its device's shared object: re-key the device-keyed
   // unified objects onto the per-core keys.
-  EdgeWithTypedOutput<File> &unifiedCoreObjects = perCore.rekeyFrom<File>(
-      "objects_{0}.o", unifiedObjects.out, [](const OpInModule<CoreOp> &core) {
-        return core.op->getParentOfType<DeviceOp>().getSymName().str();
-      });
+  EdgeWithTypedOutput<Directory> &unifiedCoreObjects =
+      perCore.rekeyFrom<Directory>(
+          "objects_{0}.o", unifiedObjects.out,
+          [](const OpInModule<CoreOp> &core) {
+            return core.op->getParentOfType<DeviceOp>().getSymName().str();
+          });
 
   // Per-core strategy
   auto &perCoreLowered = perCore.map<ModRef>(
@@ -487,10 +479,10 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                 core->getParentOfType<DeviceOp>().getSymName(),
                                 tile.getCol(), tile.getRow(), out);
       });
-  EdgeWithTypedOutput<File> &perCoreObjects =
+  EdgeWithTypedOutput<Directory> &perCoreObjects =
       buildObjectSubgraph(perCoreLowered, perCoreArches, "objects_{0}.o");
 
-  EdgeWithTypedOutput<File> &objects =
+  EdgeWithTypedOutput<Directory> &objects =
       doUnified ? unifiedCoreObjects : perCoreObjects;
 
   // ld scripts (with link_files absolutized so INPUT() is cwd-invariant).
@@ -536,38 +528,27 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
         out.value = std::move(resolved);
         return mlir::success();
       });
-  EdgeWithTypedOutput<File> &chessElfs =
+  // Chess link: the ELF and the sidecar files chess writes beside it (`.map`,
+  // `.lst`, ...) land in the output `Directory`; `+w` scratch shares it too.
+  EdgeWithTypedOutput<Directory> &chessElfs =
       bundle(perCoreArches.out, objects.out, linkWithObjs.out, bcfScripts.out)
-          .map<File>("elfs_{0}.elf",
-                     [chessWork](const Item<std::string> &arch,
-                                 const Item<File> &obj,
-                                 const Item<std::vector<std::string>> &linkWith,
-                                 const Item<std::string> &bcf,
-                                 Item<File> &out) -> mlir::LogicalResult {
-                       // Runs in parallel: give each invocation its own work
-                       // dir so the linker's fixed-named `-o` sidecars don't
-                       // collide (+w is its compile scratch; .workDir()
-                       // isolates the outputs).
-                       std::string coreWork = chessWork + "/" + out.key;
-                       return ShellCommand{"xchesscc_wrapper"}
-                           .value()
-                           .arg("+w")
-                           .arg(coreWork)
-                           .arg("-d")
-                           .arg("-f")
-                           .input()
-                           .inputs()
-                           .arg("+l")
-                           .input()
-                           .output("-o")
-                           .workDir(coreWork)(arch, obj, linkWith, bcf, out);
-                     })
+          .map<Directory>("elfs_{0}.elf", ShellCommand{"xchesscc_wrapper"}
+                                              .value()
+                                              .arg("+w")
+                                              .outputDir()
+                                              .arg("-d")
+                                              .arg("-f")
+                                              .input()
+                                              .inputs()
+                                              .arg("+l")
+                                              .input()
+                                              .output("-o"))
           .threadSafe();
 
   // peano linking
-  EdgeWithTypedOutput<File> &peanoElfs =
+  EdgeWithTypedOutput<Directory> &peanoElfs =
       bundle(perCoreArches.out, objects.out, ldScripts.out)
-          .map<File>(
+          .map<Directory>(
               "elfs_{0}.elf",
               ShellCommand{"clang"}
                   .arg("-O" + std::to_string(optLevel))
@@ -580,14 +561,11 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                   .output("-o"))
           .threadSafe();
 
-  // --link gating:
-  //   * link (default): build fresh per-core ELFs (Chess/xbridge or Peano);
-  //   * --no-link: the compiled object masquerades as the "elf" for downstream
-  //     configuration.
-  // Cores that already carry an `elf_file` attribute are handled separately by
-  // `preBakedElfs` and merged into `physicalWithElfs`.
-  EdgeWithTypedOutput<File> &compiledElfs =
-      doBuildElfs ? (xbridge ? chessElfs : peanoElfs) : objects;
+  // Fresh per-core ELFs (Chess/xbridge or Peano). Cores that already carry an
+  // `elf_file` attribute are handled separately by `preBakedElfs` and merged
+  // into `physicalWithElfs`.
+  EdgeWithTypedOutput<Directory> &compiledElfs =
+      xbridge ? chessElfs : peanoElfs;
 
   // --- Per-device configuration artifacts ---------------------------------
 
@@ -596,7 +574,7 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
       bundle(compiledElfs.out, preBakedElfs.out, physical.out)
           .join<ModRef>(
               "physical_with_elfs.mlir",
-              [](const Node<File> &compiled, const Node<File> &preBaked,
+              [](const Node<Directory> &compiled, const Node<File> &preBaked,
                  const Node<ModRef> &physicalN,
                  Item<ModRef> &out) -> mlir::LogicalResult {
                 // ELF paths must be absolute for the aie-rt loader.
@@ -657,11 +635,12 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
       splitPerDevice(staticInput, "perDevice_{0}.mlir", "perDeviceMatching");
 
   // Per-device CDO binaries. The CDO is a *directory* of `.bin` files (the
-  // libxaie v2 configuration).
-  auto &cdo = staticPerDevice.map<File>(
+  // libxaie v2 configuration), so it is a `Directory` bundle: filePath is the
+  // directory itself and its whole contents travel together.
+  auto &cdo = staticPerDevice.map<Directory>(
       "cdo_{0}",
       [](const Item<OpInModule<DeviceOp>> &item,
-         Item<File> &out) -> mlir::LogicalResult {
+         Item<Directory> &out) -> mlir::LogicalResult {
         DeviceOp d = item.get().op;
         // CDO (and the PDI/xclbin built from it) is NPU-only
         if (!d.getTargetModel().hasProperty(
@@ -673,10 +652,9 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
           return mlir::failure();
         }
         const std::string &cdoDir = out.filePath;
-        if (dryRun) {
-          out.value = File{};
+        out.value = Directory{cdoDir};
+        if (dryRun)
           return mlir::success();
-        }
         // The CDO output path is itself a directory that the translation
         // writes its `.bin` files into, so create it here (prepareItem only
         // makes the parent)
@@ -686,7 +664,6 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                 item.get().module.get(), cdoDir, d.getSymName(), false, false,
                 false, false, false, /*enableCores=*/true)))
           return mlir::failure();
-        out.value = File{};
         return mlir::success();
       });
 
@@ -695,7 +672,7 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
       bundle(staticPerDevice.out, cdo.out)
           .map<std::string>("bif_{0}.bif",
                             [](const Item<OpInModule<DeviceOp>> &devItem,
-                               const Item<File> &cdoItem,
+                               const Item<Directory> &cdoItem,
                                Item<std::string> &out) -> mlir::LogicalResult {
                               DeviceOp d = devItem.get().op;
                               out.value =
@@ -1138,23 +1115,16 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   if (generateScratchpadParams)
     outputs.push_back(&paramsFile);
 
-  // Core compilation output: emit the per-core ELFs (or objects with --no-link)
-  // when --compile is passed, or as the default when no other artifact was
-  // requested (so a bare `aiecc design.mlir` builds every device's cores up
-  // front). When a specific artifact IS requested the engine still pulls
-  // per-core ELFs on demand through `physicalWithElfs` for artifacts that embed
-  // them, so this only governs whether the cores are also written out.
+  // Core-ELF output: emit the per-core ELFs when --aie-generate-core-elfs is
+  // passed, or as the default when no other artifact was requested (so a bare
+  // `aiecc design.mlir` builds every device's cores up front).
   bool anySpecificOutput =
       generateInputWithAddresses || generateScratchpadParams ||
       generateNpuInsts || keepLoc || generateElf || generateCdo ||
       generatePdi || generateTxn || generateCtrlpkt || generateXclbin ||
       generateFullElf || wantAiesim || doCompileHost || !getOutputs.empty();
-  if (compile || !anySpecificOutput) {
-    if (doBuildElfs)
-      outputs.push_back(&compiledElfs);
-    else if (!(noUnified && xchesscc))
-      outputs.push_back(&objects);
-  }
+  if (generateCoreElfs || !anySpecificOutput)
+    outputs.push_back(&compiledElfs);
 
   if (generateInputWithAddresses)
     outputs.push_back(&withAddresses);
@@ -1297,8 +1267,8 @@ int main(int argc, char **argv) {
 
   // Resolve inter-option coupling once, up front: the Chess/Peano toolchain
   // selection (xchesscc/xbridge), the --aiesim implication, and the
-  // resolved-option globals (wantAiesim, doBuildElfs, doUnified,
-  // doCompileHost). See CommandLineOptions.h.
+  // resolved-option globals (wantAiesim, doUnified, doCompileHost). See
+  // CommandLineOptions.h.
   if (!cli::resolveOptions())
     return 1;
 

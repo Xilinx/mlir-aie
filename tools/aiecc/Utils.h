@@ -24,6 +24,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <string>
+#include <system_error>
 #include <vector>
 
 namespace xilinx::aiecc {
@@ -41,6 +42,31 @@ inline std::string absolutePath(llvm::StringRef p) {
   llvm::SmallString<256> abs(p);
   llvm::sys::fs::make_absolute(abs);
   return std::string(abs);
+}
+
+// Recursively copy the contents of directory `src` into `dst` (creating `dst`).
+// Used as the cross-device fallback for publishDirectory and to snapshot a
+// directory artifact into a checkpoint.
+inline std::error_code copyDirectoryRecursively(llvm::StringRef src,
+                                                llvm::StringRef dst) {
+  if (std::error_code ec = llvm::sys::fs::create_directories(dst))
+    return ec;
+  std::error_code ec;
+  for (llvm::sys::fs::recursive_directory_iterator it(src, ec), end;
+       it != end && !ec; it.increment(ec)) {
+    llvm::StringRef rel = llvm::StringRef(it->path()).substr(src.size());
+    while (rel.starts_with("/"))
+      rel = rel.drop_front();
+    llvm::SmallString<256> target(dst);
+    llvm::sys::path::append(target, rel);
+    if (llvm::sys::fs::is_directory(it->path())) {
+      if ((ec = llvm::sys::fs::create_directories(target)))
+        break;
+    } else if ((ec = llvm::sys::fs::copy_file(it->path(), target))) {
+      break;
+    }
+  }
+  return ec;
 }
 
 // Resolve a (possibly relative) path against, in order: cwd, workDir, and the

@@ -42,6 +42,27 @@ namespace xilinx::aiecc {
 // `File` is an opaque tag: the on-disk path lives on ItemBase::filePath.
 struct File {};
 
+// A `Directory` groups files that must travel together on disk: the CDO's set
+// of `.bin` files, or a compiled core's ELF plus chess's `.map`/`.lst`/...
+// sidecars. Like `File` the payload is opaque and ItemBase::filePath holds the
+// item's primary on-disk path -- for a CDO that path is the directory itself,
+// for a core it is the ELF/object inside the bundle -- so asFile() (and hence
+// link inputs / `elf_file` patching) keeps yielding the right thing. `dir`
+// names the folder whose entire contents travel with the item (recursively
+// copied when a checkpoint captures it).
+struct Directory {
+  std::string dir;
+};
+
+// File-like payloads carry their data as on-disk path(s) rather than an
+// in-memory value: asFile() returns filePath verbatim and asString() is
+// invalid. `Directory` additionally tracks a companion folder that travels
+// with the item.
+template <typename T>
+constexpr bool IsFileLikeV =
+    std::is_same_v<T, File> || std::is_same_v<T, Directory>;
+
+
 // A whole-module clone paired with a pointer to one op inside it. Lambdas
 // see the full surrounding context while `op` identifies the focus.
 template <typename KeyOp>
