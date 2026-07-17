@@ -288,8 +288,8 @@ buildAiesimSubgraph(mlir::MLIRContext &context,
   // flows_physical.mlir, then serialize the flows to JSON.
   auto findFlowsPM = std::make_unique<mlir::PassManager>(&context);
   findFlowsPM->nest<DeviceOp>().addPass(xilinx::AIE::createAIEFindFlowsPass());
-  auto &flows = staticPerDevice.map<ModRef>("sim/flows_physical.mlir",
-                                            PassPipeline{std::move(findFlowsPM)});
+  auto &flows = staticPerDevice.map<ModRef>(
+      "sim/flows_physical.mlir", PassPipeline{std::move(findFlowsPM)});
   auto &flowsJson = flows.map<std::string>(
       "sim/flows_physical.json",
       [devFilter](const Item<ModRef> &item,
@@ -312,27 +312,28 @@ buildAiesimSubgraph(mlir::MLIRContext &context,
       bundle(staticPerDevice.out, aieInc.out)
           .join<File>(
               "sim/ps/ps.so",
-              [installDir, aietoolsRoot](
-                  const Node<OpInModule<DeviceOp>> &devs,
-                  const Node<std::string> &incs,
-                  Item<File> &out) -> mlir::LogicalResult {
+              [installDir,
+               aietoolsRoot](const Node<OpInModule<DeviceOp>> &devs,
+                             const Node<std::string> &incs,
+                             Item<File> &out) -> mlir::LogicalResult {
                 assert(!devs.items.empty() && !incs.items.empty());
                 mlir::ModuleOp mod = devs.items.front().get().module.get();
                 DeviceOp d = devs.items.front().get().op;
                 std::string aieTarget = detectAIETarget(mod, d.getSymName());
                 std::string archUpper = llvm::StringRef(aieTarget).upper();
 
-                std::string genwrapper =
-                    installDir + "/aie_runtime_lib/" + archUpper +
-                    "/aiesim/genwrapper_for_ps.cpp";
+                std::string genwrapper = installDir + "/aie_runtime_lib/" +
+                                         archUpper +
+                                         "/aiesim/genwrapper_for_ps.cpp";
                 if (!dryRun && !llvm::sys::fs::exists(genwrapper)) {
                   llvm::errs() << "aiecc: aiesim requires " << genwrapper
                                << " (aietools/runtime lib for " << archUpper
                                << " not installed)\n";
                   return mlir::failure();
                 }
-                // Materialize aie_inc.cpp; genwrapper's `#include "aie_inc.cpp"`
-                // resolves against its directory on the include path.
+                // Materialize aie_inc.cpp; genwrapper's `#include
+                // "aie_inc.cpp"` resolves against its directory on the include
+                // path.
                 std::string incDir = std::string(
                     llvm::sys::path::parent_path(incs.items.front().asFile()));
 
@@ -430,9 +431,8 @@ aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
                  const Node<std::string> &target,
                  const Node<std::string> &script,
                  Item<File> &out) -> mlir::LogicalResult {
-                const NodeBase *nodes[] = {
-                    &xpe,  &shim, &scsim,  &flows,
-                    &flowsJson, &ps, &target, &script};
+                const NodeBase *nodes[] = {&xpe,       &shim, &scsim,  &flows,
+                                           &flowsJson, &ps,   &target, &script};
                 for (const NodeBase *n : nodes)
                   for (const ItemBase *it : n->itemRefs())
                     (void)it->asFile();
