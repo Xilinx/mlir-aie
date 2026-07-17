@@ -19,9 +19,9 @@
 
 namespace xilinx::AIE {
 
-/// Discardable attribute set by `AIEObjectFifoStatefulTransform` on `scf.for` 
-/// loops containing ObjectFifo accesses -- the loop unroll factor (the least 
-/// common multiple of the depths of the objectFifos accessed within the 
+/// Discardable attribute set by `AIEObjectFifoStatefulTransform` on `scf.for`
+/// loops containing ObjectFifo accesses -- the loop unroll factor (the least
+/// common multiple of the depths of the objectFifos accessed within the
 /// loop) consumed by the `AIEObjectFifoUnroll` pass.
 inline constexpr llvm::StringLiteral kObjectFifoUnrollHintAttrName =
     "aie.unroll_hint";
