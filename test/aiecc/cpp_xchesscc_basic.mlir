@@ -13,7 +13,11 @@
 
 // REQUIRES: chess
 
-// RUN: aiecc --xchesscc --xbridge -v %s 2>&1 | FileCheck %s
+// Run in a unique per-test dir: Chess drops cwd-relative scratch (and aiecc's
+// per-core elfs_<core> dir lands in the cwd), so concurrent runs in a shared
+// directory clobber each other.
+// RUN: rm -rf %t && mkdir -p %t
+// RUN: cd %t && aiecc --xchesscc --xbridge -v %s 2>&1 | FileCheck %s
 
 // CHECK-NOT: {{[^ ]*llc }}
 // CHECK: chess-llvm-link

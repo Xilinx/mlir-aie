@@ -8,10 +8,13 @@
 // REQUIRES: chess
 // REQUIRES: peano
 
-// RUN: %python aiecc.py -v --xchesscc --xbridge --aie-generate-pdi --pdi-name=MlirAie0.pdi %s 2>&1 | FileCheck %s --check-prefix=XCHESSCC
-// RUN: %python aiecc.py -v --no-xchesscc --no-xbridge --aie-generate-pdi --pdi-name=MlirAie1.pdi %s 2>&1 | FileCheck %s --check-prefix=PEANO
+// Run in a unique per-test dir: Chess drops cwd-relative scratch, so concurrent
+// runs in a shared directory clobber each other.
+// RUN: rm -rf %t && mkdir -p %t
+// RUN: cd %t && %python aiecc.py -v --xchesscc --xbridge --aie-generate-pdi --pdi-name=MlirAie0.pdi %s 2>&1 | FileCheck %s --check-prefix=XCHESSCC
+// RUN: cd %t && %python aiecc.py -v --no-xchesscc --no-xbridge --aie-generate-pdi --pdi-name=MlirAie1.pdi %s 2>&1 | FileCheck %s --check-prefix=PEANO
 
-// RUN: ls | grep MlirAie | FileCheck %s --check-prefix=CHECK-FILE
+// RUN: ls %t | grep MlirAie | FileCheck %s --check-prefix=CHECK-FILE
 
 // bootgen runs in-process (no exec line); the PDI edge is reported as written.
 // XCHESSCC: wrote edge 'MlirAie0.pdi'
