@@ -1,0 +1,25 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+digraph aiecc {
+  rankdir=LR;
+  node [shape=box, fontname="monospace"];
+  n0 [label="input.mlir"];
+  n1 [label="placed.mlir"];
+  n2 [label="traced.mlir"];
+  n3 [label="input_with_addresses.mlir"];
+  n4 [label="input_physical.mlir"];
+  n5 [label="npu_lowered.mlir"];
+  n6 [label="npu_seq_{0}.mlir"];
+  n7 [label="perSeqMatching"];
+  n8 [label="npu_program_{0}.bin"];
+  n9 [label="insts_{0}.bin", style=filled, fillcolor=lightblue];
+  n0 -> n1;
+  n1 -> n2;
+  n2 -> n3;
+  n3 -> n4;
+  n4 -> n5;
+  n5 -> n6;
+  n6 -> n7;
+  n7 -> n8;
+  n8 -> n9;
+}

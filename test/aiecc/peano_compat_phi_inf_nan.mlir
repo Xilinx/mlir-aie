@@ -6,25 +6,19 @@
 //===----------------------------------------------------------------------===//
 
 // Regression test: downgradeIRForPeano must rewrite *bare* inf/nan literals
-// that LLVM 23 (llvm/llvm-project@41c214f0b115, 2026-05-07,
-// https://github.com/llvm/llvm-project/pull/190649) emits without a type
-// prefix in phi operand lists, e.g.
+// that LLVM 23 emits without a type prefix in phi operand lists, e.g.
 //   %max = phi float [ %next, %body ], [ -inf, %entry ]
-// Peano's LLVM 21 opt rejects the bare 'inf'/'nan' keyword:
-//   opt: ...peano-compat.ll: error: expected value token
-//     %7 = phi float [ %16, %10 ], [ -inf, %2 ]
-//
-// A max-reduction seeded with -inf produces exactly this phi: the -inf
-// initial value of the scf.for iter_arg becomes the entry-edge incoming
-// operand. After downgrade the peano-compat.ll must use the double-widened
-// hex form '0xFFF0000000000000' and contain no bare '-inf' phi operand.
+// to the double-widened hex form Peano's opt accepts. Such a phi arises from a
+// max-reduction seeded with -inf (the scf.for iter_arg's initial value becomes
+// the entry-edge operand). The downgraded peano-compat.ll must use
+// '0xFFF0000000000000' and contain no bare '-inf' phi operand.
 
 // REQUIRES: peano
 
 // RUN: aiecc --no-xchesscc --no-xbridge --tmpdir %t %s
-// RUN: FileCheck %s --input-file %t/main_core_0_2.peano-compat.ll \
+// RUN: FileCheck %s --input-file %t/peano-compat_main_core_0_2.ll \
 // RUN:   --implicit-check-not="[ -inf" --implicit-check-not=", -inf"
-// RUN: FileCheck %s --input-file %t/main_core_0_2.peano-compat.ll \
+// RUN: FileCheck %s --input-file %t/peano-compat_main_core_0_2.ll \
 // RUN:   --check-prefix=CHECK-HEX
 
 // CHECK: define void @core_0_2()

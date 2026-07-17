@@ -3,7 +3,7 @@
 
 # REQUIRES: chess
 
-# RUN: %PYTHON %s --compile --xchesscc --no-link -nv | FileCheck %s
+# RUN: %PYTHON %s --aie-generate-core-elfs --xchesscc -nv | FileCheck %s
 
 # CHECK: xchesscc_wrapper aie
 

@@ -9,24 +9,25 @@
 // REQUIRES: chess
 // REQUIRES: peano
 
-// RUN: %PYTHON aiecc.py --compile --xchesscc --no-link -nv %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf | FileCheck %s --check-prefix=XCHESSCC
-// RUN: %PYTHON aiecc.py --compile --no-xchesscc --no-link -nv %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf | FileCheck %s --check-prefix=PEANO
-// RUN: %PYTHON aiecc.py --no-compile --no-link -nv %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf | FileCheck %s --check-prefix=NOCOMPILE
-// As an optimization, this case compiles and links together, so --no-link results in no compilation either.
-// RUN: %PYTHON aiecc.py --no-unified --compile --no-link --xchesscc -nv %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf | FileCheck %s --check-prefix=NOCOMPILE
-// RUN: %PYTHON aiecc.py --no-unified --compile --no-link --no-xchesscc -nv %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf | FileCheck %s --check-prefix=PEANO
-// RUN: %PYTHON aiecc.py --no-unified --no-compile --no-link -nv %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib %S/test.cpp -o test.elf | FileCheck %s --check-prefix=NOCOMPILE
+// RUN: %PYTHON aiecc.py --aie-generate-core-elfs --xchesscc -nv %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib -o test.elf -- %S/test.cpp 2>&1 | FileCheck %s --check-prefix=XCHESSCC
+// RUN: %PYTHON aiecc.py --aie-generate-core-elfs --no-xchesscc -nv %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib -o test.elf -- %S/test.cpp 2>&1 | FileCheck %s --check-prefix=PEANO
+// The NOCOMPILE runs assert that no core compiler is invoked; they request
+// input_with_addresses so the driver still produces (compiler-free) output for
+// FileCheck to scan instead of an empty graph.
+// RUN: %PYTHON aiecc.py --aie-generate-input-with-addresses -nv %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib -o test.elf -- %S/test.cpp 2>&1 | FileCheck %s --check-prefix=NOCOMPILE
+// RUN: %PYTHON aiecc.py --no-unified --aie-generate-core-elfs --no-xchesscc -nv %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib -o test.elf -- %S/test.cpp 2>&1 | FileCheck %s --check-prefix=PEANO
+// RUN: %PYTHON aiecc.py --no-unified --aie-generate-input-with-addresses -nv %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib -o test.elf -- %S/test.cpp 2>&1 | FileCheck %s --check-prefix=NOCOMPILE
 
 // Note that llc determines the architecture from the llvm IR.
-// XCHESSCC-NOT: {{^[^ ]*llc}}
+// XCHESSCC-NOT: {{[^ ]*llc }}
 // XCHESSCC: xchesscc_wrapper aie2
-// XCHESSCC-NOT: {{^[^ ]*llc}}
+// XCHESSCC-NOT: {{[^ ]*llc }}
 // PEANO-NOT: xchesscc_wrapper
-// PEANO: {{^[^ ]*llc}}
+// PEANO: {{[^ ]*llc }}
 // PEANO-SAME: --march=aie2
 // PEANO-NOT: xchesscc_wrapper
 // NOCOMPILE-NOT: xchesscc_wrapper
-// NOCOMPILE-NOT: {{^[^ ]*llc}}
+// NOCOMPILE-NOT: {{[^ ]*llc }}
 
 module {
   aie.device(xcve2302) {

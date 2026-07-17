@@ -7,7 +7,7 @@
 
 // REQUIRES: aiesimulator
 
-// RUN: %python aiecc.py --no-compile --aiesim %s %S/test.cpp
+// RUN: %python aiecc.py --aiesim %s -- %S/test.cpp
 // RUN: aie.mlir.prj/aiesim.sh | FileCheck %s
 
 // CHECK: AIE2P ISS

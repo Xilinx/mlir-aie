@@ -9,11 +9,9 @@
 
 // RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-txn --verbose %s 2>&1 | FileCheck %s
 
-// CHECK: Generating transaction MLIR for device
-// CHECK: Running transaction generation pipeline in-memory
-// CHECK: Transaction generation pipeline completed successfully
-// CHECK: Wrote transaction MLIR to
-// CHECK: Compilation completed successfully
+// Transaction MLIR generation for the device.
+// CHECK: ({{[0-9]+}}/{{[0-9]+}}) {{.*}}_transaction.mlir
+// CHECK: wrote edge '{{.*}}_transaction.mlir'
 
 module {
   aie.device(npu1_1col) {

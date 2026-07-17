@@ -9,14 +9,13 @@
 
 // Test multi-core compilation
 
-// RUN: aiecc --no-xchesscc --no-xbridge --verbose %s | FileCheck %s
+// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-npu-insts --aie-generate-core-elfs --verbose %s 2>&1 | FileCheck %s
 
-// CHECK: Successfully parsed input file
-// CHECK: Device 'main' with 2 core(s)
-// CHECK: Compiling 2 core(s)
-// CHECK-DAG: Compiling core (0, 2)
-// CHECK-DAG: Compiling core (1, 2)
-// CHECK: Compilation completed successfully
+// Verify both cores are compiled and linked, via the per-core exec argv paths.
+// CHECK: ({{[0-9]+}}/{{[0-9]+}}) input.mlir
+// CHECK-DAG: exec:{{.*}}core_0_2
+// CHECK-DAG: exec:{{.*}}core_1_2
+// CHECK: wrote edge 'insts_
 
 module {
   aie.device(npu2_4col) {

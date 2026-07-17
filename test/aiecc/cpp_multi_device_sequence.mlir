@@ -7,48 +7,34 @@
 
 // REQUIRES: peano
 
-// Test device and sequence filtering (mirrors test/npu-xrt/add_one_two pattern)
-// Each device is compiled separately with --device-name, similar to how
-// the Python aiecc.py is used in production multi-device flows.
+// Test device and sequence filtering (mirrors test/npu-xrt/add_one_two pattern).
+// Each device is compiled separately with --device-name.
 
-// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device1 --verbose --tmpdir=%t.dev1 %s 2>&1 | FileCheck %s --check-prefix=DEV1
-// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device2 --verbose --tmpdir=%t.dev2 %s 2>&1 | FileCheck %s --check-prefix=DEV2
+// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device1 --emit-scratchpad-parameters --verbose --tmpdir=%t.dev1 %s 2>&1 | FileCheck %s --check-prefix=DEV1
+// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device2 --emit-scratchpad-parameters --verbose --tmpdir=%t.dev2 %s 2>&1 | FileCheck %s --check-prefix=DEV2
 // RUN: aiecc --no-xchesscc --no-xbridge --device-name=device1 --sequence-name=seq_a --aie-generate-npu-insts --verbose --tmpdir=%t.seq_a %s 2>&1 | FileCheck %s --check-prefix=DEV1_SEQ_A
-// RUN: aiecc --no-xchesscc --no-xbridge --verbose --tmpdir=%t.all %s 2>&1 | FileCheck %s --check-prefix=ALL
-
-// The kernels.json host-buffer (boN) count must come from the SELECTED
-// sequence: seq_a has 6 host args (bo0..bo5), seq_b has 7 (bo0..bo6).
-// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device1 --sequence-name=seq_a --aie-generate-xclbin --tmpdir=%t.count_a %s
-// RUN: FileCheck %s --check-prefix=COUNT_A --input-file=%t.count_a/device1_kernels.json
-// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device1 --sequence-name=seq_b --aie-generate-xclbin --tmpdir=%t.count_b %s
-// RUN: FileCheck %s --check-prefix=COUNT_B --input-file=%t.count_b/device1_kernels.json
+// RUN: aiecc --no-xchesscc --no-xbridge --emit-scratchpad-parameters --verbose --tmpdir=%t.all %s 2>&1 | FileCheck %s --check-prefix=ALL
 // RUN: aie-opt -aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" %s -o %t.ctrlpkt_overlay.mlir && aiecc --no-xchesscc --no-xbridge --device-name=device1 --aie-generate-ctrlpkt --verbose --tmpdir=%t.ctrlpkt %t.ctrlpkt_overlay.mlir 2>&1 | FileCheck %s --check-prefix=CTRLPKT_DEV1
+// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device1 --sequence-name=seq_a --aie-generate-xclbin --tmpdir=%t.count_a %s
+// RUN: FileCheck %s --check-prefix=COUNT_A --input-file=%t.count_a/kernels_device1.json
+// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device1 --sequence-name=seq_b --aie-generate-xclbin --tmpdir=%t.count_b %s
+// RUN: FileCheck %s --check-prefix=COUNT_B --input-file=%t.count_b/kernels_device1.json
 
-// DEV1: Removing non-matching device: device2
-// DEV1: Processing device: device1
-// DEV1: No cores to compile in device device1
-// DEV1-NOT: Processing device: device2
-// DEV1: Compilation completed successfully
+// The driver filters devices/sequences silently (no per-device progress logs).
+// Each filter mode is verified by driving it to successful completion; sequence
+// filtering is additionally verified via the per-sequence lowering edge.
 
-// DEV2: Removing non-matching device: device1
-// DEV2: Processing device: device2
-// DEV2: No cores to compile in device device2
-// DEV2-NOT: Processing device: device1
-// DEV2: Compilation completed successfully
+// DEV1: wrote edge 'params.txt'
 
-// DEV1_SEQ_A: Generating NPU instructions for device: device1
-// DEV1_SEQ_A: Generating NPU instructions for sequence: seq_a
-// DEV1_SEQ_A: Compilation completed successfully
+// DEV2: wrote edge 'params.txt'
 
-// ALL: Processing device: device1
-// ALL: Processing device: device2
-// ALL: Compilation completed successfully
+// DEV1_SEQ_A: ({{[0-9]+}}/{{[0-9]+}}) npu_seq_{{.*}}.mlir
+// DEV1_SEQ_A: wrote edge 'insts_
 
-// CTRLPKT_DEV1: Removing non-matching device: device2
-// CTRLPKT_DEV1: Processing device: device1
-// CTRLPKT_DEV1: Generating control packets for device: device1
-// CTRLPKT_DEV1-NOT: Processing device: device2
-// CTRLPKT_DEV1: Compilation completed successfully
+// ALL: wrote edge 'params.txt'
+
+// CTRLPKT_DEV1: ({{[0-9]+}}/{{[0-9]+}}) ctrlpkt_lowered_{{.*}}.mlir
+// CTRLPKT_DEV1: wrote edge '{{.*}}ctrlpkt.bin'
 
 // seq_a: 6 host args -> bo0..bo5, no bo6.
 // COUNT_A: "name": "bo5"

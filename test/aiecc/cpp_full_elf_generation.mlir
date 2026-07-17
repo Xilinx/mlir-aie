@@ -12,12 +12,11 @@
 
 // RUN: aiecc --no-xchesscc --no-xbridge --generate-full-elf --full-elf-name=test_full.elf --verbose %s 2>&1 | FileCheck %s
 
-// CHECK: Successfully parsed input file
-// CHECK: Found 1 AIE device
-// CHECK: Generating full ELF with 1 device
-// CHECK: Generated config.json
-// CHECK: Generated full ELF: test_full.elf
-// CHECK: Compilation completed successfully
+// Full ELF via aiebu-asm aie2_config target: config JSON then full ELF,
+// honoring --full-elf-name.
+// CHECK: ({{[0-9]+}}/{{[0-9]+}}) full_elf_config.json
+// CHECK: ({{[0-9]+}}/{{[0-9]+}}) test_full.elf
+// CHECK: wrote edge 'test_full.elf'
 
 module {
   aie.device(npu1_1col) {
