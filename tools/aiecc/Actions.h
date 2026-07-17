@@ -136,6 +136,44 @@ struct PassPipeline {
   }
 };
 
+// SplitIRAction — walks a ModuleOp for KeyOp instances; clones the module
+// once per match. Use `.filter` downstream to skip matches.
+template <typename KeyOp>
+struct SplitIRAction {
+  using KeyFn = std::function<std::string(KeyOp)>;
+  KeyFn keyFn;
+
+  SplitIRAction(KeyFn fn) : keyFn(std::move(fn)) {}
+
+  mlir::FailureOr<std::vector<std::pair<std::string, OpInModule<KeyOp>>>>
+  operator()(const mlir::OwningOpRef<mlir::ModuleOp> &in) const {
+    auto srcModule = in.get();
+    std::vector<std::pair<std::string, size_t>> matches;
+    size_t idx = 0;
+    srcModule.walk([&](KeyOp op) {
+      matches.emplace_back(keyFn(op), idx);
+      ++idx;
+    });
+
+    std::vector<std::pair<std::string, OpInModule<KeyOp>>> out;
+    out.reserve(matches.size());
+    for (auto &[key, target] : matches) {
+      mlir::OwningOpRef<mlir::ModuleOp> clone = srcModule.clone();
+      KeyOp clonedOp;
+      size_t cur = 0;
+      clone->walk([&](KeyOp op) -> mlir::WalkResult {
+        if (cur++ != target)
+          return mlir::WalkResult::advance();
+        clonedOp = op;
+        return mlir::WalkResult::interrupt();
+      });
+      out.emplace_back(std::move(key),
+                       OpInModule<KeyOp>{std::move(clone), clonedOp});
+    }
+    return out;
+  }
+};
+
 // ShellCommand — declarative external-tool invocation, built fluently:
 //   ShellCommand{"llc"}.flag("--march", arch).arg("--filetype=obj")
 //                      .input().output("-o")
@@ -429,7 +467,6 @@ private:
       llvm::outs().flush();
     }
     if (dryRun) {
-      llvm::outs() << "Dry run - command not executed\n";
       // Touch an empty output so the path resolves for the engine.
       std::error_code ec;
       llvm::raw_fd_ostream f(outputFile, ec);
@@ -438,14 +475,15 @@ private:
     llvm::SmallVector<llvm::StringRef> argv(cmd.begin(), cmd.end());
     std::string errMsg;
     // Capture the tool's stdout+stderr into a temp file so routine chatter
-    // stays hidden; replayed to stderr only on failure or under --verbose.
+    // stays hidden; replayed to stderr only on failure. Under --verbose the
+    // tool inherits stdout/stderr and prints normally.
     // Redirects are [stdin, stdout, stderr]; std::nullopt inherits, and
     // pointing stdout and stderr at the same path merges them.
     llvm::SmallString<128> logPath;
     int logFd = -1;
     std::optional<llvm::StringRef> capture;
-    if (!llvm::sys::fs::createTemporaryFile("aiecc-tool", "log", logFd,
-                                            logPath)) {
+    if (!verbose && !llvm::sys::fs::createTemporaryFile("aiecc-tool", "log",
+                                                        logFd, logPath)) {
       // ExecuteAndWait opens the path itself, so close our handle.
       llvm::sys::Process::SafelyCloseFileDescriptor(logFd);
       capture = llvm::StringRef(logPath);
@@ -458,7 +496,7 @@ private:
     int rc = llvm::sys::ExecuteAndWait(cmd[0], argv, std::nullopt, redirectRef,
                                        0, 0, &errMsg);
     if (capture) {
-      if (rc != 0 || verbose)
+      if (rc != 0)
         if (auto buf = llvm::MemoryBuffer::getFile(logPath))
           llvm::errs() << (*buf)->getBuffer();
       llvm::sys::fs::remove(logPath);

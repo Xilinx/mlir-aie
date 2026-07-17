@@ -911,44 +911,6 @@ struct RekeyEdge : Edge<P, S> {
   }
 };
 
-// SplitIRAction — walks a ModuleOp for KeyOp instances; clones the module
-// once per match. Use `.filter` downstream to skip matches.
-template <typename KeyOp>
-struct SplitIRAction {
-  using KeyFn = std::function<std::string(KeyOp)>;
-  KeyFn keyFn;
-
-  SplitIRAction(KeyFn fn) : keyFn(std::move(fn)) {}
-
-  mlir::FailureOr<std::vector<std::pair<std::string, OpInModule<KeyOp>>>>
-  operator()(const mlir::OwningOpRef<mlir::ModuleOp> &in) const {
-    auto srcModule = in.get();
-    std::vector<std::pair<std::string, size_t>> matches;
-    size_t idx = 0;
-    srcModule.walk([&](KeyOp op) {
-      matches.emplace_back(keyFn(op), idx);
-      ++idx;
-    });
-
-    std::vector<std::pair<std::string, OpInModule<KeyOp>>> out;
-    out.reserve(matches.size());
-    for (auto &[key, target] : matches) {
-      mlir::OwningOpRef<mlir::ModuleOp> clone = srcModule.clone();
-      KeyOp clonedOp;
-      size_t cur = 0;
-      clone->walk([&](KeyOp op) -> mlir::WalkResult {
-        if (cur++ != target)
-          return mlir::WalkResult::advance();
-        clonedOp = op;
-        return mlir::WalkResult::interrupt();
-      });
-      out.emplace_back(std::move(key),
-                       OpInModule<KeyOp>{std::move(clone), clonedOp});
-    }
-    return out;
-  }
-};
-
 // BundleForEachEdge — zip N source Nodes by the first source's keys, invoke
 // `fn` once per key with per-source Item refs.
 template <typename U, typename BundleMapFn, typename... Ts>

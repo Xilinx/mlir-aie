@@ -183,8 +183,6 @@ inline cl::alias numThreadsAlias("nthreads", cl::desc("Alias for -j"),
 //
 // Host source files and host-compiler flags are passed after a `--` separator
 // and forwarded verbatim to the host compiler (all AIE architectures).
-// Arguments *before* `--` are parsed strictly: unknown options are rejected,
-// not silently forwarded.
 
 inline cl::opt<bool> compileHost(
     "compile-host",
@@ -222,9 +220,7 @@ inline std::vector<std::string> hostPassthroughArgs;
 //===----------------------------------------------------------------------===//
 // Which compilation artifacts to emit. Each `aie-generate-*` flag selects one
 // output; the adjacent `*-name` options set its filename template ({0} expands
-// to the device / sequence key). These are the only options that decide what
-// the driver produces — the graph itself is declared unconditionally and the
-// engine prunes back from whatever is selected here.
+// to the device / sequence key).
 
 inline cl::opt<bool> generateNpuInsts(
     "aie-generate-npu-insts",
@@ -357,15 +353,16 @@ inline cl::list<std::string> getKeys(
 // Diagnostics, dry-run, progress, and checkpoint/resume
 //===----------------------------------------------------------------------===//
 // Version/diagnostic flags, the `-n` dry run, execution-progress reporting, and
-// the checkpoint/resume + on-failure reproducer machinery. `--profile` is
-// accepted but ignored for backward compatibility.
+// the checkpoint/resume + on-failure reproducer machinery.
 
 // Print version info and exit.
 inline cl::opt<bool> showVersion("aie-version",
                                  cl::desc("Show version information and exit"));
 inline cl::opt<bool> dryRun("n", cl::desc("Dry run"));
-// Deprecated/ignored.
-inline cl::opt<bool> profile("profile", cl::desc("Deprecated, ignored"));
+// Print the wall-clock time each edge took to execute at the end of the run.
+inline cl::opt<bool>
+    profile("profile",
+            cl::desc("Print a per-edge execution-time summary at the end"));
 inline cl::opt<bool> progress(
     "progress",
     cl::desc("Show single-line execution progress: overwrite one status line "

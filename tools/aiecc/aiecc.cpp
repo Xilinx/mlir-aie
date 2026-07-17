@@ -204,6 +204,8 @@ buildHostExeSubgraph(EdgeWithTypedOutput<OpInModule<DeviceOp>> &perDevice,
                   << " were found; select one with --device-name\n";
               return mlir::failure();
             }
+            assert(arches.items.size() == 1 && incs.items.size() == 1 &&
+                   "host exe expects one device's arch and include dir");
             // Materialize aie_inc.cpp; its directory goes on the include path.
             std::string incDir = std::string(
                 llvm::sys::path::parent_path(incs.items.front().asFile()));
@@ -309,6 +311,7 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   std::string workDirStr = getWorkDir();
   // xchesscc_wrapper scratch dir
   std::string chessWork = workDirStr + "/chess_work";
+  std::string lldPath = ShellCommand::resolveTool("ld.lld");
 
   auto matchesDeviceFilter = [devFilter](DeviceOp d) {
     // Empty reset devices synthesized by --expand-load-pdis must always be
@@ -318,8 +321,7 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   };
 
   // Split a whole-module edge into one item per DeviceOp (keyed by bare device
-  // name), then drop devices that don't match --device-name. The per-device
-  // fan-outs below (compile / config / npu) all start from this.
+  // name), then drop devices that don't match --device-name.
   auto splitPerDevice = [&matchesDeviceFilter](EdgeWithTypedOutput<ModRef> &src,
                                                std::string nameFmt,
                                                std::string filterName)
@@ -503,7 +505,6 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
 
   // Link each core's object into its .elf; user can chose between
   // chess/xbridge or peano
-  std::string lldPath = ShellCommand::resolveTool("ld.lld");
 
   // chess linking
   auto &bcfScripts = perCore.map<std::string>(
@@ -736,7 +737,7 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
 
   // Partial ELF containing the DMA sequence and the control packet data;
   // this is still used in combination with an xclbin. The
-  // external_buffers.json patch tells the assembler which runtime argument
+  // ctrlpkt_extbuf_{0}.json patch tells the assembler which runtime argument
   // slot carries the control-packet buffer and how large it is.
   auto &ctrlpktExtBuf =
       bundle(staticPerDevice.out, ctrlpkt.out)
@@ -953,9 +954,6 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   //   * npuProgramFullElf (not folded, built just below the full-ELF section)
   //     drives the combined full ELF, whose runtime assigns host-buffer
   //     addresses itself.
-  // Keeping them as separate edges is what lets a single invocation request
-  // both a full ELF and an xclbin/insts.bin and get correct address folding for
-  // each. Both share buildNpuProgramSubgraph.
   auto &npuProgram = buildNpuProgramSubgraph(perSeq, "npu_program_{0}.bin",
                                              /*foldDDRAddrOffset=*/true);
 
@@ -1005,9 +1003,7 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   // The full ELF consumes its own NPU program variant, translated WITHOUT
   // folding the DDR-aperture offset (foldDDRAddrOffset=false): the full-ELF
   // runtime assigns host-buffer addresses itself, so the offset must not be
-  // baked into the TXN. This is a distinct edge from `npuInsts` (which folds
-  // the offset for the xclbin path) so that requesting a full ELF and an
-  // xclbin/insts.bin in the same run yields each with the correct folding.
+  // baked into the TXN.
   auto &npuProgramFullElf = buildNpuProgramSubgraph(
       perSeq, "npu_program_full_elf_{0}.bin", /*foldDDRAddrOffset=*/false);
   auto &npuInstsFullElf = npuProgramFullElf.map<std::vector<char>>(
@@ -1051,13 +1047,14 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                                           .arg("-o")
                                                           .output());
 
-  // --- Host program -------------------------------------------------------
-  // The AIE1 host-compilation subgraph (aie_inc.cpp + clang++ link) lives in
-  // buildHostExeSubgraph, which reads the host-compilation command-line option
-  // globals directly (see its comment).
+  //--------------------------------------------------------------------------//
+  // Host program
+  //--------------------------------------------------------------------------//
   auto &hostExe = buildHostExeSubgraph(staticPerDevice, perDeviceArches);
 
-  // --- AIE simulator Work folder -----------------------------------------
+  //--------------------------------------------------------------------------//
+  // AIE simulator Work folder
+  //--------------------------------------------------------------------------//
   // Per device, emit the `sim/` work folder (graph.xpe, shim solution, scsim
   // config, flows), build ps.so, and the `aiesim.sh` launcher.
   //
@@ -1109,9 +1106,6 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   //--------------------------------------------------------------------------//
   // Output selection
   //--------------------------------------------------------------------------//
-  // Append only the artifacts the user asked for. The engine prunes the graph
-  // backwards from this list, so unrequested edges (and their exclusive
-  // prerequisites) never run — no `if (want...)` guards are needed above.
   if (generateScratchpadParams)
     outputs.push_back(&paramsFile);
 
@@ -1302,13 +1296,6 @@ int main(int argc, char **argv) {
   ShellCommand::verbose = verbose;
   ShellCommand::dryRun = dryRun;
 
-  // Note: we deliberately do *not* hard-fail here if --xchesscc/--xbridge is
-  // selected but aietools is missing. Many flows never reach core compilation
-  // (--no-compile, dry-run, or a run that fails earlier during routing/buffer
-  // allocation), and requiring aietools up front would break them on
-  // peano-only machines. The aietools requirement is enforced lazily, when the
-  // chess link edge actually runs (see buildObjectSubgraph).
-
   //--------------------------------------------------------------------------//
   // Compilation artifact graph
   //--------------------------------------------------------------------------//
@@ -1327,18 +1314,12 @@ int main(int argc, char **argv) {
   }
 
   // Every other mode actually runs the graph, which requires an input .mlir.
-  // Positionals are cl::ZeroOrMore so --emit-dot can run without one, so
-  // enforce the requirement here.
   if (getInputFilename().empty()) {
     llvm::errs() << "aiecc: no input file specified; expected an input .mlir\n";
     return 1;
   }
 
-  // Reject an empty (or whitespace-only) input up front. Such a module has no
-  // aie.device, so --aie-canonicalize-device silently wraps it in a default,
-  // non-NPU 'main' device; the failure then surfaces much later as a confusing
-  // "'main' is not NPU" error from CDO/PDI/xclbin generation. Catch it here and
-  // emit a clear diagnostic instead.
+  // Reject an empty (or whitespace-only) input up front.
   if (sourceMgr.getNumBuffers() == 0) {
     llvm::errs() << "aiecc: could not open input file '" << getInputFilename()
                  << "'\n";
@@ -1385,7 +1366,8 @@ int main(int argc, char **argv) {
   bool showProgress = !noProgress && !verbose;
   Engine engine({outputDir, getWorkDir(), verbose, showProgress,
                  keepIntermediates, numThreads,
-                 std::vector<std::string>(getKeys.begin(), getKeys.end())});
+                 std::vector<std::string>(getKeys.begin(), getKeys.end()),
+                 profile});
   if (mlir::failed(
           engine.run(g, outputs, satisfied, DeserializeContext{&context}))) {
     // On-failure reproducer ("repeater"): dump a checkpoint of the failed

@@ -18,7 +18,9 @@
 // CHECK: ({{[0-9]+}}/{{[0-9]+}}) input_physical.mlir
 // CHECK: wrote edge 'insts_
 
-// DRY: Dry run - command not executed
+// A dry run echoes the tool command lines (under --verbose) but does not
+// execute them.
+// DRY: aiecc: exec:
 
 // NPU: ({{[0-9]+}}/{{[0-9]+}}) npu_program_{{.*}}.bin
 // NPU: wrote edge 'insts_

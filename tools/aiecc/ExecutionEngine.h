@@ -36,8 +36,7 @@
 
 namespace xilinx::aiecc {
 
-// Backward-reachable set of edges from the requested `outputs` (the same
-// pruning the engine uses to decide what to run).
+// Backward-reachable set of edges from the requested `outputs`
 inline llvm::DenseSet<EdgeBase *>
 reachableEdges(const std::vector<EdgeBase *> &outputs) {
   llvm::DenseSet<EdgeBase *> reachable;
@@ -58,8 +57,7 @@ reachableEdges(const std::vector<EdgeBase *> &outputs) {
 // edges by design (chess vs. peano "elfs_{0}.elf", per-core vs. unified
 // "objects_{0}.o"); exactly one is live in a given build, so disambiguate by
 // membership in `live`. Returns the edge, or an Error describing why the name
-// is unknown or stays ambiguous. Shared by `--get` output selection and
-// `--resume` checkpoint resolution so the two identify edges the same way.
+// is unknown or stays ambiguous.
 inline llvm::Expected<EdgeBase *>
 resolveLiveEdge(const Graph &g, llvm::StringRef name,
                 const llvm::DenseSet<EdgeBase *> &live) {
@@ -92,11 +90,7 @@ resolveLiveEdge(const Graph &g, llvm::StringRef name,
 // highlighted.
 //
 // When `cutEdges` is non-empty (the --checkpoint/--get frontier), the graph
-// also shows where a checkpoint would cut it: every edge backward-reachable
-// from the cut is the "prefix" a checkpoint runs (green, the frontier edges
-// darker); and every dependency arrow that crosses from the prefix into the
-// downstream "suffix" — the part a --resume runs (for the first time, after
-// reloading the frontier from disk) — is drawn as a dashed red "cut" edge.
+// also shows where a checkpoint would cut it.
 inline void writeDotGraph(const Graph &g,
                           const std::vector<EdgeBase *> &outputs,
                           llvm::raw_ostream &os,
@@ -137,9 +131,6 @@ inline void writeDotGraph(const Graph &g,
     if (!reachable.count(e.get()))
       continue;
     os << "  n" << id[e.get()] << " [label=\"" << escape(e->name) << "\"";
-    // Cut-aware styling (only when a cut is present): the frontier edges get a
-    // darker green fill, the rest of the saved prefix a lighter green, and
-    // requested outputs on the suffix side stay blue.
     if (cutSet.count(e.get()))
       os << ", style=filled, fillcolor=\"#8fd694\"";
     else if (prefix.count(e.get()))
@@ -156,9 +147,7 @@ inline void writeDotGraph(const Graph &g,
         continue;
       os << "  n" << id[n->producer] << " -> n" << id[e.get()];
       // The dependency crosses the checkpoint cut when its producer is in the
-      // saved prefix but its consumer is not: this is an edge a --resume severs
-      // (loading the frontier from disk) and runs downstream of (for the first
-      // time — nothing in the prefix is executed again).
+      // saved prefix but its consumer is not
       if (!cutEdges.empty() && prefix.count(n->producer) &&
           !prefix.count(e.get()))
         os << " [color=red, style=dashed, penwidth=2, "
@@ -187,6 +176,7 @@ struct Engine {
     // When non-empty, only output items whose key is listed are written to the
     // output directory (the --get-key filter); empty writes every key.
     std::vector<std::string> outputKeyFilter;
+    bool profile = false; // print a per-edge execution-time summary at the end
   };
 
   Options opts;
@@ -317,6 +307,7 @@ struct Engine {
     llvm::scope_exit resetThreads([&]() { parallelThreadCount() = 1; });
 
     llvm::StringSet<> seenPaths;
+    std::vector<std::pair<std::string, int64_t>> edgeTimings;
     for (auto &e : g.edges) {
       if (!reachable.count(e.get()))
         continue;
@@ -329,12 +320,15 @@ struct Engine {
                                   ? e->restoreNode(sat->second.descriptor,
                                                    sat->second.dir, deserCtx)
                                   : e->execute();
-      if (opts.verbose) {
+      if (opts.verbose || opts.profile) {
         auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                       std::chrono::steady_clock::now() - edgeStart)
                       .count();
-        llvm::errs() << "aiecc: edge '" << displayName(e.get()) << "' took "
-                     << ms << " ms\n";
+        if (opts.profile)
+          edgeTimings.emplace_back(displayName(e.get()).str(), ms);
+        if (opts.verbose)
+          llvm::errs() << "aiecc: edge '" << displayName(e.get()) << "' took "
+                       << ms << " ms\n";
       }
       if (mlir::failed(r)) {
         failedEdge = e.get();
@@ -375,6 +369,20 @@ struct Engine {
       if (opts.verbose)
         llvm::errs() << "aiecc: wrote edge '" << displayName(e.get()) << "'\n";
     }
+
+    // --profile: report each edge's execution time, slowest first, plus total.
+    if (opts.profile && !edgeTimings.empty()) {
+      std::stable_sort(
+          edgeTimings.begin(), edgeTimings.end(),
+          [](const auto &a, const auto &b) { return a.second > b.second; });
+      int64_t total = 0;
+      for (const auto &[name, ms] : edgeTimings)
+        total += ms;
+      llvm::errs() << "aiecc: profile (per-edge execution time):\n";
+      for (const auto &[name, ms] : edgeTimings)
+        llvm::errs() << llvm::formatv("  {0,8} ms  {1}\n", ms, name);
+      llvm::errs() << llvm::formatv("  {0,8} ms  total\n", total);
+    }
     return mlir::success();
   }
 };
@@ -384,8 +392,7 @@ struct Engine {
 // records {argv, frontier} where each frontier entry is {name, dir, descriptor}
 // -- the per-node restore descriptor that captureNode returned. A later
 // `aiecc --resume=<dir>/manifest.json` rebuilds each node via restoreNode and
-// continues (optionally narrowing the suffix with `--get`). Every item of each
-// cut edge is captured — the checkpoint is a complete snapshot of the cut.
+// continues.
 inline void writeCheckpoint(llvm::ArrayRef<EdgeBase *> cutEdges,
                             llvm::StringRef dir,
                             llvm::ArrayRef<std::string> argv) {
