@@ -71,12 +71,12 @@
 // CHECK:             %[[VAL_28:.*]] = aie.dma_start(MM2S, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[VAL_8]], Acquire, %[[VAL_26]])
-// CHECK:             aie.dma_bd(%[[VAL_6]] : memref<16xi32>, 0, 16)
+// CHECK:             aie.dma_bd(%[[VAL_6]] : memref<16xi32> offset = 0 len = 16)
 // CHECK:             aie.use_lock(%[[VAL_8]], Release, %[[VAL_27]])
 // CHECK:             aie.next_bd ^bb2
 // CHECK:           ^bb2:
 // CHECK:             aie.use_lock(%[[VAL_9]], Acquire, %[[VAL_26]])
-// CHECK:             aie.dma_bd(%[[VAL_7]] : memref<16xi32>, 0, 16)
+// CHECK:             aie.dma_bd(%[[VAL_7]] : memref<16xi32> offset = 0 len = 16)
 // CHECK:             aie.use_lock(%[[VAL_9]], Release, %[[VAL_27]])
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb3:
@@ -88,18 +88,19 @@
 // CHECK:             %[[VAL_32:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
 // CHECK:           ^bb1:
 // CHECK:             aie.use_lock(%[[VAL_4]], Acquire, %[[VAL_30]])
-// CHECK:             aie.dma_bd(%[[VAL_2]] : memref<16xi32>, 0, 16)
+// CHECK:             aie.dma_bd(%[[VAL_2]] : memref<16xi32> offset = 0 len = 16)
 // CHECK:             aie.use_lock(%[[VAL_4]], Release, %[[VAL_31]])
 // CHECK:             aie.next_bd ^bb2
 // CHECK:           ^bb2:
 // CHECK:             aie.use_lock(%[[VAL_5]], Acquire, %[[VAL_30]])
-// CHECK:             aie.dma_bd(%[[VAL_3]] : memref<16xi32>, 0, 16)
+// CHECK:             aie.dma_bd(%[[VAL_3]] : memref<16xi32> offset = 0 len = 16)
 // CHECK:             aie.use_lock(%[[VAL_5]], Release, %[[VAL_31]])
 // CHECK:             aie.next_bd ^bb1
 // CHECK:           ^bb3:
 // CHECK:             aie.end
 // CHECK:           }
 // CHECK:         }
+
 
 module @non_adjacency {
     aie.device(xcvc1902) {
