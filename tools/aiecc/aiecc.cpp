@@ -1301,6 +1301,15 @@ int main(int argc, char **argv) {
     return 1;
   }
 
+  // --cut only makes sense as a checkpoint frontier: it stops the build at the
+  // named edge(s) and snapshots them, so it requires --checkpoint to say where.
+  if (!cutOutputs.empty() && checkpointDir.empty()) {
+    llvm::errs()
+        << "aiecc: --cut requires --checkpoint (it marks where to stop "
+           "the build and snapshot it for a later --resume)\n";
+    return 1;
+  }
+
   // MLIR Context
   mlir::DialectRegistry registry;
   mlir::registerAllDialects(registry);
@@ -1392,7 +1401,15 @@ int main(int argc, char **argv) {
   bool showProgress = !noProgress && !verbose;
   Engine engine({outputDir, getWorkDir(), verbose, showProgress,
                  keepIntermediates, numThreads, profile});
-  if (mlir::failed(engine.run(g, outputs, satisfied,
+  // --cut stops the build at the cut point: only the prefix up to the cut
+  // edges is produced (as work-dir intermediates) and snapshotted by
+  // --checkpoint; the requested final artifacts are NOT built here (the
+  // recorded manifest argv lets a later --resume build them). Without --cut,
+  // build the requested outputs normally. `cutEdges` is empty on a --resume.
+  const std::vector<EdgeBase *> noOutputs;
+  const std::vector<EdgeBase *> &runOutputs =
+      cutEdges.empty() ? outputs : noOutputs;
+  if (mlir::failed(engine.run(g, runOutputs, satisfied,
                               DeserializeContext{&context}, cutEdges))) {
     // On-failure reproducer ("repeater"): dump a checkpoint of the failed
     // edge's already-computed inputs and print a command that reloads them and

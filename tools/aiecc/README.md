@@ -87,6 +87,11 @@ write the checkpoint into the directory `cp`:
 aiecc --cut=input_physical.mlir --checkpoint=cp design.mlir
 ```
 
+`--cut` stops the build at the named edge — nothing downstream of it runs, so no
+final artifacts are produced — and snapshots that frontier. It requires
+`--checkpoint` to say where to write the snapshot. The artifacts you eventually
+want are built later, by `--resume`.
+
 Now you can open the intermediate files saved in `cp` and edit them — for
 instance, to hand-tweak the IR and see how a change affects the rest of the
 build. When you are ready, resume from the checkpoint and ask for the artifact
