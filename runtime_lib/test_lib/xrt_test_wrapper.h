@@ -161,9 +161,8 @@ int setup_and_run_aie(Verify verify_results, std::tuple<InBuf<TIns>...> inputs,
   // Kernel arg slot for the idx-th declared `inputs` entry (real input or
   // trailing param).
   auto data_arg_slot = [&](int idx) {
-    return (idx < num_real_inputs)
-               ? (kFirstDataArg + idx)
-               : (out_arg + 1 + (idx - num_real_inputs));
+    return (idx < num_real_inputs) ? (kFirstDataArg + idx)
+                                   : (out_arg + 1 + (idx - num_real_inputs));
   };
 
   // Instruction buffer (kernel arg slot 1).
