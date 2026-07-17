@@ -15,10 +15,7 @@ aiecc [options] <input.mlir>
 ```
 
 To also build a **host program** that drives the array, pass `--compile-host`
-and put the host C/C++ sources — and any host-compiler flags — after a `--`
-separator. Everything after `--` is forwarded verbatim to the host compiler
-(`clang++`), which `#include`s the generated `aie_inc.cpp` array-configuration
-source (its directory is added to the include path automatically):
+and put the host C/C++ sources after a `--`
 
 ```bash
 aiecc --compile-host [options] <input.mlir> -- host.cpp [host-compiler flags]
