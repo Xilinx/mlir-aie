@@ -83,8 +83,8 @@ struct BdPool {
 // Initialize a pool with `n` free IDs. `n` is the tile's BD count, which the
 // compiler reads from the target model (getNumBDs) and passes in. IDs are
 // stacked so that pop() hands out the LOWEST free id first (id 0, then 1, ...),
-// matching the static allocator's lowest-free-first order -- so a first pop from
-// a fresh pool equals a pinned bd_id = 0.
+// matching the static allocator's lowest-free-first order -- so a first pop
+// from a fresh pool equals a pinned bd_id = 0.
 inline BdPool bd_pool_init(uint32_t n) {
   BdPool p;
   p.head = 0;
