@@ -16,6 +16,7 @@
 //
 // RUN: mkdir -p %t.prj
 // RUN: %aiecc %backend_flags --no-aiesim --aie-generate-xclbin \
+// RUN:   --aie-generate-input-with-addresses --output-dir=%t.prj \
 // RUN:   --no-compile-host --xclbin-name=%t.xclbin --tmpdir=%t.prj %S/aie.mlir
 //
 // Generate the C++ TXN builder from aiecc's lowered intermediate, mirroring the
