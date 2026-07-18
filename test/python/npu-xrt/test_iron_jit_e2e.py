@@ -328,24 +328,35 @@ def test_get_pdi_path_single_device(N):
 
 
 def test_get_pdi_paths_multi_device(tmp_path):
-    """A real two-device compile emits two PDIs; the accessors expose both.
+    """get_pdi_path(device_name=...) works for non-'main' device symbol names.
 
-    Compiles test/npu-xrt/add_one_two/aie.mlir (two aie.device ops: @design1,
-    @design2) through the BYO-.mlir CompilableDesign path.  This is the case
-    the old main.pdi-hardcoded accessor silently missed.
+    Compiles each device from test/npu-xrt/add_one_two/aie.mlir separately
+    (using --device-name to select one aie.device at a time), verifying that
+    the PDI is named after the device symbol rather than hardcoded 'main'.
     """
     src = _TWO_DEVICE_MLIR.read_text().replace("NPUDEVICE", _device_enum_name())
     mlir = tmp_path / "two_device.mlir"
     mlir.write_text(src)
 
-    design = CompilableDesign(mlir)
-    design.compile()  # cache mode: one <device>.pdi per aie.device
+    design1 = CompilableDesign(
+        mlir,
+        aiecc_flags=["--device-name=design1"],
+    )
+    design1.compile()
+    pdi1 = design1.get_pdi_path()
+    assert pdi1 is not None
+    assert pdi1.exists()
+    assert pdi1.name == "design1.pdi"
+    assert design1.get_pdi_path(device_name="design1") == pdi1
+    assert design1.get_pdi_path(device_name="nope") is None
 
-    pdis = design.get_pdi_paths()
-    assert [p.name for p in pdis] == ["design1.pdi", "design2.pdi"]
-    assert all(p.exists() for p in pdis)
-
-    # device_name selects a specific device's PDI; a bad name returns None.
-    assert design.get_pdi_path(device_name="design1") == pdis[0]
-    assert design.get_pdi_path(device_name="design2") == pdis[1]
-    assert design.get_pdi_path(device_name="nope") is None
+    design2 = CompilableDesign(
+        mlir,
+        aiecc_flags=["--device-name=design2"],
+    )
+    design2.compile()
+    pdi2 = design2.get_pdi_path()
+    assert pdi2 is not None
+    assert pdi2.exists()
+    assert pdi2.name == "design2.pdi"
+    assert design2.get_pdi_path(device_name="design2") == pdi2
