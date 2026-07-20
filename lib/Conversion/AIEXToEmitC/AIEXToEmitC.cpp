@@ -31,6 +31,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/RegionUtils.h"
 
 #include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/TypeSwitch.h"
@@ -104,20 +105,15 @@ public:
     if (!ok)
       return std::nullopt;
 
-    // Erase the converted npu ops, then sweep now-dead memref/arith clones
-    // (e.g. a get_global or folded-away address constant). Live arith feeding
-    // runtime fields is kept for arith-to-emitc. Collect first: erasing
-    // mid-walk is unsafe.
+    // Erase the converted npu ops, then DCE their now-dead operand clones (a
+    // get_global feeding a blockwrite, a folded-away address constant). Region-
+    // scoped runRegionDCE, not a module canonicalizer: the latter would also
+    // drop the shared memref.global the blockwrite data was inlined from, which
+    // other sequences in the module still reference.
     for (Operation *op : llvm::reverse(consumed))
       op->erase();
-    SmallVector<Operation *> deadSweep;
-    funcOp.walk<WalkOrder::PostOrder>([&](Operation *op) {
-      if (isa<memref::MemRefDialect, arith::ArithDialect>(op->getDialect()) &&
-          op->use_empty())
-        deadSweep.push_back(op);
-    });
-    for (Operation *op : deadSweep)
-      op->erase();
+    IRRewriter rewriter(funcOp.getContext());
+    (void)runRegionDCE(rewriter, funcOp.getFunctionBody());
     return count;
   }
 
