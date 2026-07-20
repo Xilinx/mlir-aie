@@ -416,7 +416,7 @@ Be sure you have the latest BIOS for your laptop or mini PC, this will ensure th
 
 [MLIR Dialect and Compiler Documentation](https://xilinx.github.io/mlir-aie/)
 
-Interested in contributing MLIR-AIE? [Information for developers](docs/CONTRIBUTING.md)
+Interested in contributing MLIR-AIE? [Information for developers](CONTRIBUTING.md)
 
 -----
 
