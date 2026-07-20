@@ -225,7 +225,7 @@ Below steps replicate what the install script does.
 1. Install IRON library by installing the `mlir-aie` wheels:
 
    For installing the `mlir-aie` wheels, there are 3 options. Note that for whichever path you take, it is
-   important to sync the `mlir-aie` wheels version, the github repo commit, and the requirements versions. If
+   important to sync the `mlir-aie` wheels version, the GitHub repo commit, and the requirements versions. If
    you install from something other than the latest wheels, make sure you use the repo commit -- and
    installation instructions -- from that point in time.
 
