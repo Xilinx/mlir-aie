@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 // Host for the dynamic (runtime M/N) whole-array matmul. The instruction stream
-// is NOT read from an insts.bin: it is built AT RUNTIME by the generated C++ TXN
-// builder (generate_txn_main_sequence, from GEN_HDR) called with the M/K/N
+// is NOT read from an insts.bin: it is built AT RUNTIME by the generated C++
+// TXN builder (generate_txn_main_sequence, from GEN_HDR) called with the M/K/N
 // chosen at runtime (argv). One compiled xclbin serves any M/N that is a
 // multiple of the tile granularity and within the compiled maximum -- the
 // compute cores run a while_true loop and consume exactly as many tiles as the
@@ -65,17 +65,21 @@ int main(int argc, const char *argv[]) {
   xrt::xclbin xclbin = xrt::xclbin(XCLBIN);
 
   std::vector<xrt::xclbin::kernel> xkernels = xclbin.get_kernels();
-  xrt::xclbin::kernel xkernel = *std::find_if(
-      xkernels.begin(), xkernels.end(), [](xrt::xclbin::kernel &k) {
-        return k.get_name().rfind(KERNEL_NAME, 0) == 0;
-      });
-  std::string kernel_name = xkernel.get_name();
+  auto xkernel = std::find_if(xkernels.begin(), xkernels.end(),
+                              [](xrt::xclbin::kernel &k) {
+                                return k.get_name().rfind(KERNEL_NAME, 0) == 0;
+                              });
+  if (xkernel == xkernels.end()) {
+    std::cout << "no kernel matching '" << KERNEL_NAME << "' in the xclbin\n";
+    return 1;
+  }
+  std::string kernel_name = xkernel->get_name();
 
   device.register_xclbin(xclbin);
   xrt::hw_context context(device, xclbin.get_uuid());
   auto kernel = xrt::kernel(context, kernel_name);
 
-  auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
+  auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(instr_v[0]),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
   auto bo_a = xrt::bo(device, M * K * sizeof(A_DTYPE), XRT_BO_FLAGS_HOST_ONLY,
                       kernel.group_id(3));
@@ -100,7 +104,7 @@ int main(int argc, const char *argv[]) {
   std::memset(buf_c, 0, M * N * sizeof(C_DTYPE));
 
   std::memcpy(bo_instr.map<void *>(), instr_v.data(),
-              instr_v.size() * sizeof(int));
+              instr_v.size() * sizeof(instr_v[0]));
 
   bo_instr.sync(XCL_BO_SYNC_BO_TO_DEVICE);
   bo_a.sync(XCL_BO_SYNC_BO_TO_DEVICE);
@@ -108,8 +112,7 @@ int main(int argc, const char *argv[]) {
   bo_c.sync(XCL_BO_SYNC_BO_TO_DEVICE);
 
   unsigned int opcode = 3;
-  auto run =
-      kernel(opcode, bo_instr, instr_v.size(), bo_a, bo_b, bo_c);
+  auto run = kernel(opcode, bo_instr, instr_v.size(), bo_a, bo_b, bo_c);
   ert_cmd_state r = run.wait();
   if (r != ERT_CMD_STATE_COMPLETED) {
     std::cout << "Kernel did not complete. Returned status: " << r << "\n";

@@ -31,7 +31,7 @@ import numpy as np
 import aie.iron as iron
 from aie.iron import ObjectFifo, Program, Runtime, Worker, kernels, str_to_dtype
 from aie.iron.controlflow import range_
-from aie.iron.device import NPU2, from_name
+from aie.iron.device import from_name
 from aie.dialects.aiex import (
     shim_dma_single_bd_task,
     dma_start_task,
