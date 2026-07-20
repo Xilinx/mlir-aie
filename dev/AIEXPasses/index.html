@@ -2873,6 +2873,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#-aie-lower-dynamic-bd-pool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        -aie-lower-dynamic-bd-pool
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#-aie-lower-memcpy" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3495,6 +3506,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#-aie-lower-dynamic-bd-pool" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        -aie-lower-dynamic-bd-pool
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#-aie-lower-memcpy" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3829,6 +3851,20 @@ operations.</p>
 <h3 id="-aie-lower-broadcast-packet"><code>-aie-lower-broadcast-packet</code><a class="headerlink" href="#-aie-lower-broadcast-packet" title="Permanent link">&para;</a></h3>
 <p><em>Replace combination of broadcast and packet-switch by packet-flow</em></p>
 <p>Replace combination of broadcast and packet-switch by packet-flow</p>
+<h3 id="-aie-lower-dynamic-bd-pool"><code>-aie-lower-dynamic-bd-pool</code><a class="headerlink" href="#-aie-lower-dynamic-bd-pool" title="Permanent link">&para;</a></h3>
+<p><em>Lower runtime-bound DMA task allocation to a runtime BD free-list pool</em></p>
+<p>The dynamic counterpart to <code>aie-assign-runtime-sequence-bd-ids</code>. That pass
+requires straight-line IR and rejects runtime-bound <code>scf.for</code>; this pass
+handles the runtime-bound case by keeping the loop rolled and drawing buffer
+descriptor IDs from a per-tile runtime free-list pool.</p>
+<p>For each <code>dma_configure_task</code> it inserts an <code>aiex.dma_bd_pool_pop</code> and routes
+the popped SSA <code>bd_id</code> into the BD's lowering; each <code>dma_free_task</code> and the
+recycling half of a <code>dma_await_task</code> becomes an <code>aiex.dma_bd_pool_push</code> of
+the matching ID (matched through the def-use / scf.for iter_args chain).</p>
+<p>Runs only on the dynamic EmitC path, after <code>aie-unroll-runtime-sequence-
+loops</code> has removed every constant-trip loop, so any surviving <code>scf.for</code> is
+genuinely runtime-bound. v1 supports single-BD tasks; multi-BD chains under a
+runtime loop are diagnosed.</p>
 <h3 id="-aie-lower-memcpy"><code>-aie-lower-memcpy</code><a class="headerlink" href="#-aie-lower-memcpy" title="Permanent link">&para;</a></h3>
 <p><em>Lower aie.memcpy operations to Flows and DMA programs</em></p>
 <p>aie.memcpy operations are an experimental high-level abstraction which
