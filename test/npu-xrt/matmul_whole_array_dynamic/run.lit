@@ -1,0 +1,109 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai_npu2, peano
+//
+// Whole-array dynamic i16 GEMM on real hardware (npu2 / Strix), swept over
+// n_aie_cols = 1, 2, 4. The runtime sequence keeps its scf.for rolled over a
+// RUNTIME trip count derived from M/K/N, which the dynamic BD free-list pool
+// path supports (the static allocator would reject it). The columns band the
+// output N dimension, so each column issues its own shim DMAs and dma_await
+// (N separate 1x1 syncs). One compiled xclbin per column count serves any M/N
+// with M a multiple of m*4 and N a multiple of n*n_aie_cols, within the
+// compiled maximum: the instruction stream is built at runtime by the generated
+// C++ TXN builder called with M/K/N. K is fixed at the compiled value.
+//
+// Each column count needs its own device structure (different core/FIFO count),
+// so the MLIR is generated per config by the example's --emit-dynamic-mlir mode;
+// the hash-named kernel is normalized to the stable mm.o built once below. aiecc
+// builds the xclbin; the C++ TXN builder is generated from aiecc's lowered
+// intermediate (aie-opt + aie-translate --aie-npu-to-cpp). The host #includes
+// that header and calls it per M/K/N.
+//
+// %{ex} is the example script. Each config's emitted MLIR names the kernel by a
+// content hash; the sed after it normalizes that (quoted or bare symbol form) to
+// the stable mm.o built once above.
+// DEFINE: %{ex} = %S/../../../programming_examples/basic/matrix_multiplication/whole_array/whole_array_dynamic.py
+//
+// Build the compute kernel object once (mm.cc emits both matmul_i16_i16 and
+// zero_i16 into mm.o); DIM_M/DIM_K/DIM_N and the dtype-combo flag mirror
+// kernels.mm() for m=64 k=64 n=32, i16->i16. -D__AIE_API_AIE_ADF_HPP__ elides
+// aie_api's Vitis-only <adf.h> include on the Peano path.
+// RUN: %PEANO_INSTALL_DIR/bin/clang++ --target=aie2p-none-unknown-elf -O2 \
+// RUN:   -std=c++20 -DNDEBUG -D__AIE_API_AIE_ADF_HPP__ \
+// RUN:   -Wno-parentheses -Wno-attributes -Wno-macro-redefined -Wno-empty-body \
+// RUN:   -DDIM_M=64 -DDIM_K=64 -DDIM_N=32 -Di16_i16_ONLY \
+// RUN:   -I%S/../../../include -I%S/../../../third_party/aie_api/include \
+// RUN:   -I%S/../../../aie_kernels/aie2p \
+// RUN:   -c %S/../../../aie_kernels/aie2p/mm.cc -o ./mm.o
+//
+// --- n_aie_cols = 1 ---------------------------------------------------------
+// RUN: mkdir -p %t.1.prj
+// RUN: %PYTHON %{ex} --dev npu2 -M 512 -K 512 -N 512 -m 64 -k 64 -n 32 \
+// RUN:   --dtype_in i16 --dtype_out i16 --n-aie-cols 1 -o %t.1.mlir
+// RUN: sed -E 's/matmul_i16_i16_[0-9a-f]+\.o/mm.o/g; s/@"[0-9a-f]+_matmul_i16_i16"/@matmul_i16_i16/g; s/@[0-9a-f]+_matmul_i16_i16/@matmul_i16_i16/g' %t.1.mlir > %t.1.norm.mlir
+// RUN: %aiecc %backend_flags --no-aiesim --aie-generate-xclbin \
+// RUN:   --aie-generate-input-with-addresses --output-dir=%t.1.prj \
+// RUN:   --no-compile-host --xclbin-name=%t.1.xclbin --tmpdir=%t.1.prj %t.1.norm.mlir
+// RUN: aie-opt --aie-materialize-bd-chains --aie-substitute-shim-dma-allocations \
+// RUN:   --aie-unroll-runtime-sequence-loops --canonicalize \
+// RUN:   --aie-lower-dynamic-bd-pool --canonicalize \
+// RUN:   --aie-assign-runtime-sequence-bd-ids --aie-dma-tasks-to-npu \
+// RUN:   --aie-dma-to-npu --aie-lower-set-lock \
+// RUN:   %t.1.prj/input_with_addresses.mlir -o %t.1.lowered.mlir
+// RUN: aie-translate --aie-npu-to-cpp %t.1.lowered.mlir > %t.1.gen.h
+// RUN: %host_clang %S/test.cpp -o %t.1.exe -std=c++23 -Wall \
+// RUN:   -DGEN_HDR='"%t.1.gen.h"' -DXCLBIN='std::string("%t.1.xclbin")' \
+// RUN:   -I%S/../../../include \
+// RUN:   -I%S/../../../programming_examples/basic/matrix_multiplication \
+// RUN:   %xrt_flags %host_link_flags %test_utils_flags
+// RUN: %run_on_npu2% %t.1.exe 512 512 512 | FileCheck %s
+// RUN: %run_on_npu2% %t.1.exe 256 512 1024 | FileCheck %s
+//
+// --- n_aie_cols = 2 ---------------------------------------------------------
+// RUN: mkdir -p %t.2.prj
+// RUN: %PYTHON %{ex} --dev npu2 -M 512 -K 512 -N 512 -m 64 -k 64 -n 32 \
+// RUN:   --dtype_in i16 --dtype_out i16 --n-aie-cols 2 -o %t.2.mlir
+// RUN: sed -E 's/matmul_i16_i16_[0-9a-f]+\.o/mm.o/g; s/@"[0-9a-f]+_matmul_i16_i16"/@matmul_i16_i16/g; s/@[0-9a-f]+_matmul_i16_i16/@matmul_i16_i16/g' %t.2.mlir > %t.2.norm.mlir
+// RUN: %aiecc %backend_flags --no-aiesim --aie-generate-xclbin \
+// RUN:   --aie-generate-input-with-addresses --output-dir=%t.2.prj \
+// RUN:   --no-compile-host --xclbin-name=%t.2.xclbin --tmpdir=%t.2.prj %t.2.norm.mlir
+// RUN: aie-opt --aie-materialize-bd-chains --aie-substitute-shim-dma-allocations \
+// RUN:   --aie-unroll-runtime-sequence-loops --canonicalize \
+// RUN:   --aie-lower-dynamic-bd-pool --canonicalize \
+// RUN:   --aie-assign-runtime-sequence-bd-ids --aie-dma-tasks-to-npu \
+// RUN:   --aie-dma-to-npu --aie-lower-set-lock \
+// RUN:   %t.2.prj/input_with_addresses.mlir -o %t.2.lowered.mlir
+// RUN: aie-translate --aie-npu-to-cpp %t.2.lowered.mlir > %t.2.gen.h
+// RUN: %host_clang %S/test.cpp -o %t.2.exe -std=c++23 -Wall \
+// RUN:   -DGEN_HDR='"%t.2.gen.h"' -DXCLBIN='std::string("%t.2.xclbin")' \
+// RUN:   -I%S/../../../include \
+// RUN:   -I%S/../../../programming_examples/basic/matrix_multiplication \
+// RUN:   %xrt_flags %host_link_flags %test_utils_flags
+// RUN: %run_on_npu2% %t.2.exe 512 512 512 | FileCheck %s
+// RUN: %run_on_npu2% %t.2.exe 256 512 1024 | FileCheck %s
+//
+// --- n_aie_cols = 4 ---------------------------------------------------------
+// RUN: mkdir -p %t.4.prj
+// RUN: %PYTHON %{ex} --dev npu2 -M 512 -K 512 -N 512 -m 64 -k 64 -n 32 \
+// RUN:   --dtype_in i16 --dtype_out i16 --n-aie-cols 4 -o %t.4.mlir
+// RUN: sed -E 's/matmul_i16_i16_[0-9a-f]+\.o/mm.o/g; s/@"[0-9a-f]+_matmul_i16_i16"/@matmul_i16_i16/g; s/@[0-9a-f]+_matmul_i16_i16/@matmul_i16_i16/g' %t.4.mlir > %t.4.norm.mlir
+// RUN: %aiecc %backend_flags --no-aiesim --aie-generate-xclbin \
+// RUN:   --aie-generate-input-with-addresses --output-dir=%t.4.prj \
+// RUN:   --no-compile-host --xclbin-name=%t.4.xclbin --tmpdir=%t.4.prj %t.4.norm.mlir
+// RUN: aie-opt --aie-materialize-bd-chains --aie-substitute-shim-dma-allocations \
+// RUN:   --aie-unroll-runtime-sequence-loops --canonicalize \
+// RUN:   --aie-lower-dynamic-bd-pool --canonicalize \
+// RUN:   --aie-assign-runtime-sequence-bd-ids --aie-dma-tasks-to-npu \
+// RUN:   --aie-dma-to-npu --aie-lower-set-lock \
+// RUN:   %t.4.prj/input_with_addresses.mlir -o %t.4.lowered.mlir
+// RUN: aie-translate --aie-npu-to-cpp %t.4.lowered.mlir > %t.4.gen.h
+// RUN: %host_clang %S/test.cpp -o %t.4.exe -std=c++23 -Wall \
+// RUN:   -DGEN_HDR='"%t.4.gen.h"' -DXCLBIN='std::string("%t.4.xclbin")' \
+// RUN:   -I%S/../../../include \
+// RUN:   -I%S/../../../programming_examples/basic/matrix_multiplication \
+// RUN:   %xrt_flags %host_link_flags %test_utils_flags
+// RUN: %run_on_npu2% %t.4.exe 512 512 512 | FileCheck %s
+// RUN: %run_on_npu2% %t.4.exe 768 512 768 | FileCheck %s
+//
+// CHECK: PASS!
