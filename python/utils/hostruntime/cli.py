@@ -179,6 +179,11 @@ def run_design_cli(
     ):
         sys.exit("--xclbin-path requires --insts-path (must be set together)")
 
+    if full_elf_path is not None and getattr(opts, "xclbin_path", None) is not None:
+        sys.exit(
+            "--full-elf-path and --xclbin-path/--insts-path are mutually exclusive"
+        )
+
     if requested_dev is None:
         has_concrete_device = device is not None and not callable(device)
         if emit_mlir_requested and not has_concrete_device:

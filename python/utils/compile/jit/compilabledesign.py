@@ -447,7 +447,7 @@ class CompilableDesign:
                 return elf_path, None
 
             try:
-                mlir_module = self._generate_mlir(ExternalFunction)
+                mlir_module = self._generate_mlir(ExternalFunction, full_elf=True)
 
                 from aie.utils import get_current_device
                 from aie.utils.compile import resolve_target_arch
@@ -835,11 +835,12 @@ class CompilableDesign:
         except (ImportError, RuntimeError, AttributeError, ValueError, TypeError):
             return None
 
-    def _generation_cache_key(self) -> tuple:
+    def _generation_cache_key(self, *, full_elf: bool = False) -> tuple:
         """Return the identity that affects cached MLIR generation.
 
         Static ``.mlir`` files key on their path. Python generators key on the
-        explicitly bound device, without probing the runtime.
+        explicitly bound device and the full-ELF flag (full-ELF generates
+        ``npu.load_pdi``; the standard path does not).
         """
         if isinstance(self.mlir_generator, Path):
             return ("path", str(self.mlir_generator))
@@ -851,20 +852,24 @@ class CompilableDesign:
         except (ImportError, RuntimeError, AttributeError, ValueError, TypeError):
             device = None
 
-        return ("device",) + _device_identity_key(device)
+        return ("device", full_elf) + _device_identity_key(device)
+
+    def _generated_for(self, *, full_elf: bool) -> tuple[str, list]:
+        """Return cached ``(mlir_text, external_kernels)`` for the given mode."""
+        self._bind_generation_device()
+        key = self._generation_cache_key(full_elf=full_elf)
+        generated = self._generated_cache.get(key)
+        if generated is None:
+            generated = self._generate_uncached(full_elf=full_elf)
+            self._generated_cache[key] = generated
+        return generated
 
     @property
     def _generated(self) -> tuple[str, list]:
         """Return cached ``(mlir_text, external_kernels)`` for the active device."""
-        self._bind_generation_device()
-        key = self._generation_cache_key()
-        generated = self._generated_cache.get(key)
-        if generated is None:
-            generated = self._generate_uncached()
-            self._generated_cache[key] = generated
-        return generated
+        return self._generated_for(full_elf=self.full_elf)
 
-    def _generate_uncached(self) -> tuple[str, list]:
+    def _generate_uncached(self, *, full_elf: bool = False) -> tuple[str, list]:
         """Run the generator and collect generated MLIR text and external kernels."""
         from aie.iron.kernel import ExternalFunction
 
@@ -936,7 +941,7 @@ class CompilableDesign:
             if isinstance(_v, ExternalFunction):
                 ExternalFunction._instances.add(_v)
 
-        with compile_context(**self.compile_kwargs, _iron_full_elf=self.full_elf):
+        with compile_context(**self.compile_kwargs, _iron_full_elf=full_elf):
             with mlir_mod_ctx() as ctx:  # pyright: ignore[reportGeneralTypeIssues]
                 result = self.mlir_generator(**_gen_call_kwargs)
                 module = ctx.module if result is None else result
@@ -950,14 +955,14 @@ class CompilableDesign:
         ExternalFunction._instances.clear()
         return mlir_text, external_kernels
 
-    def _generate_mlir(self, ExternalFunction):
+    def _generate_mlir(self, ExternalFunction, *, full_elf: bool = False):
         """Return an MLIR ``Module`` bound to a fresh Context.
 
-        Thin wrapper over :attr:`_generated`: parse the cached MLIR text into
-        a new ``mlir_mod_ctx()`` and re-register the cached ``ExternalFunction``
-        instances so ``compile()`` can collect them.
+        Thin wrapper over :meth:`_generated_for`: parse the cached MLIR text
+        into a new ``mlir_mod_ctx()`` and re-register the cached
+        ``ExternalFunction`` instances so ``compile()`` can collect them.
         """
-        mlir_text, external_kernels = self._generated
+        mlir_text, external_kernels = self._generated_for(full_elf=full_elf)
         ExternalFunction._instances.update(external_kernels)
         with mlir_mod_ctx():  # pyright: ignore[reportGeneralTypeIssues]
             return _Module.parse(mlir_text)
