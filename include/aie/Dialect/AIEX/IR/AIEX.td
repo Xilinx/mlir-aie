@@ -1225,6 +1225,29 @@ def AIEX_SetLockOp: AIEX_Op<"set_lock", [HasParent<"AIE::RuntimeSequenceOp">, Sk
   }];
 }
 
+def AIEX_DmaChannelResetOp: AIEX_Op<"dma_channel_reset", [HasParent<"AIE::RuntimeSequenceOp">, SkipAccessibilityCheckTrait]> {
+  let summary = "Reset a DMA channel from a runtime sequence";
+  let description = [{
+    Resets the DMA channel `channel` in direction `direction` on the tile at
+    (`column`, `row`) by pulsing the channel control register reset bit. Intended
+    for re-arming a resident objectFIFO across dispatches: it clears the channel
+    queue state so a subsequent dispatch starts from a clean baseline. The
+    operation is non blocking and offers no synchronization guarantees.
+
+    Example:
+    ```
+      aiex.dma_channel_reset(2, 3, S2MM, 0)
+    ```
+  }];
+  let arguments = (
+    ins I32Attr:$column,
+        I32Attr:$row,
+        DMAChannelDir:$direction,
+        I32Attr:$channel
+  );
+  let assemblyFormat = [{ `(` $column `,` $row `,` $direction `,` $channel `)` attr-dict }];
+}
+
 //===----------------------------------------------------------------------===//
 // ScratchpadParameter ops
 //===----------------------------------------------------------------------===//

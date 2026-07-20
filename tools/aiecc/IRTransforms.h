@@ -715,6 +715,7 @@ getNpuLoweringPipeline(mlir::MLIRContext *ctx, bool materialize = true) {
   dpm.addPass(X::createAIEDMATasksToNPUPass());
   dpm.addPass(X::createAIEDmaToNpuPass());
   dpm.addPass(X::createAIELowerSetLockPass());
+  dpm.addPass(X::createAIELowerDmaChannelResetPass());
   return pm;
 }
 
