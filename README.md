@@ -159,14 +159,6 @@ sudo apt install \
 build-essential clang clang-14 lld lld-14 cmake ninja-build python3-venv python3-pip uuid-dev
 ```
 
-> **Note:** CMake **3.30 or newer** is required. If your distribution provides an older
-> version, create and activate the Python virtual environment in the setup step below
-> first, then install a newer CMake into that virtual environment:
->
-> ```bash
-> python3 -m pip install --upgrade cmake
-> ```
-
 (Optional) Install opencv which is needed for vision programming examples:
 
 ```bash
