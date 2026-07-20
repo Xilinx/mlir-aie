@@ -1246,6 +1246,7 @@ def AIEX_DmaChannelResetOp: AIEX_Op<"dma_channel_reset", [HasParent<"AIE::Runtim
         I32Attr:$channel
   );
   let assemblyFormat = [{ `(` $column `,` $row `,` $direction `,` $channel `)` attr-dict }];
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//

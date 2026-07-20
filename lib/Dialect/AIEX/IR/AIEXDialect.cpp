@@ -1169,6 +1169,43 @@ LogicalResult AIEX::SetLockOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// DmaChannelResetOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AIEX::DmaChannelResetOp::verify() {
+  const auto &targetModel = AIE::getTargetModel(*this);
+
+  int col = getColumn();
+  int row = getRow();
+  if (!targetModel.isCoreTile(col, row) && !targetModel.isMemTile(col, row) &&
+      !targetModel.isShimNOCTile(col, row))
+    return emitOpError() << "tile (" << col << ", " << row
+                         << ") is not a DMA-capable tile";
+
+  // Number of DMA channels on this tile in this direction. Mirrors
+  // TileOp::getNumSource/DestConnections(WireBundle::DMA): the switchbox
+  // direction is reversed relative to the DMA direction, and shim tiles count
+  // through the shim mux rather than the switchbox.
+  bool shim =
+      targetModel.isShimNOCTile(col, row) || targetModel.isShimPLTile(col, row);
+  uint32_t numChannels =
+      shim ? targetModel.getNumDestShimMuxConnections(col, row,
+                                                      AIE::WireBundle::DMA)
+      : getDirection() == AIE::DMAChannelDir::S2MM
+          ? targetModel.getNumDestSwitchboxConnections(col, row,
+                                                       AIE::WireBundle::DMA)
+          : targetModel.getNumSourceSwitchboxConnections(col, row,
+                                                         AIE::WireBundle::DMA);
+  if (getChannel() >= numChannels)
+    return emitOpError() << "channel " << getChannel()
+                         << " out of range for this tile and direction (tile "
+                            "has "
+                         << numChannels << " DMA channel(s) in this direction)";
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // BlockFloatingPointType
 //===----------------------------------------------------------------------===//
 uint64_t AIEX::BlockFloatType::getTotalSizeInBits() const {
