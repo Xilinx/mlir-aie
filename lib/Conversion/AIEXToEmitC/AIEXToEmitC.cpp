@@ -5,15 +5,12 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Converts the npu transaction ops in an aie.runtime_sequence into EmitC
-// dialect calls naming the functions in aie/Runtime/TxnEncoding.h.
-// translateToCpp() on the result produces a standalone C++ function that
-// assembles the same TXN words the compile-time binary emitter
-// (AIETargetNPU.cpp) produces -- this is the runtime-parameterizable mirror of
-// that path. A runtime-bound scf.for (the dynamic BD free-list pool path) is
-// preserved: its body ops are converted in place and the loop itself is lowered
-// to emitc.for by convert-scf-to-emitc, so the generated C++ keeps the loop
-// rolled with a runtime op-count.
+// Converts npu transaction ops in an aie.runtime_sequence into EmitC calls to
+// aie/Runtime/TxnEncoding.h; translateToCpp() then yields a standalone C++
+// function assembling the same TXN words as the binary emitter
+// (AIETargetNPU.cpp), but runtime-parameterizable. A runtime-bound scf.for
+// (dynamic BD pool path) is preserved and lowered to emitc.for, keeping the
+// loop rolled at runtime.
 //
 //===----------------------------------------------------------------------===//
 
@@ -70,11 +67,9 @@ Value u32Literal(OpBuilder &b, Location loc, uint32_t val) {
       emitc::OpaqueAttr::get(b.getContext(), std::to_string(val) + "u"));
 }
 
-// Emit a call to one of TxnEncoding.h's free functions on the txn vector.
-// Scalar operands are passed through as-is: an arith.constant or a runtime
-// runtime-sequence value lowers to the matching C++ literal or function
-// parameter by the later convert-arith-to-emitc step. TxnEncoding.h's uint32_t
-// parameters take the implicit conversion, byte-identical to the static path.
+// Emit a call to a TxnEncoding.h free function on the txn vector. Scalar
+// operands pass through as-is; convert-arith-to-emitc later lowers them to C++
+// literals or function parameters, byte-identical to the static path.
 void emitTxnCall(OpBuilder &b, Location loc, StringRef fn, Value txnVec,
                  ValueRange args) {
   SmallVector<Value> callArgs;
@@ -84,10 +79,8 @@ void emitTxnCall(OpBuilder &b, Location loc, StringRef fn, Value txnVec,
                               callArgs);
 }
 
-// Device-relative values resolved on the original in-device ops, keyed by their
-// clone in the emitc.func. getAbsoluteAddress()/getDataWords() resolve
-// buffer/column/row and memref.global symbols against the parent aie.device, so
-// they must be computed before the ops are cloned out of it.
+// Device-relative values (absolute addr, blockwrite data) resolved before the
+// ops are cloned out of the aie.device, keyed by their clone in the emitc.func.
 struct DeviceResolved {
   llvm::DenseMap<Operation *, uint32_t> absoluteAddr;
   llvm::DenseMap<Operation *, DenseIntElementsAttr> blockWriteData;
@@ -100,13 +93,10 @@ public:
       : funcOp(funcOp), txnVec(txnVec), resolved(resolved),
         opCountVar(opCountVar) {}
 
-  // Convert every npu/pool op in the function body -- recursing into scf region
-  // bodies so ops inside a rolled loop are lowered too. Returns the
-  // compile-time count of txn ops emitted when the body is straight-line (used
-  // as a literal op_count in the header), or nullopt on a conversion error.
-  // When a runtime op-count variable was provided (a loop is present), each
-  // emitted op also increments it and the header reads that instead; the
-  // returned count is then unused.
+  // Convert every npu/pool op in the body, recursing into scf regions. Returns
+  // the compile-time op count for a straight-line body (the literal op_count),
+  // or nullopt on error. With a runtime op-count var (a loop is present) each
+  // op increments it instead and the returned count is unused.
   std::optional<uint32_t> run() {
     uint32_t count = 0;
     SmallVector<Operation *> consumed;
@@ -114,12 +104,10 @@ public:
     if (!ok)
       return std::nullopt;
 
-    // Erase the converted npu ops, then sweep now-dead memref/arith clones so a
-    // def outlives its uses (e.g. get_global feeding a blockwrite, or the
-    // arith.constant that defined an address we replaced with a folded
-    // literal). Live arith feeding runtime value/mask/sync fields has uses and
-    // is kept for the arith-to-emitc step. Walk post-order and collect first,
-    // since erasing during a walk is unsafe.
+    // Erase the converted npu ops, then sweep now-dead memref/arith clones
+    // (e.g. a get_global or folded-away address constant). Live arith feeding
+    // runtime fields is kept for arith-to-emitc. Collect first: erasing
+    // mid-walk is unsafe.
     for (Operation *op : llvm::reverse(consumed))
       op->erase();
     SmallVector<Operation *> deadSweep;
@@ -174,12 +162,10 @@ private:
       emitc::VerbatimOp::create(b, loc, "++{};", ValueRange{opCountVar});
   }
 
-  // Convert one op, appending to the txn vector. Increments `count` for each
-  // txn instruction emitted. Scalar operands of the (already-cloned) op are
-  // passed through directly -- a constant or a runtime value both flow as SSA,
-  // lowered later by convert-arith-to-emitc. Only the address field is replaced
-  // by its device-resolved literal (which folds in buffer/col/row). Unsupported
-  // ops are diagnosed (sets `ok` false).
+  // Convert one op, appending to the txn vector and incrementing `count`.
+  // Scalar operands flow through as SSA (lowered later by
+  // convert-arith-to-emitc); only the address field is replaced by its
+  // device-resolved literal. Unsupported ops set `ok` false.
   void convertOne(Operation *op, uint32_t &count) {
     OpBuilder b(op);
     Location loc = op->getLoc();
@@ -256,12 +242,10 @@ private:
                 ValueRange{g.getValue()});
         })
         .Case<AIEX::DMABdPoolPopOp>([&](AIEX::DMABdPoolPopOp pop) {
-          // Draw a BD id from the tile's runtime pool into a fresh C++
-          // variable, and fail the build (nullopt) if the pool is empty -- the
-          // runtime backstop for a working set exceeding the tile's BD count.
-          // The pool variable was declared in the prologue (see emitFunction).
-          // Downstream ops (write32 addresses, push_queue) consume the id, so
-          // replace the op's SSA result with a literal naming the new variable.
+          // Draw a BD id from the tile's runtime pool (declared in the
+          // prologue) into a fresh C++ variable; nullopt if the pool is empty.
+          // Downstream ops consume the id, so replace the SSA result with a
+          // literal naming the variable.
           std::string var = "bd_" + std::to_string(nextPoolVar++);
           emitc::VerbatimOp::create(
               b, loc,
@@ -303,13 +287,10 @@ private:
     return u32Literal(b, loc, it->second);
   }
 
-  // The address for a write32/maskwrite32: the compile-time literal when the
-  // device resolved one, otherwise the op's SSA address operand when it is a
-  // genuine runtime value (the dynamic BD pool computes bdBase + wordIdx as
-  // arith over a popped id -- lowered to C++ by convert-arith-to-emitc). A
-  // usable runtime address must be arith-derived (has a defining op); a bare
-  // block argument selects no hardware register and stays rejected. Null for a
-  // truly symbolic/unresolved address.
+  // The address for a write32/maskwrite32: the device-resolved literal, else a
+  // genuine runtime address (arith-derived, e.g. the pool's bdBase + wordIdx).
+  // A bare block argument selects no register and is rejected; null for a
+  // symbolic/unresolved address.
   Value runtimeOrResolvedAddr(OpBuilder &b, Location loc, Operation *clone,
                               Value addrOperand) {
     if (Value lit = resolvedAddr(b, loc, clone))
@@ -556,11 +537,9 @@ private:
                                     std::to_string(numBDs) + ");");
     });
 
-    // A rolled loop makes the emitted op count a runtime quantity (the body
-    // executes a runtime number of times). Declare a `__opcount` accumulator
-    // the converter bumps per emitted op, and feed it to the header. A
-    // straight-line sequence keeps the compile-time literal count
-    // (byte-identical golden).
+    // A rolled loop makes the op count a runtime quantity: declare a __opcount
+    // accumulator the converter bumps per op. A straight-line sequence keeps
+    // the compile-time literal count (byte-identical golden).
     bool hasControlFlow = false;
     seqOp.walk([&](Operation *op) {
       if (isa<scf::SCFDialect>(op->getDialect()))
@@ -573,12 +552,10 @@ private:
           fb, loc, getU32Type(moduleOp.getContext()), "__opcount");
     }
 
-    // Clone the sequence body into the function (whole regions, so a rolled
-    // scf.for and its body come along), mapping the non-memref block args to
-    // the function parameters. While the originals are still under the device,
-    // resolve their device-relative values (absolute address, blockwrite data)
-    // keyed by the clone -- the converter reads these instead of calling
-    // device-dependent accessors on the detached clones.
+    // Clone the sequence body (whole regions, so a rolled scf.for comes along),
+    // mapping non-memref block args to function params. Resolve device-relative
+    // values (address, blockwrite data) while the originals are still under the
+    // device, keyed by clone, since the accessors don't work once detached.
     IRMapping mapping;
     unsigned p = 0;
     for (BlockArgument arg : entry.getArguments())

@@ -474,12 +474,10 @@ struct AIEDMATasksToNPUPass
             : OpFoldResult(builder.getI32IntegerAttr(bd_op.getBdId().value()));
 
     if (runtimeBdId) {
-      // A runtime bd_id makes the whole BD register block's address runtime, so
-      // the constant-address zero-template blockwrite path (NpuWriteBdOp ->
-      // WriteBdToBlockWritePattern) cannot be used. Emit the template words
-      // (the ones the size/stride encoder does not cover) as runtime-addressed
-      // write32s at the same base. Register replay treats a blockwrite of N
-      // words and N write32s identically, so this matches the static BD.
+      // A runtime bd_id makes the register block's address runtime, so the
+      // constant-address blockwrite path can't be used. Emit the template words
+      // as write32s instead -- register replay treats N write32s and an N-word
+      // blockwrite identically, matching the static BD.
       if (failed(emitShimTemplateWordOverrides(builder, loc, target_model, col,
                                                row, bdIdOfr, f,
                                                bd_op.getBurstLength())))
@@ -550,18 +548,11 @@ struct AIEDMATasksToNPUPass
     return setAddressForSingleBD(builder, bd_op, tile, bdIdOfr);
   }
 
-  // Emit the shim BD "template" words as runtime-addressed write32s: the words
-  // the size/stride encoder does not fully own. Used only on the runtime-bd_id
-  // path, where the usual constant-address zero-template blockwrite cannot be
-  // formed. The word layout mirrors WriteBdToBlockWritePattern's shim packing.
-  //
-  // The encoder always overrides words 0 (buffer_length) and 6 (iteration), and
-  // in ND mode also 3/4/5. In linear mode it skips 3/4/5. Words 4 and 5 carry
-  // CONSTANT burst_length / AXCache bits even in linear mode (the static
-  // blockwrite bakes them), so this function emits those constants; in ND mode
-  // the encoder's later write32 to the same register supplies burst|d1 /
-  // axcache |d2 and wins by last-write. Words 1/2/7 are never touched by the
-  // encoder.
+  // Emit the shim BD template words (those the size/stride encoder doesn't own)
+  // as runtime-addressed write32s, for the runtime-bd_id path where a constant-
+  // address zero-template blockwrite can't be formed. Layout mirrors
+  // WriteBdToBlockWritePattern. Words 4/5 carry constant burst_length/AXCache
+  // bits the encoder's later ND write32 overwrites by last-write; 1/2/7 unused.
   LogicalResult emitShimTemplateWordOverrides(
       OpBuilder &builder, Location loc, const AIE::AIETargetModel &target_model,
       int col, int row, OpFoldResult bdId, const BdTemplateFields &f,

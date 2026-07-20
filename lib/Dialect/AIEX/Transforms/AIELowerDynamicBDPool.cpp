@@ -5,25 +5,17 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// The dynamic counterpart to AIEAssignRuntimeSequenceBDIDs. That pass runs on
-// straight-line IR and rejects runtime-bound scf.for; this pass handles the
-// runtime-bound case by keeping the loop rolled and drawing buffer-descriptor
-// IDs from a per-tile runtime free-list pool.
+// The dynamic counterpart to AIEAssignRuntimeSequenceBDIDs: where that pass
+// rejects a runtime-bound scf.for, this keeps the loop rolled and draws bd_ids
+// from a per-tile runtime free-list pool. Each configure gets a dma_bd_pool_pop
+// (its SSA id feeding bd_id_val); each free/await gets a dma_bd_pool_push.
 //
-// Each dma_configure_task gets an aiex.dma_bd_pool_pop whose SSA bd_id is
-// routed into the task (its bd_id_val operand, consumed by the dynamic BD
-// lowering). Each dma_free_task, and the recycling half of a dma_await_task,
-// becomes an aiex.dma_bd_pool_push of the matching id.
+// A popped id must be reachable at its push. Since a task value can cross a
+// loop back edge and exit as a result, the id is carried in lockstep: every
+// task iter_arg gets a parallel i32 id iter_arg, and a push looks up the paired
+// id.
 //
-// The matching id must be available where the push is emitted. A task value
-// (Index) may cross an scf.for back edge (the ping-pong "%prev" carry) and exit
-// as a loop result, so the popped i32 id is carried in lockstep: for every
-// iter_arg that carries a task, a parallel i32 iter_arg carrying its id is
-// added. Then a push of any task value looks up the paired id at the same
-// scope.
-//
-// v1 restricts to single-BD tasks: a multi-BD chain under a runtime loop would
-// need per-BD runtime next_bd cross-references, which is a follow-up.
+// v1 is single-BD only; multi-BD chains would need runtime next_bd (follow-up).
 //
 //===----------------------------------------------------------------------===//
 
@@ -58,11 +50,9 @@ struct AIELowerDynamicBDPoolPass
   // The (col,row) of the tile each task's id belongs to, so a push names the
   // right pool even when the id is a loop result rather than a direct pop.
   llvm::DenseMap<Value, std::pair<int, int>> tileForTask;
-  // A representative configure for each task value whose (tile,dir,channel) an
-  // await can reference. For a loop-carried task this stays the init (iteration
-  // 0) configure, which is loop-invariant and dominates a post-loop await --
-  // the value the await originally named (a loop result) has no defining
-  // configure to resolve, so awaits are redirected here.
+  // A representative (loop-invariant) configure per task, so a post-loop await
+  // on a loop result -- which has no defining configure -- can be redirected to
+  // one with the right (tile,dir,channel).
   llvm::DenseMap<Value, DMAConfigureTaskOp> originConfigure;
 
   // Count the BD ops in a configure's body (across all its blocks).
@@ -82,10 +72,9 @@ struct AIELowerDynamicBDPoolPass
           "chain under a runtime-bound loop needs runtime next_bd chaining "
           "(not yet implemented)");
 
-    // In a dynamic (pool) sequence the pool owns ALL id allocation: a pinned
-    // bd_id would collide with a runtime pop that hands out the same id from
-    // the full 0..N-1 range, so a hand-pinned id here is an error. Allocation
-    // is all-pool or (for a straight-line sequence) all-static, never mixed.
+    // The pool owns all id allocation here, so a hand-pinned bd_id would
+    // collide with a runtime pop. Allocation is all-pool or all-static (for a
+    // straight-line sequence), never mixed.
     WalkResult pinned = cfg.walk([&](AIE::DMABDOp bd) {
       if (bd.getBdId().has_value()) {
         bd.emitOpError(
@@ -155,10 +144,9 @@ struct AIELowerDynamicBDPoolPass
     assert(succeeded(newLoop) && "scf.for additional-yields rewrite failed");
     auto newFor = cast<scf::ForOp>(newLoop->getOperation());
 
-    // The body block was moved intact, so original region iter_args keep their
-    // positions; the id iter_args are appended after the original nOrig. Pair
-    // each carried task iter_arg / result with its new id iter_arg / result,
-    // and propagate the tile from the corresponding init task.
+    // id iter_args are appended after the original nOrig; pair each carried
+    // task iter_arg/result with its new id, propagating tile and origin from
+    // the init.
     for (auto [i, k] : llvm::enumerate(carried)) {
       Value init = forOp.getInitArgs()[k];
       auto tile = tileForTask.lookup(init);
@@ -225,10 +213,8 @@ struct AIELowerDynamicBDPoolPass
 
       // 3. free/await -> push (await keeps its sync, adds a push). An await on
       // a
-      //    loop result / region-arg cannot resolve its configure (a loop result
-      //    has no defining configure), so redirect it to the loop-invariant
-      //    origin configure, whose tile/dir/channel is identical every
-      //    iteration.
+      //    loop result lacks a defining configure, so redirect it to the
+      //    loop-invariant origin configure.
       llvm::DenseSet<Value> released;
       SmallVector<Operation *> toErase;
       r = seq.walk([&](Operation *op) -> WalkResult {
