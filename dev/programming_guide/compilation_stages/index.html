@@ -2273,6 +2273,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#controlling-artifact-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Controlling artifact output
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -2295,6 +2306,17 @@
     <span class="md-ellipsis">
       
         Tensor-arg validation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#consuming-external-artifacts-bring-your-own" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Consuming external artifacts (bring your own)
       
     </span>
   </a>
@@ -3341,6 +3363,17 @@
   
 </li>
         
+          <li class="md-nav__item">
+  <a href="#controlling-artifact-output" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Controlling artifact output
+      
+    </span>
+  </a>
+  
+</li>
+        
       </ul>
     </nav>
   
@@ -3363,6 +3396,17 @@
     <span class="md-ellipsis">
       
         Tensor-arg validation
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#consuming-external-artifacts-bring-your-own" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Consuming external artifacts (bring your own)
       
     </span>
   </a>
@@ -3715,11 +3759,11 @@ linked into the final xclbin.</p>
 </tr>
 <tr>
 <td><code>insts.elf</code></td>
-<td>only present when <code>@iron.jit(elf_path=...)</code> is set — <code>xrt::elf</code> variant of <code>insts.bin</code></td>
+<td>only present when <code>.compile(elf_path=...)</code> is set — <code>xrt::elf</code> variant of <code>insts.bin</code></td>
 </tr>
 <tr>
 <td><code>main.pdi</code></td>
-<td>Programmable Device Image — config data packed by <code>bootgen</code></td>
+<td>Programmable Device Image — config data packed by <code>bootgen</code>; locate via <code>get_pdi_path()</code> or name it with <code>.compile(pdi_path=...)</code></td>
 </tr>
 <tr>
 <td><code>main_aie_partition.json</code></td>
@@ -3795,6 +3839,38 @@ matmul produce one set per <code>(col, row)</code> the placer landed on.</p>
 <a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="k">for</span> <span class="n">p</span> <span class="ow">in</span> <span class="nb">sorted</span><span class="p">(</span><span class="n">kernel_dir</span><span class="o">.</span><span class="n">iterdir</span><span class="p">()):</span>
 <a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">p</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
 </code></pre></div>
+<h4 id="controlling-artifact-output">Controlling artifact output<a class="headerlink" href="#controlling-artifact-output" title="Permanent link">&para;</a></h4>
+<p>By default <code>.compile()</code> writes into the cache under <code>$NPU_CACHE_HOME</code> with
+fixed names (<code>final.xclbin</code>, <code>insts.bin</code>, <code>main.pdi</code>, …). Pass explicit paths
+to write named artifacts wherever you want; this <strong>bypasses the cache</strong> (the
+caller is presumed to own dependency tracking, e.g. a Makefile):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">my_design</span><span class="o">.</span><span class="n">specialize</span><span class="p">(</span><span class="n">N</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span><span class="o">.</span><span class="n">compile</span><span class="p">(</span>
+<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="n">xclbin_path</span><span class="o">=</span><span class="s2">&quot;out/design.xclbin&quot;</span><span class="p">,</span>   <span class="c1"># binary XRT loads</span>
+<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="n">inst_path</span><span class="o">=</span><span class="s2">&quot;out/design.insts.bin&quot;</span><span class="p">,</span>  <span class="c1"># NPU instruction stream</span>
+<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>    <span class="n">pdi_path</span><span class="o">=</span><span class="s2">&quot;out/design.pdi&quot;</span><span class="p">,</span>         <span class="c1"># Programmable Device Image</span>
+<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="n">elf_path</span><span class="o">=</span><span class="s2">&quot;out/design.insts.elf&quot;</span><span class="p">,</span>   <span class="c1"># xrt::elf-wrapped insts (optional)</span>
+<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="p">)</span>
+</code></pre></div>
+<p><code>xclbin_path</code> and <code>inst_path</code> must be given together. <code>pdi_path</code> and
+<code>elf_path</code> each additionally require both of those — the cache path doesn't
+track caller-named PDI/ELF artifacts.</p>
+<p>If you're using the default cache (no explicit paths) but still need the PDI,
+<code>aiecc</code> writes a <code>&lt;device&gt;.pdi</code> (<code>main.pdi</code> for <code>@iron.jit</code> designs) into the
+cache directory on every compile. Locate it without recompiling via
+<code>get_pdi_path()</code>, which finds the PDI regardless of the device symbol name:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="n">spec</span> <span class="o">=</span> <span class="n">my_design</span><span class="o">.</span><span class="n">specialize</span><span class="p">(</span><span class="n">N</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="n">spec</span><span class="o">.</span><span class="n">compile</span><span class="p">()</span>   <span class="c1"># cache mode</span>
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="n">pdi</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">get_pdi_path</span><span class="p">()</span>   <span class="c1"># -&gt; Path to the emitted .pdi</span>
+</code></pre></div>
+<p>A multi-device design emits one PDI per <code>aie.device</code>. Use <code>get_pdi_paths()</code>
+for the full list, or <code>get_pdi_path(device_name="…")</code> to pick one by its
+<code>aie.device</code> symbol:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">all_pdis</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">get_pdi_paths</span><span class="p">()</span>                  <span class="c1"># -&gt; [Path, ...]</span>
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">one</span> <span class="o">=</span> <span class="n">spec</span><span class="o">.</span><span class="n">get_pdi_path</span><span class="p">(</span><span class="n">device_name</span><span class="o">=</span><span class="s2">&quot;second&quot;</span><span class="p">)</span>    <span class="c1"># -&gt; Path to second.pdi</span>
+</code></pre></div>
+<p>The <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/basic/vector_scalar_add"><code>vector_scalar_add</code></a>
+example demonstrates the explicit-path flow end-to-end via its <code>--aot-dir</code>
+flag.</p>
 <h3 id="5-runtime-binding--callabledesign__call__">5. Runtime binding — <code>CallableDesign.__call__</code><a class="headerlink" href="#5-runtime-binding--callabledesign__call__" title="Permanent link">&para;</a></h3>
 <p>The first call to a <code>CallableDesign</code> does three things:</p>
 <ol>
@@ -3822,14 +3898,14 @@ re-folding multi-DMA patterns.</p>
 <p>A mismatch raises <code>RuntimeError</code> <em>before</em> the kernel runs, naming the
 parameter and the <code>CompileTime[T]</code> settings that produced the expected
 size:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="n">wrong_size</span> <span class="o">=</span> <span class="n">iron</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">99</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="k">try</span><span class="p">:</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>    <span class="n">passthrough</span><span class="p">(</span><span class="n">wrong_size</span><span class="p">,</span> <span class="n">out_t</span><span class="p">,</span> <span class="n">N</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="k">except</span> <span class="ne">RuntimeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
-<a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="c1"># Tensor argument &#39;a_in&#39; has 99 elements but the kernel was compiled</span>
-<a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="c1"># for 4096 elements.</span>
-<a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="c1"># CompileTime[T] parameters used at compile time: {&#39;N&#39;: 4096}</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="n">wrong_size</span> <span class="o">=</span> <span class="n">iron</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">99</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">uint8</span><span class="p">)</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="k">try</span><span class="p">:</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>    <span class="n">passthrough</span><span class="p">(</span><span class="n">wrong_size</span><span class="p">,</span> <span class="n">out_t</span><span class="p">,</span> <span class="n">N</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="k">except</span> <span class="ne">RuntimeError</span> <span class="k">as</span> <span class="n">e</span><span class="p">:</span>
+<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>    <span class="nb">print</span><span class="p">(</span><span class="n">e</span><span class="p">)</span>
+<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="c1"># Tensor argument &#39;a_in&#39; has 99 elements but the kernel was compiled</span>
+<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="c1"># for 4096 elements.</span>
+<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="c1"># CompileTime[T] parameters used at compile time: {&#39;N&#39;: 4096}</span>
 </code></pre></div>
 <p>The check runs on both fresh compiles and cache hits.  It is silently
 skipped when the expected sizes cannot be determined — for example,
@@ -3837,6 +3913,31 @@ modules with several <code>aie.runtime_sequence</code>s and no unique call-graph
 root (multi-device programs that route through <code>aiex.run</code> from several
 top-level sequences).  Args wired only to runtime params and never DMA-
 transferred (expected entry <code>0</code>) are also skipped.</p>
+<h4 id="consuming-external-artifacts-bring-your-own">Consuming external artifacts (bring your own)<a class="headerlink" href="#consuming-external-artifacts-bring-your-own" title="Permanent link">&para;</a></h4>
+<p>Stages 1–4 exist to <em>produce</em> an xclbin + insts.  If you already have that
+pair — from a Makefile, a raw <code>aiecc</code> invocation, the <code>.compile(xclbin_path=,
+inst_path=)</code> export above, or any other tool — you can skip straight to stage 5
+by constructing an <code>NPUKernel</code> directly:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">NPUKernel</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="kn">import</span><span class="w"> </span><span class="nn">aie.iron</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">iron</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a>
+<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="n">kernel</span> <span class="o">=</span> <span class="n">NPUKernel</span><span class="p">(</span><span class="s2">&quot;design.xclbin&quot;</span><span class="p">,</span> <span class="s2">&quot;design.insts.bin&quot;</span><span class="p">)</span>
+<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>
+<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="n">in_t</span> <span class="o">=</span> <span class="n">iron</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1025</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">,</span> <span class="n">device</span><span class="o">=</span><span class="s2">&quot;npu&quot;</span><span class="p">)</span>
+<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a><span class="n">out_t</span> <span class="o">=</span> <span class="n">iron</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="n">in_t</span><span class="p">)</span>
+<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="n">kernel</span><span class="p">(</span><span class="n">in_t</span><span class="p">,</span> <span class="n">out_t</span><span class="p">)</span>          <span class="c1"># blocking; output written in place</span>
+</code></pre></div>
+<p><code>NPUKernel</code> does not care how the artifacts were built — it only needs the
+xclbin and the instruction binary.  There is <strong>no <code>CompileTime[T]</code> recipe and
+no tensor-arg validation</strong> on this path (that metadata lives in the JIT
+<code>CompilableDesign</code>, which you've bypassed), so <em>you</em> own matching the tensor
+shapes/dtypes to what the artifacts were compiled for.</p>
+<p>The run inputs are the <strong>xclbin + insts</strong>. A PDI is not a standalone run input
+on the IRON runtime — <code>bootgen</code> packs it <em>inside</em> the xclbin, and the runtime
+loads via <code>pyxrt.xclbin(...)</code>.  Use <code>.compile(pdi_path=...)</code> / <code>get_pdi_path()</code>
+to <em>extract</em> a PDI for an external consumer, not to feed one back in.</p>
+<p>The <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/basic/vector_scalar_add"><code>vector_scalar_add</code></a>
+example demonstrates this via its <code>--from-xclbin</code> / <code>--from-insts</code> flags.</p>
 <h2 id="setting--stage-cheat-sheet">Setting → stage cheat-sheet<a class="headerlink" href="#setting--stage-cheat-sheet" title="Permanent link">&para;</a></h2>
 <table>
 <thead>
@@ -3883,9 +3984,14 @@ transferred (expected entry <code>0</code>) are also skipped.</p>
 <td>bypass on-disk cache; always rebuild (stage 4)</td>
 </tr>
 <tr>
-<td><code>@iron.jit(elf_path=...)</code></td>
-<td>decoration</td>
-<td>also emit <code>insts.elf</code> for the <code>xrt::elf</code> testbench flow (stage 4)</td>
+<td><code>.compile(elf_path=...)</code></td>
+<td>compile call</td>
+<td>also emit <code>insts.elf</code> for the <code>xrt::elf</code> testbench flow (stage 4); requires explicit <code>xclbin_path</code> + <code>inst_path</code></td>
+</tr>
+<tr>
+<td><code>.compile(pdi_path=...)</code></td>
+<td>compile call</td>
+<td>write the PDI to a chosen path (stage 4); requires explicit <code>xclbin_path</code> + <code>inst_path</code></td>
 </tr>
 <tr>
 <td><code>$NPU_CACHE_HOME</code> env var</td>
@@ -3922,6 +4028,18 @@ transferred (expected entry <code>0</code>) are also skipped.</p>
 <td><code>cd.compile(**kwargs)</code> returns <code>(xclbin_path, insts_path)</code></td>
 </tr>
 <tr>
+<td>The PDI path (cache mode)</td>
+<td><code>cd.get_pdi_path()</code> (after a <code>compile()</code>)</td>
+</tr>
+<tr>
+<td>Artifacts at chosen paths</td>
+<td><code>cd.compile(xclbin_path=, inst_path=, pdi_path=, elf_path=)</code></td>
+</tr>
+<tr>
+<td>Run a pre-built xclbin + insts</td>
+<td><code>NPUKernel(xclbin, insts)(in_t, out_t)</code></td>
+</tr>
+<tr>
 <td>The recipe hash (cache key)</td>
 <td><code>cd.compilable.recipe_hash</code></td>
 </tr>
@@ -3940,23 +4058,23 @@ transferred (expected entry <code>0</code>) are also skipped.</p>
 with the kwargs merged in, leaving the original untouched.  Binding
 compile params can be split across call sites without losing the
 unspecialised handle:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nd">@iron</span><span class="o">.</span><span class="n">jit</span>
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="k">def</span><span class="w"> </span><span class="nf">add_const</span><span class="p">(</span><span class="n">x</span><span class="p">:</span> <span class="n">In</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="n">Out</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>              <span class="n">N</span><span class="p">:</span> <span class="n">CompileTime</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">dtype</span><span class="p">:</span> <span class="n">CompileTime</span><span class="p">[</span><span class="nb">type</span><span class="p">]):</span>
-<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>    <span class="o">...</span>
-<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>
-<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="n">half</span>  <span class="o">=</span> <span class="n">add_const</span><span class="o">.</span><span class="n">specialize</span><span class="p">(</span><span class="n">N</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>         <span class="c1"># bind N now</span>
-<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a><span class="n">full</span>  <span class="o">=</span> <span class="n">half</span><span class="o">.</span><span class="n">specialize</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>      <span class="c1"># bind dtype later</span>
-<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a><span class="n">wider</span> <span class="o">=</span> <span class="n">full</span><span class="o">.</span><span class="n">specialize</span><span class="p">(</span><span class="n">N</span><span class="o">=</span><span class="mi">8192</span><span class="p">)</span>              <span class="c1"># override an earlier bind</span>
-<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a>
-<a id="__codelineno-4-10" name="__codelineno-4-10" href="#__codelineno-4-10"></a><span class="n">add_const</span>  <span class="c1"># still unspecialised — half/full/wider didn&#39;t mutate it</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nd">@iron</span><span class="o">.</span><span class="n">jit</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="k">def</span><span class="w"> </span><span class="nf">add_const</span><span class="p">(</span><span class="n">x</span><span class="p">:</span> <span class="n">In</span><span class="p">,</span> <span class="n">y</span><span class="p">:</span> <span class="n">Out</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a>              <span class="n">N</span><span class="p">:</span> <span class="n">CompileTime</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">dtype</span><span class="p">:</span> <span class="n">CompileTime</span><span class="p">[</span><span class="nb">type</span><span class="p">]):</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>    <span class="o">...</span>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="n">half</span>  <span class="o">=</span> <span class="n">add_const</span><span class="o">.</span><span class="n">specialize</span><span class="p">(</span><span class="n">N</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>         <span class="c1"># bind N now</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="n">full</span>  <span class="o">=</span> <span class="n">half</span><span class="o">.</span><span class="n">specialize</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>      <span class="c1"># bind dtype later</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="n">wider</span> <span class="o">=</span> <span class="n">full</span><span class="o">.</span><span class="n">specialize</span><span class="p">(</span><span class="n">N</span><span class="o">=</span><span class="mi">8192</span><span class="p">)</span>              <span class="c1"># override an earlier bind</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a>
+<a id="__codelineno-8-10" name="__codelineno-8-10" href="#__codelineno-8-10"></a><span class="n">add_const</span>  <span class="c1"># still unspecialised — half/full/wider didn&#39;t mutate it</span>
 </code></pre></div>
 <p>Because <code>as_mlir</code> / <code>compile</code> / <code>__call__</code> are plain methods on the
 returned object, <code>functools.partial</code> works the same way for pinning
 <em>non-compile</em> kwargs:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">functools</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">as_mlir_N4096</span> <span class="o">=</span> <span class="n">functools</span><span class="o">.</span><span class="n">partial</span><span class="p">(</span><span class="n">add_const</span><span class="o">.</span><span class="n">as_mlir</span><span class="p">,</span> <span class="n">N</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="n">mlir</span> <span class="o">=</span> <span class="n">as_mlir_N4096</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">functools</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="n">as_mlir_N4096</span> <span class="o">=</span> <span class="n">functools</span><span class="o">.</span><span class="n">partial</span><span class="p">(</span><span class="n">add_const</span><span class="o">.</span><span class="n">as_mlir</span><span class="p">,</span> <span class="n">N</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="n">mlir</span> <span class="o">=</span> <span class="n">as_mlir_N4096</span><span class="p">(</span><span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">)</span>
 </code></pre></div>
 <h3 id="watching-the-compile-pipeline">Watching the compile pipeline<a class="headerlink" href="#watching-the-compile-pipeline" title="Permanent link">&para;</a></h3>
 <p>All compile-path subprocesses (<code>clang++</code> for <code>ExternalFunction</code>s,
@@ -3965,19 +4083,19 @@ setting the package root logger to <code>DEBUG</code> cascades to every child.
 Each line carries the exact command line invoked plus cache hit / miss
 messages, which is enough to copy the <code>clang++</code> invocation into a
 terminal and iterate on a kernel without running the full design:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="n">level</span><span class="o">=</span><span class="n">logging</span><span class="o">.</span><span class="n">WARNING</span><span class="p">,</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>                    <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(name)s</span><span class="s2"> | </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">force</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;aie.utils.compile&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">)</span>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="c1"># use_cache=False forces a fresh compile so every clang++ / aiecc</span>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="c1"># invocation lights up (a warm cache hit emits only one DEBUG line).</span>
-<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="nd">@iron</span><span class="o">.</span><span class="n">jit</span><span class="p">(</span><span class="n">use_cache</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
-<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="k">def</span><span class="w"> </span><span class="nf">design</span><span class="p">(</span><span class="o">...</span><span class="p">):</span> <span class="o">...</span>
-<a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>
-<a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="n">design</span><span class="o">.</span><span class="n">specialize</span><span class="p">(</span><span class="n">N</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span><span class="o">.</span><span class="n">compile</span><span class="p">()</span>
-<a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a>
-<a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;aie.utils.compile&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">WARNING</span><span class="p">)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="n">level</span><span class="o">=</span><span class="n">logging</span><span class="o">.</span><span class="n">WARNING</span><span class="p">,</span>
+<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>                    <span class="nb">format</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">%(name)s</span><span class="s2"> | </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">,</span> <span class="n">force</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;aie.utils.compile&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">)</span>
+<a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a>
+<a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="c1"># use_cache=False forces a fresh compile so every clang++ / aiecc</span>
+<a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="c1"># invocation lights up (a warm cache hit emits only one DEBUG line).</span>
+<a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="nd">@iron</span><span class="o">.</span><span class="n">jit</span><span class="p">(</span><span class="n">use_cache</span><span class="o">=</span><span class="kc">False</span><span class="p">)</span>
+<a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="k">def</span><span class="w"> </span><span class="nf">design</span><span class="p">(</span><span class="o">...</span><span class="p">):</span> <span class="o">...</span>
+<a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>
+<a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="n">design</span><span class="o">.</span><span class="n">specialize</span><span class="p">(</span><span class="n">N</span><span class="o">=</span><span class="mi">4096</span><span class="p">)</span><span class="o">.</span><span class="n">compile</span><span class="p">()</span>
+<a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a>
+<a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a><span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;aie.utils.compile&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">WARNING</span><span class="p">)</span>
 </code></pre></div>
 <h2 id="appendix-a-three-ways-to-bind-compiletimet-parameters">Appendix A: three ways to bind <code>CompileTime[T]</code> parameters<a class="headerlink" href="#appendix-a-three-ways-to-bind-compiletimet-parameters" title="Permanent link">&para;</a></h2>
 <p><code>CompileTime[T]</code>-annotated parameters are part of the compile recipe (they
@@ -3986,28 +4104,28 @@ stage 4.  Three places can supply it; later wins.  All three are
 keyword-only — <code>CompileTime[T]</code> params must sit after a <code>*,</code> in the
 signature (the framework rejects positional <code>CompileTime[T]</code> at decoration
 time with a fix-it <code>TypeError</code>).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="c1"># A — bare decorator; params supplied at call time</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="nd">@iron</span><span class="o">.</span><span class="n">jit</span>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="k">def</span><span class="w"> </span><span class="nf">gemm_a</span><span class="p">(</span><span class="n">a</span><span class="p">:</span> <span class="n">In</span><span class="p">,</span> <span class="n">b</span><span class="p">:</span> <span class="n">In</span><span class="p">,</span> <span class="n">c</span><span class="p">:</span> <span class="n">Out</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>           <span class="n">M</span><span class="p">:</span> <span class="n">CompileTime</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">N</span><span class="p">:</span> <span class="n">CompileTime</span><span class="p">[</span><span class="nb">int</span><span class="p">]):</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    <span class="o">...</span>
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a><span class="n">gemm_a</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">M</span><span class="o">=</span><span class="mi">512</span><span class="p">,</span> <span class="n">N</span><span class="o">=</span><span class="mi">512</span><span class="p">)</span>            <span class="c1"># call-time bind</span>
-<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>
-<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a><span class="c1"># B — pre-bound at decoration; call-time can still override</span>
-<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="nd">@iron</span><span class="o">.</span><span class="n">jit</span><span class="p">(</span><span class="n">M</span><span class="o">=</span><span class="mi">512</span><span class="p">,</span> <span class="n">N</span><span class="o">=</span><span class="mi">512</span><span class="p">)</span>
-<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a><span class="k">def</span><span class="w"> </span><span class="nf">gemm_b</span><span class="p">(</span><span class="n">a</span><span class="p">:</span> <span class="n">In</span><span class="p">,</span> <span class="n">b</span><span class="p">:</span> <span class="n">In</span><span class="p">,</span> <span class="n">c</span><span class="p">:</span> <span class="n">Out</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
-<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>           <span class="n">M</span><span class="p">:</span> <span class="n">CompileTime</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">N</span><span class="p">:</span> <span class="n">CompileTime</span><span class="p">[</span><span class="nb">int</span><span class="p">]):</span>
-<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a>    <span class="o">...</span>
-<a id="__codelineno-7-13" name="__codelineno-7-13" href="#__codelineno-7-13"></a><span class="n">gemm_b</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span>                          <span class="c1"># uses pre-bound 512×512</span>
-<a id="__codelineno-7-14" name="__codelineno-7-14" href="#__codelineno-7-14"></a><span class="n">gemm_b</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">M</span><span class="o">=</span><span class="mi">1024</span><span class="p">)</span>                  <span class="c1"># call-time override wins → recompile</span>
-<a id="__codelineno-7-15" name="__codelineno-7-15" href="#__codelineno-7-15"></a>
-<a id="__codelineno-7-16" name="__codelineno-7-16" href="#__codelineno-7-16"></a><span class="c1"># C — signature defaults; used at lowering time if not bound otherwise</span>
-<a id="__codelineno-7-17" name="__codelineno-7-17" href="#__codelineno-7-17"></a><span class="nd">@iron</span><span class="o">.</span><span class="n">jit</span>
-<a id="__codelineno-7-18" name="__codelineno-7-18" href="#__codelineno-7-18"></a><span class="k">def</span><span class="w"> </span><span class="nf">gemm_c</span><span class="p">(</span><span class="n">a</span><span class="p">:</span> <span class="n">In</span><span class="p">,</span> <span class="n">b</span><span class="p">:</span> <span class="n">In</span><span class="p">,</span> <span class="n">c</span><span class="p">:</span> <span class="n">Out</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
-<a id="__codelineno-7-19" name="__codelineno-7-19" href="#__codelineno-7-19"></a>           <span class="n">M</span><span class="p">:</span> <span class="n">CompileTime</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mi">256</span><span class="p">,</span>
-<a id="__codelineno-7-20" name="__codelineno-7-20" href="#__codelineno-7-20"></a>           <span class="n">N</span><span class="p">:</span> <span class="n">CompileTime</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mi">256</span><span class="p">):</span>
-<a id="__codelineno-7-21" name="__codelineno-7-21" href="#__codelineno-7-21"></a>    <span class="o">...</span>
-<a id="__codelineno-7-22" name="__codelineno-7-22" href="#__codelineno-7-22"></a><span class="n">gemm_c</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span>                          <span class="c1"># uses 256×256</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># A — bare decorator; params supplied at call time</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="nd">@iron</span><span class="o">.</span><span class="n">jit</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="k">def</span><span class="w"> </span><span class="nf">gemm_a</span><span class="p">(</span><span class="n">a</span><span class="p">:</span> <span class="n">In</span><span class="p">,</span> <span class="n">b</span><span class="p">:</span> <span class="n">In</span><span class="p">,</span> <span class="n">c</span><span class="p">:</span> <span class="n">Out</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>           <span class="n">M</span><span class="p">:</span> <span class="n">CompileTime</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">N</span><span class="p">:</span> <span class="n">CompileTime</span><span class="p">[</span><span class="nb">int</span><span class="p">]):</span>
+<a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a>    <span class="o">...</span>
+<a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="n">gemm_a</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">M</span><span class="o">=</span><span class="mi">512</span><span class="p">,</span> <span class="n">N</span><span class="o">=</span><span class="mi">512</span><span class="p">)</span>            <span class="c1"># call-time bind</span>
+<a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a>
+<a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="c1"># B — pre-bound at decoration; call-time can still override</span>
+<a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="nd">@iron</span><span class="o">.</span><span class="n">jit</span><span class="p">(</span><span class="n">M</span><span class="o">=</span><span class="mi">512</span><span class="p">,</span> <span class="n">N</span><span class="o">=</span><span class="mi">512</span><span class="p">)</span>
+<a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="k">def</span><span class="w"> </span><span class="nf">gemm_b</span><span class="p">(</span><span class="n">a</span><span class="p">:</span> <span class="n">In</span><span class="p">,</span> <span class="n">b</span><span class="p">:</span> <span class="n">In</span><span class="p">,</span> <span class="n">c</span><span class="p">:</span> <span class="n">Out</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a>           <span class="n">M</span><span class="p">:</span> <span class="n">CompileTime</span><span class="p">[</span><span class="nb">int</span><span class="p">],</span> <span class="n">N</span><span class="p">:</span> <span class="n">CompileTime</span><span class="p">[</span><span class="nb">int</span><span class="p">]):</span>
+<a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a>    <span class="o">...</span>
+<a id="__codelineno-11-13" name="__codelineno-11-13" href="#__codelineno-11-13"></a><span class="n">gemm_b</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span>                          <span class="c1"># uses pre-bound 512×512</span>
+<a id="__codelineno-11-14" name="__codelineno-11-14" href="#__codelineno-11-14"></a><span class="n">gemm_b</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">c</span><span class="p">,</span> <span class="n">M</span><span class="o">=</span><span class="mi">1024</span><span class="p">)</span>                  <span class="c1"># call-time override wins → recompile</span>
+<a id="__codelineno-11-15" name="__codelineno-11-15" href="#__codelineno-11-15"></a>
+<a id="__codelineno-11-16" name="__codelineno-11-16" href="#__codelineno-11-16"></a><span class="c1"># C — signature defaults; used at lowering time if not bound otherwise</span>
+<a id="__codelineno-11-17" name="__codelineno-11-17" href="#__codelineno-11-17"></a><span class="nd">@iron</span><span class="o">.</span><span class="n">jit</span>
+<a id="__codelineno-11-18" name="__codelineno-11-18" href="#__codelineno-11-18"></a><span class="k">def</span><span class="w"> </span><span class="nf">gemm_c</span><span class="p">(</span><span class="n">a</span><span class="p">:</span> <span class="n">In</span><span class="p">,</span> <span class="n">b</span><span class="p">:</span> <span class="n">In</span><span class="p">,</span> <span class="n">c</span><span class="p">:</span> <span class="n">Out</span><span class="p">,</span> <span class="o">*</span><span class="p">,</span>
+<a id="__codelineno-11-19" name="__codelineno-11-19" href="#__codelineno-11-19"></a>           <span class="n">M</span><span class="p">:</span> <span class="n">CompileTime</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mi">256</span><span class="p">,</span>
+<a id="__codelineno-11-20" name="__codelineno-11-20" href="#__codelineno-11-20"></a>           <span class="n">N</span><span class="p">:</span> <span class="n">CompileTime</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="mi">256</span><span class="p">):</span>
+<a id="__codelineno-11-21" name="__codelineno-11-21" href="#__codelineno-11-21"></a>    <span class="o">...</span>
+<a id="__codelineno-11-22" name="__codelineno-11-22" href="#__codelineno-11-22"></a><span class="n">gemm_c</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">,</span> <span class="n">c</span><span class="p">)</span>                          <span class="c1"># uses 256×256</span>
 </code></pre></div>
 <p>Two fail-fast guards run at decoration time so misuse surfaces
 immediately rather than silently running a kernel with the wrong value
