@@ -675,12 +675,17 @@ def AIE_NpuAssertBdFieldOp: AIEX_Op<"npu.assert_bd_field", []> {
     10-bit d0/d1 wrap or 6-bit iteration wrap), where masking would silently
     truncate an out-of-range value.
 
-    The TXN instruction stream has no on-device trap, so the guard runs host-side
-    in the generated C++ TXN builder: --aie-npu-to-cpp lowers this op to an early
-    `if (value > max) return std::nullopt;` so the builder yields no stream for an
-    illegal value instead of a corrupt one. On the binary (--aie-npu-to-binary)
-    path the value is always a compile-time constant; the op verifies the bound
-    and is otherwise inert. `value` must not exceed `max` when constant.
+    This op only ever appears on the dynamic (runtime-value) DMA lowering path;
+    a fully static sequence never produces it. When `value` is a constant, the
+    verifier hard-errors if it exceeds `max`, so it is caught at compile time.
+
+    The TXN instruction stream has no on-device trap, so a runtime guard runs
+    host-side in the generated C++ TXN builder: --aie-npu-to-cpp lowers this op
+    to an early `if (value > max) return std::nullopt;` so the builder yields no
+    stream for an illegal value instead of a corrupt one. On the binary
+    (--aie-npu-to-binary) path `value` is always a verified constant, so the op
+    carries no runtime check and is emitted as a no-op (skipped, contributing no
+    TXN words).
   }];
   let hasVerifier = 1;
 }
@@ -711,11 +716,15 @@ def AIE_NpuAssertBdDivisibleOp: AIEX_Op<"npu.assert_bd_divisible", []> {
     stride (e.g. int8 stride 2) is still unrealizable. So with `allow_unit` the
     predicate is `value == 1 || value % divisor == 0`.
 
-    Like `assert_bd_field`, the TXN stream has no on-device trap, so the guard
-    runs host-side: --aie-npu-to-cpp lowers it to an early
+    Like `assert_bd_field`, this op only appears on the dynamic DMA lowering
+    path, and a constant `value` is hard-errored by the verifier at compile
+    time. The TXN stream has no on-device trap, so a runtime guard runs
+    host-side: --aie-npu-to-cpp lowers it to an early
     `if (value % divisor != 0) return std::nullopt;` (or, with `allow_unit`,
-    `if (value != 1 && value % divisor != 0) ...`). On the binary path the value
-    is constant; the op verifies the bound and is otherwise inert.
+    `if (value != 1 && value % divisor != 0) ...`). On the binary
+    (--aie-npu-to-binary) path `value` is always a verified constant, so the op
+    carries no runtime check and is emitted as a no-op (skipped, contributing no
+    TXN words).
   }];
   let hasVerifier = 1;
 }

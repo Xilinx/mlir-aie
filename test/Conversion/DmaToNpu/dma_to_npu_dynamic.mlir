@@ -160,3 +160,23 @@ module {
     }
   }
 }
+
+// -----
+
+// A CONSTANT pure-repeat outer dimension (d3 size > 1, stride 0) paired with a
+// runtime inner size: the zero d3 stride is the repeat case (carried by the
+// queue push's repeat_count), which is legal exactly as on the static path.
+// verifyConstBdRealizability must NOT reject the constant zero stride here (it
+// only requires positive strides on d0..d2). This is the whole-array GEMM
+// A/B-tile fetch pattern with a runtime tile size.
+// CHECK-LABEL: @const_repeat_rt_size
+// CHECK: aiex.npu.blockwrite
+module {
+  aie.device(npu1) {
+    %t = aie.tile(0, 0)
+    aie.shim_dma_allocation @alloc0(%t, MM2S, 0)
+    aie.runtime_sequence @const_repeat_rt_size(%arg0: memref<8192xi32>, %n: i64) {
+      aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][4, 1, %n, 32][0, 0, 32, 1]) {id = 0 : i64, metadata = @alloc0} : memref<8192xi32>
+    }
+  }
+}

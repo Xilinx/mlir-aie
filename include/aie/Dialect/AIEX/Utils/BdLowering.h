@@ -95,8 +95,10 @@ verifyConstBdRealizability(mlir::Operation *op,
     auto s = mlir::getConstantIntValue(strides[i]);
     if (!s)
       continue;
-    // A unit innermost stride is the contiguous sub-granule case (collapses to
-    // hardware stride 0); every other stride must be granule-aligned.
+    // A unit innermost stride is the contiguous case: successive elements are
+    // packed with no gap, so the transfer is dense and the stride need not land
+    // on a granule boundary. Every other stride addresses a strided access and
+    // must be granule-aligned.
     if (i == 0 && *s == 1)
       continue;
     if (!isConstMultipleOfGranule(*s, elemWidth, gran))
@@ -106,13 +108,22 @@ verifyConstBdRealizability(mlir::Operation *op,
              << "-byte address-gen granule.";
   }
   // A stride must be positive where its size > 1 (it is never applied when
-  // size == 1). Runtime strides are trusted (the caller controls them).
+  // size == 1). The d3 iteration dimension is the exception: a zero stride
+  // there is the pure-repeat case (the BD wraps every iteration, repeat carried
+  // by the queue push), matching verifyStridesWraps' dim-3 `< 0` rule. Lists
+  // are innermost-first, so d3 is index 3 (present only for a full 4D
+  // descriptor). Runtime strides are trusted (the caller controls them).
+  constexpr int kIterDim = 3;
   for (int i = 0; i < (int)sizes.size() && i < (int)strides.size(); i++) {
     auto sz = mlir::getConstantIntValue(sizes[i]);
     auto st = mlir::getConstantIntValue(strides[i]);
-    if (sz && st && *sz > 1 && *st < 1)
+    if (!sz || !st || *sz <= 1)
+      continue;
+    if (i == kIterDim ? *st < 0 : *st < 1)
       return op->emitOpError("stride ")
-             << i << " must be positive when size > 1.";
+             << i
+             << (i == kIterDim ? " must be non-negative when size > 1."
+                               : " must be positive when size > 1.");
   }
   return mlir::success();
 }
