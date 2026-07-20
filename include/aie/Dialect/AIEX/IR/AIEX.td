@@ -519,9 +519,15 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
 
     bool isLinearTransferWithoutTransformation();
 
-    /* Returns the bitwidth of the type inside the memref through a 
+    /* Returns the bitwidth of the type inside the memref through a
     call to DataLayout */
     uint64_t getElementTypeBitwidth();
+
+    /* Verifies the supported scope and bounds for a transfer carrying runtime
+       (SSA) sizes/strides. Called from verify() on the dynamic path. */
+    llvm::LogicalResult verifyDynamicSizesStrides(
+        const xilinx::AIE::AIETargetModel &targetModel,
+        mlir::BaseMemRefType buffer);
   }];
 
   let extraClassDefinition = [{
@@ -649,6 +655,78 @@ def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", []> {
     // Compile-time absolute address, or nullopt if 'address' is not constant.
     std::optional<uint32_t> getAbsoluteAddress();
   }];
+}
+
+// ASSERT_BD_FIELD
+def AIE_NpuAssertBdFieldOp: AIEX_Op<"npu.assert_bd_field", []> {
+  let summary = "Guard a runtime BD-field value against its hardware field width";
+  let arguments = (
+    ins I32:$value,
+        I32Attr:$max
+  );
+  let results = (outs );
+  let assemblyFormat = [{
+    `(` $value `)` attr-dict `:` type($value)
+  }];
+  let description = [{
+    Asserts, at TXN-build time, that a runtime value assigned to a buffer-
+    descriptor field fits its hardware field: `value <= max`. Emitted by the
+    dynamic DMA lowering for a runtime scalar landing in a narrow field (e.g. the
+    10-bit d0/d1 wrap or 6-bit iteration wrap), where masking would silently
+    truncate an out-of-range value.
+
+    This op only ever appears on the dynamic (runtime-value) DMA lowering path;
+    a fully static sequence never produces it. When `value` is a constant, the
+    verifier hard-errors if it exceeds `max`, so it is caught at compile time.
+
+    The TXN instruction stream has no on-device trap, so a runtime guard runs
+    host-side in the generated C++ TXN builder: --aie-npu-to-cpp lowers this op
+    to an early `if (value > max) return std::nullopt;` so the builder yields no
+    stream for an illegal value instead of a corrupt one. On the binary
+    (--aie-npu-to-binary) path `value` is always a verified constant, so the op
+    carries no runtime check and is emitted as a no-op (skipped, contributing no
+    TXN words).
+  }];
+  let hasVerifier = 1;
+}
+
+// ASSERT_BD_DIVISIBLE
+def AIE_NpuAssertBdDivisibleOp: AIEX_Op<"npu.assert_bd_divisible", []> {
+  let summary = "Guard a runtime BD size/stride against the address-gen granule";
+  let arguments = (
+    ins I32:$value,
+        I32Attr:$divisor,
+        UnitAttr:$allow_unit
+  );
+  let results = (outs );
+  let assemblyFormat = [{
+    `(` $value `)` attr-dict `:` type($value)
+  }];
+  let description = [{
+    Asserts, at TXN-build time, that a runtime size/stride is realizable in
+    hardware: its byte extent is a whole number of address-gen granules, i.e.
+    `value % divisor == 0`. The hardware transfers whole granules only, so a
+    size or stride whose `value * elemWidth` is not a granule multiple (e.g. an
+    int8 innermost size of 2 = 16 bits against a 32-bit granule) cannot be
+    encoded. `divisor` is the compile-time granule/element ratio.
+
+    `allow_unit` exempts a value of 1 from the divisibility rule: the innermost
+    stride is allowed to be sub-granule when it is exactly 1 (the contiguous
+    scan the encoder collapses to hardware stride 0), but a non-unit sub-granule
+    stride (e.g. int8 stride 2) is still unrealizable. So with `allow_unit` the
+    predicate is `value == 1 || value % divisor == 0`.
+
+    Like `assert_bd_field`, this op only appears on the dynamic DMA lowering
+    path, and a constant `value` is hard-errored by the verifier at compile
+    time. The TXN stream has no on-device trap, so a runtime guard runs
+    host-side: --aie-npu-to-cpp lowers it to an early
+    `if (value % divisor != 0) return std::nullopt;` (or, with `allow_unit`,
+    `if (value != 1 && value % divisor != 0) ...`). On the binary
+    (--aie-npu-to-binary) path `value` is always a verified constant, so the op
+    carries no runtime check and is emitted as a no-op (skipped, contributing no
+    TXN words).
+  }];
+  let hasVerifier = 1;
 }
 
 // MASKWRITE
