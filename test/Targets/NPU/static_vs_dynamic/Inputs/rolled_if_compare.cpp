@@ -8,8 +8,8 @@
 // Proves a rolled dynamic scf.if programs the SAME hardware as the static
 // branch it selects: replays generate_txn_main_rolled_if(cond) into a register
 // map and asserts it equals the TAKEN static oracle for cond=true and the
-// NOT-TAKEN (no-op) oracle for cond=false. TAKEN_HDR / NOTTAKEN_HDR / ROLLED_HDR
-// select the generated headers.
+// NOT-TAKEN (no-op) oracle for cond=false. TAKEN_HDR / NOTTAKEN_HDR /
+// ROLLED_HDR select the generated headers.
 //
 //===----------------------------------------------------------------------===//
 
@@ -86,6 +86,7 @@ int main() {
   rc |= check("cond=false", generate_txn_main_rolled_if(false),
               generate_txn_main_static_nottaken());
   if (rc == 0)
-    std::printf("equivalent: rolled_if(true)==taken, rolled_if(false)==nottaken\n");
+    std::printf(
+        "equivalent: rolled_if(true)==taken, rolled_if(false)==nottaken\n");
   return rc;
 }
