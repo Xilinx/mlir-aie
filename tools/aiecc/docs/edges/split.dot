@@ -1,0 +1,25 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+// split: explode a singleton input into many keyed output items.
+digraph split {
+  rankdir=LR;
+  node [shape=box, fontname="monospace", fontsize=10];
+  graph [fontname="monospace", fontsize=11];
+
+  subgraph cluster_in {
+    label="Node<In> (singleton)";
+    style=filled; color="#eeeeee";
+    i0 [label="key=input"];
+  }
+  subgraph cluster_out {
+    label="Node<U>";
+    style=filled; color="#cfe8ff";
+    oA [label="key=a"];
+    oB [label="key=b"];
+    oC [label="key=c"];
+  }
+
+  i0 -> oA [label="fn"];
+  i0 -> oB;
+  i0 -> oC;
+}

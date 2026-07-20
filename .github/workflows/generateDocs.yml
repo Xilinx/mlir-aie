@@ -52,6 +52,12 @@ jobs:
       - name: Link programming_guide into docs tree
         run: ln -s ../programming_guide docs/programming_guide
 
+      # Same gitignored-symlink trick for the aiecc driver docs (tools/aiecc):
+      # the nav publishes its README and the page references the .svg graphics
+      # under tools/aiecc/docs/.
+      - name: Link aiecc docs into docs tree
+        run: ln -s ../tools/aiecc docs/aiecc
+
       - name: Configure git for mike
         run: |
           git config user.name "github-actions[bot]"

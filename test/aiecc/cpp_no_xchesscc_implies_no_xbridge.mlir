@@ -10,14 +10,13 @@
 
 // REQUIRES: peano
 
-// RUN: aiecc --no-xchesscc --verbose %s 2>&1 | FileCheck %s
+// RUN: aiecc --no-xchesscc --aie-generate-npu-insts --verbose %s 2>&1 | FileCheck %s
 
-// Verify xbridge linking path is NOT taken when --no-xchesscc is used without
-// an explicit --no-xbridge.
-// CHECK-NOT: Linked with xbridge
-
-// Verify compilation completes successfully using the Peano path.
-// CHECK: Compilation completed successfully
+// Verify the Chess bridge linker (xchesscc_wrapper) is NOT invoked when
+// --no-xchesscc is used without an explicit --no-xbridge (Peano link path).
+// CHECK: ({{[0-9]+}}/{{[0-9]+}}) input.mlir
+// CHECK-NOT: xchesscc_wrapper
+// CHECK: wrote edge 'insts_
 
 module {
   aie.device(npu1_1col) {

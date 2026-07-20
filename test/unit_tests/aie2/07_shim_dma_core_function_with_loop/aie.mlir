@@ -8,7 +8,7 @@
 
 // REQUIRES: peano
 // RUN: %PEANO_INSTALL_DIR/bin/clang --target=aie2-none-unknown-elf -c %S/kernel.cc
-// RUN: %PYTHON aiecc.py --no-xchesscc --no-xbridge %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %link_against_hsa% %s %test_lib_flags %S/test.cpp -o test.elf
+// RUN: %PYTHON aiecc.py --no-xchesscc --no-xbridge %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %link_against_hsa% %s %test_lib_flags -o test.elf -- %S/test.cpp
 
 module @test_chess_04_deprecated_shim_dma_precompiled_kernel{
   aie.device(xcve2802) {

@@ -31,6 +31,7 @@ def add_compile_args(
     short_dev: str | None = "-d",
     with_elf: bool = False,
     with_full_elf: bool = False,
+    with_pdi: bool = False,
     with_emit_mlir: bool = False,
 ) -> None:
     """Add the standard compile-mode flags.
@@ -55,6 +56,9 @@ def add_compile_args(
         with_full_elf: When True, also add ``--full-elf-path`` (compile-only
             mode: write a single self-contained full ELF instead of an
             xclbin + insts pair).
+        with_pdi: When True, also add ``--pdi-path`` (write the
+            Programmable Device Image to a chosen path in compile-only
+            mode).
         with_emit_mlir: When True, also add ``--emit-mlir`` (action
             ``store_true``) — for designs that have a vck5000 / aiecc
             print-MLIR path next to the @iron.jit NPU path.
@@ -107,6 +111,13 @@ def add_compile_args(
             default=None,
             help="compile-only mode: write a single self-contained full ELF "
             "(PDIs + control code) here instead of an xclbin + insts pair",
+        )
+    if with_pdi:
+        parser.add_argument(
+            "--pdi-path",
+            type=str,
+            default=None,
+            help="compile-only mode: write the PDI here (requires --xclbin-path + --insts-path)",
         )
 
 

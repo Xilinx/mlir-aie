@@ -20,7 +20,7 @@ Almost every basic/ design's ``main()`` is the same skeleton:
 …where ``_compile_only`` always does the same ``--insts-path`` check +
 device binding + ``design.specialize(**kw).compile(
 xclbin_path=opts.xclbin_path, inst_path=opts.insts_path
-[, elf_path=opts.elf_path])``.
+[, elf_path=opts.elf_path][, pdi_path=opts.pdi_path])``.
 
 This module wraps that skeleton so each design just declares the two
 pieces it actually owns (compile kwargs, the verify body) and lets the
@@ -237,6 +237,9 @@ def run_design_cli(
         elf_path = getattr(opts, "elf_path", None)
         if elf_path is not None:
             compile_opts["elf_path"] = elf_path
+        pdi_path = getattr(opts, "pdi_path", None)
+        if pdi_path is not None:
+            compile_opts["pdi_path"] = pdi_path
         spec.compile(**compile_opts)
         return
 

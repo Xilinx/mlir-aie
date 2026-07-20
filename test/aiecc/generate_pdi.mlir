@@ -8,15 +8,20 @@
 // REQUIRES: chess
 // REQUIRES: peano
 
-// RUN: %python aiecc.py -v --xchesscc --xbridge --aie-generate-pdi --pdi-name=MlirAie0.pdi %s | FileCheck %s --check-prefix=XCHESSCC
-// RUN: %python aiecc.py -v --no-xchesscc --no-xbridge --aie-generate-pdi --pdi-name=MlirAie1.pdi %s | FileCheck %s --check-prefix=PEANO
+// Give each run private output/work dirs: Chess drops scratch and aiecc emits
+// per-core dirs into the output dir, so concurrent runs sharing a directory (as
+// the lit suite does) would clobber each other. The PDIs land in %t; the final
+// ls checks both are there.
+// RUN: %python aiecc.py -v --xchesscc --xbridge --aie-generate-pdi --pdi-name=MlirAie0.pdi --output-dir=%t --tmpdir=%t.prj %s 2>&1 | FileCheck %s --check-prefix=XCHESSCC
+// RUN: %python aiecc.py -v --no-xchesscc --no-xbridge --aie-generate-pdi --pdi-name=MlirAie1.pdi --output-dir=%t --tmpdir=%t.prj %s 2>&1 | FileCheck %s --check-prefix=PEANO
 
-// RUN: ls | grep MlirAie | FileCheck %s --check-prefix=CHECK-FILE
+// RUN: ls %t | grep MlirAie | FileCheck %s --check-prefix=CHECK-FILE
 
-// XCHESSCC: bootgen {{.*}} MlirAie0.pdi
+// bootgen runs in-process (no exec line); the PDI edge is reported as written.
+// XCHESSCC: wrote edge 'MlirAie0.pdi'
 // XCHESSCC-NOT: xclbinutil
 
-// PEANO: bootgen {{.*}} MlirAie1.pdi
+// PEANO: wrote edge 'MlirAie1.pdi'
 // PEANO-NOT: xclbinutil
 
 // CHECK-FILE: MlirAie0.pdi

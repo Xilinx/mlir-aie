@@ -15,6 +15,9 @@ add_subdirectory(aie-translate)
 if(AIE_BUILD_VISUALIZE)
   add_subdirectory(aie-visualize)
 endif()
+# bootgen must be configured before aiecc so the `bootgen-lib` target exists
+# when aiecc's CMakeLists checks `if(TARGET bootgen-lib)` to enable in-process
+# PDI generation via the bootgen C API.
 add_subdirectory(bootgen)
 add_subdirectory(aiecc)
 if(AIE_BUILD_CHESS_CLANG)

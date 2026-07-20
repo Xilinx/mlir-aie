@@ -3202,7 +3202,13 @@ RuntimeSequenceOp::getForSymbolInDevice(DeviceOp deviceOp,
                                         llvm::StringRef symbol) {
   RuntimeSequenceOp runtimeSequenceOp;
   if (!symbol.size()) {
-    runtimeSequenceOp = *deviceOp.getOps<RuntimeSequenceOp>().begin();
+    auto range = deviceOp.getOps<RuntimeSequenceOp>();
+    if (range.begin() == range.end()) {
+      // No runtime sequence in the device; let the caller emit a diagnostic
+      // rather than dereferencing an end iterator (which crashes).
+      return nullptr;
+    }
+    runtimeSequenceOp = *range.begin();
   } else {
     Operation *maybeRuntimeSequenceOp =
         mlir::SymbolTable::lookupSymbolIn(deviceOp, symbol);

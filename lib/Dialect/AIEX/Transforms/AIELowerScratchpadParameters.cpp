@@ -6,6 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
+#include "aie/Dialect/AIEX/AIEUtils.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
@@ -264,15 +265,8 @@ struct AIELowerScratchpadParametersPass
     }
   }
 
-  // Emit a single params.txt for the whole module.
-  //
-  // Format (one entry per line, easily parsed with std::ifstream >>):
-  //   <num_parameters>
-  //   <name> <state_table_idx> <type> <kind>
-  //   ...
-  // where kind is "core" (shift-2 encoded, for read_scratchpad_parameter) or
-  // "addr" (raw, for offset_parameter on DMA ops).
-  LogicalResult emitParamsFile(ArrayRef<ScratchpadParameterOp> allParams) {
+  // Emit a single params.txt for the whole module to `outputParamsFile`.
+  LogicalResult emitParamsFile() {
     if (outputParamsFile.empty())
       return success();
 
@@ -284,18 +278,7 @@ struct AIELowerScratchpadParametersPass
              << outputParamsFile << "': " << ec.message();
     }
 
-    out << allParams.size() << "\n";
-    for (auto p : allParams) {
-      std::string typeStr;
-      llvm::raw_string_ostream os(typeStr);
-      p.getType().print(os);
-      StringRef kindStr = p.getKind().value() == ScratchpadParameterKind::Addr
-                              ? "addr"
-                              : "core";
-      out << p.getSymName() << " "
-          << static_cast<unsigned>(p.getStateTableIdx().value()) << " "
-          << typeStr << " " << kindStr << "\n";
-    }
+    emitScratchpadParamsFile(getOperation(), out);
     return success();
   }
 
@@ -445,7 +428,7 @@ struct AIELowerScratchpadParametersPass
     }
 
     // Step 5: emit the single params.txt for the module.
-    if (failed(emitParamsFile(allParams))) {
+    if (failed(emitParamsFile())) {
       return signalPassFailure();
     }
   }

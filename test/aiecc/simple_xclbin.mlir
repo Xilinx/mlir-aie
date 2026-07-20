@@ -9,19 +9,19 @@
 // REQUIRES: chess
 // REQUIRES: peano
 
-// RUN: %PYTHON aiecc.py --xchesscc --no-link -nv --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --xclbin-name=aie.xclbin --npu-insts-name=insts.txt %s | FileCheck %s --check-prefix=XCHESSCC
-// RUN: %PYTHON aiecc.py --no-xchesscc --no-link -nv --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --xclbin-name=aie.xclbin --npu-insts-name=insts.txt %s | FileCheck %s --check-prefix=PEANO
+// RUN: %PYTHON aiecc.py --xchesscc -nv --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --xclbin-name=aie.xclbin --npu-insts-name=insts.txt %s 2>&1 | FileCheck %s --check-prefix=XCHESSCC
+// RUN: %PYTHON aiecc.py --no-xchesscc -nv --aie-generate-xclbin --aie-generate-npu-insts --no-compile-host --xclbin-name=aie.xclbin --npu-insts-name=insts.txt %s 2>&1 | FileCheck %s --check-prefix=PEANO
 
 // Note that llc determines the architecture from the llvm IR.
-// XCHESSCC-NOT: {{^[^ ]*llc}}
+// bootgen runs in-process (no exec line); the xclbin packaging step (xclbinutil)
+// is still an external tool.
+// XCHESSCC-NOT: {{[^ ]*llc }}
 // XCHESSCC: xchesscc_wrapper aie2
-// XCHESSCC: bootgen
 // XCHESSCC: xclbinutil
-// XCHESSCC-NOT: {{^[^ ]*llc}}
+// XCHESSCC-NOT: {{[^ ]*llc }}
 // PEANO-NOT: xchesscc_wrapper
-// PEANO: llc
+// PEANO: {{[^ ]*llc }}
 // PEANO-SAME: --march=aie2
-// PEANO: bootgen
 // PEANO: xclbinutil
 
 module {

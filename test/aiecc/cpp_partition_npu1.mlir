@@ -9,8 +9,8 @@
 
 // REQUIRES: peano
 
-// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-xclbin -n %s
-// RUN: FileCheck %s --input-file=cpp_partition_npu1.mlir.prj/main_aie_partition.json
+// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-xclbin %s
+// RUN: FileCheck %s --input-file=cpp_partition_npu1.mlir.prj/partition_main.json
 
 // CHECK: "column_width": 4
 // CHECK: "start_columns": [

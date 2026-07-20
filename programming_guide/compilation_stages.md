@@ -153,8 +153,8 @@ linked into the final xclbin.
 | `input_with_addresses.mlir` | lowered MLIR with shim / memtile DMA addresses bound; the last MLIR form before `aie-translate` |
 | `final.xclbin` | the binary XRT loads onto the NPU |
 | `insts.bin` | NPU runtime instruction stream paired with the xclbin |
-| `insts.elf` | only present when `@iron.jit(elf_path=...)` is set — `xrt::elf` variant of `insts.bin` |
-| `main.pdi` | Programmable Device Image — config data packed by `bootgen` |
+| `insts.elf` | only present when `.compile(elf_path=...)` is set — `xrt::elf` variant of `insts.bin` |
+| `main.pdi` | Programmable Device Image — config data packed by `bootgen`; locate via `get_pdi_path()` or name it with `.compile(pdi_path=...)` |
 | `main_aie_partition.json` | AIE partition manifest (which tiles, kernels, memory regions) |
 | `main_aie_cdo_init.bin` | CDO blob initialising tile / DMA registers |
 | `main_aie_cdo_elfs.bin` | CDO blob carrying the per-core ELFs to the device |
@@ -166,7 +166,7 @@ linked into the final xclbin.
 | `main_core_<col>_<row>.ld.script` | linker script Peano used to lay out that ELF |
 | `main_core_<col>_<row>.ll` | per-core LLVM IR before `opt` |
 | `main_core_<col>_<row>.opt.ll` | per-core LLVM IR after `opt` |
-| `main_core_<col>_<row>.peano-compat.ll` | LLVM IR downgraded for Peano compatibility |
+| `main_core_<col>_<row>.peano-compat.ll` | Peano-compatible IR (LLVM-23 features downgraded for Peano's opt/llc) |
 | `main_core_<col>_<row>.o` | per-core compiled object that links into the `.elf` |
 | `<kernel>.cc` | `ExternalFunction` kernel source, copied in for `clang` |
 | `<kernel>_<hash>.o` | `clang`'s compiled `.o` for that `ExternalFunction` |
@@ -186,6 +186,50 @@ kernel_dir = Path(xclbin).parent
 for p in sorted(kernel_dir.iterdir()):
     print(p.name)
 ```
+
+#### Controlling artifact output
+
+By default `.compile()` writes into the cache under `$NPU_CACHE_HOME` with
+fixed names (`final.xclbin`, `insts.bin`, `main.pdi`, …). Pass explicit paths
+to write named artifacts wherever you want; this **bypasses the cache** (the
+caller is presumed to own dependency tracking, e.g. a Makefile):
+
+```python
+my_design.specialize(N=4096).compile(
+    xclbin_path="out/design.xclbin",   # binary XRT loads
+    inst_path="out/design.insts.bin",  # NPU instruction stream
+    pdi_path="out/design.pdi",         # Programmable Device Image
+    elf_path="out/design.insts.elf",   # xrt::elf-wrapped insts (optional)
+)
+```
+
+`xclbin_path` and `inst_path` must be given together. `pdi_path` and
+`elf_path` each additionally require both of those — the cache path doesn't
+track caller-named PDI/ELF artifacts.
+
+If you're using the default cache (no explicit paths) but still need the PDI,
+`aiecc` writes a `<device>.pdi` (`main.pdi` for `@iron.jit` designs) into the
+cache directory on every compile. Locate it without recompiling via
+`get_pdi_path()`, which finds the PDI regardless of the device symbol name:
+
+```python
+spec = my_design.specialize(N=4096)
+spec.compile()   # cache mode
+pdi = spec.get_pdi_path()   # -> Path to the emitted .pdi
+```
+
+A multi-device design emits one PDI per `aie.device`. Use `get_pdi_paths()`
+for the full list, or `get_pdi_path(device_name="…")` to pick one by its
+`aie.device` symbol:
+
+```python
+all_pdis = spec.get_pdi_paths()                  # -> [Path, ...]
+one = spec.get_pdi_path(device_name="second")    # -> Path to second.pdi
+```
+
+The [`vector_scalar_add`](../programming_examples/basic/vector_scalar_add/)
+example demonstrates the explicit-path flow end-to-end via its `--aot-dir`
+flag.
 
 ### 5. Runtime binding — `CallableDesign.__call__`
 
@@ -237,6 +281,38 @@ root (multi-device programs that route through `aiex.run` from several
 top-level sequences).  Args wired only to runtime params and never DMA-
 transferred (expected entry `0`) are also skipped.
 
+#### Consuming external artifacts (bring your own)
+
+Stages 1–4 exist to *produce* an xclbin + insts.  If you already have that
+pair — from a Makefile, a raw `aiecc` invocation, the `.compile(xclbin_path=,
+inst_path=)` export above, or any other tool — you can skip straight to stage 5
+by constructing an `NPUKernel` directly:
+
+```python
+from aie.utils import NPUKernel
+import aie.iron as iron
+
+kernel = NPUKernel("design.xclbin", "design.insts.bin")
+
+in_t = iron.arange(1, 1025, dtype=np.int32, device="npu")
+out_t = iron.zeros_like(in_t)
+kernel(in_t, out_t)          # blocking; output written in place
+```
+
+`NPUKernel` does not care how the artifacts were built — it only needs the
+xclbin and the instruction binary.  There is **no `CompileTime[T]` recipe and
+no tensor-arg validation** on this path (that metadata lives in the JIT
+`CompilableDesign`, which you've bypassed), so *you* own matching the tensor
+shapes/dtypes to what the artifacts were compiled for.
+
+The run inputs are the **xclbin + insts**. A PDI is not a standalone run input
+on the IRON runtime — `bootgen` packs it *inside* the xclbin, and the runtime
+loads via `pyxrt.xclbin(...)`.  Use `.compile(pdi_path=...)` / `get_pdi_path()`
+to *extract* a PDI for an external consumer, not to feed one back in.
+
+The [`vector_scalar_add`](../programming_examples/basic/vector_scalar_add/)
+example demonstrates this via its `--from-xclbin` / `--from-insts` flags.
+
 ## Setting → stage cheat-sheet
 
 | Setting | Set at | Affects |
@@ -248,7 +324,8 @@ transferred (expected entry `0`) are also skipped.
 | `@iron.jit(source_files=[...])` | decoration | extra kernel `.cc` files compiled into the design (stage 4) |
 | `@iron.jit(object_files=[...])` | decoration | pre-built kernel `.o` files linked into the design (stage 4) |
 | `@iron.jit(use_cache=False)` | decoration | bypass on-disk cache; always rebuild (stage 4) |
-| `@iron.jit(elf_path=...)` | decoration | also emit `insts.elf` for the `xrt::elf` testbench flow (stage 4) |
+| `.compile(elf_path=...)` | compile call | also emit `insts.elf` for the `xrt::elf` testbench flow (stage 4); requires explicit `xclbin_path` + `inst_path` |
+| `.compile(pdi_path=...)` | compile call | write the PDI to a chosen path (stage 4); requires explicit `xclbin_path` + `inst_path` |
 | `$NPU_CACHE_HOME` env var | process-wide | where `aiecc` reads/writes artifacts (stage 4) |
 | `trace_config=` kwarg at call-time | each call | forwarded to `NPUKernel.__init__` (stage 5); **not** a CompileTime[T] kwarg |
 | `iron.set_current_device(...)` | before generator runs | target architecture baked into the generator's `Program` (stage 3) |
@@ -259,6 +336,9 @@ transferred (expected entry `0`) are also skipped.
 |---|---|
 | The serialized MLIR (no NPU touched, no aiecc run) | `cd.as_mlir(**kwargs)` |
 | The cached artifact paths | `cd.compile(**kwargs)` returns `(xclbin_path, insts_path)` |
+| The PDI path (cache mode) | `cd.get_pdi_path()` (after a `compile()`) |
+| Artifacts at chosen paths | `cd.compile(xclbin_path=, inst_path=, pdi_path=, elf_path=)` |
+| Run a pre-built xclbin + insts | `NPUKernel(xclbin, insts)(in_t, out_t)` |
 | The recipe hash (cache key) | `cd.compilable.recipe_hash` |
 | The artifact hash (freshness key) | `cd.compilable.artifact_hash` |
 | Whether the next call will rebuild | `cd.compilable.artifact_hash != cached_artifact_hash` |
@@ -372,6 +452,10 @@ default.
 
 ## Related reading
 
+- [`aiecc` compiler driver](../tools/aiecc/README.md)
+  — the declarative build-graph driver that turns the lowered MLIR into
+  core ELFs, CDO/PDI, xclbin and NPU instruction streams, with a developer
+  guide to its `Edge`/`Node`/`Item` graph model and `--checkpoint`/`--resume`.
 - [`iron_configuration.md`](./iron_configuration.md) — environment
   variables (cache dir, default tensor class, default device, log
   level).

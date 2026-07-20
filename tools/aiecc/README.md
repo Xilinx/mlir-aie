@@ -2,333 +2,285 @@
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-//
+// 
 //===----------------------------------------------------------===//-->
 
-# AIECC - C++ AIE Compiler Driver
+# `aiecc`: the MLIR-AIE compiler driver
 
-This is a high-performance C++ implementation of the AIE compiler driver that provides full feature parity with the Python `aiecc.py` tool. The C++ version eliminates all subprocess calls to `aie-opt` and `aie-translate` by using direct MLIR C++ APIs, resulting in significantly faster compilation.
-
-## Overview
-
-The `aiecc` tool orchestrates the complete compilation flow for AIE (AI Engine) devices:
-- **In-memory MLIR transformation** using PassManager C++ API
-- **Core compilation** with Peano or xchesscc toolchain
-- **Resource allocation and routing** passes
-- **NPU instruction generation** via direct API calls
-- **ELF generation** for NPU instructions (via aiebu-asm)
-- **CDO (Configuration Data Object) generation**
-- **PDI (Partial Device Image) generation**
-- **xclbin packaging** (including extending existing xclbins)
-- **Multi-device and multi-core support**
-- **External object file linking** via `link_with` attribute
-
-## Usage
+`aiecc` takes an AIE `.mlir` design and produces the artifacts needed to run it
+on an NPU (instruction streams, ELFs, PDIs, xclbins, …).
 
 ```bash
 aiecc [options] <input.mlir>
 ```
 
-### Common Options
-
-- `--version` - Show version information
-- `--verbose` / `-v` - Enable verbose output
-- `--tmpdir <dir>` - Directory for temporary files (default: `<input>.prj`)
-- `--compile` / `--no-compile` - Enable/disable AIE core compilation
-- `--link` / `--no-link` - Enable/disable AIE code linking
-- `--alloc-scheme <scheme>` - Buffer allocation scheme (basic-sequential or bank-aware)
-- `-O <level>` - Optimization level (0-3, default: 2)
-- `-n` - Dry run mode (don't execute commands)
-
-### Output Generation Options
-
-- `--aie-generate-npu-insts` - Generate NPU instruction TXN sequence
-  - `--npu-insts-name <pattern>` - Output filename pattern (default: `{0}_{1}.bin`)
-  
-- `--aie-generate-cdo` - Generate CDO (Configuration Data Object)
-  
-- `--aie-generate-pdi` - Generate PDI binary for configuration
-  - `--pdi-name <pattern>` - Output PDI filename pattern (default: `{0}.pdi`)
-  
-- `--aie-generate-xclbin` - Generate xclbin
-  - `--xclbin-name <pattern>` - Output xclbin filename pattern (default: `{0}.xclbin`)
-  - `--xclbin-input <file>` - Extend existing xclbin with additional kernel/PDI
-  - `--xclbin-kernel-name <name>` - Kernel name in xclbin (default: `MLIR_AIE`)
-  - `--xclbin-instance-name <name>` - Instance name in xclbin (default: `MLIRAIE`)
-  - `--xclbin-kernel-id <id>` - Kernel ID in xclbin (default: `0x901`)
-
-- `--aie-generate-elf` - Generate ELF for NPU instructions (via aiebu-asm)
-  - `--elf-name <file>` - Output ELF filename (default: `design.elf`)
-
-- `--generate-full-elf` - Generate complete ELF with PDIs and instruction sequences
-  - `--full-elf-name <file>` - Output full ELF filename (default: `aie.elf`)
-
-- `--aie-generate-txn` - Generate transaction binary MLIR for configuration
-  - `--txn-name <pattern>` - Output filename pattern (default: `{0}_transaction.mlir`)
-
-- `--aie-generate-ctrlpkt` - Generate control packets for configuration
-  - `--ctrlpkt-name <pattern>` - Output filename for control packet binary (default: `{0}_ctrlpkt.bin`)
-  - `--ctrlpkt-dma-seq-name <pattern>` - Output filename for DMA sequence (default: `{0}_ctrlpkt_dma_seq.bin`)
-  - `--ctrlpkt-elf-name <pattern>` - Output filename for combined ELF (default: `{0}_ctrlpkt.elf`)
-
-### Device and Sequence Selection
-
-- `--device-name <name>` - Compile only the specified device
-- `--sequence-name <name>` - Compile only the specified runtime sequence
-
-### Compiler Options
-
-- `--xbridge` / `--no-xbridge` - Link using xbridge (default: enabled; automatically disabled when `--no-xchesscc` is used)
-- `--xchesscc` / `--no-xchesscc` - Compile using xchesscc vs Peano (default: xchesscc); `--no-xchesscc` implies `--no-xbridge` and is therefore incompatible with `--aiesim`
-- `--peano <dir>` - Peano compiler installation directory
-- `--aietools <dir>` - Vitis aietools installation directory (auto-discovered from PATH or `AIETOOLS_ROOT`)
-- `--aiesim` / `--no-aiesim` - Generate aiesim work folder (requires xbridge)
-- `--compile-host` / `--no-compile-host` - Enable/disable host program compilation
-- `--host-target <target>` - Target architecture for host compilation (default: x86_64-linux-gnu)
-- `-I<dir>` - Add include directory for host compilation
-- `-L<dir>` - Add library search directory for host compilation
-- `-l<lib>` - Link library for host compilation
-- `-o <file>` - Output filename for host compilation
-- `--dynamic-objFifos` - Use dynamic object FIFOs
-- `--packet-sw-objFifos` - Use packet-switched flows
-- `--generate-ctrl-pkt-overlay` - Generate control packet overlay
-- `--dump-intermediates` - Dump intermediate MLIR files for debugging
-
-### Compilation Mode Options
-
-- `-j <n>` / `--nthreads <n>` - Number of parallel threads for core compilation
-  - `-j 0` - Auto-detect based on CPU count
-  - `-j 1` - Sequential compilation (default)
-  - `-j 4` - Use 4 parallel threads
-- `--unified` / `--no-unified` - Unified compilation mode
-  - `--unified` - Compile all cores together into one object file, then link each separately
-  - `--no-unified` - Compile cores independently (default, can use with `-j` for parallelism)
-
-## Examples
-
-### Basic Compilation
+To also build a **host program** that drives the array, pass `--compile-host`
+and put the host C/C++ sources after a `--`
 
 ```bash
-aiecc input.mlir
+aiecc --compile-host [options] <input.mlir> -o host.exe -- host.cpp [host-compiler flags]
 ```
 
-This will:
-1. Parse the input MLIR file
-2. Run resource allocation and routing passes
-3. Create a project directory `input.mlir.prj/` with intermediate files
+---
 
-### Generate NPU Instructions
+## User guide
+
+### The two most common flows
+
+**1. Instruction-sequence + xclbin flow.** The host loads an `xclbin` (which
+contains the array configuration) and, at dispatch time, streams a
+per-runtime-sequence NPU instruction binary to the device:
 
 ```bash
-aiecc --verbose --aie-generate-npu-insts input.mlir
+aiecc --aie-generate-npu-insts --aie-generate-xclbin design.mlir
+# -> insts_<device>_<seq>.bin   (one per runtime sequence)
+# -> aie.xclbin                 (configuration PDI, packaged)
 ```
 
-This generates NPU instruction binaries for all runtime sequences in the design.
-
-### Generate Complete xclbin
+**2. Full-ELF flow.** Everything — all device PDIs and instruction streams — is
+bundled into a single loadable ELF instead of an xclbin plus loose binaries:
 
 ```bash
-aiecc --aie-generate-xclbin --xclbin-name=final.xclbin input.mlir
+aiecc --generate-full-elf design.mlir   # -> aie.elf
 ```
 
-This generates CDO files, PDI, and packages everything into an xclbin.
+You can override these output file names with `--npu-insts-name`, 
+`--xclbin-name`, and `--full-elf-name`. You can filter which devices and 
+runtime sequences are compiled with `--device-name` and `--sequence-name`. 
 
-### Multi-Device with Filtering
+### Seeing what the compiler will do / dry-running: `--emit-dot`
+
+The compiler builds its execution plan from the flags you pass.
+Adding `--emit-dot` prints that plan (as a GraphViz graph) for exactly the 
+requested outputs and options and exits without compiling anything. You omit
+the input file when you pass `--emit-dot`, as no compilation actually takes
+place. For example, this shows the plan for the NPU-instruction flow and 
+renders it to an image:
 
 ```bash
-aiecc --device-name=npu1_1col \
-      --sequence-name=sequence_0 \
-      --aie-generate-npu-insts \
-      input.mlir
+aiecc --aie-generate-npu-insts --emit-dot | dot -Tpng -o flow.png
 ```
 
-This processes only the specified device and sequence.
+Each box is a compilation step labelled by the artifact it produces, arrows show
+dependencies between steps, and the outputs you requested are highlighted.
+Changing the output flags (for instance to `--generate-full-elf`) changes the
+graph accordingly, so this is the fastest way to understand what a given
+invocation will actually do. The command above produces this graph:
 
-### Dry Run for Debugging
+![NPU-instruction flow graph](docs/npu_insts_flow.svg)
+
+### Stopping and restarting a build: `--checkpoint` and `--resume`
+
+Sometimes you want to interrupt compilation partway through, look at or modify
+an intermediate result, and then continue from that point rather than starting
+over. `--checkpoint` and `--resume` let you do exactly that.
+
+First, compile up to some intermediate stage and save the result. Here we stop
+at the routed physical IR (`--cut`, described below, selects where to cut) and
+write the checkpoint into the directory `cp`:
 
 ```bash
-aiecc -n --verbose --aie-generate-npu-insts input.mlir
+aiecc --cut=input_physical.mlir --checkpoint=cp design.mlir
 ```
 
-This shows what commands would be executed without running them.
+`--cut` stops the build at the named edge — nothing downstream of it runs, so no
+final artifacts are produced — and snapshots that frontier. It requires
+`--checkpoint` to say where to write the snapshot. The artifacts you eventually
+want are built later, by `--resume`.
 
-## Architecture
-
-The C++ aiecc implementation uses **full in-memory compilation** with zero subprocess calls to `aie-opt` or `aie-translate`:
-
-```
-Input MLIR (parsed once)
-    ↓
-In-memory: runResourceAllocationPipeline()
-  - Vector to AIEVec conversion
-  - Lock ID assignment
-  - Object FIFO stateful transform
-  - Buffer descriptor assignment
-  - Buffer address allocation
-    ↓
-In-memory: runRoutingPipeline()
-  - Pathfinder flow routing
-    ↓
-For each core:
-  In-memory: runLLVMLoweringPipeline()
-    - Localize locks, normalize address spaces
-    - Core extraction (aie-standard-lowering)
-    - LLVM dialect lowering
-      ↓
-  In-memory: translateModuleToLLVMIR()
-      ↓
-  [Write LLVM IR to disk]
-      ↓
-  Peano opt + llc → Object file
-      ↓
-  In-memory: AIETranslateToLdScript()
-      ↓
-  Peano clang → ELF
-    ↓
-In-memory: Update module with ELF paths
-    ↓
-In-memory: runNpuLoweringPipeline()
-  - BD chain materialization
-  - DMA to NPU conversion
-    ↓
-In-memory: AIETranslateNpuToBinary() → NPU instructions
-    ↓
-In-memory: AIETranslateToCDODirect() → CDO files
-    ↓
-bootgen → PDI
-    ↓
-xclbinutil → xclbin
-```
-
-## Comparison with Python aiecc.py
-
-| Feature | Python aiecc.py | C++ aiecc |
-|---------|----------------|-----------|
-| Language | Python 3 | C++17 |
-| MLIR API | Python bindings | Native C++ API |
-| Pass Execution | In-memory | **In-memory** |
-| Translation | Direct API | **Direct API** |
-| aie-opt subprocess | None | **None** |
-| aie-translate subprocess | None | **None** |
-| Core Compilation | Peano/xchesscc | **Peano/xchesscc** |
-| External Object Linking | ✅ | ✅ |
-| Parallel Cores (`-j`) | ✅ | **✅** |
-| Unified Compilation | ✅ | **✅** |
-| Host Compilation (`aie_inc.cpp`) | ✅ | **✅** |
-| AIE Simulator | ✅ | **✅** |
-| Control Packets | ✅ | **✅** |
-| Performance | Good | **Better** (no Python overhead) |
-
-### Current Status
-
-The C++ implementation provides **near-full feature parity**:
-- ✅ Complete command-line argument parsing
-- ✅ MLIR module loading and parsing
-- ✅ Multi-device and multi-core support
-- ✅ In-memory resource allocation pipeline
-- ✅ In-memory routing (pathfinder flows)
-- ✅ In-memory LLVM lowering per core
-- ✅ In-memory MLIR to LLVM IR translation
-- ✅ Core compilation with Peano toolchain
-- ✅ External object file linking (`link_with` attribute)
-- ✅ NPU instruction generation (direct API)
-- ✅ CDO generation (direct API)
-- ✅ PDI generation via bootgen
-- ✅ xclbin generation via xclbinutil
-- ✅ Verbose output and dry-run mode
-
-- ✅ xchesscc compiler support (with xbridge linking)
-- ✅ ELF instruction generation (via aiebu-asm)
-- ✅ Full ELF generation with PDIs
-- ✅ xclbin extension (`--xclbin-input`)
-- ✅ xclbin customization (`--xclbin-kernel-name`, `--xclbin-instance-name`, `--xclbin-kernel-id`)
-- ✅ Transaction generation (`--aie-generate-txn`)
-- ✅ Control packet generation (`--aie-generate-ctrlpkt`)
-- ✅ AIE simulation (`--aiesim`)
-- ✅ Host compilation (`--compile-host`, `--host-target`)
-- ✅ Repeater scripts (`--enable-repeater-scripts`, `--repeater-output-dir`)
-
-### Features Not Yet Implemented
-
-| Flag | Status | Notes |
-|------|--------|-------|
-| `--profile` | TODO | Command execution timing |
-| `--progress` | No-op | Rich progress bar (not planned for C++) |
-
-### Optional Library Integration
-
-When built with the appropriate libraries, aiecc uses direct library calls
-instead of subprocess invocations for improved performance:
-
-| Library | Compile Flag | Effect |
-|---------|-------------|--------|
-| AIEBU | `AIECC_HAS_AIEBU_LIBRARY` | Direct ELF generation via `aiebu_assembler_get_elf()` C API |
-| bootgen | `AIECC_HAS_BOOTGEN_LIBRARY` | Direct PDI generation via `bootgen_generate_pdi()` C API |
-
-Both fall back to subprocess calls (`aiebu-asm`, `bootgen`) when the library is
-not available or the library call fails.
-
-## Building
-
-The tool is built as part of mlir-aie:
+Now you can open the intermediate files saved in `cp` and edit them — for
+instance, to hand-tweak the IR and see how a change affects the rest of the
+build. When you are ready, resume from the checkpoint and ask for the artifact
+you want (`--get`, described below). The saved frontier is read back from disk
+(IR frontiers are re-parsed from their `.mlir` text), the stages before the
+checkpoint are skipped entirely, and only what comes after runs:
 
 ```bash
-cd mlir-aie
-mkdir build && cd build
-cmake -G Ninja .. \
-  -DLLVM_DIR=<llvm-build>/lib/cmake/llvm \
-  -DMLIR_DIR=<llvm-build>/lib/cmake/mlir
-ninja aiecc
+aiecc --resume=cp/manifest.json
 ```
 
-The `aiecc` binary will be in `build/bin/`.
+The resume invocation rebuilds the graph from the flags recorded in the
+checkpoint manifest, so it inherits the original device, toolchain and lowering
+options automatically — you neither repeat them nor may override them. `--resume`
+rejects any graph-shaping flag on its command line, since changing the graph
+would invalidate the saved intermediates; only execution-only flags may
+accompany it: `--get`, `--cut`, `--checkpoint`, `-j`, `-v`/`--verbose`, and
+`--progress`.
 
-## Dependencies
+This makes it easy to isolate a problem: compile up to just before a stage you
+suspect, change the intermediate result by hand, and re-run only what comes
+after it.
 
-- MLIR/LLVM libraries
-- AIE dialect libraries (AIE, AIEX, AIEVec)
-- External tools (found in PATH or via environment):
-  - **Peano toolchain** (`PEANO_INSTALL_DIR` or `--peano`):
-    - `opt` - LLVM IR optimization
-    - `llc` - LLVM IR to object compilation
-    - `clang` - Linking to ELF
-  - `bootgen` - For PDI generation
-  - `xclbinutil` - For xclbin generation
+Adding `--emit-dot` previews where the checkpoint will cut the build. Here the
+NPU-instruction flow is cut right after routing produces the physical IR: the
+steps run before the cut are shaded green (the `--cut` frontier, whose artifacts
+are saved to disk, darker), and the steps a `--resume` runs afterwards sit
+across the dashed red *cut* arrows. Each edge runs at most once across the pair:
+the prefix and frontier during `--checkpoint`, the downstream steps during
+`--resume` (which reloads the frontier from disk rather than rebuilding it).
 
-Note: `aie-opt` and `aie-translate` are **not required** - all MLIR passes and translations are executed in-memory using direct C++ API calls.
-
-## Error Handling
-
-The tool provides clear error messages for common issues:
-
-```
-Error: No input file specified
-Error: No AIE devices found in module
-Error: Could not find Peano installation
-Error: Command failed with exit code 1
+```bash
+aiecc --aie-generate-npu-insts --cut=input_physical.mlir --checkpoint=cp \
+      --emit-dot | dot -Tsvg -o cut.svg
 ```
 
-Use `--verbose` to see detailed command execution and debug issues.
+![NPU-instruction flow with a checkpoint cut](docs/npu_insts_cut.svg)
 
-## Environment
+If an error occurs during compilation, `aiecc` will dump a checkpoint 
+capturing the state up to the first failing edge. This allows you to submit
+a checkpoint as a reproducer, or investigate the issue yourself using the
+exact inputs the failing step saw.
 
-The tool respects standard MLIR/AIE environment variables:
-- `PEANO_INSTALL_DIR` - Peano compiler installation directory
-- `AIETOOLS_ROOT` - Vitis aietools installation directory (for xchesscc)
-- `VIRTUAL_ENV` - Python virtual environment (for auto-discovering llvm-aie package)
+### Extracting a single artifact: `--get`
 
-Tools are automatically found in PATH or relative to the aiecc installation directory.
+`--get=<name>` asks for any single artifact in the build by name, including
+intermediates that don't have their own `--aie-generate-*` flag (such as the
+per-core objects or the routed IR). Run with `--emit-dot` to see the available
+names; passing an unrecognized name prints the full list.
 
-## Python Wrapper
+```bash
+aiecc --get=objects_{0}.o design.mlir           # just the per-core objects
+aiecc --get=input_physical.mlir design.mlir     # just the routed IR
+```
 
-The Python `aiecc.py` is a thin wrapper (~130 lines) that delegates all work to
-the C++ `aiecc` binary. It:
+`--get` and `--resume` work well together when you want just one final artifact
+without redoing the whole build. First checkpoint all the intermediates up to
+some stage, then resume and ask only for the one output you want; the compiler
+reuses the checkpointed intermediates instead of recomputing them:
 
-- Locates the `aiecc` binary relative to its own install location
-- Passes all arguments through to the C++ binary unchanged
-- Preserves the `run()` API for backward compatibility
+```bash
+aiecc --cut=physical_with_elfs.mlir --checkpoint=cp design.mlir
+aiecc --resume=cp/manifest.json --get=cdo_{0}   # only the CDO, from the checkpoint
+```
 
-## See Also
+---
 
-- Python aiecc wrapper: `python/compiler/aiecc/main.py`
-- AIE dialect documentation: `docs/`
+## Developer guide
+
+`aiecc` captures the build steps required for each requested output artifact
+as a static graph: every kind of intermediate is a `Node`, every 
+transformation an edge, and the engine runs only the edges needed for the
+artifacts you asked for.
+
+### Edge, Node, Item — and keys
+
+- **`Item<T>`** — one typed intermediate or output artifact; a payload of type 
+  `T` (e.g., JSON, IR module, vector of bytes) plus a `key`, which uniquely
+  identifies the payload among its peers. Items are materialized to disk 
+  lazily, i.e., only when a downstream edge needs them on disk. Payload types 
+  and their disk serializers live in `Items.h`.
+- **`Node<T>`** — the collection of all `Item<T>` artifacts produced by one 
+  edge; for many edges this wraps a single item (e.g. `aie.elf`), but for
+  some it contains many (e.g. the per-AIE-core `.o` files).
+- **`Edge`** — a transformation from input node(s) to an output node, 
+  performing some action (a lambda, a `PassPipeline`, or a `ShellCommand`). 
+  Edges may change the cardinality of the input/output nodes, e.g. split or
+  join, or apply a transform to each item (map) -- see below.
+
+**Keys** are what make fan-out/fan-in well-defined: an edge that splits a module
+per-device produces one item per device, each with a stable key (the device
+name). Downstream edges zip nodes *by key*, so a core's object, its ld script,
+and its arch string all line up. Keys also name checkpoint frontier entries. In
+edge output names/file paths, `{0}` gets substituted for each item's key.
+
+### Keeping the graph static
+
+If you are adding logic to the driver, the single rule that makes everything
+else work is: **the graph declaration is static, and every dependency and every
+file written must flow through the graph and the `Item` abstraction.** Never
+read inputs or write outputs out-of-band.
+
+#### Why this matters
+
+- **The graph is declared unconditionally.** No guards around edge construction 
+  — every edge always exists. The engine prunes backward from the requested 
+  outputs, so unrequested work never runs. `--emit-dot`, `--checkpoint`, and 
+  `--resume` rely on this static shape.
+- **`Item` owns materialization.** An `Item<T>` holds a typed payload and only
+  writes it to disk when a *downstream* edge asks for its path via `asFile()`.
+  Intermediates that nobody needs on disk stay in memory automatically. If you
+  write files yourself, you defeat this and break checkpointing.
+
+Keep both invariants and the user-facing features above come for free.
+
+### Edge types
+
+Each diagram shows the items (with their keys) of the input and output nodes
+and how the edge relates them.
+
+**`map<U>`** — one output item per input item, applying the action
+element-wise and preserving keys.
+
+![map edge](docs/edges/map.svg)
+
+**`split<U>`** — explode a singleton input into many keyed output items.
+
+![split edge](docs/edges/split.svg)
+
+**`join<U>`** — fold every item of a node into a single output item.
+
+![join edge](docs/edges/join.svg)
+
+**`filter`** — a zero-copy view keeping only the items whose payload matches;
+the surviving output items alias their source items rather than copying.
+
+![filter edge](docs/edges/filter.svg)
+
+**`rekeyFrom<S>`** — re-key a secondary node onto this node's keys (a broadcast
+/ keyed join): one output item per primary item, aliasing the secondary item
+whose key equals `keyFn(payload)`. Below, each core picks up its device's item.
+
+![rekeyFrom edge](docs/edges/rekeyfrom.svg)
+
+**`bundle(a, b, …).map<U>`** — zip several nodes by key and run the action on
+the matched items together, producing one output item per key.
+
+![bundle map edge](docs/edges/bundle_map.svg)
+
+**`bundle(a, b, …).join<U>`** — zip several nodes by key and fold all the
+matched items into a single output item.
+
+![bundle join edge](docs/edges/bundle_join.svg)
+
+**`fileInput`** — seed the graph with an existing on-disk file; it has no input
+node and produces a singleton `Node<File>`.
+
+![fileInput edge](docs/edges/fileinput.svg)
+
+Mark an edge `.threadSafe()` only when its action touches no shared state
+(external-tool invocations); such edges fan their per-key work across `-j`.
+
+### Putting it together: scatter / gather
+
+A worked slice of the real driver — split a module per core (scatter), compile
+each core in parallel, then link each core against its object plus its script
+(gather over multiple keyed nodes):
+
+```cpp
+// Scatter: one item per aie.core, keyed by "<device>_core_<col>_<row>".
+auto &cores = physical.split<OpInModule<CoreOp>>(
+    "perCore_{0}.mlir",
+    SplitIRAction<CoreOp>([](CoreOp c) { return coreKey(c); }));
+
+// Element-wise maps: each core gets its own object and ld script. The .o edge
+// shells out to a tool, so it is thread-safe and runs under -j.
+auto &objects = cores.map<ModRef>("lowered_{0}.mlir", lowerCore)
+                     .map<File>("objects_{0}.o", ShellCommand{"llc"} /*...*/)
+                     .threadSafe();
+auto &scripts = cores.map<std::string>("ld_{0}.script", emitLdScript);
+
+// Gather: zip the object and script nodes by key, link per core.
+auto &elfs = bundle(objects.out, scripts.out)
+    .map<File>("elfs_{0}.elf",
+               ShellCommand{"clang"}.input().input("-Wl,-T,").output("-o"))
+    .threadSafe();
+```
+
+Each core flows independently from `cores` through to `elfs`; nothing hits disk
+unless a downstream consumer (or a requested output) calls `asFile()`. Add a new
+artifact by declaring more edges off an existing node and appending the terminal
+edge to `outputs` — the engine and every user-facing feature above adapt
+automatically.
+
+For the full picture, start from `buildMainGraph` in `aiecc.cpp`, then read
+`Graph.h` (edges) and `Items.h` (payloads).

@@ -34,6 +34,11 @@ exclude_docs: |
   CMakeLists.txt
   *.dox
   /README.md
+  # aiecc/ is a symlink to tools/aiecc (its README is published); keep the
+  # driver's C++ sources and build files out of the site.
+  /aiecc/*.cpp
+  /aiecc/*.h
+  /aiecc/*.cmake
   # Legacy raw-MLIR walkthroughs (deprecated AIE. syntax, Versal-era). Kept in
   # the repo for reference but not published on the site.
   /AIEDesignPatterns.md
@@ -256,6 +261,7 @@ nav:
       - AIEX Passes: AIEXPasses.md
       - AIEVec Passes: AIEVecPasses.md
       - C++ API (Doxygen): api/cpp_doxygen.md
+    - aiecc Compiler Driver: aiecc/README.md
   - Community:
     - Used in / Cited in: UsedIn.md
     - Contributing: CONTRIBUTING.md

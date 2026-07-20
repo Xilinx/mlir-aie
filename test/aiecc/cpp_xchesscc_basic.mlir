@@ -5,24 +5,25 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Test basic xchesscc compilation path in C++ aiecc
+// Test basic xchesscc compilation path in aiecc.
+// Requesting the default compile+link flow drives the full per-core Chess
+// path: the core is linked against the Chess intrinsic wrapper, compiled to an
+// object with xchesscc, then linked into an ELF with the xbridge (+l) linker.
+// Peano's llc must never be invoked on the Chess path.
 
 // REQUIRES: chess
 
-// RUN: aiecc --xchesscc --xbridge --verbose %s 2>&1 | FileCheck %s
+// Give this run private output/work dirs: Chess drops scratch and aiecc emits
+// the per-core elfs_<core> dir into the output dir, so concurrent runs sharing
+// a directory (as the lit suite does) would clobber each other.
+// RUN: aiecc --xchesscc --xbridge -v --output-dir=%t --tmpdir=%t.prj %s 2>&1 | FileCheck %s
 
-// CHECK: Successfully parsed input file
-// CHECK: Found 1 AIE device
-// CHECK: Running resource allocation pipeline in-memory
-// CHECK: Resource allocation pipeline completed successfully
-// CHECK: Running routing pipeline in-memory
-// CHECK: Routing pipeline completed successfully
-// CHECK: Compiling core
-// CHECK: Applied IR downgrade for Chess
-// CHECK: Linked with chess intrinsic wrapper
-// CHECK: Compiled with xchesscc
-// CHECK: Linked with xbridge
-// CHECK: Compilation completed successfully
+// CHECK-NOT: {{[^ ]*llc }}
+// CHECK: chess-llvm-link
+// CHECK-SAME: chess_intrinsic_wrapper
+// CHECK: xchesscc_wrapper aie2 {{.*}} -c {{.*}}-o {{.*}}objects_
+// CHECK: xchesscc_wrapper aie2 {{.*}}+l {{.*}}-o {{.*}}elfs_
+// CHECK-NOT: {{[^ ]*llc }}
 
 module {
   aie.device(npu1_1col) {

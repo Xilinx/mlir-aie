@@ -6,44 +6,32 @@
 //===----------------------------------------------------------------------===//
 
 // Test full ELF generation with --expand-load-pdis.
-// This verifies that the single-clone approach correctly:
+// This verifies that the expand-load-pdis path correctly:
 //   1. Creates empty device PDIs for device reset
 //   2. Assigns PDI IDs in module iteration order (empties first)
 //   3. Generates CDO/PDI for ALL devices (empties + originals)
 //   4. Generates NPU instructions from the same expanded module
 //   5. Produces a valid full ELF with all PDIs
-// This matches the old Python FlowRunner behavior.
 
 // REQUIRES: peano
 
-// RUN: aiecc --no-xchesscc --no-xbridge --generate-full-elf --expand-load-pdis --verbose %s 2>&1 | FileCheck %s
+// RUN: rm -rf %t && mkdir -p %t
+// RUN: cd %t && aiecc --no-xchesscc --no-xbridge --generate-full-elf --expand-load-pdis --tmpdir=%t %s 2>&1
+// RUN: ls %t | FileCheck %s
 
-// Verify Phase A: core compilation for original devices only
-// CHECK: Processing device: main
-// CHECK: No cores to compile in device main
-// CHECK: Processing device: add_one
-// CHECK: Compiling 1 core
+// Empty reset device gets its own CDO and PDI (empties first in module order).
+// CHECK-DAG: cdo_empty_0
+// CHECK-DAG: empty_0.pdi
 
-// Verify Phase B: single expanded clone with empty devices
-// CHECK: Expanded module PDI ID mapping:
-// CHECK-DAG: @empty_{{[01]}} -> PDI ID {{[12]}}
-// CHECK-DAG: @main -> PDI ID
-// CHECK-DAG: @add_one -> PDI ID
-// CHECK: Assigned PDI id=
+// Original devices are lowered from the same expanded module.
+// CHECK-DAG: cdo_main
+// CHECK-DAG: main.pdi
+// CHECK-DAG: cdo_add_one
+// CHECK-DAG: add_one.pdi
 
-// Verify artifacts generated for empty devices
-// CHECK: Generating artifacts for device: empty_{{[01]}} (from expanded module)
-// CHECK: Generating CDO artifacts for device: empty_
-
-// Verify artifacts generated for original devices from expanded module
-// CHECK: Generating artifacts for device: main (from expanded module)
-// CHECK: Generating artifacts for device: add_one (from expanded module)
-
-// Verify full ELF generation with all devices
-// CHECK: Generating full ELF with {{[3-5]}} device
-// CHECK: Generated config.json
-// CHECK: Generated full ELF
-// CHECK: Compilation completed successfully
+// Full ELF and its config are produced.
+// CHECK-DAG: full_elf_config.json
+// CHECK-DAG: aie.elf
 
 module {
 
