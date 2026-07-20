@@ -1,0 +1,17 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai_npu2, peano
+// REQUIRES: makefile_examples
+//
+// Strix (npu2) variant of run_aot_byo.lit: exercise the ahead-of-time
+// artifact export (--aot-dir) and the bring-your-own-artifacts run path
+// (--from-xclbin / --from-insts).  Artifacts land in a gitignored scratch dir
+// and are removed afterwards, so nothing leaks between runs (these paths
+// bypass the JIT cache).
+//
+// RUN: rm -rf %S/test_stx
+// RUN: mkdir -p %S/test_stx
+// RUN: %run_on_npu2% python3 %S/vector_scalar_add.py --dev npu2 --aot-dir %S/test_stx
+// RUN: %run_on_npu2% python3 %S/vector_scalar_add.py --dev npu2 --from-xclbin %S/test_stx/vector_scalar_add.xclbin --from-insts %S/test_stx/vector_scalar_add.insts.bin
+// RUN: rm -rf %S/test_stx

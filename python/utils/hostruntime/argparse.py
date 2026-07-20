@@ -30,6 +30,7 @@ def add_compile_args(
     default_dev: str | None = None,
     short_dev: str | None = "-d",
     with_elf: bool = False,
+    with_pdi: bool = False,
     with_emit_mlir: bool = False,
 ) -> None:
     """Add the standard compile-mode flags.
@@ -51,6 +52,9 @@ def add_compile_args(
         with_elf: When True, also add ``--elf-path`` (for testbenches
             that load the insts as an ``xrt::elf`` module instead of a
             raw ``insts.bin``).
+        with_pdi: When True, also add ``--pdi-path`` (write the
+            Programmable Device Image to a chosen path in compile-only
+            mode).
         with_emit_mlir: When True, also add ``--emit-mlir`` (action
             ``store_true``) — for designs that have a vck5000 / aiecc
             print-MLIR path next to the @iron.jit NPU path.
@@ -95,6 +99,13 @@ def add_compile_args(
             type=str,
             default=None,
             help="optional ELF-wrapped insts (for the test.cpp xrt::elf flow)",
+        )
+    if with_pdi:
+        parser.add_argument(
+            "--pdi-path",
+            type=str,
+            default=None,
+            help="compile-only mode: write the PDI here (requires --xclbin-path + --insts-path)",
         )
 
 
