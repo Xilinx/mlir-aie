@@ -584,11 +584,10 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
   pm->addPass(X::createAIELowerScratchpadParametersPass());
 
   // The control-overlay pass is module-level (it may emit a standalone
-  // `@ctrl_pkt_overlay` device). In the ctrl-pkt / reconfigure flow
-  // (`ctrlPktOverlay`) it must run BEFORE objectFIFO lowering so the overlay
-  // claims its shim DMA channels first and the objectFIFO transform
-  // (DMAChannelAnalysis) works around them. In the baseline flow it keeps its
-  // historical position (after objectFIFO + tile-ctrl-id assignment).
+  // `@ctrl_pkt_overlay` device). With `ctrlPktOverlay` it must run BEFORE
+  // objectFIFO lowering so the overlay claims its shim DMA channels first and
+  // the objectFIFO transform (DMAChannelAnalysis) works around them. Otherwise
+  // it runs after objectFIFO + tile-ctrl-id assignment (below).
   if (ctrlPktOverlay) {
     if (mlir::failed(mlir::parsePassPipeline(
             llvm::formatv(
@@ -615,9 +614,9 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
   dpm.addPass(X::createAIELowerMulticastPass());
   dpm.addPass(createAIEAssignTileCtrlIDsPass());
 
-  // Baseline flow: run the (module-level) overlay pass at its historical
-  // position. Break out of the device nest to run it, then resume with a new
-  // device nest for the remaining per-device passes.
+  // Without `ctrlPktOverlay`, the (module-level) overlay pass runs here, after
+  // tile-ctrl-id assignment. Break out of the device nest to run it, then
+  // resume with a new device nest for the remaining per-device passes.
   if (!ctrlPktOverlay) {
     if (mlir::failed(
             mlir::parsePassPipeline("aie-generate-column-control-overlay{route-"
