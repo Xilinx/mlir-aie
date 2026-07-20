@@ -1,0 +1,9 @@
+<map id="FoldMulAddChainToConvOpPattern" name="FoldMulAddChainToConvOpPattern">
+<area shape="rect" id="Node000001" title=" " alt="" coords="139,108,385,133"/>
+<area shape="rect" id="Node000002" href="$classOpConversionPattern.html" title=" " alt="" coords="5,5,164,45"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="134,49,241,106,239,110,131,54"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="188,13,336,38"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="265,52,265,108,259,108,259,52"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="360,13,441,38"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="374,48,281,110,278,106,371,43"/>
+</map>
