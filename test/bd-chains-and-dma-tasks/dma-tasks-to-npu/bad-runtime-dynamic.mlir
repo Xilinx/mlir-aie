@@ -16,7 +16,7 @@ module {
     %buf = aie.buffer(%tile) {sym_name = "b"} : memref<4096xi32>
     aie.runtime_sequence(%len: i32) {
       %t = aiex.dma_configure_task(%tile, MM2S, 0) {
-          // expected-error@+1 {{runtime-valued BD size/stride/len is only supported on shim NOC tiles}}
+          // expected-error@+1 {{runtime-valued BD size/stride/len/bd_id is only supported on shim NOC tiles}}
           aie.dma_bd(%buf : memref<4096xi32> offset = 0 len = %len sizes = [1, 8, 16, 32] strides = [4096, 512, 32, 1]) {bd_id = 0 : i32}
           aie.end
       }

@@ -267,6 +267,15 @@ struct AIEAssignRuntimeSequenceBDIDsPass
     AIE::DeviceOp device = getOperation();
 
     WalkResult wr = device.walk([&](AIE::RuntimeSequenceOp seq) -> WalkResult {
+      // Skip sequences already handled by the dynamic free-list pool path
+      // (aie-lower-dynamic-bd-pool): they draw BD ids at runtime via
+      // dma_bd_pool_pop and keep their scf.for rolled, which the static
+      // straight-line allocator neither needs to touch nor can validate.
+      bool dynamicPool = false;
+      seq.walk([&](DMABdPoolPopOp) { dynamicPool = true; });
+      if (dynamicPool)
+        return WalkResult::advance();
+
       if (failed(validate(seq)))
         return WalkResult::interrupt();
       gens.clear();

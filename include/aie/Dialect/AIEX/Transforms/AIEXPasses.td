@@ -273,6 +273,35 @@ def AIEUnrollRuntimeSequenceLoops
   ];
 }
 
+def AIELowerDynamicBDPool
+    : Pass<"aie-lower-dynamic-bd-pool", "AIE::DeviceOp"> {
+  let summary = "Lower runtime-bound DMA task allocation to a runtime BD free-list pool";
+  let description = [{
+    The dynamic counterpart to `aie-assign-runtime-sequence-bd-ids`. That pass
+    requires straight-line IR and rejects runtime-bound `scf.for`; this pass
+    handles the runtime-bound case by keeping the loop rolled and drawing buffer
+    descriptor IDs from a per-tile runtime free-list pool.
+
+    For each `dma_configure_task` it inserts an `aiex.dma_bd_pool_pop` and routes
+    the popped SSA `bd_id` into the BD's lowering; each `dma_free_task` and the
+    recycling half of a `dma_await_task` becomes an `aiex.dma_bd_pool_push` of
+    the matching ID (matched through the def-use / scf.for iter_args chain).
+
+    Runs only on the dynamic EmitC path, after `aie-unroll-runtime-sequence-
+    loops` has removed every constant-trip loop, so any surviving `scf.for` is
+    genuinely runtime-bound. v1 supports single-BD tasks; multi-BD chains under a
+    runtime loop are diagnosed.
+  }];
+
+  let constructor = "xilinx::AIEX::createAIELowerDynamicBDPoolPass()";
+  let dependentDialects = [
+    "mlir::arith::ArithDialect",
+    "mlir::scf::SCFDialect",
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
 def AIEDMATasksToNPU : Pass<"aie-dma-tasks-to-npu", "AIE::DeviceOp"> {
   let summary = "Lower configured DMA tasks to NPU instructions";
 

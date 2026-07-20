@@ -1,0 +1,13 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Build the standalone BdPool test against the dependency-free TxnEncoding.h
+// header (C++ standard library only, no MLIR/LLVM/aie-rt) and run it. Covers
+// the free-list pop/push/recycle path and, critically, the exhaustion backstop
+// (bd_pool_pop returns false past capacity) that the MLIR/e2e tests only verify
+// statically.
+//
+// RUN: %host_clang -std=c++17 -I%S/../../../include %S/bd_pool_host.cpp %host_link_flags -o %t.exe
+// RUN: %t.exe | FileCheck %s
+
+// CHECK: bd_pool: all checks passed

@@ -520,7 +520,7 @@ emitTransactionOps(OpBuilder &builder, Location fallbackLoc,
           *op.addressPatch;
       AIEX::NpuAddressPatchOp::create(
           builder, loc, builder.getUI32IntegerAttr(patch.addr),
-          builder.getI32IntegerAttr(patch.argIdx),
+          /*addr_val=*/mlir::Value(), builder.getI32IntegerAttr(patch.argIdx),
           AIEX::createConstantI32(builder, loc, patch.argPlus));
     } else if (op.cmd.Opcode == 0x6 /*  XAie_TxnOpcode::XAIE_IO_PREEMPT */) {
       auto ui8Ty =
