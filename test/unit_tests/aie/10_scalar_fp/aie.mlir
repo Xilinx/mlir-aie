@@ -29,6 +29,6 @@ aie.device(xcvc1902) {
     memref.store %val3,%buf13_0[%idx3] : memref<256xf32>
     aie.end
   }
-  
+
 }
 }

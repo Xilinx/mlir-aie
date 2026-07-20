@@ -17,16 +17,16 @@ Xilinx Vitis 2021.2
 Petalinux 2021.2
 ```
 
-See the notes in [Getting Started](Building.md) for the additional packages that will be needed to successfully install Vitis on a bare-bones Ubuntu machine. Additionally to those packages, building the sysroot on Ubuntu will also require: 
+See the notes in [Getting Started](Building.md) for the additional packages that will be needed to successfully install Vitis on a bare-bones Ubuntu machine. Additionally to those packages, building the sysroot on Ubuntu will also require:
 
- - `libpthread-stubs0-dev` 
+ - `libpthread-stubs0-dev`
  - `graphviz` (provides `dot`)
 
 The 'platform' sub-directory contains the necessary Makefile and build scripts to simplify the build process. The same system requirements to run Vitis and Petalinux will be required for the platform build flow so please refer to those software tool requirements.
 
 ## vck190 'bare' platform
 
-The vck190 'bare' platform is a nearly empty design that enables the necessary NoC connections for any AIE-compiled design. In addition to configuring the CIPS, AI Engines and NoC, it contains minimal PL components sush as clock, reset and a BRAM (64kB) scratchpad attached to the NoC. 
+The vck190 'bare' platform is a nearly empty design that enables the necessary NoC connections for any AIE-compiled design. In addition to configuring the CIPS, AI Engines and NoC, it contains minimal PL components sush as clock, reset and a BRAM (64kB) scratchpad attached to the NoC.
 
 
 ## Platform and sysroot build steps
@@ -43,7 +43,7 @@ cd platforms/vck190_bare_prod
 make all
 ```
 
-The Makefile will first call a tcl script to build the Vivado design and generate an .xsa file. Then, a Makefile in the petalinux subdirectory generates the petalinux linux kernel, a ramdisk rootfs, and boot files. Lastly, petalinux is called to generate a sysroot which can be used during MLIR AIE cross-compilation. 
+The Makefile will first call a tcl script to build the Vivado design and generate an .xsa file. Then, a Makefile in the petalinux subdirectory generates the petalinux linux kernel, a ramdisk rootfs, and boot files. Lastly, petalinux is called to generate a sysroot which can be used during MLIR AIE cross-compilation.
 
 ## Prerequisites for running designs on a physical board
 
@@ -59,7 +59,7 @@ cp -r platforms/vck190_bare_prod/petalinux/images/linux/* <SD card directory>
 ```
 Put the sd card into the micro sd slot to boot up the Versal device (top of the board), connect the board usb-c connector to your host machine and turn on the board. You should run a program like TeraTerm and configure it as a serial port (115200 baud, 8b data, no parity, 1b stop, no flow control). The serial port for Versal is usually the first port but may vary in your setup.
 
-You should then be able to copy binaries compiled by the MLIR AIE tools to test on the board. This is done by first copying the files onto the sd card directly while the card is inserted/ mounted in your host machine. Then reinsert the sd card back into the board. The board boots up as root and the rootfs is running in a ramdisk so no files are saved except those in the primary sd partition. 
+You should then be able to copy binaries compiled by the MLIR AIE tools to test on the board. This is done by first copying the files onto the sd card directly while the card is inserted/ mounted in your host machine. Then reinsert the sd card back into the board. The board boots up as root and the rootfs is running in a ramdisk so no files are saved except those in the primary sd partition.
 
 
 ## Run binaries steps

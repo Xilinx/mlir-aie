@@ -23,7 +23,7 @@ module @example0 {
       return %1 : i8
     }
     %tile_3_3 = aie.tile(3, 3)
-    %buffer_3_3 = aie.buffer(%tile_3_3) : memref<64510xi8> 
+    %buffer_3_3 = aie.buffer(%tile_3_3) : memref<64510xi8>
     %core_3_3 = aie.core(%tile_3_3) {
       %c3 = arith.constant 3 : index
       %c7_i8 = arith.constant 7 : i8

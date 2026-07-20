@@ -1,9 +1,9 @@
 #!/bin/bash
 ##===- utils/single_unit_test_compile.sh - Wrapper to compile single unit test --*- Script -*-===##
-# 
+#
 # Copyright (C) 2022-2024 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-# 
+#
 ##===----------------------------------------------------------------------===##
 #
 # This script simplifies the aiecc compile command for compiling the unit
@@ -37,7 +37,7 @@ runtimeLibs=`realpath $(dirname $(which aie-opt))/../runtime_lib`
 
 if [ "$runTimeArch" == "aarch64" ]; then
     runtimeLibs+=/aarch64
-    
+
     aiecc -v --sysroot=$SYSROOT_DIR \
         --host-target=aarch64-linux-gnu ./aie.mlir \
         -I${runtimeLibs}/test_lib/include -L${runtimeLibs}/test_lib/lib -ltest_lib $extraAieCCFlags \

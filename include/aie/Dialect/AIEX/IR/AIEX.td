@@ -789,7 +789,7 @@ def AIE_NpuBlockWriteOp: AIEX_Op<"npu.blockwrite", []> {
   }];
   let extraClassDeclaration = [{
     std::optional<uint32_t> getAbsoluteAddress();
-    mlir::DenseIntElementsAttr getDataWords(); 
+    mlir::DenseIntElementsAttr getDataWords();
   }];
 }
 
@@ -852,7 +852,7 @@ def AIE_NpuPreemptOp: AIEX_Op<"npu.preempt", []> {
   }];
   let description = [{
     Yield to higher priority task(s). Indicates to the transaction processor that the instruction stream can be interrupted at this point.
-    Levels: 
+    Levels:
     0: Noop.
     1: Mem tile.
     2: AIE tile.
@@ -925,7 +925,7 @@ def AIE_NpuUpdateFromScratchpadOp: AIEX_Op<"npu.update_from_scratchpad", []> {
     This instruction reads the contents of scratchpad memory created using the `npu.create_scratchpad` op (the `StateTable`), calculates a value, then adds the result to the memory location or register denoted by the given address as follows:
 
     1. Reads the existing 64-bit value from the register pair:
-       
+
        ```
        existing = (*(addr+4) & 0xFFFF) << 32 | (*addr & 0xFFFFFFFC)
        ```
@@ -943,7 +943,7 @@ def AIE_NpuUpdateFromScratchpadOp: AIEX_Op<"npu.update_from_scratchpad", []> {
       ```
 
     4. Writes back the lower 48 bits of the result:
-       
+
        ```
        *addr     = result & 0xFFFFFFFC    (bits [1:0] forced to 0)
        *(addr+4) = (*(addr+4) & 0xFFFF0000) | ((result >> 32) & 0xFFFF)
@@ -957,8 +957,8 @@ def AIE_NpuUpdateFromScratchpadOp: AIEX_Op<"npu.update_from_scratchpad", []> {
     - Always writes 8 contiguous bytes (both registers in the pair).
 
     ### Rationale
-    
-    The firmware instruction underpinning this operation was originally intended to patch shim buffer descriptor addresses only. 
+
+    The firmware instruction underpinning this operation was originally intended to patch shim buffer descriptor addresses only.
     Because of this, this always writes 48 bits (size of BD addresses) and the lower bits are zeroed (assuring the value is a multiple of the addressable word size).
 
     ### Attributes
@@ -966,7 +966,7 @@ def AIE_NpuUpdateFromScratchpadOp: AIEX_Op<"npu.update_from_scratchpad", []> {
     - `state_table_idx` is a 32-bit-word index offset into the scratchpad memory. The source value will be read from this offset into the scratchpad.
     - `func` is the function applied to the state table value in firmware, which can be one of `mul`, `incr` or `decr`.
     - `func_arg` is the argument to the function.
-    - `address`, `buffer`, `column` and `row` together resolve to the destination address that the value will be written to. 
+    - `address`, `buffer`, `column` and `row` together resolve to the destination address that the value will be written to.
       Address resolution is the same as for `npu.write32`:
       - If `buffer` is specified, `address` is a word offset relative to that
         buffer's start address.
@@ -1312,7 +1312,7 @@ def AIEX_ScratchpadParameterOp: AIEX_Op<"scratchpad_parameter", [Symbol]> {
   let description = [{
     Declares a named runtime parameter that uses the scratchpad mechanism.
     Using this declaration and the MLIR-AIE runtime library, the host can write
-    these named runtime parameters to DDR, and AIE cores read it using 
+    these named runtime parameters to DDR, and AIE cores read it using
     `aiex.read_scratchpad_parameter`. The scratchpad memory mechanism
     (CREATE_SCRATCHPAD + UPDATE_FROM_SCRATCHPAD firmware opcodes) communicates
     the values.

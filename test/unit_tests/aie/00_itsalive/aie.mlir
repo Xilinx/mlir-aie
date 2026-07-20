@@ -22,6 +22,6 @@ aie.device(xcvc1902) {
     %2 = arith.addi %val1, %val1 : i32
     aie.end
   }
-  
+
 }
 }
