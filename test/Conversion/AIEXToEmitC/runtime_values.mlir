@@ -13,7 +13,7 @@
 // runtime values; the register address stays compile-time (it selects which
 // hardware register, and is resolved with buffer/col/row folded in).
 
-// CHECK: inline std::vector<uint32_t> generate_txn_main_seq(int32_t [[P:v[0-9]+]]) {
+// CHECK: inline std::optional<std::vector<uint32_t>> generate_txn_main_seq(int32_t [[P:v[0-9]+]]) {
 // CHECK:   std::vector<uint32_t> txn;
 // CHECK:   aie_runtime::txn_init(txn);
 // A runtime value flows straight into write32 as the parameter.
@@ -38,7 +38,7 @@ module {
 
 // A runtime value derived through arith (param + 1) is lowered to emitc
 // arithmetic by the convert-arith-to-emitc step, then fed to the txn call.
-// CHECK: inline std::vector<uint32_t> generate_txn_main_derived(int32_t [[P:v[0-9]+]]) {
+// CHECK: inline std::optional<std::vector<uint32_t>> generate_txn_main_derived(int32_t [[P:v[0-9]+]]) {
 // CHECK:   {{v[0-9]+}} = {{v[0-9]+}} + {{v[0-9]+}};
 // CHECK:   aie_runtime::txn_append_write32(txn,
 module {
