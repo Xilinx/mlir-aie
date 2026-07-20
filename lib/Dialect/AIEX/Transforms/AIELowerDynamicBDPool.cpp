@@ -24,6 +24,7 @@
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
 #include "mlir/Dialect/SCF/IR/SCF.h"
+#include "mlir/IR/Dominance.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/DenseMap.h"
@@ -161,6 +162,74 @@ struct AIELowerDynamicBDPoolPass
     return newFor;
   }
 
+  // Carry popped ids out of an scf.if via its results, so a task configured in
+  // a branch and freed after the if can find its id. scf.if has no iter_args;
+  // a result carries a task when BOTH branches yield a paired task at that
+  // position. Rebuilds the op with an appended i32 result per carried task
+  // (each branch's yield appends its own paired id). Returns failure on a
+  // divergent branch (one side yields a task, the other does not) -- there is
+  // no valid id to push on the non-yielding path.
+  LogicalResult carryIdsThroughIf(scf::IfOp ifOp) {
+    // An scf.if with no else cannot yield results, so nothing crosses out.
+    if (ifOp.getNumResults() == 0 || ifOp.elseBlock() == nullptr)
+      return success();
+
+    auto thenYield = cast<scf::YieldOp>(ifOp.thenBlock()->getTerminator());
+    auto elseYield = cast<scf::YieldOp>(ifOp.elseBlock()->getTerminator());
+
+    SmallVector<unsigned> carried; // result positions carrying a paired task
+    for (unsigned k = 0; k < ifOp.getNumResults(); ++k) {
+      Value thenId = pairedId.lookup(thenYield.getOperand(k));
+      Value elseId = pairedId.lookup(elseYield.getOperand(k));
+      if (thenId && elseId)
+        carried.push_back(k);
+      else if (thenId || elseId)
+        return ifOp.emitOpError(
+            "yields a pool-allocated task on only one branch of an scf.if; "
+            "both "
+            "branches must yield the task (and its buffer descriptor id) so it "
+            "can be freed after the if");
+    }
+    if (carried.empty())
+      return success();
+
+    unsigned nOrig = ifOp.getNumResults();
+    OpBuilder b(ifOp);
+    SmallVector<Type> resultTypes(ifOp.getResultTypes());
+    for (unsigned k : carried)
+      (void)k, resultTypes.push_back(b.getI32Type());
+
+    auto newIf =
+        scf::IfOp::create(b, ifOp.getLoc(), resultTypes, ifOp.getCondition(),
+                          /*withElseRegion=*/true);
+    newIf.getThenRegion().takeBody(ifOp.getThenRegion());
+    newIf.getElseRegion().takeBody(ifOp.getElseRegion());
+
+    // Append each carried task's per-branch id to that branch's yield. The id
+    // is the pop result inside the same branch, so it dominates the yield.
+    auto appendIds = [&](scf::YieldOp y) {
+      SmallVector<Value> ids;
+      for (unsigned k : carried)
+        ids.push_back(pairedId.lookup(y.getOperand(k)));
+      y->insertOperands(y->getNumOperands(), ids);
+    };
+    appendIds(cast<scf::YieldOp>(newIf.thenBlock()->getTerminator()));
+    appendIds(cast<scf::YieldOp>(newIf.elseBlock()->getTerminator()));
+
+    for (auto [i, k] : llvm::enumerate(carried)) {
+      // Both branches share tile/dir/channel (same objectfifo); take from then.
+      Value thenTask =
+          cast<scf::YieldOp>(newIf.thenBlock()->getTerminator()).getOperand(k);
+      pairedId[newIf.getResult(k)] = newIf.getResult(nOrig + i);
+      tileForTask[newIf.getResult(k)] = tileForTask.lookup(thenTask);
+      originConfigure[newIf.getResult(k)] = originConfigure.lookup(thenTask);
+    }
+    for (unsigned k = 0; k < nOrig; ++k)
+      ifOp.getResult(k).replaceAllUsesWith(newIf.getResult(k));
+    ifOp.erase();
+    return success();
+  }
+
   LogicalResult lowerRelease(Value task, Operation *op,
                              llvm::DenseSet<Value> &released) {
     Value id = pairedId.lookup(task);
@@ -190,6 +259,18 @@ struct AIELowerDynamicBDPoolPass
       if (!hasRuntimeCF)
         return WalkResult::advance();
 
+      // scf.while has no bounded trip count, so a BD id popped in its body has
+      // no place to be pushed back deterministically; only scf.for and scf.if
+      // are supported.
+      WalkResult whileCheck = seq.walk([&](scf::WhileOp w) {
+        w.emitOpError("scf.while in a runtime sequence is not supported by the "
+                      "dynamic BD pool path; only scf.for and scf.if are "
+                      "supported");
+        return WalkResult::interrupt();
+      });
+      if (whileCheck.wasInterrupted())
+        return WalkResult::interrupt();
+
       pairedId.clear();
       tileForTask.clear();
       originConfigure.clear();
@@ -203,18 +284,29 @@ struct AIELowerDynamicBDPoolPass
       if (r.wasInterrupted())
         return WalkResult::interrupt();
 
-      // 2. Carry the ids through loops so a push sees the id at its own scope.
-      //    Innermost-first: a body's yielded ids must be paired before its
-      //    enclosing loop consumes them.
-      SmallVector<scf::ForOp> loops;
-      seq.walk([&](scf::ForOp f) { loops.push_back(f); });
-      for (scf::ForOp f : llvm::reverse(loops))
-        carryIdsThroughLoop(f);
+      // 2. Carry the ids through control flow so a push sees the id at its own
+      //    scope. seq.walk is pre-order (parents first); reversing gives
+      //    innermost-first, so an inner op's yielded ids are paired before its
+      //    enclosing op consumes them.
+      SmallVector<Operation *> cf;
+      seq.walk([&](Operation *o) {
+        if (isa<scf::ForOp, scf::IfOp>(o))
+          cf.push_back(o);
+      });
+      for (Operation *o : llvm::reverse(cf)) {
+        if (auto f = dyn_cast<scf::ForOp>(o)) {
+          carryIdsThroughLoop(f);
+        } else if (failed(carryIdsThroughIf(cast<scf::IfOp>(o)))) {
+          return WalkResult::interrupt();
+        }
+      }
 
       // 3. free/await -> push (await keeps its sync, adds a push). An await on
       // a
       //    loop result lacks a defining configure, so redirect it to the
       //    loop-invariant origin configure.
+      // Built after step 2 rebuilt any scf.if, so it reflects the final IR.
+      DominanceInfo domInfo(seq);
       llvm::DenseSet<Value> released;
       SmallVector<Operation *> toErase;
       r = seq.walk([&](Operation *op) -> WalkResult {
@@ -232,6 +324,19 @@ struct AIELowerDynamicBDPoolPass
                          "awaits a task whose configure cannot be resolved for "
                          "the dynamic pool path"),
                      WalkResult::interrupt();
+            // The sync reads only the configure's static tile/dir/channel, but
+            // the redirected operand must still dominate the await. A loop's
+            // origin is the pre-loop init configure (dominates); an scf.if
+            // branch configure does not dominate a post-if await. Await inside
+            // the branch (where you issue the transfer) and free after instead.
+            if (!domInfo.dominates(origin.getResult(), await)) {
+              return await.emitOpError(
+                         "awaits a task yielded from an scf.if; await inside "
+                         "the "
+                         "branch that issues the transfer, then free the task "
+                         "after the if"),
+                     WalkResult::interrupt();
+            }
             await.getTaskMutable().assign(origin.getResult());
           }
         }
