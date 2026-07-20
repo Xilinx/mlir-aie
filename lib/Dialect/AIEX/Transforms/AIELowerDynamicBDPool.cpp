@@ -204,6 +204,7 @@ struct AIELowerDynamicBDPoolPass
 
       pairedId.clear();
       tileForTask.clear();
+      originConfigure.clear();
 
       // 1. Every configure pops an id (program order: a pop dominates every use
       //    of its id).
