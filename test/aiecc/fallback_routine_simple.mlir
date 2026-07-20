@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// check that 'aiecc -v' prints pass diagnotics
+// check that 'aiecc -v' prints pass diagnostics
 
 // The front-end (place/allocate) only runs if some artifact roots it; request
 // input_with_addresses so the buffer-allocation diagnostics below are emitted

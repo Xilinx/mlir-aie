@@ -2,7 +2,7 @@
 <!-- SPDX-License-Identifier: Apache-2.0 -->
 
 # VCK190 (production silicon) Bare Platform (2021.2)
-This bare platform is designed to provide basic linux (petalinux) embedded environment to test mlir generated physical design on the vck190 board (production silicon). It is built with 2021.2 vitis/ vivado/ petalinux tools and consists of a relatively empty Versal deign (CIPS, AI Engines, clock/ reset, NoC, BRAM). The build process consist of 3 steps: vivado, petalinux, aie_platform.
+This bare platform is designed to provide basic linux (petalinux) embedded environment to test mlir generated physical design on the vck190 board (production silicon). It is built with 2021.2 vitis/ vivado/ petalinux tools and consists of a relatively empty Versal design (CIPS, AI Engines, clock/ reset, NoC, BRAM). The build process consists of 3 steps: vivado, petalinux, aie_platform.
 
 1. Vivado design (after 2020.1, we can no longer make explicit connections between PL and AIE in Vivado; instead we create a platform for Vitis to elaborate the adf graph design). This step generates the .xsa file.
 2. Petalinux design which takes the .xsa as input. It creates an embedded platform package + sysroot.
@@ -33,7 +33,7 @@ You can then copy the generated host and AIE elf files from your application to 
 ```
 scp *elf root@192.168.0.101:/home/root/.  <-- check for the ip address of your board
 ```
-Finally, you can then run the execuable on the board to verify functionality and performance!
+Finally, you can then run the executable on the board to verify functionality and performance!
 ```
 ssh root@192.168.0.101
 ./test.elf

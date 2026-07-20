@@ -26,7 +26,7 @@ The 'platform' sub-directory contains the necessary Makefile and build scripts t
 
 ## vck190 'bare' platform
 
-The vck190 'bare' platform is a nearly empty design that enables the necessary NoC connections for any AIE-compiled design. In addition to configuring the CIPS, AI Engines and NoC, it contains minimal PL components sush as clock, reset and a BRAM (64kB) scratchpad attached to the NoC.
+The vck190 'bare' platform is a nearly empty design that enables the necessary NoC connections for any AIE-compiled design. In addition to configuring the CIPS, AI Engines and NoC, it contains minimal PL components such as clock, reset and a BRAM (64kB) scratchpad attached to the NoC.
 
 
 ## Platform and sysroot build steps
