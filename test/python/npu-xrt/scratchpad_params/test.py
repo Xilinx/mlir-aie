@@ -11,7 +11,7 @@
 #
 # This is the Python equivalent of the C++ test in ../scratchpad_params/.
 # It exercises the full flow:
-#   1. aiecc.py compiles aie.mlir → aie.elf + params.txt
+#   1. aiecc compiles aie.mlir → aie.elf + params.txt
 #   2. This script loads the ELF, creates a ParameterScratchpad from params.txt,
 #      writes bf16 parameters, and verifies the core computes foo * bar.
 #   3. A second parametrized case with different values tests parameter re-use

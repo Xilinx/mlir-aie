@@ -22,9 +22,9 @@ Once you've run the top level make, you should have sd_card/sd_card.img along wi
 `aie_platform/sw_comp/sysroots/cortexa72-cortexa53-xilinx-linux`
 
 ## Build custom mlir designs
-You can then follow the commands like those in the unit tests by calling the python wrapped build script like:
+You can then follow the commands like those in the unit tests by calling the build driver like:
 ```
-aiecc.py -v --aie-generate-xaiev2 --sysroot=<sysroot from the build> ./aie.mlir -I<mlir-aie install area>/runtime_lib <mlir-aie install area>/runtime_lib/test_library.cpp ./test.cpp -o test.elf
+aiecc -v --aie-generate-xaiev2 --sysroot=<sysroot from the build> ./aie.mlir -I<mlir-aie install area>/runtime_lib <mlir-aie install area>/runtime_lib/test_library.cpp ./test.cpp -o test.elf
 ```
 Note that `--aie-generate-xaiev2` is needed in order to generate the v2 drivers which vitis 2021.2 require.
 

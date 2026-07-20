@@ -1064,7 +1064,7 @@ def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
     The PDI is identified by `id`. `address` and `size` are typically written at
     runtime by the driver or host program.
 
-    If a symbol reference is provided, the compiler driver (aiecc.py) will match it to a device symbol name and assign the PDI ID field based on it.
+    If a symbol reference is provided, the compiler driver (aiecc) will match it to a device symbol name and assign the PDI ID field based on it.
 
     ### Watch Out!
 

@@ -17,7 +17,7 @@ This design implements a `bfloat16` based SwiGLU on a vector, distributed in par
 
 ## Source Files Overview
 
-1. `swiglu.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc.py` to produce design binaries (i.e., XCLBIN and inst.bin for the NPU in Ryzen™ AI).
+1. `swiglu.py`: A Python script that defines the AIE array structural design using MLIR-AIE operations. This generates MLIR that is then compiled using `aiecc` to produce design binaries (i.e., XCLBIN and inst.bin for the NPU in Ryzen™ AI).
 
 1. `swiglu_bf16` kernel: A vectorized C++ implementation of SwiGLU for AIE cores, compiled into `kernels.a`. The kernel accepts two 1024-element `bfloat16` weight chunks and one activation chunk per invocation.
 

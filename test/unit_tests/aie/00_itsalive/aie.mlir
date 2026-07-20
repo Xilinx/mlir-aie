@@ -6,8 +6,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: %PYTHON aiecc.py --unified %s
-// RUN: %PYTHON aiecc.py --no-unified %s
+// RUN: %aiecc --unified %s
+// RUN: %aiecc --no-unified %s
 
 module @test00_itsalive {
 aie.device(xcvc1902) {

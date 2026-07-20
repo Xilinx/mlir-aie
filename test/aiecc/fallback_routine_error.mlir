@@ -7,7 +7,7 @@
 // Check that aiecc prints error diagnostics, in this case when buffer
 // allocation fails.
 
-// RUN: not %python aiecc.py %s 2>&1 | FileCheck %s
+// RUN: not %aiecc %s 2>&1 | FileCheck %s
 // CHECK: warning: Failed to allocate buffer: "act_3_4_buff_2" with size: 2048 bytes.
 // CHECK: note: see current operation: %act_3_4_buff_2 = aie.buffer(%tile_1_2) {sym_name = "act_3_4_buff_2"} : memref<512xi32>
 // CHECK: warning:  Not all requested buffers fit in the available memory.
