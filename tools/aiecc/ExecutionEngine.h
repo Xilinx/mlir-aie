@@ -28,6 +28,8 @@
 
 #include <algorithm>
 #include <chrono>
+#include <condition_variable>
+#include <cstdint>
 #include <mutex>
 #include <string>
 #include <thread>
@@ -201,12 +203,458 @@ struct Engine {
 
   explicit Engine(Options o) : opts(std::move(o)) {}
 
+  // Fine-grained (edge, key) task scheduler for the reachable sub-graph.
+  //
+  // A fan-out edge (Map/BundleForEach) is `prepare()`d to create its per-key
+  // output slots and then runs one task per key ("item"); a structural edge
+  // (split / join / filter / rekey / ...) runs as a single whole-edge
+  // `execute()`. A task becomes runnable as soon as the specific inputs it
+  // consumes are ready -- per key for fan-out edges -- so an item's downstream
+  // work (e.g. a later stage of that item's pipeline) can begin while other
+  // items are still being produced, rather than waiting on a whole-edge
+  // barrier.
+  //
+  // A task is "exclusive" when its edge is not marked threadSafe: such edges
+  // may touch shared, non-thread-safe state (today, the shared MLIRContext), so
+  // at most one exclusive task runs at a time -- `exclusiveBusy` is that
+  // mutual-exclusion slot. threadSafe tasks (context-free external-tool
+  // invocations) run in parallel across the whole pool and alongside the one
+  // in-flight exclusive task.
+  struct Scheduler {
+    // Per-edge scheduling state.
+    struct EdgeState {
+      EdgeBase *edge = nullptr;
+      bool fan = false;         // fan-out (Map/BundleForEach) vs structural
+      bool threadSafe = false;  // may run concurrently with any other task
+      bool opened = false;      // fan: slots created (keys final); else ==done
+      bool finished = false;    // all of this edge's work is done
+      bool wholeQueued = false; // whole-edge task already enqueued
+      unsigned running = 0;     // in-flight tasks of this edge
+      bool started = false;
+      std::chrono::steady_clock::time_point startTime;
+      size_t itemsTotal = 0;
+      size_t itemsDone = 0;
+      std::vector<uint8_t> itemState; // 0 pending, 1 queued/running, 2 done
+      llvm::StringMap<size_t> keyIndex;
+    };
+
+    // A unit of work: `item < 0` is a whole-edge task, `item >= 0` a per-key
+    // item task.
+    struct Task {
+      unsigned edge;
+      int item;
+    };
+
+    const Options &opts;
+    std::vector<EdgeBase *> edges; // reachable edges, in topological order
+    llvm::DenseMap<EdgeBase *, unsigned> edgeIndex;
+    const llvm::DenseMap<EdgeBase *, RestoredNode> &satisfied;
+    const DeserializeContext &deserCtx; // forwarded to restoreNode on --resume
+    std::vector<EdgeState> st;
+    // Per-edge wall time, in finish order; summarized slowest-first under
+    // --profile.
+    std::vector<std::pair<std::string, int64_t>> edgeTimings;
+
+    std::mutex mtx;
+    std::condition_variable cv;
+    std::vector<Task> ready;
+    llvm::StringSet<> seenPaths; // duplicate-output-path guard
+    unsigned numEdges = 0;
+    unsigned finishedEdges = 0;
+    unsigned inFlight = 0;
+    bool exclusiveBusy = false; // an exclusive (non-threadSafe) task is running
+    bool failed = false;
+    bool stalled = false;
+    size_t progressPrevLen = 0;
+    EdgeBase *failedEdge = nullptr;
+
+    Scheduler(const Options &o, std::vector<EdgeBase *> reachableEdges,
+              const llvm::DenseMap<EdgeBase *, RestoredNode> &sat,
+              const DeserializeContext &dc)
+        : opts(o), edges(std::move(reachableEdges)), satisfied(sat),
+          deserCtx(dc) {
+      numEdges = edges.size();
+      st.resize(numEdges);
+      for (unsigned u = 0; u < numEdges; ++u) {
+        edgeIndex[edges[u]] = u;
+        st[u].edge = edges[u];
+        st[u].fan = edges[u]->isFanOut();
+        st[u].threadSafe = edges[u]->isThreadSafe;
+      }
+    }
+
+    // An edge's `name` doubles as its output-path template and may embed
+    // directories; show just the file name for progress/logging.
+    static llvm::StringRef displayName(EdgeBase *e) {
+      return llvm::sys::path::filename(e->name);
+    }
+
+    // Scheduling state of the edge that produced node `n` (null if `n` has no
+    // producer in the reachable set).
+    EdgeState *stateOf(NodeBase *n) {
+      if (!n || !n->producer)
+        return nullptr;
+      auto it = edgeIndex.find(n->producer);
+      return it == edgeIndex.end() ? nullptr : &st[it->second];
+    }
+    // A node's key set is final once its producer is opened (fan-out) or
+    // finished (structural edges open and finish together).
+    bool nodeFinalKeys(NodeBase *n) {
+      EdgeState *s = stateOf(n);
+      return !s || s->opened;
+    }
+    // A node is complete once every one of its items has been produced.
+    bool nodeComplete(NodeBase *n) {
+      EdgeState *s = stateOf(n);
+      return !s || s->finished;
+    }
+    // Has the item keyed `key` in node `n` been produced yet? A key absent from
+    // an opened producer is treated as "done" so the consuming action can
+    // surface the incompatible-keys error itself.
+    bool nodeItemDone(NodeBase *n, llvm::StringRef key) {
+      EdgeState *s = stateOf(n);
+      if (!s || s->finished)
+        return true;
+      if (s->fan && s->opened) {
+        auto it = s->keyIndex.find(key);
+        if (it == s->keyIndex.end())
+          return true;
+        return s->itemState[it->second] == 2;
+      }
+      return false;
+    }
+
+    // Record an edge's output paths in the duplicate-path guard; returns false
+    // (after a diagnostic) on a collision. Called under `mtx`.
+    bool recordPaths(unsigned u) {
+      EdgeBase *e = st[u].edge;
+      if (!e->producesFiles || !e->outputNode())
+        return true;
+      for (const ItemBase *item : e->outputNode()->itemRefs()) {
+        if (item->filePath.empty())
+          continue;
+        if (!seenPaths.insert(item->filePath).second) {
+          if (opts.progress)
+            llvm::errs() << '\n';
+          llvm::errs() << "aiecc: edge '" << displayName(e)
+                       << "' produced duplicate output path '" << item->filePath
+                       << "'\n";
+          return false;
+        }
+      }
+      return true;
+    }
+
+    // Create a fan-out edge's output slots (its key set becomes final). Empty
+    // fan-outs finalize immediately. Called under `mtx`.
+    void openEdge(unsigned u) {
+      EdgeState &s = st[u];
+      if (mlir::failed(s.edge->prepare())) {
+        failed = true;
+        failedEdge = s.edge;
+        return;
+      }
+      s.opened = true;
+      s.itemsTotal = s.edge->numItems();
+      s.itemState.assign(s.itemsTotal, 0);
+      s.keyIndex.clear();
+      for (size_t i = 0; i < s.itemsTotal; ++i)
+        s.keyIndex[s.edge->itemKey(i)] = i;
+      if (s.itemsTotal == 0) {
+        s.finished = true;
+        ++finishedEdges;
+        if (!recordPaths(u))
+          failed = true;
+      }
+    }
+
+    // Single-line progress: "(done/total) [i/n] edge_1, edge_2, ...". The list
+    // is the edges with an in-flight task; fan-out edges carry an [i/n]
+    // per-item progress prefix, whole-edge edges just their name. Called under
+    // `mtx`.
+    void renderProgress() {
+      if (!opts.progress)
+        return;
+      std::string line = "(" + std::to_string(finishedEdges) + "/" +
+                         std::to_string(numEdges) + ")";
+      bool first = true;
+      for (unsigned u = 0; u < numEdges; ++u) {
+        if (st[u].running == 0)
+          continue;
+        line += (first ? " " : ", ");
+        first = false;
+        if (st[u].fan)
+          line += "[" + std::to_string(st[u].itemsDone) + "/" +
+                  std::to_string(st[u].itemsTotal) + "] ";
+        line += displayName(st[u].edge).str();
+      }
+      size_t pad =
+          progressPrevLen > line.size() ? progressPrevLen - line.size() : 0;
+      std::lock_guard<std::mutex> log(logMutex());
+      llvm::errs() << '\r' << line << std::string(pad, ' ');
+      llvm::errs().flush();
+      progressPrevLen = line.size();
+    }
+
+    // Re-scan the reachable edges and enqueue every task that is now runnable.
+    // Opening a fan-out edge can unblock its downstream edges, so iterate to a
+    // fixpoint. Called under `mtx`.
+    void rescan() {
+      bool changed = true;
+      while (changed && !failed) {
+        changed = false;
+        for (unsigned u = 0; u < numEdges && !failed; ++u) {
+          EdgeState &s = st[u];
+          if (s.finished)
+            continue;
+          std::vector<NodeBase *> ins = s.edge->inputNodes();
+          if (!s.fan) {
+            if (s.wholeQueued || s.running)
+              continue;
+            bool depsMet = true;
+            for (NodeBase *n : ins)
+              if (!nodeComplete(n)) {
+                depsMet = false;
+                break;
+              }
+            if (depsMet) {
+              ready.push_back({u, -1});
+              s.wholeQueued = true;
+              changed = true;
+            }
+            continue;
+          }
+          if (!s.opened) {
+            bool keysReady = true;
+            for (NodeBase *n : ins)
+              if (!nodeFinalKeys(n)) {
+                keysReady = false;
+                break;
+              }
+            if (keysReady) {
+              openEdge(u);
+              changed = true;
+              continue;
+            }
+          }
+          if (s.opened) {
+            for (size_t i = 0; i < s.itemsTotal; ++i) {
+              if (s.itemState[i] != 0)
+                continue;
+              llvm::StringRef key = s.edge->itemKey(i);
+              bool depsMet = true;
+              for (NodeBase *n : ins)
+                if (!nodeItemDone(n, key)) {
+                  depsMet = false;
+                  break;
+                }
+              if (depsMet) {
+                ready.push_back({u, static_cast<int>(i)});
+                s.itemState[i] = 1;
+                changed = true;
+              }
+            }
+          }
+        }
+      }
+    }
+
+    // Pick the first dispatchable ready task: threadSafe tasks always qualify;
+    // an exclusive (non-threadSafe) task only when the exclusive slot is free.
+    // Removes and returns it, claiming the slot if needed. Called under `mtx`.
+    bool pickTask(Task &out) {
+      for (size_t i = 0; i < ready.size(); ++i) {
+        bool ts = st[ready[i].edge].threadSafe;
+        if (ts || !exclusiveBusy) {
+          out = ready[i];
+          ready.erase(ready.begin() + i);
+          if (!ts)
+            exclusiveBusy = true;
+          return true;
+        }
+      }
+      return false;
+    }
+
+    // Verbose "(x/y) name (a inputs) took N ms" line for a just-finished edge.
+    // Called under `mtx`.
+    void logEdgeFinished(const EdgeState &s) {
+      auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                    std::chrono::steady_clock::now() - s.startTime)
+                    .count();
+      size_t inItems = 0;
+      for (NodeBase *n : s.edge->inputNodes())
+        if (n)
+          inItems += n->itemRefs().size();
+      std::string msg = "aiecc: (" + std::to_string(finishedEdges) + "/" +
+                        std::to_string(numEdges) + ") " +
+                        displayName(s.edge).str() + " (" +
+                        std::to_string(inItems) + " inputs) took " +
+                        std::to_string(ms) + " ms\n";
+      std::lock_guard<std::mutex> log(logMutex());
+      llvm::errs() << msg;
+      llvm::errs().flush();
+    }
+
+    // Worker loop: pull a dispatchable task, run it without the lock, then fold
+    // its completion back into the schedule and wake peers.
+    void worker() {
+      std::unique_lock<std::mutex> lock(mtx);
+      for (;;) {
+        Task task{0, -1};
+        while (!failed && finishedEdges < numEdges && !pickTask(task)) {
+          if (ready.empty() && inFlight == 0) {
+            // Nothing runnable and nothing in flight, yet work remains: a
+            // dependency stall (a scheduler bug). Fail rather than hang.
+            stalled = true;
+            failed = true;
+            cv.notify_all();
+            break;
+          }
+          cv.wait(lock);
+        }
+        if (failed || finishedEdges >= numEdges)
+          break;
+
+        EdgeState &s = st[task.edge];
+        if (!s.started) {
+          s.started = true;
+          s.startTime = std::chrono::steady_clock::now();
+        }
+        ++s.running;
+        ++inFlight;
+        renderProgress();
+        lock.unlock();
+
+        // Run the task without the scheduler lock.
+        mlir::LogicalResult r = task.item < 0
+                                    ? s.edge->execute()
+                                    : s.edge->executeForItem((size_t)task.item);
+
+        lock.lock();
+        --s.running;
+        --inFlight;
+        if (!s.threadSafe)
+          exclusiveBusy = false;
+
+        if (mlir::failed(r)) {
+          if (!failed) {
+            failed = true;
+            failedEdge = s.edge;
+          }
+          cv.notify_all();
+          continue;
+        }
+
+        bool edgeJustFinished = false;
+        if (task.item < 0) {
+          s.opened = true;
+          s.finished = true;
+          edgeJustFinished = true;
+        } else {
+          s.itemState[task.item] = 2;
+          ++s.itemsDone;
+          if (s.itemsDone == s.itemsTotal) {
+            s.finished = true;
+            edgeJustFinished = true;
+          }
+        }
+        if (edgeJustFinished) {
+          ++finishedEdges;
+          if (opts.verbose)
+            logEdgeFinished(s);
+          if (opts.profile) {
+            auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                          std::chrono::steady_clock::now() - s.startTime)
+                          .count();
+            edgeTimings.emplace_back(displayName(s.edge).str(), ms);
+          }
+          if (!recordPaths(task.edge))
+            failed = true;
+        }
+        if (!failed)
+          rescan();
+        renderProgress();
+        cv.notify_all();
+        if (finishedEdges >= numEdges)
+          break;
+      }
+      cv.notify_all();
+    }
+
+    // Preload resumed leaves, run the pool to completion, and emit the final
+    // failure diagnostic. Returns failure if any task failed.
+    mlir::LogicalResult run() {
+      // Pre-load resumed (--resume) edges as already-finished leaves so their
+      // downstream dependencies resolve without re-executing them.
+      for (unsigned u = 0; u < numEdges; ++u) {
+        auto sat = satisfied.find(st[u].edge);
+        if (sat == satisfied.end())
+          continue;
+        if (mlir::failed(st[u].edge->restoreNode(sat->second.descriptor,
+                                                 sat->second.dir, deserCtx))) {
+          failedEdge = st[u].edge;
+          failed = true;
+          llvm::errs() << "aiecc: edge '" << displayName(st[u].edge)
+                       << "' failed to load from checkpoint\n";
+          return mlir::failure();
+        }
+        st[u].opened = true;
+        st[u].finished = true;
+        ++finishedEdges;
+        if (!recordPaths(u)) {
+          failed = true;
+          return mlir::failure();
+        }
+      }
+
+      unsigned effThreads = opts.numThreads;
+      if (effThreads == 0) {
+        effThreads = std::thread::hardware_concurrency();
+        if (effThreads == 0)
+          effThreads = 1;
+      }
+
+      // Seed the ready queue, then run the pool to completion.
+      {
+        std::lock_guard<std::mutex> lock(mtx);
+        rescan();
+      }
+      if (!failed) {
+        std::vector<std::thread> pool;
+        pool.reserve(effThreads);
+        for (unsigned w = 0; w < effThreads; ++w)
+          pool.emplace_back([this] { worker(); });
+        for (std::thread &t : pool)
+          t.join();
+      }
+
+      // Terminate the single progress line before any further output.
+      if (opts.progress)
+        llvm::errs() << '\n';
+
+      if (failed) {
+        if (stalled)
+          llvm::errs() << "aiecc: scheduler stalled with unsatisfied "
+                          "dependencies\n";
+        else if (failedEdge) {
+          llvm::errs() << "aiecc: edge '" << displayName(failedEdge) << "'";
+          if (!failedEdge->failedKey.empty())
+            llvm::errs() << " (key '" << failedEdge->failedKey << "')";
+          llvm::errs() << " failed\n";
+        }
+        return mlir::failure();
+      }
+      return mlir::success();
+    }
+  };
+
   // Run the graph. The full graph is declared up front; only the edges
   // backward-reachable from the requested `outputs` are executed (in
   // insertion order, a valid topo order by construction). Materialization is
   // lazy: intermediates only hit disk when a downstream action calls
   // asFile(); declared outputs (and all reachable edges under
-  // --keep-intermediates) are force-written at the end.
+  // --dump-intermediates) are force-written at the end.
   //
   // `deserCtx` is forwarded verbatim to any resumed edge's restoreNode (see
   // --resume / `satisfied`); the engine never inspects it -- it is an opaque
@@ -267,114 +715,22 @@ struct Engine {
       return llvm::sys::path::filename(e->name);
     };
 
-    // Per-edge progress reporting (--verbose / --progress);
-    // --verbose logs one line per edge; --progress overwrites a single line
-    // with a leading '\r'.
-    const unsigned totalSteps = reachable.size();
-    unsigned step = 0;
-    size_t progressPrevLen = 0;
-    std::mutex progressMutex; // serializes concurrent per-item updates
-    std::string progressBase; // base line for the current edge
-    // Overwrite the previous status; pad to clear any leftover characters.
-    auto writeProgressLine = [&](const std::string &line) {
-      size_t pad =
-          progressPrevLen > line.size() ? progressPrevLen - line.size() : 0;
-      llvm::errs() << '\r' << line << std::string(pad, ' ');
-      progressPrevLen = line.size();
-    };
-    auto reportEdge = [&](EdgeBase *e) {
-      std::string line = "(" + std::to_string(step) + "/" +
-                         std::to_string(totalSteps) + ") " +
-                         displayName(e).str();
-      if (opts.progress) {
-        std::lock_guard<std::mutex> lock(progressMutex);
-        progressBase = line;
-        writeProgressLine(line);
-      } else {
-        llvm::errs() << "aiecc: " << line << "\n";
-      }
-    };
+    // Execute the reachable sub-graph as a pool of fine-grained (edge, key)
+    // tasks; see Scheduler.
+    std::vector<EdgeBase *> reachableEdges;
+    for (auto &e : g.edges)
+      if (reachable.count(e.get()))
+        reachableEdges.push_back(e.get());
 
-    // Per-item fan-out progress
-    if (opts.progress) {
-      itemProgressHook() = [&](size_t done, size_t total) {
-        if (total <= 1)
-          return;
-        std::lock_guard<std::mutex> lock(progressMutex);
-        writeProgressLine(progressBase + ", " + std::to_string(done) + "/" +
-                          std::to_string(total));
-      };
-    }
-    llvm::scope_exit clearItemHook([&]() { itemProgressHook() = nullptr; });
+    Scheduler scheduler(opts, std::move(reachableEdges), satisfied, deserCtx);
+    mlir::LogicalResult r = scheduler.run();
+    failedEdge = scheduler.failedEdge;
+    if (mlir::failed(r))
+      return mlir::failure();
+    auto &edgeTimings = scheduler.edgeTimings;
 
-    // Effective worker count: 0 auto-detects the hardware concurrency; 1 runs
-    // fully sequentially. Thread-safe edges (external-tool invocations) fan
-    // their per-core item loops out across a pool of this size; see
-    // parallelThreadCount() / MapEdge / BundleForEachEdge.
-    unsigned effThreads = opts.numThreads;
-    if (effThreads == 0) {
-      effThreads = std::thread::hardware_concurrency();
-      if (effThreads == 0)
-        effThreads = 1;
-    }
-    parallelThreadCount() = effThreads;
-    llvm::scope_exit resetThreads([&]() { parallelThreadCount() = 1; });
-
-    llvm::StringSet<> seenPaths;
-    std::vector<std::pair<std::string, int64_t>> edgeTimings;
-    for (auto &e : g.edges) {
-      if (!reachable.count(e.get()))
-        continue;
-      ++step;
-      if (opts.verbose || opts.progress)
-        reportEdge(e.get());
-      auto sat = satisfied.find(e.get());
-      auto edgeStart = std::chrono::steady_clock::now();
-      mlir::LogicalResult r = sat != satisfied.end()
-                                  ? e->restoreNode(sat->second.descriptor,
-                                                   sat->second.dir, deserCtx)
-                                  : e->execute();
-      if (opts.verbose || opts.profile) {
-        auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(
-                      std::chrono::steady_clock::now() - edgeStart)
-                      .count();
-        if (opts.profile)
-          edgeTimings.emplace_back(displayName(e.get()).str(), ms);
-        if (opts.verbose)
-          llvm::errs() << "aiecc: edge '" << displayName(e.get()) << "' took "
-                       << ms << " ms\n";
-      }
-      if (mlir::failed(r)) {
-        failedEdge = e.get();
-        if (opts.progress)
-          llvm::errs() << '\n';
-        llvm::errs() << "aiecc: edge '" << displayName(e.get()) << "'";
-        if (!e->failedKey.empty())
-          llvm::errs() << " (key '" << e->failedKey << "')";
-        llvm::errs() << " failed\n";
-        return mlir::failure();
-      }
-      if (!e->producesFiles)
-        continue;
-      if (NodeBase *out = e->outputNode()) {
-        for (const ItemBase *item : out->itemRefs()) {
-          if (item->filePath.empty())
-            continue;
-          if (!seenPaths.insert(item->filePath).second) {
-            if (opts.progress)
-              llvm::errs() << '\n';
-            llvm::errs() << "aiecc: edge '" << displayName(e.get())
-                         << "' produced duplicate output path '"
-                         << item->filePath << "'\n";
-            return mlir::failure();
-          }
-        }
-      }
-    }
-    // Terminate the single progress line before any further output.
-    if (opts.progress)
-      llvm::errs() << '\n';
-
+    // Force declared outputs (and, under --dump-intermediates, every reachable
+    // edge) to disk.
     for (auto &e : g.edges) {
       if (!reachable.count(e.get()) || !e->producesFiles || !e->outputNode() ||
           (!isOutput(e.get()) && !opts.keepIntermediates))
