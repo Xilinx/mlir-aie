@@ -183,13 +183,9 @@ public:
     // the offset of the task queue register in the tile
     uint32_t queue_offset = ctrl_offset + 0x4;
 
-    // The command word packs bd_id [3:0], repeat_count [23:16], and the
-    // issue-token bit [31]. Both bd_id (dynamic free-list pool) and
-    // repeat_count (runtime outer/repeat dimension) may be runtime SSA values;
-    // the issue bit is always compile-time. When every runtime field is
-    // constant we fold the whole word to a constant (byte-identical to the
-    // static path); otherwise we build the word with arith so a runtime bd_id
-    // and/or repeat still lowers to a valid write32 instead of being rejected.
+    // Command word: bd_id [3:0], repeat_count [23:16], issue-token bit [31].
+    // bd_id and repeat_count may be runtime SSA; all-constant folds to one
+    // constant (byte-identical to the static path), else built with arith.
     Location loc = op->getLoc();
     auto i32ty = rewriter.getIntegerType(32);
     std::optional<uint32_t> bd_id = getConstantIntOperand(op.getBdId());
