@@ -42,6 +42,7 @@ from ..ir import (
 
 # noinspection PyUnresolvedReferences
 from ..extras import types as T
+from ..extras.dialects import arith
 from ..helpers.util import try_convert_np_type_to_mlir_type
 from ..helpers.taplib import TensorAccessPattern
 
@@ -377,11 +378,29 @@ def shim_dma_single_bd_task(
             if strides is not None:
                 strides = [0] + list(strides)
 
+    # The outer (sizes[0]) dimension becomes the queue-push repeat_count. A
+    # constant folds to the repeat_count attribute (static path, unchanged); a
+    # runtime Value flows into the repeat_count_val operand so a dynamic tile
+    # count is supported.
     repeat_count = 0
-    if sizes and sizes[0] > 1:
-        repeat_count = sizes[0] - 1
+    repeat_count_val = None
+    if sizes:
+        s0 = sizes[0]
+        if isinstance(s0, (int, np.integer)):
+            if s0 > 1:
+                repeat_count = int(s0) - 1
+        else:
+            # Runtime: repeat = s0 - 1 as arith, in i32 (the queue field width).
+            # sizes may be i64 (DynamicIndexList); truncate before subtracting.
+            s0_i32 = s0
+            if s0.type != T.i32():
+                s0_i32 = arith.trunci(T.i32(), s0)
+            repeat_count_val = s0_i32 - _as_i32(1)
     task = dma_configure_task_for(
-        alloc, repeat_count=repeat_count, issue_token=issue_token
+        alloc,
+        repeat_count=repeat_count,
+        repeat_count_val=repeat_count_val,
+        issue_token=issue_token,
     )
     with bds(task) as bd:
         with bd[0]:

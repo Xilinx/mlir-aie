@@ -519,9 +519,15 @@ def AIE_NpuDmaMemcpyNdOp: AIEX_Op<"npu.dma_memcpy_nd", [
 
     bool isLinearTransferWithoutTransformation();
 
-    /* Returns the bitwidth of the type inside the memref through a 
+    /* Returns the bitwidth of the type inside the memref through a
     call to DataLayout */
     uint64_t getElementTypeBitwidth();
+
+    /* Verifies the supported scope and bounds for a transfer carrying runtime
+       (SSA) sizes/strides. Called from verify() on the dynamic path. */
+    llvm::LogicalResult verifyDynamicSizesStrides(
+        const xilinx::AIE::AIETargetModel &targetModel,
+        mlir::BaseMemRefType buffer);
   }];
 
   let extraClassDefinition = [{
@@ -651,6 +657,78 @@ def AIE_NpuWrite32Op: AIEX_Op<"npu.write32", []> {
   }];
 }
 
+// ASSERT_BD_FIELD
+def AIE_NpuAssertBdFieldOp: AIEX_Op<"npu.assert_bd_field", []> {
+  let summary = "Guard a runtime BD-field value against its hardware field width";
+  let arguments = (
+    ins I32:$value,
+        I32Attr:$max
+  );
+  let results = (outs );
+  let assemblyFormat = [{
+    `(` $value `)` attr-dict `:` type($value)
+  }];
+  let description = [{
+    Asserts, at TXN-build time, that a runtime value assigned to a buffer-
+    descriptor field fits its hardware field: `value <= max`. Emitted by the
+    dynamic DMA lowering for a runtime scalar landing in a narrow field (e.g. the
+    10-bit d0/d1 wrap or 6-bit iteration wrap), where masking would silently
+    truncate an out-of-range value.
+
+    This op only ever appears on the dynamic (runtime-value) DMA lowering path;
+    a fully static sequence never produces it. When `value` is a constant, the
+    verifier hard-errors if it exceeds `max`, so it is caught at compile time.
+
+    The TXN instruction stream has no on-device trap, so a runtime guard runs
+    host-side in the generated C++ TXN builder: --aie-npu-to-cpp lowers this op
+    to an early `if (value > max) return std::nullopt;` so the builder yields no
+    stream for an illegal value instead of a corrupt one. On the binary
+    (--aie-npu-to-binary) path `value` is always a verified constant, so the op
+    carries no runtime check and is emitted as a no-op (skipped, contributing no
+    TXN words).
+  }];
+  let hasVerifier = 1;
+}
+
+// ASSERT_BD_DIVISIBLE
+def AIE_NpuAssertBdDivisibleOp: AIEX_Op<"npu.assert_bd_divisible", []> {
+  let summary = "Guard a runtime BD size/stride against the address-gen granule";
+  let arguments = (
+    ins I32:$value,
+        I32Attr:$divisor,
+        UnitAttr:$allow_unit
+  );
+  let results = (outs );
+  let assemblyFormat = [{
+    `(` $value `)` attr-dict `:` type($value)
+  }];
+  let description = [{
+    Asserts, at TXN-build time, that a runtime size/stride is realizable in
+    hardware: its byte extent is a whole number of address-gen granules, i.e.
+    `value % divisor == 0`. The hardware transfers whole granules only, so a
+    size or stride whose `value * elemWidth` is not a granule multiple (e.g. an
+    int8 innermost size of 2 = 16 bits against a 32-bit granule) cannot be
+    encoded. `divisor` is the compile-time granule/element ratio.
+
+    `allow_unit` exempts a value of 1 from the divisibility rule: the innermost
+    stride is allowed to be sub-granule when it is exactly 1 (the contiguous
+    scan the encoder collapses to hardware stride 0), but a non-unit sub-granule
+    stride (e.g. int8 stride 2) is still unrealizable. So with `allow_unit` the
+    predicate is `value == 1 || value % divisor == 0`.
+
+    Like `assert_bd_field`, this op only appears on the dynamic DMA lowering
+    path, and a constant `value` is hard-errored by the verifier at compile
+    time. The TXN stream has no on-device trap, so a runtime guard runs
+    host-side: --aie-npu-to-cpp lowers it to an early
+    `if (value % divisor != 0) return std::nullopt;` (or, with `allow_unit`,
+    `if (value != 1 && value % divisor != 0) ...`). On the binary
+    (--aie-npu-to-binary) path `value` is always a verified constant, so the op
+    carries no runtime check and is emitted as a no-op (skipped, contributing no
+    TXN words).
+  }];
+  let hasVerifier = 1;
+}
+
 // MASKWRITE
 def AIE_NpuMaskWrite32Op: AIEX_Op<"npu.maskwrite32", []> {
   let summary = "Write a masked 32-bit value to the AIE array";
@@ -711,7 +789,7 @@ def AIE_NpuBlockWriteOp: AIEX_Op<"npu.blockwrite", []> {
   }];
   let extraClassDeclaration = [{
     std::optional<uint32_t> getAbsoluteAddress();
-    mlir::DenseIntElementsAttr getDataWords(); 
+    mlir::DenseIntElementsAttr getDataWords();
   }];
 }
 
@@ -749,18 +827,28 @@ def AIE_NpuAddressPatchOp: AIEX_Op<"npu.address_patch", []> {
   let summary = "address patch operator";
   let arguments = (
     ins UI32Attr:$addr,
+        Optional<I32>:$addr_val,
         I32Attr:$arg_idx,
         I32:$arg_plus
   );
   let results = (outs );
   let assemblyFormat = [{
-    `(` $arg_plus `:` type($arg_plus) `)` attr-dict
+    `(` $arg_plus `:` type($arg_plus) `)` (`addr` $addr_val^ `:` type($addr_val))?
+    attr-dict
   }];
   let description = [{
     address patch operator. `arg_plus` is an SSA value; use arith.constant for
     a compile-time-known offset or pass a runtime sequence value for a
     runtime-parameterized buffer offset.
+
+    `addr` is the register to patch (the BD's buffer-address word). It is a
+    compile-time attribute on the static path; when the BD id is chosen at
+    runtime (dynamic free-list pool) the register address is itself runtime and
+    is supplied via the optional `addr_val` operand instead, which then takes
+    precedence. Only the EmitC (C++ TXN) target supports a runtime `addr_val`;
+    the static binary target requires the constant `addr`.
   }];
+  let hasVerifier = 1;
 }
 
 def AIE_NpuPreemptOp: AIEX_Op<"npu.preempt", []> {
@@ -774,7 +862,7 @@ def AIE_NpuPreemptOp: AIEX_Op<"npu.preempt", []> {
   }];
   let description = [{
     Yield to higher priority task(s). Indicates to the transaction processor that the instruction stream can be interrupted at this point.
-    Levels: 
+    Levels:
     0: Noop.
     1: Mem tile.
     2: AIE tile.
@@ -847,7 +935,7 @@ def AIE_NpuUpdateFromScratchpadOp: AIEX_Op<"npu.update_from_scratchpad", []> {
     This instruction reads the contents of scratchpad memory created using the `npu.create_scratchpad` op (the `StateTable`), calculates a value, then adds the result to the memory location or register denoted by the given address as follows:
 
     1. Reads the existing 64-bit value from the register pair:
-       
+
        ```
        existing = (*(addr+4) & 0xFFFF) << 32 | (*addr & 0xFFFFFFFC)
        ```
@@ -865,7 +953,7 @@ def AIE_NpuUpdateFromScratchpadOp: AIEX_Op<"npu.update_from_scratchpad", []> {
       ```
 
     4. Writes back the lower 48 bits of the result:
-       
+
        ```
        *addr     = result & 0xFFFFFFFC    (bits [1:0] forced to 0)
        *(addr+4) = (*(addr+4) & 0xFFFF0000) | ((result >> 32) & 0xFFFF)
@@ -879,8 +967,8 @@ def AIE_NpuUpdateFromScratchpadOp: AIEX_Op<"npu.update_from_scratchpad", []> {
     - Always writes 8 contiguous bytes (both registers in the pair).
 
     ### Rationale
-    
-    The firmware instruction underpinning this operation was originally intended to patch shim buffer descriptor addresses only. 
+
+    The firmware instruction underpinning this operation was originally intended to patch shim buffer descriptor addresses only.
     Because of this, this always writes 48 bits (size of BD addresses) and the lower bits are zeroed (assuring the value is a multiple of the addressable word size).
 
     ### Attributes
@@ -888,7 +976,7 @@ def AIE_NpuUpdateFromScratchpadOp: AIEX_Op<"npu.update_from_scratchpad", []> {
     - `state_table_idx` is a 32-bit-word index offset into the scratchpad memory. The source value will be read from this offset into the scratchpad.
     - `func` is the function applied to the state table value in firmware, which can be one of `mul`, `incr` or `decr`.
     - `func_arg` is the argument to the function.
-    - `address`, `buffer`, `column` and `row` together resolve to the destination address that the value will be written to. 
+    - `address`, `buffer`, `column` and `row` together resolve to the destination address that the value will be written to.
       Address resolution is the same as for `npu.write32`:
       - If `buffer` is specified, `address` is a word offset relative to that
         buffer's start address.
@@ -986,7 +1074,7 @@ def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
     The PDI is identified by `id`. `address` and `size` are typically written at
     runtime by the driver or host program.
 
-    If a symbol reference is provided, the compiler driver (aiecc.py) will match it to a device symbol name and assign the PDI ID field based on it.
+    If a symbol reference is provided, the compiler driver (aiecc) will match it to a device symbol name and assign the PDI ID field based on it.
 
     ### Watch Out!
 
@@ -997,7 +1085,7 @@ def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
   let hasCanonicalizeMethod = 1;
 }
 
-def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::RuntimeSequenceOp">, TileElement]>, Results<(outs Index:$result)> {
+def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::RuntimeSequenceOp">, TileElement, AttrSizedOperandSegments]>, Results<(outs Index:$result)> {
   let summary = "Concrete Instantiation of a Buffer Descriptor Chain as a Task on a Channel and Direction on a Tile";
   let description = [{
     Encapsulates the DMA configuration of one task, that is the (chain of) buffer descriptors to be executed on a given channel and direction on a tile.
@@ -1013,6 +1101,8 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::Ru
         I32Attr:$channel,
         DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
         DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
+        Optional<I32>:$repeat_count_val,
+        Optional<I32>:$bd_id_val,
         OptionalAttr<PacketInfoAttr>:$packet
   );
 
@@ -1021,12 +1111,22 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::Ru
   );
 
   let assemblyFormat = [{
-    `(` $tile `,` $direction `,` $channel (`,` $packet^)? `)` regions attr-dict
+    `(` $tile `,` $direction `,` $channel (`,` $packet^)? `)`
+    (`repeat` $repeat_count_val^ `:` type($repeat_count_val))?
+    (`bd_id` $bd_id_val^ `:` type($bd_id_val))? regions attr-dict
   }];
 
   let extraClassDeclaration = [{
     AIE::TileOp getTileOp();
     std::optional<uint32_t> getFirstBdId();
+    // The repeat count as an OpFoldResult: the runtime operand if present, else
+    // the compile-time attribute. Mirrors dma_bd's offset/len duality.
+    mlir::OpFoldResult getRepeatCountValue() {
+      if (mlir::Value v = getRepeatCountVal())
+        return v;
+      return mlir::IntegerAttr::get(
+          mlir::IntegerType::get(getContext(), 32), getRepeatCount());
+    }
   }];
 
   let extraClassDefinition = [{
@@ -1042,7 +1142,8 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasAncestor<"AIE::Ru
       build($_builder, $_state, result, tile,
             xilinx::AIE::DMAChannelDirAttr::get(odsBuilder.getContext(), dir),
             $_builder.getI32IntegerAttr(channel_index), $_builder.getBoolAttr(token),
-            $_builder.getI32IntegerAttr(repeat), nullptr);
+            $_builder.getI32IntegerAttr(repeat), /*repeat_count_val=*/nullptr,
+            /*bd_id_val=*/nullptr, /*packet=*/nullptr);
     }]>
   ];
 }
@@ -1053,14 +1154,28 @@ def AIE_DMAConfigureTaskForOp : AIEX_Op<"dma_configure_task_for", [HasAncestor<"
   let arguments = (
     ins SymbolRefAttr:$alloc,
         DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
-        DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count
+        DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
+        Optional<I32>:$repeat_count_val
   );
 
   let regions = (region AnyRegion:$body);
 
-  let assemblyFormat = [{ $alloc regions attr-dict }];
+  let assemblyFormat = [{
+    $alloc (`repeat` $repeat_count_val^ `:` type($repeat_count_val))? regions attr-dict
+  }];
 
   let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    // The repeat count as an OpFoldResult: runtime operand if present, else the
+    // compile-time attribute.
+    mlir::OpFoldResult getRepeatCountValue() {
+      if (mlir::Value v = getRepeatCountVal())
+        return v;
+      return mlir::IntegerAttr::get(
+          mlir::IntegerType::get(getContext(), 32), getRepeatCount());
+    }
+  }];
 }
 
 def AIE_DMAFreeTaskOp : AIEX_Op<"dma_free_task", [HasAncestor<"AIE::RuntimeSequenceOp">]> {
@@ -1135,6 +1250,55 @@ def AIE_DMAAwaitTaskOp : AIEX_Op<"dma_await_task", [HasAncestor<"AIE::RuntimeSeq
 
   let extraClassDefinition = [{
     DMAConfigureTaskOp DMAAwaitTaskOp::getTaskOp() { return dyn_cast<DMAConfigureTaskOp>(getTask().getDefiningOp()); }
+  }];
+}
+
+def AIE_DMABdPoolPopOp : AIEX_Op<"dma_bd_pool_pop", [HasAncestor<"AIE::RuntimeSequenceOp">]>, Results<(outs I32:$bd_id)> {
+  let summary = "Pop a free Buffer Descriptor ID from the runtime free-list pool for a tile";
+  let description = [{
+    Draws a buffer-descriptor ID from the per-tile runtime free-list pool and
+    returns it as an SSA value. This is the dynamic counterpart to the static
+    BD-ID allocator: inside a runtime-bound `scf.for` the ID is chosen at
+    runtime rather than baked at compile time.
+
+    Only meaningful on the dynamic EmitC lowering path (the static binary TXN
+    stream has no runtime pool). The `aie-lower-dynamic-bd-pool` pass inserts
+    this op in place of the implicit allocation a `dma_configure_task` performs.
+    If the pool is empty at runtime, the generated builder yields no stream
+    (`std::nullopt`).
+  }];
+
+  let arguments = (
+    ins I32Attr:$column,
+        I32Attr:$row
+  );
+
+  let assemblyFormat = [{
+    `(` $column `,` $row `)` attr-dict `:` type($bd_id)
+  }];
+}
+
+def AIE_DMABdPoolPushOp : AIEX_Op<"dma_bd_pool_push", [HasAncestor<"AIE::RuntimeSequenceOp">]> {
+  let summary = "Return a Buffer Descriptor ID to the runtime free-list pool for a tile";
+  let description = [{
+    Returns a buffer-descriptor ID previously obtained from
+    `aiex.dma_bd_pool_pop` to the per-tile runtime free-list pool, making it
+    available for reuse. This is the dynamic counterpart to the static
+    allocator's free/await recycling.
+
+    Only meaningful on the dynamic EmitC lowering path. The
+    `aie-lower-dynamic-bd-pool` pass inserts this op in place of a
+    `dma_free_task` / the recycling half of a `dma_await_task`.
+  }];
+
+  let arguments = (
+    ins I32Attr:$column,
+        I32Attr:$row,
+        I32:$bd_id
+  );
+
+  let assemblyFormat = [{
+    `(` $column `,` $row `)` `bd_id` $bd_id attr-dict `:` type($bd_id)
   }];
 }
 
@@ -1268,7 +1432,7 @@ def AIEX_ScratchpadParameterOp: AIEX_Op<"scratchpad_parameter", [Symbol]> {
   let description = [{
     Declares a named runtime parameter that uses the scratchpad mechanism.
     Using this declaration and the MLIR-AIE runtime library, the host can write
-    these named runtime parameters to DDR, and AIE cores read it using 
+    these named runtime parameters to DDR, and AIE cores read it using
     `aiex.read_scratchpad_parameter`. The scratchpad memory mechanism
     (CREATE_SCRATCHPAD + UPDATE_FROM_SCRATCHPAD firmware opcodes) communicates
     the values.

@@ -9,7 +9,7 @@
 
 // Test unified compilation mode (--unified)
 
-// RUN: aiecc --no-xchesscc --no-xbridge --unified --aie-generate-npu-insts --aie-generate-core-elfs --verbose %s 2>&1 | FileCheck %s
+// RUN: aiecc --no-xchesscc --no-xbridge --unified --get-npu-insts --get-core-elfs --verbose %s 2>&1 | FileCheck %s
 
 // Unified mode: single unified LLVM lowering + one unified object, then both
 // cores are linked from that unified object.

@@ -7,7 +7,7 @@
 
 // REQUIRES: peano
 
-// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-txn --verbose %s 2>&1 | FileCheck %s
+// RUN: aiecc --no-xchesscc --no-xbridge --get-txn --verbose %s 2>&1 | FileCheck %s
 
 // Transaction MLIR generation for the device.
 // CHECK: ({{[0-9]+}}/{{[0-9]+}}) {{.*}}_transaction.mlir

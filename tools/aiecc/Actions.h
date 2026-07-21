@@ -206,10 +206,6 @@ struct ShellCommand {
   // Guards toolPathCache against concurrent resolveTool() calls
   inline static std::mutex toolCacheMutex;
 
-  // Serializes the --verbose command echo so concurrent invocations don't
-  // interleave their lines on stdout.
-  inline static std::mutex echoMutex;
-
   inline static bool verbose = false;
 
   // True under --progress: the engine keeps a live single-line status (updated
@@ -461,7 +457,7 @@ private:
     }
     if (verbose) {
       // Echo the command on stdout so callers that capture stdout can see it.
-      std::lock_guard<std::mutex> lock(echoMutex);
+      std::lock_guard<std::mutex> lock(logMutex());
       llvm::outs() << "aiecc: exec:";
       for (const auto &a : cmd)
         llvm::outs() << ' ' << a;

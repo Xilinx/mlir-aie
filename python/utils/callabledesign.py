@@ -414,6 +414,7 @@ class CallableDesign:
         xclbin_path: Path | str | None = None,
         inst_path: Path | str | None = None,
         elf_path: Path | str | None = None,
+        pdi_path: Path | str | None = None,
     ) -> tuple[Path, Path]:
         """Eagerly compile this design and return ``(xclbin_path, inst_path)``.
 
@@ -431,10 +432,35 @@ class CallableDesign:
         instructions into an ELF (via ``aiebu-asm``) at that path.  Needed by
         C++ testbenches that load instructions through ``xrt::elf`` +
         ``xrt::module``; requires explicit ``xclbin_path`` + ``inst_path``.
+
+        ``pdi_path`` is optional: when set, aiecc writes the Programmable
+        Device Image to that path.  Requires explicit ``xclbin_path`` +
+        ``inst_path``.  In cache mode, use :meth:`get_pdi_path` to locate the
+        ``main.pdi`` aiecc emits into the cache directory.
         """
         return self.compilable.compile(
-            xclbin_path=xclbin_path, inst_path=inst_path, elf_path=elf_path
+            xclbin_path=xclbin_path,
+            inst_path=inst_path,
+            elf_path=elf_path,
+            pdi_path=pdi_path,
         )
+
+    def get_pdi_path(self, device_name: str | None = None) -> Path | None:
+        """Return one cache-directory PDI, or ``None`` if none is present.
+
+        Thin passthrough to :meth:`CompilableDesign.get_pdi_path`; pass
+        ``device_name`` to pick a specific ``aie.device``'s PDI in a
+        multi-device design.
+        """
+        return self.compilable.get_pdi_path(device_name)
+
+    def get_pdi_paths(self) -> list[Path]:
+        """Return every cache-directory PDI aiecc emitted, sorted by name.
+
+        Thin passthrough to :meth:`CompilableDesign.get_pdi_paths` — use this
+        for a multi-device design where a single return is ambiguous.
+        """
+        return self.compilable.get_pdi_paths()
 
     def as_mlir(self, *runtime_args, **runtime_kwargs) -> str:
         """Return the resolved MLIR text for this kernel without compiling.

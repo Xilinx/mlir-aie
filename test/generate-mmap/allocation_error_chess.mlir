@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: chess, aietools_aie
-// RUN: not aiecc.py --alloc-scheme=basic-sequential --xchesscc --xbridge %s 2>&1 | FileCheck %s --check-prefix=CHESS
+// RUN: not %aiecc --alloc-scheme=basic-sequential --xchesscc --xbridge %s 2>&1 | FileCheck %s --check-prefix=CHESS
 // CHESS: Error: could not find free space for SpaceSymbol x in memory DMb
 
 // If we use all of the local memory, then linking the AIE executable should

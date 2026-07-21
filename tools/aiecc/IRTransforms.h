@@ -711,6 +711,11 @@ getNpuLoweringPipeline(mlir::MLIRContext *ctx, bool materialize = true) {
   dpm.addPass(X::createAIESubstituteShimDMAAllocationsPass());
   dpm.addPass(X::createAIEUnrollRuntimeSequenceLoopsPass());
   dpm.addPass(mlir::createCanonicalizerPass());
+  // A runtime-bound scf.for that survived unroll takes the dynamic BD pool path
+  // (rewritten to pool pop/push, ids drawn at runtime); the static allocator
+  // below skips it. Straight-line sequences fall through unchanged.
+  dpm.addPass(X::createAIELowerDynamicBDPoolPass());
+  dpm.addPass(mlir::createCanonicalizerPass());
   dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass());
   dpm.addPass(X::createAIEDMATasksToNPUPass());
   dpm.addPass(X::createAIEDmaToNpuPass());

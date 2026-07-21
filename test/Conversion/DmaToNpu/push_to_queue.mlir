@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-dma-to-npu %s | FileCheck %s
+// RUN: aie-opt --split-input-file --aie-dma-to-npu %s | FileCheck %s
 // CHECK-DAG: %[[V0:.*]] = arith.constant -2147483645 : i32
 // CHECK-DAG: %[[A0:.*]] = arith.constant 119308 : i32
 // CHECK: aiex.npu.write32(%[[A0]], %[[V0]]) : i32, i32
@@ -22,6 +22,25 @@ module {
       %rc1 = arith.constant 3 : i32
       %bd1 = arith.constant 2 : i32
       aiex.npu.push_queue (2, 0, MM2S:0) bd_id %bd1 repeat %rc1 {issue_token = false} : i32, i32
+    }
+  }
+}
+
+// -----
+
+// A runtime (SSA) bd_id is no longer rejected: the command word is assembled
+// with arith (bd_id & 0xF, or'd with the issue-token bit and the shifted
+// repeat_count) instead of folded to a constant.
+// CHECK-LABEL: @rt_bd_id
+// CHECK: %[[BD:.*]] = arith.andi %arg0, %{{.*}} : i32
+// CHECK: %[[CMD:.*]] = arith.ori %{{.*}}, %[[BD]] : i32
+// CHECK: %[[CMD2:.*]] = arith.ori %[[CMD]], %{{.*}} : i32
+// CHECK: aiex.npu.write32(%{{.*}}, %[[CMD2]])
+module {
+  aie.device(npu1) {
+    aie.runtime_sequence @rt_bd_id(%arg0: i32) {
+      %rc0 = arith.constant 0 : i32
+      aiex.npu.push_queue (0, 0, S2MM:1) bd_id %arg0 repeat %rc0 {issue_token = true} : i32, i32
     }
   }
 }

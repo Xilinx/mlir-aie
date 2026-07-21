@@ -9,7 +9,7 @@
 // replay just that edge via --resume.
 
 // RUN: rm -rf %t && mkdir -p %t
-// RUN: not %python aiecc.py --aie-generate-core-elfs --enable-repeater-scripts --repeater-output-dir=%t/ckpt %s 2>&1 | FileCheck %s
+// RUN: not %aiecc --get-core-elfs --enable-repeater-scripts --repeater-output-dir=%t/ckpt %s 2>&1 | FileCheck %s
 // RUN: cat %t/ckpt/manifest.json | FileCheck --check-prefix=MANIFEST %s
 // RUN: cat %t/ckpt/*/input_with_addresses.mlir | FileCheck --check-prefix=MLIR %s
 

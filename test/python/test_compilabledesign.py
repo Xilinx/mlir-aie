@@ -264,7 +264,7 @@ def test_hash_works_when_peano_install_dir_is_invalid(monkeypatch):
     to the "absent" sentinel rather than letting the ``RuntimeError`` raised
     by ``peano_cxx_path`` / ``peano_install_dir`` escape.
     """
-    import aie.compiler.aiecc.configure as _aiecc_configure
+    import aie.utils.configure as _aiecc_configure
 
     monkeypatch.setattr(_aiecc_configure, "peano_install_dir", "peano_not_found")
 
@@ -904,7 +904,6 @@ def test_kernels_mm_mac_dims_per_arch():
 
 def test_compile_mixed_explicit_paths_raises():
     """Passing only one of (xclbin_path, inst_path) is rejected up front."""
-    import pytest
 
     def gen():
         pass
@@ -914,3 +913,45 @@ def test_compile_mixed_explicit_paths_raises():
         cd.compile(xclbin_path="/tmp/foo.xclbin", inst_path=None)
     with pytest.raises(ValueError, match="must be set together"):
         cd.compile(xclbin_path=None, inst_path="/tmp/foo.bin")
+
+
+def test_compile_pdi_path_requires_explicit_paths():
+    """pdi_path without explicit xclbin_path + inst_path is rejected up front."""
+
+    def gen():
+        pass
+
+    cd = CompilableDesign(gen)
+    with pytest.raises(ValueError, match="pdi_path requires explicit"):
+        cd.compile(pdi_path="/tmp/foo.pdi")
+
+
+def test_compile_elf_path_requires_explicit_paths():
+    """elf_path without explicit xclbin_path + inst_path is rejected up front."""
+
+    def gen():
+        pass
+
+    cd = CompilableDesign(gen)
+    with pytest.raises(ValueError, match="elf_path requires explicit"):
+        cd.compile(elf_path="/tmp/foo.elf")
+
+
+def test_get_pdi_path_none_before_compile():
+    """get_pdi_path() returns None when no compile has happened yet."""
+
+    def gen():
+        pass
+
+    cd = CompilableDesign(gen)
+    assert cd.get_pdi_path() is None
+
+
+def test_get_pdi_paths_empty_before_compile():
+    """get_pdi_paths() returns [] when no compile has happened yet."""
+
+    def gen():
+        pass
+
+    cd = CompilableDesign(gen)
+    assert cd.get_pdi_paths() == []
