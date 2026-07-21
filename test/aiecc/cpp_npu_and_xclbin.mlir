@@ -9,7 +9,7 @@
 
 // Test NPU instruction and xclbin generation
 
-// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-npu-insts --aie-generate-xclbin --verbose %s 2>&1 | FileCheck %s
+// RUN: aiecc --no-xchesscc --no-xbridge --get-npu-insts --get-xclbin --verbose %s 2>&1 | FileCheck %s
 
 // Full NPU + xclbin flow: routing -> CDO -> PDI -> partition metadata ->
 // xclbin, with npu instructions emitted alongside.

@@ -143,7 +143,7 @@ struct Serializer<llvm::json::Value> {
 };
 
 // Materializing an NpuProgram writes the instruction binary; the locmap is
-// emitted separately as a JSON sidecar (see the --keep-loc edge).
+// emitted separately as a JSON sidecar (selected via --get-locmap).
 template <>
 struct Serializer<NpuProgram> {
   static void write(const NpuProgram &value, llvm::raw_ostream &os) {

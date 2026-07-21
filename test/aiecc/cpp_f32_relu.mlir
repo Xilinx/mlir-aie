@@ -12,7 +12,7 @@
 
 // REQUIRES: peano
 
-// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-xclbin --verbose %s 2>&1 | FileCheck %s
+// RUN: aiecc --no-xchesscc --no-xbridge --get-xclbin --verbose %s 2>&1 | FileCheck %s
 
 // Regression: without the fix, LLVM translation fails on unrealized casts.
 // Reaching routing and a successful xclbin write proves lowering succeeded.

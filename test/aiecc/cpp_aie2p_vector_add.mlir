@@ -12,7 +12,7 @@
 
 // REQUIRES: peano
 
-// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-xclbin --verbose %s 2>&1 | FileCheck %s
+// RUN: aiecc --no-xchesscc --no-xbridge --get-xclbin --verbose %s 2>&1 | FileCheck %s
 
 // Regression: the aie2p vector lowering must succeed (without the fix,
 // aie-standard-lowering fails to extract core functions). Reaching a

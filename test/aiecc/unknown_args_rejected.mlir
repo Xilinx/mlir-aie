@@ -19,9 +19,9 @@
 // TYPO: {{[Uu]nknown command line argument.*--aie-genrate-npu-insts}}
 
 // Anything after `--` is forwarded to host compilation and not validated by
-// aiecc. With --no-compile-host the passthrough args are not consumed at all,
-// which is fine.
-// RUN: aiecc --no-xchesscc --no-xbridge --no-compile-host -n --verbose %s -- --garbage 2>&1 | FileCheck %s --check-prefix=PASSTHROUGH
+// aiecc. Host compilation is off by default, so the passthrough args are
+// not consumed at all, which is fine.
+// RUN: aiecc --no-xchesscc --no-xbridge -n --verbose %s -- --garbage 2>&1 | FileCheck %s --check-prefix=PASSTHROUGH
 // PASSTHROUGH-NOT: {{[Uu]nknown command line argument}}
 
 module {
