@@ -47,7 +47,7 @@
 // RUN:   -DGEN_HDR='"%t.1.gen.h"' -DXCLBIN='std::string("%t.1.xclbin")' \
 // RUN:   -I%S/../../../include \
 // RUN:   -I%S/../../../programming_examples/basic/matrix_multiplication \
-// RUN:   %xrt_flags %host_link_flags %test_utils_flags
+// RUN:   %xrt_flags %host_link_flags %test_utils_flags -lm
 // RUN: %run_on_npu1% %t.1.exe 512 512 512 | FileCheck %s
 // RUN: %run_on_npu1% %t.1.exe 256 512 1024 | FileCheck %s
 //
@@ -70,7 +70,7 @@
 // RUN:   -DGEN_HDR='"%t.2.gen.h"' -DXCLBIN='std::string("%t.2.xclbin")' \
 // RUN:   -I%S/../../../include \
 // RUN:   -I%S/../../../programming_examples/basic/matrix_multiplication \
-// RUN:   %xrt_flags %host_link_flags %test_utils_flags
+// RUN:   %xrt_flags %host_link_flags %test_utils_flags -lm
 // RUN: %run_on_npu1% %t.2.exe 512 512 512 | FileCheck %s
 // RUN: %run_on_npu1% %t.2.exe 256 512 1024 | FileCheck %s
 //
@@ -93,7 +93,7 @@
 // RUN:   -DGEN_HDR='"%t.4.gen.h"' -DXCLBIN='std::string("%t.4.xclbin")' \
 // RUN:   -I%S/../../../include \
 // RUN:   -I%S/../../../programming_examples/basic/matrix_multiplication \
-// RUN:   %xrt_flags %host_link_flags %test_utils_flags
+// RUN:   %xrt_flags %host_link_flags %test_utils_flags -lm
 // RUN: %run_on_npu1% %t.4.exe 512 512 512 | FileCheck %s
 // RUN: %run_on_npu1% %t.4.exe 768 512 768 | FileCheck %s
 //
