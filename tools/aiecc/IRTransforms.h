@@ -720,10 +720,8 @@ loweringPipeline(mlir::ModuleOp src, llvm::StringRef devName, int col, int row,
   return mlir::success();
 }
 
-// DMA→NPU lowering tail for the default flow. Runtime-sequence materialization
-// is a separate, explicit step (getMaterializeRuntimeSeqPipeline), so both the
-// default and ctrl-packet flows can expand `load_pdi` ops at the same point
-// (after materialization, before DMA lowering). Nests inside the DeviceOp.
+// DMA→NPU lowering. Expects runtime sequences to already be materialized
+// (getMaterializeRuntimeSeqPipeline).
 inline std::unique_ptr<mlir::PassManager>
 getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   namespace X = xilinx::AIEX;
@@ -763,10 +761,7 @@ getExpandLoadPdiPipeline(mlir::MLIRContext *ctx, bool ctrlPkt = false) {
   return pm;
 }
 
-// Runtime-sequence materialization only (module-level). Kept as its own
-// pipeline so it can be an explicit graph edge shared by both the default and
-// ctrl-packet flows: they materialize, expand `load_pdi` ops, and only then
-// diverge in DMA lowering.
+// Runtime-sequence materialization (module-level).
 inline std::unique_ptr<mlir::PassManager>
 getMaterializeRuntimeSeqPipeline(mlir::MLIRContext *ctx) {
   namespace X = xilinx::AIEX;
@@ -775,8 +770,8 @@ getMaterializeRuntimeSeqPipeline(mlir::MLIRContext *ctx) {
   return pm;
 }
 
-// Part B of NPU lowering: per-device DMA passes (all DeviceOp-nested). Handles
-// both user DMA ops and ctrl-pkt DMA ops in one shot.
+// Per-device DMA→NPU lowering, for both user DMA ops and the DMA ops lowered
+// from control packets.
 inline std::unique_ptr<mlir::PassManager>
 getPerDeviceDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   namespace X = xilinx::AIEX;

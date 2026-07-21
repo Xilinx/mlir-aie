@@ -593,7 +593,7 @@ struct Graph {
 
   // A typed source edge that produces zero items. Use it as an explicit empty
   // stand-in when a downstream select/bundle expects an edge but the current
-  // configuration has nothing to feed it (clearer than an always-false filter).
+  // configuration has nothing to feed it.
   template <typename T>
   EmptyEdge<T> &empty(std::string name) {
     return addEdge<EmptyEdge<T>>(*this, std::move(name));

@@ -592,14 +592,10 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
       npuTransactionsNeedCoresLowered
           ? static_cast<EdgeWithTypedOutput<ModRef> &>(physicalWithElfs)
           : static_cast<EdgeWithTypedOutput<ModRef> &>(physical);
-  // NPU instruction sequence lowering. Both flows share the same prefix --
-  // materialize runtime sequences, then (optionally) expand `load_pdi @device`
-  // ops -- and diverge only in DMA→NPU lowering. The default flow and the
-  // --load-pdi-to-ctrl-pkt reconfigure flow are mutually exclusive.
+  // NPU instruction sequence lowering. The default and --load-pdi-to-ctrl-pkt
+  // flows share the materialize + expand prefix and diverge at DMA lowering.
 
-  // Runtime-sequence materialization. Explicit edge so the intermediate IR is a
-  // first-class, inspectable artifact. `--no-materialize` skips it (the input
-  // is already materialized).
+  // `--no-materialize` marks the input as already materialized.
   EdgeWithTypedOutput<ModRef> &npuMaterialized =
       noMaterialize.getValue()
           ? npuLoweringInput
@@ -608,11 +604,8 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                     "npu_materialized.mlir",
                     PassPipeline{getMaterializeRuntimeSeqPipeline(&context)}));
 
-  // Expand `load_pdi @device` into write32/blockwrite (default) or
-  // control-packet ops (--load-pdi-to-ctrl-pkt) -- at the same point in both
-  // flows. For --load-pdi-to-ctrl-pkt this edge still carries the
-  // control-packet ops (before DMA lowering), so it is the extraction point for
-  // the control-packet binary.
+  // For --load-pdi-to-ctrl-pkt this edge holds the control-packet ops before
+  // DMA lowering: the extraction point for the control-packet binary.
   bool ctrlPkt = loadPdiToCtrlPkt.getValue();
   EdgeWithTypedOutput<ModRef> &npuExpanded =
       (expandLoadPdis.getValue() || ctrlPkt)
@@ -626,9 +619,9 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                         }}))
           : npuMaterialized;
 
-  // DMA→NPU lowering. The default flow uses the full tail (loop unroll +
-  // dynamic BD pool); the ctrl-pkt flow first lowers the control-packet ops to
-  // DMA, then runs the per-device tail.
+  // The default tail unrolls runtime-sequence loops and pools dynamic BDs; the
+  // ctrl-packet sequence is straight-line and only needs the per-device tail,
+  // after its control packets are lowered to DMA.
   EdgeWithTypedOutput<ModRef> &npuDmaLowered =
       ctrlPkt
           ? npuExpanded
@@ -641,7 +634,6 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                 "npu_dma_lowered.mlir",
                 PassPipeline{getNpuDmaLoweringPipeline(&context)});
 
-  // Stamp PDI ids on the lowered module.
   auto &npuLowered = npuDmaLowered.map<ModRef>(
       "npu_lowered.mlir",
       [](const Item<ModRef> &item, Item<ModRef> &out) -> mlir::LogicalResult {
