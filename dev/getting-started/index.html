@@ -574,17 +574,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#initial-setup" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Initial Setup
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#prerequisites" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -600,7 +589,18 @@
   <a href="#bios-settings" class="md-nav__link">
     <span class="md-ellipsis">
       
-        BIOS Settings:
+        BIOS Settings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#linux-kernel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Linux Kernel
       
     </span>
   </a>
@@ -659,6 +659,45 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Install IRON for AMD Ryzen™ AI AIE Application Development">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#from-pre-built-binaries-wheels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        From Pre-Built Binaries (Wheels)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#from-source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        From Source
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#manual-installation-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manual Installation Steps
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -727,19 +766,19 @@
   <a href="#troubleshooting" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Troubleshooting:
+        Troubleshooting
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Troubleshooting:">
+    <nav class="md-nav" aria-label="Troubleshooting">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
   <a href="#update-bios" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Update BIOS:
+        Update BIOS
       
     </span>
   </a>
@@ -3285,17 +3324,6 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#initial-setup" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Initial Setup
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
   <a href="#prerequisites" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3311,7 +3339,18 @@
   <a href="#bios-settings" class="md-nav__link">
     <span class="md-ellipsis">
       
-        BIOS Settings:
+        BIOS Settings
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#linux-kernel" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Linux Kernel
       
     </span>
   </a>
@@ -3370,6 +3409,45 @@
       
     </span>
   </a>
+  
+    <nav class="md-nav" aria-label="Install IRON for AMD Ryzen™ AI AIE Application Development">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#from-pre-built-binaries-wheels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        From Pre-Built Binaries (Wheels)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#from-source" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        From Source
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#manual-installation-steps" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Manual Installation Steps
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
   
 </li>
       
@@ -3438,19 +3516,19 @@
   <a href="#troubleshooting" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Troubleshooting:
+        Troubleshooting
       
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Troubleshooting:">
+    <nav class="md-nav" aria-label="Troubleshooting">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
   <a href="#update-bios" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Update BIOS:
+        Update BIOS
       
     </span>
   </a>
@@ -3624,27 +3702,24 @@ on the attached NPU. New to the concepts? Start with the
 <blockquote>
 <p><strong>NOTE:</strong> If you are using a different Linux distribution, see the <a href="../buildHostLinNonUbuntu/">non-Ubuntu build guide</a>. Please be aware that building for distributions other than Ubuntu is experimental. Support may vary.</p>
 </blockquote>
-<h2 id="initial-setup">Initial Setup<a class="headerlink" href="#initial-setup" title="Permanent link">&para;</a></h2>
-<blockquote>
-<p>Be sure you have the latest BIOS on your laptop or mini-PC that enables the NPU. See <a href="#update-bios">here</a>.</p>
-</blockquote>
-<p>If starting from <code>Ubuntu 24.04</code> you may need to update the Linux kernel to 6.11+ by installing the Hardware Enablement (HWE) stack:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>sudo<span class="w"> </span>apt<span class="w"> </span>update
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>--install-recommends<span class="w"> </span>linux-generic-hwe-24.04
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>sudo<span class="w"> </span>reboot
-</code></pre></div>
 <h2 id="prerequisites">Prerequisites<a class="headerlink" href="#prerequisites" title="Permanent link">&para;</a></h2>
-<h3 id="bios-settings">BIOS Settings:<a class="headerlink" href="#bios-settings" title="Permanent link">&para;</a></h3>
-<p>Turn off SecureBoot (Allows for unsigned drivers to be installed):
-<code>BIOS → Security → Secure boot → Disable</code></p>
+<h3 id="bios-settings">BIOS Settings<a class="headerlink" href="#bios-settings" title="Permanent link">&para;</a></h3>
+<ul>
+<li>Be sure you have the latest BIOS on your laptop or mini-PC that enables the NPU. See <a href="#update-bios">here</a>.</li>
+<li>Turn off SecureBoot (Allows for unsigned drivers to be installed):
+  <code>BIOS → Security → Secure boot → Disable</code></li>
+</ul>
+<h3 id="linux-kernel">Linux Kernel<a class="headerlink" href="#linux-kernel" title="Permanent link">&para;</a></h3>
+<p>Ensure your system is running Linux kernel <strong>6.17 or newer</strong> before installing these packages. On Ubuntu 24.04 you can verify this with:</p>
+<p><div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>uname<span class="w"> </span>-r
+</code></pre></div>
+If your kernel is older than 6.17, upgrade it using your distribution's kernel update mechanism -- on Ubuntu:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>sudo<span class="w"> </span>apt<span class="w"> </span>update
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>--install-recommends<span class="w"> </span>linux-generic-hwe-24.04
+<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>sudo<span class="w"> </span>reboot
+</code></pre></div>
 <h3 id="install-the-xdna-driver-and-xrt">Install the XDNA™ Driver and XRT<a class="headerlink" href="#install-the-xdna-driver-and-xrt" title="Permanent link">&para;</a></h3>
 <h4 id="install-from-upstream-packages-ubuntu-2404-with-linux-617">Install from upstream packages (Ubuntu 24.04 with Linux 6.17+)<a class="headerlink" href="#install-from-upstream-packages-ubuntu-2404-with-linux-617" title="Permanent link">&para;</a></h4>
-<blockquote>
-<p>Ensure your system is running Linux kernel <strong>6.17 or newer</strong> before installing these packages. On Ubuntu 24.04 you can verify this with:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>uname<span class="w"> </span>-r
-</code></pre></div>
-<p>If your kernel is older than 6.17, upgrade it using your distribution's kernel update mechanism or the kernel upgrade steps described in the <a href="#initial-setup">Initial Setup</a> section above.</p>
-</blockquote>
 <p>Install the XDNA driver and XRT from the AMD PPA:</p>
 <blockquote>
 <p>The packaged XRT only supports Python 3.12 for <code>pyxrt</code></p>
@@ -3674,147 +3749,154 @@ on the attached NPU. New to the concepts? Start with the
  ```</p>
 </blockquote>
 <h3 id="install-iron-and-mlir-aie-prerequisites">Install IRON and MLIR-AIE Prerequisites<a class="headerlink" href="#install-iron-and-mlir-aie-prerequisites" title="Permanent link">&para;</a></h3>
-<ol>
-<li>
 <p>Install the following packages needed for MLIR-AIE:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># Python versions 3.11, 3.12, 3.13, and 3.14 are currently supported by our wheels</span>
 <a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>build-essential<span class="w"> </span>clang<span class="w"> </span>clang-14<span class="w"> </span>lld<span class="w"> </span>lld-14<span class="w"> </span>cmake<span class="w"> </span>ninja-build<span class="w"> </span>python3-venv<span class="w"> </span>python3-pip<span class="w"> </span>uuid-dev
 </code></pre></div>
-<blockquote>
-<p><strong>Note:</strong> CMake <strong>3.30 or newer</strong> is required. If your distribution provides an older
-version, create and activate the Python virtual environment in the setup step below
-first, then install a newer CMake into that virtual environment:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>python3<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span>cmake
-</code></pre></div>
-</blockquote>
-</li>
-<li>
 <p>(Optional) Install opencv which is needed for vision programming examples:</p>
-</li>
-</ol>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>libopencv-dev<span class="w"> </span>python3-opencv
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>sudo<span class="w"> </span>apt<span class="w"> </span>install<span class="w"> </span>libopencv-dev<span class="w"> </span>python3-opencv
 </code></pre></div>
 <h2 id="install-iron-for-amd-ryzen-ai-aie-application-development">Install IRON for AMD Ryzen™ AI AIE Application Development<a class="headerlink" href="#install-iron-for-amd-ryzen-ai-aie-application-development" title="Permanent link">&para;</a></h2>
-<ol>
-<li>Set up and source a Python virtual environment and install the IRON library (<code>mlir-aie</code> wheel), and per-core
-   compiler ("peano", <code>llvm-aie</code> wheel).</li>
-</ol>
+<h3 id="from-pre-built-binaries-wheels">From Pre-Built Binaries (Wheels)<a class="headerlink" href="#from-pre-built-binaries-wheels" title="Permanent link">&para;</a></h3>
+<p>Set up and source a Python virtual environment and install the IRON library 
+(<code>mlir-aie</code> wheel), and per-core compiler ("peano", <code>llvm-aie</code> wheel). The 
+following is the <strong>quickest path:</strong></p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nb">source</span><span class="w"> </span>utils/env_install.sh<span class="w">  </span><span class="c1"># one time / first time</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="nb">source</span><span class="w"> </span>utils/env_setup.sh<span class="w">    </span><span class="c1"># every time you open a new shell</span>
+</code></pre></div>
+<p>This creates an environment named <code>ironenv</code> containing the toolchain.</p>
+<p>By default, the script will match the <code>mlir_aie</code> wheel associated with the 
+currently checked-out release/commit of the repository. If it can't find a 
+release for this commit, it will error, since trying to compile a version of 
+the programming examples in this repository with a compiler wheel whose version
+does not exactly match very frequently leads to hard-to-debug errors. If you 
+insist on using the latest available release from <code>main</code>, pass <code>--latest</code>. To 
+manually install a different wheel, follow the manual instructions below.</p>
 <blockquote>
-<p><strong>Quickest path:</strong></p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nb">source</span><span class="w"> </span>utils/env_install.sh<span class="w">  </span><span class="c1"># one time / first time</span>
+<p><em>Tip:</em> The <code>utils/env_install.sh</code> script also works as an update script.</p>
+</blockquote>
+<h3 id="from-source">From Source<a class="headerlink" href="#from-source" title="Permanent link">&para;</a></h3>
+<p>To build the compiler toolchain from source, you'll need additional 
+dependencies. Install the requirements using:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nb">source</span><span class="w"> </span>utils/env_install.sh<span class="w"> </span>--dev<span class="w">  </span><span class="c1"># one time / first time</span>
 <a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="nb">source</span><span class="w"> </span>utils/env_setup.sh<span class="w">    </span><span class="c1"># every time you open a new shell</span>
 </code></pre></div>
-<p>This creates an environment named <code>ironenv</code> and installs the <code>mlir_aie</code> and Peano wheels. For a from-source
-build use <code>source utils/env_install.sh --dev</code>. By default, the script will match the <code>mlir_aie</code> wheel
-associated with the currently checked-out release/commit of the repository. If it can't find a release for
-this commit, it will error, since trying to compile a version of the programming examples in this repository
-with a compiler wheel whose version does not exactly match very frequently leads to hard-to-debug errors. If
-you insist on using the latest available release from <code>main</code>, pass <code>--latest</code>. To manually install
-a different wheel, follow the manual instructions below.</p>
-<p><em>Tip:</em> The <code>utils/env_install.sh</code> script also works as an update script.</p>
-<p>Below are the manual installation steps if you prefer to do this yourself.</p>
-</blockquote>
-<details markdown="block">
-   
-
+<p>Then, build the compiler (<code>_from_wheels.sh</code> in this case refers to the LLVM
+installation being pulled from a wheel; MLIR-AIE links against LLVM, but will
+be built from source):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>./utils/build-mlir-aie-from-wheels.sh
+</code></pre></div>
+<h3 id="manual-installation-steps">Manual Installation Steps<a class="headerlink" href="#manual-installation-steps" title="Permanent link">&para;</a></h3>
+<p>Below steps replicate what the install script does.</p>
+<details>
 <summary>Manual installation steps</summary>
-
-
-   1. Setup a virtual environment:
-      <div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>python3<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>ironenv
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="nb">source</span><span class="w"> </span>ironenv/bin/activate
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>python3<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span>pip
+<ol>
+<li>
+<p>Setup a virtual environment:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>python3<span class="w"> </span>-m<span class="w"> </span>venv<span class="w"> </span>ironenv
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="nb">source</span><span class="w"> </span>ironenv/bin/activate
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a>python3<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--upgrade<span class="w"> </span>pip
+</code></pre></div></p>
+</li>
+<li>
+<p>Install IRON library by installing the <code>mlir-aie</code> wheels:</p>
+</li>
+</ol>
+<p>For installing the <code>mlir-aie</code> wheels, there are 3 options. Note that for whichever path you take, it is
+   important to sync the <code>mlir-aie</code> wheels version, the GitHub repo commit, and the requirements versions. If
+   you install from something other than the latest wheels, make sure you use the repo commit -- and
+   installation instructions -- from that point in time.</p>
+<ol>
+<li>
+<p><strong>Latest:</strong> For the latest wheels (not necessarily a release):
+      <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1"># Install IRON library and mlir-aie from the latest wheel</span>
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>python3<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>mlir_aie<span class="w"> </span>-f<span class="w"> </span>https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-4
+</code></pre></div></p>
+</li>
+<li>
+<p><strong>Latest Release:</strong> Alternatively, you can install the latest released version of <code>mlir-aie</code>.
+      <div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="c1"># Get the latest release version</span>
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="nv">latest_tag_with_v</span><span class="o">=</span><span class="k">$(</span>curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">&quot;https://api.github.com/repos/Xilinx/mlir-aie/releases/latest&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">&#39;.tag_name&#39;</span><span class="k">)</span>
+<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="nv">latest_tag</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">latest_tag_with_v</span><span class="p">#v</span><span class="si">}</span><span class="s2">&quot;</span>
+<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>
+<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a><span class="c1"># Install IRON library and mlir-aie from the latest stable release</span>
+<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>python3<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="nv">mlir_aie</span><span class="o">==</span><span class="si">${</span><span class="nv">latest_tag</span><span class="si">}</span><span class="w"> </span>-f<span class="w"> </span>https://github.com/Xilinx/mlir-aie/releases/expanded_assets/<span class="si">${</span><span class="nv">latest_tag_with_v</span><span class="si">}</span>
+<a id="__codelineno-13-7" name="__codelineno-13-7" href="#__codelineno-13-7"></a>git<span class="w"> </span>checkout<span class="w"> </span><span class="nv">$latest_tag_with_v</span>
+</code></pre></div></p>
+</li>
+<li>
+<p><strong>Any Release:</strong> You can install a specific version of <code>mlir-aie</code> from the release wheels. To see
+      available versions, check out the <a href="https://github.com/Xilinx/mlir-aie/releases">release page</a>.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="c1"># Install IRON library and mlir-aie from a specific release,</span>
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="c1"># e.g., &lt;version&gt; in the following command could be replaced with v1.1.3</span>
+<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>python3<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>mlir_aie<span class="w"> </span>-f<span class="w"> </span>https://github.com/Xilinx/mlir-aie/releases/expanded_assets/&lt;version&gt;
+<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a>git<span class="w"> </span>checkout<span class="w"> </span>&lt;version&gt;
 </code></pre></div>
-
-   1. Install IRON library by installing the `mlir-aie` wheels:
-
-      For installing the `mlir-aie` wheels, there are 3 options. Note that for whichever path you take, it is
-      important to sync the `mlir-aie` wheels version, the github repo commit, and the requirements versions. If
-      you install from something other than the latest wheels, make sure you use the repo commit -- and
-      installation instructions -- from that point in time.
-
-      1. **Latest:** For the latest wheels (not necessarily a release):
-         <div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="c1"># Install IRON library and mlir-aie from the latest wheel</span>
-<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a>python3<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>mlir_aie<span class="w"> </span>-f<span class="w"> </span>https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-4
-</code></pre></div>
-
-      1. **Latest Release:** Alternatively, you can install the latest released version of `mlir-aie`.
-         <div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="c1"># Get the latest release version</span>
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="nv">latest_tag_with_v</span><span class="o">=</span><span class="k">$(</span>curl<span class="w"> </span>-s<span class="w"> </span><span class="s2">&quot;https://api.github.com/repos/Xilinx/mlir-aie/releases/latest&quot;</span><span class="w"> </span><span class="p">|</span><span class="w"> </span>jq<span class="w"> </span>-r<span class="w"> </span><span class="s1">&#39;.tag_name&#39;</span><span class="k">)</span>
-<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="nv">latest_tag</span><span class="o">=</span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">latest_tag_with_v</span><span class="p">#v</span><span class="si">}</span><span class="s2">&quot;</span>
-<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>
-<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a><span class="c1"># Install IRON library and mlir-aie from the latest stable release</span>
-<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>python3<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span><span class="nv">mlir_aie</span><span class="o">==</span><span class="si">${</span><span class="nv">latest_tag</span><span class="si">}</span><span class="w"> </span>-f<span class="w"> </span>https://github.com/Xilinx/mlir-aie/releases/expanded_assets/<span class="si">${</span><span class="nv">latest_tag_with_v</span><span class="si">}</span>
-<a id="__codelineno-12-7" name="__codelineno-12-7" href="#__codelineno-12-7"></a>git<span class="w"> </span>checkout<span class="w"> </span><span class="nv">$latest_tag_with_v</span>
-</code></pre></div>
-
-      1. **Any Release:** You can install a specific version of `mlir-aie` from the release wheels. To see
-         available versions, check out the [release page](https://github.com/Xilinx/mlir-aie/releases).
-
-         <div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="c1"># Install IRON library and mlir-aie from a specific release,</span>
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="c1"># e.g., &lt;version&gt; in the following command could be replaced with v1.1.3</span>
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a>python3<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>mlir_aie<span class="w"> </span>-f<span class="w"> </span>https://github.com/Xilinx/mlir-aie/releases/expanded_assets/&lt;version&gt;
-<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>git<span class="w"> </span>checkout<span class="w"> </span>&lt;version&gt;
-</code></pre></div>
-
-   1. Install the Peano compiler (the `llvm-aie` wheels) and dependencies:
-      <div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="c1"># Install Peano from the llvm-aie wheel, pinned to the tested nightly in</span>
-<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="c1"># utils/peano-requirements.txt (the same pin CI uses; bumped by the update-peano</span>
-<a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="c1"># workflow). To grab the latest nightly instead, install `llvm-aie` directly</span>
-<a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="c1"># with `-f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly`.</span>
-<a id="__codelineno-14-5" name="__codelineno-14-5" href="#__codelineno-14-5"></a>python3<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>utils/peano-requirements.txt
-</code></pre></div>
-
-   1. (Optional) Install Python packages required for development and testing:
-      <div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="c1"># Install Python requirements for development and testing</span>
-<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>python3<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>python/requirements_dev.txt
-<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a>
-<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="c1"># Install the pre-commit and pre-push hooks defined in .pre-commit-config.yaml</span>
-<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a><span class="c1"># (pre-push runs clang-format/black to catch formatting issues before CI)</span>
-<a id="__codelineno-15-6" name="__codelineno-15-6" href="#__codelineno-15-6"></a>pre-commit<span class="w"> </span>install
-</code></pre></div>
-
-   1. Setup environment
-      <div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="nb">source</span><span class="w"> </span>utils/env_setup.sh
-</code></pre></div>
-
-   1. (Optional) Install ML Python packages for ml programming examples:
-      <div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="c1"># Install Torch for ML examples</span>
-<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>python3<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>python/requirements_ml.txt
-</code></pre></div>
-
-   1. (Optional) Install Jupyter Notebook Python packages:
-      <div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="c1"># Install Jupyter Notebook</span>
-<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>python3<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>python/requirements_notebook.txt
-<a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>
-<a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a><span class="c1"># This creates an ipykernel (for use in notebooks) using the ironenv venv</span>
-<a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>python3<span class="w"> </span>-m<span class="w"> </span>ipykernel<span class="w"> </span>install<span class="w"> </span>--user<span class="w"> </span>--name<span class="w"> </span>ironenv
-<a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>
-<a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a><span class="c1"># Only for Release v1.0 and non wheel-based installs:</span>
-<a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a><span class="c1"># The install generally captures in the $PYTHONPATH by the `env_setup.sh` script.</span>
-<a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a><span class="c1"># However, jupyter notebooks don&#39;t always get access to the PYTHONPATH (e.g., if they are run with</span>
-<a id="__codelineno-18-10" name="__codelineno-18-10" href="#__codelineno-18-10"></a><span class="c1"># vscode) so we save the ${MLIR_AIE_INSTALL_DIR}/python in a .pth file in the site packages dir of the</span>
-<a id="__codelineno-18-11" name="__codelineno-18-11" href="#__codelineno-18-11"></a><span class="c1"># ironenv venv; this allows the iron ipykernel to find the install dir regardless of if PYTHONPATH is</span>
-<a id="__codelineno-18-12" name="__codelineno-18-12" href="#__codelineno-18-12"></a><span class="c1"># available or not.</span>
-<a id="__codelineno-18-13" name="__codelineno-18-13" href="#__codelineno-18-13"></a><span class="nv">MLIR_AIE_INSTALL</span><span class="o">=</span><span class="s2">&quot;</span><span class="k">$(</span>pip<span class="w"> </span>show<span class="w"> </span>mlir_aie<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>^Location:<span class="w"> </span><span class="p">|</span><span class="w"> </span>awk<span class="w"> </span><span class="s1">&#39;{print $2}&#39;</span><span class="k">)</span><span class="s2">/mlir_aie&quot;</span>
-<a id="__codelineno-18-14" name="__codelineno-18-14" href="#__codelineno-18-14"></a><span class="nv">venv_site_packages</span><span class="o">=</span><span class="s2">&quot;</span><span class="k">$(</span>python3<span class="w"> </span>-c<span class="w"> </span><span class="s1">&#39;import sysconfig; print(sysconfig.get_paths()[&quot;purelib&quot;])&#39;</span><span class="k">)</span><span class="s2">&quot;</span>
-<a id="__codelineno-18-15" name="__codelineno-18-15" href="#__codelineno-18-15"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">MLIR_AIE_INSTALL</span><span class="si">}</span><span class="s2">/python&quot;</span><span class="w"> </span>&gt;<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$venv_site_packages</span><span class="s2">/mlir-aie.pth&quot;</span>
-</code></pre></div>
-
-   </details>
+</li>
+<li>
+<p>Install the Peano compiler (the <code>llvm-aie</code> wheels) and dependencies:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="c1"># Install Peano from the llvm-aie wheel, pinned to the tested nightly in</span>
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="c1"># utils/peano-requirements.txt (the same pin CI uses; bumped by the update-peano</span>
+<a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="c1"># workflow). To grab the latest nightly instead, install `llvm-aie` directly</span>
+<a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="c1"># with `-f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly`.</span>
+<a id="__codelineno-15-5" name="__codelineno-15-5" href="#__codelineno-15-5"></a>python3<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>utils/peano-requirements.txt
+</code></pre></div></p>
+</li>
+<li>
+<p>(Optional) Install Python packages required for development and testing:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="c1"># Install Python requirements for development and testing</span>
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>python3<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>python/requirements_dev.txt
+<a id="__codelineno-16-3" name="__codelineno-16-3" href="#__codelineno-16-3"></a>
+<a id="__codelineno-16-4" name="__codelineno-16-4" href="#__codelineno-16-4"></a><span class="c1"># Install the pre-commit and pre-push hooks defined in .pre-commit-config.yaml</span>
+<a id="__codelineno-16-5" name="__codelineno-16-5" href="#__codelineno-16-5"></a><span class="c1"># (pre-push runs clang-format/black to catch formatting issues before CI)</span>
+<a id="__codelineno-16-6" name="__codelineno-16-6" href="#__codelineno-16-6"></a>pre-commit<span class="w"> </span>install
+</code></pre></div></p>
+</li>
+<li>
+<p>Setup environment
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="nb">source</span><span class="w"> </span>utils/env_setup.sh
+</code></pre></div></p>
+</li>
+<li>
+<p>(Optional) Install ML Python packages for ml programming examples:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a><span class="c1"># Install Torch for ML examples</span>
+<a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>python3<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>python/requirements_ml.txt
+</code></pre></div></p>
+</li>
+<li>
+<p>(Optional) Install Jupyter Notebook Python packages:
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a><span class="c1"># Install Jupyter Notebook</span>
+<a id="__codelineno-19-2" name="__codelineno-19-2" href="#__codelineno-19-2"></a>python3<span class="w"> </span>-m<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>-r<span class="w"> </span>python/requirements_notebook.txt
+<a id="__codelineno-19-3" name="__codelineno-19-3" href="#__codelineno-19-3"></a>
+<a id="__codelineno-19-4" name="__codelineno-19-4" href="#__codelineno-19-4"></a><span class="c1"># This creates an ipykernel (for use in notebooks) using the ironenv venv</span>
+<a id="__codelineno-19-5" name="__codelineno-19-5" href="#__codelineno-19-5"></a>python3<span class="w"> </span>-m<span class="w"> </span>ipykernel<span class="w"> </span>install<span class="w"> </span>--user<span class="w"> </span>--name<span class="w"> </span>ironenv
+<a id="__codelineno-19-6" name="__codelineno-19-6" href="#__codelineno-19-6"></a>
+<a id="__codelineno-19-7" name="__codelineno-19-7" href="#__codelineno-19-7"></a><span class="c1"># Only for Release v1.0 and non wheel-based installs:</span>
+<a id="__codelineno-19-8" name="__codelineno-19-8" href="#__codelineno-19-8"></a><span class="c1"># The install generally captures in the $PYTHONPATH by the `env_setup.sh` script.</span>
+<a id="__codelineno-19-9" name="__codelineno-19-9" href="#__codelineno-19-9"></a><span class="c1"># However, jupyter notebooks don&#39;t always get access to the PYTHONPATH (e.g., if they are run with</span>
+<a id="__codelineno-19-10" name="__codelineno-19-10" href="#__codelineno-19-10"></a><span class="c1"># vscode) so we save the ${MLIR_AIE_INSTALL_DIR}/python in a .pth file in the site packages dir of the</span>
+<a id="__codelineno-19-11" name="__codelineno-19-11" href="#__codelineno-19-11"></a><span class="c1"># ironenv venv; this allows the iron ipykernel to find the install dir regardless of if PYTHONPATH is</span>
+<a id="__codelineno-19-12" name="__codelineno-19-12" href="#__codelineno-19-12"></a><span class="c1"># available or not.</span>
+<a id="__codelineno-19-13" name="__codelineno-19-13" href="#__codelineno-19-13"></a><span class="nv">MLIR_AIE_INSTALL</span><span class="o">=</span><span class="s2">&quot;</span><span class="k">$(</span>pip<span class="w"> </span>show<span class="w"> </span>mlir_aie<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>^Location:<span class="w"> </span><span class="p">|</span><span class="w"> </span>awk<span class="w"> </span><span class="s1">&#39;{print $2}&#39;</span><span class="k">)</span><span class="s2">/mlir_aie&quot;</span>
+<a id="__codelineno-19-14" name="__codelineno-19-14" href="#__codelineno-19-14"></a><span class="nv">venv_site_packages</span><span class="o">=</span><span class="s2">&quot;</span><span class="k">$(</span>python3<span class="w"> </span>-c<span class="w"> </span><span class="s1">&#39;import sysconfig; print(sysconfig.get_paths()[&quot;purelib&quot;])&#39;</span><span class="k">)</span><span class="s2">&quot;</span>
+<a id="__codelineno-19-15" name="__codelineno-19-15" href="#__codelineno-19-15"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;</span><span class="si">${</span><span class="nv">MLIR_AIE_INSTALL</span><span class="si">}</span><span class="s2">/python&quot;</span><span class="w"> </span>&gt;<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$venv_site_packages</span><span class="s2">/mlir-aie.pth&quot;</span>
+</code></pre></div></p>
+</li>
+</ol>
+</details>
 <h2 id="build-an-iron-design-for-aies-in-the-amd-ryzen-ai-npu-on-linux">Build an IRON Design for AIEs in the AMD Ryzen™ AI NPU on Linux<a class="headerlink" href="#build-an-iron-design-for-aies-in-the-amd-ryzen-ai-npu-on-linux" title="Permanent link">&para;</a></h2>
 <p>For your design of interest, for instance from <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples">programming_examples</a>, 2 steps are needed: (i) build the AIE design and then (ii) build the host code.</p>
 <h3 id="build-device-aie-part">Build Device AIE Part<a class="headerlink" href="#build-device-aie-part" title="Permanent link">&para;</a></h3>
 <ol>
 <li>
 <p>Go to the design of interest and run:
-   <div class="highlight"><pre><span></span><code><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>make
+   <div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>make
 </code></pre></div></p>
 </li>
 <li>
 <p>Build host code and execute the design:
-    <div class="highlight"><pre><span></span><code><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>make<span class="w"> </span>run
+    <div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>make<span class="w"> </span>run
 </code></pre></div></p>
 </li>
 </ol>
@@ -3849,12 +3931,12 @@ a different wheel, follow the manual instructions below.</p>
 </li>
 <li>
 <p>Extract the required tools:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>tar<span class="w"> </span>-xzvf<span class="w"> </span>ryzen_ai-1.3.0ea1.tgz
-<a id="__codelineno-21-2" name="__codelineno-21-2" href="#__codelineno-21-2"></a><span class="nb">cd</span><span class="w"> </span>ryzen_ai-1.3.0
-<a id="__codelineno-21-3" name="__codelineno-21-3" href="#__codelineno-21-3"></a>mkdir<span class="w"> </span>vitis_aie_essentials
-<a id="__codelineno-21-4" name="__codelineno-21-4" href="#__codelineno-21-4"></a>mv<span class="w"> </span>vitis_aie_essentials*.whl<span class="w"> </span>vitis_aie_essentials
-<a id="__codelineno-21-5" name="__codelineno-21-5" href="#__codelineno-21-5"></a><span class="nb">cd</span><span class="w"> </span>vitis_aie_essentials
-<a id="__codelineno-21-6" name="__codelineno-21-6" href="#__codelineno-21-6"></a>unzip<span class="w"> </span>vitis_aie_essentials*.whl
+<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a>tar<span class="w"> </span>-xzvf<span class="w"> </span>ryzen_ai-1.3.0ea1.tgz
+<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="nb">cd</span><span class="w"> </span>ryzen_ai-1.3.0
+<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a>mkdir<span class="w"> </span>vitis_aie_essentials
+<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a>mv<span class="w"> </span>vitis_aie_essentials*.whl<span class="w"> </span>vitis_aie_essentials
+<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a><span class="nb">cd</span><span class="w"> </span>vitis_aie_essentials
+<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a>unzip<span class="w"> </span>vitis_aie_essentials*.whl
 </code></pre></div>
 </li>
 <li>
@@ -3872,13 +3954,13 @@ a different wheel, follow the manual instructions below.</p>
 <p>Setup your environment using the following script for Vitis™ for AIETools:</p>
 </li>
 </ol>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="ch">#!/bin/bash</span>
-<a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="c1">#################################################################################</span>
-<a id="__codelineno-22-3" name="__codelineno-22-3" href="#__codelineno-22-3"></a><span class="c1"># Setup Vitis AIE Essentials</span>
-<a id="__codelineno-22-4" name="__codelineno-22-4" href="#__codelineno-22-4"></a><span class="c1">#################################################################################</span>
-<a id="__codelineno-22-5" name="__codelineno-22-5" href="#__codelineno-22-5"></a><span class="nb">export</span><span class="w"> </span><span class="nv">AIETOOLS_ROOT</span><span class="o">=</span>/tools/ryzen_ai-1.3.0/vitis_aie_essentials
-<a id="__codelineno-22-6" name="__codelineno-22-6" href="#__codelineno-22-6"></a><span class="nb">export</span><span class="w"> </span><span class="nv">PATH</span><span class="o">=</span><span class="nv">$PATH</span>:<span class="si">${</span><span class="nv">AIETOOLS_ROOT</span><span class="si">}</span>/bin
-<a id="__codelineno-22-7" name="__codelineno-22-7" href="#__codelineno-22-7"></a><span class="nb">export</span><span class="w"> </span><span class="nv">LM_LICENSE_FILE</span><span class="o">=</span>/opt/Xilinx.lic
+<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a><span class="ch">#!/bin/bash</span>
+<a id="__codelineno-23-2" name="__codelineno-23-2" href="#__codelineno-23-2"></a><span class="c1">#################################################################################</span>
+<a id="__codelineno-23-3" name="__codelineno-23-3" href="#__codelineno-23-3"></a><span class="c1"># Setup Vitis AIE Essentials</span>
+<a id="__codelineno-23-4" name="__codelineno-23-4" href="#__codelineno-23-4"></a><span class="c1">#################################################################################</span>
+<a id="__codelineno-23-5" name="__codelineno-23-5" href="#__codelineno-23-5"></a><span class="nb">export</span><span class="w"> </span><span class="nv">AIETOOLS_ROOT</span><span class="o">=</span>/tools/ryzen_ai-1.3.0/vitis_aie_essentials
+<a id="__codelineno-23-6" name="__codelineno-23-6" href="#__codelineno-23-6"></a><span class="nb">export</span><span class="w"> </span><span class="nv">PATH</span><span class="o">=</span><span class="nv">$PATH</span>:<span class="si">${</span><span class="nv">AIETOOLS_ROOT</span><span class="si">}</span>/bin
+<a id="__codelineno-23-7" name="__codelineno-23-7" href="#__codelineno-23-7"></a><span class="nb">export</span><span class="w"> </span><span class="nv">LM_LICENSE_FILE</span><span class="o">=</span>/opt/Xilinx.lic
 </code></pre></div>
 <h2 id="alternative-build-xdna-driver-and-xrt-from-source">Alternative: Build XDNA™ Driver and XRT from source<a class="headerlink" href="#alternative-build-xdna-driver-and-xrt-from-source" title="Permanent link">&para;</a></h2>
 <p>If the <a href="#install-from-upstream-packages-ubuntu-2404-with-linux-617">upstream packages</a> do not support your kernel or distribution, you can build the driver and XRT from source:</p>
@@ -3888,34 +3970,34 @@ a different wheel, follow the manual instructions below.</p>
 <blockquote>
 <p>This script will install package dependencies, build the xdna-driver and xrt packages, and install them. <em>These steps require <code>sudo</code> access.</em></p>
 </blockquote>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>bash<span class="w"> </span>./utils/build_drivers.sh
+<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>bash<span class="w"> </span>./utils/build_drivers.sh
 </code></pre></div>
 </li>
 <li>
 <p>Reboot as directed after the script exits.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>sudo<span class="w"> </span>reboot
+<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>sudo<span class="w"> </span>reboot
 </code></pre></div>
 </li>
 <li>
 <p>Check that the NPU is working if the device appears with xrt-smi:</p>
 </li>
 </ol>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a><span class="nb">source</span><span class="w"> </span>/opt/xilinx/xrt/setup.sh
-<a id="__codelineno-25-2" name="__codelineno-25-2" href="#__codelineno-25-2"></a>xrt-smi<span class="w"> </span>examine
+<div class="highlight"><pre><span></span><code><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a><span class="nb">source</span><span class="w"> </span>/opt/xilinx/xrt/setup.sh
+<a id="__codelineno-26-2" name="__codelineno-26-2" href="#__codelineno-26-2"></a>xrt-smi<span class="w"> </span>examine
 </code></pre></div>
-<h2 id="troubleshooting">Troubleshooting:<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
-<h3 id="update-bios">Update BIOS:<a class="headerlink" href="#update-bios" title="Permanent link">&para;</a></h3>
+<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
+<h3 id="update-bios">Update BIOS<a class="headerlink" href="#update-bios" title="Permanent link">&para;</a></h3>
 <p>Be sure you have the latest BIOS for your laptop or mini PC, this will ensure the NPU (sometimes referred to as IPU) is enabled in the system. You may need to manually enable the NPU:
 <code>Advanced → CPU Configuration → IPU</code></p>
 <blockquote>
 <p><strong>NOTE:</strong> Some manufacturers only provide Windows executables to update the BIOS, please do this before installing Ubuntu.</p>
 </blockquote>
-<h1 id="detailed-getting-started-guides-and-documentation">Detailed Getting Started Guides and Documentation:<a class="headerlink" href="#detailed-getting-started-guides-and-documentation" title="Permanent link">&para;</a></h1>
+<h1 id="detailed-getting-started-guides-and-documentation">Detailed Getting Started Guides and Documentation<a class="headerlink" href="#detailed-getting-started-guides-and-documentation" title="Permanent link">&para;</a></h1>
 <p><a href="../programming_guide/">IRON AIE Application Programming Guide</a></p>
 <p><a href="../Devices/">Device Descriptions</a></p>
 <p><a href="../Building/">Building mlir-aie tools from source</a></p>
 <p><a href="https://xilinx.github.io/mlir-aie/">MLIR Dialect and Compiler Documentation</a></p>
-<p>Interested in contributing MLIR-AIE? <a href="../CONTRIBUTING/">Information for developers</a></p>
+<p>Interested in contributing MLIR-AIE? <a href="https://github.com/Xilinx/mlir-aie/blob/main/CONTRIBUTING.md">Information for developers</a></p>
 <hr />
 <p align="center">Copyright&copy; 2019-2021 Xilinx, Inc.<br>Copyright&copy; 2022-2026 Advanced Micro Devices, Inc.</p>
 
