@@ -703,6 +703,26 @@ LogicalResult AIEX::NpuDmaWaitOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// DMAAwaitTaskOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AIEX::DMAAwaitTaskOp::verify() {
+  // The await identifies its channel EITHER by the task SSA operand OR by the
+  // full sync_* attribute set (used when no configure dominates the await). The
+  // sync attributes come as a group: all four or none.
+  unsigned nSync = getSyncCol().has_value() + getSyncRow().has_value() +
+                   getSyncDirection().has_value() +
+                   getSyncChannel().has_value();
+  if (nSync != 0 && nSync != 4)
+    return emitOpError("sync_col, sync_row, sync_direction and sync_channel "
+                       "must all be set together or all omitted");
+  if (!getTask() && nSync == 0)
+    return emitOpError("must have either a task operand or the sync_* channel "
+                       "attributes");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // NpuPushQueueOp
 //===----------------------------------------------------------------------===//
 

@@ -10,6 +10,11 @@
 // A task is configured in the then branch and yielded out, but the else branch
 // yields a non-pool value. There is no popped id to push on the else path, so
 // the task cannot be freed after the if -- both branches must yield the task.
+//
+// This is GENUINE divergence (the else yields an unrelated %other), distinct
+// from re-yielding the SAME task on both branches of a later if on the same
+// condition, which threads fine -- see good-two-ifs-chain.mlir. The check keys
+// on the order-independent task closure, not on which condition guards the if.
 
 aie.device(npu1) {
   %tile_0_0 = aie.tile(0, 0)

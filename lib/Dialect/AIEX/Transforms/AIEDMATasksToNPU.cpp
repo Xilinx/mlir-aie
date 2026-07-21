@@ -80,6 +80,21 @@ struct DMAAwaitTaskOpPattern : OpConversionPattern<DMAAwaitTaskOp> {
   LogicalResult
   matchAndRewrite(DMAAwaitTaskOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    // The sync needs only the physical channel (col,row,dir,channel). When the
+    // dynamic BD pool pass could not resolve the awaited task to a dominating
+    // configure (e.g. it was configured in an scf.if branch), it stamped those
+    // static coordinates as attributes; prefer them over the SSA operand.
+    if (op.getSyncCol()) {
+      rewriter.replaceOpWithNewOp<NpuSyncOp>(
+          op, createConstantI32(rewriter, loc, *op.getSyncCol()),
+          createConstantI32(rewriter, loc, *op.getSyncRow()),
+          createConstantI32(rewriter, loc, (uint32_t)*op.getSyncDirection()),
+          createConstantI32(rewriter, loc, *op.getSyncChannel()),
+          createConstantI32(rewriter, loc, 1),
+          createConstantI32(rewriter, loc, 1));
+      return success();
+    }
     DMAConfigureTaskOp task_op = op.getTaskOp();
     if (!task_op) {
       return failure();
@@ -92,7 +107,6 @@ struct DMAAwaitTaskOpPattern : OpConversionPattern<DMAAwaitTaskOp> {
       return err;
     }
     AIE::TileOp tile = task_op.getTileOp();
-    Location loc = op.getLoc();
     rewriter.replaceOpWithNewOp<NpuSyncOp>(
         op, createConstantI32(rewriter, loc, tile.getCol()),
         createConstantI32(rewriter, loc, tile.getRow()),

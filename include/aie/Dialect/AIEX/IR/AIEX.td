@@ -1229,27 +1229,49 @@ def AIE_DMAStartTaskOp : AIEX_Op<"dma_start_task", [HasAncestor<"AIE::RuntimeSeq
 def AIE_DMAAwaitTaskOp : AIEX_Op<"dma_await_task", [HasAncestor<"AIE::RuntimeSequenceOp">]> {
   let summary = "Await Completion of a Previously Submitted DMA Task";
   let description = [{
-    This operation will block execution of the runtime sequence until the referenced previously started DMA task has completed.
+    This operation blocks execution of the runtime sequence until a previously
+    started DMA task completes, by waiting on its task-completion token (TCT).
+    To be able to wait on a task, it must issue a token (`issue_token = true`).
 
-    DMA tasks can be started using `aiex.start_task` using abstract BD chains declared using `aie.bd_chain`, or using `aiex.start_configured_task` using a manually configured task.
+    DMA tasks can be started using `aiex.start_task` using abstract BD chains
+    declared using `aie.bd_chain`, or using `aiex.start_configured_task` using a
+    manually configured task.
 
-    To be able to wait on a task, it must issue a task completion token (TCT). Tasks only emit these tokens if the attribute `issue_token` is set to `true`.
+    The task is normally identified by its `$task` SSA value. When the awaited
+    task was configured under runtime control flow and no configure dominates the
+    await (e.g. it was set up inside an `scf.if` branch), the dynamic BD pool pass
+    instead records the physical channel to sync on directly via the optional
+    `sync_col`/`sync_row`/`sync_direction`/`sync_channel` attributes, and the
+    `$task` operand is omitted -- the sync only ever needed the channel, and BD
+    reuse is already serialized by queue backpressure.
   }];
 
   let arguments = (
-    ins Index:$task
+    ins Optional<Index>:$task,
+        OptionalAttr<I32Attr>:$sync_col,
+        OptionalAttr<I32Attr>:$sync_row,
+        OptionalAttr<DMAChannelDir>:$sync_direction,
+        OptionalAttr<I32Attr>:$sync_channel
   );
 
   let assemblyFormat = [{
-    `(` $task `)` attr-dict
+    `(` ($task^)? `)` attr-dict
   }];
 
+  let hasVerifier = 1;
+
   let extraClassDeclaration = [{
+    // The configure op the SSA task resolves to, or null when the task is
+    // identified by sync_* attributes instead of an operand.
     DMAConfigureTaskOp getTaskOp();
   }];
 
   let extraClassDefinition = [{
-    DMAConfigureTaskOp DMAAwaitTaskOp::getTaskOp() { return dyn_cast<DMAConfigureTaskOp>(getTask().getDefiningOp()); }
+    DMAConfigureTaskOp DMAAwaitTaskOp::getTaskOp() {
+      if (!getTask())
+        return nullptr;
+      return dyn_cast_or_null<DMAConfigureTaskOp>(getTask().getDefiningOp());
+    }
   }];
 }
 

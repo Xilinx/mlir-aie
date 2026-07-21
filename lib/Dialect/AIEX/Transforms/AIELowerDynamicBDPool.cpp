@@ -23,9 +23,9 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
 
+#include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/IR/Dominance.h"
-#include "mlir/IR/IRMapping.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
@@ -56,11 +56,62 @@ struct AIELowerDynamicBDPoolPass
   // one with the right (tile,dir,channel).
   llvm::DenseMap<Value, DMAConfigureTaskOp> originConfigure;
 
+  // Every SSA value that carries a DMA task: configure results plus everything
+  // the task flows into (for iter_args/results, if results). Computed by
+  // forward closure from configures, so it is independent of the order in which
+  // control flow is later rewritten.
+  llvm::DenseSet<Value> taskValues;
+
+  // A grown scf.for/scf.if whose appended i32 yield operands are still
+  // placeholders. carried[i] is the original task position that the appended id
+  // at nOrig+i shadows; the yields are wired once every position is paired.
+  struct Fixup {
+    Operation *op;
+    SmallVector<unsigned> carried;
+    unsigned nOrig;
+    SmallVector<Operation *> placeholders; // dead consts to erase (scf.if only)
+  };
+  SmallVector<Fixup> fixups;
+
   // Count the BD ops in a configure's body (across all its blocks).
   static unsigned countBds(DMAConfigureTaskOp cfg) {
     unsigned n = 0;
     cfg.walk([&](AIE::DMABDOp) { ++n; });
     return n;
+  }
+
+  void markTask(Value v, SmallVectorImpl<Value> &worklist) {
+    if (taskValues.insert(v).second)
+      worklist.push_back(v);
+  }
+
+  // Forward-propagate task-ness from every configure result through scf.for
+  // (init -> iter_arg, yield -> result) and scf.if (yield -> result). A value
+  // that is never derived from a configure (e.g. an unrelated index yielded on
+  // one branch) stays out of the set, which is what lets the divergent-yield
+  // check below reject it.
+  void computeTaskValues(AIE::RuntimeSequenceOp seq) {
+    taskValues.clear();
+    SmallVector<Value> worklist;
+    seq.walk([&](DMAConfigureTaskOp c) { markTask(c.getResult(), worklist); });
+    while (!worklist.empty()) {
+      Value v = worklist.pop_back_val();
+      for (OpOperand &use : v.getUses()) {
+        Operation *user = use.getOwner();
+        if (auto f = dyn_cast<scf::ForOp>(user)) {
+          for (unsigned k = 0; k < f.getInitArgs().size(); ++k)
+            if (f.getInitArgs()[k] == v)
+              markTask(f.getRegionIterArg(k), worklist);
+        } else if (isa<scf::YieldOp>(user)) {
+          unsigned k = use.getOperandNumber();
+          Operation *parent = user->getParentOp();
+          if (auto pf = dyn_cast<scf::ForOp>(parent))
+            markTask(pf.getResult(k), worklist);
+          else if (auto pi = dyn_cast<scf::IfOp>(parent))
+            markTask(pi.getResult(k), worklist);
+        }
+      }
+    }
   }
 
   LogicalResult lowerConfigure(DMAConfigureTaskOp cfg) {
@@ -99,24 +150,26 @@ struct AIELowerDynamicBDPoolPass
                      .getBdId();
     cfg.getBdIdValMutable().assign(bdId);
     pairedId[cfg.getResult()] = bdId;
-    tileForTask[cfg.getResult()] = {tile.getCol(), tile.getRow()};
-    originConfigure[cfg.getResult()] = cfg;
     return success();
   }
 
-  // Add a parallel i32 iter_arg for every task-carrying iter_arg of `forOp`, so
-  // the popped id flows in lockstep with the task Index. Returns the new loop.
-  // Updates `pairedId` for the new region iter_args and results.
+  // Grow an scf.for with a parallel i32 iter_arg for every task-carrying
+  // iter_arg, so the popped id can flow in lockstep with the task Index. The
+  // yields are left as placeholders (the new id block arg itself) and wired to
+  // the real per-iteration id later, once every position is paired -- a body
+  // may yield an id defined by a not-yet-grown inner op. Pairs the new
+  // iter_args/results in `pairedId` and records a Fixup.
   scf::ForOp carryIdsThroughLoop(scf::ForOp forOp) {
-    SmallVector<unsigned> carried; // iter_arg positions carrying a paired task
+    SmallVector<unsigned> carried; // iter_arg positions carrying a task
     SmallVector<Value> newInits;
     for (unsigned k = 0; k < forOp.getInitArgs().size(); ++k) {
       Value init = forOp.getInitArgs()[k];
-      auto it = pairedId.find(init);
-      if (it == pairedId.end())
+      if (!taskValues.contains(init))
         continue;
+      Value id = pairedId.lookup(init);
+      assert(id && "for init carries a task but has no paired id");
       carried.push_back(k);
-      newInits.push_back(it->second);
+      newInits.push_back(id);
     }
     if (carried.empty())
       return forOp;
@@ -125,18 +178,10 @@ struct AIELowerDynamicBDPoolPass
     IRRewriter rewriter(forOp);
     auto newYields = [&](OpBuilder &b, Location loc,
                          ArrayRef<BlockArgument> newBBArgs) {
-      // The value yielded for each new id iter_arg is the paired id of the task
-      // that carried position yields. For a rotating ping-pong the body yields
-      // a fresh configure result, whose id is already in the map.
-      auto *yield = forOp.getBody()->getTerminator();
-      SmallVector<Value> yielded;
-      for (unsigned k : carried) {
-        Value bodyTask = yield->getOperand(k);
-        Value id = pairedId.lookup(bodyTask);
-        assert(id && "carried task yields an unpaired id");
-        yielded.push_back(id);
-      }
-      return yielded;
+      // Placeholder: yield each new id iter_arg straight back. Same type,
+      // dominates the yield, and is a no-op for an identity (task-reuse) carry.
+      // wireFixups overwrites it with the real per-iteration id.
+      return SmallVector<Value>(newBBArgs.begin(), newBBArgs.end());
     };
 
     FailureOr<LoopLikeOpInterface> newLoop = forOp.replaceWithAdditionalYields(
@@ -145,45 +190,38 @@ struct AIELowerDynamicBDPoolPass
     assert(succeeded(newLoop) && "scf.for additional-yields rewrite failed");
     auto newFor = cast<scf::ForOp>(newLoop->getOperation());
 
-    // id iter_args are appended after the original nOrig; pair each carried
-    // task iter_arg/result with its new id, propagating tile and origin from
-    // the init.
     for (auto [i, k] : llvm::enumerate(carried)) {
-      Value init = forOp.getInitArgs()[k];
-      auto tile = tileForTask.lookup(init);
-      DMAConfigureTaskOp origin = originConfigure.lookup(init);
+      // The rewrite gave the loop new block args/results; migrate task-ness
+      // onto them so a later-grown consumer of this loop's result still sees a
+      // task.
+      taskValues.insert(newFor.getRegionIterArg(k));
+      taskValues.insert(newFor.getResult(k));
       pairedId[newFor.getRegionIterArg(k)] = newFor.getRegionIterArg(nOrig + i);
-      tileForTask[newFor.getRegionIterArg(k)] = tile;
-      originConfigure[newFor.getRegionIterArg(k)] = origin;
       pairedId[newFor.getResult(k)] = newFor.getResult(nOrig + i);
-      tileForTask[newFor.getResult(k)] = tile;
-      originConfigure[newFor.getResult(k)] = origin;
     }
+    fixups.push_back({newFor, carried, nOrig, {}});
     return newFor;
   }
 
-  // Carry popped ids out of an scf.if via its results, so a task configured in
-  // a branch and freed after the if can find its id. scf.if has no iter_args;
-  // a result carries a task when BOTH branches yield a paired task at that
-  // position. Rebuilds the op with an appended i32 result per carried task
-  // (each branch's yield appends its own paired id). Returns failure on a
-  // divergent branch (one side yields a task, the other does not) -- there is
-  // no valid id to push on the non-yielding path.
+  // Grow an scf.if with a parallel i32 result per task it yields out (its
+  // branch-local id), so a task freed after the if finds its id. Yields start
+  // as placeholders, wired later. A result carries a task iff BOTH branches
+  // yield one; a divergent yield (only one branch) is rejected -- no id to push
+  // on the other path.
   LogicalResult carryIdsThroughIf(scf::IfOp ifOp) {
-    // An scf.if with no else cannot yield results, so nothing crosses out.
     if (ifOp.getNumResults() == 0 || ifOp.elseBlock() == nullptr)
       return success();
 
     auto thenYield = cast<scf::YieldOp>(ifOp.thenBlock()->getTerminator());
     auto elseYield = cast<scf::YieldOp>(ifOp.elseBlock()->getTerminator());
 
-    SmallVector<unsigned> carried; // result positions carrying a paired task
+    SmallVector<unsigned> carried; // result positions carrying a task
     for (unsigned k = 0; k < ifOp.getNumResults(); ++k) {
-      Value thenId = pairedId.lookup(thenYield.getOperand(k));
-      Value elseId = pairedId.lookup(elseYield.getOperand(k));
-      if (thenId && elseId)
+      bool thenT = taskValues.contains(thenYield.getOperand(k));
+      bool elseT = taskValues.contains(elseYield.getOperand(k));
+      if (thenT && elseT)
         carried.push_back(k);
-      else if (thenId || elseId)
+      else if (thenT || elseT)
         return ifOp.emitOpError(
             "yields a pool-allocated task on only one branch of an scf.if; "
             "both "
@@ -205,42 +243,148 @@ struct AIELowerDynamicBDPoolPass
     newIf.getThenRegion().takeBody(ifOp.getThenRegion());
     newIf.getElseRegion().takeBody(ifOp.getElseRegion());
 
-    // Append each carried task's per-branch id to that branch's yield. The id
-    // is the pop result inside the same branch, so it dominates the yield.
-    auto appendIds = [&](scf::YieldOp y) {
+    // Append a placeholder i32 to each branch's yield; wireFixups replaces it
+    // with the branch's real id (which may be defined by a not-yet-grown inner
+    // op). The placeholder is a dead constant erased during wiring.
+    SmallVector<Operation *> placeholders;
+    auto appendPlaceholders = [&](scf::YieldOp y) {
+      OpBuilder yb(y);
       SmallVector<Value> ids;
-      for (unsigned k : carried)
-        ids.push_back(pairedId.lookup(y.getOperand(k)));
+      for (unsigned k : carried) {
+        (void)k;
+        auto c =
+            arith::ConstantOp::create(yb, y.getLoc(), yb.getI32IntegerAttr(0));
+        placeholders.push_back(c);
+        ids.push_back(c);
+      }
       y->insertOperands(y->getNumOperands(), ids);
     };
-    appendIds(cast<scf::YieldOp>(newIf.thenBlock()->getTerminator()));
-    appendIds(cast<scf::YieldOp>(newIf.elseBlock()->getTerminator()));
+    appendPlaceholders(cast<scf::YieldOp>(newIf.thenBlock()->getTerminator()));
+    appendPlaceholders(cast<scf::YieldOp>(newIf.elseBlock()->getTerminator()));
 
     for (auto [i, k] : llvm::enumerate(carried)) {
-      // Both branches share tile/dir/channel (same objectfifo); take from then.
-      Value thenTask =
-          cast<scf::YieldOp>(newIf.thenBlock()->getTerminator()).getOperand(k);
+      // Migrate task-ness onto the rebuilt result so a later-grown consumer of
+      // this if's result still sees a task.
+      taskValues.insert(newIf.getResult(k));
       pairedId[newIf.getResult(k)] = newIf.getResult(nOrig + i);
-      tileForTask[newIf.getResult(k)] = tileForTask.lookup(thenTask);
-      originConfigure[newIf.getResult(k)] = originConfigure.lookup(thenTask);
     }
     for (unsigned k = 0; k < nOrig; ++k)
       ifOp.getResult(k).replaceAllUsesWith(newIf.getResult(k));
     ifOp.erase();
+    fixups.push_back({newIf, carried, nOrig, placeholders});
     return success();
   }
 
-  LogicalResult lowerRelease(Value task, Operation *op,
-                             llvm::DenseSet<Value> &released) {
+  // Sweep 2: with every position paired, set each grown op's appended yield
+  // operand(s) to the real id yielded at that position. Runs after all growth,
+  // so an id defined by an inner op (grown later than its enclosing op) is
+  // resolvable, and an identity carry resolves to its own iter_arg's id.
+  void wireFixups() {
+    for (Fixup &fx : fixups) {
+      if (auto forOp = dyn_cast<scf::ForOp>(fx.op)) {
+        auto yield = cast<scf::YieldOp>(forOp.getBody()->getTerminator());
+        for (auto [i, k] : llvm::enumerate(fx.carried)) {
+          Value id = pairedId.lookup(yield.getOperand(k));
+          assert(id && "carried task yields an unpaired id");
+          yield.setOperand(fx.nOrig + i, id);
+        }
+      } else {
+        auto ifOp = cast<scf::IfOp>(fx.op);
+        for (Block *blk : {ifOp.thenBlock(), ifOp.elseBlock()}) {
+          auto yield = cast<scf::YieldOp>(blk->getTerminator());
+          for (auto [i, k] : llvm::enumerate(fx.carried)) {
+            Value id = pairedId.lookup(yield.getOperand(k));
+            assert(id && "carried task yields an unpaired id");
+            yield.setOperand(fx.nOrig + i, id);
+          }
+        }
+      }
+    }
+    for (Fixup &fx : fixups)
+      for (Operation *p : fx.placeholders)
+        p->erase();
+  }
+
+  // Sweep 3: over the final IR, give every task value its tile (for the push)
+  // and a representative origin configure (for an await that names a loop/if
+  // result with no defining configure). Order-independent forward closure:
+  //   - scf.for: the init's tile/origin flow to the iter_arg AND the result, so
+  //     a result takes the loop-invariant init configure (which dominates a
+  //     post-loop await), not the per-iteration body configure.
+  //   - scf.if: the then-branch yield's tile/origin flow to the result.
+  // A push only reads the tile, so both branches must agree; a genuinely
+  // cross-tile scf.if is rejected.
+  LogicalResult computeMetadata(AIE::RuntimeSequenceOp seq) {
+    tileForTask.clear();
+    originConfigure.clear();
+    SmallVector<Value> worklist;
+    auto setMeta = [&](Value v, std::pair<int, int> tile,
+                       DMAConfigureTaskOp origin) {
+      if (tileForTask.count(v))
+        return;
+      tileForTask[v] = tile;
+      originConfigure[v] = origin;
+      worklist.push_back(v);
+    };
+    seq.walk([&](DMAConfigureTaskOp c) {
+      AIE::TileOp t = c.getTileOp();
+      setMeta(c.getResult(), {t.getCol(), t.getRow()}, c);
+    });
+    while (!worklist.empty()) {
+      Value v = worklist.pop_back_val();
+      auto tile = tileForTask[v];
+      DMAConfigureTaskOp origin = originConfigure[v];
+      for (OpOperand &use : v.getUses()) {
+        Operation *user = use.getOwner();
+        if (auto f = dyn_cast<scf::ForOp>(user)) {
+          for (unsigned k = 0; k < f.getInitArgs().size(); ++k)
+            if (f.getInitArgs()[k] == v) {
+              setMeta(f.getRegionIterArg(k), tile, origin);
+              setMeta(f.getResult(k), tile, origin);
+            }
+        } else if (isa<scf::YieldOp>(user)) {
+          auto ifOp = dyn_cast<scf::IfOp>(user->getParentOp());
+          if (ifOp && user->getBlock() == ifOp.thenBlock())
+            setMeta(ifOp.getResult(use.getOperandNumber()), tile, origin);
+        }
+      }
+    }
+    // A carried scf.if result is one BD id and (if awaited post-if) one sync
+    // channel, so both branches must agree on the full physical channel
+    // (tile,dir,channel) -- otherwise the single push/sync would be ambiguous.
+    WalkResult wr = seq.walk([&](scf::IfOp ifOp) -> WalkResult {
+      if (ifOp.getNumResults() == 0 || ifOp.elseBlock() == nullptr)
+        return WalkResult::advance();
+      auto thenYield = cast<scf::YieldOp>(ifOp.thenBlock()->getTerminator());
+      auto elseYield = cast<scf::YieldOp>(ifOp.elseBlock()->getTerminator());
+      for (unsigned k = 0; k < ifOp.getNumResults(); ++k) {
+        DMAConfigureTaskOp to = originConfigure.lookup(thenYield.getOperand(k));
+        DMAConfigureTaskOp eo = originConfigure.lookup(elseYield.getOperand(k));
+        if (to && eo && syncSig(to) != syncSig(eo)) {
+          ifOp.emitOpError("yields tasks on different physical channels "
+                           "(tile/direction/channel) from its two branches at "
+                           "the same result; a pooled buffer descriptor id and "
+                           "its completion sync belong to one channel");
+          return WalkResult::interrupt();
+        }
+      }
+      return WalkResult::advance();
+    });
+    return wr.wasInterrupted() ? failure() : success();
+  }
+
+  // The physical channel a configure targets: (col, row, direction, channel).
+  static std::tuple<int, int, int, int> syncSig(DMAConfigureTaskOp cfg) {
+    AIE::TileOp t = cfg.getTileOp();
+    return {t.getCol(), t.getRow(), (int)cfg.getDirection(), cfg.getChannel()};
+  }
+
+  LogicalResult lowerRelease(Value task, Operation *op) {
     Value id = pairedId.lookup(task);
     if (!id)
       return op->emitOpError(
           "does not resolve to a task allocated from the runtime pool; cannot "
           "return its buffer descriptor ID");
-    // await returns the id; a later free of the same task is the "wait then
-    // release" idiom, not a double free -- push once.
-    if (!released.insert(task).second)
-      return success();
     auto tile = tileForTask.lookup(task);
     OpBuilder b(op);
     DMABdPoolPushOp::create(b, op->getLoc(), tile.first, tile.second, id);
@@ -259,6 +403,15 @@ struct AIELowerDynamicBDPoolPass
       if (!hasRuntimeCF)
         return WalkResult::advance();
 
+      // Idempotency: a sequence already carrying pool pops has been lowered by
+      // a prior run of this pass. Its awaits may have dropped their task
+      // operand (sync_* attrs) and its scf ops already carry i32 ids, so
+      // re-running the carry logic would misfire. Skip it.
+      bool alreadyLowered = false;
+      seq.walk([&](DMABdPoolPopOp) { alreadyLowered = true; });
+      if (alreadyLowered)
+        return WalkResult::advance();
+
       // scf.while has no bounded trip count, so a BD id popped in its body has
       // no place to be pushed back deterministically; only scf.for and scf.if
       // are supported.
@@ -274,6 +427,7 @@ struct AIELowerDynamicBDPoolPass
       pairedId.clear();
       tileForTask.clear();
       originConfigure.clear();
+      fixups.clear();
 
       // 1. Every configure pops an id (program order: a pop dominates every use
       //    of its id).
@@ -284,38 +438,88 @@ struct AIELowerDynamicBDPoolPass
       if (r.wasInterrupted())
         return WalkResult::interrupt();
 
-      // 2. Carry the ids through control flow so a push sees the id at its own
-      //    scope. seq.walk is pre-order (parents first); reversing gives
-      //    innermost-first, so an inner op's yielded ids are paired before its
-      //    enclosing op consumes them.
+      // 2. Thread the id alongside the task everywhere the task flows. The task
+      //    Index already threads (it is valid IR); shadowing every position it
+      //    occupies with a parallel i32 makes the id in-scope at every push.
+      //    a. Task closure: which SSA values carry a task (order-independent).
+      //    b. Grow structure outermost-first (pre-order): an enclosing op's new
+      //       iter_arg/result exists before an inner op yields through it. A
+      //       divergent scf.if is rejected here.
+      //    c. Wire the placeholder yields now that every position is paired --
+      //       handles both siblings (producer grown before consumer) and
+      //       parent-defines/child-consumes (inner id resolvable after growth).
+      computeTaskValues(seq);
       SmallVector<Operation *> cf;
-      seq.walk([&](Operation *o) {
+      seq.walk<WalkOrder::PreOrder>([&](Operation *o) {
         if (isa<scf::ForOp, scf::IfOp>(o))
           cf.push_back(o);
       });
-      for (Operation *o : llvm::reverse(cf)) {
+      for (Operation *o : cf) {
         if (auto f = dyn_cast<scf::ForOp>(o)) {
           carryIdsThroughLoop(f);
         } else if (failed(carryIdsThroughIf(cast<scf::IfOp>(o)))) {
           return WalkResult::interrupt();
         }
       }
+      wireFixups();
 
-      // 3. free/await -> push (await keeps its sync, adds a push). An await on
-      // a
-      //    loop result lacks a defining configure, so redirect it to the
-      //    loop-invariant origin configure.
-      // Built after step 2 rebuilt any scf.if, so it reflects the final IR.
+      // 3. Metadata over the final IR: each task's tile (for the push) and a
+      //    dominating origin configure (for an await on a loop/if result).
+      if (failed(computeMetadata(seq)))
+        return WalkResult::interrupt();
+
+      // 4. Return ids to the pool. A free returns the id (push). An await is a
+      //    TCT sync (npu_sync), NOT a release -- it pushes ONLY when the id it
+      //    carries is never returned by a free, so an awaited-but-never-freed
+      //    task still frees its BD exactly once. This split keeps the runtime
+      //    free-list balanced when a BD is reused across iterations or awaited
+      //    on one SSA value and freed on another (the same id via the carry).
+      //
+      //    freedByCarry is the set of task values whose carried id reaches a
+      //    free: the backward closure from each free's operand through the
+      //    carry (an scf result comes from its branch/body yields and, for a
+      //    loop, its init; a loop iter_arg from its init and back-edge yield).
+      //    An await whose task is in this set is on a path a later free already
+      //    balances.
+      llvm::DenseSet<Value> freedByCarry;
+      SmallVector<Value> fworklist;
+      auto markFreed = [&](Value v) {
+        if (v && taskValues.contains(v) && freedByCarry.insert(v).second)
+          fworklist.push_back(v);
+      };
+      seq.walk([&](DMAFreeTaskOp freeOp) { markFreed(freeOp.getTask()); });
+      while (!fworklist.empty()) {
+        Value v = fworklist.pop_back_val();
+        if (auto res = dyn_cast<OpResult>(v)) {
+          Operation *def = res.getOwner();
+          unsigned k = res.getResultNumber();
+          if (auto f = dyn_cast<scf::ForOp>(def)) {
+            markFreed(f.getInitArgs()[k]);
+            markFreed(f.getBody()->getTerminator()->getOperand(k));
+          } else if (auto ifOp = dyn_cast<scf::IfOp>(def)) {
+            markFreed(ifOp.thenBlock()->getTerminator()->getOperand(k));
+            markFreed(ifOp.elseBlock()->getTerminator()->getOperand(k));
+          }
+        } else if (auto ba = dyn_cast<BlockArgument>(v)) {
+          if (auto f = dyn_cast<scf::ForOp>(ba.getOwner()->getParentOp())) {
+            unsigned k = ba.getArgNumber() - f.getNumInductionVars();
+            markFreed(f.getInitArgs()[k]);
+            markFreed(f.getBody()->getTerminator()->getOperand(k));
+          }
+        }
+      }
+
       DominanceInfo domInfo(seq);
-      llvm::DenseSet<Value> released;
       SmallVector<Operation *> toErase;
       r = seq.walk([&](Operation *op) -> WalkResult {
         if (auto freeOp = dyn_cast<DMAFreeTaskOp>(op)) {
-          if (failed(lowerRelease(freeOp.getTask(), freeOp, released)))
+          if (failed(lowerRelease(freeOp.getTask(), freeOp)))
             return WalkResult::interrupt();
           toErase.push_back(freeOp);
         } else if (auto await = dyn_cast<DMAAwaitTaskOp>(op)) {
-          if (failed(lowerRelease(await.getTask(), await, released)))
+          // Push only if no free balances this id; the await keeps its sync.
+          if (!freedByCarry.contains(await.getTask()) &&
+              failed(lowerRelease(await.getTask(), await)))
             return WalkResult::interrupt();
           if (!await.getTask().getDefiningOp<DMAConfigureTaskOp>()) {
             DMAConfigureTaskOp origin = originConfigure.lookup(await.getTask());
@@ -324,20 +528,32 @@ struct AIELowerDynamicBDPoolPass
                          "awaits a task whose configure cannot be resolved for "
                          "the dynamic pool path"),
                      WalkResult::interrupt();
-            // The sync reads only the configure's static tile/dir/channel, but
-            // the redirected operand must still dominate the await. A loop's
-            // origin is the pre-loop init configure (dominates); an scf.if
-            // branch configure does not dominate a post-if await. Await inside
-            // the branch (where you issue the transfer) and free after instead.
-            if (!domInfo.dominates(origin.getResult(), await)) {
-              return await.emitOpError(
-                         "awaits a task yielded from an scf.if; await inside "
-                         "the "
-                         "branch that issues the transfer, then free the task "
-                         "after the if"),
-                     WalkResult::interrupt();
+            // The sync reads only the configure's static tile/dir/channel. If a
+            // configure dominates the await (e.g. a loop's pre-loop init),
+            // redirect the operand to it -- the common case, no attrs needed.
+            // Otherwise (the awaited task was configured in an scf.if branch,
+            // which cannot dominate a sibling/post-if await) stamp the channel
+            // as attributes; computeMetadata verified both branches agree on
+            // it.
+            if (domInfo.dominates(origin.getResult(), await)) {
+              await.getTaskMutable().assign(origin.getResult());
+            } else {
+              if (!origin.getIssueToken())
+                return origin.emitOpError("awaited task does not issue a "
+                                          "completion token; add "
+                                          "issue_token = true"),
+                       WalkResult::interrupt();
+              AIE::TileOp t = origin.getTileOp();
+              await.setSyncCol(t.getCol());
+              await.setSyncRow(t.getRow());
+              await.setSyncDirection(origin.getDirection());
+              await.setSyncChannel(origin.getChannel());
+              // Drop the operand: the sync only needs the channel, and keeping
+              // a use of the branch-carried task would block the configure from
+              // lowering (it requires use_empty). BD reuse stays serialized by
+              // queue backpressure, so the dropped ordering edge is not needed.
+              await.getTaskMutable().clear();
             }
-            await.getTaskMutable().assign(origin.getResult());
           }
         }
         return WalkResult::advance();
