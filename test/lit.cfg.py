@@ -170,12 +170,12 @@ tools = [
 ]
 
 if os.name != "nt":
-    tools.extend(["aiecc.py", "txn2mlir.py"])
+    tools.extend(["txn2mlir.py"])
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)
 
 if os.name == "nt":
-    LitConfigHelper.add_python_tool_substitutions(config, ["aiecc.py", "txn2mlir.py"])
+    LitConfigHelper.add_python_tool_substitutions(config, ["txn2mlir.py"])
 
 if config.enable_board_tests:
     lit_config.parallelism_groups["board"] = 1

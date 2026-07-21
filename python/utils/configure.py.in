@@ -35,9 +35,7 @@ host_disable_compile = not pythonize_bool("@AIECC_HOST_COMPILE@")
 host_architecture = os.getenv("LLVM_HOST_TRIPLE", "@LLVM_HOST_TRIPLE@")
 
 peano_install_dir = os.getenv("PEANO_INSTALL_DIR", r"""@PEANO_INSTALL_DIR@""")
-aie_dir = os.path.realpath(
-    os.path.join(os.path.dirname(__file__), "..", "..", "..", "..")
-)
+aie_dir = os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
 if not os.path.exists(peano_install_dir):
     # The expected location in an install area
     peano_install_dir = os.path.join(aie_dir, "peano")
@@ -53,5 +51,5 @@ if not os.path.exists(peano_install_dir):
 
 def install_path():
     path = os.path.dirname(os.path.realpath(__file__))
-    path = os.path.join(path, "..", "..", "..", "..")
+    path = os.path.join(path, "..", "..", "..")
     return os.path.realpath(path)

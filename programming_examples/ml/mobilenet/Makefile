@@ -49,11 +49,11 @@ build/${MLIR_FILE}_unplaced.mlir: ${srcdir}/${MLIR_FILE}.py
 SA_SEED ?= 3
 build/sa_mobilenet.xclbin: build/${MLIR_FILE}_unplaced.mlir
 	mkdir -p ${@D}
-	cd ${@D} && aiecc.py --aie-generate-xclbin --no-compile-host --xclbin-name=${@F} \
+	cd ${@D} && aiecc --get-xclbin --xclbin-name=${@F} \
 		--no-xchesscc --no-xbridge \
 		--dynamic-objFifos=false \
 		--placer=sa_placer --sa-seed=$(SA_SEED) \
-		--aie-generate-npu-insts --npu-insts-name=sa_insts.bin ${<F}
+		--get-npu-insts --npu-insts-name=sa_insts.bin ${<F}
 
 run_py: build/final_mobilenet.xclbin
 	${powershell} python3 -m mobilenet.${TEST_FILE} --xclbin build/final_mobilenet.xclbin --instr build/insts.bin -k MLIR_AIE

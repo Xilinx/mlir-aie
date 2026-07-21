@@ -750,7 +750,8 @@ struct AIEInsertTraceFlowsPass
         uint32_t bdAddress = computeBDAddress(shimCol, chanDesc.bdId,
                                               shimInfo.shimTile, targetModel);
         xilinx::AIEX::NpuAddressPatchOp::create(
-            builder, runtimeSeq.getLoc(), bdAddress, chanDesc.argIdx,
+            builder, runtimeSeq.getLoc(), bdAddress, /*addr_val=*/mlir::Value(),
+            chanDesc.argIdx,
             AIEX::createConstantI32(builder, runtimeSeq.getLoc(),
                                     chanDesc.bufferOffset));
 

@@ -129,6 +129,11 @@ static constexpr uint32_t kNumFirmwareTranslatedArgs = 5;
 
 LogicalResult appendAddressPatch(std::vector<uint32_t> &instructions,
                                  NpuAddressPatchOp op, bool foldDDRAddrOffset) {
+  if (op.getAddrVal())
+    return op.emitOpError("Cannot translate address_patch with a runtime "
+                          "register address (addr_val) to a static TXN binary; "
+                          "the runtime-bd_id pool path targets the C++ TXN "
+                          "target only");
   std::optional<uint32_t> argPlus =
       AIEX::getConstantIntOperand(op.getArgPlus());
   if (!argPlus)

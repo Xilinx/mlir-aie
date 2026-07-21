@@ -14,11 +14,11 @@ on an NPU (instruction streams, ELFs, PDIs, xclbins, …).
 aiecc [options] <input.mlir>
 ```
 
-To also build a **host program** that drives the array, pass `--compile-host`
+To also build a **host program** that drives the array, pass `--get-host`
 and put the host C/C++ sources after a `--`
 
 ```bash
-aiecc --compile-host [options] <input.mlir> -o host.exe -- host.cpp [host-compiler flags]
+aiecc --get-host [options] <input.mlir> -o host.exe -- host.cpp [host-compiler flags]
 ```
 
 ---
@@ -32,7 +32,7 @@ contains the array configuration) and, at dispatch time, streams a
 per-runtime-sequence NPU instruction binary to the device:
 
 ```bash
-aiecc --aie-generate-npu-insts --aie-generate-xclbin design.mlir
+aiecc --get-npu-insts --get-xclbin design.mlir
 # -> insts_<device>_<seq>.bin   (one per runtime sequence)
 # -> aie.xclbin                 (configuration PDI, packaged)
 ```
@@ -41,7 +41,7 @@ aiecc --aie-generate-npu-insts --aie-generate-xclbin design.mlir
 bundled into a single loadable ELF instead of an xclbin plus loose binaries:
 
 ```bash
-aiecc --generate-full-elf design.mlir   # -> aie.elf
+aiecc --get-full-elf design.mlir   # -> aie.elf
 ```
 
 You can override these output file names with `--npu-insts-name`, 
@@ -58,12 +58,12 @@ place. For example, this shows the plan for the NPU-instruction flow and
 renders it to an image:
 
 ```bash
-aiecc --aie-generate-npu-insts --emit-dot | dot -Tpng -o flow.png
+aiecc --get-npu-insts --emit-dot | dot -Tpng -o flow.png
 ```
 
 Each box is a compilation step labelled by the artifact it produces, arrows show
 dependencies between steps, and the outputs you requested are highlighted.
-Changing the output flags (for instance to `--generate-full-elf`) changes the
+Changing the output flags (for instance to `--get-full-elf`) changes the
 graph accordingly, so this is the fastest way to understand what a given
 invocation will actually do. The command above produces this graph:
 
@@ -120,7 +120,7 @@ the prefix and frontier during `--checkpoint`, the downstream steps during
 `--resume` (which reloads the frontier from disk rather than rebuilding it).
 
 ```bash
-aiecc --aie-generate-npu-insts --cut=input_physical.mlir --checkpoint=cp \
+aiecc --get-npu-insts --cut=input_physical.mlir --checkpoint=cp \
       --emit-dot | dot -Tsvg -o cut.svg
 ```
 
@@ -134,7 +134,7 @@ exact inputs the failing step saw.
 ### Extracting a single artifact: `--get`
 
 `--get=<name>` asks for any single artifact in the build by name, including
-intermediates that don't have their own `--aie-generate-*` flag (such as the
+intermediates that don't have their own `--get-<name>` shorthand (such as the
 per-core objects or the routed IR). Run with `--emit-dot` to see the available
 names; passing an unrecognized name prints the full list.
 

@@ -18,11 +18,11 @@
 // RUN: rm -rf %t && mkdir -p %t
 
 // Straight-through reference build.
-// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-npu-insts --aie-generate-xclbin --npu-insts-name=%t/ref_insts.bin --xclbin-name=%t/ref.xclbin --tmpdir=%t/ref.prj %s
+// RUN: aiecc --no-xchesscc --no-xbridge --get-npu-insts --get-xclbin --npu-insts-name=%t/ref_insts.bin --xclbin-name=%t/ref.xclbin --tmpdir=%t/ref.prj %s
 
 // Cut 1: the post-routing whole-module IR (a ModRef edge). The checkpoint holds
 // textual MLIR, which resume re-parses before running everything downstream.
-// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-npu-insts --aie-generate-xclbin --npu-insts-name=%t/phys_insts.bin --xclbin-name=%t/phys.xclbin --tmpdir=%t/phys.prj --cut='input_physical.mlir' --checkpoint=%t/phys.ckpt %s
+// RUN: aiecc --no-xchesscc --no-xbridge --get-npu-insts --get-xclbin --npu-insts-name=%t/phys_insts.bin --xclbin-name=%t/phys.xclbin --tmpdir=%t/phys.prj --cut='input_physical.mlir' --checkpoint=%t/phys.ckpt %s
 // RUN: cat %t/phys.ckpt/*/input_physical.mlir | FileCheck --check-prefix=IR %s
 // RUN: rm -f %t/phys_insts.bin
 // RUN: aiecc --resume=%t/phys.ckpt/manifest.json
@@ -32,7 +32,7 @@
 // and differ only in their focus op, so the checkpoint stores the module once
 // (module.mlir) plus each item's focus-op index; resume parses it once and
 // rebinds per item.
-// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-npu-insts --aie-generate-xclbin --npu-insts-name=%t/core_insts.bin --xclbin-name=%t/core.xclbin --tmpdir=%t/core.prj --cut='perCore_{0}.mlir' --checkpoint=%t/core.ckpt %s
+// RUN: aiecc --no-xchesscc --no-xbridge --get-npu-insts --get-xclbin --npu-insts-name=%t/core_insts.bin --xclbin-name=%t/core.xclbin --tmpdir=%t/core.prj --cut='perCore_{0}.mlir' --checkpoint=%t/core.ckpt %s
 // RUN: cat %t/core.ckpt/*/module.mlir | FileCheck --check-prefix=IR %s
 // RUN: rm -f %t/core_insts.bin
 // RUN: aiecc --resume=%t/core.ckpt/manifest.json

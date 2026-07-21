@@ -16,7 +16,7 @@
 // REQUIRES: peano
 
 // RUN: rm -rf %t && mkdir -p %t
-// RUN: cd %t && aiecc --no-xchesscc --no-xbridge --generate-full-elf --expand-load-pdis --tmpdir=%t %s 2>&1
+// RUN: cd %t && aiecc --no-xchesscc --no-xbridge --get-full-elf --expand-load-pdis --tmpdir=%t %s 2>&1
 // RUN: ls %t | FileCheck %s
 
 // Empty reset device gets its own CDO and PDI (empties first in module order).

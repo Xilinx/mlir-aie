@@ -9,8 +9,8 @@
 
 // Test buffer allocation scheme options
 
-// RUN: aiecc --no-xchesscc --no-xbridge --alloc-scheme=basic-sequential --aie-generate-input-with-addresses --verbose %s 2>&1 | FileCheck %s --check-prefix=BASIC
-// RUN: aiecc --no-xchesscc --no-xbridge --alloc-scheme=bank-aware --aie-generate-input-with-addresses --verbose %s 2>&1 | FileCheck %s --check-prefix=BANK
+// RUN: aiecc --no-xchesscc --no-xbridge --alloc-scheme=basic-sequential --get-input-with-addresses --verbose %s 2>&1 | FileCheck %s --check-prefix=BASIC
+// RUN: aiecc --no-xchesscc --no-xbridge --alloc-scheme=bank-aware --get-input-with-addresses --verbose %s 2>&1 | FileCheck %s --check-prefix=BANK
 
 // Each allocation scheme must produce valid buffer addresses
 // (input_with_addresses), which is the artifact this test verifies.
