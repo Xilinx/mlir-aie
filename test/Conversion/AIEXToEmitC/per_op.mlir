@@ -106,6 +106,48 @@ module {
 
 // -----
 
+// A runtime-bound scf.for (the dynamic BD pool's rolled loop) is preserved: the
+// body's npu ops convert in place and the loop lowers to emitc.for, so the C++
+// stays rolled with a runtime op-count (++__opcount inside the loop).
+// CHECK-LABEL: emitc.func @generate_txn_main_seq_scf_for
+// CHECK: for %{{.*}} = %{{.*}} to %{{.*}} step %{{.*}} : !emitc.size_t {
+// CHECK: call_opaque "aie_runtime::txn_append_write32"
+// CHECK: verbatim "++{};"
+module {
+  aie.device(npu1_1col) {
+    aie.runtime_sequence @seq_scf_for(%arg0: memref<8xi32>) {
+      %c0 = arith.constant 0 : index
+      %c1 = arith.constant 1 : index
+      %c4 = arith.constant 4 : index
+      scf.for %i = %c0 to %c4 step %c1 {
+        %addr = arith.constant 100 : i32
+        %val = arith.constant 7 : i32
+        aiex.npu.write32(%addr, %val) : i32, i32
+      }
+    }
+  }
+}
+
+// -----
+
+// A runtime-bound scf.if lowers to emitc.if with its npu body converted in place.
+// CHECK-LABEL: emitc.func @generate_txn_main_seq_scf_if
+// CHECK: if %{{.*}} {
+// CHECK: call_opaque "aie_runtime::txn_append_write32"
+module {
+  aie.device(npu1_1col) {
+    aie.runtime_sequence @seq_scf_if(%arg0: memref<8xi32>, %cond: i1) {
+      scf.if %cond {
+        %addr = arith.constant 100 : i32
+        %val = arith.constant 7 : i32
+        aiex.npu.write32(%addr, %val) : i32, i32
+      }
+    }
+  }
+}
+
+// -----
+
 // npu2 device: the header carries devGen=4, rows=6, cols=8, memtilerows=1
 // (vs npu1's devGen=3). Exercises the BaseNPU2TargetModel branch.
 // CHECK-LABEL: emitc.func @generate_txn_main_seq_npu2

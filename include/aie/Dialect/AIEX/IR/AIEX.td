@@ -827,18 +827,28 @@ def AIE_NpuAddressPatchOp: AIEX_Op<"npu.address_patch", []> {
   let summary = "address patch operator";
   let arguments = (
     ins UI32Attr:$addr,
+        Optional<I32>:$addr_val,
         I32Attr:$arg_idx,
         I32:$arg_plus
   );
   let results = (outs );
   let assemblyFormat = [{
-    `(` $arg_plus `:` type($arg_plus) `)` attr-dict
+    `(` $arg_plus `:` type($arg_plus) `)` (`addr` $addr_val^ `:` type($addr_val))?
+    attr-dict
   }];
   let description = [{
     address patch operator. `arg_plus` is an SSA value; use arith.constant for
     a compile-time-known offset or pass a runtime sequence value for a
     runtime-parameterized buffer offset.
+
+    `addr` is the register to patch (the BD's buffer-address word). It is a
+    compile-time attribute on the static path; when the BD id is chosen at
+    runtime (dynamic free-list pool) the register address is itself runtime and
+    is supplied via the optional `addr_val` operand instead, which then takes
+    precedence. Only the EmitC (C++ TXN) target supports a runtime `addr_val`;
+    the static binary target requires the constant `addr`.
   }];
+  let hasVerifier = 1;
 }
 
 def AIE_NpuPreemptOp: AIEX_Op<"npu.preempt", []> {
@@ -1075,7 +1085,7 @@ def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
   let hasCanonicalizeMethod = 1;
 }
 
-def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"AIE::RuntimeSequenceOp">, TileElement]>, Results<(outs Index:$result)> {
+def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"AIE::RuntimeSequenceOp">, TileElement, AttrSizedOperandSegments]>, Results<(outs Index:$result)> {
   let summary = "Concrete Instantiation of a Buffer Descriptor Chain as a Task on a Channel and Direction on a Tile";
   let description = [{
     Encapsulates the DMA configuration of one task, that is the (chain of) buffer descriptors to be executed on a given channel and direction on a tile.
@@ -1091,6 +1101,8 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"AIE::Runt
         I32Attr:$channel,
         DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
         DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
+        Optional<I32>:$repeat_count_val,
+        Optional<I32>:$bd_id_val,
         OptionalAttr<PacketInfoAttr>:$packet
   );
 
@@ -1099,12 +1111,22 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"AIE::Runt
   );
 
   let assemblyFormat = [{
-    `(` $tile `,` $direction `,` $channel (`,` $packet^)? `)` regions attr-dict
+    `(` $tile `,` $direction `,` $channel (`,` $packet^)? `)`
+    (`repeat` $repeat_count_val^ `:` type($repeat_count_val))?
+    (`bd_id` $bd_id_val^ `:` type($bd_id_val))? regions attr-dict
   }];
 
   let extraClassDeclaration = [{
     AIE::TileOp getTileOp();
     std::optional<uint32_t> getFirstBdId();
+    // The repeat count as an OpFoldResult: the runtime operand if present, else
+    // the compile-time attribute. Mirrors dma_bd's offset/len duality.
+    mlir::OpFoldResult getRepeatCountValue() {
+      if (mlir::Value v = getRepeatCountVal())
+        return v;
+      return mlir::IntegerAttr::get(
+          mlir::IntegerType::get(getContext(), 32), getRepeatCount());
+    }
   }];
 
   let extraClassDefinition = [{
@@ -1120,7 +1142,8 @@ def AIE_DMAConfigureTaskOp : AIEX_Op<"dma_configure_task", [HasParent<"AIE::Runt
       build($_builder, $_state, result, tile,
             xilinx::AIE::DMAChannelDirAttr::get(odsBuilder.getContext(), dir),
             $_builder.getI32IntegerAttr(channel_index), $_builder.getBoolAttr(token),
-            $_builder.getI32IntegerAttr(repeat), nullptr);
+            $_builder.getI32IntegerAttr(repeat), /*repeat_count_val=*/nullptr,
+            /*bd_id_val=*/nullptr, /*packet=*/nullptr);
     }]>
   ];
 }
@@ -1131,14 +1154,28 @@ def AIE_DMAConfigureTaskForOp : AIEX_Op<"dma_configure_task_for", [HasParent<"AI
   let arguments = (
     ins SymbolRefAttr:$alloc,
         DefaultValuedOptionalAttr<BoolAttr, "false">:$issue_token,
-        DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count
+        DefaultValuedOptionalAttr<I32Attr, "0">:$repeat_count,
+        Optional<I32>:$repeat_count_val
   );
 
   let regions = (region AnyRegion:$body);
 
-  let assemblyFormat = [{ $alloc regions attr-dict }];
+  let assemblyFormat = [{
+    $alloc (`repeat` $repeat_count_val^ `:` type($repeat_count_val))? regions attr-dict
+  }];
 
   let hasVerifier = 1;
+
+  let extraClassDeclaration = [{
+    // The repeat count as an OpFoldResult: runtime operand if present, else the
+    // compile-time attribute.
+    mlir::OpFoldResult getRepeatCountValue() {
+      if (mlir::Value v = getRepeatCountVal())
+        return v;
+      return mlir::IntegerAttr::get(
+          mlir::IntegerType::get(getContext(), 32), getRepeatCount());
+    }
+  }];
 }
 
 def AIE_DMAFreeTaskOp : AIEX_Op<"dma_free_task", [HasParent<"AIE::RuntimeSequenceOp">]> {
@@ -1213,6 +1250,55 @@ def AIE_DMAAwaitTaskOp : AIEX_Op<"dma_await_task", [HasParent<"AIE::RuntimeSeque
 
   let extraClassDefinition = [{
     DMAConfigureTaskOp DMAAwaitTaskOp::getTaskOp() { return dyn_cast<DMAConfigureTaskOp>(getTask().getDefiningOp()); }
+  }];
+}
+
+def AIE_DMABdPoolPopOp : AIEX_Op<"dma_bd_pool_pop", [HasAncestor<"AIE::RuntimeSequenceOp">]>, Results<(outs I32:$bd_id)> {
+  let summary = "Pop a free Buffer Descriptor ID from the runtime free-list pool for a tile";
+  let description = [{
+    Draws a buffer-descriptor ID from the per-tile runtime free-list pool and
+    returns it as an SSA value. This is the dynamic counterpart to the static
+    BD-ID allocator: inside a runtime-bound `scf.for` the ID is chosen at
+    runtime rather than baked at compile time.
+
+    Only meaningful on the dynamic EmitC lowering path (the static binary TXN
+    stream has no runtime pool). The `aie-lower-dynamic-bd-pool` pass inserts
+    this op in place of the implicit allocation a `dma_configure_task` performs.
+    If the pool is empty at runtime, the generated builder yields no stream
+    (`std::nullopt`).
+  }];
+
+  let arguments = (
+    ins I32Attr:$column,
+        I32Attr:$row
+  );
+
+  let assemblyFormat = [{
+    `(` $column `,` $row `)` attr-dict `:` type($bd_id)
+  }];
+}
+
+def AIE_DMABdPoolPushOp : AIEX_Op<"dma_bd_pool_push", [HasAncestor<"AIE::RuntimeSequenceOp">]> {
+  let summary = "Return a Buffer Descriptor ID to the runtime free-list pool for a tile";
+  let description = [{
+    Returns a buffer-descriptor ID previously obtained from
+    `aiex.dma_bd_pool_pop` to the per-tile runtime free-list pool, making it
+    available for reuse. This is the dynamic counterpart to the static
+    allocator's free/await recycling.
+
+    Only meaningful on the dynamic EmitC lowering path. The
+    `aie-lower-dynamic-bd-pool` pass inserts this op in place of a
+    `dma_free_task` / the recycling half of a `dma_await_task`.
+  }];
+
+  let arguments = (
+    ins I32Attr:$column,
+        I32Attr:$row,
+        I32:$bd_id
+  );
+
+  let assemblyFormat = [{
+    `(` $column `,` $row `)` `bd_id` $bd_id attr-dict `:` type($bd_id)
   }];
 }
 

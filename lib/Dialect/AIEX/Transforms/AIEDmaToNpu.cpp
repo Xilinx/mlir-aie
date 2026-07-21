@@ -184,27 +184,34 @@ public:
     uint32_t queue_offset = ctrl_offset + 0x4;
 
     // Command word: bd_id [3:0], repeat_count [23:16], issue-token bit [31].
-    // bd_id is always compile-time; repeat_count may be a runtime SSA value, in
-    // which case the word is built with arith over a constant base.
+    // bd_id and repeat_count may be runtime SSA; all-constant folds to one
+    // constant (byte-identical to the static path), else built with arith.
+    Location loc = op->getLoc();
+    auto i32ty = rewriter.getIntegerType(32);
     std::optional<uint32_t> bd_id = getConstantIntOperand(op.getBdId());
-    if (!bd_id)
-      return op.emitOpError("cannot lower push_queue with non-constant bd_id");
-    uint32_t cmdBase = (*bd_id & 0xF) | (op.getIssueToken() ? 0x80000000 : 0);
+    std::optional<uint32_t> repeat_cnt =
+        getConstantIntOperand(op.getRepeatCount());
+    uint32_t issueBit = op.getIssueToken() ? 0x80000000 : 0;
 
     Value cmdVal;
-    if (std::optional<uint32_t> repeat_cnt =
-            getConstantIntOperand(op.getRepeatCount())) {
-      cmdVal = createConstantI32(rewriter, op->getLoc(),
-                                 cmdBase | ((*repeat_cnt & 0xFF) << 16));
+    if (bd_id && repeat_cnt) {
+      cmdVal = createConstantI32(rewriter, loc,
+                                 (*bd_id & 0xF) | ((*repeat_cnt & 0xFF) << 16) |
+                                     issueBit);
     } else {
-      Location loc = op->getLoc();
-      Value repeat = op.getRepeatCount();
-      Value masked = arith::AndIOp::create(
-          rewriter, loc, repeat, createConstantI32(rewriter, loc, 0xFF));
+      // (bd_id & 0xF) | ((repeat & 0xFF) << 16) | issueBit, as arith over the
+      // runtime operands (a constant field folds to its constant contribution).
+      Value cmd = createConstantI32(rewriter, loc, issueBit);
+      Value bdField = arith::AndIOp::create(
+          rewriter, loc, getAsValue(rewriter, loc, op.getBdId(), i32ty),
+          createConstantI32(rewriter, loc, 0xF));
+      cmd = arith::OrIOp::create(rewriter, loc, cmd, bdField);
+      Value masked =
+          arith::AndIOp::create(rewriter, loc, op.getRepeatCount(),
+                                createConstantI32(rewriter, loc, 0xFF));
       Value shifted = arith::ShLIOp::create(
           rewriter, loc, masked, createConstantI32(rewriter, loc, 16));
-      cmdVal = arith::OrIOp::create(
-          rewriter, loc, createConstantI32(rewriter, loc, cmdBase), shifted);
+      cmdVal = arith::OrIOp::create(rewriter, loc, cmd, shifted);
     }
 
     NpuWrite32Op::create(
@@ -512,57 +519,17 @@ public:
         targetModel.getDmaBdAddress(tileCol, tileRow, op.getId()) +
         targetModel.getDmaBdAddressOffset(tileCol, tileRow);
 
-    // arg_plus is the byte offset added to the runtime buffer base:
-    //   sum(offset[i] * stride[i]) * elemBytes + constBase
-    // where constBase is the subview/cast trace offset. When every offset is
-    // constant this folds to a single constant (byte-identical to before); a
-    // runtime offset (or a runtime stride paired with a non-zero offset) is
-    // built with arith and flows through the SSA arg_plus operand.
-    Location loc = op->getLoc();
-    int64_t elemBytes = op.getElementTypeBitwidth() / 8;
-    auto offsets = llvm::to_vector<4>(llvm::reverse(op.getMixedOffsets()));
-    auto strides = llvm::to_vector<4>(llvm::reverse(op.getMixedStrides()));
-    // The constant fast-path is only valid when every term of
-    // sum(offset[i] * stride[i]) is compile-time known, i.e. each non-zero
-    // offset has both a constant offset and a constant stride (a zero offset
-    // contributes nothing regardless of its stride). Otherwise build arg_plus
-    // with arith. This mirrors getOffsetInBytes(), which reads stride[i] only
-    // where offset[i] != 0.
-    bool offsetFoldsToConstant = true;
-    for (size_t i = 0; i < offsets.size(); i++) {
-      auto off = getConstantIntValue(offsets[i]);
-      if (!off || (*off != 0 && !getConstantIntValue(strides[i]))) {
-        offsetFoldsToConstant = false;
-        break;
-      }
-    }
-
-    Value argPlus;
-    if (offsetFoldsToConstant) {
-      argPlus =
-          createConstantI32(rewriter, loc,
-                            static_cast<uint32_t>(op.getOffsetInBytes() +
-                                                  traceResult->offsetInBytes));
-    } else {
-      // Element-count offset = sum(offset[i] * stride[i]), then scale to bytes.
-      auto i32ty = rewriter.getIntegerType(32);
-      Value elems = createConstantI32(rewriter, loc, 0);
-      for (size_t i = 0; i < offsets.size(); i++) {
-        if (auto c = getConstantIntValue(offsets[i]); c && *c == 0)
-          continue;
-        Value off = getAsValue(rewriter, loc, offsets[i], i32ty);
-        Value str = getAsValue(rewriter, loc, strides[i], i32ty);
-        Value term = arith::MulIOp::create(rewriter, loc, off, str);
-        elems = arith::AddIOp::create(rewriter, loc, elems, term);
-      }
-      Value bytes = arith::MulIOp::create(
-          rewriter, loc, elems, createConstantI32(rewriter, loc, elemBytes));
-      argPlus = arith::AddIOp::create(
-          rewriter, loc, bytes,
-          createConstantI32(rewriter, loc,
-                            static_cast<uint32_t>(traceResult->offsetInBytes)));
-    }
-    NpuAddressPatchOp::create(rewriter, loc, patchAddr, argIdx, argPlus);
+    // arg_plus is the buffer byte offset. Constant offsets fold to a constant
+    // (byte-identical to the static path); a runtime offset operand is built
+    // with arith so it flows into the patch instead of being rejected. The
+    // subview trace contributes a constant base byte offset.
+    Value argPlus = buildArgPlusValue(
+        rewriter, op->getLoc(),
+        llvm::to_vector(llvm::reverse(op.getMixedOffsets())),
+        llvm::to_vector(llvm::reverse(op.getMixedStrides())),
+        op.getElementTypeBitwidth() / 8, traceResult->offsetInBytes);
+    NpuAddressPatchOp::create(rewriter, op->getLoc(), patchAddr,
+                              /*addr_val=*/Value(), argIdx, argPlus);
 
     // If this DMA op has an offset_state_table_idx, emit an
     // update_from_scratchpad to add the runtime offset to the BD address
@@ -642,13 +609,15 @@ public:
     // encoder returns the hw repeat_count for the queue push.
     Value repeatCount;
     if (failed(emitDynamicShimBdWordOverrides(
-            rewriter, loc, targetModel, tileCol, tileRow, op.getId(),
-            op.getMixedSizes(), op.getMixedStrides(),
-            op.getElementTypeBitwidth(), op.getBurstLength(),
+            rewriter, loc, targetModel, tileCol, tileRow,
+            rewriter.getI32IntegerAttr(op.getId()), op.getMixedSizes(),
+            op.getMixedStrides(), op.getElementTypeBitwidth(),
+            op.getBurstLength(),
             /*bufLenOverride=*/Value(), repeatCount)))
       return failure();
 
-    // Address patch for the buffer pointer (offset is compile-time here).
+    // Address patch for the buffer pointer; emitBufferAddressPatch folds a
+    // constant offset or builds a runtime arg_plus with arith as needed.
     int arg_idx = -1;
     if (failed(emitBufferAddressPatch(op, adaptor, rewriter, tileCol, tileRow,
                                       arg_idx)))

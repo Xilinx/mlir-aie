@@ -88,6 +88,50 @@ Value getAsValue(OpBuilder &builder, Location loc, OpFoldResult ofr,
   return val;
 }
 
+Value buildArgPlusValue(OpBuilder &builder, Location loc,
+                        ArrayRef<OpFoldResult> elementOffsets,
+                        ArrayRef<OpFoldResult> strides, int64_t elemWidthBytes,
+                        int64_t baseByteOffset) {
+  auto i32ty = builder.getIntegerType(32);
+
+  // Fast path: everything constant -> fold to one arith.constant, matching the
+  // static lowering byte-for-byte.
+  bool allConst = llvm::all_of(elementOffsets,
+                               [](OpFoldResult o) {
+                                 return getConstantIntValue(o).has_value();
+                               }) &&
+                  llvm::all_of(strides, [](OpFoldResult s) {
+                    return getConstantIntValue(s).has_value();
+                  });
+  if (allConst) {
+    int64_t bytes = baseByteOffset;
+    for (auto [o, s] : llvm::zip(elementOffsets, strides))
+      bytes +=
+          *getConstantIntValue(o) * *getConstantIntValue(s) * elemWidthBytes;
+    return arith::ConstantOp::create(builder, loc,
+                                     IntegerAttr::get(i32ty, bytes));
+  }
+
+  // Runtime path: sum(offset[i] * stride[i]) * elemWidthBytes + base, as arith.
+  Value acc =
+      arith::ConstantOp::create(builder, loc, IntegerAttr::get(i32ty, 0));
+  for (auto [o, s] : llvm::zip(elementOffsets, strides)) {
+    Value ov = getAsValue(builder, loc, o, i32ty);
+    Value sv = getAsValue(builder, loc, s, i32ty);
+    Value prod = arith::MulIOp::create(builder, loc, ov, sv);
+    acc = arith::AddIOp::create(builder, loc, acc, prod);
+  }
+  Value width = arith::ConstantOp::create(
+      builder, loc, IntegerAttr::get(i32ty, elemWidthBytes));
+  acc = arith::MulIOp::create(builder, loc, acc, width);
+  if (baseByteOffset != 0) {
+    Value base = arith::ConstantOp::create(
+        builder, loc, IntegerAttr::get(i32ty, baseByteOffset));
+    acc = arith::AddIOp::create(builder, loc, acc, base);
+  }
+  return acc;
+}
+
 Value buildBdWord(OpBuilder &builder, Location loc,
                   ArrayRef<std::tuple<Value, uint32_t, uint32_t>> fields) {
   auto i32ty = builder.getIntegerType(32);
@@ -110,11 +154,32 @@ Value buildBdWord(OpBuilder &builder, Location loc,
   return result;
 }
 
+Value getBdRegisterBase(OpBuilder &builder, Location loc,
+                        const AIE::AIETargetModel &targetModel, int tileCol,
+                        int tileRow, OpFoldResult bdId) {
+  auto i32ty = builder.getIntegerType(32);
+  if (auto c = getConstantIntValue(bdId))
+    return createConstantI32(builder, loc,
+                             static_cast<uint32_t>(targetModel.getDmaBdAddress(
+                                 tileCol, tileRow, *c)));
+  // Runtime bd_id: base + bd_id * bdStride, with base/stride from the (linear)
+  // target-model address function.
+  uint64_t addrForId0 = targetModel.getDmaBdAddress(tileCol, tileRow, 0);
+  uint64_t bdStride =
+      targetModel.getDmaBdAddress(tileCol, tileRow, 1) - addrForId0;
+  Value bdIdVal = getAsValue(builder, loc, bdId, i32ty);
+  return arith::AddIOp::create(
+      builder, loc, createConstantI32(builder, loc, addrForId0),
+      arith::MulIOp::create(builder, loc, bdIdVal,
+                            createConstantI32(builder, loc, bdStride)));
+}
+
 LogicalResult emitDynamicShimBdWordOverrides(
     OpBuilder &builder, Location loc, const AIE::AIETargetModel &targetModel,
-    int tileCol, int tileRow, uint32_t bdId, ArrayRef<OpFoldResult> mixedSizes,
-    ArrayRef<OpFoldResult> mixedStrides, uint64_t elemWidth,
-    uint32_t burstLength, Value bufLenOverride, Value &repeatCountOut) {
+    int tileCol, int tileRow, OpFoldResult bdId,
+    ArrayRef<OpFoldResult> mixedSizes, ArrayRef<OpFoldResult> mixedStrides,
+    uint64_t elemWidth, uint32_t burstLength, Value bufLenOverride,
+    Value &repeatCountOut) {
   auto i32ty = builder.getIntegerType(32);
 
   // Compute the hardware sizes/strides as SSA values via the shared encoder.
@@ -138,12 +203,9 @@ LogicalResult emitDynamicShimBdWordOverrides(
         builder, loc, arith::MulIOp::create(builder, loc, hwS[0], inS[1]),
         inS[2]);
 
-  // Linear-mode decision: a transfer is contiguous when each outer stride
-  // equals the product of the strictly-inner sizes -- which never needs a
-  // dimension's own size, so a runtime outer size stays decidable. If a needed
-  // operand is runtime we fall back to ND mode (safe: narrow-field sizes are
-  // guarded below). Linear mode folds d0/d1 into buffer_length, dodging the
-  // 10-bit d0_size limit.
+  // Linear mode: contiguous transfer (each outer stride == product of inner
+  // sizes) folds d0/d1 into buffer_length, dodging the 10-bit d0_size limit. A
+  // runtime operand needed for the test falls back to ND mode.
   auto cst = [&](OpFoldResult v) { return getConstantIntValue(v); };
   auto knownContiguous = [&]() -> bool {
     auto s0 = cst(stridesRev[0]);
@@ -167,11 +229,9 @@ LogicalResult emitDynamicShimBdWordOverrides(
   };
   bool isLinear = knownContiguous();
 
-  // Host-side bounds guard for a RUNTIME size landing in a narrow BD field
-  // (masking would silently truncate an out-of-range value). Constant sizes are
-  // already range-checked by the verifier, so guard only runtime ones, and only
-  // for fields actually used: d0/d1 wrap (10-bit) exist in ND mode; the
-  // iteration wrap (6-bit) always. The guard is on the hardware value.
+  // Guard a RUNTIME size against its narrow BD field (masking would silently
+  // truncate); constants are verifier-checked. d0/d1 wrap (10-bit) only in ND
+  // mode, iteration wrap (6-bit) always. Guard is on the hardware value.
   auto guardField = [&](OpFoldResult inSize, Value hwVal, int64_t fieldMax) {
     if (getConstantIntValue(inSize))
       return; // constant: verifier already enforced the bound.
@@ -184,10 +244,9 @@ LogicalResult emitDynamicShimBdWordOverrides(
   }
   guardField(sizesRev[3], hwS[3], ShimBdFieldWidths::iterWrapMax());
 
-  // Host-side realizability guard for a RUNTIME size/stride whose byte extent
-  // must be a whole number of granules (mirrors verifyStridesWraps for the
-  // constant case). The guard is on the INPUT element count, not the encoded
-  // value. Constant operands are already checked by the verifier.
+  // Guard a RUNTIME size/stride whose byte extent must be a whole number of
+  // granules (mirrors verifyStridesWraps). Guard is on the input element count;
+  // constants are verifier-checked.
   int64_t divisor = bdGranuleDivisor(elemWidth, gran);
   auto guardDivisible = [&](OpFoldResult in, Value inVal, bool allowUnit) {
     if (divisor <= 1 || getConstantIntValue(in))
@@ -196,30 +255,39 @@ LogicalResult emitDynamicShimBdWordOverrides(
                                    /*allow_unit=*/allowUnit);
   };
   guardDivisible(sizesRev[0], inS[0], /*allowUnit=*/false);
-  // The innermost stride collapses to hardware 0 when it is 1 (contiguous) or
-  // granule-aligned; a non-unit sub-granule value is unrealizable, so it is
-  // guarded with the unit-stride exemption. Outer strides have no such
+  // The innermost stride collapses to hardware 0 when contiguous or
+  // granule-aligned; guard with the unit-stride exemption. Outer strides don't
   // collapse.
   guardDivisible(stridesRev[0], inT[0], /*allowUnit=*/true);
   for (int i = 1; i < 4; i++)
     guardDivisible(stridesRev[i], inT[i], /*allowUnit=*/false);
 
-  uint64_t bdAddr = targetModel.getDmaBdAddress(tileCol, tileRow, bdId);
+  // The shim BD register block is at getDmaBdAddress(col,row,bd_id). A constant
+  // bd_id folds to the literal the static path uses; a runtime bd_id (dynamic
+  // free-list pool) yields an arith expression base + bd_id*bdStride, so each
+  // override targets that base + wordIdx*4.
+  Value bdBase =
+      getBdRegisterBase(builder, loc, targetModel, tileCol, tileRow, bdId);
+  std::optional<int64_t> constBase = getConstantIntValue(bdBase);
   auto writeWord = [&](uint32_t wordIdx, Value val) {
-    NpuWrite32Op::create(
-        builder, loc,
-        createConstantI32(builder, loc,
-                          static_cast<uint32_t>(bdAddr + wordIdx * 4)),
-        val, nullptr, nullptr, nullptr);
+    // Fold the address to a literal for a constant base, so the static/pinned
+    // path emits the same single constant it always has.
+    Value addr =
+        constBase
+            ? createConstantI32(builder, loc,
+                                static_cast<uint32_t>(*constBase + wordIdx * 4))
+            : arith::AddIOp::create(
+                  builder, loc, bdBase,
+                  createConstantI32(builder, loc, wordIdx * 4));
+    NpuWrite32Op::create(builder, loc, addr, val, nullptr, nullptr, nullptr);
   };
 
   // word[0] buffer_length is always overridden (it carries the runtime element
   // count in both linear and ND modes).
   writeWord(0, bufLen);
 
-  // In linear mode the d0/d1/d2 size/stride words stay at their zero template
-  // values (matching the static path); only buffer_length + iteration are
-  // meaningful. In ND mode, override the size/stride words.
+  // Linear mode leaves the d0/d1/d2 size/stride words at their zero template
+  // (only buffer_length + iteration matter); ND mode overrides them.
   if (!isLinear) {
     // word[3]: d0_size [29:20], d0_stride [19:0].
     writeWord(3, buildBdWord(builder, loc,
@@ -241,13 +309,10 @@ LogicalResult emitDynamicShimBdWordOverrides(
                      builder, loc, axcache,
                      buildBdWord(builder, loc, {{hwT[2], 0xFFFFF, 0}})));
   }
-  // word[6]: iteration_size [25:20], iteration_stride [19:0]. Meaningful in
-  // both modes (the outer repeat dimension is independent of linearization).
-  // A zero outer stride is a pure repeat: the BD wraps every iteration and the
-  // repeat is carried by the queue push's repeat_count, so BOTH iteration
-  // fields must be 0 (matching AIEDmaToNpu's static rule). hwT[3] already
-  // collapses to 0 for a zero stride; gate iteration_size the same way so
-  // hwS[3] can stay the (size - 1) value repeatCountOut needs.
+  // word[6]: iteration_size [25:20], iteration_stride [19:0]. A zero outer
+  // stride is a pure repeat (carried by repeat_count), so both fields must be 0
+  // like AIEDmaToNpu; gate iteration_size on the stride while leaving hwS[3]
+  // for repeatCountOut. hwT[3] already collapses to 0.
   Value zeroI32 = createConstantI32(builder, loc, 0);
   Value iterStridePos = arith::CmpIOp::create(
       builder, loc, arith::CmpIPredicate::sgt, inT[3], zeroI32);
@@ -256,12 +321,9 @@ LogicalResult emitDynamicShimBdWordOverrides(
   writeWord(6, buildBdWord(builder, loc,
                            {{iterSizeField, 0x3F, 20}, {hwT[3], 0xFFFFF, 0}}));
 
-  // repeat_count for the queue push is the biased hw iteration value (matching
-  // the static path's `repeat_count = sizes[3]`), NOT the raw outer size: an
-  // outer size of N encodes to (N > 1 ? N - 1 : 0). When the outer size is a
-  // compile-time constant, emit a foldable arith.constant so the static
-  // push_queue lowering can consume it; only a genuinely runtime outer size
-  // yields the SSA-computed hwS[3].
+  // repeat_count for the queue push is the biased outer size (N > 1 ? N - 1 :
+  // 0), matching the static path. A constant folds so the static push_queue
+  // lowering can consume it; a runtime size yields the SSA hwS[3].
   if (auto outerConst = getConstantIntValue(sizesRev[3])) {
     int64_t r = *outerConst > 1 ? *outerConst - 1 : 0;
     repeatCountOut =

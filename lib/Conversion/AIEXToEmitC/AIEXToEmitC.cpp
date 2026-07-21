@@ -5,13 +5,12 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Converts the straight-line npu transaction ops in an aie.runtime_sequence
-// into EmitC dialect calls naming the functions in aie/Runtime/TxnEncoding.h.
-// translateToCpp() on the result produces a standalone C++ function that
-// assembles the same TXN words the compile-time binary emitter
-// (AIETargetNPU.cpp) produces -- this is the runtime-parameterizable mirror of
-// that path. This pass handles straight-line sequences only; control flow is
-// rejected with a diagnostic and added by later dynamic-sequences passes.
+// Converts npu transaction ops in an aie.runtime_sequence into EmitC calls to
+// aie/Runtime/TxnEncoding.h; translateToCpp() then yields a standalone C++
+// function assembling the same TXN words as the binary emitter
+// (AIETargetNPU.cpp), but runtime-parameterizable. A runtime-bound scf.for
+// (dynamic BD pool path) is preserved and lowered to emitc.for, keeping the
+// loop rolled at runtime.
 //
 //===----------------------------------------------------------------------===//
 
@@ -22,6 +21,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "mlir/Conversion/ArithToEmitC/ArithToEmitC.h"
+#include "mlir/Conversion/SCFToEmitC/SCFToEmitC.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/EmitC/IR/EmitC.h"
 #include "mlir/Dialect/EmitC/Transforms/TypeConversions.h"
@@ -31,7 +31,9 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/RegionUtils.h"
 
+#include "llvm/ADT/SmallSet.h"
 #include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Format.h"
 
@@ -52,6 +54,12 @@ emitc::OpaqueType getU32Type(MLIRContext *ctx) {
   return emitc::OpaqueType::get(ctx, "uint32_t");
 }
 
+// The C++ variable name of the runtime BD pool for a tile. One pool per tile
+// that draws BD ids at runtime, declared in the generated function's prologue.
+std::string bdPoolName(uint32_t col, uint32_t row) {
+  return "bd_pool_" + std::to_string(col) + "_" + std::to_string(row);
+}
+
 // A uint32_t literal operand (e.g. `42u`) for a txn_append_* argument. Used for
 // the compile-time-resolved address fields (buffer/col/row are folded in).
 Value u32Literal(OpBuilder &b, Location loc, uint32_t val) {
@@ -60,11 +68,9 @@ Value u32Literal(OpBuilder &b, Location loc, uint32_t val) {
       emitc::OpaqueAttr::get(b.getContext(), std::to_string(val) + "u"));
 }
 
-// Emit a call to one of TxnEncoding.h's free functions on the txn vector.
-// Scalar operands are passed through as-is: an arith.constant or a runtime
-// runtime-sequence value lowers to the matching C++ literal or function
-// parameter by the later convert-arith-to-emitc step. TxnEncoding.h's uint32_t
-// parameters take the implicit conversion, byte-identical to the static path.
+// Emit a call to a TxnEncoding.h free function on the txn vector. Scalar
+// operands pass through as-is; convert-arith-to-emitc later lowers them to C++
+// literals or function parameters, byte-identical to the static path.
 void emitTxnCall(OpBuilder &b, Location loc, StringRef fn, Value txnVec,
                  ValueRange args) {
   SmallVector<Value> callArgs;
@@ -74,10 +80,8 @@ void emitTxnCall(OpBuilder &b, Location loc, StringRef fn, Value txnVec,
                               callArgs);
 }
 
-// Device-relative values resolved on the original in-device ops, keyed by their
-// clone in the emitc.func. getAbsoluteAddress()/getDataWords() resolve
-// buffer/column/row and memref.global symbols against the parent aie.device, so
-// they must be computed before the ops are cloned out of it.
+// Device-relative values (absolute addr, blockwrite data) resolved before the
+// ops are cloned out of the aie.device, keyed by their clone in the emitc.func.
 struct DeviceResolved {
   llvm::DenseMap<Operation *, uint32_t> absoluteAddr;
   llvm::DenseMap<Operation *, DenseIntElementsAttr> blockWriteData;
@@ -86,103 +90,126 @@ struct DeviceResolved {
 class AIEXToEmitCConverter {
 public:
   AIEXToEmitCConverter(emitc::FuncOp funcOp, Value txnVec,
-                       const DeviceResolved &resolved)
-      : funcOp(funcOp), txnVec(txnVec), resolved(resolved) {}
+                       const DeviceResolved &resolved, Value opCountVar)
+      : funcOp(funcOp), txnVec(txnVec), resolved(resolved),
+        opCountVar(opCountVar) {}
 
-  // Convert every straight-line op cloned into the function body. Returns the
-  // number of txn ops appended (the op_count for the header), or nullopt on a
-  // conversion error already diagnosed.
+  // Convert every npu/pool op in the body, recursing into scf regions. Returns
+  // the compile-time op count for a straight-line body (the literal op_count),
+  // or nullopt on error. With a runtime op-count var (a loop is present) each
+  // op increments it instead and the returned count is unused.
   std::optional<uint32_t> run() {
-    Block &body = funcOp.getBlocks().front();
-    SmallVector<Operation *> work;
-    for (Operation &op : body)
-      work.push_back(&op);
-
     uint32_t count = 0;
     SmallVector<Operation *> consumed;
-    for (Operation *op : work) {
-      // Structural emitc ops (txn vector decl, txn_init) are already done.
-      // arith ops (constant scalar fields and runtime-value arithmetic) are
-      // left in place for the later convert-arith-to-emitc step -- passing
-      // operands through uniformly is what lets runtime values flow into the
-      // C++.
-      if (isa<emitc::EmitCDialect, arith::ArithDialect>(op->getDialect()))
-        continue;
-      convertOne(op, count);
-      if (!ok)
-        return std::nullopt;
-      // The npu op is replaced by its emitc call; mark it for erase. A
-      // memref.get_global feeding a blockwrite is now dead, but a later
-      // blockwrite may still reference it, so defer its erase to the dead-op
-      // sweep below.
-      if (!isa<memref::GetGlobalOp>(op))
-        consumed.push_back(op);
-    }
+    convertBlockRecursive(funcOp.getBlocks().front(), count, consumed);
+    if (!ok)
+      return std::nullopt;
 
-    // Erase the converted npu ops, then sweep now-dead clones back to front so
-    // a def outlives its uses (e.g. get_global feeding a blockwrite, or the
-    // arith.constant that defined an address we replaced with a folded
-    // literal). Live arith feeding runtime value/mask/sync fields has uses and
-    // is kept for the arith-to-emitc step.
+    // Erase the converted npu ops, then DCE their now-dead operand clones (a
+    // get_global feeding a blockwrite, a folded-away address constant). Region-
+    // scoped runRegionDCE, not a module canonicalizer: the latter would also
+    // drop the shared memref.global the blockwrite data was inlined from, which
+    // other sequences in the module still reference.
     for (Operation *op : llvm::reverse(consumed))
       op->erase();
-    for (Operation *op : llvm::reverse(work))
-      if (op->getBlock() &&
-          isa<memref::MemRefDialect, arith::ArithDialect>(op->getDialect()) &&
-          op->use_empty())
-        op->erase();
+    IRRewriter rewriter(funcOp.getContext());
+    (void)runRegionDCE(rewriter, funcOp.getFunctionBody());
     return count;
   }
 
 private:
-  // Convert one op, appending to the txn vector. Increments `count` for each
-  // txn instruction emitted. Scalar operands of the (already-cloned) op are
-  // passed through directly -- a constant or a runtime value both flow as SSA,
-  // lowered later by convert-arith-to-emitc. Only the address field is replaced
-  // by its device-resolved literal (which folds in buffer/col/row). Unsupported
-  // ops are diagnosed (sets `ok` false).
+  // Convert the npu/pool ops in `block`, recursing through scf op regions so a
+  // rolled loop's body is lowered in place (the scf.for itself is left for the
+  // later convert-scf-to-emitc step). Collects converted ops into `consumed`.
+  void convertBlockRecursive(Block &block, uint32_t &count,
+                             SmallVector<Operation *> &consumed) {
+    SmallVector<Operation *> work;
+    for (Operation &op : block)
+      work.push_back(&op);
+    for (Operation *op : work) {
+      if (!ok)
+        return;
+      // Structural emitc ops and arith (constant / runtime-value math) are left
+      // for the later arith-to-emitc step. Recurse into scf ops (and any other
+      // region-carrying control flow) to convert their bodies; the control-flow
+      // op itself is handled by convert-scf-to-emitc afterwards.
+      if (isa<emitc::EmitCDialect, arith::ArithDialect>(op->getDialect()))
+        continue;
+      if (isa<scf::SCFDialect>(op->getDialect())) {
+        for (Region &r : op->getRegions())
+          for (Block &b : r)
+            convertBlockRecursive(b, count, consumed);
+        continue;
+      }
+      convertOne(op, count);
+      if (!isa<memref::GetGlobalOp>(op))
+        consumed.push_back(op);
+    }
+  }
+
+private:
+  // Record one emitted txn op: bump the compile-time count and, when a runtime
+  // op-count variable exists (the sequence has a loop, so the count is not
+  // known at compile time), emit a `++__opcount;` so the header gets the true
+  // runtime total.
+  void countOp(OpBuilder &b, Location loc, uint32_t &count) {
+    ++count;
+    if (opCountVar)
+      emitc::VerbatimOp::create(b, loc, "++{};", ValueRange{opCountVar});
+  }
+
+  // Convert one op, appending to the txn vector and incrementing `count`.
+  // Scalar operands flow through as SSA (lowered later by
+  // convert-arith-to-emitc); only the address field is replaced by its
+  // device-resolved literal. Unsupported ops set `ok` false.
   void convertOne(Operation *op, uint32_t &count) {
     OpBuilder b(op);
     Location loc = op->getLoc();
 
     llvm::TypeSwitch<Operation *, void>(op)
         .Case<AIEX::NpuWrite32Op>([&](auto w) {
-          Value addrV = resolvedAddr(b, loc, w);
+          // A compile-time address folds to a literal; a runtime address (the
+          // dynamic BD pool's bdBase + wordIdx, arith over a popped id) is
+          // passed through as SSA and lowered by convert-arith-to-emitc.
+          Value addrV = runtimeOrResolvedAddr(b, loc, w, w.getAddress());
           if (!addrV)
             return fail(w, "cannot convert a symbolic/unresolved write32 "
                            "address to the C++ TXN target");
           emitTxnCall(b, loc, "txn_append_write32", txnVec,
                       {addrV, w.getValue()});
-          ++count;
+          countOp(b, loc, count);
         })
         .Case<AIEX::NpuMaskWrite32Op>([&](auto mw) {
-          Value addrV = resolvedAddr(b, loc, mw);
+          Value addrV = runtimeOrResolvedAddr(b, loc, mw, mw.getAddress());
           if (!addrV)
             return fail(mw, "cannot convert a symbolic/unresolved maskwrite32 "
                             "address to the C++ TXN target");
           emitTxnCall(b, loc, "txn_append_maskwrite32", txnVec,
                       {addrV, mw.getValue(), mw.getMask()});
-          ++count;
+          countOp(b, loc, count);
         })
         .Case<AIEX::NpuSyncOp>([&](auto s) {
           emitTxnCall(b, loc, "txn_append_sync", txnVec,
                       {s.getColumn(), s.getRow(), s.getDirection(),
                        s.getChannel(), s.getColumnNum(), s.getRowNum()});
-          ++count;
+          countOp(b, loc, count);
         })
         .Case<AIEX::NpuAddressPatchOp>([&](auto ap) {
-          Value addrV = u32Literal(b, loc, ap.getAddr());
+          // A runtime bd_id makes the patched register address runtime: prefer
+          // the SSA addr_val (flows through arith-to-emitc) over the constant.
+          Value addrV = ap.getAddrVal() ? ap.getAddrVal()
+                                        : u32Literal(b, loc, ap.getAddr());
           Value idxV = emitc::ConstantOp::create(
               b, loc, emitc::OpaqueType::get(b.getContext(), "int32_t"),
               emitc::OpaqueAttr::get(b.getContext(),
                                      std::to_string(ap.getArgIdx())));
           emitTxnCall(b, loc, "txn_append_address_patch", txnVec,
                       {addrV, idxV, ap.getArgPlus()});
-          ++count;
+          countOp(b, loc, count);
         })
         .Case<AIEX::NpuBlockWriteOp>([&](auto bw) {
           convertBlockWrite(b, loc, bw);
-          ++count;
+          countOp(b, loc, count);
         })
         .Case<AIEX::NpuAssertBdFieldOp>([&](auto g) {
           // Host-side bounds guard: if the runtime value overflows its narrow
@@ -210,6 +237,28 @@ private:
                 b, loc, "if ({} % " + d + " != 0) return std::nullopt;",
                 ValueRange{g.getValue()});
         })
+        .Case<AIEX::DMABdPoolPopOp>([&](AIEX::DMABdPoolPopOp pop) {
+          // Draw a BD id from the tile's runtime pool (declared in the
+          // prologue) into a fresh C++ variable; nullopt if the pool is empty.
+          // Downstream ops consume the id, so replace the SSA result with a
+          // literal naming the variable.
+          std::string var = "bd_" + std::to_string(nextPoolVar++);
+          emitc::VerbatimOp::create(
+              b, loc,
+              "uint32_t " + var + "; if (!aie_runtime::bd_pool_pop(" +
+                  bdPoolName(pop.getColumn(), pop.getRow()) + ", " + var +
+                  ")) return std::nullopt;");
+          Value ref =
+              emitc::LiteralOp::create(b, loc, pop.getBdId().getType(), var);
+          pop.getBdId().replaceAllUsesWith(ref);
+        })
+        .Case<AIEX::DMABdPoolPushOp>([&](AIEX::DMABdPoolPushOp push) {
+          // Return a BD id to the tile's runtime pool.
+          emitc::CallOpaqueOp::create(
+              b, loc, TypeRange{}, "aie_runtime::bd_pool_push",
+              ValueRange{poolRef(b, loc, push.getColumn(), push.getRow()),
+                         push.getBdId()});
+        })
         // memref.get_global feeding a blockwrite is consumed by
         // convertBlockWrite (data inlined); the now-dead op is erased later.
         .Case<memref::GetGlobalOp>([&](auto) {})
@@ -234,10 +283,32 @@ private:
     return u32Literal(b, loc, it->second);
   }
 
+  // The address for a write32/maskwrite32: the device-resolved literal, else a
+  // genuine runtime address (arith-derived, e.g. the pool's bdBase + wordIdx).
+  // A bare block argument selects no register and is rejected; null for a
+  // symbolic/unresolved address.
+  Value runtimeOrResolvedAddr(OpBuilder &b, Location loc, Operation *clone,
+                              Value addrOperand) {
+    if (Value lit = resolvedAddr(b, loc, clone))
+      return lit;
+    Operation *def = addrOperand ? addrOperand.getDefiningOp() : nullptr;
+    if (def && !isa<arith::ConstantOp>(def))
+      return addrOperand;
+    return {};
+  }
+
   // Emit a diagnostic on `op` and mark the conversion failed.
   void fail(Operation *op, const llvm::Twine &msg) {
     op->emitOpError(msg);
     ok = false;
+  }
+
+  // An emitc.literal referencing a tile's pool variable (for pass-by-reference
+  // into bd_pool_push).
+  Value poolRef(OpBuilder &b, Location loc, uint32_t col, uint32_t row) {
+    return emitc::LiteralOp::create(
+        b, loc, emitc::OpaqueType::get(b.getContext(), "aie_runtime::BdPool"),
+        bdPoolName(col, row));
   }
 
   void convertBlockWrite(OpBuilder &b, Location loc, AIEX::NpuBlockWriteOp bw) {
@@ -286,7 +357,12 @@ private:
   emitc::FuncOp funcOp;
   Value txnVec;
   const DeviceResolved &resolved;
+  // Runtime op-count variable (the C++ `__opcount`), or null when the sequence
+  // is straight-line and the count is a compile-time literal.
+  Value opCountVar;
   bool ok = true;
+  // Counter for unique popped-BD-id C++ variable names.
+  unsigned nextPoolVar = 0;
 };
 
 struct ConvertAIEXToEmitCPass
@@ -324,10 +400,10 @@ struct ConvertAIEXToEmitCPass
     for (Operation *op : llvm::reverse(toErase))
       op->erase();
 
-    // Lower the arith ops left behind in the function bodies (constant scalar
-    // fields and any runtime-value arithmetic feeding npu ops) to emitc. scf
-    // was already rejected, so only arith needs lowering here.
-    if (failed(lowerArithToEmitC(moduleOp)))
+    // Lower the arith ops (constant scalar fields, runtime-value arithmetic
+    // feeding npu ops) and any scf control flow (a rolled dynamic loop) left in
+    // the function bodies to emitc.
+    if (failed(lowerArithAndScfToEmitC(moduleOp)))
       return signalPassFailure();
 
     builder.setInsertionPointToStart(moduleOp.getBody());
@@ -344,18 +420,22 @@ struct ConvertAIEXToEmitCPass
                              /*is_standard=*/true);
   }
 
-  // Run the upstream arith-to-emitc conversion over the generated functions.
-  LogicalResult lowerArithToEmitC(ModuleOp moduleOp) {
+  // Run the upstream arith-to-emitc and scf-to-emitc conversions over the
+  // generated functions in one pass: a rolled dynamic loop is scf.for, and its
+  // bounds / iter_args are arith, so both must lower together.
+  LogicalResult lowerArithAndScfToEmitC(ModuleOp moduleOp) {
     TypeConverter typeConverter;
     typeConverter.addConversion([](Type t) { return t; });
     populateEmitCSizeTTypeConversions(typeConverter);
 
     RewritePatternSet patterns(moduleOp.getContext());
     populateArithToEmitCPatterns(typeConverter, patterns);
+    populateSCFToEmitCConversionPatterns(patterns, typeConverter);
 
     ConversionTarget target(*moduleOp.getContext());
     target.addLegalDialect<emitc::EmitCDialect>();
     target.addIllegalDialect<arith::ArithDialect>();
+    target.addIllegalDialect<scf::SCFDialect>();
     return applyPartialConversion(moduleOp, target, std::move(patterns));
   }
 
@@ -396,9 +476,17 @@ private:
     auto txnRetType = emitc::OpaqueType::get(
         moduleOp.getContext(),
         (llvm::Twine("std::optional<") + kTxnVecType + ">").str());
+    // A runtime scalar of type `index` (e.g. a loop trip count) has no C++
+    // spelling on its own; emit it as emitc.size_t so it flows straight into a
+    // converted scf.for bound with no leftover cast. Other scalar types pass
+    // through unchanged.
+    auto sizeT = emitc::SizeTType::get(moduleOp.getContext());
+    auto paramTypeFor = [&](Type t) -> Type {
+      return isa<IndexType>(t) ? Type(sizeT) : t;
+    };
     for (BlockArgument arg : entry.getArguments())
       if (!isa<BaseMemRefType>(arg.getType()))
-        paramTypes.push_back(arg.getType());
+        paramTypes.push_back(paramTypeFor(arg.getType()));
 
     builder.setInsertionPointToEnd(moduleOp.getBody());
     std::string funcName = "generate_txn_" + deviceOp.getSymName().str() + "_" +
@@ -419,11 +507,51 @@ private:
     Value txnVec = emitc::LiteralOp::create(fb, loc, txnVecType, "txn");
     emitTxnCall(fb, loc, "txn_init", txnVec, {});
 
-    // Clone the straight-line sequence body into the function, mapping the
-    // non-memref block args to the function parameters. While the originals are
-    // still under the device, resolve their device-relative values (absolute
-    // address, blockwrite data) keyed by the clone -- the converter reads these
-    // instead of calling device-dependent accessors on the detached clones.
+    // Declare a runtime BD free-list pool for each tile that draws ids at
+    // runtime (dynamic free-list path). The pool size is the tile's BD count
+    // from the target model -- never hardcoded here. One decl per distinct
+    // tile.
+    const AIE::AIETargetModel &targetModel = deviceOp.getTargetModel();
+    llvm::SmallSet<std::pair<uint32_t, uint32_t>, 4> pooledTiles;
+    seqOp.walk([&](Operation *op) {
+      uint32_t col, row;
+      if (auto pop = dyn_cast<AIEX::DMABdPoolPopOp>(op)) {
+        col = pop.getColumn();
+        row = pop.getRow();
+      } else if (auto push = dyn_cast<AIEX::DMABdPoolPushOp>(op)) {
+        col = push.getColumn();
+        row = push.getRow();
+      } else {
+        return;
+      }
+      if (!pooledTiles.insert({col, row}).second)
+        return;
+      uint32_t numBDs = targetModel.getNumBDs(col, row);
+      emitc::VerbatimOp::create(fb, loc,
+                                "aie_runtime::BdPool " + bdPoolName(col, row) +
+                                    " = aie_runtime::bd_pool_init(" +
+                                    std::to_string(numBDs) + ");");
+    });
+
+    // A rolled loop makes the op count a runtime quantity: declare a __opcount
+    // accumulator the converter bumps per op. A straight-line sequence keeps
+    // the compile-time literal count (byte-identical golden).
+    bool hasControlFlow = false;
+    seqOp.walk([&](Operation *op) {
+      if (isa<scf::SCFDialect>(op->getDialect()))
+        hasControlFlow = true;
+    });
+    Value opCountVar;
+    if (hasControlFlow) {
+      emitc::VerbatimOp::create(fb, loc, "uint32_t __opcount = 0;");
+      opCountVar = emitc::LiteralOp::create(
+          fb, loc, getU32Type(moduleOp.getContext()), "__opcount");
+    }
+
+    // Clone the sequence body (whole regions, so a rolled scf.for comes along),
+    // mapping non-memref block args to function params. Resolve device-relative
+    // values (address, blockwrite data) while the originals are still under the
+    // device, keyed by clone, since the accessors don't work once detached.
     IRMapping mapping;
     unsigned p = 0;
     for (BlockArgument arg : entry.getArguments())
@@ -431,24 +559,34 @@ private:
         mapping.map(arg, funcBlock->getArgument(p++));
     DeviceResolved resolved;
     for (Operation &op : entry.without_terminator()) {
-      Operation *clone = fb.clone(op, mapping);
-      recordDeviceResolved(&op, clone, resolved);
+      fb.clone(op, mapping);
+      // Record device-resolved values for the clone and any nested op (a BD
+      // inside a rolled loop resolves the same way as a top-level one).
+      op.walk([&](Operation *orig) {
+        Operation *c = mapping.lookupOrNull(orig);
+        if (c)
+          recordDeviceResolved(orig, c, resolved);
+      });
     }
 
-    AIEXToEmitCConverter conv(funcOp, txnVec, resolved);
+    AIEXToEmitCConverter conv(funcOp, txnVec, resolved, opCountVar);
     std::optional<uint32_t> count = conv.run();
     if (!count)
       return failure();
 
-    // Finalize the header with the statically-known op count + device info.
+    // Finalize the header with the op count + device info. The count is the
+    // runtime `__opcount` when the sequence has a loop, else the compile-time
+    // literal.
     const AIE::AIETargetModel &tm = deviceOp.getTargetModel();
     uint8_t devGen = isa<AIE::BaseNPU2TargetModel>(tm) ? 4 : 3;
     OpBuilder eb(funcBlock, funcBlock->end());
-    std::string header =
-        "aie_runtime::txn_prepend_header(txn, " + std::to_string(*count) +
-        "u, {0, 1, " + std::to_string(devGen) + ", " +
-        std::to_string(tm.rows()) + ", " + std::to_string(tm.columns()) + ", " +
-        std::to_string(tm.getNumMemTileRows()) + "});";
+    std::string countStr =
+        hasControlFlow ? "__opcount" : (std::to_string(*count) + "u");
+    std::string header = "aie_runtime::txn_prepend_header(txn, " + countStr +
+                         ", {0, 1, " + std::to_string(devGen) + ", " +
+                         std::to_string(tm.rows()) + ", " +
+                         std::to_string(tm.columns()) + ", " +
+                         std::to_string(tm.getNumMemTileRows()) + "});";
     emitc::VerbatimOp::create(eb, loc, header);
     // Return the vector as the optional result. The literal text differs from
     // the "txn" accumulator literal (so the two are not deduplicated) and is
