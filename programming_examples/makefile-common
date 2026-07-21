@@ -45,6 +45,28 @@ endif
 CC ?= gcc-13
 CXX ?= g++-13
 
+# Host runtime backend for C++ test exes: xrt (default) or hrx.
+#   make run                -> XRT host stack
+#   RUNTIME=hrx make run    -> HRX host stack (libhrx; no XRT SDK needed)
+# Selected globally so every example's build_host_exe picks it up without
+# per-example Makefile edits.
+RUNTIME ?= xrt
+ifeq (${RUNTIME},hrx)
+RUNTIME_CMAKE_FLAGS := -DUSE_HRX=ON
+# Pure-HRX packaging: build the .xclbin with the bundled XRT-free
+# hrx-xclbinutil, which is installed as `xclbinutil` next to aiecc. Resolve it
+# as aiecc's sibling so it is picked deterministically even when a system XRT
+# xclbinutil is also on PATH. aiecc reads AIE_XCLBINUTIL and fails loudly if it
+# is set but missing, so a RUNTIME=hrx build never silently uses XRT's tool.
+AIE_XCLBINUTIL ?= $(dir $(realpath $(shell command -v aiecc 2>/dev/null)))xclbinutil
+else
+RUNTIME_CMAKE_FLAGS :=
+# Pure-XRT packaging: use XRT's xclbinutil explicitly (falls back to a bare
+# PATH lookup when the XRT install tree can't be located).
+AIE_XCLBINUTIL ?= $(firstword $(wildcard $(XILINX_XRT)/bin/xclbinutil /opt/xilinx/xrt/bin/xclbinutil) xclbinutil)
+endif
+export AIE_XCLBINUTIL
+
 
 # ----------------------------------------------------------------------------
 # Reusable rule templates
@@ -109,7 +131,7 @@ define build_host_exe
 $(1).exe: $${srcdir}/$(3)
 	rm -rf $(2)
 	mkdir -p $(2)
-	cd $(2) && $${powershell} cmake `$${getwslpath} $(if $(5),$(5),$${srcdir})` -DTARGET_NAME=$(1) $(4)
+	cd $(2) && $${powershell} cmake `$${getwslpath} $(if $(5),$(5),$${srcdir})` -DTARGET_NAME=$(1) $(4) $${RUNTIME_CMAKE_FLAGS}
 	cd $(2) && $${powershell} cmake --build . --config Release
 	cp $(2)/$(1)$${host_exe_suffix} $$@
 endef

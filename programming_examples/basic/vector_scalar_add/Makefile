@@ -21,6 +21,7 @@ SHELL := /bin/bash
 
 targetname = vector_scalar_add
 runlist_targetname = vector_scalar_add_runlist
+runlist_hrx_targetname = vector_scalar_add_runlist_hrx
 
 aie_py_src = ${targetname}.py
 aieargs = -d ${devicename}
@@ -35,6 +36,9 @@ all: ${xclbin_target} ${insts_target} ${elf_target}
 $(eval $(call jit_xclbin_elf,${xclbin_target},${insts_target},${elf_target},${aie_py_src},${aieargs}))
 $(eval $(call build_host_exe,${targetname},_build,test.cpp))
 $(eval $(call build_host_exe,${runlist_targetname},_build_runlist,test_runlist.cpp,-DTEST_SRC=test_runlist.cpp))
+# HRX chain (runlist) testbench. Self-selects the HRX backend (-DUSE_HRX=ON) so
+# `make run_runlist_hrx` works without RUNTIME=hrx.
+$(eval $(call build_host_exe,${runlist_hrx_targetname},_build_runlist_hrx,test_runlist_hrx.cpp,-DTEST_SRC=test_runlist_hrx.cpp -DUSE_HRX=ON))
 
 .PHONY: run
 run: ${targetname}.exe ${xclbin_target} ${elf_target}
@@ -44,6 +48,10 @@ run: ${targetname}.exe ${xclbin_target} ${elf_target}
 run_runlist: ${runlist_targetname}.exe ${xclbin_target} ${elf_target}
 	${powershell} ./$< -x ${xclbin_target} -i ${elf_target} -k MLIR_AIE
 
+.PHONY: run_runlist_hrx
+run_runlist_hrx: ${runlist_hrx_targetname}.exe ${xclbin_target} ${insts_target}
+	${powershell} ./$< -x ${xclbin_target} -i ${insts_target} -k MLIR_AIE
+
 .PHONY: clean
 clean:
-	rm -rf build _build _build_runlist ${targetname}.exe ${runlist_targetname}.exe
+	rm -rf build _build _build_runlist _build_runlist_hrx ${targetname}.exe ${runlist_targetname}.exe ${runlist_hrx_targetname}.exe

@@ -52,14 +52,18 @@ def _evict_xrt_context(xclbin_path: Path) -> None:
     """Evict a stale XRT hw_context after IOCTL EINVAL so the retry gets a fresh one."""
     from aie.utils import DefaultNPURuntime
 
-    if DefaultNPURuntime is None or not hasattr(DefaultNPURuntime, "_context_cache"):
+    # Only the XRT cached runtime keeps an evictable hw_context cache; under the
+    # HRX backend these attributes are absent, so this recovery is a no-op.
+    context_cache = getattr(DefaultNPURuntime, "_context_cache", None)
+    cleanup_entry = getattr(DefaultNPURuntime, "_cleanup_entry", None)
+    if context_cache is None or cleanup_entry is None:
         return
     try:
         resolved = str(xclbin_path.resolve())
         mtime = xclbin_path.stat().st_mtime
-        entry = DefaultNPURuntime._context_cache.pop((resolved, mtime), None)
+        entry = context_cache.pop((resolved, mtime), None)
         if entry is not None:
-            DefaultNPURuntime._cleanup_entry(entry)
+            cleanup_entry(entry)
     except Exception:
         # Recovery path: must not raise, but log loudly — silent failure would
         # keep recycling a broken _context_cache into every retry.

@@ -192,6 +192,13 @@ lit_config.parallelism_groups["npu-xrt"] = 1
 if shutil.which("aie-lsp-server", path=config.llvm_tools_dir) is not None:
     config.available_features.add("aie-lsp-server")
 
+# The bundled XRT-free hrx-xclbinutil (-DAIE_BUILD_HRXXCLBINUTIL=ON) installs a
+# `xclbinutil` into the AIE tools dir. Gate the packaging section-check test on
+# its presence so the test only runs when that tool was actually built (and so
+# the bare `xclbinutil` it invokes resolves to the bundled copy).
+if shutil.which("xclbinutil", path=config.aie_tools_dir) is not None:
+    config.available_features.add("hrxxclbinutil")
+
 if config.xrt_python_bindings and LitConfigHelper.can_import_python_module(
     config, config.python_executable, "pyxrt"
 ):

@@ -166,3 +166,218 @@ jobs:
         run: |
           rm -rf $NPU_CACHE_HOME
           rm -rf $PIP_CACHE_DIR
+
+  build-and-test-pure-hrx:
+    name: Pure HRX Build and Run (XRT-free packaging + libhrx dispatch)
+    # This job exercises the XRT-free flow end to end on XDNA2 hardware:
+    #   * builds MLIR-AIE from source with the bundled hrx-xclbinutil
+    #     (-DAIE_BUILD_HRXXCLBINUTIL=ON) instead of relying on XRT's xclbinutil,
+    #   * packages a real NPU .xclbin with that bundled tool
+    #     (the aiecc RUNTIME=hrx path via AIE_XCLBINUTIL), and
+    #   * dispatches it on the NPU through libhrx from a pinned HRX release
+    #     (no XRT runtime SDK), for both the Python (IRON) and C++ paths -
+    #     covering the multi-dispatch chain/runlist path (vector_scalar_add) and
+    #     the normal single-dispatch path (vector_vector_add IRON +
+    #     vector_reduce_max C++).
+    runs-on: aie2p-8col
+    env:
+      NPU_CACHE_HOME: ${{ github.workspace }}/iron-cache-hrx-${{ github.run_id }}
+      PIP_CACHE_DIR: ${{ github.workspace }}/.pip-cache-hrx-${{ github.run_id }}
+      # Token for the (private) HRX release repo. fetch-hrx-release.sh passes it
+      # to gh / curl; the runner's own gh auth is used when this is empty.
+      GH_TOKEN: ${{ secrets.HRX_RELEASE_TOKEN }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          submodules: "true"
+
+      - name: Print hostname
+        run: hostname
+
+      - name: Setup virtual environment / prerequisites
+        run: |
+          source ./utils/env_install.sh aie-venv --dev --extras
+
+      - name: Fetch pinned HRX release
+        run: |
+          # Downloads + checksum-verifies + extracts the pinned libhrx release
+          # and writes its env.sh path to $GITHUB_ENV for later steps.
+          env_sh=$(bash hrx-integration/fetch-hrx-release.sh)
+          echo "HRX_RELEASE_ENV=$env_sh" >> "$GITHUB_ENV"
+
+      - name: Build from source (bundled hrx-xclbinutil, no XRT bindings)
+        run: |
+          sudo prlimit -lunlimited --pid $$
+          source aie-venv/bin/activate
+          # Pure-HRX build: enable the bundled XRT-free packaging tool and skip
+          # the XRT python bindings. find_package(XRT) stays optional, so no XRT
+          # SDK is required to configure or build.
+          export EXTRA_CMAKE_ARGS="-DPython3_EXECUTABLE=$(which python) \
+            -DAIE_ENABLE_PYTHON_PASSES=OFF \
+            -DAIE_BUILD_HRXXCLBINUTIL=ON"
+          # Installs the built aie tree (bin/python/lib) into ./install so the
+          # make-driven examples below can `import aie` and find aiecc.
+          ./utils/build-mlir-aie-from-wheels.sh "" build install
+          # Sanity: the bundled tool must be installed as `xclbinutil` next to
+          # aiecc (that is what the RUNTIME=hrx packaging path resolves to).
+          test -x install/bin/xclbinutil
+
+      - name: Run pure-HRX tests and example on NPU
+        run: |
+          sudo prlimit -lunlimited --pid $$
+          source aie-venv/bin/activate
+          # libhrx + HRX_DIR/HRX_BUILD for both the C++ testbench (FindHRX.cmake)
+          # and the Python runtime (hrxruntime/discovery.py).
+          source "$HRX_RELEASE_ENV"
+          # Expose the installed aie tree (mirrors utils/env_setup.sh without
+          # depending on xrt-smi) so the make-driven examples can `import aie`
+          # and resolve aiecc + the bundled xclbinutil. libhrx stays on
+          # LD_LIBRARY_PATH from the sourced release env.sh above.
+          export PATH="$PWD/install/bin:$PATH"
+          export PYTHONPATH="$PWD/install/python:$PYTHONPATH"
+          export LD_LIBRARY_PATH="$PWD/install/lib:$LD_LIBRARY_PATH"
+
+          rm -rf "$NPU_CACHE_HOME" && mkdir -p "$NPU_CACHE_HOME"
+
+          # 1) lit check: bundled hrx-xclbinutil packages the required NPU
+          #    .xclbin metadata sections (gated by the `hrxxclbinutil` feature).
+          echo "===== lit: hrx_xclbin_sections ====="
+          pushd build
+          LIT_FILTER='hrx_xclbin_sections' ninja check-aie
+          popd
+
+          # 2) end-to-end on hardware: package with the bundled tool (RUNTIME=hrx)
+          #    and dispatch via libhrx (Python IRON + C++ runlist).
+          echo "===== example: vector_scalar_add (pure HRX) ====="
+          # NPU2=1 selects device npu2 (aie2p) in makefile-common; required so
+          # the .xclbin matches this XDNA2 runner (default is npu1/Phoenix).
+          export NPU2=1
+          pushd programming_examples/basic/vector_scalar_add
+          RUNTIME=hrx make clean
+          RUNTIME=hrx make all
+          echo "--- Python (IRON) HRX dispatch ---"
+          IRON_RUNTIME=hrx python3 test_chain_hrx.py \
+            -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
+          echo "--- C++ HRX runlist dispatch ---"
+          RUNTIME=hrx make run_runlist_hrx
+          popd
+
+          # 3) single-dispatch coverage on the normal (non-chain) path: one IRON
+          #    (@iron.jit self-running) design and one C++ design that goes
+          #    through the shared setup_and_run_aie wrapper (RUNTIME=hrx make run).
+          echo "===== IRON single-dispatch: vector_vector_add ====="
+          pushd programming_examples/basic/vector_vector_add
+          IRON_RUNTIME=hrx python3 vector_vector_add.py
+          popd
+
+          echo "===== C++ single-dispatch: vector_reduce_max ====="
+          pushd programming_examples/basic/vector_reduce_max/single_core_designs
+          RUNTIME=hrx make clean
+          RUNTIME=hrx make all
+          RUNTIME=hrx make run
+          popd
+
+      - name: Cleanup NPU_CACHE_HOME
+        if: always()
+        run: |
+          rm -rf $NPU_CACHE_HOME
+          rm -rf $PIP_CACHE_DIR
+
+  build-pure-hrx-windows:
+    name: Pure HRX Build-Only (Windows, XRT-free packaging + HRX C++ compile)
+    # Windows counterpart of build-and-test-pure-hrx, but BUILD-ONLY (no NPU):
+    # GitHub-hosted windows-2022 has no XDNA2 device, so this proves the HRX path
+    # *compiles* on Windows rather than dispatching:
+    #   * the bundled XRT-free hrx-xclbinutil builds + passes its smoke test,
+    #   * the pinned HRX Windows release headers (hrx_runtime.h + hrx_amdxdna.h)
+    #     compile under MSVC (libhrx now owns the amdxdna XADX packaging, so there
+    #     is no separate helper to compile-check), and
+    #   * the HRX Python modules import/parse under the Windows interpreter.
+    # On-device dispatch stays on the Linux aie2p-8col job above.
+    runs-on: windows-2022
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      # Token for the (private) HRX release repo; empty falls back to anonymous.
+      GH_TOKEN: ${{ secrets.HRX_RELEASE_TOKEN }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          submodules: "true"
+
+      - name: Set up MSVC dev environment
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756  # v1
+        with:
+          arch: x64
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: "3.12"
+
+      - name: Build and test the bundled hrx-xclbinutil (XRT-free packaging)
+        run: |
+          # The XRT-free / Boost-free packaging tool aiecc uses on the RUNTIME=hrx
+          # path. Building it here proves the pure-HRX packaging tool compiles on
+          # Windows in this tree (not just the submodule's own CI).
+          cmake -B build-hrxxclbinutil -S third_party/hrx-xclbinutil -A x64
+          cmake --build build-hrxxclbinutil --config Release --parallel
+          ctest --test-dir build-hrxxclbinutil -C Release --output-on-failure
+
+      - name: Fetch pinned HRX Windows release
+        run: |
+          # Parse the pinned coordinates (Windows asset) from the shared env file.
+          $envmap = @{}
+          Get-Content hrx-integration/hrx-release.env | ForEach-Object {
+            if ($_ -match '^\s*([A-Za-z0-9_]+)\s*=\s*"?([^"]*)"?\s*$') {
+              $envmap[$matches[1]] = $matches[2]
+            }
+          }
+          $repo  = $envmap['HRX_RELEASE_REPO']
+          $tag   = $envmap['HRX_RELEASE_TAG']
+          $asset = $envmap['HRX_RELEASE_ASSET_WINDOWS']
+          $sha   = $envmap['HRX_RELEASE_SHA256_WINDOWS'].ToLower()
+          if (-not $asset) { throw "HRX_RELEASE_ASSET_WINDOWS not set in hrx-release.env" }
+          $url = "https://github.com/$repo/releases/download/$tag/$asset"
+          Write-Host "Downloading $url"
+
+          $headers = @{}
+          if ($env:GH_TOKEN) { $headers['Authorization'] = "Bearer $($env:GH_TOKEN)" }
+          for ($attempt = 1; $attempt -le 3; $attempt++) {
+            try { Invoke-WebRequest -Uri $url -Headers $headers -OutFile $asset; break }
+            catch { if ($attempt -eq 3) { throw }; Start-Sleep -Seconds ($attempt * 5) }
+          }
+
+          $actual = (Get-FileHash $asset -Algorithm SHA256).Hash.ToLower()
+          if ($actual -ne $sha) {
+            throw "checksum mismatch for ${asset}: got $actual, expected $sha"
+          }
+          Write-Host "Checksum OK ($sha)"
+
+          Expand-Archive -Path $asset -DestinationPath hrx-win -Force
+          $hdr = Get-ChildItem -Recurse hrx-win -Filter hrx_runtime.h | Select-Object -First 1
+          if (-not $hdr) { throw "hrx_runtime.h not found in the extracted HRX Windows release" }
+          "HRX_WIN_INCLUDE=$($hdr.Directory.FullName)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "HRX_WIN_ROOT=$((Resolve-Path hrx-win).Path)" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Compile-check the HRX C ABI headers under MSVC
+        shell: cmd
+        run: |
+          echo #include "hrx_runtime.h"> hrx_probe.c
+          echo #include "hrx_amdxdna.h">> hrx_probe.c
+          echo int main(void){return 0;}>> hrx_probe.c
+          cl /nologo /c /I "%HRX_WIN_INCLUDE%" hrx_probe.c
+
+      - name: Python HRX modules parse under Windows Python
+        shell: bash
+        run: |
+          # Build-only Python proof: the HRX runtime sources parse under the
+          # Windows interpreter. (Full import/selection needs the built aie wheel
+          # and libhrx discovery, which is exercised on the Linux job.)
+          python -m py_compile \
+            python/utils/__init__.py \
+            python/utils/hostruntime/hrxruntime/__init__.py \
+            python/utils/hostruntime/hrxruntime/hostruntime.py \
+            python/utils/hostruntime/hrxruntime/discovery.py
+          echo "HRX Python sources compiled OK on Windows"
