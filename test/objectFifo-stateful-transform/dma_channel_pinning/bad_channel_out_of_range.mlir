@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: not aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s 2>&1 | FileCheck %s
+// RUN: not aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" --aie-assign-lock-ids %s 2>&1 | FileCheck %s
 
 // A pinned channel beyond the tile's DMA channel count is rejected up front.
 

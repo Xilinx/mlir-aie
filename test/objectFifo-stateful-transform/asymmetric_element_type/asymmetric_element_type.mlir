@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" --aie-assign-lock-ids %s | FileCheck %s
 
 // ObjectFifo with asymmetric element types (producer 40xi32, consumer 10xi32).
 // Producer sends 40 elements per BD, consumer receives 10 at a time (4:1 ratio).

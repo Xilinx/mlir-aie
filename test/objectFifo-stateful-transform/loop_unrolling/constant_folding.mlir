@@ -22,7 +22,7 @@
 //   * the arith.subi / arith.maxsi bookkeeping disappears, and
 //   * the scf.index_switch collapses to a constant buffer per unrolled body.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" --aie-objectFifo-unroll %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" --aie-assign-lock-ids --aie-objectFifo-unroll %s | FileCheck %s
 
 // CHECK-LABEL:   aie.device(npu2) {
 // CHECK:           %[[CONS_BUFF0:.*]] = aie.buffer(%{{.*}}) {sym_name = "fifo_cons_buff_0"} : memref<8xi8>

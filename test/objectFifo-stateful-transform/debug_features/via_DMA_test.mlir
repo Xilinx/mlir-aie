@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" --aie-assign-lock-ids %s | FileCheck %s
 
 // CHECK: module @viaDMA {
 // CHECK:   aie.device(xcve2302) {
@@ -17,12 +17,12 @@
 // CHECK:     %[[VAL_3:.*]] = aie.lock(%{{.*}}tile_1_3, 1) {init = 0 : i32, sym_name = "of_stream_cons_cons_lock_0"}
 // CHECK:     %[[VAL_4:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of_stream_buff_0"} : memref<16xi32>
 // CHECK:     %[[VAL_5:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of_stream_buff_1"} : memref<16xi32>
-// CHECK:     %[[VAL_6:.*]] = aie.lock(%{{.*}}tile_1_2, 2) {init = 2 : i32, sym_name = "of_stream_prod_lock_0"}
-// CHECK:     %[[VAL_7:.*]] = aie.lock(%{{.*}}tile_1_2, 3) {init = 0 : i32, sym_name = "of_stream_cons_lock_0"}
+// CHECK:     %[[VAL_6:.*]] = aie.lock(%{{.*}}tile_1_2, 0) {init = 2 : i32, sym_name = "of_stream_prod_lock_0"}
+// CHECK:     %[[VAL_7:.*]] = aie.lock(%{{.*}}tile_1_2, 1) {init = 0 : i32, sym_name = "of_stream_cons_lock_0"}
 // CHECK:     %[[VAL_8:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of_shared_buff_0"} : memref<16xi32>
 // CHECK:     %[[VAL_9:.*]] = aie.buffer(%{{.*}}tile_1_2) {sym_name = "of_shared_buff_1"} : memref<16xi32>
-// CHECK:     %[[VAL_10:.*]] = aie.lock(%{{.*}}tile_1_2, 0) {init = 2 : i32, sym_name = "of_shared_prod_lock_0"}
-// CHECK:     %[[VAL_11:.*]] = aie.lock(%{{.*}}tile_1_2, 1) {init = 0 : i32, sym_name = "of_shared_cons_lock_0"}
+// CHECK:     %[[VAL_10:.*]] = aie.lock(%{{.*}}tile_1_2, 2) {init = 2 : i32, sym_name = "of_shared_prod_lock_0"}
+// CHECK:     %[[VAL_11:.*]] = aie.lock(%{{.*}}tile_1_2, 3) {init = 0 : i32, sym_name = "of_shared_cons_lock_0"}
 // CHECK:     aie.flow(%{{.*}}tile_1_2, DMA : 0, %{{.*}}tile_1_3, DMA : 0)
 // CHECK:     %mem_1_2 = aie.mem(%{{.*}}tile_1_2) {
 // CHECK:       %0 = aie.dma_start(MM2S, 0, ^bb1, ^bb3)

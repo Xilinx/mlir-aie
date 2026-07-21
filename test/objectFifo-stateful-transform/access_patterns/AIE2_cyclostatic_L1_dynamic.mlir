@@ -10,7 +10,7 @@
 // buffer at run time via scf.index_switch rather than statically binding each
 // access to a fixed buffer.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=true" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=true" --aie-assign-lock-ids %s | FileCheck %s
 
 // Consumer pattern {1,2,1} over a depth-4 fifo: each acquire resolves its buffer
 // through a runtime index_switch (the hallmark of dynamic lowering).

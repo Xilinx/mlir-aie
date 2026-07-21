@@ -21,7 +21,7 @@
 // (e.g. inside functions that can be called from anywhere, with any number
 // of locks held).
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" --aie-objectFifo-unroll %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" --aie-assign-lock-ids --aie-objectFifo-unroll %s | FileCheck %s
 
 // The following is an idea of how a dynamically managed objectFifo could look
 // like, where lock acquire/release numbers are not known statically. The
