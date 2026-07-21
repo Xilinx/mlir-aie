@@ -6,7 +6,7 @@
 
 import os
 import shutil
-import aie.compiler.aiecc.configure as config  # pyright: ignore[reportMissingImports]
+import aie.utils.configure as config  # pyright: ignore[reportMissingImports]
 
 
 def _executable_name(name):

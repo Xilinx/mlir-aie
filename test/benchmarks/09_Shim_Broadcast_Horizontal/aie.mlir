@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: %PYTHON aiecc.py %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %link_against_hsa% %s %test_lib_flags -o test.elf -- %S/test.cpp
+// RUN: %aiecc %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %link_against_hsa% %s %test_lib_flags -o test.elf -- %S/test.cpp
 // RUN: %run_on_board ./test.elf
 
 module @benchmark09_shim_broadcast {
@@ -18,6 +18,6 @@ aie.device(xcvc1902) {
   %60 = aie.tile(6,0)
   aie.lock(%t72, 1) { sym_name = "lock1" }
   aie.lock(%t72, 2) { sym_name = "lock2" }
-  
+
 }
 }

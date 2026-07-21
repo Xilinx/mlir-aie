@@ -8,8 +8,8 @@
 
 // REQUIRES: valid_xchess_license
 
-// RUN: %PYTHON aiecc.py --no-unified %s
-// RUN: %PYTHON aiecc.py --unified    %s
+// RUN: %aiecc --no-unified %s
+// RUN: %aiecc --unified    %s
 
 module @test00_itsalive {
   aie.device(xcve2802) {
