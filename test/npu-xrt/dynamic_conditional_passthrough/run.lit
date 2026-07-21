@@ -34,8 +34,8 @@
 // RUN:   -I%S/../../../include %xrt_flags %host_link_flags %test_utils_flags
 //
 // argv: [n] [do_copy]. Exercise the taken branch (do_copy=1) at a couple of tile
-// counts and the not-taken branch (do_copy=0, output untouched).
-// RUN: %run_on_npu2% %t.exe 2 1 | FileCheck %s
-// RUN: %run_on_npu2% %t.exe 8 1 | FileCheck %s
-// RUN: %run_on_npu2% %t.exe 8 0 | FileCheck %s
-// CHECK: PASS!
+// counts and the not-taken branch (do_copy=0, output untouched). The host
+// returns non-zero on mismatch, so lit checks the exit code directly.
+// RUN: %run_on_npu2% %t.exe 2 1
+// RUN: %run_on_npu2% %t.exe 8 1
+// RUN: %run_on_npu2% %t.exe 8 0
