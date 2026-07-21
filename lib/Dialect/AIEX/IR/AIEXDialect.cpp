@@ -1177,21 +1177,21 @@ LogicalResult AIEX::DmaChannelResetOp::verify() {
 
   int col = getColumn();
   int row = getRow();
-  if (!targetModel.isCoreTile(col, row) && !targetModel.isMemTile(col, row) &&
-      !targetModel.isShimNOCTile(col, row))
+  // Only core and mem tiles have a per-channel DMA reset bit. The shim NOC DMA
+  // control register has no reset field (aie-rt's Aie2PShimDmaChProp sets
+  // Reset.Mask = 0); bit 1 there is PAUSE_MEM, not RESET. Rejecting shim keeps
+  // the op honest about what it can lower, matching aie-rt's own
+  // XAie_DmaChannelReset, which errors on SHIMNOC/SHIMPL tiles.
+  if (!targetModel.isCoreTile(col, row) && !targetModel.isMemTile(col, row))
     return emitOpError() << "tile (" << col << ", " << row
-                         << ") is not a DMA-capable tile";
+                         << ") has no DMA channel reset (only core and mem "
+                            "tiles do; shim NOC DMA has no reset bit)";
 
   // Number of DMA channels on this tile in this direction. Mirrors
   // TileOp::getNumSource/DestConnections(WireBundle::DMA): the switchbox
-  // direction is reversed relative to the DMA direction, and shim tiles count
-  // through the shim mux rather than the switchbox.
-  bool shim =
-      targetModel.isShimNOCTile(col, row) || targetModel.isShimPLTile(col, row);
+  // direction is reversed relative to the DMA direction.
   uint32_t numChannels =
-      shim ? targetModel.getNumDestShimMuxConnections(col, row,
-                                                      AIE::WireBundle::DMA)
-      : getDirection() == AIE::DMAChannelDir::S2MM
+      getDirection() == AIE::DMAChannelDir::S2MM
           ? targetModel.getNumDestSwitchboxConnections(col, row,
                                                        AIE::WireBundle::DMA)
           : targetModel.getNumSourceSwitchboxConnections(col, row,

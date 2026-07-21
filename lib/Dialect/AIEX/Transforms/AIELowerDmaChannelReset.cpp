@@ -29,11 +29,11 @@ using namespace xilinx::AIEX;
 // XAIE2PGBL_MEMORY_MODULE_DMA_S2MM_0_CTRL_RESET_MASK.
 static constexpr uint32_t kDmaCtrlResetMask = 0x2;
 
-struct DmaChannelResetToWrite32Pattern
+struct DmaChannelResetToMaskWrite32Pattern
     : OpConversionPattern<DmaChannelResetOp> {
   using OpConversionPattern<DmaChannelResetOp>::OpConversionPattern;
 
-  DmaChannelResetToWrite32Pattern(MLIRContext *context)
+  DmaChannelResetToMaskWrite32Pattern(MLIRContext *context)
       : OpConversionPattern(context) {}
 
   LogicalResult
@@ -48,23 +48,34 @@ struct DmaChannelResetToWrite32Pattern
     AIE::DMAChannelDir dir = op.getDirection();
 
     // getDmaControlAddress returns the absolute address (col/row folded in);
-    // NpuWrite32Op re-folds col/row, so pass the local offset + col/row, as
+    // NpuMaskWrite32Op re-folds col/row, so pass the local offset + col/row, as
     // AIELowerSetLock does for the lock address.
     uint32_t ctrlAddrLocal =
         tm.getDmaControlAddress(col, row, channel, dir) & 0xFFFFF;
 
     Location loc = op.getLoc();
-    // Reset pulse: assert the reset bit, then clear it. This is the sequence
-    // validated on aie2p. NOTE: a full write32 clears other CTRL bits; a
-    // maskwrite32 form that preserves them is a follow-up (see PR notes).
-    rewriter.create<NpuWrite32Op>(
-        loc, createConstantI32(rewriter, loc, ctrlAddrLocal),
-        createConstantI32(rewriter, loc, kDmaCtrlResetMask), nullptr,
-        rewriter.getI32IntegerAttr(col), rewriter.getI32IntegerAttr(row));
-    rewriter.replaceOpWithNewOp<NpuWrite32Op>(
-        op, createConstantI32(rewriter, loc, ctrlAddrLocal),
-        createConstantI32(rewriter, loc, 0u), nullptr,
-        rewriter.getI32IntegerAttr(col), rewriter.getI32IntegerAttr(row));
+    IntegerAttr colAttr = rewriter.getI32IntegerAttr(col);
+    IntegerAttr rowAttr = rewriter.getI32IntegerAttr(row);
+
+    // Reset pulse: assert the reset bit, then clear it. Both writes mask to the
+    // reset bit only, so the pulse preserves the other CTRL fields
+    // (DECOMPRESSION_ENABLE, ENABLE_OUT_OF_ORDER, CONTROLLER_ID, FOT_MODE)
+    // instead of clobbering them. This mirrors aie-rt's XAie_DmaChannelReset,
+    // which drives the reset bit with a MaskWrite32. Constants are materialized
+    // in named locals so the emitted IR order does not depend on unspecified
+    // C++ argument-evaluation order.
+    Value assertAddr = createConstantI32(rewriter, loc, ctrlAddrLocal);
+    Value assertVal = createConstantI32(rewriter, loc, kDmaCtrlResetMask);
+    Value assertMask = createConstantI32(rewriter, loc, kDmaCtrlResetMask);
+    rewriter.create<NpuMaskWrite32Op>(loc, assertAddr, assertVal, assertMask,
+                                      nullptr, colAttr, rowAttr);
+
+    Value clearAddr = createConstantI32(rewriter, loc, ctrlAddrLocal);
+    Value clearVal = createConstantI32(rewriter, loc, 0u);
+    Value clearMask = createConstantI32(rewriter, loc, kDmaCtrlResetMask);
+    rewriter.replaceOpWithNewOp<NpuMaskWrite32Op>(op, clearAddr, clearVal,
+                                                  clearMask, nullptr, colAttr,
+                                                  rowAttr);
 
     return success();
   };
@@ -77,12 +88,12 @@ struct AIELowerDmaChannelResetPass
     DeviceOp device = getOperation();
 
     ConversionTarget target(getContext());
-    target.addLegalOp<NpuWrite32Op>();
+    target.addLegalOp<NpuMaskWrite32Op>();
     target.addLegalDialect<arith::ArithDialect>();
     target.addIllegalOp<DmaChannelResetOp>();
 
     RewritePatternSet patterns(&getContext());
-    patterns.add<DmaChannelResetToWrite32Pattern>(&getContext());
+    patterns.add<DmaChannelResetToMaskWrite32Pattern>(&getContext());
 
     if (failed(applyPartialConversion(device, target, std::move(patterns))))
       signalPassFailure();

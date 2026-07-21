@@ -1234,6 +1234,14 @@ def AIEX_DmaChannelResetOp: AIEX_Op<"dma_channel_reset", [HasParent<"AIE::Runtim
     queue state so a subsequent dispatch starts from a clean baseline. The
     operation is non blocking and offers no synchronization guarantees.
 
+    The pulse is emitted as two `npu.maskwrite32` writes masked to the reset bit,
+    so it preserves the other control fields (out-of-order, compression,
+    controller id, FoT mode) instead of clobbering them.
+
+    Only core and mem tiles have a per-channel DMA reset bit; shim NOC/PL tiles
+    are rejected by the verifier because their DMA control register has no reset
+    field.
+
     Example:
     ```
       aiex.dma_channel_reset(2, 3, S2MM, 0)

@@ -327,7 +327,7 @@ def AIELowerSetLock : Pass<"aie-lower-set-lock", "AIE::DeviceOp"> {
 }
 
 def AIELowerDmaChannelReset : Pass<"aie-lower-dma-channel-reset", "AIE::DeviceOp"> {
-  let summary = "Lowers all aiex.dma_channel_reset operations to npu.write32Op";
+  let summary = "Lowers all aiex.dma_channel_reset operations to npu.maskwrite32";
   let constructor = "xilinx::AIEX::createAIELowerDmaChannelResetPass()";
   let dependentDialects = [
     "mlir::arith::ArithDialect",
