@@ -9,7 +9,7 @@
 
 // Test multi-core compilation
 
-// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-npu-insts --aie-generate-core-elfs --verbose %s 2>&1 | FileCheck %s
+// RUN: aiecc --no-xchesscc --no-xbridge --get-npu-insts --get-core-elfs --verbose %s 2>&1 | FileCheck %s
 
 // Verify both cores are compiled and linked, via the per-core exec argv paths.
 // CHECK: ({{[0-9]+}}/{{[0-9]+}}) input.mlir

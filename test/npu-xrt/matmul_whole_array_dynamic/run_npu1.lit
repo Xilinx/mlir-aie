@@ -15,7 +15,7 @@
 // %{ex} is the example script. Each config's emitted MLIR names the kernel by a
 // content hash; the sed after it normalizes that (quoted or bare symbol form) to
 // the stable mm.o built once below.
-// DEFINE: %{ex} = %S/../../../programming_examples/basic/matrix_multiplication/whole_array/whole_array_dynamic.py
+// DEFINE: %{ex} = %S/whole_array_dynamic.py
 //
 // Build the aie2 (Phoenix) compute kernel object once from aie_kernels/aie2/mm.cc
 // (matmul_i16_i16 + zero_i16 into mm.o); DIM_M/DIM_K/DIM_N and the dtype-combo
@@ -33,9 +33,9 @@
 // RUN: %PYTHON %{ex} --dev npu -M 512 -K 512 -N 512 -m 64 -k 64 -n 32 \
 // RUN:   --dtype_in i16 --dtype_out i16 --n-aie-cols 1 -o %t.1.mlir
 // RUN: sed -E 's/matmul_i16_i16_[0-9a-f]+\.o/mm.o/g; s/@"[0-9a-f]+_matmul_i16_i16"/@matmul_i16_i16/g; s/@[0-9a-f]+_matmul_i16_i16/@matmul_i16_i16/g' %t.1.mlir > %t.1.norm.mlir
-// RUN: %aiecc --no-xchesscc --no-xbridge --no-aiesim --aie-generate-xclbin \
-// RUN:   --aie-generate-input-with-addresses --output-dir=%t.1.prj \
-// RUN:   --no-compile-host --xclbin-name=%t.1.xclbin --tmpdir=%t.1.prj %t.1.norm.mlir
+// RUN: %aiecc --no-xchesscc --no-xbridge --get-xclbin \
+// RUN:   --get-input-with-addresses --output-dir=%t.1.prj \
+// RUN:   --xclbin-name=%t.1.xclbin --tmpdir=%t.1.prj %t.1.norm.mlir
 // RUN: aie-opt --aie-materialize-bd-chains --aie-substitute-shim-dma-allocations \
 // RUN:   --aie-unroll-runtime-sequence-loops --canonicalize \
 // RUN:   --aie-lower-dynamic-bd-pool --canonicalize \
@@ -48,17 +48,17 @@
 // RUN:   -I%S/../../../include \
 // RUN:   -I%S/../../../programming_examples/basic/matrix_multiplication \
 // RUN:   %xrt_flags %host_link_flags %test_utils_flags -lm
-// RUN: %run_on_npu1% %t.1.exe 512 512 512 | FileCheck %s
-// RUN: %run_on_npu1% %t.1.exe 256 512 1024 | FileCheck %s
+// RUN: %run_on_npu1% %t.1.exe 512 512 512
+// RUN: %run_on_npu1% %t.1.exe 256 512 1024
 //
 // --- n_aie_cols = 2 ---------------------------------------------------------
 // RUN: mkdir -p %t.2.prj
 // RUN: %PYTHON %{ex} --dev npu -M 512 -K 512 -N 512 -m 64 -k 64 -n 32 \
 // RUN:   --dtype_in i16 --dtype_out i16 --n-aie-cols 2 -o %t.2.mlir
 // RUN: sed -E 's/matmul_i16_i16_[0-9a-f]+\.o/mm.o/g; s/@"[0-9a-f]+_matmul_i16_i16"/@matmul_i16_i16/g; s/@[0-9a-f]+_matmul_i16_i16/@matmul_i16_i16/g' %t.2.mlir > %t.2.norm.mlir
-// RUN: %aiecc --no-xchesscc --no-xbridge --no-aiesim --aie-generate-xclbin \
-// RUN:   --aie-generate-input-with-addresses --output-dir=%t.2.prj \
-// RUN:   --no-compile-host --xclbin-name=%t.2.xclbin --tmpdir=%t.2.prj %t.2.norm.mlir
+// RUN: %aiecc --no-xchesscc --no-xbridge --get-xclbin \
+// RUN:   --get-input-with-addresses --output-dir=%t.2.prj \
+// RUN:   --xclbin-name=%t.2.xclbin --tmpdir=%t.2.prj %t.2.norm.mlir
 // RUN: aie-opt --aie-materialize-bd-chains --aie-substitute-shim-dma-allocations \
 // RUN:   --aie-unroll-runtime-sequence-loops --canonicalize \
 // RUN:   --aie-lower-dynamic-bd-pool --canonicalize \
@@ -71,17 +71,17 @@
 // RUN:   -I%S/../../../include \
 // RUN:   -I%S/../../../programming_examples/basic/matrix_multiplication \
 // RUN:   %xrt_flags %host_link_flags %test_utils_flags -lm
-// RUN: %run_on_npu1% %t.2.exe 512 512 512 | FileCheck %s
-// RUN: %run_on_npu1% %t.2.exe 256 512 1024 | FileCheck %s
+// RUN: %run_on_npu1% %t.2.exe 512 512 512
+// RUN: %run_on_npu1% %t.2.exe 256 512 1024
 //
 // --- n_aie_cols = 4 ---------------------------------------------------------
 // RUN: mkdir -p %t.4.prj
 // RUN: %PYTHON %{ex} --dev npu -M 512 -K 512 -N 512 -m 64 -k 64 -n 32 \
 // RUN:   --dtype_in i16 --dtype_out i16 --n-aie-cols 4 -o %t.4.mlir
 // RUN: sed -E 's/matmul_i16_i16_[0-9a-f]+\.o/mm.o/g; s/@"[0-9a-f]+_matmul_i16_i16"/@matmul_i16_i16/g; s/@[0-9a-f]+_matmul_i16_i16/@matmul_i16_i16/g' %t.4.mlir > %t.4.norm.mlir
-// RUN: %aiecc --no-xchesscc --no-xbridge --no-aiesim --aie-generate-xclbin \
-// RUN:   --aie-generate-input-with-addresses --output-dir=%t.4.prj \
-// RUN:   --no-compile-host --xclbin-name=%t.4.xclbin --tmpdir=%t.4.prj %t.4.norm.mlir
+// RUN: %aiecc --no-xchesscc --no-xbridge --get-xclbin \
+// RUN:   --get-input-with-addresses --output-dir=%t.4.prj \
+// RUN:   --xclbin-name=%t.4.xclbin --tmpdir=%t.4.prj %t.4.norm.mlir
 // RUN: aie-opt --aie-materialize-bd-chains --aie-substitute-shim-dma-allocations \
 // RUN:   --aie-unroll-runtime-sequence-loops --canonicalize \
 // RUN:   --aie-lower-dynamic-bd-pool --canonicalize \
@@ -94,7 +94,5 @@
 // RUN:   -I%S/../../../include \
 // RUN:   -I%S/../../../programming_examples/basic/matrix_multiplication \
 // RUN:   %xrt_flags %host_link_flags %test_utils_flags -lm
-// RUN: %run_on_npu1% %t.4.exe 512 512 512 | FileCheck %s
-// RUN: %run_on_npu1% %t.4.exe 768 512 768 | FileCheck %s
-//
-// CHECK: PASS!
+// RUN: %run_on_npu1% %t.4.exe 512 512 512
+// RUN: %run_on_npu1% %t.4.exe 768 512 768

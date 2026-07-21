@@ -6,11 +6,11 @@
 //===----------------------------------------------------------------------===//
 
 // Test ELF generation for NPU instructions via aiebu-asm.
-// This tests --aie-generate-elf and --elf-name options.
+// This tests --get-elf and --elf-name options.
 
 // REQUIRES: peano
 
-// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-xclbin --aie-generate-elf --elf-name=test_insts.elf --verbose %s 2>&1 | FileCheck %s
+// RUN: aiecc --no-xchesscc --no-xbridge --get-xclbin --get-elf --elf-name=test_insts.elf --verbose %s 2>&1 | FileCheck %s
 
 // ELF generation for NPU instructions via aiebu-asm, honoring --elf-name.
 // CHECK: ({{[0-9]+}}/{{[0-9]+}}) test_insts.elf

@@ -15,9 +15,9 @@
 // not a static insts.bin). The host #includes that header and calls it per n.
 //
 // RUN: mkdir -p %t.prj
-// RUN: %aiecc %backend_flags --no-aiesim --aie-generate-xclbin \
-// RUN:   --aie-generate-input-with-addresses --output-dir=%t.prj \
-// RUN:   --no-compile-host --xclbin-name=%t.xclbin --tmpdir=%t.prj %S/aie.mlir
+// RUN: %aiecc %backend_flags --get-xclbin \
+// RUN:   --get-input-with-addresses --output-dir=%t.prj \
+// RUN:   --xclbin-name=%t.xclbin --tmpdir=%t.prj %S/aie.mlir
 //
 // Generate the C++ TXN builder from aiecc's lowered intermediate, mirroring the
 // NPU lowering pipeline (input_with_addresses.mlir is lowered for addresses

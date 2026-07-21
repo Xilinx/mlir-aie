@@ -10,14 +10,14 @@
 // Test device and sequence filtering (mirrors test/npu-xrt/add_one_two pattern).
 // Each device is compiled separately with --device-name.
 
-// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device1 --emit-scratchpad-parameters --verbose --tmpdir=%t.dev1 %s 2>&1 | FileCheck %s --check-prefix=DEV1
-// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device2 --emit-scratchpad-parameters --verbose --tmpdir=%t.dev2 %s 2>&1 | FileCheck %s --check-prefix=DEV2
-// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device1 --sequence-name=seq_a --aie-generate-npu-insts --verbose --tmpdir=%t.seq_a %s 2>&1 | FileCheck %s --check-prefix=DEV1_SEQ_A
-// RUN: aiecc --no-xchesscc --no-xbridge --emit-scratchpad-parameters --verbose --tmpdir=%t.all %s 2>&1 | FileCheck %s --check-prefix=ALL
-// RUN: aie-opt -aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" %s -o %t.ctrlpkt_overlay.mlir && aiecc --no-xchesscc --no-xbridge --device-name=device1 --aie-generate-ctrlpkt --verbose --tmpdir=%t.ctrlpkt %t.ctrlpkt_overlay.mlir 2>&1 | FileCheck %s --check-prefix=CTRLPKT_DEV1
-// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device1 --sequence-name=seq_a --aie-generate-xclbin --tmpdir=%t.count_a %s
+// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device1 --get-scratchpad-parameters --verbose --tmpdir=%t.dev1 %s 2>&1 | FileCheck %s --check-prefix=DEV1
+// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device2 --get-scratchpad-parameters --verbose --tmpdir=%t.dev2 %s 2>&1 | FileCheck %s --check-prefix=DEV2
+// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device1 --sequence-name=seq_a --get-npu-insts --verbose --tmpdir=%t.seq_a %s 2>&1 | FileCheck %s --check-prefix=DEV1_SEQ_A
+// RUN: aiecc --no-xchesscc --no-xbridge --get-scratchpad-parameters --verbose --tmpdir=%t.all %s 2>&1 | FileCheck %s --check-prefix=ALL
+// RUN: aie-opt -aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" %s -o %t.ctrlpkt_overlay.mlir && aiecc --no-xchesscc --no-xbridge --device-name=device1 --get-ctrlpkt --verbose --tmpdir=%t.ctrlpkt %t.ctrlpkt_overlay.mlir 2>&1 | FileCheck %s --check-prefix=CTRLPKT_DEV1
+// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device1 --sequence-name=seq_a --get-xclbin --tmpdir=%t.count_a %s
 // RUN: FileCheck %s --check-prefix=COUNT_A --input-file=%t.count_a/kernels_device1.json
-// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device1 --sequence-name=seq_b --aie-generate-xclbin --tmpdir=%t.count_b %s
+// RUN: aiecc --no-xchesscc --no-xbridge --device-name=device1 --sequence-name=seq_b --get-xclbin --tmpdir=%t.count_b %s
 // RUN: FileCheck %s --check-prefix=COUNT_B --input-file=%t.count_b/kernels_device1.json
 
 // The driver filters devices/sequences silently (no per-device progress logs).
