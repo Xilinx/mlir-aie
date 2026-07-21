@@ -590,6 +590,156 @@ class ObjectFifoHandle(Resolvable):
             )
         self._endpoint = endpoint
 
+    def _emit_transfer(
+        self,
+        rt_data,
+        tap,
+        wait: bool,
+        tile,
+        packet: tuple[int, int] | None,
+        offset_parameter,
+        group,
+    ) -> None:
+        """Shared body for fill()/drain(): bind the shim endpoint, register the
+        fifo with the active runtime sequence, and (in the emit pass) build and
+        emit the shim DMA transfer.
+
+        Lazy imports break the runtime<->dataflow import cycle.
+        """
+        from ..runtime.data import RuntimeData
+        from ..runtime.dmatask import DMATask
+        from ..runtime.endpoint import RuntimeEndpoint
+        from ..runtime._context import active_sequence
+        from ..scratchpad_parameter import ScratchpadParameter
+
+        active = active_sequence()
+        rt = active._runtime
+
+        if rt_data not in rt._rt_data:
+            raise ValueError(
+                f"{rt_data} is not a RuntimeData object declared by sequence()"
+            )
+        if not isinstance(rt_data, RuntimeData):
+            raise ValueError(f"Expected a RuntimeData source/dest, got {rt_data}")
+
+        self.endpoint = RuntimeEndpoint(tile)
+        active.note_fifo(self)
+
+        if tap is None:
+            tap = rt_data.default_tap()
+
+        offset_param_name = None
+        if offset_parameter is not None:
+            if isinstance(offset_parameter, ScratchpadParameter):
+                offset_param_name = offset_parameter.name
+                if offset_parameter not in rt._scratchpad_parameters:
+                    rt._scratchpad_parameters.append(offset_parameter)
+            else:
+                offset_param_name = offset_parameter
+
+        task = DMATask(
+            self,
+            rt_data,
+            tap,
+            group,
+            wait,
+            offset_param_name,
+            packet=packet,
+        )
+        active.emit_transfer(task, group)
+
+    def fill(
+        self,
+        source,
+        tap=None,
+        wait: bool = False,
+        tile: Tile = None,
+        packet: tuple[int, int] | None = None,
+        offset_parameter=None,
+        group=None,
+    ) -> None:
+        """Fill this producer ObjectFifo with data from a runtime buffer.
+
+        Call from within a [`Runtime.sequence`][iron.Runtime.sequence] body on a
+        producer handle (``fifo.prod().fill(...)``).
+
+        Args:
+            source (RuntimeData): The input runtime data buffer.
+            tap (TensorAccessPattern | None, optional): How ``source`` is accessed
+                when sending it to the fifo. Defaults to a linear transfer of the
+                whole buffer.
+            wait (bool, optional): Whether this transfer is awaited (True) or
+                freed (False) when its task group finishes. Defaults to False.
+            tile (Tile | None, optional): The shim tile for the transfer. Defaults
+                to any available shim tile.
+            packet (tuple[int, int] | None, optional): Stamp the shim DMA's BD
+                with a packet header ``(pkt_type, pkt_id)``. Defaults to None.
+            offset_parameter (ScratchpadParameter | str | None, optional): A
+                ScratchpadParameter (or its name) whose value is the element
+                offset for this transfer. Defaults to None.
+            group (TaskGroup | None, optional): The TaskGroup to associate this
+                transfer with. Defaults to the sequence's implicit group.
+        """
+        if not self._is_prod:
+            raise ValueError("fill() is only valid on a producer ObjectFifoHandle")
+        from ..device import AnyShimTile
+
+        self._emit_transfer(
+            source,
+            tap,
+            wait,
+            AnyShimTile if tile is None else tile,
+            packet,
+            offset_parameter,
+            group,
+        )
+
+    def drain(
+        self,
+        dest,
+        tap=None,
+        wait: bool = False,
+        tile: Tile = None,
+        packet: tuple[int, int] | None = None,
+        offset_parameter=None,
+        group=None,
+    ) -> None:
+        """Drain this consumer ObjectFifo, writing data to a runtime buffer.
+
+        Call from within a [`Runtime.sequence`][iron.Runtime.sequence] body on a
+        consumer handle (``fifo.cons().drain(...)``).
+
+        Args:
+            dest (RuntimeData): The output runtime data buffer.
+            tap (TensorAccessPattern | None, optional): How ``dest`` is accessed
+                when reading from the fifo. Defaults to a linear transfer of the
+                whole buffer.
+            wait (bool, optional): Whether this transfer is awaited (True) or
+                freed (False) when its task group finishes. Defaults to False.
+            tile (Tile | None, optional): The shim tile for the transfer. Defaults
+                to any available shim tile.
+            packet (tuple[int, int] | None, optional): Stamp the shim DMA's BD
+                with a packet header ``(pkt_type, pkt_id)``. Defaults to None.
+            offset_parameter (ScratchpadParameter | str | None, optional): A
+                ScratchpadParameter (or its name) whose value is the element
+                offset for this transfer. Defaults to None.
+            group (TaskGroup | None, optional): The TaskGroup to associate this
+                transfer with. Defaults to the sequence's implicit group.
+        """
+        if self._is_prod:
+            raise ValueError("drain() is only valid on a consumer ObjectFifoHandle")
+        from ..device import AnyShimTile
+
+        self._emit_transfer(
+            dest,
+            tap,
+            wait,
+            AnyShimTile if tile is None else tile,
+            packet,
+            offset_parameter,
+            group,
+        )
+
     def all_of_endpoints(self) -> list[ObjectFifoEndpoint]:
         """All endpoints belonging to an ObjectFifo"""
         return self._object_fifo._get_endpoint(

@@ -3,15 +3,24 @@
 # Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-"""Runtime: orchestrates host-side data movement and worker execution for an IRON program."""
+"""Runtime: orchestrates host-side data movement and worker execution for an IRON program.
+
+The runtime sequence is written as a *callback body* -- a plain Python function
+whose parameters are the runtime I/O buffers (and, optionally, runtime scalars).
+The body runs eagerly inside ``@runtime_sequence`` at resolve time, mirroring how
+``Worker.core_fn`` runs inside ``@core``. Because the body executes with live MLIR
+values in scope, it can use native ``range_``/``if_`` control flow with
+``fill``/``drain`` verbs nested inside -- the dynamic path lowers these to
+``scf.for``/``scf.if`` (EmitC C++ TXN), and the static path (Python ``range``/int
+bounds) elaborates to a flat binary sequence.
+"""
 
 from __future__ import annotations
 from collections import defaultdict
-from contextlib import contextmanager
 import itertools
 import logging
 import numpy as np
-from typing import Callable, Iterator
+from typing import Callable, Sequence
 
 logger = logging.getLogger(__name__)
 
@@ -20,27 +29,27 @@ from ...utils import trace as trace_utils
 from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 
 from ...dialects.aiex import (
-    runtime_sequence,
     sync_scratchpad_parameters_from_host,  # pyright: ignore[reportAttributeAccessIssue]
+)
+from ...dialects._aie_ops_gen import (  # pyright: ignore[reportMissingImports]
+    RuntimeSequenceOp,
+)
+from ...helpers.util import try_convert_np_type_to_mlir_type
+from ...dialects._aiex_ops_gen import (  # pyright: ignore[reportMissingImports]
     dma_await_task,
     dma_free_task,
 )
-from ...helpers.taplib import TensorAccessPattern
 from ..dataflow import ObjectFifoHandle
-from ..device import Tile, AnyShimTile
+from ..device import AnyShimTile
 from ..resolvable import Resolvable
 from ..scratchpad_parameter import ScratchpadParameter
-from ..worker import Worker, WorkerRuntimeBarrier, _BarrierSetOp
+from ..worker import WorkerRuntimeBarrier, _BarrierSetOp
 from .dmatask import DMATask
 from .data import RuntimeData
 from .endpoint import RuntimeEndpoint
-from .taskgroup import RuntimeTaskGroup
-from .task import (
-    RuntimeTask,
-    RuntimeStartTask,
-    InlineOpRuntimeTask,
-    FinishTaskGroupTask,
-)
+from .taskgroup import TaskGroup
+from .task import InlineOpRuntimeTask
+from ._context import active_sequence, active_sequence_scope
 
 
 def _iter_flat(obj):
@@ -60,15 +69,106 @@ class IronRuntimeError(Exception):
     """Raised by the IRON Runtime when resolution encounters an unrecoverable state."""
 
 
+class ActiveSequence:
+    """The state of a runtime sequence body while it is being emitted.
+
+    The body's data-movement verbs (``fifo.fill``/``fifo.drain``) and
+    ``TaskGroup`` reach this object through the active-sequence ContextVar
+    (see [`_context`][iron.runtime._context]) rather than a threaded ``rt``
+    reference, so the body signature carries only the runtime buffers.
+
+    The body runs exactly once, inside the ``runtime_sequence`` op: each verb
+    both binds its ObjectFifo's shim endpoint and emits the shim DMA. The DMA
+    references the fifo by symbol name (a legal MLIR forward reference), so it
+    does not require the fifo to be resolved yet -- the Program resolves fifos
+    and cores afterward, with every runtime endpoint already bound.
+    """
+
+    def __init__(self, runtime: "Runtime"):
+        self._runtime = runtime
+        # Actions accumulated per task group: (dma_await_task | dma_free_task, [task]).
+        self._task_group_actions: dict[TaskGroup, list] = defaultdict(list)
+        # The implicit group for fill/drain calls that pass no explicit group.
+        self._default_task_group = TaskGroup(next(runtime._task_group_index))
+        self._open_task_groups: list[TaskGroup] = []
+        self._used_default = False
+        self._used_explicit = False
+
+    def note_fifo(self, handle: ObjectFifoHandle) -> None:
+        """Record that ``handle`` is driven from the runtime (its shim endpoint)."""
+        self._runtime._fifos.add(handle)
+
+    def register_task_group(self, tg: TaskGroup) -> None:
+        self._open_task_groups.append(tg)
+
+    def finish_task_group(self, tg: TaskGroup) -> None:
+        """Close a task group: await its waited tasks, then free the rest.
+
+        Waits are ordered before frees within the group, matching the
+        hardware-safe order the old flat-list runtime used.
+        """
+        if tg in self._open_task_groups:
+            self._open_task_groups.remove(tg)
+        actions = self._task_group_actions.get(tg)
+        if not actions:
+            return
+        wait_tasks = [(fn, a) for (fn, a) in actions if fn == dma_await_task]
+        free_tasks = [(fn, a) for (fn, a) in actions if fn == dma_free_task]
+        if len(wait_tasks) + len(free_tasks) != len(actions):
+            unknown = [
+                (fn, a)
+                for (fn, a) in actions
+                if fn != dma_await_task and fn != dma_free_task
+            ]
+            raise IronRuntimeError(
+                f"Unknown action type detected: {','.join(str(a) for a in unknown)}"
+            )
+        for fn, a in wait_tasks + free_tasks:
+            fn(*a)
+        self._task_group_actions[tg] = []
+
+    def emit_transfer(self, task: DMATask, task_group: TaskGroup | None) -> None:
+        """Emit a DMA transfer and record its await/free action for group close."""
+        task.resolve()
+        if task_group is not None:
+            self._used_explicit = True
+            group = task_group
+        else:
+            self._used_default = True
+            group = self._default_task_group
+        action = dma_await_task if task.will_wait() else dma_free_task
+        self._task_group_actions[group].append((action, [task.task]))
+
+    def finalize(self) -> None:
+        """Close bookkeeping after the body runs."""
+        explicit_open = [tg for tg in self._open_task_groups if tg is not self._default_task_group]
+        if explicit_open:
+            tgs = ", ".join(str(t) for t in explicit_open)
+            raise IronRuntimeError(f"Failed to close task groups: {tgs}")
+        if (
+            self._runtime._strict_task_groups
+            and self._used_default
+            and self._used_explicit
+        ):
+            raise IronRuntimeError(
+                "Mixing explicit task groups and the default task group is "
+                "prohibited. Please assign all tasks to a task group."
+            )
+        # Flush any transfers left in the default group (no explicit finish).
+        if self._task_group_actions[self._default_task_group]:
+            self.finish_task_group(self._default_task_group)
+
+
 class Runtime(Resolvable):
     """The host-side sequence of data-movement and worker-start operations that
     execute an IRON design.
 
     A Runtime describes what the host does at runtime: filling input
-    [`ObjectFifo`][iron.ObjectFifo]s with data, starting
-    [`Worker`][iron.Worker]s, and draining results back to host buffers.
-    Operations are declared inside a [`sequence`][iron.runtime.runtime.Runtime.sequence]
-    context.
+    [`ObjectFifo`][iron.ObjectFifo]s with data and draining results back to host
+    buffers. The sequence is a callback registered with
+    [`sequence`][iron.runtime.runtime.Runtime.sequence]; its body reads the
+    runtime buffers as parameters and moves data with ``fifo.fill(...)`` /
+    ``fifo.drain(...)``.
     """
 
     def __init__(
@@ -82,10 +182,9 @@ class Runtime(Resolvable):
                 This can catch common errors, but can be set to False to disable the checks.
 
         """
-        self._rt_data = []
-        self._tasks: list[Resolvable] = []
+        self._seq_fn: Callable | None = None
+        self._rt_data: list[RuntimeData] = []
         self._fifos: set[ObjectFifoHandle] = set()
-        self._workers: list[Worker] = []
         # Lower-level explicit-routing primitives (peers of ObjectFifo for
         # designs that hand-wire flows + DMA programs instead of letting
         # ObjectFifo manage them).
@@ -93,13 +192,16 @@ class Runtime(Resolvable):
         self._locks = []
         self._tile_dmas = []
         self._scratchpad_parameters: list[ScratchpadParameter] = []
-        self._open_task_groups = []
         self._trace_size = None
         self._trace_workers = None
         self._strict_task_groups = strict_task_groups
         self._task_group_index = itertools.count()
         self._reuse_output_buffer = False
         self._egress_shim_col = 0
+        self._coretile_events = None
+        self._coremem_events = None
+        self._memtile_events = None
+        self._shimtile_events = None
 
     def add_flow(self, flow) -> None:
         """Register an explicit [`Flow`][iron.Flow] (or
@@ -128,239 +230,30 @@ class Runtime(Resolvable):
     def tile_dmas(self):
         return list(self._tile_dmas)
 
-    @contextmanager
     def sequence(
-        self, *input_types: type[np.ndarray]
-    ) -> Iterator[RuntimeData | tuple[RuntimeData, ...]]:
-        """A RuntimeSequence is a sequence of operations that are performed in
-        support of a program. Common operations include input and output data movement.
-
-        Raises:
-            ValueError: Arguments are validated.
-            ValueError: If task groups are not finished within the sequence() context, and error will be raised.
-
-        Yields:
-            RuntimeData | tuple[RuntimeData, ...]: Handles to the runtime buffers matching the declared input types.
-        """
-        try:
-            self._rt_data = list(map(RuntimeData, input_types))
-            if len(self._rt_data) == 1:
-                yield self._rt_data[0]
-            else:
-                yield tuple(self._rt_data.copy())
-        finally:
-            if len(self._open_task_groups) != 0:
-                tgs_str = ", ".join([str(t) for t in self._open_task_groups])
-                raise ValueError(f"Failed to close task groups: {tgs_str}")
-            for of_handle in self._fifos:
-                # It's very easy to accidentally generate multiple (identical)
-                # consumers in the runtime. This bit of code prunes out duplicates.
-                if not of_handle._is_prod:
-                    fifo_obj = of_handle._object_fifo
-                    runtime_cons = None
-                    to_remove = []
-                    for c in fifo_obj._cons:
-                        if isinstance(c.endpoint, RuntimeEndpoint):
-                            if not runtime_cons:
-                                runtime_cons = c
-                            else:
-                                if (
-                                    c.depth == runtime_cons.depth
-                                    and c.dims_from_stream
-                                    == runtime_cons.dims_from_stream
-                                ):
-                                    to_remove.append(c)
-                                else:
-                                    raise ValueError(
-                                        f"Found two different RuntimeEndpoints for consumers of the same ObjectFifo: {fifo_obj}"
-                                    )
-                    for r in to_remove:
-                        fifo_obj._cons.remove(r)
-
-    def task_group(self) -> RuntimeTaskGroup:
-        """Generate a handle to a RuntimeTaskGroup.
-        This should be called within a Runtime.sequence() context.
-
-        Returns:
-            RuntimeTaskGroup: The new RuntimeTaskGroup
-        """
-        tg = RuntimeTaskGroup(next(self._task_group_index))
-        self._open_task_groups.append(tg)
-        return tg
-
-    def finish_task_group(self, task_group: RuntimeTaskGroup):
-        """Close out a RuntimeTaskGroup.
-        This should be called within a Runtime.sequence() context.
-
-        Args:
-            task_group (RuntimeTaskGroup): The task group to close. All associated tasks will be awaited or freed.
-        """
-        self._open_task_groups.remove(task_group)
-        self._tasks.append(FinishTaskGroupTask(task_group))
-
-    def fill(
         self,
-        in_fifo: ObjectFifoHandle,
-        source: RuntimeData,
-        tap: TensorAccessPattern | None = None,
-        task_group: RuntimeTaskGroup | None = None,
-        wait: bool = False,
-        tile: Tile = AnyShimTile,
-        packet: tuple[int, int] | None = None,
-        offset_parameter: "ScratchpadParameter | str | None" = None,
+        seq_fn: Callable,
+        input_types: Sequence[type[np.ndarray]],
     ) -> None:
-        """Conceptually fill an ObjectFifoHandle (of type producer) with data from a runtime buffer.
-        This should be called within a Runtime.sequence() context.
+        """Register the runtime sequence body.
+
+        The body runs inside ``@runtime_sequence`` at resolve time, receiving one
+        live value per declared input type as its positional arguments. Because
+        it executes with an active MLIR insertion point, it can use native
+        ``range_``/``if_`` control flow and move data with ``fifo.fill(...)`` /
+        ``fifo.drain(...)``.
 
         Args:
-            in_fifo (ObjectFifoHandle): The producer ObjectFifoHandle.
-            source (RuntimeData): The input Runtime data buffer.
-            tap (TensorAccessPattern | None, optional): A way of specifying how data in the buffer is accessed when sending it to the in_fifo.
-                If None is given, this will default to a linear transfer containing all data in the source buffer. Defaults to None.
-            task_group (RuntimeTaskGroup | None, optional): A TaskGroup to associate this task with. Defaults to None.
-            wait (bool, optional): Whether this Task should be awaited on or not. If not, it will be freed when the task group is finished. Defaults to False.
-            tile (Tile | None, optional): The Shim tile to associate the data transfer with. Defaults to AnyShimTile.
-            packet (tuple[int, int] | None, optional): Stamp the shim DMA's BD
-                with a packet header `(pkt_type, pkt_id)`. Pairs with
-                downstream packet-switched routing (e.g. ObjectFifos lowered
-                with `--packet-sw-objFifos` or an explicit
-                [`PacketFlow`][iron.PacketFlow]). Defaults to None.
-            offset_parameter (ScratchpadParameter | str | None, optional): A ScratchpadParameter (or its name) whose value is used as the element offset for this DMA transfer. Defaults to None.
-
-        Raises:
-            ValueError: Arguments are validated.
+            seq_fn (Callable): The sequence body. Its parameters are bound, in
+                order, to the runtime buffers/scalars described by
+                ``input_types``.
+            input_types (Sequence[type[np.ndarray]]): The declared runtime input
+                types, one per body parameter (tensor types such as
+                ``np.ndarray[(M, K), np.dtype[np.int16]]`` and scalar types such
+                as ``np.int32``).
         """
-        if source not in self._rt_data:
-            raise ValueError(
-                f"Source {source} is not a RuntimeData object generated by sequence()"
-            )
-        rt_endpoint = RuntimeEndpoint(tile)
-
-        if tap is None:
-            tap = source.default_tap()
-
-        offset_param_name = None
-        if offset_parameter is not None:
-            if isinstance(offset_parameter, ScratchpadParameter):
-                offset_param_name = offset_parameter.name
-                if offset_parameter not in self._scratchpad_parameters:
-                    self._scratchpad_parameters.append(offset_parameter)
-            else:
-                offset_param_name = offset_parameter
-
-        in_fifo.endpoint = rt_endpoint
-        self._fifos.add(in_fifo)
-        self._tasks.append(
-            DMATask(
-                in_fifo,
-                source,
-                tap,
-                task_group,
-                wait,
-                offset_param_name,
-                packet=packet,
-            )
-        )
-
-    def drain(
-        self,
-        out_fifo: ObjectFifoHandle,
-        dest: RuntimeData,
-        tap: TensorAccessPattern | None = None,
-        task_group: RuntimeTaskGroup | None = None,
-        wait: bool = False,
-        tile: Tile = AnyShimTile,
-        packet: tuple[int, int] | None = None,
-        offset_parameter: "ScratchpadParameter | str | None" = None,
-    ) -> None:
-        """Conceptually drain an ObjectFifoHandle (of type consumer): read data from the ObjectFifo and write it to a runtime buffer.
-        This should be called within a Runtime.sequence() context.
-
-        Args:
-            out_fifo (ObjectFifoHandle): The consumer ObjectFifoHandle.
-            dest (RuntimeData): The output Runtime data buffer.
-            tap (TensorAccessPattern | None, optional): A way of specifying how data in the buffer is accessed when reading from the out_fifo.
-                If None is given, this will default to a linear transfer containing all data in the destination buffer. Defaults to None.
-            task_group (RuntimeTaskGroup | None, optional): A TaskGroup to associate this task with. Defaults to None.
-            wait (bool, optional): Whether this Task should be awaited on or not. If not, it will be freed when the task group is finished. Defaults to False.
-            tile (Tile | None, optional): The Shim tile to associate the data transfer with. Defaults to AnyShimTile.
-            packet (tuple[int, int] | None, optional): Stamp the shim DMA's BD
-                with a packet header `(pkt_type, pkt_id)`. Pairs with
-                downstream packet-switched routing (e.g. ObjectFifos lowered
-                with `--packet-sw-objFifos` or an explicit
-                [`PacketFlow`][iron.PacketFlow]). Defaults to None.
-            offset_parameter (ScratchpadParameter | str | None, optional): A ScratchpadParameter (or its name) whose value is used as the element offset for this DMA transfer. Defaults to None.
-
-        Raises:
-            ValueError: Arguments are validated.
-        """
-        if dest not in self._rt_data:
-            raise ValueError(
-                f"Destination {dest} is not a RuntimeData object generated by sequence()"
-            )
-        rt_endpoint = RuntimeEndpoint(tile)
-
-        if tap is None:
-            tap = dest.default_tap()
-
-        offset_param_name = None
-        if offset_parameter is not None:
-            if isinstance(offset_parameter, ScratchpadParameter):
-                offset_param_name = offset_parameter.name
-                if offset_parameter not in self._scratchpad_parameters:
-                    self._scratchpad_parameters.append(offset_parameter)
-            else:
-                offset_param_name = offset_parameter
-
-        out_fifo.endpoint = rt_endpoint
-        self._fifos.add(out_fifo)
-        self._tasks.append(
-            DMATask(
-                out_fifo,
-                dest,
-                tap,
-                task_group,
-                wait,
-                offset_param_name,
-                packet=packet,
-            )
-        )
-
-    def start(self, *args: Worker):
-        """A placeholder operation to indicate that one or more Worker should be started on the device.
-        This should be called within a Runtime.sequence() context.
-
-        Args:
-            *args: One or more Workers. If more than one is given, they will be started in order.
-
-        Raises:
-            ValueError: Arguments are validated.
-        """
-        for worker in args:
-            if not isinstance(worker, Worker):
-                raise ValueError("Runtime can only start Worker objects")
-            self._workers.append(worker)
-            self._tasks.append(RuntimeStartTask(worker))
-
-    def inline_ops(self, inline_func: Callable, inline_args: list):
-        """Insert an InlineOpRuntimeTask into the runtime.
-         This should be called within a Runtime.sequence() context.
-
-        Args:
-            inline_func (Callable): The function to execute within an MLIR context.
-            inline_args (list): The state the function needs to execute. Any
-                ObjectFifoHandle passed here is registered with the Runtime (so
-                the Program resolves its shim allocation) and, if it has no
-                endpoint yet, is bound to a shim tile -- an inline op driving a
-                fifo from the runtime sequence is a host-side (shim) endpoint.
-                This mirrors how InlineOpRuntimeTask resolves Buffer args.
-        """
-        for arg in _iter_flat(inline_args):
-            if isinstance(arg, ObjectFifoHandle):
-                if arg.endpoint is None:
-                    arg.endpoint = RuntimeEndpoint(AnyShimTile)
-                self._fifos.add(arg)
-        self._tasks.append(InlineOpRuntimeTask(inline_func, inline_args))
+        self._seq_fn = seq_fn
+        self._rt_data = [RuntimeData(t) for t in input_types]
 
     def enable_trace(
         self,
@@ -376,7 +269,6 @@ class Runtime(Resolvable):
         """Enable hardware tracing for this program.
 
         Configures the AIE trace units and routes trace packets to DDR via the shim DMA.
-        Should be called within a [`sequence`][iron.runtime.runtime.Runtime.sequence] context before data movement operations.
 
         Args:
             trace_size (int): Size of the trace buffer in bytes.
@@ -410,33 +302,49 @@ class Runtime(Resolvable):
         self._shimtile_events = shimtile_events
         self._egress_shim_col = egress_shim_col
 
+    def inline_ops(self, inline_func: Callable, inline_args: list):
+        """Emit arbitrary lower-level ops in the runtime sequence body.
+
+        An escape hatch for hardware control that has no high-level IRON verb
+        yet (PDI loading, custom BD writes, compression control). Call it from
+        within the sequence body. Any ObjectFifoHandle passed in ``inline_args``
+        is registered with the Runtime (so the Program resolves its shim
+        allocation) and, if it has no endpoint yet, is bound to a shim tile.
+
+        Args:
+            inline_func (Callable): The function to execute within an MLIR context.
+            inline_args (list): The state the function needs to execute.
+        """
+        active = active_sequence()
+        for arg in _iter_flat(inline_args):
+            if isinstance(arg, ObjectFifoHandle):
+                if arg.endpoint is None:
+                    arg.endpoint = RuntimeEndpoint(AnyShimTile)
+                self._fifos.add(arg)
+        if not active.registering:
+            InlineOpRuntimeTask(inline_func, inline_args).resolve()
+
     def set_barrier(self, barrier: WorkerRuntimeBarrier, value: int):
-        """Set the value of a worker barrier.
-        This should be called within a Runtime.sequence() context.
+        """Set the value of a worker barrier. Call from within the sequence body.
 
         Args:
             barrier (WorkerRuntimeBarrier): The WorkerRuntimeBarrier to set.
             value (int): The value to set the barrier to.
         """
-        self._tasks.append(_BarrierSetOp(barrier, value))
+        if not active_sequence().registering:
+            _BarrierSetOp(barrier, value).resolve()
 
     def sync_parameters(self):
-        """Emit `aiex.sync_scratchpad_parameters_from_host` in the runtime sequence.
-
-        Call this within a [`sequence`][iron.runtime.runtime.Runtime.sequence] context after all
-        parameters have been written on the host side and before starting
-        workers that read them.
+        """Emit `aiex.sync_scratchpad_parameters_from_host`. Call from within the
+        sequence body after all parameters have been written on the host side and
+        before starting workers that read them.
         """
-        self._tasks.append(_SyncParametersTask())
-
-    @property
-    def workers(self) -> list[Worker]:
-        """The workers associated with the Runtime by calls to start()"""
-        return self._workers.copy()
+        if not active_sequence().registering:
+            _SyncParametersTask().resolve()
 
     @property
     def fifos(self) -> list[ObjectFifoHandle]:
-        """The ObjectFifoHandles associated with the Runtime by calls to fill() and drain()"""
+        """The ObjectFifoHandles driven from the runtime by fill()/drain()."""
         return list(self._fifos)
 
     def resolve(
@@ -444,12 +352,30 @@ class Runtime(Resolvable):
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
     ) -> None:
-        rt_dtypes = [rt_data.arr_type for rt_data in self._rt_data]
+        """Build the ``runtime_sequence`` op and run the sequence body inside it.
 
-        task_group_actions = defaultdict(list)
+        The body runs exactly once. Each ``fill``/``drain`` verb binds its
+        ObjectFifo's shim endpoint and emits the shim DMA (referencing the fifo
+        by symbol name, a forward reference). The Program calls this before it
+        resolves ObjectFifos and cores, so by the time a fifo is resolved every
+        runtime endpoint -- including those on link siblings -- is already bound.
+        """
+        if self._seq_fn is None:
+            raise IronRuntimeError(
+                "Runtime.sequence(fn, input_types) must be called before the "
+                "Runtime is resolved."
+            )
+        rt_dtypes = [
+            try_convert_np_type_to_mlir_type(rt_data.arr_type)
+            for rt_data in self._rt_data
+        ]
+        active = ActiveSequence(self)
 
-        @runtime_sequence(*rt_dtypes)
-        def sequence(*args):
+        seq_op = RuntimeSequenceOp(sym_name="sequence")
+        entry_block = seq_op.body.blocks.append(*rt_dtypes)
+        with ir.InsertionPoint(entry_block):
+            for rt_data, rt_data_val in zip(self._rt_data, entry_block.arguments):
+                rt_data.op = rt_data_val
 
             if self._trace_size is not None and self._trace_size > 0:
                 trace_utils.start_trace(
@@ -459,68 +385,41 @@ class Runtime(Resolvable):
                     egress_shim_col=self._egress_shim_col,
                 )
 
-            for rt_data, rt_data_val in zip(self._rt_data, args):
-                rt_data.op = rt_data_val
+            with active_sequence_scope(active):
+                self._seq_fn(*self._rt_data)
+                active.finalize()
 
-            def finish_task_group(tg, task_group_actions):
-                actions = task_group_actions[tg]
+        self._dedup_runtime_consumers()
 
-                # We want to keep order, EXCEPT do waits before frees
-                wait_tasks = [
-                    (fn, args) for (fn, args) in actions if fn == dma_await_task
-                ]
-                free_tasks = [
-                    (fn, args) for (fn, args) in actions if fn == dma_free_task
-                ]
+    def _dedup_runtime_consumers(self) -> None:
+        """Prune duplicate runtime consumer handles on shared ObjectFifos.
 
-                # Check for anything known -- this shouldn't happen, but we'll catch it gracefully anyways.
-                if len(wait_tasks) + len(free_tasks) != len(actions):
-                    unknown_actions = [
-                        (fn, args)
-                        for (fn, args) in actions
-                        if fn != dma_await_task and fn != dma_free_task
-                    ]
-                    raise IronRuntimeError(
-                        f"Unknown action type detected: "
-                        f"{','.join(str(a) for a in unknown_actions)}"
-                    )
-
-                for fn, args in wait_tasks + free_tasks:
-                    fn(*args)
-                task_group_actions[tg] = None
-
-            default_task_group = self.task_group()
-            default_tasks = False
-            task_group_tasks = False
-            for task in self._tasks:
-
-                task.resolve()
-                if isinstance(task, DMATask):
-                    if task.task_group:
-                        task_group_tasks = True
-                        current_task_group = task.task_group
+        A loop that drains one ObjectFifo obtains a fresh consumer handle per
+        ``cons()`` call, so identical runtime consumers accumulate. Collapse
+        them, matching the flat-list runtime's ``__exit__`` cleanup.
+        """
+        for of_handle in self._fifos:
+            if of_handle._is_prod:
+                continue
+            fifo_obj = of_handle._object_fifo
+            runtime_cons = None
+            to_remove = []
+            for c in fifo_obj._cons:
+                if isinstance(c.endpoint, RuntimeEndpoint):
+                    if not runtime_cons:
+                        runtime_cons = c
+                    elif (
+                        c.depth == runtime_cons.depth
+                        and c.dims_from_stream == runtime_cons.dims_from_stream
+                    ):
+                        to_remove.append(c)
                     else:
-                        default_tasks = True
-                        current_task_group = default_task_group
-                    if task.will_wait():
-                        task_group_actions[current_task_group].append(
-                            (dma_await_task, [task.task])
+                        raise ValueError(
+                            f"Found two different RuntimeEndpoints for consumers "
+                            f"of the same ObjectFifo: {fifo_obj}"
                         )
-                    else:
-                        task_group_actions[current_task_group].append(
-                            (dma_free_task, [task.task])
-                        )
-                if isinstance(task, FinishTaskGroupTask):
-                    finish_task_group(task.task_group, task_group_actions)
-
-            if self._strict_task_groups and default_tasks and task_group_tasks:
-                raise IronRuntimeError(
-                    f"Mixing explicit task groups and the default task group is prohibited. "
-                    f"Please assign all default tasks ({task_group_actions[default_task_group]}) to a task group."
-                )
-
-            if task_group_actions[default_task_group]:
-                finish_task_group(default_task_group, task_group_actions)
+            for r in to_remove:
+                fifo_obj._cons.remove(r)
 
 
 class _SyncParametersTask(Resolvable):

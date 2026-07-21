@@ -24,6 +24,7 @@ class Program:
         self,
         device: Device,
         rt: Runtime,
+        workers: "list | None" = None,
     ):
         """A Program represents all design information needed to run the design on a device.
 
@@ -34,9 +35,13 @@ class Program:
         Args:
             device (Device): The device used to generate the final MLIR for the design.
             rt (Runtime): The runtime object for the design.
+            workers (list[Worker] | None, optional): The Workers to run on the
+                device. Defaults to None (no workers). Workers are passed here
+                explicitly rather than started from within the runtime sequence.
         """
         self._device = device
         self._rt = rt
+        self._workers = list(workers) if workers is not None else []
 
     def resolve_program(self, device_name="main"):
         """This method resolves the program components in order to generate MLIR.
@@ -57,7 +62,7 @@ class Program:
             # Resolve parameters at module scope (before the aie.device).
             # aiex.scratchpad_parameter ops are global across all devices because the
             # scratchpad is a single hardware resource shared by all PDIs.
-            for w in self._rt.workers:
+            for w in self._workers:
                 for arg in w.fn_args:
                     if isinstance(arg, ScratchpadParameter):
                         arg.resolve()
@@ -66,10 +71,19 @@ class Program:
 
             @device(self._device.resolve(), sym_name=device_name)
             def device_body():
+                # Run the runtime sequence body first. It emits the
+                # runtime_sequence op (its shim DMAs reference ObjectFifos by
+                # symbol name, a forward reference) and, as a side effect, binds
+                # each runtime-driven ObjectFifo's shim endpoint and records it in
+                # rt.fifos. Doing this before fifo collection/resolution means
+                # every runtime endpoint -- including link siblings -- is already
+                # bound when the fifos below are created.
+                self._rt.resolve()
+
                 # Collect all fifos
                 all_fifos = set()
                 all_fifos.update(self._rt.fifos)
-                for w in self._rt.workers:
+                for w in self._workers:
                     all_fifos.update(w.fifos)
 
                 # Sort fifos for deterministic resolve
@@ -79,7 +93,7 @@ class Program:
                 # tile (pinned or after placement) is caught by the aie.device
                 # verifier's one-core-per-tile check, so no Python-side guard.
                 all_tiles = []
-                for w in self._rt.workers:
+                for w in self._workers:
                     all_tiles.append(w.tile)
                     # Generic: any user-side Resolvable in fn_args may declare
                     # additional tile dependencies via tiles(). Default is [].
@@ -130,7 +144,7 @@ class Program:
                         b.resolve()
 
                 # generate functions - this may call resolve() more than once on the same fifo, but that's ok
-                for w in self._rt.workers:
+                for w in self._workers:
                     for arg in w.fn_args:
                         if isinstance(arg, FuncBase):
                             arg.emit()
@@ -138,12 +152,12 @@ class Program:
                             arg.resolve()
 
                 # Generate core programs
-                for w in self._rt.workers:
+                for w in self._workers:
                     w.resolve()
 
                 # Emit aie.cascade_flow ops for each Worker's outgoing edges.
                 # Must run after worker.resolve() so both tiles are placed.
-                for w in self._rt.workers:
+                for w in self._workers:
                     for cf in w._outgoing_cascades:
                         cf.resolve()
 
@@ -163,7 +177,7 @@ class Program:
                     for w in self._rt._trace_workers:
                         tiles_to_trace.append(w.tile.op)
                 else:
-                    for w in self._rt._workers:
+                    for w in self._workers:
                         if w.trace is not None:
                             tiles_to_trace.append(w.tile.op)
                 if self._rt._trace_size is not None and self._rt._trace_size > 0:
@@ -174,9 +188,6 @@ class Program:
                         memtile_events=self._rt._memtile_events,
                         shimtile_events=self._rt._shimtile_events,
                     )
-
-                # In/Out Sequence
-                self._rt.resolve()
 
             self._print_verify(ctx)
             return ctx.module

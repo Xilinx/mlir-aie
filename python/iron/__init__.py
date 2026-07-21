@@ -40,7 +40,7 @@ from .lock import Lock
 from .scratchpad_parameter import ScratchpadParameter
 from .program import Program
 from .worker import Worker, WorkerRuntimeBarrier
-from .runtime import Runtime
+from .runtime import Runtime, TaskGroup, RuntimeData
 from .dataflow import (
     Acquire,
     Bd,
@@ -95,6 +95,8 @@ __all__ = [
     "Worker",
     "WorkerRuntimeBarrier",
     "Runtime",
+    "TaskGroup",
+    "RuntimeData",
     "ObjectFifo",
     "PadDims",
     "StreamDims",
