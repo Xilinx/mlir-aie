@@ -425,7 +425,7 @@ def AIEGenerateColumnControlOverlay : Pass<"aie-generate-column-control-overlay"
     Option<"clRouteShimDmaToTileCTRL", "route-shim-to-tile-ctrl", "bool", /*default=*/"false",
             "Flag to generate routing between shim dma DMA and tile CTRL ports, for configuration.">,
     Option<"clEmitStandaloneOverlay", "emit-standalone-overlay", "bool", /*default=*/"false",
-            "Emit a standalone @ctrl_pkt_overlay device (and tag source devices) for the load-pdi-to-ctrl-pkt reconfigure flow. When false, the pass applies the overlay in place only (legacy behavior).">,
+            "Emit a standalone @ctrl_pkt_overlay device (and tag source devices) for the load-pdi-to-ctrl-pkt reconfigure flow. When false, the pass applies the overlay in place only.">,
   ];
 }
 

@@ -107,10 +107,7 @@ static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,
 
   FlatSymbolRefAttr preloadRef;
   if (ctrlPkt) {
-    // Step 1 (ctrl-pkt): emit a load_pdi for the ctrl_pkt_overlay device so
-    // that the NPU is configured to stream further configuration as control
-    // packets.
-    //
+    // Overlay device PDI
     // Alternate between the original overlay and a clone of it on every
     // other load. Loading the same PDI twice in a row gets cached by the
     // firmware (the second load becomes a no-op), so we need two distinct
@@ -129,9 +126,7 @@ static LogicalResult transformLoadPdi(NpuLoadPdiOp loadPdiOp, ModuleOp moduleOp,
     }
     preloadRef = FlatSymbolRefAttr::get(builder.getContext(), overlayName);
   } else {
-    // Step 1 (default): create a unique empty device for this reset to avoid
-    // PDI address caching, then emit a load_pdi for it (this triggers a
-    // device reset, needed even for the first device configuration).
+    // Empty device PDI (triggers firmware reset)
     OpBuilder::InsertionGuard guard(builder);
     builder.setInsertionPointToStart(moduleOp.getBody());
 

@@ -370,8 +370,9 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
       if (ctrlPktFlows[{{tileId, destPort}, flowID}]) {
         ctrlPacketFlows[sourceFlow].push_back({tileId, destPort});
         ctrlPktOverlayMasterPorts.insert({tileId, destPort});
-      } else
+      } else {
         packetFlows[sourceFlow].push_back({tileId, destPort});
+      }
       slavePorts.push_back(sourceFlow);
       LLVM_DEBUG(llvm::dbgs() << "flowID " << flowID << ':'
                               << stringifyWireBundle(sourcePort.bundle) << " "

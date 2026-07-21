@@ -1066,20 +1066,14 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
       "npu_insts_full_elf_{0}.bin",
       [](const NpuProgram &p) { return p.insts; });
 
-  // Per-device control-packet artifacts for the load-pdi-to-ctrl-pkt
-  // reconfigure flow. The control-packet binary is extracted directly from the
-  // ctrl-pkt-expanded module (control-packet ops still present, before they are
-  // lowered to DMA). Outside the flow the source is an explicit empty edge, so
-  // the downstream control-packet edges are empty and the config omits the
-  // control-packet fields.
+  // Full ELF: all PDIs + NPU insts + control packet data if applicable
+  // If the control packet lowering is not enabled, the empty 
+  // `noCtrlPktDevices` edge is fed into the full ELF assembly bundle.
   auto &ctrlPktExpandedPerDevice = splitPerDevice(
       ctrlPktExpanded, "ctrlpkt_expanded_{0}.mlir", "ctrlPktExpandedMatching");
   auto &noCtrlPktDevices = g.empty<OpInModule<DeviceOp>>("noCtrlPktDevices");
 
-  // The overlay/reset devices synthesized by expand-load-pdi carry no runtime
-  // sequence and thus no control packets; skip them so the translation only
-  // runs on real devices. `ctrlPktDevices` fans out to the control-packet
-  // binary and its patch-info.
+  // `ctrlPktDevices` contains all devices that have control packet data
   auto &ctrlPktDevices =
       (loadPdiToCtrlPkt.getValue()
            ? static_cast<EdgeWithTypedOutput<OpInModule<DeviceOp>> &>(
@@ -1268,12 +1262,9 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
     outputs.push_back(&pdi);
   if (generateTxn)
     outputs.push_back(&txn);
-  // The standalone control-packet artifacts (partial ELF + DMA sequence, with
-  // the DDR-aperture offset folded for the xclbin / instruction-buffer runtime)
-  // are the xclbin-path delivery mechanism. In the --load-pdi-to-ctrl-pkt
-  // reconfigure flow targeting a full ELF they are superseded: the control
-  // packets are baked into aie.elf directly (fold-free, via the fullElfCtrlpkt
-  // / patch-info edges), so the standalone partial outputs must not be emitted.
+  // Only emit standalone control-packet artifacts (partial ELF + DMA sequence)
+  // in the non-full-ELF flow. In the full-ELF-flow, the control packet data is
+  // contained in the ELF and patched into a runtime sequence argument.
   if (generateCtrlpkt && !(loadPdiToCtrlPkt && generateFullElf)) {
     outputs.push_back(&ctrlpkt);
     outputs.push_back(&ctrlpktDmaSeq);
@@ -1436,15 +1427,11 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  // The standalone control-packet DMA sequence targets the xclbin /
-  // instruction-buffer runtime, never the full-ELF runtime, so the two must not
-  // be requested together (see the hard-coded fold in the ctrlpktDmaSeq edge).
-  // The --load-pdi-to-ctrl-pkt reconfigure flow is the exception: there the
-  // control packets are baked into the full ELF itself (fold-free, via the
-  // fullElfCtrlpkt / patch-info edges), so full-ELF + ctrl-pkt is valid.
+  // Disambiguate the full-ELF control packet flow and the standalone
+  // artifact flows.
   if (generateFullElf && generateCtrlpkt && !loadPdiToCtrlPkt) {
-    llvm::errs() << "aiecc: --generate-full-elf and --aie-generate-ctrlpkt are "
-                    "mutually exclusive\n";
+llvm::errs() << "aiecc: --generate-full-elf and --aie-generate-ctrlpkt "
+"together also requires --load-pdi-to-ctrl-pkt\n";
     return 1;
   }
 

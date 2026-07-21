@@ -162,8 +162,9 @@ struct AIEGenerateColumnControlOverlayPass
     SmallVector<DeviceOp> participating;
     for (auto dev : sourceDevices) {
       if (deviceOptedOut(dev)) {
-        if (clEmitStandaloneOverlay)
+        if (clEmitStandaloneOverlay) {
           dev->setAttr("has_ctrl_pkt_overlay", builder.getBoolAttr(false));
+        }
         continue;
       }
       participating.push_back(dev);
@@ -184,9 +185,11 @@ struct AIEGenerateColumnControlOverlayPass
     }
 
     // Emit standalone `@ctrl_pkt_overlay` device.
-    if (clEmitStandaloneOverlay)
-      if (failed(createOverlayDevice(module, builder, participating)))
+    if (clEmitStandaloneOverlay) {
+      if (failed(createOverlayDevice(module, builder, participating))) {
         return signalPassFailure();
+      }
+    }
   }
 
   // Collect the union of tiles across `devices`, recording one prototype
@@ -243,16 +246,19 @@ struct AIEGenerateColumnControlOverlayPass
     // All participating devices must share the same target.
     DeviceOp firstDev = participating.front();
     auto refDevice = firstDev.getDevice();
-    for (auto dev : llvm::drop_begin(participating))
-      if (dev.getDevice() != refDevice)
+    for (auto dev : llvm::drop_begin(participating)) {
+      if (dev.getDevice() != refDevice) {
         return dev->emitOpError(
             "cannot generate a single standalone ctrl_pkt_overlay device: "
             "participating devices have mismatched target architectures.");
+      }
+    }
 
-    if (module.lookupSymbol("ctrl_pkt_overlay"))
+    if (module.lookupSymbol("ctrl_pkt_overlay")) {
       return module.emitOpError(
           "a symbol named `ctrl_pkt_overlay` already exists in the module; "
           "cannot create a standalone ctrl_pkt_overlay device.");
+    }
 
     builder.setInsertionPointToEnd(module.getBody());
     Location loc = firstDev.getLoc();
