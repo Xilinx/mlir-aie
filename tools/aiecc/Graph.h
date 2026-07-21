@@ -559,6 +559,8 @@ struct EdgeBase {
 
 // Forward declarations of concrete edge types (used by chaining helpers).
 struct FileInputEdge;
+template <typename T>
+struct EmptyEdge;
 template <typename In, typename Out, typename MapFn>
 struct MapEdge;
 template <typename T, typename U, typename JoinFn>
@@ -588,6 +590,14 @@ struct Graph {
 
   // Seed the graph with an existing on-disk file; item.filePath == path.
   FileInputEdge &fileInput(std::string path, std::string name);
+
+  // A typed source edge that produces zero items. Use it as an explicit empty
+  // stand-in when a downstream select/bundle expects an edge but the current
+  // configuration has nothing to feed it (clearer than an always-false filter).
+  template <typename T>
+  EmptyEdge<T> &empty(std::string name) {
+    return addEdge<EmptyEdge<T>>(*this, std::move(name));
+  }
 
   // Every edge registered under exactly `name` (its output-path template). A
   // handful of names are shared by two edges on purpose — the toolchain /
@@ -739,6 +749,20 @@ struct FileInputEdge : EdgeWithTypedOutput<File> {
 inline FileInputEdge &Graph::fileInput(std::string path, std::string name) {
   return addEdge<FileInputEdge>(*this, std::move(path), std::move(name));
 }
+
+// EmptyEdge — a typed source edge that produces no items (see Graph::empty).
+template <typename T>
+struct EmptyEdge : EdgeWithTypedOutput<T> {
+  EmptyEdge(Graph &g, std::string name)
+      : EdgeWithTypedOutput<T>(g, std::move(name)) {
+    this->producesFiles = false;
+  }
+
+  mlir::LogicalResult execute() final {
+    this->out.items.clear();
+    return mlir::success();
+  }
+};
 
 // MapEdge — apply `fn` to each input item, one output item per input.
 template <typename In, typename Out, typename MapFn>

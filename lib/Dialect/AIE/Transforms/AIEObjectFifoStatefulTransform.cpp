@@ -120,7 +120,9 @@ public:
                            flowOp.getDestChannel()}] = 1;
     }
     // Scan ShimDMAAllocationOps so that channels already claimed (e.g. by
-    // the control packet overlay) are not reused by objectFIFO lowering.
+    // the control packet overlay) are marked used in channelsPerTile and are
+    // therefore skipped by getDMAChannelIndex when it auto-assigns channels
+    // for objectFIFO lowering.
     for (auto allocOp : device.getOps<ShimDMAAllocationOp>()) {
       auto tile = allocOp.getTileOp();
       if (!tile)

@@ -147,8 +147,6 @@ struct AIEGenerateColumnControlOverlayPass
   void runOnOperation() override {
     ModuleOp module = getOperation();
     OpBuilder builder(module.getContext());
-    auto boolTrue = builder.getBoolAttr(true);
-    auto boolFalse = builder.getBoolAttr(false);
 
     // Gather source devices in module order. Skip a previously-generated
     // overlay device so the pass is idempotent on its own output.
@@ -159,131 +157,123 @@ struct AIEGenerateColumnControlOverlayPass
       sourceDevices.push_back(dev);
     }
 
-    // Baseline-preserving fast path: unless a standalone `@ctrl_pkt_overlay`
-    // device was explicitly requested (the load-pdi-to-ctrl-pkt / reconfigure
-    // flow), apply the overlay in place to every device exactly as the legacy
-    // per-device pass did -- no extra attributes and no standalone device.
-    // This keeps both the default `route-shim-to-tct` flow and direct
-    // `route-shim-to-tile-ctrl=true` invocations byte-identical.
-    if (!clEmitStandaloneOverlay) {
-      for (auto dev : sourceDevices)
-        if (failed(applyOverlayToDevice(dev)))
-          return signalPassFailure();
-      return;
-    }
-
-    // Ctrl-pkt flow: apply the overlay in place to each participating device
-    // and emit a separate standalone `@ctrl_pkt_overlay` device.
-
-    // Devices that participate in the standalone overlay (i.e. have not opted
-    // out via `needs_ctrl_pkt_overlay = false`). Opted-out devices are tagged
-    // immediately with `has_ctrl_pkt_overlay = false`.
+    // Devices that receive the overlay: those that have not opted out via
+    // `needs_ctrl_pkt_overlay = false`.
     SmallVector<DeviceOp> participating;
     for (auto dev : sourceDevices) {
       if (deviceOptedOut(dev)) {
-        dev->setAttr("has_ctrl_pkt_overlay", boolFalse);
+        if (clEmitStandaloneOverlay)
+          dev->setAttr("has_ctrl_pkt_overlay", builder.getBoolAttr(false));
         continue;
       }
       participating.push_back(dev);
     }
 
-    // Step 1: apply the overlay in-place to each participating device, unless
-    // the user asked us to suppress the in-place application via
-    // `standalone-device-only`. Either way, tag each participating source
-    // device with a `has_ctrl_pkt_overlay` boolean reflecting what happened.
-    //
-    // Before applying the overlay to a device, ensure that device contains
-    // the full union of tiles referenced across all participating devices,
-    // so the overlay shape (routes, shim_dma_allocations) is identical in
-    // every device. When importing a missing tile, copy its attributes from
-    // a participating device's prototype so downstream passes that compare
-    // attribute dictionaries (e.g. AIEMaterializeRuntimeSequences) match.
-    llvm::SmallSetVector<AIE::TileID, 8> unionTiles;
-    llvm::DenseMap<AIE::TileID, AIE::TileOp> prototypeTile;
+    // A standalone `@ctrl_pkt_overlay` device references a single overlay
+    // shape, so every participating device must expose the same set of tiles
+    // for that shape to be identical across them.
+    if (clEmitStandaloneOverlay)
+      shareTilesAcrossDevices(participating);
+
+    // Apply the overlay in-place to participating devices.
     for (auto dev : participating) {
+      if (failed(applyOverlayToDevice(dev)))
+        return signalPassFailure();
+      if (clEmitStandaloneOverlay)
+        dev->setAttr("has_ctrl_pkt_overlay", builder.getBoolAttr(true));
+    }
+
+    // Emit standalone `@ctrl_pkt_overlay` device.
+    if (clEmitStandaloneOverlay)
+      if (failed(createOverlayDevice(module, builder, participating)))
+        return signalPassFailure();
+  }
+
+  // Collect the union of tiles across `devices`, recording one prototype
+  // TileOp per tile so its attributes can be copied when the tile is cloned.
+  static void
+  collectTileUnion(ArrayRef<DeviceOp> devices,
+                   llvm::SmallSetVector<AIE::TileID, 8> &unionTiles,
+                   llvm::DenseMap<AIE::TileID, AIE::TileOp> &prototypeTile) {
+    for (auto dev : devices)
       for (auto tOp : dev.getOps<AIE::TileOp>()) {
         AIE::TileID id{tOp.colIndex(), tOp.rowIndex()};
         unionTiles.insert(id);
         if (!prototypeTile.contains(id))
           prototypeTile[id] = tOp;
       }
-    }
+  }
 
-    for (auto dev : participating) {
-      if (clStandaloneDeviceOnly) {
-        dev->setAttr("has_ctrl_pkt_overlay", boolFalse);
+  // Clone every tile in `unionTiles` not already present in `device`, copying
+  // the prototype's attributes so downstream passes that compare attribute
+  // dictionaries (e.g. AIEMaterializeRuntimeSequences) match.
+  static void
+  cloneMissingTiles(DeviceOp device,
+                    const llvm::SmallSetVector<AIE::TileID, 8> &unionTiles,
+                    const llvm::DenseMap<AIE::TileID, AIE::TileOp> &prototypeTile) {
+    llvm::SmallSet<AIE::TileID, 8> existing;
+    for (auto tOp : device.getOps<AIE::TileOp>())
+      existing.insert({tOp.colIndex(), tOp.rowIndex()});
+    OpBuilder b = OpBuilder::atBlockBegin(device.getBody());
+    for (auto id : unionTiles) {
+      if (existing.contains(id))
         continue;
-      }
-      // Add any missing tiles from the union so the overlay shape is shared.
-      llvm::SmallSet<AIE::TileID, 8> existing;
-      for (auto tOp : dev.getOps<AIE::TileOp>())
-        existing.insert({tOp.colIndex(), tOp.rowIndex()});
-      OpBuilder b = OpBuilder::atBlockBegin(dev.getBody());
-      for (auto id : unionTiles) {
-        if (existing.contains(id))
-          continue;
-        auto proto = prototypeTile[id];
-        auto cloned = cast<AIE::TileOp>(b.clone(*proto.getOperation()));
-        (void)cloned;
-      }
-      if (failed(applyOverlayToDevice(dev)))
-        return signalPassFailure();
-      dev->setAttr("has_ctrl_pkt_overlay", boolTrue);
+      b.clone(*prototypeTile.lookup(id).getOperation());
     }
+  }
 
-    // Step 2: always emit a separate `@ctrl_pkt_overlay` device that contains
-    // only the overlay (and the union of tiles it references). This gives
-    // downstream consumers a single, isolated device to compile when they
-    // need to ship a reconfigure-only PDI, regardless of whether the overlay
-    // was also applied in place.
+  // Give every device in `devices` the union of their tiles, so an overlay
+  // routed onto any of them has the same shape (routes, shim_dma_allocations).
+  static void shareTilesAcrossDevices(ArrayRef<DeviceOp> devices) {
+    llvm::SmallSetVector<AIE::TileID, 8> unionTiles;
+    llvm::DenseMap<AIE::TileID, AIE::TileOp> prototypeTile;
+    collectTileUnion(devices, unionTiles, prototypeTile);
+    for (auto dev : devices)
+      cloneMissingTiles(dev, unionTiles, prototypeTile);
+  }
+
+  // Emit a standalone `@ctrl_pkt_overlay` device holding only the overlay and
+  // the union of tiles it references. Downstream consumers compile it on its
+  // own to ship a reconfigure-only PDI.
+  LogicalResult createOverlayDevice(ModuleOp module, OpBuilder &builder,
+                                    ArrayRef<DeviceOp> participating) {
     if (participating.empty())
-      return;
+      return success();
 
-    // Verify all participating devices share the same target.
-    auto refDevice = participating.front().getDevice();
-    for (auto dev : llvm::drop_begin(participating)) {
-      if (dev.getDevice() != refDevice) {
-        dev->emitOpError(
+    // All participating devices must share the same target.
+    DeviceOp firstDev = participating.front();
+    auto refDevice = firstDev.getDevice();
+    for (auto dev : llvm::drop_begin(participating))
+      if (dev.getDevice() != refDevice)
+        return dev->emitOpError(
             "cannot generate a single standalone ctrl_pkt_overlay device: "
             "participating devices have mismatched target architectures.");
-        return signalPassFailure();
-      }
-    }
 
-    // Refuse to overwrite an existing symbol with the reserved name.
-    if (module.lookupSymbol("ctrl_pkt_overlay")) {
-      module.emitOpError(
+    if (module.lookupSymbol("ctrl_pkt_overlay"))
+      return module.emitOpError(
           "a symbol named `ctrl_pkt_overlay` already exists in the module; "
           "cannot create a standalone ctrl_pkt_overlay device.");
-      return signalPassFailure();
-    }
 
-    // Create the new device at the end of the module.
     builder.setInsertionPointToEnd(module.getBody());
-    Location loc = participating.front().getLoc();
+    Location loc = firstDev.getLoc();
     auto overlayDevice = AIE::DeviceOp::create(
         builder, loc, refDevice, builder.getStringAttr("ctrl_pkt_overlay"));
     overlayDevice.getRegion().emplaceBlock();
-    Block *body = &overlayDevice.getRegion().front();
-    builder.setInsertionPointToEnd(body);
+    builder.setInsertionPointToEnd(&overlayDevice.getRegion().front());
     AIE::EndOp::create(builder, loc);
 
-    // Clone the union of TileIDs referenced across participating devices.
-    llvm::SmallSet<AIE::TileID, 8> seenTiles;
-    builder.setInsertionPointToStart(body);
-    for (auto dev : participating) {
-      for (auto tOp : dev.getOps<AIE::TileOp>()) {
-        AIE::TileID id{tOp.colIndex(), tOp.rowIndex()};
-        if (!seenTiles.insert(id).second)
-          continue;
-        AIE::TileOp::create(builder, tOp.getLoc(), id.col, id.row);
-      }
-    }
+    // Populate the overlay device with the union of tiles referenced across
+    // participating devices, then route the overlay onto it.
+    llvm::SmallSetVector<AIE::TileID, 8> unionTiles;
+    llvm::DenseMap<AIE::TileID, AIE::TileOp> prototypeTile;
+    collectTileUnion(participating, unionTiles, prototypeTile);
+    cloneMissingTiles(overlayDevice, unionTiles, prototypeTile);
 
     if (failed(applyOverlayToDevice(overlayDevice)))
-      return signalPassFailure();
+      return failure();
 
-    overlayDevice->setAttr("has_ctrl_pkt_overlay", boolTrue);
+    overlayDevice->setAttr("has_ctrl_pkt_overlay", builder.getBoolAttr(true));
+    return success();
   }
 
   // Apply the column-control overlay to `device` in place. Returns failure on
