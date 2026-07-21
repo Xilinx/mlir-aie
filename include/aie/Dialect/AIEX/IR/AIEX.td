@@ -1392,13 +1392,13 @@ def AIEX_SetLockOp: AIEX_Op<"set_lock", [HasParent<"AIE::RuntimeSequenceOp">, Sk
 def AIEX_DmaChannelResetOp: AIEX_Op<"dma_channel_reset", [HasParent<"AIE::RuntimeSequenceOp">, SkipAccessibilityCheckTrait]> {
   let summary = "Reset a DMA channel from a runtime sequence";
   let description = [{
-    Resets the DMA channel `channel` in direction `direction` on the tile at
-    (`column`, `row`) by pulsing the channel control register reset bit. Intended
-    for re-arming a resident objectFIFO across dispatches: it clears the
-    channel's residual queue state so it does not carry into a subsequent
-    dispatch. This resets the DMA channel state only; it does not by itself
-    establish a clean dispatch baseline in general. The operation is non blocking
-    and offers no synchronization guarantees.
+    Resets the DMA channel `channel` in direction `direction` on `tile` by
+    pulsing the channel control register reset bit. Intended for re-arming a
+    resident objectFIFO across dispatches: it clears the channel's residual
+    queue state so it does not carry into a subsequent dispatch. This resets the
+    DMA channel state only; it does not by itself establish a clean dispatch
+    baseline in general. The operation is non blocking and offers no
+    synchronization guarantees.
 
     The pulse is emitted as two `npu.maskwrite32` writes masked to the reset bit,
     so it preserves the other control fields (out-of-order, compression,
@@ -1408,18 +1408,29 @@ def AIEX_DmaChannelResetOp: AIEX_Op<"dma_channel_reset", [HasParent<"AIE::Runtim
     are rejected by the verifier because their DMA control register has no reset
     field.
 
+    `tile` is an SSA `aie.tile` value, so the target is named the same way as
+    `aiex.dma_configure_task`.
+
     Example:
     ```
-      aiex.dma_channel_reset(2, 3, S2MM, 0)
+      %tile = aie.tile(2, 3)
+      aiex.dma_channel_reset(%tile, S2MM, 0)
     ```
   }];
   let arguments = (
-    ins I32Attr:$column,
-        I32Attr:$row,
+    ins Index:$tile,
         DMAChannelDir:$direction,
         I32Attr:$channel
   );
-  let assemblyFormat = [{ `(` $column `,` $row `,` $direction `,` $channel `)` attr-dict }];
+  let assemblyFormat = [{ `(` $tile `,` $direction `,` $channel `)` attr-dict }];
+  let extraClassDeclaration = [{
+    AIE::TileOp getTileOp();
+  }];
+  let extraClassDefinition = [{
+    AIE::TileOp DmaChannelResetOp::getTileOp() {
+      return cast<AIE::TileOp>(getTile().getDefiningOp());
+    }
+  }];
   let hasVerifier = 1;
 }
 

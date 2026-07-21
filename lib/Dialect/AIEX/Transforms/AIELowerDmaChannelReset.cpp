@@ -42,8 +42,9 @@ struct DmaChannelResetToMaskWrite32Pattern
     AIE::DeviceOp dev = op->getParentOfType<AIE::DeviceOp>();
     const AIE::AIETargetModel &tm = dev.getTargetModel();
 
-    int col = op.getColumn();
-    int row = op.getRow();
+    AIE::TileOp tile = op.getTileOp();
+    int col = tile.getCol();
+    int row = tile.getRow();
     int channel = op.getChannel();
     AIE::DMAChannelDir dir = op.getDirection();
 
@@ -73,9 +74,8 @@ struct DmaChannelResetToMaskWrite32Pattern
     Value clearAddr = createConstantI32(rewriter, loc, ctrlAddrLocal);
     Value clearVal = createConstantI32(rewriter, loc, 0u);
     Value clearMask = createConstantI32(rewriter, loc, kDmaCtrlResetMask);
-    rewriter.replaceOpWithNewOp<NpuMaskWrite32Op>(op, clearAddr, clearVal,
-                                                  clearMask, nullptr, colAttr,
-                                                  rowAttr);
+    rewriter.replaceOpWithNewOp<NpuMaskWrite32Op>(
+        op, clearAddr, clearVal, clearMask, nullptr, colAttr, rowAttr);
 
     return success();
   };

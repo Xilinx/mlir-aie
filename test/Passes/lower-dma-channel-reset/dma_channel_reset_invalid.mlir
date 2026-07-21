@@ -13,9 +13,10 @@
 // range.
 module {
   aie.device(npu2) {
+    %core_tile = aie.tile(0, 3)
     aie.runtime_sequence() {
       // expected-error @+1 {{channel 2 out of range for this tile and direction}}
-      aiex.dma_channel_reset(0, 3, S2MM, 2)
+      aiex.dma_channel_reset(%core_tile, S2MM, 2)
     }
   }
 }
@@ -29,9 +30,10 @@ module {
 // SHIMNOC/SHIMPL tiles.
 module {
   aie.device(npu2) {
+    %shim_tile = aie.tile(0, 0)
     aie.runtime_sequence() {
       // expected-error @+1 {{has no DMA channel reset (only core and mem tiles do; shim NOC DMA has no reset bit)}}
-      aiex.dma_channel_reset(0, 0, S2MM, 0)
+      aiex.dma_channel_reset(%shim_tile, S2MM, 0)
     }
   }
 }

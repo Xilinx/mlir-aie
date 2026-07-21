@@ -1287,8 +1287,11 @@ LogicalResult AIEX::SetLockOp::verify() {
 LogicalResult AIEX::DmaChannelResetOp::verify() {
   const auto &targetModel = AIE::getTargetModel(*this);
 
-  int col = getColumn();
-  int row = getRow();
+  auto tile = dyn_cast_or_null<AIE::TileOp>(getTile().getDefiningOp());
+  if (!tile)
+    return emitOpError() << "tile operand must be produced by an aie.tile op";
+  int col = tile.getCol();
+  int row = tile.getRow();
   // Only core and mem tiles have a per-channel DMA reset bit. The shim NOC DMA
   // control register has no reset field (aie-rt's Aie2PShimDmaChProp sets
   // Reset.Mask = 0); bit 1 there is PAUSE_MEM, not RESET. Rejecting shim keeps
@@ -1302,12 +1305,11 @@ LogicalResult AIEX::DmaChannelResetOp::verify() {
   // Number of DMA channels on this tile in this direction. Mirrors
   // TileOp::getNumSource/DestConnections(WireBundle::DMA): the switchbox
   // direction is reversed relative to the DMA direction.
-  uint32_t numChannels =
-      getDirection() == AIE::DMAChannelDir::S2MM
-          ? targetModel.getNumDestSwitchboxConnections(col, row,
-                                                       AIE::WireBundle::DMA)
-          : targetModel.getNumSourceSwitchboxConnections(col, row,
-                                                         AIE::WireBundle::DMA);
+  uint32_t numChannels = getDirection() == AIE::DMAChannelDir::S2MM
+                             ? targetModel.getNumDestSwitchboxConnections(
+                                   col, row, AIE::WireBundle::DMA)
+                             : targetModel.getNumSourceSwitchboxConnections(
+                                   col, row, AIE::WireBundle::DMA);
   if (getChannel() >= numChannels)
     return emitOpError() << "channel " << getChannel()
                          << " out of range for this tile and direction (tile "
