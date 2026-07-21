@@ -391,8 +391,10 @@ def AIEObjectFifoUnroll : Pass<"aie-objectFifo-unroll", "DeviceOp"> {
     subsequent `mem2reg`/`canonicalize` the runtime buffer/lock bookkeeping folds
     into constant buffer references and constant lock counts.
 
-    This pass is intended to run before `aie-objectFifo-stateful-transform` and
-    is only used when dynamic objectFifos are disabled (`--dynamic-objFifos=false`).
+    This pass is intended to run after `aie-objectFifo-stateful-transform` (which
+    emits the dynamic bookkeeping and sets the `aie.unroll_hint` attribute this
+    pass consumes) and is only used when dynamic objectFifos are disabled
+    (`--dynamic-objFifos=false`).
   }];
 
   let constructor = "xilinx::AIE::createAIEObjectFifoUnrollPass()";

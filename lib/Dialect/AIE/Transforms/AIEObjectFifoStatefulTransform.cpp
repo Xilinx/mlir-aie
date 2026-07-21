@@ -48,9 +48,9 @@ using namespace xilinx::AIE;
 // Marker for `memref.alloca`s emitted by this pass for bookkeeping only (number
 // of locks held, current buffer index). We use memrefs for these bookkeeping
 // values because it enables easier threading through loop/control-flow
-// structures. A `mem2reg` pass at the end converts them back to SSA values;
-// this marker ensures that we convert _all_ allocas back to SSA values but
-// touch _no_ allocas that were not emitted by us.
+// structures. A `mem2reg` pass at the end converts them back to SSA values; this
+// marker ensures that we convert _all_ allocas back to SSA values but touch _no_
+// allocas that were not emitted by us.
 static constexpr llvm::StringLiteral kBookkeepingSlotAttrName =
     "aie.objectfifo.bookkeeping_slot";
 
@@ -219,10 +219,11 @@ struct ObjectFifoState {
                         // part of a Link, not because they didn't have a shared
                         // memory module
   DenseMap<Operation *, DenseMap<std::pair<ObjectFifoCreateOp, int>, Value>>
-      counterSlotsPerCore; // core -> (fifo, port) -> bookkeeping counter;
-                           // the counter is used for both the runtime buffer
-                           // index_switch and (on binary-lock architectures)
-                           // the runtime lock index_switch
+      rotationCounterSlotsPerCore; // core -> (fifo, port) -> rotating
+                                   // next-element index counter; keys the
+                                   // runtime buffer index_switch and (on
+                                   // binary-lock architectures) the runtime
+                                   // lock index_switch
 };
 
 struct AIEObjectFifoStatefulTransformPass
@@ -1418,8 +1419,8 @@ struct AIEObjectFifoStatefulTransformPass
                                           builder.getUnitAttr());
             counterSlots[{op, port}] = slot;
             int portNum = port == ObjectFifoPort::Produce ? 0 : 1;
-            state.counterSlotsPerCore[coreOp.getOperation()][{op, portNum}] =
-                slot;
+            state.rotationCounterSlotsPerCore[coreOp.getOperation()]
+                                             [{op, portNum}] = slot;
           }
         });
 
@@ -2628,7 +2629,7 @@ struct AIEObjectFifoStatefulTransformPass
           !device.getTargetModel().hasProperty(
               AIETargetModel::UsesSemaphoreLocks);
       DenseMap<std::pair<ObjectFifoCreateOp, int>, Value> &counterSlots =
-          state.counterSlotsPerCore[coreOp.getOperation()];
+          state.rotationCounterSlotsPerCore[coreOp.getOperation()];
       // Per-(fifo, port) scalar "held" counter slots. Each is a promotable
       // rank-0 memref.alloca, so -mem2reg threads it through the enclosing
       // scf.for loops as an iter_arg and the computed lock counts fold to
