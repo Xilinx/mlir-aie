@@ -40,7 +40,6 @@
 #include "SidecarFiles.h"
 #include "Tools.h"
 #include "Utils.h"
-#include "aiecc_aiesim.h"
 
 #include "aie/Conversion/Passes.h"
 #include "aie/Dialect/AIEVec/Pipelines/Passes.h"
@@ -170,21 +169,11 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
   return xchesscc ? chessObject : peanoObject;
 }
 
-// Host-compilation subgraph. Emits the per-device `aie_inc.cpp` array
-// configuration source and compiles the user's host sources against it.
+// Host-compilation subgraph. Compiles the user's host sources against the
+// per-device `aie_inc.cpp` array configuration source (shared with aiesim).
 EdgeWithTypedOutput<File> &
-buildHostExeSubgraph(EdgeWithTypedOutput<OpInModule<DeviceOp>> &perDevice,
+buildHostExeSubgraph(EdgeWithTypedOutput<std::string> &aieInc,
                      EdgeWithTypedOutput<std::string> &arches) {
-  auto &aieInc = perDevice.map<std::string>(
-      "aie_inc.cpp",
-      [](const Item<OpInModule<DeviceOp>> &item,
-         Item<std::string> &out) -> mlir::LogicalResult {
-        DeviceOp d = item.get().op;
-        llvm::raw_string_ostream os(out.value.emplace());
-        return xilinx::AIE::AIETranslateToXAIEV2(item.get().module.get(), os,
-                                                 d.getSymName());
-      });
-
   // clang++ edge: produce a single host executable.
   // We bundle aie_inc.cpp to capture it as a dependency (included as `-I`).
   // perDevice feeds the device symbol name for diagnostics; arches feeds the
@@ -243,6 +232,215 @@ buildHostExeSubgraph(EdgeWithTypedOutput<OpInModule<DeviceOp>> &perDevice,
             cmd.output("-o");
             return cmd(out);
           });
+}
+
+// AIE-simulator work-folder subgraph. Emits the `sim/` folder the aiesimulator
+// consumes: the graph/shim/scsim descriptors, the routed flows, the ps.so
+// co-simulation model, the `.target` marker, and the `aiesim.sh` launcher.
+//
+// Each artifact is its own edge/Item. They are declared with work-dir-relative
+// names, so as intermediates they land in the `.prj` (aiesim.sh derives
+// `--pkg-dir` from its own location) rather than under `--output-dir`. A single
+// aggregator edge depends on them all and forces each onto disk via asFile();
+// the caller requests that aggregator as an output when `--aiesim` is set.
+//
+// Multiple devices would collide on the fixed `sim/` layout; the engine's
+// duplicate-path guard surfaces that (aiesim targets a single device).
+EdgeWithTypedOutput<File> &
+buildAiesimSubgraph(mlir::MLIRContext &context,
+                    EdgeWithTypedOutput<OpInModule<DeviceOp>> &staticPerDevice,
+                    EdgeWithTypedOutput<std::string> &aieInc) {
+  std::string installDir = getInstallDir();
+  std::string aietoolsRoot = discoverAietoolsDir(aietoolsDir.getValue());
+  std::string devFilter = deviceName.getValue();
+
+  // graph.xpe / aieshim_solution.aiesol / scsim_config.json: in-process
+  // translations of the per-device module.
+  auto &xpe = staticPerDevice.map<std::string>(
+      "sim/reports/graph.xpe",
+      [](const Item<OpInModule<DeviceOp>> &item,
+         Item<std::string> &out) -> mlir::LogicalResult {
+        DeviceOp d = item.get().op;
+        llvm::raw_string_ostream os(out.value.emplace());
+        return xilinx::AIE::AIETranslateGraphXPE(item.get().module.get(), os,
+                                                 d.getSymName());
+      });
+  auto &shim = staticPerDevice.map<std::string>(
+      "sim/arch/aieshim_solution.aiesol",
+      [](const Item<OpInModule<DeviceOp>> &item,
+         Item<std::string> &out) -> mlir::LogicalResult {
+        DeviceOp d = item.get().op;
+        llvm::raw_string_ostream os(out.value.emplace());
+        return xilinx::AIE::AIETranslateShimSolution(item.get().module.get(),
+                                                     os, d.getSymName());
+      });
+  auto &scsim = staticPerDevice.map<std::string>(
+      "sim/config/scsim_config.json",
+      [](const Item<OpInModule<DeviceOp>> &item,
+         Item<std::string> &out) -> mlir::LogicalResult {
+        DeviceOp d = item.get().op;
+        llvm::raw_string_ostream os(out.value.emplace());
+        return xilinx::AIE::AIETranslateSCSimConfig(item.get().module.get(), os,
+                                                    d.getSymName());
+      });
+
+  // Routed flows: run `aie-find-flows` to annotate the module, emit it as
+  // flows_physical.mlir, then serialize the flows to JSON.
+  auto findFlowsPM = std::make_unique<mlir::PassManager>(&context);
+  findFlowsPM->nest<DeviceOp>().addPass(xilinx::AIE::createAIEFindFlowsPass());
+  auto &flows = staticPerDevice.map<ModRef>(
+      "sim/flows_physical.mlir", PassPipeline{std::move(findFlowsPM)});
+  auto &flowsJson = flows.map<std::string>(
+      "sim/flows_physical.json",
+      [devFilter](const Item<ModRef> &item,
+                  Item<std::string> &out) -> mlir::LogicalResult {
+        mlir::ModuleOp mod = item.get().get();
+        std::string devName = devFilter;
+        if (devName.empty())
+          for (auto d : mod.getOps<DeviceOp>()) {
+            devName = d.getSymName().str();
+            break;
+          }
+        llvm::raw_string_ostream os(out.value.emplace());
+        return xilinx::AIE::AIEFlowsToJSON(mod, os, devName);
+      });
+
+  // ps.so: the SystemC co-simulation model. clang++ links the toolchain's
+  // `genwrapper_for_ps.cpp` (which #includes aie_inc.cpp from the work dir)
+  // together with the user's host sources against the aiesim runtime.
+  auto &ps =
+      bundle(staticPerDevice.out, aieInc.out)
+          .join<File>(
+              "sim/ps/ps.so",
+              [installDir,
+               aietoolsRoot](const Node<OpInModule<DeviceOp>> &devs,
+                             const Node<std::string> &incs,
+                             Item<File> &out) -> mlir::LogicalResult {
+                assert(!devs.items.empty() && !incs.items.empty());
+                mlir::ModuleOp mod = devs.items.front().get().module.get();
+                DeviceOp d = devs.items.front().get().op;
+                std::string aieTarget = detectAIETarget(mod, d.getSymName());
+                std::string archUpper = llvm::StringRef(aieTarget).upper();
+
+                std::string genwrapper = installDir + "/aie_runtime_lib/" +
+                                         archUpper +
+                                         "/aiesim/genwrapper_for_ps.cpp";
+                if (!dryRun && !llvm::sys::fs::exists(genwrapper)) {
+                  llvm::errs() << "aiecc: aiesim requires " << genwrapper
+                               << " (aietools/runtime lib for " << archUpper
+                               << " not installed)\n";
+                  return mlir::failure();
+                }
+                // Materialize aie_inc.cpp; genwrapper's `#include
+                // "aie_inc.cpp"` resolves against its directory on the include
+                // path.
+                std::string incDir = std::string(
+                    llvm::sys::path::parent_path(incs.items.front().asFile()));
+
+                std::string archTag = hostTarget.getValue();
+                if (auto pos = archTag.find('-'); pos != std::string::npos)
+                  archTag = archTag.substr(0, pos);
+                std::string rtl = installDir + "/runtime_lib/" + archTag;
+
+                ShellCommand cmd{"clang++"};
+                cmd.arg("-O2")
+                    .arg("-fuse-ld=lld")
+                    .arg("-shared")
+                    .arg("-fPIC")
+                    .arg("-flto")
+                    .arg("-fpermissive")
+                    .arg("-DAIE_OPTION_SCALAR_FLOAT_ON_VECTOR")
+                    .arg("-Wno-deprecated-declarations")
+                    .arg("-Wno-enum-constexpr-conversion")
+                    .arg("-Wno-format-security")
+                    .arg("-DSC_INCLUDE_DYNAMIC_PROCESSES")
+                    .arg("-D__AIESIM__")
+                    .arg("-D__PS_INIT_AIE__")
+                    .arg("-Og")
+                    .arg("-Dmain(...)=ps_main(...)")
+                    .arg(aieArchDefine(aieTarget))
+                    .arg("-I" + incDir)
+                    .arg("-I" + aietoolsRoot + "/include")
+                    .arg("-I" + rtl + "/xaiengine/include")
+                    .arg("-I" + aietoolsRoot + "/data/osci_systemc/include")
+                    .arg("-I" + aietoolsRoot + "/include/xtlm/include")
+                    .arg("-I" + aietoolsRoot +
+                         "/include/common_cpp/common_cpp_v1_0/include")
+                    .arg("-I" + rtl + "/test_lib/include");
+                std::string memAlloc =
+                    rtl + "/test_lib/lib/libmemory_allocator_sim_aie.a";
+                if (llvm::sys::fs::exists(memAlloc))
+                  cmd.arg(memAlloc);
+                cmd.arg("-L" + rtl + "/xaiengine/lib")
+                    .arg("-lxaienginecdo")
+                    .arg("-L" + aietoolsRoot + "/lib/lnx64.o")
+                    .arg("-L" + aietoolsRoot + "/lib/lnx64.o/Ubuntu")
+                    .arg("-L" + aietoolsRoot + "/data/osci_systemc/lib/lnx64")
+                    .arg("-Wl,--as-needed")
+                    .arg("-lsystemc")
+                    .arg("-lxtlm");
+                for (const auto &dir : hostIncludeDirs)
+                  cmd.arg("-I" + dir);
+                for (const auto &dir : hostLibDirs)
+                  cmd.arg("-L" + dir);
+                for (const auto &lib : hostLibs)
+                  cmd.arg("-l" + lib);
+                for (const auto &a : hostPassthroughArgs)
+                  cmd.arg(a);
+                cmd.arg(genwrapper).output("-o");
+                return cmd(out);
+              });
+
+  // Literal sidecars: the simulator target marker and the launcher script.
+  auto &target = staticPerDevice.map<std::string>(
+      "sim/.target",
+      [](const Item<OpInModule<DeviceOp>> &,
+         Item<std::string> &out) -> mlir::LogicalResult {
+        out.value = "hw\n";
+        return mlir::success();
+      });
+  auto &script = staticPerDevice.map<std::string>(
+      "aiesim.sh",
+      [](const Item<OpInModule<DeviceOp>> &,
+         Item<std::string> &out) -> mlir::LogicalResult {
+        out.value = R"(#!/bin/sh
+prj_name=$(basename $(dirname $(realpath $0)))
+root=$(dirname $(dirname $(realpath $0)))
+vcd_filename=foo
+if [ -n "$1" ]; then
+  vcd_filename=$1
+fi
+cd $root
+aiesimulator --pkg-dir=${prj_name}/sim --dump-vcd ${vcd_filename}
+)";
+        return mlir::success();
+      });
+
+  // Aggregator: depend on every sim artifact and force each onto disk. The
+  // sim edges are work-dir intermediates, so their consumer (this edge) is what
+  // materializes them -- via asFile(), the Item abstraction's "I need this on
+  // disk" request -- into the `.prj`. Produces no file of its own.
+  auto &aiesim =
+      bundle(xpe.out, shim.out, scsim.out, flows.out, flowsJson.out, ps.out,
+             target.out, script.out)
+          .join<File>(
+              "aiesim.stamp",
+              [](const Node<std::string> &xpe, const Node<std::string> &shim,
+                 const Node<std::string> &scsim, const Node<ModRef> &flows,
+                 const Node<std::string> &flowsJson, const Node<File> &ps,
+                 const Node<std::string> &target,
+                 const Node<std::string> &script,
+                 Item<File> &out) -> mlir::LogicalResult {
+                const NodeBase *nodes[] = {&xpe,       &shim, &scsim,  &flows,
+                                           &flowsJson, &ps,   &target, &script};
+                for (const NodeBase *n : nodes)
+                  for (const ItemBase *it : n->itemRefs())
+                    (void)it->asFile();
+                out.value = File{};
+                return mlir::success();
+              });
+  aiesim.producesFiles = false;
+  return aiesim;
 }
 
 // Translate each runtime sequence into its NPU program: one NpuProgram item
@@ -1059,58 +1257,24 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   //--------------------------------------------------------------------------//
   // Host program
   //--------------------------------------------------------------------------//
-  auto &hostExe = buildHostExeSubgraph(staticPerDevice, perDeviceArches);
+  // Per-device libxaie array-configuration source (`aie_inc.cpp`). Shared by
+  // host compilation (as an `-I` include) and the aiesim `ps.so` build below.
+  auto &aieInc = staticPerDevice.map<std::string>(
+      "aie_inc.cpp",
+      [](const Item<OpInModule<DeviceOp>> &item,
+         Item<std::string> &out) -> mlir::LogicalResult {
+        DeviceOp d = item.get().op;
+        llvm::raw_string_ostream os(out.value.emplace());
+        return xilinx::AIE::AIETranslateToXAIEV2(item.get().module.get(), os,
+                                                 d.getSymName());
+      });
+
+  auto &hostExe = buildHostExeSubgraph(aieInc, perDeviceArches);
 
   //--------------------------------------------------------------------------//
   // AIE simulator Work folder
   //--------------------------------------------------------------------------//
-  // Per device, emit the `sim/` work folder (graph.xpe, shim solution, scsim
-  // config, flows), build ps.so, and the `aiesim.sh` launcher.
-  //
-  // TODO: aiecc_aiesim.cpp is a non-declarative blackbox — it shells out to
-  // aie-translate/aie-opt/clang++ itself and writes a fixed directory layout
-  // (Work folder + ps.so + aiesim.sh) straight to disk, bypassing the Item
-  // abstraction and the graph. It should be refactored into proper graph edges
-  // (one Item per generated artifact). It hangs off `staticPerDevice`, so the
-  // engine still schedules it after the core ELFs the simulator reads are
-  // built.
-  xilinx::aiecc::AiesimConfig aiesimCfg;
-  aiesimCfg.enabled = wantAiesim;
-  aiesimCfg.compileHost = doCompileHost;
-  aiesimCfg.verbose = verbose;
-  aiesimCfg.dryRun = dryRun;
-  aiesimCfg.hostTarget = hostTarget.getValue();
-  aiesimCfg.aietoolsPath = aietoolsRoot;
-  aiesimCfg.installPath = installDir;
-  for (const auto &dir : hostIncludeDirs)
-    aiesimCfg.hostArgs.push_back("-I" + dir);
-  for (const auto &dir : hostLibDirs)
-    aiesimCfg.hostArgs.push_back("-L" + dir);
-  for (const auto &lib : hostLibs)
-    aiesimCfg.hostArgs.push_back("-l" + lib);
-  for (const auto &a : hostPassthroughArgs)
-    aiesimCfg.hostArgs.push_back(a);
-
-  auto &aiesimWork = staticPerDevice.map<File>(
-      "aiesim_{0}.stamp",
-      [aiesimCfg, workDirStr](const Item<OpInModule<DeviceOp>> &item,
-                              Item<File> &out) -> mlir::LogicalResult {
-        DeviceOp d = item.get().op;
-        mlir::ModuleOp mod = item.get().module.get();
-        std::string devName = d.getSymName().str();
-        std::string aieTarget = detectAIETarget(mod, d.getSymName());
-        if (mlir::failed(xilinx::aiecc::generateAieIncCpp(mod, workDirStr,
-                                                          devName, aiesimCfg)))
-          return mlir::failure();
-        if (mlir::failed(xilinx::aiecc::generateAiesim(mod, workDirStr, devName,
-                                                       aieTarget, aiesimCfg)))
-          return mlir::failure();
-        out.value = File{};
-        return mlir::success();
-      });
-  // The aiesim module performs its own disk writes (Work folder + ps.so +
-  // aiesim.sh), so there is no single File for the engine to materialize.
-  aiesimWork.producesFiles = false;
+  auto &aiesim = buildAiesimSubgraph(context, staticPerDevice, aieInc);
 
   //--------------------------------------------------------------------------//
   // Output selection
@@ -1156,9 +1320,10 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
     outputs.push_back(&xclbin);
   if (generateFullElf)
     outputs.push_back(&fullElf);
-  // AIE simulator Work folder: only when explicitly requested.
+  // AIE simulator Work folder: only when explicitly requested. The aggregator
+  // edge pulls in and materializes every sim/ artifact.
   if (wantAiesim)
-    outputs.push_back(&aiesimWork);
+    outputs.push_back(&aiesim);
   // Host executable: only when explicitly requested and host sources exist.
   if (doCompileHost) {
     if (!hasHostSourceFiles())
@@ -1449,6 +1614,18 @@ int main(int argc, char **argv) {
   // --resume can reload it and continue.
   if (!checkpointDir.empty())
     writeCheckpoint(cutEdges, checkpointDir, graphArgv);
+
+  // aiesim.sh is produced as a plain-text Item; make it launchable. (The Item
+  // abstraction has no notion of an executable bit, so set it here on the
+  // materialized artifact.)
+  if (wantAiesim && !dryRun) {
+    std::string script = getWorkDir() + "/aiesim.sh";
+    if (llvm::sys::fs::exists(script))
+      llvm::sys::fs::setPermissions(script,
+                                    llvm::sys::fs::perms::owner_all |
+                                        llvm::sys::fs::perms::group_exe |
+                                        llvm::sys::fs::perms::others_exe);
+  }
 
   return 0;
 }
