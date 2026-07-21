@@ -584,7 +584,6 @@ getInputWithAddressesPipeline(mlir::MLIRContext *ctx, mlir::ModuleOp mod,
   // edge, so no `outputParamsFile` is set here.
   pm->addPass(X::createAIELowerScratchpadParametersPass());
   mlir::OpPassManager &dpm = pm->nest<DeviceOp>();
-  dpm.addPass(createAIEAssignLockIDsPass());
   // The stateful transform always emits the dynamic (runtime) buffer addressing
   // and lock bookkeeping. When dynamic objectFifos are disabled we then
   // statically unroll the loops that carry objectFifo accesses; the subsequent
@@ -615,6 +614,7 @@ getInputWithAddressesPipeline(mlir::MLIRContext *ctx, mlir::ModuleOp mod,
     dpm.addPass(mlir::createSCCPPass());
     dpm.addPass(mlir::createCanonicalizerPass());
   }
+  dpm.addPass(createAIEAssignLockIDsPass());
   dpm.addPass(createAIEAssignBufferDescriptorIDsPass());
   dpm.addPass(createAIELowerCascadeFlowsPass());
   dpm.addPass(X::createAIEBroadcastPacketPass());

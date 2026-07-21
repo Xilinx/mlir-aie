@@ -55,36 +55,6 @@ static constexpr llvm::StringLiteral kBookkeepingSlotAttrName =
     "aie.objectfifo.bookkeeping_slot";
 
 //===----------------------------------------------------------------------===//
-// Lock Analysis
-//===----------------------------------------------------------------------===//
-class LockAnalysis {
-  DenseMap<std::pair<Value, int>, int> locksPerTile;
-
-public:
-  LockAnalysis(DeviceOp &device) {
-    // go over the locks created for each tile and update the index in
-    // locksPerTile
-    device.walk([&](LockOp lockOp) {
-      auto tile = lockOp.getTile();
-      auto lockID = lockOp.getLockIDValue();
-      locksPerTile[{tile, lockID}] = 1;
-    });
-  }
-
-  /// Given a tile, returns next usable lockID for that tile.
-  int getLockID(TileOp &tileOp) {
-    const auto &targetModel = getTargetModel(tileOp);
-    for (unsigned i = 0;
-         i < targetModel.getNumLocks(tileOp.getCol(), tileOp.getRow()); i++)
-      if (int usageCnt = locksPerTile[{tileOp, i}]; usageCnt == 0) {
-        locksPerTile[{tileOp, i}] = 1;
-        return i;
-      }
-    return -1;
-  }
-};
-
-//===----------------------------------------------------------------------===//
 // DMA Channel Analysis
 //===----------------------------------------------------------------------===//
 class DMAChannelAnalysis {
@@ -422,10 +392,10 @@ struct AIEObjectFifoStatefulTransformPass
   }
 
   /// Function used to create objectFifo locks based on target architecture.
-  /// Called by createObjectFifoElements().
+  /// Called by createObjectFifoElements(). Locks are created without a lock ID;
+  /// AIEAssignLockIDs assigns concrete IDs later in the pipeline.
   std::vector<LockOp>
-  createObjectFifoLocks(OpBuilder &builder, LockAnalysis &lockAnalysis,
-                        ObjectFifoCreateOp op, int numElem,
+  createObjectFifoLocks(OpBuilder &builder, ObjectFifoCreateOp op, int numElem,
                         int joinDistribFactor, TileOp creation_tile,
                         int repeatCount, ObjectFifoState &state) {
     std::vector<LockOp> locks;
@@ -451,10 +421,7 @@ struct AIEObjectFifoStatefulTransformPass
       for (int i = 0; i < numElem; i++) {
         // create corresponding aie1 locks
         int initValue = op.getInitValues().has_value() ? 1 : 0;
-        int lockID = lockAnalysis.getLockID(creation_tile);
-        assert(lockID >= 0 && "No more locks to allocate!");
-        auto lock =
-            LockOp::create(builder, ofLoc, creation_tile, lockID, initValue);
+        auto lock = LockOp::create(builder, ofLoc, creation_tile, initValue);
         lock.getOperation()->setAttr(SymbolTable::getSymbolAttrName(),
                                      builder.getStringAttr(op.name().str() +
                                                            "_lock_" +
@@ -467,22 +434,18 @@ struct AIEObjectFifoStatefulTransformPass
         auto initValues = op.getInitValues().has_value()
                               ? op.getInitValues().value().size()
                               : 0;
-        int prodLockID = lockAnalysis.getLockID(creation_tile);
-        assert(prodLockID >= 0 && "No more locks to allocate!");
         int prodLockValue = (numElem - initValues) * repeatCount;
-        auto prodLock = LockOp::create(builder, ofLoc, creation_tile,
-                                       prodLockID, prodLockValue);
+        auto prodLock =
+            LockOp::create(builder, ofLoc, creation_tile, prodLockValue);
         prodLock.getOperation()->setAttr(
             SymbolTable::getSymbolAttrName(),
             builder.getStringAttr(op.name().str() + "_prod_lock_" +
                                   std::to_string(i)));
         locks.push_back(prodLock);
 
-        int consLockID = lockAnalysis.getLockID(creation_tile);
-        assert(consLockID >= 0 && "No more locks to allocate!");
         int consLockValue = initValues * repeatCount;
-        auto consLock = LockOp::create(builder, ofLoc, creation_tile,
-                                       consLockID, consLockValue);
+        auto consLock =
+            LockOp::create(builder, ofLoc, creation_tile, consLockValue);
         consLock.getOperation()->setAttr(
             SymbolTable::getSymbolAttrName(),
             builder.getStringAttr(op.name().str() + "_cons_lock_" +
@@ -623,9 +586,8 @@ struct AIEObjectFifoStatefulTransformPass
 
   /// Function used to create objectFifo elements and their locks.
   /// It maps the input objectFifo to associated buffers and locks.
-  void createObjectFifoElements(OpBuilder &builder, LockAnalysis &lockAnalysis,
-                                ObjectFifoCreateOp op, int share_direction,
-                                ObjectFifoState &state) {
+  void createObjectFifoElements(OpBuilder &builder, ObjectFifoCreateOp op,
+                                int share_direction, ObjectFifoState &state) {
     if (!op.size())
       return;
 
@@ -838,8 +800,8 @@ struct AIEObjectFifoStatefulTransformPass
       state.objFifoLinks[*linkOp] = op;
     }
     std::vector<LockOp> locks = createObjectFifoLocks(
-        builder, lockAnalysis, op, numElem, joinDistribFactor, creation_tile,
-        repeatCount, state);
+        builder, op, numElem, joinDistribFactor, creation_tile, repeatCount,
+        state);
     state.buffersPerFifo[op] = buffers;
     state.locksPerFifo[op] = locks;
   }
@@ -2014,7 +1976,6 @@ struct AIEObjectFifoStatefulTransformPass
     // multi-device safety
     ObjectFifoState state;
 
-    LockAnalysis lockAnalysis(device);
     DMAChannelAnalysis dmaAnalysis(device);
     OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
     auto ctx = device->getContext();
@@ -2209,8 +2170,7 @@ struct AIEObjectFifoStatefulTransformPass
 
       // if split, the necessary size for producer fifo might change
       if (shared) {
-        createObjectFifoElements(builder, lockAnalysis, createOp,
-                                 share_direction, state);
+        createObjectFifoElements(builder, createOp, share_direction, state);
       } else {
         if (isa<ArrayAttr>(createOp.getElemNumber()))
           createOp.setElemNumberAttr(
@@ -2224,8 +2184,7 @@ struct AIEObjectFifoStatefulTransformPass
                 builder.getI32IntegerAttr(prodMaxAcquire));
           }
         }
-        createObjectFifoElements(builder, lockAnalysis, createOp,
-                                 share_direction, state);
+        createObjectFifoElements(builder, createOp, share_direction, state);
       }
     }
 
