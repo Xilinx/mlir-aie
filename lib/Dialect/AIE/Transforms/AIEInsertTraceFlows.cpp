@@ -13,6 +13,8 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/Pass/Pass.h"
 
+#include "llvm/ADT/STLExtras.h"
+
 #include <climits>
 #include <map>
 #include <set>
