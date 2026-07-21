@@ -1,4 +1,4 @@
-//===- AIELowerCoreReset.cpp -------------------------------------*- C++ -*-===//
+//===- AIELowerCoreReset.cpp ------------------------------------*- C++ -*-===//
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -58,8 +58,8 @@ struct CoreResetToMaskWrite32Pattern : OpConversionPattern<CoreResetOp> {
     // AIELowerSetLock passes the local lock address with col/row.
     //
     // Reset pulse: assert the reset bit, then clear it. Both writes mask to the
-    // reset bit only, so the pulse preserves the ENABLE field packed in the same
-    // CORE_CONTROL word instead of clobbering it. This mirrors aie-rt's
+    // reset bit only, so the pulse preserves the ENABLE field packed in the
+    // same CORE_CONTROL word instead of clobbering it. This mirrors aie-rt's
     // XAie_CoreReset/XAie_CoreUnreset, which drive the reset bit with a
     // MaskWrite32. Constants are materialized in named locals so the emitted IR
     // order does not depend on unspecified C++ argument-evaluation order.
@@ -72,9 +72,8 @@ struct CoreResetToMaskWrite32Pattern : OpConversionPattern<CoreResetOp> {
     Value clearAddr = createConstantI32(rewriter, loc, kCoreCtrlAddr);
     Value clearVal = createConstantI32(rewriter, loc, 0u);
     Value clearMask = createConstantI32(rewriter, loc, kCoreCtrlResetMask);
-    rewriter.replaceOpWithNewOp<NpuMaskWrite32Op>(op, clearAddr, clearVal,
-                                                  clearMask, nullptr, colAttr,
-                                                  rowAttr);
+    rewriter.replaceOpWithNewOp<NpuMaskWrite32Op>(
+        op, clearAddr, clearVal, clearMask, nullptr, colAttr, rowAttr);
 
     return success();
   };
