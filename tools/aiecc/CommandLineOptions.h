@@ -71,12 +71,10 @@ inline cl::opt<bool> emitDot(
     cl::desc("Print a GraphViz `dot` description of the compilation graph "
              "(only the edges reachable from the requested outputs) to stdout "
              "and exit, without running the pipeline. Pipe through `dot`."));
-inline cl::opt<bool> keepLoc(
-    "keep-loc",
-    cl::desc("Emit a <bin>.locmap.json sidecar next to each NPU instruction "
-             "binary, mapping each transaction word back to the MLIR Location "
-             "of the op that produced it (and its regdb register name where "
-             "applicable). Off by default."));
+// Selected with --get-locmap: emit a <bin>.locmap.json sidecar next to each NPU
+// instruction binary, mapping each transaction word back to the MLIR Location
+// of the op that produced it (and its regdb register name where applicable).
+inline bool keepLoc = false;
 inline cl::opt<std::string>
     deviceName("device-name",
                cl::desc("Filter to a single aie.device by symbol name"));
@@ -184,24 +182,17 @@ inline cl::alias numThreadsAlias("nthreads", cl::desc("Alias for -j"),
 // Host source files and host-compiler flags are passed after a `--` separator
 // and forwarded verbatim to the host compiler (all AIE architectures).
 
-inline cl::opt<bool> compileHost(
-    "compile-host",
-    cl::desc("Compile the host program from the host C/C++ source files given "
-             "after `--` into a host executable"));
-inline cl::opt<bool> noCompileHost(
-    "no-compile-host",
-    cl::desc("Disable compiling of the host program (negates --compile-host)"));
+// Selected with --get-host: compile the host program from the host C/C++ source
+// files given after `--` into a host executable.
+inline bool generateHost = false;
 inline cl::opt<std::string>
     hostTarget("host-target", cl::desc("Target triple of the host program"),
                cl::init("x86_64-linux-gnu"));
 inline cl::opt<std::string>
     sysroot("sysroot", cl::desc("Sysroot for host cross-compilation"));
-inline cl::opt<bool> aiesim(
-    "aiesim",
-    cl::desc("Generate an AIE simulator Work folder (requires --xbridge)"));
-inline cl::opt<bool>
-    noAiesim("no-aiesim",
-             cl::desc("Do not generate an AIE simulator Work folder"));
+// Selected with --get-aiesim: generate an AIE simulator Work folder (requires
+// --xbridge).
+inline bool generateAiesim = false;
 inline cl::list<std::string>
     hostIncludeDirs("I", cl::Prefix, cl::desc("Host include directory"));
 inline cl::list<std::string>
@@ -218,71 +209,48 @@ inline std::vector<std::string> hostPassthroughArgs;
 //===----------------------------------------------------------------------===//
 // Output selection
 //===----------------------------------------------------------------------===//
-// Which compilation artifacts to emit. Each `aie-generate-*` flag selects one
-// output; the adjacent `*-name` options set its filename template ({0} expands
-// to the device / sequence key).
+// Which compilation artifacts to emit. Every output is selected uniformly with
+// `--get-<name>` (see outputSelectors() and applyOutputSelectorFlags() below),
+// which sets one of the bools here; the adjacent `*-name` options set the
+// artifact's filename template ({0} expands to the device / sequence key).
 
-inline cl::opt<bool> generateNpuInsts(
-    "aie-generate-npu-insts",
-    cl::desc("Generate NPU instructions (.bin) per runtime sequence"));
+inline bool generateNpuInsts = false;
 inline cl::opt<std::string> npuInstsName(
     "npu-insts-name",
     cl::desc("Output NPU insts filename template (use {0} for multi-device)"),
     cl::init("insts_{0}.bin"));
 
 // Emit the per-core ELFs as an output. Cores are still compiled on demand for
-// any artifact that embeds them (e.g. --aie-generate-xclbin); this flag
-// additionally writes them out. (Request the pre-link objects instead with
+// any artifact that embeds them (e.g. --get-xclbin); this flag additionally
+// writes them out. (Request the pre-link objects instead with
 // --get=objects_{0}.o.)
-inline cl::opt<bool>
-    generateCoreElfs("aie-generate-core-elfs",
-                     cl::desc("Emit the per-core ELFs as an output"));
+inline bool generateCoreElfs = false;
 
-inline cl::opt<bool> generateInputWithAddresses(
-    "aie-generate-input-with-addresses",
-    cl::desc("Emit input_with_addresses.mlir (the last MLIR form before "
-             "aie-translate) into the work directory. Downstream tooling — "
-             "notably the trace parser and the JIT DMA-size validator — reads "
-             "it from the .prj."));
+inline bool generateInputWithAddresses = false;
 
-inline cl::opt<bool> generateScratchpadParams(
-    "emit-scratchpad-parameters",
-    cl::desc("Emit params.txt (scratchpad runtime-parameter descriptions) into "
-             "the work directory (.prj), for the host ParameterScratchpad "
-             "runtime."));
+inline bool generateScratchpadParams = false;
 
-inline cl::opt<bool> generateElf(
-    "aie-generate-elf",
-    cl::desc("Emit a per-device instruction ELF (NPU instruction stream "
-             "assembled via aiebu-asm)"));
+inline bool generateElf = false;
 inline cl::opt<std::string> elfName(
     "elf-name",
     cl::desc("Output instruction ELF filename (use {0} for multi-device)"),
     cl::init("design.elf"));
 
-inline cl::opt<bool> generateCdo(
-    "aie-generate-cdo",
-    cl::desc("Emit the per-device CDO binaries (libxaie v2 configuration)"));
+inline bool generateCdo = false;
 
-inline cl::opt<bool>
-    generatePdi("aie-generate-pdi",
-                cl::desc("Emit a per-device PDI binary (via bootgen)"));
+inline bool generatePdi = false;
 inline cl::opt<std::string>
     pdiName("pdi-name",
             cl::desc("Output PDI filename template (use {0} for multi-device)"),
             cl::init("{0}.pdi"));
 
-inline cl::opt<bool>
-    generateTxn("aie-generate-txn",
-                cl::desc("Emit the per-device transaction configuration MLIR"));
+inline bool generateTxn = false;
 inline cl::opt<std::string> txnName(
     "txn-name",
     cl::desc("Output transaction MLIR filename template (use {0} for device)"),
     cl::init("{0}_transaction.mlir"));
 
-inline cl::opt<bool> generateCtrlpkt(
-    "aie-generate-ctrlpkt",
-    cl::desc("Emit per-device control-packet configuration artifacts"));
+inline bool generateCtrlpkt = false;
 inline cl::opt<std::string> ctrlpktName(
     "ctrlpkt-name",
     cl::desc("Output control-packet binary filename template (use {0})"),
@@ -296,8 +264,7 @@ inline cl::opt<std::string> ctrlpktElfName(
     cl::desc("Output combined control-packet ELF filename template (use {0})"),
     cl::init("{0}_ctrlpkt.elf"));
 
-inline cl::opt<bool> generateXclbin("aie-generate-xclbin",
-                                    cl::desc("Generate an xclbin per device"));
+inline bool generateXclbin = false;
 inline cl::opt<std::string> xclbinName(
     "xclbin-name",
     cl::desc("Output xclbin filename template (use {0} for multi-device)"),
@@ -317,22 +284,21 @@ inline cl::opt<std::string> xclbinInput(
     cl::desc("Input xclbin to extend with this design's kernel/PDI instead of "
              "creating a new one from scratch"));
 
-inline cl::opt<bool> generateFullElf(
-    "generate-full-elf",
-    cl::desc(
-        "Bundle all PDIs + NPU insts into one combined ELF via aiebu-asm"));
+inline bool generateFullElf = false;
 inline cl::opt<std::string>
     fullElfName("full-elf-name", cl::desc("Output filename for combined ELF"),
                 cl::init("aie.elf"));
 
 // General-purpose output selector: request one or more graph outputs by their
-// public name (repeatable, or comma-separated). Complements the dedicated
-// `aie-generate-*` flags for outputs that don't have one (e.g. the core
-// `objects`/`elfs`). The set of recognized names is defined where the graph is
-// built; an unknown name is a hard error.
+// public edge name (repeatable, or comma-separated). Complements the named
+// artifact shorthands (`--get-<name>`, see outputSelectors()) for outputs that
+// don't have one (e.g. the core `objects`/`elfs`). The set of recognized names
+// is defined where the graph is built; an unknown name is a hard error.
 inline cl::list<std::string> getOutputs(
     "get",
-    cl::desc("Request graph output(s) by name (repeatable / comma-separated)"),
+    cl::desc("Request graph output(s) by edge name (repeatable / "
+             "comma-separated); named artifacts also have --get-<name> "
+             "shorthands (e.g. --get-xclbin)"),
     cl::CommaSeparated, cl::value_desc("name"));
 inline cl::alias getOutputsAlias("g", cl::desc("Alias for --get"),
                                  cl::aliasopt(getOutputs));
@@ -345,6 +311,78 @@ inline cl::list<std::string> cutOutputs(
     cl::desc("Graph edge(s) to cut at for --checkpoint (repeatable / "
              "comma-separated); named like --get"),
     cl::CommaSeparated, cl::value_desc("name"));
+
+//===----------------------------------------------------------------------===//
+// Named artifact shorthands: --get-<name>
+//===----------------------------------------------------------------------===//
+// Each selector maps a nice name (exposed as `--get-<niceName>`) to the graph
+// edge it selects and the driver bool it sets. The edge name is the artifact's
+// default output-name template and may contain `{0}`. applyOutputSelectorFlags
+// rewrites `--get-<niceName>` into the matching selection before command-line
+// parsing and rejects any unknown `--get-<name>`.
+struct OutputSelector {
+  llvm::StringRef niceName;
+  llvm::StringRef edgeName;
+  bool *flag;
+};
+
+inline llvm::ArrayRef<OutputSelector> outputSelectors() {
+  static const OutputSelector table[] = {
+      {"input-with-addresses", "input_with_addresses.mlir",
+       &generateInputWithAddresses},
+      {"scratchpad-parameters", "params.txt", &generateScratchpadParams},
+      {"core-elfs", "elfs_{0}.elf", &generateCoreElfs},
+      {"npu-insts", "insts_{0}.bin", &generateNpuInsts},
+      {"elf", "design.elf", &generateElf},
+      {"cdo", "cdo_{0}", &generateCdo},
+      {"pdi", "{0}.pdi", &generatePdi},
+      {"txn", "{0}_transaction.mlir", &generateTxn},
+      {"ctrlpkt", "{0}_ctrlpkt.bin", &generateCtrlpkt},
+      {"xclbin", "aie.xclbin", &generateXclbin},
+      {"full-elf", "aie.elf", &generateFullElf},
+      {"locmap", "insts_{0}.bin.locmap.json", &keepLoc},
+      {"host", "a.out", &generateHost},
+      {"aiesim", "aiesim_{0}.stamp", &generateAiesim},
+  };
+  return table;
+}
+
+// Resolve the `--get-<niceName>` shorthands in `args` before cl parsing: set
+// each recognized selector's bool and drop its token; a token after a `--`
+// separator (host passthrough) is left untouched. Returns false after
+// diagnosing an unknown `--get-<name>`.
+inline bool applyOutputSelectorFlags(std::vector<std::string> &args) {
+  std::vector<std::string> kept;
+  kept.reserve(args.size());
+  bool afterSeparator = false;
+  for (std::string &arg : args) {
+    llvm::StringRef a(arg);
+    if (a == "--")
+      afterSeparator = true;
+    llvm::StringRef nice = a;
+    if (!afterSeparator && nice.consume_front("--get-") && !nice.empty()) {
+      const OutputSelector *sel = nullptr;
+      for (const OutputSelector &s : outputSelectors())
+        if (s.niceName == nice) {
+          sel = &s;
+          break;
+        }
+      if (!sel) {
+        llvm::errs() << "aiecc: unknown output selector '--get-" << nice
+                     << "'; available selectors are:\n";
+        for (const OutputSelector &s : outputSelectors())
+          llvm::errs() << "  --get-" << s.niceName << "  (" << s.edgeName
+                       << ")\n";
+        return false;
+      }
+      *sel->flag = true;
+      continue;
+    }
+    kept.push_back(std::move(arg));
+  }
+  args = std::move(kept);
+  return true;
+}
 
 //===----------------------------------------------------------------------===//
 // Diagnostics, dry-run, progress, and checkpoint/resume
@@ -410,12 +448,12 @@ inline cl::opt<std::string> repeaterOutputDir(
 // A handful of options are coupled, e.g. the enable/`--no-*` flags.
 // main calls resolveOptions() once to resolve these.
 
-// Whether to generate the AIE simulator Work folder (off unless --aiesim).
+// Whether to generate the AIE simulator Work folder (off unless --get-aiesim).
 inline bool wantAiesim = false;
-// Compile all cores of a device into one shared object (negated by
+// Compile all cores of a device together into one shared object (negated by
 // --no-unified).
 inline bool doUnified = false;
-// Compile the host program (negated by --no-compile-host).
+// Compile the host program (selected by --get-host).
 inline bool doCompileHost = false;
 
 // Resolve inter-option coupling and populate the resolved-option globals above.
@@ -434,11 +472,12 @@ inline bool resolveOptions() {
     xbridge = true;
   }
 
-  wantAiesim = aiesim && !noAiesim;
+  wantAiesim = generateAiesim;
   if (wantAiesim && !xbridge) {
     if (noXbridge || noXchesscc) {
-      llvm::errs() << "aiecc: --aiesim requires --xbridge (the AIE simulator "
-                      "consumes Chess-compiled cores)\n";
+      llvm::errs()
+          << "aiecc: --get-aiesim requires --xbridge (the AIE simulator "
+             "consumes Chess-compiled cores)\n";
       return false;
     }
     xchesscc = true;
@@ -446,7 +485,7 @@ inline bool resolveOptions() {
   }
 
   doUnified = unified && !noUnified;
-  doCompileHost = compileHost && !noCompileHost;
+  doCompileHost = generateHost;
   return true;
 }
 

@@ -15,16 +15,16 @@
 
 // RUN: echo "int main(){return 0;}" > %t.cpp
 
-// aie_inc.cpp generation and host clang++ (C++17) are triggered by --compile-host.
-// RUN: aiecc --no-xchesscc --no-xbridge --compile-host -n --verbose %s -- %t.cpp 2>&1 | FileCheck %s
+// aie_inc.cpp generation and host clang++ (C++17) are triggered by --get-host.
+// RUN: aiecc --no-xchesscc --no-xbridge --get-host -n --verbose %s -- %t.cpp 2>&1 | FileCheck %s
 
 // --host-target propagates to the host compiler target triple.
-// RUN: aiecc --no-xchesscc --no-xbridge --compile-host --host-target=aarch64-linux-gnu -n --verbose %s -- %t.cpp 2>&1 | FileCheck %s --check-prefix=AARCH64
+// RUN: aiecc --no-xchesscc --no-xbridge --get-host --host-target=aarch64-linux-gnu -n --verbose %s -- %t.cpp 2>&1 | FileCheck %s --check-prefix=AARCH64
 
 // Host source files and extra flags after `--` are forwarded verbatim, in
 // order, to the host clang++ driver. This works for AIE2 host compilation
 // (device is npu1_1col below), not just AIE1.
-// RUN: aiecc --no-xchesscc --no-xbridge --compile-host -n --verbose %s -- -I/some/include -L/some/lib -lsomelib %t.cpp 2>&1 | FileCheck %s --check-prefix=HOSTFULL
+// RUN: aiecc --no-xchesscc --no-xbridge --get-host -n --verbose %s -- -I/some/include -L/some/lib -lsomelib %t.cpp 2>&1 | FileCheck %s --check-prefix=HOSTFULL
 
 // CHECK: ({{[0-9]+}}/{{[0-9]+}}) aie_inc.cpp
 // CHECK: exec:{{.*}}clang++{{.*}}-std=c++17

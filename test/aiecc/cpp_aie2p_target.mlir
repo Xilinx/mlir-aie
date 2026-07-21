@@ -9,7 +9,7 @@
 
 // Test AIE2P (Strix) target compilation
 
-// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-npu-insts --aie-generate-core-elfs --verbose %s 2>&1 | FileCheck %s
+// RUN: aiecc --no-xchesscc --no-xbridge --get-npu-insts --get-core-elfs --verbose %s 2>&1 | FileCheck %s
 
 // Pipeline coverage plus AIE2p target detection, verified via the aie2p
 // code-generation triple.

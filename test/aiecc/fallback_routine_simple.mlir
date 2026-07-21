@@ -10,7 +10,7 @@
 // The front-end (place/allocate) only runs if some artifact roots it; request
 // input_with_addresses so the buffer-allocation diagnostics below are emitted
 // without invoking any core compiler.
-// RUN: %aiecc -v --aie-generate-input-with-addresses %s 2>&1 | FileCheck %s
+// RUN: %aiecc -v --get-input-with-addresses %s 2>&1 | FileCheck %s
 
 // CHECK: warning: Failed to allocate buffer: "a" with size: 16384 bytes.
 // CHECK: warning: Not all requested buffers fit in the available memory.

@@ -7,9 +7,9 @@
 
 // REQUIRES: peano
 
-// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-npu-insts --aie-generate-core-elfs --verbose %s 2>&1 | FileCheck %s
-// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-npu-insts --aie-generate-core-elfs -n --verbose %s 2>&1 | FileCheck %s --check-prefix=DRY
-// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-npu-insts --verbose %s 2>&1 | FileCheck %s --check-prefix=NPU
+// RUN: aiecc --no-xchesscc --no-xbridge --get-npu-insts --get-core-elfs --verbose %s 2>&1 | FileCheck %s
+// RUN: aiecc --no-xchesscc --no-xbridge --get-npu-insts --get-core-elfs -n --verbose %s 2>&1 | FileCheck %s --check-prefix=DRY
+// RUN: aiecc --no-xchesscc --no-xbridge --get-npu-insts --verbose %s 2>&1 | FileCheck %s --check-prefix=NPU
 
 // Pipeline coverage: parse input -> placement/resource allocation -> routing
 // (input_physical) -> per-core compile+link -> npu instruction generation.

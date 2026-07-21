@@ -12,8 +12,8 @@
 // per-core dirs into the output dir, so concurrent runs sharing a directory (as
 // the lit suite does) would clobber each other. The PDIs land in %t; the final
 // ls checks both are there.
-// RUN: %aiecc -v --xchesscc --xbridge --aie-generate-pdi --pdi-name=MlirAie0.pdi --output-dir=%t --tmpdir=%t.prj %s 2>&1 | FileCheck %s --check-prefix=XCHESSCC
-// RUN: %aiecc -v --no-xchesscc --no-xbridge --aie-generate-pdi --pdi-name=MlirAie1.pdi --output-dir=%t --tmpdir=%t.prj %s 2>&1 | FileCheck %s --check-prefix=PEANO
+// RUN: %aiecc -v --xchesscc --xbridge --get-pdi --pdi-name=MlirAie0.pdi --output-dir=%t --tmpdir=%t.prj %s 2>&1 | FileCheck %s --check-prefix=XCHESSCC
+// RUN: %aiecc -v --no-xchesscc --no-xbridge --get-pdi --pdi-name=MlirAie1.pdi --output-dir=%t --tmpdir=%t.prj %s 2>&1 | FileCheck %s --check-prefix=PEANO
 
 // RUN: ls %t | grep MlirAie | FileCheck %s --check-prefix=CHECK-FILE
 

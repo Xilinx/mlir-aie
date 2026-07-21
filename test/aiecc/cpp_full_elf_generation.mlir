@@ -6,11 +6,11 @@
 //===----------------------------------------------------------------------===//
 
 // Test full ELF generation via aiebu-asm aie2_config target.
-// This tests --generate-full-elf and --full-elf-name options.
+// This tests --get-full-elf and --full-elf-name options.
 
 // REQUIRES: peano
 
-// RUN: aiecc --no-xchesscc --no-xbridge --generate-full-elf --full-elf-name=test_full.elf --verbose %s 2>&1 | FileCheck %s
+// RUN: aiecc --no-xchesscc --no-xbridge --get-full-elf --full-elf-name=test_full.elf --verbose %s 2>&1 | FileCheck %s
 
 // Full ELF via aiebu-asm aie2_config target: config JSON then full ELF,
 // honoring --full-elf-name.

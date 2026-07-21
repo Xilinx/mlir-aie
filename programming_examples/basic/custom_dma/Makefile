@@ -22,7 +22,7 @@ build/aie.mlir: ${srcdir}/${targetname}.py
 
 build/final.xclbin: build/aie.mlir
 	mkdir -p ${@D}
-	cd ${@D} && aiecc --aie-generate-xclbin --aie-generate-npu-insts \
+	cd ${@D} && aiecc --get-xclbin --get-npu-insts \
 		--no-xchesscc --no-xbridge \
 		--xclbin-name=${@F} --npu-insts-name=insts.bin $(<:%=../%)
 
