@@ -665,7 +665,7 @@ class CompilableDesign:
         """
         from aie.iron.kernel import ExternalFunction
 
-        return self._generate_mlir(ExternalFunction)
+        return self._generate_mlir(ExternalFunction, full_elf=self.full_elf)
 
     def validate_tensor_args(self, tensor_args: list) -> None:
         """Validate that *tensor_args* element counts match the compiled kernel.
