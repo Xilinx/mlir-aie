@@ -87,36 +87,32 @@ These instructions will guide you through everything required for building and e
 
 > **NOTE:** If you are using a different Linux distribution, see the [non-Ubuntu build guide](docs/buildHostLinNonUbuntu.md). Please be aware that building for distributions other than Ubuntu is experimental. Support may vary.
 
-## Initial Setup
-
-  > Be sure you have the latest BIOS on your laptop or mini-PC that enables the NPU. See [here](#update-bios).
-
-If starting from `Ubuntu 24.04` you may need to update the Linux kernel to 6.11+ by installing the Hardware Enablement (HWE) stack:
-
-  ```bash
-  sudo apt update
-  sudo apt install --install-recommends linux-generic-hwe-24.04
-  sudo reboot
-  ```
-
 ## Prerequisites
 
-### BIOS Settings:
+### BIOS Settings
 
-Turn off SecureBoot (Allows for unsigned drivers to be installed):
-`BIOS → Security → Secure boot → Disable`
+- Be sure you have the latest BIOS on your laptop or mini-PC that enables the NPU. See [here](#update-bios).
+- Turn off SecureBoot (Allows for unsigned drivers to be installed):
+  `BIOS → Security → Secure boot → Disable`
+
+### Linux Kernel
+
+Ensure your system is running Linux kernel **6.17 or newer** before installing these packages. On Ubuntu 24.04 you can verify this with:
+
+```bash
+uname -r
+```
+If your kernel is older than 6.17, upgrade it using your distribution's kernel update mechanism -- on Ubuntu:
+
+```bash
+sudo apt update
+sudo apt install --install-recommends linux-generic-hwe-24.04
+sudo reboot
+```
 
 ### Install the XDNA™ Driver and XRT
 
 #### Install from upstream packages (Ubuntu 24.04 with Linux 6.17+)
-
-> Ensure your system is running Linux kernel **6.17 or newer** before installing these packages. On Ubuntu 24.04 you can verify this with:
->
-> ```bash
-> uname -r
-> ```
->
-> If your kernel is older than 6.17, upgrade it using your distribution's kernel update mechanism or the kernel upgrade steps described in the [Initial Setup](#initial-setup) section above.
 
 Install the XDNA driver and XRT from the AMD PPA:
 
@@ -155,146 +151,161 @@ xrt-smi examine
 
 ### Install IRON and MLIR-AIE Prerequisites
 
-1. Install the following packages needed for MLIR-AIE:
+Install the following packages needed for MLIR-AIE:
 
-    ```bash
-    # Python versions 3.11, 3.12, 3.13, and 3.14 are currently supported by our wheels
-    sudo apt install \
-    build-essential clang clang-14 lld lld-14 cmake ninja-build python3-venv python3-pip uuid-dev
-    ```
+```bash
+# Python versions 3.11, 3.12, 3.13, and 3.14 are currently supported by our wheels
+sudo apt install \
+build-essential clang clang-14 lld lld-14 cmake ninja-build python3-venv python3-pip uuid-dev
+```
 
-    > **Note:** CMake **3.30 or newer** is required. If your distribution provides an older
-    > version, create and activate the Python virtual environment in the setup step below
-    > first, then install a newer CMake into that virtual environment:
-    >
-    > ```bash
-    > python3 -m pip install --upgrade cmake
-    > ```
+(Optional) Install opencv which is needed for vision programming examples:
 
-1. (Optional) Install opencv which is needed for vision programming examples:
-
-   ```bash
-   sudo apt install libopencv-dev python3-opencv
-   ```
+```bash
+sudo apt install libopencv-dev python3-opencv
+```
 
 ## Install IRON for AMD Ryzen™ AI AIE Application Development
 
-1. Set up and source a Python virtual environment and install the IRON library (`mlir-aie` wheel), and per-core
-   compiler ("peano", `llvm-aie` wheel).
+### From Pre-Built Binaries (Wheels)
 
-   > **Quickest path:**
-   >
-   > ````bash
-   > source utils/env_install.sh  # one time / first time
-   > source utils/env_setup.sh    # every time you open a new shell
-   > ````
-   >
-   > This creates an environment named `ironenv` and installs the `mlir_aie` and Peano wheels. For a from-source
-   > build use `source utils/env_install.sh --dev`. By default, the script will match the `mlir_aie` wheel
-   > associated with the currently checked-out release/commit of the repository. If it can't find a release for
-   > this commit, it will error, since trying to compile a version of the programming examples in this repository
-   > with a compiler wheel whose version does not exactly match very frequently leads to hard-to-debug errors. If
-   > you insist on using the latest available release from `main`, pass `--latest`. To manually install
-   > a different wheel, follow the manual instructions below.
-   >
-   > *Tip:* The `utils/env_install.sh` script also works as an update script.
-   >
-   > Below are the manual installation steps if you prefer to do this yourself.
+Set up and source a Python virtual environment and install the IRON library 
+(`mlir-aie` wheel), and per-core compiler ("peano", `llvm-aie` wheel). The 
+following is the **quickest path:**
 
-   <details markdown="1">
-   <summary>Manual installation steps</summary>
+````bash
+source utils/env_install.sh  # one time / first time
+source utils/env_setup.sh    # every time you open a new shell
+````
 
-   1. Setup a virtual environment:
+This creates an environment named `ironenv` containing the toolchain.
+
+By default, the script will match the `mlir_aie` wheel associated with the 
+currently checked-out release/commit of the repository. If it can't find a 
+release for this commit, it will error, since trying to compile a version of 
+the programming examples in this repository with a compiler wheel whose version
+does not exactly match very frequently leads to hard-to-debug errors. If you 
+insist on using the latest available release from `main`, pass `--latest`. To 
+manually install a different wheel, follow the manual instructions below.
+
+> *Tip:* The `utils/env_install.sh` script also works as an update script.
+
+### From Source
+
+To build the compiler toolchain from source, you'll need additional 
+dependencies. Install the requirements using:
+
+````bash
+source utils/env_install.sh --dev  # one time / first time
+source utils/env_setup.sh    # every time you open a new shell
+````
+
+Then, build the compiler (`_from_wheels.sh` in this case refers to the LLVM
+installation being pulled from a wheel; MLIR-AIE links against LLVM, but will
+be built from source):
+
+```bash
+./utils/build-mlir-aie-from-wheels.sh
+```  
+
+### Manual Installation Steps
+
+Below steps replicate what the install script does.
+
+<details markdown="1">
+<summary>Manual installation steps</summary>
+
+1. Setup a virtual environment:
+   ```bash
+   python3 -m venv ironenv
+   source ironenv/bin/activate
+   python3 -m pip install --upgrade pip
+   ```
+
+1. Install IRON library by installing the `mlir-aie` wheels:
+
+   For installing the `mlir-aie` wheels, there are 3 options. Note that for whichever path you take, it is
+   important to sync the `mlir-aie` wheels version, the GitHub repo commit, and the requirements versions. If
+   you install from something other than the latest wheels, make sure you use the repo commit -- and
+   installation instructions -- from that point in time.
+
+   1. **Latest:** For the latest wheels (not necessarily a release):
       ```bash
-      python3 -m venv ironenv
-      source ironenv/bin/activate
-      python3 -m pip install --upgrade pip
+      # Install IRON library and mlir-aie from the latest wheel
+      python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-4
       ```
 
-   1. Install IRON library by installing the `mlir-aie` wheels:
-
-      For installing the `mlir-aie` wheels, there are 3 options. Note that for whichever path you take, it is
-      important to sync the `mlir-aie` wheels version, the github repo commit, and the requirements versions. If
-      you install from something other than the latest wheels, make sure you use the repo commit -- and
-      installation instructions -- from that point in time.
-
-      1. **Latest:** For the latest wheels (not necessarily a release):
-         ```bash
-         # Install IRON library and mlir-aie from the latest wheel
-         python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/latest-wheels-4
-         ```
-
-      1. **Latest Release:** Alternatively, you can install the latest released version of `mlir-aie`.
-         ```bash
-         # Get the latest release version
-         latest_tag_with_v=$(curl -s "https://api.github.com/repos/Xilinx/mlir-aie/releases/latest" | jq -r '.tag_name')
-         latest_tag="${latest_tag_with_v#v}"
-
-         # Install IRON library and mlir-aie from the latest stable release
-         python3 -m pip install mlir_aie==${latest_tag} -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/${latest_tag_with_v}
-         git checkout $latest_tag_with_v
-         ```
-
-      1. **Any Release:** You can install a specific version of `mlir-aie` from the release wheels. To see
-         available versions, check out the [release page](https://github.com/Xilinx/mlir-aie/releases).
-
-         ```bash
-         # Install IRON library and mlir-aie from a specific release,
-         # e.g., <version> in the following command could be replaced with v1.1.3
-         python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/<version>
-         git checkout <version>
-         ```
-
-   1. Install the Peano compiler (the `llvm-aie` wheels) and dependencies:
+   1. **Latest Release:** Alternatively, you can install the latest released version of `mlir-aie`.
       ```bash
-      # Install Peano from the llvm-aie wheel, pinned to the tested nightly in
-      # utils/peano-requirements.txt (the same pin CI uses; bumped by the update-peano
-      # workflow). To grab the latest nightly instead, install `llvm-aie` directly
-      # with `-f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly`.
-      python3 -m pip install -r utils/peano-requirements.txt
+      # Get the latest release version
+      latest_tag_with_v=$(curl -s "https://api.github.com/repos/Xilinx/mlir-aie/releases/latest" | jq -r '.tag_name')
+      latest_tag="${latest_tag_with_v#v}"
+
+      # Install IRON library and mlir-aie from the latest stable release
+      python3 -m pip install mlir_aie==${latest_tag} -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/${latest_tag_with_v}
+      git checkout $latest_tag_with_v
       ```
 
-   1. (Optional) Install Python packages required for development and testing:
-      ```bash
-      # Install Python requirements for development and testing
-      python3 -m pip install -r python/requirements_dev.txt
+   1. **Any Release:** You can install a specific version of `mlir-aie` from the release wheels. To see
+      available versions, check out the [release page](https://github.com/Xilinx/mlir-aie/releases).
 
-      # Install the pre-commit and pre-push hooks defined in .pre-commit-config.yaml
-      # (pre-push runs clang-format/black to catch formatting issues before CI)
-      pre-commit install
+      ```bash
+      # Install IRON library and mlir-aie from a specific release,
+      # e.g., <version> in the following command could be replaced with v1.1.3
+      python3 -m pip install mlir_aie -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/<version>
+      git checkout <version>
       ```
 
-   1. Setup environment
-      ```bash
-      source utils/env_setup.sh
-      ```
+1. Install the Peano compiler (the `llvm-aie` wheels) and dependencies:
+   ```bash
+   # Install Peano from the llvm-aie wheel, pinned to the tested nightly in
+   # utils/peano-requirements.txt (the same pin CI uses; bumped by the update-peano
+   # workflow). To grab the latest nightly instead, install `llvm-aie` directly
+   # with `-f https://github.com/Xilinx/llvm-aie/releases/expanded_assets/nightly`.
+   python3 -m pip install -r utils/peano-requirements.txt
+   ```
 
-   1. (Optional) Install ML Python packages for ml programming examples:
-      ```bash
-      # Install Torch for ML examples
-      python3 -m pip install -r python/requirements_ml.txt
-      ```
+1. (Optional) Install Python packages required for development and testing:
+   ```bash
+   # Install Python requirements for development and testing
+   python3 -m pip install -r python/requirements_dev.txt
 
-   1. (Optional) Install Jupyter Notebook Python packages:
-      ```bash
-      # Install Jupyter Notebook
-      python3 -m pip install -r python/requirements_notebook.txt
+   # Install the pre-commit and pre-push hooks defined in .pre-commit-config.yaml
+   # (pre-push runs clang-format/black to catch formatting issues before CI)
+   pre-commit install
+   ```
 
-      # This creates an ipykernel (for use in notebooks) using the ironenv venv
-      python3 -m ipykernel install --user --name ironenv
+1. Setup environment
+   ```bash
+   source utils/env_setup.sh
+   ```
 
-      # Only for Release v1.0 and non wheel-based installs:
-      # The install generally captures in the $PYTHONPATH by the `env_setup.sh` script.
-      # However, jupyter notebooks don't always get access to the PYTHONPATH (e.g., if they are run with
-      # vscode) so we save the ${MLIR_AIE_INSTALL_DIR}/python in a .pth file in the site packages dir of the
-      # ironenv venv; this allows the iron ipykernel to find the install dir regardless of if PYTHONPATH is
-      # available or not.
-      MLIR_AIE_INSTALL="$(pip show mlir_aie | grep ^Location: | awk '{print $2}')/mlir_aie"
-      venv_site_packages="$(python3 -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
-      echo "${MLIR_AIE_INSTALL}/python" > "$venv_site_packages/mlir-aie.pth"
-      ```
+1. (Optional) Install ML Python packages for ml programming examples:
+   ```bash
+   # Install Torch for ML examples
+   python3 -m pip install -r python/requirements_ml.txt
+   ```
 
-   </details>
+1. (Optional) Install Jupyter Notebook Python packages:
+   ```bash
+   # Install Jupyter Notebook
+   python3 -m pip install -r python/requirements_notebook.txt
+
+   # This creates an ipykernel (for use in notebooks) using the ironenv venv
+   python3 -m ipykernel install --user --name ironenv
+
+   # Only for Release v1.0 and non wheel-based installs:
+   # The install generally captures in the $PYTHONPATH by the `env_setup.sh` script.
+   # However, jupyter notebooks don't always get access to the PYTHONPATH (e.g., if they are run with
+   # vscode) so we save the ${MLIR_AIE_INSTALL_DIR}/python in a .pth file in the site packages dir of the
+   # ironenv venv; this allows the iron ipykernel to find the install dir regardless of if PYTHONPATH is
+   # available or not.
+   MLIR_AIE_INSTALL="$(pip show mlir_aie | grep ^Location: | awk '{print $2}')/mlir_aie"
+   venv_site_packages="$(python3 -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
+   echo "${MLIR_AIE_INSTALL}/python" > "$venv_site_packages/mlir-aie.pth"
+   ```
+
+</details>
 
 ## Build an IRON Design for AIEs in the AMD Ryzen™ AI NPU on Linux
 
@@ -386,16 +397,16 @@ If the [upstream packages](#install-from-upstream-packages-ubuntu-2404-with-linu
    xrt-smi examine
    ```
 
-## Troubleshooting:
+## Troubleshooting
 
-### Update BIOS:
+### Update BIOS
 
 Be sure you have the latest BIOS for your laptop or mini PC, this will ensure the NPU (sometimes referred to as IPU) is enabled in the system. You may need to manually enable the NPU:
 `Advanced → CPU Configuration → IPU`
 
 > **NOTE:** Some manufacturers only provide Windows executables to update the BIOS, please do this before installing Ubuntu.
 
-# Detailed Getting Started Guides and Documentation:
+# Detailed Getting Started Guides and Documentation
 
 [IRON AIE Application Programming Guide](programming_guide)
 
@@ -405,7 +416,7 @@ Be sure you have the latest BIOS for your laptop or mini PC, this will ensure th
 
 [MLIR Dialect and Compiler Documentation](https://xilinx.github.io/mlir-aie/)
 
-Interested in contributing MLIR-AIE? [Information for developers](docs/CONTRIBUTING.md)
+Interested in contributing MLIR-AIE? [Information for developers](CONTRIBUTING.md)
 
 -----
 
