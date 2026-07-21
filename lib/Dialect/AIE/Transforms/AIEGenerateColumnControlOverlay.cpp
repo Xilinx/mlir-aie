@@ -210,10 +210,9 @@ struct AIEGenerateColumnControlOverlayPass
   // Clone every tile in `unionTiles` not already present in `device`, copying
   // the prototype's attributes so downstream passes that compare attribute
   // dictionaries (e.g. AIEMaterializeRuntimeSequences) match.
-  static void
-  cloneMissingTiles(DeviceOp device,
-                    const llvm::SmallSetVector<AIE::TileID, 8> &unionTiles,
-                    const llvm::DenseMap<AIE::TileID, AIE::TileOp> &prototypeTile) {
+  static void cloneMissingTiles(
+      DeviceOp device, const llvm::SmallSetVector<AIE::TileID, 8> &unionTiles,
+      const llvm::DenseMap<AIE::TileID, AIE::TileOp> &prototypeTile) {
     llvm::SmallSet<AIE::TileID, 8> existing;
     for (auto tOp : device.getOps<AIE::TileOp>())
       existing.insert({tOp.colIndex(), tOp.rowIndex()});
