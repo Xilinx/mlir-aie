@@ -1441,6 +1441,40 @@ def AIEX_DmaChannelResetOp: AIEX_Op<"dma_channel_reset", [HasParent<"AIE::Runtim
   let hasVerifier = 1;
 }
 
+def AIEX_CoreResetOp: AIEX_Op<"core_reset", [HasParent<"AIE::RuntimeSequenceOp">, SkipAccessibilityCheckTrait]> {
+  let summary = "Reset a compute core from a runtime sequence";
+  let description = [{
+    Pulses the reset bit of the CORE_CONTROL register on the tile at (`column`,
+    `row`). The pulse is two `npu.maskwrite32` writes masked to the reset bit
+    (assert, then deassert), so it preserves the ENABLE field packed in the same
+    CORE_CONTROL word instead of clobbering it. This mirrors aie-rt's
+    XAie_CoreReset followed by XAie_CoreUnreset. The operation is non blocking and
+    offers no synchronization guarantees.
+
+    Resetting clears the core's processor state (program counter and registers);
+    it does not touch the tile's data memory, locks, or DMA. The intended use is
+    re-arming a resident kernel across dispatches without a full PDI reload:
+    discard stale core state while keeping resident data in place. This assumes
+    the resident core is still enabled; re-arming a core that has cleared its
+    ENABLE bit also needs a re-enable, which this op does not emit.
+
+    Only core tiles have a CORE_CONTROL register; mem and shim tiles are rejected
+    by the verifier because they have no core to reset. This matches aie-rt's
+    XAie_CoreReset, which errors on non core tiles.
+
+    Example:
+    ```
+      aiex.core_reset(2, 3)
+    ```
+  }];
+  let arguments = (
+    ins I32Attr:$column,
+        I32Attr:$row
+  );
+  let assemblyFormat = [{ `(` $column `,` $row `)` attr-dict }];
+  let hasVerifier = 1;
+}
+
 //===----------------------------------------------------------------------===//
 // ScratchpadParameter ops
 //===----------------------------------------------------------------------===//
