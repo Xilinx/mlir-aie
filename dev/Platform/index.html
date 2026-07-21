@@ -3271,19 +3271,19 @@
 part of the actively-tested Ryzen™ AI (NPU) path.</p>
 </div>
 <p>In order to facilitate additional exploration of the MLIR AIE tools in hardware, a basic platform can be built to run the generated programs on an AI Engine-enabled device + board (vck190). Such a platform also provides the necessary <code>sysroot</code> required to cross-compile MLIR AIE code for simulation, such as for the tutorials.</p>
-<p>Building a platform to explore MLIR AIE generated designs consists of building the Vitis hardware design and the Petalinux kernel and linux filesystem to run it. The Petalinux filesystem can be targeted by the MLIR AIE python build scripts (aiecc.py) when cross-compiling the host code to be run on the board. Even without a physical board, we can still build the platform and associated sysroot to support cross-compilation. Once a physical board is present, we can complete the steps to run the AIE designs on a live board.</p>
+<p>Building a platform to explore MLIR AIE generated designs consists of building the Vitis hardware design and the Petalinux kernel and linux filesystem to run it. The Petalinux filesystem can be targeted by the MLIR AIE build driver (<code>aiecc</code>) when cross-compiling the host code to be run on the board. Even without a physical board, we can still build the platform and associated sysroot to support cross-compilation. Once a physical board is present, we can complete the steps to run the AIE designs on a live board.</p>
 <h2 id="prerequisites-for-building-the-platform-and-sysroot">Prerequisites for building the platform and sysroot<a class="headerlink" href="#prerequisites-for-building-the-platform-and-sysroot" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>Xilinx Vitis 2021.2
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>Petalinux 2021.2
 </code></pre></div>
-<p>See the notes in <a href="../Building/">Getting Started</a> for the additional packages that will be needed to successfully install Vitis on a bare-bones Ubuntu machine. Additionally to those packages, building the sysroot on Ubuntu will also require: </p>
+<p>See the notes in <a href="../Building/">Getting Started</a> for the additional packages that will be needed to successfully install Vitis on a bare-bones Ubuntu machine. Additionally to those packages, building the sysroot on Ubuntu will also require:</p>
 <ul>
-<li><code>libpthread-stubs0-dev</code> </li>
+<li><code>libpthread-stubs0-dev</code></li>
 <li><code>graphviz</code> (provides <code>dot</code>)</li>
 </ul>
 <p>The 'platform' sub-directory contains the necessary Makefile and build scripts to simplify the build process. The same system requirements to run Vitis and Petalinux will be required for the platform build flow so please refer to those software tool requirements.</p>
 <h2 id="vck190-bare-platform">vck190 'bare' platform<a class="headerlink" href="#vck190-bare-platform" title="Permanent link">&para;</a></h2>
-<p>The vck190 'bare' platform is a nearly empty design that enables the necessary NoC connections for any AIE-compiled design. In addition to configuring the CIPS, AI Engines and NoC, it contains minimal PL components sush as clock, reset and a BRAM (64kB) scratchpad attached to the NoC. </p>
+<p>The vck190 'bare' platform is a nearly empty design that enables the necessary NoC connections for any AIE-compiled design. In addition to configuring the CIPS, AI Engines and NoC, it contains minimal PL components such as clock, reset and a BRAM (64kB) scratchpad attached to the NoC.</p>
 <h2 id="platform-and-sysroot-build-steps">Platform and sysroot build steps<a class="headerlink" href="#platform-and-sysroot-build-steps" title="Permanent link">&para;</a></h2>
 <p>To start the build, first set up your Vitis and PetaLinux environments:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nb">source</span><span class="w"> </span>&lt;Vitis<span class="w"> </span><span class="m">2021</span>.2<span class="w"> </span>Install<span class="w"> </span>Path&gt;/settings64.sh
@@ -3293,7 +3293,7 @@ part of the actively-tested Ryzen™ AI (NPU) path.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nb">cd</span><span class="w"> </span>platforms/vck190_bare_prod
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>make<span class="w"> </span>all
 </code></pre></div></p>
-<p>The Makefile will first call a tcl script to build the Vivado design and generate an .xsa file. Then, a Makefile in the petalinux subdirectory generates the petalinux linux kernel, a ramdisk rootfs, and boot files. Lastly, petalinux is called to generate a sysroot which can be used during MLIR AIE cross-compilation. </p>
+<p>The Makefile will first call a tcl script to build the Vivado design and generate an .xsa file. Then, a Makefile in the petalinux subdirectory generates the petalinux linux kernel, a ramdisk rootfs, and boot files. Lastly, petalinux is called to generate a sysroot which can be used during MLIR AIE cross-compilation.</p>
 <h2 id="prerequisites-for-running-designs-on-a-physical-board">Prerequisites for running designs on a physical board<a class="headerlink" href="#prerequisites-for-running-designs-on-a-physical-board" title="Permanent link">&para;</a></h2>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>SD card (16 GB+)
 <a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>vck190 board + usb-c to usb cable + ethernet cable
@@ -3303,7 +3303,7 @@ part of the actively-tested Ryzen™ AI (NPU) path.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>cp<span class="w"> </span>-r<span class="w"> </span>platforms/vck190_bare_prod/petalinux/images/linux/*<span class="w"> </span>&lt;SD<span class="w"> </span>card<span class="w"> </span>directory&gt;
 </code></pre></div>
 Put the sd card into the micro sd slot to boot up the Versal device (top of the board), connect the board usb-c connector to your host machine and turn on the board. You should run a program like TeraTerm and configure it as a serial port (115200 baud, 8b data, no parity, 1b stop, no flow control). The serial port for Versal is usually the first port but may vary in your setup.</p>
-<p>You should then be able to copy binaries compiled by the MLIR AIE tools to test on the board. This is done by first copying the files onto the sd card directly while the card is inserted/ mounted in your host machine. Then reinsert the sd card back into the board. The board boots up as root and the rootfs is running in a ramdisk so no files are saved except those in the primary sd partition. </p>
+<p>You should then be able to copy binaries compiled by the MLIR AIE tools to test on the board. This is done by first copying the files onto the sd card directly while the card is inserted/ mounted in your host machine. Then reinsert the sd card back into the board. The board boots up as root and the rootfs is running in a ramdisk so no files are saved except those in the primary sd partition.</p>
 <h2 id="run-binaries-steps">Run binaries steps<a class="headerlink" href="#run-binaries-steps" title="Permanent link">&para;</a></h2>
 <p>To run binaries on the board, do the following in your serial port terminal after bootup:
 <div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nb">cd</span><span class="w"> </span>/mnt/sd-mmcblk0p1

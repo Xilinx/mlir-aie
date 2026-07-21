@@ -10399,7 +10399,7 @@ has executed all of its tasks.</p>
 <p>Load a PDI (Programmable Device Image) to configure the NPU.
 The PDI is identified by <code>id</code>. <code>address</code> and <code>size</code> are typically written at
 runtime by the driver or host program.</p>
-<p>If a symbol reference is provided, the compiler driver (aiecc.py) will match it to a device symbol name and assign the PDI ID field based on it.</p>
+<p>If a symbol reference is provided, the compiler driver (aiecc) will match it to a device symbol name and assign the PDI ID field based on it.</p>
 <h3 id="watch-out">Watch Out!<a class="headerlink" href="#watch-out" title="Permanent link">&para;</a></h3>
 <p>The firmware optimizes out repeated <code>load_pdi</code> operations if they refer to the same PDI.
 To force a reload / device reset, intersperse a <code>load_pdi</code> to a different PDI between same-device reloads.
@@ -10465,7 +10465,7 @@ If 'buffer' is not present and 'column' and 'row' are not present then
 <div class="highlight"><pre><span></span><code><a id="__codelineno-62-1" name="__codelineno-62-1" href="#__codelineno-62-1"></a>operation ::= `aiex.npu.preempt` attr-dict
 </code></pre></div>
 <p>Yield to higher priority task(s). Indicates to the transaction processor that the instruction stream can be interrupted at this point.
-Levels: 
+Levels:
 0: Noop.
 1: Mem tile.
 2: AIE tile.
@@ -10636,14 +10636,14 @@ By default, <code>dma_memcpy_nd</code> operations only issue tokens for <code>S2
 <li>Always writes 8 contiguous bytes (both registers in the pair).</li>
 </ul>
 <h3 id="rationale">Rationale<a class="headerlink" href="#rationale" title="Permanent link">&para;</a></h3>
-<p>The firmware instruction underpinning this operation was originally intended to patch shim buffer descriptor addresses only. 
+<p>The firmware instruction underpinning this operation was originally intended to patch shim buffer descriptor addresses only.
 Because of this, this always writes 48 bits (size of BD addresses) and the lower bits are zeroed (assuring the value is a multiple of the addressable word size).</p>
 <h3 id="attributes_40">Attributes<a class="headerlink" href="#attributes_40" title="Permanent link">&para;</a></h3>
 <ul>
 <li><code>state_table_idx</code> is a 32-bit-word index offset into the scratchpad memory. The source value will be read from this offset into the scratchpad.</li>
 <li><code>func</code> is the function applied to the state table value in firmware, which can be one of <code>mul</code>, <code>incr</code> or <code>decr</code>.</li>
 <li><code>func_arg</code> is the argument to the function.</li>
-<li><code>address</code>, <code>buffer</code>, <code>column</code> and <code>row</code> together resolve to the destination address that the value will be written to. 
+<li><code>address</code>, <code>buffer</code>, <code>column</code> and <code>row</code> together resolve to the destination address that the value will be written to.
   Address resolution is the same as for <code>npu.write32</code>:</li>
 <li>If <code>buffer</code> is specified, <code>address</code> is a word offset relative to that
     buffer's start address.</li>
@@ -10818,7 +10818,7 @@ If 'buffer' is not present and 'column' and 'row' are not present then
 </code></pre></div>
 <p>Declares a named runtime parameter that uses the scratchpad mechanism.
 Using this declaration and the MLIR-AIE runtime library, the host can write
-these named runtime parameters to DDR, and AIE cores read it using 
+these named runtime parameters to DDR, and AIE cores read it using
 <code>aiex.read_scratchpad_parameter</code>. The scratchpad memory mechanism
 (CREATE_SCRATCHPAD + UPDATE_FROM_SCRATCHPAD firmware opcodes) communicates
 the values.</p>
