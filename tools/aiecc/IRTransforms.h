@@ -863,9 +863,11 @@ inline std::unique_ptr<mlir::PassManager> getInputWithAddressesPipeline(
   // iteration maps to a fixed rotation of buffers/locks.
   if (!dynamicObjFifos)
     dpm.addPass(createAIEObjectFifoUnrollPass());
-  // Promote the objectFifo bookkeeping counters (memref.alloca inside the
-  // cores) to loop-carried SSA values, then fold the resulting constant buffer
-  // selection and lock arithmetic.
+  // The stateful transform already promoted its own objectFifo bookkeeping
+  // counters to SSA. This mem2reg + canonicalize is general cleanup: it promotes
+  // any other promotable allocas (e.g. exposed once the loops are unrolled) and
+  // simplifies the IR so the SCCP-based constant folding below can collapse the
+  // now loop-invariant buffer/lock bookkeeping.
   dpm.addPass(mlir::createMem2Reg());
   dpm.addPass(mlir::createCanonicalizerPass());
   if (!dynamicObjFifos) {
