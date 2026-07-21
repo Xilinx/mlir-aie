@@ -594,8 +594,6 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
           : static_cast<EdgeWithTypedOutput<ModRef> &>(physical);
   // NPU instruction sequence lowering. The default and --load-pdi-to-ctrl-pkt
   // flows share the materialize + expand prefix and diverge at DMA lowering.
-
-  // `--no-materialize` marks the input as already materialized.
   EdgeWithTypedOutput<ModRef> &npuMaterialized =
       noMaterialize.getValue()
           ? npuLoweringInput
