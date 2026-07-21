@@ -1230,9 +1230,11 @@ def AIEX_DmaChannelResetOp: AIEX_Op<"dma_channel_reset", [HasParent<"AIE::Runtim
   let description = [{
     Resets the DMA channel `channel` in direction `direction` on the tile at
     (`column`, `row`) by pulsing the channel control register reset bit. Intended
-    for re-arming a resident objectFIFO across dispatches: it clears the channel
-    queue state so a subsequent dispatch starts from a clean baseline. The
-    operation is non blocking and offers no synchronization guarantees.
+    for re-arming a resident objectFIFO across dispatches: it clears the
+    channel's residual queue state so it does not carry into a subsequent
+    dispatch. This resets the DMA channel state only; it does not by itself
+    establish a clean dispatch baseline in general. The operation is non blocking
+    and offers no synchronization guarantees.
 
     The pulse is emitted as two `npu.maskwrite32` writes masked to the reset bit,
     so it preserves the other control fields (out-of-order, compression,
