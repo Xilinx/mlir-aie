@@ -720,14 +720,14 @@ loweringPipeline(mlir::ModuleOp src, llvm::StringRef devName, int col, int row,
   return mlir::success();
 }
 
-// NPU lowering (runtime-sequence materialization + DMA-to-NPU lowering).
-// Nests inside the DeviceOp where appropriate.
+// DMA→NPU lowering tail for the default flow. Runtime-sequence materialization
+// is a separate, explicit step (getMaterializeRuntimeSeqPipeline), so both the
+// default and ctrl-packet flows can expand `load_pdi` ops at the same point
+// (after materialization, before DMA lowering). Nests inside the DeviceOp.
 inline std::unique_ptr<mlir::PassManager>
-getNpuLoweringPipeline(mlir::MLIRContext *ctx, bool materialize = true) {
+getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   namespace X = xilinx::AIEX;
   auto pm = std::make_unique<mlir::PassManager>(ctx);
-  if (materialize)
-    pm->addPass(X::createAIEMaterializeRuntimeSequencesPass());
   auto &dpm = pm->nest<xilinx::AIE::DeviceOp>();
   dpm.addPass(X::createAIEMaterializeBDChainsPass());
   dpm.addPass(X::createAIESubstituteShimDMAAllocationsPass());
@@ -763,9 +763,10 @@ getExpandLoadPdiPipeline(mlir::MLIRContext *ctx, bool ctrlPkt = false) {
   return pm;
 }
 
-// Runtime-sequence materialization only (module-level). This is "part A" of
-// getNpuLoweringPipeline, split out so the ctrl-packet flow can interpose
-// expand-load-pdi and ctrl-packet extraction before DMA lowering.
+// Runtime-sequence materialization only (module-level). Kept as its own
+// pipeline so it can be an explicit graph edge shared by both the default and
+// ctrl-packet flows: they materialize, expand `load_pdi` ops, and only then
+// diverge in DMA lowering.
 inline std::unique_ptr<mlir::PassManager>
 getMaterializeRuntimeSeqPipeline(mlir::MLIRContext *ctx) {
   namespace X = xilinx::AIEX;

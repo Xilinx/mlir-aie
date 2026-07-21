@@ -592,53 +592,57 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
       npuTransactionsNeedCoresLowered
           ? static_cast<EdgeWithTypedOutput<ModRef> &>(physicalWithElfs)
           : static_cast<EdgeWithTypedOutput<ModRef> &>(physical);
-  // NPU instruction sequence lowering. Two mutually-exclusive flows converge
-  // on `npuLowered`: the default flow (NPU lowering, then optionally
-  // expand-load-pdi) and the --load-pdi-to-ctrl-pkt reconfigure flow
-  // (materialize runtime sequences, expand `load_pdi @device` into
-  // control-packet ops, lower those to DMA, then per-device DMA→NPU lowering).
+  // NPU instruction sequence lowering. Both flows share the same prefix --
+  // materialize runtime sequences, then (optionally) expand `load_pdi @device`
+  // ops -- and diverge only in DMA→NPU lowering. The default flow and the
+  // --load-pdi-to-ctrl-pkt reconfigure flow are mutually exclusive.
 
-  // Default flow. `npuDefaultLowered` fans out: it is both the no-expansion
-  // result and the input to expand-load-pdi.
-  auto &npuDefaultLowered = npuLoweringInput.map<ModRef>(
-      "npu_default_lowered.mlir",
-      PassPipeline{
-          getNpuLoweringPipeline(&context, !noMaterialize.getValue())});
-  EdgeWithTypedOutput<ModRef> &npuDefault =
-      expandLoadPdis.getValue()
-          ? npuDefaultLowered.map<ModRef>(
-                "npu_default_expanded.mlir",
-                PassPipeline{&context,
-                             [](mlir::MLIRContext *ctx, mlir::ModuleOp) {
-                               return getExpandLoadPdiPipeline(ctx);
-                             }})
-          : npuDefaultLowered;
+  // Runtime-sequence materialization. Explicit edge so the intermediate IR is a
+  // first-class, inspectable artifact. `--no-materialize` skips it (the input
+  // is already materialized).
+  EdgeWithTypedOutput<ModRef> &npuMaterialized =
+      noMaterialize.getValue()
+          ? npuLoweringInput
+          : static_cast<EdgeWithTypedOutput<ModRef> &>(
+                npuLoweringInput.map<ModRef>(
+                    "npu_materialized.mlir",
+                    PassPipeline{getMaterializeRuntimeSeqPipeline(&context)}));
 
-  // Ctrl-pkt reconfigure flow. `ctrlPktExpanded` still carries the
+  // Expand `load_pdi @device` into write32/blockwrite (default) or
+  // control-packet ops (--load-pdi-to-ctrl-pkt) -- at the same point in both
+  // flows. For --load-pdi-to-ctrl-pkt this edge still carries the
   // control-packet ops (before DMA lowering), so it is the extraction point for
   // the control-packet binary.
-  auto &ctrlPktExpanded =
-      npuLoweringInput
-          .map<ModRef>("ctrlpkt_materialized.mlir",
-                       PassPipeline{getMaterializeRuntimeSeqPipeline(&context)})
-          .map<ModRef>(
-              "ctrlpkt_expanded.mlir",
-              PassPipeline{&context,
-                           [](mlir::MLIRContext *ctx, mlir::ModuleOp) {
-                             return getExpandLoadPdiPipeline(ctx,
-                                                             /*ctrlPkt=*/true);
-                           }});
-  auto &ctrlPktNpuLowered =
-      ctrlPktExpanded
-          .map<ModRef>("ctrlpkt_to_dma.mlir",
-                       PassPipeline{getCtrlPktToDmaPipeline(&context)})
-          .map<ModRef>("ctrlpkt_npu_lowered.mlir",
-                       PassPipeline{getPerDeviceDmaLoweringPipeline(&context)});
+  bool ctrlPkt = loadPdiToCtrlPkt.getValue();
+  EdgeWithTypedOutput<ModRef> &npuExpanded =
+      (expandLoadPdis.getValue() || ctrlPkt)
+          ? static_cast<EdgeWithTypedOutput<ModRef> &>(
+                npuMaterialized.map<ModRef>(
+                    "npu_expanded.mlir",
+                    PassPipeline{
+                        &context,
+                        [ctrlPkt](mlir::MLIRContext *ctx, mlir::ModuleOp) {
+                          return getExpandLoadPdiPipeline(ctx, ctrlPkt);
+                        }}))
+          : npuMaterialized;
 
-  // Both flows converge; stamp PDI ids on the selected module.
-  EdgeWithTypedOutput<ModRef> &loweredForIds =
-      loadPdiToCtrlPkt.getValue() ? ctrlPktNpuLowered : npuDefault;
-  auto &npuLowered = loweredForIds.map<ModRef>(
+  // DMA→NPU lowering. The default flow uses the full tail (loop unroll +
+  // dynamic BD pool); the ctrl-pkt flow first lowers the control-packet ops to
+  // DMA, then runs the per-device tail.
+  EdgeWithTypedOutput<ModRef> &npuDmaLowered =
+      ctrlPkt
+          ? npuExpanded
+                .map<ModRef>("ctrlpkt_to_dma.mlir",
+                             PassPipeline{getCtrlPktToDmaPipeline(&context)})
+                .map<ModRef>(
+                    "ctrlpkt_npu_lowered.mlir",
+                    PassPipeline{getPerDeviceDmaLoweringPipeline(&context)})
+          : npuExpanded.map<ModRef>(
+                "npu_dma_lowered.mlir",
+                PassPipeline{getNpuDmaLoweringPipeline(&context)});
+
+  // Stamp PDI ids on the lowered module.
+  auto &npuLowered = npuDmaLowered.map<ModRef>(
       "npu_lowered.mlir",
       [](const Item<ModRef> &item, Item<ModRef> &out) -> mlir::LogicalResult {
         ModRef clone = item.get().get().clone();
@@ -1067,10 +1071,10 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
       [](const NpuProgram &p) { return p.insts; });
 
   // Full ELF: all PDIs + NPU insts + control packet data if applicable
-  // If the control packet lowering is not enabled, the empty 
+  // If the control packet lowering is not enabled, the empty
   // `noCtrlPktDevices` edge is fed into the full ELF assembly bundle.
   auto &ctrlPktExpandedPerDevice = splitPerDevice(
-      ctrlPktExpanded, "ctrlpkt_expanded_{0}.mlir", "ctrlPktExpandedMatching");
+      npuExpanded, "ctrlpkt_expanded_{0}.mlir", "ctrlPktExpandedMatching");
   auto &noCtrlPktDevices = g.empty<OpInModule<DeviceOp>>("noCtrlPktDevices");
 
   // `ctrlPktDevices` contains all devices that have control packet data
@@ -1430,8 +1434,8 @@ int main(int argc, char **argv) {
   // Disambiguate the full-ELF control packet flow and the standalone
   // artifact flows.
   if (generateFullElf && generateCtrlpkt && !loadPdiToCtrlPkt) {
-llvm::errs() << "aiecc: --generate-full-elf and --aie-generate-ctrlpkt "
-"together also requires --load-pdi-to-ctrl-pkt\n";
+    llvm::errs() << "aiecc: --generate-full-elf and --aie-generate-ctrlpkt "
+                    "together also requires --load-pdi-to-ctrl-pkt\n";
     return 1;
   }
 
