@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: peano, aietools_aie
-// RUN: not aiecc.py --alloc-scheme=basic-sequential --no-xchesscc --no-xbridge %s 2>&1 | FileCheck %s --check-prefix=PEANO
+// RUN: not %aiecc --alloc-scheme=basic-sequential --no-xchesscc --no-xbridge %s 2>&1 | FileCheck %s --check-prefix=PEANO
 // PEANO: ld.lld: error: section '.bss' will not fit in region 'data': overflowed by 4 bytes
 
 // If we use all of the local memory, then linking the AIE executable should
@@ -23,7 +23,7 @@ module @example0 {
       return %1 : i8
     }
     %tile_3_3 = aie.tile(3, 3)
-    %buffer_3_3 = aie.buffer(%tile_3_3) : memref<64510xi8> 
+    %buffer_3_3 = aie.buffer(%tile_3_3) : memref<64510xi8>
     %core_3_3 = aie.core(%tile_3_3) {
       %c3 = arith.constant 3 : index
       %c7_i8 = arith.constant 7 : i8

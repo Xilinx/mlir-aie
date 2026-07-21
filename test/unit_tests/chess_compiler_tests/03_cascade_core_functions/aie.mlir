@@ -8,7 +8,7 @@
 
 // REQUIRES: aiesimulator, valid_xchess_license
 // RUN: xchesscc_wrapper aie -c %S/kernel.cc
-// RUN: %PYTHON aiecc.py --aiesim --xchesscc --xbridge %s %test_lib_flags -o test.elf -- %S/test.cpp
+// RUN: %aiecc --aiesim --xchesscc --xbridge %s %test_lib_flags -o test.elf -- %S/test.cpp
 // RUN: %run_on_board ./test.elf
 // RUN: aie.mlir.prj/aiesim.sh | FileCheck %s
 

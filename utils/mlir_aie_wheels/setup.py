@@ -531,7 +531,6 @@ setup(
             "aie-reset = aie.tools:aie_reset",
             "aie-translate = aie.tools:aie_translate",
             "aiecc = aie.tools:aiecc",
-            "aiecc.py = aie.compiler.aiecc.main:main",
             "bootgen = aie.tools:bootgen",
             "txn2mlir.py = aie.compiler.txn2mlir.main:main",
             "xchesscc_wrapper = aie.tools:xchesscc_wrapper",

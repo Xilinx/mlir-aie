@@ -562,10 +562,9 @@ class LitConfigHelper:
     def setup_aiecc_substitution(config_obj) -> None:
         """Add an explicit substitution for the C++ aiecc driver.
 
-        The Python ``aiecc.py`` entry point is now a compatibility wrapper
-        around the C++ driver. Tests that exercise the compiler should invoke
-        the build-tree executable directly so they do not depend on PATH order
-        or a stale installed console script.
+        Tests that exercise the compiler should invoke the build-tree
+        executable directly so they do not depend on PATH order or a stale
+        installed console script.
         """
         aiecc = os.path.join(
             config_obj.aie_tools_dir, f"aiecc{config_obj.llvm_exe_ext}"
