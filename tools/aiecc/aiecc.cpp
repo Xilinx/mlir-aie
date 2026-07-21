@@ -585,9 +585,8 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   //   * --load-pdi-to-ctrl-pkt expands the configuration into control packets
   //     (via the same expand-load-pdi machinery), which likewise needs the
   //     compiled cores.
-  bool npuTransactionsNeedCoresLowered = expandLoadPdis.getValue() ||
-                                         generateTxn ||
-                                         loadPdiToCtrlPkt.getValue();
+  bool npuTransactionsNeedCoresLowered =
+      expandLoadPdis.getValue() || generateTxn || loadPdiToCtrlPkt.getValue();
   EdgeWithTypedOutput<ModRef> &npuLoweringInput =
       npuTransactionsNeedCoresLowered
           ? static_cast<EdgeWithTypedOutput<ModRef> &>(physicalWithElfs)
