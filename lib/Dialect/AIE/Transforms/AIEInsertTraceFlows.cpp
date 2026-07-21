@@ -61,6 +61,17 @@ struct ShimInfo {
   std::vector<int> traceChannelAssignment; // Per-trace index into channels
 };
 
+// A dynamic (runtime-sized) runtime sequence carries its transfer sizes as
+// scalar block arguments (the dynamic ABI); its memref args are typed at
+// maximum capacity, not the runtime data size. Any non-memref block argument
+// marks it.
+static bool isDynamicRuntimeSequence(RuntimeSequenceOp seq) {
+  for (BlockArgument arg : seq.getBody().getArguments())
+    if (!isa<MemRefType>(arg.getType()))
+      return true;
+  return false;
+}
+
 struct AIEInsertTraceFlowsPass
     : xilinx::AIE::impl::AIEInsertTraceFlowsBase<AIEInsertTraceFlowsPass> {
 
@@ -140,6 +151,16 @@ struct AIEInsertTraceFlowsPass
         runtimeSeq.emitError() << "trace.host_config reuse_output_buffer "
                                   "requires the runtime_sequence to have at "
                                   "least one argument to reuse";
+        return signalPassFailure();
+      }
+      if (isDynamicRuntimeSequence(runtimeSeq)) {
+        runtimeSeq.emitError()
+            << "trace.host_config reuse_output_buffer=true cannot be used with "
+               "a dynamic (runtime-sized) runtime_sequence: the trace offset "
+               "would be computed from the last tensor's maximum static size, "
+               "not its runtime transfer size, so trace data would be written "
+               "past the output buffer. Use a separate trace buffer instead "
+               "(reuse_output_buffer=false)";
         return signalPassFailure();
       }
       Value lastArg = args.back();

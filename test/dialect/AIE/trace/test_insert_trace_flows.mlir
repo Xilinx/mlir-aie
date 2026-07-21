@@ -307,3 +307,28 @@ module @trace_after_last_tensor {
     }
   }
 }
+
+// -----
+
+// Test: a dynamic (runtime-sized) runtime_sequence with the DEFAULT separate
+// trace buffer works -- a fresh i8 trace arg is appended at the tail (arg_idx 2,
+// after the 2 data args) with offset 0, independent of the runtime %n size.
+// CHECK-LABEL: module @separate_trace_buffer_dynamic
+module @separate_trace_buffer_dynamic {
+  aie.device(npu2) {
+    %tile02 = aie.tile(0, 2)
+    %tile00 = aie.tile(0, 0)
+    aie.trace @core_trace(%tile02) {
+      aie.trace.packet id=1 type=core
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+    aie.runtime_sequence(%arg0: memref<4096xi32>, %n: i64) {
+      // CHECK: %[[OFF:.*]] = arith.constant 0 : i32
+      // CHECK: aiex.npu.address_patch(%[[OFF]] : i32) {{{.*}}arg_idx = 2{{.*}}}
+      aie.trace.host_config {buffer_size = 8192 : i32}
+      aie.trace.start_config @core_trace
+    }
+  }
+}
