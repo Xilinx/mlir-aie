@@ -586,7 +586,7 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   //     (via the same expand-load-pdi machinery), which likewise needs the
   //     compiled cores.
   bool npuTransactionsNeedCoresLowered = expandLoadPdis.getValue() ||
-                                         generateTxn.getValue() ||
+                                         generateTxn ||
                                          loadPdiToCtrlPkt.getValue();
   EdgeWithTypedOutput<ModRef> &npuLoweringInput =
       npuTransactionsNeedCoresLowered
