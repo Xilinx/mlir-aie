@@ -42,8 +42,8 @@
 // RUN: %PYTHON %{ex} --dev npu2 -M 512 -K 512 -N 512 -m 64 -k 64 -n 32 \
 // RUN:   --dtype_in i16 --dtype_out i16 --n-aie-cols 1 -o %t.1.mlir
 // RUN: sed -E 's/matmul_i16_i16_[0-9a-f]+\.o/mm.o/g; s/@"[0-9a-f]+_matmul_i16_i16"/@matmul_i16_i16/g; s/@[0-9a-f]+_matmul_i16_i16/@matmul_i16_i16/g' %t.1.mlir > %t.1.norm.mlir
-// RUN: %aiecc --no-xchesscc --no-xbridge --no-aiesim --aie-generate-xclbin \
-// RUN:   --aie-generate-input-with-addresses --output-dir=%t.1.prj \
+// RUN: %aiecc --no-xchesscc --no-xbridge --no-aiesim --get-xclbin \
+// RUN:   --get-input-with-addresses --output-dir=%t.1.prj \
 // RUN:   --no-compile-host --xclbin-name=%t.1.xclbin --tmpdir=%t.1.prj %t.1.norm.mlir
 // RUN: aie-opt --aie-materialize-bd-chains --aie-substitute-shim-dma-allocations \
 // RUN:   --aie-unroll-runtime-sequence-loops --canonicalize \
@@ -65,8 +65,8 @@
 // RUN: %PYTHON %{ex} --dev npu2 -M 512 -K 512 -N 512 -m 64 -k 64 -n 32 \
 // RUN:   --dtype_in i16 --dtype_out i16 --n-aie-cols 2 -o %t.2.mlir
 // RUN: sed -E 's/matmul_i16_i16_[0-9a-f]+\.o/mm.o/g; s/@"[0-9a-f]+_matmul_i16_i16"/@matmul_i16_i16/g; s/@[0-9a-f]+_matmul_i16_i16/@matmul_i16_i16/g' %t.2.mlir > %t.2.norm.mlir
-// RUN: %aiecc --no-xchesscc --no-xbridge --no-aiesim --aie-generate-xclbin \
-// RUN:   --aie-generate-input-with-addresses --output-dir=%t.2.prj \
+// RUN: %aiecc --no-xchesscc --no-xbridge --no-aiesim --get-xclbin \
+// RUN:   --get-input-with-addresses --output-dir=%t.2.prj \
 // RUN:   --no-compile-host --xclbin-name=%t.2.xclbin --tmpdir=%t.2.prj %t.2.norm.mlir
 // RUN: aie-opt --aie-materialize-bd-chains --aie-substitute-shim-dma-allocations \
 // RUN:   --aie-unroll-runtime-sequence-loops --canonicalize \
@@ -88,8 +88,8 @@
 // RUN: %PYTHON %{ex} --dev npu2 -M 512 -K 512 -N 512 -m 64 -k 64 -n 32 \
 // RUN:   --dtype_in i16 --dtype_out i16 --n-aie-cols 4 -o %t.4.mlir
 // RUN: sed -E 's/matmul_i16_i16_[0-9a-f]+\.o/mm.o/g; s/@"[0-9a-f]+_matmul_i16_i16"/@matmul_i16_i16/g; s/@[0-9a-f]+_matmul_i16_i16/@matmul_i16_i16/g' %t.4.mlir > %t.4.norm.mlir
-// RUN: %aiecc --no-xchesscc --no-xbridge --no-aiesim --aie-generate-xclbin \
-// RUN:   --aie-generate-input-with-addresses --output-dir=%t.4.prj \
+// RUN: %aiecc --no-xchesscc --no-xbridge --no-aiesim --get-xclbin \
+// RUN:   --get-input-with-addresses --output-dir=%t.4.prj \
 // RUN:   --no-compile-host --xclbin-name=%t.4.xclbin --tmpdir=%t.4.prj %t.4.norm.mlir
 // RUN: aie-opt --aie-materialize-bd-chains --aie-substitute-shim-dma-allocations \
 // RUN:   --aie-unroll-runtime-sequence-loops --canonicalize \
