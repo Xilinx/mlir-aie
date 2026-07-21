@@ -245,6 +245,7 @@ nav:
       - Compilation Stages: programming_guide/compilation_stages.md
       - Implicit MLIR Context: programming_guide/implicit_mlir_context.md
       - Kernel Library: programming_guide/kernels_library.md
+      - Runtime Sequence Reference: programming_guide/runtime_sequence_reference.md
   - API & Internals:
     - Overview: api/index.md
     - Python API:
