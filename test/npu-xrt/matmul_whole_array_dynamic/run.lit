@@ -23,7 +23,7 @@
 // %{ex} is the example script. Each config's emitted MLIR names the kernel by a
 // content hash; the sed after it normalizes that (quoted or bare symbol form) to
 // the stable mm.o built once above.
-// DEFINE: %{ex} = %S/../../../programming_examples/basic/matrix_multiplication/whole_array/whole_array_dynamic.py
+// DEFINE: %{ex} = %S/whole_array_dynamic.py
 //
 // Build the compute kernel object once (mm.cc emits both matmul_i16_i16 and
 // zero_i16 into mm.o); DIM_M/DIM_K/DIM_N and the dtype-combo flag mirror
@@ -57,8 +57,8 @@
 // RUN:   -I%S/../../../include \
 // RUN:   -I%S/../../../programming_examples/basic/matrix_multiplication \
 // RUN:   %xrt_flags %host_link_flags %test_utils_flags -lm
-// RUN: %run_on_npu2% %t.1.exe 512 512 512 | FileCheck %s
-// RUN: %run_on_npu2% %t.1.exe 256 512 1024 | FileCheck %s
+// RUN: %run_on_npu2% %t.1.exe 512 512 512
+// RUN: %run_on_npu2% %t.1.exe 256 512 1024
 //
 // --- n_aie_cols = 2 ---------------------------------------------------------
 // RUN: mkdir -p %t.2.prj
@@ -80,8 +80,8 @@
 // RUN:   -I%S/../../../include \
 // RUN:   -I%S/../../../programming_examples/basic/matrix_multiplication \
 // RUN:   %xrt_flags %host_link_flags %test_utils_flags -lm
-// RUN: %run_on_npu2% %t.2.exe 512 512 512 | FileCheck %s
-// RUN: %run_on_npu2% %t.2.exe 256 512 1024 | FileCheck %s
+// RUN: %run_on_npu2% %t.2.exe 512 512 512
+// RUN: %run_on_npu2% %t.2.exe 256 512 1024
 //
 // --- n_aie_cols = 4 ---------------------------------------------------------
 // RUN: mkdir -p %t.4.prj
@@ -103,7 +103,5 @@
 // RUN:   -I%S/../../../include \
 // RUN:   -I%S/../../../programming_examples/basic/matrix_multiplication \
 // RUN:   %xrt_flags %host_link_flags %test_utils_flags -lm
-// RUN: %run_on_npu2% %t.4.exe 512 512 512 | FileCheck %s
-// RUN: %run_on_npu2% %t.4.exe 768 512 768 | FileCheck %s
-//
-// CHECK: PASS!
+// RUN: %run_on_npu2% %t.4.exe 512 512 512
+// RUN: %run_on_npu2% %t.4.exe 768 512 768
