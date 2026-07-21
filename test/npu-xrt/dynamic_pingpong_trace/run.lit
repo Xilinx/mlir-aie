@@ -1,0 +1,38 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai_npu2, peano
+//
+// Dynamic ping-pong passthrough with hardware tracing via a SEPARATE trace
+// buffer -- the correct trace path for a runtime-sized (dynamic) sequence.
+// -aie-insert-trace-flows appends a dedicated i8 trace-buffer argument (default
+// reuse_output_buffer=false), independent of the runtime %n, so the trace lands
+// at its own offset 0 rather than past a max-sized output. One xclbin serves any
+// n; the host reads the trace buffer back and checks it is non-empty while the
+// data output still matches the golden.
+//
+// aiecc builds the xclbin. The instruction builder is generated separately via
+// aie-translate --aie-npu-to-cpp from aiecc's lowered intermediate.
+//
+// RUN: mkdir -p %t.prj
+// RUN: %aiecc %backend_flags --no-aiesim --aie-generate-xclbin \
+// RUN:   --aie-generate-input-with-addresses --output-dir=%t.prj \
+// RUN:   --no-compile-host --xclbin-name=%t.xclbin --tmpdir=%t.prj %S/aie.mlir
+//
+// RUN: aie-opt \
+// RUN:   --aie-materialize-bd-chains --aie-substitute-shim-dma-allocations \
+// RUN:   --aie-unroll-runtime-sequence-loops --canonicalize \
+// RUN:   --aie-lower-dynamic-bd-pool --canonicalize \
+// RUN:   --aie-assign-runtime-sequence-bd-ids --aie-dma-tasks-to-npu \
+// RUN:   --aie-dma-to-npu --aie-lower-set-lock \
+// RUN:   %t.prj/input_with_addresses.mlir -o %t.lowered.mlir
+// RUN: aie-translate --aie-npu-to-cpp %t.lowered.mlir > %t.gen.h
+//
+// RUN: %host_clang %S/test.cpp -o %t.exe -std=c++17 -Wall \
+// RUN:   -DGEN_HDR='"%t.gen.h"' -DXCLBIN='std::string("%t.xclbin")' \
+// RUN:   -I%S/../../../include %xrt_flags %host_link_flags %test_utils_flags
+//
+// The runtime tile count is the host argument; exercise a couple of values.
+// RUN: %run_on_npu2% %t.exe 2 | FileCheck %s
+// RUN: %run_on_npu2% %t.exe 8 | FileCheck %s
+// CHECK: PASS!
