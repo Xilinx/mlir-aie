@@ -176,7 +176,18 @@ struct AIEInsertTraceFlowsPass
           {bufferSizeBytes}, IntegerType::get(device.getContext(), 8));
       Block &entryBB = runtimeSeq.getBody().front();
       entryBB.addArgument(traceBufType, runtimeSeq.getLoc());
-      traceArgIdx = entryBB.getNumArguments() - 1;
+      // The DDR address-patch arg_idx is a host BUFFER-operand index: scalar
+      // (non-memref) args are baked into the instruction stream, not passed as
+      // host buffers, so they don't count. The appended trace buffer is the
+      // last memref, at buffer-operand index (numMemrefArgs - 1). Using the raw
+      // block-arg index would over-count by the number of scalar args (e.g. a
+      // dynamic sequence's runtime sizes), pointing the patch at a nonexistent
+      // operand so trace data is never written.
+      traceArgIdx = llvm::count_if(entryBB.getArguments(),
+                                   [](BlockArgument a) {
+                                     return isa<MemRefType>(a.getType());
+                                   }) -
+                    1;
     }
 
     // Remove host_config op
