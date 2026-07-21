@@ -557,31 +557,27 @@ def test_as_mlir_binds_runtime_device_before_generation(monkeypatch):
         def device(self):
             return NPU2Col1()
 
-    def gen():
-        pass
-
     set_current_device(None)
     monkeypatch.setattr(utils, "_get_default_npu_runtime", lambda: FakeRuntime())
 
+    generated_for = []
+
+    def gen():
+        generated_for.append(
+            type(utils.get_current_device(probe_runtime=False)).__name__
+        )
+
     cd = CallableDesign(gen)
 
-    def fake_generate_uncached(self):
-        assert (
-            type(utils.get_current_device(probe_runtime=False)).__name__ == "NPU2Col1"
-        )
-        return ("module {}", [])
-
-    def fake_generate_mlir(self, _ExternalFunction):
-        return self._generated[0]
-
-    monkeypatch.setattr(CompilableDesign, "_generate_uncached", fake_generate_uncached)
-    monkeypatch.setattr(CompilableDesign, "_generate_mlir", fake_generate_mlir)
-
     try:
-        assert cd.as_mlir() == "module {}"
+        mlir_text = cd.as_mlir()
     finally:
         set_current_device(None)
 
+    # Real generation ran and bound the runtime-detected device beforehand.
+    assert generated_for == ["NPU2Col1"]
+    assert "module" in mlir_text
+
     keys = list(cd.compilable._generated_cache)
     assert len(keys) == 1
-    assert "NPU2Col1" in keys[0][1]
+    assert "NPU2Col1" in keys[0][2]
