@@ -517,6 +517,11 @@ struct AIELowerDynamicBDPoolPass
             return WalkResult::interrupt();
           toErase.push_back(freeOp);
         } else if (auto await = dyn_cast<DMAAwaitTaskOp>(op)) {
+          // A task-less await already carries its physical channel in sync_*
+          // attrs (it was lowered here on a prior run, or written that way);
+          // it owns no pool id to return and needs no configure resolution.
+          if (!await.getTask())
+            return WalkResult::advance();
           // Push only if no free balances this id; the await keeps its sync.
           if (!freedByCarry.contains(await.getTask()) &&
               failed(lowerRelease(await.getTask(), await)))

@@ -719,6 +719,10 @@ LogicalResult AIEX::DMAAwaitTaskOp::verify() {
   if (!getTask() && nSync == 0)
     return emitOpError("must have either a task operand or the sync_* channel "
                        "attributes");
+  if (getTask() && nSync != 0)
+    return emitOpError("must not set the sync_* channel attributes when a task "
+                       "operand is present; the channel is taken from one or "
+                       "the other, not both");
   return success();
 }
 
