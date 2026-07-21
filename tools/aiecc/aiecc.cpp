@@ -1059,60 +1059,80 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
       "npu_insts_full_elf_{0}.bin",
       [](const NpuProgram &p) { return p.insts; });
 
-  // Full ELF: all PDIs + NPU insts + control packet data if applicable
-  // If the control packet lowering is not enabled, the empty
-  // `noCtrlPktDevices` edge is fed into the full ELF assembly bundle.
-  auto &ctrlPktExpandedPerDevice = splitPerDevice(
-      npuExpanded, "ctrlpkt_expanded_{0}.mlir", "ctrlPktExpandedMatching");
-  auto &noCtrlPktDevices = g.empty<OpInModule<DeviceOp>>("noCtrlPktDevices");
+  // Full ELF: all PDIs + NPU insts + control packet data if applicable.
+  //
+  // Control-packet data and its buffer relocation (patch info) are computed
+  // PER RUNTIME SEQUENCE, not per device: a device may hold several runtime
+  // sequences, each with a different argument count and its own control-packet
+  // data, and each must be streamed into the argument slot of the sequence it
+  // belongs to. We therefore split `npuExpanded` into one item per runtime
+  // sequence (keyed "<device>_<sequence>", matching `npuInstsFullElf`) so the
+  // per-sequence artifacts line up with the per-sequence instruction binaries
+  // in the full-ELF config.
+  //
+  // If the control packet lowering is not enabled, the empty `noCtrlPktSeqs`
+  // edge is fed into the full ELF assembly bundle.
+  auto &ctrlPktExpandedPerSeq =
+      npuExpanded.split<OpInModule<RuntimeSequenceOp>>(
+          "ctrlpkt_expanded_seq_{0}.mlir",
+          SplitIRAction<RuntimeSequenceOp>([](RuntimeSequenceOp s) {
+            return npuSeqKey(s->getParentOfType<DeviceOp>().getSymName(),
+                             s.getSymName());
+          }));
+  auto &noCtrlPktSeqs =
+      g.empty<OpInModule<RuntimeSequenceOp>>("noCtrlPktSeqs");
 
-  // `ctrlPktDevices` contains all devices that have control packet data
-  auto &ctrlPktDevices =
+  // `ctrlPktSeqs` contains every runtime sequence that may carry control-packet
+  // data, honoring --device-name / --sequence-name (as `perSeq` does).
+  auto &ctrlPktSeqs =
       (loadPdiToCtrlPkt.getValue()
-           ? static_cast<EdgeWithTypedOutput<OpInModule<DeviceOp>> &>(
-                 ctrlPktExpandedPerDevice)
-           : static_cast<EdgeWithTypedOutput<OpInModule<DeviceOp>> &>(
-                 noCtrlPktDevices))
-          .filter("ctrlPktDevices", [](const OpInModule<DeviceOp> &x) {
-            auto seqs = DeviceOp(x.op).getOps<RuntimeSequenceOp>();
-            return seqs.begin() != seqs.end();
-          });
+           ? static_cast<EdgeWithTypedOutput<OpInModule<RuntimeSequenceOp>> &>(
+                 ctrlPktExpandedPerSeq)
+           : static_cast<EdgeWithTypedOutput<OpInModule<RuntimeSequenceOp>> &>(
+                 noCtrlPktSeqs))
+          .filter("ctrlPktSeqs",
+                  [matchesDeviceFilter, seqFilter = sequenceName.getValue()](
+                      const OpInModule<RuntimeSequenceOp> &x) {
+                    RuntimeSequenceOp seq = x.op;
+                    if (!matchesDeviceFilter(seq->getParentOfType<DeviceOp>()))
+                      return false;
+                    return seqFilter.empty() || seq.getSymName() == seqFilter;
+                  });
 
-  // Per-device control-packet binary, dropping empties so the config only
-  // references devices that actually carry a control packet.
+  // Per-sequence control-packet binary, dropping empties so the config only
+  // references sequences that actually carry a control packet.
   auto &fullElfCtrlpkt =
-      ctrlPktDevices
+      ctrlPktSeqs
           .map<std::vector<char>>(
               "full_elf_{0}.ctrlpkt.bin",
-              emitBinary<OpInModule<DeviceOp>>(
-                  [](const Item<OpInModule<DeviceOp>> &item,
+              emitBinary<OpInModule<RuntimeSequenceOp>>(
+                  [](const Item<OpInModule<RuntimeSequenceOp>> &item,
                      std::vector<uint32_t> &words) -> mlir::LogicalResult {
-                    DeviceOp d = item.get().op;
+                    RuntimeSequenceOp seq = item.get().op;
+                    DeviceOp d = seq->getParentOfType<DeviceOp>();
                     return xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
-                        item.get().module.get(), words, d.getSymName(), "");
+                        item.get().module.get(), words, d.getSymName(),
+                        seq.getSymName());
                   }))
           .filter("fullElfCtrlpktNonEmpty",
                   [](const std::vector<char> &bin) { return !bin.empty(); });
 
   // When control packets are enabled, the control data is passed into the
   // runtime sequence as an argument. `fullElfPatchInfo` captures which argument
-  // index contains that control data and the size of the control-data buffer.
+  // index contains that control data and the size of the control-data buffer,
+  // computed from THIS sequence's pre-lowering argument count (ctrl-packet-to-
+  // DMA appends the control buffer as the sequence's next argument).
   auto &fullElfPatchInfo =
-      bundle(fullElfCtrlpkt.out, ctrlPktDevices.out)
+      bundle(fullElfCtrlpkt.out, ctrlPktSeqs.out)
           .map<llvm::json::Value>(
               "full_elf_{0}.patch_info.json",
               [](const Item<std::vector<char>> &binItem,
-                 const Item<OpInModule<DeviceOp>> &devItem,
+                 const Item<OpInModule<RuntimeSequenceOp>> &seqItem,
                  Item<llvm::json::Value> &out) -> mlir::LogicalResult {
-                DeviceOp d = devItem.get().op;
-                int argIdx = 0;
-                auto seqRange = d.getOps<RuntimeSequenceOp>();
-                if (seqRange.begin() != seqRange.end()) {
-                  RuntimeSequenceOp seq = *seqRange.begin();
-                  argIdx = seq.getBody().empty()
-                               ? 0
-                               : seq.getBody().front().getNumArguments();
-                }
+                RuntimeSequenceOp seq = seqItem.get().op;
+                int argIdx = seq.getBody().empty()
+                                 ? 0
+                                 : seq.getBody().front().getNumArguments();
                 out.value =
                     makePatchInfoJson(argIdx, (int64_t)binItem.get().size());
                 return mlir::success();

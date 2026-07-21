@@ -258,10 +258,12 @@ inline llvm::json::Value makePatchInfoJson(int ctrlPktArgIdx,
 // max(3, max runtime-seq arity). PDI IDs are read from `aiecc.pdi_id` on each
 // DeviceOp (stamped by `assignDevicePdiIds`).
 //
-// `ctrlPktPaths` / `patchInfoPaths` (both device-keyed, optional) carry the
-// per-device control-packet binary and its patch-info JSON for the
-// load-pdi-to-ctrl-pkt reconfigure flow; when present they are attached to the
-// device's runtime-sequence instances.
+// `ctrlPktPaths` / `patchInfoPaths` (both keyed per runtime sequence as
+// "<device>_<sequence>" via `npuSeqKey`, optional) carry that sequence's
+// control-packet binary and its patch-info JSON for the load-pdi-to-ctrl-pkt
+// reconfigure flow; when present they are attached to the matching
+// runtime-sequence instance so each sequence streams its own control data into
+// its own argument slot.
 inline llvm::json::Value
 makeFullElfConfigJson(const Node<OpInModule<xilinx::AIE::DeviceOp>> &devices,
                       const llvm::StringMap<std::string> &pdiPaths,
@@ -298,9 +300,6 @@ makeFullElfConfigJson(const Node<OpInModule<xilinx::AIE::DeviceOp>> &devices,
             {"type", "char *"},
             {"offset", llvm::formatv("0x{0}", llvm::utohexstr(i * 8)).str()}});
 
-    auto ctrlPktIt = ctrlPktPaths.find(devName);
-    auto patchIt = patchInfoPaths.find(devName);
-
     llvm::json::Array instances;
     devOp.walk([&](xilinx::AIE::RuntimeSequenceOp seq) {
       // One `.bin` per runtime sequence, keyed "<device>_<sequence>". Only
@@ -308,14 +307,20 @@ makeFullElfConfigJson(const Node<OpInModule<xilinx::AIE::DeviceOp>> &devices,
       // entry in `instsPaths`; skip the rest (e.g. filtered out via
       // `--sequence-name`) so we don't emit an instance with an empty
       // TXN_ctrl_code_file, which is invalid for `aiebu-asm -t aie2_config`.
-      auto instsIt = instsPaths.find(npuSeqKey(devName, seq.getSymName()));
+      std::string seqKey = npuSeqKey(devName, seq.getSymName());
+      auto instsIt = instsPaths.find(seqKey);
       if (instsIt == instsPaths.end())
         return;
       O inst{{"id", seq.getSymName().str()},
              {"TXN_ctrl_code_file", instsIt->second}};
-      if (ctrlPktIt != ctrlPktPaths.end())
+      // Control-packet data and its buffer relocation are per runtime sequence:
+      // look them up by the same "<device>_<sequence>" key so each sequence
+      // gets its own control data patched into its own argument slot.
+      if (auto ctrlPktIt = ctrlPktPaths.find(seqKey);
+          ctrlPktIt != ctrlPktPaths.end())
         inst["ctrl_packet_file"] = ctrlPktIt->second;
-      if (patchIt != patchInfoPaths.end())
+      if (auto patchIt = patchInfoPaths.find(seqKey);
+          patchIt != patchInfoPaths.end())
         inst["patch_info_file"] = patchIt->second;
       instances.push_back(std::move(inst));
     });
