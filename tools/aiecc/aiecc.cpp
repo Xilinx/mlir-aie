@@ -1079,8 +1079,7 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
             return npuSeqKey(s->getParentOfType<DeviceOp>().getSymName(),
                              s.getSymName());
           }));
-  auto &noCtrlPktSeqs =
-      g.empty<OpInModule<RuntimeSequenceOp>>("noCtrlPktSeqs");
+  auto &noCtrlPktSeqs = g.empty<OpInModule<RuntimeSequenceOp>>("noCtrlPktSeqs");
 
   // `ctrlPktSeqs` contains every runtime sequence that may carry control-packet
   // data, honoring --device-name / --sequence-name (as `perSeq` does).

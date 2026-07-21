@@ -463,11 +463,11 @@ def AIEExpandLoadPdi : Pass<"aie-expand-load-pdi", "mlir::ModuleOp"> {
         "xilinx::AIE::AIEDialect",
     "xilinx::AIEX::AIEXDialect",
   ];
-  let options = [
-    Option<"clCtrlPkt", "ctrl-pkt", "bool", /*default=*/"false",
-           "If true, lower each load_pdi to an @ctrl_pkt_overlay load_pdi "
-           "followed by aiex.npu.control_packet ops instead of write32/"
-           "blockwrite ops with an empty-device reset.">,
+  let options =
+      [Option<"clCtrlPkt", "ctrl-pkt", "bool", /*default=*/"false",
+              "If true, lower each load_pdi to an @ctrl_pkt_overlay load_pdi "
+              "followed by aiex.npu.control_packet ops instead of write32/"
+              "blockwrite ops with an empty-device reset.">,
   ];
 }
 

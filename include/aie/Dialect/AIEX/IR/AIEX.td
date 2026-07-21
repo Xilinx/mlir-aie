@@ -345,10 +345,8 @@ def AIE_ConfigureOp: AIEX_Op<"configure", [
 ]>
  {
   let summary = "Set up a configuration (program memories, stream switches, etc.) on the NPU device.";
-  let arguments = (
-    ins FlatSymbolRefAttr:$symbol,
-        OptionalAttr<AIEX_ExpandMode>:$expand_mode
-  );
+  let arguments = (ins FlatSymbolRefAttr:$symbol,
+      OptionalAttr<AIEX_ExpandMode>:$expand_mode);
 
   let assemblyFormat = [{
      $symbol regions attr-dict
@@ -1062,13 +1060,11 @@ def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
 // NPU Load PDI operation
 def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
   let summary = "load pdi operator";
-  let arguments = (
-    ins OptionalAttr<FlatSymbolRefAttr>:$device_ref,
-        DefaultValuedOptionalAttr<I32Attr, "0">:$id,
-        DefaultValuedOptionalAttr<I32Attr, "0">:$size,
-        DefaultValuedOptionalAttr<UI64Attr, "0">:$address,
-        OptionalAttr<AIEX_ExpandMode>:$expand_mode
-  );
+  let arguments = (ins OptionalAttr<FlatSymbolRefAttr>:$device_ref,
+      DefaultValuedOptionalAttr<I32Attr, "0">:$id,
+      DefaultValuedOptionalAttr<I32Attr, "0">:$size,
+      DefaultValuedOptionalAttr<UI64Attr, "0">:$address,
+      OptionalAttr<AIEX_ExpandMode>:$expand_mode);
   let results = (outs );
   let assemblyFormat = [{ attr-dict }];
   let description = [{
