@@ -427,7 +427,7 @@ def dma_await_task(*args: DMAConfigureTaskForOp):
             "dma_await_task must receive at least one DMAConfigureTaskForOp to wait for"
         )
     for dma_task in args:
-        _orig_dma_await_task(dma_task)
+        _orig_dma_await_task(task=dma_task)
 
 
 _orig_dma_free_task = dma_free_task
