@@ -3426,9 +3426,9 @@
 on an NPU (instruction streams, ELFs, PDIs, xclbins, …).</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>aiecc<span class="w"> </span><span class="o">[</span>options<span class="o">]</span><span class="w"> </span>&lt;input.mlir&gt;
 </code></pre></div>
-<p>To also build a <strong>host program</strong> that drives the array, pass <code>--compile-host</code>
+<p>To also build a <strong>host program</strong> that drives the array, pass <code>--get-host</code>
 and put the host C/C++ sources after a <code>--</code></p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>aiecc<span class="w"> </span>--compile-host<span class="w"> </span><span class="o">[</span>options<span class="o">]</span><span class="w"> </span>&lt;input.mlir&gt;<span class="w"> </span>-o<span class="w"> </span>host.exe<span class="w"> </span>--<span class="w"> </span>host.cpp<span class="w"> </span><span class="o">[</span>host-compiler<span class="w"> </span>flags<span class="o">]</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>aiecc<span class="w"> </span>--get-host<span class="w"> </span><span class="o">[</span>options<span class="o">]</span><span class="w"> </span>&lt;input.mlir&gt;<span class="w"> </span>-o<span class="w"> </span>host.exe<span class="w"> </span>--<span class="w"> </span>host.cpp<span class="w"> </span><span class="o">[</span>host-compiler<span class="w"> </span>flags<span class="o">]</span>
 </code></pre></div>
 <hr />
 <h2 id="user-guide">User guide<a class="headerlink" href="#user-guide" title="Permanent link">&para;</a></h2>
@@ -3436,13 +3436,13 @@ and put the host C/C++ sources after a <code>--</code></p>
 <p><strong>1. Instruction-sequence + xclbin flow.</strong> The host loads an <code>xclbin</code> (which
 contains the array configuration) and, at dispatch time, streams a
 per-runtime-sequence NPU instruction binary to the device:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>aiecc<span class="w"> </span>--aie-generate-npu-insts<span class="w"> </span>--aie-generate-xclbin<span class="w"> </span>design.mlir
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>aiecc<span class="w"> </span>--get-npu-insts<span class="w"> </span>--get-xclbin<span class="w"> </span>design.mlir
 <a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="c1"># -&gt; insts_&lt;device&gt;_&lt;seq&gt;.bin   (one per runtime sequence)</span>
 <a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="c1"># -&gt; aie.xclbin                 (configuration PDI, packaged)</span>
 </code></pre></div>
 <p><strong>2. Full-ELF flow.</strong> Everything — all device PDIs and instruction streams — is
 bundled into a single loadable ELF instead of an xclbin plus loose binaries:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>aiecc<span class="w"> </span>--generate-full-elf<span class="w"> </span>design.mlir<span class="w">   </span><span class="c1"># -&gt; aie.elf</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>aiecc<span class="w"> </span>--get-full-elf<span class="w"> </span>design.mlir<span class="w">   </span><span class="c1"># -&gt; aie.elf</span>
 </code></pre></div>
 <p>You can override these output file names with <code>--npu-insts-name</code>, 
 <code>--xclbin-name</code>, and <code>--full-elf-name</code>. You can filter which devices and 
@@ -3454,11 +3454,11 @@ requested outputs and options and exits without compiling anything. You omit
 the input file when you pass <code>--emit-dot</code>, as no compilation actually takes
 place. For example, this shows the plan for the NPU-instruction flow and 
 renders it to an image:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>aiecc<span class="w"> </span>--aie-generate-npu-insts<span class="w"> </span>--emit-dot<span class="w"> </span><span class="p">|</span><span class="w"> </span>dot<span class="w"> </span>-Tpng<span class="w"> </span>-o<span class="w"> </span>flow.png
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>aiecc<span class="w"> </span>--get-npu-insts<span class="w"> </span>--emit-dot<span class="w"> </span><span class="p">|</span><span class="w"> </span>dot<span class="w"> </span>-Tpng<span class="w"> </span>-o<span class="w"> </span>flow.png
 </code></pre></div>
 <p>Each box is a compilation step labelled by the artifact it produces, arrows show
 dependencies between steps, and the outputs you requested are highlighted.
-Changing the output flags (for instance to <code>--generate-full-elf</code>) changes the
+Changing the output flags (for instance to <code>--get-full-elf</code>) changes the
 graph accordingly, so this is the fastest way to understand what a given
 invocation will actually do. The command above produces this graph:</p>
 <p><img alt="NPU-instruction flow graph" src="docs/npu_insts_flow.svg" /></p>
@@ -3500,7 +3500,7 @@ are saved to disk, darker), and the steps a <code>--resume</code> runs afterward
 across the dashed red <em>cut</em> arrows. Each edge runs at most once across the pair:
 the prefix and frontier during <code>--checkpoint</code>, the downstream steps during
 <code>--resume</code> (which reloads the frontier from disk rather than rebuilding it).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>aiecc<span class="w"> </span>--aie-generate-npu-insts<span class="w"> </span>--cut<span class="o">=</span>input_physical.mlir<span class="w"> </span>--checkpoint<span class="o">=</span>cp<span class="w"> </span><span class="se">\</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>aiecc<span class="w"> </span>--get-npu-insts<span class="w"> </span>--cut<span class="o">=</span>input_physical.mlir<span class="w"> </span>--checkpoint<span class="o">=</span>cp<span class="w"> </span><span class="se">\</span>
 <a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">      </span>--emit-dot<span class="w"> </span><span class="p">|</span><span class="w"> </span>dot<span class="w"> </span>-Tsvg<span class="w"> </span>-o<span class="w"> </span>cut.svg
 </code></pre></div>
 <p><img alt="NPU-instruction flow with a checkpoint cut" src="docs/npu_insts_cut.svg" /></p>
@@ -3510,7 +3510,7 @@ a checkpoint as a reproducer, or investigate the issue yourself using the
 exact inputs the failing step saw.</p>
 <h3 id="extracting-a-single-artifact---get">Extracting a single artifact: <code>--get</code><a class="headerlink" href="#extracting-a-single-artifact---get" title="Permanent link">&para;</a></h3>
 <p><code>--get=&lt;name&gt;</code> asks for any single artifact in the build by name, including
-intermediates that don't have their own <code>--aie-generate-*</code> flag (such as the
+intermediates that don't have their own <code>--get-&lt;name&gt;</code> shorthand (such as the
 per-core objects or the routed IR). Run with <code>--emit-dot</code> to see the available
 names; passing an unrecognized name prints the full list.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>aiecc<span class="w"> </span>--get<span class="o">=</span>objects_<span class="o">{</span><span class="m">0</span><span class="o">}</span>.o<span class="w"> </span>design.mlir<span class="w">           </span><span class="c1"># just the per-core objects</span>
