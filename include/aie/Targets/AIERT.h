@@ -55,8 +55,10 @@ struct AIERTControl {
   mlir::LogicalResult configureLocksAndBd(mlir::Block &block, int col, int row);
   mlir::LogicalResult initLocks(DeviceOp &targetOp);
   mlir::LogicalResult initBuffers(DeviceOp &targetOp);
-  mlir::LogicalResult configureSwitches(DeviceOp &targetOp);
-  mlir::LogicalResult addInitConfig(DeviceOp &targetOp);
+  mlir::LogicalResult configureSwitches(DeviceOp &targetOp,
+                                        bool skipCtrlPktOverlay = false);
+  mlir::LogicalResult addInitConfig(DeviceOp &targetOp,
+                                    bool skipCtrlPktOverlay = false);
   mlir::LogicalResult addCoreEnable(DeviceOp &targetOp);
   mlir::LogicalResult addAieElf(uint8_t col, uint8_t row,
                                 const mlir::StringRef elfPath, bool aieSim);
