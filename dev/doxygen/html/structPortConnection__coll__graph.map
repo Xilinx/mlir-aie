@@ -1,0 +1,7 @@
+<map id="PortConnection" name="PortConnection">
+<area shape="rect" id="Node000001" title=" " alt="" coords="41,93,163,119"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,5,103,31"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="69,41,98,91,93,94,65,44"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="127,5,175,31"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="140,44,111,94,107,91,136,41"/>
+</map>
