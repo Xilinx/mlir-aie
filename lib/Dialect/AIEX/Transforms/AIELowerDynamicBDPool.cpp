@@ -482,10 +482,10 @@ struct AIELowerDynamicBDPoolPass
       //    The await keeps its natural SSA operand -- the task value it names,
       //    whether that is a direct configure, a loop result, or an scf.if
       //    result (the phi of the task in flight, whichever branch ran). The
-      //    npu_sync lowering (AIEDMATasksToNPU) walks that value to the physical
-      //    channel; both branches of an scf.if were verified to agree on it
-      //    (computeMetadata). This preserves the sync's data dependence on the
-      //    task rather than breaking it.
+      //    npu_sync lowering (AIEDMATasksToNPU) walks that value to the
+      //    physical channel; both branches of an scf.if were verified to agree
+      //    on it (computeMetadata). This preserves the sync's data dependence
+      //    on the task rather than breaking it.
       SmallVector<Operation *> toErase;
       r = seq.walk([&](Operation *op) -> WalkResult {
         if (auto freeOp = dyn_cast<DMAFreeTaskOp>(op)) {
