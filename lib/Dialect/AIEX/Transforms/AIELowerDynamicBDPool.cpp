@@ -8,8 +8,8 @@
 // The dynamic counterpart to AIEAssignRuntimeSequenceBDIDs: where that pass
 // rejects a runtime-bound scf.for, this keeps the loop rolled and draws bd_ids
 // from a per-tile runtime free-list pool. Each configure gets a dma_bd_pool_pop
-// (its SSA id feeding bd_id_val); each free gets a dma_bd_pool_push. An await is
-// only a completion sync (npu_sync), never a push.
+// (its SSA id feeding bd_id_val); each free gets a dma_bd_pool_push. An await
+// is only a completion sync (npu_sync), never a push.
 //
 // A popped id must be reachable at its push. Since a task value can cross a
 // loop back edge and exit as a result, the id is carried in lockstep: every
