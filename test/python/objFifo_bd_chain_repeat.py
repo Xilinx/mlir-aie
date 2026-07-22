@@ -25,11 +25,17 @@ def test_objectfifo_bd_chain_scenarios():
     of_mem_to_compute = of_shim_to_mem.cons().forward(obj_type=line_ty)
     of_mem_to_compute.set_iter_count(3)
 
-    rt = Runtime()
     vector_ty = np.ndarray[(4096,), np.dtype[np.int32]]
-    with rt.sequence(vector_ty, vector_ty, vector_ty) as (a_in, _, c_out):
-        rt.fill(of_shim_to_mem.prod(), a_in)
-        rt.drain(of_mem_to_compute.cons(), c_out, wait=True)
+
+    def sequence(a_in, _, c_out, in_h, out_h):
+        in_h.fill(a_in)
+        out_h.drain(c_out, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [vector_ty, vector_ty, vector_ty],
+        fn_args=[of_shim_to_mem.prod(), of_mem_to_compute.cons()],
+    )
 
     my_program = Program(dev, rt)
     module = my_program.resolve_program()
