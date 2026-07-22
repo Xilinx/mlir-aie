@@ -32,9 +32,6 @@ struct NdDmaPattern {
   llvm::SmallVector<int64_t, 4> offsets;
   llvm::SmallVector<int64_t, 4> sizes;
   llvm::SmallVector<int64_t, 4> strides;
-
-  /// Count of dimensions with size > 1 (repeat included).
-  unsigned getActiveDimCount() const;
 };
 
 /// Returns true when the pattern passes verifyStridesWraps for the given tile

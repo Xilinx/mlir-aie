@@ -24,14 +24,6 @@ using namespace xilinx::AIEX;
 
 namespace {
 
-unsigned countActiveDims(ArrayRef<int64_t> sizes) {
-  unsigned n = 0;
-  for (int64_t s : sizes)
-    if (s > 1)
-      ++n;
-  return n;
-}
-
 std::pair<uint32_t, uint32_t> getWrapStepBits(const AIE::AIETargetModel &tm,
                                               int col, int row) {
   if (tm.isShimNOCTile(col, row))
@@ -46,8 +38,7 @@ std::pair<uint32_t, uint32_t> getWrapStepBits(const AIE::AIETargetModel &tm,
 int64_t maxLegalInputSizeForDim(const AIE::AIETargetModel &tm, int col,
                                 int row, unsigned dim, uint64_t elemWidth,
                                 uint32_t gran) {
-  auto [wrapBits, stepBits] = getWrapStepBits(tm, col, row);
-  (void)stepBits;
+  uint32_t wrapBits = getWrapStepBits(tm, col, row).first;
   if (wrapBits == 0)
     return 0;
 
@@ -200,10 +191,6 @@ decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
 }
 
 } // namespace
-
-unsigned NdDmaPattern::getActiveDimCount() const {
-  return countActiveDims(sizes);
-}
 
 bool AIEX::isNdDmaPatternLegal(Operation *forOp, BaseMemRefType referencedBufType,
                                const AIE::AIETargetModel &targetModel,
