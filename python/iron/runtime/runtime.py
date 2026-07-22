@@ -47,7 +47,6 @@ from ..dataflow import ObjectFifoHandle
 from ..device import AnyShimTile
 from ..resolvable import Resolvable
 from ..scratchpad_parameter import ScratchpadParameter
-from ..worker import WorkerRuntimeBarrier, _BarrierSetOp
 from .dmatask import DMATask
 from .data import RuntimeData
 from .endpoint import RuntimeEndpoint
@@ -179,17 +178,54 @@ class Runtime(Resolvable):
 
     def __init__(
         self,
+        seq_fn: Callable,
+        inputs: Sequence,
+        *,
         strict_task_groups: bool = True,
     ) -> None:
-        """Initialize a runtime object.
+        """Create a runtime from its sequence body and declared inputs.
+
+        Mirrors [`Worker`][iron.Worker]``(core_fn, fn_args)``: ``seq_fn`` runs
+        inside ``@runtime_sequence`` at resolve time, receiving one argument per
+        declared input. Because it executes with an active MLIR insertion point,
+        it can use native ``range_``/``if_`` control flow and move data with
+        ``fifo.fill(...)`` / ``fifo.drain(...)``.
+
+        Each input is either:
+
+        * a **type** -- a tensor type (``np.ndarray[(M, K), np.dtype[np.int16]]``)
+          becomes a runtime buffer passed to the body as a ``RuntimeData``; a
+          scalar type (``np.int32``) becomes a **runtime** SSA scalar passed as
+          its live value. The ``scf`` control flow it drives survives to the
+          dynamic (EmitC) lowering.
+        * a concrete **int value** -- passed to the body as a folded
+          ``arith.constant`` of that value. A ``range_``/``if_`` bounded by it has
+          a constant bound, so ``aie-unroll-runtime-sequence-loops`` unrolls/folds
+          it to the static binary path.
+
+        This lets one body serve both lowerings: declare a scalar as ``np.int32``
+        for the dynamic path or pass a Python ``int`` for the static path.
 
         Args:
+            seq_fn (Callable): The sequence body. Its parameters are bound, in
+                order, to ``inputs``.
+            inputs (Sequence): The declared inputs, one per body parameter -- each
+                a tensor/scalar type (runtime) or a concrete int value (folded
+                constant).
             strict_task_groups (bool): Disallows mixing the default group and explicit task groups during resolution.
                 This can catch common errors, but can be set to False to disable the checks.
 
         """
-        self._seq_fn: Callable | None = None
-        self._rt_data: list[RuntimeData] = []
+        self._seq_fn: Callable = seq_fn
+        # A concrete int input is a folded constant; anything else is a type.
+        self._const_inputs = [
+            v if isinstance(v, (int, np.integer)) and not isinstance(v, bool) else None
+            for v in inputs
+        ]
+        self._rt_data: list[RuntimeData] = [
+            None if c is not None else RuntimeData(t)
+            for c, t in zip(self._const_inputs, inputs)
+        ]
         self._fifos: set[ObjectFifoHandle] = set()
         # Lower-level explicit-routing primitives (peers of ObjectFifo for
         # designs that hand-wire flows + DMA programs instead of letting
@@ -235,52 +271,6 @@ class Runtime(Resolvable):
     @property
     def tile_dmas(self):
         return list(self._tile_dmas)
-
-    def sequence(
-        self,
-        seq_fn: Callable,
-        inputs: Sequence,
-    ) -> None:
-        """Register the runtime sequence body.
-
-        The body runs inside ``@runtime_sequence`` at resolve time, receiving one
-        argument per declared input. Because it executes with an active MLIR
-        insertion point, it can use native ``range_``/``if_`` control flow and
-        move data with ``fifo.fill(...)`` / ``fifo.drain(...)``.
-
-        Each input is either:
-
-        * a **type** -- a tensor type (``np.ndarray[(M, K), np.dtype[np.int16]]``)
-          becomes a runtime buffer passed to the body as a ``RuntimeData``; a
-          scalar type (``np.int32``) becomes a **runtime** SSA scalar passed as
-          its live value. The ``scf`` control flow it drives survives to the
-          dynamic (EmitC) lowering.
-        * a concrete **int value** -- passed to the body as a folded
-          ``arith.constant`` of that value. A ``range_``/``if_`` bounded by it has
-          a constant bound, so ``aie-unroll-runtime-sequence-loops`` unrolls/folds
-          it to the static binary path.
-
-        This lets one body serve both lowerings: declare a scalar as ``np.int32``
-        for the dynamic path or pass a Python ``int`` for the static path, with
-        no wrapper/adapter around ``seq_fn``.
-
-        Args:
-            seq_fn (Callable): The sequence body. Its parameters are bound, in
-                order, to ``inputs``.
-            inputs (Sequence): The declared inputs, one per body parameter -- each
-                a tensor/scalar type (runtime) or a concrete int value (folded
-                constant).
-        """
-        self._seq_fn = seq_fn
-        # A concrete int input is a folded constant; anything else is a type.
-        self._const_inputs = [
-            v if isinstance(v, (int, np.integer)) and not isinstance(v, bool) else None
-            for v in inputs
-        ]
-        self._rt_data = [
-            None if c is not None else RuntimeData(t)
-            for c, t in zip(self._const_inputs, inputs)
-        ]
 
     def enable_trace(
         self,
@@ -329,46 +319,6 @@ class Runtime(Resolvable):
         self._shimtile_events = shimtile_events
         self._egress_shim_col = egress_shim_col
 
-    def inline_ops(self, inline_func: Callable, inline_args: list):
-        """Emit arbitrary lower-level ops in the runtime sequence body.
-
-        An escape hatch for hardware control that has no high-level IRON verb
-        yet (PDI loading, custom BD writes, compression control). Call it from
-        within the sequence body. Any ObjectFifoHandle passed in ``inline_args``
-        is registered with the Runtime (so the Program resolves its shim
-        allocation) and, if it has no endpoint yet, is bound to a shim tile.
-
-        Args:
-            inline_func (Callable): The function to execute within an MLIR context.
-            inline_args (list): The state the function needs to execute.
-        """
-        active = active_sequence()
-        for arg in _iter_flat(inline_args):
-            if isinstance(arg, ObjectFifoHandle):
-                if arg.endpoint is None:
-                    arg.endpoint = RuntimeEndpoint(AnyShimTile)
-                self._fifos.add(arg)
-        if not active.registering:
-            InlineOpRuntimeTask(inline_func, inline_args).resolve()
-
-    def set_barrier(self, barrier: WorkerRuntimeBarrier, value: int):
-        """Set the value of a worker barrier. Call from within the sequence body.
-
-        Args:
-            barrier (WorkerRuntimeBarrier): The WorkerRuntimeBarrier to set.
-            value (int): The value to set the barrier to.
-        """
-        if not active_sequence().registering:
-            _BarrierSetOp(barrier, value).resolve()
-
-    def sync_parameters(self):
-        """Emit `aiex.sync_scratchpad_parameters_from_host`. Call from within the
-        sequence body after all parameters have been written on the host side and
-        before starting workers that read them.
-        """
-        if not active_sequence().registering:
-            _SyncParametersTask().resolve()
-
     @property
     def fifos(self) -> list[ObjectFifoHandle]:
         """The ObjectFifoHandles driven from the runtime by fill()/drain()."""
@@ -387,11 +337,6 @@ class Runtime(Resolvable):
         resolves ObjectFifos and cores, so by the time a fifo is resolved every
         runtime endpoint -- including those on link siblings -- is already bound.
         """
-        if self._seq_fn is None:
-            raise IronRuntimeError(
-                "Runtime.sequence(fn, inputs) must be called before the "
-                "Runtime is resolved."
-            )
         # A runtime_sequence block arg per runtime (type) input; folded-constant
         # inputs contribute no block arg.
         rt_dtypes = [
@@ -481,3 +426,35 @@ class _SyncParametersTask(Resolvable):
         ip: ir.InsertionPoint | None = None,
     ) -> None:
         sync_scratchpad_parameters_from_host(loc=loc, ip=ip)
+
+
+def inline_ops(inline_func: Callable, inline_args: list) -> None:
+    """Emit arbitrary lower-level ops in the runtime sequence body.
+
+    An escape hatch for hardware control that has no high-level IRON verb yet
+    (PDI loading, custom BD writes, compression control). Call it from within the
+    sequence body. Any ObjectFifoHandle in ``inline_args`` is registered with the
+    active Runtime (so the Program resolves its shim allocation) and, if it has no
+    endpoint yet, is bound to a shim tile.
+
+    Args:
+        inline_func (Callable): The function to execute within an MLIR context.
+        inline_args (list): The state the function needs to execute.
+    """
+    active = active_sequence()
+    for arg in _iter_flat(inline_args):
+        if isinstance(arg, ObjectFifoHandle):
+            if arg.endpoint is None:
+                arg.endpoint = RuntimeEndpoint(AnyShimTile)
+            active._runtime._fifos.add(arg)
+    InlineOpRuntimeTask(inline_func, inline_args).resolve()
+
+
+def sync_parameters() -> None:
+    """Emit ``aiex.sync_scratchpad_parameters_from_host`` in the sequence body.
+
+    Call after all scratchpad parameters have been written on the host side and
+    before starting workers that read them.
+    """
+    active_sequence()  # ensure we're inside a sequence body
+    _SyncParametersTask().resolve()

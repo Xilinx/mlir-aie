@@ -190,7 +190,7 @@ def _build_design(
             )
 
     # --- Runtime sequence: range_ + fill/drain, one body for both lowerings ---
-    # The body's M/K/N are declared as inputs to rt.sequence():
+    # The body's M/K/N are declared as inputs to Runtime(seq, [...]):
     #   dynamic=True : passed as np.int32 types -> runtime i32 block args, so the
     #                  scf.for survives to the EmitC path; one xclbin, many shapes.
     #   dynamic=False: passed as the Python ints M/K/N -> folded arith.constant, so
@@ -278,10 +278,9 @@ def _build_design(
 
                 tg.finish()
 
-    rt = Runtime()
     # dynamic -> declare M/K/N as runtime i32 types; static -> pass the ints.
     mkn = [np.int32, np.int32, np.int32] if dynamic else [M, K, N]
-    rt.sequence(seq, [A_ty, B_ty, C_ty, *mkn])
+    rt = Runtime(seq, [A_ty, B_ty, C_ty, *mkn])
 
     return Program(dev, rt, workers=workers).resolve_program()
 

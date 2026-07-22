@@ -283,6 +283,14 @@ class WorkerRuntimeBarrier:
             )
         use_lock(self.worker_locks[-1], LockAction.Acquire, value=value)
 
+    def set(self, value: int):
+        """Set the barrier to ``value`` from within a runtime sequence body.
+
+        Args:
+            value (int): The value to set the barrier to.
+        """
+        _BarrierSetOp(self, value).resolve()
+
     def _add_worker_lock(self, lock):
         """Register an additional lock in the barrier."""
         self.worker_locks.append(lock)

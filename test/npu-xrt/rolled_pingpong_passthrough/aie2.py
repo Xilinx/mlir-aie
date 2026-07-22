@@ -131,8 +131,7 @@ def design(dev):
             out_task.await_()
             result.free()
 
-    rt = Runtime()
-    rt.sequence(ping_pong, [in_ty, out_ty])
+    rt = Runtime(ping_pong, [in_ty, out_ty])
 
     return Program(dev, rt, workers=[worker]).resolve_program()
 
