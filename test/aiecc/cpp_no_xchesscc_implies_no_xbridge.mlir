@@ -10,7 +10,7 @@
 
 // REQUIRES: peano
 
-// RUN: aiecc --no-xchesscc --aie-generate-npu-insts --verbose %s 2>&1 | FileCheck %s
+// RUN: aiecc --no-xchesscc --get-npu-insts --verbose %s 2>&1 | FileCheck %s
 
 // Verify the Chess bridge linker (xchesscc_wrapper) is NOT invoked when
 // --no-xchesscc is used without an explicit --no-xbridge (Peano link path).

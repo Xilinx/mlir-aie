@@ -6,12 +6,12 @@
 # REQUIRES: ryzen_ai_npu2, peano, xrt_python_bindings, xrt_python_ctrl_scratchpad_bo
 #
 # RUN: %python %S/aie_design.py > aie.mlir
-# RUN: %aiecc -v --generate-full-elf --no-xchesscc --no-xbridge --dynamic-objFifos --emit-scratchpad-parameters aie.mlir
+# RUN: %aiecc -v --get-full-elf --no-xchesscc --no-xbridge --dynamic-objFifos --get-scratchpad-parameters aie.mlir
 # RUN: %run_on_npu2% %pytest %s
 #
 # This is the Python equivalent of the C++ test in ../scratchpad_params/.
 # It exercises the full flow:
-#   1. aiecc.py compiles aie.mlir → aie.elf + params.txt
+#   1. aiecc compiles aie.mlir → aie.elf + params.txt
 #   2. This script loads the ELF, creates a ParameterScratchpad from params.txt,
 #      writes bf16 parameters, and verifies the core computes foo * bar.
 #   3. A second parametrized case with different values tests parameter re-use

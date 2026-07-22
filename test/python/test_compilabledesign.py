@@ -264,7 +264,7 @@ def test_hash_works_when_peano_install_dir_is_invalid(monkeypatch):
     to the "absent" sentinel rather than letting the ``RuntimeError`` raised
     by ``peano_cxx_path`` / ``peano_install_dir`` escape.
     """
-    import aie.compiler.aiecc.configure as _aiecc_configure
+    import aie.utils.configure as _aiecc_configure
 
     monkeypatch.setattr(_aiecc_configure, "peano_install_dir", "peano_not_found")
 

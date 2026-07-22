@@ -74,6 +74,7 @@ my_design(a, b)              # compile + run + sync back
 | Setting-by-setting configuration (cache dir, tensor backend, log level) | [Configuration options](./iron_configuration.md) |
 | What happens between `@iron.jit` and the NPU running | [Compilation stages](./compilation_stages.md) |
 | Ready-made compute kernels (matmul, conv, eltwise, vision) | [Kernel library](./kernels_library.md) |
+| Every control op you can put in a runtime sequence | [Runtime sequence op reference](./runtime_sequence_reference.md) |
 
 ## Sections
 

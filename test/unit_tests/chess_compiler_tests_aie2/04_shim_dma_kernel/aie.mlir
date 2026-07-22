@@ -7,7 +7,7 @@
 //===----------------------------------------------------------------------===//
 
 // REQUIRES: aiesimulator, valid_xchess_license
-// RUN: %PYTHON aiecc.py --aiesim --xchesscc --xbridge --no-compile-host %s %test_lib_flags -- %S/test.cpp
+// RUN: %aiecc --get-aiesim --xchesscc --xbridge %s %test_lib_flags -- %S/test.cpp
 // RUN: xchesscc_wrapper aie2 +l aie.mlir.prj/main_core_7_3.bcf %S/kernel.cc -o custom_7_3.elf
 
 // FIXME: this hangs

@@ -6,7 +6,7 @@
 // RUN: aie-opt --aie-dma-tasks-to-npu %s | FileCheck %s
 
 // Test that memref.view is correctly traced through when configuring DMA tasks.
-// This is the pattern the fused whole-model (--generate-full-elf) lowering emits:
+// This is the pattern the fused whole-model (--get-full-elf) lowering emits:
 // every DMA buffer is a typed memref.view slice of one flat byte-arena runtime
 // sequence input argument at a constant byte offset. Without tracing view, the
 // buffer fails to resolve to its block argument and the BD cannot be lowered.

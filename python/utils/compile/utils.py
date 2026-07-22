@@ -9,9 +9,9 @@ import logging
 import os
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
-import aie.compiler.aiecc.main as aiecc
 import aie.utils.config as config
 
 if TYPE_CHECKING:
@@ -144,6 +144,23 @@ def compile_cxx_core_function(
         raise RuntimeError(f"[{tool}] compilation failed")
 
 
+def _run_aiecc(mlir_file: str, args: list[str]):
+    aiecc_bin = config.aiecc_path()
+    cmd = [aiecc_bin, mlir_file] + args
+    logger.debug("Running: %s", " ".join(cmd))
+    result = subprocess.run(cmd, capture_output=True, text=True)
+    if result.stdout:
+        logger.debug("%s", result.stdout)
+    if result.stderr:
+        logger.debug("%s", result.stderr)
+    if result.returncode != 0:
+        error_msg = result.stderr if result.stderr else result.stdout
+        raise RuntimeError(
+            f"[aiecc] Compilation failed with exit code {result.returncode}:\n"
+            f"{error_msg}"
+        )
+
+
 def compile_mlir_module(
     mlir_module: "str | Module",
     insts_path: str | Path | None = None,
@@ -193,24 +210,22 @@ def compile_mlir_module(
         # in a single Chess process to amortise startup cost; matches the
         # makefile-common ``aiecc_chess_flags=--unified`` recipe.
         args = [
-            "--no-compile-host",
             "--unified",
         ]
     else:
         args = [
-            "--no-compile-host",
             "--no-xchesscc",
             "--no-xbridge",
             f"--peano={config.peano_install_dir()}",
         ]
     if insts_path:
-        args.extend(["--aie-generate-npu-insts", f"--npu-insts-name={insts_path}"])
+        args.extend(["--get-npu-insts", f"--npu-insts-name={insts_path}"])
     if pdi_path:
-        args.extend(["--aie-generate-pdi", f"--pdi-name={pdi_path}"])
+        args.extend(["--get-pdi", f"--pdi-name={pdi_path}"])
     if xclbin_path:
-        args.extend(["--aie-generate-xclbin", f"--xclbin-name={xclbin_path}"])
+        args.extend(["--get-xclbin", f"--xclbin-name={xclbin_path}"])
     if elf_path:
-        args.extend(["--aie-generate-elf", f"--elf-name={elf_path}"])
+        args.extend(["--get-elf", f"--elf-name={elf_path}"])
     if work_dir:
         args.append(f"--tmpdir={work_dir}")
         # Emit input_with_addresses.mlir into work_dir; the JIT DMA-size
@@ -218,7 +233,7 @@ def compile_mlir_module(
         # It is a requested output, so it lands in --output-dir; point that at
         # work_dir (the insts/xclbin/pdi paths are absolute and unaffected).
         args.append(f"--output-dir={work_dir}")
-        args.append("--aie-generate-input-with-addresses")
+        args.append("--get-input-with-addresses")
     if verbose:
         args.append("--verbose")
     if options:
@@ -243,33 +258,20 @@ def compile_mlir_module(
     # same directory where compile_external_kernel placed the compiled objects.
     # The MLIR file is written to work_dir/aie.mlir; callers (e.g. jit.py)
     # may have already written it there, in which case this is a no-op write.
-    # If no work_dir is provided, fall back to aiecc.run() which writes to a
-    # temporary file internally.
+    # If no work_dir is provided, fall back to a temporary file instead.
     if work_dir:
-        aiecc_bin = config.aiecc_path()
         mlir_file = os.path.join(work_dir, "aie.mlir")
         with open(mlir_file, "w") as f:
             f.write(str(mlir_module))
-        cmd = [aiecc_bin, mlir_file] + args
-        # Mirror compile_external_kernel's "Compiling with: <cmd>" line so
-        # users at DEBUG see the full aiecc invocation, not just its output.
-        logger.debug("Running: %s", " ".join(cmd))
-        result = subprocess.run(cmd, capture_output=True, text=True)
-        if result.stdout:
-            logger.debug("%s", result.stdout)
-        if result.stderr:
-            logger.debug("%s", result.stderr)
-        if result.returncode != 0:
-            error_msg = result.stderr if result.stderr else result.stdout
-            raise RuntimeError(
-                f"[aiecc] Compilation failed with exit code {result.returncode}:\n"
-                f"{error_msg}"
-            )
+        _run_aiecc(mlir_file, args)
     else:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".mlir", delete=False) as f:
+            f.write(str(mlir_module))
+            mlir_file = f.name
         try:
-            aiecc.run(mlir_module, args)
-        except Exception as e:
-            raise RuntimeError("[aiecc] Compilation failed") from e
+            _run_aiecc(mlir_file, args)
+        finally:
+            os.unlink(mlir_file)
 
 
 def _rename_symbol_in_object(object_path: str, old_name: str, new_name: str) -> None:
