@@ -108,17 +108,35 @@ decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
   uint64_t elemWidth = dataLayout.getTypeSizeInBits(bufType.getElementType());
   uint32_t gran = tm.getAddressGenGranularity();
 
-  // Dimension factoring: split sizes[d]=a*b into inner (b,s) at d and outer
-  // (a,b*s) at a free slot (size==1).
-  for (unsigned d = 0; d < 4; ++d) {
-    int64_t n = pattern.sizes[d];
-    if (n <= 1)
-      continue;
-    int64_t s = pattern.strides[d];
+  // The hardware BD emits elements in lexicographic order of the loop indices
+  // with d0 the innermost (fastest) and d3 the outermost (slowest) dimension.
+  // A decomposition is only correct if the concatenation of the sub-transfers'
+  // emitted element sequences is IDENTICAL (same order, not just same set) to
+  // the original. Both transformations below are order-preserving by
+  // construction.
 
-    for (unsigned f = 0; f < 4; ++f) {
-      if (f == d || pattern.sizes[f] != 1)
+  // Outermost active dimension (highest index with size > 1).
+  int outermost = -1;
+  for (int i = 3; i >= 0; --i)
+    if (pattern.sizes[i] > 1) {
+      outermost = i;
+      break;
+    }
+  if (outermost < 0)
+    return failure();
+
+  // (1) Order-preserving dimension factoring: split dim d (size N = a*b,
+  // stride s) into an inner dim (b, s) kept at position d and an outer dim
+  // (a, b*s) inserted at position d+1, shifting the higher dims outward. The
+  // factored pair stays adjacent so the sub-traversal of dim d is contiguous
+  // and its place in the overall nesting is unchanged => element order is
+  // preserved. Requires the outermost slot to be free so no dim is dropped.
+  if (pattern.sizes[3] == 1) {
+    for (unsigned d = 0; d < 3; ++d) {
+      int64_t n = pattern.sizes[d];
+      if (n <= 1)
         continue;
+      int64_t s = pattern.strides[d];
 
       SmallVector<int64_t, 32> divisors;
       divisorsDescending(n, divisors);
@@ -127,16 +145,22 @@ decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
         if (a <= 1 || b <= 1)
           continue;
 
-        if (d == 0 && !isConstMultipleOfGranule(b, elemWidth, gran))
+        // Both factors must remain granule-realizable on the innermost dim.
+        if (d == 0 && (!isConstMultipleOfGranule(b, elemWidth, gran)))
           continue;
 
         NdDmaPattern factored = pattern;
-        factored.sizes[d] = b;
-        factored.sizes[f] = a;
-        factored.strides[f] = b * s;
-
-        if (countActiveDims(factored.sizes) > 4)
-          continue;
+        // Shift dims (d+1 .. 2) outward to (d+2 .. 3).
+        for (unsigned i = 3; i > d + 1; --i) {
+          factored.sizes[i] = pattern.sizes[i - 1];
+          factored.strides[i] = pattern.strides[i - 1];
+          factored.offsets[i] = pattern.offsets[i - 1];
+        }
+        factored.sizes[d] = b;           // inner factor
+        factored.strides[d] = s;         // inner keeps original stride/offset
+        factored.sizes[d + 1] = a;       // outer factor
+        factored.strides[d + 1] = b * s; // outer stride
+        factored.offsets[d + 1] = 0;
 
         auto sub =
             decomposeRecursive(forOp, bufType, tm, col, row, factored);
@@ -146,32 +170,30 @@ decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
     }
   }
 
-  // Slicing: split an oversized dimension into ceil(N/limit) chunks.
-  for (unsigned d = 0; d < 4; ++d) {
+  // (2) Order-preserving slicing: only the OUTERMOST active dimension may be
+  // split into contiguous index ranges emitted in order. Slicing an inner
+  // dimension would interleave the outer iterations and reorder the emitted
+  // element stream, so it is not allowed.
+  {
+    unsigned d = static_cast<unsigned>(outermost);
     int64_t n = pattern.sizes[d];
-    if (n <= 1)
-      continue;
+    int64_t chunkSize =
+        maxLegalInputSizeForDim(tm, col, row, d, elemWidth, gran);
+    if (chunkSize > 0 && chunkSize < n) {
+      int64_t numChunks = (n + chunkSize - 1) / chunkSize;
+      SmallVector<NdDmaPattern> combined;
+      for (int64_t i = 0; i < numChunks; ++i) {
+        NdDmaPattern slice = pattern;
+        slice.sizes[d] = std::min(chunkSize, n - i * chunkSize);
+        slice.offsets[d] = pattern.offsets[d] + i * chunkSize;
 
-    int64_t chunkSize = maxLegalInputSizeForDim(tm, col, row, d, elemWidth, gran);
-    if (chunkSize <= 0 || chunkSize >= n)
-      continue;
-
-    int64_t numChunks = (n + chunkSize - 1) / chunkSize;
-    SmallVector<NdDmaPattern> combined;
-
-    for (int64_t i = 0; i < numChunks; ++i) {
-      NdDmaPattern slice = pattern;
-      slice.sizes[d] = std::min(chunkSize, n - i * chunkSize);
-      slice.offsets[d] = pattern.offsets[d] + i * chunkSize;
-
-      auto sub = decomposeRecursive(forOp, bufType, tm, col, row, slice);
-      if (failed(sub))
-        goto slice_next_dim;
-      combined.append(sub->begin(), sub->end());
+        auto sub = decomposeRecursive(forOp, bufType, tm, col, row, slice);
+        if (failed(sub))
+          return failure();
+        combined.append(sub->begin(), sub->end());
+      }
+      return combined;
     }
-    return combined;
-
-  slice_next_dim:;
   }
 
   return failure();
