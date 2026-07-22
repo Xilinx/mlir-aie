@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-##===- hrx-integration/fetch-hrx-release.sh -----------------*- Script -*-===##
+##===- utils/fetch-hrx-release.sh ---------------------------*- Script -*-===##
 #
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
@@ -7,17 +7,19 @@
 ##===----------------------------------------------------------------------===##
 #
 # Download, checksum-verify, and extract the pinned HRX (amdxdna) release so the
-# HRX runtime path (IRON_RUNTIME=hrx / RUNTIME=hrx) has a libhrx to dispatch
-# through -- without cloning/building HRX from source.
+# HRX runtime path has a libhrx to dispatch through -- without cloning/building
+# HRX from source. Both HRX entry points consume the same libhrx provisioned
+# here: the IRON/Python flow selects it with IRON_RUNTIME=hrx and the C++ example
+# `make` flow selects it with RUNTIME=hrx (distinct selectors for the two flows).
 #
 # Usage:
-#   hrx-integration/fetch-hrx-release.sh            # fetch + extract (idempotent)
-#   eval "$(hrx-integration/fetch-hrx-release.sh --print-env)"  # + export HRX_*
+#   utils/fetch-hrx-release.sh            # fetch + extract (idempotent)
+#   eval "$(utils/fetch-hrx-release.sh --print-env)"  # + export HRX_*
 #
-# The pinned coordinates live in hrx-integration/hrx-release.env; any of
+# The pinned coordinates live in utils/hrx-release.env; any of
 # HRX_RELEASE_{REPO,TAG,ASSET,SHA256} may be overridden from the environment.
 # Set HRX_RELEASE_DIR to change where the asset is unpacked (default:
-# hrx-integration/.hrx-release). Set FORCE=1 to re-download over an existing
+# third_party/.hrx-release). Set FORCE=1 to re-download over an existing
 # extraction.
 #
 # Auth: a private release needs a token. The script prefers `gh release
@@ -26,7 +28,7 @@
 #
 # On success it prints the absolute path to the extracted tree's env.sh (source
 # it, or use --print-env to get shell `export` lines) which sets HRX_DIR /
-# HRX_BUILD / LD_LIBRARY_PATH.
+# LD_LIBRARY_PATH / CMAKE_PREFIX_PATH.
 #
 ##===----------------------------------------------------------------------===##
 
@@ -41,6 +43,7 @@ log() { echo "[fetch-hrx-release] $*" >&2; }
 die() { echo "[fetch-hrx-release] ERROR: $*" >&2; exit 1; }
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 # shellcheck source=/dev/null
 source "${SCRIPT_DIR}/hrx-release.env"
@@ -50,7 +53,9 @@ REPO="${HRX_RELEASE_REPO:?}"
 TAG="${HRX_RELEASE_TAG:?}"
 ASSET="${HRX_RELEASE_ASSET:?}"
 SHA256="${HRX_RELEASE_SHA256:?}"
-DEST_DIR="${HRX_RELEASE_DIR:-${SCRIPT_DIR}/.hrx-release}"
+# Fetched artifacts live under third_party/ (a build artifact, git-ignored),
+# next to the other vendored third-party dependencies.
+DEST_DIR="${HRX_RELEASE_DIR:-${REPO_ROOT}/third_party/.hrx-release}"
 
 mkdir -p "${DEST_DIR}"
 TARBALL="${DEST_DIR}/${ASSET}"

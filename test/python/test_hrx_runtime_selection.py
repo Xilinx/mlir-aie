@@ -21,6 +21,8 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import threading
+import time
 
 import pytest
 
@@ -152,3 +154,80 @@ def test_hrx_device_gen_returns_known_value(monkeypatch):
     hrt = pytest.importorskip("aie.utils.hostruntime.hrxruntime.hostruntime")
     monkeypatch.delenv("IRON_HRX_DEVICE", raising=False)
     assert hrt._detect_hrx_device_gen() in ("npu1", "npu2")
+
+
+# ---------------------------------------------------------------------------
+# Thread-safety of lazy initialization (no device / libhrx needed).
+#
+# HRXContext.get() and _HrxLib.ensure() use double-checked locking so a
+# multithreaded process cannot double-init the device/stream or observe a
+# half-bound libhrx. These tests replace the device-touching bodies with cheap
+# counters that sleep *inside* the guarded section to widen the race window, then
+# assert the body ran exactly once under heavy concurrent first-touch.
+# ---------------------------------------------------------------------------
+
+
+def test_hrx_context_get_is_thread_safe(monkeypatch):
+    """Concurrent first-touch of HRXContext.get() must build exactly one context."""
+    ctx_mod = pytest.importorskip("aie.utils.hostruntime.hrxruntime.context")
+
+    builds = []
+
+    def fake_init(self):
+        # Runs inside HRXContext.get()'s lock; sleep widens the check->assign
+        # window so a missing lock would let several threads build.
+        builds.append(1)
+        time.sleep(0.005)
+
+    monkeypatch.setattr(ctx_mod.HRXContext, "_instance", None, raising=False)
+    monkeypatch.setattr(ctx_mod.HRXContext, "__init__", fake_init)
+
+    n_threads = 16
+    results = []
+    barrier = threading.Barrier(n_threads)
+
+    def worker():
+        barrier.wait()  # release all threads at once -> maximize contention
+        results.append(ctx_mod.HRXContext.get())
+
+    threads = [threading.Thread(target=worker) for _ in range(n_threads)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert len(builds) == 1, f"HRXContext built {len(builds)}x, expected exactly 1"
+    assert len({id(r) for r in results}) == 1, "threads saw >1 HRXContext instance"
+
+
+def test_hrx_lib_ensure_binds_once_under_threads(monkeypatch):
+    """_HrxLib.ensure() must bind libhrx exactly once under concurrent threads."""
+    b = pytest.importorskip("aie.utils.hostruntime.hrxruntime._bindings")
+
+    # Fresh instance so the test is independent of the process-wide `lib`
+    # (which may already be bound) and never dlopen()s a real library.
+    hrx_lib = b._HrxLib()
+    binds = []
+
+    def fake_bind(self):
+        binds.append(1)
+        time.sleep(0.005)
+        self._ready = True
+
+    monkeypatch.setattr(b._HrxLib, "_bind", fake_bind)
+
+    n_threads = 16
+    barrier = threading.Barrier(n_threads)
+
+    def worker():
+        barrier.wait()
+        hrx_lib.ensure()
+
+    threads = [threading.Thread(target=worker) for _ in range(n_threads)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    assert len(binds) == 1, f"libhrx bound {len(binds)}x, expected exactly 1"
+    assert hrx_lib._ready is True

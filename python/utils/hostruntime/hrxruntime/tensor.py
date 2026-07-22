@@ -22,9 +22,32 @@ from . import HRXContext
 
 
 class HRXTensor(Tensor):
-    """Tensor backed by an HRX persistent-mapped device buffer."""
+    """Tensor backed by an HRX persistent-mapped device buffer.
+
+    Each tensor allocates its buffer through the process-wide
+    :class:`~.context.HRXContext`. Buffers are therefore isolated per process:
+    separate processes (including different users) never share buffer handles,
+    and the amdxdna driver isolates each process's device memory. See
+    :class:`~.context.HRXContext` for the full concurrency / multi-tenancy model
+    (process isolation, the finite system-wide hardware-context pool, and the
+    single-threaded-dispatch expectation within a process).
+    """
 
     def __init__(self, shape_or_data, dtype=np.uint32, device="npu", **kwargs):
+        """Allocate an HRX persistent-mapped buffer and wrap it as a tensor.
+
+        Args:
+            shape_or_data: Either a shape ``tuple`` to allocate a zero-filled
+                buffer, or an array-like (anything with a ``shape``, or something
+                ``numpy.asarray`` accepts) whose contents are copied in.
+            dtype (numpy.dtype, optional): Element type used when ``shape_or_data``
+                is a shape or a plain sequence. Defaults to ``numpy.uint32``.
+            device (str, optional): Initial residency, ``"npu"`` or ``"cpu"``.
+                ``"npu"`` flushes the initial host contents to the device after
+                allocation. Defaults to ``"npu"``.
+            **kwargs: Accepted for API compatibility with other tensor backends;
+                ignored by HRX.
+        """
         super().__init__(shape_or_data, dtype=dtype, device=device)
         self._ctx = HRXContext.get()
 
@@ -96,8 +119,20 @@ class HRXTensor(Tensor):
             self._buf = None
 
     def buffer_object(self):
-        """Return the underlying HRX buffer handle."""
+        """Return the underlying HRX buffer handle.
+
+        Returns:
+            The opaque ``hrx_buffer_t`` handle backing this tensor (used as the
+            ``buffer`` field of a dispatch binding).
+        """
         return self._buf
 
     def nbytes_alloc(self) -> int:
+        """Return the allocated buffer size in bytes.
+
+        Returns:
+            int: The number of bytes allocated on the device (the element count
+            times the item size, with a 1-byte floor since HRX rejects zero-size
+            allocations).
+        """
         return self._alloc_size

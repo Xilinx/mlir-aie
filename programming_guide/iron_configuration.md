@@ -101,6 +101,63 @@ The `CachedXRTRuntime` caches XRT contexts to improve performance. The size of t
 export XRT_CONTEXT_CACHE_SIZE=1
 ```
 
+## Host-runtime backend selection (`IRON_RUNTIME`)
+
+IRON dispatches designs through a host runtime that consumes the `aiecc`
+artifacts (`final.xclbin` + `insts.bin`). `IRON_RUNTIME` selects which backend
+is used:
+
+| Value | Behavior |
+|-------|----------|
+| `auto` (default) | Use XRT when `pyxrt` imports, else fall back to CPU-only tensors. Never selects HRX. |
+| `xrt` | Force the XRT backend (falls back to CPU tensors if `pyxrt` is missing). |
+| `hrx` | Force the [HRX](../python/utils/hostruntime/hrxruntime/README.md) (amdxdna / `libhrx`) backend. Errors at import if `libhrx.so` cannot be located. |
+
+An unset value defaults to `auto`; an explicitly invalid value is a hard error
+(a typo must not silently resolve to another backend). `IRON_RUNTIME` is read
+*before* any capability probe, so a forced backend only probes itself (`hrx`
+never imports `pyxrt`, and `xrt`/`auto` never run HRX discovery).
+
+```bash
+IRON_RUNTIME=hrx python my_script.py
+```
+
+## HRX Runtime (amdxdna) Configuration
+
+These variables apply when the HRX backend is active (`IRON_RUNTIME=hrx`). See
+the [HRX Runtime (amdxdna)](hrx_runtime.md) overview for the architecture and
+enabling instructions, and the
+[HRX runtime README](../python/utils/hostruntime/hrxruntime/README.md) for the
+full step-by-step flow.
+
+### Library discovery
+
+`libhrx.so` is located by probing standard install locations; these variables
+are high-priority hints (checked in this order), mirroring `FindHRX.cmake`:
+
+| Variable | Meaning |
+|----------|---------|
+| `HRX_LIBHRX` | Explicit full path to `libhrx.so`. |
+| `LIBHRX_DIR` | Directory containing `libhrx.so` (e.g. set by `activate_env.sh`). |
+| `HRX_DIR` | HRX install prefix (`$HRX_DIR/lib/libhrx.so`, `$HRX_DIR/include/...`). |
+
+If none are set, standard locations (a sibling `hrx` checkout, `$HOME/hrx`,
+`/opt/hrx`, `/usr/local/hrx`, and the loader's `LD_LIBRARY_PATH`) are tried.
+
+### Runtime behavior
+
+| Variable | Default | Meaning |
+|----------|---------|---------|
+| `IRON_HRX_DEVICE` | auto-detect | Force the amdxdna device generation (`npu1` / `npu2`) instead of detecting it from sysfs PCI IDs. |
+| `HRX_EXE_CACHE_SIZE` | `32` | Max number of amdxdna executables the `CachedHRXRuntime` keeps (LRU). |
+| `IRON_HRX_TIMEOUT` | `0` (disabled) | Watchdog timeout, in seconds, bounding the wait in `hrx_stream_synchronize`. `0`, unset, or an invalid value disables the watchdog. On expiry a diagnosable error is raised (the underlying sync cannot be cancelled). |
+
+```bash
+# Force npu2, cap the executable cache, and fail a wedged sync after 30s.
+IRON_RUNTIME=hrx IRON_HRX_DEVICE=npu2 HRX_EXE_CACHE_SIZE=8 \
+  IRON_HRX_TIMEOUT=30 python my_script.py
+```
+
 ## Diagnostic Output and Log Level
 
 The `aie` library uses Python's standard `logging` module for all diagnostic output. Set

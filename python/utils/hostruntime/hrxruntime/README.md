@@ -5,10 +5,10 @@
 //
 //===----------------------------------------------------------------------===//-->
 
-# Running MLIR-AIE IRON (Python) & C++ tests on the **HRX** runtime
+# Running IRON (Python) & C++ tests on the **HRX** runtime
 
 This package (`aie.utils.hostruntime.hrxruntime`) is the **HRX** host-runtime
-backend for MLIR-AIE. It dispatches IRON designs and the C++ testbench on the
+backend for IRON. It dispatches IRON designs and the C++ testbench on the
 AMD **XDNA2 NPU** through **`libhrx`** (the IREE-based runtime with an `amdxdna`
 HAL), consuming the `aiecc` artifacts (`final.xclbin` + `insts.bin`).
 
@@ -43,93 +43,34 @@ environment/make variable.
 | XRT userspace (pyxrt) | **Optional.** Only needed for the XRT baseline. HRX itself does not need it. |
 
 The NPU + driver + Peano requirements are exactly the same as the normal (XRT)
-MLIR-AIE flow — if XRT examples build/run on this box, HRX has what it needs too,
+IRON flow — if XRT examples build/run on this box, HRX has what it needs too,
 plus a built `libhrx`. With the bundled `hrx-xclbinutil` (§3b) instead of XRT's,
 the whole HRX flow — build *and* run — needs **no XRT install at all**.
 
 ---
 
-## 2. Provision HRX (`libhrx.so` + flatcc)
-
-### 2a. Pinned release (recommended — no source build)
+## 2. Provision HRX (`libhrx.so`)
 
 Run the fetch helper from the repo root:
 
 ```bash
-hrx-integration/fetch-hrx-release.sh
+utils/fetch-hrx-release.sh
 ```
 
 It downloads, checksum-verifies, and extracts the pinned HRX release
-(coordinates in `hrx-integration/hrx-release.env`) and prints the path to an
+(coordinates in `utils/hrx-release.env`) and prints the path to an
 `env.sh`. The release ships a relocatable install prefix (`include/hrx` +
 `lib/libhrx.so` + `lib/cmake/hrx`); the helper synthesizes an `env.sh` that
 exports `HRX_DIR` / `LD_LIBRARY_PATH` / `CMAKE_PREFIX_PATH`, which §4's
 auto-detection consumes:
 
 ```bash
-source "$(hrx-integration/fetch-hrx-release.sh)"
-# or, in one step:  eval "$(hrx-integration/fetch-hrx-release.sh --print-env)"
+source "$(utils/fetch-hrx-release.sh)"
+# or, in one step:  eval "$(utils/fetch-hrx-release.sh --print-env)"
 ```
 
 This is exactly how the pure-HRX CI job provisions `libhrx`. Once sourced, skip
-to §3 — you're done with HRX provisioning. Build from source (§2b) only if you
-need a custom `libhrx`.
-
-### 2b. Advanced: build `libhrx` from source
-
-Clone HRX, check out a branch that ships `hrx_amdxdna_executable_create`
-(`amdxdna-hal-native-rel` or newer), build it NPU-only, and install the public
-distribution.
-
-> **Placement (do this for zero-config detection):** clone HRX as a **sibling of
-> `mlir-aie`** into `<parent-of-mlir-aie>/hrx-system` and install to
-> `hrx-system/build/hrx-install`. Auto-detection then finds it with no env vars.
-> (`~/hrx`, `/opt/hrx`, `/usr/local/hrx` install prefixes also work; anything
-> else needs the env hints in §4.)
-
-```bash
-# from the directory that contains your mlir-aie checkout:
-git clone https://github.com/ROCm/hrx-system.git hrx-system
-cd hrx-system
-git remote add jorn https://github.com/jtuyls/hrx.git
-git fetch jorn amdxdna-hal-native-rel
-git checkout -B amdxdna-hal-native-rel jorn/amdxdna-hal-native-rel
-
-python dev.py cmake setup
-python dev.py cmake configure \
-  -DIREE_ROCM_PATH=/opt/rocm -DIREE_ROCM_DEPENDENCY_MODE=package \
-  -DCMAKE_INSTALL_LIBDIR=lib \
-  -DCMAKE_C_COMPILER=/opt/rocm/llvm/bin/clang \
-  -DCMAKE_CXX_COMPILER=/opt/rocm/llvm/bin/clang++ \
-  -DCMAKE_ASM_COMPILER=/opt/rocm/llvm/bin/clang \
-  -DCMAKE_AR=/opt/rocm/llvm/bin/llvm-ar -DCMAKE_RANLIB=/opt/rocm/llvm/bin/llvm-ranlib \
-  -DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=lld -DCMAKE_SHARED_LINKER_FLAGS=-fuse-ld=lld \
-  -DCMAKE_MODULE_LINKER_FLAGS=-fuse-ld=lld -DCMAKE_BUILD_TYPE=RelWithDebInfo \
-  -DIREE_HAL_DRIVER_AMDGPU=OFF -DIREE_HAL_DRIVER_AMDXDNA=ON
-python dev.py cmake build
-cmake --install build/cmake --prefix build/hrx-install --component HrxPublicDist
-```
-
-> **libstdc++ note:** if the ROCm `clang++` can't find `libstdc++` (e.g. it
-> defaults to a gcc install dir that only ships the runtime `.so.6`), point it at
-> a full gcc toolchain by adding
-> `-DCMAKE_C_FLAGS=--gcc-install-dir=<dir> -DCMAKE_CXX_FLAGS=--gcc-install-dir=<dir>`
-> (e.g. `/usr/lib/gcc/x86_64-linux-gnu/13`) to the configure line.
-
-**Verify** the install produced what the MLIR-AIE HRX backend consumes — the
-public header, `libhrx.so`, and the new executable-create symbol:
-
-```bash
-P=build/hrx-install
-ls $P/include/hrx/hrx_amdxdna.h $P/include/hrx/hrx_runtime.h
-ls $P/lib/libhrx.so
-ls $P/lib/cmake/hrx/hrx-config.cmake
-nm -D $P/lib/libhrx.so | grep hrx_amdxdna_executable_create
-```
-
-All must exist (and the `nm` grep must print a `T` symbol). If you installed HRX
-as `../hrx-system/build/hrx-install` beside `mlir-aie`, you're done — no env vars
-needed; skip to §3. Otherwise set the hints in §4.
+to §3 — you're done with HRX provisioning.
 
 ---
 
@@ -303,15 +244,14 @@ device writes, so producer→consumer chains work (one run's output buffer is th
 next run's input). Entries may share one `handle` (re-dispatch the same kernel)
 or use different handles (a true multi-kernel pipeline).
 
-A chained test mirroring `test_runlist.cpp` (`run0: out0 = in+1`,
-`run1: out1 = out0+1`, plus a deeper N-link chain):
+A self-building backend test mirroring `test_runlist.cpp` (`run0: out0 = in+1`,
+`run1: out1 = out0+1`, plus a deeper N-link chain) lives at
+`test/python/npu-hrx/test_chain_hrx.py`. It builds its own design via
+`@iron.jit`, so it needs no pre-built artifacts:
 
 ```bash
-cd programming_examples/basic/vector_scalar_add
-make all                              # build/final.xclbin + build/insts.bin
-IRON_RUNTIME=hrx python3 test_chain_hrx.py \
-  --xclbin build/final.xclbin --instr build/insts.bin --kernel MLIR_AIE
-# expect: PASS!
+IRON_RUNTIME=hrx python3 -m pytest test/python/npu-hrx/test_chain_hrx.py
+# expect: passed
 ```
 
 ---
@@ -393,8 +333,9 @@ you ever see all-zero output confirm the transaction bytes reached libhrx intact
 - The host does no patch-table extraction of its own. For a raw `insts.bin` it
   passes the transaction straight through; for an ELF input
   (`aiecc --aie-generate-elf`) it extracts `.ctrltext` (the TXN verbatim) via
-  the small `control_code_from_elf` helper (Python `__init__.py` /
-  `hrx_test_wrapper.h`) and hands that to libhrx as the transaction.
+  the small `control_code_from_elf` helper (defined in Python `_bindings.py` and
+  re-exported from the package `__init__.py`; `hrx_test_wrapper.h` on the C++
+  side) and hands that to libhrx as the transaction.
 
 ---
 
@@ -404,7 +345,7 @@ you ever see all-zero output confirm the transaction bytes reached libhrx intact
 |---|---|
 | `IRON_RUNTIME=hrx … ImportError: libhrx.so could not be located` | HRX not found. Build it (§2), place it as a sibling `../hrx`, or set `HRX_DIR`/`LIBHRX_DIR` (§4). Verify with the §4 probe. |
 | C++ configure: `USE_HRX=ON but the HRX runtime was not found` | Same as above (CMake side). Set `HRX_DIR`/`CMAKE_PREFIX_PATH` or co-locate `../hrx-system/build/hrx-install`. |
-| C++ link/load: `undefined symbol: hrx_amdxdna_executable_create` | Your `libhrx.so` predates the `amdxdna-hal-native-rel` API. Rebuild/refresh HRX from `>= amdxdna-hal-native-rel` (§2b) and re-check with `nm -D`. |
+| C++ link/load: `undefined symbol: hrx_amdxdna_executable_create` | Your `libhrx.so` predates the `amdxdna-hal-native-rel` API. Refresh HRX from the pinned release (§2) and re-check with `nm -D`. |
 | Output is **all zeros** but no error | The transaction didn't reach libhrx intact (or the xclbin/insts pair is mismatched). Confirm you're on this branch and passing the raw `insts.bin`. |
 | `has_hrx`/import works but run hangs or `hrx_stream_synchronize … INTERNAL` | The dispatch may not have completed. Recover the device with a driver reload (`sudo rmmod amdxdna && sudo modprobe amdxdna`). |
 | `import aie.utils` lacks `has_hrx` | You're importing an upstream wheel, not this branch (§3 two-trees caveat). |
@@ -418,7 +359,9 @@ you ever see all-zero output confirm the transaction bytes reached libhrx intact
 
 | File | Role |
 |---|---|
-| `__init__.py` | ctypes bindings to `libhrx`; `HRXContext` (device/stream/buffer/exe/dispatch) with `create_executable` calling `hrx_amdxdna_executable_create`; `control_code_from_elf` for the ELF `.ctrltext` input path. |
+| `__init__.py` | Package entry point; re-exports `HRXContext`, `HRXError`, and `control_code_from_elf`. Import is side-effect-free (no `dlopen`). |
+| `_bindings.py` | The C ABI layer: enum/flag constants, `ctypes` struct mirrors, lazy `libhrx` `dlopen`, the bound `hrx_*` entry points, `HRXError`, and `control_code_from_elf` for the ELF `.ctrltext` input path. |
+| `context.py` | `HRXContext` — the process-wide device/stream/buffer/exe/dispatch singleton, with `create_executable` calling `hrx_amdxdna_executable_create`. |
 | `hostruntime.py` | `HRXHostRuntime` / `CachedHRXRuntime` (the IRON `HostRuntime` implementation). |
 | `tensor.py` | `HRXTensor` (persistent host-mapped device buffer, zero-copy numpy view). |
 | `discovery.py` | Path-only HRX discovery (no dlopen): `find_libhrx`/`find_hrx_dir`/`hrx_available`. |

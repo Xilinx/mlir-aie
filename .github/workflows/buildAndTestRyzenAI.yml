@@ -202,7 +202,7 @@ jobs:
         run: |
           # Downloads + checksum-verifies + extracts the pinned libhrx release
           # and writes its env.sh path to $GITHUB_ENV for later steps.
-          env_sh=$(bash hrx-integration/fetch-hrx-release.sh)
+          env_sh=$(bash utils/fetch-hrx-release.sh)
           echo "HRX_RELEASE_ENV=$env_sh" >> "$GITHUB_ENV"
 
       - name: Build from source (bundled hrx-xclbinutil, no XRT bindings)
@@ -246,6 +246,24 @@ jobs:
           LIT_FILTER='hrx_xclbin_sections' ninja check-aie
           popd
 
+          # 1b) HRX Python test suite, two groups:
+          #       * on-device (test/python/npu-hrx): the multi-dispatch chain
+          #         (run_chain) backend test, cached/uncached runtime behavior,
+          #         and the multi-process dispatch/isolation test -- self-building
+          #         via @iron.jit / @compileconfig, gated on the
+          #         hrx_python_bindings lit feature and run_on_npu2;
+          #       * host-side (test_hrx_runtime_selection): the runtime-selection
+          #         contract + lazy-init thread-safety tests, which need no NPU
+          #         but are exercised here in the real HRX-present / XRT-absent
+          #         configuration.
+          #     AIE_XCLBINUTIL points aiecc at the bundled tool so packaging
+          #     stays XRT-free and deterministic.
+          echo "===== lit: HRX python tests (npu-hrx + selection) ====="
+          export AIE_XCLBINUTIL="$PWD/install/bin/xclbinutil"
+          pushd build
+          LIT_FILTER='npu-hrx|test_hrx_runtime_selection' ninja check-aie
+          popd
+
           # 2) end-to-end on hardware: package with the bundled tool (RUNTIME=hrx)
           #    and dispatch via libhrx (Python IRON + C++ runlist).
           echo "===== example: vector_scalar_add (pure HRX) ====="
@@ -255,9 +273,6 @@ jobs:
           pushd programming_examples/basic/vector_scalar_add
           RUNTIME=hrx make clean
           RUNTIME=hrx make all
-          echo "--- Python (IRON) HRX dispatch ---"
-          IRON_RUNTIME=hrx python3 test_chain_hrx.py \
-            -x build/final.xclbin -i build/insts.bin -k MLIR_AIE
           echo "--- C++ HRX runlist dispatch ---"
           RUNTIME=hrx make run_runlist_hrx
           popd
@@ -329,7 +344,7 @@ jobs:
         run: |
           # Parse the pinned coordinates (Windows asset) from the shared env file.
           $envmap = @{}
-          Get-Content hrx-integration/hrx-release.env | ForEach-Object {
+          Get-Content utils/hrx-release.env | ForEach-Object {
             if ($_ -match '^\s*([A-Za-z0-9_]+)\s*=\s*"?([^"]*)"?\s*$') {
               $envmap[$matches[1]] = $matches[2]
             }
@@ -378,6 +393,9 @@ jobs:
           python -m py_compile \
             python/utils/__init__.py \
             python/utils/hostruntime/hrxruntime/__init__.py \
+            python/utils/hostruntime/hrxruntime/_bindings.py \
+            python/utils/hostruntime/hrxruntime/context.py \
             python/utils/hostruntime/hrxruntime/hostruntime.py \
-            python/utils/hostruntime/hrxruntime/discovery.py
+            python/utils/hostruntime/hrxruntime/discovery.py \
+            python/utils/hostruntime/hrxruntime/tensor.py
           echo "HRX Python sources compiled OK on Windows"

@@ -199,6 +199,14 @@ if shutil.which("aie-lsp-server", path=config.llvm_tools_dir) is not None:
 if shutil.which("xclbinutil", path=config.aie_tools_dir) is not None:
     config.available_features.add("hrxxclbinutil")
 
+# HRX Python runtime: gate the HRX-only Python tests (test/python/npu-hrx) on
+# libhrx being locatable, so they only run where the HRX backend can load. This
+# checks a runtime value (aie.utils.has_hrx), not just importability.
+if LitConfigHelper.python_expr_is_true(
+    config, config.python_executable, "__import__('aie.utils').utils.has_hrx"
+):
+    config.available_features.add("hrx_python_bindings")
+
 if config.xrt_python_bindings and LitConfigHelper.can_import_python_module(
     config, config.python_executable, "pyxrt"
 ):

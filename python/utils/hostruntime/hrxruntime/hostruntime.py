@@ -130,22 +130,30 @@ _TRACE_UNSUPPORTED_MSG = (
 
 
 class HRXHostRuntime(HostRuntime):
-    """HostRuntime that dispatches IRON designs through HRX (libhrx + amdxdna)."""
+    """Uncached HostRuntime that dispatches IRON designs through HRX.
+
+    Every :meth:`load` builds a fresh amdxdna executable and never reuses one
+    across calls -- the analogue of :class:`XRTHostRuntime`. On shared systems
+    where holding onto device executables is undesirable this is the runtime to
+    pick; :class:`CachedHRXRuntime` layers an LRU executable cache on top for
+    the common single-process case. Created executables are tracked so
+    :meth:`cleanup` can release them.
+    """
 
     _tensor_class = HRXTensor
 
     def __init__(self):
         self._ctx = HRXContext.get()
-        # Executable cache keyed by (xclbin_path, xclbin_mtime, insts_path,
-        # insts_mtime).
-        self._exe_cache = OrderedDict()
-        self._cache_size = int(os.environ.get("HRX_EXE_CACHE_SIZE", "32"))
+        # Executables created by load(), retained only so cleanup() can release
+        # them (this uncached runtime never reuses one across load() calls).
+        self._executables = []
         # Device generation (npu1/npu2). Detected from the amdxdna device when
         # possible so a Phoenix box is not silently mislabeled as Strix; the
         # IRON_HRX_DEVICE env var always overrides.
         self._device_gen = _detect_hrx_device_gen()
 
-    def load(self, npu_kernel, **kwargs) -> HRXKernelHandle:
+    def _resolve_kernel(self, npu_kernel):
+        """Resolve + validate an npu_kernel to (xclbin_path, insts_path, name)."""
         self.check_device_consistency()
         xclbin_path = Path(npu_kernel.xclbin_path).resolve()
         insts_path = Path(npu_kernel.insts_path).resolve()
@@ -159,21 +167,12 @@ class HRXHostRuntime(HostRuntime):
             raise HostRuntimeError(
                 f"insts {insts_path} does not exist or is not a file."
             )
+        return xclbin_path, insts_path, kernel_name
 
-        key = (
-            str(xclbin_path),
-            xclbin_path.stat().st_mtime,
-            str(insts_path),
-            insts_path.stat().st_mtime,
-            kernel_name,
-        )
-        if key in self._exe_cache:
-            self._exe_cache.move_to_end(key)
-            exe, ordv = self._exe_cache[key]
-            return HRXKernelHandle(exe, ordv, kernel_name, xclbin_path, insts_path)
-
+    def _build_executable(self, xclbin_path, insts_path, kernel_name):
+        """Create + look up a fresh amdxdna executable from the raw artifacts."""
         xclbin_bytes = xclbin_path.read_bytes()
-        # libhrx now builds the amdxdna XADX package and derives the patch table
+        # libhrx builds the amdxdna XADX package and derives the patch table
         # from the XAie transaction internally, so we just hand it the raw
         # artifacts. The transaction is the raw insts.bin TXN words; for an ELF
         # input (aiecc --aie-generate-elf) we extract .ctrltext (the TXN verbatim)
@@ -188,12 +187,27 @@ class HRXHostRuntime(HostRuntime):
             ordv = self._ctx.lookup_export(exe, kernel_name)
         except HRXError as e:
             raise HostRuntimeError(f"HRX failed to load kernel: {e}") from e
+        return exe, ordv
 
-        if len(self._exe_cache) >= self._cache_size:
-            _, (old_exe, _) = self._exe_cache.popitem(last=False)
-            self._ctx.release_executable(old_exe)
-        self._exe_cache[key] = (exe, ordv)
+    def load(self, npu_kernel, **kwargs) -> HRXKernelHandle:
+        """Build a fresh amdxdna executable for ``npu_kernel``.
 
+        Args:
+            npu_kernel (NPUKernel): The kernel to load; its ``xclbin_path`` /
+                ``insts_path`` / ``kernel_name`` are read and validated.
+            **kwargs: Accepted for API compatibility; ignored by HRX.
+
+        Returns:
+            HRXKernelHandle: A handle wrapping the loaded executable and its
+            resolved export ordinal.
+
+        Raises:
+            HostRuntimeError: If the artifacts are missing or libhrx fails to
+                create/resolve the executable.
+        """
+        xclbin_path, insts_path, kernel_name = self._resolve_kernel(npu_kernel)
+        exe, ordv = self._build_executable(xclbin_path, insts_path, kernel_name)
+        self._executables.append(exe)
         return HRXKernelHandle(exe, ordv, kernel_name, xclbin_path, insts_path)
 
     def _prepare_bindings(self, args):
@@ -204,10 +218,17 @@ class HRXHostRuntime(HostRuntime):
         (a cheap ``flush_range`` clflush on the persistent mapping — no copy),
         and returns both the kept tensors and the ``(buffer, size)`` bindings.
 
-        Flushing every binding (not just inputs) is safe: an output is about to
-        be overwritten on-device, and in a chain a flush of an intermediate
-        buffer happens at record time, before any device work, so an earlier
-        run's device writes still win.
+        Sync cost note (review r3623783388): this layer does not know an arg's
+        direction (input / output / in-out), so it is deliberately conservative
+        both ways. It flushes *every* binding host->device here, and :meth:`run`
+        marks *every* binding device-resident afterwards so the next host read
+        invalidates it. For a pure input, the post-run mark forces one extra
+        device->host *invalidate* on next access. Both directions are cheap cache
+        maintenance (clflush / cache-line invalidate) over a single persistent
+        host-coherent mapping — never a host<->device copy — so the redundant op
+        on a pure input is a bounded, no-copy cost. Tracking direction would
+        require plumbing arg intents from the design down to dispatch, which is
+        the same conservative trade-off the XRT runtime makes today.
         """
         kept = [a for a in args if not callable(a)]
         if not all(isinstance(a, self._tensor_class) for a in kept):
@@ -230,6 +251,29 @@ class HRXHostRuntime(HostRuntime):
         only_if_loaded: bool = False,
         **kwargs,
     ) -> HRXKernelResult:
+        """Dispatch a single loaded kernel and wait for it to finish.
+
+        Host-side inputs are flushed to the device, the executable is dispatched
+        and synchronized, and every argument is left marked device-resident so
+        the next host read invalidates and observes the results.
+
+        Args:
+            kernel_handle (HRXKernelHandle): Handle from :meth:`load`.
+            args: The kernel arguments (``HRXTensor`` instances; a trailing
+                callable, as ``@iron.jit`` appends, is ignored).
+            trace_config (optional): Must be ``None`` -- HRX has no trace capture.
+            fail_on_error (bool, optional): Raise on a failed dispatch instead of
+                returning an unsuccessful result. Defaults to True.
+            only_if_loaded (bool, optional): Accepted for API compatibility.
+            **kwargs: Accepted for API compatibility; ignored by HRX.
+
+        Returns:
+            HRXKernelResult: Wraps the elapsed dispatch time and success flag.
+
+        Raises:
+            HostRuntimeError: If ``trace_config`` is set, or the dispatch fails
+                and ``fail_on_error`` is True.
+        """
         assert isinstance(kernel_handle, HRXKernelHandle)
         # HRX does not implement trace capture; fail loudly rather than silently
         # ignoring the request (which would return a misleading success with no
@@ -275,8 +319,24 @@ class HRXHostRuntime(HostRuntime):
 
         All entries may share one ``kernel_handle`` (re-dispatching the same
         executable with different bindings) or use different handles (a true
-        multi-kernel pipeline). Returns one :class:`HRXKernelResult` covering the
-        whole chain.
+        multi-kernel pipeline).
+
+        Args:
+            runs: A sequence of ``(kernel_handle, args)`` entries, recorded in
+                order. Each ``kernel_handle`` is an :class:`HRXKernelHandle` and
+                ``args`` are ``HRXTensor`` instances (a trailing callable is
+                ignored, as in :meth:`run`).
+            fail_on_error (bool, optional): Raise on a failed chain dispatch
+                instead of returning an unsuccessful result. Defaults to True.
+
+        Returns:
+            HRXKernelResult: One result covering the whole chain (elapsed time +
+            success flag). An empty ``runs`` returns a successful zero-time
+            result.
+
+        Raises:
+            HostRuntimeError: If the chain dispatch fails and ``fail_on_error``
+                is True.
         """
         self.check_device_consistency()
         runs = list(runs)
@@ -331,34 +391,76 @@ class HRXHostRuntime(HostRuntime):
 
         return from_name(self._device_gen, n_cols=None)
 
+    def _release_executable(self, exe) -> None:
+        """Release one executable back to HRX, swallowing release errors."""
+        try:
+            self._ctx.release_executable(exe)
+        except HRXError as e:
+            logger.debug("HRX executable release failed during cleanup: %s", e)
+
     def cleanup(self) -> None:
-        """Release cached HRX executables.
+        """Release the executables this runtime created.
 
         Invoked by the shared ``aie.utils.cleanup_npu_runtime`` entry point.
-        Each cached executable is released back to HRX; the process-wide
-        device/stream owned by :class:`HRXContext` is intentionally left intact
-        (it is a shared singleton that other runtimes/tensors may still use and
-        is torn down by libhrx at process exit).
+        Each executable is released back to HRX; the process-wide device/stream
+        owned by :class:`HRXContext` is intentionally left intact (it is a
+        shared singleton that other runtimes/tensors may still use and is torn
+        down by libhrx at process exit).
         """
-        cache = getattr(self, "_exe_cache", None)
-        if not cache:
+        executables = getattr(self, "_executables", None)
+        if not executables:
             return
-        while cache:
-            _, (exe, _) = cache.popitem(last=False)
-            try:
-                self._ctx.release_executable(exe)
-            except HRXError as e:
-                logger.debug("HRX executable release failed during cleanup: %s", e)
+        while executables:
+            self._release_executable(executables.pop())
 
 
 class CachedHRXRuntime(HRXHostRuntime):
-    """Cache-by-default entry point matching the XRT naming (CachedXRTRuntime).
+    """HRX runtime that caches loaded executables (analogue of CachedXRTRuntime).
 
-    HRXHostRuntime already caches executables; this registers an ``atexit``
-    cleanup (as CachedXRTRuntime does) so loaded executables are released on
-    interpreter shutdown.
+    Unlike the uncached :class:`HRXHostRuntime`, this reuses an amdxdna
+    executable across :meth:`load` calls for the same artifacts, evicting the
+    least-recently-used entry once ``HRX_EXE_CACHE_SIZE`` (default 32) is
+    exceeded. It also registers an ``atexit`` cleanup (as ``CachedXRTRuntime``
+    does) so cached executables are released on interpreter shutdown.
     """
 
     def __init__(self):
         super().__init__()
+        # Executable cache keyed by (xclbin_path, xclbin_mtime, insts_path,
+        # insts_mtime, kernel_name).
+        self._exe_cache = OrderedDict()
+        self._cache_size = int(os.environ.get("HRX_EXE_CACHE_SIZE", "32"))
         atexit.register(self.cleanup)
+
+    def load(self, npu_kernel, **kwargs) -> HRXKernelHandle:
+        xclbin_path, insts_path, kernel_name = self._resolve_kernel(npu_kernel)
+
+        key = (
+            str(xclbin_path),
+            xclbin_path.stat().st_mtime,
+            str(insts_path),
+            insts_path.stat().st_mtime,
+            kernel_name,
+        )
+        if key in self._exe_cache:
+            self._exe_cache.move_to_end(key)
+            exe, ordv = self._exe_cache[key]
+            return HRXKernelHandle(exe, ordv, kernel_name, xclbin_path, insts_path)
+
+        exe, ordv = self._build_executable(xclbin_path, insts_path, kernel_name)
+
+        if len(self._exe_cache) >= self._cache_size:
+            _, (old_exe, _) = self._exe_cache.popitem(last=False)
+            self._release_executable(old_exe)
+        self._exe_cache[key] = (exe, ordv)
+
+        return HRXKernelHandle(exe, ordv, kernel_name, xclbin_path, insts_path)
+
+    def cleanup(self) -> None:
+        """Release cached executables, then any tracked by the base runtime."""
+        cache = getattr(self, "_exe_cache", None)
+        if cache:
+            while cache:
+                _, (exe, _) = cache.popitem(last=False)
+                self._release_executable(exe)
+        super().cleanup()

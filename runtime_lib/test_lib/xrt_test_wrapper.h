@@ -1,4 +1,4 @@
-/* Copyright (C) 2025 Advanced Micro Devices, Inc.
+/* Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
  * SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception */
 
 // When built for the HRX backend (RUNTIME=hrx / -DUSE_HRX=ON), this header
