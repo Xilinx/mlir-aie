@@ -11,8 +11,9 @@
 # Download, checksum-verify, and extract the pinned HRX (amdxdna) release so the
 # HRX runtime path has a libhrx (hrx.dll) to dispatch through -- without
 # cloning/building HRX from source. Both HRX entry points consume the same
-# library provisioned here: the IRON/Python flow selects it with
-# IRON_RUNTIME=hrx and the C++ example `make` flow selects it with RUNTIME=hrx.
+# library provisioned here, and both are selected by a single NPU_RUNTIME=hrx
+# variable: the IRON/Python flow reads it at import, and the C++ example `make`
+# flow reads it to build the HRX host stack.
 #
 # Usage:
 #   ./utils/fetch-hrx-release.ps1              # fetch + extract (idempotent)

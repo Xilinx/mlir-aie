@@ -14,7 +14,7 @@
 //
 // Validating out1 == i + 3 proves the in-chain producer->consumer dependency
 // holds (run1 observed run0's on-device write). HRX-only: build with
-// RUNTIME=hrx (the Makefile target forces -DUSE_HRX=ON).
+// NPU_RUNTIME=hrx (the Makefile target forces -DUSE_HRX=ON).
 //
 //===----------------------------------------------------------------------===//
 
@@ -27,7 +27,8 @@
 #include <vector>
 
 #ifndef TEST_UTILS_USE_HRX
-#error "test_runlist_hrx.cpp requires the HRX backend (build with RUNTIME=hrx)."
+#error                                                                         \
+    "test_runlist_hrx.cpp requires the HRX backend (build with NPU_RUNTIME=hrx)."
 #endif
 
 int main(int argc, const char *argv[]) {

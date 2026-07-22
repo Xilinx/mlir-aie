@@ -28,8 +28,8 @@ from .hostruntime.tensor_class import Tensor
 
 # Capability probes for the two NPU host backends. Both are memoized and lazy:
 # importing ``aie.utils`` no longer eagerly probes either backend. Runtime
-# selection below probes only the backend it actually needs (so IRON_RUNTIME=hrx
-# never imports pyxrt and IRON_RUNTIME=xrt never runs HRX discovery), and the
+# selection below probes only the backend it actually needs (so NPU_RUNTIME=hrx
+# never imports pyxrt and NPU_RUNTIME=xrt never runs HRX discovery), and the
 # public ``aie.utils.has_xrt`` / ``aie.utils.has_hrx`` attributes are served
 # on-demand via module ``__getattr__`` so a bare capability query still works in
 # any mode (including the default ``auto``) and pays for at most one probe.
@@ -76,50 +76,50 @@ def _probe_hrx() -> bool:
     return _has_hrx
 
 
-# Host-runtime backend selection. ``IRON_RUNTIME`` chooses between the XRT and
+# Host-runtime backend selection. ``NPU_RUNTIME`` chooses between the XRT and
 # HRX host stacks; both consume the identical aiecc artifacts (final.xclbin +
 # insts.bin) and only the dispatch path differs. Accepted values:
 #   xrt   - force the XRT backend (falls back to CPU tensors if pyxrt is missing).
 #   hrx   - force the HRX backend (error here if libhrx is not found).
 #   auto  - (default) prefer XRT when present, else fall back to CPU.
 #
-# HRX is strictly opt-in: it is selected *only* when IRON_RUNTIME=hrx is set
+# HRX is strictly opt-in: it is selected *only* when NPU_RUNTIME=hrx is set
 # explicitly. ``auto`` never selects HRX -- the product contract is "XRT remains
 # the default, HRX is opt-in", so an XRT-less host degrades to CPU rather than
 # silently switching to HRX.
 #
-# IRON_RUNTIME is read *before* any capability probe so a forced backend only
+# NPU_RUNTIME is read *before* any capability probe so a forced backend only
 # probes itself: 'hrx' never imports pyxrt, and 'xrt'/'auto' never run HRX
 # discovery. Each backend's tensor/runtime module is likewise imported lazily
 # (it dlopen()s / imports its own runtime on first use).
-_IRON_RUNTIME = os.environ.get("IRON_RUNTIME", "auto").lower()
+_NPU_RUNTIME = os.environ.get("NPU_RUNTIME", "auto").lower()
 
-# Strict product contract: an unset IRON_RUNTIME defaults to 'auto', but an
+# Strict product contract: an unset NPU_RUNTIME defaults to 'auto', but an
 # explicitly *invalid* value is a hard error rather than a silent fallback --
 # a typo'd backend name must not quietly resolve to something else.
-if _IRON_RUNTIME not in ("xrt", "hrx", "auto"):
+if _NPU_RUNTIME not in ("xrt", "hrx", "auto"):
     raise ImportError(
-        f"Invalid IRON_RUNTIME={_IRON_RUNTIME!r}; expected one of xrt|hrx|auto "
+        f"Invalid NPU_RUNTIME={_NPU_RUNTIME!r}; expected one of xrt|hrx|auto "
         f"(unset defaults to 'auto')."
     )
 
-if _IRON_RUNTIME == "hrx" and not _probe_hrx():
+if _NPU_RUNTIME == "hrx" and not _probe_hrx():
     raise ImportError(
-        "IRON_RUNTIME=hrx was requested but libhrx.so could not be located. "
+        "NPU_RUNTIME=hrx was requested but libhrx.so could not be located. "
         "Install HRX to a standard location, or set HRX_DIR/LIBHRX_DIR. "
-        "Use IRON_RUNTIME=auto to fall back to XRT/CPU when HRX is absent."
+        "Use NPU_RUNTIME=auto to fall back to XRT/CPU when HRX is absent."
     )
 
 # Resolve 'auto' to a concrete backend with graceful degradation. HRX is never
-# auto-selected (opt-in only via IRON_RUNTIME=hrx), so 'auto' is XRT or CPU.
-if _IRON_RUNTIME == "auto":
-    _IRON_RUNTIME = "xrt" if _probe_xrt() else "cpu"
+# auto-selected (opt-in only via NPU_RUNTIME=hrx), so 'auto' is XRT or CPU.
+if _NPU_RUNTIME == "auto":
+    _NPU_RUNTIME = "xrt" if _probe_xrt() else "cpu"
 
-if _IRON_RUNTIME == "hrx":
+if _NPU_RUNTIME == "hrx":
     from .hostruntime.hrxruntime.tensor import HRXTensor
 
     DEFAULT_TENSOR_CLASS = HRXTensor
-elif _IRON_RUNTIME == "xrt" and _probe_xrt():
+elif _NPU_RUNTIME == "xrt" and _probe_xrt():
     from .hostruntime.xrtruntime.tensor import XRTTensor
 
     DEFAULT_TENSOR_CLASS = XRTTensor
@@ -292,11 +292,11 @@ def _get_default_npu_runtime():
     global _DefaultNPURuntime
     if _DefaultNPURuntime is not None:
         return _DefaultNPURuntime
-    if _IRON_RUNTIME == "hrx":
+    if _NPU_RUNTIME == "hrx":
         from .hostruntime.hrxruntime.hostruntime import CachedHRXRuntime
 
         _DefaultNPURuntime = CachedHRXRuntime()
-    elif _IRON_RUNTIME == "xrt" and _probe_xrt():
+    elif _NPU_RUNTIME == "xrt" and _probe_xrt():
         from .hostruntime.xrtruntime.hostruntime import CachedXRTRuntime
 
         _DefaultNPURuntime = CachedXRTRuntime()

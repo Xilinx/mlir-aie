@@ -1,7 +1,7 @@
 /* Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
  * SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception */
 
-// When built for the HRX backend (RUNTIME=hrx / -DUSE_HRX=ON), this header
+// When built for the HRX backend (NPU_RUNTIME=hrx / -DUSE_HRX=ON), this header
 // becomes a thin shim that pulls in the HRX drop-in instead of the XRT impl, so
 // example test.cpp files keep `#include "xrt_test_wrapper.h"` unchanged.
 #ifdef TEST_UTILS_USE_HRX

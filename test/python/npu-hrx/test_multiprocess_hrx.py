@@ -29,7 +29,7 @@ import tempfile
 import pytest
 
 # Each subprocess: build an `out = in + 1` design, dispatch it through the HRX
-# runtime (IRON_RUNTIME=hrx forces CachedHRXRuntime), and verify the result.
+# runtime (NPU_RUNTIME=hrx forces CachedHRXRuntime), and verify the result.
 _WORKER_SCRIPT = """
 import sys
 import numpy as np
@@ -97,7 +97,7 @@ def test_multiprocess_hrx_dispatch():
         for _ in range(num_processes):
             env = os.environ.copy()
             env["NPU_CACHE_HOME"] = temp_cache_dir
-            env["IRON_RUNTIME"] = "hrx"
+            env["NPU_RUNTIME"] = "hrx"
             processes.append(
                 subprocess.Popen(
                     [sys.executable, script_path],

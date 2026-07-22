@@ -101,10 +101,10 @@ The `CachedXRTRuntime` caches XRT contexts to improve performance. The size of t
 export XRT_CONTEXT_CACHE_SIZE=1
 ```
 
-## Host-runtime backend selection (`IRON_RUNTIME`)
+## Host-runtime backend selection (`NPU_RUNTIME`)
 
 IRON dispatches designs through a host runtime that consumes the `aiecc`
-artifacts (`final.xclbin` + `insts.bin`). `IRON_RUNTIME` selects which backend
+artifacts (`final.xclbin` + `insts.bin`). `NPU_RUNTIME` selects which backend
 is used:
 
 | Value | Behavior |
@@ -114,17 +114,23 @@ is used:
 | `hrx` | Force the [HRX](../python/utils/hostruntime/hrxruntime/README.md) (amdxdna / `libhrx`) backend. Errors at import if `libhrx.so` cannot be located. |
 
 An unset value defaults to `auto`; an explicitly invalid value is a hard error
-(a typo must not silently resolve to another backend). `IRON_RUNTIME` is read
+(a typo must not silently resolve to another backend). `NPU_RUNTIME` is read
 *before* any capability probe, so a forced backend only probes itself (`hrx`
 never imports `pyxrt`, and `xrt`/`auto` never run HRX discovery).
 
 ```bash
-IRON_RUNTIME=hrx python my_script.py
+NPU_RUNTIME=hrx python my_script.py
 ```
+
+`NPU_RUNTIME` is a single selector shared with the C++ example `make` flow: the
+same `NPU_RUNTIME=hrx` also builds the HRX host stack (`-DUSE_HRX=ON`) for
+`make`-driven examples (see `programming_examples/makefile-common`). The `auto`
+and `cpu` values are meaningful only to the Python flow; the build system treats
+an unset selector as `xrt`.
 
 ## HRX Runtime (amdxdna) Configuration
 
-These variables apply when the HRX backend is active (`IRON_RUNTIME=hrx`). See
+These variables apply when the HRX backend is active (`NPU_RUNTIME=hrx`). See
 the [HRX Runtime (amdxdna)](hrx_runtime.md) overview for the architecture and
 enabling instructions, and the
 [HRX runtime README](../python/utils/hostruntime/hrxruntime/README.md) for the
@@ -154,7 +160,7 @@ If none are set, standard locations (a sibling `hrx` checkout, `$HOME/hrx`,
 
 ```bash
 # Force npu2, cap the executable cache, and fail a wedged sync after 30s.
-IRON_RUNTIME=hrx IRON_HRX_DEVICE=npu2 HRX_EXE_CACHE_SIZE=8 \
+NPU_RUNTIME=hrx IRON_HRX_DEVICE=npu2 HRX_EXE_CACHE_SIZE=8 \
   IRON_HRX_TIMEOUT=30 python my_script.py
 ```
 

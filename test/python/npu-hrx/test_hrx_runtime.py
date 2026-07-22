@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-# RUN: %run_on_npu2% env IRON_RUNTIME=hrx %pytest %s
+# RUN: %run_on_npu2% env NPU_RUNTIME=hrx %pytest %s
 # REQUIRES: hrx_python_bindings
 
 """Cached vs. uncached HRX runtime behavior.

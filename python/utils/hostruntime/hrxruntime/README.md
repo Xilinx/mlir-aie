@@ -17,9 +17,9 @@ run both the IRON (Python) end-to-end tests and the C++ on-hardware tests with
 HRX. No source edits to example/test files are needed — HRX is selected by an
 environment/make variable.
 
-> TL;DR
-> - **IRON / Python:** `IRON_RUNTIME=hrx python <example>.py …`
-> - **C++:** `RUNTIME=hrx make run`
+> TL;DR — one `NPU_RUNTIME=hrx` variable drives both flows:
+> - **IRON / Python:** `NPU_RUNTIME=hrx python <example>.py …`
+> - **C++:** `NPU_RUNTIME=hrx make run`
 > - HRX is **auto-detected** (no env vars required if it's in a standard/sibling
 >   location). `libhrx` builds the amdxdna XADX executable **internally** via
 >   `hrx_amdxdna_executable_create` — there is no separate helper to build.
@@ -36,7 +36,7 @@ environment/make variable.
 |---|---|
 | **XDNA2 NPU** (Strix / `npu4` / aie2p) | `/dev/accel/accel0` present; `amdxdna` driver loaded. |
 | **HRX built** (`libhrx.so`) | See §2. This is the runtime we dispatch through; it exports `hrx_amdxdna_executable_create`, which builds the amdxdna XADX package internally. |
-| **MLIR-AIE installed from *this* branch** | So `import aie` works, `aiecc` can build examples, and the wheel includes this `hrxruntime` package + the `IRON_RUNTIME` switch. See §3. |
+| **MLIR-AIE installed from *this* branch** | So `import aie` works, `aiecc` can build examples, and the wheel includes this `hrxruntime` package + the `NPU_RUNTIME` switch. See §3. |
 | **A C++ toolchain + CMake ≥ 3.30** | Only for the C++ tests. (`pip install "cmake>=3.30"` into the venv if the system cmake is older.) |
 | **Peano / llvm-aie** | Needed by `aiecc` to build the example `.xclbin`/`insts.bin` (same as the XRT flow). |
 | **`xclbinutil`** (xclbin packaging) | `aiecc` packages the `.xclbin` with the tool named by **`AIE_XCLBINUTIL`** / **`--xclbinutil-path`** (explicit, deterministic — see §3b), falling back to a `PATH` lookup only if neither is set. Provided by XRT, **or** build the bundled XRT-free `hrx-xclbinutil` (§3b) — recommended on an XRT-free box. |
@@ -78,7 +78,7 @@ to §3 — you're done with HRX provisioning.
 
 Install the `mlir_aie` + `llvm_aie` wheels per the project's normal instructions,
 **built from this branch** so the wheel ships this `hrxruntime` package and the
-`IRON_RUNTIME` selection logic in `aie/utils/__init__.py`.
+`NPU_RUNTIME` selection logic in `aie/utils/__init__.py`.
 
 Verify the imported `aie.utils` is the one from this branch (it must expose the
 HRX hooks):
@@ -125,8 +125,8 @@ cmake … -DAIE_BUILD_HRXXCLBINUTIL=ON     # add to your normal mlir-aie configu
   - **`aiecc --xclbinutil-path <path>`** (command-line flag).
 
   If set, `aiecc` uses exactly that binary and **fails loudly if it is missing**,
-  so a `RUNTIME=hrx` build never silently falls back to XRT's tool. This is what
-  `programming_examples/makefile-common` does: on `RUNTIME=hrx` it sets
+  so a `NPU_RUNTIME=hrx` build never silently falls back to XRT's tool. This is what
+  `programming_examples/makefile-common` does: on `NPU_RUNTIME=hrx` it sets
   `AIE_XCLBINUTIL` to the `xclbinutil` installed next to `aiecc` (the bundled
   `hrx-xclbinutil`), resolved as `aiecc`'s sibling.
 - **Fallback (only when neither of the above is set):** `aiecc` locates the tool
@@ -192,7 +192,7 @@ No XADX helper is needed: `libhrx` builds the amdxdna XADX package internally vi
 
 ## 5. Run IRON (Python) end-to-end tests with HRX
 
-Select the backend with **`IRON_RUNTIME=hrx`**. Everything else is the normal
+Select the backend with **`NPU_RUNTIME=hrx`**. Everything else is the normal
 IRON flow. Two common shapes:
 
 ### 5a. `test.py`-driven example
@@ -200,7 +200,7 @@ IRON flow. Two common shapes:
 ```bash
 cd programming_examples/basic/vector_scalar_mul
 make                                  # builds build/final_8192.xclbin + build/insts_8192.bin (aiecc)
-IRON_RUNTIME=hrx python3 test.py \
+NPU_RUNTIME=hrx python3 test.py \
   --xclbin build/final_8192.xclbin --instr build/insts_8192.bin \
   --kernel MLIR_AIE --in1-size 8192 --in2-size 4 --out-size 8192
 # expect: PASS!
@@ -210,10 +210,10 @@ IRON_RUNTIME=hrx python3 test.py \
 
 ```bash
 cd programming_examples/basic/vector_vector_add
-IRON_RUNTIME=hrx python3 vector_vector_add.py     # expect: PASS!
+NPU_RUNTIME=hrx python3 vector_vector_add.py     # expect: PASS!
 ```
 
-### Backend selection semantics (`IRON_RUNTIME`)
+### Backend selection semantics (`NPU_RUNTIME`)
 
 - `hrx`  — force HRX; clear error if `libhrx` can't be found. **HRX is opt-in:
   this is the only value that selects it.**
@@ -225,7 +225,7 @@ IRON_RUNTIME=hrx python3 vector_vector_add.py     # expect: PASS!
 Quick smoke test (no hardware dispatch — just import + selection):
 
 ```bash
-IRON_RUNTIME=hrx python3 -c "import aie.utils as u; print(u.DEFAULT_TENSOR_CLASS.__name__)"
+NPU_RUNTIME=hrx python3 -c "import aie.utils as u; print(u.DEFAULT_TENSOR_CLASS.__name__)"
 # -> HRXTensor
 ```
 
@@ -250,7 +250,7 @@ A self-building backend test mirroring `test_runlist.cpp` (`run0: out0 = in+1`,
 `@iron.jit`, so it needs no pre-built artifacts:
 
 ```bash
-IRON_RUNTIME=hrx python3 -m pytest test/python/npu-hrx/test_chain_hrx.py
+NPU_RUNTIME=hrx python3 -m pytest test/python/npu-hrx/test_chain_hrx.py
 # expect: passed
 ```
 
@@ -258,17 +258,17 @@ IRON_RUNTIME=hrx python3 -m pytest test/python/npu-hrx/test_chain_hrx.py
 
 ## 6. Run C++ on-hardware tests with HRX
 
-Select the backend with **`RUNTIME=hrx`** on the example's `make`. This builds the
+Select the backend with **`NPU_RUNTIME=hrx`** on the example's `make`. This builds the
 C++ host exe against `libhrx` (no XRT SDK headers needed) and runs it on the NPU.
 
 ```bash
 cd programming_examples/basic/vector_reduce_max/single_core_designs
 make all                       # aiecc: build/final.xclbin + build/insts.bin
-RUNTIME=hrx make run           # build C++ host vs HRX + run on the NPU
+NPU_RUNTIME=hrx make run       # build C++ host vs HRX + run on the NPU
 # expect: ... PASS!
 ```
 
-What `RUNTIME=hrx` does under the hood (no per-example edits):
+What `NPU_RUNTIME=hrx` does under the hood (no per-example edits):
 - `makefile-common` adds `-DUSE_HRX=ON` to every `build_host_exe` cmake call.
 - `programming_examples/common.cmake` runs `find_package(HRX)` (which prefers the
   shipped `hrx` CMake package), links `libhrx.so`, and defines
@@ -301,7 +301,7 @@ different ones (a multi-kernel pipeline).
 A chained testbench mirroring `test_runlist.cpp` (`run0: out0 = in+1`,
 `run1: out1 = out0+1`, where `run1`'s input is `run0`'s output) lives in
 `vector_scalar_add`. Its make target self-selects the HRX backend
-(`-DUSE_HRX=ON`), so you don't even need `RUNTIME=hrx`:
+(`-DUSE_HRX=ON`), so you don't even need `NPU_RUNTIME=hrx`:
 
 ```bash
 cd programming_examples/basic/vector_scalar_add
@@ -343,7 +343,7 @@ you ever see all-zero output confirm the transaction bytes reached libhrx intact
 
 | Symptom | Cause / Fix |
 |---|---|
-| `IRON_RUNTIME=hrx … ImportError: libhrx.so could not be located` | HRX not found. Build it (§2), place it as a sibling `../hrx`, or set `HRX_DIR`/`LIBHRX_DIR` (§4). Verify with the §4 probe. |
+| `NPU_RUNTIME=hrx … ImportError: libhrx.so could not be located` | HRX not found. Build it (§2), place it as a sibling `../hrx`, or set `HRX_DIR`/`LIBHRX_DIR` (§4). Verify with the §4 probe. |
 | C++ configure: `USE_HRX=ON but the HRX runtime was not found` | Same as above (CMake side). Set `HRX_DIR`/`CMAKE_PREFIX_PATH` or co-locate `../hrx-system/build/hrx-install`. |
 | C++ link/load: `undefined symbol: hrx_amdxdna_executable_create` | Your `libhrx.so` predates the `amdxdna-hal-native-rel` API. Refresh HRX from the pinned release (§2) and re-check with `nm -D`. |
 | Output is **all zeros** but no error | The transaction didn't reach libhrx intact (or the xclbin/insts pair is mismatched). Confirm you're on this branch and passing the raw `insts.bin`. |
@@ -369,7 +369,7 @@ you ever see all-zero output confirm the transaction bytes reached libhrx intact
 Related (outside this package):
 - `cmake/modules/FindHRX.cmake` — HRX auto-detection for CMake (prefers the shipped `hrx` package → `hrx::hrx`).
 - `programming_examples/common.cmake` — `USE_HRX` wiring (links `libhrx`; no helper build).
-- `programming_examples/makefile-common` — the `RUNTIME=xrt|hrx` switch.
+- `programming_examples/makefile-common` — the `NPU_RUNTIME=xrt|hrx` switch.
 - `runtime_lib/test_lib/hrx_test_wrapper.h` — C++ HRX backend.
 - `tools/hrx-xclbinutil/CMakeLists.txt` + `third_party/hrx-xclbinutil` — the bundled
   XRT-free `xclbinutil` for xclbin packaging (`-DAIE_BUILD_HRXXCLBINUTIL=ON`, §3b).

@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-# RUN: %run_on_npu2% env IRON_RUNTIME=hrx %pytest %s
+# RUN: %run_on_npu2% env NPU_RUNTIME=hrx %pytest %s
 # REQUIRES: hrx_python_bindings
 
 """HRX multi-dispatch / chain (runlist) backend test.
@@ -19,7 +19,7 @@ backend test rather than in the shared programming examples.
 The design under test is a plain IRON ObjectFifo ``out = in + 1`` kernel built
 through the normal ``@compileconfig`` path -- nothing in it is HRX-specific. Only
 the batched dispatch (``run_chain`` via ``aie.utils.DefaultNPURuntime``, which is
-the HRX runtime under ``IRON_RUNTIME=hrx``) is backend-specific, which is exactly
+the HRX runtime under ``NPU_RUNTIME=hrx``) is backend-specific, which is exactly
 what this test is here to cover.
 """
 
@@ -76,16 +76,16 @@ def add_one(input_buf: In, output_buf: Out, *, N: CompileTime[int]):
 
 
 def _hrx_runtime():
-    """The default NPU runtime, which is the HRX runtime under IRON_RUNTIME=hrx.
+    """The default NPU runtime, which is the HRX runtime under NPU_RUNTIME=hrx.
 
-    The RUN line forces ``IRON_RUNTIME=hrx`` (and the ``hrx_python_bindings``
+    The RUN line forces ``NPU_RUNTIME=hrx`` (and the ``hrx_python_bindings``
     REQUIRES gate keeps this off non-HRX hosts), so ``DefaultNPURuntime`` here is
     the ``CachedHRXRuntime`` that provides the ``run_chain`` under test.
     """
     import aie.utils as u
 
     rt = u.DefaultNPURuntime
-    assert rt is not None, "No default NPU runtime (is IRON_RUNTIME=hrx set?)"
+    assert rt is not None, "No default NPU runtime (is NPU_RUNTIME=hrx set?)"
     return rt
 
 

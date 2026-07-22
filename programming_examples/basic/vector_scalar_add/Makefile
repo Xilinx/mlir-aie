@@ -37,7 +37,7 @@ $(eval $(call jit_xclbin_elf,${xclbin_target},${insts_target},${elf_target},${ai
 $(eval $(call build_host_exe,${targetname},_build,test.cpp))
 $(eval $(call build_host_exe,${runlist_targetname},_build_runlist,test_runlist.cpp,-DTEST_SRC=test_runlist.cpp))
 # HRX chain (runlist) testbench. Self-selects the HRX backend (-DUSE_HRX=ON) so
-# `make run_runlist_hrx` works without RUNTIME=hrx.
+# `make run_runlist_hrx` works without NPU_RUNTIME=hrx.
 $(eval $(call build_host_exe,${runlist_hrx_targetname},_build_runlist_hrx,test_runlist_hrx.cpp,-DTEST_SRC=test_runlist_hrx.cpp -DUSE_HRX=ON))
 
 .PHONY: run

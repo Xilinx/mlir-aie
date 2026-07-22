@@ -24,17 +24,20 @@ by an environment/make variable, not by editing sources.
 HRX is **strictly opt-in**. It is never auto-selected: an XRT-less host degrades
 to CPU-only tensors rather than silently switching to HRX.
 
-| Flow | Selector | Example |
-|------|----------|---------|
-| IRON / Python | `IRON_RUNTIME=hrx` | `IRON_RUNTIME=hrx python my_design.py` |
-| C++ examples (`make`) | `RUNTIME=hrx` | `RUNTIME=hrx make run` |
+A single `NPU_RUNTIME` variable drives both flows:
 
-These are two **distinct** selectors for two distinct flows (a Python import-time
-switch vs. a `make`/CMake build-time switch), not duplicates. The full list of
-`IRON_RUNTIME` values and every HRX environment variable
+| Flow | Example |
+|------|---------|
+| IRON / Python | `NPU_RUNTIME=hrx python my_design.py` |
+| C++ examples (`make`) | `NPU_RUNTIME=hrx make run` |
+
+The IRON/Python flow reads `NPU_RUNTIME` at import time (a runtime switch), while
+the C++ example `make` flow reads the same variable to build the HRX host stack (a
+build-time switch) — one selector, two mechanisms. The full list of `NPU_RUNTIME`
+values and every HRX environment variable
 (`HRX_DIR`, `LIBHRX_DIR`, `HRX_LIBHRX`, `IRON_HRX_DEVICE`, `HRX_EXE_CACHE_SIZE`,
 `IRON_HRX_TIMEOUT`) is documented in
-[IRON Configuration](iron_configuration.md#host-runtime-backend-selection-iron_runtime).
+[IRON Configuration](iron_configuration.md#host-runtime-backend-selection-npu_runtime).
 
 ## Provisioning `libhrx`
 

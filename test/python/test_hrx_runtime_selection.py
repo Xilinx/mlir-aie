@@ -10,8 +10,8 @@
 
 These are host-side unit tests: none of them dispatch on the NPU. They cover the
 review's "negative behavior" gap:
-  * an invalid IRON_RUNTIME is a hard error (not a silent fallback);
-  * IRON_RUNTIME=hrx with no libhrx raises (only asserted when HRX is absent);
+  * an invalid NPU_RUNTIME is a hard error (not a silent fallback);
+  * NPU_RUNTIME=hrx with no libhrx raises (only asserted when HRX is absent);
   * HRX rejects trace_config instead of silently ignoring it;
   * the IRON_HRX_TIMEOUT parser and device-generation detection helpers.
 """
@@ -43,20 +43,20 @@ def _run_import(env_overrides: dict) -> subprocess.CompletedProcess:
 
 
 def test_invalid_iron_runtime_is_hard_error():
-    """An explicitly invalid IRON_RUNTIME must fail the import loudly."""
-    res = _run_import({"IRON_RUNTIME": "bogus"})
+    """An explicitly invalid NPU_RUNTIME must fail the import loudly."""
+    res = _run_import({"NPU_RUNTIME": "bogus"})
     assert res.returncode != 0, res.stdout + res.stderr
-    assert "Invalid IRON_RUNTIME" in res.stderr, res.stderr
+    assert "Invalid NPU_RUNTIME" in res.stderr, res.stderr
 
 
 def test_unset_iron_runtime_imports_cleanly():
-    """Unset IRON_RUNTIME defaults to 'auto' and must import fine."""
-    res = _run_import({"IRON_RUNTIME": None})
+    """Unset NPU_RUNTIME defaults to 'auto' and must import fine."""
+    res = _run_import({"NPU_RUNTIME": None})
     assert res.returncode == 0, res.stdout + res.stderr
 
 
 def test_iron_runtime_hrx_without_libhrx_raises():
-    """IRON_RUNTIME=hrx with no libhrx must raise ImportError.
+    """NPU_RUNTIME=hrx with no libhrx must raise ImportError.
 
     Only meaningful when HRX is not discoverable on this host; if it is, the
     contract can't be exercised, so skip.
@@ -67,7 +67,7 @@ def test_iron_runtime_hrx_without_libhrx_raises():
         pytest.skip("HRX is discoverable on this host; missing-HRX path untestable")
     res = _run_import(
         {
-            "IRON_RUNTIME": "hrx",
+            "NPU_RUNTIME": "hrx",
             "HRX_DIR": None,
             "HRX_BUILD": None,
             "LIBHRX_DIR": None,

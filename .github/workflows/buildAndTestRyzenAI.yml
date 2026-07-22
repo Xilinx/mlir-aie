@@ -173,7 +173,7 @@ jobs:
     #   * builds MLIR-AIE from source with the bundled hrx-xclbinutil
     #     (-DAIE_BUILD_HRXXCLBINUTIL=ON) instead of relying on XRT's xclbinutil,
     #   * packages a real NPU .xclbin with that bundled tool
-    #     (the aiecc RUNTIME=hrx path via AIE_XCLBINUTIL), and
+    #     (the aiecc NPU_RUNTIME=hrx path via AIE_XCLBINUTIL), and
     #   * dispatches it on the NPU through libhrx from a pinned HRX release
     #     (no XRT runtime SDK), for both the Python (IRON) and C++ paths -
     #     covering the multi-dispatch chain/runlist path (vector_scalar_add) and
@@ -219,7 +219,7 @@ jobs:
           # make-driven examples below can `import aie` and find aiecc.
           ./utils/build-mlir-aie-from-wheels.sh "" build install
           # Sanity: the bundled tool must be installed as `xclbinutil` next to
-          # aiecc (that is what the RUNTIME=hrx packaging path resolves to).
+          # aiecc (that is what the NPU_RUNTIME=hrx packaging path resolves to).
           test -x install/bin/xclbinutil
 
       - name: Run pure-HRX tests and example on NPU
@@ -264,32 +264,32 @@ jobs:
           LIT_FILTER='npu-hrx|test_hrx_runtime_selection' ninja check-aie
           popd
 
-          # 2) end-to-end on hardware: package with the bundled tool (RUNTIME=hrx)
+          # 2) end-to-end on hardware: package with the bundled tool (NPU_RUNTIME=hrx)
           #    and dispatch via libhrx (Python IRON + C++ runlist).
           echo "===== example: vector_scalar_add (pure HRX) ====="
           # NPU2=1 selects device npu2 (aie2p) in makefile-common; required so
           # the .xclbin matches this XDNA2 runner (default is npu1/Phoenix).
           export NPU2=1
           pushd programming_examples/basic/vector_scalar_add
-          RUNTIME=hrx make clean
-          RUNTIME=hrx make all
+          NPU_RUNTIME=hrx make clean
+          NPU_RUNTIME=hrx make all
           echo "--- C++ HRX runlist dispatch ---"
-          RUNTIME=hrx make run_runlist_hrx
+          NPU_RUNTIME=hrx make run_runlist_hrx
           popd
 
           # 3) single-dispatch coverage on the normal (non-chain) path: one IRON
           #    (@iron.jit self-running) design and one C++ design that goes
-          #    through the shared setup_and_run_aie wrapper (RUNTIME=hrx make run).
+          #    through the shared setup_and_run_aie wrapper (NPU_RUNTIME=hrx make run).
           echo "===== IRON single-dispatch: vector_vector_add ====="
           pushd programming_examples/basic/vector_vector_add
-          IRON_RUNTIME=hrx python3 vector_vector_add.py
+          NPU_RUNTIME=hrx python3 vector_vector_add.py
           popd
 
           echo "===== C++ single-dispatch: vector_reduce_max ====="
           pushd programming_examples/basic/vector_reduce_max/single_core_designs
-          RUNTIME=hrx make clean
-          RUNTIME=hrx make all
-          RUNTIME=hrx make run
+          NPU_RUNTIME=hrx make clean
+          NPU_RUNTIME=hrx make all
+          NPU_RUNTIME=hrx make run
           popd
 
       - name: Cleanup NPU_CACHE_HOME
@@ -333,7 +333,7 @@ jobs:
 
       - name: Build and test the bundled hrx-xclbinutil (XRT-free packaging)
         run: |
-          # The XRT-free / Boost-free packaging tool aiecc uses on the RUNTIME=hrx
+          # The XRT-free / Boost-free packaging tool aiecc uses on the NPU_RUNTIME=hrx
           # path. Building it here proves the pure-HRX packaging tool compiles on
           # Windows in this tree (not just the submodule's own CI).
           cmake -B build-hrxxclbinutil -S third_party/hrx-xclbinutil -A x64
