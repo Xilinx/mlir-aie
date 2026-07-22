@@ -34,7 +34,11 @@ from ...dialects.aiex import (
 from ...dialects._aie_ops_gen import (  # pyright: ignore[reportMissingImports]
     RuntimeSequenceOp,
 )
-from ...helpers.util import try_convert_np_type_to_mlir_type
+from ...helpers.util import (
+    try_convert_np_type_to_mlir_type,
+    np_dtype_to_mlir_type,
+)
+from ...extras.dialects.arith import constant  # pyright: ignore[reportMissingImports]
 from ...dialects._aiex_ops_gen import (  # pyright: ignore[reportMissingImports]
     dma_await_task,
     dma_free_task,
@@ -141,7 +145,9 @@ class ActiveSequence:
 
     def finalize(self) -> None:
         """Close bookkeeping after the body runs."""
-        explicit_open = [tg for tg in self._open_task_groups if tg is not self._default_task_group]
+        explicit_open = [
+            tg for tg in self._open_task_groups if tg is not self._default_task_group
+        ]
         if explicit_open:
             tgs = ", ".join(str(t) for t in explicit_open)
             raise IronRuntimeError(f"Failed to close task groups: {tgs}")
@@ -233,27 +239,48 @@ class Runtime(Resolvable):
     def sequence(
         self,
         seq_fn: Callable,
-        input_types: Sequence[type[np.ndarray]],
+        inputs: Sequence,
     ) -> None:
         """Register the runtime sequence body.
 
         The body runs inside ``@runtime_sequence`` at resolve time, receiving one
-        live value per declared input type as its positional arguments. Because
-        it executes with an active MLIR insertion point, it can use native
-        ``range_``/``if_`` control flow and move data with ``fifo.fill(...)`` /
-        ``fifo.drain(...)``.
+        argument per declared input. Because it executes with an active MLIR
+        insertion point, it can use native ``range_``/``if_`` control flow and
+        move data with ``fifo.fill(...)`` / ``fifo.drain(...)``.
+
+        Each input is either:
+
+        * a **type** -- a tensor type (``np.ndarray[(M, K), np.dtype[np.int16]]``)
+          becomes a runtime buffer passed to the body as a ``RuntimeData``; a
+          scalar type (``np.int32``) becomes a **runtime** SSA scalar passed as
+          its live value. The ``scf`` control flow it drives survives to the
+          dynamic (EmitC) lowering.
+        * a concrete **int value** -- passed to the body as a folded
+          ``arith.constant`` of that value. A ``range_``/``if_`` bounded by it has
+          a constant bound, so ``aie-unroll-runtime-sequence-loops`` unrolls/folds
+          it to the static binary path.
+
+        This lets one body serve both lowerings: declare a scalar as ``np.int32``
+        for the dynamic path or pass a Python ``int`` for the static path, with
+        no wrapper/adapter around ``seq_fn``.
 
         Args:
             seq_fn (Callable): The sequence body. Its parameters are bound, in
-                order, to the runtime buffers/scalars described by
-                ``input_types``.
-            input_types (Sequence[type[np.ndarray]]): The declared runtime input
-                types, one per body parameter (tensor types such as
-                ``np.ndarray[(M, K), np.dtype[np.int16]]`` and scalar types such
-                as ``np.int32``).
+                order, to ``inputs``.
+            inputs (Sequence): The declared inputs, one per body parameter -- each
+                a tensor/scalar type (runtime) or a concrete int value (folded
+                constant).
         """
         self._seq_fn = seq_fn
-        self._rt_data = [RuntimeData(t) for t in input_types]
+        # A concrete int input is a folded constant; anything else is a type.
+        self._const_inputs = [
+            v if isinstance(v, (int, np.integer)) and not isinstance(v, bool) else None
+            for v in inputs
+        ]
+        self._rt_data = [
+            None if c is not None else RuntimeData(t)
+            for c, t in zip(self._const_inputs, inputs)
+        ]
 
     def enable_trace(
         self,
@@ -362,20 +389,25 @@ class Runtime(Resolvable):
         """
         if self._seq_fn is None:
             raise IronRuntimeError(
-                "Runtime.sequence(fn, input_types) must be called before the "
+                "Runtime.sequence(fn, inputs) must be called before the "
                 "Runtime is resolved."
             )
+        # A runtime_sequence block arg per runtime (type) input; folded-constant
+        # inputs contribute no block arg.
         rt_dtypes = [
             try_convert_np_type_to_mlir_type(rt_data.arr_type)
             for rt_data in self._rt_data
+            if rt_data is not None
         ]
         active = ActiveSequence(self)
 
         seq_op = RuntimeSequenceOp(sym_name="sequence")
         entry_block = seq_op.body.blocks.append(*rt_dtypes)
         with ir.InsertionPoint(entry_block):
-            for rt_data, rt_data_val in zip(self._rt_data, entry_block.arguments):
-                rt_data.op = rt_data_val
+            block_args = iter(entry_block.arguments)
+            for rt_data in self._rt_data:
+                if rt_data is not None:
+                    rt_data.op = next(block_args)
 
             if self._trace_size is not None and self._trace_size > 0:
                 trace_utils.start_trace(
@@ -385,8 +417,26 @@ class Runtime(Resolvable):
                     egress_shim_col=self._egress_shim_col,
                 )
 
+            # Build the body's positional args, one per declared input:
+            #   * folded-constant input -> an arith.constant of that value;
+            #   * scalar type input     -> its live SSA value (used in arithmetic
+            #                              and range_/if_ bounds);
+            #   * tensor type input     -> its RuntimeData handle (fill/drain).
+            body_args = []
+            for const_val, rt_data in zip(self._const_inputs, self._rt_data):
+                if const_val is not None:
+                    # i32 to mirror the dynamic np.int32 scalar path, so the same
+                    # body's arithmetic (extsi to i64, etc.) lowers identically.
+                    body_args.append(
+                        constant(int(const_val), np_dtype_to_mlir_type(np.int32))
+                    )
+                elif rt_data.is_scalar:
+                    body_args.append(rt_data.op)
+                else:
+                    body_args.append(rt_data)
+
             with active_sequence_scope(active):
-                self._seq_fn(*self._rt_data)
+                self._seq_fn(*body_args)
                 active.finalize()
 
         self._dedup_runtime_consumers()

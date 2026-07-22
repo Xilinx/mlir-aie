@@ -599,10 +599,20 @@ class ObjectFifoHandle(Resolvable):
         packet: tuple[int, int] | None,
         offset_parameter,
         group,
-    ) -> None:
+        sizes=None,
+        strides=None,
+        offset=None,
+        transfer_len=None,
+    ):
         """Shared body for fill()/drain(): bind the shim endpoint, register the
-        fifo with the active runtime sequence, and (in the emit pass) build and
-        emit the shim DMA transfer.
+        fifo with the active runtime sequence, and emit the shim DMA transfer.
+        Returns the DMA task's MLIR handle (usable as an scf.for iter_arg).
+
+        The access pattern is given either as a static ``tap`` or as explicit
+        ``sizes``/``strides``/``offset``/``transfer_len`` whose entries may be
+        runtime SSA values (the dynamic path). The two forms are mutually
+        exclusive; when neither is given, a linear transfer of the whole buffer
+        is used.
 
         Lazy imports break the runtime<->dataflow import cycle.
         """
@@ -615,18 +625,23 @@ class ObjectFifoHandle(Resolvable):
         active = active_sequence()
         rt = active._runtime
 
+        if not isinstance(rt_data, RuntimeData):
+            raise ValueError(f"Expected a RuntimeData source/dest, got {rt_data}")
         if rt_data not in rt._rt_data:
             raise ValueError(
                 f"{rt_data} is not a RuntimeData object declared by sequence()"
             )
-        if not isinstance(rt_data, RuntimeData):
-            raise ValueError(f"Expected a RuntimeData source/dest, got {rt_data}")
+
+        explicit = any(v is not None for v in (sizes, strides, offset, transfer_len))
+        if tap is not None and explicit:
+            raise ValueError(
+                "Pass either tap or sizes/strides/offset/transfer_len, not both."
+            )
+        if tap is None and not explicit:
+            tap = rt_data.default_tap()
 
         self.endpoint = RuntimeEndpoint(tile)
         active.note_fifo(self)
-
-        if tap is None:
-            tap = rt_data.default_tap()
 
         offset_param_name = None
         if offset_parameter is not None:
@@ -640,13 +655,18 @@ class ObjectFifoHandle(Resolvable):
         task = DMATask(
             self,
             rt_data,
-            tap,
-            group,
-            wait,
-            offset_param_name,
+            tap=tap,
+            task_group=group,
+            wait=wait,
+            offset_parameter=offset_param_name,
             packet=packet,
+            sizes=sizes,
+            strides=strides,
+            offset=offset,
+            transfer_len=transfer_len,
         )
         active.emit_transfer(task, group)
+        return task.task
 
     def fill(
         self,
@@ -657,7 +677,11 @@ class ObjectFifoHandle(Resolvable):
         packet: tuple[int, int] | None = None,
         offset_parameter=None,
         group=None,
-    ) -> None:
+        sizes=None,
+        strides=None,
+        offset=None,
+        transfer_len=None,
+    ):
         """Fill this producer ObjectFifo with data from a runtime buffer.
 
         Call from within a [`Runtime.sequence`][iron.Runtime.sequence] body on a
@@ -667,7 +691,7 @@ class ObjectFifoHandle(Resolvable):
             source (RuntimeData): The input runtime data buffer.
             tap (TensorAccessPattern | None, optional): How ``source`` is accessed
                 when sending it to the fifo. Defaults to a linear transfer of the
-                whole buffer.
+                whole buffer. Mutually exclusive with sizes/strides/offset/transfer_len.
             wait (bool, optional): Whether this transfer is awaited (True) or
                 freed (False) when its task group finishes. Defaults to False.
             tile (Tile | None, optional): The shim tile for the transfer. Defaults
@@ -679,12 +703,19 @@ class ObjectFifoHandle(Resolvable):
                 offset for this transfer. Defaults to None.
             group (TaskGroup | None, optional): The TaskGroup to associate this
                 transfer with. Defaults to the sequence's implicit group.
+            sizes/strides/offset/transfer_len (optional): Explicit access-pattern
+                operands whose entries may be runtime SSA values (for the dynamic
+                path). Used instead of ``tap``.
+
+        Returns:
+            The DMA task's MLIR handle, usable as an scf.for iter_arg for
+            software-pipelined transfers.
         """
         if not self._is_prod:
             raise ValueError("fill() is only valid on a producer ObjectFifoHandle")
         from ..device import AnyShimTile
 
-        self._emit_transfer(
+        return self._emit_transfer(
             source,
             tap,
             wait,
@@ -692,6 +723,10 @@ class ObjectFifoHandle(Resolvable):
             packet,
             offset_parameter,
             group,
+            sizes,
+            strides,
+            offset,
+            transfer_len,
         )
 
     def drain(
@@ -703,7 +738,11 @@ class ObjectFifoHandle(Resolvable):
         packet: tuple[int, int] | None = None,
         offset_parameter=None,
         group=None,
-    ) -> None:
+        sizes=None,
+        strides=None,
+        offset=None,
+        transfer_len=None,
+    ):
         """Drain this consumer ObjectFifo, writing data to a runtime buffer.
 
         Call from within a [`Runtime.sequence`][iron.Runtime.sequence] body on a
@@ -713,7 +752,7 @@ class ObjectFifoHandle(Resolvable):
             dest (RuntimeData): The output runtime data buffer.
             tap (TensorAccessPattern | None, optional): How ``dest`` is accessed
                 when reading from the fifo. Defaults to a linear transfer of the
-                whole buffer.
+                whole buffer. Mutually exclusive with sizes/strides/offset/transfer_len.
             wait (bool, optional): Whether this transfer is awaited (True) or
                 freed (False) when its task group finishes. Defaults to False.
             tile (Tile | None, optional): The shim tile for the transfer. Defaults
@@ -725,12 +764,19 @@ class ObjectFifoHandle(Resolvable):
                 offset for this transfer. Defaults to None.
             group (TaskGroup | None, optional): The TaskGroup to associate this
                 transfer with. Defaults to the sequence's implicit group.
+            sizes/strides/offset/transfer_len (optional): Explicit access-pattern
+                operands whose entries may be runtime SSA values (for the dynamic
+                path). Used instead of ``tap``.
+
+        Returns:
+            The DMA task's MLIR handle, usable as an scf.for iter_arg for
+            software-pipelined transfers.
         """
         if self._is_prod:
             raise ValueError("drain() is only valid on a consumer ObjectFifoHandle")
         from ..device import AnyShimTile
 
-        self._emit_transfer(
+        return self._emit_transfer(
             dest,
             tap,
             wait,
@@ -738,6 +784,10 @@ class ObjectFifoHandle(Resolvable):
             packet,
             offset_parameter,
             group,
+            sizes,
+            strides,
+            offset,
+            transfer_len,
         )
 
     def all_of_endpoints(self) -> list[ObjectFifoEndpoint]:
