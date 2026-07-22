@@ -8,3 +8,4 @@
 from .runtime import Runtime
 from .taskgroup import TaskGroup
 from .data import RuntimeData
+from .dmataskhandle import Task

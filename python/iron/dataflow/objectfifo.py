@@ -603,10 +603,12 @@ class ObjectFifoHandle(Resolvable):
         strides=None,
         offset=None,
         transfer_len=None,
+        managed=True,
     ):
         """Shared body for fill()/drain(): bind the shim endpoint, register the
         fifo with the active runtime sequence, and emit the shim DMA transfer.
-        Returns the DMA task's MLIR handle (usable as an scf.for iter_arg).
+        Returns a [`Task`][iron.runtime.dmataskhandle.Task] handle to the
+        transfer (carry it as a ``range_`` iter_arg; ``.free()``/``.await_()`` it).
 
         The access pattern is given either as a static ``tap`` or as explicit
         ``sizes``/``strides``/``offset``/``transfer_len`` whose entries may be
@@ -614,10 +616,18 @@ class ObjectFifoHandle(Resolvable):
         exclusive; when neither is given, a linear transfer of the whole buffer
         is used.
 
+        When ``managed`` is True (default), the transfer is enrolled in a
+        TaskGroup (explicit ``group`` or the sequence's implicit one), which
+        awaits/frees it at group close. When False, the caller owns the
+        transfer's lifetime via the returned Task's ``.free()``/``.await_()`` --
+        used for hand-rolled software pipelines that carry the task across
+        ``scf.for`` iterations.
+
         Lazy imports break the runtime<->dataflow import cycle.
         """
         from ..runtime.data import RuntimeData
         from ..runtime.dmatask import DMATask
+        from ..runtime.dmataskhandle import Task
         from ..runtime.endpoint import RuntimeEndpoint
         from ..runtime._context import active_sequence
         from ..scratchpad_parameter import ScratchpadParameter
@@ -639,6 +649,12 @@ class ObjectFifoHandle(Resolvable):
             )
         if tap is None and not explicit:
             tap = rt_data.default_tap()
+
+        if not managed and group is not None:
+            raise ValueError(
+                "An unmanaged transfer (managed=False) is not part of a TaskGroup; "
+                "do not also pass group=."
+            )
 
         self.endpoint = RuntimeEndpoint(tile)
         active.note_fifo(self)
@@ -665,8 +681,14 @@ class ObjectFifoHandle(Resolvable):
             offset=offset,
             transfer_len=transfer_len,
         )
-        active.emit_transfer(task, group)
-        return task.task
+        if managed:
+            active.emit_transfer(task, group)
+        else:
+            # Emit the BD only; the caller owns await/free via the Task.
+            task.resolve()
+        # Wrap the transfer's !index result: it is both the scf iter_arg payload
+        # and the operand dma_await_task/dma_free_task accept.
+        return Task(task.task.result)
 
     def fill(
         self,
@@ -681,6 +703,7 @@ class ObjectFifoHandle(Resolvable):
         strides=None,
         offset=None,
         transfer_len=None,
+        managed: bool = True,
     ):
         """Fill this producer ObjectFifo with data from a runtime buffer.
 
@@ -702,14 +725,20 @@ class ObjectFifoHandle(Resolvable):
                 ScratchpadParameter (or its name) whose value is the element
                 offset for this transfer. Defaults to None.
             group (TaskGroup | None, optional): The TaskGroup to associate this
-                transfer with. Defaults to the sequence's implicit group.
+                transfer with. Defaults to the sequence's implicit group. Only
+                valid when ``managed`` is True.
             sizes/strides/offset/transfer_len (optional): Explicit access-pattern
                 operands whose entries may be runtime SSA values (for the dynamic
                 path). Used instead of ``tap``.
+            managed (bool, optional): When True (default) the transfer is awaited/
+                freed automatically at TaskGroup close. When False the caller owns
+                its lifetime via the returned Task's ``.free()``/``.await_()`` --
+                for hand-rolled software pipelines carrying the task across
+                ``scf.for`` iterations. Defaults to True.
 
         Returns:
-            The DMA task's MLIR handle, usable as an scf.for iter_arg for
-            software-pipelined transfers.
+            Task: A handle to the transfer. Carry it as a ``range_`` iter_arg for
+            software-pipelined transfers; ``.free()``/``.await_()`` an unmanaged one.
         """
         if not self._is_prod:
             raise ValueError("fill() is only valid on a producer ObjectFifoHandle")
@@ -727,6 +756,7 @@ class ObjectFifoHandle(Resolvable):
             strides,
             offset,
             transfer_len,
+            managed,
         )
 
     def drain(
@@ -742,6 +772,7 @@ class ObjectFifoHandle(Resolvable):
         strides=None,
         offset=None,
         transfer_len=None,
+        managed: bool = True,
     ):
         """Drain this consumer ObjectFifo, writing data to a runtime buffer.
 
@@ -763,14 +794,20 @@ class ObjectFifoHandle(Resolvable):
                 ScratchpadParameter (or its name) whose value is the element
                 offset for this transfer. Defaults to None.
             group (TaskGroup | None, optional): The TaskGroup to associate this
-                transfer with. Defaults to the sequence's implicit group.
+                transfer with. Defaults to the sequence's implicit group. Only
+                valid when ``managed`` is True.
             sizes/strides/offset/transfer_len (optional): Explicit access-pattern
                 operands whose entries may be runtime SSA values (for the dynamic
                 path). Used instead of ``tap``.
+            managed (bool, optional): When True (default) the transfer is awaited/
+                freed automatically at TaskGroup close. When False the caller owns
+                its lifetime via the returned Task's ``.free()``/``.await_()`` --
+                for hand-rolled software pipelines carrying the task across
+                ``scf.for`` iterations. Defaults to True.
 
         Returns:
-            The DMA task's MLIR handle, usable as an scf.for iter_arg for
-            software-pipelined transfers.
+            Task: A handle to the transfer. Carry it as a ``range_`` iter_arg for
+            software-pipelined transfers; ``.free()``/``.await_()`` an unmanaged one.
         """
         if self._is_prod:
             raise ValueError("drain() is only valid on a consumer ObjectFifoHandle")
@@ -788,6 +825,7 @@ class ObjectFifoHandle(Resolvable):
             strides,
             offset,
             transfer_len,
+            managed,
         )
 
     def all_of_endpoints(self) -> list[ObjectFifoEndpoint]:
