@@ -16,9 +16,11 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/Utils/StaticValueUtils.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
+#include "mlir/Transforms/GreedyPatternRewriteDriver.h"
 #include "llvm/ADT/TypeSwitch.h"
 
 namespace xilinx::AIEX {
@@ -74,28 +76,50 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
   }
 };
 
+// Resolve a task value to a configure that gives the sync its physical channel.
+// The value is usually a configure result, but under the dynamic BD pool path a
+// task threaded through runtime control flow surfaces as an scf result: a loop
+// result (the task carried across iterations) or an scf.if result (the phi of
+// the task in flight, whichever branch ran). Walk such a result back to a
+// configure via the yields (and, for a loop, the init). Every reachable
+// configure targets the same physical channel -- the pool pass verified both
+// branches of an scf.if agree -- so the first one found gives the right channel.
+static DMAConfigureTaskOp resolveConfigureThroughCF(Value task) {
+  llvm::SmallPtrSet<Value, 8> seen;
+  SmallVector<Value> worklist{task};
+  while (!worklist.empty()) {
+    Value v = worklist.pop_back_val();
+    if (!v || !seen.insert(v).second)
+      continue;
+    if (auto cfg = v.getDefiningOp<DMAConfigureTaskOp>())
+      return cfg;
+    if (auto res = dyn_cast<OpResult>(v)) {
+      Operation *def = res.getOwner();
+      unsigned k = res.getResultNumber();
+      if (auto ifOp = dyn_cast<scf::IfOp>(def)) {
+        worklist.push_back(ifOp.thenBlock()->getTerminator()->getOperand(k));
+        worklist.push_back(ifOp.elseBlock()->getTerminator()->getOperand(k));
+      } else if (auto forOp = dyn_cast<scf::ForOp>(def)) {
+        worklist.push_back(forOp.getInitArgs()[k]);
+        worklist.push_back(forOp.getBody()->getTerminator()->getOperand(k));
+      }
+    }
+  }
+  return nullptr;
+}
+
 struct DMAAwaitTaskOpPattern : OpConversionPattern<DMAAwaitTaskOp> {
   using OpConversionPattern::OpConversionPattern;
 
   LogicalResult
   matchAndRewrite(DMAAwaitTaskOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    Location loc = op.getLoc();
-    // The sync needs only the physical channel (col,row,dir,channel). When the
-    // dynamic BD pool pass could not resolve the awaited task to a dominating
-    // configure (e.g. it was configured in an scf.if branch), it stamped those
-    // static coordinates as attributes; prefer them over the SSA operand.
-    if (op.getSyncCol()) {
-      rewriter.replaceOpWithNewOp<NpuSyncOp>(
-          op, createConstantI32(rewriter, loc, *op.getSyncCol()),
-          createConstantI32(rewriter, loc, *op.getSyncRow()),
-          createConstantI32(rewriter, loc, (uint32_t)*op.getSyncDirection()),
-          createConstantI32(rewriter, loc, *op.getSyncChannel()),
-          createConstantI32(rewriter, loc, 1),
-          createConstantI32(rewriter, loc, 1));
-      return success();
-    }
     DMAConfigureTaskOp task_op = op.getTaskOp();
+    if (!task_op) {
+      // The awaited task threads through runtime control flow (an scf result),
+      // so it has no directly-defining configure; walk the SSA carry to one.
+      task_op = resolveConfigureThroughCF(op.getTask());
+    }
     if (!task_op) {
       return failure();
     }
@@ -107,6 +131,7 @@ struct DMAAwaitTaskOpPattern : OpConversionPattern<DMAAwaitTaskOp> {
       return err;
     }
     AIE::TileOp tile = task_op.getTileOp();
+    Location loc = op.getLoc();
     rewriter.replaceOpWithNewOp<NpuSyncOp>(
         op, createConstantI32(rewriter, loc, tile.getCol()),
         createConstantI32(rewriter, loc, tile.getRow()),
@@ -966,6 +991,23 @@ struct AIEDMATasksToNPUPass
     return success();
   }
 
+  // Drop the dead task-index carries left by the dynamic BD pool path once
+  // awaits have lowered to npu.sync. scf.for/scf.if carry the task value as a
+  // result purely to hold the await's data dependence on the configure; with the
+  // await gone that carry is dead but still counts as a use of the branch-local
+  // configure, blocking its use_empty lowering. scf's own canonicalizations
+  // remove dead iter-args/results and prune the yields feeding them. Run them
+  // device-wide but with folding and constant-CSE DISABLED, so the static path's
+  // byte-golden constant emission is untouched -- only the dead scf carries go.
+  LogicalResult dropDeadTaskCarries(AIE::DeviceOp device) {
+    RewritePatternSet patterns(&getContext());
+    scf::ForOp::getCanonicalizationPatterns(patterns, &getContext());
+    scf::IfOp::getCanonicalizationPatterns(patterns, &getContext());
+    GreedyRewriteConfig config;
+    config.enableFolding(false).enableConstantCSE(false);
+    return applyPatternsGreedily(device, std::move(patterns), config);
+  }
+
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();
 
@@ -981,6 +1023,11 @@ struct AIEDMATasksToNPUPass
     if (failed(applyPartialConversion(device, target, std::move(patterns)))) {
       signalPassFailure();
     }
+
+    // Drop the now-dead task-index carries the awaits held, so the branch-local
+    // configures they used can reach use_empty and lower below.
+    if (failed(dropDeadTaskCarries(device)))
+      signalPassFailure();
 
     // Lower the configuration for the BDs
     if (failed(rewriteDMAConfigureTaskOp(device))) {

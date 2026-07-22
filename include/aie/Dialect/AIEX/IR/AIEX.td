@@ -1237,40 +1237,27 @@ def AIE_DMAAwaitTaskOp : AIEX_Op<"dma_await_task", [HasAncestor<"AIE::RuntimeSeq
     declared using `aie.bd_chain`, or using `aiex.start_configured_task` using a
     manually configured task.
 
-    The task is normally identified by its `$task` SSA value. When the awaited
-    task was configured under runtime control flow and no configure dominates the
-    await (e.g. it was set up inside an `scf.if` branch), the dynamic BD pool pass
-    instead records the physical channel to sync on directly via the optional
-    `sync_col`/`sync_row`/`sync_direction`/`sync_channel` attributes, and the
-    `$task` operand is omitted -- the sync only ever needed the channel, and BD
-    reuse is already serialized by queue backpressure.
+    The task is identified by its `$task` SSA value, which must resolve to the
+    configure that set it up. Under the dynamic BD pool path this configure must
+    dominate the await; an await after an `scf.if` on a task configured inside a
+    branch is rejected (move the await inside the branch that configures it).
   }];
 
   let arguments = (
-    ins Optional<Index>:$task,
-        OptionalAttr<I32Attr>:$sync_col,
-        OptionalAttr<I32Attr>:$sync_row,
-        OptionalAttr<DMAChannelDir>:$sync_direction,
-        OptionalAttr<I32Attr>:$sync_channel
+    ins Index:$task
   );
 
   let assemblyFormat = [{
-    `(` ($task^)? `)` attr-dict
+    `(` $task `)` attr-dict
   }];
 
-  let hasVerifier = 1;
-
   let extraClassDeclaration = [{
-    // The configure op the SSA task resolves to, or null when the task is
-    // identified by sync_* attributes instead of an operand.
     DMAConfigureTaskOp getTaskOp();
   }];
 
   let extraClassDefinition = [{
     DMAConfigureTaskOp DMAAwaitTaskOp::getTaskOp() {
-      if (!getTask())
-        return nullptr;
-      return dyn_cast_or_null<DMAConfigureTaskOp>(getTask().getDefiningOp());
+      return dyn_cast<DMAConfigureTaskOp>(getTask().getDefiningOp());
     }
   }];
 }

@@ -19,7 +19,7 @@
 // CHECK: %[[T:.*]] = aiex.dma_configure_task(%{{.*}}, MM2S, 0) bd_id %[[ID]] : i32
 // CHECK: %[[LOOP:.*]]:2 = scf.for {{.*}} iter_args(%[[TK:.*]] = %[[T]], %[[PID:.*]] = %[[ID]]) -> (index, i32)
 // CHECK:   aiex.dma_start_task(%[[TK]])
-// CHECK:   aiex.dma_await_task(%[[T]])
+// CHECK:   aiex.dma_await_task(%[[TK]])
 // CHECK-NOT: aiex.dma_bd_pool_push
 // CHECK:   scf.yield %[[TK]], %[[PID]] : index, i32
 // CHECK: }

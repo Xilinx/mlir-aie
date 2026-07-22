@@ -22,6 +22,8 @@ from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAcces
 from ...dialects.aiex import (
     runtime_sequence,
     sync_scratchpad_parameters_from_host,  # pyright: ignore[reportAttributeAccessIssue]
+)
+from ...dialects._aiex_ops_gen import (  # pyright: ignore[reportMissingImports]
     dma_await_task,
     dma_free_task,
 )

@@ -8,7 +8,8 @@
 // The dynamic counterpart to AIEAssignRuntimeSequenceBDIDs: where that pass
 // rejects a runtime-bound scf.for, this keeps the loop rolled and draws bd_ids
 // from a per-tile runtime free-list pool. Each configure gets a dma_bd_pool_pop
-// (its SSA id feeding bd_id_val); each free/await gets a dma_bd_pool_push.
+// (its SSA id feeding bd_id_val); each free gets a dma_bd_pool_push. An await is
+// only a completion sync (npu_sync), never a push.
 //
 // A popped id must be reachable at its push. Since a task value can cross a
 // loop back edge and exit as a result, the id is carried in lockstep: every
@@ -25,7 +26,6 @@
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/SCF/IR/SCF.h"
-#include "mlir/IR/Dominance.h"
 #include "mlir/Pass/Pass.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/ADT/DenseSet.h"
@@ -306,8 +306,9 @@ struct AIELowerDynamicBDPoolPass
   }
 
   // Sweep 3: over the final IR, give every task value its tile (for the push)
-  // and a representative origin configure (for an await that names a loop/if
-  // result with no defining configure). Order-independent forward closure:
+  // and a representative origin configure (for an await that names a loop
+  // result with no defining configure -- a loop's pre-loop init, which
+  // dominates a post-loop await). Order-independent forward closure:
   //   - scf.for: the init's tile/origin flow to the iter_arg AND the result, so
   //     a result takes the loop-invariant init configure (which dominates a
   //     post-loop await), not the per-iteration body configure.
@@ -349,9 +350,9 @@ struct AIELowerDynamicBDPoolPass
         }
       }
     }
-    // A carried scf.if result is one BD id and (if awaited post-if) one sync
-    // channel, so both branches must agree on the full physical channel
-    // (tile,dir,channel) -- otherwise the single push/sync would be ambiguous.
+    // A task carried out of an scf.if and freed after it resolves to one BD id
+    // and one push, so both branches must agree on the full physical channel
+    // (tile,dir,channel) -- otherwise the single push would be ambiguous.
     WalkResult wr = seq.walk([&](scf::IfOp ifOp) -> WalkResult {
       if (ifOp.getNumResults() == 0 || ifOp.elseBlock() == nullptr)
         return WalkResult::advance();
@@ -468,98 +469,29 @@ struct AIELowerDynamicBDPoolPass
       if (failed(computeMetadata(seq)))
         return WalkResult::interrupt();
 
-      // 4. Return ids to the pool. A free returns the id (push). An await is a
-      //    TCT sync (npu_sync), NOT a release -- it pushes ONLY when the id it
-      //    carries is never returned by a free, so an awaited-but-never-freed
-      //    task still frees its BD exactly once. This split keeps the runtime
-      //    free-list balanced when a BD is reused across iterations or awaited
-      //    on one SSA value and freed on another (the same id via the carry).
+      // 4. Return ids to the pool. A free is the ONLY push: it returns the id
+      //    to the free-list. An await is a TCT sync (npu_sync), never a release
+      //    -- it emits no push. In the rolled pool one physical id is live
+      //    across iterations, so the static path's "await = release" (safe only
+      //    because unrolling gives each await a distinct id) would push the same
+      //    live id once per iteration and corrupt the free-list. Leaving a task
+      //    unfreed is valid: the pool is stack-local and re-initialized every
+      //    invocation, so an unfreed id merely holds a slot for the rest of this
+      //    one run (the await-only idiom, live BDs <= pool size).
       //
-      //    freedByCarry is the set of task values whose carried id reaches a
-      //    free: the backward closure from each free's operand through the
-      //    carry (an scf result comes from its branch/body yields and, for a
-      //    loop, its init; a loop iter_arg from its init and back-edge yield).
-      //    An await whose task is in this set is on a path a later free already
-      //    balances.
-      llvm::DenseSet<Value> freedByCarry;
-      SmallVector<Value> fworklist;
-      auto markFreed = [&](Value v) {
-        if (v && taskValues.contains(v) && freedByCarry.insert(v).second)
-          fworklist.push_back(v);
-      };
-      seq.walk([&](DMAFreeTaskOp freeOp) { markFreed(freeOp.getTask()); });
-      while (!fworklist.empty()) {
-        Value v = fworklist.pop_back_val();
-        if (auto res = dyn_cast<OpResult>(v)) {
-          Operation *def = res.getOwner();
-          unsigned k = res.getResultNumber();
-          if (auto f = dyn_cast<scf::ForOp>(def)) {
-            markFreed(f.getInitArgs()[k]);
-            markFreed(f.getBody()->getTerminator()->getOperand(k));
-          } else if (auto ifOp = dyn_cast<scf::IfOp>(def)) {
-            markFreed(ifOp.thenBlock()->getTerminator()->getOperand(k));
-            markFreed(ifOp.elseBlock()->getTerminator()->getOperand(k));
-          }
-        } else if (auto ba = dyn_cast<BlockArgument>(v)) {
-          if (auto f = dyn_cast<scf::ForOp>(ba.getOwner()->getParentOp())) {
-            unsigned k = ba.getArgNumber() - f.getNumInductionVars();
-            markFreed(f.getInitArgs()[k]);
-            markFreed(f.getBody()->getTerminator()->getOperand(k));
-          }
-        }
-      }
-
-      DominanceInfo domInfo(seq);
+      //    The await keeps its natural SSA operand -- the task value it names,
+      //    whether that is a direct configure, a loop result, or an scf.if
+      //    result (the phi of the task in flight, whichever branch ran). The
+      //    npu_sync lowering (AIEDMATasksToNPU) walks that value to the physical
+      //    channel; both branches of an scf.if were verified to agree on it
+      //    (computeMetadata). This preserves the sync's data dependence on the
+      //    task rather than breaking it.
       SmallVector<Operation *> toErase;
       r = seq.walk([&](Operation *op) -> WalkResult {
         if (auto freeOp = dyn_cast<DMAFreeTaskOp>(op)) {
           if (failed(lowerRelease(freeOp.getTask(), freeOp)))
             return WalkResult::interrupt();
           toErase.push_back(freeOp);
-        } else if (auto await = dyn_cast<DMAAwaitTaskOp>(op)) {
-          // A task-less await already carries its physical channel in sync_*
-          // attrs (it was lowered here on a prior run, or written that way);
-          // it owns no pool id to return and needs no configure resolution.
-          if (!await.getTask())
-            return WalkResult::advance();
-          // Push only if no free balances this id; the await keeps its sync.
-          if (!freedByCarry.contains(await.getTask()) &&
-              failed(lowerRelease(await.getTask(), await)))
-            return WalkResult::interrupt();
-          if (!await.getTask().getDefiningOp<DMAConfigureTaskOp>()) {
-            DMAConfigureTaskOp origin = originConfigure.lookup(await.getTask());
-            if (!origin)
-              return await.emitOpError(
-                         "awaits a task whose configure cannot be resolved for "
-                         "the dynamic pool path"),
-                     WalkResult::interrupt();
-            // The sync reads only the configure's static tile/dir/channel. If a
-            // configure dominates the await (e.g. a loop's pre-loop init),
-            // redirect the operand to it -- the common case, no attrs needed.
-            // Otherwise (the awaited task was configured in an scf.if branch,
-            // which cannot dominate a sibling/post-if await) stamp the channel
-            // as attributes; computeMetadata verified both branches agree on
-            // it.
-            if (domInfo.dominates(origin.getResult(), await)) {
-              await.getTaskMutable().assign(origin.getResult());
-            } else {
-              if (!origin.getIssueToken())
-                return origin.emitOpError("awaited task does not issue a "
-                                          "completion token; add "
-                                          "issue_token = true"),
-                       WalkResult::interrupt();
-              AIE::TileOp t = origin.getTileOp();
-              await.setSyncCol(t.getCol());
-              await.setSyncRow(t.getRow());
-              await.setSyncDirection(origin.getDirection());
-              await.setSyncChannel(origin.getChannel());
-              // Drop the operand: the sync only needs the channel, and keeping
-              // a use of the branch-carried task would block the configure from
-              // lowering (it requires use_empty). BD reuse stays serialized by
-              // queue backpressure, so the dropped ordering edge is not needed.
-              await.getTaskMutable().clear();
-            }
-          }
         }
         return WalkResult::advance();
       });
