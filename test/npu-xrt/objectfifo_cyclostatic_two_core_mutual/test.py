@@ -126,15 +126,26 @@ def cyclostatic_two_core_mutual(seed_a: In, seed_b: In, out_tensor: Out):
         strides=[0, 0, 0, 1],
     )
 
-    rt = Runtime()
-    with rt.sequence(seed_ty, seed_ty, out_ty) as (s_a, s_b, c_out):
-        rt.start(worker_a, worker_b)
-        rt.fill(of_seed_a_l3l2.prod(), s_a)
-        rt.fill(of_seed_b_l3l2.prod(), s_b)
-        rt.drain(of_a_out_l2l3.cons(), c_out, tap=a_tap)
-        rt.drain(of_b_out_l2l3.cons(), c_out, tap=b_tap, wait=True)
+    def sequence(s_a, s_b, c_out, seed_a_h, seed_b_h, a_out_h, b_out_h):
+        seed_a_h.fill(s_a)
+        seed_b_h.fill(s_b)
+        a_out_h.drain(c_out, tap=a_tap)
+        b_out_h.drain(c_out, tap=b_tap, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [seed_ty, seed_ty, out_ty],
+        fn_args=[
+            of_seed_a_l3l2.prod(),
+            of_seed_b_l3l2.prod(),
+            of_a_out_l2l3.cons(),
+            of_b_out_l2l3.cons(),
+        ],
+    )
+
+    return Program(
+        iron.get_current_device(), rt, workers=[worker_a, worker_b]
+    ).resolve_program()
 
 
 def simulate(seed_a, seed_b):

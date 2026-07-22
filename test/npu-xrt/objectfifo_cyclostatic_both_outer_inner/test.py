@@ -70,14 +70,18 @@ def cyclostatic_both_outer_inner(w_tensor: In, x_tensor: In, out_tensor: Out):
         fn_args=[of_w_l2l1.cons(), of_x_l2l1.cons(), of_out_l1l2.prod()],
     )
 
-    rt = Runtime()
-    with rt.sequence(w_in_ty, x_in_ty, out_ty) as (w_in, x_in, c_out):
-        rt.start(worker)
-        rt.fill(of_w_l3l2.prod(), w_in)
-        rt.fill(of_x_l3l2.prod(), x_in)
-        rt.drain(of_out_l2l3.cons(), c_out, wait=True)
+    def sequence(w_in, x_in, c_out, w_h, x_h, out_h):
+        w_h.fill(w_in)
+        x_h.fill(x_in)
+        out_h.drain(c_out, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [w_in_ty, x_in_ty, out_ty],
+        fn_args=[of_w_l3l2.prod(), of_x_l3l2.prod(), of_out_l2l3.cons()],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def main():

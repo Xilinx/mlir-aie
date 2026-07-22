@@ -87,15 +87,24 @@ def cyclostatic_normal(
         ],
     )
 
-    rt = Runtime()
-    with rt.sequence(in_ty, trip_ty, out_ty, done_ty) as (a_in, trip, c_out, done):
-        rt.start(worker)
-        rt.fill(of_in_l3l2.prod(), a_in)
-        rt.fill(of_trip.prod(), trip)
-        rt.drain(of_out_l2l3.cons(), c_out)
-        rt.drain(of_done_l2l3.cons(), done, wait=True)
+    def sequence(a_in, trip, c_out, done, in_h, trip_h, out_h, done_h):
+        in_h.fill(a_in)
+        trip_h.fill(trip)
+        out_h.drain(c_out)
+        done_h.drain(done, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [in_ty, trip_ty, out_ty, done_ty],
+        fn_args=[
+            of_in_l3l2.prod(),
+            of_trip.prod(),
+            of_out_l2l3.cons(),
+            of_done_l2l3.cons(),
+        ],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 # The zero-trip path reuses the same @iron.jit'd cyclostatic_normal: it sends

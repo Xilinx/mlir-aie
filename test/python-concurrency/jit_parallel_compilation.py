@@ -70,15 +70,19 @@ def simple_add(
     worker = Worker(core_body, fn_args=[of_in1.cons(), of_in2.cons(), of_out.prod()])
 
     # Runtime operations to move data to/from the AIE-array
-    rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty, tensor_ty) as (A, B, C):
-        rt.start(worker)
-        rt.fill(of_in1.prod(), A)
-        rt.fill(of_in2.prod(), B)
-        rt.drain(of_out.cons(), C, wait=True)
+    def sequence(A, B, C, in1_h, in2_h, out_h):
+        in1_h.fill(A)
+        in2_h.fill(B)
+        out_h.drain(C, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [tensor_ty, tensor_ty, tensor_ty],
+        fn_args=[of_in1.prod(), of_in2.prod(), of_out.cons()],
+    )
 
     # Place program components (assign them resources on the device) and generate an MLIR module
-    return Program(iron.get_current_device(), rt).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 # Test the compilation
 try:

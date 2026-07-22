@@ -63,14 +63,18 @@ def cyclostatic_multiple_fifos(x_tensor: In, y_tensor: In, out_tensor: Out):
         fn_args=[of_x_l2l1.cons(), of_y_l2l1.cons(), of_out_l1l2.prod()],
     )
 
-    rt = Runtime()
-    with rt.sequence(x_in_ty, y_in_ty, out_ty) as (x_in, y_in, c_out):
-        rt.start(worker)
-        rt.fill(of_x_l3l2.prod(), x_in)
-        rt.fill(of_y_l3l2.prod(), y_in)
-        rt.drain(of_out_l2l3.cons(), c_out, wait=True)
+    def sequence(x_in, y_in, c_out, x_h, y_h, out_h):
+        x_h.fill(x_in)
+        y_h.fill(y_in)
+        out_h.drain(c_out, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [x_in_ty, y_in_ty, out_ty],
+        fn_args=[of_x_l3l2.prod(), of_y_l3l2.prod(), of_out_l2l3.cons()],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def main():
