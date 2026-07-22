@@ -41,15 +41,24 @@ def design():
         for i in range(N_BUFFERS)
     ]
 
-    rt = Runtime()
-    with rt.sequence(*([out_ty] * N_BUFFERS)) as tensors:
-        rt.inline_ops(lambda: npu_load_pdi(device_ref=device_name), [])
-        for w in workers:
-            rt.start(w)
+    def sequence(*args):
+        tensors = args[:N_BUFFERS]
+        cons_handles = args[N_BUFFERS:]
+        npu_load_pdi(device_ref=device_name)
         for i in range(N_BUFFERS):
-            rt.drain(fifos[i].cons(), tensors[i], wait=True)
+            cons_handles[i].drain(tensors[i], wait=True)
 
-    return str(Program(NPU2Col4(), rt).resolve_program(device_name=device_name))
+    rt = Runtime(
+        sequence,
+        [out_ty] * N_BUFFERS,
+        fn_args=[fifos[i].cons() for i in range(N_BUFFERS)],
+    )
+
+    return str(
+        Program(NPU2Col4(), rt, workers=workers).resolve_program(
+            device_name=device_name
+        )
+    )
 
 
 print(design())

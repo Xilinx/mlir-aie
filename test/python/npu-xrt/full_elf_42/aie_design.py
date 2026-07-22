@@ -34,13 +34,15 @@ def design():
 
     worker = Worker(core_fn, [of_out.prod()], while_true=False)
 
-    rt = Runtime()
-    with rt.sequence(out_ty) as out_tensor:
-        rt.inline_ops(lambda: npu_load_pdi(device_ref=device_name), [])
-        rt.start(worker)
-        rt.drain(of_out.cons(), out_tensor, wait=True)
+    def sequence(out_tensor, out_h):
+        npu_load_pdi(device_ref=device_name)
+        out_h.drain(out_tensor, wait=True)
 
-    mlir = Program(NPU2Col1(), rt).resolve_program(device_name=device_name)
+    rt = Runtime(sequence, [out_ty], fn_args=[of_out.cons()])
+
+    mlir = Program(NPU2Col1(), rt, workers=[worker]).resolve_program(
+        device_name=device_name
+    )
     return str(mlir)
 
 
