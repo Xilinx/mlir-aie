@@ -83,10 +83,16 @@ def _transpose_dma(
     tap_in = TensorTiler2D.simple_tiler((M, K), tile_col_major=True)[0]
     of_in = ObjectFifo(tensor_ty)
     of_out = of_in.cons().forward(AnyComputeTile)
-    rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty) as (a, c):
-        rt.fill(of_in.prod(), a, tap_in)
-        rt.drain(of_out.cons(), c, wait=True)
+
+    def sequence(a, c, in_h, out_h):
+        in_h.fill(a, tap_in)
+        out_h.drain(c, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [tensor_ty, tensor_ty],
+        fn_args=[of_in.prod(), of_out.cons()],
+    )
     return Program(iron.get_current_device(), rt).resolve_program()
 
 
@@ -109,10 +115,16 @@ def _transpose_dma_packet(
     tap_in = TensorTiler2D.simple_tiler((M, K), tile_col_major=True)[0]
     of_in = ObjectFifo(tensor_ty, name="in")
     of_out = of_in.cons().forward()
-    rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty) as (a, c):
-        rt.fill(of_in.prod(), a, tap_in)
-        rt.drain(of_out.cons(), c, wait=True)
+
+    def sequence(a, c, in_h, out_h):
+        in_h.fill(a, tap_in)
+        out_h.drain(c, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [tensor_ty, tensor_ty],
+        fn_args=[of_in.prod(), of_out.cons()],
+    )
     return Program(iron.get_current_device(), rt).resolve_program()
 
 
@@ -156,12 +168,16 @@ def _transpose_shuffle(
 
     worker = Worker(core_fn, fn_args=[in_fifo.cons(), out_fifo.prod(), kernel_func])
 
-    rt = Runtime()
-    with rt.sequence(tile_ty, tile_ty) as (a, c):
-        rt.start(worker)
-        rt.fill(in_fifo.prod(), a)
-        rt.drain(out_fifo.cons(), c, wait=True)
-    return Program(iron.get_current_device(), rt).resolve_program()
+    def sequence(a, c, in_h, out_h):
+        in_h.fill(a)
+        out_h.drain(c, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [tile_ty, tile_ty],
+        fn_args=[in_fifo.prod(), out_fifo.cons()],
+    )
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 # ---------------------------------------------------------------------------
@@ -253,12 +269,16 @@ def _transpose_combined(
         core_fn, fn_args=[in_L2L1_fifo.cons(), out_fifo.prod(), kernel_func]
     )
 
-    rt = Runtime()
-    with rt.sequence(matrix_ty, matrix_ty) as (a, c):
-        rt.start(worker)
-        rt.fill(in_L3L2_fifo.prod(), a, tap_in_L3L2)
-        rt.drain(out_fifo.cons(), c, tap_out_L1L3, wait=True)
-    return Program(iron.get_current_device(), rt).resolve_program()
+    def sequence(a, c, in_h, out_h):
+        in_h.fill(a, tap_in_L3L2)
+        out_h.drain(c, tap_out_L1L3, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [matrix_ty, matrix_ty],
+        fn_args=[in_L3L2_fifo.prod(), out_fifo.cons()],
+    )
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 # ---------------------------------------------------------------------------

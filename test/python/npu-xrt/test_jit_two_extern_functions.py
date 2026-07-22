@@ -62,13 +62,17 @@ def add_then_scale(
         fn_args=[of_in.cons(), of_out.prod(), add_func, scale_func],
     )
 
-    rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty) as (A, B):
-        rt.start(worker)
-        rt.fill(of_in.prod(), A)
-        rt.drain(of_out.cons(), B, wait=True)
+    def sequence(A, B, in_h, out_h):
+        in_h.fill(A)
+        out_h.drain(B, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [tensor_ty, tensor_ty],
+        fn_args=[of_in.prod(), of_out.cons()],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def test_two_external_functions_different_objects():

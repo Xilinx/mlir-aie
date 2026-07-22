@@ -85,13 +85,17 @@ def in_core_shuffle(
     A_ty = np.ndarray[(M * K // 8,), np.dtype[v8bfp16ebs8]]
     C_ty = np.ndarray[(M * N // 8,), np.dtype[v8bfp16ebs8]]
 
-    rt = Runtime()
-    with rt.sequence(A_ty, C_ty) as (a, c):
-        rt.start(worker)
-        rt.fill(inA.prod(), a)
-        rt.drain(outC.cons(), c, wait=True)
+    def sequence(a, c, inA_h, outC_h):
+        inA_h.fill(a)
+        outC_h.drain(c, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [A_ty, C_ty],
+        fn_args=[inA.prod(), outC.cons()],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def _make_argparser():

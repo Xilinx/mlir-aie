@@ -92,27 +92,30 @@ def memcpy(
     # `(1, chunk)` tiles row-major across the `(1, size)` tensor.
     taps = TensorTiler2D.simple_tiler((1, size), (1, chunk))
 
-    rt = Runtime()
-    with rt.sequence(transfer_type, transfer_type) as (a, b):
-        if my_workers:
-            rt.start(*my_workers)
-        for i in range(num_columns):
-            for j in range(num_channels):
-                rt.fill(
-                    of_ins[i * num_channels + j].prod(),
-                    a,
-                    taps[i * num_channels + j],
-                )
-        for i in range(num_columns):
-            for j in range(num_channels):
-                rt.drain(
-                    of_outs[i * num_channels + j].cons(),
-                    b,
-                    taps[i * num_channels + j],
-                    wait=True,
-                )
+    in_prods = [
+        of_ins[i * num_channels + j].prod()
+        for i in range(num_columns)
+        for j in range(num_channels)
+    ]
+    out_conses = [
+        of_outs[i * num_channels + j].cons()
+        for i in range(num_columns)
+        for j in range(num_channels)
+    ]
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    def sequence(a, b, in_hs, out_hs):
+        for idx in range(len(in_hs)):
+            in_hs[idx].fill(a, taps[idx])
+        for idx in range(len(out_hs)):
+            out_hs[idx].drain(b, taps[idx], wait=True)
+
+    rt = Runtime(
+        sequence,
+        [transfer_type, transfer_type],
+        fn_args=[in_prods, out_conses],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=my_workers).resolve_program()
 
 
 def _make_argparser():

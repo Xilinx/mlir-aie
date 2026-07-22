@@ -29,6 +29,7 @@ from aie.iron import (
     Out,
     Program,
     Runtime,
+    TaskGroup,
     Worker,
 )
 from aie.iron.controlflow import range_
@@ -208,13 +209,11 @@ def n32_core_gemm(
     num_groups = num_row_tile * num_col_tile
     tb_max_n_rows = 4
 
-    rt = Runtime()
-    with rt.sequence(A_ty, B_ty, C_ty) as (a, b, c):
-        rt.start(*[w for row in workers for w in row])
+    def sequence(a, b, c, A_prods, B_prods, C_conses):
         # 4-slot rotating task-group pipeline. Each slot is one
         # iteration's (4 A-fills + 8 B-fills + 8 C-drains). A/B fills are
         # wait=False (free at finish), C drains are wait=True (await +
-        # free at finish). The interleaved finish_task_group calls below
+        # free at finish). The interleaved finish() calls below
         # match the original placed-style rotation 1:1, so the lowered
         # MLIR sequence is structurally identical to the hand-managed
         # dma_start/await/free sequence:
@@ -227,49 +226,60 @@ def n32_core_gemm(
         slots = [None] * tb_max_n_rows
         for group_idx in range(num_groups):
             slot_idx = group_idx % tb_max_n_rows
-            tg = rt.task_group()
+            tg = TaskGroup()
             slots[slot_idx] = tg
 
             a_base_idx = (group_idx // num_col_tile) * n_aie_rows
             for row in range(n_aie_rows):
-                rt.fill(
-                    A_l3l2_fifos[row].prod(),
+                A_prods[row].fill(
                     a,
                     tap=A_taps[a_base_idx + row],
-                    task_group=tg,
+                    group=tg,
                     wait=False,
                 )
             b_base_idx = (group_idx % num_col_tile) * n_aie_cols
             for col in range(n_aie_cols):
-                rt.fill(
-                    B_l3l2_fifos[col].prod(),
+                B_prods[col].fill(
                     b,
                     tap=B_taps[b_base_idx + col],
-                    task_group=tg,
+                    group=tg,
                     wait=False,
                 )
             c_base_idx = group_idx * n_aie_cols
             for col in range(n_aie_cols):
-                rt.drain(
-                    C_l2l3_fifos[col].cons(),
+                C_conses[col].drain(
                     c,
                     tap=C_taps[c_base_idx + col],
-                    task_group=tg,
+                    group=tg,
                     wait=True,
                 )
 
             if slot_idx == 1 and group_idx != 1:
-                rt.finish_task_group(slots[2])
-                rt.finish_task_group(slots[3])
+                slots[2].finish()
+                slots[3].finish()
             if slot_idx == 3:
-                rt.finish_task_group(slots[0])
-                rt.finish_task_group(slots[1])
+                slots[0].finish()
+                slots[1].finish()
 
         # Drain the two slots still pending at the end of the rotation.
-        rt.finish_task_group(slots[2])
-        rt.finish_task_group(slots[3])
+        slots[2].finish()
+        slots[3].finish()
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [A_ty, B_ty, C_ty],
+        fn_args=[
+            [f.prod() for f in A_l3l2_fifos],
+            [f.prod() for f in B_l3l2_fifos],
+            [f.cons() for f in C_l2l3_fifos],
+        ],
+    )
+
+    return Program(
+        iron.get_current_device(),
+        rt,
+        workers=[w for row in workers for w in row],
+    ).resolve_program()
 
 
 def _make_argparser():

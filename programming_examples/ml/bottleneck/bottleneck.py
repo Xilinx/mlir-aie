@@ -270,14 +270,18 @@ def bottleneck(
         )
     )
 
-    rt = Runtime()
-    with rt.sequence(act_in_l3_ty, wts_in_l3_ty, act_in_l3_ty) as (I, W, O):
-        rt.start(*workers)
-        rt.fill(of_act_l3l2.prod(), I)
-        rt.fill(of_wts_l3l2.prod(), W)
-        rt.drain(of_out_l2l3.cons(), O, wait=True)
+    def sequence(I, W, O, act_prod, wts_prod, out_cons):
+        act_prod.fill(I)
+        wts_prod.fill(W)
+        out_cons.drain(O, wait=True)
 
-    return Program(device, rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [act_in_l3_ty, wts_in_l3_ty, act_in_l3_ty],
+        fn_args=[of_act_l3l2.prod(), of_wts_l3l2.prod(), of_out_l2l3.cons()],
+    )
+
+    return Program(device, rt, workers=workers).resolve_program()
 
 
 def _make_argparser():

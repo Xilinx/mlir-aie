@@ -77,14 +77,18 @@ def transform_with_internal_func_with_options(
     worker = Worker(core_body, fn_args=[of_in.cons(), of_out.prod(), internal_func])
 
     # Runtime operations to move data to/from the AIE-array
-    rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty) as (A, B):
-        rt.start(worker)
-        rt.fill(of_in.prod(), A)
-        rt.drain(of_out.cons(), B, wait=True)
+    def sequence(A, B, in_h, out_h):
+        in_h.fill(A)
+        out_h.drain(B, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [tensor_ty, tensor_ty],
+        fn_args=[of_in.prod(), of_out.cons()],
+    )
 
     # Place program components and generate an MLIR module
-    return Program(iron.get_current_device(), rt).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 @jit
@@ -153,14 +157,18 @@ def transform_with_internal_func_from_file(
     worker = Worker(core_body, fn_args=[of_in.cons(), of_out.prod(), internal_func])
 
     # Runtime operations to move data to/from the AIE-array
-    rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty) as (A, B):
-        rt.start(worker)
-        rt.fill(of_in.prod(), A)
-        rt.drain(of_out.cons(), B, wait=True)
+    def sequence(A, B, in_h, out_h):
+        in_h.fill(A)
+        out_h.drain(B, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [tensor_ty, tensor_ty],
+        fn_args=[of_in.prod(), of_out.cons()],
+    )
 
     # Place program components and generate an MLIR module
-    return Program(iron.get_current_device(), rt).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 @jit
@@ -224,14 +232,18 @@ def transform_with_internal_func(
     worker = Worker(core_body, fn_args=[of_in.cons(), of_out.prod(), internal_func])
 
     # Runtime operations to move data to/from the AIE-array
-    rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty) as (A, B):
-        rt.start(worker)
-        rt.fill(of_in.prod(), A)
-        rt.drain(of_out.cons(), B, wait=True)
+    def sequence(A, B, in_h, out_h):
+        in_h.fill(A)
+        out_h.drain(B, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [tensor_ty, tensor_ty],
+        fn_args=[of_in.prod(), of_out.cons()],
+    )
 
     # Place program components and generate an MLIR module
-    return Program(iron.get_current_device(), rt).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def test_transform_with_internal_func_with_options_inside():

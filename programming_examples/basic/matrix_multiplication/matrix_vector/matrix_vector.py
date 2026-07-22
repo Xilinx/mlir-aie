@@ -111,15 +111,22 @@ def matrix_vector(
         (1, K), pattern_repeat=M_div_m_div_n_cores, prune_step=False
     )[0]
 
-    rt = Runtime()
-    with rt.sequence(A_ty, B_ty, C_ty) as (a_in, b_in, c_out):
-        rt.start(*workers)
-        rt.fill(B_fifo.prod(), b_in, b_tap)
-        for i, (a_tap, c_tap) in enumerate(zip(A_taps, C_taps)):
-            rt.fill(memA_fifos[i].prod(), a_in, a_tap)
-            rt.drain(outC_fifos[i].cons(), c_out, c_tap, wait=True)
+    memA_prods = [f.prod() for f in memA_fifos]
+    outC_cons = [f.cons() for f in outC_fifos]
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    def sequence(a_in, b_in, c_out, b_h, memA_hs, outC_hs):
+        b_h.fill(b_in, b_tap)
+        for i, (a_tap, c_tap) in enumerate(zip(A_taps, C_taps)):
+            memA_hs[i].fill(a_in, a_tap)
+            outC_hs[i].drain(c_out, c_tap, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [A_ty, B_ty, C_ty],
+        fn_args=[B_fifo.prod(), memA_prods, outC_cons],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
 def _make_argparser():

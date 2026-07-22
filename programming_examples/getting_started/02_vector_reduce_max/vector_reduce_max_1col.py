@@ -159,17 +159,21 @@ def vector_reduce_max(
     # DRAM-NPU data movement and work dispatch
     # --------------------------------------------------------------------------
 
-    rt = Runtime()
-    with rt.sequence(in_ty, out_ty) as (a_in, c_out):
-        rt.start(*workers)
-        rt.fill(of_in.prod(), a_in)
-        rt.drain(out_fifos[0].cons(), c_out, wait=True)
+    def sequence(a_in, c_out, in_prod, out_cons):
+        in_prod.fill(a_in)
+        out_cons.drain(c_out, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [in_ty, out_ty],
+        fn_args=[of_in.prod(), out_fifos[0].cons()],
+    )
 
     # --------------------------------------------------------------------------
     # Place and generate MLIR program
     # --------------------------------------------------------------------------
 
-    my_program = Program(iron.get_current_device(), rt)
+    my_program = Program(iron.get_current_device(), rt, workers=workers)
     return my_program.resolve_program()
 
 

@@ -60,15 +60,19 @@ def my_passthrough_kernel(
         trace=1 if trace_config else 0,
     )
 
-    rt = Runtime()
-    with rt.sequence(vector_type, vector_type) as (a_in, b_out):
-        if trace_config:
-            rt.enable_trace(trace_config.trace_size, workers=[worker])
-        rt.start(worker)
-        rt.fill(of_in.prod(), a_in)
-        rt.drain(of_out.cons(), b_out, wait=True)
+    def sequence(a_in, b_out, in_h, out_h):
+        in_h.fill(a_in)
+        out_h.drain(b_out, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [vector_type, vector_type],
+        fn_args=[of_in.prod(), of_out.cons()],
+    )
+    if trace_config:
+        rt.enable_trace(trace_config.trace_size, workers=[worker])
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def main():

@@ -30,7 +30,7 @@ import sys
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import In, ObjectFifo, Out, Program, Runtime
+from aie.iron import In, ObjectFifo, Out, Program, Runtime, TaskGroup
 from aie.utils.hostruntime.argparse import device_from_args
 from aie.helpers.taplib import TensorAccessPattern
 from aie.utils.hostruntime import set_current_device
@@ -88,7 +88,7 @@ def make_mobilenet_iron(use_placement: bool = True):
 
         Runtime args (declared via In/Out so @iron.jit knows the design takes
         three host tensors): activations + scratch, cascade weights, final FC2
-        output.  The body's ``rt.sequence(...)`` matches.
+        output.  The runtime ``sequence(...)`` body's args match.
 
         aiecc_flags=["--dynamic-objFifos=false"]: the init core's constant-trip
         loops fully unroll under the global dynamic-objfifo lowering to ~3360
@@ -171,35 +171,29 @@ def make_mobilenet_iron(use_placement: bool = True):
         # so `dma_free_task` is not emitted for tasks that were never awaited
         # (act_in, weights, FC fills) — otherwise their BD IDs would be
         # deallocated while their DMAs were potentially still in flight.
-        rt = Runtime()
-        with rt.sequence(in_ty, cascade_wts_ty, out_ty) as (inp, cascade_wts, out):
-            rt.start(*all_workers)
+        shim = P.get("shim", {})
+        wts_shims = shim.get("wts", [None] * 4)
 
+        def sequence(
+            inp,
+            cascade_wts,
+            out,
+            act_in_prod,
+            wts_prods,
+            avgpool_cons,
+            fc_prod,
+            fc_cons,
+        ):
             # ---- Group 1: input + weights + avgpool drain ----
             # All upstream fills + the first sync drain in the same group. By the
             # time the avgpool drain completes, init_conv has consumed all of
             # act_in and bn13/14 have consumed their weights, so freeing all of
             # those at finish_task_group() is safe (causal closure).
-            shim = P.get("shim", {})
-            tg1 = rt.task_group()
-            rt.fill(
-                act_in.prod(depth=1),
-                inp,
-                tile=shim.get("input"),
-                task_group=tg1,
-            )
+            tg1 = TaskGroup()
+            act_in_prod.fill(inp, group=tg1)
             # bn13/14 L1+L3 weight chunks from the combined cascade buffer
-            wts_shims = shim.get("wts", [None] * 4)
-            for fifo, off, sz, s in zip(
-                wts_fifos, _CASCADE_OFFSETS, _CASCADE_SIZES, wts_shims
-            ):
-                rt.fill(
-                    fifo.prod(),
-                    cascade_wts,
-                    _wts_tap(off, sz),
-                    tile=s,
-                    task_group=tg1,
-                )
+            for wts_prod, off, sz in zip(wts_prods, _CASCADE_OFFSETS, _CASCADE_SIZES):
+                wts_prod.fill(cascade_wts, _wts_tap(off, sz), group=tg1)
             # Round-trip avgpool output through L3 (shim 30/40 hop). Reuse `inp`
             # as scratch — input is fully consumed by the time PostL1 emits output.
             # Offsets/sizes are i32 elements (4 bytes each):
@@ -216,28 +210,24 @@ def make_mobilenet_iron(use_placement: bool = True):
                 sizes=[1, 1, 1, _post_l1_out_sz_i32],
                 strides=[0, 0, 0, 1],
             )
-            rt.drain(
-                act_out_post_avgpool_shim.cons(),
+            avgpool_cons.drain(
                 inp,
                 tap=_post_l1_scratch_tap,
                 wait=True,
-                task_group=tg1,
-                tile=shim.get("scratch_drain"),
+                group=tg1,
             )
-            rt.finish_task_group(tg1)
+            tg1.finish()
 
             # ---- Group 2: FC1 fill + FC1 drain ----
             # FC1 fill reads the avgpool scratch (drained above). FC1 drain
             # waits for FC compute to consume the fill, then drains FC1 output
             # to L3. By finish_task_group, both FC1 fill and FC1 drain have
             # completed.
-            tg2 = rt.task_group()
-            rt.fill(
-                act_out_post_shim_FC.prod(),
+            tg2 = TaskGroup()
+            fc_prod.fill(
                 inp,
                 tap=_post_l1_scratch_tap,
-                task_group=tg2,
-                tile=shim.get("fc_fill"),
+                group=tg2,
             )
             _post_fc_out_tap = TensorAccessPattern(
                 (_inp_sz_i32,),
@@ -245,38 +235,46 @@ def make_mobilenet_iron(use_placement: bool = True):
                 sizes=[1, 1, 1, _post_l1_out_sz_i32],
                 strides=[0, 0, 0, 1],
             )
-            rt.drain(
-                act_out_of.cons(),
+            fc_cons.drain(
                 inp,
                 tap=_post_fc_out_tap,
                 wait=True,
-                task_group=tg2,
-                tile=shim.get("fc_drain"),
+                group=tg2,
             )
-            rt.finish_task_group(tg2)
+            tg2.finish()
 
             # ---- Group 3: FC2 fill + FC2 final drain to host ----
-            tg3 = rt.task_group()
-            rt.fill(
-                act_out_post_shim_FC.prod(),
+            tg3 = TaskGroup()
+            fc_prod.fill(
                 inp,
                 tap=_post_fc_out_tap,
-                task_group=tg3,
-                tile=shim.get("fc_fill"),
+                group=tg3,
             )
-            rt.drain(
-                act_out_of.cons(),
+            fc_cons.drain(
                 out,
                 wait=True,
-                task_group=tg3,
-                tile=shim.get("fc_drain"),
+                group=tg3,
             )
-            rt.finish_task_group(tg3)
+            tg3.finish()
+
+        rt = Runtime(
+            sequence,
+            [in_ty, cascade_wts_ty, out_ty],
+            fn_args=[
+                act_in.prod(depth=1, tile=shim.get("input")),
+                [fifo.prod(tile=s) for fifo, s in zip(wts_fifos, wts_shims)],
+                act_out_post_avgpool_shim.cons(tile=shim.get("scratch_drain")),
+                act_out_post_shim_FC.prod(tile=shim.get("fc_fill")),
+                act_out_of.cons(tile=shim.get("fc_drain")),
+            ],
+        )
 
         # ------------------------------------------------------------------
         # Generate MLIR
         # ------------------------------------------------------------------
-        return Program(iron.get_current_device(), rt).resolve_program()
+        return Program(
+            iron.get_current_device(), rt, workers=all_workers
+        ).resolve_program()
 
     return mobilenet_iron
 

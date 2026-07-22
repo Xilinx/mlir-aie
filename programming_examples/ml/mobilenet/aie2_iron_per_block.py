@@ -28,7 +28,7 @@ import os
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import ObjectFifo, Program, Runtime
+from aie.iron import ObjectFifo, Program, Runtime, TaskGroup
 from aie.iron.device import Tile
 from aie.utils.hostruntime.argparse import device_from_args
 from aie.utils.hostruntime import set_current_device
@@ -223,60 +223,47 @@ def per_block_iron(block_name, data_dir=None, scales_json=None):
 
     out_fifo, workers, wts_fifos = _build_one(block_name, act_in)
 
-    rt = Runtime()
     if wts_fifos:
         # Cascade: input + 2 weight buffers + output.
         BN_WTS_SZ = 80 * 960  # 76800 bytes per L1/L3 weight chunk for bn13/bn14
         wts_ty = np.ndarray[(BN_WTS_SZ // 4,), np.dtype[np.int32]]
-        with rt.sequence(in_ty, wts_ty, wts_ty, out_ty) as (inp, wl1, wl3, out):
-            rt.start(*workers)
-            tg = rt.task_group()
-            rt.fill(
-                act_in.prod(),
-                inp,
-                tile=TEST_PLACEMENT["shim_input"],
-                task_group=tg,
-            )
-            rt.fill(
-                wts_fifos[0].prod(),
-                wl1,
-                tile=TEST_PLACEMENT["shim_wts_l1"],
-                task_group=tg,
-            )
-            rt.fill(
-                wts_fifos[1].prod(),
-                wl3,
-                tile=TEST_PLACEMENT["shim_wts_l3"],
-                task_group=tg,
-            )
-            rt.drain(
-                out_fifo.cons(),
-                out,
-                wait=True,
-                tile=TEST_PLACEMENT["shim_output"],
-                task_group=tg,
-            )
-            rt.finish_task_group(tg)
-    else:
-        with rt.sequence(in_ty, out_ty) as (inp, out):
-            rt.start(*workers)
-            tg = rt.task_group()
-            rt.fill(
-                act_in.prod(),
-                inp,
-                tile=TEST_PLACEMENT["shim_input"],
-                task_group=tg,
-            )
-            rt.drain(
-                out_fifo.cons(),
-                out,
-                wait=True,
-                tile=TEST_PLACEMENT["shim_output"],
-                task_group=tg,
-            )
-            rt.finish_task_group(tg)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+        def sequence(inp, wl1, wl3, out, in_prod, wl1_prod, wl3_prod, out_cons):
+            tg = TaskGroup()
+            in_prod.fill(inp, group=tg)
+            wl1_prod.fill(wl1, group=tg)
+            wl3_prod.fill(wl3, group=tg)
+            out_cons.drain(out, wait=True, group=tg)
+            tg.finish()
+
+        rt = Runtime(
+            sequence,
+            [in_ty, wts_ty, wts_ty, out_ty],
+            fn_args=[
+                act_in.prod(tile=TEST_PLACEMENT["shim_input"]),
+                wts_fifos[0].prod(tile=TEST_PLACEMENT["shim_wts_l1"]),
+                wts_fifos[1].prod(tile=TEST_PLACEMENT["shim_wts_l3"]),
+                out_fifo.cons(tile=TEST_PLACEMENT["shim_output"]),
+            ],
+        )
+    else:
+
+        def sequence(inp, out, in_prod, out_cons):
+            tg = TaskGroup()
+            in_prod.fill(inp, group=tg)
+            out_cons.drain(out, wait=True, group=tg)
+            tg.finish()
+
+        rt = Runtime(
+            sequence,
+            [in_ty, out_ty],
+            fn_args=[
+                act_in.prod(tile=TEST_PLACEMENT["shim_input"]),
+                out_fifo.cons(tile=TEST_PLACEMENT["shim_output"]),
+            ],
+        )
+
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
 def _make_argparser():

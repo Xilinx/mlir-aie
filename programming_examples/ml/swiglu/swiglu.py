@@ -16,7 +16,17 @@ import numpy as np
 from ml_dtypes import bfloat16
 
 import aie.iron as iron
-from aie.iron import CompileTime, In, Out, ObjectFifo, Program, Runtime, Worker, kernels
+from aie.iron import (
+    CompileTime,
+    In,
+    Out,
+    ObjectFifo,
+    Program,
+    Runtime,
+    TaskGroup,
+    Worker,
+    kernels,
+)
 from aie.utils.hostruntime.argparse import device_from_args
 from aie.helpers.taplib.tensortiler2d import TensorTiler2D
 from aie.utils.hostruntime.argparse import add_compile_args
@@ -83,18 +93,26 @@ def swiglu(
     taps = TensorTiler2D.simple_tiler((1, size), (1, chunk))
     taps_wts = TensorTiler2D.simple_tiler((1, 2 * size), (1, 2 * chunk))
 
-    rt = Runtime()
-    with rt.sequence(transfer_type, transfer_type_wts, transfer_type) as (a, w, b):
-        rt.start(*workers)
-        tg = rt.task_group()
+    def sequence(a, w, b, in_prods, wts_prods, out_conses):
+        tg = TaskGroup()
         for i in range(num_columns):
-            rt.fill(of_ins[i].prod(), a, taps[i], task_group=tg)
-            rt.fill(of_wts[i].prod(), w, taps_wts[i], task_group=tg)
+            in_prods[i].fill(a, taps[i], group=tg)
+            wts_prods[i].fill(w, taps_wts[i], group=tg)
         for i in range(num_columns):
-            rt.drain(of_outs[i].cons(), b, taps[i], wait=True, task_group=tg)
-        rt.finish_task_group(tg)
+            out_conses[i].drain(b, taps[i], wait=True, group=tg)
+        tg.finish()
 
-    return Program(device, rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [transfer_type, transfer_type_wts, transfer_type],
+        fn_args=[
+            [of_ins[i].prod() for i in range(num_columns)],
+            [of_wts[i].prod() for i in range(num_columns)],
+            [of_outs[i].cons() for i in range(num_columns)],
+        ],
+    )
+
+    return Program(device, rt, workers=workers).resolve_program()
 
 
 def _make_argparser():

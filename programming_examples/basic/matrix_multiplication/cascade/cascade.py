@@ -24,6 +24,7 @@ from aie.iron import (
     Out,
     Program,
     Runtime,
+    TaskGroup,
     Worker,
     kernels,
     str_to_dtype,
@@ -301,43 +302,48 @@ def cascade(
         prune_step=False,
     )
 
-    rt = Runtime()
-    with rt.sequence(A_ty, B_ty, C_ty) as (A, B, C):
-        rt.start(*flat_workers)
+    # Move the shim-tile placement onto the handles (fill/drain no longer take
+    # tile=); one prod/cons handle per column, passed as fn_args lists.
+    A_prods = [f.prod(tile=Tile(col, 0)) for col, f in enumerate(A_l3l2_fifos)]
+    B_prods = [f.prod(tile=Tile(col, 0)) for col, f in enumerate(B_l3l2_fifos)]
+    C_conses = [f.cons(tile=Tile(col, 0)) for col, f in enumerate(C_l2l3_fifos)]
 
+    def sequence(A, B, C, A_hs, B_hs, C_hs):
         c_index = 0
         for tb in range(iron.ceildiv(M // m, tb_max_n_rows)):
             tb_n_rows = min([tb_max_n_rows, M // m - tb * tb_max_n_rows])
-            tg = rt.task_group()
+            tg = TaskGroup()
             for col in range(n_aie_cols):
-                rt.drain(
-                    C_l2l3_fifos[col].cons(),
+                C_hs[col].drain(
                     C,
                     tap=C_taps[c_index],
                     wait=True,
-                    task_group=tg,
-                    tile=Tile(col, 0),
+                    group=tg,
                 )
                 c_index += 1
                 for tile_row in range(tb_n_rows):
                     a_idx = ((tb * tb_max_n_rows) + tile_row) * n_aie_cols + col
-                    rt.fill(
-                        A_l3l2_fifos[col].prod(),
+                    A_hs[col].fill(
                         A,
                         tap=A_taps[a_idx],
-                        task_group=tg,
-                        tile=Tile(col, 0),
+                        group=tg,
                     )
-                    rt.fill(
-                        B_l3l2_fifos[col].prod(),
+                    B_hs[col].fill(
                         B,
                         tap=B_taps[col],
-                        task_group=tg,
-                        tile=Tile(col, 0),
+                        group=tg,
                     )
-            rt.finish_task_group(tg)
+            tg.finish()
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [A_ty, B_ty, C_ty],
+        fn_args=[A_prods, B_prods, C_conses],
+    )
+
+    return Program(
+        iron.get_current_device(), rt, workers=flat_workers
+    ).resolve_program()
 
 
 def _make_argparser():

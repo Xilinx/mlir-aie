@@ -27,6 +27,7 @@ from aie.iron import (
     Out,
     Program,
     Runtime,
+    TaskGroup,
     Worker,
     kernels,
     str_to_dtype,
@@ -160,13 +161,9 @@ def single_core(
     )
     c_index = 0
 
-    rt = Runtime()
-    with rt.sequence(A_ty, B_ty, C_ty) as (A, B, C):
-        if trace_config:
-            rt.enable_trace(trace_config.trace_size, workers=[worker])
-        rt.start(worker)
-
+    def sequence(A, B, C, inA_h, inB_h, outC_h):
         tgs = []
+        nonlocal c_index
         for tile_row_block in range(iron.ceildiv(M_div_m, rows_per_block)):
             for pingpong in [0, 1]:
                 row_base = (
@@ -175,22 +172,28 @@ def single_core(
                 num_tile_rows = min([rows_per_block // 2, M_div_m - row_base])
                 if num_tile_rows <= 0:
                     break
-                tgs.append(rt.task_group())
+                tgs.append(TaskGroup())
                 for tile_row in range(num_tile_rows):
                     tile_offset = (row_base + tile_row) % len(A_tiles)
-                    rt.fill(inA.prod(), A, tap=A_tiles[tile_offset], task_group=tgs[-1])
-                    rt.fill(inB.prod(), B, tap=b_tap, task_group=tgs[-1])
-                rt.drain(
-                    outC.cons(), C, tap=C_tiles[c_index], task_group=tgs[-1], wait=True
-                )
+                    inA_h.fill(A, tap=A_tiles[tile_offset], group=tgs[-1])
+                    inB_h.fill(B, tap=b_tap, group=tgs[-1])
+                outC_h.drain(C, tap=C_tiles[c_index], group=tgs[-1], wait=True)
                 c_index += 1
                 if tile_row_block > 0 or (tile_row_block == 0 and pingpong > 0):
-                    rt.finish_task_group(tgs[-2])
+                    tgs[-2].finish()
                     del tgs[-2]
-        rt.finish_task_group(tgs[-1])
+        tgs[-1].finish()
         del tgs[-1]
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [A_ty, B_ty, C_ty],
+        fn_args=[inA.prod(), inB.prod(), outC.cons()],
+    )
+    if trace_config:
+        rt.enable_trace(trace_config.trace_size, workers=[worker])
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def _make_argparser():

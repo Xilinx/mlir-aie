@@ -140,15 +140,23 @@ def group0(
     )
 
     # ----- Runtime ----------------------------------------------------------
-    rt = Runtime()
-    with rt.sequence(transfer_in_ty, transfer_out_ty, scalar_ty) as (A, C, _):
-        if trace_size > 0:
-            rt.enable_trace(trace_size)
-        rt.start(group0a_worker, group0b_worker)
-        rt.fill(of_din_L3L2.prod(), A)
-        rt.drain(of_dout_L2L3.cons(), C, wait=True)
+    def sequence(A, C, _, in_prod, out_cons):
+        in_prod.fill(A)
+        out_cons.drain(C, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [transfer_in_ty, transfer_out_ty, scalar_ty],
+        fn_args=[of_din_L3L2.prod(), of_dout_L2L3.cons()],
+    )
+    if trace_size > 0:
+        rt.enable_trace(trace_size)
+
+    return Program(
+        iron.get_current_device(),
+        rt,
+        workers=[group0a_worker, group0b_worker],
+    ).resolve_program()
 
 
 def _make_argparser():

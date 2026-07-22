@@ -104,14 +104,18 @@ def single_core_no_tiling_mixed(
     B_ty = np.ndarray[(K * N // 8,), np.dtype[v8bfp16ebs8]]
     C_ty = np.ndarray[(M * N,), np.dtype[bfloat16]]
 
-    rt = Runtime()
-    with rt.sequence(A_ty, B_ty, C_ty) as (a, b, c):
-        rt.start(worker)
-        rt.fill(inA.prod(), a)
-        rt.fill(inB.prod(), b)
-        rt.drain(outC.cons(), c, wait=True)
+    def sequence(a, b, c, inA_h, inB_h, outC_h):
+        inA_h.fill(a)
+        inB_h.fill(b)
+        outC_h.drain(c, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [A_ty, B_ty, C_ty],
+        fn_args=[inA.prod(), inB.prod(), outC.cons()],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def _make_argparser():

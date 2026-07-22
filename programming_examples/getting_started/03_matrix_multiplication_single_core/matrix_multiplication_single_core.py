@@ -27,6 +27,7 @@ from aie.iron import (
     ObjectFifo,
     Program,
     Runtime,
+    TaskGroup,
     Worker,
     kernels,
 )
@@ -135,23 +136,26 @@ def matrix_multiplication_single_core(
     )[0]
     c_taps = TensorTiler2D.group_tiler((M, N), (m, n), (1, N // n))
 
-    rt = Runtime()
-    with rt.sequence(A_ty, B_ty, C_ty) as (A, B, C):
-        rt.start(worker)
+    def sequence(A, B, C, a_prod, b_prod, c_cons):
         for tile_row in range(M // m):
-            task_group = rt.task_group()
-            rt.fill(fifo_A_L3L2.prod(), A, tap=a_taps[tile_row], task_group=task_group)
-            rt.fill(fifo_B_L3L2.prod(), B, tap=b_tap, task_group=task_group)
-            rt.drain(
-                fifo_C_L2L3.cons(),
+            task_group = TaskGroup()
+            a_prod.fill(A, tap=a_taps[tile_row], group=task_group)
+            b_prod.fill(B, tap=b_tap, group=task_group)
+            c_cons.drain(
                 C,
                 tap=c_taps[tile_row],
-                task_group=task_group,
+                group=task_group,
                 wait=True,
             )
-            rt.finish_task_group(task_group)
+            task_group.finish()
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [A_ty, B_ty, C_ty],
+        fn_args=[fifo_A_L3L2.prod(), fifo_B_L3L2.prod(), fifo_C_L2L3.cons()],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def aot_compile(M: int, K: int, N: int, element_type) -> None:
