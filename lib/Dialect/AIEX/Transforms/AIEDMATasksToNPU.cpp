@@ -994,12 +994,13 @@ struct AIEDMATasksToNPUPass
 
   // Drop the dead task-index carries left by the dynamic BD pool path once
   // awaits have lowered to npu.sync. scf.for/scf.if carry the task value as a
-  // result purely to hold the await's data dependence on the configure; with the
-  // await gone that carry is dead but still counts as a use of the branch-local
-  // configure, blocking its use_empty lowering. scf's own canonicalizations
-  // remove dead iter-args/results and prune the yields feeding them. Run them
-  // device-wide but with folding and constant-CSE DISABLED, so the static path's
-  // byte-golden constant emission is untouched -- only the dead scf carries go.
+  // result purely to hold the await's data dependence on the configure; with
+  // the await gone that carry is dead but still counts as a use of the
+  // branch-local configure, blocking its use_empty lowering. scf's own
+  // canonicalizations remove dead iter-args/results and prune the yields
+  // feeding them. Run them device-wide but with folding and constant-CSE
+  // DISABLED, so the static path's byte-golden constant emission is untouched
+  // -- only the dead scf carries go.
   LogicalResult dropDeadTaskCarries(AIE::DeviceOp device) {
     RewritePatternSet patterns(&getContext());
     scf::ForOp::getCanonicalizationPatterns(patterns, &getContext());
