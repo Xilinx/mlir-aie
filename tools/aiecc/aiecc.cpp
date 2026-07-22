@@ -356,11 +356,13 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                            [scheme = allocScheme.getValue(),
                             dyn = dynamicObjFifos.getValue(),
                             pkt = packetSwObjFifos.getValue(),
-                            ctrl = ctrlPktOverlay.getValue(),
+                            ctrl = ctrlPktOverlay.getValue() ||
+                                   loadPdiToCtrlPkt.getValue(),
+                            ldpdi = loadPdiToCtrlPkt.getValue(),
                             bf16 = bf16Emulation.getValue()](
                                mlir::MLIRContext *ctx, mlir::ModuleOp mod) {
                              return getInputWithAddressesPipeline(
-                                 ctx, mod, scheme, dyn, pkt, ctrl, bf16);
+                                 ctx, mod, scheme, dyn, pkt, ctrl, bf16, ldpdi);
                            }});
 
   // Scratchpad run-time parameters sidecar file
@@ -580,26 +582,59 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
   //     `convert-aie-to-transaction` reads each core's `elf_file` to emit a
   //     `@configure` sequence that reprograms the cores, so the cores must be
   //     lowered (a core without an `elf_file` is skipped from the transaction).
+  //   * --load-pdi-to-ctrl-pkt expands the configuration into control packets
+  //     (via the same expand-load-pdi machinery), which likewise needs the
+  //     compiled cores.
   bool npuTransactionsNeedCoresLowered =
-      expandLoadPdis.getValue() || generateTxn;
+      expandLoadPdis.getValue() || generateTxn || loadPdiToCtrlPkt.getValue();
   EdgeWithTypedOutput<ModRef> &npuLoweringInput =
       npuTransactionsNeedCoresLowered
           ? static_cast<EdgeWithTypedOutput<ModRef> &>(physicalWithElfs)
           : static_cast<EdgeWithTypedOutput<ModRef> &>(physical);
-  auto &npuLowered = npuLoweringInput.map<ModRef>(
+  // NPU instruction sequence lowering. The default and --load-pdi-to-ctrl-pkt
+  // flows share the materialize + expand prefix and diverge at DMA lowering.
+  EdgeWithTypedOutput<ModRef> &npuMaterialized =
+      noMaterialize.getValue()
+          ? npuLoweringInput
+          : static_cast<EdgeWithTypedOutput<ModRef> &>(
+                npuLoweringInput.map<ModRef>(
+                    "npu_materialized.mlir",
+                    PassPipeline{getMaterializeRuntimeSeqPipeline(&context)}));
+
+  // For --load-pdi-to-ctrl-pkt this edge holds the control-packet ops before
+  // DMA lowering: the extraction point for the control-packet binary.
+  bool ctrlPkt = loadPdiToCtrlPkt.getValue();
+  EdgeWithTypedOutput<ModRef> &npuExpanded =
+      (expandLoadPdis.getValue() || ctrlPkt)
+          ? static_cast<EdgeWithTypedOutput<ModRef> &>(
+                npuMaterialized.map<ModRef>(
+                    "npu_expanded.mlir",
+                    PassPipeline{
+                        &context,
+                        [ctrlPkt](mlir::MLIRContext *ctx, mlir::ModuleOp) {
+                          return getExpandLoadPdiPipeline(ctx, ctrlPkt);
+                        }}))
+          : npuMaterialized;
+
+  // The default tail unrolls runtime-sequence loops and pools dynamic BDs; the
+  // ctrl-packet sequence is straight-line and only needs the per-device tail,
+  // after its control packets are lowered to DMA.
+  EdgeWithTypedOutput<ModRef> &npuDmaLowered =
+      ctrlPkt
+          ? npuExpanded
+                .map<ModRef>("ctrlpkt_to_dma.mlir",
+                             PassPipeline{getCtrlPktToDmaPipeline(&context)})
+                .map<ModRef>(
+                    "ctrlpkt_npu_lowered.mlir",
+                    PassPipeline{getPerDeviceDmaLoweringPipeline(&context)})
+          : npuExpanded.map<ModRef>(
+                "npu_dma_lowered.mlir",
+                PassPipeline{getNpuDmaLoweringPipeline(&context)});
+
+  auto &npuLowered = npuDmaLowered.map<ModRef>(
       "npu_lowered.mlir",
-      [expand = expandLoadPdis.getValue(),
-       materialize = !noMaterialize.getValue()](
-          const Item<ModRef> &item, Item<ModRef> &out) -> mlir::LogicalResult {
+      [](const Item<ModRef> &item, Item<ModRef> &out) -> mlir::LogicalResult {
         ModRef clone = item.get().get().clone();
-        if (mlir::failed(
-                getNpuLoweringPipeline(clone->getContext(), materialize)
-                    ->run(*clone)))
-          return mlir::failure();
-        if (expand)
-          if (mlir::failed(
-                  getExpandLoadPdiPipeline(clone->getContext())->run(*clone)))
-            return mlir::failure();
         assignDevicePdiIds(*clone);
         assignLoadPdiIds(*clone);
         out.value = std::move(clone);
@@ -608,11 +643,17 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
 
   // Root of the static configuration branch; contains compiled cores, etc., to
   // produce xclbins, or feed into the full ELF. Usually, this is completely
-  // independent from the NPU runtime sequence compilation; however, the
-  // --expand-load-pdis pass generates new empty_0/1 devices, for which we must
-  // also generate PDIs, which is the only reason for the selection here
+  // independent from the NPU runtime sequence compilation; however, two passes
+  // synthesize new empty_0/1 reset devices (via the shared expand-load-pdi
+  // machinery), for which we must also generate PDIs / control packets, so the
+  // static branch must observe those devices by rooting on `npuLowered`:
+  //   * --expand-load-pdis generates the empty_0/1 devices directly.
+  //   * --load-pdi-to-ctrl-pkt runs the same expansion (with ctrl-pkt=true) and
+  //     additionally materializes the reconfigure runtime sequence, so the
+  //     control-packet flow (getControlPacketPipeline) sees a lowered module
+  //     rather than un-materialized `aiex.configure`/`aiex.run` ops.
   EdgeWithTypedOutput<ModRef> &staticInput =
-      expandLoadPdis.getValue()
+      (expandLoadPdis.getValue() || loadPdiToCtrlPkt.getValue())
           ? static_cast<EdgeWithTypedOutput<ModRef> &>(npuLowered)
           : static_cast<EdgeWithTypedOutput<ModRef> &>(physicalWithElfs);
   auto &staticPerDevice =
@@ -1018,22 +1059,109 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
       "npu_insts_full_elf_{0}.bin",
       [](const NpuProgram &p) { return p.insts; });
 
-  // Combined ELF: all PDIs + NPU insts bundled into one aie2_config ELF.
+  // Full ELF: all PDIs + NPU insts + control packet data if applicable.
+  //
+  // Control-packet data and its buffer relocation (patch info) are computed
+  // PER RUNTIME SEQUENCE, not per device: a device may hold several runtime
+  // sequences, each with a different argument count and its own control-packet
+  // data, and each must be streamed into the argument slot of the sequence it
+  // belongs to. We therefore split `npuExpanded` into one item per runtime
+  // sequence (keyed "<device>_<sequence>", matching `npuInstsFullElf`) so the
+  // per-sequence artifacts line up with the per-sequence instruction binaries
+  // in the full-ELF config.
+  //
+  // If the control packet lowering is not enabled, the empty `noCtrlPktSeqs`
+  // edge is fed into the full ELF assembly bundle.
+  auto &ctrlPktExpandedPerSeq =
+      npuExpanded.split<OpInModule<RuntimeSequenceOp>>(
+          "ctrlpkt_expanded_seq_{0}.mlir",
+          SplitIRAction<RuntimeSequenceOp>([](RuntimeSequenceOp s) {
+            return npuSeqKey(s->getParentOfType<DeviceOp>().getSymName(),
+                             s.getSymName());
+          }));
+  auto &noCtrlPktSeqs = g.empty<OpInModule<RuntimeSequenceOp>>("noCtrlPktSeqs");
+
+  // `ctrlPktSeqs` contains every runtime sequence that may carry control-packet
+  // data, honoring --device-name / --sequence-name (as `perSeq` does).
+  auto &ctrlPktSeqs =
+      (loadPdiToCtrlPkt.getValue()
+           ? static_cast<EdgeWithTypedOutput<OpInModule<RuntimeSequenceOp>> &>(
+                 ctrlPktExpandedPerSeq)
+           : static_cast<EdgeWithTypedOutput<OpInModule<RuntimeSequenceOp>> &>(
+                 noCtrlPktSeqs))
+          .filter("ctrlPktSeqs",
+                  [matchesDeviceFilter, seqFilter = sequenceName.getValue()](
+                      const OpInModule<RuntimeSequenceOp> &x) {
+                    RuntimeSequenceOp seq = x.op;
+                    if (!matchesDeviceFilter(seq->getParentOfType<DeviceOp>()))
+                      return false;
+                    return seqFilter.empty() || seq.getSymName() == seqFilter;
+                  });
+
+  // Per-sequence control-packet binary, dropping empties so the config only
+  // references sequences that actually carry a control packet.
+  auto &fullElfCtrlpkt =
+      ctrlPktSeqs
+          .map<std::vector<char>>(
+              "full_elf_{0}.ctrlpkt.bin",
+              emitBinary<OpInModule<RuntimeSequenceOp>>(
+                  [](const Item<OpInModule<RuntimeSequenceOp>> &item,
+                     std::vector<uint32_t> &words) -> mlir::LogicalResult {
+                    RuntimeSequenceOp seq = item.get().op;
+                    DeviceOp d = seq->getParentOfType<DeviceOp>();
+                    return xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
+                        item.get().module.get(), words, d.getSymName(),
+                        seq.getSymName());
+                  }))
+          .filter("fullElfCtrlpktNonEmpty",
+                  [](const std::vector<char> &bin) { return !bin.empty(); });
+
+  // When control packets are enabled, the control data is passed into the
+  // runtime sequence as an argument. `fullElfPatchInfo` captures which argument
+  // index contains that control data and the size of the control-data buffer,
+  // computed from THIS sequence's pre-lowering argument count (ctrl-packet-to-
+  // DMA appends the control buffer as the sequence's next argument).
+  auto &fullElfPatchInfo =
+      bundle(fullElfCtrlpkt.out, ctrlPktSeqs.out)
+          .map<llvm::json::Value>(
+              "full_elf_{0}.patch_info.json",
+              [](const Item<std::vector<char>> &binItem,
+                 const Item<OpInModule<RuntimeSequenceOp>> &seqItem,
+                 Item<llvm::json::Value> &out) -> mlir::LogicalResult {
+                RuntimeSequenceOp seq = seqItem.get().op;
+                int argIdx = seq.getBody().empty()
+                                 ? 0
+                                 : seq.getBody().front().getNumArguments();
+                out.value =
+                    makePatchInfoJson(argIdx, (int64_t)binItem.get().size());
+                return mlir::success();
+              });
+
+  // Combined ELF: all PDIs + NPU insts bundled
+  // + control packet data, if any.
   auto &fullElfConfig =
-      bundle(npuLoweredPerDevice.out, pdi.out, npuInstsFullElf.out)
+      bundle(npuLoweredPerDevice.out, pdi.out, npuInstsFullElf.out,
+             fullElfCtrlpkt.out, fullElfPatchInfo.out)
           .join<llvm::json::Value>(
               "full_elf_config.json",
               [](const Node<OpInModule<DeviceOp>> &devices,
                  const Node<File> &pdis,
                  const Node<std::vector<char>> &instsBins,
+                 const Node<std::vector<char>> &ctrlPkts,
+                 const Node<llvm::json::Value> &patchInfos,
                  Item<llvm::json::Value> &out) -> mlir::LogicalResult {
                 llvm::StringMap<std::string> pdiPaths, instsPaths;
+                llvm::StringMap<std::string> ctrlPktPaths, patchInfoPaths;
                 for (const auto &item : pdis.items)
                   pdiPaths[item.key] = absolutePath(item.asFile());
                 for (const auto &item : instsBins.items)
                   instsPaths[item.key] = absolutePath(item.asFile());
-                out.value =
-                    makeFullElfConfigJson(devices, pdiPaths, instsPaths);
+                for (const auto &item : ctrlPkts.items)
+                  ctrlPktPaths[item.key] = absolutePath(item.asFile());
+                for (const auto &item : patchInfos.items)
+                  patchInfoPaths[item.key] = absolutePath(item.asFile());
+                out.value = makeFullElfConfigJson(devices, pdiPaths, instsPaths,
+                                                  ctrlPktPaths, patchInfoPaths);
                 return mlir::success();
               });
 
@@ -1146,7 +1274,10 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
     outputs.push_back(&pdi);
   if (generateTxn)
     outputs.push_back(&txn);
-  if (generateCtrlpkt) {
+  // Only emit standalone control-packet artifacts (partial ELF + DMA sequence)
+  // in the non-full-ELF flow. In the full-ELF-flow, the control packet data is
+  // contained in the ELF and patched into a runtime sequence argument.
+  if (generateCtrlpkt && !(loadPdiToCtrlPkt && generateFullElf)) {
     outputs.push_back(&ctrlpkt);
     outputs.push_back(&ctrlpktDmaSeq);
     outputs.push_back(&ctrlpktElf);
@@ -1299,12 +1430,20 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  // The control-packet DMA sequence targets the xclbin / instruction-buffer
-  // runtime, never the full-ELF runtime, so the two must not be requested
-  // together (see the hard-coded fold in the ctrlpktDmaSeq edge).
-  if (generateFullElf && generateCtrlpkt) {
-    llvm::errs() << "aiecc: --get-full-elf and --get-ctrlpkt are "
+  // --expand-load-pdis and --load-pdi-to-ctrl-pkt are two different reconfigure
+  // strategies for the same `load_pdi` ops (explicit write sequences vs.
+  // streamed control packets); at most one may apply.
+  if (expandLoadPdis && loadPdiToCtrlPkt) {
+    llvm::errs() << "aiecc: --expand-load-pdis and --load-pdi-to-ctrl-pkt are "
                     "mutually exclusive\n";
+    return 1;
+  }
+
+  // Disambiguate the full-ELF control packet flow and the standalone
+  // artifact flows.
+  if (generateFullElf && generateCtrlpkt && !loadPdiToCtrlPkt) {
+    llvm::errs() << "aiecc: --generate-full-elf and --aie-generate-ctrlpkt "
+                    "together also requires --load-pdi-to-ctrl-pkt\n";
     return 1;
   }
 
