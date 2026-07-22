@@ -51,20 +51,21 @@ my_worker = Worker(core_fn, [buf], tile=Tile(0, 2), while_true=False)
 
 > **NOTE 2:** The Worker above is instantiated with `while_true=False`. By default this is `True`, which wraps the kernel body in a `while True`-style loop simulated by a `for _ in range(sys.maxsize):`. Depending on the body (e.g., creating a local buffer with a unique name) the infinite-loop wrapper can cause compiler issues.
 
-Data movement between Workers will get its own [section](../section-2/section-2d/); host-to/from-NPU data movement is configured inside the `Runtime` sequence. In this minimal example the runtime sequence has one host-facing tensor argument and just starts the Worker:
+Data movement between Workers will get its own [section](../section-2/section-2d/); host-to/from-NPU data movement is configured inside the `Runtime` sequence body. In this minimal example the sequence body has one host-facing tensor argument and does no data movement; the Worker is passed to the `Program`:
 
 ```python
-rt = Runtime()
-with rt.sequence(data_ty) as _:
-    rt.start(my_worker)
+def sequence(b):
+    pass
+
+rt = Runtime(sequence, [data_ty])
 ```
-Finally we wrap everything in a `Program`. The program emits `aie.logical_tile` ops for any unplaced tiles (none here, since we pinned the Worker) and the `--aie-place-tiles` compiler pass assigns physical tile coordinates during compilation. Wrapping the design in `@iron.jit` (at the top of the function) means a call site like `section_one(out)` triggers compile + run end-to-end.
+Finally we wrap everything in a `Program`, passing the Worker via `workers=`. The program emits `aie.logical_tile` ops for any unplaced tiles (none here, since we pinned the Worker) and the `--aie-place-tiles` compiler pass assigns physical tile coordinates during compilation. Wrapping the design in `@iron.jit` (at the top of the function) means a call site like `section_one(out)` triggers compile + run end-to-end.
 
 ```python
 @iron.jit
 def section_one(b_out: Out):
     ...
-    return Program(iron.get_current_device(), rt).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=[my_worker]).resolve_program()
 ```
 
 > **NOTE:** Every IRON component above inherits from the `resolvable` interface, which defers the creation of MLIR operations until `resolve()` is called. The `Program.resolve_program()` call ties them together and raises if anything is under-specified.

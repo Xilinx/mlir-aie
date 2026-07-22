@@ -102,35 +102,38 @@ primitives into the resolved program.  All three accept one object per
 call:
 
 ```python
-rt = Runtime()
+def sequence(a, b):
+    ...                     # host-side data movement (or raw npu_* ops)
+
+rt = Runtime(sequence, [in_ty, out_ty])
 rt.add_flow(my_flow)        # one call per Flow / PacketFlow
 rt.add_lock(my_lock)        # one call per Lock
 rt.add_tile_dma(my_dma)     # one call per TileDma program
 ```
 
-Inside `rt.sequence(...)`, if even the BD-level abstraction is too
+Inside the sequence body, if even the BD-level abstraction is too
 high — typically because you're driving BD writes from the host
 runtime sequence rather than from the tile DMA program — drop into
 raw `npu_*` ops (`npu_writebd`, `npu_address_patch`, `npu_push_queue`,
-`npu_sync`, `npu_write32`) via:
+`npu_sync`, `npu_write32`) directly:
 
 ```python
-def manual_bd_writes(a, b):
+def sequence(a, b):
     npu_write32(column=col, row=1, address=0xC0000, value=1)
     npu_writebd(bd_id=0, buffer_length=..., column=col, row=0, ...)
     npu_address_patch(...)
     npu_push_queue(...)
     npu_sync(column=col, row=0, ...)
 
-with rt.sequence(in_ty, out_ty) as (a, b):
-    rt.start(worker)
-    rt.inline_ops(manual_bd_writes, [a, b])
+rt = Runtime(sequence, [in_ty, out_ty])
+
+Program(device, rt, workers=[worker]).resolve_program()
 ```
 
-`rt.inline_ops(fn, [args])` calls `fn(*args)` inside the runtime
-sequence's MLIR region with the host-side tensor handles already in
-scope — exactly what `rt.fill` / `rt.drain` are built on top of, but
-with no protocol assumptions baked in.
+The sequence body runs inside the runtime sequence's MLIR region with
+the host-side tensor handles already in scope — writing raw `npu_*` ops
+directly is exactly what `fill` / `drain` are built on top of, but with
+no protocol assumptions baked in.
 
 ### Worked example: tile-to-tile copy
 
@@ -191,7 +194,10 @@ dma_b = TileDma(tile=tile_b, channels=[
     ),
 ])
 
-rt = Runtime()
+def sequence(a, b):
+    pass  # data flow is driven entirely by the tile DMA programs below
+
+rt = Runtime(sequence, [vec_ty, vec_ty])
 for lk in (prod_lock_a, cons_lock_a, prod_lock_b, cons_lock_b):
     rt.add_lock(lk)
 rt.add_flow(a_to_b)
@@ -255,11 +261,10 @@ tile S2MM with:
   acquire/release lock-protocol pairs;
 * a `Worker` running a tiny lock-flipping spinner on the compute
   tile;
-* a runtime sequence that opens the data flow with `npu_writebd` /
-  `npu_address_patch` / `npu_push_queue` / `npu_sync` inside an
-  `rt.inline_ops(...)` block — the *teaching point* of the example,
-  because the manual BD writes are exactly what `rt.fill` / `rt.drain`
-  normally hide.
+* a runtime sequence whose body opens the data flow with `npu_writebd` /
+  `npu_address_patch` / `npu_push_queue` / `npu_sync` written directly
+  — the *teaching point* of the example, because the manual BD writes
+  are exactly what `fill` / `drain` normally hide.
 
 That design is the right starting place when copying this pattern.
 

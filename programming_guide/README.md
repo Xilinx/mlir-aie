@@ -45,13 +45,17 @@ def my_design(a_in: In, b_out: Out):
 
     w = Worker(core_fn, [of_in.cons(), of_out.prod()])
 
-    rt = Runtime()
-    with rt.sequence(*[np.ndarray[(1024,), np.dtype[np.int32]]] * 2) as (a, b):
-        rt.start(w)
-        rt.fill(of_in.prod(),  a)
-        rt.drain(of_out.cons(), b, wait=True)
+    def sequence(a, b, in_h, out_h):
+        in_h.fill(a)
+        out_h.drain(b, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [*[np.ndarray[(1024,), np.dtype[np.int32]]] * 2],
+        fn_args=[of_in.prod(), of_out.cons()],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=[w]).resolve_program()
 
 a = iron.arange(1024, dtype=np.int32, device="npu")
 b = iron.zeros(1024,  dtype=np.int32, device="npu")
@@ -130,14 +134,14 @@ The vocabulary IRON and this documentation use, grouped by topic. Where a term m
 | [**Worker**](../docs/api/iron.md#iron.worker.Worker) | The IRON object describing the code that runs on one compute tile. Prefer "Worker" over "process" or "task". |
 | [**ObjectFifo**](../docs/api/iron.md#iron.dataflow.objectfifo.ObjectFifo) | The synchronized streaming-data primitive between two endpoints (host↔tile or tile↔tile). Producers and consumers `acquire` / `release` its elements. Reserve "channel" for AXI stream channels. |
 | [**ObjectFifoHandle**](../docs/api/iron.md#iron.dataflow.objectfifo.ObjectFifoHandle) | A producer or consumer handle to an ObjectFifo, obtained via `of.prod()` / `of.cons()`. Worker core functions call `acquire` / `release` on it. |
-| [**Runtime**](../docs/api/iron.md#iron.runtime.runtime.Runtime) | The host-side description of `fill` / `drain` operations and Worker `start`s, declared with `rt.sequence(...)`. Distinct from "host code" (the C++/Python testbench that calls the design). |
+| [**Runtime**](../docs/api/iron.md#iron.runtime.runtime.Runtime) | The host-side description of `fill` / `drain` operations, defined by the body passed to `Runtime(seq, inputs, fn_args)`. Workers are passed to `Program(workers=...)` rather than started from the body. Distinct from "host code" (the C++/Python testbench that calls the design). |
 | [**Program**](../docs/api/iron.md#iron.program.Program) | The top-level container that binds a device and a Runtime and resolves the design to MLIR. |
 | [**Buffer**](../docs/api/iron.md#iron.buffer.Buffer) | A named memory region on a tile, accessible by both Workers and the Runtime (often used for runtime parameters). |
 | [**Kernel**](../docs/api/iron.md#iron.kernel.Kernel) / [**ExternalFunction**](../docs/api/iron.md#iron.kernel.ExternalFunction) | Wrappers for AIE core functions: `Kernel` for a pre-compiled object file, `ExternalFunction` for C/C++ source compiled at JIT time. |
-| [**TensorAccessPattern (TAP)**](../docs/api/taplib.md) | A description of how a tensor is sliced and streamed to/from the NPU across multiple DMA transfers. Passed as `tap=` to `rt.fill()` / `rt.drain()`. |
+| [**TensorAccessPattern (TAP)**](../docs/api/taplib.md) | A description of how a tensor is sliced and streamed to/from the NPU across multiple DMA transfers. Passed as `tap=` to `fifo.fill()` / `fifo.drain()`. |
 | [**Flow**](../docs/api/iron.md#iron.dataflow.flow.Flow) / [**PacketFlow**](../docs/api/iron.md#iron.dataflow.flow.PacketFlow) | Lower-level explicit-routing primitives: `Flow` for circuit-switched routes, `PacketFlow` for packet-switched routes with caller-controlled packet IDs. |
 | [**TileDma**](../docs/api/iron.md#iron.dataflow.tile_dma.TileDma) | A lower-level explicit per-tile DMA program, used when the ObjectFifo abstraction hides too much. |
-| [**Runtime sequence**](../docs/api/iron.md#iron.runtime.runtime.Runtime.sequence) | The `rt.sequence(...)` context in which `fill` / `drain` / `start` operations are declared. |
+| [**Runtime sequence**](../docs/api/iron.md#iron.runtime.runtime.Runtime.sequence) | The sequence body passed to `Runtime(seq, inputs, fn_args)` in which `fill` / `drain` operations are declared. |
 
 ### Compilation
 

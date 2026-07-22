@@ -27,12 +27,10 @@ Enabling trace support can be done with the following steps:
 
 ## <u>1. Enable and configure AIE trace</u>
 
-Enabling tracing means configuring the trace units for a given tile and then routing the generated event packets through the stream switches to the shim DMA where we can write them to a buffer in DDR for post-runtime processing. For IRON, we abstract these steps into a single runtime function `enable_trace` within the larger runtime sequence as shown below:
+Enabling tracing means configuring the trace units for a given tile and then routing the generated event packets through the stream switches to the shim DMA where we can write them to a buffer in DDR for post-runtime processing. For IRON, we abstract these steps into a single runtime method `enable_trace`, called on the `Runtime` after it is constructed, as shown below:
 ```python
-rt = Runtime()
-with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (a_in, f_in, c_out):
-    rt.enable_trace(trace_size, workers=[my_worker])
-    ...
+rt = Runtime(sequence, [tensor_ty, scalar_ty, tensor_ty], fn_args=[...])
+rt.enable_trace(trace_size, workers=[my_worker])
 ```
 
 An alternative is to add a `trace` parameter to the worker declaration:
@@ -44,14 +42,12 @@ worker = Worker(
     trace=1,
 )
 ...
-rt = Runtime()
-with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (a_in, f_in, c_out):
-    rt.enable_trace(trace_size)
-    ...
+rt = Runtime(sequence, [tensor_ty, scalar_ty, tensor_ty], fn_args=[...])
+rt.enable_trace(trace_size)
 ```
-Here, we add `trace=1` to indicate that worker should be traced. And we can omit the `workers` argument from the `enable_trace` call in the runtime sequence.
+Here, we add `trace=1` to indicate that worker should be traced. And we can omit the `workers` argument from the `enable_trace` call.
 
->**NOTE**: The `workers` argument in the runtime sequence `enable_trace` always takes precedence over the `trace=1` argument of the worker. So if you define both, we will go with the definition of the `enable_trace` argument.
+>**NOTE**: The `workers` argument to `enable_trace` always takes precedence over the `trace=1` argument of the worker. So if you define both, we will go with the definition of the `enable_trace` argument.
 
 Configuring the trace unit in each core tile and routing the trace packets to a valid shim tile is then done automatically.
 
@@ -68,20 +64,19 @@ The trace configuration chooses helpful default settings so you can trace your d
 
     ```python
     ...
-    rt = Runtime()
-    with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (a_in, f_in, c_out):
-        rt.enable_trace(
-            trace_size = trace_size,
-            coretile_events = [
-                    trace_utils.CoreEvent.INSTR_EVENT_0,
-                    trace_utils.CoreEvent.INSTR_EVENT_1,
-                    trace_utils.CoreEvent.INSTR_VECTOR,
-                    trace_utils.CoreEvent.MEMORY_STALL,
-                    trace_utils.CoreEvent.STREAM_STALL,
-                    trace_utils.CoreEvent.LOCK_STALL,
-                    trace_utils.CoreEvent.ACTIVE,
-                    trace_utils.CoreEvent.DISABLED]
-        )
+    rt = Runtime(sequence, [tensor_ty, scalar_ty, tensor_ty], fn_args=[...])
+    rt.enable_trace(
+        trace_size = trace_size,
+        coretile_events = [
+                trace_utils.CoreEvent.INSTR_EVENT_0,
+                trace_utils.CoreEvent.INSTR_EVENT_1,
+                trace_utils.CoreEvent.INSTR_VECTOR,
+                trace_utils.CoreEvent.MEMORY_STALL,
+                trace_utils.CoreEvent.STREAM_STALL,
+                trace_utils.CoreEvent.LOCK_STALL,
+                trace_utils.CoreEvent.ACTIVE,
+                trace_utils.CoreEvent.DISABLED]
+    )
     ```
 
 #### Common core-tile trace event IDs
@@ -343,15 +338,16 @@ def passthrough_with_trace(
         trace=1 if trace_config else 0,
     )
 
-    rt = Runtime()
     tensor_ty = np.ndarray[(N,), np.dtype[np.uint8]]
-    with rt.sequence(tensor_ty, tensor_ty) as (a_in, b_out):
-        if trace_config:
-            rt.enable_trace(trace_config.trace_size, workers=[worker])
-        rt.start(worker)
-        rt.fill(of_in.prod(), a_in)
-        rt.drain(of_out.cons(), b_out, wait=True)
-    return Program(iron.get_current_device(), rt).resolve_program()
+
+    def sequence(a_in, b_out, in_h, out_h):
+        in_h.fill(a_in)
+        out_h.drain(b_out, wait=True)
+
+    rt = Runtime(sequence, [tensor_ty, tensor_ty], fn_args=[of_in.prod(), of_out.cons()])
+    if trace_config:
+        rt.enable_trace(trace_config.trace_size, workers=[worker])
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 ```
 
 Two equivalent ways to drive it from the caller:

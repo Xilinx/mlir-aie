@@ -48,12 +48,13 @@ def passthrough_design(a: In, b: Out, *, N: CompileTime[int]):
         of_out.release(1)
 
     worker = Worker(core_fn, [of_in.cons(), of_out.prod(), pt])
-    rt = Runtime()
-    with rt.sequence(line_ty, line_ty) as (a_in, b_out):
-        rt.start(worker)
-        rt.fill(of_in.prod(), a_in)
-        rt.drain(of_out.cons(), b_out, wait=True)
-    return Program(iron.get_current_device(), rt).resolve_program()
+
+    def sequence(a_in, b_out, in_h, out_h):
+        in_h.fill(a_in)
+        out_h.drain(b_out, wait=True)
+
+    rt = Runtime(sequence, [line_ty, line_ty], fn_args=[of_in.prod(), of_out.cons()])
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 ```
 
 The kernel `.o` lands in the per-design cache directory alongside the

@@ -74,9 +74,12 @@ for _ in range(n_workers):
         Worker(core_fn, [...])
     )
 
-rt = Runtime()
-with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
-    rt.start(*workers)
+def sequence(a, b, c):
+    pass
+
+rt = Runtime(sequence, [data_ty, data_ty, data_ty])
+
+Program(device, rt, workers=workers).resolve_program()
 ```
 More on programming for multiple workers in [Section 2e](../section-2/section-2e/) of the programming guide.
 
@@ -176,7 +179,7 @@ More on the ObjectFifo data movement patterns in [Section 2b](../section-2/secti
 
 ## Runtime Sequence
 
-The arguments of the IRON runtime sequence describe buffers that will be available on the host side; the body of the sequence contains commands which describe how those buffers are moved into the AIE-array through `ObjectFifos`.
+The IRON runtime sequence is a plain Python function passed to `Runtime(sequence, inputs, fn_args=...)`. Its `inputs` describe buffers that will be available on the host side, and its body contains commands which describe how those buffers are moved into the AIE-array through `ObjectFifos`. The `ObjectFifoHandle`s the body fills/drains are passed via `fn_args` and received as trailing parameters. `Worker`s are handed to the `Program` directly.
 
 ```python
 data_size = 256
@@ -186,18 +189,24 @@ data_ty = np.ndarray[(data_size,), np.dtype[np.int32]]
 of_in = ObjectFifo(data_ty, name="in")
 of_out = ObjectFifo(data_ty, name="out")
 
-rt = Runtime()
-with rt.sequence(tile_ty, tile_ty) as (a_in, c_out):
-    rt.start(my_worker)
-    rt.fill(of_in.prod(), a_in)
-    rt.drain(of_out.cons(), c_out, wait=True)
+def sequence(a_in, c_out, in_h, out_h):
+    in_h.fill(a_in)
+    out_h.drain(c_out, wait=True)
+
+rt = Runtime(
+    sequence,
+    [tile_ty, tile_ty],
+    fn_args=[of_in.prod(), of_out.cons()],
+)
+
+Program(device, rt, workers=[my_worker]).resolve_program()
 ```
 
 Up to five buffers are supported in the runtime sequence, where the fifth is typically used for trace support. This is further described in [Section 4b](../section-4/section-4b/README.md) of the programming guide.
 
 Runtime sequence commands are submitted to and executed by a dedicated command processor in order. The command processor will wait on commands that are set to `wait` until a token associated with their completion is generated. When all the commands in the runtime sequence have been executed the command processor sends an interrupt to the host processor.
 
-IRON also supports grouping of runtime sequence commands using `task_group`s. Commands that are in the same group begin execution concurrently, and the completion of the group can be explicitly synchronized using the `finish_task_group()` command. These features can be combined to achieve an optimized grouping of waits for parallel tasks, as is shown in [this](../../programming_examples/basic/memcpy/README.md) programming example.
+IRON also supports grouping of runtime sequence commands using `TaskGroup`s. A task is added to a group by passing `group=` to `fill`/`drain`; commands that are in the same group begin execution concurrently, and the completion of the group can be explicitly synchronized using the group's `finish()` method. These features can be combined to achieve an optimized grouping of waits for parallel tasks, as is shown in [this](../../programming_examples/basic/memcpy/README.md) programming example.
 
 More on the runtime sequence in [Section 2d](../section-2/section-2d/RuntimeTasks.md) of the programming guide.
 
@@ -238,17 +247,14 @@ for worker in range(n_workers):
         Worker(core_fn, [rtps[worker]])
     )
 
-rt = Runtime()
-with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
-
+def sequence(a, b, c):
     # Set runtime parameters
-    def set_rtps(*args):
-        for rtp in args:
-            rtp[0] = 50
-            rtp[1] = 255
-            rtp[2] = 0
+    for rtp in rtps:
+        rtp[0] = 50
+        rtp[1] = 255
+        rtp[2] = 0
 
-    rt.inline_ops(set_rtps, rtps)
+rt = Runtime(sequence, [data_ty, data_ty, data_ty])
 ```
 To ensure that RTPs are not read prematurely, `WorkerRuntimeBarriers` can be used to synchronize a Worker with the runtime sequence:
 ```python
@@ -277,14 +283,18 @@ for worker in range(n_workers):
         Worker(core_fn, [rtps[worker], workerBarriers[worker]])
     )
 
-rt = Runtime()
-with rt.sequence(data_ty, data_ty, data_ty) as (_, _, _):
+def sequence(a, b, c):
     # Set runtime parameters
-    # ...
-    rt.inline_ops(set_rtps, rtps)
-    
+    for rtp in rtps:
+        rtp[0] = 50
+        rtp[1] = 255
+        rtp[2] = 0
+
+    # Then release the barriers.
     for worker in range(n_workers):
-        rt.set_barrier(workerBarriers[worker], 1)
+        workerBarriers[worker].set(1)
+
+rt = Runtime(sequence, [data_ty, data_ty, data_ty])
 ```
 More on the runtime parameters and barriers in [Section 2d](../section-2/section-2d/RuntimeTasks.md) of the programming guide and in the [worker.py](../../python/iron/worker.py).
 
@@ -324,11 +334,17 @@ tap = TensorAccessPattern(
 
 A `TensorAccessPattern` can be applied to the `fill()` and `drain()` runtime operations:
 ```python
-rt = Runtime()
-with rt.sequence(data_ty, data_ty) as (a_in, c_out):
-    rt.start(my_worker)
-    rt.fill(of_in.prod(), a_in, tap)
-    rt.drain(of_out.cons(), c_out, tap, wait=True)
+def sequence(a_in, c_out, in_h, out_h):
+    in_h.fill(a_in, tap)
+    out_h.drain(c_out, tap, wait=True)
+
+rt = Runtime(
+    sequence,
+    [data_ty, data_ty],
+    fn_args=[of_in.prod(), of_out.cons()],
+)
+
+Program(device, rt, workers=[my_worker]).resolve_program()
 ```
 
 The `TensorAccessPattern` can be visualized in two ways:

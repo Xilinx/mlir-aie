@@ -39,17 +39,17 @@ def passthrough(a_in: In, b_out: Out):
 
     worker = Worker(core_fn, [of.cons(), of_out.prod(), kernel])
 
-    rt = Runtime()
-    with rt.sequence(line_ty, line_ty) as (a, b):
-        rt.start(worker)
-        rt.fill(of.prod(), a)
-        rt.drain(of_out.cons(), b, wait=True)
+    def sequence(a, b, in_h, out_h):
+        in_h.fill(a)
+        out_h.drain(b, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(sequence, [line_ty, line_ty], fn_args=[of.prod(), of_out.cons()])
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 ```
 
 When `passthrough` is called, IRON wraps the body in an implicit
-`mlir_mod_ctx()`.  Every `ObjectFifo(...)`, `Worker(...)`, `rt.fill(...)`,
+`mlir_mod_ctx()`.  Every `ObjectFifo(...)`, `Worker(...)`, `fifo.fill(...)`,
 and `kernel(...)` call that runs inside that body emits MLIR
 operations into the active `InsertionPoint` of that context.  The
 final `Program.resolve_program()` call walks the user-level Python
@@ -160,8 +160,8 @@ touch the implicit context.  They are registered with it later, when
 `Program.resolve_program()` walks the design.
 
 * `Worker(core_fn, fn_args, tile=...)`
-* `Runtime()`
-* `Program(device, rt)`
+* `Runtime(sequence, inputs, fn_args=...)`
+* `Program(device, rt, workers=...)`
 * `ObjectFifo(obj_type, depth, name=...)`
 
 You can create, store, and pass these around freely outside any

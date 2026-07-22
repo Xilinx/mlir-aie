@@ -41,12 +41,14 @@ def vector_add_one(a_in, b_out):
             b[i] = a[i] + 1
         of_in.release(1); of_out.release(1)
 
-    rt = Runtime()
-    with rt.sequence(data_ty, data_ty) as (a, b):
-        rt.start(Worker(core_fn, [of_in.cons(), of_out.prod()]))
-        rt.fill(of_in.prod(), a)
-        rt.drain(of_out.cons(), b, wait=True)
-    return Program(iron.get_current_device(), rt).resolve_program()
+    w = Worker(core_fn, [of_in.cons(), of_out.prod()])
+
+    def sequence(a, b, in_h, out_h):
+        in_h.fill(a)
+        out_h.drain(b, wait=True)
+
+    rt = Runtime(sequence, [data_ty, data_ty], fn_args=[of_in.prod(), of_out.cons()])
+    return Program(iron.get_current_device(), rt, workers=[w]).resolve_program()
 
 a = iron.arange(1024, dtype=np.int32, device="npu")
 b = iron.zeros(1024,  dtype=np.int32, device="npu")
