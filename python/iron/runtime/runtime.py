@@ -30,6 +30,8 @@ from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAcces
 
 from ...dialects.aiex import (
     sync_scratchpad_parameters_from_host,  # pyright: ignore[reportAttributeAccessIssue]
+    dma_await_task,
+    dma_free_task,
 )
 from ...dialects._aie_ops_gen import (  # pyright: ignore[reportMissingImports]
     RuntimeSequenceOp,
@@ -40,10 +42,6 @@ from ...helpers.util import (
     flatten_fn_args,
 )
 from ...extras.dialects.arith import constant  # pyright: ignore[reportMissingImports]
-from ...dialects._aiex_ops_gen import (  # pyright: ignore[reportMissingImports]
-    dma_await_task,
-    dma_free_task,
-)
 from ..dataflow import ObjectFifoHandle
 from ..resolvable import Resolvable
 from ..scratchpad_parameter import ScratchpadParameter
@@ -199,7 +197,7 @@ class Runtime(Resolvable):
             v if isinstance(v, (int, np.integer)) and not isinstance(v, bool) else None
             for v in inputs
         ]
-        self._rt_data: list[RuntimeData] = [
+        self._rt_data: list["RuntimeData | None"] = [
             None if c is not None else RuntimeData(t)
             for c, t in zip(self._const_inputs, inputs)
         ]

@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 from aie.helpers.dialects.scf import _for
-from aie.helpers.dialects.scf import yield_ as _yield_
+from aie.dialects.scf import yield_ as _yield_
 from aie.iron.runtime.dmataskhandle import Task
 
 

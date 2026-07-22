@@ -18,7 +18,7 @@ these verbs -- exactly what a hand-rolled ping-pong needs.
 
 from __future__ import annotations
 
-from ...dialects._aiex_ops_gen import (  # pyright: ignore[reportMissingImports]
+from ...dialects.aiex import (  # pyright: ignore[reportMissingImports]
     dma_await_task,
     dma_free_task,
 )
