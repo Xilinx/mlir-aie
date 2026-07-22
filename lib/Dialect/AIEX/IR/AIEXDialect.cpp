@@ -8,6 +8,7 @@
 
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Utils/BdLowering.h"
+#include "aie/Dialect/AIEX/Utils/DmaDecomposition.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Func/IR/FuncOps.h"
@@ -671,9 +672,22 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
         isLinearTransferWithoutTransformation() ||
         (targetModel.isShimNOCTile(col, row) &&
          AIEX::isContiguousTransfer(inputSizes, inputStrides));
-    if (failed(verifyStridesWraps(*this, buffer, col, row, inputSizes,
-                                  inputStrides, hardwareSizes, hardwareStrides,
-                                  skipTransformationChecks))) {
+    // An oversized non-contiguous pattern that aie-decompose-large-dma-bd can
+    // split into hardware-legal sub-transfers is also allowed to verify: the
+    // pass rewrites it before BD lowering. Truly undecomposable patterns (e.g.
+    // oversized strides) still fail below. isDecomposableNdDmaPattern suppresses
+    // its own diagnostics, so no stray error is emitted for the accepted case.
+    llvm::SmallVector<int64_t, 4> inputOffsets = llvm::map_to_vector(
+        llvm::reverse(getMixedOffsets()),
+        [](OpFoldResult s) { return getConstantIntValue(s).value(); });
+    if (AIEX::isDecomposableNdDmaPattern(getOperation(), buffer, targetModel,
+                                         col, row, inputOffsets, inputSizes,
+                                         inputStrides)) {
+      // ok: will be decomposed before lowering
+    } else if (failed(verifyStridesWraps(*this, buffer, col, row, inputSizes,
+                                         inputStrides, hardwareSizes,
+                                         hardwareStrides,
+                                         skipTransformationChecks))) {
       return failure();
     }
   }

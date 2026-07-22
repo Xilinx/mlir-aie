@@ -28,6 +28,31 @@ def AIEXToStandard : Pass<"aiex-standard-lowering", "mlir::ModuleOp"> {
   ];
 }
 
+def AIEDecomposeLargeDmaBd
+    : Pass<"aie-decompose-large-dma-bd", "AIE::DeviceOp"> {
+  let summary = "Decompose oversized non-contiguous ND DMA memcpy ops";
+  let description = [{
+    Splits `aiex.npu.dma_memcpy_nd` ops whose constant ND wrap/stride encoding
+    exceeds the hardware buffer-descriptor field limits (and that cannot be
+    linearized because the access is non-contiguous) into one or more
+    hardware-legal ND transfers that move exactly the same data.
+
+    Two techniques are used: dimension factoring (split an oversized dimension
+    of size N=a*b across a free dimension slot) is preferred, falling back to
+    slicing an oversized dimension into ceil(N/limit) sub-transfers with
+    adjusted offsets. Contiguous oversized patterns are left untouched; they are
+    handled by canonicalization to linear mode.
+  }];
+
+  let constructor = "xilinx::AIEX::createAIEDecomposeLargeDmaBdPass()";
+  let dependentDialects = [
+    "mlir::arith::ArithDialect",
+    "mlir::memref::MemRefDialect",
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
 def AIESCFToControlFlow : Pass<"aie-scf-to-control-flow", "mlir::ModuleOp"> {
   let summary = "Lower scf to cf everywhere except inside runtime sequences";
   let description = [{
