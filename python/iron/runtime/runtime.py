@@ -173,45 +173,25 @@ class Runtime(Resolvable):
         """Create a runtime from its sequence body, declared inputs, and fn_args.
 
         Mirrors [`Worker`][iron.Worker]``(core_fn, fn_args)``: ``seq_fn`` runs
-        inside ``@runtime_sequence`` at resolve time. It is called as
-        ``seq_fn(*inputs, *fn_args)`` -- the runtime I/O buffers/scalars followed
-        by the shared objects it operates on (ObjectFifo handles, Buffers, ...).
-        Because it executes with an active MLIR insertion point, it can use native
-        ``range_``/``if_`` control flow and move data with ``fifo.fill(...)`` /
-        ``fifo.drain(...)``.
+        inside ``@runtime_sequence`` at resolve time, called as
+        ``seq_fn(*inputs, *fn_args)``, and can use native ``range_``/``if_`` and
+        ``fifo.fill``/``fifo.drain``. ``fn_args`` (ObjectFifoHandles, Buffers, ...)
+        are registered eagerly at construction -- fifo shim endpoints bind now
+        (from ``prod(tile=)``/``cons(tile=)``) so the Program resolves fifos and
+        cores before the body emits, letting body verbs read resolved worker state
+        (e.g. ``barrier.set``).
 
-        Each ``inputs`` entry is either:
-
-        * a **type** -- a tensor type (``np.ndarray[(M, K), np.dtype[np.int16]]``)
-          becomes a runtime buffer passed to the body as a ``RuntimeData``; a
-          scalar type (``np.int32``) becomes a **runtime** SSA scalar passed as
-          its live value. The ``scf`` control flow it drives survives to the
-          dynamic (EmitC) lowering.
-        * a concrete **int value** -- passed to the body as a folded
-          ``arith.constant`` of that value. A ``range_``/``if_`` bounded by it has
-          a constant bound, so ``aie-unroll-runtime-sequence-loops`` unrolls/folds
-          it to the static binary path.
-
-        ``fn_args`` are the shared objects the body drives, registered eagerly the
-        way [`Worker`][iron.Worker] registers its fn_args: an ObjectFifoHandle's
-        shim endpoint is bound now (using its ``prod(tile=...)``/``cons(tile=...)``
-        tile), and Buffers are recorded. Binding endpoints at construction (not
-        when the body runs) lets the Program resolve fifos and cores first and
-        emit the sequence body last -- so verbs that read worker-side state
-        (``barrier.set``, ``inline_ops`` over a worker Buffer) see it resolved.
+        Each ``inputs`` entry is either a **type** or a concrete **int value**:
+        a tensor type becomes a ``RuntimeData``; a scalar type (``np.int32``)
+        becomes a runtime SSA scalar (``scf`` survives to the dynamic EmitC path);
+        an int becomes a folded ``arith.constant`` (constant-bound ``range_``/``if_``
+        unrolls to the static binary path). One body thus serves both lowerings.
 
         Args:
-            seq_fn (Callable): The sequence body. Its parameters are bound, in
-                order, to ``inputs`` followed by ``fn_args``.
-            inputs (Sequence): The declared runtime inputs, one per leading body
-                parameter -- each a tensor/scalar type (runtime) or a concrete int
-                value (folded constant).
-            fn_args (Sequence | None): Shared objects (ObjectFifoHandles, Buffers,
-                ...) the body operates on, bound to the trailing body parameters.
-                Defaults to None (empty).
-            strict_task_groups (bool): Disallows mixing the default group and explicit task groups during resolution.
-                This can catch common errors, but can be set to False to disable the checks.
-
+            seq_fn (Callable): The sequence body; params bound to ``inputs`` then ``fn_args``.
+            inputs (Sequence): One per leading body param -- a type (runtime) or int (constant).
+            fn_args (Sequence | None): Shared objects bound to the trailing body params. Defaults to None.
+            strict_task_groups (bool): Disallow mixing the default and explicit task groups. Defaults to True.
         """
         self._seq_fn: Callable = seq_fn
         # A concrete int input is a folded constant; anything else is a type.

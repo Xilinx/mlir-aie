@@ -737,39 +737,12 @@ class ObjectFifoHandle(Resolvable):
         transfer_len=None,
         managed: bool = True,
     ):
-        """Fill this producer ObjectFifo with data from a runtime buffer.
+        """Fill this producer ObjectFifo with data from the ``source`` runtime buffer.
 
         Call from within a [`Runtime`][iron.Runtime] sequence body on a producer
-        handle. The handle's shim tile is set via ``prod(tile=...)`` where it is
-        declared in the Runtime's ``fn_args``.
-
-        Args:
-            source (RuntimeData): The input runtime data buffer.
-            tap (TensorAccessPattern | None, optional): How ``source`` is accessed
-                when sending it to the fifo. Defaults to a linear transfer of the
-                whole buffer. Mutually exclusive with sizes/strides/offset/transfer_len.
-            wait (bool, optional): Whether this transfer is awaited (True) or
-                freed (False) when its task group finishes. Defaults to False.
-            packet (tuple[int, int] | None, optional): Stamp the shim DMA's BD
-                with a packet header ``(pkt_type, pkt_id)``. Defaults to None.
-            offset_parameter (ScratchpadParameter | str | None, optional): A
-                ScratchpadParameter (or its name) whose value is the element
-                offset for this transfer. Defaults to None.
-            group (TaskGroup | None, optional): The TaskGroup to associate this
-                transfer with. Defaults to the sequence's implicit group. Only
-                valid when ``managed`` is True.
-            sizes/strides/offset/transfer_len (optional): Explicit access-pattern
-                operands whose entries may be runtime SSA values (for the dynamic
-                path). Used instead of ``tap``.
-            managed (bool, optional): When True (default) the transfer is awaited/
-                freed automatically at TaskGroup close. When False the caller owns
-                its lifetime via the returned Task's ``.free()``/``.await_()`` --
-                for hand-rolled software pipelines carrying the task across
-                ``scf.for`` iterations. Defaults to True.
-
-        Returns:
-            Task: A handle to the transfer. Carry it as a ``range_`` iter_arg for
-            software-pipelined transfers; ``.free()``/``.await_()`` an unmanaged one.
+        handle. See [`_emit_transfer`][iron.dataflow.objectfifo.ObjectFifoHandle._emit_transfer]
+        for the shared arguments; returns a
+        [`Task`][iron.runtime.dmataskhandle.Task] handle to the transfer.
         """
         if not self._is_prod:
             raise ValueError("fill() is only valid on a producer ObjectFifoHandle")
@@ -802,39 +775,12 @@ class ObjectFifoHandle(Resolvable):
         transfer_len=None,
         managed: bool = True,
     ):
-        """Drain this consumer ObjectFifo, writing data to a runtime buffer.
+        """Drain this consumer ObjectFifo, writing data to the ``dest`` runtime buffer.
 
         Call from within a [`Runtime`][iron.Runtime] sequence body on a consumer
-        handle. The handle's shim tile is set via ``cons(tile=...)`` where it is
-        declared in the Runtime's ``fn_args``.
-
-        Args:
-            dest (RuntimeData): The output runtime data buffer.
-            tap (TensorAccessPattern | None, optional): How ``dest`` is accessed
-                when reading from the fifo. Defaults to a linear transfer of the
-                whole buffer. Mutually exclusive with sizes/strides/offset/transfer_len.
-            wait (bool, optional): Whether this transfer is awaited (True) or
-                freed (False) when its task group finishes. Defaults to False.
-            packet (tuple[int, int] | None, optional): Stamp the shim DMA's BD
-                with a packet header ``(pkt_type, pkt_id)``. Defaults to None.
-            offset_parameter (ScratchpadParameter | str | None, optional): A
-                ScratchpadParameter (or its name) whose value is the element
-                offset for this transfer. Defaults to None.
-            group (TaskGroup | None, optional): The TaskGroup to associate this
-                transfer with. Defaults to the sequence's implicit group. Only
-                valid when ``managed`` is True.
-            sizes/strides/offset/transfer_len (optional): Explicit access-pattern
-                operands whose entries may be runtime SSA values (for the dynamic
-                path). Used instead of ``tap``.
-            managed (bool, optional): When True (default) the transfer is awaited/
-                freed automatically at TaskGroup close. When False the caller owns
-                its lifetime via the returned Task's ``.free()``/``.await_()`` --
-                for hand-rolled software pipelines carrying the task across
-                ``scf.for`` iterations. Defaults to True.
-
-        Returns:
-            Task: A handle to the transfer. Carry it as a ``range_`` iter_arg for
-            software-pipelined transfers; ``.free()``/``.await_()`` an unmanaged one.
+        handle. See [`_emit_transfer`][iron.dataflow.objectfifo.ObjectFifoHandle._emit_transfer]
+        for the shared arguments; returns a
+        [`Task`][iron.runtime.dmataskhandle.Task] handle to the transfer.
         """
         if self._is_prod:
             raise ValueError("drain() is only valid on a consumer ObjectFifoHandle")
