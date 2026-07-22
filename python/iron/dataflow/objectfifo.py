@@ -38,6 +38,17 @@ from .endpoint import ObjectFifoEndpoint
 from ..device import Tile, AnyMemTile
 
 
+def _same_tile(a: "Tile | None", b: "Tile | None") -> bool:
+    """Whether two shim-tile pins refer to the same placement.
+
+    Tile.__eq__ is identity-based, so compare by (col, row); two unpinned
+    (None or col/row None) tiles are considered the same.
+    """
+    if a is None or b is None:
+        return a is b
+    return (a.col, a.row) == (b.col, b.row)
+
+
 class ObjectFifo(Resolvable):
     """A synchronized, explicit dataflow channel between IRON program
     components such as [`Worker`][iron.Worker]s and the [`Runtime`][iron.Runtime].
@@ -221,6 +232,11 @@ class ObjectFifo(Resolvable):
                 raise ValueError(
                     f"Producer handle for {self.name} already pinned to channel "
                     f"{self._prod.channel}, cannot re-pin to {channel}."
+                )
+            if tile is not None and not _same_tile(self._prod._shim_tile, tile):
+                raise ValueError(
+                    f"Producer handle for {self.name} already pinned to shim tile "
+                    f"{self._prod._shim_tile}, cannot re-pin to {tile}."
                 )
         else:
             self._prod = ObjectFifoHandle(self, True, depth, channel=channel, tile=tile)
