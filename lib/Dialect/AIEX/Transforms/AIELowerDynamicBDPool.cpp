@@ -473,11 +473,11 @@ struct AIELowerDynamicBDPoolPass
       //    to the free-list. An await is a TCT sync (npu_sync), never a release
       //    -- it emits no push. In the rolled pool one physical id is live
       //    across iterations, so the static path's "await = release" (safe only
-      //    because unrolling gives each await a distinct id) would push the same
-      //    live id once per iteration and corrupt the free-list. Leaving a task
-      //    unfreed is valid: the pool is stack-local and re-initialized every
-      //    invocation, so an unfreed id merely holds a slot for the rest of this
-      //    one run (the await-only idiom, live BDs <= pool size).
+      //    because unrolling gives each await a distinct id) would push the
+      //    same live id once per iteration and corrupt the free-list. Leaving a
+      //    task unfreed is valid: the pool is stack-local and re-initialized
+      //    every invocation, so an unfreed id merely holds a slot for the rest
+      //    of this one run (the await-only idiom, live BDs <= pool size).
       //
       //    The await keeps its natural SSA operand -- the task value it names,
       //    whether that is a direct configure, a loop result, or an scf.if
