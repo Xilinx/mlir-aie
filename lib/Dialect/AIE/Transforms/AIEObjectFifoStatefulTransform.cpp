@@ -119,6 +119,17 @@ public:
         aieStreamsPerTile[{flowOp.getDest(), DMAChannelDir::S2MM,
                            flowOp.getDestChannel()}] = 1;
     }
+    // Scan ShimDMAAllocationOps so that channels already claimed (e.g. by
+    // the control packet overlay) are marked used in channelsPerTile and are
+    // therefore skipped by getDMAChannelIndex when it auto-assigns channels
+    // for objectFIFO lowering.
+    for (auto allocOp : device.getOps<ShimDMAAllocationOp>()) {
+      auto tile = allocOp.getTileOp();
+      if (!tile)
+        continue;
+      channelsPerTile[{tile.getResult(), allocOp.getChannelDir(),
+                       (int)allocOp.getChannelIndex()}] = 1;
+    }
   }
 
   /// Given a tile and DMAChannelDir, returns next usable channel index for

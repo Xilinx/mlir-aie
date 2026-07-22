@@ -703,30 +703,6 @@ LogicalResult AIEX::NpuDmaWaitOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
-// DMAAwaitTaskOp
-//===----------------------------------------------------------------------===//
-
-LogicalResult AIEX::DMAAwaitTaskOp::verify() {
-  // The await identifies its channel EITHER by the task SSA operand OR by the
-  // full sync_* attribute set (used when no configure dominates the await). The
-  // sync attributes come as a group: all four or none.
-  unsigned nSync = getSyncCol().has_value() + getSyncRow().has_value() +
-                   getSyncDirection().has_value() +
-                   getSyncChannel().has_value();
-  if (nSync != 0 && nSync != 4)
-    return emitOpError("sync_col, sync_row, sync_direction and sync_channel "
-                       "must all be set together or all omitted");
-  if (!getTask() && nSync == 0)
-    return emitOpError("must have either a task operand or the sync_* channel "
-                       "attributes");
-  if (getTask() && nSync != 0)
-    return emitOpError("must not set the sync_* channel attributes when a task "
-                       "operand is present; the channel is taken from one or "
-                       "the other, not both");
-  return success();
-}
-
-//===----------------------------------------------------------------------===//
 // NpuPushQueueOp
 //===----------------------------------------------------------------------===//
 
@@ -1300,6 +1276,45 @@ LogicalResult AIEX::SetLockOp::verify() {
     return emitOpError("Invalid lock ID and tile combination when trying to "
                        "retrieve the local lock address.");
   }
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// DmaChannelResetOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AIEX::DmaChannelResetOp::verify() {
+  const auto &targetModel = AIE::getTargetModel(*this);
+
+  auto tile = dyn_cast_or_null<AIE::TileOp>(getTile().getDefiningOp());
+  if (!tile)
+    return emitOpError() << "tile operand must be produced by an aie.tile op";
+  int col = tile.getCol();
+  int row = tile.getRow();
+  // Only core and mem tiles have a per-channel DMA reset bit. The shim NOC DMA
+  // control register has no reset field (aie-rt's Aie2PShimDmaChProp sets
+  // Reset.Mask = 0); bit 1 there is PAUSE_MEM, not RESET. Rejecting shim keeps
+  // the op honest about what it can lower, matching aie-rt's own
+  // XAie_DmaChannelReset, which errors on SHIMNOC/SHIMPL tiles.
+  if (!targetModel.isCoreTile(col, row) && !targetModel.isMemTile(col, row))
+    return emitOpError() << "tile (" << col << ", " << row
+                         << ") has no DMA channel reset (only core and mem "
+                            "tiles do; shim NOC DMA has no reset bit)";
+
+  // Number of DMA channels on this tile in this direction. Mirrors
+  // TileOp::getNumSource/DestConnections(WireBundle::DMA): the switchbox
+  // direction is reversed relative to the DMA direction.
+  uint32_t numChannels = getDirection() == AIE::DMAChannelDir::S2MM
+                             ? targetModel.getNumDestSwitchboxConnections(
+                                   col, row, AIE::WireBundle::DMA)
+                             : targetModel.getNumSourceSwitchboxConnections(
+                                   col, row, AIE::WireBundle::DMA);
+  if (getChannel() >= numChannels)
+    return emitOpError() << "channel " << getChannel()
+                         << " out of range for this tile and direction (tile "
+                            "has "
+                         << numChannels << " DMA channel(s) in this direction)";
 
   return success();
 }
