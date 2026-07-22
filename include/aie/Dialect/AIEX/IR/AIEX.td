@@ -1227,11 +1227,18 @@ def AIE_DMAStartTaskOp : AIEX_Op<"dma_start_task", [HasAncestor<"AIE::RuntimeSeq
 def AIE_DMAAwaitTaskOp : AIEX_Op<"dma_await_task", [HasAncestor<"AIE::RuntimeSequenceOp">]> {
   let summary = "Await Completion of a Previously Submitted DMA Task";
   let description = [{
-    This operation will block execution of the runtime sequence until the referenced previously started DMA task has completed.
+    This operation blocks execution of the runtime sequence until a previously
+    started DMA task completes, by waiting on its task-completion token (TCT).
+    To be able to wait on a task, it must issue a token (`issue_token = true`).
 
-    DMA tasks can be started using `aiex.start_task` using abstract BD chains declared using `aie.bd_chain`, or using `aiex.start_configured_task` using a manually configured task.
+    DMA tasks can be started using `aiex.start_task` using abstract BD chains
+    declared using `aie.bd_chain`, or using `aiex.start_configured_task` using a
+    manually configured task.
 
-    To be able to wait on a task, it must issue a task completion token (TCT). Tasks only emit these tokens if the attribute `issue_token` is set to `true`.
+    The task is identified by its `$task` SSA value, which must resolve to the
+    configure that set it up. Under the dynamic BD pool path this configure must
+    dominate the await; an await after an `scf.if` on a task configured inside a
+    branch is rejected (move the await inside the branch that configures it).
   }];
 
   let arguments = (
@@ -1247,7 +1254,9 @@ def AIE_DMAAwaitTaskOp : AIEX_Op<"dma_await_task", [HasAncestor<"AIE::RuntimeSeq
   }];
 
   let extraClassDefinition = [{
-    DMAConfigureTaskOp DMAAwaitTaskOp::getTaskOp() { return dyn_cast<DMAConfigureTaskOp>(getTask().getDefiningOp()); }
+    DMAConfigureTaskOp DMAAwaitTaskOp::getTaskOp() {
+      return dyn_cast<DMAConfigureTaskOp>(getTask().getDefiningOp());
+    }
   }];
 }
 
