@@ -80,3 +80,29 @@ module {
     aie.shim_dma_allocation @fifo (%tile_0_0, MM2S, 0)
   }
 }
+
+
+// -----
+
+// Test 4: SLICE — a prime outer dimension (1031 > 1023) cannot be factored, so
+// it is split into multiple in-order dma_memcpy_nd ops (each a contiguous slice
+// of the oversized dimension, with adjusted offset).
+//
+// RUN: aie-opt --pass-pipeline='any(aie.device(aie-decompose-large-dma-bd))' \
+// RUN:   --split-input-file %s | FileCheck %s --check-prefix=SLICE
+
+// SLICE-LABEL: @slice_memcpy
+// SLICE:         aiex.npu.dma_memcpy_nd
+// SLICE-SAME:      [0, 0, 0, 0][1, 1, 1023, 2][0, 0, 3, 1]
+// SLICE:         aiex.npu.dma_memcpy_nd
+// SLICE-SAME:      [0, 0, 1023, 0][1, 1, 8, 2][0, 0, 3, 1]
+module {
+  aie.device(npu1) {
+    aie.runtime_sequence @slice_memcpy(%a : memref<4096xi32>) {
+      aiex.npu.dma_memcpy_nd (%a[0, 0, 0, 0][1, 1, 1031, 2][0, 0, 3, 1])
+        { metadata = @fifo, id = 0 : i64 } : memref<4096xi32>
+    }
+    %tile_0_0 = aie.tile(0, 0)
+    aie.shim_dma_allocation @fifo (%tile_0_0, MM2S, 0)
+  }
+}
