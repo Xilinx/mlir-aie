@@ -5,124 +5,101 @@
 #
 ##===----------------------------------------------------------------------===##
 #
-# Three run modes, all driven by a single C++ testbench (test.cpp) selected via
-# compile-time macros:
+# Micro-benchmark of five ways to reconfigure-and-run a cols x rows core array,
+# driven by a single C++ testbench (test.cpp) selected via compile-time macros:
 #
-#   make run           reconfig flow: full-ELF, multi-device aiex.configure/run
-#                      (test.cpp -DFULL_ELF).
-#   make run_xclbin    single flow: one device (no load_pdi), one run through
-#                      the ordinary xclbin + insts testbench (test.cpp).
-#   make run_runlist   single flow: the same design executed RECONFIGS times
-#                      chained in an xrt::runlist (test.cpp -DRUNLIST).
+#   make run_separate     separate xclbins  (worker + empty, two contexts)
+#   make run_runlist      XRT runlist       (worker + empty in one runlist)
+#   make run_loadpdi      full-ELF, load_pdi reconfiguration
+#   make run_blockwrites  full-ELF, --expand-load-pdis (write32s + empty reset)
+#   make run_ctrlpkt      full-ELF, --load-pdi-to-ctrl-pkt (control packets)
 #
-# All design artifacts embed CORES/NOPS/RECONFIGS so changing a parameter never
-# picks up a stale artifact.
+# Each run does ITERS timed iterations and prints per-iteration + mean/min/max
+# runtimes.  Parameters COLS/ROWS/NOPS embed in the artifact names.  The
+# benchmark.py script drives these targets over several array sizes.
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-
-# ---
-# Design parameters
-# ---
-
-CORES ?= 1
+COLS ?= 1
+ROWS ?= 1
 NOPS ?= 0
 RECONFIGS ?= 1
+ITERS ?= 10
 
-suffix := c${CORES}_n${NOPS}_r${RECONFIGS}
+suffix := c${COLS}_r${ROWS}_n${NOPS}
 
-elf_loadpdi := build/elf_loadpdi_${suffix}.elf
-elf_blockwrites := build/elf_blockwrites_${suffix}.elf
-elf_ctrlpkt := build/elf_ctrlpkt_${suffix}.elf
-xclbin := build/final_${suffix}.xclbin
-insts_bin := build/insts_${suffix}.bin
+worker_xclbin := build/worker_${suffix}.xclbin
+worker_bin := build/worker_${suffix}.bin
+empty_xclbin := build/empty.xclbin
+empty_bin := build/empty.bin
+elf_loadpdi := build/loadpdi_${suffix}.elf
+elf_blockwrites := build/blockwrites_${suffix}.elf
+elf_ctrlpkt := build/ctrlpkt_${suffix}.elf
 
+aiecc_flags := --no-xchesscc --no-xbridge --dynamic-objFifos
+XRT_FLAGS := -I${XILINX_XRT}/include -L${XILINX_XRT}/lib -luuid -lxrt_coreutil -lrt -lstdc++
 
-# ---
-# Phony
-# ---
+.PHONY: run_separate run_runlist run_loadpdi run_blockwrites run_ctrlpkt clean
 
-.PHONY: all run run_xclbin run_runlist build_fullelf build_xclbin build_runlist clean
+# ---- designs ----
 
-all: build_fullelf_loadpdi build_fullelf_blockwrites build_fullelf_ctrlpkt build_xclbin build_runlist
+${worker_xclbin} ${worker_bin} &: ${srcdir}/reconfiguration.py
+	mkdir -p build
+	python3 $< --flow single --cols ${COLS} --rows ${ROWS} --nops ${NOPS} > build/worker_${suffix}.mlir
+	cd build && aiecc ${aiecc_flags} --get-xclbin --get-npu-insts \
+		--xclbin-name=$(notdir ${worker_xclbin}) --npu-insts-name=$(notdir ${worker_bin}) worker_${suffix}.mlir
 
-build_fullelf_loadpdi: ${elf_loadpdi} test_fullelf
-
-build_fullelf_blockwrites: ${elf_blockwrites} test_fullelf
-
-build_fullelf_ctrlpkt: ${elf_ctrlpkt} test_fullelf
-
-build_xclbin: ${xclbin} ${insts_bin} test_xclbin
-
-build_runlist: ${xclbin} ${insts_bin} test_runlist
-
-run_fullelf_loadpdi: build_fullelf_loadpdi
-	./test_fullelf ${elf_loadpdi} ${CORES}
-
-run_fullelf_blockwrites: build_fullelf_blockwrites
-	./test_fullelf ${elf_blockwrites} ${CORES}
-
-run_fullelf_ctrlpkt: build_fullelf_ctrlpkt
-	./test_fullelf ${elf_ctrlpkt} ${CORES}
-
-run_xclbin: build_xclbin
-	./test_xclbin ${xclbin} ${insts_bin} ${CORES}
-
-run_runlist: build_runlist
-	./test_runlist ${xclbin} ${insts_bin} ${CORES} ${RECONFIGS}
-
-clean:
-	rm -rf build test_fullelf test_xclbin test_runlist
-
-# ---
-# AIE Array design
-# ---
-
-# --- full ELF ---
+${empty_xclbin} ${empty_bin} &: ${srcdir}/reconfiguration.py
+	mkdir -p build
+	python3 $< --flow empty > build/empty.mlir
+	cd build && aiecc ${aiecc_flags} --get-xclbin --get-npu-insts \
+		--xclbin-name=$(notdir ${empty_xclbin}) --npu-insts-name=$(notdir ${empty_bin}) empty.mlir
 
 build/reconfig_${suffix}.mlir: ${srcdir}/reconfiguration.py
 	mkdir -p build
-	python3 $< --flow reconfig --cores ${CORES} --nops ${NOPS} --reconfigs ${RECONFIGS} > build/reconfig_${suffix}.mlir
+	python3 $< --flow reconfig --cols ${COLS} --rows ${ROWS} --nops ${NOPS} --reconfigs ${RECONFIGS} > $@
 
 ${elf_loadpdi}: build/reconfig_${suffix}.mlir
-	mkdir -p build
-	cd build && aiecc -v --get-full-elf --no-xchesscc --no-xbridge --dynamic-objFifos ${<F}
-	mv build/aie.elf $@
+	cd build && aiecc --get-full-elf --full-elf-name=$(notdir $@) ${aiecc_flags} $(notdir $<)
 
 ${elf_blockwrites}: build/reconfig_${suffix}.mlir
-	mkdir -p build
-	cd build && aiecc -v --get-full-elf --no-xchesscc --no-xbridge --dynamic-objFifos --expand-load-pdis ${<F}
-	mv build/aie.elf $@
+	cd build && aiecc --get-full-elf --expand-load-pdis --full-elf-name=$(notdir $@) ${aiecc_flags} $(notdir $<)
 
 ${elf_ctrlpkt}: build/reconfig_${suffix}.mlir
-	mkdir -p build
-	cd build && aiecc -v --get-full-elf --no-xchesscc --no-xbridge --dynamic-objFifos --load-pdi-to-ctrlpkt ${<F}
-	mv build/aie.elf $@
+	cd build && aiecc --get-full-elf --load-pdi-to-ctrl-pkt --get-ctrlpkt --full-elf-name=$(notdir $@) ${aiecc_flags} $(notdir $<)
 
+# ---- host testbenches (one source, three compile-time modes) ----
 
-# ---
-# Host CPU executable
-# ---
-
-XRT_FLAGS := -I${XILINX_XRT}/include -L${XILINX_XRT}/lib -luuid -lxrt_coreutil -lrt -lstdc++
-
-test_fullelf: ${srcdir}/test.cpp
-	${CXX} -std=c++17 -DFULL_ELF $< -o $@ ${XRT_FLAGS}
-
-test_xclbin: ${srcdir}/test.cpp
+test_separate: ${srcdir}/test.cpp
 	${CXX} -std=c++17 $< -o $@ ${XRT_FLAGS}
 
 test_runlist: ${srcdir}/test.cpp
 	${CXX} -std=c++17 -DRUNLIST $< -o $@ ${XRT_FLAGS}
 
+test_fullelf: ${srcdir}/test.cpp
+	${CXX} -std=c++17 -DFULL_ELF $< -o $@ ${XRT_FLAGS}
 
-# ---- single flow: one device (no load_pdi), xclbin + insts ----
-${xclbin} ${insts_bin} &: ${srcdir}/reconfiguration.py
-	mkdir -p build
-	python3 $< --flow single --cores ${CORES} --nops ${NOPS} > build/single_${suffix}.mlir
-	cd build && aiecc --no-xchesscc --no-xbridge --get-xclbin --get-npu-insts \
-		--xclbin-name=$(notdir ${xclbin}) --npu-insts-name=$(notdir ${insts_bin}) \
-		single_${suffix}.mlir
+# ---- run targets (print runtimes; consumed by benchmark.py) ----
+
+xclbin_args = ${worker_xclbin} ${worker_bin} ${empty_xclbin} ${empty_bin} ${COLS} ${ROWS} ${ITERS}
+
+run_separate: ${worker_xclbin} ${worker_bin} ${empty_xclbin} ${empty_bin} test_separate
+	./test_separate ${xclbin_args}
+
+run_runlist: ${worker_xclbin} ${worker_bin} ${empty_xclbin} ${empty_bin} test_runlist
+	./test_runlist ${xclbin_args}
+
+run_loadpdi: ${elf_loadpdi} test_fullelf
+	./test_fullelf ${elf_loadpdi} ${COLS} ${ROWS} ${ITERS}
+
+run_blockwrites: ${elf_blockwrites} test_fullelf
+	./test_fullelf ${elf_blockwrites} ${COLS} ${ROWS} ${ITERS}
+
+run_ctrlpkt: ${elf_ctrlpkt} test_fullelf
+	./test_fullelf ${elf_ctrlpkt} ${COLS} ${ROWS} ${ITERS}
+
+clean:
+	rm -rf build test_separate test_runlist test_fullelf
 

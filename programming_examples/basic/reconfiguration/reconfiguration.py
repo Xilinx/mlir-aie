@@ -3,36 +3,37 @@
 #
 # Reconfiguration example.
 #
-# An array of compute cores each write a single i32 (their own index) into a
-# dedicated ObjectFIFO routed down to the shim, followed by a run of no-op
-# `aie.event` instructions padding their program memory.  A runtime sequence
-# drains one i32 from every core into the host output buffer.
+# A 2D array of `cols` x `rows` compute cores each write a single i32 (their own
+# global index) into a dedicated ObjectFIFO.  Per column, the `rows` core FIFOs
+# are joined in the mem tile and forwarded to the shim (a shim has only two
+# S2MM channels, so >2 cores per column must aggregate through the mem tile).
+# A runtime sequence drains every column's values into the host output buffer,
+# which then equals [0, 1, ..., cols*rows - 1].
 #
-# Two flows are emitted from the same core/drain building blocks:
+# Three flows are emitted from the same core/join/drain building blocks:
 #
 #   --flow reconfig  (default): three `aie.device`s (@worker, @empty, @main).
-#       @main's runtime sequence repeatedly reconfigures and runs @worker via
-#       aiex.configure / aiex.run.  Each reconfiguration reloads a PDI, which
-#       resets the device and restarts @worker's run-once cores.  @empty is
-#       loaded between @worker loads to force an actual reload.  Built for the
-#       full-ELF flow (aiecc --generate-full-elf).
+#       @main's runtime sequence, for each reconfiguration, loads @empty (reset)
+#       then loads and runs @worker via aiex.configure / aiex.run.  Built for
+#       the full-ELF flow (aiecc --get-full-elf, optionally --expand-load-pdis
+#       or --load-pdi-to-ctrl-pkt).
 #
 #   --flow single: a single `aie.device` with no reconfiguration (no load_pdi).
-#       The cores loop, so the design can be re-run through the ordinary
-#       xclbin + insts flow (a single run, or an xrt::runlist of runs).
+#       The cores loop, so the design is re-run through the ordinary xclbin +
+#       insts flow (a single run, or an xrt::runlist of runs).
 #
-# The design is parametrized by:
-#   * number of cores         (--cores     / RECONFIG_NUM_CORES)
-#   * program-memory padding  (--nops      / RECONFIG_NOP_COUNT)   no-ops per core
-#   * number of reconfigs     (--reconfigs / RECONFIG_NUM_RECONFIGS)
-#     (reconfig flow only; the single flow's re-runs are driven host-side)
+#   --flow empty: a single empty `aie.device`.  Loading its xclbin/PDI resets
+#       the array; used by the xclbin/runlist benchmark to force a real reload
+#       between iterations (otherwise the configuration is cached).
+#
+# Parameters: --cols, --rows, --nops (program-memory padding per core),
+# --reconfigs (reconfig flow only).
 #
 # Usage:
-#   python3 reconfiguration.py [--flow reconfig|single] \
-#       [--cores N] [--nops M] [--reconfigs R] > aie.mlir
+#   python3 reconfiguration.py [--flow reconfig|single|empty] \
+#       [--cols C] [--rows R] [--nops M] [--reconfigs N] > aie.mlir
 
 import argparse
-import os
 import sys
 
 import numpy as np
@@ -44,18 +45,18 @@ from aie.extras.context import mlir_mod_ctx
 from aie.ir import Block, InsertionPoint
 from aie.iron.controlflow import range_
 
-# Full Strix NPU2: one shim/compute column per core, cores on row 2.
+# Full Strix NPU2: 8 columns, 4 compute rows (rows 2-5), mem tile on row 1.
 NPU2_COLUMNS = 8
+NPU2_CORE_ROWS = 4
 
 ELEM_TY = np.ndarray[(1,), np.dtype[np.int32]]
 
 
-def _validate(num_cores: int):
-    if not 1 <= num_cores <= NPU2_COLUMNS:
-        raise ValueError(
-            f"num_cores must be in [1, {NPU2_COLUMNS}] so each core gets its own "
-            f"column/shim; got {num_cores}"
-        )
+def _validate(cols: int, rows: int):
+    if not 1 <= cols <= NPU2_COLUMNS:
+        raise ValueError(f"cols must be in [1, {NPU2_COLUMNS}]; got {cols}")
+    if not 1 <= rows <= NPU2_CORE_ROWS:
+        raise ValueError(f"rows must be in [1, {NPU2_CORE_ROWS}]; got {rows}")
 
 
 def _emit_send(fifo, value_i: int, nop_count: int):
@@ -68,13 +69,15 @@ def _emit_send(fifo, value_i: int, nop_count: int):
         event(0)
 
 
-def _build_core_array(num_cores: int, nop_count: int, looping: bool):
-    core_tiles = [tile(c, 2) for c in range(num_cores)]
-    shim_tiles = [tile(c, 0) for c in range(num_cores)]
-    fifos = [
-        object_fifo(f"of_out_{i}", core_tiles[i], shim_tiles[i], 1, ELEM_TY)
-        for i in range(num_cores)
-    ]
+def _build_core_array(cols: int, rows: int, nop_count: int, looping: bool):
+    """Build the cols x rows core array with per-column mem-tile joins.
+
+    Returns the list of shim-side ObjectFIFOs (one per column), each carrying
+    that column's `rows` values.
+    """
+    col_ty = np.ndarray[(rows,), np.dtype[np.int32]]
+    shim_fifos = []
+    core_specs = []
 
     def build_core(core_tile, fifo, value_i):
         @core(core_tile)
@@ -85,18 +88,35 @@ def _build_core_array(num_cores: int, nop_count: int, looping: bool):
             else:
                 _emit_send(fifo, value_i, nop_count)
 
-    for i in range(num_cores):
-        build_core(core_tiles[i], fifos[i], i)
-    return fifos
+    for c in range(cols):
+        mem_tile = tile(c, 1)
+        shim_tile = tile(c, 0)
+        core_fifos = []
+        for r in range(rows):
+            core_tile = tile(c, 2 + r)
+            f = object_fifo(f"of_core_{c}_{r}", core_tile, mem_tile, 2, ELEM_TY)
+            core_fifos.append(f)
+            core_specs.append((core_tile, f, c * rows + r))
+
+        shim_fifo = object_fifo(f"of_shim_{c}", mem_tile, shim_tile, 2, col_ty)
+        object_fifo_link(core_fifos, [shim_fifo], list(range(rows)), [])
+        shim_fifos.append(shim_fifo)
+
+    # All ObjectFIFOs and links must exist before the cores that reference them,
+    # so the objectfifo lowering allocates their locks before any core use.
+    for core_tile, fifo, value_i in core_specs:
+        build_core(core_tile, fifo, value_i)
+
+    return shim_fifos
 
 
-def _emit_drain(fifos, out):
+def _emit_drain(shim_fifos, rows: int, out):
     tasks = []
-    for i, fifo in enumerate(fifos):
+    for c, fifo in enumerate(shim_fifos):
         task = dma_configure_task_for(fifo, issue_token=True)
         with bds(task) as bd:
             with bd[0]:
-                dma_bd(out, offset=i, transfer_len=1)
+                dma_bd(out, offset=c * rows, transfer_len=rows)
                 EndOp()
         tasks.append(task)
     for task in tasks:
@@ -105,24 +125,25 @@ def _emit_drain(fifos, out):
         dma_await_task(task)
 
 
-def build_reconfig_module(num_cores: int, nop_count: int, num_reconfigs: int):
-    _validate(num_cores)
-    out_ty = np.ndarray[(num_cores,), np.dtype[np.int32]]
+def build_reconfig_module(cols: int, rows: int, nop_count: int, num_reconfigs: int):
+    _validate(cols, rows)
+    out_ty = np.ndarray[(cols * rows,), np.dtype[np.int32]]
 
     with mlir_mod_ctx() as ctx:
 
         @device(AIEDevice.npu2, sym_name="worker")
         def worker_body():
-            fifos = _build_core_array(num_cores, nop_count, looping=False)
+            shim_fifos = _build_core_array(cols, rows, nop_count, looping=False)
 
             @runtime_sequence(out_ty)
             def worker_sequence(out):
-                _emit_drain(fifos, out)
+                _emit_drain(shim_fifos, rows, out)
 
         # Loading a PDI resets the whole device.  The firmware treats a second
-        # load of the same PDI back-to-back as a no-op, so between two @worker
-        # configurations we load this @empty device to force an actual reload
-        # (and thus restart @worker's run-once cores).
+        # load of the same PDI back-to-back as a no-op, so each reconfiguration
+        # loads @empty first to force an actual @worker reload (which also makes
+        # the sequence self-resetting when the ELF is re-run: it ends on @worker
+        # and the next run starts on @empty).
         @device(AIEDevice.npu2, sym_name="empty")
         def empty_body():
             pass
@@ -138,27 +159,38 @@ def build_reconfig_module(num_cores: int, nop_count: int, num_reconfigs: int):
 
             @runtime_sequence(out_ty)
             def sequence(out):
-                for i in range(num_reconfigs):
-                    if i > 0:
-                        configure("empty")
+                for _ in range(num_reconfigs):
+                    configure("empty")
                     configure("worker", "worker_sequence", [out])
 
     return ctx.module
 
 
-def build_single_module(num_cores: int, nop_count: int):
-    _validate(num_cores)
-    out_ty = np.ndarray[(num_cores,), np.dtype[np.int32]]
+def build_single_module(cols: int, rows: int, nop_count: int):
+    _validate(cols, rows)
+    out_ty = np.ndarray[(cols * rows,), np.dtype[np.int32]]
 
     with mlir_mod_ctx() as ctx:
 
         @device(AIEDevice.npu2)
         def device_body():
-            fifos = _build_core_array(num_cores, nop_count, looping=True)
+            shim_fifos = _build_core_array(cols, rows, nop_count, looping=True)
 
             @runtime_sequence(out_ty)
             def sequence(out):
-                _emit_drain(fifos, out)
+                _emit_drain(shim_fifos, rows, out)
+
+    return ctx.module
+
+
+def build_empty_module():
+    with mlir_mod_ctx() as ctx:
+
+        @device(AIEDevice.npu2)
+        def device_body():
+            @runtime_sequence()
+            def sequence():
+                pass
 
     return ctx.module
 
@@ -167,35 +199,30 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--flow",
-        choices=["reconfig", "single"],
+        choices=["reconfig", "single", "empty"],
         default="reconfig",
-        help="reconfig: multi-device aiex.configure/run (full-ELF). "
-        "single: one device, no load_pdi (xclbin + insts flow).",
     )
-    parser.add_argument(
-        "--cores",
-        type=int,
-        default=int(os.environ.get("RECONFIG_NUM_CORES", "1")),
-        help="Number of compute cores in the array.",
-    )
+    parser.add_argument("--cols", type=int, default=1)
+    parser.add_argument("--rows", type=int, default=1)
     parser.add_argument(
         "--nops",
         type=int,
-        default=int(os.environ.get("RECONFIG_NOP_COUNT", "0")),
+        default=0,
         help="Number of no-op instructions padding each core's program memory.",
     )
     parser.add_argument(
         "--reconfigs",
         type=int,
-        default=int(os.environ.get("RECONFIG_NUM_RECONFIGS", "1")),
-        help="Number of times the worker device is configured and run "
-        "(reconfig flow only).",
+        default=1,
+        help="Number of empty+worker reconfigurations (reconfig flow only).",
     )
     args = parser.parse_args()
     if args.flow == "single":
-        print(build_single_module(args.cores, args.nops))
+        print(build_single_module(args.cols, args.rows, args.nops))
+    elif args.flow == "empty":
+        print(build_empty_module())
     else:
-        print(build_reconfig_module(args.cores, args.nops, args.reconfigs))
+        print(build_reconfig_module(args.cols, args.rows, args.nops, args.reconfigs))
 
 
 if __name__ == "__main__":

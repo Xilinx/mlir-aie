@@ -7,121 +7,96 @@
 
 # Reconfiguration
 
-This example demonstrates **reconfiguring the NPU between `aie.device`s at
-runtime** using `aiex.configure` and `aiex.run`. A single module holds several
-devices, and one device's runtime sequence drives the loading and execution of
-another.
+This example benchmarks **five different ways to reconfigure and re-run an AIE
+core array** on the NPU, from the traditional (slow) full xclbin reload down to
+on-device partial reconfiguration via `load_pdi`, raw block-writes, and control
+packets.
 
-The same compute-core array and drain runtime sequence are emitted in two flows
-(`reconfiguration.py --flow reconfig|single`):
+## The design
 
-## `reconfig` flow (default)
+`reconfiguration.py` builds a `cols` x `rows` array of compute cores. Each core
+writes a single `i32` (its own global index) into a dedicated ObjectFIFO. A shim
+has only two S2MM DMA channels, so a column's `rows` core FIFOs are **joined in
+the mem tile** and forwarded to the shim; a runtime sequence then drains every
+column into the host buffer, which equals `[0, 1, ..., cols*rows - 1]`. After
+sending its value each core executes a run of no-op `aie.event` instructions
+that pad its program memory (up to the ~16 KB per-core limit).
 
-The module contains three `aie.device`s:
+Three flows are emitted from the same building blocks:
 
-- **`@worker`** configures an array of compute cores. Each core, immediately as
-  it starts executing, writes a single `i32` (its own index) into a dedicated
-  ObjectFIFO routed down to the shim, and then executes a run of no-op `aie.event`
-  instructions that pad its program memory. `@worker`'s runtime sequence drains
-  one `i32` from every core into the host output buffer.
+- **`--flow reconfig`**: three `aie.device`s (`@worker`, `@empty`, `@main`).
+  `@main`'s runtime sequence loads `@empty` (reset) then loads and runs
+  `@worker` via `aiex.configure` / `aiex.run`. Built as a full ELF, this is the
+  basis of the `load_pdis`, `blockwrites`, and `control packets` approaches
+  (chosen by `aiecc` flags).
+- **`--flow single`**: one `aie.device`, no `load_pdi`. The cores loop, so the
+  design can be re-run from the host through the ordinary xclbin + insts flow.
+- **`--flow empty`**: a single empty device whose xclbin/PDI resets the array.
+  The xclbin/runlist approaches load it between iterations to force a real
+  reconfiguration (otherwise the configuration is cached).
 
-- **`@empty`** is an empty device used only to reset the array between
-  reconfigurations (see below).
+## The five approaches
 
-- **`@main`** is the entry device. Its runtime sequence repeatedly reconfigures
-  and runs `@worker` via `aiex.configure` / `aiex.run`.
+| chart label | mechanism | Makefile target |
+|---|---|---|
+| **separate xclbins** | worker + empty are separate xclbins (two contexts); each iteration runs the worker then the empty reset | `run_separate` |
+| **XRT runlist** | worker + empty runs chained in one `xrt::runlist` | `run_runlist` |
+| **load_pdis** | full-ELF, `aiex.configure` lowers to `load_pdi` | `run_loadpdi` |
+| **blockwrites + empty reset** | full-ELF, `aiecc --expand-load-pdis` (write32s + empty PDI reset) | `run_blockwrites` |
+| **control packets + load_pdi overlay** | full-ELF, `aiecc --load-pdi-to-ctrl-pkt` (stream config through DMA) | `run_ctrlpkt` |
 
-Each core gets its own ObjectFIFO routed to the shim in its column, so the number
-of cores scales the amount of stream-switch routing used across the array.
-
-This flow is built as a full ELF (`aiecc --generate-full-elf`) and driven by the
-`pytest` testbench (`test.py`).
-
-## `single` flow
-
-A single `aie.device` with **no reconfiguration and no `load_pdi`**. The runtime
-sequence configures the DMAs once and drains the array. The cores loop, so the
-configured design can simply be re-run from the host. This flow builds an
-ordinary `xclbin` + instruction binary (`insts.bin`) and is driven by the same
-C++ testbench:
-
-- `run_xclbin` runs the kernel once.
-- `run_runlist` chains `RECONFIGS` runs in a single `xrt::runlist`; because the
-  cores loop, each run drains a fresh set of values.
+> **Note on `XRT runlist`.** An `xrt::runlist` is bound to a single
+> `hw_context` and cannot switch the loaded PDI between its runs, so the empty
+> run added from a second context does **not** reset the array — the runlist
+> just re-executes the already-loaded (looping) worker. Its measured time is
+> therefore independent of the array size (flat ~80 us for 1x1 and 8x4 alike),
+> unlike every real reconfiguration approach, so `plot.py` omits it from the
+> chart. It is still measured into the CSV for the record.
 
 ## Testbench
 
-A single `test.cpp` covers all three modes, selected at compile time so the
-flows can be compared apples-to-apples (all timed in C++):
-
-- default: xclbin flow, one run.
-- `-DRUNLIST`: xclbin flow, `runs` runs chained in an `xrt::runlist`.
-- `-DFULL_ELF`: full-ELF reconfig flow (`main:sequence`).
-
-Each mode checks the output equals `[0, 1, ..., CORES-1]` and prints the elapsed
-device time.
-
-## Reconfiguration and device reset
-
-`aiex.configure @worker` lowers to a PDI load that resets the whole device and
-restarts its cores. Because `@worker`'s cores run exactly once (send their value,
-then halt), re-running them requires an actual reload. The firmware, however,
-treats a second back-to-back load of the *same* PDI as a no-op. To force a real
-reload between two `@worker` configurations, `@main` loads the `@empty` device in
-between:
+A single `test.cpp` covers all approaches, selected at compile time (default =
+separate xclbins, `-DRUNLIST`, `-DFULL_ELF`), so everything is timed in C++.
+Each run performs `ITERS` timed iterations and prints:
 
 ```
-configure @worker  →  run once
-configure @empty   →  reset
-configure @worker  →  run again
-...
+runtimes_us: t0,t1,...      # per-iteration device time
+stats_us: mean,min,max
 ```
+
+Every iteration checks the output equals `[0, 1, ..., cols*rows-1]`.
 
 ## Parameters
 
-The design (`reconfiguration.py`) is parametrized by three values, wired through
-the `Makefile` as `CORES`, `NOPS`, and `RECONFIGS`:
+- `COLS`, `ROWS`: array shape (up to 8 x 4 on NPU2 / Strix).
+- `NOPS`: no-op `aie.event` instructions padding each core's program memory
+  (~192 + 4·`NOPS` bytes; the 16 KB limit is reached near `NOPS=4000`).
+- `ITERS`: number of timed iterations.
 
-- **Array size** (`--cores`, 1–8): number of cores, each with its own ObjectFIFO
-  routed to its column's shim.
-- **Program-memory padding** (`--nops`): number of no-op `aie.event` instructions
-  appended to each core after it sends its value.
-- **Number of reconfigurations** (`--reconfigs`): in the `reconfig` flow, how
-  many times `@worker` is configured and run — a plain Python `for i in range(n)`
-  loop meta-programmatically emits `n` copies of the configure/run block into the
-  MLIR. In the `single` flow it drives the host-side run count (the number of
-  runs chained by `run_runlist`) and does not change the MLIR.
-
-All build artifacts embed `CORES`/`NOPS`/`RECONFIGS` in their names (e.g.
-`build/final_c4_n64_r1.xclbin`) so changing a parameter never picks up a stale
-artifact.
-
-## Source Files
-
-- `reconfiguration.py`: The parametrized design. Emits MLIR to stdout for either
-  flow (`--flow reconfig|single`).
-- `test.cpp`: The C++ host testbench for all three run modes (see above).
+Design-artifact names embed `COLS`/`ROWS`/`NOPS` so changing a parameter never
+picks up a stale artifact.
 
 ## Usage
 
-Build and run on an NPU2 (Strix) device:
+Run one approach on an NPU2 (Strix) device:
 
 ```bash
-make run           # reconfig flow (full ELF, -DFULL_ELF)
-make run_xclbin    # single flow, one run (xclbin + insts)
-make run_runlist   # single flow, RECONFIGS runs (xrt::runlist)
+make COLS=4 ROWS=2 NOPS=2000 ITERS=12 run_runlist
 ```
 
-Override the parameters:
+Run the full benchmark (all approaches over small/medium/large array sizes),
+which writes the raw per-iteration runtimes to `benchmark.csv`, then plot it as
+a grouped bar chart (`benchmark.png`, black background, runlist excluded):
 
 ```bash
-make CORES=4 NOPS=64 RECONFIGS=2 run
-make CORES=4 NOPS=64 RECONFIGS=3 run_runlist
+python3 benchmark.py      # -> benchmark.csv
+python3 plot.py           # benchmark.csv -> benchmark.png
 ```
 
-Generate the MLIR directly:
+## Source Files
 
-```bash
-python3 reconfiguration.py --flow reconfig --cores 4 --nops 64 --reconfigs 2
-python3 reconfiguration.py --flow single  --cores 4 --nops 64
-```
+- `reconfiguration.py`: the parametrized design (`--flow reconfig|single|empty`).
+- `test.cpp`: the C++ host testbench / micro-benchmark (three compile-time modes).
+- `benchmark.py`: drives every approach over several array sizes and writes the
+  raw runtimes to `benchmark.csv`.
+- `plot.py`: reads `benchmark.csv` and writes the grouped bar chart.

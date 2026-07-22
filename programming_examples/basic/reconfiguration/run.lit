@@ -7,5 +7,8 @@
 // RUN: mkdir -p test_reconfig
 // RUN: cd test_reconfig
 // RUN: make -f %S/Makefile clean
-// RUN: make -f %S/Makefile CORES=4 NOPS=64 RECONFIGS=2 build_fullelf
-// RUN: %run_on_npu2% make -f %S/Makefile CORES=4 NOPS=64 RECONFIGS=2 run
+// RUN: %run_on_npu2% make -f %S/Makefile COLS=2 ROWS=2 NOPS=8 ITERS=4 run_separate
+// RUN: %run_on_npu2% make -f %S/Makefile COLS=2 ROWS=2 NOPS=8 ITERS=4 run_runlist
+// RUN: %run_on_npu2% make -f %S/Makefile COLS=2 ROWS=2 NOPS=8 ITERS=4 run_loadpdi
+// RUN: %run_on_npu2% make -f %S/Makefile COLS=2 ROWS=2 NOPS=8 ITERS=4 run_blockwrites
+// RUN: %run_on_npu2% make -f %S/Makefile COLS=2 ROWS=2 NOPS=8 ITERS=4 run_ctrlpkt
