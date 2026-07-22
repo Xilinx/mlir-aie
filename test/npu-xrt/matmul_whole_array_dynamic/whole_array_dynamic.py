@@ -37,6 +37,7 @@ from aie.dialects.aiex import (
     dma_start_task,
     dma_await_task,
     dma_free_task,
+    npu_sync,
 )
 from aie.extras.dialects import arith
 from aie.helpers.util import np_dtype_to_mlir_type
@@ -226,6 +227,17 @@ def _build_design(
 
         for rb in range_(row_blocks):
             rb_i32 = arith.index_cast(rb, to=i32)  # offset operand is i32
+            # Wide-sync collapse (the follow-up jgmelber/hunhoffe accepted): start
+            # every column's C drain and its A/B feeds first, then wait on all the
+            # output tokens at once. The columns partition the output N, so their
+            # drains are independent; issuing ONE task-complete-token sync over the
+            # whole column block -- instead of one 1x1 sync per column, interleaved
+            # with the starts -- stops the per-column sync from serializing the
+            # columns and drops the sync count from n_aie_cols to 1 per row-block.
+            # Nothing here is shape-specific: it is parameterized only by
+            # n_aie_cols, so it holds for every runtime M/K/N.
+            c_tasks = []
+            ab_tasks = []
             for col in range(n_aie_cols):
                 # col 0's N-offset is a literal 0 (no add emitted), so its BDs
                 # match the single-column design; col > 0 adds col * (N/n_aie_cols).
@@ -236,7 +248,7 @@ def _build_design(
                     col_n_off = arith.constant(col, i32) * N_per_col
                     C_off, B_off = rb_n_off + col_n_off, col_n_off
 
-                # C output (drained, waited):
+                # C output (drained; awaited by the wide sync below):
                 #   C_offset = rb * m_ar * N + col * (N / n_aie_cols)
                 c_task = shim_dma_single_bd_task(
                     C_fifos[col].op,
@@ -273,9 +285,30 @@ def _build_design(
                 )
                 dma_start_task(b_task)
 
-                dma_await_task(c_task)
-                dma_free_task(a_task)
-                dma_free_task(b_task)
+                c_tasks.append(c_task)
+                ab_tasks += [a_task, b_task]
+
+            if n_aie_cols == 1:
+                # Single column: keep the exact 1x1 sync of the original design so
+                # col 0 stays byte-identical (the #3358 equivalence reference).
+                dma_await_task(c_tasks[0])
+            else:
+                # Wait on the C-drain TCTs of columns 0..n_aie_cols-1 in one op.
+                # The C output is the sole S2MM drain on each column's shim, so all
+                # columns share (shim row 0, direction S2MM, channel 0) and sit on a
+                # contiguous column block -- exactly the rectangle one TCT sync
+                # covers (column_num = n_aie_cols, row_num = 1).
+                npu_sync(
+                    column=arith.constant(0, i32),
+                    row=arith.constant(0, i32),
+                    direction=arith.constant(0, i32),  # 0 = S2MM (output drain)
+                    channel=arith.constant(0, i32),
+                    column_num=arith.constant(n_aie_cols, i32),
+                    row_num=arith.constant(1, i32),
+                )
+
+            for t in ab_tasks:
+                dma_free_task(t)
 
     rt = Runtime()
     if dynamic:
