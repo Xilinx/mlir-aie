@@ -8,7 +8,7 @@ import numpy as np
 import argparse
 import sys
 
-from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron import ObjectFifo, Program, Runtime, TaskGroup, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2, AnyComputeTile, AnyMemTile
 from aie.iron.resolvable import Resolvable
@@ -226,18 +226,17 @@ def custom_dma_design(dev):
 
     out_type = np.ndarray[(transfer_len * 3,), np.dtype[np.int32]]
 
-    def rt_start_memtile_dma(scatter_obj):
-        set_lock_value(scatter_obj._mem_cons_lock, 3)
+    def sequence(_, b_out, _2, out_h):
+        tg = TaskGroup()
+        out_h.drain(b_out, wait=True, group=tg)
+        # scatter is resolved (via the worker's fn_args) before this body runs,
+        # so its mem-consumer lock exists and can be set directly here.
+        set_lock_value(scatter._mem_cons_lock, 3)
+        tg.finish()
 
-    rt = Runtime()
-    with rt.sequence(out_type, out_type, out_type) as (_, b_out, _):
-        rt.start(worker)
-        tg = rt.task_group()
-        rt.drain(of_out.cons(), b_out, wait=True, task_group=tg)
-        rt.inline_ops(rt_start_memtile_dma, [scatter])
-        rt.finish_task_group(tg)
+    rt = Runtime(sequence, [out_type, out_type, out_type], fn_args=[of_out.cons()])
 
-    return Program(dev, rt).resolve_program()
+    return Program(dev, rt, workers=[worker]).resolve_program()
 
 
 p = argparse.ArgumentParser()

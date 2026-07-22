@@ -228,12 +228,7 @@ def manual_switchbox(a_in: In, c_out: Out, *, col: CompileTime[int] = 0):
         while_true=False,
     )
 
-    rt = Runtime()
-    for lk in (in_prod, in_cons, out_prod, out_cons):
-        rt.add_lock(lk)
-    rt.add_tile_dma(comp_dma)
-
-    def host_bd_writes(a, c):
+    def sequence(a, c):
         # shim S2MM ch0: DDR (a) -> array
         npu_writebd(
             bd_id=0,
@@ -326,11 +321,12 @@ def manual_switchbox(a_in: In, c_out: Out, *, col: CompileTime[int] = 0):
         )
         npu_sync(column=col, row=0, direction=1, channel=0, column_num=1, row_num=1)
 
-    with rt.sequence(vec_ty, vec_ty) as (a, c):
-        rt.start(worker)
-        rt.inline_ops(host_bd_writes, [a, c])
+    rt = Runtime(sequence, [vec_ty, vec_ty])
+    for lk in (in_prod, in_cons, out_prod, out_cons):
+        rt.add_lock(lk)
+    rt.add_tile_dma(comp_dma)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def _compile_kwargs(opts):

@@ -31,6 +31,7 @@ from aie.iron import (
     ObjectFifo,
     Program,
     Runtime,
+    TaskGroup,
     Worker,
     WorkerRuntimeBarrier,
 )
@@ -147,37 +148,37 @@ def scale_shift(
     ]
 
     def _set_rtps_to(value):
-        def _impl(*args):
-            for rtp in args:
-                rtp[0] = value
+        for rtp in rtps:
+            rtp[0] = value
 
-        return _impl
-
-    rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty, tensor_ty, tensor_ty) as (A, B, C, D):
-        rt.start(*workers)
-
+    def sequence(A, B, C, D, inA_h, inB_h, outC_h):
         # Phase 1: multiply (rtp=1).
-        rt.inline_ops(_set_rtps_to(1), rtps)
+        _set_rtps_to(1)
         for i in range(n_cores):
-            rt.set_barrier(barriers[i], 1)
-        tg1 = rt.task_group()
-        rt.fill(inA.prod(), A, task_group=tg1)
-        rt.fill(inB.prod(), B, task_group=tg1)
-        rt.drain(outC.cons(), D, wait=True, task_group=tg1)
-        rt.finish_task_group(tg1)
+            barriers[i].set(1)
+        tg1 = TaskGroup()
+        inA_h.fill(A, group=tg1)
+        inB_h.fill(B, group=tg1)
+        outC_h.drain(D, wait=True, group=tg1)
+        tg1.finish()
 
         # Phase 2: add (rtp=0).  D = (A*B) feeds back as the lhs.
-        rt.inline_ops(_set_rtps_to(0), rtps)
+        _set_rtps_to(0)
         for i in range(n_cores):
-            rt.set_barrier(barriers[i], 1)
-        tg2 = rt.task_group()
-        rt.fill(inA.prod(), D, task_group=tg2)
-        rt.fill(inB.prod(), C, task_group=tg2)
-        rt.drain(outC.cons(), D, wait=True, task_group=tg2)
-        rt.finish_task_group(tg2)
+            barriers[i].set(1)
+        tg2 = TaskGroup()
+        inA_h.fill(D, group=tg2)
+        inB_h.fill(C, group=tg2)
+        outC_h.drain(D, wait=True, group=tg2)
+        tg2.finish()
 
-    return Program(device, rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [tensor_ty, tensor_ty, tensor_ty, tensor_ty],
+        fn_args=[inA.prod(), inB.prod(), outC.cons()],
+    )
+
+    return Program(device, rt, workers=workers).resolve_program()
 
 
 def _make_argparser():
