@@ -6,10 +6,11 @@
 //===----------------------------------------------------------------------===//
 
 // Host side of the DMA-channel-reset test. The resident buffer holds
-// [100..107]; the runtime sequence resets + re-pushes + re-arms the MM2S channel
-// each dispatch. We dispatch the same kernel many times and require every
-// dispatch to return the resident buffer unchanged -- i.e. the reset-and-restart
-// protocol keeps the run-forever channel correct across dispatches.
+// [100..107]; the runtime sequence resets + re-pushes + re-arms the MM2S
+// channel each dispatch. We dispatch the same kernel many times and require
+// every dispatch to return the resident buffer unchanged -- i.e. the
+// reset-and-restart protocol keeps the run-forever channel correct across
+// dispatches.
 
 #include <cstdint>
 #include <iostream>

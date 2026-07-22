@@ -9,8 +9,8 @@
 // [100..107]; the runtime sequence config-disables then re-enables the tile's
 // DMA:0 -> South switch connection and re-arms the MM2S lock each dispatch. We
 // dispatch the same kernel many times and require every dispatch to return the
-// resident buffer unchanged -- i.e. the disable-and-re-enable protocol keeps the
-// run-forever routed channel correct across dispatches.
+// resident buffer unchanged -- i.e. the disable-and-re-enable protocol keeps
+// the run-forever routed channel correct across dispatches.
 
 #include <cstdint>
 #include <iostream>

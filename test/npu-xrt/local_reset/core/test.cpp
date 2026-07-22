@@ -88,12 +88,13 @@ int main(int argc, const char *argv[]) {
   uint32_t b2 = bufOut[BATCH];
   for (int i = 0; i < BATCH; i++) {
     if (bufOut[i] != b1) {
-      std::cout << "batch1[" << i << "] = " << bufOut[i] << " != " << b1 << "\n";
+      std::cout << "batch1[" << i << "] = " << bufOut[i] << " != " << b1
+                << "\n";
       errors++;
     }
     if (bufOut[BATCH + i] != b2) {
-      std::cout << "batch2[" << i << "] = " << bufOut[BATCH + i]
-                << " != " << b2 << "\n";
+      std::cout << "batch2[" << i << "] = " << bufOut[BATCH + i] << " != " << b2
+                << "\n";
       errors++;
     }
   }
@@ -103,8 +104,9 @@ int main(int argc, const char *argv[]) {
   // The proof the core restarted from a clean PC: it ran a second time and
   // emitted the incremented counter.
   if (b2 != b1 + 1) {
-    std::cout << "Core did not re-run after reset: expected batch2 == batch1 + 1"
-              << "\n";
+    std::cout
+        << "Core did not re-run after reset: expected batch2 == batch1 + 1"
+        << "\n";
     errors++;
   }
 
