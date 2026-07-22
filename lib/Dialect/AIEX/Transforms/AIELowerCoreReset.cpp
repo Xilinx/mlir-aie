@@ -46,8 +46,9 @@ struct CoreResetToMaskWrite32Pattern : OpConversionPattern<CoreResetOp> {
   LogicalResult
   matchAndRewrite(CoreResetOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    int col = op.getColumn();
-    int row = op.getRow();
+    AIE::TileOp tile = op.getTileOp();
+    int col = tile.getCol();
+    int row = tile.getRow();
 
     Location loc = op.getLoc();
     IntegerAttr colAttr = rewriter.getI32IntegerAttr(col);

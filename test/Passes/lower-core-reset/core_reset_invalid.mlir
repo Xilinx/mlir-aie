@@ -10,11 +10,14 @@
 // A mem tile is rejected: only core tiles have a CORE_CONTROL register with a
 // reset bit. On npu2 row 1 is a mem tile, which has no compute core to reset.
 // This matches aie-rt's XAie_CoreReset, which errors on non core tiles.
+// (An out-of-range coordinate needs no test here: the tile is an SSA aie.tile
+// value, whose own verifier bounds the column/row against the device.)
 module {
   aie.device(npu2) {
+    %mem_tile = aie.tile(0, 1)
     aie.runtime_sequence() {
       // expected-error @+1 {{tile (0, 1) has no core to reset (only core tiles have a CORE_CONTROL register)}}
-      aiex.core_reset(0, 1)
+      aiex.core_reset(%mem_tile)
     }
   }
 }
@@ -25,24 +28,10 @@ module {
 // which has no compute core to reset.
 module {
   aie.device(npu2) {
+    %shim_tile = aie.tile(0, 0)
     aie.runtime_sequence() {
       // expected-error @+1 {{tile (0, 0) has no core to reset (only core tiles have a CORE_CONTROL register)}}
-      aiex.core_reset(0, 0)
-    }
-  }
-}
-
-// -----
-
-// A column past the edge of the array is rejected before it can reach the
-// lowering and emit a write to a nonexistent tile. npu2 has 8 columns (0-7), so
-// column 99 is out of range. The column/row are raw attributes, not derived from
-// an aie.tile op, so the verifier is the only thing that bounds them.
-module {
-  aie.device(npu2) {
-    aie.runtime_sequence() {
-      // expected-error @+1 {{tile (99, 3) is out of range for this device}}
-      aiex.core_reset(99, 3)
+      aiex.core_reset(%shim_tile)
     }
   }
 }
@@ -53,9 +42,10 @@ module {
 // sequence has no meaning on AIE1, matching SetLockOp's AIE1 rejection.
 module {
   aie.device(xcvc1902) {
+    %tile = aie.tile(0, 3)
     aie.runtime_sequence() {
       // expected-error @+1 {{not supported on AIE1}}
-      aiex.core_reset(0, 3)
+      aiex.core_reset(%tile)
     }
   }
 }

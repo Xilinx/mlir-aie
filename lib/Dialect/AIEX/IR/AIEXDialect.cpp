@@ -1331,14 +1331,13 @@ LogicalResult AIEX::CoreResetOp::verify() {
   if (targetModel.getTargetArch() == AIE::AIEArch::AIE1)
     return emitOpError("aiex.core_reset is not supported on AIE1.");
 
-  int col = getColumn();
-  int row = getRow();
-  // The column/row are raw attributes, not derived from an aie.tile op, so
-  // nothing else bounds them. Reject coordinates outside the device before they
-  // reach the lowering and emit a write to a nonexistent tile.
-  if (!targetModel.isValidTile(AIE::TileID{col, row}))
-    return emitOpError() << "tile (" << col << ", " << row
-                         << ") is out of range for this device";
+  auto tile = dyn_cast_or_null<AIE::TileOp>(getTile().getDefiningOp());
+  if (!tile)
+    return emitOpError() << "tile operand must be produced by an aie.tile op";
+  int col = tile.getCol();
+  int row = tile.getRow();
+  // The tile coordinates are bounded by aie.tile's own verifier, so this op
+  // does not re-check them for range.
 
   // Only core tiles have a CORE_CONTROL register with a reset bit. Mem and shim
   // tiles have no compute core, so there is nothing valid to lower to. This

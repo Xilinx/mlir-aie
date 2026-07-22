@@ -14,10 +14,13 @@
 // aiex.npu.write32 guards against any stray unmasked write sneaking in. CORE_CONTROL
 // is at tile-local offset 0x32000 = 204800 on every core tile, so the address is
 // the same for every accepted tile and only the column/row attributes change.
+// The target tile is named by an SSA aie.tile value, like aiex.dma_channel_reset.
 // Only core tiles have a core to reset, so those are the only tiles the op accepts
 // (see core_reset_invalid.mlir).
 module {
   aie.device(npu2) {
+    %tile_0_3 = aie.tile(0, 3)
+    %tile_1_2 = aie.tile(1, 2)
     aie.runtime_sequence() {
       // Core tile (0, 3): CORE_CONTROL local 0x32000 = 204800.
       // CHECK: %[[ADDRA:.*]] = arith.constant 204800 : i32
@@ -28,7 +31,7 @@ module {
       // CHECK: %[[CLRA:.*]] = arith.constant 0 : i32
       // CHECK: %[[MASKA2:.*]] = arith.constant 2 : i32
       // CHECK: aiex.npu.maskwrite32(%[[ADDRA2]], %[[CLRA]], %[[MASKA2]]) {column = 0 : i32, row = 3 : i32} : i32, i32, i32
-      aiex.core_reset(0, 3)
+      aiex.core_reset(%tile_0_3)
 
       // A different core tile (1, 2): same CORE_CONTROL address, same reset value
       // and mask, only the column/row attributes change. Value and mask are pinned
@@ -42,7 +45,7 @@ module {
       // CHECK: %[[MASKB2:.*]] = arith.constant 2 : i32
       // CHECK: aiex.npu.maskwrite32(%[[ADDRB2]], %[[CLRB]], %[[MASKB2]]) {column = 1 : i32, row = 2 : i32} : i32, i32, i32
       // CHECK-NOT: aiex.core_reset
-      aiex.core_reset(1, 2)
+      aiex.core_reset(%tile_1_2)
     }
   }
 }
@@ -55,12 +58,13 @@ module {
 // fail here.
 module {
   aie.device(npu1) {
+    %tile_0_3 = aie.tile(0, 3)
     aie.runtime_sequence() {
       // CHECK: %[[ADDRC:.*]] = arith.constant 204800 : i32
       // CHECK: %[[SETC:.*]] = arith.constant 2 : i32
       // CHECK: %[[MASKC:.*]] = arith.constant 2 : i32
       // CHECK: aiex.npu.maskwrite32(%[[ADDRC]], %[[SETC]], %[[MASKC]]) {column = 0 : i32, row = 3 : i32} : i32, i32, i32
-      aiex.core_reset(0, 3)
+      aiex.core_reset(%tile_0_3)
     }
   }
 }

@@ -1444,12 +1444,12 @@ def AIEX_DmaChannelResetOp: AIEX_Op<"dma_channel_reset", [HasParent<"AIE::Runtim
 def AIEX_CoreResetOp: AIEX_Op<"core_reset", [HasParent<"AIE::RuntimeSequenceOp">, SkipAccessibilityCheckTrait]> {
   let summary = "Reset a compute core from a runtime sequence";
   let description = [{
-    Pulses the reset bit of the CORE_CONTROL register on the tile at (`column`,
-    `row`). The pulse is two `npu.maskwrite32` writes masked to the reset bit
-    (assert, then deassert), so it preserves the ENABLE field packed in the same
-    CORE_CONTROL word instead of clobbering it. This mirrors aie-rt's
-    XAie_CoreReset followed by XAie_CoreUnreset. The operation is non blocking and
-    offers no synchronization guarantees.
+    Pulses the reset bit of the CORE_CONTROL register on `tile`. The pulse is two
+    `npu.maskwrite32` writes masked to the reset bit (assert, then deassert), so
+    it preserves the ENABLE field packed in the same CORE_CONTROL word instead of
+    clobbering it. This mirrors aie-rt's XAie_CoreReset followed by
+    XAie_CoreUnreset. The operation is non blocking and offers no synchronization
+    guarantees.
 
     Resetting clears the core's processor state (program counter and registers);
     it does not touch the tile's data memory, locks, or DMA. The intended use is
@@ -1462,16 +1462,27 @@ def AIEX_CoreResetOp: AIEX_Op<"core_reset", [HasParent<"AIE::RuntimeSequenceOp">
     by the verifier because they have no core to reset. This matches aie-rt's
     XAie_CoreReset, which errors on non core tiles.
 
+    `tile` is an SSA `aie.tile` value, so the target is named the same way as
+    `aiex.dma_channel_reset` and `aiex.dma_configure_task`.
+
     Example:
     ```
-      aiex.core_reset(2, 3)
+      %tile = aie.tile(2, 3)
+      aiex.core_reset(%tile)
     ```
   }];
   let arguments = (
-    ins I32Attr:$column,
-        I32Attr:$row
+    ins Index:$tile
   );
-  let assemblyFormat = [{ `(` $column `,` $row `)` attr-dict }];
+  let assemblyFormat = [{ `(` $tile `)` attr-dict }];
+  let extraClassDeclaration = [{
+    AIE::TileOp getTileOp();
+  }];
+  let extraClassDefinition = [{
+    AIE::TileOp CoreResetOp::getTileOp() {
+      return cast<AIE::TileOp>(getTile().getDefiningOp());
+    }
+  }];
   let hasVerifier = 1;
 }
 
