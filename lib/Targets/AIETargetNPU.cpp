@@ -483,7 +483,6 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
   if (!deviceOp) {
     return failure();
   }
-  OpBuilder builder = OpBuilder::atBlockBegin(deviceOp.getBody());
   AIE::RuntimeSequenceOp seq =
       AIE::RuntimeSequenceOp::getForSymbolInDeviceOrError(deviceOp,
                                                           sequenceName);
@@ -506,6 +505,11 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
     if (data)
       size = data->size();
 
+    // Emit: stream_header (1 word) + ctrl_header (1 word) + data (size words).
+    // The stream header contains the routing pkt_id so the stream switch can
+    // route each control packet to the correct tile's TileControl port.
+    // The DMA BD does NOT use enable_packet -- it sends raw data, and the
+    // stream switch parses the embedded packet headers from the data stream.
     auto words = reserveAndGetTail(instructions, 2 + size);
 
     if (!data && packetOp.getLength())
@@ -520,16 +524,16 @@ LogicalResult xilinx::AIE::AIETranslateControlPacketsToUI32Vec(
       return (p % 2) == 0;
     };
 
-    // stream header is attached here instead of by shim dma
+    // stream header with routing pkt_id from target tile's controller_id
     int col = packetOp.getColumnFromAddr();
     int row = packetOp.getRowFromAddr();
-    auto destTile = TileOp::getOrCreate(builder, deviceOp, col, row);
+    DeviceOp deviceOp2 = packetOp->getParentOfType<AIE::DeviceOp>();
+    OpBuilder builder2 = OpBuilder::atBlockBegin(deviceOp2.getBody());
+    auto destTile = TileOp::getOrCreate(builder2, deviceOp2, col, row);
     auto info = destTile->getAttrOfType<AIE::PacketInfoAttr>("controller_id");
     uint32_t hdr = 0;
     if (info)
       hdr = (info.getPktType() & 0x7) << 12 | (info.getPktId() & 0xff);
-    else
-      destTile->emitWarning("Expected controller_id attribute");
     words[0] = hdr | (0x1 & parity(hdr)) << 31;
 
     // control packet header

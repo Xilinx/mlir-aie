@@ -345,9 +345,8 @@ def AIE_ConfigureOp: AIEX_Op<"configure", [
 ]>
  {
   let summary = "Set up a configuration (program memories, stream switches, etc.) on the NPU device.";
-  let arguments = (
-    ins FlatSymbolRefAttr:$symbol
-  );
+  let arguments = (ins FlatSymbolRefAttr:$symbol,
+      OptionalAttr<AIEX_ExpandMode>:$expand_mode);
 
   let assemblyFormat = [{
      $symbol regions attr-dict
@@ -1061,12 +1060,11 @@ def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
 // NPU Load PDI operation
 def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
   let summary = "load pdi operator";
-  let arguments = (
-    ins OptionalAttr<FlatSymbolRefAttr>:$device_ref,
-        DefaultValuedOptionalAttr<I32Attr, "0">:$id,
-        DefaultValuedOptionalAttr<I32Attr, "0">:$size,
-        DefaultValuedOptionalAttr<UI64Attr, "0">:$address
-  );
+  let arguments = (ins OptionalAttr<FlatSymbolRefAttr>:$device_ref,
+      DefaultValuedOptionalAttr<I32Attr, "0">:$id,
+      DefaultValuedOptionalAttr<I32Attr, "0">:$size,
+      DefaultValuedOptionalAttr<UI64Attr, "0">:$address,
+      OptionalAttr<AIEX_ExpandMode>:$expand_mode);
   let results = (outs );
   let assemblyFormat = [{ attr-dict }];
   let description = [{
@@ -1229,11 +1227,18 @@ def AIE_DMAStartTaskOp : AIEX_Op<"dma_start_task", [HasAncestor<"AIE::RuntimeSeq
 def AIE_DMAAwaitTaskOp : AIEX_Op<"dma_await_task", [HasAncestor<"AIE::RuntimeSequenceOp">]> {
   let summary = "Await Completion of a Previously Submitted DMA Task";
   let description = [{
-    This operation will block execution of the runtime sequence until the referenced previously started DMA task has completed.
+    This operation blocks execution of the runtime sequence until a previously
+    started DMA task completes, by waiting on its task-completion token (TCT).
+    To be able to wait on a task, it must issue a token (`issue_token = true`).
 
-    DMA tasks can be started using `aiex.start_task` using abstract BD chains declared using `aie.bd_chain`, or using `aiex.start_configured_task` using a manually configured task.
+    DMA tasks can be started using `aiex.start_task` using abstract BD chains
+    declared using `aie.bd_chain`, or using `aiex.start_configured_task` using a
+    manually configured task.
 
-    To be able to wait on a task, it must issue a task completion token (TCT). Tasks only emit these tokens if the attribute `issue_token` is set to `true`.
+    The task is identified by its `$task` SSA value, which must resolve to the
+    configure that set it up. Under the dynamic BD pool path this configure must
+    dominate the await; an await after an `scf.if` on a task configured inside a
+    branch is rejected (move the await inside the branch that configures it).
   }];
 
   let arguments = (
@@ -1249,7 +1254,9 @@ def AIE_DMAAwaitTaskOp : AIEX_Op<"dma_await_task", [HasAncestor<"AIE::RuntimeSeq
   }];
 
   let extraClassDefinition = [{
-    DMAConfigureTaskOp DMAAwaitTaskOp::getTaskOp() { return dyn_cast<DMAConfigureTaskOp>(getTask().getDefiningOp()); }
+    DMAConfigureTaskOp DMAAwaitTaskOp::getTaskOp() {
+      return dyn_cast<DMAConfigureTaskOp>(getTask().getDefiningOp());
+    }
   }];
 }
 
@@ -1387,6 +1394,51 @@ def AIEX_SetLockOp: AIEX_Op<"set_lock", [HasParent<"AIE::RuntimeSequenceOp">, Sk
   let extraClassDefinition = [{
     AIE::LockOp SetLockOp::getLockOp() { return cast<AIE::LockOp>(getLock().getDefiningOp()); }
   }];
+}
+
+def AIEX_DmaChannelResetOp: AIEX_Op<"dma_channel_reset", [HasParent<"AIE::RuntimeSequenceOp">, SkipAccessibilityCheckTrait]> {
+  let summary = "Reset a DMA channel from a runtime sequence";
+  let description = [{
+    Resets the DMA channel `channel` in direction `direction` on `tile` by
+    pulsing the channel control register reset bit. Intended for re-arming a
+    resident objectFIFO across dispatches: it clears the channel's residual
+    queue state so it does not carry into a subsequent dispatch. This resets the
+    DMA channel state only; it does not by itself establish a clean dispatch
+    baseline in general. The operation is non blocking and offers no
+    synchronization guarantees.
+
+    The pulse is emitted as two `npu.maskwrite32` writes masked to the reset bit,
+    so it preserves the other control fields (out-of-order, compression,
+    controller id, FoT mode) instead of clobbering them.
+
+    Only core and mem tiles have a per-channel DMA reset bit; shim NOC/PL tiles
+    are rejected by the verifier because their DMA control register has no reset
+    field.
+
+    `tile` is an SSA `aie.tile` value, so the target is named the same way as
+    `aiex.dma_configure_task`.
+
+    Example:
+    ```
+      %tile = aie.tile(2, 3)
+      aiex.dma_channel_reset(%tile, S2MM, 0)
+    ```
+  }];
+  let arguments = (
+    ins Index:$tile,
+        DMAChannelDir:$direction,
+        I32Attr:$channel
+  );
+  let assemblyFormat = [{ `(` $tile `,` $direction `,` $channel `)` attr-dict }];
+  let extraClassDeclaration = [{
+    AIE::TileOp getTileOp();
+  }];
+  let extraClassDefinition = [{
+    AIE::TileOp DmaChannelResetOp::getTileOp() {
+      return cast<AIE::TileOp>(getTile().getDefiningOp());
+    }
+  }];
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//

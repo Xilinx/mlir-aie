@@ -253,6 +253,7 @@ nav:
       - Dialect op wrappers: api/dialect_wrappers.md
       - Tensor Access Patterns (taplib): api/taplib.md
       - Python Kernel Library: api/kernels.md
+      - Host Runtime: api/hostruntime.md
       - C++ AIE kernels: api/aie_kernels.md
     - MLIR / C++:
       - AIE Dialect: AIEDialect.md
