@@ -83,7 +83,8 @@ struct DMAStartTaskOpPattern : OpConversionPattern<DMAStartTaskOp> {
 // the task in flight, whichever branch ran). Walk such a result back to a
 // configure via the yields (and, for a loop, the init). Every reachable
 // configure targets the same physical channel -- the pool pass verified both
-// branches of an scf.if agree -- so the first one found gives the right channel.
+// branches of an scf.if agree -- so the first one found gives the right
+// channel.
 static DMAConfigureTaskOp resolveConfigureThroughCF(Value task) {
   llvm::SmallPtrSet<Value, 8> seen;
   SmallVector<Value> worklist{task};
