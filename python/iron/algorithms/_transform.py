@@ -7,7 +7,7 @@
 
 import numpy as np
 
-from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron import ObjectFifo, Program, Runtime, TaskGroup, Worker
 from aie.helpers.taplib.tap import TensorAccessPattern
 from aie.iron.controlflow import range_
 import aie.iron as iron
@@ -165,29 +165,42 @@ def _transform_gen(func, inputs: list, output, *params, tile_size=16, trace_size
     worker = Worker(core_body, fn_args=worker_args, trace=(1 if trace_size > 0 else 0))
 
     # Runtime operations to move data to/from the AIE-array
-    rt = Runtime()
     # Sequence order: [inputs, output, params]
     all_types = [tensor_ty] * num_inputs + [tensor_ty] + param_tensor_types
-    with rt.sequence(*all_types) as seq_args:
-        assert isinstance(seq_args, tuple)
-        input_seq_args = seq_args[:num_inputs]
-        output_seq_arg = seq_args[num_inputs]
-        param_seq_args = seq_args[num_inputs + 1 :]
+    num_params = len(param_tensor_types)
 
-        if trace_size > 0:
-            rt.enable_trace(trace_size)
-        rt.start(worker)
+    def sequence(*args):
+        # args = *inputs, output, *params, *in_prods, out_cons, *param_prods
+        input_seq_args = args[:num_inputs]
+        output_seq_arg = args[num_inputs]
+        param_seq_args = args[num_inputs + 1 : num_inputs + 1 + num_params]
+        rest = args[num_inputs + 1 + num_params :]
+        in_prods = rest[:num_inputs]
+        out_cons = rest[num_inputs]
+        param_prods = rest[num_inputs + 1 :]
 
         # Fill all input ObjectFifos
-        for of_in, input_arg in zip(of_inputs, input_seq_args):
-            rt.fill(of_in.prod(), input_arg)
+        for in_prod, input_arg in zip(in_prods, input_seq_args):
+            in_prod.fill(input_arg)
 
         # Fill tensor param ObjectFifos (ExternalFunction only)
-        for of_param, param_arg in zip(param_of_list, param_seq_args):
-            rt.fill(of_param.prod(), param_arg)
+        for param_prod, param_arg in zip(param_prods, param_seq_args):
+            param_prod.fill(param_arg)
 
         # Drain output ObjectFifo
-        rt.drain(of_out.cons(), output_seq_arg, wait=True)
+        out_cons.drain(output_seq_arg, wait=True)
+
+    rt = Runtime(
+        sequence,
+        all_types,
+        fn_args=[
+            *[of_in.prod() for of_in in of_inputs],
+            of_out.cons(),
+            *[p.prod() for p in param_of_list],
+        ],
+    )
+    if trace_size > 0:
+        rt.enable_trace(trace_size)
 
     # Place program components and generate an MLIR module
     device = iron.get_current_device()
@@ -197,7 +210,7 @@ def _transform_gen(func, inputs: list, output, *params, tile_size=16, trace_size
             "Call iron.set_current_device() or ensure DefaultNPURuntime is initialized "
             "before calling transform functions."
         )
-    return Program(device, rt).resolve_program()
+    return Program(device, rt, workers=[worker]).resolve_program()
 
 
 def _transform_parallel_gen(
@@ -430,52 +443,69 @@ def _transform_parallel_gen(
         for chan in range(num_channels)
     ]
 
-    # Runtime operations to move data to/from the AIE-array
-    rt = Runtime()
-    all_types = [tensor_ty] * num_inputs + [tensor_ty] + param_tensor_types
-    with rt.sequence(*all_types) as seq_args:
-        assert isinstance(seq_args, tuple)
-        input_seq_args = seq_args[:num_inputs]
-        output_seq_arg = seq_args[num_inputs]
-        param_seq_args = seq_args[num_inputs + 1 :]
+    # Runtime operations to move data to/from the AIE-array.
+    # Pre-build the prod/cons handle grids so they can be registered via fn_args
+    # (endpoints bound before resolution); the body indexes into them.
+    in_prods = [
+        [
+            [of_inputs[inp][col][chan].prod() for chan in range(num_channels)]
+            for col in range(num_columns)
+        ]
+        for inp in range(num_inputs)
+    ]
+    out_conses = [
+        [of_outs[col][chan].cons() for chan in range(num_channels)]
+        for col in range(num_columns)
+    ]
+    param_prods = [p.prod() for p in param_of_list]
 
-        if trace_size > 0:
-            rt.enable_trace(trace_size)
-        rt.start(*my_workers)
+    all_types = [tensor_ty] * num_inputs + [tensor_ty] + param_tensor_types
+    num_params = len(param_tensor_types)
+
+    def sequence(*args):
+        input_seq_args = args[:num_inputs]
+        output_seq_arg = args[num_inputs]
+        param_seq_args = args[num_inputs + 1 : num_inputs + 1 + num_params]
 
         # Fill input ObjectFifos with data
-        tg_in = rt.task_group()
+        tg_in = TaskGroup()
         for col in range(num_columns):
             for chan in range(num_channels):
                 tap = taps[col * num_channels + chan]
                 for inp_idx in range(num_inputs):
-                    rt.fill(
-                        of_inputs[inp_idx][col][chan].prod(),
+                    in_prods[inp_idx][col][chan].fill(
                         input_seq_args[inp_idx],
                         tap,
-                        task_group=tg_in,
+                        group=tg_in,
                     )
-        rt.finish_task_group(tg_in)
+        tg_in.finish()
 
         # Fill tensor param ObjectFifos (ExternalFunction only, shared across workers)
-        for of_param, param_arg in zip(param_of_list, param_seq_args):
-            rt.fill(of_param.prod(), param_arg)
+        for param_prod, param_arg in zip(param_prods, param_seq_args):
+            param_prod.fill(param_arg)
 
         # Drain output ObjectFifos
-        tg_out = rt.task_group()
+        tg_out = TaskGroup()
         for col in range(num_columns):
             for chan in range(num_channels):
-                rt.drain(
-                    of_outs[col][chan].cons(),
+                out_conses[col][chan].drain(
                     output_seq_arg,
                     taps[col * num_channels + chan],
                     wait=True,
-                    task_group=tg_out,
+                    group=tg_out,
                 )
-        rt.finish_task_group(tg_out)
+        tg_out.finish()
+
+    rt = Runtime(
+        sequence,
+        all_types,
+        fn_args=[in_prods, out_conses, param_prods],
+    )
+    if trace_size > 0:
+        rt.enable_trace(trace_size)
 
     # Place program components and generate an MLIR module
-    return Program(device, rt).resolve_program()
+    return Program(device, rt, workers=my_workers).resolve_program()
 
 
 def make_param_descriptor(tensor_ty):

@@ -45,28 +45,13 @@ from ...dialects._aiex_ops_gen import (  # pyright: ignore[reportMissingImports]
     dma_free_task,
 )
 from ..dataflow import ObjectFifoHandle
-from ..device import AnyShimTile
 from ..resolvable import Resolvable
 from ..scratchpad_parameter import ScratchpadParameter
 from .dmatask import DMATask
 from .data import RuntimeData
 from .endpoint import RuntimeEndpoint
 from .taskgroup import TaskGroup
-from .task import InlineOpRuntimeTask
 from ._context import active_sequence, active_sequence_scope
-
-
-def _iter_flat(obj):
-    """Yield obj and, recursively, the elements of any nested list/tuple.
-
-    Matches the traversal InlineOpRuntimeTask uses to find Buffer args, so
-    fifos nested in the inline_args structure are registered the same way.
-    """
-    if isinstance(obj, (list, tuple)):
-        for item in obj:
-            yield from _iter_flat(item)
-    else:
-        yield obj
 
 
 class IronRuntimeError(Exception):
@@ -461,28 +446,6 @@ class _SyncParametersTask(Resolvable):
         ip: ir.InsertionPoint | None = None,
     ) -> None:
         sync_scratchpad_parameters_from_host(loc=loc, ip=ip)
-
-
-def inline_ops(inline_func: Callable, inline_args: list) -> None:
-    """Emit arbitrary lower-level ops in the runtime sequence body.
-
-    An escape hatch for hardware control that has no high-level IRON verb yet
-    (PDI loading, custom BD writes, compression control). Call it from within the
-    sequence body. Any ObjectFifoHandle in ``inline_args`` is registered with the
-    active Runtime (so the Program resolves its shim allocation) and, if it has no
-    endpoint yet, is bound to a shim tile.
-
-    Args:
-        inline_func (Callable): The function to execute within an MLIR context.
-        inline_args (list): The state the function needs to execute.
-    """
-    active = active_sequence()
-    for arg in _iter_flat(inline_args):
-        if isinstance(arg, ObjectFifoHandle):
-            if arg.endpoint is None:
-                arg.endpoint = RuntimeEndpoint(AnyShimTile)
-            active._runtime._fifos.add(arg)
-    InlineOpRuntimeTask(inline_func, inline_args).resolve()
 
 
 def sync_parameters() -> None:
