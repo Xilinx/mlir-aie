@@ -9785,9 +9785,16 @@ and payload.</p>
 <p>Syntax:</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-38-1" name="__codelineno-38-1" href="#__codelineno-38-1"></a>operation ::= `aiex.dma_await_task` `(` $task `)` attr-dict
 </code></pre></div>
-<p>This operation will block execution of the runtime sequence until the referenced previously started DMA task has completed.</p>
-<p>DMA tasks can be started using <code>aiex.start_task</code> using abstract BD chains declared using <code>aie.bd_chain</code>, or using <code>aiex.start_configured_task</code> using a manually configured task.</p>
-<p>To be able to wait on a task, it must issue a task completion token (TCT). Tasks only emit these tokens if the attribute <code>issue_token</code> is set to <code>true</code>.</p>
+<p>This operation blocks execution of the runtime sequence until a previously
+started DMA task completes, by waiting on its task-completion token (TCT).
+To be able to wait on a task, it must issue a token (<code>issue_token = true</code>).</p>
+<p>DMA tasks can be started using <code>aiex.start_task</code> using abstract BD chains
+declared using <code>aie.bd_chain</code>, or using <code>aiex.start_configured_task</code> using a
+manually configured task.</p>
+<p>The task is identified by its <code>$task</code> SSA value, which must resolve to the
+configure that set it up. Under the dynamic BD pool path this configure must
+dominate the await; an await after an <code>scf.if</code> on a task configured inside a
+branch is rejected (move the await inside the branch that configures it).</p>
 <p>Traits: <code>HasAncestor&lt;AIE::RuntimeSequenceOp&gt;</code></p>
 <h4 id="operands_2">Operands:<a class="headerlink" href="#operands_2" title="Permanent link">&para;</a></h4>
 <table>
