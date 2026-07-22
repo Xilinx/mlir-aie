@@ -37,6 +37,7 @@ from ...dialects._aie_ops_gen import (  # pyright: ignore[reportMissingImports]
 from ...helpers.util import (
     try_convert_np_type_to_mlir_type,
     np_dtype_to_mlir_type,
+    flatten_fn_args,
 )
 from ...extras.dialects.arith import constant  # pyright: ignore[reportMissingImports]
 from ...dialects._aiex_ops_gen import (  # pyright: ignore[reportMissingImports]
@@ -180,18 +181,21 @@ class Runtime(Resolvable):
         self,
         seq_fn: Callable,
         inputs: Sequence,
+        fn_args: "Sequence | None" = None,
         *,
         strict_task_groups: bool = True,
     ) -> None:
-        """Create a runtime from its sequence body and declared inputs.
+        """Create a runtime from its sequence body, declared inputs, and fn_args.
 
         Mirrors [`Worker`][iron.Worker]``(core_fn, fn_args)``: ``seq_fn`` runs
-        inside ``@runtime_sequence`` at resolve time, receiving one argument per
-        declared input. Because it executes with an active MLIR insertion point,
-        it can use native ``range_``/``if_`` control flow and move data with
-        ``fifo.fill(...)`` / ``fifo.drain(...)``.
+        inside ``@runtime_sequence`` at resolve time. It is called as
+        ``seq_fn(*inputs, *fn_args)`` -- the runtime I/O buffers/scalars followed
+        by the shared objects it operates on (ObjectFifo handles, Buffers, ...).
+        Because it executes with an active MLIR insertion point, it can use native
+        ``range_``/``if_`` control flow and move data with ``fifo.fill(...)`` /
+        ``fifo.drain(...)``.
 
-        Each input is either:
+        Each ``inputs`` entry is either:
 
         * a **type** -- a tensor type (``np.ndarray[(M, K), np.dtype[np.int16]]``)
           becomes a runtime buffer passed to the body as a ``RuntimeData``; a
@@ -203,15 +207,23 @@ class Runtime(Resolvable):
           a constant bound, so ``aie-unroll-runtime-sequence-loops`` unrolls/folds
           it to the static binary path.
 
-        This lets one body serve both lowerings: declare a scalar as ``np.int32``
-        for the dynamic path or pass a Python ``int`` for the static path.
+        ``fn_args`` are the shared objects the body drives, registered eagerly the
+        way [`Worker`][iron.Worker] registers its fn_args: an ObjectFifoHandle's
+        shim endpoint is bound now (using its ``prod(tile=...)``/``cons(tile=...)``
+        tile), and Buffers are recorded. Binding endpoints at construction (not
+        when the body runs) lets the Program resolve fifos and cores first and
+        emit the sequence body last -- so verbs that read worker-side state
+        (``barrier.set``, ``inline_ops`` over a worker Buffer) see it resolved.
 
         Args:
             seq_fn (Callable): The sequence body. Its parameters are bound, in
-                order, to ``inputs``.
-            inputs (Sequence): The declared inputs, one per body parameter -- each
-                a tensor/scalar type (runtime) or a concrete int value (folded
-                constant).
+                order, to ``inputs`` followed by ``fn_args``.
+            inputs (Sequence): The declared runtime inputs, one per leading body
+                parameter -- each a tensor/scalar type (runtime) or a concrete int
+                value (folded constant).
+            fn_args (Sequence | None): Shared objects (ObjectFifoHandles, Buffers,
+                ...) the body operates on, bound to the trailing body parameters.
+                Defaults to None (empty).
             strict_task_groups (bool): Disallows mixing the default group and explicit task groups during resolution.
                 This can catch common errors, but can be set to False to disable the checks.
 
@@ -226,7 +238,9 @@ class Runtime(Resolvable):
             None if c is not None else RuntimeData(t)
             for c, t in zip(self._const_inputs, inputs)
         ]
+        self._fn_args = list(fn_args) if fn_args is not None else []
         self._fifos: set[ObjectFifoHandle] = set()
+        self._register_fn_args()
         # Lower-level explicit-routing primitives (peers of ObjectFifo for
         # designs that hand-wire flows + DMA programs instead of letting
         # ObjectFifo manage them).
@@ -244,6 +258,24 @@ class Runtime(Resolvable):
         self._coremem_events = None
         self._memtile_events = None
         self._shimtile_events = None
+
+    def _register_fn_args(self) -> None:
+        """Bind shared objects in fn_args now, before the Program resolves.
+
+        Mirrors Worker.__init__: an ObjectFifoHandle gets its shim endpoint bound
+        (from the handle's prod()/cons() tile) and is recorded, so the fifo has
+        both ends known when the Program resolves it -- letting the sequence body
+        emit last (after workers), which the body's worker-reading verbs need.
+
+        A fn_args entry may be a nested list/tuple of handles (e.g. one per
+        column); the flattened leaves are registered while the body still
+        receives the structured argument.
+        """
+        for arg in flatten_fn_args(self._fn_args):
+            if isinstance(arg, ObjectFifoHandle):
+                if arg.endpoint is None:
+                    arg.endpoint = RuntimeEndpoint(arg._shim_tile)
+                self._fifos.add(arg)
 
     def add_flow(self, flow) -> None:
         """Register an explicit [`Flow`][iron.Flow] (or
@@ -379,6 +411,9 @@ class Runtime(Resolvable):
                     body_args.append(rt_data.op)
                 else:
                     body_args.append(rt_data)
+
+            # fn_args (fifos, buffers, ...) follow the inputs, as declared.
+            body_args.extend(self._fn_args)
 
             with active_sequence_scope(active):
                 self._seq_fn(*body_args)

@@ -232,6 +232,21 @@ def single_elem_or_list_to_list(val: "list[_E] | _E") -> "list[_E]":
     return val
 
 
+def flatten_fn_args(args):
+    """Yield each leaf of ``args``, recursing into nested lists/tuples.
+
+    Worker and Runtime accept fn_args that may nest lists (e.g. one fifo handle
+    per column). The body receives the structured arguments, but registration and
+    resolution iterate the flattened leaves through this helper so a nested list
+    is handled the same as a flat one.
+    """
+    for arg in args:
+        if isinstance(arg, (list, tuple)):
+            yield from flatten_fn_args(arg)
+        else:
+            yield arg
+
+
 def get_arg_types(objs: Sequence[int | float | Value | OpView]):
     my_types = []
     for o in objs:

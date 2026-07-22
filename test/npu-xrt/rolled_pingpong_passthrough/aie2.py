@@ -80,7 +80,7 @@ def design(dev):
     # owns each transfer's lifetime via the returned Task, carrying the in-flight
     # input task across scf.for iterations as a range_ iter_arg and freeing the
     # previous one while the next is in flight.
-    def ping_pong(A, B):
+    def ping_pong(A, B, in_h, out_h):
         # Wrap the whole sequence in a constant-true scf.if. This exercises the
         # other half of the static-path invariant: the loop below is unrolled
         # (the unroll pass descends into the scf.if arm, since it runs before the
@@ -90,7 +90,7 @@ def design(dev):
         cond = constant(True)
         with if_(cond):
             # Prologue: first input tile.
-            init_in = of_in.prod().fill(
+            init_in = in_h.fill(
                 A,
                 sizes=[1, 1, 1, TILE_LEN],
                 strides=[0, 0, 0, 1],
@@ -102,7 +102,7 @@ def design(dev):
             # dim walks the N_TILES tiles with stride TILE_LEN so tile i lands at
             # offset i*TILE_LEN (a size-N stride-0 wrap dim would overwrite one
             # tile).
-            out_task = of_out.cons().drain(
+            out_task = out_h.drain(
                 B,
                 sizes=[1, 1, N_TILES, TILE_LEN],
                 strides=[0, 0, TILE_LEN, 1],
@@ -117,7 +117,7 @@ def design(dev):
             for _iv, prev, result in range_(
                 1, N_TILES, iter_args=[init_in], insert_yield=False
             ):
-                tile_in = of_in.prod().fill(
+                tile_in = in_h.fill(
                     A,
                     sizes=[1, 1, 1, TILE_LEN],
                     strides=[0, 0, 0, 1],
@@ -131,7 +131,7 @@ def design(dev):
             out_task.await_()
             result.free()
 
-    rt = Runtime(ping_pong, [in_ty, out_ty])
+    rt = Runtime(ping_pong, [in_ty, out_ty], fn_args=[of_in.prod(), of_out.cons()])
 
     return Program(dev, rt, workers=[worker]).resolve_program()
 

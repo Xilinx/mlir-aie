@@ -63,7 +63,7 @@ class Program:
             # aiex.scratchpad_parameter ops are global across all devices because the
             # scratchpad is a single hardware resource shared by all PDIs.
             for w in self._workers:
-                for arg in w.fn_args:
+                for arg in w.flat_fn_args:
                     if isinstance(arg, ScratchpadParameter):
                         arg.resolve()
             for p in self._rt._scratchpad_parameters:
@@ -71,16 +71,12 @@ class Program:
 
             @device(self._device.resolve(), sym_name=device_name)
             def device_body():
-                # Run the runtime sequence body first. It emits the
-                # runtime_sequence op (its shim DMAs reference ObjectFifos by
-                # symbol name, a forward reference) and, as a side effect, binds
-                # each runtime-driven ObjectFifo's shim endpoint and records it in
-                # rt.fifos. Doing this before fifo collection/resolution means
-                # every runtime endpoint -- including link siblings -- is already
-                # bound when the fifos below are created.
-                self._rt.resolve()
-
-                # Collect all fifos
+                # Collect all fifos. Runtime-driven fifos already have their shim
+                # endpoints bound (Runtime registered its fn_args at construction),
+                # so they resolve here with both ends known -- the sequence body
+                # itself is emitted LAST (self._rt.resolve() below), after workers,
+                # so body verbs that read worker-side state (barrier locks, worker
+                # Buffer placement) see it resolved.
                 all_fifos = set()
                 all_fifos.update(self._rt.fifos)
                 for w in self._workers:
@@ -97,7 +93,7 @@ class Program:
                     all_tiles.append(w.tile)
                     # Generic: any user-side Resolvable in fn_args may declare
                     # additional tile dependencies via tiles(). Default is [].
-                    for arg in w.fn_args:
+                    for arg in w.flat_fn_args:
                         if isinstance(arg, Resolvable):
                             all_tiles.extend(arg.tiles())
                 for f in all_fifos:
@@ -145,7 +141,7 @@ class Program:
 
                 # generate functions - this may call resolve() more than once on the same fifo, but that's ok
                 for w in self._workers:
-                    for arg in w.fn_args:
+                    for arg in w.flat_fn_args:
                         if isinstance(arg, FuncBase):
                             arg.emit()
                         elif isinstance(arg, Resolvable):
@@ -188,6 +184,13 @@ class Program:
                         memtile_events=self._rt._memtile_events,
                         shimtile_events=self._rt._shimtile_events,
                     )
+
+                # Emit the runtime sequence body LAST: workers, their locks, and
+                # worker Buffers are now resolved, so body verbs that read that
+                # state (barrier.set, inline_ops over a worker Buffer) are valid.
+                # Its shim DMAs reference fifos by symbol name (forward ref), so
+                # emitting after the fifo ops is fine.
+                self._rt.resolve()
 
             self._print_verify(ctx)
             return ctx.module

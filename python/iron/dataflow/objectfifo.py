@@ -187,7 +187,10 @@ class ObjectFifo(Resolvable):
         )
 
     def prod(
-        self, depth: int | None = None, channel: int | None = None
+        self,
+        depth: int | None = None,
+        channel: int | None = None,
+        tile: Tile | None = None,
     ) -> ObjectFifoHandle:
         """Returns an ObjectFifoHandle of type producer. Each ObjectFifo may have only one producer
         handle, so if one already exists, a new reference to this handle will be returned.
@@ -195,6 +198,9 @@ class ObjectFifo(Resolvable):
         Args:
             depth (int | None, optional): The depth of the buffers at the endpoint corresponding to the producer handle. Defaults to None.
             channel (int | None, optional): Pin the producer endpoint's DMA channel instead of first-free assignment. Defaults to None (auto-assign).
+            tile (Tile | None, optional): When this handle drives an ObjectFifo
+                from the runtime (passed in ``Runtime`` ``fn_args``), the shim tile
+                its host-side DMA binds to. Defaults to None (any available shim tile).
 
         Raises:
             ValueError: Arguments are validated
@@ -217,7 +223,7 @@ class ObjectFifo(Resolvable):
                     f"{self._prod.channel}, cannot re-pin to {channel}."
                 )
         else:
-            self._prod = ObjectFifoHandle(self, True, depth, channel=channel)
+            self._prod = ObjectFifoHandle(self, True, depth, channel=channel, tile=tile)
         return self._prod
 
     def cons(
@@ -225,6 +231,7 @@ class ObjectFifo(Resolvable):
         depth: int | None = None,
         dims_from_stream: StreamDims | None = None,
         channel: int | None = None,
+        tile: Tile | None = None,
     ) -> ObjectFifoHandle:
         """Returns an ObjectFifoHandle of type consumer. Each ObjectFifo may have multiple consumers, so this
         will return a new consumer handle every time it is called.
@@ -233,6 +240,9 @@ class ObjectFifo(Resolvable):
             depth (int | None, optional): The depth of the buffers at the endpoint corresponding to this consumer handle. Defaults to None.
             dims_from_stream (StreamDims | None, optional): Dimensions from stream for this consumer. Defaults to None.
             channel (int | None, optional): Pin this consumer endpoint's DMA channel instead of first-free assignment. Defaults to None (auto-assign).
+            tile (Tile | None, optional): When this handle drains an ObjectFifo to
+                the runtime (passed in ``Runtime`` ``fn_args``), the shim tile its
+                host-side DMA binds to. Defaults to None (any available shim tile).
 
         Raises:
             ValueError: Arguments are validated
@@ -255,6 +265,7 @@ class ObjectFifo(Resolvable):
                 depth=depth,
                 dims_from_stream=dims_from_stream,
                 channel=channel,
+                tile=tile,
             )
         )
         return self._cons[-1]
@@ -445,6 +456,7 @@ class ObjectFifoHandle(Resolvable):
         depth: int | None = None,
         dims_from_stream: StreamDims | None = None,
         channel: int | None = None,
+        tile: Tile | None = None,
     ):
         """Construct an ObjectFifoHandle
 
@@ -454,6 +466,7 @@ class ObjectFifoHandle(Resolvable):
             depth (int | None, optional): The depth of the ObjectFifo at this endpoint. Defaults to None.
             dims_from_stream (StreamDims | None, optional): A unique dimensions from stream. This is only valid for consumer handles. Defaults to None.
             channel (int | None, optional): Pin this endpoint's DMA channel instead of first-free assignment. Defaults to None (auto-assign).
+            tile (Tile | None, optional): Shim tile for a runtime-driven endpoint (see prod()/cons()). Defaults to None.
 
         Raises:
             ValueError: Arguments are validated.
@@ -479,6 +492,7 @@ class ObjectFifoHandle(Resolvable):
         self._object_fifo = of
         self._depth = depth
         self._channel = channel
+        self._shim_tile = tile
         self._endpoint = None
         self._dims_from_stream = dims_from_stream
 
@@ -595,7 +609,6 @@ class ObjectFifoHandle(Resolvable):
         rt_data,
         tap,
         wait: bool,
-        tile,
         packet: tuple[int, int] | None,
         offset_parameter,
         group,
@@ -656,7 +669,11 @@ class ObjectFifoHandle(Resolvable):
                 "do not also pass group=."
             )
 
-        self.endpoint = RuntimeEndpoint(tile)
+        # The endpoint is normally bound eagerly when this handle is registered in
+        # Runtime fn_args (using its prod()/cons() tile); bind it here too so a
+        # handle used only via fill/drain still gets a shim endpoint.
+        if self._endpoint is None:
+            self.endpoint = RuntimeEndpoint(self._shim_tile)
         active.note_fifo(self)
 
         offset_param_name = None
@@ -695,7 +712,6 @@ class ObjectFifoHandle(Resolvable):
         source,
         tap=None,
         wait: bool = False,
-        tile: Tile = None,
         packet: tuple[int, int] | None = None,
         offset_parameter=None,
         group=None,
@@ -707,8 +723,9 @@ class ObjectFifoHandle(Resolvable):
     ):
         """Fill this producer ObjectFifo with data from a runtime buffer.
 
-        Call from within a [`Runtime.sequence`][iron.Runtime.sequence] body on a
-        producer handle (``fifo.prod().fill(...)``).
+        Call from within a [`Runtime`][iron.Runtime] sequence body on a producer
+        handle. The handle's shim tile is set via ``prod(tile=...)`` where it is
+        declared in the Runtime's ``fn_args``.
 
         Args:
             source (RuntimeData): The input runtime data buffer.
@@ -717,8 +734,6 @@ class ObjectFifoHandle(Resolvable):
                 whole buffer. Mutually exclusive with sizes/strides/offset/transfer_len.
             wait (bool, optional): Whether this transfer is awaited (True) or
                 freed (False) when its task group finishes. Defaults to False.
-            tile (Tile | None, optional): The shim tile for the transfer. Defaults
-                to any available shim tile.
             packet (tuple[int, int] | None, optional): Stamp the shim DMA's BD
                 with a packet header ``(pkt_type, pkt_id)``. Defaults to None.
             offset_parameter (ScratchpadParameter | str | None, optional): A
@@ -742,13 +757,11 @@ class ObjectFifoHandle(Resolvable):
         """
         if not self._is_prod:
             raise ValueError("fill() is only valid on a producer ObjectFifoHandle")
-        from ..device import AnyShimTile
 
         return self._emit_transfer(
             source,
             tap,
             wait,
-            AnyShimTile if tile is None else tile,
             packet,
             offset_parameter,
             group,
@@ -764,7 +777,6 @@ class ObjectFifoHandle(Resolvable):
         dest,
         tap=None,
         wait: bool = False,
-        tile: Tile = None,
         packet: tuple[int, int] | None = None,
         offset_parameter=None,
         group=None,
@@ -776,8 +788,9 @@ class ObjectFifoHandle(Resolvable):
     ):
         """Drain this consumer ObjectFifo, writing data to a runtime buffer.
 
-        Call from within a [`Runtime.sequence`][iron.Runtime.sequence] body on a
-        consumer handle (``fifo.cons().drain(...)``).
+        Call from within a [`Runtime`][iron.Runtime] sequence body on a consumer
+        handle. The handle's shim tile is set via ``cons(tile=...)`` where it is
+        declared in the Runtime's ``fn_args``.
 
         Args:
             dest (RuntimeData): The output runtime data buffer.
@@ -786,8 +799,6 @@ class ObjectFifoHandle(Resolvable):
                 whole buffer. Mutually exclusive with sizes/strides/offset/transfer_len.
             wait (bool, optional): Whether this transfer is awaited (True) or
                 freed (False) when its task group finishes. Defaults to False.
-            tile (Tile | None, optional): The shim tile for the transfer. Defaults
-                to any available shim tile.
             packet (tuple[int, int] | None, optional): Stamp the shim DMA's BD
                 with a packet header ``(pkt_type, pkt_id)``. Defaults to None.
             offset_parameter (ScratchpadParameter | str | None, optional): A
@@ -811,13 +822,11 @@ class ObjectFifoHandle(Resolvable):
         """
         if self._is_prod:
             raise ValueError("drain() is only valid on a consumer ObjectFifoHandle")
-        from ..device import AnyShimTile
 
         return self._emit_transfer(
             dest,
             tap,
             wait,
-            AnyShimTile if tile is None else tile,
             packet,
             offset_parameter,
             group,

@@ -19,6 +19,7 @@ from ..dialects.aiex import (
     LockAction,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from ..helpers.dialects.scf import _for as range_
+from ..helpers.util import flatten_fn_args
 from .device import Tile, AnyComputeTile
 from ..dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     AIETileType,
@@ -122,7 +123,9 @@ class Worker(ObjectFifoEndpoint):
         self._outgoing_cascades: list = []
 
         # Check arguments to the core. Some information is saved for resolution.
-        for arg in self.fn_args:
+        # fn_args may nest lists (e.g. one fifo per column); iterate the flattened
+        # leaves for registration while the core_fn still receives the structure.
+        for arg in flatten_fn_args(self.fn_args):
             if isinstance(arg, ObjectFifoHandle):
                 arg.endpoint = self
                 self._fifos.append(arg)
@@ -205,6 +208,15 @@ class Worker(ObjectFifoEndpoint):
         """The compute tile this Worker is placed on."""
         assert self._tile is not None
         return self._tile
+
+    @property
+    def flat_fn_args(self) -> list:
+        """fn_args with any nested lists/tuples flattened to their leaves.
+
+        Use this (not ``fn_args``) when iterating to register/resolve individual
+        arguments; ``fn_args`` keeps its structure for the core_fn call.
+        """
+        return list(flatten_fn_args(self.fn_args))
 
     @property
     def fifos(self) -> list[ObjectFifoHandle]:

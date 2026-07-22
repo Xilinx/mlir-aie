@@ -200,7 +200,7 @@ def _build_design(
     # The SAME seq body runs either way; only how M/K/N enter differs.
     m_ar = m * n_aie_rows
 
-    def seq(A, B, C, M_val, K_val, N_val):
+    def seq(A, B, C, M_val, K_val, N_val, A_prods, B_prods, C_conses):
         i32 = np_dtype_to_mlir_type(np.int32)
         i64 = np_dtype_to_mlir_type(np.int64)
 
@@ -245,7 +245,7 @@ def _build_design(
 
                 # C output (drained, waited):
                 #   C_offset = rb * m_ar * N + col * (N / n_aie_cols)
-                C_l2l3[col].cons().drain(
+                C_conses[col].drain(
                     C,
                     sizes=[1, n_tiles_col, m_ar, n],
                     strides=[m_ar * N64, n, N64, 1],
@@ -257,7 +257,7 @@ def _build_design(
 
                 # A input (broadcast across columns; no col term):
                 #   A_offset = rb * m_ar * K
-                A_l3l2[col].prod().fill(
+                A_prods[col].fill(
                     A,
                     sizes=[n_tiles_col, k_tiles, m_ar, k],
                     strides=[0, k, K64, 1],
@@ -267,7 +267,7 @@ def _build_design(
                 )
 
                 # B input (banded in N): B_offset = col * (N / n_aie_cols)
-                B_l3l2[col].prod().fill(
+                B_prods[col].fill(
                     B,
                     sizes=[n_tiles_col, k_tiles, k, n],
                     strides=[n, k * N64, N64, 1],
@@ -280,7 +280,15 @@ def _build_design(
 
     # dynamic -> declare M/K/N as runtime i32 types; static -> pass the ints.
     mkn = [np.int32, np.int32, np.int32] if dynamic else [M, K, N]
-    rt = Runtime(seq, [A_ty, B_ty, C_ty, *mkn])
+    # fifos the body drives, one prod/cons handle per column, passed as fn_args.
+    A_prods = [f.prod() for f in A_l3l2]
+    B_prods = [f.prod() for f in B_l3l2]
+    C_conses = [f.cons() for f in C_l2l3]
+    rt = Runtime(
+        seq,
+        [A_ty, B_ty, C_ty, *mkn],
+        fn_args=[A_prods, B_prods, C_conses],
+    )
 
     return Program(dev, rt, workers=workers).resolve_program()
 

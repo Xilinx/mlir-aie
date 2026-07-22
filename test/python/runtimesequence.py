@@ -31,14 +31,18 @@ def task_group_drain_sequence(module):
 
     worker = Worker(core_fn, [of_0.cons(), of_1.prod(), of_2.prod()])
 
-    def sequence(A, B, C):
+    def sequence(A, B, C, in_0, out_1, out_2):
         tg = TaskGroup()
-        of_0.prod().fill(A, group=tg)
-        of_1.cons().drain(B, group=tg, wait=True)
-        of_2.cons().drain(C, group=tg, wait=True)
+        in_0.fill(A, group=tg)
+        out_1.drain(B, group=tg, wait=True)
+        out_2.drain(C, group=tg, wait=True)
         tg.finish()
 
-    rt = Runtime(sequence, [n_ty, n_ty, n_ty])
+    rt = Runtime(
+        sequence,
+        [n_ty, n_ty, n_ty],
+        fn_args=[of_0.prod(), of_1.cons(), of_2.cons()],
+    )
     module = Program(NPU2(), rt, workers=[worker]).resolve_program()
     return module
 
@@ -65,12 +69,16 @@ def default_rt_drain_sequence(module):
 
     worker = Worker(core_fn, [of_0.cons(), of_1.prod(), of_2.prod()])
 
-    def sequence(A, B, C):
-        of_0.prod().fill(A)
-        of_1.cons().drain(B, wait=True)
-        of_2.cons().drain(C, wait=True)
+    def sequence(A, B, C, in_0, out_1, out_2):
+        in_0.fill(A)
+        out_1.drain(B, wait=True)
+        out_2.drain(C, wait=True)
 
-    rt = Runtime(sequence, [n_ty, n_ty, n_ty])
+    rt = Runtime(
+        sequence,
+        [n_ty, n_ty, n_ty],
+        fn_args=[of_0.prod(), of_1.cons(), of_2.cons()],
+    )
     module = Program(NPU2(), rt, workers=[worker]).resolve_program()
     return module
 
@@ -94,11 +102,15 @@ def default_rt_basic_sequence(module):
 
     worker = Worker(core_fn, [of_0.cons(), of_1.prod()])
 
-    def sequence(A, B, C):
-        of_0.prod().fill(A)
-        of_1.cons().drain(B, wait=True)
+    def sequence(A, B, C, in_0, out_1):
+        in_0.fill(A)
+        out_1.drain(B, wait=True)
 
-    rt = Runtime(sequence, [n_ty, n_ty, n_ty])
+    rt = Runtime(
+        sequence,
+        [n_ty, n_ty, n_ty],
+        fn_args=[of_0.prod(), of_1.cons()],
+    )
     module = Program(NPU2(), rt, workers=[worker]).resolve_program()
     return module
 
@@ -125,12 +137,16 @@ def default_rt_fill_sequence(module):
 
     worker = Worker(core_fn, [of_0.cons(), of_1.cons(), of_2.prod()])
 
-    def sequence(A, B, C):
-        of_0.prod().fill(A)
-        of_1.prod().fill(B)
-        of_2.cons().drain(C, wait=True)
+    def sequence(A, B, C, in_0, in_1, out_2):
+        in_0.fill(A)
+        in_1.fill(B)
+        out_2.drain(C, wait=True)
 
-    rt = Runtime(sequence, [n_ty, n_ty, n_ty])
+    rt = Runtime(
+        sequence,
+        [n_ty, n_ty, n_ty],
+        fn_args=[of_0.prod(), of_1.prod(), of_2.cons()],
+    )
     module = Program(NPU2(), rt, workers=[worker]).resolve_program()
     return module
 
@@ -157,12 +173,16 @@ def rt_drain_then_fill_sequence(module):
 
     worker = Worker(core_fn, [of_0.cons(), of_1.cons(), of_2.prod()])
 
-    def sequence(A, B, C):
-        of_2.cons().drain(C, wait=True)
-        of_0.prod().fill(A)
-        of_1.prod().fill(B)
+    def sequence(A, B, C, in_0, in_1, out_2):
+        out_2.drain(C, wait=True)
+        in_0.fill(A)
+        in_1.fill(B)
 
-    rt = Runtime(sequence, [n_ty, n_ty, n_ty])
+    rt = Runtime(
+        sequence,
+        [n_ty, n_ty, n_ty],
+        fn_args=[of_0.prod(), of_1.prod(), of_2.cons()],
+    )
     module = Program(NPU2(), rt, workers=[worker]).resolve_program()
     return module
 
@@ -184,14 +204,18 @@ def rt_strict_mixed_sequence(module):
 
     worker = Worker(core_fn, [of_0.cons(), of_1.cons(), of_2.prod()])
 
-    def sequence(A, B, C):
+    def sequence(A, B, C, in_0, in_1, out_2):
         tg = TaskGroup()
-        of_2.cons().drain(C, wait=True, group=tg)
-        of_0.prod().fill(A, group=tg)
-        of_1.prod().fill(B)
+        out_2.drain(C, wait=True, group=tg)
+        in_0.fill(A, group=tg)
+        in_1.fill(B)
         tg.finish()
 
-    rt = Runtime(sequence, [n_ty, n_ty, n_ty])
+    rt = Runtime(
+        sequence,
+        [n_ty, n_ty, n_ty],
+        fn_args=[of_0.prod(), of_1.prod(), of_2.cons()],
+    )
     try:
         Program(NPU2(), rt, workers=[worker]).resolve_program()
     except Exception as e:
@@ -221,14 +245,19 @@ def rt_not_strict_mixed_sequence(module):
 
     worker = Worker(core_fn, [of_0.cons(), of_1.cons(), of_2.prod()])
 
-    def sequence(A, B, C):
+    def sequence(A, B, C, in_0, in_1, out_2):
         tg = TaskGroup()
-        of_2.cons().drain(C, wait=True, group=tg)
-        of_0.prod().fill(A, group=tg)
-        of_1.prod().fill(B)
+        out_2.drain(C, wait=True, group=tg)
+        in_0.fill(A, group=tg)
+        in_1.fill(B)
         tg.finish()
 
-    rt = Runtime(sequence, [n_ty, n_ty, n_ty], strict_task_groups=False)
+    rt = Runtime(
+        sequence,
+        [n_ty, n_ty, n_ty],
+        fn_args=[of_0.prod(), of_1.prod(), of_2.cons()],
+        strict_task_groups=False,
+    )
     module = Program(NPU2(), rt, workers=[worker]).resolve_program()
     return module
 
@@ -255,15 +284,19 @@ def rt_two_task_group_sequence(module):
 
     worker = Worker(core_fn, [of_0.cons(), of_1.cons(), of_2.prod()])
 
-    def sequence(A, B, C):
+    def sequence(A, B, C, in_0, in_1, out_2):
         tg = TaskGroup()
         tg2 = TaskGroup()
-        of_2.cons().drain(C, wait=True, group=tg)
-        of_0.prod().fill(A, group=tg)
-        of_1.prod().fill(B, group=tg2)
+        out_2.drain(C, wait=True, group=tg)
+        in_0.fill(A, group=tg)
+        in_1.fill(B, group=tg2)
         tg.finish()
         tg2.finish()
 
-    rt = Runtime(sequence, [n_ty, n_ty, n_ty])
+    rt = Runtime(
+        sequence,
+        [n_ty, n_ty, n_ty],
+        fn_args=[of_0.prod(), of_1.prod(), of_2.cons()],
+    )
     module = Program(NPU2(), rt, workers=[worker]).resolve_program()
     return module
