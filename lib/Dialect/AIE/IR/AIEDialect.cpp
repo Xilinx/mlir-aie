@@ -2264,6 +2264,37 @@ LogicalResult DMABDOp::verify() {
   if (std::optional<int32_t> nextBdId = getNextBdId();
       nextBdId.has_value() && static_cast<uint32_t>(*nextBdId) >= maxBds)
     return emitOpError("nextBdId attribute exceeds max: ") << maxBds - 1;
+
+  // Issue #1097: the buffer_length field of a DMA buffer descriptor has a
+  // tile-type-specific bit width (e.g. on AIE2: 32-bit shim, 17-bit mem tile,
+  // 14-bit core tile). The hardware field counts address-generation granules
+  // (32-bit words), so convert the byte length accordingly and reject
+  // transfers that would overflow the field (they would otherwise be silently
+  // truncated during lowering). Only checkable when the length is statically
+  // known: either an explicit constant `len`, or (when no `len` is given) a
+  // statically-shaped buffer whose full size is used.
+  {
+    bool lenStaticallyKnown = getConstantLen().has_value();
+    if (!lenStaticallyKnown && !hasLen()) {
+      if (auto shaped =
+              llvm::dyn_cast<mlir::ShapedType>(getBuffer().getType()))
+        lenStaticallyKnown = shaped.hasStaticShape();
+    }
+    if (lenStaticallyKnown) {
+      uint64_t lenInBytes = getLenInBytes();
+      uint32_t granularity = targetModel.getAddressGenGranularity();
+      if (granularity != 0) {
+        uint64_t lenInWords = lenInBytes * 8 / granularity;
+        uint64_t maxLen = targetModel.getDmaBdMaxLen(parentTile.getTileType());
+        if (lenInWords > maxLen)
+          return emitOpError()
+                 << "buffer descriptor length (" << lenInWords
+                 << " 32-bit words) exceeds the maximum of " << maxLen
+                 << " words supported by this tile type";
+      }
+    }
+  }
+
   // The dynamic-operand count must match the kDynamic-sentinel count in each
   // static array, and sizes/strides must agree in rank. Checked before any
   // consumer calls getMixedValues, which crashes on a mismatch (llvm #179401).
