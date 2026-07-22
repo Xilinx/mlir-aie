@@ -40,18 +40,17 @@ Three flows are emitted from the same building blocks:
 | chart label | mechanism | Makefile target |
 |---|---|---|
 | **separate xclbins** | worker + empty are separate xclbins (two contexts); each iteration runs the worker then the empty reset | `run_separate` |
-| **XRT runlist** | worker + empty runs chained in one `xrt::runlist` | `run_runlist` |
+| **XRT runlist** | WORKER + EMPTY kernels merged into one xclbin (via `aiecc --xclbin-input`) so they share a single `hw_context`; the runlist alternates them | `run_runlist` |
 | **load_pdis** | full-ELF, `aiex.configure` lowers to `load_pdi` | `run_loadpdi` |
 | **blockwrites + empty reset** | full-ELF, `aiecc --expand-load-pdis` (write32s + empty PDI reset) | `run_blockwrites` |
 | **control packets + load_pdi overlay** | full-ELF, `aiecc --load-pdi-to-ctrl-pkt` (stream config through DMA) | `run_ctrlpkt` |
 
-> **Note on `XRT runlist`.** An `xrt::runlist` is bound to a single
-> `hw_context` and cannot switch the loaded PDI between its runs, so the empty
-> run added from a second context does **not** reset the array — the runlist
-> just re-executes the already-loaded (looping) worker. Its measured time is
-> therefore independent of the array size (flat ~80 us for 1x1 and 8x4 alike),
-> unlike every real reconfiguration approach, so `plot.py` omits it from the
-> chart. It is still measured into the CSV for the record.
+> **Why the runlist needs a combined xclbin.** An `xrt::runlist` is bound to a
+> single `hw_context`. A runlist of one kernel just re-runs the already-loaded
+> configuration (no reconfiguration — its time would be flat regardless of array
+> size). Putting the WORKER and EMPTY kernels (distinct PDIs) into *one* xclbin
+> via `--xclbin-input` lets the runlist alternate them within a single context,
+> so switching kernels actually reconfigures the array.
 
 ## Testbench
 

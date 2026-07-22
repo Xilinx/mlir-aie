@@ -34,6 +34,11 @@ worker_xclbin := build/worker_${suffix}.xclbin
 worker_bin := build/worker_${suffix}.bin
 empty_xclbin := build/empty.xclbin
 empty_bin := build/empty.bin
+# Runlist: WORKER + EMPTY kernels merged into one xclbin (one hw_context).
+empty_k_xclbin := build/empty_k.xclbin
+empty_k_bin := build/empty_k.bin
+combined_xclbin := build/combined_${suffix}.xclbin
+worker_rl_bin := build/worker_rl_${suffix}.bin
 elf_loadpdi := build/loadpdi_${suffix}.elf
 elf_blockwrites := build/blockwrites_${suffix}.elf
 elf_ctrlpkt := build/ctrlpkt_${suffix}.elf
@@ -56,6 +61,22 @@ ${empty_xclbin} ${empty_bin} &: ${srcdir}/reconfiguration.py
 	python3 $< --flow empty > build/empty.mlir
 	cd build && aiecc ${aiecc_flags} --get-xclbin --get-npu-insts \
 		--xclbin-name=$(notdir ${empty_xclbin}) --npu-insts-name=$(notdir ${empty_bin}) empty.mlir
+
+# Merge into one xclbin: build the EMPTY kernel, then the WORKER kernel with
+# --xclbin-input so the result carries both PDIs (one context, two kernels).
+${empty_k_xclbin} ${empty_k_bin} &: ${srcdir}/reconfiguration.py
+	mkdir -p build
+	python3 $< --flow empty > build/empty_k.mlir
+	cd build && aiecc ${aiecc_flags} --xclbin-kernel-name=EMPTY --xclbin-kernel-id=0x902 \
+		--xclbin-instance-name=EMPTYINST --get-xclbin --get-npu-insts \
+		--xclbin-name=$(notdir ${empty_k_xclbin}) --npu-insts-name=$(notdir ${empty_k_bin}) empty_k.mlir
+
+${combined_xclbin} ${worker_rl_bin} &: ${srcdir}/reconfiguration.py ${empty_k_xclbin}
+	mkdir -p build
+	python3 $< --flow single --cols ${COLS} --rows ${ROWS} --nops ${NOPS} > build/worker_rl_${suffix}.mlir
+	cd build && aiecc ${aiecc_flags} --xclbin-kernel-name=WORKER --xclbin-kernel-id=0x901 \
+		--xclbin-instance-name=WORKERINST --get-xclbin --get-npu-insts --xclbin-input=$(notdir ${empty_k_xclbin}) \
+		--xclbin-name=$(notdir ${combined_xclbin}) --npu-insts-name=$(notdir ${worker_rl_bin}) worker_rl_${suffix}.mlir
 
 build/reconfig_${suffix}.mlir: ${srcdir}/reconfiguration.py
 	mkdir -p build
@@ -88,8 +109,8 @@ xclbin_args = ${worker_xclbin} ${worker_bin} ${empty_xclbin} ${empty_bin} ${COLS
 run_separate: ${worker_xclbin} ${worker_bin} ${empty_xclbin} ${empty_bin} test_separate
 	./test_separate ${xclbin_args}
 
-run_runlist: ${worker_xclbin} ${worker_bin} ${empty_xclbin} ${empty_bin} test_runlist
-	./test_runlist ${xclbin_args}
+run_runlist: ${combined_xclbin} ${worker_rl_bin} ${empty_k_bin} test_runlist
+	./test_runlist ${combined_xclbin} ${worker_rl_bin} ${empty_k_bin} ${COLS} ${ROWS} ${ITERS}
 
 run_loadpdi: ${elf_loadpdi} test_fullelf
 	./test_fullelf ${elf_loadpdi} ${COLS} ${ROWS} ${ITERS}

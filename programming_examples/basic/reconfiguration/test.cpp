@@ -17,8 +17,10 @@
 //               iteration runs the worker then the empty reset (two contexts).
 //                 argv: <worker.xclbin> <worker.bin> <empty.xclbin> <empty.bin>
 //                       <cols> <rows> <iters>
-//   -DRUNLIST   worker + empty runs chained in one xrt::runlist per iteration.
-//                 argv: same as default
+//   -DRUNLIST   worker + empty (WORKER + EMPTY kernels in one combined xclbin,
+//               one context) chained in one xrt::runlist per iteration.
+//                 argv: <combined.xclbin> <worker.bin> <empty.bin>
+//                       <cols> <rows> <iters>
 //   -DFULL_ELF  full-ELF reconfig flow (kernel main:sequence); the ELF resets
 //               itself (loads @empty then @worker), so no host-side reset.
 //                 argv: <aie.elf> <cols> <rows> <iters>
@@ -81,20 +83,33 @@ static std::vector<uint32_t> load_bin(const std::string &path) {
   return v;
 }
 
-// A registered xclbin + its instruction stream, ready to spawn runs.
+// A hw_context + kernel + its instruction stream, ready to spawn runs.
 struct Kernel {
   xrt::hw_context context;
   xrt::kernel kernel;
   xrt::bo bo_instr;
   uint32_t n_instr;
 
+  // Own context, created from its own xclbin.
   Kernel(xrt::device &device, const std::string &xclbin_path,
-         const std::string &insts_path) {
-    auto instr = load_bin(insts_path);
-    xrt::xclbin xclbin(xclbin_path);
+         const std::string &insts_path, const std::string &kname = "MLIR_AIE") {
+    xrt::xclbin xclbin{xclbin_path};
     device.register_xclbin(xclbin);
     context = xrt::hw_context(device, xclbin.get_uuid());
-    kernel = xrt::kernel(context, "MLIR_AIE");
+    init(device, insts_path, kname);
+  }
+
+  // Share an already-registered context (e.g. two kernels of one xclbin).
+  Kernel(xrt::device &device, const xrt::hw_context &ctx,
+         const std::string &insts_path, const std::string &kname) {
+    context = ctx;
+    init(device, insts_path, kname);
+  }
+
+  void init(xrt::device &device, const std::string &insts_path,
+            const std::string &kname) {
+    auto instr = load_bin(insts_path);
+    kernel = xrt::kernel(context, kname);
     n_instr = (uint32_t)instr.size();
     bo_instr = xrt::bo(device, instr.size() * sizeof(uint32_t),
                        XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
@@ -144,7 +159,48 @@ int main(int argc, char **argv) {
     errors += check(out, n);
     times.push_back(us(t1 - t0).count());
   }
+#elif defined(RUNLIST)
+  // One combined xclbin holds the WORKER and EMPTY kernels; both share a single
+  // hw_context and the runlist alternates them.  The two kernels have distinct
+  // PDIs, so switching between them reconfigures the array (a runlist of a
+  // single kernel would just re-run the already-loaded configuration).
+  std::string combined_xclbin = argv[1], worker_bin = argv[2],
+              empty_bin = argv[3];
+  int n = std::stoi(argv[4]) * std::stoi(argv[5]);
+  int iters = std::stoi(argv[6]);
+
+  xrt::xclbin xclbin{combined_xclbin};
+  device.register_xclbin(xclbin);
+  xrt::hw_context context(device, xclbin.get_uuid());
+  Kernel worker(device, context, worker_bin, "WORKER");
+  Kernel empty(device, context, empty_bin, "EMPTY");
+
+  xrt::bo bo_out(device, n * sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
+                 worker.kernel.group_id(3));
+  int32_t *out = bo_out.map<int32_t *>();
+  xrt::bo bo_empty(device, sizeof(int32_t), XRT_BO_FLAGS_HOST_ONLY,
+                   empty.kernel.group_id(3));
+
+  for (int it = 0; it < iters; it++) {
+    std::fill(out, out + n, -1);
+    bo_out.sync(XCL_BO_SYNC_BO_TO_DEVICE);
+    xrt::runlist runlist(context);
+    auto rw = worker.make_run(bo_out);
+    auto re = empty.make_run(bo_empty);
+    runlist.add(rw);
+    runlist.add(re);
+    auto t0 = clk::now();
+    runlist.execute();
+    runlist.wait();
+    auto t1 = clk::now();
+    bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
+    errors += check(out, n);
+    times.push_back(us(t1 - t0).count());
+  }
 #else
+  // "separate xclbins": worker and empty are distinct xclbins (distinct
+  // hw_contexts); switching contexts between the worker and empty runs each
+  // iteration reconfigures the array.
   std::string worker_xclbin = argv[1], worker_bin = argv[2];
   std::string empty_xclbin = argv[3], empty_bin = argv[4];
   int n = std::stoi(argv[5]) * std::stoi(argv[6]);
@@ -162,18 +218,6 @@ int main(int argc, char **argv) {
   for (int it = 0; it < iters; it++) {
     std::fill(out, out + n, -1);
     bo_out.sync(XCL_BO_SYNC_BO_TO_DEVICE);
-
-#if defined(RUNLIST)
-    xrt::runlist runlist(worker.context);
-    auto rw = worker.make_run(bo_out);
-    auto re = empty.make_run(bo_empty);
-    runlist.add(rw);
-    runlist.add(re);
-    auto t0 = clk::now();
-    runlist.execute();
-    runlist.wait();
-    auto t1 = clk::now();
-#else
     auto rw = worker.make_run(bo_out);
     auto re = empty.make_run(bo_empty);
     auto t0 = clk::now();
@@ -182,8 +226,6 @@ int main(int argc, char **argv) {
     re.start();
     re.wait();
     auto t1 = clk::now();
-#endif
-
     bo_out.sync(XCL_BO_SYNC_BO_FROM_DEVICE);
     errors += check(out, n);
     times.push_back(us(t1 - t0).count());
