@@ -16,10 +16,13 @@ routed `DMA:0 -> South` toward the shim. The single BD loops back to itself
 acquire** and the routed datapath is quiescent -- switch-config writes take effect
 on a settled datapath, not mid-stream.
 
-Each dispatch disables then re-enables the `DMA:0` slave port
+Each dispatch re-enables the `DMA:0` slave port
 (`Stream_Switch_Slave_DMA_0_Config`, `Slave_Enable` at bit 31; enabled value
-`0x80000000`), re-arms the lock, and collects. The buffer is resident, so every
-dispatch must return the same bytes (`100 + i`).
+`0x80000000`), re-arms the lock, collects, then disables the port again at the
+end. The config register is sticky, so the port stays off between dispatches and
+the re-enable at the start of the next dispatch genuinely restores the route --
+rather than being a no-op net of an adjacent disable. The buffer is resident, so
+every dispatch must return the same bytes (`100 + i`).
 
 Only the slave port is toggled -- the master (South) config is left resident -- so
 a failure pins to that one port rather than to the DMA channel or the route as a
@@ -32,15 +35,21 @@ and how to run.
 
 ## Behaviour
 
-- **Correct protocol (this test):** disable + re-enable the port while quiescent,
-  then re-arm the lock -> the route carries data on every dispatch.
-- **Disable without re-enable:** the port stays off, so the MM2S has nowhere to
-  stream and the collect never completes.
-- **No reset:** a routed channel that is never interrupted needs no reset and
-  streams correctly; the disable/re-enable is a no-op net of each other here.
+The disable and re-enable straddle the dispatch boundary -- re-enable at the
+start, disable at the end -- so the port is genuinely off at the start of every
+dispatch after the first, keeping the re-enable on the critical path:
 
-The failure modes hang by design; reproduce them by hand by editing the reset
-sequence in `aie.mlir`.
+- **Correct protocol (this test):** re-enable the port, re-arm the lock, collect,
+  then disable -> every dispatch returns the resident buffer.
+- **Omit the re-enable:** dispatch 0 still streams (port enabled from CDO load),
+  but its end-disable leaves the port off, so dispatch 1 has nowhere to stream and
+  does not complete.
+- **Omit both switch writes:** the route stays resident and the lock re-arm alone
+  gates each send, so it passes -- which is exactly why the disable is included, so
+  that the re-enable actually exercises the port instead of being a net no-op.
+
+Reproduce the failure mode by hand by deleting the re-enable `write32` in
+`aie.mlir`.
 
 ## Reference
 

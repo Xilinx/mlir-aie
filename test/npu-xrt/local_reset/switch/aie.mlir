@@ -34,15 +34,16 @@ module {
     aie.shim_dma_allocation @out0 (%t00, S2MM, 0)
 
     aie.runtime_sequence @seq(%arg0: memref<8xi32>) {
-      // Config-disable then re-enable the DMA:0 slave port
-      // (Stream_Switch_Slave_DMA_0_Config, 0x3F104). Only this port is touched
-      // (the master South config is left resident), so the reset is isolated to
-      // the switch connection. Valid because the channel is stalled on the cons
-      // lock, so the route is idle.
+      // Re-enable the DMA:0 slave port (Stream_Switch_Slave_DMA_0_Config,
+      // 0x3F104, Slave_Enable at bit 31 = 0x80000000), re-establishing the route
+      // the previous dispatch tore down at its end (see the disable below). On
+      // the first dispatch the port is still enabled from CDO load, so this is a
+      // no-op; from the second dispatch on it genuinely restores a disabled port
+      // -- omit it and the MM2S has nowhere to stream and the collect hangs. Only
+      // the slave port is touched (the master South config is left resident), so
+      // the reset is isolated to the switch connection.
       %slave = arith.constant 258308 : i32
-      %disable = arith.constant 0 : i32
       %enable = arith.constant -2147483648 : i32
-      aiex.npu.write32(%slave, %disable) {column = 0 : i32, row = 2 : i32} : i32, i32
       aiex.npu.write32(%slave, %enable) {column = 0 : i32, row = 2 : i32} : i32, i32
 
       // Re-arm the cons lock (LOCK0_VALUE, 0x1F000 = 126976) so the send
@@ -53,6 +54,14 @@ module {
 
       aiex.npu.dma_memcpy_nd(%arg0[0,0,0,0][1,1,1,8][0,0,0,1]) {id=0:i64, issue_token=true, metadata=@out0} : memref<8xi32>
       aiex.npu.dma_wait {symbol=@out0}
+
+      // Tear the DMA:0 slave port down (Slave_Enable -> 0) now that the send is
+      // done and the channel is quiescent again (stalled on cons). The config
+      // register is sticky, so the port stays disabled until the next dispatch's
+      // re-enable above -- which is what makes that re-enable load-bearing rather
+      // than a no-op net of an adjacent disable.
+      %disable = arith.constant 0 : i32
+      aiex.npu.write32(%slave, %disable) {column = 0 : i32, row = 2 : i32} : i32, i32
     }
   }
 }

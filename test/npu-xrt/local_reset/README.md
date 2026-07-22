@@ -16,7 +16,7 @@ resets one resettable block and shows that the design keeps working across it.
 |--------|-------------|-----------------|-----------------|
 | [`core`](core/README.md) | AI Engine core | `Core_Control` (`0x32000`) | assert reset -> release -> enable |
 | [`dma`](dma/README.md) | MM2S DMA channel | `DMA_MM2S_0_Ctrl` (`0x1DE10`) | disable -> reset -> deassert -> enable, re-push BD, re-arm lock |
-| [`switch`](switch/README.md) | Stream-switch connection | `Stream_Switch_Slave_DMA_0_Config` (`0x3F104`) | config-disable -> re-enable slave port, re-arm lock |
+| [`switch`](switch/README.md) | Stream-switch connection | `Stream_Switch_Slave_DMA_0_Config` (`0x3F104`) | re-enable slave port (torn down each dispatch end), re-arm lock |
 
 ## Shared design
 

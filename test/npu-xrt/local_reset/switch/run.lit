@@ -1,8 +1,8 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// Stream-switch reset: config-disable then re-enable the DMA:0 slave port,
-// re-arm the lock (see README.md).
+// Stream-switch reset: re-enable the DMA:0 slave port (torn down at each
+// dispatch end), re-arm the lock (see README.md).
 //
 // REQUIRES: ryzen_ai
 //
