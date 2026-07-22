@@ -22,63 +22,107 @@ srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
 include ${srcdir}/../../makefile-common
 
-# Design parameters. Override on the command line, e.g.
-#   make CORES=4 NOPS=64 RECONFIGS=2 run
+
+# ---
+# Design parameters
+# ---
+
 CORES ?= 1
 NOPS ?= 0
 RECONFIGS ?= 1
 
 suffix := c${CORES}_n${NOPS}_r${RECONFIGS}
 
-reconfig_elf := build/reconfig_${suffix}.elf
+elf_loadpdi := build/elf_loadpdi_${suffix}.elf
+elf_blockwrites := build/elf_blockwrites_${suffix}.elf
+elf_ctrlpkt := build/elf_ctrlpkt_${suffix}.elf
 xclbin := build/final_${suffix}.xclbin
 insts_bin := build/insts_${suffix}.bin
 
-# Host testbench build (no CMake; compile test.cpp directly against XRT).
-XRT_FLAGS := -I${XILINX_XRT}/include -L${XILINX_XRT}/lib -luuid -lxrt_coreutil -lrt -lstdc++
+
+# ---
+# Phony
+# ---
 
 .PHONY: all run run_xclbin run_runlist build_fullelf build_xclbin build_runlist clean
 
-all: build_fullelf
+all: build_fullelf_loadpdi build_fullelf_blockwrites build_fullelf_ctrlpkt build_xclbin build_runlist
 
-# ---- reconfig flow: full-ELF, multi-device aiex.configure / aiex.run ----
-${reconfig_elf}: ${srcdir}/reconfiguration.py
+build_fullelf_loadpdi: ${elf_loadpdi} test_fullelf
+
+build_fullelf_blockwrites: ${elf_blockwrites} test_fullelf
+
+build_fullelf_ctrlpkt: ${elf_ctrlpkt} test_fullelf
+
+build_xclbin: ${xclbin} ${insts_bin} test_xclbin
+
+build_runlist: ${xclbin} ${insts_bin} test_runlist
+
+run_fullelf_loadpdi: build_fullelf_loadpdi
+	./test_fullelf ${elf_loadpdi} ${CORES}
+
+run_fullelf_blockwrites: build_fullelf_blockwrites
+	./test_fullelf ${elf_blockwrites} ${CORES}
+
+run_fullelf_ctrlpkt: build_fullelf_ctrlpkt
+	./test_fullelf ${elf_ctrlpkt} ${CORES}
+
+run_xclbin: build_xclbin
+	./test_xclbin ${xclbin} ${insts_bin} ${CORES}
+
+run_runlist: build_runlist
+	./test_runlist ${xclbin} ${insts_bin} ${CORES} ${RECONFIGS}
+
+clean:
+	rm -rf build test_fullelf test_xclbin test_runlist
+
+# ---
+# AIE Array design
+# ---
+
+# --- full ELF ---
+
+build/reconfig_${suffix}.mlir: ${srcdir}/reconfiguration.py
 	mkdir -p build
 	python3 $< --flow reconfig --cores ${CORES} --nops ${NOPS} --reconfigs ${RECONFIGS} > build/reconfig_${suffix}.mlir
-	cd build && aiecc -v --generate-full-elf --no-xchesscc --no-xbridge --dynamic-objFifos reconfig_${suffix}.mlir
+
+${elf_loadpdi}: build/reconfig_${suffix}.mlir
+	mkdir -p build
+	cd build && aiecc -v --get-full-elf --no-xchesscc --no-xbridge --dynamic-objFifos ${<F}
 	mv build/aie.elf $@
 
-reconfiguration_fullelf.exe: ${srcdir}/test.cpp
+${elf_blockwrites}: build/reconfig_${suffix}.mlir
+	mkdir -p build
+	cd build && aiecc -v --get-full-elf --no-xchesscc --no-xbridge --dynamic-objFifos --expand-load-pdis ${<F}
+	mv build/aie.elf $@
+
+${elf_ctrlpkt}: build/reconfig_${suffix}.mlir
+	mkdir -p build
+	cd build && aiecc -v --get-full-elf --no-xchesscc --no-xbridge --dynamic-objFifos --load-pdi-to-ctrlpkt ${<F}
+	mv build/aie.elf $@
+
+
+# ---
+# Host CPU executable
+# ---
+
+XRT_FLAGS := -I${XILINX_XRT}/include -L${XILINX_XRT}/lib -luuid -lxrt_coreutil -lrt -lstdc++
+
+test_fullelf: ${srcdir}/test.cpp
 	${CXX} -std=c++17 -DFULL_ELF $< -o $@ ${XRT_FLAGS}
 
-build_fullelf: ${reconfig_elf} reconfiguration_fullelf.exe
+test_xclbin: ${srcdir}/test.cpp
+	${CXX} -std=c++17 $< -o $@ ${XRT_FLAGS}
 
-run: build_fullelf
-	./reconfiguration_fullelf.exe ${reconfig_elf} ${CORES}
+test_runlist: ${srcdir}/test.cpp
+	${CXX} -std=c++17 -DRUNLIST $< -o $@ ${XRT_FLAGS}
+
 
 # ---- single flow: one device (no load_pdi), xclbin + insts ----
 ${xclbin} ${insts_bin} &: ${srcdir}/reconfiguration.py
 	mkdir -p build
 	python3 $< --flow single --cores ${CORES} --nops ${NOPS} > build/single_${suffix}.mlir
-	cd build && aiecc --no-xchesscc --no-xbridge --aie-generate-xclbin --aie-generate-npu-insts \
+	cd build && aiecc --no-xchesscc --no-xbridge --get-xclbin --get-npu-insts \
 		--xclbin-name=$(notdir ${xclbin}) --npu-insts-name=$(notdir ${insts_bin}) \
-		--no-compile-host single_${suffix}.mlir
+		single_${suffix}.mlir
 
-reconfiguration_xclbin.exe: ${srcdir}/test.cpp
-	${CXX} -std=c++17 $< -o $@ ${XRT_FLAGS}
-
-reconfiguration_runlist.exe: ${srcdir}/test.cpp
-	${CXX} -std=c++17 -DRUNLIST $< -o $@ ${XRT_FLAGS}
-
-build_xclbin: ${xclbin} ${insts_bin} reconfiguration_xclbin.exe
-
-build_runlist: ${xclbin} ${insts_bin} reconfiguration_runlist.exe
-
-run_xclbin: build_xclbin
-	./reconfiguration_xclbin.exe ${xclbin} ${insts_bin} ${CORES}
-
-run_runlist: build_runlist
-	./reconfiguration_runlist.exe ${xclbin} ${insts_bin} ${CORES} ${RECONFIGS}
-
-clean:
-	rm -rf build reconfiguration_fullelf.exe reconfiguration_xclbin.exe reconfiguration_runlist.exe
