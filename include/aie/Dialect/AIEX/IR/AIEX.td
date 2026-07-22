@@ -1387,6 +1387,51 @@ def AIEX_SetLockOp: AIEX_Op<"set_lock", [HasParent<"AIE::RuntimeSequenceOp">, Sk
   }];
 }
 
+def AIEX_DmaChannelResetOp: AIEX_Op<"dma_channel_reset", [HasParent<"AIE::RuntimeSequenceOp">, SkipAccessibilityCheckTrait]> {
+  let summary = "Reset a DMA channel from a runtime sequence";
+  let description = [{
+    Resets the DMA channel `channel` in direction `direction` on `tile` by
+    pulsing the channel control register reset bit. Intended for re-arming a
+    resident objectFIFO across dispatches: it clears the channel's residual
+    queue state so it does not carry into a subsequent dispatch. This resets the
+    DMA channel state only; it does not by itself establish a clean dispatch
+    baseline in general. The operation is non blocking and offers no
+    synchronization guarantees.
+
+    The pulse is emitted as two `npu.maskwrite32` writes masked to the reset bit,
+    so it preserves the other control fields (out-of-order, compression,
+    controller id, FoT mode) instead of clobbering them.
+
+    Only core and mem tiles have a per-channel DMA reset bit; shim NOC/PL tiles
+    are rejected by the verifier because their DMA control register has no reset
+    field.
+
+    `tile` is an SSA `aie.tile` value, so the target is named the same way as
+    `aiex.dma_configure_task`.
+
+    Example:
+    ```
+      %tile = aie.tile(2, 3)
+      aiex.dma_channel_reset(%tile, S2MM, 0)
+    ```
+  }];
+  let arguments = (
+    ins Index:$tile,
+        DMAChannelDir:$direction,
+        I32Attr:$channel
+  );
+  let assemblyFormat = [{ `(` $tile `,` $direction `,` $channel `)` attr-dict }];
+  let extraClassDeclaration = [{
+    AIE::TileOp getTileOp();
+  }];
+  let extraClassDefinition = [{
+    AIE::TileOp DmaChannelResetOp::getTileOp() {
+      return cast<AIE::TileOp>(getTile().getDefiningOp());
+    }
+  }];
+  let hasVerifier = 1;
+}
+
 //===----------------------------------------------------------------------===//
 // ScratchpadParameter ops
 //===----------------------------------------------------------------------===//
