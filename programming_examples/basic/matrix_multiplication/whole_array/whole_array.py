@@ -30,6 +30,7 @@ from aie.iron import (
     Out,
     Program,
     Runtime,
+    TaskGroup,
     Worker,
     kernels,
     str_to_dtype,
@@ -297,13 +298,15 @@ def _build_design(
             tile_group_steps=(1, n_aie_cols),
             prune_step=False,
         )
-    c_index = 0
+    flat_workers = [w for row in workers for w in row]
 
-    rt = Runtime()
-    with rt.sequence(A_ty, B_ty, C_ty) as (A, B, C):
-        rt.start(*[w for row in workers for w in row])
+    A_prods = [f.prod() for f in A_l3l2_fifos]
+    B_prods = [f.prod() for f in B_l3l2_fifos]
+    C_conses = [f.cons() for f in C_l2l3_fifos]
 
-        tg = rt.task_group()
+    def sequence(A, B, C, A_hs, B_hs, C_hs):
+        c_index = 0
+        tg = TaskGroup()
         for tb in range(iron.ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
             for pingpong in [0, 1]:
                 if c_index >= len(C_tiles):
@@ -316,12 +319,11 @@ def _build_design(
 
                 for col in range(n_aie_cols):
                     C_taps.append(C_tiles[c_index])
-                    rt.drain(
-                        C_l2l3_fifos[col].cons(),
+                    C_hs[col].drain(
                         C,
                         tap=C_tiles[c_index],
                         wait=True,
-                        task_group=tg,
+                        group=tg,
                     )
                     c_index += 1
 
@@ -330,25 +332,35 @@ def _build_design(
                             (row_base + tile_row) * n_shim_mem_A + col
                         ) % len(A_tiles)
                         if col < n_aie_rows:
-                            rt.fill(
-                                A_l3l2_fifos[col].prod(),
+                            A_hs[col].fill(
                                 A,
                                 tap=A_tiles[tile_offset],
-                                task_group=tg,
+                                group=tg,
                             )
-                        rt.fill(
-                            B_l3l2_fifos[col].prod(),
+                        B_hs[col].fill(
                             B,
                             tap=B_tiles[col],
-                            task_group=tg,
+                            group=tg,
                         )
                         A_taps.append(A_tiles[tile_offset])
                         B_taps.append(B_tiles[col])
 
                 if tb > 0 or (tb == 0 and pingpong > 0):
-                    rt.finish_task_group(tg)
-                    tg = rt.task_group()
-        rt.finish_task_group(tg)
+                    tg.finish()
+                    tg = TaskGroup()
+        tg.finish()
+
+    rt = Runtime(
+        sequence,
+        [A_ty, B_ty, C_ty],
+        fn_args=[A_prods, B_prods, C_conses],
+    )
+
+    # resolve_program() runs the sequence body, which populates the closure
+    # A_taps/B_taps/C_taps lists as a side effect. The generate_taps path needs
+    # that side effect, so resolve first and discard the module for that mode.
+    program = Program(dev, rt, workers=flat_workers)
+    module = program.resolve_program()
 
     if generate_taps:
         return (
@@ -357,7 +369,7 @@ def _build_design(
             TensorAccessSequence.from_taps(C_taps),
         )
 
-    return Program(dev, rt).resolve_program()
+    return module
 
 
 @iron.jit(aiecc_flags=["--alloc-scheme=basic-sequential"])

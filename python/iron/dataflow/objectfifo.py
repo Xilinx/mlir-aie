@@ -38,6 +38,17 @@ from .endpoint import ObjectFifoEndpoint
 from ..device import Tile, AnyMemTile
 
 
+def _same_tile(a: "Tile | None", b: "Tile | None") -> bool:
+    """Whether two shim-tile pins refer to the same placement.
+
+    Tile.__eq__ is identity-based, so compare by (col, row); two unpinned
+    (None or col/row None) tiles are considered the same.
+    """
+    if a is None or b is None:
+        return a is b
+    return (a.col, a.row) == (b.col, b.row)
+
+
 class ObjectFifo(Resolvable):
     """A synchronized, explicit dataflow channel between IRON program
     components such as [`Worker`][iron.Worker]s and the [`Runtime`][iron.Runtime].
@@ -187,7 +198,10 @@ class ObjectFifo(Resolvable):
         )
 
     def prod(
-        self, depth: int | None = None, channel: int | None = None
+        self,
+        depth: int | None = None,
+        channel: int | None = None,
+        tile: Tile | None = None,
     ) -> ObjectFifoHandle:
         """Returns an ObjectFifoHandle of type producer. Each ObjectFifo may have only one producer
         handle, so if one already exists, a new reference to this handle will be returned.
@@ -195,6 +209,9 @@ class ObjectFifo(Resolvable):
         Args:
             depth (int | None, optional): The depth of the buffers at the endpoint corresponding to the producer handle. Defaults to None.
             channel (int | None, optional): Pin the producer endpoint's DMA channel instead of first-free assignment. Defaults to None (auto-assign).
+            tile (Tile | None, optional): When this handle drives an ObjectFifo
+                from the runtime (passed in ``Runtime`` ``fn_args``), the shim tile
+                its host-side DMA binds to. Defaults to None (any available shim tile).
 
         Raises:
             ValueError: Arguments are validated
@@ -216,8 +233,13 @@ class ObjectFifo(Resolvable):
                     f"Producer handle for {self.name} already pinned to channel "
                     f"{self._prod.channel}, cannot re-pin to {channel}."
                 )
+            if tile is not None and not _same_tile(self._prod._shim_tile, tile):
+                raise ValueError(
+                    f"Producer handle for {self.name} already pinned to shim tile "
+                    f"{self._prod._shim_tile}, cannot re-pin to {tile}."
+                )
         else:
-            self._prod = ObjectFifoHandle(self, True, depth, channel=channel)
+            self._prod = ObjectFifoHandle(self, True, depth, channel=channel, tile=tile)
         return self._prod
 
     def cons(
@@ -225,6 +247,7 @@ class ObjectFifo(Resolvable):
         depth: int | None = None,
         dims_from_stream: StreamDims | None = None,
         channel: int | None = None,
+        tile: Tile | None = None,
     ) -> ObjectFifoHandle:
         """Returns an ObjectFifoHandle of type consumer. Each ObjectFifo may have multiple consumers, so this
         will return a new consumer handle every time it is called.
@@ -233,6 +256,9 @@ class ObjectFifo(Resolvable):
             depth (int | None, optional): The depth of the buffers at the endpoint corresponding to this consumer handle. Defaults to None.
             dims_from_stream (StreamDims | None, optional): Dimensions from stream for this consumer. Defaults to None.
             channel (int | None, optional): Pin this consumer endpoint's DMA channel instead of first-free assignment. Defaults to None (auto-assign).
+            tile (Tile | None, optional): When this handle drains an ObjectFifo to
+                the runtime (passed in ``Runtime`` ``fn_args``), the shim tile its
+                host-side DMA binds to. Defaults to None (any available shim tile).
 
         Raises:
             ValueError: Arguments are validated
@@ -255,6 +281,7 @@ class ObjectFifo(Resolvable):
                 depth=depth,
                 dims_from_stream=dims_from_stream,
                 channel=channel,
+                tile=tile,
             )
         )
         return self._cons[-1]
@@ -445,6 +472,7 @@ class ObjectFifoHandle(Resolvable):
         depth: int | None = None,
         dims_from_stream: StreamDims | None = None,
         channel: int | None = None,
+        tile: Tile | None = None,
     ):
         """Construct an ObjectFifoHandle
 
@@ -454,6 +482,7 @@ class ObjectFifoHandle(Resolvable):
             depth (int | None, optional): The depth of the ObjectFifo at this endpoint. Defaults to None.
             dims_from_stream (StreamDims | None, optional): A unique dimensions from stream. This is only valid for consumer handles. Defaults to None.
             channel (int | None, optional): Pin this endpoint's DMA channel instead of first-free assignment. Defaults to None (auto-assign).
+            tile (Tile | None, optional): Shim tile for a runtime-driven endpoint (see prod()/cons()). Defaults to None.
 
         Raises:
             ValueError: Arguments are validated.
@@ -479,6 +508,7 @@ class ObjectFifoHandle(Resolvable):
         self._object_fifo = of
         self._depth = depth
         self._channel = channel
+        self._shim_tile = tile
         self._endpoint = None
         self._dims_from_stream = dims_from_stream
 
@@ -589,6 +619,185 @@ class ObjectFifoHandle(Resolvable):
                 f"Set to {self._endpoint}, trying to set to {endpoint}"
             )
         self._endpoint = endpoint
+
+    def _emit_transfer(
+        self,
+        rt_data,
+        tap,
+        wait: bool,
+        packet: tuple[int, int] | None,
+        offset_parameter,
+        group,
+        sizes=None,
+        strides=None,
+        offset=None,
+        transfer_len=None,
+        managed=True,
+    ):
+        """Shared body for fill()/drain(): bind the shim endpoint, register the
+        fifo with the active runtime sequence, and emit the shim DMA transfer.
+        Returns a [`Task`][iron.runtime.dmataskhandle.Task] handle to the
+        transfer (carry it as a ``range_`` iter_arg; ``.free()``/``.await_()`` it).
+
+        The access pattern is given either as a static ``tap`` or as explicit
+        ``sizes``/``strides``/``offset``/``transfer_len`` whose entries may be
+        runtime SSA values (the dynamic path). The two forms are mutually
+        exclusive; when neither is given, a linear transfer of the whole buffer
+        is used.
+
+        When ``managed`` is True (default), the transfer is enrolled in a
+        TaskGroup (explicit ``group`` or the sequence's implicit one), which
+        awaits/frees it at group close. When False, the caller owns the
+        transfer's lifetime via the returned Task's ``.free()``/``.await_()`` --
+        used for hand-rolled software pipelines that carry the task across
+        ``scf.for`` iterations.
+
+        Lazy imports break the runtime<->dataflow import cycle.
+        """
+        from ..runtime.data import RuntimeData
+        from ..runtime.dmatask import DMATask
+        from ..runtime.dmataskhandle import Task
+        from ..runtime.endpoint import RuntimeEndpoint
+        from ..runtime._context import active_sequence
+        from ..scratchpad_parameter import ScratchpadParameter
+
+        active = active_sequence()
+        rt = active._runtime
+
+        if not isinstance(rt_data, RuntimeData):
+            raise ValueError(f"Expected a RuntimeData source/dest, got {rt_data}")
+        if rt_data not in rt._rt_data:
+            raise ValueError(
+                f"{rt_data} is not a RuntimeData object declared by sequence()"
+            )
+
+        explicit = any(v is not None for v in (sizes, strides, offset, transfer_len))
+        if tap is not None and explicit:
+            raise ValueError(
+                "Pass either tap or sizes/strides/offset/transfer_len, not both."
+            )
+        if tap is None and not explicit:
+            tap = rt_data.default_tap()
+
+        if not managed and group is not None:
+            raise ValueError(
+                "An unmanaged transfer (managed=False) is not part of a TaskGroup; "
+                "do not also pass group=."
+            )
+
+        # The endpoint is normally bound eagerly when this handle is registered in
+        # Runtime fn_args (using its prod()/cons() tile); bind it here too so a
+        # handle used only via fill/drain still gets a shim endpoint.
+        if self._endpoint is None:
+            self.endpoint = RuntimeEndpoint(self._shim_tile)
+        active.note_fifo(self)
+
+        offset_param_name = None
+        if offset_parameter is not None:
+            if isinstance(offset_parameter, ScratchpadParameter):
+                offset_param_name = offset_parameter.name
+                if offset_parameter not in rt._scratchpad_parameters:
+                    rt._scratchpad_parameters.append(offset_parameter)
+            else:
+                offset_param_name = offset_parameter
+
+        task = DMATask(
+            self,
+            rt_data,
+            tap=tap,
+            task_group=group,
+            wait=wait,
+            offset_parameter=offset_param_name,
+            packet=packet,
+            sizes=sizes,
+            strides=strides,
+            offset=offset,
+            transfer_len=transfer_len,
+        )
+        if managed:
+            active.emit_transfer(task, group)
+        else:
+            # Emit the BD only; the caller owns await/free via the Task.
+            task.resolve()
+        # Wrap the transfer's !index result: it is both the scf iter_arg payload
+        # and the operand dma_await_task/dma_free_task accept.
+        return Task(task.task.result)
+
+    def fill(
+        self,
+        source,
+        tap=None,
+        wait: bool = False,
+        packet: tuple[int, int] | None = None,
+        offset_parameter=None,
+        group=None,
+        sizes=None,
+        strides=None,
+        offset=None,
+        transfer_len=None,
+        managed: bool = True,
+    ):
+        """Fill this producer ObjectFifo with data from the ``source`` runtime buffer.
+
+        Call from within a [`Runtime`][iron.Runtime] sequence body on a producer
+        handle. See [`_emit_transfer`][iron.dataflow.objectfifo.ObjectFifoHandle._emit_transfer]
+        for the shared arguments; returns a
+        [`Task`][iron.runtime.dmataskhandle.Task] handle to the transfer.
+        """
+        if not self._is_prod:
+            raise ValueError("fill() is only valid on a producer ObjectFifoHandle")
+
+        return self._emit_transfer(
+            source,
+            tap,
+            wait,
+            packet,
+            offset_parameter,
+            group,
+            sizes,
+            strides,
+            offset,
+            transfer_len,
+            managed,
+        )
+
+    def drain(
+        self,
+        dest,
+        tap=None,
+        wait: bool = False,
+        packet: tuple[int, int] | None = None,
+        offset_parameter=None,
+        group=None,
+        sizes=None,
+        strides=None,
+        offset=None,
+        transfer_len=None,
+        managed: bool = True,
+    ):
+        """Drain this consumer ObjectFifo, writing data to the ``dest`` runtime buffer.
+
+        Call from within a [`Runtime`][iron.Runtime] sequence body on a consumer
+        handle. See [`_emit_transfer`][iron.dataflow.objectfifo.ObjectFifoHandle._emit_transfer]
+        for the shared arguments; returns a
+        [`Task`][iron.runtime.dmataskhandle.Task] handle to the transfer.
+        """
+        if self._is_prod:
+            raise ValueError("drain() is only valid on a consumer ObjectFifoHandle")
+
+        return self._emit_transfer(
+            dest,
+            tap,
+            wait,
+            packet,
+            offset_parameter,
+            group,
+            sizes,
+            strides,
+            offset,
+            transfer_len,
+            managed,
+        )
 
     def all_of_endpoints(self) -> list[ObjectFifoEndpoint]:
         """All endpoints belonging to an ObjectFifo"""

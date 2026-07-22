@@ -73,14 +73,18 @@ def vector_add_one(a_in: In, b_out: Out):
 
     w = Worker(core_fn, [of_in.cons(), of_out.prod()])
 
-    rt = Runtime()
-    with rt.sequence(np.ndarray[(1024,), np.dtype[np.int32]],
-                     np.ndarray[(1024,), np.dtype[np.int32]]) as (a, b):
-        rt.start(w)
-        rt.fill(of_in.prod(), a)
-        rt.drain(of_out.cons(), b, wait=True)
+    def sequence(a, b, in_h, out_h):
+        in_h.fill(a)
+        out_h.drain(b, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [np.ndarray[(1024,), np.dtype[np.int32]],
+         np.ndarray[(1024,), np.dtype[np.int32]]],
+        fn_args=[of_in.prod(), of_out.cons()],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=[w]).resolve_program()
 
 a = iron.arange(1024, dtype=np.int32, device="npu")
 b = iron.zeros(1024,  dtype=np.int32, device="npu")

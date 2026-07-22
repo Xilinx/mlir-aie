@@ -96,15 +96,22 @@ def norm(
         (sequence_length, embedding_dim), (rows_per_core, embedding_dim)
     )
 
-    rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty) as (a, c):
-        rt.start(*workers)
+    def sequence(a, c, in_prods, out_conses):
         for i in range(n_cores):
-            rt.fill(of_ins[i].prod(), a, taps[i])
+            in_prods[i].fill(a, taps[i])
         for i in range(n_cores):
-            rt.drain(of_outs[i].cons(), c, taps[i], wait=True)
+            out_conses[i].drain(c, taps[i], wait=True)
 
-    return Program(device, rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [tensor_ty, tensor_ty],
+        fn_args=[
+            [of_ins[i].prod() for i in range(n_cores)],
+            [of_outs[i].cons() for i in range(n_cores)],
+        ],
+    )
+
+    return Program(device, rt, workers=workers).resolve_program()
 
 
 def _make_argparser():

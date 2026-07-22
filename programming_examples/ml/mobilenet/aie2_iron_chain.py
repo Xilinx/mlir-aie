@@ -29,7 +29,7 @@ import json
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import ObjectFifo, Program, Runtime
+from aie.iron import ObjectFifo, Program, Runtime, TaskGroup
 from aie.iron.device import Tile
 from aie.utils.hostruntime.argparse import device_from_args
 from aie.utils.hostruntime import set_current_device
@@ -154,7 +154,6 @@ def _chain_iron(mode, data_dir, scales_json):
             data_dir=data_dir,
         )
 
-    rt = Runtime()
     if wts_fifos:
         # Cascade: input + ONE concatenated cascade weight buffer + output.
         # All 4 weight chunks live in a single host tensor; TensorAccessPatterns
@@ -175,53 +174,44 @@ def _chain_iron(mode, data_dir, scales_json):
                 strides=[0, 0, 0, 1],
             )
 
-        with rt.sequence(in_ty, wts_ty, out_ty) as (inp, all_wts, out):
-            rt.start(*workers)
-            tg = rt.task_group()
-            rt.fill(
-                act_in.prod(depth=1),
-                inp,
-                tile=CHAIN_PLACEMENT["shim_input"],
-                task_group=tg,
-            )
-            for fifo, off, shim in zip(
-                wts_fifos, offsets_i32, CHAIN_PLACEMENT["shim_wts"]
-            ):
-                rt.fill(
-                    fifo.prod(),
-                    all_wts,
-                    _wts_tap(off),
-                    tile=shim,
-                    task_group=tg,
-                )
-            rt.drain(
-                act_out.cons(),
-                out,
-                wait=True,
-                tile=CHAIN_PLACEMENT["shim_output"],
-                task_group=tg,
-            )
-            rt.finish_task_group(tg)
-    else:
-        with rt.sequence(in_ty, out_ty) as (inp, out):
-            rt.start(*workers)
-            tg = rt.task_group()
-            rt.fill(
-                act_in.prod(depth=1),
-                inp,
-                tile=CHAIN_PLACEMENT["shim_input"],
-                task_group=tg,
-            )
-            rt.drain(
-                act_out.cons(),
-                out,
-                wait=True,
-                tile=CHAIN_PLACEMENT["shim_output"],
-                task_group=tg,
-            )
-            rt.finish_task_group(tg)
+        def sequence(inp, all_wts, out, in_prod, wts_prods, out_cons):
+            tg = TaskGroup()
+            in_prod.fill(inp, group=tg)
+            for wts_prod, off in zip(wts_prods, offsets_i32):
+                wts_prod.fill(all_wts, _wts_tap(off), group=tg)
+            out_cons.drain(out, wait=True, group=tg)
+            tg.finish()
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+        rt = Runtime(
+            sequence,
+            [in_ty, wts_ty, out_ty],
+            fn_args=[
+                act_in.prod(depth=1, tile=CHAIN_PLACEMENT["shim_input"]),
+                [
+                    fifo.prod(tile=shim)
+                    for fifo, shim in zip(wts_fifos, CHAIN_PLACEMENT["shim_wts"])
+                ],
+                act_out.cons(tile=CHAIN_PLACEMENT["shim_output"]),
+            ],
+        )
+    else:
+
+        def sequence(inp, out, in_prod, out_cons):
+            tg = TaskGroup()
+            in_prod.fill(inp, group=tg)
+            out_cons.drain(out, wait=True, group=tg)
+            tg.finish()
+
+        rt = Runtime(
+            sequence,
+            [in_ty, out_ty],
+            fn_args=[
+                act_in.prod(depth=1, tile=CHAIN_PLACEMENT["shim_input"]),
+                act_out.cons(tile=CHAIN_PLACEMENT["shim_output"]),
+            ],
+        )
+
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
 def _make_argparser():

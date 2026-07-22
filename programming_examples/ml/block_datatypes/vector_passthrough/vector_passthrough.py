@@ -57,13 +57,17 @@ def vector_passthrough(a_in: In, b_out: Out):
 
     worker = Worker(core_fn, [of_in.cons(), of_out.prod(), passthrough_func])
 
-    rt = Runtime()
-    with rt.sequence(_TENSOR_TY, _TENSOR_TY) as (A, B):
-        rt.start(worker)
-        rt.fill(of_in.prod(), A)
-        rt.drain(of_out.cons(), B, wait=True)
+    def sequence(A, B, in_h, out_h):
+        in_h.fill(A)
+        out_h.drain(B, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [_TENSOR_TY, _TENSOR_TY],
+        fn_args=[of_in.prod(), of_out.cons()],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def _make_argparser():

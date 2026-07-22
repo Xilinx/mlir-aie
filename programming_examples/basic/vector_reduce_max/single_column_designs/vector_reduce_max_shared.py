@@ -182,15 +182,19 @@ def vector_reduce_max(
                 )
             )
 
-    rt = Runtime()
-    with rt.sequence(in_ty, out_ty) as (a, c):
-        if trace_size > 0:
-            rt.enable_trace(trace_size)
-        rt.start(*workers)
-        rt.fill(of_in.prod(), a)
-        rt.drain(out_fifos[1].cons(), c, wait=True)
+    def sequence(a, c, in_h, out_h):
+        in_h.fill(a)
+        out_h.drain(c, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [in_ty, out_ty],
+        fn_args=[of_in.prod(), out_fifos[1].cons()],
+    )
+    if trace_size > 0:
+        rt.enable_trace(trace_size)
+
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
 def _make_argparser():

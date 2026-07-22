@@ -65,13 +65,14 @@ def init_values_design(out: Out):
 
     worker = Worker(copy_body, fn_args=[of_init.cons(), of_out.prod()])
 
-    rt = Runtime()
     out_ty = np.ndarray[(N * R,), np.dtype[np.int32]]
-    with rt.sequence(out_ty) as a:
-        rt.start(worker)
-        rt.drain(of_out.cons(), a, wait=True)
 
-    return Program(dev, rt).resolve_program()
+    def sequence(a, out_h):
+        out_h.drain(a, wait=True)
+
+    rt = Runtime(sequence, [out_ty], fn_args=[of_out.cons()])
+
+    return Program(dev, rt, workers=[worker]).resolve_program()
 
 
 def test_iron_object_fifo_init_values_e2e():

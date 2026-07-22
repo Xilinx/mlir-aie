@@ -48,13 +48,17 @@ def vision_passthrough(
 
     worker = Worker(passthrough_fn, [of_in.cons(), of_out.prod(), pass_through_line])
 
-    rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty, tensor_ty) as (a, _, b):
-        rt.start(worker)
-        rt.fill(of_in.prod(), a)
-        rt.drain(of_out.cons(), b, wait=True)
+    def sequence(a, _, b, in_prod, out_cons):
+        in_prod.fill(a)
+        out_cons.drain(b, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [tensor_ty, tensor_ty, tensor_ty],
+        fn_args=[of_in.prod(), of_out.cons()],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def _make_argparser():

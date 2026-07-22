@@ -77,13 +77,17 @@ def cyclostatic_two_core_pipeline(in_tensor: In, out_tensor: Out):
     worker_a = Worker(core_a_body, fn_args=[of_in_l2a.cons(), of_a_to_b.prod()])
     worker_b = Worker(core_b_body, fn_args=[of_a_to_b.cons(), of_out_bl2.prod()])
 
-    rt = Runtime()
-    with rt.sequence(in_ty, out_ty) as (a_in, c_out):
-        rt.start(worker_a, worker_b)
-        rt.fill(of_in_l3l2.prod(), a_in)
-        rt.drain(of_out_l2l3.cons(), c_out, wait=True)
+    def sequence(a_in, c_out, in_h, out_h):
+        in_h.fill(a_in)
+        out_h.drain(c_out, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(
+        sequence, [in_ty, out_ty], fn_args=[of_in_l3l2.prod(), of_out_l2l3.cons()]
+    )
+
+    return Program(
+        iron.get_current_device(), rt, workers=[worker_a, worker_b]
+    ).resolve_program()
 
 
 def main():

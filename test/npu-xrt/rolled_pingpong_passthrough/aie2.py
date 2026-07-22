@@ -21,11 +21,9 @@
 # an scf.for carries the in-flight input task handle as an iter_arg and frees the
 # previous iteration's task while the next is in flight.
 #
-# IRON's rt.fill/rt.drain emit a flat (unrolled) list of transfers, so the rolled
-# loop is emitted via rt.inline_ops -- the escape hatch for runtime-sequence
-# shapes the high-level ops do not yet cover.  The inline op references the
-# ObjectFifos by their MLIR symbol (of_in.op / of_out.op), so no separate shim
-# allocation is needed.
+# The rolled loop is written directly with fill/drain in "unmanaged" mode
+# (managed=False): each returns a Task the body owns, carried across scf.for
+# iterations as a range_ iter_arg and freed by hand while the next is in flight.
 #
 # The sequence is additionally wrapped in a constant-true scf.if to exercise the
 # full static-path control-flow story: the loop is unrolled (the unroll pass
@@ -45,20 +43,10 @@ import sys
 import numpy as np
 
 from aie.iron import ObjectFifo, Program, Runtime, Worker
-from aie.iron.controlflow import range_
+from aie.iron.controlflow import range_, yield_
 from aie.iron.device import NPU1Col1, NPU2
 
-from aie.dialects.aiex import (
-    bds,
-    dma_configure_task_for,
-    dma_start_task,
-    dma_free_task,
-    dma_await_task,
-    shim_dma_bd,
-)
-from aie.dialects.aie import EndOp
 from aie.extras.dialects.arith import constant
-from aie.extras.dialects.scf import yield_
 from aie.helpers.dialects.scf import if_
 
 DTYPE = np.int32
@@ -87,16 +75,12 @@ def design(dev):
 
     worker = Worker(core_fn, [of_in.cons(), of_out.prod()])
 
-    # The rolled ping-pong runtime sequence. Emitted via inline_ops because the
-    # high-level fill/drain ops flatten transfers; here we need the scf.for that
-    # carries the in-flight task handle across iterations. The fifo handles are
-    # passed in: inline_ops registers them and binds them to a shim endpoint, and
-    # the body references them by symbol (handle.op).
-    def ping_pong(A, B, of_in_h, of_out_h):
-        # A / B are the RuntimeData host buffers; .op is their runtime_sequence arg.
-        A, B = A.op, B.op
-        of_in_op, of_out_op = of_in_h.op, of_out_h.op
-
+    # The rolled ping-pong runtime sequence. This is a hand-rolled software
+    # pipeline: fill/drain run in "unmanaged" mode (managed=False) so the body
+    # owns each transfer's lifetime via the returned Task, carrying the in-flight
+    # input task across scf.for iterations as a range_ iter_arg and freeing the
+    # previous one while the next is in flight.
+    def ping_pong(A, B, in_h, out_h):
         # Wrap the whole sequence in a constant-true scf.if. This exercises the
         # other half of the static-path invariant: the loop below is unrolled
         # (the unroll pass descends into the scf.if arm, since it runs before the
@@ -106,53 +90,50 @@ def design(dev):
         cond = constant(True)
         with if_(cond):
             # Prologue: first input tile.
-            init_in = dma_configure_task_for(of_in_op, issue_token=True)
-            with bds(init_in) as bd:
-                with bd[0]:
-                    shim_dma_bd(A, sizes=[1, 1, 1, TILE_LEN])
-                    EndOp()
+            init_in = in_h.fill(
+                A,
+                sizes=[1, 1, 1, TILE_LEN],
+                strides=[0, 0, 0, 1],
+                wait=True,
+                managed=False,
+            )
 
             # Output task: collect N_TILES output tiles contiguously. The third
             # dim walks the N_TILES tiles with stride TILE_LEN so tile i lands at
             # offset i*TILE_LEN (a size-N stride-0 wrap dim would overwrite one
             # tile).
-            out_task = dma_configure_task_for(of_out_op, issue_token=True)
-            with bds(out_task) as bd:
-                with bd[0]:
-                    shim_dma_bd(
-                        B,
-                        sizes=[1, 1, N_TILES, TILE_LEN],
-                        strides=[0, 0, TILE_LEN, 1],
-                    )
-                    EndOp()
-
-            dma_start_task(init_in, out_task)
+            out_task = out_h.drain(
+                B,
+                sizes=[1, 1, N_TILES, TILE_LEN],
+                strides=[0, 0, TILE_LEN, 1],
+                wait=True,
+                managed=False,
+            )
 
             # Rolled ping-pong: issue N_TILES-1 more input BDs while the previous
-            # is in flight. The task handle flows as iter_arg. All input BDs read
-            # from the same tile (offset 0), so the output collects N_TILES
-            # copies.
+            # is in flight. The Task flows as iter_arg. All input BDs read from
+            # the same tile (offset 0), so the output collects N_TILES copies.
+            result = init_in
             for _iv, prev, result in range_(
-                1, N_TILES, iter_args=[init_in.result], insert_yield=False
+                1, N_TILES, iter_args=[init_in], insert_yield=False
             ):
-                tile_in = dma_configure_task_for(of_in_op, issue_token=True)
-                with bds(tile_in) as bd:
-                    with bd[0]:
-                        shim_dma_bd(A, sizes=[1, 1, 1, TILE_LEN])
-                        EndOp()
-                dma_start_task(tile_in)
-                dma_free_task(prev)
-                yield_([tile_in.result])
+                tile_in = in_h.fill(
+                    A,
+                    sizes=[1, 1, 1, TILE_LEN],
+                    strides=[0, 0, 0, 1],
+                    wait=True,
+                    managed=False,
+                )
+                prev.free()
+                yield_([tile_in])
 
-            dma_await_task(result, out_task)
-            dma_free_task(result)
+            result.await_()
+            out_task.await_()
+            result.free()
 
-    rt = Runtime()
-    with rt.sequence(in_ty, out_ty) as (A, B):
-        rt.start(worker)
-        rt.inline_ops(ping_pong, [A, B, of_in.prod(), of_out.cons()])
+    rt = Runtime(ping_pong, [in_ty, out_ty], fn_args=[of_in.prod(), of_out.cons()])
 
-    return Program(dev, rt).resolve_program()
+    return Program(dev, rt, workers=[worker]).resolve_program()
 
 
 def main():

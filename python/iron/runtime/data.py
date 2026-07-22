@@ -45,6 +45,17 @@ class RuntimeData:
         """The tensor type of the buffer."""
         return self._arr_type
 
+    @property
+    def is_scalar(self) -> bool:
+        """Whether this runtime argument is a scalar (no shape) rather than a
+        tensor. Scalar runtime args (e.g. a runtime ``M``/``K``/``N``) are passed
+        to the sequence body as their live SSA value, since they are used in
+        arithmetic and ``range_``/``if_`` bounds, not as fill/drain buffers."""
+        try:
+            return len(np_ndarray_type_get_shape(self._arr_type)) == 0
+        except IndexError:
+            return True
+
     def default_tap(self) -> TensorAccessPattern:
         """A default access pattern for a linear transfer of the buffer."""
         # TODO: what if not two dimensional?

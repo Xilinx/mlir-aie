@@ -71,12 +71,11 @@ def test_shared_buffer_resolves_to_cross_core_access():
     producer = Worker(prod_fn, [shared], tile=prod_tile)
     consumer = Worker(cons_fn, [shared, of_out.prod()], tile=cons_tile)
 
-    rt = Runtime()
-    with rt.sequence(buf_ty) as out:
-        rt.start(producer, consumer)
-        rt.drain(of_out.cons(), out, wait=True)
+    def sequence(out, out_h):
+        out_h.drain(out, wait=True)
 
-    print(Program(NPU2Col1(), rt).resolve_program())
+    rt = Runtime(sequence, [buf_ty], fn_args=[of_out.cons()])
+    print(Program(NPU2Col1(), rt, workers=[producer, consumer]).resolve_program())
 
 
 def test_unpinned_consumer_is_steered_to_owner_neighbor():
@@ -101,12 +100,11 @@ def test_unpinned_consumer_is_steered_to_owner_neighbor():
     producer = Worker(prod_fn, [shared], tile=prod_tile)  # owner pinned (0, 2)
     consumer = Worker(cons_fn, [shared, of_out.prod()])  # unpinned
 
-    rt = Runtime()
-    with rt.sequence(buf_ty) as out:
-        rt.start(producer, consumer)
-        rt.drain(of_out.cons(), out, wait=True)
+    def sequence(out, out_h):
+        out_h.drain(out, wait=True)
 
-    module = Program(NPU2Col1(), rt).resolve_program()
+    rt = Runtime(sequence, [buf_ty], fn_args=[of_out.cons()])
+    module = Program(NPU2Col1(), rt, workers=[producer, consumer]).resolve_program()
     pm = PassManager.parse(
         "builtin.module(aie.device(aie-place-tiles))", context=module.context
     )

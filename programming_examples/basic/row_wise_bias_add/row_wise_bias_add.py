@@ -87,14 +87,18 @@ def row_wise_bias_add(
     )[0]
     bias_tap = TensorTiler2D.group_tiler((1, N), (1, n), (1, N // n))[0]
 
-    rt = Runtime()
-    with rt.sequence(in_ty, bias_full_ty, in_ty) as (a, b, c):
-        rt.start(worker)
-        rt.fill(in_fifo.prod(), a, tap)
-        rt.fill(bias_fifo.prod(), b, bias_tap)
-        rt.drain(out_fifo.cons(), c, tap, wait=True)
+    def sequence(a, b, c, in_h, bias_h, out_h):
+        in_h.fill(a, tap)
+        bias_h.fill(b, bias_tap)
+        out_h.drain(c, tap, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [in_ty, bias_full_ty, in_ty],
+        fn_args=[in_fifo.prod(), bias_fifo.prod(), out_fifo.cons()],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def _make_argparser():

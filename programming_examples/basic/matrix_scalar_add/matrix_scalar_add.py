@@ -66,13 +66,17 @@ def matrix_scalar_add(
 
     tap = TensorTiler2D.simple_tiler(matrix_shape, tile_shape)[0]
 
-    rt = Runtime()
-    with rt.sequence(matrix_ty, matrix_ty) as (in_tensor, out_tensor):
-        rt.start(worker)
-        rt.fill(of_in.prod(), in_tensor, tap)
-        rt.drain(of_out.cons(), out_tensor, tap, wait=True)
+    def sequence(in_tensor, out_tensor, in_h, out_h):
+        in_h.fill(in_tensor, tap)
+        out_h.drain(out_tensor, tap, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [matrix_ty, matrix_ty],
+        fn_args=[of_in.prod(), of_out.cons()],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def _make_argparser():

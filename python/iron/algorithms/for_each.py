@@ -185,27 +185,32 @@ def _for_each_real(func, tensor, *params, tile_size=16):
     worker = Worker(core_body, fn_args=worker_args)
 
     # Runtime operations
-    rt = Runtime()
     all_types = [tensor_ty] + param_tensor_types
-    with rt.sequence(*all_types) as seq_args:
-        if isinstance(seq_args, tuple):
-            tensor_arg = seq_args[0]
-            param_seq_args = seq_args[1:]
-        else:
-            tensor_arg = seq_args
-            param_seq_args = []
+    n_params = len(param_tensor_types)
 
-        rt.start(worker)
+    def sequence(*args):
+        # args = tensor_arg, *param_args, in_h, out_h, *param_prods
+        tensor_arg = args[0]
+        param_seq_args = args[1 : 1 + n_params]
+        in_h = args[1 + n_params]
+        out_h = args[2 + n_params]
+        param_prods = args[3 + n_params :]
 
         # Fill input ObjectFifo from tensor
-        rt.fill(of_in.prod(), tensor_arg)
+        in_h.fill(tensor_arg)
 
         # Fill tensor param ObjectFifos (ExternalFunction only)
-        for of_param, param_arg in zip(param_of_list, param_seq_args):
-            rt.fill(of_param.prod(), param_arg)
+        for of_param_prod, param_arg in zip(param_prods, param_seq_args):
+            of_param_prod.fill(param_arg)
 
         # Drain output ObjectFifo back to same tensor
-        rt.drain(of_out.cons(), tensor_arg, wait=True)
+        out_h.drain(tensor_arg, wait=True)
+
+    rt = Runtime(
+        sequence,
+        all_types,
+        fn_args=[of_in.prod(), of_out.cons(), *[p.prod() for p in param_of_list]],
+    )
 
     # Place program components and generate an MLIR module
     device = iron.get_current_device()
@@ -215,4 +220,4 @@ def _for_each_real(func, tensor, *params, tile_size=16):
             "Call iron.set_current_device() or ensure DefaultNPURuntime is initialized "
             "before calling for_each."
         )
-    return Program(device, rt).resolve_program()
+    return Program(device, rt, workers=[worker]).resolve_program()

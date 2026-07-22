@@ -45,13 +45,14 @@ def test_objectfifo_asymmetric():
 
     cons = Worker(consumer_body, fn_args=[wts.cons(), of_out.prod()])
 
-    rt = Runtime()
     tensor_ty = np.ndarray[(40,), np.dtype[np.int32]]
-    with rt.sequence(tensor_ty) as a:
-        rt.start(cons)
-        rt.drain(of_out.cons(), a, wait=True)
 
-    module = Program(dev, rt).resolve_program()
+    def sequence(a, out_h):
+        out_h.drain(a, wait=True)
+
+    rt = Runtime(sequence, [tensor_ty], fn_args=[of_out.cons()])
+
+    module = Program(dev, rt, workers=[cons]).resolve_program()
     print(module)
 
 

@@ -48,13 +48,14 @@ def my_barrier():
 
     # Runtime operations to move data to/from the AIE-array
     external_type = np.ndarray[(16,), np.dtype[np.int32]]
-    rt = Runtime()
-    with rt.sequence(external_type) as (x):
-        rt.start(worker)
-        rt.set_barrier(workerBarrier, 1)
+
+    def sequence(x):
+        workerBarrier.set(1)
+
+    rt = Runtime(sequence, [external_type])
 
     # Place components (assign them resources on the device) and generate an MLIR module
-    return print(Program(NPU2Col1(), rt).resolve_program())
+    return print(Program(NPU2Col1(), rt, workers=[worker]).resolve_program())
 
 
 my_barrier()

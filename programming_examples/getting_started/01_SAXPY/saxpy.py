@@ -70,18 +70,22 @@ def saxpy(
     # DRAM-NPU data movement and work dispatch
     # --------------------------------------------------------------------------
 
-    rt = Runtime()
-    with rt.sequence(in_ty, in_ty, out_ty) as (a_x, a_y, c_z):
-        rt.start(worker)
-        rt.fill(of_x.prod(), a_x)
-        rt.fill(of_y.prod(), a_y)
-        rt.drain(of_z.cons(), c_z, wait=True)
+    def sequence(a_x, a_y, c_z, x_prod, y_prod, z_cons):
+        x_prod.fill(a_x)
+        y_prod.fill(a_y)
+        z_cons.drain(c_z, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [in_ty, in_ty, out_ty],
+        fn_args=[of_x.prod(), of_y.prod(), of_z.cons()],
+    )
 
     # --------------------------------------------------------------------------
     # Place and generate MLIR program
     # --------------------------------------------------------------------------
 
-    my_program = Program(iron.get_current_device(), rt)
+    my_program = Program(iron.get_current_device(), rt, workers=[worker])
     return my_program.resolve_program()
 
 

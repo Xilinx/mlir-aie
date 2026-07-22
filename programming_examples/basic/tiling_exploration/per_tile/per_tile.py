@@ -63,13 +63,17 @@ def per_tile(
 
     worker = Worker(access_order, [of_out.prod(), access_counter])
 
-    rt = Runtime()
-    with rt.sequence(flattened_tensor) as tensor_out:
-        rt.start(worker)
+    def sequence(tensor_out, out_h):
         for t in tiler:
-            rt.drain(of_out.cons(), tensor_out, t, wait=True)
+            out_h.drain(tensor_out, t, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [flattened_tensor],
+        fn_args=[of_out.cons()],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def _make_argparser():

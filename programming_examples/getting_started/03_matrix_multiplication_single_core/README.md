@@ -70,15 +70,21 @@ a_taps = TensorTiler2D.group_tiler((M, K), (m, k), (1, K // k), pattern_repeat=(
 b_tap = TensorTiler2D.group_tiler((K, N), (k, n), (K // k, N // n), tile_group_col_major=True)[0]
 c_taps = TensorTiler2D.group_tiler((M, N), (m, n), (1, N // n))
 
-rt = Runtime()
-with rt.sequence(A_ty, B_ty, C_ty) as (A, B, C):
-    rt.start(worker)
+def sequence(A, B, C, a_prod, b_prod, c_cons):
     for tile_row in range(M // m):
-        task_group = rt.task_group()
-        rt.fill(fifo_A_L3L2.prod(), A, tap=a_taps[tile_row], task_group=task_group)
-        rt.fill(fifo_B_L3L2.prod(), B, tap=b_tap, task_group=task_group)
-        rt.drain(fifo_C_L2L3.cons(), C, tap=c_taps[tile_row], task_group=task_group, wait=True)
-        rt.finish_task_group(task_group)
+        task_group = TaskGroup()
+        a_prod.fill(A, tap=a_taps[tile_row], group=task_group)
+        b_prod.fill(B, tap=b_tap, group=task_group)
+        c_cons.drain(C, tap=c_taps[tile_row], group=task_group, wait=True)
+        task_group.finish()
+
+rt = Runtime(
+    sequence,
+    [A_ty, B_ty, C_ty],
+    fn_args=[fifo_A_L3L2.prod(), fifo_B_L3L2.prod(), fifo_C_L2L3.cons()],
+)
+# The Worker is launched by the Program, not from inside the sequence body:
+Program(dev, rt, workers=[worker]).resolve_program()
 ```
 
 As `A` and `B` are moved in from DRAM, our design splits these matrices up into
@@ -103,7 +109,7 @@ output C on the compute cores is zero-initialized in each such iteration.
 After repeating the first row of tiles of `A` for each column of tiles in B
 (i.e., `N / n` times), we move on to the next row of `A`. In our 
 implementation, this step corresponds to moving on to the next iteration of
-the `for tile_row in range(M // m)` loop in the `rt.sequence`. We use the same
+the `for tile_row in range(M // m)` loop in the `sequence` body. We use the same
 tensor access pattern for `A`, except that the transfer will start from an
 offset that starts at the next row of tiles of `A`. The tensor access pattern
 for `B` is exactly the same, as we will once again iterate over all tiles

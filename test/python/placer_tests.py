@@ -30,14 +30,17 @@ def objectfifo_order(module):
 
     my_worker = Worker(core_fn, [of_in_A.cons(), of_in_B.cons(), of_out_C.prod()])
 
-    rt = Runtime()
-    with rt.sequence(n_ty, n_ty, n_ty) as (A, B, C):
-        rt.start(my_worker)
-        rt.fill(of_in_A.prod(), A)
-        rt.fill(of_in_B.prod(), B)
-        rt.drain(of_out_C.cons(), C, wait=True)
+    def sequence(A, B, C, in_A, in_B, out_C):
+        in_A.fill(A)
+        in_B.fill(B)
+        out_C.drain(C, wait=True)
 
-    module = Program(NPU2(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [n_ty, n_ty, n_ty],
+        fn_args=[of_in_A.prod(), of_in_B.prod(), of_out_C.cons()],
+    )
+    module = Program(NPU2(), rt, workers=[my_worker]).resolve_program()
     return module
 
 
@@ -64,14 +67,17 @@ def shim_three_in(module):
     for i in range(n_inputs):
         workers.append(Worker(core_fn, [of_ins[i].cons()]))
 
-    rt = Runtime()
-    with rt.sequence(n_ty, n_ty, n_ty) as (A, B, C):
-        rt.start(*workers)
-        rt.fill(of_ins[0].prod(), A)
-        rt.fill(of_ins[1].prod(), B)
-        rt.fill(of_ins[2].prod(), C)
+    def sequence(A, B, C, in_0, in_1, in_2):
+        in_0.fill(A)
+        in_1.fill(B)
+        in_2.fill(C)
 
-    module = Program(NPU2(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [n_ty, n_ty, n_ty],
+        fn_args=[of_ins[0].prod(), of_ins[1].prod(), of_ins[2].prod()],
+    )
+    module = Program(NPU2(), rt, workers=workers).resolve_program()
     return module
 
 
@@ -95,14 +101,17 @@ def shim_two_in_one_out(module):
 
     my_worker = Worker(core_fn, [of_in_A.cons(), of_in_B.cons(), of_out_C.prod()])
 
-    rt = Runtime()
-    with rt.sequence(n_ty, n_ty, n_ty) as (A, B, C):
-        rt.start(my_worker)
-        rt.fill(of_in_A.prod(), A)
-        rt.fill(of_in_B.prod(), B)
-        rt.drain(of_out_C.cons(), C, wait=True)
+    def sequence(A, B, C, in_A, in_B, out_C):
+        in_A.fill(A)
+        in_B.fill(B)
+        out_C.drain(C, wait=True)
 
-    module = Program(NPU2(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [n_ty, n_ty, n_ty],
+        fn_args=[of_in_A.prod(), of_in_B.prod(), of_out_C.cons()],
+    )
+    module = Program(NPU2(), rt, workers=[my_worker]).resolve_program()
     return module
 
 
@@ -124,14 +133,17 @@ def compute_three_in(module):
 
     worker = Worker(core_fn, [of_0.cons(), of_1.cons(), of_2.cons()])
 
-    rt = Runtime()
-    with rt.sequence(n_ty, n_ty, n_ty) as (A, B, C):
-        rt.start(worker)
-        rt.fill(of_0.prod(), A)
-        rt.fill(of_1.prod(), B)
-        rt.fill(of_2.prod(), C)
+    def sequence(A, B, C, in_0, in_1, in_2):
+        in_0.fill(A)
+        in_1.fill(B)
+        in_2.fill(C)
 
-    module = Program(NPU2(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [n_ty, n_ty, n_ty],
+        fn_args=[of_0.prod(), of_1.prod(), of_2.prod()],
+    )
+    module = Program(NPU2(), rt, workers=[worker]).resolve_program()
     return module
 
 
@@ -156,16 +168,25 @@ def compute_one_in_two_links(module):
 
     worker = Worker(core_fn, [of_0.cons()])
 
-    rt = Runtime()
-    with rt.sequence(n_ty, n_ty, n_ty, n_ty, n_ty) as (A, B, C, D, E):
-        rt.start(worker)
-        rt.fill(of_0.prod(), A)
-        rt.fill(of_in1.prod(), B)
-        rt.fill(of_in2.prod(), C)
-        rt.drain(of_out1.cons(), D, wait=True)
-        rt.drain(of_out2.cons(), E, wait=True)
+    def sequence(A, B, C, D, E, in_0, in1, in2, out1, out2):
+        in_0.fill(A)
+        in1.fill(B)
+        in2.fill(C)
+        out1.drain(D, wait=True)
+        out2.drain(E, wait=True)
 
-    module = Program(NPU2(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [n_ty, n_ty, n_ty, n_ty, n_ty],
+        fn_args=[
+            of_0.prod(),
+            of_in1.prod(),
+            of_in2.prod(),
+            of_out1.cons(),
+            of_out2.cons(),
+        ],
+    )
+    module = Program(NPU2(), rt, workers=[worker]).resolve_program()
     return module
 
 
@@ -190,16 +211,25 @@ def compute_partial_placement(module):
 
     worker = Worker(core_fn, [of_0.cons()], tile=Tile(0, 4))
 
-    rt = Runtime()
-    with rt.sequence(n_ty, n_ty, n_ty, n_ty, n_ty) as (A, B, C, D, E):
-        rt.start(worker)
-        rt.fill(of_0.prod(), A)
-        rt.fill(of_in1.prod(), B)
-        rt.fill(of_in2.prod(), C)
-        rt.drain(of_out1.cons(), D, wait=True)
-        rt.drain(of_out2.cons(), E, wait=True)
+    def sequence(A, B, C, D, E, in_0, in1, in2, out1, out2):
+        in_0.fill(A)
+        in1.fill(B)
+        in2.fill(C)
+        out1.drain(D, wait=True)
+        out2.drain(E, wait=True)
 
-    module = Program(NPU2(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [n_ty, n_ty, n_ty, n_ty, n_ty],
+        fn_args=[
+            of_0.prod(),
+            of_in1.prod(),
+            of_in2.prod(),
+            of_out1.cons(),
+            of_out2.cons(),
+        ],
+    )
+    module = Program(NPU2(), rt, workers=[worker]).resolve_program()
     return module
 
 
@@ -240,14 +270,17 @@ def mem_eight_in_three_out(module):
     workers.append(Worker(core_fn, [of_mem_in_6.prod()]))
     workers.append(Worker(core_fn, [of_mem_in_7.prod()]))
 
-    rt = Runtime()
-    with rt.sequence(N_ty, n_ty, n_ty) as (A, B, C):
-        rt.start(*workers)
-        rt.drain(of_out_A.cons(), A, wait=True)
-        rt.drain(of_out_B.cons(), B, wait=True)
-        rt.drain(of_out_C.cons(), C, wait=True)
+    def sequence(A, B, C, out_A, out_B, out_C):
+        out_A.drain(A, wait=True)
+        out_B.drain(B, wait=True)
+        out_C.drain(C, wait=True)
 
-    module = Program(NPU2(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [N_ty, n_ty, n_ty],
+        fn_args=[of_out_A.cons(), of_out_B.cons(), of_out_C.cons()],
+    )
+    module = Program(NPU2(), rt, workers=workers).resolve_program()
     return module
 
 
@@ -275,12 +308,15 @@ def compute_three_in_col_lim(module):
         Worker(core_fn, [of_2.cons()]),
     ]
 
-    rt = Runtime()
-    with rt.sequence(n_ty, n_ty, n_ty) as (A, B, C):
-        rt.start(*workers)
-        rt.fill(of_0.prod(), A)
-        rt.fill(of_1.prod(), B)
-        rt.fill(of_2.prod(), C)
+    def sequence(A, B, C, in_0, in_1, in_2):
+        in_0.fill(A)
+        in_1.fill(B)
+        in_2.fill(C)
 
-    module = Program(NPU2(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [n_ty, n_ty, n_ty],
+        fn_args=[of_0.prod(), of_1.prod(), of_2.prod()],
+    )
+    module = Program(NPU2(), rt, workers=workers).resolve_program()
     return module

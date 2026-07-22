@@ -162,16 +162,23 @@ def vector_reduce_max(
     # across the ``(1, in_num_elements)`` tensor.
     taps = TensorTiler2D.simple_tiler((1, in_num_elements), (1, chunk))
 
-    rt = Runtime()
-    with rt.sequence(in_tensor_ty, out_tensor_ty) as (a, c):
-        if enable_trace:
-            rt.enable_trace(trace_size)
-        rt.start(*my_workers)
-        for i in range(num_cores):
-            rt.fill(of_in1s[i].prod(), a, taps[i])
-        rt.drain(of_outs[num_cores - 1].cons(), c, wait=True)
+    in_prods = [of_in1s[i].prod() for i in range(num_cores)]
+    out_cons = of_outs[num_cores - 1].cons()
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    def sequence(a, c, in_hs, out_h):
+        for i in range(num_cores):
+            in_hs[i].fill(a, taps[i])
+        out_h.drain(c, wait=True)
+
+    rt = Runtime(
+        sequence,
+        [in_tensor_ty, out_tensor_ty],
+        fn_args=[in_prods, out_cons],
+    )
+    if enable_trace:
+        rt.enable_trace(trace_size)
+
+    return Program(iron.get_current_device(), rt, workers=my_workers).resolve_program()
 
 
 def _make_argparser():

@@ -7,14 +7,14 @@
 
 Covers the bug reported in https://github.com/Xilinx/mlir-aie/issues/3011:
   - A Buffer passed to a Worker is placed automatically by the placer and
-    resolved before inline_ops callbacks fire, so indexing inside the callback
-    works correctly.
+    resolved before the runtime sequence body runs, so indexing it inside the
+    body (an RTP write) works correctly.
   - A Buffer that is created but never given to any Worker has no tile and
-    therefore cannot be resolved; InlineOpRuntimeTask must raise a clear
-    ValueError rather than a confusing AttributeError from __setitem__.
-  - Multiple RTP buffers (one per worker) in a list can all be written inside a
-    single inline_ops callback, reflecting the common RTP-initialisation pattern
-    seen in ML examples such as resnet layers_conv2_x.
+    therefore cannot be resolved; indexing it in the body raises a clear error
+    rather than a confusing one.
+  - Multiple RTP buffers (one per worker) in a list can all be written in the
+    body, reflecting the common RTP-initialisation pattern seen in ML examples
+    such as resnet layers_conv2_x.
 """
 
 import numpy as np
@@ -27,15 +27,15 @@ data_ty = np.ndarray[(64,), np.dtype[np.int32]]
 
 
 # ---------------------------------------------------------------------------
-# Test 1: Buffer given to a Worker is resolved before inline_ops fires,
-#         so element writes inside the callback produce correct rtp_write ops.
-# CHECK-LABEL: TEST: rtp_buffer_written_in_inline_ops
+# Test 1: Buffer given to a Worker is resolved before the sequence body runs,
+#         so element writes in the body produce correct rtp_write ops.
+# CHECK-LABEL: TEST: rtp_buffer_written_in_body
 # CHECK: %[[RTP0:.*]] = arith.constant 7 : i32
 # CHECK: aiex.npu.rtp_write(@my_rtp, 0, %[[RTP0]]) : i32
 # CHECK: %[[RTP1:.*]] = arith.constant 3 : i32
 # CHECK: aiex.npu.rtp_write(@my_rtp, 1, %[[RTP1]]) : i32
 # ---------------------------------------------------------------------------
-print("\nTEST: rtp_buffer_written_in_inline_ops")
+print("\nTEST: rtp_buffer_written_in_body")
 
 of_in = ObjectFifo(data_ty, name="in")
 of_out = ObjectFifo(data_ty, name="out")
@@ -52,26 +52,26 @@ def core_fn(of_in, of_out, rtp):
 
 worker = Worker(core_fn, [of_in.cons(), of_out.prod(), rtp_buf])
 
-rt = Runtime()
-with rt.sequence(data_ty, data_ty) as (inp, out):
 
-    def set_rtp(buf):
-        buf[0] = 7
-        buf[1] = 3
+def sequence(inp, out, in_h, out_h):
+    # rtp_buf is placed via the Worker; the body runs after that, so the RTP
+    # writes below resolve correctly.
+    rtp_buf[0] = 7
+    rtp_buf[1] = 3
+    in_h.fill(inp)
+    out_h.drain(out, wait=True)
 
-    rt.inline_ops(set_rtp, [rtp_buf])
-    rt.start(worker)
-    rt.fill(of_in.prod(), inp)
-    rt.drain(of_out.cons(), out, wait=True)
 
-module = Program(NPU1Col1(), rt).resolve_program()
+rt = Runtime(sequence, [data_ty, data_ty], fn_args=[of_in.prod(), of_out.cons()])
+
+module = Program(NPU1Col1(), rt, workers=[worker]).resolve_program()
 print(module)
 
 
 # ---------------------------------------------------------------------------
-# Test 2: Multiple RTP buffers (one per worker) in a list, all written in one
-#         inline_ops callback — mirrors the resnet layers_conv2_x pattern.
-# CHECK-LABEL: TEST: multiple_rtp_buffers_in_inline_ops
+# Test 2: Multiple RTP buffers (one per worker) in a list, all written in the
+#         sequence body — mirrors the resnet layers_conv2_x pattern.
+# CHECK-LABEL: TEST: multiple_rtp_buffers_in_body
 # CHECK: %[[RTPW0:.*]] = arith.constant 1 : i32
 # CHECK: aiex.npu.rtp_write(@rtp_w0, 0, %[[RTPW0]]) : i32
 # CHECK: %[[RTPW1:.*]] = arith.constant 2 : i32
@@ -79,7 +79,7 @@ print(module)
 # CHECK: %[[RTPW2:.*]] = arith.constant 3 : i32
 # CHECK: aiex.npu.rtp_write(@rtp_w2, 0, %[[RTPW2]]) : i32
 # ---------------------------------------------------------------------------
-print("\nTEST: multiple_rtp_buffers_in_inline_ops")
+print("\nTEST: multiple_rtp_buffers_in_body")
 
 n_workers = 3
 of_ins = [ObjectFifo(data_ty, name=f"in{i}") for i in range(n_workers)]
@@ -100,42 +100,40 @@ workers = [
     for i in range(n_workers)
 ]
 
-rt2 = Runtime()
-with rt2.sequence(data_ty, data_ty, data_ty, data_ty, data_ty, data_ty) as (
-    i0,
-    i1,
-    i2,
-    o0,
-    o1,
-    o2,
-):
 
-    def set_rtps(rtps):
-        rtps[0][0] = 1
-        rtps[1][0] = 2
-        rtps[2][0] = 3
+def sequence2(i0, i1, i2, o0, o1, o2, in_hs, out_hs):
+    rtps[0][0] = 1
+    rtps[1][0] = 2
+    rtps[2][0] = 3
+    in_hs[0].fill(i0)
+    in_hs[1].fill(i1)
+    in_hs[2].fill(i2)
+    out_hs[0].drain(o0, wait=True)
+    out_hs[1].drain(o1, wait=True)
+    out_hs[2].drain(o2, wait=True)
 
-    rt2.inline_ops(set_rtps, [rtps])
-    rt2.start(*workers)
-    rt2.fill(of_ins[0].prod(), i0)
-    rt2.fill(of_ins[1].prod(), i1)
-    rt2.fill(of_ins[2].prod(), i2)
-    rt2.drain(of_outs[0].cons(), o0, wait=True)
-    rt2.drain(of_outs[1].cons(), o1, wait=True)
-    rt2.drain(of_outs[2].cons(), o2, wait=True)
 
-module2 = Program(NPU2(), rt2).resolve_program()
+rt2 = Runtime(
+    sequence2,
+    [data_ty, data_ty, data_ty, data_ty, data_ty, data_ty],
+    fn_args=[
+        [of_ins[i].prod() for i in range(n_workers)],
+        [of_outs[i].cons() for i in range(n_workers)],
+    ],
+)
+
+module2 = Program(NPU2(), rt2, workers=workers).resolve_program()
 print(module2)
 
 
 # ---------------------------------------------------------------------------
-# Test 3: A Buffer never given to any Worker raises ValueError (not the
-#         confusing AttributeError from __setitem__) when inline_ops fires.
-#         This is the exact failure mode of GitHub issue #3011.
-# CHECK-LABEL: TEST: unplaced_buffer_in_inline_ops_raises
+# Test 3: A Buffer never given to any Worker has no tile, so indexing it in the
+#         sequence body raises a clear "not resolved" error rather than a
+#         confusing one. This is the failure mode of GitHub issue #3011.
+# CHECK-LABEL: TEST: unplaced_buffer_in_body_raises
 # CHECK: PASSED
 # ---------------------------------------------------------------------------
-print("\nTEST: unplaced_buffer_in_inline_ops_raises")
+print("\nTEST: unplaced_buffer_in_body_raises")
 
 of_in3 = ObjectFifo(data_ty, name="in3")
 of_out3 = ObjectFifo(data_ty, name="out3")
@@ -155,23 +153,21 @@ def core_fn3(of_in, of_out, rtp):
 
 worker3 = Worker(core_fn3, [of_in3.cons(), of_out3.prod(), placed_rtp])
 
-rt3 = Runtime()
-with rt3.sequence(data_ty, data_ty) as (inp3, out3):
 
-    def write_both(placed, orphan):
-        placed[0] = 1
-        orphan[0] = 1  # orphan has no tile → should raise ValueError
+def sequence3(inp3, out3, in_h, out_h):
+    placed_rtp[0] = 1
+    orphan_rtp[0] = 1  # orphan has no tile → should raise a clear error
+    in_h.fill(inp3)
+    out_h.drain(out3, wait=True)
 
-    rt3.inline_ops(write_both, [placed_rtp, orphan_rtp])
-    rt3.start(worker3)
-    rt3.fill(of_in3.prod(), inp3)
-    rt3.drain(of_out3.cons(), out3, wait=True)
+
+rt3 = Runtime(sequence3, [data_ty, data_ty], fn_args=[of_in3.prod(), of_out3.cons()])
 
 try:
-    Program(NPU1Col1(), rt3).resolve_program()
-    print("FAILED: expected ValueError but no exception was raised")
-except ValueError as e:
-    assert "placed" in str(e).lower(), f"unexpected message: {e}"
+    Program(NPU1Col1(), rt3, workers=[worker3]).resolve_program()
+    print("FAILED: expected an error but no exception was raised")
+except (AttributeError, ValueError) as e:
+    assert "resolved" in str(e).lower(), f"unexpected message: {e}"
     print("PASSED")
 except Exception as e:
-    print(f"FAILED: expected ValueError, got {type(e).__name__}: {e}")
+    print(f"FAILED: expected a clear resolve error, got {type(e).__name__}: {e}")

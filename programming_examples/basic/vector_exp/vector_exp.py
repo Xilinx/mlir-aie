@@ -63,13 +63,17 @@ def vector_exp(
         for i in range(n_cores)
     ]
 
-    rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty) as (a_in, c_out):
-        rt.start(*workers)
-        rt.fill(A_fifo.prod(), a_in)
-        rt.drain(C_fifo.cons(), c_out, wait=True)
+    def sequence(a_in, c_out, in_h, out_h):
+        in_h.fill(a_in)
+        out_h.drain(c_out, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [tensor_ty, tensor_ty],
+        fn_args=[A_fifo.prod(), C_fifo.cons()],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
 def main():

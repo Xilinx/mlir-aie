@@ -57,13 +57,19 @@ def test_passthrough_int32_e2e():
 
         worker = Worker(core, [of_in.cons(), of_out.prod(), passthrough_fn])
 
-        rt = Runtime()
-        with rt.sequence(vec_ty, vec_ty) as (a, b):
-            rt.start(worker)
-            rt.fill(of_in.prod(), a)
-            rt.drain(of_out.cons(), b, wait=True)
+        def sequence(a, b, in_h, out_h):
+            in_h.fill(a)
+            out_h.drain(b, wait=True)
 
-        return Program(iron.get_current_device(), rt).resolve_program()
+        rt = Runtime(
+            sequence,
+            [vec_ty, vec_ty],
+            fn_args=[of_in.prod(), of_out.cons()],
+        )
+
+        return Program(
+            iron.get_current_device(), rt, workers=[worker]
+        ).resolve_program()
 
     x = iron.arange(N, dtype=np.int32, device="npu")
     y = iron.zeros(N, dtype=np.int32, device="npu")
@@ -110,13 +116,19 @@ def test_reduce_max_bfloat16_output_alignment_e2e():
 
         worker = Worker(core, [of_in.cons(), of_out.prod(), reduce_fn])
 
-        rt = Runtime()
-        with rt.sequence(in_ty, out_ty) as (a, b):
-            rt.start(worker)
-            rt.fill(of_in.prod(), a)
-            rt.drain(of_out.cons(), b, wait=True)
+        def sequence(a, b, in_h, out_h):
+            in_h.fill(a)
+            out_h.drain(b, wait=True)
 
-        return Program(iron.get_current_device(), rt).resolve_program()
+        rt = Runtime(
+            sequence,
+            [in_ty, out_ty],
+            fn_args=[of_in.prod(), of_out.cons()],
+        )
+
+        return Program(
+            iron.get_current_device(), rt, workers=[worker]
+        ).resolve_program()
 
     x = iron.arange(TILE, dtype=bfloat16, device="npu")
     y = iron.zeros(2, dtype=bfloat16, device="npu")

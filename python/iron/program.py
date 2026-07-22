@@ -24,6 +24,7 @@ class Program:
         self,
         device: Device,
         rt: Runtime,
+        workers: "list | None" = None,
     ):
         """A Program represents all design information needed to run the design on a device.
 
@@ -34,9 +35,13 @@ class Program:
         Args:
             device (Device): The device used to generate the final MLIR for the design.
             rt (Runtime): The runtime object for the design.
+            workers (list[Worker] | None, optional): The Workers to run on the
+                device. Defaults to None (no workers). Workers are passed here
+                explicitly rather than started from within the runtime sequence.
         """
         self._device = device
         self._rt = rt
+        self._workers = list(workers) if workers is not None else []
 
     def resolve_program(self, device_name="main"):
         """This method resolves the program components in order to generate MLIR.
@@ -57,8 +62,8 @@ class Program:
             # Resolve parameters at module scope (before the aie.device).
             # aiex.scratchpad_parameter ops are global across all devices because the
             # scratchpad is a single hardware resource shared by all PDIs.
-            for w in self._rt.workers:
-                for arg in w.fn_args:
+            for w in self._workers:
+                for arg in w.flat_fn_args:
                     if isinstance(arg, ScratchpadParameter):
                         arg.resolve()
             for p in self._rt._scratchpad_parameters:
@@ -66,10 +71,15 @@ class Program:
 
             @device(self._device.resolve(), sym_name=device_name)
             def device_body():
-                # Collect all fifos
+                # Collect all fifos. Runtime-driven fifos already have their shim
+                # endpoints bound (Runtime registered its fn_args at construction),
+                # so they resolve here with both ends known -- the sequence body
+                # itself is emitted LAST (self._rt.resolve() below), after workers,
+                # so body verbs that read worker-side state (barrier locks, worker
+                # Buffer placement) see it resolved.
                 all_fifos = set()
                 all_fifos.update(self._rt.fifos)
-                for w in self._rt.workers:
+                for w in self._workers:
                     all_fifos.update(w.fifos)
 
                 # Sort fifos for deterministic resolve
@@ -79,11 +89,11 @@ class Program:
                 # tile (pinned or after placement) is caught by the aie.device
                 # verifier's one-core-per-tile check, so no Python-side guard.
                 all_tiles = []
-                for w in self._rt.workers:
+                for w in self._workers:
                     all_tiles.append(w.tile)
                     # Generic: any user-side Resolvable in fn_args may declare
                     # additional tile dependencies via tiles(). Default is [].
-                    for arg in w.fn_args:
+                    for arg in w.flat_fn_args:
                         if isinstance(arg, Resolvable):
                             all_tiles.extend(arg.tiles())
                 for f in all_fifos:
@@ -130,20 +140,20 @@ class Program:
                         b.resolve()
 
                 # generate functions - this may call resolve() more than once on the same fifo, but that's ok
-                for w in self._rt.workers:
-                    for arg in w.fn_args:
+                for w in self._workers:
+                    for arg in w.flat_fn_args:
                         if isinstance(arg, FuncBase):
                             arg.emit()
                         elif isinstance(arg, Resolvable):
                             arg.resolve()
 
                 # Generate core programs
-                for w in self._rt.workers:
+                for w in self._workers:
                     w.resolve()
 
                 # Emit aie.cascade_flow ops for each Worker's outgoing edges.
                 # Must run after worker.resolve() so both tiles are placed.
-                for w in self._rt.workers:
+                for w in self._workers:
                     for cf in w._outgoing_cascades:
                         cf.resolve()
 
@@ -163,7 +173,7 @@ class Program:
                     for w in self._rt._trace_workers:
                         tiles_to_trace.append(w.tile.op)
                 else:
-                    for w in self._rt._workers:
+                    for w in self._workers:
                         if w.trace is not None:
                             tiles_to_trace.append(w.tile.op)
                 if self._rt._trace_size is not None and self._rt._trace_size > 0:
@@ -175,7 +185,11 @@ class Program:
                         shimtile_events=self._rt._shimtile_events,
                     )
 
-                # In/Out Sequence
+                # Emit the runtime sequence body LAST: workers, their locks, and
+                # worker Buffers are now resolved, so body verbs that read that
+                # state (barrier.set, inline_ops over a worker Buffer) are valid.
+                # Its shim DMAs reference fifos by symbol name (forward ref), so
+                # emitting after the fifo ops is fine.
                 self._rt.resolve()
 
             self._print_verify(ctx)

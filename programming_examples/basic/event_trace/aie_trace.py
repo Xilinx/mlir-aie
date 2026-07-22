@@ -86,60 +86,65 @@ def aie_trace(
         trace=1,
     )
 
-    rt = Runtime()
-    with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (a_in, f_in, c_out):
-        # Custom per-tile-class event lists, forwarded by IRON's Runtime
-        # to the same configure_trace() the dialect-level example used.
-        rt.enable_trace(
-            trace_size=trace_size,
-            workers=[worker],
-            coretile_events=[
-                CoreEvent.INSTR_EVENT_0,
-                CoreEvent.INSTR_EVENT_1,
-                CoreEvent.INSTR_VECTOR,
-                CoreEvent.MEMORY_STALL,
-                CoreEvent.STREAM_STALL,
-                CoreEvent.LOCK_STALL,
-                PortEvent(CoreEvent.PORT_RUNNING_0, WireBundle.DMA, 0, True),
-                PortEvent(CoreEvent.PORT_RUNNING_1, WireBundle.DMA, 0, False),
-            ],
-            coremem_events=[
-                MemEvent.DMA_S2MM_0_START_TASK,
-                MemEvent.DMA_S2MM_1_START_TASK,
-                MemEvent.DMA_MM2S_0_START_TASK,
-                MemEvent.DMA_S2MM_0_FINISHED_TASK,
-                MemEvent.DMA_S2MM_1_FINISHED_TASK,
-                MemEvent.DMA_MM2S_0_FINISHED_TASK,
-                MemEvent.DMA_S2MM_0_STREAM_STARVATION,
-                MemEvent.DMA_S2MM_1_STREAM_STARVATION,
-            ],
-            memtile_events=[
-                MemTilePortEvent(MemTileEvent.PORT_RUNNING_0, WireBundle.DMA, 0, False),
-                MemTilePortEvent(MemTileEvent.PORT_RUNNING_1, WireBundle.DMA, 1, False),
-                MemTilePortEvent(MemTileEvent.PORT_RUNNING_2, WireBundle.DMA, 0, True),
-                MemTilePortEvent(MemTileEvent.PORT_RUNNING_3, WireBundle.DMA, 1, True),
-                MemTilePortEvent(MemTileEvent.PORT_RUNNING_4, WireBundle.DMA, 2, True),
-                MemTilePortEvent(MemTileEvent.PORT_RUNNING_5, WireBundle.DMA, 3, True),
-                MemTilePortEvent(MemTileEvent.PORT_RUNNING_6, WireBundle.DMA, 4, True),
-                MemTilePortEvent(MemTileEvent.PORT_RUNNING_7, WireBundle.DMA, 5, True),
-            ],
-            shimtile_events=[
-                ShimTileEvent.DMA_S2MM_0_START_TASK,
-                ShimTileEvent.DMA_S2MM_1_START_TASK,
-                ShimTileEvent.DMA_MM2S_0_START_TASK,
-                ShimTileEvent.DMA_S2MM_0_FINISHED_TASK,
-                ShimTileEvent.DMA_S2MM_1_FINISHED_TASK,
-                ShimTileEvent.DMA_MM2S_0_FINISHED_TASK,
-                ShimTileEvent.DMA_S2MM_0_STREAM_STARVATION,
-                ShimTileEvent.DMA_S2MM_1_STREAM_STARVATION,
-            ],
-        )
-        rt.start(worker)
-        rt.fill(of_in.prod(), a_in)
-        rt.fill(of_factor.prod(), f_in)
-        rt.drain(of_out.cons(), c_out, wait=True)
+    def sequence(a_in, f_in, c_out, in_h, factor_h, out_h):
+        in_h.fill(a_in)
+        factor_h.fill(f_in)
+        out_h.drain(c_out, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [tensor_ty, scalar_ty, tensor_ty],
+        fn_args=[of_in.prod(), of_factor.prod(), of_out.cons()],
+    )
+
+    # Custom per-tile-class event lists, forwarded by IRON's Runtime
+    # to the same configure_trace() the dialect-level example used.
+    rt.enable_trace(
+        trace_size=trace_size,
+        workers=[worker],
+        coretile_events=[
+            CoreEvent.INSTR_EVENT_0,
+            CoreEvent.INSTR_EVENT_1,
+            CoreEvent.INSTR_VECTOR,
+            CoreEvent.MEMORY_STALL,
+            CoreEvent.STREAM_STALL,
+            CoreEvent.LOCK_STALL,
+            PortEvent(CoreEvent.PORT_RUNNING_0, WireBundle.DMA, 0, True),
+            PortEvent(CoreEvent.PORT_RUNNING_1, WireBundle.DMA, 0, False),
+        ],
+        coremem_events=[
+            MemEvent.DMA_S2MM_0_START_TASK,
+            MemEvent.DMA_S2MM_1_START_TASK,
+            MemEvent.DMA_MM2S_0_START_TASK,
+            MemEvent.DMA_S2MM_0_FINISHED_TASK,
+            MemEvent.DMA_S2MM_1_FINISHED_TASK,
+            MemEvent.DMA_MM2S_0_FINISHED_TASK,
+            MemEvent.DMA_S2MM_0_STREAM_STARVATION,
+            MemEvent.DMA_S2MM_1_STREAM_STARVATION,
+        ],
+        memtile_events=[
+            MemTilePortEvent(MemTileEvent.PORT_RUNNING_0, WireBundle.DMA, 0, False),
+            MemTilePortEvent(MemTileEvent.PORT_RUNNING_1, WireBundle.DMA, 1, False),
+            MemTilePortEvent(MemTileEvent.PORT_RUNNING_2, WireBundle.DMA, 0, True),
+            MemTilePortEvent(MemTileEvent.PORT_RUNNING_3, WireBundle.DMA, 1, True),
+            MemTilePortEvent(MemTileEvent.PORT_RUNNING_4, WireBundle.DMA, 2, True),
+            MemTilePortEvent(MemTileEvent.PORT_RUNNING_5, WireBundle.DMA, 3, True),
+            MemTilePortEvent(MemTileEvent.PORT_RUNNING_6, WireBundle.DMA, 4, True),
+            MemTilePortEvent(MemTileEvent.PORT_RUNNING_7, WireBundle.DMA, 5, True),
+        ],
+        shimtile_events=[
+            ShimTileEvent.DMA_S2MM_0_START_TASK,
+            ShimTileEvent.DMA_S2MM_1_START_TASK,
+            ShimTileEvent.DMA_MM2S_0_START_TASK,
+            ShimTileEvent.DMA_S2MM_0_FINISHED_TASK,
+            ShimTileEvent.DMA_S2MM_1_FINISHED_TASK,
+            ShimTileEvent.DMA_MM2S_0_FINISHED_TASK,
+            ShimTileEvent.DMA_S2MM_0_STREAM_STARVATION,
+            ShimTileEvent.DMA_S2MM_1_STREAM_STARVATION,
+        ],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
 
 
 def _make_argparser():

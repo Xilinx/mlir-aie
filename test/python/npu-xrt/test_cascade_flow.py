@@ -48,11 +48,11 @@ def test_runtime_cascade_flow_registration():
 
     cf = CascadeFlow(worker_a, worker_b)
 
-    rt = Runtime()
-    with rt.sequence(n_ty, n_ty) as (A, B):
-        rt.start(worker_a, worker_b)
-        rt.fill(of_in.prod(), A)
-        rt.drain(of_out.cons(), B, wait=True)
+    def sequence(A, B, in_h, out_h):
+        in_h.fill(A)
+        out_h.drain(B, wait=True)
+
+    rt = Runtime(sequence, [n_ty, n_ty], fn_args=[of_in.prod(), of_out.cons()])
 
     assert worker_a._outgoing_cascades == [cf]
     assert isinstance(cf, _CascadeFlow)
@@ -74,13 +74,13 @@ def test_cascade_flow_mlir_resolve():
 
     CascadeFlow(worker_a, worker_b)
 
-    rt = Runtime()
-    with rt.sequence(n_ty, n_ty) as (A, B):
-        rt.start(worker_a, worker_b)
-        rt.fill(of_in.prod(), A)
-        rt.drain(of_out.cons(), B, wait=True)
+    def sequence(A, B, in_h, out_h):
+        in_h.fill(A)
+        out_h.drain(B, wait=True)
 
-    module = Program(NPU1Col2(), rt).resolve_program()
+    rt = Runtime(sequence, [n_ty, n_ty], fn_args=[of_in.prod(), of_out.cons()])
+
+    module = Program(NPU1Col2(), rt, workers=[worker_a, worker_b]).resolve_program()
     mlir_str = str(module)
     assert "cascade_flow" in mlir_str
 

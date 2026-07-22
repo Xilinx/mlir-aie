@@ -125,13 +125,14 @@ def test_workers_cannot_share_tile():
     of2 = ObjectFifo(n_ty, name="shared_of2")
     w1 = Worker(None, [of1.cons()], tile=shared_tile)
     w2 = Worker(None, [of2.cons()], tile=shared_tile)
-    rt = Runtime()
-    with rt.sequence(n_ty, n_ty) as (A, B):
-        rt.start(w1, w2)
-        rt.fill(of1.prod(), A)
-        rt.fill(of2.prod(), B)
+
+    def sequence(A, B, p1, p2):
+        p1.fill(A)
+        p2.fill(B)
+
+    rt = Runtime(sequence, [n_ty, n_ty], fn_args=[of1.prod(), of2.prod()])
     with pytest.raises(MLIRError, match="already has a core"):
-        Program(NPU2(), rt).resolve_program()
+        Program(NPU2(), rt, workers=[w1, w2]).resolve_program()
 
 
 def test_workers_cannot_share_tile_by_coordinates():
@@ -147,13 +148,14 @@ def test_workers_cannot_share_tile_by_coordinates():
     of2 = ObjectFifo(n_ty, name="coord_of2")
     w1 = Worker(None, [of1.cons()], tile=tile_1)
     w2 = Worker(None, [of2.cons()], tile=tile_2)
-    rt = Runtime()
-    with rt.sequence(n_ty, n_ty) as (A, B):
-        rt.start(w1, w2)
-        rt.fill(of1.prod(), A)
-        rt.fill(of2.prod(), B)
+
+    def sequence(A, B, p1, p2):
+        p1.fill(A)
+        p2.fill(B)
+
+    rt = Runtime(sequence, [n_ty, n_ty], fn_args=[of1.prod(), of2.prod()])
     with pytest.raises(MLIRError, match="already has a core"):
-        Program(NPU2(), rt).resolve_program()
+        Program(NPU2(), rt, workers=[w1, w2]).resolve_program()
 
 
 def test_buffer_cannot_be_shared_across_workers():
@@ -189,38 +191,32 @@ def test_forward_shares_link_tile():
     assert cons.endpoint.tile is of_out.prod().endpoint.tile
 
 
-def test_fill_conflicting_tiles_errors():
-    """Calling fill() twice on the same handle with different tile coordinates must error."""
+def test_prod_conflicting_tiles_errors():
+    """Pinning the producer handle to two different shim tiles must error."""
     n_ty = np.ndarray[(1024,), np.dtype[np.int32]]
     of = ObjectFifo(n_ty, name="conflict_of")
-    prod = of.prod()
-    rt = Runtime()
-    with rt.sequence(n_ty, n_ty) as (A, _):
-        rt.start(Worker(None, [of.cons()]))
-        rt.fill(prod, A, tile=Tile(0, 0))
-        with pytest.raises(ValueError, match="Endpoint already set"):
-            rt.fill(prod, A, tile=Tile(1, 0))
+    of.prod(tile=Tile(0, 0))
+    with pytest.raises(ValueError, match="already pinned to shim tile"):
+        of.prod(tile=Tile(1, 0))
 
 
-def test_fill_same_tile_allowed():
-    """Calling fill() twice on the same handle with the same coordinates is allowed (tiling loop pattern)."""
+def test_prod_same_tile_allowed():
+    """Re-requesting the producer handle with the same shim tile is allowed."""
     n_ty = np.ndarray[(1024,), np.dtype[np.int32]]
     of = ObjectFifo(n_ty, name="same_of")
-    prod = of.prod()
-    rt = Runtime()
-    with rt.sequence(n_ty, n_ty) as (A, _):
-        rt.start(Worker(None, [of.cons()]))
-        rt.fill(prod, A, tile=Tile(0, 0))
-        rt.fill(prod, A, tile=Tile(0, 0))  # same coords — no error
+    p1 = of.prod(tile=Tile(0, 0))
+    p2 = of.prod(tile=Tile(0, 0))  # same coords — no error
+    assert p1 is p2
 
 
-def test_fill_unplaced_tile_allowed():
-    """Calling fill() twice with default (unplaced) tiles is allowed (tiling loop pattern)."""
+def test_fill_twice_same_handle_allowed():
+    """Filling the same handle twice in a sequence (a tiling loop) is allowed."""
     n_ty = np.ndarray[(1024,), np.dtype[np.int32]]
     of = ObjectFifo(n_ty, name="unplaced_of")
-    prod = of.prod()
-    rt = Runtime()
-    with rt.sequence(n_ty, n_ty) as (A, _):
-        rt.start(Worker(None, [of.cons()]))
-        rt.fill(prod, A)
-        rt.fill(prod, A)  # both default AnyShimTile — no error
+
+    def sequence(A, _, prod):
+        prod.fill(A)
+        prod.fill(A)  # second fill on the same handle — no error
+
+    rt = Runtime(sequence, [n_ty, n_ty], fn_args=[of.prod()])
+    Program(NPU1Col1(), rt, workers=[Worker(None, [of.cons()])]).resolve_program()

@@ -43,7 +43,7 @@ It is important to note that the Shim Tile and Compute Tile DMAs move data concu
 
 1. **Worker:** a single `Worker` runs `core_body`, which loops over sub-vectors, acquires elements from `of_in`, calls `passthrough_fn`, and releases them to `of_out`.  Tile placement is left to the auto-placer.
 
-1. **Runtime sequence:** `rt.fill(of_in.prod(), A)` / `rt.drain(of_out.cons(), C)` express the host-side data movement.
+1. **Runtime sequence:** a plain `sequence(a, b, in_h, out_h)` function whose `in_h.fill(a)` / `out_h.drain(b, wait=True)` calls express the host-side data movement; it is handed to `Runtime(sequence, [...], fn_args=[of_in.prod(), of_out.cons()])`.
 
 1. **Trace (optional):** when `--trace-size` is set, a `TraceConfig` is wired up at runtime.
 

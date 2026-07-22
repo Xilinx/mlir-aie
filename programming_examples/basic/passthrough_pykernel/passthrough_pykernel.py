@@ -62,13 +62,17 @@ def passthrough_pykernel(a_in: In, b_out: Out):
 
     my_worker = Worker(core_fn, [of_in.cons(), of_out.prod(), passthrough_fn])
 
-    rt = Runtime()
-    with rt.sequence(_VECTOR_TY, _VECTOR_TY) as (a, b):
-        rt.start(my_worker)
-        rt.fill(of_in.prod(), a)
-        rt.drain(of_out.cons(), b, wait=True)
+    def sequence(a, b, in_h, out_h):
+        in_h.fill(a)
+        out_h.drain(b, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [_VECTOR_TY, _VECTOR_TY],
+        fn_args=[of_in.prod(), of_out.cons()],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=[my_worker]).resolve_program()
 
 
 def _make_argparser():

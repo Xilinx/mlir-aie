@@ -11,7 +11,7 @@
 import numpy as np
 from ml_dtypes import bfloat16
 
-from aie.iron import ObjectFifo, Program, Runtime, Worker
+from aie.iron import ObjectFifo, Program, Runtime, Worker, sync_parameters
 from aie.iron.device import NPU2Col1
 from aie.iron.scratchpad_parameter import ScratchpadParameter
 from aie.dialects.aiex import npu_load_pdi
@@ -51,15 +51,17 @@ def design():
     )
 
     # Runtime sequence: load empty device first to force PDI reconfiguration
-    rt = Runtime()
-    with rt.sequence(out_ty) as out_tensor:
-        rt.inline_ops(lambda: npu_load_pdi(device_ref="empty"), [])
-        rt.inline_ops(lambda: npu_load_pdi(device_ref=device_name), [])
-        rt.sync_parameters()
-        rt.start(worker)
-        rt.drain(of_out.cons(), out_tensor, wait=True)
+    def sequence(out_tensor, out_h):
+        npu_load_pdi(device_ref="empty")
+        npu_load_pdi(device_ref=device_name)
+        sync_parameters()
+        out_h.drain(out_tensor, wait=True)
 
-    module = Program(NPU2Col1(), rt).resolve_program(device_name=device_name)
+    rt = Runtime(sequence, [out_ty], fn_args=[of_out.cons()])
+
+    module = Program(NPU2Col1(), rt, workers=[worker]).resolve_program(
+        device_name=device_name
+    )
 
     # Insert empty device at the beginning of the module to force PDI reload.
     # The firmware skips reloading a PDI if it's the same as the last one loaded,

@@ -101,23 +101,33 @@ for worker in range(n_workers):
         )
     )
 ```
-Finally, in our simple design we write a runtime sequence to bring data to/from external memory and start our Worker:
+Finally, in our simple design we write a sequence body to bring data to/from external memory, and pass our Worker to the `Program`:
 ```python
 # Runtime operations to move data to/from the AIE-array
-rt = Runtime()
-with rt.sequence(data_ty, data_ty, data_ty) as (a_in, b_out, _):
-    rt.start(my_worker)
-    rt.fill(of_in.prod(), a_in)
-    rt.drain(of_out.cons(), b_out, wait=True)
+def sequence(a_in, b_out, c, in_h, out_h):
+    in_h.fill(a_in)
+    out_h.drain(b_out, wait=True)
+
+rt = Runtime(
+    sequence,
+    [data_ty, data_ty, data_ty],
+    fn_args=[of_in.prod(), of_out.cons()],
+)
+# ... Program(dev, rt, workers=[my_worker])
 ```
-The runtime sequence remains largely unchanged for the larger design except that it has to start all three Workers:
+The sequence body remains largely unchanged for the larger design; the difference is that all three Workers are passed to the `Program`:
 ```python
 # Runtime operations to move data to/from the AIE-array
-rt = Runtime()
-with rt.sequence(data_ty, data_ty, data_ty) as (a_in, b_out, _):
-    rt.start(*workers)
-    rt.fill(of_in.prod(), a_in)
-    rt.drain(of_out.cons(), b_out, wait=True)
+def sequence(a_in, b_out, c, in_h, out_h):
+    in_h.fill(a_in)
+    out_h.drain(b_out, wait=True)
+
+rt = Runtime(
+    sequence,
+    [data_ty, data_ty, data_ty],
+    fn_args=[of_in.prod(), of_out.cons()],
+)
+# ... Program(dev, rt, workers=workers)
 ```
 
 To build and run the designs:

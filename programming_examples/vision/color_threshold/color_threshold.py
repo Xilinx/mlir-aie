@@ -119,25 +119,25 @@ def color_threshold(
         for i in range(4)
     ]
 
-    rt = Runtime()
-    with rt.sequence(tensor_ty, unused_ty, tensor_ty) as (i_in, _b, o_out):
-
-        def set_rtps(*args):
-            for rtp in args:
-                rtp[0] = 50
-                rtp[1] = 255
-                rtp[2] = 0
-
-        rt.inline_ops(set_rtps, rtps)
+    def sequence(i_in, _b, o_out, in_h, out_h):
+        for rtp in rtps:
+            rtp[0] = 50
+            rtp[1] = 255
+            rtp[2] = 0
 
         for i in range(4):
-            rt.set_barrier(worker_barriers[i], 1)
+            worker_barriers[i].set(1)
 
-        rt.start(*workers)
-        rt.fill(in_oob_l3l2.prod(), i_in)
-        rt.drain(out_oob_l2l3.cons(), o_out, wait=True)
+        in_h.fill(i_in)
+        out_h.drain(o_out, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [tensor_ty, unused_ty, tensor_ty],
+        fn_args=[in_oob_l3l2.prod(), out_oob_l2l3.cons()],
+    )
+
+    return Program(iron.get_current_device(), rt, workers=workers).resolve_program()
 
 
 def _make_argparser():

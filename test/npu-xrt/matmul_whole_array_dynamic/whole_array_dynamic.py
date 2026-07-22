@@ -7,8 +7,8 @@
 Same device/worker/ObjectFifo structure as ``whole_array.py``, but the host
 runtime sequence is written with ``range_`` loops and SSA arithmetic over the
 problem dimensions M/K/N instead of Python-unrolled ``TensorTiler2D`` taps. The
-DMAs are emitted directly with ``shim_dma_single_bd_task`` inside an
-``rt.inline_ops`` body so their sizes / strides / offsets can be runtime values.
+DMAs use ``fifo.fill``/``fifo.drain`` with runtime-valued sizes / strides /
+offsets, so a single body serves both lowerings.
 
 One design, two lowerings, selected by whether M/K/N are bound:
 
@@ -29,15 +29,17 @@ import sys
 import numpy as np
 
 import aie.iron as iron
-from aie.iron import ObjectFifo, Program, Runtime, Worker, kernels, str_to_dtype
+from aie.iron import (
+    ObjectFifo,
+    Program,
+    Runtime,
+    TaskGroup,
+    Worker,
+    kernels,
+    str_to_dtype,
+)
 from aie.iron.controlflow import range_
 from aie.iron.device import from_name
-from aie.dialects.aiex import (
-    shim_dma_single_bd_task,
-    dma_start_task,
-    dma_await_task,
-    dma_free_task,
-)
 from aie.extras.dialects import arith
 from aie.helpers.util import np_dtype_to_mlir_type
 from aie.utils.hostruntime.argparse import add_benchmark_args, add_compile_args
@@ -187,16 +189,18 @@ def _build_design(
                 )
             )
 
-    # --- Runtime sequence: range_ + inline_ops, one body for both lowerings ---
-    # dynamic=True : M/K/N are runtime i32 block args -> scf.for survives to the
-    #               EmitC path; one xclbin serves many shapes.
-    # dynamic=False: M/K/N are materialized as arith.constant -> the range_ bounds
-    #               are constant, aie-unroll-runtime-sequence-loops flattens the
-    #               loops, and everything folds to the static binary path.
-    # The SAME seq_body runs either way; only how M/K/N enter differs.
+    # --- Runtime sequence: range_ + fill/drain, one body for both lowerings ---
+    # The body's M/K/N are declared as inputs to Runtime(seq, [...]):
+    #   dynamic=True : passed as np.int32 types -> runtime i32 block args, so the
+    #                  scf.for survives to the EmitC path; one xclbin, many shapes.
+    #   dynamic=False: passed as the Python ints M/K/N -> folded arith.constant, so
+    #                  the range_ bounds are constant, aie-unroll-runtime-sequence-
+    #                  loops flattens the loops, and everything folds to the static
+    #                  binary path.
+    # The SAME seq body runs either way; only how M/K/N enter differs.
     m_ar = m * n_aie_rows
 
-    def seq_body(A, B, C, M_val, K_val, N_val, A_fifos, B_fifos, C_fifos):
+    def seq(A, B, C, M_val, K_val, N_val, A_prods, B_prods, C_conses):
         i32 = np_dtype_to_mlir_type(np.int32)
         i64 = np_dtype_to_mlir_type(np.int64)
 
@@ -236,107 +240,57 @@ def _build_design(
                     col_n_off = arith.constant(col, i32) * N_per_col
                     C_off, B_off = rb_n_off + col_n_off, col_n_off
 
+                # One task group per (row-block, col): await C, free A and B.
+                tg = TaskGroup()
+
                 # C output (drained, waited):
                 #   C_offset = rb * m_ar * N + col * (N / n_aie_cols)
-                c_task = shim_dma_single_bd_task(
-                    C_fifos[col].op,
-                    C.op,
+                C_conses[col].drain(
+                    C,
                     sizes=[1, n_tiles_col, m_ar, n],
                     strides=[m_ar * N64, n, N64, 1],
                     offset=C_off,
                     transfer_len=m_ar * N_per_col,  # m_ar * n * n_tiles_col
-                    issue_token=True,
+                    wait=True,
+                    group=tg,
                 )
-                dma_start_task(c_task)
 
                 # A input (broadcast across columns; no col term):
                 #   A_offset = rb * m_ar * K
-                A_off = rb_i32 * (m_ar * K_val)
-                a_task = shim_dma_single_bd_task(
-                    A_fifos[col].op,
-                    A.op,
+                A_prods[col].fill(
+                    A,
                     sizes=[n_tiles_col, k_tiles, m_ar, k],
                     strides=[0, k, K64, 1],
-                    offset=A_off,
+                    offset=rb_i32 * (m_ar * K_val),
                     transfer_len=m_ar * K_val,
+                    group=tg,
                 )
-                dma_start_task(a_task)
 
                 # B input (banded in N): B_offset = col * (N / n_aie_cols)
-                b_task = shim_dma_single_bd_task(
-                    B_fifos[col].op,
-                    B.op,
+                B_prods[col].fill(
+                    B,
                     sizes=[n_tiles_col, k_tiles, k, n],
                     strides=[n, k * N64, N64, 1],
                     offset=B_off,
                     transfer_len=n * K_val,  # k * n * k_tiles
-                )
-                dma_start_task(b_task)
-
-                dma_await_task(c_task)
-                dma_free_task(a_task)
-                dma_free_task(b_task)
-
-    rt = Runtime()
-    if dynamic:
-        with rt.sequence(A_ty, B_ty, C_ty, np.int32, np.int32, np.int32) as (
-            A,
-            B,
-            C,
-            M_rt,
-            K_rt,
-            N_rt,
-        ):
-            rt.start(*workers)
-
-            def body(A, B, C, M_rt, K_rt, N_rt, A_fifos, B_fifos, C_fifos):
-                seq_body(A, B, C, M_rt.op, K_rt.op, N_rt.op, A_fifos, B_fifos, C_fifos)
-
-            rt.inline_ops(
-                body,
-                [
-                    A,
-                    B,
-                    C,
-                    M_rt,
-                    K_rt,
-                    N_rt,
-                    [f.prod() for f in A_l3l2],
-                    [f.prod() for f in B_l3l2],
-                    [f.cons() for f in C_l2l3],
-                ],
-            )
-    else:
-        with rt.sequence(A_ty, B_ty, C_ty) as (A, B, C):
-            rt.start(*workers)
-
-            def body(A, B, C, A_fifos, B_fifos, C_fifos):
-                i32 = np_dtype_to_mlir_type(np.int32)
-                seq_body(
-                    A,
-                    B,
-                    C,
-                    arith.constant(M, i32),
-                    arith.constant(K, i32),
-                    arith.constant(N, i32),
-                    A_fifos,
-                    B_fifos,
-                    C_fifos,
+                    group=tg,
                 )
 
-            rt.inline_ops(
-                body,
-                [
-                    A,
-                    B,
-                    C,
-                    [f.prod() for f in A_l3l2],
-                    [f.prod() for f in B_l3l2],
-                    [f.cons() for f in C_l2l3],
-                ],
-            )
+                tg.finish()
 
-    return Program(dev, rt).resolve_program()
+    # dynamic -> declare M/K/N as runtime i32 types; static -> pass the ints.
+    mkn = [np.int32, np.int32, np.int32] if dynamic else [M, K, N]
+    # fifos the body drives, one prod/cons handle per column, passed as fn_args.
+    A_prods = [f.prod() for f in A_l3l2]
+    B_prods = [f.prod() for f in B_l3l2]
+    C_conses = [f.cons() for f in C_l2l3]
+    rt = Runtime(
+        seq,
+        [A_ty, B_ty, C_ty, *mkn],
+        fn_args=[A_prods, B_prods, C_conses],
+    )
+
+    return Program(dev, rt, workers=workers).resolve_program()
 
 
 # Static @iron.jit entry: M/K/N are CompileTime, so the range_ loops unroll and
