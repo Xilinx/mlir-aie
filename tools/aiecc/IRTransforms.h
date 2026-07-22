@@ -739,6 +739,11 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass());
   dpm.addPass(X::createAIEDMATasksToNPUPass());
   dpm.addPass(X::createAIEDmaToNpuPass());
+  // Expand dma_channel_reset_for into dma_channel_reset + set_lock +
+  // START_QUEUE re-push before those low-level ops are lowered below. Runs here
+  // because the resident aie.mem chains and their assigned bd_ids are still
+  // present.
+  dpm.addPass(X::createAIELowerDmaChannelResetForPass());
   dpm.addPass(X::createAIELowerSetLockPass());
   dpm.addPass(X::createAIELowerDmaChannelResetPass());
   dpm.addPass(X::createAIELowerCoreResetPass());

@@ -3116,6 +3116,40 @@ ShimDMAAllocationOp ShimDMAAllocationOp::getForSymbol(DeviceOp device,
 }
 
 //===----------------------------------------------------------------------===//
+// ObjectFifoRearmBindingOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult ObjectFifoRearmBindingOp::verify() {
+  if (getChannelDirs().size() != getChannelTiles().size())
+    return emitOpError("expected one channel_dirs entry per channel tile (")
+           << getChannelTiles().size() << " tiles, " << getChannelDirs().size()
+           << " dirs)";
+  if (getChannelIndices().size() != getChannelTiles().size())
+    return emitOpError("expected one channel_indices entry per channel tile (")
+           << getChannelTiles().size() << " tiles, "
+           << getChannelIndices().size() << " indices)";
+  if (getLockInits().size() != getLocks().size())
+    return emitOpError("expected one lock_inits entry per lock (")
+           << getLocks().size() << " locks, " << getLockInits().size()
+           << " inits)";
+  for (int32_t dir : getChannelDirs())
+    if (dir != 0 && dir != 1)
+      return emitOpError("channel_dirs entries must be 0 (S2MM) or 1 (MM2S), "
+                         "got ")
+             << dir;
+  // The lowering resolves each operand to its aie.tile / aie.lock, so reject a
+  // binding whose operands are not those (otherwise the lowering would cast a
+  // non-lock/non-tile operand and abort).
+  for (Value tile : getChannelTiles())
+    if (!tile.getDefiningOp<TileOp>())
+      return emitOpError("channel_tiles operands must be aie.tile values");
+  for (Value lock : getLocks())
+    if (!lock.getDefiningOp<LockOp>())
+      return emitOpError("locks operands must be aie.lock values");
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // RuntimeSequenceOp
 //===----------------------------------------------------------------------===//
 
@@ -3250,13 +3284,14 @@ LogicalResult RuntimeSequenceOp::verifyBeforeMaterialization() {
               !llvm::isa<DeviceOp>(symbolDefOp) &&
               !llvm::isa<RuntimeSequenceOp>(symbolDefOp) &&
               !llvm::isa<BufferOp>(symbolDefOp) &&
+              !llvm::isa<ObjectFifoRearmBindingOp>(symbolDefOp) &&
               !llvm::isa<memref::GlobalOp>(symbolDefOp)) {
             op->emitOpError()
                 << "references symbol '"
                 << symbolRef.getRootReference().getValue()
                 << "' which must be either a ShimDMAAllocationOp, DeviceOp, "
-                   "RuntimeSequenceOp, BufferOp, or GlobalOp, "
-                   "but got: "
+                   "RuntimeSequenceOp, BufferOp, ObjectFifoRearmBindingOp, or "
+                   "GlobalOp, but got: "
                 << symbolDefOp->getName().getStringRef();
             return WalkResult::interrupt();
           }

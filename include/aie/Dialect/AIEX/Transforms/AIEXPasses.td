@@ -375,6 +375,25 @@ def AIELowerCoreReset : Pass<"aie-lower-core-reset", "AIE::DeviceOp"> {
   ];
 }
 
+def AIELowerDmaChannelResetFor : Pass<"aie-lower-dma-channel-reset-for", "AIE::DeviceOp"> {
+  let summary = "Lowers aiex.dma_channel_reset_for to its re-arm trio";
+  let description = [{
+    Expands each `aiex.dma_channel_reset_for @fifo` into the resident re-arm of
+    the fifo's non-shim channels, resolved through the fifo's
+    `aie.objectfifo_rearm_binding`: an `aiex.dma_channel_reset` per channel, an
+    `aiex.set_lock` per producer/consumer lock, and an `aiex.npu.write32`
+    START_QUEUE re-push per channel (bd_id + repeat read from the resident
+    `aie.dma_start`). Run after `--aie-assign-bd-ids` and before
+    `--aie-lower-set-lock` / `--aie-lower-dma-channel-reset`.
+  }];
+  let constructor = "xilinx::AIEX::createAIELowerDmaChannelResetForPass()";
+  let dependentDialects = [
+    "mlir::arith::ArithDialect",
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
 def AIELowerScratchpadParameters : Pass<"aie-lower-scratchpad-parameters", "mlir::ModuleOp"> {
   let summary = "Lower scratchpad parameter ops and emit parameter-sync preambles";
   let description = [{
