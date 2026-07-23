@@ -675,8 +675,9 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
     // An oversized non-contiguous pattern that aie-decompose-large-dma-bd can
     // split into hardware-legal sub-transfers is also allowed to verify: the
     // pass rewrites it before BD lowering. Truly undecomposable patterns (e.g.
-    // oversized strides) still fail below. isDecomposableNdDmaPattern suppresses
-    // its own diagnostics, so no stray error is emitted for the accepted case.
+    // oversized strides) still fail below. isDecomposableNdDmaPattern
+    // suppresses its own diagnostics, so no stray error is emitted for the
+    // accepted case.
     llvm::SmallVector<int64_t, 4> inputOffsets = llvm::map_to_vector(
         llvm::reverse(getMixedOffsets()),
         [](OpFoldResult s) { return getConstantIntValue(s).value(); });
@@ -684,10 +685,9 @@ LogicalResult AIEX::NpuDmaMemcpyNdOp::verify() {
                                          col, row, inputOffsets, inputSizes,
                                          inputStrides)) {
       // ok: will be decomposed before lowering
-    } else if (failed(verifyStridesWraps(*this, buffer, col, row, inputSizes,
-                                         inputStrides, hardwareSizes,
-                                         hardwareStrides,
-                                         skipTransformationChecks))) {
+    } else if (failed(verifyStridesWraps(
+                   *this, buffer, col, row, inputSizes, inputStrides,
+                   hardwareSizes, hardwareStrides, skipTransformationChecks))) {
       return failure();
     }
   }
