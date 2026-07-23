@@ -43,6 +43,7 @@
 
 #include "llvm/ADT/StringMap.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/StringSet.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -156,6 +157,51 @@ absolutizeLinkFiles(mlir::ModuleOp src, int col, int row,
         mlir::ArrayAttr::get(cloned->getContext(), absFiles));
   });
   return cloned;
+}
+
+// Collect the LLVM IR (.ll/.bc) link artifacts declared on `coreOp`, resolved
+// to absolute paths. Unlike object link files, these are merged into the
+// core's LLVM module via llvm-link (see buildObjectSubgraph's peano path) and
+// inlined -- eliminating the func.call boundary and the separately
+// object-linked kernel object -- so aiecc routes them separately here. This
+// mirrors the .ll/.bc filtering in AIETranslateToLdScript / AIETranslateToBCF,
+// which skip the same entries so each symbol is merged exactly once.
+inline std::vector<std::string>
+collectCoreIRLinkFiles(xilinx::AIE::CoreOp coreOp, llvm::StringRef inputFile,
+                       llvm::StringRef workDir) {
+  auto isIRLinkFile = [](llvm::StringRef v) {
+    return v.ends_with(".ll") || v.ends_with(".bc");
+  };
+  std::vector<std::string> files;
+  if (auto filesAttr = coreOp.getLinkFiles()) {
+    // Canonical path: link_files populated by aie-assign-core-link-files.
+    for (auto f : filesAttr->getAsRange<mlir::StringAttr>())
+      if (isIRLinkFile(f.getValue()))
+        files.push_back(resolveExternalPath(f.getValue(), inputFile, workDir));
+  } else if (auto linkWith = coreOp.getLinkWith()) {
+    // Deprecated fallback: core-level link_with was not migrated by the pass.
+    if (isIRLinkFile(linkWith.value()))
+      files.push_back(
+          resolveExternalPath(linkWith.value(), inputFile, workDir));
+  }
+  return files;
+}
+
+// Collect the deduplicated IR link artifacts across every core of `deviceOp`,
+// for the unified-object path where the device's cores share one LLVM module
+// that is llvm-linked once. Duplicate references across cores merge cleanly
+// (the kernels are linkonce_odr) and each is inlined into its caller.
+inline std::vector<std::string>
+collectDeviceIRLinkFiles(xilinx::AIE::DeviceOp deviceOp,
+                         llvm::StringRef inputFile, llvm::StringRef workDir) {
+  std::vector<std::string> files;
+  llvm::StringSet<> seen;
+  deviceOp.walk([&](xilinx::AIE::CoreOp coreOp) {
+    for (auto &f : collectCoreIRLinkFiles(coreOp, inputFile, workDir))
+      if (seen.insert(f).second)
+        files.push_back(std::move(f));
+  });
+  return files;
 }
 
 // Clone `src` and replace each matched CoreOp with a stub that carries

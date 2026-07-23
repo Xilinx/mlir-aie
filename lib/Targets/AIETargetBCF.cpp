@@ -140,15 +140,22 @@ LogicalResult AIETranslateToBCF(ModuleOp module, raw_ostream &output,
              << " // And everything else the core can't see\n";
 
       if (auto coreOp = tile.getCoreOp()) {
+        // LLVM IR (.ll/.bc) link artifacts are merged into the core module
+        // via llvm-link (aiecc), not object-linked here, so they are skipped.
+        auto isIRLinkFile = [](llvm::StringRef v) {
+          return v.ends_with(".ll") || v.ends_with(".bc");
+        };
         if (auto filesAttr = coreOp.getLinkFiles()) {
           // Canonical path: link_files populated by aie-assign-core-link-files.
           for (auto f : filesAttr->getAsRange<mlir::StringAttr>())
-            output << "_include _file " << f.getValue() << "\n";
+            if (!isIRLinkFile(f.getValue()))
+              output << "_include _file " << f.getValue() << "\n";
         } else if (coreOp.getLinkWith()) {
           // Deprecated fallback: core-level link_with was not migrated by
           // aie-assign-core-link-files (e.g., the pass was not run).
-          output << "_include _file " << coreOp.getLinkWith().value().str()
-                 << "\n";
+          if (!isIRLinkFile(coreOp.getLinkWith().value()))
+            output << "_include _file " << coreOp.getLinkWith().value().str()
+                   << "\n";
         }
       }
       output << "_resolve _main core_" << tile.getCol() << "_" << tile.getRow()
