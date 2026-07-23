@@ -1,0 +1,14 @@
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// Full-ELF event-trace design compiled through the --load-pdi-to-ctrl-pkt
+// (control-packet) reconfigure flow. This exercises the compile path only.
+//
+// NOTE: at runtime this design hangs in this flow -- the trace shim DMA and the
+// control-packet overlay contend for shim DMA resources -- so the kernel is not
+// executed on hardware here. (The identical design without trace runs fine
+// through --load-pdi-to-ctrl-pkt.) Compiling requires only peano.
+//
+// REQUIRES: peano
+//
+// RUN: %aiecc -v --get-full-elf --load-pdi-to-ctrl-pkt --no-xchesscc --no-xbridge %S/aie.mlir
