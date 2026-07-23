@@ -108,6 +108,12 @@ endif()
 option(AIE_BUILD_CHESS_CLANG "Build chess-clang (requires Vitis chess toolchain)" ${_AIE_BUILD_CHESS_CLANG_DEFAULT})
 option(AIE_BUILD_LSP_SERVER "Build aie-lsp-server (MLIR language server for IDE/editor integration)" ON)
 option(AIE_BUILD_VISUALIZE "Build aie-visualize (AIE design visualization tool)" ON)
+# Build the bundled XRT-free, Boost-free hrx-xclbinutil (an NPU-minimal
+# xclbinutil, vendored as the third_party/hrx-xclbinutil submodule) and install
+# it as `xclbinutil` next to aiecc. Lets aiecc package .xclbins without a system
+# XRT install (e.g. for the HRX/amdxdna runtime). OFF by default; enabling it
+# requires the submodule to be initialized.
+option(AIE_BUILD_HRXXCLBINUTIL "Build the bundled hrx-xclbinutil and install it as xclbinutil (no system XRT needed)" OFF)
 
 find_package(Vitis 2023.2 COMPONENTS ${AIE_VITIS_COMPONENTS})
 configure_file(./utils/vitisVariables.config.in

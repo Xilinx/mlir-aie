@@ -1301,6 +1301,77 @@ LogicalResult AIEX::SetLockOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// DmaChannelResetOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AIEX::DmaChannelResetOp::verify() {
+  const auto &targetModel = AIE::getTargetModel(*this);
+
+  auto tile = dyn_cast_or_null<AIE::TileOp>(getTile().getDefiningOp());
+  if (!tile)
+    return emitOpError() << "tile operand must be produced by an aie.tile op";
+  int col = tile.getCol();
+  int row = tile.getRow();
+  // Only core and mem tiles have a per-channel DMA reset bit. The shim NOC DMA
+  // control register has no reset field (aie-rt's Aie2PShimDmaChProp sets
+  // Reset.Mask = 0); bit 1 there is PAUSE_MEM, not RESET. Rejecting shim keeps
+  // the op honest about what it can lower, matching aie-rt's own
+  // XAie_DmaChannelReset, which errors on SHIMNOC/SHIMPL tiles.
+  if (!targetModel.isCoreTile(col, row) && !targetModel.isMemTile(col, row))
+    return emitOpError() << "tile (" << col << ", " << row
+                         << ") has no DMA channel reset (only core and mem "
+                            "tiles do; shim NOC DMA has no reset bit)";
+
+  // Number of DMA channels on this tile in this direction. Mirrors
+  // TileOp::getNumSource/DestConnections(WireBundle::DMA): the switchbox
+  // direction is reversed relative to the DMA direction.
+  uint32_t numChannels = getDirection() == AIE::DMAChannelDir::S2MM
+                             ? targetModel.getNumDestSwitchboxConnections(
+                                   col, row, AIE::WireBundle::DMA)
+                             : targetModel.getNumSourceSwitchboxConnections(
+                                   col, row, AIE::WireBundle::DMA);
+  if (getChannel() >= numChannels)
+    return emitOpError() << "channel " << getChannel()
+                         << " out of range for this tile and direction (tile "
+                            "has "
+                         << numChannels << " DMA channel(s) in this direction)";
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
+// CoreResetOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AIEX::CoreResetOp::verify() {
+  const auto &targetModel = AIE::getTargetModel(*this);
+
+  // The op lowers to an NPU control-packet write; the runtime sequence has no
+  // meaning on AIE1. Reject it explicitly, as SetLockOp does.
+  if (targetModel.getTargetArch() == AIE::AIEArch::AIE1)
+    return emitOpError("aiex.core_reset is not supported on AIE1.");
+
+  auto tile = dyn_cast_or_null<AIE::TileOp>(getTile().getDefiningOp());
+  if (!tile)
+    return emitOpError() << "tile operand must be produced by an aie.tile op";
+  int col = tile.getCol();
+  int row = tile.getRow();
+  // The tile coordinates are bounded by aie.tile's own verifier, so this op
+  // does not re-check them for range.
+
+  // Only core tiles have a CORE_CONTROL register with a reset bit. Mem and shim
+  // tiles have no compute core, so there is nothing valid to lower to. This
+  // matches aie-rt's XAie_CoreReset, which errors on any tile that is not an
+  // AIE (core) tile.
+  if (!targetModel.isCoreTile(col, row))
+    return emitOpError() << "tile (" << col << ", " << row
+                         << ") has no core to reset (only core tiles have a "
+                            "CORE_CONTROL register)";
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // BlockFloatingPointType
 //===----------------------------------------------------------------------===//
 uint64_t AIEX::BlockFloatType::getTotalSizeInBits() const {

@@ -87,6 +87,14 @@ jobs:
           key: ${{ runner.os }}-releaseasserts-${{ steps.get-submodule-hash.outputs.hash }}
           max-size: 1G
 
+      # Compare the compiler by content, not mtime, so the cache hits across
+      # runs on ephemeral runners. Matches .github/actions/setup_ccache.
+      - name: Configure ccache
+        shell: bash
+        run: |
+          ccache --set-config=compiler_check=content
+          ccache --set-config=sloppiness=locale,time_macros
+
       - name: Get cmakeModules
         id: clone-cmakeModules
         run: git clone --depth 1 https://github.com/Xilinx/cmakeModules.git

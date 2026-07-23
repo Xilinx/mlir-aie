@@ -119,6 +119,12 @@ inline cl::opt<bool> expandLoadPdis(
     "expand-load-pdis",
     cl::desc("Expand `load_pdi { device_ref }` into explicit write sequences "
              "(avoids per-switch full PDI reload)"));
+inline cl::opt<bool> loadPdiToCtrlPkt(
+    "load-pdi-to-ctrl-pkt",
+    cl::desc("Rewrite `load_pdi { device_ref }` ops into DMA tasks that stream "
+             "the device configuration as control packets (requires a control "
+             "overlay; implies --generate-ctrl-pkt-overlay; mutually exclusive "
+             "with --expand-load-pdis)"));
 inline cl::opt<bool> xchesscc(
     "xchesscc",
     cl::desc("Compile cores with the Chess toolchain (xchesscc) instead of "
@@ -283,6 +289,17 @@ inline cl::opt<std::string> xclbinInput(
     "xclbin-input",
     cl::desc("Input xclbin to extend with this design's kernel/PDI instead of "
              "creating a new one from scratch"));
+
+// Select which xclbinutil packages the .xclbin. Accepts an absolute/relative
+// path or a bare program name (looked up on PATH). Also settable via the
+// AIE_XCLBINUTIL environment variable (this flag takes precedence). When set
+// but unusable, xclbin generation fails loudly rather than silently falling
+// back to a PATH lookup -- this is what lets a "pure HRX" flow guarantee the
+// bundled hrx-xclbinutil is used and a "pure XRT" flow guarantee XRT's.
+inline cl::opt<std::string> xclbinutilPath(
+    "xclbinutil-path",
+    cl::desc("Path or name of the xclbinutil used to package the .xclbin "
+             "(overrides PATH lookup; also settable via AIE_XCLBINUTIL)"));
 
 inline bool generateFullElf = false;
 inline cl::opt<std::string>

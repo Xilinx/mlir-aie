@@ -436,11 +436,12 @@ static LogicalResult generateTransactions(AIERTControl &ctl,
                                           const StringRef workDirPath,
                                           DeviceOp &targetOp, bool aieSim,
                                           bool enableElfs, bool enableInit,
-                                          bool enableCores) {
+                                          bool enableCores,
+                                          bool skipCtrlPktOverlay = false) {
   if (enableElfs && !targetOp.getOps<CoreOp>().empty() &&
       failed(ctl.addAieElfs(targetOp, workDirPath, aieSim)))
     return failure();
-  if (enableInit && failed(ctl.addInitConfig(targetOp)))
+  if (enableInit && failed(ctl.addInitConfig(targetOp, skipCtrlPktOverlay)))
     return failure();
   if (enableCores && !targetOp.getOps<CoreOp>().empty() &&
       failed(ctl.addCoreEnable(targetOp)))
@@ -508,8 +509,9 @@ emitTransactionOps(OpBuilder &builder, Location fallbackLoc,
       IntegerAttr addressAttr =
           IntegerAttr::get(ui64Ty, llvm::APInt(64, payloadInfo.address));
 
-      AIEX::NpuLoadPdiOp::create(builder, loc, nullptr, idAttr, sizeAttr,
-                                 addressAttr);
+      AIEX::NpuLoadPdiOp::create(builder, loc, /*device_ref=*/nullptr, idAttr,
+                                 sizeAttr, addressAttr,
+                                 /*expand_mode=*/nullptr);
     } else if (op.cmd.Opcode == XAie_TxnOpcode::XAIE_IO_CUSTOM_OP_DDR_PATCH) {
       if (!op.addressPatch) {
         llvm::errs()
@@ -769,8 +771,8 @@ xilinx::AIE::convertTransactionBinaryToMLIR(mlir::MLIRContext *ctx,
 
 LogicalResult xilinx::AIE::generateAndInsertConfigOps(
     OpBuilder &builder, xilinx::AIE::DeviceOp device, llvm::StringRef clElfDir,
-    AIE::AIEToConfigurationOutputType outputType,
-    std::string blockwrite_prefix) {
+    AIE::AIEToConfigurationOutputType outputType, std::string blockwrite_prefix,
+    bool skipCtrlPktOverlay) {
   const AIETargetModel &targetModel =
       (const AIETargetModel &)device.getTargetModel();
 
@@ -789,7 +791,7 @@ LogicalResult xilinx::AIE::generateAndInsertConfigOps(
 
   bool generateElfs = true;
   if (failed(generateTransactions(ctl, clElfDir, device, aieSim, generateElfs,
-                                  true, true)))
+                                  true, true, skipCtrlPktOverlay)))
     return failure();
 
   // Export the transactions to a binary buffer

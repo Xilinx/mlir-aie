@@ -99,6 +99,16 @@ jobs:
           key: ${{ matrix.build_type }}-${{ runner.os }}-${{ matrix.ubuntu_version }}
           max-size: 1G
 
+      # ccache defaults to comparing the compiler by mtime. GitHub-hosted
+      # runners reinstall the compiler every run with a fresh mtime, so every
+      # object misses even when the cache restores. Compare by content instead,
+      # matching what .github/actions/setup_ccache already does.
+      - name: Configure ccache
+        shell: bash
+        run: |
+          ccache --set-config=compiler_check=content
+          ccache --set-config=sloppiness=locale,time_macros
+
       # Build the repo test target in debug mode to build and test.
       - name: Build and test (Assert)
         if: matrix.build_type == 'Assert'

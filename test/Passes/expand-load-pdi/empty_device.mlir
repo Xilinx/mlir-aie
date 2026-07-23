@@ -24,7 +24,7 @@ module {
     aie.device(npu2_1col) @main {
         // CHECK: aie.runtime_sequence(%arg0: memref<1xi32>) {
         aie.runtime_sequence (%arg0: memref<1xi32>) {
-            // CHECK: aiex.npu.load_pdi {device_ref = @empty_0}
+            // CHECK: aiex.npu.load_pdi {device_ref = @empty_0, expand_mode = 0 : i32}
             aiex.npu.load_pdi { device_ref = @my_empty_device }
         }
         // CHECK: }

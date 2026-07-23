@@ -236,15 +236,40 @@ inline llvm::json::Value makePartitionJson(xilinx::AIE::DeviceOp devOp,
                               llvm::json::Array{std::string("0xC1")}}}}}}}}}}};
 }
 
+// Patch-info JSON for external buffers (the runtime control-packet buffer).
+// Consumed by `aiebu-asm` via the `patch_info_file` field in the full-ELF
+// config JSON. `ctrlPktArgIdx` is the runtime-sequence argument slot the
+// control-packet buffer occupies (the sequence's pre-lowering argument count,
+// since ctrl-packet-to-DMA appends the ctrl buffer as the next argument).
+inline llvm::json::Value makePatchInfoJson(int ctrlPktArgIdx,
+                                           int64_t ctrlPktSizeBytes) {
+  using O = llvm::json::Object;
+  return O{{"external_buffers",
+            O{{"buffer_ctrl", O{{"xrt_id", ctrlPktArgIdx},
+                                {"logical_id", -1},
+                                {"size_in_bytes", ctrlPktSizeBytes},
+                                {"ctrl_pkt_buffer", 1},
+                                {"name", "runtime_control_packet"}}}}}};
+}
+
 // Full-ELF config.json fed to `aiebu-asm -t aie2_config`. One xrt-kernel per
 // device with ≥1 runtime sequence; PDIs array is shared (all devices) so
 // aiebu-asm can resolve any load_pdi reference. Argument count is
 // max(3, max runtime-seq arity). PDI IDs are read from `aiecc.pdi_id` on each
 // DeviceOp (stamped by `assignDevicePdiIds`).
+//
+// `ctrlPktPaths` / `patchInfoPaths` (both keyed per runtime sequence as
+// "<device>_<sequence>" via `npuSeqKey`, optional) carry that sequence's
+// control-packet binary and its patch-info JSON for the load-pdi-to-ctrl-pkt
+// reconfigure flow; when present they are attached to the matching
+// runtime-sequence instance so each sequence streams its own control data into
+// its own argument slot.
 inline llvm::json::Value
 makeFullElfConfigJson(const Node<OpInModule<xilinx::AIE::DeviceOp>> &devices,
                       const llvm::StringMap<std::string> &pdiPaths,
-                      const llvm::StringMap<std::string> &instsPaths) {
+                      const llvm::StringMap<std::string> &instsPaths,
+                      const llvm::StringMap<std::string> &ctrlPktPaths = {},
+                      const llvm::StringMap<std::string> &patchInfoPaths = {}) {
   using O = llvm::json::Object;
   auto devId = [](xilinx::AIE::DeviceOp d) {
     return static_cast<int>(
@@ -282,11 +307,22 @@ makeFullElfConfigJson(const Node<OpInModule<xilinx::AIE::DeviceOp>> &devices,
       // entry in `instsPaths`; skip the rest (e.g. filtered out via
       // `--sequence-name`) so we don't emit an instance with an empty
       // TXN_ctrl_code_file, which is invalid for `aiebu-asm -t aie2_config`.
-      auto instsIt = instsPaths.find(npuSeqKey(devName, seq.getSymName()));
+      std::string seqKey = npuSeqKey(devName, seq.getSymName());
+      auto instsIt = instsPaths.find(seqKey);
       if (instsIt == instsPaths.end())
         return;
-      instances.push_back(O{{"id", seq.getSymName().str()},
-                            {"TXN_ctrl_code_file", instsIt->second}});
+      O inst{{"id", seq.getSymName().str()},
+             {"TXN_ctrl_code_file", instsIt->second}};
+      // Control-packet data and its buffer relocation are per runtime sequence:
+      // look them up by the same "<device>_<sequence>" key so each sequence
+      // gets its own control data patched into its own argument slot.
+      if (auto ctrlPktIt = ctrlPktPaths.find(seqKey);
+          ctrlPktIt != ctrlPktPaths.end())
+        inst["ctrl_packet_file"] = ctrlPktIt->second;
+      if (auto patchIt = patchInfoPaths.find(seqKey);
+          patchIt != patchInfoPaths.end())
+        inst["patch_info_file"] = patchIt->second;
+      instances.push_back(std::move(inst));
     });
     if (instances.empty())
       continue;

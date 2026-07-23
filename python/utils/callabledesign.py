@@ -48,29 +48,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-def _evict_xrt_context(xclbin_path: Path) -> None:
-    """Evict a stale XRT hw_context after IOCTL EINVAL so the retry gets a fresh one."""
-    from aie.utils import DefaultNPURuntime
-
-    if DefaultNPURuntime is None or not hasattr(DefaultNPURuntime, "_context_cache"):
-        return
-    try:
-        resolved = str(xclbin_path.resolve())
-        mtime = xclbin_path.stat().st_mtime
-        entry = DefaultNPURuntime._context_cache.pop((resolved, mtime), None)
-        if entry is not None:
-            DefaultNPURuntime._cleanup_entry(entry)
-    except Exception:
-        # Recovery path: must not raise, but log loudly — silent failure would
-        # keep recycling a broken _context_cache into every retry.
-        logger.warning(
-            "_evict_xrt_context: failed to evict %s; retry may reuse a stale "
-            "hardware context",
-            xclbin_path,
-            exc_info=True,
-        )
-
-
 class CallableDesign:
     """JIT-compiling, callable wrapper around a ``CompilableDesign``.
 
@@ -385,7 +362,13 @@ class CallableDesign:
 
             self._kernel_cache.pop(cache_key, None)
             xclbin_path, _ = compilable.compile()
-            _evict_xrt_context(xclbin_path)
+            # Evict the stale cached context so the retry rebuilds a fresh one.
+            # Runtimes without an evictable context cache (e.g. HRX) inherit the
+            # base no-op, so this needs no backend-specific branching here.
+            from aie.utils import DefaultNPURuntime
+
+            if DefaultNPURuntime is not None:
+                DefaultNPURuntime.evict_context(xclbin_path)
             kernel = self._compile_and_build_kernel(compilable, cache_key, trace_config)
             return kernel(*tensor_args, **remaining_scalars)
 

@@ -203,6 +203,11 @@ struct ShellCommand {
   inline static std::vector<std::string> searchPaths;
   inline static std::map<std::string, std::string> toolPathCache;
 
+  // Forced tool resolutions (name -> executable path). Highest priority, ahead
+  // of search paths and PATH. Populated from --xclbinutil-path / AIE_XCLBINUTIL
+  // so a pure-HRX / pure-XRT flow can guarantee which tool is used.
+  inline static std::map<std::string, std::string> toolOverrides;
+
   // Guards toolPathCache against concurrent resolveTool() calls
   inline static std::mutex toolCacheMutex;
 
@@ -255,9 +260,24 @@ struct ShellCommand {
     }
   }
 
-  // Absolute paths pass through; basenames look up most-recent prefix
-  // first, then PATH. Results cached for process lifetime.
+  // Force `name` to resolve to `path` (caller must pass an executable path),
+  // taking precedence over search paths / PATH. Clears the resolve cache.
+  static void setToolOverride(std::string name, std::string path) {
+    std::lock_guard<std::mutex> lock(toolCacheMutex);
+    toolOverrides[std::move(name)] = std::move(path);
+    toolPathCache.clear();
+  }
+
+  // Registered overrides win first; then absolute paths pass through; basenames
+  // look up most-recent prefix first, then PATH. Results cached for process
+  // lifetime.
   static std::string resolveTool(llvm::StringRef name) {
+    {
+      std::lock_guard<std::mutex> lock(toolCacheMutex);
+      auto ov = toolOverrides.find(name.str());
+      if (ov != toolOverrides.end())
+        return ov->second;
+    }
     if (llvm::sys::path::is_absolute(name))
       return name.str();
     std::lock_guard<std::mutex> lock(toolCacheMutex);

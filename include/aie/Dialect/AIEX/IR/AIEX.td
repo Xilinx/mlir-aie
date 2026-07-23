@@ -345,9 +345,8 @@ def AIE_ConfigureOp: AIEX_Op<"configure", [
 ]>
  {
   let summary = "Set up a configuration (program memories, stream switches, etc.) on the NPU device.";
-  let arguments = (
-    ins FlatSymbolRefAttr:$symbol
-  );
+  let arguments = (ins FlatSymbolRefAttr:$symbol,
+      OptionalAttr<AIEX_ExpandMode>:$expand_mode);
 
   let assemblyFormat = [{
      $symbol regions attr-dict
@@ -1061,12 +1060,11 @@ def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
 // NPU Load PDI operation
 def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
   let summary = "load pdi operator";
-  let arguments = (
-    ins OptionalAttr<FlatSymbolRefAttr>:$device_ref,
-        DefaultValuedOptionalAttr<I32Attr, "0">:$id,
-        DefaultValuedOptionalAttr<I32Attr, "0">:$size,
-        DefaultValuedOptionalAttr<UI64Attr, "0">:$address
-  );
+  let arguments = (ins OptionalAttr<FlatSymbolRefAttr>:$device_ref,
+      DefaultValuedOptionalAttr<I32Attr, "0">:$id,
+      DefaultValuedOptionalAttr<I32Attr, "0">:$size,
+      DefaultValuedOptionalAttr<UI64Attr, "0">:$address,
+      OptionalAttr<AIEX_ExpandMode>:$expand_mode);
   let results = (outs );
   let assemblyFormat = [{ attr-dict }];
   let description = [{
@@ -1409,6 +1407,96 @@ def AIEX_SetLockOp: AIEX_Op<"set_lock", [HasParent<"AIE::RuntimeSequenceOp">, Sk
   let extraClassDefinition = [{
     AIE::LockOp SetLockOp::getLockOp() { return cast<AIE::LockOp>(getLock().getDefiningOp()); }
   }];
+}
+
+def AIEX_DmaChannelResetOp: AIEX_Op<"dma_channel_reset", [HasParent<"AIE::RuntimeSequenceOp">, SkipAccessibilityCheckTrait]> {
+  let summary = "Reset a DMA channel from a runtime sequence";
+  let description = [{
+    Resets the DMA channel `channel` in direction `direction` on `tile` by
+    pulsing the channel control register reset bit. Intended for re-arming a
+    resident objectFIFO across dispatches: it clears the channel's residual
+    queue state so it does not carry into a subsequent dispatch. This resets the
+    DMA channel state only; it does not by itself establish a clean dispatch
+    baseline in general. The operation is non blocking and offers no
+    synchronization guarantees.
+
+    The pulse is emitted as two `npu.maskwrite32` writes masked to the reset bit,
+    so it preserves the other control fields (out-of-order, compression,
+    controller id, FoT mode) instead of clobbering them.
+
+    Only core and mem tiles have a per-channel DMA reset bit; shim NOC/PL tiles
+    are rejected by the verifier because their DMA control register has no reset
+    field.
+
+    `tile` is an SSA `aie.tile` value, so the target is named the same way as
+    `aiex.dma_configure_task`.
+
+    Example:
+    ```
+      %tile = aie.tile(2, 3)
+      aiex.dma_channel_reset(%tile, S2MM, 0)
+    ```
+  }];
+  let arguments = (
+    ins Index:$tile,
+        DMAChannelDir:$direction,
+        I32Attr:$channel
+  );
+  let assemblyFormat = [{ `(` $tile `,` $direction `,` $channel `)` attr-dict }];
+  let extraClassDeclaration = [{
+    AIE::TileOp getTileOp();
+  }];
+  let extraClassDefinition = [{
+    AIE::TileOp DmaChannelResetOp::getTileOp() {
+      return cast<AIE::TileOp>(getTile().getDefiningOp());
+    }
+  }];
+  let hasVerifier = 1;
+}
+
+def AIEX_CoreResetOp: AIEX_Op<"core_reset", [HasParent<"AIE::RuntimeSequenceOp">, SkipAccessibilityCheckTrait]> {
+  let summary = "Reset a compute core from a runtime sequence";
+  let description = [{
+    Pulses the reset bit of the CORE_CONTROL register on `tile`. The pulse is two
+    `npu.maskwrite32` writes masked to the reset bit (assert, then deassert), so
+    it preserves the ENABLE field packed in the same CORE_CONTROL word instead of
+    clobbering it. This mirrors aie-rt's XAie_CoreReset followed by
+    XAie_CoreUnreset. The operation is non blocking and offers no synchronization
+    guarantees.
+
+    Resetting clears the core's processor state (program counter and registers);
+    it does not touch the tile's data memory, locks, or DMA. The intended use is
+    re-arming a resident kernel across dispatches without a full PDI reload:
+    discard stale core state while keeping resident data in place. This assumes
+    the resident core is still enabled; re-arming a core that has cleared its
+    ENABLE bit also needs a re-enable, which this op does not emit.
+
+    Only core tiles have a CORE_CONTROL register; mem and shim tiles are rejected
+    by the verifier because they have no core to reset. This matches aie-rt's
+    XAie_CoreReset, which errors on non core tiles.
+
+    `tile` is an SSA `aie.tile` value, so the target is named the same way as
+    `aiex.dma_channel_reset` and `aiex.dma_configure_task`.
+
+    Example:
+    ```
+      %tile = aie.tile(2, 3)
+      aiex.core_reset(%tile)
+    ```
+  }];
+  let arguments = (
+    ins Index:$tile
+  );
+  let assemblyFormat = [{ `(` $tile `)` attr-dict }];
+  let extraClassDeclaration = [{
+    AIE::TileOp getTileOp();
+  }];
+  let extraClassDefinition = [{
+    AIE::TileOp CoreResetOp::getTileOp() {
+      return cast<AIE::TileOp>(getTile().getDefiningOp());
+    }
+  }];
+  let hasVerifier = 1;
 }
 
 //===----------------------------------------------------------------------===//

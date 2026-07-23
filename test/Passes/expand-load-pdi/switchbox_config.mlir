@@ -28,7 +28,7 @@ module {
     aie.device(npu2_1col) @main {
         // CHECK: aie.runtime_sequence(%arg0: memref<1xi32>) {
         aie.runtime_sequence (%arg0: memref<1xi32>) {
-            // CHECK: aiex.npu.load_pdi {device_ref = @empty_0}
+            // CHECK: aiex.npu.load_pdi {device_ref = @empty_0, expand_mode = 0 : i32}
             // CHECK-DAG: %[[V0:.*]] = arith.constant -2147483643 : i32
             // CHECK-DAG: %[[A0:.*]] = arith.constant 2355200 : i32
             // CHECK: aiex.npu.write32(%[[A0]], %[[V0]]) : i32, i32

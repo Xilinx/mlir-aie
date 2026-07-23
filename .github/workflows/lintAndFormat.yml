@@ -301,6 +301,15 @@ jobs:
           key: ${{ runner.os }}-${{ matrix.ubuntu_version }}-${{ steps.get-llvm-commit-hash.outputs.hash }}-code-cov
           max-size: 1G
 
+      # Compare the compiler by content, not mtime, so the cache hits across
+      # runs on ephemeral runners. Matches .github/actions/setup_ccache.
+      - name: Configure ccache
+        if: steps.changed-files.outputs.changed-files != ''
+        shell: bash
+        run: |
+          ccache --set-config=compiler_check=content
+          ccache --set-config=sloppiness=locale,time_macros
+
       - name: Install our python reqs
         if: steps.changed-files.outputs.changed-files != ''
         run: |

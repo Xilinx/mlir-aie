@@ -42,7 +42,7 @@ endif()
 # test_utils library
 if (BUILD_TEST_UTILS_LIBRARY)
   add_library(test_utils STATIC test_utils.cpp)
-  set_target_properties(test_utils PROPERTIES PUBLIC_HEADER "test_utils.h;xrt_test_wrapper.h;cxxopts.hpp;parameter_scratchpad.h")
+  set_target_properties(test_utils PROPERTIES PUBLIC_HEADER "test_utils.h;xrt_test_wrapper.h;hrx_test_wrapper.h;cxxopts.hpp;parameter_scratchpad.h")
   add_runtime_pic_flag(test_utils)
 
   # XRT headers on Windows pull in boost/any.hpp which is not typically
@@ -63,7 +63,7 @@ if (BUILD_TEST_LIBRARY)
   list(APPEND headers target.h test_library.h memory_allocator.h)
 endif()
 if (STAGE_TEST_UTILS_PAYLOAD)
-  list(APPEND headers test_utils.h xrt_test_wrapper.h parameter_scratchpad.h)
+  list(APPEND headers test_utils.h xrt_test_wrapper.h hrx_test_wrapper.h parameter_scratchpad.h)
 endif()
 foreach(basefile ${headers})
     set(dest ${CMAKE_CURRENT_BINARY_DIR}/../include/${basefile})
@@ -92,7 +92,7 @@ foreach(basefile ${files})
 endforeach()
 
 if (BUILD_TEST_LIBRARY)
-  install(TARGETS test_lib 
+  install(TARGETS test_lib
       ARCHIVE DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/lib
       PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/include
   )
@@ -104,7 +104,7 @@ if (BUILD_TEST_UTILS_LIBRARY)
       PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/include
   )
 elseif (STAGE_TEST_UTILS_PAYLOAD)
-  install(FILES test_utils.h xrt_test_wrapper.h cxxopts.hpp parameter_scratchpad.h
+  install(FILES test_utils.h xrt_test_wrapper.h hrx_test_wrapper.h cxxopts.hpp parameter_scratchpad.h
       DESTINATION ${CMAKE_INSTALL_PREFIX}/runtime_lib/${AIE_RUNTIME_TARGET}/test_lib/include
   )
 endif()

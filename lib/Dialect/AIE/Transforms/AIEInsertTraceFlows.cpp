@@ -13,6 +13,8 @@
 #include "mlir/IR/Attributes.h"
 #include "mlir/Pass/Pass.h"
 
+#include "llvm/ADT/STLExtras.h"
+
 #include <climits>
 #include <map>
 #include <set>
@@ -60,6 +62,17 @@ struct ShimInfo {
   std::vector<ChannelDescriptor> channels; // Per-channel descriptors
   std::vector<int> traceChannelAssignment; // Per-trace index into channels
 };
+
+// A dynamic (runtime-sized) runtime sequence carries its transfer sizes as
+// scalar block arguments (the dynamic ABI); its memref args are typed at
+// maximum capacity, not the runtime data size. Any non-memref block argument
+// marks it.
+static bool isDynamicRuntimeSequence(RuntimeSequenceOp seq) {
+  for (BlockArgument arg : seq.getBody().getArguments())
+    if (!isa<MemRefType>(arg.getType()))
+      return true;
+  return false;
+}
 
 struct AIEInsertTraceFlowsPass
     : xilinx::AIE::impl::AIEInsertTraceFlowsBase<AIEInsertTraceFlowsPass> {
@@ -142,6 +155,16 @@ struct AIEInsertTraceFlowsPass
                                   "least one argument to reuse";
         return signalPassFailure();
       }
+      if (isDynamicRuntimeSequence(runtimeSeq)) {
+        runtimeSeq.emitError()
+            << "trace.host_config reuse_output_buffer=true cannot be used with "
+               "a dynamic (runtime-sized) runtime_sequence: the trace offset "
+               "would be computed from the last tensor's maximum static size, "
+               "not its runtime transfer size, so trace data would be written "
+               "past the output buffer. Use a separate trace buffer instead "
+               "(reuse_output_buffer=false)";
+        return signalPassFailure();
+      }
       Value lastArg = args.back();
       traceArgIdx = args.size() - 1;
       auto memrefType = cast<MemRefType>(lastArg.getType());
@@ -155,7 +178,18 @@ struct AIEInsertTraceFlowsPass
           {bufferSizeBytes}, IntegerType::get(device.getContext(), 8));
       Block &entryBB = runtimeSeq.getBody().front();
       entryBB.addArgument(traceBufType, runtimeSeq.getLoc());
-      traceArgIdx = entryBB.getNumArguments() - 1;
+      // The DDR address-patch arg_idx is a host BUFFER-operand index: scalar
+      // (non-memref) args are baked into the instruction stream, not passed as
+      // host buffers, so they don't count. The appended trace buffer is the
+      // last memref, at buffer-operand index (numMemrefArgs - 1). Using the raw
+      // block-arg index would over-count by the number of scalar args (e.g. a
+      // dynamic sequence's runtime sizes), pointing the patch at a nonexistent
+      // operand so trace data is never written.
+      traceArgIdx = llvm::count_if(entryBB.getArguments(),
+                                   [](BlockArgument a) {
+                                     return isa<MemRefType>(a.getType());
+                                   }) -
+                    1;
     }
 
     // Remove host_config op

@@ -698,6 +698,40 @@ class LitConfigHelper:
         return result.returncode == 0
 
     @staticmethod
+    def python_expr_is_true(config_obj, python_executable: str, expr: str) -> bool:
+        """Return whether ``bool(eval(expr))`` is True in lit's test Python.
+
+        Probes the same environment lit uses for tests (so PATH/LD_LIBRARY_PATH
+        additions are honored) and exits 0 only when the expression is truthy.
+        Used to gate features on a runtime *value* (e.g. libhrx being locatable)
+        rather than mere module importability.
+        """
+        probe_env = os.environ.copy()
+        for key, value in config_obj.environment.items():
+            if key in LitConfigHelper.PATH_ENV_VARS:
+                probe_env[key] = LitConfigHelper._prepend_env_paths(
+                    probe_env.get(key, ""), value
+                )
+            else:
+                probe_env[key] = value
+
+        probe = f"import sys; sys.exit(0 if bool({expr}) else 1)"
+        try:
+            result = subprocess.run(
+                [python_executable, "-c", probe],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=probe_env,
+                timeout=30,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return False
+        except Exception:
+            return False
+
+        return result.returncode == 0
+
+    @staticmethod
     def apply_config_to_lit(config_obj, hardware_configs: Dict[str, HardwareConfig]):
         """
         Apply detected hardware configurations to lit config.

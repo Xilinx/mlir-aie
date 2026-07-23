@@ -17,3 +17,6 @@
 [submodule "third_party/aie_api"]
 	path = third_party/aie_api
 	url = https://github.com/Xilinx/aie_api
+[submodule "third_party/hrx-xclbinutil"]
+	path = third_party/hrx-xclbinutil
+	url = https://github.com/jtuyls/hrx-xclbinutil.git

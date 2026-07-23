@@ -1,5 +1,12 @@
-/* Copyright (C) 2025 Advanced Micro Devices, Inc.
+/* Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
  * SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception */
+
+// When built for the HRX backend (NPU_RUNTIME=hrx / -DUSE_HRX=ON), this header
+// becomes a thin shim that pulls in the HRX drop-in instead of the XRT impl, so
+// example test.cpp files keep `#include "xrt_test_wrapper.h"` unchanged.
+#ifdef TEST_UTILS_USE_HRX
+#include "hrx_test_wrapper.h"
+#else
 
 #include "cxxopts.hpp"
 #include "test_utils.h"
@@ -399,3 +406,5 @@ int setup_and_run_aie(Verify verify_results, std::tuple<InBuf<TIns>...> inputs,
     return 1;
   }
 }
+
+#endif // TEST_UTILS_USE_HRX
