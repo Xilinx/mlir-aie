@@ -344,10 +344,23 @@ class CMakeBuild(build_ext):
         print("ENV", pprint(os.environ), file=sys.stderr)
         print("cmake", " ".join(cmake_args), file=sys.stderr)
 
+        configure_args = list(cmake_args)
+        if platform.system() == "Windows":
+            # cibuildwheel recreates its build venv on each run. Refresh cached
+            # Python and pybind11 paths while retaining the compiled build tree.
+            configure_args[:0] = [
+                "-UPython3_*",
+                "-U_Python3_*",
+                "-UPython_*",
+                "-U_Python_*",
+                "-Upybind11_*",
+                "-UPYBIND11_*",
+            ]
+
         build_succeeded = False
         try:
             subprocess.run(
-                ["cmake", _cmake_path(cmake_source_dir), *cmake_args],
+                ["cmake", _cmake_path(cmake_source_dir), *configure_args],
                 cwd=build_temp,
                 check=True,
             )
