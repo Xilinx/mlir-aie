@@ -8,7 +8,7 @@
 // 6-argument sequence emits exactly bo0..bo5. Only the generated kernels JSON
 // metadata is inspected, so this runs the front-end without compiling cores.
 
-// RUN: %python aiecc.py -n --aie-generate-xclbin %s
+// RUN: %aiecc -n --get-xclbin %s
 // RUN: FileCheck %s --input-file=buffers_xclbin.mlir.prj/kernels_main.json
 
 // CHECK: "name": "bo0"

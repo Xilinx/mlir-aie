@@ -7,6 +7,7 @@
 
 import logging
 import os
+from typing import Any
 
 import numpy as np
 
@@ -25,17 +26,100 @@ _logger = logging.getLogger(__name__)
 
 from .hostruntime.tensor_class import Tensor
 
-try:
-    import pyxrt  # pyright: ignore[reportMissingImports]
+# Capability probes for the two NPU host backends. Both are memoized and lazy:
+# importing ``aie.utils`` no longer eagerly probes either backend. Runtime
+# selection below probes only the backend it actually needs (so NPU_RUNTIME=hrx
+# never imports pyxrt and NPU_RUNTIME=xrt never runs HRX discovery), and the
+# public ``aie.utils.has_xrt`` / ``aie.utils.has_hrx`` attributes are served
+# on-demand via module ``__getattr__`` so a bare capability query still works in
+# any mode (including the default ``auto``) and pays for at most one probe.
+_has_xrt: bool | None = None  # tri-state cache; None => not probed yet
+_has_hrx: bool | None = None
 
-    has_xrt = True
-except ImportError as e:
-    _logger.warning(
-        "Failed to import PyXRT: %s, proceeding without runtime libraries.", e
+
+def _probe_xrt() -> bool:
+    """Whether ``pyxrt`` (the XRT userspace) imports on this host.
+
+    Heavyweight -- importing pyxrt pulls in the XRT stack -- so it runs at most
+    once and only when XRT is actually needed or explicitly queried.
+    """
+    global _has_xrt
+    if _has_xrt is None:
+        try:
+            import pyxrt  # noqa: F401  # pyright: ignore[reportMissingImports]
+
+            _has_xrt = True
+        except ImportError as e:
+            _logger.warning(
+                "Failed to import PyXRT: %s, proceeding without runtime libraries.",
+                e,
+            )
+            _has_xrt = False
+    return _has_xrt
+
+
+def _probe_hrx() -> bool:
+    """Whether ``libhrx.so`` can be located on this host.
+
+    Filesystem-only (no dlopen, no device init), but still memoized so repeated
+    queries do no extra work.
+    """
+    global _has_hrx
+    if _has_hrx is None:
+        try:
+            from .hostruntime.hrxruntime.discovery import hrx_available
+
+            _has_hrx = hrx_available()
+        except Exception as e:  # discovery must never break importing aie.utils
+            _logger.debug("HRX discovery probe failed: %s", e)
+            _has_hrx = False
+    return _has_hrx
+
+
+# Host-runtime backend selection. ``NPU_RUNTIME`` chooses between the XRT and
+# HRX host stacks; both consume the identical aiecc artifacts (final.xclbin +
+# insts.bin) and only the dispatch path differs. Accepted values:
+#   xrt   - force the XRT backend (falls back to CPU tensors if pyxrt is missing).
+#   hrx   - force the HRX backend (error here if libhrx is not found).
+#   auto  - (default) prefer XRT when present, else fall back to CPU.
+#
+# HRX is strictly opt-in: it is selected *only* when NPU_RUNTIME=hrx is set
+# explicitly. ``auto`` never selects HRX -- the product contract is "XRT remains
+# the default, HRX is opt-in", so an XRT-less host degrades to CPU rather than
+# silently switching to HRX.
+#
+# NPU_RUNTIME is read *before* any capability probe so a forced backend only
+# probes itself: 'hrx' never imports pyxrt, and 'xrt'/'auto' never run HRX
+# discovery. Each backend's tensor/runtime module is likewise imported lazily
+# (it dlopen()s / imports its own runtime on first use).
+_NPU_RUNTIME = os.environ.get("NPU_RUNTIME", "auto").lower()
+
+# Strict product contract: an unset NPU_RUNTIME defaults to 'auto', but an
+# explicitly *invalid* value is a hard error rather than a silent fallback --
+# a typo'd backend name must not quietly resolve to something else.
+if _NPU_RUNTIME not in ("xrt", "hrx", "auto"):
+    raise ImportError(
+        f"Invalid NPU_RUNTIME={_NPU_RUNTIME!r}; expected one of xrt|hrx|auto "
+        f"(unset defaults to 'auto')."
     )
-    has_xrt = False
 
-if has_xrt:
+if _NPU_RUNTIME == "hrx" and not _probe_hrx():
+    raise ImportError(
+        "NPU_RUNTIME=hrx was requested but libhrx.so could not be located. "
+        "Install HRX to a standard location, or set HRX_DIR/LIBHRX_DIR. "
+        "Use NPU_RUNTIME=auto to fall back to XRT/CPU when HRX is absent."
+    )
+
+# Resolve 'auto' to a concrete backend with graceful degradation. HRX is never
+# auto-selected (opt-in only via NPU_RUNTIME=hrx), so 'auto' is XRT or CPU.
+if _NPU_RUNTIME == "auto":
+    _NPU_RUNTIME = "xrt" if _probe_xrt() else "cpu"
+
+if _NPU_RUNTIME == "hrx":
+    from .hostruntime.hrxruntime.tensor import HRXTensor
+
+    DEFAULT_TENSOR_CLASS = HRXTensor
+elif _NPU_RUNTIME == "xrt" and _probe_xrt():
     from .hostruntime.xrtruntime.tensor import XRTTensor
 
     DEFAULT_TENSOR_CLASS = XRTTensor
@@ -201,33 +285,49 @@ from .hostruntime.hostruntime import HostRuntime
 from .trace import TraceConfig
 from .npukernel import NPUKernel
 
-if has_xrt:
-    from .hostruntime.xrtruntime.hostruntime import CachedXRTRuntime
-else:
-    CachedXRTRuntime = None
-
-
 _DefaultNPURuntime = None
 
 
 def _get_default_npu_runtime():
     global _DefaultNPURuntime
-    if _DefaultNPURuntime is None and has_xrt:
-        assert CachedXRTRuntime is not None
+    if _DefaultNPURuntime is not None:
+        return _DefaultNPURuntime
+    if _NPU_RUNTIME == "hrx":
+        from .hostruntime.hrxruntime.hostruntime import CachedHRXRuntime
+
+        _DefaultNPURuntime = CachedHRXRuntime()
+    elif _NPU_RUNTIME == "xrt" and _probe_xrt():
+        from .hostruntime.xrtruntime.hostruntime import CachedXRTRuntime
+
         _DefaultNPURuntime = CachedXRTRuntime()
     return _DefaultNPURuntime
 
 
 def cleanup_npu_runtime() -> None:
-    """Release cached XRT resources without initializing the default runtime."""
+    """Release cached NPU runtime resources without initializing the runtime.
+
+    Works for both backends: ``CachedXRTRuntime`` releases hw contexts/insts
+    BOs and ``CachedHRXRuntime`` releases loaded XADX executables. If the
+    default runtime was never created, this is a no-op (it never forces
+    initialization).
+    """
     runtime = globals().get("DefaultNPURuntime", _DefaultNPURuntime)
     if runtime is not None:
         runtime.cleanup()
 
 
-def __getattr__(name):
+def __getattr__(name: str) -> Any:
+    # Return type is ``Any`` deliberately: this serves attributes of unrelated
+    # types (the NPU runtime object for ``DefaultNPURuntime`` vs ``bool`` for the
+    # ``has_xrt``/``has_hrx`` probes), so a single concrete annotation would
+    # mistype callers (e.g. treating ``DefaultNPURuntime`` as possibly ``bool``).
     if name == "DefaultNPURuntime":
         return _get_default_npu_runtime()
+    # Public capability flags, probed on first access (see _probe_xrt/_probe_hrx).
+    if name == "has_xrt":
+        return _probe_xrt()
+    if name == "has_hrx":
+        return _probe_hrx()
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 

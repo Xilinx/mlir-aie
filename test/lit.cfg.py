@@ -170,12 +170,12 @@ tools = [
 ]
 
 if os.name != "nt":
-    tools.extend(["aiecc.py", "txn2mlir.py"])
+    tools.extend(["txn2mlir.py"])
 
 llvm_config.add_tool_substitutions(tools, tool_dirs)
 
 if os.name == "nt":
-    LitConfigHelper.add_python_tool_substitutions(config, ["aiecc.py", "txn2mlir.py"])
+    LitConfigHelper.add_python_tool_substitutions(config, ["txn2mlir.py"])
 
 if config.enable_board_tests:
     lit_config.parallelism_groups["board"] = 1
@@ -191,6 +191,21 @@ lit_config.parallelism_groups["npu-xrt"] = 1
 # via PATHEXT) so the feature gate fires correctly on every OS.
 if shutil.which("aie-lsp-server", path=config.llvm_tools_dir) is not None:
     config.available_features.add("aie-lsp-server")
+
+# The bundled XRT-free hrx-xclbinutil (-DAIE_BUILD_HRXXCLBINUTIL=ON) installs a
+# `xclbinutil` into the AIE tools dir. Gate the packaging section-check test on
+# its presence so the test only runs when that tool was actually built (and so
+# the bare `xclbinutil` it invokes resolves to the bundled copy).
+if shutil.which("xclbinutil", path=config.aie_tools_dir) is not None:
+    config.available_features.add("hrxxclbinutil")
+
+# HRX Python runtime: gate the HRX-only Python tests (test/python/npu-hrx) on
+# libhrx being locatable, so they only run where the HRX backend can load. This
+# checks a runtime value (aie.utils.has_hrx), not just importability.
+if LitConfigHelper.python_expr_is_true(
+    config, config.python_executable, "__import__('aie.utils').utils.has_hrx"
+):
+    config.available_features.add("hrx_python_bindings")
 
 if config.xrt_python_bindings and LitConfigHelper.can_import_python_module(
     config, config.python_executable, "pyxrt"

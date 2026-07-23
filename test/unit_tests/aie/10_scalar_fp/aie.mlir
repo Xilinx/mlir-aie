@@ -6,7 +6,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: %PYTHON aiecc.py %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %link_against_hsa% %s %test_lib_flags %extraAieCcFlags% -o test.elf -- %S/test.cpp
+// RUN: %aiecc %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %link_against_hsa% %s %test_lib_flags %extraAieCcFlags% -o test.elf -- %S/test.cpp
 // RUN: %run_on_vck5000 ./test.elf
 
 module @test {
@@ -29,6 +29,6 @@ aie.device(xcvc1902) {
     memref.store %val3,%buf13_0[%idx3] : memref<256xf32>
     aie.end
   }
-  
+
 }
 }

@@ -54,6 +54,12 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/hostruntime/xrtruntime/hostruntime.py
     utils/hostruntime/xrtruntime/parameter_scratchpad.py
     utils/hostruntime/xrtruntime/tensor.py
+    utils/hostruntime/hrxruntime/__init__.py
+    utils/hostruntime/hrxruntime/_bindings.py
+    utils/hostruntime/hrxruntime/context.py
+    utils/hostruntime/hrxruntime/discovery.py
+    utils/hostruntime/hrxruntime/hostruntime.py
+    utils/hostruntime/hrxruntime/tensor.py
     utils/compile/__init__.py
     utils/compile/utils.py
     utils/compile/cache/utils.py
@@ -134,23 +140,22 @@ declare_mlir_dialect_python_bindings(
     aie-headers
 )
 
-configure_file(compiler/aiecc/configure.py.in aie/compiler/aiecc/configure.py)
+configure_file(utils/configure.py.in aie/utils/configure.py)
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-  "${CMAKE_CURRENT_BINARY_DIR}/aie/compiler/aiecc/configure.py"
+  "${CMAKE_CURRENT_BINARY_DIR}/aie/utils/configure.py"
 )
 install(
-  FILES "${CMAKE_CURRENT_BINARY_DIR}/aie/compiler/aiecc/configure.py"
+  FILES "${CMAKE_CURRENT_BINARY_DIR}/aie/utils/configure.py"
   ${CMAKE_CURRENT_IN}
-  DESTINATION ${AIE_PYTHON_INSTALL_DIR}/aie/compiler/aiecc
+  DESTINATION ${AIE_PYTHON_INSTALL_DIR}/aie/utils
 )
 
-# Note that compiler/ is not globbed but compiler/aiecc/ and compiler/txn2mlir/
-# this is so that compiler/aiecc.py and compiler/txn2mlir.py do not get distributed
-# through this dir but actually through bin (see all the way at the bottom of this file)
+# Note that compiler/ is not globbed but compiler/txn2mlir/ is; this is so
+# that compiler/txn2mlir.py does not get distributed through this dir but
+# actually through bin (see all the way at the bottom of this file)
 declare_mlir_python_sources(AIEPythonSources.Compiler
   ADD_TO_PARENT AIEPythonSources
   SOURCES_GLOB
-    compiler/aiecc/*.py
     compiler/txn2mlir/*.py
 )
 
@@ -327,9 +332,8 @@ endforeach()
 add_custom_command(
   TARGET AIEPythonModules PRE_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy
-  ${CMAKE_CURRENT_SOURCE_DIR}/compiler/aiecc.py
   ${CMAKE_CURRENT_SOURCE_DIR}/compiler/txn2mlir.py
   ${CMAKE_BINARY_DIR}/bin
 )
 # during install
-install(PROGRAMS compiler/aiecc.py compiler/txn2mlir.py DESTINATION bin)
+install(PROGRAMS compiler/txn2mlir.py DESTINATION bin)

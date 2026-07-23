@@ -51,6 +51,8 @@ std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIECtrlPacketInferTilesPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIELowerSetLockPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
+createAIELowerDmaChannelResetPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIETransformBfpTypesPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>> createAIELowerSetLockPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>

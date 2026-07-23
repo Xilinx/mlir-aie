@@ -9,14 +9,14 @@
 // REQUIRES: chess
 // REQUIRES: peano
 
-// RUN: %PYTHON aiecc.py --aie-generate-core-elfs --xchesscc -nv %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib -o test.elf -- %S/test.cpp 2>&1 | FileCheck %s --check-prefix=XCHESSCC
-// RUN: %PYTHON aiecc.py --aie-generate-core-elfs --no-xchesscc -nv %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib -o test.elf -- %S/test.cpp 2>&1 | FileCheck %s --check-prefix=PEANO
+// RUN: %aiecc --get-core-elfs --xchesscc -nv %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib -o test.elf -- %S/test.cpp 2>&1 | FileCheck %s --check-prefix=XCHESSCC
+// RUN: %aiecc --get-core-elfs --no-xchesscc -nv %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib -o test.elf -- %S/test.cpp 2>&1 | FileCheck %s --check-prefix=PEANO
 // The NOCOMPILE runs assert that no core compiler is invoked; they request
 // input_with_addresses so the driver still produces (compiler-free) output for
 // FileCheck to scan instead of an empty graph.
-// RUN: %PYTHON aiecc.py --aie-generate-input-with-addresses -nv %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib -o test.elf -- %S/test.cpp 2>&1 | FileCheck %s --check-prefix=NOCOMPILE
-// RUN: %PYTHON aiecc.py --no-unified --aie-generate-core-elfs --no-xchesscc -nv %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib -o test.elf -- %S/test.cpp 2>&1 | FileCheck %s --check-prefix=PEANO
-// RUN: %PYTHON aiecc.py --no-unified --aie-generate-input-with-addresses -nv %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib -o test.elf -- %S/test.cpp 2>&1 | FileCheck %s --check-prefix=NOCOMPILE
+// RUN: %aiecc --get-input-with-addresses -nv %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib -o test.elf -- %S/test.cpp 2>&1 | FileCheck %s --check-prefix=NOCOMPILE
+// RUN: %aiecc --no-unified --get-core-elfs --no-xchesscc -nv %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib -o test.elf -- %S/test.cpp 2>&1 | FileCheck %s --check-prefix=PEANO
+// RUN: %aiecc --no-unified --get-input-with-addresses -nv %VitisSysrootFlag% --host-target=%aieHostTargetTriplet% %s -I%aie_runtime_lib%/test_lib/include %extraAieCcFlags% -L%aie_runtime_lib%/test_lib/lib -ltest_lib -o test.elf -- %S/test.cpp 2>&1 | FileCheck %s --check-prefix=NOCOMPILE
 
 // Note that llc determines the architecture from the llvm IR.
 

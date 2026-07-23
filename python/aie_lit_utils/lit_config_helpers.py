@@ -562,10 +562,9 @@ class LitConfigHelper:
     def setup_aiecc_substitution(config_obj) -> None:
         """Add an explicit substitution for the C++ aiecc driver.
 
-        The Python ``aiecc.py`` entry point is now a compatibility wrapper
-        around the C++ driver. Tests that exercise the compiler should invoke
-        the build-tree executable directly so they do not depend on PATH order
-        or a stale installed console script.
+        Tests that exercise the compiler should invoke the build-tree
+        executable directly so they do not depend on PATH order or a stale
+        installed console script.
         """
         aiecc = os.path.join(
             config_obj.aie_tools_dir, f"aiecc{config_obj.llvm_exe_ext}"
@@ -690,6 +689,40 @@ class LitConfigHelper:
                 stderr=subprocess.PIPE,
                 env=probe_env,
                 timeout=10,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            return False
+        except Exception:
+            return False
+
+        return result.returncode == 0
+
+    @staticmethod
+    def python_expr_is_true(config_obj, python_executable: str, expr: str) -> bool:
+        """Return whether ``bool(eval(expr))`` is True in lit's test Python.
+
+        Probes the same environment lit uses for tests (so PATH/LD_LIBRARY_PATH
+        additions are honored) and exits 0 only when the expression is truthy.
+        Used to gate features on a runtime *value* (e.g. libhrx being locatable)
+        rather than mere module importability.
+        """
+        probe_env = os.environ.copy()
+        for key, value in config_obj.environment.items():
+            if key in LitConfigHelper.PATH_ENV_VARS:
+                probe_env[key] = LitConfigHelper._prepend_env_paths(
+                    probe_env.get(key, ""), value
+                )
+            else:
+                probe_env[key] = value
+
+        probe = f"import sys; sys.exit(0 if bool({expr}) else 1)"
+        try:
+            result = subprocess.run(
+                [python_executable, "-c", probe],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                env=probe_env,
+                timeout=30,
             )
         except (FileNotFoundError, subprocess.TimeoutExpired):
             return False

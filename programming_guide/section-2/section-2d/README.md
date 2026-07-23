@@ -30,5 +30,7 @@ For IRON constructs like `RuntimeTasks`, please continue with this [reading](./R
 
 For the AIE dialect functions like `npu_dma_memcpy_nd` and `dma_wait` please continue reading [here](./DMATasks.md).
 
+For the full catalog of `aiex` control ops you can place in a runtime sequence, grouped by resource and verb, see the [Runtime Sequence Op Reference](../../runtime_sequence_reference.md).
+
 -----
 [Prev](../section-2c/) &middot; [Top](..) &middot; [Next](../section-2e/)

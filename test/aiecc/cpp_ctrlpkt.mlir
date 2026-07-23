@@ -9,7 +9,7 @@
 
 // Preprocess with overlay (matching ctrl_packet_reconfig test flow)
 // RUN: aie-opt -aie-generate-column-control-overlay="route-shim-to-tile-ctrl=true" %s -o %t_overlay.mlir
-// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-ctrlpkt --keep-loc --dump-intermediates --tmpdir=%t_ctrlpkt_tmp --verbose --ctrlpkt-name=%t_ctrlpkt.bin --ctrlpkt-dma-seq-name=%t_dma_seq.bin %t_overlay.mlir 2>&1 | FileCheck %s
+// RUN: aiecc --no-xchesscc --no-xbridge --get-ctrlpkt --get-locmap --dump-intermediates --tmpdir=%t_ctrlpkt_tmp --verbose --ctrlpkt-name=%t_ctrlpkt.bin --ctrlpkt-dma-seq-name=%t_dma_seq.bin %t_overlay.mlir 2>&1 | FileCheck %s
 // RUN: FileCheck %s --check-prefix=DUMP < %t_ctrlpkt_tmp/ctrlpkt_lowered_main.mlir
 // RUN: FileCheck %s --check-prefix=DUMP < %t_ctrlpkt_tmp/input_with_addresses.mlir
 // RUN: FileCheck %s --check-prefix=DUMP < %t_ctrlpkt_tmp/ctrlpkt_lowered_main.mlir

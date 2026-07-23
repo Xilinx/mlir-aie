@@ -9,7 +9,7 @@
 
 // Test parallel core compilation with -j option
 
-// RUN: aiecc --no-xchesscc --no-xbridge --aie-generate-npu-insts --aie-generate-core-elfs --verbose -j 2 %s 2>&1 | FileCheck %s
+// RUN: aiecc --no-xchesscc --no-xbridge --get-npu-insts --get-core-elfs --verbose -j 2 %s 2>&1 | FileCheck %s
 
 // Parallel compilation (-j 2): both cores are compiled and linked.
 // CHECK: ({{[0-9]+}}/{{[0-9]+}}) input.mlir

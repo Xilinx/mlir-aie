@@ -345,9 +345,8 @@ def AIE_ConfigureOp: AIEX_Op<"configure", [
 ]>
  {
   let summary = "Set up a configuration (program memories, stream switches, etc.) on the NPU device.";
-  let arguments = (
-    ins FlatSymbolRefAttr:$symbol
-  );
+  let arguments = (ins FlatSymbolRefAttr:$symbol,
+      OptionalAttr<AIEX_ExpandMode>:$expand_mode);
 
   let assemblyFormat = [{
      $symbol regions attr-dict
@@ -789,7 +788,7 @@ def AIE_NpuBlockWriteOp: AIEX_Op<"npu.blockwrite", []> {
   }];
   let extraClassDeclaration = [{
     std::optional<uint32_t> getAbsoluteAddress();
-    mlir::DenseIntElementsAttr getDataWords(); 
+    mlir::DenseIntElementsAttr getDataWords();
   }];
 }
 
@@ -862,7 +861,7 @@ def AIE_NpuPreemptOp: AIEX_Op<"npu.preempt", []> {
   }];
   let description = [{
     Yield to higher priority task(s). Indicates to the transaction processor that the instruction stream can be interrupted at this point.
-    Levels: 
+    Levels:
     0: Noop.
     1: Mem tile.
     2: AIE tile.
@@ -935,7 +934,7 @@ def AIE_NpuUpdateFromScratchpadOp: AIEX_Op<"npu.update_from_scratchpad", []> {
     This instruction reads the contents of scratchpad memory created using the `npu.create_scratchpad` op (the `StateTable`), calculates a value, then adds the result to the memory location or register denoted by the given address as follows:
 
     1. Reads the existing 64-bit value from the register pair:
-       
+
        ```
        existing = (*(addr+4) & 0xFFFF) << 32 | (*addr & 0xFFFFFFFC)
        ```
@@ -953,7 +952,7 @@ def AIE_NpuUpdateFromScratchpadOp: AIEX_Op<"npu.update_from_scratchpad", []> {
       ```
 
     4. Writes back the lower 48 bits of the result:
-       
+
        ```
        *addr     = result & 0xFFFFFFFC    (bits [1:0] forced to 0)
        *(addr+4) = (*(addr+4) & 0xFFFF0000) | ((result >> 32) & 0xFFFF)
@@ -967,8 +966,8 @@ def AIE_NpuUpdateFromScratchpadOp: AIEX_Op<"npu.update_from_scratchpad", []> {
     - Always writes 8 contiguous bytes (both registers in the pair).
 
     ### Rationale
-    
-    The firmware instruction underpinning this operation was originally intended to patch shim buffer descriptor addresses only. 
+
+    The firmware instruction underpinning this operation was originally intended to patch shim buffer descriptor addresses only.
     Because of this, this always writes 48 bits (size of BD addresses) and the lower bits are zeroed (assuring the value is a multiple of the addressable word size).
 
     ### Attributes
@@ -976,7 +975,7 @@ def AIE_NpuUpdateFromScratchpadOp: AIEX_Op<"npu.update_from_scratchpad", []> {
     - `state_table_idx` is a 32-bit-word index offset into the scratchpad memory. The source value will be read from this offset into the scratchpad.
     - `func` is the function applied to the state table value in firmware, which can be one of `mul`, `incr` or `decr`.
     - `func_arg` is the argument to the function.
-    - `address`, `buffer`, `column` and `row` together resolve to the destination address that the value will be written to. 
+    - `address`, `buffer`, `column` and `row` together resolve to the destination address that the value will be written to.
       Address resolution is the same as for `npu.write32`:
       - If `buffer` is specified, `address` is a word offset relative to that
         buffer's start address.
@@ -1061,12 +1060,11 @@ def AIE_NpuWriteBdOp: AIEX_Op<"npu.writebd", []> {
 // NPU Load PDI operation
 def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
   let summary = "load pdi operator";
-  let arguments = (
-    ins OptionalAttr<FlatSymbolRefAttr>:$device_ref,
-        DefaultValuedOptionalAttr<I32Attr, "0">:$id,
-        DefaultValuedOptionalAttr<I32Attr, "0">:$size,
-        DefaultValuedOptionalAttr<UI64Attr, "0">:$address
-  );
+  let arguments = (ins OptionalAttr<FlatSymbolRefAttr>:$device_ref,
+      DefaultValuedOptionalAttr<I32Attr, "0">:$id,
+      DefaultValuedOptionalAttr<I32Attr, "0">:$size,
+      DefaultValuedOptionalAttr<UI64Attr, "0">:$address,
+      OptionalAttr<AIEX_ExpandMode>:$expand_mode);
   let results = (outs );
   let assemblyFormat = [{ attr-dict }];
   let description = [{
@@ -1074,7 +1072,7 @@ def AIE_NpuLoadPdiOp: AIEX_Op<"npu.load_pdi", []> {
     The PDI is identified by `id`. `address` and `size` are typically written at
     runtime by the driver or host program.
 
-    If a symbol reference is provided, the compiler driver (aiecc.py) will match it to a device symbol name and assign the PDI ID field based on it.
+    If a symbol reference is provided, the compiler driver (aiecc) will match it to a device symbol name and assign the PDI ID field based on it.
 
     ### Watch Out!
 
@@ -1229,11 +1227,18 @@ def AIE_DMAStartTaskOp : AIEX_Op<"dma_start_task", [HasAncestor<"AIE::RuntimeSeq
 def AIE_DMAAwaitTaskOp : AIEX_Op<"dma_await_task", [HasAncestor<"AIE::RuntimeSequenceOp">]> {
   let summary = "Await Completion of a Previously Submitted DMA Task";
   let description = [{
-    This operation will block execution of the runtime sequence until the referenced previously started DMA task has completed.
+    This operation blocks execution of the runtime sequence until a previously
+    started DMA task completes, by waiting on its task-completion token (TCT).
+    To be able to wait on a task, it must issue a token (`issue_token = true`).
 
-    DMA tasks can be started using `aiex.start_task` using abstract BD chains declared using `aie.bd_chain`, or using `aiex.start_configured_task` using a manually configured task.
+    DMA tasks can be started using `aiex.start_task` using abstract BD chains
+    declared using `aie.bd_chain`, or using `aiex.start_configured_task` using a
+    manually configured task.
 
-    To be able to wait on a task, it must issue a task completion token (TCT). Tasks only emit these tokens if the attribute `issue_token` is set to `true`.
+    The task is identified by its `$task` SSA value, which must resolve to the
+    configure that set it up. Under the dynamic BD pool path this configure must
+    dominate the await; an await after an `scf.if` on a task configured inside a
+    branch is rejected (move the await inside the branch that configures it).
   }];
 
   let arguments = (
@@ -1249,7 +1254,9 @@ def AIE_DMAAwaitTaskOp : AIEX_Op<"dma_await_task", [HasAncestor<"AIE::RuntimeSeq
   }];
 
   let extraClassDefinition = [{
-    DMAConfigureTaskOp DMAAwaitTaskOp::getTaskOp() { return dyn_cast<DMAConfigureTaskOp>(getTask().getDefiningOp()); }
+    DMAConfigureTaskOp DMAAwaitTaskOp::getTaskOp() {
+      return dyn_cast<DMAConfigureTaskOp>(getTask().getDefiningOp());
+    }
   }];
 }
 
@@ -1389,6 +1396,51 @@ def AIEX_SetLockOp: AIEX_Op<"set_lock", [HasParent<"AIE::RuntimeSequenceOp">, Sk
   }];
 }
 
+def AIEX_DmaChannelResetOp: AIEX_Op<"dma_channel_reset", [HasParent<"AIE::RuntimeSequenceOp">, SkipAccessibilityCheckTrait]> {
+  let summary = "Reset a DMA channel from a runtime sequence";
+  let description = [{
+    Resets the DMA channel `channel` in direction `direction` on `tile` by
+    pulsing the channel control register reset bit. Intended for re-arming a
+    resident objectFIFO across dispatches: it clears the channel's residual
+    queue state so it does not carry into a subsequent dispatch. This resets the
+    DMA channel state only; it does not by itself establish a clean dispatch
+    baseline in general. The operation is non blocking and offers no
+    synchronization guarantees.
+
+    The pulse is emitted as two `npu.maskwrite32` writes masked to the reset bit,
+    so it preserves the other control fields (out-of-order, compression,
+    controller id, FoT mode) instead of clobbering them.
+
+    Only core and mem tiles have a per-channel DMA reset bit; shim NOC/PL tiles
+    are rejected by the verifier because their DMA control register has no reset
+    field.
+
+    `tile` is an SSA `aie.tile` value, so the target is named the same way as
+    `aiex.dma_configure_task`.
+
+    Example:
+    ```
+      %tile = aie.tile(2, 3)
+      aiex.dma_channel_reset(%tile, S2MM, 0)
+    ```
+  }];
+  let arguments = (
+    ins Index:$tile,
+        DMAChannelDir:$direction,
+        I32Attr:$channel
+  );
+  let assemblyFormat = [{ `(` $tile `,` $direction `,` $channel `)` attr-dict }];
+  let extraClassDeclaration = [{
+    AIE::TileOp getTileOp();
+  }];
+  let extraClassDefinition = [{
+    AIE::TileOp DmaChannelResetOp::getTileOp() {
+      return cast<AIE::TileOp>(getTile().getDefiningOp());
+    }
+  }];
+  let hasVerifier = 1;
+}
+
 //===----------------------------------------------------------------------===//
 // ScratchpadParameter ops
 //===----------------------------------------------------------------------===//
@@ -1398,7 +1450,7 @@ def AIEX_ScratchpadParameterOp: AIEX_Op<"scratchpad_parameter", [Symbol]> {
   let description = [{
     Declares a named runtime parameter that uses the scratchpad mechanism.
     Using this declaration and the MLIR-AIE runtime library, the host can write
-    these named runtime parameters to DDR, and AIE cores read it using 
+    these named runtime parameters to DDR, and AIE cores read it using
     `aiex.read_scratchpad_parameter`. The scratchpad memory mechanism
     (CREATE_SCRATCHPAD + UPDATE_FROM_SCRATCHPAD firmware opcodes) communicates
     the values.
