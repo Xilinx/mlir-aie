@@ -12,12 +12,15 @@
 // which the ldscript emitter turns into an INPUT() directive.  The Peano
 // copy loop copies the .o to the .prj tmpdir so lld can find it.
 //
-// RUN: cp %S/aie.mlir aie_arch.mlir
-// RUN: %run_on_npu1% sed 's/NPUDEVICE/npu1_1col/g' -i aie_arch.mlir
-// RUN: %run_on_npu2% sed 's/NPUDEVICE/npu2_1col/g' -i aie_arch.mlir
-// RUN: %run_on_npu1% %PEANO_INSTALL_DIR/bin/clang --target=aie2-none-unknown-elf -O2 -c %S/add_one_kernel.cc -o ./add_one_kernel.o
-// RUN: %run_on_npu2% %PEANO_INSTALL_DIR/bin/clang --target=aie2p-none-unknown-elf -O2 -c %S/add_one_kernel.cc -o ./add_one_kernel.o
-// RUN: %aiecc --no-xchesscc --no-xbridge --get-xclbin --xclbin-name=aie.xclbin --get-npu-insts --npu-insts-name=insts.bin ./aie_arch.mlir
-// RUN: %host_clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
-// RUN: %run_on_npu1% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.bin
-// RUN: %run_on_npu2% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.bin
+// Build lines (%npu_build%) touch no device and run in the compile phase; the
+// device runs (%npu_run%) stay in the capacity-1 npu-xrt lane. Both prefixes are
+// empty in a normal (unsplit) run, so behaviour is unchanged by default.
+// RUN: %npu_build% cp %S/aie.mlir aie_arch.mlir
+// RUN: %npu_build% %run_on_npu1% sed 's/NPUDEVICE/npu1_1col/g' -i aie_arch.mlir
+// RUN: %npu_build% %run_on_npu2% sed 's/NPUDEVICE/npu2_1col/g' -i aie_arch.mlir
+// RUN: %npu_build% %run_on_npu1% %PEANO_INSTALL_DIR/bin/clang --target=aie2-none-unknown-elf -O2 -c %S/add_one_kernel.cc -o ./add_one_kernel.o
+// RUN: %npu_build% %run_on_npu2% %PEANO_INSTALL_DIR/bin/clang --target=aie2p-none-unknown-elf -O2 -c %S/add_one_kernel.cc -o ./add_one_kernel.o
+// RUN: %npu_build% %aiecc --no-xchesscc --no-xbridge --get-xclbin --xclbin-name=aie.xclbin --get-npu-insts --npu-insts-name=insts.bin ./aie_arch.mlir
+// RUN: %npu_build% %host_clang %S/test.cpp -o test.exe -std=c++17 -Wall %xrt_flags %host_link_flags %test_utils_flags
+// RUN: %npu_run% %run_on_npu1% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.bin
+// RUN: %npu_run% %run_on_npu2% ./test.exe -x aie.xclbin -k MLIR_AIE -i insts.bin
