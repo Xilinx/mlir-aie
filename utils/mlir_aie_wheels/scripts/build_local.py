@@ -139,7 +139,8 @@ def _rename_main_wheel_python_tag(wheelhouse: Path) -> None:
             continue
         dst = whl.with_name(new_name)
         print(f"[rename] {whl.name} -> {dst.name}")
-        whl.rename(dst)
+        # Replace a wheel left by an earlier local build.
+        whl.replace(dst)
 
 
 def _copy_ccache_from_wheelhouse(wheelhouse: Path, host_ccache_dir: Path) -> None:
