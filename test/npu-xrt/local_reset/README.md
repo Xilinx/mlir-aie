@@ -8,15 +8,51 @@
 # Local reset
 
 On-board tests that exercise **local reset**: returning a single tile-local
-hardware block to a clean state with raw register writes issued from the runtime
-sequence, without rebuilding the design or reloading the array. Each family
-resets one resettable block and shows that the design keeps working across it.
+hardware block to a clean state from the runtime sequence, without rebuilding the
+design or reloading the array. Each family resets one resettable block and shows
+that the design keeps working across it. The `core`, `dma`, and `switch` families
+issue the reset as **raw register writes**; the two `*_op` families issue it
+through the merged `aiex.core_reset` / `aiex.dma_channel_reset` runtime-sequence
+ops and confirm on-board that those ops drive the same registers (see
+[Op-based variants](#op-based-variants)).
 
 | Family | Block reset | Key register(s) | Reset mechanism |
 |--------|-------------|-----------------|-----------------|
 | [`core`](core/README.md) | AI Engine core | `Core_Control` (`0x32000`) | assert reset -> release -> enable |
 | [`dma`](dma/README.md) | MM2S DMA channel | `DMA_MM2S_0_Ctrl` (`0x1DE10`) | disable -> reset -> deassert -> enable, re-push BD, re-arm lock |
 | [`switch`](switch/README.md) | Stream-switch connection | `Stream_Switch_Slave_DMA_0_Config` (`0x3F104`) | re-enable slave port (torn down each dispatch end), re-arm lock |
+
+## Op-based variants
+
+The two `*_op` families are the on-board counterparts of `core` and `dma` that
+drive the merged reset ops (added in
+[#3375](https://github.com/Xilinx/mlir-aie/pull/3375) /
+[#3370](https://github.com/Xilinx/mlir-aie/pull/3370)) instead of raw `write32`s.
+Those ops shipped with only `aie-opt` FileCheck coverage; these are their first
+on-silicon tests. (There is no stream-switch reset op upstream, so `switch` has no
+op-based counterpart.)
+
+| Family | Op | Lowers to | Raw-register sibling |
+|--------|----|-----------|----------------------|
+| [`core_reset_op`](core_reset_op/README.md) | `aiex.core_reset` | mask-preserving reset pulse on `Core_Control` (`0x32000`, bit 1) | [`core`](core/README.md) |
+| [`dma_channel_reset_op`](dma_channel_reset_op/README.md) | `aiex.dma_channel_reset` | mask-preserving reset pulse on `DMA_MM2S_0_Ctrl` (`0x1DE10`, bit 1) | [`dma`](dma/README.md) |
+
+Both ops lower (in the default `aiecc` pipeline) to a two-write
+`aiex.npu.maskwrite32` pulse on the **same register and reset bit** the raw
+sibling writes -- confirming the merged implementations follow the same protocol.
+The ops are **reset-only**: they mask to the reset bit (preserving the surrounding
+fields) and do not re-enable, re-push, or re-arm. So:
+
+- `dma_channel_reset_op` is a drop-in for `dma`'s four reset writes; the re-push
+  BD + lock re-arm remain around it, and it passes unchanged.
+- `core_reset_op` supplies the `reset -> unreset` pulse
+  (`XAie_CoreReset`/`XAie_CoreUnreset`); because our core has run to `aie.end` (no
+  longer enabled) it composes the op with a **masked** re-enable mirroring
+  `XAie_CoreEnable`, so the whole test is the driver's
+  `XAie_CoreReset -> XAie_CoreUnreset -> XAie_CoreEnable` sequence, every write
+  masked to one field. On-board, the op *alone* leaves the core halted (kernel does
+  not complete); this pins the op's documented scope (it assumes a still-enabled
+  resident core). See its README.
 
 ## Shared design
 
