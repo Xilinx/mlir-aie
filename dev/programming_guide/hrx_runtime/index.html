@@ -12,31 +12,31 @@
         <meta name="author" content="AMD Advanced Micro Devices">
       
       
-        <link rel="canonical" href="https://xilinx.github.io/mlir-aie/dev/programming_guide/section-2/section-2h/">
+        <link rel="canonical" href="https://xilinx.github.io/mlir-aie/dev/programming_guide/hrx_runtime/">
       
       
-        <link rel="prev" href="../section-2g/">
+        <link rel="prev" href="../iron_configuration/">
       
       
-        <link rel="next" href="../../section-3/">
+        <link rel="next" href="../compilation_stages/">
       
       
         
       
       
-      <link rel="icon" href="../../../assets/images/favicon.svg">
+      <link rel="icon" href="../../assets/images/favicon.svg">
       <meta name="generator" content="mkdocs-ProperDocs 1.6.7, mkdocs-material-9.7.7">
     
     
       
-        <title>2h: Tensor Access Patterns - IRON / MLIR-AIE</title>
+        <title>HRX Runtime (amdxdna) - IRON / MLIR-AIE</title>
       
     
     
-      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
       
         
-        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
       
       
 
@@ -55,11 +55,11 @@
       
     
     
-      <link rel="stylesheet" href="../../../assets/_mkdocstrings.css">
+      <link rel="stylesheet" href="../../assets/_mkdocstrings.css">
     
-      <link rel="stylesheet" href="../../../assets/css/iron.css">
+      <link rel="stylesheet" href="../../assets/css/iron.css">
     
-    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
     
       
 
@@ -84,7 +84,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#section-2h---advanced-objectfifo--cross-tile-buffer" class="md-skip">
+        <a href="#hrx-runtime-amdxdna" class="md-skip">
           Skip to content
         </a>
       
@@ -104,9 +104,9 @@
 
 <header class="md-header md-header--shadow md-header--lifted" data-md-component="header">
   <nav class="md-header__inner md-grid" aria-label="Header">
-    <a href="../../.." title="IRON / MLIR-AIE" class="md-header__button md-logo" aria-label="IRON / MLIR-AIE" data-md-component="logo">
+    <a href="../.." title="IRON / MLIR-AIE" class="md-header__button md-logo" aria-label="IRON / MLIR-AIE" data-md-component="logo">
       
-  <img src="../../../assets/images/favicon.svg" alt="logo">
+  <img src="../../assets/images/favicon.svg" alt="logo">
 
     </a>
     <label class="md-header__button md-icon" for="__drawer">
@@ -123,7 +123,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              2h: Tensor Access Patterns
+              HRX Runtime (amdxdna)
             
           </span>
         </div>
@@ -230,7 +230,7 @@
   
   
     <li class="md-tabs__item">
-      <a href="../../.." class="md-tabs__link">
+      <a href="../.." class="md-tabs__link">
         
   
   
@@ -251,7 +251,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../../getting-started/" class="md-tabs__link">
+        <a href="../../getting-started/" class="md-tabs__link">
           
   
   
@@ -275,7 +275,7 @@
     
     
       <li class="md-tabs__item md-tabs__item--active">
-        <a href="../../" class="md-tabs__link">
+        <a href="../" class="md-tabs__link">
           
   
   
@@ -297,7 +297,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../../api/" class="md-tabs__link">
+        <a href="../../api/" class="md-tabs__link">
           
   
   
@@ -319,7 +319,7 @@
     
     
       <li class="md-tabs__item">
-        <a href="../../../UsedIn/" class="md-tabs__link">
+        <a href="../../UsedIn/" class="md-tabs__link">
           
   
   
@@ -361,9 +361,9 @@
 
 <nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
   <label class="md-nav__title" for="__drawer">
-    <a href="../../.." title="IRON / MLIR-AIE" class="md-nav__button md-logo" aria-label="IRON / MLIR-AIE" data-md-component="logo">
+    <a href="../.." title="IRON / MLIR-AIE" class="md-nav__button md-logo" aria-label="IRON / MLIR-AIE" data-md-component="logo">
       
-  <img src="../../../assets/images/favicon.svg" alt="logo">
+  <img src="../../assets/images/favicon.svg" alt="logo">
 
     </a>
     IRON / MLIR-AIE
@@ -390,7 +390,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../.." class="md-nav__link">
+      <a href="../.." class="md-nav__link">
         
   
   
@@ -487,7 +487,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../getting-started/" class="md-nav__link">
+      <a href="../../getting-started/" class="md-nav__link">
         
   
   
@@ -515,7 +515,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../buildHostWin/" class="md-nav__link">
+      <a href="../../buildHostWin/" class="md-nav__link">
         
   
   
@@ -543,7 +543,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../buildHostWinNative/" class="md-nav__link">
+      <a href="../../buildHostWinNative/" class="md-nav__link">
         
   
   
@@ -571,7 +571,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../buildHostLinNonUbuntu/" class="md-nav__link">
+      <a href="../../buildHostLinNonUbuntu/" class="md-nav__link">
         
   
   
@@ -599,7 +599,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../Building/" class="md-nav__link">
+      <a href="../../Building/" class="md-nav__link">
         
   
   
@@ -627,7 +627,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../Devices/" class="md-nav__link">
+      <a href="../../Devices/" class="md-nav__link">
         
   
   
@@ -655,7 +655,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../BuildingVersal/" class="md-nav__link">
+      <a href="../../BuildingVersal/" class="md-nav__link">
         
   
   
@@ -683,7 +683,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../Platform/" class="md-nav__link">
+      <a href="../../Platform/" class="md-nav__link">
         
   
   
@@ -764,7 +764,7 @@
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../../" class="md-nav__link ">
+            <a href="../" class="md-nav__link ">
               
   
   
@@ -808,7 +808,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../mini_tutorial/" class="md-nav__link">
+      <a href="../mini_tutorial/" class="md-nav__link">
         
   
   
@@ -836,7 +836,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../section-0/" class="md-nav__link">
+      <a href="../section-0/" class="md-nav__link">
         
   
   
@@ -864,7 +864,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../section-1/" class="md-nav__link">
+      <a href="../section-1/" class="md-nav__link">
         
   
   
@@ -889,8 +889,6 @@
                 
   
   
-    
-  
   
   
     
@@ -928,15 +926,15 @@
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5" checked>
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_5" >
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../" class="md-nav__link ">
+            <a href="../section-2/" class="md-nav__link ">
               
   
   
@@ -960,7 +958,7 @@
             
           </div>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_5_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_3_5">
             <span class="md-nav__icon md-icon"></span>
             
@@ -980,7 +978,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../section-2a/" class="md-nav__link">
+      <a href="../section-2/section-2a/" class="md-nav__link">
         
   
   
@@ -1039,7 +1037,7 @@
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../section-2b/" class="md-nav__link ">
+            <a href="../section-2/section-2b/" class="md-nav__link ">
               
   
   
@@ -1083,7 +1081,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../section-2b/01_Reuse/" class="md-nav__link">
+      <a href="../section-2/section-2b/01_Reuse/" class="md-nav__link">
         
   
   
@@ -1111,7 +1109,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../section-2b/02_Broadcast/" class="md-nav__link">
+      <a href="../section-2/section-2b/02_Broadcast/" class="md-nav__link">
         
   
   
@@ -1139,7 +1137,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../section-2b/03_Implicit_Copy/" class="md-nav__link">
+      <a href="../section-2/section-2b/03_Implicit_Copy/" class="md-nav__link">
         
   
   
@@ -1167,7 +1165,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../section-2b/04_Repeat/" class="md-nav__link">
+      <a href="../section-2/section-2b/04_Repeat/" class="md-nav__link">
         
   
   
@@ -1230,7 +1228,7 @@
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../section-2c/" class="md-nav__link ">
+            <a href="../section-2/section-2c/" class="md-nav__link ">
               
   
   
@@ -1274,7 +1272,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../section-2c/to_stream_transformations/" class="md-nav__link">
+      <a href="../section-2/section-2c/to_stream_transformations/" class="md-nav__link">
         
   
   
@@ -1302,7 +1300,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../section-2c/from_stream_transformations/" class="md-nav__link">
+      <a href="../section-2/section-2c/from_stream_transformations/" class="md-nav__link">
         
   
   
@@ -1365,7 +1363,7 @@
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../section-2d/" class="md-nav__link ">
+            <a href="../section-2/section-2d/" class="md-nav__link ">
               
   
   
@@ -1409,7 +1407,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../section-2d/DMATasks/" class="md-nav__link">
+      <a href="../section-2/section-2d/DMATasks/" class="md-nav__link">
         
   
   
@@ -1437,7 +1435,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../section-2d/RuntimeTasks/" class="md-nav__link">
+      <a href="../section-2/section-2d/RuntimeTasks/" class="md-nav__link">
         
   
   
@@ -1473,7 +1471,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../section-2e/" class="md-nav__link">
+      <a href="../section-2/section-2e/" class="md-nav__link">
         
   
   
@@ -1534,7 +1532,7 @@
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../section-2f/" class="md-nav__link ">
+            <a href="../section-2/section-2f/" class="md-nav__link ">
               
   
   
@@ -1578,7 +1576,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../section-2f/01_single_double_buffer/" class="md-nav__link">
+      <a href="../section-2/section-2f/01_single_double_buffer/" class="md-nav__link">
         
   
   
@@ -1606,7 +1604,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../section-2f/02_external_mem_to_core/" class="md-nav__link">
+      <a href="../section-2/section-2f/02_external_mem_to_core/" class="md-nav__link">
         
   
   
@@ -1634,7 +1632,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../section-2f/03_external_mem_to_core_L2/" class="md-nav__link">
+      <a href="../section-2/section-2f/03_external_mem_to_core_L2/" class="md-nav__link">
         
   
   
@@ -1662,7 +1660,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../section-2f/04_distribute_L2/" class="md-nav__link">
+      <a href="../section-2/section-2f/04_distribute_L2/" class="md-nav__link">
         
   
   
@@ -1690,7 +1688,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../section-2f/05_join_L2/" class="md-nav__link">
+      <a href="../section-2/section-2f/05_join_L2/" class="md-nav__link">
         
   
   
@@ -1726,7 +1724,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../section-2g/" class="md-nav__link">
+      <a href="../section-2/section-2g/" class="md-nav__link">
         
   
   
@@ -1751,37 +1749,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    2h: Tensor Access Patterns
-  
-
-    
-  </span>
-  
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../section-2/section-2h/" class="md-nav__link">
         
   
   
@@ -1797,59 +1768,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#asymmetric-objectfifo-consumer_obj_type" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Asymmetric ObjectFifo: consumer_obj_type=
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#direct-aie-stream-objectfifo-aie_streamend-port" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Direct AIE-stream ObjectFifo: aie_stream=(end, port)
-      
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#cross-tile-buffer-in-workerfn_args" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Cross-tile Buffer in Worker.fn_args
-      
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1870,7 +1788,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../section-3/" class="md-nav__link">
+      <a href="../section-3/" class="md-nav__link">
         
   
   
@@ -1930,7 +1848,7 @@
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../../section-4/" class="md-nav__link ">
+            <a href="../section-4/" class="md-nav__link ">
               
   
   
@@ -1974,7 +1892,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../section-4/section-4a/" class="md-nav__link">
+      <a href="../section-4/section-4a/" class="md-nav__link">
         
   
   
@@ -2002,7 +1920,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../section-4/section-4b/" class="md-nav__link">
+      <a href="../section-4/section-4b/" class="md-nav__link">
         
   
   
@@ -2030,7 +1948,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../section-4/section-4c/" class="md-nav__link">
+      <a href="../section-4/section-4c/" class="md-nav__link">
         
   
   
@@ -2066,7 +1984,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../section-5/" class="md-nav__link">
+      <a href="../section-5/" class="md-nav__link">
         
   
   
@@ -2094,7 +2012,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../section-6/" class="md-nav__link">
+      <a href="../section-6/" class="md-nav__link">
         
   
   
@@ -2119,6 +2037,8 @@
                 
   
   
+    
+  
   
   
     
@@ -2148,11 +2068,11 @@
       
     
     
-    <li class="md-nav__item md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
       
         
         
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_10" >
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3_10" checked>
         
           
           <label class="md-nav__link" for="__nav_3_10" id="__nav_3_10_label" tabindex="">
@@ -2173,7 +2093,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_10_label" aria-expanded="false">
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_3_10_label" aria-expanded="true">
           <label class="md-nav__title" for="__nav_3_10">
             <span class="md-nav__icon md-icon"></span>
             
@@ -2191,7 +2111,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../iron_configuration/" class="md-nav__link">
+      <a href="../iron_configuration/" class="md-nav__link">
         
   
   
@@ -2216,10 +2136,37 @@
                 
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../../hrx_runtime/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HRX Runtime (amdxdna)
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   
@@ -2235,6 +2182,98 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#enabling-hrx" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Enabling HRX
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#provisioning-libhrx" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Provisioning libhrx
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Architecture">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#multi-dispatch-chains-run_chain" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-dispatch chains (run_chain)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#concurrency-and-multi-tenancy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concurrency and multi-tenancy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#further-reading" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Further reading
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -2247,7 +2286,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../compilation_stages/" class="md-nav__link">
+      <a href="../compilation_stages/" class="md-nav__link">
         
   
   
@@ -2275,7 +2314,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../implicit_mlir_context/" class="md-nav__link">
+      <a href="../implicit_mlir_context/" class="md-nav__link">
         
   
   
@@ -2303,7 +2342,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../kernels_library/" class="md-nav__link">
+      <a href="../kernels_library/" class="md-nav__link">
         
   
   
@@ -2331,7 +2370,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../runtime_sequence_reference/" class="md-nav__link">
+      <a href="../runtime_sequence_reference/" class="md-nav__link">
         
   
   
@@ -2403,7 +2442,7 @@
         
           
           <div class="md-nav__link md-nav__container">
-            <a href="../../../api/" class="md-nav__link ">
+            <a href="../../api/" class="md-nav__link ">
               
   
   
@@ -2513,7 +2552,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../api/iron/" class="md-nav__link">
+      <a href="../../api/iron/" class="md-nav__link">
         
   
   
@@ -2541,7 +2580,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../api/dialect_wrappers/" class="md-nav__link">
+      <a href="../../api/dialect_wrappers/" class="md-nav__link">
         
   
   
@@ -2569,7 +2608,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../api/taplib/" class="md-nav__link">
+      <a href="../../api/taplib/" class="md-nav__link">
         
   
   
@@ -2597,7 +2636,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../api/kernels/" class="md-nav__link">
+      <a href="../../api/kernels/" class="md-nav__link">
         
   
   
@@ -2625,7 +2664,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../api/hostruntime/" class="md-nav__link">
+      <a href="../../api/hostruntime/" class="md-nav__link">
         
   
   
@@ -2653,7 +2692,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../api/aie_kernels/" class="md-nav__link">
+      <a href="../../api/aie_kernels/" class="md-nav__link">
         
   
   
@@ -2757,7 +2796,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../AIEDialect/" class="md-nav__link">
+      <a href="../../AIEDialect/" class="md-nav__link">
         
   
   
@@ -2785,7 +2824,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../AIEXDialect/" class="md-nav__link">
+      <a href="../../AIEXDialect/" class="md-nav__link">
         
   
   
@@ -2813,7 +2852,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../AIEVecDialect/" class="md-nav__link">
+      <a href="../../AIEVecDialect/" class="md-nav__link">
         
   
   
@@ -2841,7 +2880,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../AIEPasses/" class="md-nav__link">
+      <a href="../../AIEPasses/" class="md-nav__link">
         
   
   
@@ -2869,7 +2908,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../AIEXPasses/" class="md-nav__link">
+      <a href="../../AIEXPasses/" class="md-nav__link">
         
   
   
@@ -2897,7 +2936,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../AIEVecPasses/" class="md-nav__link">
+      <a href="../../AIEVecPasses/" class="md-nav__link">
         
   
   
@@ -2925,7 +2964,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../api/cpp_doxygen/" class="md-nav__link">
+      <a href="../../api/cpp_doxygen/" class="md-nav__link">
         
   
   
@@ -2961,7 +3000,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../aiecc/" class="md-nav__link">
+      <a href="../../aiecc/" class="md-nav__link">
         
   
   
@@ -3058,7 +3097,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../UsedIn/" class="md-nav__link">
+      <a href="../../UsedIn/" class="md-nav__link">
         
   
   
@@ -3086,7 +3125,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../CONTRIBUTING/" class="md-nav__link">
+      <a href="../../CONTRIBUTING/" class="md-nav__link">
         
   
   
@@ -3114,7 +3153,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../ROADMAP/" class="md-nav__link">
+      <a href="../../ROADMAP/" class="md-nav__link">
         
   
   
@@ -3142,7 +3181,7 @@
   
   
     <li class="md-nav__item">
-      <a href="../../../SECURITY/" class="md-nav__link">
+      <a href="../../SECURITY/" class="md-nav__link">
         
   
   
@@ -3197,10 +3236,10 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#asymmetric-objectfifo-consumer_obj_type" class="md-nav__link">
+  <a href="#enabling-hrx" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Asymmetric ObjectFifo: consumer_obj_type=
+        Enabling HRX
       
     </span>
   </a>
@@ -3208,10 +3247,10 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#direct-aie-stream-objectfifo-aie_streamend-port" class="md-nav__link">
+  <a href="#provisioning-libhrx" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Direct AIE-stream ObjectFifo: aie_stream=(end, port)
+        Provisioning libhrx
       
     </span>
   </a>
@@ -3219,10 +3258,49 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#cross-tile-buffer-in-workerfn_args" class="md-nav__link">
+  <a href="#architecture" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Cross-tile Buffer in Worker.fn_args
+        Architecture
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Architecture">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#multi-dispatch-chains-run_chain" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Multi-dispatch chains (run_chain)
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#concurrency-and-multi-tenancy" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Concurrency and multi-tenancy
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#further-reading" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Further reading
       
     </span>
   </a>
@@ -3254,7 +3332,7 @@
   
   
     <li class="md-path__item">
-      <a href="../../.." class="md-path__link">
+      <a href="../.." class="md-path__link">
         
   <span class="md-ellipsis">
     Home
@@ -3272,7 +3350,7 @@
     
     
       <li class="md-path__item">
-        <a href="../../" class="md-path__link">
+        <a href="../" class="md-path__link">
           
   <span class="md-ellipsis">
     Programming Guide
@@ -3290,10 +3368,10 @@
     
     
       <li class="md-path__item">
-        <a href="../" class="md-path__link">
+        <a href="../iron_configuration/" class="md-path__link">
           
   <span class="md-ellipsis">
-    Section 2: Data Movement
+    Extra References
   </span>
 
         </a>
@@ -3315,134 +3393,123 @@
   
 
 
-<!---//===- README.md ---------------------------------------*- Markdown -*-===//
+<!---//===- hrx_runtime.md ----------------------*- Markdown -*-===//
 //
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
 //===----------------------------------------------------------------------===//-->
 
-<h1 id="section-2h---advanced-objectfifo--cross-tile-buffer">Section 2h - Advanced ObjectFifo + Cross-Tile Buffer<a class="headerlink" href="#section-2h---advanced-objectfifo--cross-tile-buffer" title="Permanent link">&para;</a></h1>
+<h1 id="hrx-runtime-amdxdna">HRX Runtime (amdxdna)<a class="headerlink" href="#hrx-runtime-amdxdna" title="Permanent link">&para;</a></h1>
+<p>The <strong>HRX</strong> backend is an opt-in host runtime for IRON that dispatches designs on
+the AMD XDNA NPU through <strong><code>libhrx</code></strong> (the IREE-based runtime with an <code>amdxdna</code>
+HAL), consuming the same <code>aiecc</code> artifacts (<code>final.xclbin</code> + <code>insts.bin</code>) as the
+default <a href="../iron_configuration/">XRT</a> path. It requires no XRT userspace at
+runtime, and — combined with the bundled XRT-free <code>xclbinutil</code> — lets the whole
+build-and-run flow work on a machine with no XRT install at all.</p>
+<p>HRX plugs into the same <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/utils/hostruntime/tensor_class.py"><code>aie.utils.Tensor</code></a>
+and <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/utils/hostruntime/hostruntime.py"><code>HostRuntime</code></a> abstractions the
+XRT backend uses, so example and design code is unchanged — the backend is chosen
+by an environment/make variable, not by editing sources.</p>
+<h2 id="enabling-hrx">Enabling HRX<a class="headerlink" href="#enabling-hrx" title="Permanent link">&para;</a></h2>
+<p>HRX is <strong>strictly opt-in</strong>. It is never auto-selected: an XRT-less host degrades
+to CPU-only tensors rather than silently switching to HRX.</p>
+<p>A single <code>NPU_RUNTIME</code> variable drives both flows:</p>
+<table>
+<thead>
+<tr>
+<th>Flow</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>IRON / Python</td>
+<td><code>NPU_RUNTIME=hrx python my_design.py</code></td>
+</tr>
+<tr>
+<td>C++ examples (<code>make</code>)</td>
+<td><code>NPU_RUNTIME=hrx make run</code></td>
+</tr>
+</tbody>
+</table>
+<p>The IRON/Python flow reads <code>NPU_RUNTIME</code> at import time (a runtime switch), while
+the C++ example <code>make</code> flow reads the same variable to build the HRX host stack (a
+build-time switch) — one selector, two mechanisms. The full list of <code>NPU_RUNTIME</code>
+values and every HRX environment variable
+(<code>HRX_DIR</code>, <code>LIBHRX_DIR</code>, <code>HRX_LIBHRX</code>, <code>IRON_HRX_DEVICE</code>, <code>HRX_EXE_CACHE_SIZE</code>,
+<code>IRON_HRX_TIMEOUT</code>) is documented in
+<a href="../iron_configuration/#host-runtime-backend-selection-npu_runtime">IRON Configuration</a>.</p>
+<h2 id="provisioning-libhrx">Provisioning <code>libhrx</code><a class="headerlink" href="#provisioning-libhrx" title="Permanent link">&para;</a></h2>
+<p>Fetch, checksum-verify, and extract the pinned HRX release (coordinates in
+<code>utils/hrx-release.env</code>) with the helper script, then source the environment it
+prints:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nb">source</span><span class="w"> </span><span class="s2">&quot;</span><span class="k">$(</span>utils/fetch-hrx-release.sh<span class="k">)</span><span class="s2">&quot;</span>
+<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="c1"># or, in one step:  eval &quot;$(utils/fetch-hrx-release.sh --print-env)&quot;</span>
+</code></pre></div>
+<p>Verify HRX is discoverable (path-only probe — no <code>dlopen</code>, no device init):</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>python3<span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;import aie.utils as u; print(&#39;has_hrx:&#39;, u.has_hrx)&quot;</span><span class="w">   </span><span class="c1"># -&gt; True</span>
+</code></pre></div>
+<h2 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h2>
+<p>The Python package
+<a href="https://github.com/Xilinx/mlir-aie/blob/main/python/utils/hostruntime/hrxruntime/README.md"><code>aie.utils.hostruntime.hrxruntime</code></a>
+is split into focused modules:</p>
+<table>
+<thead>
+<tr>
+<th>Module</th>
+<th>Role</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>discovery</code></td>
+<td>Locate <code>libhrx</code> on disk (no <code>dlopen</code>); backs <code>aie.utils.has_hrx</code>.</td>
+</tr>
+<tr>
+<td><code>_bindings</code></td>
+<td>The C ABI layer: constants, <code>ctypes</code> struct mirrors, and bound <code>hrx_*</code> entry points.</td>
+</tr>
+<tr>
+<td><code>context</code></td>
+<td><code>HRXContext</code> — the process-wide device + dispatch-stream singleton (buffers, executables, chained dispatch).</td>
+</tr>
+<tr>
+<td><code>tensor</code></td>
+<td><code>HRXTensor</code> — a persistent host-mapped, device-visible buffer with explicit flush/invalidate coherence.</td>
+</tr>
+<tr>
+<td><code>hostruntime</code></td>
+<td><code>HRXHostRuntime</code> (uncached) and <code>CachedHRXRuntime</code> (LRU executable cache) — the IRON <code>HostRuntime</code> implementations.</td>
+</tr>
+</tbody>
+</table>
+<p>Importing the package is side-effect-free; <code>libhrx</code> is bound lazily on first
+<code>HRXContext</code> creation.</p>
+<h3 id="multi-dispatch-chains-run_chain">Multi-dispatch chains (<code>run_chain</code>)<a class="headerlink" href="#multi-dispatch-chains-run_chain" title="Permanent link">&para;</a></h3>
+<p><code>HRXHostRuntime.run_chain([(handle, args), ...])</code> records several dispatches into
+one HRX command buffer — in order, with an execution + memory barrier between
+them — and submits the batch with a single <code>synchronize</code> (the amdxdna HAL lowers
+it into one <code>ERT_CMD_CHAIN</code>). Because of the barrier, a later run observes an
+earlier run's device writes, so producer→consumer chains work. This is the HRX
+analogue of the XRT runlist; there is no equivalent in the XRT <em>Python</em> runtime.</p>
+<h2 id="concurrency-and-multi-tenancy">Concurrency and multi-tenancy<a class="headerlink" href="#concurrency-and-multi-tenancy" title="Permanent link">&para;</a></h2>
+<p><code>HRXContext</code> is a per-process singleton (thread-safe lazy creation). Separate
+processes — including different users — are fully isolated: each builds its own
+context and buffers, and the amdxdna driver isolates each process's hardware
+context and device memory. The only shared resource is the finite, system-wide
+pool of amdxdna hardware contexts, which can be exhausted under heavy
+parallelism (a capacity limit, not a data-safety issue). Within one process the
+dispatch stream is not built for concurrent dispatch, so callers must serialize
+dispatch on a single context — the same expectation the XRT Python runtime has.</p>
+<h2 id="further-reading">Further reading<a class="headerlink" href="#further-reading" title="Permanent link">&para;</a></h2>
 <ul>
-<li><a href="../../section-2/">Section 2 - Data Movement (ObjectFifos)</a><ul>
-<li><a href="../section-2a/">Section 2a - Introduction</a></li>
-<li><a href="../section-2b/">Section 2b - Key ObjectFifo Patterns</a></li>
-<li><a href="../section-2c/">Section 2c - Data Layout Transformations</a></li>
-<li><a href="../section-2d/">Section 2d - Runtime Data Movement</a></li>
-<li><a href="../section-2e/">Section 2e - Programming for multiple cores</a></li>
-<li><a href="../section-2f/">Section 2f - Practical Examples</a></li>
-<li><a href="../section-2g/">Section 2g - Data Movement Without ObjectFifos</a></li>
-<li>Section 2h - Advanced ObjectFifo + Cross-Tile Buffer</li>
+<li><a href="https://github.com/Xilinx/mlir-aie/blob/main/python/utils/hostruntime/hrxruntime/README.md">HRX runbook</a> — the
+  self-contained, step-by-step guide for building and running the IRON (Python)
+  and C++ tests on HRX, including the bundled XRT-free <code>xclbinutil</code>.</li>
+<li><a href="../iron_configuration/">IRON Configuration</a> — all runtime configuration
+  variables.</li>
 </ul>
-</li>
-</ul>
-<hr />
-<p>Two opt-in patterns that show up in real designs but are not part of
-the introductory <code>ObjectFifo</code> API.  Both stay out of the way of simple
-designs and only kick in when explicitly requested.</p>
-<h2 id="asymmetric-objectfifo-consumer_obj_type"><u>Asymmetric <code>ObjectFifo</code>: <code>consumer_obj_type=</code></u><a class="headerlink" href="#asymmetric-objectfifo-consumer_obj_type" title="Permanent link">&para;</a></h2>
-<p><code>ObjectFifo</code>'s default contract is symmetric — the producer and
-consumer agree on a single element type.  <code>consumer_obj_type=</code> decouples
-producer-side and consumer-side transfer granularity: the producer
-sends <code>obj_type</code>-sized chunks; the consumer receives
-<code>consumer_obj_type</code>-sized chunks.  The producer element count must be
-an integer multiple of the consumer's (the underlying MLIR verifier
-enforces this).</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="n">prod_ty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="mi">40</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">]]</span>
-<a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="n">cons_ty</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">[(</span><span class="mi">10</span><span class="p">,),</span> <span class="n">np</span><span class="o">.</span><span class="n">dtype</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">int32</span><span class="p">]]</span>
-<a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
-<a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="n">wts</span> <span class="o">=</span> <span class="n">ObjectFifo</span><span class="p">(</span>
-<a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>    <span class="n">prod_ty</span><span class="p">,</span>
-<a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>    <span class="n">depth</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span>
-<a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;wts&quot;</span><span class="p">,</span>
-<a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>    <span class="n">consumer_obj_type</span><span class="o">=</span><span class="n">cons_ty</span><span class="p">,</span>    <span class="c1"># 4:1 ratio — one prod fill, four cons acquires</span>
-<a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a><span class="p">)</span>
-</code></pre></div>
-<p>Useful when a single DMA fan-out serves consumers that want to walk
-the data in smaller chunks (e.g. weight broadcast feeding a row of
-compute tiles that each acquire a sub-slice), without paying for two
-separate fifos and a join.</p>
-<p>Each <code>ObjectFifo</code> declared with <code>consumer_obj_type=</code> lowers to one
-<code>aie.objectfifo</code> op carrying both types:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>aie.objectfifo @wts(...) : !aie.objectfifo&lt;memref&lt;40xi32&gt;&gt;
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>                        -&gt; !aie.objectfifo&lt;memref&lt;10xi32&gt;&gt;
-</code></pre></div>
-<p>Canonical demos:</p>
-<ul>
-<li><a href="https://github.com/Xilinx/mlir-aie/blob/main/test/python/objFifo_asymmetric.py"><code>test/python/objFifo_asymmetric.py</code></a>
-  — minimal 40-element producer / 10-element consumer; runs end-to-end.</li>
-<li><a href="https://github.com/Xilinx/mlir-aie/blob/main/programming_examples/ml/mobilenet/bottleneck/post_l1.py"><code>programming_examples/ml/mobilenet/bottleneck/post_l1.py</code></a>
-  and <a href="https://github.com/Xilinx/mlir-aie/blob/main/programming_examples/ml/mobilenet/bottleneck/post_l2.py"><code>post_l2.py</code></a>
-  — production use feeding the MobileNet FC tiles a different chunk size
-  than the upstream weight stream produces.</li>
-</ul>
-<h2 id="direct-aie-stream-objectfifo-aie_streamend-port"><u>Direct AIE-stream <code>ObjectFifo</code>: <code>aie_stream=(end, port)</code></u><a class="headerlink" href="#direct-aie-stream-objectfifo-aie_streamend-port" title="Permanent link">&para;</a></h2>
-<p><code>aie_stream=(end, port)</code> marks the fifo as a <em>direct AIE-stream</em>
-connection — the underlying <code>aie.objectfifo</code> op gets the <code>aie_stream</code> /
-<code>aie_stream_port</code> attributes stamped on it, telling the lowering to
-treat the producer side as wire-only.  No L1 buffer is allocated; the
-consumer reads straight off the stream.</p>
-<p>Pair it with kernels that emit per-element via <code>put_ms()</code> instead of
-acquire/release:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="n">of_dout_L1L3</span> <span class="o">=</span> <span class="n">ObjectFifo</span><span class="p">(</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>    <span class="n">dout_ty</span><span class="p">,</span>
-<a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;of_dout_L1L3&quot;</span><span class="p">,</span>
-<a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>    <span class="n">depth</span><span class="o">=</span><span class="mi">2</span><span class="p">,</span>
-<a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>    <span class="n">aie_stream</span><span class="o">=</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span>            <span class="c1"># (end, port) — wire-only producer side</span>
-<a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="p">)</span>
-</code></pre></div>
-<p>The kernel's C++ body owns the writes (<code>aie::stream::put_ms(value)</code>)
-and the core body never acquires or releases the producer handle:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="k">def</span><span class="w"> </span><span class="nf">core_body</span><span class="p">(</span><span class="n">of_in</span><span class="p">,</span> <span class="n">_of_out_unused</span><span class="p">,</span> <span class="n">lut0</span><span class="p">,</span> <span class="o">...</span><span class="p">,</span> <span class="n">kernel</span><span class="p">):</span>
-<a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>    <span class="k">for</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">range_</span><span class="p">(</span><span class="n">N</span><span class="p">):</span>
-<a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a>        <span class="n">di</span> <span class="o">=</span> <span class="n">of_in</span><span class="o">.</span><span class="n">acquire</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
-<a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a>        <span class="n">kernel</span><span class="p">(</span><span class="n">di</span><span class="p">,</span> <span class="n">lut0</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span>     <span class="c1"># kernel emits output via put_ms()</span>
-<a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a>        <span class="n">of_in</span><span class="o">.</span><span class="n">release</span><span class="p">(</span><span class="mi">1</span><span class="p">)</span>
-</code></pre></div>
-<p>Lowered MLIR (extract from <code>magika/group2.py --emit-mlir</code>):</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>aie.objectfifo @of_dout_L1L3(%logical_core, {%logical_shim_noc}, 2 : i32)
-<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a>    {aie_stream = 0 : i32, aie_stream_port = 0 : i32}
-<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a>    : !aie.objectfifo&lt;memref&lt;214xi32&gt;&gt;
-</code></pre></div>
-<p>Canonical demo:
-<a href="https://github.com/Xilinx/mlir-aie/blob/main/programming_examples/ml/magika/group2.py"><code>programming_examples/ml/magika/group2.py</code></a>
-— a compute tile streams its output directly to the shim via <code>put_ms()</code>.</p>
-<h2 id="cross-tile-buffer-in-workerfn_args"><u>Cross-tile <code>Buffer</code> in <code>Worker.fn_args</code></u><a class="headerlink" href="#cross-tile-buffer-in-workerfn_args" title="Permanent link">&para;</a></h2>
-<p>AIE CoreTiles can read their north / south / east / west neighbors' L1
-memory directly via shared-memory paths.  IRON honors that capability:
-a <code>Buffer</code> pinned to a different tile than the <code>Worker</code> it is passed
-to no longer raises; <code>Program.resolve</code> discovers the neighbor tile via
-<code>Buffer.tiles()</code> and the kernel sees a memref pointing at the
-neighbor's L1.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="n">compute_tile</span> <span class="o">=</span> <span class="n">Tile</span><span class="p">(</span><span class="n">col</span><span class="o">=</span><span class="mi">1</span><span class="p">,</span> <span class="n">row</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">tile_type</span><span class="o">=</span><span class="n">AIETileType</span><span class="o">.</span><span class="n">CoreTile</span><span class="p">)</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="n">west_tile</span>    <span class="o">=</span> <span class="n">Tile</span><span class="p">(</span><span class="n">col</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">row</span><span class="o">=</span><span class="mi">3</span><span class="p">,</span> <span class="n">tile_type</span><span class="o">=</span><span class="n">AIETileType</span><span class="o">.</span><span class="n">CoreTile</span><span class="p">)</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="n">lut_buf</span> <span class="o">=</span> <span class="n">Buffer</span><span class="p">(</span>
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>    <span class="n">tile</span><span class="o">=</span><span class="n">west_tile</span><span class="p">,</span>                      <span class="c1"># pinned to neighbor, not compute_tile</span>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="nb">type</span><span class="o">=</span><span class="n">lut_ty</span><span class="p">,</span>
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a>    <span class="n">initial_value</span><span class="o">=</span><span class="n">lut_data</span><span class="p">,</span>
-<a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a>    <span class="n">name</span><span class="o">=</span><span class="s2">&quot;lut&quot;</span><span class="p">,</span>
-<a id="__codelineno-5-9" name="__codelineno-5-9" href="#__codelineno-5-9"></a><span class="p">)</span>
-<a id="__codelineno-5-10" name="__codelineno-5-10" href="#__codelineno-5-10"></a>
-<a id="__codelineno-5-11" name="__codelineno-5-11" href="#__codelineno-5-11"></a><span class="n">worker</span> <span class="o">=</span> <span class="n">Worker</span><span class="p">(</span>
-<a id="__codelineno-5-12" name="__codelineno-5-12" href="#__codelineno-5-12"></a>    <span class="n">body</span><span class="p">,</span>
-<a id="__codelineno-5-13" name="__codelineno-5-13" href="#__codelineno-5-13"></a>    <span class="n">fn_args</span><span class="o">=</span><span class="p">[</span><span class="o">...</span><span class="p">,</span> <span class="n">lut_buf</span><span class="p">,</span> <span class="o">...</span><span class="p">],</span>         <span class="c1"># cross-tile Buffer reaches the kernel</span>
-<a id="__codelineno-5-14" name="__codelineno-5-14" href="#__codelineno-5-14"></a>    <span class="n">tile</span><span class="o">=</span><span class="n">compute_tile</span><span class="p">,</span>                   <span class="c1"># different tile — that&#39;s the point</span>
-<a id="__codelineno-5-15" name="__codelineno-5-15" href="#__codelineno-5-15"></a><span class="p">)</span>
-</code></pre></div>
-<p>The convenience path is unchanged: a <code>Buffer</code> with no <code>tile=</code> set
-still auto-pins to the <code>Worker</code>'s tile, so simple designs don't see
-this surface at all.  The <code>Buffer</code> is rejected only when it is already
-owned by <em>another</em> <code>Worker</code> — sharing across compute tiles via
-shared-memory access is fine; sharing across kernels is not.</p>
-<p>Useful when one compute tile needs more L1 than fits on its own tile.
-The canonical demo —
-<a href="https://github.com/Xilinx/mlir-aie/blob/main/programming_examples/ml/magika/group2.py"><code>programming_examples/ml/magika/group2.py</code></a> —
-spreads four large lookup tables across a compute tile and its three
-CoreTile neighbors (south, north, west) so the kernel can read all
-four without DMA round-trips.</p>
-<hr />
-<p><a href="../section-2g/">Prev</a> &middot; <a href="..">Top</a> &middot; <a href="../../section-3/">Next</a></p>
 
 
 
@@ -3480,7 +3547,7 @@ four without DMA round-trips.</p>
       <nav class="md-footer__inner md-grid" aria-label="Footer" >
         
           
-          <a href="../section-2g/" class="md-footer__link md-footer__link--prev" aria-label="Previous: 2g: Data Movement Without ObjectFifos">
+          <a href="../iron_configuration/" class="md-footer__link md-footer__link--prev" aria-label="Previous: IRON Configuration">
             <div class="md-footer__button md-icon">
               
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
@@ -3490,20 +3557,20 @@ four without DMA round-trips.</p>
                 Previous
               </span>
               <div class="md-ellipsis">
-                2g: Data Movement Without ObjectFifos
+                IRON Configuration
               </div>
             </div>
           </a>
         
         
           
-          <a href="../../section-3/" class="md-footer__link md-footer__link--next" aria-label="Next: Section 3: My First Program">
+          <a href="../compilation_stages/" class="md-footer__link md-footer__link--next" aria-label="Next: Compilation Stages">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Section 3: My First Program
+                Compilation Stages
               </div>
             </div>
             <div class="md-footer__button md-icon">
@@ -3565,10 +3632,10 @@ four without DMA round-trips.</p>
     
       
       
-      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.indexes", "navigation.path", "navigation.top", "navigation.footer", "search.suggest", "search.highlight", "content.tabs.link", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"alias": true, "default": "latest", "provider": "mike"}}</script>
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["navigation.tabs", "navigation.tabs.sticky", "navigation.sections", "navigation.indexes", "navigation.path", "navigation.top", "navigation.footer", "search.suggest", "search.highlight", "content.tabs.link", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"alias": true, "default": "latest", "provider": "mike"}}</script>
     
     
-      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
       
     
   </body>

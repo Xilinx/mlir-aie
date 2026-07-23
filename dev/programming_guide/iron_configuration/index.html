@@ -18,7 +18,7 @@
         <link rel="prev" href="../section-6/">
       
       
-        <link rel="next" href="../compilation_stages/">
+        <link rel="next" href="../hrx_runtime/">
       
       
         
@@ -2054,6 +2054,8 @@
       
         
       
+        
+      
     
     
     
@@ -2241,6 +2243,56 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#host-runtime-backend-selection-npu_runtime" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Host-runtime backend selection (NPU_RUNTIME)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hrx-runtime-amdxdna-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HRX Runtime (amdxdna) Configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="HRX Runtime (amdxdna) Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#library-discovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Library discovery
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#runtime-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime behavior
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#diagnostic-output-and-log-level" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -2316,6 +2368,34 @@
   
 </nav>
       
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../hrx_runtime/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    HRX Runtime (amdxdna)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
     </li>
   
 
@@ -3350,6 +3430,56 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#host-runtime-backend-selection-npu_runtime" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Host-runtime backend selection (NPU_RUNTIME)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#hrx-runtime-amdxdna-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        HRX Runtime (amdxdna) Configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="HRX Runtime (amdxdna) Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#library-discovery" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Library discovery
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#runtime-behavior" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime behavior
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#diagnostic-output-and-log-level" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3584,24 +3714,125 @@ ever editing the source.</p>
 <p>The <code>CachedXRTRuntime</code> caches XRT contexts to improve performance. The size of this cache can be configured using the <code>XRT_CONTEXT_CACHE_SIZE</code> environment variable. This is particularly useful in CI environments where multiple tests run in parallel and might exhaust the available NPU contexts.</p>
 <div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">XRT_CONTEXT_CACHE_SIZE</span><span class="o">=</span><span class="m">1</span>
 </code></pre></div>
+<h2 id="host-runtime-backend-selection-npu_runtime">Host-runtime backend selection (<code>NPU_RUNTIME</code>)<a class="headerlink" href="#host-runtime-backend-selection-npu_runtime" title="Permanent link">&para;</a></h2>
+<p>IRON dispatches designs through a host runtime that consumes the <code>aiecc</code>
+artifacts (<code>final.xclbin</code> + <code>insts.bin</code>). <code>NPU_RUNTIME</code> selects which backend
+is used:</p>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Behavior</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>auto</code> (default)</td>
+<td>Use XRT when <code>pyxrt</code> imports, else fall back to CPU-only tensors. Never selects HRX.</td>
+</tr>
+<tr>
+<td><code>xrt</code></td>
+<td>Force the XRT backend (falls back to CPU tensors if <code>pyxrt</code> is missing).</td>
+</tr>
+<tr>
+<td><code>hrx</code></td>
+<td>Force the <a href="https://github.com/Xilinx/mlir-aie/blob/main/python/utils/hostruntime/hrxruntime/README.md">HRX</a> (amdxdna / <code>libhrx</code>) backend. Errors at import if <code>libhrx.so</code> cannot be located.</td>
+</tr>
+</tbody>
+</table>
+<p>An unset value defaults to <code>auto</code>; an explicitly invalid value is a hard error
+(a typo must not silently resolve to another backend). <code>NPU_RUNTIME</code> is read
+<em>before</em> any capability probe, so a forced backend only probes itself (<code>hrx</code>
+never imports <code>pyxrt</code>, and <code>xrt</code>/<code>auto</code> never run HRX discovery).</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nv">NPU_RUNTIME</span><span class="o">=</span>hrx<span class="w"> </span>python<span class="w"> </span>my_script.py
+</code></pre></div>
+<p><code>NPU_RUNTIME</code> is a single selector shared with the C++ example <code>make</code> flow: the
+same <code>NPU_RUNTIME=hrx</code> also builds the HRX host stack (<code>-DUSE_HRX=ON</code>) for
+<code>make</code>-driven examples (see <code>programming_examples/makefile-common</code>). The <code>auto</code>
+and <code>cpu</code> values are meaningful only to the Python flow; the build system treats
+an unset selector as <code>xrt</code>.</p>
+<h2 id="hrx-runtime-amdxdna-configuration">HRX Runtime (amdxdna) Configuration<a class="headerlink" href="#hrx-runtime-amdxdna-configuration" title="Permanent link">&para;</a></h2>
+<p>These variables apply when the HRX backend is active (<code>NPU_RUNTIME=hrx</code>). See
+the <a href="../hrx_runtime/">HRX Runtime (amdxdna)</a> overview for the architecture and
+enabling instructions, and the
+<a href="https://github.com/Xilinx/mlir-aie/blob/main/python/utils/hostruntime/hrxruntime/README.md">HRX runtime README</a> for the
+full step-by-step flow.</p>
+<h3 id="library-discovery">Library discovery<a class="headerlink" href="#library-discovery" title="Permanent link">&para;</a></h3>
+<p><code>libhrx.so</code> is located by probing standard install locations; these variables
+are high-priority hints (checked in this order), mirroring <code>FindHRX.cmake</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>HRX_LIBHRX</code></td>
+<td>Explicit full path to <code>libhrx.so</code>.</td>
+</tr>
+<tr>
+<td><code>LIBHRX_DIR</code></td>
+<td>Directory containing <code>libhrx.so</code> (e.g. set by <code>activate_env.sh</code>).</td>
+</tr>
+<tr>
+<td><code>HRX_DIR</code></td>
+<td>HRX install prefix (<code>$HRX_DIR/lib/libhrx.so</code>, <code>$HRX_DIR/include/...</code>).</td>
+</tr>
+</tbody>
+</table>
+<p>If none are set, standard locations (a sibling <code>hrx</code> checkout, <code>$HOME/hrx</code>,
+<code>/opt/hrx</code>, <code>/usr/local/hrx</code>, and the loader's <code>LD_LIBRARY_PATH</code>) are tried.</p>
+<h3 id="runtime-behavior">Runtime behavior<a class="headerlink" href="#runtime-behavior" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Default</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>IRON_HRX_DEVICE</code></td>
+<td>auto-detect</td>
+<td>Force the amdxdna device generation (<code>npu1</code> / <code>npu2</code>) instead of detecting it from sysfs PCI IDs.</td>
+</tr>
+<tr>
+<td><code>HRX_EXE_CACHE_SIZE</code></td>
+<td><code>32</code></td>
+<td>Max number of amdxdna executables the <code>CachedHRXRuntime</code> keeps (LRU).</td>
+</tr>
+<tr>
+<td><code>IRON_HRX_TIMEOUT</code></td>
+<td><code>0</code> (disabled)</td>
+<td>Watchdog timeout, in seconds, bounding the wait in <code>hrx_stream_synchronize</code>. <code>0</code>, unset, or an invalid value disables the watchdog. On expiry a diagnosable error is raised (the underlying sync cannot be cancelled).</td>
+</tr>
+</tbody>
+</table>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="c1"># Force npu2, cap the executable cache, and fail a wedged sync after 30s.</span>
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="nv">NPU_RUNTIME</span><span class="o">=</span>hrx<span class="w"> </span><span class="nv">IRON_HRX_DEVICE</span><span class="o">=</span>npu2<span class="w"> </span><span class="nv">HRX_EXE_CACHE_SIZE</span><span class="o">=</span><span class="m">8</span><span class="w"> </span><span class="se">\</span>
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span><span class="nv">IRON_HRX_TIMEOUT</span><span class="o">=</span><span class="m">30</span><span class="w"> </span>python<span class="w"> </span>my_script.py
+</code></pre></div>
 <h2 id="diagnostic-output-and-log-level">Diagnostic Output and Log Level<a class="headerlink" href="#diagnostic-output-and-log-level" title="Permanent link">&para;</a></h2>
 <p>The <code>aie</code> library uses Python's standard <code>logging</code> module for all diagnostic output. Set
 <code>AIE_LOG_LEVEL</code> to control verbosity. Valid values: <code>DEBUG</code>, <code>INFO</code>, <code>WARNING</code>
 (default), <code>ERROR</code>, <code>CRITICAL</code>.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nv">AIE_LOG_LEVEL</span><span class="o">=</span>DEBUG<span class="w"> </span>python<span class="w"> </span>my_script.py<span class="w">    </span><span class="c1"># show debug messages</span>
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="nv">AIE_LOG_LEVEL</span><span class="o">=</span>INFO<span class="w"> </span>python<span class="w"> </span>my_script.py<span class="w">     </span><span class="c1"># show info and above</span>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="nv">AIE_LOG_LEVEL</span><span class="o">=</span>ERROR<span class="w"> </span>python<span class="w"> </span>my_script.py<span class="w">    </span><span class="c1"># errors only</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nv">AIE_LOG_LEVEL</span><span class="o">=</span>DEBUG<span class="w"> </span>python<span class="w"> </span>my_script.py<span class="w">    </span><span class="c1"># show debug messages</span>
+<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="nv">AIE_LOG_LEVEL</span><span class="o">=</span>INFO<span class="w"> </span>python<span class="w"> </span>my_script.py<span class="w">     </span><span class="c1"># show info and above</span>
+<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="nv">AIE_LOG_LEVEL</span><span class="o">=</span>ERROR<span class="w"> </span>python<span class="w"> </span>my_script.py<span class="w">    </span><span class="c1"># errors only</span>
 </code></pre></div>
 <p>For per-module control or routing to a file, use the <code>logging</code> API directly:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;aie&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">ERROR</span><span class="p">)</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>
-<a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="c1"># Route aie logs to a file instead of the console</span>
-<a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="n">handler</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">FileHandler</span><span class="p">(</span><span class="s2">&quot;aie.log&quot;</span><span class="p">)</span>
-<a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="n">handler</span><span class="o">.</span><span class="n">setFormatter</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">Formatter</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%(asctime)s</span><span class="s2"> </span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(levelname)s</span><span class="s2"> </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">))</span>
-<a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;aie&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">addHandler</span><span class="p">(</span><span class="n">handler</span><span class="p">)</span>
-<a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;aie&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">propagate</span> <span class="o">=</span> <span class="kc">False</span>  <span class="c1"># don&#39;t also send to root logger</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="kn">import</span><span class="w"> </span><span class="nn">logging</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a>
+<a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;aie&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">setLevel</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">ERROR</span><span class="p">)</span>
+<a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a>
+<a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="c1"># Route aie logs to a file instead of the console</span>
+<a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="n">handler</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">FileHandler</span><span class="p">(</span><span class="s2">&quot;aie.log&quot;</span><span class="p">)</span>
+<a id="__codelineno-8-7" name="__codelineno-8-7" href="#__codelineno-8-7"></a><span class="n">handler</span><span class="o">.</span><span class="n">setFormatter</span><span class="p">(</span><span class="n">logging</span><span class="o">.</span><span class="n">Formatter</span><span class="p">(</span><span class="s2">&quot;</span><span class="si">%(asctime)s</span><span class="s2"> </span><span class="si">%(name)s</span><span class="s2"> </span><span class="si">%(levelname)s</span><span class="s2"> </span><span class="si">%(message)s</span><span class="s2">&quot;</span><span class="p">))</span>
+<a id="__codelineno-8-8" name="__codelineno-8-8" href="#__codelineno-8-8"></a><span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;aie&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">addHandler</span><span class="p">(</span><span class="n">handler</span><span class="p">)</span>
+<a id="__codelineno-8-9" name="__codelineno-8-9" href="#__codelineno-8-9"></a><span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s2">&quot;aie&quot;</span><span class="p">)</span><span class="o">.</span><span class="n">propagate</span> <span class="o">=</span> <span class="kc">False</span>  <span class="c1"># don&#39;t also send to root logger</span>
 </code></pre></div>
 <h2 id="helper-utilities-cheat-sheet">Helper utilities cheat-sheet<a class="headerlink" href="#helper-utilities-cheat-sheet" title="Permanent link">&para;</a></h2>
 <p>The helpers most designs reach for, grouped by where they live.  Each
@@ -3718,18 +3949,18 @@ generators, helper functions reused across designs — want to inject
 values <em>through</em> a helper that doesn't take them as explicit kwargs.
 <code>compile_context</code> opens a per-thread context that <code>get_compile_arg</code>
 can read out:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.iron</span><span class="w"> </span><span class="kn">import</span> <span class="n">compile_context</span><span class="p">,</span> <span class="n">get_compile_arg</span>
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>
-<a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="k">def</span><span class="w"> </span><span class="nf">make_fifo_pair</span><span class="p">(</span><span class="n">line_ty</span><span class="p">):</span>
-<a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a>    <span class="c1"># Helper has no name_prefix kwarg, but can read one from context.</span>
-<a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a>    <span class="n">prefix</span> <span class="o">=</span> <span class="n">get_compile_arg</span><span class="p">(</span><span class="s2">&quot;prefix&quot;</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">)</span>
-<a id="__codelineno-7-6" name="__codelineno-7-6" href="#__codelineno-7-6"></a>    <span class="k">return</span> <span class="p">(</span><span class="n">ObjectFifo</span><span class="p">(</span><span class="n">line_ty</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">in&quot;</span><span class="p">),</span>
-<a id="__codelineno-7-7" name="__codelineno-7-7" href="#__codelineno-7-7"></a>            <span class="n">ObjectFifo</span><span class="p">(</span><span class="n">line_ty</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">out&quot;</span><span class="p">))</span>
-<a id="__codelineno-7-8" name="__codelineno-7-8" href="#__codelineno-7-8"></a>
-<a id="__codelineno-7-9" name="__codelineno-7-9" href="#__codelineno-7-9"></a><span class="k">with</span> <span class="n">compile_context</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="s2">&quot;layer1_&quot;</span><span class="p">):</span>
-<a id="__codelineno-7-10" name="__codelineno-7-10" href="#__codelineno-7-10"></a>    <span class="n">of_in</span><span class="p">,</span> <span class="n">of_out</span> <span class="o">=</span> <span class="n">make_fifo_pair</span><span class="p">(</span><span class="n">line_ty</span><span class="p">)</span>        <span class="c1"># layer1_in, layer1_out</span>
-<a id="__codelineno-7-11" name="__codelineno-7-11" href="#__codelineno-7-11"></a>
-<a id="__codelineno-7-12" name="__codelineno-7-12" href="#__codelineno-7-12"></a><span class="n">of_in</span><span class="p">,</span> <span class="n">of_out</span> <span class="o">=</span> <span class="n">make_fifo_pair</span><span class="p">(</span><span class="n">line_ty</span><span class="p">)</span>            <span class="c1"># in, out (default)</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="kn">from</span><span class="w"> </span><span class="nn">aie.iron</span><span class="w"> </span><span class="kn">import</span> <span class="n">compile_context</span><span class="p">,</span> <span class="n">get_compile_arg</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="k">def</span><span class="w"> </span><span class="nf">make_fifo_pair</span><span class="p">(</span><span class="n">line_ty</span><span class="p">):</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a>    <span class="c1"># Helper has no name_prefix kwarg, but can read one from context.</span>
+<a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a>    <span class="n">prefix</span> <span class="o">=</span> <span class="n">get_compile_arg</span><span class="p">(</span><span class="s2">&quot;prefix&quot;</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s2">&quot;&quot;</span><span class="p">)</span>
+<a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>    <span class="k">return</span> <span class="p">(</span><span class="n">ObjectFifo</span><span class="p">(</span><span class="n">line_ty</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">in&quot;</span><span class="p">),</span>
+<a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a>            <span class="n">ObjectFifo</span><span class="p">(</span><span class="n">line_ty</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">prefix</span><span class="si">}</span><span class="s2">out&quot;</span><span class="p">))</span>
+<a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a>
+<a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="k">with</span> <span class="n">compile_context</span><span class="p">(</span><span class="n">prefix</span><span class="o">=</span><span class="s2">&quot;layer1_&quot;</span><span class="p">):</span>
+<a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>    <span class="n">of_in</span><span class="p">,</span> <span class="n">of_out</span> <span class="o">=</span> <span class="n">make_fifo_pair</span><span class="p">(</span><span class="n">line_ty</span><span class="p">)</span>        <span class="c1"># layer1_in, layer1_out</span>
+<a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a>
+<a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="n">of_in</span><span class="p">,</span> <span class="n">of_out</span> <span class="o">=</span> <span class="n">make_fifo_pair</span><span class="p">(</span><span class="n">line_ty</span><span class="p">)</span>            <span class="c1"># in, out (default)</span>
 </code></pre></div>
 <p>Contexts nest — inner values shadow outer ones for the duration of the
 inner <code>with</code> block.  Implemented on top of <code>contextvars</code>, so it is
@@ -3793,13 +4024,13 @@ helper signature would obscure the design.</p>
         
         
           
-          <a href="../compilation_stages/" class="md-footer__link md-footer__link--next" aria-label="Next: Compilation Stages">
+          <a href="../hrx_runtime/" class="md-footer__link md-footer__link--next" aria-label="Next: HRX Runtime (amdxdna)">
             <div class="md-footer__title">
               <span class="md-footer__direction">
                 Next
               </span>
               <div class="md-ellipsis">
-                Compilation Stages
+                HRX Runtime (amdxdna)
               </div>
             </div>
             <div class="md-footer__button md-icon">
