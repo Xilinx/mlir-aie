@@ -34,16 +34,15 @@ using namespace xilinx::AIEX;
 
 namespace {
 
-// Safety cap: avoid exploding a single BD into an unbounded chain.
-static constexpr unsigned kMaxDecomposedSubBDs = 64;
-
 static bool allConstant(NpuDmaMemcpyNdOp op) {
-  return llvm::all_of(op.getMixedSizes(), [](OpFoldResult s) {
-           return getConstantIntValue(s).has_value();
-         }) &&
-         llvm::all_of(op.getMixedStrides(), [](OpFoldResult s) {
-           return getConstantIntValue(s).has_value();
-         }) &&
+  return llvm::all_of(op.getMixedSizes(),
+                      [](OpFoldResult s) {
+                        return getConstantIntValue(s).has_value();
+                      }) &&
+         llvm::all_of(op.getMixedStrides(),
+                      [](OpFoldResult s) {
+                        return getConstantIntValue(s).has_value();
+                      }) &&
          llvm::all_of(op.getMixedOffsets(), [](OpFoldResult s) {
            return getConstantIntValue(s).has_value();
          });
@@ -58,9 +57,10 @@ static bool allConstant(AIE::DMABDOp op) {
     return false;
   if (op.getMixedSizes().empty())
     return false;
-  return llvm::all_of(op.getMixedSizes(), [](OpFoldResult s) {
-           return getConstantIntValue(s).has_value();
-         }) &&
+  return llvm::all_of(op.getMixedSizes(),
+                      [](OpFoldResult s) {
+                        return getConstantIntValue(s).has_value();
+                      }) &&
          llvm::all_of(op.getMixedStrides(), [](OpFoldResult s) {
            return getConstantIntValue(s).has_value();
          });
@@ -68,18 +68,15 @@ static bool allConstant(AIE::DMABDOp op) {
 
 static NdDmaPattern patternFromOp(NpuDmaMemcpyNdOp op) {
   NdDmaPattern pattern;
-  pattern.offsets = llvm::map_to_vector(llvm::reverse(op.getMixedOffsets()),
-                                        [](OpFoldResult s) {
-                                          return getConstantIntValue(s).value();
-                                        });
-  pattern.sizes = llvm::map_to_vector(llvm::reverse(op.getMixedSizes()),
-                                      [](OpFoldResult s) {
-                                        return getConstantIntValue(s).value();
-                                      });
-  pattern.strides = llvm::map_to_vector(llvm::reverse(op.getMixedStrides()),
-                                        [](OpFoldResult s) {
-                                          return getConstantIntValue(s).value();
-                                        });
+  pattern.offsets = llvm::map_to_vector(
+      llvm::reverse(op.getMixedOffsets()),
+      [](OpFoldResult s) { return getConstantIntValue(s).value(); });
+  pattern.sizes = llvm::map_to_vector(
+      llvm::reverse(op.getMixedSizes()),
+      [](OpFoldResult s) { return getConstantIntValue(s).value(); });
+  pattern.strides = llvm::map_to_vector(
+      llvm::reverse(op.getMixedStrides()),
+      [](OpFoldResult s) { return getConstantIntValue(s).value(); });
   return pattern;
 }
 
@@ -105,8 +102,7 @@ static NdDmaPattern patternFromDmaBd(AIE::DMABDOp op) {
 }
 
 static SmallVector<int64_t, 4> toOuter(ArrayRef<int64_t> inner) {
-  return llvm::map_to_vector(llvm::reverse(inner),
-                             [](int64_t v) { return v; });
+  return llvm::map_to_vector(llvm::reverse(inner), [](int64_t v) { return v; });
 }
 
 static int64_t flatOffsetFromPattern(int64_t baseFlatOffset,
@@ -124,14 +120,14 @@ static int64_t lenFromInnermost3(ArrayRef<int64_t> sizesInnermostFirst) {
   return len;
 }
 
-static AIE::BDDimLayoutArrayAttr
-outerDimsAttr(MLIRContext *ctx, ArrayRef<int64_t> outerSizes,
-              ArrayRef<int64_t> outerStrides) {
+static AIE::BDDimLayoutArrayAttr outerDimsAttr(MLIRContext *ctx,
+                                               ArrayRef<int64_t> outerSizes,
+                                               ArrayRef<int64_t> outerStrides) {
   SmallVector<AIE::BDDimLayoutAttr> dims;
   dims.reserve(outerSizes.size());
   for (auto [s, t] : llvm::zip(outerSizes, outerStrides))
-    dims.push_back(AIE::BDDimLayoutAttr::get(
-        ctx, static_cast<uint32_t>(s), static_cast<uint32_t>(t)));
+    dims.push_back(AIE::BDDimLayoutAttr::get(ctx, static_cast<uint32_t>(s),
+                                             static_cast<uint32_t>(t)));
   return AIE::BDDimLayoutArrayAttr::get(ctx, dims);
 }
 
@@ -149,12 +145,12 @@ static void updateTaskBdInPlace(AIE::DMABDOp bd, int32_t offset, int32_t len,
 }
 
 static AIE::DMABDOp createTaskBd(PatternRewriter &rewriter, Location loc,
-                                 AIE::DMABDOp tmpl, int32_t offset,
-                                 int32_t len, ArrayRef<int64_t> outerSizes,
+                                 AIE::DMABDOp tmpl, int32_t offset, int32_t len,
+                                 ArrayRef<int64_t> outerSizes,
                                  ArrayRef<int64_t> outerStrides) {
   auto dims = outerDimsAttr(rewriter.getContext(), outerSizes, outerStrides);
-  auto bd = AIE::DMABDOp::create(rewriter, loc, tmpl.getBuffer(), offset, len,
-                                 dims);
+  auto bd =
+      AIE::DMABDOp::create(rewriter, loc, tmpl.getBuffer(), offset, len, dims);
   if (tmpl.getPacketAttr())
     bd.setPacketAttr(tmpl.getPacketAttr());
   if (tmpl.getBurstLengthAttr())
@@ -214,9 +210,10 @@ resolveTaskAndTile(AIE::DMABDOp op) {
   return std::nullopt;
 }
 
-static NpuDmaMemcpyNdOp
-createDecomposedOp(PatternRewriter &rewriter, NpuDmaMemcpyNdOp op,
-                   const NdDmaPattern &pattern, int64_t id, bool issueToken) {
+static NpuDmaMemcpyNdOp createDecomposedOp(PatternRewriter &rewriter,
+                                           NpuDmaMemcpyNdOp op,
+                                           const NdDmaPattern &pattern,
+                                           int64_t id, bool issueToken) {
   auto outerOffsets = toOuter(pattern.offsets);
   auto outerSizes = toOuter(pattern.sizes);
   auto outerStrides = toOuter(pattern.strides);
@@ -278,11 +275,11 @@ struct DecomposeLargeDmaBdPattern : OpRewritePattern<NpuDmaMemcpyNdOp> {
     if (isNdDmaPatternLegal(op, bufferType, targetModel, col, row, pattern))
       return failure();
 
-    auto decomposed = decomposeNdDmaPattern(op, bufferType, pattern,
-                                            targetModel, col, row);
+    auto decomposed =
+        decomposeNdDmaPattern(op, bufferType, pattern, targetModel, col, row);
     if (failed(decomposed) || decomposed->empty())
       return failure();
-    if (decomposed->size() > kMaxDecomposedSubBDs)
+    if (decomposed->size() > targetModel.getNumBDs(col, row))
       return failure();
 
     if (decomposed->size() == 1) {
@@ -319,7 +316,8 @@ struct DecomposeLargeDmaBdPattern : OpRewritePattern<NpuDmaMemcpyNdOp> {
       bool last = idx + 1 == decomposed->size();
       int64_t id = allocateNextId(op, nextId, usedIds);
       nextId = id + 1;
-      createDecomposedOp(rewriter, op, subPattern, id, last && op.getIssueToken());
+      createDecomposedOp(rewriter, op, subPattern, id,
+                         last && op.getIssueToken());
     }
     rewriter.eraseOp(op);
     return success();
@@ -361,11 +359,11 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
     if (isNdDmaPatternLegal(op, bufferType, targetModel, col, row, pattern))
       return failure();
 
-    auto decomposed = decomposeNdDmaPattern(op, bufferType, pattern,
-                                            targetModel, col, row);
+    auto decomposed =
+        decomposeNdDmaPattern(op, bufferType, pattern, targetModel, col, row);
     if (failed(decomposed) || decomposed->empty())
       return failure();
-    if (decomposed->size() > kMaxDecomposedSubBDs)
+    if (decomposed->size() > targetModel.getNumBDs(col, row))
       return failure();
 
     if (decomposed->size() > 1 && isUnderRuntimeControlFlow(op)) {
@@ -408,8 +406,7 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
       int64_t flatOffset = flatOffsetFromPattern(baseFlatOffset, subPattern);
       auto outerSizes = toOuter(subPattern.sizes);
       auto outerStrides = toOuter(subPattern.strides);
-      int32_t len =
-          static_cast<int32_t>(lenFromInnermost3(subPattern.sizes));
+      int32_t len = static_cast<int32_t>(lenFromInnermost3(subPattern.sizes));
 
       if (idx == 0) {
         rewriter.modifyOpInPlace(op, [&]() {
@@ -441,7 +438,8 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
 };
 
 struct AIEDecomposeLargeDmaBdPass
-    : xilinx::AIEX::impl::AIEDecomposeLargeDmaBdBase<AIEDecomposeLargeDmaBdPass> {
+    : xilinx::AIEX::impl::AIEDecomposeLargeDmaBdBase<
+          AIEDecomposeLargeDmaBdPass> {
   void runOnOperation() override {
     AIE::DeviceOp device = getOperation();
     RewritePatternSet patterns(&getContext());

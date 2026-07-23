@@ -7,13 +7,6 @@
 
 // RUN: aie-opt --split-input-file --verify-diagnostics %s
 
-// NOTE: A non-contiguous strided access with d0 > 1023 (sizes=[1,1,1080,1920],
-// strides=[0,0,1921,1], stride1=1921 != sizes0=1920, so not a contiguous scan)
-// is no longer rejected at verify time: aie-decompose-large-dma-bd splits it
-// into hardware-legal sub-transfers (issue #2425). It is exercised as a
-// positive test in decompose_large_dma.mlir. (If the decomposition pass is not
-// run, aie-dma-to-npu still fails at lowering time.)
-
 module {
   aie.device(npu1) {
     aie.runtime_sequence(%in : memref<128x4x2x8xi32>, %buf : memref<32xi32>, %out : memref<8192xi32>) {
@@ -71,14 +64,14 @@ module {
 
 // Strides and sizes expressed in types other than i32 should not overflow hardware limitations when converted to 4-byte granularity.
 // The following tests check this.
-  
+
 module {
   aie.device(npu1) {
     aie.runtime_sequence(%a : memref<8xi8>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
       %c2 = arith.constant 2 : i64
-      %c4 = arith.constant 4 : i64 
+      %c4 = arith.constant 4 : i64
       %c8 = arith.constant 8 : i64
       %c2048 = arith.constant 2048 : i64
       // Although 2048 exceeds the 0:1023 limit for size 0, since the elements are i8s,
@@ -89,13 +82,6 @@ module {
     aie.shim_dma_allocation @objectfifo (%tile_0_0, MM2S, 0)
   }
 }
-
-// -----
-
-// NOTE: The i16 counterpart of the case above (d0=2048 i16 => 1024 in 4-byte
-// granularity, exceeding the [0:1023] range) is likewise no longer a verify-
-// time error: it is a decomposable size overflow handled by
-// aie-decompose-large-dma-bd (issue #2425).
 
 // -----
 

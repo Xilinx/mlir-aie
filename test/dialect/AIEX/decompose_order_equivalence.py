@@ -56,8 +56,13 @@ def run_case(rows, cols, pitch):
     nelem = (rows - 1) * pitch + cols
     src = module(rows, cols, pitch, nelem)
     r = subprocess.run(
-        [AIE_OPT, "--pass-pipeline=builtin.module(aie.device(aie-decompose-large-dma-bd))"],
-        input=src, capture_output=True, text=True,
+        [
+            AIE_OPT,
+            "--pass-pipeline=builtin.module(aie.device(aie-decompose-large-dma-bd))",
+        ],
+        input=src,
+        capture_output=True,
+        text=True,
     )
     if r.returncode != 0:
         return None
@@ -82,8 +87,8 @@ CASES = [
     (4, 2000, 2100),
     (64, 4096, 4097),
     (3, 1500, 2000),
-    (2, 3000, 3001),     # large inner (factored)
-    (1031, 2, 3),        # prime outer -> slicing / chain
+    (2, 3000, 3001),  # large inner (factored)
+    (1031, 2, 3),  # prime outer -> slicing / chain
     (7, 1024, 1100),
     (16, 2048, 2049),
 ]
