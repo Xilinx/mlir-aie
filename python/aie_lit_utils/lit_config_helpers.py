@@ -839,3 +839,24 @@ class LitConfigHelper:
         """
         for component in vitis_components:
             config_obj.available_features.add(f"aietools_{component.lower()}")
+
+
+def npu_split_parallelism_group(test):
+    """Per-test parallelism group for the compile/execute split.
+
+    Importable (module-level) so lit can pickle it to its parallel workers.
+    In AIE_NPU_SPLIT=compile a CONVERTED test (its RUN lines carry the %npu_run%
+    device marker, so it does no device work in the compile phase) runs
+    ungrouped/parallel; every other test -- including all unconverted ones --
+    keeps the capacity-1 ``npu-xrt`` group so its device execution stays
+    serialized. In any other mode all tests use ``npu-xrt``.
+    """
+    import os
+
+    if os.environ.get("AIE_NPU_SPLIT", "") != "compile":
+        return "npu-xrt"
+    try:
+        src = open(test.getSourcePath()).read()
+    except Exception:
+        return "npu-xrt"
+    return None if "%npu_run%" in src else "npu-xrt"

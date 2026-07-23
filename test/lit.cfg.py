@@ -187,6 +187,26 @@ lit_config.parallelism_groups["concurrency"] = 1
 # NPU XRT tests should run serially to avoid resource contention
 lit_config.parallelism_groups["npu-xrt"] = 1
 
+# Compile/execute split (opt-in, OFF by default). AIE_NPU_SPLIT selects which
+# half of a *converted* npu-xrt test runs:
+#   "compile" -> run the build lines (%npu_build%), skip the device run (%npu_run%)
+#   "execute" -> skip the build, run only the device lines against the compile
+#                phase's persisted artifacts
+#   unset     -> whole test, unchanged (both prefixes expand to nothing)
+# Build lines touch no device (aiecc/clang only generate MLIR/objects), so the
+# compile phase runs them in parallel (see test/npu-xrt/lit.local.cfg); only the
+# device run stays in the capacity-1 npu-xrt group, which serializes the global
+# XRT hw_context pool that #2737 added the group to protect.
+# CONSTRAINT for converting a test: a line tagged with %npu_build%/%npu_run%
+# must be a single simple command with NO redirect (>), pipe (|), &&/;, or a
+# trailing FileCheck -- the ":" skip only neutralises a plain command; a redirect
+# would still truncate its target and a pipe would still run the downstream stage
+# on empty input. Redirect/pipe/FileCheck tests must stay whole-test (unconverted).
+_npu_split = os.environ.get("AIE_NPU_SPLIT", "")
+_npu_skip = ":"  # shell no-op; consumes the rest of a redirect/pipe-free line
+config.substitutions.append(("%npu_build%", _npu_skip if _npu_split == "execute" else ""))
+config.substitutions.append(("%npu_run%", _npu_skip if _npu_split == "compile" else ""))
+
 # shutil.which picks up the platform's executable suffix (.exe on Windows
 # via PATHEXT) so the feature gate fires correctly on every OS.
 if shutil.which("aie-lsp-server", path=config.llvm_tools_dir) is not None:
