@@ -2276,21 +2276,29 @@ LogicalResult DMABDOp::verify() {
   {
     bool lenStaticallyKnown = getConstantLen().has_value();
     if (!lenStaticallyKnown && !hasLen()) {
-      if (auto shaped =
-              llvm::dyn_cast<mlir::ShapedType>(getBuffer().getType()))
+      if (auto shaped = llvm::dyn_cast<mlir::ShapedType>(getBuffer().getType()))
         lenStaticallyKnown = shaped.hasStaticShape();
     }
+    // Skip validation for non-positive constant lengths: negative values
+    // indicate a separate issue (e.g. distribute-link offset inference) and
+    // would wrap to huge values via getLenInBytes().
     if (lenStaticallyKnown) {
-      uint64_t lenInBytes = getLenInBytes();
-      uint32_t granularity = targetModel.getAddressGenGranularity();
-      if (granularity != 0) {
-        uint64_t lenInWords = lenInBytes * 8 / granularity;
-        uint64_t maxLen = targetModel.getDmaBdMaxLen(parentTile.getTileType());
-        if (lenInWords > maxLen)
-          return emitOpError()
-                 << "buffer descriptor length (" << lenInWords
-                 << " 32-bit words) exceeds the maximum of " << maxLen
-                 << " words supported by this tile type";
+      if (auto constLen = getConstantLen();
+          constLen.has_value() && *constLen <= 0) {
+        // non-positive explicit length — skip overflow check
+      } else {
+        uint64_t lenInBytes = getLenInBytes();
+        uint32_t granularity = targetModel.getAddressGenGranularity();
+        if (granularity != 0) {
+          uint64_t lenInWords = lenInBytes * 8 / granularity;
+          uint64_t maxLen =
+              targetModel.getDmaBdMaxLen(parentTile.getTileType());
+          if (lenInWords > maxLen)
+            return emitOpError()
+                   << "buffer descriptor length (" << lenInWords
+                   << " 32-bit words) exceeds the maximum of " << maxLen
+                   << " words supported by this tile type";
+        }
       }
     }
   }
