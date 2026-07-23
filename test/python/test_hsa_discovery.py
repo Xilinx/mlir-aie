@@ -34,3 +34,17 @@ def test_missing_returns_none(tmp_path, monkeypatch):
     # and returns None-or-str without raising.
     result = discovery.find_libhsa()
     assert result is None or isinstance(result, str)
+
+
+def test_rocm_path_candidate_is_resolved(tmp_path, monkeypatch):
+    rocm_root = tmp_path / "opt" / "rocm"
+    lib_dir = rocm_root / "lib"
+    lib_dir.mkdir(parents=True)
+    fake = lib_dir / "libhsa-runtime64.so"
+    fake.write_bytes(b"\x7fELF")
+
+    monkeypatch.delenv("HSA_RUNTIME_LIB", raising=False)
+    monkeypatch.delenv("HSA_RUNTIME_DIR", raising=False)
+    monkeypatch.setenv("ROCM_PATH", str(rocm_root))
+
+    assert discovery.find_libhsa() == str(fake)
