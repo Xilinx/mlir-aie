@@ -48,13 +48,15 @@ module {
       aiex.npu.maskwrite32(%cc, %reset, %rst_mask) {column = 0 : i32, row = 2 : i32} : i32, i32, i32
       aiex.npu.maskwrite32(%cc, %unreset, %rst_mask) {column = 0 : i32, row = 2 : i32} : i32, i32, i32
 
-      // Re-push BD 0 to the (now flushed) queue so the channel runs again.
+      // Re-push BD 0 to the (now flushed) queue so the channel runs again
+      // (aie-rt XAie_DmaChannelPushBdToQueue -- DMA_MM2S_0_Start_Queue, 0x1DE14).
       %bd = arith.constant 0 : i32
       %rc = arith.constant 0 : i32
       aiex.npu.push_queue (0, 2, MM2S:0) bd_id %bd repeat %rc {issue_token = true} : i32, i32
 
       // Re-arm the cons lock (LOCK0_VALUE, tile-local 0x1F000 = 126976; same
-      // offset on AIE-ML/npu1 and AIE2P/npu2) so the send proceeds.
+      // offset on AIE-ML/npu1 and AIE2P/npu2; aie-rt XAie_LockSetValue, a
+      // full-word write32) so the send proceeds.
       %la = arith.constant 126976 : i32
       %one = arith.constant 1 : i32
       aiex.npu.write32(%la, %one) {column = 0 : i32, row = 2 : i32} : i32, i32

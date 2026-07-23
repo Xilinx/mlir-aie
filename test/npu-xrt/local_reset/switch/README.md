@@ -64,3 +64,12 @@ and `..._LOCK0_VALUE` in `driver/src/global/xaie2pgbl_params.h`;
 `XAIEMLGBL_CORE_MODULE_STREAM_SWITCH_SLAVE_CONFIG_DMA_0` at the same `0x3F104` in
 `xaiemlgbl_params.h`. See [`../README.md`](../README.md#references) for the full
 table.
+
+**Deviation from the driver.** `XAie_StrmConnCctEnable` / `XAie_StrmConnCctDisable`
+each write *two* registers -- the master-port config and the slave-port config
+(`_StrmConfigMstr` + `_XAie_StrmConfigSlv`, both full-word `XAie_Write32`). This
+test writes **only the slave** config register: the master (South) route is
+resident from the CDO load, so rewriting it to the same value would be an
+idempotent no-op, and toggling only the slave port isolates any failure to that
+port. The slave-config value (`0x80000000` enable / `0` disable) and the write type
+still match the driver exactly.

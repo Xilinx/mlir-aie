@@ -8,11 +8,10 @@
 # Core reset (op-based)
 
 The op-based analog of [`../core`](../core/README.md): identical design, but the
-core is reset with the merged `aiex.core_reset` runtime-sequence op instead of
-raw `aiex.npu.write32`s. This is the on-board test for the op added in
-[#3375](https://github.com/Xilinx/mlir-aie/pull/3375) (which shipped with only
-`aie-opt` FileCheck coverage). See [`../README.md`](../README.md) for the shared
-design and how to run.
+core is reset with the merged `aiex.core_reset` runtime-sequence op
+([#3375](https://github.com/Xilinx/mlir-aie/pull/3375)) rather than issuing the
+register writes directly as `../core` does. See [`../README.md`](../README.md) for
+the shared design and how to run.
 
 The core on tile `(0, 2)` runs once, fills the output buffer with a data-memory
 counter, increments it, then halts at `aie.end`. After batch 1,
@@ -32,16 +31,12 @@ is the `reset -> unreset` half of `../core`'s raw sequence, and it mirrors aie-r
 The op is **reset-only** (`XAie_CoreReset` + `XAie_CoreUnreset`): masking to bit 1
 preserves the `ENABLE` field but the op does not set it, because by design it
 assumes the core is still enabled (re-arming a resident kernel across dispatches).
-Our core has run to `aie.end`, so it is no longer enabled -- and **on this board
-the op alone leaves the core halted and batch 2 never arrives** (kernel does not
-complete). So this test composes the op with a **masked** re-enable of
-`CORE_CONTROL` bit 0 (`aiex.npu.maskwrite32`, mask `0x1`), mirroring aie-rt's
-`XAie_CoreEnable` (itself a `MaskWrite32` of the enable field). Op + this write is
-the full driver `XAie_CoreReset -> XAie_CoreUnreset -> XAie_CoreEnable` sequence,
-every write masked to a single field so no other `CORE_CONTROL` bit is clobbered.
-The on-board result confirms the op's pulse is faithful (same register, same bit)
-while pinning its documented scope -- it does not, on its own, restart a core that
-has cleared `ENABLE`.
+This core has run to `aie.end` and is no longer enabled, so `aiex.core_reset` alone
+does not restart it. The test therefore composes the op with a **masked** re-enable
+of `CORE_CONTROL` bit 0 (`aiex.npu.maskwrite32`, mask `0x1`), mirroring aie-rt's
+`XAie_CoreEnable` (a `MaskWrite32` of the enable field). Op + this write is the full
+driver `XAie_CoreReset -> XAie_CoreUnreset -> XAie_CoreEnable` sequence, every write
+masked to a single field so no other `CORE_CONTROL` bit is clobbered.
 
 ## Behaviour
 
@@ -49,8 +44,8 @@ has cleared `ENABLE`.
   -> `batch2 == batch1 + 1`.
 - **`aiex.core_reset` alone (no re-enable):** the core stays halted (`ENABLE`
   already clear after `aie.end`), the second batch never arrives, and the kernel
-  does not complete -- as observed on-board. Reproduce by removing the re-enable
-  `maskwrite32` from `aie.mlir`.
+  does not complete. Reproduce by removing the re-enable `maskwrite32` from
+  `aie.mlir`.
 - **No reset at all:** likewise hangs; the reset pulse is what clears the PC so the
   re-enabled core re-runs from the top.
 

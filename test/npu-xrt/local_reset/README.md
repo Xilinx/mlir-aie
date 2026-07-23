@@ -13,8 +13,7 @@ design or reloading the array. Each family resets one resettable block and shows
 that the design keeps working across it. The `core`, `dma`, and `switch` families
 issue the reset as **raw register writes**; the two `*_op` families issue it
 through the merged `aiex.core_reset` / `aiex.dma_channel_reset` runtime-sequence
-ops and confirm on-board that those ops drive the same registers (see
-[Op-based variants](#op-based-variants)).
+ops, which drive the same registers (see [Op-based variants](#op-based-variants)).
 
 | Family | Block reset | Key register(s) | Reset mechanism |
 |--------|-------------|-----------------|-----------------|
@@ -23,20 +22,18 @@ ops and confirm on-board that those ops drive the same registers (see
 | [`switch`](switch/README.md) | Stream-switch connection | `Stream_Switch_Slave_DMA_0_Config` (`0x3F104`) | re-enable slave port (torn down each dispatch end), re-arm lock |
 
 The write *type* follows the driver per family: `core` and `dma` reset with masked
-`maskwrite32` (aie-rt's `XAie_CoreReset`/`…`/`XAie_DmaChannelReset` are `MaskWrite32`
+`maskwrite32` (aie-rt's `XAie_CoreReset`/`Unreset`/`Enable` and `XAie_DmaChannelReset` are `MaskWrite32`
 of one bit-field), while `switch` and the lock re-arm use full-word `write32`
 (aie-rt's `XAie_StrmConnCctEnable`/`XAie_LockSetValue` are `Write32`).
 
 ## Op-based variants
 
 The two `*_op` families are the on-board counterparts of `core` and `dma` that
-drive the merged reset ops (added in
-[#3375](https://github.com/Xilinx/mlir-aie/pull/3375) /
-[#3370](https://github.com/Xilinx/mlir-aie/pull/3370)) instead of issuing the
-`maskwrite32` reset pulse directly, as the raw families do. Those ops shipped with
-only `aie-opt` FileCheck coverage; these are their first
-on-silicon tests. (There is no stream-switch reset op upstream, so `switch` has no
-op-based counterpart.)
+drive the merged reset ops
+([#3375](https://github.com/Xilinx/mlir-aie/pull/3375) /
+[#3370](https://github.com/Xilinx/mlir-aie/pull/3370)) rather than issuing the
+`maskwrite32` reset pulse directly, as the raw families do. (There is no
+stream-switch reset op, so `switch` has no op-based counterpart.)
 
 | Family | Op | Lowers to | Raw-register sibling |
 |--------|----|-----------|----------------------|
@@ -45,20 +42,20 @@ op-based counterpart.)
 
 Both ops lower (in the default `aiecc` pipeline) to a two-write
 `aiex.npu.maskwrite32` pulse on the **same register and reset bit** the raw
-sibling writes -- confirming the merged implementations follow the same protocol.
-The ops are **reset-only**: they mask to the reset bit (preserving the surrounding
+sibling writes, so the op-based and raw families exercise the same protocol. The
+ops are **reset-only**: they mask to the reset bit (preserving the surrounding
 fields) and do not re-enable, re-push, or re-arm. So:
 
 - `dma_channel_reset_op` is a drop-in for `dma`'s masked reset pulse; the re-push
   BD + lock re-arm remain around it, and it passes unchanged.
 - `core_reset_op` supplies the `reset -> unreset` pulse
-  (`XAie_CoreReset`/`XAie_CoreUnreset`); because our core has run to `aie.end` (no
+  (`XAie_CoreReset`/`XAie_CoreUnreset`); because this core has run to `aie.end` (no
   longer enabled) it composes the op with a **masked** re-enable mirroring
   `XAie_CoreEnable`, so the whole test is the driver's
   `XAie_CoreReset -> XAie_CoreUnreset -> XAie_CoreEnable` sequence, every write
-  masked to one field. On-board, the op *alone* leaves the core halted (kernel does
-  not complete); this pins the op's documented scope (it assumes a still-enabled
-  resident core). See its README.
+  masked to one field. The op *alone* does not re-enable, so on its own it leaves
+  such a core halted; this pins the op's documented scope (it assumes a
+  still-enabled resident core). See its README.
 
 ## Shared design
 
@@ -137,4 +134,7 @@ Each test issues these as the driver's own write type: `XAie_CoreReset`/`Unreset
 `Enable` and `XAie_DmaChannelReset` are `MaskWrite32` of a single bit-field, so the
 `core` and `dma` tests use `maskwrite32` (reset/unreset mask `0x2`, enable mask
 `0x1`); `XAie_StrmConnCctEnable`/`Disable` and `XAie_LockSetValue` are `Write32`, so
-the `switch` slave-port toggle and the lock re-arm use full-word `write32`.
+the `switch` slave-port toggle and the lock re-arm use full-word `write32`. (One
+deviation: `XAie_StrmConnCctEnable`/`Disable` write both the master- and slave-port
+config registers; the `switch` test writes only the slave register because the
+master route is resident -- see [`switch/README.md`](switch/README.md#reference).)

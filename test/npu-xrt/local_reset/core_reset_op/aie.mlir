@@ -63,13 +63,13 @@ module {
       aiex.core_reset(%tile_0_2)
 
       // aiex.core_reset is reset-only (XAie_CoreReset + XAie_CoreUnreset): it does
-      // not re-enable, by design assuming the core is still enabled. This core ran
-      // to aie.end, so it is no longer enabled -- confirmed on-board: the op alone
-      // leaves the core halted and batch 2 never arrives. Re-enable it with a
-      // masked write of the ENABLE bit (CORE_CONTROL bit 0, mask 0x1), mirroring
-      // aie-rt's XAie_CoreEnable (a MaskWrite32 of the enable field). op + this
-      // write is the full XAie_CoreReset -> XAie_CoreUnreset -> XAie_CoreEnable
-      // driver sequence, all masked so no other CORE_CONTROL field is clobbered.
+      // not re-enable, by design assuming the core is still enabled. This core has
+      // run to aie.end and is no longer enabled, so the op alone does not restart
+      // it. Re-enable it with a masked write of the ENABLE bit (CORE_CONTROL bit 0,
+      // mask 0x1), mirroring aie-rt's XAie_CoreEnable (a MaskWrite32 of the enable
+      // field). op + this write is the full XAie_CoreReset -> XAie_CoreUnreset ->
+      // XAie_CoreEnable driver sequence, all masked so no other CORE_CONTROL field
+      // is clobbered.
       %cc = arith.constant 204800 : i32
       %enable = arith.constant 1 : i32
       %en_mask = arith.constant 1 : i32
