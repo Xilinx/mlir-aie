@@ -95,33 +95,45 @@ jobs:
           # A deterministic regression fails both runs, so the retry only masks
           # nondeterministic failures.
           #
-          # The retry reuses the successful build and, in the one suite that
-          # failed, re-runs only the tests that failed the first pass; the suites
-          # the fail-fast first pass never reached still run in full, so coverage
-          # is unchanged. That keeps a single transient fault from turning a
-          # ~35 min job into the observed ~57-75 min tail. If the failed suite or
-          # the failed test names cannot be recovered it falls back to a full
-          # re-run, so the retry never skips work silently.
+          # The retry reuses the successful build and skips the suites that
+          # already fully passed. For a read-race (lit completed the suite) it
+          # re-runs only that suite's failed tests -- across ALL lit failure
+          # labels (FAIL/TIMEOUT/UNRESOLVED/XPASS), so a real non-FAIL failure is
+          # never dropped. For an EIO (which can abort lit mid-suite, leaving
+          # tests un-run) it re-runs the failed suite in FULL. Suites the
+          # fail-fast pass never reached always run in full. So every test that
+          # ran in the baseline still runs, and any deterministic failure fails
+          # again. That keeps a single transient from turning a ~35 min job into
+          # the observed ~57-75 min tail. If the failed suite or test names can't
+          # be recovered it falls back to a full re-run -- never skips silently.
           if [ -z "$STEP_RETRIED" ]; then
             export STEP_RETRIED=1
             log=$(mktemp)
             bash -eo pipefail "$0" 2>&1 | tee "$log" && exit 0
-            if { [ "${{ matrix.runner_type }}" = "aie2-4col" ] && \
-                 grep -qF "DRM_IOCTL_AMDXDNA_EXEC_CMD IOCTL failed (err=-5): Input/output error" "$log"; } || \
-               grep -Pq 'idx [0-9]+: ([0-9]+) != \1\b' "$log"; then
-              echo "::warning::Transient on-device failure detected; retrying the step once"
-              # Recover, from the first-pass log, the suite that failed (the last
-              # "===== suite: X =====" marker, printed before each suite so a
-              # fail-fast abort leaves it as the last one) and the failed test
-              # paths (lit's "FAIL: <suite> :: <path>" lines) as a LIT_FILTER
-              # regex. Either being empty forces a full re-run below.
-              # || true: under `set -eo pipefail` a grep with no match exits 1
-              # and would abort the step before the retry (e.g. an EIO that
-              # leaves no "FAIL:" line). Empty just forces the full-re-run path.
+            # Classify the transient. An aie2-4col amdxdna EIO can abort lit
+            # mid-suite (leaving tests un-run), so its retry re-runs the failed
+            # suite in FULL; the host/device read race is a value mismatch lit
+            # still completes, so its retry may narrow to the failed tests.
+            transient=""
+            if [ "${{ matrix.runner_type }}" = "aie2-4col" ] && \
+               grep -qF "DRM_IOCTL_AMDXDNA_EXEC_CMD IOCTL failed (err=-5): Input/output error" "$log"; then
+              transient=eio
+            elif grep -Pq 'idx [0-9]+: ([0-9]+) != \1\b' "$log"; then
+              transient=readrace
+            fi
+            if [ -n "$transient" ]; then
+              echo "::warning::Transient on-device failure ($transient); retrying the step once"
+              # Failed suite = last "===== suite: X =====" marker before the abort.
+              # || true: a no-match grep exits 1 under `set -eo pipefail`; empty
+              # just forces the full re-run below.
               FAILED_SUITE=$(grep -oP '===== suite: \K\S+' "$log" | tail -1 || true)
-              RETRY_LIT_FILTER=$(grep -Eo 'FAIL: [^ ]+ :: [^ ]+' "$log" \
-                | awk '{print $NF}' | sort -u | paste -sd '|' - || true)
-              export FAILED_SUITE RETRY_LIT_FILTER
+              # Collect EVERY lit failure label (FAIL/TIMEOUT/UNRESOLVED/XPASS),
+              # not just FAIL, so a real non-FAIL failure is never dropped from
+              # the retry set; regex-escape the paths for LIT_FILTER.
+              RETRY_LIT_FILTER=$(grep -Eo '(FAIL|TIMEOUT|UNRESOLVED|XPASS): [^ ]+ :: [^ ]+' "$log" \
+                | awk '{print $NF}' | sort -u \
+                | sed 's/[][(){}.^$*+?|\\]/\\&/g' | paste -sd '|' - || true)
+              export FAILED_SUITE RETRY_LIT_FILTER STEP_RETRY_TRANSIENT="$transient"
               export STEP_RETRY_PASS=1
               exec bash -eo pipefail "$0"
             fi
@@ -189,9 +201,11 @@ jobs:
 
           SUITES="check-aie concurrency refs guide atb"
 
-          # Only treat FAILED_SUITE as valid if it names a known suite; anything
-          # else forces the full re-run path.
-          case " $SUITES " in *" $FAILED_SUITE "*) : ;; *) FAILED_SUITE="" ;; esac
+          # Only treat FAILED_SUITE as valid if it EXACTLY names a known suite
+          # (fixed-string match, not a glob) -- else force the full re-run path.
+          if ! printf '%s\n' $SUITES | grep -qxF "$FAILED_SUITE"; then
+            FAILED_SUITE=""
+          fi
 
           if [ -n "$STEP_RETRY_PASS" ] && [ -n "$FAILED_SUITE" ]; then
             # Narrowed retry: skip the suites that already passed, re-run only the
@@ -204,7 +218,11 @@ jobs:
                 continue
               fi
               reached=1
-              if [ "$s" = "$FAILED_SUITE" ] && [ -n "$RETRY_LIT_FILTER" ]; then
+              if [ "$s" = "$FAILED_SUITE" ] && [ "$STEP_RETRY_TRANSIENT" = readrace ] \
+                 && [ -n "$RETRY_LIT_FILTER" ]; then
+                # read-race only: lit completed the suite, so narrowing to the
+                # failed tests is coverage-safe. EIO (may have aborted lit) and
+                # the empty-filter fallback both drop to the full-suite branch.
                 echo "===== suite: $s (retry only failed tests) ====="
                 run_suite "$s" only-failed
               else
