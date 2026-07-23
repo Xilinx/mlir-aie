@@ -8,7 +8,7 @@
 """Unit tests for CallableDesign and @jit pure-logic surfaces — no NPU required.
 
 Tests that exercise compile() or actual NPU kernel execution live in
-test/python/npu-xrt/test_iron_jit_e2e.py (requires xrt_python_bindings).
+test/python/npu/test_iron_jit_e2e.py (requires a host runtime backend).
 """
 
 import pytest
@@ -328,7 +328,7 @@ def test_external_function_positional_not_in_tensor_args():
 
 # NOTE: trace_config end-to-end behaviour (forwarded to NPUKernel.__init__,
 # not to kernel.__call__) is covered by a real NPU run in
-# test/python/npu-xrt/test_iron_jit_e2e.py::test_trace_config_forwarded_to_kernel.
+# test/python/npu/test_iron_jit_e2e.py::test_trace_config_forwarded_to_kernel.
 # A pure-unit version was removed because it required mocking compile() in a
 # way that diverged from prod behaviour (left _kernel_dir unset, masking a
 # real defect).

@@ -247,6 +247,33 @@ if config.has_mlir_runtime_libraries:
 if config.pytorch:
     config.available_features.add("pytorch")
 
+# Per-backend, per-RUN-line device runners for the runtime-agnostic on-device
+# Python tests (test/python/npu). lit's REQUIRES is file-level, but those tests
+# carry both XRT and HRX RUN lines, and the two backends run on separate CI
+# runners with mutually exclusive Python bindings (the pure-HRX runner has no
+# pyxrt). So gate each RUN line via a dedicated substitution instead:
+#   * %run_on_npu1_xrt% / %run_on_npu2_xrt% -> the XRT device wrapper only when
+#     pyxrt is importable, else a no-op "echo" (so the XRT lines skip cleanly on
+#     an XRT-free HRX host rather than dispatching CPU tensors on the NPU);
+#   * %run_on_npu2_hrx% -> plain "env NPU_RUNTIME=hrx" when libhrx is locatable,
+#     else a no-op "echo".
+# The HRX substitution deliberately does NOT reuse the XRT %run_on_npu2% device
+# wrapper: that wrapper probes for an *XRT* NPU and collapses to "echo" on the
+# XRT-free pure-HRX runner, which would silently turn every HRX RUN line into a
+# no-op (the tests would appear to pass without ever dispatching). The HRX
+# hardware job instead declares its device explicitly via AIE_HRX_NPU (the
+# hrx_npu2 feature above), matching the device-decoupled gating the pure-HRX
+# npu-hrx tests use, so this line only needs the libhrx capability check.
+_xrt_ok = "xrt_python_bindings" in config.available_features
+_hrx_ok = "hrx_python_bindings" in config.available_features
+_run_on_npu1 = xrt_config.substitutions.get("%run_on_npu1%", "echo")
+_run_on_npu2 = xrt_config.substitutions.get("%run_on_npu2%", "echo")
+config.substitutions.append(("%run_on_npu1_xrt%", _run_on_npu1 if _xrt_ok else "echo"))
+config.substitutions.append(("%run_on_npu2_xrt%", _run_on_npu2 if _xrt_ok else "echo"))
+config.substitutions.append(
+    ("%run_on_npu2_hrx%", "env NPU_RUNTIME=hrx" if _hrx_ok else "echo")
+)
+
 if "LIT_AVAILABLE_FEATURES" in os.environ:
     for feature in os.environ["LIT_AVAILABLE_FEATURES"].split():
         config.available_features.add(feature)
