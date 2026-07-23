@@ -335,6 +335,50 @@ def test_external_function_positional_not_in_tensor_args():
 
 
 # ---------------------------------------------------------------------------
+# specialize(): trace_config must reach the generator, not just the wrapper
+# ---------------------------------------------------------------------------
+
+
+def test_specialize_forwards_trace_config_to_compilable():
+    """trace_config is dual-natured: a CallableDesign wrapper config AND a
+    generator CompileTime[T] param that bakes trace flows into the MLIR.
+
+    specialize() must forward it to the underlying compilable's compile_kwargs
+    (so the generator receives it) in addition to setting it on the wrapper.
+    Regression: an earlier version popped it out of the forwarded overrides, so
+    the compile-only path (specialize(...).compile(xclbin_path=...)) produced a
+    trace-less xclbin and downstream parsing failed with "No valid trace data
+    found".
+    """
+
+    def gen(a: In, *, trace_config: CompileTime[object] = None):
+        pass
+
+    cd = CallableDesign(gen)
+    sentinel = object()
+    spec = cd.specialize(trace_config=sentinel)
+
+    # Reaches the generator (compilable compile_kwargs)...
+    assert spec.compilable.compile_kwargs.get("trace_config") is sentinel
+    # ...and still configures the wrapper (buffer read-back).
+    assert spec.trace_config is sentinel
+
+
+def test_specialize_preserves_wrapper_trace_config_when_not_overridden():
+    """When specialize() is called without a trace_config override, the wrapper's
+    existing trace_config is preserved (unchanged pre-existing behaviour)."""
+
+    def gen(a: In, *, M: CompileTime[int]):
+        pass
+
+    sentinel = object()
+    cd = CallableDesign(gen, trace_config=sentinel)
+    spec = cd.specialize(M=512)
+
+    assert spec.trace_config is sentinel
+
+
+# ---------------------------------------------------------------------------
 # Guard 3-A: tensor param as runtime kwarg raises TypeError
 # ---------------------------------------------------------------------------
 

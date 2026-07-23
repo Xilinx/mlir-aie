@@ -418,10 +418,16 @@ class CallableDesign:
 
             matmul.specialize(M=256, K=256, N=256, element_type=np.int16).compile()
         """
-        # trace_config lives on CallableDesign; every other config lives on the
-        # underlying CompilableDesign.  Pull trace_config out and forward the
-        # rest (config + CompileTime[T] kwargs) to the CompilableDesign split.
-        trace_config = overrides.pop("trace_config", self.trace_config)
+        # trace_config is dual-natured: it configures the CallableDesign wrapper
+        # (buffer read-back after the run) AND, for designs that declare it as a
+        # CompileTime[T] generator param, it must reach the generator so trace
+        # flows are baked into the MLIR.  So capture it for the wrapper but leave
+        # it in `overrides` -- compilable.specialize() routes it into the
+        # generator's compile_kwargs (it is not a CompilableDesign config key).
+        # Popping it here would silently drop tracing from the compile-only path
+        # (specialize(...).compile(xclbin_path=...)), yielding an empty trace
+        # buffer downstream ("No valid trace data found").
+        trace_config = overrides.get("trace_config", self.trace_config)
         return CallableDesign(
             self.compilable.specialize(**overrides),
             trace_config=trace_config,
