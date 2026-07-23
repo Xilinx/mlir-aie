@@ -38,6 +38,15 @@ runtime_lib/xaiengine/src
 /iron_env.sh
 /.cache
 
+# Local wheel build inputs and outputs.
+/utils/mlir_aie_wheels/mlir-*.whl
+/utils/mlir_aie_wheels/mlir_no_rtti-*.whl
+/utils/mlir_aie_wheels/mlir/
+/utils/mlir_aie_wheels/mlir_no_rtti/
+/utils/mlir_aie_wheels/mlir-*.dist-info/
+/utils/mlir_aie_wheels/mlir_no_rtti-*.dist-info/
+/utils/mlir_aie_wheels/wheelhouse/
+
 # Local run/test artifacts under programming_examples/ and programming_guide/
 **/log/
 **/test_stx/
