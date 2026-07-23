@@ -366,7 +366,7 @@ def AIE_ShimDMAOp: AIE_Op<"shim_dma", [
 }
 
 def AIE_CoreOp: AIE_Op<"core", [
-    IsFlowEndPoint, IsCoreTile, TileElement,
+    IsFlowEndPoint, IsCoreTile, TileElement, AutomaticAllocationScope,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
   let arguments = (

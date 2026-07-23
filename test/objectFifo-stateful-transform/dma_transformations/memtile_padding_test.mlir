@@ -5,137 +5,151 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
-    // CHECK:       %[[SHIM_TILE:.*]] = aie.tile(0, 0)
-    // CHECK:       %[[MEM_TILE:.*]] = aie.tile(0, 1)
-    // CHECK:       %[[COMP_TILE:.*]] = aie.tile(0, 2)
-    // CHECK-DAG:   %[[OUT1_CONS_BUFF_0:.*]] = aie.buffer(%[[MEM_TILE]]) {sym_name = "objFifo_out1_cons_buff_0"} : memref<64x64xi8>
-    // CHECK-DAG:   %[[OUT1_CONS_BUFF_1:.*]] = aie.buffer(%[[MEM_TILE]]) {sym_name = "objFifo_out1_cons_buff_1"} : memref<64x64xi8>
-    // CHECK-DAG:   %[[OUT1_CONS_PROD_LOCK:.*]] = aie.lock(%[[MEM_TILE]], 2) {init = 2 : i32, sym_name = "objFifo_out1_cons_prod_lock_0"}
-    // CHECK-DAG:   %[[OUT1_CONS_CONS_LOCK:.*]] = aie.lock(%[[MEM_TILE]], 3) {init = 0 : i32, sym_name = "objFifo_out1_cons_cons_lock_0"}
-    // CHECK-DAG:   %[[OUT1_BUFF_0:.*]] = aie.buffer(%[[COMP_TILE]]) {sym_name = "objFifo_out1_buff_0"} : memref<64x64xi8>
-    // CHECK-DAG:   %[[OUT1_BUFF_1:.*]] = aie.buffer(%[[COMP_TILE]]) {sym_name = "objFifo_out1_buff_1"} : memref<64x64xi8>
-    // CHECK-DAG:   %[[OUT1_PROD_LOCK:.*]] = aie.lock(%[[COMP_TILE]], 2) {init = 2 : i32, sym_name = "objFifo_out1_prod_lock_0"}
-    // CHECK-DAG:   %[[OUT1_CONS_LOCK:.*]] = aie.lock(%[[COMP_TILE]], 3) {init = 0 : i32, sym_name = "objFifo_out1_cons_lock_0"}
-    // CHECK-DAG:   %[[IN1_CONS_BUFF_0:.*]] = aie.buffer(%[[COMP_TILE]]) {sym_name = "objFifo_in1_cons_buff_0"} : memref<64x64xi8>
-    // CHECK-DAG:   %[[IN1_CONS_BUFF_1:.*]] = aie.buffer(%[[COMP_TILE]]) {sym_name = "objFifo_in1_cons_buff_1"} : memref<64x64xi8>
-    // CHECK-DAG:   %[[IN1_CONS_PROD_LOCK:.*]] = aie.lock(%[[COMP_TILE]], 0) {init = 2 : i32, sym_name = "objFifo_in1_cons_prod_lock_0"}
-    // CHECK-DAG:   %[[IN1_CONS_CONS_LOCK:.*]] = aie.lock(%[[COMP_TILE]], 1) {init = 0 : i32, sym_name = "objFifo_in1_cons_cons_lock_0"}
-    // CHECK-DAG:   %[[IN1_BUFF_0:.*]] = aie.buffer(%[[MEM_TILE]]) {sym_name = "objFifo_in1_buff_0"} : memref<64x64xi8>
-    // CHECK-DAG:   %[[IN1_BUFF_1:.*]] = aie.buffer(%[[MEM_TILE]]) {sym_name = "objFifo_in1_buff_1"} : memref<64x64xi8>
-    // CHECK-DAG:   %[[IN1_PROD_LOCK:.*]] = aie.lock(%[[MEM_TILE]], 0) {init = 2 : i32, sym_name = "objFifo_in1_prod_lock_0"}
-    // CHECK-DAG:   %[[IN1_CONS_LOCK:.*]] = aie.lock(%[[MEM_TILE]], 1) {init = 0 : i32, sym_name = "objFifo_in1_cons_lock_0"}
-    // CHECK-DAG:   %[[OUT0_CONS_PROD_LOCK:.*]] = aie.lock(%[[SHIM_TILE]], 2)
-    // CHECK-DAG:   %[[OUT0_CONS_CONS_LOCK:.*]] = aie.lock(%[[SHIM_TILE]], 3)
-    // CHECK-DAG:   %[[IN0_PROD_LOCK:.*]] = aie.lock(%[[SHIM_TILE]], 0)
-    // CHECK-DAG:   %[[IN0_CONS_LOCK:.*]] = aie.lock(%[[SHIM_TILE]], 1)
-    // CHECK-DAG:   aie.flow(%[[SHIM_TILE]], DMA : 0, %[[MEM_TILE]], DMA : 0)
-    // CHECK-DAG:   aie.flow(%[[MEM_TILE]], DMA : 0, %[[COMP_TILE]], DMA : 0)
-    // CHECK-DAG:   aie.flow(%[[COMP_TILE]], DMA : 0, %[[MEM_TILE]], DMA : 1)
-    // CHECK-DAG:   aie.flow(%[[MEM_TILE]], DMA : 1, %[[SHIM_TILE]], DMA : 0)
-    // CHECK:       %core_0_2 = aie.core(%[[COMP_TILE]]) {
-    // CHECK:         aie.use_lock(%[[IN1_CONS_CONS_LOCK]], AcquireGreaterEqual, %{{.*}})
-    // CHECK:         aie.use_lock(%[[OUT1_PROD_LOCK]], AcquireGreaterEqual, %{{.*}})
-    // CHECK:         %c0 = arith.constant 0 : index
-    // CHECK:         %c1 = arith.constant 1 : index
-    // CHECK:         %c64 = arith.constant 64 : index
-    // CHECK:         %c12_i8 = arith.constant 12 : i8
-    // CHECK:         scf.for %arg0 = %c0 to %c64 step %c1 {
-    // CHECK:           scf.for %arg1 = %c0 to %c64 step %c1 {
-    // CHECK:             %0 = memref.load %[[IN1_CONS_BUFF_0]][%arg0, %arg1] : memref<64x64xi8>
-    // CHECK:             %1 = arith.addi %0, %c12_i8 : i8
-    // CHECK:             memref.store %1, %[[IN1_CONS_BUFF_0]][%arg0, %arg1] : memref<64x64xi8>
-    // CHECK:           }
-    // CHECK:         }
-    // CHECK:         aie.use_lock(%[[IN1_CONS_PROD_LOCK]], Release, %{{.*}})
-    // CHECK:         aie.use_lock(%[[OUT1_CONS_LOCK]], Release, %{{.*}})
-    // CHECK:         aie.end
-    // CHECK:       }
-    // CHECK:       aie.runtime_sequence(%arg0: memref<61x56xi8>, %arg1: memref<32xi8>, %arg2: memref<64x64xi8>) {
-    // CHECK:         aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 61, 56][0, 0, 56, 1]) {id = 0 : i64, metadata = @objFifo_in0_shim_alloc} : memref<61x56xi8>
-    // CHECK:         aiex.npu.dma_memcpy_nd(%arg2[0, 0, 0, 0][1, 1, 64, 64][0, 0, 64, 1]) {id = 1 : i64, issue_token = true, metadata = @objFifo_out0_shim_alloc} : memref<64x64xi8>
-    // CHECK:         aiex.npu.dma_wait {symbol = @objFifo_out0_shim_alloc}
-    // CHECK:       }
-    // CHECK:       aie.shim_dma_allocation @objFifo_in0_shim_alloc(%shim_noc_tile_0_0, MM2S, 0)
-    // CHECK:       %memtile_dma_0_1 = aie.memtile_dma(%[[MEM_TILE]]) {
-    // CHECK:         %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
-    // CHECK:       ^bb1:
-    // CHECK:         aie.use_lock(%[[IN1_PROD_LOCK]], AcquireGreaterEqual, %{{.*}})
-    // CHECK:         aie.dma_bd(%[[IN1_BUFF_0]] : memref<64x64xi8> offset = {{.*}} len = {{.*}})
-    // CHECK:         aie.use_lock(%[[IN1_CONS_LOCK]], Release, %{{.*}})
-    // CHECK:         aie.next_bd ^bb2
-    // CHECK:       ^bb2:
-    // CHECK:         aie.use_lock(%[[IN1_PROD_LOCK]], AcquireGreaterEqual, %{{.*}})
-    // CHECK:         aie.dma_bd(%[[IN1_BUFF_1]] : memref<64x64xi8> offset = {{.*}} len = {{.*}})
-    // CHECK:         aie.use_lock(%[[IN1_CONS_LOCK]], Release, %{{.*}})
-    // CHECK:         aie.next_bd ^bb1
-    // CHECK:       ^bb3:
-    // CHECK:         %1 = aie.dma_start(MM2S, 0, ^bb4, ^bb6)
-    // CHECK:       ^bb4:
-    // CHECK:         aie.use_lock(%[[IN1_CONS_LOCK]], AcquireGreaterEqual, %{{.*}})
-    // CHECK:         aie.dma_bd(%[[IN1_BUFF_0]] : memref<64x64xi8> offset = {{.*}} len = {{.*}})
-    // CHECK:         aie.use_lock(%[[IN1_PROD_LOCK]], Release, %{{.*}})
-    // CHECK:         aie.next_bd ^bb5
-    // CHECK:       ^bb5:
-    // CHECK:         aie.use_lock(%[[IN1_CONS_LOCK]], AcquireGreaterEqual, %{{.*}})
-    // CHECK:         aie.dma_bd(%[[IN1_BUFF_1]] : memref<64x64xi8> offset = {{.*}} len = {{.*}})
-    // CHECK:         aie.use_lock(%[[IN1_PROD_LOCK]], Release, %{{.*}})
-    // CHECK:         aie.next_bd ^bb4
-    // CHECK:       ^bb6:
-    // CHECK:         %2 = aie.dma_start(S2MM, 1, ^bb7, ^bb9)
-    // CHECK:       ^bb7:
-    // CHECK:         aie.use_lock(%[[OUT1_CONS_PROD_LOCK]], AcquireGreaterEqual, %{{.*}})
-    // CHECK:         aie.dma_bd(%[[OUT1_CONS_BUFF_0]] : memref<64x64xi8> offset = {{.*}} len = {{.*}})
-    // CHECK:         aie.use_lock(%[[OUT1_CONS_CONS_LOCK]], Release, %{{.*}})
-    // CHECK:         aie.next_bd ^bb8
-    // CHECK:       ^bb8:
-    // CHECK:         aie.use_lock(%[[OUT1_CONS_PROD_LOCK]], AcquireGreaterEqual, %{{.*}})
-    // CHECK:         aie.dma_bd(%[[OUT1_CONS_BUFF_1]] : memref<64x64xi8> offset = {{.*}} len = {{.*}})
-    // CHECK:         aie.use_lock(%[[OUT1_CONS_CONS_LOCK]], Release, %{{.*}})
-    // CHECK:         aie.next_bd ^bb7
-    // CHECK:       ^bb9:
-    // CHECK:         %3 = aie.dma_start(MM2S, 1, ^bb10, ^bb12)
-    // CHECK:       ^bb10:
-    // CHECK:         aie.use_lock(%[[OUT1_CONS_CONS_LOCK]], AcquireGreaterEqual, %{{.*}})
-    // CHECK:         aie.dma_bd(%[[OUT1_CONS_BUFF_0]] : memref<64x64xi8> offset = {{.*}} len = {{.*}})
-    // CHECK:         aie.use_lock(%[[OUT1_CONS_PROD_LOCK]], Release, %{{.*}})
-    // CHECK:         aie.next_bd ^bb11
-    // CHECK:       ^bb11:
-    // CHECK:         aie.use_lock(%[[OUT1_CONS_CONS_LOCK]], AcquireGreaterEqual, %{{.*}})
-    // CHECK:         aie.dma_bd(%[[OUT1_CONS_BUFF_1]] : memref<64x64xi8> offset = {{.*}} len = {{.*}})
-    // CHECK:         aie.use_lock(%[[OUT1_CONS_PROD_LOCK]], Release, %{{.*}})
-    // CHECK:         aie.next_bd ^bb10
-    // CHECK:       ^bb12:
-    // CHECK:         aie.end
-    // CHECK:       }
-    // CHECK:       %mem_0_2 = aie.mem(%[[COMP_TILE]]) {
-    // CHECK:         %0 = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
-    // CHECK:       ^bb1:
-    // CHECK:         aie.use_lock(%[[IN1_CONS_PROD_LOCK]], AcquireGreaterEqual, %{{.*}})
-    // CHECK:         aie.dma_bd(%[[IN1_CONS_BUFF_0]] : memref<64x64xi8> offset = {{.*}} len = {{.*}})
-    // CHECK:         aie.use_lock(%[[IN1_CONS_CONS_LOCK]], Release, %{{.*}})
-    // CHECK:         aie.next_bd ^bb2
-    // CHECK:       ^bb2:
-    // CHECK:         aie.use_lock(%[[IN1_CONS_PROD_LOCK]], AcquireGreaterEqual, %{{.*}})
-    // CHECK:         aie.dma_bd(%[[IN1_CONS_BUFF_1]] : memref<64x64xi8> offset = {{.*}} len = {{.*}})
-    // CHECK:         aie.use_lock(%[[IN1_CONS_CONS_LOCK]], Release, %{{.*}})
-    // CHECK:         aie.next_bd ^bb1
-    // CHECK:       ^bb3:
-    // CHECK:         %1 = aie.dma_start(MM2S, 0, ^bb4, ^bb6)
-    // CHECK:       ^bb4:
-    // CHECK:         aie.use_lock(%[[OUT1_CONS_LOCK]], AcquireGreaterEqual, %{{.*}})
-    // CHECK:         aie.dma_bd(%[[OUT1_BUFF_0]] : memref<64x64xi8> offset = {{.*}} len = {{.*}})
-    // CHECK:         aie.use_lock(%[[OUT1_PROD_LOCK]], Release, %{{.*}})
-    // CHECK:         aie.next_bd ^bb5
-    // CHECK:       ^bb5:
-    // CHECK:         aie.use_lock(%[[OUT1_CONS_LOCK]], AcquireGreaterEqual, %{{.*}})
-    // CHECK:         aie.dma_bd(%[[OUT1_BUFF_1]] : memref<64x64xi8> offset = {{.*}} len = {{.*}})
-    // CHECK:         aie.use_lock(%[[OUT1_PROD_LOCK]], Release, %{{.*}})
-    // CHECK:         aie.next_bd ^bb4
-    // CHECK:       ^bb6:
-    // CHECK:         aie.end
-    // CHECK:       }
-    // CHECK:       aie.shim_dma_allocation @objFifo_out0_shim_alloc(%shim_noc_tile_0_0, S2MM, 0)
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" --aie-objectFifo-unroll %s | FileCheck %s
+// NOTE: Assertions have been autogenerated by utils/generate-test-checks.py
+
+// The script is designed to make adding checks to
+// a test case fast, it is *not* designed to be authoritative
+// about what constitutes a good test! The CHECK should be
+// minimized and named to reflect the test intent.
+
+
+// CHECK-LABEL:   aie.device(npu1_1col) {
+// CHECK:           %[[VAL_0:.*]] = aie.tile(0, 0)
+// CHECK:           %[[VAL_1:.*]] = aie.tile(0, 1)
+// CHECK:           %[[VAL_2:.*]] = aie.tile(0, 2)
+// CHECK:           %[[VAL_3:.*]] = aie.lock(%[[VAL_0]], 2) {init = 0 : i32, sym_name = "objFifo_out0_cons_prod_lock_0"}
+// CHECK:           %[[VAL_4:.*]] = aie.lock(%[[VAL_0]], 3) {init = 0 : i32, sym_name = "objFifo_out0_cons_cons_lock_0"}
+// CHECK:           %[[VAL_5:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "objFifo_out1_buff_0"} : memref<64x64xi8>
+// CHECK:           %[[VAL_6:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "objFifo_out1_buff_1"} : memref<64x64xi8>
+// CHECK:           %[[VAL_7:.*]] = aie.lock(%[[VAL_2]], 2) {init = 2 : i32, sym_name = "objFifo_out1_prod_lock_0"}
+// CHECK:           %[[VAL_8:.*]] = aie.lock(%[[VAL_2]], 3) {init = 0 : i32, sym_name = "objFifo_out1_cons_lock_0"}
+// CHECK:           %[[VAL_9:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "objFifo_in1_cons_buff_0"} : memref<64x64xi8>
+// CHECK:           %[[VAL_10:.*]] = aie.buffer(%[[VAL_2]]) {sym_name = "objFifo_in1_cons_buff_1"} : memref<64x64xi8>
+// CHECK:           %[[VAL_11:.*]] = aie.lock(%[[VAL_2]], 0) {init = 2 : i32, sym_name = "objFifo_in1_cons_prod_lock_0"}
+// CHECK:           %[[VAL_12:.*]] = aie.lock(%[[VAL_2]], 1) {init = 0 : i32, sym_name = "objFifo_in1_cons_cons_lock_0"}
+// CHECK:           %[[VAL_13:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "objFifo_out1_cons_buff_0"} : memref<64x64xi8>
+// CHECK:           %[[VAL_14:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "objFifo_out1_cons_buff_1"} : memref<64x64xi8>
+// CHECK:           %[[VAL_15:.*]] = aie.lock(%[[VAL_1]], 2) {init = 2 : i32, sym_name = "objFifo_out1_cons_prod_lock_0"}
+// CHECK:           %[[VAL_16:.*]] = aie.lock(%[[VAL_1]], 3) {init = 0 : i32, sym_name = "objFifo_out1_cons_cons_lock_0"}
+// CHECK:           %[[VAL_17:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "objFifo_in1_buff_0"} : memref<64x64xi8>
+// CHECK:           %[[VAL_18:.*]] = aie.buffer(%[[VAL_1]]) {sym_name = "objFifo_in1_buff_1"} : memref<64x64xi8>
+// CHECK:           %[[VAL_19:.*]] = aie.lock(%[[VAL_1]], 0) {init = 2 : i32, sym_name = "objFifo_in1_prod_lock_0"}
+// CHECK:           %[[VAL_20:.*]] = aie.lock(%[[VAL_1]], 1) {init = 0 : i32, sym_name = "objFifo_in1_cons_lock_0"}
+// CHECK:           %[[VAL_21:.*]] = aie.lock(%[[VAL_0]], 0) {init = 0 : i32, sym_name = "objFifo_in0_prod_lock_0"}
+// CHECK:           %[[VAL_22:.*]] = aie.lock(%[[VAL_0]], 1) {init = 0 : i32, sym_name = "objFifo_in0_cons_lock_0"}
+// CHECK:           aie.flow(%[[VAL_0]], DMA : 0, %[[VAL_1]], DMA : 0)
+// CHECK:           aie.flow(%[[VAL_1]], DMA : 0, %[[VAL_2]], DMA : 0)
+// CHECK:           aie.flow(%[[VAL_2]], DMA : 0, %[[VAL_1]], DMA : 1)
+// CHECK:           aie.flow(%[[VAL_1]], DMA : 1, %[[VAL_0]], DMA : 0)
+// CHECK:           %[[VAL_23:.*]] = aie.core(%[[VAL_2]]) {
+// CHECK:             %[[VAL_24:.*]] = arith.constant 1 : i32
+// CHECK:             %[[VAL_25:.*]] = arith.constant 0 : index
+// CHECK:             %[[VAL_26:.*]] = arith.constant 1 : index
+// CHECK:             %[[VAL_27:.*]] = arith.constant 64 : index
+// CHECK:             %[[VAL_28:.*]] = arith.constant 12 : i8
+// CHECK:             aie.use_lock(%[[VAL_12]], AcquireGreaterEqual, %[[VAL_24]])
+// CHECK:             aie.use_lock(%[[VAL_7]], AcquireGreaterEqual, %[[VAL_24]])
+// CHECK:             scf.for %[[VAL_29:.*]] = %[[VAL_25]] to %[[VAL_27]] step %[[VAL_26]] {
+// CHECK:               scf.for %[[VAL_30:.*]] = %[[VAL_25]] to %[[VAL_27]] step %[[VAL_26]] {
+// CHECK:                 %[[VAL_31:.*]] = memref.load %[[VAL_9]]{{\[}}%[[VAL_29]], %[[VAL_30]]] : memref<64x64xi8>
+// CHECK:                 %[[VAL_32:.*]] = arith.addi %[[VAL_31]], %[[VAL_28]] : i8
+// CHECK:                 memref.store %[[VAL_32]], %[[VAL_9]]{{\[}}%[[VAL_29]], %[[VAL_30]]] : memref<64x64xi8>
+// CHECK:               }
+// CHECK:             }
+// CHECK:             aie.use_lock(%[[VAL_11]], Release, %[[VAL_24]])
+// CHECK:             aie.use_lock(%[[VAL_8]], Release, %[[VAL_24]])
+// CHECK:             aie.end
+// CHECK:           }
+// CHECK:           aie.runtime_sequence(%[[VAL_33:.*]]: memref<61x56xi8>, %[[VAL_34:.*]]: memref<32xi8>, %[[VAL_35:.*]]: memref<64x64xi8>) {
+// CHECK:             aiex.npu.dma_memcpy_nd(%[[VAL_33]][0, 0, 0, 0][1, 1, 1, 3416][0, 0, 0, 1]) {id = 0 : i64, metadata = @objFifo_in0_shim_alloc} : memref<61x56xi8>
+// CHECK:             aiex.npu.dma_memcpy_nd(%[[VAL_35]][0, 0, 0, 0][1, 1, 1, 4096][0, 0, 0, 1]) {id = 1 : i64, issue_token = true, metadata = @objFifo_out0_shim_alloc} : memref<64x64xi8>
+// CHECK:             aiex.npu.dma_wait {symbol = @objFifo_out0_shim_alloc}
+// CHECK:           }
+// CHECK:           aie.shim_dma_allocation @objFifo_in0_shim_alloc(%[[VAL_0]], MM2S, 0)
+// CHECK:           %[[VAL_36:.*]] = aie.memtile_dma(%[[VAL_1]]) {
+// CHECK:             %[[VAL_37:.*]] = arith.constant 1 : i32
+// CHECK:             %[[VAL_38:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
+// CHECK:           ^bb1:
+// CHECK:             aie.use_lock(%[[VAL_19]], AcquireGreaterEqual, %[[VAL_37]])
+// CHECK:             aie.dma_bd(%[[VAL_17]] : memref<64x64xi8> offset = 0 len = 4096)
+// CHECK:             aie.use_lock(%[[VAL_20]], Release, %[[VAL_37]])
+// CHECK:             aie.next_bd ^bb2
+// CHECK:           ^bb2:
+// CHECK:             aie.use_lock(%[[VAL_19]], AcquireGreaterEqual, %[[VAL_37]])
+// CHECK:             aie.dma_bd(%[[VAL_18]] : memref<64x64xi8> offset = 0 len = 4096)
+// CHECK:             aie.use_lock(%[[VAL_20]], Release, %[[VAL_37]])
+// CHECK:             aie.next_bd ^bb1
+// CHECK:           ^bb3:
+// CHECK:             %[[VAL_39:.*]] = aie.dma_start(MM2S, 0, ^bb4, ^bb6)
+// CHECK:           ^bb4:
+// CHECK:             aie.use_lock(%[[VAL_20]], AcquireGreaterEqual, %[[VAL_37]])
+// CHECK:             aie.dma_bd(%[[VAL_17]] : memref<64x64xi8> offset = 0 len = 4096)
+// CHECK:             aie.use_lock(%[[VAL_19]], Release, %[[VAL_37]])
+// CHECK:             aie.next_bd ^bb5
+// CHECK:           ^bb5:
+// CHECK:             aie.use_lock(%[[VAL_20]], AcquireGreaterEqual, %[[VAL_37]])
+// CHECK:             aie.dma_bd(%[[VAL_18]] : memref<64x64xi8> offset = 0 len = 4096)
+// CHECK:             aie.use_lock(%[[VAL_19]], Release, %[[VAL_37]])
+// CHECK:             aie.next_bd ^bb4
+// CHECK:           ^bb6:
+// CHECK:             %[[VAL_40:.*]] = aie.dma_start(S2MM, 1, ^bb7, ^bb9)
+// CHECK:           ^bb7:
+// CHECK:             aie.use_lock(%[[VAL_15]], AcquireGreaterEqual, %[[VAL_37]])
+// CHECK:             aie.dma_bd(%[[VAL_13]] : memref<64x64xi8> offset = 0 len = 4096)
+// CHECK:             aie.use_lock(%[[VAL_16]], Release, %[[VAL_37]])
+// CHECK:             aie.next_bd ^bb8
+// CHECK:           ^bb8:
+// CHECK:             aie.use_lock(%[[VAL_15]], AcquireGreaterEqual, %[[VAL_37]])
+// CHECK:             aie.dma_bd(%[[VAL_14]] : memref<64x64xi8> offset = 0 len = 4096)
+// CHECK:             aie.use_lock(%[[VAL_16]], Release, %[[VAL_37]])
+// CHECK:             aie.next_bd ^bb7
+// CHECK:           ^bb9:
+// CHECK:             %[[VAL_41:.*]] = aie.dma_start(MM2S, 1, ^bb10, ^bb12)
+// CHECK:           ^bb10:
+// CHECK:             aie.use_lock(%[[VAL_16]], AcquireGreaterEqual, %[[VAL_37]])
+// CHECK:             aie.dma_bd(%[[VAL_13]] : memref<64x64xi8> offset = 0 len = 4096 sizes = [61, 56] strides = [56, 1] pad [<const_pad_before = 2, const_pad_after = 1>, <const_pad_before = 4, const_pad_after = 4>])
+// CHECK:             aie.use_lock(%[[VAL_15]], Release, %[[VAL_37]])
+// CHECK:             aie.next_bd ^bb11
+// CHECK:           ^bb11:
+// CHECK:             aie.use_lock(%[[VAL_16]], AcquireGreaterEqual, %[[VAL_37]])
+// CHECK:             aie.dma_bd(%[[VAL_14]] : memref<64x64xi8> offset = 0 len = 4096 sizes = [61, 56] strides = [56, 1] pad [<const_pad_before = 2, const_pad_after = 1>, <const_pad_before = 4, const_pad_after = 4>])
+// CHECK:             aie.use_lock(%[[VAL_15]], Release, %[[VAL_37]])
+// CHECK:             aie.next_bd ^bb10
+// CHECK:           ^bb12:
+// CHECK:             aie.end
+// CHECK:           }
+// CHECK:           %[[VAL_42:.*]] = aie.mem(%[[VAL_2]]) {
+// CHECK:             %[[VAL_43:.*]] = arith.constant 1 : i32
+// CHECK:             %[[VAL_44:.*]] = aie.dma_start(S2MM, 0, ^bb1, ^bb3)
+// CHECK:           ^bb1:
+// CHECK:             aie.use_lock(%[[VAL_11]], AcquireGreaterEqual, %[[VAL_43]])
+// CHECK:             aie.dma_bd(%[[VAL_9]] : memref<64x64xi8> offset = 0 len = 4096)
+// CHECK:             aie.use_lock(%[[VAL_12]], Release, %[[VAL_43]])
+// CHECK:             aie.next_bd ^bb2
+// CHECK:           ^bb2:
+// CHECK:             aie.use_lock(%[[VAL_11]], AcquireGreaterEqual, %[[VAL_43]])
+// CHECK:             aie.dma_bd(%[[VAL_10]] : memref<64x64xi8> offset = 0 len = 4096)
+// CHECK:             aie.use_lock(%[[VAL_12]], Release, %[[VAL_43]])
+// CHECK:             aie.next_bd ^bb1
+// CHECK:           ^bb3:
+// CHECK:             %[[VAL_45:.*]] = aie.dma_start(MM2S, 0, ^bb4, ^bb6)
+// CHECK:           ^bb4:
+// CHECK:             aie.use_lock(%[[VAL_8]], AcquireGreaterEqual, %[[VAL_43]])
+// CHECK:             aie.dma_bd(%[[VAL_5]] : memref<64x64xi8> offset = 0 len = 4096)
+// CHECK:             aie.use_lock(%[[VAL_7]], Release, %[[VAL_43]])
+// CHECK:             aie.next_bd ^bb5
+// CHECK:           ^bb5:
+// CHECK:             aie.use_lock(%[[VAL_8]], AcquireGreaterEqual, %[[VAL_43]])
+// CHECK:             aie.dma_bd(%[[VAL_6]] : memref<64x64xi8> offset = 0 len = 4096)
+// CHECK:             aie.use_lock(%[[VAL_7]], Release, %[[VAL_43]])
+// CHECK:             aie.next_bd ^bb4
+// CHECK:           ^bb6:
+// CHECK:             aie.end
+// CHECK:           }
+// CHECK:           aie.shim_dma_allocation @objFifo_out0_shim_alloc(%[[VAL_0]], S2MM, 0)
+// CHECK:         }
+
 
 module {
   aie.device(npu1_1col) {

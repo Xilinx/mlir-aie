@@ -379,6 +379,32 @@ def AIEObjectFifoStatefulTransform : Pass<"aie-objectFifo-stateful-transform", "
 }
 
 
+def AIEObjectFifoUnroll : Pass<"aie-objectFifo-unroll", "DeviceOp"> {
+  let summary = "Unroll scf.for loops that contain objectFifo operations";
+  let description = [{
+    Unroll each `scf.for` loop (and its ancestor loops) inside an `aie.core`
+    that contains `aie.objectfifo.acquire`/`aie.objectfifo.release` operations,
+    using the standard `scf` loop unrolling infrastructure.
+
+    Each such loop is unrolled by the least common multiple of the depths of the
+    objectFifos it accesses, so that after the objectFifo stateful transform and
+    subsequent `mem2reg`/`canonicalize` the runtime buffer/lock bookkeeping folds
+    into constant buffer references and constant lock counts.
+
+    This pass is intended to run after `aie-objectFifo-stateful-transform` (which
+    emits the dynamic bookkeeping and sets the `aie.unroll_hint` attribute this
+    pass consumes) and is only used when dynamic objectFifos are disabled
+    (`--dynamic-objFifos=false`).
+  }];
+
+  let constructor = "xilinx::AIE::createAIEObjectFifoUnrollPass()";
+  let dependentDialects = [
+    "mlir::scf::SCFDialect",
+    "xilinx::AIE::AIEDialect",
+  ];
+}
+
+
 def AIELowerCascadeFlows : Pass<"aie-lower-cascade-flows", "DeviceOp"> {
   let summary = "Lower aie.cascade_flow operations through `aie.configure_cascade` operations";
   let description = [{
