@@ -18,8 +18,8 @@ __all__ = ["find_libhsa", "find_hsa_include_dir", "hsa_available"]
 
 _HOME = Path(os.path.expanduser("~"))
 
-# <mlir-aie>/python/utils/hostruntime/hsaruntime/discovery.py -> parents[5] == <mlir-aie>
-_MLIR_AIE_ROOT = Path(__file__).resolve().parents[5]
+# <mlir-aie>/python/utils/hostruntime/hsaruntime/discovery.py -> parents[4] == <mlir-aie>
+_MLIR_AIE_ROOT = Path(__file__).resolve().parents[4]
 
 # Standard ROCm roots probed when ROCM_PATH is unset. A sibling ../opt/rocm
 # checkout is probed first (matches the dev layout in this workspace).
@@ -30,7 +30,6 @@ _ROCM_ROOT_CANDIDATES = [
 ]
 
 _LIB_SUFFIX = os.path.join("lib", "libhsa-runtime64.so")
-_HEADER_SUFFIX = os.path.join("include", "hsa", "hsa.h")
 
 
 def _existing(paths: List[Optional[str]]) -> List[str]:
