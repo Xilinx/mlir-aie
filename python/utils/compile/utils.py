@@ -167,6 +167,7 @@ def compile_mlir_module(
     pdi_path: str | Path | None = None,
     xclbin_path: str | Path | None = None,
     elf_path: str | Path | None = None,
+    full_elf_path: str | Path | None = None,
     verbose=False,
     work_dir: str | Path | None = None,
     options=None,
@@ -186,6 +187,12 @@ def compile_mlir_module(
             load instructions through ``xrt::elf`` + ``xrt::module``;
             independent of ``insts_path`` (the Python runtime consumes the
             raw ``.bin``).
+        full_elf_path (str): Path to a single self-contained "full" ELF that
+            bundles the PDIs and TXN control code (via ``--get-full-elf``).
+            Unlike ``elf_path`` (which only wraps the NPU instructions and still
+            needs an xclbin), a full ELF is loaded standalone through
+            ``pyxrt.hw_context(dev, pyxrt.elf(path))``.  When set, xclbin and
+            raw-insts generation are skipped -- the full ELF is self-contained.
         verbose (bool): If True, enable verbose output.
         work_dir (str): Compilation working directory.
         options (list[str]): List of additional options.
@@ -218,12 +225,17 @@ def compile_mlir_module(
             "--no-xbridge",
             f"--peano={config.peano_install_dir()}",
         ]
-    if insts_path:
-        args.extend(["--get-npu-insts", f"--npu-insts-name={insts_path}"])
+    if full_elf_path:
+        # A full ELF is self-contained (bundles PDIs + TXN control code), so the
+        # xclbin and raw-insts artifacts are neither needed nor emitted here.
+        args.extend(["--get-full-elf", f"--full-elf-name={full_elf_path}"])
+    else:
+        if insts_path:
+            args.extend(["--get-npu-insts", f"--npu-insts-name={insts_path}"])
+        if xclbin_path:
+            args.extend(["--get-xclbin", f"--xclbin-name={xclbin_path}"])
     if pdi_path:
         args.extend(["--get-pdi", f"--pdi-name={pdi_path}"])
-    if xclbin_path:
-        args.extend(["--get-xclbin", f"--xclbin-name={xclbin_path}"])
     if elf_path:
         args.extend(["--get-elf", f"--elf-name={elf_path}"])
     if work_dir:

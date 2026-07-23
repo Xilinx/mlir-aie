@@ -20,6 +20,7 @@ from ...utils import trace as trace_utils
 from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 
 from ...dialects.aiex import (
+    npu_load_pdi,  # pyright: ignore[reportAttributeAccessIssue]
     runtime_sequence,
     sync_scratchpad_parameters_from_host,  # pyright: ignore[reportAttributeAccessIssue]
 )
@@ -445,6 +446,7 @@ class Runtime(Resolvable):
         self,
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
+        load_pdi_device_ref: str | None = None,
     ) -> None:
         rt_dtypes = [rt_data.arr_type for rt_data in self._rt_data]
 
@@ -452,6 +454,11 @@ class Runtime(Resolvable):
 
         @runtime_sequence(*rt_dtypes)
         def sequence(*args):
+
+            # Full-ELF designs configure the device themselves: no xclbin
+            # pre-loads the PDI, so the sequence must start by loading it.
+            if load_pdi_device_ref is not None:
+                npu_load_pdi(device_ref=load_pdi_device_ref)
 
             if self._trace_size is not None and self._trace_size > 0:
                 trace_utils.start_trace(

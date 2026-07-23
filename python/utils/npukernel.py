@@ -14,22 +14,32 @@ class NPUKernel:
 
     def __init__(
         self,
-        xclbin_path,
-        insts_path,
+        xclbin_path=None,
+        insts_path=None,
         device_index=0,
         kernel_name="MLIR_AIE",
         trace_config: TraceConfig | None = None,
         num_host_bos: int | None = None,
+        elf_path=None,
     ):
         """
         Initialize the NPUKernel.
 
         Args:
-            xclbin_path (str | Path): Path to the xclbin file.
-            insts_path (str | Path): Path to the instructions file.
+            xclbin_path (str | Path | None): Path to the xclbin file. ``None``
+                on the full-ELF path (see ``elf_path``).
+            insts_path (str | Path | None): Path to the instructions file.
+                ``None`` on the full-ELF path.
             device_index (int, optional): Device index. Defaults to 0.
-            kernel_name (str, optional): Name of the kernel. Defaults to "MLIR_AIE".
+            kernel_name (str, optional): Name of the kernel. Defaults to
+                "MLIR_AIE". On the full-ELF path this is the
+                ``"<device>:<sequence>"`` XRT kernel name.
             trace_config (TraceConfig | None, optional): Trace configuration. Defaults to None.
+            elf_path (str | Path | None, optional): Path to a single
+                self-contained full ELF (PDIs + TXN control code).  When set,
+                the kernel is loaded standalone via
+                ``pyxrt.hw_context(dev, pyxrt.elf(path))`` and ``xclbin_path`` /
+                ``insts_path`` are unused.  Defaults to None.
             num_host_bos (int | None, optional): The compiled design's true
                 host-buffer count -- the number of ``aie.runtime_sequence``
                 operands, including any trace/ctrl-packet buffer the lowering
@@ -41,6 +51,7 @@ class NPUKernel:
         """
         self._xclbin_path = xclbin_path
         self._insts_path = insts_path
+        self._elf_path = elf_path
         self._kernel_name = kernel_name
         self._trace_config = trace_config
         self._device_index = device_index
@@ -75,6 +86,16 @@ class NPUKernel:
             str | Path: The instructions path.
         """
         return self._insts_path
+
+    @property
+    def elf_path(self):
+        """
+        Get the path to the full ELF file, or ``None`` on the xclbin path.
+
+        Returns:
+            str | Path | None: The full-ELF path.
+        """
+        return self._elf_path
 
     @property
     def kernel_name(self):

@@ -30,6 +30,7 @@ def add_compile_args(
     default_dev: str | None = None,
     short_dev: str | None = "-d",
     with_elf: bool = False,
+    with_full_elf: bool = False,
     with_pdi: bool = False,
     with_emit_mlir: bool = False,
 ) -> None:
@@ -52,6 +53,9 @@ def add_compile_args(
         with_elf: When True, also add ``--elf-path`` (for testbenches
             that load the insts as an ``xrt::elf`` module instead of a
             raw ``insts.bin``).
+        with_full_elf: When True, also add ``--full-elf-path`` (compile-only
+            mode: write a single self-contained full ELF instead of an
+            xclbin + insts pair).
         with_pdi: When True, also add ``--pdi-path`` (write the
             Programmable Device Image to a chosen path in compile-only
             mode).
@@ -99,6 +103,14 @@ def add_compile_args(
             type=str,
             default=None,
             help="optional ELF-wrapped insts (for the test.cpp xrt::elf flow)",
+        )
+    if with_full_elf:
+        parser.add_argument(
+            "--full-elf-path",
+            type=str,
+            default=None,
+            help="compile-only mode: write a single self-contained full ELF "
+            "(PDIs + control code) here instead of an xclbin + insts pair",
         )
     if with_pdi:
         parser.add_argument(
