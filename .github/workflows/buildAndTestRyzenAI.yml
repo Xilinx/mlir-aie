@@ -84,8 +84,8 @@ jobs:
         run: |
           # Some on-device failures are transient rather than real regressions,
           # and dropping an otherwise-green PR out of the merge queue for one is
-          # pure noise. Re-run the whole step once when the failure matches a
-          # known transient signature:
+          # pure noise. Retry once when the failure matches a known transient
+          # signature:
           #   1. aie2-4col NPU hardware fault (DRM_IOCTL_AMDXDNA_EXEC_CMD I/O error).
           #   2. A host/device read race in an on-device test: an "X != X" result
           #      mismatch where the observed and reference values are equal. The
@@ -94,6 +94,14 @@ jobs:
           #      error produces UNEQUAL values and is therefore never retried.
           # A deterministic regression fails both runs, so the retry only masks
           # nondeterministic failures.
+          #
+          # The retry reuses the successful build and, in the one suite that
+          # failed, re-runs only the tests that failed the first pass; the suites
+          # the fail-fast first pass never reached still run in full, so coverage
+          # is unchanged. That keeps a single transient fault from turning a
+          # ~35 min job into the observed ~57-75 min tail. If the failed suite or
+          # the failed test names cannot be recovered it falls back to a full
+          # re-run, so the retry never skips work silently.
           if [ -z "$STEP_RETRIED" ]; then
             export STEP_RETRIED=1
             log=$(mktemp)
@@ -102,6 +110,19 @@ jobs:
                  grep -qF "DRM_IOCTL_AMDXDNA_EXEC_CMD IOCTL failed (err=-5): Input/output error" "$log"; } || \
                grep -Pq 'idx [0-9]+: ([0-9]+) != \1\b' "$log"; then
               echo "::warning::Transient on-device failure detected; retrying the step once"
+              # Recover, from the first-pass log, the suite that failed (the last
+              # "===== suite: X =====" marker, printed before each suite so a
+              # fail-fast abort leaves it as the last one) and the failed test
+              # paths (lit's "FAIL: <suite> :: <path>" lines) as a LIT_FILTER
+              # regex. Either being empty forces a full re-run below.
+              # || true: under `set -eo pipefail` a grep with no match exits 1
+              # and would abort the step before the retry (e.g. an EIO that
+              # leaves no "FAIL:" line). Empty just forces the full-re-run path.
+              FAILED_SUITE=$(grep -oP '===== suite: \K\S+' "$log" | tail -1 || true)
+              RETRY_LIT_FILTER=$(grep -Eo 'FAIL: [^ ]+ :: [^ ]+' "$log" \
+                | awk '{print $NF}' | sort -u | paste -sd '|' - || true)
+              export FAILED_SUITE RETRY_LIT_FILTER
+              export STEP_RETRY_PASS=1
               exec bash -eo pipefail "$0"
             fi
             exit 1
@@ -125,10 +146,13 @@ jobs:
 
           export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
 
-          # Build from source!
-          OPENCV_CMAKE="-DOpenCV_DIR=$(pkg-config --variable=prefix opencv4)/lib/cmake/opencv4"
-          export EXTRA_CMAKE_ARGS="-DPython3_EXECUTABLE=$(which python) $CMAKE_ARGS $OPENCV_CMAKE"
-          ./utils/build-mlir-aie-from-wheels.sh "" build mlir_aie
+          # Build from source, unless this is a narrowed retry: the build
+          # already succeeded before the transient device fault, so reuse it.
+          if [ -z "$STEP_RETRY_PASS" ]; then
+            OPENCV_CMAKE="-DOpenCV_DIR=$(pkg-config --variable=prefix opencv4)/lib/cmake/opencv4"
+            export EXTRA_CMAKE_ARGS="-DPython3_EXECUTABLE=$(which python) $CMAKE_ARGS $OPENCV_CMAKE"
+            ./utils/build-mlir-aie-from-wheels.sh "" build mlir_aie
+          fi
 
           pushd build
 
@@ -139,25 +163,64 @@ jobs:
           # Set number of contexts to maintain in cache per process
           export XRT_CONTEXT_CACHE_SIZE=2
 
-          # Run tests
-          echo "===== Running tests ====="
-          ninja check-aie
-
-          echo "===== Running concurrency tests ====="
-          ninja check-aie-concurrency
-
-          # Run examples
-          echo "===== Running examples ====="
           # gemm_asymmetric_tile_buffering chess builds peak ~8 GB RSS and
-          # ~9 min wall time alone on 32 GB. They run serialized via lit's
-          # atb_chess parallelism group and need a longer timeout than the
-          # rest of the suite. Split into two invocations so the timeout
-          # extension applies only to those tests.
-          LIT_FILTER_OUT="gemm_asymmetric_tile_buffering" ninja check-reference-designs
-          ninja check-programming-guide
-          LIT_OPTS="-j4 -sv --time-tests --timeout 1200 --show-unsupported --show-excluded" \
-            LIT_FILTER="gemm_asymmetric_tile_buffering" \
-            ninja check-reference-designs
+          # ~9 min wall alone on 32 GB; they run serialized via lit's atb_chess
+          # group and need a longer timeout, so they get their own invocation.
+          GEMM=gemm_asymmetric_tile_buffering
+          ATB_LIT_OPTS="-j4 -sv --time-tests --timeout 1200 --show-unsupported --show-excluded"
+
+          # run_suite <name> full|only-failed
+          #   full        -- the suite's normal invocation
+          #   only-failed -- restrict to RETRY_LIT_FILTER (retry of the failed suite)
+          run_suite() {
+            case "$1" in
+              check-aie)   if [ "$2" = only-failed ]; then LIT_FILTER="$RETRY_LIT_FILTER" ninja check-aie
+                           else ninja check-aie; fi ;;
+              concurrency) if [ "$2" = only-failed ]; then LIT_FILTER="$RETRY_LIT_FILTER" ninja check-aie-concurrency
+                           else ninja check-aie-concurrency; fi ;;
+              refs)        if [ "$2" = only-failed ]; then LIT_FILTER="$RETRY_LIT_FILTER" ninja check-reference-designs
+                           else LIT_FILTER_OUT="$GEMM" ninja check-reference-designs; fi ;;
+              guide)       if [ "$2" = only-failed ]; then LIT_FILTER="$RETRY_LIT_FILTER" ninja check-programming-guide
+                           else ninja check-programming-guide; fi ;;
+              atb)         if [ "$2" = only-failed ]; then LIT_OPTS="$ATB_LIT_OPTS" LIT_FILTER="$RETRY_LIT_FILTER" ninja check-reference-designs
+                           else LIT_OPTS="$ATB_LIT_OPTS" LIT_FILTER="$GEMM" ninja check-reference-designs; fi ;;
+            esac
+          }
+
+          SUITES="check-aie concurrency refs guide atb"
+
+          # Only treat FAILED_SUITE as valid if it names a known suite; anything
+          # else forces the full re-run path.
+          case " $SUITES " in *" $FAILED_SUITE "*) : ;; *) FAILED_SUITE="" ;; esac
+
+          if [ -n "$STEP_RETRY_PASS" ] && [ -n "$FAILED_SUITE" ]; then
+            # Narrowed retry: skip the suites that already passed, re-run only the
+            # failed tests in the suite that failed, then run in full the suites
+            # the first pass's fail-fast never reached.
+            reached=""
+            for s in $SUITES; do
+              if [ -z "$reached" ] && [ "$s" != "$FAILED_SUITE" ]; then
+                echo "===== skip already-passed suite: $s ====="
+                continue
+              fi
+              reached=1
+              if [ "$s" = "$FAILED_SUITE" ] && [ -n "$RETRY_LIT_FILTER" ]; then
+                echo "===== suite: $s (retry only failed tests) ====="
+                run_suite "$s" only-failed
+              else
+                echo "===== suite: $s ====="
+                run_suite "$s" full
+              fi
+            done
+          else
+            # First pass (and the full-re-run fallback): run every suite in order.
+            # The marker is printed before each suite so a fail-fast abort leaves
+            # the failed suite as the last "===== suite: X =====" line in the log.
+            for s in $SUITES; do
+              echo "===== suite: $s ====="
+              run_suite "$s" full
+            done
+          fi
 
           popd
 
