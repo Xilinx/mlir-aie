@@ -54,6 +54,12 @@ declare_mlir_python_sources(AIEPythonSources.Utils
     utils/hostruntime/xrtruntime/hostruntime.py
     utils/hostruntime/xrtruntime/parameter_scratchpad.py
     utils/hostruntime/xrtruntime/tensor.py
+    utils/hostruntime/hrxruntime/__init__.py
+    utils/hostruntime/hrxruntime/_bindings.py
+    utils/hostruntime/hrxruntime/context.py
+    utils/hostruntime/hrxruntime/discovery.py
+    utils/hostruntime/hrxruntime/hostruntime.py
+    utils/hostruntime/hrxruntime/tensor.py
     utils/compile/__init__.py
     utils/compile/utils.py
     utils/compile/cache/utils.py

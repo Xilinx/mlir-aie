@@ -290,6 +290,17 @@ inline cl::opt<std::string> xclbinInput(
     cl::desc("Input xclbin to extend with this design's kernel/PDI instead of "
              "creating a new one from scratch"));
 
+// Select which xclbinutil packages the .xclbin. Accepts an absolute/relative
+// path or a bare program name (looked up on PATH). Also settable via the
+// AIE_XCLBINUTIL environment variable (this flag takes precedence). When set
+// but unusable, xclbin generation fails loudly rather than silently falling
+// back to a PATH lookup -- this is what lets a "pure HRX" flow guarantee the
+// bundled hrx-xclbinutil is used and a "pure XRT" flow guarantee XRT's.
+inline cl::opt<std::string> xclbinutilPath(
+    "xclbinutil-path",
+    cl::desc("Path or name of the xclbinutil used to package the .xclbin "
+             "(overrides PATH lookup; also settable via AIE_XCLBINUTIL)"));
+
 inline bool generateFullElf = false;
 inline cl::opt<std::string>
     fullElfName("full-elf-name", cl::desc("Output filename for combined ELF"),

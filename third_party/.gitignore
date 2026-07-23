@@ -1,0 +1,6 @@
+# Copyright (C) 2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+# The fetched + extracted HRX release (utils/fetch-hrx-release.sh) is a build
+# artifact, never committed.
+/.hrx-release/

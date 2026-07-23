@@ -45,9 +45,37 @@ if(NOT MLIR_AIE_DIR)
   message(FATAL_ERROR "Unable to determine MLIR_AIE_DIR (repo root not found and Python probe unavailable).")
 endif()
 
+# Make the repo's Find modules (FindHRX.cmake, ...) available to find_package.
+list(APPEND CMAKE_MODULE_PATH "${MLIR_AIE_DIR}/cmake/modules")
+
+# -----------------------------------------------------------------------------
+# HRX backend selection (RUNTIME=hrx in makefile-common -> -DUSE_HRX=ON)
+# -----------------------------------------------------------------------------
+# When building the HRX host backend, examples dispatch through libhrx instead
+# of XRT. We don't need the XRT SDK headers at all, but the per-example
+# CMakeLists still does `target_link_libraries(... xrt_coreutil)` and
+# `target_include_directories(... ${XRT_INC_DIR})`. To keep those a no-op
+# without editing ~50 example files, define a dummy INTERFACE target named
+# `xrt_coreutil` (so the link resolves to nothing instead of `-lxrt_coreutil`)
+# and leave the XRT include/lib dir variables empty.
+option(USE_HRX "Build programming-example host code against HRX instead of XRT" OFF)
+
+if(USE_HRX)
+  if(NOT TARGET xrt_coreutil)
+    add_library(xrt_coreutil INTERFACE IMPORTED)
+  endif()
+  if(NOT DEFINED XRT_INC_DIR)
+    set(XRT_INC_DIR "" CACHE STRING "Path to XRT headers (unused for HRX)")
+  endif()
+  if(NOT DEFINED XRT_LIB_DIR)
+    set(XRT_LIB_DIR "" CACHE STRING "Path to XRT libraries (unused for HRX)")
+  endif()
+endif()
+
 # -----------------------------------------------------------------------------
 # XRT auto-detection (supports both Ubuntu packages and legacy /opt/xilinx/xrt)
 # -----------------------------------------------------------------------------
+if(NOT USE_HRX)
 if(NOT DEFINED XRT_INC_DIR OR NOT DEFINED XRT_LIB_DIR)
     find_package(XRT QUIET)
     if(XRT_FOUND)
@@ -89,6 +117,7 @@ if(NOT DEFINED XRT_INC_DIR OR NOT DEFINED XRT_LIB_DIR)
         endif()
     endif()
 endif()
+endif() # NOT USE_HRX
 
 # -----------------------------------------------------------------------------
 # test_utils discovery
@@ -101,6 +130,46 @@ set(TEST_UTILS_RUNTIME_LIB_DIR "${MLIR_AIE_DIR}/runtime_lib")
 
 function(target_link_test_utils target_name)
   target_include_directories(${target_name} PUBLIC "${TEST_UTILS_RUNTIME_LIB_DIR}")
+
+  # 0) HRX backend: dispatch via libhrx, no XRT SDK needed. test_utils is built
+  #    WITHOUT TEST_UTILS_USE_XRT (its XRT block is #ifdef'd out and unused by
+  #    the HRX wrapper), and the example target gets TEST_UTILS_USE_HRX so
+  #    xrt_test_wrapper.h pulls in hrx_test_wrapper.h.
+  if(USE_HRX)
+    if(NOT EXISTS "${TEST_UTILS_SRC_DIR}/hrx_test_wrapper.h")
+      message(FATAL_ERROR "HRX wrapper not found at: ${TEST_UTILS_SRC_DIR}")
+    endif()
+
+    # Auto-detect HRX (FindHRX.cmake probes standard locations + env hints and
+    # prefers the shipped hrx CMake package). Done once at function scope; HRX_*
+    # persist as cache vars afterwards. libhrx now builds the amdxdna XADX
+    # package internally, so the `runtime` component (headers + libhrx) is all
+    # an example needs to link.
+    if(NOT HRX_FOUND)
+      find_package(HRX QUIET COMPONENTS runtime)
+    endif()
+    if(NOT HRX_FOUND)
+      message(FATAL_ERROR
+        "USE_HRX=ON but the HRX runtime was not found. "
+        "Set HRX_DIR (source checkout with libhrx/include/hrx_runtime.h) and "
+        "LIBHRX_DIR (dir with libhrx.so), or install HRX to a standard "
+        "location. Falling back to the default XRT backend (RUNTIME=xrt) is "
+        "also an option if HRX is unavailable.")
+    endif()
+
+    target_include_directories(${target_name} PUBLIC
+        "${TEST_UTILS_SRC_DIR}" "${HRX_INCLUDE_DIR}")
+    target_compile_definitions(${target_name} PRIVATE TEST_UTILS_USE_HRX)
+
+    if(NOT TARGET test_utils)
+      add_library(test_utils STATIC "${TEST_UTILS_SRC_DIR}/test_utils.cpp")
+      target_include_directories(test_utils PUBLIC
+          "${TEST_UTILS_SRC_DIR}" "${TEST_UTILS_RUNTIME_LIB_DIR}")
+    endif()
+
+    target_link_libraries(${target_name} PUBLIC test_utils "${HRX_LIBHRX}")
+    return()
+  endif()
 
   # 1) Use installed/prebuilt if present
   if(EXISTS "${TEST_UTILS_INST_INC_DIR}/xrt_test_wrapper.h" AND EXISTS "${TEST_UTILS_INST_LIB_DIR}")
@@ -136,4 +205,3 @@ function(target_link_test_utils target_name)
 
   target_link_libraries(${target_name} PUBLIC test_utils)
 endfunction()
-

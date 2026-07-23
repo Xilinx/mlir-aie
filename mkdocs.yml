@@ -242,6 +242,7 @@ nav:
     - "Section 6: ML Examples": programming_guide/section-6/README.md
     - Extra References:
       - IRON Configuration: programming_guide/iron_configuration.md
+      - HRX Runtime (amdxdna): programming_guide/hrx_runtime.md
       - Compilation Stages: programming_guide/compilation_stages.md
       - Implicit MLIR Context: programming_guide/implicit_mlir_context.md
       - Kernel Library: programming_guide/kernels_library.md
