@@ -1,0 +1,164 @@
+# Copyright (C) 2023-2026 Advanced Micro Devices, Inc.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+name: Build and Test with AIE tools on Ryzen AI (Windows)
+
+permissions:
+  contents: read
+
+on:
+  push:
+    branches:
+      - main
+      - test-ryzen-ai
+  pull_request:
+    types: [opened, synchronize, reopened]
+  merge_group:
+  schedule:
+    # Runs at midnight (00:00) every day
+    - cron: '0 0 * * *'
+
+concurrency:
+  # A PR number if a pull request and otherwise the commit hash. This cancels
+  # queued and in-progress runs for the same PR (presubmit) or commit
+  # (postsubmit).
+  group: ci-build-test-ryzenai-windows-${{ github.event.number || github.sha }}-${{ github.event_name }}
+  cancel-in-progress: true
+
+env:
+  # Peano only: Vitis/xchesscc is not part of the supported native-Windows
+  # toolchain (see docs/buildHostWinNative.md); AIE_BUILD_CHESS_CLANG is
+  # force-disabled on WIN32 in the top-level CMakeLists.txt regardless.
+  LIT_OPTS: -sv --time-tests --timeout 600 --show-unsupported --show-excluded
+
+jobs:
+
+  build-and-test-from-source:
+    name: Run Tests and Examples on Ryzen AI (Built from Source, Windows)
+    # Mirrors buildAndTestRyzenAI.yml's Linux job: build mlir-aie from source
+    # against a published MLIR wheel and run the lit suite on real NPU
+    # hardware. Windows has no Makefile (`make`) on PATH by default, so
+    # Makefile-based programming_examples/programming_guide tests are
+    # automatically skipped by lit (see the "makefile_examples" feature gate
+    # in python/aie_lit_utils/lit_config_helpers.py); JIT-style Python
+    # examples (@iron.jit) still run and cover the NPU end to end.
+    runs-on: [self-hosted, windows, ryzenai, npu2]
+    env:
+      NPU_CACHE_HOME: ${{ github.workspace }}\iron-cache-${{ github.run_id }}
+      PIP_CACHE_DIR: ${{ github.workspace }}\.pip-cache-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          submodules: "true"
+
+      - name: Print hostname
+        shell: pwsh
+        run: hostname
+
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756  # v1
+
+      - name: Install Ninja
+        uses: llvm/actions/install-ninja@6a57890d0e3f9f35dfc72e7e48bc5e1e527cdd6c  # Jan 17
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6
+        with:
+          python-version: '3.13'
+
+      - name: Setup IRON environment
+        shell: cmd
+        run: |
+          python utils\iron_setup.py --dev
+          if errorlevel 1 exit /b 1
+
+      - name: Download MLIR wheel and build mlir-aie
+        shell: cmd
+        run: |
+          call .\iron_env.cmd
+          if errorlevel 1 exit /b 1
+
+          REM utils\clone-llvm.sh is a bash script; Git for Windows' bundled
+          REM bash.exe (installed as part of "Git for Windows" in the runner
+          REM setup guide) can still run it directly.
+          for /f "usebackq delims=" %%v in (`bash utils/clone-llvm.sh --get-wheel-version`) do set MLIR_VERSION=%%v
+          if not defined MLIR_VERSION exit /b 1
+
+          mkdir my_install
+          pushd my_install
+          python -m pip -q download mlir==%MLIR_VERSION% -f https://github.com/Xilinx/mlir-aie/releases/expanded_assets/mlir-distro
+          if errorlevel 1 exit /b 1
+          python -c "import zipfile,glob; zipfile.ZipFile(glob.glob('mlir-*.whl')[0]).extractall('.')"
+          if errorlevel 1 exit /b 1
+
+          REM Mirrors build-mlir-aie-from-wheels.sh: a freshly extracted wheel
+          REM can carry future-dated timestamps (build-time clock skew), which
+          REM makes ninja loop forever re-checking dependencies. Stamp every
+          REM extracted file to a fixed point in the past.
+          python -c "import os,time; [os.utime(os.path.join(r,f),(315600000,315600000)) for r,_,fs in os.walk('mlir') for f in fs]"
+          if errorlevel 1 exit /b 1
+          popd
+
+          for /f "usebackq delims=" %%p in (`python -c "import sys; print(sys.executable)"`) do set PYTHON_EXE=%%p
+          for /f "usebackq delims=" %%p in (`python -c "import shutil; print(shutil.which('lit'))"`) do set LIT_EXE=%%p
+          if not defined LIT_EXE exit /b 1
+
+          mkdir build
+          mkdir install
+          pushd build
+
+          cmake .. -G Ninja ^
+            -DCMAKE_PREFIX_PATH="%CD%\..\my_install\mlir" ^
+            -DCMAKE_MODULE_PATH="%CD%\..\cmake\modulesXilinx" ^
+            -DCMAKE_INSTALL_PREFIX="%CD%\..\install" ^
+            -DCMAKE_BUILD_TYPE=Release ^
+            -DLLVM_ENABLE_ASSERTIONS=ON ^
+            -DAIE_ENABLE_BINDINGS_PYTHON=ON ^
+            -DAIE_ENABLE_PYTHON_PASSES=OFF ^
+            -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON ^
+            -DAIE_RUNTIME_TARGETS=x86_64 ^
+            -DAIE_RUNTIME_TEST_TARGET=x86_64 ^
+            -DPEANO_INSTALL_DIR="%PEANO_INSTALL_DIR%" ^
+            -DXRT_ROOT="%XRT_ROOT%" ^
+            -DPython3_EXECUTABLE="%PYTHON_EXE%" ^
+            -DLLVM_EXTERNAL_LIT="%LIT_EXE%"
+          if errorlevel 1 exit /b 1
+
+          ninja
+          if errorlevel 1 exit /b 1
+          ninja install
+          if errorlevel 1 exit /b 1
+          popd
+
+      - name: Run tests and examples
+        shell: cmd
+        run: |
+          call .\iron_env.cmd
+          if errorlevel 1 exit /b 1
+
+          if exist "%NPU_CACHE_HOME%" rmdir /s /q "%NPU_CACHE_HOME%"
+          mkdir "%NPU_CACHE_HOME%"
+          set XRT_CONTEXT_CACHE_SIZE=2
+
+          pushd build
+
+          echo ===== Running tests =====
+          ninja check-aie
+          if errorlevel 1 exit /b 1
+
+          echo ===== Running concurrency tests =====
+          ninja check-aie-concurrency
+          if errorlevel 1 exit /b 1
+
+          echo ===== Running examples =====
+          ninja check-reference-designs
+          if errorlevel 1 exit /b 1
+          ninja check-programming-guide
+          if errorlevel 1 exit /b 1
+
+          popd
+
+      - name: Cleanup NPU_CACHE_HOME
+        if: always()
+        shell: cmd
+        run: |
+          if exist "%NPU_CACHE_HOME%" rmdir /s /q "%NPU_CACHE_HOME%"
+          if exist "%PIP_CACHE_DIR%" rmdir /s /q "%PIP_CACHE_DIR%"
