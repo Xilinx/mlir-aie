@@ -176,14 +176,21 @@ SECTIONS
       // them inside SECTIONS is invalid linker script syntax.
       output << "}\n";
       if (auto coreOp = tile.getCoreOp()) {
+        // LLVM IR (.ll/.bc) link artifacts are merged into the core module
+        // via llvm-link (aiecc), not object-linked here, so they are skipped.
+        auto isIRLinkFile = [](llvm::StringRef v) {
+          return v.ends_with(".ll") || v.ends_with(".bc");
+        };
         if (auto filesAttr = coreOp.getLinkFiles()) {
           // Canonical path: link_files populated by aie-assign-core-link-files.
           for (auto f : filesAttr->getAsRange<mlir::StringAttr>())
-            output << "INPUT(" << f.getValue() << ")\n";
+            if (!isIRLinkFile(f.getValue()))
+              output << "INPUT(" << f.getValue() << ")\n";
         } else if (auto fileAttr = coreOp.getLinkWith()) {
           // Deprecated fallback: core-level link_with was not migrated by
           // aie-assign-core-link-files (e.g., the pass was not run).
-          output << "INPUT(" << fileAttr.value().str() << ")\n";
+          if (!isIRLinkFile(fileAttr.value()))
+            output << "INPUT(" << fileAttr.value().str() << ")\n";
         }
 
         output << "PROVIDE(main = core_" << tile.getCol() << "_"

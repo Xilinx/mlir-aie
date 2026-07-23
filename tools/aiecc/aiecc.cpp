@@ -84,9 +84,14 @@ using xilinx::AIE::DeviceOp;
 // cardinality of the input module/arches edges). We define a chess path and a
 // peano path; the `xchesscc` command-line flag selects which output edge is
 // returned.
+//
+// `irLinkFiles` carries, per key, the LLVM IR (.ll/.bc) kernel artifacts to
+// llvm-link into that key's module before codegen (peano path only). Keys with
+// an empty list get the plain compile flow.
 EdgeWithTypedOutput<Directory> &
 buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
                     EdgeWithTypedOutput<std::string> &arches,
+                    EdgeWithTypedOutput<std::vector<std::string>> &irLinkFiles,
                     std::string objName) {
   std::string installDir = getInstallDir();
   std::string aietoolsRoot = discoverAietoolsDir(aietoolsDir.getValue());
@@ -141,7 +146,7 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
                                        .output("-o"))
           .threadSafe();
 
-  // Peano path: downgrade -> opt -> llc.
+  // Peano path: downgrade -> (llvm-link IR kernels) -> opt -> llc.
   unsigned optPassLevel = std::min<unsigned>(optLevel, 1u);
   ShellCommand optCmd{"opt"};
   if (optLevel >= 3)
@@ -151,10 +156,47 @@ buildObjectSubgraph(EdgeWithTypedOutput<ModRef> &lowered,
       .arg("-S")
       .input()
       .output("-o");
-  auto &opted =
-      llvmIR.map<std::string>("peano-compat_{0}.ll", downgradeIRForPeano)
-          .map<File>("opted_{0}.ll", optCmd)
+  auto &peanoCompat =
+      llvmIR.map<std::string>("peano-compat_{0}.ll", downgradeIRForPeano);
+  // Merge any LLVM IR link artifacts (.ll/.bc) into the downgraded core IR via
+  // llvm-link before opt. With the kernel marked alwaysinline this inlines the
+  // kernel body into the core -- no surviving func.call and no separately
+  // object-linked kernel object. The kernel IR is already peano-flavored (it is
+  // emitted by the peano toolchain), so only the core IR needs downgrading;
+  // llvm-link then merges the two. IR artifacts are excluded from ld-script
+  // INPUT()/BCF _include (see AIETranslateToLdScript / AIETranslateToBCF), so
+  // each symbol is merged exactly once. Keys with no IR link files pass the
+  // downgraded IR straight through (no llvm-link is run). Peano only: the chess
+  // front-end cannot llvm-link.
+  ShellCommand llvmLinkCmd{"llvm-link"};
+  llvmLinkCmd.input().inputs().arg("-S").output("-o");
+  auto &peanoLinked =
+      bundle(peanoCompat.out, irLinkFiles.out)
+          .map<File>("peano-linked_{0}.ll",
+                     [llvmLinkCmd](const Item<std::string> &ir,
+                                   const Item<std::vector<std::string>> &links,
+                                   Item<File> &out) -> mlir::LogicalResult {
+                       if (links.get().empty()) {
+                         // Nothing to merge: the downgraded core IR is the
+                         // object input. Copy it to this edge's own output path
+                         // -- aliasing the peano-compat item's path collides
+                         // with it (the engine requires each item's output path
+                         // to be unique).
+                         if (std::error_code ec = llvm::sys::fs::copy_file(
+                                 ir.asFile(), out.filePath)) {
+                           llvm::errs()
+                               << "aiecc: peano-linked: cannot copy '"
+                               << ir.asFile() << "' to '" << out.filePath
+                               << "': " << ec.message() << "\n";
+                           return mlir::failure();
+                         }
+                         out.value = File{};
+                         return mlir::success();
+                       }
+                       return llvmLinkCmd(ir, links, out);
+                     })
           .threadSafe();
+  auto &opted = peanoLinked.map<File>("opted_{0}.ll", optCmd).threadSafe();
   ShellCommand llcCmd{"llc"};
   llcCmd.input()
       .arg("-O" + std::to_string(optLevel.getValue()))
@@ -445,8 +487,17 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
         return loweringPipeline(item.get().module.get(), d.getSymName(), -1, -1,
                                 out);
       });
-  auto &unifiedObjects = buildObjectSubgraph(unifiedLowered, perDeviceArches,
-                                             "unifiedObjects_{0}.o");
+  // IR link artifacts (.ll/.bc) for the device's whole core set, deduplicated
+  // (the shared unified module is llvm-linked once). See buildObjectSubgraph.
+  auto &perDeviceIRLinkFiles = physicalPerDevice.map<std::vector<std::string>>(
+      "perDeviceIRLinkFiles_{0}.txt",
+      [inputFile, workDirStr](const OpInModule<DeviceOp> &dev) {
+        return collectDeviceIRLinkFiles(DeviceOp(dev.op), inputFile,
+                                        workDirStr);
+      });
+  auto &unifiedObjects =
+      buildObjectSubgraph(unifiedLowered, perDeviceArches, perDeviceIRLinkFiles,
+                          "unifiedObjects_{0}.o");
   // Each core links against its device's shared object: re-key the device-keyed
   // unified objects onto the per-core keys.
   EdgeWithTypedOutput<Directory> &unifiedCoreObjects =
@@ -466,8 +517,14 @@ std::vector<EdgeBase *> buildMainGraph(mlir::MLIRContext &context, Graph &g,
                                 core->getParentOfType<DeviceOp>().getSymName(),
                                 tile.getCol(), tile.getRow(), out);
       });
-  EdgeWithTypedOutput<Directory> &perCoreObjects =
-      buildObjectSubgraph(perCoreLowered, perCoreArches, "objects_{0}.o");
+  // IR link artifacts (.ll/.bc) for this core, llvm-linked into its own module.
+  auto &perCoreIRLinkFiles = perCore.map<std::vector<std::string>>(
+      "perCoreIRLinkFiles_{0}.txt",
+      [inputFile, workDirStr](const OpInModule<CoreOp> &core) {
+        return collectCoreIRLinkFiles(CoreOp(core.op), inputFile, workDirStr);
+      });
+  EdgeWithTypedOutput<Directory> &perCoreObjects = buildObjectSubgraph(
+      perCoreLowered, perCoreArches, perCoreIRLinkFiles, "objects_{0}.o");
 
   EdgeWithTypedOutput<Directory> &objects =
       doUnified ? unifiedCoreObjects : perCoreObjects;
