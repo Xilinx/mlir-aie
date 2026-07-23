@@ -4,9 +4,10 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-# RUN: %run_on_npu1% %pytest %s
-# RUN: %run_on_npu2% %pytest %s
-# REQUIRES: xrt_python_bindings
+# RUN: %run_on_npu1_xrt% %pytest %s
+# RUN: %run_on_npu2_xrt% %pytest %s
+# RUN: %run_on_npu2_hrx% %pytest %s
+# REQUIRES: xrt_python_bindings || hrx_python_bindings
 
 # Unit tests for compile_external_kernel and cache key utilities.
 

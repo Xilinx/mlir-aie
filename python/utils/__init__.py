@@ -18,6 +18,10 @@ from .tensor_factory import _NPU_RUNTIME, _probe_hrx, _probe_xrt
 from .tensor_factory import arange as arange
 from .tensor_factory import ceildiv as ceildiv
 from .tensor_factory import full as full
+from .tensor_factory import (
+    npu_runtime_folds_ddr_addr_offset as npu_runtime_folds_ddr_addr_offset,
+)
+from .tensor_factory import npu_runtime_kind as npu_runtime_kind
 from .tensor_factory import ones as ones
 from .tensor_factory import rand as rand
 from .tensor_factory import randint as randint
@@ -70,6 +74,13 @@ def __getattr__(name: str) -> Any:
         return _probe_xrt()
     if name == "has_hrx":
         return _probe_hrx()
+    # The active default tensor class lives in tensor_factory (and may be swapped
+    # at runtime via set_tensor_class); serve it dynamically so callers reading
+    # aie.utils.DEFAULT_TENSOR_CLASS always see the current backend selection.
+    if name == "DEFAULT_TENSOR_CLASS":
+        from . import tensor_factory
+
+        return tensor_factory.DEFAULT_TENSOR_CLASS
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 

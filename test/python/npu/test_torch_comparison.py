@@ -2,21 +2,32 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-# RUN: %run_on_npu1% %pytest %s
-# RUN: %run_on_npu2% %pytest %s
-# REQUIRES: xrt_python_bindings
+# RUN: %run_on_npu1_xrt% %pytest %s
+# RUN: %run_on_npu2_xrt% %pytest %s
+# RUN: %run_on_npu2_hrx% %pytest %s
+# REQUIRES: xrt_python_bindings || hrx_python_bindings
 # REQUIRES: pytorch
 
 import pytest
 import numpy as np
 import torch
 import aie.iron as iron
+import aie.utils as aie_utils
 from aie.utils.hostruntime.tensor_class import CPUOnlyTensor, NpuTensor
-from aie.utils.hostruntime.xrtruntime.tensor import XRTTensor
 import ml_dtypes
 from ml_dtypes import bfloat16
 
-TENSOR_CLASSES = [CPUOnlyTensor, XRTTensor]
+# Exercise whichever device tensor backend is present on this host (see
+# test_tensor.py); each CI runner has only one of XRT / HRX.
+TENSOR_CLASSES = [CPUOnlyTensor]
+if aie_utils.has_xrt:
+    from aie.utils.hostruntime.xrtruntime.tensor import XRTTensor
+
+    TENSOR_CLASSES.append(XRTTensor)
+if aie_utils.has_hrx:
+    from aie.utils.hostruntime.hrxruntime.tensor import HRXTensor
+
+    TENSOR_CLASSES.append(HRXTensor)
 TEST_DTYPES = [np.float32, np.int32, bfloat16]
 TORCH_DTYPES = [torch.float32, torch.int32, torch.bfloat16]
 TEST_SHAPES = [(2, 3), (1, 5), (4, 1), (3, 3, 3), (10,), ()]

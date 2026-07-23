@@ -2,19 +2,33 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-# RUN: %run_on_npu1% %pytest %s
-# RUN: %run_on_npu2% %pytest %s
-# REQUIRES: xrt_python_bindings
+# RUN: %run_on_npu1_xrt% %pytest %s
+# RUN: %run_on_npu2_xrt% %pytest %s
+# RUN: %run_on_npu2_hrx% %pytest %s
+# REQUIRES: xrt_python_bindings || hrx_python_bindings
 
 import pytest
 import numpy as np
 import aie.iron as iron
+import aie.utils as aie_utils
 from aie.utils.hostruntime.tensor_class import CPUOnlyTensor, NpuTensor
-from aie.utils.hostruntime.xrtruntime.tensor import XRTTensor
 from aie.utils.hostruntime import bfloat16_safe_allclose
 from ml_dtypes import bfloat16
 
-TENSOR_CLASSES = [CPUOnlyTensor, XRTTensor]
+# Exercise whichever device tensor backend is present on this host. The XRT and
+# HRX CI runners have mutually exclusive Python bindings, so each runner tests
+# CPUOnlyTensor plus its own device tensor class (the %run_on_npu*_xrt% /
+# %run_on_npu2_hrx% RUN lines select the matching runtime at dispatch time).
+TENSOR_CLASSES = [CPUOnlyTensor]
+if aie_utils.has_xrt:
+    from aie.utils.hostruntime.xrtruntime.tensor import XRTTensor
+
+    TENSOR_CLASSES.append(XRTTensor)
+if aie_utils.has_hrx:
+    from aie.utils.hostruntime.hrxruntime.tensor import HRXTensor
+
+    TENSOR_CLASSES.append(HRXTensor)
+
 TEST_DTYPES = [np.float32, np.int32, bfloat16]
 
 
@@ -284,7 +298,9 @@ def test_cpu_tensor_no_sync(dtype, tensorclass):
 def test_device_attribute_update(dtype):
     """Test that to() method properly updates the device attribute."""
     t = iron.tensor([[1, 2], [3, 4]], dtype=dtype, device="cpu")
-    assert isinstance(t, XRTTensor)
+    # The active device tensor class depends on the selected runtime (XRT or
+    # HRX); assert against it rather than a hard-coded backend.
+    assert isinstance(t, aie_utils.DEFAULT_TENSOR_CLASS)
     assert t.device == "cpu"
 
     # Move to NPU
