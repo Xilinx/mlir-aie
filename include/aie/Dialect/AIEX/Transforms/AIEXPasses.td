@@ -365,6 +365,16 @@ def AIELowerDmaChannelReset : Pass<"aie-lower-dma-channel-reset", "AIE::DeviceOp
   ];
 }
 
+def AIELowerCoreReset : Pass<"aie-lower-core-reset", "AIE::DeviceOp"> {
+  let summary = "Lowers all aiex.core_reset operations to npu.maskwrite32";
+  let constructor = "xilinx::AIEX::createAIELowerCoreResetPass()";
+  let dependentDialects = [
+    "mlir::arith::ArithDialect",
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
 def AIELowerScratchpadParameters : Pass<"aie-lower-scratchpad-parameters", "mlir::ModuleOp"> {
   let summary = "Lower scratchpad parameter ops and emit parameter-sync preambles";
   let description = [{
