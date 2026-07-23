@@ -307,3 +307,30 @@ module @trace_after_last_tensor {
     }
   }
 }
+
+// -----
+
+// Test: a dynamic (runtime-sized) runtime_sequence with the DEFAULT separate
+// trace buffer works. The appended i8 trace arg gets a host BUFFER-operand
+// arg_idx: with two data buffers (%in, %out) plus a scalar %n, the trace buffer
+// is buffer-operand index 2 -- NOT its block-arg index 3, which would over-count
+// the scalar and point the DDR patch at a nonexistent operand.
+// CHECK-LABEL: module @separate_trace_buffer_dynamic
+module @separate_trace_buffer_dynamic {
+  aie.device(npu2) {
+    %tile02 = aie.tile(0, 2)
+    %tile00 = aie.tile(0, 0)
+    aie.trace @core_trace(%tile02) {
+      aie.trace.packet id=1 type=core
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+    aie.runtime_sequence(%in: memref<256xi32>, %out: memref<4096xi32>, %n: i64) {
+      // CHECK: %[[OFF:.*]] = arith.constant 0 : i32
+      // CHECK: aiex.npu.address_patch(%[[OFF]] : i32) {{{.*}}arg_idx = 2{{.*}}}
+      aie.trace.host_config {buffer_size = 8192 : i32}
+      aie.trace.start_config @core_trace
+    }
+  }
+}

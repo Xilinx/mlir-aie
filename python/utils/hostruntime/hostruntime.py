@@ -124,6 +124,26 @@ class HostRuntime(ABC):
                 f"device {runtime_device}"
             )
 
+    def cleanup(self) -> None:
+        """Release any cached device/runtime resources held by this runtime.
+
+        Base implementation is a no-op: a plain runtime holds nothing to
+        release. Caching runtimes override this to free hardware contexts,
+        loaded executables, instruction buffers, etc. Safe to call even if the
+        runtime never ran anything.
+        """
+        return
+
+    def evict_context(self, xclbin_path: Path) -> None:
+        """Drop any cached device context associated with ``xclbin_path``.
+
+        Recovery hook invoked after the driver rejects a submit against a stale
+        context (e.g. an XRT IOCTL EINVAL) so the next ``load`` rebuilds a fresh
+        context. Base implementation is a no-op for runtimes that keep no
+        evictable context cache.
+        """
+        return
+
     @abstractmethod
     def load(self, npu_kernel: NPUKernel, **kwargs) -> KernelHandle:
         """

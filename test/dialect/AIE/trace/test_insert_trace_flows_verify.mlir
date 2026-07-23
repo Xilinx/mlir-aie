@@ -172,3 +172,25 @@ module @invalid_egress_col_oob {
     }
   }
 }
+
+// -----
+
+// Test: reuse_output_buffer with a dynamic (runtime-sized) runtime_sequence is
+// rejected -- the trace offset can't be a compile-time constant when the last
+// tensor's real size is a runtime value (%n). Use a separate trace buffer.
+module @reuse_output_buffer_dynamic {
+  aie.device(npu2) {
+    %tile02 = aie.tile(0, 2)
+    aie.trace @core_trace(%tile02) {
+      aie.trace.packet id=1 type=core
+      aie.trace.event<"INSTR_EVENT_0">
+      aie.trace.start broadcast=15
+      aie.trace.stop broadcast=14
+    }
+    // expected-error@+1 {{reuse_output_buffer=true cannot be used with a dynamic}}
+    aie.runtime_sequence(%arg0: memref<4096xi32>, %n: i64) {
+      aie.trace.host_config {buffer_size = 8192 : i32, reuse_output_buffer = true}
+      aie.trace.start_config @core_trace
+    }
+  }
+}

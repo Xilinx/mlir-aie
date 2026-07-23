@@ -539,6 +539,25 @@ class CachedXRTRuntime(XRTHostRuntime):
         self._insts_content_cache.clear()
         gc.collect()  # Make sure contexts are garbage collected.
 
+    def evict_context(self, xclbin_path: Path) -> None:
+        """Evict a stale cached hw_context (after an IOCTL EINVAL) so the next
+        load rebuilds a fresh one keyed by the same xclbin."""
+        try:
+            resolved = str(Path(xclbin_path).resolve())
+            mtime = Path(xclbin_path).stat().st_mtime
+            entry = self._context_cache.pop((resolved, mtime), None)
+            if entry is not None:
+                self._cleanup_entry(entry)
+        except Exception:
+            # Recovery path: must not raise, but log loudly -- silent failure
+            # would keep recycling a broken _context_cache into every retry.
+            logger.warning(
+                "evict_context: failed to evict %s; retry may reuse a stale "
+                "hardware context",
+                xclbin_path,
+                exc_info=True,
+            )
+
     def _cleanup_entry_insts(self, entry):
         """Release instruction BOs owned by a cached context entry."""
         for insts_key in list(entry.get("insts_keys", ())):
