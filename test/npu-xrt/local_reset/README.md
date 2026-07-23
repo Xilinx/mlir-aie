@@ -18,17 +18,23 @@ ops and confirm on-board that those ops drive the same registers (see
 
 | Family | Block reset | Key register(s) | Reset mechanism |
 |--------|-------------|-----------------|-----------------|
-| [`core`](core/README.md) | AI Engine core | `Core_Control` (`0x32000`) | assert reset -> release -> enable |
-| [`dma`](dma/README.md) | MM2S DMA channel | `DMA_MM2S_0_Ctrl` (`0x1DE10`) | disable -> reset -> deassert -> enable, re-push BD, re-arm lock |
+| [`core`](core/README.md) | AI Engine core | `Core_Control` (`0x32000`) | masked reset -> unreset -> enable (one field per write) |
+| [`dma`](dma/README.md) | MM2S DMA channel | `DMA_MM2S_0_Ctrl` (`0x1DE10`) | masked reset pulse, re-push BD, re-arm lock |
 | [`switch`](switch/README.md) | Stream-switch connection | `Stream_Switch_Slave_DMA_0_Config` (`0x3F104`) | re-enable slave port (torn down each dispatch end), re-arm lock |
+
+The write *type* follows the driver per family: `core` and `dma` reset with masked
+`maskwrite32` (aie-rt's `XAie_CoreReset`/`…`/`XAie_DmaChannelReset` are `MaskWrite32`
+of one bit-field), while `switch` and the lock re-arm use full-word `write32`
+(aie-rt's `XAie_StrmConnCctEnable`/`XAie_LockSetValue` are `Write32`).
 
 ## Op-based variants
 
 The two `*_op` families are the on-board counterparts of `core` and `dma` that
 drive the merged reset ops (added in
 [#3375](https://github.com/Xilinx/mlir-aie/pull/3375) /
-[#3370](https://github.com/Xilinx/mlir-aie/pull/3370)) instead of raw `write32`s.
-Those ops shipped with only `aie-opt` FileCheck coverage; these are their first
+[#3370](https://github.com/Xilinx/mlir-aie/pull/3370)) instead of issuing the
+`maskwrite32` reset pulse directly, as the raw families do. Those ops shipped with
+only `aie-opt` FileCheck coverage; these are their first
 on-silicon tests. (There is no stream-switch reset op upstream, so `switch` has no
 op-based counterpart.)
 
@@ -43,7 +49,7 @@ sibling writes -- confirming the merged implementations follow the same protocol
 The ops are **reset-only**: they mask to the reset bit (preserving the surrounding
 fields) and do not re-enable, re-push, or re-arm. So:
 
-- `dma_channel_reset_op` is a drop-in for `dma`'s four reset writes; the re-push
+- `dma_channel_reset_op` is a drop-in for `dma`'s masked reset pulse; the re-push
   BD + lock re-arm remain around it, and it passes unchanged.
 - `core_reset_op` supplies the `reset -> unreset` pulse
   (`XAie_CoreReset`/`XAie_CoreUnreset`); because our core has run to `aie.end` (no
@@ -63,11 +69,12 @@ All three run on a single column, core tile `(0,2)` -> shim `(0,0)`:
   deterministic `+1` from a counter kept in data memory).
 - **Reset while quiescent.** The reset is issued only when the target is settled --
   a core halted at `aie.end`, or a run-forever channel stalled on a lock acquire.
-  Raw `write32`s take effect on a settled block; they are not used to preempt a
+  The register writes take effect on a settled block; they are not used to preempt a
   running one.
 - **Driven from the runtime sequence.** Each test issues the reset from
-  `aie.runtime_sequence` with `aiex.npu.write32` (plus `aiex.npu.push_queue` for
-  the DMA start queue), then dispatches and checks the host-visible result.
+  `aie.runtime_sequence` with `aiex.npu.maskwrite32` (core/dma reset) and
+  `aiex.npu.write32` (switch config, lock re-arm), plus `aiex.npu.push_queue` for
+  the DMA start queue, then dispatches and checks the host-visible result.
 
 ## What the automated run covers
 
@@ -113,9 +120,10 @@ vendored AI Engine driver **aie-rt** (public: <https://github.com/Xilinx/aie-rt>
 under `third_party/aie-rt/` in this repo. The table lists the AIE2P (npu2) names
 from `driver/src/global/xaie2pgbl_params.h`; the npu1 (AIE-ML) equivalents are the
 identically-suffixed `XAIEMLGBL_*` defines in `xaiemlgbl_params.h` at the same
-offsets. The driver routines below implement -- as masked register writes -- the
-same protocols these tests issue directly as `aiex.npu.write32` /
-`aiex.npu.push_queue`.
+offsets. The tests issue each protocol directly, with the **same register-write
+type the driver routine uses** -- `aiex.npu.maskwrite32` where the driver is a
+`MaskWrite32` (core/dma reset), `aiex.npu.write32` where it is a `Write32` (switch
+config, lock re-arm), plus `aiex.npu.push_queue` for the DMA start queue.
 
 | Protocol (test) | Register define -- `xaie2pgbl_params.h` / `xaiemlgbl_params.h` | Driver routine |
 |-----------------|----------------------------------------|----------------|
@@ -125,7 +133,8 @@ same protocols these tests issue directly as `aiex.npu.write32` /
 | Stream-switch slave port enable | `..._CORE_MODULE_STREAM_SWITCH_SLAVE_CONFIG_DMA_0` (`0x3F104`), `_SLAVE_ENABLE_LSB`=31 | `XAie_StrmConnCctEnable` / `XAie_StrmConnCctDisable` -- `driver/src/stream_switch/xaie_ss.c` |
 | Lock re-arm (set value) | `..._MEMORY_MODULE_LOCK0_VALUE` (`0x1F000`) | `XAie_LockSetValue` -- `driver/src/locks/xaie_locks.c` |
 
-`XAie_DmaChannelReset` masks in only the channel `Reset` bit, matching the
-`disable -> assert reset -> deassert -> enable` sequence the `dma` test performs
-explicitly; `XAie_CoreReset`/`Unreset`/`Enable` are the per-bit equivalents of
-the `core` test's three writes.
+Each test issues these as the driver's own write type: `XAie_CoreReset`/`Unreset`/
+`Enable` and `XAie_DmaChannelReset` are `MaskWrite32` of a single bit-field, so the
+`core` and `dma` tests use `maskwrite32` (reset/unreset mask `0x2`, enable mask
+`0x1`); `XAie_StrmConnCctEnable`/`Disable` and `XAie_LockSetValue` are `Write32`, so
+the `switch` slave-port toggle and the lock re-arm use full-word `write32`.

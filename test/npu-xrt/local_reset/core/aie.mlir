@@ -56,15 +56,22 @@ module {
       aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 0][1, 1, 1, 8][0, 0, 0, 1]) {id = 0 : i64, issue_token = true, metadata = @out0} : memref<16xi32>
       aiex.npu.dma_wait {symbol = @out0}
 
-      // Core reset protocol on tile (0,2) CORE_CONTROL (0x32000 = 204800):
-      //   assert reset (bit 1) -> release reset -> set ENABLE (bit 0).
+      // Core reset protocol on tile (0,2) CORE_CONTROL (0x32000 = 204800), driving
+      // each field with a masked write exactly as the aie-rt driver does:
+      //   XAie_CoreReset   : reset bit 1 -> 1   (mask 0x2)
+      //   XAie_CoreUnreset : reset bit 1 -> 0   (mask 0x2)
+      //   XAie_CoreEnable  : ENABLE bit 0 -> 1  (mask 0x1)
+      // Each maskwrite32 touches one field, leaving the rest of CORE_CONTROL intact
+      // (all three driver routines are MaskWrite32 of a single bit-field).
       %cc = arith.constant 204800 : i32
       %reset = arith.constant 2 : i32
       %unreset = arith.constant 0 : i32
       %enable = arith.constant 1 : i32
-      aiex.npu.write32(%cc, %reset) {column = 0 : i32, row = 2 : i32} : i32, i32
-      aiex.npu.write32(%cc, %unreset) {column = 0 : i32, row = 2 : i32} : i32, i32
-      aiex.npu.write32(%cc, %enable) {column = 0 : i32, row = 2 : i32} : i32, i32
+      %rst_mask = arith.constant 2 : i32
+      %en_mask = arith.constant 1 : i32
+      aiex.npu.maskwrite32(%cc, %reset, %rst_mask) {column = 0 : i32, row = 2 : i32} : i32, i32, i32
+      aiex.npu.maskwrite32(%cc, %unreset, %rst_mask) {column = 0 : i32, row = 2 : i32} : i32, i32, i32
+      aiex.npu.maskwrite32(%cc, %enable, %en_mask) {column = 0 : i32, row = 2 : i32} : i32, i32, i32
 
       // Batch 2: the core re-ran from a clean PC and emitted counter=N+1.
       aiex.npu.dma_memcpy_nd(%arg0[0, 0, 0, 8][1, 1, 1, 8][0, 0, 0, 1]) {id = 1 : i64, issue_token = true, metadata = @out0} : memref<16xi32>

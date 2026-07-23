@@ -8,10 +8,11 @@
 # Core reset
 
 Restarting a finite core kernel from a clean program counter by driving its
-`Core_Control` register (tile-local offset `0x32000`) with raw `write32`s. Bit 0
-is `Enable`, bit 1 is `Reset`; the offset and bit layout are identical on AIE-ML
-(npu1) and AIE2P (npu2), so this family runs on both. See
-[`../README.md`](../README.md) for the shared design and how to run.
+`Core_Control` register (tile-local offset `0x32000`) with masked `maskwrite32`s,
+one per field, exactly as the aie-rt driver does. Bit 0 is `Enable`, bit 1 is
+`Reset`; the offset and bit layout are identical on AIE-ML (npu1) and AIE2P (npu2),
+so this family runs on both. See [`../README.md`](../README.md) for the shared
+design and how to run.
 
 The core on tile `(0, 2)` runs once, fills the output buffer with a data-memory
 counter, increments the counter, then halts at `aie.end`. Data memory survives a
@@ -19,9 +20,11 @@ reset, but the program counter does not -- so a restart re-runs the kernel and
 emits `counter + 1`. The host collects two batches (before/after the restart) and
 checks `batch2 == batch1 + 1`.
 
-The reset writes `reset -> unreset -> enable` after batch 1. These writes only take
-effect on a **settled** core (the kernel has reached `aie.end`); they are issued
-between two completed transfers, not to preempt a running core.
+The reset issues `reset -> unreset -> enable` after batch 1, each a masked write of
+a single `Core_Control` field (mirroring `XAie_CoreReset` / `XAie_CoreUnreset` /
+`XAie_CoreEnable`). These writes only take effect on a **settled** core (the kernel
+has reached `aie.end`); they are issued between two completed transfers, not to
+preempt a running core.
 
 ## Behaviour
 
@@ -40,5 +43,6 @@ procedure, are defined in the public aie-rt driver
 (<https://github.com/Xilinx/aie-rt>, vendored at `third_party/aie-rt/`):
 `XAIE2PGBL_CORE_MODULE_CORE_CONTROL` in `driver/src/global/xaie2pgbl_params.h`,
 and `XAie_CoreReset` / `XAie_CoreUnreset` / `XAie_CoreEnable` in
-`driver/src/core/xaie_core.c`. See [`../README.md`](../README.md#references) for
+`driver/src/core/xaie_core.c` (each a `MaskWrite32` of a single `Core_Control`
+field, as this test issues them). See [`../README.md`](../README.md#references) for
 the full table.

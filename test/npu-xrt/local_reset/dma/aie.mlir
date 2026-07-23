@@ -35,16 +35,18 @@ module {
 
     aie.runtime_sequence @seq(%arg0: memref<8xi32>) {
       // Reset MM2S channel 0 (channel-control register, tile-local 0x1DE10 =
-      // 122384): disable -> assert reset (bit 1) -> deassert -> enable (bit 0).
-      // Valid because the channel is stalled on the cons lock acquire.
+      // 122384) by pulsing the reset bit with masked writes, exactly as aie-rt's
+      // XAie_DmaChannelReset does: assert reset (bit 1) -> deassert (mask 0x2).
+      // Masking to the reset bit preserves the channel's other CTRL fields
+      // (ENABLE, out-of-order, compression, controller id, FoT), so no
+      // disable/enable is needed. Valid because the channel is stalled on the cons
+      // lock acquire.
       %cc = arith.constant 122384 : i32
-      %disable = arith.constant 0 : i32
       %reset = arith.constant 2 : i32
-      %enable = arith.constant 1 : i32
-      aiex.npu.write32(%cc, %disable) {column = 0 : i32, row = 2 : i32} : i32, i32
-      aiex.npu.write32(%cc, %reset) {column = 0 : i32, row = 2 : i32} : i32, i32
-      aiex.npu.write32(%cc, %disable) {column = 0 : i32, row = 2 : i32} : i32, i32
-      aiex.npu.write32(%cc, %enable) {column = 0 : i32, row = 2 : i32} : i32, i32
+      %unreset = arith.constant 0 : i32
+      %rst_mask = arith.constant 2 : i32
+      aiex.npu.maskwrite32(%cc, %reset, %rst_mask) {column = 0 : i32, row = 2 : i32} : i32, i32, i32
+      aiex.npu.maskwrite32(%cc, %unreset, %rst_mask) {column = 0 : i32, row = 2 : i32} : i32, i32, i32
 
       // Re-push BD 0 to the (now flushed) queue so the channel runs again.
       %bd = arith.constant 0 : i32
