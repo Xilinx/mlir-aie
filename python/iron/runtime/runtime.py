@@ -370,10 +370,12 @@ class Runtime(Resolvable):
                     body_args.append(
                         constant(int(const_val), np_dtype_to_mlir_type(np.int32))
                     )
-                elif rt_data.is_scalar:
-                    body_args.append(rt_data.op)
                 else:
-                    body_args.append(rt_data)
+                    assert rt_data is not None  # invariant: const_val or rt_data
+                    if rt_data.is_scalar:
+                        body_args.append(rt_data.op)
+                    else:
+                        body_args.append(rt_data)
 
             # fn_args (fifos, buffers, ...) follow the inputs, as declared.
             body_args.extend(self._fn_args)
