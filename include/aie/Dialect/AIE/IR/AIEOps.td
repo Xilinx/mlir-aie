@@ -528,7 +528,12 @@ def AIE_FlowOp: AIE_Op<"flow", []> {
         ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$source_channel,
         Index:$dest,
         WireBundle:$dest_bundle,
-        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$dest_channel
+        ConfinedAttr<AIEI32Attr, [IntMinValue<0>]>:$dest_channel,
+        Variadic<Index>:$vias,
+        OptionalAttr<DenseI32ArrayAttr>:$via_ingress_bundles,
+        OptionalAttr<DenseI32ArrayAttr>:$via_ingress_channels,
+        OptionalAttr<DenseI32ArrayAttr>:$via_egress_bundles,
+        OptionalAttr<DenseI32ArrayAttr>:$via_egress_channels
   );
   let summary = "A logical circuit-switched connection between cores";
   let description = [{
@@ -537,18 +542,41 @@ def AIE_FlowOp: AIE_Op<"flow", []> {
     the programmed connections inside a switchbox, along with `aie.wire` operations which represent
     physical connections between switchboxes and other components.
 
+    An optional `via` list pins the exact tiles and stream-switch ports the flow
+    must route through.  Each via is a tuple of a tile value together with the
+    ingress and egress port (bundle and channel) the stream uses at that tile,
+    so the intermediate switchbox configuration is fully determined.  A flow with
+    vias is equivalent to the disaggregated flows that meet on the via ports, and
+    `--aie-split-flow-vias` rewrites it into those segments plus the pinned
+    switchbox connections.
+
     Example:
     ```
       %00 = aie.tile(0, 0)
       %11 = aie.tile(1, 1)
       %01 = aie.tile(0, 1)
       aie.flow(%00, "DMA" : 0, %11, "Core" : 1)
+      aie.flow(%00, "DMA" : 0, %11, "Core" : 1) via (%01 : South : 0 -> North : 0)
     ```
   }];
 
   let assemblyFormat = [{
-    `(` $source `,` $source_bundle `:` $source_channel `,` $dest `,` $dest_bundle `:` $dest_channel `)` attr-dict
+    `(` $source `,` $source_bundle `:` $source_channel `,` $dest `,` $dest_bundle `:` $dest_channel `)`
+    custom<FlowVias>($vias, $via_ingress_bundles, $via_ingress_channels, $via_egress_bundles, $via_egress_channels)
+    attr-dict
   }];
+
+  let hasVerifier = 1;
+
+  let builders = [
+    OpBuilder<(ins "mlir::Value":$source, "xilinx::AIE::WireBundle":$source_bundle,
+                   "int":$source_channel, "mlir::Value":$dest,
+                   "xilinx::AIE::WireBundle":$dest_bundle, "int":$dest_channel), [{
+      build($_builder, $_state, source, source_bundle, source_channel, dest,
+            dest_bundle, dest_channel, mlir::ValueRange{}, nullptr, nullptr,
+            nullptr, nullptr);
+    }]>
+  ];
 
   let extraClassDeclaration = [{
     int sourceIndex() { return getSourceChannel(); }

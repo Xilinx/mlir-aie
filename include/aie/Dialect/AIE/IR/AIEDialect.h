@@ -207,6 +207,21 @@ void printObjectFifoConsumerTiles(mlir::OpAsmPrinter &printer,
                                   mlir::Operation *op, mlir::OperandRange tiles,
                                   BDDimLayoutArrayArrayAttr dimensions);
 
+mlir::ParseResult parseFlowVias(
+    mlir::OpAsmParser &parser,
+    llvm::SmallVectorImpl<mlir::OpAsmParser::UnresolvedOperand> &vias,
+    mlir::DenseI32ArrayAttr &ingressBundles,
+    mlir::DenseI32ArrayAttr &ingressChannels,
+    mlir::DenseI32ArrayAttr &egressBundles,
+    mlir::DenseI32ArrayAttr &egressChannels);
+
+void printFlowVias(mlir::OpAsmPrinter &printer, mlir::Operation *op,
+                   mlir::OperandRange vias,
+                   mlir::DenseI32ArrayAttr ingressBundles,
+                   mlir::DenseI32ArrayAttr ingressChannels,
+                   mlir::DenseI32ArrayAttr egressBundles,
+                   mlir::DenseI32ArrayAttr egressChannels);
+
 int32_t getBufferBaseAddress(mlir::Operation *bufOp);
 
 // Trace Event Value Parsing/Printing (handles both string and typed enums)

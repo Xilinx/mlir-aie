@@ -690,6 +690,87 @@ static void printObjectFifoConsumerElemType(OpAsmPrinter &p,
     p << " -> " << consumerElemType;
 }
 
+ParseResult xilinx::AIE::parseFlowVias(
+    OpAsmParser &parser,
+    SmallVectorImpl<OpAsmParser::UnresolvedOperand> &vias,
+    DenseI32ArrayAttr &ingressBundles, DenseI32ArrayAttr &ingressChannels,
+    DenseI32ArrayAttr &egressBundles, DenseI32ArrayAttr &egressChannels) {
+  SmallVector<int32_t> inBundles, inChannels, egBundles, egChannels;
+  auto parseBundle = [&](SmallVectorImpl<int32_t> &out) -> ParseResult {
+    StringRef kw;
+    if (parser.parseKeyword(&kw))
+      return failure();
+    auto bundle = symbolizeWireBundle(kw);
+    if (!bundle)
+      return parser.emitError(parser.getCurrentLocation(),
+                              "invalid wire bundle '" + kw + "'");
+    out.push_back(static_cast<int32_t>(*bundle));
+    return success();
+  };
+  // via ( %tile : <ingress bundle> : <ch> -> <egress bundle> : <ch>, ... )
+  if (succeeded(parser.parseOptionalKeyword("via"))) {
+    auto parseOne = [&]() -> ParseResult {
+      int32_t inChan, egChan;
+      if (parser.parseOperand(vias.emplace_back()) || parser.parseColon() ||
+          parseBundle(inBundles) || parser.parseColon() ||
+          parser.parseInteger(inChan) || parser.parseArrow() ||
+          parseBundle(egBundles) || parser.parseColon() ||
+          parser.parseInteger(egChan))
+        return failure();
+      inChannels.push_back(inChan);
+      egChannels.push_back(egChan);
+      return success();
+    };
+    if (parser.parseCommaSeparatedList(AsmParser::Delimiter::Paren, parseOne))
+      return failure();
+  }
+  if (!vias.empty()) {
+    MLIRContext *ctx = parser.getContext();
+    ingressBundles = DenseI32ArrayAttr::get(ctx, inBundles);
+    ingressChannels = DenseI32ArrayAttr::get(ctx, inChannels);
+    egressBundles = DenseI32ArrayAttr::get(ctx, egBundles);
+    egressChannels = DenseI32ArrayAttr::get(ctx, egChannels);
+  }
+  return success();
+}
+
+void xilinx::AIE::printFlowVias(OpAsmPrinter &printer, Operation *op,
+                                OperandRange vias,
+                                DenseI32ArrayAttr ingressBundles,
+                                DenseI32ArrayAttr ingressChannels,
+                                DenseI32ArrayAttr egressBundles,
+                                DenseI32ArrayAttr egressChannels) {
+  if (vias.empty())
+    return;
+  printer << "via (";
+  for (size_t i = 0; i < vias.size(); i++) {
+    if (i)
+      printer << ", ";
+    printer << vias[i] << " : "
+            << stringifyWireBundle(
+                   static_cast<WireBundle>(ingressBundles[i]))
+            << " : " << ingressChannels[i] << " -> "
+            << stringifyWireBundle(static_cast<WireBundle>(egressBundles[i]))
+            << " : " << egressChannels[i];
+  }
+  printer << ")";
+}
+
+LogicalResult FlowOp::verify() {
+  size_t n = getVias().size();
+  DenseI32ArrayAttr arrays[] = {getViaIngressBundlesAttr(),
+                                getViaIngressChannelsAttr(),
+                                getViaEgressBundlesAttr(),
+                                getViaEgressChannelsAttr()};
+  for (DenseI32ArrayAttr a : arrays) {
+    size_t size = a ? a.size() : 0;
+    if (size != n)
+      return emitOpError("has ")
+             << n << " via tile(s) but a via port array of size " << size;
+  }
+  return success();
+}
+
 static ParseResult parseObjectFifoConsumerElemType(OpAsmParser &parser,
                                                    TypeAttr &consumerElemType) {
   if (failed(parser.parseOptionalArrow()))

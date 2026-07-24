@@ -34,7 +34,7 @@
 
 // tile(2,2) keeps its original output connection and gains no second connect
 // driving South:0.
-// CHECK:      %switchbox_2_2 = aie.switchbox(%[[T22]]) {
+// CHECK:      aie.switchbox(%[[T22]]) {
 // CHECK:        aie.connect<North : 1, South : 0>
 // CHECK-NOT:    South : 0>
 // CHECK:      }

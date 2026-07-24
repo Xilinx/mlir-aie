@@ -280,6 +280,27 @@ def AIEFindFlows : Pass<"aie-find-flows", "DeviceOp"> {
            /*default=*/"true",
            "Also recover partial flows whose source or destination is a "
            "directional/edge switchbox port rather than a core or DMA.">,
+    Option<"clEmitVias", "emit-vias", "bool", /*default=*/"false",
+           "Emit each recovered flow with a via list pinning every switchbox "
+           "hop, so the flow fully encodes its route and needs no routing.">,
+  ];
+}
+
+def AIESplitFlowVias : Pass<"aie-split-flow-vias", "DeviceOp"> {
+  let summary = "Split aie.flow operations that pin via ports into segments";
+  let description = [{
+    Each `aie.flow` that carries a `via` list is rewritten into the
+    disaggregated flows that meet on the via ports, plus an `aie.switchbox`
+    connection at every via tile joining its pinned ingress and egress ports.
+    A flow `A via (B : in -> eg) to C` becomes `aie.flow(A, B:in)`,
+    `aie.switchbox(B) { aie.connect<in, eg> }`, and `aie.flow(B:eg, C)`.  A
+    segment whose source and destination coincide (for a flow that already
+    begins or ends on a via port) is elided.
+  }];
+
+  let constructor = "xilinx::AIE::createAIESplitFlowViasPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
   ];
 }
 

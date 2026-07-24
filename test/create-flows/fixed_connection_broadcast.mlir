@@ -30,7 +30,7 @@
 // CHECK: %[[T22:.*]] = aie.tile(2, 2)
 
 // The broadcast is preserved intact: both fan-out connects survive.
-// CHECK:      %switchbox_2_2 = aie.switchbox(%[[T22]]) {
+// CHECK:      aie.switchbox(%[[T22]]) {
 // CHECK-DAG:    aie.connect<North : 0, South : 0>
 // CHECK-DAG:    aie.connect<North : 0, East : 0>
 // CHECK:      }
