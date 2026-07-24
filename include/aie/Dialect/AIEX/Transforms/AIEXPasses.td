@@ -375,6 +375,17 @@ def AIELowerCoreReset : Pass<"aie-lower-core-reset", "AIE::DeviceOp"> {
   ];
 }
 
+def AIEVerifyRuntimeRearm : Pass<"aie-verify-runtime-rearm", "AIE::DeviceOp"> {
+  let summary = "Experimental, opt-in: reject an aiex.dma_channel_reset whose "
+                "objectFIFO lock is never re-armed (a necessary, not sufficient, "
+                "condition for a safe reset)";
+  let constructor = "xilinx::AIEX::createAIEVerifyRuntimeRearmPass()";
+  let dependentDialects = [
+    "xilinx::AIE::AIEDialect",
+    "xilinx::AIEX::AIEXDialect",
+  ];
+}
+
 def AIELowerScratchpadParameters : Pass<"aie-lower-scratchpad-parameters", "mlir::ModuleOp"> {
   let summary = "Lower scratchpad parameter ops and emit parameter-sync preambles";
   let description = [{
