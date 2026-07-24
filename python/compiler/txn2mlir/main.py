@@ -7,11 +7,11 @@
 import argparse
 
 from aie.dialects.aie import (
-    transaction_binary_to_mlir,
-)  # pyright: ignore[reportMissingImports]
-from aie.ir import (
+    transaction_binary_to_mlir,  # pyright: ignore[reportAttributeAccessIssue]
+)
+from aie.ir import (  # pyright: ignore[reportMissingImports]
     Context,
-)  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
+)
 
 
 def main():

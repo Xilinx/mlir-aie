@@ -6,14 +6,13 @@
 """``for_each``: apply a function in-place over a tiled tensor on an AIE core."""
 
 import numpy as np
+from aie.iron.controlflow import range_
+from aie.iron.dataflow import ObjectFifo
+from aie.iron.kernel import ExternalFunction
+from aie.iron.program import Program
+from aie.iron.runtime import Runtime
+from aie.iron.worker import Worker
 from aie.utils import get_current_device
-
-from ..controlflow import range_
-from ..dataflow import ObjectFifo
-from ..kernel import ExternalFunction
-from ..program import Program
-from ..runtime import Runtime
-from ..worker import Worker
 
 
 def for_each(func, tensor_ty, tile_size=16):

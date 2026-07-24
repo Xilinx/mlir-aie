@@ -88,7 +88,7 @@ def jit(mlir_generator: Callable | None = None, **kwargs):
 
     # --- Validate CompileTime[T] params when generator is callable ---
     if callable(mlir_generator):
-        from aie.utils.compile.jit.compilabledesign import split_params
+        from aie.utils.compile.jit._introspect import split_params
 
         compile_params, _, scalar_params = split_params(mlir_generator)
 

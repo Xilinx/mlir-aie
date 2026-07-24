@@ -18,13 +18,13 @@ Reductions differ from `transform` in two ways:
 """
 
 import numpy as np
+from aie.iron.dataflow import ObjectFifo
+from aie.iron.kernel import ExternalFunction
+from aie.iron.program import Program
+from aie.iron.runtime import Runtime
+from aie.iron.worker import Worker
 from aie.utils import get_current_device
 
-from ..dataflow import ObjectFifo
-from ..kernel import ExternalFunction
-from ..program import Program
-from ..runtime import Runtime
-from ..worker import Worker
 from ._transform import make_param_descriptor
 
 

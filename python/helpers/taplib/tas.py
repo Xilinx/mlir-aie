@@ -20,6 +20,13 @@ from .utils import (
 )
 
 
+def _constant_fn(value):
+    def _fn(_step, _prev):
+        return value
+
+    return _fn
+
+
 class TensorAccessSequence(abc.MutableSequence, abc.Iterable):
     """
     TensorAccessSequence is a MutableSequence and an Iterable. Generally, it is a thin wrapper around a list[TensorAccessPattern].
@@ -90,29 +97,26 @@ class TensorAccessSequence(abc.MutableSequence, abc.Iterable):
             self._taps = []
         else:
             # Make sure values or not None if iteration functions are None; also set default iter fn
-            if offset_fn is None:
+            if offset_fn is not None:
+                resolved_offset_fn = offset_fn
+            else:
                 if offset is None:
                     raise ValueError("Offset must be provided if offset_fn is None")
-                const_offset = offset
+                resolved_offset_fn = _constant_fn(offset)
 
-                def offset_fn(_step, _prev_offset):
-                    return const_offset
-
-            if sizes_fn is None:
+            if sizes_fn is not None:
+                resolved_sizes_fn = sizes_fn
+            else:
                 if sizes is None:
                     raise ValueError("Sizes must be provided if size_fn is None")
-                const_sizes = sizes
+                resolved_sizes_fn = _constant_fn(sizes)
 
-                def sizes_fn(_step, _prev_sizes):
-                    return const_sizes
-
-            if strides_fn is None:
+            if strides_fn is not None:
+                resolved_strides_fn = strides_fn
+            else:
                 if strides is None:
                     raise ValueError("Strides must be provided if stride_fn is None")
-                const_strides = strides
-
-                def strides_fn(_step, _prev_strides):
-                    return const_strides
+                resolved_strides_fn = _constant_fn(strides)
 
             # Pre-calculate taps, because better for error handling up-front (and for visualizing full iter)
             # This is somewhat against the mentality behind iterations, but should be okay at the scale this
@@ -122,9 +126,9 @@ class TensorAccessSequence(abc.MutableSequence, abc.Iterable):
             cur_sizes: Any = sizes
             cur_strides: Any = strides
             for step in range(num_steps):
-                cur_offset = offset_fn(step, cur_offset)
-                cur_sizes = sizes_fn(step, cur_sizes)
-                cur_strides = strides_fn(step, cur_strides)
+                cur_offset = resolved_offset_fn(step, cur_offset)
+                cur_sizes = resolved_sizes_fn(step, cur_sizes)
+                cur_strides = resolved_strides_fn(step, cur_strides)
 
                 self._taps.append(
                     TensorAccessPattern(
