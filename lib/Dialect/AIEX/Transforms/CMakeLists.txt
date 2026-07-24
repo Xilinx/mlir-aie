@@ -13,6 +13,7 @@ add_mlir_dialect_library(AIEXTransforms
   AIELowerMulticast.cpp
   AIELowerMemcpy.cpp
   AIEDmaToNpu.cpp
+  AIEDecomposeLargeDmaBd.cpp
   AIENpuToCert.cpp
   AIEMaterializeBDChains.cpp
   AIEMaterializeRuntimeSequences.cpp
