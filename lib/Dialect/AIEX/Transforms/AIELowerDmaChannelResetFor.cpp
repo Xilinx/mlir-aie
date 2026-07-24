@@ -86,7 +86,6 @@ struct AIELowerDmaChannelResetForPass
           AIELowerDmaChannelResetForPass> {
   void runOnOperation() override {
     DeviceOp device = getOperation();
-    const AIETargetModel &tm = device.getTargetModel();
     SymbolTable symbolTable(device);
 
     SmallVector<DmaChannelResetForOp> toErase;
@@ -175,43 +174,28 @@ struct AIELowerDmaChannelResetForPass
         SetLockOp::create(builder, loc, locks[j],
                           builder.getI32IntegerAttr(lockInits[j]));
 
-      // 3. START_QUEUE re-push per endpoint. The command word matches the
-      // load-time push: bd_id | repeat[23:16] | token[31]. The queue register
-      // is the channel control address + 0x4. The START_BD_ID field width
-      // differs by tile class: 4 bits on a core tile (16 BDs), 6 bits on a mem
-      // tile (48 BDs), so mask to the right width instead of the shim path's
-      // 0xF. The token bit is only set for a shim S2MM channel, so for these
-      // core/mem endpoints it is always 0; reading it from the same rule keeps
-      // the re-push identical to the channel's load-time arming.
+      // 3. START_QUEUE re-push per endpoint, emitted as aiex.npu.push_queue so
+      // the command-word encoding, the queue address, and the bd_id/repeat
+      // range checks all live in one place -- the aie-dma-to-npu lowering and
+      // NpuPushQueueOp::verify -- reproducing the channel's load-time arming
+      // exactly instead of hand-rolling it here. This pass therefore runs
+      // before aie-dma-to-npu (see getNpuDmaLoweringPipeline). The token bit is
+      // only set for a shim S2MM channel; these endpoints are core/mem, so it
+      // is always false.
       for (const ResolvedEndpoint &ep : endpoints) {
-        uint32_t queueLocal =
-            (tm.getDmaControlAddress(ep.col, ep.row, ep.channel, ep.dir) +
-             0x4) &
-            0xFFFFF;
-        uint32_t bdIdMask = tm.isMemTile(ep.col, ep.row) ? 0x3Fu : 0xFu;
-        // The repeat count is packed into the 8-bit field at bits [23:16].
-        // aie.dma_start does not bound it, so reject an out-of-range value with
-        // a diagnostic instead of masking it into a silently wrong re-push
-        // (NpuPushQueueOp::verify diagnoses the same repeat_count > 255 case).
-        // The head BD id needs no such check here: aie.dma_bd's verifier
-        // already bounds it to the tile's BD count (<= the START_BD_ID field
-        // width).
-        if (ep.repeatCount > 255) {
-          op.emitOpError("resident DMA channel repeat count ")
-              << ep.repeatCount << " on tile (" << ep.col << ", " << ep.row
-              << ") does not fit the 8-bit START_QUEUE repeat field";
-          return WalkResult::interrupt();
-        }
-        uint32_t issueBit =
-            (ep.row == 0 && ep.dir == DMAChannelDir::S2MM) ? 0x80000000u : 0u;
-        uint32_t cmd = (ep.headBdId & bdIdMask) |
-                       ((static_cast<uint32_t>(ep.repeatCount) & 0xFF) << 16) |
-                       issueBit;
-        Value addr = createConstantI32(builder, loc, queueLocal);
-        Value val = createConstantI32(builder, loc, cmd);
-        NpuWrite32Op::create(builder, loc, addr, val, nullptr,
-                             builder.getI32IntegerAttr(ep.col),
-                             builder.getI32IntegerAttr(ep.row));
+        bool issueToken = ep.row == 0 && ep.dir == DMAChannelDir::S2MM;
+        // Materialize the operands in fixed statements before the create() so
+        // their emission order is deterministic (function-argument evaluation
+        // order is unspecified in C++).
+        Value repeatVal = createConstantI32(
+            builder, loc, static_cast<uint32_t>(ep.repeatCount));
+        Value bdVal = createConstantI32(builder, loc, ep.headBdId);
+        NpuPushQueueOp::create(builder, loc, builder.getI32IntegerAttr(ep.col),
+                               builder.getI32IntegerAttr(ep.row),
+                               DMAChannelDirAttr::get(ctx, ep.dir),
+                               builder.getI32IntegerAttr(ep.channel),
+                               builder.getBoolAttr(issueToken), repeatVal,
+                               bdVal);
       }
 
       toErase.push_back(op);
