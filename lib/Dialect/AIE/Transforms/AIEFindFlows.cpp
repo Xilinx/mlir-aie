@@ -12,6 +12,7 @@
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Pass/Pass.h"
 
+#include "llvm/ADT/DenseSet.h"
 #include "llvm/ADT/STLExtras.h"
 
 namespace xilinx::AIE {
@@ -38,6 +39,10 @@ typedef struct PortConnection {
 typedef struct PortMaskValue {
   Port port;
   MaskValue mv;
+  // The interconnect ops that implement this hop (a circuit ConnectOp, or a
+  // packet PacketRuleOp + MasterSetOp + AMSelOp). Recorded so the flows that
+  // consume them can be lifted out of the physical IR.
+  llvm::SmallVector<Operation *, 3> ops;
 } PortMaskValue;
 
 // One intermediate stop of a flow: the tile whose switchbox the stream passes
@@ -52,13 +57,58 @@ typedef struct PacketConnection {
   PortConnection portConnection;
   MaskValue mv;
   llvm::SmallVector<Via, 4> vias;
+  // Interconnect ops traversed on the way to this endpoint.
+  llvm::SmallVector<Operation *, 8> usedOps;
 } PacketConnection;
 
 class ConnectivityAnalysis {
   DeviceOp &device;
+  // Fan-out splitting: when enabled, a linear traversal stops at any switchbox
+  // input port that drives more than one output (a fan-out), leaving the
+  // fan-out switchbox explicit and recording its output ports as new section
+  // sources.
+  bool splitFanouts = false;
+  mutable llvm::DenseSet<std::pair<Operation *, int>> fanoutIngresses;
+  mutable llvm::DenseSet<std::pair<Operation *, int>> fanoutEgressSeeds;
+
+  static int encodePort(Port p) {
+    return static_cast<int>(p.bundle) * 64 + p.channel;
+  }
 
 public:
   ConnectivityAnalysis(DeviceOp &d) : device(d) {}
+
+  // Enable fan-out splitting and precompute which interconnect input ports fan
+  // out (drive more than one output).
+  void enableFanoutSplitting() {
+    splitFanouts = true;
+    auto scan = [&](Operation *sw, Region &connections) {
+      llvm::SmallVector<Port, 8> sources;
+      Block &b = connections.front();
+      for (auto connectOp : b.getOps<ConnectOp>())
+        if (!llvm::is_contained(sources, connectOp.sourcePort()))
+          sources.push_back(connectOp.sourcePort());
+      for (auto rulesOp : b.getOps<PacketRulesOp>())
+        if (!llvm::is_contained(sources, rulesOp.sourcePort()))
+          sources.push_back(rulesOp.sourcePort());
+      for (Port p : sources)
+        if (getConnectionsThroughSwitchbox(connections, p).size() > 1)
+          fanoutIngresses.insert({sw, encodePort(p)});
+    };
+    for (auto switchOp : device.getOps<SwitchboxOp>())
+      scan(switchOp, switchOp.getConnections());
+    for (auto shimMuxOp : device.getOps<ShimMuxOp>())
+      scan(shimMuxOp, shimMuxOp.getConnections());
+  }
+
+  // Fan-out output ports discovered while traversing, each a source for a new
+  // linear section.  Consumed and cleared by the pass.
+  llvm::DenseSet<std::pair<Operation *, int>> &getFanoutEgressSeeds() {
+    return fanoutEgressSeeds;
+  }
+  static Port decodePort(int e) {
+    return {static_cast<WireBundle>(e / 64), e % 64};
+  }
 
 private:
   std::optional<PortConnection>
@@ -99,7 +149,7 @@ private:
     for (auto connectOp : b.getOps<ConnectOp>()) {
       if (connectOp.sourcePort() == sourcePort) {
         MaskValue maskValue = {0, 0};
-        portSet.push_back({connectOp.destPort(), maskValue});
+        portSet.push_back({connectOp.destPort(), maskValue, {connectOp}});
         LLVM_DEBUG(llvm::dbgs()
                    << "To:" << stringifyWireBundle(connectOp.destPort().bundle)
                    << " " << connectOp.destPort().channel << "\n");
@@ -121,7 +171,10 @@ private:
                            << stringifyWireBundle(masterSetOp.destPort().bundle)
                            << " " << masterSetOp.destPort().channel << "\n");
                 MaskValue maskValue = {ruleOp.maskInt(), ruleOp.valueInt()};
-                portSet.push_back({masterSetOp.destPort(), maskValue});
+                portSet.push_back(
+                    {masterSetOp.destPort(),
+                     maskValue,
+                     {ruleOp, masterSetOp, amsel.getDefiningOp()}});
               }
             }
       }
@@ -132,6 +185,7 @@ private:
   std::vector<PacketConnection>
   maskSwitchboxConnections(Operation *switchOp, Port ingressPort,
                            ArrayRef<Via> currentVias,
+                           ArrayRef<Operation *> currentUsedOps,
                            std::vector<PortMaskValue> nextPortMaskValues,
                            MaskValue maskValue, bool keepPartialFlows,
                            std::vector<PacketConnection> &partialEndpoints)
@@ -163,6 +217,10 @@ private:
       SmallVector<Via, 4> newVias(currentVias.begin(), currentVias.end());
       if (viaTile)
         newVias.push_back({viaTile, ingressPort, nextPort});
+      SmallVector<Operation *, 8> newUsedOps(currentUsedOps.begin(),
+                                             currentUsedOps.end());
+      newUsedOps.append(nextPortMaskValue.ops.begin(),
+                        nextPortMaskValue.ops.end());
       auto nextConnection = getConnectionThroughWire(switchOp, nextPort);
 
       if (!nextConnection) {
@@ -170,12 +228,13 @@ private:
         // edge or an off-fabric consumer). Under partial recovery this output
         // port is itself the flow's endpoint.
         if (keepPartialFlows)
-          partialEndpoints.push_back({{switchOp, nextPort}, newMaskValue,
-                                      newVias});
+          partialEndpoints.push_back(
+              {{switchOp, nextPort}, newMaskValue, newVias, newUsedOps});
         continue;
       }
 
-      worklist.push_back({*nextConnection, newMaskValue, newVias});
+      worklist.push_back(
+          {*nextConnection, newMaskValue, newVias, newUsedOps});
     }
     return worklist;
   }
@@ -234,11 +293,22 @@ public:
         LLVM_DEBUG(other->dump());
         continue;
       }
+      // A fan-out port ends the current linear section: the flow terminates at
+      // this input, the fan-out switchbox stays explicit (its ops are not
+      // lifted), and every output it drives becomes a new section source.
+      if (splitFanouts &&
+          fanoutIngresses.count({other, encodePort(otherPort)})) {
+        connectedTiles.push_back(t);
+        for (PortMaskValue &pmv :
+             getConnectionsThroughSwitchbox(*connections, otherPort))
+          fanoutEgressSeeds.insert({other, encodePort(pmv.port)});
+        continue;
+      }
       std::vector<PortMaskValue> nextPortMaskValues =
           getConnectionsThroughSwitchbox(*connections, otherPort);
       std::vector<PacketConnection> partialEndpoints;
       std::vector<PacketConnection> newWorkList = maskSwitchboxConnections(
-          other, otherPort, t.vias, nextPortMaskValues, maskValue,
+          other, otherPort, t.vias, t.usedOps, nextPortMaskValues, maskValue,
           keepPartialFlows, partialEndpoints);
       worklist.insert(worklist.end(), newWorkList.begin(), newWorkList.end());
       connectedTiles.insert(connectedTiles.end(), partialEndpoints.begin(),
@@ -280,6 +350,18 @@ public:
     return traverse({{PortConnection{switchOp, inputPort}, {0, 0}}},
                     keepPartialFlows);
   }
+
+  // Get the endpoints reached by a stream leaving the given output port of a
+  // fan-out interconnect: cross the outgoing wire and traverse the next linear
+  // section.
+  std::vector<PacketConnection>
+  getConnectedTilesFromEgress(Operation *switchOp, Port egressPort,
+                              bool keepPartialFlows) const {
+    auto t = getConnectionThroughWire(switchOp, egressPort);
+    if (!t)
+      return {};
+    return traverse({{*t, {0, 0}}}, keepPartialFlows);
+  }
 };
 
 // The endpoint of a lifted flow is a tile: a flow-endpoint tile directly, or
@@ -297,7 +379,8 @@ static Value resolveEndpointTile(Operation *op) {
 static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
                       WireBundle srcBundle, int srcChannel,
                       const std::vector<PacketConnection> &endpoints,
-                      bool emitVias) {
+                      bool emitVias, bool dropIntraTile,
+                      llvm::DenseSet<Operation *> &consumed) {
   for (const PacketConnection &c : endpoints) {
     Operation *destOp = c.portConnection.op;
     Port destPort = c.portConnection.port;
@@ -305,6 +388,22 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
     Value destTile = resolveEndpointTile(destOp);
     if (!destTile)
       continue;
+    // An empty section whose source and destination are the same port (e.g. a
+    // fan-out output that feeds its own tile with no hop in between) carries
+    // nothing.  A self-loop that actually routes through the fabric does.
+    if (c.usedOps.empty() && destTile == srcTile &&
+        destPort.bundle == srcBundle && destPort.channel == srcChannel)
+      continue;
+    // A flow seeded from a fabric-entry / fan-out output that terminates on a
+    // real endpoint of the same tile never leaves that tile -- it is a dead or
+    // orphan interconnect connection (e.g. an undriven shim-mux write path), not
+    // a routable flow, so do not lift it.
+    if (dropIntraTile && destTile == srcTile && isa<TileOp>(destOp))
+      continue;
+    // Every interconnect op on this endpoint's path is lifted into the flow.
+    for (Operation *op : c.usedOps)
+      if (op)
+        consumed.insert(op);
     if (maskValue.mask == 0) {
       if (emitVias && !c.vias.empty()) {
         SmallVector<Value> viaTiles;
@@ -345,7 +444,7 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
 
 static void findFlowsFrom(TileOp op, ConnectivityAnalysis &analysis,
                           OpBuilder &rewriter, bool keepPartialFlows,
-                          bool emitVias) {
+                          bool emitVias, llvm::DenseSet<Operation *> &consumed) {
   Operation *Op = op.getOperation();
   rewriter.setInsertionPoint(Op->getBlock()->getTerminator());
 
@@ -359,7 +458,7 @@ static void findFlowsFrom(TileOp op, ConnectivityAnalysis &analysis,
           analysis.getConnectedTiles(op, {bundle, (int)i}, keepPartialFlows);
       LLVM_DEBUG(llvm::dbgs() << tiles.size() << " Flows\n");
       emitFlows(rewriter, Op->getLoc(), Op->getResult(0), bundle, (int)i, tiles,
-                emitVias);
+                emitVias, /*dropIntraTile=*/false, consumed);
     }
   }
 }
@@ -373,7 +472,8 @@ static void findFlowsFrom(TileOp op, ConnectivityAnalysis &analysis,
 static void findFlowsFromInterconnect(Operation *switchOp,
                                       ConnectivityAnalysis &analysis,
                                       OpBuilder &rewriter, bool keepPartialFlows,
-                                      bool emitVias) {
+                                      bool emitVias,
+                                      llvm::DenseSet<Operation *> &consumed) {
   Region *connections = nullptr;
   if (auto sb = dyn_cast<SwitchboxOp>(switchOp))
     connections = &sb.getConnections();
@@ -427,7 +527,7 @@ static void findFlowsFromInterconnect(Operation *switchOp,
     std::vector<PacketConnection> tiles =
         analysis.getConnectedTilesFromInput(switchOp, p, keepPartialFlows);
     emitFlows(rewriter, switchOp->getLoc(), srcTile, srcBundle, srcChannel,
-              tiles, emitVias);
+              tiles, emitVias, /*dropIntraTile=*/true, consumed);
   }
 }
 
@@ -437,39 +537,106 @@ struct AIEFindFlowsPass
     registry.insert<func::FuncDialect>();
     registry.insert<AIEDialect>();
   }
+
+  // An interconnect whose region holds nothing but its terminator carries no
+  // configuration and can be dropped.
+  static bool isEmptyInterconnect(Region &connections) {
+    Block &b = connections.front();
+    return b.getOps<ConnectOp>().empty() && b.getOps<PacketRulesOp>().empty() &&
+           b.getOps<MasterSetOp>().empty() && b.getOps<AMSelOp>().empty();
+  }
+
   void runOnOperation() override {
 
     DeviceOp d = getOperation();
     ConnectivityAnalysis analysis(d);
     d.getTargetModel().validate();
+    if (clEmitVias)
+      analysis.enableFanoutSplitting();
 
+    llvm::DenseSet<Operation *> consumed;
     OpBuilder builder = OpBuilder::atBlockTerminator(d.getBody());
     for (auto tile : d.getOps<TileOp>()) {
-      findFlowsFrom(tile, analysis, builder, clKeepPartialFlows, clEmitVias);
+      findFlowsFrom(tile, analysis, builder, clKeepPartialFlows, clEmitVias,
+                    consumed);
     }
     // Lift flows whose source is not a core/DMA (transit fills, packet routing
     // steered at runtime, PLIO/edge entries) directly from the interconnect.
     if (clKeepPartialFlows) {
       for (auto switchOp : d.getOps<SwitchboxOp>())
         findFlowsFromInterconnect(switchOp, analysis, builder,
-                                  clKeepPartialFlows, clEmitVias);
+                                  clKeepPartialFlows, clEmitVias, consumed);
       for (auto shimMuxOp : d.getOps<ShimMuxOp>())
         findFlowsFromInterconnect(shimMuxOp, analysis, builder,
-                                  clKeepPartialFlows, clEmitVias);
+                                  clKeepPartialFlows, clEmitVias, consumed);
     }
 
-    // With vias, each recovered flow fully encodes the switchbox configuration
-    // it traversed, so the physical interconnect is redundant: drop it, leaving
-    // a purely logical, re-routable representation.  Wires reference the
-    // interconnect results, so erase them first.
+    // Each output of a fan-out node starts a new linear section; drain those
+    // seeds to a fixpoint (a branch may reach further fan-outs).  The fan-out
+    // nodes themselves stay explicit.
     if (clEmitVias) {
-      for (auto wireOp : llvm::make_early_inc_range(d.getOps<WireOp>()))
-        wireOp.erase();
-      for (auto switchOp : llvm::make_early_inc_range(d.getOps<SwitchboxOp>()))
-        switchOp.erase();
-      for (auto shimMuxOp : llvm::make_early_inc_range(d.getOps<ShimMuxOp>()))
-        shimMuxOp.erase();
+      builder.setInsertionPoint(d.getBody()->getTerminator());
+      llvm::DenseSet<std::pair<Operation *, int>> seeded;
+      bool progress = true;
+      while (progress) {
+        progress = false;
+        llvm::SmallVector<std::pair<Operation *, int>> snapshot(
+            analysis.getFanoutEgressSeeds().begin(),
+            analysis.getFanoutEgressSeeds().end());
+        for (auto &seed : snapshot) {
+          if (!seeded.insert(seed).second)
+            continue;
+          progress = true;
+          Operation *switchOp = seed.first;
+          Port egress = ConnectivityAnalysis::decodePort(seed.second);
+          Value srcTile = resolveEndpointTile(switchOp);
+          if (!srcTile)
+            continue;
+          std::vector<PacketConnection> tiles =
+              analysis.getConnectedTilesFromEgress(switchOp, egress,
+                                                   clKeepPartialFlows);
+          emitFlows(builder, switchOp->getLoc(), srcTile, egress.bundle,
+                    egress.channel, tiles, clEmitVias, /*dropIntraTile=*/true,
+                    consumed);
+        }
+      }
     }
+
+    if (!clRemoveLifted)
+      return;
+
+    // Every recovered flow makes the interconnect ops it traversed redundant;
+    // drop exactly those, leaving any configuration that could not be lifted
+    // (e.g. an unreachable connect) in place.  Leaf routing ops go first;
+    // amsels that lose all users and now-empty rule containers follow.
+    for (Operation *op : consumed)
+      if (isa<ConnectOp, PacketRuleOp, MasterSetOp>(op))
+        op->erase();
+    auto cleanupInterconnect = [](Region &connections) {
+      for (auto amselOp :
+           llvm::make_early_inc_range(connections.getOps<AMSelOp>()))
+        if (amselOp.use_empty())
+          amselOp.erase();
+      for (auto rulesOp :
+           llvm::make_early_inc_range(connections.getOps<PacketRulesOp>()))
+        if (rulesOp.getRules().front().getOps<PacketRuleOp>().empty())
+          rulesOp.erase();
+    };
+    for (auto switchOp : d.getOps<SwitchboxOp>())
+      cleanupInterconnect(switchOp.getConnections());
+    for (auto shimMuxOp : d.getOps<ShimMuxOp>())
+      cleanupInterconnect(shimMuxOp.getConnections());
+
+    // Wires reference interconnect results and are regenerated by routing, so
+    // drop them, then remove any interconnect left fully empty.
+    for (auto wireOp : llvm::make_early_inc_range(d.getOps<WireOp>()))
+      wireOp.erase();
+    for (auto switchOp : llvm::make_early_inc_range(d.getOps<SwitchboxOp>()))
+      if (isEmptyInterconnect(switchOp.getConnections()))
+        switchOp.erase();
+    for (auto shimMuxOp : llvm::make_early_inc_range(d.getOps<ShimMuxOp>()))
+      if (isEmptyInterconnect(shimMuxOp.getConnections()))
+        shimMuxOp.erase();
   }
 };
 

@@ -283,6 +283,10 @@ def AIEFindFlows : Pass<"aie-find-flows", "DeviceOp"> {
     Option<"clEmitVias", "emit-vias", "bool", /*default=*/"false",
            "Emit each recovered flow with a via list pinning every switchbox "
            "hop, so the flow fully encodes its route and needs no routing.">,
+    Option<"clRemoveLifted", "remove-lifted", "bool", /*default=*/"true",
+           "Remove the interconnect configuration (connects, packet rules, "
+           "mastersets, amsels, wires) that was lifted into recovered flows, "
+           "leaving only configuration that could not be lifted.">,
   ];
 }
 
