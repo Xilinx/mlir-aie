@@ -6,14 +6,15 @@
 //===----------------------------------------------------------------------===//
 
 // End-to-end through the real NPU lowering order: from a plain objectFIFO +
-// dma_channel_reset_for, the binding must survive aie-materialize-runtime-
-// sequences (which whitelists the symbols a runtime sequence may reference) and
-// the op must lower to the reset + set_lock + START_QUEUE trio. This is the path
-// a lit test that runs the lowering pass in isolation does NOT exercise.
+// dma_channel_reset_for, aie-assign-bd-ids must fold the head bd_id + repeat onto
+// the binding, the binding must survive aie-materialize-runtime-sequences (which
+// whitelists the symbols a runtime sequence may reference), and the op must lower
+// to the reset + set_lock + START_QUEUE trio. This is the path a lit test that
+// runs the lowering pass in isolation does NOT exercise.
 
 // RUN: aie-opt --aie-objectFifo-stateful-transform --aie-assign-bd-ids \
-// RUN:   --aie-materialize-runtime-sequences --aie-lower-dma-channel-reset-for \
-// RUN:   --aie-dma-to-npu --aie-lower-set-lock --aie-lower-dma-channel-reset \
+// RUN:   --aie-materialize-runtime-sequences --aie-lower-dma-channel-reset \
+// RUN:   --aie-dma-to-npu --aie-lower-set-lock \
 // RUN:   %s | FileCheck %s
 
 // Consumer core tile (0,2), S2MM channel 0. reset_for emits the reset pulse, the

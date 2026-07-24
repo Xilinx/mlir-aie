@@ -1498,14 +1498,16 @@ def AIEX_DmaChannelResetForOp: AIEX_Op<"dma_channel_reset_for", [HasParent<"AIE:
 
     For each non-shim endpoint of the fifo it lowers to the re-arm trio the
     aie2p DMA model requires: `aiex.dma_channel_reset` (drain the channel queue +
-    clear the run FSM), a `START_QUEUE` re-push (`aiex.npu.write32`) and
+    clear the run FSM), a `START_QUEUE` re-push (`aiex.npu.push_queue`, lowered to
+    the queue `write32` by `--aie-dma-to-npu`) and
     `aiex.set_lock` (re-arm the producer/consumer semaphore counts to the values
     the fifo was armed with). The re-push is required because an aie2p DMA
     channel has no enable bit, so once the reset drains its queue the only way to
     restart it is a `START_QUEUE` write; the head BD id and repeat count are read
-    from the resident `aie.dma_start`, so the re-push reproduces the channel's
-    load-time arming exactly. Shim endpoints are skipped: the host re-pushes
-    those with its own BD program.
+    from the fifo's `aie.objectfifo_rearm_binding` (folded there by
+    `--aie-assign-bd-ids`), so the re-push reproduces the channel's load-time
+    arming exactly without re-scanning the emitted DMA chain. Shim endpoints are
+    skipped: the host re-pushes those with its own BD program.
 
     This resets the DMA control state only; like `aiex.dma_channel_reset` it does
     not by itself establish a clean dispatch baseline in general (it does not

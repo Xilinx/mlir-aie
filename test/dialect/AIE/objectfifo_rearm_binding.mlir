@@ -39,3 +39,20 @@ module {
     aie.objectfifo_rearm_binding @empty_rearm channels() locks() {channel_dirs = array<i32>, channel_indices = array<i32>, lock_inits = array<i32>}
   }
 }
+
+// -----
+
+// The optional head_bd_ids / repeat_counts (one per channel tile, the resident
+// head BD id + biased START_QUEUE repeat) round-trip. --aie-assign-bd-ids fills
+// these for an objectFIFO binding; a hand-authored binding may set them directly
+// so the op is usable with no objectFIFO code behind it.
+// CHECK-LABEL: aie.device(npu2)
+// CHECK: aie.objectfifo_rearm_binding @of_rearm channels(%[[CT:.*]] : index) locks(%[[PL:.*]], %[[CL:.*]] : index, index) {channel_dirs = array<i32: 0>, channel_indices = array<i32: 0>, head_bd_ids = array<i32: 5>, lock_inits = array<i32: 2, 0>, repeat_counts = array<i32: 0>}
+module {
+  aie.device(npu2) {
+    %ct = aie.tile(0, 3)
+    %pl = aie.lock(%ct, 0) {init = 2 : i32}
+    %cl = aie.lock(%ct, 1) {init = 0 : i32}
+    aie.objectfifo_rearm_binding @of_rearm channels(%ct : index) locks(%pl, %cl : index, index) {channel_dirs = array<i32: 0>, channel_indices = array<i32: 0>, lock_inits = array<i32: 2, 0>, head_bd_ids = array<i32: 5>, repeat_counts = array<i32: 0>}
+  }
+}

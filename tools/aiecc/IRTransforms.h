@@ -738,15 +738,16 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   dpm.addPass(mlir::createCanonicalizerPass());
   dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass());
   dpm.addPass(X::createAIEDMATasksToNPUPass());
-  // Expand dma_channel_reset_for into dma_channel_reset + set_lock + a
-  // START_QUEUE re-push (aiex.npu.push_queue). Runs before aie-dma-to-npu so
-  // the push_queue is lowered with the other queue pushes, and before set_lock
-  // / dma_channel_reset are lowered below. Placed here because the resident
-  // aie.mem chains and their assigned bd_ids are still present.
-  dpm.addPass(X::createAIELowerDmaChannelResetForPass());
+  // Expand dma_channel_reset_for into its re-arm trio (dma_channel_reset +
+  // set_lock + a START_QUEUE re-push) and lower the resulting dma_channel_reset
+  // ops to maskwrite32 -- one pass. Runs before aie-dma-to-npu so the emitted
+  // push_queue is lowered with the other queue pushes, and before
+  // aie-lower-set- lock so the emitted set_lock ops are lowered too. The head
+  // bd_id + repeat it re-pushes were folded into the objectfifo_rearm_binding
+  // by aie-assign-bd-ids.
+  dpm.addPass(X::createAIELowerDmaChannelResetPass());
   dpm.addPass(X::createAIEDmaToNpuPass());
   dpm.addPass(X::createAIELowerSetLockPass());
-  dpm.addPass(X::createAIELowerDmaChannelResetPass());
   dpm.addPass(X::createAIELowerCoreResetPass());
   return pm;
 }

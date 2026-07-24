@@ -1831,12 +1831,25 @@ def AIE_ObjectFifoRearmBindingOp : AIE_Op<"objectfifo_rearm_binding",
     value the fifo was armed with: producer = (numElem - init) * repeat, consumer
     = init * repeat).
 
+    `head_bd_ids` and `repeat_counts` carry, positionally per `channel_tiles`
+    endpoint, the resident channel's head buffer-descriptor id and its (already
+    N-1 biased) START_QUEUE repeat count -- everything the re-arm re-push needs.
+    They are optional because the head BD id is not known until
+    `--aie-assign-bd-ids` runs: that pass populates both here (reading them off
+    the resident `aie.mem` / `aie.memtile_dma` chain once, at the point the ids
+    are assigned) so the later `aiex.dma_channel_reset_for` lowering reads them
+    straight off this op rather than re-scanning the objectFIFO-emitted chain. A
+    hand-authored binding may set them directly, in which case
+    `--aie-assign-bd-ids` leaves them untouched; this keeps the op usable without
+    any objectFIFO code behind it.
+
     Example:
     ```
       aie.objectfifo_rearm_binding @of_rearm channels(%core_tile : index)
         locks(%prod_lock, %cons_lock : index, index) {
           channel_dirs = array<i32: 0>, channel_indices = array<i32: 0>,
-          lock_inits = array<i32: 2, 0> }
+          lock_inits = array<i32: 2, 0>,
+          head_bd_ids = array<i32: 5>, repeat_counts = array<i32: 0> }
     ```
   }];
 
@@ -1846,7 +1859,9 @@ def AIE_ObjectFifoRearmBindingOp : AIE_Op<"objectfifo_rearm_binding",
     Variadic<Index>:$locks,
     DenseI32ArrayAttr:$channel_dirs,
     DenseI32ArrayAttr:$channel_indices,
-    DenseI32ArrayAttr:$lock_inits
+    DenseI32ArrayAttr:$lock_inits,
+    OptionalAttr<DenseI32ArrayAttr>:$head_bd_ids,
+    OptionalAttr<DenseI32ArrayAttr>:$repeat_counts
   );
 
   let results = (outs);

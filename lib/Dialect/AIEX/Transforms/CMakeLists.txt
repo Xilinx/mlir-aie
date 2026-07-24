@@ -25,7 +25,6 @@ add_mlir_dialect_library(AIEXTransforms
   AIELowerSetLock.cpp
   AIELowerDmaChannelReset.cpp
   AIELowerCoreReset.cpp
-  AIELowerDmaChannelResetFor.cpp
   AIELowerScratchpadParameters.cpp
   AIETransformBfpTypes.cpp
   AIETxnToControlPacket.cpp

@@ -73,3 +73,50 @@ module {
     aie.objectfifo_rearm_binding @b channels() locks(%c : index) {channel_dirs = array<i32>, channel_indices = array<i32>, lock_inits = array<i32: 1>}
   }
 }
+
+// -----
+
+// channel_tiles must be non-shim: a shim DMA endpoint is host-managed, so a
+// binding (even hand-authored) naming a shim tile is rejected rather than
+// re-arming the host's channel.
+module {
+  aie.device(npu2) {
+    %shim = aie.tile(0, 0)
+    // expected-error @+1 {{channel_tiles must be non-shim tiles}}
+    aie.objectfifo_rearm_binding @b channels(%shim : index) locks() {channel_dirs = array<i32: 0>, channel_indices = array<i32: 0>, lock_inits = array<i32>}
+  }
+}
+
+// -----
+
+// head_bd_ids and repeat_counts travel as a pair: the re-push needs both, so one
+// without the other is rejected.
+module {
+  aie.device(npu2) {
+    %ct = aie.tile(0, 3)
+    // expected-error @+1 {{head_bd_ids and repeat_counts must both be set or both be absent}}
+    aie.objectfifo_rearm_binding @b channels(%ct : index) locks() {channel_dirs = array<i32: 0>, channel_indices = array<i32: 0>, lock_inits = array<i32>, head_bd_ids = array<i32: 5>}
+  }
+}
+
+// -----
+
+// One head_bd_ids entry per channel tile.
+module {
+  aie.device(npu2) {
+    %ct = aie.tile(0, 3)
+    // expected-error @+1 {{expected one head_bd_ids entry per channel tile}}
+    aie.objectfifo_rearm_binding @b channels(%ct : index) locks() {channel_dirs = array<i32: 0>, channel_indices = array<i32: 0>, lock_inits = array<i32>, head_bd_ids = array<i32: 5, 6>, repeat_counts = array<i32: 0, 0>}
+  }
+}
+
+// -----
+
+// One repeat_counts entry per channel tile.
+module {
+  aie.device(npu2) {
+    %ct = aie.tile(0, 3)
+    // expected-error @+1 {{expected one repeat_counts entry per channel tile}}
+    aie.objectfifo_rearm_binding @b channels(%ct : index) locks() {channel_dirs = array<i32: 0>, channel_indices = array<i32: 0>, lock_inits = array<i32>, head_bd_ids = array<i32: 5>, repeat_counts = array<i32: 0, 1>}
+  }
+}

@@ -2875,12 +2875,17 @@ struct AIEObjectFifoStatefulTransformPass
             } while (device.lookupSymbol(candidate));
             bindName = candidate;
           }
+          // head_bd_ids / repeat_counts are left null here: the head BD id is
+          // not known until --aie-assign-bd-ids runs, which folds both onto the
+          // binding afterwards.
           ObjectFifoRearmBindingOp::create(
               builder, loc, builder.getStringAttr(bindName),
               ValueRange(channelTiles), ValueRange(lockVals),
               builder.getDenseI32ArrayAttr(channelDirs),
               builder.getDenseI32ArrayAttr(channelIndices),
-              builder.getDenseI32ArrayAttr(lockInits));
+              builder.getDenseI32ArrayAttr(lockInits),
+              /*head_bd_ids=*/DenseI32ArrayAttr(),
+              /*repeat_counts=*/DenseI32ArrayAttr());
           FlatSymbolRefAttr newTarget = FlatSymbolRefAttr::get(ctx, bindName);
           for (Operation *user : users)
             user->setAttr("objfifo", newTarget);
