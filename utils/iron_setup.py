@@ -6,8 +6,9 @@
 ##===------ iron_setup.py - Cross-platform IRON environment setup -----------===##
 #
 # Create or reconcile the wheel-backed Python environment used by this checkout.
-# Setup installs the release wheel at a tagged checkout or the current rolling
-# wheel on a development checkout, plus llvm-aie and any requested dependencies.
+# Tagged checkouts use their matching release wheel. --dev installs mlir_aie
+# from the latest rolling development channel with pip --upgrade --pre, plus
+# contributor dependencies.
 #
 #   python utils/iron_setup.py
 #   python utils/iron_setup.py --dev --extras
@@ -182,6 +183,7 @@ def pip_install_package(
     *,
     force_reinstall: bool,
     upgrade: bool = False,
+    allow_prereleases: bool = False,
     find_links: Optional[str] = None,
     wheelhouse: Optional[Path] = None,
     no_index: bool = False,
@@ -190,6 +192,8 @@ def pip_install_package(
     args = ["install"]
     if upgrade:
         args.append("--upgrade")
+    if allow_prereleases:
+        args.append("--pre")
     if force_reinstall:
         args.append("--force-reinstall")
     if no_deps:
@@ -250,6 +254,7 @@ class WheelSelection:
     wheelhouse: Optional[Path]
     description: str
     upgrade: bool = False
+    allow_prereleases: bool = False
 
 
 def release_tag_at_head(repo_root: Path) -> Optional[str]:
@@ -281,6 +286,21 @@ def resolve_mlir_aie_wheel(args: argparse.Namespace, repo_root: Path) -> WheelSe
             description=f"local wheelhouse: {wheelhouse}",
         )
 
+    if args.dev:
+        # Contributor environments must track the newest rolling prerelease.
+        # pip needs both --upgrade and --pre to make that guarantee.
+        return WheelSelection(
+            package="mlir_aie",
+            find_links=f"{WHEEL_ASSET_INDEX}/{ROLLING_WHEEL_CHANNEL}",
+            wheelhouse=None,
+            description=(
+                "latest rolling development wheel: "
+                f"{ROLLING_WHEEL_CHANNEL} (pip --upgrade --pre)"
+            ),
+            upgrade=True,
+            allow_prereleases=True,
+        )
+
     if tag := release_tag_at_head(repo_root):
         # A tagged checkout must use the wheel assets published for that tag.
         return WheelSelection(
@@ -290,7 +310,7 @@ def resolve_mlir_aie_wheel(args: argparse.Namespace, repo_root: Path) -> WheelSe
             description=f"release tag: {tag}",
         )
 
-    # Main and feature branches use the newest published rolling wheel.
+    # Untagged non-development checkouts use pip's normal rolling-channel selection.
     return WheelSelection(
         package="mlir_aie",
         find_links=f"{WHEEL_ASSET_INDEX}/{ROLLING_WHEEL_CHANNEL}",
@@ -324,6 +344,7 @@ def install_mlir_aie(
         selection.package,
         force_reinstall=force_reinstall,
         upgrade=selection.upgrade,
+        allow_prereleases=selection.allow_prereleases,
         find_links=selection.find_links,
     )
 
@@ -924,7 +945,11 @@ def add_install_args(parser: argparse.ArgumentParser) -> None:
         "--developer",
         dest="dev",
         action="store_true",
-        help="Install locked contributor tooling and the repository Git hooks.",
+        help=(
+            "Install locked contributor tooling and Git hooks, and install or "
+            "upgrade mlir_aie to the latest rolling development wheel using "
+            "pip --upgrade --pre unless --wheelhouse is supplied."
+        ),
     )
     parser.add_argument(
         "--extras",

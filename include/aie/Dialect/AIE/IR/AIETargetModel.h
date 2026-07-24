@@ -298,6 +298,15 @@ public:
   /// leading tap dimension into.
   virtual uint32_t getBDMaxDims(AIETileType tileType) const = 0;
 
+  /// Return the bit width of the wrap (size) field in a DMA buffer descriptor
+  /// for the given tile type. Used to compute the maximum legal wrap value
+  /// per dimension.
+  virtual uint32_t getDmaBdWrapBits(AIETileType tileType) const = 0;
+
+  /// Return the bit width of the step (stride) field in a DMA buffer
+  /// descriptor for the given tile type.
+  virtual uint32_t getDmaBdStepBits(AIETileType tileType) const = 0;
+
   /// Get stream switch port index for a given port specification
   /// Return port index for Stream_Switch_Event_Port_Selection register, or
   /// nullopt if invalid
@@ -315,6 +324,14 @@ public:
   /// (`col`, `row`).
   uint32_t getBDMaxDims(int col, int row) const {
     return getBDMaxDims(getTileType(col, row));
+  }
+
+  uint32_t getDmaBdWrapBits(int col, int row) const {
+    return getDmaBdWrapBits(getTileType(col, row));
+  }
+
+  uint32_t getDmaBdStepBits(int col, int row) const {
+    return getDmaBdStepBits(getTileType(col, row));
   }
 
   /// Return the number of buffer descriptors accessible on channel `channel`
@@ -494,6 +511,14 @@ public:
     // AIE1 has no MemTiles; preserve the historical BD dimension limit.
     return 3;
   }
+  uint32_t getDmaBdWrapBits(AIETileType tileType) const override {
+    // AIE1 core tiles have 8-bit wrap fields; shim tiles have 10-bit.
+    return tileType == AIETileType::CoreTile ? 8 : 10;
+  }
+  uint32_t getDmaBdStepBits(AIETileType tileType) const override {
+    // AIE1 core tiles have 13-bit step fields; shim tiles have 20-bit.
+    return tileType == AIETileType::CoreTile ? 13 : 20;
+  }
   bool isBdChannelAccessible(int col, int row, uint32_t bd_id,
                              int channel) const override {
     return true;
@@ -602,6 +627,22 @@ public:
   uint32_t getBDMaxDims(AIETileType tileType) const override {
     // MemTile BDs support 4 ND dimensions; core and shim BDs support 3.
     return tileType == AIETileType::MemTile ? 4 : 3;
+  }
+  uint32_t getDmaBdWrapBits(AIETileType tileType) const override {
+    // Core tiles have 8-bit wrap; mem and shim tiles have 10-bit.
+    return tileType == AIETileType::CoreTile ? 8 : 10;
+  }
+  uint32_t getDmaBdStepBits(AIETileType tileType) const override {
+    // Shim NOC/PL: 20-bit, mem tile: 17-bit, core tile: 13-bit.
+    switch (tileType) {
+    case AIETileType::ShimNOCTile:
+    case AIETileType::ShimPLTile:
+      return 20;
+    case AIETileType::MemTile:
+      return 17;
+    default:
+      return 13;
+    }
   }
 
   bool isBdChannelAccessible(int col, int row, uint32_t bd_id,
