@@ -64,8 +64,7 @@ def _compile_kwargs(opts):
 
 def _run_and_verify(opts):
     input0 = iron.arange(1, opts.num_elements + 1, dtype=np.int32, device="npu")
-    input1_np = np.full(opts.num_elements, 7, dtype=np.int32)
-    input1 = iron.tensor(input1_np, dtype=np.int32, device="npu")
+    input1 = iron.full(opts.num_elements, 7, dtype=np.int32, device="npu")
     output = iron.zeros_like(input0)
 
     vector_vector_modulo(
