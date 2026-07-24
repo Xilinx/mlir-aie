@@ -10,8 +10,8 @@ from ..dialects.aie import device
 from ..extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
 from ..helpers.dialects.func import FuncBase
 from ..utils import trace as trace_utils
-from .device import Device
 from ..utils.compile.jit.context import get_compile_arg
+from .device import Device
 from .resolvable import Resolvable
 from .runtime import Runtime
 from .scratchpad_parameter import ScratchpadParameter
