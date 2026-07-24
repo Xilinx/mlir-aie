@@ -1,8 +1,10 @@
 # Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-from aie.helpers.dialects.scf import _for
-from aie.dialects.scf import yield_ as _yield_
+from aie.helpers.dialects.scf import (
+    _for,
+    yield_ as _yield_,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from aie.iron.runtime.dmataskhandle import Task
 
 
