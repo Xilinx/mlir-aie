@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 # --- hsa.h constants -------------------------------------------------------
 HSA_STATUS_SUCCESS = 0
-HSA_STATUS_INFO_BREAK = 0x6000
+HSA_STATUS_INFO_BREAK = 0x1
 
 HSA_DEVICE_TYPE_CPU = 0
 HSA_DEVICE_TYPE_GPU = 1
@@ -41,14 +41,14 @@ HSA_AMD_SEGMENT_GLOBAL = 0
 HSA_AMD_MEMORY_POOL_INFO_SEGMENT = 0
 HSA_AMD_MEMORY_POOL_INFO_GLOBAL_FLAGS = 1
 HSA_AMD_MEMORY_POOL_INFO_RUNTIME_ALLOC_GRANULE = 6
-HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_COARSE_GRAINED = 2
-HSA_AMD_MEMORY_POOL_INFO_RUNTIME_ALLOC_REC_GRANULE = 7
+HSA_AMD_MEMORY_POOL_GLOBAL_FLAG_COARSE_GRAINED = 4
+HSA_AMD_MEMORY_POOL_INFO_RUNTIME_ALLOC_REC_GRANULE = 18
 
-MEMORY_TYPE_PINNED = 0  # hsa_amd_memory_type_t
+MEMORY_TYPE_PINNED = 1  # hsa_amd_memory_type_t
 HSA_AMD_VMEM_ADDRESS_NO_REGISTER = 1
 HSA_ACCESS_PERMISSION_RW = 3
 
-HSA_QUEUE_TYPE_SINGLE = 0
+HSA_QUEUE_TYPE_SINGLE = 1
 
 # hsa_packet_header_t bit offsets
 HSA_PACKET_HEADER_TYPE = 0
@@ -314,7 +314,9 @@ class HSAContext:
                 return HSA_STATUS_INFO_BREAK
             return HSA_STATUS_SUCCESS
 
-        _hsa_iterate_agents(cb, None)  # noqa: F821
+        status = _hsa_iterate_agents(cb, None)  # noqa: F821
+        if status not in (HSA_STATUS_SUCCESS, HSA_STATUS_INFO_BREAK):
+            raise HSAError(f"hsa_iterate_agents failed (hsa status {status})")
         return found.value
 
     def _find_region(self, agent):
@@ -335,7 +337,9 @@ class HSAContext:
             found.value = region
             return HSA_STATUS_INFO_BREAK
 
-        _hsa_agent_iterate_regions(agent, cb, None)  # noqa: F821
+        status = _hsa_agent_iterate_regions(agent, cb, None)  # noqa: F821
+        if status not in (HSA_STATUS_SUCCESS, HSA_STATUS_INFO_BREAK):
+            raise HSAError(f"hsa_agent_iterate_regions failed (hsa status {status})")
         if found.value == 0:
             raise HSAError("No allocatable global HSA region found on AIE agent")
         return found.value
@@ -363,7 +367,9 @@ class HSAContext:
             found.value = pool
             return HSA_STATUS_INFO_BREAK
 
-        _hsa_amd_agent_iterate_memory_pools(agent, cb, None)  # noqa: F821
+        status = _hsa_amd_agent_iterate_memory_pools(agent, cb, None)  # noqa: F821
+        if status not in (HSA_STATUS_SUCCESS, HSA_STATUS_INFO_BREAK):
+            raise HSAError(f"hsa_amd_agent_iterate_memory_pools failed (hsa status {status})")
         if found.value == 0:
             raise HSAError("No allocatable coarse-grained pool found on AIE agent")
         return found.value
