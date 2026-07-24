@@ -15,8 +15,8 @@
 #   make run_ctrlpkt      full-ELF, --load-pdi-to-ctrl-pkt (control packets)
 #
 # Each run does ITERS timed iterations and prints per-iteration + mean/min/max
-# runtimes.  Parameters COLS/ROWS/NOPS embed in the artifact names.  The
-# benchmark.py script drives these targets over several array sizes.
+# runtimes.  Parameters COLS/ROWS/NOPS/SWITCHBOXES embed in the artifact names.
+# The benchmark.py script drives these targets over several array sizes.
 
 srcdir := $(shell dirname $(realpath $(firstword $(MAKEFILE_LIST))))
 
@@ -25,10 +25,11 @@ include ${srcdir}/../../makefile-common
 COLS ?= 1
 ROWS ?= 1
 NOPS ?= 0
+SWITCHBOXES ?= 0
 RECONFIGS ?= 1
 ITERS ?= 10
 
-suffix := c${COLS}_r${ROWS}_n${NOPS}
+suffix := c${COLS}_r${ROWS}_n${NOPS}_s${SWITCHBOXES}
 
 worker_xclbin := build/worker_${suffix}.xclbin
 worker_bin := build/worker_${suffix}.bin
@@ -52,7 +53,7 @@ XRT_FLAGS := -I${XILINX_XRT}/include -L${XILINX_XRT}/lib -luuid -lxrt_coreutil -
 
 ${worker_xclbin} ${worker_bin} &: ${srcdir}/reconfiguration.py
 	mkdir -p build
-	python3 $< --flow single --cols ${COLS} --rows ${ROWS} --nops ${NOPS} > build/worker_${suffix}.mlir
+	python3 $< --flow single --cols ${COLS} --rows ${ROWS} --nops ${NOPS} --switchboxes ${SWITCHBOXES} > build/worker_${suffix}.mlir
 	cd build && aiecc ${aiecc_flags} --get-xclbin --get-npu-insts \
 		--xclbin-name=$(notdir ${worker_xclbin}) --npu-insts-name=$(notdir ${worker_bin}) worker_${suffix}.mlir
 
@@ -73,14 +74,14 @@ ${empty_k_xclbin} ${empty_k_bin} &: ${srcdir}/reconfiguration.py
 
 ${combined_xclbin} ${worker_rl_bin} &: ${srcdir}/reconfiguration.py ${empty_k_xclbin}
 	mkdir -p build
-	python3 $< --flow single --cols ${COLS} --rows ${ROWS} --nops ${NOPS} > build/worker_rl_${suffix}.mlir
+	python3 $< --flow single --cols ${COLS} --rows ${ROWS} --nops ${NOPS} --switchboxes ${SWITCHBOXES} > build/worker_rl_${suffix}.mlir
 	cd build && aiecc ${aiecc_flags} --xclbin-kernel-name=WORKER --xclbin-kernel-id=0x901 \
 		--xclbin-instance-name=WORKERINST --get-xclbin --get-npu-insts --xclbin-input=$(notdir ${empty_k_xclbin}) \
 		--xclbin-name=$(notdir ${combined_xclbin}) --npu-insts-name=$(notdir ${worker_rl_bin}) worker_rl_${suffix}.mlir
 
 build/reconfig_${suffix}.mlir: ${srcdir}/reconfiguration.py
 	mkdir -p build
-	python3 $< --flow reconfig --cols ${COLS} --rows ${ROWS} --nops ${NOPS} --reconfigs ${RECONFIGS} > $@
+	python3 $< --flow reconfig --cols ${COLS} --rows ${ROWS} --nops ${NOPS} --switchboxes ${SWITCHBOXES} --reconfigs ${RECONFIGS} > $@
 
 ${elf_loadpdi}: build/reconfig_${suffix}.mlir
 	cd build && aiecc --get-full-elf --full-elf-name=$(notdir $@) ${aiecc_flags} $(notdir $<)

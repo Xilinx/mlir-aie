@@ -22,7 +22,7 @@ column into the host buffer, which equals `[0, 1, ..., cols*rows - 1]`. After
 sending its value each core executes a run of no-op `aie.event` instructions
 that pad its program memory (up to the ~16 KB per-core limit).
 
-Three flows are emitted from the same building blocks:
+Three build variants are emitted from the same building blocks:
 
 - **`--flow reconfig`**: three `aie.device`s (`@worker`, `@empty`, `@main`).
   `@main`'s runtime sequence loads `@empty` (reset) then loads and runs
@@ -70,10 +70,13 @@ Every iteration checks the output equals `[0, 1, ..., cols*rows-1]`.
 - `COLS`, `ROWS`: array shape (up to 8 x 4 on NPU2 / Strix).
 - `NOPS`: no-op `aie.event` instructions padding each core's program memory
   (~192 + 4·`NOPS` bytes; the 16 KB limit is reached near `NOPS=4000`).
+- `SWITCHBOXES`: unused compute-tile switchboxes filled directly with legal
+  stream-switch connections (raw `aie.switchbox` / `aie.connect`), growing the
+  configuration a reconfiguration must load without moving any data.
 - `ITERS`: number of timed iterations.
 
-Design-artifact names embed `COLS`/`ROWS`/`NOPS` so changing a parameter never
-picks up a stale artifact.
+Design-artifact names embed `COLS`/`ROWS`/`NOPS`/`SWITCHBOXES` so changing a
+parameter never picks up a stale artifact.
 
 ## Usage
 
@@ -85,17 +88,33 @@ make COLS=4 ROWS=2 NOPS=2000 ITERS=12 run_runlist
 
 Run the full benchmark (all approaches over small/medium/large array sizes),
 which writes the raw per-iteration runtimes to `benchmark.csv`, then plot it as
-a grouped bar chart (`benchmark.png`, black background, runlist excluded):
+a grouped bar chart (`benchmark.png`, black background):
 
 ```bash
 python3 benchmark.py      # -> benchmark.csv
 python3 plot.py           # benchmark.csv -> benchmark.png
 ```
 
+## Scaling studies
+
+Two extra studies isolate a single dimension (line graphs, black background):
+
+- **Program memory** (`benchmark_progmem.py` + `plot_progmem.py`): a tiny 1x1
+  array with no filled switchboxes, `NOPS` swept 0..4000; one line per approach
+  (`progmem.png`).
+- **Switchbox config** (`benchmark_switchbox.py` + `plot_switchbox.py`): a single
+  active core (one outbound flow, verified to run) with `SWITCHBOXES` swept
+  0..24 unused switchboxes filled directly with stream-switch configuration; one
+  line per approach, X axis the number of used switchboxes (`switchbox.png`).
+
+`run_scaling.sh` documents the exact invocations for all three figures.
+
 ## Source Files
 
-- `reconfiguration.py`: the parametrized design (`--flow reconfig|single|empty`).
+- `reconfiguration.py`: the parametrized design (`--flow reconfig|single|empty`,
+  `--cols --rows --nops --switchboxes --reconfigs`).
 - `test.cpp`: the C++ host testbench / micro-benchmark (three compile-time modes).
-- `benchmark.py`: drives every approach over several array sizes and writes the
-  raw runtimes to `benchmark.csv`.
-- `plot.py`: reads `benchmark.csv` and writes the grouped bar chart.
+- `benchmark.py` / `plot.py`: default grouped-bar comparison.
+- `benchmark_progmem.py` / `plot_progmem.py`: runtime vs core program memory.
+- `benchmark_switchbox.py` / `plot_switchbox.py`: runtime vs switchbox config.
+- `run_scaling.sh`: reproduces every figure.

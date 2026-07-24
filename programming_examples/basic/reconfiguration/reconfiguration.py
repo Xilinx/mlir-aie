@@ -10,7 +10,7 @@
 # A runtime sequence drains every column's values into the host output buffer,
 # which then equals [0, 1, ..., cols*rows - 1].
 #
-# Three flows are emitted from the same core/join/drain building blocks:
+# Three build variants are emitted from the same core/join/drain building blocks:
 #
 #   --flow reconfig  (default): three `aie.device`s (@worker, @empty, @main).
 #       @main's runtime sequence, for each reconfiguration, loads @empty (reset)
@@ -27,11 +27,12 @@
 #       between iterations (otherwise the configuration is cached).
 #
 # Parameters: --cols, --rows, --nops (program-memory padding per core),
-# --reconfigs (reconfig flow only).
+# --reconfigs (reconfig flow only), --switchboxes (unused switchboxes filled
+# with padding stream-switch configuration).
 #
 # Usage:
 #   python3 reconfiguration.py [--flow reconfig|single|empty] \
-#       [--cols C] [--rows R] [--nops M] [--reconfigs N] > aie.mlir
+#       [--cols C] [--rows R] [--nops M] [--reconfigs N] [--switchboxes S] > aie.mlir
 
 import argparse
 import sys
@@ -69,7 +70,14 @@ def _emit_send(fifo, value_i: int, nop_count: int):
         event(0)
 
 
-def _build_core_array(cols: int, rows: int, nop_count: int, looping: bool):
+def _get_tile(tiles, c: int, r: int):
+    key = (c, r)
+    if key not in tiles:
+        tiles[key] = tile(c, r)
+    return tiles[key]
+
+
+def _build_core_array(tiles, cols: int, rows: int, nop_count: int, looping: bool):
     """Build the cols x rows core array with per-column mem-tile joins.
 
     Returns the list of shim-side ObjectFIFOs (one per column), each carrying
@@ -89,11 +97,11 @@ def _build_core_array(cols: int, rows: int, nop_count: int, looping: bool):
                 _emit_send(fifo, value_i, nop_count)
 
     for c in range(cols):
-        mem_tile = tile(c, 1)
-        shim_tile = tile(c, 0)
+        mem_tile = _get_tile(tiles, c, 1)
+        shim_tile = _get_tile(tiles, c, 0)
         core_fifos = []
         for r in range(rows):
-            core_tile = tile(c, 2 + r)
+            core_tile = _get_tile(tiles, c, 2 + r)
             f = object_fifo(f"of_core_{c}_{r}", core_tile, mem_tile, 2, ELEM_TY)
             core_fifos.append(f)
             core_specs.append((core_tile, f, c * rows + r))
@@ -108,6 +116,74 @@ def _build_core_array(cols: int, rows: int, nop_count: int, looping: bool):
         build_core(core_tile, fifo, value_i)
 
     return shim_fifos
+
+
+def _fill_conns(col: int, row: int):
+    """Legal horizontal pass-through connections that fill a compute-tile
+    switchbox.
+
+    Each entry is (src_bundle, src_channel, dst_bundle, dst_channel).  The
+    connections only carry configuration -- no flow drives them -- so every
+    destination is distinct and every connection is individually legal, letting
+    the whole set route.  Only the East/West (horizontal) transit is used, which
+    needs both an East and a West neighbor; the North/South channels are left
+    entirely free so the control-packet reconfiguration approach, which delivers
+    its configuration up the columns, still has a legal route to every tile.
+    """
+    if not 0 < col < 7:
+        return []
+    return [(WireBundle.West, k, WireBundle.East, k) for k in range(4)] + [
+        (WireBundle.East, k, WireBundle.West, k) for k in range(4)
+    ]
+
+
+def _free_switchbox_tiles(cols: int, rows: int):
+    """Compute-row switchboxes NOT used by the core array or its drain path.
+
+    The array occupies, per column c < cols: rows 0..(1 + rows) (shim, mem tile
+    and `rows` cores).  Every remaining compute-row (2..5) switchbox on an inner
+    column is free to fill; outer columns (0 and 7) have no horizontal transit
+    (`_fill_conns` is empty) and are excluded.
+    """
+    free = []
+    for c in range(NPU2_COLUMNS):
+        used = set(range(2, 2 + rows)) if c < cols else set()
+        for r in range(2, 6):
+            if r not in used and _fill_conns(c, r):
+                free.append((c, r))
+    return free
+
+
+def max_switchboxes(cols: int, rows: int) -> int:
+    return len(_free_switchbox_tiles(cols, rows))
+
+
+def _fill_switchboxes(tiles, cols: int, rows: int, count: int):
+    """Emit `count` filled ``aie.switchbox`` regions on free compute tiles.
+
+    Programming stream-switch connections directly (rather than routing flows)
+    grows the switchbox configuration a reconfiguration must load, with no data
+    moving.  The regions are emitted before the cores so their tile declarations
+    dominate the ObjectFIFO lowering that follows.
+    """
+    if count <= 0:
+        return
+    free = _free_switchbox_tiles(cols, rows)
+    if count > len(free):
+        raise ValueError(
+            f"cannot fill {count} switchboxes in a {cols}x{rows} array "
+            f"(max {len(free)})"
+        )
+
+    def emit(tile_op, conns):
+        @switchbox(tile_op)
+        def _sb():
+            for conn in conns:
+                connect(*conn)
+            EndOp()
+
+    for c, r in free[:count]:
+        emit(_get_tile(tiles, c, r), _fill_conns(c, r))
 
 
 def _emit_drain(shim_fifos, rows: int, out):
@@ -125,7 +201,9 @@ def _emit_drain(shim_fifos, rows: int, out):
         dma_await_task(task)
 
 
-def build_reconfig_module(cols: int, rows: int, nop_count: int, num_reconfigs: int):
+def build_reconfig_module(
+    cols: int, rows: int, nop_count: int, num_reconfigs: int, num_switchboxes: int = 0
+):
     _validate(cols, rows)
     out_ty = np.ndarray[(cols * rows,), np.dtype[np.int32]]
 
@@ -133,7 +211,9 @@ def build_reconfig_module(cols: int, rows: int, nop_count: int, num_reconfigs: i
 
         @device(AIEDevice.npu2, sym_name="worker")
         def worker_body():
-            shim_fifos = _build_core_array(cols, rows, nop_count, looping=False)
+            tiles = {}
+            _fill_switchboxes(tiles, cols, rows, num_switchboxes)
+            shim_fifos = _build_core_array(tiles, cols, rows, nop_count, looping=False)
 
             @runtime_sequence(out_ty)
             def worker_sequence(out):
@@ -166,7 +246,7 @@ def build_reconfig_module(cols: int, rows: int, nop_count: int, num_reconfigs: i
     return ctx.module
 
 
-def build_single_module(cols: int, rows: int, nop_count: int):
+def build_single_module(cols: int, rows: int, nop_count: int, num_switchboxes: int = 0):
     _validate(cols, rows)
     out_ty = np.ndarray[(cols * rows,), np.dtype[np.int32]]
 
@@ -174,7 +254,9 @@ def build_single_module(cols: int, rows: int, nop_count: int):
 
         @device(AIEDevice.npu2)
         def device_body():
-            shim_fifos = _build_core_array(cols, rows, nop_count, looping=True)
+            tiles = {}
+            _fill_switchboxes(tiles, cols, rows, num_switchboxes)
+            shim_fifos = _build_core_array(tiles, cols, rows, nop_count, looping=True)
 
             @runtime_sequence(out_ty)
             def sequence(out):
@@ -216,13 +298,24 @@ def main():
         default=1,
         help="Number of empty+worker reconfigurations (reconfig flow only).",
     )
+    parser.add_argument(
+        "--switchboxes",
+        type=int,
+        default=0,
+        help="Number of unused compute-tile switchboxes filled with padding "
+        "stream-switch configuration.",
+    )
     args = parser.parse_args()
     if args.flow == "single":
-        print(build_single_module(args.cols, args.rows, args.nops))
+        print(build_single_module(args.cols, args.rows, args.nops, args.switchboxes))
     elif args.flow == "empty":
         print(build_empty_module())
     else:
-        print(build_reconfig_module(args.cols, args.rows, args.nops, args.reconfigs))
+        print(
+            build_reconfig_module(
+                args.cols, args.rows, args.nops, args.reconfigs, args.switchboxes
+            )
+        )
 
 
 if __name__ == "__main__":
