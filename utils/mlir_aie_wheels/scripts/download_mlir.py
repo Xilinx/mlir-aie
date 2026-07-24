@@ -7,6 +7,7 @@
 #
 ##===------------------------------------------------------------------------------===##
 # Python shim for scripts/download_mlir.sh (cross-platform, Windows-friendly).
+# Reuses matching downloads, native-tools installs, and extracted trees.
 #
 # Env:
 #   ENABLE_RTTI: ON/OFF (default: ON)
@@ -24,6 +25,7 @@ import shutil
 import subprocess
 import sys
 import zipfile
+from importlib import metadata
 from pathlib import Path
 
 
@@ -37,13 +39,11 @@ def _pip(args):
     _run([sys.executable, "-m", "pip", *args])
 
 
-def _try_rmtree(path):
+def _remove_tree(path):
     try:
         shutil.rmtree(path)
     except FileNotFoundError:
-        return
-    except Exception as exc:
-        print(f"[warn] failed to remove '{path}': {exc}")
+        pass
 
 
 def _find_clone_llvm(script_dir):
@@ -94,6 +94,126 @@ def _wheel_version():
         "LLVM_PROJECT_COMMIT": _sh_var(text, "LLVM_PROJECT_COMMIT"),
     }
     return _expand_sh(_sh_var(text, "WHEEL_VERSION"), vars).strip()
+
+
+def _installed_version(distribution):
+    try:
+        return metadata.version(distribution)
+    except metadata.PackageNotFoundError:
+        return None
+
+
+def _install_native_tools(version):
+    if _installed_version("mlir-native-tools") == version:
+        print(f"[reuse] mlir-native-tools {version}")
+        return
+    _pip(["install", "--no-deps", "--upgrade", f"mlir-native-tools=={version}"])
+
+
+def _target_platform_args():
+    cibw_archs = (os.environ.get("CIBW_ARCHS") or "").strip()
+    matrix_os = (os.environ.get("MATRIX_OS") or "").strip()
+
+    if cibw_archs not in {"arm64", "aarch64"}:
+        return []
+    if matrix_os in {"macos-12", "macos-14"} and cibw_archs == "arm64":
+        return ["--platform", "macosx_12_0_arm64", "--only-binary=:all:"]
+    if matrix_os == "ubuntu-20.04" and cibw_archs == "aarch64":
+        return ["--platform", "linux_aarch64", "--only-binary=:all:"]
+    raise SystemExit(f"Unsupported CIBW_ARCHS/MATRIX_OS: {cibw_archs}/{matrix_os}")
+
+
+def _wheel_arch_marker():
+    cibw_archs = (os.environ.get("CIBW_ARCHS") or "").strip().lower()
+    return {
+        "amd64": "win_amd64",
+        "x86_64": "x86_64",
+        "arm64": "arm64",
+        "aarch64": "aarch64",
+    }.get(cibw_archs)
+
+
+def _matching_wheels(directory, distribution, version):
+    package_name = distribution.replace("-", "_")
+    prefix = f"{package_name}-{version}-".lower()
+    wheels = sorted(
+        wheel
+        for wheel in directory.glob("*.whl")
+        if wheel.name.lower().startswith(prefix)
+    )
+
+    # A shared wheel directory may contain the same version for several hosts.
+    if marker := _wheel_arch_marker():
+        wheels = [wheel for wheel in wheels if marker in wheel.name.lower()]
+    return wheels
+
+
+def _download_wheel(directory, distribution, version, platform_args):
+    wheels = _matching_wheels(directory, distribution, version)
+    if not wheels:
+        _pip(
+            [
+                "-q",
+                "download",
+                "--no-deps",
+                "--dest",
+                str(directory),
+                *platform_args,
+                f"{distribution}=={version}",
+            ]
+        )
+        wheels = _matching_wheels(directory, distribution, version)
+
+    if len(wheels) != 1:
+        raise RuntimeError(
+            f"Expected one cached {distribution} {version} wheel in {directory}, "
+            f"found {len(wheels)}"
+        )
+    print(f"[reuse] {wheels[0].name}")
+    return wheels[0]
+
+
+def _extraction_matches(wheel, dist_info):
+    # RECORD identifies the exact wheel without invalidating the Windows path fixup.
+    record = dist_info / "RECORD"
+    if not record.is_file():
+        return False
+    try:
+        with zipfile.ZipFile(wheel) as archive:
+            archived_record = archive.read(f"{dist_info.name}/RECORD")
+        return record.read_bytes() == archived_record
+    except (KeyError, OSError, zipfile.BadZipFile):
+        return False
+
+
+def _ensure_extracted(wheel, directory, distribution, version):
+    package_name = distribution.replace("-", "_")
+    package_dir = directory / package_name
+    dist_info = directory / f"{package_name}-{version}.dist-info"
+
+    if (
+        package_dir.is_dir()
+        and dist_info.is_dir()
+        and _extraction_matches(wheel, dist_info)
+    ):
+        print(f"[reuse] extracted {wheel.name}")
+        return package_dir
+
+    if package_dir.exists() or dist_info.exists():
+        print(f"[refresh] extracted {wheel.name}")
+    _remove_tree(package_dir)
+    for old_dist_info in directory.glob(f"{package_name}-*.dist-info"):
+        _remove_tree(old_dist_info)
+
+    print(f"[unzip] {wheel.name}")
+    with zipfile.ZipFile(wheel) as archive:
+        archive.extractall(directory)
+
+    if not package_dir.is_dir() or not dist_info.is_dir():
+        raise RuntimeError(
+            f"Wheel did not contain {package_dir.name} and {dist_info.name}"
+        )
+    return package_dir
 
 
 # --------------------------------------------------------------------------------------
@@ -198,49 +318,19 @@ def _fixup_llvm_diaguids(mlir_prefix):
 def main():
     enable_rtti = (os.environ.get("ENABLE_RTTI") or "ON").upper()
     no_rtti = enable_rtti == "OFF"
-
-    # Mirror: rm -rf mlir || true (also clear the sibling to avoid stale state).
-    _try_rmtree(Path("mlir"))
-    _try_rmtree(Path("mlir_no_rtti"))
+    distribution = "mlir-no-rtti" if no_rtti else "mlir"
+    directory = Path.cwd()
 
     version = _wheel_version()
     print(f"Using MLIR version: {version}")
+    _install_native_tools(version)
 
-    _pip(["install", "-U", "--force-reinstall", f"mlir-native-tools=={version}"])
+    wheel = _download_wheel(directory, distribution, version, _target_platform_args())
+    mlir_prefix = _ensure_extracted(wheel, directory, distribution, version)
+    _fixup_llvm_diaguids(mlir_prefix)
 
-    pkg = f"mlir{'-no-rtti' if no_rtti else ''}=={version}"
-    cibw_archs = (os.environ.get("CIBW_ARCHS") or "").strip()
-    matrix_os = (os.environ.get("MATRIX_OS") or "").strip()
-
-    if cibw_archs in {"arm64", "aarch64"}:
-        if matrix_os in {"macos-12", "macos-14"} and cibw_archs == "arm64":
-            plat = "macosx_12_0_arm64"
-        elif matrix_os == "ubuntu-20.04" and cibw_archs == "aarch64":
-            plat = "linux_aarch64"
-        else:
-            raise SystemExit(
-                f"Unsupported CIBW_ARCHS/MATRIX_OS: {cibw_archs}/{matrix_os}"
-            )
-
-        _pip(["-q", "download", pkg, "--platform", plat, "--only-binary=:all:"])
-    else:
-        _pip(["-q", "download", pkg])
-
-    wheels = sorted(Path.cwd().glob("mlir*whl"))
-    if not wheels:
-        raise FileNotFoundError("No wheels matched pattern: 'mlir*whl'")
-
-    for wheel in wheels:
-        print(f"[unzip] {wheel.name}")
-        with zipfile.ZipFile(wheel, "r") as zf:
-            zf.extractall(Path.cwd())
-
-    for d in (Path("mlir"), Path("mlir_no_rtti")):
-        if d.is_dir():
-            _fixup_llvm_diaguids(d)
-
-    print(Path.cwd())
-    for p in sorted(Path.cwd().glob("mlir*")):
+    print(directory)
+    for p in sorted(directory.glob("mlir*")):
         print(p.name)
 
     return 0

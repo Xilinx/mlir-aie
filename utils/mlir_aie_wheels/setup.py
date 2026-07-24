@@ -1,6 +1,7 @@
 # Copyright (C) 2023-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+import hashlib
 import os
 import platform
 import re
@@ -57,6 +58,22 @@ def _windows_short_dir(name: str, *, clean: bool = False) -> Path:
         _remove_tree(path)
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def _windows_path_key(path: Path) -> str:
+    # Junction and build-cache names must remain short but unique per checkout.
+    normalized = os.path.normcase(os.fspath(path.resolve()))
+    return hashlib.sha256(normalized.encode("utf-8")).hexdigest()[:10]
+
+
+def _windows_build_cache_name(
+    source_dir: Path, generator: str, python_tag: str, arch: str, rtti: str
+) -> str:
+    generator_key = re.sub(r"[^a-z0-9]+", "-", generator.lower()).strip("-")
+    return (
+        f"main-{_windows_path_key(source_dir)}-{generator_key or 'default'}-"
+        f"{python_tag}-{arch}-{rtti}"
+    )
 
 
 def _windows_short_alias(name: str, target: Path) -> Path:
@@ -183,12 +200,19 @@ class CMakeBuild(build_ext):
         cmake_module_root = MLIR_AIE_SOURCE_DIR
 
         if platform.system() == "Windows":
-            # Keep source and dependency paths short without moving the installed trees.
-            cmake_source_dir = _windows_short_alias("src", cmake_source_dir).absolute()
+            # Keep paths short without allowing one checkout to repoint
+            # another checkout's junctions.
+            source_alias = f"src-{_windows_path_key(cmake_source_dir)}"
+            cmake_source_dir = _windows_short_alias(
+                source_alias, cmake_source_dir
+            ).absolute()
             cmake_module_root = cmake_source_dir
+            dependency_alias = (
+                f"{_windows_tree_alias_name(MLIR_INSTALL_ABS_PATH.name)}-"
+                f"{_windows_path_key(MLIR_INSTALL_ABS_PATH)}"
+            )
             MLIR_INSTALL_ABS_PATH = _windows_short_alias(
-                _windows_tree_alias_name(MLIR_INSTALL_ABS_PATH.name),
-                MLIR_INSTALL_ABS_PATH,
+                dependency_alias, MLIR_INSTALL_ABS_PATH
             ).absolute()
 
         cmake_args = [
@@ -302,18 +326,41 @@ class CMakeBuild(build_ext):
         cleanup_build_temp = False
         build_temp = Path(self.build_temp) / ext.name
         if platform.system() == "Windows":
-            build_temp = _windows_short_dir("main", clean=True)
-            cleanup_build_temp = True
+            python_tag = f"cp{sys.version_info.major}{sys.version_info.minor}"
+            arch = re.sub(
+                r"[^a-z0-9]+",
+                "-",
+                os.getenv("CIBW_ARCHS", "native").lower(),
+            )
+            rtti = "rtti" if check_env("ENABLE_RTTI", 1) else "no-rtti"
+            build_temp = _windows_short_dir(
+                _windows_build_cache_name(
+                    Path(ext.sourcedir), cmake_generator, python_tag, arch, rtti
+                )
+            )
         elif not build_temp.exists():
             build_temp.mkdir(parents=True)
 
         print("ENV", pprint(os.environ), file=sys.stderr)
         print("cmake", " ".join(cmake_args), file=sys.stderr)
 
+        configure_args = list(cmake_args)
+        if platform.system() == "Windows":
+            # cibuildwheel recreates its build venv on each run. Refresh cached
+            # Python and pybind11 paths while retaining the compiled build tree.
+            configure_args[:0] = [
+                "-UPython3_*",
+                "-U_Python3_*",
+                "-UPython_*",
+                "-U_Python_*",
+                "-Upybind11_*",
+                "-UPYBIND11_*",
+            ]
+
         build_succeeded = False
         try:
             subprocess.run(
-                ["cmake", _cmake_path(cmake_source_dir), *cmake_args],
+                ["cmake", _cmake_path(cmake_source_dir), *configure_args],
                 cwd=build_temp,
                 check=True,
             )

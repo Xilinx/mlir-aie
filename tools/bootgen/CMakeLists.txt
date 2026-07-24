@@ -4,6 +4,14 @@
 
 set(BOOTGEN_SOURCE ${PROJECT_SOURCE_DIR}/third_party/bootgen)
 
+# Avoid retriggering compilation when configuration produces identical sources.
+function(write_bootgen_source_if_changed path contents)
+  file(READ "${path}" current_contents)
+  if(NOT current_contents STREQUAL contents)
+    file(WRITE "${path}" "${contents}")
+  endif()
+endfunction()
+
 # Upstream (xilinx_v2026.1) splits sources into per-architecture <dir>/src
 # trees; glob each one, matching upstream's own Makefile.
 set(bootgen_src_dirs
@@ -52,20 +60,20 @@ set(bootgen_include_dirs
 # If you want to use malloc, then include stdlib.h
 file(READ ${BOOTGEN_SOURCE}/utils/src/cdo-npi.c FILE_CONTENTS)
 string(REPLACE "#include <malloc.h>" "" FILE_CONTENTS "${FILE_CONTENTS}")
-file(WRITE ${BOOTGEN_SOURCE}/utils/src/cdo-npi.c "${FILE_CONTENTS}")
+write_bootgen_source_if_changed(${BOOTGEN_SOURCE}/utils/src/cdo-npi.c "${FILE_CONTENTS}")
 
 file(READ ${BOOTGEN_SOURCE}/utils/src/cdo-alloc.c FILE_CONTENTS)
 string(REPLACE "#include <malloc.h>" "" FILE_CONTENTS "${FILE_CONTENTS}")
-file(WRITE ${BOOTGEN_SOURCE}/utils/src/cdo-alloc.c "${FILE_CONTENTS}")
+write_bootgen_source_if_changed(${BOOTGEN_SOURCE}/utils/src/cdo-alloc.c "${FILE_CONTENTS}")
 
 # Strip the per-CDO-file "Generating: ..." printf: cdo_driver_mlir_aie is
-# called directly (not via the bootgen executable) 
+# called directly (not via the bootgen executable)
 file(READ ${BOOTGEN_SOURCE}/cdo-driver/cdo_driver.c FILE_CONTENTS)
 string(REGEX REPLACE "\n[ \t]*printf\\(\"Generating: %s\\\\n\", cdoFileName\\);"
   "" FILE_CONTENTS "${FILE_CONTENTS}")
-file(WRITE ${BOOTGEN_SOURCE}/cdo-driver/cdo_driver.c "${FILE_CONTENTS}")
+write_bootgen_source_if_changed(${BOOTGEN_SOURCE}/cdo-driver/cdo_driver.c "${FILE_CONTENTS}")
 
-find_package(OpenSSL REQUIRED)
+find_package(OpenSSL REQUIRED COMPONENTS SSL)
 if (OPENSSL_FOUND)
   message (STATUS "OpenSSL found")
   message (STATUS "OpenSSL include directories:" ${OPENSSL_INCLUDE_DIR})
@@ -78,7 +86,7 @@ find_package(Threads REQUIRED)
 # since we explicitly link OpenSSL::applink
 file(READ ${BOOTGEN_SOURCE}/common/src/main.cpp FILE_CONTENTS)
 string(REPLACE "#include \"openssl/ms/applink.c\"" "" FILE_CONTENTS "${FILE_CONTENTS}")
-file(WRITE ${BOOTGEN_SOURCE}/common/src/main.cpp "${FILE_CONTENTS}")
+write_bootgen_source_if_changed(${BOOTGEN_SOURCE}/common/src/main.cpp "${FILE_CONTENTS}")
 
 # Vendored LMS/HSS post-quantum signature library upstream added for newer
 # secure-boot support; built as a static lib instead of shelling out to its
@@ -135,7 +143,7 @@ if(CMAKE_C_COMPILER_ID MATCHES "Clang|GNU")
 endif()
 
 add_library(bootgen-lib STATIC ${libsources})
-# bootgen must be compiled with PIE/PIC, auditwheel repair's 
+# bootgen must be compiled with PIE/PIC, auditwheel repair's
 # patchelf-based RPATH rewrite corrupts the non-PIE binary.
 set_target_properties(bootgen-lib PROPERTIES POSITION_INDEPENDENT_CODE ON)
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang|GNU")

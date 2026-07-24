@@ -731,6 +731,9 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   dpm.addPass(X::createAIESubstituteShimDMAAllocationsPass());
   dpm.addPass(X::createAIEUnrollRuntimeSequenceLoopsPass());
   dpm.addPass(mlir::createCanonicalizerPass());
+  // Decompose oversized non-contiguous ND transfers (wrap/stride exceeding the
+  // hardware BD field limits) into legal sub-transfers before BD lowering.
+  dpm.addPass(X::createAIEDecomposeLargeDmaBdPass());
   // A runtime-bound scf.for that survived unroll takes the dynamic BD pool path
   // (rewritten to pool pop/push, ids drawn at runtime); the static allocator
   // below skips it. Straight-line sequences fall through unchanged.

@@ -223,6 +223,10 @@ cmake_dependent_option(AIECC_LINK_WITH_XCHESSCC
 
 # If we need runtime libs, then statically link them.
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+if(MSVC AND OPENSSL_USE_STATIC_LIBS)
+  # Match OpenSSL's library suffix to the static MSVC runtime selected above.
+  set(OPENSSL_MSVC_STATIC_RT TRUE)
+endif()
 
 add_flag_if_supported("-Werror=sign-compare" WERROR_SIGN_COMPARE)
 add_flag_if_supported("-Werror=unused" WERROR_USED)

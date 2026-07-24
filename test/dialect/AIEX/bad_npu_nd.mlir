@@ -7,27 +7,6 @@
 
 // RUN: aie-opt --split-input-file --verify-diagnostics %s
 
-// A non-contiguous strided access with d0 > 1023 must still be rejected.
-// sizes=[1,1,1080,1920], strides=[0,0,1921,1]: stride1=1921 != sizes0=1920,
-// so this is NOT a contiguous row scan and cannot be exempted.
-module {
-  aie.device(npu1) {
-    aie.runtime_sequence(%in : memref<1920x1080xi32>, %buf : memref<32xi32>, %out : memref<1920x1080xi32>) {
-      %c0 = arith.constant 0 : i64
-      %c1 = arith.constant 1 : i64
-      %c1920 = arith.constant 1920 : i64
-      %c1921 = arith.constant 1921 : i64
-      %c1080 = arith.constant 1080 : i64
-      // expected-error@+1 {{Size 0 exceeds the [0:1023] range}}
-      aiex.npu.dma_memcpy_nd (%in[%c0,%c0,%c0,%c0][%c1,%c1,%c1080,%c1920][%c0,%c0,%c1921,%c1]) { metadata = @of_fromMem, id = 0 : i64 } : memref<1920x1080xi32>
-    }
-    %tile_0_0 = aie.tile(0, 0)
-    aie.shim_dma_allocation @of_fromMem (%tile_0_0, MM2S, 0)
-  }
-}
-
-// -----
-
 module {
   aie.device(npu1) {
     aie.runtime_sequence(%in : memref<128x4x2x8xi32>, %buf : memref<32xi32>, %out : memref<8192xi32>) {
@@ -85,38 +64,19 @@ module {
 
 // Strides and sizes expressed in types other than i32 should not overflow hardware limitations when converted to 4-byte granularity.
 // The following tests check this.
-  
+
 module {
   aie.device(npu1) {
     aie.runtime_sequence(%a : memref<8xi8>) {
       %c0 = arith.constant 0 : i64
       %c1 = arith.constant 1 : i64
       %c2 = arith.constant 2 : i64
-      %c4 = arith.constant 4 : i64 
+      %c4 = arith.constant 4 : i64
       %c8 = arith.constant 8 : i64
       %c2048 = arith.constant 2048 : i64
       // Although 2048 exceeds the 0:1023 limit for size 0, since the elements are i8s,
       // this should be a size of 512 in address granularity (4 bytes) and hence pass the test.
       aiex.npu.dma_memcpy_nd (%a[%c0,%c0,%c0,%c0][%c1,%c1,%c2,%c2048][%c0,%c0,%c4,%c1]) { metadata = @objectfifo, id = 0 : i64 } : memref<8xi8>
-    }
-    %tile_0_0 = aie.tile(0, 0)
-    aie.shim_dma_allocation @objectfifo (%tile_0_0, MM2S, 0)
-  }
-}
-
-// -----
-
-module {
-  aie.device(npu1) {
-    aie.runtime_sequence(%a : memref<8xi16>) {
-      %c0 = arith.constant 0 : i64
-      %c1 = arith.constant 1 : i64
-      %c2 = arith.constant 2 : i64
-      %c4 = arith.constant 4 : i64
-      %c8 = arith.constant 8 : i64
-      %c2048 = arith.constant 2048 : i64
-      // expected-error@+1 {{Size 0 exceeds the [0:1023] range}}
-      aiex.npu.dma_memcpy_nd (%a[%c0,%c0,%c0,%c0][%c1,%c1,%c2,%c2048][%c0,%c0,%c4,%c1]) { metadata = @objectfifo, id = 0 : i64 } : memref<8xi16>
     }
     %tile_0_0 = aie.tile(0, 0)
     aie.shim_dma_allocation @objectfifo (%tile_0_0, MM2S, 0)
