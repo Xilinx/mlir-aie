@@ -22,35 +22,26 @@ void layer_norm(const T *restrict input, T *restrict output, int32_t cols) {
 
   int vector_chunks = cols / N;
 
-  // Pass 1: mean = sum(x) / cols. Accumulate the running sum in an f32
-  // accumulator, not a bf16 vector: a bf16 sum drops low-order bits as the
-  // reduction length grows (embedding_dim is typically thousands), so the mean
-  // itself is already lossy before the variance is even computed.
+  // Reduce the row sum in an f32 accumulator, not a bf16 vector: a bf16 running
+  // sum drops low-order bits as the reduction length grows (embedding_dim is
+  // typically thousands), so the mean -- and every quantity derived from it --
+  // is already lossy before the variance is computed. The sum of squares is
+  // already reduced in f32.
   ::aie::accum<accfloat, N> sum_acc = ::aie::zeros<accfloat, N>();
+  ::aie::vector<float, N> sum_sq_acc = ::aie::zeros<float, N>();
   for (int i = 0; i < vector_chunks; i++) {
     ::aie::vector<T, N> reg_a = ::aie::load_v<N>(input + i * N);
     sum_acc = ::aie::add(sum_acc, reg_a);
+    ::aie::vector<float, N> sq_acc = ::aie::mul(reg_a, reg_a);
+    sum_sq_acc = ::aie::add(sum_sq_acc, sq_acc);
   }
+
   float mean =
       ::aie::reduce_add(sum_acc.template to_vector<float>()) / float(cols);
-  ::aie::vector<T, N> mean_v = ::aie::broadcast<T, N>((T)mean);
-
-  // Pass 2: variance = sum((x - mean)^2) / cols. Centre first, then square
-  // (the numerically stable two-pass form) instead of E[x^2] - mean^2, which
-  // catastrophically cancels when mean^2 is close to E[x^2] -- the common case
-  // for zero-ish-mean activations, and the reason this op needed a loose 0.1
-  // tolerance.
-  ::aie::accum<accfloat, N> var_acc = ::aie::zeros<accfloat, N>();
-  for (int i = 0; i < vector_chunks; i++) {
-    ::aie::vector<T, N> reg_a = ::aie::load_v<N>(input + i * N);
-    ::aie::vector<T, N> diff_v = ::aie::sub(reg_a, mean_v);
-    ::aie::vector<float, N> sq = ::aie::mul_square(diff_v);
-    var_acc = ::aie::add(var_acc, sq);
-  }
-  float variance =
-      ::aie::reduce_add(var_acc.template to_vector<float>()) / float(cols);
+  float variance = ::aie::reduce_add(sum_sq_acc) / float(cols) - mean * mean;
   float inv_std = aie::invsqrt(variance + epsilon);
 
+  ::aie::vector<T, N> mean_v = ::aie::broadcast<T, N>((T)mean);
   ::aie::vector<T, N> inv_std_v = ::aie::broadcast<T, N>((T)inv_std);
 
   for (int i = 0; i < vector_chunks; i++) {

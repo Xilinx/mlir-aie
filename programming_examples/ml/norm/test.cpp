@@ -50,7 +50,7 @@ int verify_norm_kernel(DATATYPE_IN1 *bufIn1, DATATYPE_OUT *bufOut,
   constexpr float epsilon = 1e-5f;
   constexpr float gamma = 1.0f;
   constexpr float beta = 0.0f;
-  const float tol = (op == "layer") ? 0.1f : 0.05f;
+  const float tol = 0.05f;
 
   std::vector<float> expected(ROWS * COLS, 0.0f);
   for (int r = 0; r < ROWS; r++) {
@@ -94,6 +94,35 @@ int verify_norm_kernel(DATATYPE_IN1 *bufIn1, DATATYPE_OUT *bufOut,
   }
 
   const std::string label = (op == "rms") ? "RMSNorm" : "LayerNorm";
+
+  // Aggregate regression guard (op=layer). The elementwise tolerance above is
+  // bounded by bf16 output quantization and barely moves when the reduction
+  // loses precision, so it cannot catch an accumulation regression on its own.
+  // The mean per-row rel-L2 can (f32 sum accumulation ~0.6%, a bf16 sum
+  // ~1.1-1.9%).
+  if (op == "layer") {
+    double rel_l2_sum = 0.0;
+    for (int r = 0; r < ROWS; r++) {
+      double num = 0.0, den = 0.0;
+      for (int c = 0; c < COLS; c++) {
+        int idx = r * COLS + c;
+        double ev = expected[idx];
+        double hv = test_utils::bfloat16_to_float(bufOut[idx]);
+        num += (ev - hv) * (ev - hv);
+        den += ev * ev;
+      }
+      rel_l2_sum += std::sqrt(num / den);
+    }
+    const double rel_l2 = rel_l2_sum / double(ROWS);
+    const double rel_l2_max = 0.01;
+    if (rel_l2 > rel_l2_max) {
+      std::cout << label << " mean per-row rel-L2 " << rel_l2 << " exceeds "
+                << rel_l2_max << " (accumulation-precision regression?)"
+                << std::endl;
+      errors++;
+    }
+  }
+
   if (errors == 0)
     std::cout << label << " Passed : " << pass << " out of " << (ROWS * COLS)
               << std::endl;
