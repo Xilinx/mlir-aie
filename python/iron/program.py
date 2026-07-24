@@ -11,6 +11,7 @@ from ..extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImport
 from ..helpers.dialects.func import FuncBase
 from ..utils import trace as trace_utils
 from .device import Device
+from ..utils.compile.jit.context import get_compile_arg
 from .resolvable import Resolvable
 from .runtime import Runtime
 from .scratchpad_parameter import ScratchpadParameter
@@ -174,8 +175,14 @@ class Program:
                         shimtile_events=self._rt._shimtile_events,
                     )
 
-                # In/Out Sequence
-                self._rt.resolve()
+                # In/Out Sequence.  On the full-ELF path the runtime sequence
+                # must load its own PDI (no xclbin configures the device), so
+                # pass the device symbol as the load_pdi reference.  The flag is
+                # injected into the compile context by CompilableDesign.
+                load_pdi_device_ref = (
+                    device_name if get_compile_arg("_iron_full_elf") else None
+                )
+                self._rt.resolve(load_pdi_device_ref=load_pdi_device_ref)
 
             self._print_verify(ctx)
             return ctx.module

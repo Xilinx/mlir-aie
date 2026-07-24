@@ -25,16 +25,17 @@ The example targets the Ryzen™ AI NPU through the IRON `@iron.jit` host runtim
 ## Ryzen™ AI Usage
 
 ```shell
-make run        # compile + execute on the attached NPU (auto-detected)
-make clean
+python3 vector_vector_mul.py
 ```
 
-The NPU generation (NPU1 / NPU2) is auto-detected by the IRON runtime at JIT time, so no device flag is needed. `make run` reports both NPU latency (from the runtime) and end-to-end Python wall-clock so the host-side overhead delta is visible.
+The IRON JIT runtime detects the attached NPU generation automatically. The
+script compiles the design on its first invocation, runs it, verifies the
+result, and reports both NPU latency and end-to-end Python wall-clock time.
 
-For finer-grained benchmarking, invoke the script directly:
+For finer-grained benchmarking or a different vector size:
 
 ```shell
-python3 vector_vector_mul.py -n 256 -w 20 -i 100   # vector size, warmup, iters
+python3 vector_vector_mul.py --num-elements 256 --warmup 20 --iters 100
 ```
 
 Run `python3 vector_vector_mul.py --help` for the full flag list.

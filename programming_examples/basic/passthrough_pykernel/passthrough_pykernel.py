@@ -94,7 +94,7 @@ def _validate(opts):
 
 
 def _run_and_verify(opts):
-    in_t = iron.arange(1, VECTOR_SIZE + 1, dtype=np.uint8, device="npu")
+    in_t = iron.arange(VECTOR_SIZE, dtype=np.uint8, device="npu")
     out_t = iron.zeros(VECTOR_SIZE, dtype=np.uint8, device="npu")
 
     passthrough_pykernel(in_t, out_t)

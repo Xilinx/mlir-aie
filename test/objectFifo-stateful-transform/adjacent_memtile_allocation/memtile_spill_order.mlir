@@ -38,9 +38,6 @@ module {
     %mem1 = aie.tile(1, 1)
     %mem2 = aie.tile(2, 1)
     %mem3 = aie.tile(3, 1)
-    %core1 = aie.tile(1, 2)
-    %core2 = aie.tile(2, 2)
-    %core3 = aie.tile(3, 2)
 
     // IR order: block first, then small, then large.
     aie.objectfifo @block(%shim3, {%mem3}, 1 : i32) : !aie.objectfifo<memref<524000xi8>>
@@ -48,14 +45,5 @@ module {
     aie.objectfifo @small(%shim1, {%mem1}, 2 : i32) : !aie.objectfifo<memref<260000xi8>>
 
     aie.objectfifo @large(%shim2, {%mem2}, 2 : i32) : !aie.objectfifo<memref<400000xi8>>
-
-    aie.objectfifo @small_out(%mem1, {%core1}, 2 : i32) : !aie.objectfifo<memref<260000xi8>>
-    aie.objectfifo.link [@small] -> [@small_out]([] [])
-
-    aie.objectfifo @large_out(%mem2, {%core2}, 2 : i32) : !aie.objectfifo<memref<400000xi8>>
-    aie.objectfifo.link [@large] -> [@large_out]([] [])
-
-    aie.objectfifo @block_out(%mem3, {%core3}, 1 : i32) : !aie.objectfifo<memref<524000xi8>>
-    aie.objectfifo.link [@block] -> [@block_out]([] [])
   }
 }
