@@ -36,8 +36,8 @@ If we imagine the 24-element wide tensor as 3 rows of 8 elements, the transforma
 
 The design is wrapped in `@iron.jit`, so a single command JIT-compiles and runs it on the attached NPU:
 ```bash
-make run                              # builds + runs on the NPU (devicename={npu,npu2})
-make emit-mlir                        # writes the lowered MLIR to build/aie.mlir without touching the NPU
+python3 to_stream.py
+python3 to_stream.py --dev npu --emit-mlir > aie.mlir
 ```
 
 The `# To/from AIE-array data movement` section of the design code is described in detail in [Section 2d](../../section-2d/).
