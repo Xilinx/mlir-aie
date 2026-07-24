@@ -296,6 +296,7 @@ class ExternalFunction(Kernel):
         *,
         symbol_prefix: str | None = None,
         use_chess: bool = False,
+        inline: bool = False,
     ) -> None:
         """
         Args:
@@ -325,13 +326,21 @@ class ExternalFunction(Kernel):
                 aiecc's front-end accordingly; mixing chess + peano EFs in
                 one design is rejected loudly because aiecc only invokes one
                 front-end per compile.
+            inline: When True, compile the kernel to ``alwaysinline`` LLVM IR
+                (``.ll``) that aiecc merges into the core via llvm-link and
+                inlines, instead of a separately object-linked ``.o``. Removes
+                the ``func.call`` boundary and the separate object. Peano path
+                only (the Chess/xchesscc toolchain cannot llvm-link).
         """
         self._original_name = name
         self._symbol_prefix = symbol_prefix
+        self._inline = inline
         effective_name = f"{symbol_prefix}_{name}" if symbol_prefix else name
         object_file_name_explicit = object_file_name is not None
         if not object_file_name:
-            object_file_name = f"{effective_name}.o"
+            object_file_name = (
+                f"{effective_name}.ll" if inline else f"{effective_name}.o"
+            )
         super().__init__(effective_name, object_file_name, arg_types)
 
         if source_file is not None:
@@ -438,6 +447,7 @@ class ExternalFunction(Kernel):
             # contents even when name + arg_types + flags + source are
             # identical, so the digest must distinguish them.
             f"chess={self._use_chess}",
+            f"inline={self._inline}",
         ]
         if self._source_string:
             parts.append(self._source_string)

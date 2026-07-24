@@ -7,6 +7,7 @@
 
 import logging
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -48,14 +49,46 @@ def resolve_target_arch(device=None) -> str:
     )
 
 
+def _make_ir_inlinable(ir_path: str, symbol_name: str) -> None:
+    """Rewrite an emitted LLVM IR kernel so aiecc inlines it into the core.
+
+    Gives the kernel ``define`` ``alwaysinline`` (so aiecc's conservative
+    ``-inline-threshold`` still inlines it after the llvm-link merge) and
+    ``linkonce_odr`` linkage (so the now-dead definition is DCE'd post-inline
+    instead of being codegen'd). Mirrors the PythoC inline path. Linkage
+    precedes the ``dso_local`` preemption specifier and function attributes
+    follow ``local_unnamed_addr`` in the LLVM IR grammar, so the insertions
+    below are well-formed.
+    """
+    with open(ir_path) as f:
+        lines = f.read().splitlines()
+    define_re = re.compile(r"@" + re.escape(symbol_name) + r"\b\s*\(")
+    out = []
+    for line in lines:
+        if line.startswith("define") and define_re.search(line):
+            if "linkonce_odr" not in line:
+                line = re.sub(r"^define\s+", "define linkonce_odr ", line, count=1)
+            if not re.search(r"\balwaysinline\b", line):
+                line = re.sub(
+                    r"(\s)(#\d+\s+)?\{\s*$",
+                    lambda m: m.group(1) + "alwaysinline " + (m.group(2) or "") + "{",
+                    line,
+                )
+        out.append(line)
+    with open(ir_path, "w") as f:
+        f.write("\n".join(out) + "\n")
+
+
 def compile_cxx_core_function(
     source_path: str,
     target_arch: str,
     output_path: str,
+    symbol_name: str | None = None,
     include_dirs: list[str] | None = None,
     compile_args: list[str] | None = None,
     cwd: str | None = None,
     use_chess: bool = False,
+    inline: bool = False,
 ):
     """
     Compile a C++ core function via either Peano (default) or the Chess
@@ -64,7 +97,13 @@ def compile_cxx_core_function(
     Parameters:
         source_path (str): Path to C++ source.
         target_arch (str): Target architecture, e.g., aie2.
-        output_path (str): Output object file path.
+        output_path (str): Output object file path (``.o``), or LLVM IR file
+            (``.ll``) when ``inline`` is True.
+        symbol_name (str, optional): Required when ``inline`` is True; names the
+            LLVM ``define`` for the kernel that ``_make_ir_inlinable`` rewrites
+            to ``alwaysinline`` / ``linkonce_odr``.  Must match the symbol as it
+            appears in the freshly emitted ``.ll`` (i.e. the name the source
+            defines the function under).
         include_dirs (list[str], optional): List of include directories to add with -I.
         compile_args (list[str], optional): Additional compile arguments
             forwarded verbatim to the chosen compiler.
@@ -78,6 +117,8 @@ def compile_cxx_core_function(
             include path is added explicitly here so it doesn't depend on
             the Chess wrapper's include search.
     """
+    # ``-c`` (object) by default; ``-S -emit-llvm`` (textual IR) for inline.
+    emit_flags = ["-S", "-emit-llvm"] if inline else ["-c"]
     if use_chess:
         wrapper = shutil.which("xchesscc_wrapper")
         if not wrapper:
@@ -89,7 +130,7 @@ def compile_cxx_core_function(
         cmd = [
             wrapper,
             target_arch,  # "aie2" or "aie2p"
-            "-c",
+            *emit_flags,
             source_path,
             "-o",
             f"{output_path}",
@@ -99,7 +140,7 @@ def compile_cxx_core_function(
         cmd = [
             config.peano_cxx_path(),
             source_path,
-            "-c",
+            *emit_flags,
             "-o",
             f"{output_path}",
             f"-I{config.cxx_header_path()}",
@@ -142,6 +183,11 @@ def compile_cxx_core_function(
         if ret.stderr:
             raise RuntimeError(f"[{tool}] compilation failed:\n{ret.stderr.decode()}")
         raise RuntimeError(f"[{tool}] compilation failed")
+
+    if inline:
+        if not symbol_name:
+            raise ValueError("symbol_name is required when inline=True")
+        _make_ir_inlinable(output_path, symbol_name)
 
 
 def _run_aiecc(mlir_file: str, args: list[str]):
@@ -305,6 +351,20 @@ def compile_external_kernel(func, kernel_dir, target_arch):
     if func._compiled:
         return
 
+    # inline + symbol_prefix is unsupported: the MLIR func.call uses the
+    # prefixed func._name, but an inline kernel is emitted as a textual .ll whose
+    # ``define`` carries the un-prefixed _original_name. Object mode reconciles
+    # the two via an llvm-objcopy --redefine-sym rename, which cannot rewrite a
+    # .ll. Fail loudly here rather than downstream in objcopy or as a silent
+    # call/define name mismatch at llvm-link time.
+    if getattr(func, "_inline", False) and getattr(func, "_symbol_prefix", None):
+        raise NotImplementedError(
+            f"ExternalFunction '{func._name}': inline=True combined with "
+            "symbol_prefix is not supported (an inline kernel is emitted as "
+            "LLVM IR and cannot be symbol-renamed). Use inline without a "
+            "symbol_prefix, or drop inline for this kernel."
+        )
+
     # Skip if the object file already exists (cache hit).
     output_file = os.path.join(kernel_dir, func.object_file_name)
     if os.path.exists(output_file):
@@ -323,9 +383,14 @@ def compile_external_kernel(func, kernel_dir, target_arch):
             source_path=source_file,
             target_arch=target_arch,
             output_path=output_file,
+            # The source is compiled under _original_name, so that is the symbol
+            # in the emitted .ll ``define`` that _make_ir_inlinable must rewrite.
+            # (inline + symbol_prefix is rejected above, so no rename applies.)
+            symbol_name=func._original_name,
             include_dirs=func._include_dirs,
             compile_args=func._compile_flags,
             cwd=str(kernel_dir),
+            inline=getattr(func, "_inline", False),
             use_chess=getattr(func, "_use_chess", False),
         )
 
@@ -348,9 +413,13 @@ def compile_external_kernel(func, kernel_dir, target_arch):
             source_path=source_file,
             target_arch=target_arch,
             output_path=output_file,
+            # _original_name is the symbol in the emitted .ll ``define`` (see
+            # the source_string branch above).
+            symbol_name=func._original_name,
             include_dirs=include_dirs,
             compile_args=func._compile_flags,
             cwd=kernel_dir,
+            inline=getattr(func, "_inline", False),
             use_chess=getattr(func, "_use_chess", False),
         )
     else:
