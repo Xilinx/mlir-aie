@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --split-input-file --verify-diagnostics --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s
+// RUN: aie-opt --split-input-file --verify-diagnostics --aie-objectFifo-stateful-transform="dynamic-objFifos=false" --aie-assign-lock-ids %s
 
 // -----
 

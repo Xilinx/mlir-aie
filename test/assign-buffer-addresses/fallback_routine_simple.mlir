@@ -5,7 +5,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" --aie-assign-buffer-addresses %s 2>&1 | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" --aie-assign-lock-ids --aie-assign-buffer-addresses %s 2>&1 | FileCheck %s
 // CHECK:   warning: Failed to allocate buffer: "a" with size: 16384 bytes.
 // CHECK:   %1 = aie.buffer(%tile12) { sym_name = "a" } : memref<4096xi32>  //16384 bytes
 // CHECK:   warning: Not all requested buffers fit in the available memory.

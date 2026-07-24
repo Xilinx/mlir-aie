@@ -366,7 +366,7 @@ def AIE_ShimDMAOp: AIE_Op<"shim_dma", [
 }
 
 def AIE_CoreOp: AIE_Op<"core", [
-    IsFlowEndPoint, IsCoreTile, TileElement,
+    IsFlowEndPoint, IsCoreTile, TileElement, AutomaticAllocationScope,
     DeclareOpInterfaceMethods<InferTypeOpInterface>
   ]>, Results<(outs Index)> {
   let arguments = (
@@ -1422,6 +1422,15 @@ def AIE_LockOp: AIE_Op<"lock", [
         $_builder.getIndexType(),
         tile,
         $_builder.getI32IntegerAttr(lockID),
+        $_builder.getI32IntegerAttr(init),
+        nullptr
+      );
+    }]>,
+    OpBuilder<(ins "mlir::Value":$tile, "int":$init), [{
+      build($_builder, $_state,
+        $_builder.getIndexType(),
+        tile,
+        /*lockID=*/nullptr,
         $_builder.getI32IntegerAttr(init),
         nullptr
       );

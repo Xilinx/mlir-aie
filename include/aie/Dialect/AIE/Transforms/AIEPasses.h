@@ -19,6 +19,13 @@
 
 namespace xilinx::AIE {
 
+/// Discardable attribute set by `AIEObjectFifoStatefulTransform` on `scf.for`
+/// loops containing ObjectFifo accesses -- the loop unroll factor (the least
+/// common multiple of the depths of the objectFifos accessed within the
+/// loop) consumed by the `AIEObjectFifoUnroll` pass.
+inline constexpr llvm::StringLiteral kObjectFifoUnrollHintAttrName =
+    "aie.unroll_hint";
+
 #define GEN_PASS_DECL
 #define GEN_PASS_DEF_AIEROUTEPATHFINDERFLOWS
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
@@ -54,6 +61,7 @@ createAIEHoistVectorTransferPointersPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEPathfinderPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEObjectFifoStatefulTransformPass();
+std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIEObjectFifoUnrollPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>> createAIELowerCascadeFlowsPass();
 std::unique_ptr<mlir::OperationPass<DeviceOp>>
 createAIEAssignBufferDescriptorIDsPass();

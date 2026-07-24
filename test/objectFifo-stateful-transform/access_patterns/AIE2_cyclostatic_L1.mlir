@@ -9,7 +9,7 @@
 // and pushes them into L1 memory, shared with the adjacent consumer tile.
 // The consumer consumes {1, 2, 1} elements, in that order.
 
-// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" %s | FileCheck %s
+// RUN: aie-opt --aie-objectFifo-stateful-transform="dynamic-objFifos=false" --aie-assign-lock-ids %s | FileCheck %s
 // CHECK: module @aie2_cyclostatic_L1 {
 // CHECK:   aie.device(xcve2302) {
 // CHECK:     %[[t0:.*]] = aie.tile(2, 2)

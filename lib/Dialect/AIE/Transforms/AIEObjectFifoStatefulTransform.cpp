@@ -17,13 +17,14 @@
 #include "mlir/Dialect/SCF/IR/SCF.h"
 #include "mlir/Dialect/SCF/Utils/Utils.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/Dominance.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Mem2Reg.h"
 
+#include "mlir/IR/Dominance.h"
 #include "mlir/IR/Operation.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
+#include "mlir/Interfaces/MemorySlotInterfaces.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
 
 #include <numeric>
@@ -44,35 +45,14 @@ using namespace xilinx::AIE;
 
 #define LOOP_VAR_DEPENDENCY (-2)
 
-//===----------------------------------------------------------------------===//
-// Lock Analysis
-//===----------------------------------------------------------------------===//
-class LockAnalysis {
-  DenseMap<std::pair<Value, int>, int> locksPerTile;
-
-public:
-  LockAnalysis(DeviceOp &device) {
-    // go over the locks created for each tile and update the index in
-    // locksPerTile
-    device.walk([&](LockOp lockOp) {
-      auto tile = lockOp.getTile();
-      auto lockID = lockOp.getLockIDValue();
-      locksPerTile[{tile, lockID}] = 1;
-    });
-  }
-
-  /// Given a tile, returns next usable lockID for that tile.
-  int getLockID(TileOp &tileOp) {
-    const auto &targetModel = getTargetModel(tileOp);
-    for (unsigned i = 0;
-         i < targetModel.getNumLocks(tileOp.getCol(), tileOp.getRow()); i++)
-      if (int usageCnt = locksPerTile[{tileOp, i}]; usageCnt == 0) {
-        locksPerTile[{tileOp, i}] = 1;
-        return i;
-      }
-    return -1;
-  }
-};
+// Marker for `memref.alloca`s emitted by this pass for bookkeeping only (number
+// of locks held, current buffer index). We use memrefs for these bookkeeping
+// values because it enables easier threading through loop/control-flow
+// structures. A `mem2reg` pass at the end converts them back to SSA values;
+// this marker ensures that we convert _all_ allocas back to SSA values but
+// touch _no_ allocas that were not emitted by us.
+static constexpr llvm::StringLiteral kBookkeepingSlotAttrName =
+    "aie.objectfifo.bookkeeping_slot";
 
 //===----------------------------------------------------------------------===//
 // DMA Channel Analysis
@@ -219,6 +199,11 @@ struct ObjectFifoState {
       splitBecauseLink; // objfifos which have been split because they are
                         // part of a Link, not because they didn't have a shared
                         // memory module
+  DenseMap<Operation *, DenseMap<std::pair<ObjectFifoCreateOp, int>, Value>>
+      counterSlotsPerCore; // core -> (fifo, port) -> bookkeeping counter;
+                           // the counter is used for both the runtime buffer
+                           // index_switch and (on binary-lock architectures)
+                           // the runtime lock index_switch
 };
 
 struct AIEObjectFifoStatefulTransformPass
@@ -418,10 +403,10 @@ struct AIEObjectFifoStatefulTransformPass
   }
 
   /// Function used to create objectFifo locks based on target architecture.
-  /// Called by createObjectFifoElements().
+  /// Called by createObjectFifoElements(). Locks are created without a lock ID;
+  /// AIEAssignLockIDs assigns concrete IDs later in the pipeline.
   std::vector<LockOp>
-  createObjectFifoLocks(OpBuilder &builder, LockAnalysis &lockAnalysis,
-                        ObjectFifoCreateOp op, int numElem,
+  createObjectFifoLocks(OpBuilder &builder, ObjectFifoCreateOp op, int numElem,
                         int joinDistribFactor, TileOp creation_tile,
                         int repeatCount, ObjectFifoState &state) {
     std::vector<LockOp> locks;
@@ -447,10 +432,7 @@ struct AIEObjectFifoStatefulTransformPass
       for (int i = 0; i < numElem; i++) {
         // create corresponding aie1 locks
         int initValue = op.getInitValues().has_value() ? 1 : 0;
-        int lockID = lockAnalysis.getLockID(creation_tile);
-        assert(lockID >= 0 && "No more locks to allocate!");
-        auto lock =
-            LockOp::create(builder, ofLoc, creation_tile, lockID, initValue);
+        auto lock = LockOp::create(builder, ofLoc, creation_tile, initValue);
         lock.getOperation()->setAttr(SymbolTable::getSymbolAttrName(),
                                      builder.getStringAttr(op.name().str() +
                                                            "_lock_" +
@@ -463,22 +445,18 @@ struct AIEObjectFifoStatefulTransformPass
         auto initValues = op.getInitValues().has_value()
                               ? op.getInitValues().value().size()
                               : 0;
-        int prodLockID = lockAnalysis.getLockID(creation_tile);
-        assert(prodLockID >= 0 && "No more locks to allocate!");
         int prodLockValue = (numElem - initValues) * repeatCount;
-        auto prodLock = LockOp::create(builder, ofLoc, creation_tile,
-                                       prodLockID, prodLockValue);
+        auto prodLock =
+            LockOp::create(builder, ofLoc, creation_tile, prodLockValue);
         prodLock.getOperation()->setAttr(
             SymbolTable::getSymbolAttrName(),
             builder.getStringAttr(op.name().str() + "_prod_lock_" +
                                   std::to_string(i)));
         locks.push_back(prodLock);
 
-        int consLockID = lockAnalysis.getLockID(creation_tile);
-        assert(consLockID >= 0 && "No more locks to allocate!");
         int consLockValue = initValues * repeatCount;
-        auto consLock = LockOp::create(builder, ofLoc, creation_tile,
-                                       consLockID, consLockValue);
+        auto consLock =
+            LockOp::create(builder, ofLoc, creation_tile, consLockValue);
         consLock.getOperation()->setAttr(
             SymbolTable::getSymbolAttrName(),
             builder.getStringAttr(op.name().str() + "_cons_lock_" +
@@ -619,9 +597,8 @@ struct AIEObjectFifoStatefulTransformPass
 
   /// Function used to create objectFifo elements and their locks.
   /// It maps the input objectFifo to associated buffers and locks.
-  void createObjectFifoElements(OpBuilder &builder, LockAnalysis &lockAnalysis,
-                                ObjectFifoCreateOp op, int share_direction,
-                                ObjectFifoState &state) {
+  void createObjectFifoElements(OpBuilder &builder, ObjectFifoCreateOp op,
+                                int share_direction, ObjectFifoState &state) {
     if (!op.size())
       return;
 
@@ -834,8 +811,8 @@ struct AIEObjectFifoStatefulTransformPass
       state.objFifoLinks[*linkOp] = op;
     }
     std::vector<LockOp> locks = createObjectFifoLocks(
-        builder, lockAnalysis, op, numElem, joinDistribFactor, creation_tile,
-        repeatCount, state);
+        builder, op, numElem, joinDistribFactor, creation_tile, repeatCount,
+        state);
     state.buffersPerFifo[op] = buffers;
     state.locksPerFifo[op] = locks;
   }
@@ -1344,136 +1321,13 @@ struct AIEObjectFifoStatefulTransformPass
     }
   }
 
-  // Function that computes the Least Common Multiplier of the values
-  // of a vector.
-  int computeLCM(std::set<int> values) {
-    int lcm = 1;
-    for (int i : values)
-      lcm = i * lcm / std::gcd(i, lcm);
-    return lcm;
-  }
-
-  // Function that unrolls for-loops that contain objectFifo operations.
-  LogicalResult unrollForLoops(DeviceOp &device, OpBuilder &builder,
-                               std::set<TileOp> objectFifoTiles) {
-    for (auto coreOp : device.getOps<CoreOp>()) {
-      if (objectFifoTiles.count(coreOp.getTileOp()) > 0) {
-        std::vector<scf::ForOp> unrolledLoops;
-        std::map<Operation *, bool> foundMap;
-        std::map<Operation *, int64_t> remainderMap;
-        std::map<Operation *, int64_t> tripCountMap;
-        WalkResult res = coreOp.walk([&](scf::ForOp forLoop) {
-          // look for operations on objectFifos
-          // when multiple fifos in same loop, must use the smallest
-          // common multiplier as the unroll factor
-          foundMap[forLoop.getOperation()] = false;
-          std::set<int> objFifoSizes;
-          Block *body = forLoop.getBody();
-          remainderMap[forLoop.getOperation()] = 0;
-          for (auto acqOp : body->getOps<ObjectFifoAcquireOp>()) {
-            if (acqOp.getOperation()->getParentOp() == forLoop) {
-              foundMap[forLoop.getOperation()] = true;
-              ObjectFifoCreateOp op = acqOp.getObjectFifo();
-              objFifoSizes.insert(op.size());
-            }
-          }
-          // If the loop doesn't have acquire and release locks
-          // Push it to the unrolledLoops to avoid unrolling
-          if (!foundMap[forLoop.getOperation()]) {
-            unrolledLoops.push_back(forLoop);
-            return WalkResult::advance();
-          }
-          // Walk in the loop region to unroll the loop and its remainder
-          Region *region = forLoop->getParentRegion();
-          scf::ForOp prevLoop;
-          prevLoop = forLoop;
-          tripCountMap[prevLoop.getOperation()] = 0;
-          while (remainderMap[prevLoop.getOperation()] > 1 ||
-                 foundMap[prevLoop.getOperation()]) {
-            region->walk([&](scf::ForOp remLoop) {
-              bool skipLoop = false;
-              int64_t tripCount = 0;
-              if (remLoop.getSingleLowerBound() &&
-                  remLoop.getSingleUpperBound() && remLoop.getSingleStep()) {
-                tripCount = remLoop.getStaticTripCount()->getSExtValue();
-              }
-              int unrollFactor =
-                  computeLCM(objFifoSizes); // also counts original loop body
-              // Loop ids are not unique.
-              // Sometimes, immediately after unrolling, the unrolled loop
-              // and the one next to it (can be the remainder loop or an
-              // independent loop) will have the same ID. This makes it
-              // difficult to identify which loop needs to be unrolled.
-              // Once it restarts walking from start, it ends up allocating
-              // new ID to each loop.
-              if (remainderMap[prevLoop.getOperation()] > 1 &&
-                  foundMap[remLoop.getOperation()] == false &&
-                  prevLoop != remLoop) {
-                skipLoop = true;
-              }
-              if (std::count(unrolledLoops.begin(), unrolledLoops.end(),
-                             remLoop) == 0 &&
-                  !skipLoop) {
-                tripCountMap[remLoop.getOperation()] = tripCount;
-                // if loop iterations < unrollFactor, unroll the loop fully
-                if (tripCountMap[remLoop.getOperation()] < unrollFactor)
-                  unrollFactor = tripCountMap[remLoop.getOperation()];
-                // If unrollFactor = 0,divide by zero
-                if (unrollFactor == 0) {
-                  remLoop.emitOpError()
-                      << "could not be unrolled with unrollFactor = 0, check "
-                         "loop boundaries."
-                      << "\n";
-                  return WalkResult::interrupt();
-                }
-                remainderMap[remLoop.getOperation()] =
-                    tripCountMap[remLoop.getOperation()] % unrollFactor;
-                auto step = remLoop.getStep()
-                                .getDefiningOp<arith::ConstantOp>()
-                                .getValue();
-                int64_t step_value = llvm::dyn_cast<IntegerAttr>(step).getInt();
-
-                if (step_value < unrollFactor ||
-                    foundMap[remLoop.getOperation()]) {
-                  // Process the for loop
-                  if (failed(mlir::loopUnrollByFactor(remLoop, unrollFactor))) {
-                    remLoop.emitOpError()
-                        << "could not be unrolled with unrollFactor: "
-                        << unrollFactor << "\n";
-                    return WalkResult::interrupt();
-                  }
-                  unrolledLoops.push_back(remLoop);
-                  foundMap[remLoop.getOperation()] = false;
-                } else {
-                  remainderMap[remLoop.getOperation()] = 0;
-                  foundMap[remLoop.getOperation()] = false;
-                }
-              } else {
-                remainderMap[remLoop.getOperation()] = 0;
-                foundMap[remLoop.getOperation()] = false;
-              }
-              prevLoop = remLoop;
-              return WalkResult::advance();
-            });
-          }
-          return WalkResult::advance();
-        });
-        if (res.wasInterrupted())
-          return failure();
-      }
-    }
-    return success();
-  }
-
   // Function that generates the IR to update runtime state of objectfifo
   // accesses. Called by dynamicGlobalObjectFifos().
   void updateGlobalNextIndex(OpBuilder &builder, ObjectFifoReleaseOp relOp,
-                             BufferOp globalNextIndex, arith::ConstantOp index,
-                             arith::ConstantOp size) {
+                             Value counterSlot, arith::ConstantOp size) {
     builder.setInsertionPointAfter(relOp);
-    Value oldCounter =
-        memref::LoadOp::create(builder, relOp.getLoc(), globalNextIndex,
-                               ValueRange(ArrayRef({index.getResult()})));
+    Value oldCounter = memref::LoadOp::create(builder, relOp.getLoc(),
+                                              counterSlot, ValueRange{});
     Value val =
         arith::ConstantOp::create(builder, oldCounter.getLoc(),
                                   builder.getI32IntegerAttr(relOp.getSize()));
@@ -1483,8 +1337,8 @@ struct AIEObjectFifoStatefulTransformPass
     Value newCounter = arith::SelectOp::create(
         builder, sum.getLoc(), isGreaterEqual,
         arith::SubIOp::create(builder, sum.getLoc(), sum, size), sum);
-    memref::StoreOp::create(builder, size.getLoc(), newCounter, globalNextIndex,
-                            ValueRange(ArrayRef({index.getResult()})));
+    memref::StoreOp::create(builder, size.getLoc(), newCounter, counterSlot,
+                            ValueRange{});
   }
 
   // Function that generates the IR for objectfifo accesses to be handled at
@@ -1502,50 +1356,51 @@ struct AIEObjectFifoStatefulTransformPass
         // !! NOTE !! objectFifos with same producer / consumer tile
         // need two counters (accessed based on the ObjectFifoPort)
         std::map<std::pair<ObjectFifoCreateOp, ObjectFifoPort>, int> fifoSizes;
-        // Also, keep a map of the ConstantOps for the indices per OF
-        // and a map with the ConstantOps for the sizes per OF.
-        std::map<std::pair<ObjectFifoCreateOp, ObjectFifoPort>,
-                 arith::ConstantOp>
-            globalIndices;
+        // Keep a map with the ConstantOps for the sizes per OF and a map with
+        // the per-OF scalar counter slots.
         std::map<std::pair<ObjectFifoCreateOp, ObjectFifoPort>,
                  arith::ConstantOp>
             constantSizes;
+        std::map<std::pair<ObjectFifoCreateOp, ObjectFifoPort>, Value>
+            counterSlots;
 
-        int index = 0;
         builder.setInsertionPointToStart(&(coreOp.getBody().front()));
         Value initVal = arith::ConstantOp::create(builder, coreOp.getLoc(),
                                                   builder.getI32IntegerAttr(0));
+        // Each objectFifo/port gets its own scalar (rank-0) counter slot that
+        // tracks the index of the next object to access. Each slot is a
+        // promotable memref.alloca (rather than a multi-element buffer or an
+        // aie.buffer), so that a subsequent -mem2reg threads it through the
+        // enclosing scf.for loops as an iter_arg. This makes the per-access
+        // index_switch select on a loop-carried SSA value, which lets constant
+        // folding resolve the accessed buffer once the loops are unrolled.
+        auto scalarTy = MemRefType::get(SmallVector<int64_t>{}, // rank-0
+                                        builder.getI32Type());
         coreOp.walk([&](ObjectFifoAcquireOp acqOp) {
           ObjectFifoCreateOp op = acqOp.getObjectFifo();
           ObjectFifoPort port = acqOp.getPort();
           if (fifoSizes.find({op, port}) == fifoSizes.end()) {
             fifoSizes[{op, port}] = op.size();
-            auto indexOp = arith::ConstantOp::create(
-                builder, initVal.getLoc(), builder.getIndexAttr(index));
-            globalIndices[{op, port}] = indexOp;
-            index++;
             auto size =
-                arith::ConstantOp::create(builder, indexOp.getLoc(),
+                arith::ConstantOp::create(builder, initVal.getLoc(),
                                           builder.getI32IntegerAttr(op.size()));
             constantSizes[{op, port}] = size;
+            Value slot =
+                memref::AllocaOp::create(builder, coreOp.getLoc(), scalarTy);
+            slot.getDefiningOp()->setAttr(kBookkeepingSlotAttrName,
+                                          builder.getUnitAttr());
+            counterSlots[{op, port}] = slot;
+            int portNum = port == ObjectFifoPort::Produce ? 0 : 1;
+            state.counterSlotsPerCore[coreOp.getOperation()][{op, portNum}] =
+                slot;
           }
         });
-        builder.setInsertionPoint(coreOp);
-        auto memrefTy =
-            MemRefType::get(SmallVector<int64_t>{(int64_t)fifoSizes.size()},
-                            builder.getI32Type());
-        auto globalNextIndex = BufferOp::create(
-            builder, coreOp.getLoc(), memrefTy, coreOp.getTile(),
-            /*sym_name*/ nullptr, /*address*/ nullptr,
-            /*initial_value*/ nullptr, /*mem_bank*/ nullptr,
-            /*aligned*/ nullptr);
 
-        // Initialize all counters in the global buffers to 0.
-        for (auto i : constantSizes) {
-          builder.setInsertionPointAfter(i.second);
-          memref::StoreOp::create(
-              builder, coreOp.getLoc(), initVal, globalNextIndex,
-              ValueRange(ArrayRef({globalIndices[i.first].getResult()})));
+        // Initialize all counter slots to 0.
+        for (auto &i : counterSlots) {
+          builder.setInsertionPointAfterValue(i.second);
+          memref::StoreOp::create(builder, coreOp.getLoc(), initVal, i.second,
+                                  ValueRange{});
         }
 
         // Walk the code:
@@ -1558,8 +1413,8 @@ struct AIEObjectFifoStatefulTransformPass
           if (auto relOp = dyn_cast<ObjectFifoReleaseOp>(op)) {
             ObjectFifoCreateOp createOp = relOp.getObjectFifo();
             ObjectFifoPort port = relOp.getPort();
-            updateGlobalNextIndex(builder, relOp, globalNextIndex,
-                                  globalIndices[{createOp, port}],
+            updateGlobalNextIndex(builder, relOp,
+                                  counterSlots[{createOp, port}],
                                   constantSizes[{createOp, port}]);
           }
           if (auto acqOp = dyn_cast<ObjectFifoAcquireOp>(op)) {
@@ -1579,9 +1434,8 @@ struct AIEObjectFifoStatefulTransformPass
               // Create a switch for each subview access
               builder.setInsertionPointAfter(accessOp);
               auto switchIndexAsInteger = memref::LoadOp::create(
-                  builder, acqOp.getLoc(), globalNextIndex,
-                  ValueRange(
-                      ArrayRef({globalIndices[{createOp, port}].getResult()})));
+                  builder, acqOp.getLoc(), counterSlots[{createOp, port}],
+                  ValueRange{});
               auto switchIndex = arith::IndexCastOp::create(
                   builder, acqOp.getLoc(), builder.getIndexType(),
                   switchIndexAsInteger);
@@ -1730,7 +1584,81 @@ struct AIEObjectFifoStatefulTransformPass
     UseLockOp::create(builder, op.getLoc(), lock, lockAction, count);
   }
 
-  /// Function used to check whether op is already contained in map.
+  /// Emit UseLockOps for the dynamic lowering on binary-lock architectures
+  /// (AIE1). Unlike semaphore locks, AIE1 has one binary lock per objectFifo
+  /// element; the lock to use rotates in lockstep with the buffer. The starting
+  /// lock index is only known at runtime (it depends on how many elements have
+  /// been released), so each of the `numLocks` locks is selected with an
+  /// scf.index_switch keyed on the same rotating counter used for buffer
+  /// addressing. Once the enclosing loops are unrolled the counter folds to a
+  /// constant and each switch collapses to a single concrete lock.
+  /// `baseOffset` is the offset (within the
+  /// rotation) of the first lock relative to the counter.
+  void createUseLocksDynamicBinary(OpBuilder &builder, ObjectFifoCreateOp op,
+                                   ObjectFifoPort port, Value counterSlot,
+                                   int baseOffset, int numLocks,
+                                   LockAction lockAction,
+                                   ObjectFifoState &state) {
+    if (numLocks == 0)
+      return;
+    ObjectFifoCreateOp target = op;
+    if (auto linkOp = getOptionalLinkOp(op))
+      if (state.objFifoLinks.find(*linkOp) != state.objFifoLinks.end())
+        target = state.objFifoLinks[*linkOp];
+
+    auto &locks = state.locksPerFifo[target];
+    if (locks.empty())
+      return;
+    int size = op.size();
+
+    // Binary lock mode, mirroring the non-semaphore branch of createUseLocks().
+    int lockMode = 0;
+    if ((port == ObjectFifoPort::Produce &&
+         lockAction == LockAction::Release) ||
+        (port == ObjectFifoPort::Consume && lockAction == LockAction::Acquire))
+      lockMode = 1;
+
+    Location loc = op.getLoc();
+
+    // For single-element fifos there is no rotation: use the only lock.
+    if (size == 1) {
+      for (int i = 0; i < numLocks; i++)
+        UseLockOp::create(builder, loc, locks[0], lockAction, lockMode);
+      return;
+    }
+
+    Value counterI32 =
+        memref::LoadOp::create(builder, loc, counterSlot, ValueRange{});
+    Value counterIdx = arith::IndexCastOp::create(
+        builder, loc, builder.getIndexType(), counterI32);
+    auto lockTy = locks[0].getType();
+
+    SmallVector<int64_t, 4> caseValues;
+    for (int c = 0; c < size; c++)
+      caseValues.push_back(c);
+    auto cases = DenseI64ArrayAttr::get(builder.getContext(), caseValues);
+
+    for (int i = 0; i < numLocks; i++) {
+      auto switchOp = scf::IndexSwitchOp::create(
+          builder, loc, TypeRange({lockTy}), counterIdx, cases, size);
+      // Default case: counter out of [0, size) should not happen; yield the
+      // lock at the base offset.
+      builder.createBlock(&switchOp.getDefaultRegion());
+      builder.setInsertionPointToStart(&(switchOp.getDefaultBlock()));
+      scf::YieldOp::create(builder, loc,
+                           locks[(baseOffset + i) % size].getResult());
+      for (int c = 0; c < size; c++) {
+        builder.createBlock(&switchOp.getCaseRegions()[c]);
+        builder.setInsertionPointToStart(&switchOp.getCaseBlock(c));
+        scf::YieldOp::create(builder, loc,
+                             locks[(baseOffset + i + c) % size].getResult());
+      }
+      builder.setInsertionPointAfter(switchOp);
+      UseLockOp::create(builder, loc, switchOp.getResult(0), lockAction,
+                        lockMode);
+    }
+  }
+
   /// If it is then return the associated int, if not create new entry and
   /// return 0.
   int updateAndReturnIndex(
@@ -1998,6 +1926,59 @@ struct AIEObjectFifoStatefulTransformPass
     return success();
   }
 
+  // Promote the rank-0 bookkeeping counters (memref.alloca marked with
+  // kBookkeepingSlotAttrName) that the dynamic lowering emits into loop-carried
+  // SSA values, using mem2reg restricted to exactly those slots. Nothing else
+  // in the IR is touched. It is a hard requirement that none of these slots
+  // survive: they exist solely to let the standard mem2reg machinery thread the
+  // counters through the surrounding control flow. If any cannot be promoted,
+  // the pass fails rather than silently leaving memory-based bookkeeping.
+  LogicalResult promoteBookkeepingSlots(DeviceOp device) {
+    SmallVector<PromotableAllocationOpInterface> allocators;
+    WalkResult collect = device.walk([&](memref::AllocaOp allocaOp) {
+      if (!allocaOp->hasAttr(kBookkeepingSlotAttrName))
+        return WalkResult::advance();
+      auto promotable =
+          dyn_cast<PromotableAllocationOpInterface>(allocaOp.getOperation());
+      if (!promotable) {
+        allocaOp.emitOpError()
+            << "objectFifo bookkeeping slot does not implement the promotable "
+               "allocation interface and cannot be lowered to SSA";
+        return WalkResult::interrupt();
+      }
+      allocators.push_back(promotable);
+      return WalkResult::advance();
+    });
+    if (collect.wasInterrupted())
+      return failure();
+
+    if (allocators.empty())
+      return success();
+
+    DataLayout dataLayout = DataLayout::closest(device);
+    DominanceInfo dominance(device);
+    OpBuilder promoteBuilder(device.getContext());
+    (void)tryToPromoteMemorySlots(allocators, promoteBuilder, dataLayout,
+                                  dominance);
+
+    // Hardening: the lowering guarantees SSA-only bookkeeping. If any of our
+    // slots could not be threaded through the surrounding control flow, fail
+    // loudly instead of emitting memory-based bookkeeping.
+    WalkResult leftover = device.walk([&](memref::AllocaOp allocaOp) {
+      if (allocaOp->hasAttr(kBookkeepingSlotAttrName)) {
+        allocaOp.emitOpError()
+            << "objectFifo bookkeeping slot could not be promoted to SSA "
+               "(mem2reg left it in place); the objectFifo lowering requires "
+               "all bookkeeping counters to become loop-carried SSA values";
+        return WalkResult::interrupt();
+      }
+      return WalkResult::advance();
+    });
+    if (leftover.wasInterrupted())
+      return failure();
+    return success();
+  }
+
   void runOnOperation() override {
 
     DeviceOp device = getOperation();
@@ -2006,7 +1987,6 @@ struct AIEObjectFifoStatefulTransformPass
     // multi-device safety
     ObjectFifoState state;
 
-    LockAnalysis lockAnalysis(device);
     DMAChannelAnalysis dmaAnalysis(device);
     OpBuilder builder = OpBuilder::atBlockTerminator(device.getBody());
     auto ctx = device->getContext();
@@ -2201,8 +2181,7 @@ struct AIEObjectFifoStatefulTransformPass
 
       // if split, the necessary size for producer fifo might change
       if (shared) {
-        createObjectFifoElements(builder, lockAnalysis, createOp,
-                                 share_direction, state);
+        createObjectFifoElements(builder, createOp, share_direction, state);
       } else {
         if (isa<ArrayAttr>(createOp.getElemNumber()))
           createOp.setElemNumberAttr(
@@ -2216,8 +2195,7 @@ struct AIEObjectFifoStatefulTransformPass
                 builder.getI32IntegerAttr(prodMaxAcquire));
           }
         }
-        createObjectFifoElements(builder, lockAnalysis, createOp,
-                                 share_direction, state);
+        createObjectFifoElements(builder, createOp, share_direction, state);
       }
     }
 
@@ -2391,46 +2369,196 @@ struct AIEObjectFifoStatefulTransformPass
     }
 
     //===------------------------------------------------------------------===//
-    // Statically unroll for loops or use dynamic objectFifos
+    // Validate objectFifo accesses before lowering
     //===------------------------------------------------------------------===//
-    // Tiles whose objectFifo accesses are lowered dynamically (runtime buffer
-    // addressing and runtime lock counts) rather than by static loop unrolling.
-    std::set<TileOp> dynamicLoweringTiles;
-    if (clDynamicObjectFifos) {
-      dynamicLoweringTiles = objectFifoTiles;
-      if (failed(dynamicGlobalObjectFifos(device, builder, objectFifoTiles,
-                                          state)))
+    // These checks must run before the buffer/lock lowering below: the dynamic
+    // lowering assumes local buffers exist, which is not the case for stream
+    // ports or shared tiles of a link, so validate up front and bail out with a
+    // clean diagnostic instead of crashing in the lowering.
+    for (auto coreOp : device.getOps<CoreOp>()) {
+      auto validateAccess = [&](Operation *accessOp, ObjectFifoCreateOp op,
+                                ObjectFifoPort port,
+                                StringRef verb) -> LogicalResult {
+        int portNum = port == ObjectFifoPort::Produce ? 0 : 1;
+        if (auto linkOp = getOptionalLinkOp(op)) {
+          if (coreOp.getTile() == *linkOp->getOptionalSharedTile())
+            return accessOp->emitOpError(
+                "currently cannot access objectFifo used in ObjectFifoLinkOp");
+        }
+        if (op.getAieStream().has_value()) {
+          int streamEnd = op.getAieStream().value();
+          if (streamEnd == 2 || streamEnd == portNum)
+            return accessOp->emitOpError("cannot ")
+                   << verb << " objectfifo stream port";
+          return failure();
+        }
+        return success();
+      };
+      WalkResult vres = coreOp.walk([&](Operation *o) {
+        if (auto acq = dyn_cast<ObjectFifoAcquireOp>(o)) {
+          if (failed(validateAccess(acq, acq.getObjectFifo(), acq.getPort(),
+                                    "acquire from")))
+            return WalkResult::interrupt();
+        } else if (auto rel = dyn_cast<ObjectFifoReleaseOp>(o)) {
+          if (failed(validateAccess(rel, rel.getObjectFifo(), rel.getPort(),
+                                    "release from")))
+            return WalkResult::interrupt();
+        }
+        return WalkResult::advance();
+      });
+      if (vres.wasInterrupted())
         return signalPassFailure();
-    } else {
-      std::set<TileOp> dynamicTiles;
-      std::set<TileOp> unrollTiles;
-      for (auto c : device.getOps<CoreOp>()) {
-        TileOp t = c.getTileOp();
-        if (objectFifoTiles.count(t) > 0) {
-          if (c.getDynamicObjfifoLowering().has_value()) {
-            if (c.getDynamicObjfifoLowering().value())
-              dynamicTiles.insert(t);
+    }
+
+    //===------------------------------------------------------------------===//
+    // Annotate objectFifo loops with an unroll hint
+    //===------------------------------------------------------------------===//
+    // Record, on each scf.for that (transitively) carries an objectFifo access,
+    // the factor by which it must be unrolled so that each iteration maps to a
+    // fixed rotation of buffers/locks: the least common multiple of the depths
+    // of the objectFifos accessed within it. This is captured here, while the
+    // acquire/release ops still exist; the separate `aie-objectFifo-unroll`
+    // pass consumes the hint after lowering (once those ops have been replaced
+    // by the runtime bookkeeping) to drive `scf` loop unrolling. The hint is
+    // only emitted when dynamic objectFifos are disabled, since that is the
+    // only case where the unroll pass runs (and thus removes the hint
+    // afterwards).
+    if (!clDynamicObjectFifos) {
+      for (auto coreOp : device.getOps<CoreOp>()) {
+        coreOp.walk([&](scf::ForOp forOp) {
+          int64_t lcm = 1;
+          bool hasAccess = false;
+          auto addDepth = [&](ObjectFifoCreateOp createOp) {
+            hasAccess = true;
+            lcm = std::lcm(lcm, static_cast<int64_t>(createOp.size()));
+          };
+          // Only account for accesses whose innermost enclosing scf.for is this
+          // loop; accesses nested inside a child scf.for belong to (and drive
+          // the unroll factor of) that child, not this loop. This mirrors the
+          // legacy behavior of unrolling each loop by its own rotation period
+          // and prevents over-unrolling ancestor loops.
+          auto directlyIn = [&](Operation *op) {
+            return op->getParentOfType<scf::ForOp>() == forOp;
+          };
+          forOp.getBody()->walk([&](ObjectFifoAcquireOp a) {
+            if (directlyIn(a))
+              addDepth(a.getObjectFifo());
+          });
+          forOp.getBody()->walk([&](ObjectFifoReleaseOp r) {
+            if (directlyIn(r))
+              addDepth(r.getObjectFifo());
+          });
+          if (hasAccess)
+            forOp->setAttr(kObjectFifoUnrollHintAttrName,
+                           builder.getI64IntegerAttr(lcm));
+        });
+      }
+    }
+
+    //===------------------------------------------------------------------===//
+    // Statically-decidable over-release verification
+    //===------------------------------------------------------------------===//
+    // Independent of the lowering strategy: if a loop body releases more
+    // elements of an objectFifo than it acquires, the number of held elements
+    // underflows as the loop repeats, i.e. it releases more than were ever
+    // acquired. This is always an error and is decidable without knowing the
+    // trip count. Cases that depend on runtime/arbitrary control flow are not
+    // statically decidable and are intentionally left unchecked.
+    for (auto coreOp : device.getOps<CoreOp>()) {
+      WalkResult vres = coreOp.walk([&](scf::ForOp forOp) {
+        // Only account for accesses whose innermost enclosing scf.for is this
+        // loop; nested accesses belong to (and are checked as) their own loop.
+        auto directlyIn = [&](Operation *op) {
+          return op->getParentOfType<scf::ForOp>() == forOp;
+        };
+        DenseMap<std::pair<ObjectFifoCreateOp, int>, int64_t> acquired;
+        DenseMap<std::pair<ObjectFifoCreateOp, int>, int64_t> released;
+        DenseMap<std::pair<ObjectFifoCreateOp, int>, ObjectFifoAcquireOp>
+            firstAcquire;
+        DenseMap<std::pair<ObjectFifoCreateOp, int>, ObjectFifoReleaseOp>
+            firstRelease;
+        // A (fifo, port) whose acquires/releases are split across loop nesting
+        // levels (e.g. acquired in a nested loop, released in this body) cannot
+        // be balanced without knowing the nested trip counts, so it is not
+        // statically decidable and must be excluded from the check.
+        llvm::DenseSet<std::pair<ObjectFifoCreateOp, int>> spansNestedLoop;
+        forOp.getBody()->walk([&](ObjectFifoAcquireOp a) {
+          auto key =
+              std::make_pair(a.getObjectFifo(),
+                             a.getPort() == ObjectFifoPort::Produce ? 0 : 1);
+          if (!directlyIn(a)) {
+            spansNestedLoop.insert(key);
+            return;
+          }
+          acquired[key] += a.acqNumber();
+          if (!firstAcquire.count(key))
+            firstAcquire[key] = a;
+        });
+        forOp.getBody()->walk([&](ObjectFifoReleaseOp r) {
+          auto key =
+              std::make_pair(r.getObjectFifo(),
+                             r.getPort() == ObjectFifoPort::Produce ? 0 : 1);
+          if (!directlyIn(r)) {
+            spansNestedLoop.insert(key);
+            return;
+          }
+          released[key] += r.relNumber();
+          if (!firstRelease.count(key))
+            firstRelease[key] = r;
+        });
+        for (auto &entry : released) {
+          if (spansNestedLoop.contains(entry.first))
+            continue;
+          if (entry.second > acquired.lookup(entry.first)) {
+            // Attach the diagnostic to the acquire op when present (matching
+            // the legacy behavior); otherwise to the offending release op.
+            if (auto acq = firstAcquire.lookup(entry.first))
+              acq->emitOpError(
+                  "cannot release more elements than are already acquired");
             else
-              unrollTiles.insert(t);
-          } else {
-            unrollTiles.insert(t);
+              firstRelease.lookup(entry.first)
+                  ->emitOpError(
+                      "cannot release more elements than are already acquired");
+            return WalkResult::interrupt();
           }
         }
+        return WalkResult::advance();
+      });
+      if (vres.wasInterrupted())
+        return signalPassFailure();
+    }
+
+    //===------------------------------------------------------------------===//
+    // Select the lowering strategy for each tile
+    //===------------------------------------------------------------------===//
+    // objectFifo accesses are lowered dynamically: runtime buffer addressing
+    // (an scf.index_switch selecting the rotating buffer) and runtime lock
+    // bookkeeping, keeping the loops rolled. Loop unrolling and the subsequent
+    // constant folding of this runtime bookkeeping (which reproduces the legacy
+    // static, unrolled lowering) is handled by the separate
+    // `aie-objectFifo-unroll` pass followed by `-mem2reg`/`-canonicalize`.
+    //
+    // All objectFifo tiles use the dynamic buffer addressing. Lock bookkeeping
+    // differs by architecture: semaphore locks (AIE2+) use a runtime "held"
+    // counter with AcquireGreaterEqual/Release by count; binary locks (AIE1)
+    // rotate one lock per element, selected at runtime with an index_switch.
+    std::set<TileOp> dynamicLoweringTiles;
+    {
+      std::set<TileOp> dynamicTiles;
+      for (auto c : device.getOps<CoreOp>()) {
+        TileOp t = c.getTileOp();
+        if (objectFifoTiles.count(t) > 0)
+          dynamicTiles.insert(t);
       }
       dynamicLoweringTiles = dynamicTiles;
       if (failed(
               dynamicGlobalObjectFifos(device, builder, dynamicTiles, state)))
-        return signalPassFailure();
-      if (failed(unrollForLoops(device, builder, unrollTiles)))
         return signalPassFailure();
     }
 
     //===------------------------------------------------------------------===//
     // Replace ops
     //===------------------------------------------------------------------===//
-    // Runtime held-counter allocas collected across all cores. They are
-    // promoted to SSA values by mem2reg once all rewriting is complete.
-    SmallVector<memref::AllocaOp> heldCounterAllocas;
     for (auto coreOp : device.getOps<CoreOp>()) {
       DenseMap<ObjectFifoAcquireOp, std::vector<BufferOp *>>
           subviews; // maps each "subview" to its buffer references (subviews
@@ -2461,35 +2589,57 @@ struct AIEObjectFifoStatefulTransformPass
       bool isDynamicCore = dynamicLoweringTiles.count(coreOp.getTileOp()) > 0 &&
                            device.getTargetModel().hasProperty(
                                AIETargetModel::UsesSemaphoreLocks);
-      // One runtime "held" counter per (fifo, port), emitted as a
-      // single-element memref.alloca so the acquire/release bookkeeping is
-      // just plain load/store. These are promoted to SSA values by mem2reg at
-      // the end of the pass.
-      DenseMap<std::pair<ObjectFifoCreateOp, int>, memref::AllocaOp> heldAlloca;
+      // Binary-lock (AIE1) tiles also use the dynamic buffer addressing, but
+      // their locks rotate one-per-element and are selected with a runtime
+      // index_switch keyed on the shared per-(fifo, port) counter rather than a
+      // "held" count.
+      bool isDynamicBinaryCore =
+          dynamicLoweringTiles.count(coreOp.getTileOp()) > 0 &&
+          !device.getTargetModel().hasProperty(
+              AIETargetModel::UsesSemaphoreLocks);
+      DenseMap<std::pair<ObjectFifoCreateOp, int>, Value> &counterSlots =
+          state.counterSlotsPerCore[coreOp.getOperation()];
+      // Per-(fifo, port) scalar "held" counter slots. Each is a promotable
+      // rank-0 memref.alloca, so -mem2reg threads it through the enclosing
+      // scf.for loops as an iter_arg and the computed lock counts fold to
+      // constants once the loops are unrolled.
+      DenseMap<std::pair<ObjectFifoCreateOp, int>, Value> heldSlots;
       if (isDynamicCore) {
-        auto ensureSlot = [&](ObjectFifoCreateOp fifo, ObjectFifoPort p) {
+        // Ordered list of (fifo, port) keys, so that the counter slots are
+        // created deterministically (a plain DenseMap iteration order is not
+        // stable).
+        SmallVector<std::pair<ObjectFifoCreateOp, int>> slotOrder;
+        auto assignSlot = [&](ObjectFifoCreateOp fifo, ObjectFifoPort p) {
           int pn = p == ObjectFifoPort::Produce ? 0 : 1;
-          if (heldAlloca.count({fifo, pn}))
-            return;
-          OpBuilder::InsertionGuard g(builder);
-          builder.setInsertionPointToStart(&(coreOp.getBody().front()));
-          auto counterTy = MemRefType::get({}, builder.getI32Type());
-          auto counter =
-              memref::AllocaOp::create(builder, coreOp.getLoc(), counterTy);
-          counter->setAttr("aie.held_counter", builder.getUnitAttr());
-          Value zero = arith::ConstantOp::create(builder, coreOp.getLoc(),
-                                                 builder.getI32IntegerAttr(0));
-          memref::StoreOp::create(builder, coreOp.getLoc(), zero, counter,
-                                  ValueRange{});
-          heldAlloca[{fifo, pn}] = counter;
-          heldCounterAllocas.push_back(counter);
+          if (!heldSlots.count({fifo, pn})) {
+            heldSlots[{fifo, pn}] = Value();
+            slotOrder.push_back({fifo, pn});
+          }
         };
         coreOp.walk([&](ObjectFifoAcquireOp a) {
-          ensureSlot(a.getObjectFifo(), a.getPort());
+          assignSlot(a.getObjectFifo(), a.getPort());
         });
         coreOp.walk([&](ObjectFifoReleaseOp r) {
-          ensureSlot(r.getObjectFifo(), r.getPort());
+          assignSlot(r.getObjectFifo(), r.getPort());
         });
+        if (!slotOrder.empty()) {
+          builder.setInsertionPointToStart(&(coreOp.getBody().front()));
+          auto heldTy = MemRefType::get(SmallVector<int64_t>{}, // rank-0
+                                        builder.getI32Type());
+          Value zero = arith::ConstantOp::create(builder, coreOp.getLoc(),
+                                                 builder.getI32IntegerAttr(0));
+          for (auto &key : slotOrder) {
+            Value slot =
+                memref::AllocaOp::create(builder, coreOp.getLoc(), heldTy);
+            slot.getDefiningOp()->setAttr(kBookkeepingSlotAttrName,
+                                          builder.getUnitAttr());
+            // Initialize the counter right after the alloca so it dominates all
+            // of its stores.
+            memref::StoreOp::create(builder, coreOp.getLoc(), zero, slot,
+                                    ValueRange{});
+            heldSlots[key] = slot;
+          }
+        }
       }
 
       //===----------------------------------------------------------------===//
@@ -2527,21 +2677,30 @@ struct AIEObjectFifoStatefulTransformPass
         // account for repetition
         if (op.getRepeatCount().has_value())
           numLocks *= op.getRepeatCount().value();
-        createUseLocks(builder, op, port, relPerFifo, numLocks,
-                       LockAction::Release, state);
+        if (isDynamicBinaryCore && counterSlots.count({op, portNum})) {
+          // Binary locks (AIE1): the released locks are those of the oldest
+          // held elements, at rotation offset 0 relative to the counter (which
+          // still points at the next element to release; the counter is
+          // advanced afterwards by the buffer-addressing bookkeeping).
+          createUseLocksDynamicBinary(
+              builder, op, port, counterSlots[{op, portNum}], /*baseOffset=*/0,
+              numLocks, LockAction::Release, state);
+        } else {
+          createUseLocks(builder, op, port, relPerFifo, numLocks,
+                         LockAction::Release, state);
+        }
 
         // For dynamic tiles, decrement the runtime "held" counter by the
         // number of released elements.
-        if (memref::AllocaOp counter = isDynamicCore
-                                           ? heldAlloca.lookup({op, portNum})
-                                           : memref::AllocaOp()) {
-          Value held = memref::LoadOp::create(builder, releaseOp.getLoc(),
-                                              counter, ValueRange{});
+        if (isDynamicCore && heldSlots.count({op, portNum})) {
+          Value slot = heldSlots[{op, portNum}];
+          Value held = memref::LoadOp::create(builder, releaseOp.getLoc(), slot,
+                                              ValueRange{});
           Value m = arith::ConstantOp::create(
               builder, releaseOp.getLoc(), builder.getI32IntegerAttr(numLocks));
           Value newHeld =
               arith::SubIOp::create(builder, releaseOp.getLoc(), held, m);
-          memref::StoreOp::create(builder, releaseOp.getLoc(), newHeld, counter,
+          memref::StoreOp::create(builder, releaseOp.getLoc(), newHeld, slot,
                                   ValueRange{});
         }
 
@@ -2597,24 +2756,18 @@ struct AIEObjectFifoStatefulTransformPass
           if (state.objFifoLinks.find(*linkOp) != state.objFifoLinks.end())
             target = state.objFifoLinks[*linkOp];
 
-        // The subview buffer references built at the end of this handler map
-        // each acquired access index to a physical buffer. For dynamic tiles
-        // they are only consumed for size-1 fifos: buffer addressing for
-        // size > 1 fifos is handled separately by the runtime index_switch in
-        // dynamicGlobalObjectFifos, which already replaced those accesses.
-        std::vector<int> acquiredIndices;
-
         // For dynamic tiles, compute the number of locks to acquire at runtime
-        // as max(0, acqNumber - held), using the runtime "held" counter.
-        memref::AllocaOp counter = isDynamicCore
-                                       ? heldAlloca.lookup({op, portNum})
-                                       : memref::AllocaOp();
-        if (counter) {
+        // as max(0, acqNumber - held), using the runtime "held" counter. Buffer
+        // addressing for size > 1 fifos is handled separately (via runtime
+        // index_switch in dynamicGlobalObjectFifos); the subview references
+        // built below are only used for size-1 fifos.
+        if (isDynamicCore && heldSlots.count({op, portNum})) {
           builder.setInsertionPointAfter(acquireOp);
           int acqNum = acquireOp.acqNumber();
           int repeat = op.getRepeatCount().value_or(1);
-          Value held = memref::LoadOp::create(builder, acquireOp.getLoc(),
-                                              counter, ValueRange{});
+          Value slot = heldSlots[{op, portNum}];
+          Value held = memref::LoadOp::create(builder, acquireOp.getLoc(), slot,
+                                              ValueRange{});
           Value nVal = arith::ConstantOp::create(
               builder, acquireOp.getLoc(), builder.getI32IntegerAttr(acqNum));
           Value zero = arith::ConstantOp::create(builder, acquireOp.getLoc(),
@@ -2633,100 +2786,109 @@ struct AIEObjectFifoStatefulTransformPass
                                 LockAction::AcquireGreaterEqual, state);
           Value newHeld =
               arith::AddIOp::create(builder, acquireOp.getLoc(), held, delta);
-          memref::StoreOp::create(builder, acquireOp.getLoc(), newHeld, counter,
+          memref::StoreOp::create(builder, acquireOp.getLoc(), newHeld, slot,
                                   ValueRange{});
 
-          // Round-robin buffer index per acquired element (see note above).
+          // Build the subview buffer references (used by the subview.access
+          // replacement below for size-1 fifos).
+          std::vector<BufferOp *> subviewRefs;
+          subviewRefs.reserve(acqNum);
           for (int i = 0; i < acqNum; i++) {
-            acquiredIndices.push_back(start);
+            subviewRefs.push_back(&state.buffersPerFifo[target][start]);
             start = (start + 1) % op.size();
           }
+          subviews[acquireOp] = subviewRefs;
           acqPerFifo[{op, portNum}] = start;
-        } else {
-
-          // check how many elements have been released in between this
-          // AcquireOp and the previous one
-          // !!! operations may not be in the same block !!!
-          int numRel = 0;
-          for (std::vector<ObjectFifoReleaseOp>::iterator relOp =
-                   releaseOps[{op, portNum}].begin();
-               relOp != releaseOps[{op, portNum}].end();) {
-            bool erased = false;
-            Operation *acqBlockDefOp = acquireOp.getOperation();
-            do {
-              Operation *relBlockDefOp = (*relOp).getOperation();
-              do {
-                if (acqBlockDefOp->getBlock() == relBlockDefOp->getBlock()) {
-                  if (relBlockDefOp->isBeforeInBlock(acqBlockDefOp)) {
-                    numRel += (*relOp).relNumber();
-                    relOp = releaseOps[{op, portNum}].erase(relOp);
-                    // to ensure that we do not account
-                    // the ReleaseOps again later,
-                    // after the subview is created
-                    erased = true;
-                  }
-                }
-              } while ((relBlockDefOp = relBlockDefOp->getParentOp()) &&
-                       !isa<DeviceOp>(relBlockDefOp) && !erased);
-            } while ((acqBlockDefOp = acqBlockDefOp->getParentOp()) &&
-                     !isa<DeviceOp>(acqBlockDefOp) && !erased);
-            if (!erased)
-              ++relOp;
-          }
-
-          // track indices of elements to acquire
-          if (!acquiresPerFifo[{op, portNum}].empty()) {
-            // take into account what has already been acquired by previous
-            // AcquireOp in program order
-            acquiredIndices = acquiresPerFifo[{op, portNum}];
-            // take into account what has been released in-between
-            if (static_cast<size_t>(numRel) > acquiredIndices.size()) {
-              acquireOp->emitOpError("cannot release more elements than are "
-                                     "already acquired");
-              return WalkResult::interrupt();
-            }
-            for (int i = 0; i < numRel; i++)
-              acquiredIndices.erase(acquiredIndices.begin());
-          }
-
-          // acquire locks
-          int numLocks = acquireOp.acqNumber();
-          int alreadyAcq = acquiredIndices.size();
-          int numCreate;
-          if (numLocks > alreadyAcq)
-            numCreate = numLocks - alreadyAcq;
-          else
-            numCreate = 0;
-
-          // account for repetition
-          if (op.getRepeatCount().has_value())
-            numCreate *= op.getRepeatCount().value();
-
-          auto dev = op->getParentOfType<DeviceOp>();
-          if (auto &targetArch = dev.getTargetModel();
-              targetArch.getTargetArch() == AIEArch::AIE1)
-            createUseLocks(builder, op, port, acqPerFifo, numCreate,
-                           LockAction::Acquire, state);
-          else
-            createUseLocks(builder, op, port, acqPerFifo, numCreate,
-                           LockAction::AcquireGreaterEqual, state);
-
-          // create subview: buffers that were already acquired + new acquires
-          for (int i = 0; i < numCreate; i++) {
-            acquiredIndices.push_back(start);
-            start = (start + 1) % op.size();
-          }
-          acquiresPerFifo[{op, portNum}] = acquiredIndices;
+          return WalkResult::advance();
         }
 
-        // Build the subview buffer references shared by both paths (see note
-        // above). For size > 1 dynamic fifos these are dead because the
-        // accesses were already rewired by dynamicGlobalObjectFifos.
+        // check how many elements have been released in between this AcquireOp
+        // and the previous one
+        // !!! operations may not be in the same block !!!
+        int numRel = 0;
+        for (std::vector<ObjectFifoReleaseOp>::iterator relOp =
+                 releaseOps[{op, portNum}].begin();
+             relOp != releaseOps[{op, portNum}].end();) {
+          bool erased = false;
+          Operation *acqBlockDefOp = acquireOp.getOperation();
+          do {
+            Operation *relBlockDefOp = (*relOp).getOperation();
+            do {
+              if (acqBlockDefOp->getBlock() == relBlockDefOp->getBlock()) {
+                if (relBlockDefOp->isBeforeInBlock(acqBlockDefOp)) {
+                  numRel += (*relOp).relNumber();
+                  relOp = releaseOps[{op, portNum}].erase(relOp);
+                  // to ensure that we do not account
+                  // the ReleaseOps again later,
+                  // after the subview is created
+                  erased = true;
+                }
+              }
+            } while ((relBlockDefOp = relBlockDefOp->getParentOp()) &&
+                     !isa<DeviceOp>(relBlockDefOp) && !erased);
+          } while ((acqBlockDefOp = acqBlockDefOp->getParentOp()) &&
+                   !isa<DeviceOp>(acqBlockDefOp) && !erased);
+          if (!erased)
+            ++relOp;
+        }
+
+        // track indices of elements to acquire
+        std::vector<int> acquiredIndices;
+        if (!acquiresPerFifo[{op, portNum}].empty()) {
+          // take into account what has already been acquired by previous
+          // AcquireOp in program order
+          acquiredIndices = acquiresPerFifo[{op, portNum}];
+          // take into account what has been released in-between
+          if (static_cast<size_t>(numRel) > acquiredIndices.size()) {
+            acquireOp->emitOpError("cannot release more elements than are "
+                                   "already acquired");
+            return WalkResult::interrupt();
+          }
+          for (int i = 0; i < numRel; i++)
+            acquiredIndices.erase(acquiredIndices.begin());
+        }
+
+        // acquire locks
+        int numLocks = acquireOp.acqNumber();
+        int alreadyAcq = acquiredIndices.size();
+        int numCreate;
+        if (numLocks > alreadyAcq)
+          numCreate = numLocks - alreadyAcq;
+        else
+          numCreate = 0;
+
+        // account for repetition
+        if (op.getRepeatCount().has_value())
+          numCreate *= op.getRepeatCount().value();
+
+        auto dev = op->getParentOfType<DeviceOp>();
+        if (isDynamicBinaryCore && counterSlots.count({op, portNum})) {
+          // Binary locks (AIE1): select the rotating lock at runtime. The new
+          // locks are those of the elements acquired past the ones already
+          // held, i.e. at rotation offset `alreadyAcq` relative to the counter.
+          createUseLocksDynamicBinary(
+              builder, op, port, counterSlots[{op, portNum}],
+              /*baseOffset=*/alreadyAcq, numCreate, LockAction::Acquire, state);
+        } else if (auto &targetArch = dev.getTargetModel();
+                   targetArch.getTargetArch() == AIEArch::AIE1)
+          createUseLocks(builder, op, port, acqPerFifo, numCreate,
+                         LockAction::Acquire, state);
+        else
+          createUseLocks(builder, op, port, acqPerFifo, numCreate,
+                         LockAction::AcquireGreaterEqual, state);
+
+        // create subview: buffers that were already acquired + new acquires
+        for (int i = 0; i < numCreate; i++) {
+          acquiredIndices.push_back(start);
+          start = (start + 1) % op.size();
+        }
         std::vector<BufferOp *> subviewRefs;
         subviewRefs.reserve(acquiredIndices.size());
         for (auto index : acquiredIndices)
           subviewRefs.push_back(&state.buffersPerFifo[target][index]);
+
         subviews[acquireOp] = subviewRefs;
+        acquiresPerFifo[{op, portNum}] = acquiredIndices;
 
         return WalkResult::advance();
       });
@@ -2810,38 +2972,15 @@ struct AIEObjectFifoStatefulTransformPass
     }
 
     //===------------------------------------------------------------------===//
-    // Promote runtime held-counter allocas to SSA values (mem2reg).
+    // Promote bookkeeping counters to SSA
     //===------------------------------------------------------------------===//
-    // The held counters were emitted as single-element memref.alloca so the
-    // acquire/release bookkeeping could be written as plain load/store. Run
-    // mem2reg here as an in-pass step so it always executes, then require that
-    // every counter was fully promoted: a surviving alloca would mean opaque
-    // memory traffic left in the core, which we treat as a hard error.
-    if (!heldCounterAllocas.empty()) {
-      SmallVector<PromotableAllocationOpInterface> allocators;
-      allocators.reserve(heldCounterAllocas.size());
-      for (memref::AllocaOp counter : heldCounterAllocas)
-        allocators.push_back(
-            cast<PromotableAllocationOpInterface>(counter.getOperation()));
-      OpBuilder promoteBuilder(device);
-      DominanceInfo dominance;
-      const DataLayout dataLayout = DataLayout::closest(device.getOperation());
-      (void)tryToPromoteMemorySlots(allocators, promoteBuilder, dataLayout,
-                                    dominance);
-
-      bool residualCounter = false;
-      device.walk([&](memref::AllocaOp counter) {
-        if (counter->hasAttr("aie.held_counter")) {
-          counter.emitOpError(
-              "dynamic objectFifo held counter could not be promoted to an SSA "
-              "value by mem2reg; runtime lock bookkeeping would remain in "
-              "memory");
-          residualCounter = true;
-        }
-      });
-      if (residualCounter)
-        return signalPassFailure();
-    }
+    // The dynamic lowering above emits the per-(objectFifo, port) buffer-index
+    // and lock-held counters as rank-0 memref.alloca slots with surrounding
+    // load/store. Promote exactly those slots to loop-carried SSA values now so
+    // that the pass never leaves memory-based bookkeeping behind; if any of our
+    // slots cannot be promoted, this fails the pass.
+    if (failed(promoteBookkeepingSlots(device)))
+      return signalPassFailure();
   }
 };
 
