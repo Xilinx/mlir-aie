@@ -1476,6 +1476,35 @@ int main(int argc, char **argv) {
   ShellCommand::verbose = verbose;
   ShellCommand::dryRun = dryRun;
 
+  // Honor an explicit xclbinutil override (--xclbinutil-path, else
+  // AIE_XCLBINUTIL) when packaging an xclbin. A value with a path separator
+  // must resolve to an executable file; a bare name is looked up on PATH. When
+  // set but unusable we fail loudly instead of silently falling back to a PATH
+  // lookup, so a pure-HRX / pure-XRT flow can guarantee which xclbinutil is
+  // used.
+  if (generateXclbin) {
+    std::string ovr = xclbinutilPath;
+    if (ovr.empty())
+      if (const char *env = std::getenv("AIE_XCLBINUTIL"))
+        ovr = env;
+    if (!ovr.empty()) {
+      std::string resolved;
+      if (ovr.find('/') != std::string::npos ||
+          ovr.find('\\') != std::string::npos) {
+        if (llvm::sys::fs::can_execute(ovr))
+          resolved = ovr;
+      } else if (auto r = llvm::sys::findProgramByName(ovr)) {
+        resolved = *r;
+      }
+      if (resolved.empty()) {
+        llvm::errs() << "Error: requested xclbinutil '" << ovr
+                     << "' not found or not executable\n";
+        return 1;
+      }
+      ShellCommand::setToolOverride("xclbinutil", resolved);
+    }
+  }
+
   //--------------------------------------------------------------------------//
   // Compilation artifact graph
   //--------------------------------------------------------------------------//

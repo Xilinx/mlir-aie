@@ -1227,11 +1227,18 @@ def AIE_DMAStartTaskOp : AIEX_Op<"dma_start_task", [HasAncestor<"AIE::RuntimeSeq
 def AIE_DMAAwaitTaskOp : AIEX_Op<"dma_await_task", [HasAncestor<"AIE::RuntimeSequenceOp">]> {
   let summary = "Await Completion of a Previously Submitted DMA Task";
   let description = [{
-    This operation will block execution of the runtime sequence until the referenced previously started DMA task has completed.
+    This operation blocks execution of the runtime sequence until a previously
+    started DMA task completes, by waiting on its task-completion token (TCT).
+    To be able to wait on a task, it must issue a token (`issue_token = true`).
 
-    DMA tasks can be started using `aiex.start_task` using abstract BD chains declared using `aie.bd_chain`, or using `aiex.start_configured_task` using a manually configured task.
+    DMA tasks can be started using `aiex.start_task` using abstract BD chains
+    declared using `aie.bd_chain`, or using `aiex.start_configured_task` using a
+    manually configured task.
 
-    To be able to wait on a task, it must issue a task completion token (TCT). Tasks only emit these tokens if the attribute `issue_token` is set to `true`.
+    The task is identified by its `$task` SSA value, which must resolve to the
+    configure that set it up. Under the dynamic BD pool path this configure must
+    dominate the await; an await after an `scf.if` on a task configured inside a
+    branch is rejected (move the await inside the branch that configures it).
   }];
 
   let arguments = (
@@ -1247,7 +1254,9 @@ def AIE_DMAAwaitTaskOp : AIEX_Op<"dma_await_task", [HasAncestor<"AIE::RuntimeSeq
   }];
 
   let extraClassDefinition = [{
-    DMAConfigureTaskOp DMAAwaitTaskOp::getTaskOp() { return dyn_cast<DMAConfigureTaskOp>(getTask().getDefiningOp()); }
+    DMAConfigureTaskOp DMAAwaitTaskOp::getTaskOp() {
+      return dyn_cast<DMAConfigureTaskOp>(getTask().getDefiningOp());
+    }
   }];
 }
 
@@ -1426,6 +1435,51 @@ def AIEX_DmaChannelResetOp: AIEX_Op<"dma_channel_reset", [HasParent<"AIE::Runtim
   }];
   let extraClassDefinition = [{
     AIE::TileOp DmaChannelResetOp::getTileOp() {
+      return cast<AIE::TileOp>(getTile().getDefiningOp());
+    }
+  }];
+  let hasVerifier = 1;
+}
+
+def AIEX_CoreResetOp: AIEX_Op<"core_reset", [HasParent<"AIE::RuntimeSequenceOp">, SkipAccessibilityCheckTrait]> {
+  let summary = "Reset a compute core from a runtime sequence";
+  let description = [{
+    Pulses the reset bit of the CORE_CONTROL register on `tile`. The pulse is two
+    `npu.maskwrite32` writes masked to the reset bit (assert, then deassert), so
+    it preserves the ENABLE field packed in the same CORE_CONTROL word instead of
+    clobbering it. This mirrors aie-rt's XAie_CoreReset followed by
+    XAie_CoreUnreset. The operation is non blocking and offers no synchronization
+    guarantees.
+
+    Resetting clears the core's processor state (program counter and registers);
+    it does not touch the tile's data memory, locks, or DMA. The intended use is
+    re-arming a resident kernel across dispatches without a full PDI reload:
+    discard stale core state while keeping resident data in place. This assumes
+    the resident core is still enabled; re-arming a core that has cleared its
+    ENABLE bit also needs a re-enable, which this op does not emit.
+
+    Only core tiles have a CORE_CONTROL register; mem and shim tiles are rejected
+    by the verifier because they have no core to reset. This matches aie-rt's
+    XAie_CoreReset, which errors on non core tiles.
+
+    `tile` is an SSA `aie.tile` value, so the target is named the same way as
+    `aiex.dma_channel_reset` and `aiex.dma_configure_task`.
+
+    Example:
+    ```
+      %tile = aie.tile(2, 3)
+      aiex.core_reset(%tile)
+    ```
+  }];
+  let arguments = (
+    ins Index:$tile
+  );
+  let assemblyFormat = [{ `(` $tile `)` attr-dict }];
+  let extraClassDeclaration = [{
+    AIE::TileOp getTileOp();
+  }];
+  let extraClassDefinition = [{
+    AIE::TileOp CoreResetOp::getTileOp() {
       return cast<AIE::TileOp>(getTile().getDefiningOp());
     }
   }];

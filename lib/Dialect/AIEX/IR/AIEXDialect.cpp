@@ -1320,6 +1320,38 @@ LogicalResult AIEX::DmaChannelResetOp::verify() {
 }
 
 //===----------------------------------------------------------------------===//
+// CoreResetOp
+//===----------------------------------------------------------------------===//
+
+LogicalResult AIEX::CoreResetOp::verify() {
+  const auto &targetModel = AIE::getTargetModel(*this);
+
+  // The op lowers to an NPU control-packet write; the runtime sequence has no
+  // meaning on AIE1. Reject it explicitly, as SetLockOp does.
+  if (targetModel.getTargetArch() == AIE::AIEArch::AIE1)
+    return emitOpError("aiex.core_reset is not supported on AIE1.");
+
+  auto tile = dyn_cast_or_null<AIE::TileOp>(getTile().getDefiningOp());
+  if (!tile)
+    return emitOpError() << "tile operand must be produced by an aie.tile op";
+  int col = tile.getCol();
+  int row = tile.getRow();
+  // The tile coordinates are bounded by aie.tile's own verifier, so this op
+  // does not re-check them for range.
+
+  // Only core tiles have a CORE_CONTROL register with a reset bit. Mem and shim
+  // tiles have no compute core, so there is nothing valid to lower to. This
+  // matches aie-rt's XAie_CoreReset, which errors on any tile that is not an
+  // AIE (core) tile.
+  if (!targetModel.isCoreTile(col, row))
+    return emitOpError() << "tile (" << col << ", " << row
+                         << ") has no core to reset (only core tiles have a "
+                            "CORE_CONTROL register)";
+
+  return success();
+}
+
+//===----------------------------------------------------------------------===//
 // BlockFloatingPointType
 //===----------------------------------------------------------------------===//
 uint64_t AIEX::BlockFloatType::getTotalSizeInBits() const {
