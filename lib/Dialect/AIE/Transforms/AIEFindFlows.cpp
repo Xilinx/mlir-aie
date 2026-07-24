@@ -12,6 +12,8 @@
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Pass/Pass.h"
 
+#include "llvm/ADT/STLExtras.h"
+
 namespace xilinx::AIE {
 #define GEN_PASS_DEF_AIEFINDFLOWS
 #include "aie/Dialect/AIE/Transforms/AIEPasses.h.inc"
@@ -121,7 +123,9 @@ private:
   std::vector<PacketConnection>
   maskSwitchboxConnections(Operation *switchOp,
                            std::vector<PortMaskValue> nextPortMaskValues,
-                           MaskValue maskValue) const {
+                           MaskValue maskValue, bool keepPartialFlows,
+                           std::vector<PacketConnection> &partialEndpoints)
+      const {
     std::vector<PacketConnection> worklist;
     for (auto &nextPortMaskValue : nextPortMaskValues) {
       Port nextPort = nextPortMaskValue.port;
@@ -143,9 +147,14 @@ private:
                                     (nextMaskValue.mask & nextMaskValue.value)};
       auto nextConnection = getConnectionThroughWire(switchOp, nextPort);
 
-      // If there is no wire to follow then bail out.
-      if (!nextConnection)
+      if (!nextConnection) {
+        // The switchbox drives nextPort but no wire continues from it (an array
+        // edge or an off-fabric consumer). Under partial recovery this output
+        // port is itself the flow's endpoint.
+        if (keepPartialFlows)
+          partialEndpoints.push_back({{switchOp, nextPort}, newMaskValue});
         continue;
+      }
 
       worklist.push_back({*nextConnection, newMaskValue});
     }
@@ -153,81 +162,148 @@ private:
   }
 
 public:
-  // Get the tiles connected to the given tile, starting from the given
-  // output port of the tile.  This is 1:N relationship because each
-  // switchbox can broadcast.
-  std::vector<PacketConnection> getConnectedTiles(TileOp tileOp,
-                                                  Port port) const {
+  // Follow the single upstream wire out of an interconnect input port.
+  std::optional<PortConnection> upstreamOf(Operation *op, Port port) const {
+    return getConnectionThroughWire(op, port);
+  }
 
-    LLVM_DEBUG(llvm::dbgs()
-               << "getConnectedTile(" << stringifyWireBundle(port.bundle) << " "
-               << port.channel << ")");
-    LLVM_DEBUG(tileOp.dump());
+  // Whether `port` is driven (is the destination of a connect or masterset)
+  // inside the given interconnect op.
+  bool drivesPort(Operation *op, Port port) const {
+    Region *r = nullptr;
+    if (auto sb = dyn_cast<SwitchboxOp>(op))
+      r = &sb.getConnections();
+    else if (auto sm = dyn_cast<ShimMuxOp>(op))
+      r = &sm.getConnections();
+    if (!r)
+      return false;
+    Block &b = r->front();
+    for (auto connectOp : b.getOps<ConnectOp>())
+      if (connectOp.destPort() == port)
+        return true;
+    for (auto masterSetOp : b.getOps<MasterSetOp>())
+      if (masterSetOp.destPort() == port)
+        return true;
+    return false;
+  }
 
-    // The accumulated result;
+  // Traverse forward from switchbox/shim-mux input ports, collecting the
+  // endpoints each stream reaches: flow-endpoint tiles, or -- under
+  // keepPartialFlows -- driven interconnect ports that have no onward wire.
+  std::vector<PacketConnection> traverse(std::vector<PacketConnection> worklist,
+                                         bool keepPartialFlows) const {
     std::vector<PacketConnection> connectedTiles;
-    // A worklist of PortConnections to visit.  These are all input ports of
-    // some object (likely either a TileOp or a SwitchboxOp).
-    std::vector<PacketConnection> worklist;
-    // Start the worklist by traversing from the tile to its connected
-    // switchbox.
-    auto t = getConnectionThroughWire(tileOp.getOperation(), port);
-
-    // If there is no wire to traverse, then just return no connection
-    if (!t)
-      return connectedTiles;
-    worklist.push_back({*t, {0, 0}});
-
     while (!worklist.empty()) {
       PacketConnection t = worklist.back();
       worklist.pop_back();
-      PortConnection portConnection = t.portConnection;
+      Operation *other = t.portConnection.op;
+      Port otherPort = t.portConnection.port;
       MaskValue maskValue = t.mv;
-      Operation *other = portConnection.op;
-      Port otherPort = portConnection.port;
       if (other && other->hasTrait<IsFlowEndPoint>()) {
         // If we got to a tile, then add it to the result.
         connectedTiles.push_back(t);
-      } else if (auto switchOp = dyn_cast_or_null<SwitchboxOp>(other)) {
-        std::vector<PortMaskValue> nextPortMaskValues =
-            getConnectionsThroughSwitchbox(switchOp.getConnections(),
-                                           otherPort);
-        std::vector<PacketConnection> newWorkList =
-            maskSwitchboxConnections(switchOp, nextPortMaskValues, maskValue);
-        // append to the worklist
-        worklist.insert(worklist.end(), newWorkList.begin(), newWorkList.end());
-        if (!nextPortMaskValues.empty() && newWorkList.empty()) {
-          // No rule matched some incoming packet.  This is likely a
-          // configuration error.
-          LLVM_DEBUG(llvm::dbgs() << "No rule matched incoming packet here: ");
-          LLVM_DEBUG(other->dump());
-        }
-      } else if (auto switchOp = dyn_cast_or_null<ShimMuxOp>(other)) {
-        std::vector<PortMaskValue> nextPortMaskValues =
-            getConnectionsThroughSwitchbox(switchOp.getConnections(),
-                                           otherPort);
-        std::vector<PacketConnection> newWorkList =
-            maskSwitchboxConnections(switchOp, nextPortMaskValues, maskValue);
-        // append to the worklist
-        worklist.insert(worklist.end(), newWorkList.begin(), newWorkList.end());
-        if (!nextPortMaskValues.empty() && newWorkList.empty()) {
-          // No rule matched some incoming packet.  This is likely a
-          // configuration error.
-          LLVM_DEBUG(llvm::dbgs() << "No rule matched incoming packet here: ");
-          LLVM_DEBUG(other->dump());
-        }
-      } else {
+        continue;
+      }
+      Region *connections = nullptr;
+      if (auto switchOp = dyn_cast_or_null<SwitchboxOp>(other))
+        connections = &switchOp.getConnections();
+      else if (auto switchOp = dyn_cast_or_null<ShimMuxOp>(other))
+        connections = &switchOp.getConnections();
+      if (!connections) {
         LLVM_DEBUG(llvm::dbgs()
                    << "*** Connection Terminated at unknown operation: ");
+        LLVM_DEBUG(other->dump());
+        continue;
+      }
+      std::vector<PortMaskValue> nextPortMaskValues =
+          getConnectionsThroughSwitchbox(*connections, otherPort);
+      std::vector<PacketConnection> partialEndpoints;
+      std::vector<PacketConnection> newWorkList = maskSwitchboxConnections(
+          other, nextPortMaskValues, maskValue, keepPartialFlows,
+          partialEndpoints);
+      worklist.insert(worklist.end(), newWorkList.begin(), newWorkList.end());
+      connectedTiles.insert(connectedTiles.end(), partialEndpoints.begin(),
+                            partialEndpoints.end());
+      if (!nextPortMaskValues.empty() && newWorkList.empty() &&
+          partialEndpoints.empty()) {
+        // No rule matched some incoming packet.  This is likely a
+        // configuration error.
+        LLVM_DEBUG(llvm::dbgs() << "No rule matched incoming packet here: ");
         LLVM_DEBUG(other->dump());
       }
     }
     return connectedTiles;
   }
+
+  // Get the tiles connected to the given tile, starting from the given
+  // output port of the tile.  This is 1:N relationship because each
+  // switchbox can broadcast.
+  std::vector<PacketConnection> getConnectedTiles(TileOp tileOp, Port port,
+                                                  bool keepPartialFlows) const {
+    LLVM_DEBUG(llvm::dbgs()
+               << "getConnectedTile(" << stringifyWireBundle(port.bundle) << " "
+               << port.channel << ")");
+    LLVM_DEBUG(tileOp.dump());
+    // Traverse from the tile to its connected switchbox.
+    auto t = getConnectionThroughWire(tileOp.getOperation(), port);
+    // If there is no wire to traverse, then just return no connection
+    if (!t)
+      return {};
+    return traverse({{*t, {0, 0}}}, keepPartialFlows);
+  }
+
+  // Get the endpoints reached by a stream that enters the fabric at the given
+  // input port of an interconnect (switchbox / shim-mux).  Used to lift flows
+  // whose source is not a core or DMA.
+  std::vector<PacketConnection>
+  getConnectedTilesFromInput(Operation *switchOp, Port inputPort,
+                             bool keepPartialFlows) const {
+    return traverse({{PortConnection{switchOp, inputPort}, {0, 0}}},
+                    keepPartialFlows);
+  }
 };
 
+// The endpoint of a lifted flow is a tile: a flow-endpoint tile directly, or
+// the tile owning a directional switchbox / shim-mux port (partial flow).
+static Value resolveEndpointTile(Operation *op) {
+  if (isa<TileOp>(op))
+    return op->getResult(0);
+  if (auto sb = dyn_cast<SwitchboxOp>(op))
+    return sb.getTile();
+  if (auto sm = dyn_cast<ShimMuxOp>(op))
+    return sm.getTile();
+  return nullptr;
+}
+
+static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
+                      WireBundle srcBundle, int srcChannel,
+                      const std::vector<PacketConnection> &endpoints) {
+  for (const PacketConnection &c : endpoints) {
+    Operation *destOp = c.portConnection.op;
+    Port destPort = c.portConnection.port;
+    MaskValue maskValue = c.mv;
+    Value destTile = resolveEndpointTile(destOp);
+    if (!destTile)
+      continue;
+    if (maskValue.mask == 0) {
+      FlowOp::create(rewriter, loc, srcTile, srcBundle, srcChannel, destTile,
+                     destPort.bundle, destPort.channel);
+    } else {
+      auto flowOp =
+          PacketFlowOp::create(rewriter, loc, maskValue.value, nullptr, nullptr);
+      PacketFlowOp::ensureTerminator(flowOp.getPorts(), rewriter, loc);
+      OpBuilder::InsertPoint ip = rewriter.saveInsertionPoint();
+      rewriter.setInsertionPoint(flowOp.getPorts().front().getTerminator());
+      PacketSourceOp::create(rewriter, loc, srcTile, srcBundle, srcChannel);
+      PacketDestOp::create(rewriter, loc, destTile, destPort.bundle,
+                           destPort.channel);
+      rewriter.restoreInsertionPoint(ip);
+    }
+  }
+}
+
 static void findFlowsFrom(TileOp op, ConnectivityAnalysis &analysis,
-                          OpBuilder &rewriter) {
+                          OpBuilder &rewriter, bool keepPartialFlows) {
   Operation *Op = op.getOperation();
   rewriter.setInsertionPoint(Op->getBlock()->getTerminator());
 
@@ -238,33 +314,77 @@ static void findFlowsFrom(TileOp op, ConnectivityAnalysis &analysis,
                << op.getNumSourceConnections(bundle) << " Connections\n");
     for (size_t i = 0; i < op.getNumSourceConnections(bundle); i++) {
       std::vector<PacketConnection> tiles =
-          analysis.getConnectedTiles(op, {bundle, (int)i});
+          analysis.getConnectedTiles(op, {bundle, (int)i}, keepPartialFlows);
       LLVM_DEBUG(llvm::dbgs() << tiles.size() << " Flows\n");
-
-      for (PacketConnection &c : tiles) {
-        PortConnection portConnection = c.portConnection;
-        MaskValue maskValue = c.mv;
-        Operation *destOp = portConnection.op;
-        Port destPort = portConnection.port;
-        if (maskValue.mask == 0) {
-          FlowOp::create(rewriter, Op->getLoc(), Op->getResult(0), bundle, i,
-                         destOp->getResult(0), destPort.bundle,
-                         destPort.channel);
-        } else {
-          auto flowOp = PacketFlowOp::create(rewriter, Op->getLoc(),
-                                             maskValue.value, nullptr, nullptr);
-          PacketFlowOp::ensureTerminator(flowOp.getPorts(), rewriter,
-                                         Op->getLoc());
-          OpBuilder::InsertPoint ip = rewriter.saveInsertionPoint();
-          rewriter.setInsertionPoint(flowOp.getPorts().front().getTerminator());
-          PacketSourceOp::create(rewriter, Op->getLoc(), Op->getResult(0),
-                                 bundle, i);
-          PacketDestOp::create(rewriter, Op->getLoc(), destOp->getResult(0),
-                               destPort.bundle, destPort.channel);
-          rewriter.restoreInsertionPoint(ip);
-        }
-      }
+      emitFlows(rewriter, Op->getLoc(), Op->getResult(0), bundle, (int)i, tiles);
     }
+  }
+}
+
+// Lift flows whose source is not a core/DMA.  Seed from every switchbox /
+// shim-mux input port that drives a connection but is not itself driven by an
+// upstream interconnect connection.  Ports driven by a core/DMA tile are
+// already covered by findFlowsFrom; ports driven by an upstream interconnect
+// are covered by that interconnect's own source, so both are skipped here to
+// avoid emitting a flow twice.
+static void findFlowsFromInterconnect(Operation *switchOp,
+                                      ConnectivityAnalysis &analysis,
+                                      OpBuilder &rewriter,
+                                      bool keepPartialFlows) {
+  Region *connections = nullptr;
+  if (auto sb = dyn_cast<SwitchboxOp>(switchOp))
+    connections = &sb.getConnections();
+  else if (auto sm = dyn_cast<ShimMuxOp>(switchOp))
+    connections = &sm.getConnections();
+  if (!connections)
+    return;
+  rewriter.setInsertionPoint(switchOp->getBlock()->getTerminator());
+
+  // Distinct source ports of this interconnect's connections and packet rules.
+  llvm::SmallVector<Port, 8> sourcePorts;
+  auto addPort = [&](Port p) {
+    if (!llvm::is_contained(sourcePorts, p))
+      sourcePorts.push_back(p);
+  };
+  Block &b = connections->front();
+  for (auto connectOp : b.getOps<ConnectOp>())
+    addPort(connectOp.sourcePort());
+  for (auto rulesOp : b.getOps<PacketRulesOp>())
+    addPort(rulesOp.sourcePort());
+
+  for (Port p : sourcePorts) {
+    Value srcTile;
+    WireBundle srcBundle = p.bundle;
+    int srcChannel = p.channel;
+    if (auto up = analysis.upstreamOf(switchOp, p)) {
+      Operation *upOp = up->op;
+      Port upPort = up->port;
+      if (upOp && upOp->hasTrait<IsFlowEndPoint>()) {
+        // Driven by a tile.  Core/DMA sources are handled by findFlowsFrom;
+        // recover the remaining tile-source bundles (e.g. PLIO) from here.
+        if (upPort.bundle == WireBundle::Core ||
+            upPort.bundle == WireBundle::DMA)
+          continue;
+        srcTile = upOp->getResult(0);
+        srcBundle = upPort.bundle;
+        srcChannel = upPort.channel;
+      } else if (analysis.drivesPort(upOp, upPort)) {
+        // Mid-chain: an upstream interconnect drives this port.
+        continue;
+      } else {
+        // Wire exists but nothing drives it: this input is a fabric entry.
+        srcTile = resolveEndpointTile(switchOp);
+      }
+    } else {
+      // No upstream wire: this input is a fabric entry (array edge).
+      srcTile = resolveEndpointTile(switchOp);
+    }
+    if (!srcTile)
+      continue;
+    std::vector<PacketConnection> tiles =
+        analysis.getConnectedTilesFromInput(switchOp, p, keepPartialFlows);
+    emitFlows(rewriter, switchOp->getLoc(), srcTile, srcBundle, srcChannel,
+              tiles);
   }
 }
 
@@ -282,7 +402,17 @@ struct AIEFindFlowsPass
 
     OpBuilder builder = OpBuilder::atBlockTerminator(d.getBody());
     for (auto tile : d.getOps<TileOp>()) {
-      findFlowsFrom(tile, analysis, builder);
+      findFlowsFrom(tile, analysis, builder, clKeepPartialFlows);
+    }
+    // Lift flows whose source is not a core/DMA (transit fills, packet routing
+    // steered at runtime, PLIO/edge entries) directly from the interconnect.
+    if (clKeepPartialFlows) {
+      for (auto switchOp : d.getOps<SwitchboxOp>())
+        findFlowsFromInterconnect(switchOp, analysis, builder,
+                                  clKeepPartialFlows);
+      for (auto shimMuxOp : d.getOps<ShimMuxOp>())
+        findFlowsFromInterconnect(shimMuxOp, analysis, builder,
+                                  clKeepPartialFlows);
     }
   }
 };

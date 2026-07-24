@@ -260,11 +260,26 @@ def AIEFindFlows : Pass<"aie-find-flows", "DeviceOp"> {
     by aie.flow) or a packet-switched connection (represensted by
     aie.packetflow).  This pass is primarily used for testing automatic
     routing.
+
+    By default every configured connection is lifted, including partial flows
+    whose source or destination is a directional switchbox port rather than a
+    core or DMA (transit connections, PLIO/edge entries, and packet routes a
+    running design steers by packet id).  This makes it possible to drop the
+    aie.switchbox configuration of a physically routed design and recover it.
+    Set `keep-partial-flows=false` to restrict recovery to flows that begin at a
+    core/DMA and end on a core/DMA.
   }];
 
   let constructor = "xilinx::AIE::createAIEFindFlowsPass()";
   let dependentDialects = [
     "xilinx::AIE::AIEDialect",
+  ];
+
+  let options = [
+    Option<"clKeepPartialFlows", "keep-partial-flows", "bool",
+           /*default=*/"true",
+           "Also recover partial flows whose source or destination is a "
+           "directional/edge switchbox port rather than a core or DMA.">,
   ];
 }
 
