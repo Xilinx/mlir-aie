@@ -30,7 +30,7 @@ For IRON constructs like `RuntimeTasks`, please continue with this [reading](./R
 
 For the AIE dialect functions like `npu_dma_memcpy_nd` and `dma_wait` please continue reading [here](./DMATasks.md).
 
-For the full catalog of `aiex` control ops you can place in a runtime sequence, grouped by resource and verb, see the [Runtime Sequence Op Reference](../../runtime_sequence_reference.md).
+Under the hood, `rt.fill()` and `rt.drain()` lower through the DMA-task API: each becomes an `aiex.dma_configure_task_for` (configuring a single-BD chain on the shim channel named by the ObjectFifo's `aie.shim_dma_allocation`) followed by `aiex.dma_start_task`, with `aiex.dma_await_task` (when `wait=True`) or a deferred `aiex.dma_free_task` on task-group finish. The full catalog of runtime-sequence ops is in the AIEX dialect reference (../../../docs/AIEXDialect.md).
 
 -----
 [Prev](../section-2c/) &middot; [Top](..) &middot; [Next](../section-2e/)
