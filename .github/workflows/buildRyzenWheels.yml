@@ -266,7 +266,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner_type: [ aie2-4col, aie2p-8col ]
+        include:
+          - runner_type: aie2-4col
+            npu_kind: npu1
+          - runner_type: aie2p-8col
+            npu_kind: npu2
     env:
       # The self-hosted NPU runners ship Ryzen AI 1.3.0.1; override the
       # workflow-level VITIS (which points at the ubuntu build container's
@@ -324,11 +328,13 @@ jobs:
           # these commands exercise the wheel. The -eo pipefail shell fails the
           # job if any example returns non-zero.
           echo "===== basic/passthrough_kernel ====="
-          python programming_examples/basic/passthrough_kernel/passthrough_kernel.py --in1_size 4096
+          python utils/run_on_npu.py "${{ matrix.npu_kind }}" \
+            python programming_examples/basic/passthrough_kernel/passthrough_kernel.py --in1_size 4096
           for ex in basic/vector_scalar_add basic/passthrough_dmas; do
             echo "===== $ex ====="
             make -C "programming_examples/$ex" clean
-            make -C "programming_examples/$ex" run
+            python utils/run_on_npu.py "${{ matrix.npu_kind }}" \
+              make -C "programming_examples/$ex" run
           done
 
       - name: Cleanup NPU_CACHE_HOME
