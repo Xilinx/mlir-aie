@@ -32,10 +32,12 @@ compared to a Taylor-series evaluation.
 ## Usage
 
 ```shell
-make run        # compile + execute on NPU1 (npu)
-NPU2=1 make run # execute on NPU2 (npu2)
-make clean
+python3 vector_exp.py
 ```
+
+The IRON JIT runtime detects the attached NPU generation automatically. The
+script compiles the design on its first invocation, runs it, and verifies every
+bfloat16 input value.
 
 The host driver tests every possible bfloat16 value (every uint16
 reinterpreted as bf16, 65536 inputs total) and verifies the LUT output

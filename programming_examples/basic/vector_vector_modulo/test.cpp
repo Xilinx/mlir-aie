@@ -139,14 +139,14 @@ int main(int argc, const char *argv[]) {
     if (*(bufOut + i) != *(bufInA + i) % *(bufInB + i)) {
       if (verbosity >= 1) {
         std::cout << "Error in output " << *(bufOut + i)
-                  << " != " << *(bufInA + i) << " + " << *(bufInB + i)
+                  << " != " << *(bufInA + i) << " % " << *(bufInB + i)
                   << std::endl;
       }
       errors++;
     } else {
       if (verbosity >= 1)
         std::cout << "Correct output " << *(bufOut + i)
-                  << " == " << *(bufInA + i) + *(bufInB + i) << std::endl;
+                  << " == " << (*(bufInA + i) % *(bufInB + i)) << std::endl;
     }
   }
 

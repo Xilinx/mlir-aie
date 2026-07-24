@@ -23,6 +23,18 @@ ReLU is exact; SiLU and GELU use LUT-backed kernels and have per-op verification
 
 ## Usage
 
+### Standalone JIT verification
+
+```shell
+python3 eltwise_unary.py --op relu
+python3 eltwise_unary.py --op silu
+python3 eltwise_unary.py --op gelu
+```
+
+Pass `--dev npu2` for Strix.
+
+### C++ Testbench
+
 ```shell
 make op=relu && make run op=relu
 make op=silu && make run op=silu

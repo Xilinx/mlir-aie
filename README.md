@@ -169,8 +169,8 @@ sudo apt install libopencv-dev python3-opencv
 
 ### From Pre-Built Binaries (Wheels)
 
-Set up and source a Python virtual environment and install the IRON library 
-(`mlir-aie` wheel), and per-core compiler ("peano", `llvm-aie` wheel). The 
+Set up and source a Python virtual environment and install the IRON library
+(`mlir-aie` wheel), and per-core compiler ("peano", `llvm-aie` wheel). The
 following is the **quickest path:**
 
 ````bash
@@ -180,19 +180,19 @@ source utils/env_setup.sh    # every time you open a new shell
 
 This creates an environment named `ironenv` containing the toolchain.
 
-By default, the script will match the `mlir_aie` wheel associated with the 
-currently checked-out release/commit of the repository. If it can't find a 
-release for this commit, it will error, since trying to compile a version of 
+By default, the script will match the `mlir_aie` wheel associated with the
+currently checked-out release/commit of the repository. If it can't find a
+release for this commit, it will error, since trying to compile a version of
 the programming examples in this repository with a compiler wheel whose version
-does not exactly match very frequently leads to hard-to-debug errors. If you 
-insist on using the latest available release from `main`, pass `--latest`. To 
+does not exactly match very frequently leads to hard-to-debug errors. If you
+insist on using the latest available release from `main`, pass `--latest`. To
 manually install a different wheel, follow the manual instructions below.
 
 > *Tip:* The `utils/env_install.sh` script also works as an update script.
 
 ### From Source
 
-To build the compiler toolchain from source, you'll need additional 
+To build the compiler toolchain from source, you'll need additional
 dependencies. Install the requirements using:
 
 ````bash
@@ -206,7 +206,7 @@ be built from source):
 
 ```bash
 ./utils/build-mlir-aie-from-wheels.sh
-```  
+```
 
 ### Manual Installation Steps
 
@@ -307,21 +307,16 @@ Below steps replicate what the install script does.
 
 </details>
 
-## Build an IRON Design for AIEs in the AMD Ryzen™ AI NPU on Linux
+## Run an IRON Design on the AMD Ryzen™ AI NPU on Linux
 
-For your design of interest, for instance from [programming_examples](programming_examples/), 2 steps are needed: (i) build the AIE design and then (ii) build the host code.
+The [programming examples](programming_examples/) use either of two entry points. Most examples use standalone `@iron.jit` to compile, run, and verify directly from Python:
 
-### Build Device AIE Part
+```bash
+cd programming_examples/<category>/<example>
+python3 <example>.py
+```
 
-1. Go to the design of interest and run:
-   ```bash
-   make
-   ```
-
-1. Build host code and execute the design:
-    ```bash
-    make run
-    ```
+Examples with a separate native host, explicit artifact builds, or multi-stage workflow have a `Makefile`. Follow the example's README for its supported targets, such as `make run` or `make run_py`.
 
 ## Learn more about NPU programming with IRON
 

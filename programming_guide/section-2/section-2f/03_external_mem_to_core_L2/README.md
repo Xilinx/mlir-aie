@@ -26,8 +26,8 @@ The processes on the Worker are the same as in the previous design. The producer
 
 The design is wrapped in `@iron.jit`, so a single command JIT-compiles and runs it on the attached NPU:
 ```bash
-make run                              # builds + runs on the NPU (devicename={npu,npu2})
-make emit-mlir                        # writes the lowered MLIR to build/aie.mlir without touching the NPU
+python3 ext_to_core_L2.py
+python3 ext_to_core_L2.py --dev npu --emit-mlir > aie.mlir
 ```
 
 The `# To/from AIE-array data movement` section of the design code is described in detail in [Section 2d](../../section-2d/).
