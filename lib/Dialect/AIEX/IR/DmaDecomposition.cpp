@@ -44,21 +44,6 @@ int64_t maxLegalInputSizeForDim(const AIE::AIETargetModel &tm, int col, int row,
   return (1LL << wrapBits) - 1;
 }
 
-bool patternPassesVerification(Operation *forOp, BaseMemRefType bufType,
-                               const AIE::AIETargetModel &tm, int col, int row,
-                               const NdDmaPattern &pattern) {
-  SmallVector<int64_t, kNdDmaDims> hwSizes(kNdDmaDims);
-  SmallVector<int64_t, kNdDmaDims> hwStrides(kNdDmaDims);
-  getHardwareStridesWraps(tm, forOp, bufType, pattern.sizes, pattern.strides,
-                          hwSizes, hwStrides);
-
-  ScopedDiagnosticHandler handler(forOp->getContext(),
-                                  [](Diagnostic &) { return success(); });
-  return succeeded(verifyStridesWraps(forOp, bufType, col, row, pattern.sizes,
-                                      pattern.strides, hwSizes, hwStrides,
-                                      /*skipTransformationChecks=*/false));
-}
-
 /// Enumerate divisors b of n in descending order (largest inner factor first).
 void divisorsDescending(int64_t n, SmallVectorImpl<int64_t> &out) {
   out.clear();
@@ -180,13 +165,21 @@ decomposeRecursive(Operation *forOp, BaseMemRefType bufType,
 
 } // namespace
 
-bool AIEX::isNdDmaPatternLegal(Operation *forOp,
-                               BaseMemRefType referencedBufType,
-                               const AIE::AIETargetModel &targetModel,
-                               int tileCol, int tileRow,
-                               const NdDmaPattern &pattern) {
-  return patternPassesVerification(forOp, referencedBufType, targetModel,
-                                   tileCol, tileRow, pattern);
+bool AIEX::patternPassesVerification(Operation *forOp,
+                                     BaseMemRefType referencedBufType,
+                                     const AIE::AIETargetModel &tm, int tileCol,
+                                     int tileRow, const NdDmaPattern &pattern) {
+  SmallVector<int64_t, kNdDmaDims> hwSizes(kNdDmaDims);
+  SmallVector<int64_t, kNdDmaDims> hwStrides(kNdDmaDims);
+  getHardwareStridesWraps(tm, forOp, referencedBufType, pattern.sizes,
+                          pattern.strides, hwSizes, hwStrides);
+
+  ScopedDiagnosticHandler handler(forOp->getContext(),
+                                  [](Diagnostic &) { return success(); });
+  return succeeded(verifyStridesWraps(forOp, referencedBufType, tileCol,
+                                      tileRow, pattern.sizes, pattern.strides,
+                                      hwSizes, hwStrides,
+                                      /*skipTransformationChecks=*/false));
 }
 
 bool AIEX::isDecomposableNdDmaPattern(Operation *forOp,
@@ -211,8 +204,8 @@ bool AIEX::isDecomposableNdDmaPattern(Operation *forOp,
   pattern.strides.assign(stridesInnermostFirst.begin(),
                          stridesInnermostFirst.end());
 
-  if (isNdDmaPatternLegal(forOp, referencedBufType, targetModel, tileCol,
-                          tileRow, pattern))
+  if (patternPassesVerification(forOp, referencedBufType, targetModel, tileCol,
+                                tileRow, pattern))
     return false;
 
   auto decomposed = decomposeNdDmaPattern(forOp, referencedBufType, pattern,
@@ -233,8 +226,8 @@ AIEX::decomposeNdDmaPattern(Operation *forOp, BaseMemRefType referencedBufType,
   if (isContiguousTransfer(pattern.sizes, pattern.strides))
     return failure();
 
-  if (isNdDmaPatternLegal(forOp, referencedBufType, targetModel, tileCol,
-                          tileRow, pattern))
+  if (patternPassesVerification(forOp, referencedBufType, targetModel, tileCol,
+                                tileRow, pattern))
     return failure();
 
   return decomposeRecursive(forOp, referencedBufType, targetModel, tileCol,

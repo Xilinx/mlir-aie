@@ -272,7 +272,8 @@ struct DecomposeLargeDmaBdPattern : OpRewritePattern<NpuDmaMemcpyNdOp> {
     const AIE::AIETargetModel &targetModel = AIE::getTargetModel(op);
     auto bufferType = cast<BaseMemRefType>(op.getMemref().getType());
 
-    if (isNdDmaPatternLegal(op, bufferType, targetModel, col, row, pattern))
+    if (patternPassesVerification(op, bufferType, targetModel, col, row,
+                                  pattern))
       return failure();
 
     auto decomposed =
@@ -356,7 +357,8 @@ struct DecomposeLargeDmaBdTaskPattern : OpRewritePattern<AIE::DMABDOp> {
     const AIE::AIETargetModel &targetModel = AIE::getTargetModel(op);
     auto bufferType = cast<BaseMemRefType>(op.getBuffer().getType());
 
-    if (isNdDmaPatternLegal(op, bufferType, targetModel, col, row, pattern))
+    if (patternPassesVerification(op, bufferType, targetModel, col, row,
+                                  pattern))
       return failure();
 
     auto decomposed =
