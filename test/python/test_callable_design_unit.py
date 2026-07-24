@@ -166,6 +166,7 @@ class TestJitDecorator:
             "include_paths",
             "object_files",
             "trace_config",
+            "full_elf",
         }
         assert _JIT_CONFIG_KEYS == expected
 
@@ -331,6 +332,50 @@ def test_external_function_positional_not_in_tensor_args():
 # A pure-unit version was removed because it required mocking compile() in a
 # way that diverged from prod behaviour (left _kernel_dir unset, masking a
 # real defect).
+
+
+# ---------------------------------------------------------------------------
+# specialize(): trace_config must reach the generator, not just the wrapper
+# ---------------------------------------------------------------------------
+
+
+def test_specialize_forwards_trace_config_to_compilable():
+    """trace_config is dual-natured: a CallableDesign wrapper config AND a
+    generator CompileTime[T] param that bakes trace flows into the MLIR.
+
+    specialize() must forward it to the underlying compilable's compile_kwargs
+    (so the generator receives it) in addition to setting it on the wrapper.
+    Regression: an earlier version popped it out of the forwarded overrides, so
+    the compile-only path (specialize(...).compile(xclbin_path=...)) produced a
+    trace-less xclbin and downstream parsing failed with "No valid trace data
+    found".
+    """
+
+    def gen(a: In, *, trace_config: CompileTime[object] = None):
+        pass
+
+    cd = CallableDesign(gen)
+    sentinel = object()
+    spec = cd.specialize(trace_config=sentinel)
+
+    # Reaches the generator (compilable compile_kwargs)...
+    assert spec.compilable.compile_kwargs.get("trace_config") is sentinel
+    # ...and still configures the wrapper (buffer read-back).
+    assert spec.trace_config is sentinel
+
+
+def test_specialize_preserves_wrapper_trace_config_when_not_overridden():
+    """When specialize() is called without a trace_config override, the wrapper's
+    existing trace_config is preserved (unchanged pre-existing behaviour)."""
+
+    def gen(a: In, *, M: CompileTime[int]):
+        pass
+
+    sentinel = object()
+    cd = CallableDesign(gen, trace_config=sentinel)
+    spec = cd.specialize(M=512)
+
+    assert spec.trace_config is sentinel
 
 
 # ---------------------------------------------------------------------------
@@ -556,31 +601,27 @@ def test_as_mlir_binds_runtime_device_before_generation(monkeypatch):
         def device(self):
             return NPU2Col1()
 
-    def gen():
-        pass
-
     set_current_device(None)
     monkeypatch.setattr(utils, "_get_default_npu_runtime", lambda: FakeRuntime())
 
+    generated_for = []
+
+    def gen():
+        generated_for.append(
+            type(utils.get_current_device(probe_runtime=False)).__name__
+        )
+
     cd = CallableDesign(gen)
 
-    def fake_generate_uncached(self):
-        assert (
-            type(utils.get_current_device(probe_runtime=False)).__name__ == "NPU2Col1"
-        )
-        return ("module {}", [])
-
-    def fake_generate_mlir(self, _ExternalFunction):
-        return self._generated[0]
-
-    monkeypatch.setattr(CompilableDesign, "_generate_uncached", fake_generate_uncached)
-    monkeypatch.setattr(CompilableDesign, "_generate_mlir", fake_generate_mlir)
-
     try:
-        assert cd.as_mlir() == "module {}"
+        mlir_text = cd.as_mlir()
     finally:
         set_current_device(None)
 
+    # Real generation ran and bound the runtime-detected device beforehand.
+    assert generated_for == ["NPU2Col1"]
+    assert "module" in mlir_text
+
     keys = list(cd.compilable._generated_cache)
     assert len(keys) == 1
-    assert "NPU2Col1" in keys[0][1]
+    assert "NPU2Col1" in keys[0][2]
