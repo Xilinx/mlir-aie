@@ -475,6 +475,23 @@ class CompilableDesign:
 
         return tensor_args, scalar_kwargs
 
+    def tensor_output_flags(self) -> list[bool]:
+        """Whether each tensor argument is device -> host (``Out``/``InOut``).
+
+        Aligned with ``tensor_params`` order, and thus with the ``tensor_args``
+        order ``split_runtime_args()`` produces for a callable generator. Used
+        by the host runtime to know which dispatched arguments the device just
+        wrote fresh data into, so their host-residency can be reasserted after
+        a successful run (see ``HostRuntime._repin_outputs``).
+
+        Returns:
+            list[bool]: Empty for a static ``.mlir`` file generator (no
+            ``In``/``Out``/``InOut`` annotations to introspect).
+        """
+        if not callable(self.mlir_generator):
+            return []
+        return [self._hints.get(name) in (Out, InOut) for name in self.tensor_params]
+
     def generate_mlir(self):
         """Generate and return the MLIR module without compiling to xclbin.
 

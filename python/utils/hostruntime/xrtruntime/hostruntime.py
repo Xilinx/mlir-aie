@@ -233,6 +233,7 @@ class XRTHostRuntime(HostRuntime):
         trace_config=None,
         fail_on_error: bool = True,
         only_if_loaded: bool = False,
+        output_flags: list[bool] | None = None,
         **kwargs,
     ) -> XRTKernelResult:
         """
@@ -244,6 +245,9 @@ class XRTHostRuntime(HostRuntime):
             trace_config (optional): Configuration for tracing. Defaults to None.
             fail_on_error (bool, optional): Whether to raise an exception on kernel failure. Defaults to True.
             only_if_loaded (bool, optional): Accepted for API compatibility with the runtime base class.
+            output_flags (list[bool] | None, optional): Per-argument
+                ``Out``/``InOut`` flags aligned with ``args``; see
+                ``HostRuntime._repin_outputs``. Defaults to None.
             **kwargs: Additional arguments.
 
         Returns:
@@ -320,6 +324,9 @@ class XRTHostRuntime(HostRuntime):
             # delete insts buffer if it was created locally
             if insts_bo and not kernel_handle.insts_bo:
                 del insts_bo
+
+        if r == pyxrt.ert_cmd_state.ERT_CMD_STATE_COMPLETED:
+            self._repin_outputs(args, output_flags)
 
         return XRTKernelResult(r, stop - start)
 

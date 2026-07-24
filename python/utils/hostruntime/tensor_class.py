@@ -113,6 +113,16 @@ class Tensor(ABC):
         """
         Subclasses must implement a data property.
 
+        Implementations should mark the tensor host-dirty (``self.device =
+        "cpu"``) on every access, not only on writes: numpy gives no separate
+        write hook (`np.copyto(t.data, x)` bypasses `__setitem__`), so a
+        write-only hook would miss exactly those writes and let a resident
+        argument re-authored in place between dispatches run stale on the
+        device. A redundant re-sync on a subsequent `.to("npu")` after a pure
+        read is cheap; a silently skipped one after a write is a correctness
+        bug. See ``HostRuntime._repin_outputs`` for how output arguments avoid
+        being penalized by this on read.
+
         Returns:
             np.ndarray: The underlying data of the tensor.
         """
@@ -135,10 +145,14 @@ class Tensor(ABC):
 
         Note: This method may implicitly trigger data synchronization to devices.
         """
-        if self.device == "npu":
+        # Capture the residency label before touching `.data` -- accessing it
+        # marks the tensor host-dirty (see the `data` property), which would
+        # otherwise make repr() itself flip the label it's about to print.
+        device = self.device
+        if device == "npu":
             self._sync_from_device()
         array_str = np.array2string(self.data, separator=",")
-        return f"{self.__class__.__name__}({array_str}, device='{self.device}')"
+        return f"{self.__class__.__name__}({array_str}, device='{device}')"
 
     def __array__(self, dtype=None):
         """
@@ -191,10 +205,14 @@ class Tensor(ABC):
         before modification and back to device after modification to ensure
         data consistency across device and host memory.
         """
-        if self.device == "npu":
+        # Capture residency once: `.data` marks the tensor host-dirty on access
+        # (see the `data` property), so re-reading `self.device` after the
+        # write below would always see "cpu" and skip the resync-to-device.
+        was_npu = self.device == "npu"
+        if was_npu:
             self._sync_from_device()
         self.data[index] = value
-        if self.device == "npu":
+        if was_npu:
             self._sync_to_device()
 
     def __len__(self):
@@ -404,8 +422,12 @@ class Tensor(ABC):
 
         Note: For NPU tensors, this method syncs the filled data to device after modification.
         """
+        # Capture residency before the write: `.data` marks the tensor
+        # host-dirty on access, so checking `self.device` afterward would
+        # always see "cpu" and skip the resync-to-device.
+        was_npu = self.device == "npu"
         self.data.fill(value)
-        if self.device == "npu":
+        if was_npu:
             self._sync_to_device()
 
     def numel(self):

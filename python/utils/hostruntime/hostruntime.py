@@ -166,6 +166,7 @@ class HostRuntime(ABC):
         trace_config: TraceConfig | None = None,
         fail_on_error: bool = True,
         only_if_loaded=False,
+        output_flags: list[bool] | None = None,
         **kwargs,
     ) -> KernelResult:
         """
@@ -177,12 +178,39 @@ class HostRuntime(ABC):
             trace_config (TraceConfig | None, optional): Configuration for tracing. Defaults to None.
             fail_on_error (bool, optional): Whether to raise an exception on kernel failure. Defaults to True.
             only_if_loaded (bool, optional): If True, only run if already loaded. Defaults to False.
+            output_flags (list[bool] | None, optional): Per-argument
+                ``Out``/``InOut`` flags aligned with ``args`` (see
+                ``NPUKernel.output_flags``). Implementations should reassert
+                ``"npu"`` residency (``_repin_outputs``) on these positions
+                after a successful dispatch. Defaults to None.
             **kwargs: Additional arguments.
 
         Returns:
             KernelResult: The result of the kernel execution.
         """
         pass
+
+    @staticmethod
+    def _repin_outputs(args, output_flags: list[bool] | None) -> None:
+        """Reassert "npu" residency on the Out/InOut positions in *args*.
+
+        A successful dispatch just made the device the authoritative copy for
+        these arguments. Tensor.data marks a tensor host-dirty on every access
+        (see tensor_class.py) so that in-place writes (e.g. `t.data[:] = x`)
+        are never missed -- but that also fires on a plain read (`t.numpy()`),
+        since numpy gives no separate write hook. Without this reassertion, a
+        caller reading a resident output between dispatches (e.g. to extract a
+        result in a decode loop) would mark it dirty, and the next dispatch's
+        pre-run `.to("npu")` would then wrongly push that stale host copy back
+        onto the device instead of leaving the fresh device-computed state
+        alone. Positions beyond the end of output_flags (e.g. an appended
+        trace buffer) are left untouched.
+        """
+        if not output_flags:
+            return
+        for a, is_output in zip(args, output_flags):
+            if is_output:
+                a.device = "npu"
 
     def load_and_run(
         self,
@@ -227,7 +255,12 @@ class HostRuntime(ABC):
                     f"land."
                 )
 
-        ret = self.run(handle, list(run_args), trace_config=trace_config)
+        ret = self.run(
+            handle,
+            list(run_args),
+            trace_config=trace_config,
+            output_flags=npu_kernel.output_flags,
+        )
 
         if trace_config:
             trace_buffer, ctrl_buffer = self.extract_trace_from_args(

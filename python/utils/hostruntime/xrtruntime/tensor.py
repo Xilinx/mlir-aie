@@ -93,9 +93,14 @@ class XRTTensor(Tensor):
         """
         Get the underlying numpy array.
 
+        Marks the tensor host-dirty on every access (see Tensor.data) so an
+        in-place write -- `t.data[:] = x` or `np.copyto(t.data, x)` -- is
+        never missed by the next `.to("npu")`.
+
         Returns:
             np.ndarray: The underlying data.
         """
+        self.device = "cpu"
         return self._data
 
     @property

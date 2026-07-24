@@ -221,6 +221,7 @@ class CallableDesign:
             kernel_name="MLIR_AIE",
             trace_config=trace_config,
             num_host_bos=num_host_bos,
+            output_flags=compilable.tensor_output_flags(),
         )
         if compilable.use_cache:
             self._kernel_cache[cache_key] = kernel

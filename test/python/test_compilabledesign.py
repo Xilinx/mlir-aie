@@ -120,6 +120,27 @@ def test_path_generator_has_empty_param_lists():
 
 
 # ---------------------------------------------------------------------------
+# tensor_output_flags(): In/Out/InOut role per tensor_params position
+# ---------------------------------------------------------------------------
+
+
+def test_tensor_output_flags_matches_annotation_order():
+    d = CompilableDesign(_gemm_gen())
+    assert d.tensor_params == ["a", "b", "c"]
+    assert d.tensor_output_flags() == [False, False, True]
+
+
+def test_tensor_output_flags_inout_counts_as_output():
+    d = CompilableDesign(_inout_gen())
+    assert d.tensor_output_flags() == [True]
+
+
+def test_tensor_output_flags_empty_for_path_generator():
+    d = CompilableDesign(Path("/nonexistent/design.mlir"))
+    assert d.tensor_output_flags() == []
+
+
+# ---------------------------------------------------------------------------
 # Construction: paths normalised to Path objects
 # ---------------------------------------------------------------------------
 

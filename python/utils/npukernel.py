@@ -20,6 +20,7 @@ class NPUKernel:
         kernel_name="MLIR_AIE",
         trace_config: TraceConfig | None = None,
         num_host_bos: int | None = None,
+        output_flags: list[bool] | None = None,
     ):
         """
         Initialize the NPUKernel.
@@ -38,6 +39,14 @@ class NPUKernel:
                 command-chain minimum), so it is the correct value to validate
                 host buffer counts against. ``None`` when it could not be
                 determined (validation is then skipped).
+            output_flags (list[bool] | None, optional): Per-argument
+                ``Out``/``InOut`` flags, aligned with the run-time positional
+                tensor arguments (see
+                ``CompilableDesign.tensor_output_flags()``). ``None`` (or
+                empty) when the generator has no ``In``/``Out``/``InOut``
+                annotations to introspect (e.g. a static ``.mlir`` file), in
+                which case the host runtime cannot reassert output residency
+                after a dispatch. Defaults to None.
         """
         self._xclbin_path = xclbin_path
         self._insts_path = insts_path
@@ -45,6 +54,7 @@ class NPUKernel:
         self._trace_config = trace_config
         self._device_index = device_index
         self._num_host_bos = num_host_bos
+        self._output_flags = output_flags
 
     @property
     def trace_config(self) -> TraceConfig | None:
@@ -97,6 +107,18 @@ class NPUKernel:
             ``None`` if it could not be determined.
         """
         return self._num_host_bos
+
+    @property
+    def output_flags(self) -> list[bool] | None:
+        """
+        Get the per-argument ``Out``/``InOut`` flags.
+
+        Returns:
+            list[bool] | None: Aligned with the run-time positional tensor
+            arguments, or ``None`` if the generator had no annotations to
+            introspect.
+        """
+        return self._output_flags
 
     # Blocking call.
     def __call__(self, *args, **kwargs):
