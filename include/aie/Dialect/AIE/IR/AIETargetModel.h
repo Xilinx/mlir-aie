@@ -305,6 +305,15 @@ public:
   /// is 32 bits, the mem-tile field 17 bits and the core-tile field 14 bits).
   virtual uint64_t getDmaBdMaxLen(AIETileType tileType) const = 0;
 
+  /// Return the bit width of the wrap (size) field in a DMA buffer descriptor
+  /// for the given tile type. Used to compute the maximum legal wrap value
+  /// per dimension.
+  virtual uint32_t getDmaBdWrapBits(AIETileType tileType) const = 0;
+
+  /// Return the bit width of the step (stride) field in a DMA buffer
+  /// descriptor for the given tile type.
+  virtual uint32_t getDmaBdStepBits(AIETileType tileType) const = 0;
+
   /// Get stream switch port index for a given port specification
   /// Return port index for Stream_Switch_Event_Port_Selection register, or
   /// nullopt if invalid
@@ -326,6 +335,14 @@ public:
 
   uint64_t getDmaBdMaxLen(int col, int row) const {
     return getDmaBdMaxLen(getTileType(col, row));
+  }
+
+  uint32_t getDmaBdWrapBits(int col, int row) const {
+    return getDmaBdWrapBits(getTileType(col, row));
+  }
+
+  uint32_t getDmaBdStepBits(int col, int row) const {
+    return getDmaBdStepBits(getTileType(col, row));
   }
 
   /// Return the number of buffer descriptors accessible on channel `channel`
@@ -513,6 +530,14 @@ public:
       return 1ull << 13;
     return 0xFFFFFFFFull;
   }
+  uint32_t getDmaBdWrapBits(AIETileType tileType) const override {
+    // AIE1 core tiles have 8-bit wrap fields; shim tiles have 10-bit.
+    return tileType == AIETileType::CoreTile ? 8 : 10;
+  }
+  uint32_t getDmaBdStepBits(AIETileType tileType) const override {
+    // AIE1 core tiles have 13-bit step fields; shim tiles have 20-bit.
+    return tileType == AIETileType::CoreTile ? 13 : 20;
+  }
   bool isBdChannelAccessible(int col, int row, uint32_t bd_id,
                              int channel) const override {
     return true;
@@ -632,6 +657,22 @@ public:
       return (1ull << 14) - 1;
     default:
       return 0xFFFFFFFFull;
+    }
+  }
+  uint32_t getDmaBdWrapBits(AIETileType tileType) const override {
+    // Core tiles have 8-bit wrap; mem and shim tiles have 10-bit.
+    return tileType == AIETileType::CoreTile ? 8 : 10;
+  }
+  uint32_t getDmaBdStepBits(AIETileType tileType) const override {
+    // Shim NOC/PL: 20-bit, mem tile: 17-bit, core tile: 13-bit.
+    switch (tileType) {
+    case AIETileType::ShimNOCTile:
+    case AIETileType::ShimPLTile:
+      return 20;
+    case AIETileType::MemTile:
+      return 17;
+    default:
+      return 13;
     }
   }
 
