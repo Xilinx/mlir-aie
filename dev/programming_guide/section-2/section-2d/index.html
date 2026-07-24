@@ -2056,8 +2056,6 @@
       
         
       
-        
-      
     
     
     
@@ -2233,34 +2231,6 @@
     
   
     Kernel Library
-  
-
-    
-  </span>
-  
-  
-
-      </a>
-    </li>
-  
-
-              
-            
-              
-                
-  
-  
-  
-  
-    <li class="md-nav__item">
-      <a href="../../runtime_sequence_reference/" class="md-nav__link">
-        
-  
-  
-  <span class="md-ellipsis">
-    
-  
-    Runtime Sequence Reference
   
 
     
@@ -3260,7 +3230,7 @@
 <p>In high-performance computing applications, efficiently managing data movement and synchronization is crucial. This guide provides a comprehensive overview of how to utilize IRON to manage data movement at runtime from/to host memory to/from the AIE array (for example, in the Ryzen™ AI NPU).</p>
 <p>For IRON constructs like <code>RuntimeTasks</code>, please continue with this <a href="RuntimeTasks/">reading</a>.</p>
 <p>For the AIE dialect functions like <code>npu_dma_memcpy_nd</code> and <code>dma_wait</code> please continue reading <a href="DMATasks/">here</a>.</p>
-<p>For the full catalog of <code>aiex</code> control ops you can place in a runtime sequence, grouped by resource and verb, see the <a href="../../runtime_sequence_reference/">Runtime Sequence Op Reference</a>.</p>
+<p>Under the hood, <code>rt.fill()</code> and <code>rt.drain()</code> lower through the DMA-task API: each becomes an <code>aiex.dma_configure_task_for</code> (configuring a single-BD chain on the shim channel named by the ObjectFifo's <code>aie.shim_dma_allocation</code>) followed by <code>aiex.dma_start_task</code>, with <code>aiex.dma_await_task</code> (when <code>wait=True</code>) or a deferred <code>aiex.dma_free_task</code> on task-group finish. The full catalog of runtime-sequence ops is in the AIEX dialect reference (../../../docs/AIEXDialect.md).</p>
 <hr />
 <p><a href="../section-2c/">Prev</a> &middot; <a href="..">Top</a> &middot; <a href="../section-2e/">Next</a></p>
 
