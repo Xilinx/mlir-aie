@@ -26,6 +26,15 @@ Per row:
 
 ## Usage
 
+### Standalone JIT verification
+
+```shell
+python3 norm.py --dev npu2 --op rms
+python3 norm.py --dev npu2 --op layer
+```
+
+### C++ Testbench
+
 ```shell
 make op=rms && make run op=rms
 make op=layer && make run op=layer

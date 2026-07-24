@@ -60,6 +60,8 @@ my_design(a, b)              # compile + run + sync back
 
 `my_design.as_mlir(a, b)` prints MLIR for the active target, binding an attached runtime target when one is available. `python3 my_design.py --dev npu --emit-mlir` emits an offline target without touching the NPU.
 
+> **Device selection:** It is normally safe to omit `--dev` when running a JIT design; IRON automatically detects the attached NPU. Offline examples in this guide use the explicit `--dev npu` form. In an instructor-led session, use the assigned target. On XDNA 2 systems such as Strix or Krackan, substitute `--dev npu2`.
+
 ## Where to go next
 
 | You want… | Read |

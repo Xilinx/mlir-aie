@@ -54,8 +54,10 @@ def _make_argparser():
 
 
 def _run_and_verify(opts):
-    rng = np.random.default_rng(0)
-    in_np = rng.integers(-1000, 1000, size=(opts.num_elements,), dtype=np.int32)
+    in_np = np.roll(
+        np.arange(opts.num_elements, dtype=np.int32) - opts.num_elements // 2,
+        opts.num_elements // 3,
+    )
     in_t = iron.tensor(in_np, dtype=np.int32, device="npu")
     out_t = iron.zeros(1, dtype=np.int32, device="npu")
 
