@@ -80,16 +80,49 @@ LogicalResult xilinx::AIE::AIETranslateToLdScript(ModuleOp module,
       TileID srcCoord = {tile.colIndex(), tile.rowIndex()};
       const auto &targetModel = getTargetModel(tile);
 
-      // Figure out how much memory we have left for random allocations
+      // Figure out how much memory we have left for compiler-generated
+      // sections (.data/.rodata/.bss) that are not explicitly placed; these are
+      // emitted into the "data" region below. Buffers are placed by the
+      // buffer-address allocator, which (in bank-aware mode) can leave the free
+      // space fragmented -- pick the largest free gap across the stack and this
+      // tile's buffers within the tile's local memory.
       auto core = tile.getCoreOp();
-      int max = core.getStackSize();
+      int localMemSize = targetModel.getLocalMemorySize();
+
+      // Collect occupied [start, end) intervals in tile-local coordinates: the
+      // stack sits at the bottom of memory, followed by the placed buffers.
+      SmallVector<std::pair<int, int>, 8> occupied;
+      occupied.push_back({0, core.getStackSize()});
       for (auto buf : buffers[tiles[srcCoord]]) {
         int bufferBaseAddr = getBufferBaseAddress(buf);
         int numBytes = buf.getAllocationSize();
-        max = std::max(max, bufferBaseAddr + numBytes);
+        occupied.push_back({bufferBaseAddr, bufferBaseAddr + numBytes});
       }
-      int origin = targetModel.getMemInternalBaseAddress(srcCoord) + max;
-      int length = targetModel.getLocalMemorySize() - max;
+      std::sort(occupied.begin(), occupied.end());
+
+      // Sweep the intervals to find the largest free gap not covered by any of
+      // them within [0, localMemSize).
+      int bestGapStart = 0;
+      int bestGapLen = 0;
+      int cursor = 0;
+      auto considerGap = [&](int gapStart, int gapEnd) {
+        if (gapEnd - gapStart > bestGapLen) {
+          bestGapLen = gapEnd - gapStart;
+          bestGapStart = gapStart;
+        }
+      };
+      for (auto &iv : occupied) {
+        if (iv.first > cursor)
+          considerGap(cursor, iv.first);
+        cursor = std::max(cursor, iv.second);
+      }
+      // Trailing gap above the highest occupied address.
+      if (cursor < localMemSize)
+        considerGap(cursor, localMemSize);
+
+      int origin =
+          targetModel.getMemInternalBaseAddress(srcCoord) + bestGapStart;
+      int length = bestGapLen;
       output << R"THESCRIPT(
 MEMORY
 {
