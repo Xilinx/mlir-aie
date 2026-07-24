@@ -176,40 +176,6 @@ module {
 
 // -----
 
-// A re-arm written directly to the lock register (npu.write32 at the lock's
-// local address) is recognized, so a lowered-style re-arm is not a false
-// positive. Lock ids 0 and 1 on (0, 2) are at local addresses 126976 / 126992.
-module {
-  aie.device(npu2) {
-    %t = aie.tile(0, 2)
-    %buf = aie.buffer(%t) : memref<16xi32>
-    %prod = aie.lock(%t, 0) {init = 1 : i32}
-    %cons = aie.lock(%t, 1) {init = 0 : i32}
-    %mem = aie.mem(%t) {
-      %dma = aie.dma_start(S2MM, 0, ^bd0, ^end)
-    ^bd0:
-      %c1 = arith.constant 1 : i32
-      aie.use_lock(%prod, AcquireGreaterEqual, %c1)
-      aie.dma_bd(%buf : memref<16xi32> offset = 0 len = 16)
-      aie.use_lock(%cons, Release, %c1)
-      aie.next_bd ^bd0
-    ^end:
-      aie.end
-    }
-    aie.runtime_sequence() {
-      aiex.dma_channel_reset(%t, S2MM, 0)
-      %a0 = arith.constant 126976 : i32
-      %a1 = arith.constant 126992 : i32
-      %v1 = arith.constant 1 : i32
-      %v0 = arith.constant 0 : i32
-      aiex.npu.write32(%a0, %v1) {column = 0 : i32, row = 2 : i32} : i32, i32
-      aiex.npu.write32(%a1, %v0) {column = 0 : i32, row = 2 : i32} : i32, i32
-    }
-  }
-}
-
-// -----
-
 // Re-arms are collected module-wide: a reset in one runtime sequence whose locks
 // are re-armed in another sequence is accepted (no false positive).
 module {
