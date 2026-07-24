@@ -360,6 +360,16 @@ data):**
   (`.forward(tile=Tile(col, 1))`) so the ObjectFifoLink has a shared tile;
   a placement that works standalone can otherwise fail in the chain.
 
+**Decision rule: pure-DMA offload needs ≥4-byte elements.** Shim DMA's
+minimum stride-1 access granularity is 4 bytes, so a pure-DMA
+rearrangement (no compute core) only works when the element size is ≥4
+bytes (int32/uint32); sub-4-byte types (int8/int16) can't be expressed as
+a DMA-only stride pattern and need a hybrid instead — a coarse DMA
+reshuffle plus a small kernel (e.g. `VSHUFFLE`) doing the fine-grained
+rearrangement in place. `programming_examples/basic/transposes/`
+(`--strategy dma` vs `--strategy combined`) is a worked example of both
+ends of this tradeoff.
+
 ---
 
 ## Register-pressure / power note
@@ -372,6 +382,18 @@ matter for deployment. When adding explicit unroll to a kernel with 4+
 simultaneous accumulators, count in-loop spill stores/loads (`vst`/`vld`
 of accumulator-state registers) in the disasm before adopting: spill
 inside a hot loop is a power tax even when wall time is flat.
+
+The same mechanism isn't always throughput-neutral, though: on a kernel
+that *is* on the critical path, adding unroll to a loop that already keeps
+several accumulators live can regress wall time directly — each unrolled
+iteration wants its own accumulator, and once the live set exceeds the
+register file the compiler spills, and the spilled `vst`/`vld` traffic
+lands inside the hot loop where every extra instruction is pure added
+latency, not just a power cost. Symptom: you add unroll expecting a
+speedup and measure a slowdown instead. Diagnosis is the same disasm check
+— compare spill-instruction counts with and without the unroll — before
+deciding whether to revert, reduce the unroll factor, or restructure to
+use fewer live accumulators.
 
 ---
 
