@@ -55,6 +55,8 @@ createAIELowerDmaChannelResetPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIELowerCoreResetPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
+createAIELowerDmaChannelResetForPass();
+std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIETransformBfpTypesPass();
 std::unique_ptr<mlir::OperationPass<AIE::DeviceOp>>
 createAIETxnToControlPacketPass();

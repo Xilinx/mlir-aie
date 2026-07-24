@@ -1808,6 +1808,58 @@ def AIE_ShimDMAAllocationOp : AIE_Op<"shim_dma_allocation", [HasParent<"DeviceOp
   }];
 }
 
+def AIE_ObjectFifoRearmBindingOp : AIE_Op<"objectfifo_rearm_binding",
+    [HasParent<"DeviceOp">, Symbol, AttrSizedOperandSegments]> {
+  let summary = "Resident re-arm binding for an objectFIFO's core/mem DMA channels";
+  let description = [{
+    Runtime re-arm information for a single objectFIFO, generalizing
+    `aie.shim_dma_allocation` to the core and mem tile endpoints.
+
+    `aie.objectfifo_stateful_transform` erases the `aie.objectfifo` op and
+    rewrites every remaining `@fifo` use to the fifo's `@fifo_shim_alloc`
+    (shim endpoint only). That loses the core/mem channels + locks that a
+    resident re-arm (`aiex.dma_channel_reset_for`) needs, and for a
+    core-to-core fifo there is no shim allocation at all. To keep that
+    information resolvable in the later runtime-sequence lowering, the transform
+    emits this op (on demand, only for fifos actually targeted by a
+    `aiex.dma_channel_reset_for`) recording the fifo's non-shim DMA endpoints and
+    its producer/consumer locks.
+
+    Each non-shim DMA endpoint is one `channel_tiles` operand paired positionally
+    with `channel_dirs` (0 = S2MM, 1 = MM2S) and `channel_indices`. Each lock is
+    one `locks` operand paired positionally with `lock_inits` (the initial lock
+    value the fifo was armed with: producer = (numElem - init) * repeat, consumer
+    = init * repeat).
+
+    Example:
+    ```
+      aie.objectfifo_rearm_binding @of_rearm channels(%core_tile : index)
+        locks(%prod_lock, %cons_lock : index, index) {
+          channel_dirs = array<i32: 0>, channel_indices = array<i32: 0>,
+          lock_inits = array<i32: 2, 0> }
+    ```
+  }];
+
+  let arguments = (ins
+    SymbolNameAttr:$sym_name,
+    Variadic<Index>:$channel_tiles,
+    Variadic<Index>:$locks,
+    DenseI32ArrayAttr:$channel_dirs,
+    DenseI32ArrayAttr:$channel_indices,
+    DenseI32ArrayAttr:$lock_inits
+  );
+
+  let results = (outs);
+
+  let assemblyFormat = [{
+    $sym_name
+    `channels` `(` ($channel_tiles^ `:` type($channel_tiles))? `)`
+    `locks` `(` ($locks^ `:` type($locks))? `)` attr-dict
+  }];
+
+  let hasVerifier = 1;
+}
+
 def AIE_ObjectFifoCreateOp: AIE_Op<"objectfifo", [HasParent<"DeviceOp">, Symbol]> {
   let summary = "Create a circular buffer or channel between two tiles";
   let description = [{

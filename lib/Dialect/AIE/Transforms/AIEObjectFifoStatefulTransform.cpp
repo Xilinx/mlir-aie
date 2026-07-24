@@ -25,6 +25,8 @@
 #include "mlir/IR/Operation.h"
 #include "mlir/Interfaces/DataLayoutInterfaces.h"
 #include "mlir/Interfaces/SideEffectInterfaces.h"
+#include "llvm/ADT/StringMap.h"
+#include "llvm/ADT/StringSet.h"
 
 #include <numeric>
 #include <set>
@@ -198,6 +200,15 @@ public:
 // Create objectFifos Pass
 //===----------------------------------------------------------------------===//
 
+/// One resident core/mem DMA endpoint of an objectFIFO, recorded so a later
+/// resident re-arm (aiex.dma_channel_reset_for) can be lowered after the fifo
+/// op is erased. Shim endpoints are not recorded: the host re-pushes those.
+struct RearmChannel {
+  mlir::Value tile; // the aie.tile the channel is on
+  int dir;          // 0 = S2MM, 1 = MM2S (matches DMAChannelDir)
+  int channel;      // channel index
+};
+
 /// Struct to hold per-device state for the objectFifo transformation.
 /// This is passed to helper functions to avoid member variable pollution
 /// between different device operations.
@@ -209,6 +220,10 @@ struct ObjectFifoState {
                               // external buffers
   DenseMap<ObjectFifoCreateOp, std::vector<LockOp>>
       locksPerFifo; // maps each objFifo to its corresponding locks
+  DenseMap<ObjectFifoCreateOp, std::vector<RearmChannel>>
+      rearmChannelsPerFifo; // maps each split objFifo (keyed by the original
+                            // producer op) to its non-shim DMA endpoints, for
+                            // aiex.dma_channel_reset_for lowering
   std::vector<std::pair<ObjectFifoCreateOp, std::vector<ObjectFifoCreateOp>>>
       splitFifos; // maps each objFifo between non-adjacent tiles to its
                   // corresponding consumer objectFifos
@@ -2280,6 +2295,14 @@ struct AIEObjectFifoStatefulTransformPass
                   producerChan.channel, 0, producer.getDimensionsToStreamAttr(),
                   producer.getPadDimensionsAttr(), bdPacket, state);
 
+        // Record the producer's non-shim DMA endpoint so a resident
+        // aiex.dma_channel_reset_for on this fifo can re-arm it after the fifo
+        // op is erased. Shim endpoints are re-pushed by the host, not here.
+        if (!producer.getProducerTileOp().isShimTile())
+          state.rearmChannelsPerFifo[producer].push_back(
+              {producer.getProducerTileOp().getResult(),
+               static_cast<int>(producerChan.direction), producerChan.channel});
+
         // generate objectFifo allocation info
         builder.setInsertionPoint(device.getBody()->getTerminator());
         if (producer.getProducerTileOp().isShimTile())
@@ -2328,6 +2351,15 @@ struct AIEObjectFifoStatefulTransformPass
               consumer.getDimensionsFromStreamPerConsumer()[0];
           createDMA(device, builder, consumer, consumerChan.direction,
                     consumerChan.channel, 1, consumerDims, nullptr, {}, state);
+
+          // Record the consumer's non-shim DMA endpoint against the ORIGINAL
+          // fifo (the split-entry key), so one aiex.dma_channel_reset_for on
+          // the fifo re-arms the producer and every consumer channel.
+          if (!consumer.getProducerTileOp().isShimTile())
+            state.rearmChannelsPerFifo[producer].push_back(
+                {consumer.getProducerTileOp().getResult(),
+                 static_cast<int>(consumerChan.direction),
+                 consumerChan.channel});
 
           // generate objectFifo allocation info
           builder.setInsertionPoint(device.getBody()->getTerminator());
@@ -2772,6 +2804,134 @@ struct AIEObjectFifoStatefulTransformPass
       });
       if (res.wasInterrupted())
         return signalPassFailure();
+    }
+
+    //===------------------------------------------------------------------===//
+    // Emit resident re-arm bindings for objectFIFOs targeted by an
+    // aiex.dma_channel_reset_for, and retarget those ops to the binding.
+    //===------------------------------------------------------------------===//
+    // This must run BEFORE the @fifo -> @fifo_shim_alloc rewrite below: a
+    // dma_channel_reset_for names the fifo, but the shim allocation only knows
+    // the shim endpoint (and a core-to-core fifo has none), so the core/mem
+    // channels + locks would otherwise be lost. We emit an
+    // aie.objectfifo_rearm_binding (@fifo_rearm) recording them and repoint the
+    // op at it. This is on demand: a design with no dma_channel_reset_for op
+    // emits nothing new, so existing designs are byte-identical.
+    {
+      MLIRContext *ctx = device.getContext();
+      // aiex is not linked here; match the op by name and use generic attr
+      // access to avoid an AIE -> AIEX dependency.
+      llvm::StringMap<SmallVector<Operation *>> rearmUsersByFifo;
+      device.walk([&](Operation *op) {
+        if (op->getName().getStringRef() == "aiex.dma_channel_reset_for")
+          if (auto sym = op->getAttrOfType<FlatSymbolRefAttr>("objfifo"))
+            rearmUsersByFifo[sym.getValue()].push_back(op);
+      });
+      if (!rearmUsersByFifo.empty()) {
+        builder.setInsertionPoint(device.getBody()->getTerminator());
+
+        // Gather a fifo's non-shim producer/consumer locks. Shim-tile locks are
+        // skipped for the same reason the channel capture skips shim channels:
+        // the shim endpoint is host-managed (the host re-pushes its BDs and
+        // re-arms its locks), so touching it here would fight the host.
+        auto addLocks = [&](ObjectFifoCreateOp fifo,
+                            SmallVectorImpl<Value> &lockVals,
+                            SmallVectorImpl<int32_t> &lockInits) {
+          for (LockOp lock : state.locksPerFifo[fifo]) {
+            auto lockTile =
+                dyn_cast_or_null<TileOp>(lock.getTile().getDefiningOp());
+            if (lockTile && lockTile.isShimTile())
+              continue;
+            lockVals.push_back(lock.getResult());
+            lockInits.push_back(
+                static_cast<int32_t>(lock.getInit().value_or(0)));
+          }
+        };
+
+        // Emit the binding for one fifo and retarget its reset_for ops. If
+        // there is nothing on the core/mem side to re-arm, diagnose instead of
+        // leaving a dead binding / a dangling symref.
+        auto emitFor =
+            [&](StringRef fifoName, Location loc, ArrayRef<Value> channelTiles,
+                ArrayRef<int32_t> channelDirs, ArrayRef<int32_t> channelIndices,
+                ArrayRef<Value> lockVals, ArrayRef<int32_t> lockInits,
+                ArrayRef<Operation *> users) -> LogicalResult {
+          if (channelTiles.empty() && lockVals.empty()) {
+            for (Operation *user : users)
+              user->emitOpError()
+                  << "objectFIFO '" << fifoName
+                  << "' has no resident core/mem DMA channels or locks to "
+                     "re-arm";
+            return failure();
+          }
+          std::string bindName = fifoName.str() + "_rearm";
+          // Ensure the binding symbol is unique: a user symbol could already
+          // occupy `<fifo>_rearm`, which would make the emitted IR invalid.
+          if (device.lookupSymbol(bindName)) {
+            unsigned suffix = 0;
+            std::string candidate;
+            do {
+              candidate = bindName + "_" + std::to_string(suffix++);
+            } while (device.lookupSymbol(candidate));
+            bindName = candidate;
+          }
+          ObjectFifoRearmBindingOp::create(
+              builder, loc, builder.getStringAttr(bindName),
+              ValueRange(channelTiles), ValueRange(lockVals),
+              builder.getDenseI32ArrayAttr(channelDirs),
+              builder.getDenseI32ArrayAttr(channelIndices),
+              builder.getDenseI32ArrayAttr(lockInits));
+          FlatSymbolRefAttr newTarget = FlatSymbolRefAttr::get(ctx, bindName);
+          for (Operation *user : users)
+            user->setAttr("objfifo", newTarget);
+          return success();
+        };
+
+        // Split (DMA-connected) fifos: the recorded non-shim channels plus the
+        // producer and consumer locks.
+        llvm::StringSet<> handled;
+        for (auto &[producer, consumers] : state.splitFifos) {
+          auto users = rearmUsersByFifo.find(producer.name().getValue());
+          if (users == rearmUsersByFifo.end())
+            continue;
+
+          SmallVector<Value> channelTiles;
+          SmallVector<int32_t> channelDirs, channelIndices;
+          for (const RearmChannel &c : state.rearmChannelsPerFifo[producer]) {
+            channelTiles.push_back(c.tile);
+            channelDirs.push_back(c.dir);
+            channelIndices.push_back(c.channel);
+          }
+          SmallVector<Value> lockVals;
+          SmallVector<int32_t> lockInits;
+          addLocks(producer, lockVals, lockInits);
+          for (ObjectFifoCreateOp cons : consumers)
+            addLocks(cons, lockVals, lockInits);
+
+          if (failed(emitFor(producer.name().getValue(), producer.getLoc(),
+                             channelTiles, channelDirs, channelIndices,
+                             lockVals, lockInits, users->second)))
+            return signalPassFailure();
+          handled.insert(producer.name().getValue());
+        }
+
+        // Non-split (memory-adjacent) fifos have no DMA channel; re-arm their
+        // locks only, so a reset_for on such a fifo does not fall through to
+        // the shim-alloc rewrite and become a dangling symbol reference.
+        for (auto createOp : device.getOps<ObjectFifoCreateOp>()) {
+          StringRef name = createOp.name().getValue();
+          auto users = rearmUsersByFifo.find(name);
+          if (users == rearmUsersByFifo.end() || handled.contains(name))
+            continue;
+          SmallVector<Value> lockVals;
+          SmallVector<int32_t> lockInits;
+          addLocks(createOp, lockVals, lockInits);
+          if (failed(emitFor(name, createOp.getLoc(), {}, {}, {}, lockVals,
+                             lockInits, users->second)))
+            return signalPassFailure();
+          handled.insert(name);
+        }
+      }
     }
 
     //===------------------------------------------------------------------===//

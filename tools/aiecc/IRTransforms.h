@@ -738,6 +738,12 @@ getNpuDmaLoweringPipeline(mlir::MLIRContext *ctx) {
   dpm.addPass(mlir::createCanonicalizerPass());
   dpm.addPass(X::createAIEAssignRuntimeSequenceBDIDsPass());
   dpm.addPass(X::createAIEDMATasksToNPUPass());
+  // Expand dma_channel_reset_for into dma_channel_reset + set_lock + a
+  // START_QUEUE re-push (aiex.npu.push_queue). Runs before aie-dma-to-npu so
+  // the push_queue is lowered with the other queue pushes, and before set_lock
+  // / dma_channel_reset are lowered below. Placed here because the resident
+  // aie.mem chains and their assigned bd_ids are still present.
+  dpm.addPass(X::createAIELowerDmaChannelResetForPass());
   dpm.addPass(X::createAIEDmaToNpuPass());
   dpm.addPass(X::createAIELowerSetLockPass());
   dpm.addPass(X::createAIELowerDmaChannelResetPass());
