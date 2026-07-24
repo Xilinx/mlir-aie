@@ -127,6 +127,9 @@ jobs:
           ln -sfn "$PWD/build/python" install/python
           pyright
 
+      - name: Lint Python (ruff)
+        run: ruff check
+
       - name: Analyze
         id: clang-tidy-fixes
         run: |

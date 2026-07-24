@@ -14,6 +14,7 @@ patchelf; platform_system == "Linux"
 pre-commit>=4.6.0,<5.0
 black[jupyter]
 pyright
+ruff
 # nanobind ABI-couples to the prebuilt mlir distro wheel (built against the
 # same version); a mismatch breaks Value-subclass recognition at runtime. Keep
 # this constraint identical to utils/mlir_wheels/requirements.in and
