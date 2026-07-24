@@ -6,43 +6,42 @@
 """Runtime: orchestrates host-side data movement and worker execution for an IRON program."""
 
 from __future__ import annotations
-from collections import defaultdict
-from contextlib import contextmanager
+
 import itertools
 import logging
-import numpy as np
+from collections import defaultdict
+from contextlib import contextmanager
 from typing import Callable, Iterator
 
-logger = logging.getLogger(__name__)
-
-from ...utils import trace as trace_utils
+import numpy as np
 
 from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
-
-from ...dialects.aiex import (
-    runtime_sequence,
-    sync_scratchpad_parameters_from_host,  # pyright: ignore[reportAttributeAccessIssue]
-)
 from ...dialects._aiex_ops_gen import (  # pyright: ignore[reportMissingImports]
     dma_await_task,
     dma_free_task,
 )
+from ...dialects.aiex import (
+    runtime_sequence,
+    sync_scratchpad_parameters_from_host,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from ...helpers.taplib import TensorAccessPattern
+from ...utils import trace as trace_utils
 from ..dataflow import ObjectFifoHandle
-from ..device import Tile, AnyShimTile
+from ..device import AnyShimTile, Tile
 from ..resolvable import Resolvable
 from ..scratchpad_parameter import ScratchpadParameter
 from ..worker import Worker, WorkerRuntimeBarrier, _BarrierSetOp
-from .dmatask import DMATask
 from .data import RuntimeData
+from .dmatask import DMATask
 from .endpoint import RuntimeEndpoint
-from .taskgroup import RuntimeTaskGroup
 from .task import (
-    RuntimeTask,
-    RuntimeStartTask,
-    InlineOpRuntimeTask,
     FinishTaskGroupTask,
+    InlineOpRuntimeTask,
+    RuntimeStartTask,
 )
+from .taskgroup import RuntimeTaskGroup
+
+logger = logging.getLogger(__name__)
 
 
 def _iter_flat(obj):
@@ -227,7 +226,9 @@ class Runtime(Resolvable):
                 downstream packet-switched routing (e.g. ObjectFifos lowered
                 with `--packet-sw-objFifos` or an explicit
                 [`PacketFlow`][iron.PacketFlow]). Defaults to None.
-            offset_parameter (ScratchpadParameter | str | None, optional): A ScratchpadParameter (or its name) whose value is used as the element offset for this DMA transfer. Defaults to None.
+            offset_parameter (ScratchpadParameter | str | None, optional): A
+                ScratchpadParameter (or its name) whose value is used as the element
+                offset for this DMA transfer. Defaults to None.
 
         Raises:
             ValueError: Arguments are validated.
@@ -291,7 +292,9 @@ class Runtime(Resolvable):
                 downstream packet-switched routing (e.g. ObjectFifos lowered
                 with `--packet-sw-objFifos` or an explicit
                 [`PacketFlow`][iron.PacketFlow]). Defaults to None.
-            offset_parameter (ScratchpadParameter | str | None, optional): A ScratchpadParameter (or its name) whose value is used as the element offset for this DMA transfer. Defaults to None.
+            offset_parameter (ScratchpadParameter | str | None, optional): A
+                ScratchpadParameter (or its name) whose value is used as the element
+                offset for this DMA transfer. Defaults to None.
 
         Raises:
             ValueError: Arguments are validated.

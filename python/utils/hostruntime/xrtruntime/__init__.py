@@ -5,6 +5,6 @@
 #
 
 try:
-    import pyxrt as xrt  # pyright: ignore[reportMissingImports]
+    import pyxrt  # noqa: F401  # pyright: ignore[reportMissingImports]
 except Exception as e:
     raise ImportError(f"Cannot import pyxrt (err={e})... is XRT installed?")

@@ -6,9 +6,8 @@
 """Element-wise kernel factories: passthrough, scale, add, mul, relu."""
 
 import numpy as np
-from ml_dtypes import bfloat16
-
 from aie.iron.kernel import ExternalFunction
+from ml_dtypes import bfloat16
 
 from ._common import (
     _default_source_path,

@@ -7,17 +7,18 @@
 
 import hashlib
 import logging
-import numpy as np
 
-logger = logging.getLogger(__name__)
+import numpy as np
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 from ..dialects import memref  # pyright: ignore[reportAttributeAccessIssue]
+from ..dialects.aie import external_func
 from ..extras.dialects.func import FuncOp  # pyright: ignore[reportMissingImports]
 from ..helpers.dialects.func import call
-from ..dialects.aie import external_func
-from .resolvable import Resolvable
 from .buffer import Buffer
+from .resolvable import Resolvable
+
+logger = logging.getLogger(__name__)
 
 
 def _is_contiguous_row_major(mr):

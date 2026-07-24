@@ -6,7 +6,6 @@
 """Vision kernel factories: color conversion, threshold, filter2d, add_weighted."""
 
 import numpy as np
-
 from aie.iron.kernel import ExternalFunction
 
 from ._common import (

@@ -1,10 +1,11 @@
 # Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0
 
-import numpy as np
 import json
+
+import numpy as np
+
 from .parse import parse_trace
-from .utils import parity, extract_tile
 
 
 class TraceConfig:

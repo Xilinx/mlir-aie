@@ -6,17 +6,16 @@
 
 import logging
 
-logger = logging.getLogger(__name__)
-
+from ..dialects.aie import device
 from ..extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
 from ..helpers.dialects.func import FuncBase
-from ..dialects.aie import device
-
+from ..utils import trace as trace_utils
 from .device import Device
+from .resolvable import Resolvable
 from .runtime import Runtime
 from .scratchpad_parameter import ScratchpadParameter
-from .resolvable import Resolvable
-from ..utils import trace as trace_utils
+
+logger = logging.getLogger(__name__)
 
 
 class Program:
@@ -183,5 +182,5 @@ class Program:
 
     def _print_verify(self, ctx):
         verify = ctx.module.operation.verify()
-        if verify != True:
+        if not verify:
             raise RuntimeError(f"MLIR module failed verification: {verify}")

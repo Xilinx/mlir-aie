@@ -9,25 +9,25 @@ import sys
 from typing import Callable
 
 from .. import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
+from ..dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
+    AIETileType,
+)
 from ..dialects.aie import (
     core,
     lock,
     use_lock,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from ..dialects.aiex import (
-    set_lock_value,
     LockAction,  # pyright: ignore[reportAttributeAccessIssue]
+    set_lock_value,
 )
 from ..helpers.dialects.scf import _for as range_
-from .device import Tile, AnyComputeTile
-from ..dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
-    AIETileType,
-)
-from .dataflow.objectfifo import ObjectFifoHandle, ObjectFifo
-from .dataflow.endpoint import ObjectFifoEndpoint
 from .buffer import Buffer
-from .scratchpad_parameter import ScratchpadParameter
+from .dataflow.endpoint import ObjectFifoEndpoint
+from .dataflow.objectfifo import ObjectFifo, ObjectFifoHandle
+from .device import AnyComputeTile, Tile
 from .resolvable import Resolvable
+from .scratchpad_parameter import ScratchpadParameter
 
 
 class Worker(ObjectFifoEndpoint):
@@ -58,7 +58,8 @@ class Worker(ObjectFifoEndpoint):
             tile (Tile, optional): The compute tile for the Worker. Also accepts None (treated as AnyComputeTile). Defaults to AnyComputeTile.
             while_true (bool, optional): If true, will wrap the core_fn in a while(true) loop to ensure it runs until reconfiguration. Defaults to True.
             stack_size (int, optional): The stack_size in bytes to be allocated for the worker. Defaults to 1024 bytes.
-            allocation_scheme (str, optional): The memory allocation scheme to use for the Worker, either 'basic-sequential' or 'bank-aware'. If None, defaults to bank-aware.
+            allocation_scheme (str, optional): The memory allocation scheme to use for the
+                Worker, either 'basic-sequential' or 'bank-aware'. If None, defaults to bank-aware.
                 Will override any allocation scheme set on the tile.
             trace (int, optional): If >0, enable tracing for this worker.
             trace_events (list | None, optional): Custom list of trace events for this worker. Defaults to None.
@@ -236,8 +237,8 @@ class Worker(ObjectFifoEndpoint):
         # Create the necessary locks for the core operation to synchronize with the runtime sequence
         # and register them in the corresponding barriers.
         for barrier in self._barriers:
-            l = lock(my_tile)
-            barrier._add_worker_lock(l)
+            barrier_lock = lock(my_tile)
+            barrier._add_worker_lock(barrier_lock)
 
         @core(
             my_tile,
@@ -289,8 +290,8 @@ class WorkerRuntimeBarrier:
 
     def _set_barrier_value(self, value: int):
         """Set the value of the barrier."""
-        for lock in self.worker_locks:
-            set_lock_value(lock, value)
+        for worker_lock in self.worker_locks:
+            set_lock_value(worker_lock, value)
 
     def release_with_value(self, value: int):
         """

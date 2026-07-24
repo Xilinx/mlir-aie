@@ -1,37 +1,29 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-import json
 import argparse
-import sys
-import re
-import subprocess
-import shutil
-import os
+import json
 import logging
+import os
+import re
+import shutil
+import subprocess
+import sys
 
-logger = logging.getLogger(__name__)
-
-from .utils import (
-    parse_pkt_hdr_in_stream,
-    trace_pkts_de_interleave,
-    convert_to_byte_stream,
-    convert_to_commands,
-)
 from .events import (
     NUM_TRACE_TYPES,
     CoreEvent,
     MemEvent,
-    ShimTileEvent,
-    MemTileEvent,
 )
+
+logger = logging.getLogger(__name__)
 
 NUM_EVENTS = 8  # number of events we can view per trace
 
 rowoffset = 1  # TODO: temporary workaround to determine row offset for AIE2 tiles
 
-eventIRFile = "eventIR.txt"
-tmpTraceDirName = "tmpTrace"
+event_ir_file = "eventIR.txt"
+tmp_trace_dir_name = "tmpTrace"
 
 
 def parse_args():
@@ -87,7 +79,7 @@ def deactivate(
     multiples, active_events, timer, cycles, pid, trace_type, loc, pid_events
 ):
     for k in active_events.keys():  # an active event
-        if cycles > 0 or (cycles == 0 and not k in multiples):
+        if cycles > 0 or (cycles == 0 and k not in multiples):
             # if not k in multiples: # active event it not in multiples list
             if active_events[k] > 0:
                 # trace_event = {'name':"Event"+str(k)}
@@ -235,7 +227,7 @@ def convert_commands_to_json(trace_events, commands, pid_events):
                     timer = timer + cycles
 
                     for k in c.keys():
-                        if not "event" in k:
+                        if "event" not in k:
                             continue
                         # If its already started, don't start it again ...
                         try:
@@ -318,9 +310,9 @@ def parse_mlir_trace_events(lines):
 
     # TODO Need to check if this line is commented out, check for // ? (harder to check of /* */)
     # TODO Need to support value in hex with 0x or decimal
-    # pattern = r"AIEX.npu.write32\s*\{\s*(\w+)\s*=\s*(\d+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(\d+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(\w+)\s*:\s*\w+\s*\}"
-    # pattern = r"AIEX.npu.write32\s*\{\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*\}"
-    pattern = r"aiex.npu.write32\s*\{\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*\}"
+    # pattern = r"AIEX.npu.write32\s*\{\s*(\w+)\s*=\s*(\d+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(\d+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(\w+)\s*:\s*\w+\s*\}"  # noqa: E501
+    # pattern = r"AIEX.npu.write32\s*\{\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*\}"  # noqa: E501
+    pattern = r"aiex.npu.write32\s*\{\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*,\s*(\w+)\s*=\s*(0x)?(\w+)\s*:\s*\w+\s*\}"  # noqa: E501
 
     pid_events = list()
     for t in range(NUM_TRACE_TYPES):
@@ -370,7 +362,7 @@ def parse_mlir_trace_events(lines):
 
             # core event 0
             if address == 0x340E0:  # 213216, match ignoring case
-                if pid_events[0].get(key) == None:
+                if pid_events[0].get(key) is None:
                     pid_events[0][key] = [
                         0,
                         0,
@@ -387,7 +379,7 @@ def parse_mlir_trace_events(lines):
                 pid_events[0][key][3] = (value >> 24) & 0xFF
             # core event 1
             elif address == 0x340E4:  # 213220, match ignoring case
-                if pid_events[0].get(key) == None:
+                if pid_events[0].get(key) is None:
                     pid_events[0][key] = [
                         0,
                         0,
@@ -404,7 +396,7 @@ def parse_mlir_trace_events(lines):
                 pid_events[0][key][7] = (value >> 24) & 0xFF
             # mem event 0
             elif address == 0x140E0:  # 82144
-                if pid_events[1].get(key) == None:
+                if pid_events[1].get(key) is None:
                     pid_events[1][key] = [
                         0,
                         0,
@@ -421,7 +413,7 @@ def parse_mlir_trace_events(lines):
                 pid_events[1][key][3] = (value >> 24) & 0xFF
             # mem event 1
             elif address == 0x140E4:  # 82148
-                if pid_events[1].get(key) == None:
+                if pid_events[1].get(key) is None:
                     pid_events[1][key] = [
                         0,
                         0,
@@ -559,7 +551,7 @@ def setup_trace_metadata(trace_events, pid_events):
             pid = pid + 1
 
 
-def convert_eventIR_to_json(trace_events, lines, pid_events):
+def convert_event_ir_to_json(trace_events, lines, pid_events):
     check_time = True
     time_pattern = r"#(\d+)"
     signal_pattern = r"(\d)\s+(\d)_(\d)\s+cm\.et\.(\d+)"
@@ -625,11 +617,11 @@ def create_target():
 
 def print_config_json(pid_events):
     loc = None
-    eventArray = None
+    event_array = None
     for key, value in pid_events[0].items():
         loc = key
-        eventArray = value
-    if loc is None or eventArray is None:
+        event_array = value
+    if loc is None or event_array is None:
         return
     try:
         with open("config.json", "wt") as f:
@@ -652,14 +644,14 @@ def print_config_json(pid_events):
             f.write('              "start_event": 1,\n')
             f.write('              "stop_event": 0,\n')
             f.write('              "traced_events": [\n')
-            f.write("                " + str(eventArray[0]) + ",\n")
-            f.write("                " + str(eventArray[1]) + ",\n")
-            f.write("                " + str(eventArray[2]) + ",\n")
-            f.write("                " + str(eventArray[3]) + ",\n")
-            f.write("                " + str(eventArray[4]) + ",\n")
-            f.write("                " + str(eventArray[5]) + ",\n")
-            f.write("                " + str(eventArray[6]) + ",\n")
-            f.write("                " + str(eventArray[7]) + "\n")
+            f.write("                " + str(event_array[0]) + ",\n")
+            f.write("                " + str(event_array[1]) + ",\n")
+            f.write("                " + str(event_array[2]) + ",\n")
+            f.write("                " + str(event_array[3]) + ",\n")
+            f.write("                " + str(event_array[4]) + ",\n")
+            f.write("                " + str(event_array[5]) + ",\n")
+            f.write("                " + str(event_array[6]) + ",\n")
+            f.write("                " + str(event_array[7]) + "\n")
             f.write("              ],\n")
             f.write('              "group_event_config": {\n')
             f.write('                "2": 0,\n')
@@ -827,28 +819,28 @@ def print_config_json(pid_events):
 
 # Right now, we're just checking if trace file has 0x before it (needed for hwfrontend)
 # If not, we prepend it
-def fix_raw_trace_data(rawTraceFile, srcTraceFile):
-    with open(rawTraceFile, "rt") as inFile:
-        first_line = inFile.readline()
+def fix_raw_trace_data(raw_trace_file, src_trace_file):
+    with open(raw_trace_file, "rt") as in_file:
+        first_line = in_file.readline()
         if first_line[:2] != "0x":
-            sed_cmd = "sed 's/^/0x/g' " + rawTraceFile + " > " + srcTraceFile
+            sed_cmd = "sed 's/^/0x/g' " + raw_trace_file + " > " + src_trace_file
             subprocess.call([sed_cmd], shell=True)
         else:
-            shutil.copy(rawTraceFile, srcTraceFile)
+            shutil.copy(raw_trace_file, src_trace_file)
 
 
-def run_hwfrontend(fileInName, fileOutName):
+def run_hwfrontend(file_in_name, file_out_name):
     result = subprocess.run(
         [
             "hwfrontend",
             "--trace",
-            fileInName,
+            file_in_name,
             "--trace_config",
             "config.json",
             "--pkg-dir",
             ".",
             "--outfile",
-            fileOutName,
+            file_out_name,
         ],
         capture_output=True,
         text=True,
@@ -881,19 +873,19 @@ if __name__ == "__main__":
     colshift = int(opts.colshift) if opts.colshift else 0
 
     try:
-        os.mkdir(tmpTraceDirName)
+        os.mkdir(tmp_trace_dir_name)
     except FileExistsError:
         pass
-    logger.info("created temporary directory %s", tmpTraceDirName)
-    tmpTraceDir = os.path.abspath(tmpTraceDirName)
+    logger.info("created temporary directory %s", tmp_trace_dir_name)
+    tmp_trace_dir = os.path.abspath(tmp_trace_dir_name)
 
-    mlirFile = os.path.abspath(opts.mlir)
-    rawTraceFile = os.path.abspath(opts.filename)
-    srcTraceFileName = "prep." + str(opts.filename)
-    srcTraceFile = os.path.join(tmpTraceDir, srcTraceFileName)
+    mlir_file = os.path.abspath(opts.mlir)
+    raw_trace_file = os.path.abspath(opts.filename)
+    src_trace_file_name = "prep." + str(opts.filename)
+    src_trace_file = os.path.join(tmp_trace_dir, src_trace_file_name)
 
     # Check source file and prepend 0x
-    fix_raw_trace_data(rawTraceFile, srcTraceFile)
+    fix_raw_trace_data(raw_trace_file, src_trace_file)
 
     if opts.mlir:
         try:
@@ -904,20 +896,20 @@ if __name__ == "__main__":
             logger.error("%s", e)
             sys.exit(1)
 
-    os.chdir(tmpTraceDirName)
+    os.chdir(tmp_trace_dir_name)
 
     create_target()
 
     print_config_json(pid_events)
 
-    run_hwfrontend(srcTraceFile, eventIRFile)
+    run_hwfrontend(src_trace_file, event_ir_file)
 
     # with open(opts.filename, "r") as f:
     try:
-        with open(eventIRFile, "rt") as f:
+        with open(event_ir_file, "rt") as f:
             lines = f.read().split("\n")
             ignore = [""]
-            lines = [l for l in lines if not l in ignore]
+            lines = [line for line in lines if line not in ignore]
     except Exception as e:
         logger.error("%s", e)
         sys.exit(1)
@@ -927,6 +919,6 @@ if __name__ == "__main__":
     setup_trace_metadata(trace_events, pid_events)
     logger.debug("pid events: %s", pid_events)
 
-    convert_eventIR_to_json(trace_events, lines, pid_events)
+    convert_event_ir_to_json(trace_events, lines, pid_events)
 
     print(json.dumps(trace_events))

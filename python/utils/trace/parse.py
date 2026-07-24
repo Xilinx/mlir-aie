@@ -1,45 +1,36 @@
 #!/usr/bin/env python3
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-import json
 import argparse
+import json
 import logging
 import sys
-import re
 
-logger = logging.getLogger(__name__)
-
+import aie.dialects.aie as aiedialect
+import aie.dialects.aiex as aiexdialect
 from aie.extras.util import find_ops  # pyright: ignore[reportMissingImports]
 from aie.helpers.util import (  # pyright: ignore[reportMissingImports]
     fold_constant_operand,
 )
 from aie.ir import (  # pyright: ignore[reportMissingImports]
     Context,  # pyright: ignore[reportAttributeAccessIssue]
-    Module,  # pyright: ignore[reportAttributeAccessIssue]
     Location,  # pyright: ignore[reportAttributeAccessIssue]
-)
-from aie.utils.trace.utils import (
-    parity,
-    extract_tile,
-    parse_pkt_hdr_in_stream,
-    trace_pkts_de_interleave,
-    convert_to_byte_stream,
-    convert_to_commands,
-    trim_trace_pkts,
-    split_trace_segments,
+    Module,  # pyright: ignore[reportAttributeAccessIssue]
 )
 from aie.utils.trace.events import (
     NUM_TRACE_TYPES,
     PacketType,
-    CoreEvent,
-    MemEvent,
-    ShimTileEvent,
-    MemTileEvent,
     get_events_for_device,
 )
+from aie.utils.trace.utils import (
+    convert_to_byte_stream,
+    convert_to_commands,
+    split_trace_segments,
+    trace_pkts_de_interleave,
+    trim_trace_pkts,
+)
 
-import aie.dialects.aie as aiedialect
-import aie.dialects.aiex as aiexdialect
+logger = logging.getLogger(__name__)
 
 NUM_EVENTS = 8  # number of events we can view per trace
 
@@ -138,7 +129,7 @@ def deactivate_events(
     events_module,
 ):
     for k in active_events.keys():  # an active event
-        if cycles > 0 or (cycles == 0 and not k in multiples):
+        if cycles > 0 or (cycles == 0 and k not in multiples):
             # if not k in multiples: # active event it not in multiples list
             if active_events[k] > 0:
                 trace_event = {
@@ -457,7 +448,7 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None):
         # core event 0
         if address == 0x340E0:  # 213216, match ignoring case
             if row == 0:  # shim
-                if pid_events[2].get(key) == None:
+                if pid_events[2].get(key) is None:
                     pid_events[2][key] = [0] * 8
                 logger.debug("Trace event 0 configured to be %s", hex(value))
                 pid_events[2][key][0] = value & 0xFF
@@ -465,7 +456,7 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None):
                 pid_events[2][key][2] = (value >> 16) & 0xFF
                 pid_events[2][key][3] = (value >> 24) & 0xFF
             else:  # core
-                if pid_events[0].get(key) == None:
+                if pid_events[0].get(key) is None:
                     pid_events[0][key] = [0] * 8
                 logger.debug("Trace event 0 configured to be %s", hex(value))
                 pid_events[0][key][0] = value & 0xFF
@@ -475,14 +466,14 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None):
         # core event 1
         elif address == 0x340E4:  # 213220, match ignoring case
             if row == 0:  # shim
-                if pid_events[2].get(key) == None:
+                if pid_events[2].get(key) is None:
                     pid_events[2][key] = [0] * 8
                 pid_events[2][key][4] = value & 0xFF
                 pid_events[2][key][5] = (value >> 8) & 0xFF
                 pid_events[2][key][6] = (value >> 16) & 0xFF
                 pid_events[2][key][7] = (value >> 24) & 0xFF
             else:  # core
-                if pid_events[0].get(key) == None:
+                if pid_events[0].get(key) is None:
                     pid_events[0][key] = [0] * 8
                 pid_events[0][key][4] = value & 0xFF
                 pid_events[0][key][5] = (value >> 8) & 0xFF
@@ -490,7 +481,7 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None):
                 pid_events[0][key][7] = (value >> 24) & 0xFF
         # mem event 0
         elif address == 0x140E0:  # 82144
-            if pid_events[1].get(key) == None:
+            if pid_events[1].get(key) is None:
                 pid_events[1][key] = [0] * 8
             logger.debug("Trace event 0 configured to be %s", hex(value))
             pid_events[1][key][0] = value & 0xFF
@@ -499,7 +490,7 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None):
             pid_events[1][key][3] = (value >> 24) & 0xFF
         # mem event 1
         elif address == 0x140E4:  # 82148
-            if pid_events[1].get(key) == None:
+            if pid_events[1].get(key) is None:
                 pid_events[1][key] = [0] * 8
             pid_events[1][key][4] = value & 0xFF
             pid_events[1][key][5] = (value >> 8) & 0xFF
@@ -507,7 +498,7 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None):
             pid_events[1][key][7] = (value >> 24) & 0xFF
         # memtile event 0
         elif address == 0x940E0:  # 606432
-            if pid_events[3].get(key) == None:
+            if pid_events[3].get(key) is None:
                 pid_events[3][key] = [0] * 8
             logger.debug("Trace event 0 configured to be %s", hex(value))
             pid_events[3][key][0] = value & 0xFF
@@ -516,7 +507,7 @@ def parse_mlir_trace_events(mlir_module_str, colshift=None):
             pid_events[3][key][3] = (value >> 24) & 0xFF
         # memtile event 1
         elif address == 0x940E4:  # 606436
-            if pid_events[3].get(key) == None:
+            if pid_events[3].get(key) is None:
                 pid_events[3][key] = [0] * 8
             pid_events[3][key][4] = value & 0xFF
             pid_events[3][key][5] = (value >> 8) & 0xFF
@@ -681,11 +672,11 @@ def align_column_start_index(events, commands):
     new_events = []
     for t in range(NUM_TRACE_TYPES):
         updated = {}
-        for loc, l in events[t].items():
+        for loc, event_data in events[t].items():
             row, col = map(int, loc.split(","))
             new_col = col - colshift
             new_key = f"{row},{new_col}"
-            updated[new_key] = l
+            updated[new_key] = event_data
         new_events.append(updated)
     return new_events
 

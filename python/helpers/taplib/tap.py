@@ -3,10 +3,11 @@
 
 from __future__ import annotations
 
-from copy import deepcopy
-import numpy as np
 import itertools
-from typing import Sequence, Generator
+from copy import deepcopy
+from typing import Generator, Sequence
+
+import numpy as np
 
 from .utils import (
     validate_and_clean_sizes_strides,

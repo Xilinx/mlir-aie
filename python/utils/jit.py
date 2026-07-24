@@ -164,7 +164,7 @@ def jit(mlir_generator: Callable | None = None, **kwargs):
                 f"  def {mlir_generator.__name__}(a: In, b: Out, *, "
                 + ", ".join(f"{n}: CompileTime[...]" for n in non_kw_compile_params)
                 + "):\n"
-                f"      ..."
+                "      ..."
             )
 
     return _CallableDesign(

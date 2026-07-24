@@ -24,8 +24,8 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..hostruntime import HostRuntime, HostRuntimeError, KernelHandle, KernelResult
-from .tensor import HRXTensor
 from . import HRXContext, HRXError, control_code_from_elf
+from .tensor import HRXTensor
 
 if TYPE_CHECKING:
     from aie.iron.device import Device

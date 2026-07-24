@@ -2,13 +2,15 @@
 # SPDX-License-Identifier: MIT
 
 # from CppHeaderParser import CppHeader
-import logging
-import numpy as np
 import json
-import re
+import logging
 import os
+import re
 import sys
 from typing import Optional
+
+import numpy as np
+
 from .events import NUM_TRACE_TYPES
 
 logger = logging.getLogger(__name__)
@@ -94,7 +96,7 @@ def extract_buffers(test):
         output_buffers.append(np.array(array, dtype=dtype))
 
     rtps = []
-    if test["test_vectors"].get("rtps") != None:
+    if test["test_vectors"].get("rtps") is not None:
         for rtp in test["test_vectors"]["rtps"]:
             array, dtype = rtp.values()
             rtps.append(np.array(array, dtype=dtype))
@@ -117,13 +119,12 @@ def get_cycles(trace_path):
         for x in data:
             if (x["name"] == "INSTR_EVENT_0") and (x["ph"] == "B"):
                 event0.append(x["ts"])
-                tmp = x["ts"]
 
             if x["name"] == "INSTR_EVENT_1" and x["ph"] == "B":
                 event1.append(x["ts"])
 
         return event1[0] - event0[0]
-    except:
+    except Exception:
         return np.inf
 
 
@@ -149,12 +150,12 @@ def get_cycles_summary(trace_path):
         for x in data:
             idx = int(x["pid"])
             if (x["name"] == "INSTR_EVENT_0") and (x["ph"] == "B"):
-                if in_kernel[idx] == False:
+                if not in_kernel[idx]:
                     event0[idx] = x["ts"]
                     in_kernel[idx] = True
 
             if x["name"] == "INSTR_EVENT_1" and x["ph"] == "B":
-                if in_kernel[idx] == True:
+                if in_kernel[idx]:
                     deltas[idx].append(x["ts"] - event0[idx])
                     in_kernel[idx] = False
 
@@ -267,7 +268,7 @@ def trace_pkts_de_interleave(word_stream):
                 for tt in range(NUM_TRACE_TYPES):
                     if pkt_hdr["type"] == tt:
                         curr_pkt_type = tt
-                        if trace_pkts_sorted[tt].get(curr_loc) == None:
+                        if trace_pkts_sorted[tt].get(curr_loc) is None:
                             trace_pkts_sorted[tt][curr_loc] = list()
                         valid_type_found = True
                 if not valid_type_found:
@@ -281,12 +282,12 @@ def trace_pkts_de_interleave(word_stream):
 
 def convert_to_byte_stream(toks_list):
     byte_stream_list = list()
-    for l in toks_list:
+    for toks in toks_list:
         byte_stream_dict = dict()
-        for loc, stream in l.items():
+        for loc, stream in toks.items():
             byte_stream_dict[loc] = list()
             f = ["", "a5a5a5a5"]
-            toks = [t for t in stream if not t in f]
+            toks = [t for t in stream if t not in f]
             events = [int(t, 16) for t in toks]
             for event in events:
                 for top in range(4):

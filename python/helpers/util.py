@@ -1,11 +1,13 @@
 # Copyright (C) 2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 from collections import defaultdict
-import numpy as np
 from typing import Any, Sequence, TypeVar, get_args, get_origin
+
+import numpy as np
 from aie._mlir_libs import (
     _aie as CustomTypes,  # pyright: ignore[reportAttributeAccessIssue]
 )
+from ml_dtypes import bfloat16
 
 from ..dialects.arith import ConstantOp  # pyright: ignore[reportMissingImports]
 from ..extras import types as T  # pyright: ignore[reportMissingImports]
@@ -19,7 +21,6 @@ from ..ir import (  # pyright: ignore[reportMissingImports]
     Value,
     VectorType,
 )
-from ml_dtypes import bfloat16
 
 
 # Custom types
@@ -97,9 +98,9 @@ NpuDType = (
     | v16bfp16ebs16
 )
 
-_mlir_type_ctor_to_np_dtype = lambda: {
-    v: k for k, v in _np_dtype_to_mlir_type_ctor.items()
-}
+
+def _mlir_type_ctor_to_np_dtype():
+    return {v: k for k, v in _np_dtype_to_mlir_type_ctor.items()}
 
 
 def np_dtype_to_mlir_type(np_dtype):

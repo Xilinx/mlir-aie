@@ -6,11 +6,11 @@
 
 from __future__ import annotations
 
-from ..dataflow.endpoint import ObjectFifoEndpoint
-from ..device import Tile, AnyShimTile
 from ...dialects._aie_enum_gen import (  # pyright: ignore[reportMissingImports]
     AIETileType,
 )
+from ..dataflow.endpoint import ObjectFifoEndpoint
+from ..device import AnyShimTile, Tile
 
 
 class RuntimeEndpoint(ObjectFifoEndpoint):

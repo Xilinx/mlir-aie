@@ -2,10 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 from __future__ import annotations
+
 from collections import abc
 from copy import deepcopy
+from typing import TYPE_CHECKING, Any, Callable, Sequence
+
 import numpy as np
-from typing import Any, Callable, Sequence, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from matplotlib.animation import FuncAnimation
@@ -63,7 +65,7 @@ class TensorAccessSequence(abc.MutableSequence, abc.Iterable):
 
         # Check tensor dims, offset, sizes, strides
         self._tensor_dims = validate_tensor_dims(tensor_dims)
-        if not (offset is None):
+        if offset is not None:
             offset = validate_offset(offset, self._tensor_dims)
         sizes, strides = validate_and_clean_sizes_strides(
             sizes, strides, allow_none=True
@@ -75,15 +77,15 @@ class TensorAccessSequence(abc.MutableSequence, abc.Iterable):
 
         if num_steps == 0:
             if (
-                offset != None
-                or sizes != None
-                or strides != None
-                or offset_fn != None
-                or sizes_fn != None
-                or strides_fn != None
+                offset is not None
+                or sizes is not None
+                or strides is not None
+                or offset_fn is not None
+                or sizes_fn is not None
+                or strides_fn is not None
             ):
                 raise ValueError(
-                    f"If num_steps=0, no sizes/strides/offset information may be specified"
+                    "If num_steps=0, no sizes/strides/offset information may be specified"
                 )
             self._taps = []
         else:
@@ -92,17 +94,25 @@ class TensorAccessSequence(abc.MutableSequence, abc.Iterable):
                 if offset is None:
                     raise ValueError("Offset must be provided if offset_fn is None")
                 const_offset = offset
-                offset_fn = lambda _step, _prev_offset: const_offset
+
+                def offset_fn(_step, _prev_offset):
+                    return const_offset
+
             if sizes_fn is None:
                 if sizes is None:
                     raise ValueError("Sizes must be provided if size_fn is None")
                 const_sizes = sizes
-                sizes_fn = lambda _step, _prev_sizes: const_sizes
+
+                def sizes_fn(_step, _prev_sizes):
+                    return const_sizes
+
             if strides_fn is None:
                 if strides is None:
                     raise ValueError("Strides must be provided if stride_fn is None")
                 const_strides = strides
-                strides_fn = lambda _step, _prev_strides: const_strides
+
+                def strides_fn(_step, _prev_strides):
+                    return const_strides
 
             # Pre-calculate taps, because better for error handling up-front (and for visualizing full iter)
             # This is somewhat against the mentality behind iterations, but should be okay at the scale this

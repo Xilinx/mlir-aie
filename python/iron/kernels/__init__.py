@@ -14,50 +14,50 @@ Submodules:
 - `conv` — conv2dk1, conv2dk3, conv2dk1_skip, conv2dk1_i8, conv2dk14, conv2dk1_skip_init, bn_*
 """
 
-from .eltwise import passthrough, scale, add, mul, relu
-from .reduce import reduce_add, reduce_min, reduce_max, compute_max
-from .vision import (
-    rgba2hue,
-    threshold,
-    bitwise_or,
-    bitwise_and,
-    gray2rgba,
-    rgba2gray,
-    filter2d,
-    add_weighted,
-)
 from .activation import (
-    softmax,
-    gelu,
-    silu,
-    swiglu,
     bf16_exp,
-    relu_ref,
-    silu_ref,
-    gelu_ref,
     bf16_exp_ref,
+    gelu,
+    gelu_ref,
+    relu_ref,
+    silu,
+    silu_ref,
+    softmax,
     softmax_ref,
+    swiglu,
 )
-from .linalg import mm, mv, cascade_mm
 from .conv import (
-    conv2dk1,
-    conv2dk3,
-    conv2dk1_skip,
-    conv2dk1_i8,
-    conv2dk14,
-    conv2dk1_skip_init,
-    bn_conv2dk1_relu,
-    bn_conv2dk3,
     bn_conv2dk1_i8,
-    bn_conv2dk1_skip,
-    bn_conv2dk3_dw,
-    bn_conv2dk1_relu_xy_pool_padded,
-    bn_fc_relu_ui16_pad,
-    bn_conv2dk1_partial_put_i8,
-    bn_conv2dk1_partial_get_relu_i8,
-    bn_conv2dk3_dw_out_split,
     bn_conv2dk1_input_split_partial_put_ui8,
     bn_conv2dk1_input_split_partial_skip_get,
+    bn_conv2dk1_partial_get_relu_i8,
+    bn_conv2dk1_partial_put_i8,
+    bn_conv2dk1_relu,
+    bn_conv2dk1_relu_xy_pool_padded,
+    bn_conv2dk1_skip,
+    bn_conv2dk3,
+    bn_conv2dk3_dw,
+    bn_conv2dk3_dw_out_split,
+    bn_fc_relu_ui16_pad,
+    conv2dk1,
+    conv2dk1_i8,
+    conv2dk1_skip,
+    conv2dk1_skip_init,
+    conv2dk3,
+    conv2dk14,
+)
+from .eltwise import add, mul, passthrough, relu, scale
+from .linalg import cascade_mm, mm, mv
+from .reduce import compute_max, reduce_add, reduce_max, reduce_min
+from .vision import (
+    add_weighted,
+    bitwise_and,
+    bitwise_or,
+    filter2d,
+    gray2rgba,
+    rgba2gray,
+    rgba2hue,
+    threshold,
 )
 
 __all__ = [
