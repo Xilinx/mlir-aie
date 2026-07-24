@@ -1,24 +1,8 @@
-// Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
+// Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// REQUIRES: ryzen_ai, peano
-// REQUIRES: makefile_examples
+// REQUIRES: ryzen_ai_npu1, peano
 //
-// RUN: make -f %S/Makefile clean
-// RUN: make -f %S/Makefile devicename=npu op=relu
-// RUN: %run_on_npu1% make -f %S/Makefile devicename=npu op=relu run
-// RUN: make -f %S/Makefile clean
-// RUN: make -f %S/Makefile devicename=npu op=silu
-// RUN: %run_on_npu1% make -f %S/Makefile devicename=npu op=silu run
-// RUN: make -f %S/Makefile clean
-// RUN: make -f %S/Makefile devicename=npu op=gelu
-// RUN: %run_on_npu1% make -f %S/Makefile devicename=npu op=gelu run
-// RUN: make -f %S/Makefile clean
-// RUN: make -f %S/Makefile devicename=npu2 op=relu
-// RUN: %run_on_npu2% make -f %S/Makefile devicename=npu2 op=relu run
-// RUN: make -f %S/Makefile clean
-// RUN: make -f %S/Makefile devicename=npu2 op=silu
-// RUN: %run_on_npu2% make -f %S/Makefile devicename=npu2 op=silu run
-// RUN: make -f %S/Makefile clean
-// RUN: make -f %S/Makefile devicename=npu2 op=gelu
-// RUN: %run_on_npu2% make -f %S/Makefile devicename=npu2 op=gelu run
+// RUN: %run_on_npu1% %python %S/eltwise_unary.py -d npu -o relu
+// RUN: %run_on_npu1% %python %S/eltwise_unary.py -d npu -o silu
+// RUN: %run_on_npu1% %python %S/eltwise_unary.py -d npu -o gelu

@@ -7,13 +7,13 @@
 
 ## Column-Wide Reduction Designs
 
-This folder presents three distinct styles of column-wide reduction designs for AIE cores. 
+This folder presents three distinct styles of column-wide reduction designs for AIE cores.
 
 - **Shared Memory Design:** Neighboring tiles use shared memory to exchange intermediate results, enabling a collaborative reduction.<br><img src="assets/Shared.png" alt="Shared Memory Design" width="300"/>
 - **Chained Design:** Each tile computes a partial maximum and passes the result to the next tile in the column, forming a reduction cascade.<br><img src="assets/Chained.png" alt="Chained Design" width="300"/>
 - **Memory Tile Based Design:** Partial results from all tiles are aggregated in a dedicated memory tile, which then forwards the combined result to an AIE core for the final reduction.<br><img src="assets/Memtile.png" alt="Memory Tile Based Design" width="300"/>
 
-Among these, the **Shared Memory Design** is the preferred approach, as it eliminates the need for DMAs to transfer data between neighboring tiles—a key feature enabled by the NPU architecture. The other two designs, **Chained Design** and **Memory Tile Based Design**, are provided as alternatives to demonstrate different data movement strategies for the reduce-max operation. 
+Among these, the **Shared Memory Design** is the preferred approach, as it eliminates the need for DMAs to transfer data between neighboring tiles—a key feature enabled by the NPU architecture. The other two designs, **Chained Design** and **Memory Tile Based Design**, are provided as alternatives to demonstrate different data movement strategies for the reduce-max operation.
 
 All designs support both BF16 and INT32 data types and utilize kernels from `reduce_max.cc`.
 
@@ -29,7 +29,17 @@ All designs support both BF16 and INT32 data types and utilize kernels from `red
 
 ## Ryzen™ AI Usage
 
-### Compilation
+### Standalone JIT verification
+
+```shell
+python3 vector_reduce_max_shared.py --dtype bf16
+python3 vector_reduce_max_chained.py --dtype bf16
+python3 vector_reduce_max_memtile.py --dtype bf16
+```
+
+Pass `--dev npu2` for Strix. Each command compiles, runs, and verifies its output directly in Python.
+
+### Compilation for the native host
 
 The three variants are selected with the `VARIANT` Makefile variable (default: `shared`):
 

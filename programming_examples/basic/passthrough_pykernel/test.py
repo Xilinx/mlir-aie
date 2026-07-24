@@ -18,7 +18,7 @@ def main(opts):
     data_size = int(opts.size)
     dtype = np.uint8
 
-    in1 = iron.arange(1, data_size + 1, dtype=dtype)
+    in1 = iron.arange(data_size, dtype=dtype)
     out = iron.zeros(data_size, dtype=dtype)
     input_data = in1.numpy()
 

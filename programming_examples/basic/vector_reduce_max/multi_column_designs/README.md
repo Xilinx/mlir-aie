@@ -6,7 +6,7 @@
 //===----------------------------------------------------------------------===//-->
 ## Multi-Column Reduction Designs
 
-Partial reductions are performed within each row using shared memory between neighboring tiles, followed by a final reduction step across the column. The number of columns (`num_columns`) can be configured from 1 to 8 and number of shim DMAs (`num_channels`) can be configured from 1 to 2. 
+Partial reductions are performed within each row using shared memory between neighboring tiles, followed by a final reduction step across the column. The number of columns (`num_columns`) can be configured from 1 to 8 and number of shim DMAs (`num_channels`) can be configured from 1 to 2.
 
 Both BF16 and INT32 data types are supported, leveraging kernels from `reduce_max.cc`.
 
@@ -23,7 +23,16 @@ Both BF16 and INT32 data types are supported, leveraging kernels from `reduce_ma
 
 ## Ryzen™ AI Usage
 
-### Compilation
+### Standalone JIT verification
+
+```shell
+python3 col_wise_vector_reduce_max.py
+python3 row_wise_vector_reduce_max.py
+```
+
+Pass `--dev npu2` for Strix. Each command compiles, runs, and verifies its output directly in Python.
+
+### Compilation for the native host
 
 The two variants are selected with the `VARIANT` Makefile variable (default: `col_wise`):
 

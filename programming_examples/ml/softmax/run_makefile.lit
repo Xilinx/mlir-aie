@@ -1,0 +1,18 @@
+// Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+//
+// REQUIRES: ryzen_ai, peano
+// REQUIRES: makefile_examples
+//
+// Default tile-wise softmax (size=262144, chans=2) on both NPU families.
+// RUN: make -f %S/Makefile clean
+// RUN: make -f %S/Makefile devicename=npu
+// RUN: %run_on_npu1% make -f %S/Makefile devicename=npu run
+// RUN: make -f %S/Makefile clean
+// RUN: make -f %S/Makefile devicename=npu2
+// RUN: %run_on_npu2% make -f %S/Makefile devicename=npu2 run
+//
+// Cover both channel counts supported by the unified softmax design.
+// RUN: make -f %S/Makefile clean
+// RUN: make -f %S/Makefile devicename=npu2 chans=1
+// RUN: %run_on_npu2% make -f %S/Makefile devicename=npu2 chans=1 run

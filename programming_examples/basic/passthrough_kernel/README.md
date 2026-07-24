@@ -28,19 +28,20 @@ The example uses the IRON high-level builders (`Worker` / `Runtime` / `Program`)
 ## Usage
 
 ```shell
-make run        # compile + execute on the attached NPU (auto-detected)
-make trace      # execute with hardware tracing enabled
-make clean
+python3 passthrough_kernel.py
+python3 passthrough_kernel.py --trace_size 8192
 ```
 
-The actual NPU generation (NPU1 / NPU2) is auto-detected by the IRON runtime at JIT time, so no device flag is needed.
+The IRON JIT runtime detects the attached NPU generation automatically. The
+first command compiles and executes the design, then reports both NPU latency
+and end-to-end Python wall-clock time. The trace command additionally emits a
+per-tile cycle summary and writes `trace_passthrough_kernel.json` in the current
+directory.
 
-`make run` reports both NPU latency (from the runtime) and end-to-end Python wall-clock so the host-side overhead delta is visible. `make trace` additionally dumps a per-tile cycle summary parsed from the trace buffer.
-
-For finer-grained benchmarking, invoke the script directly:
+For finer-grained benchmarking or a different transfer size:
 
 ```shell
-python3 passthrough_kernel.py -i1s 4096 -w 20 -n 100   # warmup + iters
+python3 passthrough_kernel.py --in1_size 4096 --warmup 20 --iters 100
 ```
 
 Run `python3 passthrough_kernel.py --help` for the full flag list.

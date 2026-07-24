@@ -23,6 +23,15 @@ The op is selected at compile time via the `op` parameter (`add` or `mul`); the 
 
 ## Usage
 
+### Standalone JIT verification
+
+```shell
+python3 eltwise.py --op add
+python3 eltwise.py --op mul
+```
+
+Pass `--dev npu2` for Strix.
+
 ### C++ Testbench
 
 Build and run the add variant:
