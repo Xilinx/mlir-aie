@@ -25,6 +25,14 @@ This design implements a `bfloat16` based SwiGLU on a vector, distributed in par
 
 ## Usage
 
+### Standalone JIT verification
+
+```shell
+python3 swiglu.py
+```
+
+Pass `--dev npu2` for Strix.
+
 ### C++ Testbench
 
 To compile the design and C++ testbench:

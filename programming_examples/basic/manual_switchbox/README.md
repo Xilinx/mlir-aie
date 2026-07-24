@@ -68,8 +68,8 @@ for the conceptual background.
 ## Usage
 
 ```bash
-make -f Makefile run devicename=npu2
+python3 manual_switchbox.py --dev npu2 --col 0
 ```
 
-The design's `run_and_verify` path compiles, runs on the NPU, and checks
+Use `--col` to select another legal NPU2 column. The design's `run_and_verify` path compiles, runs on the NPU, and checks
 the output against a numpy reference in a single call.

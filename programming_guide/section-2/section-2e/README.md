@@ -132,10 +132,10 @@ rt = Runtime(
 
 To build and run the designs:
 ```bash
-make run                # JIT-compile + run aie2.py on the attached NPU
-make run-multi          # JIT-compile + run aie2_multi.py on the attached NPU
-make emit-mlir          # write the lowered MLIR for aie2.py to build/aie.mlir
-make emit-mlir-multi    # write the lowered MLIR for aie2_multi.py to build/aie_multi.mlir
+python3 aie2.py
+python3 aie2_multi.py
+python3 aie2.py --dev npu --emit-mlir > aie.mlir
+python3 aie2_multi.py --dev npu --emit-mlir > aie_multi.mlir
 ```
 
 -----
