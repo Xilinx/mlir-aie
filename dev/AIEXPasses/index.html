@@ -2897,6 +2897,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#-aie-decompose-large-dma-bd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        -aie-decompose-large-dma-bd
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#-aie-dma-tasks-to-npu" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3569,6 +3580,17 @@
 </li>
       
         <li class="md-nav__item">
+  <a href="#-aie-decompose-large-dma-bd" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        -aie-decompose-large-dma-bd
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
   <a href="#-aie-dma-tasks-to-npu" class="md-nav__link">
     <span class="md-ellipsis">
       
@@ -3996,6 +4018,21 @@ operations.</p>
 <p><em>Infer aie.tile ops from aiex.control_packet addresses</em></p>
 <h3 id="-aie-ctrl-packet-to-dma"><code>-aie-ctrl-packet-to-dma</code><a class="headerlink" href="#-aie-ctrl-packet-to-dma" title="Permanent link">&para;</a></h3>
 <p><em>Lowers npu.control_packet op to npu.dma_memcpy_nd op</em></p>
+<h3 id="-aie-decompose-large-dma-bd"><code>-aie-decompose-large-dma-bd</code><a class="headerlink" href="#-aie-decompose-large-dma-bd" title="Permanent link">&para;</a></h3>
+<p><em>Decompose oversized non-contiguous ND DMA transfers</em></p>
+<p>Splits <code>aiex.npu.dma_memcpy_nd</code> ops and task-path <code>aie.dma_bd</code> ops (inside
+<code>aiex.dma_configure_task</code> / <code>aiex.dma_configure_task_for</code>) whose constant
+ND wrap/stride encoding exceeds the hardware buffer-descriptor field limits
+(and that cannot be linearized because the access is non-contiguous) into
+one or more hardware-legal ND transfers that move exactly the same data.</p>
+<p>On the task path, multiple sub-patterns are linked with <code>aie.next_bd</code>
+blocks inside the configure region; <code>bd_id</code> / <code>next_bd_id</code> are left for
+later passes to assign.</p>
+<p>Two techniques are used: dimension factoring (split an oversized dimension
+of size N=a*b across a free dimension slot) is preferred, falling back to
+slicing an oversized dimension into ceil(N/limit) sub-transfers with
+adjusted offsets. Contiguous oversized patterns are left untouched; they are
+handled by canonicalization to linear mode.</p>
 <h3 id="-aie-dma-tasks-to-npu"><code>-aie-dma-tasks-to-npu</code><a class="headerlink" href="#-aie-dma-tasks-to-npu" title="Permanent link">&para;</a></h3>
 <p><em>Lower configured DMA tasks to NPU instructions</em></p>
 <h3 id="-aie-dma-to-npu"><code>-aie-dma-to-npu</code><a class="headerlink" href="#-aie-dma-to-npu" title="Permanent link">&para;</a></h3>
