@@ -1,8 +1,8 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// DMA channel reset: reset the stalled channel, re-push BD 0, re-arm the lock
-// (see README.md).
+// DMA channel reset: enqueue a bad BD, reset the channel to flush it, then
+// enqueue the good BD and arm the lock (see README.md).
 //
 // REQUIRES: ryzen_ai
 //

@@ -1,8 +1,8 @@
 // Copyright (C) 2026 Advanced Micro Devices, Inc.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 //
-// DMA channel reset via the aiex.dma_channel_reset op, then re-push BD 0 and
-// re-arm the lock (see README.md).
+// DMA channel reset via the aiex.dma_channel_reset op: flush a queued bad BD,
+// then enqueue the good BD and arm the lock (see README.md).
 //
 // REQUIRES: ryzen_ai
 //

@@ -7,48 +7,29 @@
 
 # DMA channel reset (op-based)
 
-The op-based analog of [`../dma`](../dma/README.md): identical design, but the
-stalled MM2S channel is reset with the merged `aiex.dma_channel_reset`
-runtime-sequence op ([#3370](https://github.com/Xilinx/mlir-aie/pull/3370)) rather
-than issuing the reset writes directly as `../dma` does. See
-[`../README.md`](../README.md) for the shared design and how to run.
+The op-based analog of [`../dma`](../dma/README.md): same two-BD design (bad BD 0
+`[900..907]`, good BD 1 `[100..107]`, both gated on `cons`), but the channel is
+flushed with the merged `aiex.dma_channel_reset` op
+([#3370](https://github.com/Xilinx/mlir-aie/pull/3370)) instead of the raw reset
+writes. It reuses `../dma`'s host oracle directly (`%S/../dma/test.cpp`).
 
-A run-forever MM2S channel on tile `(0, 2)` is stalled on its consumer-lock
-acquire. `aiex.dma_channel_reset(%t02, MM2S, 0)` clears the channel's residual
-queue state; the test then re-pushes BD 0 (`aiex.npu.push_queue`) and re-arms the
-lock so the channel runs again and the collect returns the resident buffer -- the
-same oracle as `../dma`, whose `test.cpp` this test compiles directly
-(`%S/../dma/test.cpp`) rather than duplicating.
-
-## Same protocol as `../dma`
-
-`aiex.dma_channel_reset` lowers to a **mask-preserving reset pulse** on the same
-register `../dma` writes -- the MM2S channel-0 control register (tile-local
-`0x1DE10`), reset bit 1 -- emitted as two `aiex.npu.maskwrite32`s (assert bit 1
-with mask `0x2`, then clear it). The address comes from
-`AIETargetModel::getDmaControlAddress`, so it is correct for every tile class and
-direction. Masking to bit 1 preserves the other CTRL fields, so the op is **reset-only**: it
-resets the channel but does not re-push a BD or re-arm the lock. `../dma` issues
-the same masked reset pulse directly; here `aiex.dma_channel_reset` emits it and the
-re-push (`aiex.npu.push_queue`) + lock re-arm remain around it. Both drive the same
-reset bit on the same register and mirror aie-rt's `XAie_DmaChannelReset`.
+`aiex.dma_channel_reset(%t02, MM2S, 0)` lowers (in the default `aiecc` pipeline) to
+the same mask-preserving reset pulse on `DMA_MM2S_0_Ctrl` (`0x1DE10`, bit 1) that
+`../dma` issues directly -- two `aiex.npu.maskwrite32`s, with the address from
+`AIETargetModel::getDmaControlAddress`. The op is reset-only, so the enqueue
+(`aiex.npu.push_queue`) and lock arm remain around it.
 
 ## Behaviour
 
-- **Correct protocol (this test):** `aiex.dma_channel_reset` + re-push BD +
-  re-arm lock -> the channel sends the resident buffer -> collect matches.
-- **Reset without re-push / re-arm:** the flushed channel has nothing queued (or
-  the lock is never granted), so the send never starts and the collect never
-  completes -- a hang by design (reproduce by hand by removing the `push_queue` /
-  lock write from `aie.mlir`).
+- **Correct protocol (this test):** enqueue bad -> `aiex.dma_channel_reset` ->
+  enqueue good -> arm lock -> the collect matches `[100..107]`.
+- **No reset (falsifies the test):** the bad BD sends first -> the collect is
+  `[900..907]` -- a wrong-data failure, not a hang.
+- **Reset without re-push:** nothing queued -> the collect never completes (hang).
 
 ## Reference
 
 `aiex.dma_channel_reset` is defined in `include/aie/Dialect/AIEX/IR/AIEX.td` and
-lowered by `lib/Dialect/AIEX/Transforms/AIELowerDmaChannelReset.cpp` (pass
-`--aie-lower-dma-channel-reset`, run in the default `aiecc` pipeline). It mirrors
-the public aie-rt driver (<https://github.com/Xilinx/aie-rt>, vendored at
-`third_party/aie-rt/`): `XAIE2PGBL_MEMORY_MODULE_DMA_MM2S_0_CTRL` in
-`driver/src/global/xaie2pgbl_params.h`, and `XAie_DmaChannelReset` in
-`driver/src/dma/xaie_dma.c`. See [`../README.md`](../README.md#references) for the
-full table.
+lowered by `lib/Dialect/AIEX/Transforms/AIELowerDmaChannelReset.cpp`; it mirrors
+aie-rt's `XAie_DmaChannelReset` (`driver/src/dma/xaie_dma.c`). See
+[`../dma`](../dma/README.md) and [`../README.md`](../README.md#references).

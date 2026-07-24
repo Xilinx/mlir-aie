@@ -45,14 +45,7 @@ int main(int argc, const char *argv[]) {
   unsigned int device_index = 0;
   auto device = xrt::device(device_index);
   auto xclbin = xrt::xclbin(vm["xclbin"].as<std::string>());
-  std::string Node = vm["kernel"].as<std::string>();
-
-  auto xkernels = xclbin.get_kernels();
-  auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
-                               [Node](xrt::xclbin::kernel &k) {
-                                 return k.get_name().rfind(Node, 0) == 0;
-                               });
-  auto kernelName = xkernel.get_name();
+  std::string kernelName = vm["kernel"].as<std::string>();
 
   device.register_xclbin(xclbin);
   xrt::hw_context context(device, xclbin.get_uuid());

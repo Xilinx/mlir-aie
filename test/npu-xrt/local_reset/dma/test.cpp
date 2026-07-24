@@ -5,12 +5,11 @@
 //
 //===----------------------------------------------------------------------===//
 
-// Host side of the DMA-channel-reset test. The resident buffer holds
-// [100..107]; the runtime sequence resets + re-pushes + re-arms the MM2S
-// channel each dispatch. We dispatch the same kernel many times and require
-// every dispatch to return the resident buffer unchanged -- i.e. the
-// reset-and-restart protocol keeps the run-forever channel correct across
-// dispatches.
+// Host side of the DMA-channel-reset test. Each dispatch, the runtime sequence
+// enqueues a "bad" BD, resets the MM2S channel to flush it, enqueues a "good"
+// BD, and arms the lock; only the good BD runs. We dispatch many times and
+// require every dispatch to return the good buffer [100..107] -- were the reset
+// skipped, the bad BD would send [900..907] instead. See aie.mlir / README.md.
 
 #include <cstdint>
 #include <iostream>
@@ -36,15 +35,10 @@ int main(int argc, const char *argv[]) {
 
   auto device = xrt::device(0);
   auto xclbin = xrt::xclbin(vm["xclbin"].as<std::string>());
-  std::string Node = vm["kernel"].as<std::string>();
-  auto xkernels = xclbin.get_kernels();
-  auto xkernel = *std::find_if(xkernels.begin(), xkernels.end(),
-                               [Node](xrt::xclbin::kernel &k) {
-                                 return k.get_name().rfind(Node, 0) == 0;
-                               });
+  std::string kernelName = vm["kernel"].as<std::string>();
   device.register_xclbin(xclbin);
   xrt::hw_context context(device, xclbin.get_uuid());
-  auto kernel = xrt::kernel(context, xkernel.get_name());
+  auto kernel = xrt::kernel(context, kernelName);
 
   auto bo_instr = xrt::bo(device, instr_v.size() * sizeof(int),
                           XCL_BO_FLAGS_CACHEABLE, kernel.group_id(1));
