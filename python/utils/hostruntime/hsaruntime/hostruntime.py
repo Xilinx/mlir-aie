@@ -108,8 +108,12 @@ class HSAHostRuntime(HostRuntime):
 
         insts_ptr = self._ctx.alloc_region(len(insts_bytes))
         ctypes.memmove(insts_ptr, insts_bytes, len(insts_bytes))
-        pdi_ptr = self._ctx.alloc_region(len(pdi_bytes))
-        ctypes.memmove(pdi_ptr, pdi_bytes, len(pdi_bytes))
+        try:
+            pdi_ptr = self._ctx.alloc_region(len(pdi_bytes))
+            ctypes.memmove(pdi_ptr, pdi_bytes, len(pdi_bytes))
+        except BaseException:
+            self._ctx.free_region(insts_ptr)
+            raise
 
         handle = HSAKernelHandle(
             pdi_ptr, len(pdi_bytes), insts_ptr, len(insts_bytes), kernel_name
