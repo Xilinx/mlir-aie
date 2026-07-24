@@ -6,10 +6,14 @@
 """``for_each``: apply a function in-place over a tiled tensor on an AIE core."""
 
 import numpy as np
+from aie.utils import get_current_device
 
-from aie.iron import ObjectFifo, Program, Runtime, Worker
-from aie.iron.controlflow import range_
-import aie.iron as iron
+from ..controlflow import range_
+from ..dataflow import ObjectFifo
+from ..kernel import ExternalFunction
+from ..program import Program
+from ..runtime import Runtime
+from ..worker import Worker
 
 
 def for_each(func, tensor_ty, tile_size=16):
@@ -87,7 +91,7 @@ def _for_each_real(func, tensor, *params, tile_size=16):
     Returns:
         mlir.ir.Module: The compiled MLIR module ready for execution.
     """
-    is_external_func = isinstance(func, iron.ExternalFunction)
+    is_external_func = isinstance(func, ExternalFunction)
     num_elements = np.size(tensor)
 
     # Validate tile_size matches ExternalFunction's tile_size() if defined
@@ -208,7 +212,7 @@ def _for_each_real(func, tensor, *params, tile_size=16):
         rt.drain(of_out.cons(), tensor_arg, wait=True)
 
     # Place program components and generate an MLIR module
-    device = iron.get_current_device()
+    device = get_current_device()
     if device is None:
         raise RuntimeError(
             "iron.algorithms.for_each requires an active NPU device. "

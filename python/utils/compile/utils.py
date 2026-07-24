@@ -12,7 +12,9 @@ import subprocess
 import tempfile
 from pathlib import Path
 from typing import TYPE_CHECKING
+
 import aie.utils.config as config
+from aie.iron.kernel import ExternalFunction
 
 if TYPE_CHECKING:
     from aie.ir import (  # pyright: ignore[reportMissingImports]
@@ -243,15 +245,10 @@ def compile_mlir_module(
     # the loop in compilabledesign.py but for callers (e.g. low-level
     # designs using rt.inline_ops) that didn't go through @iron.jit.
     if work_dir and device is not None:
-        try:
-            from aie.iron.kernel import ExternalFunction
-        except ImportError:
-            ExternalFunction = None
-        if ExternalFunction is not None:
-            target_arch = resolve_target_arch(device)
-            for func in list(ExternalFunction._instances):
-                if not func._compiled and getattr(func, "_source_file", None):
-                    compile_external_kernel(func, str(work_dir), target_arch)
+        target_arch = resolve_target_arch(device)
+        for func in list(ExternalFunction._instances):
+            if not func._compiled and getattr(func, "_source_file", None):
+                compile_external_kernel(func, str(work_dir), target_arch)
 
     # When work_dir is provided, invoke the aiecc binary as a subprocess so
     # that it resolves relative link_with paths (e.g. "add_one.o") against the

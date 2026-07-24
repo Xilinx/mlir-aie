@@ -18,10 +18,13 @@ Reductions differ from `transform` in two ways:
 """
 
 import numpy as np
+from aie.utils import get_current_device
 
-from aie.iron import ObjectFifo, Program, Runtime, Worker
-import aie.iron as iron
-
+from ..dataflow import ObjectFifo
+from ..kernel import ExternalFunction
+from ..program import Program
+from ..runtime import Runtime
+from ..worker import Worker
 from ._transform import make_param_descriptor
 
 
@@ -42,7 +45,7 @@ def _reduce_gen(func, input_desc, output_desc, *, trace_size=0):
             ``trace_size``-byte runtime trace buffer (default: 0).  Kernel
             is expected to emit ``event0()``/``event1()`` markers.
     """
-    if not isinstance(func, iron.ExternalFunction):
+    if not isinstance(func, ExternalFunction):
         raise TypeError(
             "_reduce_gen requires an ExternalFunction; reductions need "
             "accumulator state across the input elements which a per-element "
@@ -79,7 +82,7 @@ def _reduce_gen(func, input_desc, output_desc, *, trace_size=0):
         rt.fill(of_in.prod(), a_in)
         rt.drain(of_out.cons(), c_out, wait=True)
 
-    device = iron.get_current_device()
+    device = get_current_device()
     if device is None:
         raise RuntimeError(
             "iron.algorithms.reduce requires an active NPU device. "

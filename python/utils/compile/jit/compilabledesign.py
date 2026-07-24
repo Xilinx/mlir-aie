@@ -37,6 +37,11 @@ from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Callable, Mapping
 
+from aie.extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
+from aie.ir import (  # pyright: ignore[reportMissingImports]
+    Module as _Module,  # pyright: ignore[reportAttributeAccessIssue]
+)
+from aie.iron.kernel import ExternalFunction
 from aie.utils.compile import (
     NPU_CACHE_HOME,
     compile_external_kernel,
@@ -44,10 +49,6 @@ from aie.utils.compile import (
 )
 from aie.utils.compile.cache.utils import file_lock
 from aie.utils.compile.utils import _cleanup_failed_compilation
-from aie.extras.context import mlir_mod_ctx  # pyright: ignore[reportMissingImports]
-from aie.ir import (  # pyright: ignore[reportMissingImports]
-    Module as _Module,  # pyright: ignore[reportAttributeAccessIssue]
-)
 
 from ._dma_size_parser import parse_dma_sizes
 from ._hash import (
@@ -60,11 +61,9 @@ from ._introspect import (
     _introspect_generator,
     _is_compile_param,
     _is_tensor_param,
-    split_params,
 )
-from ._serialization import _TensorPlaceholder, _decode_kwarg, _encode_kwarg
+from ._serialization import _decode_kwarg, _encode_kwarg, _TensorPlaceholder
 from .context import compile_context
-from .markers import CompileTime, In, InOut, Out
 
 logger = logging.getLogger(__name__)
 
@@ -201,8 +200,6 @@ class CompilableDesign:
         ``inst_path``.  In default cache mode aiecc still emits a ``main.pdi``
         into the cache directory — use :meth:`get_pdi_path` to locate it.
         """
-        from aie.iron.kernel import ExternalFunction
-
         if (xclbin_path is None) != (inst_path is None):
             raise ValueError(
                 "compile(): xclbin_path and inst_path must be set together "
@@ -283,7 +280,7 @@ class CompilableDesign:
                 )
 
             try:
-                mlir_module = self._generate_mlir(ExternalFunction)
+                mlir_module = self._generate_mlir()
 
                 from aie.utils import get_current_device
                 from aie.utils.compile import resolve_target_arch
@@ -420,7 +417,7 @@ class CompilableDesign:
         Returns:
             ``(tensor_args, scalar_kwargs)``
         """
-        from aie.iron.kernel import ExternalFunction, Kernel
+        from aie.iron.kernel import Kernel
 
         if not callable(self.mlir_generator):
             # Static .mlir file: pass everything through as tensors,
@@ -485,9 +482,7 @@ class CompilableDesign:
         Returns:
             The generated ``mlir.ir.Module``.
         """
-        from aie.iron.kernel import ExternalFunction
-
-        return self._generate_mlir(ExternalFunction)
+        return self._generate_mlir()
 
     def validate_tensor_args(self, tensor_args: list) -> None:
         """Validate that *tensor_args* element counts match the compiled kernel.
@@ -686,8 +681,6 @@ class CompilableDesign:
 
     def _generate_uncached(self) -> tuple[str, list]:
         """Run the generator and collect generated MLIR text and external kernels."""
-        from aie.iron.kernel import ExternalFunction
-
         if isinstance(self.mlir_generator, Path):
             # Static .mlir file: text already on disk; no kernels to collect.
             return self.mlir_generator.read_text(), []
@@ -770,7 +763,7 @@ class CompilableDesign:
         ExternalFunction._instances.clear()
         return mlir_text, external_kernels
 
-    def _generate_mlir(self, ExternalFunction):
+    def _generate_mlir(self):
         """Return an MLIR ``Module`` bound to a fresh Context.
 
         Thin wrapper over :attr:`_generated`: parse the cached MLIR text into

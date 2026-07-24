@@ -4,10 +4,14 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-from aie.ir import *  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
-from aie.dialects.aie import *  # pyright: ignore[reportMissingImports]
-
 import argparse
+
+from aie.dialects.aie import (
+    transaction_binary_to_mlir,
+)  # pyright: ignore[reportMissingImports]
+from aie.ir import (
+    Context,
+)  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 
 
 def main():
@@ -20,7 +24,7 @@ def main():
     # Read the data from the file
     data = args.file.read()
 
-    with Context() as ctx:  # pyright: ignore[reportUndefinedVariable]
+    with Context() as ctx:
         module = transaction_binary_to_mlir(ctx, data)
 
     print(str(module))

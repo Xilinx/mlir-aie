@@ -6,11 +6,15 @@
 """Tiled transform algorithms (unary/binary, single-core/parallel) built on IRON."""
 
 import numpy as np
-
-from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.helpers.taplib.tap import TensorAccessPattern
-from aie.iron.controlflow import range_
-import aie.iron as iron
+from aie.utils import get_current_device
+
+from ..controlflow import range_
+from ..dataflow import ObjectFifo
+from ..kernel import ExternalFunction
+from ..program import Program
+from ..runtime import Runtime
+from ..worker import Worker
 
 
 def _check_num_channels(num_channels: int) -> None:
@@ -45,7 +49,7 @@ def _transform_gen(func, inputs: list, output, *params, tile_size=16, trace_size
             (or lambda) is expected to emit event0()/event1() markers; the
             trace shim records cycles between them.
     """
-    is_external_func = isinstance(func, iron.ExternalFunction)
+    is_external_func = isinstance(func, ExternalFunction)
 
     # Validate tile_size matches ExternalFunction's tile_size() if defined
     if is_external_func and func.tile_size() != tile_size:
@@ -190,7 +194,7 @@ def _transform_gen(func, inputs: list, output, *params, tile_size=16, trace_size
         rt.drain(of_out.cons(), output_seq_arg, wait=True)
 
     # Place program components and generate an MLIR module
-    device = iron.get_current_device()
+    device = get_current_device()
     if device is None:
         raise RuntimeError(
             "iron.algorithms.transform requires an active NPU device. "
@@ -248,7 +252,7 @@ def _transform_parallel_gen(
             "num_channels=2 is not supported together with shared *params; "
             "use num_channels=1 instead."
         )
-    is_external_func = isinstance(func, iron.ExternalFunction)
+    is_external_func = isinstance(func, ExternalFunction)
 
     # Validate tile_size matches ExternalFunction arg_type
     if is_external_func and func.tile_size() != tile_size:
@@ -276,7 +280,7 @@ def _transform_parallel_gen(
     dtype = ref_dtype
 
     # Determine number of columns based on device
-    device = iron.get_current_device()
+    device = get_current_device()
     if device is None:
         raise RuntimeError(
             "iron.algorithms.transform_parallel requires an active NPU device. "
