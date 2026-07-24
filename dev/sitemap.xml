@@ -2,310 +2,310 @@
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/AIEDialect/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/AIEPasses/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/AIEVecAIE1Dialect/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/AIEVecAnalysisPasses/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/AIEVecDialect/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/AIEVecPasses/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/AIEXDialect/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/AIEXPasses/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/Building/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/BuildingVersal/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/CONTRIBUTING/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/Devices/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/MLIRAIEConversionPasses/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/Platform/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/ROADMAP/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/SECURITY/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/UsedIn/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/XLLVMOps/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/buildHostLin/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/buildHostLinNonUbuntu/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/buildHostWin/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/buildHostWinNative/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/getting-started/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/aiecc/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/api/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/api/aie_kernels/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/api/cpp_doxygen/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/api/dialect_wrappers/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/api/hostruntime/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/api/iron/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/api/kernels/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/api/taplib/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/conferenceDescriptions/asplos24TutorialDescription/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/conferenceDescriptions/asplos26TutorialDescription/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/conferenceDescriptions/ipdps25TutorialDescription/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/conferenceDescriptions/isca25TutorialDescription/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/conferenceDescriptions/micro24TutorialDescription/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/compilation_stages/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/hrx_runtime/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/implicit_mlir_context/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/iron_configuration/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/kernels_library/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/runtime_sequence_reference/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/mini_tutorial/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/section-0/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/section-1/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/section-2/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/section-2/section-2a/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/section-2/section-2b/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/section-2/section-2b/01_Reuse/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/section-2/section-2b/02_Broadcast/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/section-2/section-2b/03_Implicit_Copy/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/section-2/section-2b/04_Repeat/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/section-2/section-2c/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/section-2/section-2c/from_stream_transformations/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/section-2/section-2c/to_stream_transformations/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/section-2/section-2d/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/section-2/section-2d/DMATasks/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/section-2/section-2d/RuntimeTasks/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/section-2/section-2e/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/section-2/section-2f/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/section-2/section-2f/01_single_double_buffer/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/section-2/section-2f/02_external_mem_to_core/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/section-2/section-2f/03_external_mem_to_core_L2/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/section-2/section-2f/04_distribute_L2/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/section-2/section-2f/05_join_L2/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/section-2/section-2g/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/section-2/section-2h/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/section-3/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/section-4/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/section-4/section-4a/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/section-4/section-4b/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/section-4/section-4c/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/section-5/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
     <url>
          <loc>https://xilinx.github.io/mlir-aie/dev/programming_guide/section-6/</loc>
-         <lastmod>2026-07-23</lastmod>
+         <lastmod>2026-07-24</lastmod>
     </url>
 </urlset>

@@ -701,73 +701,6 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#addendum-a-powershell" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Addendum A: PowerShell
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Addendum A: PowerShell">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#conda-or-miniforge-python" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Conda or Miniforge Python
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#addendum-b-build-mlir-aie-wheels-locally" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Addendum B: Build mlir-aie wheels locally
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Addendum B: Build mlir-aie wheels locally">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#b1-install-openssl" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        B.1 Install OpenSSL
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#b2-build-the-wheels" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        B.2 Build the wheels
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
     </ul>
   
 </nav>
@@ -3407,73 +3340,6 @@
   
 </li>
       
-        <li class="md-nav__item">
-  <a href="#addendum-a-powershell" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Addendum A: PowerShell
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Addendum A: PowerShell">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#conda-or-miniforge-python" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Conda or Miniforge Python
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#addendum-b-build-mlir-aie-wheels-locally" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Addendum B: Build mlir-aie wheels locally
-      
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Addendum B: Build mlir-aie wheels locally">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#b1-install-openssl" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        B.1 Install OpenSSL
-      
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#b2-build-the-wheels" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        B.2 Build the wheels
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
     </ul>
   
 </nav>
@@ -3546,10 +3412,11 @@
 SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 
 <h1 id="native-windows-setup-and-build-instructions">Native Windows Setup and Build Instructions<a class="headerlink" href="#native-windows-setup-and-build-instructions" title="Permanent link">&para;</a></h1>
-<p>This guide covers the <strong>native Windows</strong> setup for <strong>IRON/mlir-aie</strong>, which is the recommended path on Windows 11. These instructions will guide you through installing and configuring everything required to both build and execute programs on the Ryzen™ AI NPU, entirely within Windows and without the need for a POSIX environment. If you prefer, you may instead use the <a href="../buildHostWin/">WSL2 setup</a> to build and run IRON in a Linux environment on Windows.</p>
-<p>Use an <strong>x64 Native Tools Command Prompt for Visual Studio</strong> in <code>cmd.exe</code> for the commands in this guide. It initializes MSVC, the linker, and the Windows SDK in one place. Visual Studio and Visual Studio Build Tools install this environment automatically and create a shortcut in the Start menu. PowerShell is also supported; see <a href="#addendum-a-powershell">Addendum A</a>.</p>
+<p>This guide covers the native Windows setup for <strong>IRON/mlir-aie</strong> and is the recommended path for Windows 11 users. It supports building and running programs on a Ryzen™ AI NPU entirely within Windows, without requiring a POSIX environment. The <a href="../buildHostWin/">WSL2 setup</a> is available for users who prefer a POSIX-style development environment.</p>
+<p>Use an <strong>x64 Native Tools Command Prompt for Visual Studio</strong> in <code>cmd.exe</code> for the commands in this guide. It provides MSVC, the linker, and the Windows SDK in one configured environment. Visual Studio and Visual Studio Build Tools both install that prompt, as well as adding a shortcut to the Start menu.</p>
+<p>PowerShell is also supported. While the main instructions use <code>cmd.exe</code>, the corresponding PowerShell commands and shell-specific differences are collected in <a href="#addendum-a-powershell">Addendum A</a>.</p>
 <blockquote>
-<p><strong>Python note:</strong> The Windows XRT SDK supplies <code>pyxrt</code> bindings for <strong>CPython 3.13</strong>. Use Python 3.13 with the SDK. Do not choose another Python version unless you already have an XRT distribution with matching bindings. Building and packaging XRT from source on Windows is an advanced task outside the scope of this guide.</p>
+<p><strong>Python note:</strong> The Windows XRT SDK supplies <code>pyxrt</code> bindings for <strong>CPython 3.13</strong>. Use Python 3.13 with this SDK. Another Python version requires an XRT distribution with matching bindings. Building and packaging XRT from source on Windows is possible, but it is an advanced task outside the scope of this guide.</p>
 </blockquote>
 <h2 id="contents">Contents<a class="headerlink" href="#contents" title="Permanent link">&para;</a></h2>
 <ol>
@@ -3562,30 +3429,29 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 <li><a href="#addendum-b-build-mlir-aie-wheels-locally">Addendum B: Build <code>mlir-aie</code> wheels locally</a></li>
 </ol>
 <h2 id="1-install-the-windows-development-environment">1. Install the Windows development environment<a class="headerlink" href="#1-install-the-windows-development-environment" title="Permanent link">&para;</a></h2>
-<p>Together, the items below form the expected native Windows development environment for this repository.</p>
-<p>You need:</p>
+<p>A fully usable native Windows checkout requires the following:</p>
 <ul>
 <li>A Windows 11 system with a supported Ryzen™ AI / XDNA™ NPU.</li>
-<li><strong>Visual Studio 2026</strong> (preferred) or <strong>Visual Studio 2022</strong>. The full IDE and the matching Build Tools package are both supported.</li>
-<li><strong>Python 3.13</strong>. This may be through an ordinary install or a Conda / Miniforge environment. See <a href="#addendum-a-powershell">Addendum A</a> for Conda / Miniforge usage.</li>
-<li><strong>CMake</strong>. The CMake supplied by a current Visual Studio installation should be fine; a current Kitware download is also suitable.</li>
-<li><strong>Git for Windows</strong>. Install it with Visual Studio or as a separate package.</li>
+<li><strong>Visual Studio 2026</strong> (preferred) or <strong>Visual Studio 2022</strong>. Either the full IDE or the matching <strong>Build Tools</strong> package may be used.</li>
+<li><strong>Python 3.13</strong>, installed directly or through Conda / Miniforge. Conda and Miniforge users should also read <a href="#addendum-a-powershell">Addendum A</a>.</li>
+<li><strong>CMake</strong>. The version included with a Visual Studio 2026 installation is normally sufficient; a current Kitware release is also suitable.</li>
+<li><strong>Git for Windows</strong>, installed with Visual Studio or separately.</li>
 <li>The latest Ryzen™ AI / XDNA™ NPU driver and the Windows <strong>XRT SDK</strong>.</li>
 </ul>
 <h3 id="11-visual-studio-components">1.1 Visual Studio components<a class="headerlink" href="#11-visual-studio-components" title="Permanent link">&para;</a></h3>
-<p>When using the Visual Studio Installer (below), select <strong>Desktop development with C++</strong> and confirm that the following components are installed. Use the search box under the <strong>Individual components</strong> tab when needed:</p>
+<p>In the Visual Studio Installer, select <strong>Desktop development with C++</strong> and confirm that the following components are installed. The search box under <strong>Individual components</strong> is useful when checking an existing installation:</p>
 <ul>
 <li>MSVC x64/x86 build tools</li>
 <li>Windows SDK</li>
 <li>C++ CMake tools for Windows</li>
 <li>C++ Clang Compiler for Windows</li>
-<li>MSBuild support for LLVM (<code>clang-cl</code>) toolset</li>
-<li>Git for Windows, when Git is not installed separately</li>
+<li>MSBuild support for the LLVM (<code>clang-cl</code>) toolset</li>
+<li>Git for Windows, unless Git is installed separately</li>
 </ul>
-<p>The Clang and LLVM components support CMake configurations to build native C++ host applications.</p>
+<p>The Clang and LLVM components are used by CMake configurations that build native C++ host applications.</p>
 <h3 id="12-install-the-tools">1.2 Install the tools<a class="headerlink" href="#12-install-the-tools" title="Permanent link">&para;</a></h3>
-<p>Most tools may be installed via the Windows command-line package manager, <code>winget</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1">REM Choose one: the full IDE or the matching Build Tools package.</span>
+<p>Most of the required tools are available through the Windows package manager, <code>winget</code>:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1">REM Choose one: the full IDE or the matching Build Tools package</span>
 <a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>winget install -e --id Microsoft.VisualStudio.Community
 <a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="c1">REM winget install -e --id Microsoft.VisualStudio.BuildTools</span>
 <a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a>
@@ -3595,103 +3461,159 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception -->
 <a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a><span class="c1">REM CMake</span>
 <a id="__codelineno-0-9" name="__codelineno-0-9" href="#__codelineno-0-9"></a>winget install -e --id Kitware.CMake
 <a id="__codelineno-0-10" name="__codelineno-0-10" href="#__codelineno-0-10"></a>
-<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="c1">REM Git (optional unless not selected in VS installer)</span>
+<a id="__codelineno-0-11" name="__codelineno-0-11" href="#__codelineno-0-11"></a><span class="c1">REM Git (optional unless not selected in the Visual Studio installer)</span>
 <a id="__codelineno-0-12" name="__codelineno-0-12" href="#__codelineno-0-12"></a>winget install -e --id Git.Git
 </code></pre></div>
-<p>Manual downloads are also available here:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>Visual Studio: https://visualstudio.microsoft.com/downloads/
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>Python:        https://www.python.org/downloads/windows/
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>CMake:         https://cmake.org/download/
-<a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>Git:           https://git-scm.com/download/win
-</code></pre></div>
+<p>The same tools may be downloaded directly:</p>
+<ul>
+<li><a href="https://visualstudio.microsoft.com/downloads/">Visual Studio</a></li>
+<li><a href="https://www.python.org/downloads/windows/">Python</a></li>
+<li><a href="https://cmake.org/download/">CMake</a></li>
+<li><a href="https://git-scm.com/download/win">Git</a></li>
+</ul>
 <h2 id="2-update-and-verify-the-npu-driver">2. Update and verify the NPU driver<a class="headerlink" href="#2-update-and-verify-the-npu-driver" title="Permanent link">&para;</a></h2>
-<p>Chipset driver updates for Ryzen™ AI / XDNA™ APUs are regularly available through the AMD™ Software / Adrenalin™ application. Ensure you have the latest driver version for your system and verify your NPU is accessible by:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="s2">&quot;C:\Windows\System32\AMD\xrt-smi.exe&quot;</span> examine
+<p>Ryzen™ AI / XDNA™ chipset driver updates are distributed through the AMD™ Software / Adrenalin™ application. Install the latest driver available for the system, then verify that the NPU is accessible:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="s2">&quot;C:\Windows\System32\AMD\xrt-smi.exe&quot;</span> examine
 </code></pre></div>
-<p>NPU Driver Version 32.0.20101.3760 (XRT Version 2.21.0) is the minimum supported by this repository on Windows. Older versions may function in some cases, but they are not recommended.</p>
+<p>NPU Driver Version <strong>32.0.20101.3760</strong> (XRT Version <strong>2.21.0</strong>) is the minimum supported by this repository on Windows. Older versions may work in many cases, but they are not recommended.</p>
 <h2 id="3-install-the-windows-xrt-sdk">3. Install the Windows XRT SDK<a class="headerlink" href="#3-install-the-windows-xrt-sdk" title="Permanent link">&para;</a></h2>
-<p>The XRT SDK provides the native Windows headers, import libraries, and tools used by C++ host applications. It also supplies the <code>pyxrt</code> binding used by Python JIT designs.</p>
-<p>Download:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>https://github.com/Xilinx/XRT/releases/download/2.21.75/xrt_windows_sdk.zip
+<p>The Windows XRT SDK provides the headers, import libraries, tools, and <code>pyxrt</code> bindings used by native host applications and Python JIT designs.</p>
+<p>Download the SDK:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>https://github.com/Xilinx/XRT/releases/download/2.21.75/xrt_windows_sdk.zip
 </code></pre></div>
-<p>Extract the SDK such that <code>xrt_sdk\xrt</code> becomes:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>C:\Xilinx\XRT
+<p>Extract the archive so that its <code>xrt_sdk\xrt</code> directory becomes:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>C:\Xilinx\XRT
 </code></pre></div>
 <blockquote>
-<p>This is the canonical location. If you install the SDK elsewhere, pass that location to <code>iron_setup.py</code> in the next section. The activation helper it generates will record the selected XRT installation.</p>
+<p><code>C:\Xilinx\XRT</code> is the canonical location. A different location is also supported; pass it to <code>iron_setup.py</code> in the next section. The generated activation helpers retain the selected path, so it does not need to be supplied again in each shell.</p>
 </blockquote>
 <h2 id="4-set-up-iron">4. Set up IRON<a class="headerlink" href="#4-set-up-iron" title="Permanent link">&para;</a></h2>
-<p>Clone the <code>mlir-aie</code> repository, then create the local IRON environment:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="k">cd</span> /d C:\dev
-<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a>
-<a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a>git clone --recurse-submodules https://github.com/Xilinx/mlir-aie.git
-<a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="k">cd</span> mlir-aie
-<a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a>
-<a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>python utils\iron_setup.py
-<a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="k">call</span> .\iron_env.cmd
+<p>Clone the <code>mlir-aie</code> repository and create the checkout-local IRON environment:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="c1">REM Choose a working directory for the checkout. This example uses C:\dev</span>
+<a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="k">mkdir</span> C:\dev
+<a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="k">cd</span> C:\dev
+<a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a>
+<a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a>git clone --recurse-submodules https://github.com/Xilinx/mlir-aie.git
+<a id="__codelineno-4-6" name="__codelineno-4-6" href="#__codelineno-4-6"></a><span class="k">cd</span> mlir-aie
+<a id="__codelineno-4-7" name="__codelineno-4-7" href="#__codelineno-4-7"></a>
+<a id="__codelineno-4-8" name="__codelineno-4-8" href="#__codelineno-4-8"></a>python utils\iron_setup.py
+<a id="__codelineno-4-9" name="__codelineno-4-9" href="#__codelineno-4-9"></a><span class="k">call</span> .\iron_env.cmd
 </code></pre></div>
-<p>The two commands have different jobs. <code>iron_setup.py</code> creates or updates the checkout-local <code>ironenv</code>, including all necessary dependencies; <code>iron_env.cmd</code> activates it in the current prompt and supplies the IRON and XRT paths. Call <code>iron_env.cmd</code> in every new Native Tools prompt. Rerun setup after updating the checkout or changing the XRT SDK location; it refreshes the existing environment and rewrites the helpers.</p>
-<p>For normal use, no options are needed. Add <code>--dev</code> when preparing a contributor checkout: it installs the pinned development tools and the repository's pre-commit and pre-push hooks. Add <code>--extras</code> for the PyTorch-based material or Jupyter notebooks: it installs CPU PyTorch, Notebook, and an <code>ironenv</code> Jupyter kernel. These options work alone or in combination.</p>
-<p>If you installed the XRT SDK to a different location, supply that location when creating the helper. It is saved in the generated helpers, so later shells still only need <code>iron_env.cmd</code>:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>python utils\iron_setup.py --xrt-root D:\tools\XRT
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="k">call</span> .\iron_env.cmd
+<p>The final two commands are separate because they perform different tasks. <code>iron_setup.py</code> creates or updates the checkout-local <code>ironenv</code> and installs the required dependencies. <code>iron_env.cmd</code> activates that environment in the current prompt and supplies the IRON and XRT paths.</p>
+<p><code>call</code> <code>iron_env.cmd</code> in each new <code>Native Tools</code> prompt. Rerun <code>iron_setup.py</code> after updating the checkout or changing the XRT SDK location; it refreshes the existing environment and rewrites the activation helpers.</p>
+<p>No options are needed for normal use. Two optional setup modes are available:</p>
+<ul>
+<li><code>--dev</code> installs the pinned development tools and the repository's pre-commit and pre-push hooks. It also installs or upgrades <code>mlir_aie</code> to the latest rolling development wheel unless <code>--wheelhouse</code> is supplied. Use this option only when actively developing the repository.</li>
+<li><code>--extras</code> installs CPU PyTorch, Notebook, and an <code>ironenv</code> Jupyter kernel for the PyTorch-based examples and notebooks.</li>
+</ul>
+<p>The options may be used independently or together.</p>
+<p>If the XRT SDK is installed somewhere other than <code>C:\Xilinx\XRT</code>, provide that location during setup:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a>python utils\iron_setup.py --xrt-root D:\tools\XRT
+<a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="k">call</span> .\iron_env.cmd
 </code></pre></div>
+<p>The selected path is written into the generated helpers. Later shells still need only <code>iron_env.cmd</code>.</p>
 <h2 id="5-run-a-complete-npu-program">5. Run a complete NPU program<a class="headerlink" href="#5-run-a-complete-npu-program" title="Permanent link">&para;</a></h2>
-<p>Many example programs are available in the <code>programming_examples</code> and <code>programming_guide</code> directories. Try running the SAXPY example to exercise the complete <code>mlir-aie</code> toolchain. The design computes <code>Z = 3X + Y</code> on one AI Engine tile. Its Python file describes the data movement and runtime sequence; the adjacent C++ file contains the vectorized AI Engine kernel. <code>@iron.jit</code> compiles them into an NPU program.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="k">cd</span> programming_examples\getting_started\01_SAXPY
-<a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a>python saxpy.py
+<p>The repository includes runnable examples under <code>programming_examples</code> and <code>programming_guide</code>. The SAXPY example is a useful first check because it exercises the complete <code>mlir-aie</code> toolchain.</p>
+<p>The design computes <code>Z = 3X + Y</code> on one AI Engine tile. Its Python file describes the data movement and runtime sequence, while the adjacent C++ file contains the vectorized AI Engine kernel. <code>@iron.jit</code> compiles them into an NPU program.</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="k">cd</span> programming_examples\getting_started\01_SAXPY
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>python saxpy.py
 </code></pre></div>
-<p>The script compiles the design, runs it on the attached NPU, and checks the result against a NumPy reference. If it prints <code>PASS!</code>, you have just successfully run your first IRON NPU program on Windows!</p>
-<p>Most existing learning material uses direct Python JIT scripts, so continue with the <a href="../programming_guide/mini_tutorial/">mini tutorial</a> or feel free to try any other Python scripts in <code>programming_examples</code> or <code>programming_guide</code>.</p>
+<p>The script compiles the design, runs it on the attached NPU, and checks the result against a NumPy reference. A final <code>PASS!</code> confirms that the native Windows toolchain, XRT installation, and NPU are working together correctly.</p>
+<p>Most of the existing learning material uses direct Python JIT scripts. Continue with the <a href="../programming_guide/mini_tutorial/">mini tutorial</a> or continue to explore by trying another Python example under <code>programming_examples</code> or <code>programming_guide</code>.</p>
 <hr />
-<h2 id="addendum-a-powershell">Addendum A: PowerShell<a class="headerlink" href="#addendum-a-powershell" title="Permanent link">&para;</a></h2>
-<p>Visual Studio's Native Tools environment is also available in PowerShell by using the "Developer PowerShell for VS" shortcut in the Start menu. It is equivalent to the Native Tools <code>cmd.exe</code> prompt.</p>
-<p>Alternatively, since PowerShell uses the same toolchain as <code>cmd.exe</code>, you may enter it at any time from the Native Tools <code>cmd.exe</code> prompt:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a>pwsh
+<p><a id="addendum-a-powershell"></a></p>
+<details>
+<summary><strong>Addendum A: PowerShell</strong></summary>
+
+Visual Studio also installs a **Developer PowerShell for VS** shortcut. It provides the same compiler environment as the Native Tools `cmd.exe` prompt.
+
+PowerShell may also be started from an existing Native Tools prompt:
+
+<div class="highlight"><pre><span></span><code><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>pwsh
 </code></pre></div>
-<p>The compiler environment will be inherited automatically. To set up from PowerShell, run the same setup command and dot-source the generated helper:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">python</span> <span class="p">.\</span><span class="n">utils</span><span class="p">\</span><span class="n">iron_setup</span><span class="p">.</span><span class="n">py</span>
-<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="p">.</span> <span class="p">.\</span><span class="n">iron_env</span><span class="p">.</span><span class="n">ps1</span>
+
+The compiler environment is inherited automatically. Run setup and dot-source the generated activation helper:
+
+<div class="highlight"><pre><span></span><code><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="n">python</span> <span class="p">.\</span><span class="n">utils</span><span class="p">\</span><span class="n">iron_setup</span><span class="p">.</span><span class="n">py</span>
+<a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="p">.</span> <span class="p">.\</span><span class="n">iron_env</span><span class="p">.</span><span class="n">ps1</span>
 </code></pre></div>
-<p>In later PowerShell sessions, dot-source <code>iron_env.ps1</code> again. Dot-sourcing keeps the activated environment in the current shell.</p>
-<p>However, if you are following this guide using PowerShell, please keep the syntactical differences between the two shells in mind. For instance, PowerShell environment variables use <code>$env:NAME</code> while <code>cmd.exe</code> uses <code>%NAME%</code>. Likewise, PS uses <code>&amp;</code> to invoke programs while <code>cmd.exe</code> uses <code>call</code> for batch files. Etc.</p>
-<h3 id="conda-or-miniforge-python">Conda or Miniforge Python<a class="headerlink" href="#conda-or-miniforge-python" title="Permanent link">&para;</a></h3>
-<p>A dedicated Conda or Miniforge environment works with the SDK when it uses Python 3.13. Activate it before running <code>iron_setup.py</code>; the helper creates <code>ironenv</code> with that interpreter.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="n">conda</span> <span class="n">create</span> <span class="n">-n</span> <span class="n">iron</span> <span class="n">python</span><span class="p">=</span><span class="n">3</span><span class="p">.</span><span class="n">13</span>
-<a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="n">conda</span> <span class="n">activate</span> <span class="n">iron</span>
-<a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="n">python</span> <span class="p">.\</span><span class="n">utils</span><span class="p">\</span><span class="n">iron_setup</span><span class="p">.</span><span class="n">py</span>
-<a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="p">.</span> <span class="p">.\</span><span class="n">iron_env</span><span class="p">.</span><span class="n">ps1</span>
+
+Dot-source `iron_env.ps1` again in each new PowerShell session. The leading dot is *required*: it keeps the activated environment in the current shell rather than as a child scope.
+
+The toolchain is the same, but the shell syntax differs in the usual PowerShell ways. For example:
+
+- PowerShell environment variables use `$env:NAME`; `cmd.exe` uses `%NAME%`.
+- PowerShell uses `&` to invoke a command through an expression; `cmd.exe` uses `call` for batch files.
+- Path quoting and command composition are not always interchangeable between the two shells.
+
+### Conda or Miniforge Python
+
+A dedicated Conda or Miniforge environment works with the SDK when it uses Python 3.13. Activate it before running `iron_setup.py`; the helper uses the active interpreter when it creates `ironenv`.
+
+<div class="highlight"><pre><span></span><code><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="n">conda</span> <span class="n">create</span> <span class="n">-n</span> <span class="n">iron</span> <span class="n">python</span><span class="p">=</span><span class="n">3</span><span class="p">.</span><span class="n">13</span>
+<a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="n">conda</span> <span class="n">activate</span> <span class="n">iron</span>
+<a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="n">python</span> <span class="p">.\</span><span class="n">utils</span><span class="p">\</span><span class="n">iron_setup</span><span class="p">.</span><span class="n">py</span>
+<a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="p">.</span> <span class="p">.\</span><span class="n">iron_env</span><span class="p">.</span><span class="n">ps1</span>
 </code></pre></div>
-<p><code>iron_setup.py</code> uses its running interpreter only when it creates <code>ironenv</code>. Remove and recreate <code>ironenv</code> before switching the interpreter used by an existing environment.</p>
-<h2 id="addendum-b-build-mlir-aie-wheels-locally">Addendum B: Build <code>mlir-aie</code> wheels locally<a class="headerlink" href="#addendum-b-build-mlir-aie-wheels-locally" title="Permanent link">&para;</a></h2>
-<p>Build local wheels when altering core <code>mlir-aie</code> files, testing a local commit, or working on packaging.</p>
-<h3 id="b1-install-openssl">B.1 Install OpenSSL<a class="headerlink" href="#b1-install-openssl" title="Permanent link">&para;</a></h3>
-<p>Local wheel builds compile components that link against OpenSSL. Install the full <strong>Win64 OpenSSL</strong> package from Shining Light Productions; it supplies the headers and libraries required by the build and is much faster and easier than compiling from source. <strong>Do not</strong> use the "Light" package.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>https://slproweb.com/products/Win32OpenSSL.html
+
+`iron_setup.py` will select the named interpreter when `ironenv` is created. Remove and recreate `ironenv` before changing the interpreter used by an existing checkout.
+
+</details>
+
+<p><a id="addendum-b-build-mlir-aie-wheels-locally"></a></p>
+<details>
+<summary><strong>Addendum B: Build <code>mlir-aie</code> wheels locally</strong></summary>
+
+Build local wheels when changing core `mlir-aie` files, testing a local commit, or working on packaging. This is not part of the normal setup path. **Normal users should not need to build local wheels**!
+
+### B.1 Install OpenSSL
+
+Local wheel builds compile components that link against OpenSSL. Install the full **Win64 OpenSSL** package from Shining Light Productions. It provides the required headers and libraries and is considerably simpler than building OpenSSL from source.
+
+**Do not use the "Light" package.** It does not contain the development files required by this build.
+
+<div class="highlight"><pre><span></span><code><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>https://slproweb.com/products/Win32OpenSSL.html
 </code></pre></div>
-<p>From an x64 Native Tools prompt in a configured checkout, set the OpenSSL location and the CMake arguments for the build:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="k">set</span> <span class="s2">&quot;OPENSSL_ROOT_DIR=C:\Program Files\OpenSSL-Win64&quot;</span>
-<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a><span class="k">set</span> <span class="s2">&quot;PATH=</span><span class="nv">%OPENSSL_ROOT_DIR%</span><span class="s2">\bin;</span><span class="nv">%PATH%</span><span class="s2">&quot;</span>
-<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="k">set</span> <span class="s2">&quot;CMAKE_ARGS=-DOPENSSL_ROOT_DIR=</span><span class="nv">%OPENSSL_ROOT_DIR%</span><span class="s2"> -DOPENSSL_USE_STATIC_LIBS=TRUE&quot;</span>
+
+From an x64 Native Tools prompt in a configured checkout, set the OpenSSL location and CMake arguments:
+
+<div class="highlight"><pre><span></span><code><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="k">set</span> <span class="s2">&quot;OPENSSL_ROOT_DIR=C:\Program Files\OpenSSL-Win64&quot;</span>
+<a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="k">set</span> <span class="s2">&quot;PATH=</span><span class="nv">%OPENSSL_ROOT_DIR%</span><span class="s2">\bin;</span><span class="nv">%PATH%</span><span class="s2">&quot;</span>
+<a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="k">set</span> <span class="s2">&quot;CMAKE_ARGS=-DOPENSSL_ROOT_DIR=</span><span class="nv">%OPENSSL_ROOT_DIR%</span><span class="s2"> -DOPENSSL_USE_STATIC_LIBS=TRUE&quot;</span>
 </code></pre></div>
-<h3 id="b2-build-the-wheels">B.2 Build the wheels<a class="headerlink" href="#b2-build-the-wheels" title="Permanent link">&para;</a></h3>
-<p>Activate the IRON environment, install the local wheel-build tools, and build one Python version. This example uses Python 3.13:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="k">cd</span> /d C:\dev\mlir-aie
-<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>
-<a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="k">call</span> .\iron_env.cmd
-<a id="__codelineno-13-4" name="__codelineno-13-4" href="#__codelineno-13-4"></a>python -m pip install --require-hashes -r python\requirements_dev.lock
-<a id="__codelineno-13-5" name="__codelineno-13-5" href="#__codelineno-13-5"></a>
-<a id="__codelineno-13-6" name="__codelineno-13-6" href="#__codelineno-13-6"></a>python utils\mlir_aie_wheels\scripts\build_local.py --cp313
+
+### B.2 Build the wheels
+
+Activate the IRON environment, install the local wheel-build tools, and build one Python version. This example targets Python 3.13:
+
+<div class="highlight"><pre><span></span><code><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="k">cd</span> /d C:\dev\mlir-aie
+<a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>
+<a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a><span class="k">call</span> .\iron_env.cmd
+<a id="__codelineno-12-4" name="__codelineno-12-4" href="#__codelineno-12-4"></a>python -m pip install --require-hashes -r python\requirements_dev.lock
+<a id="__codelineno-12-5" name="__codelineno-12-5" href="#__codelineno-12-5"></a>
+<a id="__codelineno-12-6" name="__codelineno-12-6" href="#__codelineno-12-6"></a>python utils\mlir_aie_wheels\scripts\build_local.py --cp313
 </code></pre></div>
-<p>The wheelhouse is:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>utils\mlir_aie_wheels\wheelhouse
+
+The completed wheels are written to:
+
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>utils\mlir_aie_wheels\wheelhouse
 </code></pre></div>
-<p>Install the locally built wheels into IRON, then refresh the shell environment:</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>python utils\iron_setup.py --wheelhouse utils\mlir_aie_wheels\wheelhouse
-<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="k">call</span> .\iron_env.cmd
+
+Install the local wheels into IRON, then refresh the shell environment:
+
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>python utils\iron_setup.py --wheelhouse utils\mlir_aie_wheels\wheelhouse
+<a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="k">call</span> .\iron_env.cmd
 </code></pre></div>
-<p>The local-wheel path force-reinstalls <code>mlir_aie</code> from the selected wheelhouse. The rest of setup still reconciles the repository's declared requirements.</p>
-<p>Use <code>--cp312</code> or <code>--cp314</code> only when the selected XRT distribution supplies matching <code>pyxrt</code> bindings. The local builder manages the staging directories. Remove <code>utils\mlir_aie_wheels\wheelhouse</code> and <code>C:\tmp</code> to clean up when you are done.</p>
+
+The local-wheel path force-reinstalls `mlir_aie` from the selected wheelhouse. The rest of setup continues to reconcile the repository's declared requirements.
+
+Use `--cp312` or `--cp314` only when the selected XRT distribution supplies matching `pyxrt` bindings. The local builder manages its staging directories. Remove the following when the build artifacts are no longer needed:
+
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>utils\mlir_aie_wheels\wheelhouse
+<a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>C:\tmp\aiewhls
+</code></pre></div>
+
+</details>
 
 
 
