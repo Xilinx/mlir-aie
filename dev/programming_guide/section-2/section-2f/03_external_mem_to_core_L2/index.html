@@ -3245,8 +3245,8 @@
 </code></pre></div>
 <p>The processes on the Worker are the same as in the previous design. The producer process acquires one object from <code>of_in1</code> to consume and one object from <code>of_out1</code> to produce into. It then reads the value of the input object and adds <code>1</code> to all its entries before releasing both objects.</p>
 <p>The design is wrapped in <code>@iron.jit</code>, so a single command JIT-compiles and runs it on the attached NPU:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>make<span class="w"> </span>run<span class="w">                              </span><span class="c1"># builds + runs on the NPU (devicename={npu,npu2})</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>make<span class="w"> </span>emit-mlir<span class="w">                        </span><span class="c1"># writes the lowered MLIR to build/aie.mlir without touching the NPU</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>python3<span class="w"> </span>ext_to_core_L2.py
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>python3<span class="w"> </span>ext_to_core_L2.py<span class="w"> </span>--dev<span class="w"> </span>npu<span class="w"> </span>--emit-mlir<span class="w"> </span>&gt;<span class="w"> </span>aie.mlir
 </code></pre></div></p>
 <p>The <code># To/from AIE-array data movement</code> section of the design code is described in detail in <a href="../../section-2d/">Section 2d</a>.</p>
 <p>Other examples containing this data movement pattern are available in the <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/basic/matrix_multiplication">programming_examples/matrix_multiplication/</a>.</p>

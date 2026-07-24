@@ -764,30 +764,13 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#build-an-iron-design-for-aies-in-the-amd-ryzen-ai-npu" class="md-nav__link">
+  <a href="#run-an-iron-design-on-the-amd-ryzen-ai-npu-on-linux" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Build an IRON Design for AIEs in the AMD Ryzen™ AI NPU
+        Run an IRON Design on the AMD Ryzen™ AI NPU on Linux
       
     </span>
   </a>
-  
-    <nav class="md-nav" aria-label="Build an IRON Design for AIEs in the AMD Ryzen™ AI NPU">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#build-device-aie-part" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Build Device AIE Part
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
@@ -3431,30 +3414,13 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#build-an-iron-design-for-aies-in-the-amd-ryzen-ai-npu" class="md-nav__link">
+  <a href="#run-an-iron-design-on-the-amd-ryzen-ai-npu-on-linux" class="md-nav__link">
     <span class="md-ellipsis">
       
-        Build an IRON Design for AIEs in the AMD Ryzen™ AI NPU
+        Run an IRON Design on the AMD Ryzen™ AI NPU on Linux
       
     </span>
   </a>
-  
-    <nav class="md-nav" aria-label="Build an IRON Design for AIEs in the AMD Ryzen™ AI NPU">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#build-device-aie-part" class="md-nav__link">
-    <span class="md-ellipsis">
-      
-        Build Device AIE Part
-      
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
   
 </li>
       
@@ -3717,21 +3683,12 @@
 </code></pre></div></p>
 </li>
 </ol>
-<h2 id="build-an-iron-design-for-aies-in-the-amd-ryzen-ai-npu">Build an IRON Design for AIEs in the AMD Ryzen™ AI NPU<a class="headerlink" href="#build-an-iron-design-for-aies-in-the-amd-ryzen-ai-npu" title="Permanent link">&para;</a></h2>
-<p>For your design of interest, for instance from <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples">programming_examples</a>, 2 steps are needed: (i) build the AIE design and then (ii) build the host code.</p>
-<h3 id="build-device-aie-part">Build Device AIE Part<a class="headerlink" href="#build-device-aie-part" title="Permanent link">&para;</a></h3>
-<ol>
-<li>
-<p>Goto the design of interest and run:
-   <div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>make
-</code></pre></div></p>
-</li>
-<li>
-<p>Build host code and execute the design:
-    <div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>make<span class="w"> </span>run
-</code></pre></div></p>
-</li>
-</ol>
+<h2 id="run-an-iron-design-on-the-amd-ryzen-ai-npu-on-linux">Run an IRON Design on the AMD Ryzen™ AI NPU on Linux<a class="headerlink" href="#run-an-iron-design-on-the-amd-ryzen-ai-npu-on-linux" title="Permanent link">&para;</a></h2>
+<p>The <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples">programming examples</a> use either of two entry points. Most examples use standalone <code>@iron.jit</code> to compile, run, and verify directly from Python:</p>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nb">cd</span><span class="w"> </span>programming_examples/&lt;category&gt;/&lt;example&gt;
+<a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a>python3<span class="w"> </span>&lt;example&gt;.py
+</code></pre></div>
+<p>Examples with a separate native host, explicit artifact builds, or multi-stage workflow have a <code>Makefile</code>. Follow the example's README for its supported targets, such as <code>make run</code> or <code>make run_py</code>.</p>
 <h2 id="learn-more">Learn more<a class="headerlink" href="#learn-more" title="Permanent link">&para;</a></h2>
 <ol>
 <li>
@@ -3749,20 +3706,20 @@
 <blockquote>
 <p>This script will install package dependencies, build the xdna-driver and xrt packages, and install them. <em>These steps require <code>sudo</code> access.</em></p>
 </blockquote>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>bash<span class="w"> </span>./utils/build_drivers.sh
+<div class="highlight"><pre><span></span><code><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>bash<span class="w"> </span>./utils/build_drivers.sh
 </code></pre></div>
 </li>
 <li>
 <p>Reboot as directed after the script exits.</p>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>sudo<span class="w"> </span>reboot
+<div class="highlight"><pre><span></span><code><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>sudo<span class="w"> </span>reboot
 </code></pre></div>
 </li>
 <li>
 <p>Check that the NPU is working if the device appears with xrt-smi:</p>
 </li>
 </ol>
-<div class="highlight"><pre><span></span><code><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a><span class="nb">source</span><span class="w"> </span>/opt/xilinx/xrt/setup.sh
-<a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>xrt-smi<span class="w"> </span>examine
+<div class="highlight"><pre><span></span><code><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="nb">source</span><span class="w"> </span>/opt/xilinx/xrt/setup.sh
+<a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>xrt-smi<span class="w"> </span>examine
 </code></pre></div>
 <h2 id="troubleshooting">Troubleshooting:<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
 <h3 id="update-bios">Update BIOS:<a class="headerlink" href="#update-bios" title="Permanent link">&para;</a></h3>

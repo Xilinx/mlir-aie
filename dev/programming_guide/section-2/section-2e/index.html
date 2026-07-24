@@ -3319,10 +3319,10 @@ The runtime sequence remains largely unchanged for the larger design except that
 <a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a>    <span class="n">rt</span><span class="o">.</span><span class="n">drain</span><span class="p">(</span><span class="n">of_out</span><span class="o">.</span><span class="n">cons</span><span class="p">(),</span> <span class="n">b_out</span><span class="p">,</span> <span class="n">wait</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 </code></pre></div></p>
 <p>To build and run the designs:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>make<span class="w"> </span>run<span class="w">                </span><span class="c1"># JIT-compile + run aie2.py on the attached NPU</span>
-<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>make<span class="w"> </span>run-multi<span class="w">          </span><span class="c1"># JIT-compile + run aie2_multi.py on the attached NPU</span>
-<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>make<span class="w"> </span>emit-mlir<span class="w">          </span><span class="c1"># write the lowered MLIR for aie2.py to build/aie.mlir</span>
-<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>make<span class="w"> </span>emit-mlir-multi<span class="w">    </span><span class="c1"># write the lowered MLIR for aie2_multi.py to build/aie_multi.mlir</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>python3<span class="w"> </span>aie2.py
+<a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>python3<span class="w"> </span>aie2_multi.py
+<a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>python3<span class="w"> </span>aie2.py<span class="w"> </span>--dev<span class="w"> </span>npu<span class="w"> </span>--emit-mlir<span class="w"> </span>&gt;<span class="w"> </span>aie.mlir
+<a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a>python3<span class="w"> </span>aie2_multi.py<span class="w"> </span>--dev<span class="w"> </span>npu<span class="w"> </span>--emit-mlir<span class="w"> </span>&gt;<span class="w"> </span>aie_multi.mlir
 </code></pre></div></p>
 <hr />
 <p><a href="../section-2d/">Prev</a> &middot; <a href="..">Top</a> &middot; <a href="../section-2f/">Next</a></p>

@@ -3249,9 +3249,9 @@
 </code></pre></div>
 <p>All Workers are running the same process of acquiring one object from their respective input ObjectFifos to produce, writing <code>1</code> to all of its entries, and releasing the object.</p>
 <p>This design is combined with the previous <a href="../04_distribute_L2/distribute_L2.py">distribute</a> design to achieve a full data movement from external memory to the AIE array and back. The resulting code is available in <a href="distribute_and_join_L2.py">distribute_and_join_L2.py</a>, wrapped in <code>@iron.jit</code> so a single command JIT-compiles and runs it on the attached NPU:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>make<span class="w"> </span>run<span class="w">                              </span><span class="c1"># builds + runs distribute_and_join_L2.py on the NPU (devicename={npu,npu2})</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>make<span class="w"> </span>emit-mlir<span class="w">                        </span><span class="c1"># writes the lowered MLIR for distribute_and_join_L2 to build/aie.mlir</span>
-<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>make<span class="w"> </span>emit-mlir-join<span class="w">                   </span><span class="c1"># writes the structural-only join_L2.py MLIR to build/aie_join.mlir</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>python3<span class="w"> </span>distribute_and_join_L2.py
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>python3<span class="w"> </span>distribute_and_join_L2.py<span class="w"> </span>--dev<span class="w"> </span>npu<span class="w"> </span>--emit-mlir<span class="w"> </span>&gt;<span class="w"> </span>aie.mlir
+<a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>python3<span class="w"> </span>join_L2.py<span class="w"> </span>--dev<span class="w"> </span>npu<span class="w"> </span>--emit-mlir<span class="w"> </span>&gt;<span class="w"> </span>aie_join.mlir
 </code></pre></div></p>
 <p>The <code># To/from AIE-array data movement</code> section of the design code is described in detail in <a href="../../section-2d/">Section 2d</a>.</p>
 <blockquote>

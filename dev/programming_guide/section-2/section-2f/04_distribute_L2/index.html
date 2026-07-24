@@ -3251,7 +3251,7 @@
 </code></pre></div>
 <p>All Workers are running the same process of acquiring one object from their respective input ObjectFifos to consume, adding <code>1</code> to all of its entries, and releasing the object. The <a href="../05_join_L2/">join design</a> shows how the data is sent back out to external memory and tested.</p>
 <p>This design is structural-only — the Workers acquire + release but do no compute, so there is no NPU run path. To inspect the generated MLIR:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>make<span class="w"> </span>emit-mlir<span class="w">                        </span><span class="c1"># writes the lowered MLIR to build/aie.mlir</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>python3<span class="w"> </span>distribute_L2.py<span class="w"> </span>--dev<span class="w"> </span>npu<span class="w"> </span>--emit-mlir<span class="w"> </span>&gt;<span class="w"> </span>aie.mlir
 </code></pre></div></p>
 <p>Other examples containing this data movement pattern are available in the <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/basic/matrix_multiplication">programming_examples/matrix_multiplication/</a>.</p>
 <hr />

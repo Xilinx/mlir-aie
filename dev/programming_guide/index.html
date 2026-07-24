@@ -3367,6 +3367,9 @@
 <a id="__codelineno-0-30" name="__codelineno-0-30" href="#__codelineno-0-30"></a><span class="n">my_design</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">b</span><span class="p">)</span>              <span class="c1"># compile + run + sync back</span>
 </code></pre></div>
 <p><code>my_design.as_mlir(a, b)</code> prints MLIR for the active target, binding an attached runtime target when one is available. <code>python3 my_design.py --dev npu --emit-mlir</code> emits an offline target without touching the NPU.</p>
+<blockquote>
+<p><strong>Device selection:</strong> It is normally safe to omit <code>--dev</code> when running a JIT design; IRON automatically detects the attached NPU. Offline examples in this guide use the explicit <code>--dev npu</code> form. In an instructor-led session, use the assigned target. On XDNA 2 systems such as Strix or Krackan, substitute <code>--dev npu2</code>.</p>
+</blockquote>
 <h2 id="where-to-go-next">Where to go next<a class="headerlink" href="#where-to-go-next" title="Permanent link">&para;</a></h2>
 <table>
 <thead>

@@ -3254,8 +3254,8 @@ All FIFOs use double buffers.</p>
 </code></pre></div>
 If we imagine the 24-element wide tensor as 3 rows of 8 elements, the transformation above describes a column-major access pattern.</p>
 <p>The design is wrapped in <code>@iron.jit</code>, so a single command JIT-compiles and runs it on the attached NPU:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>make<span class="w"> </span>run<span class="w">                              </span><span class="c1"># builds + runs on the NPU (devicename={npu,npu2})</span>
-<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>make<span class="w"> </span>emit-mlir<span class="w">                        </span><span class="c1"># writes the lowered MLIR to build/aie.mlir without touching the NPU</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>python3<span class="w"> </span>to_stream.py
+<a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>python3<span class="w"> </span>to_stream.py<span class="w"> </span>--dev<span class="w"> </span>npu<span class="w"> </span>--emit-mlir<span class="w"> </span>&gt;<span class="w"> </span>aie.mlir
 </code></pre></div></p>
 <p>The <code># To/from AIE-array data movement</code> section of the design code is described in detail in <a href="../../section-2d/">Section 2d</a>.</p>
 

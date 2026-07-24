@@ -3362,10 +3362,9 @@
 <p>The <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples">programming examples</a> are a number of sample designs that further help explain many of the unique features of AI Engines and the NPU array in Ryzen™ AI.</p>
 <h2 id="simplest">Simplest<a class="headerlink" href="#simplest" title="Permanent link">&para;</a></h2>
 <h4 id="passthrough">Passthrough<a class="headerlink" href="#passthrough" title="Permanent link">&para;</a></h4>
-<p>The <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/basic/passthrough_kernel">passthrough</a> example is the simplest "getting started" example.  It copies 4096 bytes from the input to output using vectorized loads and stores.  The design example shows a typical project organization which is easy to reproduce with other examples.  There are only really 3 important files here.
+<p>The <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/basic/passthrough_kernel">passthrough</a> example is the simplest "getting started" example.  It copies 4096 bytes from the input to output using vectorized loads and stores.  The design example shows a typical project organization which is easy to reproduce with other examples.  There are only two important source files here.
 1. <a href="https://github.com/Xilinx/mlir-aie/blob/main/programming_examples/basic/passthrough_kernel/passthrough_kernel.py"><code>passthrough_kernel.py</code></a> The IRON structural design plus the host-side test driver. Decorated with <code>@iron.jit</code> so the first call compiles the design and runs it on the NPU, then verifies the result against the input. Also shows a simple use of the ObjectFifos described in <a href="../section-2">section 2</a>.
-1. <a href="https://github.com/Xilinx/mlir-aie/blob/main/aie_kernels/generic/passThrough.cc"><code>passThrough.cc</code></a>  This is a C++ file which performs the vectorized copy operation.
-1. <a href="https://github.com/Xilinx/mlir-aie/blob/main/programming_examples/basic/passthrough_kernel/Makefile"><code>Makefile</code></a> A Makefile documenting (and implementing) the build process for the various artifacts.</p>
+1. <a href="https://github.com/Xilinx/mlir-aie/blob/main/aie_kernels/generic/passThrough.cc"><code>passThrough.cc</code></a>  This is a C++ file which performs the vectorized copy operation.</p>
 <p>The <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/basic/passthrough_dmas">passthrough DMAs</a> example shows an alternate method of performing a copy without involving the cores, and instead performing a loopback.</p>
 <h2 id="basic">Basic<a class="headerlink" href="#basic" title="Permanent link">&para;</a></h2>
 <table>
@@ -3486,7 +3485,7 @@
 <li>
 <p>Can you modify the <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples/basic/passthrough_kernel">passthrough</a> design to copy more (or less) data?
     <details markdown="1"><summary>Show answer</summary>
-    Check the <code>Makefile</code> — <code>in1_size</code> and <code>out_size</code>.
+    Pass <code>--in1_size</code> to <code>passthrough_kernel.py</code>; the output size follows the input size.
     </details></p>
 </li>
 <li>

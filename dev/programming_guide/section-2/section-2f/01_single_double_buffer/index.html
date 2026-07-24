@@ -3232,7 +3232,7 @@
 //===----------------------------------------------------------------------===//-->
 
 <h1 id="single--double-buffer">Single / Double Buffer<a class="headerlink" href="#single--double-buffer" title="Permanent link">&para;</a></h1>
-<p>The design in <a href="single_buffer.py">single_buffer.py</a> uses an ObjectFifo <code>of_in</code> to transfer the output of <code>my_worker</code> to <code>my_worker2</code> and an ObjectFifo <code>of_out</code> to transfer the output of <code>my_worker2</code> to external memory. <code>of_in</code> has a depth of <code>1</code> which describes a single buffer between the two Workers as shown in the figure below. </p>
+<p>The design in <a href="single_buffer.py">single_buffer.py</a> uses an ObjectFifo <code>of_in</code> to transfer the output of <code>my_worker</code> to <code>my_worker2</code> and an ObjectFifo <code>of_out</code> to transfer the output of <code>my_worker2</code> to external memory. <code>of_in</code> has a depth of <code>1</code> which describes a single buffer between the two Workers as shown in the figure below.</p>
 <p><img src="../../../assets/SingleBuffer.svg" height=200 width="500"></p>
 <blockquote>
 <p><strong>NOTE:</strong>  The image above assumes that the Workers are already mapped to <code>ComputeTile2</code> and <code>ComputeTile3</code>. However, this is not the only possible mapping and when creating a Worker, its placement can be left to the compiler.</p>
@@ -3246,8 +3246,8 @@ This change effectively increases the number of available resources of the Objec
 <p><img src="../../../assets/DoubleBuffer.svg" height=200 width="500"></p>
 <p>All examples available in the <a href="https://github.com/Xilinx/mlir-aie/tree/main/programming_examples">programming_examples</a> contain this data movement pattern.</p>
 <p>The design is wrapped in <code>@iron.jit</code>, so a single command JIT-compiles and runs it on the attached NPU:
-<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>make<span class="w"> </span>run<span class="w">                              </span><span class="c1"># builds + runs on the NPU (devicename={npu,npu2})</span>
-<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>make<span class="w"> </span>emit-mlir<span class="w">                        </span><span class="c1"># writes the lowered MLIR to build/aie.mlir without touching the NPU</span>
+<div class="highlight"><pre><span></span><code><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>python3<span class="w"> </span>single_buffer.py
+<a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>python3<span class="w"> </span>single_buffer.py<span class="w"> </span>--dev<span class="w"> </span>npu<span class="w"> </span>--emit-mlir<span class="w"> </span>&gt;<span class="w"> </span>aie.mlir
 </code></pre></div></p>
 <hr />
 <p><a href="..">Top</a> &middot; <a href="../02_external_mem_to_core/">Next</a></p>
