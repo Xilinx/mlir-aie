@@ -13,6 +13,7 @@ add_mlir_dialect_library(AIEXTransforms
   AIELowerMulticast.cpp
   AIELowerMemcpy.cpp
   AIEDmaToNpu.cpp
+  AIEDecomposeLargeDmaBd.cpp
   AIENpuToCert.cpp
   AIEMaterializeBDChains.cpp
   AIEMaterializeRuntimeSequences.cpp
@@ -24,6 +25,7 @@ add_mlir_dialect_library(AIEXTransforms
   AIECtrlPacketToDma.cpp
   AIELowerSetLock.cpp
   AIELowerDmaChannelReset.cpp
+  AIELowerCoreReset.cpp
   AIELowerScratchpadParameters.cpp
   AIETransformBfpTypes.cpp
   AIETxnToControlPacket.cpp
