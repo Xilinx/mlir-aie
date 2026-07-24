@@ -189,6 +189,19 @@ struct AIELowerDmaChannelResetForPass
              0x4) &
             0xFFFFF;
         uint32_t bdIdMask = tm.isMemTile(ep.col, ep.row) ? 0x3Fu : 0xFu;
+        // The repeat count is packed into the 8-bit field at bits [23:16].
+        // aie.dma_start does not bound it, so reject an out-of-range value with
+        // a diagnostic instead of masking it into a silently wrong re-push
+        // (NpuPushQueueOp::verify diagnoses the same repeat_count > 255 case).
+        // The head BD id needs no such check here: aie.dma_bd's verifier
+        // already bounds it to the tile's BD count (<= the START_BD_ID field
+        // width).
+        if (ep.repeatCount > 255) {
+          op.emitOpError("resident DMA channel repeat count ")
+              << ep.repeatCount << " on tile (" << ep.col << ", " << ep.row
+              << ") does not fit the 8-bit START_QUEUE repeat field";
+          return WalkResult::interrupt();
+        }
         uint32_t issueBit =
             (ep.row == 0 && ep.dir == DMAChannelDir::S2MM) ? 0x80000000u : 0u;
         uint32_t cmd = (ep.headBdId & bdIdMask) |
