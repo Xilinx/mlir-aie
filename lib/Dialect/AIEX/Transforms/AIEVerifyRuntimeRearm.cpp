@@ -33,8 +33,13 @@
 #include "mlir/IR/Matchers.h"
 #include "mlir/Pass/Pass.h"
 
+#include "llvm/ADT/STLExtras.h"
+#include "llvm/ADT/SmallPtrSet.h"
+#include "llvm/ADT/SmallVector.h"
+
 #include <array>
 #include <map>
+#include <optional>
 #include <set>
 #include <tuple>
 
@@ -158,8 +163,9 @@ struct AIEVerifyRuntimeRearmPass
           "resets a DMA channel whose objectFIFO lock is never re-armed; the "
           "semaphore counter stays frozen and the channel's peer will block "
           "forever on acquire (a runtime deadlock). Re-arm each bound lock "
-          "with "
-          "an aiex.set_lock");
+          "with an aiex.set_lock, or a write to its lock register "
+          "(aiex.npu.write32 / aiex.npu.maskwrite32 at the lock's local "
+          "address)");
       for (LockOp l : frozen)
         err.attachNote(l.getLoc())
             << "this lock is bound to the reset channel and is not re-armed";
