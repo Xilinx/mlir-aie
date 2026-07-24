@@ -32,7 +32,7 @@ All Workers are running the same process of acquiring one object from their resp
 
 This design is structural-only — the Workers acquire + release but do no compute, so there is no NPU run path. To inspect the generated MLIR:
 ```bash
-make emit-mlir                        # writes the lowered MLIR to build/aie.mlir
+python3 distribute_L2.py --dev npu --emit-mlir > aie.mlir
 ```
 
 Other examples containing this data movement pattern are available in the [programming_examples/matrix_multiplication/](../../../../programming_examples/basic/matrix_multiplication/).

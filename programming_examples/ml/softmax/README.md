@@ -43,7 +43,15 @@ Softmax is computed independently per 1024-element tile (no cross-tile reduction
 
 ## Usage
 
-### Build and Run
+### Standalone JIT verification
+
+```shell
+python3 softmax.py
+python3 softmax.py --dev npu2
+python3 softmax.py --dev npu2 --channels 1
+```
+
+### Native C++ build and run
 
 Build and run with default settings (npu1):
 ```shell

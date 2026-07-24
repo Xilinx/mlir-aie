@@ -150,21 +150,16 @@ xrt-smi examine
    source utils/env_setup.sh install
    ```
 
-## Build an IRON Design for AIEs in the AMD Ryzen™ AI NPU
+## Run an IRON Design on the AMD Ryzen™ AI NPU on Linux
 
-For your design of interest, for instance from [programming_examples](../programming_examples/), 2 steps are needed: (i) build the AIE design and then (ii) build the host code.
+The [programming examples](../programming_examples/) use either of two entry points. Most examples use standalone `@iron.jit` to compile, run, and verify directly from Python:
 
-### Build Device AIE Part
+```bash
+cd programming_examples/<category>/<example>
+python3 <example>.py
+```
 
-1. Goto the design of interest and run:
-   ```bash
-   make
-   ```
-
-1. Build host code and execute the design:
-    ```bash
-    make run
-    ```
+Examples with a separate native host, explicit artifact builds, or multi-stage workflow have a `Makefile`. Follow the example's README for its supported targets, such as `make run` or `make run_py`.
 
 ## Learn more
 

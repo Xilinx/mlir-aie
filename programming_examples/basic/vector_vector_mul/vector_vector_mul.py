@@ -11,8 +11,7 @@ in tile-of-16 sub-vectors fed via three depth-2 ObjectFifos (two in, one out).
 Driven via the standard CLI:
 
 * default          — JIT-compile + run on the attached NPU + verify.
-* ``--xclbin-path`` / ``--insts-path`` — compile-only, used by the
-  Makefile so a C++ testbench can drive the design.
+* ``--xclbin-path`` / ``--insts-path`` — compile-only artifact emission.
 * ``--emit-mlir``  — print MLIR to stdout for the selected ``--dev``.
 """
 

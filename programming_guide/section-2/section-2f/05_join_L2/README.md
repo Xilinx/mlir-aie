@@ -30,9 +30,9 @@ All Workers are running the same process of acquiring one object from their resp
 
 This design is combined with the previous [distribute](../04_distribute_L2/distribute_L2.py) design to achieve a full data movement from external memory to the AIE array and back. The resulting code is available in [distribute_and_join_L2.py](./distribute_and_join_L2.py), wrapped in `@iron.jit` so a single command JIT-compiles and runs it on the attached NPU:
 ```bash
-make run                              # builds + runs distribute_and_join_L2.py on the NPU (devicename={npu,npu2})
-make emit-mlir                        # writes the lowered MLIR for distribute_and_join_L2 to build/aie.mlir
-make emit-mlir-join                   # writes the structural-only join_L2.py MLIR to build/aie_join.mlir
+python3 distribute_and_join_L2.py
+python3 distribute_and_join_L2.py --dev npu --emit-mlir > aie.mlir
+python3 join_L2.py --dev npu --emit-mlir > aie_join.mlir
 ```
 
 The `# To/from AIE-array data movement` section of the design code is described in detail in [Section 2d](../../section-2d/).

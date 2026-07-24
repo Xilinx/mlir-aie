@@ -20,21 +20,21 @@ This design has no inputs; it produces a single output tensor. The single core u
 <p align="center">
   <img
     src="per_tile.png">
-    <h3 align="center"> Visualization of the Per-Tile Data Movement 
- </h3> 
+    <h3 align="center"> Visualization of the Per-Tile Data Movement
+ </h3>
 </p>
 
 ## Usage
 
-Modify tensor and tile dimensions in the `Makefile`.
+Run the self-verifying JIT path directly; tensor and tile dimensions are command-line options:
 
-To compile and run the design for NPU:
 ```shell
-make clean
-make run_py
+python3 per_tile.py --dev npu
+python3 per_tile.py --dev npu2 --tensor-height 8 --tensor-width 8 --tile-height 2 --tile-width 2
 ```
 
-To generate a data visualization (like that above), run:
+The Makefile remains available for producing an explicit XCLBIN/instruction pair. To generate a data visualization like the one above:
+
 ```shell
 make generate_access_map
 ```

@@ -25,6 +25,12 @@ This design implements a `bfloat16`-based Rotary Position Embedding (RoPE) opera
 
 ## Usage
 
+### Standalone JIT verification
+
+```shell
+python3 rope.py --dev npu2
+```
+
 ### C++ Testbench
 
 To compile the design and C++ testbench:

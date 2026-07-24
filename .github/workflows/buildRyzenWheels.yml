@@ -321,9 +321,11 @@ jobs:
           # Lightweight check that the mlir_aie wheel installed by env_install
           # can actually compile and run designs on the NPU. env_setup put the
           # installed package (not a from-source build) on PATH/PYTHONPATH, so
-          # `make run` here exercises the wheel. The -eo pipefail shell fails the
+          # these commands exercise the wheel. The -eo pipefail shell fails the
           # job if any example returns non-zero.
-          for ex in basic/passthrough_kernel basic/vector_scalar_add basic/passthrough_dmas; do
+          echo "===== basic/passthrough_kernel ====="
+          python programming_examples/basic/passthrough_kernel/passthrough_kernel.py --in1_size 4096
+          for ex in basic/vector_scalar_add basic/passthrough_dmas; do
             echo "===== $ex ====="
             make -C "programming_examples/$ex" clean
             make -C "programming_examples/$ex" run

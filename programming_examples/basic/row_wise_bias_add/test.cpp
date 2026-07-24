@@ -124,11 +124,11 @@ int main(int argc, const char *argv[]) {
     print_matrix(buf_out, SIZE_M, SIZE_N);
   }
 
-  if (memcmp(ref, buf_out, sizeof(ref)) == 0) {
-    std::cout << "PASS!" << std::endl;
-  } else {
+  if (memcmp(ref, buf_out, sizeof(ref)) != 0) {
     std::cout << "FAIL." << std::endl;
+    return 1;
   }
 
+  std::cout << "PASS!" << std::endl;
   return 0;
 }

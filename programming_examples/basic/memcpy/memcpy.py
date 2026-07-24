@@ -160,7 +160,7 @@ def _compile_kwargs(opts):
 
 
 def _run_and_verify(opts):
-    a_t = iron.arange(opts.length, dtype=np.int32, device="npu")
+    a_t = iron.arange(1, opts.length + 1, dtype=np.int32, device="npu")
     b_t = iron.zeros_like(a_t)
 
     memcpy(a_t, b_t, **_compile_kwargs(opts))
