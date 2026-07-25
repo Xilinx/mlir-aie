@@ -7,7 +7,7 @@
 
 Same compute as ``basic/vector_scalar_mul`` (a single AIE core scales an
 ``int32`` vector by a runtime scalar) but with an explicit event list
-plumbed through ``rt.enable_trace()``.  The pedagogical point is
+plumbed through ``prog.enable_trace()``.  The pedagogical point is
 showing that the high-level IRON Runtime API also accepts the same
 ``coretile_events`` / ``coremem_events`` / ``memtile_events`` /
 ``shimtile_events`` parameters as the lower-level ``configure_trace``.
@@ -97,9 +97,11 @@ def aie_trace(
         fn_args=[of_in.prod(), of_factor.prod(), of_out.cons()],
     )
 
-    # Custom per-tile-class event lists, forwarded by IRON's Runtime
+    prog = Program(iron.get_current_device(), rt, workers=[worker])
+
+    # Custom per-tile-class event lists, forwarded by IRON's Program
     # to the same configure_trace() the dialect-level example used.
-    rt.enable_trace(
+    prog.enable_trace(
         trace_size=trace_size,
         workers=[worker],
         coretile_events=[
@@ -144,7 +146,7 @@ def aie_trace(
         ],
     )
 
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    return prog.resolve_program()
 
 
 def _make_argparser():

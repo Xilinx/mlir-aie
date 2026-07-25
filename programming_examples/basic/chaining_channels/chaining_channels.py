@@ -285,8 +285,10 @@ def chaining_channels(
     rt.add_tile_dma(memtile_dma)
     rt.add_tile_dma(compute_dma)
 
+    prog = Program(iron.get_current_device(), rt, workers=[worker])
+
     if trace_size > 0:
-        rt.enable_trace(
+        prog.enable_trace(
             trace_size,
             workers=[worker],
             memtile_events=[
@@ -317,7 +319,7 @@ def chaining_channels(
             ],
         )
 
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    return prog.resolve_program()
 
 
 def _compile_kwargs(opts):

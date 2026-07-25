@@ -38,8 +38,8 @@ from .endpoint import ObjectFifoEndpoint
 from ..device import Tile, AnyMemTile
 
 
-def _same_tile(a: "Tile | None", b: "Tile | None") -> bool:
-    """Whether two shim-tile pins refer to the same placement.
+def _same_shim_pin(a: "Tile | None", b: "Tile | None") -> bool:
+    """Whether two shim-tile re-pin requests refer to the same placement.
 
     Tile.__eq__ is identity-based, so compare by (col, row); two unpinned
     (None or col/row None) tiles are considered the same.
@@ -233,7 +233,7 @@ class ObjectFifo(Resolvable):
                     f"Producer handle for {self.name} already pinned to channel "
                     f"{self._prod.channel}, cannot re-pin to {channel}."
                 )
-            if tile is not None and not _same_tile(self._prod._shim_tile, tile):
+            if tile is not None and not _same_shim_pin(self._prod._shim_tile, tile):
                 raise ValueError(
                     f"Producer handle for {self.name} already pinned to shim tile "
                     f"{self._prod._shim_tile}, cannot re-pin to {tile}."

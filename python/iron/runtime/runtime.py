@@ -16,7 +16,6 @@ bounds) elaborates to a flat binary sequence.
 """
 
 from __future__ import annotations
-from collections import defaultdict
 import itertools
 import logging
 import numpy as np
@@ -73,8 +72,6 @@ class ActiveSequence:
 
     def __init__(self, runtime: "Runtime"):
         self._runtime = runtime
-        # Actions accumulated per task group: (dma_await_task | dma_free_task, [task]).
-        self._task_group_actions: dict[TaskGroup, list] = defaultdict(list)
         # The implicit group for fill/drain calls that pass no explicit group.
         self._default_task_group = TaskGroup(next(runtime._task_group_index))
         self._open_task_groups: list[TaskGroup] = []
@@ -96,7 +93,7 @@ class ActiveSequence:
         """
         if tg in self._open_task_groups:
             self._open_task_groups.remove(tg)
-        actions = self._task_group_actions.get(tg)
+        actions = tg._actions
         if not actions:
             return
         wait_tasks = [(fn, a) for (fn, a) in actions if fn == dma_await_task]
@@ -112,7 +109,7 @@ class ActiveSequence:
             )
         for fn, a in wait_tasks + free_tasks:
             fn(*a)
-        self._task_group_actions[tg] = []
+        tg._actions = []
 
     def emit_transfer(self, task: DMATask, task_group: TaskGroup | None) -> None:
         """Emit a DMA transfer and record its await/free action for group close."""
@@ -124,7 +121,7 @@ class ActiveSequence:
             self._used_default = True
             group = self._default_task_group
         action = dma_await_task if task.will_wait() else dma_free_task
-        self._task_group_actions[group].append((action, [task.task]))
+        group._actions.append((action, [task.task]))
 
     def finalize(self) -> None:
         """Close bookkeeping after the body runs."""
@@ -144,7 +141,7 @@ class ActiveSequence:
                 "prohibited. Please assign all tasks to a task group."
             )
         # Flush any transfers left in the default group (no explicit finish).
-        if self._task_group_actions[self._default_task_group]:
+        if self._default_task_group._actions:
             self.finish_task_group(self._default_task_group)
 
 
@@ -211,16 +208,8 @@ class Runtime(Resolvable):
         self._locks = []
         self._tile_dmas = []
         self._scratchpad_parameters: list[ScratchpadParameter] = []
-        self._trace_size = None
-        self._trace_workers = None
         self._strict_task_groups = strict_task_groups
         self._task_group_index = itertools.count()
-        self._reuse_output_buffer = False
-        self._egress_shim_col = 0
-        self._coretile_events = None
-        self._coremem_events = None
-        self._memtile_events = None
-        self._shimtile_events = None
 
     def _register_fn_args(self) -> None:
         """Bind shared objects in fn_args now, before the Program resolves.
@@ -267,53 +256,6 @@ class Runtime(Resolvable):
     def tile_dmas(self):
         return list(self._tile_dmas)
 
-    def enable_trace(
-        self,
-        trace_size: int | None = None,
-        workers: list | None = None,
-        reuse_output_buffer: bool = False,
-        coretile_events: list | None = None,
-        coremem_events: list | None = None,
-        memtile_events: list | None = None,
-        shimtile_events: list | None = None,
-        egress_shim_col: int = 0,
-    ):
-        """Enable hardware tracing for this program.
-
-        Configures the AIE trace units and routes trace packets to DDR via the shim DMA.
-
-        Args:
-            trace_size (int): Size of the trace buffer in bytes.
-            workers (list[Worker] | None, optional): Specific workers to trace. If None,
-                all workers with ``trace`` set will be traced. Defaults to None.
-            reuse_output_buffer (bool, optional): When False (default), trace
-                lowering appends a dedicated trace-buffer argument to the
-                runtime_sequence; it lands at the tail so enabling trace never
-                perturbs the data arguments' indices. When True, trace data is
-                written into the tail of the last output buffer, saving a host
-                buffer. Defaults to False.
-            coretile_events (list | None, optional): List of up to 8 core tile trace events.
-                See [the AIEX dialect reference](../AIEXDialect.md) for available
-                events under (type)EventAIE such as CoreEventAIE.
-                Defaults to None (uses hardware defaults).
-            coremem_events (list | None, optional): List of up to 8 core memory trace events.
-                Defaults to None (uses hardware defaults).
-            memtile_events (list | None, optional): List of up to 8 mem tile trace events.
-                Defaults to None (uses hardware defaults).
-            shimtile_events (list | None, optional): List of up to 8 shim tile trace events.
-                Defaults to None (uses hardware defaults).
-            egress_shim_col (int, optional): Column of the shim tile used to
-                egress trace packets to DDR. Defaults to 0.
-        """
-        self._trace_size = trace_size
-        self._trace_workers = workers
-        self._reuse_output_buffer = reuse_output_buffer
-        self._coretile_events = coretile_events
-        self._coremem_events = coremem_events
-        self._memtile_events = memtile_events
-        self._shimtile_events = shimtile_events
-        self._egress_shim_col = egress_shim_col
-
     @property
     def fifos(self) -> list[ObjectFifoHandle]:
         """The ObjectFifoHandles driven from the runtime by fill()/drain()."""
@@ -323,6 +265,10 @@ class Runtime(Resolvable):
         self,
         loc: ir.Location | None = None,
         ip: ir.InsertionPoint | None = None,
+        *,
+        trace_size: int | None = None,
+        reuse_output_buffer: bool = False,
+        egress_shim_col: int = 0,
     ) -> None:
         """Build the ``runtime_sequence`` op and run the sequence body inside it.
 
@@ -331,6 +277,11 @@ class Runtime(Resolvable):
         by symbol name, a forward reference). The Program calls this before it
         resolves ObjectFifos and cores, so by the time a fifo is resolved every
         runtime endpoint -- including those on link siblings -- is already bound.
+
+        Args:
+            trace_size/reuse_output_buffer/egress_shim_col: Forwarded from
+                [`Program.enable_trace`][iron.program.Program.enable_trace]; see
+                there. ``trace_size`` of ``None``/``0`` disables tracing.
         """
         # A runtime_sequence block arg per runtime (type) input; folded-constant
         # inputs contribute no block arg.
@@ -349,12 +300,12 @@ class Runtime(Resolvable):
                 if rt_data is not None:
                     rt_data.op = next(block_args)
 
-            if self._trace_size is not None and self._trace_size > 0:
+            if trace_size is not None and trace_size > 0:
                 trace_utils.start_trace(
-                    trace_size=self._trace_size,
-                    reuse_output_buffer=self._reuse_output_buffer,
+                    trace_size=trace_size,
+                    reuse_output_buffer=reuse_output_buffer,
                     routing="single",
-                    egress_shim_col=self._egress_shim_col,
+                    egress_shim_col=egress_shim_col,
                 )
 
             # Build the body's positional args, one per declared input:

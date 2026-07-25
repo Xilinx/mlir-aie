@@ -9,7 +9,7 @@
 #   make run        — JIT-compile + run + verify on the attached NPU.
 #   make emit-mlir  — print the lowered MLIR (build/aie.mlir).
 #
-# Trace path (rt.enable_trace embedded in the runtime sequence):
+# Trace path (prog.enable_trace called on the Program):
 #   make all-trace            — drop trace-enabled xclbin + insts pair
 #                               into build/trace_<targetname>.* for
 #                               the explicit-XRT trace walkthrough.

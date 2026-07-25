@@ -7,7 +7,7 @@ Vector × scalar AIE design with custom hardware-event tracing on AMD NPU device
 
 ## Contents
 
-- `aie_trace.py` — IRON (`@iron.jit`) design that wires custom `coretile_events` / `coremem_events` / `memtile_events` / `shimtile_events` lists straight through `rt.enable_trace()` on the `Runtime` object.  The AIE compute kernel is the library `kernels.scale` (scalar variant) — `event0()` / `event1()` markers are already baked into the library source.
+- `aie_trace.py` — IRON (`@iron.jit`) design that wires custom `coretile_events` / `coremem_events` / `memtile_events` / `shimtile_events` lists straight through `prog.enable_trace()` on the `Program` object.  The AIE compute kernel is the library `kernels.scale` (scalar variant) — `event0()` / `event1()` markers are already baked into the library source.
 - `test.cpp` / `test.py` — host runners (C++ via `make run_trace`, Python via `make run_trace_py`).
 - `visualize_trace.py` — renders a PNG timeline from parsed trace JSON.
 - `run_makefile.lit` / `run_strix_makefile.lit` — lit test definitions for NPU1 and NPU2.
@@ -28,7 +28,7 @@ After `make run_trace` or `make run_trace_py`:
 
 ## How the trace is wired
 
-The whole design lives in [`aie_trace.py`](./aie_trace.py).  The sequence body is a plain Python function; custom event lists go straight on the IRON `Runtime` via `rt.enable_trace()`:
+The whole design lives in [`aie_trace.py`](./aie_trace.py).  The sequence body is a plain Python function; custom event lists go straight on the IRON `Program` via `prog.enable_trace()` -- it configures both the traced Workers' tiles and the Runtime's trace-buffer sequencing, so it lives on `Program` rather than `Runtime`:
 
 ```python
 import aie.iron as iron
@@ -52,7 +52,9 @@ def aie_trace(A: In, F: In, C: Out, *, tensor_size: CompileTime[int] = 4096, ...
         [tensor_ty, scalar_ty, tensor_ty],
         fn_args=[of_in.prod(), of_factor.prod(), of_out.cons()],
     )
-    rt.enable_trace(
+
+    prog = Program(iron.get_current_device(), rt, workers=[worker])
+    prog.enable_trace(
         trace_size=8192,
         workers=[worker],
         coretile_events=[CoreEvent.INSTR_EVENT_0, ...],   # up to 8
@@ -61,15 +63,15 @@ def aie_trace(A: In, F: In, C: Out, *, tensor_size: CompileTime[int] = 4096, ...
         shimtile_events=[...],
     )
 
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    return prog.resolve_program()
 ```
 
-IRON's `rt.enable_trace()` forwards the four event lists to the same `aie.utils.trace.configure_trace` machinery the lower-level dialect API uses; the difference is you no longer have to talk to `@device` / `tile()` / `object_fifo` / `configure_trace` directly.  The `Worker` is launched by the `Program`, not from inside the sequence body.
+IRON's `prog.enable_trace()` forwards the four event lists to the same `aie.utils.trace.configure_trace` machinery the lower-level dialect API uses; the difference is you no longer have to talk to `@device` / `tile()` / `object_fifo` / `configure_trace` directly.  The `Worker` is launched by the `Program`, not from inside the sequence body.
 
 ## Lowering reference
 
 For direct MLIR usage, the declarative `aie.trace` syntax that
-`rt.enable_trace()` ultimately lowers to looks like:
+`prog.enable_trace()` ultimately lowers to looks like:
 
 ```mlir
 aie.trace @core_trace(%tile_0_2) {

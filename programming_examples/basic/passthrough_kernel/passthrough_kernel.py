@@ -69,10 +69,11 @@ def my_passthrough_kernel(
         [vector_type, vector_type],
         fn_args=[of_in.prod(), of_out.cons()],
     )
+    prog = Program(iron.get_current_device(), rt, workers=[worker])
     if trace_config:
-        rt.enable_trace(trace_config.trace_size, workers=[worker])
+        prog.enable_trace(trace_config.trace_size, workers=[worker])
 
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    return prog.resolve_program()
 
 
 def main():

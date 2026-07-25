@@ -199,8 +199,6 @@ def _transform_gen(func, inputs: list, output, *params, tile_size=16, trace_size
             *[p.prod() for p in param_of_list],
         ],
     )
-    if trace_size > 0:
-        rt.enable_trace(trace_size)
 
     # Place program components and generate an MLIR module
     device = iron.get_current_device()
@@ -210,7 +208,10 @@ def _transform_gen(func, inputs: list, output, *params, tile_size=16, trace_size
             "Call iron.set_current_device() or ensure DefaultNPURuntime is initialized "
             "before calling transform functions."
         )
-    return Program(device, rt, workers=[worker]).resolve_program()
+    prog = Program(device, rt, workers=[worker])
+    if trace_size > 0:
+        prog.enable_trace(trace_size)
+    return prog.resolve_program()
 
 
 def _transform_parallel_gen(
@@ -501,11 +502,12 @@ def _transform_parallel_gen(
         all_types,
         fn_args=[in_prods, out_conses, param_prods],
     )
-    if trace_size > 0:
-        rt.enable_trace(trace_size)
 
     # Place program components and generate an MLIR module
-    return Program(device, rt, workers=my_workers).resolve_program()
+    prog = Program(device, rt, workers=my_workers)
+    if trace_size > 0:
+        prog.enable_trace(trace_size)
+    return prog.resolve_program()
 
 
 def make_param_descriptor(tensor_ty):

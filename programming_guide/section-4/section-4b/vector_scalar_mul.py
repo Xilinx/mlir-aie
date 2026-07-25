@@ -6,7 +6,7 @@
 """Section-4b trace example — ``@iron.jit`` (vector * scalar).
 
 Same vector*scalar design as section-3/4a; this version exposes a
-``trace_size`` parameter and calls ``rt.enable_trace(trace_size,
+``trace_size`` parameter and calls ``prog.enable_trace(trace_size,
 workers=[my_worker])`` to capture core-tile trace events into a DDR
 buffer.  See README.md for a walk-through of the customizable
 ``coretile_events`` / ``coremem_events`` / ``memtile_events`` /
@@ -91,16 +91,21 @@ def vector_scalar_mul(
         core_fn, [of_in.cons(), of_factor.cons(), of_out.prod(), scale_fn]
     )
 
-    rt = Runtime()
-    with rt.sequence(tensor_ty, scalar_ty, tensor_ty) as (a, f, c):
-        if trace_size > 0:
-            rt.enable_trace(trace_size, workers=[my_worker])
-        rt.start(my_worker)
-        rt.fill(of_in.prod(), a)
-        rt.fill(of_factor.prod(), f)
-        rt.drain(of_out.cons(), c, wait=True)
+    def sequence(a, f, c, in_h, factor_h, out_h):
+        in_h.fill(a)
+        factor_h.fill(f)
+        out_h.drain(c, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(
+        sequence,
+        [tensor_ty, scalar_ty, tensor_ty],
+        fn_args=[of_in.prod(), of_factor.prod(), of_out.cons()],
+    )
+
+    prog = Program(iron.get_current_device(), rt, workers=[my_worker])
+    if trace_size > 0:
+        prog.enable_trace(trace_size, workers=[my_worker])
+    return prog.resolve_program()
 
 
 def _make_inputs():

@@ -190,10 +190,11 @@ def single_core(
         [A_ty, B_ty, C_ty],
         fn_args=[inA.prod(), inB.prod(), outC.cons()],
     )
+    prog = Program(iron.get_current_device(), rt, workers=[worker])
     if trace_config:
-        rt.enable_trace(trace_config.trace_size, workers=[worker])
+        prog.enable_trace(trace_config.trace_size, workers=[worker])
 
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    return prog.resolve_program()
 
 
 def _make_argparser():

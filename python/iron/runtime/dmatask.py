@@ -56,6 +56,13 @@ class DMATask(RuntimeTask):
                 operands whose entries may be runtime SSA values. Used instead of
                 ``tap`` for the dynamic path.
         """
+        if tap is not None and any(
+            v is not None for v in (sizes, strides, offset, transfer_len)
+        ):
+            raise ValueError(
+                "DMATask: tap and sizes/strides/offset/transfer_len are mutually "
+                "exclusive access-pattern specifications; pass only one."
+            )
         self._object_fifo = object_fifo
         self._rt_data = rt_data
         self._tap = tap

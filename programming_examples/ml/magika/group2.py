@@ -147,10 +147,11 @@ def group2(
             of_dout_L1L3.cons(tile=shim_tile),
         ],
     )
+    prog = Program(iron.get_current_device(), rt, workers=[worker])
     if trace_size > 0:
-        rt.enable_trace(trace_size)
+        prog.enable_trace(trace_size)
 
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+    return prog.resolve_program()
 
 
 def _make_argparser():

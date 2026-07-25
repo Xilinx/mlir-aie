@@ -149,14 +149,15 @@ def group0(
         [transfer_in_ty, transfer_out_ty, scalar_ty],
         fn_args=[of_din_L3L2.prod(), of_dout_L2L3.cons()],
     )
-    if trace_size > 0:
-        rt.enable_trace(trace_size)
-
-    return Program(
+    prog = Program(
         iron.get_current_device(),
         rt,
         workers=[group0a_worker, group0b_worker],
-    ).resolve_program()
+    )
+    if trace_size > 0:
+        prog.enable_trace(trace_size)
+
+    return prog.resolve_program()
 
 
 def _make_argparser():

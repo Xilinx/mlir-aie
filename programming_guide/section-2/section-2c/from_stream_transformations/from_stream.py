@@ -49,13 +49,13 @@ def from_stream(a_in: In, c_out: Out):
 
     my_worker = Worker(core_fn, [of_in1.cons(), of_out1.prod()])
 
-    rt = Runtime()
-    with rt.sequence(data_ty, data_ty) as (a, c):
-        rt.start(my_worker)
-        rt.fill(of_in0.prod(), a)
-        rt.drain(of_out0.cons(), c, wait=True)
+    def sequence(a, c, in_h, out_h):
+        in_h.fill(a)
+        out_h.drain(c, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    rt = Runtime(sequence, [data_ty, data_ty], fn_args=[of_in0.prod(), of_out0.cons()])
+
+    return Program(iron.get_current_device(), rt, workers=[my_worker]).resolve_program()
 
 
 def _expected_output():

@@ -58,9 +58,10 @@ def design(
         [a_type, c_type],
         fn_args=[of_in.prod(), of_out.cons()],
     )
+    prog = Program(iron.get_current_device(), rt, workers=[worker])
     if trace_config:
-        rt.enable_trace(trace_config.trace_size, workers=[worker])
-    return Program(iron.get_current_device(), rt, workers=[worker]).resolve_program()
+        prog.enable_trace(trace_config.trace_size, workers=[worker])
+    return prog.resolve_program()
 
 
 @pytest.mark.parametrize("trace_size", [8192])

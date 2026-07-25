@@ -175,10 +175,11 @@ def vector_reduce_max(
         [in_tensor_ty, out_tensor_ty],
         fn_args=[in_prods, out_cons],
     )
+    prog = Program(iron.get_current_device(), rt, workers=my_workers)
     if enable_trace:
-        rt.enable_trace(trace_size)
+        prog.enable_trace(trace_size)
 
-    return Program(iron.get_current_device(), rt, workers=my_workers).resolve_program()
+    return prog.resolve_program()
 
 
 def _make_argparser():

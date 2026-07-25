@@ -33,6 +33,8 @@ class TaskGroup:
                 active sequence's next id. Passing an explicit id is only needed
                 for the runtime's internal default group.
         """
+        # Actions accumulated for this group: (dma_await_task | dma_free_task, [task]).
+        self._actions: list = []
         # Lazy import to avoid a cycle (runtime -> taskgroup -> _context).
         from ._context import _active_sequence
 
