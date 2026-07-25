@@ -122,6 +122,53 @@ static PacketRulesOp getOrCreatePacketRules(OpBuilder &builder, Location loc,
   return rules;
 }
 
+// Emit the routable portion of a segment between two pinned ports, eliding the
+// parts the wires and vias already realize: a degenerate same-port segment, a
+// single inter-switchbox wire, or an intra-shim hop (realized through the
+// shim-mux, since the switchbox South:N port appears as mux North:N). Whatever
+// remains is a gap the router must fill and becomes a flow -- circuit when
+// `packetID` < 0, otherwise a packet_flow(packetID).
+static void emitRoutableSegment(OpBuilder &builder, Location loc,
+                                Operation *anchor, Value srcTile,
+                                WireBundle srcBundle, int srcChannel,
+                                Value dstTile, WireBundle dstBundle,
+                                int dstChannel, int packetID,
+                                DenseMap<Value, ShimMuxOp> &shimMuxes) {
+  if (srcTile == dstTile && srcBundle == dstBundle && srcChannel == dstChannel)
+    return;
+  if (isDirectWire(srcTile, srcBundle, srcChannel, dstTile, dstBundle,
+                   dstChannel))
+    return;
+  if (srcTile == dstTile) {
+    if (auto tileOp = srcTile.getDefiningOp<TileOp>();
+        tileOp && tileOp.isShimNOCorPLTile()) {
+      auto toMux = [](WireBundle b) {
+        return b == WireBundle::South ? WireBundle::North : b;
+      };
+      ShimMuxOp mux = getOrCreateShimMux(builder, srcTile, shimMuxes);
+      OpBuilder::InsertionGuard guard(builder);
+      builder.setInsertionPoint(mux.getConnections().front().getTerminator());
+      ConnectOp::create(builder, loc, toMux(srcBundle), srcChannel,
+                        toMux(dstBundle), dstChannel);
+      return;
+    }
+  }
+  OpBuilder::InsertionGuard guard(builder);
+  builder.setInsertionPoint(anchor);
+  if (packetID < 0) {
+    FlowOp::create(builder, loc, srcTile, srcBundle, srcChannel, dstTile,
+                   dstBundle, dstChannel);
+    return;
+  }
+  auto pf = PacketFlowOp::create(builder, loc,
+                                 static_cast<uint8_t>(packetID), BoolAttr(),
+                                 BoolAttr());
+  PacketFlowOp::ensureTerminator(pf.getPorts(), builder, loc);
+  builder.setInsertionPoint(pf.getPorts().front().getTerminator());
+  PacketSourceOp::create(builder, loc, srcTile, srcBundle, srcChannel);
+  PacketDestOp::create(builder, loc, dstTile, dstBundle, dstChannel);
+}
+
 struct AIESplitFlowViasPass
     : public xilinx::AIE::impl::AIESplitFlowViasBase<AIESplitFlowViasPass> {
   void runOnOperation() override {
@@ -158,40 +205,9 @@ struct AIESplitFlowViasPass
 
       auto emitSegment = [&](Value dstTile, WireBundle dstBundle,
                              int dstChannel) {
-        // A flow that already begins or ends on a via port produces a segment
-        // whose two ends are the same port; there is nothing to route.
-        if (srcTile == dstTile && srcBundle == dstBundle &&
-            srcChannel == dstChannel)
-          return;
-        // A segment that is a single inter-switchbox wire is realized by the
-        // wire; emitting a flow for it would fight the via's fixed connection.
-        if (isDirectWire(srcTile, srcBundle, srcChannel, dstTile, dstBundle,
-                         dstChannel))
-          return;
-        // A shim tile reaches its switchbox through a shim-mux that the via
-        // chain does not record. The head/tail of a shim flow is a same-tile
-        // hop between a tile-side port (DMA/NOC/PLIO) and the mux-facing South
-        // port, which the mux realizes: the switchbox South:N port appears as
-        // North:N on the mux side.
-        if (srcTile == dstTile) {
-          if (auto tileOp = srcTile.getDefiningOp<TileOp>();
-              tileOp && tileOp.isShimNOCorPLTile()) {
-            auto toMux = [](WireBundle b) {
-              return b == WireBundle::South ? WireBundle::North : b;
-            };
-            ShimMuxOp mux = getOrCreateShimMux(builder, srcTile, shimMuxes);
-            OpBuilder::InsertionGuard guard(builder);
-            builder.setInsertionPoint(
-                mux.getConnections().front().getTerminator());
-            ConnectOp::create(builder, loc, toMux(srcBundle), srcChannel,
-                              toMux(dstBundle), dstChannel);
-            return;
-          }
-        }
-        OpBuilder::InsertionGuard guard(builder);
-        builder.setInsertionPoint(flow);
-        FlowOp::create(builder, loc, srcTile, srcBundle, srcChannel, dstTile,
-                       dstBundle, dstChannel);
+        emitRoutableSegment(builder, loc, flow, srcTile, srcBundle, srcChannel,
+                            dstTile, dstBundle, dstChannel, /*packetID=*/-1,
+                            shimMuxes);
       };
 
       for (size_t i = 0, e = flow.getVias().size(); i < e; i++) {
@@ -240,12 +256,33 @@ struct AIESplitFlowViasPass
       ArrayRef<int32_t> egB = pf.getViaEgressBundlesAttr().asArrayRef();
       ArrayRef<int32_t> egC = pf.getViaEgressChannelsAttr().asArrayRef();
 
+      // A section has exactly one source and one dest; the gaps between the
+      // pinned vias (and before the first / after the last) are routed.
+      PacketSourceOp source;
+      PacketDestOp dest;
+      for (Operation &op : pf.getPorts().front()) {
+        if (auto s = dyn_cast<PacketSourceOp>(op))
+          source = s;
+        else if (auto d = dyn_cast<PacketDestOp>(op))
+          dest = d;
+      }
+      Value srcTile = source.getTile();
+      WireBundle srcBundle = source.getBundle();
+      int srcChannel = source.getChannel();
+      auto emitSegment = [&](Value dstTile, WireBundle dstBundle,
+                             int dstChannel) {
+        emitRoutableSegment(builder, loc, pf, srcTile, srcBundle, srcChannel,
+                            dstTile, dstBundle, dstChannel, id, shimMuxes);
+      };
+
       for (size_t i = 0, e = pf.getVias().size(); i < e; i++) {
         Value viaTile = pf.getVias()[i];
         auto ingress = static_cast<WireBundle>(inB[i]);
         int ingressChannel = inC[i];
         auto egress = static_cast<WireBundle>(egB[i]);
         int egressChannel = egC[i];
+
+        emitSegment(viaTile, ingress, ingressChannel);
 
         SwitchboxOp sb = getOrCreateSwitchbox(builder, viaTile, switchboxes);
         AMSelOp amsel = allocateAmsel(builder, loc, sb);
@@ -257,15 +294,29 @@ struct AIESplitFlowViasPass
         {
           OpBuilder::InsertionGuard guard(builder);
           builder.setInsertionPoint(sb.getConnections().front().getTerminator());
+          // Restore keep_pkt_header on the master set that drives the flow's
+          // destination; the intermediate hops always keep the header.
+          BoolAttr keepPktHeader;
+          if (viaTile == dest.getTile() && egress == dest.getBundle() &&
+              egressChannel == dest.getChannel())
+            keepPktHeader = pf.getKeepPktHeaderAttr();
           MasterSetOp::create(builder, loc, builder.getIndexType(), egress,
-                              egressChannel, ValueRange{amsel}, BoolAttr());
+                              egressChannel, ValueRange{amsel}, keepPktHeader);
         }
         PacketRulesOp rules =
             getOrCreatePacketRules(builder, loc, sb, ingress, ingressChannel);
-        OpBuilder::InsertionGuard guard(builder);
-        builder.setInsertionPoint(rules.getRules().front().getTerminator());
-        PacketRuleOp::create(builder, loc, mask, id, amsel);
+        {
+          OpBuilder::InsertionGuard guard(builder);
+          builder.setInsertionPoint(rules.getRules().front().getTerminator());
+          PacketRuleOp::create(builder, loc, mask, id, amsel);
+        }
+
+        srcTile = viaTile;
+        srcBundle = egress;
+        srcChannel = egressChannel;
       }
+
+      emitSegment(dest.getTile(), dest.getBundle(), dest.getChannel());
       pf.erase();
     }
   }

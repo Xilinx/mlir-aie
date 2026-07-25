@@ -416,6 +416,12 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
     }
     if (ctrlOverlay)
       continue;
+    // In pinning mode a path realized only by shim-mux connections has no
+    // switchbox transit and therefore no via to pin it; split-flow-vias cannot
+    // materialize it and re-routing cannot honor it. Leave that shim-mux
+    // configuration in place rather than lifting an unroutable flow.
+    if (emitVias && c.vias.empty())
+      continue;
     // Recovery mode (no vias): a packet endpoint becomes a plain logical packet
     // flow and its physical configuration is reclaimed.
     if (maskValue.mask != 0 && !emitVias) {
@@ -474,9 +480,18 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
       // A straight-line packet section: pin its route with vias and record the
       // ID mask so --aie-split-flow-vias can rebuild the switchbox rules. The
       // fan-out/fan-in nodes at either end stay materialized in place.
+      // keep_pkt_header lives on the master set that drives the section's
+      // destination; carry it on the lifted flow so re-lowering restores it
+      // (dropping it would strip the header and misroute the packet downstream).
+      BoolAttr keepPktHeader;
+      for (Operation *op : c.usedOps)
+        if (auto ms = dyn_cast_or_null<MasterSetOp>(op))
+          if (ms.getDestBundle() == destPort.bundle &&
+              ms.getDestChannel() == destPort.channel)
+            keepPktHeader = ms.getKeepPktHeaderAttr();
       auto flowOp = PacketFlowOp::create(
-          rewriter, loc, rewriter.getI8IntegerAttr(maskValue.value), BoolAttr(),
-          BoolAttr(), viaTiles, ib, ic, eb, ec,
+          rewriter, loc, rewriter.getI8IntegerAttr(maskValue.value),
+          keepPktHeader, BoolAttr(), viaTiles, ib, ic, eb, ec,
           rewriter.getI8IntegerAttr(maskValue.mask));
       PacketFlowOp::ensureTerminator(flowOp.getPorts(), rewriter, loc);
       OpBuilder::InsertPoint ip = rewriter.saveInsertionPoint();

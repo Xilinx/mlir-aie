@@ -244,6 +244,13 @@ bool AIEPathfinderPass::findPathToDest(SwitchSettings settings, TileID currTile,
   }
 
   int neighbourSourceChannel = currDestChannel;
+  // The destination may itself be a fabric input port (e.g. a partial packet
+  // flow pinned to end at a switchbox port). Such a port is never the output of
+  // any switchbox setting, so it would otherwise never match; recognize arrival
+  // when the current output feeds the final tile's destination input directly.
+  if (neighbourTile == finalTile && neighbourSourceBundle == finalDestBundle &&
+      neighbourSourceChannel == finalDestChannel)
+    return true;
   for (const auto &[sbNode, setting] : settings) {
     TileID tile = {sbNode.col, sbNode.row};
     if (tile == neighbourTile) {
