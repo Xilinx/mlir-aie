@@ -109,6 +109,36 @@ public:
         if (srcs.size() > 1)
           for (Port p : srcs)
             fanoutIngresses.insert({sw, encodePort(p)});
+      // Break at hops whose configuration carries state a lifted flow cannot
+      // reconstruct, so only that switchbox stays materialized while the rest of
+      // the flow still lifts (split-at-change). keep_pkt_header on a real
+      // endpoint is carried on the flow (so it does not break), and control
+      // overlays are kept whole elsewhere; every other attribute breaks here.
+      auto isFabric = [](WireBundle bnd) {
+        return bnd == WireBundle::North || bnd == WireBundle::South ||
+               bnd == WireBundle::East || bnd == WireBundle::West;
+      };
+      auto hasNonCtrlDiscardable = [](Operation *op) {
+        for (NamedAttribute a : op->getDiscardableAttrDictionary())
+          if (a.getName() != "is_ctrl_pkt_overlay")
+            return true;
+        return false;
+      };
+      for (Port p : sources)
+        for (PortMaskValue &pmv : getConnectionsThroughSwitchbox(connections, p))
+          for (Operation *op : pmv.ops) {
+            if (!op)
+              continue;
+            bool unliftable = hasNonCtrlDiscardable(op);
+            if (auto r = dyn_cast<PacketRuleOp>(op))
+              if (Operation *par = r->getParentOp())
+                unliftable |= hasNonCtrlDiscardable(par);
+            if (auto ms = dyn_cast<MasterSetOp>(op))
+              unliftable |=
+                  ms.getKeepPktHeaderAttr() && isFabric(ms.getDestBundle());
+            if (unliftable)
+              fanoutIngresses.insert({sw, encodePort(p)});
+          }
     };
     for (auto switchOp : device.getOps<SwitchboxOp>())
       scan(switchOp, switchOp.getConnections());
@@ -403,18 +433,33 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
     Value destTile = resolveEndpointTile(destOp);
     if (!destTile)
       continue;
-    // Control-packet overlays carry configuration the lifted flow cannot
-    // express (the is_ctrl_pkt_overlay / keep_pkt_header attributes and a fixed
-    // arbiter), so never lift or reclaim them -- leave the overlay materialized.
-    bool ctrlOverlay = false;
+    // Never silently drop configuration. Control overlays (in any mode) are
+    // kept materialized, and when pinning so is any section carrying op state a
+    // lifted flow cannot rebuild -- keep_pkt_header on a non-destination hop, or
+    // any discardable annotation (present or future) the rebuild does not carry.
+    // Leaving it materialized keeps it faithful and visible rather than dropping
+    // it and having the round-trip silently diverge.
+    bool keepMaterialized = false;
     for (Operation *op : c.usedOps) {
-      if (auto ms = dyn_cast_or_null<MasterSetOp>(op))
-        ctrlOverlay |= ms->hasAttr("is_ctrl_pkt_overlay");
-      else if (auto r = dyn_cast_or_null<PacketRuleOp>(op))
-        if (Operation *p = r->getParentOp())
-          ctrlOverlay |= p->hasAttr("is_ctrl_pkt_overlay");
+      Operation *rulesParent =
+          isa_and_nonnull<PacketRuleOp>(op) ? op->getParentOp() : nullptr;
+      if (op->hasAttr("is_ctrl_pkt_overlay") ||
+          (rulesParent && rulesParent->hasAttr("is_ctrl_pkt_overlay"))) {
+        keepMaterialized = true;
+      } else if (emitVias) {
+        if (!op->getDiscardableAttrDictionary().empty() ||
+            (rulesParent &&
+             !rulesParent->getDiscardableAttrDictionary().empty()))
+          keepMaterialized = true;
+        else if (auto ms = dyn_cast<MasterSetOp>(op))
+          keepMaterialized = ms.getKeepPktHeaderAttr() &&
+                             (ms.getDestBundle() != destPort.bundle ||
+                              ms.getDestChannel() != destPort.channel);
+      }
+      if (keepMaterialized)
+        break;
     }
-    if (ctrlOverlay)
+    if (keepMaterialized)
       continue;
     // In pinning mode a path realized only by shim-mux connections has no
     // switchbox transit and therefore no via to pin it; split-flow-vias cannot
