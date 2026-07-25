@@ -140,3 +140,18 @@ class XRTTensor(Tensor):
             buffer_object: The XRT buffer object associated with this tensor.
         """
         return self._bo
+
+    def _subview(self, offset_bytes, shape, dtype):
+        nbytes = int(np.prod(shape)) * np.dtype(dtype).itemsize
+        view = XRTTensor.__new__(XRTTensor)
+        # Set the Tensor contract fields without allocating a new buffer.
+        Tensor.__init__(view, shape, dtype=dtype, device=self.device)
+        view.xrt_device = self.xrt_device
+        view._storage = self  # keep parent alive; shared storage
+        view._shape = tuple(shape)
+        # xrt.bo(parent_bo, size, offset) aliases the parent's memory; its
+        # sync() is slice-scoped (transfers only [offset, offset+size)).
+        view._bo = xrt.bo(self._bo, nbytes, offset_bytes)
+        ptr = view._bo.map()
+        view._data = np.frombuffer(ptr, dtype=dtype).reshape(view._shape)
+        return view

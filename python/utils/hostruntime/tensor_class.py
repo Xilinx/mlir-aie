@@ -249,6 +249,37 @@ class Tensor(ABC):
             raise ValueError(f"Unknown device '{target_device}'")
         return self
 
+    def subview(self, offset, shape, dtype=None):
+        """
+        Return a tensor viewing a sub-region of this tensor's underlying storage.
+
+        The returned tensor shares this tensor's buffer (no new allocation, no
+        copy), holds a reference to this tensor so the storage outlives the view,
+        and synchronizes only its own slice. It is a plain tensor of the same
+        backend class, not a distinct type.
+
+        Args:
+            offset: Start of the region, in elements of this tensor's dtype.
+            shape: Logical shape of the view.
+            dtype (np.dtype, optional): dtype to interpret the region as.
+                Defaults to this tensor's dtype.
+
+        Returns:
+            Tensor: A view sharing this tensor's storage.
+
+        Raises:
+            ValueError: If the region falls outside this tensor's buffer.
+        """
+        view_dtype = np.dtype(dtype) if dtype is not None else np.dtype(self.dtype)
+        offset_bytes = int(offset) * np.dtype(self.dtype).itemsize
+        nbytes = int(np.prod(shape)) * view_dtype.itemsize
+        if offset_bytes < 0 or offset_bytes + nbytes > self.nbytes:
+            raise ValueError(
+                f"subview(offset={offset}, shape={tuple(shape)}, dtype={view_dtype}) "
+                f"is out of bounds for a buffer of {self.nbytes} bytes"
+            )
+        return self._subview(offset_bytes, tuple(shape), view_dtype)
+
     @abstractmethod
     def _sync_to_device(self):
         """
@@ -266,6 +297,22 @@ class Tensor(ABC):
         This method should be implemented by subclasses to handle device-specific synchronization.
         """
         ...
+
+    def _subview(self, offset_bytes, shape, dtype):
+        """
+        Backend hook for :meth:`subview`.
+
+        Build and return a tensor of the same backend class that shares this
+        tensor's underlying storage starting at ``offset_bytes`` with the given
+        ``shape`` and ``dtype``. Implementations must not allocate or copy, must
+        record this tensor as the storage owner so it outlives the view, and
+        must leave residency per-view (the returned view syncs its own slice).
+
+        Kept concrete (not abstract) so a backend that does not implement
+        sub-region views is not forced to; the default raises
+        ``NotImplementedError``.
+        """
+        raise NotImplementedError(f"{type(self).__name__} does not support subview()")
 
     @classmethod
     def __check_or_create(cls, *size, out=None, dtype=None, device=None, **kwargs):
@@ -728,3 +775,17 @@ class CPUOnlyTensor(Tensor):
         """
         # Nothing to do for CPU only
         pass
+
+    def _subview(self, offset_bytes, shape, dtype):
+        nbytes = int(np.prod(shape)) * np.dtype(dtype).itemsize
+        view = CPUOnlyTensor.__new__(CPUOnlyTensor)
+        # Set the Tensor contract fields without allocating a new array.
+        Tensor.__init__(view, shape, dtype=dtype, device=self.device)
+        view._storage = self  # keep parent alive; shared storage
+        view._shape = tuple(shape)
+        # A numpy view over the same bytes (zero-copy) so writes are shared.
+        flat = self._data.reshape(-1).view(np.uint8)
+        view._data = (
+            flat[offset_bytes : offset_bytes + nbytes].view(dtype).reshape(view._shape)
+        )
+        return view
