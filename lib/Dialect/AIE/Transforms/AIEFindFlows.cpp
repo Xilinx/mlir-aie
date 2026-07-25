@@ -88,9 +88,27 @@ public:
       for (auto connectOp : b.getOps<ConnectOp>())
         if (!llvm::is_contained(sources, connectOp.sourcePort()))
           sources.push_back(connectOp.sourcePort());
+      for (auto rulesOp : b.getOps<PacketRulesOp>())
+        if (!llvm::is_contained(sources, rulesOp.sourcePort()))
+          sources.push_back(rulesOp.sourcePort());
+      // Fan-out: a source that drives more than one output.
       for (Port p : sources)
         if (getConnectionsThroughSwitchbox(connections, p).size() > 1)
           fanoutIngresses.insert({sw, encodePort(p)});
+      // Fan-in: an output driven from more than one source (a packet merge).
+      // Every source feeding a shared output is a section boundary as well, so
+      // the merge node stays materialized and the linear sections stop at it.
+      llvm::DenseMap<int, llvm::SmallVector<Port, 4>> outputSources;
+      for (Port p : sources)
+        for (PortMaskValue &pmv : getConnectionsThroughSwitchbox(connections, p)) {
+          auto &v = outputSources[encodePort(pmv.port)];
+          if (!llvm::is_contained(v, p))
+            v.push_back(p);
+        }
+      for (auto &[egress, srcs] : outputSources)
+        if (srcs.size() > 1)
+          for (Port p : srcs)
+            fanoutIngresses.insert({sw, encodePort(p)});
     };
     for (auto switchOp : device.getOps<SwitchboxOp>())
       scan(switchOp, switchOp.getConnections());
@@ -385,14 +403,9 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
     Value destTile = resolveEndpointTile(destOp);
     if (!destTile)
       continue;
-    if (maskValue.mask != 0) {
-      // Packet endpoint. In pinning mode the physical packet configuration is
-      // left exactly as routed and the aie.packet_flow ops are dropped, so that
-      // re-routing keeps -- rather than re-derives -- the packet routes. Do not
-      // consume anything here. In recovery mode a logical packet flow is lifted
-      // and its configuration reclaimed.
-      if (emitVias)
-        continue;
+    // Recovery mode (no vias): a packet endpoint becomes a plain logical packet
+    // flow and its physical configuration is reclaimed.
+    if (maskValue.mask != 0 && !emitVias) {
       for (Operation *op : c.usedOps)
         if (op)
           consumed.insert(op);
@@ -409,9 +422,9 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
     }
     // A section that lifts no interconnect configuration carries no routing:
     // it is either a fan-out output feeding its own tile with no hop, or the
-    // physical wire between two retained fan-out nodes. The wire is implicit
-    // and the switchboxes at both ends stay explicit, so emitting a flow for it
-    // would only fight their fixed connections on re-routing.
+    // physical wire between two retained fan nodes. The wire is implicit and the
+    // switchboxes at both ends stay explicit, so emitting a flow for it would
+    // only fight their fixed connections on re-routing.
     if (c.usedOps.empty())
       continue;
     // A flow seeded from a fabric-entry / fan-out output that terminates on a
@@ -424,10 +437,11 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
     for (Operation *op : c.usedOps)
       if (op)
         consumed.insert(op);
-    if (emitVias && !c.vias.empty()) {
-      SmallVector<Value> viaTiles;
-      SmallVector<int32_t> ingressBundles, ingressChannels, egressBundles,
-          egressChannels;
+    MLIRContext *ctx = rewriter.getContext();
+    SmallVector<Value> viaTiles;
+    SmallVector<int32_t> ingressBundles, ingressChannels, egressBundles,
+        egressChannels;
+    if (emitVias)
       for (const Via &via : c.vias) {
         viaTiles.push_back(via.tile);
         ingressBundles.push_back(static_cast<int32_t>(via.ingress.bundle));
@@ -435,16 +449,29 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
         egressBundles.push_back(static_cast<int32_t>(via.egress.bundle));
         egressChannels.push_back(via.egress.channel);
       }
-      MLIRContext *ctx = rewriter.getContext();
+    auto ib = viaTiles.empty() ? nullptr : DenseI32ArrayAttr::get(ctx, ingressBundles);
+    auto ic = viaTiles.empty() ? nullptr : DenseI32ArrayAttr::get(ctx, ingressChannels);
+    auto eb = viaTiles.empty() ? nullptr : DenseI32ArrayAttr::get(ctx, egressBundles);
+    auto ec = viaTiles.empty() ? nullptr : DenseI32ArrayAttr::get(ctx, egressChannels);
+    if (maskValue.mask == 0) {
       FlowOp::create(rewriter, loc, srcTile, srcBundle, srcChannel, destTile,
-                     destPort.bundle, destPort.channel, viaTiles,
-                     DenseI32ArrayAttr::get(ctx, ingressBundles),
-                     DenseI32ArrayAttr::get(ctx, ingressChannels),
-                     DenseI32ArrayAttr::get(ctx, egressBundles),
-                     DenseI32ArrayAttr::get(ctx, egressChannels));
+                     destPort.bundle, destPort.channel, viaTiles, ib, ic, eb,
+                     ec);
     } else {
-      FlowOp::create(rewriter, loc, srcTile, srcBundle, srcChannel, destTile,
-                     destPort.bundle, destPort.channel);
+      // A straight-line packet section: pin its route with vias and record the
+      // ID mask so --aie-split-flow-vias can rebuild the switchbox rules. The
+      // fan-out/fan-in nodes at either end stay materialized in place.
+      auto flowOp = PacketFlowOp::create(
+          rewriter, loc, rewriter.getI8IntegerAttr(maskValue.value), BoolAttr(),
+          BoolAttr(), viaTiles, ib, ic, eb, ec,
+          rewriter.getI8IntegerAttr(maskValue.mask));
+      PacketFlowOp::ensureTerminator(flowOp.getPorts(), rewriter, loc);
+      OpBuilder::InsertPoint ip = rewriter.saveInsertionPoint();
+      rewriter.setInsertionPoint(flowOp.getPorts().front().getTerminator());
+      PacketSourceOp::create(rewriter, loc, srcTile, srcBundle, srcChannel);
+      PacketDestOp::create(rewriter, loc, destTile, destPort.bundle,
+                           destPort.channel);
+      rewriter.restoreInsertionPoint(ip);
     }
   }
 }
@@ -561,6 +588,14 @@ struct AIEFindFlowsPass
     if (clEmitVias)
       analysis.enableFanoutSplitting();
 
+    // In pinning mode the packet routes are re-emitted as straight-line section
+    // flows carrying vias; the original packet_flow ops they replace are
+    // recorded now so they can be dropped once the sections are in place.
+    SmallVector<PacketFlowOp> originalPacketFlows;
+    if (clEmitVias)
+      for (auto pf : d.getOps<PacketFlowOp>())
+        originalPacketFlows.push_back(pf);
+
     llvm::DenseSet<Operation *> consumed;
     OpBuilder builder = OpBuilder::atBlockTerminator(d.getBody());
     for (auto tile : d.getOps<TileOp>()) {
@@ -609,6 +644,11 @@ struct AIEFindFlowsPass
       }
     }
 
+    // The lifted section flows now describe the packet routes; drop the
+    // originals so they are not routed a second time.
+    for (PacketFlowOp pf : originalPacketFlows)
+      pf.erase();
+
     if (!clRemoveLifted)
       return;
 
@@ -619,12 +659,6 @@ struct AIEFindFlowsPass
     for (Operation *op : consumed)
       if (isa<ConnectOp, PacketRuleOp, MasterSetOp>(op))
         op->erase();
-    // In pinning mode the packet routes stay as their exact physical
-    // configuration; the aie.packet_flow ops that describe them are dropped so
-    // re-routing preserves those routes instead of re-deriving them.
-    if (clEmitVias)
-      for (auto pktFlow : llvm::make_early_inc_range(d.getOps<PacketFlowOp>()))
-        pktFlow.erase();
     auto cleanupInterconnect = [](Region &connections) {
       for (auto amselOp :
            llvm::make_early_inc_range(connections.getOps<AMSelOp>()))

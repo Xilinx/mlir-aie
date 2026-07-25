@@ -11,6 +11,7 @@
 #include "mlir/Pass/Pass.h"
 
 #include "llvm/ADT/DenseMap.h"
+#include "llvm/ADT/SmallSet.h"
 
 namespace xilinx::AIE {
 #define GEN_PASS_DEF_AIESPLITFLOWVIAS
@@ -85,6 +86,40 @@ static ShimMuxOp getOrCreateShimMux(OpBuilder &builder, Value tile,
                               tile.getLoc());
   cache[tile] = shimMuxOp;
   return shimMuxOp;
+}
+
+// Allocate a fresh (arbiter, msel) amsel in `sb` that is not already used by its
+// configuration, creating the amsel at the top of the switchbox block so it
+// dominates the master sets and rules that reference it.
+static AMSelOp allocateAmsel(OpBuilder &builder, Location loc, SwitchboxOp sb) {
+  Block &block = sb.getConnections().front();
+  llvm::SmallSet<std::pair<int, int>, 24> used;
+  for (auto a : block.getOps<AMSelOp>())
+    used.insert({a.arbiterIndex(), a.getMselValue()});
+  OpBuilder::InsertionGuard guard(builder);
+  builder.setInsertionPointToStart(&block);
+  for (int msel = 0; msel < 4; msel++)
+    for (int arb = 0; arb < 6; arb++)
+      if (!used.count({arb, msel}))
+        return AMSelOp::create(builder, loc, arb, msel);
+  return nullptr;
+}
+
+// Return the packet_rules for `ingress` in `sb`, creating an empty one if none
+// exists, so several rules for the same ingress port accumulate in one op.
+static PacketRulesOp getOrCreatePacketRules(OpBuilder &builder, Location loc,
+                                            SwitchboxOp sb, WireBundle ingress,
+                                            int ingressChannel) {
+  Block &block = sb.getConnections().front();
+  for (auto rules : block.getOps<PacketRulesOp>())
+    if (rules.getSourceBundle() == ingress &&
+        rules.getSourceChannel() == ingressChannel)
+      return rules;
+  OpBuilder::InsertionGuard guard(builder);
+  builder.setInsertionPoint(block.getTerminator());
+  auto rules = PacketRulesOp::create(builder, loc, ingress, ingressChannel);
+  PacketRulesOp::ensureTerminator(rules.getRules(), builder, loc);
+  return rules;
 }
 
 struct AIESplitFlowViasPass
@@ -185,6 +220,53 @@ struct AIESplitFlowViasPass
 
       emitSegment(flow.getDest(), flow.getDestBundle(), flow.getDestChannel());
       flow.erase();
+    }
+
+    // Packet sections pin their route with vias too. Each via becomes a
+    // stream-switch rule/master-set pair carrying the flow's ID; the amsel is
+    // allocated locally (its numeric value is not pinned). Fan-out/fan-in nodes
+    // are already materialized in the IR, so a section only needs its own hops.
+    SmallVector<PacketFlowOp> pktFlowsWithVias;
+    for (auto pf : device.getOps<PacketFlowOp>())
+      if (!pf.getVias().empty())
+        pktFlowsWithVias.push_back(pf);
+
+    for (PacketFlowOp pf : pktFlowsWithVias) {
+      Location loc = pf.getLoc();
+      int id = pf.IDInt();
+      int mask = pf.getViaMask() ? static_cast<int>(*pf.getViaMask()) : 0x1f;
+      ArrayRef<int32_t> inB = pf.getViaIngressBundlesAttr().asArrayRef();
+      ArrayRef<int32_t> inC = pf.getViaIngressChannelsAttr().asArrayRef();
+      ArrayRef<int32_t> egB = pf.getViaEgressBundlesAttr().asArrayRef();
+      ArrayRef<int32_t> egC = pf.getViaEgressChannelsAttr().asArrayRef();
+
+      for (size_t i = 0, e = pf.getVias().size(); i < e; i++) {
+        Value viaTile = pf.getVias()[i];
+        auto ingress = static_cast<WireBundle>(inB[i]);
+        int ingressChannel = inC[i];
+        auto egress = static_cast<WireBundle>(egB[i]);
+        int egressChannel = egC[i];
+
+        SwitchboxOp sb = getOrCreateSwitchbox(builder, viaTile, switchboxes);
+        AMSelOp amsel = allocateAmsel(builder, loc, sb);
+        if (!amsel) {
+          pf.emitOpError("via tile has no free arbiter-msel combination");
+          signalPassFailure();
+          return;
+        }
+        {
+          OpBuilder::InsertionGuard guard(builder);
+          builder.setInsertionPoint(sb.getConnections().front().getTerminator());
+          MasterSetOp::create(builder, loc, builder.getIndexType(), egress,
+                              egressChannel, ValueRange{amsel}, BoolAttr());
+        }
+        PacketRulesOp rules =
+            getOrCreatePacketRules(builder, loc, sb, ingress, ingressChannel);
+        OpBuilder::InsertionGuard guard(builder);
+        builder.setInsertionPoint(rules.getRules().front().getTerminator());
+        PacketRuleOp::create(builder, loc, mask, id, amsel);
+      }
+      pf.erase();
     }
   }
 };

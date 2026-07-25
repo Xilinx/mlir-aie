@@ -1868,6 +1868,18 @@ LogicalResult PacketFlowOp::verify() {
   if (numDests < 1)
     return emitOpError("must have at least one aie.packet_dest");
 
+  size_t n = getVias().size();
+  DenseI32ArrayAttr arrays[] = {getViaIngressBundlesAttr(),
+                                getViaIngressChannelsAttr(),
+                                getViaEgressBundlesAttr(),
+                                getViaEgressChannelsAttr()};
+  for (DenseI32ArrayAttr a : arrays) {
+    size_t size = a ? a.size() : 0;
+    if (size != n)
+      return emitOpError("has ")
+             << n << " via tile(s) but a via port array of size " << size;
+  }
+
   return success();
 }
 

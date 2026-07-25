@@ -800,12 +800,33 @@ def AIE_PacketFlowOp: AIE_Op<"packet_flow", [SingleBlockImplicitTerminator<"EndO
   let arguments = (
     ins AIEI8Attr:$ID,
         OptionalAttr<BoolAttr>:$keep_pkt_header,
-        OptionalAttr<BoolAttr>:$priority_route
+        OptionalAttr<BoolAttr>:$priority_route,
+        Variadic<Index>:$vias,
+        OptionalAttr<DenseI32ArrayAttr>:$via_ingress_bundles,
+        OptionalAttr<DenseI32ArrayAttr>:$via_ingress_channels,
+        OptionalAttr<DenseI32ArrayAttr>:$via_egress_bundles,
+        OptionalAttr<DenseI32ArrayAttr>:$via_egress_channels,
+        OptionalAttr<AIEI8Attr>:$via_mask
   );
   let regions = (region AnyRegion:$ports);
 
-  let assemblyFormat = [{ `(` $ID `)` regions attr-dict }];
+  let assemblyFormat = [{ `(` $ID `)` regions
+    custom<FlowVias>($vias, $via_ingress_bundles, $via_ingress_channels, $via_egress_bundles, $via_egress_channels)
+    attr-dict }];
   let hasVerifier = 1;
+
+  let builders = [
+    OpBuilder<(ins "uint8_t":$ID, "mlir::BoolAttr":$keep_pkt_header,
+                   "mlir::BoolAttr":$priority_route), [{
+      build($_builder, $_state, ID, keep_pkt_header, priority_route,
+            mlir::ValueRange{}, nullptr, nullptr, nullptr, nullptr, nullptr);
+    }]>,
+    OpBuilder<(ins "mlir::IntegerAttr":$ID, "mlir::BoolAttr":$keep_pkt_header,
+                   "mlir::BoolAttr":$priority_route), [{
+      build($_builder, $_state, ID, keep_pkt_header, priority_route,
+            mlir::ValueRange{}, nullptr, nullptr, nullptr, nullptr, nullptr);
+    }]>
+  ];
 
   let extraClassDeclaration = [{
     int IDInt() { return getID(); }
