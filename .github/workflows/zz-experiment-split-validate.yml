@@ -1,0 +1,150 @@
+# TEMPORARY EXPERIMENT WORKFLOW -- DO NOT MERGE. Removed before any split/cache PR
+# is finalized. Two INDEPENDENT arms on real Ryzen AI hardware, each proving
+# correctness INCLUDING its deliberate-failure paths so a silent regression is loud:
+#   arm 1 (split_experiment.sh)  -- compile/execute split: whole==split parity,
+#          fresh-root canary, no-masking fault injection, whole-vs-split timing.
+#   arm 2 (cache_experiment.sh)  -- per-test content-addressed xclbin cache, MEASUREMENT-ONLY
+#          (intra-run cold->warm reuse + hit-is-correct + row-4 invalidation self-test). Genuine
+#          cross-JOB persistence (actions/cache) is DEFERRED: those steps are commented out below so
+#          the stripped, self-contained version is validated on CI FIRST, then re-enabled as a
+#          second test.
+# The arms run as separate steps sharing one build; results stay separately
+# attributable. This gathers the #3198 numbers (incl. Chess) without touching the
+# real workflow's default behaviour.
+name: EXPERIMENT split+cache validate (TEMPORARY)
+
+permissions:
+  contents: read
+
+# TEMPORARY / DO-NOT-MERGE. `pull_request` so a maintainer can run it on a Chess-capable runner by
+# approving the check (fork PRs on self-hosted runners are approval-gated); `workflow_dispatch` as a
+# fallback. The merge-hazard (a permanent 2nd per-PR device build if ever merged) is guarded ONLY by the
+# DO-NOT-MERGE marker + draft status + removal before the split PR is finalized -- so this file must never
+# reach a mergeable PR.
+on:
+  pull_request:
+  workflow_dispatch:
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: exp-split-${{ github.event.number || github.sha }}
+  cancel-in-progress: true
+
+env:
+  DEBIAN_FRONTEND: noninteractive
+  XILINXD_LICENSE_FILE: /opt/xilinx/Xilinx.lic
+  VITIS: /opt/ryzen_ai-1.3.0.1/vitis_aie_essentials
+  CMAKE_ARGS: |
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_EXE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+            -DCMAKE_MODULE_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+            -DCMAKE_SHARED_LINKER_FLAGS_INIT="-fuse-ld=lld" \
+            -DXRT_ROOT=/opt/xilinx/xrt \
+            -DAIE_VITIS_COMPONENTS=AIE2;AIE2P \
+            -DAIE_ENABLE_PYTHON_PASSES=OFF \
+            -DAIE_ENABLE_XRT_PYTHON_BINDINGS=ON
+  LIT_OPTS: -sv --time-tests --timeout 600 --show-unsupported --show-excluded
+
+jobs:
+  experiment:
+    name: EXPERIMENT split validate
+    runs-on: ${{ matrix.runner_type }}
+    # Bound the hold on AMD's capacity-1 self-hosted device runner: a device-open
+    # hang or a wedged build must NOT sit until GitHub's 6h default. Covers build
+    # (~20m) + split arm + cache arm with headroom. (LIT_OPTS --timeout bounds only
+    # per-test lit hangs, not the build.)
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        runner_type: [ aie2-4col, aie2p-8col ]
+    env:
+      NPU_CACHE_HOME: ${{ github.workspace }}/iron-cache-exp-${{ matrix.runner_type }}-${{ github.run_id }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          submodules: "true"
+
+      - name: Setup virtual environment / prerequisites
+        run: source ./utils/env_install.sh aie-venv --dev --extras
+
+      - name: Build mlir-aie from source (matched to this commit)
+        run: |
+          source aie-venv/bin/activate
+          OPENCV_CMAKE="-DOpenCV_DIR=$(pkg-config --variable=prefix opencv4)/lib/cmake/opencv4"
+          export EXTRA_CMAKE_ARGS="-DPython3_EXECUTABLE=$(which python) $CMAKE_ARGS $OPENCV_CMAKE"
+          ./utils/build-mlir-aie-from-wheels.sh "" build mlir_aie
+
+      - name: Run split experiment (correctness incl. deliberate fails + timing)
+        run: |
+          sudo prlimit -lunlimited --pid $$
+          [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
+          source aie-venv/bin/activate
+          export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
+          rm -rf "$NPU_CACHE_HOME"; mkdir -p "$NPU_CACHE_HOME"
+          export XRT_CONTEXT_CACHE_SIZE=2
+          TOTAL_MEM_GB=$(free -g | awk '/^Mem:/ {print $2}')
+          if [ "$TOTAL_MEM_GB" -lt 48 ]; then export JOBS_COMPILE=4 JOBS_WHOLE=4; else export JOBS_COMPILE=12 JOBS_WHOLE=12; fi
+          export TREE="$PWD" BUILD="$PWD/build" OUT="$PWD/split-experiment-out"
+          bash .github/workflows/scripts/split_experiment.sh
+
+      # ---- SEPARATE ARM: per-test content-addressed xclbin cache (MEASUREMENT-ONLY) ----
+      # actions/cache is DEFERRED. Validate the stripped, self-contained version (intra-run
+      # cold->warm reuse + row-4 safety) on AMD's CI FIRST, THEN re-enable cross-JOB persistence
+      # as a SECOND test. Before uncommenting, address the red-team findings:
+      #   (1) save step -> `if: success()` so a run whose hit-is-correct check FAILED can't persist
+      #       a known-bad slot that re-hits on a same-commit retry;
+      #   (2) SHA-pin actions/cache/{restore,save} (self-hosted device runners, house style);
+      #   (3) fold a full XRT/Vitis fingerprint into tc_key (git commit doesn't cover the OS-image
+      #       toolchain -> a runner-image upgrade between same-commit runs could serve a cross-ABI hit);
+      #   (4) add `id:` + surface `cache-hit` so a no-op cache service is visible, not silent.
+      #
+      # - name: Restore xclbin cache (cross-JOB, best-effort)   # DEFERRED -- second test
+      #   continue-on-error: true
+      #   uses: actions/cache/restore@v4                        # SHA-pin before enabling
+      #   with:
+      #     path: ${{ github.workspace }}/xclbin-cache-exp
+      #     key: xclbin-cache-${{ matrix.runner_type }}-${{ github.run_id }}
+      #     restore-keys: |
+      #       xclbin-cache-${{ matrix.runner_type }}-
+
+      - name: Run cache experiment (intra-run reuse + invalidation self-test)
+        run: |
+          sudo prlimit -lunlimited --pid $$
+          [ -f /opt/xilinx/xrt/setup.sh ] && source /opt/xilinx/xrt/setup.sh
+          source aie-venv/bin/activate
+          export PATH=$VITIS/bin:$VITIS/aietools/bin:$PATH
+          rm -rf "$NPU_CACHE_HOME"; mkdir -p "$NPU_CACHE_HOME"
+          export XRT_CONTEXT_CACHE_SIZE=2
+          TOTAL_MEM_GB=$(free -g | awk '/^Mem:/ {print $2}')
+          if [ "$TOTAL_MEM_GB" -lt 48 ]; then export JOBS_COMPILE=4; else export JOBS_COMPILE=12; fi
+          export TREE="$PWD" BUILD="$PWD/build" OUT="$PWD/cache-experiment-out"
+          export CACHE_DIR="$GITHUB_WORKSPACE/xclbin-cache-exp"
+          # toolchain fingerprint = built commit (invalidates every per-test key on a bump)
+          export TOOLCHAIN_KEY="${{ github.sha }}-${{ matrix.runner_type }}"
+          bash .github/workflows/scripts/cache_experiment.sh
+
+      # - name: Save xclbin cache (cross-JOB, best-effort)     # DEFERRED -- second test
+      #   if: success()   # NOT always(): never persist a slot from a run whose hit-is-correct check failed
+      #   continue-on-error: true
+      #   uses: actions/cache/save@v4                          # SHA-pin before enabling
+      #   with:
+      #     path: ${{ github.workspace }}/xclbin-cache-exp
+      #     key: xclbin-cache-${{ matrix.runner_type }}-${{ github.run_id }}
+
+      - name: Upload experiment data
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: split-experiment-${{ matrix.runner_type }}
+          path: |
+            split-experiment-out/
+            cache-experiment-out/
+
+      - name: Cleanup NPU_CACHE_HOME
+        if: always()
+        run: rm -rf "$NPU_CACHE_HOME"
