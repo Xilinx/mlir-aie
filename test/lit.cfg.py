@@ -207,6 +207,16 @@ if LitConfigHelper.python_expr_is_true(
 ):
     config.available_features.add("hrx_python_bindings")
 
+# The pure-HRX hardware job has no XRT probe. Its explicit NPU declaration
+# enables only HRX hardware tests; XRT tests remain unsupported.
+hrx_npu = os.environ.get("AIE_HRX_NPU")
+if hrx_npu:
+    if hrx_npu not in {"npu1", "npu2"}:
+        lit_config.fatal(f"AIE_HRX_NPU must be 'npu1' or 'npu2', got {hrx_npu!r}")
+    config.available_features.add(f"hrx_{hrx_npu}")
+    if hrx_npu == "npu2":
+        llvm_config.with_environment("NPU2", "1")
+
 if config.xrt_python_bindings and LitConfigHelper.can_import_python_module(
     config, config.python_executable, "pyxrt"
 ):
