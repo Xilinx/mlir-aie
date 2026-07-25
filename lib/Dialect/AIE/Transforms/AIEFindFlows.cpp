@@ -385,6 +385,28 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
     Value destTile = resolveEndpointTile(destOp);
     if (!destTile)
       continue;
+    if (maskValue.mask != 0) {
+      // Packet endpoint. In pinning mode the physical packet configuration is
+      // left exactly as routed and the aie.packet_flow ops are dropped, so that
+      // re-routing keeps -- rather than re-derives -- the packet routes. Do not
+      // consume anything here. In recovery mode a logical packet flow is lifted
+      // and its configuration reclaimed.
+      if (emitVias)
+        continue;
+      for (Operation *op : c.usedOps)
+        if (op)
+          consumed.insert(op);
+      auto flowOp =
+          PacketFlowOp::create(rewriter, loc, maskValue.value, nullptr, nullptr);
+      PacketFlowOp::ensureTerminator(flowOp.getPorts(), rewriter, loc);
+      OpBuilder::InsertPoint ip = rewriter.saveInsertionPoint();
+      rewriter.setInsertionPoint(flowOp.getPorts().front().getTerminator());
+      PacketSourceOp::create(rewriter, loc, srcTile, srcBundle, srcChannel);
+      PacketDestOp::create(rewriter, loc, destTile, destPort.bundle,
+                           destPort.channel);
+      rewriter.restoreInsertionPoint(ip);
+      continue;
+    }
     // A section that lifts no interconnect configuration carries no routing:
     // it is either a fan-out output feeding its own tile with no hop, or the
     // physical wire between two retained fan-out nodes. The wire is implicit
@@ -402,35 +424,28 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
     for (Operation *op : c.usedOps)
       if (op)
         consumed.insert(op);
-    if (maskValue.mask == 0) {
-      if (emitVias && !c.vias.empty()) {
-        SmallVector<Value> viaTiles;
-        SmallVector<int32_t> ingressBundles, ingressChannels, egressBundles,
-            egressChannels;
-        for (const Via &via : c.vias) {
-          viaTiles.push_back(via.tile);
-          ingressBundles.push_back(static_cast<int32_t>(via.ingress.bundle));
-          ingressChannels.push_back(via.ingress.channel);
-          egressBundles.push_back(static_cast<int32_t>(via.egress.bundle));
-          egressChannels.push_back(via.egress.channel);
-        }
-        MLIRContext *ctx = rewriter.getContext();
-        FlowOp::create(rewriter, loc, srcTile, srcBundle, srcChannel, destTile,
-                       destPort.bundle, destPort.channel, viaTiles,
-                       DenseI32ArrayAttr::get(ctx, ingressBundles),
-                       DenseI32ArrayAttr::get(ctx, ingressChannels),
-                       DenseI32ArrayAttr::get(ctx, egressBundles),
-                       DenseI32ArrayAttr::get(ctx, egressChannels));
-      } else {
-        FlowOp::create(rewriter, loc, srcTile, srcBundle, srcChannel, destTile,
-                       destPort.bundle, destPort.channel);
+    if (emitVias && !c.vias.empty()) {
+      SmallVector<Value> viaTiles;
+      SmallVector<int32_t> ingressBundles, ingressChannels, egressBundles,
+          egressChannels;
+      for (const Via &via : c.vias) {
+        viaTiles.push_back(via.tile);
+        ingressBundles.push_back(static_cast<int32_t>(via.ingress.bundle));
+        ingressChannels.push_back(via.ingress.channel);
+        egressBundles.push_back(static_cast<int32_t>(via.egress.bundle));
+        egressChannels.push_back(via.egress.channel);
       }
+      MLIRContext *ctx = rewriter.getContext();
+      FlowOp::create(rewriter, loc, srcTile, srcBundle, srcChannel, destTile,
+                     destPort.bundle, destPort.channel, viaTiles,
+                     DenseI32ArrayAttr::get(ctx, ingressBundles),
+                     DenseI32ArrayAttr::get(ctx, ingressChannels),
+                     DenseI32ArrayAttr::get(ctx, egressBundles),
+                     DenseI32ArrayAttr::get(ctx, egressChannels));
+    } else {
+      FlowOp::create(rewriter, loc, srcTile, srcBundle, srcChannel, destTile,
+                     destPort.bundle, destPort.channel);
     }
-    // Packet routing keeps its logical form: create-pathfinder-flows leaves the
-    // aie.packet_flow ops in place (with their attributes), so the physical
-    // configuration consumed above is all that needs to be reclaimed -- emitting
-    // a recovered packet flow would only duplicate the surviving op and collide
-    // on re-routing.
   }
 }
 
@@ -604,25 +619,12 @@ struct AIEFindFlowsPass
     for (Operation *op : consumed)
       if (isa<ConnectOp, PacketRuleOp, MasterSetOp>(op))
         op->erase();
-    // Packet routing is regenerated from the surviving packet_flow ops on
-    // re-routing, so its physical configuration is entirely redundant. The
-    // forward trace only reclaims nets it can follow end-to-end (merges and
-    // other topologies it cannot attribute would otherwise survive and collide
-    // with the re-routed flow), so drop every remaining rule set and master set
-    // outright. Control overlays have no packet_flow and are the sole exception.
-    auto stripPacketConfig = [](Region &connections) {
-      Block &b = connections.front();
-      for (auto ms : llvm::make_early_inc_range(b.getOps<MasterSetOp>()))
-        if (!ms->hasAttr("is_ctrl_pkt_overlay"))
-          ms.erase();
-      for (auto rules : llvm::make_early_inc_range(b.getOps<PacketRulesOp>()))
-        if (!rules->hasAttr("is_ctrl_pkt_overlay"))
-          rules.erase();
-    };
-    for (auto switchOp : d.getOps<SwitchboxOp>())
-      stripPacketConfig(switchOp.getConnections());
-    for (auto shimMuxOp : d.getOps<ShimMuxOp>())
-      stripPacketConfig(shimMuxOp.getConnections());
+    // In pinning mode the packet routes stay as their exact physical
+    // configuration; the aie.packet_flow ops that describe them are dropped so
+    // re-routing preserves those routes instead of re-deriving them.
+    if (clEmitVias)
+      for (auto pktFlow : llvm::make_early_inc_range(d.getOps<PacketFlowOp>()))
+        pktFlow.erase();
     auto cleanupInterconnect = [](Region &connections) {
       for (auto amselOp :
            llvm::make_early_inc_range(connections.getOps<AMSelOp>()))

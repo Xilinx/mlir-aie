@@ -15,9 +15,9 @@
 // ROUNDTRIP: aie.flow(%[[T02]], DMA : 0, %[[T03]], DMA : 0) via (%[[T02]] : DMA : 0 -> North : 4, %[[T03]] : South : 4 -> DMA : 0)
 
 // --aie-split-flow-vias rewrites the via flow into a pinned switchbox at each
-// via tile plus the segment flows between the pinned ports.  Segments that
-// coincide with the flow's own source/dest port (here both ends) are elided,
-// leaving just the inter-switchbox hop.
+// via tile.  The head/tail segments coincide with the flow's own source/dest
+// port and the hop between the two via tiles is a single inter-switchbox wire,
+// so every segment is elided and only the pinned connections remain.
 // CHECK: %[[T02:.*]] = aie.tile(0, 2)
 // CHECK: aie.switchbox(%[[T02]]) {
 // CHECK:   aie.connect<DMA : 0, North : 4>
@@ -26,7 +26,7 @@
 // CHECK: aie.switchbox(%[[T03]]) {
 // CHECK:   aie.connect<South : 4, DMA : 0>
 // CHECK: }
-// CHECK: aie.flow(%[[T02]], North : 4, %[[T03]], South : 4)
+// CHECK-NOT: aie.flow
 module {
   aie.device(xcvc1902) {
     %t02 = aie.tile(0, 2)

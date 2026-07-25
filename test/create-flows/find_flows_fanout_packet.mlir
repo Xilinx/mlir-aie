@@ -5,9 +5,10 @@
 //
 //===----------------------------------------------------------------------===//
 
-// A packet broadcast is split at its fan-out node: the shared amsel and its two
-// mastersets stay explicit (the broadcast is no longer implicit), and the
-// sections around it become logical packet flows.
+// In pinning mode (emit-vias) packet routes are held as their exact physical
+// configuration: every switchbox -- including the fan-out node whose shared
+// amsel drives two mastersets -- is kept verbatim, and the aie.packet_flow op
+// is dropped so re-routing preserves the pinned route instead of re-deriving it.
 
 // RUN: aie-opt --aie-create-pathfinder-flows %s | aie-opt --aie-find-flows=emit-vias=true | FileCheck %s
 
@@ -20,14 +21,7 @@
 // CHECK:     aie.rule(31, 1, %[[AS]])
 // CHECK:   }
 // CHECK: }
-// CHECK: aie.packet_flow(1) {
-// CHECK:   aie.packet_source<%{{.*}}, DMA : 0>
-// CHECK:   aie.packet_dest<%[[P04]], South : {{[0-9]+}}>
-// CHECK: }
-// CHECK: aie.packet_flow(1) {
-// CHECK:   aie.packet_source<%[[P04]], North : {{[0-9]+}}>
-// CHECK:   aie.packet_dest<%{{.*}}, DMA : 0>
-// CHECK: }
+// CHECK-NOT: aie.packet_flow
 module {
   aie.device(xcvc1902) {
     %t02 = aie.tile(0, 2)
