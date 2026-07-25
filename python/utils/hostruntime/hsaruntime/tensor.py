@@ -22,7 +22,7 @@ from . import HSAContext
 class HSATensor(Tensor):
     """Tensor backed by an HSA vmem allocation (CPU+AIE coherent)."""
 
-    def __init__(self, shape_or_data, dtype=np.uint32, device="npu", **kwargs):
+    def __init__(self, shape_or_data, dtype=np.uint32, device="npu"):
         super().__init__(shape_or_data, dtype=dtype, device=device)
         self._ctx = HSAContext.get()
 
@@ -37,12 +37,11 @@ class HSATensor(Tensor):
             np_data = np.asarray(shape_or_data, dtype=dtype)
             self._shape = np_data.shape
 
-        nbytes = int(np.prod(self._shape) * np.dtype(self.dtype).itemsize)
         # vmem rejects zero-size; keep a 1-byte floor (designs never use 0-size IO).
-        request = max(nbytes, 1)
+        request = max(self.nbytes, 1)
         self._handle, self._va, self._alloc_size = self._ctx.vmem_alloc(request)
 
-        count = int(np.prod(self._shape))
+        count = self.numel()
         buf_type = ctypes.c_char * self._alloc_size
         self._cbuf = buf_type.from_address(self._va)
         self._data = np.frombuffer(self._cbuf, dtype=self.dtype, count=count).reshape(
@@ -72,11 +71,8 @@ class HSATensor(Tensor):
         pass
 
     def __del__(self):
-        try:
-            self._data = None
-            self._cbuf = None
-        except Exception:
-            pass
+        self._data = None
+        self._cbuf = None
         va = getattr(self, "_va", None)
         if va:
             try:
