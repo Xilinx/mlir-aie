@@ -88,9 +88,6 @@ public:
       for (auto connectOp : b.getOps<ConnectOp>())
         if (!llvm::is_contained(sources, connectOp.sourcePort()))
           sources.push_back(connectOp.sourcePort());
-      for (auto rulesOp : b.getOps<PacketRulesOp>())
-        if (!llvm::is_contained(sources, rulesOp.sourcePort()))
-          sources.push_back(rulesOp.sourcePort());
       for (Port p : sources)
         if (getConnectionsThroughSwitchbox(connections, p).size() > 1)
           fanoutIngresses.insert({sw, encodePort(p)});
@@ -388,11 +385,12 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
     Value destTile = resolveEndpointTile(destOp);
     if (!destTile)
       continue;
-    // An empty section whose source and destination are the same port (e.g. a
-    // fan-out output that feeds its own tile with no hop in between) carries
-    // nothing.  A self-loop that actually routes through the fabric does.
-    if (c.usedOps.empty() && destTile == srcTile &&
-        destPort.bundle == srcBundle && destPort.channel == srcChannel)
+    // A section that lifts no interconnect configuration carries no routing:
+    // it is either a fan-out output feeding its own tile with no hop, or the
+    // physical wire between two retained fan-out nodes. The wire is implicit
+    // and the switchboxes at both ends stay explicit, so emitting a flow for it
+    // would only fight their fixed connections on re-routing.
+    if (c.usedOps.empty())
       continue;
     // A flow seeded from a fabric-entry / fan-out output that terminates on a
     // real endpoint of the same tile never leaves that tile -- it is a dead or
@@ -427,18 +425,12 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
         FlowOp::create(rewriter, loc, srcTile, srcBundle, srcChannel, destTile,
                        destPort.bundle, destPort.channel);
       }
-    } else {
-      // Packet flows have no via representation; emit the plain packet flow.
-      auto flowOp =
-          PacketFlowOp::create(rewriter, loc, maskValue.value, nullptr, nullptr);
-      PacketFlowOp::ensureTerminator(flowOp.getPorts(), rewriter, loc);
-      OpBuilder::InsertPoint ip = rewriter.saveInsertionPoint();
-      rewriter.setInsertionPoint(flowOp.getPorts().front().getTerminator());
-      PacketSourceOp::create(rewriter, loc, srcTile, srcBundle, srcChannel);
-      PacketDestOp::create(rewriter, loc, destTile, destPort.bundle,
-                           destPort.channel);
-      rewriter.restoreInsertionPoint(ip);
     }
+    // Packet routing keeps its logical form: create-pathfinder-flows leaves the
+    // aie.packet_flow ops in place (with their attributes), so the physical
+    // configuration consumed above is all that needs to be reclaimed -- emitting
+    // a recovered packet flow would only duplicate the surviving op and collide
+    // on re-routing.
   }
 }
 
@@ -612,6 +604,25 @@ struct AIEFindFlowsPass
     for (Operation *op : consumed)
       if (isa<ConnectOp, PacketRuleOp, MasterSetOp>(op))
         op->erase();
+    // Packet routing is regenerated from the surviving packet_flow ops on
+    // re-routing, so its physical configuration is entirely redundant. The
+    // forward trace only reclaims nets it can follow end-to-end (merges and
+    // other topologies it cannot attribute would otherwise survive and collide
+    // with the re-routed flow), so drop every remaining rule set and master set
+    // outright. Control overlays have no packet_flow and are the sole exception.
+    auto stripPacketConfig = [](Region &connections) {
+      Block &b = connections.front();
+      for (auto ms : llvm::make_early_inc_range(b.getOps<MasterSetOp>()))
+        if (!ms->hasAttr("is_ctrl_pkt_overlay"))
+          ms.erase();
+      for (auto rules : llvm::make_early_inc_range(b.getOps<PacketRulesOp>()))
+        if (!rules->hasAttr("is_ctrl_pkt_overlay"))
+          rules.erase();
+    };
+    for (auto switchOp : d.getOps<SwitchboxOp>())
+      stripPacketConfig(switchOp.getConnections());
+    for (auto shimMuxOp : d.getOps<ShimMuxOp>())
+      stripPacketConfig(shimMuxOp.getConnections());
     auto cleanupInterconnect = [](Region &connections) {
       for (auto amselOp :
            llvm::make_early_inc_range(connections.getOps<AMSelOp>()))
