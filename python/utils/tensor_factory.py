@@ -145,6 +145,8 @@ elif _NPU_RUNTIME == "hsa":
     from .hostruntime.hsaruntime.tensor import HSATensor
 
     DEFAULT_TENSOR_CLASS = HSATensor
+# Reachable only with _NPU_RUNTIME in {"xrt","cpu"}; "cpu" implies XRT is
+# absent (see the auto-resolution above).
 elif _NPU_RUNTIME == "xrt" and _probe_xrt():
     from .hostruntime.xrtruntime.tensor import XRTTensor
 

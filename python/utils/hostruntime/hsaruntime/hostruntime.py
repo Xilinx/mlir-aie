@@ -119,7 +119,7 @@ class HSAHostRuntime(HostRuntime):
             pdi_ptr, len(pdi_bytes), insts_ptr, len(insts_bytes), kernel_name
         )
 
-        if len(self._exe_cache) >= self._cache_size:
+        if self._cache_size > 0 and len(self._exe_cache) >= self._cache_size:
             _, old = self._exe_cache.popitem(last=False)
             self._ctx.free_region(old.pdi_ptr)
             self._ctx.free_region(old.insts_ptr)
@@ -147,7 +147,8 @@ class HSAHostRuntime(HostRuntime):
             ka = (ctypes.c_uint64 * (2 * n)).from_address(ka_va)
             for i, t in enumerate(kept):
                 ka[i] = t.buffer_object()
-                ka[n + i] = t.nbytes_alloc()
+                # Logical byte size (matching dispatch.cc), not the padded/granule-rounded alloc size.
+                ka[n + i] = t.nbytes
 
             signal = self._ctx.create_signal(1)
             try:
