@@ -10,7 +10,10 @@ Three annotation categories are defined here (all exported from ``aie.iron``):
 ``CompileTime[T]``
     Marks a generator function parameter as compile-time.  Changing its value
     causes a recompile and a new cache entry.  Inspired by ``tl.constexpr`` in
-    Triton.  Standard ``Generic[T]``, fully compatible with mypy/pyright.
+    Triton.  Implemented as ``Annotated[T, ...]`` so pyright/mypy check callers
+    against the wrapped type ``T`` itself (e.g. ``CompileTime[int]`` behaves
+    like ``int`` for type-checking) while ``_introspect.py`` still recovers the
+    marker at runtime via ``get_type_hints(..., include_extras=True)``.
 
 ``In``
     Marks a generator function parameter as a runtime *input* tensor.  Data is
@@ -34,30 +37,40 @@ silently ignored.  Annotate as ``CompileTime[T]`` (recompiles on change) or
 
 from __future__ import annotations
 
-from typing import Generic, TypeVar
+from typing import Annotated, TypeVar
 
 T = TypeVar("T")
 
 
-class CompileTime(Generic[T]):
-    """Compile-time parameter annotation.
+class _CompileTimeTag:
+    """Runtime tag embedded in ``Annotated[T, _CompileTimeTag()]`` so
+    ``_introspect.py`` can recognize a ``CompileTime[T]`` annotation without
+    pyright treating the parameter's type as anything other than ``T``."""
 
-    Use as a type annotation on generator function parameters that affect the
-    generated MLIR.  The value must be supplied at ``CompilableDesign``
-    construction time (or bound by ``@iron.jit(...)``).
+    __slots__ = ()
 
-    Changing a ``CompileTime[T]``-annotated value → new cache key → recompile.
-    Required unless a default is given.
 
-    Example::
+_COMPILE_TIME_TAG = _CompileTimeTag()
 
-        from ml_dtypes import bfloat16
+CompileTime = Annotated[T, _COMPILE_TIME_TAG]
+"""Compile-time parameter annotation.
 
-        def gemm(a: In, b: In, c: Out,
-                 M: CompileTime[int], K: CompileTime[int], N: CompileTime[int],
-                 dtype: CompileTime[type] = bfloat16):
-            ...
-    """
+Use as a type annotation on generator function parameters that affect the
+generated MLIR.  The value must be supplied at ``CompilableDesign``
+construction time (or bound by ``@iron.jit(...)``).
+
+Changing a ``CompileTime[T]``-annotated value → new cache key → recompile.
+Required unless a default is given.
+
+Example::
+
+    from ml_dtypes import bfloat16
+
+    def gemm(a: In, b: In, c: Out,
+             M: CompileTime[int], K: CompileTime[int], N: CompileTime[int],
+             dtype: CompileTime[type] = bfloat16):
+        ...
+"""
 
 
 class In:
