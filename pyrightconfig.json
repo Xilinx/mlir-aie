@@ -3,7 +3,8 @@
     "python/iron",
     "python/utils",
     "python/helpers",
-    "python/compiler"
+    "python/compiler",
+    "programming_examples/algorithms"
   ],
   "exclude": [
     "**/__pycache__",
