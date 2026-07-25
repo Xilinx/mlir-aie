@@ -403,6 +403,19 @@ static void emitFlows(OpBuilder &rewriter, Location loc, Value srcTile,
     Value destTile = resolveEndpointTile(destOp);
     if (!destTile)
       continue;
+    // Control-packet overlays carry configuration the lifted flow cannot
+    // express (the is_ctrl_pkt_overlay / keep_pkt_header attributes and a fixed
+    // arbiter), so never lift or reclaim them -- leave the overlay materialized.
+    bool ctrlOverlay = false;
+    for (Operation *op : c.usedOps) {
+      if (auto ms = dyn_cast_or_null<MasterSetOp>(op))
+        ctrlOverlay |= ms->hasAttr("is_ctrl_pkt_overlay");
+      else if (auto r = dyn_cast_or_null<PacketRuleOp>(op))
+        if (Operation *p = r->getParentOp())
+          ctrlOverlay |= p->hasAttr("is_ctrl_pkt_overlay");
+    }
+    if (ctrlOverlay)
+      continue;
     // Recovery mode (no vias): a packet endpoint becomes a plain logical packet
     // flow and its physical configuration is reclaimed.
     if (maskValue.mask != 0 && !emitVias) {
