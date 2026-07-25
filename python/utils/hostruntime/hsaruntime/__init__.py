@@ -12,13 +12,9 @@ this package for the ``hsa_available`` probe performs no dlopen.
 """
 
 import ctypes
-import logging
 import os
-from pathlib import Path
 
 from .discovery import find_libhsa
-
-logger = logging.getLogger(__name__)
 
 # --- hsa.h constants -------------------------------------------------------
 HSA_STATUS_SUCCESS = 0
@@ -273,6 +269,8 @@ class HSAContext:
 
         self.region = self._find_region(self.aie_agent)
         self.pool = self._find_pool(self.aie_agent)
+        # Fixed for the life of the singleton; query once instead of per vmem_alloc.
+        self.pool_granule = self._pool_granule()
         self.device_gen = self._detect_device_gen()
 
         min_size = ctypes.c_uint32()
@@ -411,7 +409,7 @@ class HSAContext:
 
     # -- vmem memory (I/O + kernargs) -------------------------------------
     def vmem_alloc(self, size):
-        granule = self._pool_granule()
+        granule = self.pool_granule
         size = ((size + granule - 1) // granule) * granule
         handle = hsa_amd_vmem_alloc_handle_t()
         _check(

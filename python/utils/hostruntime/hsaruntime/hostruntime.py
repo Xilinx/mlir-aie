@@ -15,20 +15,18 @@ ignored on this path) and dispatches them as one AIE AQL packet:
 
 import atexit
 import ctypes
-import logging
 import os
+import time
 from collections import OrderedDict
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from ..hostruntime import HostRuntime, HostRuntimeError, KernelHandle, KernelResult
 from .tensor import HSATensor
-from . import HSAContext, HSAError
+from . import HSAContext
 
 if TYPE_CHECKING:
     from aie.iron.device import Device
-
-logger = logging.getLogger(__name__)
 
 _TRACE_UNSUPPORTED_MSG = (
     "Trace capture is not supported on the HSA backend. Re-run without a "
@@ -152,7 +150,6 @@ class HSAHostRuntime(HostRuntime):
 
             signal = self._ctx.create_signal(1)
             try:
-                import time
                 start = time.time_ns()
                 self._ctx.dispatch(
                     kernel_handle.pdi_ptr, kernel_handle.insts_ptr,
@@ -178,11 +175,8 @@ class HSAHostRuntime(HostRuntime):
             return
         while cache:
             _, handle = cache.popitem(last=False)
-            try:
-                self._ctx.free_region(handle.pdi_ptr)
-                self._ctx.free_region(handle.insts_ptr)
-            except HSAError as e:
-                logger.debug("HSA region free failed during cleanup: %s", e)
+            self._ctx.free_region(handle.pdi_ptr)
+            self._ctx.free_region(handle.insts_ptr)
 
 
 class CachedHSAHostRuntime(HSAHostRuntime):
