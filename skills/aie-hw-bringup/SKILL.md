@@ -117,7 +117,7 @@ that doesn't cost either.
 - [ ] Full chain validated bit-exact against the oracle/reference on at
       least one real canary input
 - [ ] If the model spans multiple dispatches: each dispatch validated
-      independently, AND the host-orchestration handoff between them
+      independently, and the host-orchestration handoff between them
       validated as its own step, not assumed correct because both sides
       passed in isolation
 - [ ] Any memory-budget overflow was resolved via a tile split, not a
