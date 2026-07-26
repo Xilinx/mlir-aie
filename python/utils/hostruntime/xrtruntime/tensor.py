@@ -95,6 +95,10 @@ class XRTTensor(NpuTensor):
         """
         Get the underlying numpy array.
 
+        Writes through this array are not reconciled; use :meth:`mutate` for a
+        write that is. Kept as the unmediated handle for callers that manage
+        their own synchronization.
+
         Returns:
             np.ndarray: The underlying data.
         """

@@ -3,6 +3,7 @@
 # Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
+import contextlib
 import math
 import operator
 import os
@@ -169,6 +170,65 @@ def _array_to_torch(array: np.ndarray):
     return torch.from_numpy(array.view(uint_dtype)).view(torch_dtype)
 
 
+class _CoherenceMap:
+    """Which byte ranges of one allocation the host has written, and which the
+    device has.
+
+    The state belongs to the memory, not to whichever tensor happens to name it.
+    Ranges are kept coalesced, so an arena whose windows are all in the same
+    state costs one entry, and a whole-buffer reconcile is one operation rather
+    than one per view.
+    """
+
+    HOST = "cpu"
+    DEVICE = "npu"
+
+    def __init__(self, nbytes, state):
+        self._spans = [[0, nbytes, state]]
+
+    def set(self, start, end, state):
+        if start >= end:
+            return
+        spans, out = self._spans, []
+        for lo, hi, value in spans:
+            if hi <= start or lo >= end:  # untouched
+                out.append([lo, hi, value])
+                continue
+            if lo < start:  # keep the head
+                out.append([lo, start, value])
+            if hi > end:  # keep the tail
+                out.append([end, hi, value])
+        out.append([start, end, state])
+        out.sort()
+        self._spans = self._coalesce(out)
+
+    def get(self, start, end):
+        """The state of ``[start, end)``, or None if it is not uniform."""
+        seen = {v for lo, hi, v in self._spans if lo < end and hi > start}
+        return seen.pop() if len(seen) == 1 else None
+
+    def any_host_written(self, start, end):
+        return any(
+            v == self.HOST for lo, hi, v in self._spans if lo < end and hi > start
+        )
+
+    def ranges(self, start, end, state):
+        """The sub-ranges of ``[start, end)`` currently in ``state``."""
+        for lo, hi, value in self._spans:
+            if value == state and lo < end and hi > start:
+                yield max(lo, start), min(hi, end)
+
+    @staticmethod
+    def _coalesce(spans):
+        merged = []
+        for span in spans:
+            if merged and merged[-1][1] == span[0] and merged[-1][2] == span[2]:
+                merged[-1][1] = span[1]
+            else:
+                merged.append(span)
+        return merged
+
+
 class NpuTensor(ABC):
     """
     A host-mapped, device-resident buffer of fixed shape and dtype.
@@ -227,6 +287,50 @@ class NpuTensor(ABC):
         )
 
     @property
+    def _owner(self):
+        """The buffer that owns the storage (this one, if it owns it)."""
+        return self.base or self
+
+    def _coherence(self):
+        owner = self._owner
+        existing = owner.__dict__.get("_coherence_map")
+        if existing is None:
+            existing = _CoherenceMap(owner.nbytes, owner._initial_device)
+            owner.__dict__["_coherence_map"] = existing
+        return existing
+
+    @property
+    def _extent(self):
+        # Computed rather than read from the cached nbytes: this runs during
+        # construction, before the cache is warm.
+        start = self.storage_offset
+        size = int(np.prod(self.shape)) * np.dtype(self.dtype).itemsize
+        return start, start + size
+
+    @property
+    def device(self):
+        """Which agent holds the authoritative copy of *this tensor's bytes*.
+
+        Read from the allocation, so two tensors over the same bytes can never
+        disagree. A tensor spanning regions in different states reports ``cpu``
+        while any part of it still needs flushing, since that is the answer that
+        keeps a caller's reconcile from being skipped.
+        """
+        start, end = self._extent
+        coherence = self._coherence()
+        uniform = coherence.get(start, end)
+        if uniform is not None:
+            return uniform
+        return "cpu" if coherence.any_host_written(start, end) else "npu"
+
+    @device.setter
+    def device(self, value):
+        if value not in self.__class__.DEVICES:
+            raise ValueError(f"Unsupported device: {value}")
+        start, end = self._extent
+        self._coherence().set(start, end, value)
+
+    @property
     def base(self):
         """The buffer that owns this one's storage, or None if it owns it itself.
 
@@ -273,7 +377,7 @@ class NpuTensor(ABC):
         """
         if device not in self.__class__.DEVICES:
             raise ValueError(f"Unsupported device: {device}")
-        self.device = device
+        self._initial_device = device
         self.dtype = dtype
 
     @property
@@ -404,18 +508,45 @@ class NpuTensor(ABC):
         Returns:
            The tensor object on the target device.
         """
-        if target_device == self.device:
-            # nothing to do
-            pass
-        elif target_device == "npu":
-            self._sync_to_device()
-            self.device = "npu"
+        start, end = self._extent
+        coherence = self._coherence()
+        if target_device == "npu":
+            # Flush only if some part of this extent was written by the host.
+            if coherence.any_host_written(start, end):
+                self._sync_to_device()
+            coherence.set(start, end, "npu")
         elif target_device == "cpu":
-            self._sync_from_device()
-            self.device = "cpu"
+            if coherence.get(start, end) != "cpu":
+                self._sync_from_device()
+            coherence.set(start, end, "cpu")
         else:
             raise ValueError(f"Unknown device '{target_device}'")
         return self
+
+    @contextlib.contextmanager
+    def mutate(self):
+        """Borrow this buffer's bytes for a host write.
+
+        Reconciles on entry so partial updates see current contents, records the
+        write on exit, and retires the borrowed array so a reference kept past
+        the block fails loudly instead of writing bytes nobody will flush.
+
+        The flush itself is deferred: the region is marked host-written and the
+        next transfer to the device sends every dirty range in one pass, so a
+        caller filling many windows of one buffer pays for one flush, not one
+        per window.
+
+            with tensor.mutate() as buf:
+                buf[:] = values
+        """
+        self.to("cpu")
+        borrowed = self.data[...]
+        try:
+            yield borrowed
+        finally:
+            borrowed.flags.writeable = False
+            start, end = self._extent
+            self._coherence().set(start, end, "cpu")
 
     def subview(self, offset, shape, dtype=None):
         """
@@ -964,6 +1095,10 @@ class CPUOnlyTensor(NpuTensor):
     def data(self):
         """
         Get the underlying numpy array.
+
+        Writes through this array are not reconciled; use :meth:`mutate` for a
+        write that is. Kept as the unmediated handle for callers that manage
+        their own synchronization.
 
         Returns:
             np.ndarray: The underlying data.
