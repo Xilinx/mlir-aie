@@ -11,6 +11,18 @@ SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 # AIE kernel optimization (the "what to change" menu)
 
+Fourth of four porting phases, alongside `aie-dataflow-opt` (see
+`aie-model-baseline` for the numeric oracle, `aie-dataflow-presim` for
+pre-hardware validation, `aie-hw-bringup` for getting to a correct
+baseline on real hardware — this skill assumes that baseline already
+exists and is correct). **This skill is micro; `aie-dataflow-opt` is
+macro** — this skill answers "how do I make this one compiled kernel
+faster"; `aie-dataflow-opt` answers "which op should run on which tile,
+how should data move between them, and is a kernel even the right thing
+to be optimizing." Use this once a kernel is confirmed to be on the
+critical path (see `aie-dataflow-opt` lever #1, NOOP ablation, if that
+hasn't been confirmed yet).
+
 This is a catalog of the levers that actually move AIE/Peano kernels —
 in rough priority order, each with the constraint to respect so it pays
 off. Use it once you've identified a specific kernel worth optimizing.
