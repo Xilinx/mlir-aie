@@ -14,13 +14,10 @@ four A-subtiles per matmul cycle. B is bfp16ebs8; C is bf16. Strix-only.
 import argparse
 from pathlib import Path
 
+import aie.iron as iron
 import numpy as np
-from ml_dtypes import bfloat16
-
 from aie.dialects.aiex import v8bfp16ebs8
 from aie.helpers.taplib import TensorTiler2D
-
-import aie.iron as iron
 from aie.iron import (
     CompileTime,
     ExternalFunction,
@@ -29,14 +26,17 @@ from aie.iron import (
     Out,
     Program,
     Runtime,
+    StreamDims,
     Worker,
 )
 from aie.iron.controlflow import range_
+from aie.iron.runtime.taskgroup import RuntimeTaskGroup
 from aie.utils.hostruntime.argparse import (
-    device_from_args,
     add_compile_args,
+    device_from_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
+from ml_dtypes import bfloat16
 
 _KERNEL_SRC = Path(__file__).resolve().parent / "mm_bfp_mixed.cc"
 _AIE_KERNELS_INC = Path(__file__).resolve().parents[5] / "aie_kernels"
@@ -89,43 +89,42 @@ def n32_core_gemm(
         use_chess=True,
     )
 
-    A_l3l2_fifos = [None] * n_aie_rows
-    A_l2l1_fifos = [None] * n_aie_rows
-    B_l3l2_fifos = [None] * n_aie_cols
-    B_l2l1_fifos = [None] * n_aie_cols
-    C_l1l2_fifos = [[None] * n_aie_cols for _ in range(n_aie_rows)]
-    C_l2l3_fifos = [None] * n_aie_cols
+    A_l3l2_fifos: list[ObjectFifo] = []
+    A_l2l1_fifos: list[ObjectFifo] = []
+    B_l3l2_fifos: list[ObjectFifo] = []
+    B_l2l1_fifos: list[ObjectFifo] = []
+    C_l1l2_fifos: list[list[ObjectFifo]] = [[] for _ in range(n_aie_rows)]
+    C_l2l3_fifos: list[ObjectFifo] = []
 
     # Input A: 4 shim-rows, each shim→memtile carries an L2 strip and
     # the memtile then fans out the L1 sub-tiles to all 8 cores in that row.
-    a_l3l2_dims = [(m, k), (mtk // k, m * k), (k, 1)]
-    a_l2l1_in_dims = [
+    a_l3l2_dims: StreamDims = [(m, k), (mtk // k, m * k), (k, 1)]
+    a_l2l1_in_dims: StreamDims = [
         (mtk // k * 4, m * k // 4),
         (k // s, s),
         (m // 4, k),
         (s, 1),
     ]
-    a_l2l1_out_dims = [
+    a_l2l1_out_dims: StreamDims = [
         (k // s, r * s),
         (m // 4 // r, r * k),
         (r * s, 1),
     ]
 
     for row in range(n_aie_rows):
-        A_l3l2_fifos[row] = ObjectFifo(
+        a_l3l2 = ObjectFifo(
             A_l2_ty,
             name=f"A_L3L2_{row}",
             depth=2,
             dims_from_stream_per_cons=a_l3l2_dims,
         )
+        A_l3l2_fifos.append(a_l3l2)
         # forward() emits an ObjectFifoLink at the memtile. The new
         # (A_l2l1) fifo's producer-side `dims_to_stream` is the memtile
         # TX layout, and per-cons `dims_from_stream` is the layout each
         # of the 8 compute-tile consumers reads from the stream.
-        A_l2l1_fifos[row] = (
-            A_l3l2_fifos[row]
-            .cons()
-            .forward(
+        A_l2l1_fifos.append(
+            a_l3l2.cons().forward(
                 obj_type=A_l1_ty,
                 name=f"A_L2L1_{row}",
                 depth=2,
@@ -136,33 +135,29 @@ def n32_core_gemm(
 
     # Input B: 8 cols, each shim→memtile→fan to 4 rows of cores.
     for col in range(n_aie_cols):
-        B_l3l2_fifos[col] = ObjectFifo(B_l2_ty, name=f"B_L3L2_{col}", depth=2)
-        B_l2l1_fifos[col] = (
-            B_l3l2_fifos[col]
-            .cons()
-            .forward(obj_type=B_l1_ty, name=f"B_L2L1_{col}", depth=2)
+        b_l3l2 = ObjectFifo(B_l2_ty, name=f"B_L3L2_{col}", depth=2)
+        B_l3l2_fifos.append(b_l3l2)
+        B_l2l1_fifos.append(
+            b_l3l2.cons().forward(obj_type=B_l1_ty, name=f"B_L2L1_{col}", depth=2)
         )
 
     # Output C: per-col, 4 cores join at memtile, memtile→shim with the
     # final layout transform.
-    c_l2l3_dims = [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
+    c_l2l3_dims: StreamDims = [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
     for col in range(n_aie_cols):
-        C_l2l3_fifos[col] = ObjectFifo(
+        c_l2l3 = ObjectFifo(
             C_l2_ty, name=f"C_L2L3_{col}", depth=2, dims_to_stream=c_l2l3_dims
         )
+        C_l2l3_fifos.append(c_l2l3)
         of_offsets = [m * n * i for i in range(n_aie_rows)]
-        c_tmp_fifos = (
-            C_l2l3_fifos[col]
-            .prod()
-            .join(
-                of_offsets,
-                obj_types=[C_l1_ty] * n_aie_rows,
-                names=[f"C_L1L2_{col}_{row}" for row in range(n_aie_rows)],
-                depths=[1] * n_aie_rows,
-            )
+        c_tmp_fifos = c_l2l3.prod().join(
+            of_offsets,
+            obj_types=[C_l1_ty] * n_aie_rows,
+            names=[f"C_L1L2_{col}_{row}" for row in range(n_aie_rows)],
+            depths=[1] * n_aie_rows,
         )
         for j in range(n_aie_rows):
-            C_l1l2_fifos[j][col] = c_tmp_fifos[j]
+            C_l1l2_fifos[j].append(c_tmp_fifos[j])
 
     tiles_per_core = (M // m) * (N // n) // (n_aie_cols * n_aie_rows)
 
@@ -209,7 +204,11 @@ def n32_core_gemm(
     tb_max_n_rows = 4
 
     rt = Runtime()
-    with rt.sequence(A_ty, B_ty, C_ty) as (a, b, c):
+    with rt.sequence(A_ty, B_ty, C_ty) as (
+        a,
+        b,
+        c,
+    ):  # pyright: ignore[reportGeneralTypeIssues]
         rt.start(*[w for row in workers for w in row])
         # 4-slot rotating task-group pipeline. Each slot is one
         # iteration's (4 A-fills + 8 B-fills + 8 C-drains). A/B fills are
@@ -224,7 +223,13 @@ def n32_core_gemm(
         #
         # This caps in-flight BDs at exactly the original's 4-group
         # window (no extra BD pressure introduced by the IRON wrapper).
-        slots = [None] * tb_max_n_rows
+        slots: list[RuntimeTaskGroup | None] = [None] * tb_max_n_rows
+
+        def finish_slot(idx: int):
+            slot = slots[idx]
+            assert slot is not None
+            rt.finish_task_group(slot)
+
         for group_idx in range(num_groups):
             slot_idx = group_idx % tb_max_n_rows
             tg = rt.task_group()
@@ -259,17 +264,20 @@ def n32_core_gemm(
                 )
 
             if slot_idx == 1 and group_idx != 1:
-                rt.finish_task_group(slots[2])
-                rt.finish_task_group(slots[3])
+                finish_slot(2)
+                finish_slot(3)
             if slot_idx == 3:
-                rt.finish_task_group(slots[0])
-                rt.finish_task_group(slots[1])
+                finish_slot(0)
+                finish_slot(1)
 
         # Drain the two slots still pending at the end of the rotation.
-        rt.finish_task_group(slots[2])
-        rt.finish_task_group(slots[3])
+        finish_slot(2)
+        finish_slot(3)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    return Program(
+        iron.get_current_device(),  # pyright: ignore[reportArgumentType]
+        rt,
+    ).resolve_program()
 
 
 def _make_argparser():

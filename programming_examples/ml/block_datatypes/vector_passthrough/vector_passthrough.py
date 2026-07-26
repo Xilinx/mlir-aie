@@ -14,16 +14,14 @@ import argparse
 import sys
 from pathlib import Path
 
-import numpy as np
-
-from aie.dialects.aiex import v8bfp16ebs8
-
 import aie.iron as iron
+import numpy as np
+from aie.dialects.aiex import v8bfp16ebs8
 from aie.iron import ExternalFunction, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import (
-    device_from_args,
     add_compile_args,
+    device_from_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
 
@@ -58,12 +56,18 @@ def vector_passthrough(a_in: In, b_out: Out):
     worker = Worker(core_fn, [of_in.cons(), of_out.prod(), passthrough_func])
 
     rt = Runtime()
-    with rt.sequence(_TENSOR_TY, _TENSOR_TY) as (A, B):
+    with rt.sequence(_TENSOR_TY, _TENSOR_TY) as (
+        A,
+        B,
+    ):  # pyright: ignore[reportGeneralTypeIssues]
         rt.start(worker)
         rt.fill(of_in.prod(), A)
         rt.drain(of_out.cons(), B, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    return Program(
+        iron.get_current_device(),  # pyright: ignore[reportArgumentType]
+        rt,
+    ).resolve_program()
 
 
 def _make_argparser():

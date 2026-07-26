@@ -12,12 +12,9 @@ tile loop. Strix-only; chess-built.
 import argparse
 from pathlib import Path
 
-import numpy as np
-from ml_dtypes import bfloat16
-
-from aie.dialects.aiex import v8bfp16ebs8
-
 import aie.iron as iron
+import numpy as np
+from aie.dialects.aiex import v8bfp16ebs8
 from aie.iron import (
     CompileTime,
     ExternalFunction,
@@ -26,13 +23,15 @@ from aie.iron import (
     Out,
     Program,
     Runtime,
+    StreamDims,
     Worker,
 )
 from aie.utils.hostruntime.argparse import (
-    device_from_args,
     add_compile_args,
+    device_from_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
+from ml_dtypes import bfloat16
 
 _KERNEL_SRC = (
     Path(__file__).resolve().parents[5] / "aie_kernels" / "aie2p" / "mm_bfp_mixed.cc"
@@ -76,12 +75,12 @@ def single_core_no_tiling_mixed(
     )
 
     inA = ObjectFifo(a_ty, name="inA")
-    a_dims = [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
+    a_dims: StreamDims = [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
     memA = inA.cons().forward(name="memA", dims_to_stream=a_dims)
     inB = ObjectFifo(b_ty, name="inB")
     memB = inB.cons().forward(name="memB")
     memC = ObjectFifo(c_ty, name="memC")
-    c_dims = [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
+    c_dims: StreamDims = [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
     outC = memC.cons().forward(name="outC", dims_to_stream=c_dims)
 
     def core_fn(of_a, of_b, of_c, zero, matmul):
@@ -105,13 +104,20 @@ def single_core_no_tiling_mixed(
     C_ty = np.ndarray[(M * N,), np.dtype[bfloat16]]
 
     rt = Runtime()
-    with rt.sequence(A_ty, B_ty, C_ty) as (a, b, c):
+    with rt.sequence(A_ty, B_ty, C_ty) as (
+        a,
+        b,
+        c,
+    ):  # pyright: ignore[reportGeneralTypeIssues]
         rt.start(worker)
         rt.fill(inA.prod(), a)
         rt.fill(inB.prod(), b)
         rt.drain(outC.cons(), c, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    return Program(
+        iron.get_current_device(),  # pyright: ignore[reportArgumentType]
+        rt,
+    ).resolve_program()
 
 
 def _make_argparser():

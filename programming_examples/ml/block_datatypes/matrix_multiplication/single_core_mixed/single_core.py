@@ -13,13 +13,10 @@ kernel is chess-built.
 import argparse
 from pathlib import Path
 
+import aie.iron as iron
 import numpy as np
-from ml_dtypes import bfloat16
-
 from aie.dialects.aiex import v8bfp16ebs8
 from aie.helpers.taplib.tensortiler2d import TensorTiler2D
-
-import aie.iron as iron
 from aie.iron import (
     CompileTime,
     ExternalFunction,
@@ -28,14 +25,16 @@ from aie.iron import (
     Out,
     Program,
     Runtime,
+    StreamDims,
     Worker,
 )
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import (
-    device_from_args,
     add_compile_args,
+    device_from_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
+from ml_dtypes import bfloat16
 
 _KERNEL_SRC = (
     Path(__file__).resolve().parents[5] / "aie_kernels" / "aie2p" / "mm_bfp_mixed.cc"
@@ -84,12 +83,12 @@ def single_core_mixed(
     )
 
     inA = ObjectFifo(a_ty, name="inA")
-    a_dims = [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
+    a_dims: StreamDims = [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
     memA = inA.cons().forward(name="memA", dims_to_stream=a_dims)
     inB = ObjectFifo(b_ty, name="inB")
     memB = inB.cons().forward(name="memB")
     memC = ObjectFifo(c_ty, name="memC")
-    c_dims = [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
+    c_dims: StreamDims = [(m // r, r * n), (r, t), (n // t, r * t), (t, 1)]
     outC = memC.cons().forward(name="outC", dims_to_stream=c_dims)
 
     def core_fn(of_a, of_b, of_c, zero, matmul):
@@ -125,7 +124,11 @@ def single_core_mixed(
     c_index = 0
 
     rt = Runtime()
-    with rt.sequence(A_ty, B_ty, C_ty) as (a, b, c):
+    with rt.sequence(A_ty, B_ty, C_ty) as (
+        a,
+        b,
+        c,
+    ):  # pyright: ignore[reportGeneralTypeIssues]
         rt.start(worker)
         tgs = []
         for tile_row_block in range(iron.ceildiv(M_div_m, rows_per_block)):
@@ -151,7 +154,10 @@ def single_core_mixed(
         rt.finish_task_group(tgs[-1])
         del tgs[-1]
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    return Program(
+        iron.get_current_device(),  # pyright: ignore[reportArgumentType]
+        rt,
+    ).resolve_program()
 
 
 def _make_argparser():

@@ -13,11 +13,9 @@ path; the host harness ingests A and reads back the shuffled C.
 import argparse
 from pathlib import Path
 
-import numpy as np
-
-from aie.dialects.aiex import v8bfp16ebs8
-
 import aie.iron as iron
+import numpy as np
+from aie.dialects.aiex import v8bfp16ebs8
 from aie.iron import (
     CompileTime,
     ExternalFunction,
@@ -29,8 +27,8 @@ from aie.iron import (
     Worker,
 )
 from aie.utils.hostruntime.argparse import (
-    device_from_args,
     add_compile_args,
+    device_from_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
 
@@ -59,7 +57,13 @@ def in_core_shuffle(
     scalar_shuffle_kernel = ExternalFunction(
         "scalar_shuffle",
         source_file=str(_KERNEL_SRC),
-        arg_types=[a_ty, c_ty, np.int16, np.int16, np.int16],
+        arg_types=[
+            a_ty,
+            c_ty,
+            np.int16,
+            np.int16,
+            np.int16,
+        ],  # pyright: ignore[reportArgumentType]
         compile_flags=kernel_flags + ["-DSHUFFLE_ONLY"],
         use_chess=True,
     )
@@ -86,12 +90,15 @@ def in_core_shuffle(
     C_ty = np.ndarray[(M * N // 8,), np.dtype[v8bfp16ebs8]]
 
     rt = Runtime()
-    with rt.sequence(A_ty, C_ty) as (a, c):
+    with rt.sequence(A_ty, C_ty) as (a, c):  # pyright: ignore[reportGeneralTypeIssues]
         rt.start(worker)
         rt.fill(inA.prod(), a)
         rt.drain(outC.cons(), c, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    return Program(
+        iron.get_current_device(),  # pyright: ignore[reportArgumentType]
+        rt,
+    ).resolve_program()
 
 
 def _make_argparser():

@@ -12,13 +12,10 @@ on AIE2P. Strix-only; chess-built kernel.
 import argparse
 from pathlib import Path
 
+import aie.iron as iron
 import numpy as np
-from ml_dtypes import bfloat16
-
 from aie.dialects.aiex import v8bfp16ebs8
 from aie.helpers.taplib.tensortiler2d import TensorTiler2D
-
-import aie.iron as iron
 from aie.iron import (
     CompileTime,
     ExternalFunction,
@@ -27,14 +24,16 @@ from aie.iron import (
     Out,
     Program,
     Runtime,
+    StreamDims,
     Worker,
 )
 from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import (
-    device_from_args,
     add_compile_args,
+    device_from_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
+from ml_dtypes import bfloat16
 
 _KERNEL_SRC = (
     Path(__file__).resolve().parents[5] / "aie_kernels" / "aie2p" / "mm_bfp_mixed.cc"
@@ -92,59 +91,53 @@ def whole_array_mixed(
         use_chess=True,
     )
 
-    A_l3l2_fifos = [None] * n_shim_mem_A
-    A_l2l1_fifos = [None] * n_aie_rows
-    B_l3l2_fifos = [None] * n_aie_cols
-    B_l2l1_fifos = [None] * n_aie_cols
-    C_l1l2_fifos = [[None] * n_aie_cols for _ in range(n_aie_rows)]
-    C_l2l3_fifos = [None] * n_aie_cols
+    A_l3l2_fifos: list[ObjectFifo] = []
+    A_l2l1_fifos: list[ObjectFifo] = []
+    B_l3l2_fifos: list[ObjectFifo] = []
+    B_l2l1_fifos: list[ObjectFifo] = []
+    C_l1l2_fifos: list[list[ObjectFifo]] = [[] for _ in range(n_aie_rows)]
+    C_l2l3_fifos: list[ObjectFifo] = []
 
     for i in range(n_shim_mem_A):
-        A_l3l2_fifos[i] = ObjectFifo(A_l2_ty, name=f"A_L3L2_{i}", depth=fifo_depth)
+        a_l3l2 = ObjectFifo(A_l2_ty, name=f"A_L3L2_{i}", depth=fifo_depth)
+        A_l3l2_fifos.append(a_l3l2)
         start_row = i * n_A_tiles_per_shim
         stop_row = start_row + n_A_tiles_per_shim
         of_offsets = [m * k * j for j in range(stop_row - start_row)]
-        dims_to_stream = [[(m // r, r * k), (k // s, s), (r, k), (s, 1)]] * (
-            stop_row - start_row
+        dims_to_stream: list[StreamDims] = [
+            [(m // r, r * k), (k // s, s), (r, k), (s, 1)]
+        ] * (stop_row - start_row)
+        a_tmp_fifos = a_l3l2.cons().split(
+            of_offsets,
+            obj_types=[A_l1_ty] * (stop_row - start_row),
+            names=[f"A_L2L1_{row}" for row in range(start_row, stop_row)],
+            dims_to_stream=dims_to_stream,
         )
-        a_tmp_fifos = (
-            A_l3l2_fifos[i]
-            .cons()
-            .split(
-                of_offsets,
-                obj_types=[A_l1_ty] * (stop_row - start_row),
-                names=[f"A_L2L1_{row}" for row in range(start_row, stop_row)],
-                dims_to_stream=dims_to_stream,
-            )
-        )
-        for j in range(stop_row - start_row):
-            A_l2l1_fifos[j + start_row] = a_tmp_fifos[j]
+        A_l2l1_fifos.extend(a_tmp_fifos)
 
     for col in range(n_aie_cols):
-        B_l3l2_fifos[col] = ObjectFifo(B_l2_ty, name=f"B_L3L2_{col}", depth=fifo_depth)
-        B_l2l1_fifos[col] = (
-            B_l3l2_fifos[col].cons().forward(obj_type=B_l1_ty, name=f"B_L2L1_{col}")
+        b_l3l2 = ObjectFifo(B_l2_ty, name=f"B_L3L2_{col}", depth=fifo_depth)
+        B_l3l2_fifos.append(b_l3l2)
+        B_l2l1_fifos.append(
+            b_l3l2.cons().forward(obj_type=B_l1_ty, name=f"B_L2L1_{col}")
         )
 
-        C_l2l3_fifos[col] = ObjectFifo(
+        c_l2l3 = ObjectFifo(
             C_l2_ty,
             name=f"C_L2L3_{col}",
             depth=fifo_depth,
             dims_to_stream=[(m // r, r * n), (r, t), (n // t, r * t), (t, 1)],
         )
+        C_l2l3_fifos.append(c_l2l3)
         of_offsets = [m * n * i for i in range(n_aie_rows)]
-        c_tmp_fifos = (
-            C_l2l3_fifos[col]
-            .prod()
-            .join(
-                of_offsets,
-                obj_types=[C_l1_ty] * n_aie_rows,
-                names=[f"C_L1L2_{col}_{row}" for row in range(n_aie_rows)],
-                depths=[fifo_depth] * n_aie_rows,
-            )
+        c_tmp_fifos = c_l2l3.prod().join(
+            of_offsets,
+            obj_types=[C_l1_ty] * n_aie_rows,
+            names=[f"C_L1L2_{col}_{row}" for row in range(n_aie_rows)],
+            depths=[fifo_depth] * n_aie_rows,
         )
         for j in range(n_aie_rows):
-            C_l1l2_fifos[j][col] = c_tmp_fifos[j]
+            C_l1l2_fifos[j].append(c_tmp_fifos[j])
 
     def core_fn(in_a, in_b, out_c, zero, matmul):
         loop = range_(n_tiles_per_core) if n_tiles_per_core > 1 else range(1)
@@ -203,7 +196,11 @@ def whole_array_mixed(
     c_index = 0
 
     rt = Runtime()
-    with rt.sequence(A_ty, B_ty, C_ty) as (a, b, c):
+    with rt.sequence(A_ty, B_ty, C_ty) as (
+        a,
+        b,
+        c,
+    ):  # pyright: ignore[reportGeneralTypeIssues]
         rt.start(*[w for row in workers for w in row])
         tg = rt.task_group()
         for tb in range(iron.ceildiv(M // m // n_aie_rows, tb_max_n_rows)):
@@ -245,7 +242,10 @@ def whole_array_mixed(
                     tg = rt.task_group()
         rt.finish_task_group(tg)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    return Program(
+        iron.get_current_device(),  # pyright: ignore[reportArgumentType]
+        rt,
+    ).resolve_program()
 
 
 def _make_argparser():

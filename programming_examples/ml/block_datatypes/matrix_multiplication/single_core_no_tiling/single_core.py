@@ -12,11 +12,9 @@ host-side tile loop or memtile fanout. Strix-only; kernel is chess-built.
 import argparse
 from pathlib import Path
 
-import numpy as np
-
-from aie.dialects.aiex import v8bfp16ebs8
-
 import aie.iron as iron
+import numpy as np
+from aie.dialects.aiex import v8bfp16ebs8
 from aie.iron import (
     CompileTime,
     ExternalFunction,
@@ -28,8 +26,8 @@ from aie.iron import (
     Worker,
 )
 from aie.utils.hostruntime.argparse import (
-    device_from_args,
     add_compile_args,
+    device_from_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
 
@@ -106,13 +104,20 @@ def single_core_no_tiling(
     C_ty = np.ndarray[(M * N // 8,), np.dtype[v8bfp16ebs8]]
 
     rt = Runtime()
-    with rt.sequence(A_ty, B_ty, C_ty) as (a, b, c):
+    with rt.sequence(A_ty, B_ty, C_ty) as (
+        a,
+        b,
+        c,
+    ):  # pyright: ignore[reportGeneralTypeIssues]
         rt.start(worker)
         rt.fill(inA.prod(), a)
         rt.fill(inB.prod(), b)
         rt.drain(outC.cons(), c, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    return Program(
+        iron.get_current_device(),  # pyright: ignore[reportArgumentType]
+        rt,
+    ).resolve_program()
 
 
 def _make_argparser():
