@@ -38,9 +38,8 @@ _TRACE_UNSUPPORTED_MSG = (
 class HSAKernelHandle(KernelHandle):
     """Handle for a loaded HSA kernel (PDI + insts in region memory)."""
 
-    def __init__(self, pdi_ptr, pdi_size, insts_ptr, insts_size, kernel_name):
+    def __init__(self, pdi_ptr, insts_ptr, insts_size, kernel_name):
         self.pdi_ptr = pdi_ptr
-        self.pdi_size = pdi_size
         self.insts_ptr = insts_ptr
         self.insts_size = insts_size
         self.kernel_name = kernel_name
@@ -114,7 +113,7 @@ class HSAHostRuntime(HostRuntime):
             raise
 
         handle = HSAKernelHandle(
-            pdi_ptr, len(pdi_bytes), insts_ptr, len(insts_bytes), kernel_name
+            pdi_ptr, insts_ptr, len(insts_bytes), kernel_name
         )
 
         if self._cache_size > 0 and len(self._exe_cache) >= self._cache_size:
