@@ -4,6 +4,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
+import math
+
 import numpy as np
 import pyxrt as xrt  # pyright: ignore[reportMissingImports]
 from aie.helpers.util import np_ndarray_type_get_shape
@@ -196,7 +198,9 @@ class XRTTensor(NpuTensor):
         return self._bo
 
     def _subview(self, offset_bytes, shape, dtype):
-        nbytes = int(np.prod(shape)) * np.dtype(dtype).itemsize
+        # math.prod, not np.prod: this runs once per view, and np.prod on a
+        # small tuple costs more than everything else here together.
+        nbytes = math.prod(shape) * dtype.itemsize
         view = type(self).__new__(type(self))
         # Set the NpuTensor contract fields without allocating a new buffer.
         NpuTensor.__init__(view, shape, dtype=dtype, device=self.device)

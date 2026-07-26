@@ -185,6 +185,10 @@ class _CoherenceMap:
 
     def __init__(self, nbytes, state, granule=None):
         self._spans = [[0, nbytes, state]]
+        # Where each span ends, kept beside the spans purely so a lookup can
+        # bisect plain integers. Bisecting the spans themselves needs a key
+        # function, which is a Python call at every step of the search.
+        self._ends = [nbytes]
         self._granule = COHERENCE_GRANULE if granule is None else granule
         # The whole allocation in one state, or None when it is mixed. Kept as a
         # field because it answers most queries outright, and the queries are on
@@ -203,8 +207,12 @@ class _CoherenceMap:
         spans = self._spans
         # First span ending after start, and first span beginning at or after
         # end: everything between them is what this write disturbs.
-        first = bisect.bisect_right(spans, start, key=lambda span: span[1])
-        last = bisect.bisect_left(spans, end, key=lambda span: span[0])
+        ends = self._ends
+        # ends[i] is where span i stops, so the first span this write disturbs
+        # is the first one stopping after start, and the last is the one holding
+        # end - 1.
+        first = bisect.bisect_right(ends, start)
+        last = bisect.bisect_left(ends, end) + 1
         replacement = []
         if first < last:
             head = spans[first]
@@ -231,6 +239,7 @@ class _CoherenceMap:
             else:
                 merged.append(span)
         spans[first:last] = merged
+        ends[first:last] = [span[1] for span in merged]
         self._check_granule(merged, start, end, state)
         self.uniform = spans[0][2] if len(spans) == 1 else None
 
@@ -514,7 +523,7 @@ class NpuTensor(ABC):
         if cached is not None:
             return cached
         start = self.storage_offset
-        size = int(np.prod(self.shape)) * np.dtype(self.dtype).itemsize
+        size = math.prod(self.shape) * np.dtype(self.dtype).itemsize
         extent = (start, start + size)
         self.__dict__["_extent_cache"] = extent
         return extent
@@ -1372,7 +1381,7 @@ class CPUOnlyTensor(NpuTensor):
         pass
 
     def _subview(self, offset_bytes, shape, dtype):
-        nbytes = int(np.prod(shape)) * np.dtype(dtype).itemsize
+        nbytes = math.prod(shape) * dtype.itemsize
         view = type(self).__new__(type(self))
         # Set the NpuTensor contract fields without allocating a new array.
         NpuTensor.__init__(view, shape, dtype=dtype, device=self.device)
