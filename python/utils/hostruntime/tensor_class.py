@@ -3,6 +3,7 @@
 # Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
+import bisect
 import contextlib
 import math
 import operator
@@ -192,39 +193,72 @@ class _CoherenceMap:
         self.uniform = state
 
     def set(self, start, end, state):
+        """Record ``[start, end)`` as ``state``.
+
+        Only the spans the range actually touches are rewritten. Rebuilding the
+        whole list instead is quadratic over a buffer written a window at a
+        time, which is the case this exists to serve.
+        """
         if start >= end:
             return
-        spans, out = self._spans, []
-        for lo, hi, value in spans:
-            if hi <= start or lo >= end:  # untouched
-                out.append([lo, hi, value])
-                continue
-            if lo < start:  # keep the head
-                out.append([lo, start, value])
-            if hi > end:  # keep the tail
-                out.append([end, hi, value])
-        out.append([start, end, state])
-        out.sort()
-        self._spans = self._coalesce(out)
-        self._check_granule(start, end, state)
-        self.uniform = self._spans[0][2] if len(self._spans) == 1 else None
+        spans = self._spans
+        # First span ending after start, and first span beginning at or after
+        # end: everything between them is what this write disturbs.
+        first = bisect.bisect_right(spans, start, key=lambda span: span[1])
+        last = bisect.bisect_left(spans, end, key=lambda span: span[0])
+        replacement = []
+        if first < last:
+            head = spans[first]
+            if head[0] < start:  # keep the part of the first span before us
+                replacement.append([head[0], start, head[2]])
+            replacement.append([start, end, state])
+            tail = spans[last - 1]
+            if tail[1] > end:  # and the part of the last one after us
+                replacement.append([end, tail[1], tail[2]])
+        else:
+            replacement.append([start, end, state])
+        # Merge with the neighbours on either side, so a buffer written window
+        # by window collapses back to one span once the windows meet.
+        while first > 0 and spans[first - 1][2] == replacement[0][2]:
+            replacement[0][0] = spans[first - 1][0]
+            first -= 1
+        while last < len(spans) and spans[last][2] == replacement[-1][2]:
+            replacement[-1][1] = spans[last][1]
+            last += 1
+        merged = [replacement[0]]
+        for span in replacement[1:]:
+            if merged[-1][2] == span[2]:
+                merged[-1][1] = span[1]
+            else:
+                merged.append(span)
+        spans[first:last] = merged
+        self._check_granule(merged, start, end, state)
+        self.uniform = spans[0][2] if len(spans) == 1 else None
 
-    def _check_granule(self, start, end, state):
+    def _check_granule(self, merged, start, end, state):
         """No coherence granule may hold regions in two different states.
 
         This is what makes the map mean anything: reconciling one range acts on
         whole cache lines, so two states sharing a line cannot be maintained
-        independently and one of them will be written over the other. Regions
-        are coalesced before this runs, so every remaining internal boundary
-        separates differing states and every one of them has to fall on a
-        granule. The last span may end anywhere, since nothing follows it.
+        independently and one of them will be written over the other.
+
+        Only the boundaries this write introduces are checked. Every other
+        boundary was checked when it was made and nothing here moves it, so the
+        property is carried forward rather than re-established, which keeps a
+        buffer written window by window from costing more with each window. The
+        ends of the allocation are not boundaries: nothing lies beyond them.
         """
         granule = self._granule
-        for lo, hi, _ in self._spans[:-1]:
-            if hi % granule:
+        # Every edge of the rewritten block: where it meets its neighbours, and
+        # the boundaries inside it. At most a handful, whatever the buffer holds.
+        edges = {merged[0][0]}
+        edges.update(span[1] for span in merged)
+        end_of_buffer = self._spans[-1][1]
+        for edge in edges:
+            if edge and edge != end_of_buffer and edge % granule:
                 raise ValueError(
                     f"recording {state!r} for bytes [{start}, {end}) would leave a "
-                    f"state boundary at byte {hi}, which is not on a {granule}-byte "
+                    f"state boundary at byte {edge}, which is not on a {granule}-byte "
                     f"coherence granule. Host and device are reconciled a cache line "
                     f"at a time, so the regions either side of that boundary could "
                     f"not be transferred independently."

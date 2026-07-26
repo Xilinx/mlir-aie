@@ -492,3 +492,37 @@ def test_mutate_still_reconciles_before_handing_over():
     with parent.mutate() as buf:
         buf[:GRANULE] = 0x88  # only half; the rest must survive
     assert np.array_equal(parent.data[GRANULE:], np.full(GRANULE, 0x77, dtype=np.uint8))
+
+
+def test_regions_written_forwards_collapse_back_into_one():
+    """Coalescing is what keeps a reconcile from costing a transfer per window.
+
+    Without it the map stays fragmented for the life of the buffer: every read
+    of it walks spans, and handing the buffer to the device sends each window
+    separately instead of the run they now form.
+    """
+    buffer = tensor_class.CPUBuffer(4 * GRANULE, "npu", GRANULE)
+    for i in range(4):
+        buffer.coherence.set(i * GRANULE, (i + 1) * GRANULE, "cpu")
+    assert buffer.coherence.uniform == "cpu"
+    assert buffer.coherence.ranges(0, 4 * GRANULE, "cpu") == [(0, 4 * GRANULE)]
+
+
+def test_regions_written_backwards_collapse_too():
+    """The same, merging onto the region that follows rather than precedes."""
+    buffer = tensor_class.CPUBuffer(4 * GRANULE, "npu", GRANULE)
+    for i in reversed(range(4)):
+        buffer.coherence.set(i * GRANULE, (i + 1) * GRANULE, "cpu")
+    assert buffer.coherence.uniform == "cpu"
+    assert buffer.coherence.ranges(0, 4 * GRANULE, "cpu") == [(0, 4 * GRANULE)]
+
+
+def test_a_written_window_is_one_range_not_several():
+    """Two windows either side of an untouched one stay two ranges, not four."""
+    buffer = tensor_class.CPUBuffer(8 * GRANULE, "npu", GRANULE)
+    buffer.coherence.set(0, 2 * GRANULE, "cpu")
+    buffer.coherence.set(4 * GRANULE, 6 * GRANULE, "cpu")
+    assert buffer.coherence.ranges(0, 8 * GRANULE, "cpu") == [
+        (0, 2 * GRANULE),
+        (4 * GRANULE, 6 * GRANULE),
+    ]
