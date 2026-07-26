@@ -464,3 +464,31 @@ def test_a_backend_granule_governs_its_buffer():
     with pytest.raises(ValueError, match="256-byte coherence granule"):
         buffer.coherence.set(0, GRANULE, "cpu")
     buffer.coherence.set(0, 4 * GRANULE, "cpu")  # on its own granule, fine
+
+
+def test_overwrite_records_the_write_without_reading_first():
+    """The saving is the reconcile that mutate() does on entry."""
+    parent = CPUOnlyTensor((4 * GRANULE,), dtype=np.uint8)
+    parent.device = "cpu"
+    with parent.overwrite() as buf:
+        buf[:] = 0x31
+    assert parent.device == "cpu"
+    assert np.array_equal(parent.data, np.full(4 * GRANULE, 0x31, dtype=np.uint8))
+
+
+def test_overwrite_retires_its_borrow_like_mutate():
+    parent = CPUOnlyTensor((GRANULE,), dtype=np.uint8)
+    with parent.overwrite() as buf:
+        buf[:] = 1
+    with pytest.raises(ValueError):
+        buf[0] = 2
+
+
+def test_mutate_still_reconciles_before_handing_over():
+    """A partial update has to see what is already there."""
+    parent = CPUOnlyTensor((2 * GRANULE,), dtype=np.uint8)
+    with parent.mutate() as buf:
+        buf[:] = 0x77
+    with parent.mutate() as buf:
+        buf[:GRANULE] = 0x88  # only half; the rest must survive
+    assert np.array_equal(parent.data[GRANULE:], np.full(GRANULE, 0x77, dtype=np.uint8))

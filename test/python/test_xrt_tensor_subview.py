@@ -137,3 +137,37 @@ def test_subview_enforces_alignment_on_this_backend_too(fake_xrt):
     with pytest.raises(ValueError, match="coherence granule"):
         root.subview(1, (GRANULE,))
     assert fake_xrt == []  # rejected before any buffer was derived
+
+
+def test_a_transfer_covers_only_the_ranges_that_were_written(fake_xrt, monkeypatch):
+    """Sending the whole extent is correct but wasteful, so nothing else catches it.
+
+    A buffer is reconciled a range at a time precisely so that writing a few
+    windows of a large arena does not maintain the whole arena. That is a
+    property no functional assertion can see, since transferring more than was
+    written still produces the right answer, so it is pinned here.
+    """
+    sent = []
+    original = xrt_tensor_module.XRTBuffer.sync_to_device
+
+    def recording(self, offset, nbytes):
+        sent.append((offset, nbytes))
+        return original(self, offset, nbytes)
+
+    monkeypatch.setattr(xrt_tensor_module.XRTBuffer, "sync_to_device", recording)
+
+    root = make_root(16 * GRANULE)
+    root.to("npu")
+    sent.clear()
+
+    for start in (2 * GRANULE, 9 * GRANULE):
+        with root.subview(start, (GRANULE,)).mutate() as buf:
+            buf[:] = 0x5C
+
+    root.to("npu")
+
+    assert sorted(sent) == [(2 * GRANULE, GRANULE), (9 * GRANULE, GRANULE)], (
+        "a reconcile should cover the written windows and nothing else, but "
+        f"covered {sorted(sent)}"
+    )
+    assert sum(n for _, n in sent) == 2 * GRANULE

@@ -696,6 +696,29 @@ class NpuTensor(ABC):
                 buf[:] = values
         """
         self.to("cpu")
+        with self._borrowed_for_writing() as borrowed:
+            yield borrowed
+
+    @contextlib.contextmanager
+    def overwrite(self):
+        """Borrow for a write that replaces every byte of this tensor.
+
+        The same as :meth:`mutate` without the reconcile on entry, which nothing
+        can observe if all of it is about to be replaced. Filling a buffer this
+        way costs one transfer rather than two.
+
+        The caller is promising to write the whole region. Bytes left unwritten
+        keep whatever the host last had there and are sent to the device with
+        the rest, so use :meth:`mutate` for a partial update. This is the one
+        promise here that cannot be checked; it is still narrower than reaching
+        for ``data``, which makes the same promise and does not record the
+        write.
+        """
+        with self._borrowed_for_writing() as borrowed:
+            yield borrowed
+
+    @contextlib.contextmanager
+    def _borrowed_for_writing(self):
         borrowed = self.data[...]
         try:
             yield borrowed
