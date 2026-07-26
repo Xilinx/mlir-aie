@@ -29,12 +29,19 @@ Two invocation modes:
 """
 
 import argparse
-import sys
 from pathlib import Path
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
+from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir, WireBundle
+from aie.dialects.aie import EndOp  # pyright: ignore[reportAttributeAccessIssue]
+from aie.dialects.aiex import (
+    bds,
+    dma_await_task,
+    dma_configure_task,
+    dma_start_task,
+    shim_dma_bd,
+)
 from aie.iron import (
     Acquire,
     Bd,
@@ -53,15 +60,6 @@ from aie.iron import (
     Worker,
 )
 from aie.iron.device import Tile, from_name
-from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir, WireBundle
-from aie.dialects.aie import EndOp
-from aie.dialects.aiex import (
-    bds,
-    dma_await_task,
-    dma_configure_task,
-    dma_start_task,
-    shim_dma_bd,
-)
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
 
@@ -85,6 +83,7 @@ def packet_switch(
     input_packet_id: CompileTime[int] = 0,
 ):
     dev = iron.get_current_device()
+    assert dev is not None
     in_out_ty = np.dtype[np.int8]
     vector_ty = np.ndarray[(in_out_size,), in_out_ty]
     # +4 bytes for the kept packet header at the memtile.
@@ -390,7 +389,7 @@ def packet_switch(
                     offset=0,
                     sizes=[1, 1, 1, in_out_size],
                     strides=[0, 0, 0, 1],
-                    packet=(0, input_packet_id),
+                    packet=(0, input_packet_id),  # pyright: ignore[reportArgumentType]
                 )
                 EndOp()
         out_task = dma_configure_task(shim.op, DMAChannelDir.S2MM, 0, issue_token=True)
@@ -435,9 +434,11 @@ def packet_switch(
     for td in (c02_dma, c03_dma, mem_dma):
         rt.add_tile_dma(td)
 
-    with rt.sequence(vector_ty, vector_ty) as (A, B):
+    with rt.sequence(vector_ty, vector_ty) as seq_args:
+        assert isinstance(seq_args, tuple)
+        a_seq, b_seq = seq_args
         rt.start(c02_worker, c03_worker)
-        rt.inline_ops(emit_seq, [A, B])
+        rt.inline_ops(emit_seq, [a_seq, b_seq])
 
     return Program(dev, rt).resolve_program()
 

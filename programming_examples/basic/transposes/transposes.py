@@ -39,14 +39,13 @@ Compile-only:  ``... --xclbin-path=PATH --insts-path=PATH``    (Makefile)
 import argparse
 from pathlib import Path
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
+from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import AnyComputeTile
 from aie.iron.kernel import ExternalFunction
-from aie.helpers.taplib import TensorAccessPattern, TensorTiler2D
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
@@ -84,10 +83,14 @@ def _transpose_dma(
     of_in = ObjectFifo(tensor_ty)
     of_out = of_in.cons().forward(AnyComputeTile)
     rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty) as (a, c):
+    with rt.sequence(tensor_ty, tensor_ty) as seq_args:
+        assert isinstance(seq_args, tuple)
+        a, c = seq_args
         rt.fill(of_in.prod(), a, tap_in)
         rt.drain(of_out.cons(), c, wait=True)
-    return Program(iron.get_current_device(), rt).resolve_program()
+    device = iron.get_current_device()
+    assert device is not None
+    return Program(device, rt).resolve_program()
 
 
 @iron.jit(aiecc_flags=["--packet-sw-objFifos"])
@@ -110,10 +113,14 @@ def _transpose_dma_packet(
     of_in = ObjectFifo(tensor_ty, name="in")
     of_out = of_in.cons().forward()
     rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty) as (a, c):
+    with rt.sequence(tensor_ty, tensor_ty) as seq_args:
+        assert isinstance(seq_args, tuple)
+        a, c = seq_args
         rt.fill(of_in.prod(), a, tap_in)
         rt.drain(of_out.cons(), c, wait=True)
-    return Program(iron.get_current_device(), rt).resolve_program()
+    device = iron.get_current_device()
+    assert device is not None
+    return Program(device, rt).resolve_program()
 
 
 # ---------------------------------------------------------------------------
@@ -157,11 +164,15 @@ def _transpose_shuffle(
     worker = Worker(core_fn, fn_args=[in_fifo.cons(), out_fifo.prod(), kernel_func])
 
     rt = Runtime()
-    with rt.sequence(tile_ty, tile_ty) as (a, c):
+    with rt.sequence(tile_ty, tile_ty) as seq_args:
+        assert isinstance(seq_args, tuple)
+        a, c = seq_args
         rt.start(worker)
         rt.fill(in_fifo.prod(), a)
         rt.drain(out_fifo.cons(), c, wait=True)
-    return Program(iron.get_current_device(), rt).resolve_program()
+    device = iron.get_current_device()
+    assert device is not None
+    return Program(device, rt).resolve_program()
 
 
 # ---------------------------------------------------------------------------
@@ -236,7 +247,7 @@ def _transpose_combined(
 
     in_L3L2_fifo = ObjectFifo(tile_ty, name="in_L3L2_fifo")
     in_L2L1_fifo = in_L3L2_fifo.cons(
-        dims_from_stream=tap_in_L2L1.transformation_dims
+        dims_from_stream=list(tap_in_L2L1.transformation_dims)
     ).forward(obj_type=tile_ty, name="in_L2L1_fifo")
     out_fifo = ObjectFifo(tile_ty, name="out_fifo")
 
@@ -254,11 +265,15 @@ def _transpose_combined(
     )
 
     rt = Runtime()
-    with rt.sequence(matrix_ty, matrix_ty) as (a, c):
+    with rt.sequence(matrix_ty, matrix_ty) as seq_args:
+        assert isinstance(seq_args, tuple)
+        a, c = seq_args
         rt.start(worker)
         rt.fill(in_L3L2_fifo.prod(), a, tap_in_L3L2)
         rt.drain(out_fifo.cons(), c, tap_out_L1L3, wait=True)
-    return Program(iron.get_current_device(), rt).resolve_program()
+    device = iron.get_current_device()
+    assert device is not None
+    return Program(device, rt).resolve_program()
 
 
 # ---------------------------------------------------------------------------

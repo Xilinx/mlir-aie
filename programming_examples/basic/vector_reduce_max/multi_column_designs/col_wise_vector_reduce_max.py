@@ -23,10 +23,9 @@ Two invocation modes:
 import argparse
 import sys
 
-import numpy as np
-from ml_dtypes import bfloat16
-
 import aie.iron as iron
+import numpy as np
+from aie.helpers.taplib.tensortiler2d import TensorTiler2D
 from aie.iron import (
     Buffer,
     CompileTime,
@@ -40,11 +39,14 @@ from aie.iron import (
     str_to_dtype,
 )
 from aie.iron.controlflow import range_
-from aie.utils.hostruntime.argparse import device_from_args
-from aie.helpers.taplib.tensortiler2d import TensorTiler2D
-from aie.utils.hostruntime.argparse import add_compile_args, add_trace_arg
+from aie.utils.hostruntime.argparse import (
+    add_compile_args,
+    add_trace_arg,
+    device_from_args,
+)
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
+from ml_dtypes import bfloat16
 
 
 # cores_per_col=2 is baked into the neighbor-FIFO wiring below; pass the
@@ -146,7 +148,7 @@ def vector_reduce_max(
 
     my_workers = []
     for i in range(num_cores):
-        fifo_args = [of_in1s[i].cons(), of_outs[i].prod()]
+        fifo_args: list = [of_in1s[i].cons(), of_outs[i].prod()]
         if cores_per_col - 1 < i:
             fifo_args.append(of_outs[i - cores_per_col].cons())
             if num_cores - cores_per_col < i:
@@ -163,7 +165,9 @@ def vector_reduce_max(
     taps = TensorTiler2D.simple_tiler((1, in_num_elements), (1, chunk))
 
     rt = Runtime()
-    with rt.sequence(in_tensor_ty, out_tensor_ty) as (a, c):
+    with rt.sequence(in_tensor_ty, out_tensor_ty) as seq_args:
+        assert isinstance(seq_args, tuple)
+        a, c = seq_args
         if enable_trace:
             rt.enable_trace(trace_size)
         rt.start(*my_workers)
@@ -171,7 +175,9 @@ def vector_reduce_max(
             rt.fill(of_in1s[i].prod(), a, taps[i])
         rt.drain(of_outs[num_cores - 1].cons(), c, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    device = iron.get_current_device()
+    assert device is not None
+    return Program(device, rt).resolve_program()
 
 
 def _make_argparser():
@@ -223,7 +229,9 @@ def _run_and_verify(opts):
     in_t = iron.tensor(in_np, dtype=dtype, device="npu")
     out_t = iron.zeros(out_num_elements, dtype=dtype, device="npu")
 
-    vector_reduce_max(in_t, out_t, **_compile_kwargs(opts))
+    vector_reduce_max(
+        in_t, out_t, **_compile_kwargs(opts)  # pyright: ignore[reportArgumentType]
+    )
 
     expected_max = in_np.max()
     actual_max = out_t.numpy()[0]

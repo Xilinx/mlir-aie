@@ -12,13 +12,12 @@ Demonstrates the IRON kernel library's LUT-backed bf16 exp kernel
 
 import sys
 
-import numpy as np
-from ml_dtypes import bfloat16
-
 import aie.iron as iron
+import numpy as np
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.utils.verify import count_mismatches
+from ml_dtypes import bfloat16
 
 _TILE = 1024  # hard-coded by kernels.bf16_exp's underlying C++ kernel
 _N_CORES = 4
@@ -64,12 +63,16 @@ def vector_exp(
     ]
 
     rt = Runtime()
-    with rt.sequence(tensor_ty, tensor_ty) as (a_in, c_out):
+    with rt.sequence(tensor_ty, tensor_ty) as seq_args:
+        assert isinstance(seq_args, tuple)
+        a_in, c_out = seq_args
         rt.start(*workers)
         rt.fill(A_fifo.prod(), a_in)
         rt.drain(C_fifo.cons(), c_out, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    device = iron.get_current_device()
+    assert device is not None
+    return Program(device, rt).resolve_program()
 
 
 def main():

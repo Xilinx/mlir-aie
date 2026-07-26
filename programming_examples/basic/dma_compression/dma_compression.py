@@ -16,9 +16,40 @@ to size asymmetric BDs so neither side hangs on a length mismatch.
 import os
 import sys
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
+from aie.dialects._aie_enum_gen import AIETileType
+from aie.dialects.aie import (
+    AIEDevice,  # pyright: ignore[reportAttributeAccessIssue]
+    DMAChannelDir,  # pyright: ignore[reportAttributeAccessIssue]
+    LockAction,  # pyright: ignore[reportAttributeAccessIssue]
+    WireBundle,  # pyright: ignore[reportAttributeAccessIssue]
+    buffer,
+    core,
+    device,
+    dma_bd,
+    dma_start,
+    flow,
+    lock,
+    mem,
+    next_bd,
+    shim_dma_allocation,  # pyright: ignore[reportAttributeAccessIssue]
+    tile,
+    use_lock,
+)
+from aie.dialects.aie import (
+    end as aie_end,  # pyright: ignore[reportAttributeAccessIssue]
+)
+from aie.dialects.aiex import (
+    dma_await_task,
+    dma_start_task,
+    npu_maskwrite32,
+    runtime_sequence,
+    shim_dma_single_bd_task,
+)
+from aie.extras.context import mlir_mod_ctx
+from aie.helpers.dialects.func import func
+from aie.helpers.taplib.tap import TensorAccessPattern
 from aie.iron import (
     CompileTime,
     ExternalFunction,
@@ -30,37 +61,7 @@ from aie.iron import (
     Worker,
 )
 from aie.iron.controlflow import range_
-from aie.helpers.dialects.func import func
 from aie.iron.device import Tile
-from aie.helpers.taplib.tap import TensorAccessPattern
-from aie.dialects._aie_enum_gen import AIETileType
-from aie.dialects.aie import (
-    device,
-    tile,
-    buffer,
-    lock,
-    mem,
-    dma_start,
-    dma_bd,
-    next_bd,
-    use_lock,
-    flow,
-    end as aie_end,
-    core,
-    AIEDevice,
-    DMAChannelDir,
-    LockAction,
-    WireBundle,
-    shim_dma_allocation,
-)
-from aie.dialects.aiex import (
-    npu_maskwrite32,
-    runtime_sequence,
-    shim_dma_single_bd_task,
-    dma_start_task,
-    dma_await_task,
-)
-from aie.extras.context import mlir_mod_ctx
 
 N = 4096
 LINE_SIZE = 1024
@@ -195,14 +196,16 @@ def _build_multi_cmp_only():
             with block[6]:
                 aie_end()
 
-    resolved = iron.get_current_device().resolve()
+    current_device = iron.get_current_device()
+    assert current_device is not None
+    resolved = current_device.resolve()
     aie_dev = (
         AIEDevice.npu2_1col
         if resolved in (AIEDevice.npu2, AIEDevice.npu2_1col)
         else AIEDevice.npu1_1col
     )
 
-    with mlir_mod_ctx() as ctx:
+    with mlir_mod_ctx() as ctx:  # pyright: ignore[reportGeneralTypeIssues]
 
         @device(aie_dev)
         def _dev():
@@ -291,7 +294,9 @@ def _build_regdump():
     worker = Worker(regdump_core, [of_out.prod(), dump_fn], tile=compute_tile)
 
     rt = Runtime()
-    with rt.sequence(vec_ty, vec_ty) as (a_in, c_out):
+    with rt.sequence(vec_ty, vec_ty) as seq_args:
+        assert isinstance(seq_args, tuple)
+        a_in, c_out = seq_args
 
         def enable_processor_bus():
             npu_maskwrite32(
@@ -305,7 +310,9 @@ def _build_regdump():
         rt.inline_ops(enable_processor_bus, [])
         rt.start(worker)
         rt.drain(of_out.cons(), c_out, wait=True)
-    return Program(iron.get_current_device(), rt).resolve_program()
+    device = iron.get_current_device()
+    assert device is not None
+    return Program(device, rt).resolve_program()
 
 
 @iron.jit
@@ -378,7 +385,9 @@ def dma_compression(
         )
 
         rt = Runtime()
-        with rt.sequence(vec_ty, vec_ty) as (a_in, c_out):
+        with rt.sequence(vec_ty, vec_ty) as seq_args:
+            assert isinstance(seq_args, tuple)
+            a_in, c_out = seq_args
 
             def configure_compression_roundtrip():
                 if engage_compress:
@@ -397,7 +406,9 @@ def dma_compression(
             rt.start(ct_worker)
             rt.fill(of_a.prod(), a_in)
             rt.drain(of_c.cons(), c_out, tap=out_tap_rt, wait=True)
-        return Program(iron.get_current_device(), rt).resolve_program()
+        device = iron.get_current_device()
+        assert device is not None
+        return Program(device, rt).resolve_program()
 
     is_memtile = config in MEMTILE_CONFIGS
     if is_memtile:
@@ -479,7 +490,9 @@ def dma_compression(
     base_config = config in ("base", "memtile_base")
 
     rt = Runtime()
-    with rt.sequence(vec_ty, vec_ty) as (a_in, c_out):
+    with rt.sequence(vec_ty, vec_ty) as seq_args:
+        assert isinstance(seq_args, tuple)
+        a_in, c_out = seq_args
         if is_host_compression and not base_config:
 
             def configure_compression_host():
@@ -503,9 +516,12 @@ def dma_compression(
                 )
 
             rt.inline_ops(enable_processor_bus, [])
+            assert core_worker is not None
             rt.start(core_worker)
 
         rt.fill(of_in.prod(), a_in, tap=in_tap)
         rt.drain(of_out.cons(), c_out, tap=out_tap, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    device = iron.get_current_device()
+    assert device is not None
+    return Program(device, rt).resolve_program()

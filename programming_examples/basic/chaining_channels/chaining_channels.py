@@ -21,11 +21,17 @@ where users can read + extend without dropping to the dialect.
 
 import argparse
 import sys
-from pathlib import Path
-
-import numpy as np
 
 import aie.iron as iron
+import numpy as np
+from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir, WireBundle
+from aie.dialects.aiex import (
+    npu_address_patch,
+    npu_push_queue,
+    npu_sync,
+    npu_write32,
+    npu_writebd,  # pyright: ignore[reportAttributeAccessIssue]
+)
 from aie.iron import (
     Acquire,
     Bd,
@@ -44,21 +50,12 @@ from aie.iron import (
 )
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile
-from aie.utils.hostruntime.argparse import device_from_args
-from aie.dialects._aie_enum_gen import AIETileType, DMAChannelDir, WireBundle
-from aie.dialects.aiex import (
-    npu_address_patch,
-    npu_push_queue,
-    npu_sync,
-    npu_write32,
-    npu_writebd,
-)
-from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.trace.events import (
     MemTileEvent,
-    ShimTileEvent,
     MemTilePortEvent,
+    ShimTileEvent,
     ShimTilePortEvent,
 )
 
@@ -285,7 +282,9 @@ def chaining_channels(
     rt.add_tile_dma(memtile_dma)
     rt.add_tile_dma(compute_dma)
 
-    with rt.sequence(vector_ty, vector_ty_read) as (a, b):
+    with rt.sequence(vector_ty, vector_ty_read) as seq_args:
+        assert isinstance(seq_args, tuple)
+        a, b = seq_args
         if trace_size > 0:
             rt.enable_trace(
                 trace_size,
@@ -322,7 +321,9 @@ def chaining_channels(
         rt.start(worker)
         rt.inline_ops(manual_bd_writes, [a, b])
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    device = iron.get_current_device()
+    assert device is not None
+    return Program(device, rt).resolve_program()
 
 
 def _compile_kwargs(opts):

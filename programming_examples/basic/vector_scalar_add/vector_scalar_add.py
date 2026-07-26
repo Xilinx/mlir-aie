@@ -25,16 +25,15 @@ Invocation modes:
 import argparse
 from pathlib import Path
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
 from aie.iron import CompileTime, In, Out
 from aie.iron.algorithms import transform
 from aie.utils import NPUKernel
 from aie.utils.compile import resolve_target_arch
 from aie.utils.hostruntime.argparse import (
-    device_from_args,
     add_compile_args,
+    device_from_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
@@ -118,7 +117,9 @@ def aot_compile(opts):
         # No --dev given: bind whatever device the runtime detects, so the
         # generator (which needs an active NPU device) can lower.
         iron.ensure_current_device()
-    spec = vector_scalar_add.specialize(**_compile_kwargs(opts))
+    spec = vector_scalar_add.specialize(  # pyright: ignore[reportAttributeAccessIssue]
+        **_compile_kwargs(opts)
+    )
     spec.compile(
         xclbin_path=xclbin_path,
         inst_path=inst_path,

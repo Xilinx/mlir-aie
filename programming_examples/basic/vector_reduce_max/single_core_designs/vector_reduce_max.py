@@ -22,9 +22,8 @@ Two invocation modes:
 import argparse
 import sys
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
 from aie.iron import CompileTime, In, Out, kernels, str_to_dtype
 from aie.iron.algorithms import reduce
 from aie.utils.hostruntime.argparse import add_compile_args, add_trace_arg

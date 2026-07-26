@@ -17,13 +17,11 @@ Two invocation modes:
 import argparse
 import sys
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime
 from aie.iron.device import AnyShimTile
-from aie.utils.hostruntime.argparse import device_from_args
-from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 
@@ -45,11 +43,15 @@ def passthrough_dmas(
     of_out = of_in.cons().forward()
 
     rt = Runtime()
-    with rt.sequence(vector_ty, vector_ty, vector_ty) as (a, _, c):
+    with rt.sequence(vector_ty, vector_ty, vector_ty) as seq_args:
+        assert isinstance(seq_args, tuple)
+        a, _, c = seq_args
         rt.fill(of_in.prod(), a, tile=AnyShimTile)
         rt.drain(of_out.cons(), c, tile=AnyShimTile, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    device = iron.get_current_device()
+    assert device is not None
+    return Program(device, rt).resolve_program()
 
 
 def _make_argparser():

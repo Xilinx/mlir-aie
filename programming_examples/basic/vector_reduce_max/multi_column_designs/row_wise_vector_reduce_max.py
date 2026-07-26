@@ -21,10 +21,9 @@ Two invocation modes:
 import argparse
 import sys
 
-import numpy as np
-from ml_dtypes import bfloat16
-
 import aie.iron as iron
+import numpy as np
+from aie.helpers.taplib.tensortiler2d import TensorTiler2D
 from aie.iron import (
     Buffer,
     CompileTime,
@@ -38,11 +37,14 @@ from aie.iron import (
     str_to_dtype,
 )
 from aie.iron.controlflow import range_
-from aie.utils.hostruntime.argparse import device_from_args
-from aie.helpers.taplib.tensortiler2d import TensorTiler2D
-from aie.utils.hostruntime.argparse import add_compile_args, add_trace_arg
+from aie.utils.hostruntime.argparse import (
+    add_compile_args,
+    add_trace_arg,
+    device_from_args,
+)
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
+from ml_dtypes import bfloat16
 
 
 @iron.jit
@@ -169,7 +171,9 @@ def vector_reduce_max(
         workers.append(Worker(core_body, fn_args=fifo_args, trace=enable_trace))
 
     rt = Runtime()
-    with rt.sequence(in_ty, out_ty) as (a, c):
+    with rt.sequence(in_ty, out_ty) as seq_args:
+        assert isinstance(seq_args, tuple)
+        a, c = seq_args
         if trace_size > 0:
             rt.enable_trace(trace_size)
         rt.start(*workers)
@@ -183,7 +187,9 @@ def vector_reduce_max(
             wait=True,
         )
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    device = iron.get_current_device()
+    assert device is not None
+    return Program(device, rt).resolve_program()
 
 
 def _make_argparser():

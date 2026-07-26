@@ -21,15 +21,13 @@ Two invocation modes:
 import argparse
 from pathlib import Path
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
+from aie.helpers.taplib import TensorTiler2D
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
-from aie.utils.hostruntime.argparse import device_from_args
 from aie.iron.kernel import ExternalFunction
-from aie.helpers.taplib import TensorTiler2D
-from aie.utils.hostruntime.argparse import add_compile_args
+from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
 
@@ -88,13 +86,17 @@ def row_wise_bias_add(
     bias_tap = TensorTiler2D.group_tiler((1, N), (1, n), (1, N // n))[0]
 
     rt = Runtime()
-    with rt.sequence(in_ty, bias_full_ty, in_ty) as (a, b, c):
+    with rt.sequence(in_ty, bias_full_ty, in_ty) as seq_args:
+        assert isinstance(seq_args, tuple)
+        a, b, c = seq_args
         rt.start(worker)
         rt.fill(in_fifo.prod(), a, tap)
         rt.fill(bias_fifo.prod(), b, bias_tap)
         rt.drain(out_fifo.cons(), c, tap, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    device = iron.get_current_device()
+    assert device is not None
+    return Program(device, rt).resolve_program()
 
 
 def _make_argparser():

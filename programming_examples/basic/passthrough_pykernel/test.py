@@ -3,13 +3,14 @@
 # Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
-import numpy as np
-import sys
 import argparse
+import sys
+
+import aie.iron as iron
+import numpy as np
+from aie.utils import DefaultNPURuntime
 from aie.utils.hostruntime.argparse import add_runtime_args
 from aie.utils.test import create_npu_kernel
-import aie.iron as iron
-from aie.utils import DefaultNPURuntime
 
 
 def main(opts):

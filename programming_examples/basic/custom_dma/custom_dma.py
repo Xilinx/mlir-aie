@@ -4,15 +4,15 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
-import numpy as np
 import argparse
 import sys
 
+import numpy as np
+from aie.dialects.aiex import set_lock_value
 from aie.iron import ObjectFifo, Program, Runtime, Worker
 from aie.iron.controlflow import range_
 from aie.iron.device import NPU2, AnyComputeTile, AnyMemTile
 from aie.iron.resolvable import Resolvable
-from aie.dialects.aiex import set_lock_value
 
 
 class ScatterReadDMA(Resolvable):
@@ -64,33 +64,40 @@ class ScatterReadDMA(Resolvable):
         return ts
 
     def acquire(self, n: int = 1):
-        from aie.dialects.aie import use_lock, LockAction
+        from aie.dialects.aie import (
+            LockAction,  # pyright: ignore[reportAttributeAccessIssue]
+            use_lock,
+        )
 
         use_lock(self._comp_cons_lock, LockAction.AcquireGreaterEqual)
         return self._recv_buf
 
     def release(self, n: int = 1):
-        from aie.dialects.aie import use_lock, LockAction
+        from aie.dialects.aie import (
+            LockAction,  # pyright: ignore[reportAttributeAccessIssue]
+            use_lock,
+        )
 
         use_lock(self._comp_prod_lock, LockAction.Release)
 
     def resolve(self, loc=None, ip=None) -> None:
         from aie.dialects.aie import (
+            DMAChannelDir,  # pyright: ignore[reportAttributeAccessIssue]
+            EndOp,  # pyright: ignore[reportAttributeAccessIssue]
+            LockAction,  # pyright: ignore[reportAttributeAccessIssue]
+            WireBundle,  # pyright: ignore[reportAttributeAccessIssue]
             buffer,
-            lock,
-            flow,
-            memtile_dma,
-            mem,
-            dma_start,
             dma_bd,
+            dma_start,
+            flow,
+            lock,
+            mem,
+            memtile_dma,
             next_bd,
             use_lock,
-            DMAChannelDir,
-            LockAction,
-            WireBundle,
-            EndOp,
         )
 
+        assert self._memtile is not None and self._compute is not None
         memtile_op = self._memtile.op
         compute_op = self._compute.op
 
@@ -230,7 +237,9 @@ def custom_dma_design(dev):
         set_lock_value(scatter_obj._mem_cons_lock, 3)
 
     rt = Runtime()
-    with rt.sequence(out_type, out_type, out_type) as (_, b_out, _):
+    with rt.sequence(out_type, out_type, out_type) as seq_args:
+        assert isinstance(seq_args, tuple)
+        _, b_out, _ = seq_args
         rt.start(worker)
         tg = rt.task_group()
         rt.drain(of_out.cons(), b_out, wait=True, task_group=tg)
@@ -245,7 +254,7 @@ p.add_argument("-d", "--dev", required=True, dest="device", help="AIE Device")
 opts = p.parse_args(sys.argv[1:])
 
 if opts.device == "npu2":
-    dev = NPU2()
+    dev = NPU2()  # pyright: ignore[reportCallIssue]
 else:
     raise ValueError(f"[ERROR] Device name {opts.device} is unknown")
 

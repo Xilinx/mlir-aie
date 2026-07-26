@@ -22,9 +22,8 @@ which handles the ObjectFifo / Worker / Runtime plumbing.
 import argparse
 import sys
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
 from aie.iron import CompileTime, In, Out
 from aie.iron.algorithms import transform_binary
 from aie.utils.hostruntime.argparse import add_compile_args

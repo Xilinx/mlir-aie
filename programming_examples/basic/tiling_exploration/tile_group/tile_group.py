@@ -21,17 +21,16 @@ Three invocation modes:
 
 import argparse
 
-import numpy as np
-
+import aie.extras.dialects.arith as arith
 import aie.iron as iron
-from aie.iron import CompileTime, ObjectFifo, Out, Program, Runtime, Worker
-from aie.iron.controlflow import range_
+import numpy as np
 from aie.helpers.taplib import TensorTiler2D
 from aie.helpers.util import np_dtype_to_mlir_type
+from aie.iron import CompileTime, ObjectFifo, Out, Program, Runtime, Worker
+from aie.iron.controlflow import range_
 from aie.utils.hostruntime.argparse import add_compile_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
-import aie.extras.dialects.arith as arith
 
 
 @iron.jit
@@ -58,17 +57,23 @@ def tile_group(
     def access_order(of_out):
         elemOut = of_out.acquire(1)
         for i in range_(tensor_size):
-            elemOut[i] = arith.index_cast(i, to=np_dtype_to_mlir_type(dtype))
+            elemOut[i] = arith.index_cast(
+                i,  # pyright: ignore[reportArgumentType]
+                to=np_dtype_to_mlir_type(dtype),  # pyright: ignore[reportArgumentType]
+            )
         of_out.release(1)
 
     worker = Worker(access_order, [of_out.prod()])
 
     rt = Runtime()
-    with rt.sequence(flattened_tensor) as tensor_out:
+    with rt.sequence(flattened_tensor) as seq_arg:
+        assert not isinstance(seq_arg, tuple)
         rt.start(worker)
-        rt.drain(of_out.cons(), tensor_out, tap, wait=True)
+        rt.drain(of_out.cons(), seq_arg, tap, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    device = iron.get_current_device()
+    assert device is not None
+    return Program(device, rt).resolve_program()
 
 
 def _make_argparser():
