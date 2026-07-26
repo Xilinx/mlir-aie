@@ -274,6 +274,12 @@ struct CoverCube {
   int value;
   uint32_t cov; // bitmask of the onset ids this cube matches
 };
+
+// 5-bit packet-id space; kept local (mirrors getMaxPacketId()) since these
+// helpers take no target model.
+constexpr int ID_BITS = 5;
+constexpr int NUM_IDS = 1 << ID_BITS;
+constexpr int ID_MASK = NUM_IDS - 1;
 } // namespace
 
 static void bnbMinCover(ArrayRef<CoverCube> cubes, uint32_t uncovered,
@@ -289,7 +295,7 @@ static void bnbMinCover(ArrayRef<CoverCube> cubes, uint32_t uncovered,
   if ((int)sel.size() + 1 >= bestSize)
     return;
   int pick = -1, pickCount = (int)cubes.size() + 1;
-  for (int id = 0; id < 32; ++id) {
+  for (int id = 0; id < NUM_IDS; ++id) {
     if (!((uncovered >> id) & 1))
       continue;
     int c = 0;
@@ -332,8 +338,8 @@ computeSubcubeCover(const SmallVector<int, 4> &onset,
 
   // 5-bit id space (3^5 cubes), so enumerate prime implicants by brute force.
   SmallVector<CoverCube> primes;
-  for (int mask = 0; mask < 32; ++mask) {
-    for (int value = 0; value < 32; ++value) {
+  for (int mask = 0; mask < NUM_IDS; ++mask) {
+    for (int value = 0; value < NUM_IDS; ++value) {
       if ((value & mask) != value)
         continue;
       if (hitsOffset(mask, value))
@@ -345,7 +351,7 @@ computeSubcubeCover(const SmallVector<int, 4> &onset,
       if (cov == 0)
         continue;
       bool isPrime = true;
-      for (int b = 0; b < 5; ++b) {
+      for (int b = 0; b < ID_BITS; ++b) {
         if (!((mask >> b) & 1))
           continue;
         if (!hitsOffset(mask & ~(1 << b), value & ~(1 << b))) {
@@ -367,7 +373,7 @@ computeSubcubeCover(const SmallVector<int, 4> &onset,
     chosen.push_back({primes[i].mask, primes[i].value});
   if (chosen.empty()) // unreachable: a single-id cube always covers
     for (int id : onset)
-      chosen.push_back({0x1f, id});
+      chosen.push_back({ID_MASK, id});
 
   // Tighten each cube to the bounding cube of its ids; only shrinks, so still
   // off-set-avoiding, and the one-cube case matches the old common-bits mask.
@@ -382,8 +388,8 @@ computeSubcubeCover(const SmallVector<int, 4> &onset,
   for (const SmallVector<int, 4> &ids : assigned) {
     if (ids.empty())
       continue;
-    int mask = 0x1f;
-    for (int i = 0; i < 5; ++i) {
+    int mask = ID_MASK;
+    for (int i = 0; i < ID_BITS; ++i) {
       int bit = (ids.front() >> i) & 1;
       for (int id : ids)
         if (((id >> i) & 1) != bit) {
