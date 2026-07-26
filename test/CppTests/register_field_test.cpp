@@ -39,8 +39,7 @@ constexpr RegField kCoreCtrlResetField = {"CORE_CONTROL.RESET", 0x32000, 0x2};
 // lsb 0, mask 0x1 (aie2p reginit: Aie2PCoreCtrlReg.CtrlEn). Shares the same
 // register as kCoreCtrlResetField -- exactly the sibling field a write32 (as
 // opposed to a maskwrite32) would clobber.
-constexpr RegField kCoreCtrlEnableField = {"CORE_CONTROL.ENABLE", 0x32000,
-                                           0x1};
+constexpr RegField kCoreCtrlEnableField = {"CORE_CONTROL.ENABLE", 0x32000, 0x1};
 
 // DMA_S2MM_0.CTRL.CONTROLLER_ID:
 // XAIE2PGBL_MEMORY_MODULE_DMA_S2MM_0_CTRL_CONTROLLER_ID_{LSB,MASK}, an 8-bit
