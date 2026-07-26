@@ -10,6 +10,7 @@
     "programming_examples/lit.cfg.py",
     "programming_examples/vision",
     "programming_examples/ml/block_datatypes",
+    "programming_examples/ml/mobilenet",
     "programming_examples/ml/bottleneck",
     "programming_examples/ml/conv2d",
     "programming_examples/ml/conv2d_14x14",

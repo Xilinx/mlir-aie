@@ -24,6 +24,7 @@ include = [
   "programming_examples/lit.cfg.py",
   "programming_examples/vision/**/*.py",
   "programming_examples/ml/block_datatypes/**/*.py",
+  "programming_examples/ml/mobilenet/**/*.py",
   "programming_examples/ml/bottleneck/**/*.py",
   "programming_examples/ml/conv2d/**/*.py",
   "programming_examples/ml/conv2d_14x14/**/*.py",
@@ -53,7 +54,8 @@ extend-exclude = [
 # E/F: pyflakes + pycodestyle errors (ruff defaults).
 # I: isort (no import sorter previously enforced).
 # N802/N816: pep8-naming subset that's clean across this codebase (verified:
-# zero violations at introduction). N801/N803/N806/N812 are dropped -- each
+# zero violations at introduction; ml/mobilenet is an explicit per-file
+# carve-out for N816, see below). N801/N803/N806/N812 are dropped -- each
 # was individually confirmed to collide with a real, load-bearing convention
 # rather than catching a mistake:
 #   N801: hardware-format dtype classes (e.g. v8bfp16ebs8) are named to match
@@ -76,3 +78,8 @@ select = ["E", "F", "I", "N802", "N816"]
 # Markdown-formatted module docstring (headers, tables, code fences); wrapping
 # it to fit a line-length limit would break the markdown formatting.
 "python/utils/trace/__init__.py" = ["E501"]
+# Module-scope globals here encode the MobileNet topology (block index +
+# In/Out + Channel/Height/Width, e.g. tensorInW, bneck_10_InC1) mirroring the
+# network spec 1:1 -- same rationale as the N803/N806 drop above, just at
+# module scope instead of function/argument scope.
+"programming_examples/ml/mobilenet/**/*.py" = ["N816"]
