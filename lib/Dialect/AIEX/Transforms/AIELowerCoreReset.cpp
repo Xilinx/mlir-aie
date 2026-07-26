@@ -8,6 +8,7 @@
 #include "aie/Dialect/AIE/IR/AIEDialect.h"
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 #include "aie/Dialect/AIEX/Transforms/AIEXPasses.h"
+#include "aie/Dialect/AIEX/Utils/RegisterField.h"
 
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Pass/Pass.h"
@@ -32,10 +33,14 @@ using namespace xilinx::AIEX;
 // aie2p; the npu runtime sequence path is AIE2-only.
 static constexpr uint32_t kCoreCtrlAddr = 0x00032000;
 
-// CORE_CONTROL reset bit (bit 1). Matches
-// XAIE2PGBL_CORE_MODULE_CORE_CONTROL_RESET_MASK. Bit 0 of the same word is
-// ENABLE, which the mask preserves.
-static constexpr uint32_t kCoreCtrlResetMask = 0x2;
+// CORE_CONTROL.RESET field: bit 1, matching
+// XAIE2PGBL_CORE_MODULE_CORE_CONTROL_RESET_{LSB,MASK} (aie2p reginit:
+// Aie2PCoreCtrlReg.CtrlRst in xaie2pgbl_reginit.c). Bit 0 of the same word is
+// ENABLE (CtrlEn); going through RegField + createMaskWriteField instead of a
+// hand-coded write32 is what keeps this pulse from clobbering it.
+static constexpr RegField kCoreCtrlResetField = {
+    /*name=*/"CORE_CONTROL.RESET", /*regOff=*/kCoreCtrlAddr, /*lsb=*/1,
+    /*mask=*/0x2};
 
 struct CoreResetToMaskWrite32Pattern : OpConversionPattern<CoreResetOp> {
   using OpConversionPattern<CoreResetOp>::OpConversionPattern;
@@ -58,24 +63,23 @@ struct CoreResetToMaskWrite32Pattern : OpConversionPattern<CoreResetOp> {
     // operand is the tile-local CORE_CONTROL offset, mirroring how
     // AIELowerSetLock passes the local lock address with col/row.
     //
-    // Reset pulse: assert the reset bit, then clear it. Both writes mask to the
-    // reset bit only, so the pulse preserves the ENABLE field packed in the
+    // Reset pulse: assert the reset bit, then clear it. createMaskWriteField
+    // derives the shift and mask from kCoreCtrlResetField and always emits
+    // npu.maskwrite32, so the pulse preserves the ENABLE field packed in the
     // same CORE_CONTROL word instead of clobbering it. This mirrors aie-rt's
     // XAie_CoreReset/XAie_CoreUnreset, which drive the reset bit with a
-    // MaskWrite32. Constants are materialized in named locals so the emitted IR
-    // order does not depend on unspecified C++ argument-evaluation order.
-    Value assertAddr = createConstantI32(rewriter, loc, kCoreCtrlAddr);
-    Value assertVal = createConstantI32(rewriter, loc, kCoreCtrlResetMask);
-    Value assertMask = createConstantI32(rewriter, loc, kCoreCtrlResetMask);
-    rewriter.create<NpuMaskWrite32Op>(loc, assertAddr, assertVal, assertMask,
-                                      nullptr, colAttr, rowAttr);
+    // MaskWrite32.
+    FailureOr<NpuMaskWrite32Op> assertWrite = createMaskWriteField(
+        rewriter, loc, op, kCoreCtrlResetField, /*value=*/1, colAttr, rowAttr);
+    if (failed(assertWrite))
+      return failure();
 
-    Value clearAddr = createConstantI32(rewriter, loc, kCoreCtrlAddr);
-    Value clearVal = createConstantI32(rewriter, loc, 0u);
-    Value clearMask = createConstantI32(rewriter, loc, kCoreCtrlResetMask);
-    rewriter.replaceOpWithNewOp<NpuMaskWrite32Op>(
-        op, clearAddr, clearVal, clearMask, nullptr, colAttr, rowAttr);
+    FailureOr<NpuMaskWrite32Op> clearWrite = createMaskWriteField(
+        rewriter, loc, op, kCoreCtrlResetField, /*value=*/0, colAttr, rowAttr);
+    if (failed(clearWrite))
+      return failure();
 
+    rewriter.replaceOp(op, *clearWrite);
     return success();
   };
 };
