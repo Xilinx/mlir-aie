@@ -14,7 +14,7 @@
 // RUN: cat %t/ckpt/*/input_with_addresses.mlir | FileCheck --check-prefix=MLIR %s
 
 // The routing failure is reported and a resumable checkpoint is written.
-// CHECK: 'aie.rule' op can lead to false packet id match for id 28, which is not supposed to pass through this port
+// CHECK: slave port packet rules exceed the 4-slot limit
 // CHECK: aiecc: wrote checkpoint to
 // CHECK: To reproduce, run: aiecc --resume={{.*}}/manifest.json
 
@@ -26,23 +26,14 @@
 // MANIFEST: "input_with_addresses.mlir"
 
 // The captured frontier IR is the pre-routing module holding the unroutable flow.
-// MLIR: aie.packet_flow(28)
+// MLIR: aie.packet_flow(20)
 
-// from test/create-packet-flows/badpacket_flow.mlir
-aie.device(npu1_1col) {
-  %03 = aie.tile(0, 3)
-  %02 = aie.tile(0, 2)
-  %00 = aie.tile(0, 0)
-  aie.packet_flow(28) {
-    aie.packet_source<%00, DMA : 0>
-    aie.packet_dest<%02, TileControl : 0>
-  }
-  aie.packet_flow(29) {
-    aie.packet_source<%00, DMA : 0>
-    aie.packet_dest<%03, TileControl : 0>
-  }
-  aie.packet_flow(26) {
-    aie.packet_source<%00, DMA : 0>
-    aie.packet_dest<%03, DMA : 0>
-  }
+// from test/create-packet-flows/subcube_cover_overbudget.mlir
+aie.device(xcvc1902) {
+  %11 = aie.tile(1, 1)
+  aie.packet_flow(20) { aie.packet_source<%11, West : 0>  aie.packet_dest<%11, Core : 0> }
+  aie.packet_flow(21) { aie.packet_source<%11, West : 0>  aie.packet_dest<%11, Core : 1> }
+  aie.packet_flow(22) { aie.packet_source<%11, West : 0>  aie.packet_dest<%11, DMA : 0> }
+  aie.packet_flow(23) { aie.packet_source<%11, West : 0>  aie.packet_dest<%11, DMA : 1> }
+  aie.packet_flow(24) { aie.packet_source<%11, West : 0>  aie.packet_dest<%11, TileControl : 0> }
 }
