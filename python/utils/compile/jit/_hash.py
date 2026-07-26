@@ -25,7 +25,9 @@ from __future__ import annotations
 import hashlib
 import json
 import logging
+import marshal
 from pathlib import Path
+from types import CodeType
 from typing import Any, Callable, Mapping
 
 logger = logging.getLogger(__name__)
@@ -41,6 +43,40 @@ def _device_identity_key(device) -> tuple[str, str, str, str]:
         str(getattr(device, "cols", "")),
         str(getattr(device, "rows", "")),
     )
+
+
+def _without_location(const):
+    """A constant with file and line info dropped, nested code objects included.
+
+    Applied to every constant, not just code objects, so one cannot keep its
+    location by sitting inside a tuple.
+    """
+    if isinstance(const, tuple):
+        return tuple(_without_location(c) for c in const)
+    if not isinstance(const, CodeType):
+        return const
+    return const.replace(
+        co_consts=tuple(_without_location(c) for c in const.co_consts),
+        co_filename="",
+        co_firstlineno=1,
+        co_linetable=b"",
+    )
+
+
+def _code_identity(code: CodeType) -> bytes:
+    """Stable bytes for a code object: what marshal writes into a ``.pyc``.
+
+    ``repr()`` of a code object embeds its address, so a key built from it moves
+    between processes. marshal covers bytecode, names, varnames, flags and
+    constants, recursing into nested code, with no addresses and a hash-seed
+    independent frozenset order. ``co_names`` matters: ``matmul_bf16(a, b, c)``
+    and ``matmul_i8(a, b, c)`` compile to identical bytecode.
+
+    Location is stripped first: it is not part of the design, and keying on it
+    would split the cache per checkout. Version 4 is pinned because
+    ``marshal.version`` is 4 through 3.13 and 5 from 3.14.
+    """
+    return marshal.dumps(_without_location(code), 4)
 
 
 def _compute_recipe_hash(
@@ -69,15 +105,16 @@ def _compute_recipe_hash(
         except FileNotFoundError:
             pass
     else:
-        code = generator.__code__
-        h.update(code.co_code)
-        h.update(repr(code.co_consts).encode())
+        h.update(_code_identity(generator.__code__))
         h.update(getattr(generator, "__qualname__", "").encode())
         h.update(getattr(generator, "__module__", "").encode())
+        # A CompileTime[T] left to its Python default never reaches
+        # compile_kwargs, and the default lives outside the code object.
+        h.update(repr(getattr(generator, "__defaults__", None)).encode())
+        h.update(repr(getattr(generator, "__kwdefaults__", None)).encode())
 
     def _kwarg_repr(v):
         if callable(v) and hasattr(v, "__code__"):
-            code = v.__code__
             closure = (
                 tuple(c.cell_contents for c in v.__closure__) if v.__closure__ else None
             )
@@ -87,9 +124,9 @@ def _compute_recipe_hash(
                 closure_repr = "<unhashable closure>"
             return (
                 "fn:",
-                bytes(code.co_code).hex(),
-                repr(code.co_consts),
+                _code_identity(v.__code__).hex(),
                 repr(getattr(v, "__defaults__", None)),
+                repr(getattr(v, "__kwdefaults__", None)),
                 closure_repr,
             )
         return str(v)
