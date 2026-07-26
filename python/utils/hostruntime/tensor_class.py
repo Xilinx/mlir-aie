@@ -209,7 +209,13 @@ class NpuTensor(ABC):
     # so the module-level default is resolved per call rather than frozen into
     # the class at import; a backend whose host/device reconciliation has a
     # different granularity sets its own. See :data:`COHERENCE_GRANULE`.
-    _coherence_granule = None
+    _coherence_granule: int | None = None
+
+    # Set on views by the backend hook. Declared here rather than conjured onto
+    # the instance so that every buffer has them, they are part of the contract
+    # a backend implements against, and the type checker can see them.
+    _storage: "NpuTensor | None" = None
+    _offset_bytes: int = 0
 
     @classmethod
     def _resolve_coherence_granule(cls):
@@ -230,9 +236,9 @@ class NpuTensor(ABC):
         internally, so the whole chain stays alive for as long as any view of it
         does.
         """
-        owner = getattr(self, "_storage", None)
+        owner = self._storage
         while owner is not None:
-            parent = getattr(owner, "_storage", None)
+            parent = owner._storage
             if parent is None:
                 return owner
             owner = parent
@@ -252,7 +258,7 @@ class NpuTensor(ABC):
         was carved out of. Compare :meth:`torch.Tensor.storage_offset`, which is
         in elements; this is in bytes because a view may reinterpret the dtype.
         """
-        return getattr(self, "_offset_bytes", 0)
+        return self._offset_bytes
 
     def __init__(self, shape_or_data, dtype: npt.DTypeLike = np.uint32, device="npu"):
         """

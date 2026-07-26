@@ -4,6 +4,8 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
 
+from typing import cast
+
 import numpy as np
 import pyxrt as xrt  # pyright: ignore[reportMissingImports]
 from aie.helpers.util import np_ndarray_type_get_shape
@@ -159,7 +161,9 @@ class XRTTensor(NpuTensor):
         # host reading one region while the device writes another, silently.
         # Deriving every view from the root keeps the two in agreement, whatever
         # depth the caller nests to.
-        root = self.base or self
+        # A view is always built as type(self), so the buffer that owns the
+        # storage is always this backend; the base class cannot say so.
+        root = cast("XRTTensor", self.base or self)
         absolute_offset = self.storage_offset + offset_bytes
         view._offset_bytes = absolute_offset
         view._bo = xrt.bo(root._bo, nbytes, absolute_offset)
