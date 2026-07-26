@@ -404,6 +404,8 @@ public:
   /// the origins of connect operations in the switchbox.
   virtual uint32_t getNumSourceShimMuxConnections(int col, int row,
                                                   WireBundle bundle) const = 0;
+  /// Return the number of packet-rule slots per stream-switch slave port.
+  virtual uint32_t getNumSlaveSlots() const { return 4; }
 
   // Return true if the stream switch connection is legal, false otherwise.
   virtual bool isLegalTileConnection(int col, int row, WireBundle srcBundle,
