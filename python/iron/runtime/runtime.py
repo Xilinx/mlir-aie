@@ -28,6 +28,7 @@ from ...utils import trace as trace_utils
 from ... import ir  # pyright: ignore[reportMissingImports, reportAttributeAccessIssue]
 
 from ...dialects.aiex import (
+    npu_load_pdi,  # pyright: ignore[reportAttributeAccessIssue]
     sync_scratchpad_parameters_from_host,  # pyright: ignore[reportAttributeAccessIssue]
     dma_await_task,
     dma_free_task,
@@ -269,6 +270,7 @@ class Runtime(Resolvable):
         trace_size: int | None = None,
         reuse_output_buffer: bool = False,
         egress_shim_col: int = 0,
+        load_pdi_device_ref: str | None = None,
     ) -> None:
         """Build the ``runtime_sequence`` op and run the sequence body inside it.
 
@@ -282,6 +284,9 @@ class Runtime(Resolvable):
             trace_size/reuse_output_buffer/egress_shim_col: Forwarded from
                 [`Program.enable_trace`][iron.program.Program.enable_trace]; see
                 there. ``trace_size`` of ``None``/``0`` disables tracing.
+            load_pdi_device_ref: On the full-ELF path (no xclbin configures the
+                device), the device symbol to load via ``npu_load_pdi`` as the
+                first op in the sequence. ``None`` on the xclbin path.
         """
         # A runtime_sequence block arg per runtime (type) input; folded-constant
         # inputs contribute no block arg.
@@ -295,6 +300,11 @@ class Runtime(Resolvable):
         seq_op = RuntimeSequenceOp(sym_name="sequence")
         entry_block = seq_op.body.blocks.append(*rt_dtypes)
         with ir.InsertionPoint(entry_block):
+            # Full-ELF designs configure the device themselves: no xclbin
+            # pre-loads the PDI, so the sequence must start by loading it.
+            if load_pdi_device_ref is not None:
+                npu_load_pdi(device_ref=load_pdi_device_ref)
+
             block_args = iter(entry_block.arguments)
             for rt_data in self._rt_data:
                 if rt_data is not None:

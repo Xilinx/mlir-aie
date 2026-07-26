@@ -17,6 +17,7 @@ from .runtime import Runtime
 from .scratchpad_parameter import ScratchpadParameter
 from .resolvable import Resolvable
 from ..utils import trace as trace_utils
+from ..utils.compile.jit.context import get_compile_arg
 
 
 class Program:
@@ -247,10 +248,19 @@ class Program:
                 # state (barrier.set, inline_ops over a worker Buffer) are valid.
                 # Its shim DMAs reference fifos by symbol name (forward ref), so
                 # emitting after the fifo ops is fine.
+                #
+                # On the full-ELF path the runtime sequence must load its own
+                # PDI (no xclbin configures the device), so pass the device
+                # symbol as the load_pdi reference. The flag is injected into
+                # the compile context by CompilableDesign.
+                load_pdi_device_ref = (
+                    device_name if get_compile_arg("_iron_full_elf") else None
+                )
                 self._rt.resolve(
                     trace_size=self._trace_size,
                     reuse_output_buffer=self._reuse_output_buffer,
                     egress_shim_col=self._egress_shim_col,
+                    load_pdi_device_ref=load_pdi_device_ref,
                 )
 
             self._print_verify(ctx)
