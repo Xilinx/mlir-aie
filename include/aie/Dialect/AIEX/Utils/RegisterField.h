@@ -52,13 +52,18 @@ namespace xilinx::AIEX {
 // arithmetic. `mask` is the field's mask already positioned at `lsb` within
 // the 32-bit register word (as aie-rt's Mask field always is), and is
 // expected to be a single contiguous run of set bits -- every hardware
-// bitfield is. A default-constructed RegField (mask == 0) represents an
-// unknown/unsupported field: `encodeRegisterField` and `createMaskWriteField`
-// both reject it rather than silently writing bit 0.
+// bitfield is. There is deliberately no separate `lsb` member: aie-rt's Lsb
+// is always the trailing-zero count of its Mask, so a caller-supplied lsb
+// could only ever agree with `mask` or be a bug, and `encodeRegisterField`
+// derives it from `mask` instead of trusting a second, independently
+// mistypeable field -- a mismatched pair here would defeat this header's
+// whole purpose without any diagnostic. A default-constructed RegField
+// (mask == 0) represents an unknown/unsupported field: `encodeRegisterField`
+// and `createMaskWriteField` both reject it rather than silently writing
+// bit 0.
 struct RegField {
   llvm::StringRef name; // for diagnostics, e.g. "CORE_CONTROL.RESET"
   uint32_t regOff = 0;  // tile-local register byte offset (aie-rt RegOff)
-  uint32_t lsb = 0;     // field LSB position (aie-rt RegFldAttr::Lsb)
   uint32_t mask = 0;    // field mask, lsb-positioned (aie-rt RegFldAttr::Mask)
 };
 

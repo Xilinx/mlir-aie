@@ -10,6 +10,7 @@
 #include "aie/Dialect/AIEX/IR/AIEXDialect.h"
 
 #include "llvm/ADT/bit.h"
+#include "llvm/Support/MathExtras.h"
 
 using namespace mlir;
 using namespace xilinx;
@@ -22,19 +23,28 @@ FailureOr<uint32_t> AIEX::encodeRegisterField(const RegField &field,
 
   // Every hardware bitfield aie-rt describes is a single contiguous run of
   // set bits, so the field's width is simply the popcount of its mask, and
-  // its LSB is the mask's trailing-zero count. Assert the two are consistent
-  // with the RegField the caller built (a mismatch is a bug in the RegField
-  // constant, not in an input value) rather than silently mis-deriving the
-  // width from an lsb that disagrees with the mask.
-  assert(
-      llvm::countr_zero(field.mask) == static_cast<int>(field.lsb) &&
-      "RegField.lsb does not match the trailing-zero count of RegField.mask");
+  // its LSB is the mask's trailing-zero count. Derive both from `mask`
+  // unconditionally -- RegField has no separate lsb member for this reason:
+  // a caller-supplied lsb could disagree with the mask (e.g. a copy-pasted
+  // RegField constant with the mask updated but not the lsb), and that
+  // mismatch would silently write the wrong bit position with no
+  // diagnostic in a build where assertions are compiled out. Deriving lsb
+  // from mask makes that class of bug unrepresentable instead of merely
+  // asserted against.
+  //
+  // llvm::isShiftedMask_32 catches the other half of a malformed constant: a
+  // non-contiguous mask (e.g. 0x5). This is debug-only, same as the rest of
+  // this file's build-time invariants: it protects a RegField the developer
+  // wrote, not a value a caller passes at runtime.
+  assert(llvm::isShiftedMask_32(field.mask) &&
+         "RegField.mask must be a single contiguous run of set bits");
+  unsigned lsb = static_cast<unsigned>(llvm::countr_zero(field.mask));
   unsigned width = llvm::popcount(field.mask);
   uint64_t maxValue = (uint64_t{1} << width) - 1;
   if (value > maxValue)
     return failure(); // value does not fit in the field's bit width
 
-  return static_cast<uint32_t>(value << field.lsb) & field.mask;
+  return static_cast<uint32_t>(value << lsb) & field.mask;
 }
 
 FailureOr<AIEX::NpuMaskWrite32Op>

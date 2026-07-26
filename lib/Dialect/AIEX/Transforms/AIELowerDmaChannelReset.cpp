@@ -183,11 +183,16 @@ static LogicalResult expandDmaChannelResetForOps(DeviceOp device) {
 
 // The S2MM/MM2S channel CTRL.RESET field: bit 1, matching
 // XAIE2PGBL_MEMORY_MODULE_DMA_{S2MM,MM2S}_{0,1}_CTRL_RESET_{LSB,MASK} --
-// identical across every channel register in the aie2p reginit tables. The
-// register offset itself (`regOff`) differs per channel/direction/tile type,
-// so it is filled in per-op from AIETargetModel::getDmaControlAddress rather
-// than baked into this constant.
-static constexpr uint32_t kDmaCtrlResetLsb = 1;
+// identical across every core-tile and mem-tile channel register in the
+// aie2p reginit tables. This does NOT hold for the shim/NOC DMA CTRL
+// register: XAIE2PGBL_NOC_MODULE_DMA_{S2MM,MM2S}_{0,1}_CTRL has no RESET
+// field at all -- bit 1 there is PAUSE_MEM (aie-rt's Aie2PShimDmaChProp sets
+// Reset.Lsb = 0, Reset.Mask = 0). DmaChannelResetOp::verify() rejects shim
+// tiles before this lowering ever runs, so kDmaCtrlResetMask is never
+// applied to a shim register; do not reuse this constant for a shim-facing
+// op without rederiving it. The register offset itself (`regOff`) differs
+// per channel/direction/tile type, so it is filled in per-op from
+// AIETargetModel::getDmaControlAddress rather than baked into this constant.
 static constexpr uint32_t kDmaCtrlResetMask = 0x2;
 
 struct DmaChannelResetToMaskWrite32Pattern
@@ -215,12 +220,11 @@ struct DmaChannelResetToMaskWrite32Pattern
     uint32_t ctrlAddrLocal =
         tm.getDmaControlAddress(col, row, channel, dir) & 0xFFFFF;
 
-    // The RESET field's lsb/mask are fixed across every DMA CTRL register
-    // (see kDmaCtrlResetLsb/Mask above); only the register offset varies per
-    // channel/direction/tile type, so it is filled in here.
+    // The RESET field's mask is fixed across every core-tile/mem-tile DMA
+    // CTRL register (see kDmaCtrlResetMask above); only the register offset
+    // varies per channel/direction/tile type, so it is filled in here.
     RegField ctrlResetField = {/*name=*/"DMA_CTRL.RESET",
                                /*regOff=*/ctrlAddrLocal,
-                               /*lsb=*/kDmaCtrlResetLsb,
                                /*mask=*/kDmaCtrlResetMask};
 
     Location loc = op.getLoc();

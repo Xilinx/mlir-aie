@@ -35,6 +35,25 @@ set(EXECUTABLES target_model target_model_rtti target_model_unknown_device regis
 
 add_custom_target(check-aie-cpp COMMAND ${CMAKE_CTEST_COMMAND} DEPENDS ${EXECUTABLES} bfloat16_fallback_test)
 
+# register_field_test exercises AIEX::encodeRegisterField directly (see
+# lib/Dialect/AIEX/Utils/RegisterField.cpp, linked in below via AIEXUtils),
+# and RegisterField.h also names xilinx::AIEX::NpuMaskWrite32Op (in
+# createMaskWriteField's signature), so unlike the other executables here it
+# needs the AIEX dialect library and its MLIRDLTIDialect dependency
+# (AIEX::DeviceOp's DataLayoutOpInterface / HasDefaultDLTIDataLayout trait)
+# too. ${dialect_libs} below is not a reliable source for either: a sibling
+# add_subdirectory under programming_examples/programming_guide reloads MLIR
+# and clobbers the accumulated MLIR_DIALECT_LIBS global property first (see
+# the "Last because ..." comment on add_subdirectory(test) in the top-level
+# CMakeLists.txt), and this is the only CppTest that references an
+# AIEX-registered op type, so the gap was latent until this target. Wrap the
+# whole static-archive set in --start-group/--end-group: AIE/AIEX/
+# MLIRDLTIDialect resolve each other in a way a single left-to-right archive
+# scan does not settle in one pass (confirmed by hand: the same libraries
+# without the group wrapper leave verifyHasDefaultDLTIDataLayoutTrait and
+# friends undefined at link time).
+target_link_libraries(register_field_test PUBLIC -Wl,--start-group)
+
 foreach(executable ${EXECUTABLES})
     target_link_libraries(${executable}
                         PUBLIC
@@ -42,9 +61,7 @@ foreach(executable ${EXECUTABLES})
                         ${dialect_libs})
 endforeach()
 
-# register_field_test exercises AIEX::encodeRegisterField directly (see
-# lib/Dialect/AIEX/Utils/RegisterField.cpp), which lives in AIEXUtils rather
-# than the core AIE dialect library the other executables above test.
-target_link_libraries(register_field_test PUBLIC AIEXUtils)
+target_link_libraries(register_field_test PUBLIC
+                      AIEXUtils AIEX MLIRDLTIDialect -Wl,--end-group)
 
 add_dependencies(check-aie check-aie-cpp)

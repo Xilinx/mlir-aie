@@ -29,15 +29,17 @@ using namespace xilinx::AIEX;
 namespace {
 
 // CORE_CONTROL.RESET: XAIE2PGBL_CORE_MODULE_CORE_CONTROL_RESET_{LSB,MASK},
-// lsb 1, mask 0x2 (aie2p reginit: Aie2PCoreCtrlReg.CtrlRst).
-constexpr RegField kCoreCtrlResetField = {"CORE_CONTROL.RESET", 0x32000, 1,
-                                          0x2};
+// lsb 1, mask 0x2 (aie2p reginit: Aie2PCoreCtrlReg.CtrlRst). lsb is not a
+// RegField member -- encodeRegisterField derives it from mask -- so only
+// mask is given here; it is still lsb 1 by construction (trailing-zero count
+// of 0x2).
+constexpr RegField kCoreCtrlResetField = {"CORE_CONTROL.RESET", 0x32000, 0x2};
 
 // CORE_CONTROL.ENABLE: XAIE2PGBL_CORE_MODULE_CORE_CONTROL_ENABLE_{LSB,MASK},
 // lsb 0, mask 0x1 (aie2p reginit: Aie2PCoreCtrlReg.CtrlEn). Shares the same
 // register as kCoreCtrlResetField -- exactly the sibling field a write32 (as
 // opposed to a maskwrite32) would clobber.
-constexpr RegField kCoreCtrlEnableField = {"CORE_CONTROL.ENABLE", 0x32000, 0,
+constexpr RegField kCoreCtrlEnableField = {"CORE_CONTROL.ENABLE", 0x32000,
                                            0x1};
 
 // DMA_S2MM_0.CTRL.CONTROLLER_ID:
@@ -45,7 +47,7 @@ constexpr RegField kCoreCtrlEnableField = {"CORE_CONTROL.ENABLE", 0x32000, 0,
 // field (lsb 8, mask 0xFF00). Wider than the 1-bit reset/enable fields above,
 // so it exercises the general width check instead of only the 1-bit case.
 constexpr RegField kDmaControllerIdField = {"DMA_CTRL.CONTROLLER_ID", 0x1DE00,
-                                            8, 0xFF00};
+                                            0xFF00};
 
 // A field with mask == 0: the default-constructed / not-yet-populated
 // RegField. Every real aie-rt bitfield has a nonzero mask, so this stands in

@@ -39,8 +39,7 @@ static constexpr uint32_t kCoreCtrlAddr = 0x00032000;
 // ENABLE (CtrlEn); going through RegField + createMaskWriteField instead of a
 // hand-coded write32 is what keeps this pulse from clobbering it.
 static constexpr RegField kCoreCtrlResetField = {
-    /*name=*/"CORE_CONTROL.RESET", /*regOff=*/kCoreCtrlAddr, /*lsb=*/1,
-    /*mask=*/0x2};
+    /*name=*/"CORE_CONTROL.RESET", /*regOff=*/kCoreCtrlAddr, /*mask=*/0x2};
 
 struct CoreResetToMaskWrite32Pattern : OpConversionPattern<CoreResetOp> {
   using OpConversionPattern<CoreResetOp>::OpConversionPattern;
