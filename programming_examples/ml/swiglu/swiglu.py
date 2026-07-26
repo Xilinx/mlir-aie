@@ -12,16 +12,14 @@ Weights are interleaved (1024 of w1, then 1024 of w2, ...) into a single
 
 import argparse
 
-import numpy as np
-from ml_dtypes import bfloat16
-
 import aie.iron as iron
-from aie.iron import CompileTime, In, Out, ObjectFifo, Program, Runtime, Worker, kernels
-from aie.utils.hostruntime.argparse import device_from_args
+import numpy as np
 from aie.helpers.taplib.tensortiler2d import TensorTiler2D
-from aie.utils.hostruntime.argparse import add_compile_args
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
+from aie.utils.hostruntime.argparse import add_compile_args, device_from_args
 from aie.utils.hostruntime.cli import run_design_cli
 from aie.utils.verify import assert_pass
+from ml_dtypes import bfloat16
 
 
 @iron.jit
@@ -36,6 +34,7 @@ def swiglu(
     xfr_dtype = bfloat16
     device = iron.get_current_device()
 
+    assert device is not None
     if num_columns > device.cols:
         raise ValueError(
             f"num_columns ({num_columns}) exceeds device.cols ({device.cols})"
@@ -84,7 +83,11 @@ def swiglu(
     taps_wts = TensorTiler2D.simple_tiler((1, 2 * size), (1, 2 * chunk))
 
     rt = Runtime()
-    with rt.sequence(transfer_type, transfer_type_wts, transfer_type) as (a, w, b):
+    with rt.sequence(transfer_type, transfer_type_wts, transfer_type) as (
+        a,
+        w,
+        b,
+    ):  # pyright: ignore[reportGeneralTypeIssues]
         rt.start(*workers)
         tg = rt.task_group()
         for i in range(num_columns):

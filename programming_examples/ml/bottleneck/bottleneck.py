@@ -21,15 +21,14 @@ WorkerRuntimeBarrier dance.
 
 import argparse
 
-import numpy as np
-
 import aie.iron as iron
-from aie.iron import CompileTime, In, Out, ObjectFifo, Program, Runtime, Worker, kernels
+import numpy as np
+from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.iron.device import AnyMemTile, Tile
 from aie.utils.hostruntime.argparse import (
-    device_from_args,
     add_compile_args,
+    device_from_args,
 )
 from aie.utils.hostruntime.cli import run_design_cli
 
@@ -49,6 +48,7 @@ def bottleneck(
     skip_scale: CompileTime[int] = 0,
 ):
     device = iron.get_current_device()
+    assert device is not None
 
     l1_in_c = tensor_in_c
     l1_out_c = l1_in_c // 4
@@ -70,11 +70,9 @@ def bottleneck(
     wts1_ty = np.ndarray[(wts1_sz,), np.dtype[np.int8]]
     l1_out_ty = np.ndarray[(tensor_w, 1, l1_out_c), np.dtype[np.uint8]]
 
-    l2_in_ty = np.ndarray[(tensor_w, 1, l2_in_c), np.dtype[np.uint8]]
     wts2_ty = np.ndarray[(wts2_sz,), np.dtype[np.int8]]
     l2_out_ty = np.ndarray[(tensor_w, 1, l2_out_c // 2), np.dtype[np.uint8]]
 
-    l3_in_ty = np.ndarray[(tensor_w, 1, l3_in_c // 2), np.dtype[np.uint8]]
     wts3_ty = np.ndarray[(wts3_sz,), np.dtype[np.int8]]
     l3_out_ty = np.ndarray[(tensor_w, 1, l3_out_c), np.dtype[np.uint8]]
 
@@ -271,11 +269,15 @@ def bottleneck(
     )
 
     rt = Runtime()
-    with rt.sequence(act_in_l3_ty, wts_in_l3_ty, act_in_l3_ty) as (I, W, O):
+    with rt.sequence(act_in_l3_ty, wts_in_l3_ty, act_in_l3_ty) as (
+        inp,
+        wts,
+        outp,
+    ):  # pyright: ignore[reportGeneralTypeIssues]
         rt.start(*workers)
-        rt.fill(of_act_l3l2.prod(), I)
-        rt.fill(of_wts_l3l2.prod(), W)
-        rt.drain(of_out_l2l3.cons(), O, wait=True)
+        rt.fill(of_act_l3l2.prod(), inp)
+        rt.fill(of_wts_l3l2.prod(), wts)
+        rt.drain(of_out_l2l3.cons(), outp, wait=True)
 
     return Program(device, rt).resolve_program()
 

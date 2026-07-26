@@ -4,13 +4,12 @@
 #
 """ResNet conv2_x layers — IRON + ``@iron.jit``, kernel-library backed."""
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
+from aie.helpers.taplib import TensorAccessPattern
 from aie.iron import CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker, kernels
 from aie.iron.controlflow import range_
 from aie.iron.device import Tile
-from aie.helpers.taplib import TensorAccessPattern
 
 
 @iron.jit
@@ -449,7 +448,11 @@ def resnet_conv2_x(
     rt = Runtime()
     with rt.sequence(
         activationsInL3_ty, weightsInL3_ty_complete, activationsOutL3_ty
-    ) as (inputFromL3, weightsFromL3, outputToL3):
+    ) as (
+        inputFromL3,
+        weightsFromL3,
+        outputToL3,
+    ):  # pyright: ignore[reportGeneralTypeIssues]
         rt.start(*workers)
 
         rt.fill(act1_fifos[0].prod(), inputFromL3, tile=Tile(0, 0))
@@ -479,4 +482,7 @@ def resnet_conv2_x(
         rt.fill(wts_fifos[2].prod(), weightsFromL3, tap, tile=Tile(2, 0))
         rt.drain(outOFL2L3.cons(), outputToL3, tile=Tile(1, 0), wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    return Program(
+        iron.get_current_device(),  # pyright: ignore[reportArgumentType]
+        rt,
+    ).resolve_program()

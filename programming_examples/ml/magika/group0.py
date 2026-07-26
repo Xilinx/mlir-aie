@@ -18,17 +18,19 @@ to select which entry point gets exported.
 import argparse
 from pathlib import Path
 
-import numpy as np
-
 import aie.iron as iron
+import numpy as np
 from aie.extras.dialects import arith
 from aie.helpers.util import np_dtype_to_mlir_type
 from aie.iron import Buffer, CompileTime, In, ObjectFifo, Out, Program, Runtime, Worker
 from aie.iron.controlflow import range_
-from aie.utils.hostruntime.argparse import device_from_args
 from aie.iron.kernel import ExternalFunction
 from aie.utils.config import cxx_header_path
-from aie.utils.hostruntime.argparse import add_compile_args, add_trace_arg
+from aie.utils.hostruntime.argparse import (
+    add_compile_args,
+    add_trace_arg,
+    device_from_args,
+)
 from aie.utils.hostruntime.cli import run_design_cli
 
 _THIS_DIR = Path(__file__).parent
@@ -70,7 +72,13 @@ def group0(
         source_file=str(_KERNEL_SRC),
         compile_flags=["-DGROUPA"],
         include_dirs=[str(_KERNEL_INC), cxx_header_path()],
-        arg_types=[din_ty, data_int_ty, lut0a_ty, np.int32, np.int32],
+        arg_types=[
+            din_ty,
+            data_int_ty,
+            lut0a_ty,
+            np.int32,
+            np.int32,
+        ],  # pyright: ignore[reportArgumentType]
         object_file_name="group0a.o",
     )
 
@@ -106,9 +114,19 @@ def group0(
     def group0a_body(of_di, of_do, lut, kernel):
         di = of_di.acquire(1)
         for xid in range_(4):
-            xid_i32 = arith.index_cast(xid, to=np_dtype_to_mlir_type(np.int32))
+            xid_i32 = arith.index_cast(
+                xid,  # pyright: ignore[reportArgumentType]
+                to=np_dtype_to_mlir_type(
+                    np.int32
+                ),  # pyright: ignore[reportArgumentType]
+            )
             for cid in range_(8):  # 64 / 8
-                cid_i32 = arith.index_cast(cid, to=np_dtype_to_mlir_type(np.int32))
+                cid_i32 = arith.index_cast(
+                    cid,  # pyright: ignore[reportArgumentType]
+                    to=np_dtype_to_mlir_type(
+                        np.int32
+                    ),  # pyright: ignore[reportArgumentType]
+                )
                 do = of_do.acquire(1)
                 kernel(di, do, lut, xid_i32, cid_i32)
                 of_do.release(1)
@@ -141,14 +159,21 @@ def group0(
 
     # ----- Runtime ----------------------------------------------------------
     rt = Runtime()
-    with rt.sequence(transfer_in_ty, transfer_out_ty, scalar_ty) as (A, C, _):
+    with rt.sequence(transfer_in_ty, transfer_out_ty, scalar_ty) as (
+        A,
+        C,
+        _,
+    ):  # pyright: ignore[reportGeneralTypeIssues]
         if trace_size > 0:
             rt.enable_trace(trace_size)
         rt.start(group0a_worker, group0b_worker)
         rt.fill(of_din_L3L2.prod(), A)
         rt.drain(of_dout_L2L3.cons(), C, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()
+    return Program(
+        iron.get_current_device(),  # pyright: ignore[reportArgumentType]
+        rt,
+    ).resolve_program()
 
 
 def _make_argparser():
