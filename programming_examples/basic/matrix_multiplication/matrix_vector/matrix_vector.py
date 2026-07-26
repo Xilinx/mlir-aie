@@ -125,10 +125,9 @@ def matrix_vector(
             rt.fill(memA_fifos[i].prod(), a_in, a_tap)
             rt.drain(outC_fifos[i].cons(), c_out, c_tap, wait=True)
 
-    return Program(
-        iron.get_current_device(),  # pyright: ignore[reportArgumentType]
-        rt,
-    ).resolve_program()
+    device = iron.get_current_device()
+    assert device is not None
+    return Program(device, rt).resolve_program()
 
 
 def _make_argparser():

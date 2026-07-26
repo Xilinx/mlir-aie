@@ -157,10 +157,9 @@ def matrix_multiplication_single_core(
             )
             rt.finish_task_group(task_group)
 
-    return Program(
-        iron.get_current_device(),  # pyright: ignore[reportArgumentType]
-        rt,
-    ).resolve_program()
+    device = iron.get_current_device()
+    assert device is not None
+    return Program(device, rt).resolve_program()
 
 
 def aot_compile(M: int, K: int, N: int, element_type) -> None:

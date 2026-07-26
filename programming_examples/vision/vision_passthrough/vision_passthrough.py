@@ -53,7 +53,9 @@ def vision_passthrough(
         rt.fill(of_in.prod(), a)
         rt.drain(of_out.cons(), b, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()  # fmt: skip # pyright: ignore[reportArgumentType]
+    device = iron.get_current_device()
+    assert device is not None
+    return Program(device, rt).resolve_program()
 
 
 def _make_argparser():

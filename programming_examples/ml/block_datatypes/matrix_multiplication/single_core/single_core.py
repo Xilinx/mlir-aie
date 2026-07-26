@@ -159,10 +159,9 @@ def single_core_matmul(
         rt.finish_task_group(tgs[-1])
         del tgs[-1]
 
-    return Program(
-        iron.get_current_device(),  # pyright: ignore[reportArgumentType]
-        rt,
-    ).resolve_program()
+    device = iron.get_current_device()
+    assert device is not None
+    return Program(device, rt).resolve_program()
 
 
 def _make_argparser():

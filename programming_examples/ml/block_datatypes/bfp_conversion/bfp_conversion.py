@@ -115,10 +115,9 @@ def bfp_conversion(a_in: In, b_in: In, c_out: Out):
         rt.fill(of_in2.prod(), B)
         rt.drain(of_out.cons(), C, wait=True)
 
-    return Program(
-        iron.get_current_device(),  # pyright: ignore[reportArgumentType]
-        rt,
-    ).resolve_program()
+    device = iron.get_current_device()
+    assert device is not None
+    return Program(device, rt).resolve_program()
 
 
 def _make_argparser():

@@ -189,7 +189,9 @@ def color_detect(
         rt.fill(in_of_l3l2.prod(), i_in)
         rt.drain(out_of_l2l3.cons(), o_out, wait=True)
 
-    return Program(iron.get_current_device(), rt).resolve_program()  # fmt: skip # pyright: ignore[reportArgumentType]
+    device = iron.get_current_device()
+    assert device is not None
+    return Program(device, rt).resolve_program()
 
 
 def _make_argparser():

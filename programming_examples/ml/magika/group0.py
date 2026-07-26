@@ -170,10 +170,9 @@ def group0(
         rt.fill(of_din_L3L2.prod(), A)
         rt.drain(of_dout_L2L3.cons(), C, wait=True)
 
-    return Program(
-        iron.get_current_device(),  # pyright: ignore[reportArgumentType]
-        rt,
-    ).resolve_program()
+    device = iron.get_current_device()
+    assert device is not None
+    return Program(device, rt).resolve_program()
 
 
 def _make_argparser():

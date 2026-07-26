@@ -227,9 +227,9 @@ def _chain_iron(mode, data_dir, scales_json):
             )
             rt.finish_task_group(tg)
 
-    return Program(
-        iron.get_current_device(), rt  # pyright: ignore[reportArgumentType]
-    ).resolve_program()
+    device = iron.get_current_device()
+    assert device is not None
+    return Program(device, rt).resolve_program()
 
 
 def _make_argparser():

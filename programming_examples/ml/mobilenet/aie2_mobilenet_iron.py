@@ -277,9 +277,9 @@ def make_mobilenet_iron(use_placement: bool = True):
         # ------------------------------------------------------------------
         # Generate MLIR
         # ------------------------------------------------------------------
-        return Program(
-            iron.get_current_device(), rt  # pyright: ignore[reportArgumentType]
-        ).resolve_program()
+        device = iron.get_current_device()
+        assert device is not None
+        return Program(device, rt).resolve_program()
 
     return mobilenet_iron
 
