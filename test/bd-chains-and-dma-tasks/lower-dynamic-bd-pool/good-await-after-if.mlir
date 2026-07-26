@@ -7,17 +7,26 @@
 
 // RUN: aie-opt --aie-lower-dynamic-bd-pool %s | FileCheck %s
 
-// A task configured in an scf.if branch and awaited AFTER the if. No configure
-// dominates the await (each is branch-local), so the pass cannot redirect the
-// await to a dominating configure. Instead it records the physical channel on
-// the await as sync_* attributes and drops the task operand: the sync only ever
-// needed the channel, and BD reuse is serialized by queue backpressure. Both
-// branches must agree on the channel (checked); the id is freed once after.
+// A task is configured and started in each branch of a runtime scf.if, then
+// awaited and freed AFTER the if. Both branches start a task on the same
+// physical channel, so the transfer is always in flight on the taken path --
+// awaiting after the if is deadlock-free. The scf.if result %[[R]]#0 is the phi
+// of the task in flight (whichever branch ran): the await keeps that SSA operand
+// (no redirect, no attributes), preserving the sync's data dependence on the
+// task. The id carried out at %[[R]]#1 is freed once after the if. The npu_sync
+// lowering later walks the phi to a configure for the physical channel (both
+// branches were verified to agree).
 
 // CHECK-LABEL: @await_after_if
-// CHECK: %[[IF:.*]]:2 = scf.if %{{.*}} -> (index, i32) {
-// CHECK: aiex.dma_await_task() {sync_channel = 0 : i32, sync_col = 0 : i32, sync_direction = 1 : i32, sync_row = 0 : i32}
-// CHECK: aiex.dma_bd_pool_push(0, 0) bd_id %[[IF]]#1 : i32
+// CHECK: %[[R:.*]]:2 = scf.if %{{.*}} -> (index, i32) {
+// CHECK:   %[[TID:.*]] = aiex.dma_bd_pool_pop(0, 0) : i32
+// CHECK:   scf.yield %{{.*}}, %[[TID]] : index, i32
+// CHECK: } else {
+// CHECK:   %[[EID:.*]] = aiex.dma_bd_pool_pop(0, 0) : i32
+// CHECK:   scf.yield %{{.*}}, %[[EID]] : index, i32
+// CHECK: }
+// CHECK: aiex.dma_await_task(%[[R]]#0)
+// CHECK: aiex.dma_bd_pool_push(0, 0) bd_id %[[R]]#1 : i32
 
 aie.device(npu1) {
   %tile_0_0 = aie.tile(0, 0)

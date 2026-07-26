@@ -113,7 +113,15 @@ class ActiveSequence:
         tg._actions = []
 
     def emit_transfer(self, task: DMATask, task_group: TaskGroup | None) -> None:
-        """Emit a DMA transfer and record its await/free action for group close."""
+        """Emit a DMA transfer and record its await/free action(s) for group close.
+
+        A waited transfer is both awaited and freed: the dynamic BD-pool pass
+        only returns an id to the runtime free-list on an explicit free (an
+        await is a pure TCT sync), so a waited-but-never-freed task would leak
+        a pool slot on every rolled-loop iteration. Matches the static path's
+        long-standing "await implies release" convention -- it just does so
+        with an explicit free instead of folding it into the await.
+        """
         task.resolve()
         if task_group is not None:
             self._used_explicit = True
@@ -121,8 +129,9 @@ class ActiveSequence:
         else:
             self._used_default = True
             group = self._default_task_group
-        action = dma_await_task if task.will_wait() else dma_free_task
-        group._actions.append((action, [task.task]))
+        if task.will_wait():
+            group._actions.append((dma_await_task, [task.task]))
+        group._actions.append((dma_free_task, [task.task]))
 
     def finalize(self) -> None:
         """Close bookkeeping after the body runs."""
