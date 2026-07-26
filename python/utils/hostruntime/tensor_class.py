@@ -3,11 +3,43 @@
 # Copyright (C) 2025-2026 Advanced Micro Devices, Inc.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 #
+import os
 from abc import ABC, abstractmethod
 from functools import cached_property
 
 import numpy as np
 import numpy.typing as npt
+
+
+# Smallest unit of host/device cache coherence, in bytes.
+#
+# Host<->device synchronization is not byte-granular: on a non-cache-coherent
+# part the shim maintains whole cache lines (it walks
+# ``sysconf(_SC_LEVEL1_DCACHE_LINESIZE)``-sized steps and the CPU flushes the
+# entire line containing an address), so a sync for one region unavoidably acts
+# on every byte sharing its first and last line.  Sub-region views must
+# therefore not share a line, or one view's sync can write a neighbor's stale
+# host copy over data the device just produced.
+#
+# Detected once, floored at 64 so a bogus or missing report cannot weaken the
+# check.  This mirrors what the runtime actually does rather than the page size:
+# pages are the unit of address translation and protection, lines are the unit
+# of coherence.
+def _detect_coherence_granule(default=64):
+    try:
+        with open(
+            "/sys/devices/system/cpu/cpu0/cache/index0/coherency_line_size"
+        ) as fp:
+            return max(int(fp.read().strip()), default)
+    except (OSError, ValueError):
+        pass
+    try:
+        return max(os.sysconf("SC_LEVEL1_DCACHE_LINESIZE"), default)
+    except (ValueError, OSError, AttributeError):
+        return default
+
+
+COHERENCE_GRANULE = _detect_coherence_granule()
 
 # Mapping from ml_dtypes (non-native numpy) types to their torch equivalents.
 # Native numpy dtypes (float32, int32, …) are handled directly by torch.from_numpy
@@ -91,6 +123,11 @@ class Tensor(ABC):
     DEFAULT_DEVICE = "npu"
     DEFAULT_INT_DTYPE = np.int64  # torch has default int64
     DEFAULT_FLOAT_DTYPE = np.float32  # torch has default float32
+
+    # Alignment :meth:`subview` requires of a sub-region, in bytes. A backend
+    # whose host/device reconciliation has a different granularity may override
+    # it; see :data:`COHERENCE_GRANULE`.
+    _coherence_granule = COHERENCE_GRANULE
 
     def __init__(self, shape_or_data, dtype: npt.DTypeLike = np.uint32, device="npu"):
         """
@@ -255,8 +292,29 @@ class Tensor(ABC):
 
         The returned tensor shares this tensor's buffer (no new allocation, no
         copy), holds a reference to this tensor so the storage outlives the view,
-        and synchronizes only its own slice. It is a plain tensor of the same
-        backend class, not a distinct type.
+        and synchronizes its own slice. It is a plain tensor of the same backend
+        class, not a distinct type.
+
+        The region must be aligned to :data:`COHERENCE_GRANULE`, because host and
+        device are reconciled a cache line at a time, not a byte at a time. Two
+        views sharing a line are not independent: synchronizing one acts on the
+        other's bytes in that line, so a view whose host copy is stale can be
+        written back over data the device just produced in its neighbor. The
+        check makes that unrepresentable instead of leaving it to callers to
+        remember. It is enforced for every backend, including the CPU-only one
+        that has no coherence concern of its own, so a layout validated against
+        the test backend stays valid on a device.
+
+        A view may end anywhere if it ends where this tensor ends: its last line
+        is shared with no sibling, so it is no worse than synchronizing the whole
+        buffer. This also keeps a whole-buffer view (``offset=0``) legal for a
+        tensor whose own size is not a multiple of the granule.
+
+        Note that alignment bounds the damage but does not make a sync exactly
+        slice-scoped: some driver paths (an imported buffer, or one with no
+        kernel mapping) maintain the whole buffer regardless of the requested
+        range. Correctness must not depend on a sync being narrow, only on views
+        not sharing a coherence granule.
 
         Args:
             offset: Start of the region, in elements of this tensor's dtype.
@@ -268,7 +326,8 @@ class Tensor(ABC):
             Tensor: A view sharing this tensor's storage.
 
         Raises:
-            ValueError: If the region falls outside this tensor's buffer.
+            ValueError: If the region falls outside this tensor's buffer, or is
+                not aligned to :data:`COHERENCE_GRANULE`.
         """
         view_dtype = np.dtype(dtype) if dtype is not None else np.dtype(self.dtype)
         offset_bytes = int(offset) * np.dtype(self.dtype).itemsize
@@ -277,6 +336,19 @@ class Tensor(ABC):
             raise ValueError(
                 f"subview(offset={offset}, shape={tuple(shape)}, dtype={view_dtype}) "
                 f"is out of bounds for a buffer of {self.nbytes} bytes"
+            )
+        granule = self._coherence_granule
+        ends_at_parent_end = offset_bytes + nbytes == self.nbytes
+        if offset_bytes % granule or (nbytes % granule and not ends_at_parent_end):
+            raise ValueError(
+                f"subview(offset={offset}, shape={tuple(shape)}, dtype={view_dtype}) "
+                f"spans bytes [{offset_bytes}, {offset_bytes + nbytes}) of this "
+                f"buffer, which is not aligned to the {granule}-byte coherence "
+                f"granule. Host and device are reconciled a cache line at a time, "
+                f"so a view sharing a line with a neighbor cannot be synchronized "
+                f"independently of it. Pad the region layout so each view starts "
+                f"at a multiple of {granule} bytes and (unless it ends where this "
+                f"buffer ends) is a multiple of {granule} bytes long."
             )
         return self._subview(offset_bytes, tuple(shape), view_dtype)
 
