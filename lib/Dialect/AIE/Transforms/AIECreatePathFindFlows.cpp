@@ -326,10 +326,9 @@ computeSubcubeCover(const SmallVector<int, 4> &onset,
     return false;
   };
 
-  // mask to 5 bits: the id attr is not range-checked, so id may exceed 31.
   uint32_t onsetMask = 0;
   for (int id : onset)
-    onsetMask |= (1u << (id & 0x1f));
+    onsetMask |= (1u << id);
 
   // 5-bit id space (3^5 cubes), so enumerate prime implicants by brute force.
   SmallVector<CoverCube> primes;
@@ -342,7 +341,7 @@ computeSubcubeCover(const SmallVector<int, 4> &onset,
       uint32_t cov = 0;
       for (int id : onset)
         if ((id & mask) == value)
-          cov |= (1u << (id & 0x1f));
+          cov |= (1u << id);
       if (cov == 0)
         continue;
       bool isPrime = true;
@@ -994,6 +993,14 @@ AIEPathfinderPass::runOnPacketFlow(DeviceOp device, OpBuilder &builder,
       SmallVector<int, 4> onset;
       for (auto member : group)
         onset.push_back(member.second);
+
+      uint32_t maxPacketId = device.getTargetModel().getMaxPacketId();
+      for (int id : onset)
+        if (id > (int)maxPacketId)
+          return mlir::emitError(tileLoc)
+                 << "packet id " << id << " exceeds the maximum of "
+                 << maxPacketId;
+
       llvm::SmallSet<int, 8> offset = idsOnPort[port];
       for (int id : onset)
         offset.erase(id);

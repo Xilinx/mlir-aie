@@ -406,6 +406,8 @@ public:
                                                   WireBundle bundle) const = 0;
   /// Return the number of packet-rule slots per stream-switch slave port.
   virtual uint32_t getNumSlaveSlots() const { return 4; }
+  /// Return the largest packet id the stream switch can route (5-bit field).
+  virtual uint32_t getMaxPacketId() const { return 31; }
 
   // Return true if the stream switch connection is legal, false otherwise.
   virtual bool isLegalTileConnection(int col, int row, WireBundle srcBundle,
