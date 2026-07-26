@@ -26,8 +26,8 @@ class XRTBuffer(NpuBuffer):
     another.
     """
 
-    def __init__(self, xrt_device, nbytes, flags, group_id, device):
-        super().__init__(nbytes, device)
+    def __init__(self, xrt_device, nbytes, flags, group_id, device, granule=None):
+        super().__init__(nbytes, device, granule)
         self.xrt_device = xrt_device
         self._bo = xrt.bo(xrt_device, nbytes, flags, group_id)
         self._host = np.frombuffer(self._bo.map(), dtype=np.uint8)
@@ -118,7 +118,12 @@ class XRTTensor(NpuTensor):
         # https://github.com/Xilinx/XRT/blob/9b114f18c4fcf4e3558291aa2d78f6d97c406365/src/runtime_src/core/common/api/xrt_bo.cpp#L1626
         nbytes = int(np.prod(self._shape) * np.dtype(self.dtype).itemsize)
         self._buffer = XRTBuffer(
-            self.xrt_device, nbytes, flags, group_id, self._initial_device
+            self.xrt_device,
+            nbytes,
+            flags,
+            group_id,
+            self._initial_device,
+            self._resolve_coherence_granule(),
         )
         self._offset_bytes = 0
         self._bo = self._buffer.binding_handle(0, nbytes)

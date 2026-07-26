@@ -183,8 +183,9 @@ class _CoherenceMap:
     HOST = "cpu"
     DEVICE = "npu"
 
-    def __init__(self, nbytes, state):
+    def __init__(self, nbytes, state, granule=None):
         self._spans = [[0, nbytes, state]]
+        self._granule = COHERENCE_GRANULE if granule is None else granule
         # The whole allocation in one state, or None when it is mixed. Kept as a
         # field because it answers most queries outright, and the queries are on
         # the path a dispatch takes for every argument.
@@ -205,7 +206,29 @@ class _CoherenceMap:
         out.append([start, end, state])
         out.sort()
         self._spans = self._coalesce(out)
+        self._check_granule(start, end, state)
         self.uniform = self._spans[0][2] if len(self._spans) == 1 else None
+
+    def _check_granule(self, start, end, state):
+        """No coherence granule may hold regions in two different states.
+
+        This is what makes the map mean anything: reconciling one range acts on
+        whole cache lines, so two states sharing a line cannot be maintained
+        independently and one of them will be written over the other. Regions
+        are coalesced before this runs, so every remaining internal boundary
+        separates differing states and every one of them has to fall on a
+        granule. The last span may end anywhere, since nothing follows it.
+        """
+        granule = self._granule
+        for lo, hi, _ in self._spans[:-1]:
+            if hi % granule:
+                raise ValueError(
+                    f"recording {state!r} for bytes [{start}, {end}) would leave a "
+                    f"state boundary at byte {hi}, which is not on a {granule}-byte "
+                    f"coherence granule. Host and device are reconciled a cache line "
+                    f"at a time, so the regions either side of that boundary could "
+                    f"not be transferred independently."
+                )
 
     def get(self, start, end):
         """The state of ``[start, end)``, or None if it is not uniform."""
@@ -254,9 +277,9 @@ class NpuBuffer(ABC):
     reason, and is where ``storage_offset`` comes from.
     """
 
-    def __init__(self, nbytes, device):
+    def __init__(self, nbytes, device, granule=None):
         self.nbytes = nbytes
-        self.coherence = _CoherenceMap(nbytes, device)
+        self.coherence = _CoherenceMap(nbytes, device, granule)
 
     @abstractmethod
     def sync_to_device(self, offset, nbytes):
@@ -267,7 +290,12 @@ class NpuBuffer(ABC):
         """Make the device's writes to ``[offset, offset+nbytes)`` visible to the host."""
 
     def binding_handle(self, offset, nbytes):
-        """A handle a runtime can bind for this region, if the backend has one."""
+        """A handle a runtime can bind for this region, if the backend has one.
+
+        Returning None is a legitimate answer, not a stub: a design where the
+        host writes at offsets into a whole allocation and the kernel addresses
+        the layout itself never needs a per-region handle at all.
+        """
         return None
 
 
@@ -281,7 +309,11 @@ class _TensorBackedBuffer(NpuBuffer):
     """
 
     def __init__(self, tensor):
-        super().__init__(tensor.nbytes, tensor._initial_device)
+        super().__init__(
+            tensor.nbytes,
+            tensor._initial_device,
+            type(tensor)._resolve_coherence_granule(),
+        )
         self._tensor = tensor
 
     def sync_to_device(self, offset, nbytes):
@@ -301,8 +333,8 @@ class _TensorBackedBuffer(NpuBuffer):
 class CPUBuffer(NpuBuffer):
     """A host allocation. Reconciliation is a no-op: there is only one agent."""
 
-    def __init__(self, nbytes, device):
-        super().__init__(nbytes, device)
+    def __init__(self, nbytes, device, granule=None):
+        super().__init__(nbytes, device, granule)
         self._host = np.zeros(nbytes, dtype=np.uint8)
 
     @property
@@ -1217,7 +1249,9 @@ class CPUOnlyTensor(NpuTensor):
         # Re-home the bytes in a buffer so views share one allocation and one
         # coherence map, then keep a typed view of the whole of it.
         source = self._data
-        self._buffer = CPUBuffer(source.nbytes, self._initial_device)
+        self._buffer = CPUBuffer(
+            source.nbytes, self._initial_device, self._resolve_coherence_granule()
+        )
         self._offset_bytes = 0
         self._data = self._buffer.host_bytes.view(source.dtype).reshape(self._shape)
         np.copyto(self._data, source)

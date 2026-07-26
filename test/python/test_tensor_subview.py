@@ -426,3 +426,41 @@ def test_the_backend_hook_receives_a_byte_offset_and_the_view_dtype():
     assert seen["offset_bytes"] == GRANULE  # elements * parent itemsize
     assert seen["shape"] == (GRANULE,)
     assert seen["dtype"] == np.dtype(np.uint8)
+
+
+# ---------------------------------------------------------------------------
+# The buffer holds the invariant, not just the view constructor
+# ---------------------------------------------------------------------------
+
+
+def test_buffer_refuses_a_state_boundary_inside_a_granule():
+    """Reaching past subview() does not get you a map that cannot be maintained.
+
+    subview() rejects a misaligned region up front, but it is not the only way
+    to record state, and a future path that marks a sub-range written would not
+    go through it. The rule belongs where the state is.
+    """
+    buffer = tensor_class.CPUBuffer(4 * GRANULE, "npu", GRANULE)
+    with pytest.raises(ValueError, match="coherence granule"):
+        buffer.coherence.set(0, GRANULE + 8, "cpu")
+
+
+def test_buffer_allows_an_aligned_state_boundary():
+    buffer = tensor_class.CPUBuffer(4 * GRANULE, "npu", GRANULE)
+    buffer.coherence.set(0, GRANULE, "cpu")
+    assert buffer.coherence.get(0, GRANULE) == "cpu"
+    assert buffer.coherence.get(GRANULE, 2 * GRANULE) == "npu"
+
+
+def test_buffer_allows_a_final_region_to_end_anywhere():
+    """Nothing follows the last region, so its end shares a granule with nobody."""
+    buffer = tensor_class.CPUBuffer(GRANULE + 8, "npu", GRANULE)
+    buffer.coherence.set(GRANULE, GRANULE + 8, "cpu")
+    assert buffer.coherence.get(GRANULE, GRANULE + 8) == "cpu"
+
+
+def test_a_backend_granule_governs_its_buffer():
+    buffer = tensor_class.CPUBuffer(8 * GRANULE, "npu", 4 * GRANULE)
+    with pytest.raises(ValueError, match="256-byte coherence granule"):
+        buffer.coherence.set(0, GRANULE, "cpu")
+    buffer.coherence.set(0, 4 * GRANULE, "cpu")  # on its own granule, fine
